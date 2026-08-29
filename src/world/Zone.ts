@@ -14,8 +14,9 @@ export interface Zone {
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
   ground: Mesh;
   dummies: Dummy[];
-  /** Точка, где лежит меч (над камнем). */
+  /** Точки, где лежат меч и лук (над камнями). */
   swordHome: Vector3;
+  bowHome: Vector3;
 }
 
 /**
@@ -48,7 +49,8 @@ export function buildZone(scene: Scene): Zone {
     dummies.push(new Dummy(scene, new Vector3(dx, terrain.heightAt(dx, dz), dz)));
   }
 
-  const swordHome = new Vector3(0, terrain.heightAt(0, -12) + 1.1, -12);
+  const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
+  const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
 
-  return { ground: terrain.mesh, dummies, swordHome };
+  return { ground: terrain.mesh, dummies, swordHome, bowHome };
 }

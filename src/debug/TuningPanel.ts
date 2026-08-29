@@ -1,18 +1,25 @@
-import type { CombatSystem, EquipTune } from "../combat/CombatSystem";
+import type { CombatSystem, EquipTune, TuneSlot } from "../combat/CombatSystem";
 
-type Mode = "auto" | "flat" | "vr";
+type Mode = "auto" | TuneSlot;
+
+const LABELS: Record<Mode, string> = {
+  auto: "авто (что в руке)",
+  swordFlat: "меч · плоский",
+  swordVR: "меч · VR",
+  bowFlat: "лук · плоский",
+  bowVR: "лук · VR",
+};
 
 interface Row {
   input: HTMLInputElement;
   num: HTMLElement;
   read: () => number;
-  write: (v: number) => void;
 }
 
 /**
- * Панель тюнинга положения меча в руке — правит живые значения
- * `combat.tuneFlat` / `combat.tuneVR` без перезагрузки страницы.
- * Кнопка «⚙ меч» внизу слева, либо клавиша `~` (Backquote).
+ * Панель тюнинга положения оружия в руке — правит живые значения
+ * `combat.tunes[...]` без перезагрузки. Кнопка «⚙ оружие» внизу слева
+ * либо клавиша `~` (Backquote).
  */
 export class TuningPanel {
   private readonly root: HTMLDivElement;
@@ -22,7 +29,7 @@ export class TuningPanel {
 
   constructor(private readonly combat: CombatSystem) {
     const btn = document.createElement("button");
-    btn.textContent = "⚙ меч";
+    btn.textContent = "⚙ оружие";
     btn.style.cssText = BTN_CSS;
     document.body.appendChild(btn);
 
@@ -71,46 +78,52 @@ export class TuningPanel {
 
     this.out = document.createElement("textarea");
     this.out.readOnly = true;
-    this.out.style.cssText = "width:100%;height:64px;margin-top:6px;font:11px monospace;background:#111;color:#9f9;border:1px solid #444;";
+    this.out.style.cssText =
+      "width:100%;height:64px;margin-top:6px;font:11px monospace;background:#111;color:#9f9;border:1px solid #444;";
     this.root.appendChild(this.out);
 
     const hint = document.createElement("div");
     hint.innerHTML =
-      "Возьми меч (E). Esc — освободить мышь для ползунков.<br />" +
+      "Возьми оружие (E). Esc — освободить мышь для ползунков.<br />" +
       "В VR: зажми X на левом контроллере и крути стики.";
     hint.style.cssText = "margin-top:6px;opacity:0.6;";
     this.root.appendChild(hint);
   }
 
-  private vr(): boolean {
-    return this.mode === "vr" || (this.mode === "auto" && this.combat.vrActive);
+  private targetSlot(): TuneSlot {
+    return this.mode === "auto" ? this.combat.slot() : this.mode;
   }
   private t(): EquipTune {
-    return this.vr() ? this.combat.tuneVR : this.combat.tuneFlat;
+    return this.combat.tunes[this.targetSlot()];
   }
 
   private modeRow(): HTMLElement {
     const wrap = document.createElement("div");
     wrap.style.cssText = "margin-bottom:8px;";
-    wrap.appendChild(document.createTextNode("режим: "));
-    for (const m of ["auto", "flat", "vr"] as Mode[]) {
-      const label = document.createElement("label");
-      label.style.cssText = "margin-right:8px;cursor:pointer;";
-      const r = document.createElement("input");
-      r.type = "radio";
-      r.name = "tune-mode";
-      r.checked = m === this.mode;
-      r.addEventListener("change", () => {
-        this.mode = m;
-        this.refresh();
-      });
-      label.append(r, document.createTextNode(" " + m));
-      wrap.appendChild(label);
+    wrap.appendChild(document.createTextNode("набор: "));
+    const sel = document.createElement("select");
+    for (const m of Object.keys(LABELS) as Mode[]) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = LABELS[m];
+      sel.appendChild(opt);
     }
+    sel.value = this.mode;
+    sel.addEventListener("change", () => {
+      this.mode = sel.value as Mode;
+      this.refresh();
+    });
+    wrap.appendChild(sel);
     return wrap;
   }
 
-  private slider(label: string, min: number, max: number, read: () => number, write: (v: number) => void): Row {
+  private slider(
+    label: string,
+    min: number,
+    max: number,
+    read: () => number,
+    write: (v: number) => void,
+  ): Row {
     const wrap = document.createElement("div");
     wrap.style.cssText = "display:flex;align-items:center;gap:6px;margin:3px 0;";
 
@@ -137,7 +150,7 @@ export class TuningPanel {
 
     wrap.append(name, input, num);
     this.root.appendChild(wrap);
-    return { input, num, read, write };
+    return { input, num, read };
   }
 
   private refresh(): void {
@@ -150,13 +163,10 @@ export class TuningPanel {
 
   private copy(): void {
     const t = this.t();
-    const field = this.vr() ? "tuneVR" : "tuneFlat";
     const f = (n: number): string => n.toFixed(3).replace(/\.?0+$/, "");
     const text =
-      `// CombatSystem.ts -> ${field}:\n` +
-      `pos: new Vector3(${f(t.pos.x)}, ${f(t.pos.y)}, ${f(t.pos.z)}),\n` +
-      `rot: new Vector3(${f(t.rot.x)}, ${f(t.rot.y)}, ${f(t.rot.z)}),\n` +
-      `scale: ${f(t.scale)},`;
+      `// CombatSystem.ts -> tunes.${this.targetSlot()}:\n` +
+      `tune(${f(t.pos.x)}, ${f(t.pos.y)}, ${f(t.pos.z)}, ${f(t.rot.x)}, ${f(t.rot.y)}, ${f(t.rot.z)}, ${f(t.scale)}),`;
     this.out.value = text;
     navigator.clipboard?.writeText(text).catch(() => {});
     console.log(text);
@@ -168,6 +178,6 @@ const BTN_CSS =
   "font:13px system-ui,sans-serif;background:#222;color:#fff;border:1px solid #555;border-radius:6px;cursor:pointer;";
 
 const PANEL_CSS =
-  "position:fixed;left:12px;bottom:52px;z-index:40;width:280px;padding:10px 12px;" +
+  "position:fixed;left:12px;bottom:52px;z-index:40;width:290px;padding:10px 12px;" +
   "background:rgba(18,18,22,0.94);color:#eee;font:12px/1.5 system-ui,sans-serif;" +
   "border:1px solid #555;border-radius:8px;display:none;";

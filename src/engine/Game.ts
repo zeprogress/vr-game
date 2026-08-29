@@ -12,6 +12,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { buildZone } from "../world/Zone";
 import { CombatSystem } from "../combat/CombatSystem";
 import { TuningPanel } from "../debug/TuningPanel";
+import { Sfx } from "../audio/Sfx";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -29,6 +30,7 @@ export class Game {
   readonly isTouch: boolean;
   private readonly ground: Mesh;
   private readonly combat: CombatSystem;
+  private readonly sfx = new Sfx();
   xr: WebXRDefaultExperience | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -49,13 +51,24 @@ export class Game {
       this.player,
       () => this.xr,
       zone.dummies,
+      this.sfx,
       zone.swordHome,
+      zone.bowHome,
     );
     new TuningPanel(this.combat);
+
+    this.player.hooks.step = () => this.sfx.footstep();
+    this.player.hooks.jump = () => this.sfx.jump();
+    this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
 
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.player.setInput(this.defaultInput());
+
+    // AudioContext стартует только по жесту пользователя.
+    const wake = () => this.sfx.resume();
+    window.addEventListener("pointerdown", wake);
+    window.addEventListener("keydown", wake);
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
@@ -86,6 +99,7 @@ export class Game {
     const base = this.xr.baseExperience;
     base.onStateChangedObservable.add((state) => {
       if (state === WebXRState.IN_XR) {
+        this.sfx.resume();
         this.player.enterXR(base.camera);
         this.player.setInput(new XRInput(this.xr!));
       } else if (state === WebXRState.NOT_IN_XR) {

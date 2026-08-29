@@ -38,6 +38,10 @@ export class PlayerController {
   /** Ввод, снятый в последнем update() — читают другие системы (бой). */
   lastInput: InputState = emptyInput();
 
+  /** Хуки для звука. Назначает Game. */
+  readonly hooks: { step?: () => void; jump?: () => void; land?: (impact: number) => void } = {};
+  private stepDist = 0;
+
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
   private xrRig: TransformNode | null = null;
   private xrCamera: WebXRCamera | null = null;
@@ -146,8 +150,21 @@ export class PlayerController {
       mz /= len;
     }
     const speed = PLAYER.runSpeed * dt;
+    const bx = pos.x;
+    const bz = pos.z;
     this.moveAxis(mx * speed, 0);
     this.moveAxis(0, mz * speed);
+
+    // --- Шаги (звук) ---
+    if (this.grounded) {
+      this.stepDist += Math.hypot(pos.x - bx, pos.z - bz);
+      if (this.stepDist >= PLAYER.strideLength) {
+        this.stepDist = 0;
+        this.hooks.step?.();
+      }
+    } else {
+      this.stepDist = PLAYER.strideLength * 0.6; // приземлился — шаг почти сразу
+    }
 
     // --- Земля под ногами ---
     const groundY = this.rayDown();
@@ -155,6 +172,7 @@ export class PlayerController {
     if (inp.jump && this.grounded) {
       this.verticalVelocity = PLAYER.jumpSpeed;
       this.grounded = false;
+      this.hooks.jump?.();
     }
 
     if (this.grounded && this.verticalVelocity <= 0) {
@@ -165,6 +183,7 @@ export class PlayerController {
       pos.y += this.verticalVelocity * dt;
       if (groundY !== null && pos.y < groundY + PLAYER.eyeHeight) {
         pos.y = groundY + PLAYER.eyeHeight;
+        if (this.verticalVelocity < -3) this.hooks.land?.(-this.verticalVelocity);
         this.verticalVelocity = 0;
       }
     }

@@ -10,6 +10,7 @@ export const PLAYER = {
   gravity: 20, // м/с² (резче реального ради «игрового» ощущения)
   jumpSpeed: 7, // м/с стартовая скорость прыжка
   pitchClamp: 1.4, // рад (~80°), ограничение взгляда вверх/вниз
+  strideLength: 1.9, // м пути между шагами (звук)
 } as const;
 
 export const LOOK = {
@@ -36,3 +37,22 @@ export const COMBAT = {
   dummyHitRadius: 0.5, // м, «толщина» тела куклы (проверка отрезок-отрезок)
   hitMargin: 0.2, // м запаса, чтобы удары засчитывались уверенно
 } as const;
+
+export const BOW = {
+  equipReach: 2.6, // м, взять лук
+  drawTimeFlat: 0.75, // с до полного натяга (удержание ЛКМ)
+  maxDrawVR: 0.6, // м, максимальный разлёт рук
+  restDrawVR: 0.15, // м, «мёртвая зона» у лука
+  fireThreshold: 0.18, // мин. натяг для выстрела (0..1)
+  minSpeed: 20, // м/с при слабом натяге
+  maxSpeed: 58, // м/с при полном натяге
+} as const;
+
+export const ARROW = {
+  gravity: 16, // м/с²
+  maxLife: 5, // с полёта
+  stuckLife: 8, // с торчит после попадания
+  hitRadius: 0.12, // м добавка к «толщине» цели
+  maxAlive: 16, // потолок числа стрел
+} as const;
+
