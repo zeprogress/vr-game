@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { MOB } from "../shared/constants";
+import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "./Hittable";
 
 export interface MobContext {
@@ -23,8 +24,11 @@ export interface MobContext {
 export class Mob implements Hittable {
   readonly root: TransformNode;
   private readonly body: Mesh;
+  private readonly head: TransformNode;
   private readonly mat: StandardMaterial;
   private readonly home: Vector3;
+  private readonly bar: HealthBar3D;
+  private barTimer = 0;
 
   private hp = MOB.hp;
   private vel = new Vector3();
@@ -53,15 +57,32 @@ export class Mob implements Hittable {
     this.body.position.y = MOB.bodyRadius;
     this.body.isPickable = false;
 
+    // Глаза на отдельном узле (не сплющивается с телом), на самой поверхности.
+    this.head = new TransformNode("mobHead", scene);
+    this.head.parent = this.root;
+    this.head.position.y = MOB.bodyRadius;
+
     const eyeMat = new StandardMaterial("mobEye", scene);
-    eyeMat.diffuseColor = new Color3(0.05, 0.05, 0.05);
-    for (const dx of [-0.14, 0.14]) {
-      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.12, segments: 5 }, scene);
+    eyeMat.diffuseColor = new Color3(0.95, 0.95, 0.95);
+    eyeMat.emissiveColor = new Color3(0.3, 0.3, 0.3);
+    const pupMat = new StandardMaterial("mobPupil", scene);
+    pupMat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+    for (const dx of [-0.18, 0.18]) {
+      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.18, segments: 6 }, scene);
       eye.material = eyeMat;
-      eye.parent = this.body;
-      eye.position.set(dx, 0.12, MOB.bodyRadius * 0.8);
+      eye.parent = this.head;
+      eye.position.set(dx, 0.15, MOB.bodyRadius * 0.92);
       eye.isPickable = false;
+      const pup = MeshBuilder.CreateSphere("mobPupil", { diameter: 0.1, segments: 5 }, scene);
+      pup.material = pupMat;
+      pup.parent = eye;
+      pup.position.z = 0.07;
+      pup.isPickable = false;
     }
+
+    this.bar = new HealthBar3D(scene, this.root, new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0), 0.7);
+    this.bar.set(1);
+    this.bar.setVisible(false);
   }
 
   get alive(): boolean {
@@ -73,14 +94,17 @@ export class Mob implements Hittable {
     return { a: p.add(new Vector3(0, 0.1, 0)), b: p.add(new Vector3(0, MOB.bodyRadius * 2, 0)), radius: MOB.hitRadius };
   }
 
-  hit(dir: Vector3): boolean {
+  hit(dir: Vector3, damage = 1): boolean {
     if (this.dead || this.hurtCd > 0) return false;
     this.hurtCd = 0.2;
     this.flash = 1;
-    this.hp--;
+    this.hp -= damage;
     this.vel.addInPlace(dir.scale(3.5));
     this.vel.y += 2.5;
     this.grounded = false;
+    this.bar.set(Math.max(0, this.hp) / MOB.hp);
+    this.bar.setVisible(true);
+    this.barTimer = 4;
     if (this.hp <= 0) {
       this.dead = true;
       this.deathT = 0;
@@ -103,12 +127,19 @@ export class Mob implements Hittable {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     if (this.attackCd > 0) this.attackCd -= dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
-    this.mat.emissiveColor.set(this.flash * 0.7, this.flash * 0.1, 0);
+    this.mat.emissiveColor.set(0.14 + this.flash * 0.6, 0.03 + this.flash * 0.1, 0.16);
+
+    if (this.barTimer > 0) {
+      this.barTimer -= dt;
+      if (this.barTimer <= 0) this.bar.setVisible(false);
+    }
 
     if (this.dead) {
       this.deathT += dt;
       const k = Math.min(1, this.deathT / 0.4);
       this.body.scaling.set(1 + k, Math.max(0.05, 1 - k), 1 + k);
+      this.head.setEnabled(false);
+      this.bar.setVisible(false);
       this.root.position.y -= dt * 0.6;
       this.body.visibility = 1 - k;
       this.respawnIn -= dt;
@@ -175,5 +206,9 @@ export class Mob implements Hittable {
     this.flash = 0;
     this.body.visibility = 1;
     this.body.scaling.setAll(1);
+    this.head.setEnabled(true);
+    this.bar.set(1);
+    this.bar.setVisible(false);
+    this.barTimer = 0;
   }
 }

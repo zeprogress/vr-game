@@ -86,3 +86,14 @@ export const PLAYER_HP = {
   regenDelay: 4, // с без урона до начала реген
 } as const;
 
+export const THROW = {
+  gravity: 16, // м/с²
+  damage: 3, // урон при попадании брошенным оружием
+  maxLife: 5, // с полёта до принудительной посадки
+  hitRadius: 0.28, // м добавка к «толщине» цели
+  velScaleVR: 1.35, // множитель к скорости руки в VR
+  flatWindup: 0.55, // с до полного замаха (удержание E в плоском режиме)
+  flatMinSpeed: 9, // м/с при коротком нажатии
+  flatMaxSpeed: 24, // м/с при полном замахе
+} as const;
+

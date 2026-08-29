@@ -85,11 +85,11 @@ export class Dummy implements Hittable {
   }
 
   /** Удар пришёл. dir — направление удара в мире (для отклонения). */
-  hit(dir: Vector3): boolean {
+  hit(dir: Vector3, damage = 1): boolean {
     if (this.dying || this.hitCooldown > 0) return false;
     this.hitCooldown = COMBAT.hitCooldown;
     this.flash = 1;
-    this.hp--;
+    this.hp -= damage;
 
     const local = this.root.getWorldMatrix().clone().invert();
     const d = Vector3.TransformNormal(dir, local);

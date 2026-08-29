@@ -14,6 +14,8 @@ import { CombatSystem } from "../combat/CombatSystem";
 import { MobSystem } from "../combat/MobSystem";
 import { TuningPanel } from "../debug/TuningPanel";
 import { Hud } from "../ui/Hud";
+import { HealthBar3D } from "../ui/HealthBar3D";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Sfx } from "../audio/Sfx";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
@@ -36,6 +38,7 @@ export class Game {
   private readonly dummies: { update(dt: number): void }[];
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
+  private playerBar3D: HealthBar3D | null = null;
   xr: WebXRDefaultExperience | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -58,6 +61,7 @@ export class Game {
       () => this.xr,
       [...zone.dummies, ...zone.mobs],
       this.sfx,
+      zone.groundHeight,
       zone.swordHome,
       zone.bowHome,
     );
@@ -67,18 +71,22 @@ export class Game {
     this.player.hooks.step = () => this.sfx.footstep();
     this.player.hooks.jump = () => this.sfx.jump();
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
+    const showHp = (hp: number) => {
+      this.hud.setHp(hp);
+      this.playerBar3D?.set(hp / 100);
+    };
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
-      this.hud.setHp(hp);
+      showHp(hp);
       this.hud.flashDamage(dmg);
       this.hapticBoth();
     };
-    this.player.hooks.heal = (hp) => this.hud.setHp(hp);
+    this.player.hooks.heal = showHp;
     this.player.hooks.respawn = () => {
-      this.hud.setHp(this.player.hp);
+      showHp(this.player.hp);
       this.hud.flashDamage(30);
     };
-    this.hud.setHp(this.player.hp);
+    showHp(this.player.hp);
 
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
@@ -124,10 +132,22 @@ export class Game {
         this.sfx.resume();
         this.player.enterXR(base.camera);
         this.player.setInput(new XRInput(this.xr!));
+        // Полоса здоровья в поле зрения (в VR DOM не видно).
+        this.playerBar3D?.dispose();
+        this.playerBar3D = new HealthBar3D(
+          this.scene,
+          base.camera,
+          new Vector3(-0.34, -0.32, 0.9),
+          0.34,
+          false,
+        );
+        this.playerBar3D.set(this.player.hp / 100);
       } else if (state === WebXRState.NOT_IN_XR) {
         this.player.exitXR();
         this.player.setInput(this.defaultInput());
         this.scene.activeCamera = this.player.camera;
+        this.playerBar3D?.dispose();
+        this.playerBar3D = null;
       }
     });
   }

@@ -4,12 +4,14 @@ import { PLAYER_HP } from "../shared/constants";
 export class Hud {
   private readonly bar: HTMLDivElement;
   private readonly fill: HTMLDivElement;
+  private readonly label: HTMLDivElement;
   private readonly vignette: HTMLDivElement;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
     this.fill = el("div", HP_FILL_CSS);
-    this.bar.appendChild(this.fill);
+    this.label = el("div", HP_LABEL_CSS);
+    this.bar.append(this.fill, this.label);
 
     this.vignette = el("div", VIGNETTE_CSS);
 
@@ -21,6 +23,7 @@ export class Hud {
     this.fill.style.width = `${frac * 100}%`;
     this.fill.style.background =
       frac > 0.5 ? "#4caf50" : frac > 0.25 ? "#e0a020" : "#d13030";
+    this.label.textContent = `${Math.ceil(hp)} / ${PLAYER_HP.max}`;
   }
 
   flashDamage(dmg: number): void {
@@ -41,11 +44,15 @@ function el(tag: string, css: string): HTMLDivElement {
 }
 
 const HP_BAR_CSS =
-  "position:fixed;left:14px;top:14px;width:220px;height:16px;z-index:35;" +
-  "background:rgba(0,0,0,0.45);border:1px solid rgba(255,255,255,0.35);border-radius:4px;overflow:hidden;";
+  "position:fixed;left:16px;top:16px;width:260px;height:22px;z-index:35;" +
+  "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;";
 
 const HP_FILL_CSS =
-  "height:100%;width:100%;background:#4caf50;transition:width 0.2s linear, background 0.3s;";
+  "position:absolute;inset:0;width:100%;background:#4caf50;transition:width 0.2s linear, background 0.3s;";
+
+const HP_LABEL_CSS =
+  "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
+  "font:bold 13px system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.8);";
 
 const VIGNETTE_CSS =
   "position:fixed;inset:0;z-index:34;pointer-events:none;opacity:0;" +
