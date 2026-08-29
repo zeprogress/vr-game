@@ -63,3 +63,26 @@ export const ARROW = {
   maxAlive: 16, // потолок числа стрел
 } as const;
 
+export const MOB = {
+  count: 5,
+  hp: 4,
+  aggroRange: 16, // м, дистанция агра
+  attackRange: 1.5, // м, на этой дистанции бьёт
+  attackDamage: 8,
+  attackCooldown: 1.3, // с
+  hopInterval: 0.55, // с между прыжками
+  hopSpeed: 3.6, // м/с горизонтальная скорость прыжка
+  hopUp: 4.2, // м/с вертикальная
+  gravity: 18,
+  bodyRadius: 0.55,
+  hitRadius: 0.62,
+  respawn: 7, // с
+  wanderRadius: 10, // м вокруг точки спавна
+} as const;
+
+export const PLAYER_HP = {
+  max: 100,
+  regen: 3, // ед/с восстановление
+  regenDelay: 4, // с без урона до начала реген
+} as const;
+

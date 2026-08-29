@@ -10,7 +10,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { PLAYER } from "../shared/constants";
+import { PLAYER, PLAYER_HP } from "../shared/constants";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 
 const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
@@ -38,9 +38,20 @@ export class PlayerController {
   /** Ввод, снятый в последнем update() — читают другие системы (бой). */
   lastInput: InputState = emptyInput();
 
-  /** Хуки для звука. Назначает Game. */
-  readonly hooks: { step?: () => void; jump?: () => void; land?: (impact: number) => void } = {};
+  /** Хуки для звука/UI. Назначает Game. */
+  readonly hooks: {
+    step?: () => void;
+    jump?: () => void;
+    land?: (impact: number) => void;
+    hurt?: (hp: number, dmg: number) => void;
+    heal?: (hp: number) => void;
+    respawn?: () => void;
+  } = {};
   private stepDist = 0;
+
+  hp: number = PLAYER_HP.max;
+  private hurtTimer = 0; // с с последнего урона
+  private spawn = new Vector3(0, PLAYER.eyeHeight, -20);
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
   private xrRig: TransformNode | null = null;
@@ -74,6 +85,24 @@ export class PlayerController {
 
   get inVR(): boolean {
     return this.xrCamera !== null;
+  }
+
+  /** Получить урон. dir — направление от источника (для отталкивания). */
+  damage(amount: number, dir?: Vector3): void {
+    if (this.hp <= 0) return;
+    this.hp = Math.max(0, this.hp - amount);
+    this.hurtTimer = 0;
+    if (dir) {
+      this.body.position.x += dir.x * 0.6;
+      this.body.position.z += dir.z * 0.6;
+    }
+    this.hooks.hurt?.(this.hp, amount);
+    if (this.hp <= 0) {
+      this.hp = PLAYER_HP.max;
+      this.body.position.copyFrom(this.spawn);
+      this.placeOnGround();
+      this.hooks.respawn?.();
+    }
   }
 
   /** Поставить тело на поверхность в текущей точке (x, z). */
@@ -206,6 +235,13 @@ export class PlayerController {
     } else {
       this.camera.position.copyFrom(pos);
       this.camera.rotation.set(this.pitch, this.yaw, 0);
+    }
+
+    // --- Реген здоровья после паузы без урона ---
+    this.hurtTimer += dt;
+    if (this.hp > 0 && this.hp < PLAYER_HP.max && this.hurtTimer > PLAYER_HP.regenDelay) {
+      this.hp = Math.min(PLAYER_HP.max, this.hp + PLAYER_HP.regen * dt);
+      this.hooks.heal?.(this.hp);
     }
 
     // TODO(этап 7): primaryAction / interact -> отправка на сервер.

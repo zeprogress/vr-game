@@ -12,11 +12,11 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 import { ARROW } from "../shared/constants";
 import { segmentDistance } from "../shared/geometry";
-import type { Dummy } from "./Dummy";
+import type { Hittable } from "./Hittable";
 
 export interface ArrowContext {
   scene: Scene;
-  dummies: Dummy[];
+  targets: Hittable[];
   isSolid: (m: AbstractMesh) => boolean;
   onHit: (kind: "flesh" | "wood", pos: Vector3) => void;
 }
@@ -97,11 +97,11 @@ export class Arrow {
     if (len > 1e-4) {
       const dir = seg.scale(1 / len);
 
-      for (const d of ctx.dummies) {
-        if (!d.alive) continue;
-        const s = d.hitSegment();
+      for (const target of ctx.targets) {
+        if (!target.alive) continue;
+        const s = target.hitSegment();
         if (segmentDistance(prev, this.mesh.position, s.a, s.b) < s.radius + ARROW.hitRadius) {
-          d.hit(dir);
+          target.hit(dir);
           ctx.onHit("flesh", this.mesh.position.clone());
           this.stopAt(prev.add(dir.scale(Math.max(0, len - 0.15))));
           return true;

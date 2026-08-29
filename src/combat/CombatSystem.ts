@@ -9,6 +9,8 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
@@ -20,7 +22,7 @@ import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createBow, type BowParts } from "../items/Bow";
 import { createArrowProto, Arrow } from "./Arrow";
-import type { Dummy } from "./Dummy";
+import type { Hittable } from "./Hittable";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
 const TUNE_KEY = "swordTune";
@@ -48,12 +50,18 @@ function tune(x: number, y: number, z: number, rx: number, ry: number, rz: numbe
   return { pos: new Vector3(x, y, z), rot: new Vector3(rx, ry, rz), scale: sc };
 }
 
+interface RestSpot {
+  pos: Vector3;
+  yaw: number;
+  bob: boolean; // true — парит над камнем, false — лежит на земле
+}
+
 export class CombatSystem {
   private readonly sword: Mesh;
-  private readonly swordHome: Vector3;
   private readonly bow: Mesh;
   private readonly bowParts: BowParts;
-  private readonly bowHome: Vector3;
+  private readonly swordRest: RestSpot;
+  private readonly bowRest: RestSpot;
   private readonly bowString: LinesMesh;
   private readonly nockArrow: Mesh;
   private readonly arrowProto: Mesh;
@@ -87,23 +95,23 @@ export class CombatSystem {
   private tuning = false;
 
   constructor(
-    scene: Scene,
+    private readonly scene: Scene,
     private readonly player: PlayerController,
     private readonly getXR: () => WebXRDefaultExperience | null,
-    private readonly dummies: Dummy[],
+    private readonly targets: Hittable[],
     private readonly sfx: Sfx,
     swordHome: Vector3,
     bowHome: Vector3,
   ) {
-    this.swordHome = swordHome.clone();
-    this.bowHome = bowHome.clone();
+    this.swordRest = { pos: swordHome.clone(), yaw: 0, bob: true };
+    this.bowRest = { pos: bowHome.clone(), yaw: 0, bob: true };
 
     this.sword = createSword(scene);
-    this.sword.position.copyFrom(this.swordHome);
+    this.sword.position.copyFrom(swordHome);
 
     this.bowParts = createBow(scene);
     this.bow = this.bowParts.mesh;
-    this.bow.position.copyFrom(this.bowHome);
+    this.bow.position.copyFrom(bowHome);
 
     const stringPts = [this.bowParts.topTip, this.bowParts.nockRest, this.bowParts.bottomTip];
     this.bowString = MeshBuilder.CreateLines("bowString", { points: stringPts, updatable: true }, scene);
@@ -118,8 +126,8 @@ export class CombatSystem {
     this.nockLocal.copyFrom(this.bowParts.nockRest);
 
     for (const [home, dy] of [
-      [this.swordHome, 0.75],
-      [this.bowHome, 0.4],
+      [swordHome, 0.75],
+      [bowHome, 0.4],
     ] as const) {
       const mat = new StandardMaterial("rockMat", scene);
       mat.diffuseColor = new Color3(0.42, 0.42, 0.45);
@@ -133,7 +141,7 @@ export class CombatSystem {
 
     this.arrowCtx = {
       scene,
-      dummies: this.dummies,
+      targets: this.targets,
       isSolid: (m: AbstractMesh) => m.isPickable && m.checkCollisions,
       onHit: (kind) => {
         this.sfx.arrowHit(kind);
@@ -226,12 +234,11 @@ export class CombatSystem {
         this.arrows.splice(i, 1);
       }
     }
-    for (const d of this.dummies) d.update(dt);
   }
 
   private toggleEquip(): void {
     if (this.held) {
-      this.stow(this.held);
+      this.dropOnGround(this.held);
       this.held = "";
       return;
     }
@@ -266,13 +273,30 @@ export class CombatSystem {
     return this.heldHand === "left" ? "right" : "left";
   }
 
-  private stow(what: Held): void {
+  /** Бросить оружие — падает на землю перед игроком и лежит там. */
+  private dropOnGround(what: Held): void {
     const mesh = what === "sword" ? this.sword : this.bow;
-    const home = what === "sword" ? this.swordHome : this.bowHome;
+    const rest = what === "sword" ? this.swordRest : this.bowRest;
+
+    const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
+    fwd.y = 0;
+    if (fwd.lengthSquared() < 1e-4) fwd.set(0, 0, 1);
+    fwd.normalize();
+    const drop = this.player.position.add(fwd.scale(0.9));
+    const hit = this.scene.pickWithRay(
+      new Ray(new Vector3(drop.x, drop.y + 3, drop.z), Vector3.Down(), 40),
+      (m: AbstractMesh) => m.isPickable && m.checkCollisions && m !== mesh,
+    );
+    const groundY = hit?.pickedPoint?.y ?? this.player.position.y - 1.7;
+
+    rest.pos.set(drop.x, groundY + 0.12, drop.z);
+    rest.yaw = Math.atan2(fwd.x, fwd.z) + Math.random() * 0.6 - 0.3;
+    rest.bob = false;
+
     mesh.parent = null;
-    mesh.position.copyFrom(home);
-    mesh.rotation.setAll(0);
     mesh.scaling.setAll(1);
+    this.layFlat(mesh, rest);
+
     if (what === "bow") {
       this.nockArrow.setEnabled(false);
       this.draw = 0;
@@ -281,15 +305,23 @@ export class CombatSystem {
     }
   }
 
+  private layFlat(mesh: Mesh, rest: RestSpot): void {
+    mesh.position.copyFrom(rest.pos);
+    mesh.rotation.set(Math.PI / 2, rest.yaw, 0); // клинок / плечи лука горизонтально
+  }
+
   private bobIdle(dt: number): void {
     this.bob += dt;
-    if (this.held !== "sword") {
-      this.sword.position.set(this.swordHome.x, this.swordHome.y + Math.sin(this.bob * 2) * 0.08, this.swordHome.z);
-      this.sword.rotation.set(0, this.bob * 0.7, 0);
-    }
-    if (this.held !== "bow") {
-      this.bow.position.set(this.bowHome.x, this.bowHome.y + Math.sin(this.bob * 2 + 1) * 0.08, this.bowHome.z);
-      this.bow.rotation.set(0, this.bob * 0.7, 0);
+    if (this.held !== "sword") this.restVisual(this.sword, this.swordRest, 0);
+    if (this.held !== "bow") this.restVisual(this.bow, this.bowRest, 1);
+  }
+
+  private restVisual(mesh: Mesh, rest: RestSpot, phase: number): void {
+    if (rest.bob) {
+      mesh.position.set(rest.pos.x, rest.pos.y + Math.sin(this.bob * 2 + phase) * 0.08, rest.pos.z);
+      mesh.rotation.set(0, this.bob * 0.7, 0);
+    } else {
+      this.layFlat(mesh, rest);
     }
   }
 
@@ -385,11 +417,11 @@ export class CombatSystem {
     dir.y = 0;
     if (dir.lengthSquared() > 1e-6) dir.normalize();
 
-    for (const d of this.dummies) {
-      if (!d.alive) continue;
-      const seg = d.hitSegment();
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const seg = t.hitSegment();
       if (segmentDistance(guard, tip, seg.a, seg.b) <= seg.radius + COMBAT.hitMargin) {
-        if (d.hit(dir)) {
+        if (t.hit(dir)) {
           this.sfx.hitThud();
           this.haptic("right", 0.7, 70);
         }
@@ -499,7 +531,7 @@ export class CombatSystem {
 
   private readonly arrowCtx: {
     scene: Scene;
-    dummies: Dummy[];
+    targets: Hittable[];
     isSolid: (m: AbstractMesh) => boolean;
     onHit: (kind: "flesh" | "wood", pos: Vector3) => void;
   };

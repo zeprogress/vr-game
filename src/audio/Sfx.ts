@@ -197,6 +197,65 @@ export class Sfx {
     n.stop(t + 0.07);
   }
 
+  mobHop(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(300, t);
+    o.frequency.exponentialRampToValueAtTime(160, t + 0.1);
+    const g = this.env(0.1, 0.005, 0.1, t);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.13);
+  }
+
+  mobHurt(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const o = this.ctx!.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(420, t);
+    o.frequency.exponentialRampToValueAtTime(140, t + 0.14);
+    const lp = this.filter("lowpass", 1200);
+    const g = this.env(0.3, 0.003, 0.15, t);
+    o.connect(lp).connect(g);
+    o.start(t);
+    o.stop(t + 0.18);
+  }
+
+  mobDie(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const n = this.noise();
+    const bp = this.filter("bandpass", 500, 1.5);
+    bp.frequency.setValueAtTime(900, t);
+    bp.frequency.exponentialRampToValueAtTime(150, t + 0.25);
+    const g = this.env(0.4, 0.004, 0.28, t);
+    n.connect(bp).connect(g);
+    n.start(t);
+    n.stop(t + 0.32);
+  }
+
+  playerHurt(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(70, t + 0.2);
+    const g = this.env(0.5, 0.003, 0.24, t);
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.28);
+    const n = this.noise();
+    const hp = this.filter("highpass", 900);
+    const ng = this.env(0.18, 0.002, 0.09, t);
+    n.connect(hp).connect(ng);
+    n.start(t);
+    n.stop(t + 0.12);
+  }
+
   arrowHit(kind: "flesh" | "wood", vol = 1): void {
     if (!this.ready()) return;
     const t = this.t;

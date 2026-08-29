@@ -9,11 +9,16 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
 import { Dummy } from "../combat/Dummy";
+import { Mob } from "../combat/Mob";
+import { MOB } from "../shared/constants";
 
 export interface Zone {
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
   ground: Mesh;
   dummies: Dummy[];
+  mobs: Mob[];
+  /** Высота земли в точке (аналитическая) — для AI мобов. */
+  groundHeight: (x: number, z: number) => number;
   /** Точки, где лежат меч и лук (над камнями). */
   swordHome: Vector3;
   bowHome: Vector3;
@@ -49,8 +54,18 @@ export function buildZone(scene: Scene): Zone {
     dummies.push(new Dummy(scene, new Vector3(dx, terrain.heightAt(dx, dz), dz)));
   }
 
+  // Мобы — по кругу подальше от спавна.
+  const mobs: Mob[] = [];
+  for (let i = 0; i < MOB.count; i++) {
+    const a = (i / MOB.count) * Math.PI * 2 + 0.4;
+    const r = 22 + Math.random() * 12;
+    const mx = Math.cos(a) * r;
+    const mz = Math.sin(a) * r - 4;
+    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz)));
+  }
+
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
 
-  return { ground: terrain.mesh, dummies, swordHome, bowHome };
+  return { ground: terrain.mesh, dummies, mobs, groundHeight: terrain.heightAt, swordHome, bowHome };
 }

@@ -10,13 +10,14 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { COMBAT } from "../shared/constants";
+import type { Hittable } from "./Hittable";
 
 /**
  * Неподвижная кукла-противник на столбе. Принимает удары мечом:
  * вспыхивает красным, качается, после нескольких попаданий падает и
  * через паузу воскресает.
  */
-export class Dummy {
+export class Dummy implements Hittable {
   readonly root: TransformNode;
   private readonly figure: TransformNode; // тело, качается при ударе
   private readonly mat: StandardMaterial;
