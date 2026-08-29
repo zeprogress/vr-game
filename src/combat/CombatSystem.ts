@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Node } from "@babylonjs/core/node";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -97,7 +97,9 @@ export class CombatSystem {
   private windup = 0; // замах перед броском (плоский режим), 0..1
   private readonly heldPrev = new Vector3();
   private readonly heldVel = new Vector3();
-  private heldVelInit = false;
+  private readonly heldAngVel = new Vector3(); // сглаженная угловая скорость руки
+  private readonly heldQuatPrev = new Quaternion();
+  private heldMotionInit = false;
 
   private swingT = 0;
   private swingHitDone = false;
@@ -232,7 +234,6 @@ export class CombatSystem {
     if (!inp.tune) this.handleInteract(inp.interact, interactEdge, interactReleased, dt);
 
     this.bobIdle(dt);
-    this.trackHeldVelocity(dt);
 
     if (this.held === "sword") {
       this.keepAnchored(this.sword, this.tunes[this.slot()]);
@@ -248,6 +249,7 @@ export class CombatSystem {
     }
 
     this.applyWindup();
+    this.trackHeldMotion(dt);
     this.updateString();
     this.updateFlying(dt);
 
@@ -299,8 +301,9 @@ export class CombatSystem {
 
     this.held = picked;
     this.windup = 0;
-    this.heldVelInit = false;
+    this.heldMotionInit = false;
     this.heldVel.setAll(0);
+    this.heldAngVel.setAll(0);
     (picked === "sword" ? this.sword : this.bow).rotationQuaternion = null;
     // забрать из полёта, если ловим на лету
     for (let i = this.flying.length - 1; i >= 0; i--) {
@@ -339,17 +342,18 @@ export class CombatSystem {
     mesh.rotationQuaternion = worldRot;
     mesh.position.copyFrom(worldPos);
 
-    const speed = vel.length();
-    let axis = Vector3.Cross(vel, Vector3.UpReadOnly);
-    if (axis.lengthSquared() < 1e-4) axis = this.player.camera.getDirection(new Vector3(1, 0, 0));
-    axis.normalize();
+    // Вращение — только то, что игрок сам придал оружию рукой (VR). Иначе летит
+    // «замороженным» по инерции, как реальный не закрученный предмет.
+    let spinRate = this.player.inVR ? this.heldAngVel.length() : 0;
+    let spinAxis = spinRate > 1e-3 ? this.heldAngVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
+    spinRate = Math.min(spinRate, 30);
 
     this.flying.push({
       what,
       mesh,
       vel: vel.clone(),
-      spinAxis: axis,
-      spinRate: clamp(speed * 1.4, 2.5, 16),
+      spinAxis,
+      spinRate,
       prev: worldPos.clone(),
       life: 0,
       hitDone: false,
@@ -358,7 +362,7 @@ export class CombatSystem {
     this.held = "";
     this.windup = 0;
     this.justPickedUp = false;
-    this.heldVelInit = false;
+    this.heldMotionInit = false;
     this.sfx.swordSwing();
     if (what === "bow") {
       this.nockArrow.setEnabled(false);
@@ -374,7 +378,8 @@ export class CombatSystem {
       f.prev.copyFrom(f.mesh.position);
       f.vel.y -= THROW.gravity * dt;
       f.mesh.position.addInPlace(f.vel.scale(dt));
-      f.mesh.rotate(f.spinAxis, f.spinRate * dt, Space.WORLD);
+      // Вращение только по инерции: если игрок не закрутил — оружие не крутится.
+      if (f.spinRate > 0.15) f.mesh.rotate(f.spinAxis, f.spinRate * dt, Space.WORLD);
       f.life += dt;
 
       if (!f.hitDone) {
@@ -412,18 +417,34 @@ export class CombatSystem {
     this.layFlat(f.mesh, rest);
   }
 
-  /** Скорость руки/оружия в мире, сглаженная — для броска в VR. */
-  private trackHeldVelocity(dt: number): void {
+  /** Сглаженные линейная и угловая скорости оружия в мире — для броска в VR. */
+  private trackHeldMotion(dt: number): void {
     if (!this.held) return;
     const mesh = this.held === "sword" ? this.sword : this.bow;
     const w = mesh.getAbsolutePosition();
-    if (this.heldVelInit && dt > 1e-4) {
-      const inst = w.subtract(this.heldPrev).scaleInPlace(1 / dt);
-      const a = Math.min(1, dt / 0.045);
-      this.heldVel.addInPlace(inst.subtractInPlace(this.heldVel).scaleInPlace(a));
+    const q = mesh.absoluteRotationQuaternion;
+
+    if (this.heldMotionInit && dt > 1e-4) {
+      // линейная
+      const instV = w.subtract(this.heldPrev).scaleInPlace(1 / dt);
+      this.heldVel.addInPlace(instV.subtractInPlace(this.heldVel).scaleInPlace(Math.min(1, dt / 0.045)));
+
+      // угловая: дельта-кватернион -> ось-угол
+      const dq = q.multiply(Quaternion.Inverse(this.heldQuatPrev));
+      dq.normalize();
+      const wq = clamp(dq.w, -1, 1);
+      const sgn = wq < 0 ? -1 : 1;
+      const sn = Math.sqrt(Math.max(0, 1 - wq * wq));
+      const angle = 2 * Math.acos(Math.abs(wq)); // кратчайший путь
+      const instW =
+        sn < 1e-5
+          ? new Vector3(0, 0, 0)
+          : new Vector3(dq.x, dq.y, dq.z).scaleInPlace((sgn * angle) / (sn * dt));
+      this.heldAngVel.addInPlace(instW.subtractInPlace(this.heldAngVel).scaleInPlace(Math.min(1, dt / 0.05)));
     }
     this.heldPrev.copyFrom(w);
-    this.heldVelInit = true;
+    this.heldQuatPrev.copyFrom(q);
+    this.heldMotionInit = true;
   }
 
   /** Визуальный замах в плоском режиме: оружие отводится назад по мере windup. */

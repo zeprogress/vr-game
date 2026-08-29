@@ -63,21 +63,14 @@ export class Mob implements Hittable {
     this.head.position.y = MOB.bodyRadius;
 
     const eyeMat = new StandardMaterial("mobEye", scene);
-    eyeMat.diffuseColor = new Color3(0.95, 0.95, 0.95);
-    eyeMat.emissiveColor = new Color3(0.3, 0.3, 0.3);
-    const pupMat = new StandardMaterial("mobPupil", scene);
-    pupMat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+    eyeMat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+    eyeMat.specularColor = new Color3(0.15, 0.15, 0.15);
     for (const dx of [-0.18, 0.18]) {
-      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.18, segments: 6 }, scene);
+      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.17, segments: 6 }, scene);
       eye.material = eyeMat;
       eye.parent = this.head;
       eye.position.set(dx, 0.15, MOB.bodyRadius * 0.92);
       eye.isPickable = false;
-      const pup = MeshBuilder.CreateSphere("mobPupil", { diameter: 0.1, segments: 5 }, scene);
-      pup.material = pupMat;
-      pup.parent = eye;
-      pup.position.z = 0.07;
-      pup.isPickable = false;
     }
 
     this.bar = new HealthBar3D(scene, this.root, new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0), 0.7);

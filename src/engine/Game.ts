@@ -137,8 +137,8 @@ export class Game {
         this.playerBar3D = new HealthBar3D(
           this.scene,
           base.camera,
-          new Vector3(-0.34, -0.32, 0.9),
-          0.34,
+          new Vector3(-0.52, -0.12, 0.95),
+          1.05,
           false,
         );
         this.playerBar3D.set(this.player.hp / 100);
