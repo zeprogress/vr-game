@@ -1,43 +1,146 @@
 import type { Scene } from "@babylonjs/core/scene";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
-import "@babylonjs/core/Cameras/Inputs/freeCameraKeyboardMoveInput";
-import "@babylonjs/core/Cameras/Inputs/freeCameraMouseInput";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Meshes/Builders/boxBuilder";
+
+import { PLAYER } from "../shared/constants";
+import { emptyInput, type InputSource } from "../input/InputSource";
+
+const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
+const STEP_HEIGHT = 0.35; // м, высоту ниже этого можно перешагнуть
 
 /**
- * Этап 1: управление от первого лица на десктопе.
- * WASD + мышь (pointer lock), коллизии и гравитация.
+ * Движение персонажа от первого лица. Управляется любым InputSource
+ * (десктоп / тач / VR) — сам источник ввода здесь не важен.
  *
- * Этап 2 вынесет ввод в отдельный InputSource, чтобы тем же кодом
- * двигать персонажа с тач-экрана и VR-контроллеров.
+ * Коллизии — только лучами (raycast): вниз для земли, по осям X/Z для стен.
+ * Просто, предсказуемо и достаточно для зоны из прямоугольных препятствий.
  */
 export class PlayerController {
-  readonly camera: UniversalCamera;
+  readonly camera: FreeCamera;
+  private readonly body: Mesh;
+  private readonly scene: Scene;
+  private input: InputSource | null = null;
 
-  constructor(scene: Scene, private readonly canvas: HTMLCanvasElement) {
-    this.camera = new UniversalCamera("player", new Vector3(0, 1.7, -20), scene);
-    this.camera.setTarget(new Vector3(0, 1.7, 0));
-    this.camera.attachControl(canvas, true);
+  private yaw = 0;
+  private pitch = 0;
+  private verticalVelocity = 0;
+  private grounded = false;
 
-    // Рост игрока / «капсула» для коллизий.
-    this.camera.ellipsoid = new Vector3(0.5, 0.9, 0.5);
-    this.camera.ellipsoidOffset = new Vector3(0, 0.9, 0);
-    this.camera.checkCollisions = true;
-    this.camera.applyGravity = true;
+  constructor(scene: Scene) {
+    this.scene = scene;
 
-    // WASD вместо стрелок.
-    this.camera.keysUp = [87]; // W
-    this.camera.keysDown = [83]; // S
-    this.camera.keysLeft = [65]; // A
-    this.camera.keysRight = [68]; // D
+    this.body = MeshBuilder.CreateBox("playerBody", { size: PLAYER.radius * 2 }, scene);
+    this.body.isVisible = false;
+    this.body.isPickable = false;
+    this.body.position.set(0, PLAYER.eyeHeight, -20);
 
-    this.camera.speed = 0.35;
-    this.camera.angularSensibility = 900;
-    this.camera.inertia = 0.4;
+    this.camera = new FreeCamera("player", this.body.position.clone(), scene);
     this.camera.minZ = 0.1;
   }
 
-  requestPointerLock(): void {
-    this.canvas.requestPointerLock();
+  setInput(source: InputSource): void {
+    this.input?.dispose();
+    this.input = source;
   }
+
+  /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
+  update(dt: number): void {
+    const inp = this.input?.sample() ?? emptyInput();
+    const pos = this.body.position;
+
+    // --- Поворот ---
+    this.yaw += inp.lookYaw;
+    this.pitch = clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
+
+    // --- Горизонталь относительно взгляда, по осям (естественное скольжение вдоль стен) ---
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    let mx = cos * inp.moveX + sin * inp.moveY;
+    let mz = -sin * inp.moveX + cos * inp.moveY;
+    const len = Math.hypot(mx, mz);
+    if (len > 1) {
+      mx /= len;
+      mz /= len;
+    }
+    const speed = PLAYER.runSpeed * dt;
+    this.moveAxis(mx * speed, 0);
+    this.moveAxis(0, mz * speed);
+
+    // --- Земля под ногами ---
+    const groundY = this.rayDown();
+
+    if (inp.jump && this.grounded) {
+      this.verticalVelocity = PLAYER.jumpSpeed;
+      this.grounded = false;
+    }
+
+    if (this.grounded && this.verticalVelocity <= 0) {
+      if (groundY !== null) pos.y = groundY + PLAYER.eyeHeight;
+      this.verticalVelocity = 0;
+    } else {
+      this.verticalVelocity -= PLAYER.gravity * dt;
+      pos.y += this.verticalVelocity * dt;
+      if (groundY !== null && pos.y < groundY + PLAYER.eyeHeight) {
+        pos.y = groundY + PLAYER.eyeHeight;
+        this.verticalVelocity = 0;
+      }
+    }
+
+    const gapNow = groundY === null ? Infinity : pos.y - PLAYER.eyeHeight - groundY;
+    if (this.verticalVelocity <= 0) this.grounded = gapNow <= GROUND_SNAP;
+
+    // --- Камера следует за телом ---
+    this.camera.position.copyFrom(pos);
+    this.camera.rotation.set(this.pitch, this.yaw, 0);
+
+    // TODO(этап 7): primaryAction / interact -> отправка на сервер.
+    void inp.primaryAction;
+    void inp.interact;
+  }
+
+  /** Движение по одной горизонтальной оси с упором в стены (3 луча по высоте). */
+  private moveAxis(dx: number, dz: number): void {
+    const dist = Math.abs(dx) + Math.abs(dz);
+    if (dist < 1e-5) return;
+    const pos = this.body.position;
+    const dir = new Vector3(Math.sign(dx), 0, Math.sign(dz));
+    const feetY = pos.y - PLAYER.eyeHeight;
+
+    let allowed = dist;
+    for (const h of [STEP_HEIGHT + 0.05, PLAYER.eyeHeight * 0.6, PLAYER.eyeHeight - 0.15]) {
+      const ray = new Ray(new Vector3(pos.x, feetY + h, pos.z), dir, dist + PLAYER.radius);
+      const hit = this.scene.pickWithRay(ray, this.isSolid);
+      if (hit?.hit && hit.distance < Infinity) {
+        allowed = Math.min(allowed, Math.max(0, hit.distance - PLAYER.radius));
+      }
+    }
+    pos.x += dir.x * allowed;
+    pos.z += dir.z * allowed;
+  }
+
+  /** Y поверхности под телом или null. */
+  private rayDown(): number | null {
+    const pos = this.body.position;
+    const ray = new Ray(pos.clone(), Vector3.Down(), PLAYER.eyeHeight + 0.6);
+    const hit = this.scene.pickWithRay(ray, this.isSolid);
+    return hit?.pickedPoint?.y ?? null;
+  }
+
+  private isSolid = (m: AbstractMesh): boolean =>
+    m.isPickable && m.checkCollisions && m !== this.body;
+
+  dispose(): void {
+    this.input?.dispose();
+    this.body.dispose();
+  }
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }

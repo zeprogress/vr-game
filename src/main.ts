@@ -6,10 +6,16 @@ const hint = document.getElementById("hint") as HTMLDivElement;
 const game = new Game(canvas);
 game.start();
 
-// Pointer lock: клик по подсказке — входим в управление.
-hint.addEventListener("click", () => game.player.requestPointerLock());
+// Отладка из консоли.
+(window as unknown as { game: Game }).game = game;
 
-document.addEventListener("pointerlockchange", () => {
-  const locked = document.pointerLockElement === canvas;
-  hint.classList.toggle("hidden", locked);
-});
+if (game.isTouch) {
+  // На телефоне подсказка про мышь не нужна — управление на экране.
+  hint.classList.add("hidden");
+} else {
+  hint.addEventListener("click", () => game.requestPointerLock());
+  document.addEventListener("pointerlockchange", () => {
+    const locked = document.pointerLockElement === canvas;
+    hint.classList.toggle("hidden", locked);
+  });
+}
