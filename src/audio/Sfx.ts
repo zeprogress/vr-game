@@ -6,6 +6,7 @@ export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
+  private music: HTMLAudioElement | null = null;
 
   private ensure(): void {
     if (this.ctx) return;
@@ -25,6 +26,24 @@ export class Sfx {
   resume(): void {
     this.ensure();
     void this.ctx?.resume();
+    void this.music?.play().catch(() => {});
+  }
+
+  /** Фоновая музыка: тихий бесконечный цикл. Стартует при первом resume(). */
+  startMusic(url: string, volume = 0.12): void {
+    if (this.music) return;
+    const a = new Audio(url);
+    a.loop = true;
+    a.volume = volume;
+    a.preload = "auto";
+    this.music = a;
+    void a.play().catch(() => {
+      /* браузер ждёт жеста — доиграем в resume() */
+    });
+  }
+
+  setMusicVolume(v: number): void {
+    if (this.music) this.music.volume = Math.max(0, Math.min(1, v));
   }
 
   // --- строительные блоки ---
@@ -62,11 +81,20 @@ export class Sfx {
     if (!this.ready()) return;
     const t = this.t;
     const n = this.noise();
-    const lp = this.filter("lowpass", 320 + Math.random() * 180);
-    const g = this.env(0.32 * vol, 0.004, 0.11, t);
+    const lp = this.filter("lowpass", 340 + Math.random() * 200);
+    const g = this.env(0.7 * vol, 0.004, 0.13, t);
     n.connect(lp).connect(g);
     n.start(t);
-    n.stop(t + 0.16);
+    n.stop(t + 0.18);
+    // короткий низкий «толчок» для веса
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(95, t);
+    o.frequency.exponentialRampToValueAtTime(55, t + 0.09);
+    const og = this.env(0.28 * vol, 0.003, 0.1, t);
+    o.connect(og);
+    o.start(t);
+    o.stop(t + 0.13);
   }
 
   land(vol = 1): void {

@@ -56,11 +56,12 @@ export class CombatSystem {
   readonly tunes: Record<TuneSlot, EquipTune> = {
     swordFlat: tune(0.42, -0.38, 0.85, -0.2, 0.25, -0.28, 0.55),
     swordVR: tune(0, 0, 0, 1, 0, 0, 1),
-    bowFlat: tune(-0.22, -0.26, 0.5, 0, 0, 0, 0.8),
+    bowFlat: tune(-0.24, -0.26, 0.55, 0, Math.PI, 0, 0.8),
     bowVR: tune(0, 0, 0, 0, 0, 0, 1),
   };
 
   private held: Held = "";
+  private heldHand: "left" | "right" = "right";
   private prevInteract = false;
   private prevPrimary = false;
 
@@ -68,7 +69,7 @@ export class CombatSystem {
   private swingHitDone = false;
   private tipPrev = new Vector3();
   private tipInit = false;
-  private vrFast = false;
+  private swooshCd = 0;
 
   private draw = 0; // 0..1
   private vrNocked = false;
@@ -106,6 +107,7 @@ export class CombatSystem {
     this.nockArrow = this.arrowProto.clone("nockArrow");
     this.nockArrow.parent = this.bow;
     this.nockArrow.setEnabled(false);
+    this.nockLocal.copyFrom(this.bowParts.nockRest);
 
     for (const [home, dy] of [
       [this.swordHome, 0.75],
@@ -221,6 +223,14 @@ export class CombatSystem {
       this.held = "";
       return;
     }
+    // В VR берём оружие той рукой, чей grip нажали.
+    if (this.player.inVR) {
+      const lg = this.gripDown("left");
+      const rg = this.gripDown("right");
+      if (lg && !rg) this.heldHand = "left";
+      else if (rg && !lg) this.heldHand = "right";
+      // обе / ни одной — оставляем прежнюю руку
+    }
     const p = this.player.position;
     const dSword = Vector3.Distance(p, this.sword.getAbsolutePosition());
     const dBow = Vector3.Distance(p, this.bow.getAbsolutePosition());
@@ -235,6 +245,15 @@ export class CombatSystem {
     }
   }
 
+  private gripDown(hand: "left" | "right"): boolean {
+    return !!this.controller(hand)?.inputSource.gamepad?.buttons[1]?.pressed;
+  }
+
+  /** Рука, которой натягивают тетиву (противоположная той, что держит лук). */
+  private drawHand(): "left" | "right" {
+    return this.heldHand === "left" ? "right" : "left";
+  }
+
   private stow(what: Held): void {
     const mesh = what === "sword" ? this.sword : this.bow;
     const home = what === "sword" ? this.swordHome : this.bowHome;
@@ -245,6 +264,8 @@ export class CombatSystem {
     if (what === "bow") {
       this.nockArrow.setEnabled(false);
       this.draw = 0;
+      this.vrNocked = false;
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
     }
   }
 
@@ -279,8 +300,8 @@ export class CombatSystem {
 
   private handAnchor(): Node {
     if (this.player.inVR) {
-      const right = this.controller("right");
-      const node = right?.grip ?? right?.pointer;
+      const c = this.controller(this.heldHand);
+      const node = c?.grip ?? c?.pointer;
       if (node) return node;
     }
     return this.player.camera;
@@ -312,15 +333,16 @@ export class CombatSystem {
   }
 
   private updateVRSwing(dt: number): void {
+    if (this.swooshCd > 0) this.swooshCd -= dt;
     const tip = this.tipWorld();
     if (this.tipInit) {
       const speed = Vector3.Distance(tip, this.tipPrev) / Math.max(dt, 1e-4);
-      const fast = speed > COMBAT.vrSwingSpeed;
-      if (fast) {
-        if (!this.vrFast) this.sfx.swordSwing();
-        this.tryHit();
+      if (speed > COMBAT.vrSwingSpeed) this.tryHit();
+      // Звук — только на сильный взмах, с паузой между звуками.
+      if (speed > COMBAT.vrSwooshSpeed && this.swooshCd <= 0) {
+        this.sfx.swordSwing();
+        this.swooshCd = COMBAT.swooshCooldown;
       }
-      this.vrFast = fast;
     }
     this.tipPrev.copyFrom(tip);
     this.tipInit = true;
@@ -354,21 +376,25 @@ export class CombatSystem {
 
   private updateBow(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
     if (this.player.inVR) {
-      this.updateBowVR(dt);
+      this.updateBowVR();
       return;
     }
-    // Плоский режим: держим ЛКМ — натягиваем.
+    // Плоский режим: держим ЛКМ — натягиваем, сила растёт со временем.
     if (primaryHeld) {
       if (this.draw === 0) this.sfx.bowDraw();
       this.draw = clamp(this.draw + dt / BOW.drawTimeFlat, 0, 1);
     }
     this.nockArrow.setEnabled(this.draw > 0.02);
-    this.setNock(this.bowParts.nockRest.z + this.draw * 0.32);
+    this.placeNockArrow(
+      new Vector3(this.bowParts.nockRest.x, this.bowParts.nockRest.y, this.bowParts.nockRest.z + this.draw * BOW.drawPullFlat),
+      new Vector3(0, 0, -1),
+    );
 
     if (primaryReleased) {
       const power = this.draw;
       this.draw = 0;
       this.nockArrow.setEnabled(false);
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
       if (power >= BOW.fireThreshold) {
         const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
         const origin = this.player.camera.globalPosition.add(dir.scale(0.5));
@@ -377,64 +403,58 @@ export class CombatSystem {
     }
   }
 
-  private updateBowVR(dt: number): void {
-    void dt;
-    const left = this.controller("left");
-    const pad = left?.inputSource.gamepad;
-    const trigger = !!pad?.buttons[0]?.pressed;
-    const leftPos = (left?.grip ?? left?.pointer)?.getAbsolutePosition();
+  private updateBowVR(): void {
+    const dc = this.controller(this.drawHand());
+    const trigger = !!dc?.inputSource.gamepad?.buttons[0]?.pressed;
+    const drawPos = (dc?.grip ?? dc?.pointer)?.getAbsolutePosition();
 
     const bowMat = this.bow.getWorldMatrix();
     const nockWorld = Vector3.TransformCoordinates(this.bowParts.nockRest, bowMat);
 
-    if (trigger && leftPos) {
-      if (!this.vrNocked && !this.prevVrTrigger && Vector3.Distance(leftPos, nockWorld) < 0.4) {
+    if (trigger && drawPos) {
+      if (!this.vrNocked && !this.prevVrTrigger && Vector3.Distance(drawPos, nockWorld) < BOW.grabDistVR) {
         this.vrNocked = true;
         this.sfx.bowDraw();
-        this.haptic("left", 0.3, 40);
+        this.haptic(this.drawHand(), 0.35, 40);
       }
       if (this.vrNocked) {
-        const pull = Vector3.Distance(leftPos, nockWorld);
+        const pull = Vector3.Distance(drawPos, nockWorld);
         this.draw = clamp((pull - BOW.restDrawVR) / (BOW.maxDrawVR - BOW.restDrawVR), 0, 1);
-        // тетива идёт к левой руке
-        const local = Vector3.TransformCoordinates(leftPos, Matrix.Invert(bowMat));
-        this.setNockLocal(local);
+        const local = Vector3.TransformCoordinates(drawPos, Matrix.Invert(bowMat));
+        this.placeNockArrow(local, local.scale(-1)); // стрела смотрит от руки к луку
         this.nockArrow.setEnabled(true);
       }
     } else if (this.vrNocked) {
-      // отпустили — выстрел
       const power = this.draw;
       this.vrNocked = false;
       this.draw = 0;
       this.nockArrow.setEnabled(false);
-      this.setNock(this.bowParts.nockRest.z);
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
       const gripWorld = this.bow.getAbsolutePosition();
-      if (power >= BOW.fireThreshold && leftPos) {
-        const dir = gripWorld.subtract(leftPos).normalize();
+      if (power >= BOW.fireThreshold && drawPos) {
+        const dir = gripWorld.subtract(drawPos).normalize();
         this.fire(gripWorld.add(dir.scale(0.35)), dir, power);
       }
     }
     this.prevVrTrigger = trigger;
   }
 
-  private setNock(localZ: number): void {
-    this.nockArrow.position.set(this.bowParts.nockRest.x, this.bowParts.nockRest.y, localZ);
-    this.nockArrow.rotation.set(0, 0, 0);
-    this.nockLocal.set(this.bowParts.nockRest.x, this.bowParts.nockRest.y, localZ);
-  }
-
+  /**
+   * Ставит наглядную стрелу так, чтобы её ХВОСТ был в точке натяга `nock`
+   * (локально), а сама она смотрела в направлении `dir`. Прото: наконечник по +Z,
+   * длина 0.7, центр в нуле.
+   */
   private readonly nockLocal = new Vector3();
-  private setNockLocal(local: Vector3): void {
-    this.nockLocal.copyFrom(local);
-    this.nockArrow.position.copyFrom(local);
-    this.nockArrow.lookAt(new Vector3(this.bowParts.nockRest.x, this.bowParts.nockRest.y, this.bowParts.nockRest.z - 1));
+  private placeNockArrow(nock: Vector3, dir: Vector3): void {
+    this.nockLocal.copyFrom(nock);
+    const d = dir.length() > 1e-4 ? dir.normalize() : new Vector3(0, 0, -1);
+    this.nockArrow.rotation.set(-Math.asin(clamp(d.y, -1, 1)), Math.atan2(d.x, d.z), 0);
+    this.nockArrow.position.copyFrom(nock).addInPlace(d.scale(0.34));
   }
 
   private updateString(): void {
-    const nock =
-      this.held === "bow" && (this.draw > 0.001 || this.vrNocked) ? this.nockLocal : this.bowParts.nockRest;
     MeshBuilder.CreateLines("bowString", {
-      points: [this.bowParts.topTip, nock, this.bowParts.bottomTip],
+      points: [this.bowParts.topTip, this.nockLocal, this.bowParts.bottomTip],
       instance: this.bowString,
     });
   }

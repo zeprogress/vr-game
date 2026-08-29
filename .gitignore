@@ -3,3 +3,6 @@ dist/
 .DS_Store
 *.log
 .vite/
+
+# музыка лежит в public/music/
+/Lineage 2 - Town dion.mp3

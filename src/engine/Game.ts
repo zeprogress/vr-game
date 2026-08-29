@@ -65,7 +65,8 @@ export class Game {
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.player.setInput(this.defaultInput());
 
-    // AudioContext стартует только по жесту пользователя.
+    // Звук и музыка стартуют только по жесту пользователя.
+    this.sfx.startMusic("/music/town-dion.mp3", 0.1);
     const wake = () => this.sfx.resume();
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
