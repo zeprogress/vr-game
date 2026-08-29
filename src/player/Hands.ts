@@ -13,7 +13,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 type Side = "left" | "right";
 
 /** Локальная поправка ориентации кисти относительно grip-узла контроллера. */
-const HAND_ROT = new Vector3(-0.5, 0, 0);
+const HAND_ROT = new Vector3(Math.PI / 2, Math.PI / 2, Math.PI / 2);
 
 interface Hand {
   side: Side;
