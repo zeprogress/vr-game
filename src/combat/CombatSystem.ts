@@ -76,8 +76,8 @@ export class CombatSystem {
   private swingT = 0;
   private swingHitDone = false;
   private swooshCd = 0;
-  /** След кончика меча за последние ~swooshWindow секунд: {точка, возраст}. */
-  private tipTrail: { p: Vector3; age: number }[] = [];
+  /** След клинка за окно: положение кончика, направление клинка, возраст. */
+  private tipTrail: { p: Vector3; dir: Vector3; age: number }[] = [];
 
   private draw = 0; // 0..1
   private vrNocked = false;
@@ -346,7 +346,11 @@ export class CombatSystem {
 
   private updateVRSwing(dt: number): void {
     if (this.swooshCd > 0) this.swooshCd -= dt;
-    const tip = this.tipWorld();
+
+    const m = this.sword.getWorldMatrix();
+    const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
+    const tip = Vector3.TransformCoordinates(TIP, m);
+    const dir = tip.subtract(guard).normalize();
 
     // Мгновенная скорость — только для засчитывания удара по кукле.
     const prev = this.tipTrail[this.tipTrail.length - 1]?.p;
@@ -354,28 +358,23 @@ export class CombatSystem {
       this.tryHit();
     }
 
-    // След за окном ~0.13 с — усреднённая скорость и путь кончика.
     for (const s of this.tipTrail) s.age += dt;
-    this.tipTrail.push({ p: tip.clone(), age: 0 });
+    this.tipTrail.push({ p: tip.clone(), dir, age: 0 });
     while (this.tipTrail.length > 2 && this.tipTrail[0].age > COMBAT.swooshWindow) {
       this.tipTrail.shift();
     }
 
+    // Свист — только настоящий взмах: кончик БЫСТРО прошёл дугу, и клинок
+    // при этом заметно повернулся (не просто перенос меча / ходьба).
     const oldest = this.tipTrail[0];
-    const span = oldest.age;
-    if (span > 0.03 && this.swooshCd <= 0) {
-      const dist = Vector3.Distance(tip, oldest.p);
-      const avgSpeed = dist / span;
-      // Звук — только когда кончик прошёл заметный путь БЫСТРО.
-      if (avgSpeed > COMBAT.vrSwooshSpeed && dist > COMBAT.vrSwooshDist) {
+    if (oldest.age > 0.06 && this.swooshCd <= 0) {
+      const avgSpeed = Vector3.Distance(tip, oldest.p) / oldest.age;
+      const sweep = Math.acos(clamp(Vector3.Dot(dir, oldest.dir), -1, 1));
+      if (avgSpeed > COMBAT.vrSwooshSpeed && sweep > COMBAT.vrSwooshSweep) {
         this.sfx.swordSwing();
         this.swooshCd = COMBAT.swooshCooldown;
       }
     }
-  }
-
-  private tipWorld(): Vector3 {
-    return Vector3.TransformCoordinates(TIP, this.sword.getWorldMatrix());
   }
 
   private tryHit(): void {
