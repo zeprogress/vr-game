@@ -14,11 +14,11 @@ import { createSword } from "../items/Sword";
 import type { Dummy } from "./Dummy";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
-const EQUIP_POS_FLAT = new Vector3(0.45, -0.35, 0.85);
-const EQUIP_ROT_FLAT = new Vector3(0.15, -0.35, -0.8); // на плече, клинок вверх-вправо
+const EQUIP_POS_FLAT = new Vector3(0.42, -0.38, 0.85);
+const EQUIP_ROT_FLAT = new Vector3(-0.2, 0.25, -0.28); // клинок вверх, лёгкий наклон
 const EQUIP_SCALE_FLAT = 0.55; // «вид от первого лица» — меч поменьше в кадре
-const EQUIP_POS_VR = new Vector3(0, 0, 0.03);
-const EQUIP_ROT_VR = new Vector3(-Math.PI / 2 + 0.35, 0, 0); // клинок вдоль кисти
+const EQUIP_POS_VR = new Vector3(0, 0, 0.02);
+const EQUIP_ROT_VR = new Vector3(-0.3, 0, 0); // клинок вверх из кулака (правь X, если не так)
 
 export class CombatSystem {
   private readonly sword: Mesh;

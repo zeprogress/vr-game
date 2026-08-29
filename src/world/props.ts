@@ -57,7 +57,10 @@ export function scatterTrees(scene: Scene, terrain: Terrain): void {
 /** Пучки травы вокруг спавна — тысячи thin-инстансов, один драв-колл. */
 export function scatterGrass(scene: Scene, terrain: Terrain): void {
   const mat = new StandardMaterial("grassBladeMat", scene);
-  mat.diffuseTexture = grassBladeTexture(scene);
+  const bladeTex = grassBladeTexture(scene);
+  bladeTex.vScale = -1; // текстура рисуется «вниз головой» — переворачиваем
+  bladeTex.vOffset = 1;
+  mat.diffuseTexture = bladeTex;
   mat.diffuseTexture.hasAlpha = true;
   mat.useAlphaFromDiffuseTexture = true;
   mat.transparencyMode = 1; // ALPHATEST — дёшево и без сортировки

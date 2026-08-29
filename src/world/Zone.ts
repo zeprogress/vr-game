@@ -31,7 +31,7 @@ export function buildZone(scene: Scene): Zone {
   sun.intensity = 1.1;
   sun.diffuse = new Color3(1, 0.96, 0.86);
 
-  createSky(scene);
+  createSky(scene, sunDir);
 
   const terrain = createTerrain(scene);
   scatterTrees(scene, terrain);

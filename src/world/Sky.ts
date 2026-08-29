@@ -1,19 +1,21 @@
 import { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { WORLD } from "../shared/constants";
 
 /**
  * Дешёвое небо: большая сфера с вертикальным градиентом (без тяжёлых
- * шейдеров — важно для Quest), туман под цвет горизонта и низкополигональные
- * облака, медленно плывущие по ветру.
+ * шейдеров — важно для Quest), солнце, туман под цвет горизонта и
+ * низкополигональные облака, медленно плывущие по ветру.
  */
-export function createSky(scene: Scene): void {
+export function createSky(scene: Scene, sunDir: Vector3): void {
   const dome = MeshBuilder.CreateSphere("skyDome", { diameter: 900, segments: 16, sideOrientation: 1 }, scene);
   dome.material = gradientMaterial(scene);
   dome.infiniteDistance = true;
@@ -24,7 +26,36 @@ export function createSky(scene: Scene): void {
   scene.fogDensity = 0.0055;
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
 
+  createSun(scene, sunDir);
   createClouds(scene);
+}
+
+/** Диск солнца + мягкое гало, закреплены на небе (infiniteDistance). */
+function createSun(scene: Scene, sunDir: Vector3): void {
+  const pos = sunDir.scale(-380); // противоположно направлению света
+
+  const haloMat = new StandardMaterial("sunHaloMat", scene);
+  haloMat.emissiveColor = new Color3(1, 0.95, 0.8);
+  haloMat.disableLighting = true;
+  haloMat.specularColor = new Color3(0, 0, 0);
+  haloMat.alpha = 0.28;
+  const halo = MeshBuilder.CreateDisc("sunHalo", { radius: 42, tessellation: 24 }, scene);
+  halo.material = haloMat;
+  halo.position.copyFrom(pos.scale(1.03)); // чуть дальше, чтобы не спорить с диском по глубине
+  halo.isPickable = false;
+  halo.applyFog = false;
+  halo.billboardMode = 7;
+
+  const sunMat = new StandardMaterial("sunMat", scene);
+  sunMat.emissiveColor = new Color3(1, 0.98, 0.9);
+  sunMat.disableLighting = true;
+  sunMat.specularColor = new Color3(0, 0, 0);
+  const sun = MeshBuilder.CreateDisc("sun", { radius: 16, tessellation: 24 }, scene);
+  sun.material = sunMat;
+  sun.position.copyFrom(pos);
+  sun.isPickable = false;
+  sun.applyFog = false;
+  sun.billboardMode = 7;
 }
 
 function gradientMaterial(scene: Scene): StandardMaterial {
