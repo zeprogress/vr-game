@@ -50,6 +50,18 @@ export class XRInput implements InputSource {
     const lp = this.left?.inputSource.gamepad;
     const rp = this.right?.inputSource.gamepad;
 
+    // --- Режим настройки меча: зажата X на левом контроллере ---
+    // Стики уходят на правку положения меча, локомоция и поворот подавлены.
+    if (pressed(lp, 4)) {
+      s.tune = {
+        lx: dz(lp?.axes[2] ?? 0),
+        ly: dz(lp?.axes[3] ?? 0),
+        rx: dz(rp?.axes[2] ?? 0),
+        ry: dz(rp?.axes[3] ?? 0),
+      };
+      return s; // ни атаки, ни движения, пока настраиваем
+    }
+
     if (lp) {
       s.moveX = dz(lp.axes[2] ?? 0);
       s.moveY = -dz(lp.axes[3] ?? 0);

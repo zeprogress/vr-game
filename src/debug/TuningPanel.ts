@@ -60,7 +60,7 @@ export class TuningPanel {
     resetBtn.style.cssText = "padding:6px 10px;cursor:pointer;";
     resetBtn.addEventListener("click", () => {
       try {
-        localStorage.removeItem(TuningPanel.KEY);
+        localStorage.removeItem("swordTune");
       } catch {
         /* ignore */
       }
@@ -75,49 +75,11 @@ export class TuningPanel {
     this.root.appendChild(this.out);
 
     const hint = document.createElement("div");
-    hint.textContent = "Возьми меч (E). Esc — освободить мышь для ползунков.";
+    hint.innerHTML =
+      "Возьми меч (E). Esc — освободить мышь для ползунков.<br />" +
+      "В VR: зажми X на левом контроллере и крути стики.";
     hint.style.cssText = "margin-top:6px;opacity:0.6;";
     this.root.appendChild(hint);
-
-    this.load();
-  }
-
-  private static KEY = "swordTune";
-
-  private load(): void {
-    try {
-      const raw = localStorage.getItem(TuningPanel.KEY);
-      if (!raw) return;
-      const j = JSON.parse(raw);
-      for (const [key, tune] of [
-        ["flat", this.combat.tuneFlat],
-        ["vr", this.combat.tuneVR],
-      ] as const) {
-        const d = j[key];
-        if (!d) continue;
-        tune.pos.set(d.pos[0], d.pos[1], d.pos[2]);
-        tune.rot.set(d.rot[0], d.rot[1], d.rot[2]);
-        tune.scale = d.scale;
-      }
-    } catch {
-      /* поломанные данные — игнорируем */
-    }
-  }
-
-  private save(): void {
-    const ser = (t: EquipTune) => ({
-      pos: [t.pos.x, t.pos.y, t.pos.z],
-      rot: [t.rot.x, t.rot.y, t.rot.z],
-      scale: t.scale,
-    });
-    try {
-      localStorage.setItem(
-        TuningPanel.KEY,
-        JSON.stringify({ flat: ser(this.combat.tuneFlat), vr: ser(this.combat.tuneVR) }),
-      );
-    } catch {
-      /* приватный режим и т.п. */
-    }
   }
 
   private vr(): boolean {
@@ -170,7 +132,7 @@ export class TuningPanel {
       const v = parseFloat(input.value);
       write(v);
       num.textContent = v.toFixed(2);
-      this.save();
+      this.combat.saveTuning();
     });
 
     wrap.append(name, input, num);

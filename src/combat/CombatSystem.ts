@@ -9,11 +9,15 @@ import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExpe
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { COMBAT } from "../shared/constants";
+import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
 import { createSword } from "../items/Sword";
 import type { Dummy } from "./Dummy";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
+const TUNE_KEY = "swordTune";
+const VR_TUNE_ROT = 1.6; // рад/с при полном отклонении стика
+const VR_TUNE_POS = 0.4; // м/с
 
 /** Положение меча в руке. Живые значения — правятся панелью тюнинга в рантайме. */
 export interface EquipTune {
@@ -48,6 +52,7 @@ export class CombatSystem {
   private tipPrev = new Vector3();
   private tipInit = false;
   private bob = 0;
+  private tuning = false; // идёт правка положения меча в VR
 
   constructor(
     scene: Scene,
@@ -68,6 +73,45 @@ export class CombatSystem {
     rock.position.set(this.home.x, this.home.y - 0.75, this.home.z);
     rock.scaling.y = 0.5;
     rock.isPickable = false;
+
+    this.loadTuning();
+  }
+
+  /** Читает сохранённые в localStorage значения в tuneFlat/tuneVR. */
+  loadTuning(): void {
+    try {
+      const raw = localStorage.getItem(TUNE_KEY);
+      if (!raw) return;
+      const j = JSON.parse(raw);
+      for (const [key, t] of [
+        ["flat", this.tuneFlat],
+        ["vr", this.tuneVR],
+      ] as const) {
+        const d = j?.[key];
+        if (!d) continue;
+        t.pos.set(d.pos[0], d.pos[1], d.pos[2]);
+        t.rot.set(d.rot[0], d.rot[1], d.rot[2]);
+        t.scale = d.scale;
+      }
+    } catch {
+      /* нет данных / приватный режим */
+    }
+  }
+
+  saveTuning(): void {
+    const ser = (t: EquipTune) => ({
+      pos: [t.pos.x, t.pos.y, t.pos.z],
+      rot: [t.rot.x, t.rot.y, t.rot.z],
+      scale: t.scale,
+    });
+    try {
+      localStorage.setItem(
+        TUNE_KEY,
+        JSON.stringify({ flat: ser(this.tuneFlat), vr: ser(this.tuneVR) }),
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   update(dt: number): void {
@@ -91,11 +135,53 @@ export class CombatSystem {
       this.sword.rotation.set(0, this.bob * 0.7, 0);
     } else {
       this.keepAnchored();
-      if (this.player.inVR) this.updateVRSwing(dt);
-      else this.updateFlatSwing(dt, primaryEdge);
+      if (this.player.inVR) {
+        if (!this.updateVRTune(inp.tune, dt)) this.updateVRSwing(dt);
+      } else {
+        this.updateFlatSwing(dt, primaryEdge);
+      }
     }
 
     for (const d of this.dummies) d.update(dt);
+  }
+
+  /**
+   * Правка положения меча прямо в VR: зажми X на левом контроллере и крути
+   * стики. Левый — наклон (тангаж/рыскание), правый X — крен, правый Y —
+   * меч ближе/дальше в руке. Отпустил X — сохранилось. Возвращает true,
+   * пока идёт настройка (в это время удары не считаются).
+   */
+  private updateVRTune(tune: TuneInput | null, dt: number): boolean {
+    if (tune) {
+      const t = this.tuneVR;
+      t.rot.x += -tune.ly * VR_TUNE_ROT * dt;
+      t.rot.y += tune.lx * VR_TUNE_ROT * dt;
+      t.rot.z += tune.rx * VR_TUNE_ROT * dt;
+      t.pos.z += -tune.ry * VR_TUNE_POS * dt;
+      this.tuning = true;
+      return true;
+    }
+    if (this.tuning) {
+      this.tuning = false;
+      this.saveTuning();
+      this.hapticPulse();
+      const v = this.tuneVR;
+      const f = (n: number) => n.toFixed(3);
+      console.log(
+        `tuneVR: pos(${f(v.pos.x)}, ${f(v.pos.y)}, ${f(v.pos.z)}) rot(${f(v.rot.x)}, ${f(v.rot.y)}, ${f(v.rot.z)})`,
+      );
+    }
+    return false;
+  }
+
+  private hapticPulse(): void {
+    const right = this.getXR()?.input.controllers.find(
+      (c) => c.inputSource.handedness === "right",
+    );
+    const pad = right?.inputSource.gamepad as
+      | { hapticActuators?: { pulse?: (v: number, ms: number) => void }[] }
+      | undefined;
+    pad?.hapticActuators?.[0]?.pulse?.(0.6, 90);
   }
 
   private equip(): void {

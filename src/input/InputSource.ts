@@ -15,6 +15,19 @@ export interface InputState {
   interact: boolean;
   /** Прыжок — нажат в этом кадре (фронт). */
   jump: boolean;
+  /**
+   * Не null только в VR при зажатой кнопке настройки меча (X на левом): сырые
+   * оси стиков для правки положения меча в руке. Локомоция в это время подавлена.
+   */
+  tune: TuneInput | null;
+}
+
+/** Сырые оси стиков в режиме настройки меча (-1..1). */
+export interface TuneInput {
+  lx: number;
+  ly: number;
+  rx: number;
+  ry: number;
 }
 
 export function emptyInput(): InputState {
@@ -26,6 +39,7 @@ export function emptyInput(): InputState {
     primaryAction: false,
     interact: false,
     jump: false,
+    tune: null,
   };
 }
 
