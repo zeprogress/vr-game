@@ -5,18 +5,17 @@ import "@babylonjs/core/Collisions/collisionCoordinator";
 
 import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
-import "@babylonjs/core/XR/features/WebXRControllerPointerSelection";
 
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 
 import { buildZone } from "../world/Zone";
 import { CombatSystem } from "../combat/CombatSystem";
 import { MobSystem } from "../combat/MobSystem";
-import { TuningPanel } from "../debug/TuningPanel";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Sfx } from "../audio/Sfx";
+import { Hands } from "../player/Hands";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -39,6 +38,7 @@ export class Game {
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
   private playerBar3D: HealthBar3D | null = null;
+  private readonly hands: Hands;
   xr: WebXRDefaultExperience | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -66,7 +66,7 @@ export class Game {
       zone.bowHome,
     );
     this.mobsAI = new MobSystem(zone.mobs, this.player, this.sfx, zone.groundHeight);
-    new TuningPanel(this.combat);
+    this.hands = new Hands(this.scene);
 
     this.player.hooks.step = () => this.sfx.footstep();
     this.player.hooks.jump = () => this.sfx.jump();
@@ -120,6 +120,8 @@ export class Game {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
         disableTeleportation: true,
+        disablePointerSelection: true, // без лазера у контроллеров
+        inputOptions: { doNotLoadControllerMeshes: true }, // рисуем свои кисти
       });
     } catch (e) {
       console.warn("WebXR недоступен:", e);
@@ -132,13 +134,14 @@ export class Game {
         this.sfx.resume();
         this.player.enterXR(base.camera);
         this.player.setInput(new XRInput(this.xr!));
-        // Полоса здоровья в поле зрения (в VR DOM не видно).
+        this.hands.attach(this.xr!);
+        // Полоса здоровья высоко, чтобы не мешала обзору (в VR DOM не видно).
         this.playerBar3D?.dispose();
         this.playerBar3D = new HealthBar3D(
           this.scene,
           base.camera,
-          new Vector3(-0.52, -0.12, 0.95),
-          1.05,
+          new Vector3(-0.18, 0.42, 0.95),
+          0.5,
           false,
         );
         this.playerBar3D.set(this.player.hp / 100);
@@ -146,6 +149,7 @@ export class Game {
         this.player.exitXR();
         this.player.setInput(this.defaultInput());
         this.scene.activeCamera = this.player.camera;
+        this.hands.detach(this.xr!);
         this.playerBar3D?.dispose();
         this.playerBar3D = null;
       }
