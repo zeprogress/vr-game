@@ -3,7 +3,9 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
@@ -13,6 +15,7 @@ import { emptyInput, type InputSource } from "../input/InputSource";
 
 const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
 const STEP_HEIGHT = 0.35; // м, высоту ниже этого можно перешагнуть
+const FORWARD = new Vector3(0, 0, 1); // локальная ось «вперёд»
 
 /**
  * Движение персонажа от первого лица. Управляется любым InputSource
@@ -32,6 +35,11 @@ export class PlayerController {
   private verticalVelocity = 0;
   private grounded = false;
 
+  /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
+  private xrRig: TransformNode | null = null;
+  private xrCamera: WebXRCamera | null = null;
+  private readonly fwd = new Vector3();
+
   constructor(scene: Scene) {
     this.scene = scene;
 
@@ -49,20 +57,45 @@ export class PlayerController {
     this.input = source;
   }
 
+  /** Вход в VR: камеру гарнитуры вешаем на управляемый нами риг. */
+  enterXR(xrCamera: WebXRCamera): void {
+    if (!this.xrRig) this.xrRig = new TransformNode("xrRig", this.scene);
+    xrCamera.parent = this.xrRig;
+    this.xrCamera = xrCamera;
+  }
+
+  exitXR(): void {
+    if (this.xrCamera) this.xrCamera.parent = null;
+    this.xrCamera = null;
+  }
+
   /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
   update(dt: number): void {
     const inp = this.input?.sample() ?? emptyInput();
     const pos = this.body.position;
+    const vr = this.xrCamera !== null;
 
     // --- Поворот ---
+    // yaw: мышь/тач в плоском режиме, snap-turn в VR. pitch — только плоский режим.
     this.yaw += inp.lookYaw;
-    this.pitch = clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
+    this.pitch = vr ? 0 : clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
 
-    // --- Горизонталь относительно взгляда, по осям (естественное скольжение вдоль стен) ---
-    const sin = Math.sin(this.yaw);
-    const cos = Math.cos(this.yaw);
-    let mx = cos * inp.moveX + sin * inp.moveY;
-    let mz = -sin * inp.moveX + cos * inp.moveY;
+    // --- База движения: в VR — куда смотрит голова, иначе — yaw ---
+    let fx: number;
+    let fz: number;
+    if (vr && this.xrCamera) {
+      this.xrCamera.getDirectionToRef(FORWARD, this.fwd);
+      const l = Math.hypot(this.fwd.x, this.fwd.z) || 1;
+      fx = this.fwd.x / l;
+      fz = this.fwd.z / l;
+    } else {
+      fx = Math.sin(this.yaw);
+      fz = Math.cos(this.yaw);
+    }
+
+    // --- Горизонталь по осям (естественное скольжение вдоль стен) ---
+    let mx = fz * inp.moveX + fx * inp.moveY;
+    let mz = -fx * inp.moveX + fz * inp.moveY;
     const len = Math.hypot(mx, mz);
     if (len > 1) {
       mx /= len;
@@ -96,8 +129,14 @@ export class PlayerController {
     if (this.verticalVelocity <= 0) this.grounded = gapNow <= GROUND_SNAP;
 
     // --- Камера следует за телом ---
-    this.camera.position.copyFrom(pos);
-    this.camera.rotation.set(this.pitch, this.yaw, 0);
+    if (vr && this.xrRig) {
+      // Риг ставим на уровень ног; рост добавит трекинг гарнитуры.
+      this.xrRig.position.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
+      this.xrRig.rotation.set(0, this.yaw, 0);
+    } else {
+      this.camera.position.copyFrom(pos);
+      this.camera.rotation.set(this.pitch, this.yaw, 0);
+    }
 
     // TODO(этап 7): primaryAction / interact -> отправка на сервер.
     void inp.primaryAction;

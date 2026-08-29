@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
@@ -11,8 +12,9 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 /**
  * Простая тестовая зона: земля, свет и несколько препятствий-коробок.
  * Всё с checkCollisions, чтобы игрок не проходил сквозь.
+ * Возвращает меш земли — он нужен WebXR как «пол».
  */
-export function buildZone(scene: Scene): void {
+export function buildZone(scene: Scene): Mesh {
   new HemisphericLight("ambient", new Vector3(0, 1, 0), scene).intensity = 0.7;
 
   const sun = new DirectionalLight("sun", new Vector3(-0.5, -1, -0.3), scene);
@@ -62,4 +64,6 @@ export function buildZone(scene: Scene): void {
     f.checkCollisions = true;
     f.isVisible = true;
   }
+
+  return ground;
 }

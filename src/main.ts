@@ -5,6 +5,7 @@ const hint = document.getElementById("hint") as HTMLDivElement;
 
 const game = new Game(canvas);
 game.start();
+void game.initXR();
 
 // Отладка из консоли.
 (window as unknown as { game: Game }).game = game;
