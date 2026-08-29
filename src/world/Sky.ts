@@ -1,12 +1,19 @@
 import { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
+
+const FORWARD = new Vector3(0, 0, 1);
 
 import { WORLD } from "../shared/constants";
 
@@ -30,32 +37,70 @@ export function createSky(scene: Scene, sunDir: Vector3): void {
   createClouds(scene);
 }
 
-/** Диск солнца + мягкое гало, закреплены на небе (infiniteDistance). */
+/**
+ * Солнце: несколько аддитивных дисков (ядро + гало) даёт «пересвет» без
+ * тяжёлого bloom, а большая пелена вспыхивает белым, когда смотришь прямо
+ * на солнце. За деревьями/холмом солнце гаснет.
+ */
 function createSun(scene: Scene, sunDir: Vector3): void {
-  const pos = sunDir.scale(-380); // противоположно направлению света
+  // Солнце «бесконечно далеко»: держим группу на камере, диск — по фиксированному смещению.
+  const root = new TransformNode("sunRoot", scene);
+  const toSun = sunDir.scale(-1); // от земли к солнцу
+  const offset = toSun.scale(350); // внутри купола неба (радиус 450)
 
-  const haloMat = new StandardMaterial("sunHaloMat", scene);
-  haloMat.emissiveColor = new Color3(1, 0.95, 0.8);
-  haloMat.disableLighting = true;
-  haloMat.specularColor = new Color3(0, 0, 0);
-  haloMat.alpha = 0.28;
-  const halo = MeshBuilder.CreateDisc("sunHalo", { radius: 42, tessellation: 24 }, scene);
-  halo.material = haloMat;
-  halo.position.copyFrom(pos.scale(1.03)); // чуть дальше, чтобы не спорить с диском по глубине
-  halo.isPickable = false;
-  halo.applyFog = false;
-  halo.billboardMode = 7;
+  const layer = (name: string, radius: number, color: Color3, alpha: number): Mesh => {
+    const mat = new StandardMaterial(name + "Mat", scene);
+    mat.emissiveColor = color;
+    mat.diffuseColor = new Color3(0, 0, 0);
+    mat.disableLighting = true;
+    mat.specularColor = new Color3(0, 0, 0);
+    mat.alpha = alpha;
+    mat.alphaMode = Constants.ALPHA_ADD;
+    mat.backFaceCulling = false;
+    const d = MeshBuilder.CreateDisc(name, { radius, tessellation: 32 }, scene);
+    d.material = mat;
+    d.parent = root;
+    d.position.copyFrom(offset);
+    d.isPickable = false;
+    d.applyFog = false;
+    d.billboardMode = 7;
+    d.renderingGroupId = 0;
+    return d;
+  };
 
-  const sunMat = new StandardMaterial("sunMat", scene);
-  sunMat.emissiveColor = new Color3(1, 0.98, 0.9);
-  sunMat.disableLighting = true;
-  sunMat.specularColor = new Color3(0, 0, 0);
-  const sun = MeshBuilder.CreateDisc("sun", { radius: 16, tessellation: 24 }, scene);
-  sun.material = sunMat;
-  sun.position.copyFrom(pos);
-  sun.isPickable = false;
-  sun.applyFog = false;
-  sun.billboardMode = 7;
+  const core = layer("sun", 6, new Color3(1, 1, 0.98), 1);
+  const inner = layer("sunInner", 11, new Color3(1, 0.95, 0.84), 0.45);
+  const glow1 = layer("sunGlow1", 22, new Color3(1, 0.9, 0.72), 0.16);
+  const glow2 = layer("sunGlow2", 46, new Color3(1, 0.88, 0.7), 0.06);
+  const blind = layer("sunBlind", 520, new Color3(1, 0.99, 0.96), 0);
+  const layers = [core, inner, glow1, glow2];
+
+  const isSolid = (m: AbstractMesh): boolean => m.isPickable && m.checkCollisions;
+
+  scene.onBeforeRenderObservable.add(() => {
+    const cam = scene.activeCamera;
+    if (!cam) return;
+    const camPos = cam.globalPosition;
+    root.position.copyFrom(camPos);
+
+    const sunWorld = camPos.add(offset);
+    const dir = sunWorld.subtract(camPos).normalize();
+    const fwd = cam.getDirection(FORWARD);
+    const align = Vector3.Dot(fwd, dir); // 1 — смотрим точно на солнце
+
+    const occluded = align > 0 && !!scene.pickWithRay(new Ray(camPos, dir, 500), isSolid)?.hit;
+
+    for (const m of layers) m.setEnabled(!occluded);
+
+    const blindAmt = occluded ? 0 : smoothstep(0.9982, 0.99992, align);
+    blind.setEnabled(blindAmt > 0.002);
+    (blind.material as StandardMaterial).alpha = blindAmt * 0.95;
+  });
+}
+
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 function gradientMaterial(scene: Scene): StandardMaterial {
