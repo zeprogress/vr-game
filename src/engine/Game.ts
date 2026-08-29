@@ -11,6 +11,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 
 import { buildZone } from "../world/Zone";
 import { CombatSystem } from "../combat/CombatSystem";
+import { TuningPanel } from "../debug/TuningPanel";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -50,6 +51,7 @@ export class Game {
       zone.dummies,
       zone.swordHome,
     );
+    new TuningPanel(this.combat);
 
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;

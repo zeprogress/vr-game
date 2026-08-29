@@ -14,15 +14,29 @@ import { createSword } from "../items/Sword";
 import type { Dummy } from "./Dummy";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
-const EQUIP_POS_FLAT = new Vector3(0.42, -0.38, 0.85);
-const EQUIP_ROT_FLAT = new Vector3(-0.2, 0.25, -0.28); // клинок вверх, лёгкий наклон
-const EQUIP_SCALE_FLAT = 0.55; // «вид от первого лица» — меч поменьше в кадре
-const EQUIP_POS_VR = new Vector3(0, 0, 0.02);
-const EQUIP_ROT_VR = new Vector3(-0.3, 0, 0); // клинок вверх из кулака (правь X, если не так)
+
+/** Положение меча в руке. Живые значения — правятся панелью тюнинга в рантайме. */
+export interface EquipTune {
+  pos: Vector3;
+  rot: Vector3;
+  scale: number;
+}
 
 export class CombatSystem {
   private readonly sword: Mesh;
   private readonly home: Vector3;
+
+  /** Стартовые значения = то, что было в константах. Панель тюнинга их правит. */
+  readonly tuneFlat: EquipTune = {
+    pos: new Vector3(0.42, -0.38, 0.85),
+    rot: new Vector3(-0.2, 0.25, -0.28),
+    scale: 0.55,
+  };
+  readonly tuneVR: EquipTune = {
+    pos: new Vector3(0, 0, 0),
+    rot: new Vector3(1, 0, 0),
+    scale: 1,
+  };
 
   private equipped = false;
   private prevInteract = false;
@@ -99,19 +113,22 @@ export class CombatSystem {
     this.sword.scaling.setAll(1);
   }
 
+  get vrActive(): boolean {
+    return this.player.inVR;
+  }
+
+  private activeTune(): EquipTune {
+    return this.player.inVR ? this.tuneVR : this.tuneFlat;
+  }
+
   /** Держим меч в руке (камера в плоском режиме / контроллер в VR). */
   private keepAnchored(): void {
     const anchor = this.handAnchor();
     if (this.sword.parent !== anchor) this.sword.parent = anchor;
-    if (this.player.inVR) {
-      this.sword.position.copyFrom(EQUIP_POS_VR);
-      this.sword.rotation.copyFrom(EQUIP_ROT_VR);
-      this.sword.scaling.setAll(1);
-    } else {
-      this.sword.position.copyFrom(EQUIP_POS_FLAT);
-      this.sword.rotation.copyFrom(EQUIP_ROT_FLAT);
-      this.sword.scaling.setAll(EQUIP_SCALE_FLAT);
-    }
+    const t = this.activeTune();
+    this.sword.position.copyFrom(t.pos);
+    this.sword.rotation.copyFrom(t.rot);
+    this.sword.scaling.setAll(t.scale);
   }
 
   private handAnchor(): Node {
@@ -133,8 +150,8 @@ export class CombatSystem {
       this.swingT -= dt;
       const phase = 1 - Math.max(0, this.swingT) / COMBAT.swingDuration; // 0..1
       const arc = Math.sin(phase * Math.PI); // 0..1..0
-      this.sword.rotation.x = EQUIP_ROT_FLAT.x - arc * 1.5;
-      this.sword.rotation.z = EQUIP_ROT_FLAT.z + arc * 0.45;
+      this.sword.rotation.x = this.tuneFlat.rot.x - arc * 1.5;
+      this.sword.rotation.z = this.tuneFlat.rot.z + arc * 0.45;
       if (phase > 0.3 && !this.swingHitDone) {
         this.swingHitDone = true;
         this.tryHit();
