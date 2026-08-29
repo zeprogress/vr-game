@@ -33,8 +33,14 @@ export interface EquipTune {
   scale: number;
 }
 
-/** Ключи наборов для панели тюнинга. */
-export type TuneSlot = "swordFlat" | "swordVR" | "bowFlat" | "bowVR";
+/** Ключи наборов для панели тюнинга. В VR — отдельно для левой и правой руки. */
+export type TuneSlot =
+  | "swordFlat"
+  | "swordVRLeft"
+  | "swordVRRight"
+  | "bowFlat"
+  | "bowVRLeft"
+  | "bowVRRight";
 
 type Held = "" | "sword" | "bow";
 
@@ -55,9 +61,11 @@ export class CombatSystem {
 
   readonly tunes: Record<TuneSlot, EquipTune> = {
     swordFlat: tune(0.42, -0.38, 0.85, -0.2, 0.25, -0.28, 0.55),
-    swordVR: tune(0, 0, 0, 1, 0, 0, 1),
+    swordVRRight: tune(0, 0, 0, 1, 0, 0, 1),
+    swordVRLeft: tune(0, 0, 0, 1, 0, 0, 1),
     bowFlat: tune(-0.24, -0.26, 0.55, 0, Math.PI, 0, 0.8),
-    bowVR: tune(0, 0, 0, 0, 0, 0, 1),
+    bowVRRight: tune(0, 0, 0, 0, 0, 0, 1),
+    bowVRLeft: tune(0, 0, 0, 0, 0, 0, 1),
   };
 
   private held: Held = "";
@@ -67,9 +75,9 @@ export class CombatSystem {
 
   private swingT = 0;
   private swingHitDone = false;
-  private tipPrev = new Vector3();
-  private tipInit = false;
   private swooshCd = 0;
+  /** След кончика меча за последние ~swooshWindow секунд: {точка, возраст}. */
+  private tipTrail: { p: Vector3; age: number }[] = [];
 
   private draw = 0; // 0..1
   private vrNocked = false;
@@ -142,11 +150,15 @@ export class CombatSystem {
     try {
       const j = JSON.parse(localStorage.getItem(TUNE_KEY) ?? "null");
       if (!j) return;
-      // старый формат (только меч): { flat, vr }
+      // Совместимость: старые ключи { flat, vr } / { swordVR, bowVR } без руки.
       this.applyTune(this.tunes.swordFlat, j.flat ?? j.swordFlat);
-      this.applyTune(this.tunes.swordVR, j.vr ?? j.swordVR);
       this.applyTune(this.tunes.bowFlat, j.bowFlat);
-      this.applyTune(this.tunes.bowVR, j.bowVR);
+      const swVR = j.vr ?? j.swordVR;
+      const bwVR = j.bowVR;
+      this.applyTune(this.tunes.swordVRRight, j.swordVRRight ?? swVR);
+      this.applyTune(this.tunes.swordVRLeft, j.swordVRLeft ?? swVR);
+      this.applyTune(this.tunes.bowVRRight, j.bowVRRight ?? bwVR);
+      this.applyTune(this.tunes.bowVRLeft, j.bowVRLeft ?? bwVR);
     } catch {
       /* нет данных */
     }
@@ -237,7 +249,7 @@ export class CombatSystem {
     if (dSword < BOW.equipReach && dSword <= dBow) {
       this.held = "sword";
       this.swingT = 0;
-      this.tipInit = false;
+      this.tipTrail.length = 0;
     } else if (dBow < BOW.equipReach) {
       this.held = "bow";
       this.draw = 0;
@@ -283,11 +295,11 @@ export class CombatSystem {
 
   // ---- якорь в руке ----
 
-  /** Какой набор тюнинга сейчас активен. */
+  /** Какой набор тюнинга сейчас активен (в VR — с учётом руки). */
   slot(): TuneSlot {
-    const vr = this.player.inVR;
-    if (this.held === "bow") return vr ? "bowVR" : "bowFlat";
-    return vr ? "swordVR" : "swordFlat";
+    const kind = this.held === "bow" ? "bow" : "sword";
+    if (!this.player.inVR) return `${kind}Flat` as TuneSlot;
+    return `${kind}VR${this.heldHand === "left" ? "Left" : "Right"}` as TuneSlot;
   }
 
   private keepAnchored(mesh: Mesh, t: { pos: Vector3; rot: Vector3; scale: number }): void {
@@ -335,17 +347,31 @@ export class CombatSystem {
   private updateVRSwing(dt: number): void {
     if (this.swooshCd > 0) this.swooshCd -= dt;
     const tip = this.tipWorld();
-    if (this.tipInit) {
-      const speed = Vector3.Distance(tip, this.tipPrev) / Math.max(dt, 1e-4);
-      if (speed > COMBAT.vrSwingSpeed) this.tryHit();
-      // Звук — только на сильный взмах, с паузой между звуками.
-      if (speed > COMBAT.vrSwooshSpeed && this.swooshCd <= 0) {
+
+    // Мгновенная скорость — только для засчитывания удара по кукле.
+    const prev = this.tipTrail[this.tipTrail.length - 1]?.p;
+    if (prev && Vector3.Distance(tip, prev) / Math.max(dt, 1e-4) > COMBAT.vrSwingSpeed) {
+      this.tryHit();
+    }
+
+    // След за окном ~0.13 с — усреднённая скорость и путь кончика.
+    for (const s of this.tipTrail) s.age += dt;
+    this.tipTrail.push({ p: tip.clone(), age: 0 });
+    while (this.tipTrail.length > 2 && this.tipTrail[0].age > COMBAT.swooshWindow) {
+      this.tipTrail.shift();
+    }
+
+    const oldest = this.tipTrail[0];
+    const span = oldest.age;
+    if (span > 0.03 && this.swooshCd <= 0) {
+      const dist = Vector3.Distance(tip, oldest.p);
+      const avgSpeed = dist / span;
+      // Звук — только когда кончик прошёл заметный путь БЫСТРО.
+      if (avgSpeed > COMBAT.vrSwooshSpeed && dist > COMBAT.vrSwooshDist) {
         this.sfx.swordSwing();
         this.swooshCd = COMBAT.swooshCooldown;
       }
     }
-    this.tipPrev.copyFrom(tip);
-    this.tipInit = true;
   }
 
   private tipWorld(): Vector3 {
@@ -466,7 +492,9 @@ export class CombatSystem {
     if (this.arrows.length >= 16) {
       this.arrows.shift()?.dispose();
     }
-    const speed = BOW.minSpeed + power * (BOW.maxSpeed - BOW.minSpeed);
+    // Кривая: слабый натяг стреляет заметно слабее полного.
+    const p = Math.pow(clamp(power, 0, 1), BOW.powerCurve);
+    const speed = BOW.minSpeed + p * (BOW.maxSpeed - BOW.minSpeed);
     this.arrows.push(new Arrow(this.arrowProto, origin, dir.scale(speed)));
   }
 

@@ -5,9 +5,11 @@ type Mode = "auto" | TuneSlot;
 const LABELS: Record<Mode, string> = {
   auto: "авто (что в руке)",
   swordFlat: "меч · плоский",
-  swordVR: "меч · VR",
+  swordVRRight: "меч · VR правая",
+  swordVRLeft: "меч · VR левая",
   bowFlat: "лук · плоский",
-  bowVR: "лук · VR",
+  bowVRRight: "лук · VR правая",
+  bowVRLeft: "лук · VR левая",
 };
 
 interface Row {
