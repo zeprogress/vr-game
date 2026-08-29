@@ -39,6 +39,10 @@ export class PlayerController {
   private xrRig: TransformNode | null = null;
   private xrCamera: WebXRCamera | null = null;
   private readonly fwd = new Vector3();
+  /** Предыдущая ЛОКАЛЬНАЯ позиция головы в риге — для учёта ходьбы по комнате. */
+  private xrHeadLX = 0;
+  private xrHeadLZ = 0;
+  private xrHeadTracked = false;
 
   constructor(scene: Scene) {
     this.scene = scene;
@@ -62,6 +66,7 @@ export class PlayerController {
     if (!this.xrRig) this.xrRig = new TransformNode("xrRig", this.scene);
     xrCamera.parent = this.xrRig;
     this.xrCamera = xrCamera;
+    this.xrHeadTracked = false;
   }
 
   exitXR(): void {
@@ -79,6 +84,24 @@ export class PlayerController {
     // yaw: мышь/тач в плоском режиме, snap-turn в VR. pitch — только плоский режим.
     this.yaw += inp.lookYaw;
     this.pitch = vr ? 0 : clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
+
+    // --- VR: физическая ходьба по комнате переносится в тело ---
+    // Берём смещение головы в ЛОКАЛЬНЫХ осях рига (не зависит от snap-turn)
+    // и поворачиваем его текущим yaw. Так поворот стиком не толкает тело вбок.
+    if (vr && this.xrCamera) {
+      const h = this.xrCamera.position;
+      if (this.xrHeadTracked) {
+        const dlx = h.x - this.xrHeadLX;
+        const dlz = h.z - this.xrHeadLZ;
+        const c = Math.cos(this.yaw);
+        const s = Math.sin(this.yaw);
+        this.moveAxis(dlx * c + dlz * s, 0);
+        this.moveAxis(0, -dlx * s + dlz * c);
+      }
+      this.xrHeadLX = h.x;
+      this.xrHeadLZ = h.z;
+      this.xrHeadTracked = true;
+    }
 
     // --- База движения: в VR — куда смотрит голова, иначе — yaw ---
     let fx: number;
@@ -129,10 +152,17 @@ export class PlayerController {
     if (this.verticalVelocity <= 0) this.grounded = gapNow <= GROUND_SNAP;
 
     // --- Камера следует за телом ---
-    if (vr && this.xrRig) {
-      // Риг ставим на уровень ног; рост добавит трекинг гарнитуры.
-      this.xrRig.position.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
+    if (vr && this.xrRig && this.xrCamera) {
+      // Голова должна оказаться ровно над телом. Компенсируем комнатное
+      // смещение головы: сдвигаем риг на -(смещение головы в мире).
+      const h = this.xrCamera.position;
+      const c = Math.cos(this.yaw);
+      const s = Math.sin(this.yaw);
+      const hwx = h.x * c + h.z * s;
+      const hwz = -h.x * s + h.z * c;
+      this.xrRig.position.set(pos.x - hwx, pos.y - PLAYER.eyeHeight, pos.z - hwz);
       this.xrRig.rotation.set(0, this.yaw, 0);
+      this.xrRig.computeWorldMatrix(true);
     } else {
       this.camera.position.copyFrom(pos);
       this.camera.rotation.set(this.pitch, this.yaw, 0);
