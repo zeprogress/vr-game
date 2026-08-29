@@ -86,6 +86,19 @@ export const PLAYER_HP = {
   regenDelay: 4, // с без урона до начала реген
 } as const;
 
+export const MELEE = {
+  damage: 0.5, // урон кулаком (вдвое меньше меча)
+  reach: 0.6, // м от кулака до цели (VR)
+  flatReach: 1.7, // м перед камерой (плоский удар)
+  vrSpeed: 2.4, // м/с скорости кулака, чтобы удар засчитался
+  cooldown: 0.35, // с между ударами одной рукой
+} as const;
+
+export const HUD = {
+  showTime: 3, // с бар здоровья полностью виден после урона
+  fadeTime: 1, // с плавного исчезновения
+} as const;
+
 export const THROW = {
   gravity: 16, // м/с²
   damage: 3, // урон при попадании брошенным оружием

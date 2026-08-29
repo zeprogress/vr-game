@@ -26,6 +26,11 @@ export class Hud {
     this.label.textContent = `${Math.ceil(hp)} / ${PLAYER_HP.max}`;
   }
 
+  /** 0..1 — плавное появление/исчезновение полосы. */
+  setOpacity(a: number): void {
+    this.bar.style.opacity = String(Math.max(0, Math.min(1, a)));
+  }
+
   flashDamage(dmg: number): void {
     const peak = Math.min(0.6, 0.15 + dmg / 60);
     this.vignette.style.transition = "none";
@@ -45,7 +50,8 @@ function el(tag: string, css: string): HTMLDivElement {
 
 const HP_BAR_CSS =
   "position:fixed;left:16px;top:16px;width:260px;height:22px;z-index:35;" +
-  "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;";
+  "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;" +
+  "transition:opacity 0.6s ease-out;";
 
 const HP_FILL_CSS =
   "position:absolute;inset:0;width:100%;background:#4caf50;transition:width 0.2s linear, background 0.3s;";

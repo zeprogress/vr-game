@@ -51,6 +51,11 @@ export class PlayerController {
 
   hp: number = PLAYER_HP.max;
   private hurtTimer = 0; // с с последнего урона
+
+  /** Сколько секунд прошло с последнего урона. */
+  get sinceHurt(): number {
+    return this.hurtTimer;
+  }
   private spawn = new Vector3(0, PLAYER.eyeHeight, -20);
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */

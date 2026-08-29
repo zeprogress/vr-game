@@ -13,7 +13,9 @@ import { CombatSystem } from "../combat/CombatSystem";
 import { MobSystem } from "../combat/MobSystem";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
+import { VrVignette } from "../ui/VrVignette";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { PLAYER_HP, HUD } from "../shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { PlayerController } from "../player/PlayerController";
@@ -38,6 +40,7 @@ export class Game {
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
   private playerBar3D: HealthBar3D | null = null;
+  private vrVignette: VrVignette | null = null;
   private readonly hands: Hands;
   xr: WebXRDefaultExperience | null = null;
 
@@ -78,7 +81,10 @@ export class Game {
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
       showHp(hp);
+      this.hud.setOpacity(1);
+      this.playerBar3D?.setOpacity(1);
       this.hud.flashDamage(dmg);
+      this.vrVignette?.flash(dmg);
       this.hapticBoth();
     };
     this.player.hooks.heal = showHp;
@@ -104,6 +110,9 @@ export class Game {
       this.mobsAI.update(dt);
       for (const d of this.dummies) d.update(dt);
       this.combat.update(dt);
+      this.hands.update(dt);
+      this.vrVignette?.tick(dt);
+      this.updateHpBarFade();
     });
 
     window.addEventListener("resize", () => this.engine.resize());
@@ -145,6 +154,8 @@ export class Game {
           false,
         );
         this.playerBar3D.set(this.player.hp / 100);
+        this.vrVignette?.dispose();
+        this.vrVignette = new VrVignette(this.scene, base.camera);
       } else if (state === WebXRState.NOT_IN_XR) {
         this.player.exitXR();
         this.player.setInput(this.defaultInput());
@@ -152,6 +163,8 @@ export class Game {
         this.hands.detach(this.xr!);
         this.playerBar3D?.dispose();
         this.playerBar3D = null;
+        this.vrVignette?.dispose();
+        this.vrVignette = null;
       }
     });
   }
@@ -162,6 +175,17 @@ export class Game {
 
   private defaultInput(): InputSource {
     return this.isTouch ? new TouchInput() : new DesktopInput(this.canvas);
+  }
+
+  /** Полоса здоровья: видна при уроне и пока не полное HP, иначе плавно гаснет. */
+  private updateHpBarFade(): void {
+    const injured = this.player.hp < PLAYER_HP.max - 0.5;
+    const t = this.player.sinceHurt;
+    let opacity: number;
+    if (injured || t < HUD.showTime) opacity = 1;
+    else opacity = Math.max(0, 1 - (t - HUD.showTime) / HUD.fadeTime);
+    this.hud.setOpacity(opacity);
+    this.playerBar3D?.setOpacity(opacity);
   }
 
   private hapticBoth(): void {

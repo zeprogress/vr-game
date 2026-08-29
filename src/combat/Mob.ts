@@ -96,8 +96,8 @@ export class Mob implements Hittable {
     this.vel.y += 2.5;
     this.grounded = false;
     this.bar.set(Math.max(0, this.hp) / MOB.hp);
-    this.bar.setVisible(true);
-    this.barTimer = 4;
+    this.bar.setOpacity(1);
+    this.barTimer = 3;
     if (this.hp <= 0) {
       this.dead = true;
       this.deathT = 0;
@@ -124,7 +124,7 @@ export class Mob implements Hittable {
 
     if (this.barTimer > 0) {
       this.barTimer -= dt;
-      if (this.barTimer <= 0) this.bar.setVisible(false);
+      this.bar.setOpacity(this.barTimer > 0.7 ? 1 : this.barTimer / 0.7);
     }
 
     if (this.dead) {

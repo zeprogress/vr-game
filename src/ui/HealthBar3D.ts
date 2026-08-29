@@ -13,10 +13,13 @@ import { clamp01 } from "../shared/geometry";
 export class HealthBar3D {
   private readonly bg: Mesh;
   private readonly fill: Mesh;
+  private readonly bgMat: StandardMaterial;
   private readonly fillMat: StandardMaterial;
+  private opacity = 1;
 
   constructor(scene: Scene, parent: Node, offset: Vector3, width = 0.8, billboard = true) {
-    const bgMat = new StandardMaterial("hpBgMat", scene);
+    this.bgMat = new StandardMaterial("hpBgMat", scene);
+    const bgMat = this.bgMat;
     bgMat.disableLighting = true;
     bgMat.emissiveColor = new Color3(0.04, 0.04, 0.04);
     bgMat.specularColor = new Color3(0, 0, 0);
@@ -59,7 +62,17 @@ export class HealthBar3D {
   }
 
   setVisible(v: boolean): void {
-    this.bg.setEnabled(v);
+    this.setOpacity(v ? 1 : 0);
+  }
+
+  /** 0..1 — плавное появление/исчезновение. */
+  setOpacity(a: number): void {
+    this.opacity = clamp01(a);
+    this.bgMat.alpha = 0.6 * this.opacity;
+    this.fillMat.alpha = this.opacity;
+    const on = this.opacity > 0.02;
+    this.bg.setEnabled(on);
+    this.fill.setEnabled(on);
   }
 
   dispose(): void {

@@ -14,7 +14,7 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { Space } from "@babylonjs/core/Maths/math.axis";
 
-import { BOW, COMBAT, THROW } from "../shared/constants";
+import { BOW, COMBAT, MELEE, THROW } from "../shared/constants";
 import { clamp, segmentDistance } from "../shared/geometry";
 import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
@@ -110,6 +110,12 @@ export class CombatSystem {
   private draw = 0; // 0..1
   private vrNocked = false;
   private prevVrTrigger = false;
+
+  // Рукопашная
+  private readonly fistPrev = { left: new Vector3(), right: new Vector3() };
+  private fistInit = { left: false, right: false };
+  private readonly fistCd = { left: 0, right: 0 };
+  private meleeFlatCd = 0;
 
   private bob = 0;
   private tuning = false;
@@ -246,6 +252,10 @@ export class CombatSystem {
       this.keepAnchored(this.bow, this.tunes[this.slot()]);
       if (this.player.inVR) this.updateVRTune(inp.tune, dt);
       this.updateBow(dt, inp.primaryAction, primaryReleased);
+    } else {
+      // Ничего в руках — рукопашная.
+      if (this.player.inVR) this.updateVRMelee(dt);
+      else this.updateFlatMelee(dt, primaryEdge);
     }
 
     this.applyWindup();
@@ -592,6 +602,66 @@ export class CombatSystem {
         }
       }
     }
+  }
+
+  // ---- рукопашная (без оружия) ----
+
+  private updateVRMelee(dt: number): void {
+    for (const side of ["left", "right"] as const) {
+      if (this.fistCd[side] > 0) this.fistCd[side] -= dt;
+      const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+      if (!node) {
+        this.fistInit[side] = false;
+        continue;
+      }
+      const now = node.getAbsolutePosition();
+      const prev = this.fistPrev[side];
+      if (this.fistInit[side] && this.fistCd[side] <= 0) {
+        const speed = Vector3.Distance(now, prev) / Math.max(dt, 1e-4);
+        if (speed > MELEE.vrSpeed) {
+          const dir = now.subtract(prev);
+          dir.y = 0;
+          if (dir.lengthSquared() > 1e-6) dir.normalize();
+          for (const t of this.targets) {
+            if (!t.alive) continue;
+            const s = t.hitSegment();
+            if (segmentDistance(prev, now, s.a, s.b) <= s.radius + MELEE.reach) {
+              if (t.hit(dir, MELEE.damage)) {
+                this.sfx.hitThud(0.55);
+                this.haptic(side, 0.6, 60);
+                this.fistCd[side] = MELEE.cooldown;
+              }
+              break;
+            }
+          }
+        }
+      }
+      prev.copyFrom(now);
+      this.fistInit[side] = true;
+    }
+  }
+
+  private updateFlatMelee(dt: number, primaryEdge: boolean): void {
+    if (this.meleeFlatCd > 0) this.meleeFlatCd -= dt;
+    if (!primaryEdge || this.meleeFlatCd > 0) return;
+    this.meleeFlatCd = MELEE.cooldown;
+    this.sfx.swordSwing();
+
+    const eye = this.player.camera.globalPosition;
+    const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
+    const reach = eye.add(fwd.scale(MELEE.flatReach));
+    let landed = false;
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const s = t.hitSegment();
+      if (segmentDistance(eye, reach, s.a, s.b) <= s.radius + 0.3) {
+        const dir = fwd.clone();
+        dir.y = 0;
+        if (dir.lengthSquared() > 1e-6) dir.normalize();
+        if (t.hit(dir, MELEE.damage)) landed = true;
+      }
+    }
+    if (landed) this.sfx.hitThud(0.55);
   }
 
   // ---- лук ----
