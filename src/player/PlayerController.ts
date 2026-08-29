@@ -11,7 +11,7 @@ import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { PLAYER } from "../shared/constants";
-import { emptyInput, type InputSource } from "../input/InputSource";
+import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 
 const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
 const STEP_HEIGHT = 0.35; // м, высоту ниже этого можно перешагнуть
@@ -34,6 +34,9 @@ export class PlayerController {
   private pitch = 0;
   private verticalVelocity = 0;
   private grounded = false;
+
+  /** Ввод, снятый в последнем update() — читают другие системы (бой). */
+  lastInput: InputState = emptyInput();
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
   private xrRig: TransformNode | null = null;
@@ -61,6 +64,23 @@ export class PlayerController {
     this.input = source;
   }
 
+  get position(): Vector3 {
+    return this.body.position;
+  }
+
+  get inVR(): boolean {
+    return this.xrCamera !== null;
+  }
+
+  /** Поставить тело на поверхность в текущей точке (x, z). */
+  placeOnGround(): void {
+    const p = this.body.position;
+    const ray = new Ray(new Vector3(p.x, 500, p.z), Vector3.Down(), 1000);
+    const hit = this.scene.pickWithRay(ray, this.isSolid);
+    if (hit?.pickedPoint) p.y = hit.pickedPoint.y + PLAYER.eyeHeight;
+    this.verticalVelocity = 0;
+  }
+
   /** Вход в VR: камеру гарнитуры вешаем на управляемый нами риг. */
   enterXR(xrCamera: WebXRCamera): void {
     if (!this.xrRig) this.xrRig = new TransformNode("xrRig", this.scene);
@@ -77,6 +97,7 @@ export class PlayerController {
   /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
   update(dt: number): void {
     const inp = this.input?.sample() ?? emptyInput();
+    this.lastInput = inp;
     const pos = this.body.position;
     const vr = this.xrCamera !== null;
 

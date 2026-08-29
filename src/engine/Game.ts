@@ -10,6 +10,7 @@ import "@babylonjs/core/XR/features/WebXRControllerPointerSelection";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 
 import { buildZone } from "../world/Zone";
+import { CombatSystem } from "../combat/CombatSystem";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -26,6 +27,7 @@ export class Game {
   readonly player: PlayerController;
   readonly isTouch: boolean;
   private readonly ground: Mesh;
+  private readonly combat: CombatSystem;
   xr: WebXRDefaultExperience | null = null;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -34,10 +36,20 @@ export class Game {
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
-    this.ground = buildZone(this.scene);
+    const zone = buildZone(this.scene);
+    this.ground = zone.ground;
 
     this.player = new PlayerController(this.scene);
     this.scene.activeCamera = this.player.camera;
+    this.player.placeOnGround();
+
+    this.combat = new CombatSystem(
+      this.scene,
+      this.player,
+      () => this.xr,
+      zone.dummies,
+      zone.swordHome,
+    );
 
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
@@ -46,6 +58,7 @@ export class Game {
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.player.update(dt);
+      this.combat.update(dt);
     });
 
     window.addEventListener("resize", () => this.engine.resize());
