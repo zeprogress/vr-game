@@ -4,6 +4,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
+import { weaponDef } from "#shared/items";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
@@ -12,7 +13,7 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
  * клинок направлен по локальной оси +Y, кончик примерно на y = 1.0.
  */
 export function createSword(scene: Scene, bladeTint?: readonly [number, number, number]): Mesh {
-  const t = bladeTint ?? ([0.78, 0.81, 0.86] as const);
+  const t = bladeTint ?? weaponDef("sword", "base").tint;
   const steel = new StandardMaterial("swordSteel", scene);
   steel.diffuseColor = new Color3(t[0], t[1], t[2]);
   steel.emissiveColor = new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28); // не проваливается в чёрный

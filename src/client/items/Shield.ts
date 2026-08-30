@@ -66,10 +66,9 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
 /**
  * Вытянутый треугольный щит: широкий верх, острый низ.
  *
- * Набран полосами убывающей ширины; под каждой полосой лежит чуть большая
- * серебряная — из-за этого по контуру идёт светлая окантовка.
- * Плоскость щита XZ, толщина по Y — как у круглого, чтобы положение
- * в руке было общим для всего класса.
+ * Набран полосами убывающей ширины. Рукоять сидит ближе к широкому концу,
+ * и НАЧАЛО КООРДИНАТ переносится в неё же — предмет крепится к руке своим
+ * началом, значит держать щит игрок будет ровно за рукоять.
  */
 function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   const tint = weaponDef("shield", tier).tint;
@@ -80,15 +79,14 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   face.specularColor = new Color3(0.85, 0.8, 0.5);
   face.specularPower = 64;
 
-  const silver = new StandardMaterial("shieldSilver", scene);
-  silver.diffuseColor = new Color3(0.76, 0.78, 0.83);
-  silver.emissiveColor = new Color3(0.2, 0.21, 0.24);
-  silver.specularColor = new Color3(0.9, 0.9, 0.95);
-  silver.specularPower = 72;
+  const grim = new StandardMaterial("shieldGrip", scene);
+  grim.diffuseColor = new Color3(tint[0] * 0.45, tint[1] * 0.4, tint[2] * 0.25);
+  grim.specularColor = new Color3(0.3, 0.3, 0.2);
 
   const w = SHIELD.radius * 2; // ширина вверху
   const h = SHIELD.radius * 3.1; // высота: заметно вытянут
-  const RIM = 0.028; // насколько серебро выступает за золото
+  /** Где сидит рукоять: ближе к широкому концу, а не по центру. */
+  const gripZ = h * 0.3;
 
   // Треугольник набираем полосами убывающей ширины — верх широкий, низ острый.
   const parts: Mesh[] = [];
@@ -97,38 +95,28 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
     const f = i / bands;
     const next = (i + 1) / bands;
     const bw = w * (1 - f) || 0.01;
-    const depth = h * (next - f);
-    const z = h * 0.5 - h * (f + (next - f) / 2);
-
-    // Серебряная подложка чуть больше — она и видна по краю как окантовка.
-    const rim = MeshBuilder.CreateBox(
-      `sh_rim${i}`,
-      { width: bw + RIM, height: 0.024, depth: depth + RIM },
-      scene,
-    );
-    rim.position.set(0, -0.012, z);
-    rim.material = silver;
-    parts.push(rim);
-
     const band = MeshBuilder.CreateBox(
       `sh_band${i}`,
-      { width: bw, height: 0.03, depth },
+      { width: bw, height: 0.03, depth: h * (next - f) },
       scene,
     );
-    band.position.z = z;
+    band.position.z = h * 0.5 - h * (f + (next - f) / 2);
     band.material = face;
     parts.push(band);
   }
 
-  const grip = MeshBuilder.CreateBox("sh_grip", { width: 0.12, height: 0.03, depth: 0.03 }, scene);
-  grip.position.y = -0.05;
-  grip.material = silver;
+  const grip = MeshBuilder.CreateBox("sh_grip", { width: 0.12, height: 0.035, depth: 0.03 }, scene);
+  grip.position.set(0, -0.05, gripZ);
+  grip.material = grim;
   parts.push(grip);
 
   const shield = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
   if (!shield) throw new Error("не удалось собрать треугольный щит");
-  // Разворот вживляем в вершины: положение в руке настраивается отдельно
-  // и не должно зависеть от того, как собрана модель.
+
+  // Переносим начало координат в рукоять и разворачиваем — всё вживляем
+  // в вершины, чтобы положение в руке настраивалось независимо от сборки.
+  shield.position.z = -gripZ;
+  shield.bakeCurrentTransformIntoVertices();
   shield.rotation.y = Math.PI / 2;
   shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";

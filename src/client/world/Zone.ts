@@ -68,19 +68,23 @@ export function buildZone(scene: Scene): Zone {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
     tick: (dt: number, playerPos: Vector3) => {
-      windTick(dt, day.daylight);
-      fireflies.update(dt, playerPos, day.daylight, terrain);
-
+      // Часы двигаем ПЕРВЫМИ: если что-то ниже упадёт, время всё равно идёт.
+      //
       // Перевели стрелки в панели — принимаем новое время.
       if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
 
-      hour = (hour + (dt * 24) / DAYCYCLE.seconds) % 24;
+      // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
+      const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
+      hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
       // В панель кладём округлённое: иначе строка дрожала бы каждый кадр.
       shown = Math.round(hour * 100) / 100;
       LOADOUT.world.hour = shown;
 
       day = dayState(hour);
       applyDay();
+
+      windTick(dt, day.daylight);
+      fireflies.update(dt, playerPos, day.daylight, terrain);
 
       // Градиент купола перерисовываем редко: это 128 полос и заливка текстуры.
       if (Math.abs(hour - paintedAt) > 0.05 || Math.abs(hour - paintedAt) > 23) {

@@ -13,9 +13,9 @@ import type { Terrain } from "./Terrain";
 
 export const FIREFLY = {
   /** Сколько стаек по округе. */
-  groups: 6,
+  groups: 14,
   /** Огоньков в стайке. */
-  perGroup: 7,
+  perGroup: 14,
   /** Радиус, в котором огоньки вьются вокруг центра стайки, м. */
   spread: 1.5,
   /** На какой высоте над землёй висит стайка, м. */
@@ -27,8 +27,8 @@ export const FIREFLY = {
    */
   lamps: 2,
   /** Докуда добивает свет одной стайки, м. */
-  lightRange: 7,
-  lightIntensity: 0.9,
+  lightRange: 8,
+  lightIntensity: 1.5,
   /** Скорость дрейфа стайки по округе, м/с. */
   driftSpeed: 0.45,
 } as const;
@@ -61,13 +61,13 @@ export class Fireflies {
 
   constructor(scene: Scene, terrain: Terrain) {
     this.mat = new StandardMaterial("fireflyMat", scene);
-    this.mat.emissiveColor = new Color3(0.85, 0.95, 0.45);
+    this.mat.emissiveColor = new Color3(1, 0.88, 0.28); // тёплый жёлтый
     this.mat.diffuseColor = new Color3(0, 0, 0);
     this.mat.specularColor = new Color3(0, 0, 0);
     this.mat.disableLighting = true;
     this.mat.alpha = 0;
 
-    this.proto = MeshBuilder.CreateSphere("fireflyProto", { diameter: 0.07, segments: 4 }, scene);
+    this.proto = MeshBuilder.CreateSphere("fireflyProto", { diameter: 0.085, segments: 4 }, scene);
     this.proto.material = this.mat;
     this.proto.isPickable = false;
     this.proto.isVisible = false;
@@ -93,8 +93,8 @@ export class Fireflies {
 
     for (let i = 0; i < FIREFLY.lamps; i++) {
       const lamp = new PointLight(`fireflyLamp${i}`, Vector3.Zero(), scene);
-      lamp.diffuse = new Color3(0.8, 0.95, 0.5);
-      lamp.specular = new Color3(0.2, 0.25, 0.1);
+      lamp.diffuse = new Color3(1, 0.85, 0.35);
+      lamp.specular = new Color3(0.3, 0.25, 0.1);
       lamp.range = FIREFLY.lightRange;
       lamp.intensity = 0;
       lamp.setEnabled(false);
