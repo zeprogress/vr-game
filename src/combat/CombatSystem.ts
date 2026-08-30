@@ -9,17 +9,19 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
+import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { Space } from "@babylonjs/core/Maths/math.axis";
-
-import { BOW, COMBAT, MELEE, THROW } from "../shared/constants";
+import { BOW, COMBAT, MELEE, SHIELD, THROW } from "../shared/constants";
 import { clamp, segmentDistance } from "../shared/geometry";
 import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
+import type { Progression } from "../player/Progression";
+import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
+import { createShield } from "../items/Shield";
 import { createBow, type BowParts } from "../items/Bow";
 import { createArrowProto, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
@@ -28,6 +30,8 @@ const TIP = new Vector3(...COMBAT.swordTipLocal);
 const TUNE_KEY = "swordTune";
 const VR_TUNE_ROT = 1.6;
 const VR_TUNE_POS = 0.4;
+/** Локальная нормаль щита — «наружу» смотрит +Y. */
+const SHIELD_NORMAL = new Vector3(0, 1, 0);
 
 export interface EquipTune {
   pos: Vector3;
@@ -35,16 +39,21 @@ export interface EquipTune {
   scale: number;
 }
 
-/** Ключи наборов для панели тюнинга. В VR — отдельно для левой и правой руки. */
+/** Ключи наборов тюнинга. В VR — отдельно для левой и правой руки. */
 export type TuneSlot =
   | "swordFlat"
   | "swordVRLeft"
   | "swordVRRight"
   | "bowFlat"
   | "bowVRLeft"
-  | "bowVRRight";
+  | "bowVRRight"
+  | "shieldFlat"
+  | "shieldVRLeft"
+  | "shieldVRRight";
 
-type Held = "" | "sword" | "bow";
+/** Оружие, которое держат в основной руке. */
+type Weapon = "" | "sword" | "bow";
+type Throwable = "sword" | "bow" | "shield";
 
 function tune(x: number, y: number, z: number, rx: number, ry: number, rz: number, sc: number): EquipTune {
   return { pos: new Vector3(x, y, z), rot: new Vector3(rx, ry, rz), scale: sc };
@@ -57,7 +66,7 @@ interface RestSpot {
 }
 
 interface Flying {
-  what: "sword" | "bow";
+  what: Throwable;
   mesh: Mesh;
   vel: Vector3;
   spinAxis: Vector3;
@@ -70,9 +79,11 @@ interface Flying {
 export class CombatSystem {
   private readonly sword: Mesh;
   private readonly bow: Mesh;
+  private readonly shield: Mesh;
   private readonly bowParts: BowParts;
   private readonly swordRest: RestSpot;
   private readonly bowRest: RestSpot;
+  private readonly shieldRest: RestSpot;
   private readonly bowString: LinesMesh;
   private readonly nockArrow: Mesh;
   private readonly arrowProto: Mesh;
@@ -85,26 +96,35 @@ export class CombatSystem {
     bowFlat: tune(-0.24, -0.26, 0.55, 0, Math.PI, 0, 0.8),
     bowVRRight: tune(0, 0, 0, 0, 0, 0, 1),
     bowVRLeft: tune(0, 0, 0, 0, 0, 0, 1),
+    // Щит: локальный +Y смотрит «наружу», поэтому в плоском режиме
+    // разворачиваем диск вперёд поворотом на 90° вокруг X.
+    shieldFlat: tune(-0.34, -0.26, 0.62, Math.PI / 2, 0, 0, 0.8),
+    shieldVRRight: tune(0, 0, 0, Math.PI / 2, 0, 0, 1),
+    shieldVRLeft: tune(0, 0, 0, Math.PI / 2, 0, 0, 1),
   };
 
-  private held: Held = "";
-  private heldHand: "left" | "right" = "right";
+  /** Оружие и рука, которая его держит. */
+  private held: Weapon = "";
+  private heldHand: Side = "right";
+  /** Рука со щитом (в плоском режиме — «левая», щит висит у камеры). */
+  private shieldHand: Side | null = null;
+
   private prevInteract = false;
   private prevPrimary = false;
+  private readonly gripPrev: Record<Side, boolean> = { left: false, right: false };
 
   private readonly flying: Flying[] = [];
-  private justPickedUp = false; // взяли в этом же нажатии — не бросать сразу (плоский режим)
+  private justPickedUp = false; // взяли тем же нажатием E — не бросать сразу
   private windup = 0; // замах перед броском (плоский режим), 0..1
   private readonly heldPrev = new Vector3();
   private readonly heldVel = new Vector3();
-  private readonly heldAngVel = new Vector3(); // сглаженная угловая скорость руки
+  private readonly heldAngVel = new Vector3();
   private readonly heldQuatPrev = new Quaternion();
   private heldMotionInit = false;
 
   private swingT = 0;
   private swingHitDone = false;
   private swooshCd = 0;
-  /** След клинка за окно: положение кончика, направление клинка, возраст. */
   private tipTrail: { p: Vector3; dir: Vector3; age: number }[] = [];
 
   private draw = 0; // 0..1
@@ -112,11 +132,12 @@ export class CombatSystem {
   private prevVrTrigger = false;
 
   // Рукопашная
-  private readonly fistPrev = { left: new Vector3(), right: new Vector3() };
-  private fistInit = { left: false, right: false };
-  private readonly fistCd = { left: 0, right: 0 };
+  private readonly fistPrev: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
+  private fistInit: Record<Side, boolean> = { left: false, right: false };
+  private readonly fistCd: Record<Side, number> = { left: 0, right: 0 };
   private meleeFlatCd = 0;
 
+  private blockCd = 0; // чтобы звук блока не тарахтел
   private bob = 0;
   private tuning = false;
 
@@ -126,15 +147,21 @@ export class CombatSystem {
     private readonly getXR: () => WebXRDefaultExperience | null,
     private readonly targets: Hittable[],
     private readonly sfx: Sfx,
+    private readonly prog: Progression,
     private readonly groundHeight: (x: number, z: number) => number,
     swordHome: Vector3,
     bowHome: Vector3,
+    shieldHome: Vector3,
   ) {
     this.swordRest = { pos: swordHome.clone(), yaw: 0, bob: true };
     this.bowRest = { pos: bowHome.clone(), yaw: 0, bob: true };
+    this.shieldRest = { pos: shieldHome.clone(), yaw: 0, bob: true };
 
     this.sword = createSword(scene);
     this.sword.position.copyFrom(swordHome);
+
+    this.shield = createShield(scene);
+    this.shield.position.copyFrom(shieldHome);
 
     this.bowParts = createBow(scene);
     this.bow = this.bowParts.mesh;
@@ -155,6 +182,7 @@ export class CombatSystem {
     for (const [home, dy] of [
       [swordHome, 0.75],
       [bowHome, 0.4],
+      [shieldHome, 0.4],
     ] as const) {
       const mat = new StandardMaterial("rockMat", scene);
       mat.diffuseColor = new Color3(0.42, 0.42, 0.45);
@@ -179,21 +207,23 @@ export class CombatSystem {
     this.loadTuning();
   }
 
-  // ---- тюнинг положения оружия в руке (localStorage) ----
+  // ---- тюнинг положения предметов в руке (localStorage) ----
 
   loadTuning(): void {
     try {
       const j = JSON.parse(localStorage.getItem(TUNE_KEY) ?? "null");
       if (!j) return;
-      // Совместимость: старые ключи { flat, vr } / { swordVR, bowVR } без руки.
+      // Совместимость со старыми ключами { flat, vr } / { swordVR, bowVR }.
       this.applyTune(this.tunes.swordFlat, j.flat ?? j.swordFlat);
       this.applyTune(this.tunes.bowFlat, j.bowFlat);
       const swVR = j.vr ?? j.swordVR;
-      const bwVR = j.bowVR;
       this.applyTune(this.tunes.swordVRRight, j.swordVRRight ?? swVR);
       this.applyTune(this.tunes.swordVRLeft, j.swordVRLeft ?? swVR);
-      this.applyTune(this.tunes.bowVRRight, j.bowVRRight ?? bwVR);
-      this.applyTune(this.tunes.bowVRLeft, j.bowVRLeft ?? bwVR);
+      this.applyTune(this.tunes.bowVRRight, j.bowVRRight ?? j.bowVR);
+      this.applyTune(this.tunes.bowVRLeft, j.bowVRLeft ?? j.bowVR);
+      this.applyTune(this.tunes.shieldFlat, j.shieldFlat);
+      this.applyTune(this.tunes.shieldVRRight, j.shieldVRRight);
+      this.applyTune(this.tunes.shieldVRLeft, j.shieldVRLeft);
     } catch {
       /* нет данных */
     }
@@ -237,23 +267,31 @@ export class CombatSystem {
     this.prevInteract = inp.interact;
     this.prevPrimary = inp.primaryAction;
 
-    if (!inp.tune) this.handleInteract(inp.interact, interactEdge, interactReleased, dt);
+    if (this.blockCd > 0) this.blockCd -= dt;
+
+    if (!inp.tune) {
+      if (this.player.inVR) this.handleGripsVR();
+      else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
+    }
 
     this.bobIdle(dt);
 
+    // Щит держится в руке всегда, когда взят.
+    if (this.shieldHand) this.keepAnchored(this.shield, this.tunes[this.shieldSlot()], this.shieldHand);
+
     if (this.held === "sword") {
-      this.keepAnchored(this.sword, this.tunes[this.slot()]);
+      this.keepAnchored(this.sword, this.tunes[this.slot()], this.heldHand);
       if (this.player.inVR) {
         if (!this.updateVRTune(inp.tune, dt)) this.updateVRSwing(dt);
       } else {
         this.updateFlatSwing(dt, primaryEdge);
       }
     } else if (this.held === "bow") {
-      this.keepAnchored(this.bow, this.tunes[this.slot()]);
+      this.keepAnchored(this.bow, this.tunes[this.slot()], this.heldHand);
       if (this.player.inVR) this.updateVRTune(inp.tune, dt);
       this.updateBow(dt, inp.primaryAction, primaryReleased);
     } else {
-      // Ничего в руках — рукопашная.
+      // Свободные руки — рукопашная.
       if (this.player.inVR) this.updateVRMelee(dt);
       else this.updateFlatMelee(dt, primaryEdge);
     }
@@ -271,61 +309,156 @@ export class CombatSystem {
     }
   }
 
+  // ---- защита ----
+
+  /**
+   * Урон по игроку из точки `from` с учётом щита и меча.
+   * Возвращает множитель: 0 — полностью заблокировано, 1 — прошло целиком.
+   * Побочно играет звук/вибрацию при удачном блоке.
+   */
+  absorbAttack(from: Vector3): number {
+    const eye = this.player.camera.globalPosition;
+    const toAtk = from.subtract(eye);
+    toAtk.y = 0;
+    if (toAtk.lengthSquared() < 1e-6) return 1;
+    toAtk.normalize();
+
+    // Щит — надёжная защита в широком конусе.
+    if (this.shieldHand) {
+      const n = Vector3.TransformNormal(SHIELD_NORMAL, this.shield.getWorldMatrix());
+      n.y = 0;
+      if (n.lengthSquared() > 1e-6) {
+        n.normalize();
+        if (Vector3.Dot(n, toAtk) > Math.cos(SHIELD.blockCone)) {
+          this.onBlocked(this.shieldHand, 1);
+          return SHIELD.blockedDamage;
+        }
+      }
+    }
+
+    // Меч — узкий конус и часть урона проходит.
+    if (this.held === "sword") {
+      const m = this.sword.getWorldMatrix();
+      const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
+      const tip = Vector3.TransformCoordinates(TIP, m);
+      const mid = guard.add(tip).scale(0.5);
+      const toBlade = mid.subtract(eye);
+      toBlade.y = 0;
+      if (toBlade.lengthSquared() > 1e-4) {
+        toBlade.normalize();
+        if (Vector3.Dot(toBlade, toAtk) > Math.cos(SHIELD.swordBlockCone)) {
+          this.onBlocked(this.heldHand, 0.7);
+          return SHIELD.swordBlockedFraction;
+        }
+      }
+    }
+
+    return 1;
+  }
+
+  private onBlocked(hand: Side, strength: number): void {
+    this.haptic(hand, 0.9, 110);
+    if (this.blockCd <= 0) {
+      this.sfx.block(strength);
+      this.blockCd = 0.15;
+    }
+  }
+
   // ---- взять / бросить / метнуть ----
 
-  private handleInteract(held: boolean, edge: boolean, released: boolean, dt: number): void {
-    if (this.held) {
-      if (this.player.inVR) {
-        // Отпустил grip — метнул с той скоростью, с какой вёл руку.
+  /** VR: каждая рука обрабатывается отдельно по своему grip. */
+  private handleGripsVR(): void {
+    for (const side of ["left", "right"] as Side[]) {
+      const down = this.gripDown(side);
+      const was = this.gripPrev[side];
+      this.gripPrev[side] = down;
+      const edge = down && !was;
+      const released = !down && was;
+
+      if (this.held !== "" && this.heldHand === side) {
         if (released) this.throwHeld(this.vrThrowVelocity());
-      } else if (this.justPickedUp) {
-        // Только что подобрали тем же нажатием E — завершаем нажатие, не бросаем.
+        continue;
+      }
+      if (this.shieldHand === side) {
+        if (released) this.dropShield();
+        continue;
+      }
+      if (edge) this.tryPickup(side);
+    }
+  }
+
+  private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
+    if (this.held) {
+      if (this.justPickedUp) {
         if (released) this.justPickedUp = false;
       } else {
-        // Держим E — замахиваемся, отпустили — метнули (короткое нажатие ~= бросить рядом).
         if (held) this.windup = clamp(this.windup + dt / THROW.flatWindup, 0, 1);
         if (released) this.throwHeld(this.flatThrowVelocity());
       }
       return;
     }
     if (edge) {
-      this.tryPickup();
-      if (this.held) this.justPickedUp = true;
+      this.tryPickup("right");
+      if (this.held || this.shieldHand) this.justPickedUp = true;
     }
   }
 
-  private tryPickup(): void {
-    if (this.player.inVR) {
-      const lg = this.gripDown("left");
-      const rg = this.gripDown("right");
-      if (lg && !rg) this.heldHand = "left";
-      else if (rg && !lg) this.heldHand = "right";
-    }
-    const p = this.player.position;
-    const dSword = Vector3.Distance(p, this.sword.getAbsolutePosition());
-    const dBow = Vector3.Distance(p, this.bow.getAbsolutePosition());
-    let picked: Held = "";
-    if (dSword < BOW.equipReach && dSword <= dBow) picked = "sword";
-    else if (dBow < BOW.equipReach) picked = "bow";
-    if (!picked) return;
+  /** Что можно взять этой рукой, с учётом того, что уже в руках. */
+  private canPick(what: Throwable): boolean {
+    if (what === "shield") return this.held !== "bow" && this.shieldHand === null;
+    if (what === "bow") return this.held === "" && this.shieldHand === null;
+    return this.held === ""; // меч
+  }
 
-    this.held = picked;
+  private tryPickup(side: Side): void {
+    const p = this.player.position;
+    const candidates: { what: Throwable; mesh: Mesh; d: number }[] = [
+      { what: "sword", mesh: this.sword, d: 0 },
+      { what: "bow", mesh: this.bow, d: 0 },
+      { what: "shield", mesh: this.shield, d: 0 },
+    ];
+    for (const c of candidates) c.d = Vector3.Distance(p, c.mesh.getAbsolutePosition());
+    candidates.sort((a, b) => a.d - b.d);
+
+    const pick = candidates.find((c) => c.d < COMBAT.equipReach && this.canPick(c.what));
+    if (!pick) return;
+
+    // Забрать из полёта, если ловим на лету.
+    for (let i = this.flying.length - 1; i >= 0; i--) {
+      if (this.flying[i].what === pick.what) this.flying.splice(i, 1);
+    }
+    pick.mesh.rotationQuaternion = null;
+
+    if (pick.what === "shield") {
+      this.shieldHand = side;
+      return;
+    }
+
+    this.held = pick.what;
+    this.heldHand = side;
     this.windup = 0;
     this.heldMotionInit = false;
     this.heldVel.setAll(0);
     this.heldAngVel.setAll(0);
-    (picked === "sword" ? this.sword : this.bow).rotationQuaternion = null;
-    // забрать из полёта, если ловим на лету
-    for (let i = this.flying.length - 1; i >= 0; i--) {
-      if (this.flying[i].what === picked) this.flying.splice(i, 1);
-    }
-    if (picked === "sword") {
+    if (pick.what === "sword") {
       this.swingT = 0;
       this.tipTrail.length = 0;
     } else {
       this.draw = 0;
       this.vrNocked = false;
     }
+  }
+
+  private dropShield(): void {
+    if (!this.shieldHand) return;
+    this.shieldHand = null;
+    const gy = this.groundHeight(this.shield.absolutePosition.x, this.shield.absolutePosition.z);
+    this.shield.parent = null;
+    this.shield.scaling.setAll(1);
+    this.shieldRest.pos.set(this.shield.position.x, gy + 0.1, this.shield.position.z);
+    this.shieldRest.yaw = Math.random() * Math.PI;
+    this.shieldRest.bob = false;
+    this.layFlat(this.shield, this.shieldRest);
   }
 
   private vrThrowVelocity(): Vector3 {
@@ -335,7 +468,7 @@ export class CombatSystem {
   private flatThrowVelocity(): Vector3 {
     const w = this.windup;
     const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
-    dir.y += 0.12; // лёгкая компенсация гравитации; вверх кинешь — полетит вверх
+    dir.y += 0.12;
     dir.normalize();
     return dir.scale(THROW.flatMinSpeed + w * (THROW.flatMaxSpeed - THROW.flatMinSpeed));
   }
@@ -352,10 +485,9 @@ export class CombatSystem {
     mesh.rotationQuaternion = worldRot;
     mesh.position.copyFrom(worldPos);
 
-    // Вращение — только то, что игрок сам придал оружию рукой (VR). Иначе летит
-    // «замороженным» по инерции, как реальный не закрученный предмет.
+    // Вращение — только то, что игрок сам придал рукой (VR).
     let spinRate = this.player.inVR ? this.heldAngVel.length() : 0;
-    let spinAxis = spinRate > 1e-3 ? this.heldAngVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
+    const spinAxis = spinRate > 1e-3 ? this.heldAngVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
     spinRate = Math.min(spinRate, 30);
 
     this.flying.push({
@@ -388,7 +520,6 @@ export class CombatSystem {
       f.prev.copyFrom(f.mesh.position);
       f.vel.y -= THROW.gravity * dt;
       f.mesh.position.addInPlace(f.vel.scale(dt));
-      // Вращение только по инерции: если игрок не закрутил — оружие не крутится.
       if (f.spinRate > 0.15) f.mesh.rotate(f.spinAxis, f.spinRate * dt, Space.WORLD);
       f.life += dt;
 
@@ -419,12 +550,16 @@ export class CombatSystem {
   }
 
   private settleFlying(f: Flying, groundY: number): void {
-    const rest = f.what === "sword" ? this.swordRest : this.bowRest;
+    const rest = this.restOf(f.what);
     rest.pos.set(f.mesh.position.x, groundY + 0.12, f.mesh.position.z);
     rest.yaw = Math.atan2(f.vel.x, f.vel.z) + Math.random() * 0.5 - 0.25;
     rest.bob = false;
     f.mesh.rotationQuaternion = null;
     this.layFlat(f.mesh, rest);
+  }
+
+  private restOf(what: Throwable): RestSpot {
+    return what === "sword" ? this.swordRest : what === "bow" ? this.bowRest : this.shieldRest;
   }
 
   /** Сглаженные линейная и угловая скорости оружия в мире — для броска в VR. */
@@ -435,17 +570,15 @@ export class CombatSystem {
     const q = mesh.absoluteRotationQuaternion;
 
     if (this.heldMotionInit && dt > 1e-4) {
-      // линейная
       const instV = w.subtract(this.heldPrev).scaleInPlace(1 / dt);
       this.heldVel.addInPlace(instV.subtractInPlace(this.heldVel).scaleInPlace(Math.min(1, dt / 0.045)));
 
-      // угловая: дельта-кватернион -> ось-угол
       const dq = q.multiply(Quaternion.Inverse(this.heldQuatPrev));
       dq.normalize();
       const wq = clamp(dq.w, -1, 1);
       const sgn = wq < 0 ? -1 : 1;
       const sn = Math.sqrt(Math.max(0, 1 - wq * wq));
-      const angle = 2 * Math.acos(Math.abs(wq)); // кратчайший путь
+      const angle = 2 * Math.acos(Math.abs(wq));
       const instW =
         sn < 1e-5
           ? new Vector3(0, 0, 0)
@@ -457,7 +590,7 @@ export class CombatSystem {
     this.heldMotionInit = true;
   }
 
-  /** Визуальный замах в плоском режиме: оружие отводится назад по мере windup. */
+  /** Визуальный замах в плоском режиме. */
   private applyWindup(): void {
     if (this.player.inVR || !this.held || this.windup <= 0) return;
     const mesh = this.held === "sword" ? this.sword : this.bow;
@@ -466,29 +599,30 @@ export class CombatSystem {
     mesh.rotation.x -= this.windup * 0.5;
   }
 
-  private gripDown(hand: "left" | "right"): boolean {
+  private gripDown(hand: Side): boolean {
     return !!this.controller(hand)?.inputSource.gamepad?.buttons[1]?.pressed;
   }
 
   /** Рука, которой натягивают тетиву (противоположная той, что держит лук). */
-  private drawHand(): "left" | "right" {
+  private drawHand(): Side {
     return this.heldHand === "left" ? "right" : "left";
   }
 
-  private isFlying(what: "sword" | "bow"): boolean {
+  private isFlying(what: Throwable): boolean {
     return this.flying.some((f) => f.what === what);
   }
 
   private layFlat(mesh: Mesh, rest: RestSpot): void {
     mesh.rotationQuaternion = null;
     mesh.position.copyFrom(rest.pos);
-    mesh.rotation.set(Math.PI / 2, rest.yaw, 0); // клинок / плечи лука горизонтально
+    mesh.rotation.set(Math.PI / 2, rest.yaw, 0);
   }
 
   private bobIdle(dt: number): void {
     this.bob += dt;
     if (this.held !== "sword" && !this.isFlying("sword")) this.restVisual(this.sword, this.swordRest, 0);
     if (this.held !== "bow" && !this.isFlying("bow")) this.restVisual(this.bow, this.bowRest, 1);
+    if (!this.shieldHand && !this.isFlying("shield")) this.restVisual(this.shield, this.shieldRest, 2);
   }
 
   private restVisual(mesh: Mesh, rest: RestSpot, phase: number): void {
@@ -502,31 +636,36 @@ export class CombatSystem {
 
   // ---- якорь в руке ----
 
-  /** Какой набор тюнинга сейчас активен (в VR — с учётом руки). */
+  /** Набор тюнинга для оружия (в VR — с учётом руки). */
   slot(): TuneSlot {
     const kind = this.held === "bow" ? "bow" : "sword";
     if (!this.player.inVR) return `${kind}Flat` as TuneSlot;
     return `${kind}VR${this.heldHand === "left" ? "Left" : "Right"}` as TuneSlot;
   }
 
-  private keepAnchored(mesh: Mesh, t: { pos: Vector3; rot: Vector3; scale: number }): void {
-    const anchor = this.handAnchor();
+  private shieldSlot(): TuneSlot {
+    if (!this.player.inVR) return "shieldFlat";
+    return this.shieldHand === "left" ? "shieldVRLeft" : "shieldVRRight";
+  }
+
+  private keepAnchored(mesh: Mesh, t: EquipTune, hand: Side): void {
+    const anchor = this.handAnchor(hand);
     if (mesh.parent !== anchor) mesh.parent = anchor;
     mesh.position.copyFrom(t.pos);
     mesh.rotation.copyFrom(t.rot);
     mesh.scaling.setAll(t.scale);
   }
 
-  private handAnchor(): Node {
+  private handAnchor(hand: Side): Node {
     if (this.player.inVR) {
-      const c = this.controller(this.heldHand);
+      const c = this.controller(hand);
       const node = c?.grip ?? c?.pointer;
       if (node) return node;
     }
     return this.player.camera;
   }
 
-  private controller(hand: "left" | "right"): WebXRInputSource | undefined {
+  private controller(hand: Side): WebXRInputSource | undefined {
     return this.getXR()?.input.controllers.find((c) => c.inputSource.handedness === hand);
   }
 
@@ -559,7 +698,6 @@ export class CombatSystem {
     const tip = Vector3.TransformCoordinates(TIP, m);
     const dir = tip.subtract(guard).normalize();
 
-    // Мгновенная скорость — только для засчитывания удара по кукле.
     const prev = this.tipTrail[this.tipTrail.length - 1]?.p;
     if (prev && Vector3.Distance(tip, prev) / Math.max(dt, 1e-4) > COMBAT.vrSwingSpeed) {
       this.tryHit();
@@ -571,8 +709,6 @@ export class CombatSystem {
       this.tipTrail.shift();
     }
 
-    // Свист — только настоящий взмах: кончик БЫСТРО прошёл дугу, и клинок
-    // при этом заметно повернулся (не просто перенос меча / ходьба).
     const oldest = this.tipTrail[0];
     if (oldest.age > 0.06 && this.swooshCd <= 0) {
       const avgSpeed = Vector3.Distance(tip, oldest.p) / oldest.age;
@@ -596,19 +732,25 @@ export class CombatSystem {
       if (!t.alive) continue;
       const seg = t.hitSegment();
       if (segmentDistance(guard, tip, seg.a, seg.b) <= seg.radius + COMBAT.hitMargin) {
-        if (t.hit(dir)) {
+        if (t.hit(dir, this.prog.swordDamage)) {
           this.sfx.hitThud();
-          this.haptic("right", 0.7, 70);
+          // Вибрирует именно та рука, которая держит меч.
+          this.haptic(this.heldHand, 0.7, 70);
         }
       }
     }
   }
 
-  // ---- рукопашная (без оружия) ----
+  // ---- рукопашная (свободной рукой) ----
 
   private updateVRMelee(dt: number): void {
-    for (const side of ["left", "right"] as const) {
+    for (const side of ["left", "right"] as Side[]) {
       if (this.fistCd[side] > 0) this.fistCd[side] -= dt;
+      // Рука занята щитом — кулаком не бьём.
+      if (this.shieldHand === side) {
+        this.fistInit[side] = false;
+        continue;
+      }
       const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
       if (!node) {
         this.fistInit[side] = false;
@@ -671,14 +813,17 @@ export class CombatSystem {
       this.updateBowVR();
       return;
     }
-    // Плоский режим: держим ЛКМ — натягиваем, сила растёт со временем.
     if (primaryHeld) {
       if (this.draw === 0) this.sfx.bowDraw();
       this.draw = clamp(this.draw + dt / BOW.drawTimeFlat, 0, 1);
     }
     this.nockArrow.setEnabled(this.draw > 0.02);
     this.placeNockArrow(
-      new Vector3(this.bowParts.nockRest.x, this.bowParts.nockRest.y, this.bowParts.nockRest.z + this.draw * BOW.drawPullFlat),
+      new Vector3(
+        this.bowParts.nockRest.x,
+        this.bowParts.nockRest.y,
+        this.bowParts.nockRest.z + this.draw * BOW.drawPullFlat,
+      ),
       new Vector3(0, 0, -1),
     );
 
@@ -713,7 +858,7 @@ export class CombatSystem {
         const pull = Vector3.Distance(drawPos, nockWorld);
         this.draw = clamp((pull - BOW.restDrawVR) / (BOW.maxDrawVR - BOW.restDrawVR), 0, 1);
         const local = Vector3.TransformCoordinates(drawPos, Matrix.Invert(bowMat));
-        this.placeNockArrow(local, local.scale(-1)); // стрела смотрит от руки к луку
+        this.placeNockArrow(local, local.scale(-1));
         this.nockArrow.setEnabled(true);
       }
     } else if (this.vrNocked) {
@@ -731,11 +876,6 @@ export class CombatSystem {
     this.prevVrTrigger = trigger;
   }
 
-  /**
-   * Ставит наглядную стрелу так, чтобы её ХВОСТ был в точке натяга `nock`
-   * (локально), а сама она смотрела в направлении `dir`. Прото: наконечник по +Z,
-   * длина 0.7, центр в нуле.
-   */
   private readonly nockLocal = new Vector3();
   private placeNockArrow(nock: Vector3, dir: Vector3): void {
     this.nockLocal.copyFrom(nock);
@@ -755,12 +895,10 @@ export class CombatSystem {
     this.sfx.bowRelease(power);
     this.haptic("right", 0.6, 60);
     this.haptic("left", 0.6, 60);
-    if (this.arrows.length >= 16) {
-      this.arrows.shift()?.dispose();
-    }
-    // Кривая: слабый натяг стреляет заметно слабее полного.
+    if (this.arrows.length >= 16) this.arrows.shift()?.dispose();
+
     const p = Math.pow(clamp(power, 0, 1), BOW.powerCurve);
-    const speed = BOW.minSpeed + p * (BOW.maxSpeed - BOW.minSpeed);
+    const speed = BOW.minSpeed + p * (BOW.maxSpeed - BOW.minSpeed) + this.prog.arrowSpeedBonus;
     this.arrows.push(new Arrow(this.arrowProto, origin, dir.scale(speed)));
   }
 
@@ -771,23 +909,23 @@ export class CombatSystem {
     onHit: (kind: "flesh" | "wood", pos: Vector3) => void;
   };
 
-  // ---- VR настройка оружия в руке (кнопка X на левом) ----
+  // ---- VR настройка положения в руке (сейчас выключена во вводе) ----
 
-  private updateVRTune(tune: TuneInput | null, dt: number): boolean {
+  private updateVRTune(tuneInput: TuneInput | null, dt: number): boolean {
     const slot = this.slot();
-    if (tune) {
+    if (tuneInput) {
       const t = this.tunes[slot];
-      t.rot.x += -tune.ly * VR_TUNE_ROT * dt;
-      t.rot.y += tune.lx * VR_TUNE_ROT * dt;
-      t.rot.z += tune.rx * VR_TUNE_ROT * dt;
-      t.pos.z += -tune.ry * VR_TUNE_POS * dt;
+      t.rot.x += -tuneInput.ly * VR_TUNE_ROT * dt;
+      t.rot.y += tuneInput.lx * VR_TUNE_ROT * dt;
+      t.rot.z += tuneInput.rx * VR_TUNE_ROT * dt;
+      t.pos.z += -tuneInput.ry * VR_TUNE_POS * dt;
       this.tuning = true;
       return true;
     }
     if (this.tuning) {
       this.tuning = false;
       this.saveTuning();
-      this.haptic("right", 0.6, 90);
+      this.haptic(this.heldHand, 0.6, 90);
       const v = this.tunes[slot];
       const f = (n: number) => n.toFixed(3);
       console.log(
@@ -797,7 +935,7 @@ export class CombatSystem {
     return false;
   }
 
-  private haptic(hand: "left" | "right", strength: number, ms: number): void {
+  private haptic(hand: Side, strength: number, ms: number): void {
     const pad = this.controller(hand)?.inputSource.gamepad as
       | { hapticActuators?: { pulse?: (v: number, ms: number) => void }[] }
       | undefined;

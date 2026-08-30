@@ -10,6 +10,9 @@ const LABELS: Record<Mode, string> = {
   bowFlat: "лук · плоский",
   bowVRRight: "лук · VR правая",
   bowVRLeft: "лук · VR левая",
+  shieldFlat: "щит · плоский",
+  shieldVRRight: "щит · VR правая",
+  shieldVRLeft: "щит · VR левая",
 };
 
 interface Row {

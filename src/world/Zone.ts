@@ -19,9 +19,10 @@ export interface Zone {
   mobs: Mob[];
   /** Высота земли в точке (аналитическая) — для AI мобов. */
   groundHeight: (x: number, z: number) => number;
-  /** Точки, где лежат меч и лук (над камнями). */
+  /** Точки, где лежат меч, лук и щит (над камнями). */
   swordHome: Vector3;
   bowHome: Vector3;
+  shieldHome: Vector3;
 }
 
 /**
@@ -66,6 +67,15 @@ export function buildZone(scene: Scene): Zone {
 
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
+  const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 1.0, -12);
 
-  return { ground: terrain.mesh, dummies, mobs, groundHeight: terrain.heightAt, swordHome, bowHome };
+  return {
+    ground: terrain.mesh,
+    dummies,
+    mobs,
+    groundHeight: terrain.heightAt,
+    swordHome,
+    bowHome,
+    shieldHome,
+  };
 }

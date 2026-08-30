@@ -24,6 +24,11 @@ export class XRInput implements InputSource {
   private right: WebXRInputSource | null = null;
   private snapArmed = true;
   private jumpArmed = true;
+  private panelArmed = true;
+  private confirmArmed = true;
+
+  /** Ставится извне: пока панель персонажа открыта, геймплейный ввод подавлен. */
+  uiOpen = false;
 
   private readonly addObs: Observer<WebXRInputSource> | null;
   private readonly removeObs: Observer<WebXRInputSource> | null;
@@ -51,6 +56,29 @@ export class XRInput implements InputSource {
     const rp = this.right?.inputSource.gamepad;
 
     // Настройка положения оружия на кнопку X временно отключена.
+
+    // --- Кнопка Y на левом: панель персонажа (работает всегда) ---
+    const panelBtn = pressed(lp, 5);
+    if (panelBtn && this.panelArmed) {
+      s.panelToggle = true;
+      this.panelArmed = false;
+    } else if (!panelBtn) {
+      this.panelArmed = true;
+    }
+
+    // --- Панель открыта: стики и курок уходят на неё, геймплей молчит ---
+    if (this.uiOpen) {
+      s.uiNavY = -dz(rp?.axes[3] ?? 0);
+      const conf = pressed(rp, 0);
+      if (conf && this.confirmArmed) {
+        s.uiConfirm = true;
+        this.confirmArmed = false;
+      } else if (!conf) {
+        this.confirmArmed = true;
+      }
+      return s;
+    }
+    this.confirmArmed = !pressed(rp, 0);
 
     if (lp) {
       s.moveX = dz(lp.axes[2] ?? 0);

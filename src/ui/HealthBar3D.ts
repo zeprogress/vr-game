@@ -9,7 +9,13 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { clamp01 } from "../shared/geometry";
 
-/** Полоска здоровья в мире: фон + заполнение, всегда лицом к камере. */
+/**
+ * Полоска здоровья в мире: фон + заполнение.
+ *
+ * `billboard: true` — поворот только вокруг вертикали (BILLBOARDMODE_Y):
+ * полоска всегда развёрнута к игроку, но остаётся параллельной горизонту
+ * и не заваливается, когда смотришь сверху или снизу.
+ */
 export class HealthBar3D {
   private readonly bg: Mesh;
   private readonly fill: Mesh;
@@ -31,7 +37,12 @@ export class HealthBar3D {
     this.bg.position.copyFrom(offset);
     this.bg.isPickable = false;
     this.bg.renderingGroupId = 1;
-    if (billboard) this.bg.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    if (billboard) {
+      // Только вокруг вертикали — полоска не заваливается вместе с обзором.
+      // preserveParentRotationForBillboard=false (по умолчанию) означает, что
+      // поворот родителя-моба игнорируется, и полоска смотрит строго на камеру.
+      this.bg.billboardMode = Mesh.BILLBOARDMODE_Y;
+    }
 
     this.fillMat = new StandardMaterial("hpFillMat", scene);
     this.fillMat.disableLighting = true;

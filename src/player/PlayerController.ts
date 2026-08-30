@@ -12,6 +12,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { PLAYER, PLAYER_HP } from "../shared/constants";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
+import type { Progression } from "./Progression";
 
 const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
 const STEP_HEIGHT = 0.35; // м, высоту ниже этого можно перешагнуть
@@ -52,6 +53,13 @@ export class PlayerController {
   hp: number = PLAYER_HP.max;
   private hurtTimer = 0; // с с последнего урона
 
+  get maxHp(): number {
+    return this.prog?.maxHp ?? PLAYER_HP.max;
+  }
+  private get speed(): number {
+    return this.prog?.moveSpeed ?? PLAYER.runSpeed;
+  }
+
   /** Сколько секунд прошло с последнего урона. */
   get sinceHurt(): number {
     return this.hurtTimer;
@@ -67,7 +75,10 @@ export class PlayerController {
   private xrHeadLZ = 0;
   private xrHeadTracked = false;
 
-  constructor(scene: Scene) {
+  constructor(
+    scene: Scene,
+    private readonly prog?: Progression,
+  ) {
     this.scene = scene;
 
     this.body = MeshBuilder.CreateBox("playerBody", { size: PLAYER.radius * 2 }, scene);
@@ -77,6 +88,7 @@ export class PlayerController {
 
     this.camera = new FreeCamera("player", this.body.position.clone(), scene);
     this.camera.minZ = 0.1;
+    this.hp = this.maxHp;
   }
 
   setInput(source: InputSource): void {
@@ -103,7 +115,7 @@ export class PlayerController {
     }
     this.hooks.hurt?.(this.hp, amount);
     if (this.hp <= 0) {
-      this.hp = PLAYER_HP.max;
+      this.hp = this.maxHp;
       this.body.position.copyFrom(this.spawn);
       this.placeOnGround();
       this.hooks.respawn?.();
@@ -183,7 +195,7 @@ export class PlayerController {
       mx /= len;
       mz /= len;
     }
-    const speed = PLAYER.runSpeed * dt;
+    const speed = this.speed * dt;
     const bx = pos.x;
     const bz = pos.z;
     this.moveAxis(mx * speed, 0);
@@ -244,8 +256,8 @@ export class PlayerController {
 
     // --- Реген здоровья после паузы без урона ---
     this.hurtTimer += dt;
-    if (this.hp > 0 && this.hp < PLAYER_HP.max && this.hurtTimer > PLAYER_HP.regenDelay) {
-      this.hp = Math.min(PLAYER_HP.max, this.hp + PLAYER_HP.regen * dt);
+    if (this.hp > 0 && this.hp < this.maxHp && this.hurtTimer > PLAYER_HP.regenDelay) {
+      this.hp = Math.min(this.maxHp, this.hp + PLAYER_HP.regen * dt);
       this.hooks.heal?.(this.hp);
     }
 

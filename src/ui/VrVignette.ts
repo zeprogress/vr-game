@@ -1,76 +1,95 @@
 import type { Scene } from "@babylonjs/core/scene";
-import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { Effect } from "@babylonjs/core/Materials/effect";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-/**
- * Красная виньетка по краям обзора при уроне (для VR). Сделана из рамки
- * плоскостей — надёжнее, чем текстурный градиент (DynamicTexture с плавной
- * альфой в этой сборке не отображается).
- */
+import { VIGNETTE } from "../shared/constants";
+
+const NAME = "damageVignette";
+
+// Экранный квад: вершинный шейдер игнорирует мировую матрицу и растягивает
+// плоскость 1x1 ровно на весь вьюпорт. Так виньетка одинаково ложится и в
+// узкий FOV монитора, и в широкий FOV шлема (и рисуется отдельно для каждого глаза).
+Effect.ShadersStore[`${NAME}VertexShader`] = `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+varying vec2 vUV;
+void main() {
+  vUV = uv;
+  gl_Position = vec4(position.x * 2.0, position.y * 2.0, -1.0, 1.0);
+}
+`;
+
+// Плавная радиальная маска: прозрачный центр, плотный красный к краям.
+// Альфа считается попиксельно — не зависит от текстур.
+Effect.ShadersStore[`${NAME}FragmentShader`] = `
+precision highp float;
+varying vec2 vUV;
+uniform vec3 tint;
+uniform float intensity;
+void main() {
+  vec2 d = (vUV - vec2(0.5)) * 2.0;
+  float r = length(d);
+  // Широкий чистый центр, плотность нарастает только к самым краям.
+  float edge = smoothstep(0.62, 1.35, r);
+  float a = pow(edge, 1.4) * intensity;
+  if (a < 0.003) discard;
+  gl_FragColor = vec4(tint, a);
+}
+`;
+
+/** Красная виньетка по краям обзора при уроне (VR). */
 export class VrVignette {
-  private readonly quads: Mesh[] = [];
-  private readonly mat: StandardMaterial;
+  private readonly quad: Mesh;
+  private readonly mat: ShaderMaterial;
   private amt = 0;
 
-  constructor(scene: Scene, camera: Node) {
-    this.mat = new StandardMaterial("vignetteMat", scene);
-    this.mat.diffuseColor = new Color3(0, 0, 0);
-    this.mat.emissiveColor = new Color3(0.9, 0.02, 0.02);
-    this.mat.disableLighting = true;
-    this.mat.specularColor = new Color3(0, 0, 0);
+  constructor(scene: Scene) {
+    this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
+      attributes: ["position", "uv"],
+      uniforms: ["tint", "intensity"],
+      needAlphaBlending: true,
+    });
+    this.mat.setColor3("tint", new Color3(0.95, 0.05, 0.05));
+    this.mat.setFloat("intensity", 0);
     this.mat.backFaceCulling = false;
-    this.mat.alpha = 0;
+    this.mat.alphaMode = Constants.ALPHA_COMBINE;
+    this.mat.alpha = 0.999; // включает альфа-блендинг
+    this.mat.disableDepthWrite = true;
 
-    const Z = 0.42; // плоскости на этом расстоянии перед камерой
-    // [ширина, высота, x, y] — рамка по краям поля зрения VR (~100° FOV)
-    const frame: [number, number, number, number][] = [
-      [1.5, 0.55, 0, 0.46], // верх
-      [1.5, 0.55, 0, -0.46], // низ
-      [0.55, 1.7, -0.55, 0], // лево
-      [0.55, 1.7, 0.55, 0], // право
-      // тонкий внутренний слой (мягче переход)
-      [1.5, 0.18, 0, 0.24],
-      [1.5, 0.18, 0, -0.24],
-      [0.18, 1.7, -0.34, 0],
-      [0.18, 1.7, 0.34, 0],
-    ];
-    for (let i = 0; i < frame.length; i++) {
-      const [w, h, x, y] = frame[i];
-      const q = MeshBuilder.CreatePlane(`vignette${i}`, { width: w, height: h }, scene);
-      q.material = this.mat;
-      q.parent = camera;
-      q.position.set(x, y, Z);
-      q.isPickable = false;
-      q.applyFog = false;
-      q.renderingGroupId = 1;
-      q.setEnabled(false);
-      this.quads.push(q);
-    }
+    // Ровно 1x1: вершинный шейдер рассчитывает на этот размер.
+    this.quad = MeshBuilder.CreatePlane(NAME, { width: 1, height: 1 }, scene);
+    this.quad.material = this.mat;
+    this.quad.isPickable = false;
+    this.quad.applyFog = false;
+    this.quad.alwaysSelectAsActiveMesh = true; // мировая матрица не важна, но и не отсекаем
+    this.quad.renderingGroupId = 3; // поверх всего
+    this.quad.setEnabled(false);
   }
 
   flash(damage: number): void {
-    this.amt = Math.min(0.9, Math.max(this.amt, 0.4 + damage / 55));
+    this.amt = Math.max(this.amt, Math.min(VIGNETTE.maxAlpha, 0.35 + damage / 45));
     this.apply();
   }
 
   tick(dt: number): void {
     if (this.amt <= 0) return;
-    this.amt = Math.max(0, this.amt - dt * 1.4);
+    this.amt = Math.max(0, this.amt - dt * VIGNETTE.fadeSpeed);
     this.apply();
   }
 
   private apply(): void {
-    this.mat.alpha = this.amt;
-    const on = this.amt > 0.01;
-    for (const q of this.quads) q.setEnabled(on);
+    this.mat.setFloat("intensity", this.amt);
+    this.quad.setEnabled(this.amt > 0.005);
   }
 
   dispose(): void {
-    for (const q of this.quads) q.dispose();
+    this.quad.dispose();
     this.mat.dispose();
   }
 }

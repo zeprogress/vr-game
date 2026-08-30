@@ -237,6 +237,46 @@ export class Sfx {
     n.stop(t + 0.32);
   }
 
+  /** Лязг блока. strength: 1 — щит (звонко), <1 — меч (глуше). */
+  block(strength = 1): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const base = 320 + strength * 380;
+    for (const mult of [1, 1.61, 2.37]) {
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(base * mult, t);
+      o.frequency.exponentialRampToValueAtTime(base * mult * 0.82, t + 0.22);
+      const g = this.env((0.22 * strength) / mult, 0.002, 0.26, t);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.3);
+    }
+    const n = this.noise();
+    const bp = this.filter("bandpass", 2600, 1.2);
+    const ng = this.env(0.26 * strength, 0.001, 0.09, t);
+    n.connect(bp).connect(ng);
+    n.start(t);
+    n.stop(t + 0.12);
+  }
+
+  /** Повышение уровня: короткий восходящий аккорд. */
+  levelUp(): void {
+    if (!this.ready()) return;
+    const t0 = this.t;
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((f, i) => {
+      const t = t0 + i * 0.09;
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, t);
+      const g = this.env(0.22, 0.01, 0.35, t);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.4);
+    });
+  }
+
   playerHurt(): void {
     if (!this.ready()) return;
     const t = this.t;

@@ -10,32 +10,120 @@ import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-type Side = "left" | "right";
+export type Side = "left" | "right";
 
-/** Локальная поправка ориентации кисти относительно grip-узла контроллера. */
-const HAND_ROT = new Vector3(Math.PI / 2, Math.PI / 2, Math.PI / 2);
+const SAVE_KEY = "handTune";
+
+/** Ориентация кисти относительно grip-узла контроллера — отдельно для каждой руки. */
+const DEFAULT_ROT: Record<Side, [number, number, number]> = {
+  left: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
+  right: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
+};
 
 interface Hand {
   side: Side;
   root: TransformNode;
-  knuckles: TransformNode[]; // 4 пальца
+  knuckles: TransformNode[];
   thumb: TransformNode;
   controller: WebXRInputSource;
-  curl: number; // сглаженное 0..1
+  curl: number;
 }
 
-/** Кисти на контроллерах: ладонь + пальцы, сжимаются в кулак по кнопке grip. */
+/**
+ * Кисти на контроллерах: ладонь + пальцы, сжимаются в кулак по кнопке grip.
+ * Ориентация настраивается для каждой руки отдельно и сохраняется:
+ *   game.hands.rotate("left", 0, 1.57, 0)   // докрутить
+ *   game.hands.set("right", 1.57, 0, 0)     // задать
+ *   game.hands.print()                      // посмотреть текущие
+ */
 export class Hands {
   private readonly hands: Hand[] = [];
   private addObs: Observer<WebXRInputSource> | null = null;
   private removeObs: Observer<WebXRInputSource> | null = null;
   private readonly skin: StandardMaterial;
+  private readonly rot: Record<Side, Vector3>;
 
   constructor(private readonly scene: Scene) {
     this.skin = new StandardMaterial("handSkin", scene);
     this.skin.diffuseColor = new Color3(0.82, 0.62, 0.5);
+    this.skin.emissiveColor = new Color3(0.18, 0.12, 0.1);
     this.skin.specularColor = new Color3(0.12, 0.1, 0.1);
+
+    this.rot = {
+      left: Vector3.FromArray(DEFAULT_ROT.left),
+      right: Vector3.FromArray(DEFAULT_ROT.right),
+    };
+    this.load();
   }
+
+  // ---- настройка ориентации ----
+
+  /** Задать поворот кисти (радианы). */
+  set(side: Side, x: number, y: number, z: number): void {
+    this.rot[side].set(x, y, z);
+    this.applyRotation(side);
+    this.save();
+    this.print();
+  }
+
+  /** Докрутить кисть на дельту (радианы). */
+  rotate(side: Side, dx: number, dy: number, dz: number): void {
+    const r = this.rot[side];
+    this.set(side, r.x + dx, r.y + dy, r.z + dz);
+  }
+
+  /** Повернуть на 90° по оси: "x" | "y" | "z". */
+  turn(side: Side, axis: "x" | "y" | "z", quarters = 1): void {
+    const d = (Math.PI / 2) * quarters;
+    this.rotate(side, axis === "x" ? d : 0, axis === "y" ? d : 0, axis === "z" ? d : 0);
+  }
+
+  resetRotation(side?: Side): void {
+    for (const s of side ? [side] : (["left", "right"] as Side[])) {
+      this.rot[s].copyFromFloats(...DEFAULT_ROT[s]);
+      this.applyRotation(s);
+    }
+    this.save();
+    this.print();
+  }
+
+  print(): void {
+    const f = (v: Vector3) => `${v.x.toFixed(3)}, ${v.y.toFixed(3)}, ${v.z.toFixed(3)}`;
+    console.log(`hands: left(${f(this.rot.left)})  right(${f(this.rot.right)})`);
+  }
+
+  private applyRotation(side: Side): void {
+    const h = this.hands.find((x) => x.side === side);
+    h?.root.rotation.copyFrom(this.rot[side]);
+  }
+
+  private save(): void {
+    try {
+      localStorage.setItem(
+        SAVE_KEY,
+        JSON.stringify({
+          left: this.rot.left.asArray(),
+          right: this.rot.right.asArray(),
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private load(): void {
+    try {
+      const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? "null");
+      for (const s of ["left", "right"] as Side[]) {
+        const a = d?.[s];
+        if (Array.isArray(a) && a.length === 3) this.rot[s].set(a[0], a[1], a[2]);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // ---- жизненный цикл ----
 
   attach(xr: WebXRDefaultExperience): void {
     for (const c of xr.input.controllers) this.onController(c);
@@ -53,15 +141,19 @@ export class Hands {
   /** Каждый кадр: подгоняем сжатие пальцев под аналоговое значение grip. */
   update(dt: number): void {
     for (const h of this.hands) {
-      const pad = h.controller.inputSource.gamepad;
-      const btn = pad?.buttons[1];
-      const target = btn ? (btn.value || (btn.pressed ? 1 : 0)) : 0;
+      const btn = h.controller.inputSource.gamepad?.buttons[1];
+      const target = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
       const c = h.curl;
       for (const k of h.knuckles) k.rotation.x = -c * 1.6;
       h.thumb.rotation.y = (h.side === "right" ? 1 : -1) * c * 1.1;
       h.thumb.rotation.x = -c * 0.5;
     }
+  }
+
+  /** Узел кисти — к нему цепляются предметы и панель. */
+  nodeFor(side: Side): TransformNode | null {
+    return this.hands.find((h) => h.side === side)?.root ?? null;
   }
 
   private onController(c: WebXRInputSource): void {
@@ -86,9 +178,13 @@ export class Hands {
 
     const root = new TransformNode(`hand_${side}`, this.scene);
     root.parent = anchor;
-    root.rotation.copyFrom(HAND_ROT);
+    root.rotation.copyFrom(this.rot[side]);
 
-    const palm = MeshBuilder.CreateBox(`palm_${side}`, { width: 0.085, height: 0.03, depth: 0.095 }, this.scene);
+    const palm = MeshBuilder.CreateBox(
+      `palm_${side}`,
+      { width: 0.085, height: 0.032, depth: 0.095 },
+      this.scene,
+    );
     palm.material = this.skin;
     palm.parent = root;
     palm.isPickable = false;
@@ -100,7 +196,11 @@ export class Hands {
       k.parent = palm;
       k.position.set(spread[i], 0, -0.05);
       const len = 0.055 - i * 0.004;
-      const finger = MeshBuilder.CreateBox(`finger_${side}_${i}`, { width: 0.016, height: 0.016, depth: len }, this.scene);
+      const finger = MeshBuilder.CreateBox(
+        `finger_${side}_${i}`,
+        { width: 0.016, height: 0.016, depth: len },
+        this.scene,
+      );
       finger.material = this.skin;
       finger.parent = k;
       finger.position.z = -len / 2;
@@ -111,7 +211,11 @@ export class Hands {
     const thumb = new TransformNode(`thumbK_${side}`, this.scene);
     thumb.parent = palm;
     thumb.position.set(0.045 * mirror, 0, 0.015);
-    const thumbMesh = MeshBuilder.CreateBox(`thumb_${side}`, { width: 0.018, height: 0.018, depth: 0.045 }, this.scene);
+    const thumbMesh = MeshBuilder.CreateBox(
+      `thumb_${side}`,
+      { width: 0.018, height: 0.018, depth: 0.045 },
+      this.scene,
+    );
     thumbMesh.material = this.skin;
     thumbMesh.parent = thumb;
     thumbMesh.position.set(0.01 * mirror, 0, -0.022);

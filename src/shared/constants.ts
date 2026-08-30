@@ -110,3 +110,36 @@ export const THROW = {
   flatMaxSpeed: 24, // м/с при полном замахе
 } as const;
 
+export const PROGRESSION = {
+  maxLevel: 100,
+  /** Опыт для перехода 1->2. Дальше каждый раз вдвое больше. */
+  baseXp: 1,
+  xpPerMob: 1,
+  statPointsPerLevel: 1,
+  startStat: 1, // сила/ловкость/интеллект на 1 уровне
+  /** Прибавки за каждое очко характеристики. */
+  hpPerStr: 10,
+  swordDamagePerStr: 0.35,
+  moveSpeedPerAgi: 0.12, // м/с
+  arrowSpeedPerAgi: 1.6, // м/с к скорости стрелы
+} as const;
+
+export const SHIELD = {
+  equipReach: 2.6,
+  radius: 0.32, // м, радиус диска щита
+  /** Насколько снижается урон при удачном блоке (0 — полностью). */
+  blockedDamage: 0,
+  /** Скользящий блок: угол больше этого — защита не сработала (рад). */
+  blockCone: 1.15, // ~66° от нормали щита
+  /** Мечом блокировать сложнее: узкий конус и урон снижается не полностью. */
+  swordBlockCone: 0.7,
+  swordBlockedFraction: 0.25, // 25% урона проходит
+  /** Луч от игрока до моба должен проходить не дальше этого от центра щита. */
+  guardDistance: 1.0, // м впереди игрока, где щит считается «в защите»
+} as const;
+
+export const VIGNETTE = {
+  fadeSpeed: 1.6, // 1/с — скорость затухания
+  maxAlpha: 0.8,
+} as const;
+

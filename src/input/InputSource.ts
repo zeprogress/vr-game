@@ -20,6 +20,12 @@ export interface InputState {
    * оси стиков для правки положения меча в руке. Локомоция в это время подавлена.
    */
   tune: TuneInput | null;
+  /** Кнопка Y на левом контроллере — открыть/закрыть панель персонажа (фронт). */
+  panelToggle: boolean;
+  /** Пока панель открыта: правый стик по вертикали (-1..1). */
+  uiNavY: number;
+  /** Пока панель открыта: курок нажат в этом кадре (фронт). */
+  uiConfirm: boolean;
 }
 
 /** Сырые оси стиков в режиме настройки меча (-1..1). */
@@ -40,6 +46,9 @@ export function emptyInput(): InputState {
     interact: false,
     jump: false,
     tune: null,
+    panelToggle: false,
+    uiNavY: 0,
+    uiConfirm: false,
   };
 }
 

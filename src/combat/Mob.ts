@@ -14,7 +14,8 @@ import type { Hittable } from "./Hittable";
 export interface MobContext {
   playerPos: Vector3;
   groundHeight: (x: number, z: number) => number;
-  hurtPlayer: (amount: number, dir: Vector3) => void;
+  /** `from` — откуда прилетел удар (нужно для проверки блока щитом/мечом). */
+  hurtPlayer: (amount: number, dir: Vector3, from: Vector3) => void;
   onHop: () => void;
   onHurt: (pos: Vector3) => void;
   onDie: (pos: Vector3) => void;
@@ -183,7 +184,7 @@ export class Mob implements Hittable {
     // --- атака в упор ---
     if (chasing && dist < MOB.attackRange && this.attackCd <= 0) {
       this.attackCd = MOB.attackCooldown;
-      ctx.hurtPlayer(MOB.attackDamage, dir.clone());
+      ctx.hurtPlayer(MOB.attackDamage, dir.clone(), this.root.getAbsolutePosition().clone());
       this.vel.addInPlace(dir.scale(-2)); // отскок назад
     }
   }
