@@ -59,6 +59,11 @@ export interface Loadout {
     /** Правый: прыжок. Он же «сменить шаг», когда открыта панель настроек. */
     jump: number;
   };
+  /** Мир. */
+  world: {
+    /** Час суток 0..24: задаёт свет, краски неба и место солнца. */
+    hour: number;
+  };
 }
 
 export const LOADOUT_DEFAULTS: Loadout = {
@@ -89,6 +94,9 @@ export const LOADOUT_DEFAULTS: Loadout = {
     panelSpend: 5, // B на правом
     jump: 4, // A на правом
   },
+  world: {
+    hour: 17.6, // закат: солнце чуть над горизонтом, золотой час
+  },
 };
 
 /**
@@ -105,7 +113,7 @@ export const LOADOUT: Loadout =
 // ---- цели настройки ----
 
 /** Ключ настраиваемой сущности: кисть или предмет в конкретном слоте. */
-export type TargetKey = `hand:${HandSide}` | `item:${ItemKind}:${SlotKey}`;
+export type TargetKey = `hand:${HandSide}` | `item:${ItemKind}:${SlotKey}` | "world:time";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -116,12 +124,18 @@ export function itemTarget(kind: ItemKind, slot: SlotKey): TargetKey {
 
 function readTarget(src: Loadout, key: TargetKey): unknown {
   const parts = key.split(":");
+  if (parts[0] === "world") return src.world;
   if (parts[0] === "hand") return src.hands[parts[1] as HandSide];
   return src.items[parts[1] as ItemKind][parts[2] as SlotKey];
 }
 
 function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   const parts = key.split(":");
+  if (parts[0] === "world") {
+    const w = value as Partial<Loadout["world"]>;
+    if (typeof w?.hour === "number" && Number.isFinite(w.hour)) dst.world.hour = w.hour;
+    return;
+  }
   if (parts[0] === "hand") {
     const a = value as number[];
     if (Array.isArray(a) && a.length === 3) dst.hands[parts[1] as HandSide] = [a[0], a[1], a[2]];
@@ -222,6 +236,7 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
         hands: LOADOUT.hands,
         items: LOADOUT.items,
         buttons: LOADOUT.buttons,
+        world: LOADOUT.world,
       }),
     });
     if (res.ok) {

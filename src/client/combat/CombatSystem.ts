@@ -14,7 +14,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
+import { BELT, BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import { SWORD_TAKE_REACH, SWORDS, type SwordTier } from "#shared/items";
 import { LOADOUT, type Placement } from "../config/loadout";
@@ -25,6 +25,7 @@ import type { Progression } from "../player/Progression";
 import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword, tintSword } from "../items/Sword";
+import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
 import { createBow, type BowParts } from "../items/Bow";
 import { createArrowProto, Arrow } from "./Arrow";
@@ -145,6 +146,22 @@ export class CombatSystem {
   private turnCd = 0;
   /** Узел на спине игрока: сюда крепятся убранные за спину предметы. */
   private backAnchor!: TransformNode;
+  /** Пояс: узел на бедре, к нему привязана бутылочка зелья. */
+  private beltAnchor!: TransformNode;
+  private potion!: PotionBottle;
+  /** В какой руке сейчас бутылочка (null — висит на поясе). */
+  private potionHand: Side | null = null;
+  private potionCount = 0;
+  private drinkCd = 0;
+  /** Сколько зелий в сумке. Задаёт Game из инвентаря. */
+  setPotionCount(n: number): void {
+    this.potionCount = n;
+    this.potion.setCount(n);
+    if (n <= 0) this.potionHand = null;
+    this.potion.setEnabled(n > 0 && this.player.inVR);
+  }
+  /** Игрок поднёс бутылочку ко рту. Game шлёт заявку серверу. */
+  onDrinkPotion: (() => void) | null = null;
   private readonly fistPrevW: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
 
   constructor(
@@ -170,6 +187,11 @@ export class CombatSystem {
       shield: this.makeItem("shield", shield, shieldHome),
     };
     this.backAnchor = new TransformNode("backAnchor", scene);
+    this.beltAnchor = new TransformNode("beltAnchor", scene);
+    this.potion = createPotion(scene);
+    this.potion.root.parent = this.beltAnchor;
+    this.potion.root.position.set(BELT.right, 0, BELT.forward);
+    this.potion.setEnabled(false);
 
     const stringPts = [this.bowParts.topTip, this.bowParts.nockRest, this.bowParts.bottomTip];
     this.bowString = MeshBuilder.CreateLines("bowString", { points: stringPts, updatable: true }, scene);
@@ -292,6 +314,65 @@ export class CombatSystem {
     return null;
   }
 
+  /** Мировая точка бутылочки — на поясе или в руке. */
+  private potionPos(): Vector3 {
+    return this.potion.root.getAbsolutePosition();
+  }
+
+  /** Свободная рука рядом с бутылочкой — можно взять. */
+  private handAtPotion(side: Side): boolean {
+    if (this.potionCount <= 0 || this.potionHand) return false;
+    const c = this.controller(side);
+    const node = c?.grip ?? c?.pointer;
+    if (!node) return false;
+    return Vector3.Distance(node.getAbsolutePosition(), this.potionPos()) < BELT.grabDist;
+  }
+
+  /**
+   * Бутылочка в руке едет за кистью; поднёс ко рту — глоток.
+   * Пустая сумка — бутылочки нет вовсе.
+   */
+  private updatePotion(dt: number): void {
+    if (this.drinkCd > 0) this.drinkCd -= dt;
+
+    const inVR = this.player.inVR;
+    this.potion.setEnabled(this.potionCount > 0 && inVR);
+    if (!inVR || this.potionCount <= 0) return;
+
+    const hand = this.potionHand;
+    if (!hand) {
+      // Висит на поясе.
+      if (this.potion.root.parent !== this.beltAnchor) {
+        this.potion.root.parent = this.beltAnchor;
+        this.potion.root.rotation.setAll(0);
+      }
+      this.potion.root.position.set(BELT.right, 0, BELT.forward);
+      return;
+    }
+
+    const c = this.controller(hand);
+    const node = c?.grip ?? c?.pointer;
+    if (!node) {
+      this.potionHand = null;
+      return;
+    }
+    if (this.potion.root.parent !== node) {
+      this.potion.root.parent = node;
+      this.potion.root.position.set(0, 0.04, 0.02);
+      this.potion.root.rotation.setAll(0);
+    }
+
+    // Поднёс ко рту — пьём (глоток за раз).
+    if (this.drinkCd <= 0) {
+      const d = Vector3.Distance(this.potionPos(), this.player.eyePosition);
+      if (d < BELT.drinkDist) {
+        this.drinkCd = BELT.drinkCooldown;
+        this.haptic(hand, 0.6, 90);
+        this.onDrinkPotion?.();
+      }
+    }
+  }
+
   /** Рука заведена за плечо (в локальных осях головы — позади, на уровне плеча). */
   private handAtShoulder(side: Side): boolean {
     if (!this.player.inVR) return false;
@@ -371,6 +452,10 @@ export class CombatSystem {
     this.backAnchor.position.set(head.x, head.y - HOLSTER.backDrop, head.z);
     this.backAnchor.rotation.set(0, Math.atan2(f.x, f.z), 0);
     this.backAnchor.computeWorldMatrix(true);
+
+    this.beltAnchor.position.set(head.x, head.y - BELT.drop, head.z);
+    this.beltAnchor.rotation.copyFrom(this.backAnchor.rotation);
+    this.beltAnchor.computeWorldMatrix(true);
   }
 
   private anchorStowedItems(): void {
@@ -403,6 +488,8 @@ export class CombatSystem {
     this.computeHead();
     this.turnCd = Math.max(0, this.turnCd - dt);
     if (inp.lookYaw !== 0) this.turnCd = 0.15;
+
+    this.updatePotion(dt);
 
     // Q (плоский режим) — снять щит: летит так же, как оружие.
     if (inp.dropItem && this.shieldHand) {
@@ -506,6 +593,17 @@ export class CombatSystem {
       const down = this.gripDown(side);
       const was = this.gripPrev[side];
       this.gripPrev[side] = down;
+
+      // Бутылочка с пояса: берётся свободной рукой, отпускается обратно на пояс.
+      if (this.potionHand === side) {
+        if (!down && was) this.potionHand = null;
+        continue;
+      }
+      if (down && !was && this.handAtPotion(side) && !this.inHand(side)) {
+        this.potionHand = side;
+        this.haptic(side, 0.35, 45);
+        continue;
+      }
 
       const atShoulder = this.handAtShoulder(side);
       const item = this.inHand(side);

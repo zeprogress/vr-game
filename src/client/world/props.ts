@@ -12,6 +12,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
+import { GrassWindPlugin, WIND } from "./GrassWind";
 
 /** Низкополигональные деревья, расставленные по рельефу (инстансы одного меша). */
 export function scatterTrees(scene: Scene, terrain: Terrain): void {
@@ -54,8 +55,11 @@ export function scatterTrees(scene: Scene, terrain: Terrain): void {
   }
 }
 
-/** Пучки травы вокруг спавна — тысячи thin-инстансов, один драв-колл. */
-export function scatterGrass(scene: Scene, terrain: Terrain): void {
+/**
+ * Пучки травы вокруг спавна — тысячи thin-инстансов, один драв-колл.
+ * Возвращает функцию, которую надо звать каждый кадр: она двигает ветер.
+ */
+export function scatterGrass(scene: Scene, terrain: Terrain): (dt: number) => void {
   const mat = new StandardMaterial("grassBladeMat", scene);
   const bladeTex = grassBladeTexture(scene);
   bladeTex.vScale = -1; // текстура рисуется «вниз головой» — переворачиваем
@@ -70,7 +74,7 @@ export function scatterGrass(scene: Scene, terrain: Terrain): void {
 
   // Пучок из трёх скрещённых квадов с текстурой-травинками; начало у основания.
   const W = 0.5;
-  const H = 0.38;
+  const H = 0.46; // повыше — тонкие травинки читаются лучше
   const parts = [0, 1, 2].map((k) => {
     const p = MeshBuilder.CreatePlane(`g${k}`, { width: W, height: H }, scene);
     p.rotation.y = (k * Math.PI) / 3;
@@ -80,13 +84,16 @@ export function scatterGrass(scene: Scene, terrain: Terrain): void {
     return p;
   });
   const tuft = Mesh.MergeMeshes(parts, true, true, undefined, false, false);
-  if (!tuft) return;
+  if (!tuft) return () => {};
   tuft.name = "grassBlade";
   tuft.material = mat;
   tuft.isPickable = false;
 
+  const wind = new GrassWindPlugin(mat);
+
   const R = WORLD.grassRadius;
   const matrices: Matrix[] = [];
+  const phases: number[] = [];
   for (let i = 0; i < WORLD.grassCount; i++) {
     const ang = Math.random() * Math.PI * 2;
     const r = Math.sqrt(Math.random()) * R;
@@ -102,8 +109,15 @@ export function scatterGrass(scene: Scene, terrain: Terrain): void {
         new Vector3(x, y, z),
       ),
     );
+    // Фаза от места: соседние пучки качаются похоже, дальние — вразнобой.
+    phases.push((x + z) * 0.35 + Math.random() * 0.8);
   }
   tuft.thinInstanceAdd(matrices);
+  tuft.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
+
+  return (dt: number) => {
+    wind.time += dt * WIND.speed;
+  };
 }
 
 function quatY(rad: number): Quaternion {
@@ -116,10 +130,10 @@ function grassBladeTexture(scene: Scene): DynamicTexture {
   const tex = new DynamicTexture("grassBladeTex", { width: S, height: S }, scene, false);
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
-  const blades = 5;
+  const blades = 7; // больше и тоньше, чем было
   for (let i = 0; i < blades; i++) {
     const bx = (i + 0.5 + (Math.random() - 0.5) * 0.5) * (S / blades);
-    const w = S / blades / 2.6;
+    const w = S / blades / 4.5; // втрое тоньше прежнего
     const green = 120 + Math.floor(Math.random() * 70);
     ctx.fillStyle = `rgb(${green - 60}, ${green}, ${green - 70})`;
     ctx.beginPath();

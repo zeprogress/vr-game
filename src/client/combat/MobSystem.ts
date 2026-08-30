@@ -15,6 +15,19 @@ import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
 /**
+ * Плевок летит на клиенте по собственной баллистике и мягко подтягивается
+ * к серверной позиции. Иначе он двигался бы рывками — патчи приходят 20 раз
+ * в секунду, а кадров в 3-4 раза больше.
+ */
+interface BallView {
+  mesh: Mesh;
+  pos: Vector3;
+  vel: Vector3;
+  /** Последняя скорость, пришедшая с сервера — чтобы не сбрасывать свою гравитацию каждый кадр. */
+  srvVy: number;
+}
+
+/**
  * Мобы, куклы и плевки — ВИД поверх состояния сервера (этап 6).
  * Держит `targets` (общий массив для CombatSystem) в актуальном виде.
  */
@@ -22,7 +35,7 @@ export class NetMobs {
   private room: Room<ZoneState> | null = null;
   private readonly mobs = new Map<string, Mob>();
   private readonly dummies = new Map<string, Dummy>();
-  private readonly balls = new Map<string, Mesh>();
+  private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh;
 
   constructor(
@@ -95,17 +108,39 @@ export class NetMobs {
 
     // Плевки: множество появляется/исчезает — синхронизируем меши.
     room.state.balls.forEach((s, id) => {
-      let m = this.balls.get(id);
-      if (!m) {
-        m = this.ballProto.clone(`spitBall_${id}`);
-        m.setEnabled(true);
-        this.balls.set(id, m);
+      let b = this.balls.get(id);
+      if (!b) {
+        const mesh = this.ballProto.clone(`spitBall_${id}`);
+        mesh.setEnabled(true);
+        b = {
+          mesh,
+          pos: new Vector3(s.x, s.y, s.z),
+          vel: new Vector3(s.vx, s.vy, s.vz),
+          srvVy: s.vy,
+        };
+        this.balls.set(id, b);
       }
-      m.position.set(s.x, s.y, s.z);
+
+      // Пришёл новый патч — берём скорость сервера как есть.
+      if (s.vy !== b.srvVy) {
+        b.vel.set(s.vx, s.vy, s.vz);
+        b.srvVy = s.vy;
+      }
+      // Между патчами летим сами с той же гравитацией, что на сервере.
+      b.vel.y -= SPITTER.ballGravity * dt;
+      b.pos.addInPlaceFromFloats(b.vel.x * dt, b.vel.y * dt, b.vel.z * dt);
+
+      // И мягко сходимся с серверной позицией, чтобы не расходиться.
+      const k = 1 - Math.exp(-dt * 8);
+      b.pos.x += (s.x - b.pos.x) * k;
+      b.pos.y += (s.y - b.pos.y) * k;
+      b.pos.z += (s.z - b.pos.z) * k;
+
+      b.mesh.position.copyFrom(b.pos);
     });
-    for (const [id, m] of this.balls) {
+    for (const [id, b] of this.balls) {
       if (!room.state.balls.has(id)) {
-        m.dispose();
+        b.mesh.dispose();
         this.balls.delete(id);
       }
     }
@@ -120,7 +155,7 @@ export class NetMobs {
       this.removeTarget(d);
       d.dispose();
     }
-    for (const b of this.balls.values()) b.dispose();
+    for (const b of this.balls.values()) b.mesh.dispose();
     this.mobs.clear();
     this.dummies.clear();
     this.balls.clear();

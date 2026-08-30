@@ -87,9 +87,10 @@ export class Mob implements Hittable {
     this.mat.diffuseColor = new Color3(...cfg.tint);
     this.mat.emissiveColor = new Color3(cfg.tint[0] * 0.28, cfg.tint[1] * 0.2, cfg.tint[2] * 0.32);
     this.mat.specularColor = new Color3(0.4, 0.3, 0.4);
-    // Полупрозрачное тело: видно, что внутри слизня, и он не спорит с травой.
+    // Полупрозрачное тело одним слоем: изнанку сферы не рисуем, иначе
+    // передняя и задняя половины смешиваются и получается «слоёный пирог».
     this.mat.alpha = cfg.alpha;
-    this.mat.backFaceCulling = false;
+    this.mat.backFaceCulling = true;
 
     this.body = MeshBuilder.CreateSphere("mobBody", { diameter: MOB.bodyRadius * 2, segments: 8 }, scene);
     this.body.material = this.mat;
@@ -108,7 +109,7 @@ export class Mob implements Hittable {
       const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.17, segments: 6 }, scene);
       eye.material = eyeMat;
       eye.parent = this.head;
-      eye.position.set(dx, cfg.ranged ? 0.05 : 0.15, MOB.bodyRadius * 0.92);
+      eye.position.set(dx, cfg.ranged ? 0.05 : 0.15, MOB.bodyRadius * 0.99);
       eye.isPickable = false;
     }
 

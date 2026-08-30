@@ -1,0 +1,130 @@
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+
+/** Как выглядит мир в конкретный час. */
+export interface DayState {
+  /** Направление лучей (куда светит), единичное. */
+  sunDir: Vector3;
+  /** Куда поставить диск солнца — противоположно лучам. */
+  sunPos: Vector3;
+  sunColor: Color3;
+  sunIntensity: number;
+  ambientColor: Color3;
+  ambientIntensity: number;
+  /** Цвета градиента неба, 0..255. */
+  zenith: [number, number, number];
+  horizon: [number, number, number];
+  fog: Color3;
+  /** Цвет самого диска и гало. */
+  disc: Color3;
+}
+
+interface Palette {
+  sun: [number, number, number];
+  sunI: number;
+  amb: [number, number, number];
+  ambI: number;
+  zenith: [number, number, number];
+  horizon: [number, number, number];
+  fog: [number, number, number];
+  disc: [number, number, number];
+}
+
+const DAY: Palette = {
+  sun: [1, 0.96, 0.86],
+  sunI: 1.1,
+  amb: [0.9, 0.95, 1],
+  ambI: 0.55,
+  zenith: [82, 132, 205],
+  horizon: [206, 226, 240],
+  fog: [0.78, 0.85, 0.92],
+  disc: [1, 0.98, 0.9],
+};
+
+/** Золотой (он же малиновый) час: низкое тёплое солнце. */
+const DUSK: Palette = {
+  sun: [1, 0.6, 0.32],
+  sunI: 1.05,
+  amb: [0.82, 0.62, 0.66],
+  ambI: 0.45,
+  zenith: [70, 62, 132],
+  horizon: [247, 140, 96],
+  fog: [0.88, 0.62, 0.55],
+  disc: [1, 0.72, 0.4],
+};
+
+const NIGHT: Palette = {
+  sun: [0.5, 0.6, 0.9],
+  sunI: 0.2,
+  amb: [0.38, 0.45, 0.66],
+  ambI: 0.24,
+  zenith: [10, 14, 36],
+  horizon: [36, 44, 76],
+  fog: [0.11, 0.14, 0.24],
+  disc: [0.85, 0.9, 1],
+};
+
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+function mix3(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+  c: readonly [number, number, number],
+  wa: number,
+  wb: number,
+  wc: number,
+): [number, number, number] {
+  return [
+    a[0] * wa + b[0] * wb + c[0] * wc,
+    a[1] * wa + b[1] * wb + c[1] * wc,
+    a[2] * wa + b[2] * wb + c[2] * wc,
+  ];
+}
+
+/**
+ * Освещение и краски неба на заданный час (0..24).
+ *
+ * Солнце ходит по дуге: 6 — восход на востоке, 12 — зенит, 18 — закат на
+ * западе, 0 — полночь. Между днём, закатом и ночью краски смешиваются
+ * плавно, чтобы не было щелчка при переходе.
+ */
+export function dayState(hour: number): DayState {
+  const h = ((hour % 24) + 24) % 24;
+  const a = ((h - 6) / 12) * Math.PI;
+
+  // Диск солнца: восток -> зенит -> запад, с лёгким наклоном по Z,
+  // чтобы тени не ложились строго вдоль осей мира.
+  const sunPos = new Vector3(Math.cos(a), Math.sin(a), -0.35).normalize();
+  const sunDir = sunPos.scale(-1);
+
+  const elev = sunPos.y;
+  const day = clamp01((elev - 0.12) / 0.33);
+  const night = clamp01((-elev - 0.04) / 0.22);
+  const dusk = clamp01(1 - day - night);
+  const total = day + night + dusk || 1;
+  const wd = day / total;
+  const wn = night / total;
+  const wk = dusk / total;
+
+  const sun = mix3(DAY.sun, NIGHT.sun, DUSK.sun, wd, wn, wk);
+  const amb = mix3(DAY.amb, NIGHT.amb, DUSK.amb, wd, wn, wk);
+  const fog = mix3(DAY.fog, NIGHT.fog, DUSK.fog, wd, wn, wk);
+  const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
+  const zenith = mix3(DAY.zenith, NIGHT.zenith, DUSK.zenith, wd, wn, wk);
+  const horizon = mix3(DAY.horizon, NIGHT.horizon, DUSK.horizon, wd, wn, wk);
+
+  return {
+    sunDir,
+    sunPos,
+    sunColor: new Color3(sun[0], sun[1], sun[2]),
+    sunIntensity: DAY.sunI * wd + NIGHT.sunI * wn + DUSK.sunI * wk,
+    ambientColor: new Color3(amb[0], amb[1], amb[2]),
+    ambientIntensity: DAY.ambI * wd + NIGHT.ambI * wn + DUSK.ambI * wk,
+    zenith: [Math.round(zenith[0]), Math.round(zenith[1]), Math.round(zenith[2])],
+    horizon: [Math.round(horizon[0]), Math.round(horizon[1]), Math.round(horizon[2])],
+    fog: new Color3(fog[0], fog[1], fog[2]),
+    disc: new Color3(disc[0], disc[1], disc[2]),
+  };
+}

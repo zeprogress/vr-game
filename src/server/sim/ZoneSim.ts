@@ -7,7 +7,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
-import { BAG, SWORD_ITEM, rollLoot, type ItemId, type SwordTier } from "#shared/items";
+import { BAG, ITEMS, SWORD_ITEM, rollLoot, type ItemId, type SwordTier } from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
 
@@ -270,8 +270,9 @@ class Drop {
     readonly z: number,
   ) {}
 
-  /** true — пора убрать. */
+  /** true — пора убрать. Оружие не тает: лежит до остановки сервера. */
   tick(dt: number): boolean {
+    if (ITEMS[this.item].sword) return false;
     this.life += dt;
     return this.life > BAG.dropLife;
   }

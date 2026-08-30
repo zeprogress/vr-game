@@ -56,6 +56,7 @@ export class Game {
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
   private readonly loot: LootDrops;
+  private readonly zoneTick: (dt: number) => void;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
   private readonly sfx = new Sfx();
@@ -92,6 +93,7 @@ export class Game {
 
     const zone = buildZone(this.scene);
     this.ground = zone.ground;
+    this.zoneTick = zone.tick;
 
     this.player = new PlayerController(this.scene, this.progression);
     this.scene.activeCamera = this.player.camera;
@@ -116,6 +118,17 @@ export class Game {
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
     this.hud.bindInventory(this.inventory);
+
+    // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
+    const syncPotion = (): void => {
+      this.combat.setPotionCount(this.potionCount());
+    };
+    this.inventory.onChange(syncPotion);
+    syncPotion();
+    this.combat.onDrinkPotion = () => {
+      const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
+      if (slot >= 0) this.inventory.use(slot);
+    };
 
     // Офлайн уровень считает Progression, онлайн — сервер шлёт MSG.levelUp.
     this.progression.onLevelUp = (lvl) => {
@@ -156,6 +169,7 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
+      this.zoneTick(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.netMobs.update(dt, this.player.position, this.aim);
@@ -502,6 +516,13 @@ export class Game {
       this.sfx.levelUp();
       this.hud.toast(`${SWORDS[tier].name}: урон ×${SWORDS[tier].mult}`);
     }
+  }
+
+  /** Сколько зелий в сумке — суммой по всем ячейкам. */
+  private potionCount(): number {
+    let n = 0;
+    for (const s of this.inventory.slots) if (s.item === "potion") n += s.count;
+    return n;
   }
 
   private levelUpFx(level: number): void {

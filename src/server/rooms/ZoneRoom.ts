@@ -350,6 +350,9 @@ export class ZoneRoom extends Room<ZoneState> {
       s.x = b.x;
       s.y = b.y;
       s.z = b.z;
+      s.vx = b.vx;
+      s.vy = b.vy;
+      s.vz = b.vz;
     }
     this.state.balls.forEach((_s, id) => {
       if (!this.sim.balls.has(id)) this.state.balls.delete(id);

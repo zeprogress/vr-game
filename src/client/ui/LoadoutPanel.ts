@@ -27,13 +27,15 @@ const TEX_H = 512;
 /** Шаги правки: грубо / средне / точно переключаются кнопкой A. */
 const POS_STEPS = [0.1, 0.02, 0.005];
 const ROT_STEPS = [Math.PI / 2, 0.1, 0.02];
+/** Час суток крутится своими шагами: час / четверть / три минуты. */
+const HOUR_STEPS = [1, 0.25, 0.05];
 const STEP_LABELS = ["крупный", "средний", "точный"];
 
 interface Target {
   key: TargetKey;
   label: string;
-  /** Кисть — только поворот; предмет — позиция, поворот и масштаб. */
-  kind: "hand" | "item";
+  /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
+  kind: "hand" | "item" | "world";
 }
 
 const TARGETS: Target[] = [
@@ -45,10 +47,20 @@ const TARGETS: Target[] = [
   { key: itemTarget("bow", "vrRight"), label: "Лук · правая", kind: "item" },
   { key: itemTarget("shield", "vrLeft"), label: "Щит · левая", kind: "item" },
   { key: itemTarget("shield", "vrRight"), label: "Щит · правая", kind: "item" },
+  { key: "world:time", label: "Время суток", kind: "world" },
 ];
 
 type Field =
-  | { label: string; get(): number; set(v: number): void; rot: boolean }
+  | {
+      label: string;
+      get(): number;
+      set(v: number): void;
+      rot: boolean;
+      /** Свои шаги вместо позиционных/поворотных. */
+      steps?: number[];
+      /** Как показать значение (по умолчанию — просто число). */
+      format?(v: number): string;
+    }
   | null;
 
 /**
@@ -171,11 +183,29 @@ export class LoadoutPanel {
   }
 
   private fieldCount(): number {
-    return this.target.kind === "hand" ? 3 : 7;
+    if (this.target.kind === "hand") return 3;
+    if (this.target.kind === "world") return 1;
+    return 7;
   }
 
   private field(i: number): Field {
     const t = this.target;
+    if (t.kind === "world") {
+      return {
+        label: "час",
+        rot: false,
+        steps: HOUR_STEPS,
+        get: () => LOADOUT.world.hour,
+        set: (v) => {
+          LOADOUT.world.hour = ((v % 24) + 24) % 24; // 23.5 -> 0.5, без «минус часа»
+        },
+        format: (v) => {
+          const hh = Math.floor(v);
+          const mm = Math.round((v - hh) * 60);
+          return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+        },
+      };
+    }
     if (t.kind === "hand") {
       const side = t.key.split(":")[1] as HandSide;
       const axis = i;
@@ -242,7 +272,7 @@ export class LoadoutPanel {
     }
     const f = this.field(this.row - 1);
     if (!f) return;
-    const step = (f.rot ? ROT_STEPS : POS_STEPS)[this.stepIdx];
+    const step = (f.steps ?? (f.rot ? ROT_STEPS : POS_STEPS))[this.stepIdx];
     f.set(f.get() + dir * step);
     saveTarget(this.target.key);
     this.redraw();
@@ -317,7 +347,11 @@ export class LoadoutPanel {
       const f = this.field(i);
       if (!f) continue;
       const v = f.get();
-      const shown = f.rot ? `${v.toFixed(2)}  (${Math.round((v * 180) / Math.PI)}°)` : v.toFixed(3);
+      const shown = f.format
+        ? f.format(v)
+        : f.rot
+          ? `${v.toFixed(2)}  (${Math.round((v * 180) / Math.PI)}°)`
+          : v.toFixed(3);
       drawRow(i + 1, f.label, shown);
     }
     const saveVal =

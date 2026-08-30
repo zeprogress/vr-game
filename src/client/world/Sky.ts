@@ -1,6 +1,5 @@
 import { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -9,15 +8,23 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { WORLD } from "#shared/constants";
+import { dayState, type DayState } from "./DayTime";
+
+/** Небо, которое умеет меняться со временем суток. */
+export interface Sky {
+  /** Перекрасить небо, туман и солнце под состояние часа. */
+  apply(d: DayState): void;
+}
 
 /**
  * Дешёвое небо: большая сфера с вертикальным градиентом (без тяжёлых
  * шейдеров — важно для Quest), солнце, туман под цвет горизонта и
  * низкополигональные облака, медленно плывущие по ветру.
  */
-export function createSky(scene: Scene, sunDir: Vector3): void {
+export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
+  const grad = gradientMaterial(scene);
   const dome = MeshBuilder.CreateSphere("skyDome", { diameter: 900, segments: 16, sideOrientation: 1 }, scene);
-  dome.material = gradientMaterial(scene);
+  dome.material = grad.mat;
   dome.infiniteDistance = true;
   dome.isPickable = false;
   dome.applyFog = false;
@@ -26,14 +33,21 @@ export function createSky(scene: Scene, sunDir: Vector3): void {
   scene.fogDensity = 0.0055;
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
 
-  createSun(scene, sunDir);
+  const sun = createSun(scene);
+  const sky: Sky = {
+    apply(d) {
+      grad.paint(d.zenith, d.horizon);
+      scene.fogColor.copyFrom(d.fog);
+      sun.apply(d);
+    },
+  };
+  sky.apply(start);
   createClouds(scene);
+  return sky;
 }
 
 /** Диск солнца + мягкое гало, закреплены на небе (infiniteDistance). */
-function createSun(scene: Scene, sunDir: Vector3): void {
-  const pos = sunDir.scale(-380); // противоположно направлению света
-
+function createSun(scene: Scene): { apply(d: DayState): void } {
   const haloMat = new StandardMaterial("sunHaloMat", scene);
   haloMat.emissiveColor = new Color3(1, 0.95, 0.8);
   haloMat.disableLighting = true;
@@ -41,7 +55,6 @@ function createSun(scene: Scene, sunDir: Vector3): void {
   haloMat.alpha = 0.28;
   const halo = MeshBuilder.CreateDisc("sunHalo", { radius: 42, tessellation: 24 }, scene);
   halo.material = haloMat;
-  halo.position.copyFrom(pos.scale(1.03)); // чуть дальше, чтобы не спорить с диском по глубине
   halo.isPickable = false;
   halo.applyFog = false;
   halo.billboardMode = 7;
@@ -52,33 +65,49 @@ function createSun(scene: Scene, sunDir: Vector3): void {
   sunMat.specularColor = new Color3(0, 0, 0);
   const sun = MeshBuilder.CreateDisc("sun", { radius: 16, tessellation: 24 }, scene);
   sun.material = sunMat;
-  sun.position.copyFrom(pos);
   sun.isPickable = false;
   sun.applyFog = false;
   sun.billboardMode = 7;
+
+  return {
+    apply(d) {
+      // Диск стоит там, откуда светит: чуть дальше гало, чтобы не спорили по глубине.
+      sun.position.copyFrom(d.sunPos.scale(380));
+      halo.position.copyFrom(d.sunPos.scale(380 * 1.03));
+      sunMat.emissiveColor.copyFrom(d.disc);
+      haloMat.emissiveColor.copyFrom(d.disc);
+    },
+  };
 }
 
-function gradientMaterial(scene: Scene): StandardMaterial {
+function gradientMaterial(scene: Scene): {
+  mat: StandardMaterial;
+  paint(zenith: [number, number, number], horizon: [number, number, number]): void;
+} {
   const h = 128;
   const tex = new DynamicTexture("skyGrad", { width: 4, height: h }, scene, false);
   const ctx = tex.getContext();
-  const zenith = [82, 132, 205];
-  const horizon = [206, 226, 240];
-  for (let y = 0; y < h; y++) {
-    const v = y / (h - 1); // v сферы: 0 — нижний полюс, 1 — зенит
-    const k = Math.pow(Math.max(0, (v - 0.45) / 0.55), 0.8); // синеет только к зениту
-    const c = zenith.map((t, i) => Math.round(horizon[i] + (t - horizon[i]) * k));
-    ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
-    ctx.fillRect(0, h - 1 - y, 4, 1);
-  }
-  tex.update();
+
+  const paint = (
+    zenith: [number, number, number],
+    horizon: [number, number, number],
+  ): void => {
+    for (let y = 0; y < h; y++) {
+      const v = y / (h - 1); // v сферы: 0 — нижний полюс, 1 — зенит
+      const k = Math.pow(Math.max(0, (v - 0.45) / 0.55), 0.8); // цвет зенита набирается кверху
+      const c = zenith.map((t, i) => Math.round(horizon[i] + (t - horizon[i]) * k));
+      ctx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+      ctx.fillRect(0, h - 1 - y, 4, 1);
+    }
+    tex.update();
+  };
 
   const mat = new StandardMaterial("skyMat", scene);
   mat.emissiveTexture = tex;
   mat.disableLighting = true;
   mat.backFaceCulling = false;
   mat.specularColor = new Color3(0, 0, 0);
-  return mat;
+  return { mat, paint };
 }
 
 function createClouds(scene: Scene): void {

@@ -85,6 +85,10 @@ export class BallState extends Schema {
   @type("float32") x = 0;
   @type("float32") y = 0;
   @type("float32") z = 0;
+  /** Скорость — клиент летит по ней между патчами, иначе плевок дёргается. */
+  @type("float32") vx = 0;
+  @type("float32") vy = 0;
+  @type("float32") vz = 0;
 }
 
 /** Состояние зоны — общий контракт клиента и сервера. */
