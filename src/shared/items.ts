@@ -34,7 +34,8 @@ export function weaponKey(cls: WeaponClass, tier: WeaponTier): WeaponKey {
 }
 
 export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
-  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.52, 0.36, 0.2] },
+  // Цвет — как у стволов деревьев в зоне (см. props.ts, trunkMat).
+  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.32, 0.22, 0.14] },
   "sword:bronze": { cls: "sword", tier: "bronze", name: "Железный меч", mult: 2, tint: [0.78, 0.81, 0.86] },
   "sword:gold": { cls: "sword", tier: "gold", name: "Золотой меч", mult: 5, tint: [1, 0.84, 0.26] },
   "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.55, 0.38, 0.2] },
