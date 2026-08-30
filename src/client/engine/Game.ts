@@ -31,7 +31,7 @@ import { XRInput } from "../input/XRInput";
 import type { InputSource } from "../input/InputSource";
 import type { NetClient } from "../net/NetClient";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
-import type { MoveMsg, Xf7 } from "#shared/net/messages";
+import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -360,9 +360,23 @@ export class Game {
 
   // ---- сеть: чужие игроки ----
 
-  /** Подключить сетевого клиента (уже в комнате). Создаёт аватары для чужих. */
+  private saveTimer: number | null = null;
+  private saveDebounce: number | null = null;
+  private unsubProgress: (() => void) | null = null;
+
+  /** Подключить сетевого клиента (уже в комнате). Аватары чужих + сейв персонажа. */
   attachNet(net: NetClient): void {
     this.net = net;
+    net.onChar = (data) => this.applyChar(data);
+
+    // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
+    this.saveTimer = window.setInterval(() => this.saveNow(), 30_000);
+    this.unsubProgress = this.progression.onChange(() => {
+      if (this.saveDebounce) window.clearTimeout(this.saveDebounce);
+      this.saveDebounce = window.setTimeout(() => this.saveNow(), 1500);
+    });
+    window.addEventListener("beforeunload", this.beforeUnload);
+
     const players = net.room?.state.players;
     if (!players) return;
 
@@ -379,7 +393,36 @@ export class Game {
     });
   }
 
+  private readonly beforeUnload = (): void => this.saveNow();
+
+  /** Персонаж с сервера: серверный сейв главнее. null — новый токен, зальём свой. */
+  private applyChar(data: CharMsg): void {
+    if (!data) {
+      this.saveNow(); // первый вход с этим токеном — отдаём текущий (локальный) прогресс
+      return;
+    }
+    this.player.restoreState(data);
+    this.player.hp = data.hp > 0 ? Math.min(data.hp, this.player.maxHp) : this.player.maxHp;
+    this.progression.applyRemote(data);
+    this.showHp(this.player.hp);
+  }
+
+  private saveNow(): void {
+    if (!this.net?.online) return;
+    const pos = this.player.snapshotState();
+    const pr = this.progression.snapshot();
+    const msg: SaveMsg = { ...pos, ...pr, hp: this.player.hp };
+    this.net.sendSave(msg);
+  }
+
   private detachNet(): void {
+    if (this.saveTimer !== null) window.clearInterval(this.saveTimer);
+    if (this.saveDebounce !== null) window.clearTimeout(this.saveDebounce);
+    window.removeEventListener("beforeunload", this.beforeUnload);
+    this.unsubProgress?.();
+    this.saveTimer = this.saveDebounce = null;
+    this.unsubProgress = null;
+    if (this.net) this.net.onChar = null;
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
     this.net = null;

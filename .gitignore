@@ -6,3 +6,6 @@ dist/
 
 # музыка лежит в public/music/
 /Lineage 2 - Town dion.mp3
+
+# сейвы игроков (per-machine)
+/src/server/.data/

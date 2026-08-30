@@ -3,7 +3,7 @@
 VR MMORPG (пет-проект). Общий мир: VR (Quest 2/3), браузер на десктопе, телефон.
 Полный план разработки — в [PLAN.md](PLAN.md).
 
-## Текущий этап: 4 — сервер и мультиплеер-движение
+## Текущий этап: 5 — сохранение прогресса
 
 Вид от первого лица работает от любого источника ввода:
 - **Десктоп:** WASD + мышь (pointer lock), `Space` — прыжок, `E` — взять/бросить меч, ЛКМ — удар.
@@ -41,6 +41,13 @@ VR MMORPG (пет-проект). Общий мир: VR (Quest 2/3), браузе
 друг друга (капсула + ник у плоских, голова + кисти у VR), движение сглажено
 интерполяцией. Мобы и манекены пока у каждого свои (общие — этап 6). Сервера
 нет → тихий откат в одиночный режим.
+
+**Сохранение (этап 5):** онлайн — сервер хранит персонажа (ник, позиция,
+уровень, опыт, характеристики, HP) в `src/server/.data/players.json` по
+гостевому токену из `localStorage`. Автосейв раз в 30 с, при прокачке и
+перед выходом; на диск — раз в 15 с и при остановке сервера. При входе
+онлайн серверный сейв главнее локального. Офлайн — прогресс в `localStorage`
+как раньше.
 
 ### Тест вдвоём с разных устройств
 
@@ -143,45 +150,41 @@ game.vrButtons()   // покажет, какие кнопки нажаты на 
 
 ```
 index.html                       страница + canvas
+tsconfig.{json,client,server}    база + пораздельные проверки типов
 src/
-  main.ts                        точка входа, выбор режима подсказки
-  config/loadout.ts              ПОЛОЖЕНИЕ ПРЕДМЕТОВ И КИСТЕЙ + кнопки (живая правка)
-  shared/constants.ts            игровые числа (позже переедет в пакет shared/)
-  engine/Game.ts                 Engine + Scene + рендер-луп, выбор ввода, WebXR
-  world/
-    Zone.ts                      сборка зоны: свет, небо, рельеф, деревья, мобы
-    Terrain.ts                   рельеф из синусов + heightAt(x,z)
-    Sky.ts                       градиентный купол, туман, облака
-    props.ts                     деревья (инстансы) и трава (thin-инстансы)
-  audio/Sfx.ts                   процедурные звуки на Web Audio
-  items/
-    Sword.ts / Bow.ts / Shield.ts   меши предметов
-  combat/
-    Dummy.ts                     кукла-мишень: удар, качание, падение, респаун
-    Mob.ts / MobSystem.ts        слизни и плевуны: AI, снаряды, раны, опыт
-    NameTag.ts                   плашка «имя + уровень» над мобом
-    Arrow.ts                     стрела: баллистика + попадание, втыкается
-    CombatSystem.ts              предметы в руках, броски с физикой, удары, блок
-  shared/geometry.ts             segmentDistance, clamp
-  input/
-    InputSource.ts               интерфейс ввода + InputState
-    DesktopInput.ts              клавиатура + мышь
-    TouchInput.ts                экранные джойстик и кнопки
-    XRInput.ts                   VR-контроллеры (Gamepad API)
-  player/
-    PlayerController.ts          движение от первого лица, raycast-коллизии, VR-риг
-    Hands.ts                     кисти с пальцами на контроллерах
-    Progression.ts               уровни, опыт, характеристики
-  ui/
-    Hud.ts                       полоса здоровья, вспышка урона, панель на C
-    HealthBar3D.ts               полоски здоровья в мире (параллельны горизонту)
-    WristPanel.ts                панель персонажа на левой руке (VR, кнопка Y)
-    LoadoutPanel.ts              настройка экипировки на правой руке (VR, кнопка B)
-    VrVignette.ts                виньетка урона на шейдере
+  shared/                        общий код клиента и сервера (#shared/*)
+    constants.ts                 игровые числа
+    geometry.ts                  segmentDistance, clamp, closestPointOnSegment
+    net/schema.ts                Colyseus-схема: PlayerState, ZoneState
+    net/messages.ts              MoveMsg, SaveMsg, CharMsg
+  server/                        Node, Colyseus (tsx)
+    index.ts                     Server + define("zone"), :2567, дамп сейвов
+    rooms/ZoneRoom.ts            onJoin/onLeave, транспорт, сейв персонажа
+    PlayerStore.ts / store.ts    persist в .data/players.json
+  client/                        Babylon-клиент (Vite)
+    main.ts                      boot: гостевой токен -> экран входа -> game
+    config/loadout.ts            ПОЛОЖЕНИЕ ПРЕДМЕТОВ И КИСТЕЙ (живая правка)
+    engine/Game.ts               Engine + Scene + рендер-луп, ввод, WebXR, сеть
+    net/NetClient.ts             коннект, троттлинг транспорта, загрузка/сейв
+    entities/RemoteAvatar.ts     чужой игрок: капсула/голова+кисти + интерполяция
+    world/                       Zone, Terrain, Sky, props
+    audio/Sfx.ts                 процедурные звуки на Web Audio
+    items/Sword.ts / Bow.ts / Shield.ts
+    combat/
+      Dummy.ts                   кукла-мишень
+      Mob.ts / MobSystem.ts      слизни и плевуны: AI, снаряды, раны, опыт
+      Arrow.ts / CombatSystem.ts
+    input/                       InputSource, Desktop, Touch, XRInput
+    player/
+      PlayerController.ts        движение от первого лица, raycast, VR-риг
+      Hands.ts                   кисти с пальцами
+      Progression.ts             уровни, опыт, характеристики
+    ui/
+      Hud, HealthBar3D, NameTag
+      WristPanel (персонаж, Y) / LoadoutPanel (экипировка, B) / Login / VrVignette
 ```
 
-Числа боя и мира — в `src/shared/constants.ts` (`COMBAT`, `BOW`, `ARROW`, `WORLD`,
-`MOB`, `PROGRESSION`, `SHIELD`). Положение предметов в руках — в
-`src/config/loadout.ts` (правится на лету, см. выше).
+Числа боя и мира — в `src/shared/constants.ts`. Положение предметов в руках — в
+`src/client/config/loadout.ts` (правится на лету, см. выше).
 
 Реструктуризация в монорепо (client / server / shared) — на этапе 4 (см. PLAN.md).

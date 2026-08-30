@@ -11,11 +11,18 @@ void game.initXR();
 
 const net = new NetClient();
 
+// Гостевой токен — по нему сервер узнаёт персонажа между сессиями.
+let guestToken = localStorage.getItem("guestToken");
+if (!guestToken) {
+  guestToken = crypto.randomUUID();
+  localStorage.setItem("guestToken", guestToken);
+}
+
 // Отладка из консоли.
 (window as unknown as { game: Game; net: NetClient }).game = game;
 (window as unknown as { game: Game; net: NetClient }).net = net;
 
-void runLogin(net).then(({ online }) => {
+void runLogin(net, guestToken).then(({ online }) => {
   if (online) game.attachNet(net);
 
   if (game.isTouch) {

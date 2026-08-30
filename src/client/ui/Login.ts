@@ -8,7 +8,7 @@ export interface LoginResult {
 }
 
 /** Экран входа: ник + «Играть» / «Играть офлайн». Резолвится после выбора. */
-export function runLogin(net: NetClient): Promise<LoginResult> {
+export function runLogin(net: NetClient, token: string): Promise<LoginResult> {
   document.head.appendChild(styleEl());
 
   const overlay = document.createElement("div");
@@ -42,7 +42,7 @@ export function runLogin(net: NetClient): Promise<LoginResult> {
     playBtn.addEventListener("click", async () => {
       playBtn.disabled = offlineBtn.disabled = true;
       status.textContent = "Подключение…";
-      const ok = await net.connect(nick());
+      const ok = await net.connect(nick(), token);
       if (!ok) status.textContent = "Сервер недоступен — одиночный режим";
       setTimeout(() => resolve(done(ok)), ok ? 0 : 900);
     });

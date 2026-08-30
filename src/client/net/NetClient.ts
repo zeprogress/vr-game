@@ -1,38 +1,38 @@
 import { Client, type Room } from "colyseus.js";
 
 import type { ZoneState } from "#shared/net/schema";
-import { MSG, type MoveMsg } from "#shared/net/messages";
+import { MSG, type CharMsg, type MoveMsg, type SaveMsg } from "#shared/net/messages";
 
 const SEND_HZ = 18;
 const SEND_EVERY = 1000 / SEND_HZ;
 
 /**
- * Клиент игрового сервера. Подключение к комнате zone + отдача транспорта
- * локального игрока с троттлингом. Приём чужих — через `room.state.players`.
+ * Клиент игрового сервера: комната zone, отдача транспорта с троттлингом,
+ * загрузка/сохранение персонажа по гостевому токену.
  */
 export class NetClient {
   private client: Client | null = null;
   room: Room<ZoneState> | null = null;
   private lastSent = 0;
 
+  /** Вызывается один раз при входе: персонаж с сервера или null (новый токен). */
+  onChar: ((data: CharMsg) => void) | null = null;
+
   get online(): boolean {
     return this.room !== null;
   }
 
-  /** id своей сессии — чтобы не рисовать собственный аватар. */
   get sessionId(): string {
     return this.room?.sessionId ?? "";
   }
 
-  /**
-   * Подключиться к серверу. `true` — успех, `false` — сервера нет
-   * (клиент продолжает в одиночном режиме).
-   */
-  async connect(nick: string): Promise<boolean> {
+  /** `true` — успех, `false` — сервера нет (одиночный режим). */
+  async connect(nick: string, token: string): Promise<boolean> {
     try {
       this.client = new Client();
-      const room = await this.client.joinOrCreate<ZoneState>("zone", { nick });
-      // Ждём первую синхронизацию состояния — иначе onAdd не увидит уже вошедших.
+      const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
+      room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
+      // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
       await new Promise<void>((r) => {
         const t = setTimeout(r, 800);
         room.onStateChange.once(() => {
@@ -60,6 +60,11 @@ export class NetClient {
     if (!this.room || now - this.lastSent < SEND_EVERY) return;
     this.lastSent = now;
     this.room.send(MSG.move, msg);
+  }
+
+  /** Отправить снимок состояния для сохранения (вызывается осознанно). */
+  sendSave(msg: SaveMsg): void {
+    this.room?.send(MSG.save, msg);
   }
 
   disconnect(): void {

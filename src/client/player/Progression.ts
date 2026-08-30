@@ -135,6 +135,39 @@ export class Progression {
     this.save();
     this.emit();
   }
+
+  // ---- сеть (этап 5) ----
+
+  /** Снимок для отправки серверу. */
+  snapshot(): { level: number; xp: number; unspent: number; str: number; agi: number; int: number } {
+    return {
+      level: this.level,
+      xp: this.xp,
+      unspent: this.unspent,
+      str: this.stats.str,
+      agi: this.stats.agi,
+      int: this.stats.int,
+    };
+  }
+
+  /** Применить прогресс, пришедший с сервера (серверный сейв главнее). */
+  applyRemote(d: {
+    level: number;
+    xp: number;
+    unspent: number;
+    str: number;
+    agi: number;
+    int: number;
+  }): void {
+    this.level = clampInt(d.level, 1, PROGRESSION.maxLevel);
+    this.xp = Math.max(0, Number(d.xp) || 0);
+    this.unspent = Math.max(0, Math.floor(Number(d.unspent) || 0));
+    this.stats.str = clampInt(d.str, PROGRESSION.startStat, 999);
+    this.stats.agi = clampInt(d.agi, PROGRESSION.startStat, 999);
+    this.stats.int = clampInt(d.int, PROGRESSION.startStat, 999);
+    this.save(); // зеркалим в localStorage для офлайна
+    this.emit();
+  }
 }
 
 function clampInt(v: unknown, lo: number, hi: number): number {

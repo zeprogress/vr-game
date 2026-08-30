@@ -144,6 +144,20 @@ export class PlayerController {
     }
   }
 
+  /** Снимок позиции и направления взгляда — для сохранения (этап 5). */
+  snapshotState(): { x: number; y: number; z: number; yaw: number } {
+    const p = this.body.position;
+    return { x: p.x, y: p.y, z: p.z, yaw: this.yaw };
+  }
+
+  /** Восстановить позицию и yaw из сейва. */
+  restoreState(s: { x: number; y: number; z: number; yaw: number }): void {
+    this.body.position.set(s.x, s.y, s.z);
+    this.yaw = s.yaw;
+    this.pitch = 0;
+    this.placeOnGround();
+  }
+
   /** Поставить тело на поверхность в текущей точке (x, z). */
   placeOnGround(): void {
     const p = this.body.position;
