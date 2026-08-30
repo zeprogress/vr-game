@@ -8,15 +8,20 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
+import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 const TEX_W = 512;
-const TEX_H = 384;
+const TEX_H = 560;
+/** Строк всего: характеристики + ячейки сумки. X идёт по ним подряд. */
+const ROWS = STATS.length + BAG.slots;
+const GRID_COLS = 4;
 
 /**
- * Информационная панель персонажа на левой руке (VR).
- * Кнопка Y открывает/закрывает, правый стик выбирает характеристику,
- * курок тратит свободное очко.
+ * Информационная панель персонажа на левой руке (VR): характеристики
+ * и сумка. Кнопка Y открывает/закрывает, X идёт по строкам (сначала
+ * характеристики, потом ячейки сумки), B действует по контексту —
+ * вкладывает очко или выпивает зелье.
  */
 export class WristPanel {
   private readonly plane: Mesh;
@@ -28,6 +33,7 @@ export class WristPanel {
     scene: Scene,
     parent: Node,
     private readonly prog: Progression,
+    private readonly inv: Inventory,
   ) {
     this.tex = new DynamicTexture("wristTex", { width: TEX_W, height: TEX_H }, scene, false);
 
@@ -53,7 +59,12 @@ export class WristPanel {
     this.plane.setEnabled(false);
 
     this.redraw();
-    this.unsub = prog.onChange(() => this.redraw());
+    const offProg = prog.onChange(() => this.redraw());
+    const offInv = inv.onChange(() => this.redraw());
+    this.unsub = () => {
+      offProg();
+      offInv();
+    };
   }
 
   private readonly unsub: () => void;
@@ -83,15 +94,19 @@ export class WristPanel {
     this.plane.setEnabled(false);
   }
 
-  /** next — перейти к следующей характеристике, confirm — вложить очко. */
+  /** next — следующая строка, confirm — вложить очко или выпить зелье. */
   update(next: boolean, confirm: boolean): void {
     if (!this.open) return;
 
     if (next) {
-      this.selected = (this.selected + 1) % STATS.length;
+      this.selected = (this.selected + 1) % ROWS;
       this.redraw();
     }
-    if (confirm && this.prog.spend(STATS[this.selected])) {
+    if (!confirm) return;
+
+    if (this.selected < STATS.length) {
+      if (this.prog.spend(STATS[this.selected])) this.redraw();
+    } else if (this.inv.use(this.selected - STATS.length)) {
       this.redraw();
     }
   }
@@ -167,17 +182,74 @@ export class WristPanel {
       ctx.fillText(this.statHint(s), 310, y + 4);
     }
 
-    // Свободные очки / подсказка
+    // Свободные очки
     ctx.font = "bold 26px system-ui, sans-serif";
     ctx.fillStyle = p.unspent > 0 ? "#7ee081" : "#6b7488";
-    ctx.fillText(`Свободных очков: ${p.unspent}`, 26, 300);
+    ctx.fillText(`Свободных очков: ${p.unspent}`, 26, 296);
+
+    this.drawBag(ctx);
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("X — выбрать · B — вложить · Y — закрыть", 26, 336);
+    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 528);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);
+  }
+
+  /** Сетка сумки: 4x2 ячейки, выбранная подсвечена. */
+  private drawBag(ctx: CanvasRenderingContext2D): void {
+    ctx.strokeStyle = "#3a4258";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(26, 338);
+    ctx.lineTo(TEX_W - 26, 338);
+    ctx.stroke();
+
+    ctx.font = "bold 26px system-ui, sans-serif";
+    ctx.fillStyle = "#e8ecf8";
+    ctx.fillText("СУМКА", 26, 350);
+
+    const cellW = 112;
+    const cellH = 68;
+    const gapX = 8;
+    const gapY = 8;
+    const top = 392;
+
+    for (let i = 0; i < BAG.slots; i++) {
+      const col = i % GRID_COLS;
+      const row = Math.floor(i / GRID_COLS);
+      const x = 26 + col * (cellW + gapX);
+      const y = top + row * (cellH + gapY);
+      const slot = this.inv.slots[i];
+      const active = this.selected === STATS.length + i;
+
+      ctx.fillStyle = active ? "#263048" : "#1a1f2b";
+      ctx.fillRect(x, y, cellW, cellH);
+      ctx.strokeStyle = active ? "#9fd0ff" : "#333c50";
+      ctx.lineWidth = active ? 3 : 2;
+      ctx.strokeRect(x, y, cellW, cellH);
+
+      if (!slot.item) continue;
+      const def = ITEMS[slot.item];
+
+      ctx.fillStyle = `rgb(${def.tint.map((c) => Math.round(c * 255)).join(",")})`;
+      ctx.fillRect(x + 10, y + 12, 18, 18);
+
+      ctx.fillStyle = "#dbe2f2";
+      ctx.font = "20px system-ui, sans-serif";
+      ctx.fillText(def.short, x + 36, y + 12);
+
+      ctx.fillStyle = "#ffd166";
+      ctx.font = "bold 22px system-ui, sans-serif";
+      ctx.fillText(`x${slot.count}`, x + 10, y + 38);
+
+      if (def.heal > 0) {
+        ctx.fillStyle = "#7ee081";
+        ctx.font = "17px system-ui, sans-serif";
+        ctx.fillText("выпить", x + 52, y + 40);
+      }
+    }
   }
 
   private statHint(s: StatName): string {

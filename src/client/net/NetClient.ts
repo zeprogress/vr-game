@@ -8,12 +8,15 @@ import {
   type LevelUpMsg,
   type MobHitMsg,
   type MoveMsg,
+  type PickedMsg,
   type RespawnMsg,
   type SaveMsg,
   type SpendMsg,
+  type UseItemMsg,
 } from "#shared/net/messages";
 import type { BlockedBy } from "#shared/combat";
 import type { StatName } from "#shared/progression";
+import type { ItemId } from "#shared/items";
 
 const SEND_HZ = 18;
 const SEND_EVERY = 1000 / SEND_HZ;
@@ -35,6 +38,8 @@ export class NetClient {
   onRespawn: ((x: number, y: number, z: number) => void) | null = null;
   /** Получен новый уровень. */
   onLevelUp: ((level: number) => void) | null = null;
+  /** Подобран лут. */
+  onPicked: ((item: ItemId, count: number) => void) | null = null;
 
   get online(): boolean {
     return this.room !== null;
@@ -55,6 +60,7 @@ export class NetClient {
       );
       room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
       room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
+      room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
       // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
       await new Promise<void>((r) => {
         const t = setTimeout(r, 800);
@@ -99,6 +105,12 @@ export class NetClient {
   sendSpend(stat: StatName): void {
     const msg: SpendMsg = { stat };
     this.room?.send(MSG.spend, msg);
+  }
+
+  /** Заявка использовать предмет из ячейки сумки. */
+  sendUseItem(slot: number): void {
+    const msg: UseItemMsg = { slot };
+    this.room?.send(MSG.useItem, msg);
   }
 
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */

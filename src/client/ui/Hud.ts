@@ -1,5 +1,6 @@
 import { PLAYER_HP } from "#shared/constants";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
+import { ITEMS, type Inventory } from "../player/Inventory";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 
@@ -17,6 +18,7 @@ export class Hud {
   private readonly panel: HTMLDivElement;
   private readonly deathEl: HTMLDivElement;
   private prog: Progression | null = null;
+  private inv: Inventory | null = null;
   private toastTimer: number | null = null;
 
   constructor() {
@@ -39,6 +41,12 @@ export class Hud {
       this.panel,
       this.deathEl,
     );
+  }
+
+  /** Подключить сумку — в панели персонажа появится раздел «Сумка». */
+  bindInventory(inv: Inventory): void {
+    this.inv = inv;
+    inv.onChange(() => this.renderPanel());
   }
 
   /** Подключить прогрессию — включает панель персонажа на клавишу C. */
@@ -100,6 +108,51 @@ export class Hud {
     }, 2200);
   }
 
+  /** Раздел «Сумка» внизу панели персонажа. */
+  private renderBag(): void {
+    const inv = this.inv;
+    if (!inv) return;
+
+    const head = el("div", "margin-top:12px;padding-top:8px;border-top:1px solid #3a4056;font-weight:bold;");
+    head.textContent = "Сумка";
+    this.panel.appendChild(head);
+
+    if (inv.isEmpty) {
+      const empty = el("div", "margin-top:6px;opacity:0.5;font-size:12px;");
+      empty.textContent = "пусто";
+      this.panel.appendChild(empty);
+      return;
+    }
+
+    inv.slots.forEach((slot, i) => {
+      if (!slot.item) return;
+      const def = ITEMS[slot.item];
+      const row = el("div", "display:flex;align-items:center;gap:8px;margin:5px 0;");
+
+      const dot = el(
+        "span",
+        `width:12px;height:12px;border-radius:3px;flex:none;` +
+          `background:rgb(${def.tint.map((c) => Math.round(c * 255)).join(",")});`,
+      );
+      const name = el("span", "flex:1;");
+      name.textContent = def.name;
+      const cnt = el("span", "font-weight:bold;");
+      cnt.textContent = `×${slot.count}`;
+      row.append(dot, name, cnt);
+
+      if (def.heal > 0) {
+        const btn = document.createElement("button");
+        btn.textContent = "Выпить";
+        btn.style.cssText =
+          "cursor:pointer;background:#2f4f7a;color:#fff;border:1px solid #4a7;" +
+          "border-radius:4px;font-size:11px;padding:2px 6px;";
+        btn.addEventListener("click", () => inv.use(i));
+        row.appendChild(btn);
+      }
+      this.panel.appendChild(row);
+    });
+  }
+
   private renderPanel(): void {
     const p = this.prog;
     if (!p || this.panel.style.display === "none") return;
@@ -136,6 +189,8 @@ export class Hud {
     const free = el("div", `margin-top:10px;${p.unspent > 0 ? "color:#7ee081;" : "opacity:0.6;"}`);
     free.textContent = `Свободных очков: ${p.unspent}`;
     this.panel.appendChild(free);
+
+    this.renderBag();
 
     const hint = el("div", "margin-top:8px;font-size:11px;opacity:0.55;");
     hint.textContent = "C — закрыть";

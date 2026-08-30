@@ -277,6 +277,22 @@ export class Sfx {
     });
   }
 
+  /** Короткий звонкий блип при подборе лута. */
+  pickup(): void {
+    if (!this.ready()) return;
+    const t0 = this.t;
+    [880, 1318.5].forEach((f, i) => {
+      const t = t0 + i * 0.055;
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, t);
+      const g = this.env(0.16, 0.004, 0.12, t);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.16);
+    });
+  }
+
   playerHurt(): void {
     if (!this.ready()) return;
     const t = this.t;

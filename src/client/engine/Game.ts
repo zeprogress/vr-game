@@ -25,6 +25,8 @@ import { HUD, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
+import { Inventory } from "../player/Inventory";
+import { LootDrops } from "../world/LootDrops";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -35,6 +37,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
+import { ITEMS } from "#shared/items";
 import { RESPAWN } from "#shared/constants";
 
 /**
@@ -46,11 +49,13 @@ export class Game {
   readonly scene: Scene;
   readonly player: PlayerController;
   readonly progression = new Progression();
+  readonly inventory = new Inventory();
   readonly hands: Hands;
   readonly isTouch: boolean;
   private readonly ground: Mesh;
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
+  private readonly loot: LootDrops;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
   private readonly sfx = new Sfx();
@@ -107,8 +112,10 @@ export class Game {
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, dx, dz });
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
+    this.loot = new LootDrops(this.scene);
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
+    this.hud.bindInventory(this.inventory);
 
     // Офлайн уровень считает Progression, онлайн — сервер шлёт MSG.levelUp.
     this.progression.onLevelUp = (lvl) => {
@@ -152,6 +159,7 @@ export class Game {
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.netMobs.update(dt, this.player.position, this.aim);
+      this.loot.update(dt);
       this.combat.update(dt);
       this.hands.update(dt);
       this.syncNet(dt);
@@ -256,7 +264,12 @@ export class Game {
     this.vrVignette = new VrVignette(this.scene);
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
-    this.wristPanel = new WristPanel(this.scene, this.handNode("left", cam), this.progression);
+    this.wristPanel = new WristPanel(
+      this.scene,
+      this.handNode("left", cam),
+      this.progression,
+      this.inventory,
+    );
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
   }
 
@@ -369,6 +382,8 @@ export class Game {
       this.hud.setDead(true, this.deathCountdown);
     }
 
+    this.inventory.applyRemote(self.bag);
+
     // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
     const p = this.progression;
     if (
@@ -423,11 +438,19 @@ export class Game {
       this.hud.flashDamage(20);
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
+    net.onPicked = (item, count) => {
+      this.sfx.pickup();
+      this.hud.toast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
+    };
 
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;
     this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
-    if (net.room) this.netMobs.attach(net.room);
+    this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
+    if (net.room) {
+      this.netMobs.attach(net.room);
+      this.loot.attach(net.room);
+    }
 
     // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
     this.saveTimer = window.setInterval(() => this.saveNow(), 30_000);
@@ -500,6 +523,9 @@ export class Game {
     this.saveTimer = this.saveDebounce = null;
     this.unsubProgress = null;
     this.netMobs.detach();
+    this.loot.detach();
+    this.inventory.onUseRequest = null;
+    this.inventory.clear();
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;
@@ -509,6 +535,7 @@ export class Game {
       this.net.onMobHit = null;
       this.net.onRespawn = null;
       this.net.onLevelUp = null;
+      this.net.onPicked = null;
     }
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
