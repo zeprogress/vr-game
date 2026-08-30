@@ -1,5 +1,6 @@
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import type { WeaponKind } from "#shared/combat";
 
 /** Всё, по чему можно попасть мечом или стрелой. */
 export interface Hittable {
@@ -7,10 +8,11 @@ export interface Hittable {
   /** Вертикальный отрезок тела + радиус — для проверки попадания. */
   hitSegment(): { a: Vector3; b: Vector3; radius: number };
   /**
-   * Принять удар. dir — направление в мире, damage — сколько HP снять,
-   * contact — точка касания в мире (для раны/следа). true — засчитано.
+   * Заявить удар. dir — направление в мире, weapon — чем ударили,
+   * contact — точка касания (для раны/следа). true — заявка отправлена.
+   * Урон считает сервер: клиент только сообщает о попадании.
    */
-  hit(dir: Vector3, damage?: number, contact?: Vector3): boolean;
+  hit(dir: Vector3, weapon: WeaponKind, contact?: Vector3): boolean;
   /** Узел, к которому крепятся застрявшие стрелы (двигается вместе с целью). */
   hitNode?(): TransformNode | null;
   /** Толчок предметом в руке (не урон). dir — куда, strength — м/с. */
@@ -19,17 +21,17 @@ export interface Hittable {
   center?(): Vector3;
 }
 
-/** Что за цель — для отправки урона на сервер (этап 6). */
+/** Что за цель — для отправки попадания на сервер (этап 6). */
 export type HitTargetKind = "mob" | "dummy";
 
 /**
- * Сообщить серверу о попадании: id цели, тип, урон и горизонтальное
- * направление удара. Урон считает клиент, применяет сервер.
+ * Сообщить серверу о попадании: id цели, тип цели, вид оружия и
+ * горизонтальное направление удара. Урон и досягаемость решает сервер.
  */
 export type HitReporter = (
   id: string,
   target: HitTargetKind,
-  dmg: number,
+  weapon: WeaponKind,
   dx: number,
   dz: number,
 ) => void;

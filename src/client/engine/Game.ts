@@ -33,6 +33,9 @@ import type { InputSource } from "../input/InputSource";
 import type { NetClient } from "../net/NetClient";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
+import type { PlayerState } from "#shared/net/schema";
+import { noGuard, type BlockedBy } from "#shared/combat";
+import { RESPAWN } from "#shared/constants";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -71,7 +74,10 @@ export class Game {
     head: zeros7(),
     handL: zeros7(),
     handR: zeros7(),
+    guard: noGuard(),
   };
+  /** Локальный отсчёт до возрождения — только для надписи на экране. */
+  private deathCountdown = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
@@ -98,16 +104,16 @@ export class Game {
       zone.bowHome,
       zone.shieldHome,
     );
-    const report: HitReporter = (id, target, dmg, dx, dz) =>
-      this.net?.sendHitMob({ id, target, dmg, dx, dz });
+    const report: HitReporter = (id, target, weapon, dx, dz) =>
+      this.net?.sendHitMob({ id, target, weapon, dx, dz });
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
 
+    // Офлайн уровень считает Progression, онлайн — сервер шлёт MSG.levelUp.
     this.progression.onLevelUp = (lvl) => {
-      this.sfx.levelUp();
-      this.hud.toast(`Уровень ${lvl}! +1 очко характеристик`);
-      // Новый уровень силы поднимает потолок HP — доливаем разницу.
+      this.levelUpFx(lvl);
+      // Новый уровень поднимает потолок HP — доливаем разницу (офлайн).
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + 10);
       this.showHp(this.player.hp);
     };
@@ -148,7 +154,7 @@ export class Game {
       this.netMobs.update(dt, this.player.position, this.aim);
       this.combat.update(dt);
       this.hands.update(dt);
-      this.syncNet();
+      this.syncNet(dt);
       this.updateVrUi(dt);
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
@@ -337,6 +343,51 @@ export class Game {
   private showHp(hp: number): void {
     this.hud.setHp(hp, this.player.maxHp);
     this.playerBar3D?.set(hp / this.player.maxHp);
+    this.shownHp = hp;
+  }
+  private shownHp = -1;
+
+  /**
+   * Своё состояние с сервера: здоровье, смерть, прокачка.
+   * Онлайн это единственный источник правды — клиент только отображает.
+   */
+  private syncSelf(dt: number, self: PlayerState): void {
+    this.player.setHp(self.hp);
+    if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
+
+    const dead = self.dead === 1;
+    if (dead !== this.player.dead) {
+      this.player.dead = dead;
+      this.deathCountdown = dead ? RESPAWN.delay : 0;
+      if (dead) {
+        this.hud.flashDamage(40);
+        this.vrVignette?.flash(40);
+      }
+    }
+    if (dead) {
+      this.deathCountdown = Math.max(0, this.deathCountdown - dt);
+      this.hud.setDead(true, this.deathCountdown);
+    }
+
+    // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
+    const p = this.progression;
+    if (
+      p.level !== self.level ||
+      p.xp !== self.xp ||
+      p.unspent !== self.unspent ||
+      p.stats.str !== self.str ||
+      p.stats.agi !== self.agi ||
+      p.stats.int !== self.int
+    ) {
+      p.applyRemote({
+        level: self.level,
+        xp: self.xp,
+        unspent: self.unspent,
+        str: self.str,
+        agi: self.agi,
+        int: self.int,
+      });
+    }
   }
 
   /** Полоса здоровья: видна при уроне и пока не полное HP, иначе плавно гаснет. */
@@ -364,8 +415,18 @@ export class Game {
   attachNet(net: NetClient): void {
     this.net = net;
     net.onChar = (data) => this.applyChar(data);
-    net.onXp = (amount) => this.progression.addXp(amount);
-    net.onMobHit = (dmg, fromX, fromZ) => this.takeMobHit(dmg, fromX, fromZ);
+    net.onMobHit = (dmg, fromX, fromZ, by) => this.takeMobHit(dmg, fromX, fromZ, by);
+    net.onRespawn = (x, y, z) => {
+      this.player.teleportTo(x, y, z);
+      this.player.dead = false;
+      this.hud.setDead(false);
+      this.hud.flashDamage(20);
+    };
+    net.onLevelUp = (lvl) => this.levelUpFx(lvl);
+
+    // Онлайн здоровьем и прокачкой владеет сервер.
+    this.player.netControlled = true;
+    this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
     if (net.room) this.netMobs.attach(net.room);
 
     // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
@@ -394,36 +455,40 @@ export class Game {
 
   private readonly beforeUnload = (): void => this.saveNow();
 
-  /** Персонаж с сервера: серверный сейв главнее. null — новый токен, зальём свой. */
+  /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   private applyChar(data: CharMsg): void {
     if (!data) {
-      this.saveNow(); // первый вход с этим токеном — отдаём текущий (локальный) прогресс
+      this.saveNow();
       return;
     }
     this.player.restoreState(data);
-    this.player.hp = data.hp > 0 ? Math.min(data.hp, this.player.maxHp) : this.player.maxHp;
-    this.progression.applyRemote(data);
-    this.showHp(this.player.hp);
   }
 
-  /** Сервер сообщил: тебя ударил моб/плевок. Щит/меч могут погасить урон. */
-  private takeMobHit(dmg: number, fromX: number, fromZ: number): void {
+  private levelUpFx(level: number): void {
+    this.sfx.levelUp();
+    this.hud.toast(`Уровень ${level}! +1 очко характеристик`);
+  }
+
+  /**
+   * Сервер сообщил об ударе: урон уже посчитан с учётом щита и меча,
+   * клиент только играет эффекты. HP придёт состоянием.
+   */
+  private takeMobHit(dmg: number, fromX: number, fromZ: number, by: BlockedBy): void {
+    if (by !== 0) this.combat.playBlock(by);
+    if (dmg <= 0) return;
     const eye = this.player.eyePosition;
-    const from = new Vector3(fromX, eye.y, fromZ);
-    const mult = this.combat.absorbAttack(from);
-    if (mult <= 0) return;
-    const dir = eye.subtract(from);
-    dir.y = 0;
+    const dir = new Vector3(eye.x - fromX, 0, eye.z - fromZ);
     if (dir.lengthSquared() > 1e-6) dir.normalize();
     else dir.set(0, 0, 1);
-    this.player.damage(dmg * mult, dir);
+    // Сообщение приходит раньше патча состояния — снимаем HP сразу, чтобы
+    // полоса и виньетка не отставали. syncSelf() тут же всё сверит с сервером.
+    this.player.setHp(this.player.hp - dmg);
+    this.player.hurtFx(dmg, dir);
   }
 
   private saveNow(): void {
     if (!this.net?.online) return;
-    const pos = this.player.snapshotState();
-    const pr = this.progression.snapshot();
-    const msg: SaveMsg = { ...pos, ...pr, hp: this.player.hp };
+    const msg: SaveMsg = this.player.snapshotState();
     this.net.sendSave(msg);
   }
 
@@ -435,10 +500,15 @@ export class Game {
     this.saveTimer = this.saveDebounce = null;
     this.unsubProgress = null;
     this.netMobs.detach();
+    this.player.netControlled = false;
+    this.player.dead = false;
+    this.progression.onSpendRequest = null;
+    this.hud.setDead(false);
     if (this.net) {
       this.net.onChar = null;
-      this.net.onXp = null;
       this.net.onMobHit = null;
+      this.net.onRespawn = null;
+      this.net.onLevelUp = null;
     }
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
@@ -446,7 +516,7 @@ export class Game {
   }
 
   /** Каждый кадр: отдать свой транспорт, применить чужой. */
-  private syncNet(): void {
+  private syncNet(dt: number): void {
     const net = this.net;
     if (!net?.online || !net.room) {
       if (this.avatars.size || this.net) this.detachNet();
@@ -455,6 +525,11 @@ export class Game {
 
     const m = this.moveMsg;
     m.mode = this.player.inVR ? "vr" : "flat";
+    const g = this.combat.guardState();
+    m.guard.sx = g.sx;
+    m.guard.sz = g.sz;
+    m.guard.wx = g.wx;
+    m.guard.wz = g.wz;
     writeXf(m.head, this.player.eyePosition, this.player.eyeRotation);
     if (m.mode === "vr") {
       const l = this.hands.nodeFor("left");
@@ -464,6 +539,9 @@ export class Game {
     }
     const now = performance.now();
     net.sendMove(now, m);
+
+    const self = net.self;
+    if (self) this.syncSelf(dt, self);
 
     const players = net.room.state.players;
     for (const [id, avatar] of this.avatars) {

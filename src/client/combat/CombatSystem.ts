@@ -15,6 +15,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
+import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import { LOADOUT, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -442,47 +443,50 @@ export class CombatSystem {
 
   // ---- защита ----
 
+  private readonly guard: GuardState = noGuard();
+
   /**
-   * Урон по игроку из точки `from` с учётом щита и меча.
-   * `projectile` — плевок и т.п.: меч отбивает его полностью (как щит), а не на 75%.
-   * Возвращает множитель: 0 — заблокировано полностью, 1 — прошло целиком.
+   * Куда сейчас смотрят щит и клинок — уходит серверу в move-пакете,
+   * блок решает он (этап 7). Векторы горизонтальные и единичные.
    */
-  absorbAttack(from: Vector3, projectile = false): number {
-    const eye = this.player.eyePosition;
-    const toAtk = from.subtract(eye);
-    toAtk.y = 0;
-    if (toAtk.lengthSquared() < 1e-6) return 1;
-    toAtk.normalize();
+  guardState(): GuardState {
+    const g = this.guard;
+    g.sx = g.sz = g.wx = g.wz = 0;
 
     if (this.shieldHand) {
       const n = Vector3.TransformNormal(SHIELD_NORMAL, this.shield.getWorldMatrix());
-      n.y = 0;
-      if (n.lengthSquared() > 1e-6) {
-        n.normalize();
-        if (Vector3.Dot(n, toAtk) > Math.cos(SHIELD.blockCone)) {
-          this.onBlocked(this.shieldHand, 1);
-          return SHIELD.blockedDamage;
-        }
+      const L = Math.hypot(n.x, n.z);
+      if (L > 1e-4) {
+        g.sx = n.x / L;
+        g.sz = n.z / L;
       }
     }
 
     if (this.held === "sword") {
       const m = this.sword.getWorldMatrix();
-      const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
+      const hilt = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
       const tip = Vector3.TransformCoordinates(TIP, m);
-      const mid = guard.add(tip).scale(0.5);
-      const toBlade = mid.subtract(eye);
-      toBlade.y = 0;
-      if (toBlade.lengthSquared() > 1e-4) {
-        toBlade.normalize();
-        const cone = projectile ? SHIELD.swordProjectileCone : SHIELD.swordBlockCone;
-        if (Vector3.Dot(toBlade, toAtk) > Math.cos(cone)) {
-          this.onBlocked(this.heldHand, projectile ? 1 : 0.7);
-          return projectile ? SHIELD.blockedDamage : SHIELD.swordBlockedFraction;
-        }
+      const eye = this.player.eyePosition;
+      const dx = (hilt.x + tip.x) * 0.5 - eye.x;
+      const dz = (hilt.z + tip.z) * 0.5 - eye.z;
+      const L = Math.hypot(dx, dz);
+      if (L > 1e-2) {
+        g.wx = dx / L;
+        g.wz = dz / L;
       }
     }
-    return 1;
+    return g;
+  }
+
+  /** Сервер сообщил, что удар отбит: звон + отдача в блокирующую руку. */
+  playBlock(by: BlockedBy): void {
+    if (by === 1 && this.shieldHand) this.onBlocked(this.shieldHand, 1);
+    else if (by === 2 && this.heldHand) this.onBlocked(this.heldHand, 0.8);
+    else if (by !== 0 && this.blockCd <= 0) {
+      // Блокирующий предмет держит плоский режим (руки нет) — только звук.
+      this.sfx.block(1);
+      this.blockCd = 0.15;
+    }
   }
 
   private onBlocked(hand: Side, strength: number): void {
@@ -648,7 +652,7 @@ export class CombatSystem {
           if (!t.alive) continue;
           const s = t.hitSegment();
           if (segmentDistance(f.prev, mesh.position, s.a, s.b) < s.radius + THROW.hitRadius) {
-            t.hit(dir, THROW.damage, mesh.position.clone());
+            t.hit(dir, "throw", mesh.position.clone());
             this.sfx.hitThud();
             f.hitDone = true;
             f.vel.scaleInPlace(0.2);
@@ -883,7 +887,7 @@ export class CombatSystem {
         // не проекция на ось цели — тогда рана встаёт туда, где вошёл клинок.
         const mid = seg.a.add(seg.b).scale(0.5);
         const contact = closestPointOnSegment(mid, guard, tip);
-        if (t.hit(dir, this.prog.swordDamage, contact)) {
+        if (t.hit(dir, "sword", contact)) {
           this.sfx.hitThud();
           // Вибрирует именно та рука, которая держит меч.
           this.haptic(this.heldHand, 0.7, 70);
@@ -926,7 +930,7 @@ export class CombatSystem {
             if (!t.alive) continue;
             const s = t.hitSegment();
             if (segmentDistance(prevW, nowW, s.a, s.b) <= s.radius + MELEE.reach) {
-              if (t.hit(dir, MELEE.damage, nowW.clone())) {
+              if (t.hit(dir, "fist", nowW.clone())) {
                 this.sfx.hitThud(0.55);
                 this.haptic(side, 0.6, 60);
                 this.fistCd[side] = MELEE.cooldown;
@@ -960,7 +964,7 @@ export class CombatSystem {
         dir.y = 0;
         if (dir.lengthSquared() > 1e-6) dir.normalize();
         const mid = s.a.add(s.b).scale(0.5);
-        if (t.hit(dir, MELEE.damage, closestPointOnSegment(mid, eye, reach))) landed = true;
+        if (t.hit(dir, "fist", closestPointOnSegment(mid, eye, reach))) landed = true;
       }
     }
     if (landed) this.sfx.hitThud(0.55);

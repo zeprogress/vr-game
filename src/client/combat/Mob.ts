@@ -13,6 +13,7 @@ import { MOB, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
+import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
@@ -149,15 +150,15 @@ export class Mob implements Hittable {
     return this.root.getAbsolutePosition().add(new Vector3(0, MOB.bodyRadius, 0));
   }
 
-  /** Удар игрока: считает клиент, применяет сервер. Локальный кулдаун — 1 репорт на замах. */
-  hit(dir: Vector3, damage = 1, _contact?: Vector3): boolean {
+  /** Заявка на удар. Урон считает сервер; локальный кулдаун — 1 заявка на замах. */
+  hit(dir: Vector3, weapon: WeaponKind, _contact?: Vector3): boolean {
     if (this.dead || this.hitCd > 0) return false;
     this.hitCd = 0.2;
     this.flash = Math.max(this.flash, 0.6); // мгновенная реакция, рана придёт из состояния
     let d = new Vector3(dir.x, 0, dir.z);
     if (d.lengthSquared() < 1e-6) d = new Vector3(0, 0, 1);
     d.normalize();
-    this.report(this.id, "mob", damage, d.x, d.z);
+    this.report(this.id, "mob", weapon, d.x, d.z);
     return true;
   }
 

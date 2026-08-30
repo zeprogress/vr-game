@@ -15,6 +15,7 @@ export class Hud {
   private readonly lowVignette: HTMLDivElement;
   private readonly toastEl: HTMLDivElement;
   private readonly panel: HTMLDivElement;
+  private readonly deathEl: HTMLDivElement;
   private prog: Progression | null = null;
   private toastTimer: number | null = null;
 
@@ -28,8 +29,16 @@ export class Hud {
     this.lowVignette = el("div", LOW_VIGNETTE_CSS);
     this.toastEl = el("div", TOAST_CSS);
     this.panel = el("div", PANEL_CSS);
+    this.deathEl = el("div", DEATH_CSS);
 
-    document.body.append(this.bar, this.lowVignette, this.vignette, this.toastEl, this.panel);
+    document.body.append(
+      this.bar,
+      this.lowVignette,
+      this.vignette,
+      this.toastEl,
+      this.panel,
+      this.deathEl,
+    );
   }
 
   /** Подключить прогрессию — включает панель персонажа на клавишу C. */
@@ -71,6 +80,15 @@ export class Hud {
   /** Постоянная виньетка нехватки здоровья. alpha уже с пульсацией (0..1). */
   setLowHealth(alpha: number): void {
     this.lowVignette.style.opacity = String(Math.max(0, Math.min(1, alpha)));
+  }
+
+  /** Экран смерти: затемнение и отсчёт до возрождения. */
+  setDead(dead: boolean, secondsLeft = 0): void {
+    this.deathEl.style.opacity = dead ? "1" : "0";
+    if (dead) {
+      const t = Math.max(0, Math.ceil(secondsLeft));
+      this.deathEl.textContent = t > 0 ? `Вы погибли\nВозрождение через ${t}…` : "Вы погибли";
+    }
   }
 
   toast(text: string): void {
@@ -156,6 +174,12 @@ const TOAST_CSS =
   "position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:36;" +
   "padding:10px 18px;background:rgba(20,22,30,0.85);color:#ffd166;border-radius:8px;" +
   "font:bold 16px system-ui,sans-serif;opacity:0;transition:opacity 0.4s;pointer-events:none;";
+
+const DEATH_CSS =
+  "position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;" +
+  "background:radial-gradient(ellipse at center,rgba(60,0,0,0.55),rgba(0,0,0,0.9));" +
+  "color:#ffdede;font:bold 28px system-ui,sans-serif;text-align:center;white-space:pre-line;" +
+  "opacity:0;transition:opacity 0.5s;pointer-events:none;";
 
 const PANEL_CSS =
   "position:fixed;left:16px;top:52px;z-index:36;padding:12px 14px;width:210px;" +

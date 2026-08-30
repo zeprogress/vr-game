@@ -1,6 +1,18 @@
-import { PLAYER, PLAYER_HP, PROGRESSION } from "#shared/constants";
+import { PROGRESSION } from "#shared/constants";
+import {
+  arrowSpeedBonusFor,
+  atMaxLevel,
+  grantXp,
+  maxHpFor,
+  moveSpeedFor,
+  spendPoint,
+  swordDamageFor,
+  xpToNext as xpToNextFor,
+  type Progress,
+  type StatName,
+} from "#shared/progression";
 
-export type StatName = "str" | "agi" | "int";
+export type { StatName };
 
 export const STAT_LABELS: Record<StatName, string> = {
   str: "Сила",
@@ -29,6 +41,11 @@ export class Progression {
 
   /** Дёргается при повышении уровня. */
   onLevelUp: ((level: number) => void) | null = null;
+  /**
+   * Онлайн: прокачку считает сервер. spend() только шлёт заявку, а результат
+   * прилетает обратно в applyRemote(). Офлайн — null, всё считается локально.
+   */
+  onSpendRequest: ((stat: StatName) => void) | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor() {
@@ -47,56 +64,77 @@ export class Progression {
 
   /** Сколько опыта нужно для перехода с `level` на следующий. */
   xpToNext(level = this.level): number {
-    if (level >= PROGRESSION.maxLevel) return Infinity;
-    return PROGRESSION.baseXp * Math.pow(2, level - 1);
+    return xpToNextFor(level);
   }
 
   get atMaxLevel(): boolean {
-    return this.level >= PROGRESSION.maxLevel;
+    return atMaxLevel(this.level);
   }
 
+  /** Офлайн-начисление опыта. Онлайн опыт приходит из состояния сервера. */
   addXp(amount: number): void {
-    if (this.atMaxLevel) return;
-    this.xp += amount;
-    while (!this.atMaxLevel && this.xp >= this.xpToNext()) {
-      this.xp -= this.xpToNext();
-      this.level++;
-      this.unspent += PROGRESSION.statPointsPerLevel;
-      this.onLevelUp?.(this.level);
-    }
-    if (this.atMaxLevel) this.xp = 0;
+    const p = this.toProgress();
+    const levels = grantXp(p, amount);
+    this.fromProgress(p);
+    for (let i = 0; i < levels; i++) this.onLevelUp?.(this.level - levels + 1 + i);
     this.save();
     this.emit();
   }
 
-  /** Потратить очко на характеристику. true — получилось. */
+  /** Потратить очко на характеристику. true — заявка принята. */
   spend(stat: StatName): boolean {
     if (this.unspent <= 0) return false;
-    this.unspent--;
-    this.stats[stat]++;
+    if (this.onSpendRequest) {
+      // Онлайн: решает сервер, ответ придёт в applyRemote().
+      this.onSpendRequest(stat);
+      return true;
+    }
+    const p = this.toProgress();
+    if (!spendPoint(p, stat)) return false;
+    this.fromProgress(p);
     this.save();
     this.emit();
     return true;
   }
 
+  private toProgress(): Progress {
+    return {
+      level: this.level,
+      xp: this.xp,
+      unspent: this.unspent,
+      str: this.stats.str,
+      agi: this.stats.agi,
+      int: this.stats.int,
+    };
+  }
+
+  private fromProgress(p: Progress): void {
+    this.level = p.level;
+    this.xp = p.xp;
+    this.unspent = p.unspent;
+    this.stats.str = p.str;
+    this.stats.agi = p.agi;
+    this.stats.int = p.int;
+  }
+
   // ---- производные величины ----
 
   get maxHp(): number {
-    return PLAYER_HP.max + (this.stats.str - PROGRESSION.startStat) * PROGRESSION.hpPerStr;
+    return maxHpFor(this.stats.str);
   }
 
   /** Множитель/добавка урона мечом (базовый удар = 1). */
   get swordDamage(): number {
-    return 1 + (this.stats.str - PROGRESSION.startStat) * PROGRESSION.swordDamagePerStr;
+    return swordDamageFor(this.stats.str);
   }
 
   get moveSpeed(): number {
-    return PLAYER.runSpeed + (this.stats.agi - PROGRESSION.startStat) * PROGRESSION.moveSpeedPerAgi;
+    return moveSpeedFor(this.stats.agi);
   }
 
   /** Добавка к скорости стрелы, м/с. */
   get arrowSpeedBonus(): number {
-    return (this.stats.agi - PROGRESSION.startStat) * PROGRESSION.arrowSpeedPerAgi;
+    return arrowSpeedBonusFor(this.stats.agi);
   }
 
   // ---- сохранение ----
@@ -150,7 +188,7 @@ export class Progression {
     };
   }
 
-  /** Применить прогресс, пришедший с сервера (серверный сейв главнее). */
+  /** Применить прогресс, пришедший с сервера. Онлайн это единственный источник. */
   applyRemote(d: {
     level: number;
     xp: number;

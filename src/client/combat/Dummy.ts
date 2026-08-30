@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { COMBAT } from "#shared/constants";
 import type { DummyState } from "#shared/net/schema";
+import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 
 /**
@@ -87,7 +88,7 @@ export class Dummy implements Hittable {
     };
   }
 
-  hit(dir: Vector3, damage = 1): boolean {
+  hit(dir: Vector3, weapon: WeaponKind): boolean {
     if (this.dying || this.hitCooldown > 0) return false;
     this.hitCooldown = COMBAT.hitCooldown;
     this.flash = 1;
@@ -105,7 +106,7 @@ export class Dummy implements Hittable {
     } else {
       hz = 1;
     }
-    this.report(this.id, "dummy", damage, hx, hz);
+    this.report(this.id, "dummy", weapon, hx, hz);
     return true;
   }
 

@@ -53,6 +53,11 @@ export class PlayerController {
   hp: number = PLAYER_HP.max;
   private hurtTimer = 0; // с с последнего урона
 
+  /** Онлайн (этап 7): HP, реген и смерть считает сервер — локально не трогаем. */
+  netControlled = false;
+  /** Лежит мёртвый: ввод игнорируется до возрождения. */
+  dead = false;
+
   get maxHp(): number {
     return this.prog?.maxHp ?? PLAYER_HP.max;
   }
@@ -126,6 +131,28 @@ export class PlayerController {
     return this._eyeQ;
   }
 
+  /** Эффекты удара без изменения HP: отскок + хуки. Онлайн HP шлёт сервер. */
+  hurtFx(amount: number, dir?: Vector3): void {
+    this.hurtTimer = 0;
+    if (dir) {
+      this.body.position.x += dir.x * 0.6;
+      this.body.position.z += dir.z * 0.6;
+    }
+    this.hooks.hurt?.(this.hp, amount);
+  }
+
+  /** Здоровье, присланное сервером. */
+  setHp(hp: number): void {
+    this.hp = Math.max(0, hp);
+  }
+
+  /** Возрождение по команде сервера. */
+  teleportTo(x: number, y: number, z: number): void {
+    this.body.position.set(x, y, z);
+    this.verticalVelocity = 0;
+    this.placeOnGround();
+  }
+
   /** Получить урон. dir — направление от источника (для отталкивания). */
   damage(amount: number, dir?: Vector3): void {
     if (this.hp <= 0) return;
@@ -182,7 +209,8 @@ export class PlayerController {
 
   /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
   update(dt: number): void {
-    const inp = this.input?.sample() ?? emptyInput();
+    // Мёртвый не ходит и не бьёт — ввод глушим целиком.
+    const inp = this.dead ? emptyInput() : (this.input?.sample() ?? emptyInput());
     this.lastInput = inp;
     const pos = this.body.position;
     const vr = this.xrCamera !== null;
@@ -290,9 +318,9 @@ export class PlayerController {
       this.camera.rotation.set(this.pitch, this.yaw, 0);
     }
 
-    // --- Реген здоровья после паузы без урона ---
+    // --- Реген здоровья после паузы без урона (офлайн; онлайн считает сервер) ---
     this.hurtTimer += dt;
-    if (this.hp > 0 && this.hp < this.maxHp && this.hurtTimer > PLAYER_HP.regenDelay) {
+    if (!this.netControlled && this.hp > 0 && this.hp < this.maxHp && this.hurtTimer > PLAYER_HP.regenDelay) {
       this.hp = Math.min(this.maxHp, this.hp + PLAYER_HP.regen * dt);
       this.hooks.heal?.(this.hp);
     }

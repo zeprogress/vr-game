@@ -1,15 +1,19 @@
 import { Client, type Room } from "colyseus.js";
 
-import type { ZoneState } from "#shared/net/schema";
+import type { PlayerState, ZoneState } from "#shared/net/schema";
 import {
   MSG,
   type CharMsg,
   type HitMobMsg,
+  type LevelUpMsg,
   type MobHitMsg,
   type MoveMsg,
+  type RespawnMsg,
   type SaveMsg,
-  type XpMsg,
+  type SpendMsg,
 } from "#shared/net/messages";
+import type { BlockedBy } from "#shared/combat";
+import type { StatName } from "#shared/progression";
 
 const SEND_HZ = 18;
 const SEND_EVERY = 1000 / SEND_HZ;
@@ -25,10 +29,12 @@ export class NetClient {
 
   /** Вызывается один раз при входе: персонаж с сервера или null (новый токен). */
   onChar: ((data: CharMsg) => void) | null = null;
-  /** Сервер начислил опыт (добит моб). */
-  onXp: ((amount: number) => void) | null = null;
-  /** Моб/плевок ударил игрока: урон и точка, откуда прилетело. */
-  onMobHit: ((dmg: number, fromX: number, fromZ: number) => void) | null = null;
+  /** Моб/плевок ударил игрока: прошедший урон, откуда и чем отбито. */
+  onMobHit: ((dmg: number, fromX: number, fromZ: number, by: BlockedBy) => void) | null = null;
+  /** Сервер возродил игрока — встать в эту точку. */
+  onRespawn: ((x: number, y: number, z: number) => void) | null = null;
+  /** Получен новый уровень. */
+  onLevelUp: ((level: number) => void) | null = null;
 
   get online(): boolean {
     return this.room !== null;
@@ -44,8 +50,11 @@ export class NetClient {
       this.client = new Client();
       const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
       room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
-      room.onMessage(MSG.xp, (m: XpMsg) => this.onXp?.(m.amount));
-      room.onMessage(MSG.mobHit, (m: MobHitMsg) => this.onMobHit?.(m.dmg, m.fromX, m.fromZ));
+      room.onMessage(MSG.mobHit, (m: MobHitMsg) =>
+        this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by),
+      );
+      room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
+      room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
       // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
       await new Promise<void>((r) => {
         const t = setTimeout(r, 800);
@@ -81,9 +90,21 @@ export class NetClient {
     this.room?.send(MSG.save, msg);
   }
 
-  /** Сообщить о попадании по мобу/кукле (урон применит сервер). */
+  /** Сообщить о попадании по мобу/кукле (урон посчитает и применит сервер). */
   sendHitMob(msg: HitMobMsg): void {
     this.room?.send(MSG.hitMob, msg);
+  }
+
+  /** Заявка потратить очко характеристики. */
+  sendSpend(stat: StatName): void {
+    const msg: SpendMsg = { stat };
+    this.room?.send(MSG.spend, msg);
+  }
+
+  /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */
+  get self(): PlayerState | null {
+    const id = this.room?.sessionId;
+    return id ? (this.room?.state.players.get(id) ?? null) : null;
   }
 
   disconnect(): void {

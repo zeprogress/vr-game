@@ -105,7 +105,7 @@ export class Arrow {
         const s = target.hitSegment();
         if (segmentDistance(prev, this.mesh.position, s.a, s.b) < s.radius + ARROW.hitRadius) {
           const at = prev.add(dir.scale(Math.max(0, len - 0.15)));
-          target.hit(dir, undefined, at);
+          target.hit(dir, "arrow", at);
           ctx.onHit("flesh", at.clone());
           this.stickInto(target, at);
           return true;
