@@ -200,9 +200,11 @@ export class LoadoutPanel {
           label: "смена сама",
           rot: false,
           steps: [1],
-          get: () => LOADOUT.world.auto,
+          get: () => (LOADOUT.world.auto === 0 ? 0 : 1),
           set: (v) => {
-            LOADOUT.world.auto = ((Math.round(v) % 2) + 2) % 2; // «вкл» <-> «выкл»
+            // Любое непонятное значение считаем «вкл»: остановленное время
+            // выглядит как поломка, а лишний ход часов — нет.
+            LOADOUT.world.auto = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
           },
           format: (v) => (v ? "вкл" : "выкл"),
         };
@@ -299,7 +301,11 @@ export class LoadoutPanel {
     }
     const f = this.field(this.row - 1);
     if (!f) return;
-    const step = (f.steps ?? (f.rot ? ROT_STEPS : POS_STEPS))[this.stepIdx];
+    // Кнопка A переключает шаг между тремя позициями, а у некоторых полей
+    // список шагов короче — берём последний, иначе получили бы undefined,
+    // а из него NaN, который потом уже ничем не вылечить.
+    const steps = f.steps ?? (f.rot ? ROT_STEPS : POS_STEPS);
+    const step = steps[this.stepIdx] ?? steps[steps.length - 1];
     f.set(f.get() + dir * step);
     saveTarget(this.target.key);
     this.redraw();

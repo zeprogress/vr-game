@@ -75,7 +75,9 @@ export function buildZone(scene: Scene): Zone {
 
       // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
       // Тумблер в панели останавливает время на выставленном часе.
-      if (LOADOUT.world.auto) {
+      // Останавливаемся только по явному нулю: если в настройку затесался
+      // мусор, часы должны идти, а не замереть навсегда.
+      if (LOADOUT.world.auto !== 0) {
         const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
         hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
       }

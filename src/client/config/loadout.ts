@@ -106,14 +106,14 @@ export const LOADOUT_DEFAULTS: Loadout = {
     jump: 4, // A на правом
   },
   world: {
-    hour: 17.6, // час суток: свет, небо и место солнца
+    hour: 2.12, // час суток: свет, небо и место солнца
     auto: 1, // время идёт само
   },
   belt: {
     pos: [0.01, 0.2, 0.1],
   },
   hud: {
-    hpPos: [-0.24, 0.46, 0.92],
+    hpPos: [-0.035, 0.46, 0.72],
   },
 };
 
@@ -159,7 +159,9 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   if (parts[0] === "world") {
     const w = value as Partial<Loadout["world"]>;
     if (typeof w?.hour === "number" && Number.isFinite(w.hour)) dst.world.hour = w.hour;
-    if (typeof w?.auto === "number") dst.world.auto = w.auto ? 1 : 0;
+    if (typeof w?.auto === "number") {
+      dst.world.auto = Number.isFinite(w.auto) ? (w.auto ? 1 : 0) : 1;
+    }
     return;
   }
   if (parts[0] === "belt") {

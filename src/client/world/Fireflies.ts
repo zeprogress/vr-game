@@ -33,9 +33,18 @@ export const FIREFLY = {
   lightRange: 8,
   lightIntensity: 1.5,
   /** Радиус светового пятна на земле под стайкой, м. */
-  poolRadius: 3.2,
-  /** Насколько ярко пятно (0..1). */
-  poolAlpha: 0.5,
+  poolRadius: 4.4,
+  /**
+   * Насколько ярко пятно (0..1). Складывается с настоящей лампой, поэтому
+   * при больших значениях центр выбивается в белый.
+   */
+  poolAlpha: 0.3,
+  /** Цвет света: один и тот же у лампы и у пятна, иначе они спорят. */
+  lightColor: [1, 0.78, 0.2] as [number, number, number],
+  /** С этого расстояния свет начинает разгораться, м. */
+  lightFadeFrom: 18,
+  /** Ближе этого светит в полную силу, м. */
+  lightFadeFull: 5,
   /** Скорость дрейфа стайки по округе, м/с. */
   driftSpeed: 0.45,
 } as const;
@@ -93,7 +102,7 @@ export class Fireflies {
     this.poolMat.opacityTexture = glow;
     this.poolMat.diffuseColor = new Color3(0, 0, 0);
     this.poolMat.specularColor = new Color3(0, 0, 0);
-    this.poolMat.emissiveColor = new Color3(1, 0.78, 0.22); // свет заметно желтее огонька
+    this.poolMat.emissiveColor = new Color3(...FIREFLY.lightColor); // тот же цвет, что у лампы
     this.poolMat.disableLighting = true;
     this.poolMat.alphaMode = Constants.ALPHA_ADD;
     this.poolMat.disableDepthWrite = true;
@@ -101,7 +110,7 @@ export class Fireflies {
 
     this.poolProto = MeshBuilder.CreateDisc(
       "fireflyPoolProto",
-      { radius: FIREFLY.poolRadius, tessellation: 20 },
+      { radius: FIREFLY.poolRadius, tessellation: 48 }, // край не должен быть многоугольником
       scene,
     );
     this.poolProto.rotation.x = Math.PI / 2; // кладём плашмя на землю
@@ -135,8 +144,12 @@ export class Fireflies {
 
     for (let i = 0; i < FIREFLY.lamps; i++) {
       const lamp = new PointLight(`fireflyLamp${i}`, Vector3.Zero(), scene);
-      lamp.diffuse = new Color3(1, 0.78, 0.2); // свет желтее самих огоньков
-      lamp.specular = new Color3(0.3, 0.22, 0.08);
+      lamp.diffuse = new Color3(...FIREFLY.lightColor);
+      lamp.specular = new Color3(
+        FIREFLY.lightColor[0] * 0.3,
+        FIREFLY.lightColor[1] * 0.3,
+        FIREFLY.lightColor[2] * 0.3,
+      );
       lamp.range = FIREFLY.lightRange;
       lamp.intensity = 0;
       lamp.setEnabled(false);
@@ -213,9 +226,17 @@ export class Fireflies {
         continue;
       }
       this.lamps[i].position.copyFrom(g.center);
+
+      // Разгорается плавно по мере подхода: иначе свет вспыхивал разом,
+      // когда стайка становилась одной из двух ближайших.
+      const dist = Vector3.Distance(g.center, playerPos);
+      const span = FIREFLY.lightFadeFrom - FIREFLY.lightFadeFull;
+      const t = clamp01((FIREFLY.lightFadeFrom - dist) / span);
+      const fade = t * t * (3 - 2 * t); // сглаживаем концы, чтобы не было ступеньки
+
       // Чуть мерцают — как настоящие.
       const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + i);
-      this.lamps[i].intensity = FIREFLY.lightIntensity * this.night * flicker;
+      this.lamps[i].intensity = FIREFLY.lightIntensity * this.night * flicker * fade;
     }
   }
 
@@ -230,17 +251,30 @@ export class Fireflies {
   }
 }
 
-/** Круглое пятно, мягко тающее к краям — заготовка для светового пятна. */
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Круглое пятно, плавно тающее к краям.
+ *
+ * Прозрачность падает по кубу расстояния и набирается многими остановками —
+ * иначе на границе видно кольцо, а у самого края резкий обрыв.
+ */
 function radialGlow(scene: Scene): DynamicTexture {
-  const S = 128;
+  const S = 256;
   const tex = new DynamicTexture("fireflyGlow", { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
+
   const grad = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  grad.addColorStop(0, "rgba(255,255,255,1)");
-  grad.addColorStop(0.45, "rgba(255,255,255,0.45)");
-  grad.addColorStop(1, "rgba(255,255,255,0)");
+  const STOPS = 24;
+  for (let i = 0; i <= STOPS; i++) {
+    const r = i / STOPS;
+    const a = Math.pow(1 - r, 3); // мягкий спад: в центре ярко, к краю сходит в ноль
+    grad.addColorStop(r, `rgba(255,255,255,${a.toFixed(4)})`);
+  }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, S, S);
   tex.update(true);
