@@ -12,16 +12,34 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import { NameTag } from "../ui/NameTag";
 
+/** Рендерим на 100 мс в прошлом — между двумя пришедшими снапшотами. */
+const INTERP_DELAY = 100;
+/** Если свежий снапшот старше — держим позу (не экстраполируем). */
+const HOLD_AFTER = 260;
+const BUFFER_MS = 600;
+
+interface Snap {
+  t: number;
+  mode: PlayerMode;
+  head: readonly [number, number, number, number, number, number, number];
+  handL: readonly [number, number, number, number, number, number, number];
+  handR: readonly [number, number, number, number, number, number, number];
+}
+
+function snapXf(x: Xf): Snap["head"] {
+  return [x.x, x.y, x.z, x.qx, x.qy, x.qz, x.qw];
+}
+
 /** Цвет игрока из его id — чтобы отличать аватары. */
 function colorFor(id: string): Color3 {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff;
-  return Color3.FromHSV((h % 360), 0.55, 0.85);
+  return Color3.FromHSV(h % 360, 0.55, 0.85);
 }
 
 /**
  * Чужой игрок. В VR — голова-куб + две кисти; в плоском — капсула + голова.
- * Этап 4d: транспорт присваивается напрямую (интерполяция — 4e).
+ * Транспорт сглаживается интерполяцией между снапшотами (4e).
  */
 export class RemoteAvatar {
   private readonly root: TransformNode;
@@ -32,6 +50,10 @@ export class RemoteAvatar {
   private handR: Mesh | null = null;
   private capsule: Mesh | null = null;
   private mode: PlayerMode | null = null;
+
+  private readonly buf: Snap[] = [];
+  private readonly _qa = new Quaternion();
+  private readonly _qb = new Quaternion();
 
   constructor(
     private readonly scene: Scene,
@@ -90,30 +112,75 @@ export class RemoteAvatar {
     return h;
   }
 
-  /** Присвоить транспорт из состояния (без сглаживания — 4d). */
-  applyState(p: PlayerState): void {
-    this.setMode(p.mode);
+  /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
+  push(now: number, p: PlayerState): void {
+    const last = this.buf[this.buf.length - 1];
+    const head = snapXf(p.head);
+    // Дедуп: сервер шлёт ~18 Гц, кадров больше — не копим одинаковое.
+    if (last && last.mode === p.mode && head.every((v, i) => Math.abs(v - last.head[i]) < 1e-4)) {
+      return;
+    }
+    this.buf.push({ t: now, mode: p.mode, head, handL: snapXf(p.handL), handR: snapXf(p.handR) });
+    while (this.buf.length > 2 && this.buf[0].t < now - BUFFER_MS) this.buf.shift();
+  }
 
-    this.root.position.set(p.head.x, p.head.y, p.head.z);
-    setQuat(this.head.rotationQuaternion!, p.head);
+  /** Каждый кадр: ставим позу на INTERP_DELAY мс назад между снапшотами. */
+  update(now: number): void {
+    if (this.buf.length === 0) return;
+    const target = now - INTERP_DELAY;
 
+    let a = this.buf[0];
+    let b = this.buf[this.buf.length - 1];
+    if (target <= a.t) {
+      b = a; // ещё нет истории — держим самый старый
+    } else if (target >= b.t) {
+      a = b; // отстали / игрок замер — держим самый свежий
+    } else {
+      for (let i = 1; i < this.buf.length; i++) {
+        if (this.buf[i].t >= target) {
+          a = this.buf[i - 1];
+          b = this.buf[i];
+          break;
+        }
+      }
+    }
+
+    const stale = now - b.t > HOLD_AFTER;
+    const s = stale || b.t === a.t ? 1 : (target - a.t) / (b.t - a.t);
+
+    this.setMode(b.mode);
+    this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
     if (this.mode === "vr") {
-      this.local(this.handL!, p.handL);
-      this.local(this.handR!, p.handR);
+      this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
+      this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
     }
   }
 
-  private local(mesh: Mesh, xf: Xf): void {
-    mesh.position.set(xf.x - this.root.position.x, xf.y - this.root.position.y, xf.z - this.root.position.z);
-    setQuat(mesh.rotationQuaternion!, xf);
+  /** node.position (или root) + кватернион = интерполяция a->b. `isRoot` — позиция мировая. */
+  private applyXf(
+    node: TransformNode,
+    q: Quaternion,
+    a: Snap["head"],
+    b: Snap["head"],
+    s: number,
+    isRoot: boolean,
+  ): void {
+    const x = a[0] + (b[0] - a[0]) * s;
+    const y = a[1] + (b[1] - a[1]) * s;
+    const z = a[2] + (b[2] - a[2]) * s;
+    if (isRoot) {
+      node.position.set(x, y, z);
+    } else {
+      const r = this.root.position;
+      node.position.set(x - r.x, y - r.y, z - r.z);
+    }
+    this._qa.set(a[3], a[4], a[5], a[6]);
+    this._qb.set(b[3], b[4], b[5], b[6]);
+    Quaternion.SlerpToRef(this._qa, this._qb, s, q);
   }
 
   dispose(): void {
     this.nameTag.dispose();
     this.root.dispose(false, true);
   }
-}
-
-function setQuat(q: Quaternion, xf: Xf): void {
-  q.set(xf.qx, xf.qy, xf.qz, xf.qw);
 }

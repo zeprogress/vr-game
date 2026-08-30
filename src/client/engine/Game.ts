@@ -402,12 +402,14 @@ export class Game {
       if (l) writeXf(m.handL, l.getAbsolutePosition(), l.absoluteRotationQuaternion);
       if (r) writeXf(m.handR, r.getAbsolutePosition(), r.absoluteRotationQuaternion);
     }
-    net.sendMove(performance.now(), m);
+    const now = performance.now();
+    net.sendMove(now, m);
 
     const players = net.room.state.players;
     for (const [id, avatar] of this.avatars) {
       const p = players.get(id);
-      if (p) avatar.applyState(p);
+      if (p) avatar.push(now, p);
+      avatar.update(now);
     }
   }
 
