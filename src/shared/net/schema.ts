@@ -19,6 +19,18 @@ export class PlayerState extends Schema {
   @type(Xf) head = new Xf();
   @type(Xf) handL = new Xf();
   @type(Xf) handR = new Xf();
+
+  // ---- этап 7: здоровье и прогресс считает сервер ----
+  @type("float32") hp = 100;
+  @type("float32") maxHp = 100;
+  /** 1 — лежит мёртвый, ждёт возрождения. */
+  @type("uint8") dead = 0;
+  @type("uint16") level = 1;
+  @type("float32") xp = 0;
+  @type("uint16") unspent = 0;
+  @type("uint16") str = 1;
+  @type("uint16") agi = 1;
+  @type("uint16") int = 1;
 }
 
 export type MobKind = "slime" | "spitter";
