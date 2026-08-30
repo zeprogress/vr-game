@@ -28,7 +28,7 @@ import { createSword } from "../items/Sword";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
 import { createBow, tintBow, type BowParts } from "../items/Bow";
-import { createArrowProto, Arrow } from "./Arrow";
+import { createArrowProto, tintArrows, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
@@ -714,6 +714,7 @@ export class CombatSystem {
         if (this.canPick(bow)) {
           bow.tier = ws.tier;
           tintBow(bow.mesh, ws.tier);
+          tintArrows(ws.tier); // золотому луку — золотые стрелы
           this.onTakeWorldWeapon?.(ws.id);
           this.equip(bow, side);
           return;

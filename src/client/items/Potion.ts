@@ -27,6 +27,48 @@ export interface PotionBottle {
  * Бутылочка зелья, висящая на поясе: пузатое тело, горлышко, пробка
  * и табличка с числом зелий в сумке.
  */
+/**
+ * Та же бутылочка, но одним мешем и без таблички — для лута, лежащего
+ * в мире. Модель общая с той, что висит у игрока на поясе.
+ */
+export function createPotionMesh(scene: Scene): Mesh {
+  const parts = potionParts(scene);
+  const mesh = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+  if (!mesh) throw new Error("не удалось собрать бутылочку");
+  mesh.name = "potionDrop";
+  return mesh;
+}
+
+/** Тело, горлышко и пробка — общая заготовка для пояса и для лута. */
+function potionParts(scene: Scene): Mesh[] {
+  const tint = ITEMS.potion.tint;
+  const glass = new StandardMaterial("potionGlass", scene);
+  glass.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+  glass.emissiveColor = new Color3(tint[0] * 0.45, tint[1] * 0.2, tint[2] * 0.25);
+  glass.specularColor = new Color3(0.8, 0.8, 0.8);
+  glass.specularPower = 64;
+  glass.alpha = 0.85;
+
+  const cork = new StandardMaterial("potionCork", scene);
+  cork.diffuseColor = new Color3(0.42, 0.3, 0.16);
+  cork.specularColor = new Color3(0, 0, 0);
+
+  const body = MeshBuilder.CreateSphere("p_body", { diameter: 0.075, segments: 8 }, scene);
+  body.scaling.y = 1.25;
+  body.bakeCurrentTransformIntoVertices();
+  body.material = glass;
+
+  const neck = MeshBuilder.CreateCylinder("p_neck", { height: 0.05, diameter: 0.028 }, scene);
+  neck.position.y = 0.058;
+  neck.material = glass;
+
+  const stopper = MeshBuilder.CreateCylinder("p_cork", { height: 0.022, diameter: 0.032 }, scene);
+  stopper.position.y = 0.09;
+  stopper.material = cork;
+
+  return [body, neck, stopper];
+}
+
 export function createPotion(scene: Scene): PotionBottle {
   const root = new TransformNode("potionBottle", scene);
 

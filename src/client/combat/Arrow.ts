@@ -9,6 +9,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import { weaponDef, type WeaponTier } from "#shared/items";
 
 import { ARROW } from "#shared/constants";
 import { segmentDistance } from "#shared/geometry";
@@ -22,6 +23,30 @@ export interface ArrowContext {
 }
 
 /** Прототип стрелы: наконечник смотрит по локальной +Z. */
+/** Материалы прототипа — по ним стрелы перекрашиваются под уровень лука. */
+const arrowMats = new Map<"shaft" | "head", StandardMaterial>();
+
+/** Перекрасить стрелы под уровень лука: у золотого они золотые. */
+export function tintArrows(tier: WeaponTier): void {
+  const gold = tier !== "base";
+  const shaft = arrowMats.get("shaft");
+  const head = arrowMats.get("head");
+  if (gold) {
+    const t = weaponDef("bow", tier).tint;
+    shaft?.diffuseColor.set(t[0] * 0.85, t[1] * 0.72, t[2] * 0.2);
+    shaft?.emissiveColor.set(t[0] * 0.2, t[1] * 0.17, t[2] * 0.05);
+    head?.diffuseColor.set(t[0], t[1], t[2]);
+    head?.emissiveColor.set(t[0] * 0.3, t[1] * 0.25, t[2] * 0.08);
+    head?.specularColor.set(0.95, 0.9, 0.6);
+  } else {
+    shaft?.diffuseColor.set(0.5, 0.36, 0.22);
+    shaft?.emissiveColor.set(0, 0, 0);
+    head?.diffuseColor.set(0.7, 0.72, 0.75);
+    head?.emissiveColor.set(0, 0, 0);
+    head?.specularColor.set(0.5, 0.5, 0.5);
+  }
+}
+
 export function createArrowProto(scene: Scene): Mesh {
   const shaftMat = new StandardMaterial("arrowShaft", scene);
   shaftMat.diffuseColor = new Color3(0.5, 0.36, 0.22);
@@ -29,6 +54,8 @@ export function createArrowProto(scene: Scene): Mesh {
   const headMat = new StandardMaterial("arrowHead", scene);
   headMat.diffuseColor = new Color3(0.7, 0.72, 0.75);
   headMat.specularColor = new Color3(0.5, 0.5, 0.5);
+  arrowMats.set("shaft", shaftMat);
+  arrowMats.set("head", headMat);
   const fletchMat = new StandardMaterial("arrowFletch", scene);
   fletchMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
   fletchMat.specularColor = new Color3(0, 0, 0);

@@ -58,8 +58,12 @@ export function scatterTrees(scene: Scene, terrain: Terrain): void {
 /**
  * Пучки травы вокруг спавна — тысячи thin-инстансов, один драв-колл.
  * Возвращает функцию, которую надо звать каждый кадр: она двигает ветер.
+ * `daylight` 0..1 — ночью ветер стихает и трава замирает.
  */
-export function scatterGrass(scene: Scene, terrain: Terrain): (dt: number) => void {
+export function scatterGrass(
+  scene: Scene,
+  terrain: Terrain,
+): (dt: number, daylight: number) => void {
   const mat = new StandardMaterial("grassBladeMat", scene);
   const bladeTex = grassBladeTexture(scene);
   bladeTex.vScale = -1; // текстура рисуется «вниз головой» — переворачиваем
@@ -116,8 +120,10 @@ export function scatterGrass(scene: Scene, terrain: Terrain): (dt: number) => vo
   tuft.thinInstanceAdd(matrices);
   tuft.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
 
-  return (dt: number) => {
-    wind.time += dt * WIND.speed;
+  return (dt: number, daylight: number) => {
+    // Плавно, а не рывком: ветер стихает к ночи и поднимается к утру.
+    wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
+    wind.time += dt * WIND.speed * Math.max(wind.scale, 0.05);
   };
 }
 

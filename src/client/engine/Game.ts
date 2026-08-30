@@ -56,7 +56,7 @@ export class Game {
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
   private readonly loot: LootDrops;
-  private readonly zoneTick: (dt: number) => void;
+  private readonly zoneTick: (dt: number, playerPos: Vector3) => void;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
   private readonly sfx = new Sfx();
@@ -171,7 +171,7 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
-      this.zoneTick(dt);
+      this.zoneTick(dt, this.player.position);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.netMobs.update(dt, this.player.position, this.aim);

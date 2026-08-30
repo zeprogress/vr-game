@@ -8,6 +8,7 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
 import { dayState } from "./DayTime";
+import { Fireflies } from "./Fireflies";
 import { DAYCYCLE } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
 
@@ -16,8 +17,8 @@ export interface Zone {
   ground: Mesh;
   /** Высота земли в точке (аналитическая). */
   groundHeight: (x: number, z: number) => number;
-  /** Двигает ветер в траве. Звать каждый кадр. */
-  tick: (dt: number) => void;
+  /** Двигает время суток, ветер и светлячков. Звать каждый кадр. */
+  tick: (dt: number, playerPos: Vector3) => void;
   /** Точки, где лежат меч, лук и щит (над камнями). */
   swordHome: Vector3;
   bowHome: Vector3;
@@ -57,6 +58,7 @@ export function buildZone(scene: Scene): Zone {
   const terrain = createTerrain(scene);
   scatterTrees(scene, terrain);
   const windTick = scatterGrass(scene, terrain);
+  const fireflies = new Fireflies(scene, terrain);
 
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
@@ -65,8 +67,9 @@ export function buildZone(scene: Scene): Zone {
   return {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
-    tick: (dt: number) => {
-      windTick(dt);
+    tick: (dt: number, playerPos: Vector3) => {
+      windTick(dt, day.daylight);
+      fireflies.update(dt, playerPos, day.daylight, terrain);
 
       // Перевели стрелки в панели — принимаем новое время.
       if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;

@@ -23,6 +23,8 @@ export const WIND = {
 export class GrassWindPlugin extends MaterialPluginBase {
   /** Секунды с запуска — двигает волну. */
   time = 0;
+  /** 0..1: ночью ветер стихает и трава замирает. */
+  scale = 1;
 
   constructor(material: Material) {
     super(material, "GrassWind", 200, { GRASS_WIND: true });
@@ -63,7 +65,7 @@ export class GrassWindPlugin extends MaterialPluginBase {
 
   override bindForSubMesh(uniformBuffer: UniformBuffer): void {
     uniformBuffer.updateFloat("windTime", this.time);
-    uniformBuffer.updateFloat("windStrength", WIND.strength);
+    uniformBuffer.updateFloat("windStrength", WIND.strength * this.scale);
     uniformBuffer.updateFloat("windGust", WIND.gust);
     uniformBuffer.updateFloat2("windDir", WIND.dirX, WIND.dirZ);
   }

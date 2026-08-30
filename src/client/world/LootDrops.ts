@@ -11,6 +11,7 @@ import { isItemId, ITEMS, type ItemId, type WeaponClass, type WeaponTier } from 
 import { createSword } from "../items/Sword";
 import { createShield } from "../items/Shield";
 import { createBow } from "../items/Bow";
+import { createPotionMesh } from "../items/Potion";
 import type { ZoneState } from "#shared/net/schema";
 
 interface DropView {
@@ -40,6 +41,11 @@ export class LootDrops {
         // Настоящее оружие, воткнутое в землю — его берут рукой.
         proto = makeWeaponMesh(scene, def.weapon.cls, def.weapon.tier);
         proto.name = `dropProto_${id}`;
+      } else if (id === "potion") {
+        // Та же бутылочка, что у игрока на поясе — чтобы лут узнавался.
+        proto = createPotionMesh(scene);
+        proto.name = `dropProto_${id}`;
+        proto.scaling.setAll(1.6); // на земле мельче кубика, поэтому крупнее
       } else {
         const mat = new StandardMaterial(`drop_${id}`, scene);
         mat.diffuseColor = new Color3(...def.tint);

@@ -9,7 +9,6 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { SHIELD } from "#shared/constants";
 import { weaponDef, type WeaponTier } from "#shared/items";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
 /**
  * Щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y
@@ -67,9 +66,10 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
 /**
  * Вытянутый треугольный щит: широкий верх, острый низ.
  *
- * Собран из явной геометрии, а не из полос — иначе край получается лесенкой.
- * Плоскость щита XZ, толщина по Y — как у круглого, чтобы положение в руке
- * было общим для всего класса.
+ * Набран полосами убывающей ширины; под каждой полосой лежит чуть большая
+ * серебряная — из-за этого по контуру идёт светлая окантовка.
+ * Плоскость щита XZ, толщина по Y — как у круглого, чтобы положение
+ * в руке было общим для всего класса.
  */
 function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   const tint = weaponDef("shield", tier).tint;
@@ -80,49 +80,56 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   face.specularColor = new Color3(0.85, 0.8, 0.5);
   face.specularPower = 64;
 
-  const w = SHIELD.radius * 2; // ширина широкого края
-  const zTop = SHIELD.radius * 1.05; // широкий край
-  const zTip = -SHIELD.radius * 2.05; // остриё
-  const t = 0.035; // толщина
+  const silver = new StandardMaterial("shieldSilver", scene);
+  silver.diffuseColor = new Color3(0.76, 0.78, 0.83);
+  silver.emissiveColor = new Color3(0.2, 0.21, 0.24);
+  silver.specularColor = new Color3(0.9, 0.9, 0.95);
+  silver.specularPower = 72;
 
-  const hw = w / 2;
-  const hy = t / 2;
-  // 0..2 — верхняя грань, 3..5 — нижняя.
-  const positions = [
-    -hw, hy, zTop, hw, hy, zTop, 0, hy, zTip,
-    -hw, -hy, zTop, hw, -hy, zTop, 0, -hy, zTip,
-  ];
-  const indices = [
-    0, 2, 1, // верх
-    3, 4, 5, // низ
-    0, 1, 4, 0, 4, 3, // широкий торец
-    1, 2, 5, 1, 5, 4, // правый скос
-    2, 0, 3, 2, 3, 5, // левый скос
-  ];
-  const normals: number[] = [];
-  VertexData.ComputeNormals(positions, indices, normals);
-  // UV обязательны: без них MergeMeshes отказывается сливать нашу геометрию
-  // с рукоятью из MeshBuilder — «разный набор атрибутов».
-  const uvs = [0, 0, 1, 0, 0.5, 1, 0, 0, 1, 0, 0.5, 1];
+  const w = SHIELD.radius * 2; // ширина вверху
+  const h = SHIELD.radius * 3.1; // высота: заметно вытянут
+  const RIM = 0.028; // насколько серебро выступает за золото
 
-  const body = new Mesh("sh_tri", scene);
-  const data = new VertexData();
-  data.positions = positions;
-  data.indices = indices;
-  data.normals = normals;
-  data.uvs = uvs;
-  data.applyToMesh(body);
-  body.material = face;
+  // Треугольник набираем полосами убывающей ширины — верх широкий, низ острый.
+  const parts: Mesh[] = [];
+  const bands = 7;
+  for (let i = 0; i < bands; i++) {
+    const f = i / bands;
+    const next = (i + 1) / bands;
+    const bw = w * (1 - f) || 0.01;
+    const depth = h * (next - f);
+    const z = h * 0.5 - h * (f + (next - f) / 2);
+
+    // Серебряная подложка чуть больше — она и видна по краю как окантовка.
+    const rim = MeshBuilder.CreateBox(
+      `sh_rim${i}`,
+      { width: bw + RIM, height: 0.024, depth: depth + RIM },
+      scene,
+    );
+    rim.position.set(0, -0.012, z);
+    rim.material = silver;
+    parts.push(rim);
+
+    const band = MeshBuilder.CreateBox(
+      `sh_band${i}`,
+      { width: bw, height: 0.03, depth },
+      scene,
+    );
+    band.position.z = z;
+    band.material = face;
+    parts.push(band);
+  }
 
   const grip = MeshBuilder.CreateBox("sh_grip", { width: 0.12, height: 0.03, depth: 0.03 }, scene);
   grip.position.y = -0.05;
-  grip.material = face;
+  grip.material = silver;
+  parts.push(grip);
 
-  const shield = Mesh.MergeMeshes([body, grip], true, true, undefined, false, true);
+  const shield = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
   if (!shield) throw new Error("не удалось собрать треугольный щит");
-  // Разворот на 180° по X вживляем в вершины: положение в руке настраивается
-  // отдельно и не должно зависеть от того, как собрана модель.
-  shield.rotation.x = Math.PI;
+  // Разворот вживляем в вершины: положение в руке настраивается отдельно
+  // и не должно зависеть от того, как собрана модель.
+  shield.rotation.y = Math.PI / 2;
   shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
   return shield;

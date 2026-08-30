@@ -17,6 +17,8 @@ export interface DayState {
   fog: Color3;
   /** Цвет самого диска и гало. */
   disc: Color3;
+  /** 1 — день, 0 — ночь. По нему живут трава и светлячки. */
+  daylight: number;
 }
 
 interface Palette {
@@ -126,5 +128,6 @@ export function dayState(hour: number): DayState {
     horizon: [Math.round(horizon[0]), Math.round(horizon[1]), Math.round(horizon[2])],
     fog: new Color3(fog[0], fog[1], fog[2]),
     disc: new Color3(disc[0], disc[1], disc[2]),
+    daylight: clamp01((elev + 0.06) / 0.18),
   };
 }
