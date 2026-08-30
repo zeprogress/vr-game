@@ -27,7 +27,7 @@ import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
-import { createBow, type BowParts } from "../items/Bow";
+import { createBow, tintBow, type BowParts } from "../items/Bow";
 import { createArrowProto, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
 
@@ -707,16 +707,29 @@ export class CombatSystem {
     // Оружие, лежащее в мире (лут), берётся вперёд обычных предметов.
     const ws = this.nearestWorldWeapon?.(p);
     if (ws && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH) {
-      const fresh = this.makeWeaponMesh?.(ws.cls, ws.tier);
-      if (fresh) {
-        const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
-        if (this.canPick(item)) {
-          this.items.push(item);
+      // Лук в игре один: тетива и стрела привязаны к его мешу, поэтому
+      // золотой не создаёт второй лук, а поднимает уровень этого.
+      if (ws.cls === "bow") {
+        const bow = this.bowItem;
+        if (this.canPick(bow)) {
+          bow.tier = ws.tier;
+          tintBow(bow.mesh, ws.tier);
           this.onTakeWorldWeapon?.(ws.id);
-          this.equip(item, side);
+          this.equip(bow, side);
           return;
         }
-        fresh.dispose();
+      } else {
+        const fresh = this.makeWeaponMesh?.(ws.cls, ws.tier);
+        if (fresh) {
+          const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
+          if (this.canPick(item)) {
+            this.items.push(item);
+            this.onTakeWorldWeapon?.(ws.id);
+            this.equip(item, side);
+            return;
+          }
+          fresh.dispose();
+        }
       }
     }
 

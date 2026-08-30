@@ -61,3 +61,18 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
     nockRest: new Vector3(0, 0, 0.03),
   };
 }
+
+/**
+ * Перекрасить дугу под уровень лука.
+ *
+ * Лук в игре ровно один (двумя руками его не удержать), поэтому золотой
+ * не создаёт второй меш со своей тетивой и стрелой, а перекрашивает этот.
+ */
+export function tintBow(mesh: Mesh, tier: WeaponTier): void {
+  const tint = weaponDef("bow", tier).tint;
+  const mat = mesh.material as StandardMaterial | null;
+  if (!mat) return;
+  mat.diffuseColor.set(tint[0] * 0.65, tint[1] * 0.62, tint[2] * 0.6);
+  mat.emissiveColor.set(tint[0] * 0.18, tint[1] * 0.16, tint[2] * 0.1);
+  mat.specularColor.set(tier === "base" ? 0.1 : 0.8, tier === "base" ? 0.1 : 0.75, 0.1);
+}

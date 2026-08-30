@@ -9,7 +9,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { SHIELD } from "#shared/constants";
 import { weaponDef, type WeaponTier } from "#shared/items";
-import "@babylonjs/core/Meshes/Builders/polygonBuilder";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
 /**
  * Щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y
@@ -65,8 +65,11 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
 }
 
 /**
- * Вытянутый треугольный щит: широкий верх, острый низ. Собран из трёх
- * плоских «долей», чтобы не тянуть построитель полигонов.
+ * Вытянутый треугольный щит: широкий верх, острый низ.
+ *
+ * Собран из явной геометрии, а не из полос — иначе край получается лесенкой.
+ * Плоскость щита XZ, толщина по Y — как у круглого, чтобы положение в руке
+ * было общим для всего класса.
  */
 function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   const tint = weaponDef("shield", tier).tint;
@@ -77,42 +80,50 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   face.specularColor = new Color3(0.85, 0.8, 0.5);
   face.specularPower = 64;
 
-  const dark = new StandardMaterial("shieldFaceDark", scene);
-  dark.diffuseColor = new Color3(tint[0] * 0.5, tint[1] * 0.45, tint[2] * 0.3);
-  dark.specularColor = new Color3(0.3, 0.3, 0.2);
+  const w = SHIELD.radius * 2; // ширина широкого края
+  const zTop = SHIELD.radius * 1.05; // широкий край
+  const zTip = -SHIELD.radius * 2.05; // остриё
+  const t = 0.035; // толщина
 
-  const w = SHIELD.radius * 2; // ширина вверху
-  const h = SHIELD.radius * 3.1; // высота: заметно вытянут
+  const hw = w / 2;
+  const hy = t / 2;
+  // 0..2 — верхняя грань, 3..5 — нижняя.
+  const positions = [
+    -hw, hy, zTop, hw, hy, zTop, 0, hy, zTip,
+    -hw, -hy, zTop, hw, -hy, zTop, 0, -hy, zTip,
+  ];
+  const indices = [
+    0, 2, 1, // верх
+    3, 4, 5, // низ
+    0, 1, 4, 0, 4, 3, // широкий торец
+    1, 2, 5, 1, 5, 4, // правый скос
+    2, 0, 3, 2, 3, 5, // левый скос
+  ];
+  const normals: number[] = [];
+  VertexData.ComputeNormals(positions, indices, normals);
+  // UV обязательны: без них MergeMeshes отказывается сливать нашу геометрию
+  // с рукоятью из MeshBuilder — «разный набор атрибутов».
+  const uvs = [0, 0, 1, 0, 0.5, 1, 0, 0, 1, 0, 0.5, 1];
 
-  // Треугольник набираем полосами убывающей ширины — верх широкий, низ острый.
-  const parts: Mesh[] = [];
-  const bands = 7;
-  for (let i = 0; i < bands; i++) {
-    const f = i / bands;
-    const next = (i + 1) / bands;
-    const bw = w * (1 - f) || 0.01;
-    const band = MeshBuilder.CreateBox(
-      `sh_band${i}`,
-      { width: bw, height: 0.03, depth: (h * (next - f)) / 1 },
-      scene,
-    );
-    band.position.z = h * 0.5 - h * (f + (next - f) / 2);
-    band.material = face;
-    parts.push(band);
-  }
-
-  const spine = MeshBuilder.CreateBox("sh_spine", { width: 0.035, height: 0.05, depth: h * 0.96 }, scene);
-  spine.position.y = 0.02;
-  spine.material = dark;
-  parts.push(spine);
+  const body = new Mesh("sh_tri", scene);
+  const data = new VertexData();
+  data.positions = positions;
+  data.indices = indices;
+  data.normals = normals;
+  data.uvs = uvs;
+  data.applyToMesh(body);
+  body.material = face;
 
   const grip = MeshBuilder.CreateBox("sh_grip", { width: 0.12, height: 0.03, depth: 0.03 }, scene);
   grip.position.y = -0.05;
-  grip.material = dark;
-  parts.push(grip);
+  grip.material = face;
 
-  const shield = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+  const shield = Mesh.MergeMeshes([body, grip], true, true, undefined, false, true);
   if (!shield) throw new Error("не удалось собрать треугольный щит");
+  // Разворот на 180° по X вживляем в вершины: положение в руке настраивается
+  // отдельно и не должно зависеть от того, как собрана модель.
+  shield.rotation.x = Math.PI;
+  shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
   return shield;
 }

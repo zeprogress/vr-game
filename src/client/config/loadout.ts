@@ -93,8 +93,8 @@ export const LOADOUT_DEFAULTS: Loadout = {
     },
     potion: {
       flat: { pos: [0.3, -0.3, 0.6], rot: [0, 0, 0], scale: 1 },
-      vrLeft: { pos: [0, 0.04, 0.02], rot: [0, 0, 0], scale: 1 },
-      vrRight: { pos: [0, 0.04, 0.02], rot: [0, 0, 0], scale: 1 },
+      vrLeft: { pos: [0.025, -0.01, 0.02], rot: [1.2, 0, 0], scale: 1 },
+      vrRight: { pos: [-0.03, 0, 0.02], rot: [0.9, 0, 0], scale: 1 },
     },
   },
   buttons: {
@@ -107,7 +107,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
     hour: 17.6, // час суток: свет, небо и место солнца
   },
   belt: {
-    pos: [0.19, 0, 0.06],
+    pos: [0.01, 0.2, 0.1],
   },
   hud: {
     hpPos: [-0.24, 0.46, 0.92],

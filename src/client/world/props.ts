@@ -68,7 +68,7 @@ export function scatterGrass(scene: Scene, terrain: Terrain): (dt: number) => vo
   mat.diffuseTexture.hasAlpha = true;
   mat.useAlphaFromDiffuseTexture = true;
   mat.transparencyMode = 1; // ALPHATEST — дёшево и без сортировки
-  mat.emissiveColor = new Color3(0.12, 0.22, 0.1);
+  mat.emissiveColor = new Color3(0.04, 0.08, 0.035); // темнее: трава не светится
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
 
@@ -109,8 +109,9 @@ export function scatterGrass(scene: Scene, terrain: Terrain): (dt: number) => vo
         new Vector3(x, y, z),
       ),
     );
-    // Фаза от места: соседние пучки качаются похоже, дальние — вразнобой.
-    phases.push((x + z) * 0.35 + Math.random() * 0.8);
+    // Фаза — это расстояние вдоль ветра. Без случайности: тогда волна
+    // катится по полю, а не каждый пучок дёргается сам по себе.
+    phases.push((x * WIND.dirX + z * WIND.dirZ) * 0.55);
   }
   tuft.thinInstanceAdd(matrices);
   tuft.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
@@ -134,8 +135,8 @@ function grassBladeTexture(scene: Scene): DynamicTexture {
   for (let i = 0; i < blades; i++) {
     const bx = (i + 0.5 + (Math.random() - 0.5) * 0.5) * (S / blades);
     const w = S / blades / 4.5; // втрое тоньше прежнего
-    const green = 120 + Math.floor(Math.random() * 70);
-    ctx.fillStyle = `rgb(${green - 60}, ${green}, ${green - 70})`;
+    const green = 70 + Math.floor(Math.random() * 45); // темнее прежнего
+    ctx.fillStyle = `rgb(${green - 40}, ${green}, ${green - 45})`;
     ctx.beginPath();
     ctx.moveTo(bx - w, S);
     ctx.lineTo(bx + w, S);

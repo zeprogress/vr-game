@@ -8,6 +8,7 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
 import { dayState } from "./DayTime";
+import { DAYCYCLE } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
 
 export interface Zone {
@@ -28,7 +29,10 @@ export interface Zone {
  * Мобы и куклы живут на сервере (этап 6) — их создаёт NetMobs.
  */
 export function buildZone(scene: Scene): Zone {
+  // Часы мира идут сами; LOADOUT.world.hour — их текущее показание,
+  // и его же можно перевести вручную в панели настройки.
   let hour = LOADOUT.world.hour;
+  let shown = hour;
   let day = dayState(hour);
 
   const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
@@ -36,7 +40,7 @@ export function buildZone(scene: Scene): Zone {
 
   const sky = createSky(scene, day);
 
-  /** Разложить состояние часа по свету и небу. */
+  /** Свет и солнце — дёшево, можно каждый кадр. */
   const applyDay = (): void => {
     sun.direction.copyFrom(day.sunDir);
     sun.position = day.sunDir.scale(-60);
@@ -47,6 +51,8 @@ export function buildZone(scene: Scene): Zone {
     sky.apply(day);
   };
   applyDay();
+  /** Когда последний раз перерисовывали градиент купола. */
+  let paintedAt = hour;
 
   const terrain = createTerrain(scene);
   scatterTrees(scene, terrain);
@@ -61,11 +67,22 @@ export function buildZone(scene: Scene): Zone {
     groundHeight: terrain.heightAt,
     tick: (dt: number) => {
       windTick(dt);
-      // Час правится в панели настройки — подхватываем на лету.
-      if (LOADOUT.world.hour !== hour) {
-        hour = LOADOUT.world.hour;
-        day = dayState(hour);
-        applyDay();
+
+      // Перевели стрелки в панели — принимаем новое время.
+      if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
+
+      hour = (hour + (dt * 24) / DAYCYCLE.seconds) % 24;
+      // В панель кладём округлённое: иначе строка дрожала бы каждый кадр.
+      shown = Math.round(hour * 100) / 100;
+      LOADOUT.world.hour = shown;
+
+      day = dayState(hour);
+      applyDay();
+
+      // Градиент купола перерисовываем редко: это 128 полос и заливка текстуры.
+      if (Math.abs(hour - paintedAt) > 0.05 || Math.abs(hour - paintedAt) > 23) {
+        paintedAt = hour;
+        sky.repaint(day);
       }
     },
     swordHome,

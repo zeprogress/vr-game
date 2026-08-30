@@ -12,8 +12,10 @@ import { dayState, type DayState } from "./DayTime";
 
 /** Небо, которое умеет меняться со временем суток. */
 export interface Sky {
-  /** Перекрасить небо, туман и солнце под состояние часа. */
+  /** Дёшево: туман и солнце. Можно звать каждый кадр. */
   apply(d: DayState): void;
+  /** Дорого: перерисовать градиент купола. Только когда цвет заметно уехал. */
+  repaint(d: DayState): void;
 }
 
 /**
@@ -36,12 +38,15 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
   const sun = createSun(scene);
   const sky: Sky = {
     apply(d) {
-      grad.paint(d.zenith, d.horizon);
       scene.fogColor.copyFrom(d.fog);
       sun.apply(d);
     },
+    repaint(d) {
+      grad.paint(d.zenith, d.horizon);
+    },
   };
   sky.apply(start);
+  sky.repaint(start);
   createClouds(scene);
   return sky;
 }

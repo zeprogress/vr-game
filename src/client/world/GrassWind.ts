@@ -2,11 +2,14 @@ import type { Material } from "@babylonjs/core/Materials/material";
 import { MaterialPluginBase } from "@babylonjs/core/Materials/materialPluginBase";
 import type { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 
-/** Ветер: сила наклона на метр высоты и скорость колыхания. */
+/** Ветер: сила наклона, скорость волны и её длина. */
 export const WIND = {
-  strength: 0.3, // во сколько от высоты травинка уходит вбок
-  speed: 1.9, // скорость покачивания
-  gust: 0.35, // добавка от медленных порывов
+  strength: 0.32, // во сколько от высоты травинка уходит вбок
+  speed: 1.15, // скорость бега волны
+  gust: 0.3, // вторая, более длинная волна — порывы
+  /** Куда дует (единичный вектор в плоскости земли). */
+  dirX: 0.82,
+  dirZ: 0.57,
 } as const;
 
 /**
@@ -47,11 +50,13 @@ export class GrassWindPlugin extends MaterialPluginBase {
         { name: "windTime", size: 1, type: "float" },
         { name: "windStrength", size: 1, type: "float" },
         { name: "windGust", size: 1, type: "float" },
+        { name: "windDir", size: 2, type: "vec2" },
       ],
       vertex: `
         uniform float windTime;
         uniform float windStrength;
         uniform float windGust;
+        uniform vec2 windDir;
       `,
     };
   }
@@ -60,6 +65,7 @@ export class GrassWindPlugin extends MaterialPluginBase {
     uniformBuffer.updateFloat("windTime", this.time);
     uniformBuffer.updateFloat("windStrength", WIND.strength);
     uniformBuffer.updateFloat("windGust", WIND.gust);
+    uniformBuffer.updateFloat2("windDir", WIND.dirX, WIND.dirZ);
   }
 
   override getCustomCode(shaderType: string): Record<string, string> | null {
@@ -68,13 +74,21 @@ export class GrassWindPlugin extends MaterialPluginBase {
       CUSTOM_VERTEX_DEFINITIONS: `
         attribute float windPhase;
       `,
-      // positionUpdated ещё в локальных осях пучка: y = 0 у земли.
+      /*
+       * positionUpdated ещё в локальных осях пучка: y = 0 у земли.
+       * windPhase — расстояние пучка вдоль ветра, поэтому соседние травинки
+       * гнутся почти одинаково, а по полю бежит волна, а не рябь.
+       * Гнём строго ПО ветру: пригибание, а не болтанка из стороны в сторону.
+       */
       CUSTOM_VERTEX_UPDATE_POSITION: `
         float bend = max(positionUpdated.y, 0.0);
-        float ph = windPhase + windTime;
-        float sway = sin(ph) + windGust * sin(ph * 0.37 + 1.3);
-        positionUpdated.x += sway * bend * windStrength;
-        positionUpdated.z += cos(ph * 0.8) * bend * windStrength * 0.45;
+        float ph = windPhase - windTime;
+        // Основная волна плюс вдвое более длинная — получаются порывы.
+        float wave = sin(ph) * 0.5 + 0.5;
+        float gust = sin(ph * 0.35 - 0.7) * 0.5 + 0.5;
+        float lean = (wave + windGust * gust) * bend * windStrength;
+        positionUpdated.x += windDir.x * lean;
+        positionUpdated.z += windDir.y * lean;
       `,
     };
   }
