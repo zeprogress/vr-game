@@ -12,7 +12,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Node } from "@babylonjs/core/node";
 
 import { buildZone } from "../world/Zone";
-import { CombatSystem } from "../combat/CombatSystem";
+import { CombatSystem, STOW } from "../combat/CombatSystem";
 import { MobSystem } from "../combat/MobSystem";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -177,6 +177,7 @@ export class Game {
         this.hands.attach(this.xr!);
         this.buildVrUi();
       } else if (state === WebXRState.NOT_IN_XR) {
+        this.combat.dropStowed();
         this.player.exitXR();
         this.xrInput = null;
         this.player.setInput(this.defaultInput());
@@ -210,6 +211,14 @@ export class Game {
     printLoadout();
   }
 
+  /**
+   * Положение убранных за спину предметов (меч/лук/щит × левая/правая).
+   * Меняется на лету: `game.stowConfig().sword.left.pos[2] = -0.2`.
+   */
+  stowConfig(): typeof STOW {
+    return STOW;
+  }
+
   // ---- VR-интерфейс ----
 
   private buildVrUi(): void {
@@ -221,7 +230,7 @@ export class Game {
     this.playerBar3D = new HealthBar3D(
       this.scene,
       this.hudAnchor,
-      new Vector3(-0.24, 0.34, 0.9),
+      new Vector3(-0.24, 0.46, 0.92), // повыше — не мешает обзору
       0.675, // в 1.5 раза длиннее
       false,
       0.05, // вдвое тоньше

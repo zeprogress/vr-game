@@ -147,7 +147,7 @@ export class MobSystem {
         const dir = b.vel.clone();
         dir.y = 0;
         if (dir.lengthSquared() > 1e-6) dir.normalize();
-        const mult = this.combat().absorbAttack(b.mesh.position.clone());
+        const mult = this.combat().absorbAttack(b.mesh.position.clone(), true);
         if (mult > 0) {
           this.player.damage(SPITTER.ballDamage * mult, dir);
           this.sfx.playerHurt();
