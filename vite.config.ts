@@ -110,6 +110,18 @@ export default defineConfig({
   server: {
     host: true, // доступ по локальной сети
     port: 5173,
+    // Игровой сервер (Colyseus, :2567) ходит через тот же origin, чтобы
+    // работал wss:// на HTTPS-деве и в шлеме. /matchmake — HTTP матчмейкинг;
+    // /<processId>/<roomId> — WebSocket комнаты (два коротких сегмента,
+    // HMR Vite сидит на "/" и под шаблон не попадает).
+    proxy: {
+      "/matchmake": { target: "http://localhost:2567", changeOrigin: true },
+      "^/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+(\\?.*)?$": {
+        target: "ws://localhost:2567",
+        ws: true,
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     target: "es2020",

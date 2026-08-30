@@ -20,7 +20,7 @@ LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/nul
 
 echo
 echo "=================================================="
-echo "  Сервер игры (HTTPS — нужен для VR)"
+echo "  Игровой сервер + клиент (HTTPS — нужен для VR)"
 echo "=================================================="
 echo "  На этом компьютере:  https://localhost:5173"
 if [ -n "$LAN_IP" ]; then
@@ -35,6 +35,10 @@ echo "  Ctrl+C — остановить сервер."
 echo "=================================================="
 echo
 
+# Игровой сервер (Colyseus) в фоне + клиент (Vite HTTPS).
 # Браузер не открываем — адрес напечатан выше, открой сам
 # (на компьютере — localhost, в шлеме — адрес со строки Quest).
+npm run server &
+SERVER_PID=$!
+trap 'kill $SERVER_PID 2>/dev/null' EXIT
 npm run dev:vr

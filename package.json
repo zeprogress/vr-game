@@ -17,7 +17,10 @@
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",
-    "@babylonjs/materials": "^7.54.3"
+    "@babylonjs/materials": "^7.54.3",
+    "@colyseus/schema": "^2.0.37",
+    "colyseus": "^0.15.6",
+    "colyseus.js": "^0.15.28"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
