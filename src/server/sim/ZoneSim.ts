@@ -10,6 +10,9 @@ import { terrainHeight } from "#shared/terrain";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
 
+/** Середина торса куклы над её основанием (см. клиентский Dummy). */
+const DUMMY_CENTER_Y = 1.5;
+
 let seq = 1;
 const nid = (): string => `e${seq++}`;
 
@@ -27,6 +30,8 @@ export interface PlayerHit {
   dmg: number;
   fromX: number;
   fromZ: number;
+  /** true — снаряд (плевок): мечом отбивается полностью, а не на 75%. */
+  projectile: boolean;
 }
 
 class Mob {
@@ -223,7 +228,13 @@ class Mob {
         }
       } else if (dist < MOB.attackRange && this.attackCd <= 0) {
         this.attackCd = MOB.attackCooldown;
-        hits.push({ target: np.sessionId, dmg: MOB.attackDamage, fromX: this.x, fromZ: this.z });
+        hits.push({
+          target: np.sessionId,
+          dmg: MOB.attackDamage,
+          fromX: this.x,
+          fromZ: this.z,
+          projectile: false,
+        });
         this.vx -= dx * 2;
         this.vz -= dz * 2;
       }
@@ -313,7 +324,13 @@ class Ball {
         p.x, feetY, p.z, p.x, p.y, p.z,
       );
       if (d < SPITTER.ballRadius + PLAYER.radius) {
-        hits.push({ target: p.sessionId, dmg: SPITTER.ballDamage, fromX: this.x, fromZ: this.z });
+        hits.push({
+          target: p.sessionId,
+          dmg: SPITTER.ballDamage,
+          fromX: this.x,
+          fromZ: this.z,
+          projectile: true,
+        });
         return true;
       }
     }
@@ -401,5 +418,20 @@ export class ZoneSim {
 
   hitDummy(id: string, dmg: number): void {
     this.dummies.get(id)?.applyHit(dmg);
+  }
+
+  /**
+   * Центр тела цели в мире — сервер меряет по нему досягаемость удара.
+   * null — цели нет или она уже мертва.
+   */
+  targetCenter(target: "mob" | "dummy", id: string): { x: number; y: number; z: number } | null {
+    if (target === "dummy") {
+      const d = this.dummies.get(id);
+      if (!d || d.dead) return null;
+      return { x: d.x, y: d.y + DUMMY_CENTER_Y, z: d.z };
+    }
+    const m = this.mobs.get(id);
+    if (!m || m.dead) return null;
+    return { x: m.x, y: m.y + MOB.bodyRadius, z: m.z };
   }
 }

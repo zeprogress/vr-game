@@ -2,38 +2,38 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { PLAYER, RESPAWN } from "#shared/constants";
 import type { SaveMsg } from "#shared/net/messages";
+import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
 
-export interface PlayerRecord extends SaveMsg {
+/** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
+export interface PlayerRecord extends SaveMsg, Progress {
   token: string;
   nick: string;
+  hp: number;
   updatedAt: number;
 }
 
 const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
 
 function blank(token: string): PlayerRecord {
+  const p = blankProgress();
   return {
     token,
     nick: "гость",
-    x: 0,
-    y: 1.7,
-    z: -20,
+    x: RESPAWN.spawnX,
+    y: PLAYER.eyeHeight,
+    z: RESPAWN.spawnZ,
     yaw: 0,
-    level: 1,
-    xp: 0,
-    unspent: 0,
-    str: 1,
-    agi: 1,
-    int: 1,
-    hp: 100,
+    ...p,
+    hp: maxHpFor(p.str),
     updatedAt: 0,
   };
 }
 
 /**
  * Простое хранилище персонажей: всё в памяти + периодический дамп в JSON.
- * Прогресс считает клиент, сервер только хранит (этап 5).
+ * С этапа 7 прогресс и HP считает сервер — здесь они просто переживают перезапуск.
  */
 export class PlayerStore {
   private readonly records = new Map<string, PlayerRecord>();
