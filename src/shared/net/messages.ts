@@ -1,4 +1,5 @@
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
+import type { ItemId } from "../items";
 import type { StatName } from "../progression";
 import type { PlayerMode } from "./schema";
 
@@ -19,6 +20,10 @@ export const MSG = {
   respawn: "rs",
   /** сервер -> клиент: получен уровень (для тоста и звука). */
   levelUp: "lu",
+  /** клиент -> сервер: использовать предмет из ячейки сумки. */
+  useItem: "ui",
+  /** сервер -> клиент: подобран лут (для тоста и звука). */
+  picked: "pk",
 } as const;
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
@@ -78,4 +83,14 @@ export interface RespawnMsg {
 
 export interface LevelUpMsg {
   level: number;
+}
+
+export interface UseItemMsg {
+  /** Индекс ячейки сумки. */
+  slot: number;
+}
+
+export interface PickedMsg {
+  item: ItemId;
+  count: number;
 }
