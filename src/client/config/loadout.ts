@@ -63,6 +63,8 @@ export interface Loadout {
   world: {
     /** Час суток 0..24: задаёт свет, краски неба и место солнца. */
     hour: number;
+    /** 1 — время идёт само, 0 — стоит на выставленном часе. */
+    auto: number;
   };
   /** Пояс: где висит бутылочка зелья относительно бедра. */
   belt: { pos: [number, number, number] };
@@ -105,6 +107,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   world: {
     hour: 17.6, // час суток: свет, небо и место солнца
+    auto: 1, // время идёт само
   },
   belt: {
     pos: [0.01, 0.2, 0.1],
@@ -156,6 +159,7 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   if (parts[0] === "world") {
     const w = value as Partial<Loadout["world"]>;
     if (typeof w?.hour === "number" && Number.isFinite(w.hour)) dst.world.hour = w.hour;
+    if (typeof w?.auto === "number") dst.world.auto = w.auto ? 1 : 0;
     return;
   }
   if (parts[0] === "belt") {

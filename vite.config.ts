@@ -41,7 +41,7 @@ function loadoutWriter(): Plugin {
     hands: Record<string, number[]>;
     items: Record<string, Record<string, { pos: number[]; rot: number[]; scale: number }>>;
     buttons: Record<string, number>;
-    world: { hour: number };
+    world: { hour: number; auto: number };
     belt: { pos: number[] };
     hud: { hpPos: number[] };
   }) => {
@@ -70,6 +70,7 @@ function loadoutWriter(): Plugin {
       `  },\n` +
       `  world: {\n` +
       `    hour: ${num(l.world?.hour ?? 17.6)}, // час суток: свет, небо и место солнца\n` +
+      `    auto: ${l.world?.auto ? 1 : 0}, // время идёт само\n` +
       `  },\n` +
       `  belt: {\n` +
       `    pos: ${arr(l.belt?.pos ?? [0.19, 0, 0.06])},\n` +

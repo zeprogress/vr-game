@@ -188,13 +188,25 @@ export class LoadoutPanel {
 
   private fieldCount(): number {
     if (this.target.kind === "hand" || this.target.kind === "vec3") return 3;
-    if (this.target.kind === "world") return 1;
+    if (this.target.kind === "world") return 2; // час + тумблер автосмены
     return 7;
   }
 
   private field(i: number): Field {
     const t = this.target;
     if (t.kind === "world") {
+      if (i === 1) {
+        return {
+          label: "смена сама",
+          rot: false,
+          steps: [1],
+          get: () => LOADOUT.world.auto,
+          set: (v) => {
+            LOADOUT.world.auto = ((Math.round(v) % 2) + 2) % 2; // «вкл» <-> «выкл»
+          },
+          format: (v) => (v ? "вкл" : "выкл"),
+        };
+      }
       return {
         label: "час",
         rot: false,

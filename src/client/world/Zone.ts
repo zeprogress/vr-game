@@ -74,8 +74,11 @@ export function buildZone(scene: Scene): Zone {
       if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
 
       // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
-      const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
-      hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
+      // Тумблер в панели останавливает время на выставленном часе.
+      if (LOADOUT.world.auto) {
+        const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
+        hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
+      }
       // В панель кладём округлённое: иначе строка дрожала бы каждый кадр.
       shown = Math.round(hour * 100) / 100;
       LOADOUT.world.hour = shown;
