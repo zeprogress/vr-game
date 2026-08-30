@@ -79,7 +79,6 @@ export const LOADOUT_DEFAULTS: Loadout = {
     },
     shield: {
       flat: { pos: [-0.34, -0.26, 0.62], rot: [Math.PI / 2, 0, 0], scale: 0.8 },
-      // Щит пристёгнут к предплечью: диск смотрит вперёд от кисти.
       vrLeft: { pos: [0, -0.04, -0.1], rot: [Math.PI / 2, 0, Math.PI / 2], scale: 1 },
       vrRight: { pos: [0, -0.04, -0.1], rot: [Math.PI / 2, 0, -Math.PI / 2], scale: 1 },
     },
@@ -137,18 +136,13 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
 
 // ---- сохранение того, что подобрано в игре ----
 //
-// Панель (в шлеме) пишет подобранные значения в localStorage. Вместе со
-// значением сохраняется и «снимок» тогдашних чисел из файла — база. При
-// загрузке: если число в файле для этой цели с тех пор изменилось, значит
-// её правили в файле осознанно — файл главнее, переопределение выкидывается.
-// Цели, которых в файле не трогали, сохраняются из панели как есть.
-//
-// ВАЖНО: localStorage привязан к адресу. Шлем открывает игру по
-// https://<IP>:5173, компьютер — по https://localhost:5173 — это РАЗНЫЕ
-// хранилища. Настройка из шлема не появится на компьютере (и наоборот), а
-// если IP в сети сменится — настройка со старого адреса потеряется.
-// Надёжное место для чисел — сам этот файл. `game.printLoadout()` в консоли
-// печатает текущие значения готовым для вставки блоком.
+// Пока крутишь значения в панели, каждая правка пишется в localStorage
+// (вместе со снимком тогдашнего числа файла — «база»), чтобы случайный
+// выход из VR ничего не терял. Строка «Сохранить настройки» отправляет всё
+// на дев-сервер (см. pushLoadoutToFile) — он переписывает блок выше, и
+// localStorage чистится: файл становится единственным источником.
+// Если сервера нет (собранная игра) — остаётся только localStorage,
+// а он привязан к адресу: шлем и компьютер — разные хранилища.
 
 const SAVE_KEY = "loadoutOverrides";
 interface Override {
@@ -205,6 +199,39 @@ export function resetTarget(key: TargetKey): void {
 
 export function isOverridden(key: TargetKey): boolean {
   return loadOverrides()[key] !== undefined;
+}
+
+/** Забыть все панельные переопределения (после записи значений в файл). */
+export function clearAllOverrides(): void {
+  storeOverrides({});
+}
+
+/**
+ * Отправляет текущие значения дев-серверу — он перепишет блок
+ * LOADOUT_DEFAULTS в этом файле. Так «Сохранить настройки» кладёт числа в
+ * файл (общий для всех адресов), а не только в localStorage браузера.
+ * "ok" — записано; "no-server" — обработчика нет (собранная игра / прод);
+ * "error" — сервер не смог.
+ */
+export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error"> {
+  try {
+    const res = await fetch("/__loadout", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        hands: LOADOUT.hands,
+        items: LOADOUT.items,
+        buttons: LOADOUT.buttons,
+      }),
+    });
+    if (res.ok) {
+      clearAllOverrides(); // файл теперь источник правды — локальные копии не нужны
+      return "ok";
+    }
+    return res.status === 404 ? "no-server" : "error";
+  } catch {
+    return "no-server";
+  }
 }
 
 /** Печатает текущие значения в виде, готовом для вставки в этот файл. */

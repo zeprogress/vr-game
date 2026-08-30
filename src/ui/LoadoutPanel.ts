@@ -13,6 +13,7 @@ import {
   isOverridden,
   itemTarget,
   printLoadout,
+  pushLoadoutToFile,
   resetTarget,
   saveTarget,
   type HandSide,
@@ -66,6 +67,7 @@ export class LoadoutPanel {
   private navArmed = true;
   /** Секунды, пока в строке «сохранить» горит подтверждение. */
   private savedFlash = 0;
+  private fileState = "";
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("loadoutTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -247,14 +249,21 @@ export class LoadoutPanel {
   }
 
   /**
-   * Запоминает все настройки (кисти и предметы для обеих рук), чтобы они
-   * пережили перезагрузку. Правка отдельного значения сохраняется и сама,
-   * но этот пункт фиксирует разом всё и подтверждает, что записалось.
+   * Фиксирует все настройки. Пишет их в src/config/loadout.ts через
+   * дев-сервер (общий файл, любой адрес/устройство); если сервера нет —
+   * остаётся локальная копия в localStorage. Статус показывает в строке.
    */
   saveAll(): void {
     for (const t of TARGETS) saveTarget(t.key);
     this.savedFlash = 2;
+    this.fileState = "…";
     this.redraw();
+    void pushLoadoutToFile().then((r) => {
+      this.fileState =
+        r === "ok" ? "в файл ✓" : r === "no-server" ? "локально (нет сервера)" : "ошибка записи";
+      this.savedFlash = Math.max(this.savedFlash, 2);
+      this.redraw();
+    });
   }
 
   /** Выводит текущие значения в консоль в виде для вставки в loadout.ts. */
@@ -311,11 +320,17 @@ export class LoadoutPanel {
       const shown = f.rot ? `${v.toFixed(2)}  (${Math.round((v * 180) / Math.PI)}°)` : v.toFixed(3);
       drawRow(i + 1, f.label, shown);
     }
+    const saveVal =
+      this.fileState !== "" && this.savedFlash > 0
+        ? this.fileState
+        : this.savedFlash > 0
+          ? "сохранено ✓"
+          : "◂ ▸";
     drawRow(
       this.saveRow,
       "Сохранить настройки",
-      this.savedFlash > 0 ? "сохранено ✓" : "◂ ▸",
-      this.savedFlash > 0 ? "#7ee081" : undefined,
+      saveVal,
+      this.savedFlash > 0 ? (this.fileState === "в файл ✓" ? "#7ee081" : "#ffd166") : undefined,
     );
     drawRow(this.resetRow, "Сброс к файлу", "◂ ▸");
 
