@@ -95,7 +95,7 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
     const star = proto.createInstance(`star${i}`);
     star.parent = root;
     star.position.set(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R);
-    const size = 0.55 + Math.random() * 0.75;
+    const size = 0.3 + Math.random() * 0.4;
     star.scaling.setAll(size);
     star.isPickable = false;
   }
@@ -228,6 +228,8 @@ function createClouds(scene: Scene): { apply(d: DayState): void } {
   const FULL = 0.95; // непрозрачность облаков среди бела дня
   return {
     apply(d) {
+      // Днём белые, на заре и закате малиновые — цвет берём из состояния часа.
+      mat.emissiveColor.copyFrom(d.cloud);
       mat.alpha = FULL * d.daylight;
       const on = mat.alpha > 0.02;
       for (const c of clouds) {

@@ -17,6 +17,8 @@ export interface DayState {
   fog: Color3;
   /** Цвет самого диска и гало. */
   disc: Color3;
+  /** Цвет облаков: днём белые, на заре и закате малиновые. */
+  cloud: Color3;
   /** 1 — день, 0 — ночь. По нему живут трава и светлячки. */
   daylight: number;
 }
@@ -30,6 +32,7 @@ interface Palette {
   horizon: [number, number, number];
   fog: [number, number, number];
   disc: [number, number, number];
+  cloud: [number, number, number];
 }
 
 const DAY: Palette = {
@@ -41,6 +44,7 @@ const DAY: Palette = {
   horizon: [206, 226, 240],
   fog: [0.78, 0.85, 0.92],
   disc: [1, 0.98, 0.9],
+  cloud: [0.94, 0.96, 0.99], // днём почти белые
 };
 
 /** Золотой (он же малиновый) час: низкое тёплое солнце. */
@@ -53,6 +57,7 @@ const DUSK: Palette = {
   horizon: [247, 140, 96],
   fog: [0.88, 0.62, 0.55],
   disc: [1, 0.72, 0.4],
+  cloud: [0.93, 0.36, 0.44], // малиновые на заре и закате
 };
 
 const NIGHT: Palette = {
@@ -60,10 +65,11 @@ const NIGHT: Palette = {
   sunI: 0.2,
   amb: [0.38, 0.45, 0.66],
   ambI: 0.24,
-  zenith: [10, 14, 36],
-  horizon: [36, 44, 76],
-  fog: [0.11, 0.14, 0.24],
+  zenith: [4, 5, 14], // ночное небо густое, почти чёрное
+  horizon: [15, 19, 38],
+  fog: [0.07, 0.09, 0.16],
   disc: [0.85, 0.9, 1],
+  cloud: [0.16, 0.18, 0.28],
 };
 
 function clamp01(v: number): number {
@@ -114,6 +120,7 @@ export function dayState(hour: number): DayState {
   const amb = mix3(DAY.amb, NIGHT.amb, DUSK.amb, wd, wn, wk);
   const fog = mix3(DAY.fog, NIGHT.fog, DUSK.fog, wd, wn, wk);
   const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
+  const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, wd, wn, wk);
   const zenith = mix3(DAY.zenith, NIGHT.zenith, DUSK.zenith, wd, wn, wk);
   const horizon = mix3(DAY.horizon, NIGHT.horizon, DUSK.horizon, wd, wn, wk);
 
@@ -128,6 +135,7 @@ export function dayState(hour: number): DayState {
     horizon: [Math.round(horizon[0]), Math.round(horizon[1]), Math.round(horizon[2])],
     fog: new Color3(fog[0], fog[1], fog[2]),
     disc: new Color3(disc[0], disc[1], disc[2]),
+    cloud: new Color3(cloud[0], cloud[1], cloud[2]),
     daylight: clamp01((elev + 0.06) / 0.18),
   };
 }
