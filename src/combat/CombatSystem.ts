@@ -110,6 +110,14 @@ export class CombatSystem {
   private blockCd = 0;
   private bob = 0;
 
+  // Движение головы за кадр — вычитаем из скорости руки/клинка, чтобы
+  // локомоция (стик, комнатная ходьба) не считалась замахом или ударом.
+  private readonly headPos = new Vector3();
+  private readonly headStep = new Vector3();
+  private headInit = false;
+  /** Сек. после snap-turn: мгновенный разворот рига «дёргает» руку — не триггерим. */
+  private turnCd = 0;
+
   constructor(
     scene: Scene,
     private readonly player: PlayerController,
@@ -236,6 +244,17 @@ export class CombatSystem {
 
     if (this.blockCd > 0) this.blockCd -= dt;
 
+    // Смещение головы за кадр + окно после snap-turn.
+    const eye = this.player.eyePosition;
+    this.headStep.copyFrom(eye).subtractInPlace(this.headPos);
+    if (!this.headInit) {
+      this.headStep.setAll(0);
+      this.headInit = true;
+    }
+    this.headPos.copyFrom(eye);
+    this.turnCd = Math.max(0, this.turnCd - dt);
+    if (inp.lookYaw !== 0) this.turnCd = 0.2;
+
     // Q (плоский режим) — снять щит: летит так же, как оружие.
     if (inp.dropItem && this.shieldHand) {
       this.throwItem(this.items.shield, this.flatThrowVelocity(0));
@@ -279,7 +298,7 @@ export class CombatSystem {
    * Возвращает множитель: 0 — заблокировано полностью, 1 — прошло целиком.
    */
   absorbAttack(from: Vector3): number {
-    const eye = this.player.camera.globalPosition;
+    const eye = this.player.eyePosition;
     const toAtk = from.subtract(eye);
     toAtk.y = 0;
     if (toAtk.lengthSquared() < 1e-6) return 1;
@@ -502,8 +521,9 @@ export class CombatSystem {
       const w = item.mesh.getAbsolutePosition();
       const q = item.mesh.absoluteRotationQuaternion;
 
-      if (m.init && dt > 1e-4) {
-        const instV = w.subtract(m.prev).scaleInPlace(1 / dt);
+      if (m.init && dt > 1e-4 && this.turnCd <= 0) {
+        // Скорость руки ОТНОСИТЕЛЬНО головы — без вклада локомоции.
+        const instV = w.subtract(m.prev).subtractInPlace(this.headStep).scaleInPlace(1 / dt);
         m.vel.addInPlace(instV.subtractInPlace(m.vel).scaleInPlace(Math.min(1, dt / 0.045)));
 
         const dq = q.multiply(Quaternion.Inverse(m.quatPrev));
@@ -622,7 +642,7 @@ export class CombatSystem {
         if (!t.alive || !t.shove || !t.center) continue;
         const s = t.hitSegment();
         if (segmentDistance(a, b, s.a, s.b) < s.radius + rad) {
-          const dir = t.center().subtract(this.player.camera.globalPosition);
+          const dir = t.center().subtract(this.player.eyePosition);
           dir.y = 0;
           if (dir.lengthSquared() < 1e-6) continue;
           dir.normalize();
@@ -664,8 +684,10 @@ export class CombatSystem {
     const dir = tip.subtract(guard).normalize();
 
     const prev = this.tipTrail[this.tipTrail.length - 1]?.p;
-    if (prev && Vector3.Distance(tip, prev) / Math.max(dt, 1e-4) > COMBAT.vrSwingSpeed) {
-      this.tryHit();
+    if (prev && this.turnCd <= 0) {
+      // Скорость кончика ОТНОСИТЕЛЬНО головы — ходьба стиком не считается ударом.
+      const rel = tip.subtract(prev).subtractInPlace(this.headStep).length() / Math.max(dt, 1e-4);
+      if (rel > COMBAT.vrSwingSpeed) this.tryHit();
     }
 
     for (const s of this.tipTrail) s.age += dt;
@@ -675,7 +697,7 @@ export class CombatSystem {
     }
 
     const oldest = this.tipTrail[0];
-    if (oldest.age > 0.06 && this.swooshCd <= 0) {
+    if (oldest.age > 0.06 && this.swooshCd <= 0 && this.turnCd <= 0) {
       const avgSpeed = Vector3.Distance(tip, oldest.p) / oldest.age;
       const sweep = Math.acos(clamp(Vector3.Dot(dir, oldest.dir), -1, 1));
       if (avgSpeed > COMBAT.vrSwooshSpeed && sweep > COMBAT.vrSwooshSweep) {
@@ -689,7 +711,7 @@ export class CombatSystem {
     const m = this.sword.getWorldMatrix();
     const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
     const tip = Vector3.TransformCoordinates(TIP, m);
-    const dir = tip.subtract(this.player.camera.globalPosition);
+    const dir = tip.subtract(this.player.eyePosition);
     dir.y = 0;
     if (dir.lengthSquared() > 1e-6) dir.normalize();
 
@@ -726,8 +748,10 @@ export class CombatSystem {
       }
       const now = node.getAbsolutePosition();
       const prev = this.fistPrev[side];
-      if (this.fistInit[side] && this.fistCd[side] <= 0) {
-        const speed = Vector3.Distance(now, prev) / Math.max(dt, 1e-4);
+      if (this.fistInit[side] && this.fistCd[side] <= 0 && this.turnCd <= 0) {
+        // Скорость кулака ОТНОСИТЕЛЬНО головы — ходьба стиком не бьёт.
+        const speed =
+          now.subtract(prev).subtractInPlace(this.headStep).length() / Math.max(dt, 1e-4);
         if (speed > MELEE.vrSpeed) {
           const dir = now.subtract(prev);
           dir.y = 0;

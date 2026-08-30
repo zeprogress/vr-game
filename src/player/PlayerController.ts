@@ -104,6 +104,19 @@ export class PlayerController {
     return this.xrCamera !== null;
   }
 
+  /**
+   * Позиция глаз в мире. В VR — голова гарнитуры, в плоском режиме — камера.
+   * ВАЖНО: в VR плоская `camera` не обновляется, брать её globalPosition нельзя.
+   */
+  get eyePosition(): Vector3 {
+    return (this.xrCamera ?? this.camera).globalPosition;
+  }
+
+  /** Направление взгляда в мире (единичное). */
+  get eyeForward(): Vector3 {
+    return (this.xrCamera ?? this.camera).getDirection(FORWARD);
+  }
+
   /** Получить урон. dir — направление от источника (для отталкивания). */
   damage(amount: number, dir?: Vector3): void {
     if (this.hp <= 0) return;

@@ -63,24 +63,24 @@ export interface Loadout {
 
 export const LOADOUT_DEFAULTS: Loadout = {
   hands: {
-    left: [1, 1, 3],
-    right: [1, 1, 3],
+    left: [-1.14, 3.4, 4.5],
+    right: [-0.9, 2.6, 2],
   },
   items: {
     sword: {
       flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.55 },
-      vrLeft: { pos: [0, 0, 0], rot: [1, 0, 0], scale: 1 },
-      vrRight: { pos: [0, 0, 0], rot: [1, 0, 0], scale: 1 },
+      vrLeft: { pos: [0, 0, 0.12], rot: [0, -1.56, -1.56], scale: 1 },
+      vrRight: { pos: [-0.01, 0, 0.12], rot: [0.2, 1.5, 1.56], scale: 1 },
     },
     bow: {
       flat: { pos: [-0.24, -0.26, 0.55], rot: [0, Math.PI, 0], scale: 0.8 },
-      vrLeft: { pos: [0, 0, 0], rot: [0, 0, 0], scale: 1 },
-      vrRight: { pos: [0, 0, 0], rot: [0, 0, 0], scale: 1 },
+      vrLeft: { pos: [0.025, 0.025, 0], rot: [-1.8908, -1.22, 1.22], scale: 1 },
+      vrRight: { pos: [-0.015, 0.025, 0], rot: [-Math.PI / 2, -0.04, 0], scale: 1 },
     },
     shield: {
       flat: { pos: [-0.34, -0.26, 0.62], rot: [Math.PI / 2, 0, 0], scale: 0.8 },
-      vrLeft: { pos: [0, -0.04, -0.1], rot: [Math.PI / 2, 0, Math.PI / 2], scale: 1 },
-      vrRight: { pos: [0, -0.04, -0.1], rot: [Math.PI / 2, 0, -Math.PI / 2], scale: 1 },
+      vrLeft: { pos: [-0.05, 0, 0], rot: [Math.PI / 2, 0, Math.PI / 2], scale: 1 },
+      vrRight: { pos: [0.04, -0.02, 0.025], rot: [2.0308, 1.26, -0.1108], scale: 1 },
     },
   },
   buttons: {

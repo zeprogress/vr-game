@@ -1,9 +1,12 @@
 import type { Scene } from "@babylonjs/core/scene";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Ray } from "@babylonjs/core/Culling/ray";
+import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { PLAYER, SPITTER } from "../shared/constants";
@@ -26,10 +29,14 @@ export class MobSystem {
   private readonly ctx: MobContext;
   private readonly balls: Ball[] = [];
   private readonly ballProto: Mesh;
+  private readonly scene: Scene;
   private readonly player: PlayerController;
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly combat: () => CombatSystem;
   private readonly sfx: Sfx;
+
+  /** Препятствие для плевка: видимая непроходимая геометрия (деревья, рельеф). */
+  private readonly isSolid = (m: AbstractMesh): boolean => m.isPickable && m.checkCollisions;
 
   constructor(
     scene: Scene,
@@ -40,6 +47,7 @@ export class MobSystem {
     combat: () => CombatSystem,
     groundHeight: (x: number, z: number) => number,
   ) {
+    this.scene = scene;
     this.player = player;
     this.groundHeight = groundHeight;
     this.combat = combat;
@@ -77,13 +85,16 @@ export class MobSystem {
     };
   }
 
+  /** Грудь игрока — цель для плевка (стабильная, не «замороженная» плоская камера). */
+  private chestTarget(): Vector3 {
+    return this.player.position.subtract(new Vector3(0, 0.4, 0));
+  }
+
   private fireBall(from: Vector3): void {
     if (this.balls.length >= SPITTER.maxBalls) {
       this.balls.shift()?.mesh.dispose();
     }
-    // Целимся в грудь игрока (чуть ниже глаз), а не в ноги.
-    const aim = this.player.camera.globalPosition.clone();
-    aim.y -= 0.35;
+    const aim = this.chestTarget();
     // Баллистическая поправка: поднять прицел на величину падения за время полёта.
     const flat = aim.subtract(from);
     flat.y = 0;
@@ -107,14 +118,15 @@ export class MobSystem {
   }
 
   update(dt: number): void {
-    this.player.camera.getDirection(FORWARD).normalizeToRef(this.ctx.playerAim);
+    this.player.eyeForward.normalizeToRef(this.ctx.playerAim);
     for (const m of this.mobs) m.update(dt, this.ctx);
     this.updateBalls(dt);
   }
 
   private updateBalls(dt: number): void {
-    const eye = this.player.camera.globalPosition;
-    const feet = new Vector3(eye.x, eye.y - PLAYER.eyeHeight, eye.z);
+    // Капсула игрока: от ног до макушки (номинальная высота глаз).
+    const head = this.player.position;
+    const feet = new Vector3(head.x, head.y - PLAYER.eyeHeight, head.z);
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.prev.copyFrom(b.mesh.position);
@@ -124,10 +136,13 @@ export class MobSystem {
 
       let done = b.life > SPITTER.ballMaxLife;
 
-      // Попадание в игрока: путь шарика против капсулы тело (ноги..голова).
+      const step = b.mesh.position.subtract(b.prev);
+      const len = step.length();
+
+      // Попал в игрока? Путь шарика против капсулы тела.
       if (
         !done &&
-        segmentDistance(b.prev, b.mesh.position, feet, eye) < SPITTER.ballRadius + PLAYER.radius
+        segmentDistance(b.prev, b.mesh.position, feet, head) < SPITTER.ballRadius + PLAYER.radius
       ) {
         const dir = b.vel.clone();
         dir.y = 0;
@@ -140,8 +155,21 @@ export class MobSystem {
         done = true;
       }
 
-      // Земля.
+      // Врезался в дерево / другое препятствие на пути?
+      if (!done && len > 1e-4) {
+        const hit = this.scene.pickWithRay(
+          new Ray(b.prev, step.scale(1 / len), len),
+          this.isSolid,
+        );
+        if (hit?.hit) {
+          this.sfx.arrowHit("wood", 0.5);
+          done = true;
+        }
+      }
+
+      // Земля (дешёвая подстраховка к raycast).
       if (!done && b.mesh.position.y <= this.groundHeight(b.mesh.position.x, b.mesh.position.z)) {
+        this.sfx.arrowHit("wood", 0.4);
         done = true;
       }
 
@@ -152,5 +180,3 @@ export class MobSystem {
     }
   }
 }
-
-const FORWARD = new Vector3(0, 0, 1);
