@@ -89,9 +89,24 @@ echo "  (Он бесплатный, но живёт 1 час — потом пе
 echo "--------------------------------------------------"
 
 : >"$TLOG"
+
+# Запасной туннель пускает по любому SSH-ключу, но без ключа скатывается
+# к паролю и молча зависает на приглашении. Поэтому заводим отдельный ключ
+# только под туннель — чужие ключи и настройки не трогаем.
+KEY="$HOME/.ssh/vrgame_tunnel"
+if [ ! -f "$KEY" ]; then
+  echo "  Создаю ключ для туннеля: $KEY"
+  mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+  ssh-keygen -t ed25519 -N "" -C "vrgame-tunnel" -f "$KEY" -q || {
+    echo "  Не удалось создать ключ."; read -r -p "Enter для выхода..."; exit 1; }
+fi
+
 ssh -n -p 443 \
     -o StrictHostKeyChecking=no \
     -o UserKnownHostsFile=/dev/null \
+    -o BatchMode=yes \
+    -o IdentitiesOnly=yes \
+    -i "$KEY" \
     -o ServerAliveInterval=30 \
     -o ExitOnForwardFailure=yes \
     -R0:localhost:5173 a.pinggy.io >"$TLOG" 2>&1 &
