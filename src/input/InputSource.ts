@@ -24,10 +24,20 @@ export interface InputState {
   tune: TuneInput | null;
   /** Открыть/закрыть панель персонажа (фронт). */
   panelToggle: boolean;
-  /** Панель: следующая характеристика (фронт). */
+  /** Панель персонажа: следующая характеристика (фронт). */
   uiNext: boolean;
-  /** Панель: вложить очко в выбранную характеристику (фронт). */
+  /** Панель персонажа: вложить очко (фронт). */
   uiConfirm: boolean;
+
+  /** Открыть/закрыть панель настройки экипировки (фронт). */
+  tuneToggle: boolean;
+  /** Панель настройки: выбор строки, правый стик по вертикали (-1..1). */
+  tuneNavY: number;
+  /** Панель настройки: уменьшить / увеличить значение (фронт). */
+  tuneDec: boolean;
+  tuneInc: boolean;
+  /** Панель настройки: сменить шаг (фронт). */
+  tuneStep: boolean;
 }
 
 /** Сырые оси стиков в режиме настройки меча (-1..1). */
@@ -52,6 +62,11 @@ export function emptyInput(): InputState {
     panelToggle: false,
     uiNext: false,
     uiConfirm: false,
+    tuneToggle: false,
+    tuneNavY: 0,
+    tuneDec: false,
+    tuneInc: false,
+    tuneStep: false,
   };
 }
 

@@ -28,6 +28,13 @@ export class XRInput implements InputSource {
   private snapArmed = true;
   private readonly armed = new Map<string, boolean>();
 
+  /**
+   * Ставится извне: пока открыта панель настройки экипировки, X/Y/A работают
+   * как «меньше / больше / шаг». Стики, курок и grip не трогаем — ходить,
+   * поворачиваться и брать предметы можно как обычно.
+   */
+  tuneOpen = false;
+
   private readonly addObs: Observer<WebXRInputSource> | null;
   private readonly removeObs: Observer<WebXRInputSource> | null;
 
@@ -75,10 +82,23 @@ export class XRInput implements InputSource {
     const rp = this.right?.inputSource.gamepad;
     const b = LOADOUT.buttons;
 
-    // --- Панель персонажа: отдельные кнопки, движение не трогаем ---
-    s.panelToggle = this.edge("panel", pressed(lp, b.panelToggle));
-    s.uiNext = this.edge("uiNext", pressed(lp, b.panelNext));
-    s.uiConfirm = this.edge("uiSpend", pressed(rp, b.panelSpend));
+    // B на правом всегда открывает/закрывает панель настройки экипировки.
+    s.tuneToggle = this.edge("tune", pressed(rp, b.panelSpend));
+
+    if (this.tuneOpen) {
+      // Режим настройки: X/Y/A меняют значения. Стики свободны — ходить и
+      // поворачиваться можно; вертикаль правого стика ничем не занята.
+      s.tuneNavY = -dz(rp?.axes[3] ?? 0);
+      s.tuneDec = this.edge("tuneDec", pressed(lp, b.panelNext));
+      s.tuneInc = this.edge("tuneInc", pressed(lp, b.panelToggle));
+      s.tuneStep = this.edge("tuneStep", pressed(rp, b.jump));
+    } else {
+      // Обычный режим: панель персонажа и прыжок.
+      s.panelToggle = this.edge("panel", pressed(lp, b.panelToggle));
+      s.uiNext = this.edge("uiNext", pressed(lp, b.panelNext));
+      s.uiConfirm = this.edge("uiSpend", pressed(rp, b.panelSpend));
+      s.jump = this.edge("jump", pressed(rp, b.jump));
+    }
 
     if (lp) {
       s.moveX = dz(lp.axes[2] ?? 0);
@@ -96,7 +116,6 @@ export class XRInput implements InputSource {
 
     s.primaryAction = pressed(lp, 0) || pressed(rp, 0); // trigger
     s.interact = pressed(lp, 1) || pressed(rp, 1); // grip
-    s.jump = this.edge("jump", pressed(rp, b.jump));
 
     return s;
   }

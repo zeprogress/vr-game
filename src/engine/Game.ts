@@ -9,6 +9,7 @@ import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperienc
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Node } from "@babylonjs/core/node";
 
 import { buildZone } from "../world/Zone";
 import { CombatSystem } from "../combat/CombatSystem";
@@ -17,6 +18,7 @@ import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
+import { LoadoutPanel } from "../ui/LoadoutPanel";
 import { HUD } from "../shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
@@ -50,6 +52,7 @@ export class Game {
   private playerBar3D: HealthBar3D | null = null;
   private vrVignette: VrVignette | null = null;
   private wristPanel: WristPanel | null = null;
+  loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
   xr: WebXRDefaultExperience | null = null;
 
@@ -214,17 +217,24 @@ export class Game {
 
     this.vrVignette = new VrVignette(this.scene);
 
-    // Панель персонажа — на левой кисти (или на контроллере, если кисти нет).
-    const leftHand =
-      this.hands.nodeFor("left") ??
-      this.xr!.input.controllers.find((c) => c.inputSource.handedness === "left")?.grip ??
-      cam;
-    this.wristPanel = new WristPanel(this.scene, leftHand, this.progression);
+    // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
+    this.wristPanel = new WristPanel(this.scene, this.handNode("left", cam), this.progression);
+    this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
+  }
+
+  private handNode(side: "left" | "right", fallback: Node): Node {
+    return (
+      this.hands.nodeFor(side) ??
+      this.xr?.input.controllers.find((c) => c.inputSource.handedness === side)?.grip ??
+      fallback
+    );
   }
 
   private tearDownVrUi(): void {
     this.wristPanel?.dispose();
     this.wristPanel = null;
+    this.loadoutPanel?.dispose();
+    this.loadoutPanel = null;
     this.playerBar3D?.dispose();
     this.playerBar3D = null;
     this.hudAnchor?.dispose();
@@ -247,10 +257,18 @@ export class Game {
     if (inp.panelToggle) this.wristPanel?.toggle();
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm);
 
-    // Панель цепляется к левой кисти, как только контроллер появился.
-    const leftHand = this.hands.nodeFor("left");
-    if (leftHand && this.wristPanel && this.wristPanel.anchor !== leftHand) {
-      this.wristPanel.reparent(leftHand);
+    if (inp.tuneToggle) this.loadoutPanel?.toggle();
+    this.loadoutPanel?.update(inp.tuneNavY, inp.tuneDec, inp.tuneInc, inp.tuneStep);
+    // Пока панель настройки открыта, X/Y/A меняют значения (движение свободно).
+    if (this.xrInput) this.xrInput.tuneOpen = this.loadoutPanel?.visible ?? false;
+
+    // Панели цепляются к кистям, как только контроллеры появились.
+    for (const [side, panel] of [
+      ["left", this.wristPanel],
+      ["right", this.loadoutPanel],
+    ] as const) {
+      const node = this.hands.nodeFor(side);
+      if (node && panel && panel.anchor !== node) panel.reparent(node);
     }
   }
 
