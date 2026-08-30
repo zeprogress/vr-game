@@ -36,58 +36,89 @@ echo
 echo "Поднимаю туннель… (адрес появится, когда связь установится)"
 echo
 
-# --url http://localhost:5173: Vite отдаёт клиент и сам проксирует
-# матчмейкинг + WebSocket на игровой сервер :2567.
+TLOG=$(mktemp -t vrgame-tunnel)
+
+# Показать адрес крупно и понятно.
+announce() {
+  echo
+  echo "=================================================="
+  echo "  СВЯЗЬ УСТАНОВЛЕНА. Публичный адрес игры:"
+  echo
+  echo "  >>>  $1"
+  echo
+  echo "  Дай эту ссылку другу. Работает, пока окно открыто."
+  echo "  На Quest прими предупреждение, если появится."
+  [ -n "$2" ] && echo "  $2"
+  echo "=================================================="
+  echo
+}
+
+# --- Способ 1: Cloudflare Tunnel (порт 7844, без ограничения по времени) ---
 #
-# Адрес печатаем ТОЛЬКО после «Registered tunnel connection»: cloudflared
-# выдаёт ссылку сразу, ещё до того как связь с Cloudflare установлена,
-# и без этой проверки скрипт выглядит успешным, даже когда туннель не встал.
-url=""
-warned=""
-cloudflared tunnel --url http://localhost:5173 2>&1 | while read -r line; do
-  echo "$line"
-
-  case "$line" in
-    *trycloudflare.com*)
-      [ -n "$url" ] || url=$(echo "$line" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com')
-      ;;
-  esac
-
-  case "$line" in
-    *"Registered tunnel connection"*)
-      echo
-      echo "=================================================="
-      echo "  СВЯЗЬ УСТАНОВЛЕНА. Публичный адрес игры:"
-      echo
-      echo "  >>>  $url"
-      echo
-      echo "  Дай эту ссылку другу. Работает, пока окно открыто."
-      echo "  На Quest прими предупреждение Cloudflare, если появится."
-      echo "=================================================="
-      echo
-      ;;
-  esac
-
-  # Типичная беда: VPN/прокси не пропускает порт 7844, на котором работает
-  # туннель. Обычный интернет при этом есть, поэтому причина неочевидна.
-  case "$line" in
-    *"Allow outbound"*7844*|*"no recent network activity"*|*"TLS handshake with edge error"*)
-      if [ -z "$warned" ]; then
-        warned=1
-        echo
-        echo "--------------------------------------------------"
-        echo "  ТУННЕЛЬ НЕ ВСТАЁТ. Почти всегда причина одна:"
-        echo "  включён VPN или прокси, и он не пропускает порт 7844."
-        echo
-        echo "  Что делать:"
-        echo "   1) выключи VPN на время игры и запусти скрипт заново;"
-        echo "   2) либо в настройках VPN пропиши прямое подключение"
-        echo "      для argotunnel.com и trycloudflare.com."
-        echo
-        echo "  Ссылка выше работать НЕ будет, пока это не починено."
-        echo "--------------------------------------------------"
-        echo
-      fi
-      ;;
-  esac
+# Адрес cloudflared печатает сразу, ещё до соединения с Cloudflare, поэтому
+# ждём именно «Registered tunnel connection» — иначе скрипт выглядит успешным
+# даже когда туннель не встал.
+cloudflared tunnel --url http://localhost:5173 >"$TLOG" 2>&1 &
+TUNNEL_PID=$!
+CF_OK=""
+for _ in $(seq 1 25); do
+  sleep 1
+  if grep -q "Registered tunnel connection" "$TLOG" 2>/dev/null; then CF_OK=1; break; fi
+  # Порт 7844 не пропускают — ждать дальше бессмысленно.
+  if grep -qE "Allow outbound|TLS handshake with edge error" "$TLOG" 2>/dev/null; then break; fi
+  kill -0 "$TUNNEL_PID" 2>/dev/null || break
 done
+
+if [ -n "$CF_OK" ]; then
+  announce "$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' "$TLOG" | head -1)"
+  wait "$TUNNEL_PID"
+  exit 0
+fi
+
+# --- Способ 2: запасной туннель по 443 (Cloudflare не прошёл) ---
+#
+# Обычно причина одна: VPN или прокси не пропускает порт 7844. Порт 443 они
+# пропускают всегда, поэтому запасной туннель идёт по SSH через 443.
+# Ставить и регистрировать ничего не надо, но бесплатная сессия живёт час.
+kill "$TUNNEL_PID" 2>/dev/null
+echo
+echo "--------------------------------------------------"
+echo "  Cloudflare не прошёл: похоже, VPN или прокси не пропускает порт 7844."
+echo "  Перехожу на запасной туннель через порт 443."
+echo "  (Он бесплатный, но живёт 1 час — потом перезапусти скрипт.)"
+echo "--------------------------------------------------"
+
+: >"$TLOG"
+ssh -n -p 443 \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o ServerAliveInterval=30 \
+    -o ExitOnForwardFailure=yes \
+    -R0:localhost:5173 a.pinggy.io >"$TLOG" 2>&1 &
+TUNNEL_PID=$!
+
+for _ in $(seq 1 30); do
+  sleep 1
+  URL=$(tr -d '\r' <"$TLOG" | grep -Eo 'https://[a-z0-9.-]+\.(pinggy-free\.link|free\.pinggy\.net)' | head -1)
+  [ -n "$URL" ] && break
+  kill -0 "$TUNNEL_PID" 2>/dev/null || break
+done
+
+if [ -n "$URL" ]; then
+  announce "$URL" "Адрес живёт 1 час — потом запусти скрипт заново."
+  wait "$TUNNEL_PID"
+  exit 0
+fi
+
+echo
+echo "=================================================="
+echo "  Ни один туннель не поднялся."
+echo
+echo "  Скорее всего мешает VPN или прокси. Попробуй:"
+echo "   1) выключить VPN и запустить скрипт заново;"
+echo "   2) либо прописать в VPN прямое подключение для"
+echo "      argotunnel.com, trycloudflare.com и pinggy.io."
+echo
+echo "  Лог туннеля: $TLOG"
+echo "=================================================="
+read -r -p "Enter для выхода..."

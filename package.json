@@ -14,7 +14,8 @@
     "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host",
-    "tunnel": "cloudflared tunnel --url http://localhost:5173"
+    "tunnel": "cloudflared tunnel --url http://localhost:5173",
+    "tunnel:443": "ssh -n -p 443 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -R0:localhost:5173 a.pinggy.io"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",
