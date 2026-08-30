@@ -7,6 +7,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
+import { BAG, rollLoot, type ItemId } from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
 
@@ -256,6 +257,26 @@ class Mob {
   }
 }
 
+/** Лут, лежащий на земле. Тает через BAG.dropLife секунд. */
+class Drop {
+  readonly id = nid();
+  private life = 0;
+
+  constructor(
+    readonly item: ItemId,
+    readonly count: number,
+    readonly x: number,
+    readonly y: number,
+    readonly z: number,
+  ) {}
+
+  /** true — пора убрать. */
+  tick(dt: number): boolean {
+    this.life += dt;
+    return this.life > BAG.dropLife;
+  }
+}
+
 class Dummy {
   readonly id = nid();
   hp = COMBAT.dummyHp;
@@ -343,6 +364,7 @@ export class ZoneSim {
   readonly mobs = new Map<string, Mob>();
   readonly dummies = new Map<string, Dummy>();
   readonly balls = new Map<string, Ball>();
+  readonly drops = new Map<string, Drop>();
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -406,6 +428,7 @@ export class ZoneSim {
     for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
+    for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     return hits;
   }
 
@@ -413,7 +436,29 @@ export class ZoneSim {
   hitMob(id: string, dmg: number, dx: number, dz: number): number {
     const m = this.mobs.get(id);
     if (!m) return 0;
-    return m.applyHit(dmg, dx, dz) ? m.xp : 0;
+    if (!m.applyHit(dmg, dx, dz)) return 0;
+    this.spawnLoot(m);
+    return m.xp;
+  }
+
+  /** Разыграть и разложить добычу вокруг убитого моба. */
+  private spawnLoot(m: Mob): void {
+    for (const { id, count } of rollLoot(m.kind, Math.random)) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * BAG.dropSpread;
+      const x = m.x + Math.cos(a) * r;
+      const z = m.z + Math.sin(a) * r;
+      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z);
+      this.drops.set(d.id, d);
+    }
+  }
+
+  /** Забрать лут из мира. null — его уже нет (успел другой игрок). */
+  takeDrop(id: string): Drop | null {
+    const d = this.drops.get(id);
+    if (!d) return null;
+    this.drops.delete(id);
+    return d;
   }
 
   hitDummy(id: string, dmg: number): void {

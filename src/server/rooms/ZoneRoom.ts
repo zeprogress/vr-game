@@ -1,13 +1,23 @@
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
 
-import { BallState, DummyState, MobState, PlayerState, Xf, ZoneState } from "#shared/net/schema";
+import {
+  BallState,
+  DropState,
+  DummyState,
+  MobState,
+  PlayerState,
+  SlotState,
+  Xf,
+  ZoneState,
+} from "#shared/net/schema";
 import {
   MSG,
   type HitMobMsg,
   type MoveMsg,
   type SaveMsg,
   type SpendMsg,
+  type UseItemMsg,
   type Xf7,
 } from "#shared/net/messages";
 import { PLAYER, PLAYER_HP, RESPAWN } from "#shared/constants";
@@ -22,6 +32,16 @@ import {
   type GuardState,
   type WeaponKind,
 } from "#shared/combat";
+import {
+  addToBag,
+  BAG,
+  emptyBag,
+  isItemId,
+  ITEMS,
+  takeOne,
+  type ItemId,
+  type Slot,
+} from "#shared/items";
 import {
   grantXp,
   isStatName,
@@ -46,6 +66,8 @@ interface Runtime {
   lastHit: Partial<Record<WeaponKind, number>>;
   sinceHurt: number;
   respawnIn: number;
+  /** Секунды неуязвимости после возрождения. */
+  invuln: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
 }
@@ -74,6 +96,30 @@ function unit2(x: unknown, z: unknown): [number, number] {
   return L > 1e-4 ? [ax / L, az / L] : [0, 0];
 }
 
+/** Схема сумки -> обычный массив, с которым работает shared/items. */
+function readBag(p: PlayerState): Slot[] {
+  const bag = emptyBag();
+  for (let i = 0; i < bag.length; i++) {
+    const s = p.bag[i];
+    if (!s || !isItemId(s.item) || s.count <= 0) continue;
+    bag[i] = { item: s.item, count: s.count };
+  }
+  return bag;
+}
+
+function writeBag(p: PlayerState, bag: Slot[]): void {
+  for (let i = 0; i < bag.length; i++) {
+    const src = bag[i];
+    let dst = p.bag[i];
+    if (!dst) {
+      dst = new SlotState();
+      p.bag.push(dst);
+    }
+    dst.item = src.item ?? "";
+    dst.count = src.item ? src.count : 0;
+  }
+}
+
 function readProgress(p: PlayerState): Progress {
   return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int };
 }
@@ -85,6 +131,20 @@ function writeProgress(p: PlayerState, s: Progress): void {
   p.str = s.str;
   p.agi = s.agi;
   p.int = s.int;
+}
+
+/** Сумка из сейва — с проверкой, что предметы всё ещё существуют. */
+function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined): Slot[] {
+  const bag = emptyBag();
+  if (!Array.isArray(saved)) return bag;
+  for (let i = 0; i < bag.length && i < saved.length; i++) {
+    const s = saved[i];
+    if (!s || !isItemId(s.item)) continue;
+    const count = Math.floor(num(s.count, 0));
+    if (count <= 0) continue;
+    bag[i] = { item: s.item, count: Math.min(count, ITEMS[s.item].stack) };
+  }
+  return bag;
 }
 
 interface JoinOpts {
@@ -152,6 +212,23 @@ export class ZoneRoom extends Room<ZoneState> {
       const before = p.maxHp;
       p.maxHp = maxHpFor(p.str);
       p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - before));
+    });
+
+    this.onMessage(MSG.useItem, (client: Client, msg: UseItemMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.dead) return;
+      const slot = Math.floor(num(msg?.slot, -1));
+      if (slot < 0 || slot >= BAG.slots) return;
+
+      const bag = readBag(p);
+      const held = bag[slot];
+      if (!held.item || ITEMS[held.item].heal <= 0) return; // нечего пить
+      if (p.hp >= p.maxHp) return; // полное здоровье — не тратим зря
+
+      const used = takeOne(bag, slot);
+      if (!used) return;
+      writeBag(p, bag);
+      p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);
@@ -248,16 +325,54 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.balls.forEach((_s, id) => {
       if (!this.sim.balls.has(id)) this.state.balls.delete(id);
     });
+    for (const d of this.sim.drops.values()) {
+      if (this.state.drops.has(d.id)) continue;
+      const s = new DropState();
+      s.item = d.item;
+      s.count = d.count;
+      s.x = d.x;
+      s.y = d.y;
+      s.z = d.z;
+      this.state.drops.set(d.id, s);
+    }
+    this.state.drops.forEach((_s, id) => {
+      if (!this.sim.drops.has(id)) this.state.drops.delete(id);
+    });
+
+    this.pickupLoot();
 
     for (const h of hits) this.hurtPlayer(h);
     this.tickPlayers(dt);
+  }
+
+  /** Лут подбирается сам, когда игрок подошёл вплотную. */
+  private pickupLoot(): void {
+    if (this.sim.drops.size === 0) return;
+    this.state.players.forEach((p, id) => {
+      if (p.dead) return;
+      // Считаем от ног: лут лежит на земле, а head.y — это глаза.
+      const feetY = p.head.y - PLAYER.eyeHeight;
+      for (const d of [...this.sim.drops.values()]) {
+        const dy = d.y - feetY;
+        const dist = Math.hypot(d.x - p.head.x, dy, d.z - p.head.z);
+        if (dist > BAG.pickupRadius) continue;
+
+        const bag = readBag(p);
+        const left = addToBag(bag, d.item, d.count);
+        const taken = d.count - left;
+        if (taken <= 0) continue; // сумка полна — лут остаётся лежать
+        writeBag(p, bag);
+        this.sim.takeDrop(d.id);
+        this.clientOf(id)?.send(MSG.picked, { item: d.item, count: taken });
+      }
+    });
   }
 
   /** Урон по игроку от моба или плевка — с учётом щита и меча. */
   private hurtPlayer(h: PlayerHit): void {
     const p = this.state.players.get(h.target);
     const rt = this.rt.get(h.target);
-    if (!p || !rt || p.dead) return;
+    if (!p || !rt || p.dead || rt.invuln > 0) return;
 
     // Направление ОТ игрока К источнику удара.
     let ax = h.fromX - p.head.x;
@@ -299,6 +414,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (rt.respawnIn <= 0) this.respawn(id, p, rt);
         return;
       }
+      if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
       if (p.hp > 0 && p.hp < p.maxHp && rt.sinceHurt > PLAYER_HP.regenDelay) {
         p.hp = Math.min(p.maxHp, p.hp + PLAYER_HP.regen * dt);
@@ -316,6 +432,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.y = y;
     p.head.z = z;
     rt.sinceHurt = PLAYER_HP.regenDelay;
+    rt.invuln = RESPAWN.invuln; // чтобы не добили прямо на точке возрождения
     this.clientOf(id)?.send(MSG.respawn, { x, y, z });
   }
 
@@ -343,6 +460,7 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     p.maxHp = maxHpFor(p.str);
+    writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
     this.state.players.set(client.sessionId, p);
@@ -353,6 +471,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHit: {},
       sinceHurt: PLAYER_HP.regenDelay,
       respawnIn: 0,
+      invuln: RESPAWN.invuln,
       yaw: rec?.yaw ?? 0,
     });
 
@@ -378,6 +497,7 @@ export class ZoneRoom extends Room<ZoneState> {
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
       ...readProgress(p),
+      bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
     };
     store.put(rt.token, patch);
   }
