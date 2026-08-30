@@ -4,6 +4,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
@@ -36,10 +37,15 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
 
   const sun = createSun(scene);
+  const stars = createStars(scene);
+  const clouds = createClouds(scene);
   const sky: Sky = {
     apply(d) {
       scene.fogColor.copyFrom(d.fog);
       sun.apply(d);
+      // Днём облака, ночью звёзды — обе смены плавные, по доле дневного света.
+      clouds.apply(d);
+      stars.apply(d);
     },
     repaint(d) {
       grad.paint(d.zenith, d.horizon);
@@ -47,8 +53,68 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
   };
   sky.apply(start);
   sky.repaint(start);
-  createClouds(scene);
   return sky;
+}
+
+/**
+ * Звёзды: россыпь мелких точек вокруг игрока, проступающая к ночи.
+ *
+ * Сделаны геометрией, а не текстурой на куполе. Текстуру пришлось бы сильно
+ * уменьшать, и без мип-уровней выборка просто перескакивает через отдельные
+ * точки — звёзды то пропадают, то раздуваются в кляксы. Инстансы одного
+ * крошечного меша дают один драв-колл и предсказуемый размер.
+ */
+function createStars(scene: Scene): { apply(d: DayState): void } {
+  const R = 420; // радиус небесной сферы, на которой висят звёзды
+  const COUNT = 320;
+
+  const mat = new StandardMaterial("starMat", scene);
+  mat.emissiveColor = new Color3(1, 1, 0.96);
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.disableLighting = true;
+  mat.disableDepthWrite = true;
+  mat.alpha = 0;
+
+  const proto = MeshBuilder.CreateSphere("starProto", { diameter: 1, segments: 3 }, scene);
+  proto.material = mat;
+  proto.isPickable = false;
+  proto.isVisible = false;
+  proto.applyFog = false;
+
+  // Узел едет за головой, поэтому звёзды не смещаются, когда игрок идёт.
+  const root = new TransformNode("starRoot", scene);
+  proto.parent = root;
+
+  for (let i = 0; i < COUNT; i++) {
+    // Равномерно по сфере, но только верхняя половина — под землёй звёзд не видно.
+    const u = Math.random();
+    const y = Math.pow(Math.random(), 0.7); // гуще к горизонту, как в жизни
+    const r = Math.sqrt(1 - y * y);
+    const a = u * Math.PI * 2;
+    const star = proto.createInstance(`star${i}`);
+    star.parent = root;
+    star.position.set(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R);
+    const size = 0.55 + Math.random() * 0.75;
+    star.scaling.setAll(size);
+    star.isPickable = false;
+  }
+
+  scene.onBeforeRenderObservable.add(() => {
+    const cam = scene.activeCamera;
+    if (cam) root.position.copyFrom(cam.globalPosition);
+  });
+
+  root.setEnabled(false);
+
+  return {
+    apply(d) {
+      const night = 1 - d.daylight;
+      mat.alpha = night;
+      const on = night > 0.02;
+      if (root.isEnabled() !== on) root.setEnabled(on);
+    },
+  };
 }
 
 /** Диск солнца + мягкое гало, закреплены на небе (infiniteDistance). */
@@ -115,7 +181,7 @@ function gradientMaterial(scene: Scene): {
   return { mat, paint };
 }
 
-function createClouds(scene: Scene): void {
+function createClouds(scene: Scene): { apply(d: DayState): void } {
   const mat = new StandardMaterial("cloudMat", scene);
   mat.diffuseColor = new Color3(1, 1, 1);
   mat.emissiveColor = new Color3(0.6, 0.63, 0.68);
@@ -127,6 +193,7 @@ function createClouds(scene: Scene): void {
   proto.material = mat;
   proto.isPickable = false;
   proto.isVisible = false;
+  mat.disableDepthWrite = true; // облака полупрозрачные и не должны спорить по глубине
 
   const clouds: { root: Mesh; speed: number }[] = [];
   const span = WORLD.size * 1.6;
@@ -157,4 +224,15 @@ function createClouds(scene: Scene): void {
       if (c.root.position.x > span / 2) c.root.position.x = -span / 2;
     }
   });
+
+  const FULL = 0.95; // непрозрачность облаков среди бела дня
+  return {
+    apply(d) {
+      mat.alpha = FULL * d.daylight;
+      const on = mat.alpha > 0.02;
+      for (const c of clouds) {
+        if (c.root.isEnabled() !== on) c.root.setEnabled(on);
+      }
+    },
+  };
 }

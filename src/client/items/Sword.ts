@@ -21,15 +21,17 @@ export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
   const steel = new StandardMaterial("swordSteel", scene);
   steel.diffuseColor = new Color3(t[0], t[1], t[2]);
   steel.emissiveColor = new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28); // не проваливается в чёрный
-  steel.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(0.9, 0.9, 0.9);
-  steel.specularPower = 64;
+  steel.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(1, 1, 1);
+  // Высокая степень — блик тугой и яркий, как на полированном металле.
+  steel.specularPower = wooden ? 8 : 160;
 
   const gold = new StandardMaterial("swordGold", scene);
   gold.diffuseColor = wooden ? new Color3(t[0], t[1], t[2]) : new Color3(0.7, 0.55, 0.24);
   gold.emissiveColor = wooden
     ? new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28)
     : new Color3(0.2, 0.15, 0.05);
-  gold.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(0.4, 0.35, 0.15);
+  gold.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(1, 0.92, 0.6);
+  gold.specularPower = wooden ? 8 : 128;
 
   const grip = new StandardMaterial("swordGrip", scene);
   grip.diffuseColor = new Color3(t[0], t[1], t[2]);
@@ -53,6 +55,9 @@ export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
 
   const tip = MeshBuilder.CreateCylinder("s_tip", { height: 0.12, diameterBottom: 0.07, diameterTop: 0, tessellation: 4 }, scene);
   tip.position.y = 1.03;
+  // Клинок плоский (0.07 x 0.02), поэтому и остриё сплющиваем до его толщины —
+  // иначе на плоском лезвии торчит четырёхгранная пирамидка.
+  tip.scaling.z = 0.02 / 0.07;
   tip.material = steel;
 
   const sword = Mesh.MergeMeshes([handle, pommel, guard, blade, tip], true, true, undefined, false, true);

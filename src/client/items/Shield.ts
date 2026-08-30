@@ -21,8 +21,8 @@ import { weaponDef, type WeaponTier } from "#shared/items";
 export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
   if (tier !== "base") return createTriangleShield(scene, tier);
   const wood = new StandardMaterial("shieldWood", scene);
-  wood.diffuseColor = new Color3(0.42, 0.26, 0.15);
-  wood.emissiveColor = new Color3(0.1, 0.06, 0.04);
+  wood.diffuseColor = new Color3(0.2, 0.13, 0.08);
+  wood.emissiveColor = new Color3(0.05, 0.03, 0.02);
   wood.specularColor = new Color3(0.1, 0.1, 0.1);
 
   const iron = new StandardMaterial("shieldIron", scene);
