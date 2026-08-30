@@ -269,6 +269,9 @@ export class CombatSystem {
 
     if (this.blockCd > 0) this.blockCd -= dt;
 
+    // Q (плоский режим) — снять щит.
+    if (inp.dropItem && this.shieldHand) this.dropShield();
+
     if (!inp.tune) {
       if (this.player.inVR) this.handleGripsVR();
       else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
@@ -449,14 +452,25 @@ export class CombatSystem {
     }
   }
 
+  /** Положить щит на землю перед игроком. */
   private dropShield(): void {
     if (!this.shieldHand) return;
     this.shieldHand = null;
-    const gy = this.groundHeight(this.shield.absolutePosition.x, this.shield.absolutePosition.z);
+
+    // Мировую точку берём ДО отвязки: после parent = null локальная
+    // позиция осталась бы относительно старого родителя.
+    const world = this.shield.getAbsolutePosition().clone();
+    const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
+    fwd.y = 0;
+    if (fwd.lengthSquared() < 1e-4) fwd.set(0, 0, 1);
+    fwd.normalize();
+    const drop = this.player.position.add(fwd.scale(0.9));
+    const spot = this.player.inVR ? world : drop;
+
     this.shield.parent = null;
     this.shield.scaling.setAll(1);
-    this.shieldRest.pos.set(this.shield.position.x, gy + 0.1, this.shield.position.z);
-    this.shieldRest.yaw = Math.random() * Math.PI;
+    this.shieldRest.pos.set(spot.x, this.groundHeight(spot.x, spot.z) + 0.1, spot.z);
+    this.shieldRest.yaw = Math.atan2(fwd.x, fwd.z) + Math.random() * 0.4 - 0.2;
     this.shieldRest.bob = false;
     this.layFlat(this.shield, this.shieldRest);
   }
@@ -681,8 +695,10 @@ export class CombatSystem {
       this.swingT -= dt;
       const phase = 1 - Math.max(0, this.swingT) / COMBAT.swingDuration;
       const arc = Math.sin(phase * Math.PI);
-      this.sword.rotation.x = this.tunes.swordFlat.rot.x - arc * 1.5;
-      this.sword.rotation.z = this.tunes.swordFlat.rot.z + arc * 0.45;
+      // Клинок идёт вниз-ВПЕРЁД (локальный +Y заваливается к +Z, то есть от
+      // игрока). Со знаком «минус» получался замах на себя.
+      this.sword.rotation.x = this.tunes.swordFlat.rot.x + arc * 1.5;
+      this.sword.rotation.z = this.tunes.swordFlat.rot.z - arc * 0.45;
       if (phase > 0.3 && !this.swingHitDone) {
         this.swingHitDone = true;
         this.tryHit();

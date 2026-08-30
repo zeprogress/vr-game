@@ -15,6 +15,8 @@ export interface InputState {
   interact: boolean;
   /** Прыжок — нажат в этом кадре (фронт). */
   jump: boolean;
+  /** Сбросить щит (клавиша Q в плоском режиме) — нажат в этом кадре (фронт). */
+  dropItem: boolean;
   /**
    * Не null только в VR при зажатой кнопке настройки меча (X на левом): сырые
    * оси стиков для правки положения меча в руке. Локомоция в это время подавлена.
@@ -45,6 +47,7 @@ export function emptyInput(): InputState {
     primaryAction: false,
     interact: false,
     jump: false,
+    dropItem: false,
     tune: null,
     panelToggle: false,
     uiNavY: 0,

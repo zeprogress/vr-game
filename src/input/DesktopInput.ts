@@ -11,6 +11,7 @@ export class DesktopInput implements InputSource {
   private accPitch = 0;
   private mouseDown = false;
   private jumpQueued = false;
+  private dropQueued = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", this.onKeyDown);
@@ -24,6 +25,7 @@ export class DesktopInput implements InputSource {
   private onKeyDown = (e: KeyboardEvent): void => {
     this.keys.add(e.code);
     if (e.code === "Space") this.jumpQueued = true;
+    if (e.code === "KeyQ") this.dropQueued = true;
   };
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
@@ -54,10 +56,12 @@ export class DesktopInput implements InputSource {
     s.primaryAction = this.mouseDown;
     s.interact = k.has("KeyE");
     s.jump = this.jumpQueued;
+    s.dropItem = this.dropQueued;
 
     this.accYaw = 0;
     this.accPitch = 0;
     this.jumpQueued = false;
+    this.dropQueued = false;
     return s;
   }
 
