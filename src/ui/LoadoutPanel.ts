@@ -21,7 +21,7 @@ import {
 } from "../config/loadout";
 
 const TEX_W = 512;
-const TEX_H = 448;
+const TEX_H = 512;
 
 /** Шаги правки: грубо / средне / точно переключаются кнопкой A. */
 const POS_STEPS = [0.1, 0.02, 0.005];
@@ -53,8 +53,8 @@ type Field =
 /**
  * Панель настройки экипировки на правой руке (кнопка B).
  *
- * Строка 0 — выбор цели, дальше её параметры, последняя — сброс к файлу.
- * Всё правится прямо в игре и сохраняется.
+ * Строка 0 — выбор цели, дальше её параметры, затем «Сохранить настройки»
+ * и «Сброс к файлу». Всё правится прямо в игре и переживает перезагрузку.
  */
 export class LoadoutPanel {
   private readonly plane: Mesh;
@@ -64,6 +64,8 @@ export class LoadoutPanel {
   private row = 0;
   private stepIdx = 1;
   private navArmed = true;
+  /** Секунды, пока в строке «сохранить» горит подтверждение. */
+  private savedFlash = 0;
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("loadoutTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -116,10 +118,15 @@ export class LoadoutPanel {
 
   /**
    * navY — правый стик по вертикали (выбор строки), dec/inc — уменьшить/увеличить,
-   * stepCycle — сменить шаг.
+   * stepCycle — сменить шаг. dt нужен, чтобы погасить надпись «сохранено».
    */
-  update(navY: number, dec: boolean, inc: boolean, stepCycle: boolean): void {
+  update(navY: number, dec: boolean, inc: boolean, stepCycle: boolean, dt = 0): void {
     if (!this.open) return;
+
+    if (this.savedFlash > 0) {
+      this.savedFlash -= dt;
+      if (this.savedFlash <= 0) this.redraw();
+    }
 
     if (this.navArmed && Math.abs(navY) > 0.6) {
       const rows = this.rowCount();
@@ -149,9 +156,16 @@ export class LoadoutPanel {
     return TARGETS[this.targetIdx];
   }
 
-  /** Строки: 0 — цель, затем параметры, последняя — сброс. */
+  /** Строки: 0 — цель, затем параметры, потом «сохранить» и «сброс». */
   private rowCount(): number {
-    return 1 + this.fieldCount() + 1;
+    return 1 + this.fieldCount() + 2;
+  }
+
+  private get saveRow(): number {
+    return 1 + this.fieldCount();
+  }
+  private get resetRow(): number {
+    return this.rowCount() - 1;
   }
 
   private fieldCount(): number {
@@ -213,8 +227,13 @@ export class LoadoutPanel {
       this.redraw();
       return;
     }
-    // Последняя строка — сброс к значениям из файла.
-    if (this.row === this.rowCount() - 1) {
+    // Явное сохранение всех настроек.
+    if (this.row === this.saveRow) {
+      this.saveAll();
+      return;
+    }
+    // Сброс текущей цели к значениям из файла.
+    if (this.row === this.resetRow) {
       resetTarget(this.target.key);
       this.redraw();
       return;
@@ -224,6 +243,17 @@ export class LoadoutPanel {
     const step = (f.rot ? ROT_STEPS : POS_STEPS)[this.stepIdx];
     f.set(f.get() + dir * step);
     saveTarget(this.target.key);
+    this.redraw();
+  }
+
+  /**
+   * Запоминает все настройки (кисти и предметы для обеих рук), чтобы они
+   * пережили перезагрузку. Правка отдельного значения сохраняется и сама,
+   * но этот пункт фиксирует разом всё и подтверждает, что записалось.
+   */
+  saveAll(): void {
+    for (const t of TARGETS) saveTarget(t.key);
+    this.savedFlash = 2;
     this.redraw();
   }
 
@@ -281,7 +311,13 @@ export class LoadoutPanel {
       const shown = f.rot ? `${v.toFixed(2)}  (${Math.round((v * 180) / Math.PI)}°)` : v.toFixed(3);
       drawRow(i + 1, f.label, shown);
     }
-    drawRow(this.rowCount() - 1, "Сброс к файлу", "◂ ▸");
+    drawRow(
+      this.saveRow,
+      "Сохранить настройки",
+      this.savedFlash > 0 ? "сохранено ✓" : "◂ ▸",
+      this.savedFlash > 0 ? "#7ee081" : undefined,
+    );
+    drawRow(this.resetRow, "Сброс к файлу", "◂ ▸");
 
     ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";

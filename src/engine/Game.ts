@@ -244,7 +244,6 @@ export class Game {
   }
 
   private updateVrUi(dt: number): void {
-    void dt;
     const cam = this.xr?.baseExperience.camera;
     if (this.hudAnchor && cam) {
       // Позиция головы + только рыскание: панель не заваливается вместе с обзором.
@@ -258,7 +257,7 @@ export class Game {
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm);
 
     if (inp.tuneToggle) this.loadoutPanel?.toggle();
-    this.loadoutPanel?.update(inp.tuneNavY, inp.tuneDec, inp.tuneInc, inp.tuneStep);
+    this.loadoutPanel?.update(inp.tuneNavY, inp.tuneDec, inp.tuneInc, inp.tuneStep, dt);
     // Пока панель настройки открыта, X/Y/A меняют значения (движение свободно).
     if (this.xrInput) this.xrInput.tuneOpen = this.loadoutPanel?.visible ?? false;
 
