@@ -33,18 +33,61 @@ trap 'kill $SERVER_PID $CLIENT_PID $TUNNEL_PID 2>/dev/null' EXIT
 echo "Поднимаю сервер и клиент…"; sleep 4
 
 echo
-echo "=================================================="
-echo "  Публичный адрес игры (действует пока окно открыто):"
-echo "=================================================="
+echo "Поднимаю туннель… (адрес появится, когда связь установится)"
+echo
+
 # --url http://localhost:5173: Vite отдаёт клиент и сам проксирует
 # матчмейкинг + WebSocket на игровой сервер :2567.
+#
+# Адрес печатаем ТОЛЬКО после «Registered tunnel connection»: cloudflared
+# выдаёт ссылку сразу, ещё до того как связь с Cloudflare установлена,
+# и без этой проверки скрипт выглядит успешным, даже когда туннель не встал.
+url=""
+warned=""
 cloudflared tunnel --url http://localhost:5173 2>&1 | while read -r line; do
   echo "$line"
-  if echo "$line" | grep -qE 'https://[a-z0-9-]+\.trycloudflare\.com'; then
-    url=$(echo "$line" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com')
-    echo
-    echo "  >>>  ОТКРОЙ:  $url   (и дай другу)"
-    echo "  На Quest прими предупреждение Cloudflare, если появится."
-    echo
-  fi
+
+  case "$line" in
+    *trycloudflare.com*)
+      [ -n "$url" ] || url=$(echo "$line" | grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com')
+      ;;
+  esac
+
+  case "$line" in
+    *"Registered tunnel connection"*)
+      echo
+      echo "=================================================="
+      echo "  СВЯЗЬ УСТАНОВЛЕНА. Публичный адрес игры:"
+      echo
+      echo "  >>>  $url"
+      echo
+      echo "  Дай эту ссылку другу. Работает, пока окно открыто."
+      echo "  На Quest прими предупреждение Cloudflare, если появится."
+      echo "=================================================="
+      echo
+      ;;
+  esac
+
+  # Типичная беда: VPN/прокси не пропускает порт 7844, на котором работает
+  # туннель. Обычный интернет при этом есть, поэтому причина неочевидна.
+  case "$line" in
+    *"Allow outbound"*7844*|*"no recent network activity"*|*"TLS handshake with edge error"*)
+      if [ -z "$warned" ]; then
+        warned=1
+        echo
+        echo "--------------------------------------------------"
+        echo "  ТУННЕЛЬ НЕ ВСТАЁТ. Почти всегда причина одна:"
+        echo "  включён VPN или прокси, и он не пропускает порт 7844."
+        echo
+        echo "  Что делать:"
+        echo "   1) выключи VPN на время игры и запусти скрипт заново;"
+        echo "   2) либо в настройках VPN пропиши прямое подключение"
+        echo "      для argotunnel.com и trycloudflare.com."
+        echo
+        echo "  Ссылка выше работать НЕ будет, пока это не починено."
+        echo "--------------------------------------------------"
+        echo
+      fi
+      ;;
+  esac
 done
