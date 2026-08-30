@@ -1,40 +1,65 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId = "potion" | "slime" | "shell" | "bronze_sword" | "gold_sword";
+export type ItemId =
+  | "potion"
+  | "slime"
+  | "shell"
+  | "bronze_sword"
+  | "gold_sword"
+  | "gold_bow"
+  | "gold_shield";
 
-/** Класс меча. Базовый «железный» есть у всех с самого начала. */
-export type SwordTier = "iron" | "bronze" | "gold";
+/**
+ * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
+ * положение настраивается один раз на класс (см. LOADOUT.items).
+ */
+export type WeaponClass = "sword" | "bow" | "shield";
+/** Уровень внутри класса. base — то, что лежит на камнях с самого начала. */
+export type WeaponTier = "base" | "bronze" | "gold";
 
-export interface SwordDef {
+export interface WeaponDef {
+  cls: WeaponClass;
+  tier: WeaponTier;
   name: string;
-  /** Во сколько раз бьёт сильнее обычного меча. */
+  /** Во сколько раз бьёт сильнее базового. Щиту не важно. */
   mult: number;
-  /** Цвет клинка. */
+  /** Цвет клинка / дуги / диска. */
   tint: readonly [number, number, number];
 }
 
-export const SWORDS: Record<SwordTier, SwordDef> = {
-  iron: { name: "Меч", mult: 1, tint: [0.78, 0.81, 0.86] },
-  bronze: { name: "Бронзовый меч", mult: 2, tint: [0.82, 0.48, 0.18] },
-  gold: { name: "Золотой меч", mult: 5, tint: [1.0, 0.84, 0.26] },
+export type WeaponKey = `${WeaponClass}:${WeaponTier}`;
+
+export function weaponKey(cls: WeaponClass, tier: WeaponTier): WeaponKey {
+  return `${cls}:${tier}`;
+}
+
+export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
+  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.78, 0.81, 0.86] },
+  "sword:bronze": { cls: "sword", tier: "bronze", name: "Бронзовый меч", mult: 2, tint: [0.82, 0.48, 0.18] },
+  "sword:gold": { cls: "sword", tier: "gold", name: "Золотой меч", mult: 5, tint: [1, 0.84, 0.26] },
+  "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.55, 0.38, 0.2] },
+  "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
+  "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
+  "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
 };
 
-const TIER_ORDER: SwordTier[] = ["iron", "bronze", "gold"];
-
-export function isSwordTier(v: unknown): v is SwordTier {
-  return typeof v === "string" && v in SWORDS;
+export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
+  return WEAPONS[weaponKey(cls, tier)] ?? (WEAPONS[weaponKey(cls, "base")] as WeaponDef);
 }
 
-/** Чем больше, тем лучше меч. */
-export function swordRank(t: SwordTier): number {
-  return TIER_ORDER.indexOf(t);
+export function isWeaponClass(v: unknown): v is WeaponClass {
+  return v === "sword" || v === "bow" || v === "shield";
 }
 
-/** Каким предметом класс меча лежит в мире. iron не выпадает. */
-export const SWORD_ITEM: Record<SwordTier, ItemId | null> = {
-  iron: null,
-  bronze: "bronze_sword",
-  gold: "gold_sword",
+export function isWeaponTier(v: unknown): v is WeaponTier {
+  return v === "base" || v === "bronze" || v === "gold";
+}
+
+/** Можно ли держать два предмета этого класса одновременно (по одному в руке). */
+export const DUAL_WIELD: Record<WeaponClass, boolean> = {
+  sword: true,
+  bow: false, // лук требует обеих рук — второй взять нельзя
+  shield: true,
 };
 
 export interface ItemDef {
@@ -50,10 +75,10 @@ export interface ItemDef {
   /** Цвет в мире и в сетке [r,g,b]. */
   tint: readonly [number, number, number];
   /**
-   * Задан — это меч, лежащий в мире. Такой предмет НЕ падает в сумку:
-   * его берут рукой, и он заменяет клинок в руках.
+   * Задан — это оружие, лежащее в мире. Такой предмет НЕ падает в сумку:
+   * его берут рукой.
    */
-  sword?: SwordTier;
+  weapon?: { cls: WeaponClass; tier: WeaponTier };
 }
 
 export const ITEMS: Record<ItemId, ItemDef> = {
@@ -81,28 +106,27 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     tint: [0.85, 0.55, 0.2],
   },
-  bronze_sword: {
-    name: SWORDS.bronze.name,
-    short: "Бронза",
-    hint: `урон x${SWORDS.bronze.mult}`,
-    stack: 1,
-    heal: 0,
-    tint: SWORDS.bronze.tint,
-    sword: "bronze",
-  },
-  gold_sword: {
-    name: SWORDS.gold.name,
-    short: "Золото",
-    hint: `урон x${SWORDS.gold.mult}`,
-    stack: 1,
-    heal: 0,
-    tint: SWORDS.gold.tint,
-    sword: "gold",
-  },
+  bronze_sword: weaponItem("sword", "bronze", "Бронза"),
+  gold_sword: weaponItem("sword", "gold", "Золото"),
+  gold_bow: weaponItem("bow", "gold", "Зол. лук"),
+  gold_shield: weaponItem("shield", "gold", "Зол. щит"),
 };
 
-/** Меч в мире берут рукой с этого расстояния. */
-export const SWORD_TAKE_REACH = 2.6;
+function weaponItem(cls: WeaponClass, tier: WeaponTier, short: string): ItemDef {
+  const d = weaponDef(cls, tier);
+  return {
+    name: d.name,
+    short,
+    hint: cls === "shield" ? "защита" : `урон x${d.mult}`,
+    stack: 1,
+    heal: 0,
+    tint: d.tint,
+    weapon: { cls, tier },
+  };
+}
+
+/** Оружие в мире берут рукой с этого расстояния. */
+export const WEAPON_TAKE_REACH = 2.6;
 
 export function isItemId(v: unknown): v is ItemId {
   return typeof v === "string" && v in ITEMS;
@@ -133,11 +157,13 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "slime", chance: 1, min: 1, max: 2 },
     { id: "potion", chance: 0.25, min: 1, max: 1 },
     { id: "bronze_sword", chance: 0.1, min: 1, max: 1 },
+    { id: "gold_shield", chance: 0.1, min: 1, max: 1 },
   ],
   spitter: [
     { id: "shell", chance: 1, min: 1, max: 2 },
     { id: "potion", chance: 0.5, min: 1, max: 1 },
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
   ],
 };
 

@@ -42,8 +42,10 @@ function loadoutWriter(): Plugin {
     items: Record<string, Record<string, { pos: number[]; rot: number[]; scale: number }>>;
     buttons: Record<string, number>;
     world: { hour: number };
+    belt: { pos: number[] };
+    hud: { hpPos: number[] };
   }) => {
-    const items = ["sword", "bow", "shield"]
+    const items = ["sword", "bow", "shield", "potion"]
       .map(
         (k) =>
           `    ${k}: {\n` +
@@ -67,7 +69,13 @@ function loadoutWriter(): Plugin {
       `    jump: ${l.buttons.jump}, // A на правом\n` +
       `  },\n` +
       `  world: {\n` +
-      `    hour: ${num(l.world?.hour ?? 19.3)}, // час суток: свет, небо и место солнца\n` +
+      `    hour: ${num(l.world?.hour ?? 17.6)}, // час суток: свет, небо и место солнца\n` +
+      `  },\n` +
+      `  belt: {\n` +
+      `    pos: ${arr(l.belt?.pos ?? [0.19, 0, 0.06])},\n` +
+      `  },\n` +
+      `  hud: {\n` +
+      `    hpPos: ${arr(l.hud?.hpPos ?? [-0.24, 0.46, 0.92])},\n` +
       `  },\n` +
       `};`
     );

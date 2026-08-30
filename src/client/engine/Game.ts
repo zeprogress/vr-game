@@ -20,13 +20,13 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
-import { printLoadout } from "../config/loadout";
+import { LOADOUT, printLoadout } from "../config/loadout";
 import { HUD, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
 import { Inventory } from "../player/Inventory";
-import { LootDrops } from "../world/LootDrops";
+import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -37,7 +37,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { isSwordTier, ITEMS, SWORDS, type SwordTier } from "#shared/items";
+import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { RESPAWN } from "#shared/constants";
 
 /**
@@ -75,6 +75,8 @@ export class Game {
   private net: NetClient | null = null;
   private readonly avatars = new Map<string, RemoteAvatar>();
   private readonly aim = new Vector3(0, 0, 1);
+  /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
+  private handsKey = "";
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -112,7 +114,7 @@ export class Game {
       zone.shieldHome,
     );
     const report: HitReporter = (id, target, weapon, dx, dz) =>
-      this.net?.sendHitMob({ id, target, weapon, dx, dz });
+      this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.loot = new LootDrops(this.scene);
     this.hands = new Hands(this.scene);
@@ -265,10 +267,11 @@ export class Game {
     // Полоса здоровья висит в мире, но следует за головой без наклона —
     // остаётся параллельной горизонту.
     this.hudAnchor = new TransformNode("hudAnchor", this.scene);
+    const hp = LOADOUT.hud.hpPos;
     this.playerBar3D = new HealthBar3D(
       this.scene,
       this.hudAnchor,
-      new Vector3(-0.24, 0.46, 0.92), // повыше — не мешает обзору
+      new Vector3(hp[0], hp[1], hp[2]), // положение правится в панели настройки
       0.675, // в 1.5 раза длиннее
       false,
       0.05, // вдвое тоньше
@@ -316,6 +319,10 @@ export class Game {
       const f = cam.getDirection(new Vector3(0, 0, 1));
       this.hudAnchor.rotation.set(0, Math.atan2(f.x, f.z), 0);
     }
+
+    // Полоска жизней правится в панели настройки — подхватываем на лету.
+    const hp = LOADOUT.hud.hpPos;
+    this.playerBar3D?.moveTo(hp[0], hp[1], hp[2]);
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
@@ -397,7 +404,6 @@ export class Game {
     }
 
     this.inventory.applyRemote(self.bag);
-    if (isSwordTier(self.swordTier)) this.setSwordTier(self.swordTier);
 
     // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
     const p = this.progression;
@@ -455,15 +461,24 @@ export class Game {
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
     net.onPicked = (item, count) => {
       this.sfx.pickup();
-      this.hud.toast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
+      const w = ITEMS[item].weapon;
+      if (w) {
+        const d = weaponDef(w.cls, w.tier);
+        this.sfx.levelUp();
+        this.hud.toast(w.cls === "shield" ? d.name : `${d.name}: урон ×${d.mult}`);
+      } else {
+        this.hud.toast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
+      }
     };
 
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;
     this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
     this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
-    this.combat.nearestWorldSword = () => this.loot.nearestSword(this.player.position);
-    this.combat.onTakeWorldSword = (id) => net.sendTakeSword(id);
+    this.combat.nearestWorldWeapon = (pos) => this.loot.nearestWeapon(pos);
+    this.combat.onTakeWorldWeapon = (id) => net.sendTakeWeapon(id);
+    this.combat.makeWeaponMesh = (cls, tier) =>
+      makeWeaponMesh(this.scene, cls as WeaponClass, tier);
     if (net.room) {
       this.netMobs.attach(net.room);
       this.loot.attach(net.room);
@@ -502,20 +517,6 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
-  }
-
-  private swordTier: SwordTier = "iron";
-
-  /** Класс меча сменился — перекрашиваем клинок и сообщаем игроку. */
-  private setSwordTier(tier: SwordTier): void {
-    if (tier === this.swordTier) return;
-    const up = tier !== "iron";
-    this.swordTier = tier;
-    this.combat.setSwordTier(tier);
-    if (up) {
-      this.sfx.levelUp();
-      this.hud.toast(`${SWORDS[tier].name}: урон ×${SWORDS[tier].mult}`);
-    }
   }
 
   /** Сколько зелий в сумке — суммой по всем ячейкам. */
@@ -564,9 +565,9 @@ export class Game {
     this.loot.detach();
     this.inventory.onUseRequest = null;
     this.inventory.clear();
-    this.combat.nearestWorldSword = null;
-    this.combat.onTakeWorldSword = null;
-    this.setSwordTier("iron");
+    this.combat.nearestWorldWeapon = null;
+    this.combat.onTakeWorldWeapon = null;
+    this.combat.makeWeaponMesh = null;
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;
@@ -607,6 +608,17 @@ export class Game {
     }
     const now = performance.now();
     net.sendMove(now, m);
+
+    // Что в руках — только когда поменялось: по этому сервер считает урон.
+    const hands = this.combat.handsSnapshot();
+    const key = `${hands.left?.cls ?? ""}:${hands.left?.tier ?? ""}|${hands.right?.cls ?? ""}:${hands.right?.tier ?? ""}`;
+    if (key !== this.handsKey) {
+      this.handsKey = key;
+      net.sendHands({
+        left: hands.left as { cls: WeaponClass; tier: WeaponTier } | null,
+        right: hands.right as { cls: WeaponClass; tier: WeaponTier } | null,
+      });
+    }
 
     const self = net.self;
     if (self) this.syncSelf(dt, self);

@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { weaponDef, type WeaponTier } from "#shared/items";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -19,11 +20,12 @@ export interface BowParts {
  * Низкополигональный лук. Начало координат — в рукояти. Плечи по оси Y,
  * лёгкий прогиб вперёд (-Z). Стрела летит в сторону -Z.
  */
-export function createBow(scene: Scene): BowParts {
+export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
+  const tint = weaponDef("bow", tier).tint;
   const wood = new StandardMaterial("bowWood", scene);
-  wood.diffuseColor = new Color3(0.36, 0.24, 0.14);
-  wood.emissiveColor = new Color3(0.08, 0.05, 0.03);
-  wood.specularColor = new Color3(0.1, 0.1, 0.1);
+  wood.diffuseColor = new Color3(tint[0] * 0.65, tint[1] * 0.62, tint[2] * 0.6);
+  wood.emissiveColor = new Color3(tint[0] * 0.18, tint[1] * 0.16, tint[2] * 0.1);
+  wood.specularColor = new Color3(tier === "base" ? 0.1 : 0.8, 0.1, 0.1);
 
   // Один цельный изгиб дуги — без отдельной рукояти. Чуть длиннее прежнего.
   const HALF = 0.68; // м, половина длины дуги

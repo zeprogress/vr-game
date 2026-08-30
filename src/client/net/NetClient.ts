@@ -12,7 +12,8 @@ import {
   type RespawnMsg,
   type SaveMsg,
   type SpendMsg,
-  type TakeSwordMsg,
+  type HandsMsg,
+  type TakeWeaponMsg,
   type UseItemMsg,
 } from "#shared/net/messages";
 import type { BlockedBy } from "#shared/combat";
@@ -114,10 +115,15 @@ export class NetClient {
     this.room?.send(MSG.useItem, msg);
   }
 
-  /** Заявка взять лежащий в мире меч. */
-  sendTakeSword(id: string): void {
-    const msg: TakeSwordMsg = { id };
-    this.room?.send(MSG.takeSword, msg);
+  /** Заявка взять лежащее в мире оружие. */
+  sendTakeWeapon(id: string): void {
+    const msg: TakeWeaponMsg = { id };
+    this.room?.send(MSG.takeWeapon, msg);
+  }
+
+  /** Сообщить, что теперь в руках — по этому сервер считает урон. */
+  sendHands(msg: HandsMsg): void {
+    this.room?.send(MSG.hands, msg);
   }
 
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */

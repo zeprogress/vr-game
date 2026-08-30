@@ -1,5 +1,5 @@
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
-import type { ItemId } from "../items";
+import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
 import type { PlayerMode } from "./schema";
 
@@ -24,8 +24,10 @@ export const MSG = {
   useItem: "ui",
   /** сервер -> клиент: подобран лут (для тоста и звука). */
   picked: "pk",
-  /** клиент -> сервер: взять лежащий в мире меч. */
-  takeSword: "tsw",
+  /** клиент -> сервер: взять лежащее в мире оружие. */
+  takeWeapon: "tw",
+  /** клиент -> сервер: что теперь в руках (для расчёта урона). */
+  hands: "hd",
 } as const;
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
@@ -57,6 +59,8 @@ export interface HitMobMsg {
   target: "mob" | "dummy";
   /** Чем ударил — урон и досягаемость сервер берёт из shared/combat. */
   weapon: WeaponKind;
+  /** Какой рукой — по ней сервер берёт уровень оружия. */
+  hand: "left" | "right";
   /** Горизонтальное направление удара (для отскока и раны). */
   dx: number;
   dz: number;
@@ -97,7 +101,13 @@ export interface PickedMsg {
   count: number;
 }
 
-export interface TakeSwordMsg {
-  /** id лежащего в мире меча. */
+export interface TakeWeaponMsg {
+  /** id лежащего в мире оружия. */
   id: string;
+}
+
+/** Что игрок держит. Сервер сверяет с тем, что тот честно поднял. */
+export interface HandsMsg {
+  left: { cls: WeaponClass; tier: WeaponTier } | null;
+  right: { cls: WeaponClass; tier: WeaponTier } | null;
 }

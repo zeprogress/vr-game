@@ -7,9 +7,25 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
-import { BAG, ITEMS, SWORD_ITEM, rollLoot, type ItemId, type SwordTier } from "#shared/items";
+import {
+  BAG,
+  ITEMS,
+  rollLoot,
+  weaponKey,
+  type ItemId,
+  type WeaponClass,
+  type WeaponTier,
+} from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
+
+/** Каким предметом каждое оружие лежит в мире. */
+const WEAPON_DROP: Partial<Record<string, ItemId>> = {
+  "sword:bronze": "bronze_sword",
+  "sword:gold": "gold_sword",
+  "bow:gold": "gold_bow",
+  "shield:gold": "gold_shield",
+};
 
 /** Середина торса куклы над её основанием (см. клиентский Dummy). */
 const DUMMY_CENTER_Y = 1.5;
@@ -272,7 +288,7 @@ class Drop {
 
   /** true — пора убрать. Оружие не тает: лежит до остановки сервера. */
   tick(dt: number): boolean {
-    if (ITEMS[this.item].sword) return false;
+    if (ITEMS[this.item].weapon) return false;
     this.life += dt;
     return this.life > BAG.dropLife;
   }
@@ -454,10 +470,11 @@ export class ZoneSim {
     }
   }
 
-  /** Положить меч на землю (например, снятый при подъёме лучшего). */
-  dropSword(tier: SwordTier, x: number, z: number): void {
-    const item = SWORD_ITEM[tier];
-    if (!item) return; // базовый меч не роняем — он всегда при игроке
+  /** Положить оружие на землю. Базовое не роняем — оно всегда доступно. */
+  dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number): void {
+    if (tier === "base") return;
+    const item = WEAPON_DROP[weaponKey(cls, tier)];
+    if (!item) return;
     const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z);
     this.drops.set(d.id, d);
   }

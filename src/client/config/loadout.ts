@@ -26,7 +26,7 @@
  */
 
 export type HandSide = "left" | "right";
-export type ItemKind = "sword" | "bow" | "shield";
+export type ItemKind = "sword" | "bow" | "shield" | "potion";
 export type SlotKey = "flat" | "vrLeft" | "vrRight";
 
 export interface Placement {
@@ -64,6 +64,10 @@ export interface Loadout {
     /** Час суток 0..24: задаёт свет, краски неба и место солнца. */
     hour: number;
   };
+  /** Пояс: где висит бутылочка зелья относительно бедра. */
+  belt: { pos: [number, number, number] };
+  /** Интерфейс в VR: где висит полоска жизней относительно взгляда. */
+  hud: { hpPos: [number, number, number] };
 }
 
 export const LOADOUT_DEFAULTS: Loadout = {
@@ -87,6 +91,11 @@ export const LOADOUT_DEFAULTS: Loadout = {
       vrLeft: { pos: [-0.05, 0, 0], rot: [Math.PI / 2, 0, Math.PI / 2], scale: 1 },
       vrRight: { pos: [0.04, -0.02, 0.025], rot: [2.0308, 1.26, -0.1108], scale: 1 },
     },
+    potion: {
+      flat: { pos: [0.3, -0.3, 0.6], rot: [0, 0, 0], scale: 1 },
+      vrLeft: { pos: [0, 0.04, 0.02], rot: [0, 0, 0], scale: 1 },
+      vrRight: { pos: [0, 0.04, 0.02], rot: [0, 0, 0], scale: 1 },
+    },
   },
   buttons: {
     panelToggle: 5, // Y на левом
@@ -95,7 +104,13 @@ export const LOADOUT_DEFAULTS: Loadout = {
     jump: 4, // A на правом
   },
   world: {
-    hour: 17.6, // закат: солнце чуть над горизонтом, золотой час
+    hour: 17.6, // час суток: свет, небо и место солнца
+  },
+  belt: {
+    pos: [0.19, 0, 0.06],
+  },
+  hud: {
+    hpPos: [-0.24, 0.46, 0.92],
   },
 };
 
@@ -113,7 +128,12 @@ export const LOADOUT: Loadout =
 // ---- цели настройки ----
 
 /** Ключ настраиваемой сущности: кисть или предмет в конкретном слоте. */
-export type TargetKey = `hand:${HandSide}` | `item:${ItemKind}:${SlotKey}` | "world:time";
+export type TargetKey =
+  | `hand:${HandSide}`
+  | `item:${ItemKind}:${SlotKey}`
+  | "world:time"
+  | "belt:potion"
+  | "hud:hp";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -125,6 +145,8 @@ export function itemTarget(kind: ItemKind, slot: SlotKey): TargetKey {
 function readTarget(src: Loadout, key: TargetKey): unknown {
   const parts = key.split(":");
   if (parts[0] === "world") return src.world;
+  if (parts[0] === "belt") return src.belt;
+  if (parts[0] === "hud") return src.hud;
   if (parts[0] === "hand") return src.hands[parts[1] as HandSide];
   return src.items[parts[1] as ItemKind][parts[2] as SlotKey];
 }
@@ -134,6 +156,16 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   if (parts[0] === "world") {
     const w = value as Partial<Loadout["world"]>;
     if (typeof w?.hour === "number" && Number.isFinite(w.hour)) dst.world.hour = w.hour;
+    return;
+  }
+  if (parts[0] === "belt") {
+    const a = (value as Loadout["belt"])?.pos;
+    if (Array.isArray(a) && a.length === 3) dst.belt.pos = [a[0], a[1], a[2]];
+    return;
+  }
+  if (parts[0] === "hud") {
+    const a = (value as Loadout["hud"])?.hpPos;
+    if (Array.isArray(a) && a.length === 3) dst.hud.hpPos = [a[0], a[1], a[2]];
     return;
   }
   if (parts[0] === "hand") {
@@ -237,6 +269,8 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
         items: LOADOUT.items,
         buttons: LOADOUT.buttons,
         world: LOADOUT.world,
+        belt: LOADOUT.belt,
+        hud: LOADOUT.hud,
       }),
     });
     if (res.ok) {

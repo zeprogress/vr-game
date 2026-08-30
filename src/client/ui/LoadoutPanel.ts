@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world";
+  kind: "hand" | "item" | "world" | "vec3";
 }
 
 const TARGETS: Target[] = [
@@ -47,6 +47,10 @@ const TARGETS: Target[] = [
   { key: itemTarget("bow", "vrRight"), label: "Лук · правая", kind: "item" },
   { key: itemTarget("shield", "vrLeft"), label: "Щит · левая", kind: "item" },
   { key: itemTarget("shield", "vrRight"), label: "Щит · правая", kind: "item" },
+  { key: itemTarget("potion", "vrLeft"), label: "Зелье · левая", kind: "item" },
+  { key: itemTarget("potion", "vrRight"), label: "Зелье · правая", kind: "item" },
+  { key: "belt:potion", label: "Зелье · на поясе", kind: "vec3" },
+  { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
 ];
 
@@ -183,7 +187,7 @@ export class LoadoutPanel {
   }
 
   private fieldCount(): number {
-    if (this.target.kind === "hand") return 3;
+    if (this.target.kind === "hand" || this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 1;
     return 7;
   }
@@ -203,6 +207,17 @@ export class LoadoutPanel {
           const hh = Math.floor(v);
           const mm = Math.round((v - hh) * 60);
           return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+        },
+      };
+    }
+    if (t.kind === "vec3") {
+      const arr = t.key === "belt:potion" ? LOADOUT.belt.pos : LOADOUT.hud.hpPos;
+      return {
+        label: `поз ${"XYZ"[i]}`,
+        rot: false,
+        get: () => arr[i],
+        set: (v) => {
+          arr[i] = v;
         },
       };
     }

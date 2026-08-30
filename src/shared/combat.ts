@@ -1,5 +1,5 @@
 import { ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
-import { SWORDS, type SwordTier } from "./items";
+
 import { swordDamageFor } from "./progression";
 
 /** Чем игрок ударил. Урон и досягаемость сервер берёт отсюда, а не с клиента. */
@@ -33,17 +33,20 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
   throw: 0.25,
 };
 
-/** Урон оружия. Меч растёт от силы и от класса клинка, остальное — фиксированное. */
-export function weaponDamage(kind: WeaponKind, str: number, sword: SwordTier = "iron"): number {
+/**
+ * Урон оружия. Меч растёт от силы, всё остальное фиксировано;
+ * `mult` — множитель уровня предмета в руке (бронза, золото).
+ */
+export function weaponDamage(kind: WeaponKind, str: number, mult = 1): number {
   switch (kind) {
     case "sword":
-      return swordDamageFor(str) * SWORDS[sword].mult;
+      return swordDamageFor(str) * mult;
     case "fist":
-      return MELEE.damage;
+      return MELEE.damage; // кулак не зависит от того, что в другой руке
     case "throw":
-      return THROW.damage;
+      return THROW.damage * mult;
     case "arrow":
-      return 1;
+      return 1 * mult;
   }
 }
 

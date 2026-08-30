@@ -83,6 +83,11 @@ export class HealthBar3D {
     );
   }
 
+  /** Переставить полоску (её положение правится в панели настройки). */
+  moveTo(x: number, y: number, z: number): void {
+    this.bg.position.set(x, y, z);
+  }
+
   setVisible(v: boolean): void {
     this.setOpacity(v ? 1 : 0);
   }

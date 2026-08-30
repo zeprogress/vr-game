@@ -16,8 +16,9 @@ import {
   type HitMobMsg,
   type MoveMsg,
   type SaveMsg,
+  type HandsMsg,
   type SpendMsg,
-  type TakeSwordMsg,
+  type TakeWeaponMsg,
   type UseItemMsg,
   type Xf7,
 } from "#shared/net/messages";
@@ -38,13 +39,17 @@ import {
   BAG,
   emptyBag,
   isItemId,
-  isSwordTier,
+  isWeaponClass,
+  isWeaponTier,
   ITEMS,
-  SWORD_TAKE_REACH,
   takeOne,
+  weaponDef,
+  weaponKey,
+  WEAPON_TAKE_REACH,
   type ItemId,
   type Slot,
-  type SwordTier,
+  type WeaponClass,
+  type WeaponTier,
 } from "#shared/items";
 import {
   grantXp,
@@ -74,6 +79,8 @@ interface Runtime {
   invuln: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
+  /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
+  owned: Set<string>;
 }
 
 function applyXf(target: Xf, v: Xf7 | undefined): void {
@@ -124,9 +131,21 @@ function writeBag(p: PlayerState, bag: Slot[]): void {
   }
 }
 
-/** Класс меча игрока, с защитой от мусора в состоянии. */
-function tierOf(p: PlayerState): SwordTier {
-  return isSwordTier(p.swordTier) ? p.swordTier : "iron";
+/** Что в руке игрока по данным состояния. null — пусто или мусор. */
+function heldIn(
+  p: PlayerState,
+  hand: "left" | "right",
+): { cls: WeaponClass; tier: WeaponTier } | null {
+  const cls = hand === "left" ? p.leftCls : p.rightCls;
+  const tier = hand === "left" ? p.leftTier : p.rightTier;
+  if (!isWeaponClass(cls) || !isWeaponTier(tier)) return null;
+  return { cls, tier };
+}
+
+/** Множитель урона от того, что в руке. Пустая рука — обычный множитель. */
+function multIn(p: PlayerState, hand: "left" | "right"): number {
+  const h = heldIn(p, hand);
+  return h ? weaponDef(h.cls, h.tier).mult : 1;
 }
 
 function readProgress(p: PlayerState): Progress {
@@ -240,24 +259,50 @@ export class ZoneRoom extends Room<ZoneState> {
       p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
     });
 
-    this.onMessage(MSG.takeSword, (client: Client, msg: TakeSwordMsg) => {
+    this.onMessage(MSG.takeWeapon, (client: Client, msg: TakeWeaponMsg) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.dead || !msg?.id) return;
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || p.dead || !msg?.id) return;
 
       const d = this.sim.drops.get(msg.id);
-      const tier = d ? ITEMS[d.item].sword : undefined;
-      if (!d || !tier) return; // не меч или его уже забрали
+      const w = d ? ITEMS[d.item].weapon : undefined;
+      if (!d || !w) return; // не оружие или его уже забрали
 
       const feetY = p.head.y - PLAYER.eyeHeight;
       const dist = Math.hypot(d.x - p.head.x, d.y - feetY, d.z - p.head.z);
-      if (dist > SWORD_TAKE_REACH) return;
+      if (dist > WEAPON_TAKE_REACH) return;
 
-      const old = tierOf(p);
       this.sim.takeDrop(d.id);
-      p.swordTier = tier;
-      // Снятый клинок кладём на то же место — можно передумать или отдать другому.
-      if (old !== "iron" && old !== tier) this.sim.dropSword(old, d.x, d.z);
+      rt.owned.add(weaponKey(w.cls, w.tier)); // право пользоваться этим уровнем
       this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
+    });
+
+    // Что в руках. Уровень принимаем только если игрок его действительно поднял.
+    this.onMessage(MSG.hands, (client: Client, msg: HandsMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || !msg) return;
+
+      const put = (
+        claim: { cls: WeaponClass; tier: WeaponTier } | null,
+      ): { cls: string; tier: string } => {
+        if (!claim || !isWeaponClass(claim.cls) || !isWeaponTier(claim.tier)) {
+          return { cls: "", tier: "" };
+        }
+        // Не поднимал — держит базовый вариант того же класса.
+        const tier =
+          claim.tier === "base" || rt.owned.has(weaponKey(claim.cls, claim.tier))
+            ? claim.tier
+            : "base";
+        return { cls: claim.cls, tier };
+      };
+
+      const l = put(msg.left);
+      const r = put(msg.right);
+      p.leftCls = l.cls;
+      p.leftTier = l.tier;
+      p.rightCls = r.cls;
+      p.rightTier = r.tier;
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);
@@ -283,7 +328,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.str, tierOf(p));
+    const hand = msg.hand === "left" ? "left" : "right";
+    const dmg = weaponDamage(msg.weapon, p.str, multIn(p, hand));
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -385,7 +431,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Считаем от ног: лут лежит на земле, а head.y — это глаза.
       const feetY = p.head.y - PLAYER.eyeHeight;
       for (const d of [...this.sim.drops.values()]) {
-        if (ITEMS[d.item].sword) continue; // меч берут рукой, сам не прыгает в сумку
+        if (ITEMS[d.item].weapon) continue; // оружие берут рукой, само в сумку не прыгает
         const dy = d.y - feetY;
         const dist = Math.hypot(d.x - p.head.x, dy, d.z - p.head.z);
         if (dist > BAG.pickupRadius) continue;
@@ -493,7 +539,6 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     p.maxHp = maxHpFor(p.str);
-    p.swordTier = isSwordTier(rec?.swordTier) ? rec.swordTier : "iron";
     writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
@@ -507,6 +552,7 @@ export class ZoneRoom extends Room<ZoneState> {
       respawnIn: 0,
       invuln: RESPAWN.invuln,
       yaw: rec?.yaw ?? 0,
+      owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
     });
 
     client.send(MSG.char, rec ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw } : null);
@@ -530,7 +576,7 @@ export class ZoneRoom extends Room<ZoneState> {
       z: num(msg?.z, p.head.z),
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
-      swordTier: tierOf(p),
+      owned: [...rt.owned],
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
     };
