@@ -134,15 +134,9 @@ export class LootDrops {
 
 /** Меш под класс и уровень оружия — общий для лута и для рук. */
 export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier): Mesh {
-  if (cls === "sword") return createSword(scene, ITEMS[weaponItemId(cls, tier)]?.tint);
+  if (cls === "sword") return createSword(scene, tier);
   if (cls === "shield") return createShield(scene, tier);
   return createBow(scene, tier).mesh;
-}
-
-/** Предмет-лут, которым это оружие лежит в мире (для цвета). */
-function weaponItemId(cls: WeaponClass, tier: WeaponTier): ItemId {
-  const key = `${tier}_${cls}` as ItemId;
-  return key in ITEMS ? key : "slime";
 }
 
 /** Стабильное 0..1 из строки — чтобы фаза качания не менялась между кадрами. */

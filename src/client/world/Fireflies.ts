@@ -71,9 +71,17 @@ interface Group {
  * поэтому они достаются ближайшим к игроку. Остальным светимость даёт мягкое
  * пятно на земле под стайкой — со стороны это читается как свет.
  */
+/** Лампа, приписанная к стайке. Уровень тянется плавно — без вспышек. */
+interface Lamp {
+  light: PointLight;
+  group: Group | null;
+  /** 0..1, тянется к цели; смена стайки разрешена только у самого нуля. */
+  level: number;
+}
+
 export class Fireflies {
   private readonly groups: Group[] = [];
-  private readonly lamps: PointLight[] = [];
+  private readonly lamps: Lamp[] = [];
   private readonly proto: Mesh;
   private readonly mat: StandardMaterial;
   private readonly poolProto: Mesh;
@@ -153,7 +161,7 @@ export class Fireflies {
       lamp.range = FIREFLY.lightRange;
       lamp.intensity = 0;
       lamp.setEnabled(false);
-      this.lamps.push(lamp);
+      this.lamps.push({ light: lamp, group: null, level: 0 });
     }
 
     this.setVisible(false);
@@ -164,7 +172,7 @@ export class Fireflies {
       for (const d of g.dots) d.setEnabled(on);
       g.pool.setEnabled(on);
     }
-    for (const l of this.lamps) l.setEnabled(on);
+    for (const l of this.lamps) l.light.setEnabled(on);
   }
 
   /** `daylight` 0..1 из DayState: 1 — день (светлячков нет), 0 — ночь. */
@@ -211,32 +219,55 @@ export class Fireflies {
       }
     }
 
-    // Настоящий свет достаётся ближайшим к игроку стайкам.
-    const near = [...this.groups]
+    this.updateLamps(dt, playerPos);
+  }
+
+  /**
+   * Настоящий свет достаётся ближайшим к игроку стайкам.
+   *
+   * Лампа не перескакивает на новую стайку сразу: сперва гаснет на старой и
+   * только у самого нуля меняет хозяина. Иначе при ходьбе свет вспыхивал
+   * разом, когда набор ближайших менялся.
+   */
+  private updateLamps(dt: number, playerPos: Vector3): void {
+    const nearest = [...this.groups]
       .sort(
         (a, b) =>
           Vector3.DistanceSquared(a.center, playerPos) -
           Vector3.DistanceSquared(b.center, playerPos),
       )
       .slice(0, this.lamps.length);
-    for (let i = 0; i < this.lamps.length; i++) {
-      const g = near[i];
-      if (!g) {
-        this.lamps[i].intensity = 0;
-        continue;
+
+    const k = 1 - Math.exp(-dt * 2.5); // скорость плавного перехода
+    const taken = new Set(this.lamps.map((l) => l.group).filter(Boolean));
+
+    for (const lamp of this.lamps) {
+      const keeps = lamp.group !== null && nearest.includes(lamp.group);
+
+      // Своя стайка уехала из ближайших — гасим, а не переключаемся рывком.
+      if (!keeps && lamp.level < 0.02) {
+        const free = nearest.find((g) => !taken.has(g));
+        if (free) {
+          taken.delete(lamp.group);
+          lamp.group = free;
+          taken.add(free);
+        }
       }
-      this.lamps[i].position.copyFrom(g.center);
 
-      // Разгорается плавно по мере подхода: иначе свет вспыхивал разом,
-      // когда стайка становилась одной из двух ближайших.
-      const dist = Vector3.Distance(g.center, playerPos);
-      const span = FIREFLY.lightFadeFrom - FIREFLY.lightFadeFull;
-      const t = clamp01((FIREFLY.lightFadeFrom - dist) / span);
-      const fade = t * t * (3 - 2 * t); // сглаживаем концы, чтобы не было ступеньки
+      const g = lamp.group;
+      const stillNear = g !== null && nearest.includes(g);
+      let target = 0;
+      if (g && stillNear) {
+        const dist = Vector3.Distance(g.center, playerPos);
+        const span = FIREFLY.lightFadeFrom - FIREFLY.lightFadeFull;
+        const t = clamp01((FIREFLY.lightFadeFrom - dist) / span);
+        target = t * t * (3 - 2 * t); // сглаживаем концы, чтобы не было ступеньки
+      }
+      lamp.level += (target - lamp.level) * k;
 
-      // Чуть мерцают — как настоящие.
-      const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + i);
-      this.lamps[i].intensity = FIREFLY.lightIntensity * this.night * flicker * fade;
+      if (g) lamp.light.position.copyFrom(g.center);
+      const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + this.lamps.indexOf(lamp));
+      lamp.light.intensity = FIREFLY.lightIntensity * this.night * flicker * lamp.level;
     }
   }
 
@@ -245,7 +276,7 @@ export class Fireflies {
       for (const d of g.dots) d.dispose();
       g.pool.dispose();
     }
-    for (const l of this.lamps) l.dispose();
+    for (const l of this.lamps) l.light.dispose();
     this.proto.dispose();
     this.poolProto.dispose();
   }

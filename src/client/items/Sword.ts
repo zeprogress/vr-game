@@ -4,7 +4,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
-import { weaponDef } from "#shared/items";
+import { weaponDef, type WeaponTier } from "#shared/items";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
@@ -12,21 +12,28 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
  * Низкополигональный меч. Начало координат — в рукояти;
  * клинок направлен по локальной оси +Y, кончик примерно на y = 1.0.
  */
-export function createSword(scene: Scene, bladeTint?: readonly [number, number, number]): Mesh {
-  const t = bladeTint ?? weaponDef("sword", "base").tint;
+export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
+  const t = weaponDef("sword", tier).tint;
+  // Базовый меч — учебный, деревянный: клинок, гарда и навершие того же
+  // цвета, что рукоять, и без металлического блеска.
+  const wooden = tier === "base";
+
   const steel = new StandardMaterial("swordSteel", scene);
   steel.diffuseColor = new Color3(t[0], t[1], t[2]);
   steel.emissiveColor = new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28); // не проваливается в чёрный
-  steel.specularColor = new Color3(0.9, 0.9, 0.9);
+  steel.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(0.9, 0.9, 0.9);
   steel.specularPower = 64;
 
   const gold = new StandardMaterial("swordGold", scene);
-  gold.diffuseColor = new Color3(0.7, 0.55, 0.24);
-  gold.emissiveColor = new Color3(0.2, 0.15, 0.05);
-  gold.specularColor = new Color3(0.4, 0.35, 0.15);
+  gold.diffuseColor = wooden ? new Color3(t[0], t[1], t[2]) : new Color3(0.7, 0.55, 0.24);
+  gold.emissiveColor = wooden
+    ? new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28)
+    : new Color3(0.2, 0.15, 0.05);
+  gold.specularColor = wooden ? new Color3(0.06, 0.05, 0.04) : new Color3(0.4, 0.35, 0.15);
 
   const grip = new StandardMaterial("swordGrip", scene);
-  grip.diffuseColor = new Color3(0.25, 0.15, 0.1);
+  grip.diffuseColor = new Color3(t[0], t[1], t[2]);
+  grip.emissiveColor = new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28);
   grip.specularColor = new Color3(0, 0, 0);
 
   const handle = MeshBuilder.CreateCylinder("s_handle", { height: 0.24, diameter: 0.05 }, scene);

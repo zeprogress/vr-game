@@ -91,8 +91,11 @@ export function buildZone(scene: Scene): Zone {
       windTick(dt, day.daylight);
       fireflies.update(dt, playerPos, day.daylight, terrain);
 
-      // Градиент купола перерисовываем редко: это 128 полос и заливка текстуры.
-      if (Math.abs(hour - paintedAt) > 0.05 || Math.abs(hour - paintedAt) > 23) {
+      // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
+      // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,
+      // и рассвет шёл заметными ступенями.
+      const moved = Math.abs(hour - paintedAt);
+      if (moved > 0.004 || moved > 23) {
         paintedAt = hour;
         sky.repaint(day);
       }
