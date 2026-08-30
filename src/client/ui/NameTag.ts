@@ -24,7 +24,8 @@ export class NameTag {
     parent: Node,
     offset: Vector3,
     name: string,
-    level: number,
+    /** Уровень для мобов; null у игроков (вторая строка не рисуется). */
+    level: number | null,
     accent: Color3 = new Color3(1, 0.86, 0.4),
   ) {
     this.tex = new DynamicTexture("nameTagTex", { width: W, height: H }, scene, false);
@@ -43,11 +44,13 @@ export class NameTag {
     ctx.textBaseline = "middle";
     ctx.fillStyle = "#f2f4fb";
     ctx.font = "bold 40px system-ui, sans-serif";
-    ctx.fillText(name, W / 2, H / 2 - 14);
+    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 14);
 
-    ctx.fillStyle = `rgb(${accent.r * 255},${accent.g * 255},${accent.b * 255})`;
-    ctx.font = "26px system-ui, sans-serif";
-    ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
+    if (level !== null) {
+      ctx.fillStyle = `rgb(${accent.r * 255},${accent.g * 255},${accent.b * 255})`;
+      ctx.font = "26px system-ui, sans-serif";
+      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
+    }
 
     this.tex.update(true);
 

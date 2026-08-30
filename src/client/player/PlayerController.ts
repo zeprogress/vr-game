@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -115,6 +115,15 @@ export class PlayerController {
   /** Направление взгляда в мире (единичное). */
   get eyeForward(): Vector3 {
     return (this.xrCamera ?? this.camera).getDirection(FORWARD);
+  }
+
+  private readonly _eyeQ = new Quaternion();
+  /** Поворот головы в мире (кватернион) — для сетевого аватара. */
+  get eyeRotation(): Quaternion {
+    const cam = this.xrCamera ?? this.camera;
+    if (cam.rotationQuaternion) return this._eyeQ.copyFrom(cam.rotationQuaternion);
+    Quaternion.FromEulerVectorToRef(cam.rotation, this._eyeQ); // FreeCamera: euler -> quat
+    return this._eyeQ;
   }
 
   /** Получить урон. dir — направление от источника (для отталкивания). */

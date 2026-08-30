@@ -1,7 +1,7 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Collisions/collisionCoordinator";
 
@@ -29,6 +29,9 @@ import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
 import { XRInput } from "../input/XRInput";
 import type { InputSource } from "../input/InputSource";
+import type { NetClient } from "../net/NetClient";
+import { RemoteAvatar } from "../entities/RemoteAvatar";
+import type { MoveMsg, Xf7 } from "#shared/net/messages";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -56,6 +59,16 @@ export class Game {
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
   xr: WebXRDefaultExperience | null = null;
+
+  // Сеть: чужие игроки.
+  private net: NetClient | null = null;
+  private readonly avatars = new Map<string, RemoteAvatar>();
+  private readonly moveMsg: MoveMsg = {
+    mode: "flat",
+    head: zeros7(),
+    handL: zeros7(),
+    handR: zeros7(),
+  };
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
@@ -139,6 +152,7 @@ export class Game {
       for (const d of this.dummies) d.update(dt);
       this.combat.update(dt);
       this.hands.update(dt);
+      this.syncNet();
       this.updateVrUi(dt);
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
@@ -344,6 +358,59 @@ export class Game {
     return this.isTouch ? new TouchInput() : new DesktopInput(this.canvas);
   }
 
+  // ---- сеть: чужие игроки ----
+
+  /** Подключить сетевого клиента (уже в комнате). Создаёт аватары для чужих. */
+  attachNet(net: NetClient): void {
+    this.net = net;
+    const players = net.room?.state.players;
+    if (!players) return;
+
+    const add = (id: string): void => {
+      if (id === net.sessionId || this.avatars.has(id)) return;
+      const p = players.get(id);
+      if (p) this.avatars.set(id, new RemoteAvatar(this.scene, id, p.nick, p.mode));
+    };
+
+    players.onAdd((_p, id) => add(id), true); // true — сработает и для уже вошедших
+    players.onRemove((_p, id) => {
+      this.avatars.get(id)?.dispose();
+      this.avatars.delete(id);
+    });
+  }
+
+  private detachNet(): void {
+    for (const a of this.avatars.values()) a.dispose();
+    this.avatars.clear();
+    this.net = null;
+  }
+
+  /** Каждый кадр: отдать свой транспорт, применить чужой. */
+  private syncNet(): void {
+    const net = this.net;
+    if (!net?.online || !net.room) {
+      if (this.avatars.size || this.net) this.detachNet();
+      return;
+    }
+
+    const m = this.moveMsg;
+    m.mode = this.player.inVR ? "vr" : "flat";
+    writeXf(m.head, this.player.eyePosition, this.player.eyeRotation);
+    if (m.mode === "vr") {
+      const l = this.hands.nodeFor("left");
+      const r = this.hands.nodeFor("right");
+      if (l) writeXf(m.handL, l.getAbsolutePosition(), l.absoluteRotationQuaternion);
+      if (r) writeXf(m.handR, r.getAbsolutePosition(), r.absoluteRotationQuaternion);
+    }
+    net.sendMove(performance.now(), m);
+
+    const players = net.room.state.players;
+    for (const [id, avatar] of this.avatars) {
+      const p = players.get(id);
+      if (p) avatar.applyState(p);
+    }
+  }
+
   private hapticBoth(): void {
     for (const hand of ["left", "right"] as const) {
       const pad = this.xr?.input.controllers.find((c) => c.inputSource.handedness === hand)
@@ -353,4 +420,18 @@ export class Game {
       pad?.hapticActuators?.[0]?.pulse?.(0.7, 120);
     }
   }
+}
+
+function zeros7(): Xf7 {
+  return [0, 0, 0, 0, 0, 0, 1];
+}
+
+function writeXf(dst: Xf7, pos: Vector3, q: Quaternion): void {
+  dst[0] = pos.x;
+  dst[1] = pos.y;
+  dst[2] = pos.z;
+  dst[3] = q.x;
+  dst[4] = q.y;
+  dst[5] = q.z;
+  dst[6] = q.w;
 }
