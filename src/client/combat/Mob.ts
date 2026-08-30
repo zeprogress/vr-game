@@ -87,6 +87,9 @@ export class Mob implements Hittable {
     this.mat.diffuseColor = new Color3(...cfg.tint);
     this.mat.emissiveColor = new Color3(cfg.tint[0] * 0.28, cfg.tint[1] * 0.2, cfg.tint[2] * 0.32);
     this.mat.specularColor = new Color3(0.4, 0.3, 0.4);
+    // Полупрозрачное тело: видно, что внутри слизня, и он не спорит с травой.
+    this.mat.alpha = cfg.alpha;
+    this.mat.backFaceCulling = false;
 
     this.body = MeshBuilder.CreateSphere("mobBody", { diameter: MOB.bodyRadius * 2, segments: 8 }, scene);
     this.body.material = this.mat;

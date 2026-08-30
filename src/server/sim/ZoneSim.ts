@@ -7,7 +7,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
-import { BAG, rollLoot, type ItemId } from "#shared/items";
+import { BAG, SWORD_ITEM, rollLoot, type ItemId, type SwordTier } from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
 
@@ -451,6 +451,14 @@ export class ZoneSim {
       const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z);
       this.drops.set(d.id, d);
     }
+  }
+
+  /** Положить меч на землю (например, снятый при подъёме лучшего). */
+  dropSword(tier: SwordTier, x: number, z: number): void {
+    const item = SWORD_ITEM[tier];
+    if (!item) return; // базовый меч не роняем — он всегда при игроке
+    const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z);
+    this.drops.set(d.id, d);
   }
 
   /** Забрать лут из мира. null — его уже нет (успел другой игрок). */

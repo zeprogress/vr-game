@@ -3,6 +3,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import type { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
@@ -10,10 +11,11 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
  * Низкополигональный меч. Начало координат — в рукояти;
  * клинок направлен по локальной оси +Y, кончик примерно на y = 1.0.
  */
-export function createSword(scene: Scene): Mesh {
+export function createSword(scene: Scene, bladeTint?: readonly [number, number, number]): Mesh {
+  const t = bladeTint ?? ([0.78, 0.81, 0.86] as const);
   const steel = new StandardMaterial("swordSteel", scene);
-  steel.diffuseColor = new Color3(0.78, 0.81, 0.86);
-  steel.emissiveColor = new Color3(0.22, 0.24, 0.28); // не проваливается в чёрный
+  steel.diffuseColor = new Color3(t[0], t[1], t[2]);
+  steel.emissiveColor = new Color3(t[0] * 0.28, t[1] * 0.28, t[2] * 0.28); // не проваливается в чёрный
   steel.specularColor = new Color3(0.9, 0.9, 0.9);
   steel.specularPower = 64;
 
@@ -49,4 +51,19 @@ export function createSword(scene: Scene): Mesh {
   if (!sword) throw new Error("не удалось собрать меч");
   sword.name = "sword";
   return sword;
+}
+
+/**
+ * Перекрасить клинок (класс меча). Рукоять и гарда не трогаются —
+ * меняется только материал стали внутри общего мультиматериала.
+ */
+export function tintSword(mesh: Mesh, tint: readonly [number, number, number]): void {
+  const mat = mesh.material;
+  const subs = (mat as MultiMaterial | null)?.subMaterials ?? [mat];
+  for (const m of subs) {
+    if (!m || m.name !== "swordSteel") continue;
+    const sm = m as StandardMaterial;
+    sm.diffuseColor.set(tint[0], tint[1], tint[2]);
+    sm.emissiveColor.set(tint[0] * 0.28, tint[1] * 0.28, tint[2] * 0.28);
+  }
 }

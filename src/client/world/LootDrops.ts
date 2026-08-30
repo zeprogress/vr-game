@@ -8,12 +8,15 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import type { Room } from "colyseus.js";
 
 import { isItemId, ITEMS, type ItemId } from "#shared/items";
+import { createSword } from "../items/Sword";
 import type { ZoneState } from "#shared/net/schema";
 
 interface DropView {
   mesh: Mesh;
   base: number;
   phase: number;
+  /** Меч втыкается в землю клинком вниз, а не качается кубиком. */
+  sword: boolean;
 }
 
 /**
@@ -29,13 +32,20 @@ export class LootDrops {
   constructor(scene: Scene) {
     for (const id of Object.keys(ITEMS) as ItemId[]) {
       const def = ITEMS[id];
-      const mat = new StandardMaterial(`drop_${id}`, scene);
-      mat.diffuseColor = new Color3(...def.tint);
-      mat.emissiveColor = new Color3(def.tint[0] * 0.6, def.tint[1] * 0.6, def.tint[2] * 0.6);
-      mat.specularColor = new Color3(0.2, 0.2, 0.2);
+      let proto: Mesh;
 
-      const proto = MeshBuilder.CreateBox(`dropProto_${id}`, { size: 0.28 }, scene);
-      proto.material = mat;
+      if (def.sword) {
+        // Настоящий меч, воткнутый в землю — его берут рукой.
+        proto = createSword(scene, def.tint);
+        proto.name = `dropProto_${id}`;
+      } else {
+        const mat = new StandardMaterial(`drop_${id}`, scene);
+        mat.diffuseColor = new Color3(...def.tint);
+        mat.emissiveColor = new Color3(def.tint[0] * 0.6, def.tint[1] * 0.6, def.tint[2] * 0.6);
+        mat.specularColor = new Color3(0.2, 0.2, 0.2);
+        proto = MeshBuilder.CreateBox(`dropProto_${id}`, { size: 0.28 }, scene);
+        proto.material = mat;
+      }
       proto.isPickable = false;
       proto.setEnabled(false);
       this.protos.set(id, proto);
@@ -61,12 +71,19 @@ export class LootDrops {
         const mesh = proto.clone(`drop_${id}`);
         mesh.setEnabled(true);
         // Разводим фазу по id, чтобы кучка лута не качалась синхронно.
-        v = { mesh, base: s.y, phase: hash01(id) * Math.PI * 2 };
+        v = { mesh, base: s.y, phase: hash01(id) * Math.PI * 2, sword: !!ITEMS[s.item].sword };
         this.views.set(id, v);
       }
       v.base = s.y;
-      v.mesh.position.set(s.x, s.y + 0.06 + Math.sin(this.clock * 2 + v.phase) * 0.05, s.z);
-      v.mesh.rotation.y = this.clock * 1.2 + v.phase;
+
+      if (v.sword) {
+        // Клинком вниз: остриё у земли, рукоять торчит вверх.
+        v.mesh.position.set(s.x, s.y + 0.85, s.z);
+        v.mesh.rotation.set(Math.PI, this.clock * 0.6 + v.phase, 0.22);
+      } else {
+        v.mesh.position.set(s.x, s.y + 0.06 + Math.sin(this.clock * 2 + v.phase) * 0.05, s.z);
+        v.mesh.rotation.y = this.clock * 1.2 + v.phase;
+      }
     });
 
     for (const [id, v] of this.views) {
@@ -77,9 +94,19 @@ export class LootDrops {
     }
   }
 
-  /** Позиция лута — для звука подбора. */
-  positionOf(id: string): Vector3 | null {
-    return this.views.get(id)?.mesh.position ?? null;
+  /** Ближайший лежащий меч — его берут рукой, а не подбирают автоматически. */
+  nearestSword(from: Vector3): { id: string; pos: Vector3 } | null {
+    let best: { id: string; pos: Vector3 } | null = null;
+    let bestD = Infinity;
+    for (const [id, v] of this.views) {
+      if (!v.sword) continue;
+      const d = Vector3.DistanceSquared(from, v.mesh.position);
+      if (d < bestD) {
+        bestD = d;
+        best = { id, pos: v.mesh.position };
+      }
+    }
+    return best;
   }
 
   detach(): void {

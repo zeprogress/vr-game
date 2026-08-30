@@ -16,6 +16,7 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
+import { SWORD_TAKE_REACH, SWORDS, type SwordTier } from "#shared/items";
 import { LOADOUT, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -23,7 +24,7 @@ import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
 import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
-import { createSword } from "../items/Sword";
+import { createSword, tintSword } from "../items/Sword";
 import { createShield } from "../items/Shield";
 import { createBow, type BowParts } from "../items/Bow";
 import { createArrowProto, Arrow } from "./Arrow";
@@ -550,8 +551,27 @@ export class CombatSystem {
     return this.held === ""; // меч
   }
 
+  /** Где лежит ближайший меч из мира (лут). Задаёт Game, когда онлайн. */
+  nearestWorldSword: (() => { id: string; pos: Vector3 } | null) | null = null;
+  /** Заявка серверу взять этот меч. */
+  onTakeWorldSword: ((id: string) => void) | null = null;
+
+  /** Перекрасить клинок под класс меча (сервер прислал новый). */
+  setSwordTier(tier: SwordTier): void {
+    tintSword(this.sword, SWORDS[tier].tint);
+  }
+
   private tryPickup(side: Side): void {
     const p = this.player.position;
+
+    // Лежащий в мире меч берётся вперёд обычных предметов: он ценнее,
+    // и стоит он там, где упал с моба, а не рядом с камнями на спавне.
+    const ws = this.nearestWorldSword?.();
+    if (ws && Vector3.Distance(p, ws.pos) < SWORD_TAKE_REACH) {
+      this.onTakeWorldSword?.(ws.id);
+      return;
+    }
+
     const near = (["sword", "bow", "shield"] as ItemKind[])
       .map((k) => ({ k, d: Vector3.Distance(p, this.items[k].mesh.getAbsolutePosition()) }))
       .sort((a, b) => a.d - b.d)

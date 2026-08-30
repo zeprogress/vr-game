@@ -17,6 +17,7 @@ import {
   type MoveMsg,
   type SaveMsg,
   type SpendMsg,
+  type TakeSwordMsg,
   type UseItemMsg,
   type Xf7,
 } from "#shared/net/messages";
@@ -37,10 +38,13 @@ import {
   BAG,
   emptyBag,
   isItemId,
+  isSwordTier,
   ITEMS,
+  SWORD_TAKE_REACH,
   takeOne,
   type ItemId,
   type Slot,
+  type SwordTier,
 } from "#shared/items";
 import {
   grantXp,
@@ -118,6 +122,11 @@ function writeBag(p: PlayerState, bag: Slot[]): void {
     dst.item = src.item ?? "";
     dst.count = src.item ? src.count : 0;
   }
+}
+
+/** Класс меча игрока, с защитой от мусора в состоянии. */
+function tierOf(p: PlayerState): SwordTier {
+  return isSwordTier(p.swordTier) ? p.swordTier : "iron";
 }
 
 function readProgress(p: PlayerState): Progress {
@@ -231,6 +240,26 @@ export class ZoneRoom extends Room<ZoneState> {
       p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
     });
 
+    this.onMessage(MSG.takeSword, (client: Client, msg: TakeSwordMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.dead || !msg?.id) return;
+
+      const d = this.sim.drops.get(msg.id);
+      const tier = d ? ITEMS[d.item].sword : undefined;
+      if (!d || !tier) return; // не меч или его уже забрали
+
+      const feetY = p.head.y - PLAYER.eyeHeight;
+      const dist = Math.hypot(d.x - p.head.x, d.y - feetY, d.z - p.head.z);
+      if (dist > SWORD_TAKE_REACH) return;
+
+      const old = tierOf(p);
+      this.sim.takeDrop(d.id);
+      p.swordTier = tier;
+      // Снятый клинок кладём на то же место — можно передумать или отдать другому.
+      if (old !== "iron" && old !== tier) this.sim.dropSword(old, d.x, d.z);
+      this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
+    });
+
     console.log(`[zone] комната ${this.roomId} создана`);
   }
 
@@ -254,7 +283,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.str);
+    const dmg = weaponDamage(msg.weapon, p.str, tierOf(p));
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -353,6 +382,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Считаем от ног: лут лежит на земле, а head.y — это глаза.
       const feetY = p.head.y - PLAYER.eyeHeight;
       for (const d of [...this.sim.drops.values()]) {
+        if (ITEMS[d.item].sword) continue; // меч берут рукой, сам не прыгает в сумку
         const dy = d.y - feetY;
         const dist = Math.hypot(d.x - p.head.x, dy, d.z - p.head.z);
         if (dist > BAG.pickupRadius) continue;
@@ -460,6 +490,7 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     p.maxHp = maxHpFor(p.str);
+    p.swordTier = isSwordTier(rec?.swordTier) ? rec.swordTier : "iron";
     writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
@@ -496,6 +527,7 @@ export class ZoneRoom extends Room<ZoneState> {
       z: num(msg?.z, p.head.z),
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
+      swordTier: tierOf(p),
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
     };

@@ -12,6 +12,7 @@ import {
   type RespawnMsg,
   type SaveMsg,
   type SpendMsg,
+  type TakeSwordMsg,
   type UseItemMsg,
 } from "#shared/net/messages";
 import type { BlockedBy } from "#shared/combat";
@@ -111,6 +112,12 @@ export class NetClient {
   sendUseItem(slot: number): void {
     const msg: UseItemMsg = { slot };
     this.room?.send(MSG.useItem, msg);
+  }
+
+  /** Заявка взять лежащий в мире меч. */
+  sendTakeSword(id: string): void {
+    const msg: TakeSwordMsg = { id };
+    this.room?.send(MSG.takeSword, msg);
   }
 
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */

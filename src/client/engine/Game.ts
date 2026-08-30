@@ -37,7 +37,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { ITEMS } from "#shared/items";
+import { isSwordTier, ITEMS, SWORDS, type SwordTier } from "#shared/items";
 import { RESPAWN } from "#shared/constants";
 
 /**
@@ -383,6 +383,7 @@ export class Game {
     }
 
     this.inventory.applyRemote(self.bag);
+    if (isSwordTier(self.swordTier)) this.setSwordTier(self.swordTier);
 
     // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
     const p = this.progression;
@@ -447,6 +448,8 @@ export class Game {
     this.player.netControlled = true;
     this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
     this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
+    this.combat.nearestWorldSword = () => this.loot.nearestSword(this.player.position);
+    this.combat.onTakeWorldSword = (id) => net.sendTakeSword(id);
     if (net.room) {
       this.netMobs.attach(net.room);
       this.loot.attach(net.room);
@@ -485,6 +488,20 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
+  }
+
+  private swordTier: SwordTier = "iron";
+
+  /** Класс меча сменился — перекрашиваем клинок и сообщаем игроку. */
+  private setSwordTier(tier: SwordTier): void {
+    if (tier === this.swordTier) return;
+    const up = tier !== "iron";
+    this.swordTier = tier;
+    this.combat.setSwordTier(tier);
+    if (up) {
+      this.sfx.levelUp();
+      this.hud.toast(`${SWORDS[tier].name}: урон ×${SWORDS[tier].mult}`);
+    }
   }
 
   private levelUpFx(level: number): void {
@@ -526,6 +543,9 @@ export class Game {
     this.loot.detach();
     this.inventory.onUseRequest = null;
     this.inventory.clear();
+    this.combat.nearestWorldSword = null;
+    this.combat.onTakeWorldSword = null;
+    this.setSwordTier("iron");
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;

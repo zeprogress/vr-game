@@ -38,6 +38,9 @@ export class PlayerState extends Schema {
   @type("uint16") agi = 1;
   @type("uint16") int = 1;
 
+  /** Класс меча в руках: iron | bronze | gold. */
+  @type("string") swordTier = "iron";
+
   /** Сумка (этап 8). Длина фиксирована — BAG.slots. */
   @type([SlotState]) bag = new ArraySchema<SlotState>();
 }

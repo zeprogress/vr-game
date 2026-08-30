@@ -5,13 +5,14 @@ import { fileURLToPath } from "node:url";
 import { PLAYER, RESPAWN } from "#shared/constants";
 import type { SaveMsg } from "#shared/net/messages";
 import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
-import { emptyBag, type Slot } from "#shared/items";
+import { emptyBag, type Slot, type SwordTier } from "#shared/items";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 export interface PlayerRecord extends SaveMsg, Progress {
   token: string;
   nick: string;
   hp: number;
+  swordTier: SwordTier;
   bag: Slot[];
   updatedAt: number;
 }
@@ -29,6 +30,7 @@ function blank(token: string): PlayerRecord {
     yaw: 0,
     ...p,
     hp: maxHpFor(p.str),
+    swordTier: "iron",
     bag: emptyBag(),
     updatedAt: 0,
   };

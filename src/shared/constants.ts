@@ -109,6 +109,8 @@ export interface MobConfig {
   xp: number;
   /** Цвет тела [r,g,b]. */
   tint: readonly [number, number, number];
+  /** Непрозрачность тела: 1 — сплошное, меньше — просвечивает. */
+  alpha: number;
   ranged: boolean;
 }
 
@@ -117,7 +119,8 @@ export const SLIME_CFG: MobConfig = {
   level: 1,
   hp: MOB.hp,
   xp: 1,
-  tint: [0.52, 0.16, 0.5],
+  tint: [0.2, 0.45, 0.95],
+  alpha: 0.62,
   ranged: false,
 };
 
@@ -127,6 +130,7 @@ export const SPITTER_CFG: MobConfig = {
   hp: SPITTER.hp,
   xp: 5,
   tint: [0.86, 0.52, 0.16],
+  alpha: 0.62,
   ranged: true,
 };
 

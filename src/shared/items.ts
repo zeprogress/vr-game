@@ -1,6 +1,41 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId = "potion" | "slime" | "shell";
+export type ItemId = "potion" | "slime" | "shell" | "bronze_sword" | "gold_sword";
+
+/** Класс меча. Базовый «железный» есть у всех с самого начала. */
+export type SwordTier = "iron" | "bronze" | "gold";
+
+export interface SwordDef {
+  name: string;
+  /** Во сколько раз бьёт сильнее обычного меча. */
+  mult: number;
+  /** Цвет клинка. */
+  tint: readonly [number, number, number];
+}
+
+export const SWORDS: Record<SwordTier, SwordDef> = {
+  iron: { name: "Меч", mult: 1, tint: [0.78, 0.81, 0.86] },
+  bronze: { name: "Бронзовый меч", mult: 2, tint: [0.82, 0.48, 0.18] },
+  gold: { name: "Золотой меч", mult: 5, tint: [1.0, 0.84, 0.26] },
+};
+
+const TIER_ORDER: SwordTier[] = ["iron", "bronze", "gold"];
+
+export function isSwordTier(v: unknown): v is SwordTier {
+  return typeof v === "string" && v in SWORDS;
+}
+
+/** Чем больше, тем лучше меч. */
+export function swordRank(t: SwordTier): number {
+  return TIER_ORDER.indexOf(t);
+}
+
+/** Каким предметом класс меча лежит в мире. iron не выпадает. */
+export const SWORD_ITEM: Record<SwordTier, ItemId | null> = {
+  iron: null,
+  bronze: "bronze_sword",
+  gold: "gold_sword",
+};
 
 export interface ItemDef {
   name: string;
@@ -14,6 +49,11 @@ export interface ItemDef {
   heal: number;
   /** Цвет в мире и в сетке [r,g,b]. */
   tint: readonly [number, number, number];
+  /**
+   * Задан — это меч, лежащий в мире. Такой предмет НЕ падает в сумку:
+   * его берут рукой, и он заменяет клинок в руках.
+   */
+  sword?: SwordTier;
 }
 
 export const ITEMS: Record<ItemId, ItemDef> = {
@@ -41,7 +81,28 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     tint: [0.85, 0.55, 0.2],
   },
+  bronze_sword: {
+    name: SWORDS.bronze.name,
+    short: "Бронза",
+    hint: `урон x${SWORDS.bronze.mult}`,
+    stack: 1,
+    heal: 0,
+    tint: SWORDS.bronze.tint,
+    sword: "bronze",
+  },
+  gold_sword: {
+    name: SWORDS.gold.name,
+    short: "Золото",
+    hint: `урон x${SWORDS.gold.mult}`,
+    stack: 1,
+    heal: 0,
+    tint: SWORDS.gold.tint,
+    sword: "gold",
+  },
 };
+
+/** Меч в мире берут рукой с этого расстояния. */
+export const SWORD_TAKE_REACH = 2.6;
 
 export function isItemId(v: unknown): v is ItemId {
   return typeof v === "string" && v in ITEMS;
@@ -71,10 +132,12 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
   slime: [
     { id: "slime", chance: 1, min: 1, max: 2 },
     { id: "potion", chance: 0.25, min: 1, max: 1 },
+    { id: "bronze_sword", chance: 0.1, min: 1, max: 1 },
   ],
   spitter: [
     { id: "shell", chance: 1, min: 1, max: 2 },
     { id: "potion", chance: 0.5, min: 1, max: 1 },
+    { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
   ],
 };
 

@@ -24,6 +24,8 @@ export const MSG = {
   useItem: "ui",
   /** сервер -> клиент: подобран лут (для тоста и звука). */
   picked: "pk",
+  /** клиент -> сервер: взять лежащий в мире меч. */
+  takeSword: "tsw",
 } as const;
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
@@ -93,4 +95,9 @@ export interface UseItemMsg {
 export interface PickedMsg {
   item: ItemId;
   count: number;
+}
+
+export interface TakeSwordMsg {
+  /** id лежащего в мире меча. */
+  id: string;
 }
