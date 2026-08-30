@@ -1,5 +1,4 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -10,15 +9,9 @@ import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
+import { LOADOUT } from "../config/loadout";
+
 export type Side = "left" | "right";
-
-const SAVE_KEY = "handTune";
-
-/** Ориентация кисти относительно grip-узла контроллера — отдельно для каждой руки. */
-const DEFAULT_ROT: Record<Side, [number, number, number]> = {
-  left: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
-  right: [Math.PI / 2, Math.PI / 2, Math.PI / 2],
-};
 
 interface Hand {
   side: Side;
@@ -31,45 +24,34 @@ interface Hand {
 
 /**
  * Кисти на контроллерах: ладонь + пальцы, сжимаются в кулак по кнопке grip.
- * Ориентация настраивается для каждой руки отдельно и сохраняется:
- *   game.hands.rotate("left", 0, 1.57, 0)   // докрутить
- *   game.hands.set("right", 1.57, 0, 0)     // задать
- *   game.hands.print()                      // посмотреть текущие
+ *
+ * Ориентация кистей берётся из `src/config/loadout.ts` (`LOADOUT.hands`) и
+ * читается каждый кадр — правки в файле применяются на лету.
+ * Из консоли можно подкрутить временно: `game.hands.turn("left", "y")`.
  */
 export class Hands {
   private readonly hands: Hand[] = [];
   private addObs: Observer<WebXRInputSource> | null = null;
   private removeObs: Observer<WebXRInputSource> | null = null;
   private readonly skin: StandardMaterial;
-  private readonly rot: Record<Side, Vector3>;
 
   constructor(private readonly scene: Scene) {
     this.skin = new StandardMaterial("handSkin", scene);
     this.skin.diffuseColor = new Color3(0.82, 0.62, 0.5);
     this.skin.emissiveColor = new Color3(0.18, 0.12, 0.1);
     this.skin.specularColor = new Color3(0.12, 0.1, 0.1);
-
-    this.rot = {
-      left: Vector3.FromArray(DEFAULT_ROT.left),
-      right: Vector3.FromArray(DEFAULT_ROT.right),
-    };
-    this.load();
   }
 
-  // ---- настройка ориентации ----
+  // ---- подкрутка из консоли (пишет в живой LOADOUT) ----
 
-  /** Задать поворот кисти (радианы). */
   set(side: Side, x: number, y: number, z: number): void {
-    this.rot[side].set(x, y, z);
-    this.applyRotation(side);
-    this.save();
+    LOADOUT.hands[side] = [x, y, z];
     this.print();
   }
 
-  /** Докрутить кисть на дельту (радианы). */
   rotate(side: Side, dx: number, dy: number, dz: number): void {
-    const r = this.rot[side];
-    this.set(side, r.x + dx, r.y + dy, r.z + dz);
+    const r = LOADOUT.hands[side];
+    this.set(side, r[0] + dx, r[1] + dy, r[2] + dz);
   }
 
   /** Повернуть на 90° по оси: "x" | "y" | "z". */
@@ -78,49 +60,12 @@ export class Hands {
     this.rotate(side, axis === "x" ? d : 0, axis === "y" ? d : 0, axis === "z" ? d : 0);
   }
 
-  resetRotation(side?: Side): void {
-    for (const s of side ? [side] : (["left", "right"] as Side[])) {
-      this.rot[s].copyFromFloats(...DEFAULT_ROT[s]);
-      this.applyRotation(s);
-    }
-    this.save();
-    this.print();
-  }
-
+  /** Печатает значения в виде, готовом для вставки в loadout.ts. */
   print(): void {
-    const f = (v: Vector3) => `${v.x.toFixed(3)}, ${v.y.toFixed(3)}, ${v.z.toFixed(3)}`;
-    console.log(`hands: left(${f(this.rot.left)})  right(${f(this.rot.right)})`);
-  }
-
-  private applyRotation(side: Side): void {
-    const h = this.hands.find((x) => x.side === side);
-    h?.root.rotation.copyFrom(this.rot[side]);
-  }
-
-  private save(): void {
-    try {
-      localStorage.setItem(
-        SAVE_KEY,
-        JSON.stringify({
-          left: this.rot.left.asArray(),
-          right: this.rot.right.asArray(),
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private load(): void {
-    try {
-      const d = JSON.parse(localStorage.getItem(SAVE_KEY) ?? "null");
-      for (const s of ["left", "right"] as Side[]) {
-        const a = d?.[s];
-        if (Array.isArray(a) && a.length === 3) this.rot[s].set(a[0], a[1], a[2]);
-      }
-    } catch {
-      /* ignore */
-    }
+    const f = (a: [number, number, number]) => a.map((v) => v.toFixed(3)).join(", ");
+    console.log(
+      `hands: {\n  left: [${f(LOADOUT.hands.left)}],\n  right: [${f(LOADOUT.hands.right)}],\n}`,
+    );
   }
 
   // ---- жизненный цикл ----
@@ -138,9 +83,15 @@ export class Hands {
     this.hands.length = 0;
   }
 
-  /** Каждый кадр: подгоняем сжатие пальцев под аналоговое значение grip. */
+  /**
+   * Каждый кадр: ориентация кисти из LOADOUT (правки применяются на лету)
+   * и сжатие пальцев по аналоговому значению grip.
+   */
   update(dt: number): void {
     for (const h of this.hands) {
+      const r = LOADOUT.hands[h.side];
+      h.root.rotation.set(r[0], r[1], r[2]);
+
       const btn = h.controller.inputSource.gamepad?.buttons[1];
       const target = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
@@ -178,7 +129,8 @@ export class Hands {
 
     const root = new TransformNode(`hand_${side}`, this.scene);
     root.parent = anchor;
-    root.rotation.copyFrom(this.rot[side]);
+    const r = LOADOUT.hands[side];
+    root.rotation.set(r[0], r[1], r[2]);
 
     const palm = MeshBuilder.CreateBox(
       `palm_${side}`,

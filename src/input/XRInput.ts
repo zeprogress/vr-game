@@ -2,6 +2,7 @@ import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 
+import { LOADOUT } from "../config/loadout";
 import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 const DEADZONE = 0.2;
@@ -13,9 +14,11 @@ const SNAP_OFF = 0.3; // стик должен вернуться сюда пе�
  * VR-контроллеры как источник ввода. Раскладка xr-standard:
  * - левый стик — движение (относительно взгляда, это делает PlayerController)
  * - правый стик влево/вправо — snap-turn (щелчками, чтобы не укачивало)
- * - trigger (любой) — основное действие
- * - grip (любой) — взаимодействие
- * - кнопка A на правом — прыжок
+ * - trigger — основное действие, grip — взять/бросить предмет
+ * - кнопки панели персонажа берутся из LOADOUT.buttons
+ *
+ * Панель НЕ блокирует движение: она висит на отдельных кнопках, а стики,
+ * курок и grip продолжают работать как обычно.
  *
  * Читаем сырой Gamepad API, без загрузки профилей контроллеров (работает офлайн).
  */
@@ -23,12 +26,7 @@ export class XRInput implements InputSource {
   private left: WebXRInputSource | null = null;
   private right: WebXRInputSource | null = null;
   private snapArmed = true;
-  private jumpArmed = true;
-  private panelArmed = true;
-  private confirmArmed = true;
-
-  /** Ставится извне: пока панель персонажа открыта, геймплейный ввод подавлен. */
-  uiOpen = false;
+  private readonly armed = new Map<string, boolean>();
 
   private readonly addObs: Observer<WebXRInputSource> | null;
   private readonly removeObs: Observer<WebXRInputSource> | null;
@@ -50,35 +48,37 @@ export class XRInput implements InputSource {
     else this.right = c;
   }
 
+  /** Диагностика: какие кнопки сейчас нажаты. Вызывать из консоли. */
+  dumpButtons(): Record<string, unknown> {
+    const read = (c: WebXRInputSource | null) => {
+      const pad = c?.inputSource.gamepad;
+      if (!pad) return "нет контроллера";
+      return pad.buttons.map((b, i) => `${i}:${b.pressed ? "НАЖАТА" : "-"}`).join(" ");
+    };
+    return { left: read(this.left), right: read(this.right), bindings: LOADOUT.buttons };
+  }
+
+  /** Фронт нажатия: true только в кадр, когда кнопку нажали. */
+  private edge(key: string, down: boolean): boolean {
+    const wasArmed = this.armed.get(key) ?? true;
+    if (down && wasArmed) {
+      this.armed.set(key, false);
+      return true;
+    }
+    if (!down) this.armed.set(key, true);
+    return false;
+  }
+
   sample(): InputState {
     const s = emptyInput();
     const lp = this.left?.inputSource.gamepad;
     const rp = this.right?.inputSource.gamepad;
+    const b = LOADOUT.buttons;
 
-    // Настройка положения оружия на кнопку X временно отключена.
-
-    // --- Кнопка Y на левом: панель персонажа (работает всегда) ---
-    const panelBtn = pressed(lp, 5);
-    if (panelBtn && this.panelArmed) {
-      s.panelToggle = true;
-      this.panelArmed = false;
-    } else if (!panelBtn) {
-      this.panelArmed = true;
-    }
-
-    // --- Панель открыта: стики и курок уходят на неё, геймплей молчит ---
-    if (this.uiOpen) {
-      s.uiNavY = -dz(rp?.axes[3] ?? 0);
-      const conf = pressed(rp, 0);
-      if (conf && this.confirmArmed) {
-        s.uiConfirm = true;
-        this.confirmArmed = false;
-      } else if (!conf) {
-        this.confirmArmed = true;
-      }
-      return s;
-    }
-    this.confirmArmed = !pressed(rp, 0);
+    // --- Панель персонажа: отдельные кнопки, движение не трогаем ---
+    s.panelToggle = this.edge("panel", pressed(lp, b.panelToggle));
+    s.uiNext = this.edge("uiNext", pressed(lp, b.panelNext));
+    s.uiConfirm = this.edge("uiSpend", pressed(rp, b.panelSpend));
 
     if (lp) {
       s.moveX = dz(lp.axes[2] ?? 0);
@@ -96,14 +96,7 @@ export class XRInput implements InputSource {
 
     s.primaryAction = pressed(lp, 0) || pressed(rp, 0); // trigger
     s.interact = pressed(lp, 1) || pressed(rp, 1); // grip
-
-    const jump = pressed(rp, 4); // кнопка A
-    if (jump && this.jumpArmed) {
-      s.jump = true;
-      this.jumpArmed = false;
-    } else if (!jump) {
-      this.jumpArmed = true;
-    }
+    s.jump = this.edge("jump", pressed(rp, b.jump));
 
     return s;
   }

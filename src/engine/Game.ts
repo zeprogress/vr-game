@@ -185,6 +185,16 @@ export class Game {
     if (!this.isTouch) this.canvas.requestPointerLock();
   }
 
+  /**
+   * Диагностика из консоли: какие кнопки контроллеров сейчас нажаты.
+   * Если панель персонажа не открывается — зажми нужную кнопку, вызови
+   * `game.vrButtons()` и поставь её индекс в LOADOUT.buttons.panelToggle.
+   */
+  vrButtons(): unknown {
+    if (!this.xrInput) return "не в VR (или контроллеры ещё не подключились)";
+    return this.xrInput.dumpButtons();
+  }
+
   // ---- VR-интерфейс ----
 
   private buildVrUi(): void {
@@ -235,8 +245,13 @@ export class Game {
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
-    this.wristPanel?.update(inp.uiNavY, inp.uiConfirm);
-    if (this.xrInput) this.xrInput.uiOpen = this.wristPanel?.visible ?? false;
+    this.wristPanel?.update(inp.uiNext, inp.uiConfirm);
+
+    // Панель цепляется к левой кисти, как только контроллер появился.
+    const leftHand = this.hands.nodeFor("left");
+    if (leftHand && this.wristPanel && this.wristPanel.anchor !== leftHand) {
+      this.wristPanel.reparent(leftHand);
+    }
   }
 
   private showHp(hp: number): void {

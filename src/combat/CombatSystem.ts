@@ -14,6 +14,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { BOW, COMBAT, MELEE, SHIELD, THROW } from "../shared/constants";
+import { LOADOUT, type Placement } from "../config/loadout";
 import { clamp, segmentDistance } from "../shared/geometry";
 import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
@@ -27,47 +28,24 @@ import { createArrowProto, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
-const TUNE_KEY = "swordTune";
-const VR_TUNE_ROT = 1.6;
-const VR_TUNE_POS = 0.4;
 /** Локальная нормаль щита — «наружу» смотрит +Y. */
 const SHIELD_NORMAL = new Vector3(0, 1, 0);
 
-export interface EquipTune {
-  pos: Vector3;
-  rot: Vector3;
-  scale: number;
-}
+export type ItemKind = "sword" | "bow" | "shield";
 
-/** Ключи наборов тюнинга. В VR — отдельно для левой и правой руки. */
-export type TuneSlot =
-  | "swordFlat"
-  | "swordVRLeft"
-  | "swordVRRight"
-  | "bowFlat"
-  | "bowVRLeft"
-  | "bowVRRight"
-  | "shieldFlat"
-  | "shieldVRLeft"
-  | "shieldVRRight";
-
-/** Оружие, которое держат в основной руке. */
-type Weapon = "" | "sword" | "bow";
-type Throwable = "sword" | "bow" | "shield";
-
-function tune(x: number, y: number, z: number, rx: number, ry: number, rz: number, sc: number): EquipTune {
-  return { pos: new Vector3(x, y, z), rot: new Vector3(rx, ry, rz), scale: sc };
-}
-
-interface RestSpot {
-  pos: Vector3;
-  yaw: number;
-  bob: boolean; // true — парит над камнем, false — лежит на земле
-}
-
-interface Flying {
-  what: Throwable;
+/** Один предмет, который можно взять, бросить и метнуть. */
+interface Item {
+  kind: ItemKind;
   mesh: Mesh;
+  /** Рука, которая держит предмет, либо null. */
+  hand: Side | null;
+  /** Где лежит, когда его не держат. */
+  rest: { pos: Vector3; yaw: number; bob: boolean };
+  /** Полётное состояние — не null, пока предмет летит. */
+  flight: Flight | null;
+}
+
+interface Flight {
   vel: Vector3;
   spinAxis: Vector3;
   spinRate: number;
@@ -76,51 +54,43 @@ interface Flying {
   hitDone: boolean;
 }
 
+/** Сглаженные скорости руки — по ним предмет улетает при отпускании. */
+interface HandMotion {
+  prev: Vector3;
+  quatPrev: Quaternion;
+  vel: Vector3;
+  angVel: Vector3;
+  init: boolean;
+}
+
+function newMotion(): HandMotion {
+  return {
+    prev: new Vector3(),
+    quatPrev: new Quaternion(),
+    vel: new Vector3(),
+    angVel: new Vector3(),
+    init: false,
+  };
+}
+
 export class CombatSystem {
-  private readonly sword: Mesh;
-  private readonly bow: Mesh;
-  private readonly shield: Mesh;
+  private readonly items: Record<ItemKind, Item>;
   private readonly bowParts: BowParts;
-  private readonly swordRest: RestSpot;
-  private readonly bowRest: RestSpot;
-  private readonly shieldRest: RestSpot;
   private readonly bowString: LinesMesh;
   private readonly nockArrow: Mesh;
   private readonly arrowProto: Mesh;
   private readonly arrows: Arrow[] = [];
 
-  readonly tunes: Record<TuneSlot, EquipTune> = {
-    swordFlat: tune(0.42, -0.38, 0.85, -0.2, 0.25, -0.28, 0.55),
-    swordVRRight: tune(0, 0, 0, 1, 0, 0, 1),
-    swordVRLeft: tune(0, 0, 0, 1, 0, 0, 1),
-    bowFlat: tune(-0.24, -0.26, 0.55, 0, Math.PI, 0, 0.8),
-    bowVRRight: tune(0, 0, 0, 0, 0, 0, 1),
-    bowVRLeft: tune(0, 0, 0, 0, 0, 0, 1),
-    // Щит: локальный +Y смотрит «наружу», поэтому в плоском режиме
-    // разворачиваем диск вперёд поворотом на 90° вокруг X.
-    shieldFlat: tune(-0.34, -0.26, 0.62, Math.PI / 2, 0, 0, 0.8),
-    shieldVRRight: tune(0, 0, 0, Math.PI / 2, 0, 0, 1),
-    shieldVRLeft: tune(0, 0, 0, Math.PI / 2, 0, 0, 1),
+  private readonly motion: Record<Side, HandMotion> = {
+    left: newMotion(),
+    right: newMotion(),
   };
-
-  /** Оружие и рука, которая его держит. */
-  private held: Weapon = "";
-  private heldHand: Side = "right";
-  /** Рука со щитом (в плоском режиме — «левая», щит висит у камеры). */
-  private shieldHand: Side | null = null;
+  private readonly gripPrev: Record<Side, boolean> = { left: false, right: false };
 
   private prevInteract = false;
   private prevPrimary = false;
-  private readonly gripPrev: Record<Side, boolean> = { left: false, right: false };
-
-  private readonly flying: Flying[] = [];
   private justPickedUp = false; // взяли тем же нажатием E — не бросать сразу
   private windup = 0; // замах перед броском (плоский режим), 0..1
-  private readonly heldPrev = new Vector3();
-  private readonly heldVel = new Vector3();
-  private readonly heldAngVel = new Vector3();
-  private readonly heldQuatPrev = new Quaternion();
-  private heldMotionInit = false;
 
   private swingT = 0;
   private swingHitDone = false;
@@ -137,9 +107,8 @@ export class CombatSystem {
   private readonly fistCd: Record<Side, number> = { left: 0, right: 0 };
   private meleeFlatCd = 0;
 
-  private blockCd = 0; // чтобы звук блока не тарахтел
+  private blockCd = 0;
   private bob = 0;
-  private tuning = false;
 
   constructor(
     scene: Scene,
@@ -153,29 +122,26 @@ export class CombatSystem {
     bowHome: Vector3,
     shieldHome: Vector3,
   ) {
-    this.swordRest = { pos: swordHome.clone(), yaw: 0, bob: true };
-    this.bowRest = { pos: bowHome.clone(), yaw: 0, bob: true };
-    this.shieldRest = { pos: shieldHome.clone(), yaw: 0, bob: true };
-
-    this.sword = createSword(scene);
-    this.sword.position.copyFrom(swordHome);
-
-    this.shield = createShield(scene);
-    this.shield.position.copyFrom(shieldHome);
-
+    const sword = createSword(scene);
+    const shield = createShield(scene);
     this.bowParts = createBow(scene);
-    this.bow = this.bowParts.mesh;
-    this.bow.position.copyFrom(bowHome);
+    const bow = this.bowParts.mesh;
+
+    this.items = {
+      sword: this.makeItem("sword", sword, swordHome),
+      bow: this.makeItem("bow", bow, bowHome),
+      shield: this.makeItem("shield", shield, shieldHome),
+    };
 
     const stringPts = [this.bowParts.topTip, this.bowParts.nockRest, this.bowParts.bottomTip];
     this.bowString = MeshBuilder.CreateLines("bowString", { points: stringPts, updatable: true }, scene);
     this.bowString.color = new Color3(0.85, 0.85, 0.8);
-    this.bowString.parent = this.bow;
+    this.bowString.parent = bow;
     this.bowString.isPickable = false;
 
     this.arrowProto = createArrowProto(scene);
     this.nockArrow = this.arrowProto.clone("nockArrow");
-    this.nockArrow.parent = this.bow;
+    this.nockArrow.parent = bow;
     this.nockArrow.setEnabled(false);
     this.nockLocal.copyFrom(this.bowParts.nockRest);
 
@@ -203,57 +169,58 @@ export class CombatSystem {
         if (kind === "flesh") this.sfx.hitThud(0.5);
       },
     };
-
-    this.loadTuning();
   }
 
-  // ---- тюнинг положения предметов в руке (localStorage) ----
+  private makeItem(kind: ItemKind, mesh: Mesh, home: Vector3): Item {
+    mesh.position.copyFrom(home);
+    return { kind, mesh, hand: null, rest: { pos: home.clone(), yaw: 0, bob: true }, flight: null };
+  }
 
-  loadTuning(): void {
-    try {
-      const j = JSON.parse(localStorage.getItem(TUNE_KEY) ?? "null");
-      if (!j) return;
-      // Совместимость со старыми ключами { flat, vr } / { swordVR, bowVR }.
-      this.applyTune(this.tunes.swordFlat, j.flat ?? j.swordFlat);
-      this.applyTune(this.tunes.bowFlat, j.bowFlat);
-      const swVR = j.vr ?? j.swordVR;
-      this.applyTune(this.tunes.swordVRRight, j.swordVRRight ?? swVR);
-      this.applyTune(this.tunes.swordVRLeft, j.swordVRLeft ?? swVR);
-      this.applyTune(this.tunes.bowVRRight, j.bowVRRight ?? j.bowVR);
-      this.applyTune(this.tunes.bowVRLeft, j.bowVRLeft ?? j.bowVR);
-      this.applyTune(this.tunes.shieldFlat, j.shieldFlat);
-      this.applyTune(this.tunes.shieldVRRight, j.shieldVRRight);
-      this.applyTune(this.tunes.shieldVRLeft, j.shieldVRLeft);
-    } catch {
-      /* нет данных */
+  // ---- что где ----
+
+  private get sword(): Mesh {
+    return this.items.sword.mesh;
+  }
+  private get bow(): Mesh {
+    return this.items.bow.mesh;
+  }
+  private get shield(): Mesh {
+    return this.items.shield.mesh;
+  }
+
+  /** Что в этой руке. */
+  private inHand(hand: Side): Item | null {
+    for (const k of ["sword", "bow", "shield"] as ItemKind[]) {
+      if (this.items[k].hand === hand) return this.items[k];
     }
+    return null;
   }
 
-  private applyTune(t: EquipTune, d: unknown): void {
-    const o = d as { pos?: number[]; rot?: number[]; scale?: number } | undefined;
-    if (!o?.pos || !o.rot || o.scale === undefined) return;
-    t.pos.set(o.pos[0], o.pos[1], o.pos[2]);
-    t.rot.set(o.rot[0], o.rot[1], o.rot[2]);
-    t.scale = o.scale;
+  /** Оружие (меч или лук) и рука, которая его держит. */
+  private get weapon(): Item | null {
+    if (this.items.sword.hand) return this.items.sword;
+    if (this.items.bow.hand) return this.items.bow;
+    return null;
   }
-
-  saveTuning(): void {
-    const ser = (t: EquipTune) => ({
-      pos: [t.pos.x, t.pos.y, t.pos.z],
-      rot: [t.rot.x, t.rot.y, t.rot.z],
-      scale: t.scale,
-    });
-    try {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(this.tunes) as TuneSlot[]) out[k] = ser(this.tunes[k]);
-      localStorage.setItem(TUNE_KEY, JSON.stringify(out));
-    } catch {
-      /* ignore */
-    }
+  private get held(): "" | "sword" | "bow" {
+    return (this.weapon?.kind as "sword" | "bow") ?? "";
+  }
+  private get heldHand(): Side {
+    return this.weapon?.hand ?? "right";
+  }
+  private get shieldHand(): Side | null {
+    return this.items.shield.hand;
   }
 
   get vrActive(): boolean {
     return this.player.inVR;
+  }
+
+  /** Текущее положение предмета в руке из файла настроек (читается каждый кадр). */
+  private placement(kind: ItemKind, hand: Side): Placement {
+    const p = LOADOUT.items[kind];
+    if (!this.player.inVR) return p.flat;
+    return hand === "left" ? p.vrLeft : p.vrRight;
   }
 
   // ---- главный цикл ----
@@ -269,29 +236,21 @@ export class CombatSystem {
 
     if (this.blockCd > 0) this.blockCd -= dt;
 
-    // Q (плоский режим) — снять щит.
-    if (inp.dropItem && this.shieldHand) this.dropShield();
-
-    if (!inp.tune) {
-      if (this.player.inVR) this.handleGripsVR();
-      else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
+    // Q (плоский режим) — снять щит: летит так же, как оружие.
+    if (inp.dropItem && this.shieldHand) {
+      this.throwItem(this.items.shield, this.flatThrowVelocity(0));
     }
 
-    this.bobIdle(dt);
+    if (this.player.inVR) this.handleGripsVR();
+    else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
 
-    // Щит держится в руке всегда, когда взят.
-    if (this.shieldHand) this.keepAnchored(this.shield, this.tunes[this.shieldSlot()], this.shieldHand);
+    this.updateRestPoses(dt);
+    this.anchorHeldItems();
 
     if (this.held === "sword") {
-      this.keepAnchored(this.sword, this.tunes[this.slot()], this.heldHand);
-      if (this.player.inVR) {
-        if (!this.updateVRTune(inp.tune, dt)) this.updateVRSwing(dt);
-      } else {
-        this.updateFlatSwing(dt, primaryEdge);
-      }
+      if (this.player.inVR) this.updateVRSwing(dt);
+      else this.updateFlatSwing(dt, primaryEdge);
     } else if (this.held === "bow") {
-      this.keepAnchored(this.bow, this.tunes[this.slot()], this.heldHand);
-      if (this.player.inVR) this.updateVRTune(inp.tune, dt);
       this.updateBow(dt, inp.primaryAction, primaryReleased);
     } else {
       // Свободные руки — рукопашная.
@@ -300,9 +259,9 @@ export class CombatSystem {
     }
 
     this.applyWindup();
-    this.trackHeldMotion(dt);
+    this.trackHandMotion(dt);
     this.updateString();
-    this.updateFlying(dt);
+    this.updateFlights(dt);
 
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       if (!this.arrows[i].update(dt, this.arrowCtx)) {
@@ -316,8 +275,7 @@ export class CombatSystem {
 
   /**
    * Урон по игроку из точки `from` с учётом щита и меча.
-   * Возвращает множитель: 0 — полностью заблокировано, 1 — прошло целиком.
-   * Побочно играет звук/вибрацию при удачном блоке.
+   * Возвращает множитель: 0 — заблокировано полностью, 1 — прошло целиком.
    */
   absorbAttack(from: Vector3): number {
     const eye = this.player.camera.globalPosition;
@@ -326,7 +284,6 @@ export class CombatSystem {
     if (toAtk.lengthSquared() < 1e-6) return 1;
     toAtk.normalize();
 
-    // Щит — надёжная защита в широком конусе.
     if (this.shieldHand) {
       const n = Vector3.TransformNormal(SHIELD_NORMAL, this.shield.getWorldMatrix());
       n.y = 0;
@@ -339,7 +296,6 @@ export class CombatSystem {
       }
     }
 
-    // Меч — узкий конус и часть урона проходит.
     if (this.held === "sword") {
       const m = this.sword.getWorldMatrix();
       const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
@@ -355,7 +311,6 @@ export class CombatSystem {
         }
       }
     }
-
     return 1;
   }
 
@@ -367,7 +322,7 @@ export class CombatSystem {
     }
   }
 
-  // ---- взять / бросить / метнуть ----
+  // ---- взять / метнуть ----
 
   /** VR: каждая рука обрабатывается отдельно по своему grip. */
   private handleGripsVR(): void {
@@ -375,122 +330,85 @@ export class CombatSystem {
       const down = this.gripDown(side);
       const was = this.gripPrev[side];
       this.gripPrev[side] = down;
-      const edge = down && !was;
-      const released = !down && was;
 
-      if (this.held !== "" && this.heldHand === side) {
-        if (released) this.throwHeld(this.vrThrowVelocity());
+      const item = this.inHand(side);
+      if (item) {
+        // Отпустил grip — предмет улетает со скоростью руки.
+        if (!down && was) this.throwItem(item, this.vrThrowVelocity(side));
         continue;
       }
-      if (this.shieldHand === side) {
-        if (released) this.dropShield();
-        continue;
-      }
-      if (edge) this.tryPickup(side);
+      if (down && !was) this.tryPickup(side);
     }
   }
 
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
-    if (this.held) {
+    const w = this.weapon;
+    if (w) {
       if (this.justPickedUp) {
         if (released) this.justPickedUp = false;
       } else {
         if (held) this.windup = clamp(this.windup + dt / THROW.flatWindup, 0, 1);
-        if (released) this.throwHeld(this.flatThrowVelocity());
+        if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
       }
       return;
     }
     if (edge) {
+      const before = this.weapon || this.items.shield.hand;
       this.tryPickup("right");
-      if (this.held || this.shieldHand) this.justPickedUp = true;
+      if (!before && (this.weapon || this.items.shield.hand)) this.justPickedUp = true;
     }
   }
 
   /** Что можно взять этой рукой, с учётом того, что уже в руках. */
-  private canPick(what: Throwable): boolean {
-    if (what === "shield") return this.held !== "bow" && this.shieldHand === null;
-    if (what === "bow") return this.held === "" && this.shieldHand === null;
+  private canPick(what: ItemKind): boolean {
+    if (this.items[what].hand) return false; // уже держим
+    if (what === "shield") return this.held !== "bow";
+    if (what === "bow") return this.held === "" && !this.shieldHand;
     return this.held === ""; // меч
   }
 
   private tryPickup(side: Side): void {
     const p = this.player.position;
-    const candidates: { what: Throwable; mesh: Mesh; d: number }[] = [
-      { what: "sword", mesh: this.sword, d: 0 },
-      { what: "bow", mesh: this.bow, d: 0 },
-      { what: "shield", mesh: this.shield, d: 0 },
-    ];
-    for (const c of candidates) c.d = Vector3.Distance(p, c.mesh.getAbsolutePosition());
-    candidates.sort((a, b) => a.d - b.d);
+    const near = (["sword", "bow", "shield"] as ItemKind[])
+      .map((k) => ({ k, d: Vector3.Distance(p, this.items[k].mesh.getAbsolutePosition()) }))
+      .sort((a, b) => a.d - b.d)
+      .find((c) => c.d < COMBAT.equipReach && this.canPick(c.k));
+    if (!near) return;
 
-    const pick = candidates.find((c) => c.d < COMBAT.equipReach && this.canPick(c.what));
-    if (!pick) return;
+    const item = this.items[near.k];
+    item.flight = null; // можно поймать на лету
+    item.hand = side;
+    item.mesh.rotationQuaternion = null;
 
-    // Забрать из полёта, если ловим на лету.
-    for (let i = this.flying.length - 1; i >= 0; i--) {
-      if (this.flying[i].what === pick.what) this.flying.splice(i, 1);
-    }
-    pick.mesh.rotationQuaternion = null;
-
-    if (pick.what === "shield") {
-      this.shieldHand = side;
-      return;
-    }
-
-    this.held = pick.what;
-    this.heldHand = side;
     this.windup = 0;
-    this.heldMotionInit = false;
-    this.heldVel.setAll(0);
-    this.heldAngVel.setAll(0);
-    if (pick.what === "sword") {
+    this.motion[side].init = false;
+    this.motion[side].vel.setAll(0);
+    this.motion[side].angVel.setAll(0);
+
+    if (item.kind === "sword") {
       this.swingT = 0;
       this.tipTrail.length = 0;
-    } else {
+    } else if (item.kind === "bow") {
       this.draw = 0;
       this.vrNocked = false;
     }
   }
 
-  /** Положить щит на землю перед игроком. */
-  private dropShield(): void {
-    if (!this.shieldHand) return;
-    this.shieldHand = null;
-
-    // Мировую точку берём ДО отвязки: после parent = null локальная
-    // позиция осталась бы относительно старого родителя.
-    const world = this.shield.getAbsolutePosition().clone();
-    const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
-    fwd.y = 0;
-    if (fwd.lengthSquared() < 1e-4) fwd.set(0, 0, 1);
-    fwd.normalize();
-    const drop = this.player.position.add(fwd.scale(0.9));
-    const spot = this.player.inVR ? world : drop;
-
-    this.shield.parent = null;
-    this.shield.scaling.setAll(1);
-    this.shieldRest.pos.set(spot.x, this.groundHeight(spot.x, spot.z) + 0.1, spot.z);
-    this.shieldRest.yaw = Math.atan2(fwd.x, fwd.z) + Math.random() * 0.4 - 0.2;
-    this.shieldRest.bob = false;
-    this.layFlat(this.shield, this.shieldRest);
+  private vrThrowVelocity(side: Side): Vector3 {
+    return this.motion[side].vel.scale(THROW.velScaleVR);
   }
 
-  private vrThrowVelocity(): Vector3 {
-    return this.heldVel.scale(THROW.velScaleVR);
-  }
-
-  private flatThrowVelocity(): Vector3 {
-    const w = this.windup;
+  private flatThrowVelocity(windup: number): Vector3 {
     const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
     dir.y += 0.12;
     dir.normalize();
-    return dir.scale(THROW.flatMinSpeed + w * (THROW.flatMaxSpeed - THROW.flatMinSpeed));
+    return dir.scale(THROW.flatMinSpeed + windup * (THROW.flatMaxSpeed - THROW.flatMinSpeed));
   }
 
-  private throwHeld(vel: Vector3): void {
-    const what = this.held;
-    if (what !== "sword" && what !== "bow") return;
-    const mesh = what === "sword" ? this.sword : this.bow;
+  /** Общий бросок: работает одинаково для меча, лука и щита. */
+  private throwItem(item: Item, vel: Vector3): void {
+    const hand = item.hand;
+    const mesh = item.mesh;
     const worldPos = mesh.getAbsolutePosition().clone();
     const worldRot = mesh.absoluteRotationQuaternion.clone();
 
@@ -500,27 +418,27 @@ export class CombatSystem {
     mesh.position.copyFrom(worldPos);
 
     // Вращение — только то, что игрок сам придал рукой (VR).
-    let spinRate = this.player.inVR ? this.heldAngVel.length() : 0;
-    const spinAxis = spinRate > 1e-3 ? this.heldAngVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
+    const angVel = hand && this.player.inVR ? this.motion[hand].angVel : null;
+    let spinRate = angVel ? angVel.length() : 0;
+    const spinAxis = spinRate > 1e-3 && angVel ? angVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
     spinRate = Math.min(spinRate, 30);
 
-    this.flying.push({
-      what,
-      mesh,
+    item.hand = null;
+    item.flight = {
       vel: vel.clone(),
       spinAxis,
       spinRate,
       prev: worldPos.clone(),
       life: 0,
       hitDone: false,
-    });
+    };
 
-    this.held = "";
+    if (hand) this.motion[hand].init = false;
     this.windup = 0;
     this.justPickedUp = false;
-    this.heldMotionInit = false;
     this.sfx.swordSwing();
-    if (what === "bow") {
+
+    if (item.kind === "bow") {
       this.nockArrow.setEnabled(false);
       this.draw = 0;
       this.vrNocked = false;
@@ -528,13 +446,17 @@ export class CombatSystem {
     }
   }
 
-  private updateFlying(dt: number): void {
-    for (let i = this.flying.length - 1; i >= 0; i--) {
-      const f = this.flying[i];
-      f.prev.copyFrom(f.mesh.position);
+  private updateFlights(dt: number): void {
+    for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
+      const item = this.items[kind];
+      const f = item.flight;
+      if (!f) continue;
+      const mesh = item.mesh;
+
+      f.prev.copyFrom(mesh.position);
       f.vel.y -= THROW.gravity * dt;
-      f.mesh.position.addInPlace(f.vel.scale(dt));
-      if (f.spinRate > 0.15) f.mesh.rotate(f.spinAxis, f.spinRate * dt, Space.WORLD);
+      mesh.position.addInPlace(f.vel.scale(dt));
+      if (f.spinRate > 0.15) mesh.rotate(f.spinAxis, f.spinRate * dt, Space.WORLD);
       f.life += dt;
 
       if (!f.hitDone) {
@@ -544,7 +466,7 @@ export class CombatSystem {
         for (const t of this.targets) {
           if (!t.alive) continue;
           const s = t.hitSegment();
-          if (segmentDistance(f.prev, f.mesh.position, s.a, s.b) < s.radius + THROW.hitRadius) {
+          if (segmentDistance(f.prev, mesh.position, s.a, s.b) < s.radius + THROW.hitRadius) {
             t.hit(dir, THROW.damage);
             this.sfx.hitThud();
             f.hitDone = true;
@@ -555,62 +477,59 @@ export class CombatSystem {
         }
       }
 
-      const gy = this.groundHeight(f.mesh.position.x, f.mesh.position.z);
-      if (f.mesh.position.y <= gy + 0.06 || f.life > THROW.maxLife) {
-        this.settleFlying(f, gy);
-        this.flying.splice(i, 1);
+      const gy = this.groundHeight(mesh.position.x, mesh.position.z);
+      if (mesh.position.y <= gy + 0.06 || f.life > THROW.maxLife) {
+        item.rest.pos.set(mesh.position.x, gy + 0.12, mesh.position.z);
+        item.rest.yaw = Math.atan2(f.vel.x, f.vel.z) + Math.random() * 0.5 - 0.25;
+        item.rest.bob = false;
+        item.flight = null;
+        mesh.rotationQuaternion = null;
+        this.layFlat(item);
       }
     }
   }
 
-  private settleFlying(f: Flying, groundY: number): void {
-    const rest = this.restOf(f.what);
-    rest.pos.set(f.mesh.position.x, groundY + 0.12, f.mesh.position.z);
-    rest.yaw = Math.atan2(f.vel.x, f.vel.z) + Math.random() * 0.5 - 0.25;
-    rest.bob = false;
-    f.mesh.rotationQuaternion = null;
-    this.layFlat(f.mesh, rest);
-  }
+  /** Сглаженные скорости каждой руки — для броска в VR. */
+  private trackHandMotion(dt: number): void {
+    for (const side of ["left", "right"] as Side[]) {
+      const item = this.inHand(side);
+      const m = this.motion[side];
+      if (!item) {
+        m.init = false;
+        continue;
+      }
+      const w = item.mesh.getAbsolutePosition();
+      const q = item.mesh.absoluteRotationQuaternion;
 
-  private restOf(what: Throwable): RestSpot {
-    return what === "sword" ? this.swordRest : what === "bow" ? this.bowRest : this.shieldRest;
-  }
+      if (m.init && dt > 1e-4) {
+        const instV = w.subtract(m.prev).scaleInPlace(1 / dt);
+        m.vel.addInPlace(instV.subtractInPlace(m.vel).scaleInPlace(Math.min(1, dt / 0.045)));
 
-  /** Сглаженные линейная и угловая скорости оружия в мире — для броска в VR. */
-  private trackHeldMotion(dt: number): void {
-    if (!this.held) return;
-    const mesh = this.held === "sword" ? this.sword : this.bow;
-    const w = mesh.getAbsolutePosition();
-    const q = mesh.absoluteRotationQuaternion;
-
-    if (this.heldMotionInit && dt > 1e-4) {
-      const instV = w.subtract(this.heldPrev).scaleInPlace(1 / dt);
-      this.heldVel.addInPlace(instV.subtractInPlace(this.heldVel).scaleInPlace(Math.min(1, dt / 0.045)));
-
-      const dq = q.multiply(Quaternion.Inverse(this.heldQuatPrev));
-      dq.normalize();
-      const wq = clamp(dq.w, -1, 1);
-      const sgn = wq < 0 ? -1 : 1;
-      const sn = Math.sqrt(Math.max(0, 1 - wq * wq));
-      const angle = 2 * Math.acos(Math.abs(wq));
-      const instW =
-        sn < 1e-5
-          ? new Vector3(0, 0, 0)
-          : new Vector3(dq.x, dq.y, dq.z).scaleInPlace((sgn * angle) / (sn * dt));
-      this.heldAngVel.addInPlace(instW.subtractInPlace(this.heldAngVel).scaleInPlace(Math.min(1, dt / 0.05)));
+        const dq = q.multiply(Quaternion.Inverse(m.quatPrev));
+        dq.normalize();
+        const wq = clamp(dq.w, -1, 1);
+        const sgn = wq < 0 ? -1 : 1;
+        const sn = Math.sqrt(Math.max(0, 1 - wq * wq));
+        const angle = 2 * Math.acos(Math.abs(wq));
+        const instW =
+          sn < 1e-5
+            ? new Vector3(0, 0, 0)
+            : new Vector3(dq.x, dq.y, dq.z).scaleInPlace((sgn * angle) / (sn * dt));
+        m.angVel.addInPlace(instW.subtractInPlace(m.angVel).scaleInPlace(Math.min(1, dt / 0.05)));
+      }
+      m.prev.copyFrom(w);
+      m.quatPrev.copyFrom(q);
+      m.init = true;
     }
-    this.heldPrev.copyFrom(w);
-    this.heldQuatPrev.copyFrom(q);
-    this.heldMotionInit = true;
   }
 
   /** Визуальный замах в плоском режиме. */
   private applyWindup(): void {
-    if (this.player.inVR || !this.held || this.windup <= 0) return;
-    const mesh = this.held === "sword" ? this.sword : this.bow;
-    mesh.position.z -= this.windup * 0.35;
-    mesh.position.y += this.windup * 0.12;
-    mesh.rotation.x -= this.windup * 0.5;
+    const w = this.weapon;
+    if (this.player.inVR || !w || this.windup <= 0) return;
+    w.mesh.position.z -= this.windup * 0.35;
+    w.mesh.position.y += this.windup * 0.12;
+    w.mesh.rotation.x -= this.windup * 0.5;
   }
 
   private gripDown(hand: Side): boolean {
@@ -622,52 +541,46 @@ export class CombatSystem {
     return this.heldHand === "left" ? "right" : "left";
   }
 
-  private isFlying(what: Throwable): boolean {
-    return this.flying.some((f) => f.what === what);
+  private layFlat(item: Item): void {
+    item.mesh.rotationQuaternion = null;
+    item.mesh.position.copyFrom(item.rest.pos);
+    item.mesh.rotation.set(Math.PI / 2, item.rest.yaw, 0);
   }
 
-  private layFlat(mesh: Mesh, rest: RestSpot): void {
-    mesh.rotationQuaternion = null;
-    mesh.position.copyFrom(rest.pos);
-    mesh.rotation.set(Math.PI / 2, rest.yaw, 0);
-  }
-
-  private bobIdle(dt: number): void {
+  /** Предметы, которые никто не держит и которые не летят, лежат/парят на месте. */
+  private updateRestPoses(dt: number): void {
     this.bob += dt;
-    if (this.held !== "sword" && !this.isFlying("sword")) this.restVisual(this.sword, this.swordRest, 0);
-    if (this.held !== "bow" && !this.isFlying("bow")) this.restVisual(this.bow, this.bowRest, 1);
-    if (!this.shieldHand && !this.isFlying("shield")) this.restVisual(this.shield, this.shieldRest, 2);
-  }
-
-  private restVisual(mesh: Mesh, rest: RestSpot, phase: number): void {
-    if (rest.bob) {
-      mesh.position.set(rest.pos.x, rest.pos.y + Math.sin(this.bob * 2 + phase) * 0.08, rest.pos.z);
-      mesh.rotation.set(0, this.bob * 0.7, 0);
-    } else {
-      this.layFlat(mesh, rest);
+    let phase = 0;
+    for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
+      const item = this.items[kind];
+      phase++;
+      if (item.hand || item.flight) continue;
+      if (item.rest.bob) {
+        item.mesh.position.set(
+          item.rest.pos.x,
+          item.rest.pos.y + Math.sin(this.bob * 2 + phase) * 0.08,
+          item.rest.pos.z,
+        );
+        item.mesh.rotation.set(0, this.bob * 0.7, 0);
+      } else {
+        this.layFlat(item);
+      }
     }
   }
 
-  // ---- якорь в руке ----
-
-  /** Набор тюнинга для оружия (в VR — с учётом руки). */
-  slot(): TuneSlot {
-    const kind = this.held === "bow" ? "bow" : "sword";
-    if (!this.player.inVR) return `${kind}Flat` as TuneSlot;
-    return `${kind}VR${this.heldHand === "left" ? "Left" : "Right"}` as TuneSlot;
-  }
-
-  private shieldSlot(): TuneSlot {
-    if (!this.player.inVR) return "shieldFlat";
-    return this.shieldHand === "left" ? "shieldVRLeft" : "shieldVRRight";
-  }
-
-  private keepAnchored(mesh: Mesh, t: EquipTune, hand: Side): void {
-    const anchor = this.handAnchor(hand);
-    if (mesh.parent !== anchor) mesh.parent = anchor;
-    mesh.position.copyFrom(t.pos);
-    mesh.rotation.copyFrom(t.rot);
-    mesh.scaling.setAll(t.scale);
+  /** Прикрепляет всё, что в руках, по настройкам из loadout (каждый кадр). */
+  private anchorHeldItems(): void {
+    for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
+      const item = this.items[kind];
+      if (!item.hand) continue;
+      const t = this.placement(kind, item.hand);
+      const anchor = this.handAnchor(item.hand);
+      if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
+      item.mesh.rotationQuaternion = null;
+      item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
+      item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
+      item.mesh.scaling.setAll(t.scale);
+    }
   }
 
   private handAnchor(hand: Side): Node {
@@ -695,10 +608,10 @@ export class CombatSystem {
       this.swingT -= dt;
       const phase = 1 - Math.max(0, this.swingT) / COMBAT.swingDuration;
       const arc = Math.sin(phase * Math.PI);
-      // Клинок идёт вниз-ВПЕРЁД (локальный +Y заваливается к +Z, то есть от
-      // игрока). Со знаком «минус» получался замах на себя.
-      this.sword.rotation.x = this.tunes.swordFlat.rot.x + arc * 1.5;
-      this.sword.rotation.z = this.tunes.swordFlat.rot.z - arc * 0.45;
+      const base = LOADOUT.items.sword.flat.rot;
+      // Клинок идёт вниз-ВПЕРЁД (локальный +Y заваливается к +Z, от игрока).
+      this.sword.rotation.x = base[0] + arc * 1.5;
+      this.sword.rotation.z = base[2] - arc * 0.45;
       if (phase > 0.3 && !this.swingHitDone) {
         this.swingHitDone = true;
         this.tryHit();
@@ -762,8 +675,7 @@ export class CombatSystem {
   private updateVRMelee(dt: number): void {
     for (const side of ["left", "right"] as Side[]) {
       if (this.fistCd[side] > 0) this.fistCd[side] -= dt;
-      // Рука занята щитом — кулаком не бьём.
-      if (this.shieldHand === side) {
+      if (this.inHand(side)) {
         this.fistInit[side] = false;
         continue;
       }
@@ -925,32 +837,6 @@ export class CombatSystem {
     onHit: (kind: "flesh" | "wood", pos: Vector3) => void;
   };
 
-  // ---- VR настройка положения в руке (сейчас выключена во вводе) ----
-
-  private updateVRTune(tuneInput: TuneInput | null, dt: number): boolean {
-    const slot = this.slot();
-    if (tuneInput) {
-      const t = this.tunes[slot];
-      t.rot.x += -tuneInput.ly * VR_TUNE_ROT * dt;
-      t.rot.y += tuneInput.lx * VR_TUNE_ROT * dt;
-      t.rot.z += tuneInput.rx * VR_TUNE_ROT * dt;
-      t.pos.z += -tuneInput.ry * VR_TUNE_POS * dt;
-      this.tuning = true;
-      return true;
-    }
-    if (this.tuning) {
-      this.tuning = false;
-      this.saveTuning();
-      this.haptic(this.heldHand, 0.6, 90);
-      const v = this.tunes[slot];
-      const f = (n: number) => n.toFixed(3);
-      console.log(
-        `${slot}: pos(${f(v.pos.x)}, ${f(v.pos.y)}, ${f(v.pos.z)}) rot(${f(v.rot.x)}, ${f(v.rot.y)}, ${f(v.rot.z)})`,
-      );
-    }
-    return false;
-  }
-
   private haptic(hand: Side, strength: number, ms: number): void {
     const pad = this.controller(hand)?.inputSource.gamepad as
       | { hapticActuators?: { pulse?: (v: number, ms: number) => void }[] }
@@ -958,3 +844,6 @@ export class CombatSystem {
     pad?.hapticActuators?.[0]?.pulse?.(strength, ms);
   }
 }
+
+// `tune` больше не используется: настройки живут в src/config/loadout.ts
+export type { TuneInput };

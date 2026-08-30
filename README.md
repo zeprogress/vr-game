@@ -62,17 +62,27 @@ npm run dev:vr
 Щит берётся в свободную руку и надевается только вместе с мечом. Блок: щитом —
 широкий сектор, урон гасится полностью; мечом — узкий сектор, проходит 25% урона.
 
-### Настройка ориентации кистей (из консоли браузера)
+### Настройка предметов и рук
+
+Все положения — в одном файле: [src/config/loadout.ts](src/config/loadout.ts).
+Правь числа и сохраняй — **значения применяются в игре мгновенно**, без
+перезагрузки: прогресс, позиция и то, что в руках, сохраняются. В консоли
+появится `[loadout] настройки применены без перезагрузки`.
+
+Там же задаётся, какие кнопки контроллера открывают панель персонажа. Если
+кнопка не срабатывает — зажми её и посмотри индекс:
 
 ```js
-game.hands.turn("left", "y")        // повернуть левую кисть на 90° вокруг Y
-game.hands.rotate("right", 0, 0.2, 0)
-game.hands.print()                  // текущие значения
-game.hands.resetRotation()          // сброс
+game.vrButtons()   // покажет, какие кнопки нажаты на каждом контроллере
 ```
 
-Значения сохраняются в localStorage. Положение оружия в руке правится так же:
-`game.combat.tunes.shieldVRLeft.rot.set(...)` + `game.combat.saveTuning()`.
+Кисти можно подкрутить прямо из консоли (пишет в тот же LOADOUT):
+
+```js
+game.hands.turn("left", "y")          // повернуть левую кисть на 90° вокруг Y
+game.hands.rotate("right", 0, 0.2, 0)
+game.hands.print()                    // готовые числа для вставки в loadout.ts
+```
 
 ## Структура
 
@@ -80,32 +90,41 @@ game.hands.resetRotation()          // сброс
 index.html                       страница + canvas
 src/
   main.ts                        точка входа, выбор режима подсказки
+  config/loadout.ts              ПОЛОЖЕНИЕ ПРЕДМЕТОВ И КИСТЕЙ + кнопки (живая правка)
   shared/constants.ts            игровые числа (позже переедет в пакет shared/)
   engine/Game.ts                 Engine + Scene + рендер-луп, выбор ввода, WebXR
   world/
-    Zone.ts                      сборка зоны: свет, небо, рельеф, деревья, куклы
+    Zone.ts                      сборка зоны: свет, небо, рельеф, деревья, мобы
     Terrain.ts                   рельеф из синусов + heightAt(x,z)
     Sky.ts                       градиентный купол, туман, облака
     props.ts                     деревья (инстансы) и трава (thin-инстансы)
   audio/Sfx.ts                   процедурные звуки на Web Audio
   items/
-    Sword.ts                     меш меча
-    Bow.ts                       меш лука
+    Sword.ts / Bow.ts / Shield.ts   меши предметов
   combat/
     Dummy.ts                     кукла-мишень: удар, качание, падение, респаун
+    Mob.ts / MobSystem.ts        прыгающие слизни: AI, атака, смерть, опыт
     Arrow.ts                     стрела: баллистика + попадание, втыкается
-    CombatSystem.ts              меч и лук: взятие, взмах, натяг, стрельба, попадания
+    CombatSystem.ts              предметы в руках, броски с физикой, удары, блок
   shared/geometry.ts             segmentDistance, clamp
   input/
     InputSource.ts               интерфейс ввода + InputState
     DesktopInput.ts              клавиатура + мышь
     TouchInput.ts                экранные джойстик и кнопки
     XRInput.ts                   VR-контроллеры (Gamepad API)
-  player/PlayerController.ts      движение от первого лица, raycast-коллизии, VR-риг
+  player/
+    PlayerController.ts          движение от первого лица, raycast-коллизии, VR-риг
+    Hands.ts                     кисти с пальцами на контроллерах
+    Progression.ts               уровни, опыт, характеристики
+  ui/
+    Hud.ts                       полоса здоровья, вспышка урона, панель на C
+    HealthBar3D.ts               полоски здоровья в мире (параллельны горизонту)
+    WristPanel.ts                панель персонажа на руке (VR)
+    VrVignette.ts                виньетка урона на шейдере
 ```
 
-Числа боя и мира — в `src/shared/constants.ts` (`COMBAT`, `BOW`, `ARROW`, `WORLD`).
-Посадка оружия в руке правится в игре панелью «⚙ оружие» (клавиша `~`) —
-4 набора: меч/лук × плоский/VR. В VR — кнопка X на левом контроллере + стики.
+Числа боя и мира — в `src/shared/constants.ts` (`COMBAT`, `BOW`, `ARROW`, `WORLD`,
+`MOB`, `PROGRESSION`, `SHIELD`). Положение предметов в руках — в
+`src/config/loadout.ts` (правится на лету, см. выше).
 
 Реструктуризация в монорепо (client / server / shared) — на этапе 4 (см. PLAN.md).

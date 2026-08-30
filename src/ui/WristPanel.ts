@@ -22,7 +22,6 @@ export class WristPanel {
   private readonly plane: Mesh;
   private readonly tex: DynamicTexture;
   private selected = 0;
-  private navArmed = true;
   private open = false;
 
   constructor(
@@ -63,6 +62,16 @@ export class WristPanel {
     return this.open;
   }
 
+  /** Узел, к которому сейчас прикреплена панель. */
+  get anchor(): Node | null {
+    return this.plane.parent;
+  }
+
+  /** Перевесить панель (контроллер мог появиться уже после входа в VR). */
+  reparent(parent: Node): void {
+    this.plane.parent = parent;
+  }
+
   toggle(): void {
     this.open = !this.open;
     this.plane.setEnabled(this.open);
@@ -74,18 +83,14 @@ export class WristPanel {
     this.plane.setEnabled(false);
   }
 
-  /** navY: -1..1 (правый стик), confirm: курок нажат в этом кадре. */
-  update(navY: number, confirm: boolean): void {
+  /** next — перейти к следующей характеристике, confirm — вложить очко. */
+  update(next: boolean, confirm: boolean): void {
     if (!this.open) return;
 
-    if (this.navArmed && Math.abs(navY) > 0.6) {
-      this.selected = (this.selected + (navY > 0 ? -1 : 1) + STATS.length) % STATS.length;
-      this.navArmed = false;
+    if (next) {
+      this.selected = (this.selected + 1) % STATS.length;
       this.redraw();
-    } else if (Math.abs(navY) < 0.3) {
-      this.navArmed = true;
     }
-
     if (confirm && this.prog.spend(STATS[this.selected])) {
       this.redraw();
     }
@@ -169,7 +174,7 @@ export class WristPanel {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("стик — выбор · курок — вложить", 26, 336);
+    ctx.fillText("X — выбрать · B — вложить · Y — закрыть", 26, 336);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);
