@@ -16,11 +16,13 @@ import type { Hittable } from "./Hittable";
 
 export interface MobContext {
   playerPos: Vector3;
+  /** Направление взгляда игрока (единичное) — для «в радиусе видимости». */
+  playerAim: Vector3;
   groundHeight: (x: number, z: number) => number;
   /** `from` — откуда прилетел удар (нужно для проверки блока щитом/мечом). */
   hurtPlayer: (amount: number, dir: Vector3, from: Vector3) => void;
-  /** Дальнобойный моб плюётся шариком: from — дуло, playerAt — куда целить. */
-  fireBall: (from: Vector3, playerAt: Vector3) => void;
+  /** Дальнобойный моб плюётся шариком из точки `from`. */
+  fireBall: (from: Vector3) => void;
   onHop: () => void;
   onHurt: (pos: Vector3) => void;
   onDie: (pos: Vector3, xp: number) => void;
@@ -221,18 +223,18 @@ export class Mob implements Hittable {
   }
 
   private addWound(contactWorld: Vector3 | undefined, dir: Vector3): void {
-    // Направление на рану: сторона тела, обращённая к атакующему, плюс разброс.
-    const n = new Vector3(-dir.x, 0, -dir.z);
-    if (n.lengthSquared() < 1e-4 && contactWorld) {
-      n.copyFrom(contactWorld.subtract(this.center()));
-      n.y = 0;
-    }
-    if (n.lengthSquared() < 1e-4) n.set(0, 0, 1);
+    // Рана точно в месте касания оружия: направление от центра тела к точке
+    // контакта. Небольшой разброс — только чтобы повторные удары не сливались.
+    const n = contactWorld
+      ? contactWorld.subtract(this.center())
+      : new Vector3(-dir.x, 0, -dir.z);
+    if (n.lengthSquared() < 1e-4) n.copyFrom(dir);
     n.normalize();
-    const tan = Vector3.Cross(n, Vector3.Up());
-    if (tan.lengthSquared() > 1e-6) tan.normalize();
-    n.addInPlace(tan.scale((Math.random() - 0.5) * 1.3));
-    n.y += Math.random() * 0.9 - 0.3;
+    n.addInPlaceFromFloats(
+      (Math.random() - 0.5) * 0.22,
+      (Math.random() - 0.5) * 0.22,
+      (Math.random() - 0.5) * 0.22,
+    );
     n.normalize();
 
     // world -> локально в root (root крутится только по Y).
@@ -254,7 +256,7 @@ export class Mob implements Hittable {
     mark.rotate(new Vector3(0, 0, 1), Math.random() * Math.PI);
     mark.material = this.woundMat();
     mark.isPickable = false;
-    mark.renderingGroupId = 1;
+    mark.renderingGroupId = 0;
 
     this.wounds.push(mark);
     if (this.wounds.length > MOB.woundLimit) this.wounds.shift()?.dispose();
@@ -328,6 +330,11 @@ export class Mob implements Hittable {
     const aggro = this.cfg.ranged ? SPITTER.aggroRange : MOB.aggroRange;
     const chasing = dist < aggro;
 
+    // Плашка с именем — только для мобов рядом и примерно в поле зрения.
+    // dir смотрит от моба к игроку; перед игроком -> dir ≈ -playerAim.
+    const facing = dist < 1e-3 || Vector3.Dot(dir, ctx.playerAim) < 0.25;
+    this.nameTag.setEnabled(dist < MOB.nameTagRange && facing);
+
     if (this.grounded) {
       this.hopCd -= dt;
       if (this.hopCd <= 0 && chasing) {
@@ -399,7 +406,7 @@ export class Mob implements Hittable {
       if (chasing && dist < SPITTER.fireRange && this.attackCd <= 0) {
         this.attackCd = SPITTER.fireCooldown;
         const muzzle = this.center();
-        ctx.fireBall(muzzle, ctx.playerPos.clone());
+        ctx.fireBall(muzzle);
       }
     } else if (chasing && dist < MOB.attackRange && this.attackCd <= 0) {
       this.attackCd = MOB.attackCooldown;

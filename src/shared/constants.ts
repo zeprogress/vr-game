@@ -80,6 +80,7 @@ export const MOB = {
   wanderRadius: 10, // м вокруг точки спавна
   shoveMax: 8, // м/с потолок скорости от толчка предметом
   woundLimit: 6, // сколько ран одновременно висит на теле
+  nameTagRange: 26, // м, дальше плашка с именем не показывается
 } as const;
 
 /** Дальнобойный моб «Плевун»: держит дистанцию и стреляет шариками. */
@@ -94,7 +95,7 @@ export const SPITTER = {
   ballSpeed: 15, // м/с
   ballGravity: 4, // м/с² (лёгкая дуга)
   ballRadius: 0.14, // м
-  ballDamage: 6,
+  ballDamage: 10, // чуть больше слизня (у него 8)
   ballMaxLife: 3.5, // с полёта
   maxBalls: 24,
 } as const;

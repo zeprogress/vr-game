@@ -468,7 +468,7 @@ export class CombatSystem {
           if (!t.alive) continue;
           const s = t.hitSegment();
           if (segmentDistance(f.prev, mesh.position, s.a, s.b) < s.radius + THROW.hitRadius) {
-            t.hit(dir, THROW.damage, closestPointOnSegment(mesh.position, s.a, s.b));
+            t.hit(dir, THROW.damage, mesh.position.clone());
             this.sfx.hitThud();
             f.hitDone = true;
             f.vel.scaleInPlace(0.2);
@@ -697,7 +697,10 @@ export class CombatSystem {
       if (!t.alive) continue;
       const seg = t.hitSegment();
       if (segmentDistance(guard, tip, seg.a, seg.b) <= seg.radius + COMBAT.hitMargin) {
-        const contact = closestPointOnSegment(tip, seg.a, seg.b);
+        // Точка касания = ближайшая к телу точка самого клинка (guard..tip),
+        // не проекция на ось цели — тогда рана встаёт туда, где вошёл клинок.
+        const mid = seg.a.add(seg.b).scale(0.5);
+        const contact = closestPointOnSegment(mid, guard, tip);
         if (t.hit(dir, this.prog.swordDamage, contact)) {
           this.sfx.hitThud();
           // Вибрирует именно та рука, которая держит меч.
@@ -733,7 +736,7 @@ export class CombatSystem {
             if (!t.alive) continue;
             const s = t.hitSegment();
             if (segmentDistance(prev, now, s.a, s.b) <= s.radius + MELEE.reach) {
-              if (t.hit(dir, MELEE.damage, closestPointOnSegment(now, s.a, s.b))) {
+              if (t.hit(dir, MELEE.damage, now.clone())) {
                 this.sfx.hitThud(0.55);
                 this.haptic(side, 0.6, 60);
                 this.fistCd[side] = MELEE.cooldown;
@@ -765,7 +768,8 @@ export class CombatSystem {
         const dir = fwd.clone();
         dir.y = 0;
         if (dir.lengthSquared() > 1e-6) dir.normalize();
-        if (t.hit(dir, MELEE.damage, closestPointOnSegment(reach, s.a, s.b))) landed = true;
+        const mid = s.a.add(s.b).scale(0.5);
+        if (t.hit(dir, MELEE.damage, closestPointOnSegment(mid, eye, reach))) landed = true;
       }
     }
     if (landed) this.sfx.hitThud(0.55);

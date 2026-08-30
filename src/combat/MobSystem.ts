@@ -6,7 +6,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
-import { SPITTER } from "../shared/constants";
+import { PLAYER, SPITTER } from "../shared/constants";
 import { segmentDistance } from "../shared/geometry";
 import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
@@ -66,7 +66,8 @@ export class MobSystem {
         if (mult <= 0) return;
         player.damage(amount * mult, dir);
       },
-      fireBall: (from: Vector3, playerAt: Vector3) => this.fireBall(from, playerAt),
+      playerAim: new Vector3(0, 0, 1),
+      fireBall: (from: Vector3) => this.fireBall(from),
       onHop: () => sfx.mobHop(),
       onHurt: () => sfx.mobHurt(),
       onDie: (_pos, xp) => {
@@ -76,16 +77,18 @@ export class MobSystem {
     };
   }
 
-  private fireBall(from: Vector3, playerAt: Vector3): void {
+  private fireBall(from: Vector3): void {
     if (this.balls.length >= SPITTER.maxBalls) {
       this.balls.shift()?.mesh.dispose();
     }
+    // Целимся в грудь игрока (чуть ниже глаз), а не в ноги.
+    const aim = this.player.camera.globalPosition.clone();
+    aim.y -= 0.35;
     // Баллистическая поправка: поднять прицел на величину падения за время полёта.
-    const flat = playerAt.subtract(from);
+    const flat = aim.subtract(from);
     flat.y = 0;
     const L = flat.length();
     const t = L / SPITTER.ballSpeed;
-    const aim = playerAt.clone();
     aim.y += 0.5 * SPITTER.ballGravity * t * t;
     const dir = aim.subtract(from);
     if (dir.lengthSquared() < 1e-6) return;
@@ -104,12 +107,14 @@ export class MobSystem {
   }
 
   update(dt: number): void {
+    this.player.camera.getDirection(FORWARD).normalizeToRef(this.ctx.playerAim);
     for (const m of this.mobs) m.update(dt, this.ctx);
     this.updateBalls(dt);
   }
 
   private updateBalls(dt: number): void {
     const eye = this.player.camera.globalPosition;
+    const feet = new Vector3(eye.x, eye.y - PLAYER.eyeHeight, eye.z);
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.prev.copyFrom(b.mesh.position);
@@ -119,17 +124,19 @@ export class MobSystem {
 
       let done = b.life > SPITTER.ballMaxLife;
 
-      // Попадание в игрока (проверяем весь отрезок пути — шарик быстрый).
+      // Попадание в игрока: путь шарика против капсулы тело (ноги..голова).
       if (
         !done &&
-        distToPoint(b.prev, b.mesh.position, eye) < SPITTER.ballRadius + PLAYER_HIT
+        segmentDistance(b.prev, b.mesh.position, feet, eye) < SPITTER.ballRadius + PLAYER.radius
       ) {
         const dir = b.vel.clone();
         dir.y = 0;
         if (dir.lengthSquared() > 1e-6) dir.normalize();
         const mult = this.combat().absorbAttack(b.mesh.position.clone());
-        if (mult > 0) this.player.damage(SPITTER.ballDamage * mult, dir);
-        this.sfx.playerHurt();
+        if (mult > 0) {
+          this.player.damage(SPITTER.ballDamage * mult, dir);
+          this.sfx.playerHurt();
+        }
         done = true;
       }
 
@@ -146,8 +153,4 @@ export class MobSystem {
   }
 }
 
-const PLAYER_HIT = 0.42; // м, «толщина» игрока для снаряда
-
-function distToPoint(a: Vector3, b: Vector3, p: Vector3): number {
-  return segmentDistance(a, b, p, p);
-}
+const FORWARD = new Vector3(0, 0, 1);

@@ -65,7 +65,8 @@ export class NameTag {
     this.plane.parent = parent;
     this.plane.position.copyFrom(offset);
     this.plane.isPickable = false;
-    this.plane.renderingGroupId = 1;
+    // Группа 0 + проверка глубины: плашку загораживают стены, деревья и пол.
+    this.plane.renderingGroupId = 0;
     this.plane.billboardMode = Mesh.BILLBOARDMODE_Y;
   }
 
