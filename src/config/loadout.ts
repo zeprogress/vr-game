@@ -2,14 +2,19 @@
  * Настройки экипировки: как предметы лежат в руках и как повёрнуты сами кисти.
  *
  * Два способа править, и оба работают на лету:
- *   1. Прямо в игре — панель на правой руке (кнопка B). Изменения сохраняются
- *      в localStorage и переживают перезагрузку.
- *   2. Числа в этом файле — базовые значения. Сохраняешь файл, и они
- *      применяются без перезагрузки (Vite HMR), не сбрасывая прогресс.
+ *   1. Числа в этом файле — надёжный источник. Сохраняешь файл — значения
+ *      применяются без перезагрузки (Vite HMR), прогресс не сбрасывается.
+ *   2. Панель на правой руке в VR (кнопка B) — для подгонки прямо в шлеме.
+ *      Пишет в localStorage браузера.
  *
- * Что важно: значения, подобранные в панели, ПЕРЕКРЫВАЮТ числа из файла —
- * иначе правка файла молча стирала бы подобранное в шлеме. Сбросить
- * переопределение можно в самой панели (строка «сброс к файлу»).
+ * Кто главнее: правка ФАЙЛА для конкретной цели всегда побеждает — при
+ * загрузке панельное переопределение этой цели отбрасывается. Панельные
+ * правки целей, которых в файле не трогали, сохраняются поверх.
+ *
+ * localStorage привязан к адресу: шлем (https://<IP>:5173) и компьютер
+ * (https://localhost:5173) — РАЗНЫЕ хранилища, и смена IP в сети теряет
+ * настройку. Поэтому подобранное в шлеме переноси в этот файл:
+ * `game.printLoadout()` в консоли печатает готовый блок.
  *
  * Углы в радианах. Ориентиры: 90° = Math.PI / 2, 180° = Math.PI.
  *
@@ -131,9 +136,30 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
 }
 
 // ---- сохранение того, что подобрано в игре ----
+//
+// Панель (в шлеме) пишет подобранные значения в localStorage. Вместе со
+// значением сохраняется и «снимок» тогдашних чисел из файла — база. При
+// загрузке: если число в файле для этой цели с тех пор изменилось, значит
+// её правили в файле осознанно — файл главнее, переопределение выкидывается.
+// Цели, которых в файле не трогали, сохраняются из панели как есть.
+//
+// ВАЖНО: localStorage привязан к адресу. Шлем открывает игру по
+// https://<IP>:5173, компьютер — по https://localhost:5173 — это РАЗНЫЕ
+// хранилища. Настройка из шлема не появится на компьютере (и наоборот), а
+// если IP в сети сменится — настройка со старого адреса потеряется.
+// Надёжное место для чисел — сам этот файл. `game.printLoadout()` в консоли
+// печатает текущие значения готовым для вставки блоком.
 
 const SAVE_KEY = "loadoutOverrides";
-type Overrides = Partial<Record<TargetKey, unknown>>;
+interface Override {
+  v: unknown;
+  base: unknown;
+}
+type Overrides = Partial<Record<TargetKey, Override | unknown>>;
+
+function eq(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 function loadOverrides(): Overrides {
   try {
@@ -151,10 +177,21 @@ function storeOverrides(o: Overrides): void {
   }
 }
 
+function unwrap(entry: Override | unknown): { value: unknown; base: unknown | null } {
+  if (entry && typeof entry === "object" && "v" in (entry as Override)) {
+    const e = entry as Override;
+    return { value: e.v, base: e.base ?? null };
+  }
+  return { value: entry, base: null }; // старый формат — без базы
+}
+
 /** Запомнить текущее значение цели, чтобы оно пережило перезагрузку. */
 export function saveTarget(key: TargetKey): void {
   const o = loadOverrides();
-  o[key] = structuredClone(readTarget(LOADOUT, key));
+  o[key] = {
+    v: structuredClone(readTarget(LOADOUT, key)),
+    base: structuredClone(readTarget(LOADOUT_DEFAULTS, key)),
+  };
   storeOverrides(o);
 }
 
@@ -206,28 +243,44 @@ function applyDefaults(next: Loadout): void {
   Object.assign(LOADOUT.buttons, next.buttons);
 }
 
-function applyOverrides(): number {
+/**
+ * Накладывает сохранённые в панели значения поверх файла. Если число в файле
+ * для цели изменилось с момента сохранения — правка файла главнее, лишнее
+ * переопределение удаляется. `fileRef` — актуальные значения файла (при
+ * горячей замене это НОВЫЙ модуль, поэтому сравниваем с ним).
+ */
+function applyOverrides(fileRef: Loadout = LOADOUT_DEFAULTS): { applied: number; dropped: number } {
   const o = loadOverrides();
-  const keys = Object.keys(o) as TargetKey[];
-  for (const k of keys) writeTarget(LOADOUT, k, o[k]);
-  return keys.length;
+  let applied = 0;
+  let dropped = 0;
+  for (const k of Object.keys(o) as TargetKey[]) {
+    const { value, base } = unwrap(o[k]);
+    if (base !== null && !eq(base, readTarget(fileRef, k))) {
+      delete o[k]; // цель правили в файле — файл главнее
+      dropped++;
+      continue;
+    }
+    writeTarget(LOADOUT, k, value);
+    applied++;
+  }
+  if (dropped > 0) storeOverrides(o);
+  return { applied, dropped };
 }
 
 applyOverrides();
 
 // Горячая замена: при сохранении файла новые числа втекают в живой объект,
-// игра не перезагружается. Подобранное в панели накладывается сверху —
-// иначе правка файла молча стёрла бы настройку из шлема.
+// игра не перезагружается. Цели, которые правили в файле, берут значение из
+// файла (и забывают панельное переопределение); нетронутые — сохраняются.
 if (import.meta.hot) {
   import.meta.hot.accept((mod) => {
     const next = (mod as { LOADOUT_DEFAULTS?: Loadout } | undefined)?.LOADOUT_DEFAULTS;
     if (!next) return;
     applyDefaults(next);
-    const n = applyOverrides();
-    console.log(
-      n === 0
-        ? "[loadout] файл применён без перезагрузки"
-        : `[loadout] файл применён; ${n} настроек из панели оставлены поверх (сбросить — в панели)`,
-    );
+    const { applied, dropped } = applyOverrides(next);
+    const parts = ["[loadout] файл применён без перезагрузки"];
+    if (dropped) parts.push(`${dropped} правок из файла перекрыли настройку панели`);
+    if (applied) parts.push(`${applied} настроек панели оставлены поверх`);
+    console.log(parts.join("; "));
   });
 }

@@ -19,6 +19,7 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
+import { printLoadout } from "../config/loadout";
 import { HUD, VIGNETTE } from "../shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
@@ -198,6 +199,15 @@ export class Game {
   vrButtons(): unknown {
     if (!this.xrInput) return "не в VR (или контроллеры ещё не подключились)";
     return this.xrInput.dumpButtons();
+  }
+
+  /**
+   * Печатает текущие значения экипировки готовым блоком для вставки в
+   * src/config/loadout.ts. Так подобранное (в т.ч. в шлеме) переносится в
+   * файл — единственное надёжное место, не привязанное к адресу/браузеру.
+   */
+  printLoadout(): void {
+    printLoadout();
   }
 
   // ---- VR-интерфейс ----
