@@ -10,7 +10,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
-import { WORLD } from "../shared/constants";
+import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
 
 /** Низкополигональные деревья, расставленные по рельефу (инстансы одного меша). */

@@ -5,7 +5,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 
-import { WORLD } from "../shared/constants";
+import { WORLD } from "#shared/constants";
 
 export interface Terrain {
   mesh: Mesh;

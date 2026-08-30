@@ -10,7 +10,7 @@ import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
 import { Dummy } from "../combat/Dummy";
 import { Mob } from "../combat/Mob";
-import { MOB, SPITTER, SLIME_CFG, SPITTER_CFG } from "../shared/constants";
+import { MOB, SPITTER, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 
 export interface Zone {
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */

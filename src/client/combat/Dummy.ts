@@ -9,7 +9,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { COMBAT } from "../shared/constants";
+import { COMBAT } from "#shared/constants";
 import type { Hittable } from "./Hittable";
 
 /**

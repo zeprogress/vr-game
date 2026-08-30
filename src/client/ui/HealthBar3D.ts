@@ -7,7 +7,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-import { clamp01 } from "../shared/geometry";
+import { clamp01 } from "#shared/geometry";
 
 /**
  * Полоска здоровья в мире: фон + заполнение.

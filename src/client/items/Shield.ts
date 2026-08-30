@@ -7,7 +7,7 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { SHIELD } from "../shared/constants";
+import { SHIELD } from "#shared/constants";
 
 /**
  * Круглый щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y

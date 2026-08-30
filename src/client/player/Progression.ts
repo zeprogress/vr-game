@@ -1,4 +1,4 @@
-import { PLAYER, PLAYER_HP, PROGRESSION } from "../shared/constants";
+import { PLAYER, PLAYER_HP, PROGRESSION } from "#shared/constants";
 
 export type StatName = "str" | "agi" | "int";
 

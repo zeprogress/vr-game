@@ -10,7 +10,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { PLAYER, PLAYER_HP } from "../shared/constants";
+import { PLAYER, PLAYER_HP } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
 

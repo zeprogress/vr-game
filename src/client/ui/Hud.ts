@@ -1,4 +1,4 @@
-import { PLAYER_HP } from "../shared/constants";
+import { PLAYER_HP } from "#shared/constants";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 
 const STATS: StatName[] = ["str", "agi", "int"];

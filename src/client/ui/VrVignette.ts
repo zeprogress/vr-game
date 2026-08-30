@@ -7,8 +7,8 @@ import { Effect } from "@babylonjs/core/Materials/effect";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-import { VIGNETTE } from "../shared/constants";
-import { clamp01 } from "../shared/geometry";
+import { VIGNETTE } from "#shared/constants";
+import { clamp01 } from "#shared/geometry";
 
 const NAME = "damageVignette";
 

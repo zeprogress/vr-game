@@ -10,8 +10,8 @@ import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
-import { ARROW } from "../shared/constants";
-import { segmentDistance } from "../shared/geometry";
+import { ARROW } from "#shared/constants";
+import { segmentDistance } from "#shared/geometry";
 import type { Hittable } from "./Hittable";
 
 export interface ArrowContext {

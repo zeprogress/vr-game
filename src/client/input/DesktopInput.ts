@@ -1,4 +1,4 @@
-import { LOOK } from "../shared/constants";
+import { LOOK } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 /**

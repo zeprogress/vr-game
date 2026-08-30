@@ -20,7 +20,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import { printLoadout } from "../config/loadout";
-import { HUD, VIGNETTE } from "../shared/constants";
+import { HUD, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";

@@ -9,7 +9,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-import { MOB, PLAYER, SLIME_CFG, SPITTER, type MobConfig } from "../shared/constants";
+import { MOB, PLAYER, SLIME_CFG, SPITTER, type MobConfig } from "#shared/constants";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
 import type { Hittable } from "./Hittable";

@@ -9,8 +9,8 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
-import { PLAYER, SPITTER } from "../shared/constants";
-import { segmentDistance } from "../shared/geometry";
+import { PLAYER, SPITTER } from "#shared/constants";
+import { segmentDistance } from "#shared/geometry";
 import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
 import type { Sfx } from "../audio/Sfx";

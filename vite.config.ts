@@ -12,12 +12,12 @@ const root = dirname(fileURLToPath(import.meta.url));
 /**
  * Дев-эндпоинт: панель настройки экипировки шлёт сюда POST /__loadout с
  * текущими значениями, а плагин переписывает блок LOADOUT_DEFAULTS прямо в
- * src/config/loadout.ts. Так «Сохранить настройки» в игре кладёт числа в
+ * src/client/config/loadout.ts. Так «Сохранить настройки» в игре кладёт числа в
  * файл (в git, общий для всех адресов и устройств), а не в localStorage.
  * Работает только у дев-сервера — в собранную игру не попадает.
  */
 function loadoutWriter(): Plugin {
-  const file = resolve(root, "src/config/loadout.ts");
+  const file = resolve(root, "src/client/config/loadout.ts");
 
   // Узнаваемые углы пишем выражением, чтобы файл оставался читаемым.
   const nice: [string, number][] = [
@@ -94,7 +94,7 @@ function loadoutWriter(): Plugin {
             if (!re.test(src)) return reply(500, { ok: false, error: "блок LOADOUT_DEFAULTS не найден" });
             src = src.replace(re, render(data));
             writeFileSync(file, src);
-            server.config.logger.info("[loadout] настройки записаны в src/config/loadout.ts");
+            server.config.logger.info("[loadout] настройки записаны в src/client/config/loadout.ts");
             reply(200, { ok: true });
           } catch (e) {
             reply(400, { ok: false, error: String(e) });

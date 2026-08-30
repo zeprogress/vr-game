@@ -8,7 +8,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
-import { WORLD } from "../shared/constants";
+import { WORLD } from "#shared/constants";
 
 /**
  * Дешёвое небо: большая сфера с вертикальным градиентом (без тяжёлых

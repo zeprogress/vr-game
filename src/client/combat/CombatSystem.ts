@@ -14,9 +14,9 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "../shared/constants";
+import { BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { LOADOUT, type Placement } from "../config/loadout";
-import { clamp, closestPointOnSegment, segmentDistance } from "../shared/geometry";
+import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
