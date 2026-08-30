@@ -45,3 +45,12 @@ export function segmentDistance(p1: Vector3, p2: Vector3, q1: Vector3, q2: Vecto
   const cp2 = q1.add(d2.scale(t));
   return Vector3.Distance(cp1, cp2);
 }
+
+/** Ближайшая точка на отрезке [a,b] к точке p. */
+export function closestPointOnSegment(p: Vector3, a: Vector3, b: Vector3): Vector3 {
+  const ab = b.subtract(a);
+  const len2 = Vector3.Dot(ab, ab);
+  if (len2 < 1e-8) return a.clone();
+  const t = clamp01(Vector3.Dot(p.subtract(a), ab) / len2);
+  return a.add(ab.scale(t));
+}

@@ -30,7 +30,7 @@ export class Sfx {
   }
 
   /** Фоновая музыка: тихий бесконечный цикл. Стартует при первом resume(). */
-  startMusic(url: string, volume = 0.12): void {
+  startMusic(url: string, volume = 0.01): void {
     if (this.music) return;
     const a = new Audio(url);
     a.loop = true;

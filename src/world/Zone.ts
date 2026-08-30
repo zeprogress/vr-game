@@ -10,7 +10,7 @@ import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
 import { Dummy } from "../combat/Dummy";
 import { Mob } from "../combat/Mob";
-import { MOB } from "../shared/constants";
+import { MOB, SPITTER, SLIME_CFG, SPITTER_CFG } from "../shared/constants";
 
 export interface Zone {
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
@@ -55,14 +55,24 @@ export function buildZone(scene: Scene): Zone {
     dummies.push(new Dummy(scene, new Vector3(dx, terrain.heightAt(dx, dz), dz)));
   }
 
-  // Мобы — по кругу подальше от спавна.
+  // Слизни — по кругу подальше от спавна.
   const mobs: Mob[] = [];
   for (let i = 0; i < MOB.count; i++) {
     const a = (i / MOB.count) * Math.PI * 2 + 0.4;
     const r = 22 + Math.random() * 12;
     const mx = Math.cos(a) * r;
     const mz = Math.sin(a) * r - 4;
-    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz)));
+    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz), SLIME_CFG));
+  }
+
+  // Плевуны — ещё дальше, отдельным кольцом.
+  const [rMin, rMax] = SPITTER.spawnRadius;
+  for (let i = 0; i < SPITTER.count; i++) {
+    const a = (i / SPITTER.count) * Math.PI * 2 + 1.1;
+    const r = rMin + Math.random() * (rMax - rMin);
+    const mx = Math.cos(a) * r;
+    const mz = Math.sin(a) * r - 4;
+    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz), SPITTER_CFG));
   }
 
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);

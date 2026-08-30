@@ -15,7 +15,7 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { BOW, COMBAT, MELEE, SHIELD, THROW } from "../shared/constants";
 import { LOADOUT, type Placement } from "../config/loadout";
-import { clamp, segmentDistance } from "../shared/geometry";
+import { clamp, closestPointOnSegment, segmentDistance } from "../shared/geometry";
 import type { TuneInput } from "../input/InputSource";
 import type { PlayerController } from "../player/PlayerController";
 import type { Progression } from "../player/Progression";
@@ -246,6 +246,7 @@ export class CombatSystem {
 
     this.updateRestPoses(dt);
     this.anchorHeldItems();
+    this.shoveWithHeldItems();
 
     if (this.held === "sword") {
       if (this.player.inVR) this.updateVRSwing(dt);
@@ -467,7 +468,7 @@ export class CombatSystem {
           if (!t.alive) continue;
           const s = t.hitSegment();
           if (segmentDistance(f.prev, mesh.position, s.a, s.b) < s.radius + THROW.hitRadius) {
-            t.hit(dir, THROW.damage);
+            t.hit(dir, THROW.damage, closestPointOnSegment(mesh.position, s.a, s.b));
             this.sfx.hitThud();
             f.hitDone = true;
             f.vel.scaleInPlace(0.2);
@@ -596,6 +597,41 @@ export class CombatSystem {
     return this.getXR()?.input.controllers.find((c) => c.inputSource.handedness === hand);
   }
 
+  /**
+   * Предметы в руках расталкивают мобов (не урон): прислонил меч/щит —
+   * моб отъезжает; скорость толчка тем выше, чем быстрее движется рука.
+   */
+  private shoveWithHeldItems(): void {
+    for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
+      const item = this.items[kind];
+      if (!item.hand) continue;
+      const m = item.mesh.getWorldMatrix();
+      const origin = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
+      let a = origin;
+      let b = origin;
+      let rad = 0.22;
+      if (kind === "sword") {
+        b = Vector3.TransformCoordinates(TIP, m);
+        rad = 0.14;
+      } else if (kind === "shield") {
+        rad = SHIELD.radius + 0.05;
+      }
+      const handSpeed = this.player.inVR ? this.motion[item.hand].vel.length() : 2;
+      const strength = Math.min(6, 1.4 + handSpeed);
+      for (const t of this.targets) {
+        if (!t.alive || !t.shove || !t.center) continue;
+        const s = t.hitSegment();
+        if (segmentDistance(a, b, s.a, s.b) < s.radius + rad) {
+          const dir = t.center().subtract(this.player.camera.globalPosition);
+          dir.y = 0;
+          if (dir.lengthSquared() < 1e-6) continue;
+          dir.normalize();
+          t.shove(dir, strength);
+        }
+      }
+    }
+  }
+
   // ---- меч ----
 
   private updateFlatSwing(dt: number, primaryEdge: boolean): void {
@@ -661,7 +697,8 @@ export class CombatSystem {
       if (!t.alive) continue;
       const seg = t.hitSegment();
       if (segmentDistance(guard, tip, seg.a, seg.b) <= seg.radius + COMBAT.hitMargin) {
-        if (t.hit(dir, this.prog.swordDamage)) {
+        const contact = closestPointOnSegment(tip, seg.a, seg.b);
+        if (t.hit(dir, this.prog.swordDamage, contact)) {
           this.sfx.hitThud();
           // Вибрирует именно та рука, которая держит меч.
           this.haptic(this.heldHand, 0.7, 70);
@@ -696,7 +733,7 @@ export class CombatSystem {
             if (!t.alive) continue;
             const s = t.hitSegment();
             if (segmentDistance(prev, now, s.a, s.b) <= s.radius + MELEE.reach) {
-              if (t.hit(dir, MELEE.damage)) {
+              if (t.hit(dir, MELEE.damage, closestPointOnSegment(now, s.a, s.b))) {
                 this.sfx.hitThud(0.55);
                 this.haptic(side, 0.6, 60);
                 this.fistCd[side] = MELEE.cooldown;
@@ -728,7 +765,7 @@ export class CombatSystem {
         const dir = fwd.clone();
         dir.y = 0;
         if (dir.lengthSquared() > 1e-6) dir.normalize();
-        if (t.hit(dir, MELEE.damage)) landed = true;
+        if (t.hit(dir, MELEE.damage, closestPointOnSegment(reach, s.a, s.b))) landed = true;
       }
     }
     if (landed) this.sfx.hitThud(0.55);

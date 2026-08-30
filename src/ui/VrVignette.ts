@@ -8,12 +8,13 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { VIGNETTE } from "../shared/constants";
+import { clamp01 } from "../shared/geometry";
 
 const NAME = "damageVignette";
 
 // Экранный квад: вершинный шейдер игнорирует мировую матрицу и растягивает
-// плоскость 1x1 ровно на весь вьюпорт. Так виньетка одинаково ложится и в
-// узкий FOV монитора, и в широкий FOV шлема (и рисуется отдельно для каждого глаза).
+// плоскость 1x1 ровно на весь вьюпорт — одинаково в узкий FOV монитора и
+// широкий FOV шлема (рисуется отдельно для каждого глаза).
 Effect.ShadersStore[`${NAME}VertexShader`] = `
 precision highp float;
 attribute vec3 position;
@@ -25,8 +26,8 @@ void main() {
 }
 `;
 
-// Плавная радиальная маска: прозрачный центр, плотный красный к краям.
-// Альфа считается попиксельно — не зависит от текстур.
+// Радиальная маска: прозрачный центр, насыщенный красный к краям.
+// Альфа считается попиксельно.
 Effect.ShadersStore[`${NAME}FragmentShader`] = `
 precision highp float;
 varying vec2 vUV;
@@ -35,19 +36,27 @@ uniform float intensity;
 void main() {
   vec2 d = (vUV - vec2(0.5)) * 2.0;
   float r = length(d);
-  // Широкий чистый центр, плотность нарастает только к самым краям.
-  float edge = smoothstep(0.62, 1.35, r);
-  float a = pow(edge, 1.4) * intensity;
+  // Плотность нарастает от середины кадра к краям — заметно, но центр чист.
+  float edge = smoothstep(0.35, 1.15, r);
+  float a = pow(edge, 1.1) * intensity;
   if (a < 0.003) discard;
   gl_FragColor = vec4(tint, a);
 }
 `;
 
-/** Красная виньетка по краям обзора при уроне (VR). */
+/**
+ * Красная виньетка по краям обзора (VR):
+ *  - вспышка при уроне (`flash`), быстро гаснет;
+ *  - постоянная виньетка нехватки здоровья (`setHealth`) — тем сильнее и
+ *    заметнее пульсирует, чем меньше HP; исчезает у полного здоровья.
+ * На экран выводится максимум из двух.
+ */
 export class VrVignette {
   private readonly quad: Mesh;
   private readonly mat: ShaderMaterial;
-  private amt = 0;
+  private flashAmt = 0;
+  private lowAmt = 0; // 0..1 «нехватка здоровья»
+  private pulseT = 0;
 
   constructor(scene: Scene) {
     this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
@@ -55,37 +64,53 @@ export class VrVignette {
       uniforms: ["tint", "intensity"],
       needAlphaBlending: true,
     });
-    this.mat.setColor3("tint", new Color3(0.95, 0.05, 0.05));
+    this.mat.setColor3("tint", new Color3(1, 0.02, 0.02)); // чистый насыщенный красный
     this.mat.setFloat("intensity", 0);
     this.mat.backFaceCulling = false;
     this.mat.alphaMode = Constants.ALPHA_COMBINE;
-    this.mat.alpha = 0.999; // включает альфа-блендинг
+    this.mat.alpha = 0.999;
     this.mat.disableDepthWrite = true;
 
-    // Ровно 1x1: вершинный шейдер рассчитывает на этот размер.
     this.quad = MeshBuilder.CreatePlane(NAME, { width: 1, height: 1 }, scene);
     this.quad.material = this.mat;
     this.quad.isPickable = false;
     this.quad.applyFog = false;
-    this.quad.alwaysSelectAsActiveMesh = true; // мировая матрица не важна, но и не отсекаем
+    this.quad.alwaysSelectAsActiveMesh = true;
     this.quad.renderingGroupId = 3; // поверх всего
     this.quad.setEnabled(false);
   }
 
   flash(damage: number): void {
-    this.amt = Math.max(this.amt, Math.min(VIGNETTE.maxAlpha, 0.35 + damage / 45));
+    const peak = Math.min(
+      VIGNETTE.maxAlpha,
+      VIGNETTE.hitBase + damage * VIGNETTE.hitPerDamage,
+    );
+    this.flashAmt = Math.max(this.flashAmt, peak);
+    this.apply();
+  }
+
+  /** frac — доля здоровья 0..1. */
+  setHealth(frac: number): void {
+    const t = VIGNETTE.lowHpFrom;
+    this.lowAmt = t <= 0 ? 0 : clamp01((t - frac) / t);
     this.apply();
   }
 
   tick(dt: number): void {
-    if (this.amt <= 0) return;
-    this.amt = Math.max(0, this.amt - dt * VIGNETTE.fadeSpeed);
+    if (this.flashAmt > 0) {
+      this.flashAmt = Math.max(0, this.flashAmt - dt * VIGNETTE.fadeSpeed);
+    }
+    if (this.lowAmt > 0) this.pulseT += dt * (3 + this.lowAmt * 4);
     this.apply();
   }
 
   private apply(): void {
-    this.mat.setFloat("intensity", this.amt);
-    this.quad.setEnabled(this.amt > 0.005);
+    // Пульсация усиливается по мере падения HP.
+    const pulse = 1 + VIGNETTE.lowPulse * this.lowAmt * Math.sin(this.pulseT);
+    const low = this.lowAmt * this.lowAmt * VIGNETTE.lowMaxAlpha * pulse;
+    const amt = Math.max(this.flashAmt, low);
+    this.mat.setFloat("intensity", amt);
+    this.quad.setEnabled(amt > 0.005);
   }
 
   dispose(): void {

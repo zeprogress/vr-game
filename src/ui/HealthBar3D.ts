@@ -23,7 +23,14 @@ export class HealthBar3D {
   private readonly fillMat: StandardMaterial;
   private opacity = 1;
 
-  constructor(scene: Scene, parent: Node, offset: Vector3, width = 0.8, billboard = true) {
+  constructor(
+    scene: Scene,
+    parent: Node,
+    offset: Vector3,
+    width = 0.8,
+    billboard = true,
+    fillHeight = 0.1,
+  ) {
     this.bgMat = new StandardMaterial("hpBgMat", scene);
     const bgMat = this.bgMat;
     bgMat.disableLighting = true;
@@ -31,7 +38,11 @@ export class HealthBar3D {
     bgMat.specularColor = new Color3(0, 0, 0);
     bgMat.alpha = 0.6;
 
-    this.bg = MeshBuilder.CreatePlane("hpBg", { width: width + 0.06, height: 0.14 }, scene);
+    this.bg = MeshBuilder.CreatePlane(
+      "hpBg",
+      { width: width + 0.06, height: fillHeight * 1.4 },
+      scene,
+    );
     this.bg.material = bgMat;
     this.bg.parent = parent;
     this.bg.position.copyFrom(offset);
@@ -49,7 +60,7 @@ export class HealthBar3D {
     this.fillMat.emissiveColor = new Color3(0.25, 0.8, 0.3);
     this.fillMat.specularColor = new Color3(0, 0, 0);
 
-    this.fill = MeshBuilder.CreatePlane("hpFill", { width, height: 0.1 }, scene);
+    this.fill = MeshBuilder.CreatePlane("hpFill", { width, height: fillHeight }, scene);
     this.fill.material = this.fillMat;
     this.fill.parent = this.bg;
     this.fill.position.z = -0.01;

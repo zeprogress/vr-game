@@ -19,7 +19,7 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
-import { HUD } from "../shared/constants";
+import { HUD, VIGNETTE } from "../shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
@@ -83,6 +83,7 @@ export class Game {
       zone.shieldHome,
     );
     this.mobsAI = new MobSystem(
+      this.scene,
       zone.mobs,
       this.player,
       this.sfx,
@@ -138,6 +139,7 @@ export class Game {
       this.combat.update(dt);
       this.hands.update(dt);
       this.updateVrUi(dt);
+      this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
       this.updateHpBarFade();
     });
@@ -209,9 +211,10 @@ export class Game {
     this.playerBar3D = new HealthBar3D(
       this.scene,
       this.hudAnchor,
-      new Vector3(-0.16, 0.34, 0.9),
-      0.45,
+      new Vector3(-0.24, 0.34, 0.9),
+      0.675, // в 1.5 раза длиннее
       false,
+      0.05, // вдвое тоньше
     );
     this.playerBar3D.set(this.player.hp / this.player.maxHp);
 
@@ -269,6 +272,20 @@ export class Game {
       const node = this.hands.nodeFor(side);
       if (node && panel && panel.anchor !== node) panel.reparent(node);
     }
+  }
+
+  private lowHpT = 0;
+
+  /** Постоянная красная виньетка: тем сильнее и быстрее пульсирует, чем меньше HP. */
+  private updateLowHealthVignette(dt: number): void {
+    const frac = this.player.hp / this.player.maxHp;
+    this.vrVignette?.setHealth(frac);
+
+    const t = VIGNETTE.lowHpFrom;
+    const low = t <= 0 ? 0 : Math.max(0, Math.min(1, (t - frac) / t));
+    this.lowHpT += dt * (3 + low * 4);
+    const pulse = 1 + VIGNETTE.lowPulse * low * Math.sin(this.lowHpT);
+    this.hud.setLowHealth(low * low * VIGNETTE.lowMaxAlpha * pulse);
   }
 
   private showHp(hp: number): void {

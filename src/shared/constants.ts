@@ -78,7 +78,55 @@ export const MOB = {
   hitRadius: 0.62,
   respawn: 7, // с
   wanderRadius: 10, // м вокруг точки спавна
+  shoveMax: 8, // м/с потолок скорости от толчка предметом
+  woundLimit: 6, // сколько ран одновременно висит на теле
 } as const;
+
+/** Дальнобойный моб «Плевун»: держит дистанцию и стреляет шариками. */
+export const SPITTER = {
+  count: 3,
+  hp: MOB.hp * 2, // вдвое живучее слизня
+  aggroRange: 24, // м
+  fireRange: 20, // м, с этой дистанции начинает плеваться
+  keepDistance: 9, // м, ближе — отпрыгивает назад
+  fireCooldown: 2.4, // с между выстрелами
+  spawnRadius: [34, 46] as const, // м от спавна игрока (дальше слизней)
+  ballSpeed: 15, // м/с
+  ballGravity: 4, // м/с² (лёгкая дуга)
+  ballRadius: 0.14, // м
+  ballDamage: 6,
+  ballMaxLife: 3.5, // с полёта
+  maxBalls: 24,
+} as const;
+
+/** Описание типа моба. Числа урона/скорости общие в MOB. */
+export interface MobConfig {
+  name: string;
+  level: number;
+  hp: number;
+  xp: number;
+  /** Цвет тела [r,g,b]. */
+  tint: readonly [number, number, number];
+  ranged: boolean;
+}
+
+export const SLIME_CFG: MobConfig = {
+  name: "Слизень",
+  level: 1,
+  hp: MOB.hp,
+  xp: 1,
+  tint: [0.52, 0.16, 0.5],
+  ranged: false,
+};
+
+export const SPITTER_CFG: MobConfig = {
+  name: "Плевун",
+  level: 2,
+  hp: SPITTER.hp,
+  xp: 5,
+  tint: [0.86, 0.52, 0.16],
+  ranged: true,
+};
 
 export const PLAYER_HP = {
   max: 100,
@@ -139,7 +187,13 @@ export const SHIELD = {
 } as const;
 
 export const VIGNETTE = {
-  fadeSpeed: 1.6, // 1/с — скорость затухания
-  maxAlpha: 0.8,
+  fadeSpeed: 1.7, // 1/с — скорость затухания вспышки урона
+  maxAlpha: 0.95, // насыщенная, почти непрозрачная по краям
+  hitBase: 0.5, // минимальная сила вспышки даже от слабого удара
+  hitPerDamage: 1 / 32, // прибавка силы за единицу урона
+  /** Отдельная виньетка нехватки здоровья. */
+  lowHpFrom: 0.5, // доля HP, ниже которой начинает проступать
+  lowMaxAlpha: 0.6, // сила при почти нулевом HP
+  lowPulse: 0.18, // амплитуда пульсации (доля), сильнее при низком HP
 } as const;
 

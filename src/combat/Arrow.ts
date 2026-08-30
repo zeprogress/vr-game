@@ -65,6 +65,8 @@ export class Arrow {
   private life = 0;
   private stuck = false;
   private stuckLife = 0;
+  /** Если стрела воткнулась в живую цель — исчезает вместе с её гибелью. */
+  private stuckTarget: Hittable | null = null;
 
   constructor(proto: Mesh, pos: Vector3, vel: Vector3) {
     this.mesh = proto.clone("arrow");
@@ -82,6 +84,7 @@ export class Arrow {
   /** true — стрела ещё в игре. */
   update(dt: number, ctx: ArrowContext): boolean {
     if (this.stuck) {
+      if (this.stuckTarget && !this.stuckTarget.alive) return false;
       this.stuckLife += dt;
       return this.stuckLife < ARROW.stuckLife;
     }
@@ -101,9 +104,10 @@ export class Arrow {
         if (!target.alive) continue;
         const s = target.hitSegment();
         if (segmentDistance(prev, this.mesh.position, s.a, s.b) < s.radius + ARROW.hitRadius) {
-          target.hit(dir);
-          ctx.onHit("flesh", this.mesh.position.clone());
-          this.stopAt(prev.add(dir.scale(Math.max(0, len - 0.15))));
+          const at = prev.add(dir.scale(Math.max(0, len - 0.15)));
+          target.hit(dir, undefined, at);
+          ctx.onHit("flesh", at.clone());
+          this.stickInto(target, at);
           return true;
         }
       }
@@ -123,6 +127,18 @@ export class Arrow {
     this.mesh.position.copyFrom(at);
     this.vel.setAll(0);
     this.stuck = true;
+  }
+
+  /** Воткнуться в цель: если у неё есть узел — крепимся к нему и едем вместе. */
+  private stickInto(target: Hittable, at: Vector3): void {
+    this.mesh.position.copyFrom(at);
+    this.vel.setAll(0);
+    this.stuck = true;
+    const node = target.hitNode?.();
+    if (node) {
+      this.stuckTarget = target;
+      this.mesh.setParent(node); // сохраняет мировое положение, пересчитывает локальное
+    }
   }
 
   dispose(): void {

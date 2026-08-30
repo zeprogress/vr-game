@@ -12,6 +12,7 @@ export class Hud {
   private readonly fill: HTMLDivElement;
   private readonly label: HTMLDivElement;
   private readonly vignette: HTMLDivElement;
+  private readonly lowVignette: HTMLDivElement;
   private readonly toastEl: HTMLDivElement;
   private readonly panel: HTMLDivElement;
   private prog: Progression | null = null;
@@ -24,10 +25,11 @@ export class Hud {
     this.bar.append(this.fill, this.label);
 
     this.vignette = el("div", VIGNETTE_CSS);
+    this.lowVignette = el("div", LOW_VIGNETTE_CSS);
     this.toastEl = el("div", TOAST_CSS);
     this.panel = el("div", PANEL_CSS);
 
-    document.body.append(this.bar, this.vignette, this.toastEl, this.panel);
+    document.body.append(this.bar, this.lowVignette, this.vignette, this.toastEl, this.panel);
   }
 
   /** Подключить прогрессию — включает панель персонажа на клавишу C. */
@@ -58,12 +60,17 @@ export class Hud {
   }
 
   flashDamage(dmg: number): void {
-    const peak = Math.min(0.6, 0.15 + dmg / 60);
+    const peak = Math.min(0.9, 0.4 + dmg / 40);
     this.vignette.style.transition = "none";
     this.vignette.style.opacity = String(peak);
     void this.vignette.offsetHeight;
     this.vignette.style.transition = "opacity 0.5s ease-out";
     this.vignette.style.opacity = "0";
+  }
+
+  /** Постоянная виньетка нехватки здоровья. alpha уже с пульсацией (0..1). */
+  setLowHealth(alpha: number): void {
+    this.lowVignette.style.opacity = String(Math.max(0, Math.min(1, alpha)));
   }
 
   toast(text: string): void {
@@ -125,20 +132,25 @@ function el(tag: string, css: string): HTMLDivElement {
 }
 
 const HP_BAR_CSS =
-  "position:fixed;left:16px;top:16px;width:260px;height:22px;z-index:35;" +
-  "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:5px;overflow:hidden;" +
+  "position:fixed;left:16px;top:18px;width:390px;height:11px;z-index:35;" +
+  "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:4px;overflow:visible;" +
   "transition:opacity 0.6s ease-out;";
 
 const HP_FILL_CSS =
-  "position:absolute;inset:0;width:100%;background:#4caf50;transition:width 0.2s linear, background 0.3s;";
+  "position:absolute;inset:0;width:100%;background:#4caf50;border-radius:3px;" +
+  "transition:width 0.2s linear, background 0.3s;";
 
 const HP_LABEL_CSS =
-  "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;" +
-  "font:bold 13px system-ui,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.8);";
+  "position:absolute;left:100%;top:50%;transform:translateY(-50%);margin-left:10px;white-space:nowrap;" +
+  "font:bold 12px system-ui,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.9);";
 
 const VIGNETTE_CSS =
   "position:fixed;inset:0;z-index:34;pointer-events:none;opacity:0;" +
-  "box-shadow:inset 0 0 140px 40px rgba(180,0,0,0.9);background:rgba(140,0,0,0.15);";
+  "box-shadow:inset 0 0 210px 80px rgba(255,0,0,0.95);background:rgba(150,0,0,0.12);";
+
+const LOW_VIGNETTE_CSS =
+  "position:fixed;inset:0;z-index:33;pointer-events:none;opacity:0;transition:opacity 0.12s linear;" +
+  "box-shadow:inset 0 0 170px 70px rgba(220,0,0,0.85);";
 
 const TOAST_CSS =
   "position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:36;" +
