@@ -127,7 +127,7 @@ export class Game {
     this.player.setInput(this.defaultInput());
 
     // Звук и музыка стартуют только по жесту пользователя.
-    this.sfx.startMusic("/music/town-dion.mp3", 0.1);
+    this.sfx.startMusic("/music/town-dion.mp3", 0.045); // тихий фон
     const wake = () => this.sfx.resume();
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
@@ -278,7 +278,22 @@ export class Game {
     if (inp.panelToggle) this.wristPanel?.toggle();
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm);
 
-    if (inp.tuneToggle) this.loadoutPanel?.toggle();
+    // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
+    // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
+    this.tuneClock += dt;
+    if (inp.tuneToggle) {
+      if (this.loadoutPanel?.visible) {
+        this.loadoutPanel.toggle();
+        this.tuneTaps.length = 0;
+      } else if (!this.wristPanel?.visible) {
+        this.tuneTaps.push(this.tuneClock);
+        this.tuneTaps = this.tuneTaps.filter((t) => this.tuneClock - t <= 3);
+        if (this.tuneTaps.length >= 5) {
+          this.loadoutPanel?.toggle();
+          this.tuneTaps.length = 0;
+        }
+      }
+    }
     this.loadoutPanel?.update(inp.tuneNavY, inp.tuneDec, inp.tuneInc, inp.tuneStep, dt);
     // Пока панель настройки открыта, X/Y/A меняют значения (движение свободно).
     if (this.xrInput) this.xrInput.tuneOpen = this.loadoutPanel?.visible ?? false;
@@ -294,6 +309,8 @@ export class Game {
   }
 
   private lowHpT = 0;
+  private tuneClock = 0;
+  private tuneTaps: number[] = [];
 
   /** Постоянная красная виньетка: тем сильнее и быстрее пульсирует, чем меньше HP. */
   private updateLowHealthVignette(dt: number): void {

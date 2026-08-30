@@ -87,6 +87,8 @@ export class Mob implements Hittable {
   private shoveCd = 0;
   private flash = 0;
   private hurtCd = 0;
+  private aggroed = false; // разъярён — идёт к игроку даже издалека
+  private outOfRange = 0; // с подряд вне зоны агра
   private dead = false;
   private respawnIn = 0;
   private deathT = 0;
@@ -199,6 +201,8 @@ export class Mob implements Hittable {
     this.hurtCd = 0.2;
     this.flash = 1;
     this.hp -= damage;
+    this.aggroed = true; // получил урон (в т.ч. стрелой издалека) — идёт к игроку
+    this.outOfRange = 0;
 
     // Отскок пропорционален урону.
     const kb = 2.5 + damage * 1.5;
@@ -328,7 +332,18 @@ export class Mob implements Hittable {
     const dist = toPlayer.length();
     const dir = dist > 1e-3 ? toPlayer.scale(1 / dist) : new Vector3(0, 0, 1);
     const aggro = this.cfg.ranged ? SPITTER.aggroRange : MOB.aggroRange;
-    const chasing = dist < aggro;
+    // Внутри зоны — агрится; получил урон — тоже. Уходит из агра, только если
+    // игрок надолго ушёл заметно дальше зоны (гистерезис, чтобы не мигало).
+    if (dist < aggro) {
+      this.aggroed = true;
+      this.outOfRange = 0;
+    } else if (this.aggroed && dist > aggro * 1.4) {
+      this.outOfRange += dt;
+      if (this.outOfRange > MOB.leash) this.aggroed = false;
+    } else {
+      this.outOfRange = 0;
+    }
+    const chasing = this.aggroed;
 
     // Плашка с именем — только для мобов рядом и примерно в поле зрения.
     // dir смотрит от моба к игроку; перед игроком -> dir ≈ -playerAim.
@@ -425,6 +440,8 @@ export class Mob implements Hittable {
     );
     this.hp = this.maxHp;
     this.dead = false;
+    this.aggroed = false;
+    this.outOfRange = 0;
     this.vel.setAll(0);
     this.grounded = false;
     this.flash = 0;

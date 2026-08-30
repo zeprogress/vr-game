@@ -82,7 +82,7 @@ export class XRInput implements InputSource {
     const rp = this.right?.inputSource.gamepad;
     const b = LOADOUT.buttons;
 
-    // B на правом всегда открывает/закрывает панель настройки экипировки.
+    // B на правом: сигнал для панели настройки (Game ждёт 5 нажатий за 3 с).
     s.tuneToggle = this.edge("tune", pressed(rp, b.panelSpend));
 
     if (this.tuneOpen) {
