@@ -18,3 +18,18 @@ export interface Hittable {
   /** Центр тела в мире — для расчёта направления толчка. */
   center?(): Vector3;
 }
+
+/** Что за цель — для отправки урона на сервер (этап 6). */
+export type HitTargetKind = "mob" | "dummy";
+
+/**
+ * Сообщить серверу о попадании: id цели, тип, урон и горизонтальное
+ * направление удара. Урон считает клиент, применяет сервер.
+ */
+export type HitReporter = (
+  id: string,
+  target: HitTargetKind,
+  dmg: number,
+  dx: number,
+  dz: number,
+) => void;

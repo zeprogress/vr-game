@@ -8,16 +8,11 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass } from "./props";
-import { Dummy } from "../combat/Dummy";
-import { Mob } from "../combat/Mob";
-import { MOB, SPITTER, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 
 export interface Zone {
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
   ground: Mesh;
-  dummies: Dummy[];
-  mobs: Mob[];
-  /** Высота земли в точке (аналитическая) — для AI мобов. */
+  /** Высота земли в точке (аналитическая). */
   groundHeight: (x: number, z: number) => number;
   /** Точки, где лежат меч, лук и щит (над камнями). */
   swordHome: Vector3;
@@ -26,8 +21,8 @@ export interface Zone {
 }
 
 /**
- * Тестовая зона: рельеф, небо с облаками, деревья и трава,
- * несколько неподвижных кукол-противников.
+ * Тестовая зона: рельеф, небо с облаками, деревья и трава.
+ * Мобы и куклы живут на сервере (этап 6) — их создаёт NetMobs.
  */
 export function buildZone(scene: Scene): Zone {
   const sunDir = new Vector3(-0.5, -0.9, -0.35).normalize();
@@ -44,45 +39,12 @@ export function buildZone(scene: Scene): Zone {
   scatterTrees(scene, terrain);
   scatterGrass(scene, terrain);
 
-  // Куклы дугой перед спавном.
-  const dummies: Dummy[] = [];
-  for (const [dx, dz] of [
-    [-4, -6],
-    [-1.5, -8],
-    [1.5, -8],
-    [4, -6],
-  ] as const) {
-    dummies.push(new Dummy(scene, new Vector3(dx, terrain.heightAt(dx, dz), dz)));
-  }
-
-  // Слизни — по кругу подальше от спавна.
-  const mobs: Mob[] = [];
-  for (let i = 0; i < MOB.count; i++) {
-    const a = (i / MOB.count) * Math.PI * 2 + 0.4;
-    const r = 22 + Math.random() * 12;
-    const mx = Math.cos(a) * r;
-    const mz = Math.sin(a) * r - 4;
-    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz), SLIME_CFG));
-  }
-
-  // Плевуны — ещё дальше, отдельным кольцом.
-  const [rMin, rMax] = SPITTER.spawnRadius;
-  for (let i = 0; i < SPITTER.count; i++) {
-    const a = (i / SPITTER.count) * Math.PI * 2 + 1.1;
-    const r = rMin + Math.random() * (rMax - rMin);
-    const mx = Math.cos(a) * r;
-    const mz = Math.sin(a) * r - 4;
-    mobs.push(new Mob(scene, new Vector3(mx, terrain.heightAt(mx, mz), mz), SPITTER_CFG));
-  }
-
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
   const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 1.0, -12);
 
   return {
     ground: terrain.mesh,
-    dummies,
-    mobs,
     groundHeight: terrain.heightAt,
     swordHome,
     bowHome,

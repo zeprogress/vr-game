@@ -10,27 +10,31 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { COMBAT } from "#shared/constants";
-import type { Hittable } from "./Hittable";
+import type { DummyState } from "#shared/net/schema";
+import type { Hittable, HitReporter } from "./Hittable";
 
 /**
- * Неподвижная кукла-противник на столбе. Принимает удары мечом:
- * вспыхивает красным, качается, после нескольких попаданий падает и
- * через паузу воскресает.
+ * Кукла-противник — ВИД (этап 6). hp/смерть приходят с сервера; клиент
+ * играет вспышку и падение. Удары игрок считает и репортит серверу.
  */
 export class Dummy implements Hittable {
   readonly root: TransformNode;
-  private readonly figure: TransformNode; // тело, качается при ударе
+  private readonly figure: TransformNode;
   private readonly mat: StandardMaterial;
 
-  private hp = COMBAT.dummyHp;
   private hitCooldown = 0;
   private flash = 0;
   private tilt = 0;
   private tiltVel = 0;
   private dying = false;
-  private respawnIn = 0;
+  private lastHurtSeq = 0;
 
-  constructor(scene: Scene, position: Vector3) {
+  constructor(
+    scene: Scene,
+    readonly id: string,
+    position: Vector3,
+    private readonly report: HitReporter,
+  ) {
     this.root = new TransformNode("dummy", scene);
     this.root.position.copyFrom(position);
 
@@ -74,7 +78,6 @@ export class Dummy implements Hittable {
     return !this.dying;
   }
 
-  /** Вертикальный отрезок тела (ноги торса -> макушка) для проверки удара. */
   hitSegment(): { a: Vector3; b: Vector3; radius: number } {
     const base = this.figure.getAbsolutePosition();
     return {
@@ -84,51 +87,61 @@ export class Dummy implements Hittable {
     };
   }
 
-  /** Удар пришёл. dir — направление удара в мире (для отклонения). */
   hit(dir: Vector3, damage = 1): boolean {
     if (this.dying || this.hitCooldown > 0) return false;
     this.hitCooldown = COMBAT.hitCooldown;
     this.flash = 1;
-    this.hp -= damage;
 
     const local = this.root.getWorldMatrix().clone().invert();
     const d = Vector3.TransformNormal(dir, local);
     this.tiltVel += Math.sign(d.z || 1) * 6;
 
-    if (this.hp <= 0) {
-      this.dying = true;
-      this.respawnIn = COMBAT.dummyRespawn;
+    let hx = dir.x;
+    let hz = dir.z;
+    const h = Math.hypot(hx, hz);
+    if (h > 1e-4) {
+      hx /= h;
+      hz /= h;
+    } else {
+      hz = 1;
     }
+    this.report(this.id, "dummy", damage, hx, hz);
     return true;
   }
 
-  update(dt: number): void {
+  applyState(s: DummyState, dt: number): void {
     if (this.hitCooldown > 0) this.hitCooldown -= dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
     this.mat.emissiveColor.set(this.flash * 0.9, this.flash * 0.05, 0);
 
+    if (s.hurtSeq !== this.lastHurtSeq) {
+      this.lastHurtSeq = s.hurtSeq;
+      this.flash = 1;
+      this.tiltVel += 6;
+    }
+
+    const dead = s.dead === 1;
+    if (dead && !this.dying) this.dying = true;
+    else if (!dead && this.dying) {
+      this.dying = false;
+      this.tilt = 0;
+      this.tiltVel = 0;
+      this.figure.rotation.x = 0;
+    }
+
     if (this.dying) {
-      // Падение назад.
       this.tilt += (Math.PI / 2 - this.tilt) * Math.min(1, dt * 6);
       this.figure.rotation.x = this.tilt;
-      this.respawnIn -= dt;
-      if (this.respawnIn <= 0) this.reset();
       return;
     }
 
-    // Пружина: качание возвращается к нулю.
     this.tiltVel += -40 * this.tilt * dt;
     this.tiltVel *= Math.exp(-4 * dt);
     this.tilt += this.tiltVel * dt;
     this.figure.rotation.x = this.tilt;
   }
 
-  private reset(): void {
-    this.hp = COMBAT.dummyHp;
-    this.dying = false;
-    this.tilt = 0;
-    this.tiltVel = 0;
-    this.flash = 0;
-    this.figure.rotation.x = 0;
+  dispose(): void {
+    this.root.dispose(false, true);
   }
 }

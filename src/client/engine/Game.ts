@@ -13,7 +13,8 @@ import type { Node } from "@babylonjs/core/node";
 
 import { buildZone } from "../world/Zone";
 import { CombatSystem, STOW } from "../combat/CombatSystem";
-import { MobSystem } from "../combat/MobSystem";
+import { NetMobs } from "../combat/MobSystem";
+import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
@@ -46,8 +47,9 @@ export class Game {
   readonly isTouch: boolean;
   private readonly ground: Mesh;
   private readonly combat: CombatSystem;
-  private readonly mobsAI: MobSystem;
-  private readonly dummies: { update(dt: number): void }[];
+  private readonly netMobs: NetMobs;
+  /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
+  private readonly targets: Hittable[] = [];
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
 
@@ -63,6 +65,7 @@ export class Game {
   // Сеть: чужие игроки.
   private net: NetClient | null = null;
   private readonly avatars = new Map<string, RemoteAvatar>();
+  private readonly aim = new Vector3(0, 0, 1);
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -83,12 +86,11 @@ export class Game {
     this.scene.activeCamera = this.player.camera;
     this.player.placeOnGround();
 
-    this.dummies = zone.dummies;
     this.combat = new CombatSystem(
       this.scene,
       this.player,
       () => this.xr,
-      [...zone.dummies, ...zone.mobs],
+      this.targets,
       this.sfx,
       this.progression,
       zone.groundHeight,
@@ -96,15 +98,9 @@ export class Game {
       zone.bowHome,
       zone.shieldHome,
     );
-    this.mobsAI = new MobSystem(
-      this.scene,
-      zone.mobs,
-      this.player,
-      this.sfx,
-      this.progression,
-      () => this.combat,
-      zone.groundHeight,
-    );
+    const report: HitReporter = (id, target, dmg, dx, dz) =>
+      this.net?.sendHitMob({ id, target, dmg, dx, dz });
+    this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
 
@@ -148,8 +144,8 @@ export class Game {
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.player.update(dt);
-      this.mobsAI.update(dt);
-      for (const d of this.dummies) d.update(dt);
+      this.player.eyeForward.normalizeToRef(this.aim);
+      this.netMobs.update(dt, this.player.position, this.aim);
       this.combat.update(dt);
       this.hands.update(dt);
       this.syncNet();
@@ -368,6 +364,9 @@ export class Game {
   attachNet(net: NetClient): void {
     this.net = net;
     net.onChar = (data) => this.applyChar(data);
+    net.onXp = (amount) => this.progression.addXp(amount);
+    net.onMobHit = (dmg, fromX, fromZ) => this.takeMobHit(dmg, fromX, fromZ);
+    if (net.room) this.netMobs.attach(net.room);
 
     // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
     this.saveTimer = window.setInterval(() => this.saveNow(), 30_000);
@@ -407,6 +406,19 @@ export class Game {
     this.showHp(this.player.hp);
   }
 
+  /** Сервер сообщил: тебя ударил моб/плевок. Щит/меч могут погасить урон. */
+  private takeMobHit(dmg: number, fromX: number, fromZ: number): void {
+    const eye = this.player.eyePosition;
+    const from = new Vector3(fromX, eye.y, fromZ);
+    const mult = this.combat.absorbAttack(from);
+    if (mult <= 0) return;
+    const dir = eye.subtract(from);
+    dir.y = 0;
+    if (dir.lengthSquared() > 1e-6) dir.normalize();
+    else dir.set(0, 0, 1);
+    this.player.damage(dmg * mult, dir);
+  }
+
   private saveNow(): void {
     if (!this.net?.online) return;
     const pos = this.player.snapshotState();
@@ -422,7 +434,12 @@ export class Game {
     this.unsubProgress?.();
     this.saveTimer = this.saveDebounce = null;
     this.unsubProgress = null;
-    if (this.net) this.net.onChar = null;
+    this.netMobs.detach();
+    if (this.net) {
+      this.net.onChar = null;
+      this.net.onXp = null;
+      this.net.onMobHit = null;
+    }
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
     this.net = null;

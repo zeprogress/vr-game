@@ -1,7 +1,15 @@
 import { Client, type Room } from "colyseus.js";
 
 import type { ZoneState } from "#shared/net/schema";
-import { MSG, type CharMsg, type MoveMsg, type SaveMsg } from "#shared/net/messages";
+import {
+  MSG,
+  type CharMsg,
+  type HitMobMsg,
+  type MobHitMsg,
+  type MoveMsg,
+  type SaveMsg,
+  type XpMsg,
+} from "#shared/net/messages";
 
 const SEND_HZ = 18;
 const SEND_EVERY = 1000 / SEND_HZ;
@@ -17,6 +25,10 @@ export class NetClient {
 
   /** Вызывается один раз при входе: персонаж с сервера или null (новый токен). */
   onChar: ((data: CharMsg) => void) | null = null;
+  /** Сервер начислил опыт (добит моб). */
+  onXp: ((amount: number) => void) | null = null;
+  /** Моб/плевок ударил игрока: урон и точка, откуда прилетело. */
+  onMobHit: ((dmg: number, fromX: number, fromZ: number) => void) | null = null;
 
   get online(): boolean {
     return this.room !== null;
@@ -32,6 +44,8 @@ export class NetClient {
       this.client = new Client();
       const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
       room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
+      room.onMessage(MSG.xp, (m: XpMsg) => this.onXp?.(m.amount));
+      room.onMessage(MSG.mobHit, (m: MobHitMsg) => this.onMobHit?.(m.dmg, m.fromX, m.fromZ));
       // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
       await new Promise<void>((r) => {
         const t = setTimeout(r, 800);
@@ -65,6 +79,11 @@ export class NetClient {
   /** Отправить снимок состояния для сохранения (вызывается осознанно). */
   sendSave(msg: SaveMsg): void {
     this.room?.send(MSG.save, msg);
+  }
+
+  /** Сообщить о попадании по мобу/кукле (урон применит сервер). */
+  sendHitMob(msg: HitMobMsg): void {
+    this.room?.send(MSG.hitMob, msg);
   }
 
   disconnect(): void {
