@@ -13,7 +13,8 @@
     "dev:all": "tsx watch src/server/index.ts & VR=1 vite",
     "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json",
     "build": "npm run typecheck && vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "tunnel": "cloudflared tunnel --url http://localhost:5173"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",
