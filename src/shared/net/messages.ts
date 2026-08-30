@@ -7,6 +7,12 @@ export const MSG = {
   save: "s",
   /** сервер -> клиент: загруженный персонаж по гостевому токену (или null). */
   char: "c",
+  /** клиент -> сервер: попал по мобу/кукле (урон считает клиент). */
+  hitMob: "hm",
+  /** сервер -> клиент: тебе начислен опыт (за добитого моба). */
+  xp: "xp",
+  /** сервер -> клиент: моб ударил тебя в упор / плевком. */
+  mobHit: "mh",
 } as const;
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
@@ -37,3 +43,23 @@ export interface SaveMsg {
 
 /** null — токен новый, сервер ещё не знает этого игрока. */
 export type CharMsg = SaveMsg | null;
+
+export interface HitMobMsg {
+  id: string;
+  target: "mob" | "dummy";
+  dmg: number;
+  /** Горизонтальное направление удара (для отскока и раны). */
+  dx: number;
+  dz: number;
+}
+
+export interface XpMsg {
+  amount: number;
+}
+
+export interface MobHitMsg {
+  dmg: number;
+  /** Откуда прилетело — для проверки блока щитом/мечом. */
+  fromX: number;
+  fromZ: number;
+}

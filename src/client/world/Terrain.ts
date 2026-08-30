@@ -6,23 +6,12 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 
 import { WORLD } from "#shared/constants";
+import { terrainHeight as surface } from "#shared/terrain";
 
 export interface Terrain {
   mesh: Mesh;
   /** Высота поверхности в точке (x, z) — аналитическая, совпадает с мешем. */
   heightAt(x: number, z: number): number;
-}
-
-/** Пологий рельеф из суммы синусов + плоская площадка у спавна. */
-function surface(x: number, z: number): number {
-  const h =
-    1.4 * Math.sin(x * 0.075) * Math.cos(z * 0.068) +
-    0.7 * Math.sin(x * 0.16 + 1.3) * Math.sin(z * 0.12) +
-    0.35 * Math.cos((x + z) * 0.05);
-  // Ближе к центру — площе (радиус ~16 м).
-  const d = Math.sqrt(x * x + z * z);
-  const flat = clamp01((d - 8) / 14);
-  return h * flat;
 }
 
 export function createTerrain(scene: Scene): Terrain {
@@ -91,6 +80,3 @@ function grassMaterial(scene: Scene): StandardMaterial {
   return mat;
 }
 
-function clamp01(v: number): number {
-  return v < 0 ? 0 : v > 1 ? 1 : v;
-}

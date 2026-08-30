@@ -21,7 +21,43 @@ export class PlayerState extends Schema {
   @type(Xf) handR = new Xf();
 }
 
+export type MobKind = "slime" | "spitter";
+
+export class MobState extends Schema {
+  @type("string") kind: MobKind = "slime";
+  @type("float32") x = 0;
+  @type("float32") y = 0;
+  @type("float32") z = 0;
+  @type("float32") yaw = 0;
+  @type("float32") hp = 4;
+  @type("float32") maxHp = 4;
+  @type("uint8") dead = 0;
+  @type("uint8") grounded = 1;
+  /** ++ на каждый удар — клиент играет вспышку и рану. */
+  @type("uint16") hurtSeq = 0;
+  @type("float32") hurtDx = 0;
+  @type("float32") hurtDz = 0;
+}
+
+export class DummyState extends Schema {
+  @type("float32") x = 0;
+  @type("float32") y = 0;
+  @type("float32") z = 0;
+  @type("float32") hp = 3;
+  @type("uint8") dead = 0;
+  @type("uint16") hurtSeq = 0;
+}
+
+export class BallState extends Schema {
+  @type("float32") x = 0;
+  @type("float32") y = 0;
+  @type("float32") z = 0;
+}
+
 /** Состояние зоны — общий контракт клиента и сервера. */
 export class ZoneState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
+  @type({ map: MobState }) mobs = new MapSchema<MobState>();
+  @type({ map: DummyState }) dummies = new MapSchema<DummyState>();
+  @type({ map: BallState }) balls = new MapSchema<BallState>();
 }
