@@ -219,6 +219,8 @@ export class Mob implements Hittable {
       this.dead = true;
       this.deathT = 0;
       this.respawnIn = MOB.respawn;
+      // Раны убираем сразу — не должны висеть, пока тело оседает.
+      for (const w of this.wounds) w.setEnabled(false);
       this.ctxOnDie?.(this.root.getAbsolutePosition().clone(), this.cfg.xp);
     } else {
       this.ctxOnHurt?.(this.root.getAbsolutePosition().clone());
