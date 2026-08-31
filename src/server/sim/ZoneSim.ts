@@ -31,6 +31,47 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
 /** Стволы деревьев — общие с клиентом, считаются один раз. */
 const TREES = trees();
 
+/** Насколько далеко вперёд моб смотрит, выбирая куда прыгнуть. */
+const TREE_LOOKAHEAD = 3.5;
+
+/**
+ * Отклоняет намеченное направление прыжка в сторону от ствола на пути.
+ *
+ * Без этого моб бьётся в дерево и стоит: выталкивание не даёт залезть внутрь,
+ * но и обойти само не помогает. Здесь моб заранее берёт по касательной —
+ * с той стороны, к которой ствол и так ближе, так что крюк выходит короткий.
+ */
+function steerAroundTrees(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+): [number, number] {
+  const clr = MOB.bodyRadius + 0.35; // запас, чтобы не тереться боком о ствол
+  let hit: { along: number; perp: number; wide: number } | null = null;
+  for (const t of TREES) {
+    const rx = t.x - x;
+    const rz = t.z - z;
+    const along = rx * dx + rz * dz; // вдоль хода
+    if (along <= 0 || along > TREE_LOOKAHEAD) continue;
+    const perp = rx * -dz + rz * dx; // влево от хода
+    const wide = t.r + clr;
+    if (Math.abs(perp) >= wide) continue;
+    if (!hit || along < hit.along) hit = { along, perp, wide };
+  }
+  if (!hit) return [dx, dz];
+
+  // Уходим в сторону, противоположную стволу; чем он ближе к оси хода, тем круче.
+  const side = hit.perp >= 0 ? -1 : 1;
+  const force = 1 - Math.abs(hit.perp) / hit.wide;
+  const nx = -dz * side;
+  const nz = dx * side;
+  const sx = dx + nx * (0.6 + force);
+  const sz = dz + nz * (0.6 + force);
+  const len = Math.hypot(sx, sz);
+  return len > 1e-4 ? [sx / len, sz / len] : [dx, dz];
+}
+
 /** Середина торса куклы над её основанием (см. клиентский Dummy). */
 const DUMMY_CENTER_Y = 1.5;
 
@@ -198,6 +239,7 @@ class Mob {
           hz = dz;
         }
         if (hx !== 0 || hz !== 0) {
+          [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
           this.vx = hx * MOB.hopSpeed;
           this.vz = hz * MOB.hopSpeed;
           this.vy = MOB.hopUp;
