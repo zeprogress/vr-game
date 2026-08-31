@@ -326,7 +326,8 @@ export class Game {
         this.hands.attach(this.xr!);
         this.buildVrUi();
       } else if (state === WebXRState.NOT_IN_XR) {
-        this.combat.dropStowed();
+        // Убранное за спину НЕ роняем: в плоском режиме его не достать, но
+        // при возврате в VR и при следующем входе оно на месте.
         this.player.exitXR();
         this.xrInput = null;
         this.player.setInput(this.defaultInput());
@@ -610,6 +611,7 @@ export class Game {
     this.combat.onTakeWorldWeapon = (id) => net.sendTakeWeapon(id);
     this.combat.makeWeaponMesh = (cls, tier) =>
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
+    this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
 
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
     net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
@@ -639,6 +641,10 @@ export class Game {
       this.saveDebounce = window.setTimeout(() => this.saveNow(), 1500);
     });
     window.addEventListener("beforeunload", this.beforeUnload);
+
+    // Только теперь, когда фабрики мешей и колбэки на месте, разбираем
+    // персонажа с сервера: иначе восстанавливать оружие было бы нечем.
+    net.flushChar();
   }
 
   /**
@@ -686,7 +692,8 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
-    // Оружие, убранное за спину в прошлый раз, возвращаем на место.
+    // Оружие, которое было в руках и за спиной, возвращаем на место.
+    if (data.held) this.combat.restoreHeld(data.held);
     if (data.stowed?.length) this.combat.restoreStowed(data.stowed);
     // Настройки панели с сервера — главнее локальных.
     if (data.overrides && Object.keys(data.overrides).length) importOverrides(data.overrides);
@@ -805,6 +812,7 @@ export class Game {
     this.combat.nearestWorldWeapon = null;
     this.combat.onTakeWorldWeapon = null;
     this.combat.makeWeaponMesh = null;
+    this.combat.onWeaponLanded = null;
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;

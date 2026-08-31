@@ -18,6 +18,9 @@ import {
   type SaveMsg,
   type HandsMsg,
   type StowedWeapon,
+  type CarriedWeapon,
+  type HeldWeapons,
+  type DropWeaponMsg,
   type OverridesMsg,
   type RtcMsg,
   type SpendMsg,
@@ -70,7 +73,7 @@ import {
   spendPoint,
   type Progress,
 } from "#shared/progression";
-import { store } from "../store";
+import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 
@@ -97,6 +100,18 @@ interface Runtime {
   stowed: StowedWeapon[];
   /** Панельные настройки игрока (JSON как есть) — применяются только у него. */
   overrides: Record<string, unknown>;
+}
+
+/** Оружие «с собой» из сейва — с проверкой, что класс и уровень существуют. */
+function sanitizeCarried(v: unknown): CarriedWeapon | null {
+  const w = v as CarriedWeapon | null;
+  if (!w || !isWeaponClass(w.cls) || !isWeaponTier(w.tier)) return null;
+  return { cls: w.cls, tier: w.tier };
+}
+
+function sanitizeHeld(v: unknown): HeldWeapons {
+  const h = v as HeldWeapons | undefined;
+  return { left: sanitizeCarried(h?.left), right: sanitizeCarried(h?.right) };
 }
 
 /** Принять панельные настройки: это должен быть небольшой JSON-объект. */
@@ -263,6 +278,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.state.dummies.set(d.id, s);
     }
 
+    // Лут, лежавший на земле до перезапуска, возвращаем в мир.
+    this.sim.restoreDrops(world.loadDrops());
+
     this.setSimulationInterval((deltaMs) => this.step(deltaMs / 1000), 50);
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
@@ -405,6 +423,26 @@ export class ZoneRoom extends Room<ZoneState> {
       store.flush(); // правят редко — пишем на диск сразу
     });
 
+    // Заработанное оружие упало на землю — кладём его в мир (общее для всех
+    // и переживает перезапуск). Право на уровень (owned) у игрока остаётся:
+    // это кооп, а не PvP-экономика, и терять добытое из-за случайного броска
+    // обиднее, чем иметь лишний меч.
+    this.onMessage(MSG.dropWeapon, (client: Client, msg: DropWeaponMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || !msg) return;
+      if (!isWeaponClass(msg.cls) || !isWeaponTier(msg.tier)) return;
+      if (msg.tier === "base") return; // базовое лежит у камней, в мир не кладём
+      if (!rt.owned.has(weaponKey(msg.cls, msg.tier))) return; // не поднимал — не роняет
+
+      const edge = WORLD.size / 2 - 2;
+      const x = clampAbs(num(msg.x, p.head.x), edge);
+      const z = clampAbs(num(msg.z, p.head.z), edge);
+      // Далеко от игрока предмет оказаться не мог даже после сильного броска.
+      if (Math.hypot(x - p.head.x, z - p.head.z) > 60) return;
+      this.sim.dropWeapon(msg.cls, msg.tier, x, z);
+    });
+
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
       if (!msg?.peer || typeof msg.data !== "string") return;
       if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
@@ -480,6 +518,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const c = this.clientOf(id);
         if (c) this.persist(c);
       });
+      world.save(this.sim.saveDrops());
     }
 
     // Мобы гоняются только за живыми.
@@ -666,6 +705,13 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     p.maxHp = maxHpFor(p.str);
+    // Руки заполняем из сейва СРАЗУ: иначе первое же сохранение (оно идёт
+    // раз в 10 с) запишет пустые руки, ещё до того как клиент пришлёт свои.
+    const savedHeld = sanitizeHeld(rec?.held);
+    p.leftCls = savedHeld.left?.cls ?? "";
+    p.leftTier = savedHeld.left?.tier ?? "";
+    p.rightCls = savedHeld.right?.cls ?? "";
+    p.rightTier = savedHeld.right?.tier ?? "";
     writeBag(p, restoreBag(rec?.bag));
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
@@ -696,6 +742,7 @@ export class ZoneRoom extends Room<ZoneState> {
             z: rec.z,
             yaw: rec.yaw,
             stowed: sanitizeStowed(rec.stowed),
+            held: sanitizeHeld(rec.held),
             overrides: sanitizeOverrides(rec.overrides),
           }
         : null,
@@ -723,6 +770,7 @@ export class ZoneRoom extends Room<ZoneState> {
       hp: p.hp,
       owned: [...rt.owned],
       stowed: rt.stowed,
+      held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
       overrides: rt.overrides,
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
@@ -742,7 +790,9 @@ export class ZoneRoom extends Room<ZoneState> {
   override onBeforeShutdown(): void {
     for (const client of this.clients) this.persist(client);
     store.flush();
-    console.log(`[zone] стоп: сохранено игроков ${this.clients.length}`);
+    const drops = this.sim.saveDrops();
+    world.save(drops);
+    console.log(`[zone] стоп: игроков ${this.clients.length}, лута на земле ${drops.length}`);
     this.disconnect();
   }
 

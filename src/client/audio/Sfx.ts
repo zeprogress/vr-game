@@ -17,6 +17,8 @@ export class Sfx {
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private music: HTMLAudioElement | null = null;
+  /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
+  private readonly ear = { x: 0, y: 0, z: 0 };
 
   private ensure(): void {
     if (this.ctx) return;
@@ -97,15 +99,41 @@ export class Sfx {
     p.refDistance = 5;
     p.maxDistance = 55;
     p.rolloffFactor = 0.8;
+
+    // Свой меч и своя бутылка — в полуметре от головы. Вплотную к уху HRTF
+    // вжимает звук в один наушник, и «взмах справа» звучит как в другой
+    // комнате слева. Поэтому близкие источники отодвигаем на MIN_EAR,
+    // сохраняя направление: сторона слышна, но звук остаётся при тебе.
+    const MIN_EAR = 1.6;
+    let dx = at.x - this.ear.x;
+    let dy = at.y - this.ear.y;
+    let dz = at.z - this.ear.z;
+    const d = Math.hypot(dx, dy, dz);
+    if (d < MIN_EAR) {
+      if (d < 1e-3) {
+        dx = 0;
+        dy = 0;
+        dz = MIN_EAR; // ровно в голове — считаем, что прямо перед лицом
+      } else {
+        const k = MIN_EAR / d;
+        dx *= k;
+        dy *= k;
+        dz *= k;
+      }
+    }
+    const x = this.ear.x + dx;
+    const y = this.ear.y + dy;
+    const z = this.ear.z + dz;
+
     if (p.positionX) {
-      p.positionX.value = at.x;
-      p.positionY.value = at.y;
-      p.positionZ.value = -at.z;
+      p.positionX.value = x;
+      p.positionY.value = y;
+      p.positionZ.value = -z;
     } else {
-      (p as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(
-        at.x,
-        at.y,
-        -at.z,
+      (p as unknown as { setPosition(px: number, py: number, pz: number): void }).setPosition(
+        x,
+        y,
+        -z,
       );
     }
     p.connect(this.master!);
@@ -118,6 +146,9 @@ export class Sfx {
    */
   setListener(pos: SoundAt, forward: SoundAt, up: SoundAt): void {
     if (!this.ctx) return;
+    this.ear.x = pos.x;
+    this.ear.y = pos.y;
+    this.ear.z = pos.z;
     const l = this.ctx.listener;
     // Z инвертируем и у слушателя, и у источников — оси Web Audio против Babylon.
     if (l.positionX) {

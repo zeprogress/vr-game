@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PLAYER, RESPAWN } from "#shared/constants";
-import type { SaveMsg, StowedWeapon } from "#shared/net/messages";
+import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
 import { emptyBag, type Slot } from "#shared/items";
 
@@ -16,6 +16,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   owned: string[];
   /** Оружие, убранное за спину при прошлом выходе. */
   stowed: StowedWeapon[];
+  /** Что было в руках при прошлом выходе. */
+  held: HeldWeapons;
   /** Панельные настройки (положения рук/предметов, HUD, графика, голос). */
   overrides: Record<string, unknown>;
   bag: Slot[];
@@ -37,6 +39,7 @@ function blank(token: string): PlayerRecord {
     hp: maxHpFor(p.str),
     owned: [],
     stowed: [],
+    held: { left: null, right: null },
     overrides: {},
     bag: emptyBag(),
     updatedAt: 0,

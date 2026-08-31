@@ -15,6 +15,7 @@ import {
   type SpendMsg,
   type HandsMsg,
   type SetTimeMsg,
+  type DropWeaponMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
 } from "#shared/net/messages";
@@ -50,6 +51,13 @@ export class NetClient {
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
   onReconnected: ((room: Room<ZoneState>) => void) | null = null;
+
+  /**
+   * Персонаж, пришедший до того, как Game успела подписаться. В VR между
+   * входом в комнату и attachNet проходит целый экран «Войти в VR», и без
+   * этой заначки снаряжение с сервера просто терялось.
+   */
+  private pendingChar: CharMsg | undefined;
 
   private nick = "";
   private token = "";
@@ -96,7 +104,10 @@ export class NetClient {
 
   /** Подписки комнаты — общие для первого входа и переподключения. */
   private wireRoom(room: Room<ZoneState>): void {
-    room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
+    room.onMessage(MSG.char, (data: CharMsg) => {
+      if (this.onChar) this.onChar(data);
+      else this.pendingChar = data;
+    });
     room.onMessage(MSG.mobHit, (m: MobHitMsg) => this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by));
     room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
@@ -133,6 +144,14 @@ export class NetClient {
       }
     }
     this.reconnecting = false;
+  }
+
+  /** Отдать персонажа, если он пришёл раньше подписки. Звать после attachNet. */
+  flushChar(): void {
+    if (this.pendingChar === undefined) return;
+    const data = this.pendingChar;
+    this.pendingChar = undefined;
+    this.onChar?.(data);
   }
 
   /** Отправить свой транспорт (не чаще SEND_HZ раз в секунду). */
@@ -183,6 +202,11 @@ export class NetClient {
   /** Админ переводит время суток всему миру. */
   sendSetTime(hour: number, auto: number): void {
     this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
+  }
+
+  /** Заработанное оружие легло на землю — пусть станет предметом мира. */
+  sendDropWeapon(msg: DropWeaponMsg): void {
+    this.room?.send(MSG.dropWeapon, msg);
   }
 
   /** Сохранить панельные настройки на сервере (по токену игрока). */

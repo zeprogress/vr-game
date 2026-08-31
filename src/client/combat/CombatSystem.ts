@@ -16,8 +16,13 @@ import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 
 import { BELT, BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
-import { DUAL_WIELD, WEAPON_TAKE_REACH, type WeaponTier } from "#shared/items";
-import type { StowedWeapon } from "#shared/net/messages";
+import {
+  DUAL_WIELD,
+  WEAPON_TAKE_REACH,
+  type WeaponClass,
+  type WeaponTier,
+} from "#shared/items";
+import type { CarriedWeapon, HeldWeapons, StowedWeapon } from "#shared/net/messages";
 import { LOADOUT, type ItemKind as LoadoutItemKind, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -175,6 +180,15 @@ export class CombatSystem {
   }
   /** Игрок поднёс бутылочку ко рту. Game шлёт заявку серверу. */
   onDrinkPotion: (() => void) | null = null;
+  /**
+   * Заработанное оружие легло на землю. Онлайн Game отдаёт его серверу — там
+   * оно становится предметом мира: видно всем и переживает перезапуск.
+   * null (офлайн) — предмет просто остаётся лежать у этого игрока.
+   */
+  onWeaponLanded: ((cls: WeaponClass, tier: WeaponTier, x: number, z: number) => void) | null =
+    null;
+  /** Где лежит базовое оружие (камни у спавна) — туда возвращается лук. */
+  private readonly homes: Record<ItemKind, Vector3>;
   private readonly fistPrevW: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
 
   constructor(
@@ -189,6 +203,7 @@ export class CombatSystem {
     bowHome: Vector3,
     shieldHome: Vector3,
   ) {
+    this.homes = { sword: swordHome.clone(), bow: bowHome.clone(), shield: shieldHome.clone() };
     const sword = createSword(scene);
     const shield = createShield(scene);
     this.bowParts = createBow(scene);
@@ -463,21 +478,6 @@ export class CombatSystem {
     this.motion[side].angVel.setAll(0);
   }
 
-  /** Выход из VR: убранное за спину роняем на землю (взять его нечем). */
-  dropStowed(): void {
-    for (const item of this.items) {
-      if (!item.stow) continue;
-      item.stow = null;
-      const p = this.player.position;
-      item.mesh.parent = null;
-      item.mesh.rotationQuaternion = null;
-      const gy = this.groundHeight(p.x, p.z);
-      item.rest.pos.set(p.x + (Math.random() - 0.5), gy + 0.12, p.z + (Math.random() - 0.5));
-      item.rest.bob = false;
-      this.layFlat(item);
-    }
-  }
-
   /** Узел «спина»: центр под головой, повёрнут по рысканью взгляда. */
   private updateBackAnchor(): void {
     const head = this.player.eyePosition;
@@ -724,42 +724,65 @@ export class CombatSystem {
   }
 
   /**
-   * Вернуть за спину оружие, которое там было при прошлом выходе.
-   * Меш нужного уровня строим так же, как при подборе лута.
+   * Свободный предмет нужного класса и уровня — для восстановления снаряжения
+   * после входа. Лук в игре один (к нему привязаны тетива и стрела), поэтому
+   * он не создаётся заново, а перекрашивается.
    */
+  private weaponForRestore(cls: WeaponClass, tier: WeaponTier): Item | null {
+    const kind = cls as ItemKind;
+    if (kind === "bow") {
+      const bow = this.bowItem;
+      if (bow.hand || bow.stow) return null; // лук уже занят
+      bow.tier = tier;
+      tintBow(bow.mesh, tier);
+      tintArrows(tier); // золотому луку — золотые стрелы
+      bow.flight = null;
+      bow.mesh.rotationQuaternion = null;
+      return bow;
+    }
+    // Меч/щит: базовый предмет переиспользуем, если он свободен; иначе — новый.
+    const base = this.items.find((i) => i.kind === kind && i.tier === "base");
+    if (tier === "base" && base && !base.hand && !base.stow) {
+      base.flight = null;
+      base.mesh.rotationQuaternion = null;
+      return base;
+    }
+    const mesh = this.makeWeaponMesh?.(kind, tier);
+    if (!mesh) return null;
+    const item = this.makeItem(kind, tier, mesh, this.player.position.clone());
+    this.items.push(item);
+    return item;
+  }
+
+  /** Вернуть за спину оружие, которое там было при прошлом выходе. */
   restoreStowed(list: StowedWeapon[]): void {
     for (const s of list) {
-      const kind = s.cls as ItemKind;
       if (s.side !== "left" && s.side !== "right") continue;
       if (this.stowedItem(s.side)) continue; // плечо уже занято
-
-      if (kind === "bow") {
-        const bow = this.bowItem;
-        if (bow.hand || bow.stow) continue;
-        bow.tier = s.tier;
-        tintBow(bow.mesh, s.tier);
-        tintArrows(s.tier);
-        bow.mesh.rotationQuaternion = null;
-        bow.flight = null;
-        bow.stow = s.side;
-        continue;
-      }
-
-      // Меч/щит: базовый предмет переиспользуем, если он свободен; иначе — новый.
-      const base = this.items.find((i) => i.kind === kind && i.tier === "base");
-      let item: Item | undefined;
-      if (s.tier === "base" && base && !base.hand && !base.stow) {
-        item = base;
-      } else {
-        const mesh = this.makeWeaponMesh?.(kind, s.tier);
-        if (!mesh) continue;
-        item = this.makeItem(kind, s.tier, mesh, this.player.position.clone());
-        this.items.push(item);
-      }
-      item.mesh.rotationQuaternion = null;
-      item.flight = null;
+      const item = this.weaponForRestore(s.cls, s.tier);
+      if (!item) continue;
       item.hand = null;
       item.stow = s.side;
+    }
+  }
+
+  /**
+   * Вернуть в руки оружие, которое там было при прошлом выходе.
+   * Если рукой взять нельзя (например, лук занимает обе), кладём за спину —
+   * лучше так, чем потерять добытое.
+   */
+  restoreHeld(held: HeldWeapons): void {
+    for (const side of ["right", "left"] as Side[]) {
+      const w: CarriedWeapon | null = held[side];
+      if (!w || this.inHand(side)) continue;
+      const item = this.weaponForRestore(w.cls, w.tier);
+      if (!item) continue;
+      if (this.canPick(item)) {
+        this.equip(item, side);
+      } else if (!this.stowedItem(side)) {
+        item.hand = null;
+        item.stow = side;
+      }
     }
   }
 
@@ -920,8 +943,33 @@ export class CombatSystem {
         item.flight = null;
         mesh.rotationQuaternion = null;
         this.layFlat(item);
+        this.handOverToWorld(item);
       }
     }
+  }
+
+  /**
+   * Отдать упавшее заработанное оружие миру (серверу). Базовое остаётся своим:
+   * оно и так всегда доступно у камней.
+   */
+  private handOverToWorld(item: Item): void {
+    if (item.tier === "base" || !this.onWeaponLanded) return;
+    const p = item.mesh.position;
+    this.onWeaponLanded(item.kind as WeaponClass, item.tier, p.x, p.z);
+
+    if (item.kind === "bow") {
+      // Лук в игре один — не удаляем, а возвращаем к базовому виду и на камень.
+      item.tier = "base";
+      tintBow(item.mesh, "base");
+      tintArrows("base");
+      item.rest.pos.copyFrom(this.homes.bow);
+      item.rest.bob = true;
+      item.mesh.rotationQuaternion = null;
+      return;
+    }
+    const i = this.items.indexOf(item);
+    if (i >= 0) this.items.splice(i, 1);
+    item.mesh.dispose();
   }
 
   /** Сглаженные скорости каждой руки — для броска в VR. */

@@ -10,6 +10,7 @@ import { terrainHeight } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import {
   BAG,
+  isItemId,
   ITEMS,
   rollLoot,
   weaponKey,
@@ -341,7 +342,7 @@ class Mob {
 /** Лут, лежащий на земле. Тает через BAG.dropLife секунд. */
 class Drop {
   readonly id = nid();
-  private life = 0;
+  life = 0;
 
   constructor(
     readonly item: ItemId,
@@ -351,12 +352,22 @@ class Drop {
     readonly z: number,
   ) {}
 
-  /** true — пора убрать. Оружие не тает: лежит до остановки сервера. */
+  /** true — пора убрать. Оружие не тает: лежит, пока его не подберут. */
   tick(dt: number): boolean {
     if (ITEMS[this.item].weapon) return false;
     this.life += dt;
     return this.life > BAG.dropLife;
   }
+}
+
+/** Лут на земле в виде простых данных — для сохранения между запусками. */
+export interface DropSave {
+  item: ItemId;
+  count: number;
+  x: number;
+  y: number;
+  z: number;
+  life: number;
 }
 
 class Dummy {
@@ -542,6 +553,31 @@ export class ZoneSim {
     if (!item) return;
     const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z);
     this.drops.set(d.id, d);
+  }
+
+  /** Весь лут на земле — чтобы записать его перед остановкой сервера. */
+  saveDrops(): DropSave[] {
+    return [...this.drops.values()].map((d) => ({
+      item: d.item,
+      count: d.count,
+      x: d.x,
+      y: d.y,
+      z: d.z,
+      life: d.life,
+    }));
+  }
+
+  /** Вернуть лут в мир после перезапуска. */
+  restoreDrops(list: DropSave[]): void {
+    for (const s of list) {
+      if (!s || !isItemId(s.item)) continue;
+      const count = Math.floor(Number(s.count));
+      if (!Number.isFinite(count) || count <= 0) continue;
+      const d = new Drop(s.item, count, Number(s.x), Number(s.y), Number(s.z));
+      if (!Number.isFinite(d.x) || !Number.isFinite(d.y) || !Number.isFinite(d.z)) continue;
+      d.life = Number.isFinite(s.life) ? Number(s.life) : 0;
+      this.drops.set(d.id, d);
+    }
   }
 
   /** Забрать лут из мира. null — его уже нет (успел другой игрок). */

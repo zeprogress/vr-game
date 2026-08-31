@@ -34,7 +34,20 @@ export const MSG = {
   setTime: "st",
   /** клиент -> сервер: сохранить настройки панели (per-token, применяются только у него). */
   loadout: "ld",
+  /** клиент -> сервер: заработанное оружие легло на землю — сделать его общим. */
+  dropWeapon: "dw",
 } as const;
+
+/**
+ * Заработанное оружие упало на землю. Дальше оно живёт в мире на сервере:
+ * его видят все и оно переживает перезапуск.
+ */
+export interface DropWeaponMsg {
+  cls: WeaponClass;
+  tier: WeaponTier;
+  x: number;
+  z: number;
+}
 
 /** Панельные переопределения настроек — сервер хранит их по токену игрока. */
 export type OverridesMsg = Record<string, unknown>;
@@ -68,19 +81,29 @@ export interface SaveMsg {
   yaw: number;
 }
 
-/** Оружие, убранное за спину: класс, уровень и за какое плечо. */
-export interface StowedWeapon {
+/** Оружие «с собой»: класс и уровень. */
+export interface CarriedWeapon {
   cls: WeaponClass;
   tier: WeaponTier;
+}
+
+/** Оружие, убранное за спину: плюс за какое плечо. */
+export interface StowedWeapon extends CarriedWeapon {
   side: "left" | "right";
 }
 
+/** Что в руках. Сохраняется вместе с убранным за спину. */
+export interface HeldWeapons {
+  left: CarriedWeapon | null;
+  right: CarriedWeapon | null;
+}
+
 /**
- * Что сервер знает про этот токен при входе: где стоял + что было убрано за
- * спину в прошлый раз. null — токен новый.
+ * Что сервер знает про этот токен при входе: где стоял, что было в руках и
+ * за спиной в прошлый раз. null — токен новый.
  */
 export type CharMsg =
-  | (SaveMsg & { stowed?: StowedWeapon[]; overrides?: OverridesMsg })
+  | (SaveMsg & { stowed?: StowedWeapon[]; held?: HeldWeapons; overrides?: OverridesMsg })
   | null;
 
 export interface HitMobMsg {
