@@ -7,7 +7,6 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
-import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { WORLD } from "#shared/constants";
 import { dayState, type DayState } from "./DayTime";
@@ -38,14 +37,12 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
 
   const sun = createSun(scene);
-  const moon = createMoon(scene);
   const stars = createStars(scene);
   const clouds = createClouds(scene);
   const sky: Sky = {
     apply(d) {
       scene.fogColor.copyFrom(d.fog);
       sun.apply(d);
-      moon.apply(d);
       // Днём облака, ночью звёзды — обе смены плавные, по доле дневного света.
       clouds.apply(d);
       stars.apply(d);
@@ -144,56 +141,6 @@ function createSun(scene: Scene): { apply(d: DayState): void } {
   };
 }
 
-/**
- * Полумесяц, восходящий на противоположной солнцу стороне неба.
- * Серп рисуем текстурой: белый круг минус смещённый круг.
- */
-function createMoon(scene: Scene): { apply(d: DayState): void } {
-  const S = 128;
-  const tex = new DynamicTexture("moonTex", { width: S, height: S }, scene, false);
-  tex.hasAlpha = true;
-  const c = tex.getContext() as unknown as CanvasRenderingContext2D;
-  c.clearRect(0, 0, S, S);
-  c.fillStyle = "rgb(244,246,236)";
-  c.beginPath();
-  c.arc(S * 0.5, S * 0.5, S * 0.36, 0, Math.PI * 2);
-  c.fill();
-  // Вырезаем смещённый круг — остаётся серп.
-  c.globalCompositeOperation = "destination-out";
-  c.beginPath();
-  c.arc(S * 0.66, S * 0.4, S * 0.33, 0, Math.PI * 2);
-  c.fill();
-  c.globalCompositeOperation = "source-over";
-  tex.update();
-
-  const mat = new StandardMaterial("moonMat", scene);
-  mat.diffuseTexture = tex;
-  mat.emissiveTexture = tex;
-  mat.opacityTexture = tex;
-  mat.useAlphaFromDiffuseTexture = true;
-  mat.emissiveColor = new Color3(1, 1, 0.98);
-  mat.disableLighting = true;
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.backFaceCulling = false;
-  mat.disableDepthWrite = true;
-
-  const moon = MeshBuilder.CreatePlane("moon", { size: 24 }, scene);
-  moon.material = mat;
-  moon.isPickable = false;
-  moon.applyFog = false;
-  moon.billboardMode = 7;
-
-  return {
-    apply(d) {
-      const up = d.sunPos.scale(-1); // напротив солнца
-      moon.position.copyFrom(up.scale(360));
-      const night = 1 - d.daylight;
-      mat.alpha = Math.min(1, night * 1.15);
-      const on = mat.alpha > 0.02 && up.y > -0.12;
-      if (moon.isEnabled() !== on) moon.setEnabled(on);
-    },
-  };
-}
 
 function gradientMaterial(scene: Scene): {
   mat: StandardMaterial;

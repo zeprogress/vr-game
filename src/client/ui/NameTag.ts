@@ -36,21 +36,37 @@ export class NameTag {
     const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, W, H);
 
-    // Тёмная скруглённая подложка по центру.
-    const pad = 18;
-    ctx.fillStyle = "rgba(12,14,20,0.72)";
-    roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 16);
-    ctx.fill();
-
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
+
+    // Размер надписей НЕ меняем — только подложку. Меряем текст и рисуем
+    // подложку впритык, тонко и полупрозрачно.
+    const nameFont = "bold 40px system-ui, sans-serif";
+    const lvlFont = "26px system-ui, sans-serif";
+    ctx.font = nameFont;
+    let textW = ctx.measureText(name).width;
+    if (level !== null) {
+      ctx.font = lvlFont;
+      textW = Math.max(textW, ctx.measureText(`${level} ур.`).width);
+    }
+    const padX = 16;
+    const padY = 10;
+    const contentH = level === null ? 44 : 74;
+    const boxW = Math.min(W - 6, textW + padX * 2);
+    const boxH = contentH + padY * 2;
+    const bx = (W - boxW) / 2;
+    const by = (H - boxH) / 2;
+    ctx.fillStyle = "rgba(12,14,20,0.34)";
+    roundRect(ctx, bx, by, boxW, boxH, 10);
+    ctx.fill();
+
     ctx.fillStyle = "#f2f4fb";
-    ctx.font = "bold 40px system-ui, sans-serif";
+    ctx.font = nameFont;
     ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 14);
 
     if (level !== null) {
       ctx.fillStyle = `rgb(${accent.r * 255},${accent.g * 255},${accent.b * 255})`;
-      ctx.font = "26px system-ui, sans-serif";
+      ctx.font = lvlFont;
       ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
     }
 

@@ -184,21 +184,30 @@ export class Sfx {
   footstep(vol = 1): void {
     if (!this.ready()) return;
     const t = this.t;
+    // Глухой мягкий удар подошвы о землю — короткий, быстро глохнет.
     const n = this.noise();
-    const lp = this.filter("lowpass", 340 + Math.random() * 200);
-    const g = this.env(0.7 * vol, 0.004, 0.13, t);
+    const lp = this.filter("lowpass", 260 + Math.random() * 120);
+    lp.frequency.exponentialRampToValueAtTime(110, t + 0.09);
+    const g = this.env(0.34 * vol, 0.003, 0.08, t);
     n.connect(lp).connect(g);
     n.start(t);
-    n.stop(t + 0.18);
-    // короткий низкий «толчок» для веса
+    n.stop(t + 0.13);
+    // Низкий «вес» шага — совсем тихо.
     const o = this.ctx!.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(95, t);
-    o.frequency.exponentialRampToValueAtTime(55, t + 0.09);
-    const og = this.env(0.28 * vol, 0.003, 0.1, t);
+    o.frequency.setValueAtTime(78, t);
+    o.frequency.exponentialRampToValueAtTime(46, t + 0.08);
+    const og = this.env(0.13 * vol, 0.003, 0.07, t);
     o.connect(og);
     o.start(t);
-    o.stop(t + 0.13);
+    o.stop(t + 0.11);
+    // Шорох травы и земли под ногой — тихий короткий «хруст».
+    const n2 = this.noise();
+    const hp = this.filter("highpass", 2400 + Math.random() * 700);
+    const g2 = this.env(0.05 * vol, 0.002, 0.05, t);
+    n2.connect(hp).connect(g2);
+    n2.start(t);
+    n2.stop(t + 0.07);
   }
 
   land(vol = 1): void {
