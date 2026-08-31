@@ -175,13 +175,13 @@ export class PlayerController {
     return this._eyeQ;
   }
 
-  /** Эффекты удара без изменения HP: отскок + хуки. Онлайн HP шлёт сервер. */
-  hurtFx(amount: number, dir?: Vector3): void {
+  /**
+   * Эффекты удара без изменения HP: виньетка + хуки. Онлайн HP шлёт сервер.
+   * Игрока при уроне НЕ сдвигаем — в шлеме толчок камеры дезориентирует, а
+   * рассинхрон с реальным положением тела ощущается как баг.
+   */
+  hurtFx(amount: number, _dir?: Vector3): void {
     this.hurtTimer = 0;
-    if (dir) {
-      this.body.position.x += dir.x * 0.6;
-      this.body.position.z += dir.z * 0.6;
-    }
     this.hooks.hurt?.(this.hp, amount);
   }
 
@@ -197,15 +197,11 @@ export class PlayerController {
     this.placeOnGround();
   }
 
-  /** Получить урон. dir — направление от источника (для отталкивания). */
-  damage(amount: number, dir?: Vector3): void {
+  /** Получить урон (одиночный режим). Игрока при этом не отталкиваем. */
+  damage(amount: number, _dir?: Vector3): void {
     if (this.hp <= 0) return;
     this.hp = Math.max(0, this.hp - amount);
     this.hurtTimer = 0;
-    if (dir) {
-      this.body.position.x += dir.x * 0.6;
-      this.body.position.z += dir.z * 0.6;
-    }
     this.hooks.hurt?.(this.hp, amount);
     if (this.hp <= 0) {
       this.hp = this.maxHp;

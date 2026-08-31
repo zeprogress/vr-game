@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx";
+  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx" | "comfort";
 }
 
 const TARGETS: Target[] = [
@@ -54,6 +54,7 @@ const TARGETS: Target[] = [
   { key: "world:time", label: "Время суток", kind: "world" },
   { key: "voice:chat", label: "Голос", kind: "voice" },
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
+  { key: "comfort:vignette", label: "Виньетка движения (всем)", kind: "comfort" },
 ];
 
 type Field =
@@ -88,6 +89,8 @@ export class LoadoutPanel {
   private fileState = "";
   /** Онлайн: перевод времени/автосмены уходит на сервер (часы общие). */
   onWorldTime: ((hour: number, auto: number) => void) | null = null;
+  /** Онлайн: тумблер виньетки движения уходит на сервер (общий для мира). */
+  onComfort: ((on: number) => void) | null = null;
   /** Онлайн: «Сохранить» шлёт настройки на сервер (по токену игрока). */
   onSaveServer: (() => void) | null = null;
 
@@ -197,6 +200,7 @@ export class LoadoutPanel {
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
+    if (this.target.kind === "comfort") return 1;
     return 7;
   }
 
@@ -242,6 +246,20 @@ export class LoadoutPanel {
         get: () => (LOADOUT.gfx.smooth === 0 ? 0 : 1),
         set: (v) => {
           LOADOUT.gfx.smooth = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
+        },
+        format: (v) => (v ? "вкл" : "выкл"),
+      };
+    }
+    if (t.kind === "comfort") {
+      return {
+        label: "виньетка",
+        rot: false,
+        steps: [1, 1, 1],
+        get: () => (LOADOUT.comfort.vignette === 0 ? 0 : 1),
+        set: (v) => {
+          const on = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
+          LOADOUT.comfort.vignette = on;
+          this.onComfort?.(on);
         },
         format: (v) => (v ? "вкл" : "выкл"),
       };

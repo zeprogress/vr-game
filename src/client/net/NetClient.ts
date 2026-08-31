@@ -15,6 +15,7 @@ import {
   type SpendMsg,
   type HandsMsg,
   type SetTimeMsg,
+  type ComfortMsg,
   type DropWeaponMsg,
   type ActKind,
   type ActMsg,
@@ -213,6 +214,11 @@ export class NetClient {
   /** Админ переводит время суток всему миру. */
   sendSetTime(hour: number, auto: number): void {
     this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
+  }
+
+  /** Админ включает/выключает виньетку движения для всего мира. */
+  sendComfort(on: number): void {
+    this.room?.send(MSG.comfort, { on } satisfies ComfortMsg);
   }
 
   /** Заработанное оружие легло на землю — пусть станет предметом мира. */

@@ -18,6 +18,7 @@ import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
+import { ComfortVignette } from "../ui/ComfortVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import { LOADOUT, printLoadout, importOverrides, exportOverrides } from "../config/loadout";
@@ -81,6 +82,7 @@ export class Game {
   private hudAnchor: TransformNode | null = null;
   private playerBar3D: HealthBar3D | null = null;
   private vrVignette: VrVignette | null = null;
+  private comfortVignette: ComfortVignette | null = null;
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -234,6 +236,7 @@ export class Game {
       this.updateVrUi(dt);
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
+      this.updateComfortVignette(dt);
       this.updateHpBarFade();
       this.updateBossMusic();
     });
@@ -405,6 +408,7 @@ export class Game {
     this.playerBar3D.set(this.player.hp / this.player.maxHp);
 
     this.vrVignette = new VrVignette(this.scene);
+    this.comfortVignette = new ComfortVignette(this.scene);
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(
@@ -417,6 +421,8 @@ export class Game {
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
+    // Виньетка движения — общая для мира: тумблер уходит на сервер.
+    this.loadoutPanel.onComfort = (on) => this.net?.sendComfort(on);
     // «Сохранить» онлайн шлёт настройки на сервер (по токену игрока).
     this.loadoutPanel.onSaveServer = this.net?.online
       ? () => this.net!.sendLoadout(exportOverrides())
@@ -452,6 +458,8 @@ export class Game {
     this.hudAnchor = null;
     this.vrVignette?.dispose();
     this.vrVignette = null;
+    this.comfortVignette?.dispose();
+    this.comfortVignette = null;
   }
 
   private updateVrUi(dt: number): void {
@@ -515,6 +523,20 @@ export class Game {
     this.lowHpT += dt * (3 + low * 4);
     const pulse = 1 + VIGNETTE.lowPulse * low * Math.sin(this.lowHpT);
     this.hud.setLowHealth(low * low * VIGNETTE.lowMaxAlpha * pulse);
+  }
+
+  /**
+   * Чёрная виньетка при перемещении левым стиком (VR): сужает обзор на время
+   * движения. Общий выключатель — на сервере (ставит админ в панели настроек).
+   */
+  private updateComfortVignette(dt: number): void {
+    if (!this.comfortVignette) return; // существует только в VR
+    const inp = this.player.lastInput;
+    const stick = Math.min(1, Math.hypot(inp.moveX, inp.moveY) / 0.9);
+    const allowed = (this.net?.room?.state.comfortVignette ?? 1) !== 0;
+    // Держим LOADOUT в курсе актуального значения — панель его показывает.
+    LOADOUT.comfort.vignette = allowed ? 1 : 0;
+    this.comfortVignette.tick(dt, stick, allowed);
   }
 
   private showHp(hp: number): void {
@@ -706,7 +728,12 @@ export class Game {
       if (id === this.net?.sessionId || this.avatars.has(id)) return;
       const p = players.get(id);
       if (!p) return;
-      this.avatars.set(id, new RemoteAvatar(this.scene, id, p.nick, p.mode));
+      this.avatars.set(
+        id,
+        new RemoteAvatar(this.scene, id, p.nick, p.mode, (cls, tier) =>
+          makeWeaponMesh(this.scene, cls, tier),
+        ),
+      );
       this.voice.addPeer(id);
     };
     players.onAdd((_p, id) => add(id), true); // true — сработает и для уже вошедших

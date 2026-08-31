@@ -82,6 +82,15 @@ export interface Loadout {
     /** 1 — голос идёт от места игрока, 0 — всех слышно ровно. */
     spatial: number;
   };
+  /** Комфорт в VR. */
+  comfort: {
+    /**
+     * 1 — чёрная виньетка при движении левым стиком (меньше укачивает).
+     * Это ОБЩАЯ настройка мира: её задаёт админ, сервер рассылает всем.
+     * Здесь хранится последнее известное значение — панель его показывает.
+     */
+    vignette: number;
+  };
 }
 
 export const LOADOUT_DEFAULTS: Loadout = {
@@ -132,7 +141,10 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   voice: {
     mic: 1, // микрофон работает
-    spatial: 1, // голос идёт от места игрока
+    spatial: 0, // всех слышно ровно (не от места игрока)
+  },
+  comfort: {
+    vignette: 1, // виньетка движения включена
   },
 };
 
@@ -157,7 +169,8 @@ export type TargetKey =
   | "belt:potion"
   | "hud:hp"
   | "voice:chat"
-  | "gfx:smooth";
+  | "gfx:smooth"
+  | "comfort:vignette";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -173,6 +186,7 @@ function readTarget(src: Loadout, key: TargetKey): unknown {
   if (parts[0] === "hud") return src.hud;
   if (parts[0] === "voice") return src.voice;
   if (parts[0] === "gfx") return src.gfx;
+  if (parts[0] === "comfort") return src.comfort;
   if (parts[0] === "hand") return src.hands[parts[1] as HandSide];
   return src.items[parts[1] as ItemKind][parts[2] as SlotKey];
 }
@@ -201,6 +215,13 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     const v = value as Partial<Loadout["gfx"]>;
     if (typeof v?.smooth === "number") {
       dst.gfx.smooth = Number.isFinite(v.smooth) ? (v.smooth ? 1 : 0) : 1;
+    }
+    return;
+  }
+  if (parts[0] === "comfort") {
+    const v = value as Partial<Loadout["comfort"]>;
+    if (typeof v?.vignette === "number") {
+      dst.comfort.vignette = Number.isFinite(v.vignette) ? (v.vignette ? 1 : 0) : 1;
     }
     return;
   }
@@ -333,6 +354,7 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
         hud: LOADOUT.hud,
         gfx: LOADOUT.gfx,
         voice: LOADOUT.voice,
+        comfort: LOADOUT.comfort,
       }),
     });
     if (res.ok) {

@@ -135,6 +135,13 @@ class Mob {
   /** Время до слэма, пока > 0 — телеграф (босс стоит). */
   private slamWindupT = 0;
   slamSeq = 0;
+  /** Рывок-таран: замах, полёт, куда летим и был ли уже удар за этот рывок. */
+  private lungeCd = 0; // первый рывок — сразу по агро
+  private lungeWindupT = 0;
+  private lungeT = 0;
+  private lungeDirX = 0;
+  private lungeDirZ = 1;
+  private lungeHit = false;
   private splitsDone = 0;
   /** ZoneSim прочтёт и сбросит: босс пересёк порог HP — выбросить осколки. */
   pendingSplit = false;
@@ -145,9 +152,15 @@ class Mob {
   get enraged(): boolean {
     return this.kind === "boss" && !this.dead && this.hp / this.maxHp < BOSS.enrageAt;
   }
-  /** Готовность слэма 0..1 (для телеграфа на клиенте). */
+  /** Готовность слэма/рывка 0..1 (для телеграфа на клиенте). */
   get slamTelegraph(): number {
-    return this.slamWindupT > 0 ? 1 - this.slamWindupT / BOSS.slamWindup : 0;
+    if (this.slamWindupT > 0) return 1 - this.slamWindupT / BOSS.slamWindup;
+    if (this.lungeWindupT > 0) return 1 - this.lungeWindupT / BOSS.lungeWindup;
+    return 0;
+  }
+  /** 1 — босс копит или выполняет рывок-таран (клиент вытягивает тело). */
+  get charging(): boolean {
+    return this.lungeWindupT > 0 || this.lungeT > 0;
   }
 
   constructor(
@@ -217,6 +230,8 @@ class Mob {
       this.dead = true;
       this.deadT = 0;
       this.slamWindupT = 0;
+      this.lungeWindupT = 0;
+      this.lungeT = 0;
       this.respawnIn = this.kind === "boss" ? BOSS.respawn : MOB.respawn;
       return true;
     }
@@ -306,12 +321,77 @@ class Mob {
             });
           }
         }
-      } else if (chasing && this.grounded && this.slamCd <= 0 && dist < BOSS.slamRange) {
+      } else if (
+        chasing &&
+        this.grounded &&
+        this.slamCd <= 0 &&
+        dist < BOSS.slamRange &&
+        this.lungeT <= 0 &&
+        this.lungeWindupT <= 0
+      ) {
         this.slamWindupT = BOSS.slamWindup;
+      }
+
+      // Рывок-таран: летит в самого ДАЛЁКОГО игрока в пределах агро — так
+      // достаёт того, кто держит дистанцию, пока второй вяжет боем вблизи.
+      // Разгоняется и проносится по прямой. Один удар за рывок; не толкает.
+      let lungeTgt: SimPlayer | null = null;
+      let lungeFar = -1;
+      for (const p of players) {
+        const d = Math.hypot(p.x - this.x, p.z - this.z);
+        if (d <= BOSS.aggroRange && d > lungeFar) {
+          lungeFar = d;
+          lungeTgt = p;
+        }
+      }
+      if (this.lungeCd > 0) this.lungeCd -= dt;
+      if (this.lungeWindupT > 0) {
+        this.lungeWindupT -= dt;
+        this.vx *= 0.02;
+        this.vz *= 0.02;
+        if (lungeTgt && lungeFar > 1e-3) {
+          this.lungeDirX = (lungeTgt.x - this.x) / lungeFar;
+          this.lungeDirZ = (lungeTgt.z - this.z) / lungeFar;
+        }
+        if (this.lungeWindupT <= 0) {
+          this.lungeT = BOSS.lungeDuration;
+          this.lungeHit = false;
+          this.lungeCd = BOSS.lungeCooldown / rage;
+        }
+      } else if (this.lungeT > 0) {
+        this.lungeT -= dt;
+        this.vx = this.lungeDirX * BOSS.lungeSpeed * rage;
+        this.vz = this.lungeDirZ * BOSS.lungeSpeed * rage;
+        if (!this.lungeHit) {
+          for (const p of players) {
+            if (Math.hypot(p.x - this.x, p.z - this.z) > BOSS.slamRadius * 0.7 + PLAYER.radius) {
+              continue;
+            }
+            hits.push({
+              target: p.sessionId,
+              dmg: BOSS.lungeDamage,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+            });
+            this.lungeHit = true;
+          }
+        }
+      } else if (
+        this.aggroed &&
+        lungeTgt &&
+        this.grounded &&
+        this.slamWindupT <= 0 &&
+        this.lungeCd <= 0 &&
+        lungeFar > BOSS.slamRange * 1.15
+      ) {
+        this.lungeWindupT = BOSS.lungeWindup;
+        this.lungeDirX = (lungeTgt.x - this.x) / lungeFar;
+        this.lungeDirZ = (lungeTgt.z - this.z) / lungeFar;
       }
     }
 
-    if (this.grounded && this.slamWindupT <= 0) {
+    if (this.grounded && this.slamWindupT <= 0 && this.lungeWindupT <= 0 && this.lungeT <= 0) {
       this.hopCd -= dt;
       if (this.hopCd <= 0 && chasing) {
         this.hopCd = hopInterval;
@@ -426,6 +506,9 @@ class Mob {
     this.y = terrainHeight(this.x, this.z) + 5;
     this.slamCd = BOSS.slamCooldown;
     this.slamWindupT = 0;
+    this.lungeCd = 0;
+    this.lungeWindupT = 0;
+    this.lungeT = 0;
     this.splitsDone = 0;
     this.hp = this.maxHp;
     this.dead = false;

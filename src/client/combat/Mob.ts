@@ -302,7 +302,13 @@ export class Mob implements Hittable {
     const vy = dt > 1e-4 ? (pos.y - this.prevY) / dt : 0;
     this.prevY = pos.y;
     const sq = Math.max(0.4, 1 + vy * 0.04);
-    if (this.isBoss && s.windup > 0) {
+    if (this.isBoss && s.charging) {
+      // Телеграф рывка: босс вытягивается вперёд по направлению взгляда,
+      // сжимаясь с боков, и наливается багровым.
+      const w = Math.max(0.35, s.windup);
+      this.body.scaling.set(Math.max(0.5, 1 - w * 0.3), Math.max(0.6, 1 - w * 0.2), 1 + w * 0.7);
+      this.flash = Math.max(this.flash, 0.35 + w * 0.35);
+    } else if (this.isBoss && s.windup > 0) {
       // Телеграф слэма: босс приседает и раздувается вширь.
       const w = s.windup;
       this.body.scaling.set(1 + w * 0.4, Math.max(0.45, 1 - w * 0.45), 1 + w * 0.4);

@@ -138,28 +138,37 @@ export const SPITTER_CFG: MobConfig = {
 export const BOSS = {
   /** Дальний угол (+x, +z). */
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
-  hp: 170,
+  hp: 400,
   scale: 2.5, // во столько раз крупнее обычного слизня
-  aggroRange: 22,
+  aggroRange: 26,
   wanderRadius: 16,
-  hopSpeed: 3.1,
-  hopInterval: 0.72,
+  hopSpeed: 3.5,
+  hopInterval: 0.66,
   /** Подходишь ближе — замахивается на удар по площади. */
   slamRange: 6.5,
-  slamWindup: 1.15, // с телеграфа (стоит на месте, «раздувается»)
-  slamCooldown: 5, // с между слэмами
+  slamWindup: 1.05, // с телеграфа (стоит на месте, «раздувается»)
+  slamCooldown: 3.6, // с между слэмами
   slamRadius: 5, // м поражения
-  slamDamage: 20,
+  slamDamage: 24,
   slamKnockback: 9,
+  /**
+   * Рывок-таран: игрок вне зоны слэма, но в пределах агро — босс копит
+   * замах и проносится сквозь по прямой, снося всех на пути.
+   */
+  lungeWindup: 0.75, // с телеграфа
+  lungeCooldown: 6, // с между рывками
+  lungeSpeed: 13, // м/с в рывке
+  lungeDuration: 0.5, // с
+  lungeDamage: 16,
   /** Доли HP, при пересечении которых босс выбрасывает осколки. */
-  splitAt: [0.66, 0.33] as const,
-  splitCount: 2,
-  /** Ниже этой доли HP — ярость: быстрее и слэмит чаще. */
-  enrageAt: 0.32,
-  respawn: 75, // с
+  splitAt: [0.75, 0.5, 0.25] as const,
+  splitCount: 3,
+  /** Ниже этой доли HP — ярость: быстрее и бьёт чаще. */
+  enrageAt: 0.4,
+  respawn: 90, // с
   /** Ближе — играет boss.mp3; дальше musicOut — обратно (гистерезис). */
-  musicRange: 22,
-  musicOut: 34,
+  musicRange: 26,
+  musicOut: 40,
 } as const;
 
 export const BOSS_CFG: MobConfig = {

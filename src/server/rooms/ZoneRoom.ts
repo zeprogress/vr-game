@@ -30,6 +30,7 @@ import {
   type RtcMsg,
   type SpendMsg,
   type SetTimeMsg,
+  type ComfortMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
   type Xf7,
@@ -430,6 +431,13 @@ export class ZoneRoom extends Room<ZoneState> {
       this.clockSync = 0;
     });
 
+    // Виньетку движения включает/выключает всему миру только админ.
+    this.onMessage(MSG.comfort, (client: Client, msg: ComfortMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
+      this.state.comfortVignette = msg.on ? 1 : 0;
+    });
+
     // Панельные настройки: храним по токену, применяются только у этого игрока.
     this.onMessage(MSG.loadout, (client: Client, msg: OverridesMsg) => {
       const rt = this.rt.get(client.sessionId);
@@ -590,6 +598,7 @@ export class ZoneRoom extends Room<ZoneState> {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
         s.enraged = m.enraged ? 1 : 0;
+        s.charging = m.charging ? 1 : 0;
       }
     }
     this.state.mobs.forEach((_s, id) => {

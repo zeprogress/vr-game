@@ -73,6 +73,8 @@ export class MobState extends Schema {
   @type("uint16") slamSeq = 0;
   /** 1 — босс в ярости (клиент подсвечивает). */
   @type("uint8") enraged = 0;
+  /** Телеграф рывка-тарана: 1 — босс вот-вот бросится по прямой. */
+  @type("uint8") charging = 0;
 }
 
 export class DummyState extends Schema {
@@ -109,6 +111,8 @@ export class ZoneState extends Schema {
   @type("float32") hour = 8;
   /** 1 — время идёт само, 0 — стоит на выставленном часе. */
   @type("uint8") dayAuto = 1;
+  /** 1 — чёрная виньетка при движении разрешена; 0 — админ отключил её всем. */
+  @type("uint8") comfortVignette = 1;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

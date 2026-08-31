@@ -10,7 +10,11 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
+import type { WeaponClass, WeaponTier } from "#shared/items";
+import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
+
+export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
 /** Рендерим на 100 мс в прошлом — между двумя пришедшими снапшотами. */
 const INTERP_DELAY = 100;
@@ -51,6 +55,14 @@ export class RemoteAvatar {
   private capsule: Mesh | null = null;
   private mode: PlayerMode | null = null;
 
+  /** Оружие в руках — чтобы союзники видели, кто с чем. */
+  private gearL: Mesh | null = null;
+  private gearR: Mesh | null = null;
+  private gearKeyL = "";
+  private gearKeyR = "";
+  private wantL: readonly [string, string] = ["", ""];
+  private wantR: readonly [string, string] = ["", ""];
+
   private readonly buf: Snap[] = [];
   private readonly _qa = new Quaternion();
   private readonly _qb = new Quaternion();
@@ -60,6 +72,7 @@ export class RemoteAvatar {
     id: string,
     nick: string,
     mode: PlayerMode,
+    private readonly makeWeapon: MakeWeapon | null = null,
   ) {
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
@@ -80,6 +93,11 @@ export class RemoteAvatar {
     this.handR?.dispose();
     this.capsule?.dispose();
     this.handL = this.handR = this.capsule = null;
+    // Оружие висело на кистях/корпусе — пересоберём под новый режим.
+    this.gearL?.dispose();
+    this.gearR?.dispose();
+    this.gearL = this.gearR = null;
+    this.gearKeyL = this.gearKeyR = "";
 
     if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
@@ -138,6 +156,8 @@ export class RemoteAvatar {
 
   /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
   push(now: number, p: PlayerState): void {
+    this.wantL = [p.leftCls, p.leftTier];
+    this.wantR = [p.rightCls, p.rightTier];
     const last = this.buf[this.buf.length - 1];
     const head = snapXf(p.head);
     // Дедуп: сервер шлёт ~18 Гц, кадров больше — не копим одинаковое.
@@ -178,6 +198,52 @@ export class RemoteAvatar {
       this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
       this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
     }
+    this.applyGear();
+  }
+
+  /** Показываем оружие в руках союзника — по данным сервера (leftCls/…). */
+  private applyGear(): void {
+    if (!this.makeWeapon) return;
+    this.gearL = this.fitGear("left", this.wantL, this.gearL, () => (this.gearKeyL = keyOf(this.wantL)), this.gearKeyL);
+    this.gearR = this.fitGear("right", this.wantR, this.gearR, () => (this.gearKeyR = keyOf(this.wantR)), this.gearKeyR);
+  }
+
+  private fitGear(
+    side: "left" | "right",
+    want: readonly [string, string],
+    cur: Mesh | null,
+    markKey: () => void,
+    curKey: string,
+  ): Mesh | null {
+    const key = keyOf(want);
+    if (key === curKey) return cur;
+    cur?.dispose();
+    markKey();
+    const [cls, tier] = want;
+    if (cls !== "sword" && cls !== "bow" && cls !== "shield") return null;
+    if (!tier) return null;
+
+    const mesh = this.makeWeapon!(cls as WeaponClass, tier as WeaponTier);
+    mesh.isPickable = false;
+    mesh.rotationQuaternion = null; // ставим углами Эйлера
+    for (const c of mesh.getChildMeshes()) c.isPickable = false;
+
+    if (this.mode === "vr") {
+      const hand = side === "left" ? this.handL : this.handR;
+      const slot = side === "left" ? "vrLeft" : "vrRight";
+      const pl = LOADOUT.items[cls][slot];
+      mesh.parent = hand ?? this.root;
+      mesh.position.set(pl.pos[0], pl.pos[1], pl.pos[2]);
+      mesh.rotation.set(pl.rot[0], pl.rot[1], pl.rot[2]);
+      mesh.scaling.setAll(pl.scale);
+    } else {
+      // Плоский аватар: оружие просто держим сбоку от корпуса.
+      mesh.parent = this.root;
+      mesh.position.set(side === "left" ? -0.32 : 0.32, -0.35, 0.1);
+      mesh.rotation.set(0, 0, side === "left" ? 0.5 : -0.5);
+      mesh.scaling.setAll(0.7);
+    }
+    return mesh;
   }
 
   /** node.position (или root) + кватернион = интерполяция a->b. `isRoot` — позиция мировая. */
@@ -205,7 +271,14 @@ export class RemoteAvatar {
 
   dispose(): void {
     this.speakDot?.dispose();
+    this.gearL?.dispose();
+    this.gearR?.dispose();
     this.nameTag.dispose();
     this.root.dispose(false, true);
   }
+}
+
+/** Ключ «класс:уровень» — по нему решаем, надо ли пересобирать меш оружия. */
+function keyOf(w: readonly [string, string]): string {
+  return `${w[0]}:${w[1]}`;
 }
