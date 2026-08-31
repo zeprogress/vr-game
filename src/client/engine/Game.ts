@@ -34,6 +34,7 @@ import { XRInput } from "../input/XRInput";
 import type { InputSource } from "../input/InputSource";
 import type { NetClient } from "../net/NetClient";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
+import { VoiceChat } from "../voice/VoiceChat";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
@@ -57,6 +58,8 @@ export class Game {
   private readonly netMobs: NetMobs;
   private readonly loot: LootDrops;
   private readonly zoneTick: (dt: number, playerPos: Vector3) => void;
+  /** Голосовой чат: разговор идёт напрямую между игроками. */
+  readonly voice: VoiceChat;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
   private readonly sfx = new Sfx();
@@ -77,6 +80,8 @@ export class Game {
   private readonly aim = new Vector3(0, 0, 1);
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
+  /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
+  private voiceWarned = false;
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -117,6 +122,15 @@ export class Game {
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.loot = new LootDrops(this.scene);
+    this.voice = new VoiceChat(this.sfx.audioContext());
+    this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
+    this.voice.onSpeaking = (id, on) => this.avatars.get(id)?.setSpeaking(on);
+    // Молчащий голос без объяснения выглядит поломкой — говорим прямо.
+    this.voice.onPeerFailed = () => {
+      if (this.voiceWarned) return;
+      this.voiceWarned = true;
+      this.hud.toast("Голос не пробился: мешает VPN или сеть");
+    };
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
     this.hud.bindInventory(this.inventory);
@@ -169,6 +183,14 @@ export class Game {
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
 
+    // Выключатель микрофона: в шлеме он в панели настройки, а на десктопе
+    // до неё не добраться — поэтому клавиша M.
+    window.addEventListener("keydown", (e) => {
+      if (e.code !== "KeyM" || this.player.inVR) return;
+      LOADOUT.voice.mic = LOADOUT.voice.mic ? 0 : 1;
+      this.hud.toast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
+    });
+
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.zoneTick(dt, this.player.position);
@@ -179,6 +201,7 @@ export class Game {
       this.combat.update(dt);
       this.hands.update(dt);
       this.syncNet(dt);
+      this.updateVoice(dt);
       this.updateVrUi(dt);
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
@@ -484,6 +507,17 @@ export class Game {
       this.loot.attach(net.room);
     }
 
+    // Голос: спрашиваем микрофон и связываемся с теми, кто уже в комнате.
+    this.voice.send = (m) => net.sendRtc(m);
+    net.onRtc = (m) => void this.voice.handle(m);
+    void this.voice.start(net.sessionId).then((ok) => {
+      if (!ok) {
+        this.hud.toast(`Голос выключен: ${this.voice.micError ?? "нет микрофона"}`);
+        return;
+      }
+      for (const id of this.avatars.keys()) this.voice.addPeer(id);
+    });
+
     // Автосейв: раз в 30 с, при изменении прогресса (с задержкой) и перед выходом.
     this.saveTimer = window.setInterval(() => this.saveNow(), 30_000);
     this.unsubProgress = this.progression.onChange(() => {
@@ -498,13 +532,16 @@ export class Game {
     const add = (id: string): void => {
       if (id === net.sessionId || this.avatars.has(id)) return;
       const p = players.get(id);
-      if (p) this.avatars.set(id, new RemoteAvatar(this.scene, id, p.nick, p.mode));
+      if (!p) return;
+      this.avatars.set(id, new RemoteAvatar(this.scene, id, p.nick, p.mode));
+      this.voice.addPeer(id);
     };
 
     players.onAdd((_p, id) => add(id), true); // true — сработает и для уже вошедших
     players.onRemove((_p, id) => {
       this.avatars.get(id)?.dispose();
       this.avatars.delete(id);
+      this.voice.removePeer(id);
     });
   }
 
@@ -517,6 +554,13 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
+  }
+
+  /** Голос: подхватываем настройки и отдаём положение слушателя. */
+  private updateVoice(dt: number): void {
+    this.voice.micEnabled = LOADOUT.voice.mic !== 0;
+    this.voice.setSpatial(LOADOUT.voice.spatial !== 0);
+    this.voice.update(dt, this.player.eyePosition, this.player.eyeForward, UP);
   }
 
   /** Сколько зелий в сумке — суммой по всем ячейкам. */
@@ -563,6 +607,8 @@ export class Game {
     this.unsubProgress = null;
     this.netMobs.detach();
     this.loot.detach();
+    this.voice.dispose();
+    this.voice.send = null;
     this.inventory.onUseRequest = null;
     this.inventory.clear();
     this.combat.nearestWorldWeapon = null;
@@ -578,6 +624,7 @@ export class Game {
       this.net.onRespawn = null;
       this.net.onLevelUp = null;
       this.net.onPicked = null;
+      this.net.onRtc = null;
     }
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
@@ -641,6 +688,9 @@ export class Game {
     }
   }
 }
+
+/** Мировая вертикаль — ориентация слушателя для звука по месту. */
+const UP = new Vector3(0, 1, 0);
 
 function zeros7(): Xf7 {
   return [0, 0, 0, 0, 0, 0, 1];

@@ -23,6 +23,15 @@ export class Sfx {
     this.noiseBuf = buf;
   }
 
+  /**
+   * Общий аудиоконтекст. Голосовой чат вешает свои узлы сюда же:
+   * браузеры не любят много контекстов, да и «разбудить» нужно один.
+   */
+  audioContext(): AudioContext {
+    this.ensure();
+    return this.ctx as AudioContext;
+  }
+
   resume(): void {
     this.ensure();
     void this.ctx?.resume();

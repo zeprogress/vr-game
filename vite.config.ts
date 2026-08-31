@@ -44,6 +44,7 @@ function loadoutWriter(): Plugin {
     world: { hour: number; auto: number };
     belt: { pos: number[] };
     hud: { hpPos: number[] };
+    voice: { mic: number; spatial: number };
   }) => {
     const items = ["sword", "bow", "shield", "potion"]
       .map(
@@ -77,6 +78,10 @@ function loadoutWriter(): Plugin {
       `  },\n` +
       `  hud: {\n` +
       `    hpPos: ${arr(l.hud?.hpPos ?? [-0.24, 0.46, 0.92])},\n` +
+      `  },\n` +
+      `  voice: {\n` +
+      `    mic: ${l.voice?.mic ? 1 : 0}, // микрофон работает\n` +
+      `    spatial: ${l.voice?.spatial ? 1 : 0}, // голос идёт от места игрока\n` +
       `  },\n` +
       `};`
     );

@@ -10,6 +10,7 @@ import {
   type MoveMsg,
   type PickedMsg,
   type RespawnMsg,
+  type RtcMsg,
   type SaveMsg,
   type SpendMsg,
   type HandsMsg,
@@ -42,6 +43,8 @@ export class NetClient {
   onLevelUp: ((level: number) => void) | null = null;
   /** Подобран лут. */
   onPicked: ((item: ItemId, count: number) => void) | null = null;
+  /** Служебный пакет голосового чата от другого игрока. */
+  onRtc: ((msg: RtcMsg) => void) | null = null;
 
   get online(): boolean {
     return this.room !== null;
@@ -63,6 +66,7 @@ export class NetClient {
       room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
       room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
       room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
+      room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
       // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
       await new Promise<void>((r) => {
         const t = setTimeout(r, 800);
@@ -113,6 +117,11 @@ export class NetClient {
   sendUseItem(slot: number): void {
     const msg: UseItemMsg = { slot };
     this.room?.send(MSG.useItem, msg);
+  }
+
+  /** Отправить служебный пакет голосового чата другому игроку. */
+  sendRtc(msg: RtcMsg): void {
+    this.room?.send(MSG.rtc, msg);
   }
 
   /** Заявка взять лежащее в мире оружие. */

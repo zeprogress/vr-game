@@ -70,6 +70,13 @@ export interface Loadout {
   belt: { pos: [number, number, number] };
   /** Интерфейс в VR: где висит полоска жизней относительно взгляда. */
   hud: { hpPos: [number, number, number] };
+  /** Голосовой чат. */
+  voice: {
+    /** 1 — микрофон работает, 0 — молчим (слушать продолжаем). */
+    mic: number;
+    /** 1 — голос идёт от места игрока, 0 — всех слышно ровно. */
+    spatial: number;
+  };
 }
 
 export const LOADOUT_DEFAULTS: Loadout = {
@@ -115,6 +122,10 @@ export const LOADOUT_DEFAULTS: Loadout = {
   hud: {
     hpPos: [-0.035, 0.46, 0.72],
   },
+  voice: {
+    mic: 1, // микрофон работает
+    spatial: 1, // голос идёт от места игрока
+  },
 };
 
 /**
@@ -136,7 +147,8 @@ export type TargetKey =
   | `item:${ItemKind}:${SlotKey}`
   | "world:time"
   | "belt:potion"
-  | "hud:hp";
+  | "hud:hp"
+  | "voice:chat";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -150,6 +162,7 @@ function readTarget(src: Loadout, key: TargetKey): unknown {
   if (parts[0] === "world") return src.world;
   if (parts[0] === "belt") return src.belt;
   if (parts[0] === "hud") return src.hud;
+  if (parts[0] === "voice") return src.voice;
   if (parts[0] === "hand") return src.hands[parts[1] as HandSide];
   return src.items[parts[1] as ItemKind][parts[2] as SlotKey];
 }
@@ -172,6 +185,15 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   if (parts[0] === "hud") {
     const a = (value as Loadout["hud"])?.hpPos;
     if (Array.isArray(a) && a.length === 3) dst.hud.hpPos = [a[0], a[1], a[2]];
+    return;
+  }
+  if (parts[0] === "voice") {
+    const v = value as Partial<Loadout["voice"]>;
+    // Мусор трактуем как «включено»: молчащий микрофон выглядит поломкой.
+    if (typeof v?.mic === "number") dst.voice.mic = Number.isFinite(v.mic) ? (v.mic ? 1 : 0) : 1;
+    if (typeof v?.spatial === "number") {
+      dst.voice.spatial = Number.isFinite(v.spatial) ? (v.spatial ? 1 : 0) : 1;
+    }
     return;
   }
   if (parts[0] === "hand") {
@@ -277,6 +299,7 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
         world: LOADOUT.world,
         belt: LOADOUT.belt,
         hud: LOADOUT.hud,
+        voice: LOADOUT.voice,
       }),
     });
     if (res.ok) {

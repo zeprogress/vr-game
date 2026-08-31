@@ -28,6 +28,8 @@ export const MSG = {
   takeWeapon: "tw",
   /** клиент -> сервер: что теперь в руках (для расчёта урона). */
   hands: "hd",
+  /** голосовой чат: сервер только пересылает пакет нужному игроку. */
+  rtc: "rtc",
 } as const;
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
@@ -99,6 +101,20 @@ export interface UseItemMsg {
 export interface PickedMsg {
   item: ItemId;
   count: number;
+}
+
+/**
+ * Служебный пакет голосового чата.
+ *
+ * Сервер в содержимое не смотрит: его дело — доставить пакет адресату и
+ * подписать, от кого он. Сам разговор идёт напрямую между игроками.
+ */
+export interface RtcMsg {
+  /** Кому (у отправителя) / от кого (у получателя). */
+  peer: string;
+  kind: "offer" | "answer" | "ice";
+  /** Сериализованное описание или кандидат. */
+  data: string;
 }
 
 export interface TakeWeaponMsg {

@@ -112,6 +112,30 @@ export class RemoteAvatar {
     return h;
   }
 
+  /** Где сейчас голова — по ней голос звучит из нужного места. */
+  get position(): Vector3 {
+    return this.root.getAbsolutePosition();
+  }
+
+  /** Огонёк над головой, пока игрок говорит. */
+  setSpeaking(on: boolean): void {
+    if (on && !this.speakDot) {
+      const dot = MeshBuilder.CreateSphere(`speak_${this.root.name}`, { diameter: 0.12, segments: 6 }, this.scene);
+      const m = new StandardMaterial("speakMat", this.scene);
+      m.emissiveColor = new Color3(0.4, 1, 0.5);
+      m.diffuseColor = new Color3(0, 0, 0);
+      m.specularColor = new Color3(0, 0, 0);
+      m.disableLighting = true;
+      dot.material = m;
+      dot.parent = this.root;
+      dot.position.set(0, 0.62, 0);
+      dot.isPickable = false;
+      this.speakDot = dot;
+    }
+    this.speakDot?.setEnabled(on);
+  }
+  private speakDot: Mesh | null = null;
+
   /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
   push(now: number, p: PlayerState): void {
     const last = this.buf[this.buf.length - 1];
@@ -180,6 +204,7 @@ export class RemoteAvatar {
   }
 
   dispose(): void {
+    this.speakDot?.dispose();
     this.nameTag.dispose();
     this.root.dispose(false, true);
   }

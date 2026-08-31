@@ -17,6 +17,7 @@ import {
   type MoveMsg,
   type SaveMsg,
   type HandsMsg,
+  type RtcMsg,
   type SpendMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
@@ -303,6 +304,19 @@ export class ZoneRoom extends Room<ZoneState> {
       p.leftTier = l.tier;
       p.rightCls = r.cls;
       p.rightTier = r.tier;
+    });
+
+    // Голосовой чат: сервер — только «телефонистка». Он пересылает пакет
+    // адресату и подписывает отправителя; сам разговор идёт мимо сервера.
+    this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
+      if (!msg?.peer || typeof msg.data !== "string") return;
+      if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
+      if (!this.state.players.has(msg.peer)) return; // адресата в комнате нет
+      this.clientOf(msg.peer)?.send(MSG.rtc, {
+        peer: client.sessionId,
+        kind: msg.kind,
+        data: msg.data,
+      });
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);

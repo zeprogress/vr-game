@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "vec3";
+  kind: "hand" | "item" | "world" | "vec3" | "voice";
 }
 
 const TARGETS: Target[] = [
@@ -52,6 +52,7 @@ const TARGETS: Target[] = [
   { key: "belt:potion", label: "Зелье · на поясе", kind: "vec3" },
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
+  { key: "voice:chat", label: "Голос", kind: "voice" },
 ];
 
 type Field =
@@ -189,6 +190,7 @@ export class LoadoutPanel {
   private fieldCount(): number {
     if (this.target.kind === "hand" || this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
+    if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     return 7;
   }
 
@@ -222,6 +224,19 @@ export class LoadoutPanel {
           const mm = Math.round((v - hh) * 60);
           return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
         },
+      };
+    }
+    if (t.kind === "voice") {
+      const key = i === 0 ? "mic" : "spatial";
+      return {
+        label: i === 0 ? "микрофон" : "звук по месту",
+        rot: false,
+        steps: [1, 1, 1],
+        get: () => (LOADOUT.voice[key] === 0 ? 0 : 1),
+        set: (v) => {
+          LOADOUT.voice[key] = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
+        },
+        format: (v) => (v ? "вкл" : "выкл"),
       };
     }
     if (t.kind === "vec3") {
