@@ -356,7 +356,11 @@ export class LoadoutPanel {
     this.redraw();
     void pushLoadoutToFile().then((r) => {
       this.fileState =
-        r === "ok" ? "в файл ✓" : r === "no-server" ? "локально (нет сервера)" : "ошибка записи";
+        r === "ok"
+          ? "в файл ✓"
+          : r === "no-server"
+            ? "сохранено в этом браузере ✓"
+            : "ошибка записи";
       this.savedFlash = Math.max(this.savedFlash, 2);
       this.redraw();
     });
@@ -430,7 +434,13 @@ export class LoadoutPanel {
       this.saveRow,
       "Сохранить настройки",
       saveVal,
-      this.savedFlash > 0 ? (this.fileState === "в файл ✓" ? "#7ee081" : "#ffd166") : undefined,
+      this.savedFlash > 0
+        ? this.fileState === "ошибка записи"
+          ? "#ff8a8a"
+          : this.fileState.includes("✓")
+            ? "#7ee081"
+            : "#ffd166"
+        : undefined,
     );
     drawRow(this.resetRow, "Сброс к файлу", "◂ ▸");
 

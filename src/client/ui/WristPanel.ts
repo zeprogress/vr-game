@@ -12,9 +12,13 @@ import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 const TEX_W = 512;
-const TEX_H = 560;
-/** Строк всего: характеристики + ячейки сумки. X идёт по ним подряд. */
-const ROWS = STATS.length + BAG.slots;
+const TEX_H = 610;
+/**
+ * Выбираемых строк: характеристики + ячейки сумки + «выйти из мира».
+ * X идёт по ним подряд, последняя — выход.
+ */
+const ROWS = STATS.length + BAG.slots + 1;
+const EXIT_ROW = ROWS - 1;
 const GRID_COLS = 4;
 
 /**
@@ -28,6 +32,10 @@ export class WristPanel {
   private readonly tex: DynamicTexture;
   private selected = 0;
   private open = false;
+  /** Секунды, пока строка выхода «взведена» и ждёт второго нажатия B. */
+  private exitArmed = 0;
+  /** Выйти из мира (вернуться на экран входа). Ставит Game. */
+  onExit: (() => void) | null = null;
 
   constructor(
     scene: Scene,
@@ -94,16 +102,36 @@ export class WristPanel {
     this.plane.setEnabled(false);
   }
 
-  /** next — следующая строка, confirm — вложить очко или выпить зелье. */
-  update(next: boolean, confirm: boolean): void {
+  /**
+   * next — следующая строка, confirm — вложить очко / выпить зелье / выйти.
+   * dt нужен, чтобы «взведённый» выход сам снимался через пару секунд.
+   */
+  update(next: boolean, confirm: boolean, dt = 0): void {
     if (!this.open) return;
+
+    if (this.exitArmed > 0) {
+      this.exitArmed -= dt;
+      if (this.exitArmed <= 0) this.redraw();
+    }
 
     if (next) {
       this.selected = (this.selected + 1) % ROWS;
+      this.exitArmed = 0;
       this.redraw();
     }
     if (!confirm) return;
 
+    if (this.selected === EXIT_ROW) {
+      // Двойное нажатие: случайно из мира не выкинет.
+      if (this.exitArmed > 0) {
+        this.exitArmed = 0;
+        this.onExit?.();
+      } else {
+        this.exitArmed = 2.5;
+        this.redraw();
+      }
+      return;
+    }
     if (this.selected < STATS.length) {
       if (this.prog.spend(STATS[this.selected])) this.redraw();
     } else if (this.inv.use(this.selected - STATS.length)) {
@@ -189,9 +217,26 @@ export class WristPanel {
 
     this.drawBag(ctx);
 
+    // Выход из мира
+    const exitActive = this.selected === EXIT_ROW;
+    const exitY = 548;
+    if (exitActive) {
+      ctx.fillStyle = this.exitArmed > 0 ? "#4a2230" : "#2a2036";
+      ctx.fillRect(20, exitY - 6, TEX_W - 40, 40);
+    }
+    ctx.font = `${exitActive ? "bold " : ""}26px system-ui, sans-serif`;
+    ctx.fillStyle = this.exitArmed > 0 ? "#ff8a8a" : exitActive ? "#ffb0b0" : "#c98a95";
+    ctx.fillText(
+      this.exitArmed > 0
+        ? `${exitActive ? "▸ " : "   "}Нажми B ещё раз — выйти`
+        : `${exitActive ? "▸ " : "   "}Выйти из мира`,
+      26,
+      exitY,
+    );
+
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 528);
+    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 582);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);

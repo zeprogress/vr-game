@@ -324,7 +324,9 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
       clearAllOverrides(); // файл теперь источник правды — локальные копии не нужны
       return "ok";
     }
-    return res.status === 404 ? "no-server" : "error";
+    // Нет обработчика (собранная игра за nginx: 404, или 405 на POST к статике)
+    // — не ошибка, просто писать в файл некуда. Настройки уже в localStorage.
+    return res.status === 404 || res.status === 405 ? "no-server" : "error";
   } catch {
     return "no-server";
   }

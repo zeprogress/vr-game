@@ -332,6 +332,7 @@ export class Game {
       this.progression,
       this.inventory,
     );
+    this.wristPanel.onExit = () => void this.leaveWorld();
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
@@ -383,7 +384,7 @@ export class Game {
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
-    this.wristPanel?.update(inp.uiNext, inp.uiConfirm);
+    this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
     // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
@@ -677,6 +678,21 @@ export class Game {
     if (!this.net?.online) return;
     const msg: SaveMsg = this.player.snapshotState();
     this.net.sendSave(msg);
+  }
+
+  /**
+   * Выйти из мира — на экран входа. Сохраняемся, выходим из VR и
+   * перезагружаем страницу: так не остаётся полуразобранного состояния.
+   * Сам разрыв соединения сервер ловит в onLeave и тоже пишет сейв.
+   */
+  async leaveWorld(): Promise<void> {
+    this.saveNow();
+    try {
+      await this.xr?.baseExperience.exitXRAsync();
+    } catch {
+      /* уже вне XR */
+    }
+    window.location.reload();
   }
 
   private detachNet(): void {
