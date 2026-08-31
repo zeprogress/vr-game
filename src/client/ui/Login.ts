@@ -87,6 +87,11 @@ export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Prom
             vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
           }
         });
+        // Подстраховка: если через 20 с всё ещё висим (в шлеме экран не виден) —
+        // впускаем в мир, чтобы не застрять с пустой сценой.
+        setTimeout(() => {
+          if (document.getElementById("login")) finish(online, false);
+        }, 20000);
       });
       flatBtn.addEventListener("click", () => finish(online, false));
     };

@@ -255,13 +255,34 @@ export class Game {
    */
   enterVR(): Promise<boolean> {
     if (!this.xr) return Promise.resolve(false);
-    return this.xr.baseExperience
-      .enterXRAsync("immersive-vr", "local-floor")
-      .then(() => this.xr!.baseExperience.state === WebXRState.IN_XR)
-      .catch((e: unknown) => {
-        console.warn("не удалось войти в VR:", e);
-        return false;
+    const base = this.xr.baseExperience;
+    if (base.state === WebXRState.IN_XR) return Promise.resolve(true);
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const done = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+      // Резолвимся по ФАКТУ входа в XR, а не по промису enterXRAsync — тот на
+      // части шлемов не резолвится, и экран входа завис бы навсегда (в VR его
+      // всё равно не видно). Плюс страховка по таймауту.
+      const obs = base.onStateChangedObservable.add((s) => {
+        if (s === WebXRState.IN_XR) {
+          base.onStateChangedObservable.remove(obs);
+          done(true);
+        }
       });
+      setTimeout(() => {
+        base.onStateChangedObservable.remove(obs);
+        done(base.state === WebXRState.IN_XR);
+      }, 15000);
+      base.enterXRAsync("immersive-vr", "local-floor").catch((e: unknown) => {
+        console.warn("не удалось войти в VR:", e);
+        done(base.state === WebXRState.IN_XR);
+      });
+    });
   }
 
   /** Инициализация WebXR. Вход в VR — по кнопке с экрана входа (см. enterVR). */

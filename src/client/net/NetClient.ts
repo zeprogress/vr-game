@@ -74,20 +74,24 @@ export class NetClient {
     this.nick = nick;
     this.token = token;
     this.closedByUs = false;
-    try {
-      this.client = new Client();
-      const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
-      this.wireRoom(room);
-      await firstSync(room);
-      this.room = room;
-      console.log(`[net] в комнате ${room.roomId} как ${room.sessionId}`);
-      return true;
-    } catch (e) {
-      console.warn("[net] сервер недоступен — одиночный режим:", (e as Error).message);
-      this.client = null;
-      this.room = null;
-      return false;
+    this.client = new Client();
+    // Несколько попыток: сервер мог как раз перезапускаться (деплой ~10 с).
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
+      try {
+        const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
+        this.wireRoom(room);
+        await firstSync(room);
+        this.room = room;
+        console.log(`[net] в комнате ${room.roomId} как ${room.sessionId}`);
+        return true;
+      } catch (e) {
+        console.warn(`[net] вход не удался (попытка ${attempt + 1}):`, (e as Error).message);
+      }
     }
+    this.client = null;
+    this.room = null;
+    return false;
   }
 
   /** Подписки комнаты — общие для первого входа и переподключения. */
