@@ -16,6 +16,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   owned: string[];
   /** Оружие, убранное за спину при прошлом выходе. */
   stowed: StowedWeapon[];
+  /** Панельные настройки (положения рук/предметов, HUD, графика, голос). */
+  overrides: Record<string, unknown>;
   bag: Slot[];
   updatedAt: number;
 }
@@ -35,6 +37,7 @@ function blank(token: string): PlayerRecord {
     hp: maxHpFor(p.str),
     owned: [],
     stowed: [],
+    overrides: {},
     bag: emptyBag(),
     updatedAt: 0,
   };

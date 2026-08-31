@@ -18,6 +18,7 @@ import {
   type SaveMsg,
   type HandsMsg,
   type StowedWeapon,
+  type OverridesMsg,
   type RtcMsg,
   type SpendMsg,
   type SetTimeMsg,
@@ -93,6 +94,19 @@ interface Runtime {
   owned: Set<string>;
   /** Оружие за спиной — переживает выход и восстанавливается при входе. */
   stowed: StowedWeapon[];
+  /** Панельные настройки игрока (JSON как есть) — применяются только у него. */
+  overrides: Record<string, unknown>;
+}
+
+/** Принять панельные настройки: это должен быть небольшой JSON-объект. */
+function sanitizeOverrides(v: unknown): Record<string, unknown> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  try {
+    if (JSON.stringify(v).length > 20000) return {};
+  } catch {
+    return {};
+  }
+  return v as Record<string, unknown>;
 }
 
 function applyXf(target: Xf, v: Xf7 | undefined): void {
@@ -370,6 +384,15 @@ export class ZoneRoom extends Room<ZoneState> {
       this.clockSync = 0;
     });
 
+    // Панельные настройки: храним по токену, применяются только у этого игрока.
+    this.onMessage(MSG.loadout, (client: Client, msg: OverridesMsg) => {
+      const rt = this.rt.get(client.sessionId);
+      if (!rt || !msg || typeof msg !== "object" || Array.isArray(msg)) return;
+      rt.overrides = sanitizeOverrides(msg);
+      this.persist(client);
+      store.flush(); // правят редко — пишем на диск сразу
+    });
+
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
       if (!msg?.peer || typeof msg.data !== "string") return;
       if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
@@ -640,12 +663,20 @@ export class ZoneRoom extends Room<ZoneState> {
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),
+      overrides: sanitizeOverrides(rec?.overrides),
     });
 
     client.send(
       MSG.char,
       rec
-        ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, stowed: sanitizeStowed(rec.stowed) }
+        ? {
+            x: rec.x,
+            y: rec.y,
+            z: rec.z,
+            yaw: rec.yaw,
+            stowed: sanitizeStowed(rec.stowed),
+            overrides: sanitizeOverrides(rec.overrides),
+          }
         : null,
     );
 
@@ -670,6 +701,7 @@ export class ZoneRoom extends Room<ZoneState> {
       hp: p.hp,
       owned: [...rt.owned],
       stowed: rt.stowed,
+      overrides: rt.overrides,
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
     };

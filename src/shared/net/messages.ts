@@ -32,7 +32,12 @@ export const MSG = {
   rtc: "rtc",
   /** админ -> сервер: перевести время суток всему миру. */
   setTime: "st",
+  /** клиент -> сервер: сохранить настройки панели (per-token, применяются только у него). */
+  loadout: "ld",
 } as const;
+
+/** Панельные переопределения настроек — сервер хранит их по токену игрока. */
+export type OverridesMsg = Record<string, unknown>;
 
 /** Перевод мировых часов. Сервер слушает только игрока с ником ADMIN_NICK. */
 export interface SetTimeMsg {
@@ -74,7 +79,9 @@ export interface StowedWeapon {
  * Что сервер знает про этот токен при входе: где стоял + что было убрано за
  * спину в прошлый раз. null — токен новый.
  */
-export type CharMsg = (SaveMsg & { stowed?: StowedWeapon[] }) | null;
+export type CharMsg =
+  | (SaveMsg & { stowed?: StowedWeapon[]; overrides?: OverridesMsg })
+  | null;
 
 export interface HitMobMsg {
   id: string;

@@ -141,6 +141,11 @@ export class NetClient {
     this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
   }
 
+  /** Сохранить панельные настройки на сервере (по токену игрока). */
+  sendLoadout(overrides: Record<string, unknown>): void {
+    this.room?.send(MSG.loadout, overrides);
+  }
+
   /**
    * Мировые часы с сервера — null офлайн. `hour` обновляется редко (раз в
    * DAYCYCLE.syncSeconds и на команду админа); между обновлениями клиент

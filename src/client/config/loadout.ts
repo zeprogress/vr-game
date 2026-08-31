@@ -297,6 +297,21 @@ export function clearAllOverrides(): void {
   storeOverrides({});
 }
 
+/** Текущие панельные переопределения — чтобы отправить на сервер. */
+export function exportOverrides(): Overrides {
+  return loadOverrides();
+}
+
+/**
+ * Принять настройки с сервера: запомнить локально и применить поверх файла.
+ * Вызывается при входе в мир — сервер главнее локального localStorage.
+ */
+export function importOverrides(o: unknown): void {
+  if (!o || typeof o !== "object" || Array.isArray(o)) return;
+  storeOverrides(o as Overrides);
+  applyOverrides();
+}
+
 /**
  * Отправляет текущие значения дев-серверу — он перепишет блок
  * LOADOUT_DEFAULTS в этом файле. Так «Сохранить настройки» кладёт числа в

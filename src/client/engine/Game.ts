@@ -20,7 +20,7 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
-import { LOADOUT, printLoadout } from "../config/loadout";
+import { LOADOUT, printLoadout, importOverrides, exportOverrides } from "../config/loadout";
 import { HUD, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
@@ -336,6 +336,10 @@ export class Game {
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
+    // «Сохранить» онлайн шлёт настройки на сервер (по токену игрока).
+    this.loadoutPanel.onSaveServer = this.net?.online
+      ? () => this.net!.sendLoadout(exportOverrides())
+      : null;
   }
 
   /** Ник этого игрока — задаётся из main.ts после входа. */
@@ -596,6 +600,8 @@ export class Game {
     this.player.restoreState(data);
     // Оружие, убранное за спину в прошлый раз, возвращаем на место.
     if (data.stowed?.length) this.combat.restoreStowed(data.stowed);
+    // Настройки панели с сервера — главнее локальных.
+    if (data.overrides && Object.keys(data.overrides).length) importOverrides(data.overrides);
   }
 
   /**

@@ -88,6 +88,8 @@ export class LoadoutPanel {
   private fileState = "";
   /** Онлайн: перевод времени/автосмены уходит на сервер (часы общие). */
   onWorldTime: ((hour: number, auto: number) => void) | null = null;
+  /** Онлайн: «Сохранить» шлёт настройки на сервер (по токену игрока). */
+  onSaveServer: (() => void) | null = null;
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("loadoutTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -345,13 +347,21 @@ export class LoadoutPanel {
   }
 
   /**
-   * Фиксирует все настройки. Пишет их в src/config/loadout.ts через
-   * дев-сервер (общий файл, любой адрес/устройство); если сервера нет —
-   * остаётся локальная копия в localStorage. Статус показывает в строке.
+   * Фиксирует все настройки.
+   * Онлайн — на сервер по токену игрока (переживает смену адреса/устройства).
+   * Иначе — в src/config/loadout.ts через дев-сервер, а без него в localStorage.
    */
   saveAll(): void {
     for (const t of TARGETS) saveTarget(t.key);
     this.savedFlash = 2;
+
+    if (this.onSaveServer) {
+      this.onSaveServer();
+      this.fileState = "на сервере ✓";
+      this.redraw();
+      return;
+    }
+
     this.fileState = "…";
     this.redraw();
     void pushLoadoutToFile().then((r) => {
