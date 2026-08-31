@@ -665,7 +665,9 @@ export class Game {
 
     // Голос: спрашиваем микрофон и связываемся с теми, кто уже в комнате.
     this.voice.send = (m) => net.sendRtc(m);
+    this.voice.sendVoice = (t, d) => net.sendVoice(t, d);
     net.onRtc = (m) => void this.voice.handle(m);
+    net.onVoice = (id, t, d) => this.voice.onVoicePacket(id, t, d);
     void this.voice.start(net.sessionId).then((ok) => {
       if (!ok) {
         this.hud.toast(`Голос выключен: ${this.voice.micError ?? "нет микрофона"}`);
@@ -879,6 +881,7 @@ export class Game {
     this.loot.detach();
     this.voice.dispose();
     this.voice.send = null;
+    this.voice.sendVoice = null;
     this.inventory.onUseRequest = null;
     this.inventory.clear();
     this.combat.nearestWorldWeapon = null;
@@ -898,6 +901,7 @@ export class Game {
       this.net.onPicked = null;
       this.net.onRtc = null;
       this.net.onAct = null;
+      this.net.onVoice = null;
       this.net.onConnectionLost = null;
       this.net.onReconnected = null;
       this.net.disconnect(); // остановить попытки переподключения

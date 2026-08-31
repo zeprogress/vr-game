@@ -24,6 +24,7 @@ import {
   type ActMsg,
   type ActRelay,
   type ActKind,
+  type VoiceMsg,
   isActKind,
   type OverridesMsg,
   type RtcMsg,
@@ -481,6 +482,13 @@ export class ZoneRoom extends Room<ZoneState> {
         kind: msg.kind,
         data: msg.data,
       });
+    });
+
+    // Голос через сервер (запасной путь, когда прямое соединение не встало).
+    this.onMessage(MSG.voice, (client: Client, msg: VoiceMsg) => {
+      if (!msg || typeof msg.t !== "number" || !Array.isArray(msg.d)) return;
+      if (msg.d.length === 0 || msg.d.length > 4000) return;
+      this.broadcast(MSG.voice, { id: client.sessionId, t: msg.t, d: msg.d }, { except: client });
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);

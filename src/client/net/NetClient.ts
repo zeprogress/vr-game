@@ -19,6 +19,8 @@ import {
   type ActKind,
   type ActMsg,
   type ActRelay,
+  type VoiceMsg,
+  type VoiceRelay,
   type TakeWeaponMsg,
   type UseItemMsg,
 } from "#shared/net/messages";
@@ -52,6 +54,8 @@ export class NetClient {
   onRtc: ((msg: RtcMsg) => void) | null = null;
   /** Звуковое событие соседа: где и что произошло. */
   onAct: ((k: ActKind, x: number, y: number, z: number, id: string) => void) | null = null;
+  /** Голос соседа через сервер (opus-пакет). */
+  onVoice: ((id: string, t: number, d: number[]) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -119,6 +123,7 @@ export class NetClient {
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
     room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id));
+    room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
@@ -218,6 +223,11 @@ export class NetClient {
   /** Своё звуковое событие — сервер перешлёт соседям. */
   sendAct(k: ActKind, x: number, y: number, z: number): void {
     this.room?.send(MSG.act, { k, x, y, z } satisfies ActMsg);
+  }
+
+  /** Свой opus-пакет голоса — сервер перешлёт соседям (запасной путь). */
+  sendVoice(t: number, d: number[]): void {
+    this.room?.send(MSG.voice, { t, d } satisfies VoiceMsg);
   }
 
   /** Сохранить панельные настройки на сервере (по токену игрока). */

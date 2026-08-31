@@ -46,7 +46,30 @@ interface Peer {
   buf: Float32Array | null;
   speaking: boolean;
   state: PeerState;
+  // --- запасной путь: голос через сервер ---
+  /** true — WebRTC не встал, слушаем через сервер. */
+  useRelay: boolean;
+  /** Таймер: если за N секунд WebRTC не соединился — включаем relay. */
+  relayTimer: ReturnType<typeof setTimeout> | null;
+  /** Декодер opus для этого собеседника. */
+  decoder: AudioDecoder | null;
+  /** Вход в звуковую схему для relay-пакетов. */
+  relayIn: GainNode | null;
+  /** Куда планировать следующий кусок (сек. AudioContext). */
+  playAt: number;
 }
+
+/** WebCodecs есть не везде (нужен для голоса через сервер). */
+const CODECS_OK =
+  typeof AudioEncoder !== "undefined" &&
+  typeof AudioDecoder !== "undefined" &&
+  typeof (globalThis as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor !==
+    "undefined";
+
+interface TrackProcessor {
+  readable: ReadableStream<AudioData>;
+}
+type TrackProcessorCtor = new (o: { track: MediaStreamTrack }) => TrackProcessor;
 
 /**
  * Голосовой чат: разговор идёт напрямую между игроками (WebRTC), игровой
@@ -65,8 +88,14 @@ export class VoiceChat {
   private localBuf: Float32Array | null = null;
   private speakTimer = 0;
 
+  // --- голос через сервер (запасной путь) ---
+  private encoder: AudioEncoder | null = null;
+  private encoderStarted = false;
+
   /** Отправка служебного пакета — её задаёт Game. */
   send: ((msg: RtcMsg) => void) | null = null;
+  /** Отправка opus-пакета голоса через сервер — её задаёт Game. */
+  sendVoice: ((t: number, d: number[]) => void) | null = null;
   /** Где сейчас голова этого игрока (для звука по месту). null — не знаем. */
   peerPosition: ((id: string) => Vector3 | null) | null = null;
   /** Кто-то заговорил или замолчал — Game зажигает значок над аватаром. */
@@ -136,8 +165,20 @@ export class VoiceChat {
       buf: null,
       speaking: false,
       state: "новый",
+      useRelay: false,
+      relayTimer: null,
+      decoder: null,
+      relayIn: null,
+      playAt: 0,
     };
     this.peers.set(id, peer);
+
+    // WebRTC не встал за 7 с — включаем запасной путь через сервер.
+    if (CODECS_OK) {
+      peer.relayTimer = setTimeout(() => {
+        if (peer.state !== "говорим") this.enableRelay(id);
+      }, 7000);
+    }
 
     if (this.local) for (const t of this.local.getTracks()) pc.addTrack(t, this.local);
 
@@ -159,9 +200,15 @@ export class VoiceChat {
         this.onPeerState?.(id, next);
       }
       console.log(`[voice] ${id}: соединение ${st}`);
+      if (st === "connected") this.disableRelay(id); // WebRTC ожил — relay не нужен
       if (st === "failed") {
-        console.warn(`[voice] с ${id} связь не установилась — обычно это VPN или строгий NAT`);
-        this.onPeerFailed?.(id);
+        if (CODECS_OK) {
+          console.warn(`[voice] с ${id} прямой связи нет — перехожу на голос через сервер`);
+          this.enableRelay(id);
+        } else {
+          console.warn(`[voice] с ${id} связь не установилась (WebCodecs недоступен)`);
+          this.onPeerFailed?.(id);
+        }
       }
     };
 
@@ -181,12 +228,19 @@ export class VoiceChat {
   removePeer(id: string): void {
     const p = this.peers.get(id);
     if (!p) return;
+    if (p.relayTimer) clearTimeout(p.relayTimer);
     p.pc.close();
     p.el?.pause();
     if (p.el) p.el.srcObject = null;
     p.source?.disconnect();
+    p.relayIn?.disconnect();
     p.panner?.disconnect();
     p.gain?.disconnect();
+    try {
+      p.decoder?.close();
+    } catch {
+      /* уже закрыт */
+    }
     this.peers.delete(id);
     if (p.speaking) this.onSpeaking?.(id, false);
   }
@@ -227,14 +281,8 @@ export class VoiceChat {
     void el.play().catch(() => {});
     peer.el = el;
 
+    this.ensureNodes(peer);
     peer.source = this.ctx.createMediaStreamSource(stream);
-    peer.gain = this.ctx.createGain();
-    peer.panner = this.ctx.createPanner();
-    peer.panner.panningModel = "HRTF";
-    peer.panner.distanceModel = "inverse";
-    peer.panner.refDistance = VOICE.refDistance;
-    peer.panner.maxDistance = VOICE.maxDistance;
-    peer.panner.rolloffFactor = VOICE.rolloff;
 
     peer.analyser = this.ctx.createAnalyser();
     peer.analyser.fftSize = 512;
@@ -244,21 +292,193 @@ export class VoiceChat {
     this.wire(peer);
   }
 
+  /** Общие узлы собеседника (паннер + гейн + вход для relay). */
+  private ensureNodes(peer: Peer): void {
+    if (peer.gain) return;
+    peer.gain = this.ctx.createGain();
+    peer.panner = this.ctx.createPanner();
+    peer.panner.panningModel = "HRTF";
+    peer.panner.distanceModel = "inverse";
+    peer.panner.refDistance = VOICE.refDistance;
+    peer.panner.maxDistance = VOICE.maxDistance;
+    peer.panner.rolloffFactor = VOICE.rolloff;
+    peer.relayIn = this.ctx.createGain();
+  }
+
+  /** Активный источник голоса: relay или прямой WebRTC. */
+  private voiceInput(peer: Peer): AudioNode | null {
+    return peer.useRelay ? peer.relayIn : peer.source;
+  }
+
   /** Пересобрать цепочку под текущий режим «по месту / ровно». */
   private wire(peer: Peer): void {
-    if (!peer.source || !peer.gain || !peer.panner) return;
-    peer.source.disconnect();
+    const input = this.voiceInput(peer);
+    if (!input || !peer.gain || !peer.panner) return;
+    peer.source?.disconnect();
+    peer.relayIn?.disconnect();
     peer.panner.disconnect();
     peer.gain.disconnect();
-    if (peer.analyser) peer.source.connect(peer.analyser);
+    if (peer.analyser && peer.source && !peer.useRelay) peer.source.connect(peer.analyser);
 
     if (this.spatial) {
-      peer.source.connect(peer.panner);
+      input.connect(peer.panner);
       peer.panner.connect(peer.gain);
     } else {
-      peer.source.connect(peer.gain);
+      input.connect(peer.gain);
     }
     peer.gain.connect(this.ctx.destination);
+  }
+
+  // ---- голос через сервер (когда WebRTC не встал) ----
+
+  private enableRelay(id: string): void {
+    const peer = this.peers.get(id);
+    if (!peer || peer.useRelay || !CODECS_OK) return;
+    peer.useRelay = true;
+    if (peer.relayTimer) {
+      clearTimeout(peer.relayTimer);
+      peer.relayTimer = null;
+    }
+    this.ensureNodes(peer);
+    peer.playAt = 0;
+
+    peer.decoder = new AudioDecoder({
+      output: (frame) => this.playFrame(peer, frame),
+      error: (e) => console.warn(`[voice] декодер ${id}:`, e.message),
+    });
+    peer.decoder.configure({ codec: "opus", sampleRate: 48000, numberOfChannels: 1 });
+
+    this.wire(peer);
+    this.startEncoder();
+    console.log(`[voice] ${id}: голос через сервер`);
+    if (peer.state !== "говорим") {
+      peer.state = "говорим";
+      this.onPeerState?.(id, "говорим");
+    }
+  }
+
+  private disableRelay(id: string): void {
+    const peer = this.peers.get(id);
+    if (!peer?.useRelay) return;
+    peer.useRelay = false;
+    try {
+      peer.decoder?.close();
+    } catch {
+      /* уже закрыт */
+    }
+    peer.decoder = null;
+    if (peer.source) this.wire(peer);
+  }
+
+  /** Один общий энкодер: тянет PCM с микрофона и шлёт opus, пока кто-то на relay. */
+  private startEncoder(): void {
+    if (this.encoderStarted || !this.localTrack || !CODECS_OK) return;
+    this.encoderStarted = true;
+
+    this.encoder = new AudioEncoder({
+      output: (chunk) => {
+        if (!this.micEnabled || !this.speaking || !this.anyRelay()) return;
+        const buf = new Uint8Array(chunk.byteLength);
+        chunk.copyTo(buf);
+        this.sendVoice?.(chunk.timestamp, Array.from(buf));
+      },
+      error: (e) => console.warn("[voice] энкодер:", e.message),
+    });
+    this.encoder.configure({
+      codec: "opus",
+      sampleRate: 48000,
+      numberOfChannels: 1,
+      bitrate: 20000,
+    });
+
+    const Ctor = (globalThis as unknown as { MediaStreamTrackProcessor: TrackProcessorCtor })
+      .MediaStreamTrackProcessor;
+    const proc = new Ctor({ track: this.localTrack });
+    const reader = proc.readable.getReader();
+    const pump = async (): Promise<void> => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (
+          this.encoder?.state === "configured" &&
+          this.anyRelay() &&
+          this.micEnabled &&
+          this.speaking
+        ) {
+          try {
+            this.encoder.encode(value);
+          } catch {
+            /* энкодер занят */
+          }
+        }
+        value.close();
+      }
+    };
+    void pump();
+  }
+
+  private anyRelay(): boolean {
+    for (const p of this.peers.values()) if (p.useRelay) return true;
+    return false;
+  }
+
+  /** Пришёл opus-пакет от собеседника через сервер. */
+  onVoicePacket(id: string, t: number, data: number[]): void {
+    const peer = this.peers.get(id);
+    if (!peer?.useRelay || peer.decoder?.state !== "configured") return;
+    try {
+      peer.decoder.decode(
+        new EncodedAudioChunk({ type: "key", timestamp: t, data: new Uint8Array(data) }),
+      );
+    } catch (e) {
+      console.warn(`[voice] пакет от ${id} не декодирован:`, (e as Error).message);
+    }
+  }
+
+  /** Декодированный кусок -> в звуковую схему, встык к предыдущему. */
+  private playFrame(peer: Peer, frame: AudioData): void {
+    if (!peer.relayIn) {
+      frame.close();
+      return;
+    }
+    const frames = frame.numberOfFrames;
+    const sr = frame.sampleRate;
+    const ab = this.ctx.createBuffer(1, frames, sr);
+    const tmp = new Float32Array(frames);
+    frame.copyTo(tmp, { planeIndex: 0, format: "f32-planar" });
+    ab.copyToChannel(tmp, 0);
+    frame.close();
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = ab;
+    src.connect(peer.relayIn);
+    const now = this.ctx.currentTime;
+    // Небольшой буфер (0.12 с), чтобы сгладить джиттер сети.
+    peer.playAt = Math.max(peer.playAt, now + 0.12);
+    src.start(peer.playAt);
+    peer.playAt += ab.duration;
+
+    // Огонёк «говорит» — по факту приходящего звука.
+    if (!peer.speaking) {
+      peer.speaking = true;
+      this.onSpeaking?.(this.idOf(peer), true);
+      clearTimeout(peer.relayTimer as ReturnType<typeof setTimeout>);
+      peer.relayTimer = setTimeout(() => {
+        peer.speaking = false;
+        this.onSpeaking?.(this.idOf(peer), false);
+      }, 400);
+    } else {
+      clearTimeout(peer.relayTimer as ReturnType<typeof setTimeout>);
+      peer.relayTimer = setTimeout(() => {
+        peer.speaking = false;
+        this.onSpeaking?.(this.idOf(peer), false);
+      }, 400);
+    }
+  }
+
+  private idOf(peer: Peer): string {
+    for (const [id, p] of this.peers) if (p === peer) return id;
+    return "";
   }
 
   /** Переключить режим слышимости на лету. */
@@ -329,6 +549,13 @@ export class VoiceChat {
 
   dispose(): void {
     for (const id of [...this.peers.keys()]) this.removePeer(id);
+    try {
+      this.encoder?.close();
+    } catch {
+      /* уже закрыт */
+    }
+    this.encoder = null;
+    this.encoderStarted = false;
     this.local?.getTracks().forEach((t) => t.stop());
     this.local = null;
     this.localTrack = null;
