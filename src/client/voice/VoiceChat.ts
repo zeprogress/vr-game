@@ -4,7 +4,7 @@ import type { RtcMsg } from "#shared/net/messages";
 
 export const VOICE = {
   /** Громче этого считаем, что человек говорит (среднеквадратичный уровень). */
-  speakLevel: 0.045,
+  speakLevel: 0.025,
   /** Сколько держать микрофон открытым после последнего звука, с. */
   hangover: 0.6,
   /** Ближе этого голос звучит в полную силу, м. */
@@ -84,6 +84,8 @@ export class VoiceChat {
   private selfId = "";
   private local: MediaStream | null = null;
   private localTrack: MediaStreamTrack | null = null;
+  /** Клон дорожки для замера громкости — он всегда включён (см. start). */
+  private monitorTrack: MediaStreamTrack | null = null;
   private localAnalyser: AnalyserNode | null = null;
   private localBuf: Float32Array | null = null;
   private speakTimer = 0;
@@ -138,13 +140,47 @@ export class VoiceChat {
     this.localTrack = this.local.getAudioTracks()[0] ?? null;
     if (this.localTrack) this.localTrack.enabled = false; // до первого звука молчим
 
-    // Свой уровень слушаем отдельным узлом — в динамики он не идёт.
-    const src = this.ctx.createMediaStreamSource(this.local);
+    // Свой уровень слушаем по КЛОНУ дорожки. У выключенной (enabled=false)
+    // дорожки все потребители — включая этот анализатор — получают тишину,
+    // поэтому по самой localTrack триггер по громкости не сработал бы никогда.
+    this.monitorTrack = this.localTrack?.clone() ?? null;
+    const monitorStream = this.monitorTrack
+      ? new MediaStream([this.monitorTrack])
+      : this.local;
+    const src = this.ctx.createMediaStreamSource(monitorStream);
     this.localAnalyser = this.ctx.createAnalyser();
     this.localAnalyser.fftSize = 1024;
     src.connect(this.localAnalyser);
     this.localBuf = new Float32Array(this.localAnalyser.fftSize);
+
+    // Пиры, заведённые до того как дали микрофон, остались без исходящей
+    // дорожки — досылаем её. У звонящего это поднимет пере-договор (offer),
+    // и связь наконец получает звук в обе стороны.
+    for (const [id, peer] of this.peers) {
+      this.addLocalTracks(peer);
+      if (peer.caller) void this.renegotiate(id, peer);
+    }
     return true;
+  }
+
+  /** Добавить свою аудиодорожку пиру, если её там ещё нет. */
+  private addLocalTracks(peer: Peer): void {
+    if (!this.local) return;
+    const has = peer.pc.getSenders().some((s) => s.track?.kind === "audio");
+    if (has) return;
+    for (const t of this.local.getTracks()) peer.pc.addTrack(t, this.local);
+  }
+
+  /** Звонящий заново шлёт offer (после добавления дорожки или смены медиа). */
+  private async renegotiate(id: string, peer: Peer): Promise<void> {
+    if (!peer.caller || peer.pc.signalingState !== "stable") return;
+    try {
+      const offer = await peer.pc.createOffer({ offerToReceiveAudio: true });
+      await peer.pc.setLocalDescription(offer);
+      this.send?.({ peer: id, kind: "offer", data: JSON.stringify(peer.pc.localDescription) });
+    } catch (e) {
+      console.warn("[voice] пере-договор не удался:", (e as Error).message);
+    }
   }
 
   /** Появился игрок — заводим с ним связь. */
@@ -180,7 +216,8 @@ export class VoiceChat {
       }, 7000);
     }
 
-    if (this.local) for (const t of this.local.getTracks()) pc.addTrack(t, this.local);
+    this.addLocalTracks(peer);
+    pc.onnegotiationneeded = () => void this.renegotiate(id, peer);
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
@@ -212,17 +249,9 @@ export class VoiceChat {
       }
     };
 
-    if (caller) {
-      void (async () => {
-        try {
-          const offer = await pc.createOffer({ offerToReceiveAudio: true });
-          await pc.setLocalDescription(offer);
-          this.send?.({ peer: id, kind: "offer", data: JSON.stringify(pc.localDescription) });
-        } catch (e) {
-          console.warn("[voice] не смог позвать:", (e as Error).message);
-        }
-      })();
-    }
+    // Первый offer шлём всегда — даже без своей дорожки (mic ещё спрашивается):
+    // важно поднять ICE как можно раньше, дорожку добавит renegotiate.
+    if (caller) void this.renegotiate(id, peer);
   }
 
   removePeer(id: string): void {
@@ -254,6 +283,7 @@ export class VoiceChat {
 
     try {
       if (msg.kind === "offer") {
+        this.addLocalTracks(peer); // mic мог подъехать уже после addPeer
         await peer.pc.setRemoteDescription(JSON.parse(msg.data) as RTCSessionDescriptionInit);
         const answer = await peer.pc.createAnswer();
         await peer.pc.setLocalDescription(answer);
@@ -372,7 +402,9 @@ export class VoiceChat {
 
   /** Один общий энкодер: тянет PCM с микрофона и шлёт opus, пока кто-то на relay. */
   private startEncoder(): void {
-    if (this.encoderStarted || !this.localTrack || !CODECS_OK) return;
+    if (this.encoderStarted || !CODECS_OK) return;
+    const feed = this.monitorTrack ?? this.localTrack;
+    if (!feed) return;
     this.encoderStarted = true;
 
     this.encoder = new AudioEncoder({
@@ -393,7 +425,7 @@ export class VoiceChat {
 
     const Ctor = (globalThis as unknown as { MediaStreamTrackProcessor: TrackProcessorCtor })
       .MediaStreamTrackProcessor;
-    const proc = new Ctor({ track: this.localTrack });
+    const proc = new Ctor({ track: feed });
     const reader = proc.readable.getReader();
     const pump = async (): Promise<void> => {
       for (;;) {
@@ -515,25 +547,27 @@ export class VoiceChat {
     }
   }
 
-  /** Микрофон открывается на голос и закрывается в тишине. */
+  /**
+   * Дорожка WebRTC открыта всё время, пока микрофон включён — так надёжнее
+   * (эхо/шум глушит сам браузер). Замер громкости оставляем только для
+   * значка «говорит» над аватаром и для экономии трафика в relay.
+   */
   private updateMic(dt: number): void {
     const track = this.localTrack;
     if (!track) return;
+    if (track.enabled !== this.micEnabled) track.enabled = this.micEnabled;
     if (!this.micEnabled) {
-      if (track.enabled) track.enabled = false;
       if (this.speaking) this.speaking = false;
       return;
     }
     if (!this.localAnalyser || !this.localBuf) return;
 
     if (rms(this.localAnalyser, this.localBuf) > VOICE.speakLevel) {
-      this.speakTimer = VOICE.hangover; // говорим — держим открытым
+      this.speakTimer = VOICE.hangover;
     } else {
       this.speakTimer = Math.max(0, this.speakTimer - dt);
     }
-    const on = this.speakTimer > 0;
-    if (track.enabled !== on) track.enabled = on;
-    this.speaking = on;
+    this.speaking = this.speakTimer > 0;
   }
 
 
@@ -557,8 +591,10 @@ export class VoiceChat {
     this.encoder = null;
     this.encoderStarted = false;
     this.local?.getTracks().forEach((t) => t.stop());
+    this.monitorTrack?.stop();
     this.local = null;
     this.localTrack = null;
+    this.monitorTrack = null;
     this.localAnalyser = null;
   }
 }
