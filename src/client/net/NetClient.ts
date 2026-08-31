@@ -141,9 +141,13 @@ export class NetClient {
     this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
   }
 
-  /** Мировые часы с сервера — null офлайн (тогда время крутит сам клиент). */
-  get worldHour(): number | null {
-    return this.room ? this.room.state.hour : null;
+  /**
+   * Мировые часы с сервера — null офлайн. `hour` обновляется редко (раз в
+   * DAYCYCLE.syncSeconds и на команду админа); между обновлениями клиент
+   * крутит время сам от последнего значения.
+   */
+  get worldClock(): { hour: number; auto: number } | null {
+    return this.room ? { hour: this.room.state.hour, auto: this.room.state.dayAuto } : null;
   }
 
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */

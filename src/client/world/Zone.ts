@@ -9,7 +9,7 @@ import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
 import { Fireflies } from "./Fireflies";
-import { DAYCYCLE } from "#shared/constants";
+import { advanceHour } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
 
 export interface Zone {
@@ -21,9 +21,13 @@ export interface Zone {
   obstacles: Obstacle[];
   /**
    * Двигает время суток, ветер и светлячков. Звать каждый кадр.
-   * `netHour` — час с сервера: если задан, часы ведёт он, а не клиент.
+   * `net` — часы с сервера (редкие сверки): между ними клиент крутит сам.
    */
-  tick: (dt: number, playerPos: Vector3, netHour?: number | null) => void;
+  tick: (
+    dt: number,
+    playerPos: Vector3,
+    net?: { hour: number; auto: number } | null,
+  ) => void;
   /** Точки, где лежат меч, лук и щит (над камнями). */
   swordHome: Vector3;
   bowHome: Vector3;
@@ -40,6 +44,8 @@ export function buildZone(scene: Scene): Zone {
   let hour = LOADOUT.world.hour;
   let shown = hour;
   let day = dayState(hour);
+  /** Последняя сверка с сервера — по её смене клиент подстраивает часы. */
+  let lastNetHour = Number.NaN;
 
   const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
   const sun = new DirectionalLight("sun", day.sunDir, scene);
@@ -73,22 +79,29 @@ export function buildZone(scene: Scene): Zone {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
     obstacles: trunks,
-    tick: (dt: number, playerPos: Vector3, netHour?: number | null) => {
+    tick: (
+      dt: number,
+      playerPos: Vector3,
+      net?: { hour: number; auto: number } | null,
+    ) => {
       // Часы двигаем ПЕРВЫМИ: если что-то ниже упадёт, время всё равно идёт.
-      if (typeof netHour === "number" && Number.isFinite(netHour)) {
-        // Онлайн: временем владеет сервер, клиент только показывает.
-        hour = netHour;
+      // Останавливаемся только по явному нулю auto: если в настройку затесался
+      // мусор, часы должны идти, а не замереть навсегда.
+      const auto = (net ? net.auto : LOADOUT.world.auto) !== 0;
+      if (net) {
+        // Онлайн: пришла новая сверка с сервера — подхватываем её точно.
+        if (net.hour !== lastNetHour) {
+          hour = net.hour;
+          lastNetHour = net.hour;
+        } else if (auto) {
+          hour = advanceHour(hour, dt);
+        }
+        // Тумблер автосмены в панели показывает состояние сервера.
+        LOADOUT.world.auto = net.auto;
       } else {
         // Офлайн: крутим сами. Перевели стрелки в панели — приняли.
         if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
-        // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
-        // Тумблер в панели останавливает время на выставленном часе.
-        // Останавливаемся только по явному нулю: если в настройку затесался
-        // мусор, часы должны идти, а не замереть навсегда.
-        if (LOADOUT.world.auto !== 0) {
-          const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
-          hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
-        }
+        if (auto) hour = advanceHour(hour, dt);
       }
       // В панель кладём округлённое: иначе строка дрожала бы каждый кадр.
       shown = Math.round(hour * 100) / 100;

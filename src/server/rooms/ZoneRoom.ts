@@ -199,10 +199,13 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly rt = new Map<string, Runtime>();
   /** Секунды с запуска комнаты — по ним считается темп ударов. */
   private elapsed = 0;
+  /** Точный час мира. В состояние (state.hour) кладётся раз в syncSeconds. */
+  private worldHour: number = DAYCYCLE.startHour;
+  private clockSync = 0;
 
   override onCreate(): void {
     this.setState(new ZoneState());
-    this.state.hour = DAYCYCLE.startHour;
+    this.state.hour = this.worldHour;
     this.state.dayAuto = 1;
     this.sim = new ZoneSim();
 
@@ -323,9 +326,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const p = this.state.players.get(client.sessionId);
       if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
       if (Number.isFinite(msg.hour)) {
-        this.state.hour = (((msg.hour as number) % 24) + 24) % 24;
+        this.worldHour = (((msg.hour as number) % 24) + 24) % 24;
       }
       if (msg.auto !== undefined) this.state.dayAuto = msg.auto ? 1 : 0;
+      // Перевод админа — сразу всем, не дожидаясь очередной рассылки.
+      this.state.hour = this.worldHour;
+      this.clockSync = 0;
     });
 
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
@@ -388,7 +394,13 @@ export class ZoneRoom extends Room<ZoneState> {
 
   private step(dt: number): void {
     this.elapsed += dt;
-    if (this.state.dayAuto !== 0) this.state.hour = advanceHour(this.state.hour, dt);
+    if (this.state.dayAuto !== 0) this.worldHour = advanceHour(this.worldHour, dt);
+    // Раз в syncSeconds сверяем клиентов — между сверками они крутят часы сами.
+    this.clockSync += dt;
+    if (this.clockSync >= DAYCYCLE.syncSeconds) {
+      this.clockSync = 0;
+      this.state.hour = this.worldHour;
+    }
 
     // Мобы гоняются только за живыми.
     const players: SimPlayer[] = [];
@@ -578,6 +590,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Мёртвым в сейве не воскресаем в бою — входим с полным здоровьем.
     p.hp = rec && rec.hp > 0 ? Math.min(rec.hp, p.maxHp) : p.maxHp;
     this.state.players.set(client.sessionId, p);
+    // Свежий час новичку (и заодно всем) — не ждём таймер рассылки.
+    this.state.hour = this.worldHour;
+    this.clockSync = 0;
 
     this.rt.set(client.sessionId, {
       token,

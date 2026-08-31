@@ -62,7 +62,7 @@ export class Game {
   private readonly zoneTick: (
     dt: number,
     playerPos: Vector3,
-    netHour?: number | null,
+    net?: { hour: number; auto: number } | null,
   ) => void;
   /** Ник этого игрока: панель настройки открывает только админ (ADMIN_NICK). */
   private localNick = "";
@@ -205,9 +205,7 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
-      this.zoneTick(dt, this.player.position, this.net?.worldHour ?? null);
-      // Онлайн: тумблер автосмены в панели показывает состояние сервера.
-      if (this.net?.room) LOADOUT.world.auto = this.net.room.state.dayAuto;
+      this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.netMobs.update(dt, this.player.position, this.aim);
