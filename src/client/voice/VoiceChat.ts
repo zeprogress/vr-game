@@ -73,6 +73,8 @@ export class VoiceChat {
   onSpeaking: ((id: string, speaking: boolean) => void) | null = null;
   /** Связь с игроком не установилась — игрок должен об этом узнать. */
   onPeerFailed: ((id: string) => void) | null = null;
+  /** Смена состояния связи с игроком — для сообщений в HUD. */
+  onPeerState: ((id: string, state: PeerState) => void) | null = null;
 
   /** Микрофон включён (иначе молчим, но слушаем). */
   micEnabled = true;
@@ -145,10 +147,18 @@ export class VoiceChat {
       }
     };
     pc.ontrack = (e) => this.attachRemote(peer, e.streams[0]);
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[voice] ${id}: ICE ${pc.iceConnectionState}`);
+    };
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
-      peer.state =
+      const next: PeerState =
         st === "connected" ? "говорим" : st === "failed" || st === "closed" ? "нет связи" : "соединяется";
+      if (next !== peer.state) {
+        peer.state = next;
+        this.onPeerState?.(id, next);
+      }
+      console.log(`[voice] ${id}: соединение ${st}`);
       if (st === "failed") {
         console.warn(`[voice] с ${id} связь не установилась — обычно это VPN или строгий NAT`);
         this.onPeerFailed?.(id);

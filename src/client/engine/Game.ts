@@ -147,6 +147,10 @@ export class Game {
       this.voiceWarned = true;
       this.hud.toast("Голос не пробился: мешает VPN или сеть");
     };
+    this.voice.onPeerState = (_id, state) => {
+      if (state === "говорим") this.hud.toast("Голос: связь установлена");
+      else if (state === "соединяется") this.hud.toast("Голос: соединяюсь…");
+    };
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
     this.hud.bindInventory(this.inventory);
@@ -667,6 +671,7 @@ export class Game {
         this.hud.toast(`Голос выключен: ${this.voice.micError ?? "нет микрофона"}`);
         return;
       }
+      this.hud.toast("Микрофон готов");
       for (const id of this.avatars.keys()) this.voice.addPeer(id);
     });
 
