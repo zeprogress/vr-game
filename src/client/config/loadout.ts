@@ -131,7 +131,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
     smooth: 1, // сглаживание краёв
   },
   voice: {
-    mic: 0, // микрофон работает
+    mic: 1, // микрофон работает
     spatial: 1, // голос идёт от места игрока
   },
 };
