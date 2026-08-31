@@ -38,7 +38,8 @@ import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
-import type { PlayerState } from "#shared/net/schema";
+import type { PlayerState, ZoneState } from "#shared/net/schema";
+import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { ADMIN_NICK, RESPAWN } from "#shared/constants";
@@ -588,10 +589,14 @@ export class Game {
     this.combat.onTakeWorldWeapon = (id) => net.sendTakeWeapon(id);
     this.combat.makeWeaponMesh = (cls, tier) =>
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
-    if (net.room) {
-      this.netMobs.attach(net.room);
-      this.loot.attach(net.room);
-    }
+
+    // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
+    net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
+    net.onReconnected = (room) => {
+      this.attachRoom(room);
+      this.hud.toast("Снова в игре");
+    };
+    if (net.room) this.attachRoom(net.room);
 
     // Голос: спрашиваем микрофон и связываемся с теми, кто уже в комнате.
     this.voice.send = (m) => net.sendRtc(m);
@@ -611,18 +616,27 @@ export class Game {
       this.saveDebounce = window.setTimeout(() => this.saveNow(), 1500);
     });
     window.addEventListener("beforeunload", this.beforeUnload);
+  }
 
-    const players = net.room?.state.players;
-    if (!players) return;
+  /**
+   * Подписки на комнату: мобы, лут, аватары чужих. Зовётся при входе и при
+   * КАЖДОМ переподключении (комната после рестарта сервера — новая).
+   */
+  private attachRoom(room: Room<ZoneState>): void {
+    this.netMobs.attach(room);
+    this.loot.attach(room);
 
+    for (const a of this.avatars.values()) a.dispose();
+    this.avatars.clear();
+
+    const players = room.state.players;
     const add = (id: string): void => {
-      if (id === net.sessionId || this.avatars.has(id)) return;
+      if (id === this.net?.sessionId || this.avatars.has(id)) return;
       const p = players.get(id);
       if (!p) return;
       this.avatars.set(id, new RemoteAvatar(this.scene, id, p.nick, p.mode));
       this.voice.addPeer(id);
     };
-
     players.onAdd((_p, id) => add(id), true); // true — сработает и для уже вошедших
     players.onRemove((_p, id) => {
       this.avatars.get(id)?.dispose();
@@ -633,8 +647,17 @@ export class Game {
 
   private readonly beforeUnload = (): void => this.saveNow();
 
+  private charApplied = false;
+
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   private applyChar(data: CharMsg): void {
+    // На переподключении сервер снова шлёт char — но игрока с места не дёргаем.
+    if (this.charApplied) {
+      if (!data) return;
+      this.saveNow(); // сразу закрепить актуальную позицию за токеном
+      return;
+    }
+    this.charApplied = true;
     if (!data) {
       this.saveNow();
       return;
@@ -770,6 +793,9 @@ export class Game {
       this.net.onLevelUp = null;
       this.net.onPicked = null;
       this.net.onRtc = null;
+      this.net.onConnectionLost = null;
+      this.net.onReconnected = null;
+      this.net.disconnect(); // остановить попытки переподключения
     }
     for (const a of this.avatars.values()) a.dispose();
     this.avatars.clear();
@@ -780,6 +806,8 @@ export class Game {
   private syncNet(dt: number): void {
     const net = this.net;
     if (!net?.online || !net.room) {
+      // Идёт переподключение — держим всё как есть, мир просто замирает.
+      if (net?.busyReconnecting) return;
       if (this.avatars.size || this.net) this.detachNet();
       return;
     }

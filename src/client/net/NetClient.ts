@@ -46,9 +46,23 @@ export class NetClient {
   onPicked: ((item: ItemId, count: number) => void) | null = null;
   /** Служебный пакет голосового чата от другого игрока. */
   onRtc: ((msg: RtcMsg) => void) | null = null;
+  /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
+  onConnectionLost: (() => void) | null = null;
+  /** Переподключились — надо заново подписаться на комнату. */
+  onReconnected: ((room: Room<ZoneState>) => void) | null = null;
+
+  private nick = "";
+  private token = "";
+  private reconnecting = false;
+  private closedByUs = false;
 
   get online(): boolean {
     return this.room !== null;
+  }
+
+  /** Идёт попытка переподключения — не разбирать сеть, но и не считать офлайном. */
+  get busyReconnecting(): boolean {
+    return this.reconnecting;
   }
 
   get sessionId(): string {
@@ -57,31 +71,16 @@ export class NetClient {
 
   /** `true` — успех, `false` — сервера нет (одиночный режим). */
   async connect(nick: string, token: string): Promise<boolean> {
+    this.nick = nick;
+    this.token = token;
+    this.closedByUs = false;
     try {
       this.client = new Client();
       const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
-      room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
-      room.onMessage(MSG.mobHit, (m: MobHitMsg) =>
-        this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by),
-      );
-      room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
-      room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
-      room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
-      room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
-      // Ждём первую синхронизацию — иначе onAdd не увидит уже вошедших.
-      await new Promise<void>((r) => {
-        const t = setTimeout(r, 800);
-        room.onStateChange.once(() => {
-          clearTimeout(t);
-          r();
-        });
-      });
+      this.wireRoom(room);
+      await firstSync(room);
       this.room = room;
-      console.log(`[net] в комнате ${this.room.roomId} как ${this.room.sessionId}`);
-      this.room.onLeave((code) => {
-        console.log(`[net] соединение закрыто (код ${code})`);
-        this.room = null;
-      });
+      console.log(`[net] в комнате ${room.roomId} как ${room.sessionId}`);
       return true;
     } catch (e) {
       console.warn("[net] сервер недоступен — одиночный режим:", (e as Error).message);
@@ -89,6 +88,47 @@ export class NetClient {
       this.room = null;
       return false;
     }
+  }
+
+  /** Подписки комнаты — общие для первого входа и переподключения. */
+  private wireRoom(room: Room<ZoneState>): void {
+    room.onMessage(MSG.char, (data: CharMsg) => this.onChar?.(data));
+    room.onMessage(MSG.mobHit, (m: MobHitMsg) => this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by));
+    room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
+    room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
+    room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
+    room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
+    room.onLeave((code) => {
+      console.log(`[net] соединение закрыто (код ${code})`);
+      this.room = null;
+      if (!this.closedByUs) void this.reconnectLoop();
+    });
+  }
+
+  /** Сервер перезапустился / связь оборвалась — пробуем зайти заново. */
+  private async reconnectLoop(): Promise<void> {
+    if (this.reconnecting || !this.client) return;
+    this.reconnecting = true;
+    this.onConnectionLost?.();
+    for (let attempt = 0; attempt < 150 && !this.closedByUs; attempt++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const room = await this.client.joinOrCreate<ZoneState>("zone", {
+          nick: this.nick,
+          token: this.token,
+        });
+        this.wireRoom(room);
+        await firstSync(room);
+        this.room = room;
+        this.reconnecting = false;
+        console.log(`[net] переподключились к ${room.roomId}`);
+        this.onReconnected?.(room);
+        return;
+      } catch {
+        /* сервер ещё не поднялся — ждём дальше */
+      }
+    }
+    this.reconnecting = false;
   }
 
   /** Отправить свой транспорт (не чаще SEND_HZ раз в секунду). */
@@ -162,8 +202,20 @@ export class NetClient {
   }
 
   disconnect(): void {
+    this.closedByUs = true;
     void this.room?.leave();
     this.room = null;
     this.client = null;
   }
+}
+
+/** Ждём первую синхронизацию состояния — иначе onAdd не увидит уже вошедших. */
+function firstSync(room: Room<ZoneState>): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, 800);
+    room.onStateChange.once(() => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
 }
