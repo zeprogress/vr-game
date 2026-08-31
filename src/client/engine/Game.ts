@@ -743,7 +743,7 @@ export class Game {
     this.sfx.setListener(this.player.eyePosition, this.player.eyeForward, UP);
     this.voice.micEnabled = LOADOUT.voice.mic !== 0;
     this.voice.setSpatial(LOADOUT.voice.spatial !== 0);
-    this.voice.update(dt, this.player.eyePosition, this.player.eyeForward, UP);
+    this.voice.update(dt);
   }
 
   /** Сколько зелий в сумке — суммой по всем ячейкам. */

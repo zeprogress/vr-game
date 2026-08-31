@@ -243,15 +243,22 @@ export class VoiceChat {
     for (const p of this.peers.values()) this.wire(p);
   }
 
-  /** Каждый кадр: свой уровень, чужие уровни, позиции для звука по месту. */
-  update(dt: number, eye: Vector3, forward: Vector3, up: Vector3): void {
+  /**
+   * Каждый кадр: свой уровень, чужие уровни, позиции для звука по месту.
+   *
+   * «Уши» здесь НЕ трогаем: слушатель у AudioContext один на всех, и владеет
+   * им Sfx (Game зовёт setListener каждый кадр). Раньше голос перетирал их
+   * своими координатами — без инверсии Z, — и все объёмные звуки оказывались
+   * отражены: моб впереди звучал сзади, а при ходьбе звук уезжал не туда.
+   */
+  update(dt: number): void {
     this.updateMic(dt);
-    if (this.spatial) this.updateListener(eye, forward, up);
 
     for (const [id, p] of this.peers) {
       if (this.spatial && p.panner) {
         const pos = this.peerPosition?.(id);
-        if (pos) setPos(p.panner, pos.x, pos.y, pos.z);
+        // Z инвертируем — как в Sfx: оси Web Audio против Babylon.
+        if (pos) setPos(p.panner, pos.x, pos.y, -pos.z);
       }
       if (p.analyser && p.buf) {
         const talking = rms(p.analyser, p.buf) > VOICE.speakLevel;
@@ -284,20 +291,6 @@ export class VoiceChat {
     this.speaking = on;
   }
 
-  private updateListener(eye: Vector3, forward: Vector3, up: Vector3): void {
-    const l = this.ctx.listener;
-    setPos(l, eye.x, eye.y, eye.z);
-    if (l.forwardX) {
-      l.forwardX.value = forward.x;
-      l.forwardY.value = forward.y;
-      l.forwardZ.value = forward.z;
-      l.upX.value = up.x;
-      l.upY.value = up.y;
-      l.upZ.value = up.z;
-    } else {
-      l.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
-    }
-  }
 
   /** Что с кем происходит — для сообщения игроку. */
   status(): { peers: number; connected: number; states: string[] } {
