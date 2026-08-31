@@ -18,6 +18,8 @@ const H = 150;
 export class NameTag {
   private readonly plane: Mesh;
   private readonly tex: DynamicTexture;
+  private readonly baseY: number;
+  private readonly halfH: number;
 
   constructor(
     scene: Scene,
@@ -63,7 +65,8 @@ export class NameTag {
     mat.specularColor = new Color3(0, 0, 0);
     mat.backFaceCulling = false;
 
-    this.plane = MeshBuilder.CreatePlane("nameTag", { width: 0.9, height: 0.9 * (H / W) }, scene);
+    const height = 0.9 * (H / W);
+    this.plane = MeshBuilder.CreatePlane("nameTag", { width: 0.9, height }, scene);
     this.plane.material = mat;
     this.plane.parent = parent;
     this.plane.position.copyFrom(offset);
@@ -71,10 +74,22 @@ export class NameTag {
     // Группа 0 + проверка глубины: плашку загораживают стены, деревья и пол.
     this.plane.renderingGroupId = 0;
     this.plane.billboardMode = Mesh.BILLBOARDMODE_Y;
+
+    this.baseY = offset.y;
+    this.halfH = height / 2;
   }
 
   setEnabled(v: boolean): void {
     this.plane.setEnabled(v);
+  }
+
+  /**
+   * Множитель размера плашки. Растёт нижним краем на месте, чтобы увеличенная
+   * плашка не налезала на моба.
+   */
+  setScale(k: number): void {
+    this.plane.scaling.setAll(k);
+    this.plane.position.y = this.baseY + (k - 1) * this.halfH;
   }
 
   dispose(): void {

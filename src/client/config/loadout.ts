@@ -102,8 +102,8 @@ export const LOADOUT_DEFAULTS: Loadout = {
     },
     shield: {
       flat: { pos: [-0.34, -0.26, 0.62], rot: [Math.PI / 2, 0, 0], scale: 0.8 },
-      vrLeft: { pos: [-0.05, 0, 0], rot: [Math.PI / 2, 0, Math.PI / 2], scale: 1 },
-      vrRight: { pos: [0.04, -0.02, 0.025], rot: [2.0308, 1.26, -0.1108], scale: 1 },
+      vrLeft: { pos: [-0.025, -0.05, 0.025], rot: [0.9308, 1.04, 2.4508], scale: 1 },
+      vrRight: { pos: [0.01, -0.05, 0.035], rot: [2.6308, 1.92, 0.6692], scale: 1 },
     },
     potion: {
       flat: { pos: [0.3, -0.3, 0.6], rot: [0, 0, 0], scale: 1 },
@@ -118,7 +118,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
     jump: 4, // A на правом
   },
   world: {
-    hour: 2.12, // час суток: свет, небо и место солнца
+    hour: 2.77, // час суток: свет, небо и место солнца
     auto: 1, // время идёт само
   },
   belt: {
@@ -131,7 +131,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
     smooth: 1, // сглаживание краёв
   },
   voice: {
-    mic: 1, // микрофон работает
+    mic: 0, // микрофон работает
     spatial: 1, // голос идёт от места игрока
   },
 };

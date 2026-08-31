@@ -66,10 +66,12 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
  */
 function createStars(scene: Scene): { apply(d: DayState): void } {
   const R = 420; // радиус небесной сферы, на которой висят звёзды
-  const COUNT = 320;
+  const COUNT = 260;
 
   const mat = new StandardMaterial("starMat", scene);
-  mat.emissiveColor = new Color3(1, 1, 0.96);
+  // Чуть мягче белого: при включённом FXAA резкая белая точка в один пиксель
+  // дёргается от кадра к кадру, а звезда покрупнее и потусклее — стоит ровно.
+  mat.emissiveColor = new Color3(0.9, 0.9, 0.86);
   mat.diffuseColor = new Color3(0, 0, 0);
   mat.specularColor = new Color3(0, 0, 0);
   mat.disableLighting = true;
@@ -95,7 +97,9 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
     const star = proto.createInstance(`star${i}`);
     star.parent = root;
     star.position.set(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R);
-    const size = 0.3 + Math.random() * 0.4;
+    // Крупнее прежнего (было 0.3–0.7): раньше звезда была меньше пикселя и
+    // сглаживание её «размазывало» туда-сюда.
+    const size = 0.9 + Math.random() * 1.1;
     star.scaling.setAll(size);
     star.isPickable = false;
   }

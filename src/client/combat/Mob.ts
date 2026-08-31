@@ -270,7 +270,14 @@ export class Mob implements Hittable {
     const toMob = new Vector3(pos.x - playerPos.x, 0, pos.z - playerPos.z);
     const md = toMob.length();
     const facing = md < 1e-3 || Vector3.Dot(toMob.scale(1 / md), playerAim) > -0.25;
-    this.nameTag.setEnabled(md < MOB.nameTagRange && facing);
+    const near = md < MOB.nameTagRange && facing;
+    this.nameTag.setEnabled(near);
+    if (near) {
+      // Издалека плашка вдвое крупнее (иначе имя и уровень не разобрать),
+      // вблизи плавно ужимается до обычного размера.
+      const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
+      this.nameTag.setScale(1 + t);
+    }
   }
 
   private playIfNear(playerPos: Vector3, fn: () => void, range = 28): void {
