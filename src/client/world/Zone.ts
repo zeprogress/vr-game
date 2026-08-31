@@ -19,8 +19,11 @@ export interface Zone {
   groundHeight: (x: number, z: number) => number;
   /** Стволы деревьев: сквозь них ходить нельзя. */
   obstacles: Obstacle[];
-  /** Двигает время суток, ветер и светлячков. Звать каждый кадр. */
-  tick: (dt: number, playerPos: Vector3) => void;
+  /**
+   * Двигает время суток, ветер и светлячков. Звать каждый кадр.
+   * `netHour` — час с сервера: если задан, часы ведёт он, а не клиент.
+   */
+  tick: (dt: number, playerPos: Vector3, netHour?: number | null) => void;
   /** Точки, где лежат меч, лук и щит (над камнями). */
   swordHome: Vector3;
   bowHome: Vector3;
@@ -70,19 +73,22 @@ export function buildZone(scene: Scene): Zone {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
     obstacles: trunks,
-    tick: (dt: number, playerPos: Vector3) => {
+    tick: (dt: number, playerPos: Vector3, netHour?: number | null) => {
       // Часы двигаем ПЕРВЫМИ: если что-то ниже упадёт, время всё равно идёт.
-      //
-      // Перевели стрелки в панели — принимаем новое время.
-      if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
-
-      // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
-      // Тумблер в панели останавливает время на выставленном часе.
-      // Останавливаемся только по явному нулю: если в настройку затесался
-      // мусор, часы должны идти, а не замереть навсегда.
-      if (LOADOUT.world.auto !== 0) {
-        const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
-        hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
+      if (typeof netHour === "number" && Number.isFinite(netHour)) {
+        // Онлайн: временем владеет сервер, клиент только показывает.
+        hour = netHour;
+      } else {
+        // Офлайн: крутим сами. Перевели стрелки в панели — приняли.
+        if (LOADOUT.world.hour !== shown) hour = LOADOUT.world.hour;
+        // Ночью часы бегут быстрее, иначе темнота занимает половину круга.
+        // Тумблер в панели останавливает время на выставленном часе.
+        // Останавливаемся только по явному нулю: если в настройку затесался
+        // мусор, часы должны идти, а не замереть навсегда.
+        if (LOADOUT.world.auto !== 0) {
+          const speed = 1 + (1 - day.daylight) * (DAYCYCLE.nightSpeedup - 1);
+          hour = (hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24;
+        }
       }
       // В панель кладём округлённое: иначе строка дрожала бы каждый кадр.
       shown = Math.round(hour * 100) / 100;

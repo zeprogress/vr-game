@@ -19,11 +19,19 @@ import {
   type HandsMsg,
   type RtcMsg,
   type SpendMsg,
+  type SetTimeMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
   type Xf7,
 } from "#shared/net/messages";
-import { PLAYER, PLAYER_HP, RESPAWN } from "#shared/constants";
+import {
+  ADMIN_NICK,
+  advanceHour,
+  DAYCYCLE,
+  PLAYER,
+  PLAYER_HP,
+  RESPAWN,
+} from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
 import {
   isWeaponKind,
@@ -194,6 +202,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override onCreate(): void {
     this.setState(new ZoneState());
+    this.state.hour = DAYCYCLE.startHour;
+    this.state.dayAuto = 1;
     this.sim = new ZoneSim();
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
@@ -308,6 +318,16 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Голосовой чат: сервер — только «телефонистка». Он пересылает пакет
     // адресату и подписывает отправителя; сам разговор идёт мимо сервера.
+    // Время суток переводит только админ — часы общие для всей зоны.
+    this.onMessage(MSG.setTime, (client: Client, msg: SetTimeMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
+      if (Number.isFinite(msg.hour)) {
+        this.state.hour = (((msg.hour as number) % 24) + 24) % 24;
+      }
+      if (msg.auto !== undefined) this.state.dayAuto = msg.auto ? 1 : 0;
+    });
+
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
       if (!msg?.peer || typeof msg.data !== "string") return;
       if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
@@ -368,6 +388,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   private step(dt: number): void {
     this.elapsed += dt;
+    if (this.state.dayAuto !== 0) this.state.hour = advanceHour(this.state.hour, dt);
 
     // Мобы гоняются только за живыми.
     const players: SimPlayer[] = [];

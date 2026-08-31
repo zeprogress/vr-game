@@ -233,7 +233,33 @@ export const DAYCYCLE = {
    * Сейчас круг 15 минут: светло 12, темно 3.
    */
   nightSpeedup: 4.3,
+  /** С какого часа комната начинает отсчёт времени при запуске. */
+  startHour: 8,
 } as const;
+
+/** Кто может открывать панель настройки и переводить время всему миру. */
+export const ADMIN_NICK = "zep";
+
+/**
+ * Высота солнца над горизонтом в заданный час (−1..1), та же формула, что в
+ * клиентском DayTime: наклон по Z даёт делитель hypot(1, 0.35).
+ */
+export function sunElevation(hour: number): number {
+  const h = ((hour % 24) + 24) % 24;
+  return Math.sin(((h - 6) / 12) * Math.PI) / Math.hypot(1, 0.35);
+}
+
+/** Светлое время: 1 — день, 0 — ночь. Совпадает с DayState.daylight. */
+export function daylightAt(hour: number): number {
+  const e = (sunElevation(hour) + 0.06) / 0.18;
+  return e < 0 ? 0 : e > 1 ? 1 : e;
+}
+
+/** Двигает часы на dt секунд: ночью ход ускорен, чтобы темнота не тянулась. */
+export function advanceHour(hour: number, dt: number): number {
+  const speed = 1 + (1 - daylightAt(hour)) * (DAYCYCLE.nightSpeedup - 1);
+  return (((hour + (dt * 24 * speed) / DAYCYCLE.seconds) % 24) + 24) % 24;
+}
 
 /** Бутылочка зелья на поясе (VR): где висит, как берётся и как пьётся. */
 export const BELT = {

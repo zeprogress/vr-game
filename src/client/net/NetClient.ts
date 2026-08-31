@@ -14,6 +14,7 @@ import {
   type SaveMsg,
   type SpendMsg,
   type HandsMsg,
+  type SetTimeMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
 } from "#shared/net/messages";
@@ -133,6 +134,16 @@ export class NetClient {
   /** Сообщить, что теперь в руках — по этому сервер считает урон. */
   sendHands(msg: HandsMsg): void {
     this.room?.send(MSG.hands, msg);
+  }
+
+  /** Админ переводит время суток всему миру. */
+  sendSetTime(hour: number, auto: number): void {
+    this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
+  }
+
+  /** Мировые часы с сервера — null офлайн (тогда время крутит сам клиент). */
+  get worldHour(): number | null {
+    return this.room ? this.room.state.hour : null;
   }
 
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */

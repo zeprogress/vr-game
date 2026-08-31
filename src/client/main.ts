@@ -22,7 +22,8 @@ if (!guestToken) {
 (window as unknown as { game: Game; net: NetClient }).game = game;
 (window as unknown as { game: Game; net: NetClient }).net = net;
 
-void runLogin(net, guestToken).then(({ online }) => {
+void runLogin(net, guestToken).then(({ nick, online }) => {
+  game.setNick(nick);
   if (online) game.attachNet(net);
 
   if (game.isTouch) {

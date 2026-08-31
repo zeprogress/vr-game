@@ -30,7 +30,17 @@ export const MSG = {
   hands: "hd",
   /** голосовой чат: сервер только пересылает пакет нужному игроку. */
   rtc: "rtc",
+  /** админ -> сервер: перевести время суток всему миру. */
+  setTime: "st",
 } as const;
+
+/** Перевод мировых часов. Сервер слушает только игрока с ником ADMIN_NICK. */
+export interface SetTimeMsg {
+  /** Новый час (0..24). Пропущен — не трогаем. */
+  hour?: number;
+  /** 1 — время идёт само, 0 — стоит. Пропущен — не трогаем. */
+  auto?: number;
+}
 
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
 export type Xf7 = [number, number, number, number, number, number, number];

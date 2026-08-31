@@ -41,7 +41,7 @@ import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { RESPAWN } from "#shared/constants";
+import { ADMIN_NICK, RESPAWN } from "#shared/constants";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -59,7 +59,13 @@ export class Game {
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
   private readonly loot: LootDrops;
-  private readonly zoneTick: (dt: number, playerPos: Vector3) => void;
+  private readonly zoneTick: (
+    dt: number,
+    playerPos: Vector3,
+    netHour?: number | null,
+  ) => void;
+  /** Ник этого игрока: панель настройки открывает только админ (ADMIN_NICK). */
+  private localNick = "";
   /** Голосовой чат: разговор идёт напрямую между игроками. */
   readonly voice: VoiceChat;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
@@ -199,7 +205,9 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
-      this.zoneTick(dt, this.player.position);
+      this.zoneTick(dt, this.player.position, this.net?.worldHour ?? null);
+      // Онлайн: тумблер автосмены в панели показывает состояние сервера.
+      if (this.net?.room) LOADOUT.world.auto = this.net.room.state.dayAuto;
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.netMobs.update(dt, this.player.position, this.aim);
@@ -327,6 +335,18 @@ export class Game {
       this.inventory,
     );
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
+    // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
+    this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
+  }
+
+  /** Ник этого игрока — задаётся из main.ts после входа. */
+  setNick(nick: string): void {
+    this.localNick = nick;
+  }
+
+  /** Админ (ADMIN_NICK) — единственный, кто открывает панель настройки. */
+  private get isAdmin(): boolean {
+    return this.localNick.trim().toLowerCase() === ADMIN_NICK;
   }
 
   private handNode(side: "left" | "right", fallback: Node): Node {
@@ -370,7 +390,7 @@ export class Game {
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
     // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
     this.tuneClock += dt;
-    if (inp.tuneToggle) {
+    if (inp.tuneToggle && this.isAdmin) {
       if (this.loadoutPanel?.visible) {
         this.loadoutPanel.toggle();
         this.tuneTaps.length = 0;

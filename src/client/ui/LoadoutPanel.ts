@@ -86,6 +86,8 @@ export class LoadoutPanel {
   /** Секунды, пока в строке «сохранить» горит подтверждение. */
   private savedFlash = 0;
   private fileState = "";
+  /** Онлайн: перевод времени/автосмены уходит на сервер (часы общие). */
+  onWorldTime: ((hour: number, auto: number) => void) | null = null;
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("loadoutTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -209,6 +211,7 @@ export class LoadoutPanel {
             // Любое непонятное значение считаем «вкл»: остановленное время
             // выглядит как поломка, а лишний ход часов — нет.
             LOADOUT.world.auto = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
+            this.onWorldTime?.(LOADOUT.world.hour, LOADOUT.world.auto);
           },
           format: (v) => (v ? "вкл" : "выкл"),
         };
@@ -220,6 +223,7 @@ export class LoadoutPanel {
         get: () => LOADOUT.world.hour,
         set: (v) => {
           LOADOUT.world.hour = ((v % 24) + 24) % 24; // 23.5 -> 0.5, без «минус часа»
+          this.onWorldTime?.(LOADOUT.world.hour, LOADOUT.world.auto);
         },
         format: (v) => {
           const hh = Math.floor(v);

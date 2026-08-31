@@ -97,6 +97,11 @@ export class BallState extends Schema {
 
 /** Состояние зоны — общий контракт клиента и сервера. */
 export class ZoneState extends Schema {
+  /** Час суток (0..24) — им владеет сервер, клиенты только читают. */
+  @type("float32") hour = 8;
+  /** 1 — время идёт само, 0 — стоит на выставленном часе. */
+  @type("uint8") dayAuto = 1;
+
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();
   @type({ map: DummyState }) dummies = new MapSchema<DummyState>();
