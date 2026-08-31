@@ -12,7 +12,9 @@ export interface LoginResult {
 export interface LoginHooks {
   /** Может ли устройство в иммерсивный VR. */
   isVrAvailable: () => Promise<boolean>;
-  /** Запустить VR-сессию. true — вошли. */
+  /** Дождаться готовности WebXR (до этого кнопку «Войти в VR» не жмём). */
+  whenXrReady: () => Promise<void>;
+  /** Запустить VR-сессию — вызывать прямо из обработчика клика. true — вошли. */
   enterVR: () => Promise<boolean>;
 }
 
@@ -65,20 +67,28 @@ export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Prom
       box.innerHTML = `
         <div class="login-title">VR GAME</div>
         <div class="login-sub">Надень шлем и нажми</div>
-        <button id="login-vr">Войти в VR</button>
+        <button id="login-vr" disabled>Войти в VR</button>
+        <button id="login-flat" class="ghost">Войти без VR</button>
         <div id="login-status"></div>`;
       const vrBtn = box.querySelector<HTMLButtonElement>("#login-vr")!;
+      const flatBtn = box.querySelector<HTMLButtonElement>("#login-flat")!;
       const vrStatus = box.querySelector<HTMLDivElement>("#login-status")!;
-      vrBtn.addEventListener("click", async () => {
+
+      void hooks.whenXrReady().then(() => (vrBtn.disabled = false));
+
+      vrBtn.addEventListener("click", () => {
         vrBtn.disabled = true;
         vrStatus.textContent = "Запуск VR…";
-        const entered = await hooks.enterVR();
-        if (entered) finish(online, true);
-        else {
-          vrBtn.disabled = false;
-          vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
-        }
+        // Без await до enterVR — иначе теряется «жест пользователя».
+        hooks.enterVR().then((entered) => {
+          if (entered) finish(online, true);
+          else {
+            vrBtn.disabled = false;
+            vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
+          }
+        });
       });
+      flatBtn.addEventListener("click", () => finish(online, false));
     };
 
     playBtn.addEventListener("click", async () => {

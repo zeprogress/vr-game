@@ -24,6 +24,7 @@ if (!guestToken) {
 
 void runLogin(net, guestToken, {
   isVrAvailable: () => game.isVrAvailable(),
+  whenXrReady: () => game.xrReady,
   enterVR: () => game.enterVR(),
 }).then(({ nick, online, vr }) => {
   game.setNick(nick);

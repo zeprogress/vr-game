@@ -228,14 +228,16 @@ export class Game {
     this.engine.runRenderLoop(() => this.scene.render());
   }
 
-  /** Готовность WebXR — до него `enterVR()` ждёт. */
-  private xrReady: Promise<void> = Promise.resolve();
+  /** Готовность WebXR — экран входа ждёт её перед показом кнопки «Войти в VR». */
+  xrReady: Promise<void> = Promise.resolve();
 
-  /** Может ли это устройство в иммерсивный VR (шлем). */
+  /** Может ли это устройство в иммерсивный VR (шлем). Не виснет: таймаут 2.5 с. */
   async isVrAvailable(): Promise<boolean> {
     try {
       const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } }).xr;
-      return (await xr?.isSessionSupported?.("immersive-vr")) ?? false;
+      if (!xr?.isSessionSupported) return false;
+      const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), 2500));
+      return await Promise.race([xr.isSessionSupported("immersive-vr"), timeout]);
     } catch {
       return false;
     }
@@ -245,17 +247,20 @@ export class Game {
     return this.player.inVR;
   }
 
-  /** Запустить VR-сессию по кнопке с экрана входа. true — вошли. */
-  async enterVR(): Promise<boolean> {
-    await this.xrReady;
-    if (!this.xr) return false;
-    try {
-      await this.xr.baseExperience.enterXRAsync("immersive-vr", "local-floor");
-      return this.xr.baseExperience.state === WebXRState.IN_XR;
-    } catch (e) {
-      console.warn("не удалось войти в VR:", e);
-      return false;
-    }
+  /**
+   * Запустить VR-сессию. Зовётся ИЗ обработчика клика без `await` перед этим —
+   * иначе браузер теряет «жест пользователя» и `requestSession` отклоняется.
+   * Поэтому `xrReady` дожидается экран входа, а тут только синхронная проверка.
+   */
+  enterVR(): Promise<boolean> {
+    if (!this.xr) return Promise.resolve(false);
+    return this.xr.baseExperience
+      .enterXRAsync("immersive-vr", "local-floor")
+      .then(() => this.xr!.baseExperience.state === WebXRState.IN_XR)
+      .catch((e: unknown) => {
+        console.warn("не удалось войти в VR:", e);
+        return false;
+      });
   }
 
   /** Инициализация WebXR. Вход в VR — по кнопке с экрана входа (см. enterVR). */
