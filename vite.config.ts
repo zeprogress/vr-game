@@ -44,6 +44,7 @@ function loadoutWriter(): Plugin {
     world: { hour: number; auto: number };
     belt: { pos: number[] };
     hud: { hpPos: number[] };
+    gfx: { smooth: number };
     voice: { mic: number; spatial: number };
   }) => {
     const items = ["sword", "bow", "shield", "potion"]
@@ -78,6 +79,9 @@ function loadoutWriter(): Plugin {
       `  },\n` +
       `  hud: {\n` +
       `    hpPos: ${arr(l.hud?.hpPos ?? [-0.24, 0.46, 0.92])},\n` +
+      `  },\n` +
+      `  gfx: {\n` +
+      `    smooth: ${l.gfx?.smooth ? 1 : 0}, // сглаживание краёв\n` +
       `  },\n` +
       `  voice: {\n` +
       `    mic: ${l.voice?.mic ? 1 : 0}, // микрофон работает\n` +

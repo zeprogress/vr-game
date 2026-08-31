@@ -35,6 +35,8 @@ import type { InputSource } from "../input/InputSource";
 import type { NetClient } from "../net/NetClient";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { VoiceChat } from "../voice/VoiceChat";
+import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
+import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState } from "#shared/net/schema";
 import { noGuard, type BlockedBy } from "#shared/combat";
@@ -82,6 +84,9 @@ export class Game {
   private handsKey = "";
   /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
   private voiceWarned = false;
+  /** Сглаживание краёв кадра и камера, к которой оно прицеплено. */
+  private fxaa: FxaaPostProcess | null = null;
+  private fxaaCam: Camera | null = null;
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -202,6 +207,7 @@ export class Game {
       this.hands.update(dt);
       this.syncNet(dt);
       this.updateVoice(dt);
+      this.updateSmoothing();
       this.updateVrUi(dt);
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
@@ -554,6 +560,43 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
+  }
+
+  /**
+   * Сглаживание краёв кадра (FXAA).
+   *
+   * Трава нарисована по принципу «пиксель есть или нет», поэтому её края
+   * идут лесенкой, и обычное сглаживание геометрии тут не помогает.
+   * Пост-обработка сглаживает уже готовый кадр. Она цепляется к активной
+   * камере, а в VR камера другая — поэтому проверяем каждый кадр, но
+   * пересоздаём только при смене камеры или настройки.
+   */
+  private updateSmoothing(): void {
+    const want = LOADOUT.gfx.smooth !== 0;
+    const cam = this.scene.activeCamera;
+    if (!want || !cam) {
+      this.dropSmoothing();
+      return;
+    }
+    if (this.fxaa && this.fxaaCam === cam) return;
+    this.dropSmoothing();
+    this.fxaa = new FxaaPostProcess("fxaa", 1, cam);
+    this.fxaaCam = cam;
+  }
+
+  /**
+   * Снять пост-обработку с камеры.
+   *
+   * dispose() без камеры не отцепляет её от списка камеры: остаётся пустой
+   * слот, а при следующем включении набирается второй проход. Поэтому
+   * камеру передаём явно.
+   */
+  private dropSmoothing(): void {
+    if (!this.fxaa) return;
+    if (this.fxaaCam) this.fxaa.dispose(this.fxaaCam);
+    else this.fxaa.dispose();
+    this.fxaa = null;
+    this.fxaaCam = null;
   }
 
   /** Голос: подхватываем настройки и отдаём положение слушателя. */

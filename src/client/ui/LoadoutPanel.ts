@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "vec3" | "voice";
+  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx";
 }
 
 const TARGETS: Target[] = [
@@ -53,6 +53,7 @@ const TARGETS: Target[] = [
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
   { key: "voice:chat", label: "Голос", kind: "voice" },
+  { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
 ];
 
 type Field =
@@ -191,6 +192,7 @@ export class LoadoutPanel {
     if (this.target.kind === "hand" || this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
+    if (this.target.kind === "gfx") return 1;
     return 7;
   }
 
@@ -224,6 +226,18 @@ export class LoadoutPanel {
           const mm = Math.round((v - hh) * 60);
           return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
         },
+      };
+    }
+    if (t.kind === "gfx") {
+      return {
+        label: "края",
+        rot: false,
+        steps: [1, 1, 1],
+        get: () => (LOADOUT.gfx.smooth === 0 ? 0 : 1),
+        set: (v) => {
+          LOADOUT.gfx.smooth = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
+        },
+        format: (v) => (v ? "вкл" : "выкл"),
       };
     }
     if (t.kind === "voice") {

@@ -76,6 +76,9 @@ export function scatterGrass(
   mat.diffuseTexture.hasAlpha = true;
   mat.useAlphaFromDiffuseTexture = true;
   mat.transparencyMode = 1; // ALPHATEST — дёшево и без сортировки
+  // С мип-уровнями края травинок к горизонту усредняются и при обычном
+  // пороге просто исчезают, поэтому порог ниже — дальняя трава не лысеет.
+  mat.alphaCutOff = 0.25;
   mat.emissiveColor = new Color3(0.04, 0.08, 0.035); // темнее: трава не светится
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
@@ -137,8 +140,8 @@ function quatY(rad: number): Quaternion {
 
 /** Прозрачная текстура: несколько сужающихся кверху травинок. */
 function grassBladeTexture(scene: Scene): DynamicTexture {
-  const S = 64;
-  const tex = new DynamicTexture("grassBladeTex", { width: S, height: S }, scene, false);
+  const S = 128; // вдвое крупнее: травинки тонкие, на 64 они рвались
+  const tex = new DynamicTexture("grassBladeTex", { width: S, height: S }, scene, true);
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
   const blades = 7; // больше и тоньше, чем было
@@ -154,6 +157,6 @@ function grassBladeTexture(scene: Scene): DynamicTexture {
     ctx.closePath();
     ctx.fill();
   }
-  tex.update(false);
+  tex.update(false); // update перестраивает и мип-уровни
   return tex;
 }
