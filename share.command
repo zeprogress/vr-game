@@ -28,9 +28,20 @@ npm run server >/tmp/vrgame-server.log 2>&1 &
 SERVER_PID=$!
 npm run dev >/tmp/vrgame-client.log 2>&1 &
 CLIENT_PID=$!
-trap 'kill $SERVER_PID $CLIENT_PID $TUNNEL_PID 2>/dev/null' EXIT
+# Второй клиент по HTTPS на :5443 — чтобы самому зайти в шлеме по локальной
+# сети параллельно с другом (WebXR требует HTTPS, а туннель отдаёт HTTP).
+npm run dev:lan >/tmp/vrgame-lan.log 2>&1 &
+LAN_PID=$!
+trap 'kill $SERVER_PID $CLIENT_PID $LAN_PID $TUNNEL_PID 2>/dev/null' EXIT
 
 echo "Поднимаю сервер и клиент…"; sleep 4
+
+LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+if [ -n "$LAN_IP" ]; then
+  echo
+  echo "  Для своего шлема в этой Wi-Fi:  https://$LAN_IP:5443"
+  echo "  (прими предупреждение о сертификате)"
+fi
 
 echo
 echo "Поднимаю туннель… (адрес появится, когда связь установится)"
@@ -49,6 +60,10 @@ announce() {
   echo "  Дай эту ссылку другу. Работает, пока окно открыто."
   echo "  На Quest прими предупреждение, если появится."
   [ -n "$2" ] && echo "  $2"
+  if [ -n "$LAN_IP" ]; then
+    echo
+    echo "  Сам в шлеме по локальной сети:  https://$LAN_IP:5443"
+  fi
   echo "=================================================="
   echo
 }
@@ -133,6 +148,9 @@ echo "  Скорее всего мешает VPN или прокси. Попро
 echo "   1) выключить VPN и запустить скрипт заново;"
 echo "   2) либо прописать в VPN прямое подключение для"
 echo "      argotunnel.com, trycloudflare.com и pinggy.io."
+echo
+[ -n "$LAN_IP" ] && echo "  Себе в шлеме по локальной сети адрес всё равно работает:"
+[ -n "$LAN_IP" ] && echo "  https://$LAN_IP:5443"
 echo
 echo "  Лог туннеля: $TLOG"
 echo "=================================================="

@@ -11,6 +11,7 @@
     "dev:vr": "VR=1 vite",
     "server": "tsx watch src/server/index.ts",
     "dev:all": "tsx watch src/server/index.ts & VR=1 vite",
+    "dev:lan": "VR=1 vite --port 5443 --strictPort",
     "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host",
