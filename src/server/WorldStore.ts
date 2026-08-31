@@ -40,6 +40,11 @@ export class WorldStore {
 
   /** Записать на диск. Атомарно (tmp + rename). */
   save(drops: DropSave[]): void {
+    // Держим в памяти актуальное: следующая комната в этом же процессе
+    // берёт лут через loadDrops(). Без этого очистка мира (или пустой
+    // список при выходе последнего игрока) не переживала пересоздание
+    // комнаты — старый лут возвращался.
+    this.drops = drops;
     try {
       mkdirSync(dirname(FILE), { recursive: true });
       const rec: WorldRecord = { drops, savedAt: Date.now() };

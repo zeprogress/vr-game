@@ -37,9 +37,8 @@ uniform float eye;       // -1 левый, +1 правый, 0 моно
 void main() {
   vec2 d = (vUV - vec2(0.5)) * 2.0;
   vec2 ad = abs(d);
-  // Прямоугольная рамка со скруглёнными углами (суперэллипс). По горизонтали
-  // вес больше — слева и справа полосы затемнения шире.
-  float frame = pow(pow(ad.x * 1.45, 5.0) + pow(ad.y, 5.0), 0.2);
+  // Прямоугольная рамка со скруглёнными углами (суперэллипс).
+  float frame = pow(pow(ad.x, 5.0) + pow(ad.y, 5.0), 0.2);
   float inner = mix(1.16, 0.44, clamp(intensity, 0.0, 1.0));
   float tunnel = smoothstep(inner, inner + 0.26, frame);
 
