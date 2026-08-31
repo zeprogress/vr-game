@@ -122,8 +122,9 @@ export class Mob implements Hittable {
     const eyeMat = new StandardMaterial("mobEye", scene);
     if (this.isBoss) {
       // Злые светящиеся глаза.
-      eyeMat.diffuseColor = new Color3(0.05, 0, 0);
-      eyeMat.emissiveColor = new Color3(1, 0.15, 0.05);
+      // Тёмно-тёмно-красные, чуть светятся (не алые).
+      eyeMat.diffuseColor = new Color3(0.06, 0, 0);
+      eyeMat.emissiveColor = new Color3(0.28, 0.015, 0.02);
       eyeMat.specularColor = new Color3(0, 0, 0);
       eyeMat.disableLighting = true;
     } else {
@@ -243,7 +244,9 @@ export class Mob implements Hittable {
       this.scale = s.scale;
       this.root.scaling.setAll(s.scale);
       this.uiAnchor.scaling.setAll(1 / s.scale);
-      this.uiAnchor.position.y = MOB.bodyRadius * 2 * (s.scale - 1);
+      // Поднимаем ровно на прибавку высоты от увеличения тела (в мировых
+      // единицах это position.y * scale), не больше — иначе плашка улетает.
+      this.uiAnchor.position.y = (MOB.bodyRadius * 2 * (s.scale - 1)) / s.scale;
     }
 
     // толчок затухает

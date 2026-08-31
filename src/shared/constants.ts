@@ -139,7 +139,7 @@ export const BOSS = {
   /** Дальний угол (+x, +z). */
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
   hp: 1000,
-  scale: 3.75, // во столько раз крупнее обычного слизня
+  scale: 4.25, // во столько раз крупнее обычного слизня
   aggroRange: 28,
   wanderRadius: 16,
   hopSpeed: 3.5,
