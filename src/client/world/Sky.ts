@@ -117,19 +117,8 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
   };
 }
 
-/** Диск солнца + мягкое гало, закреплены на небе (infiniteDistance). */
+/** Диск солнца, закреплён на небе (infiniteDistance). */
 function createSun(scene: Scene): { apply(d: DayState): void } {
-  const haloMat = new StandardMaterial("sunHaloMat", scene);
-  haloMat.emissiveColor = new Color3(1, 0.95, 0.8);
-  haloMat.disableLighting = true;
-  haloMat.specularColor = new Color3(0, 0, 0);
-  haloMat.alpha = 0.28;
-  const halo = MeshBuilder.CreateDisc("sunHalo", { radius: 42, tessellation: 24 }, scene);
-  halo.material = haloMat;
-  halo.isPickable = false;
-  halo.applyFog = false;
-  halo.billboardMode = 7;
-
   const sunMat = new StandardMaterial("sunMat", scene);
   sunMat.emissiveColor = new Color3(1, 0.98, 0.9);
   sunMat.disableLighting = true;
@@ -142,11 +131,8 @@ function createSun(scene: Scene): { apply(d: DayState): void } {
 
   return {
     apply(d) {
-      // Диск стоит там, откуда светит: чуть дальше гало, чтобы не спорили по глубине.
       sun.position.copyFrom(d.sunPos.scale(380));
-      halo.position.copyFrom(d.sunPos.scale(380 * 1.03));
       sunMat.emissiveColor.copyFrom(d.disc);
-      haloMat.emissiveColor.copyFrom(d.disc);
     },
   };
 }

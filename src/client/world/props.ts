@@ -13,14 +13,17 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
+import { LIGHT_BUDGET } from "./Fireflies";
 
 /** Низкополигональные деревья, расставленные по рельефу (инстансы одного меша). */
 export function scatterTrees(scene: Scene, terrain: Terrain): void {
   const trunkMat = new StandardMaterial("trunkMat", scene);
+  trunkMat.maxSimultaneousLights = LIGHT_BUDGET;
   trunkMat.diffuseColor = new Color3(0.32, 0.22, 0.14);
   trunkMat.specularColor = new Color3(0, 0, 0);
 
   const leafMat = new StandardMaterial("leafMat", scene);
+  leafMat.maxSimultaneousLights = LIGHT_BUDGET;
   leafMat.diffuseColor = new Color3(0.2, 0.45, 0.2);
   leafMat.specularColor = new Color3(0, 0, 0);
 
@@ -65,6 +68,7 @@ export function scatterGrass(
   terrain: Terrain,
 ): (dt: number, daylight: number) => void {
   const mat = new StandardMaterial("grassBladeMat", scene);
+  mat.maxSimultaneousLights = LIGHT_BUDGET; // трава вокруг стайки должна светлеть
   const bladeTex = grassBladeTexture(scene);
   bladeTex.vScale = -1; // текстура рисуется «вниз головой» — переворачиваем
   bladeTex.vOffset = 1;

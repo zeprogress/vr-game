@@ -3,6 +3,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { LIGHT_BUDGET } from "./Fireflies";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 
 import { WORLD } from "#shared/constants";
@@ -75,6 +76,8 @@ function grassMaterial(scene: Scene): StandardMaterial {
   tex.vScale = 40;
 
   const mat = new StandardMaterial("terrainMat", scene);
+  // Земля должна ловить свет светлячков, а не только солнце и небо.
+  mat.maxSimultaneousLights = LIGHT_BUDGET;
   mat.diffuseTexture = tex;
   mat.specularColor = new Color3(0, 0, 0);
   return mat;
