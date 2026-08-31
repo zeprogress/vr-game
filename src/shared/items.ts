@@ -157,7 +157,7 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
   slime: [
     { id: "slime", chance: 1, min: 1, max: 2 },
     { id: "potion", chance: 0.25, min: 1, max: 1 },
-    { id: "bronze_sword", chance: 0.1, min: 1, max: 1 },
+    { id: "bronze_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_shield", chance: 0.1, min: 1, max: 1 },
   ],
   spitter: [

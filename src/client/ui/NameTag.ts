@@ -8,7 +8,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const W = 320;
+const BASE_W = 320; // ширина, под которую подобран физический размер плашки
 const H = 150;
 
 /**
@@ -30,6 +30,21 @@ export class NameTag {
     level: number | null,
     accent: Color3 = new Color3(1, 0.86, 0.4),
   ) {
+    const nameFont = "bold 40px system-ui, sans-serif";
+    const lvlFont = "26px system-ui, sans-serif";
+
+    // Меряем текст ОТДЕЛЬНЫМ канвасом и расширяем текстуру, если длинное имя
+    // не влезает в базовую ширину — иначе буквы срезаются по краям.
+    const measure = document.createElement("canvas").getContext("2d")!;
+    measure.font = nameFont;
+    let textW = measure.measureText(name).width;
+    if (level !== null) {
+      measure.font = lvlFont;
+      textW = Math.max(textW, measure.measureText(`${level} ур.`).width);
+    }
+    const padX = 22;
+    const W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 12));
+
     this.tex = new DynamicTexture("nameTagTex", { width: W, height: H }, scene, false);
     this.tex.hasAlpha = true;
 
@@ -38,18 +53,6 @@ export class NameTag {
 
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-
-    // Размер надписей НЕ меняем — только подложку. Меряем текст и рисуем
-    // подложку впритык, тонко и полупрозрачно.
-    const nameFont = "bold 40px system-ui, sans-serif";
-    const lvlFont = "26px system-ui, sans-serif";
-    ctx.font = nameFont;
-    let textW = ctx.measureText(name).width;
-    if (level !== null) {
-      ctx.font = lvlFont;
-      textW = Math.max(textW, ctx.measureText(`${level} ур.`).width);
-    }
-    const padX = 16;
     const padY = 10;
     const contentH = level === null ? 44 : 74;
     const boxW = Math.min(W - 6, textW + padX * 2);
@@ -81,8 +84,11 @@ export class NameTag {
     mat.specularColor = new Color3(0, 0, 0);
     mat.backFaceCulling = false;
 
-    const height = 0.9 * (H / W);
-    this.plane = MeshBuilder.CreatePlane("nameTag", { width: 0.9, height }, scene);
+    // Физическую ширину тянем вслед за текстурой — так буквы в мире остаются
+    // прежнего размера, плашка просто становится длиннее.
+    const planeW = 0.9 * (W / BASE_W);
+    const height = planeW * (H / W);
+    this.plane = MeshBuilder.CreatePlane("nameTag", { width: planeW, height }, scene);
     this.plane.material = mat;
     this.plane.parent = parent;
     this.plane.position.copyFrom(offset);

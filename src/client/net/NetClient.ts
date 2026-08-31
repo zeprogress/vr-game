@@ -221,6 +221,11 @@ export class NetClient {
     this.room?.send(MSG.comfort, patch);
   }
 
+  /** Админ убирает весь лежащий лут со всего сервера. */
+  sendClearWorld(): void {
+    this.room?.send(MSG.clearWorld, {});
+  }
+
   /** Заработанное оружие легло на землю — пусть станет предметом мира. */
   sendDropWeapon(msg: DropWeaponMsg): void {
     this.room?.send(MSG.dropWeapon, msg);

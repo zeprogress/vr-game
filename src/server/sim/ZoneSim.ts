@@ -833,6 +833,13 @@ export class ZoneSim {
     }
   }
 
+  /** Убрать весь лежащий лут. Возвращает, сколько предметов было. */
+  clearDrops(): number {
+    const n = this.drops.size;
+    this.drops.clear();
+    return n;
+  }
+
   /** Забрать лут из мира. null — его уже нет (успел другой игрок). */
   takeDrop(id: string): Drop | null {
     const d = this.drops.get(id);

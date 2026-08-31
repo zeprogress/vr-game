@@ -439,6 +439,13 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.teleport !== undefined) this.state.teleportMove = msg.teleport ? 1 : 0;
     });
 
+    // Очистка мира от лежащего лута — по кнопке в панели, только админ.
+    this.onMessage(MSG.clearWorld, (client: Client) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK) return;
+      this.wipeWorld(`админ ${p.nick}`);
+    });
+
     // Панельные настройки: храним по токену, применяются только у этого игрока.
     this.onMessage(MSG.loadout, (client: Client, msg: OverridesMsg) => {
       const rt = this.rt.get(client.sessionId);
@@ -849,7 +856,18 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.players.delete(client.sessionId);
     this.rt.delete(client.sessionId);
     store.flush();
-    console.log(`[zone] - ${client.sessionId} — осталось ${this.clients.length - 1}`);
+    const left = this.clients.length - 1;
+    console.log(`[zone] - ${client.sessionId} — осталось ${left}`);
+    // Никого не осталось — подчищаем весь лежащий лут, чтобы мир не зарастал.
+    if (left <= 0) this.wipeWorld("мир опустел");
+  }
+
+  /** Убрать весь лут с земли (мир опустел или команда админа). */
+  private wipeWorld(reason: string): void {
+    const n = this.sim.clearDrops();
+    this.state.drops.clear();
+    world.save([]);
+    console.log(`[zone] очистка мира (${reason}) — убрано предметов: ${n}`);
   }
 
   /** Сервер останавливается (деплой) — сохраняем всех до расселения комнаты. */

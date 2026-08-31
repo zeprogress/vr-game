@@ -441,6 +441,7 @@ export class Game {
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
     // Комфорт VR (виньетка, режим перемещения) — общий для мира: на сервер.
     this.loadoutPanel.onComfort = (patch) => this.net?.sendComfort(patch);
+    this.loadoutPanel.onClearWorld = () => this.net?.sendClearWorld();
     // «Сохранить» онлайн шлёт настройки на сервер (по токену игрока).
     this.loadoutPanel.onSaveServer = this.net?.online
       ? () => this.net!.sendLoadout(exportOverrides())

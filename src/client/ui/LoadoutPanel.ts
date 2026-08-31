@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx" | "comfort";
+  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx" | "comfort" | "action";
 }
 
 const TARGETS: Target[] = [
@@ -56,6 +56,7 @@ const TARGETS: Target[] = [
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
   { key: "comfort:vignette", label: "Виньетка движения (всем)", kind: "comfort" },
   { key: "comfort:move", label: "Перемещение · телепорт (всем)", kind: "comfort" },
+  { key: "world:clear", label: "Очистить мир от лута (всем)", kind: "action" },
 ];
 
 type Field =
@@ -92,6 +93,10 @@ export class LoadoutPanel {
   onWorldTime: ((hour: number, auto: number) => void) | null = null;
   /** Онлайн: тумблеры комфорта VR уходят на сервер (общие для мира). */
   onComfort: ((patch: { vignette?: number; teleport?: number }) => void) | null = null;
+  /** Онлайн: админ нажал «очистить мир» (после подтверждения). */
+  onClearWorld: (() => void) | null = null;
+  /** Секунды: «очистить мир» ждёт повторного нажатия для подтверждения. */
+  private clearArm = 0;
   /** Онлайн: «Сохранить» шлёт настройки на сервер (по токену игрока). */
   onSaveServer: (() => void) | null = null;
 
@@ -155,6 +160,10 @@ export class LoadoutPanel {
       this.savedFlash -= dt;
       if (this.savedFlash <= 0) this.redraw();
     }
+    if (this.clearArm > 0) {
+      this.clearArm -= dt;
+      if (this.clearArm <= 0) this.redraw();
+    }
 
     if (this.navArmed && Math.abs(navY) > 0.6) {
       const rows = this.rowCount();
@@ -202,6 +211,7 @@ export class LoadoutPanel {
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
     if (this.target.kind === "comfort") return 1;
+    if (this.target.kind === "action") return 1;
     return 7;
   }
 
@@ -249,6 +259,26 @@ export class LoadoutPanel {
           LOADOUT.gfx.smooth = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
         },
         format: (v) => (v ? "вкл" : "выкл"),
+      };
+    }
+    if (t.kind === "action") {
+      // Единственное «поле» — сама кнопка: первое нажатие взводит, второе шлёт.
+      return {
+        label: this.clearArm > 0 ? "нажми ещё раз" : "выполнить",
+        rot: false,
+        steps: [1, 1, 1],
+        get: () => (this.clearArm > 0 ? 1 : 0),
+        set: () => {
+          if (this.clearArm > 0) {
+            this.clearArm = 0;
+            this.onClearWorld?.();
+            this.savedFlash = 2;
+          } else {
+            this.clearArm = 4;
+          }
+          this.redraw();
+        },
+        format: (v) => (v ? "◂ подтвердить" : "◂ ▸"),
       };
     }
     if (t.kind === "comfort") {
@@ -346,6 +376,7 @@ export class LoadoutPanel {
     if (this.row === 0) {
       this.targetIdx = (this.targetIdx + dir + TARGETS.length) % TARGETS.length;
       this.row = 0;
+      this.clearArm = 0; // ушли с «очистить мир» — снять подтверждение
       this.redraw();
       return;
     }
@@ -368,7 +399,7 @@ export class LoadoutPanel {
     const steps = f.steps ?? (f.rot ? ROT_STEPS : POS_STEPS);
     const step = steps[this.stepIdx] ?? steps[steps.length - 1];
     f.set(f.get() + dir * step);
-    saveTarget(this.target.key);
+    if (this.target.kind !== "action") saveTarget(this.target.key);
     this.redraw();
   }
 

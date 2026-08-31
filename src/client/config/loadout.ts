@@ -173,7 +173,8 @@ export type TargetKey =
   | "voice:chat"
   | "gfx:smooth"
   | "comfort:vignette"
-  | "comfort:move";
+  | "comfort:move"
+  | "world:clear";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -184,6 +185,7 @@ export function itemTarget(kind: ItemKind, slot: SlotKey): TargetKey {
 
 function readTarget(src: Loadout, key: TargetKey): unknown {
   const parts = key.split(":");
+  if (key === "world:clear") return {}; // не настройка, а действие
   if (parts[0] === "world") return src.world;
   if (parts[0] === "belt") return src.belt;
   if (parts[0] === "hud") return src.hud;
@@ -196,6 +198,7 @@ function readTarget(src: Loadout, key: TargetKey): unknown {
 
 function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
   const parts = key.split(":");
+  if (key === "world:clear") return; // действие, ничего не хранит
   if (parts[0] === "world") {
     const w = value as Partial<Loadout["world"]>;
     if (typeof w?.hour === "number" && Number.isFinite(w.hour)) dst.world.hour = w.hour;
