@@ -339,6 +339,7 @@ export class Game {
       if (overlay) overlay.style.display = state === WebXRState.NOT_IN_XR ? "" : "none";
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
+        this.requestMaxFrameRate();
         this.player.enterXR(base.camera);
         this.xrInput = new XRInput(this.xr!);
         this.player.setInput(this.xrInput);
@@ -355,6 +356,23 @@ export class Game {
         this.tearDownVrUi();
       }
     });
+  }
+
+  /**
+   * Просим шлем о самой высокой поддерживаемой частоте кадров. По умолчанию
+   * Quest-браузер часто отдаёт 72 Гц (а 2D-панель — вовсе 60); список
+   * доступен только после старта сессии. Если движок не будет успевать —
+   * шлем сам опустит частоту (репроекция), хуже не станет.
+   */
+  private requestMaxFrameRate(): void {
+    const sm = this.xr?.baseExperience.sessionManager;
+    const rates = sm?.supportedFrameRates;
+    if (!sm || !rates || rates.length === 0) return;
+    const target = Math.max(...Array.from(rates));
+    if (!Number.isFinite(target) || target <= (sm.currentFrameRate ?? 0)) return;
+    sm.updateTargetFrameRate(target)
+      .then(() => console.log(`[xr] запрошено ${target} Гц`))
+      .catch((e: unknown) => console.warn("[xr] частоту кадров сменить не вышло:", e));
   }
 
   requestPointerLock(): void {
