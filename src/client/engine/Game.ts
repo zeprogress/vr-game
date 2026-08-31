@@ -108,6 +108,7 @@ export class Game {
     this.zoneTick = zone.tick;
 
     this.player = new PlayerController(this.scene, this.progression);
+    this.player.setObstacles(zone.obstacles);
     this.scene.activeCamera = this.player.camera;
     this.player.placeOnGround();
 
@@ -234,6 +235,15 @@ export class Game {
     } catch (e) {
       console.warn("WebXR недоступен:", e);
       return;
+    }
+
+    // Кнопка «Enter VR»: Babylon ставит её справа внизу инлайновым стилем,
+    // а внизу она перекрывается подсказкой управления.
+    const overlay = this.xr.enterExitUI?.overlay;
+    if (overlay) {
+      overlay.style.top = "16px";
+      overlay.style.right = "16px";
+      overlay.style.bottom = "auto";
     }
 
     const base = this.xr.baseExperience;
@@ -432,7 +442,12 @@ export class Game {
       this.hud.setDead(true, this.deathCountdown);
     }
 
+    // Звук глотка — по подтверждённой сервером убыли, а не по нажатию:
+    // на полном здоровье сервер зелье не тратит.
+    const potions = this.potionCount();
     this.inventory.applyRemote(self.bag);
+    const left = this.potionCount();
+    if (left < potions) this.sfx.drink();
 
     // Прокачку применяем только при изменении: applyRemote перерисовывает панель.
     const p = this.progression;

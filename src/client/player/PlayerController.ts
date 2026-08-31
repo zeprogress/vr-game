@@ -70,6 +70,40 @@ export class PlayerController {
     return this.hurtTimer;
   }
   private spawn = new Vector3(0, PLAYER.eyeHeight, -20);
+  /** Стволы деревьев: из них игрока выталкивает наружу. */
+  private obstacles: { x: number; z: number; r: number }[] = [];
+
+  /**
+   * Задать непроходимые стволы.
+   *
+   * Лучами тонкий ствол ловится плохо: луч идёт из центра тела, и мимо
+   * ствола можно проскользнуть боком. Расталкивание по кругу и надёжнее,
+   * и дешевле — лучей на это не тратим вовсе.
+   */
+  setObstacles(list: { x: number; z: number; r: number }[]): void {
+    this.obstacles = list;
+  }
+
+  /** Вытолкнуть тело из стволов, в которые оно въехало. */
+  private pushOutOfObstacles(): void {
+    if (this.obstacles.length === 0) return;
+    const p = this.body.position;
+    for (const o of this.obstacles) {
+      const dx = p.x - o.x;
+      const dz = p.z - o.z;
+      const need = o.r + PLAYER.radius;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= need * need) continue;
+      const d = Math.sqrt(d2);
+      if (d < 1e-4) {
+        p.x += need; // ровно в центре — сдвигаем в любую сторону
+        continue;
+      }
+      const push = (need - d) / d;
+      p.x += dx * push;
+      p.z += dz * push;
+    }
+  }
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
   private xrRig: TransformNode | null = null;
@@ -275,6 +309,8 @@ export class PlayerController {
     } else {
       this.stepDist = PLAYER.strideLength * 0.6; // приземлился — шаг почти сразу
     }
+
+    this.pushOutOfObstacles();
 
     // --- Земля под ногами ---
     const groundY = this.rayDown();

@@ -6,7 +6,7 @@ import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
-import { scatterTrees, scatterGrass } from "./props";
+import { scatterTrees, scatterGrass, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
 import { Fireflies } from "./Fireflies";
 import { DAYCYCLE } from "#shared/constants";
@@ -17,6 +17,8 @@ export interface Zone {
   ground: Mesh;
   /** Высота земли в точке (аналитическая). */
   groundHeight: (x: number, z: number) => number;
+  /** Стволы деревьев: сквозь них ходить нельзя. */
+  obstacles: Obstacle[];
   /** Двигает время суток, ветер и светлячков. Звать каждый кадр. */
   tick: (dt: number, playerPos: Vector3) => void;
   /** Точки, где лежат меч, лук и щит (над камнями). */
@@ -56,7 +58,7 @@ export function buildZone(scene: Scene): Zone {
   let paintedAt = hour;
 
   const terrain = createTerrain(scene);
-  scatterTrees(scene, terrain);
+  const trunks = scatterTrees(scene, terrain);
   const windTick = scatterGrass(scene, terrain);
   const fireflies = new Fireflies(scene, terrain);
 
@@ -67,6 +69,7 @@ export function buildZone(scene: Scene): Zone {
   return {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
+    obstacles: trunks,
     tick: (dt: number, playerPos: Vector3) => {
       // Часы двигаем ПЕРВЫМИ: если что-то ниже упадёт, время всё равно идёт.
       //

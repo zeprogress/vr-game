@@ -15,8 +15,19 @@ import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
 import { LIGHT_BUDGET } from "./Fireflies";
 
-/** Низкополигональные деревья, расставленные по рельефу (инстансы одного меша). */
-export function scatterTrees(scene: Scene, terrain: Terrain): void {
+/** Круг ствола на плоскости — по нему игрока выталкивает наружу. */
+export interface Obstacle {
+  x: number;
+  z: number;
+  r: number;
+}
+
+/**
+ * Низкополигональные деревья, расставленные по рельефу (инстансы одного меша).
+ * Возвращает стволы: одного луча из центра тела мало, чтобы не пройти сквозь
+ * тонкий ствол — мимо него легко проскользнуть боком.
+ */
+export function scatterTrees(scene: Scene, terrain: Terrain): Obstacle[] {
   const trunkMat = new StandardMaterial("trunkMat", scene);
   trunkMat.maxSimultaneousLights = LIGHT_BUDGET;
   trunkMat.diffuseColor = new Color3(0.32, 0.22, 0.14);
@@ -39,10 +50,11 @@ export function scatterTrees(scene: Scene, terrain: Terrain): void {
   crown2.material = leafMat;
 
   const proto = Mesh.MergeMeshes([trunk, crown, crown2], true, true, undefined, false, true);
-  if (!proto) return;
+  if (!proto) return [];
   proto.name = "treeProto";
   proto.isVisible = false;
 
+  const trunks: Obstacle[] = [];
   const reach = WORLD.size / 2 - 6;
   for (let i = 0; i < WORLD.treeCount; i++) {
     const x = (Math.random() - 0.5) * 2 * reach;
@@ -55,7 +67,9 @@ export function scatterTrees(scene: Scene, terrain: Terrain): void {
     tree.rotation.y = Math.random() * Math.PI * 2;
     tree.checkCollisions = true;
     tree.isPickable = true;
+    trunks.push({ x, z, r: 0.22 * s }); // радиус ствола у земли + небольшой запас
   }
+  return trunks;
 }
 
 /**
@@ -79,7 +93,9 @@ export function scatterGrass(
   // С мип-уровнями края травинок к горизонту усредняются и при обычном
   // пороге просто исчезают, поэтому порог ниже — дальняя трава не лысеет.
   mat.alphaCutOff = 0.25;
-  mat.emissiveColor = new Color3(0.04, 0.08, 0.035); // темнее: трава не светится
+  // Травинки стоят вертикально и ловят меньше света сверху, чем земля,
+  // поэтому своей яркости им нужно больше — иначе они темнее земли.
+  mat.emissiveColor = new Color3(0.11, 0.2, 0.09);
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
 
@@ -148,8 +164,8 @@ function grassBladeTexture(scene: Scene): DynamicTexture {
   for (let i = 0; i < blades; i++) {
     const bx = (i + 0.5 + (Math.random() - 0.5) * 0.5) * (S / blades);
     const w = S / blades / 4.5; // втрое тоньше прежнего
-    const green = 70 + Math.floor(Math.random() * 45); // темнее прежнего
-    ctx.fillStyle = `rgb(${green - 40}, ${green}, ${green - 45})`;
+    const green = 125 + Math.floor(Math.random() * 55);
+    ctx.fillStyle = `rgb(${green - 50}, ${green}, ${green - 55})`;
     ctx.beginPath();
     ctx.moveTo(bx - w, S);
     ctx.lineTo(bx + w, S);

@@ -64,10 +64,10 @@ export function createTerrain(scene: Scene): Terrain {
 function grassMaterial(scene: Scene): StandardMaterial {
   const tex = new DynamicTexture("grassTex", { width: 256, height: 256 }, scene, false);
   const ctx = tex.getContext();
-  ctx.fillStyle = "#4a7c3a";
+  ctx.fillStyle = "#3d6630"; // темнее травы, чтобы та читалась поверх
   ctx.fillRect(0, 0, 256, 256);
   for (let i = 0; i < 5000; i++) {
-    const shade = 60 + Math.floor(Math.random() * 70);
+    const shade = 40 + Math.floor(Math.random() * 60);
     ctx.fillStyle = `rgba(${shade - 20}, ${shade + 40}, ${shade - 10}, 0.5)`;
     ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
   }

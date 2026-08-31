@@ -286,6 +286,31 @@ export class Sfx {
     });
   }
 
+  /** Глоток: пара низких «бульков» и выдох. */
+  drink(): void {
+    if (!this.ready()) return;
+    const t0 = this.t;
+    for (let i = 0; i < 3; i++) {
+      const t = t0 + i * 0.11;
+      const o = this.ctx!.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(150 + i * 25, t);
+      o.frequency.exponentialRampToValueAtTime(70 + i * 20, t + 0.09);
+      const g = this.env(0.28, 0.006, 0.09, t);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.12);
+    }
+    // Выдох после глотка — короткий шум через полосовой фильтр.
+    const t = t0 + 0.34;
+    const n = this.noise();
+    const bp = this.filter("bandpass", 900, 0.8);
+    const g = this.env(0.12, 0.02, 0.16, t);
+    n.connect(bp).connect(g);
+    n.start(t);
+    n.stop(t + 0.2);
+  }
+
   /** Короткий звонкий блип при подборе лута. */
   pickup(): void {
     if (!this.ready()) return;

@@ -5,14 +5,14 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Node } from "@babylonjs/core/node";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { LinesMesh } from "@babylonjs/core/Meshes/linesMesh";
+
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
 import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import "@babylonjs/core/Meshes/Builders/linesBuilder";
+import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 
 import { BELT, BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
@@ -34,6 +34,8 @@ import type { Hittable } from "./Hittable";
 const TIP = new Vector3(...COMBAT.swordTipLocal);
 /** Локальная нормаль щита — «наружу» смотрит +Y. */
 const SHIELD_NORMAL = new Vector3(0, 1, 0);
+/** Толщина тетивы, м. */
+const BOWSTRING_RADIUS = 0.006;
 
 type Slot = { pos: [number, number, number]; rot: [number, number, number]; scale: number };
 /**
@@ -106,7 +108,7 @@ function newMotion(): HandMotion {
 export class CombatSystem {
   private readonly items: Item[];
   private readonly bowParts: BowParts;
-  private readonly bowString: LinesMesh;
+  private readonly bowString: Mesh;
   private readonly nockArrow: Mesh;
   private readonly arrowProto: Mesh;
   private readonly arrows: Arrow[] = [];
@@ -204,8 +206,18 @@ export class CombatSystem {
     this.potion.setEnabled(false);
 
     const stringPts = [this.bowParts.topTip, this.bowParts.nockRest, this.bowParts.bottomTip];
-    this.bowString = MeshBuilder.CreateLines("bowString", { points: stringPts, updatable: true }, scene);
-    this.bowString.color = new Color3(0.85, 0.85, 0.8);
+    // Тетива — тонкая трубка, а не линия: толщину линии WebGL задать нельзя,
+    // она всегда в один пиксель и на расстоянии просто пропадает.
+    this.bowString = MeshBuilder.CreateTube(
+      "bowString",
+      { path: stringPts, radius: BOWSTRING_RADIUS, tessellation: 4, updatable: true },
+      scene,
+    );
+    const stringMat = new StandardMaterial("bowStringMat", scene);
+    stringMat.diffuseColor = new Color3(0.85, 0.85, 0.8);
+    stringMat.emissiveColor = new Color3(0.25, 0.25, 0.23);
+    stringMat.specularColor = new Color3(0, 0, 0);
+    this.bowString.material = stringMat;
     this.bowString.parent = bow;
     this.bowString.isPickable = false;
 
@@ -1253,8 +1265,9 @@ export class CombatSystem {
   }
 
   private updateString(): void {
-    MeshBuilder.CreateLines("bowString", {
-      points: [this.bowParts.topTip, this.nockLocal, this.bowParts.bottomTip],
+    MeshBuilder.CreateTube("bowString", {
+      path: [this.bowParts.topTip, this.nockLocal, this.bowParts.bottomTip],
+      radius: BOWSTRING_RADIUS,
       instance: this.bowString,
     });
   }
