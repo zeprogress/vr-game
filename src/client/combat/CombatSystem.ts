@@ -871,7 +871,7 @@ export class CombatSystem {
     if (hand) this.motion[hand].init = false;
     this.windup = 0;
     this.justPickedUp = false;
-    this.sfx.swordSwing();
+    this.sfx.swordSwing(worldPos);
 
     if (item.kind === "bow") {
       this.nockArrow.setEnabled(false);
@@ -1076,7 +1076,7 @@ export class CombatSystem {
     if (primaryEdge && sw.t <= 0) {
       sw.t = COMBAT.swingDuration;
       sw.hitDone = false;
-      this.sfx.swordSwing();
+      this.sfx.swordSwing(item.mesh.getAbsolutePosition());
     }
     if (sw.t > 0) {
       sw.t -= dt;
@@ -1129,7 +1129,7 @@ export class CombatSystem {
       const avgSpeed = Vector3.Distance(tip, oldest.p) / oldest.age;
       const sweep = Math.acos(clamp(Vector3.Dot(dir, oldest.dir), -1, 1));
       if (avgSpeed > COMBAT.vrSwooshSpeed && sweep > COMBAT.vrSwooshSweep) {
-        this.sfx.swordSwing();
+        this.sfx.swordSwing(tip);
         this.swooshCd = COMBAT.swooshCooldown;
       }
     }
@@ -1216,9 +1216,8 @@ export class CombatSystem {
     if (this.meleeFlatCd > 0) this.meleeFlatCd -= dt;
     if (!primaryEdge || this.meleeFlatCd > 0) return;
     this.meleeFlatCd = MELEE.cooldown;
-    this.sfx.swordSwing();
-
     const eye = this.player.camera.globalPosition;
+    this.sfx.swordSwing(eye);
     const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
     const reach = eye.add(fwd.scale(MELEE.flatReach));
     let landed = false;

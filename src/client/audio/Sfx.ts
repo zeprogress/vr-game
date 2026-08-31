@@ -1,6 +1,16 @@
+/** Точка в мире, откуда идёт звук. */
+export interface SoundAt {
+  x: number;
+  y: number;
+  z: number;
+}
+
 /**
  * Простые процедурные звуки на Web Audio (без файлов).
  * `resume()` нужно вызвать по жесту пользователя (клик / вход в VR).
+ *
+ * Часть звуков объёмная: если передать точку `at`, звук идёт через PannerNode
+ * и слышен с той стороны, где источник (моб, взмах, плевок).
  */
 export class Sfx {
   private ctx: AudioContext | null = null;
@@ -67,13 +77,63 @@ export class Sfx {
     return s;
   }
 
-  private env(peak: number, attack: number, decay: number, t = this.t): GainNode {
+  private env(peak: number, attack: number, decay: number, t = this.t, at?: SoundAt): GainNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(peak, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    g.connect(this.master!);
+    g.connect(at ? this.panAt(at) : this.master!);
     return g;
+  }
+
+  /** PannerNode в точке `at`, подключённый к мастеру. Живёт с одним звуком. */
+  private panAt(at: SoundAt): PannerNode {
+    const p = this.ctx!.createPanner();
+    p.panningModel = "HRTF";
+    p.distanceModel = "inverse";
+    p.refDistance = 3;
+    p.maxDistance = 40;
+    p.rolloffFactor = 1.2;
+    if (p.positionX) {
+      p.positionX.value = at.x;
+      p.positionY.value = at.y;
+      p.positionZ.value = at.z;
+    } else {
+      (p as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(
+        at.x,
+        at.y,
+        at.z,
+      );
+    }
+    p.connect(this.master!);
+    return p;
+  }
+
+  /**
+   * Положение и направление «ушей» игрока — звать каждый кадр, иначе объёмные
+   * звуки будут приходить не с той стороны. Голова = позиция и взгляд камеры.
+   */
+  setListener(pos: SoundAt, forward: SoundAt, up: SoundAt): void {
+    if (!this.ctx) return;
+    const l = this.ctx.listener;
+    if (l.positionX) {
+      l.positionX.value = pos.x;
+      l.positionY.value = pos.y;
+      l.positionZ.value = pos.z;
+      l.forwardX.value = forward.x;
+      l.forwardY.value = forward.y;
+      l.forwardZ.value = forward.z;
+      l.upX.value = up.x;
+      l.upY.value = up.y;
+      l.upZ.value = up.z;
+    } else {
+      const legacy = l as unknown as {
+        setPosition(x: number, y: number, z: number): void;
+        setOrientation(fx: number, fy: number, fz: number, ux: number, uy: number, uz: number): void;
+      };
+      legacy.setPosition(pos.x, pos.y, pos.z);
+      legacy.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
   }
 
   private filter(type: BiquadFilterType, freq: number, q = 1): BiquadFilterNode {
@@ -138,7 +198,7 @@ export class Sfx {
     o.stop(t + 0.17);
   }
 
-  swordSwing(): void {
+  swordSwing(at?: SoundAt): void {
     if (!this.ready()) return;
     const t = this.t;
     const n = this.noise();
@@ -146,7 +206,7 @@ export class Sfx {
     bp.frequency.setValueAtTime(500, t);
     bp.frequency.exponentialRampToValueAtTime(2600, t + 0.11);
     bp.frequency.exponentialRampToValueAtTime(700, t + 0.28);
-    const g = this.env(0.32, 0.06, 0.24, t);
+    const g = this.env(0.32, 0.06, 0.24, t, at);
     n.connect(bp).connect(g);
     n.start(t);
     n.stop(t + 0.32);
@@ -206,20 +266,20 @@ export class Sfx {
     n.stop(t + 0.07);
   }
 
-  mobHop(): void {
+  mobHop(at?: SoundAt): void {
     if (!this.ready()) return;
     const t = this.t;
     const o = this.ctx!.createOscillator();
     o.type = "sine";
     o.frequency.setValueAtTime(300, t);
     o.frequency.exponentialRampToValueAtTime(160, t + 0.1);
-    const g = this.env(0.1, 0.005, 0.1, t);
+    const g = this.env(0.1, 0.005, 0.1, t, at);
     o.connect(g);
     o.start(t);
     o.stop(t + 0.13);
   }
 
-  mobHurt(): void {
+  mobHurt(at?: SoundAt): void {
     if (!this.ready()) return;
     const t = this.t;
     const o = this.ctx!.createOscillator();
@@ -227,23 +287,48 @@ export class Sfx {
     o.frequency.setValueAtTime(420, t);
     o.frequency.exponentialRampToValueAtTime(140, t + 0.14);
     const lp = this.filter("lowpass", 1200);
-    const g = this.env(0.3, 0.003, 0.15, t);
+    const g = this.env(0.3, 0.003, 0.15, t, at);
     o.connect(lp).connect(g);
     o.start(t);
     o.stop(t + 0.18);
   }
 
-  mobDie(): void {
+  mobDie(at?: SoundAt): void {
     if (!this.ready()) return;
     const t = this.t;
     const n = this.noise();
     const bp = this.filter("bandpass", 500, 1.5);
     bp.frequency.setValueAtTime(900, t);
     bp.frequency.exponentialRampToValueAtTime(150, t + 0.25);
-    const g = this.env(0.4, 0.004, 0.28, t);
+    const g = this.env(0.4, 0.004, 0.28, t, at);
     n.connect(bp).connect(g);
     n.start(t);
     n.stop(t + 0.32);
+  }
+
+  /** Плевок плевуна: резкий выхлоп воздуха с падающим тоном. Объёмный. */
+  spitterFire(at?: SoundAt): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    // Шипящий выхлоп.
+    const n = this.noise();
+    const bp = this.filter("bandpass", 1600, 1.4);
+    bp.frequency.setValueAtTime(2200, t);
+    bp.frequency.exponentialRampToValueAtTime(700, t + 0.16);
+    const ng = this.env(0.34, 0.004, 0.16, t, at);
+    n.connect(bp).connect(ng);
+    n.start(t);
+    n.stop(t + 0.22);
+    // «Тьфу» — короткий гортанный призвук.
+    const o = this.ctx!.createOscillator();
+    o.type = "sawtooth";
+    o.frequency.setValueAtTime(240, t);
+    o.frequency.exponentialRampToValueAtTime(90, t + 0.12);
+    const lp = this.filter("lowpass", 900);
+    const og = this.env(0.22, 0.003, 0.12, t, at);
+    o.connect(lp).connect(og);
+    o.start(t);
+    o.stop(t + 0.16);
   }
 
   /** Лязг блока. strength: 1 — щит (звонко), <1 — меч (глуше). */

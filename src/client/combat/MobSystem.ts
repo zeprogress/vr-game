@@ -119,6 +119,8 @@ export class NetMobs {
           srvVy: s.vy,
         };
         this.balls.set(id, b);
+        // Новый плевок = плевун только что выстрелил — звук с той стороны.
+        this.sfx.spitterFire({ x: s.x, y: s.y, z: s.z });
       }
 
       // Пришёл новый патч — берём скорость сервера как есть.

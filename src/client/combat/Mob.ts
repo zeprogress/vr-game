@@ -213,7 +213,7 @@ export class Mob implements Hittable {
       this.bar.setOpacity(1);
       if (!s.dead) {
         this.addWound(s.hurtDx, s.hurtDz);
-        this.playIfNear(playerPos, () => this.sfx.mobHurt());
+        this.playIfNear(playerPos, () => this.sfx.mobHurt(pos));
       }
     }
 
@@ -233,7 +233,7 @@ export class Mob implements Hittable {
       this.dead = true;
       this.deathT = 0;
       for (const w of this.wounds) w.setEnabled(false);
-      this.playIfNear(playerPos, () => this.sfx.mobDie());
+      this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
       this.body.visibility = 1;
@@ -263,7 +263,7 @@ export class Mob implements Hittable {
     const sq = Math.max(0.4, 1 + vy * 0.04);
     this.body.scaling.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
 
-    if (s.grounded === 0 && this.grounded) this.playIfNear(playerPos, () => this.sfx.mobHop(), 20);
+    if (s.grounded === 0 && this.grounded) this.playIfNear(playerPos, () => this.sfx.mobHop(pos), 20);
     this.grounded = s.grounded === 1;
 
     // плашка — только рядом и примерно в поле зрения
@@ -273,10 +273,10 @@ export class Mob implements Hittable {
     const near = md < MOB.nameTagRange && facing;
     this.nameTag.setEnabled(near);
     if (near) {
-      // Издалека плашка вдвое крупнее (иначе имя и уровень не разобрать),
-      // вблизи плавно ужимается до обычного размера.
+      // Издалека плашку не разобрать, поэтому на дальней границе она ×4,
+      // а по мере приближения плавно ужимается до ×2.
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
-      this.nameTag.setScale(1 + t);
+      this.nameTag.setScale(2 + t * 2);
     }
   }
 
