@@ -438,11 +438,15 @@ class Ball {
         p.x, feetY, p.z, p.x, p.y, p.z,
       );
       if (d < SPITTER.ballRadius + PLAYER.radius) {
+        // «Откуда» — точка ВВЕРХ по траектории, а не текущая позиция шара:
+        // на скорости плевок за тик пролетает мимо игрока, и направление
+        // "от игрока к шару" могло указывать вбок/назад — блок щитом мимо.
+        const vh = Math.hypot(this.vx, this.vz) || 1;
         hits.push({
           target: p.sessionId,
           dmg: SPITTER.ballDamage,
-          fromX: this.x,
-          fromZ: this.z,
+          fromX: this.x - (this.vx / vh) * 4,
+          fromZ: this.z - (this.vz / vh) * 4,
           projectile: true,
         });
         return true;
