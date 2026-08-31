@@ -1,0 +1,17 @@
+# systemd-юнит игрового сервера. __APPDIR__ подставляет deploy/setup.sh.
+[Unit]
+Description=VR GAME — Colyseus server
+After=network.target
+
+[Service]
+Type=simple
+User=vrgame
+WorkingDirectory=__APPDIR__
+ExecStart=__APPDIR__/node_modules/.bin/tsx src/server/index.ts
+Environment=NODE_ENV=production
+Environment=GAME_SERVER_PORT=2567
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
