@@ -12,9 +12,24 @@ export const VOICE = {
   /** Дальше этого уже практически не слышно, м. */
   maxDistance: 45,
   rolloff: 1.1,
-  /** Публичные STUN — без них соединение не найдёт путь наружу. */
+  /** Публичные STUN — помогают узнать свой внешний адрес. */
   stun: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+  /**
+   * Свой TURN на VPS — ретранслирует голос, когда прямое соединение между
+   * игроками не проходит (симметричный NAT, CGNAT, VPN у одного из них).
+   * Логин/пароль общие: для игры на пару человек трафик копеечный.
+   */
+  turn: {
+    urls: ["turn:zepgame.duckdns.org:3478?transport=udp", "turn:zepgame.duckdns.org:3478?transport=tcp"],
+    username: "vrgame",
+    credential: "slime-boss-2026",
+  },
 } as const;
+
+/** Список ICE-серверов для RTCPeerConnection. */
+export function iceServers(): RTCIceServer[] {
+  return [{ urls: [...VOICE.stun] }, { ...VOICE.turn, urls: [...VOICE.turn.urls] }];
+}
 
 /** Состояние связи с одним собеседником — его показывает панель. */
 export type PeerState = "новый" | "соединяется" | "говорим" | "нет связи";
@@ -105,7 +120,7 @@ export class VoiceChat {
   addPeer(id: string): void {
     if (id === this.selfId || this.peers.has(id)) return;
 
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: [...VOICE.stun] }] });
+    const pc = new RTCPeerConnection({ iceServers: iceServers() });
     // Звонит тот, у кого id меньше: иначе оба звонят разом и связь путается.
     const caller = this.selfId < id;
     const peer: Peer = {
