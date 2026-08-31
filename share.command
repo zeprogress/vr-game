@@ -135,7 +135,11 @@ for _ in $(seq 1 30); do
 done
 
 if [ -n "$URL" ]; then
+  # pinggy печатает два адреса на разных доменах — если сеть друга режет один,
+  # второй может пройти. Показываем оба.
+  ALT=$(tr -d '\r' <"$TLOG" | grep -Eo 'https://[a-z0-9.-]+\.(pinggy-free\.link|free\.pinggy\.net)' | grep -v "^$URL$" | head -1)
   announce "$URL" "Адрес живёт 1 час — потом запусти скрипт заново."
+  [ -n "$ALT" ] && echo "  Если у друга не открывается — вторая ссылка: $ALT" && echo
   wait "$TUNNEL_PID"
   exit 0
 fi
