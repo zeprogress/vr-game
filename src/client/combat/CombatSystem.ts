@@ -35,7 +35,7 @@ const TIP = new Vector3(...COMBAT.swordTipLocal);
 /** Локальная нормаль щита — «наружу» смотрит +Y. */
 const SHIELD_NORMAL = new Vector3(0, 1, 0);
 /** Толщина тетивы, м. */
-const BOWSTRING_RADIUS = 0.006;
+const BOWSTRING_RADIUS = 0.003;
 
 type Slot = { pos: [number, number, number]; rot: [number, number, number]; scale: number };
 /**

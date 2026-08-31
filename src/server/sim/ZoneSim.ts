@@ -7,6 +7,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
+import { trees } from "#shared/trees";
 import {
   BAG,
   ITEMS,
@@ -26,6 +27,9 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "bow:gold": "gold_bow",
   "shield:gold": "gold_shield",
 };
+
+/** Стволы деревьев — общие с клиентом, считаются один раз. */
+const TREES = trees();
 
 /** Середина торса куклы над её основанием (см. клиентский Dummy). */
 const DUMMY_CENTER_Y = 1.5;
@@ -215,6 +219,25 @@ class Mob {
       this.vx *= 0.25;
       this.vz *= 0.25;
       this.grounded = true;
+    }
+
+    // не проходит сквозь стволы деревьев
+    for (const t of TREES) {
+      const tx = this.x - t.x;
+      const tz = this.z - t.z;
+      const clr = t.r + MOB.bodyRadius;
+      const td = Math.hypot(tx, tz);
+      if (td > 1e-4 && td < clr) {
+        const push = (clr - td) / td;
+        this.x += tx * push;
+        this.z += tz * push;
+        // Гасим скорость внутрь ствола, иначе моб упрётся и будет дрожать.
+        const inward = (this.vx * tx + this.vz * tz) / td;
+        if (inward < 0) {
+          this.vx -= (tx / td) * inward;
+          this.vz -= (tz / td) * inward;
+        }
+      }
     }
 
     // не проходит сквозь игроков

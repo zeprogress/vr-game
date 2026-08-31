@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import { WORLD } from "#shared/constants";
+import { trees as treeList } from "#shared/trees";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
 import { LIGHT_BUDGET } from "./Fireflies";
@@ -23,9 +24,10 @@ export interface Obstacle {
 }
 
 /**
- * Низкополигональные деревья, расставленные по рельефу (инстансы одного меша).
- * Возвращает стволы: одного луча из центра тела мало, чтобы не пройти сквозь
- * тонкий ствол — мимо него легко проскользнуть боком.
+ * Низкополигональные деревья (инстансы одного меша).
+ *
+ * Места берём из общего списка, а не из Math.random: тот же лес должен быть
+ * и на сервере (мобы обходят стволы), и у всех игроков.
  */
 export function scatterTrees(scene: Scene, terrain: Terrain): Obstacle[] {
   const trunkMat = new StandardMaterial("trunkMat", scene);
@@ -55,20 +57,15 @@ export function scatterTrees(scene: Scene, terrain: Terrain): Obstacle[] {
   proto.isVisible = false;
 
   const trunks: Obstacle[] = [];
-  const reach = WORLD.size / 2 - 6;
-  for (let i = 0; i < WORLD.treeCount; i++) {
-    const x = (Math.random() - 0.5) * 2 * reach;
-    const z = (Math.random() - 0.5) * 2 * reach;
-    if (Math.sqrt(x * x + z * z) < 9) continue; // не на спавне
+  treeList().forEach((t, i) => {
     const tree = proto.createInstance(`tree${i}`);
-    tree.position.set(x, terrain.heightAt(x, z) - 0.1, z);
-    const s = 0.8 + Math.random() * 0.9;
-    tree.scaling.setAll(s);
-    tree.rotation.y = Math.random() * Math.PI * 2;
+    tree.position.set(t.x, terrain.heightAt(t.x, t.z) - 0.1, t.z);
+    tree.scaling.setAll(t.scale);
+    tree.rotation.y = t.yaw;
     tree.checkCollisions = true;
     tree.isPickable = true;
-    trunks.push({ x, z, r: 0.22 * s }); // радиус ствола у земли + небольшой запас
-  }
+    trunks.push({ x: t.x, z: t.z, r: t.r });
+  });
   return trunks;
 }
 

@@ -292,23 +292,33 @@ export class Sfx {
     const t0 = this.t;
     for (let i = 0; i < 3; i++) {
       const t = t0 + i * 0.11;
+      // Низкий «бульк» плюс призвук повыше — от него глоток звонкий, а не глухой.
       const o = this.ctx!.createOscillator();
-      o.type = "sine";
-      o.frequency.setValueAtTime(150 + i * 25, t);
-      o.frequency.exponentialRampToValueAtTime(70 + i * 20, t + 0.09);
-      const g = this.env(0.28, 0.006, 0.09, t);
+      o.type = "triangle";
+      o.frequency.setValueAtTime(190 + i * 30, t);
+      o.frequency.exponentialRampToValueAtTime(85 + i * 22, t + 0.09);
+      const g = this.env(0.5, 0.004, 0.1, t);
       o.connect(g);
       o.start(t);
-      o.stop(t + 0.12);
+      o.stop(t + 0.13);
+
+      const hi = this.ctx!.createOscillator();
+      hi.type = "sine";
+      hi.frequency.setValueAtTime(640 + i * 90, t);
+      hi.frequency.exponentialRampToValueAtTime(300 + i * 60, t + 0.06);
+      const hg = this.env(0.16, 0.003, 0.06, t);
+      hi.connect(hg);
+      hi.start(t);
+      hi.stop(t + 0.08);
     }
     // Выдох после глотка — короткий шум через полосовой фильтр.
     const t = t0 + 0.34;
     const n = this.noise();
-    const bp = this.filter("bandpass", 900, 0.8);
-    const g = this.env(0.12, 0.02, 0.16, t);
+    const bp = this.filter("bandpass", 1100, 0.7);
+    const g = this.env(0.2, 0.02, 0.18, t);
     n.connect(bp).connect(g);
     n.start(t);
-    n.stop(t + 0.2);
+    n.stop(t + 0.22);
   }
 
   /** Короткий звонкий блип при подборе лута. */
