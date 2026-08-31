@@ -49,7 +49,7 @@ export class PlayerState extends Schema {
   @type([SlotState]) bag = new ArraySchema<SlotState>();
 }
 
-export type MobKind = "slime" | "spitter";
+export type MobKind = "slime" | "spitter" | "boss" | "shard";
 
 export class MobState extends Schema {
   @type("string") kind: MobKind = "slime";
@@ -65,6 +65,14 @@ export class MobState extends Schema {
   @type("uint16") hurtSeq = 0;
   @type("float32") hurtDx = 0;
   @type("float32") hurtDz = 0;
+  /** Размер тела относительно обычного слизня (босс — крупнее, осколок — мельче). */
+  @type("float32") scale = 1;
+  /** Телеграф слэма босса: 0 — нет, 1 — вот-вот ударит. */
+  @type("float32") windup = 0;
+  /** ++ на каждый слэм — клиент рисует ударную волну. */
+  @type("uint16") slamSeq = 0;
+  /** 1 — босс в ярости (клиент подсвечивает). */
+  @type("uint8") enraged = 0;
 }
 
 export class DummyState extends Schema {

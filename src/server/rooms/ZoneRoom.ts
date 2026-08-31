@@ -272,6 +272,7 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const m of this.sim.mobs.values()) {
       const s = new MobState();
       s.kind = m.kind;
+      s.scale = m.scale;
       this.state.mobs.set(m.id, s);
     }
     for (const d of this.sim.dummies.values()) {
@@ -557,10 +558,15 @@ export class ZoneRoom extends Room<ZoneState> {
 
     const hits = this.sim.tick(dt, players);
 
-    // sim -> схема
+    // sim -> схема. Осколки босса появляются/исчезают — заводим схему на лету.
     for (const m of this.sim.mobs.values()) {
-      const s = this.state.mobs.get(m.id);
-      if (!s) continue;
+      let s = this.state.mobs.get(m.id);
+      if (!s) {
+        s = new MobState();
+        s.kind = m.kind;
+        s.scale = m.scale;
+        this.state.mobs.set(m.id, s);
+      }
       s.x = m.x;
       s.y = m.y;
       s.z = m.z;
@@ -572,7 +578,15 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtSeq = m.hurtSeq;
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
+      if (m.kind === "boss") {
+        s.windup = m.slamTelegraph;
+        s.slamSeq = m.slamSeq;
+        s.enraged = m.enraged ? 1 : 0;
+      }
     }
+    this.state.mobs.forEach((_s, id) => {
+      if (!this.sim.mobs.has(id)) this.state.mobs.delete(id);
+    });
     for (const d of this.sim.dummies.values()) {
       const s = this.state.dummies.get(d.id);
       if (!s) continue;

@@ -9,3 +9,6 @@ dist/
 
 # сейвы игроков (per-machine)
 /src/server/.data/
+
+# исходники музыки (обрезанные версии лежат в public/music/)
+/boss.mp3

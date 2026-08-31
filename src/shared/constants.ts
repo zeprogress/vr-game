@@ -134,6 +134,61 @@ export const SPITTER_CFG: MobConfig = {
   ranged: true,
 };
 
+/** Босс: большой багровый слизень в дальнем углу карты. */
+export const BOSS = {
+  /** Дальний угол (+x, +z). */
+  home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
+  hp: 170,
+  scale: 2.5, // во столько раз крупнее обычного слизня
+  aggroRange: 22,
+  wanderRadius: 16,
+  hopSpeed: 3.1,
+  hopInterval: 0.72,
+  /** Подходишь ближе — замахивается на удар по площади. */
+  slamRange: 6.5,
+  slamWindup: 1.15, // с телеграфа (стоит на месте, «раздувается»)
+  slamCooldown: 5, // с между слэмами
+  slamRadius: 5, // м поражения
+  slamDamage: 20,
+  slamKnockback: 9,
+  /** Доли HP, при пересечении которых босс выбрасывает осколки. */
+  splitAt: [0.66, 0.33] as const,
+  splitCount: 2,
+  /** Ниже этой доли HP — ярость: быстрее и слэмит чаще. */
+  enrageAt: 0.32,
+  respawn: 75, // с
+  /** Ближе — играет boss.mp3; дальше musicOut — обратно (гистерезис). */
+  musicRange: 22,
+  musicOut: 34,
+} as const;
+
+export const BOSS_CFG: MobConfig = {
+  name: "Багровый слизень",
+  level: 6,
+  hp: BOSS.hp,
+  xp: 45,
+  tint: [0.82, 0.11, 0.13],
+  alpha: 0.78,
+  ranged: false,
+};
+
+/** Осколок босса: мелкий, быстрый, дохлый. */
+export const SHARD_CFG: MobConfig = {
+  name: "Осколок",
+  level: 3,
+  hp: 3,
+  xp: 1,
+  tint: [0.85, 0.2, 0.22],
+  alpha: 0.6,
+  ranged: false,
+};
+
+export const SHARD = {
+  scale: 0.6,
+  hopSpeed: 5.2,
+  hopInterval: 0.42,
+} as const;
+
 export const PLAYER_HP = {
   max: 100,
   regen: 3, // ед/с восстановление

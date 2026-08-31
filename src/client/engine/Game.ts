@@ -42,7 +42,10 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { ADMIN_NICK, RESPAWN } from "#shared/constants";
+import { ADMIN_NICK, BOSS, PLAYER, RESPAWN } from "#shared/constants";
+
+const TOWN_MUSIC = "/music/town-dion.mp3";
+const BOSS_MUSIC = "/music/boss.mp3";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -168,9 +171,13 @@ export class Game {
     };
 
     this.player.hooks.step = () => {
-      this.sfx.footstep();
-      const f = this.player.position;
-      this.net?.sendAct("step", f.x, f.y, f.z);
+      const p = this.player.position;
+      const fx = p.x;
+      const fy = p.y - PLAYER.eyeHeight; // под ногами, не у головы
+      const fz = p.z;
+      // Свои шаги слышим снизу — объёмно от точки под ногами.
+      this.sfx.at({ x: fx, y: fy, z: fz }, () => this.sfx.footstep(0.9));
+      this.net?.sendAct("step", fx, fy, fz);
     };
     this.player.hooks.jump = () => this.sfx.jump();
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
@@ -195,7 +202,7 @@ export class Game {
     this.player.setInput(this.defaultInput());
 
     // Звук и музыка стартуют только по жесту пользователя.
-    this.sfx.startMusic("/music/town-dion.mp3", 0.045); // тихий фон
+    this.sfx.startMusic(TOWN_MUSIC, 0.045); // тихий фон
     const wake = () => this.sfx.resume();
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
@@ -224,6 +231,7 @@ export class Game {
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
       this.updateHpBarFade();
+      this.updateBossMusic();
     });
 
     window.addEventListener("resize", () => this.engine.resize());
@@ -563,6 +571,26 @@ export class Game {
   }
 
   /** Полоса здоровья: видна при уроне и пока не полное HP, иначе плавно гаснет. */
+  private bossMusicOn = false;
+
+  /** Рядом с живым боссом играет boss.mp3, вдали / после смерти — обычная. */
+  private updateBossMusic(): void {
+    let near = false;
+    const mobs = this.net?.room?.state.mobs;
+    if (mobs) {
+      const p = this.player.position;
+      mobs.forEach((m) => {
+        if (m.kind !== "boss" || m.dead) return;
+        const d = Math.hypot(m.x - p.x, m.z - p.z);
+        // Гистерезис: заходим ближе musicRange, выходим дальше musicOut.
+        if (d < BOSS.musicRange || (this.bossMusicOn && d < BOSS.musicOut)) near = true;
+      });
+    }
+    if (near === this.bossMusicOn) return;
+    this.bossMusicOn = near;
+    this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.07 : 0.045);
+  }
+
   private updateHpBarFade(): void {
     const injured = this.player.hp < this.player.maxHp - 0.5;
     const t = this.player.sinceHurt;

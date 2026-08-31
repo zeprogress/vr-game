@@ -53,8 +53,14 @@ export class Sfx {
   }
 
   /** Фоновая музыка: тихий бесконечный цикл. Стартует при первом resume(). */
+  private musicUrl = "";
+  private musicVol = 0.045;
+  private fadeTimer: ReturnType<typeof setInterval> | null = null;
+
   startMusic(url: string, volume = 0.01): void {
     if (this.music) return;
+    this.musicUrl = url;
+    this.musicVol = volume;
     const a = new Audio(url);
     a.loop = true;
     a.volume = volume;
@@ -65,8 +71,46 @@ export class Sfx {
     });
   }
 
+  /**
+   * Сменить фоновую музыку с плавным переходом (~1.4 с). Тот же url — no-op.
+   * Для перехода на boss.mp3 у босса и обратно.
+   */
+  setMusic(url: string, volume = this.musicVol): void {
+    if (url === this.musicUrl) {
+      this.musicVol = volume;
+      return;
+    }
+    this.musicUrl = url;
+    this.musicVol = volume;
+
+    const old = this.music;
+    const next = new Audio(url);
+    next.loop = true;
+    next.preload = "auto";
+    next.volume = 0;
+    this.music = next;
+    void next.play().catch(() => {});
+
+    if (this.fadeTimer) clearInterval(this.fadeTimer);
+    const oldStart = old ? old.volume : 0;
+    let t = 0;
+    this.fadeTimer = setInterval(() => {
+      t += 0.05;
+      const k = Math.min(1, t / 1.4);
+      next.volume = Math.max(0, Math.min(1, volume * k));
+      if (old) old.volume = Math.max(0, oldStart * (1 - k));
+      if (k >= 1) {
+        if (this.fadeTimer) clearInterval(this.fadeTimer);
+        this.fadeTimer = null;
+        old?.pause();
+        if (old) old.src = "";
+      }
+    }, 50);
+  }
+
   setMusicVolume(v: number): void {
-    if (this.music) this.music.volume = Math.max(0, Math.min(1, v));
+    this.musicVol = Math.max(0, Math.min(1, v));
+    if (this.music && !this.fadeTimer) this.music.volume = this.musicVol;
   }
 
   // --- строительные блоки ---
@@ -206,30 +250,30 @@ export class Sfx {
   footstep(vol = 1): void {
     if (!this.ready()) return;
     const t = this.t;
-    // Глухой мягкий удар подошвы о землю — короткий, быстро глохнет.
+    // Глухой мягкий удар подошвы о землю — низкий фильтр, быстро глохнет.
     const n = this.noise();
-    const lp = this.filter("lowpass", 260 + Math.random() * 120);
-    lp.frequency.exponentialRampToValueAtTime(110, t + 0.09);
-    const g = this.env(0.34 * vol, 0.003, 0.08, t);
+    const lp = this.filter("lowpass", 190 + Math.random() * 80);
+    lp.frequency.exponentialRampToValueAtTime(85, t + 0.1);
+    const g = this.env(0.24 * vol, 0.004, 0.09, t);
     n.connect(lp).connect(g);
     n.start(t);
-    n.stop(t + 0.13);
+    n.stop(t + 0.14);
     // Низкий «вес» шага — совсем тихо.
     const o = this.ctx!.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(78, t);
-    o.frequency.exponentialRampToValueAtTime(46, t + 0.08);
-    const og = this.env(0.13 * vol, 0.003, 0.07, t);
+    o.frequency.setValueAtTime(70, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.09);
+    const og = this.env(0.1 * vol, 0.004, 0.08, t);
     o.connect(og);
     o.start(t);
-    o.stop(t + 0.11);
-    // Шорох травы и земли под ногой — тихий короткий «хруст».
+    o.stop(t + 0.12);
+    // Приглушённый шорох земли — в средних частотах, без «звона» сверху.
     const n2 = this.noise();
-    const hp = this.filter("highpass", 2400 + Math.random() * 700);
-    const g2 = this.env(0.05 * vol, 0.002, 0.05, t);
-    n2.connect(hp).connect(g2);
+    const bp = this.filter("bandpass", 700 + Math.random() * 250, 0.7);
+    const g2 = this.env(0.03 * vol, 0.003, 0.06, t);
+    n2.connect(bp).connect(g2);
     n2.start(t);
-    n2.stop(t + 0.07);
+    n2.stop(t + 0.08);
   }
 
   land(vol = 1): void {

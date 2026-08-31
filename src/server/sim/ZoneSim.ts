@@ -1,7 +1,11 @@
 import {
+  BOSS,
+  BOSS_CFG,
   COMBAT,
   MOB,
   PLAYER,
+  SHARD,
+  SHARD_CFG,
   SLIME_CFG,
   SPITTER,
   SPITTER_CFG,
@@ -124,6 +128,27 @@ class Mob {
   private readonly homeZ: number;
   readonly ranged: boolean;
   readonly xp: number;
+  readonly scale: number;
+
+  // --- босс ---
+  private slamCd: number = BOSS.slamCooldown;
+  /** Время до слэма, пока > 0 — телеграф (босс стоит). */
+  private slamWindupT = 0;
+  slamSeq = 0;
+  private splitsDone = 0;
+  /** ZoneSim прочтёт и сбросит: босс пересёк порог HP — выбросить осколки. */
+  pendingSplit = false;
+  /** Осколки не возрождаются — их убирают из симуляции насовсем. */
+  get permanent(): boolean {
+    return this.kind !== "shard";
+  }
+  get enraged(): boolean {
+    return this.kind === "boss" && !this.dead && this.hp / this.maxHp < BOSS.enrageAt;
+  }
+  /** Готовность слэма 0..1 (для телеграфа на клиенте). */
+  get slamTelegraph(): number {
+    return this.slamWindupT > 0 ? 1 - this.slamWindupT / BOSS.slamWindup : 0;
+  }
 
   constructor(
     readonly kind: MobKind,
@@ -135,36 +160,64 @@ class Mob {
     this.x = hx;
     this.z = hz;
     this.y = terrainHeight(hx, hz);
-    const cfg = kind === "spitter" ? SPITTER_CFG : SLIME_CFG;
+    const cfg =
+      kind === "spitter"
+        ? SPITTER_CFG
+        : kind === "boss"
+          ? BOSS_CFG
+          : kind === "shard"
+            ? SHARD_CFG
+            : SLIME_CFG;
     this.hp = cfg.hp;
     this.maxHp = cfg.hp;
     this.ranged = cfg.ranged;
     this.xp = cfg.xp;
+    this.scale = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
   }
 
   get aggro(): boolean {
     return this.aggroed;
   }
 
+  forceAggro(): void {
+    this.aggroed = true;
+    this.outOfRange = 0;
+    this.y = terrainHeight(this.x, this.z) + 1.5;
+    this.grounded = false;
+  }
+
   /** true — моб убит этим ударом. */
   applyHit(dmg: number, dx: number, dz: number): boolean {
     if (this.dead || this.hurtCd > 0) return false;
     this.hurtCd = 0.2;
+    const before = this.hp / this.maxHp;
     this.hp -= dmg;
     this.aggroed = true;
     this.outOfRange = 0;
-    const kb = Math.min(2.5 + dmg * 1.5, 7);
+    // Босс пересёк порог доли HP — пора выбросить осколки.
+    if (this.kind === "boss") {
+      const after = this.hp / this.maxHp;
+      while (this.splitsDone < BOSS.splitAt.length && after <= BOSS.splitAt[this.splitsDone]) {
+        this.splitsDone++;
+        if (before > BOSS.splitAt[this.splitsDone - 1]) this.pendingSplit = true;
+      }
+    }
+    // Босса не сдвинуть с места ударом, осколок — легко.
+    const kb = this.kind === "boss" ? 0 : Math.min(2.5 + dmg * 1.5, 7);
     this.vx += dx * kb;
     this.vz += dz * kb;
-    this.vy += 2.5;
-    this.grounded = false;
+    if (kb > 0) {
+      this.vy += 2.5;
+      this.grounded = false;
+    }
     this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
     this.hurtDx = dx;
     this.hurtDz = dz;
     if (this.hp <= 0) {
       this.dead = true;
       this.deadT = 0;
-      this.respawnIn = MOB.respawn;
+      this.slamWindupT = 0;
+      this.respawnIn = this.kind === "boss" ? BOSS.respawn : MOB.respawn;
       return true;
     }
     return false;
@@ -205,8 +258,13 @@ class Mob {
       dz = (np.z - this.z) / dist;
     }
 
-    const aggroRange = this.ranged ? SPITTER.aggroRange : MOB.aggroRange;
-    if (dist < aggroRange) {
+    const isBoss = this.kind === "boss";
+    const aggroRange = isBoss
+      ? BOSS.aggroRange
+      : this.ranged
+        ? SPITTER.aggroRange
+        : MOB.aggroRange;
+    if (dist < aggroRange || (this.kind === "shard" && np)) {
       this.aggroed = true;
       this.outOfRange = 0;
     } else if (this.aggroed && dist > aggroRange * 1.4) {
@@ -217,10 +275,46 @@ class Mob {
     }
     const chasing = this.aggroed && np !== null;
 
-    if (this.grounded) {
+    const rage = this.enraged ? 1.5 : 1;
+    const hopSpeed =
+      (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) * rage;
+    const hopInterval =
+      (isBoss ? BOSS.hopInterval : this.kind === "shard" ? SHARD.hopInterval : MOB.hopInterval) /
+      rage;
+
+    // Босс копит слэм: подошёл близко — замахивается (стоит на месте),
+    // на исходе телеграфа бьёт по площади вокруг себя.
+    if (isBoss) {
+      if (this.slamCd > 0) this.slamCd -= dt;
+      if (this.slamWindupT > 0) {
+        this.slamWindupT -= dt;
+        this.vx *= 0.02;
+        this.vz *= 0.02;
+        if (this.slamWindupT <= 0) {
+          this.slamSeq = (this.slamSeq + 1) & 0xffff;
+          this.slamCd = BOSS.slamCooldown / rage;
+          this.vy = MOB.hopUp * 0.6;
+          this.grounded = false;
+          for (const p of players) {
+            if (Math.hypot(p.x - this.x, p.z - this.z) > BOSS.slamRadius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: BOSS.slamDamage,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+            });
+          }
+        }
+      } else if (chasing && this.grounded && this.slamCd <= 0 && dist < BOSS.slamRange) {
+        this.slamWindupT = BOSS.slamWindup;
+      }
+    }
+
+    if (this.grounded && this.slamWindupT <= 0) {
       this.hopCd -= dt;
       if (this.hopCd <= 0 && chasing) {
-        this.hopCd = MOB.hopInterval;
+        this.hopCd = hopInterval;
         let hx = 0;
         let hz = 0;
         if (this.ranged) {
@@ -241,8 +335,8 @@ class Mob {
         }
         if (hx !== 0 || hz !== 0) {
           [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
-          this.vx = hx * MOB.hopSpeed;
-          this.vz = hz * MOB.hopSpeed;
+          this.vx = hx * hopSpeed;
+          this.vz = hz * hopSpeed;
           this.vy = MOB.hopUp;
           this.grounded = false;
         }
@@ -268,7 +362,7 @@ class Mob {
     for (const t of TREES) {
       const tx = this.x - t.x;
       const tz = this.z - t.z;
-      const clr = t.r + MOB.bodyRadius;
+      const clr = t.r + MOB.bodyRadius * this.scale;
       const td = Math.hypot(tx, tz);
       if (td > 1e-4 && td < clr) {
         const push = (clr - td) / td;
@@ -288,7 +382,7 @@ class Mob {
       const gx = this.x - p.x;
       const gz = this.z - p.z;
       const gd = Math.hypot(gx, gz);
-      const clr = PLAYER.radius + MOB.bodyRadius;
+      const clr = PLAYER.radius + MOB.bodyRadius * this.scale;
       if (gd > 1e-4 && gd < clr) {
         const push = (clr - gd) / gd;
         this.x += gx * push;
@@ -303,7 +397,7 @@ class Mob {
 
     if (chasing) this.yaw = Math.atan2(dx, dz);
 
-    if (chasing && np) {
+    if (chasing && np && !isBoss) {
       if (this.ranged) {
         if (dist < SPITTER.fireRange && this.attackCd <= 0) {
           this.attackCd = SPITTER.fireCooldown;
@@ -330,6 +424,9 @@ class Mob {
     this.x = this.homeX + Math.cos(a) * r;
     this.z = this.homeZ + Math.sin(a) * r;
     this.y = terrainHeight(this.x, this.z) + 5;
+    this.slamCd = BOSS.slamCooldown;
+    this.slamWindupT = 0;
+    this.splitsDone = 0;
     this.hp = this.maxHp;
     this.dead = false;
     this.aggroed = false;
@@ -462,6 +559,7 @@ export class ZoneSim {
   readonly dummies = new Map<string, Dummy>();
   readonly balls = new Map<string, Ball>();
   readonly drops = new Map<string, Drop>();
+  private boss!: Mob;
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -477,6 +575,9 @@ export class ZoneSim {
       const m = new Mob("spitter", Math.cos(a) * r, Math.sin(a) * r - 4);
       this.mobs.set(m.id, m);
     }
+    // Босс — в дальнем углу.
+    this.boss = new Mob("boss", BOSS.home[0], BOSS.home[1]);
+    this.mobs.set(this.boss.id, this.boss);
     for (const [dx, dz] of [
       [-4, -6],
       [-1.5, -8],
@@ -533,9 +634,35 @@ export class ZoneSim {
   hitMob(id: string, dmg: number, dx: number, dz: number): number {
     const m = this.mobs.get(id);
     if (!m) return 0;
-    if (!m.applyHit(dmg, dx, dz)) return 0;
+    const killed = m.applyHit(dmg, dx, dz);
+
+    if (m.kind === "boss" && m.pendingSplit) {
+      m.pendingSplit = false;
+      this.spawnShards(m);
+    }
+
+    if (!killed) return 0;
+
+    if (m.kind === "shard") {
+      this.mobs.delete(m.id); // осколки не возрождаются
+      return m.xp;
+    }
+    if (m.kind === "boss") {
+      // Босс пал — осколки осыпаются.
+      for (const [sid, s] of this.mobs) if (s.kind === "shard") this.mobs.delete(sid);
+    }
     this.spawnLoot(m);
     return m.xp;
+  }
+
+  /** Выбросить осколки вокруг босса. */
+  private spawnShards(boss: Mob): void {
+    for (let i = 0; i < BOSS.splitCount; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = new Mob("shard", boss.x + Math.cos(a) * 1.6, boss.z + Math.sin(a) * 1.6);
+      s.forceAggro();
+      this.mobs.set(s.id, s);
+    }
   }
 
   /** Разыграть и разложить добычу вокруг убитого моба. */
@@ -608,6 +735,6 @@ export class ZoneSim {
     }
     const m = this.mobs.get(id);
     if (!m || m.dead) return null;
-    return { x: m.x, y: m.y + MOB.bodyRadius, z: m.z };
+    return { x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z };
   }
 }

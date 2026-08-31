@@ -8,8 +8,9 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import "@babylonjs/core/Meshes/Builders/torusBuilder";
 
-import { MOB, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
@@ -70,16 +71,32 @@ export class Mob implements Hittable {
   private prevY = 0;
   private readonly shove2 = new Vector3();
   private init = false;
+  /** Размер тела (босс — крупнее). Приходит из состояния. */
+  private scale = 1;
+  private lastSlamSeq = 0;
+  private slamRing: Mesh | null = null;
+  private slamRingT = 0;
+  private ragePulse = 0;
+
+  private readonly isBoss: boolean;
 
   constructor(
     private readonly scene: Scene,
-    kind: MobKind,
+    readonly kind: MobKind,
     readonly id: string,
     private readonly sfx: Sfx,
     private readonly report: HitReporter,
   ) {
-    const cfg = kind === "spitter" ? SPITTER_CFG : SLIME_CFG;
+    const cfg =
+      kind === "spitter"
+        ? SPITTER_CFG
+        : kind === "boss"
+          ? BOSS_CFG
+          : kind === "shard"
+            ? SHARD_CFG
+            : SLIME_CFG;
     this.tint = cfg.tint;
+    this.isBoss = kind === "boss";
 
     this.root = new TransformNode("mob", scene);
 
@@ -117,19 +134,35 @@ export class Mob implements Hittable {
     this.hitAnchor.parent = this.root;
     this.hitAnchor.position.y = MOB.bodyRadius;
 
-    this.bar = new HealthBar3D(scene, this.root, new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0), 0.7);
+    // Полоса и плашка висят на отдельном узле: у босса тело крупное, а надписи
+    // должны оставаться обычного размера — этот узел компенсирует масштаб.
+    this.uiAnchor = new TransformNode("mobUi", scene);
+    this.uiAnchor.parent = this.root;
+
+    this.bar = new HealthBar3D(
+      scene,
+      this.uiAnchor,
+      new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0),
+      0.7,
+    );
     this.bar.set(1);
     this.bar.setVisible(false);
 
     this.nameTag = new NameTag(
       scene,
-      this.root,
+      this.uiAnchor,
       new Vector3(0, MOB.bodyRadius * 2 + 0.78, 0),
       cfg.name,
       cfg.level,
-      cfg.ranged ? new Color3(1, 0.6, 0.25) : new Color3(0.85, 0.9, 1),
+      kind === "boss"
+        ? new Color3(1, 0.3, 0.3)
+        : cfg.ranged
+          ? new Color3(1, 0.6, 0.25)
+          : new Color3(0.85, 0.9, 1),
     );
   }
+
+  private readonly uiAnchor: TransformNode;
 
   // ---- Hittable ----
 
@@ -139,10 +172,11 @@ export class Mob implements Hittable {
 
   hitSegment(): { a: Vector3; b: Vector3; radius: number } {
     const p = this.root.getAbsolutePosition();
+    const sc = this.scale;
     return {
       a: p.add(new Vector3(0, 0.1, 0)),
-      b: p.add(new Vector3(0, MOB.bodyRadius * 2, 0)),
-      radius: MOB.hitRadius,
+      b: p.add(new Vector3(0, MOB.bodyRadius * 2 * sc, 0)),
+      radius: MOB.hitRadius * sc,
     };
   }
 
@@ -151,7 +185,7 @@ export class Mob implements Hittable {
   }
 
   center(): Vector3 {
-    return this.root.getAbsolutePosition().add(new Vector3(0, MOB.bodyRadius, 0));
+    return this.root.getAbsolutePosition().add(new Vector3(0, MOB.bodyRadius * this.scale, 0));
   }
 
   /** Заявка на удар. Урон считает сервер; локальный кулдаун — 1 заявка на замах. */
@@ -183,6 +217,13 @@ export class Mob implements Hittable {
   applyState(s: MobState, dt: number, playerPos: Vector3, playerAim: Vector3): void {
     if (this.hitCd > 0) this.hitCd -= dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
+
+    if (s.scale > 0 && s.scale !== this.scale) {
+      this.scale = s.scale;
+      this.root.scaling.setAll(s.scale);
+      this.uiAnchor.scaling.setAll(1 / s.scale);
+      this.uiAnchor.position.y = MOB.bodyRadius * 2 * (s.scale - 1);
+    }
 
     // толчок затухает
     this.shove2.scaleInPlace(Math.exp(-dt * 6));
@@ -261,7 +302,33 @@ export class Mob implements Hittable {
     const vy = dt > 1e-4 ? (pos.y - this.prevY) / dt : 0;
     this.prevY = pos.y;
     const sq = Math.max(0.4, 1 + vy * 0.04);
-    this.body.scaling.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    if (this.isBoss && s.windup > 0) {
+      // Телеграф слэма: босс приседает и раздувается вширь.
+      const w = s.windup;
+      this.body.scaling.set(1 + w * 0.4, Math.max(0.45, 1 - w * 0.45), 1 + w * 0.4);
+      this.flash = Math.max(this.flash, w * 0.5);
+    } else {
+      this.body.scaling.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    }
+
+    // Слэм: ++slamSeq -> ударная волна по земле + грохот.
+    if (this.isBoss && s.slamSeq !== this.lastSlamSeq) {
+      this.lastSlamSeq = s.slamSeq;
+      this.startSlamRing();
+      this.playIfNear(playerPos, () => {
+        this.sfx.at(pos, () => {
+          this.sfx.hitThud(1.5);
+          this.sfx.land(1.3);
+        });
+      }, 30);
+    }
+    if (this.slamRingT > 0) this.animateSlamRing(dt);
+
+    // Ярость: пульсирующее багровое свечение.
+    if (this.isBoss && s.enraged) {
+      this.ragePulse += dt * 6;
+      this.flash = Math.max(this.flash, 0.25 + Math.sin(this.ragePulse) * 0.15);
+    }
 
     if (s.grounded === 0 && this.grounded) this.playIfNear(playerPos, () => this.sfx.mobHop(pos), 20);
     this.grounded = s.grounded === 1;
@@ -336,10 +403,46 @@ export class Mob implements Hittable {
     this.wounds.length = 0;
   }
 
+  /** Ударная волна слэма: плоское кольцо на земле, разбегается и гаснет. */
+  private startSlamRing(): void {
+    if (!this.slamRing) {
+      const m = MeshBuilder.CreateTorus(
+        "bossSlam",
+        { diameter: 2, thickness: 0.18, tessellation: 24 },
+        this.scene,
+      );
+      const mat = new StandardMaterial("bossSlamMat", this.scene);
+      mat.emissiveColor = new Color3(1, 0.35, 0.2);
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.alpha = 0.9;
+      m.material = mat;
+      m.isPickable = false;
+      m.rotation.x = Math.PI / 2;
+      m.parent = this.root;
+      this.slamRing = m;
+    }
+    this.slamRing.setEnabled(true);
+    this.slamRing.scaling.setAll(0.3);
+    (this.slamRing.material as StandardMaterial).alpha = 0.9;
+    this.slamRingT = 0.45;
+  }
+
+  private animateSlamRing(dt: number): void {
+    if (!this.slamRing) return;
+    this.slamRingT -= dt;
+    const k = 1 - Math.max(0, this.slamRingT) / 0.45;
+    // Радиус слэма ~5 м; кольцо-меш базово 2 м -> масштаб до ~5.
+    this.slamRing.scaling.setAll(0.3 + k * 4.7);
+    (this.slamRing.material as StandardMaterial).alpha = 0.9 * (1 - k);
+    if (this.slamRingT <= 0) this.slamRing.setEnabled(false);
+  }
+
   dispose(): void {
     this.clearWounds();
     this.nameTag.dispose();
     this.bar.dispose();
+    this.slamRing?.material?.dispose();
     this.root.dispose(false, true);
     this._woundMat?.dispose();
   }

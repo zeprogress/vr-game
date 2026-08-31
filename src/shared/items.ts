@@ -166,6 +166,14 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
   ],
+  // Босс — щедрая добыча: зелья горстью и гарантированное золотое оружие.
+  boss: [
+    { id: "potion", chance: 1, min: 3, max: 5 },
+    { id: "gold_sword", chance: 0.5, min: 1, max: 1 },
+    { id: "gold_bow", chance: 0.5, min: 1, max: 1 },
+    { id: "gold_shield", chance: 0.5, min: 1, max: 1 },
+  ],
+  shard: [],
 };
 
 /** Разыграть добычу с моба. `rnd` — источник случайности (0..1). */
