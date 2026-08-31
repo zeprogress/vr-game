@@ -11,8 +11,14 @@ cp "$APPDIR/deploy/vrgame-autopull.timer"   /etc/systemd/system/vrgame-autopull.
 systemctl daemon-reload
 systemctl enable --now vrgame-autopull.timer
 
-# Сразу подтянуть то, что уже в origin.
-bash "$APPDIR/deploy/autopull.sh" || true
+# Пересобрать и перезапустить текущий код (autopull это делает только при
+# НОВЫХ коммитах, а сейчас код уже на месте — просто ещё не собран).
+git config --global --add safe.directory "$APPDIR" 2>/dev/null || true
+cd "$APPDIR"
+sudo -u vrgame git pull --ff-only
+sudo -u vrgame npm ci
+sudo -u vrgame npm run build
+systemctl restart vrgame
 
 echo
 echo "Автодеплой включён. Теперь достаточно 'git push' — обновится за ~2 минуты."
