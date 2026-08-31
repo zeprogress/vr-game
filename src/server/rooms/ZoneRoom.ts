@@ -17,6 +17,7 @@ import {
   type MoveMsg,
   type SaveMsg,
   type HandsMsg,
+  type StowedWeapon,
   type RtcMsg,
   type SpendMsg,
   type SetTimeMsg,
@@ -90,6 +91,8 @@ interface Runtime {
   yaw: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
   owned: Set<string>;
+  /** Оружие за спиной — переживает выход и восстанавливается при входе. */
+  stowed: StowedWeapon[];
 }
 
 function applyXf(target: Xf, v: Xf7 | undefined): void {
@@ -106,6 +109,21 @@ function applyXf(target: Xf, v: Xf7 | undefined): void {
 function num(v: unknown, def: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : def;
+}
+
+/** Отсеять мусор из сохранённого «оружия за спиной». */
+function sanitizeStowed(list: unknown): StowedWeapon[] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: StowedWeapon[] = [];
+  for (const s of list) {
+    if (!s || !isWeaponClass(s.cls) || !isWeaponTier(s.tier)) continue;
+    if (s.side !== "left" && s.side !== "right") continue;
+    if (seen.has(s.side)) continue; // одно плечо — один предмет
+    seen.add(s.side);
+    out.push({ cls: s.cls, tier: s.tier, side: s.side });
+  }
+  return out;
 }
 
 /** Единичный горизонтальный вектор из сообщения — иначе (0,0). */
@@ -317,6 +335,24 @@ export class ZoneRoom extends Room<ZoneState> {
       p.leftTier = l.tier;
       p.rightCls = r.cls;
       p.rightTier = r.tier;
+
+      // За спиной — только то, что игрок честно поднял (иначе уровень режем).
+      rt.stowed = Array.isArray(msg.stowed)
+        ? msg.stowed
+            .filter(
+              (s): s is StowedWeapon =>
+                !!s &&
+                isWeaponClass(s.cls) &&
+                isWeaponTier(s.tier) &&
+                (s.side === "left" || s.side === "right"),
+            )
+            .map((s) => ({
+              cls: s.cls,
+              tier:
+                s.tier === "base" || rt.owned.has(weaponKey(s.cls, s.tier)) ? s.tier : "base",
+              side: s.side,
+            }))
+        : [];
     });
 
     // Голосовой чат: сервер — только «телефонистка». Он пересылает пакет
@@ -603,9 +639,15 @@ export class ZoneRoom extends Room<ZoneState> {
       invuln: RESPAWN.invuln,
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
+      stowed: sanitizeStowed(rec?.stowed),
     });
 
-    client.send(MSG.char, rec ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw } : null);
+    client.send(
+      MSG.char,
+      rec
+        ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, stowed: sanitizeStowed(rec.stowed) }
+        : null,
+    );
 
     console.log(
       `[zone] + ${client.sessionId} «${p.nick}» ур.${p.level}` +
@@ -627,6 +669,7 @@ export class ZoneRoom extends Room<ZoneState> {
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
       owned: [...rt.owned],
+      stowed: rt.stowed,
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
     };

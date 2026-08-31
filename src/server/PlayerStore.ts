@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PLAYER, RESPAWN } from "#shared/constants";
-import type { SaveMsg } from "#shared/net/messages";
+import type { SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
 import { emptyBag, type Slot } from "#shared/items";
 
@@ -14,6 +14,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   hp: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". */
   owned: string[];
+  /** Оружие, убранное за спину при прошлом выходе. */
+  stowed: StowedWeapon[];
   bag: Slot[];
   updatedAt: number;
 }
@@ -32,6 +34,7 @@ function blank(token: string): PlayerRecord {
     ...p,
     hp: maxHpFor(p.str),
     owned: [],
+    stowed: [],
     bag: emptyBag(),
     updatedAt: 0,
   };

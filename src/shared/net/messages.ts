@@ -63,8 +63,18 @@ export interface SaveMsg {
   yaw: number;
 }
 
-/** null — токен новый, сервер ещё не знает этого игрока. */
-export type CharMsg = SaveMsg | null;
+/** Оружие, убранное за спину: класс, уровень и за какое плечо. */
+export interface StowedWeapon {
+  cls: WeaponClass;
+  tier: WeaponTier;
+  side: "left" | "right";
+}
+
+/**
+ * Что сервер знает про этот токен при входе: где стоял + что было убрано за
+ * спину в прошлый раз. null — токен новый.
+ */
+export type CharMsg = (SaveMsg & { stowed?: StowedWeapon[] }) | null;
 
 export interface HitMobMsg {
   id: string;
@@ -136,4 +146,6 @@ export interface TakeWeaponMsg {
 export interface HandsMsg {
   left: { cls: WeaponClass; tier: WeaponTier } | null;
   right: { cls: WeaponClass; tier: WeaponTier } | null;
+  /** Убранное за спину — сохраняется до следующего входа. Пропущено — пусто. */
+  stowed?: StowedWeapon[];
 }

@@ -593,6 +593,8 @@ export class Game {
       return;
     }
     this.player.restoreState(data);
+    // Оружие, убранное за спину в прошлый раз, возвращаем на место.
+    if (data.stowed?.length) this.combat.restoreStowed(data.stowed);
   }
 
   /**
@@ -734,12 +736,16 @@ export class Game {
 
     // Что в руках — только когда поменялось: по этому сервер считает урон.
     const hands = this.combat.handsSnapshot();
-    const key = `${hands.left?.cls ?? ""}:${hands.left?.tier ?? ""}|${hands.right?.cls ?? ""}:${hands.right?.tier ?? ""}`;
+    const stowed = this.combat.stowedSnapshot();
+    const key =
+      `${hands.left?.cls ?? ""}:${hands.left?.tier ?? ""}|${hands.right?.cls ?? ""}:${hands.right?.tier ?? ""}` +
+      `|${stowed.map((s) => `${s.side}:${s.cls}:${s.tier}`).sort().join(",")}`;
     if (key !== this.handsKey) {
       this.handsKey = key;
       net.sendHands({
         left: hands.left as { cls: WeaponClass; tier: WeaponTier } | null,
         right: hands.right as { cls: WeaponClass; tier: WeaponTier } | null,
+        stowed,
       });
     }
 

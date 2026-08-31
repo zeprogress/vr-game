@@ -17,6 +17,7 @@ import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import { BELT, BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import { DUAL_WIELD, WEAPON_TAKE_REACH, type WeaponTier } from "#shared/items";
+import type { StowedWeapon } from "#shared/net/messages";
 import { LOADOUT, type ItemKind as LoadoutItemKind, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -710,6 +711,56 @@ export class CombatSystem {
       return i ? { cls: i.kind, tier: i.tier } : null;
     };
     return { left: of("left"), right: of("right") };
+  }
+
+  /** Что убрано за спину — Game отсылает серверу, тот хранит до следующего входа. */
+  stowedSnapshot(): StowedWeapon[] {
+    const out: StowedWeapon[] = [];
+    for (const side of ["left", "right"] as Side[]) {
+      const it = this.stowedItem(side);
+      if (it) out.push({ cls: it.kind, tier: it.tier, side });
+    }
+    return out;
+  }
+
+  /**
+   * Вернуть за спину оружие, которое там было при прошлом выходе.
+   * Меш нужного уровня строим так же, как при подборе лута.
+   */
+  restoreStowed(list: StowedWeapon[]): void {
+    for (const s of list) {
+      const kind = s.cls as ItemKind;
+      if (s.side !== "left" && s.side !== "right") continue;
+      if (this.stowedItem(s.side)) continue; // плечо уже занято
+
+      if (kind === "bow") {
+        const bow = this.bowItem;
+        if (bow.hand || bow.stow) continue;
+        bow.tier = s.tier;
+        tintBow(bow.mesh, s.tier);
+        tintArrows(s.tier);
+        bow.mesh.rotationQuaternion = null;
+        bow.flight = null;
+        bow.stow = s.side;
+        continue;
+      }
+
+      // Меч/щит: базовый предмет переиспользуем, если он свободен; иначе — новый.
+      const base = this.items.find((i) => i.kind === kind && i.tier === "base");
+      let item: Item | undefined;
+      if (s.tier === "base" && base && !base.hand && !base.stow) {
+        item = base;
+      } else {
+        const mesh = this.makeWeaponMesh?.(kind, s.tier);
+        if (!mesh) continue;
+        item = this.makeItem(kind, s.tier, mesh, this.player.position.clone());
+        this.items.push(item);
+      }
+      item.mesh.rotationQuaternion = null;
+      item.flight = null;
+      item.hand = null;
+      item.stow = s.side;
+    }
   }
 
   private tryPickup(side: Side): void {
