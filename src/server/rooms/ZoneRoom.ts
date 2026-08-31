@@ -431,11 +431,12 @@ export class ZoneRoom extends Room<ZoneState> {
       this.clockSync = 0;
     });
 
-    // Виньетку движения включает/выключает всему миру только админ.
+    // Общие настройки комфорта VR (виньетка, режим перемещения) — только админ.
     this.onMessage(MSG.comfort, (client: Client, msg: ComfortMsg) => {
       const p = this.state.players.get(client.sessionId);
       if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
-      this.state.comfortVignette = msg.on ? 1 : 0;
+      if (msg.vignette !== undefined) this.state.comfortVignette = msg.vignette ? 1 : 0;
+      if (msg.teleport !== undefined) this.state.teleportMove = msg.teleport ? 1 : 0;
     });
 
     // Панельные настройки: храним по токену, применяются только у этого игрока.

@@ -113,6 +113,8 @@ export class ZoneState extends Schema {
   @type("uint8") dayAuto = 1;
   /** 1 — чёрная виньетка при движении разрешена; 0 — админ отключил её всем. */
   @type("uint8") comfortVignette = 1;
+  /** 1 — левый стик телепортирует (меньше укачивает); 0 — плавное скольжение. */
+  @type("uint8") teleportMove = 0;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

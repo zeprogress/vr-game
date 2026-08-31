@@ -120,14 +120,35 @@ export class Mob implements Hittable {
     this.head.position.y = MOB.bodyRadius;
 
     const eyeMat = new StandardMaterial("mobEye", scene);
-    eyeMat.diffuseColor = new Color3(0.02, 0.02, 0.02);
-    eyeMat.specularColor = new Color3(0.15, 0.15, 0.15);
+    if (this.isBoss) {
+      // Злые светящиеся глаза.
+      eyeMat.diffuseColor = new Color3(0.05, 0, 0);
+      eyeMat.emissiveColor = new Color3(1, 0.15, 0.05);
+      eyeMat.specularColor = new Color3(0, 0, 0);
+      eyeMat.disableLighting = true;
+    } else {
+      eyeMat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+      eyeMat.specularColor = new Color3(0.15, 0.15, 0.15);
+    }
+    const eyeY = cfg.ranged ? 0.05 : this.isBoss ? 0.13 : 0.15;
     for (const dx of [-0.18, 0.18]) {
-      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: 0.17, segments: 6 }, scene);
+      const eye = MeshBuilder.CreateSphere("mobEye", { diameter: this.isBoss ? 0.2 : 0.17, segments: 6 }, scene);
       eye.material = eyeMat;
       eye.parent = this.head;
-      eye.position.set(dx, cfg.ranged ? 0.05 : 0.15, MOB.bodyRadius * 0.99);
+      eye.position.set(dx, eyeY, MOB.bodyRadius * 0.99);
       eye.isPickable = false;
+      if (this.isBoss) {
+        // Насупленная бровь: тёмный клин, наклонён к переносице.
+        const brow = MeshBuilder.CreateBox("mobBrow", { width: 0.28, height: 0.09, depth: 0.1 }, scene);
+        const bm = new StandardMaterial("mobBrowMat", scene);
+        bm.diffuseColor = new Color3(0.05, 0.01, 0.02);
+        bm.specularColor = new Color3(0, 0, 0);
+        brow.material = bm;
+        brow.parent = this.head;
+        brow.position.set(dx * 0.95, eyeY + 0.16, MOB.bodyRadius * 0.98);
+        brow.rotation.z = dx < 0 ? -0.5 : 0.5; // внешние края вверх, к носу — вниз
+        brow.isPickable = false;
+      }
     }
 
     this.hitAnchor = new TransformNode("mobHitAnchor", scene);

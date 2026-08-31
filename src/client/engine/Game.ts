@@ -408,7 +408,7 @@ export class Game {
     this.playerBar3D.set(this.player.hp / this.player.maxHp);
 
     this.vrVignette = new VrVignette(this.scene);
-    this.comfortVignette = new ComfortVignette(this.scene);
+    this.comfortVignette = new ComfortVignette(this.scene, this.xr);
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(
@@ -421,8 +421,8 @@ export class Game {
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
-    // Виньетка движения — общая для мира: тумблер уходит на сервер.
-    this.loadoutPanel.onComfort = (on) => this.net?.sendComfort(on);
+    // Комфорт VR (виньетка, режим перемещения) — общий для мира: на сервер.
+    this.loadoutPanel.onComfort = (patch) => this.net?.sendComfort(patch);
     // «Сохранить» онлайн шлёт настройки на сервер (по токену игрока).
     this.loadoutPanel.onSaveServer = this.net?.online
       ? () => this.net!.sendLoadout(exportOverrides())
@@ -531,12 +531,19 @@ export class Game {
    */
   private updateComfortVignette(dt: number): void {
     if (!this.comfortVignette) return; // существует только в VR
-    const inp = this.player.lastInput;
-    const stick = Math.min(1, Math.hypot(inp.moveX, inp.moveY) / 0.9);
-    const allowed = (this.net?.room?.state.comfortVignette ?? 1) !== 0;
-    // Держим LOADOUT в курсе актуального значения — панель его показывает.
+    const st = this.net?.room?.state;
+    const allowed = (st?.comfortVignette ?? 1) !== 0;
+    const teleport = (st?.teleportMove ?? 0) !== 0;
+    // Держим LOADOUT в курсе актуальных значений — панель их показывает.
     LOADOUT.comfort.vignette = allowed ? 1 : 0;
+    LOADOUT.comfort.teleport = teleport ? 1 : 0;
+    this.player.setTeleportMode(teleport);
+
+    const inp = this.player.lastInput;
+    // При телепорте непрерывного движения нет — тоннель не нужен, только блинк.
+    const stick = teleport ? 0 : Math.min(1, Math.hypot(inp.moveX, inp.moveY) / 0.9);
     this.comfortVignette.tick(dt, stick, allowed);
+    if (this.player.consumeTeleportBlink()) this.comfortVignette.blink();
   }
 
   private showHp(hp: number): void {

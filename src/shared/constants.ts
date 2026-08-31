@@ -138,9 +138,9 @@ export const SPITTER_CFG: MobConfig = {
 export const BOSS = {
   /** Дальний угол (+x, +z). */
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
-  hp: 400,
-  scale: 2.5, // во столько раз крупнее обычного слизня
-  aggroRange: 26,
+  hp: 1000,
+  scale: 3.75, // во столько раз крупнее обычного слизня
+  aggroRange: 28,
   wanderRadius: 16,
   hopSpeed: 3.5,
   hopInterval: 0.66,
@@ -160,6 +160,12 @@ export const BOSS = {
   lungeSpeed: 13, // м/с в рывке
   lungeDuration: 0.5, // с
   lungeDamage: 16,
+  /** Плевок: изредка кидает очередь слизистых сгустков в игрока на средней дистанции. */
+  shootCooldown: 8, // с между очередями
+  shootRange: [7, 26] as const, // м: в этой полосе дистанций стреляет
+  shootBurst: 3, // сгустков в очереди
+  shootSpread: 2.2, // м бокового разброса сгустков на дальности цели
+  shootGap: 0.16, // с между сгустками очереди
   /** Доли HP, при пересечении которых босс выбрасывает осколки. */
   splitAt: [0.75, 0.5, 0.25] as const,
   splitCount: 3,
@@ -175,10 +181,10 @@ export const BOSS_CFG: MobConfig = {
   name: "Багровый слизень",
   level: 6,
   hp: BOSS.hp,
-  xp: 45,
+  xp: 90,
   tint: [0.82, 0.11, 0.13],
-  alpha: 0.78,
-  ranged: false,
+  alpha: 0.93,
+  ranged: false, // ближний бой первичен; плевок — своя логика в ZoneSim
 };
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
@@ -266,6 +272,16 @@ export const HOLSTER = {
   yMin: -0.6, // м, нижняя граница зоны по вертикали (плечо ниже головы)
   yMax: 0.25, // м, верхняя
   backDrop: 0.34, // м ниже головы — центр «спины», куда крепятся убранные предметы
+} as const;
+
+/** Телепорт-перемещение в VR (когда админ включил этот режим для мира). */
+export const TELEPORT = {
+  /** Отклонение стика, с которого показываем прицел. */
+  armAt: 0.5,
+  /** Максимальная дальность прыжка, м. */
+  range: 9,
+  /** Минимальная дальность (ближе — прыжок не срабатывает), м. */
+  minRange: 1.2,
 } as const;
 
 export const VIGNETTE = {

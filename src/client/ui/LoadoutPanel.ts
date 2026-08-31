@@ -55,6 +55,7 @@ const TARGETS: Target[] = [
   { key: "voice:chat", label: "Голос", kind: "voice" },
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
   { key: "comfort:vignette", label: "Виньетка движения (всем)", kind: "comfort" },
+  { key: "comfort:move", label: "Перемещение · телепорт (всем)", kind: "comfort" },
 ];
 
 type Field =
@@ -89,8 +90,8 @@ export class LoadoutPanel {
   private fileState = "";
   /** Онлайн: перевод времени/автосмены уходит на сервер (часы общие). */
   onWorldTime: ((hour: number, auto: number) => void) | null = null;
-  /** Онлайн: тумблер виньетки движения уходит на сервер (общий для мира). */
-  onComfort: ((on: number) => void) | null = null;
+  /** Онлайн: тумблеры комфорта VR уходят на сервер (общие для мира). */
+  onComfort: ((patch: { vignette?: number; teleport?: number }) => void) | null = null;
   /** Онлайн: «Сохранить» шлёт настройки на сервер (по токену игрока). */
   onSaveServer: (() => void) | null = null;
 
@@ -251,15 +252,22 @@ export class LoadoutPanel {
       };
     }
     if (t.kind === "comfort") {
+      const tele = t.key === "comfort:move";
       return {
-        label: "виньетка",
+        label: tele ? "телепорт" : "виньетка",
         rot: false,
         steps: [1, 1, 1],
-        get: () => (LOADOUT.comfort.vignette === 0 ? 0 : 1),
+        get: () =>
+          (tele ? LOADOUT.comfort.teleport : LOADOUT.comfort.vignette) === 0 ? 0 : 1,
         set: (v) => {
-          const on = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : 1;
-          LOADOUT.comfort.vignette = on;
-          this.onComfort?.(on);
+          const on = Number.isFinite(v) ? (((Math.round(v) % 2) + 2) % 2) : tele ? 0 : 1;
+          if (tele) {
+            LOADOUT.comfort.teleport = on;
+            this.onComfort?.({ teleport: on });
+          } else {
+            LOADOUT.comfort.vignette = on;
+            this.onComfort?.({ vignette: on });
+          }
         },
         format: (v) => (v ? "вкл" : "выкл"),
       };

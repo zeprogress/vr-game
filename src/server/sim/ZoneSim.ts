@@ -142,6 +142,10 @@ class Mob {
   private lungeDirX = 0;
   private lungeDirZ = 1;
   private lungeHit = false;
+  /** Плевок босса: кулдаун очереди, сколько сгустков осталось и пауза между ними. */
+  private shootCd = BOSS.shootCooldown;
+  private shootQueue = 0;
+  private shootGap = 0;
   private splitsDone = 0;
   /** ZoneSim прочтёт и сбросит: босс пересёк порог HP — выбросить осколки. */
   pendingSplit = false;
@@ -389,6 +393,38 @@ class Mob {
         this.lungeDirX = (lungeTgt.x - this.x) / lungeFar;
         this.lungeDirZ = (lungeTgt.z - this.z) / lungeFar;
       }
+
+      // Плевок: изредка очередь слизистых сгустков в игрока на средней
+      // дистанции. Работает и во время замаха/рывка — босс многозадачен.
+      if (this.shootCd > 0) this.shootCd -= dt;
+      if (this.shootGap > 0) this.shootGap -= dt;
+      // Цель плевка — тот, кто в полосе средних дистанций (обычно дальний).
+      const shootTgt =
+        lungeTgt &&
+        lungeFar > BOSS.shootRange[0] &&
+        lungeFar < BOSS.shootRange[1]
+          ? lungeTgt
+          : null;
+      if (this.shootQueue === 0 && this.shootCd <= 0 && shootTgt) {
+        this.shootQueue = BOSS.shootBurst;
+        this.shootCd = BOSS.shootCooldown;
+        this.shootGap = 0;
+      }
+      if (this.shootQueue > 0 && this.shootGap <= 0) {
+        const t = shootTgt ?? lungeTgt ?? np;
+        if (t) {
+          const tl = Math.hypot(t.x - this.x, t.z - this.z) || 1;
+          const nx = (t.x - this.x) / tl;
+          const nz = (t.z - this.z) / tl;
+          const j = (Math.random() - 0.5) * BOSS.shootSpread;
+          // Смещаем цель вбок перпендикулярно направлению на неё.
+          spit(this, { ...t, x: t.x - nz * j, z: t.z + nx * j });
+          this.shootQueue--;
+          this.shootGap = BOSS.shootGap;
+        } else {
+          this.shootQueue = 0;
+        }
+      }
     }
 
     if (this.grounded && this.slamWindupT <= 0 && this.lungeWindupT <= 0 && this.lungeT <= 0) {
@@ -509,6 +545,9 @@ class Mob {
     this.lungeCd = 0;
     this.lungeWindupT = 0;
     this.lungeT = 0;
+    this.shootCd = BOSS.shootCooldown;
+    this.shootQueue = 0;
+    this.shootGap = 0;
     this.splitsDone = 0;
     this.hp = this.maxHp;
     this.dead = false;

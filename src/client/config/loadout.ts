@@ -82,14 +82,15 @@ export interface Loadout {
     /** 1 — голос идёт от места игрока, 0 — всех слышно ровно. */
     spatial: number;
   };
-  /** Комфорт в VR. */
+  /**
+   * Комфорт в VR. Это ОБЩИЕ настройки мира: их задаёт админ, сервер рассылает
+   * всем. Здесь хранится последнее известное значение — панель его показывает.
+   */
   comfort: {
-    /**
-     * 1 — чёрная виньетка при движении левым стиком (меньше укачивает).
-     * Это ОБЩАЯ настройка мира: её задаёт админ, сервер рассылает всем.
-     * Здесь хранится последнее известное значение — панель его показывает.
-     */
+    /** 1 — чёрная виньетка при движении левым стиком (меньше укачивает). */
     vignette: number;
+    /** 1 — левый стик телепортирует; 0 — плавное скольжение. */
+    teleport: number;
   };
 }
 
@@ -145,6 +146,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   comfort: {
     vignette: 1, // виньетка движения включена
+    teleport: 0, // плавное скольжение
   },
 };
 
@@ -170,7 +172,8 @@ export type TargetKey =
   | "hud:hp"
   | "voice:chat"
   | "gfx:smooth"
-  | "comfort:vignette";
+  | "comfort:vignette"
+  | "comfort:move";
 
 export function handTarget(side: HandSide): TargetKey {
   return `hand:${side}`;
@@ -222,6 +225,9 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     const v = value as Partial<Loadout["comfort"]>;
     if (typeof v?.vignette === "number") {
       dst.comfort.vignette = Number.isFinite(v.vignette) ? (v.vignette ? 1 : 0) : 1;
+    }
+    if (typeof v?.teleport === "number") {
+      dst.comfort.teleport = Number.isFinite(v.teleport) ? (v.teleport ? 1 : 0) : 0;
     }
     return;
   }

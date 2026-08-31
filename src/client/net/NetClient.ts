@@ -216,9 +216,9 @@ export class NetClient {
     this.room?.send(MSG.setTime, { hour, auto } satisfies SetTimeMsg);
   }
 
-  /** Админ включает/выключает виньетку движения для всего мира. */
-  sendComfort(on: number): void {
-    this.room?.send(MSG.comfort, { on } satisfies ComfortMsg);
+  /** Админ меняет общие настройки комфорта VR (виньетка, режим перемещения). */
+  sendComfort(patch: ComfortMsg): void {
+    this.room?.send(MSG.comfort, patch);
   }
 
   /** Заработанное оружие легло на землю — пусть станет предметом мира. */
