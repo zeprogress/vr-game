@@ -187,8 +187,20 @@ export class CombatSystem {
    */
   onWeaponLanded: ((cls: WeaponClass, tier: WeaponTier, x: number, z: number) => void) | null =
     null;
+  /**
+   * Звуковое событие для соседей по сети: взмах / выстрел / попадание стрелы.
+   * `at` — мировая точка звука. null офлайн.
+   */
+  onSoundEvent:
+    | ((kind: "swing" | "bow" | "arrowHit", x: number, y: number, z: number) => void)
+    | null = null;
   /** Где лежит базовое оружие (камни у спавна) — туда возвращается лук. */
   private readonly homes: Record<ItemKind, Vector3>;
+
+  /** Сообщить соседям про звук (взмах/выстрел/стрела). */
+  private emitSound(kind: "swing" | "bow" | "arrowHit", p: Vector3): void {
+    this.onSoundEvent?.(kind, p.x, p.y, p.z);
+  }
   private readonly fistPrevW: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
 
   constructor(
@@ -262,9 +274,12 @@ export class CombatSystem {
       scene,
       targets: this.targets,
       isSolid: (m: AbstractMesh) => m.isPickable && m.checkCollisions,
-      onHit: (kind) => {
-        this.sfx.arrowHit(kind);
-        if (kind === "flesh") this.sfx.hitThud(0.5);
+      onHit: (kind, pos) => {
+        this.sfx.at(pos, () => {
+          this.sfx.arrowHit(kind);
+          if (kind === "flesh") this.sfx.hitThud(0.5);
+        });
+        this.emitSound("arrowHit", pos);
       },
     };
   }
@@ -895,6 +910,7 @@ export class CombatSystem {
     this.windup = 0;
     this.justPickedUp = false;
     this.sfx.swordSwing(worldPos);
+    this.emitSound("swing", worldPos);
 
     if (item.kind === "bow") {
       this.nockArrow.setEnabled(false);
@@ -1179,6 +1195,7 @@ export class CombatSystem {
       const sweep = Math.acos(clamp(Vector3.Dot(dir, oldest.dir), -1, 1));
       if (avgSpeed > COMBAT.vrSwooshSpeed && sweep > COMBAT.vrSwooshSweep) {
         this.sfx.swordSwing(tipWorld); // мировая точка, не в осях головы
+        this.emitSound("swing", tipWorld);
         this.swooshCd = COMBAT.swooshCooldown;
       }
     }
@@ -1267,6 +1284,7 @@ export class CombatSystem {
     this.meleeFlatCd = MELEE.cooldown;
     const eye = this.player.camera.globalPosition;
     this.sfx.swordSwing(eye);
+    this.emitSound("swing", eye);
     const fwd = this.player.camera.getDirection(new Vector3(0, 0, 1));
     const reach = eye.add(fwd.scale(MELEE.flatReach));
     let landed = false;
@@ -1374,6 +1392,7 @@ export class CombatSystem {
   private fire(origin: Vector3, dir: Vector3, power: number): void {
     this.lastHitHand = this.bowItem.hand ?? "right"; // стрела «принадлежит» руке с луком
     this.sfx.bowRelease(power);
+    this.emitSound("bow", origin);
     this.haptic("right", 0.6, 60);
     this.haptic("left", 0.6, 60);
     if (this.arrows.length >= 16) this.arrows.shift()?.dispose();

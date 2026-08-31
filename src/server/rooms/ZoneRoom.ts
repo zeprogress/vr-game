@@ -21,6 +21,10 @@ import {
   type CarriedWeapon,
   type HeldWeapons,
   type DropWeaponMsg,
+  type ActMsg,
+  type ActRelay,
+  type ActKind,
+  isActKind,
   type OverridesMsg,
   type RtcMsg,
   type SpendMsg,
@@ -333,6 +337,16 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!used) return;
       writeBag(p, bag);
       p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
+
+      // Соседям — звук глотка.
+      const relay: ActRelay = {
+        k: "drink",
+        id: client.sessionId,
+        x: p.head.x,
+        y: p.head.y,
+        z: p.head.z,
+      };
+      this.broadcast(MSG.act, relay, { except: client });
     });
 
     this.onMessage(MSG.takeWeapon, (client: Client, msg: TakeWeaponMsg) => {
@@ -441,6 +455,20 @@ export class ZoneRoom extends Room<ZoneState> {
       // Далеко от игрока предмет оказаться не мог даже после сильного броска.
       if (Math.hypot(x - p.head.x, z - p.head.z) > 60) return;
       this.sim.dropWeapon(msg.cls, msg.tier, x, z);
+    });
+
+    // Звуковые события: клиентские (взмах, шаг, лук, стрела) пересылаем
+    // остальным. Урон/блок/глоток сервер рассылает сам из своих расчётов.
+    this.onMessage(MSG.act, (client: Client, msg: ActMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || !msg || !isActKind(msg.k)) return;
+      if (msg.k === "hurt" || msg.k === "blockShield" || msg.k === "blockSword") return;
+      const x = num(msg.x, p.head.x);
+      const y = num(msg.y, p.head.y);
+      const z = num(msg.z, p.head.z);
+      if (Math.hypot(x - p.head.x, z - p.head.z) > 40) return; // не дальше разумного
+      const relay: ActRelay = { k: msg.k, id: client.sessionId, x, y, z };
+      this.broadcast(MSG.act, relay, { except: client });
     });
 
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
@@ -642,6 +670,12 @@ export class ZoneRoom extends Room<ZoneState> {
       fromZ: h.fromZ,
       by: block.by,
     });
+
+    // Соседям — звук: щёлкнул щит, звякнул меч или охнул от урона.
+    const k: ActKind =
+      block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : "hurt";
+    const relay: ActRelay = { k, id: h.target, x: p.head.x, y: p.head.y, z: p.head.z };
+    this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {
       p.dead = 1;

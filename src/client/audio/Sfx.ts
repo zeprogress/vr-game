@@ -19,6 +19,8 @@ export class Sfx {
   private music: HTMLAudioElement | null = null;
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
+  /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
+  private spatialAt: SoundAt | null = null;
 
   private ensure(): void {
     if (this.ctx) return;
@@ -79,13 +81,33 @@ export class Sfx {
     return s;
   }
 
-  private env(peak: number, attack: number, decay: number, t = this.t, at?: SoundAt): GainNode {
+  private env(
+    peak: number,
+    attack: number,
+    decay: number,
+    t = this.t,
+    at: SoundAt | null | undefined = this.spatialAt,
+  ): GainNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(peak, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
     g.connect(at ? this.panAt(at) : this.master!);
     return g;
+  }
+
+  /**
+   * Проиграть звук объёмно от точки `pos`. Любой звук, вызванный внутри `fn`,
+   * пойдёт через паннер. Для чужих действий по сети: `sfx.at(pos, () => sfx.drink())`.
+   */
+  at(pos: SoundAt, fn: () => void): void {
+    const prev = this.spatialAt;
+    this.spatialAt = pos;
+    try {
+      fn();
+    } finally {
+      this.spatialAt = prev;
+    }
   }
 
   /**

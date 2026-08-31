@@ -37,7 +37,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
+import type { ActKind, CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
@@ -167,7 +167,11 @@ export class Game {
       this.showHp(this.player.hp);
     };
 
-    this.player.hooks.step = () => this.sfx.footstep();
+    this.player.hooks.step = () => {
+      this.sfx.footstep();
+      const f = this.player.position;
+      this.net?.sendAct("step", f.x, f.y, f.z);
+    };
     this.player.hooks.jump = () => this.sfx.jump();
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
     this.player.hooks.hurt = (hp, dmg) => {
@@ -612,6 +616,10 @@ export class Game {
     this.combat.makeWeaponMesh = (cls, tier) =>
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
     this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
+    this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
+
+    // Звук соседа — играем объёмно от его аватара / точки события.
+    net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
 
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
     net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
@@ -679,6 +687,37 @@ export class Game {
   private charApplied = false;
 
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
+  /** Звук чужого действия — объёмно от точки события (у аватара соседа). */
+  private playRemoteAct(k: ActKind, x: number, y: number, z: number, _id: string): void {
+    const at = { x, y, z };
+    switch (k) {
+      case "swing":
+        this.sfx.swordSwing(at);
+        break;
+      case "step":
+        this.sfx.at(at, () => this.sfx.footstep(0.85));
+        break;
+      case "drink":
+        this.sfx.at(at, () => this.sfx.drink());
+        break;
+      case "bow":
+        this.sfx.at(at, () => this.sfx.bowRelease(0.8));
+        break;
+      case "arrowHit":
+        this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));
+        break;
+      case "hurt":
+        this.sfx.at(at, () => this.sfx.playerHurt());
+        break;
+      case "blockShield":
+        this.sfx.at(at, () => this.sfx.block(1));
+        break;
+      case "blockSword":
+        this.sfx.at(at, () => this.sfx.block(0.5));
+        break;
+    }
+  }
+
   private applyChar(data: CharMsg): void {
     // На переподключении сервер снова шлёт char — но игрока с места не дёргаем.
     if (this.charApplied) {
@@ -813,6 +852,7 @@ export class Game {
     this.combat.onTakeWorldWeapon = null;
     this.combat.makeWeaponMesh = null;
     this.combat.onWeaponLanded = null;
+    this.combat.onSoundEvent = null;
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;
@@ -824,6 +864,7 @@ export class Game {
       this.net.onLevelUp = null;
       this.net.onPicked = null;
       this.net.onRtc = null;
+      this.net.onAct = null;
       this.net.onConnectionLost = null;
       this.net.onReconnected = null;
       this.net.disconnect(); // остановить попытки переподключения

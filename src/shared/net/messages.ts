@@ -36,7 +36,52 @@ export const MSG = {
   loadout: "ld",
   /** клиент -> сервер: заработанное оружие легло на землю — сделать его общим. */
   dropWeapon: "dw",
+  /**
+   * Звуковое событие игрока (взмах, шаг, глоток…). Клиент шлёт своё, сервер
+   * пересылает остальным — чтобы рядом было слышно, что делает сосед.
+   * Урон/блок/глоток сервер рассылает сам (он их считает).
+   */
+  act: "ac",
 } as const;
+
+/** Что за звук произошёл у игрока. */
+export type ActKind =
+  | "swing" // взмах мечом
+  | "step" // шаг
+  | "drink" // глоток зелья
+  | "bow" // выстрел из лука
+  | "arrowHit" // стрела во что-то воткнулась
+  | "hurt" // получил урон
+  | "blockShield" // блок щитом
+  | "blockSword"; // блок мечом
+
+const ACT_KINDS: readonly ActKind[] = [
+  "swing",
+  "step",
+  "drink",
+  "bow",
+  "arrowHit",
+  "hurt",
+  "blockShield",
+  "blockSword",
+];
+
+export function isActKind(v: unknown): v is ActKind {
+  return typeof v === "string" && (ACT_KINDS as readonly string[]).includes(v);
+}
+
+/** Клиент -> сервер: у меня произошло звуковое событие в этой точке мира. */
+export interface ActMsg {
+  k: ActKind;
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** Сервер -> остальным: у игрока `id` произошло событие. */
+export interface ActRelay extends ActMsg {
+  id: string;
+}
 
 /**
  * Заработанное оружие упало на землю. Дальше оно живёт в мире на сервере:
