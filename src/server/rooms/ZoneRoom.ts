@@ -126,6 +126,11 @@ function num(v: unknown, def: number): number {
   return Number.isFinite(n) ? n : def;
 }
 
+/** Зажать v в [-lim, lim]. */
+function clampAbs(v: number, lim: number): number {
+  return v < -lim ? -lim : v > lim ? lim : v;
+}
+
 /** Отсеять мусор из сохранённого «оружия за спиной». */
 function sanitizeStowed(list: unknown): StowedWeapon[] {
   if (!Array.isArray(list)) return [];
@@ -266,6 +271,10 @@ export class ZoneRoom extends Room<ZoneState> {
       applyXf(p.head, msg.head);
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);
+      // За край карты не пускаем даже кривого клиента.
+      const edge = WORLD.size / 2 - 2;
+      p.head.x = clampAbs(p.head.x, edge);
+      p.head.z = clampAbs(p.head.z, edge);
       const g = msg.guard;
       [rt.guard.sx, rt.guard.sz] = unit2(g?.sx, g?.sz);
       [rt.guard.wx, rt.guard.wz] = unit2(g?.wx, g?.wz);
@@ -694,12 +703,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!rt?.token || !p) return;
     if (msg) rt.yaw = num(msg.yaw, rt.yaw);
     const edge = WORLD.size / 2 - 2;
-    const inBounds = (v: number): number => (v < -edge ? -edge : v > edge ? edge : v);
     const patch: Partial<PlayerRecord> = {
       nick: p.nick,
-      x: inBounds(num(msg?.x, p.head.x)),
+      x: clampAbs(num(msg?.x, p.head.x), edge),
       y: num(msg?.y, p.head.y),
-      z: inBounds(num(msg?.z, p.head.z)),
+      z: clampAbs(num(msg?.z, p.head.z), edge),
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
       owned: [...rt.owned],
