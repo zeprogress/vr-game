@@ -10,7 +10,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { PLAYER, PLAYER_HP } from "#shared/constants";
+import { PLAYER, PLAYER_HP, WORLD } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
 
@@ -103,6 +103,16 @@ export class PlayerController {
       p.x += dx * push;
       p.z += dz * push;
     }
+  }
+
+  /** Не выпускать за край карты — там кончается земля. */
+  private clampToWorld(): void {
+    const lim = WORLD.size / 2 - 2;
+    const p = this.body.position;
+    if (p.x < -lim) p.x = -lim;
+    else if (p.x > lim) p.x = lim;
+    if (p.z < -lim) p.z = -lim;
+    else if (p.z > lim) p.z = lim;
   }
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
@@ -311,6 +321,7 @@ export class PlayerController {
     }
 
     this.pushOutOfObstacles();
+    this.clampToWorld();
 
     // --- Земля под ногами ---
     const groundY = this.rayDown();

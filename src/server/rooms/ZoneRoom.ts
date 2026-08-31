@@ -33,6 +33,7 @@ import {
   PLAYER,
   PLAYER_HP,
   RESPAWN,
+  WORLD,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
 import {
@@ -692,11 +693,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(client.sessionId);
     if (!rt?.token || !p) return;
     if (msg) rt.yaw = num(msg.yaw, rt.yaw);
+    const edge = WORLD.size / 2 - 2;
+    const inBounds = (v: number): number => (v < -edge ? -edge : v > edge ? edge : v);
     const patch: Partial<PlayerRecord> = {
       nick: p.nick,
-      x: num(msg?.x, p.head.x),
+      x: inBounds(num(msg?.x, p.head.x)),
       y: num(msg?.y, p.head.y),
-      z: num(msg?.z, p.head.z),
+      z: inBounds(num(msg?.z, p.head.z)),
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
       owned: [...rt.owned],

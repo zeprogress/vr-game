@@ -228,8 +228,43 @@ export class Game {
     this.engine.runRenderLoop(() => this.scene.render());
   }
 
-  /** Инициализация WebXR. Кнопка «Enter VR» появляется сама, если VR доступен. */
-  async initXR(): Promise<void> {
+  /** Готовность WebXR — до него `enterVR()` ждёт. */
+  private xrReady: Promise<void> = Promise.resolve();
+
+  /** Может ли это устройство в иммерсивный VR (шлем). */
+  async isVrAvailable(): Promise<boolean> {
+    try {
+      const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } }).xr;
+      return (await xr?.isSessionSupported?.("immersive-vr")) ?? false;
+    } catch {
+      return false;
+    }
+  }
+
+  get inVR(): boolean {
+    return this.player.inVR;
+  }
+
+  /** Запустить VR-сессию по кнопке с экрана входа. true — вошли. */
+  async enterVR(): Promise<boolean> {
+    await this.xrReady;
+    if (!this.xr) return false;
+    try {
+      await this.xr.baseExperience.enterXRAsync("immersive-vr", "local-floor");
+      return this.xr.baseExperience.state === WebXRState.IN_XR;
+    } catch (e) {
+      console.warn("не удалось войти в VR:", e);
+      return false;
+    }
+  }
+
+  /** Инициализация WebXR. Вход в VR — по кнопке с экрана входа (см. enterVR). */
+  initXR(): Promise<void> {
+    this.xrReady = this.setupXR();
+    return this.xrReady;
+  }
+
+  private async setupXR(): Promise<void> {
     if (!("xr" in navigator)) return;
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
@@ -243,17 +278,19 @@ export class Game {
       return;
     }
 
-    // Кнопка «Enter VR»: Babylon ставит её справа внизу инлайновым стилем,
-    // а внизу она перекрывается подсказкой управления.
+    // Своей кнопкой входа управляет экран входа. Штатную кнопку Babylon
+    // прячем, но держим для ПОВТОРНОГО входа, если игрок вышел из VR.
     const overlay = this.xr.enterExitUI?.overlay;
     if (overlay) {
       overlay.style.top = "16px";
       overlay.style.right = "16px";
       overlay.style.bottom = "auto";
+      overlay.style.display = "none";
     }
 
     const base = this.xr.baseExperience;
     base.onStateChangedObservable.add((state) => {
+      if (overlay) overlay.style.display = state === WebXRState.NOT_IN_XR ? "" : "none";
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
         this.player.enterXR(base.camera);

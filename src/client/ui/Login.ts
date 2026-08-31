@@ -5,10 +5,24 @@ const NICK_KEY = "lastNick";
 export interface LoginResult {
   nick: string;
   online: boolean;
+  /** Вошли в VR-сессию (иначе — плоский режим). */
+  vr: boolean;
 }
 
-/** Экран входа: ник + «Играть» / «Играть офлайн». Резолвится после выбора. */
-export function runLogin(net: NetClient, token: string): Promise<LoginResult> {
+export interface LoginHooks {
+  /** Может ли устройство в иммерсивный VR. */
+  isVrAvailable: () => Promise<boolean>;
+  /** Запустить VR-сессию. true — вошли. */
+  enterVR: () => Promise<boolean>;
+}
+
+/**
+ * Экран входа: ник → «Играть» / «Играть офлайн».
+ * Если устройство — VR-шлем, после ника показываем экран «Войти в VR»,
+ * и в мир попадаем только после старта VR-сессии. С обычного устройства —
+ * сразу в мир, как раньше.
+ */
+export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Promise<LoginResult> {
   document.head.appendChild(styleEl());
 
   const overlay = document.createElement("div");
@@ -23,6 +37,7 @@ export function runLogin(net: NetClient, token: string): Promise<LoginResult> {
     </div>`;
   document.body.appendChild(overlay);
 
+  const box = overlay.querySelector<HTMLDivElement>(".login-box")!;
   const nickInput = overlay.querySelector<HTMLInputElement>("#login-nick")!;
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
   const offlineBtn = overlay.querySelector<HTMLButtonElement>("#login-offline")!;
@@ -32,21 +47,55 @@ export function runLogin(net: NetClient, token: string): Promise<LoginResult> {
   setTimeout(() => nickInput.focus(), 50);
 
   const nick = () => nickInput.value.trim() || "гость";
-  const done = (online: boolean): LoginResult => {
-    localStorage.setItem(NICK_KEY, nick());
-    overlay.remove();
-    return { nick: nick(), online };
-  };
 
   return new Promise<LoginResult>((resolve) => {
+    const finish = (online: boolean, vr: boolean): void => {
+      localStorage.setItem(NICK_KEY, nick());
+      overlay.remove();
+      resolve({ nick: nick(), online, vr });
+    };
+
+    /** Ник введён, соединение (не) поднято — дальше решаем про VR. */
+    const proceed = async (online: boolean): Promise<void> => {
+      if (!(await hooks.isVrAvailable())) {
+        finish(online, false);
+        return;
+      }
+      // Экран входа в VR.
+      box.innerHTML = `
+        <div class="login-title">VR GAME</div>
+        <div class="login-sub">Надень шлем и нажми</div>
+        <button id="login-vr">Войти в VR</button>
+        <div id="login-status"></div>`;
+      const vrBtn = box.querySelector<HTMLButtonElement>("#login-vr")!;
+      const vrStatus = box.querySelector<HTMLDivElement>("#login-status")!;
+      vrBtn.addEventListener("click", async () => {
+        vrBtn.disabled = true;
+        vrStatus.textContent = "Запуск VR…";
+        const entered = await hooks.enterVR();
+        if (entered) finish(online, true);
+        else {
+          vrBtn.disabled = false;
+          vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
+        }
+      });
+    };
+
     playBtn.addEventListener("click", async () => {
       playBtn.disabled = offlineBtn.disabled = true;
       status.textContent = "Подключение…";
       const ok = await net.connect(nick(), token);
-      if (!ok) status.textContent = "Сервер недоступен — одиночный режим";
-      setTimeout(() => resolve(done(ok)), ok ? 0 : 900);
+      if (!ok) {
+        status.textContent = "Сервер недоступен — одиночный режим";
+        setTimeout(() => void proceed(false), 900);
+      } else {
+        void proceed(true);
+      }
     });
-    offlineBtn.addEventListener("click", () => resolve(done(false)));
+    offlineBtn.addEventListener("click", () => {
+      playBtn.disabled = offlineBtn.disabled = true;
+      void proceed(false);
+    });
     nickInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !playBtn.disabled) playBtn.click();
     });
@@ -57,7 +106,7 @@ function styleEl(): HTMLStyleElement {
   const s = document.createElement("style");
   s.textContent = `
     #login {
-      position: fixed; inset: 0; z-index: 999; display: flex;
+      position: fixed; inset: 0; z-index: 10000; display: flex;
       align-items: center; justify-content: center;
       background: radial-gradient(120% 120% at 50% 0%, #1a2233 0%, #0a0d14 70%);
       font-family: system-ui, sans-serif;
@@ -70,6 +119,9 @@ function styleEl(): HTMLStyleElement {
     #login .login-title {
       font-size: 26px; font-weight: 700; color: #e8ecf8; text-align: center;
       letter-spacing: 1px; margin-bottom: 6px;
+    }
+    #login .login-sub {
+      font-size: 14px; color: #9aa3b8; text-align: center; margin-bottom: 4px;
     }
     #login input {
       padding: 11px 13px; font-size: 16px; border-radius: 8px;

@@ -22,12 +22,15 @@ if (!guestToken) {
 (window as unknown as { game: Game; net: NetClient }).game = game;
 (window as unknown as { game: Game; net: NetClient }).net = net;
 
-void runLogin(net, guestToken).then(({ nick, online }) => {
+void runLogin(net, guestToken, {
+  isVrAvailable: () => game.isVrAvailable(),
+  enterVR: () => game.enterVR(),
+}).then(({ nick, online, vr }) => {
   game.setNick(nick);
   if (online) game.attachNet(net);
 
-  if (game.isTouch) {
-    hint.classList.add("hidden"); // на телефоне управление на экране
+  if (game.isTouch || vr) {
+    hint.classList.add("hidden"); // на телефоне и в VR подсказка клавиш не нужна
   } else {
     hint.classList.remove("hidden");
     hint.addEventListener("click", () => game.requestPointerLock());
