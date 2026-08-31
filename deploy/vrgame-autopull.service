@@ -1,0 +1,7 @@
+[Unit]
+Description=VR GAME — подтянуть новые коммиты и передеплоить
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vrgame/deploy/autopull.sh

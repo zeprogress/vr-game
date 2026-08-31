@@ -62,8 +62,20 @@ bash deploy/setup.sh zepgame.duckdns.org https://github.com/ТВОЙ_ЛОГИН/
 # Mac
 git push
 # сервер
-ssh root@203.0.113.10 'cd /root/vr-game && git pull && bash deploy/update.sh'
+ssh root@203.0.113.10 'cd /opt/vrgame && bash deploy/update.sh'
 ```
+
+### Автодеплой (один раз)
+
+Чтобы деплой был просто `git push` без захода на сервер:
+
+```bash
+ssh root@203.0.113.10 'cd /opt/vrgame && git pull && bash deploy/install-autopull.sh'
+```
+
+Ставит systemd-таймер: раз в 2 минуты сервер сам тянет `origin/main`, и если
+есть новые коммиты — пересобирает клиент и перезапускает сервер.
+Логи: `journalctl -u vrgame-autopull -f`.
 
 ## Если что-то не так
 
