@@ -13,12 +13,15 @@ gameServer.define("zone", ZoneRoom);
 void gameServer.listen(PORT);
 console.log(`[server] Colyseus слушает :${PORT}`);
 
-// Периодический дамп сейвов + запись при остановке.
+// Периодический дамп сейвов на диск.
 const flushTimer = setInterval(() => store.flush(), 15_000);
-for (const sig of ["SIGINT", "SIGTERM"] as const) {
-  process.on(sig, () => {
-    clearInterval(flushTimer);
-    store.flush();
-    process.exit(0);
-  });
-}
+
+// При остановке (в т.ч. `systemctl restart` на деплое) Colyseus сам ловит
+// SIGTERM/SIGINT, корректно расселяет комнаты (onBeforeShutdown -> persist
+// всех) и лишь потом зовёт это. Свои обработчики сигналов не ставим — они
+// перебивали graceful shutdown вызовом process.exit до сохранения.
+gameServer.onShutdown(() => {
+  clearInterval(flushTimer);
+  store.flush();
+  console.log("[server] остановлен, сейвы записаны");
+});

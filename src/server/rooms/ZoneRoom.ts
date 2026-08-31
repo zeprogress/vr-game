@@ -240,6 +240,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Точный час мира. В состояние (state.hour) кладётся раз в syncSeconds. */
   private worldHour: number = DAYCYCLE.startHour;
   private clockSync = 0;
+  /** Раз в 10 с скидываем всех игроков в store — чтобы деплой/сбой почти ничего не терял. */
+  private persistClock = 0;
 
   override onCreate(): void {
     this.setState(new ZoneState());
@@ -469,6 +471,15 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.clockSync >= DAYCYCLE.syncSeconds) {
       this.clockSync = 0;
       this.state.hour = this.worldHour;
+    }
+
+    this.persistClock += dt;
+    if (this.persistClock >= 10) {
+      this.persistClock = 0;
+      this.state.players.forEach((_p, id) => {
+        const c = this.clientOf(id);
+        if (c) this.persist(c);
+      });
     }
 
     // Мобы гоняются только за живыми.
@@ -725,6 +736,14 @@ export class ZoneRoom extends Room<ZoneState> {
     this.rt.delete(client.sessionId);
     store.flush();
     console.log(`[zone] - ${client.sessionId} — осталось ${this.clients.length - 1}`);
+  }
+
+  /** Сервер останавливается (деплой) — сохраняем всех до расселения комнаты. */
+  override onBeforeShutdown(): void {
+    for (const client of this.clients) this.persist(client);
+    store.flush();
+    console.log(`[zone] стоп: сохранено игроков ${this.clients.length}`);
+    this.disconnect();
   }
 
   override onDispose(): void {

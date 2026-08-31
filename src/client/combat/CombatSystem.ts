@@ -1110,7 +1110,8 @@ export class CombatSystem {
     const m = item.mesh.getWorldMatrix();
     // Кончик и гарда — в осях головы: ходьба/поворот не выглядят как замах.
     const guard = this.headLocal(Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m));
-    const tip = this.headLocal(Vector3.TransformCoordinates(TIP, m));
+    const tipWorld = Vector3.TransformCoordinates(TIP, m);
+    const tip = this.headLocal(tipWorld);
     const dir = tip.subtract(guard).normalize();
 
     const prev = trail[trail.length - 1]?.p;
@@ -1129,7 +1130,7 @@ export class CombatSystem {
       const avgSpeed = Vector3.Distance(tip, oldest.p) / oldest.age;
       const sweep = Math.acos(clamp(Vector3.Dot(dir, oldest.dir), -1, 1));
       if (avgSpeed > COMBAT.vrSwooshSpeed && sweep > COMBAT.vrSwooshSweep) {
-        this.sfx.swordSwing(tip);
+        this.sfx.swordSwing(tipWorld); // мировая точка, не в осях головы
         this.swooshCd = COMBAT.swooshCooldown;
       }
     }

@@ -86,23 +86,26 @@ export class Sfx {
     return g;
   }
 
-  /** PannerNode в точке `at`, подключённый к мастеру. Живёт с одним звуком. */
+  /**
+   * PannerNode в точке `at`, подключённый к мастеру. Живёт с одним звуком.
+   * Z инвертируем: у Web Audio «вперёд» это −Z, у Babylon +Z.
+   */
   private panAt(at: SoundAt): PannerNode {
     const p = this.ctx!.createPanner();
     p.panningModel = "HRTF";
     p.distanceModel = "inverse";
-    p.refDistance = 3;
-    p.maxDistance = 40;
-    p.rolloffFactor = 1.2;
+    p.refDistance = 5;
+    p.maxDistance = 55;
+    p.rolloffFactor = 0.8;
     if (p.positionX) {
       p.positionX.value = at.x;
       p.positionY.value = at.y;
-      p.positionZ.value = at.z;
+      p.positionZ.value = -at.z;
     } else {
       (p as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(
         at.x,
         at.y,
-        at.z,
+        -at.z,
       );
     }
     p.connect(this.master!);
@@ -116,13 +119,14 @@ export class Sfx {
   setListener(pos: SoundAt, forward: SoundAt, up: SoundAt): void {
     if (!this.ctx) return;
     const l = this.ctx.listener;
+    // Z инвертируем и у слушателя, и у источников — оси Web Audio против Babylon.
     if (l.positionX) {
       l.positionX.value = pos.x;
       l.positionY.value = pos.y;
-      l.positionZ.value = pos.z;
+      l.positionZ.value = -pos.z;
       l.forwardX.value = forward.x;
       l.forwardY.value = forward.y;
-      l.forwardZ.value = forward.z;
+      l.forwardZ.value = -forward.z;
       l.upX.value = up.x;
       l.upY.value = up.y;
       l.upZ.value = up.z;
@@ -131,8 +135,8 @@ export class Sfx {
         setPosition(x: number, y: number, z: number): void;
         setOrientation(fx: number, fy: number, fz: number, ux: number, uy: number, uz: number): void;
       };
-      legacy.setPosition(pos.x, pos.y, pos.z);
-      legacy.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+      legacy.setPosition(pos.x, pos.y, -pos.z);
+      legacy.setOrientation(forward.x, forward.y, -forward.z, up.x, up.y, up.z);
     }
   }
 

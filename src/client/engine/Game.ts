@@ -615,6 +615,8 @@ export class Game {
     net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
     net.onReconnected = (room) => {
       this.attachRoom(room);
+      this.handsKey = ""; // заново сообщить серверу, что в руках и за спиной
+      this.saveNow();
       this.hud.toast("Снова в игре");
     };
     if (net.room) this.attachRoom(net.room);
