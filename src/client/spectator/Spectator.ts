@@ -62,6 +62,10 @@ export class Spectator {
   private lastFrame = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
+  /** Реальная частота вызовов scene.render() (getFps() врёт при кап-скипе). */
+  private renderCount = 0;
+  private renderRate = 0;
+  private rateAt = 0;
   private readonly status: HTMLDivElement;
   private readonly debug: HTMLDivElement | null;
 
@@ -164,10 +168,14 @@ export class Spectator {
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
     this.engine.runRenderLoop(() => {
-      if (this.fpsCap > 0) {
-        const now = performance.now();
-        if (now - this.lastFrame < 1000 / this.fpsCap - 1) return;
-        this.lastFrame = now;
+      const now = performance.now();
+      if (this.fpsCap > 0 && now - this.lastFrame < 1000 / this.fpsCap - 1) return;
+      this.lastFrame = now;
+      this.renderCount++;
+      if (now - this.rateAt > 1000) {
+        this.renderRate = (this.renderCount * 1000) / (now - this.rateAt);
+        this.renderCount = 0;
+        this.rateAt = now;
       }
       this.scene.render();
     });
@@ -261,7 +269,7 @@ export class Spectator {
       const st = room?.state;
       const dpr = window.devicePixelRatio || 1;
       this.debug.textContent =
-        `${this.engine.getFps().toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
+        `${this.renderRate.toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
         ` · экран ${Math.round(innerWidth * dpr)}×${Math.round(innerHeight * dpr)} (dpr ${dpr.toFixed(2)})` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
     }
