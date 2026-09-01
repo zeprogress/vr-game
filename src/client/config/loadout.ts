@@ -96,8 +96,8 @@ export interface Loadout {
 
 export const LOADOUT_DEFAULTS: Loadout = {
   hands: {
-    left: [-1.14, 3.4, 4.5],
-    right: [-0.9, 2.6, 2],
+    left: [0, 0, 0],
+    right: [0, 0, 0],
   },
   items: {
     sword: {

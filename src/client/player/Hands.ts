@@ -15,11 +15,18 @@ import { LOADOUT } from "../config/loadout";
 
 export type Side = "left" | "right";
 
-/** Тонкая настройка посадки модели кисти. `game.hands.tune({scale:0.14})`. */
+/**
+ * Посадка модели кисти относительно грипа контроллера. Подбирается по описанию
+ * («ладонь смотрит вверх», «пальцы назад») — правится здесь и деплоится.
+ * Углы Эйлера в радианах; поворот применяется в порядке yaw(Y)→pitch(X)→roll(Z).
+ */
 const FIT = {
   scale: Number(new URLSearchParams(location.search).get("hscale")) || 0.135,
-  /** Базовый доворот модели (пальцы модели по +Z, наши — по −Z). */
-  yaw: Math.PI,
+  yaw: Math.PI, // пальцы модели по +Z, «вперёд из руки» — по −Z
+  pitch: 0,
+  roll: 0,
+  /** Смещение модели относительно грипа, м. */
+  offset: [0, 0, 0] as [number, number, number],
   /** Насколько сгибать кончики пальцев в кулаке, рад. */
   curlMax: 2.2,
 };
@@ -189,8 +196,10 @@ export class Hands {
   update(dt: number): void {
     const g = this.glove;
     for (const h of this.hands) {
+      // База (FIT) + тонкая правка из LOADOUT — на корень, чтобы предметы в руке
+      // шли вместе с кистью.
       const r = LOADOUT.hands[h.side];
-      h.root.rotation.set(r[0], r[1], r[2]);
+      h.root.rotation.set(FIT.pitch + r[0], FIT.yaw + r[1], FIT.roll + r[2]);
 
       if (!g || !h.mesh || !h.scratch || !h.scratchN) continue;
       const btn = h.controller.inputSource.gamepad?.buttons[1];
@@ -256,7 +265,11 @@ export class Hands {
     const g = this.glove;
     if (!g || hand.mesh) return;
     const mesh = g.template.clone(`hand_${hand.side}_mesh`, hand.root);
-    mesh.makeGeometryUnique(); // свой буфер вершин — деформируем независимо
+    mesh.makeGeometryUnique(); // свой буфер вершин
+    // Пере-создаём буферы позиции/нормалей как ОБНОВЛЯЕМЫЕ (у glTF они статичные,
+    // и updateVerticesData по ним молча ничего не делает — рука не сжималась).
+    mesh.setVerticesData(VertexBuffer.PositionKind, g.rest.slice(), true);
+    mesh.setVerticesData(VertexBuffer.NormalKind, g.restN.slice(), true);
     mesh.setEnabled(true);
     mesh.material = this.skin;
     mesh.isPickable = false;
@@ -269,9 +282,9 @@ export class Hands {
 
   private placeMesh(hand: Hand): void {
     if (!hand.mesh) return;
-    // Левая кисть — зеркало по X (Babylon сам инвертирует отсечение граней).
+    // Ориентация — на корне (см. update). Здесь только размер, зеркало и сдвиг.
     hand.mesh.scaling.set(hand.side === "left" ? -FIT.scale : FIT.scale, FIT.scale, FIT.scale);
-    hand.mesh.rotation.set(0, FIT.yaw, 0);
-    hand.mesh.position.set(0, 0, 0);
+    hand.mesh.rotation.set(0, 0, 0);
+    hand.mesh.position.set(FIT.offset[0], FIT.offset[1], FIT.offset[2]);
   }
 }
