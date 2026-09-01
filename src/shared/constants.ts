@@ -353,9 +353,9 @@ export const SPECTATE = {
   overviewHeight: 34,
   overviewRadius: 60,
   overviewSpeed: 0.05,
-  /** Босс в приоритете, пока он агрит игрока. */
-  bossOrbitRadius: 16,
-  bossOrbitHeight: 7,
+  /** Босс в приоритете, пока он агрит игрока. Радиус — с запасом на его размер. */
+  bossOrbitRadius: 32,
+  bossOrbitHeight: 13,
 } as const;
 
 /**

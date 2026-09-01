@@ -86,8 +86,11 @@ export class Mob implements Hittable {
     readonly id: string,
     private readonly sfx: Sfx,
     private readonly report: HitReporter,
-    opaque = false,
+    /** true — облегчённый вид (стрим на слабом GPU): непрозрачное тело,
+     *  без глаз, без плашки и полоски HP. ~4 draw-call меньше на каждого моба. */
+    private readonly lean = false,
   ) {
+    const opaque = this.lean;
     const cfg =
       kind === "spitter"
         ? SPITTER_CFG
@@ -135,7 +138,7 @@ export class Mob implements Hittable {
       eyeMat.specularColor = new Color3(0.15, 0.15, 0.15);
     }
     const eyeY = cfg.ranged ? 0.05 : this.isBoss ? 0.13 : 0.15;
-    for (const dx of [-0.18, 0.18]) {
+    for (const dx of this.lean ? [] : [-0.18, 0.18]) {
       const eye = MeshBuilder.CreateSphere("mobEye", { diameter: this.isBoss ? 0.2 : 0.17, segments: 6 }, scene);
       eye.material = eyeMat;
       eye.parent = this.head;
@@ -276,16 +279,18 @@ export class Mob implements Hittable {
     if (s.hurtSeq !== this.lastHurtSeq) {
       this.lastHurtSeq = s.hurtSeq;
       this.flash = 1;
-      this.barTimer = 3;
-      this.bar.set(Math.max(0, s.hp) / s.maxHp);
-      this.bar.setOpacity(1);
+      if (!this.lean) {
+        this.barTimer = 3;
+        this.bar.set(Math.max(0, s.hp) / s.maxHp);
+        this.bar.setOpacity(1);
+      }
       if (!s.dead) {
-        this.addWound(s.hurtDx, s.hurtDz);
+        if (!this.lean) this.addWound(s.hurtDx, s.hurtDz);
         this.playIfNear(playerPos, () => this.sfx.mobHurt(pos));
       }
     }
 
-    if (this.barTimer > 0) {
+    if (this.barTimer > 0 && !this.lean) {
       this.barTimer -= dt;
       this.bar.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
@@ -365,6 +370,9 @@ export class Mob implements Hittable {
 
     if (s.grounded === 0 && this.grounded) this.playIfNear(playerPos, () => this.sfx.mobHop(pos), 20);
     this.grounded = s.grounded === 1;
+
+    // Облегчённый вид (стрим): без плашки и полоски HP — их рисует оверлей страницы.
+    if (this.lean) return;
 
     // плашка — только рядом и примерно в поле зрения
     const toMob = new Vector3(pos.x - playerPos.x, 0, pos.z - playerPos.z);

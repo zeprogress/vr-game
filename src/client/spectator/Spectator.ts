@@ -25,16 +25,16 @@ export type Quality = "potato" | "low" | "med" | "high";
 interface Preset extends ZoneQuality {
   scaling: number; // engine.setHardwareScalingLevel — >1 рендерит в меньшем разрешении
   fpsCap: number; // 0 — без ограничения
-  opaqueMobs: boolean;
+  leanMobs: boolean;
 }
 
 const PRESETS: Record<Quality, Preset> = {
   // Совсем слабый GPU (Mali-G31): без травы, светлячков, облаков; 2 света;
-  // мобы непрозрачные (меньше заполнения).
-  potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, simpleSky: true, opaqueMobs: true, fpsCap: 30 },
-  low: { scaling: 1.5, grass: 0, fireflies: 0, minLights: true, simpleSky: true, opaqueMobs: true, fpsCap: 40 },
-  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, opaqueMobs: false, fpsCap: 0 },
-  high: { scaling: 1.0, grass: 1, fireflies: 1, opaqueMobs: false, fpsCap: 0 },
+  // мобы облегчённые (без плашек, полосок, глаз).
+  potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, simpleSky: true, leanMobs: true, fpsCap: 30 },
+  low: { scaling: 1.5, grass: 0, fireflies: 0, minLights: true, simpleSky: true, leanMobs: true, fpsCap: 40 },
+  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, leanMobs: false, fpsCap: 0 },
+  high: { scaling: 1.0, grass: 1, fireflies: 1, leanMobs: false, fpsCap: 0 },
 };
 
 /**
@@ -101,7 +101,6 @@ export class Spectator {
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
-    this.scene.skipPointerMovePicking = true;
 
     const zone = buildZone(this.scene, {
       grass: preset.grass,
@@ -109,9 +108,12 @@ export class Spectator {
       minLights: preset.minLights,
       simpleSky: preset.simpleSky,
     });
-    this.scene.performancePriority = 1; // Intermediate — быстрее, но без агрессивных срезов
+    // Aggressive: спектатору не нужны ни пикинг, ни точный bounding — только рендер.
+    this.scene.performancePriority = 2;
     this.scene.skipPointerDownPicking = true;
     this.scene.skipPointerUpPicking = true;
+    this.scene.skipPointerMovePicking = true;
+    this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
 
@@ -119,7 +121,7 @@ export class Spectator {
 
     // Мобы и лут — переиспользуем менеджеры игры. Бой спектатору не нужен:
     // цели пустые, репорт попаданий — заглушка.
-    this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.opaqueMobs);
+    this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.leanMobs);
     this.loot = new LootDrops(this.scene);
 
     // Статус связи поверх картинки — на «слепом» боксе иначе не понять, что не так.
