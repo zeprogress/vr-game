@@ -341,8 +341,7 @@ export class SpectatorCamera {
         }
         break;
       }
-      case "eyePlayer":
-      case "eyeMob": {
+      case "eyePlayer": {
         // Слегка позади глаз, чтобы не влезать в меш головы/тела.
         pos.set(
           this.eyePos.x - this.eyeFwd.x * 0.15,
@@ -353,6 +352,25 @@ export class SpectatorCamera {
           this.eyePos.x + this.eyeFwd.x * 20,
           this.eyePos.y + this.eyeFwd.y * 20,
           this.eyePos.z + this.eyeFwd.z * 20,
+        );
+        return;
+      }
+      case "eyeMob": {
+        // Не буквально «из глаз», а погоня сзади-сверху: моба видно в кадре,
+        // и куда он идёт — тоже. Горизонтальную составляющую взгляда берём
+        // отдельно, чтобы высота камеры не зависела от наклона морды.
+        const fx = this.eyeFwd.x;
+        const fz = this.eyeFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        pos.set(
+          this.eyePos.x - (fx / fl) * 3.6,
+          this.eyePos.y + 2.6,
+          this.eyePos.z - (fz / fl) * 3.6,
+        );
+        tgt.set(
+          this.eyePos.x + (fx / fl) * 8,
+          this.eyePos.y - 0.4,
+          this.eyePos.z + (fz / fl) * 8,
         );
         return;
       }
