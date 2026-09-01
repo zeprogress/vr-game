@@ -74,6 +74,8 @@ export type SpecCmd =
   | { t: "time"; hour: number }
   /** Вкл/выкл авто-ход суток. Применяет сервер. */
   | { t: "dayAuto"; on: number }
+  /** Дашборд -> спектатор: показать нижнюю плашку/заставку на N секунд. */
+  | { t: "card"; title: string; sub?: string; secs?: number }
   /** Рендерящий спектатор -> дашбордам: какой кадр сейчас в эфире. */
   | { t: "nowShot"; shot: string };
 

@@ -80,6 +80,30 @@ export class Dashboard {
     this.listEl = el("div", "");
     this.root.appendChild(this.listEl);
 
+    // --- заставки / нижняя треть ---
+    this.section("Заставка на экран");
+    const cardIn = document.createElement("input");
+    cardIn.placeholder = "Заголовок";
+    cardIn.style.cssText =
+      "width:100%;padding:10px;margin-bottom:6px;border:1px solid #4a5570;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;box-sizing:border-box";
+    const cardSub = document.createElement("input");
+    cardSub.placeholder = "Подпись (необязательно)";
+    cardSub.style.cssText = cardIn.style.cssText;
+    this.root.append(cardIn, cardSub);
+    const cardRow = el("div", "");
+    cardRow.style.cssText = "display:flex;gap:8px";
+    const showBtn = this.bigBtn("Показать 6 с", () => {
+      const t = cardIn.value.trim();
+      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 6 });
+    });
+    const holdBtn = this.bigBtn("Держать 60 с", () => {
+      const t = cardIn.value.trim();
+      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 60 });
+    });
+    cardRow.append(showBtn, holdBtn);
+    this.root.appendChild(cardRow);
+
     // --- время суток ---
     this.section("Время суток");
     this.dayAutoBtn = this.bigBtn("Авто-ход суток: —", () => this.toggleDayAuto());

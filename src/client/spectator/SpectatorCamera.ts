@@ -116,6 +116,15 @@ export class SpectatorCamera {
     return this.shot.kind;
   }
 
+  /** Кого камера показывает сейчас — для нижней плашки оверлея (Ф6). */
+  get subject(): { type: "player" | "mob" | "none"; id?: string } {
+    const s = this.shot;
+    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer") return { type: "player", id: s.id };
+    if (s.kind === "eyeMob") return { type: "mob", id: s.id };
+    if (s.kind === "orbitBoss" && this.lastCtx?.boss) return { type: "mob", id: this.lastCtx.boss.id };
+    return { type: "none" };
+  }
+
   /** Дашборд: поставить кадр вручную (см. токены в SpecCmd). */
   forceShot(token: string): void {
     if (!this.lastCtx) return;

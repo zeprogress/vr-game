@@ -127,10 +127,9 @@ export class Mob implements Hittable {
 
     const eyeMat = new StandardMaterial("mobEye", scene);
     if (this.isBoss) {
-      // Злые светящиеся глаза.
-      // Тёмно-тёмно-красные, чуть светятся (не алые).
-      eyeMat.diffuseColor = new Color3(0.06, 0, 0);
-      eyeMat.emissiveColor = new Color3(0.28, 0.015, 0.02);
+      // Провалы вместо глаз — угольно-чёрные, без бликов и подсветки.
+      eyeMat.diffuseColor = new Color3(0, 0, 0);
+      eyeMat.emissiveColor = new Color3(0, 0, 0);
       eyeMat.specularColor = new Color3(0, 0, 0);
       eyeMat.disableLighting = true;
     } else {

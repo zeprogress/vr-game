@@ -8,6 +8,8 @@ import { BOSS, MOB } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { buildZone, type ZoneQuality } from "../world/Zone";
+import { LOADOUT } from "../config/loadout";
+import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
@@ -77,6 +79,7 @@ export class Spectator {
   private rateAt = 0;
   private readonly status: HTMLDivElement;
   private readonly debug: HTMLDivElement | null;
+  private readonly overlay: Overlay | null;
 
   private readonly _players: CtxPlayer[] = [];
   private readonly _mobs: CtxMob[] = [];
@@ -93,6 +96,7 @@ export class Spectator {
       rh?: number;
       raw?: boolean;
       reloadSec?: number;
+      overlay?: boolean;
     } = {},
   ) {
     const preset = PRESETS[quality];
@@ -159,6 +163,9 @@ export class Spectator {
     } else {
       this.debug = null;
     }
+
+    // Оверлеи стрима (Ф6): вотермарк, часы, онлайн, «смотрим», HP цели, заставки.
+    this.overlay = override.overlay === false ? null : new Overlay();
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
@@ -274,7 +281,8 @@ export class Spectator {
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
     else if (cmd.t === "cut") this.cam.cutNext();
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
-    // "time" применяет сервер; "nowShot" — для дашбордов, спектатор игнорирует.
+    else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 6);
+    // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.
   }
 
   private attach(room: Room<ZoneState>): void {
@@ -374,6 +382,8 @@ export class Spectator {
       this.net?.sendSpecCmd({ t: "nowShot", shot: this.cam.shotKind });
     }
 
+    if (this.overlay) this.updateOverlay(room?.state ?? null);
+
     if (this.debug) {
       const st = room?.state;
       const dpr = window.devicePixelRatio || 1;
@@ -382,6 +392,52 @@ export class Spectator {
         ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
     }
+  }
+
+  private static mobName(kind: string): string {
+    return kind === "boss" ? "Багровый" : kind === "spitter" ? "Плевун" : "Слизень";
+  }
+
+  private static shotLabel(kind: string): string {
+    if (kind === "overview") return "Обзор зоны";
+    if (kind.startsWith("path ")) return `Пролёт: ${kind.slice(6, -1)}`;
+    if (kind === "orbitBoss") return "Багровый";
+    return "Зона";
+  }
+
+  /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
+  private updateOverlay(st: ZoneState | null): void {
+    const subj = this.cam.subject;
+    let watching: string | null = null;
+    let targetHp: OverlayCtx["targetHp"] = null;
+
+    if (st && subj.id) {
+      if (subj.type === "player") {
+        const p = st.players.get(subj.id);
+        if (p) {
+          watching = p.nick;
+          targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
+        }
+      } else if (subj.type === "mob") {
+        const m = st.mobs.get(subj.id);
+        if (m && !m.dead) {
+          const name = Spectator.mobName(m.kind);
+          watching = name;
+          targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" };
+        }
+      }
+    }
+
+    const online: string[] = [];
+    st?.players.forEach((p) => online.push(p.nick));
+
+    this.overlay?.update({
+      watching,
+      shotLabel: Spectator.shotLabel(this.cam.shotKind),
+      targetHp,
+      hour: LOADOUT.world.hour,
+      online,
+    });
   }
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. */
