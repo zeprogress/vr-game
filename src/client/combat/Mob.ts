@@ -23,17 +23,22 @@ import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
 /** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
- *  моба. Подбор: `?myaw=<рад>`. */
+ *  моба. Подбор: `?myaw=<рад>`. (π/2 − 45° = поворот против часовой на 45°.) */
 const MODEL_YAW = (() => {
   const p = new URLSearchParams(location.search);
   const v = Number(p.get("myaw"));
-  return p.has("myaw") && Number.isFinite(v) ? v : Math.PI / 2;
+  return p.has("myaw") && Number.isFinite(v) ? v : Math.PI / 4;
 })();
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-/** Перекрасить материалы модели в плоский вид под наш кинд (цвет тела/глаз). */
-function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, number, number]): void {
+/** Перекрасить материалы модели: плоский цвет кинда, полупрозрачное желейное тело. */
+function recolorRig(
+  rig: RigInstance,
+  kind: MobKind,
+  tint: readonly [number, number, number],
+  alpha: number,
+): void {
   for (const m of rig.meshes) {
     const src = m.material as { name?: string } | null;
     if (!src) continue;
@@ -50,8 +55,11 @@ function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, num
     // secondary — светлее (блик/пузики), primary — базовый цвет кинда
     const k = /secondary/i.test(name) ? 1.4 : 1;
     flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
-    flat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
-    flat.specularColor = new Color3(0.25, 0.2, 0.25);
+    flat.emissiveColor = new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
+    flat.specularColor = new Color3(0.06, 0.06, 0.06);
+    // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
+    flat.alpha = alpha;
+    flat.backFaceCulling = true;
   }
 }
 
@@ -98,6 +106,7 @@ export class Mob implements Hittable {
   private _woundMat: StandardMaterial | null = null;
 
   private readonly tint: readonly [number, number, number];
+  private readonly bodyAlpha: number;
   private dead = false;
   private deathT = 0;
   private flash = 0;
@@ -143,6 +152,7 @@ export class Mob implements Hittable {
             ? SHARD_CFG
             : SLIME_CFG;
     this.tint = cfg.tint;
+    this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
 
     this.root = new TransformNode("mob", scene);
@@ -250,7 +260,9 @@ export class Mob implements Hittable {
     let make: () => RigInstance;
     try {
       const { loadRig } = await import("../world/models");
-      make = await loadRig(this.scene, "slime", { smoothNormals: true });
+      // Без smoothNormals: пересчёт нормалей ломал их направление на модели из
+      // FBX (свет ложился «снизу»). Берём нормали как в файле.
+      make = await loadRig(this.scene, "slime");
     } catch {
       // модель не загрузилась — возвращаем процедурную сферу
       if (!this.root.isDisposed() && !this.dead) {
@@ -277,7 +289,7 @@ export class Mob implements Hittable {
     const base = (MOB.bodyRadius * 1.75) / rig.nativeHeight;
     holder.scaling.setAll(base);
 
-    recolorRig(rig, this.kind, this.tint);
+    recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
 
     // Процедурная сфера с глазами больше не нужна — сносим совсем.
     this.body.dispose();
