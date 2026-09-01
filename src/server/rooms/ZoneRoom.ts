@@ -545,6 +545,8 @@ export class ZoneRoom extends Room<ZoneState> {
         this.state.hour = this.worldHour;
         this.state.dayAuto = 0; // ручной перевод останавливает авто-ход
         this.clockSync = 0;
+      } else if (msg.t === "dayAuto") {
+        this.state.dayAuto = msg.on ? 1 : 0;
       }
       this.broadcast(MSG.specCmd, msg, { except: client });
     });

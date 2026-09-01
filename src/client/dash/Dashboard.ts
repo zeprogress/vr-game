@@ -22,6 +22,8 @@ export class Dashboard {
   private readonly listEl: HTMLDivElement;
   private auto = true;
   private readonly autoBtn: HTMLButtonElement;
+  private dayAutoBtn!: HTMLButtonElement;
+  private dayAuto: number | null = null;
   private lastListSig = "";
 
   constructor(keyFromUrl: string | null) {
@@ -80,6 +82,8 @@ export class Dashboard {
 
     // --- время суток ---
     this.section("Время суток");
+    this.dayAutoBtn = this.bigBtn("Авто-ход суток: —", () => this.toggleDayAuto());
+    this.root.appendChild(this.dayAutoBtn);
     const time = el("div", "");
     time.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
     for (const hh of [6, 9, 12, 15, 18, 21, 0]) {
@@ -127,6 +131,7 @@ export class Dashboard {
   private refreshList(): void {
     const st = this.room?.state;
     if (!st) return;
+    if (st.dayAuto !== this.dayAuto) this.setDayAutoUi(st.dayAuto);
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
@@ -163,6 +168,18 @@ export class Dashboard {
   private toggleAuto(): void {
     this.setAutoUi(!this.auto);
     this.send({ t: "auto", on: this.auto ? 1 : 0 });
+  }
+
+  private toggleDayAuto(): void {
+    const next = this.dayAuto ? 0 : 1;
+    this.setDayAutoUi(next);
+    this.send({ t: "dayAuto", on: next });
+  }
+
+  private setDayAutoUi(on: number): void {
+    this.dayAuto = on;
+    this.dayAutoBtn.textContent = `Авто-ход суток: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.dayAutoBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {
