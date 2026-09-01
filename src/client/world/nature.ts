@@ -6,6 +6,7 @@ import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import { WORLD } from "#shared/constants";
@@ -128,6 +129,18 @@ export async function loadGrass(
   blade.setParent(null);
   blade.bakeCurrentTransformIntoVertices();
 
+  // В модель запечён сильный AO у корней (вершинные цвета) — почти чёрный.
+  // Приподнимаем нижний край градиента, кончики оставляем как есть.
+  const vcol = blade.getVerticesData(VertexBuffer.ColorKind);
+  if (vcol) {
+    for (let i = 0; i < vcol.length; i += 4) {
+      vcol[i] = 0.45 + vcol[i] * 0.55;
+      vcol[i + 1] = 0.45 + vcol[i + 1] * 0.55;
+      vcol[i + 2] = 0.45 + vcol[i + 2] * 0.55;
+    }
+    blade.setVerticesData(VertexBuffer.ColorKind, vcol, false);
+  }
+
   const mat = new StandardMaterial("grassMat", scene);
   const tex = container.textures[0];
   if (tex) {
@@ -137,16 +150,13 @@ export async function loadGrass(
     mat.transparencyMode = 1;
     mat.alphaCutOff = 0.3;
   }
-  mat.diffuseColor = new Color3(0.55, 0.78, 0.42);
-  // Умеренный эмиссив: чёрные корни давали запечённые вершинные цвета (ниже
-  // useVertexColors=false), поэтому теперь можно оставить свет диффузу —
-  // так виден разброс цвета по пучкам.
-  mat.emissiveColor = new Color3(0.12, 0.17, 0.08);
+  mat.diffuseColor = new Color3(0.5, 0.72, 0.38);
+  mat.emissiveColor = new Color3(0.11, 0.2, 0.09);
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
   mat.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
   blade.material = mat;
-  blade.useVertexColors = false; // выкидываем запечённое в вершины затемнение корней
+  blade.useVertexColors = true; // приподнятый AO-градиент из вершин (см. выше)
   blade.isPickable = false;
   blade.name = "grassBlade";
   blade.setEnabled(true);
