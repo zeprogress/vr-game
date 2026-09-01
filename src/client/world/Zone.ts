@@ -4,6 +4,9 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+// props.ts больше не тянет DynamicTexture статически — регистрируем расширение
+// движка явно (skyGrad/terrain создают DynamicTexture в buildZone).
+import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
@@ -86,8 +89,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   const terrain = createTerrain(scene);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
-  const trunks = scatterTrees(scene, terrain);
-  const windTick = scatterGrass(scene, terrain, quality.grass ?? 1);
+  const trunks = scatterTrees(scene, terrain, quality.minLights);
+  const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
 
   // Слабый GPU: снимаем с шейдеров материалов лишние источники света.
