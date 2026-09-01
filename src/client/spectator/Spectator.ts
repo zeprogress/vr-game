@@ -181,6 +181,11 @@ export class Spectator {
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
     this.engine.runRenderLoop(() => {
+      // Babylon сам пере-ресайзит canvas (ResizeObserver) под вьюпорт —
+      // при фиксированном размере каждый кадр возвращаем нужный (no-op, если совпал).
+      if (this.fixedSize) {
+        this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
+      }
       const now = performance.now();
       if (this.fpsCap > 0 && now - this.lastFrame < 1000 / this.fpsCap - 1) return;
       this.lastFrame = now;
