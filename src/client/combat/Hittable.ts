@@ -21,8 +21,8 @@ export interface Hittable {
   center?(): Vector3;
 }
 
-/** Что за цель — для отправки попадания на сервер (этап 6). */
-export type HitTargetKind = "mob" | "dummy";
+/** Что за цель — для отправки попадания на сервер (этап 6, PvP — этап 10). */
+export type HitTargetKind = "mob" | "dummy" | "player";
 
 /**
  * Сообщить серверу о попадании: id цели, тип цели, вид оружия и

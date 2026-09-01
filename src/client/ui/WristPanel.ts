@@ -12,12 +12,13 @@ import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 const TEX_W = 512;
-const TEX_H = 610;
+const TEX_H = 664;
 /**
- * Выбираемых строк: характеристики + ячейки сумки + «выйти из мира».
- * X идёт по ним подряд, последняя — выход.
+ * Выбираемых строк: характеристики + ячейки сумки + «PvP» + «выйти из мира».
+ * X идёт по ним подряд.
  */
-const ROWS = STATS.length + BAG.slots + 1;
+const ROWS = STATS.length + BAG.slots + 2;
+const PVP_ROW = STATS.length + BAG.slots;
 const EXIT_ROW = ROWS - 1;
 const GRID_COLS = 4;
 
@@ -36,6 +37,16 @@ export class WristPanel {
   private exitArmed = 0;
   /** Выйти из мира (вернуться на экран входа). Ставит Game. */
   onExit: (() => void) | null = null;
+  /** Переключить свой флаг PvP. Ставит Game. */
+  onTogglePvp: (() => void) | null = null;
+  /** Текущее состояние флага PvP (из состояния сервера). */
+  private pvpOn = false;
+
+  setPvp(on: boolean): void {
+    if (on === this.pvpOn) return;
+    this.pvpOn = on;
+    if (this.open) this.redraw();
+  }
 
   constructor(
     scene: Scene,
@@ -121,6 +132,10 @@ export class WristPanel {
     }
     if (!confirm) return;
 
+    if (this.selected === PVP_ROW) {
+      this.onTogglePvp?.();
+      return;
+    }
     if (this.selected === EXIT_ROW) {
       // Двойное нажатие: случайно из мира не выкинет.
       if (this.exitArmed > 0) {
@@ -217,9 +232,27 @@ export class WristPanel {
 
     this.drawBag(ctx);
 
+    // PvP
+    const pvpActive = this.selected === PVP_ROW;
+    const pvpY = 548;
+    if (pvpActive) {
+      ctx.fillStyle = "#263048";
+      ctx.fillRect(20, pvpY - 6, TEX_W - 40, 40);
+    }
+    ctx.font = `${pvpActive ? "bold " : ""}26px system-ui, sans-serif`;
+    ctx.fillStyle = pvpActive ? "#9fd0ff" : "#c9d2e6";
+    ctx.fillText(`${pvpActive ? "▸ " : "   "}PvP`, 26, pvpY);
+    ctx.fillStyle = this.pvpOn ? "#ff8a8a" : "#7ee081";
+    ctx.fillText(this.pvpOn ? "включён" : "выключен", 150, pvpY);
+    if (this.pvpOn) {
+      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillStyle = "#8c96ad";
+      ctx.fillText("тебя могут атаковать игроки с PvP", 300, pvpY + 4);
+    }
+
     // Выход из мира
     const exitActive = this.selected === EXIT_ROW;
-    const exitY = 548;
+    const exitY = 598;
     if (exitActive) {
       ctx.fillStyle = this.exitArmed > 0 ? "#4a2230" : "#2a2036";
       ctx.fillRect(20, exitY - 6, TEX_W - 40, 40);
@@ -236,7 +269,7 @@ export class WristPanel {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 582);
+    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 636);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);

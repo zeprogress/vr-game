@@ -31,6 +31,8 @@ export class PlayerState extends Schema {
   @type("float32") maxHp = 100;
   /** 1 — лежит мёртвый, ждёт возрождения. */
   @type("uint8") dead = 0;
+  /** 1 — игрок открыт для PvP. Урон между игроками идёт только если у обоих 1. */
+  @type("uint8") pvp = 0;
   @type("uint16") level = 1;
   @type("float32") xp = 0;
   @type("uint16") unspent = 0;

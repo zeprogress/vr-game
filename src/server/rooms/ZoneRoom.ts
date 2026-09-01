@@ -31,6 +31,7 @@ import {
   type SpendMsg,
   type SetTimeMsg,
   type ComfortMsg,
+  type SetPvpMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
   type Xf7,
@@ -41,6 +42,7 @@ import {
   DAYCYCLE,
   PLAYER,
   PLAYER_HP,
+  PVP,
   RESPAWN,
   WORLD,
 } from "#shared/constants";
@@ -98,6 +100,8 @@ interface Runtime {
   respawnIn: number;
   /** Секунды неуязвимости после возрождения. */
   invuln: number;
+  /** Момент последнего обмена ударами в PvP (сек. комнаты) — для disengage. */
+  lastPvpAt: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
@@ -446,6 +450,24 @@ export class ZoneRoom extends Room<ZoneState> {
       this.wipeWorld(`админ ${p.nick}`);
     });
 
+    // PvP-флаг (этап 10). Включить можно всегда; снять — только если с
+    // последнего обмена ударами прошло PVP.disengage секунд.
+    this.onMessage(MSG.setPvp, (client: Client, msg: SetPvpMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || !msg) return;
+      const want = msg.on ? 1 : 0;
+      if (want === 0 && p.pvp === 1) {
+        const left = PVP.disengage - (this.elapsed - rt.lastPvpAt);
+        if (left > 0) {
+          client.send(MSG.setPvp, { on: 1, wait: Math.ceil(left) } satisfies SetPvpMsg);
+          return;
+        }
+      }
+      p.pvp = want;
+      client.send(MSG.setPvp, { on: want } satisfies SetPvpMsg);
+    });
+
     // Панельные настройки: храним по токену, применяются только у этого игрока.
     this.onMessage(MSG.loadout, (client: Client, msg: OverridesMsg) => {
       const rt = this.rt.get(client.sessionId);
@@ -517,12 +539,40 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(client.sessionId);
     const rt = this.rt.get(client.sessionId);
     if (!p || !rt || p.dead || !msg?.id) return;
-    if (msg.target !== "mob" && msg.target !== "dummy") return;
+    if (msg.target !== "mob" && msg.target !== "dummy" && msg.target !== "player") return;
     if (!isWeaponKind(msg.weapon)) return;
 
     // Темп: чаще, чем позволяет оружие, удары не засчитываются.
     const last = rt.lastHit[msg.weapon];
     if (last !== undefined && this.elapsed - last < WEAPON_RATE[msg.weapon]) return;
+
+    const hand = msg.hand === "left" ? "left" : "right";
+
+    // PvP: урон между игроками — только если у ОБОИХ включён флаг.
+    if (msg.target === "player") {
+      const tp = this.state.players.get(msg.id);
+      const trt = this.rt.get(msg.id);
+      if (!tp || !trt || msg.id === client.sessionId || tp.dead || trt.invuln > 0) return;
+      if (p.pvp !== 1 || tp.pvp !== 1) return;
+      const d = Math.hypot(
+        tp.head.x - p.head.x,
+        tp.head.y - p.head.y,
+        tp.head.z - p.head.z,
+      );
+      if (d > WEAPON_REACH[msg.weapon]) return;
+      rt.lastHit[msg.weapon] = this.elapsed;
+      rt.lastPvpAt = this.elapsed;
+      trt.lastPvpAt = this.elapsed;
+      const pvpDmg = weaponDamage(msg.weapon, p.str, multIn(p, hand)) * PVP.damageMult;
+      this.hurtPlayer({
+        target: msg.id,
+        dmg: pvpDmg,
+        fromX: p.head.x,
+        fromZ: p.head.z,
+        projectile: msg.weapon === "arrow",
+      });
+      return;
+    }
 
     const at = this.sim.targetCenter(msg.target, msg.id);
     if (!at) return;
@@ -530,7 +580,6 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const hand = msg.hand === "left" ? "left" : "right";
     const dmg = weaponDamage(msg.weapon, p.str, multIn(p, hand));
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
@@ -800,6 +849,7 @@ export class ZoneRoom extends Room<ZoneState> {
       sinceHurt: PLAYER_HP.regenDelay,
       respawnIn: 0,
       invuln: RESPAWN.invuln,
+      lastPvpAt: -999,
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),

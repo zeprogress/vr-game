@@ -75,6 +75,7 @@ export class Game {
   readonly voice: VoiceChat;
   /** Общий список целей (мобы + куклы) — наполняет NetMobs, читает CombatSystem. */
   private readonly targets: Hittable[] = [];
+  private report: HitReporter | null = null;
   private readonly sfx = new Sfx();
   private readonly hud = new Hud();
 
@@ -138,6 +139,7 @@ export class Game {
     );
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
+    this.report = report;
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
@@ -219,6 +221,12 @@ export class Game {
       if (e.code !== "KeyM" || this.player.inVR) return;
       LOADOUT.voice.mic = LOADOUT.voice.mic ? 0 : 1;
       this.hud.toast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
+    });
+
+    // Флаг PvP: на десктопе — клавиша P (в VR — строка в панели персонажа).
+    window.addEventListener("keydown", (e) => {
+      if (e.code !== "KeyP" || this.player.inVR || !this.net?.online) return;
+      this.net.sendPvp(!this.net.pvpOn);
     });
 
     this.scene.onBeforeRenderObservable.add(() => {
@@ -436,6 +444,9 @@ export class Game {
       this.inventory,
     );
     this.wristPanel.onExit = () => void this.leaveWorld();
+    this.wristPanel.onTogglePvp = () => {
+      if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
+    };
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
@@ -496,6 +507,7 @@ export class Game {
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
+    this.wristPanel?.setPvp(this.net?.pvpOn ?? false);
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
@@ -701,6 +713,19 @@ export class Game {
     // Звук соседа — играем объёмно от его аватара / точки события.
     net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
 
+    // PvP: сервер подтвердил (или отклонил) переключение флага.
+    net.onPvp = (on, wait) => {
+      if (wait !== undefined) {
+        this.hud.toast(`Выйти из PvP можно через ${wait} с — недавно был бой`);
+      } else {
+        this.hud.toast(
+          on
+            ? "PvP включён — игроки с PvP могут тебя атаковать"
+            : "PvP выключен",
+        );
+      }
+    };
+
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
     net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
     net.onReconnected = (room) => {
@@ -746,7 +771,7 @@ export class Game {
     this.netMobs.attach(room);
     this.loot.attach(room);
 
-    for (const a of this.avatars.values()) a.dispose();
+    for (const a of this.avatars.values()) this.dropAvatar(a);
     this.avatars.clear();
 
     const players = room.state.players;
@@ -754,20 +779,29 @@ export class Game {
       if (id === this.net?.sessionId || this.avatars.has(id)) return;
       const p = players.get(id);
       if (!p) return;
-      this.avatars.set(
-        id,
-        new RemoteAvatar(this.scene, id, p.nick, p.mode, (cls, tier) =>
-          makeWeaponMesh(this.scene, cls, tier),
-        ),
+      const av = new RemoteAvatar(this.scene, id, p.nick, p.mode, (cls, tier) =>
+        makeWeaponMesh(this.scene, cls, tier),
       );
+      // PvP: чужой аватар — цель для оружия (сервер решит, пройдёт ли урон).
+      av.onHit = (weapon, dir) => this.report?.(id, "player", weapon, dir.x, dir.z);
+      this.targets.push(av);
+      this.avatars.set(id, av);
       this.voice.addPeer(id);
     };
     players.onAdd((_p, id) => add(id), true); // true — сработает и для уже вошедших
     players.onRemove((_p, id) => {
-      this.avatars.get(id)?.dispose();
+      const av = this.avatars.get(id);
+      if (av) this.dropAvatar(av);
       this.avatars.delete(id);
       this.voice.removePeer(id);
     });
+  }
+
+  /** Убрать аватар из целей и уничтожить. */
+  private dropAvatar(av: RemoteAvatar): void {
+    const i = this.targets.indexOf(av);
+    if (i >= 0) this.targets.splice(i, 1);
+    av.dispose();
   }
 
   private readonly beforeUnload = (): void => this.saveNow();
@@ -955,11 +989,12 @@ export class Game {
       this.net.onRtc = null;
       this.net.onAct = null;
       this.net.onVoice = null;
+      this.net.onPvp = null;
       this.net.onConnectionLost = null;
       this.net.onReconnected = null;
       this.net.disconnect(); // остановить попытки переподключения
     }
-    for (const a of this.avatars.values()) a.dispose();
+    for (const a of this.avatars.values()) this.dropAvatar(a);
     this.avatars.clear();
     this.net = null;
   }
@@ -1008,11 +1043,13 @@ export class Game {
 
     const self = net.self;
     if (self) this.syncSelf(dt, self);
+    const myPvp = self?.pvp === 1;
 
     const players = net.room.state.players;
     for (const [id, avatar] of this.avatars) {
       const p = players.get(id);
       if (p) avatar.push(now, p);
+      avatar.setMyPvp(myPvp);
       avatar.update(now);
     }
   }

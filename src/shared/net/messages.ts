@@ -38,6 +38,8 @@ export const MSG = {
   clearWorld: "cw",
   /** клиент -> сервер: сохранить настройки панели (per-token, применяются только у него). */
   loadout: "ld",
+  /** клиент <-> сервер: включить/выключить свой флаг PvP (этап 10). */
+  setPvp: "pvp",
   /** клиент -> сервер: заработанное оружие легло на землю — сделать его общим. */
   dropWeapon: "dw",
   /**
@@ -138,6 +140,16 @@ export interface ComfortMsg {
   teleport?: number;
 }
 
+/**
+ * PvP-флаг. Клиент шлёт `{ on }`. Сервер отвечает `{ on }` — фактическим
+ * значением после проверки; если снять флаг нельзя (недавно был бой),
+ * добавляет `wait` — сколько секунд ещё ждать.
+ */
+export interface SetPvpMsg {
+  on: number;
+  wait?: number;
+}
+
 /** 7 чисел: x, y, z, qx, qy, qz, qw. */
 export type Xf7 = [number, number, number, number, number, number, number];
 
@@ -186,7 +198,7 @@ export type CharMsg =
 
 export interface HitMobMsg {
   id: string;
-  target: "mob" | "dummy";
+  target: "mob" | "dummy" | "player";
   /** Чем ударил — урон и досягаемость сервер берёт из shared/combat. */
   weapon: WeaponKind;
   /** Какой рукой — по ней сервер берёт уровень оружия. */

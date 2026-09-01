@@ -11,8 +11,11 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
 import type { WeaponClass, WeaponTier } from "#shared/items";
+import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
+import { HealthBar3D } from "../ui/HealthBar3D";
+import type { Hittable } from "../combat/Hittable";
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -44,8 +47,9 @@ function colorFor(id: string): Color3 {
 /**
  * Чужой игрок. В VR — голова-куб + две кисти; в плоском — капсула + голова.
  * Транспорт сглаживается интерполяцией между снапшотами (4e).
+ * В PvP (этап 10) — цель для оружия: реализует `Hittable`.
  */
-export class RemoteAvatar {
+export class RemoteAvatar implements Hittable {
   private readonly root: TransformNode;
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
@@ -67,6 +71,19 @@ export class RemoteAvatar {
   private readonly _qa = new Quaternion();
   private readonly _qb = new Quaternion();
 
+  // --- PvP (этап 10) ---
+  private hp = 100;
+  private maxHp = 100;
+  private dead = false;
+  private theirPvp = false;
+  private myPvp = false;
+  private bar: HealthBar3D | null = null;
+  private now = 0;
+  private lastHitAt = -999;
+  /** Сообщить серверу о попадании по этому игроку. Ставит Game (только PvP). */
+  onHit: ((weapon: WeaponKind, dir: Vector3) => void) | null = null;
+  readonly id: string;
+
   constructor(
     private readonly scene: Scene,
     id: string,
@@ -74,6 +91,7 @@ export class RemoteAvatar {
     mode: PlayerMode,
     private readonly makeWeapon: MakeWeapon | null = null,
   ) {
+    this.id = id;
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
 
@@ -158,6 +176,10 @@ export class RemoteAvatar {
   push(now: number, p: PlayerState): void {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
+    this.hp = p.hp;
+    this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
+    this.dead = p.dead === 1;
+    this.theirPvp = p.pvp === 1;
     const last = this.buf[this.buf.length - 1];
     const head = snapXf(p.head);
     // Дедуп: сервер шлёт ~18 Гц, кадров больше — не копим одинаковое.
@@ -168,8 +190,49 @@ export class RemoteAvatar {
     while (this.buf.length > 2 && this.buf[0].t < now - BUFFER_MS) this.buf.shift();
   }
 
+  /** true — мы с этим игроком в PvP (у обоих флаг, он жив). */
+  private get pvpTarget(): boolean {
+    return this.myPvp && this.theirPvp && !this.dead;
+  }
+
+  /** Game каждый кадр: включён ли МОЙ флаг PvP. */
+  setMyPvp(on: boolean): void {
+    this.myPvp = on;
+  }
+
+  // ---- Hittable ----
+
+  get alive(): boolean {
+    return this.pvpTarget;
+  }
+
+  hitSegment(): { a: Vector3; b: Vector3; radius: number } {
+    const h = this.position; // root = голова
+    return {
+      a: new Vector3(h.x, h.y + 0.05, h.z),
+      b: new Vector3(h.x, h.y - 1.5, h.z),
+      radius: 0.34,
+    };
+  }
+
+  hit(_dir: Vector3, weapon: WeaponKind): boolean {
+    if (!this.pvpTarget) return false;
+    // За один взмах не шлём десяток заявок — сервер всё равно ограничит темпом.
+    if (this.now - this.lastHitAt < 320) return false;
+    this.lastHitAt = this.now;
+    this.onHit?.(weapon, _dir);
+    return true;
+  }
+
+  center(): Vector3 {
+    const h = this.position;
+    return new Vector3(h.x, h.y - 0.8, h.z);
+  }
+
   /** Каждый кадр: ставим позу на INTERP_DELAY мс назад между снапшотами. */
   update(now: number): void {
+    this.now = now;
+    this.syncBar();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
 
@@ -199,6 +262,17 @@ export class RemoteAvatar {
       this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
     }
     this.applyGear();
+  }
+
+  /** Полоска здоровья над головой — только пока мы с игроком в PvP. */
+  private syncBar(): void {
+    const show = this.pvpTarget;
+    if (show && !this.bar) {
+      this.bar = new HealthBar3D(this.scene, this.root, new Vector3(0, 0.5, 0), 0.5);
+    }
+    if (!this.bar) return;
+    this.bar.setVisible(show);
+    if (show) this.bar.set(this.maxHp > 0 ? Math.max(0, this.hp) / this.maxHp : 0);
   }
 
   /** Показываем оружие в руках союзника — по данным сервера (leftCls/…). */
@@ -273,6 +347,7 @@ export class RemoteAvatar {
     this.speakDot?.dispose();
     this.gearL?.dispose();
     this.gearR?.dispose();
+    this.bar?.dispose();
     this.nameTag.dispose();
     this.root.dispose(false, true);
   }

@@ -16,6 +16,7 @@ import {
   type HandsMsg,
   type SetTimeMsg,
   type ComfortMsg,
+  type SetPvpMsg,
   type DropWeaponMsg,
   type ActKind,
   type ActMsg,
@@ -57,6 +58,8 @@ export class NetClient {
   onAct: ((k: ActKind, x: number, y: number, z: number, id: string) => void) | null = null;
   /** Голос соседа через сервер (opus-пакет). */
   onVoice: ((id: string, t: number, d: number[]) => void) | null = null;
+  /** Ответ сервера на переключение PvP: фактическое значение (+ wait, если отказ). */
+  onPvp: ((on: number, wait?: number) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -125,6 +128,7 @@ export class NetClient {
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
     room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id));
     room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
+    room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
@@ -224,6 +228,16 @@ export class NetClient {
   /** Админ убирает весь лежащий лут со всего сервера. */
   sendClearWorld(): void {
     this.room?.send(MSG.clearWorld, {});
+  }
+
+  /** Включить/выключить свой флаг PvP. Итог придёт через onPvp. */
+  sendPvp(on: boolean): void {
+    this.room?.send(MSG.setPvp, { on: on ? 1 : 0 } satisfies SetPvpMsg);
+  }
+
+  /** Мой текущий флаг PvP (из состояния) — null офлайн. */
+  get pvpOn(): boolean {
+    return this.self?.pvp === 1;
   }
 
   /** Заработанное оружие легло на землю — пусть станет предметом мира. */
