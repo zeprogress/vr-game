@@ -27,10 +27,13 @@ const TREE_KINDS = [
   "CommonTree_4",
   "CommonTree_5",
 ];
-/** Нативная высота дерева ~6.7 ед. — приводим примерно к 4.7 м при scale 1. */
-const TREE_SCALE = 0.7;
-/** Трава-модель тяжелее процедурной — берём меньше пучков. */
-const GRASS_FACTOR = 0.5;
+/** Множитель к размеру дерева поверх scale из общего списка. */
+const TREE_SCALE = 1.15;
+/** Плотность травы относительно WORLD.grassCount. */
+const GRASS_FACTOR = 1.35;
+const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
+/** Расстановка камней: постоянное зерно, чтобы у всех был один пейзаж. */
+const ROCK_SEED = 40260902;
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
   const m = new StandardMaterial("treeLeaf", scene);
@@ -133,7 +136,7 @@ export async function loadGrass(
 
   const wind = new GrassWindPlugin(mat);
 
-  const R = WORLD.grassRadius;
+  const R = WORLD.grassRadius * 1.15;
   const count = Math.max(0, Math.round(WORLD.grassCount * density * GRASS_FACTOR));
   const matrices: Matrix[] = [];
   const phases: number[] = [];
@@ -144,12 +147,12 @@ export async function loadGrass(
     const z = Math.sin(ang) * r;
     if (Math.hypot(x, z) < 1.5) continue;
     const y = terrain.heightAt(x, z);
-    const s = 0.28 + Math.random() * 0.22; // модель ~1.3 ед. высотой -> ~0.4 м
+    const s = 0.4 + Math.random() * 0.32; // модель ~1.3 ед. -> трава ~0.5–0.9 м, повыше
     matrices.push(
       Matrix.Compose(
-        new Vector3(s, s * (0.85 + Math.random() * 0.5), s),
+        new Vector3(s, s * (0.95 + Math.random() * 0.6), s),
         Quaternion.RotationAxis(new Vector3(0, 1, 0), Math.random() * Math.PI * 2),
-        new Vector3(x, y, z),
+        new Vector3(x, y - 0.03, z),
       ),
     );
     phases.push((x * WIND.dirX + z * WIND.dirZ) * 0.55);
@@ -161,4 +164,73 @@ export async function loadGrass(
     wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
     wind.time += dt * WIND.speed * Math.max(wind.scale, 0.05);
   };
+}
+
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Камни из пака: по одному под каждой точкой стартового оружия + пара десятков
+ * разбросано по карте (постоянное зерно — пейзаж одинаков у всех). Декор,
+ * без коллизий.
+ */
+export async function loadRocks(
+  scene: Scene,
+  terrain: Terrain,
+  homes: Vector3[],
+): Promise<void> {
+  await import("@babylonjs/loaders/glTF/2.0");
+  const containers = await Promise.all(
+    ROCK_KINDS.map((k) => LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene)),
+  );
+  const mat = new StandardMaterial("rockMat", scene);
+  mat.diffuseColor = new Color3(0.5, 0.5, 0.53);
+  mat.emissiveColor = new Color3(0.09, 0.09, 0.1);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.maxSimultaneousLights = 3;
+
+  const place = (kind: number, x: number, z: number, s: number, r: () => number): void => {
+    const inst = containers[kind % containers.length].instantiateModelsToScene((n) => n, false);
+    const root = inst.rootNodes[0] as TransformNode | undefined;
+    if (!root) return;
+    root.position.set(x, terrain.heightAt(x, z) - s * 0.35, z); // чуть врос в землю
+    root.rotationQuaternion = Quaternion.RotationYawPitchRoll(
+      r() * Math.PI * 2,
+      (r() - 0.5) * 0.5,
+      (r() - 0.5) * 0.5,
+    );
+    root.scaling.setAll(s);
+    for (const m of root.getChildMeshes(false)) {
+      m.material = mat;
+      m.isPickable = false;
+      m.doNotSyncBoundingInfo = true;
+      m.alwaysSelectAsActiveMesh = true;
+      m.freezeWorldMatrix();
+    }
+    root.freezeWorldMatrix();
+  };
+
+  const r = rng(ROCK_SEED);
+
+  // Под оружием — модель ~2 ед. высотой, хотим верх ~0.7 м.
+  homes.forEach((h, i) => place(i, h.x, h.z, 0.35, r));
+
+  // Разброс по карте.
+  const reach = WORLD.size / 2 - 4;
+  for (let i = 0; i < 24; i++) {
+    const x = (r() - 0.5) * 2 * reach;
+    const z = (r() - 0.5) * 2 * reach;
+    if (Math.hypot(x, z) < 10) continue; // не на спавне
+    if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) continue; // не поверх оружия
+    const s = 0.22 + r() ** 2 * 0.7; // много мелких, редко валун
+    place(Math.floor(r() * 3), x, z, s, r);
+  }
+  mat.freeze();
 }

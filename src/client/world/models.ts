@@ -21,7 +21,6 @@ import "@babylonjs/loaders/glTF/2.0";
  */
 
 export const MODELS = {
-  pedestal: "/models/pedestal.glb",
   slime: "/models/Slime.glb",
 } as const;
 
