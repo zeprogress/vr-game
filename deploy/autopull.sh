@@ -2,9 +2,8 @@
 # Тянет новые коммиты из origin/main и передеплоивает, если HEAD изменился.
 # Запускается по таймеру (vrgame-autopull.timer). Тихий, если обновлять нечего.
 #
-# Сборка идёт в dist.new и подменяет dist только при успехе — упавшая сборка
-# больше НЕ оставляет прод с пустым dist (nginx 500). Тайпчек в деплое не
-# гоняем (он тяжёлый по памяти на 1 ГБ — делается локально перед коммитом).
+# Перед сборкой делаем бэкап dist; если сборка упала — откатываем dist и НЕ
+# трогаем сервер (прод остаётся на прошлой рабочей версии, а не в nginx 500).
 set -euo pipefail
 APPDIR=/opt/vrgame
 cd "$APPDIR"
@@ -16,15 +15,18 @@ REMOTE=$(sudo -u vrgame git rev-parse origin/main)
 
 echo "autopull: $LOCAL -> $REMOTE"
 sudo -u vrgame git merge --ff-only origin/main
-sudo -u vrgame npm ci --no-audit --no-fund
+sudo -u vrgame npm ci
 
-if sudo -u vrgame env NODE_OPTIONS=--max-old-space-size=768 npx vite build --outDir dist.new --emptyOutDir; then
-  sudo -u vrgame rm -rf dist
-  sudo -u vrgame mv dist.new dist
+sudo -u vrgame rm -rf dist.bak
+[ -d dist ] && sudo -u vrgame cp -r dist dist.bak
+
+if sudo -u vrgame npm run build; then
+  sudo -u vrgame rm -rf dist.bak
   systemctl restart vrgame
   echo "autopull: готово"
 else
-  sudo -u vrgame rm -rf dist.new
-  echo "autopull: СБОРКА УПАЛА — прод остался на старой версии, сервер не трогали"
+  echo "autopull: СБОРКА УПАЛА — откатываю dist, сервер не трогаю"
+  sudo -u vrgame rm -rf dist
+  [ -d dist.bak ] && sudo -u vrgame mv dist.bak dist
   exit 1
 fi
