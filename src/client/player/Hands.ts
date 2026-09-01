@@ -17,7 +17,9 @@ export type Side = "left" | "right";
 
 /** Опорная поза кулака: пальцы гнутся на этот угол (рад), сила регулируется
  *  множителем `LOADOUT.hands[side].curl` в blend'е. */
-const FIST_ARC = 3.0;
+const FIST_ARC = 2.5;
+/** Большой палец: поворот поперёк ладони (рад) и лёгкое опускание. */
+const THUMB_SWING = 1.3;
 
 interface Hand {
   side: Side;
@@ -120,13 +122,18 @@ export class Hands {
         sumY += rest[i + 1];
       }
       const hingeY = sumY / (rest.length / 3);
-      const knuckleZ = minZ + (maxZ - minZ) * 0.62;
+      const zSpan = Math.max(1e-4, maxZ - minZ);
+      const knuckleZ = minZ + zSpan * 0.62;
       const fingerLen = Math.max(1e-4, maxZ - knuckleZ);
       const kappa = FIST_ARC / fingerLen;
-      const spanX = Math.max(1e-4, maxX - minX);
 
-      // Поза кулака: пальцы (z > knuckleZ) гнём по дуге вниз-внутрь; большой
-      // палец / край ладони (низ по Z, край по X) поджимаем к центру.
+      // Большой палец сидит сбоку на уровне ладони (−X, середина по Z; пальцев
+      // там нет). Отсекаем именно его, ладонь/мизинец не трогаем.
+      const thumbXMax = minX + (maxX - minX) * 0.3;
+      const thumbZLo = minZ + zSpan * 0.28;
+      const thumbZHi = knuckleZ;
+      const thumbPivot = { x: thumbXMax, z: (thumbZLo + thumbZHi) / 2 };
+
       const fist = new Float32Array(rest.length);
       for (let i = 0; i < rest.length; i += 3) {
         const x = rest[i];
@@ -134,6 +141,7 @@ export class Hands {
         const z = rest[i + 2];
         const s = z - knuckleZ;
         if (s > 0) {
+          // Пальцы: изгиб по дуге вниз-внутрь.
           const a = kappa * s;
           const zc = knuckleZ + Math.sin(a) / kappa;
           const yc = hingeY - (1 - Math.cos(a)) / kappa;
@@ -141,16 +149,20 @@ export class Hands {
           fist[i] = x;
           fist[i + 1] = yc + dy * Math.cos(a);
           fist[i + 2] = zc + dy * Math.sin(a);
-          continue;
+        } else if (x < thumbXMax && z > thumbZLo && z < thumbZHi) {
+          // Большой палец: поворот поперёк ладони (вокруг Y) + вниз.
+          const w = Math.min(1, (thumbXMax - x) / (thumbXMax - minX));
+          const b = THUMB_SWING * w;
+          const dx = x - thumbPivot.x;
+          const dz = z - thumbPivot.z;
+          fist[i] = thumbPivot.x + dx * Math.cos(b) + dz * Math.sin(b);
+          fist[i + 1] = y - w * 0.1;
+          fist[i + 2] = thumbPivot.z - dx * Math.sin(b) + dz * Math.cos(b);
+        } else {
+          fist[i] = x;
+          fist[i + 1] = y;
+          fist[i + 2] = z;
         }
-        // Ладонь/большой палец: чем дальше от центра по X и чем ближе к
-        // костяшкам по Z, тем сильнее поджимаем к центру и вниз.
-        const zw = Math.max(0, (z - minZ) / (knuckleZ - minZ)); // 0 у запястья, 1 у костяшек
-        const xw = Math.min(1, (Math.abs(x) / (spanX * 0.5)) ** 1.5); // 0 в центре, 1 по краю
-        const w = zw * xw;
-        fist[i] = x * (1 - w * 0.85);
-        fist[i + 1] = y - w * 0.22;
-        fist[i + 2] = z + w * 0.12; // чуть вперёд — палец ложится на кулак
       }
 
       const restN = new Float32Array(rest.length);
