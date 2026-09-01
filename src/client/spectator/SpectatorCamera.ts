@@ -3,6 +3,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
 import { SPECTATE } from "#shared/constants";
+import { CINE_PATHS, ROTATION, samplePath } from "./cine";
 
 /** Кого показывает камера сейчас. */
 type Shot =
@@ -10,7 +11,8 @@ type Shot =
   | { kind: "orbitPlayer"; id: string }
   | { kind: "eyePlayer"; id: string }
   | { kind: "orbitBoss" }
-  | { kind: "eyeMob"; id: string };
+  | { kind: "eyeMob"; id: string }
+  | { kind: "path"; idx: number };
 
 export interface CtxPlayer {
   id: string;
@@ -63,7 +65,11 @@ export class SpectatorCamera {
   private shot: Shot = { kind: "overview" };
   private orbitClock = 0;
   private sinceSwitch = 999;
-  private cycleIdx = 0;
+  private rotIdx = 0; // позиция в ROTATION (спокойная ротация)
+  private fightIdx = 0; // позиция в ротации боя
+  private pickI = 0; // какого игрока/моба брать для *Player / eyeMob токенов
+  private readonly _pp: number[] = [0, 0, 0];
+  private readonly _pl: number[] = [0, 0, 0];
 
   private readonly fromPos = new Vector3();
   private readonly fromTgt = new Vector3();
@@ -98,6 +104,9 @@ export class SpectatorCamera {
   }
 
   get shotKind(): string {
+    if (this.shot.kind === "path") {
+      return `path «${CINE_PATHS[this.shot.idx]?.name ?? "?"}»`;
+    }
     return this.shot.kind;
   }
 
@@ -105,14 +114,17 @@ export class SpectatorCamera {
     this.orbitClock += dt;
     this.sinceSwitch += dt;
 
-    // Босс в бою — своя ротация вокруг схватки.
+    // Босс в бою — своя ротация вокруг схватки (пути на паузу).
     const fighting = ctx.boss?.aggro === true;
+    // Путь идёт до конца своей длительности; остальные кадры — holdTime.
+    const expired =
+      this.shot.kind === "path"
+        ? !this.shotValid(this.shot, ctx)
+        : !this.shotValid(this.shot, ctx) || this.sinceSwitch >= SPECTATE.holdTime;
     if (fighting && !this.isFightShot(this.shot)) {
-      this.switchTo({ kind: "orbitBoss" });
-    } else if (!this.shotValid(this.shot, ctx)) {
-      this.switchTo(this.nextShot(ctx, fighting));
-    } else if (this.sinceSwitch >= SPECTATE.holdTime) {
-      this.switchTo(this.nextShot(ctx, fighting));
+      this.switchTo({ kind: "orbitBoss" }, ctx);
+    } else if (expired) {
+      this.switchTo(this.nextShot(ctx, fighting), ctx);
     }
 
     // Обновляем фильтр позы для кадров «из глаз».
@@ -134,13 +146,13 @@ export class SpectatorCamera {
 
   // ---- режиссура ----
 
-  private switchTo(shot: Shot): void {
+  private switchTo(shot: Shot, ctx: DirectorCtx): void {
     this.fromPos.copyFrom(this.cam.position);
     this.fromTgt.copyFrom(this.curTgt);
     this.shot = shot;
     this.sinceSwitch = 0;
     // При входе в кадр «из глаз» снимаем задержку — прыгаем сразу к живой позе.
-    const live = this.liveEye(shot, null);
+    const live = this.liveEye(shot, ctx);
     if (live) {
       this.eyePos.copyFrom(live.eye);
       this.eyeFwd.copyFrom(live.forward);
@@ -152,23 +164,50 @@ export class SpectatorCamera {
   }
 
   private nextShot(ctx: DirectorCtx, fighting: boolean): Shot {
-    const list: Shot[] = [];
     if (fighting && ctx.boss) {
-      list.push({ kind: "orbitBoss" }, { kind: "eyeMob", id: ctx.boss.id });
-      const p = this.playerNearestBoss(ctx);
-      if (p) list.push({ kind: "eyePlayer", id: p.id });
-    } else {
-      list.push({ kind: "overview" });
-      for (const p of ctx.players) {
-        list.push({ kind: "orbitPlayer", id: p.id }, { kind: "eyePlayer", id: p.id });
-      }
-      if (ctx.boss) list.push({ kind: "orbitBoss" }, { kind: "eyeMob", id: ctx.boss.id });
-      // Один кадр «из глаз» случайного не-боссового моба.
-      const critter = ctx.mobs.find((m) => m.kind === "slime" || m.kind === "spitter");
-      if (critter) list.push({ kind: "eyeMob", id: critter.id });
+      // Ротация боя: орбита босса → из глаз босса → из глаз ближнего игрока.
+      const near = this.playerNearestBoss(ctx);
+      const fight: Shot[] = [
+        { kind: "orbitBoss" },
+        { kind: "eyeMob", id: ctx.boss.id },
+      ];
+      if (near) fight.push({ kind: "eyePlayer", id: near.id });
+      this.fightIdx = (this.fightIdx + 1) % fight.length;
+      return fight[this.fightIdx];
     }
-    this.cycleIdx = (this.cycleIdx + 1) % list.length;
-    return list[this.cycleIdx] ?? { kind: "overview" };
+    // Спокойная ротация: идём по ROTATION, пропуская невалидные токены.
+    for (let step = 1; step <= ROTATION.length; step++) {
+      const tok = ROTATION[(this.rotIdx + step) % ROTATION.length];
+      const shot = this.resolveToken(tok, ctx);
+      if (shot) {
+        this.rotIdx = (this.rotIdx + step) % ROTATION.length;
+        return shot;
+      }
+    }
+    return { kind: "overview" };
+  }
+
+  /** Токен ROTATION → конкретный кадр, либо null если сейчас невозможен. */
+  private resolveToken(tok: string, ctx: DirectorCtx): Shot | null {
+    if (tok === "overview") return { kind: "overview" };
+    if (tok === "orbitBoss") return ctx.boss ? { kind: "orbitBoss" } : null;
+    if (tok.startsWith("path:")) {
+      const idx = Number(tok.slice(5));
+      return idx >= 0 && idx < CINE_PATHS.length ? { kind: "path", idx } : null;
+    }
+    if (tok === "orbitPlayer" || tok === "eyePlayer") {
+      if (ctx.players.length === 0) return null;
+      this.pickI = (this.pickI + 1) % ctx.players.length;
+      const id = ctx.players[this.pickI].id;
+      return tok === "orbitPlayer" ? { kind: "orbitPlayer", id } : { kind: "eyePlayer", id };
+    }
+    if (tok === "eyeMob") {
+      const critters = ctx.mobs.filter((m) => m.kind === "slime" || m.kind === "spitter");
+      const list = critters.length ? critters : ctx.mobs;
+      if (list.length === 0) return null;
+      return { kind: "eyeMob", id: list[this.pickI % list.length].id };
+    }
+    return null;
   }
 
   private shotValid(s: Shot, ctx: DirectorCtx): boolean {
@@ -177,6 +216,9 @@ export class SpectatorCamera {
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
+    if (s.kind === "path") {
+      return s.idx < CINE_PATHS.length && this.sinceSwitch < CINE_PATHS[s.idx].duration;
+    }
     return true;
   }
 
@@ -231,6 +273,16 @@ export class SpectatorCamera {
             tgt,
           );
           tgt.y += 2;
+          return;
+        }
+        break;
+      }
+      case "path": {
+        const path = CINE_PATHS[s.idx];
+        if (path) {
+          samplePath(path, this.sinceSwitch / path.duration, this._pp, this._pl);
+          pos.set(this._pp[0], this._pp[1], this._pp[2]);
+          tgt.set(this._pl[0], this._pl[1], this._pl[2]);
           return;
         }
         break;
