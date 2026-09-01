@@ -4,7 +4,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS } from "#shared/constants";
+import { BOSS, MOB } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind } from "#shared/net/messages";
 import { buildZone, type ZoneQuality } from "../world/Zone";
@@ -13,7 +13,12 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { Sfx } from "../audio/Sfx";
 import type { NetClient } from "../net/NetClient";
-import { SpectatorCamera, type DirectorCtx } from "./SpectatorCamera";
+import {
+  SpectatorCamera,
+  type DirectorCtx,
+  type CtxPlayer,
+  type CtxMob,
+} from "./SpectatorCamera";
 
 const TOWN_MUSIC = "/music/town-dion.mp3";
 const BOSS_MUSIC = "/music/boss.mp3";
@@ -71,14 +76,15 @@ export class Spectator {
   private readonly status: HTMLDivElement;
   private readonly debug: HTMLDivElement | null;
 
-  private readonly _players: DirectorCtx["players"] = [];
+  private readonly _players: CtxPlayer[] = [];
+  private readonly _mobs: CtxMob[] = [];
 
   constructor(
     canvas: HTMLCanvasElement,
     quality: Quality,
     showDebug = false,
     /** Переопределения из URL для подгонки на боксе без пересборки. */
-    override: { rs?: number; fpsCap?: number; rw?: number; rh?: number } = {},
+    override: { rs?: number; fpsCap?: number; rw?: number; rh?: number; raw?: boolean } = {},
   ) {
     const preset = PRESETS[quality];
     this.fpsCap = override.fpsCap ?? preset.fpsCap;
@@ -117,7 +123,7 @@ export class Spectator {
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
 
-    this.cam = new SpectatorCamera(this.scene);
+    this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
     // Мобы и лут — переиспользуем менеджеры игры. Бой спектатору не нужен:
     // цели пустые, репорт попаданий — заглушка.
@@ -245,8 +251,9 @@ export class Spectator {
     // Зона (сутки, ветер, светлячки) — «позицию игрока» даём камеры.
     this.zoneTick(dt, this.cam.cam.position, this.net?.worldClock ?? null);
 
-    // Аватары игроков.
+    // Аватары игроков + мобы для режиссёра.
     this._players.length = 0;
+    this._mobs.length = 0;
     let boss: DirectorCtx["boss"] = null;
     if (room) {
       const st = room.state;
@@ -256,23 +263,44 @@ export class Spectator {
         av.push(now, p);
         av.setMyPvp(false);
         av.update(now);
-        this._players.push({ id, pos: av.position.clone(), nick: p.nick });
+        const head = av.position;
+        this._players.push({
+          id,
+          nick: p.nick,
+          pos: new Vector3(head.x, head.y - 0.5, head.z),
+          eye: head.clone(),
+          forward: av.eyeForward.clone(),
+        });
       });
 
-      // Живой босс + агрит ли он кого-то (тот же признак, что у музыки).
-      st.mobs.forEach((m) => {
-        if (m.kind !== "boss" || m.dead) return;
-        const pos = new Vector3(m.x, m.y, m.z);
-        let aggro = m.windup > 0 || m.charging === 1 || m.enraged === 1;
-        st.players.forEach((p) => {
-          if (Math.hypot(p.head.x - m.x, p.head.z - m.z) < BOSS.aggroRange) aggro = true;
+      st.mobs.forEach((m, id) => {
+        if (m.dead || m.kind === "shard") return;
+        const r = MOB.bodyRadius * (m.scale > 0 ? m.scale : 1);
+        const f = new Vector3(Math.sin(m.yaw), 0, Math.cos(m.yaw));
+        // «Глаза» моба: перед мордой, чуть выше центра.
+        this._mobs.push({
+          id,
+          kind: m.kind,
+          eye: new Vector3(m.x + f.x * r * 0.9, m.y + r * 1.1, m.z + f.z * r * 0.9),
+          forward: f,
         });
-        boss = { pos, aggro };
+        if (m.kind === "boss") {
+          let aggro = m.windup > 0 || m.charging === 1 || m.enraged === 1;
+          st.players.forEach((p) => {
+            if (Math.hypot(p.head.x - m.x, p.head.z - m.z) < BOSS.aggroRange) aggro = true;
+          });
+          boss = { id, pos: new Vector3(m.x, m.y, m.z), aggro };
+        }
       });
     }
 
     // Режиссёр.
-    this.cam.update(dt, { players: this._players, boss, groundY: this.groundHeight });
+    this.cam.update(dt, {
+      players: this._players,
+      mobs: this._mobs,
+      boss,
+      groundY: this.groundHeight,
+    });
 
     // Мобы, лут.
     const fwd = this.cam.cam.getForwardRay().direction;

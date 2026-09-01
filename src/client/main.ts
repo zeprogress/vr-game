@@ -25,6 +25,7 @@ if (specKey) {
       fpsCap: num("fpscap"),
       rw: num("rw"),
       rh: num("rh"),
+      raw: params.get("rawcam") === "1",
     });
     const net = new NetClient();
     (window as unknown as { spec: unknown; net: NetClient }).spec = spec;

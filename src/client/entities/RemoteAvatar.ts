@@ -19,6 +19,8 @@ import type { Hittable } from "../combat/Hittable";
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
+const FWD_Z = new Vector3(0, 0, 1);
+
 /** Рендерим на 100 мс в прошлом — между двумя пришедшими снапшотами. */
 const INTERP_DELAY = 100;
 /** Если свежий снапшот старше — держим позу (не экстраполируем). */
@@ -151,6 +153,13 @@ export class RemoteAvatar implements Hittable {
   /** Где сейчас голова — по ней голос звучит из нужного места. */
   get position(): Vector3 {
     return this.root.getAbsolutePosition();
+  }
+
+  private readonly _fwd = new Vector3();
+  /** Направление взгляда головы в мире — для камеры «из глаз» (этап 17 Ф3). */
+  get eyeForward(): Vector3 {
+    this.head.getDirectionToRef(FWD_Z, this._fwd);
+    return this._fwd;
   }
 
   /** Огонёк над головой, пока игрок говорит. */
