@@ -290,7 +290,7 @@ export class Spectator {
       const dpr = window.devicePixelRatio || 1;
       this.debug.textContent =
         `${this.renderRate.toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
-        ` · экран ${Math.round(innerWidth * dpr)}×${Math.round(innerHeight * dpr)} (dpr ${dpr.toFixed(2)})` +
+        ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
     }
   }
