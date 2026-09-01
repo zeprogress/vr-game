@@ -15,3 +15,6 @@ dist/
 
 # секреты стрима (этап 17) — только на VPS
 /deploy/stream.env
+
+# Сырые ассет-паки — из них берём точечные .glb в public/models/
+/art/kits/
