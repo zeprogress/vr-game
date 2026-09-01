@@ -285,9 +285,7 @@ export class Mob implements Hittable {
     this.squash = holder;
     this.baseModelScale = base;
 
-    // Клипов покоя/ходьбы у модели нет — используем «Hop» как непрерывное
-    // покачивание слизня.
-    if (!this.dead) this.playAnim(rig.anims.get("hop"), true);
+    // «Hop» проигрываем только в прыжке (см. applyState), в покое — статика.
   }
 
   private baseModelScale = 1;
@@ -417,7 +415,7 @@ export class Mob implements Hittable {
       this.clearWounds();
       this.bar.setVisible(false);
       this.barTimer = 0;
-      if (this.rig) this.playAnim(this.rig.anims.get("hop"), true);
+      this.stopAnim();
     }
 
     if (this.dead) {
@@ -456,10 +454,11 @@ export class Mob implements Hittable {
       this.setSquash(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
     }
 
-    // У модели только «Hop» — крутим её всегда как покачивание; если что-то
-    // сбило анимацию (после смерти/возрождения), вернём.
-    if (this.rig && this.curAnim !== this.rig.anims.get("hop")) {
-      this.playAnim(this.rig.anims.get("hop"), true);
+    // «Hop» — только пока моб в воздухе (серверный признак grounded); на земле
+    // модель статична (желейное сжатие даёт setSquash по вертикальной скорости).
+    if (this.rig && !this.dead) {
+      if (s.grounded === 0) this.playAnim(this.rig.anims.get("hop"), true);
+      else this.stopAnim();
     }
 
     // Слэм: ++slamSeq -> ударная волна по земле + грохот.
@@ -524,6 +523,14 @@ export class Mob implements Hittable {
     this.curAnim?.stop();
     g.start(loop, 1, g.from, g.to, false);
     this.curAnim = g;
+  }
+
+  /** Остановить анимацию и вернуть модель в исходную позу. */
+  private stopAnim(): void {
+    if (!this.curAnim) return;
+    this.curAnim.stop();
+    this.curAnim.reset();
+    this.curAnim = null;
   }
 
   private addWound(dirX: number, dirZ: number): void {
