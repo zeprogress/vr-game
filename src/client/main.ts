@@ -23,6 +23,8 @@ if (specKey) {
     const spec = new Spectator(canvas, quality, debug, {
       rs: num("rs"),
       fpsCap: num("fpscap"),
+      rw: num("rw"),
+      rh: num("rh"),
     });
     const net = new NetClient();
     (window as unknown as { spec: unknown; net: NetClient }).spec = spec;

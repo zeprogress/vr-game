@@ -61,6 +61,7 @@ export class Spectator {
   private bossMusicOn = false;
   private lastFrame = 0;
   private readonly fpsCap: number;
+  private readonly fixedSize: { w: number; h: number } | null;
   private readonly status: HTMLDivElement;
   private readonly debug: HTMLDivElement | null;
 
@@ -71,13 +72,22 @@ export class Spectator {
     quality: Quality,
     showDebug = false,
     /** Переопределения из URL для подгонки на боксе без пересборки. */
-    override: { rs?: number; fpsCap?: number } = {},
+    override: { rs?: number; fpsCap?: number; rw?: number; rh?: number } = {},
   ) {
     const preset = PRESETS[quality];
     this.fpsCap = override.fpsCap ?? preset.fpsCap;
 
+    // Фиксированный размер рендера (?rw=1280&rh=720): браузер/Fully Kiosk не
+    // будет менять его сам при изменении вьюпорта. Canvas тянется по CSS.
+    this.fixedSize = override.rw && override.rh ? { w: override.rw, h: override.rh } : null;
+    if (this.fixedSize) {
+      canvas.width = this.fixedSize.w;
+      canvas.height = this.fixedSize.h;
+    }
+
     this.engine = new Engine(canvas, true, { stencil: false, antialias: false });
-    this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
+    if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
+    else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.skipPointerMovePicking = true;
@@ -132,7 +142,11 @@ export class Spectator {
       if (++tries > 40) clearInterval(t); // ~20 с
     }, 500);
 
-    window.addEventListener("resize", () => this.engine.resize());
+    window.addEventListener("resize", () => {
+      // Фиксированный размер держим жёстко, иначе Fully Kiosk его двигает.
+      if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
+      else this.engine.resize();
+    });
 
     this.scene.onBeforeRenderObservable.add(() => this.tick());
   }
