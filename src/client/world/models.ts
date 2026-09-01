@@ -45,7 +45,18 @@ function containerFor(scene: Scene, path: string): Promise<AssetContainer> {
 export interface PlaceOpts {
   position?: Vector3;
   rotationY?: number;
+  /** Явный масштаб. Игнорируется, если задан `fitHeight`. */
   scale?: number;
+  /**
+   * Подогнать модель под эту высоту (в метрах) равномерным масштабом.
+   * CC0-паки приходят в произвольных единицах — так нормализуем не глядя.
+   */
+  fitHeight?: number;
+  /**
+   * Куда попадёт `position`: `"bottom"` (по умолчанию) — низ модели встаёт на
+   * точку; `"center"` — центр габаритов; `"pivot"` — как в файле, без сдвига.
+   */
+  anchor?: "bottom" | "center" | "pivot";
   /** Принудительный цвет (иначе берём из материала пака и квантуем). */
   tint?: Color3;
   /** Заморозить трансформы и материалы (статичный проп). По умолчанию да. */
@@ -63,9 +74,24 @@ export async function placeModel(
   const root = inst.rootNodes[0] as TransformNode | undefined;
   if (!root) return null;
 
-  if (opts.position) root.position.copyFrom(opts.position);
   if (opts.rotationY !== undefined) root.rotation.y = opts.rotationY;
-  if (opts.scale !== undefined) root.scaling.setAll(opts.scale);
+
+  // Масштаб: либо явный, либо подгонка под высоту по габаритам иерархии.
+  // Габариты меряем при scale=1; матрицы всех узлов должны быть свежими.
+  root.scaling.setAll(1);
+  root.position.setAll(0);
+  for (const n of root.getDescendants(false)) n.computeWorldMatrix(true);
+  root.computeWorldMatrix(true);
+  const bb = root.getHierarchyBoundingVectors(true);
+  const rawH = Math.max(1e-4, bb.max.y - bb.min.y);
+  const s = opts.fitHeight ? opts.fitHeight / rawH : (opts.scale ?? 1);
+  root.scaling.setAll(s);
+
+  // Якорь: по умолчанию низ модели встаёт на точку position.
+  const pos = opts.position ? opts.position.clone() : new Vector3(0, 0, 0);
+  if (opts.anchor === "center") pos.y -= ((bb.min.y + bb.max.y) / 2) * s;
+  else if (opts.anchor !== "pivot") pos.y -= bb.min.y * s;
+  root.position.copyFrom(pos);
 
   recolorFlat(root, opts.tint);
 

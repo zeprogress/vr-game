@@ -1,10 +1,10 @@
 /**
  * Генератор тест-модели для пайплайна ассетов (этап 12).
  *
- * Пишет `public/models/pedestal.glb` — ступенчатый постамент из трёх блоков
- * с НАМЕРЕННО «чужим» материалом (глянцевый серый металл-рафнесс), чтобы
- * было видно, что перекраска в нашу плоскую палитру (loadModel → recolor)
- * реально срабатывает.
+ * Пишет `public/models/pedestal.glb` — ступенчатый постамент, СПЕЧЁННЫЙ в один
+ * меш (как приходят реальные пропы), с НАМЕРЕННО «чужим» материалом (глянцевый
+ * серый металл-рафнесс), чтобы было видно, что перекраска в нашу плоскую
+ * палитру реально срабатывает.
  *
  * Никаких зависимостей: собираем бинарный .glb вручную. Запуск:
  *   node scripts/gen-test-model.mjs
@@ -15,8 +15,8 @@ import { dirname, join } from "node:path";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "models", "pedestal.glb");
 
-// --- геометрия единичного куба (центр в 0, сторона 1), 24 вершины, плоские нормали ---
-const F = [
+// грани единичного куба: нормаль + 4 угла (CCW снаружи)
+const FACES = [
   { n: [0, 0, 1], v: [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]] },
   { n: [0, 0, -1], v: [[0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5]] },
   { n: [1, 0, 0], v: [[0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]] },
@@ -25,29 +25,38 @@ const F = [
   { n: [0, -1, 0], v: [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]] },
 ];
 
+// три яруса: [центр Y, размеры XZ, высота]
+const TIERS = [
+  { cy: 0.15, w: 1.6, h: 0.3 },
+  { cy: 0.75, w: 1.1, h: 0.9 },
+  { cy: 1.28, w: 1.35, h: 0.16 },
+];
+
 const pos = [];
 const nrm = [];
 const idx = [];
-for (const face of F) {
-  const base = pos.length / 3;
-  for (const p of face.v) {
-    pos.push(...p);
-    nrm.push(...face.n);
+for (const tier of TIERS) {
+  for (const f of FACES) {
+    const base = pos.length / 3;
+    for (const [x, y, z] of f.v) {
+      pos.push(x * tier.w, tier.cy + y * tier.h, z * tier.w);
+      nrm.push(...f.n);
+    }
+    idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
-  idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
-const min = (a, s) => [0, 1, 2].map((i) => Math.min(...a.filter((_, k) => k % 3 === i)) * s);
-const max = (a, s) => [0, 1, 2].map((i) => Math.max(...a.filter((_, k) => k % 3 === i)) * s);
+const axisMinMax = (arr, i) => {
+  let mn = Infinity;
+  let mx = -Infinity;
+  for (let k = i; k < arr.length; k += 3) {
+    if (arr[k] < mn) mn = arr[k];
+    if (arr[k] > mx) mx = arr[k];
+  }
+  return [mn, mx];
+};
+const mm = [0, 1, 2].map((i) => axisMinMax(pos, i));
 
-// --- три яруса: широкое основание → тело → тонкая плита-крышка ---
-const TIERS = [
-  { t: [0, 0.15, 0], s: [1.6, 0.3, 1.6] },
-  { t: [0, 0.75, 0], s: [1.1, 0.9, 1.1] },
-  { t: [0, 1.28, 0], s: [1.35, 0.16, 1.35] },
-];
-
-// --- бинарный буфер: [positions f32][normals f32][indices u16 + pad] ---
 const posBuf = Buffer.from(new Float32Array(pos).buffer);
 const nrmBuf = Buffer.from(new Float32Array(nrm).buffer);
 let idxBuf = Buffer.from(new Uint16Array(idx).buffer);
@@ -57,18 +66,10 @@ const bin = Buffer.concat([posBuf, nrmBuf, idxBuf]);
 const gltf = {
   asset: { version: "2.0", generator: "zepgame gen-test-model" },
   scene: 0,
-  scenes: [{ nodes: TIERS.map((_, i) => i) }],
-  nodes: TIERS.map((tier, i) => ({
-    name: `pedestal_tier_${i}`,
-    mesh: 0,
-    translation: tier.t,
-    scale: tier.s,
-  })),
+  scenes: [{ nodes: [0] }],
+  nodes: [{ name: "pedestal", mesh: 0 }],
   meshes: [
-    {
-      name: "block",
-      primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2, material: 0 }],
-    },
+    { name: "pedestal", primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2, material: 0 }] },
   ],
   materials: [
     {
@@ -87,29 +88,28 @@ const gltf = {
     { buffer: 0, byteOffset: posBuf.length + nrmBuf.length, byteLength: idxBuf.length, target: 34963 },
   ],
   accessors: [
-    { bufferView: 0, componentType: 5126, count: pos.length / 3, type: "VEC3", min: min(pos, 1), max: max(pos, 1) },
+    { bufferView: 0, componentType: 5126, count: pos.length / 3, type: "VEC3", min: mm.map((a) => a[0]), max: mm.map((a) => a[1]) },
     { bufferView: 1, componentType: 5126, count: nrm.length / 3, type: "VEC3" },
     { bufferView: 2, componentType: 5123, count: idx.length, type: "SCALAR" },
   ],
 };
 
-// --- упаковка в .glb (12-байт заголовок + JSON-chunk + BIN-chunk) ---
 const pad = (b, fill) => (b.length % 4 === 0 ? b : Buffer.concat([b, Buffer.alloc(4 - (b.length % 4), fill)]));
 const jsonChunk = pad(Buffer.from(JSON.stringify(gltf), "utf8"), 0x20);
 const binChunk = pad(bin, 0x00);
 
 const header = Buffer.alloc(12);
-header.writeUInt32LE(0x46546c67, 0); // "glTF"
+header.writeUInt32LE(0x46546c67, 0);
 header.writeUInt32LE(2, 4);
 header.writeUInt32LE(12 + 8 + jsonChunk.length + 8 + binChunk.length, 8);
 
 const jsonHead = Buffer.alloc(8);
 jsonHead.writeUInt32LE(jsonChunk.length, 0);
-jsonHead.writeUInt32LE(0x4e4f534a, 4); // "JSON"
+jsonHead.writeUInt32LE(0x4e4f534a, 4);
 
 const binHead = Buffer.alloc(8);
 binHead.writeUInt32LE(binChunk.length, 0);
-binHead.writeUInt32LE(0x004e4942, 4); // "BIN\0"
+binHead.writeUInt32LE(0x004e4942, 4);
 
 writeFileSync(OUT, Buffer.concat([header, jsonHead, jsonChunk, binHead, binChunk]));
-console.log(`wrote ${OUT} (${(12 + 8 + jsonChunk.length + 8 + binChunk.length)} bytes)`);
+console.log(`wrote ${OUT} (${12 + 8 + jsonChunk.length + 8 + binChunk.length} bytes, ${pos.length / 3} verts)`);

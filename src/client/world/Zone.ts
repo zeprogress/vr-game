@@ -107,7 +107,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     for (const home of [swordHome, bowHome, shieldHome]) {
       void placeModel(scene, "pedestal", {
         position: new Vector3(home.x, terrain.heightAt(home.x, home.z), home.z),
-        scale: 0.82,
+        fitHeight: 1.05,
+        anchor: "bottom",
       });
     }
   });
