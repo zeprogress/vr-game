@@ -23,11 +23,11 @@ import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
 /** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
- *  моба. Подбор: `?myaw=<рад>`. (π/2 − 45° = поворот против часовой на 45°.) */
+ *  моба. Подбор: `?myaw=<рад>`. (0 = −90° от исходного π/2.) */
 const MODEL_YAW = (() => {
   const p = new URLSearchParams(location.search);
   const v = Number(p.get("myaw"));
-  return p.has("myaw") && Number.isFinite(v) ? v : Math.PI / 4;
+  return p.has("myaw") && Number.isFinite(v) ? v : 0;
 })();
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
