@@ -10,6 +10,8 @@ WorkingDirectory=__APPDIR__
 ExecStart=__APPDIR__/node_modules/.bin/tsx src/server/index.ts
 Environment=NODE_ENV=production
 Environment=GAME_SERVER_PORT=2567
+# Секреты стрима (этап 17): SPECTATOR_KEY и пр. Файл не в git, `-` — не обязателен.
+EnvironmentFile=-__APPDIR__/deploy/stream.env
 Restart=on-failure
 RestartSec=3
 
