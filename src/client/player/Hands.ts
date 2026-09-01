@@ -1,45 +1,69 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import type { Node } from "@babylonjs/core/node";
 import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { Observer } from "@babylonjs/core/Misc/observable";
 import type { WebXRInputSource } from "@babylonjs/core/XR/webXRInputSource";
-import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { LOADOUT } from "../config/loadout";
 
 export type Side = "left" | "right";
 
+/** Тонкая настройка посадки модели кисти. `game.hands.tune({scale:0.14})`. */
+const FIT = {
+  scale: Number(new URLSearchParams(location.search).get("hscale")) || 0.135,
+  /** Базовый доворот модели (пальцы модели по +Z, наши — по −Z). */
+  yaw: Math.PI,
+  /** Насколько сгибать кончики пальцев в кулаке, рад. */
+  curlMax: 2.2,
+};
+
 interface Hand {
   side: Side;
   root: TransformNode;
-  knuckles: TransformNode[];
-  thumb: TransformNode;
+  mesh: Mesh | null;
   controller: WebXRInputSource;
   curl: number;
+  scratch: Float32Array | null;
+  scratchN: Float32Array | null;
+}
+
+interface Glove {
+  template: Mesh;
+  rest: Float32Array;
+  fist: Float32Array;
+  restN: Float32Array;
+  fistN: Float32Array;
 }
 
 /**
- * Кисти на контроллерах: ладонь + пальцы, сжимаются в кулак по кнопке grip.
+ * Кисти на контроллерах: модель-перчатка (`public/models/Hand.glb`), сжимается
+ * в кулак по grip. Скелета у модели нет — «кулак» считаем один раз изгибом
+ * вершин пальцев по дуге, дальше каждый кадр линейно мешаем rest↔fist по
+ * аналоговому значению grip.
  *
- * Ориентация кистей берётся из `src/config/loadout.ts` (`LOADOUT.hands`) и
- * читается каждый кадр — правки в файле применяются на лету.
- * Из консоли можно подкрутить временно: `game.hands.turn("left", "y")`.
+ * Ориентация кистей — `LOADOUT.hands` (правится на лету, пишется в файл).
+ * Из консоли: `game.hands.turn("left","y")`, `game.hands.tune({scale:0.14})`.
  */
 export class Hands {
   private readonly hands: Hand[] = [];
   private addObs: Observer<WebXRInputSource> | null = null;
   private removeObs: Observer<WebXRInputSource> | null = null;
   private readonly skin: StandardMaterial;
+  private glove: Glove | null = null;
 
   constructor(private readonly scene: Scene) {
     this.skin = new StandardMaterial("handSkin", scene);
-    this.skin.diffuseColor = new Color3(0.82, 0.62, 0.5);
-    this.skin.emissiveColor = new Color3(0.18, 0.12, 0.1);
-    this.skin.specularColor = new Color3(0.12, 0.1, 0.1);
+    this.skin.diffuseColor = new Color3(0.34, 0.22, 0.14); // кожаная перчатка
+    this.skin.emissiveColor = new Color3(0.06, 0.04, 0.03);
+    this.skin.specularColor = new Color3(0.05, 0.05, 0.05);
+    void this.loadGlove();
   }
 
   // ---- подкрутка из консоли (пишет в живой LOADOUT) ----
@@ -54,18 +78,96 @@ export class Hands {
     this.set(side, r[0] + dx, r[1] + dy, r[2] + dz);
   }
 
-  /** Повернуть на 90° по оси: "x" | "y" | "z". */
   turn(side: Side, axis: "x" | "y" | "z", quarters = 1): void {
     const d = (Math.PI / 2) * quarters;
     this.rotate(side, axis === "x" ? d : 0, axis === "y" ? d : 0, axis === "z" ? d : 0);
   }
 
-  /** Печатает значения в виде, готовом для вставки в loadout.ts. */
+  tune(patch: Partial<typeof FIT>): void {
+    Object.assign(FIT, patch);
+    for (const h of this.hands) this.placeMesh(h);
+    console.log("hand FIT:", JSON.stringify(FIT));
+  }
+
   print(): void {
     const f = (a: [number, number, number]) => a.map((v) => v.toFixed(3)).join(", ");
     console.log(
       `hands: {\n  left: [${f(LOADOUT.hands.left)}],\n  right: [${f(LOADOUT.hands.right)}],\n}`,
     );
+  }
+
+  // ---- загрузка модели + расчёт позы кулака ----
+
+  private async loadGlove(): Promise<void> {
+    try {
+      await import("@babylonjs/loaders/glTF/2.0"); // регистрирует glTF-загрузчик
+      const container = await LoadAssetContainerAsync("/models/Hand.glb", this.scene);
+      const inst = container.instantiateModelsToScene((n) => n, false);
+      const root = inst.rootNodes[0] as Node | undefined;
+      const mesh = root
+        ? (root.getChildMeshes(false).find((m) => m.getTotalVertices() > 0) as Mesh | undefined)
+        : undefined;
+      container.removeAllFromScene?.();
+      if (!mesh) return;
+
+      // Спекаем всю иерархию трансформа (FBX −90°X + масштаб 100 + флип glTF)
+      // в вершины: дальше работаем с чистой геометрией.
+      mesh.setParent(null);
+      mesh.bakeCurrentTransformIntoVertices();
+      mesh.setEnabled(false);
+      mesh.isPickable = false;
+
+      const rest = new Float32Array(
+        mesh.getVerticesData(VertexBuffer.PositionKind) as ArrayLike<number>,
+      );
+      const indices = mesh.getIndices() as number[];
+
+      // Ось пальцев — Z: −Z запястье, +Z кончики. Y — толщина кисти.
+      let minZ = Infinity;
+      let maxZ = -Infinity;
+      let sumY = 0;
+      for (let i = 0; i < rest.length; i += 3) {
+        minZ = Math.min(minZ, rest[i + 2]);
+        maxZ = Math.max(maxZ, rest[i + 2]);
+        sumY += rest[i + 1];
+      }
+      const hingeY = sumY / (rest.length / 3);
+      const knuckleZ = minZ + (maxZ - minZ) * 0.62;
+      const fingerLen = Math.max(1e-4, maxZ - knuckleZ);
+      const kappa = FIT.curlMax / fingerLen;
+
+      // Поза кулака: «пальцевые» вершины (z > knuckleZ) гнём по дуге вниз-внутрь.
+      const fist = new Float32Array(rest.length);
+      for (let i = 0; i < rest.length; i += 3) {
+        const x = rest[i];
+        const y = rest[i + 1];
+        const z = rest[i + 2];
+        const s = z - knuckleZ;
+        if (s <= 0) {
+          fist[i] = x;
+          fist[i + 1] = y;
+          fist[i + 2] = z;
+          continue;
+        }
+        const a = kappa * s; // угол дуги в этой точке
+        const zc = knuckleZ + Math.sin(a) / kappa;
+        const yc = hingeY - (1 - Math.cos(a)) / kappa;
+        const dy = y - hingeY;
+        fist[i] = x;
+        fist[i + 1] = yc + dy * Math.cos(a);
+        fist[i + 2] = zc + dy * Math.sin(a);
+      }
+
+      const restN = new Float32Array(rest.length);
+      const fistN = new Float32Array(rest.length);
+      VertexData.ComputeNormals(rest, indices, restN);
+      VertexData.ComputeNormals(fist, indices, fistN);
+
+      this.glove = { template: mesh, rest, fist, restN, fistN };
+      for (const h of this.hands) this.buildMesh(h);
+    } catch {
+      /* нет модели — руки не появятся, игра работает */
+    }
   }
 
   // ---- жизненный цикл ----
@@ -83,22 +185,32 @@ export class Hands {
     this.hands.length = 0;
   }
 
-  /**
-   * Каждый кадр: ориентация кисти из LOADOUT (правки применяются на лету)
-   * и сжатие пальцев по аналоговому значению grip.
-   */
+  /** Каждый кадр: ориентация кисти из LOADOUT + сжатие пальцев по grip. */
   update(dt: number): void {
+    const g = this.glove;
     for (const h of this.hands) {
       const r = LOADOUT.hands[h.side];
       h.root.rotation.set(r[0], r[1], r[2]);
 
+      if (!g || !h.mesh || !h.scratch || !h.scratchN) continue;
       const btn = h.controller.inputSource.gamepad?.buttons[1];
       const target = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
       const c = h.curl;
-      for (const k of h.knuckles) k.rotation.x = -c * 1.6;
-      h.thumb.rotation.y = (h.side === "right" ? 1 : -1) * c * 1.1;
-      h.thumb.rotation.x = -c * 0.5;
+
+      if (c < 0.002) {
+        h.mesh.updateVerticesData(VertexBuffer.PositionKind, g.rest, false, false);
+        h.mesh.updateVerticesData(VertexBuffer.NormalKind, g.restN, false, false);
+        continue;
+      }
+      const p = h.scratch;
+      const n = h.scratchN;
+      for (let i = 0; i < g.rest.length; i++) {
+        p[i] = g.rest[i] + (g.fist[i] - g.rest[i]) * c;
+        n[i] = g.restN[i] + (g.fistN[i] - g.restN[i]) * c;
+      }
+      h.mesh.updateVerticesData(VertexBuffer.PositionKind, p, false, false);
+      h.mesh.updateVerticesData(VertexBuffer.NormalKind, n, false, false);
     }
   }
 
@@ -112,7 +224,23 @@ export class Hands {
     if (!anchor) return;
     const side: Side = c.inputSource.handedness === "left" ? "left" : "right";
     if (this.hands.some((h) => h.side === side)) return;
-    this.hands.push(this.buildHand(side, anchor, c));
+
+    const root = new TransformNode(`hand_${side}`, this.scene);
+    root.parent = anchor;
+    const r = LOADOUT.hands[side];
+    root.rotation.set(r[0], r[1], r[2]);
+
+    const hand: Hand = {
+      side,
+      root,
+      mesh: null,
+      controller: c,
+      curl: 0,
+      scratch: null,
+      scratchN: null,
+    };
+    this.hands.push(hand);
+    if (this.glove) this.buildMesh(hand);
   }
 
   private onRemove(c: WebXRInputSource): void {
@@ -124,55 +252,26 @@ export class Hands {
     }
   }
 
-  private buildHand(side: Side, anchor: Node, controller: WebXRInputSource): Hand {
-    const mirror = side === "left" ? -1 : 1;
+  private buildMesh(hand: Hand): void {
+    const g = this.glove;
+    if (!g || hand.mesh) return;
+    const mesh = g.template.clone(`hand_${hand.side}_mesh`, hand.root);
+    mesh.makeGeometryUnique(); // свой буфер вершин — деформируем независимо
+    mesh.setEnabled(true);
+    mesh.material = this.skin;
+    mesh.isPickable = false;
+    mesh.alwaysSelectAsActiveMesh = true;
+    hand.mesh = mesh;
+    hand.scratch = new Float32Array(g.rest.length);
+    hand.scratchN = new Float32Array(g.rest.length);
+    this.placeMesh(hand);
+  }
 
-    const root = new TransformNode(`hand_${side}`, this.scene);
-    root.parent = anchor;
-    const r = LOADOUT.hands[side];
-    root.rotation.set(r[0], r[1], r[2]);
-
-    const palm = MeshBuilder.CreateBox(
-      `palm_${side}`,
-      { width: 0.085, height: 0.032, depth: 0.095 },
-      this.scene,
-    );
-    palm.material = this.skin;
-    palm.parent = root;
-    palm.isPickable = false;
-
-    const knuckles: TransformNode[] = [];
-    const spread = [-0.03, -0.01, 0.012, 0.033];
-    for (let i = 0; i < 4; i++) {
-      const k = new TransformNode(`knuckle_${side}_${i}`, this.scene);
-      k.parent = palm;
-      k.position.set(spread[i], 0, -0.05);
-      const len = 0.055 - i * 0.004;
-      const finger = MeshBuilder.CreateBox(
-        `finger_${side}_${i}`,
-        { width: 0.016, height: 0.016, depth: len },
-        this.scene,
-      );
-      finger.material = this.skin;
-      finger.parent = k;
-      finger.position.z = -len / 2;
-      finger.isPickable = false;
-      knuckles.push(k);
-    }
-
-    const thumb = new TransformNode(`thumbK_${side}`, this.scene);
-    thumb.parent = palm;
-    thumb.position.set(0.045 * mirror, 0, 0.015);
-    const thumbMesh = MeshBuilder.CreateBox(
-      `thumb_${side}`,
-      { width: 0.018, height: 0.018, depth: 0.045 },
-      this.scene,
-    );
-    thumbMesh.material = this.skin;
-    thumbMesh.parent = thumb;
-    thumbMesh.position.set(0.01 * mirror, 0, -0.022);
-    thumbMesh.isPickable = false;
-
-    return { side, root, knuckles, thumb, controller, curl: 0 };
+  private placeMesh(hand: Hand): void {
+    if (!hand.mesh) return;
+    // Левая кисть — зеркало по X (Babylon сам инвертирует отсечение граней).
+    hand.mesh.scaling.set(hand.side === "left" ? -FIT.scale : FIT.scale, FIT.scale, FIT.scale);
+    hand.mesh.rotation.set(0, FIT.yaw, 0);
+    hand.mesh.position.set(0, 0, 0);
   }
 }
