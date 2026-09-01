@@ -32,7 +32,7 @@ const PRESETS: Record<Quality, Preset> = {
   // Совсем слабый GPU (Mali-G31): без травы, светлячков, облаков; 2 света;
   // мобы облегчённые (без плашек, полосок, глаз).
   potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, simpleSky: true, leanMobs: true, fpsCap: 30 },
-  low: { scaling: 1.5, grass: 0, fireflies: 0, minLights: true, simpleSky: true, leanMobs: true, fpsCap: 40 },
+  low: { scaling: 1.5, grass: 0, fireflies: 0, minLights: true, simpleSky: true, leanMobs: true, fpsCap: 30 },
   med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, leanMobs: false, fpsCap: 0 },
   high: { scaling: 1.0, grass: 1, fireflies: 1, leanMobs: false, fpsCap: 0 },
 };
