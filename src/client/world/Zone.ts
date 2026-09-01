@@ -142,10 +142,12 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
       // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,
       // и рассвет шёл заметными ступенями.
-      // simpleSky — перерисовку градиента делаем редко (раз в игровые ~15 мин):
-      // заливка canvas-текстуры на слабом GPU заметна.
+      // simpleSky — перерисовка градиента (заливка 4×128 canvas) на слабом GPU
+      // тоже стоит времени, но большой шаг давал ступени на рассвете/закате.
+      // В сумерках (небо быстро меняет цвет) красим часто, днём и ночью — редко.
       const moved = Math.abs(hour - paintedAt);
-      const step = quality.simpleSky ? 0.25 : 0.004;
+      const twilight = day.daylight > 0.03 && day.daylight < 0.97;
+      const step = quality.simpleSky ? (twilight ? 0.03 : 0.4) : 0.004;
       if (moved > step || moved > 23) {
         paintedAt = hour;
         sky.repaint(day);
