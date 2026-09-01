@@ -115,7 +115,11 @@ export class Dashboard {
   private send(cmd: SpecCmd): void {
     this.net.sendSpecCmd(cmd);
     // Локальный отклик кнопок — чтобы было видно нажатие.
-    if (cmd.t === "cam") this.nowEl.textContent = `→ ${cmd.shot}`;
+    if (cmd.t === "cam") {
+      this.nowEl.textContent = `→ ${cmd.shot}`;
+      // Ручной выбор кадра = авто-режиссёр выключен (спектатор делает так же).
+      if (cmd.shot !== "auto" && this.auto) this.setAutoUi(false);
+    }
   }
 
   // ---- живой список ----
