@@ -31,7 +31,17 @@ const TREE_KINDS = [
 /** Множитель к размеру дерева поверх scale из общего списка. */
 const TREE_SCALE = 1.15;
 /** Плотность травы относительно WORLD.grassCount. */
-const GRASS_FACTOR = 1.35;
+const GRASS_FACTOR = 1.8;
+
+/** Радиус пятна с «рваным» краем: несколько синусоид по углу. */
+function lumpyRadius(angle: number, base: number, seed: number): number {
+  const w =
+    0.55 +
+    0.28 * Math.sin(angle * 3 + seed) +
+    0.17 * Math.sin(angle * 2 - seed * 1.7) +
+    0.1 * Math.sin(angle * 5 + seed * 0.5);
+  return base * Math.max(0.2, w);
+}
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
@@ -77,12 +87,14 @@ export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): 
     if (!root) return;
     root.position.set(t.x, terrain.heightAt(t.x, t.z) - 0.15, t.z);
     root.rotationQuaternion = Quaternion.RotationYawPitchRoll(t.yaw, 0, 0);
-    // Неравномерный масштаб: уже по горизонтали (тоньше ствол и крона), выше.
-    const k = TREE_SCALE * t.scale;
-    root.scaling.set(k * 0.84, k * 1.08, k * 0.84);
+    root.scaling.setAll(TREE_SCALE * t.scale);
 
     for (const mesh of root.getChildMeshes(false)) {
-      mesh.material = /leaf|leav/i.test(mesh.material?.name ?? "") ? leaf : bark;
+      const isLeaf = /leaf|leav/i.test(mesh.material?.name ?? "");
+      mesh.material = isLeaf ? leaf : bark;
+      // Ствол — тоньше (у модели раздутое основание), крона — чуть шире и ниже.
+      if (isLeaf) mesh.scaling.set(1.15, 0.92, 1.15);
+      else mesh.scaling.set(0.62, 1, 0.62);
       mesh.isPickable = false;
       mesh.doNotSyncBoundingInfo = true;
       mesh.alwaysSelectAsActiveMesh = true; // дерево статично — bbox не считаем
@@ -137,29 +149,62 @@ export async function loadGrass(
 
   const wind = new GrassWindPlugin(mat);
 
-  const R = WORLD.grassRadius * 1.15;
-  const count = Math.max(0, Math.round(WORLD.grassCount * density * GRASS_FACTOR));
+  const reach = WORLD.size / 2 - 4;
+  const budget = Math.max(0, Math.round(WORLD.grassCount * density * GRASS_FACTOR));
   const matrices: Matrix[] = [];
   const phases: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const ang = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * R;
-    const x = Math.cos(ang) * r;
-    const z = Math.sin(ang) * r;
-    if (Math.hypot(x, z) < 1.5) continue;
+  const colors: number[] = [];
+  const up = new Vector3(0, 1, 0);
+
+  const pushBlade = (x: number, z: number): void => {
+    if (Math.hypot(x, z) < 1.5) return;
+    if (Math.abs(x) > reach || Math.abs(z) > reach) return;
     const y = terrain.heightAt(x, z);
-    const s = 0.4 + Math.random() * 0.32; // модель ~1.3 ед. -> трава ~0.5–0.9 м, повыше
+    const s = 0.4 + Math.random() * 0.36;
     matrices.push(
       Matrix.Compose(
-        new Vector3(s, s * (0.95 + Math.random() * 0.6), s),
-        Quaternion.RotationAxis(new Vector3(0, 1, 0), Math.random() * Math.PI * 2),
+        new Vector3(s, s * (0.9 + Math.random() * 0.7), s),
+        Quaternion.RotationAxis(up, Math.random() * Math.PI * 2),
         new Vector3(x, y - 0.03, z),
       ),
     );
     phases.push((x * WIND.dirX + z * WIND.dirZ) * 0.55);
+    // Разброс яркости и оттенка на каждый пучок — множитель к цвету материала.
+    const b = 0.72 + Math.random() * 0.55;
+    const warm = (Math.random() - 0.5) * 0.28;
+    colors.push(b + warm, b, b - warm * 0.6, 1);
+  };
+
+  // Плотное пятно у спавна — с рваным краем.
+  const spawnSeed = Math.random() * 100;
+  for (let i = 0; i < budget * 0.42; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()) * lumpyRadius(a, WORLD.grassRadius * 1.25, spawnSeed);
+    pushBlade(Math.cos(a) * r, Math.sin(a) * r);
   }
+  // Пятна по всей карте, разной формы и плотности.
+  const patches = 22;
+  const perPatch = (budget * 0.46) / patches;
+  for (let p = 0; p < patches; p++) {
+    const px = (Math.random() - 0.5) * 2 * reach;
+    const pz = (Math.random() - 0.5) * 2 * reach;
+    const base = 5 + Math.random() * Math.random() * 26;
+    const seed = Math.random() * 100;
+    const n = Math.round(perPatch * (0.35 + Math.random() * 1.6));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * lumpyRadius(a, base, seed);
+      pushBlade(px + Math.cos(a) * r, pz + Math.sin(a) * r);
+    }
+  }
+  // Редкий фон по всей карте — чтобы не было голых пятен.
+  for (let i = 0; i < budget * 0.12; i++) {
+    pushBlade((Math.random() - 0.5) * 2 * reach, (Math.random() - 0.5) * 2 * reach);
+  }
+
   blade.thinInstanceAdd(matrices);
   blade.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
+  blade.thinInstanceSetBuffer("color", new Float32Array(colors), 4, true);
 
   return (dt: number, daylight: number) => {
     wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
@@ -180,11 +225,18 @@ export async function loadRocks(
   const containers = await Promise.all(
     ROCK_KINDS.map((k) => LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene)),
   );
-  const mat = new StandardMaterial("natureRockMat", scene);
-  mat.diffuseColor = new Color3(0.3, 0.3, 0.33);
-  mat.emissiveColor = new Color3(0.04, 0.04, 0.05);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.maxSimultaneousLights = 3;
+  // Небольшой пул материалов с разбросом по яркости/оттенку — камни не однотонные.
+  const mats = Array.from({ length: 6 }, (_, i) => {
+    const m = new StandardMaterial(`rockMat${i}`, scene);
+    const b = 0.22 + (i / 5) * 0.22; // 0.22..0.44 — только яркость
+    const warm = (i % 3) * 0.015 - 0.015; // −0.015..+0.015, чуть тёплый/холодный
+    m.diffuseColor = new Color3(b + warm, b, b - warm * 0.5);
+    m.emissiveColor = new Color3(b * 0.12, b * 0.12, b * 0.12);
+    m.specularColor = new Color3(0, 0, 0);
+    m.maxSimultaneousLights = 3;
+    m.freeze();
+    return m;
+  });
 
   const place = (
     kind: number,
@@ -201,8 +253,9 @@ export async function loadRocks(
     root.position.set(x, terrain.heightAt(x, z) - s * 0.35, z); // чуть врос в землю
     root.rotationQuaternion = Quaternion.RotationYawPitchRoll(yaw, tiltX, tiltZ);
     root.scaling.setAll(s);
+    const rm = mats[Math.floor(Math.random() * mats.length)];
     for (const m of root.getChildMeshes(false)) {
-      m.material = mat;
+      m.material = rm;
       m.isPickable = false;
       m.doNotSyncBoundingInfo = true;
       m.alwaysSelectAsActiveMesh = true;
@@ -218,5 +271,4 @@ export async function loadRocks(
   for (const rk of rockList()) {
     place(rk.kind, rk.x, rk.z, rk.scale, rk.yaw, rk.tilt[0], rk.tilt[1]);
   }
-  mat.freeze();
 }

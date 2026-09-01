@@ -51,12 +51,13 @@ export function trees(): Tree[] {
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   };
 
-  const clusters = 6;
-  const perCluster = Math.round((WORLD.treeCount * 0.82) / clusters);
+  const clusters = 8;
+  const perCluster = Math.round((WORLD.treeCount * 0.72) / clusters);
   for (let c = 0; c < clusters; c++) {
     const cx = (rnd() - 0.5) * 2 * reach;
     const cz = (rnd() - 0.5) * 2 * reach;
-    const spread = 6 + rnd() * rnd() * 30; // где-то плотная кучка, где-то рыхлая роща
+    // Рощи рыхлее: даже «плотная» — это редколесье, а не частокол.
+    const spread = 14 + rnd() * rnd() * 45;
     const n = Math.max(2, Math.round(perCluster * (0.5 + rnd())));
     for (let i = 0; i < n; i++) {
       const a = rnd() * Math.PI * 2;
@@ -65,7 +66,7 @@ export function trees(): Tree[] {
     }
   }
   // одиночки по всей карте
-  const loners = Math.round(WORLD.treeCount * 0.18);
+  const loners = Math.round(WORLD.treeCount * 0.28);
   for (let i = 0; i < loners; i++) {
     add((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
   }
