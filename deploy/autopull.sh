@@ -8,9 +8,9 @@ set -euo pipefail
 APPDIR=/opt/vrgame
 cd "$APPDIR"
 
-# 1 ядро / 1 ГБ: сборку гоним с низким приоритетом, чтобы работающий игровой
-# сервер не голодал по CPU/IO (иначе nginx на пару минут не может достучаться).
-LOW="nice -n 18 ionice -c3"
+# 1 ядро / 1 ГБ: сборку чуть придерживаем по приоритету, чтобы игровой сервер
+# не голодал. НЕ idle-класс (на busy-боксе сборка могла зависнуть навсегда).
+LOW="nice -n 10"
 
 sudo -u vrgame git fetch --quiet origin main
 REMOTE=$(sudo -u vrgame git rev-parse origin/main)
