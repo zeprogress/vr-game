@@ -206,7 +206,8 @@ export class LoadoutPanel {
   }
 
   private fieldCount(): number {
-    if (this.target.kind === "hand" || this.target.kind === "vec3") return 3;
+    if (this.target.kind === "hand") return 5; // пов XYZ + масштаб + сгиб
+    if (this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
@@ -328,13 +329,35 @@ export class LoadoutPanel {
     }
     if (t.kind === "hand") {
       const side = t.key.split(":")[1] as HandSide;
-      const axis = i;
+      const h = LOADOUT.hands[side];
+      if (i < 3) {
+        return {
+          label: `пов ${"XYZ"[i]}`,
+          rot: true,
+          get: () => h.rot[i],
+          set: (v) => {
+            h.rot[i] = v;
+          },
+        };
+      }
+      if (i === 3) {
+        return {
+          label: "масштаб",
+          rot: false,
+          steps: [0.005, 0.02, 0.05],
+          get: () => h.scale,
+          set: (v) => {
+            h.scale = Math.max(0.02, v);
+          },
+        };
+      }
       return {
-        label: `пов ${"XYZ"[axis]}`,
-        rot: true,
-        get: () => LOADOUT.hands[side][axis],
+        label: "сгиб кулака",
+        rot: false,
+        steps: [0.05, 0.1, 0.25],
+        get: () => h.curl,
         set: (v) => {
-          LOADOUT.hands[side][axis] = v;
+          h.curl = Math.max(0, v);
         },
       };
     }

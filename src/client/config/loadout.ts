@@ -39,9 +39,18 @@ export interface Placement {
 
 export type ItemPlacement = Record<SlotKey, Placement>;
 
+/** Подгонка модели кисти под грип контроллера. */
+export interface HandFit {
+  /** Поворот кисти относительно grip-узла контроллера, рад. */
+  rot: [number, number, number];
+  /** Размер модели перчатки. */
+  scale: number;
+  /** Сила сжатия в кулак: 1 — полный кулак при полном grip, <1 слабее, >1 туже. */
+  curl: number;
+}
+
 export interface Loadout {
-  /** Поворот кисти относительно grip-узла контроллера. */
-  hands: Record<HandSide, [number, number, number]>;
+  hands: Record<HandSide, HandFit>;
   items: Record<ItemKind, ItemPlacement>;
   /**
    * Индексы кнопок геймпада (xr-standard).
@@ -96,8 +105,8 @@ export interface Loadout {
 
 export const LOADOUT_DEFAULTS: Loadout = {
   hands: {
-    left: [0, 0, 0],
-    right: [0, 0, 0],
+    left: { rot: [Math.PI, 0, 0], scale: 0.135, curl: 1 },
+    right: { rot: [Math.PI, 0, 0], scale: 0.135, curl: 1 },
   },
   items: {
     sword: {
@@ -244,8 +253,11 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     return;
   }
   if (parts[0] === "hand") {
-    const a = value as number[];
-    if (Array.isArray(a) && a.length === 3) dst.hands[parts[1] as HandSide] = [a[0], a[1], a[2]];
+    const v = value as Partial<HandFit>;
+    const h = dst.hands[parts[1] as HandSide];
+    if (Array.isArray(v?.rot) && v.rot.length === 3) h.rot = [v.rot[0], v.rot[1], v.rot[2]];
+    if (typeof v?.scale === "number" && Number.isFinite(v.scale)) h.scale = Math.max(0.02, v.scale);
+    if (typeof v?.curl === "number" && Number.isFinite(v.curl)) h.curl = Math.max(0, v.curl);
     return;
   }
   const p = value as Partial<Placement>;
@@ -383,7 +395,10 @@ export function printLoadout(): void {
   const f = (n: number) => Number(n.toFixed(4));
   const fa = (a: number[]) => `[${a.map(f).join(", ")}]`;
   const lines: string[] = ["hands: {"];
-  for (const s of ["left", "right"] as HandSide[]) lines.push(`  ${s}: ${fa(LOADOUT.hands[s])},`);
+  for (const s of ["left", "right"] as HandSide[]) {
+    const h = LOADOUT.hands[s];
+    lines.push(`  ${s}: { rot: ${fa(h.rot)}, scale: ${f(h.scale)}, curl: ${f(h.curl)} },`);
+  }
   lines.push("},", "items: {");
   for (const k of ["sword", "bow", "shield"] as ItemKind[]) {
     lines.push(`  ${k}: {`);
@@ -400,8 +415,13 @@ export function printLoadout(): void {
 // ---- применение: сначала файл, поверх — подобранное в игре ----
 
 function applyDefaults(next: Loadout): void {
-  LOADOUT.hands.left = [...next.hands.left];
-  LOADOUT.hands.right = [...next.hands.right];
+  for (const s of ["left", "right"] as HandSide[]) {
+    const src = next.hands[s];
+    const dst = LOADOUT.hands[s];
+    dst.rot = [src.rot[0], src.rot[1], src.rot[2]];
+    dst.scale = src.scale;
+    dst.curl = src.curl;
+  }
   for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const src = next.items[kind][slot];

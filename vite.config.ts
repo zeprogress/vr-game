@@ -36,9 +36,11 @@ function loadoutWriter(): Plugin {
   const arr = (a: number[]) => `[${a.map(num).join(", ")}]`;
   const place = (p: { pos: number[]; rot: number[]; scale: number }) =>
     `{ pos: ${arr(p.pos)}, rot: ${arr(p.rot)}, scale: ${num(p.scale)} }`;
+  const hand = (h: { rot: number[]; scale: number; curl: number }) =>
+    `{ rot: ${arr(h.rot)}, scale: ${num(h.scale)}, curl: ${num(h.curl)} }`;
 
   const render = (l: {
-    hands: Record<string, number[]>;
+    hands: Record<string, { rot: number[]; scale: number; curl: number }>;
     items: Record<string, Record<string, { pos: number[]; rot: number[]; scale: number }>>;
     buttons: Record<string, number>;
     world: { hour: number; auto: number };
@@ -60,8 +62,8 @@ function loadoutWriter(): Plugin {
     return (
       `export const LOADOUT_DEFAULTS: Loadout = {\n` +
       `  hands: {\n` +
-      `    left: ${arr(l.hands.left)},\n` +
-      `    right: ${arr(l.hands.right)},\n` +
+      `    left: ${hand(l.hands.left)},\n` +
+      `    right: ${hand(l.hands.right)},\n` +
       `  },\n` +
       `  items: {\n${items}\n  },\n` +
       `  buttons: {\n` +

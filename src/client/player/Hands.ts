@@ -15,21 +15,9 @@ import { LOADOUT } from "../config/loadout";
 
 export type Side = "left" | "right";
 
-/**
- * Посадка модели кисти относительно грипа контроллера. Подбирается по описанию
- * («ладонь смотрит вверх», «пальцы назад») — правится здесь и деплоится.
- * Углы Эйлера в радианах; поворот применяется в порядке yaw(Y)→pitch(X)→roll(Z).
- */
-const FIT = {
-  scale: Number(new URLSearchParams(location.search).get("hscale")) || 0.135,
-  yaw: Math.PI, // пальцы модели по +Z, «вперёд из руки» — по −Z
-  pitch: 0,
-  roll: 0,
-  /** Смещение модели относительно грипа, м. */
-  offset: [0, 0, 0] as [number, number, number],
-  /** Насколько сгибать кончики пальцев в кулаке, рад. */
-  curlMax: 2.2,
-};
+/** Опорная поза кулака: пальцы гнутся на этот угол (рад), сила регулируется
+ *  множителем `LOADOUT.hands[side].curl` в blend'е. */
+const FIST_ARC = 3.0;
 
 interface Hand {
   side: Side;
@@ -73,16 +61,14 @@ export class Hands {
     void this.loadGlove();
   }
 
-  // ---- подкрутка из консоли (пишет в живой LOADOUT) ----
-
-  set(side: Side, x: number, y: number, z: number): void {
-    LOADOUT.hands[side] = [x, y, z];
-    this.print();
-  }
+  // ---- подкрутка из консоли (всё то же есть в меню настроек) ----
 
   rotate(side: Side, dx: number, dy: number, dz: number): void {
-    const r = LOADOUT.hands[side];
-    this.set(side, r[0] + dx, r[1] + dy, r[2] + dz);
+    const r = LOADOUT.hands[side].rot;
+    r[0] += dx;
+    r[1] += dy;
+    r[2] += dz;
+    this.print();
   }
 
   turn(side: Side, axis: "x" | "y" | "z", quarters = 1): void {
@@ -90,17 +76,8 @@ export class Hands {
     this.rotate(side, axis === "x" ? d : 0, axis === "y" ? d : 0, axis === "z" ? d : 0);
   }
 
-  tune(patch: Partial<typeof FIT>): void {
-    Object.assign(FIT, patch);
-    for (const h of this.hands) this.placeMesh(h);
-    console.log("hand FIT:", JSON.stringify(FIT));
-  }
-
   print(): void {
-    const f = (a: [number, number, number]) => a.map((v) => v.toFixed(3)).join(", ");
-    console.log(
-      `hands: {\n  left: [${f(LOADOUT.hands.left)}],\n  right: [${f(LOADOUT.hands.right)}],\n}`,
-    );
+    console.log("hands:", JSON.stringify(LOADOUT.hands));
   }
 
   // ---- загрузка модели + расчёт позы кулака ----
@@ -129,11 +106,15 @@ export class Hands {
       );
       const indices = mesh.getIndices() as number[];
 
-      // Ось пальцев — Z: −Z запястье, +Z кончики. Y — толщина кисти.
+      // Ось пальцев — Z: −Z запястье, +Z кончики. Y — толщина кисти. X — вширь.
+      let minX = Infinity;
+      let maxX = -Infinity;
       let minZ = Infinity;
       let maxZ = -Infinity;
       let sumY = 0;
       for (let i = 0; i < rest.length; i += 3) {
+        minX = Math.min(minX, rest[i]);
+        maxX = Math.max(maxX, rest[i]);
         minZ = Math.min(minZ, rest[i + 2]);
         maxZ = Math.max(maxZ, rest[i + 2]);
         sumY += rest[i + 1];
@@ -141,28 +122,35 @@ export class Hands {
       const hingeY = sumY / (rest.length / 3);
       const knuckleZ = minZ + (maxZ - minZ) * 0.62;
       const fingerLen = Math.max(1e-4, maxZ - knuckleZ);
-      const kappa = FIT.curlMax / fingerLen;
+      const kappa = FIST_ARC / fingerLen;
+      const spanX = Math.max(1e-4, maxX - minX);
 
-      // Поза кулака: «пальцевые» вершины (z > knuckleZ) гнём по дуге вниз-внутрь.
+      // Поза кулака: пальцы (z > knuckleZ) гнём по дуге вниз-внутрь; большой
+      // палец / край ладони (низ по Z, край по X) поджимаем к центру.
       const fist = new Float32Array(rest.length);
       for (let i = 0; i < rest.length; i += 3) {
         const x = rest[i];
         const y = rest[i + 1];
         const z = rest[i + 2];
         const s = z - knuckleZ;
-        if (s <= 0) {
+        if (s > 0) {
+          const a = kappa * s;
+          const zc = knuckleZ + Math.sin(a) / kappa;
+          const yc = hingeY - (1 - Math.cos(a)) / kappa;
+          const dy = y - hingeY;
           fist[i] = x;
-          fist[i + 1] = y;
-          fist[i + 2] = z;
+          fist[i + 1] = yc + dy * Math.cos(a);
+          fist[i + 2] = zc + dy * Math.sin(a);
           continue;
         }
-        const a = kappa * s; // угол дуги в этой точке
-        const zc = knuckleZ + Math.sin(a) / kappa;
-        const yc = hingeY - (1 - Math.cos(a)) / kappa;
-        const dy = y - hingeY;
-        fist[i] = x;
-        fist[i + 1] = yc + dy * Math.cos(a);
-        fist[i + 2] = zc + dy * Math.sin(a);
+        // Ладонь/большой палец: чем дальше от центра по X и чем ближе к
+        // костяшкам по Z, тем сильнее поджимаем к центру и вниз.
+        const zw = Math.max(0, (z - minZ) / (knuckleZ - minZ)); // 0 у запястья, 1 у костяшек
+        const xw = Math.min(1, (Math.abs(x) / (spanX * 0.5)) ** 1.5); // 0 в центре, 1 по краю
+        const w = zw * xw;
+        fist[i] = x * (1 - w * 0.85);
+        fist[i + 1] = y - w * 0.22;
+        fist[i + 2] = z + w * 0.12; // чуть вперёд — палец ложится на кулак
       }
 
       const restN = new Float32Array(rest.length);
@@ -196,14 +184,17 @@ export class Hands {
   update(dt: number): void {
     const g = this.glove;
     for (const h of this.hands) {
-      // База (FIT) + тонкая правка из LOADOUT — на корень, чтобы предметы в руке
-      // шли вместе с кистью.
-      const r = LOADOUT.hands[h.side];
-      h.root.rotation.set(FIT.pitch + r[0], FIT.yaw + r[1], FIT.roll + r[2]);
+      const cfg = LOADOUT.hands[h.side];
+      // Ориентация — на корень (предметы в руке идут вместе с кистью).
+      h.root.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
 
       if (!g || !h.mesh || !h.scratch || !h.scratchN) continue;
+      const sc = cfg.scale;
+      h.mesh.scaling.set(h.side === "left" ? -sc : sc, sc, sc); // размер меняется на лету
+
       const btn = h.controller.inputSource.gamepad?.buttons[1];
-      const target = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
+      const grip = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
+      const target = Math.min(1, grip * cfg.curl); // «сгиб» — множитель силы
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
       const c = h.curl;
 
@@ -236,8 +227,8 @@ export class Hands {
 
     const root = new TransformNode(`hand_${side}`, this.scene);
     root.parent = anchor;
-    const r = LOADOUT.hands[side];
-    root.rotation.set(r[0], r[1], r[2]);
+    const rot = LOADOUT.hands[side].rot;
+    root.rotation.set(rot[0], rot[1], rot[2]);
 
     const hand: Hand = {
       side,
@@ -274,17 +265,12 @@ export class Hands {
     mesh.material = this.skin;
     mesh.isPickable = false;
     mesh.alwaysSelectAsActiveMesh = true;
+    mesh.rotation.set(0, 0, 0);
+    mesh.position.set(0, 0, 0);
+    const sc = LOADOUT.hands[hand.side].scale;
+    mesh.scaling.set(hand.side === "left" ? -sc : sc, sc, sc);
     hand.mesh = mesh;
     hand.scratch = new Float32Array(g.rest.length);
     hand.scratchN = new Float32Array(g.rest.length);
-    this.placeMesh(hand);
-  }
-
-  private placeMesh(hand: Hand): void {
-    if (!hand.mesh) return;
-    // Ориентация — на корне (см. update). Здесь только размер, зеркало и сдвиг.
-    hand.mesh.scaling.set(hand.side === "left" ? -FIT.scale : FIT.scale, FIT.scale, FIT.scale);
-    hand.mesh.rotation.set(0, 0, 0);
-    hand.mesh.position.set(FIT.offset[0], FIT.offset[1], FIT.offset[2]);
   }
 }
