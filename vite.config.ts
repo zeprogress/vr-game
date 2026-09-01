@@ -156,5 +156,14 @@ export default defineConfig({
     target: "es2020",
     outDir: "dist",
     chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      output: {
+        // Babylon — отдельным вендор-чанком: меньше пик памяти при сборке
+        // (важно на 1 ГБ VPS) и кэшируется отдельно от нашего кода.
+        manualChunks(id) {
+          if (id.includes("node_modules/@babylonjs/core")) return "babylon";
+        },
+      },
+    },
   },
 });
