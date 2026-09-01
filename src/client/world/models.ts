@@ -176,7 +176,8 @@ export async function loadRig(
           }
         }
       }
-      const short = (g.name.split("_").pop() ?? g.name).toLowerCase();
+      // "Slime|Hop" / "Slime_Death" / "Idle" → "hop" / "death" / "idle"
+      const short = (g.name.split(/[|_]/).pop() ?? g.name).toLowerCase();
       anims.set(short, g);
     }
     if (hide.size) {
@@ -191,10 +192,22 @@ export async function loadRig(
         t.position?.setAll(0);
       }
     }
+    // Габариты: матрицы ВСЕХ узлов иерархии должны быть свежими (у FBX2glTF
+    // масштаб сидит на промежуточном узле, а не на меше), потом считаем по
+    // мировым bbox каждого меша вручную — getHierarchyBoundingVectors тут врёт.
     root.computeWorldMatrix(true);
-    meshes.forEach((m) => m.computeWorldMatrix(true));
-    const hv = root.getHierarchyBoundingVectors(true);
-    const nativeHeight = Math.max(0.1, hv.max.y - hv.min.y);
+    for (const n of root.getDescendants(false)) n.computeWorldMatrix(true);
+    let loY = Infinity;
+    let hiY = -Infinity;
+    for (const m of meshes) {
+      if (m.getTotalVertices() === 0) continue;
+      m.refreshBoundingInfo({});
+      m.computeWorldMatrix(true);
+      const bb = m.getBoundingInfo().boundingBox;
+      loY = Math.min(loY, bb.minimumWorld.y);
+      hiY = Math.max(hiY, bb.maximumWorld.y);
+    }
+    const nativeHeight = Number.isFinite(hiY - loY) && hiY > loY ? hiY - loY : 1;
     return {
       root,
       meshes,

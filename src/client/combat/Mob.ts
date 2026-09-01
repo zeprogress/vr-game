@@ -22,31 +22,36 @@ import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
-/** Доворот модели поверх кватерниона glTF-загрузчика, чтобы её «перёд»
- *  (глаза) совпал с направлением взгляда моба. Подбор: `?myaw=<рад>`. */
+/** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
+ *  моба. Подбор: `?myaw=<рад>`. */
 const MODEL_YAW = (() => {
   const p = new URLSearchParams(location.search);
   const v = Number(p.get("myaw"));
-  return p.has("myaw") && Number.isFinite(v) ? v : -Math.PI / 2;
+  return p.has("myaw") && Number.isFinite(v) ? v : Math.PI / 2;
 })();
+
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Перекрасить материалы модели в плоский вид под наш кинд (цвет тела/глаз). */
 function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, number, number]): void {
   for (const m of rig.meshes) {
     const src = m.material as { name?: string } | null;
     if (!src) continue;
-    const isEyes = /eye/i.test(src.name ?? "");
-    const flat = new StandardMaterial(`${kind}_${isEyes ? "eyes" : "body"}`, rig.root.getScene());
-    if (isEyes) {
-      flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
-      flat.specularColor = new Color3(0.12, 0.12, 0.12);
-    } else {
-      flat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
-      flat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
-      flat.specularColor = new Color3(0.25, 0.2, 0.25);
-    }
+    const name = src.name ?? "";
+    const flat = new StandardMaterial(`${kind}_${name}`, rig.root.getScene());
     flat.maxSimultaneousLights = 3;
     m.material = flat;
+
+    if (/eye/i.test(name)) {
+      flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+      flat.specularColor = new Color3(0.12, 0.12, 0.12);
+      continue;
+    }
+    // secondary — светлее (блик/пузики), primary — базовый цвет кинда
+    const k = /secondary/i.test(name) ? 1.4 : 1;
+    flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
+    flat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
+    flat.specularColor = new Color3(0.25, 0.2, 0.25);
   }
 }
 
@@ -240,16 +245,12 @@ export class Mob implements Hittable {
 
   private readonly uiAnchor: TransformNode;
 
-  /** Подменить процедурную сферу оснащённой моделью слизня. */
+  /** Подменить процедурную сферу моделью слизня из пака. */
   private async attachModel(): Promise<void> {
     let make: () => RigInstance;
     try {
       const { loadRig } = await import("../world/models");
-      make = await loadRig(this.scene, "slime", {
-        // без маленьких ручек — схлопываем всю ветку рук
-        hideBones: ["Shoulder.L", "LowerArm.L", "Hand.L", "Shoulder.R", "LowerArm.R", "Hand.R"],
-        smoothNormals: true,
-      });
+      make = await loadRig(this.scene, "slime", { smoothNormals: true });
     } catch {
       // модель не загрузилась — возвращаем процедурную сферу
       if (!this.root.isDisposed() && !this.dead) {
@@ -262,26 +263,31 @@ export class Mob implements Hittable {
 
     const rig = make();
     this.rig = rig;
-    rig.root.parent = this.root;
-    rig.root.position.set(0, 0, 0);
-    // glTF-загрузчик уже ставит __root__ кватернион (поворот на π для пересчёта
-    // системы координат). .rotation при этом игнорируется — задаём кватернионом.
-    rig.root.rotationQuaternion = Quaternion.RotationYawPitchRoll(Math.PI + MODEL_YAW, 0, 0);
 
-    // Высота модели ≈ два радиуса тела (масштаб домножается на s.scale отдельно).
-    const base = (MOB.bodyRadius * 2) / rig.nativeHeight;
-    rig.root.scaling.setAll(base);
+    // Свой узел-обёртка: масштаб и доворот держим здесь, трансформы самой
+    // модели (её пересчёт системы координат из FBX) не трогаем.
+    const holder = new TransformNode("mobModel", this.scene);
+    holder.parent = this.root;
+    holder.rotationQuaternion = Quaternion.RotationYawPitchRoll(MODEL_YAW, 0, 0);
+    rig.root.parent = holder;
+    rig.root.position.set(0, 0, 0);
+
+    // Высота модели ≈ ~1.75 радиуса тела (модель слизня приземистее сферы;
+    // на s.scale для босса домножается через this.root отдельно).
+    const base = (MOB.bodyRadius * 1.75) / rig.nativeHeight;
+    holder.scaling.setAll(base);
 
     recolorRig(rig, this.kind, this.tint);
 
-    // Процедурная сфера с глазами больше не нужна — сносим совсем, чтобы
-    // исключить любой шанс увидеть её вместе с моделью.
+    // Процедурная сфера с глазами больше не нужна — сносим совсем.
     this.body.dispose();
     this.head.dispose(false, true);
-    this.squash = rig.root;
+    this.squash = holder;
     this.baseModelScale = base;
 
-    if (!this.dead) this.playAnim(rig.anims.get("idle"), true);
+    // Клипов покоя/ходьбы у модели нет — используем «Hop» как непрерывное
+    // покачивание слизня.
+    if (!this.dead) this.playAnim(rig.anims.get("hop"), true);
   }
 
   private baseModelScale = 1;
@@ -411,7 +417,7 @@ export class Mob implements Hittable {
       this.clearWounds();
       this.bar.setVisible(false);
       this.barTimer = 0;
-      if (this.rig) this.playAnim(this.rig.anims.get("idle"), true);
+      if (this.rig) this.playAnim(this.rig.anims.get("hop"), true);
     }
 
     if (this.dead) {
@@ -450,10 +456,10 @@ export class Mob implements Hittable {
       this.setSquash(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
     }
 
-    // Модель: покой ↔ ход по признаку «на земле».
-    if (this.rig && !this.isBoss) {
-      const want = s.grounded === 0 ? this.rig.anims.get("walk") : this.rig.anims.get("idle");
-      this.playAnim(want ?? this.rig.anims.get("idle"), true);
+    // У модели только «Hop» — крутим её всегда как покачивание; если что-то
+    // сбило анимацию (после смерти/возрождения), вернём.
+    if (this.rig && this.curAnim !== this.rig.anims.get("hop")) {
+      this.playAnim(this.rig.anims.get("hop"), true);
     }
 
     // Слэм: ++slamSeq -> ударная волна по земле + грохот.
