@@ -47,6 +47,7 @@ import { ADMIN_NICK, BOSS, PLAYER, RESPAWN } from "#shared/constants";
 
 /** Спокойный фон: после каждого трека берётся случайный из набора. */
 const TOWN_MUSIC = [
+  "/music/town-dion.mp3",
   "/music/castle-hall-1.mp3",
   "/music/castle-hall-2.mp3",
   "/music/village-waltz-1.mp3",

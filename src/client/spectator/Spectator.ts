@@ -23,6 +23,7 @@ import {
 
 /** Спокойный фон: после каждого трека берётся случайный из набора. */
 const TOWN_MUSIC = [
+  "/music/town-dion.mp3",
   "/music/castle-hall-1.mp3",
   "/music/castle-hall-2.mp3",
   "/music/village-waltz-1.mp3",
