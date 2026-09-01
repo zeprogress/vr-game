@@ -69,6 +69,7 @@ export class Spectator {
   private lastFrame = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
+  private readonly reloadSec: number;
   /** Реальная частота вызовов scene.render() (getFps() врёт при кап-скипе). */
   private renderCount = 0;
   private renderRate = 0;
@@ -84,7 +85,14 @@ export class Spectator {
     quality: Quality,
     showDebug = false,
     /** Переопределения из URL для подгонки на боксе без пересборки. */
-    override: { rs?: number; fpsCap?: number; rw?: number; rh?: number; raw?: boolean } = {},
+    override: {
+      rs?: number;
+      fpsCap?: number;
+      rw?: number;
+      rh?: number;
+      raw?: boolean;
+      reloadSec?: number;
+    } = {},
   ) {
     const preset = PRESETS[quality];
     this.fpsCap = override.fpsCap ?? preset.fpsCap;
@@ -92,6 +100,7 @@ export class Spectator {
     // Фиксированный размер рендера (?rw=1280&rh=720): браузер/Fully Kiosk не
     // будет менять его сам при изменении вьюпорта. Canvas тянется по CSS.
     this.fixedSize = override.rw && override.rh ? { w: override.rw, h: override.rh } : null;
+    this.reloadSec = override.reloadSec ?? 600; // проверять новую сборку раз в 10 мин
     if (this.fixedSize) {
       canvas.width = this.fixedSize.w;
       canvas.height = this.fixedSize.h;
@@ -214,7 +223,43 @@ export class Spectator {
     }
     this.setStatus("");
     if (net.room) this.attach(net.room);
+    void this.watchForUpdates();
     return true;
+  }
+
+  /**
+   * Раз в `reloadSec` секунд проверяем, не выложили ли новую сборку клиента
+   * (серверные изменения подхватываются сами через reconnect). Хэш собранного
+   * бандла лежит в /index.html; сменился — перезагружаем страницу, чтобы на
+   * «слепом» боксе не приходилось ничего трогать руками. `?reload=0` — выкл.
+   */
+  private async watchForUpdates(): Promise<void> {
+    if (this.reloadSec <= 0) return;
+    const bundle = async (): Promise<string | null> => {
+      try {
+        const html = await fetch(`/?_=${Date.now()}`, { cache: "no-store" }).then((r) => r.text());
+        return html.match(/assets\/index-[\w-]+\.js/)?.[0] ?? null;
+      } catch {
+        return null;
+      }
+    };
+    let known = await bundle();
+    setInterval(
+      () => {
+        void bundle().then((now) => {
+          if (!now) return;
+          if (!known) {
+            known = now;
+            return;
+          }
+          if (now !== known) {
+            console.log(`[spectator] новая сборка (${known} → ${now}) — перезагрузка`);
+            location.reload();
+          }
+        });
+      },
+      Math.max(60, this.reloadSec) * 1000,
+    );
   }
 
   private setStatus(text: string): void {

@@ -26,6 +26,10 @@ if (specKey) {
       rw: num("rw"),
       rh: num("rh"),
       raw: params.get("rawcam") === "1",
+      reloadSec: (() => {
+        const v = Number(params.get("reload"));
+        return params.has("reload") && Number.isFinite(v) ? v : undefined;
+      })(),
     });
     const net = new NetClient();
     (window as unknown as { spec: unknown; net: NetClient }).spec = spec;
