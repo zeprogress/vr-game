@@ -259,8 +259,10 @@ export class Spectator {
 
     if (this.debug) {
       const st = room?.state;
+      const dpr = window.devicePixelRatio || 1;
       this.debug.textContent =
-        `${this.engine.getFps().toFixed(0)} fps · ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
+        `${this.engine.getFps().toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
+        ` · экран ${Math.round(innerWidth * dpr)}×${Math.round(innerHeight * dpr)} (dpr ${dpr.toFixed(2)})` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
     }
   }
