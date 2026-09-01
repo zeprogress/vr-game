@@ -666,6 +666,7 @@ class Ball {
     public vx: number,
     public vy: number,
     public vz: number,
+    public boss = false,
   ) {}
 
   /** true — шарик надо удалить. */
@@ -772,6 +773,7 @@ export class ZoneSim {
         dx * SPITTER.ballSpeed,
         dy * SPITTER.ballSpeed,
         dz * SPITTER.ballSpeed,
+        mob.kind === "boss",
       );
       this.balls.set(b.id, b);
     };

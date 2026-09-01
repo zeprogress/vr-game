@@ -7,7 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import type { Room } from "colyseus.js";
 
-import { SPITTER } from "#shared/constants";
+import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";
 import { Dummy } from "./Dummy";
@@ -36,7 +36,8 @@ export class NetMobs {
   private readonly mobs = new Map<string, Mob>();
   private readonly dummies = new Map<string, Dummy>();
   private readonly balls = new Map<string, BallView>();
-  private readonly ballProto: Mesh;
+  private readonly ballProto: Mesh; // плевок плевуна
+  private readonly ballProtoBoss: Mesh; // плевок босса
 
   constructor(
     private readonly scene: Scene,
@@ -47,18 +48,22 @@ export class NetMobs {
     /** true — облегчённый вид мобов: без плашки, HP-полоски, ран; глаза остаются (слабый GPU). */
     private readonly leanMobs = false,
   ) {
-    const mat = new StandardMaterial("spitBallMat", scene);
-    mat.diffuseColor = new Color3(0.7, 0.95, 0.4);
-    mat.emissiveColor = new Color3(0.45, 0.75, 0.2);
-    mat.specularColor = new Color3(0, 0, 0);
-    this.ballProto = MeshBuilder.CreateSphere(
-      "spitBall",
-      { diameter: SPITTER.ballRadius * 2, segments: 6 },
-      scene,
-    );
-    this.ballProto.material = mat;
-    this.ballProto.isPickable = false;
-    this.ballProto.setEnabled(false);
+    // Плевок в цвет своего моба, полупрозрачный.
+    const spitBall = (name: string, tint: readonly [number, number, number]): Mesh => {
+      const mat = new StandardMaterial(`${name}Mat`, scene);
+      mat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+      mat.emissiveColor = new Color3(tint[0] * 0.35, tint[1] * 0.35, tint[2] * 0.35);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.alpha = 0.62;
+      mat.backFaceCulling = true;
+      const m = MeshBuilder.CreateSphere(name, { diameter: SPITTER.ballRadius * 2, segments: 6 }, scene);
+      m.material = mat;
+      m.isPickable = false;
+      m.setEnabled(false);
+      return m;
+    };
+    this.ballProto = spitBall("spitBall", SPITTER_CFG.tint);
+    this.ballProtoBoss = spitBall("spitBallBoss", BOSS_CFG.tint);
   }
 
   attach(room: Room<ZoneState>): void {
@@ -112,7 +117,7 @@ export class NetMobs {
     room.state.balls.forEach((s, id) => {
       let b = this.balls.get(id);
       if (!b) {
-        const mesh = this.ballProto.clone(`spitBall_${id}`);
+        const mesh = (s.boss ? this.ballProtoBoss : this.ballProto).clone(`spitBall_${id}`);
         mesh.setEnabled(true);
         b = {
           mesh,

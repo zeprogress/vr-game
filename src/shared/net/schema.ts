@@ -105,6 +105,8 @@ export class BallState extends Schema {
   @type("float32") vx = 0;
   @type("float32") vy = 0;
   @type("float32") vz = 0;
+  /** 1 — плевок босса (красный), иначе плевуна. */
+  @type("uint8") boss = 0;
 }
 
 /** Состояние зоны — общий контракт клиента и сервера. */

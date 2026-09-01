@@ -704,6 +704,7 @@ export class ZoneRoom extends Room<ZoneState> {
       let s = this.state.balls.get(b.id);
       if (!s) {
         s = new BallState();
+        s.boss = b.boss ? 1 : 0;
         this.state.balls.set(b.id, s);
       }
       s.x = b.x;
