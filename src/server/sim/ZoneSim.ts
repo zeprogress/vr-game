@@ -99,6 +99,8 @@ export interface PlayerHit {
   fromZ: number;
   /** true — снаряд (плевок): мечом отбивается полностью, а не на 75%. */
   projectile: boolean;
+  /** Ник атакующего игрока (PvP) — для кил-фида; нет — урон от моба/среды. */
+  byName?: string;
 }
 
 class Mob {

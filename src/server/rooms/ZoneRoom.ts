@@ -592,6 +592,7 @@ export class ZoneRoom extends Room<ZoneState> {
         fromX: p.head.x,
         fromZ: p.head.z,
         projectile: msg.weapon === "arrow",
+        byName: p.nick,
       });
       return;
     }
@@ -609,8 +610,16 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitDummy(msg.id, dmg);
       return;
     }
+    const victimKind = msg.target === "mob" ? this.sim.mobs.get(msg.id)?.kind : undefined;
     const xp = this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1);
-    if (xp > 0) this.awardXp(client, p, xp);
+    if (xp > 0) {
+      this.awardXp(client, p, xp);
+      if (victimKind && victimKind !== "shard") {
+        const victim =
+          victimKind === "boss" ? "Багровый" : victimKind === "spitter" ? "Плевун" : "Слизень";
+        this.broadcast(MSG.killFeed, { by: p.nick, victim });
+      }
+    }
   }
 
   private awardXp(client: Client, p: PlayerState, amount: number): void {
@@ -790,6 +799,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.hp <= 0) {
       p.dead = 1;
       rt.respawnIn = RESPAWN.delay;
+      this.broadcast(MSG.killFeed, { by: h.byName ?? "", victim: p.nick });
     }
   }
 

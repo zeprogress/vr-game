@@ -200,6 +200,7 @@ export class Spectator {
     };
     net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
     net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
+    net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.

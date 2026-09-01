@@ -27,6 +27,7 @@ interface Config {
   online: boolean;
   watching: boolean;
   hp: boolean;
+  feed: boolean;
 }
 
 const DEFAULT: Config = {
@@ -36,6 +37,7 @@ const DEFAULT: Config = {
   online: true,
   watching: true,
   hp: true,
+  feed: true,
 };
 
 const CSS = `
@@ -65,6 +67,14 @@ const CSS = `
   transition:width .25s ease; }
 .ov-hp.boss .fill { background:linear-gradient(90deg,#b3231d,#e8433f); }
 .ov-hp.boss b { color:#ff9a95; }
+.ov-feed { right:2.2vw; bottom:24vh; display:flex; flex-direction:column-reverse;
+  gap:.5vh; align-items:flex-end; }
+.ov-feed div { background:rgba(12,13,18,.62); padding:.5vh 1vh; border-radius:.5vh;
+  font-size:1.7vh; font-weight:600; animation:ovfeed .3s ease; }
+.ov-feed b { color:#8fe45a; font-weight:800; }
+.ov-feed s { color:#ff9a95; font-weight:800; text-decoration:none; }
+.ov-feed i { opacity:.7; font-style:normal; margin:0 .5vh; }
+@keyframes ovfeed { from{opacity:0;transform:translateX(1vh)} to{opacity:1} }
 .ov-card { left:0; right:0; bottom:16vh; text-align:center; opacity:0;
   transition:opacity .5s ease; }
 .ov-card.show { opacity:1; }
@@ -101,6 +111,8 @@ export class Overlay {
   private readonly cardTitle: HTMLElement;
   private readonly cardSub: HTMLElement;
   private cardUntil = 0; // 0 — держать бесконечно (пока не скроют)
+  private readonly feed: HTMLDivElement;
+  private feedRows: { el: HTMLElement; until: number }[] = [];
   private cfg: Config = { ...DEFAULT };
 
   constructor() {
@@ -134,7 +146,9 @@ export class Overlay {
     t.append(this.cardTitle, this.cardSub);
     this.card.appendChild(t);
 
-    this.root.append(this.wm, this.clock, this.online, this.watch, this.hp, this.card);
+    this.feed = div("box ov-feed");
+
+    this.root.append(this.wm, this.clock, this.online, this.watch, this.hp, this.feed, this.card);
     document.body.appendChild(this.root);
   }
 
@@ -146,9 +160,28 @@ export class Overlay {
     }
     const flag = (v: number | undefined): boolean | undefined =>
       v === undefined ? undefined : v !== 0;
-    for (const k of ["wm", "clock", "online", "watching", "hp"] as const) {
+    for (const k of ["wm", "clock", "online", "watching", "hp", "feed"] as const) {
       const f = flag(patch[k]);
       if (f !== undefined) this.cfg[k] = f;
+    }
+  }
+
+  /** Строка кил-фида. `by` пуст — «<victim> пал». Живёт ~7 с. */
+  pushKill(by: string, victim: string): void {
+    if (!victim) return;
+    const row = document.createElement("div");
+    if (by) {
+      row.innerHTML = `<b></b><i>⚔</i><s></s>`;
+      row.querySelector("b")!.textContent = by;
+      row.querySelector("s")!.textContent = victim;
+    } else {
+      row.innerHTML = `<s></s><i>пал</i>`;
+      row.querySelector("s")!.textContent = victim;
+    }
+    this.feed.appendChild(row);
+    this.feedRows.push({ el: row, until: performance.now() + 7000 });
+    while (this.feedRows.length > 5) {
+      this.feedRows.shift()?.el.remove();
     }
   }
 
@@ -176,6 +209,17 @@ export class Overlay {
     show(this.clock, this.cfg.clock);
     show(this.watch, this.cfg.watching);
     show(this.online, this.cfg.online && ctx.online.length > 0);
+    show(this.feed, this.cfg.feed);
+
+    if (this.feedRows.length) {
+      this.feedRows = this.feedRows.filter((r) => {
+        if (now > r.until) {
+          r.el.remove();
+          return false;
+        }
+        return true;
+      });
+    }
 
     if (this.cfg.clock) this.clock.textContent = mskTime();
 
