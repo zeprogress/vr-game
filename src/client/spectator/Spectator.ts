@@ -60,6 +60,7 @@ export class Spectator {
   private bossMusicOn = false;
   private lastFrame = 0;
   private readonly fpsCap: number;
+  private readonly status: HTMLDivElement;
 
   private readonly _players: DirectorCtx["players"] = [];
 
@@ -84,14 +85,29 @@ export class Spectator {
     this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {});
     this.loot = new LootDrops(this.scene);
 
-    // Звук стрима: музыка + позиционные эффекты. resume() — по первому жесту.
+    // Статус связи поверх картинки — на «слепом» боксе иначе не понять, что не так.
+    this.status = document.createElement("div");
+    this.status.style.cssText =
+      "position:fixed;left:0;right:0;top:44%;text-align:center;color:#fff;" +
+      "font:600 30px/1.4 system-ui,sans-serif;text-shadow:0 2px 12px #000;" +
+      "pointer-events:none;z-index:10";
+    this.status.textContent = "ZEP GAME — подключаюсь…";
+    document.body.appendChild(this.status);
+
+    // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
+    // добиваемся включения повторными resume() и по возврату вкладки.
     this.sfx.startMusic(TOWN_MUSIC, 0.05);
     const wake = (): void => this.sfx.resume();
     for (const ev of ["pointerdown", "keydown", "touchstart"] as const) {
       window.addEventListener(ev, wake, { once: true });
     }
-    // Fully Kiosk / автозапуск: звук может быть разрешён без жеста.
+    document.addEventListener("visibilitychange", wake);
     void this.sfx.resume();
+    let tries = 0;
+    const t = setInterval(() => {
+      void this.sfx.resume();
+      if (++tries > 40) clearInterval(t); // ~20 с
+    }, 500);
 
     window.addEventListener("resize", () => this.engine.resize());
 
@@ -102,11 +118,14 @@ export class Spectator {
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
     net.onAct = (k, x, y, z) => this.playRemoteAct(k, x, y, z);
-    net.onReconnected = (room) => this.attach(room);
+    net.onReconnected = (room) => {
+      this.attach(room);
+      this.setStatus("");
+    };
+    net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
 
-    const ok = await net.connectSpectator(key);
-    if (!ok) return false;
-    if (net.room) this.attach(net.room);
+    // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
+    // быть чёрной, даже пока сервер не поднялся.
     this.engine.runRenderLoop(() => {
       if (this.fpsCap > 0) {
         const now = performance.now();
@@ -115,7 +134,21 @@ export class Spectator {
       }
       this.scene.render();
     });
+
+    const ok = await net.connectSpectator(key);
+    if (!ok) {
+      this.setStatus("ZEP GAME — сервер недоступен, перезагрузка…");
+      setTimeout(() => location.reload(), 30_000); // Fully Kiosk тоже перезагрузит
+      return false;
+    }
+    this.setStatus("");
+    if (net.room) this.attach(net.room);
     return true;
+  }
+
+  private setStatus(text: string): void {
+    this.status.textContent = text;
+    this.status.style.display = text ? "block" : "none";
   }
 
   private attach(room: Room<ZoneState>): void {
