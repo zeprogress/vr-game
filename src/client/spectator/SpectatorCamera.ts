@@ -63,6 +63,11 @@ export class SpectatorCamera {
     return this.curTgt;
   }
 
+  /** Тип текущего шота — для отладочного оверлея. */
+  get shotKind(): string {
+    return this.shot.kind;
+  }
+
   update(dt: number, ctx: DirectorCtx): void {
     this.orbitClock += dt;
     this.sinceSwitch += dt;

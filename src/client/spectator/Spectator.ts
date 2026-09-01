@@ -61,10 +61,11 @@ export class Spectator {
   private lastFrame = 0;
   private readonly fpsCap: number;
   private readonly status: HTMLDivElement;
+  private readonly debug: HTMLDivElement | null;
 
   private readonly _players: DirectorCtx["players"] = [];
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality) {
+  constructor(canvas: HTMLCanvasElement, quality: Quality, showDebug = false) {
     const preset = PRESETS[quality];
     this.fpsCap = preset.fpsCap;
 
@@ -93,6 +94,17 @@ export class Spectator {
       "pointer-events:none;z-index:10";
     this.status.textContent = "ZEP GAME — подключаюсь…";
     document.body.appendChild(this.status);
+
+    // Отладочный счётчик — для замера на TOX3 (?debug=1). В эфире не нужен.
+    if (showDebug) {
+      this.debug = document.createElement("div");
+      this.debug.style.cssText =
+        "position:fixed;left:8px;top:8px;color:#0f0;font:13px monospace;" +
+        "background:#0008;padding:3px 6px;pointer-events:none;z-index:10";
+      document.body.appendChild(this.debug);
+    } else {
+      this.debug = null;
+    }
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
@@ -219,6 +231,13 @@ export class Spectator {
     this.sfx.setListener({ x: p.x, y: p.y, z: p.z }, { x: fwd.x, y: fwd.y, z: fwd.z }, UP);
 
     this.updateBossMusic();
+
+    if (this.debug) {
+      const st = room?.state;
+      this.debug.textContent =
+        `${this.engine.getFps().toFixed(0)} fps · ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
+        ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
+    }
   }
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. */
