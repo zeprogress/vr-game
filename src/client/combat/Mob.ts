@@ -5,7 +5,6 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
@@ -63,31 +62,6 @@ function recolorRig(
   }
 }
 
-let woundTex: DynamicTexture | null = null;
-
-/** Тёмная «рана» — один общий текстурный сплат на всех мобов. */
-function woundTexture(scene: Scene): DynamicTexture {
-  if (woundTex) return woundTex;
-  const S = 96;
-  const t = new DynamicTexture("mobWound", { width: S, height: S }, scene, false);
-  t.hasAlpha = true;
-  const c = t.getContext() as unknown as CanvasRenderingContext2D;
-  c.clearRect(0, 0, S, S);
-  c.fillStyle = "rgba(30,4,6,0.95)";
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2;
-    c.beginPath();
-    c.ellipse(S / 2 + Math.cos(a) * 12, S / 2 + Math.sin(a) * 12, 16 + i * 3, 9 + ((i * 5) % 11), a, 0, Math.PI * 2);
-    c.fill();
-  }
-  c.fillStyle = "rgba(90,10,12,0.9)";
-  c.beginPath();
-  c.ellipse(S / 2, S / 2, 20, 12, 0.6, 0, Math.PI * 2);
-  c.fill();
-  t.update(true);
-  woundTex = t;
-  return t;
-}
 
 /**
  * Моб — ВИД (этап 6). Позиция/hp/смерть приходят из состояния сервера,
@@ -102,8 +76,6 @@ export class Mob implements Hittable {
   private readonly mat: StandardMaterial;
   private readonly bar: HealthBar3D;
   private readonly nameTag: NameTag;
-  private readonly wounds: Mesh[] = [];
-  private _woundMat: StandardMaterial | null = null;
 
   private readonly tint: readonly [number, number, number];
   private readonly bodyAlpha: number;
@@ -395,7 +367,6 @@ export class Mob implements Hittable {
         this.bar.setOpacity(1);
       }
       if (!s.dead) {
-        if (!this.lean) this.addWound(s.hurtDx, s.hurtDz);
         this.playIfNear(playerPos, () => this.sfx.mobHurt(pos));
       }
     }
@@ -415,7 +386,6 @@ export class Mob implements Hittable {
     if (s.dead && !this.dead) {
       this.dead = true;
       this.deathT = 0;
-      for (const w of this.wounds) w.setEnabled(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
@@ -424,7 +394,6 @@ export class Mob implements Hittable {
       this.setSquash(1, 1, 1);
       if (!this.rig) this.head.setEnabled(true);
       this.nameTag.setEnabled(true);
-      this.clearWounds();
       this.bar.setVisible(false);
       this.barTimer = 0;
       this.stopAnim();
@@ -545,58 +514,6 @@ export class Mob implements Hittable {
     this.curAnim = null;
   }
 
-  private addWound(dirX: number, dirZ: number): void {
-    const n = new Vector3(-dirX, 0, -dirZ);
-    if (n.lengthSquared() < 1e-4) n.set(0, 0, 1);
-    n.normalize();
-    n.addInPlaceFromFloats(
-      (Math.random() - 0.5) * 0.6,
-      (Math.random() - 0.4) * 0.7,
-      (Math.random() - 0.5) * 0.6,
-    );
-    n.normalize();
-    const yaw = this.root.rotation.y;
-    const cos = Math.cos(-yaw);
-    const sin = Math.sin(-yaw);
-    const lx = n.x * cos - n.z * sin;
-    const lz = n.x * sin + n.z * cos;
-    const surf = MOB.bodyRadius * 0.99;
-
-    const mark = MeshBuilder.CreatePlane("mobWound", { size: 0.22 + Math.random() * 0.1 }, this.scene);
-    mark.parent = this.hitAnchor;
-    mark.position.set(lx * surf, n.y * surf, lz * surf);
-    mark.lookAt(mark.position.scale(2));
-    mark.rotate(new Vector3(0, 0, 1), Math.random() * Math.PI);
-    mark.material = this.woundMat();
-    mark.isPickable = false;
-    mark.renderingGroupId = 0;
-
-    this.wounds.push(mark);
-    if (this.wounds.length > MOB.woundLimit) this.wounds.shift()?.dispose();
-  }
-
-  private woundMat(): StandardMaterial {
-    if (this._woundMat) return this._woundMat;
-    const tex = woundTexture(this.scene);
-    const m = new StandardMaterial("mobWoundMat", this.scene);
-    m.diffuseTexture = tex;
-    m.emissiveTexture = tex;
-    m.opacityTexture = tex;
-    m.useAlphaFromDiffuseTexture = true;
-    m.disableLighting = true;
-    m.specularColor = new Color3(0, 0, 0);
-    m.emissiveColor = new Color3(1, 1, 1);
-    m.backFaceCulling = false;
-    m.zOffset = -2;
-    this._woundMat = m;
-    return m;
-  }
-
-  private clearWounds(): void {
-    for (const w of this.wounds) w.dispose();
-    this.wounds.length = 0;
-  }
-
   /** Ударная волна слэма: плоское кольцо на земле, разбегается и гаснет. */
   private startSlamRing(): void {
     if (!this.slamRing) {
@@ -633,13 +550,11 @@ export class Mob implements Hittable {
   }
 
   dispose(): void {
-    this.clearWounds();
     this.nameTag.dispose();
     this.bar.dispose();
     this.slamRing?.material?.dispose();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, true);
-    this._woundMat?.dispose();
   }
 }

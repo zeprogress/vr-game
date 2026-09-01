@@ -137,12 +137,16 @@ export async function loadGrass(
     mat.transparencyMode = 1;
     mat.alphaCutOff = 0.3;
   }
-  mat.diffuseColor = new Color3(0.5, 0.72, 0.38);
-  mat.emissiveColor = new Color3(0.11, 0.2, 0.09);
+  mat.diffuseColor = new Color3(0.55, 0.78, 0.42);
+  // Умеренный эмиссив: чёрные корни давали запечённые вершинные цвета (ниже
+  // useVertexColors=false), поэтому теперь можно оставить свет диффузу —
+  // так виден разброс цвета по пучкам.
+  mat.emissiveColor = new Color3(0.12, 0.17, 0.08);
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
   mat.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
   blade.material = mat;
+  blade.useVertexColors = false; // выкидываем запечённое в вершины затемнение корней
   blade.isPickable = false;
   blade.name = "grassBlade";
   blade.setEnabled(true);
@@ -170,9 +174,9 @@ export async function loadGrass(
     );
     phases.push((x * WIND.dirX + z * WIND.dirZ) * 0.55);
     // Разброс яркости и оттенка на каждый пучок — множитель к цвету материала.
-    const b = 0.72 + Math.random() * 0.55;
-    const warm = (Math.random() - 0.5) * 0.28;
-    colors.push(b + warm, b, b - warm * 0.6, 1);
+    const b = 0.6 + Math.random() * 0.9; // 0.6..1.5 — заметный разброс яркости
+    const warm = (Math.random() - 0.45) * 0.5; // от жёлто-сухой до сочно-зелёной
+    colors.push(b + warm * 0.7, b + warm * 0.15, b - warm * 0.5, 1);
   };
 
   // Плотное пятно у спавна — с рваным краем.
