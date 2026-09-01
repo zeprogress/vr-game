@@ -97,9 +97,20 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     }
   }
 
-  const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
-  const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
-  const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 1.0, -12);
+  const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.15, -12);
+  const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.15, -12);
+  const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 1.05, -12);
+
+  // Этап 12 — первый внешний ассет: постаменты под стартовым оружием.
+  // glTF-загрузчик тяжёлый — тянем его отдельным чанком, не в основной бандл.
+  void import("./models").then(({ placeModel }) => {
+    for (const home of [swordHome, bowHome, shieldHome]) {
+      void placeModel(scene, "pedestal", {
+        position: new Vector3(home.x, terrain.heightAt(home.x, home.z), home.z),
+        scale: 0.82,
+      });
+    }
+  });
 
   return {
     ground: terrain.mesh,
