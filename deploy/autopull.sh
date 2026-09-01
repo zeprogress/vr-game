@@ -8,6 +8,10 @@ set -euo pipefail
 APPDIR=/opt/vrgame
 cd "$APPDIR"
 
+# 1 ядро / 1 ГБ: сборку гоним с низким приоритетом, чтобы работающий игровой
+# сервер не голодал по CPU/IO (иначе nginx на пару минут не может достучаться).
+LOW="nice -n 18 ionice -c3"
+
 sudo -u vrgame git fetch --quiet origin main
 REMOTE=$(sudo -u vrgame git rev-parse origin/main)
 BUILT=$(cat dist/.built 2>/dev/null || echo none)
@@ -18,10 +22,10 @@ fi
 
 echo "autopull: сборка $REMOTE (последняя успешная: $BUILT)"
 sudo -u vrgame git merge --ff-only origin/main || sudo -u vrgame git reset --hard "$REMOTE"
-sudo -u vrgame npm ci
+sudo -u vrgame $LOW npm ci
 sudo -u vrgame rm -rf dist.new
 
-if sudo -u vrgame npx vite build --outDir dist.new; then
+if sudo -u vrgame $LOW npx vite build --outDir dist.new; then
   sudo -u vrgame sh -c "echo $REMOTE > dist.new/.built"
   sudo -u vrgame rm -rf dist.old
   [ -d dist ] && sudo -u vrgame mv dist dist.old
