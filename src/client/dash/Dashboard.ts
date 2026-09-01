@@ -1,11 +1,25 @@
 import type { Room } from "colyseus.js";
 
 import type { ZoneState } from "#shared/net/schema";
-import type { SpecCmd } from "#shared/net/messages";
+import type { SpecCmd, OverlayPatch } from "#shared/net/messages";
 import { NetClient } from "../net/NetClient";
 import { CINE_PATHS } from "../spectator/cine";
 
 const LS_KEY = "zepDashKey";
+const LS_OVERLAY = "zepOverlayCfg";
+
+interface OverlayToggle {
+  key: "wm" | "clock" | "online" | "watching" | "hp";
+  label: string;
+}
+
+const OVERLAY_TOGGLES: OverlayToggle[] = [
+  { key: "wm", label: "Вотермарк" },
+  { key: "clock", label: "Часы (МСК)" },
+  { key: "online", label: "Список онлайн" },
+  { key: "watching", label: "«Смотрим»" },
+  { key: "hp", label: "HP цели" },
+];
 
 /**
  * Пульт стрима (этап 17 Ф5). Открывается на телефоне: `/?dash=КЛЮЧ`
@@ -26,6 +40,17 @@ export class Dashboard {
   private dayAuto: number | null = null;
   private lastListSig = "";
 
+  /** Локальная копия конфигурации оверлея — переживает перезагрузку спектатора. */
+  private ov: Required<OverlayPatch> = {
+    watermark: "ZEP GAME",
+    wm: 1,
+    clock: 1,
+    online: 1,
+    watching: 1,
+    hp: 1,
+  };
+  private readonly ovBtns = new Map<string, HTMLButtonElement>();
+
   constructor(keyFromUrl: string | null) {
     document.body.innerHTML = "";
     document.body.style.cssText =
@@ -34,6 +59,8 @@ export class Dashboard {
 
     this.root = el("div", "");
     document.body.appendChild(this.root);
+
+    this.loadOverlay();
 
     const key = this.resolveKey(keyFromUrl);
     if (!key) {
@@ -93,16 +120,49 @@ export class Dashboard {
     this.root.append(cardIn, cardSub);
     const cardRow = el("div", "");
     cardRow.style.cssText = "display:flex;gap:8px";
-    const showBtn = this.bigBtn("Показать 6 с", () => {
+    const showBtn = this.bigBtn("Показать — держать, пока не уберу", () => {
       const t = cardIn.value.trim();
-      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 6 });
+      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 0 });
     });
-    const holdBtn = this.bigBtn("Держать 60 с", () => {
-      const t = cardIn.value.trim();
-      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 60 });
-    });
-    cardRow.append(showBtn, holdBtn);
+    showBtn.style.background = "#1c3a24";
+    const hideBtn = this.bigBtn("Убрать", () => this.send({ t: "card", title: "" }));
+    hideBtn.style.background = "#3a2020";
+    cardRow.append(showBtn, hideBtn);
     this.root.appendChild(cardRow);
+
+    // --- оверлей: что показывать в эфире ---
+    this.section("Оверлей");
+    const wmRow = el("div", "");
+    wmRow.style.cssText = "display:flex;gap:8px;margin-bottom:8px";
+    const wmIn = document.createElement("input");
+    wmIn.placeholder = "Текст вотермарка";
+    wmIn.value = this.ov.watermark;
+    wmIn.style.cssText =
+      "flex:1;padding:10px;border:1px solid #4a5570;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;box-sizing:border-box;min-width:0";
+    const wmApply = document.createElement("button");
+    wmApply.textContent = "✓";
+    wmApply.style.cssText =
+      "padding:0 18px;border:1px solid #5a6480;border-radius:8px;background:#1d1f2b;" +
+      "color:#e8ecf8;font:600 16px system-ui;cursor:pointer";
+    wmApply.addEventListener("click", () => {
+      this.ov.watermark = wmIn.value.trim() || "ZEP GAME";
+      this.saveOverlay();
+      this.send({ t: "overlay", patch: { watermark: this.ov.watermark } });
+    });
+    wmRow.append(wmIn, wmApply);
+    this.root.appendChild(wmRow);
+
+    const ovGrid = el("div", "");
+    ovGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
+    for (const t of OVERLAY_TOGGLES) {
+      const b = this.bigBtn("", () => this.toggleOverlay(t.key));
+      b.style.cssText += ";padding:12px";
+      this.ovBtns.set(t.key, b);
+      ovGrid.appendChild(b);
+    }
+    this.root.appendChild(ovGrid);
+    this.refreshOverlayUi();
 
     // --- время суток ---
     this.section("Время суток");
@@ -138,6 +198,15 @@ export class Dashboard {
     this.nowEl.textContent = "на связи";
     setInterval(() => this.refreshList(), 1500);
     this.refreshList();
+
+    // Спектатор может перезагрузиться (обновление сборки) и потерять конфиг
+    // оверлея — пере-шлём его сразу и затем периодически, лишним не помешает.
+    this.sendOverlayConfig();
+    setInterval(() => this.sendOverlayConfig(), 20_000);
+  }
+
+  private sendOverlayConfig(): void {
+    this.net.sendSpecCmd({ t: "overlay", patch: { ...this.ov } });
   }
 
   private send(cmd: SpecCmd): void {
@@ -198,6 +267,40 @@ export class Dashboard {
     const next = this.dayAuto ? 0 : 1;
     this.setDayAutoUi(next);
     this.send({ t: "dayAuto", on: next });
+  }
+
+  private toggleOverlay(key: OverlayToggle["key"]): void {
+    this.ov[key] = this.ov[key] ? 0 : 1;
+    this.saveOverlay();
+    this.refreshOverlayUi();
+    this.send({ t: "overlay", patch: { [key]: this.ov[key] } });
+  }
+
+  private refreshOverlayUi(): void {
+    for (const t of OVERLAY_TOGGLES) {
+      const b = this.ovBtns.get(t.key);
+      if (!b) continue;
+      const on = this.ov[t.key] !== 0;
+      b.textContent = `${t.label}: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+      b.style.background = on ? "#1c3a24" : "#3a2020";
+    }
+  }
+
+  private loadOverlay(): void {
+    try {
+      const raw = localStorage.getItem(LS_OVERLAY);
+      if (raw) Object.assign(this.ov, JSON.parse(raw));
+    } catch {
+      /* мусор в сторадже — остаёмся на дефолте */
+    }
+  }
+
+  private saveOverlay(): void {
+    try {
+      localStorage.setItem(LS_OVERLAY, JSON.stringify(this.ov));
+    } catch {
+      /* приватный режим — переживём без сохранения */
+    }
   }
 
   private setDayAutoUi(on: number): void {

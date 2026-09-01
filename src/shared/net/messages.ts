@@ -61,6 +61,16 @@ export const MSG = {
   specCmd: "sc",
 } as const;
 
+/** Вкл/выкл (1/0) и текст отдельных элементов оверлея (этап 17 Ф6). */
+export interface OverlayPatch {
+  watermark?: string;
+  wm?: number;
+  clock?: number;
+  online?: number;
+  watching?: number;
+  hp?: number;
+}
+
 /** Команды дашборда стрима (этап 17 Ф5). */
 export type SpecCmd =
   /** Принудительно поставить кадр. `shot` — токен: overview / orbitBoss /
@@ -74,8 +84,11 @@ export type SpecCmd =
   | { t: "time"; hour: number }
   /** Вкл/выкл авто-ход суток. Применяет сервер. */
   | { t: "dayAuto"; on: number }
-  /** Дашборд -> спектатор: показать нижнюю плашку/заставку на N секунд. */
+  /** Дашборд -> спектатор: нижняя плашка/заставка. `secs<=0`/нет — держать
+   *  бесконечно, пока не скроют; пустой `title` — скрыть. */
   | { t: "card"; title: string; sub?: string; secs?: number }
+  /** Дашборд -> спектатор: патч конфигурации оверлея (вкл/выкл, текст). */
+  | { t: "overlay"; patch: OverlayPatch }
   /** Рендерящий спектатор -> дашбордам: какой кадр сейчас в эфире. */
   | { t: "nowShot"; shot: string };
 

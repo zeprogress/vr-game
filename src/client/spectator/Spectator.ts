@@ -8,7 +8,6 @@ import { BOSS, MOB } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { buildZone, type ZoneQuality } from "../world/Zone";
-import { LOADOUT } from "../config/loadout";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -281,7 +280,8 @@ export class Spectator {
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
     else if (cmd.t === "cut") this.cam.cutNext();
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
-    else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 6);
+    else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
+    else if (cmd.t === "overlay") this.overlay?.setConfig(cmd.patch);
     // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.
   }
 
@@ -435,7 +435,6 @@ export class Spectator {
       watching,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
-      hour: LOADOUT.world.hour,
       online,
     });
   }

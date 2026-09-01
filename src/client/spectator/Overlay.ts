@@ -1,23 +1,42 @@
+import type { OverlayPatch } from "#shared/net/messages";
+
 /**
  * Оверлеи стрима (этап 17 Ф6).
  *
  * DOM поверх canvas — рисуется в полном разрешении вьюпорта (1080p на боксе),
  * поэтому текст чёткий независимо от рендер-скейла спектатора. Ничего не знает
- * о Babylon: раз в кадр получает готовый контекст из Spectator.
+ * о Babylon: раз в кадр получает готовый контекст из Spectator. Каждый элемент
+ * включается/выключается с пульта (SpecCmd overlay).
  */
 
 export interface OverlayCtx {
   /** Кого показываем: ник игрока / имя моба / null (обзор, путь). */
   watching: string | null;
-  /** Подпись кадра для режима без цели («Обзор зоны», «Путь: …»). */
+  /** Подпись кадра для режима без цели («Обзор зоны», «Пролёт: …»). */
   shotLabel: string;
   /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
-  /** Час мира 0..24. */
-  hour: number;
   /** Ники всех онлайн-игроков. */
   online: string[];
 }
+
+interface Config {
+  watermark: string;
+  wm: boolean;
+  clock: boolean;
+  online: boolean;
+  watching: boolean;
+  hp: boolean;
+}
+
+const DEFAULT: Config = {
+  watermark: "ZEP GAME",
+  wm: true,
+  clock: true,
+  online: true,
+  watching: true,
+  hp: true,
+};
 
 const CSS = `
 .ov { position:fixed; inset:0; pointer-events:none; z-index:9;
@@ -29,9 +48,9 @@ const CSS = `
 .ov-wm i { width:1vh; height:1vh; border-radius:50%; background:#e8433f;
   box-shadow:0 0 10px #e8433f; animation:ovpulse 2s ease-in-out infinite; }
 @keyframes ovpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
-.ov-top { right:2.2vw; top:2.4vh; text-align:right; }
-.ov-clock { font-weight:700; font-size:2.3vh; letter-spacing:.06em; }
-.ov-online { margin-top:1vh; font-size:1.7vh; line-height:1.5; opacity:.9; }
+.ov-clock { right:2.2vw; top:2.4vh; font-weight:700; font-size:2.3vh; letter-spacing:.06em;
+  text-align:right; }
+.ov-online { right:2.2vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-watch { left:2.2vw; bottom:3vh; }
@@ -55,21 +74,23 @@ const CSS = `
 .ov-card .t u { display:block; text-decoration:none; font-size:2vh; opacity:.8; margin-top:.5vh; }
 `;
 
-function hhmm(hour: number): string {
-  const h = ((Math.floor(hour) % 24) + 24) % 24;
-  const m = Math.floor((hour - Math.floor(hour)) * 60);
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function dur(sec: number): string {
-  const s = Math.max(0, Math.floor(sec));
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+function mskTime(): string {
+  try {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
+  } catch {
+    return "";
+  }
 }
 
 export class Overlay {
   private readonly root: HTMLDivElement;
   private readonly wm: HTMLDivElement;
+  private readonly wmText: HTMLSpanElement;
   private readonly clock: HTMLDivElement;
   private readonly online: HTMLDivElement;
   private readonly watch: HTMLDivElement;
@@ -79,8 +100,8 @@ export class Overlay {
   private readonly card: HTMLDivElement;
   private readonly cardTitle: HTMLElement;
   private readonly cardSub: HTMLElement;
-  private readonly startedAt = performance.now();
-  private cardUntil = 0;
+  private cardUntil = 0; // 0 — держать бесконечно (пока не скроют)
+  private cfg: Config = { ...DEFAULT };
 
   constructor() {
     const style = document.createElement("style");
@@ -90,13 +111,13 @@ export class Overlay {
     this.root = div("ov");
 
     this.wm = div("box ov-wm");
-    this.wm.innerHTML = "<i></i><span>ZEP GAME</span>";
+    this.wm.appendChild(document.createElement("i"));
+    this.wmText = document.createElement("span");
+    this.wmText.textContent = this.cfg.watermark;
+    this.wm.appendChild(this.wmText);
 
-    const top = div("box ov-top");
-    this.clock = div("ov-clock");
-    this.online = div("ov-online");
-    top.append(this.clock, this.online);
-
+    this.clock = div("box ov-clock");
+    this.online = div("box ov-online");
     this.watch = div("box ov-watch");
 
     this.hp = div("box ov-hp");
@@ -105,7 +126,6 @@ export class Overlay {
     this.hpFill = div("fill");
     bar.appendChild(this.hpFill);
     this.hp.append(this.hpLabel, bar);
-    this.hp.style.display = "none";
 
     this.card = div("box ov-card");
     const t = div("t");
@@ -114,25 +134,52 @@ export class Overlay {
     t.append(this.cardTitle, this.cardSub);
     this.card.appendChild(t);
 
-    this.root.append(this.wm, top, this.watch, this.hp, this.card);
+    this.root.append(this.wm, this.clock, this.online, this.watch, this.hp, this.card);
     document.body.appendChild(this.root);
   }
 
-  /** Заставка/нижняя треть с дашборда. */
-  showCard(title: string, sub = "", secs = 6): void {
+  /** Патч конфигурации с пульта (SpecCmd overlay). */
+  setConfig(patch: OverlayPatch): void {
+    if (typeof patch.watermark === "string") {
+      this.cfg.watermark = patch.watermark;
+      this.wmText.textContent = patch.watermark;
+    }
+    const flag = (v: number | undefined): boolean | undefined =>
+      v === undefined ? undefined : v !== 0;
+    for (const k of ["wm", "clock", "online", "watching", "hp"] as const) {
+      const f = flag(patch[k]);
+      if (f !== undefined) this.cfg[k] = f;
+    }
+  }
+
+  /**
+   * Заставка/нижняя треть с дашборда.
+   * `secs <= 0` — держать бесконечно, пока не скроют. Пустой `title` — скрыть.
+   */
+  showCard(title: string, sub = "", secs = 0): void {
+    if (!title) {
+      this.card.classList.remove("show");
+      this.cardUntil = 0;
+      return;
+    }
     this.cardTitle.textContent = title;
     this.cardSub.textContent = sub;
     this.cardSub.style.display = sub ? "block" : "none";
     this.card.classList.add("show");
-    this.cardUntil = performance.now() + Math.max(1, secs) * 1000;
+    this.cardUntil = secs > 0 ? performance.now() + secs * 1000 : 0;
   }
 
   update(ctx: OverlayCtx): void {
     const now = performance.now();
 
-    this.clock.textContent = `🕐 ${hhmm(ctx.hour)}   ⏱ ${dur((now - this.startedAt) / 1000)}`;
+    show(this.wm, this.cfg.wm);
+    show(this.clock, this.cfg.clock);
+    show(this.watch, this.cfg.watching);
+    show(this.online, this.cfg.online && ctx.online.length > 0);
 
-    if (ctx.online.length) {
+    if (this.cfg.clock) this.clock.textContent = mskTime();
+
+    if (this.cfg.online && ctx.online.length) {
       this.online.innerHTML = "<b>в игре</b>";
       for (const n of ctx.online.slice(0, 7)) {
         const row = document.createElement("div");
@@ -145,29 +192,29 @@ export class Overlay {
         more.style.opacity = ".6";
         this.online.appendChild(more);
       }
-    } else {
-      this.online.innerHTML = "";
     }
 
-    if (ctx.watching) {
-      this.watch.innerHTML = "";
-      const b = document.createElement("b");
-      b.textContent = "смотрим";
-      const s = document.createElement("span");
-      s.textContent = ctx.watching;
-      this.watch.append(b, s);
-    } else {
-      this.watch.innerHTML = `<b>${ctx.shotLabel}</b>`;
+    if (this.cfg.watching) {
+      if (ctx.watching) {
+        this.watch.innerHTML = "";
+        const b = document.createElement("b");
+        b.textContent = "смотрим";
+        const s = document.createElement("span");
+        s.textContent = ctx.watching;
+        this.watch.append(b, s);
+      } else {
+        this.watch.innerHTML = `<b>${ctx.shotLabel}</b>`;
+      }
     }
 
     const hp = ctx.targetHp;
-    if (hp) {
-      this.hp.style.display = "";
+    if (this.cfg.hp && hp) {
+      show(this.hp, true);
       this.hp.classList.toggle("boss", hp.boss);
       this.hpFill.style.width = `${Math.round(Math.max(0, Math.min(1, hp.frac)) * 100)}%`;
       this.hpLabel.textContent = `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))}/${Math.round(hp.max)}`;
     } else {
-      this.hp.style.display = "none";
+      show(this.hp, false);
     }
 
     if (this.cardUntil && now > this.cardUntil) {
@@ -185,4 +232,8 @@ function div(cls: string): HTMLDivElement {
   const e = document.createElement("div");
   e.className = cls;
   return e;
+}
+
+function show(el: HTMLElement, on: boolean): void {
+  el.style.display = on ? "" : "none";
 }
