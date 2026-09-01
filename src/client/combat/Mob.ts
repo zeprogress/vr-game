@@ -10,13 +10,39 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
+
 import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
+import type { RigInstance } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
+
+/** Доворот модели, чтобы её «лицо» смотрело туда же, куда наш yaw. */
+const MODEL_YAW = 0;
+
+/** Перекрасить материалы модели в плоский вид под наш кинд (цвет тела/глаз). */
+function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, number, number]): void {
+  for (const m of rig.meshes) {
+    const src = m.material as { name?: string } | null;
+    if (!src) continue;
+    const isEyes = /eye/i.test(src.name ?? "");
+    const flat = new StandardMaterial(`${kind}_${isEyes ? "eyes" : "body"}`, rig.root.getScene());
+    if (isEyes) {
+      flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+      flat.specularColor = new Color3(0.12, 0.12, 0.12);
+    } else {
+      flat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+      flat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
+      flat.specularColor = new Color3(0.25, 0.2, 0.25);
+    }
+    flat.maxSimultaneousLights = 3;
+    m.material = flat;
+  }
+}
 
 let woundTex: DynamicTexture | null = null;
 
@@ -78,6 +104,12 @@ export class Mob implements Hittable {
   private slamRingT = 0;
   private ragePulse = 0;
 
+  /** Модель из пака (если подключена): она заменяет процедурную сферу. */
+  private rig: RigInstance | null = null;
+  /** Узел, который тянем/сжимаем в прыжке: сфера или корень модели. */
+  private squash: TransformNode;
+  private curAnim: AnimationGroup | null = null;
+
   private readonly isBoss: boolean;
 
   constructor(
@@ -120,6 +152,7 @@ export class Mob implements Hittable {
     this.body.parent = this.root;
     this.body.position.y = MOB.bodyRadius;
     this.body.isPickable = false;
+    this.squash = this.body;
 
     this.head = new TransformNode("mobHead", scene);
     this.head.parent = this.root;
@@ -187,9 +220,52 @@ export class Mob implements Hittable {
           ? new Color3(1, 0.6, 0.25)
           : new Color3(0.85, 0.9, 1),
     );
+
+    // Модель из пака вместо сферы — для слизней/плевунов/босса, не в lean-режиме
+    // (на стриме слабый GPU не потянет ~9 скелетов).
+    if (!this.lean && (kind === "slime" || kind === "spitter" || kind === "boss")) {
+      void this.attachModel();
+    }
   }
 
   private readonly uiAnchor: TransformNode;
+
+  /** Подменить процедурную сферу оснащённой моделью слизня. */
+  private async attachModel(): Promise<void> {
+    let make: () => RigInstance;
+    try {
+      const { loadRig } = await import("../world/models");
+      make = await loadRig(this.scene, "slime", {
+        // без маленьких ручек — схлопываем всю ветку рук
+        hideBones: ["Shoulder.L", "LowerArm.L", "Hand.L", "Shoulder.R", "LowerArm.R", "Hand.R"],
+      });
+    } catch {
+      return; // нет файла / не загрузился — остаёмся на сфере
+    }
+    if (this.root.isDisposed()) return;
+
+    const rig = make();
+    this.rig = rig;
+    rig.root.parent = this.root;
+    rig.root.position.set(0, 0, 0);
+    rig.root.rotation.set(0, MODEL_YAW, 0);
+
+    // Высота модели ≈ два радиуса тела (масштаб домножается на s.scale отдельно).
+    const base = (MOB.bodyRadius * 2) / rig.nativeHeight;
+    rig.root.scaling.setAll(base);
+
+    recolorRig(rig, this.kind, this.tint);
+
+    // Прячем процедурную сферу и глаза — у модели своё лицо.
+    this.body.setEnabled(false);
+    this.head.setEnabled(false);
+    this.squash = rig.root;
+    this.baseModelScale = base;
+
+    if (!this.dead) this.playAnim(rig.anims.get("idle"), true);
+  }
+
+  private baseModelScale = 1;
 
   // ---- Hittable ----
 
@@ -305,27 +381,34 @@ export class Mob implements Hittable {
       this.dead = true;
       this.deathT = 0;
       for (const w of this.wounds) w.setEnabled(false);
+      if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
-      this.body.visibility = 1;
-      this.body.scaling.setAll(1);
-      this.head.setEnabled(true);
+      this.setBodyVisibility(1);
+      this.setSquash(1, 1, 1);
+      this.head.setEnabled(!this.rig);
       this.nameTag.setEnabled(true);
       this.clearWounds();
       this.bar.setVisible(false);
       this.barTimer = 0;
+      if (this.rig) this.playAnim(this.rig.anims.get("idle"), true);
     }
 
     if (this.dead) {
       this.deathT += dt;
-      const k = Math.min(1, this.deathT / 0.4);
-      this.body.scaling.set(1 + k, Math.max(0.05, 1 - k), 1 + k);
-      this.body.visibility = 1 - k;
       this.head.setEnabled(false);
       this.bar.setVisible(false);
       this.nameTag.setEnabled(false);
       this.prevY = pos.y;
+      if (this.rig) {
+        // Даём проиграть Slime_Death, затем прячем.
+        if (this.deathT > 0.9) this.setBodyVisibility(Math.max(0, 1 - (this.deathT - 0.9) * 3));
+      } else {
+        const k = Math.min(1, this.deathT / 0.4);
+        this.setSquash(1 + k, Math.max(0.05, 1 - k), 1 + k);
+        this.setBodyVisibility(1 - k);
+      }
       return;
     }
 
@@ -337,15 +420,21 @@ export class Mob implements Hittable {
       // Телеграф рывка: босс вытягивается вперёд по направлению взгляда,
       // сжимаясь с боков, и наливается багровым.
       const w = Math.max(0.35, s.windup);
-      this.body.scaling.set(Math.max(0.5, 1 - w * 0.3), Math.max(0.6, 1 - w * 0.2), 1 + w * 0.7);
+      this.setSquash(Math.max(0.5, 1 - w * 0.3), Math.max(0.6, 1 - w * 0.2), 1 + w * 0.7);
       this.flash = Math.max(this.flash, 0.35 + w * 0.35);
     } else if (this.isBoss && s.windup > 0) {
       // Телеграф слэма: босс приседает и раздувается вширь.
       const w = s.windup;
-      this.body.scaling.set(1 + w * 0.4, Math.max(0.45, 1 - w * 0.45), 1 + w * 0.4);
+      this.setSquash(1 + w * 0.4, Math.max(0.45, 1 - w * 0.45), 1 + w * 0.4);
       this.flash = Math.max(this.flash, w * 0.5);
     } else {
-      this.body.scaling.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+      this.setSquash(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    }
+
+    // Модель: покой ↔ ход по признаку «на земле».
+    if (this.rig && !this.isBoss) {
+      const want = s.grounded === 0 ? this.rig.anims.get("walk") : this.rig.anims.get("idle");
+      this.playAnim(want ?? this.rig.anims.get("idle"), true);
     }
 
     // Слэм: ++slamSeq -> ударная волна по земле + грохот.
@@ -389,6 +478,27 @@ export class Mob implements Hittable {
 
   private playIfNear(playerPos: Vector3, fn: () => void, range = 28): void {
     if (Vector3.DistanceSquared(this.root.getAbsolutePosition(), playerPos) < range * range) fn();
+  }
+
+  /** Сжатие/растяжение тела. Для модели домножаем на её базовый масштаб. */
+  private setSquash(x: number, y: number, z: number): void {
+    const b = this.rig ? this.baseModelScale : 1;
+    this.squash.scaling.set(x * b, y * b, z * b);
+  }
+
+  private setBodyVisibility(v: number): void {
+    if (this.rig) {
+      for (const m of this.rig.meshes) m.visibility = v;
+    } else {
+      this.body.visibility = v;
+    }
+  }
+
+  private playAnim(g: AnimationGroup | undefined | null, loop: boolean): void {
+    if (!g || g === this.curAnim) return;
+    this.curAnim?.stop();
+    g.start(loop, 1, g.from, g.to, false);
+    this.curAnim = g;
   }
 
   private addWound(dirX: number, dirZ: number): void {
@@ -483,6 +593,8 @@ export class Mob implements Hittable {
     this.nameTag.dispose();
     this.bar.dispose();
     this.slamRing?.material?.dispose();
+    this.rig?.dispose();
+    this.rig = null;
     this.root.dispose(false, true);
     this._woundMat?.dispose();
   }

@@ -50,7 +50,10 @@ for (const g of c.animationGroups) {
   console.log(`  · "${g.name}"  from=${g.from} to=${g.to}  targets=${g.targetedAnimations.length}`);
 }
 
-console.log("skeletons:", c.skeletons.length, c.skeletons.map((s) => `${s.name}(${s.bones.length} bones)`).join(", "));
+console.log("skeletons:", c.skeletons.length);
+for (const sk of c.skeletons) {
+  console.log(`  ${sk.name}:`, sk.bones.map((b) => b.name).join(", "));
+}
 
 // габариты всей модели
 c.meshes.forEach((m) => m.computeWorldMatrix(true));

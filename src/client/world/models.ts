@@ -1,5 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { AssetContainer } from "@babylonjs/core/assetContainer";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -20,6 +22,7 @@ import "@babylonjs/loaders/glTF/2.0";
 
 export const MODELS = {
   pedestal: "/models/pedestal.glb",
+  slime: "/models/Slime.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;
@@ -107,6 +110,92 @@ export async function placeModel(
   if (frozen) root.freezeWorldMatrix();
   return root;
 }
+
+// ---- анимированные модели (скелет + AnimationGroup) ----
+
+export interface RigInstance {
+  root: TransformNode;
+  meshes: AbstractMesh[];
+  /** Клипы по короткому имени: "idle" / "walk" / "attack" / "death". */
+  anims: Map<string, AnimationGroup>;
+  /** Нативная высота модели (для подгона масштаба под нужный размер). */
+  nativeHeight: number;
+  dispose(): void;
+}
+
+/**
+ * Загрузить оснащённую модель. Возвращает фабрику: каждый вызов — новый
+ * экземпляр со своим клоном скелета и своими AnimationGroup (их надо
+ * останавливать/чистить вместе с экземпляром).
+ */
+export interface RigOpts {
+  /**
+   * Узлы скелета, которые «убрать»: схлопываем в ноль и снимаем с них
+   * анимационные дорожки (иначе анимация вернёт им размер). Достаточно
+   * назвать корневой узел ветки — потомки схлопнутся вместе с ним.
+   * Напр. `["Shoulder.L", "Shoulder.R"]` — слизень без ручек.
+   */
+  hideBones?: string[];
+}
+
+export async function loadRig(
+  scene: Scene,
+  name: ModelName,
+  rigOpts: RigOpts = {},
+): Promise<() => RigInstance> {
+  const c = await containerFor(scene, MODELS[name]);
+  const hide = new Set(rigOpts.hideBones ?? []);
+  return () => {
+    const r = c.instantiateModelsToScene((n) => n, false);
+    const root = r.rootNodes[0] as TransformNode;
+    const meshes = root.getChildMeshes(false);
+    // «Убрать» узлы: снять с них ВСЕ анимационные дорожки (по имени цели) и
+    // схлопнуть в ноль. Дорожки трогаем во всех клипах, размер — один раз.
+    const anims = new Map<string, AnimationGroup>();
+    for (const g of r.animationGroups) {
+      g.stop();
+      if (hide.size) {
+        for (const ta of [...g.targetedAnimations]) {
+          const tn = (ta.target as { name?: string })?.name;
+          if (tn && [...hide].some((h) => tn === h || tn.startsWith(h))) {
+            g.removeTargetedAnimation(ta.animation);
+          }
+        }
+      }
+      const short = (g.name.split("_").pop() ?? g.name).toLowerCase();
+      anims.set(short, g);
+    }
+    if (hide.size) {
+      for (const n of root.getDescendants(false)) {
+        if (![...hide].some((h) => n.name === h || n.name.startsWith(h))) continue;
+        const t = n as unknown as {
+          scaling?: { copyFrom(v: Vector3): void };
+          position?: { setAll(v: number): void };
+        };
+        // В ноль по размеру И в начало ветки по позиции — точка прячется в теле.
+        t.scaling?.copyFrom(TINY);
+        t.position?.setAll(0);
+      }
+    }
+    root.computeWorldMatrix(true);
+    meshes.forEach((m) => m.computeWorldMatrix(true));
+    const hv = root.getHierarchyBoundingVectors(true);
+    const nativeHeight = Math.max(0.1, hv.max.y - hv.min.y);
+    return {
+      root,
+      meshes,
+      anims,
+      nativeHeight,
+      dispose() {
+        for (const g of r.animationGroups) g.dispose();
+        for (const s of r.skeletons) s.dispose();
+        root.dispose(false, true);
+      },
+    };
+  };
+}
+
+const TINY = new Vector3(1e-3, 1e-3, 1e-3);
 
 const q = (v: number): number => Math.round(v * 10) / 10;
 
