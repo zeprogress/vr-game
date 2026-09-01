@@ -87,7 +87,7 @@ export class Mob implements Hittable {
     private readonly sfx: Sfx,
     private readonly report: HitReporter,
     /** true — облегчённый вид (стрим на слабом GPU): непрозрачное тело,
-     *  без глаз, без плашки и полоски HP. ~4 draw-call меньше на каждого моба. */
+     *  без плашки имени, полоски HP и ран. Глаза оставляем — с ними живее. */
     private readonly lean = false,
   ) {
     const opaque = this.lean;
@@ -138,7 +138,7 @@ export class Mob implements Hittable {
       eyeMat.specularColor = new Color3(0.15, 0.15, 0.15);
     }
     const eyeY = cfg.ranged ? 0.05 : this.isBoss ? 0.13 : 0.15;
-    for (const dx of this.lean ? [] : [-0.18, 0.18]) {
+    for (const dx of [-0.18, 0.18]) {
       const eye = MeshBuilder.CreateSphere("mobEye", { diameter: this.isBoss ? 0.2 : 0.17, segments: 6 }, scene);
       eye.material = eyeMat;
       eye.parent = this.head;

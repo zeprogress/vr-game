@@ -44,7 +44,7 @@ export class NetMobs {
     /** Общий массив целей — тот же, что получил CombatSystem. */
     private readonly targets: Hittable[],
     private readonly report: HitReporter,
-    /** true — облегчённый вид мобов: без плашки, HP-полоски и глаз (слабый GPU). */
+    /** true — облегчённый вид мобов: без плашки, HP-полоски, ран; глаза остаются (слабый GPU). */
     private readonly leanMobs = false,
   ) {
     const mat = new StandardMaterial("spitBallMat", scene);

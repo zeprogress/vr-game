@@ -117,6 +117,9 @@ class Mob {
   private respawnIn = 0;
   grounded = true;
   private hopCd = Math.random() * MOB.hopInterval;
+  /** Куда лениво бредём вне боя. По приходе выбираем новую точку у дома. */
+  private wanderX = 0;
+  private wanderZ = 0;
   private attackCd = 0;
   private hurtCd = 0;
   private aggroed = false;
@@ -176,6 +179,8 @@ class Mob {
     this.homeZ = hz;
     this.x = hx;
     this.z = hz;
+    this.wanderX = hx;
+    this.wanderZ = hz;
     this.y = terrainHeight(hx, hz);
     const cfg =
       kind === "spitter"
@@ -456,6 +461,28 @@ class Mob {
           this.vy = MOB.hopUp;
           this.grounded = false;
         }
+      } else if (this.hopCd <= 0) {
+        // Праздношатание вне боя: лениво скачем к точке в пределах wanderRadius от дома.
+        this.hopCd = MOB.idleHopInterval * (0.7 + Math.random() * 0.7);
+        const wr = isBoss ? BOSS.wanderRadius : MOB.wanderRadius;
+        let wdx = this.wanderX - this.x;
+        let wdz = this.wanderZ - this.z;
+        if (Math.hypot(wdx, wdz) < 1.5) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.sqrt(Math.random()) * wr;
+          this.wanderX = this.homeX + Math.cos(a) * r;
+          this.wanderZ = this.homeZ + Math.sin(a) * r;
+          wdx = this.wanderX - this.x;
+          wdz = this.wanderZ - this.z;
+        }
+        const wl = Math.hypot(wdx, wdz) || 1;
+        const [hx, hz] = steerAroundTrees(this.x, this.z, wdx / wl, wdz / wl);
+        const spd = isBoss ? MOB.idleHopSpeed * 0.7 : MOB.idleHopSpeed;
+        this.vx = hx * spd;
+        this.vz = hz * spd;
+        this.vy = MOB.hopUp * 0.7;
+        this.grounded = false;
+        this.yaw = Math.atan2(hx, hz);
       }
     } else {
       this.vy -= MOB.gravity * dt;
@@ -539,6 +566,8 @@ class Mob {
     const r = 3 + Math.random() * MOB.wanderRadius;
     this.x = this.homeX + Math.cos(a) * r;
     this.z = this.homeZ + Math.sin(a) * r;
+    this.wanderX = this.x;
+    this.wanderZ = this.z;
     this.y = terrainHeight(this.x, this.z) + 5;
     this.slamCd = BOSS.slamCooldown;
     this.slamWindupT = 0;
