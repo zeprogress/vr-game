@@ -136,6 +136,8 @@ export interface RigOpts {
    * Напр. `["Shoulder.L", "Shoulder.R"]` — слизень без ручек.
    */
   hideBones?: string[];
+  /** Сгладить нормали (сварить совпадающие вершины) — убирает «фасетки». */
+  smoothNormals?: boolean;
 }
 
 export async function loadRig(
@@ -149,6 +151,18 @@ export async function loadRig(
     const r = c.instantiateModelsToScene((n) => n, false);
     const root = r.rootNodes[0] as TransformNode;
     const meshes = root.getChildMeshes(false);
+
+    if (rigOpts.smoothNormals) {
+      for (const m of meshes) {
+        if (m.getTotalVertices() === 0) continue;
+        try {
+          (m as unknown as { forceSharedVertices(): void }).forceSharedVertices();
+          (m as unknown as { createNormals(updatable: boolean): void }).createNormals(true);
+        } catch {
+          /* сварка сломала бы скиннинг — оставляем как есть */
+        }
+      }
+    }
     // «Убрать» узлы: снять с них ВСЕ анимационные дорожки (по имени цели) и
     // схлопнуть в ноль. Дорожки трогаем во всех клипах, размер — один раз.
     const anims = new Map<string, AnimationGroup>();

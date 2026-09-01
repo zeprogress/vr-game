@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
@@ -21,8 +22,13 @@ import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
-/** Доворот модели: её «перёд» — по -X, наш yaw=0 — это +Z. */
-const MODEL_YAW = Math.PI / 2;
+/** Доворот модели поверх кватерниона glTF-загрузчика, чтобы её «перёд»
+ *  (глаза) совпал с направлением взгляда моба. Подбор: `?myaw=<рад>`. */
+const MODEL_YAW = (() => {
+  const p = new URLSearchParams(location.search);
+  const v = Number(p.get("myaw"));
+  return p.has("myaw") && Number.isFinite(v) ? v : -Math.PI / 2;
+})();
 
 /** Перекрасить материалы модели в плоский вид под наш кинд (цвет тела/глаз). */
 function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, number, number]): void {
@@ -222,8 +228,12 @@ export class Mob implements Hittable {
     );
 
     // Модель из пака вместо сферы — для слизней/плевунов/босса, не в lean-режиме
-    // (на стриме слабый GPU не потянет ~9 скелетов).
+    // (на стриме слабый GPU не потянет ~9 скелетов). Сферу и глаза прячем СРАЗУ
+    // (синхронно), чтобы не было кадров с двумя моделями внахлёст; если модель
+    // не загрузится — вернём сферу в catch attachModel().
     if (!this.lean && (kind === "slime" || kind === "spitter" || kind === "boss")) {
+      this.body.setEnabled(false);
+      this.head.setEnabled(false);
       void this.attachModel();
     }
   }
@@ -238,9 +248,15 @@ export class Mob implements Hittable {
       make = await loadRig(this.scene, "slime", {
         // без маленьких ручек — схлопываем всю ветку рук
         hideBones: ["Shoulder.L", "LowerArm.L", "Hand.L", "Shoulder.R", "LowerArm.R", "Hand.R"],
+        smoothNormals: true,
       });
     } catch {
-      return; // нет файла / не загрузился — остаёмся на сфере
+      // модель не загрузилась — возвращаем процедурную сферу
+      if (!this.root.isDisposed() && !this.dead) {
+        this.body.setEnabled(true);
+        this.head.setEnabled(true);
+      }
+      return;
     }
     if (this.root.isDisposed()) return;
 
@@ -248,7 +264,9 @@ export class Mob implements Hittable {
     this.rig = rig;
     rig.root.parent = this.root;
     rig.root.position.set(0, 0, 0);
-    rig.root.rotation.set(0, MODEL_YAW, 0);
+    // glTF-загрузчик уже ставит __root__ кватернион (поворот на π для пересчёта
+    // системы координат). .rotation при этом игнорируется — задаём кватернионом.
+    rig.root.rotationQuaternion = Quaternion.RotationYawPitchRoll(Math.PI + MODEL_YAW, 0, 0);
 
     // Высота модели ≈ два радиуса тела (масштаб домножается на s.scale отдельно).
     const base = (MOB.bodyRadius * 2) / rig.nativeHeight;
@@ -256,9 +274,10 @@ export class Mob implements Hittable {
 
     recolorRig(rig, this.kind, this.tint);
 
-    // Прячем процедурную сферу и глаза — у модели своё лицо.
-    this.body.setEnabled(false);
-    this.head.setEnabled(false);
+    // Процедурная сфера с глазами больше не нужна — сносим совсем, чтобы
+    // исключить любой шанс увидеть её вместе с моделью.
+    this.body.dispose();
+    this.head.dispose(false, true);
     this.squash = rig.root;
     this.baseModelScale = base;
 
@@ -387,7 +406,7 @@ export class Mob implements Hittable {
       this.dead = false;
       this.setBodyVisibility(1);
       this.setSquash(1, 1, 1);
-      this.head.setEnabled(!this.rig);
+      if (!this.rig) this.head.setEnabled(true);
       this.nameTag.setEnabled(true);
       this.clearWounds();
       this.bar.setVisible(false);
@@ -397,7 +416,7 @@ export class Mob implements Hittable {
 
     if (this.dead) {
       this.deathT += dt;
-      this.head.setEnabled(false);
+      if (!this.rig) this.head.setEnabled(false);
       this.bar.setVisible(false);
       this.nameTag.setEnabled(false);
       this.prevY = pos.y;
