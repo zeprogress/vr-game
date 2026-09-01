@@ -34,6 +34,8 @@ export class Dashboard {
   private readonly root: HTMLDivElement;
   private readonly nowEl: HTMLDivElement;
   private readonly listEl: HTMLDivElement;
+  private mobSel!: HTMLSelectElement;
+  private mobEmptyEl!: HTMLDivElement;
   private auto = true;
   private readonly autoBtn: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
@@ -52,10 +54,14 @@ export class Dashboard {
   private readonly ovBtns = new Map<string, HTMLButtonElement>();
 
   constructor(keyFromUrl: string | null) {
+    // index.html ставит html/body {overflow:hidden} под игру (полноэкранный
+    // canvas) — пульту это ломает скролл, снимаем на его странице явно.
+    document.documentElement.style.cssText = "overflow-y:auto;height:auto";
     document.body.innerHTML = "";
     document.body.style.cssText =
       "margin:0;background:#0f1016;color:#e8ecf8;font:15px/1.4 system-ui,sans-serif;" +
-      "-webkit-tap-highlight-color:transparent;padding:12px;max-width:560px;margin:0 auto";
+      "-webkit-tap-highlight-color:transparent;padding:12px 12px 40px;max-width:560px;" +
+      "margin:0 auto;overflow-y:auto;height:auto;min-height:100vh;box-sizing:border-box";
 
     this.root = el("div", "");
     document.body.appendChild(this.root);
@@ -102,10 +108,32 @@ export class Dashboard {
     CINE_PATHS.forEach((p, i) => paths.appendChild(this.cmdBtn(p.name, { t: "cam", shot: `path:${i}` })));
     this.root.appendChild(paths);
 
-    // --- живой список игроков / мобов ---
-    this.section("Игроки и мобы онлайн");
+    // --- живой список игроков ---
+    this.section("Игроки онлайн");
     this.listEl = el("div", "");
     this.root.appendChild(this.listEl);
+
+    // --- мобы: выпадающий список (их может быть десяток — в ряд не влезают) ---
+    this.section("Мобы онлайн");
+    const mobRow = el("div", "");
+    mobRow.style.cssText = "display:flex;gap:8px";
+    this.mobSel = document.createElement("select");
+    this.mobSel.style.cssText =
+      "flex:1;padding:10px;border:1px solid #4a5570;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;min-width:0";
+    const mobGo = document.createElement("button");
+    mobGo.textContent = "из глаз";
+    mobGo.style.cssText =
+      "padding:0 16px;border:1px solid #4a5570;border-radius:8px;background:#1d1f2b;" +
+      "color:#e8ecf8;font:13px system-ui;cursor:pointer";
+    mobGo.addEventListener("click", () => {
+      if (this.mobSel.value) this.send({ t: "cam", shot: `eyeMob:${this.mobSel.value}` });
+    });
+    mobRow.append(this.mobSel, mobGo);
+    this.root.appendChild(mobRow);
+    this.mobEmptyEl = el("div", "мобов сейчас нет");
+    this.mobEmptyEl.style.cssText = "opacity:.6;margin-top:4px";
+    this.root.appendChild(this.mobEmptyEl);
 
     // --- заставки / нижняя треть ---
     this.section("Заставка на экран");
@@ -237,9 +265,8 @@ export class Dashboard {
     this.lastListSig = sig;
 
     this.listEl.innerHTML = "";
-    if (players.length === 0 && mobs.length === 0) {
-      this.listEl.appendChild(el("div", "никого нет — режиссёр крутит обзор и пути"));
-      return;
+    if (players.length === 0) {
+      this.listEl.appendChild(el("div", "игроков нет — режиссёр крутит обзор и пути"));
     }
     for (const p of players) {
       const row = this.listRow(`🎮 ${p.nick}`);
@@ -249,11 +276,19 @@ export class Dashboard {
       );
       this.listEl.appendChild(row);
     }
+
+    // Выпадающий список мобов — сохраняем выбор, если моб ещё жив.
+    const prev = this.mobSel.value;
+    this.mobSel.innerHTML = "";
     for (const m of mobs) {
-      const row = this.listRow(`👹 ${m.label}`);
-      row.appendChild(this.cmdBtn("из глаз", { t: "cam", shot: `eyeMob:${m.id}` }, true));
-      this.listEl.appendChild(row);
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.label;
+      this.mobSel.appendChild(opt);
     }
+    if (mobs.some((m) => m.id === prev)) this.mobSel.value = prev;
+    this.mobEmptyEl.style.display = mobs.length ? "none" : "";
+    this.mobSel.parentElement!.style.display = mobs.length ? "" : "none";
   }
 
   // ---- ui-хелперы ----
