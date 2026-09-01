@@ -44,6 +44,7 @@ import {
   PLAYER_HP,
   PVP,
   RESPAWN,
+  SPECTATOR_KEY,
   WORLD,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
@@ -254,11 +255,8 @@ interface JoinOpts {
   spectator?: string;
 }
 
-/**
- * Ключ спектатора. В проде — из окружения (`deploy/stream.env`); локально —
- * дев-значение, чтобы можно было открыть `?spectator=zepspec-dev`.
- */
-const SPECTATOR_KEY = process.env.SPECTATOR_KEY || "zepspec-dev";
+/** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
+const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
 
 /**
  * Одна зона мира. Сервер авторитетен: мобы, куклы, плевки, здоровье игроков,
@@ -824,7 +822,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
     // Состояние комнаты Colyseus синхронизирует ему сам.
     if (options?.spectator !== undefined) {
-      if (options.spectator !== SPECTATOR_KEY) {
+      if (options.spectator !== SPEC_KEY) {
         throw new Error("спектатор: неверный ключ");
       }
       this.spectators.add(client.sessionId);

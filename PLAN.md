@@ -333,10 +333,11 @@ Quest (игра) ─► Colyseus ZoneRoom (VPS)
 | **Ф8** | Превью эфира в дашборде (WebRTC), удалённый старт/стоп (Tasker/webhook на боксе), локальная запись VOD. | — |
 | **Ф9** (опц.) | Авто-режиссёр (переключение на бой/босса/смерть), кил-фид, чат Twitch + команды (`!cam boss`), редактор путей в игре, Twitch API (название/категория). | — |
 
-**Секреты** — `deploy/stream.env` на VPS (chmod 600, gitignore):
-`SPECTATOR_KEY`, `DASHBOARD_TOKEN`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
-Ключ Twitch — только в Larix на TOX3. Серверную настройку применяет
-пользователь по скрипту (VPN блокирует прямой SSH).
+**Секреты.** `SPECTATOR_KEY` — встроен в `shared/constants.ts` (репо
+приватный, спектатор всё равно только смотрит). Смена ключа = правка +
+`git push`, ноль команд на VPS. `deploy/stream.env` + `EnvironmentFile` в
+systemd — задел для дашборда/алертов, применяется позже и по желанию.
+Ключ Twitch — только в Larix на TOX3.
 
 ## 7. Подводные камни
 
