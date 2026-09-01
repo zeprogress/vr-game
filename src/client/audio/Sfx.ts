@@ -52,43 +52,84 @@ export class Sfx {
     void this.music?.play().catch(() => {});
   }
 
-  /** Фоновая музыка: тихий бесконечный цикл. Стартует при первом resume(). */
+  /** Фоновая музыка: тихий цикл. Стартует при первом resume(). */
   private musicUrl = "";
   private musicVol = 0.045;
   private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Плейлист текущей музыки: из него после каждого трека берём случайный. */
+  private playlist: string[] = [];
+  private lastTrack = "";
 
-  startMusic(url: string, volume = 0.01): void {
+  /** Случайный трек плейлиста, по возможности не тот же, что играл только что. */
+  private pickTrack(): string {
+    if (this.playlist.length <= 1) return this.playlist[0] ?? "";
+    const pool = this.playlist.filter((u) => u !== this.lastTrack);
+    const track = pool[Math.floor(Math.random() * pool.length)];
+    this.lastTrack = track;
+    return track;
+  }
+
+  /** Настроить элемент под плейлист: один трек — луп, несколько — по концу следующий. */
+  private wireRotation(a: HTMLAudioElement): void {
+    if (this.playlist.length > 1) {
+      a.loop = false;
+      a.addEventListener("ended", () => this.playNext());
+    } else {
+      a.loop = true;
+    }
+  }
+
+  /** По концу трека — плавно (без резкой склейки) поставить следующий случайный. */
+  private playNext(): void {
+    if (this.playlist.length <= 1 || this.fadeTimer) return;
+    const next = new Audio(this.pickTrack());
+    next.preload = "auto";
+    next.volume = this.musicVol;
+    this.music = next;
+    this.wireRotation(next);
+    void next.play().catch(() => {});
+  }
+
+  /**
+   * Фоновая музыка. `src` — один файл (луп) или список: тогда играем случайный,
+   * а по его концу — следующий случайный из списка. Стартует при первом resume().
+   */
+  startMusic(src: string | string[], volume = 0.01): void {
     if (this.music) return;
-    this.musicUrl = url;
+    this.playlist = Array.isArray(src) ? [...src] : [src];
+    this.musicUrl = this.playlist.join("|");
     this.musicVol = volume;
-    const a = new Audio(url);
-    a.loop = true;
+    const a = new Audio(this.pickTrack());
     a.volume = volume;
     a.preload = "auto";
     this.music = a;
+    this.wireRotation(a);
     void a.play().catch(() => {
       /* браузер ждёт жеста — доиграем в resume() */
     });
   }
 
   /**
-   * Сменить фоновую музыку с плавным переходом (~1.4 с). Тот же url — no-op.
-   * Для перехода на boss.mp3 у босса и обратно.
+   * Сменить фоновую музыку с плавным переходом (~1.4 с). Тот же набор — no-op.
+   * `src` — файл или плейлист (см. startMusic). Для перехода на boss.mp3 и обратно.
    */
-  setMusic(url: string, volume = this.musicVol): void {
-    if (url === this.musicUrl) {
+  setMusic(src: string | string[], volume = this.musicVol): void {
+    const list = Array.isArray(src) ? [...src] : [src];
+    const key = list.join("|");
+    if (key === this.musicUrl) {
       this.musicVol = volume;
       return;
     }
-    this.musicUrl = url;
+    this.playlist = list;
+    this.musicUrl = key;
     this.musicVol = volume;
 
     const old = this.music;
-    const next = new Audio(url);
-    next.loop = true;
+    const next = new Audio(this.pickTrack());
     next.preload = "auto";
     next.volume = 0;
     this.music = next;
+    this.wireRotation(next);
     void next.play().catch(() => {});
 
     if (this.fadeTimer) clearInterval(this.fadeTimer);

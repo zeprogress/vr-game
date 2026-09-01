@@ -21,7 +21,13 @@ import {
   type CtxMob,
 } from "./SpectatorCamera";
 
-const TOWN_MUSIC = "/music/town-dion.mp3";
+/** Спокойный фон: после каждого трека берётся случайный из набора. */
+const TOWN_MUSIC = [
+  "/music/castle-hall-1.mp3",
+  "/music/castle-hall-2.mp3",
+  "/music/village-waltz-1.mp3",
+  "/music/village-waltz-2.mp3",
+];
 const BOSS_MUSIC = "/music/boss.mp3";
 const UP = { x: 0, y: 1, z: 0 };
 
