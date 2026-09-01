@@ -44,6 +44,8 @@ export class NetMobs {
     /** Общий массив целей — тот же, что получил CombatSystem. */
     private readonly targets: Hittable[],
     private readonly report: HitReporter,
+    /** true — тела мобов рисуем непрозрачными (дёшево для слабых GPU). */
+    private readonly opaqueMobs = false,
   ) {
     const mat = new StandardMaterial("spitBallMat", scene);
     mat.diffuseColor = new Color3(0.7, 0.95, 0.4);
@@ -64,7 +66,7 @@ export class NetMobs {
     this.room = room;
 
     room.state.mobs.onAdd((s, id) => {
-      const m = new Mob(this.scene, s.kind, id, this.sfx, this.report);
+      const m = new Mob(this.scene, s.kind, id, this.sfx, this.report, this.opaqueMobs);
       this.mobs.set(id, m);
       this.targets.push(m);
     }, true);

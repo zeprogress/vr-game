@@ -52,6 +52,8 @@ export interface ZoneQuality {
    * светлячков пропадает — включать только вместе с `fireflies: 0`.
    */
   minLights?: boolean;
+  /** true — небо без облаков и без периодической перерисовки градиента. */
+  simpleSky?: boolean;
 }
 
 export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
@@ -66,7 +68,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
   const sun = new DirectionalLight("sun", day.sunDir, scene);
 
-  const sky = createSky(scene, day);
+  const sky = createSky(scene, day, quality.simpleSky);
 
   /** Свет и солнце — дёшево, можно каждый кадр. */
   const applyDay = (): void => {
@@ -83,6 +85,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   let paintedAt = hour;
 
   const terrain = createTerrain(scene);
+  terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
   const trunks = scatterTrees(scene, terrain);
   const windTick = scatterGrass(scene, terrain, quality.grass ?? 1);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
@@ -139,8 +142,11 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
       // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,
       // и рассвет шёл заметными ступенями.
+      // simpleSky — перерисовку градиента делаем редко (раз в игровые ~15 мин):
+      // заливка canvas-текстуры на слабом GPU заметна.
       const moved = Math.abs(hour - paintedAt);
-      if (moved > 0.004 || moved > 23) {
+      const step = quality.simpleSky ? 0.25 : 0.004;
+      if (moved > step || moved > 23) {
         paintedAt = hour;
         sky.repaint(day);
       }

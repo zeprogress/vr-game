@@ -86,6 +86,7 @@ export class Mob implements Hittable {
     readonly id: string,
     private readonly sfx: Sfx,
     private readonly report: HitReporter,
+    opaque = false,
   ) {
     const cfg =
       kind === "spitter"
@@ -106,7 +107,9 @@ export class Mob implements Hittable {
     this.mat.specularColor = new Color3(0.4, 0.3, 0.4);
     // Полупрозрачное тело одним слоем: изнанку сферы не рисуем, иначе
     // передняя и задняя половины смешиваются и получается «слоёный пирог».
-    this.mat.alpha = cfg.alpha;
+    // opaque — слабый GPU (стрим): непрозрачное тело без смешивания и
+    // сортировки. Слизень выглядит плотным, зато почти бесплатно по заполнению.
+    this.mat.alpha = opaque ? 1 : cfg.alpha;
     this.mat.backFaceCulling = true;
 
     this.body = MeshBuilder.CreateSphere("mobBody", { diameter: MOB.bodyRadius * 2, segments: 8 }, scene);

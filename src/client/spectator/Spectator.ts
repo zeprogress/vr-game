@@ -25,14 +25,16 @@ export type Quality = "potato" | "low" | "med" | "high";
 interface Preset extends ZoneQuality {
   scaling: number; // engine.setHardwareScalingLevel — >1 рендерит в меньшем разрешении
   fpsCap: number; // 0 — без ограничения
+  opaqueMobs: boolean;
 }
 
 const PRESETS: Record<Quality, Preset> = {
-  // Совсем слабый GPU (Mali-G31): без травы и светлячков, 2 источника света.
-  potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, fpsCap: 24 },
-  low: { scaling: 1.6, grass: 0.1, fireflies: 0, minLights: true, fpsCap: 30 },
-  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, fpsCap: 30 },
-  high: { scaling: 1.0, grass: 1, fireflies: 1, fpsCap: 0 },
+  // Совсем слабый GPU (Mali-G31): без травы, светлячков, облаков; 2 света;
+  // мобы непрозрачные (меньше заполнения).
+  potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, simpleSky: true, opaqueMobs: true, fpsCap: 30 },
+  low: { scaling: 1.5, grass: 0, fireflies: 0, minLights: true, simpleSky: true, opaqueMobs: true, fpsCap: 40 },
+  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, opaqueMobs: false, fpsCap: 0 },
+  high: { scaling: 1.0, grass: 1, fireflies: 1, opaqueMobs: false, fpsCap: 0 },
 };
 
 /**
@@ -89,7 +91,12 @@ export class Spectator {
       canvas.height = this.fixedSize.h;
     }
 
-    this.engine = new Engine(canvas, true, { stencil: false, antialias: false });
+    this.engine = new Engine(
+      canvas,
+      false, // без MSAA — на Mali это дорого
+      { stencil: false, antialias: false, powerPreference: "high-performance", doNotHandleContextLost: true },
+      false,
+    );
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
@@ -100,7 +107,11 @@ export class Spectator {
       grass: preset.grass,
       fireflies: preset.fireflies,
       minLights: preset.minLights,
+      simpleSky: preset.simpleSky,
     });
+    this.scene.performancePriority = 1; // Intermediate — быстрее, но без агрессивных срезов
+    this.scene.skipPointerDownPicking = true;
+    this.scene.skipPointerUpPicking = true;
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
 
@@ -108,7 +119,7 @@ export class Spectator {
 
     // Мобы и лут — переиспользуем менеджеры игры. Бой спектатору не нужен:
     // цели пустые, репорт попаданий — заглушка.
-    this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {});
+    this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.opaqueMobs);
     this.loot = new LootDrops(this.scene);
 
     // Статус связи поверх картинки — на «слепом» боксе иначе не понять, что не так.
@@ -172,7 +183,9 @@ export class Spectator {
       if (this.fpsCap > 0 && now - this.lastFrame < 1000 / this.fpsCap - 1) return;
       this.lastFrame = now;
       this.renderCount++;
-      if (now - this.rateAt > 1000) {
+      if (this.rateAt === 0) {
+        this.rateAt = now;
+      } else if (now - this.rateAt > 1000) {
         this.renderRate = (this.renderCount * 1000) / (now - this.rateAt);
         this.renderCount = 0;
         this.rateAt = now;

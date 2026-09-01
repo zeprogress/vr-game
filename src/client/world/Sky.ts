@@ -24,13 +24,14 @@ export interface Sky {
  * шейдеров — важно для Quest), солнце, туман под цвет горизонта и
  * низкополигональные облака, медленно плывущие по ветру.
  */
-export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
+export function createSky(scene: Scene, start: DayState = dayState(12), simple = false): Sky {
   const grad = gradientMaterial(scene);
-  const dome = MeshBuilder.CreateSphere("skyDome", { diameter: 900, segments: 16, sideOrientation: 1 }, scene);
+  const dome = MeshBuilder.CreateSphere("skyDome", { diameter: 900, segments: simple ? 10 : 16, sideOrientation: 1 }, scene);
   dome.material = grad.mat;
   dome.infiniteDistance = true;
   dome.isPickable = false;
   dome.applyFog = false;
+  dome.freezeWorldMatrix();
 
   scene.fogMode = Scene.FOGMODE_EXP2;
   scene.fogDensity = 0.0055;
@@ -38,13 +39,15 @@ export function createSky(scene: Scene, start: DayState = dayState(12)): Sky {
 
   const sun = createSun(scene);
   const stars = createStars(scene);
-  const clouds = createClouds(scene);
+  // simple — слабый GPU (стрим на TOX3): без облаков, их полупрозрачная
+  // «пена» — заметная нагрузка по заполнению, когда камера смотрит в небо.
+  const clouds = simple ? null : createClouds(scene);
   const sky: Sky = {
     apply(d) {
       scene.fogColor.copyFrom(d.fog);
       sun.apply(d);
       // Днём облака, ночью звёзды — обе смены плавные, по доле дневного света.
-      clouds.apply(d);
+      clouds?.apply(d);
       stars.apply(d);
     },
     repaint(d) {
