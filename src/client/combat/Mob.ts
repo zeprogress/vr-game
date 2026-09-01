@@ -21,8 +21,8 @@ import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
-/** Доворот модели, чтобы её «лицо» смотрело туда же, куда наш yaw. */
-const MODEL_YAW = 0;
+/** Доворот модели: её «перёд» — по -X, наш yaw=0 — это +Z. */
+const MODEL_YAW = Math.PI / 2;
 
 /** Перекрасить материалы модели в плоский вид под наш кинд (цвет тела/глаз). */
 function recolorRig(rig: RigInstance, kind: MobKind, tint: readonly [number, number, number]): void {
