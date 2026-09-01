@@ -96,7 +96,8 @@ export class Fireflies {
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
   private night = 0;
 
-  constructor(scene: Scene, terrain: Terrain) {
+  constructor(scene: Scene, terrain: Terrain, density = 1) {
+    const groups = Math.max(0, Math.round(FIREFLY.groups * density));
     this.mat = new StandardMaterial("fireflyMat", scene);
     this.mat.emissiveColor = new Color3(1, 0.97, 0.8); // сам огонёк почти белый
     this.mat.diffuseColor = new Color3(0, 0, 0);
@@ -135,8 +136,8 @@ export class Fireflies {
     this.poolProto.renderingGroupId = 0;
 
     const R = WORLD.grassRadius * 1.6;
-    for (let g = 0; g < FIREFLY.groups; g++) {
-      const a = (g / FIREFLY.groups) * Math.PI * 2 + Math.random();
+    for (let g = 0; g < groups; g++) {
+      const a = (g / Math.max(1, groups)) * Math.PI * 2 + Math.random();
       const r = 6 + Math.random() * R;
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;

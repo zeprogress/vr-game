@@ -90,6 +90,39 @@ export class NetClient {
     return this.room?.sessionId ?? "";
   }
 
+  /** Ключ спектатора (этап 17). Задан — входим как невидимый наблюдатель. */
+  private spectatorKey: string | null = null;
+
+  /** Параметры входа для reconnectLoop — обычный игрок или спектатор. */
+  private joinOpts(): { nick?: string; token?: string; spectator?: string } {
+    return this.spectatorKey !== null
+      ? { spectator: this.spectatorKey }
+      : { nick: this.nick, token: this.token };
+  }
+
+  /** Войти невидимым спектатором для стрима. `true` — успех. */
+  async connectSpectator(key: string): Promise<boolean> {
+    this.spectatorKey = key;
+    this.closedByUs = false;
+    this.client = new Client();
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
+      try {
+        const room = await this.client.joinOrCreate<ZoneState>("zone", { spectator: key });
+        this.wireRoom(room);
+        await firstSync(room);
+        this.room = room;
+        console.log(`[net] спектатор в комнате ${room.roomId}`);
+        return true;
+      } catch (e) {
+        console.warn(`[net] спектатор: вход не удался (${attempt + 1}):`, (e as Error).message);
+      }
+    }
+    this.client = null;
+    this.room = null;
+    return false;
+  }
+
   /** `true` — успех, `false` — сервера нет (одиночный режим). */
   async connect(nick: string, token: string): Promise<boolean> {
     this.nick = nick;
@@ -144,10 +177,7 @@ export class NetClient {
     for (let attempt = 0; attempt < 150 && !this.closedByUs; attempt++) {
       await new Promise((r) => setTimeout(r, 2000));
       try {
-        const room = await this.client.joinOrCreate<ZoneState>("zone", {
-          nick: this.nick,
-          token: this.token,
-        });
+        const room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
         this.wireRoom(room);
         await firstSync(room);
         this.room = room;

@@ -77,6 +77,7 @@ export function scatterTrees(scene: Scene, terrain: Terrain): Obstacle[] {
 export function scatterGrass(
   scene: Scene,
   terrain: Terrain,
+  density = 1,
 ): (dt: number, daylight: number) => void {
   const mat = new StandardMaterial("grassBladeMat", scene);
   mat.maxSimultaneousLights = LIGHT_BUDGET; // трава вокруг стайки должна светлеть
@@ -116,9 +117,10 @@ export function scatterGrass(
   const wind = new GrassWindPlugin(mat);
 
   const R = WORLD.grassRadius;
+  const count = Math.max(0, Math.round(WORLD.grassCount * density));
   const matrices: Matrix[] = [];
   const phases: number[] = [];
-  for (let i = 0; i < WORLD.grassCount; i++) {
+  for (let i = 0; i < count; i++) {
     const ang = Math.random() * Math.PI * 2;
     const r = Math.sqrt(Math.random()) * R;
     const x = Math.cos(ang) * r;

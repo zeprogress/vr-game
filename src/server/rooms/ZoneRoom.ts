@@ -250,7 +250,15 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
 interface JoinOpts {
   nick?: string;
   token?: string;
+  /** Ключ невидимого спектатора для стрима (этап 17). */
+  spectator?: string;
 }
+
+/**
+ * Ключ спектатора. В проде — из окружения (`deploy/stream.env`); локально —
+ * дев-значение, чтобы можно было открыть `?spectator=zepspec-dev`.
+ */
+const SPECTATOR_KEY = process.env.SPECTATOR_KEY || "zepspec-dev";
 
 /**
  * Одна зона мира. Сервер авторитетен: мобы, куклы, плевки, здоровье игроков,
@@ -809,7 +817,21 @@ export class ZoneRoom extends Room<ZoneState> {
 
   // ---- вход / выход / сохранение ----
 
+  /** Спектаторы стрима — sessionId. В `state.players` их нет. */
+  private readonly spectators = new Set<string>();
+
   override onJoin(client: Client, options?: JoinOpts): void {
+    // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
+    // Состояние комнаты Colyseus синхронизирует ему сам.
+    if (options?.spectator !== undefined) {
+      if (options.spectator !== SPECTATOR_KEY) {
+        throw new Error("спектатор: неверный ключ");
+      }
+      this.spectators.add(client.sessionId);
+      console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
+      return;
+    }
+
     const token = options?.token?.trim();
     const rec = token ? store.get(token) : undefined;
 
@@ -902,14 +924,17 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override onLeave(client: Client): void {
+    if (this.spectators.delete(client.sessionId)) {
+      console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
+      return;
+    }
     this.persist(client);
     this.state.players.delete(client.sessionId);
     this.rt.delete(client.sessionId);
     store.flush();
-    const left = this.clients.length - 1;
-    console.log(`[zone] - ${client.sessionId} — осталось ${left}`);
-    // Никого не осталось — подчищаем весь лежащий лут, чтобы мир не зарастал.
-    if (left <= 0) this.wipeWorld("мир опустел");
+    console.log(`[zone] - ${client.sessionId} — осталось игроков ${this.state.players.size}`);
+    // Ни одного игрока (спектаторы не в счёт) — подчищаем лежащий лут.
+    if (this.state.players.size === 0) this.wipeWorld("мир опустел");
   }
 
   /** Убрать весь лут с земли (мир опустел или команда админа). */

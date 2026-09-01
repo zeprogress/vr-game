@@ -38,7 +38,16 @@ export interface Zone {
  * Тестовая зона: рельеф, небо с облаками, деревья и трава.
  * Мобы и куклы живут на сервере (этап 6) — их создаёт NetMobs.
  */
-export function buildZone(scene: Scene): Zone {
+/**
+ * Пресет качества для слабого железа (стрим на TOX3, этап 17).
+ * `grass`/`fireflies` — доля от обычного количества (0..1).
+ */
+export interface ZoneQuality {
+  grass?: number;
+  fireflies?: number;
+}
+
+export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   // Часы мира идут сами; LOADOUT.world.hour — их текущее показание,
   // и его же можно перевести вручную в панели настройки.
   let hour = LOADOUT.world.hour;
@@ -68,8 +77,8 @@ export function buildZone(scene: Scene): Zone {
 
   const terrain = createTerrain(scene);
   const trunks = scatterTrees(scene, terrain);
-  const windTick = scatterGrass(scene, terrain);
-  const fireflies = new Fireflies(scene, terrain);
+  const windTick = scatterGrass(scene, terrain, quality.grass ?? 1);
+  const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
 
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);
