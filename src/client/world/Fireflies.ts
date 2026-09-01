@@ -157,7 +157,10 @@ export class Fireflies {
       this.groups.push({ center, target: center.clone(), dots, phase, pool });
     }
 
-    for (let i = 0; i < FIREFLY.lamps; i++) {
+    // Нет стаек (density 0) — не заводим и точечные источники: на слабом GPU
+    // каждый лишний свет в шейдере дорогой.
+    const lampCount = groups === 0 ? 0 : FIREFLY.lamps;
+    for (let i = 0; i < lampCount; i++) {
       const lamp = new PointLight(`fireflyLamp${i}`, Vector3.Zero(), scene);
       lamp.diffuse = new Color3(...FIREFLY.lightColor);
       lamp.specular = new Color3(

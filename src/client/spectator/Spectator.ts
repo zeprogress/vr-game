@@ -19,19 +19,20 @@ const TOWN_MUSIC = "/music/town-dion.mp3";
 const BOSS_MUSIC = "/music/boss.mp3";
 const UP = { x: 0, y: 1, z: 0 };
 
-/** Пресеты качества под слабое железо (TOX3). `?q=low|med|high`. */
-export type Quality = "low" | "med" | "high";
+/** Пресеты качества под слабое железо (TOX3). `?q=potato|low|med|high`. */
+export type Quality = "potato" | "low" | "med" | "high";
 
 interface Preset extends ZoneQuality {
   scaling: number; // engine.setHardwareScalingLevel — >1 рендерит в меньшем разрешении
-  fxaa: boolean;
   fpsCap: number; // 0 — без ограничения
 }
 
 const PRESETS: Record<Quality, Preset> = {
-  low: { scaling: 1.6, grass: 0.15, fireflies: 0.3, fxaa: false, fpsCap: 30 },
-  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, fxaa: false, fpsCap: 30 },
-  high: { scaling: 1.0, grass: 1, fireflies: 1, fxaa: false, fpsCap: 0 },
+  // Совсем слабый GPU (Mali-G31): без травы и светлячков, 2 источника света.
+  potato: { scaling: 2.2, grass: 0, fireflies: 0, minLights: true, fpsCap: 24 },
+  low: { scaling: 1.6, grass: 0.1, fireflies: 0, minLights: true, fpsCap: 30 },
+  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, fpsCap: 30 },
+  high: { scaling: 1.0, grass: 1, fireflies: 1, fpsCap: 0 },
 };
 
 /**
@@ -65,17 +66,27 @@ export class Spectator {
 
   private readonly _players: DirectorCtx["players"] = [];
 
-  constructor(canvas: HTMLCanvasElement, quality: Quality, showDebug = false) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    quality: Quality,
+    showDebug = false,
+    /** Переопределения из URL для подгонки на боксе без пересборки. */
+    override: { rs?: number; fpsCap?: number } = {},
+  ) {
     const preset = PRESETS[quality];
-    this.fpsCap = preset.fpsCap;
+    this.fpsCap = override.fpsCap ?? preset.fpsCap;
 
     this.engine = new Engine(canvas, true, { stencil: false, antialias: false });
-    this.engine.setHardwareScalingLevel(preset.scaling);
+    this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.skipPointerMovePicking = true;
 
-    const zone = buildZone(this.scene, { grass: preset.grass, fireflies: preset.fireflies });
+    const zone = buildZone(this.scene, {
+      grass: preset.grass,
+      fireflies: preset.fireflies,
+      minLights: preset.minLights,
+    });
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
 

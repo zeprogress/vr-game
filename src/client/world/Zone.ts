@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
@@ -45,6 +46,12 @@ export interface Zone {
 export interface ZoneQuality {
   grass?: number;
   fireflies?: number;
+  /**
+   * true — материалы зоны считают максимум 2 источника света (солнце + небо)
+   * вместо LIGHT_BUDGET. Дёшево для слабых GPU (Mali-G31), но подсветка от
+   * светлячков пропадает — включать только вместе с `fireflies: 0`.
+   */
+  minLights?: boolean;
 }
 
 export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
@@ -79,6 +86,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const trunks = scatterTrees(scene, terrain);
   const windTick = scatterGrass(scene, terrain, quality.grass ?? 1);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
+
+  // Слабый GPU: снимаем с шейдеров материалов лишние источники света.
+  if (quality.minLights) {
+    for (const m of scene.materials) {
+      if (m instanceof StandardMaterial) m.maxSimultaneousLights = 2;
+    }
+  }
 
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 1.1, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 1.1, -12);

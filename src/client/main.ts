@@ -11,11 +11,19 @@ const specKey = params.get("spectator");
 if (specKey) {
   hint.classList.add("hidden");
   const q = params.get("q");
-  const quality = q === "low" || q === "med" || q === "high" ? q : "high";
+  const quality =
+    q === "potato" || q === "low" || q === "med" || q === "high" ? q : "high";
   const debug = params.get("debug") === "1";
+  const num = (k: string): number | undefined => {
+    const v = Number(params.get(k));
+    return Number.isFinite(v) && v > 0 ? v : undefined;
+  };
   void (async () => {
     const { Spectator } = await import("./spectator/Spectator");
-    const spec = new Spectator(canvas, quality, debug);
+    const spec = new Spectator(canvas, quality, debug, {
+      rs: num("rs"),
+      fpsCap: num("fpscap"),
+    });
     const net = new NetClient();
     (window as unknown as { spec: unknown; net: NetClient }).spec = spec;
     (window as unknown as { spec: unknown; net: NetClient }).net = net;
