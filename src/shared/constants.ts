@@ -21,7 +21,7 @@ export const LOOK = {
 export const WORLD = {
   size: 180, // м, сторона зоны
   subdivisions: 72, // плотность сетки террейна
-  treeCount: 26,
+  treeCount: 48,
   grassCount: 2000,
   grassRadius: 22, // м вокруг спавна
 } as const;

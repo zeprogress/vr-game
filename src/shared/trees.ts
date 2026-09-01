@@ -32,19 +32,44 @@ function rng(seed: number): () => number {
 
 let cached: Tree[] | null = null;
 
+/**
+ * Деревья не рассыпаны ровно, а собраны в рощи: несколько центров-кластеров
+ * (разной плотности) плюс редкие одиночки. `WORLD.treeCount` — примерное
+ * итоговое число.
+ */
 export function trees(): Tree[] {
   if (cached) return cached;
   const rnd = rng(SEED);
   const reach = WORLD.size / 2 - 6;
   const out: Tree[] = [];
-  for (let i = 0; i < WORLD.treeCount; i++) {
-    const x = (rnd() - 0.5) * 2 * reach;
-    const z = (rnd() - 0.5) * 2 * reach;
-    const scale = 0.8 + rnd() * 0.9;
-    const yaw = rnd() * Math.PI * 2;
-    if (Math.sqrt(x * x + z * z) < 9) continue; // не на спавне
-    out.push({ x, z, scale, yaw, r: 0.22 * scale });
+
+  const add = (x: number, z: number): void => {
+    if (Math.hypot(x, z) < 10) return; // не на спавне
+    if (Math.abs(x) > reach || Math.abs(z) > reach) return;
+    if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) return; // не поверх оружия
+    const scale = 0.75 + rnd() * 1.0;
+    out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
+  };
+
+  const clusters = 6;
+  const perCluster = Math.round((WORLD.treeCount * 0.82) / clusters);
+  for (let c = 0; c < clusters; c++) {
+    const cx = (rnd() - 0.5) * 2 * reach;
+    const cz = (rnd() - 0.5) * 2 * reach;
+    const spread = 6 + rnd() * rnd() * 30; // где-то плотная кучка, где-то рыхлая роща
+    const n = Math.max(2, Math.round(perCluster * (0.5 + rnd())));
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2;
+      const rad = Math.sqrt(rnd()) * spread;
+      add(cx + Math.cos(a) * rad, cz + Math.sin(a) * rad);
+    }
   }
+  // одиночки по всей карте
+  const loners = Math.round(WORLD.treeCount * 0.18);
+  for (let i = 0; i < loners; i++) {
+    add((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
+  }
+
   cached = out;
   return out;
 }

@@ -10,7 +10,7 @@ import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
-import { scatterTrees, scatterGrass, type Obstacle } from "./props";
+import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
 import { Fireflies } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
@@ -104,15 +104,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 0.8, -12);
   const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 0.75, -12);
 
-  // Камни из пака: под стартовым оружием + разбросаны по карте.
-  void import("./nature").then((m) =>
-    m.loadRocks(scene, terrain, [swordHome, bowHome, shieldHome]),
-  );
+  // Камни из пака: под оружием + по карте. Крупные — препятствия.
+  const rockObstacles = scatterRocks(scene, terrain, [swordHome, bowHome, shieldHome]);
 
   return {
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
-    obstacles: trunks,
+    obstacles: [...trunks, ...rockObstacles],
     tick: (
       dt: number,
       playerPos: Vector3,

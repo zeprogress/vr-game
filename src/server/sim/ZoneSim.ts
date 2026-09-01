@@ -12,6 +12,7 @@ import {
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
 import { trees } from "#shared/trees";
+import { rocks } from "#shared/rocks";
 import {
   BAG,
   isItemId,
@@ -33,8 +34,13 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "shield:gold": "gold_shield",
 };
 
-/** Стволы деревьев — общие с клиентом, считаются один раз. */
-const TREES = trees();
+/** Препятствия (стволы + крупные камни) — общие с клиентом, один раз. */
+const OBSTACLES: { x: number; z: number; r: number }[] = [
+  ...trees().map((t) => ({ x: t.x, z: t.z, r: t.r })),
+  ...rocks()
+    .filter((rk) => rk.solid)
+    .map((rk) => ({ x: rk.x, z: rk.z, r: rk.r })),
+];
 
 /** Насколько далеко вперёд моб смотрит, выбирая куда прыгнуть. */
 const TREE_LOOKAHEAD = 3.5;
@@ -54,7 +60,7 @@ function steerAroundTrees(
 ): [number, number] {
   const clr = MOB.bodyRadius + 0.35; // запас, чтобы не тереться боком о ствол
   let hit: { along: number; perp: number; wide: number } | null = null;
-  for (const t of TREES) {
+  for (const t of OBSTACLES) {
     const rx = t.x - x;
     const rz = t.z - z;
     const along = rx * dx + rz * dz; // вдоль хода
@@ -504,7 +510,7 @@ class Mob {
     }
 
     // не проходит сквозь стволы деревьев
-    for (const t of TREES) {
+    for (const t of OBSTACLES) {
       const tx = this.x - t.x;
       const tz = this.z - t.z;
       const clr = t.r + MOB.bodyRadius * this.scale;

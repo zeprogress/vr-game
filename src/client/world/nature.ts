@@ -10,6 +10,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import { WORLD } from "#shared/constants";
 import { trees as treeList } from "#shared/trees";
+import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
 import { LIGHT_BUDGET } from "./Fireflies";
@@ -32,8 +33,6 @@ const TREE_SCALE = 1.15;
 /** Плотность травы относительно WORLD.grassCount. */
 const GRASS_FACTOR = 1.35;
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
-/** Расстановка камней: постоянное зерно, чтобы у всех был один пейзаж. */
-const ROCK_SEED = 40260902;
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
   const m = new StandardMaterial("treeLeaf", scene);
@@ -42,7 +41,7 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean)
     m.diffuseTexture = tex;
     m.useAlphaFromDiffuseTexture = true;
     m.transparencyMode = 1; // ALPHATEST — дёшево, без сортировки
-    m.alphaCutOff = 0.4;
+    m.alphaCutOff = 0.28;
   }
   m.diffuseColor = new Color3(0.72, 0.82, 0.6);
   m.emissiveColor = new Color3(0.12, 0.18, 0.09); // листва вертикальная — ей нужно больше своей яркости
@@ -78,7 +77,9 @@ export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): 
     if (!root) return;
     root.position.set(t.x, terrain.heightAt(t.x, t.z) - 0.15, t.z);
     root.rotationQuaternion = Quaternion.RotationYawPitchRoll(t.yaw, 0, 0);
-    root.scaling.setAll(TREE_SCALE * t.scale);
+    // Неравномерный масштаб: уже по горизонтали (тоньше ствол и крона), выше.
+    const k = TREE_SCALE * t.scale;
+    root.scaling.set(k * 0.84, k * 1.08, k * 0.84);
 
     for (const mesh of root.getChildMeshes(false)) {
       mesh.material = /leaf|leav/i.test(mesh.material?.name ?? "") ? leaf : bark;
@@ -166,20 +167,9 @@ export async function loadGrass(
   };
 }
 
-function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /**
- * Камни из пака: по одному под каждой точкой стартового оружия + пара десятков
- * разбросано по карте (постоянное зерно — пейзаж одинаков у всех). Декор,
- * без коллизий.
+ * Камни из пака: по одному под каждой точкой стартового оружия + разбросаны по
+ * карте (позиции из `#shared/rocks`). Крупные — с коллизией (см. props.ts).
  */
 export async function loadRocks(
   scene: Scene,
@@ -190,22 +180,26 @@ export async function loadRocks(
   const containers = await Promise.all(
     ROCK_KINDS.map((k) => LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene)),
   );
-  const mat = new StandardMaterial("rockMat", scene);
-  mat.diffuseColor = new Color3(0.5, 0.5, 0.53);
-  mat.emissiveColor = new Color3(0.09, 0.09, 0.1);
+  const mat = new StandardMaterial("natureRockMat", scene);
+  mat.diffuseColor = new Color3(0.3, 0.3, 0.33);
+  mat.emissiveColor = new Color3(0.04, 0.04, 0.05);
   mat.specularColor = new Color3(0, 0, 0);
   mat.maxSimultaneousLights = 3;
 
-  const place = (kind: number, x: number, z: number, s: number, r: () => number): void => {
+  const place = (
+    kind: number,
+    x: number,
+    z: number,
+    s: number,
+    yaw: number,
+    tiltX: number,
+    tiltZ: number,
+  ): void => {
     const inst = containers[kind % containers.length].instantiateModelsToScene((n) => n, false);
     const root = inst.rootNodes[0] as TransformNode | undefined;
     if (!root) return;
     root.position.set(x, terrain.heightAt(x, z) - s * 0.35, z); // чуть врос в землю
-    root.rotationQuaternion = Quaternion.RotationYawPitchRoll(
-      r() * Math.PI * 2,
-      (r() - 0.5) * 0.5,
-      (r() - 0.5) * 0.5,
-    );
+    root.rotationQuaternion = Quaternion.RotationYawPitchRoll(yaw, tiltX, tiltZ);
     root.scaling.setAll(s);
     for (const m of root.getChildMeshes(false)) {
       m.material = mat;
@@ -217,20 +211,12 @@ export async function loadRocks(
     root.freezeWorldMatrix();
   };
 
-  const r = rng(ROCK_SEED);
+  // Под оружием — небольшой камень-постамент, верх ~0.7 м.
+  homes.forEach((h, i) => place(i, h.x, h.z, 0.35, i * 1.7, 0, 0));
 
-  // Под оружием — модель ~2 ед. высотой, хотим верх ~0.7 м.
-  homes.forEach((h, i) => place(i, h.x, h.z, 0.35, r));
-
-  // Разброс по карте.
-  const reach = WORLD.size / 2 - 4;
-  for (let i = 0; i < 24; i++) {
-    const x = (r() - 0.5) * 2 * reach;
-    const z = (r() - 0.5) * 2 * reach;
-    if (Math.hypot(x, z) < 10) continue; // не на спавне
-    if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) continue; // не поверх оружия
-    const s = 0.22 + r() ** 2 * 0.7; // много мелких, редко валун
-    place(Math.floor(r() * 3), x, z, s, r);
+  // Разброс по карте — позиции общие с сервером (#shared/rocks).
+  for (const rk of rockList()) {
+    place(rk.kind, rk.x, rk.z, rk.scale, rk.yaw, rk.tilt[0], rk.tilt[1]);
   }
   mat.freeze();
 }

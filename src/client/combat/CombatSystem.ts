@@ -255,20 +255,7 @@ export class CombatSystem {
     this.nockArrow.setEnabled(false);
     this.nockLocal.copyFrom(this.bowParts.nockRest);
 
-    for (const [home, dy] of [
-      [swordHome, 0.75],
-      [bowHome, 0.4],
-      [shieldHome, 0.4],
-    ] as const) {
-      const mat = new StandardMaterial("rockMat", scene);
-      mat.diffuseColor = new Color3(0.42, 0.42, 0.45);
-      mat.specularColor = new Color3(0, 0, 0);
-      const rock = MeshBuilder.CreateSphere("weaponRock", { diameter: 1.1, segments: 6 }, scene);
-      rock.material = mat;
-      rock.position.set(home.x, home.y - dy, home.z);
-      rock.scaling.y = 0.5;
-      rock.isPickable = false;
-    }
+    // Камни под оружием теперь ставит world/nature.ts (модели из пака).
 
     this.arrowCtx = {
       scene,
