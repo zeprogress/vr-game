@@ -17,6 +17,7 @@ import {
   type SetTimeMsg,
   type ComfortMsg,
   type SetPvpMsg,
+  type SpecCmd,
   type DropWeaponMsg,
   type ActKind,
   type ActMsg,
@@ -60,6 +61,8 @@ export class NetClient {
   onVoice: ((id: string, t: number, d: number[]) => void) | null = null;
   /** Ответ сервера на переключение PvP: фактическое значение (+ wait, если отказ). */
   onPvp: ((on: number, wait?: number) => void) | null = null;
+  /** Команда стрим-дашборда (этап 17 Ф5) — приходит другим спектаторам. */
+  onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -162,6 +165,7 @@ export class NetClient {
     room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id));
     room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
+    room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
@@ -263,6 +267,11 @@ export class NetClient {
   /** Включить/выключить свой флаг PvP. Итог придёт через onPvp. */
   sendPvp(on: boolean): void {
     this.room?.send(MSG.setPvp, { on: on ? 1 : 0 } satisfies SetPvpMsg);
+  }
+
+  /** Команда стрим-дашборда/спектатора (этап 17 Ф5). */
+  sendSpecCmd(cmd: SpecCmd): void {
+    this.room?.send(MSG.specCmd, cmd);
   }
 
   /** Мой текущий флаг PvP (из состояния) — null офлайн. */

@@ -31,6 +31,7 @@ import {
   type SpendMsg,
   type SetTimeMsg,
   type ComfortMsg,
+  type SpecCmd,
   type SetPvpMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
@@ -533,6 +534,19 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!msg || typeof msg.t !== "number" || !Array.isArray(msg.d)) return;
       if (msg.d.length === 0 || msg.d.length > 4000) return;
       this.broadcast(MSG.voice, { id: client.sessionId, t: msg.t, d: msg.d }, { except: client });
+    });
+
+    // Команды стрим-дашборда (этап 17 Ф5). Только между спектаторскими
+    // подключениями; `time` применяет сам сервер.
+    this.onMessage(MSG.specCmd, (client: Client, msg: SpecCmd) => {
+      if (!this.spectators.has(client.sessionId) || !msg || typeof msg.t !== "string") return;
+      if (msg.t === "time" && typeof msg.hour === "number" && Number.isFinite(msg.hour)) {
+        this.worldHour = (((msg.hour % 24) + 24) % 24) as number;
+        this.state.hour = this.worldHour;
+        this.state.dayAuto = 0; // ручной перевод останавливает авто-ход
+        this.clockSync = 0;
+      }
+      this.broadcast(MSG.specCmd, msg, { except: client });
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);

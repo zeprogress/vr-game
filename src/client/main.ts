@@ -4,15 +4,29 @@ import { runLogin } from "./ui/Login";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const hint = document.getElementById("hint") as HTMLDivElement;
-
-// --- Режим невидимого спектатора для стрима (этап 17): /?spectator=КЛЮЧ ---
 const params = new URLSearchParams(location.search);
-const specKey = params.get("spectator");
-if (specKey) {
+
+if (params.has("dash")) {
+  bootDashboard();
+} else if (params.get("spectator")) {
+  bootSpectator(params.get("spectator") as string);
+} else {
+  bootGame();
+}
+
+/** Пульт стрима (этап 17 Ф5): /?dash=КЛЮЧ (или ?dash=1 после первого раза). */
+function bootDashboard(): void {
+  hint.classList.add("hidden");
+  void import("./dash/Dashboard").then(({ Dashboard }) => {
+    (window as unknown as { dash: unknown }).dash = new Dashboard(params.get("dash"));
+  });
+}
+
+/** Невидимый спектатор для стрима (этап 17): /?spectator=КЛЮЧ. */
+function bootSpectator(specKey: string): void {
   hint.classList.add("hidden");
   const q = params.get("q");
-  const quality =
-    q === "potato" || q === "low" || q === "med" || q === "high" ? q : "high";
+  const quality = q === "potato" || q === "low" || q === "med" || q === "high" ? q : "high";
   const debug = params.get("debug") === "1";
   const num = (k: string): number | undefined => {
     const v = Number(params.get(k));
@@ -37,8 +51,6 @@ if (specKey) {
     const ok = await spec.run(net, specKey);
     if (!ok) console.error("[spectator] не удалось подключиться к серверу");
   })();
-} else {
-  bootGame();
 }
 
 function bootGame(): void {

@@ -6,7 +6,7 @@ import type { Room } from "colyseus.js";
 
 import { BOSS, MOB } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
-import type { ActKind } from "#shared/net/messages";
+import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { buildZone, type ZoneQuality } from "../world/Zone";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -67,6 +67,7 @@ export class Spectator {
   private net: NetClient | null = null;
   private bossMusicOn = false;
   private lastFrame = 0;
+  private lastShotReport = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
   private readonly reloadSec: number;
@@ -192,6 +193,7 @@ export class Spectator {
       this.setStatus("");
     };
     net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
+    net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
@@ -265,6 +267,14 @@ export class Spectator {
   private setStatus(text: string): void {
     this.status.textContent = text;
     this.status.style.display = text ? "block" : "none";
+  }
+
+  /** Команда со стрим-дашборда (этап 17 Ф5). */
+  private applySpecCmd(cmd: SpecCmd): void {
+    if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
+    else if (cmd.t === "cut") this.cam.cutNext();
+    else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
+    // "time" применяет сервер; "nowShot" — для дашбордов, спектатор игнорирует.
   }
 
   private attach(room: Room<ZoneState>): void {
@@ -357,6 +367,12 @@ export class Spectator {
     this.sfx.setListener({ x: p.x, y: p.y, z: p.z }, { x: fwd.x, y: fwd.y, z: fwd.z }, UP);
 
     this.updateBossMusic();
+
+    // Раз в ~2 с сообщаем дашбордам, какой кадр сейчас в эфире.
+    if (room && now - this.lastShotReport > 2000) {
+      this.lastShotReport = now;
+      this.net?.sendSpecCmd({ t: "nowShot", shot: this.cam.shotKind });
+    }
 
     if (this.debug) {
       const st = room?.state;
