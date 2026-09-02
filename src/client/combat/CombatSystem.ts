@@ -76,6 +76,7 @@ export type ItemKind = "sword" | "bow" | "shield" | "staff";
 const MELEE_KINDS = new Set<ItemKind>(["sword", "staff"]);
 /** Насколько близко кисть должна быть к точке хвата посоха, чтобы взять её второй рукой. */
 const STAFF_GRAB_RADIUS = 0.14;
+const STAFF_UP = new Vector3(0, 1, 0);
 function isMelee(k: ItemKind): boolean {
   return MELEE_KINDS.has(k);
 }
@@ -1214,13 +1215,13 @@ export class CombatSystem {
   private anchorStaff(item: Item): void {
     const primary = item.hand as Side;
     const t = this.placement("staff", primary);
-    const anchor = this.handAnchor(primary);
-    if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
     item.mesh.scaling.setAll(t.scale);
 
     const gyPrimary = (item.grip?.[primary] ?? "low") === "high" ? STAFF_GRIP_HIGH : STAFF_GRIP_LOW;
 
     if (!item.hand2) {
+      const anchor = this.handAnchor(primary);
+      if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
       item.mesh.rotationQuaternion = null;
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
       // Хват (local y=gyPrimary) должен лечь в t.pos: сдвигаем меш на
@@ -1238,35 +1239,54 @@ export class CombatSystem {
       return;
     }
 
-    // --- двуручный: доворот к второй кисти в осях родителя (руки) ---
-    const na = this.controller(primary)?.grip;
-    const nb = this.controller(item.hand2 as Side)?.grip;
-    if (!na || !nb) return;
-    na.computeWorldMatrix(true);
-    nb.computeWorldMatrix(true);
-    const parentInv = Matrix.Invert(anchor.getWorldMatrix());
-    // Направление на вторую кисть в локальных осях руки.
-    Vector3.TransformCoordinatesToRef(nb.absolutePosition, parentInv, this.staffOtherW);
-    const gPrimaryLow = (item.grip?.[primary] ?? "low") === "low";
-    // Ось +Y древка: от нижнего хвата к верхнему.
-    this.staffAxisY.copyFrom(this.staffOtherW);
-    if (!gPrimaryLow) this.staffAxisY.scaleInPlace(-1);
+    // --- двуручный хват: жёсткое тело на двух точках, в мире ---
+    // Обе точки хвата приколоты к кистям: середина хватов сидит в середине
+    // между кистями, древко идёт по линии кисть→кисть, крутка — среднее обеих
+    // рук (твист одной руки поворачивает посох вдвое меньше). Меш откреплён от
+    // руки, всё считаем в мире с форсированными матрицами — без запаздывания.
+    const ca = this.controller(primary)?.grip;
+    const cb = this.controller(item.hand2 as Side)?.grip;
+    if (!ca || !cb) return;
+    ca.computeWorldMatrix(true);
+    cb.computeWorldMatrix(true);
+    const pPrimary = ca.absolutePosition;
+    const pOther = cb.absolutePosition;
+    const primaryLow = (item.grip?.[primary] ?? "low") === "low";
+    const pLow = primaryLow ? pPrimary : pOther;
+    const pHigh = primaryLow ? pOther : pPrimary;
+
+    this.staffAxisY.copyFrom(pHigh).subtractInPlace(pLow);
     if (this.staffAxisY.lengthSquared() < 1e-6) return;
     this.staffAxisY.normalize();
-    // Крутка вокруг древка следует за основной рукой (её локальная +Z).
-    const ref = Math.abs(this.staffAxisY.z) > 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1);
-    Vector3.CrossToRef(ref, this.staffAxisY, this.staffAxisX);
+
+    // Опорное «вверх» — среднее обеих кистей.
+    ca.getDirectionToRef(STAFF_UP, this.staffOtherW);
+    cb.getDirectionToRef(STAFF_UP, this.staffAxisX);
+    this.staffOtherW.addInPlace(this.staffAxisX);
+    Vector3.CrossToRef(this.staffOtherW, this.staffAxisY, this.staffAxisX);
+    if (this.staffAxisX.lengthSquared() < 1e-6) {
+      Vector3.CrossToRef(new Vector3(1, 0, 0), this.staffAxisY, this.staffAxisX);
+      if (this.staffAxisX.lengthSquared() < 1e-6) {
+        Vector3.CrossToRef(new Vector3(0, 0, 1), this.staffAxisY, this.staffAxisX);
+      }
+    }
     this.staffAxisX.normalize();
     Vector3.CrossToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ);
+    this.staffAxisZ.normalize();
+
+    if (item.mesh.parent) item.mesh.parent = null;
+    item.mesh.scaling.setAll(t.scale);
     if (!item.mesh.rotationQuaternion) item.mesh.rotationQuaternion = new Quaternion();
     Matrix.FromXYZAxesToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ, this.staffRotM);
     Quaternion.FromRotationMatrixToRef(this.staffRotM, item.mesh.rotationQuaternion);
-    // Хват основной руки (local y=gyPrimary) кладём в саму кисть.
-    this.staffAxisY.scaleToRef(-(gyPrimary * t.scale), this.staffAxisZ);
+
+    // Середина хватов (local y = (low+high)/2) — в середину между кистями.
+    const gMid = (STAFF_GRIP_LOW + STAFF_GRIP_HIGH) / 2;
+    this.staffAxisY.scaleToRef(gMid * t.scale, this.staffOtherW);
     item.mesh.position.set(
-      t.pos[0] + this.staffAxisZ.x,
-      t.pos[1] + this.staffAxisZ.y,
-      t.pos[2] + this.staffAxisZ.z,
+      (pLow.x + pHigh.x) / 2 - this.staffOtherW.x,
+      (pLow.y + pHigh.y) / 2 - this.staffOtherW.y,
+      (pLow.z + pHigh.z) / 2 - this.staffOtherW.z,
     );
     item.mesh.computeWorldMatrix(true);
   }
