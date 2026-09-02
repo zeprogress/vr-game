@@ -387,6 +387,15 @@ export function isOverridden(key: TargetKey): boolean {
   return loadOverrides()[key] !== undefined;
 }
 
+/** Цель сейчас равна значению из файла (нечего сохранять). */
+export function isTargetDefault(key: TargetKey): boolean {
+  try {
+    return eq(readTarget(LOADOUT, key), readTarget(LOADOUT_DEFAULTS, key));
+  } catch {
+    return true;
+  }
+}
+
 /** Забыть все панельные переопределения (после записи значений в файл). */
 export function clearAllOverrides(): void {
   storeOverrides({});
@@ -398,12 +407,15 @@ export function exportOverrides(): Overrides {
 }
 
 /**
- * Принять настройки с сервера: запомнить локально и применить поверх файла.
- * Вызывается при входе в мир — сервер главнее локального localStorage.
+ * Принять настройки с сервера: слить с локальными и применить поверх файла.
+ * Вызывается при входе в мир. Сервер главнее ПО КАЖДОЙ цели, но НЕ стирает
+ * локальные цели, которых у сервера нет — иначе редкий сбой на сервере
+ * (или старый сейв) обнулял бы всю подгонку рук и оружия разом.
  */
 export function importOverrides(o: unknown): void {
   if (!o || typeof o !== "object" || Array.isArray(o)) return;
-  storeOverrides(o as Overrides);
+  const merged = { ...loadOverrides(), ...(o as Overrides) };
+  storeOverrides(merged);
   applyOverrides();
 }
 
@@ -505,14 +517,19 @@ function applyOverrides(fileRef: Loadout = LOADOUT_DEFAULTS): { applied: number;
   let applied = 0;
   let dropped = 0;
   for (const k of Object.keys(o) as TargetKey[]) {
-    const { value, base } = unwrap(o[k]);
-    if (base !== null && !eq(base, readTarget(fileRef, k))) {
-      delete o[k]; // цель правили в файле — файл главнее
-      dropped++;
-      continue;
+    try {
+      const { value, base } = unwrap(o[k]);
+      if (base !== null && !eq(base, readTarget(fileRef, k))) {
+        delete o[k]; // цель правили в файле — файл главнее
+        dropped++;
+        continue;
+      }
+      writeTarget(LOADOUT, k, value);
+      applied++;
+    } catch {
+      // Битая/устаревшая цель — пропускаем её, остальные не теряем.
+      delete o[k];
     }
-    writeTarget(LOADOUT, k, value);
-    applied++;
   }
   if (dropped > 0) storeOverrides(o);
   return { applied, dropped };

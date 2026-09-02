@@ -11,6 +11,7 @@ import {
   LOADOUT,
   handTarget,
   isOverridden,
+  isTargetDefault,
   itemTarget,
   printLoadout,
   pushLoadoutToFile,
@@ -464,7 +465,11 @@ export class LoadoutPanel {
    * Иначе — в src/config/loadout.ts через дев-сервер, а без него в localStorage.
    */
   saveAll(): void {
-    for (const t of TARGETS) saveTarget(t.key);
+    // Сохраняем только реально изменённые цели: не раздуваем блок настроек
+    // (у сервера есть лимит), не плодим «пустые» переопределения.
+    for (const t of TARGETS) {
+      if (t.kind !== "action" && !isTargetDefault(t.key)) saveTarget(t.key);
+    }
     this.savedFlash = 2;
 
     if (this.onSaveServer) {

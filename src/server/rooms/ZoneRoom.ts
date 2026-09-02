@@ -142,7 +142,10 @@ function sanitizeHeld(v: unknown): HeldWeapons {
 function sanitizeOverrides(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
   try {
-    if (JSON.stringify(v).length > 20000) return {};
+    // Раньше лимит был 20 КБ — при полном снимке всех целей блок мог его
+    // превысить и тихо обнулиться. Подняли с запасом; клиент теперь и так
+    // шлёт только изменённые цели.
+    if (JSON.stringify(v).length > 60000) return {};
   } catch {
     return {};
   }
