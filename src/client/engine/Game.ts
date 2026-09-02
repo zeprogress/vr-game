@@ -647,12 +647,6 @@ export class Game {
   private syncSelf(dt: number, self: PlayerState): void {
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
-    if (this.serverHp >= 0 && Math.abs(self.hp - this.serverHp) > 0.5) {
-      // ВРЕМЕННАЯ диагностика крестиков — убрать после проверки.
-      console.log(
-        `[hpdiff] ${this.serverHp.toFixed(1)} -> ${self.hp.toFixed(1)}  d=${(self.hp - this.serverHp).toFixed(1)}  fx=${!!this.healCrossFx}  dead=${this.player.dead}`,
-      );
-    }
     if (
       this.serverHp > 0 &&
       self.hp - this.serverHp > 2 &&

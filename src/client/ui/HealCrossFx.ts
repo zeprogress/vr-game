@@ -39,8 +39,8 @@ export class HealCrossFx {
     scene: Scene,
     private readonly eye: EyeSource,
   ) {
-    const bar = MeshBuilder.CreateBox("healCrossH", { width: 0.11, height: 0.035, depth: 0.008 }, scene);
-    const post = MeshBuilder.CreateBox("healCrossV", { width: 0.035, height: 0.11, depth: 0.008 }, scene);
+    const bar = MeshBuilder.CreateBox("healCrossH", { width: 0.11, height: 0.022, depth: 0.006 }, scene);
+    const post = MeshBuilder.CreateBox("healCrossV", { width: 0.022, height: 0.11, depth: 0.006 }, scene);
     const merged = Mesh.MergeMeshes([bar, post], true, true);
     const m = merged ?? bar;
     if (!merged) post.dispose();
