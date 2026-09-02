@@ -53,6 +53,11 @@ export function arrowSpeedBonusFor(agi: number): number {
   return (agi - PROGRESSION.startStat) * PROGRESSION.arrowSpeedPerAgi;
 }
 
+/** Урон стрелы (база + за ловкость). Тир оружия домножается отдельно. */
+export function arrowDamageFor(agi: number): number {
+  return 1.3 + (agi - PROGRESSION.startStat) * PROGRESSION.arrowDamagePerAgi;
+}
+
 // ---- изменения ----
 
 /** Начислить опыт. Мутирует `p`, возвращает число набранных уровней. */

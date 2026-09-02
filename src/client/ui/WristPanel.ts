@@ -333,7 +333,7 @@ export class WristPanel {
   private statHint(s: StatName): string {
     const p = this.prog;
     if (s === "str") return `HP ${Math.round(p.maxHp)} · урон ${p.swordDamage.toFixed(2)}`;
-    if (s === "agi") return `скорость ${p.moveSpeed.toFixed(2)} м/с`;
+    if (s === "agi") return `бег ${p.moveSpeed.toFixed(2)} м/с · стрела ${p.arrowDamage.toFixed(2)}`;
     return `мана ${Math.round(p.maxMana)} · +${p.manaRegen.toFixed(1)}/с · огнешар ${p.fireboltMax.toFixed(1)}`;
   }
 }

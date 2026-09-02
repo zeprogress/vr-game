@@ -93,6 +93,7 @@ import {
   fireboltDamage,
   fireboltSpeed,
   fireboltRadius,
+  fireboltHitRadius,
 } from "#shared/magic";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
@@ -397,6 +398,7 @@ export class ZoneRoom extends Room<ZoneState> {
         dx, dy, dz,
         fireboltSpeed(pull),
         fireboltRadius(charge),
+        fireboltHitRadius(charge),
         fireboltDamage(p.int, charge),
         client.sessionId,
         MAGIC.firebolt.life,
@@ -674,7 +676,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpDmg = weaponDamage(msg.weapon, p.str, multIn(p, hand)) * PVP.damageMult;
+      const pvpDmg = weaponDamage(msg.weapon, p.str, multIn(p, hand), p.agi) * PVP.damageMult;
       this.hurtPlayer({
         target: msg.id,
         dmg: pvpDmg,
@@ -692,7 +694,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.str, multIn(p, hand));
+    const dmg = weaponDamage(msg.weapon, p.str, multIn(p, hand), p.agi);
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {

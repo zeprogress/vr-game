@@ -28,18 +28,18 @@ export const MAGIC = {
     /** Скорость снаряда по «натягу» второй руки (0..1 → м/с). */
     minSpeed: 12,
     maxSpeed: 34,
-    /** Радиус снаряда по заряду, м. При полном заряде — крупный огненный шар. */
+    /** Радиус ВИЗУАЛА снаряда по заряду, м. При полном заряде — крупный шар. */
     minRadius: 0.12,
     maxRadius: 0.62,
     /** Урон: база + за заряд, плюс масштаб от интеллекта. */
-    baseDamage: 1.5,
-    damagePerCharge: 5.5,
-    intScale: 0.06, // +6% урона за очко интеллекта сверх стартового
+    baseDamage: 1.0,
+    damagePerCharge: 2.8,
+    intScale: 0.03, // +3% урона за очко интеллекта сверх стартового
     /** Дальность полёта и жизнь снаряда. */
     range: 34,
     life: 2.2,
     /** Между кастами. */
-    cooldown: 0.5,
+    cooldown: 0.9,
   },
 } as const;
 
@@ -69,4 +69,13 @@ export function fireboltRadius(charge: number): number {
   // Растёт круче к максимуму: слабый каст — небольшой уголёк, полный — шар.
   const k = c * c * (3 - 2 * c); // smoothstep — резче тянет вверх у полного заряда
   return MAGIC.firebolt.minRadius + k * (MAGIC.firebolt.maxRadius - MAGIC.firebolt.minRadius);
+}
+
+/**
+ * Радиус КОЛЛИЗИИ снаряда — заметно меньше визуала, чтобы приходилось целиться,
+ * а не «кидать в сторону моба». Растёт с зарядом слабо.
+ */
+export function fireboltHitRadius(charge: number): number {
+  const c = Math.max(0, Math.min(1, charge));
+  return 0.12 + c * 0.18; // 0.12..0.30 м
 }

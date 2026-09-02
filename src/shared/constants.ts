@@ -249,6 +249,7 @@ export const PROGRESSION = {
   swordDamagePerStr: 0.35,
   moveSpeedPerAgi: 0.12, // м/с
   arrowSpeedPerAgi: 1.6, // м/с к скорости стрелы
+  arrowDamagePerAgi: 0.18, // урон стрелы за очко ловкости
 } as const;
 
 export const SHIELD = {

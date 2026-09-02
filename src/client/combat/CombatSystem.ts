@@ -1710,8 +1710,8 @@ export class CombatSystem {
     if (this.castHooked && activeTrig) {
       // Накопление заряда, пока есть мана; мана расходуется на лету.
       if (this.mana > 0 && this.charge < 1) {
-        // Заряд идёт рывком в начале и замедляется к максимуму.
-        const rate = (1 / fb.chargeTime) * (2.2 - 1.9 * this.charge);
+        // Ровнее по времени: полный заряд реально за ~chargeTime, без рывка.
+        const rate = (1 / fb.chargeTime) * (1.5 - 0.5 * this.charge);
         this.charge = clamp(this.charge + rate * dt, 0, 1);
         this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
       }

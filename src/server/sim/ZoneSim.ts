@@ -728,6 +728,7 @@ class Bolt {
     public vy: number,
     public vz: number,
     public readonly radius: number,
+    public readonly hitRadius: number,
     public readonly dmg: number,
     public readonly owner: string,
     public readonly maxLife: number,
@@ -828,6 +829,7 @@ export class ZoneSim {
     dz: number,
     speed: number,
     radius: number,
+    hitRadius: number,
     dmg: number,
     owner: string,
     life: number,
@@ -840,7 +842,7 @@ export class ZoneSim {
     const b = new Bolt(
       x, y, z,
       (dx / dl) * speed, (dy / dl) * speed, (dz / dl) * speed,
-      radius, dmg, owner, life,
+      radius, hitRadius, dmg, owner, life,
     );
     this.bolts.set(b.id, b);
   }
@@ -860,7 +862,7 @@ export class ZoneSim {
 
     for (const m of this.mobs.values()) {
       if (m.dead) continue;
-      const r = b.radius + MOB.bodyRadius * m.scale;
+      const r = b.hitRadius + MOB.bodyRadius * m.scale;
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
@@ -872,7 +874,7 @@ export class ZoneSim {
     for (const d of this.dummies.values()) {
       if (d.dead) continue;
       const dist = segDist(px, py, pz, b.x, b.y, b.z, d.x, d.y, d.z, d.x, d.y + 0.9, d.z);
-      if (dist < b.radius + 0.5) {
+      if (dist < b.hitRadius + 0.5) {
         this.hitDummy(d.id, b.dmg);
         return true;
       }
