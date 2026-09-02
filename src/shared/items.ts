@@ -1,6 +1,6 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_shield" | "gold_staff";
+export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_staff";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -36,7 +36,6 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.42, 0.28, 0.16] },
   "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
-  "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
   "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
   "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
@@ -92,7 +91,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   },
   gold_sword: weaponItem("sword", "gold", "Золото"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук"),
-  gold_shield: weaponItem("shield", "gold", "Зол. щит"),
   gold_staff: weaponItem("staff", "gold", "Зол. посох"),
 };
 
@@ -138,21 +136,17 @@ export interface LootEntry {
 }
 
 export const LOOT: Record<MobKind, LootEntry[]> = {
-  slime: [
-    { id: "potion", chance: 0.35, min: 1, max: 1 },
-    { id: "gold_shield", chance: 0.08, min: 1, max: 1 },
-  ],
+  slime: [{ id: "potion", chance: 0.18, min: 1, max: 1 }],
   spitter: [
-    { id: "potion", chance: 0.6, min: 1, max: 1 },
+    { id: "potion", chance: 0.3, min: 1, max: 1 },
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
   ],
   // Босс — щедрая добыча: зелья горстью и гарантированное золотое оружие.
   boss: [
-    { id: "potion", chance: 1, min: 3, max: 5 },
+    { id: "potion", chance: 1, min: 2, max: 3 },
     { id: "gold_sword", chance: 0.5, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.5, min: 1, max: 1 },
-    { id: "gold_shield", chance: 0.5, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.5, min: 1, max: 1 },
   ],
   shard: [],
