@@ -28,9 +28,9 @@ export const MAGIC = {
     /** Скорость снаряда по «натягу» второй руки (0..1 → м/с). */
     minSpeed: 12,
     maxSpeed: 34,
-    /** Радиус снаряда по заряду, м. */
+    /** Радиус снаряда по заряду, м. При полном заряде — крупный огненный шар. */
     minRadius: 0.12,
-    maxRadius: 0.4,
+    maxRadius: 0.62,
     /** Урон: база + за заряд, плюс масштаб от интеллекта. */
     baseDamage: 1.5,
     damagePerCharge: 5.5,
@@ -66,5 +66,7 @@ export function fireboltSpeed(pull01: number): number {
 
 export function fireboltRadius(charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
-  return MAGIC.firebolt.minRadius + c * (MAGIC.firebolt.maxRadius - MAGIC.firebolt.minRadius);
+  // Растёт круче к максимуму: слабый каст — небольшой уголёк, полный — шар.
+  const k = c * c * (3 - 2 * c); // smoothstep — резче тянет вверх у полного заряда
+  return MAGIC.firebolt.minRadius + k * (MAGIC.firebolt.maxRadius - MAGIC.firebolt.minRadius);
 }

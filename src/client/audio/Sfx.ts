@@ -502,6 +502,31 @@ export class Sfx {
     o.stop(t + 0.16);
   }
 
+  /** Разрыв огненного снаряда посоха. `power` 0..1 — крупнее заряд, глубже бум. */
+  fireBurst(at: SoundAt | undefined, power = 0.5): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const p = Math.max(0, Math.min(1, power));
+    // Низкий "бум".
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(160 - p * 60, t);
+    o.frequency.exponentialRampToValueAtTime(40, t + 0.22 + p * 0.15);
+    const og = this.env(0.5 + p * 0.3, 0.003, 0.28 + p * 0.2, t, at);
+    o.connect(og);
+    o.start(t);
+    o.stop(t + 0.6);
+    // Шипящий выхлоп пламени.
+    const n = this.noise();
+    const bp = this.filter("bandpass", 900, 0.8);
+    bp.frequency.setValueAtTime(1400, t);
+    bp.frequency.exponentialRampToValueAtTime(300, t + 0.25);
+    const ng = this.env(0.3 + p * 0.2, 0.002, 0.24, t, at);
+    n.connect(bp).connect(ng);
+    n.start(t);
+    n.stop(t + 0.35);
+  }
+
   /** Лязг блока. strength: 1 — щит (звонко), <1 — меч (глуше). */
   block(strength = 1): void {
     if (!this.ready()) return;

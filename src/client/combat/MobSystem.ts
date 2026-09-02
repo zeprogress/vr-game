@@ -39,6 +39,16 @@ interface BoltView {
   age: number;
 }
 
+/** Вспышка на месте разрыва снаряда: раздувается и гаснет. */
+interface Burst {
+  flash: Mesh;
+  ring: Mesh;
+  pos: Vector3;
+  age: number;
+  life: number;
+  peak: number;
+}
+
 /**
  * Мобы, куклы и плевки — ВИД поверх состояния сервера (этап 6).
  * Держит `targets` (общий массив для CombatSystem) в актуальном виде.
@@ -53,6 +63,10 @@ export class NetMobs {
   private readonly bolts = new Map<string, BoltView>();
   private readonly boltCoreProto: Mesh;
   private readonly boltGlowProto: Mesh;
+  private readonly burstFlashProto: Mesh;
+  private readonly burstRingProto: Mesh;
+  private readonly bursts: Burst[] = [];
+  private burstSeq = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -104,6 +118,85 @@ export class NetMobs {
     this.boltGlowProto.material = glowMat;
     this.boltGlowProto.isPickable = false;
     this.boltGlowProto.setEnabled(false);
+
+    // Вспышка попадания: бело-жёлтое ядро + оранжевое расходящееся кольцо.
+    const flashMat = new StandardMaterial("burstFlashMat", scene);
+    flashMat.emissiveColor = new Color3(1, 0.85, 0.5);
+    flashMat.diffuseColor = new Color3(0, 0, 0);
+    flashMat.specularColor = new Color3(0, 0, 0);
+    flashMat.disableLighting = true;
+    flashMat.alphaMode = Constants.ALPHA_ADD;
+    flashMat.disableDepthWrite = true;
+    this.burstFlashProto = MeshBuilder.CreateSphere("burstFlash", { diameter: 1, segments: 8 }, scene);
+    this.burstFlashProto.material = flashMat;
+    this.burstFlashProto.isPickable = false;
+    this.burstFlashProto.setEnabled(false);
+
+    const ringMat = new StandardMaterial("burstRingMat", scene);
+    ringMat.emissiveColor = new Color3(1, 0.4, 0.1);
+    ringMat.diffuseColor = new Color3(0, 0, 0);
+    ringMat.specularColor = new Color3(0, 0, 0);
+    ringMat.disableLighting = true;
+    ringMat.alphaMode = Constants.ALPHA_ADD;
+    ringMat.disableDepthWrite = true;
+    ringMat.backFaceCulling = false;
+    this.burstRingProto = MeshBuilder.CreatePlane("burstRing", { size: 1 }, scene);
+    this.burstRingProto.material = ringMat;
+    this.burstRingProto.isPickable = false;
+    this.burstRingProto.setEnabled(false);
+  }
+
+  /** Разрыв снаряда: `hit` — попал по цели (ярче, со звуком), иначе — угас. */
+  private spawnBurst(pos: Vector3, radius: number, hit: boolean): void {
+    if (this.bursts.length >= 10) {
+      const old = this.bursts.shift();
+      old?.flash.dispose(false, true);
+      old?.ring.dispose(false, true);
+    }
+    const n = this.burstSeq++;
+    const flash = this.burstFlashProto.clone(`burstF_${n}`);
+    const ring = this.burstRingProto.clone(`burstR_${n}`);
+    // Свой материал на каждую вспышку — гасим alpha индивидуально.
+    flash.material = this.burstFlashProto.material!.clone(`burstFm_${n}`);
+    ring.material = this.burstRingProto.material!.clone(`burstRm_${n}`);
+    flash.setEnabled(true);
+    ring.setEnabled(true);
+    flash.position.copyFrom(pos);
+    ring.position.copyFrom(pos);
+    this.bursts.push({
+      flash,
+      ring,
+      pos: pos.clone(),
+      age: 0,
+      life: hit ? 0.34 : 0.22,
+      peak: radius * (hit ? 3.4 : 1.8),
+    });
+    if (hit) this.sfx.at({ x: pos.x, y: pos.y, z: pos.z }, () => this.sfx.fireBurst(undefined, radius / 0.62));
+  }
+
+  private updateBursts(dt: number): void {
+    const cam = this.scene.activeCamera;
+    for (let i = this.bursts.length - 1; i >= 0; i--) {
+      const b = this.bursts[i];
+      b.age += dt;
+      const f = b.age / b.life;
+      if (f >= 1) {
+        b.flash.dispose(false, true);
+        b.ring.dispose(false, true);
+        this.bursts.splice(i, 1);
+        continue;
+      }
+      const fade = 1 - f;
+      // Ядро: вспыхивает и быстро сжимается-гаснет.
+      const flashScale = b.peak * 0.5 * (0.4 + 0.6 * Math.min(1, f * 3)) * (0.4 + fade);
+      b.flash.scaling.setAll(flashScale);
+      (b.flash.material as StandardMaterial).alpha = fade * fade * 0.9;
+      // Кольцо: расходится наружу и истончается.
+      const ringScale = b.peak * (0.3 + 1.4 * f);
+      b.ring.scaling.setAll(ringScale);
+      (b.ring.material as StandardMaterial).alpha = fade * 0.7;
+      if (cam) b.ring.lookAt(cam.globalPosition);
+    }
   }
 
   attach(room: Room<ZoneState>): void {
@@ -231,11 +324,33 @@ export class NetMobs {
     });
     for (const [id, bo] of this.bolts) {
       if (!room.state.bolts.has(id)) {
+        // Снаряд исчез: попал по цели или угас/врезался в землю. Определяем
+        // по близости живой цели к его последней позиции.
+        let hit = false;
+        for (const m of this.mobs.values()) {
+          const c = m.center?.();
+          if (c && Vector3.Distance(c, bo.pos) < bo.r + 1.1) {
+            hit = true;
+            break;
+          }
+        }
+        if (!hit) {
+          for (const d of this.dummies.values()) {
+            const p = d.root.position;
+            if (Vector3.Distance(new Vector3(p.x, p.y + 0.9, p.z), bo.pos) < bo.r + 1) {
+              hit = true;
+              break;
+            }
+          }
+        }
+        this.spawnBurst(bo.pos, bo.r, hit);
         bo.core.dispose();
         bo.glow.dispose();
         this.bolts.delete(id);
       }
     }
+
+    this.updateBursts(dt);
   }
 
   detach(): void {
@@ -252,6 +367,11 @@ export class NetMobs {
       bo.core.dispose();
       bo.glow.dispose();
     }
+    for (const b of this.bursts.values()) {
+      b.flash.dispose(false, true);
+      b.ring.dispose(false, true);
+    }
+    this.bursts.length = 0;
     this.mobs.clear();
     this.dummies.clear();
     this.balls.clear();
