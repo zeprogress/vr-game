@@ -1601,6 +1601,7 @@ export class CombatSystem {
     this.castMode = "";
     this.castBuzzT = 0;
     this.chargeOrb?.setEnabled(false);
+    this.chargeHalo?.setEnabled(false);
     this.castRay?.setEnabled(false);
     this.prevCastTrigger = false;
   }
@@ -1817,33 +1818,51 @@ export class CombatSystem {
     this.prevHoldTrigger = holdTrig;
   }
 
+  private chargeHalo: Mesh | null = null;
+
   private showChargeOrb(staffMesh: Mesh): void {
+    const scene = staffMesh.getScene();
     if (!this.chargeOrb) {
-      const mat = new StandardMaterial("chargeOrbMat", staffMesh.getScene());
+      const mat = new StandardMaterial("chargeOrbMat", scene);
       mat.emissiveColor = new Color3(1, 0.55, 0.15);
       mat.diffuseColor = new Color3(0.05, 0.02, 0);
       mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
-      this.chargeOrb = MeshBuilder.CreateSphere(
-        "chargeOrb",
-        { diameter: 1, segments: 8 },
-        staffMesh.getScene(),
-      );
+      this.chargeOrb = MeshBuilder.CreateSphere("chargeOrb", { diameter: 1, segments: 8 }, scene);
       this.chargeOrb.material = mat;
       this.chargeOrb.isPickable = false;
     }
+    if (!this.chargeHalo) {
+      const hm = new StandardMaterial("chargeHaloMat", scene);
+      hm.emissiveColor = new Color3(0.35, 1, 0.5);
+      hm.diffuseColor = new Color3(0, 0, 0);
+      hm.specularColor = new Color3(0, 0, 0);
+      hm.disableLighting = true;
+      hm.alpha = 0.25;
+      hm.disableDepthWrite = true;
+      this.chargeHalo = MeshBuilder.CreateSphere("chargeHalo", { diameter: 1, segments: 12 }, scene);
+      this.chargeHalo.material = hm;
+      this.chargeHalo.isPickable = false;
+    }
+    const heal = this.castMode === "heal";
     this.chargeOrb.parent = staffMesh;
     this.chargeOrb.position.set(...STAFF_CRYSTAL_LOCAL);
     // Лечение — зелёное свечение, огнешар — оранжевое.
     (this.chargeOrb.material as StandardMaterial).emissiveColor.copyFromFloats(
-      this.castMode === "heal" ? 0.3 : 1,
-      this.castMode === "heal" ? 1 : 0.55,
-      this.castMode === "heal" ? 0.45 : 0.15,
+      heal ? 0.3 : 1,
+      heal ? 1 : 0.55,
+      heal ? 0.45 : 0.15,
     );
     const r = 0.04 + this.charge * 0.22;
     const flick = 0.9 + 0.1 * Math.sin(performance.now() * 0.04);
     this.chargeOrb.scaling.setAll(r * flick);
     this.chargeOrb.setEnabled(true);
+
+    // Полупрозрачный зелёный ореол вокруг кристалла — только при лечении.
+    this.chargeHalo.parent = staffMesh;
+    this.chargeHalo.position.set(...STAFF_CRYSTAL_LOCAL);
+    this.chargeHalo.scaling.setAll((0.14 + this.charge * 0.4) * flick);
+    this.chargeHalo.setEnabled(heal);
   }
 
   private healPulses: { mesh: Mesh; age: number; life: number; peak: number }[] = [];

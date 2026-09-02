@@ -13,8 +13,8 @@ export const MAGIC = {
   baseMana: 30,
   manaPerInt: 14,
   /** Восстановление маны в секунду: база + за интеллект. */
-  regenBase: 3.5,
-  regenPerInt: 0.8,
+  regenBase: 2.0,
+  regenPerInt: 0.5,
 
   firebolt: {
     /** Сколько маны стоит секунда накопления заряда. */
@@ -52,8 +52,8 @@ export const MAGIC = {
     chargeTime: 1.5,
     minCharge: 0.15,
     minMana: 8,
-    baseHeal: 8,
-    healPerCharge: 34, // полный ≈ 42 HP при интеллекте 1
+    baseHeal: 5,
+    healPerCharge: 20, // полный ≈ 25 HP при интеллекте 1
     intScale: 0.04,
     cooldown: 1.5,
     /** Кристалл ближе этого к голове — жест считается лечением, не огнешаром. */
