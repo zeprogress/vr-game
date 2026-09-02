@@ -31,12 +31,24 @@ interface Hand {
   scratchN: Float32Array | null;
 }
 
-interface Glove {
-  template: Mesh;
+/** Позы одной кисти: покой и кулак, с нормалями и порядком обхода треугольников. */
+interface HandPose {
   rest: Float32Array;
   fist: Float32Array;
   restN: Float32Array;
   fistN: Float32Array;
+  indices: number[];
+}
+
+interface Glove {
+  template: Mesh;
+  /**
+   * Левая кисть — не отражённая масштабом (−X ломает нормали и освещение),
+   * а зеркальная геометрия со своим порядком обхода и пересчитанными
+   * нормалями. Масштаб обеих рук положительный.
+   */
+  left: HandPose;
+  right: HandPose;
 }
 
 /**
@@ -57,8 +69,8 @@ export class Hands {
 
   constructor(private readonly scene: Scene) {
     this.skin = new StandardMaterial("handSkin", scene);
-    this.skin.diffuseColor = new Color3(0.34, 0.22, 0.14); // кожаная перчатка
-    this.skin.emissiveColor = new Color3(0.06, 0.04, 0.03);
+    this.skin.diffuseColor = new Color3(0.44, 0.3, 0.19); // кожаная перчатка
+    this.skin.emissiveColor = new Color3(0.1, 0.07, 0.05);
     this.skin.specularColor = new Color3(0.05, 0.05, 0.05);
     void this.loadGlove();
   }
@@ -165,12 +177,41 @@ export class Hands {
         }
       }
 
-      const restN = new Float32Array(rest.length);
-      const fistN = new Float32Array(rest.length);
-      VertexData.ComputeNormals(rest, indices, restN);
-      VertexData.ComputeNormals(fist, indices, fistN);
+      const normalsFor = (pos: Float32Array, idx: number[]): Float32Array => {
+        const out = new Float32Array(pos.length);
+        VertexData.ComputeNormals(pos, idx, out);
+        return out;
+      };
+      // Зеркало по X + разворот обхода треугольников (иначе вывернутся наружу).
+      const mirrorX = (src: Float32Array): Float32Array => {
+        const out = new Float32Array(src.length);
+        for (let i = 0; i < src.length; i += 3) {
+          out[i] = -src[i];
+          out[i + 1] = src[i + 1];
+          out[i + 2] = src[i + 2];
+        }
+        return out;
+      };
+      const indicesL = indices.slice();
+      for (let i = 0; i < indicesL.length; i += 3) {
+        const t = indicesL[i + 1];
+        indicesL[i + 1] = indicesL[i + 2];
+        indicesL[i + 2] = t;
+      }
+      const restL = mirrorX(rest);
+      const fistL = mirrorX(fist);
 
-      this.glove = { template: mesh, rest, fist, restN, fistN };
+      this.glove = {
+        template: mesh,
+        right: { rest, fist, restN: normalsFor(rest, indices), fistN: normalsFor(fist, indices), indices },
+        left: {
+          rest: restL,
+          fist: fistL,
+          restN: normalsFor(restL, indicesL),
+          fistN: normalsFor(fistL, indicesL),
+          indices: indicesL,
+        },
+      };
       for (const h of this.hands) this.buildMesh(h);
     } catch {
       /* нет модели — руки не появятся, игра работает */
@@ -201,8 +242,8 @@ export class Hands {
       h.root.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
 
       if (!g || !h.mesh || !h.scratch || !h.scratchN) continue;
-      const sc = cfg.scale;
-      h.mesh.scaling.set(h.side === "left" ? -sc : sc, sc, sc); // размер меняется на лету
+      const pose = g[h.side];
+      h.mesh.scaling.setAll(cfg.scale); // масштаб положительный — зеркалит геометрия
 
       const btn = h.controller.inputSource.gamepad?.buttons[1];
       const grip = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
@@ -211,15 +252,15 @@ export class Hands {
       const c = h.curl;
 
       if (c < 0.002) {
-        h.mesh.updateVerticesData(VertexBuffer.PositionKind, g.rest, false, false);
-        h.mesh.updateVerticesData(VertexBuffer.NormalKind, g.restN, false, false);
+        h.mesh.updateVerticesData(VertexBuffer.PositionKind, pose.rest, false, false);
+        h.mesh.updateVerticesData(VertexBuffer.NormalKind, pose.restN, false, false);
         continue;
       }
       const p = h.scratch;
       const n = h.scratchN;
-      for (let i = 0; i < g.rest.length; i++) {
-        p[i] = g.rest[i] + (g.fist[i] - g.rest[i]) * c;
-        n[i] = g.restN[i] + (g.fistN[i] - g.restN[i]) * c;
+      for (let i = 0; i < pose.rest.length; i++) {
+        p[i] = pose.rest[i] + (pose.fist[i] - pose.rest[i]) * c;
+        n[i] = pose.restN[i] + (pose.fistN[i] - pose.restN[i]) * c;
       }
       h.mesh.updateVerticesData(VertexBuffer.PositionKind, p, false, false);
       h.mesh.updateVerticesData(VertexBuffer.NormalKind, n, false, false);
@@ -267,22 +308,23 @@ export class Hands {
   private buildMesh(hand: Hand): void {
     const g = this.glove;
     if (!g || hand.mesh) return;
+    const pose = g[hand.side];
     const mesh = g.template.clone(`hand_${hand.side}_mesh`, hand.root);
     mesh.makeGeometryUnique(); // свой буфер вершин
+    mesh.setIndices(pose.indices.slice()); // у левой — свой (развёрнутый) обход
     // Пере-создаём буферы позиции/нормалей как ОБНОВЛЯЕМЫЕ (у glTF они статичные,
     // и updateVerticesData по ним молча ничего не делает — рука не сжималась).
-    mesh.setVerticesData(VertexBuffer.PositionKind, g.rest.slice(), true);
-    mesh.setVerticesData(VertexBuffer.NormalKind, g.restN.slice(), true);
+    mesh.setVerticesData(VertexBuffer.PositionKind, pose.rest.slice(), true);
+    mesh.setVerticesData(VertexBuffer.NormalKind, pose.restN.slice(), true);
     mesh.setEnabled(true);
     mesh.material = this.skin;
     mesh.isPickable = false;
     mesh.alwaysSelectAsActiveMesh = true;
     mesh.rotation.set(0, 0, 0);
     mesh.position.set(0, 0, 0);
-    const sc = LOADOUT.hands[hand.side].scale;
-    mesh.scaling.set(hand.side === "left" ? -sc : sc, sc, sc);
+    mesh.scaling.setAll(LOADOUT.hands[hand.side].scale);
     hand.mesh = mesh;
-    hand.scratch = new Float32Array(g.rest.length);
-    hand.scratchN = new Float32Array(g.rest.length);
+    hand.scratch = new Float32Array(pose.rest.length);
+    hand.scratchN = new Float32Array(pose.rest.length);
   }
 }
