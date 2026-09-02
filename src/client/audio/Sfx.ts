@@ -56,9 +56,19 @@ export class Sfx {
   private musicUrl = "";
   private musicVol = 0.045;
   private fadeTimer: ReturnType<typeof setInterval> | null = null;
+  /** Уходящий на затухании трек — держим ссылку, чтобы точно его добить. */
+  private fadeOut: HTMLAudioElement | null = null;
   /** Плейлист текущей музыки: из него после каждого трека берём случайный. */
   private playlist: string[] = [];
   private lastTrack = "";
+
+  /** Жёстко остановить и освободить элемент (и снять с него слушателей). */
+  private killTrack(a: HTMLAudioElement | null): void {
+    if (!a) return;
+    a.onended = null;
+    a.pause();
+    a.src = "";
+  }
 
   /** Случайный трек плейлиста, по возможности не тот же, что играл только что. */
   private pickTrack(): string {
@@ -73,15 +83,17 @@ export class Sfx {
   private wireRotation(a: HTMLAudioElement): void {
     if (this.playlist.length > 1) {
       a.loop = false;
-      a.addEventListener("ended", () => this.playNext());
+      a.onended = () => this.playNext();
     } else {
       a.loop = true;
+      a.onended = null;
     }
   }
 
-  /** По концу трека — плавно (без резкой склейки) поставить следующий случайный. */
+  /** По концу трека — поставить следующий случайный. */
   private playNext(): void {
     if (this.playlist.length <= 1 || this.fadeTimer) return;
+    this.killTrack(this.music); // страховка: не оставляем старый элемент играть
     const next = new Audio(this.pickTrack());
     next.preload = "auto";
     next.volume = this.musicVol;
@@ -124,7 +136,16 @@ export class Sfx {
     this.musicUrl = key;
     this.musicVol = volume;
 
+    // Прерываем предыдущий переход, если он ещё идёт: и таймер, и сам
+    // уходящий трек — иначе быстрые A→B→A копят параллельно играющие элементы.
+    if (this.fadeTimer) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = null;
+    }
+    this.killTrack(this.fadeOut);
+
     const old = this.music;
+    this.fadeOut = old;
     const next = new Audio(this.pickTrack());
     next.preload = "auto";
     next.volume = 0;
@@ -132,7 +153,6 @@ export class Sfx {
     this.wireRotation(next);
     void next.play().catch(() => {});
 
-    if (this.fadeTimer) clearInterval(this.fadeTimer);
     const oldStart = old ? old.volume : 0;
     let t = 0;
     this.fadeTimer = setInterval(() => {
@@ -143,8 +163,8 @@ export class Sfx {
       if (k >= 1) {
         if (this.fadeTimer) clearInterval(this.fadeTimer);
         this.fadeTimer = null;
-        old?.pause();
-        if (old) old.src = "";
+        this.killTrack(old);
+        if (this.fadeOut === old) this.fadeOut = null;
       }
     }, 50);
   }
