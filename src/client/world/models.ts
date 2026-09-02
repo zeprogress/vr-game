@@ -28,7 +28,7 @@ export type ModelName = keyof typeof MODELS;
 
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
 
-function containerFor(scene: Scene, path: string): Promise<AssetContainer> {
+export function containerFor(scene: Scene, path: string): Promise<AssetContainer> {
   let byPath = cache.get(scene);
   if (!byPath) {
     byPath = new Map();
@@ -226,7 +226,7 @@ const TINY = new Vector3(1e-3, 1e-3, 1e-3);
 const q = (v: number): number => Math.round(v * 10) / 10;
 
 /** PBR-материалы пака → наш плоский StandardMaterial. */
-function recolorFlat(root: TransformNode, tint?: Color3): void {
+export function recolorFlat(root: TransformNode, tint?: Color3): void {
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
     const src = mesh.material;

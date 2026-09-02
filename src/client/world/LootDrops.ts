@@ -30,6 +30,8 @@ export class LootDrops {
   private room: Room<ZoneState> | null = null;
   private readonly views = new Map<string, DropView>();
   private readonly protos = new Map<ItemId, Mesh>();
+  /** Оружие — модель грузится асинхронно, клонировать прото нельзя: строим свежий меш на каждую выпавшую единицу (золото падает редко). */
+  private readonly weaponFactory = new Map<ItemId, () => Mesh>();
   private clock = 0;
 
   constructor(scene: Scene) {
@@ -38,9 +40,9 @@ export class LootDrops {
       let proto: Mesh;
 
       if (def.weapon) {
-        // Настоящее оружие, воткнутое в землю — его берут рукой.
-        proto = makeWeaponMesh(scene, def.weapon.cls, def.weapon.tier);
-        proto.name = `dropProto_${id}`;
+        const w = def.weapon;
+        this.weaponFactory.set(id, () => makeWeaponMesh(scene, w.cls, w.tier));
+        continue;
       } else if (id === "potion") {
         // Та же бутылочка, что у игрока на поясе — чтобы лут узнавался.
         proto = createPotionMesh(scene);
@@ -74,9 +76,16 @@ export class LootDrops {
       let v = this.views.get(id);
       if (!v) {
         if (!isItemId(s.item)) return;
-        const proto = this.protos.get(s.item);
-        if (!proto) return;
-        const mesh = proto.clone(`drop_${id}`);
+        const factory = this.weaponFactory.get(s.item);
+        let mesh: Mesh;
+        if (factory) {
+          mesh = factory();
+          mesh.name = `drop_${id}`;
+        } else {
+          const proto = this.protos.get(s.item);
+          if (!proto) return;
+          mesh = proto.clone(`drop_${id}`);
+        }
         mesh.setEnabled(true);
         // Разводим фазу по id, чтобы кучка лута не качалась синхронно.
         v = {

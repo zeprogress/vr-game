@@ -1,19 +1,17 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId =
-  | "potion"
-  | "bronze_sword"
-  | "gold_sword"
-  | "gold_bow"
-  | "gold_shield";
+export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_shield";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
  * положение настраивается один раз на класс (см. LOADOUT.items).
  */
 export type WeaponClass = "sword" | "bow" | "shield";
-/** Уровень внутри класса. base — то, что лежит на камнях с самого начала. */
-export type WeaponTier = "base" | "bronze" | "gold";
+/**
+ * Уровень внутри класса. Всего два: `base` — обычное оружие из пака, лежит на
+ * камнях с самого начала; `gold` — золотой вариант, редкая добыча с мобов.
+ */
+export type WeaponTier = "base" | "gold";
 
 export interface WeaponDef {
   cls: WeaponClass;
@@ -32,11 +30,10 @@ export function weaponKey(cls: WeaponClass, tier: WeaponTier): WeaponKey {
 }
 
 export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
-  // Цвет — как у стволов деревьев в зоне (см. props.ts, trunkMat).
-  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.2, 0.13, 0.08] },
-  "sword:bronze": { cls: "sword", tier: "bronze", name: "Железный меч", mult: 2, tint: [0.78, 0.81, 0.86] },
-  "sword:gold": { cls: "sword", tier: "gold", name: "Золотой меч", mult: 5, tint: [1, 0.84, 0.26] },
-  "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.31, 0.2, 0.12] },
+  // tint — запасной цвет (модели пака несут свой), плюс цвет золотой перекраски.
+  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.55, 0.57, 0.62] },
+  "sword:gold": { cls: "sword", tier: "gold", name: "Золотой меч", mult: 4, tint: [1, 0.84, 0.26] },
+  "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.42, 0.28, 0.16] },
   "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
   "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
@@ -51,7 +48,7 @@ export function isWeaponClass(v: unknown): v is WeaponClass {
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
-  return v === "base" || v === "bronze" || v === "gold";
+  return v === "base" || v === "gold";
 }
 
 /** Можно ли держать два предмета этого класса одновременно (по одному в руке). */
@@ -89,7 +86,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 40,
     tint: [0.9, 0.2, 0.35],
   },
-  bronze_sword: weaponItem("sword", "bronze", "Железо"),
   gold_sword: weaponItem("sword", "gold", "Золото"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук"),
   gold_shield: weaponItem("shield", "gold", "Зол. щит"),
@@ -138,8 +134,7 @@ export interface LootEntry {
 export const LOOT: Record<MobKind, LootEntry[]> = {
   slime: [
     { id: "potion", chance: 0.35, min: 1, max: 1 },
-    { id: "bronze_sword", chance: 0.05, min: 1, max: 1 },
-    { id: "gold_shield", chance: 0.1, min: 1, max: 1 },
+    { id: "gold_shield", chance: 0.08, min: 1, max: 1 },
   ],
   spitter: [
     { id: "potion", chance: 0.6, min: 1, max: 1 },

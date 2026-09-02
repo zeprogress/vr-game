@@ -11,6 +11,7 @@ import { buildZone, type ZoneQuality } from "../world/Zone";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
+import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { Sfx } from "../audio/Sfx";
 import type { NetClient } from "../net/NetClient";
@@ -147,6 +148,7 @@ export class Spectator {
 
     // Мобы и лут — переиспользуем менеджеры игры. Бой спектатору не нужен:
     // цели пустые, репорт попаданий — заглушка.
+    preloadWeaponModels(this.scene);
     this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.leanMobs);
     this.loot = new LootDrops(this.scene);
 

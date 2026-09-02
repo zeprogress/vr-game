@@ -28,7 +28,6 @@ import { segDist } from "./math";
 
 /** Каким предметом каждое оружие лежит в мире. */
 const WEAPON_DROP: Partial<Record<string, ItemId>> = {
-  "sword:bronze": "bronze_sword",
   "sword:gold": "gold_sword",
   "bow:gold": "gold_bow",
   "shield:gold": "gold_shield",

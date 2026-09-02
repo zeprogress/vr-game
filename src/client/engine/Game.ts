@@ -28,6 +28,7 @@ import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
 import { Inventory } from "../player/Inventory";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
+import { preloadWeaponModels } from "../items/weaponModels";
 import { PlayerController } from "../player/PlayerController";
 import { DesktopInput } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
@@ -122,6 +123,8 @@ export class Game {
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
+
+    preloadWeaponModels(this.scene); // модели меча/лука — до первого createSword
 
     const zone = buildZone(this.scene);
     this.ground = zone.ground;
