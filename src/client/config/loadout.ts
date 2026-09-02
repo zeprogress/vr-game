@@ -123,25 +123,26 @@ export interface Loadout {
 }
 
 export const LOADOUT_DEFAULTS: Loadout = {
+  // Подогнано в шлеме (перенесено из панели `game.printLoadout()` 2026-09-02).
   hands: {
-    left: { rot: [Math.PI, 0, 0], scale: 0.135, curl: 1 },
-    right: { rot: [Math.PI, 0, 0], scale: 0.135, curl: 1 },
+    left: { rot: [0.6416, 0.1, 1.8], scale: 0.215, curl: 1 },
+    right: { rot: [0.9416, -0.3, -1.6], scale: 0.215, curl: 1 },
   },
   items: {
     sword: {
       flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.55 },
-      vrLeft: { pos: [0, 0, 0.12], rot: [0, -1.56, -1.56], scale: 1 },
-      vrRight: { pos: [-0.01, 0, 0.12], rot: [0.2, 1.5, 1.56], scale: 1 },
+      vrLeft: { pos: [0.005, -0.02, -0.08], rot: [0.26, -1.56, -1.36], scale: 1 },
+      vrRight: { pos: [-0.005, -0.015, -0.06], rot: [0.28, 1.46, 1.44], scale: 1 },
     },
     bow: {
       flat: { pos: [-0.24, -0.26, 0.55], rot: [0, Math.PI, 0], scale: 0.8 },
-      vrLeft: { pos: [0.025, 0.025, 0], rot: [-1.8908, -1.22, 1.22], scale: 1 },
-      vrRight: { pos: [-0.015, 0.025, 0], rot: [-Math.PI / 2, -0.04, 0], scale: 1 },
+      vrLeft: { pos: [0, 0, 0.05], rot: [-1.6508, -1.02, 0.9], scale: 0.9 },
+      vrRight: { pos: [-0.015, -0.005, 0.05], rot: [-Math.PI / 2, -0.04, 0], scale: 0.9 },
     },
     shield: {
       flat: { pos: [-0.34, -0.26, 0.62], rot: [Math.PI / 2, 0, 0], scale: 0.8 },
-      vrLeft: { pos: [-0.025, -0.05, 0.025], rot: [0.9308, 1.04, 2.4508], scale: 1 },
-      vrRight: { pos: [0.01, -0.05, 0.035], rot: [2.6308, 1.92, 0.6692], scale: 1 },
+      vrLeft: { pos: [-0.035, -0.025, 0.015], rot: [0.9308, 1.04, 2.4508], scale: 1 },
+      vrRight: { pos: [0.035, -0.035, 0.015], rot: [2.0708, 1.92, 0.6692], scale: 1 },
     },
     potion: {
       flat: { pos: [0.3, -0.3, 0.6], rot: [0, 0, 0], scale: 1 },
@@ -149,10 +150,9 @@ export const LOADOUT_DEFAULTS: Loadout = {
       vrRight: { pos: [-0.03, 0, 0.02], rot: [0.9, 0, 0], scale: 1 },
     },
     staff: {
-      // Пока копия меча — подгонишь в шлеме (панель · «Посох»).
       flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.6 },
-      vrLeft: { pos: [0, 0, 0.12], rot: [0, -1.56, -1.56], scale: 1 },
-      vrRight: { pos: [-0.01, 0, 0.12], rot: [0.2, 1.5, 1.56], scale: 1 },
+      vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
+      vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
     },
   },
   buttons: {
@@ -178,9 +178,9 @@ export const LOADOUT_DEFAULTS: Loadout = {
     sun: 1, // яркость солнца
     fill: 1, // яркость заливки неба
     warm: 1, // тёплый (золотой) солнечный свет
-    coolShade: 1, // прохладная (синеватая) тень
+    coolShade: 0, // тень нейтральная (без синевы) — так подогнано в шлеме
     night: 1, // яркость ночи
-    fog: 1, // плотность тумана
+    fog: 1.5, // плотность тумана — гуще палитры
   },
   voice: {
     mic: 1, // микрофон работает
