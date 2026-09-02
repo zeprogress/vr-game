@@ -39,6 +39,9 @@ export class PlayerState extends Schema {
   @type("uint16") str = 1;
   @type("uint16") agi = 1;
   @type("uint16") int = 1;
+  /** Мана: запас и потолок (от интеллекта). Тратится на магию посоха. */
+  @type("float32") mana = 30;
+  @type("float32") maxMana = 30;
 
   /** Что в левой руке: класс оружия и уровень ("" — пусто). */
   @type("string") leftCls = "";
@@ -109,6 +112,18 @@ export class BallState extends Schema {
   @type("uint8") boss = 0;
 }
 
+/** Огненный снаряд игрока (посох). */
+export class BoltState extends Schema {
+  @type("float32") x = 0;
+  @type("float32") y = 0;
+  @type("float32") z = 0;
+  @type("float32") vx = 0;
+  @type("float32") vy = 0;
+  @type("float32") vz = 0;
+  /** Радиус снаряда (от заряда) — клиент рисует пламя этого размера. */
+  @type("float32") r = 0.15;
+}
+
 /** Состояние зоны — общий контракт клиента и сервера. */
 export class ZoneState extends Schema {
   /** Час суток (0..24) — им владеет сервер, клиенты только читают. */
@@ -124,5 +139,6 @@ export class ZoneState extends Schema {
   @type({ map: MobState }) mobs = new MapSchema<MobState>();
   @type({ map: DummyState }) dummies = new MapSchema<DummyState>();
   @type({ map: BallState }) balls = new MapSchema<BallState>();
+  @type({ map: BoltState }) bolts = new MapSchema<BoltState>();
   @type({ map: DropState }) drops = new MapSchema<DropState>();
 }

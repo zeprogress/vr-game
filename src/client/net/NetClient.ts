@@ -5,6 +5,7 @@ import {
   MSG,
   type CharMsg,
   type HitMobMsg,
+  type CastMsg,
   type LevelUpMsg,
   type MobHitMsg,
   type MoveMsg,
@@ -222,6 +223,11 @@ export class NetClient {
   /** Сообщить о попадании по мобу/кукле (урон посчитает и применит сервер). */
   sendHitMob(msg: HitMobMsg): void {
     this.room?.send(MSG.hitMob, msg);
+  }
+
+  /** Каст огненного снаряда посохом (мана/урон/снаряд — сервер). */
+  sendCast(msg: CastMsg): void {
+    this.room?.send(MSG.cast, msg);
   }
 
   /** Заявка потратить очко характеристики. */

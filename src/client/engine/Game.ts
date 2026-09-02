@@ -602,6 +602,10 @@ export class Game {
   private syncSelf(dt: number, self: PlayerState): void {
     this.player.setHp(self.hp);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
+    // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
+    // свой отсчёт (сервер спишет ману только по факту каста), иначе
+    // предсказание «мана кончилась на середине» не сработало бы.
+    if (!this.combat.chargingMagic) this.combat.mana = self.mana;
 
     const dead = self.dead === 1;
     if (dead !== this.player.dead) {
@@ -720,6 +724,7 @@ export class Game {
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
     this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
+    this.combat.onCast = (msg) => net.sendCast(msg);
 
     // Звук соседа — играем объёмно от его аватара / точки события.
     net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
@@ -987,6 +992,7 @@ export class Game {
     this.combat.makeWeaponMesh = null;
     this.combat.onWeaponLanded = null;
     this.combat.onSoundEvent = null;
+    this.combat.onCast = null;
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;

@@ -3,6 +3,7 @@ import type { Client } from "colyseus";
 
 import {
   BallState,
+  BoltState,
   DropState,
   DummyState,
   MobState,
@@ -29,6 +30,7 @@ import {
   type OverridesMsg,
   type RtcMsg,
   type SpendMsg,
+  type CastMsg,
   type SetTimeMsg,
   type ComfortMsg,
   type SpecCmd,
@@ -83,6 +85,14 @@ import {
   spendPoint,
   type Progress,
 } from "#shared/progression";
+import {
+  MAGIC,
+  maxManaFor,
+  manaRegenFor,
+  fireboltDamage,
+  fireboltSpeed,
+  fireboltRadius,
+} from "#shared/magic";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
@@ -104,6 +114,8 @@ interface Runtime {
   invuln: number;
   /** Момент последнего обмена ударами в PvP (сек. комнаты) — для disengage. */
   lastPvpAt: number;
+  /** Момент последнего каста посохом — для кулдауна. */
+  lastCast: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
@@ -179,6 +191,14 @@ function unit2(x: unknown, z: unknown): [number, number] {
   const az = num(z, 0);
   const L = Math.hypot(ax, az);
   return L > 1e-4 ? [ax / L, az / L] : [0, 0];
+}
+
+function unit3(x: unknown, y: unknown, z: unknown): [number, number, number] {
+  const ax = num(x, 0);
+  const ay = num(y, 0);
+  const az = num(z, 0);
+  const L = Math.hypot(ax, ay, az);
+  return L > 1e-4 ? [ax / L, ay / L, az / L] : [0, 0, 1];
 }
 
 /** Схема сумки -> обычный массив, с которым работает shared/items. */
@@ -334,6 +354,43 @@ export class ZoneRoom extends Room<ZoneState> {
       const before = p.maxHp;
       p.maxHp = maxHpFor(p.str);
       p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - before));
+      const beforeMana = p.maxMana;
+      p.maxMana = maxManaFor(p.int);
+      p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
+    });
+
+    this.onMessage(MSG.cast, (client: Client, msg: CastMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || p.dead || !msg) return;
+      // Держит ли посох (любой рукой) — иначе каст невозможен.
+      const holds = p.leftCls === "staff" || p.rightCls === "staff";
+      if (!holds) return;
+      if (this.elapsed - rt.lastCast < MAGIC.firebolt.cooldown) return;
+
+      const charge = Math.max(0, Math.min(1, num(msg.charge, 0)));
+      const pull = Math.max(0, Math.min(1, num(msg.pull, 0)));
+      // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
+      if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
+
+      // Мана уже списывалась на клиенте по мере накопления; сервер списывает
+      // столько, сколько стоил бы этот заряд, но не больше, чем есть.
+      const cost = Math.min(p.mana, (charge / 1) * MAGIC.firebolt.chargeTime * MAGIC.firebolt.manaPerSec);
+      p.mana = Math.max(0, p.mana - cost);
+      rt.lastCast = this.elapsed;
+
+      const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
+      this.sim.castBolt(
+        num(msg.ox, p.head.x),
+        num(msg.oy, p.head.y),
+        num(msg.oz, p.head.z),
+        dx, dy, dz,
+        fireboltSpeed(pull),
+        fireboltRadius(charge),
+        fireboltDamage(p.int, charge),
+        client.sessionId,
+        MAGIC.firebolt.life,
+      );
     });
 
     this.onMessage(MSG.useItem, (client: Client, msg: UseItemMsg) => {
@@ -622,14 +679,15 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  private awardXp(client: Client, p: PlayerState, amount: number): void {
+  private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
     const prog = readProgress(p);
     const levels = grantXp(prog, amount);
     writeProgress(p, prog);
+    p.maxMana = maxManaFor(p.int);
     if (levels <= 0) return;
     p.maxHp = maxHpFor(p.str);
     p.hp = Math.min(p.maxHp, p.hp + LEVEL_UP_HEAL * levels);
-    client.send(MSG.levelUp, { level: p.level });
+    client?.send(MSG.levelUp, { level: p.level });
   }
 
   // ---- тик ----
@@ -653,6 +711,13 @@ export class ZoneRoom extends Room<ZoneState> {
       });
       world.save(this.sim.saveDrops());
     }
+
+    // Мана восстанавливается всегда (от интеллекта).
+    this.state.players.forEach((p) => {
+      if (p.mana < p.maxMana) {
+        p.mana = Math.min(p.maxMana, p.mana + manaRegenFor(p.int) * dt);
+      }
+    });
 
     // Мобы гоняются только за живыми.
     const players: SimPlayer[] = [];
@@ -717,6 +782,29 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.balls.forEach((_s, id) => {
       if (!this.sim.balls.has(id)) this.state.balls.delete(id);
     });
+    // Огненные снаряды игроков.
+    for (const bo of this.sim.bolts.values()) {
+      let s = this.state.bolts.get(bo.id);
+      if (!s) {
+        s = new BoltState();
+        s.r = bo.radius;
+        this.state.bolts.set(bo.id, s);
+      }
+      s.x = bo.x;
+      s.y = bo.y;
+      s.z = bo.z;
+      s.vx = bo.vx;
+      s.vy = bo.vy;
+      s.vz = bo.vz;
+    }
+    this.state.bolts.forEach((_s, id) => {
+      if (!this.sim.bolts.has(id)) this.state.bolts.delete(id);
+    });
+    // Опыт за мобов, добитых огнём.
+    for (const k of this.sim.boltXp) {
+      const kp = this.state.players.get(k.owner);
+      if (kp) this.awardXp(this.clientOf(k.owner), kp, k.xp);
+    }
     for (const d of this.sim.drops.values()) {
       if (this.state.drops.has(d.id)) continue;
       const s = new DropState();
@@ -874,6 +962,8 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     p.maxHp = maxHpFor(p.str);
+    p.maxMana = maxManaFor(p.int);
+    p.mana = p.maxMana;
     // Руки заполняем из сейва СРАЗУ: иначе первое же сохранение (оно идёт
     // раз в 10 с) запишет пустые руки, ещё до того как клиент пришлёт свои.
     const savedHeld = sanitizeHeld(rec?.held);
@@ -897,6 +987,7 @@ export class ZoneRoom extends Room<ZoneState> {
       respawnIn: 0,
       invuln: RESPAWN.invuln,
       lastPvpAt: -999,
+      lastCast: -999,
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),

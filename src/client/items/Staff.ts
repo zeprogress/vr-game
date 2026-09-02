@@ -13,23 +13,25 @@ import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 
 /**
- * Посох — фокус для магии, а заодно слабое двуручное оружие ближнего боя.
+ * Посох — фокус для магии и слабое двуручное оружие ближнего боя.
  *
- * Собран здесь: древко процедурное, кристалл — модель из пака (`Crystal1`,
- * светится эмиссивом) на верхнем конце.
+ * Древко процедурное, кристалл — модель из пака (`Crystal1`), светится.
+ * Оси как у меча: посох вдоль +Y, начало координат — в НИЖНЕЙ точке хвата.
+ * Три равные трети; профиль конический: тонкий низ → толстый верх у камня.
  *
- * Локальные оси как у меча: посох вдоль +Y, начало координат — в НИЖНЕЙ
- * точке хвата. Древко делится на 3 равные части: нижний стык хвата в начале
- * координат (y = 0), верхний — на y ≈ 0.5. Ударный конец (кристалл) у
- * y ≈ 1.02, поэтому попадание считается тем же путём, что у меча
- * (`COMBAT.swordTipLocal`).
+ *   y=BOTTOM ─ железный шип
+ *   y=0      ─ НИЖНИЙ хват (origin)
+ *   y=0.5    ─ ВЕРХНИЙ хват (за него берут в бою и в двуручном хвате)
+ *   y≈1.02   ─ кристалл (ударный конец; здесь же копится заряд)
  */
 
-const BOTTOM = -0.5; // низ древка
-const TOP = 0.9; // верх древка (дальше — навершие с кристаллом)
-/** Точки хвата: нижняя в origin, верхняя на трети выше. */
+const BOTTOM = -0.5;
+const TOP = 0.9;
+/** Точки хвата вдоль +Y. */
 export const STAFF_GRIP_LOW = 0;
 export const STAFF_GRIP_HIGH = 0.5;
+/** Локальная точка кристалла — от неё летит снаряд, к ней тянут заряд. */
+export const STAFF_CRYSTAL_LOCAL: readonly [number, number, number] = [0, 1.05, 0];
 
 export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   const gold = tier === "gold";
@@ -40,7 +42,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   wood.specularColor = new Color3(0.05, 0.05, 0.05);
   wood.maxSimultaneousLights = LIGHT_BUDGET;
 
-  // Обмотки — белая ткань, БЕЗ утолщения: заподлицо с древком.
+  // Обмотки — белая ткань, заподлицо с древком (без утолщения).
   const cloth = new StandardMaterial("staffGrip", scene);
   cloth.diffuseColor = new Color3(0.86, 0.86, 0.82);
   cloth.emissiveColor = new Color3(0.14, 0.14, 0.13);
@@ -48,56 +50,71 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   cloth.maxSimultaneousLights = LIGHT_BUDGET;
 
   const metal = new StandardMaterial("staffFerrule", scene);
-  metal.diffuseColor = gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.42, 0.44, 0.5);
-  metal.emissiveColor = metal.diffuseColor.scale(0.14);
-  metal.specularColor = new Color3(0.7, 0.7, 0.7);
-  metal.specularPower = 64;
+  metal.diffuseColor = gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
+  metal.emissiveColor = metal.diffuseColor.scale(0.12);
+  metal.specularColor = new Color3(0.75, 0.75, 0.8);
+  metal.specularPower = 80;
   metal.maxSimultaneousLights = LIGHT_BUDGET;
 
   const parts: Mesh[] = [];
 
-  // Древко: потолще, и к навершию чуть шире (там сидит кристалл).
-  const shaft = MeshBuilder.CreateCylinder(
-    "st_shaft",
-    { height: TOP - BOTTOM, diameterBottom: 0.04, diameterTop: 0.048, tessellation: 10 },
-    scene,
-  );
-  shaft.position.y = (BOTTOM + TOP) / 2;
-  shaft.material = wood;
-  parts.push(shaft);
+  // Древко тремя коническими сегментами: низ тонкий, верх у камня толстый.
+  const seg = (name: string, y0: number, y1: number, d0: number, d1: number): void => {
+    const m = MeshBuilder.CreateCylinder(
+      name,
+      { height: y1 - y0, diameterBottom: d0, diameterTop: d1, tessellation: 10 },
+      scene,
+    );
+    m.position.y = (y0 + y1) / 2;
+    m.material = wood;
+    parts.push(m);
+  };
+  seg("st_low", BOTTOM, STAFF_GRIP_LOW, 0.022, 0.036); // нижний хват → конец: утоньшение
+  seg("st_mid", STAFF_GRIP_LOW, STAFF_GRIP_HIGH, 0.036, 0.046);
+  seg("st_high", STAFF_GRIP_HIGH, TOP, 0.046, 0.062); // верхний хват → камень: утолщение
 
-  // Утолщение-навершие вплотную к камню.
+  // Навершие вплотную к камню.
   const collar = MeshBuilder.CreateCylinder(
     "st_collar",
-    { height: 0.12, diameterBottom: 0.052, diameterTop: 0.07, tessellation: 10 },
+    { height: 0.12, diameterBottom: 0.064, diameterTop: 0.08, tessellation: 10 },
     scene,
   );
-  collar.position.y = TOP + 0.02;
+  collar.position.y = TOP + 0.05;
   collar.material = wood;
   parts.push(collar);
 
-  // Две тканевые обмотки на стыках третей — диаметр как у древка в этих местах.
+  // Тканевые обмотки — диаметр как у древка в этих местах, чуть выпуклые.
   const wrap = (y: number, dia: number): void => {
     const m = MeshBuilder.CreateCylinder(
       "st_grip",
-      { height: 0.13, diameter: dia + 0.003, tessellation: 10 },
+      { height: 0.13, diameter: dia + 0.004, tessellation: 10 },
       scene,
     );
     m.position.y = y;
     m.material = cloth;
     parts.push(m);
   };
-  wrap(STAFF_GRIP_LOW, 0.041);
-  wrap(STAFF_GRIP_HIGH, 0.044);
+  wrap(STAFF_GRIP_LOW, 0.036);
+  wrap(STAFF_GRIP_HIGH, 0.046);
 
-  const ferrule = MeshBuilder.CreateCylinder(
-    "st_ferrule",
-    { height: 0.08, diameterBottom: 0.03, diameterTop: 0.044, tessellation: 10 },
+  // Железный шип на нижнем конце: сходится в остриё, сидит на тонком низе древка.
+  const spike = MeshBuilder.CreateCylinder(
+    "st_spike",
+    { height: 0.12, diameterTop: 0.03, diameterBottom: 0.006, tessellation: 10 },
     scene,
   );
-  ferrule.position.y = BOTTOM + 0.04;
-  ferrule.material = metal;
-  parts.push(ferrule);
+  spike.position.y = BOTTOM - 0.05;
+  spike.material = metal;
+  parts.push(spike);
+  // Кольцо-муфта, где шип крепится к древку.
+  const collarLo = MeshBuilder.CreateCylinder(
+    "st_muff",
+    { height: 0.035, diameter: 0.034, tessellation: 10 },
+    scene,
+  );
+  collarLo.position.y = BOTTOM + 0.005;
+  collarLo.material = metal;
+  parts.push(collarLo);
 
   const staff = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
   if (!staff) throw new Error("не удалось собрать посох");
@@ -116,8 +133,8 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean): void {
     if (!src) return;
     src.parent = staff;
     src.rotationQuaternion = Quaternion.RotationYawPitchRoll(0.25, 0, 0);
-    src.scaling.setAll(0.19); // нативная высота ~0.76 → ~0.14 м
-    src.position.set(0, TOP + 0.09, 0);
+    src.scaling.setAll(0.19);
+    src.position.set(0, TOP + 0.13, 0);
 
     recolorFlat(src);
     for (const m of src.getChildMeshes(false)) {
@@ -125,7 +142,7 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean): void {
       if (mat && "emissiveColor" in mat) {
         const glow = gold
           ? new Color3(0.9, 0.78, 0.38)
-          : new Color3(0.78, 0.8, 0.9); // белый светящийся камень (грани видны)
+          : new Color3(0.78, 0.8, 0.9); // белый светящийся камень
         mat.diffuseColor = glow.scale(0.6);
         mat.emissiveColor = glow;
         mat.specularColor = new Color3(0.7, 0.7, 0.8);

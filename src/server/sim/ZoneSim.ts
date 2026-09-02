@@ -713,11 +713,33 @@ class Ball {
   }
 }
 
-/** Авторитетная симуляция зоны: мобы, куклы, плевки. Без Babylon. */
+/**
+ * Огненный снаряд игрока (посох). Летит по прямой с лёгкой гравитацией,
+ * бьёт мобов и кукол; урон и радиус уже посчитаны при касте.
+ */
+class Bolt {
+  readonly id = nid();
+  life = 0;
+  constructor(
+    public x: number,
+    public y: number,
+    public z: number,
+    public vx: number,
+    public vy: number,
+    public vz: number,
+    public readonly radius: number,
+    public readonly dmg: number,
+    public readonly owner: string,
+    public readonly maxLife: number,
+  ) {}
+}
+
+/** Авторитетная симуляция зоны: мобы, куклы, плевки, снаряды игроков. */
 export class ZoneSim {
   readonly mobs = new Map<string, Mob>();
   readonly dummies = new Map<string, Dummy>();
   readonly balls = new Map<string, Ball>();
+  readonly bolts = new Map<string, Bolt>();
   readonly drops = new Map<string, Drop>();
   private boss!: Mob;
 
@@ -787,8 +809,75 @@ export class ZoneSim {
     for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
+    this.boltXp.length = 0;
+    for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     return hits;
+  }
+
+  /** Опыт с добитых снарядами игрока мобов за последний тик: комната разошлёт. */
+  readonly boltXp: { owner: string; xp: number }[] = [];
+
+  /** Запустить огненный снаряд игрока. */
+  castBolt(
+    x: number,
+    y: number,
+    z: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    speed: number,
+    radius: number,
+    dmg: number,
+    owner: string,
+    life: number,
+  ): void {
+    if (this.bolts.size >= 24) {
+      const first = this.bolts.keys().next().value as string | undefined;
+      if (first) this.bolts.delete(first);
+    }
+    const dl = Math.hypot(dx, dy, dz) || 1;
+    const b = new Bolt(
+      x, y, z,
+      (dx / dl) * speed, (dy / dl) * speed, (dz / dl) * speed,
+      radius, dmg, owner, life,
+    );
+    this.bolts.set(b.id, b);
+  }
+
+  /** true — снаряд отработал, удалить. */
+  private tickBolt(b: Bolt, dt: number): boolean {
+    const px = b.x;
+    const py = b.y;
+    const pz = b.z;
+    b.vy -= SPITTER.ballGravity * 0.35 * dt; // огонь почти не проседает
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.z += b.vz * dt;
+    b.life += dt;
+    if (b.life > b.maxLife) return true;
+    if (b.y <= terrainHeight(b.x, b.z)) return true;
+
+    for (const m of this.mobs.values()) {
+      if (m.dead) continue;
+      const r = b.radius + MOB.bodyRadius * m.scale;
+      const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
+      if (d < r) {
+        const vh = Math.hypot(b.vx, b.vz) || 1;
+        const xp = this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh);
+        if (xp > 0) this.boltXp.push({ owner: b.owner, xp });
+        return true;
+      }
+    }
+    for (const d of this.dummies.values()) {
+      if (d.dead) continue;
+      const dist = segDist(px, py, pz, b.x, b.y, b.z, d.x, d.y, d.z, d.x, d.y + 0.9, d.z);
+      if (dist < b.radius + 0.5) {
+        this.hitDummy(d.id, b.dmg);
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Урон по мобу. Возвращает опыт за добивание (0 — если не убит). */

@@ -22,7 +22,9 @@ import {
   type WeaponClass,
   type WeaponTier,
 } from "#shared/items";
-import type { CarriedWeapon, HeldWeapons, StowedWeapon } from "#shared/net/messages";
+import type { CarriedWeapon, HeldWeapons, StowedWeapon, CastMsg } from "#shared/net/messages";
+import { MAGIC } from "#shared/magic";
+import { STAFF_CRYSTAL_LOCAL } from "../items/Staff";
 import { LOADOUT, type ItemKind as LoadoutItemKind, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -155,6 +157,20 @@ export class CombatSystem {
   private draw = 0; // 0..1
   private vrNocked = false;
   private prevVrTrigger = false;
+
+  // --- магия посоха (этап 14) ---
+  /** Текущая мана игрока — Game обновляет из схемы каждый кадр. */
+  mana = 30;
+  /** Игра шлёт серверу каст, когда посох выстрелил. */
+  onCast: ((msg: CastMsg) => void) | null = null;
+  private charge = 0; // 0..1 накопленный заряд
+  private castHooked = false; // вторая рука зацепилась за кристалл
+  /** true — сейчас копится заряд: Game не перетирает предсказанную ману патчем. */
+  get chargingMagic(): boolean {
+    return this.castHooked;
+  }
+  private prevCastTrigger = false;
+  private chargeOrb: Mesh | null = null;
 
   // Рукопашная
   private readonly fistPrev: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
@@ -564,6 +580,11 @@ export class CombatSystem {
       if (this.player.inVR) this.updateVRMelee(dt);
       else this.updateFlatMelee(dt, primaryEdge);
     }
+
+    // Магия посоха: держащая рука машет как мечом (выше), вторая — тянет
+    // энергию от кристалла и кастует. Только VR.
+    if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
+    else if (this.charge !== 0 || this.castHooked) this.resetCast();
 
     this.applyWindup();
     this.trackHandMotion(dt);
@@ -1373,6 +1394,109 @@ export class CombatSystem {
       }
     }
     this.prevVrTrigger = trigger;
+  }
+
+  // ---- магия посоха ----
+
+  private readonly castCrystalW = new Vector3();
+  private readonly castOriginW = new Vector3();
+
+  private resetCast(): void {
+    this.charge = 0;
+    this.castHooked = false;
+    this.chargeOrb?.setEnabled(false);
+    this.prevCastTrigger = false;
+  }
+
+  /**
+   * Каст огненного снаряда: держащей рукой посох (машет как мечом), второй
+   * рукой у кристалла жмёшь триггер и «тянешь». Дальше от кристалла — быстрее
+   * полетит; дольше держишь — больше заряд. Мана убывает, пока копишь;
+   * кончилась — заряд замирает. Мало маны на минимум — каст не начинается.
+   */
+  private updateStaffCast(dt: number): void {
+    const staff = this.held1("staff");
+    if (!staff?.hand) return this.resetCast();
+    const holdHand = staff.hand;
+    const castHand: Side = holdHand === "left" ? "right" : "left";
+    if (this.inHand(castHand)) return this.resetCast(); // вторая рука занята
+
+    const cc = this.controller(castHand);
+    const castNode = cc?.grip ?? cc?.pointer;
+    const trigger = !!cc?.inputSource.gamepad?.buttons[0]?.pressed;
+    if (!castNode) return this.resetCast();
+
+    const m = staff.mesh.getWorldMatrix();
+    Vector3.TransformCoordinatesToRef(new Vector3(...STAFF_CRYSTAL_LOCAL), m, this.castCrystalW);
+    Vector3.TransformCoordinatesToRef(Vector3.ZeroReadOnly, m, this.castOriginW);
+    const castPos = castNode.getAbsolutePosition();
+    const dist = Vector3.Distance(castPos, this.castCrystalW);
+
+    const fb = MAGIC.firebolt;
+
+    if (trigger) {
+      if (!this.castHooked && !this.prevCastTrigger && dist < 0.28 && this.mana >= fb.minMana) {
+        this.castHooked = true;
+        this.haptic(castHand, 0.4, 45);
+        this.sfx.bowDraw();
+      }
+      if (this.castHooked) {
+        // Накопление заряда, пока есть мана; мана расходуется на лету.
+        if (this.mana > 0 && this.charge < 1) {
+          this.charge = clamp(this.charge + dt / fb.chargeTime, 0, 1);
+          this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+        }
+        this.showChargeOrb(staff.mesh);
+      }
+    } else if (this.castHooked) {
+      const charge = this.charge;
+      // «Натяг» = насколько отвёл руку от кристалла (0.15..0.75 м → 0..1).
+      const pull = clamp((dist - 0.15) / 0.6, 0, 1);
+      this.resetCast();
+      if (charge >= fb.minCharge) {
+        const dir = this.castCrystalW.subtract(this.castOriginW).normalize();
+        const origin = this.castCrystalW.add(dir.scale(0.05));
+        this.onCast?.({
+          charge,
+          pull,
+          ox: origin.x,
+          oy: origin.y,
+          oz: origin.z,
+          dx: dir.x,
+          dy: dir.y,
+          dz: dir.z,
+          hand: holdHand,
+        });
+        this.haptic(holdHand, 0.7, 60);
+        this.haptic(castHand, 0.7, 60);
+        this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
+        this.emitSound("bow", origin);
+      }
+    }
+    this.prevCastTrigger = trigger;
+  }
+
+  private showChargeOrb(staffMesh: Mesh): void {
+    if (!this.chargeOrb) {
+      const mat = new StandardMaterial("chargeOrbMat", staffMesh.getScene());
+      mat.emissiveColor = new Color3(1, 0.55, 0.15);
+      mat.diffuseColor = new Color3(0.05, 0.02, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      this.chargeOrb = MeshBuilder.CreateSphere(
+        "chargeOrb",
+        { diameter: 1, segments: 8 },
+        staffMesh.getScene(),
+      );
+      this.chargeOrb.material = mat;
+      this.chargeOrb.isPickable = false;
+    }
+    this.chargeOrb.parent = staffMesh;
+    this.chargeOrb.position.set(...STAFF_CRYSTAL_LOCAL);
+    const r = 0.04 + this.charge * 0.22;
+    const flick = 0.9 + 0.1 * Math.sin(performance.now() * 0.04);
+    this.chargeOrb.scaling.setAll(r * flick);
+    this.chargeOrb.setEnabled(true);
   }
 
   private readonly nockLocal = new Vector3();

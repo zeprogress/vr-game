@@ -5,6 +5,8 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import type { Room } from "colyseus.js";
 
 import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
@@ -27,6 +29,16 @@ interface BallView {
   srvVy: number;
 }
 
+/** Огненный снаряд игрока: раскалённое ядро + аддитивный ореол-пламя. */
+interface BoltView {
+  core: Mesh;
+  glow: Mesh;
+  pos: Vector3;
+  vel: Vector3;
+  r: number;
+  age: number;
+}
+
 /**
  * Мобы, куклы и плевки — ВИД поверх состояния сервера (этап 6).
  * Держит `targets` (общий массив для CombatSystem) в актуальном виде.
@@ -38,6 +50,9 @@ export class NetMobs {
   private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh; // плевок плевуна
   private readonly ballProtoBoss: Mesh; // плевок босса
+  private readonly bolts = new Map<string, BoltView>();
+  private readonly boltCoreProto: Mesh;
+  private readonly boltGlowProto: Mesh;
 
   constructor(
     private readonly scene: Scene,
@@ -64,6 +79,31 @@ export class NetMobs {
     };
     this.ballProto = spitBall("spitBall", SPITTER_CFG.tint);
     this.ballProtoBoss = spitBall("spitBallBoss", BOSS_CFG.tint);
+
+    // Огненный снаряд: раскалённое ядро (диаметр 1 — масштабируем под радиус).
+    const coreMat = new StandardMaterial("boltCoreMat", scene);
+    coreMat.diffuseColor = new Color3(0.05, 0.02, 0);
+    coreMat.emissiveColor = new Color3(1, 0.62, 0.18);
+    coreMat.specularColor = new Color3(0, 0, 0);
+    coreMat.disableLighting = true;
+    this.boltCoreProto = MeshBuilder.CreateSphere("boltCore", { diameter: 1, segments: 8 }, scene);
+    this.boltCoreProto.material = coreMat;
+    this.boltCoreProto.isPickable = false;
+    this.boltCoreProto.setEnabled(false);
+
+    // Ореол пламени — аддитивный билборд.
+    const glowMat = new StandardMaterial("boltGlowMat", scene);
+    glowMat.emissiveColor = new Color3(1, 0.4, 0.08);
+    glowMat.diffuseColor = new Color3(0, 0, 0);
+    glowMat.specularColor = new Color3(0, 0, 0);
+    glowMat.disableLighting = true;
+    glowMat.alphaMode = Constants.ALPHA_ADD;
+    glowMat.disableDepthWrite = true;
+    glowMat.alpha = 0.5;
+    this.boltGlowProto = MeshBuilder.CreatePlane("boltGlow", { size: 1 }, scene);
+    this.boltGlowProto.material = glowMat;
+    this.boltGlowProto.isPickable = false;
+    this.boltGlowProto.setEnabled(false);
   }
 
   attach(room: Room<ZoneState>): void {
@@ -153,6 +193,49 @@ export class NetMobs {
         this.balls.delete(id);
       }
     }
+
+    // Огненные снаряды игроков.
+    const cam = this.scene.activeCamera;
+    room.state.bolts.forEach((s, id) => {
+      let bo = this.bolts.get(id);
+      if (!bo) {
+        const core = this.boltCoreProto.clone(`bolt_${id}`);
+        const glow = this.boltGlowProto.clone(`boltGlow_${id}`);
+        core.setEnabled(true);
+        glow.setEnabled(true);
+        bo = {
+          core,
+          glow,
+          pos: new Vector3(s.x, s.y, s.z),
+          vel: new Vector3(s.vx, s.vy, s.vz),
+          r: s.r || 0.15,
+          age: 0,
+        };
+        this.bolts.set(id, bo);
+        this.sfx.at({ x: s.x, y: s.y, z: s.z }, () => this.sfx.bowRelease(0.6));
+      }
+      bo.age += dt;
+      bo.vel.set(s.vx, s.vy, s.vz);
+      bo.pos.addInPlaceFromFloats(s.vx * dt, s.vy * dt, s.vz * dt);
+      const k = 1 - Math.exp(-dt * 10);
+      bo.pos.x += (s.x - bo.pos.x) * k;
+      bo.pos.y += (s.y - bo.pos.y) * k;
+      bo.pos.z += (s.z - bo.pos.z) * k;
+
+      const flick = 0.85 + 0.15 * Math.sin(bo.age * 40 + bo.pos.x);
+      bo.core.position.copyFrom(bo.pos);
+      bo.core.scaling.setAll(bo.r * 2 * flick);
+      bo.glow.position.copyFrom(bo.pos);
+      bo.glow.scaling.setAll(bo.r * 6 * flick);
+      if (cam) bo.glow.lookAt(cam.globalPosition);
+    });
+    for (const [id, bo] of this.bolts) {
+      if (!room.state.bolts.has(id)) {
+        bo.core.dispose();
+        bo.glow.dispose();
+        this.bolts.delete(id);
+      }
+    }
   }
 
   detach(): void {
@@ -165,9 +248,14 @@ export class NetMobs {
       d.dispose();
     }
     for (const b of this.balls.values()) b.mesh.dispose();
+    for (const bo of this.bolts.values()) {
+      bo.core.dispose();
+      bo.glow.dispose();
+    }
     this.mobs.clear();
     this.dummies.clear();
     this.balls.clear();
+    this.bolts.clear();
     this.room = null;
   }
 }
