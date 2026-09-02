@@ -722,6 +722,8 @@ export class CombatSystem {
         continue;
       }
       if (down && !was) {
+        // Грип свободной рукой у тетивы / кристалла — это натяг, не «взять».
+        if (this.handIsDrawing(side)) continue;
         // Нажал за плечом и там что-то лежит -> достать; иначе взять вторую руку
         // на посох; иначе поднять с земли.
         if (atShoulder && this.stowedItem(side)) this.drawItem(side);
@@ -729,6 +731,34 @@ export class CombatSystem {
         else this.tryPickup(side);
       }
     }
+  }
+
+  /**
+   * Свободная рука сейчас натягивает — тетиву лука или энергию от кристалла
+   * посоха. Тогда грип этой рукой не «берёт предмет», а идёт в натяг.
+   */
+  private handIsDrawing(side: Side): boolean {
+    const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+    if (!node) return false;
+    const hp = node.getAbsolutePosition();
+
+    const bow = this.held1("bow");
+    if (bow && side === this.drawHand()) {
+      if (this.vrNocked) return true;
+      const nockW = Vector3.TransformCoordinates(this.bowParts.nockRest, this.bow.getWorldMatrix());
+      if (Vector3.Distance(hp, nockW) < BOW.grabDistVR + 0.08) return true;
+    }
+
+    const staff = this.held1("staff");
+    if (staff?.hand && !staff.hand2 && side !== staff.hand) {
+      if (this.castHooked && this.castMode === "pull") return true;
+      const cw = Vector3.TransformCoordinates(
+        new Vector3(...STAFF_CRYSTAL_LOCAL),
+        staff.mesh.getWorldMatrix(),
+      );
+      if (Vector3.Distance(hp, cw) < 0.32) return true;
+    }
+    return false;
   }
 
   /** Ближайший хват посоха к точке (в мире). */
@@ -1554,7 +1584,9 @@ export class CombatSystem {
 
   private updateBowVR(): void {
     const dc = this.controller(this.drawHand());
-    const trigger = !!dc?.inputSource.gamepad?.buttons[0]?.pressed;
+    // Натяг — курком ИЛИ грипом свободной руки.
+    const pad = dc?.inputSource.gamepad;
+    const trigger = !!(pad?.buttons[0]?.pressed || pad?.buttons[1]?.pressed);
     const drawPos = (dc?.grip ?? dc?.pointer)?.getAbsolutePosition();
 
     const bowMat = this.bow.getWorldMatrix();
@@ -1683,7 +1715,9 @@ export class CombatSystem {
     const holdTrig =
       !!holdCtl?.inputSource.gamepad?.buttons[0]?.pressed ||
       !!secondCtl?.inputSource.gamepad?.buttons[0]?.pressed;
-    const castTrig = !!castCtl?.inputSource.gamepad?.buttons[0]?.pressed;
+    // Натяг второй рукой — курком ИЛИ грипом.
+    const castPad = castCtl?.inputSource.gamepad;
+    const castTrig = !!(castPad?.buttons[0]?.pressed || castPad?.buttons[1]?.pressed);
     const castNode = castCtl?.grip ?? castCtl?.pointer;
 
     // Форсируем — anchorStaff мог оставить кэш матрицы устаревшим на этот кадр.
