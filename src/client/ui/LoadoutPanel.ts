@@ -35,7 +35,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "vec3" | "voice" | "gfx" | "comfort" | "action";
+  kind: "hand" | "item" | "world" | "light" | "vec3" | "voice" | "gfx" | "comfort" | "action";
 }
 
 const TARGETS: Target[] = [
@@ -52,6 +52,7 @@ const TARGETS: Target[] = [
   { key: "belt:potion", label: "Зелье · на поясе", kind: "vec3" },
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
+  { key: "light:day", label: "Освещение", kind: "light" },
   { key: "voice:chat", label: "Голос", kind: "voice" },
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
   { key: "comfort:vignette", label: "Виньетка движения (всем)", kind: "comfort" },
@@ -209,6 +210,7 @@ export class LoadoutPanel {
     if (this.target.kind === "hand") return 5; // пов XYZ + масштаб + сгиб
     if (this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
+    if (this.target.kind === "light") return 6; // солнце, заливка, тепло, тень, ночь, туман
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
     if (this.target.kind === "comfort") return 1;
@@ -248,6 +250,34 @@ export class LoadoutPanel {
           const mm = Math.round((v - hh) * 60);
           return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
         },
+      };
+    }
+    if (t.kind === "light") {
+      const L = LOADOUT.light;
+      const specs: {
+        label: string;
+        key: keyof typeof L;
+        lo: number;
+        hi: number;
+        steps: number[];
+      }[] = [
+        { label: "солнце", key: "sun", lo: 0.2, hi: 3, steps: [0.05, 0.15, 0.4] },
+        { label: "заливка неба", key: "fill", lo: 0, hi: 1.5, steps: [0.03, 0.1, 0.25] },
+        { label: "тепло солнца", key: "warm", lo: 0, hi: 1, steps: [0.05, 0.15, 0.35] },
+        { label: "прохлада тени", key: "coolShade", lo: 0, hi: 1, steps: [0.05, 0.15, 0.35] },
+        { label: "ночь", key: "night", lo: 0.2, hi: 2.5, steps: [0.05, 0.15, 0.4] },
+        { label: "туман", key: "fog", lo: 0, hi: 4, steps: [0.1, 0.3, 0.8] },
+      ];
+      const sp = specs[i];
+      return {
+        label: sp.label,
+        rot: false,
+        steps: sp.steps,
+        get: () => L[sp.key],
+        set: (v) => {
+          L[sp.key] = Number.isFinite(v) ? Math.min(sp.hi, Math.max(sp.lo, v)) : 1;
+        },
+        format: (v) => v.toFixed(2),
       };
     }
     if (t.kind === "gfx") {

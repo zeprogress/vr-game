@@ -47,7 +47,9 @@ function loadoutWriter(): Plugin {
     belt: { pos: number[] };
     hud: { hpPos: number[] };
     gfx: { smooth: number };
+    light: { sun: number; fill: number; warm: number; coolShade: number; night: number; fog: number };
     voice: { mic: number; spatial: number };
+    comfort: { vignette: number; teleport: number };
   }) => {
     const items = ["sword", "bow", "shield", "potion"]
       .map(
@@ -85,9 +87,21 @@ function loadoutWriter(): Plugin {
       `  gfx: {\n` +
       `    smooth: ${l.gfx?.smooth ? 1 : 0}, // сглаживание краёв\n` +
       `  },\n` +
+      `  light: {\n` +
+      `    sun: ${num(l.light?.sun ?? 1)}, // яркость солнца\n` +
+      `    fill: ${num(l.light?.fill ?? 1)}, // яркость заливки неба\n` +
+      `    warm: ${num(l.light?.warm ?? 1)}, // тёплый солнечный свет\n` +
+      `    coolShade: ${num(l.light?.coolShade ?? 1)}, // прохладная тень\n` +
+      `    night: ${num(l.light?.night ?? 1)}, // яркость ночи\n` +
+      `    fog: ${num(l.light?.fog ?? 1)}, // плотность тумана\n` +
+      `  },\n` +
       `  voice: {\n` +
       `    mic: ${l.voice?.mic ? 1 : 0}, // микрофон работает\n` +
       `    spatial: ${l.voice?.spatial ? 1 : 0}, // голос идёт от места игрока\n` +
+      `  },\n` +
+      `  comfort: {\n` +
+      `    vignette: ${l.comfort?.vignette ? 1 : 0}, // виньетка движения\n` +
+      `    teleport: ${l.comfort?.teleport ? 1 : 0}, // телепорт вместо скольжения\n` +
       `  },\n` +
       `};`
     );

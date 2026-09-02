@@ -1,5 +1,6 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { LOADOUT } from "../config/loadout";
 
 /** Как выглядит мир в конкретный час. */
 export interface DayState {
@@ -121,8 +122,25 @@ export function dayState(hour: number): DayState {
   const wn = night / total;
   const wk = dusk / total;
 
-  const sun = mix3(DAY.sun, NIGHT.sun, DUSK.sun, wd, wn, wk);
-  const amb = mix3(DAY.amb, NIGHT.amb, DUSK.amb, wd, wn, wk);
+  // Ручки освещения из настроек (глобальные). При значениях по умолчанию
+  // (sun/fill/night/coolShade/warm = 1) палитра выше не меняется.
+  const L = LOADOUT.light;
+  const warm = clamp01(L.warm);
+  const cool = clamp01(L.coolShade);
+  // warm=0 → белый, warm=1 → DAY.sun как есть. Аналогично cool для заливки.
+  const daySun: [number, number, number] = [
+    1 + (DAY.sun[0] - 1) * warm,
+    1 + (DAY.sun[1] - 1) * warm,
+    1 + (DAY.sun[2] - 1) * warm,
+  ];
+  const dayAmb: [number, number, number] = [
+    1 + (DAY.amb[0] - 1) * cool,
+    1 + (DAY.amb[1] - 1) * cool,
+    1 + (DAY.amb[2] - 1) * cool,
+  ];
+
+  const sun = mix3(daySun, NIGHT.sun, DUSK.sun, wd, wn, wk);
+  const amb = mix3(dayAmb, NIGHT.amb, DUSK.amb, wd, wn, wk);
   const fog = mix3(DAY.fog, NIGHT.fog, DUSK.fog, wd, wn, wk);
   const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
   const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, wd, wn, wk);
@@ -133,9 +151,9 @@ export function dayState(hour: number): DayState {
     sunDir,
     sunPos,
     sunColor: new Color3(sun[0], sun[1], sun[2]),
-    sunIntensity: DAY.sunI * wd + NIGHT.sunI * wn + DUSK.sunI * wk,
+    sunIntensity: (DAY.sunI * wd + NIGHT.sunI * L.night * wn + DUSK.sunI * wk) * L.sun,
     ambientColor: new Color3(amb[0], amb[1], amb[2]),
-    ambientIntensity: DAY.ambI * wd + NIGHT.ambI * wn + DUSK.ambI * wk,
+    ambientIntensity: (DAY.ambI * wd + NIGHT.ambI * L.night * wn + DUSK.ambI * wk) * L.fill,
     zenith: [Math.round(zenith[0]), Math.round(zenith[1]), Math.round(zenith[2])],
     horizon: [Math.round(horizon[0]), Math.round(horizon[1]), Math.round(horizon[2])],
     fog: new Color3(fog[0], fog[1], fog[2]),

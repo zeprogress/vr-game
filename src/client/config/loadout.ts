@@ -84,6 +84,25 @@ export interface Loadout {
     /** 1 — сглаживать края кадра (FXAA). В шлеме это стоит заметно дороже. */
     smooth: number;
   };
+  /**
+   * Освещение сцены. Множители и оттенки поверх палитры DayTime — единица
+   * (и warm/coolShade = 1) = «как в палитре». Глобальное, сохраняется на
+   * сервере по токену игрока.
+   */
+  light: {
+    /** Яркость направленного солнца. */
+    sun: number;
+    /** Яркость рассеянной заливки неба (её ловит всё, что не под прямым солнцем). */
+    fill: number;
+    /** Теплота солнечного света: 0 — белый, 1 — золотой. */
+    warm: number;
+    /** Прохлада тени (синева заливки): 0 — нейтральная белая, 1 — как в палитре. */
+    coolShade: number;
+    /** Яркость ночи (заливка + луна). */
+    night: number;
+    /** Плотность тумана: 1 — как в палитре, 0 — тумана нет. */
+    fog: number;
+  };
   /** Голосовой чат. */
   voice: {
     /** 1 — микрофон работает, 0 — молчим (слушать продолжаем). */
@@ -149,6 +168,14 @@ export const LOADOUT_DEFAULTS: Loadout = {
   gfx: {
     smooth: 1, // сглаживание краёв
   },
+  light: {
+    sun: 1, // яркость солнца
+    fill: 1, // яркость заливки неба
+    warm: 1, // тёплый (золотой) солнечный свет
+    coolShade: 1, // прохладная (синеватая) тень
+    night: 1, // яркость ночи
+    fog: 1, // плотность тумана
+  },
   voice: {
     mic: 1, // микрофон работает
     spatial: 0, // всех слышно ровно (не от места игрока)
@@ -177,6 +204,7 @@ export type TargetKey =
   | `hand:${HandSide}`
   | `item:${ItemKind}:${SlotKey}`
   | "world:time"
+  | "light:day"
   | "belt:potion"
   | "hud:hp"
   | "voice:chat"
@@ -196,6 +224,7 @@ function readTarget(src: Loadout, key: TargetKey): unknown {
   const parts = key.split(":");
   if (key === "world:clear") return {}; // не настройка, а действие
   if (parts[0] === "world") return src.world;
+  if (parts[0] === "light") return src.light;
   if (parts[0] === "belt") return src.belt;
   if (parts[0] === "hud") return src.hud;
   if (parts[0] === "voice") return src.voice;
@@ -214,6 +243,24 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     if (typeof w?.auto === "number") {
       dst.world.auto = Number.isFinite(w.auto) ? (w.auto ? 1 : 0) : 1;
     }
+    return;
+  }
+  if (parts[0] === "light") {
+    const v = value as Partial<Loadout["light"]>;
+    const num = (x: unknown, lo: number, hi: number): number | null =>
+      typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : null;
+    const s = num(v?.sun, 0.2, 3);
+    if (s !== null) dst.light.sun = s;
+    const f = num(v?.fill, 0, 1.5);
+    if (f !== null) dst.light.fill = f;
+    const w = num(v?.warm, 0, 1);
+    if (w !== null) dst.light.warm = w;
+    const c = num(v?.coolShade, 0, 1);
+    if (c !== null) dst.light.coolShade = c;
+    const n = num(v?.night, 0.2, 2.5);
+    if (n !== null) dst.light.night = n;
+    const fg = num(v?.fog, 0, 4);
+    if (fg !== null) dst.light.fog = fg;
     return;
   }
   if (parts[0] === "belt") {
@@ -374,6 +421,7 @@ export async function pushLoadoutToFile(): Promise<"ok" | "no-server" | "error">
         belt: LOADOUT.belt,
         hud: LOADOUT.hud,
         gfx: LOADOUT.gfx,
+        light: LOADOUT.light,
         voice: LOADOUT.voice,
         comfort: LOADOUT.comfort,
       }),
@@ -409,6 +457,11 @@ export function printLoadout(): void {
     lines.push("  },");
   }
   lines.push("},");
+  const li = LOADOUT.light;
+  lines.push(
+    `light: { sun: ${f(li.sun)}, fill: ${f(li.fill)}, warm: ${f(li.warm)}, ` +
+      `coolShade: ${f(li.coolShade)}, night: ${f(li.night)}, fog: ${f(li.fog)} },`,
+  );
   console.log(lines.join("\n"));
 }
 
@@ -432,6 +485,7 @@ function applyDefaults(next: Loadout): void {
     }
   }
   Object.assign(LOADOUT.buttons, next.buttons);
+  if (next.light) Object.assign(LOADOUT.light, next.light);
 }
 
 /**
