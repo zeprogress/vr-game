@@ -466,7 +466,7 @@ export class Game {
     this.manaBar3D.setOpacity(0);
 
     this.vrVignette = new VrVignette(this.scene);
-    this.comfortVignette = new ComfortVignette(this.scene, this.xr);
+    this.comfortVignette = new ComfortVignette(this.scene);
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(

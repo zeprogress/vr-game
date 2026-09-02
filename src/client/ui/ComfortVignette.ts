@@ -1,7 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import type { Observer } from "@babylonjs/core/Misc/observable";
+import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
@@ -10,6 +10,11 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 const NAME = "comfortVignette";
+
+// Точки во view-space для считывания проекции: ось глаза и смещения на tan=1.
+const AXIS = new Vector3(0, 0, 1);
+const OFF_X = new Vector3(1, 0, 1);
+const OFF_Y = new Vector3(0, 1, 1);
 
 // Экранный квад на весь вьюпорт — растягивается одинаково в любой FOV.
 Effect.ShadersStore[`${NAME}VertexShader`] = `
@@ -23,32 +28,24 @@ void main() {
 }
 `;
 
-// Чёрный тоннель прямоугольной формы (скруглённая рамка). На НОСОВОЙ стороне
-// каждого глаза вырезан прямоугольный проём — затемнение получает форму
-// буквы «П», лежащей набок: у левого глаза открытой стороной вправо (⊏),
-// у правого — влево (⊐). Так носовые части двух картинок не складываются в
-// полосу по центру и не оставляют просветов. Переход градиента — средний.
+// Круглый тоннель в УГЛОВЫХ координатах глаза. Центр — оптическая ось (не центр
+// вьюпорта: у каждого глаза фрустум асимметричный), масштаб — NDC на единицу
+// tan(угла). Поэтому апертуры обоих глаз смотрят в одну точку и при слиянии
+// дают ровный круг, без овала и без полосы у носа.
 Effect.ShadersStore[`${NAME}FragmentShader`] = `
 precision highp float;
 varying vec2 vUV;
-uniform float intensity; // 0..1 — сила тоннеля движения
-uniform float blink;     // 0..1 — сплошное затемнение (телепорт-блинк)
-uniform float eye;       // -1 левый, +1 правый, 0 моно
+uniform float intensity;  // 0..1 — сила тоннеля движения
+uniform float blink;      // 0..1 — сплошное затемнение (телепорт-блинк)
+uniform vec2 center;      // оптическая ось глаза в NDC
+uniform vec2 angScale;    // NDC на единицу tan(угла) по осям
 void main() {
   vec2 d = (vUV - vec2(0.5)) * 2.0;
-  vec2 ad = abs(d);
-  // Прямоугольная рамка со скруглёнными углами (суперэллипс).
-  float frame = pow(pow(ad.x, 5.0) + pow(ad.y, 5.0), 0.2);
-  float inner = mix(1.16, 0.44, clamp(intensity, 0.0, 1.0));
-  float tunnel = smoothstep(inner, inner + 0.26, frame);
-
-  // Прямоугольный проём на носовой стороне (nasal>0 — в сторону носа глаза).
-  float nasal = -eye * d.x;
-  float openH = smoothstep(0.05, 0.17, nasal);           // резковатый вход
-  float openV = 1.0 - smoothstep(0.46, 0.60, ad.y);      // резковатый верх/низ проёма
-  float cut = (eye == 0.0) ? 0.0 : openH * openV;
-
-  float a = max(tunnel * (1.0 - cut), clamp(blink, 0.0, 1.0));
+  vec2 ang = (d - center) / angScale;   // угловое смещение от оси (в tan)
+  float r = length(ang);
+  float inner = mix(1.16, 0.40, clamp(intensity, 0.0, 1.0));
+  float tunnel = smoothstep(inner, inner + 0.24, r);
+  float a = max(tunnel, clamp(blink, 0.0, 1.0));
   if (a < 0.003) discard;
   gl_FragColor = vec4(0.0, 0.0, 0.0, a);
 }
@@ -67,19 +64,19 @@ export class ComfortVignette {
   private amt = 0; // сила тоннеля 0..1 (со сглаживанием)
   private blinkAmt = 0;
   private readonly camObs: Observer<Camera> | null;
+  private readonly center = new Vector2(0, 0);
+  private readonly angScale = new Vector2(1, 1);
 
-  constructor(
-    scene: Scene,
-    private readonly xr: WebXRDefaultExperience | null,
-  ) {
+  constructor(scene: Scene) {
     this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
       attributes: ["position", "uv"],
-      uniforms: ["intensity", "blink", "eye"],
+      uniforms: ["intensity", "blink", "center", "angScale"],
       needAlphaBlending: true,
     });
     this.mat.setFloat("intensity", 0);
     this.mat.setFloat("blink", 0);
-    this.mat.setFloat("eye", 0);
+    this.mat.setVector2("center", this.center);
+    this.mat.setVector2("angScale", this.angScale);
     this.mat.backFaceCulling = false;
     this.mat.alphaMode = Constants.ALPHA_COMBINE;
     this.mat.alpha = 0.999;
@@ -93,18 +90,21 @@ export class ComfortVignette {
     this.quad.renderingGroupId = 3; // поверх всего
     this.quad.setEnabled(false);
 
-    // Перед отрисовкой каждого глаза выставляем uniform eye под эту камеру.
+    // Перед отрисовкой каждого глаза берём его оптическую ось и угловой масштаб
+    // из матрицы проекции — у левого/правого глаза фрустум разный.
     this.camObs = scene.onBeforeCameraRenderObservable.add((cam) => {
-      this.mat.setFloat("eye", this.eyeOf(cam));
+      const proj = cam.getProjectionMatrix();
+      const axis = Vector3.TransformCoordinates(AXIS, proj); // ось глаза в NDC
+      const hx = Vector3.TransformCoordinates(OFF_X, proj);
+      const hy = Vector3.TransformCoordinates(OFF_Y, proj);
+      this.center.set(axis.x, axis.y);
+      this.angScale.set(
+        Math.max(1e-3, Math.abs(hx.x - axis.x)),
+        Math.max(1e-3, Math.abs(hy.y - axis.y)),
+      );
+      this.mat.setVector2("center", this.center);
+      this.mat.setVector2("angScale", this.angScale);
     });
-  }
-
-  private eyeOf(cam: Camera): number {
-    const rig = this.xr?.baseExperience.camera.rigCameras;
-    if (!rig || rig.length < 2) return 0;
-    if (cam === rig[0]) return -1;
-    if (cam === rig[1]) return 1;
-    return 0;
   }
 
   /** Мгновенно затемнить на телепорт-прыжок — дальше само гаснет. */
