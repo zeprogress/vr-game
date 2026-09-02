@@ -115,42 +115,47 @@ export function createTerrain(scene: Scene): Terrain {
  *    мох в ложбинах, сухие кустики на буграх, затенение по «рельефу» дёрна;
  *  - bump: тот же микрорельеф, чтобы трава ловила боковой свет и не выглядела
  *    гладким линолеумом при взгляде вскользь (важно в шлеме).
- * Домен искажаем шумом (domain warp) и поворачиваем октавы — это ломает сетку
- * повторов, поэтому зеркальный тайлинг не читается даже вблизи.
+ * Домен искажаем шумом (domain warp), а сам шум ПЕРИОДИЧЕН по SPAN: решётка
+ * заворачивается, поэтому текстура тайлится встык (WRAP) без шва — раньше
+ * зеркальный режим давал складку по осям x=0/z=0 в центре карты.
  */
 function grassMaterial(scene: Scene): StandardMaterial {
   const S = 1024;
+  const SPAN = 5; // размер домена шума = период одного повтора текстуры
 
   const hash = (x: number, y: number): number => {
     const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
     return n - Math.floor(n);
   };
-  const vnoise = (x: number, y: number): number => {
+  // Периодический value-noise: целочисленная решётка берётся по модулю `cells`,
+  // значения на противоположных краях домена совпадают.
+  const pnoise = (x: number, y: number, cells: number): number => {
     const xi = Math.floor(x);
     const yi = Math.floor(y);
     const xf = x - xi;
     const yf = y - yi;
     const u = xf * xf * (3 - 2 * xf);
     const v = yf * yf * (3 - 2 * yf);
-    const a = hash(xi, yi);
-    const b = hash(xi + 1, yi);
-    const c = hash(xi, yi + 1);
-    const e = hash(xi + 1, yi + 1);
+    const w = (n: number): number => ((n % cells) + cells) % cells;
+    const x0 = w(xi);
+    const x1 = w(xi + 1);
+    const y0 = w(yi);
+    const y1 = w(yi + 1);
+    const a = hash(x0, y0);
+    const b = hash(x1, y0);
+    const c = hash(x0, y1);
+    const e = hash(x1, y1);
     return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + e * u * v;
   };
-  // Октавы с поворотом: соседние слои шума не выстраиваются в клетку.
+  // fbm по [0,SPAN)²: каждая октава укладывается целым числом клеток в SPAN,
+  // поэтому сумма тоже периодична с периодом SPAN.
   const fbm = (x: number, y: number, oct = 6): number => {
     let f = 0;
     let amp = 0.5;
-    let px = x;
-    let py = y;
     for (let o = 0; o < oct; o++) {
-      f += amp * vnoise(px, py);
+      const fr = 1 << o;
+      f += amp * pnoise(x * fr, y * fr, SPAN * fr);
       amp *= 0.5;
-      const rx = (px * 1.6 - py * 1.2) * 2;
-      const ry = (px * 1.2 + py * 1.6) * 2;
-      px = rx;
-      py = ry;
     }
     return f;
   };
@@ -177,18 +182,19 @@ function grassMaterial(scene: Scene): StandardMaterial {
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
       const i = py * S + px;
-      const u = (px / S) * 5;
-      const v = (py / S) * 5;
+      const u = (px / S) * SPAN;
+      const v = (py / S) * SPAN;
 
-      // Domain warp: гнём координаты вторым шумом.
-      const wx = u + 0.8 * fbm(u + 5.2, v + 1.3, 4);
-      const wy = v + 0.8 * fbm(u + 2.8, v + 6.1, 4);
+      // Domain warp: гнём координаты вторым шумом. Целые множители/сдвиги —
+      // иначе искажение перестаёт быть периодичным и шов возвращается.
+      const wx = u + 0.8 * fbm(u + 5, v + 1, 4);
+      const wy = v + 0.8 * fbm(u + 3, v + 6, 4);
 
       const macro = fbm(wx, wy); // где трава гуще/суше
-      const patch = fbm(wx * 2.1 + 40, wy * 2.1 + 40, 5); // проплешины
-      const tuft = fbm(wx * 4.3 - 12, wy * 4.3 + 7, 4); // кустики / мох
-      const grain = vnoise(u * 40, v * 40); // мелкое зерно
-      const blade = vnoise(u * 90 + v * 12, v * 6); // штрихи «по травинке»
+      const patch = fbm(wx * 2 + 40, wy * 2 + 40, 5); // проплешины
+      const tuft = fbm(wx * 4 - 12, wy * 4 + 7, 4); // кустики / мох
+      const grain = pnoise(u * 40, v * 40, SPAN * 40); // мелкое зерно
+      const blade = pnoise(u * 90 + v * 12, v * 6, SPAN * 6); // штрихи «по травинке»
 
       // Рельеф дёрна: крупная волна + бугорки от кустиков + зерно.
       const h = clamp01(
@@ -266,13 +272,13 @@ function grassMaterial(scene: Scene): StandardMaterial {
   bctx.putImageData(bimg, 0, 0);
   bumpDt.update(false);
 
-  // Один повтор ~30 м; зеркальный тайлинг + domain warp прячут швы.
+  // Один повтор ~30 м; текстура периодична, поэтому WRAP встык — без шва.
   const tile = WORLD.size / 30;
   for (const tx of [tex, bumpDt]) {
     tx.uScale = tile;
     tx.vScale = tile;
-    tx.wrapU = Texture.MIRROR_ADDRESSMODE;
-    tx.wrapV = Texture.MIRROR_ADDRESSMODE;
+    tx.wrapU = Texture.WRAP_ADDRESSMODE;
+    tx.wrapV = Texture.WRAP_ADDRESSMODE;
     tx.anisotropicFilteringLevel = 8; // резче под острым углом (взгляд в шлеме)
   }
 
