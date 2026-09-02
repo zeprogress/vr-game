@@ -24,7 +24,7 @@ import {
 } from "#shared/items";
 import type { CarriedWeapon, HeldWeapons, StowedWeapon, CastMsg } from "#shared/net/messages";
 import { MAGIC } from "#shared/magic";
-import { STAFF_CRYSTAL_LOCAL } from "../items/Staff";
+import { STAFF_CRYSTAL_LOCAL, STAFF_GRIP_LOW, STAFF_GRIP_HIGH } from "../items/Staff";
 import { LOADOUT, type ItemKind as LoadoutItemKind, type Placement } from "../config/loadout";
 import { clamp, closestPointOnSegment, segmentDistance } from "#shared/geometry";
 import type { TuneInput } from "../input/InputSource";
@@ -84,8 +84,12 @@ interface Item {
   /** Уровень предмета: base / bronze / gold. Положение в руке общее на класс. */
   tier: WeaponTier;
   mesh: Mesh;
-  /** Рука, которая держит предмет, либо null. */
+  /** Рука, которая держит предмет (основная — задаёт позицию), либо null. */
   hand: Side | null;
+  /** Вторая рука на предмете — только посох, двуручный хват. */
+  hand2?: Side | null;
+  /** За какой хват держит каждая рука (посох): нижний / верхний. */
+  grip?: Partial<Record<Side, "low" | "high">>;
   /** Где лежит, когда его не держат. */
   rest: { pos: Vector3; yaw: number; bob: boolean };
   /** Полётное состояние — не null, пока предмет летит. */
@@ -332,7 +336,12 @@ export class CombatSystem {
   /** Первый предмет класса в руках (или в конкретной руке). */
   private held1(kind: ItemKind, hand?: Side): Item | null {
     return (
-      this.items.find((i) => i.kind === kind && i.hand && (!hand || i.hand === hand)) ?? null
+      this.items.find(
+        (i) =>
+          i.kind === kind &&
+          (i.hand || i.hand2) &&
+          (!hand || i.hand === hand || i.hand2 === hand),
+      ) ?? null
     );
   }
 
@@ -344,9 +353,9 @@ export class CombatSystem {
     return this.bowItem.mesh;
   }
 
-  /** Что в этой руке. */
+  /** Что в этой руке (учитывая двуручный хват посоха). */
   private inHand(hand: Side): Item | null {
-    return this.items.find((i) => i.hand === hand) ?? null;
+    return this.items.find((i) => i.hand === hand || i.hand2 === hand) ?? null;
   }
 
   /** Оружие (меч / посох / лук) в руках — для плоского режима, где рука одна. */
@@ -479,6 +488,8 @@ export class CombatSystem {
 
   private stowItem(item: Item, side: Side): void {
     item.hand = null;
+    item.hand2 = null;
+    item.grip = undefined;
     item.flight = null;
     item.stow = side;
     item.mesh.rotationQuaternion = null;
@@ -499,6 +510,8 @@ export class CombatSystem {
     item.stow = null;
     item.flight = null;
     item.hand = side;
+    item.hand2 = null;
+    if (kind === "staff") item.grip = { [side]: "low" };
     item.mesh.rotationQuaternion = null;
     this.resetHand(side);
     if (isMelee(kind)) {
@@ -689,18 +702,75 @@ export class CombatSystem {
       const item = this.inHand(side);
       if (item) {
         if (!down && was) {
-          // Отпустил за плечом и слот свободен -> убрать за спину; иначе метнуть.
-          if (atShoulder && !this.stowedItem(side)) this.stowItem(item, side);
-          else this.throwItem(item, this.vrThrowVelocity(side));
+          if (item.kind === "staff" && item.hand2) {
+            // Двуручный хват: отпустил одну руку — посох остаётся в другой.
+            this.releaseStaffHand(item, side);
+          } else if (atShoulder && !this.stowedItem(side)) {
+            // Отпустил за плечом и слот свободен -> убрать за спину.
+            this.stowItem(item, side);
+          } else {
+            this.throwItem(item, this.vrThrowVelocity(side));
+          }
         }
         continue;
       }
       if (down && !was) {
-        // Нажал за плечом и там что-то лежит -> достать; иначе поднять с земли.
+        // Нажал за плечом и там что-то лежит -> достать; иначе взять вторую руку
+        // на посох; иначе поднять с земли.
         if (atShoulder && this.stowedItem(side)) this.drawItem(side);
+        else if (this.tryGrabStaffSecondHand(side)) continue;
         else this.tryPickup(side);
       }
     }
+  }
+
+  /** Ближайший хват посоха к точке (в мире). */
+  private nearestStaffGrip(item: Item, worldPos: Vector3): "low" | "high" {
+    const m = item.mesh.getWorldMatrix();
+    const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
+    const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
+    return Vector3.Distance(worldPos, low) <= Vector3.Distance(worldPos, high) ? "low" : "high";
+  }
+
+  /** Свободная рука у посоха, который уже в другой руке — берём вторым хватом. */
+  private tryGrabStaffSecondHand(side: Side): boolean {
+    const staff = this.items.find((i) => i.kind === "staff");
+    if (!staff?.hand || staff.hand2 || staff.hand === side) return false;
+    const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+    if (!node) return false;
+    const hp = node.getAbsolutePosition();
+    const m = staff.mesh.getWorldMatrix();
+    const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
+    const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
+    if (Math.min(Vector3.Distance(hp, low), Vector3.Distance(hp, high)) > COMBAT.equipReach) {
+      return false;
+    }
+    const primaryGrip = staff.grip?.[staff.hand] ?? "low";
+    let want: "low" | "high" = Vector3.Distance(hp, low) < Vector3.Distance(hp, high) ? "low" : "high";
+    if (want === primaryGrip) want = primaryGrip === "low" ? "high" : "low"; // обе на один хват нельзя
+    staff.hand2 = side;
+    staff.grip = { ...(staff.grip ?? {}), [side]: want };
+    staff.mesh.rotationQuaternion = null;
+    this.resetHand(side);
+    this.haptic(side, 0.4, 50);
+    this.sfx.bowDraw();
+    return true;
+  }
+
+  /** Отпустил одну руку с двуручного посоха — остаётся в другой. */
+  private releaseStaffHand(item: Item, side: Side): void {
+    if (item.hand2 === side) {
+      item.hand2 = null;
+    } else {
+      item.hand = item.hand2 ?? item.hand;
+      item.hand2 = null;
+    }
+    if (item.grip) delete item.grip[side];
+    item.mesh.parent = null;
+    item.mesh.rotationQuaternion = null;
+    this.resetHand(side);
+    this.haptic(side, 0.35, 45);
+    if (this.castHooked) this.resetCast();
   }
 
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
@@ -877,8 +947,16 @@ export class CombatSystem {
   private equip(item: Item, side: Side): void {
     item.flight = null; // можно поймать на лету
     item.hand = side;
+    item.hand2 = null;
     item.stow = null;
     item.mesh.rotationQuaternion = null;
+    if (item.kind === "staff") {
+      const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+      const hp = node?.getAbsolutePosition() ?? this.player.position;
+      item.grip = { [side]: this.nearestStaffGrip(item, hp) };
+    } else {
+      item.grip = undefined;
+    }
 
     this.windup = 0;
     this.motion[side].init = false;
@@ -926,6 +1004,8 @@ export class CombatSystem {
     spinRate = Math.min(spinRate, 30);
 
     item.hand = null;
+    item.hand2 = null;
+    item.grip = undefined;
     item.thrownFrom = hand ?? undefined;
     item.flight = {
       vel: vel.clone(),
@@ -1101,6 +1181,10 @@ export class CombatSystem {
   private anchorHeldItems(): void {
     for (const item of this.items) {
       if (!item.hand) continue;
+      if (item.kind === "staff" && this.player.inVR) {
+        this.anchorStaff(item);
+        continue;
+      }
       const t = this.placement(item.kind, item.hand);
       const anchor = this.handAnchor(item.hand);
       if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
@@ -1109,6 +1193,67 @@ export class CombatSystem {
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
       item.mesh.scaling.setAll(t.scale);
     }
+  }
+
+  private readonly staffAxisX = new Vector3();
+  private readonly staffAxisY = new Vector3();
+  private readonly staffAxisZ = new Vector3();
+  private readonly staffRotM = Matrix.Identity();
+
+  /**
+   * Посох: одной рукой — поза из loadout со сдвигом вдоль древка под выбранный
+   * хват; двумя — древко встаёт по линии между кистями (нижняя рука — опора,
+   * задаёт позицию; обе — наклон; крутка — от основной руки).
+   */
+  private anchorStaff(item: Item): void {
+    const primary = item.hand as Side;
+    const t = this.placement("staff", primary);
+    // Смещение вдоль древка: базовая поза — рука на нижнем хвате; за верхний
+    // держим — двигаем меш вниз на расстояние между хватами.
+    const shiftFor = (g: "low" | "high" | undefined): number =>
+      g === "high" ? -(STAFF_GRIP_HIGH - STAFF_GRIP_LOW) : 0;
+
+    if (!item.hand2) {
+      const anchor = this.handAnchor(primary);
+      if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
+      item.mesh.rotationQuaternion = null;
+      item.mesh.scaling.setAll(t.scale);
+      item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
+      item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
+      item.mesh.translate(new Vector3(0, 1, 0), shiftFor(item.grip?.[primary]), Space.LOCAL);
+      return;
+    }
+
+    // --- двуручный хват: в мире ---
+    const other = item.hand2 as Side;
+    const pA = this.controller(primary)?.grip?.getAbsolutePosition?.();
+    const pB = this.controller(other)?.grip?.getAbsolutePosition?.();
+    if (!pA || !pB) return;
+    const gPrimary = item.grip?.[primary] ?? "low";
+    const pLow = gPrimary === "low" ? pA : pB;
+    const pHigh = gPrimary === "low" ? pB : pA;
+
+    this.staffAxisY.copyFrom(pHigh).subtractInPlace(pLow);
+    if (this.staffAxisY.lengthSquared() < 1e-6) return;
+    this.staffAxisY.normalize();
+    const ref =
+      (this.controller(primary)?.grip ?? this.controller(primary)?.pointer)?.getDirection(
+        new Vector3(0, 0, 1),
+      ) ?? new Vector3(0, 0, 1);
+    Vector3.CrossToRef(ref, this.staffAxisY, this.staffAxisX);
+    if (this.staffAxisX.lengthSquared() < 1e-6) {
+      Vector3.CrossToRef(new Vector3(1, 0, 0), this.staffAxisY, this.staffAxisX);
+    }
+    this.staffAxisX.normalize();
+    Vector3.CrossToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ);
+
+    if (item.mesh.parent) item.mesh.parent = null;
+    item.mesh.scaling.setAll(t.scale);
+    if (!item.mesh.rotationQuaternion) item.mesh.rotationQuaternion = new Quaternion();
+    Matrix.FromXYZAxesToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ, this.staffRotM);
+    Quaternion.FromRotationMatrixToRef(this.staffRotM, item.mesh.rotationQuaternion);
+    // Низ древка (local y=0) кладём в нижнюю кисть.
+    item.mesh.position.copyFrom(pLow);
   }
 
   private handAnchor(hand: Side): Node {
@@ -1461,12 +1606,17 @@ export class CombatSystem {
     const staff = this.held1("staff");
     if (!staff?.hand) return this.resetCast();
     const holdHand = staff.hand;
+    const twoHand = !!staff.hand2;
     const castHand: Side = holdHand === "left" ? "right" : "left";
-    const castFree = !this.inHand(castHand);
+    const castFree = !twoHand && !this.inHand(castHand);
 
     const holdCtl = this.controller(holdHand);
+    const secondCtl = twoHand ? this.controller(staff.hand2 as Side) : undefined;
     const castCtl = castFree ? this.controller(castHand) : undefined;
-    const holdTrig = !!holdCtl?.inputSource.gamepad?.buttons[0]?.pressed;
+    // Двумя руками — курок любой из них.
+    const holdTrig =
+      !!holdCtl?.inputSource.gamepad?.buttons[0]?.pressed ||
+      !!secondCtl?.inputSource.gamepad?.buttons[0]?.pressed;
     const castTrig = !!castCtl?.inputSource.gamepad?.buttons[0]?.pressed;
     const castNode = castCtl?.grip ?? castCtl?.pointer;
 
@@ -1548,6 +1698,7 @@ export class CombatSystem {
         this.haptic(holdHand, 1, 150);
         setTimeout(() => this.haptic(holdHand, 0.7, 90), 55);
         if (mode === "pull") this.haptic(castHand, 0.6, 90);
+        if (twoHand) this.haptic(staff.hand2 as Side, 1, 150);
         this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
         this.emitSound("bow", origin);
       }
