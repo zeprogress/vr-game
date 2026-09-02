@@ -2,8 +2,6 @@ import type { MobKind } from "./net/schema";
 
 export type ItemId =
   | "potion"
-  | "slime"
-  | "shell"
   | "bronze_sword"
   | "gold_sword"
   | "gold_bow"
@@ -91,22 +89,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 40,
     tint: [0.9, 0.2, 0.35],
   },
-  slime: {
-    name: "Слизь",
-    short: "Слизь",
-    hint: "на продажу",
-    stack: 20,
-    heal: 0,
-    tint: [0.55, 0.2, 0.55],
-  },
-  shell: {
-    name: "Панцирь",
-    short: "Панцирь",
-    hint: "на продажу",
-    stack: 20,
-    heal: 0,
-    tint: [0.85, 0.55, 0.2],
-  },
   bronze_sword: weaponItem("sword", "bronze", "Железо"),
   gold_sword: weaponItem("sword", "gold", "Золото"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук"),
@@ -155,14 +137,12 @@ export interface LootEntry {
 
 export const LOOT: Record<MobKind, LootEntry[]> = {
   slime: [
-    { id: "slime", chance: 1, min: 1, max: 2 },
-    { id: "potion", chance: 0.25, min: 1, max: 1 },
+    { id: "potion", chance: 0.35, min: 1, max: 1 },
     { id: "bronze_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_shield", chance: 0.1, min: 1, max: 1 },
   ],
   spitter: [
-    { id: "shell", chance: 1, min: 1, max: 2 },
-    { id: "potion", chance: 0.5, min: 1, max: 1 },
+    { id: "potion", chance: 0.6, min: 1, max: 1 },
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
   ],
