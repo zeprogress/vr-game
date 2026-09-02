@@ -51,7 +51,7 @@ function loadoutWriter(): Plugin {
     voice: { mic: number; spatial: number };
     comfort: { vignette: number; teleport: number };
   }) => {
-    const items = ["sword", "bow", "shield", "potion"]
+    const items = ["sword", "bow", "shield", "potion", "staff"]
       .map(
         (k) =>
           `    ${k}: {\n` +

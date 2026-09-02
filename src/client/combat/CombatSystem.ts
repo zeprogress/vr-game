@@ -31,6 +31,7 @@ import type { Progression } from "../player/Progression";
 import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
+import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
 import { createBow, tintBow, type BowParts } from "../items/Bow";
@@ -48,8 +49,12 @@ type Slot = { pos: [number, number, number]; rot: [number, number, number]; scal
  * Как предмет лежит за спиной. Локальные оси спины: -Z позади игрока, +X вправо.
  * Мутабельно — можно крутить из консоли: `game.stowConfig().sword.left.pos[1] = 0.2`.
  */
-export const STOW: Record<"sword" | "bow" | "shield", Record<"left" | "right", Slot>> = {
+export const STOW: Record<"sword" | "bow" | "shield" | "staff", Record<"left" | "right", Slot>> = {
   sword: {
+    left: { pos: [-0.2, 0.12, -0.13], rot: [0.4, 0, 0.55], scale: 1 },
+    right: { pos: [0.2, 0.12, -0.13], rot: [0.4, 0, -0.55], scale: 1 },
+  },
+  staff: {
     left: { pos: [-0.2, 0.12, -0.13], rot: [0.4, 0, 0.55], scale: 1 },
     right: { pos: [0.2, 0.12, -0.13], rot: [0.4, 0, -0.55], scale: 1 },
   },
@@ -63,7 +68,13 @@ export const STOW: Record<"sword" | "bow" | "shield", Record<"left" | "right", S
   },
 };
 
-export type ItemKind = "sword" | "bow" | "shield";
+export type ItemKind = "sword" | "bow" | "shield" | "staff";
+
+/** Оружие ближнего боя: меч и посох машутся и бьют одинаково (посох слабее). */
+const MELEE_KINDS = new Set<ItemKind>(["sword", "staff"]);
+function isMelee(k: ItemKind): boolean {
+  return MELEE_KINDS.has(k);
+}
 
 /** Один предмет, который можно взять, бросить и метнуть. */
 interface Item {
@@ -214,10 +225,17 @@ export class CombatSystem {
     swordHome: Vector3,
     bowHome: Vector3,
     shieldHome: Vector3,
+    staffHome: Vector3,
   ) {
-    this.homes = { sword: swordHome.clone(), bow: bowHome.clone(), shield: shieldHome.clone() };
+    this.homes = {
+      sword: swordHome.clone(),
+      bow: bowHome.clone(),
+      shield: shieldHome.clone(),
+      staff: staffHome.clone(),
+    };
     const sword = createSword(scene);
     const shield = createShield(scene);
+    const staff = createStaff(scene);
     this.bowParts = createBow(scene);
     const bow = this.bowParts.mesh;
 
@@ -225,6 +243,7 @@ export class CombatSystem {
       this.makeItem("sword", "base", sword, swordHome),
       this.makeItem("bow", "base", bow, bowHome),
       this.makeItem("shield", "base", shield, shieldHome),
+      this.makeItem("staff", "base", staff, staffHome),
     ];
     this.backAnchor = new TransformNode("backAnchor", scene);
     this.beltAnchor = new TransformNode("beltAnchor", scene);
@@ -286,11 +305,6 @@ export class CombatSystem {
 
   // ---- что где ----
 
-  /** Все предметы этого класса, которые сейчас в руках. */
-  private heldOfKind(kind: ItemKind): Item[] {
-    return this.items.filter((i) => i.kind === kind && i.hand);
-  }
-
   /** Первый предмет класса в руках (или в конкретной руке). */
   private held1(kind: ItemKind, hand?: Side): Item | null {
     return (
@@ -311,12 +325,12 @@ export class CombatSystem {
     return this.items.find((i) => i.hand === hand) ?? null;
   }
 
-  /** Оружие (меч или лук) в руках — для плоского режима, где рука одна. */
+  /** Оружие (меч / посох / лук) в руках — для плоского режима, где рука одна. */
   private get weapon(): Item | null {
-    return this.held1("sword") ?? this.held1("bow");
+    return this.held1("sword") ?? this.held1("staff") ?? this.held1("bow");
   }
-  private get held(): "" | "sword" | "bow" {
-    return (this.weapon?.kind as "sword" | "bow") ?? "";
+  private get held(): "" | "sword" | "bow" | "staff" {
+    return (this.weapon?.kind as "sword" | "bow" | "staff") ?? "";
   }
   private get heldHand(): Side {
     return this.weapon?.hand ?? "right";
@@ -463,7 +477,7 @@ export class CombatSystem {
     item.hand = side;
     item.mesh.rotationQuaternion = null;
     this.resetHand(side);
-    if (kind === "sword") {
+    if (isMelee(kind)) {
       this.swing[side].t = 0;
       this.tipTrail[side].length = 0;
     } else if (kind === "bow") {
@@ -540,7 +554,7 @@ export class CombatSystem {
     this.anchorStowedItems();
     this.shoveWithHeldItems();
 
-    if (this.held === "sword") {
+    if (this.held === "sword" || this.held === "staff") {
       if (this.player.inVR) this.updateVRSwing(dt);
       else this.updateFlatSwing(dt, primaryEdge);
     } else if (this.held === "bow") {
@@ -586,7 +600,7 @@ export class CombatSystem {
       }
     }
 
-    const swordItem = this.held1("sword");
+    const swordItem = this.held1("sword") ?? this.held1("staff");
     if (swordItem) {
       const m = swordItem.mesh.getWorldMatrix();
       const hilt = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
@@ -842,7 +856,7 @@ export class CombatSystem {
     this.motion[side].vel.setAll(0);
     this.motion[side].angVel.setAll(0);
 
-    if (item.kind === "sword") {
+    if (isMelee(item.kind)) {
       this.swing[side].t = 0;
       this.tipTrail[side].length = 0;
     } else if (item.kind === "bow") {
@@ -1094,7 +1108,7 @@ export class CombatSystem {
       let a = origin;
       let b = origin;
       let rad = 0.22;
-      if (kind === "sword") {
+      if (isMelee(kind)) {
         b = Vector3.TransformCoordinates(TIP, m);
         rad = 0.14;
       } else if (kind === "shield") {
@@ -1119,7 +1133,7 @@ export class CombatSystem {
   // ---- меч ----
 
   private updateFlatSwing(dt: number, primaryEdge: boolean): void {
-    const item = this.held1("sword");
+    const item = this.held1("sword") ?? this.held1("staff");
     if (!item?.hand) return;
     const side = item.hand;
     const sw = this.swing[side];
@@ -1133,7 +1147,7 @@ export class CombatSystem {
       sw.t -= dt;
       const phase = 1 - Math.max(0, sw.t) / COMBAT.swingDuration;
       const arc = Math.sin(phase * Math.PI);
-      const base = LOADOUT.items.sword.flat.rot;
+      const base = LOADOUT.items[item.kind].flat.rot;
       // Клинок идёт вниз-ВПЕРЁД (локальный +Y заваливается к +Z, от игрока).
       item.mesh.rotation.x = base[0] + arc * 1.5;
       item.mesh.rotation.z = base[2] - arc * 0.45;
@@ -1147,12 +1161,13 @@ export class CombatSystem {
   /** Каждый меч в руке машет сам по себе — след кончика свой у каждой руки. */
   private updateVRSwing(dt: number): void {
     if (this.swooshCd > 0) this.swooshCd -= dt;
-    for (const item of this.heldOfKind("sword")) {
-      if (item.hand) this.swingOne(dt, item, item.hand);
+    for (const item of this.items) {
+      if (item.hand && isMelee(item.kind)) this.swingOne(dt, item, item.hand);
     }
-    // След руки, в которой меча уже нет, чистим — иначе он «выстрелит» при взятии.
+    // След руки, в которой меча/посоха уже нет, чистим — иначе «выстрелит» при взятии.
     for (const side of ["left", "right"] as Side[]) {
-      if (!this.held1("sword", side)) this.tipTrail[side].length = 0;
+      const m = this.inHand(side);
+      if (!m || !isMelee(m.kind)) this.tipTrail[side].length = 0;
     }
   }
 

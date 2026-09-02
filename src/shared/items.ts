@@ -1,12 +1,12 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_shield";
+export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_shield" | "gold_staff";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
  * положение настраивается один раз на класс (см. LOADOUT.items).
  */
-export type WeaponClass = "sword" | "bow" | "shield";
+export type WeaponClass = "sword" | "bow" | "shield" | "staff";
 /**
  * Уровень внутри класса. Всего два: `base` — обычное оружие из пака, лежит на
  * камнях с самого начала; `gold` — золотой вариант, редкая добыча с мобов.
@@ -37,6 +37,9 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
   "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
+  // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
+  "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
+  "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
 };
 
 export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
@@ -44,7 +47,7 @@ export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
 }
 
 export function isWeaponClass(v: unknown): v is WeaponClass {
-  return v === "sword" || v === "bow" || v === "shield";
+  return v === "sword" || v === "bow" || v === "shield" || v === "staff";
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
@@ -56,6 +59,7 @@ export const DUAL_WIELD: Record<WeaponClass, boolean> = {
   sword: true,
   bow: false, // лук требует обеих рук — второй взять нельзя
   shield: true,
+  staff: false, // посох один: его можно взять двумя руками, но не два посоха
 };
 
 export interface ItemDef {
@@ -89,6 +93,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   gold_sword: weaponItem("sword", "gold", "Золото"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук"),
   gold_shield: weaponItem("shield", "gold", "Зол. щит"),
+  gold_staff: weaponItem("staff", "gold", "Зол. посох"),
 };
 
 function weaponItem(cls: WeaponClass, tier: WeaponTier, short: string): ItemDef {
@@ -96,7 +101,8 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier, short: string): ItemDef 
   return {
     name: d.name,
     short,
-    hint: cls === "shield" ? "защита" : `урон x${d.mult}`,
+    hint:
+      cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
     tint: d.tint,
@@ -147,6 +153,7 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_sword", chance: 0.5, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.5, min: 1, max: 1 },
     { id: "gold_shield", chance: 0.5, min: 1, max: 1 },
+    { id: "gold_staff", chance: 0.5, min: 1, max: 1 },
   ],
   shard: [],
 };

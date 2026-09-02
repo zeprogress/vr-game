@@ -11,6 +11,7 @@ import { isItemId, ITEMS, type ItemId, type WeaponClass, type WeaponTier } from 
 import { createSword } from "../items/Sword";
 import { createShield } from "../items/Shield";
 import { createBow } from "../items/Bow";
+import { createStaff } from "../items/Staff";
 import { createPotionMesh } from "../items/Potion";
 import type { ZoneState } from "#shared/net/schema";
 
@@ -145,6 +146,7 @@ export class LootDrops {
 export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier): Mesh {
   if (cls === "sword") return createSword(scene, tier);
   if (cls === "shield") return createShield(scene, tier);
+  if (cls === "staff") return createStaff(scene, tier);
   return createBow(scene, tier).mesh;
 }
 

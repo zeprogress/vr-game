@@ -26,7 +26,7 @@
  */
 
 export type HandSide = "left" | "right";
-export type ItemKind = "sword" | "bow" | "shield" | "potion";
+export type ItemKind = "sword" | "bow" | "shield" | "potion" | "staff";
 export type SlotKey = "flat" | "vrLeft" | "vrRight";
 
 export interface Placement {
@@ -147,6 +147,12 @@ export const LOADOUT_DEFAULTS: Loadout = {
       flat: { pos: [0.3, -0.3, 0.6], rot: [0, 0, 0], scale: 1 },
       vrLeft: { pos: [0.025, -0.01, 0.02], rot: [1.2, 0, 0], scale: 1 },
       vrRight: { pos: [-0.03, 0, 0.02], rot: [0.9, 0, 0], scale: 1 },
+    },
+    staff: {
+      // Пока копия меча — подгонишь в шлеме (панель · «Посох»).
+      flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.6 },
+      vrLeft: { pos: [0, 0, 0.12], rot: [0, -1.56, -1.56], scale: 1 },
+      vrRight: { pos: [-0.01, 0, 0.12], rot: [0.2, 1.5, 1.56], scale: 1 },
     },
   },
   buttons: {
@@ -448,7 +454,7 @@ export function printLoadout(): void {
     lines.push(`  ${s}: { rot: ${fa(h.rot)}, scale: ${f(h.scale)}, curl: ${f(h.curl)} },`);
   }
   lines.push("},", "items: {");
-  for (const k of ["sword", "bow", "shield"] as ItemKind[]) {
+  for (const k of ["sword", "bow", "shield", "staff"] as ItemKind[]) {
     lines.push(`  ${k}: {`);
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const p = LOADOUT.items[k][slot];
@@ -475,7 +481,7 @@ function applyDefaults(next: Loadout): void {
     dst.scale = src.scale;
     dst.curl = src.curl;
   }
-  for (const kind of ["sword", "bow", "shield"] as ItemKind[]) {
+  for (const kind of ["sword", "bow", "shield", "staff"] as ItemKind[]) {
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const src = next.items[kind][slot];
       const dst = LOADOUT.items[kind][slot];

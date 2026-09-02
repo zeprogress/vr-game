@@ -31,6 +31,7 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "sword:gold": "gold_sword",
   "bow:gold": "gold_bow",
   "shield:gold": "gold_shield",
+  "staff:gold": "gold_staff",
 };
 
 /** Препятствия (стволы + крупные камни) — общие с клиентом, один раз. */

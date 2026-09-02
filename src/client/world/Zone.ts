@@ -36,6 +36,7 @@ export interface Zone {
   swordHome: Vector3;
   bowHome: Vector3;
   shieldHome: Vector3;
+  staffHome: Vector3;
 }
 
 /**
@@ -107,7 +108,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 0.8, -12);
   const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 0.8, -12);
   const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 0.75, -12);
-  const staffHome = new Vector3(3.4, terrain.heightAt(3.4, -12) + 0.55, -12);
+  const staffHome = new Vector3(3.4, terrain.heightAt(3.4, -12) + 0.9, -12);
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
   const rockObstacles = scatterRocks(scene, terrain, [
@@ -116,16 +117,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     shieldHome,
     staffHome,
   ]);
-
-  // ПРЕДПРОСМОТР посоха (этап 14): пока просто воткнут в землю у камня, без
-  // подбора рукой и магии — оценить модель. Полная интеграция как оружия +
-  // двуручный хват + каст — следующим шагом.
-  void import("../items/Staff").then((m) => {
-    const staff = m.createStaff(scene);
-    staff.position.copyFrom(staffHome);
-    staff.position.y = terrain.heightAt(staffHome.x, staffHome.z) + 0.5;
-    staff.rotation.set(0.12, 0.5, 0.05);
-  });
 
   return {
     ground: terrain.mesh,
@@ -182,5 +173,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     swordHome,
     bowHome,
     shieldHome,
+    staffHome,
   };
 }
