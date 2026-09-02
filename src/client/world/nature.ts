@@ -67,9 +67,18 @@ function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
 /** Расставить 26 деревьев из общего списка (позиции — те же, что на сервере). */
 export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): Promise<void> {
   await import("@babylonjs/loaders/glTF/2.0");
-  const containers = await Promise.all(
-    TREE_KINDS.map((k) => LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene)),
+  // По одному, с отловом: в шлеме бывает, что один файл не доехал —
+  // пусть не роняет весь лес, а просто станет меньше видов деревьев.
+  const settled = await Promise.all(
+    TREE_KINDS.map((k) =>
+      LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene).catch((e) => {
+        console.warn(`[nature] дерево ${k} не загрузилось`, e);
+        return null;
+      }),
+    ),
   );
+  const containers = settled.filter((c): c is NonNullable<typeof c> => c !== null);
+  if (containers.length === 0) return;
 
   const bark = barkMaterial(scene, lite);
   const leaf = leafMaterial(scene, containers[0].textures[0], lite);

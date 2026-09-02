@@ -81,8 +81,10 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sun.diffuse.copyFrom(day.sunColor);
     ambient.intensity = day.ambientIntensity;
     ambient.diffuse.copyFrom(day.ambientColor);
-    // Днём заливка = 0 — гасим сам источник, чтобы не считать его в шейдерах.
-    ambient.setEnabled(day.ambientIntensity > 0.004);
+    // Источник НЕ гасим по setEnabled: смена набора источников заставляет
+    // пересобирать шейдеры всех материалов (на Quest — заметный стоп-кадр,
+    // а замороженные материалы деревьев вообще ломались). Днём заливка = 0,
+    // это и так почти бесплатно на GPU.
     sky.apply(day);
   };
   applyDay();

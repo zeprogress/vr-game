@@ -44,9 +44,14 @@ export interface WeaponFit {
   parent?: TransformNode;
 }
 
-/** Прогреть контейнеры — вызвать один раз при старте, чтобы клоны были мгновенны. */
+/**
+ * Прогреть контейнеры оружия, лежащего в мире с самого старта (меч + лук).
+ * Золото и кристалл грузятся лениво при первом обращении — на слабом
+ * браузере шлема лишние параллельные загрузки при заходе только мешают.
+ */
 export function preloadWeaponModels(scene: Scene): void {
-  for (const p of Object.values(WEAPON_MODELS)) void containerFor(scene, p);
+  void containerFor(scene, WEAPON_MODELS.sword);
+  void containerFor(scene, WEAPON_MODELS.bow);
 }
 
 /**
