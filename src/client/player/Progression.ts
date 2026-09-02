@@ -1,4 +1,5 @@
 import { PROGRESSION } from "#shared/constants";
+import { fireboltDamage, maxManaFor, manaRegenFor } from "#shared/magic";
 import {
   arrowSpeedBonusFor,
   atMaxLevel,
@@ -135,6 +136,21 @@ export class Progression {
   /** Добавка к скорости стрелы, м/с. */
   get arrowSpeedBonus(): number {
     return arrowSpeedBonusFor(this.stats.agi);
+  }
+
+  /** Потолок маны (от интеллекта). */
+  get maxMana(): number {
+    return maxManaFor(this.stats.int);
+  }
+
+  /** Восстановление маны, ед/с (от интеллекта). */
+  get manaRegen(): number {
+    return manaRegenFor(this.stats.int);
+  }
+
+  /** Урон огнешара посоха при полном заряде (от интеллекта). */
+  get fireboltMax(): number {
+    return fireboltDamage(this.stats.int, 1);
   }
 
   // ---- сохранение ----

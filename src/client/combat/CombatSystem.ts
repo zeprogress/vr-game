@@ -174,6 +174,10 @@ export class CombatSystem {
     return !!this.held1("staff");
   }
   private prevCastTrigger = false;
+  private prevHoldTrigger = false;
+  /** "pull" — тянем второй рукой от кристалла; "solo" — курком руки с посохом. */
+  private castMode: "" | "pull" | "solo" = "";
+  private castBuzzT = 0;
   private chargeOrb: Mesh | null = null;
 
   // Рукопашная
@@ -1408,60 +1412,92 @@ export class CombatSystem {
   private resetCast(): void {
     this.charge = 0;
     this.castHooked = false;
+    this.castMode = "";
+    this.castBuzzT = 0;
     this.chargeOrb?.setEnabled(false);
     this.prevCastTrigger = false;
   }
 
   /**
-   * Каст огненного снаряда: держащей рукой посох (машет как мечом), второй
-   * рукой у кристалла жмёшь триггер и «тянешь». Дальше от кристалла — быстрее
-   * полетит; дольше держишь — больше заряд. Мана убывает, пока копишь;
-   * кончилась — заряд замирает. Мало маны на минимум — каст не начинается.
+   * Каст огненного снаряда. Два способа зарядить:
+   *  • «pull» — свободной рукой у кристалла жмёшь курок и тянешь. Направление
+   *    снаряда задаёт линия «тянущая рука → кристалл», как натяг лука; дальше
+   *    отвёл — быстрее полетит.
+   *  • «solo» — курком той руки, что держит посох. Целишься самим посохом,
+   *    скорость растёт от заряда.
+   * Мана убывает, пока копишь; кончилась — заряд замирает. Мало маны на
+   * минимальный заряд — каст не начинается. Рука с посохом гудит при зарядке
+   * и бьёт отдачей на выстреле.
    */
   private updateStaffCast(dt: number): void {
     const staff = this.held1("staff");
     if (!staff?.hand) return this.resetCast();
     const holdHand = staff.hand;
     const castHand: Side = holdHand === "left" ? "right" : "left";
-    if (this.inHand(castHand)) return this.resetCast(); // вторая рука занята
+    const castFree = !this.inHand(castHand);
 
-    const cc = this.controller(castHand);
-    const castNode = cc?.grip ?? cc?.pointer;
-    const trigger = !!cc?.inputSource.gamepad?.buttons[0]?.pressed;
-    if (!castNode) return this.resetCast();
+    const holdCtl = this.controller(holdHand);
+    const castCtl = castFree ? this.controller(castHand) : undefined;
+    const holdTrig = !!holdCtl?.inputSource.gamepad?.buttons[0]?.pressed;
+    const castTrig = !!castCtl?.inputSource.gamepad?.buttons[0]?.pressed;
+    const castNode = castCtl?.grip ?? castCtl?.pointer;
 
     const m = staff.mesh.getWorldMatrix();
     Vector3.TransformCoordinatesToRef(new Vector3(...STAFF_CRYSTAL_LOCAL), m, this.castCrystalW);
     Vector3.TransformCoordinatesToRef(Vector3.ZeroReadOnly, m, this.castOriginW);
-    const castPos = castNode.getAbsolutePosition();
-    const dist = Vector3.Distance(castPos, this.castCrystalW);
+    const castPos = castNode?.getAbsolutePosition();
+    const dist = castPos ? Vector3.Distance(castPos, this.castCrystalW) : 99;
 
     const fb = MAGIC.firebolt;
 
-    if (trigger) {
-      if (!this.castHooked && !this.prevCastTrigger && dist < 0.28 && this.mana >= fb.minMana) {
+    // --- зацеп ---
+    if (!this.castHooked && this.mana >= fb.minMana) {
+      if (castNode && castTrig && !this.prevCastTrigger && dist < 0.28) {
         this.castHooked = true;
+        this.castMode = "pull";
         this.haptic(castHand, 0.4, 45);
         this.sfx.bowDraw();
+      } else if (holdTrig && !this.prevHoldTrigger) {
+        this.castHooked = true;
+        this.castMode = "solo";
+        this.haptic(holdHand, 0.4, 45);
+        this.sfx.bowDraw();
       }
-      if (this.castHooked) {
-        // Накопление заряда, пока есть мана; мана расходуется на лету.
-        if (this.mana > 0 && this.charge < 1) {
-          // Заряд идёт рывком в начале и замедляется к максимуму: держать
-          // до отсечки долго и невыгодно (маны много, прибавки мало).
-          const rate = (1 / fb.chargeTime) * (2.2 - 1.9 * this.charge);
-          this.charge = clamp(this.charge + rate * dt, 0, 1);
-          this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
-        }
-        this.showChargeOrb(staff.mesh);
+    }
+
+    const activeTrig = this.castMode === "pull" ? castTrig : holdTrig;
+
+    if (this.castHooked && activeTrig) {
+      // Накопление заряда, пока есть мана; мана расходуется на лету.
+      if (this.mana > 0 && this.charge < 1) {
+        // Заряд идёт рывком в начале и замедляется к максимуму.
+        const rate = (1 / fb.chargeTime) * (2.2 - 1.9 * this.charge);
+        this.charge = clamp(this.charge + rate * dt, 0, 1);
+        this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+      }
+      this.showChargeOrb(staff.mesh);
+      // Пульсирующая вибрация в руке с посохом — тем чаще/сильнее, чем больше заряд.
+      this.castBuzzT += dt;
+      if (this.castBuzzT >= 0.08) {
+        this.castBuzzT = 0;
+        this.haptic(holdHand, 0.1 + 0.35 * this.charge, 22);
       }
     } else if (this.castHooked) {
       const charge = this.charge;
-      // «Натяг» = насколько отвёл руку от кристалла (0.15..0.75 м → 0..1).
-      const pull = clamp((dist - 0.15) / 0.6, 0, 1);
+      const mode = this.castMode;
+      let dir: Vector3;
+      let pull: number;
+      if (mode === "pull" && castPos) {
+        // Как лук: направление — от тянущей руки через кристалл.
+        pull = clamp((dist - 0.15) / 0.6, 0, 1);
+        dir = this.castCrystalW.subtract(castPos).normalize();
+      } else {
+        // Одной рукой: целишься посохом, скорость — от заряда.
+        pull = charge;
+        dir = this.castCrystalW.subtract(this.castOriginW).normalize();
+      }
       this.resetCast();
-      if (charge >= fb.minCharge) {
-        const dir = this.castCrystalW.subtract(this.castOriginW).normalize();
+      if (charge >= fb.minCharge && dir.lengthSquared() > 1e-6) {
         const origin = this.castCrystalW.add(dir.scale(0.05));
         this.onCast?.({
           charge,
@@ -1474,13 +1510,15 @@ export class CombatSystem {
           dz: dir.z,
           hand: holdHand,
         });
-        this.haptic(holdHand, 0.7, 60);
-        this.haptic(castHand, 0.7, 60);
+        this.haptic(holdHand, 0.95, 90); // отдача
+        if (mode === "pull") this.haptic(castHand, 0.55, 55);
         this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
         this.emitSound("bow", origin);
       }
     }
-    this.prevCastTrigger = trigger;
+
+    this.prevCastTrigger = castTrig;
+    this.prevHoldTrigger = holdTrig;
   }
 
   private showChargeOrb(staffMesh: Mesh): void {

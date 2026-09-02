@@ -184,6 +184,10 @@ export class Hud {
         row.appendChild(btn);
       }
       this.panel.appendChild(row);
+
+      const hint = el("div", "font-size:11px;opacity:0.5;margin:-2px 0 4px 0;");
+      hint.textContent = statHint(p, s);
+      this.panel.appendChild(hint);
     }
 
     const free = el("div", `margin-top:10px;${p.unspent > 0 ? "color:#7ee081;" : "opacity:0.6;"}`);
@@ -202,6 +206,13 @@ function el(tag: string, css: string): HTMLDivElement {
   const d = document.createElement(tag) as HTMLDivElement;
   d.style.cssText = css;
   return d;
+}
+
+/** Короткое описание — за что отвечает характеристика. */
+function statHint(p: Progression, s: StatName): string {
+  if (s === "str") return `HP ${Math.round(p.maxHp)} · урон мечом ${p.swordDamage.toFixed(2)}`;
+  if (s === "agi") return `скорость ${p.moveSpeed.toFixed(2)} м/с · стрела +${p.arrowSpeedBonus.toFixed(1)} м/с`;
+  return `мана ${Math.round(p.maxMana)} · восст. ${p.manaRegen.toFixed(1)}/с · огнешар ${p.fireboltMax.toFixed(1)}`;
 }
 
 const HP_BAR_CSS =

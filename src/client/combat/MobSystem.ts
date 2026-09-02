@@ -168,8 +168,8 @@ export class NetMobs {
       ring,
       pos: pos.clone(),
       age: 0,
-      life: hit ? 0.34 : 0.22,
-      peak: radius * (hit ? 3.4 : 1.8),
+      life: hit ? 0.4 : 0.24,
+      peak: radius * (hit ? 5.2 : 2.2),
     });
     if (hit) this.sfx.at({ x: pos.x, y: pos.y, z: pos.z }, () => this.sfx.fireBurst(undefined, radius / 0.62));
   }
@@ -190,11 +190,11 @@ export class NetMobs {
       // Ядро: вспыхивает и быстро сжимается-гаснет.
       const flashScale = b.peak * 0.5 * (0.4 + 0.6 * Math.min(1, f * 3)) * (0.4 + fade);
       b.flash.scaling.setAll(flashScale);
-      (b.flash.material as StandardMaterial).alpha = fade * fade * 0.9;
+      (b.flash.material as StandardMaterial).alpha = fade * fade;
       // Кольцо: расходится наружу и истончается.
-      const ringScale = b.peak * (0.3 + 1.4 * f);
+      const ringScale = b.peak * (0.3 + 1.5 * f);
       b.ring.scaling.setAll(ringScale);
-      (b.ring.material as StandardMaterial).alpha = fade * 0.7;
+      (b.ring.material as StandardMaterial).alpha = fade * 0.85;
       if (cam) b.ring.lookAt(cam.globalPosition);
     }
   }

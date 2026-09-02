@@ -334,6 +334,6 @@ export class WristPanel {
     const p = this.prog;
     if (s === "str") return `HP ${Math.round(p.maxHp)} · урон ${p.swordDamage.toFixed(2)}`;
     if (s === "agi") return `скорость ${p.moveSpeed.toFixed(2)} м/с`;
-    return "резерв";
+    return `мана ${Math.round(p.maxMana)} · +${p.manaRegen.toFixed(1)}/с · огнешар ${p.fireboltMax.toFixed(1)}`;
   }
 }
