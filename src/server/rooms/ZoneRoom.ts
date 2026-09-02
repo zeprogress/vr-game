@@ -31,6 +31,7 @@ import {
   type RtcMsg,
   type SpendMsg,
   type CastMsg,
+  type WorldLoadoutMsg,
   type SetTimeMsg,
   type ComfortMsg,
   type SpecCmd,
@@ -321,6 +322,12 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Лут, лежавший на земле до перезапуска, возвращаем в мир.
     this.sim.restoreDrops(world.loadDrops());
+    // Общая подгонка снаряжения — сразу в состояние, клиенты применят при входе.
+    try {
+      this.state.worldLoadout = JSON.stringify(world.loadLoadout() ?? {});
+    } catch {
+      this.state.worldLoadout = "{}";
+    }
 
     this.setSimulationInterval((deltaMs) => this.step(deltaMs / 1000), 50);
 
@@ -508,6 +515,23 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
       if (msg.vignette !== undefined) this.state.comfortVignette = msg.vignette ? 1 : 0;
       if (msg.teleport !== undefined) this.state.teleportMove = msg.teleport ? 1 : 0;
+    });
+
+    // Общая подгонка снаряжения — только админ. Применяется всем, переживает
+    // перезапуск сервера. Клиент шлёт частичный Loadout (hands/items/belt/hud/light).
+    this.onMessage(MSG.setWorldLoadout, (client: Client, msg: WorldLoadoutMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK) return;
+      if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
+      let json: string;
+      try {
+        json = JSON.stringify(msg);
+      } catch {
+        return;
+      }
+      if (json.length > 8000) return; // защита от мусора
+      world.saveLoadout(msg as Record<string, unknown>);
+      this.state.worldLoadout = json; // схема разошлёт всем
     });
 
     // Очистка мира от лежащего лута — по кнопке в панели, только админ.

@@ -42,6 +42,8 @@ export const MSG = {
   clearWorld: "cw",
   /** клиент -> сервер: сохранить настройки панели (per-token, применяются только у него). */
   loadout: "ld",
+  /** админ -> сервер: сохранить подгонку снаряжения ВСЕМ (общая, переживает перезапуск). */
+  setWorldLoadout: "wld",
   /** клиент <-> сервер: включить/выключить свой флаг PvP (этап 10). */
   setPvp: "pvp",
   /** клиент -> сервер: заработанное оружие легло на землю — сделать его общим. */
@@ -168,6 +170,8 @@ export interface DropWeaponMsg {
 
 /** Панельные переопределения настроек — сервер хранит их по токену игрока. */
 export type OverridesMsg = Record<string, unknown>;
+/** Частичный Loadout (hands/items/belt/hud/light) — общая подгонка от админа. */
+export type WorldLoadoutMsg = Record<string, unknown>;
 
 /** Перевод мировых часов. Сервер слушает только игрока с ником ADMIN_NICK. */
 export interface SetTimeMsg {

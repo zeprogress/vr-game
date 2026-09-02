@@ -317,6 +317,16 @@ export class NetClient {
     return this.room ? { hour: this.room.state.hour, auto: this.room.state.dayAuto } : null;
   }
 
+  /** Общая подгонка снаряжения с сервера (JSON-строка) — "{}" офлайн. */
+  get worldLoadout(): string {
+    return this.room?.state.worldLoadout ?? "{}";
+  }
+
+  /** Админ: сохранить подгонку снаряжения всем (общая, переживает перезапуск). */
+  sendSetWorldLoadout(w: unknown): void {
+    this.room?.send(MSG.setWorldLoadout, w);
+  }
+
   /** Своё состояние в схеме комнаты (HP, прогресс) — null офлайн. */
   get self(): PlayerState | null {
     const id = this.room?.sessionId;

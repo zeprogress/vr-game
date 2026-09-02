@@ -134,6 +134,11 @@ export class ZoneState extends Schema {
   @type("uint8") comfortVignette = 1;
   /** 1 — левый стик телепортирует (меньше укачивает); 0 — плавное скольжение. */
   @type("uint8") teleportMove = 0;
+  /**
+   * Общая подгонка снаряжения (частичный Loadout, JSON-строка): руки, VR-позы
+   * оружия, HUD, пояс, свет. Админ правит в панели — применяется всем.
+   */
+  @type("string") worldLoadout = "{}";
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

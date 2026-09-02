@@ -483,6 +483,88 @@ export function printLoadout(): void {
   console.log(lines.join("\n"));
 }
 
+// ---- общая подгонка от админа (сервер, применяется всем) ----
+
+/** Что именно уходит в общую подгонку: положения и свет, без per-device. */
+export interface WorldLoadout {
+  hands: Loadout["hands"];
+  items: Loadout["items"];
+  belt: Loadout["belt"];
+  hud: Loadout["hud"];
+  light: Loadout["light"];
+}
+
+/** Снимок текущих общих значений — панель шлёт его серверу по «Сохранить всем». */
+export function worldLoadoutSnapshot(): WorldLoadout {
+  return structuredClone({
+    hands: LOADOUT.hands,
+    items: LOADOUT.items,
+    belt: LOADOUT.belt,
+    hud: LOADOUT.hud,
+    light: LOADOUT.light,
+  });
+}
+
+/**
+ * Принять общую подгонку с сервера (JSON-строка из состояния комнаты).
+ * Перекрывает файл для положений/света у ВСЕХ. Локальные per-token правки
+ * (голос, сглаживание) не трогает — их тут нет.
+ */
+export function applyWorldLoadout(raw: string): void {
+  let w: Partial<WorldLoadout>;
+  try {
+    w = JSON.parse(raw || "{}") as Partial<WorldLoadout>;
+  } catch {
+    return;
+  }
+  if (!w || typeof w !== "object") return;
+
+  const v3 = (a: unknown): [number, number, number] | null =>
+    Array.isArray(a) && a.length === 3 && a.every((n) => typeof n === "number" && Number.isFinite(n))
+      ? [a[0], a[1], a[2]]
+      : null;
+
+  if (w.hands) {
+    for (const s of ["left", "right"] as HandSide[]) {
+      const h = w.hands[s];
+      if (!h) continue;
+      const rot = v3(h.rot);
+      if (rot) LOADOUT.hands[s].rot = rot;
+      if (typeof h.scale === "number" && Number.isFinite(h.scale)) {
+        LOADOUT.hands[s].scale = Math.max(0.02, h.scale);
+      }
+      if (typeof h.curl === "number" && Number.isFinite(h.curl)) {
+        LOADOUT.hands[s].curl = Math.max(0, h.curl);
+      }
+    }
+  }
+  if (w.items) {
+    for (const kind of ["sword", "bow", "shield", "staff", "potion"] as ItemKind[]) {
+      const ik = w.items[kind];
+      if (!ik) continue;
+      for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
+        const p = ik[slot];
+        if (!p) continue;
+        const dst = LOADOUT.items[kind][slot];
+        const pos = v3(p.pos);
+        const rot = v3(p.rot);
+        if (pos) dst.pos = pos;
+        if (rot) dst.rot = rot;
+        if (typeof p.scale === "number" && Number.isFinite(p.scale)) dst.scale = p.scale;
+      }
+    }
+  }
+  if (w.belt) {
+    const pos = v3(w.belt.pos);
+    if (pos) LOADOUT.belt.pos = pos;
+  }
+  if (w.hud) {
+    const pos = v3(w.hud.hpPos);
+    if (pos) LOADOUT.hud.hpPos = pos;
+  }
+  if (w.light) writeTarget(LOADOUT, "light:day", w.light);
+}
+
 // ---- применение: сначала файл, поверх — подобранное в игре ----
 
 function applyDefaults(next: Loadout): void {

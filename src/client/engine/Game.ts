@@ -21,7 +21,14 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
-import { LOADOUT, printLoadout, importOverrides, exportOverrides } from "../config/loadout";
+import {
+  LOADOUT,
+  printLoadout,
+  importOverrides,
+  exportOverrides,
+  applyWorldLoadout,
+  worldLoadoutSnapshot,
+} from "../config/loadout";
 import { HUD, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
@@ -258,6 +265,7 @@ export class Game {
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
       this.updateComfortVignette(dt);
+      this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();
     });
@@ -477,10 +485,23 @@ export class Game {
     // Комфорт VR (виньетка, режим перемещения) — общий для мира: на сервер.
     this.loadoutPanel.onComfort = (patch) => this.net?.sendComfort(patch);
     this.loadoutPanel.onClearWorld = () => this.net?.sendClearWorld();
-    // «Сохранить» онлайн шлёт настройки на сервер (по токену игрока).
+    // «Сохранить» онлайн: положения/свет — ВСЕМ (общая подгонка на сервере),
+    // голос/сглаживание — по токену этого игрока/устройства.
     this.loadoutPanel.onSaveServer = this.net?.online
-      ? () => this.net!.sendLoadout(exportOverrides())
+      ? () => {
+          this.net!.sendSetWorldLoadout(worldLoadoutSnapshot());
+          this.net!.sendLoadout(exportOverrides());
+        }
       : null;
+  }
+
+  private lastWorldLoadout = "";
+  /** Общая подгонка с сервера — применяем, когда меняется (дёшево: сравнение строк). */
+  private applyWorldLoadoutIfChanged(): void {
+    const w = this.net?.worldLoadout ?? "{}";
+    if (w === this.lastWorldLoadout) return;
+    this.lastWorldLoadout = w;
+    if (w && w !== "{}") applyWorldLoadout(w);
   }
 
   /** Ник этого игрока — задаётся из main.ts после входа. */

@@ -474,7 +474,7 @@ export class LoadoutPanel {
 
     if (this.onSaveServer) {
       this.onSaveServer();
-      this.fileState = "на сервере ✓";
+      this.fileState = "сохранено всем ✓";
       this.redraw();
       return;
     }
