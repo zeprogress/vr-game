@@ -30,6 +30,8 @@ export class HealthBar3D {
     width = 0.8,
     billboard = true,
     fillHeight = 0.1,
+    /** "hp" — зелёный/жёлтый/красный по доле; "mana" — синий. */
+    private readonly hue: "hp" | "mana" = "hp",
   ) {
     this.bgMat = new StandardMaterial("hpBgMat", scene);
     const bgMat = this.bgMat;
@@ -76,11 +78,15 @@ export class HealthBar3D {
     const f = clamp01(frac);
     this.fill.scaling.x = Math.max(0.001, f);
     this.fill.position.x = -(this.width * (1 - f)) / 2;
-    this.fillMat.emissiveColor.set(
-      f > 0.5 ? 0.25 : 0.85,
-      f > 0.25 ? 0.75 : 0.2,
-      f > 0.5 ? 0.3 : 0.15,
-    );
+    if (this.hue === "mana") {
+      this.fillMat.emissiveColor.set(0.2, 0.42, 0.95);
+    } else {
+      this.fillMat.emissiveColor.set(
+        f > 0.5 ? 0.25 : 0.85,
+        f > 0.25 ? 0.75 : 0.2,
+        f > 0.5 ? 0.3 : 0.15,
+      );
+    }
   }
 
   /** Переставить полоску (её положение правится в панели настройки). */

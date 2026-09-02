@@ -169,6 +169,10 @@ export class CombatSystem {
   get chargingMagic(): boolean {
     return this.castHooked;
   }
+  /** true — в руках есть посох (для полоски маны). */
+  get holdsStaff(): boolean {
+    return !!this.held1("staff");
+  }
   private prevCastTrigger = false;
   private chargeOrb: Mesh | null = null;
 

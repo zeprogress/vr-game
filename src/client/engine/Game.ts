@@ -90,6 +90,8 @@ export class Game {
   /** Узел, который следует за головой, но не наклоняется: HUD параллелен горизонту. */
   private hudAnchor: TransformNode | null = null;
   private playerBar3D: HealthBar3D | null = null;
+  private manaBar3D: HealthBar3D | null = null;
+  private manaMax = 30;
   private vrVignette: VrVignette | null = null;
   private comfortVignette: ComfortVignette | null = null;
   private wristPanel: WristPanel | null = null;
@@ -443,6 +445,17 @@ export class Game {
       0.05, // вдвое тоньше
     );
     this.playerBar3D.set(this.player.hp / this.player.maxHp);
+    // Полоска маны — под здоровьем, чуть уже. Видна только когда в руках посох.
+    this.manaBar3D = new HealthBar3D(
+      this.scene,
+      this.hudAnchor,
+      new Vector3(hp[0], hp[1] - 0.075, hp[2]),
+      0.5,
+      false,
+      0.035,
+      "mana",
+    );
+    this.manaBar3D.setOpacity(0);
 
     this.vrVignette = new VrVignette(this.scene);
     this.comfortVignette = new ComfortVignette(this.scene, this.xr);
@@ -495,6 +508,8 @@ export class Game {
     this.loadoutPanel = null;
     this.playerBar3D?.dispose();
     this.playerBar3D = null;
+    this.manaBar3D?.dispose();
+    this.manaBar3D = null;
     this.hudAnchor?.dispose();
     this.hudAnchor = null;
     this.vrVignette?.dispose();
@@ -515,6 +530,7 @@ export class Game {
     // Полоска жизней правится в панели настройки — подхватываем на лету.
     const hp = LOADOUT.hud.hpPos;
     this.playerBar3D?.moveTo(hp[0], hp[1], hp[2]);
+    this.manaBar3D?.moveTo(hp[0], hp[1] - 0.075, hp[2]);
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
@@ -605,6 +621,7 @@ export class Game {
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
     // предсказание «мана кончилась на середине» не сработало бы.
+    this.manaMax = self.maxMana;
     if (!this.combat.chargingMagic) this.combat.mana = self.mana;
 
     const dead = self.dead === 1;
@@ -678,6 +695,13 @@ export class Game {
     else opacity = Math.max(0, 1 - (t - HUD.showTime) / HUD.fadeTime);
     this.hud.setOpacity(opacity);
     this.playerBar3D?.setOpacity(opacity);
+    // Мана: показываем только с посохом в руках; ярче, пока копится заряд.
+    if (this.manaBar3D) {
+      const show = this.combat.holdsStaff;
+      const bright = this.combat.chargingMagic || this.combat.mana < this.manaMax - 0.5;
+      this.manaBar3D.setOpacity(show ? (bright ? 1 : opacity) : 0);
+      this.manaBar3D.set(this.manaMax > 0 ? this.combat.mana / this.manaMax : 0);
+    }
   }
 
   private defaultInput(): InputSource {
