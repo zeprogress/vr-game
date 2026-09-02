@@ -42,8 +42,11 @@ export const FIREFLY = {
    * при больших значениях центр выбивается в белый.
    */
   poolAlpha: 0.08,
-  /** Цвет света: один и тот же у лампы и у пятна, иначе они спорят. */
-  lightColor: [1, 0.78, 0.2] as [number, number, number],
+  /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
+  lightColor: [1, 0.87, 0.55] as [number, number, number],
+  /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
+   * равно тянет к белому, поэтому база теплее). */
+  poolColor: [1, 0.74, 0.16] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
   lightFadeFrom: 18,
   /** Ближе этого светит в полную силу, м. */
@@ -122,7 +125,7 @@ export class Fireflies {
     this.poolMat.opacityTexture = glow;
     this.poolMat.diffuseColor = new Color3(0, 0, 0);
     this.poolMat.specularColor = new Color3(0, 0, 0);
-    this.poolMat.emissiveColor = new Color3(...FIREFLY.lightColor); // тот же цвет, что у лампы
+    this.poolMat.emissiveColor = new Color3(...FIREFLY.poolColor);
     this.poolMat.disableLighting = true;
     this.poolMat.alphaMode = Constants.ALPHA_ADD;
     this.poolMat.disableDepthWrite = true;
