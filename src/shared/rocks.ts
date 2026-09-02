@@ -1,4 +1,4 @@
-import { WORLD } from "./constants";
+import { WORLD, BOSS } from "./constants";
 
 /** Камень в мире: где, какой модели, как повёрнут и насколько крупный. */
 export interface Rock {
@@ -40,6 +40,7 @@ export function rocks(): Rock[] {
     const z = (r() - 0.5) * 2 * reach;
     if (Math.hypot(x, z) < 10) continue; // не на спавне
     if (Math.abs(x) < 5 && Math.abs(z + 12) < 5) continue; // не поверх оружия
+    if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue; // арена босса — чисто
     const scale = 0.22 + r() ** 2 * 0.75; // много мелких, редко валун
     const solid = scale > 0.42;
     out.push({

@@ -1,4 +1,4 @@
-import { WORLD } from "./constants";
+import { WORLD, BOSS } from "./constants";
 
 /** Дерево в мире: где стоит, какого размера и как повёрнуто. */
 export interface Tree {
@@ -47,6 +47,7 @@ export function trees(): Tree[] {
     if (Math.hypot(x, z) < 10) return; // не на спавне
     if (Math.abs(x) > reach || Math.abs(z) > reach) return;
     if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) return; // не поверх оружия
+    if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) return; // арена босса — чисто
     const scale = 0.75 + rnd() * 1.0;
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   };
