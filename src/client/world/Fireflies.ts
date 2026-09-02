@@ -9,7 +9,7 @@ import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import "@babylonjs/core/Meshes/Builders/discBuilder";
+import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
@@ -34,14 +34,14 @@ export const FIREFLY = {
   lamps: 5,
   /** Докуда добивает свет одной стайки, м. */
   lightRange: 8,
-  lightIntensity: 1.5,
-  /** Радиус светового пятна на земле под стайкой, м. */
-  poolRadius: 4.4,
+  lightIntensity: 1.7,
+  /** Радиус светящегося ореола вокруг стайки, м. */
+  poolRadius: 2.6,
   /**
    * Насколько ярко пятно (0..1). Складывается с настоящей лампой, поэтому
    * при больших значениях центр выбивается в белый.
    */
-  poolAlpha: 0.3,
+  poolAlpha: 0.16,
   /** Цвет света: один и тот же у лампы и у пятна, иначе они спорят. */
   lightColor: [1, 0.78, 0.2] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
@@ -110,7 +110,9 @@ export class Fireflies {
     this.proto.isPickable = false;
     this.proto.isVisible = false;
 
-    // Пятно света на земле: мягкое к краям, складывается с тем, что под ним.
+    // Светящийся ореол стайки: билборд-спрайт в воздухе (не диск на земле —
+    // на склоне он резался о рельеф и читался «полосой»). Мягкий к краям,
+    // складывается с фоном.
     this.poolMat = new StandardMaterial("fireflyPoolMat", scene);
     const glow = radialGlow(scene);
     this.poolMat.emissiveTexture = glow;
@@ -123,13 +125,12 @@ export class Fireflies {
     this.poolMat.disableDepthWrite = true;
     this.poolMat.alpha = 0;
 
-    this.poolProto = MeshBuilder.CreateDisc(
+    this.poolProto = MeshBuilder.CreatePlane(
       "fireflyPoolProto",
-      { radius: FIREFLY.poolRadius, tessellation: 48 }, // край не должен быть многоугольником
+      { size: FIREFLY.poolRadius * 2 },
       scene,
     );
-    this.poolProto.rotation.x = Math.PI / 2; // кладём плашмя на землю
-    this.poolProto.bakeCurrentTransformIntoVertices();
+    this.poolProto.billboardMode = 7; // BILLBOARDMODE_ALL — всегда лицом к камере
     this.poolProto.material = this.poolMat;
     this.poolProto.isPickable = false;
     this.poolProto.isVisible = false;
@@ -153,7 +154,8 @@ export class Fireflies {
       }
       const pool = this.poolProto.createInstance(`fireflyPool${g}`);
       pool.isPickable = false;
-      pool.position.set(x, terrain.heightAt(x, z) + 0.06, z);
+      pool.billboardMode = 7; // BILLBOARDMODE_ALL — на инстансе задаётся отдельно
+      pool.position.copyFrom(center);
       this.groups.push({ center, target: center.clone(), dots, phase, pool });
     }
 
@@ -214,8 +216,8 @@ export class Fireflies {
         g.center.addInPlace(toTarget);
       }
 
-      // Пятно едет за стайкой и лежит на земле, чуть подрагивая яркостью.
-      g.pool.position.set(g.center.x, terrain.heightAt(g.center.x, g.center.z) + 0.06, g.center.z);
+      // Ореол едет вместе со стайкой (в воздухе, у её центра).
+      g.pool.position.copyFrom(g.center);
 
       // Огоньки вьются вокруг центра по своим орбитам.
       for (let i = 0; i < g.dots.length; i++) {

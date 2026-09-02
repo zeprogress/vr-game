@@ -69,9 +69,12 @@ export class Hands {
 
   constructor(private readonly scene: Scene) {
     this.skin = new StandardMaterial("handSkin", scene);
-    this.skin.diffuseColor = new Color3(0.44, 0.3, 0.19); // кожаная перчатка
-    this.skin.emissiveColor = new Color3(0.1, 0.07, 0.05);
-    this.skin.specularColor = new Color3(0.05, 0.05, 0.05);
+    this.skin.diffuseColor = new Color3(0.5, 0.34, 0.21); // кожаная перчатка
+    // Мало собственной яркости — чтобы форму кисти лепил направленный свет,
+    // а не заливал ровный эмиссив (руки казались плоскими).
+    this.skin.emissiveColor = new Color3(0.035, 0.024, 0.016);
+    this.skin.specularColor = new Color3(0.08, 0.07, 0.06);
+    this.skin.specularPower = 32;
     void this.loadGlove();
   }
 

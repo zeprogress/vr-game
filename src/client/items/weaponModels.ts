@@ -81,17 +81,20 @@ export function spawnWeaponModel(
     src.parent = fitNode;
 
     recolorFlat(src, fit.tint);
-    // Палитра пака у оружия тёмная (тёмная сталь). Оружие в руке — герой кадра:
-    // приподнимаем к свету и даём заметный эмиссив, чтобы не проваливалось.
-    const lifted = new Set<StandardMaterial>();
+    // Палитра пака у оружия тёмная (тёмная сталь) — приподнимаем к свету.
+    // Эмиссив маленький: пусть форму лепит солнце (иначе клинок плоский).
+    // Немного блеска — сталь ловит блик от солнца.
+    const done = new Set<StandardMaterial>();
     for (const m of src.getChildMeshes(false)) {
       m.isPickable = false;
       m.applyFog = true;
       const mat = m.material as StandardMaterial | null;
-      if (mat && "emissiveColor" in mat && !lifted.has(mat)) {
-        mat.diffuseColor = Color3.Lerp(mat.diffuseColor, new Color3(1, 1, 1), 0.28);
-        mat.emissiveColor = mat.diffuseColor.scale(0.34);
-        lifted.add(mat);
+      if (mat && "emissiveColor" in mat && !done.has(mat)) {
+        mat.diffuseColor = Color3.Lerp(mat.diffuseColor, new Color3(1, 1, 1), 0.3);
+        mat.emissiveColor = mat.diffuseColor.scale(0.13);
+        mat.specularColor = new Color3(0.35, 0.35, 0.35);
+        mat.specularPower = 48;
+        done.add(mat);
       }
     }
     onReady?.(fitNode);

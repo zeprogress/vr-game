@@ -287,7 +287,9 @@ function grassMaterial(scene: Scene): StandardMaterial {
   mat.maxSimultaneousLights = LIGHT_BUDGET;
   mat.diffuseTexture = tex;
   mat.bumpTexture = bumpDt;
-  mat.bumpTexture.level = 0.55;
+  // Слабый рельеф: сильный bump под точечным светом светлячков даёт полосатые
+  // блики на земле.
+  mat.bumpTexture.level = 0.22;
   mat.specularColor = new Color3(0, 0, 0);
   return mat;
 }

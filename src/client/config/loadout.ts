@@ -253,7 +253,7 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     if (s !== null) dst.light.sun = s;
     const f = num(v?.fill, 0, 1.5);
     if (f !== null) dst.light.fill = f;
-    const w = num(v?.warm, 0, 1);
+    const w = num(v?.warm, 0, 2);
     if (w !== null) dst.light.warm = w;
     const c = num(v?.coolShade, 0, 1);
     if (c !== null) dst.light.coolShade = c;

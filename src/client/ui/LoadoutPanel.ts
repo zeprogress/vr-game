@@ -263,7 +263,7 @@ export class LoadoutPanel {
       }[] = [
         { label: "солнце", key: "sun", lo: 0.2, hi: 3, steps: [0.05, 0.15, 0.4] },
         { label: "заливка неба", key: "fill", lo: 0, hi: 1.5, steps: [0.03, 0.1, 0.25] },
-        { label: "тепло солнца", key: "warm", lo: 0, hi: 1, steps: [0.05, 0.15, 0.35] },
+        { label: "тепло солнца", key: "warm", lo: 0, hi: 2, steps: [0.05, 0.15, 0.35] },
         { label: "прохлада тени", key: "coolShade", lo: 0, hi: 1, steps: [0.05, 0.15, 0.35] },
         { label: "ночь", key: "night", lo: 0.2, hi: 2.5, steps: [0.05, 0.15, 0.4] },
         { label: "туман", key: "fog", lo: 0, hi: 4, steps: [0.1, 0.3, 0.8] },

@@ -55,8 +55,10 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean)
 
 function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
   const m = new StandardMaterial("treeBark", scene);
-  m.diffuseColor = new Color3(0.33, 0.22, 0.14);
-  m.emissiveColor = new Color3(0.08, 0.05, 0.03);
+  m.diffuseColor = new Color3(0.3, 0.2, 0.13);
+  // Почти без собственной яркости: верхушки стволов не должны «светиться»
+  // ночью. Днём их лепит солнце, ночью пусть уходят в темноту.
+  m.emissiveColor = new Color3(0.02, 0.013, 0.008);
   m.specularColor = new Color3(0, 0, 0);
   m.maxSimultaneousLights = lite ? 2 : 3;
   return m;
