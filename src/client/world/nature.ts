@@ -134,9 +134,9 @@ export async function loadGrass(
   const vcol = blade.getVerticesData(VertexBuffer.ColorKind);
   if (vcol) {
     for (let i = 0; i < vcol.length; i += 4) {
-      vcol[i] = 0.45 + vcol[i] * 0.55;
-      vcol[i + 1] = 0.45 + vcol[i + 1] * 0.55;
-      vcol[i + 2] = 0.45 + vcol[i + 2] * 0.55;
+      vcol[i] = 0.42 + vcol[i] * 0.48;
+      vcol[i + 1] = 0.42 + vcol[i + 1] * 0.48;
+      vcol[i + 2] = 0.42 + vcol[i + 2] * 0.48;
     }
     blade.setVerticesData(VertexBuffer.ColorKind, vcol, false);
   }
