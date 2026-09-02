@@ -34,15 +34,6 @@ const TREE_SCALE = 1.15;
 /** Плотность травы относительно WORLD.grassCount. */
 const GRASS_FACTOR = 1.8;
 
-/** Радиус пятна с «рваным» краем: несколько синусоид по углу. */
-function lumpyRadius(angle: number, base: number, seed: number): number {
-  const w =
-    0.55 +
-    0.28 * Math.sin(angle * 3 + seed) +
-    0.17 * Math.sin(angle * 2 - seed * 1.7) +
-    0.1 * Math.sin(angle * 5 + seed * 0.5);
-  return base * Math.max(0.2, w);
-}
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
@@ -189,29 +180,38 @@ export async function loadGrass(
     colors.push(b + warm * 0.7, b + warm * 0.15, b - warm * 0.5, 1);
   };
 
-  // Плотное пятно у спавна — с рваным краем.
-  const spawnSeed = Math.random() * 100;
-  for (let i = 0; i < budget * 0.42; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = Math.sqrt(Math.random()) * lumpyRadius(a, WORLD.grassRadius * 1.25, spawnSeed);
-    pushBlade(Math.cos(a) * r, Math.sin(a) * r);
-  }
-  // Пятна по всей карте, разной формы и плотности.
-  const patches = 22;
-  const perPatch = (budget * 0.46) / patches;
-  for (let p = 0; p < patches; p++) {
-    const px = (Math.random() - 0.5) * 2 * reach;
-    const pz = (Math.random() - 0.5) * 2 * reach;
-    const base = 5 + Math.random() * Math.random() * 26;
-    const seed = Math.random() * 100;
-    const n = Math.round(perPatch * (0.35 + Math.random() * 1.6));
-    for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * lumpyRadius(a, base, seed);
-      pushBlade(px + Math.cos(a) * r, pz + Math.sin(a) * r);
+  // Трава — из множества мелких клякс со случайным центром и размером.
+  // Раньше пятно у спавна было одним диском с синусоидальным краем и читалось
+  // «вентилятором»; теперь никакой общей формы — просто рваный ковёр.
+  const gauss2 = (): number => Math.random() + Math.random() + Math.random() - 1.5; // ~[-1.5..1.5]
+
+  /** Набросать `total` травинок кляксами в круге радиуса `area` вокруг (cx,cz). */
+  const scatterClumps = (
+    cx: number,
+    cz: number,
+    area: number,
+    total: number,
+    centrePull: number, // 0 — равномерно по площади, >0 — гуще к центру
+  ): void => {
+    let placed = 0;
+    let guard = 0;
+    while (placed < total && guard++ < total * 3) {
+      const ca = Math.random() * Math.PI * 2;
+      const cr = Math.pow(Math.random(), 0.5 + centrePull) * area;
+      const kx = cx + Math.cos(ca) * cr;
+      const kz = cz + Math.sin(ca) * cr;
+      const size = 0.5 + Math.random() * Math.random() * 3.2; // радиус кляксы, м
+      const n = 5 + Math.floor(Math.random() * Math.random() * 26);
+      for (let i = 0; i < n && placed < total; i++) {
+        pushBlade(kx + gauss2() * size, kz + gauss2() * size);
+        placed++;
+      }
     }
-  }
-  // Редкий фон по всей карте — чтобы не было голых пятен.
+  };
+
+  // Гуще вокруг спавна, реже — по всей карте, плюс совсем редкий ровный фон.
+  scatterClumps(0, 0, WORLD.grassRadius * 1.7, budget * 0.42, 0.9);
+  scatterClumps(0, 0, reach, budget * 0.46, 0.15);
   for (let i = 0; i < budget * 0.12; i++) {
     pushBlade((Math.random() - 0.5) * 2 * reach, (Math.random() - 0.5) * 2 * reach);
   }
