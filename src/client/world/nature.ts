@@ -238,9 +238,9 @@ export async function loadGrass(
   return (dt: number, daylight: number) => {
     wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
     wind.time += dt * WIND.speed * Math.max(wind.scale, 0.05);
-    // Гасим собственную яркость к ночи (небольшой остаток — чтобы совсем
-    // не чернела там, где нет светлячков).
-    const k = 0.1 + 0.9 * daylight;
+    // Гасим собственную яркость к ночи (остаток чуть больше — трава ночью
+    // не должна проваливаться в полную черноту).
+    const k = 0.2 + 0.8 * daylight;
     mat.emissiveColor.copyFromFloats(emiDay.r * k, emiDay.g * k, emiDay.b * k);
   };
 }
