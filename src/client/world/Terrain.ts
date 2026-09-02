@@ -285,6 +285,9 @@ function grassMaterial(scene: Scene): StandardMaterial {
   const mat = new StandardMaterial("terrainMat", scene);
   // Земля должна ловить свет светлячков, а не только солнце и небо.
   mat.maxSimultaneousLights = LIGHT_BUDGET;
+  // Крошечная собственная яркость: днём тонет в солнце, ночью чуть
+  // приподнимает землю над чернотой (там, где нет светлячков).
+  mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
   mat.diffuseTexture = tex;
   mat.bumpTexture = bumpDt;
   // Слабый рельеф: сильный bump под точечным светом светлячков даёт полосатые

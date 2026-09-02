@@ -33,15 +33,15 @@ export const FIREFLY = {
    */
   lamps: 5,
   /** Докуда добивает свет одной стайки, м. */
-  lightRange: 8,
+  lightRange: 11,
   lightIntensity: 1.7,
   /** Радиус светящегося ореола вокруг стайки, м. */
-  poolRadius: 2.6,
+  poolRadius: 3.3,
   /**
-   * Насколько ярко пятно (0..1). Складывается с настоящей лампой, поэтому
+   * Насколько ярко ореол (0..1). Складывается с настоящей лампой, поэтому
    * при больших значениях центр выбивается в белый.
    */
-  poolAlpha: 0.16,
+  poolAlpha: 0.12,
   /** Цвет света: один и тот же у лампы и у пятна, иначе они спорят. */
   lightColor: [1, 0.78, 0.2] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
@@ -92,11 +92,13 @@ export class Fireflies {
   private readonly mat: StandardMaterial;
   private readonly poolProto: Mesh;
   private readonly poolMat: StandardMaterial;
+  private readonly scene: Scene;
   private clock = 0;
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
   private night = 0;
 
   constructor(scene: Scene, terrain: Terrain, density = 1) {
+    this.scene = scene;
     const groups = Math.max(0, Math.round(FIREFLY.groups * density));
     this.mat = new StandardMaterial("fireflyMat", scene);
     this.mat.emissiveColor = new Color3(1, 0.97, 0.8); // сам огонёк почти белый
@@ -110,9 +112,10 @@ export class Fireflies {
     this.proto.isPickable = false;
     this.proto.isVisible = false;
 
-    // Светящийся ореол стайки: билборд-спрайт в воздухе (не диск на земле —
-    // на склоне он резался о рельеф и читался «полосой»). Мягкий к краям,
-    // складывается с фоном.
+    // Светящийся ореол стайки: спрайт в воздухе с мягким радиальным пятном.
+    // К камере поворачиваем сами (в update), а не billboardMode — тот в
+    // спектраторе с его риг-камерами не всегда срабатывал и спрайт читался
+    // белой полосой (виден с ребра).
     this.poolMat = new StandardMaterial("fireflyPoolMat", scene);
     const glow = radialGlow(scene);
     this.poolMat.emissiveTexture = glow;
@@ -123,6 +126,7 @@ export class Fireflies {
     this.poolMat.disableLighting = true;
     this.poolMat.alphaMode = Constants.ALPHA_ADD;
     this.poolMat.disableDepthWrite = true;
+    this.poolMat.backFaceCulling = false; // повернётся любой стороной — рисуем обе
     this.poolMat.alpha = 0;
 
     this.poolProto = MeshBuilder.CreatePlane(
@@ -130,7 +134,6 @@ export class Fireflies {
       { size: FIREFLY.poolRadius * 2 },
       scene,
     );
-    this.poolProto.billboardMode = 7; // BILLBOARDMODE_ALL — всегда лицом к камере
     this.poolProto.material = this.poolMat;
     this.poolProto.isPickable = false;
     this.poolProto.isVisible = false;
@@ -154,7 +157,6 @@ export class Fireflies {
       }
       const pool = this.poolProto.createInstance(`fireflyPool${g}`);
       pool.isPickable = false;
-      pool.billboardMode = 7; // BILLBOARDMODE_ALL — на инстансе задаётся отдельно
       pool.position.copyFrom(center);
       this.groups.push({ center, target: center.clone(), dots, phase, pool });
     }
@@ -216,8 +218,11 @@ export class Fireflies {
         g.center.addInPlace(toTarget);
       }
 
-      // Ореол едет вместе со стайкой (в воздухе, у её центра).
+      // Ореол едет вместе со стайкой (в воздухе, у её центра) и сам
+      // поворачивается лицом к активной камере — надёжнее billboardMode.
       g.pool.position.copyFrom(g.center);
+      const cam = this.scene.activeCamera;
+      if (cam) g.pool.lookAt(cam.globalPosition);
 
       // Огоньки вьются вокруг центра по своим орбитам.
       for (let i = 0; i < g.dots.length; i++) {
@@ -299,10 +304,9 @@ function clamp01(v: number): number {
 }
 
 /**
- * Круглое пятно, плавно тающее к краям.
- *
- * Прозрачность падает по кубу расстояния и набирается многими остановками —
- * иначе на границе видно кольцо, а у самого края резкий обрыв.
+ * Круглое пятно, плавно тающее к краям. Прозрачность падает по степени
+ * расстояния и набирается многими остановками — иначе у края видно кольцо
+ * или резкий обрыв.
  */
 function radialGlow(scene: Scene): DynamicTexture {
   const S = 256;
@@ -310,12 +314,11 @@ function radialGlow(scene: Scene): DynamicTexture {
   tex.hasAlpha = true;
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
-
   const grad = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
   const STOPS = 24;
   for (let i = 0; i <= STOPS; i++) {
     const r = i / STOPS;
-    const a = Math.pow(1 - r, 3); // мягкий спад: в центре ярко, к краю сходит в ноль
+    const a = Math.pow(1 - r, 2.4); // мягкий, чуть более наполненный к центру спад
     grad.addColorStop(r, `rgba(255,255,255,${a.toFixed(4)})`);
   }
   ctx.fillStyle = grad;
