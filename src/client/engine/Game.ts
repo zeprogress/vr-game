@@ -19,6 +19,7 @@ import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
+import { HealCrossFx } from "../ui/HealCrossFx";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
@@ -101,6 +102,7 @@ export class Game {
   private manaMax = 30;
   private vrVignette: VrVignette | null = null;
   private comfortVignette: ComfortVignette | null = null;
+  private healCrossFx: HealCrossFx | null = null;
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -265,6 +267,7 @@ export class Game {
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
       this.updateComfortVignette(dt);
+      this.healCrossFx?.update(dt);
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();
@@ -467,6 +470,7 @@ export class Game {
 
     this.vrVignette = new VrVignette(this.scene);
     this.comfortVignette = new ComfortVignette(this.scene);
+    this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(
@@ -537,6 +541,8 @@ export class Game {
     this.vrVignette = null;
     this.comfortVignette?.dispose();
     this.comfortVignette = null;
+    this.healCrossFx?.dispose();
+    this.healCrossFx = null;
   }
 
   private updateVrUi(dt: number): void {
@@ -637,7 +643,12 @@ export class Game {
    * Онлайн это единственный источник правды — клиент только отображает.
    */
   private syncSelf(dt: number, self: PlayerState): void {
+    const prevHp = this.player.hp;
     this.player.setHp(self.hp);
+    // Резкий рост HP (зелье / лечащая магия) — зелёные крестики перед глазами.
+    if (self.hp - prevHp > 4 && prevHp > 0 && self.dead !== 1) {
+      this.healCrossFx?.burst(Math.min(1, (self.hp - prevHp) / 30));
+    }
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
@@ -770,6 +781,18 @@ export class Game {
     this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
     this.combat.onCast = (msg) => net.sendCast(msg);
+    this.combat.nearestAlly = (pos) => {
+      let best: { id: string; pos: Vector3 } | null = null;
+      let bd = 1.2;
+      for (const [id, av] of this.avatars) {
+        const d = Vector3.Distance(pos, av.position);
+        if (d < bd) {
+          bd = d;
+          best = { id, pos: av.position.clone() };
+        }
+      }
+      return best;
+    };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
     net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
@@ -1038,6 +1061,7 @@ export class Game {
     this.combat.onWeaponLanded = null;
     this.combat.onSoundEvent = null;
     this.combat.onCast = null;
+    this.combat.nearestAlly = null;
     this.player.netControlled = false;
     this.player.dead = false;
     this.progression.onSpendRequest = null;

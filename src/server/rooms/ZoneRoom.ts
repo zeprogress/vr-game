@@ -387,10 +387,20 @@ export class ZoneRoom extends Room<ZoneState> {
         const h = MAGIC.heal;
         if (this.elapsed - rt.lastCast < h.cooldown) return;
         if (charge < h.minCharge || p.mana < h.minMana) return;
+        // Цель: союзник в радиусе, иначе сам.
+        let target = p;
+        if (typeof msg.targetId === "string" && msg.targetId !== client.sessionId) {
+          const tp = this.state.players.get(msg.targetId);
+          const near =
+            tp &&
+            !tp.dead &&
+            Math.hypot(tp.head.x - p.head.x, tp.head.y - p.head.y, tp.head.z - p.head.z) < h.allyRange;
+          if (near) target = tp;
+        }
         const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
-        p.hp = Math.min(p.maxHp, p.hp + healAmountFor(p.int, charge));
+        target.hp = Math.min(target.maxHp, target.hp + healAmountFor(p.int, charge));
         return;
       }
 

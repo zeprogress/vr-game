@@ -170,6 +170,10 @@ export class CombatSystem {
   mana = 30;
   /** Игра шлёт серверу каст, когда посох выстрелил. */
   onCast: ((msg: CastMsg) => void) | null = null;
+  /** Ближайший союзник к точке (для лечащей магии). Задаёт Game онлайн. */
+  nearestAlly: ((pos: Vector3) => { id: string; pos: Vector3 } | null) | null = null;
+  private healTargetId: string | null = null;
+  private readonly healTargetPos = new Vector3();
   private charge = 0; // 0..1 накопленный заряд
   private castHooked = false; // вторая рука зацепилась за кристалл
   /** true — сейчас копится заряд: Game не перетирает предсказанную ману патчем. */
@@ -1631,6 +1635,7 @@ export class CombatSystem {
     this.charge = 0;
     this.castHooked = false;
     this.castMode = "";
+    this.healTargetId = null;
     this.castBuzzT = 0;
     this.chargeOrb?.setEnabled(false);
     this.chargeHalo?.setEnabled(false);
@@ -1727,20 +1732,22 @@ export class CombatSystem {
     const castPos = castNode?.getAbsolutePosition();
     const dist = castPos ? Vector3.Distance(castPos, this.castCrystalW) : 99;
     const crystalToHead = Vector3.Distance(this.castCrystalW, this.player.eyePosition);
+    // Союзник, к которому поднесён кристалл (для лечащей магии).
+    const ally = this.nearestAlly?.(this.castCrystalW) ?? null;
+    const allyClose =
+      ally && Vector3.Distance(this.castCrystalW, ally.pos) < MAGIC.heal.reach + 0.15;
+    const healGesture = crystalToHead < MAGIC.heal.reach || allyClose;
 
     const fb = MAGIC.firebolt;
 
     // --- зацеп ---
     if (!this.castHooked) {
-      if (
-        holdTrig &&
-        !this.prevHoldTrigger &&
-        crystalToHead < MAGIC.heal.reach &&
-        this.mana >= MAGIC.heal.minMana
-      ) {
-        // Кристалл у груди + курок держащей руки — лечение.
+      if (holdTrig && !this.prevHoldTrigger && healGesture && this.mana >= MAGIC.heal.minMana) {
+        // Кристалл у груди (своей или союзника) + курок держащей руки — лечение.
         this.castHooked = true;
         this.castMode = "heal";
+        this.healTargetId = allyClose ? ally!.id : null;
+        if (allyClose) this.healTargetPos.copyFrom(ally!.pos);
         this.haptic(holdHand, 0.4, 45);
         this.sfx.bowDraw();
       } else if (this.mana >= fb.minMana) {
@@ -1789,10 +1796,13 @@ export class CombatSystem {
       const mode = this.castMode;
 
       if (mode === "heal") {
+        const targetId = this.healTargetId;
+        const atPos = targetId ? this.healTargetPos.clone() : this.player.eyePosition.clone();
         this.resetCast();
         if (charge >= MAGIC.heal.minCharge) {
           this.onCast?.({
             spell: "heal",
+            targetId: targetId ?? undefined,
             charge,
             pull: 0,
             ox: this.castCrystalW.x,
@@ -1805,8 +1815,8 @@ export class CombatSystem {
           });
           this.haptic(holdHand, 0.7, 130);
           if (twoHand) this.haptic(staff.hand2 as Side, 0.5, 90);
-          this.spawnHealPulse(charge);
-          this.sfx.at(this.player.eyePosition, () => this.sfx.bowDraw());
+          this.spawnHealPulse(charge, atPos);
+          this.sfx.at(atPos, () => this.sfx.bowDraw());
         }
         this.prevCastTrigger = castTrig;
         this.prevHoldTrigger = holdTrig;
@@ -1899,10 +1909,17 @@ export class CombatSystem {
     this.chargeHalo.setEnabled(heal);
   }
 
-  private healPulses: { mesh: Mesh; age: number; life: number; peak: number }[] = [];
+  private healPulses: {
+    mesh: Mesh;
+    age: number;
+    life: number;
+    peak: number;
+    follow: boolean;
+    pos: Vector3;
+  }[] = [];
 
-  /** Мягкая зелёная волна на груди игрока при исцелении. */
-  private spawnHealPulse(charge: number): void {
+  /** Мягкая зелёная волна на груди цели при исцелении (себя или союзника). */
+  private spawnHealPulse(charge: number, at?: Vector3): void {
     const scene = this.player.camera.getScene();
     const mesh = MeshBuilder.CreateSphere("healPulse", { diameter: 1, segments: 12 }, scene);
     const mat = new StandardMaterial("healPulseMat", scene);
@@ -1914,8 +1931,11 @@ export class CombatSystem {
     mat.disableDepthWrite = true;
     mesh.material = mat;
     mesh.isPickable = false;
-    mesh.position.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.25, 0);
-    this.healPulses.push({ mesh, age: 0, life: 0.6, peak: 0.5 + charge * 0.7 });
+    const follow = !at;
+    const pos = (at ?? this.player.eyePosition).clone();
+    pos.y -= 0.25;
+    mesh.position.copyFrom(pos);
+    this.healPulses.push({ mesh, age: 0, life: 0.6, peak: 0.5 + charge * 0.7, follow, pos });
   }
 
   private updateHealPulses(dt: number): void {
@@ -1928,7 +1948,9 @@ export class CombatSystem {
         this.healPulses.splice(i, 1);
         continue;
       }
-      h.mesh.position.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.25, 0);
+      if (h.follow) {
+        h.mesh.position.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.25, 0);
+      }
       h.mesh.scaling.setAll(h.peak * (0.2 + 1.1 * f));
       (h.mesh.material as StandardMaterial).alpha = (1 - f) * 0.5;
     }
