@@ -184,6 +184,30 @@ export class CombatSystem {
   get holdsStaff(): boolean {
     return !!this.held1("staff");
   }
+  /** Текущий заряд 0..1 (0 — не кастуем) — для подсветки кристалла. */
+  get chargeLevel(): number {
+    return this.charge;
+  }
+  private readonly crystalW = new Vector3();
+  private readonly crystalCol = new Color3(0.78, 0.8, 0.9);
+  /** Мировая позиция кристалла посоха в руках, либо null. */
+  crystalWorldPos(): Vector3 | null {
+    const staff = this.held1("staff");
+    if (!staff) return null;
+    Vector3.TransformCoordinatesToRef(
+      new Vector3(...STAFF_CRYSTAL_LOCAL),
+      staff.mesh.getWorldMatrix(),
+      this.crystalW,
+    );
+    return this.crystalW;
+  }
+  /** Цвет свечения кристалла (по уровню посоха; в будущем — по самому посоху). */
+  crystalColor(): Color3 {
+    const staff = this.held1("staff");
+    if (staff?.tier === "gold") this.crystalCol.copyFromFloats(0.95, 0.78, 0.32);
+    else this.crystalCol.copyFromFloats(0.78, 0.8, 0.9);
+    return this.crystalCol;
+  }
   private prevCastTrigger = false;
   private prevHoldTrigger = false;
   /**
@@ -1872,6 +1896,8 @@ export class CombatSystem {
       mat.diffuseColor = new Color3(0.05, 0.02, 0);
       mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
+      mat.alpha = 0.9;
+      mat.disableDepthWrite = true;
       this.chargeOrb = MeshBuilder.CreateSphere("chargeOrb", { diameter: 1, segments: 8 }, scene);
       this.chargeOrb.material = mat;
       this.chargeOrb.isPickable = false;

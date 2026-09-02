@@ -55,8 +55,11 @@ export const FIREFLY = {
   driftSpeed: 0.45,
 } as const;
 
-/** Сколько источников света разом должен тянуть материал: солнце + небо + лампы. */
-export const LIGHT_BUDGET = FIREFLY.lamps + 2;
+/**
+ * Сколько источников света разом должен тянуть материал:
+ * солнце + небо + лампы светлячков + 2 магических (кристалл посоха, огнешар).
+ */
+export const LIGHT_BUDGET = FIREFLY.lamps + 2 + 2;
 
 interface Group {
   /** Куда стайка неспешно плывёт. */

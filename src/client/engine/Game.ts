@@ -19,7 +19,9 @@ import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
-import { HealCrossFx } from "../ui/HealCrossFx";
+import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
+import { SpellLights } from "../world/SpellLights";
+import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
@@ -103,6 +105,7 @@ export class Game {
   private vrVignette: VrVignette | null = null;
   private comfortVignette: ComfortVignette | null = null;
   private healCrossFx: HealCrossFx | null = null;
+  private readonly spellLights: SpellLights;
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -163,6 +166,7 @@ export class Game {
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.report = report;
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
+    this.spellLights = new SpellLights(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -268,6 +272,14 @@ export class Game {
       this.vrVignette?.tick(dt);
       this.updateComfortVignette(dt);
       this.healCrossFx?.update(dt);
+      this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
+      this.spellLights.setCrystal(
+        this.combat.crystalWorldPos(),
+        this.combat.crystalColor(),
+        this.combat.chargeLevel,
+      );
+      const fl = this.netMobs.fireLight();
+      this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0);
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();
@@ -647,7 +659,11 @@ export class Game {
   private syncSelf(dt: number, self: PlayerState): void {
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
+    // Повышение уровня тоже подливает HP — там крестики оранжевые.
+    const leveledUp = this.serverHp >= 0 && self.level > this.progression.level;
+    if (leveledUp) this.healCrossFx?.burst(1, CROSS_ORANGE);
     if (
+      !leveledUp &&
       this.serverHp > 0 &&
       self.hp - this.serverHp > 2 &&
       self.dead !== 1 &&

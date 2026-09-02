@@ -22,10 +22,13 @@ interface Cross {
 
 const WORLD_UP = new Vector3(0, 1, 0);
 
+export const CROSS_GREEN = new Color3(0.3, 1, 0.42); // лечение
+export const CROSS_ORANGE = new Color3(1, 0.62, 0.12); // повышение уровня
+
 /**
- * Зелёные крестики, пролетающие снизу вверх перед глазами после лечения
- * (зельем или магией). Позиционируются в мировых осях от направления взгляда —
- * одинаково в VR и на плоскости.
+ * Крестики, пролетающие снизу вверх перед глазами: зелёные при лечении,
+ * оранжевые при повышении уровня. Позиционируются в мировых осях от
+ * направления взгляда — одинаково в VR и на плоскости.
  */
 export class HealCrossFx {
   private readonly proto: Mesh;
@@ -39,14 +42,14 @@ export class HealCrossFx {
     scene: Scene,
     private readonly eye: EyeSource,
   ) {
-    const bar = MeshBuilder.CreateBox("healCrossH", { width: 0.11, height: 0.022, depth: 0.006 }, scene);
-    const post = MeshBuilder.CreateBox("healCrossV", { width: 0.022, height: 0.11, depth: 0.006 }, scene);
+    const bar = MeshBuilder.CreateBox("healCrossH", { width: 0.1, height: 0.014, depth: 0.005 }, scene);
+    const post = MeshBuilder.CreateBox("healCrossV", { width: 0.014, height: 0.1, depth: 0.005 }, scene);
     const merged = Mesh.MergeMeshes([bar, post], true, true);
     const m = merged ?? bar;
     if (!merged) post.dispose();
     m.name = "healCrossProto";
     const mat = new StandardMaterial("healCrossMat", scene);
-    mat.emissiveColor = new Color3(0.3, 1, 0.42);
+    mat.emissiveColor = CROSS_GREEN.clone();
     mat.diffuseColor = new Color3(0, 0, 0);
     mat.specularColor = new Color3(0, 0, 0);
     mat.disableLighting = true;
@@ -59,13 +62,15 @@ export class HealCrossFx {
     this.proto = m;
   }
 
-  /** Выпустить волну крестиков. strength 0..1 — сколько и как ярко. */
-  burst(strength = 1): void {
+  /** Выпустить волну крестиков. strength 0..1 — сколько; color — цвет. */
+  burst(strength = 1, color: Color3 = CROSS_GREEN): void {
     const s = Math.max(0.2, Math.min(1, strength));
     const n = 4 + Math.round(s * 5);
     for (let i = 0; i < n; i++) {
       const mesh = this.proto.clone(`healCross_${this.seq++}`);
-      mesh.material = this.proto.material!.clone(`healCrossMat_${this.seq}`);
+      const mat = this.proto.material!.clone(`healCrossMat_${this.seq}`) as StandardMaterial;
+      mat.emissiveColor.copyFrom(color);
+      mesh.material = mat;
       mesh.setEnabled(false);
       this.crosses.push({
         mesh,

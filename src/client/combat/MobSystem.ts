@@ -67,6 +67,12 @@ export class NetMobs {
   private readonly burstRingProto: Mesh;
   private readonly bursts: Burst[] = [];
   private burstSeq = 0;
+  /** Ночная подсветка от огнешара — позиция и сила. Обновляется в update(). */
+  private readonly fireLightPos = new Vector3();
+  private fireLightPower = 0;
+  fireLight(): { pos: Vector3; power: number } | null {
+    return this.fireLightPower > 0.01 ? { pos: this.fireLightPos, power: this.fireLightPower } : null;
+  }
 
   constructor(
     private readonly scene: Scene,
@@ -100,6 +106,8 @@ export class NetMobs {
     coreMat.emissiveColor = new Color3(1, 0.62, 0.18);
     coreMat.specularColor = new Color3(0, 0, 0);
     coreMat.disableLighting = true;
+    coreMat.alpha = 0.9;
+    coreMat.disableDepthWrite = true;
     this.boltCoreProto = MeshBuilder.CreateSphere("boltCore", { diameter: 1, segments: 8 }, scene);
     this.boltCoreProto.material = coreMat;
     this.boltCoreProto.isPickable = false;
@@ -354,6 +362,25 @@ export class NetMobs {
     }
 
     this.updateBursts(dt);
+
+    // Ночная подсветка от огнешара: приоритет у свежего взрыва, иначе — снаряд.
+    this.fireLightPower = 0;
+    for (const b of this.bursts) {
+      const f = b.age / b.life;
+      const p = b.peak * (1 - f) * 0.9;
+      if (p > this.fireLightPower) {
+        this.fireLightPower = p;
+        this.fireLightPos.copyFrom(b.pos);
+      }
+    }
+    if (this.fireLightPower < 1.5) {
+      for (const bo of this.bolts.values()) {
+        if (2 > this.fireLightPower) {
+          this.fireLightPower = 2;
+          this.fireLightPos.copyFrom(bo.pos);
+        }
+      }
+    }
   }
 
   detach(): void {
