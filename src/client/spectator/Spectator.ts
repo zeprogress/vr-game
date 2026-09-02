@@ -135,8 +135,11 @@ export class Spectator {
       minLights: preset.minLights,
       simpleSky: preset.simpleSky,
     });
-    // Aggressive: спектатору не нужны ни пикинг, ни точный bounding — только рендер.
-    this.scene.performancePriority = 2;
+    // Спектатору не нужны ни пикинг, ни точный bounding. Но при светлячках
+    // набор источников меняется с наступлением ночи, а Aggressive кэширует
+    // состояние между кадрами и не пересобирает шейдеры — земля и трава
+    // оставались тёмными. Поэтому med/high (со светлячками) — Intermediate.
+    this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
     this.scene.skipPointerDownPicking = true;
     this.scene.skipPointerUpPicking = true;
     this.scene.skipPointerMovePicking = true;

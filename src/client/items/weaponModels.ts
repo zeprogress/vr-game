@@ -6,6 +6,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 import { containerFor, recolorFlat } from "../world/models";
+import { LIGHT_BUDGET } from "../world/Fireflies";
 
 /**
  * Модели оружия из пака (Ultimate RPG Items Pack, Quaternius): только плоские
@@ -99,6 +100,9 @@ export function spawnWeaponModel(
         mat.emissiveColor = mat.diffuseColor.scale(0.13);
         mat.specularColor = new Color3(0.35, 0.35, 0.35);
         mat.specularPower = 48;
+        // recolorFlat ставит потолок в 2 источника (для статичных пропов).
+        // Оружие в руке должно ловить и свет светлячков — поднимаем.
+        mat.maxSimultaneousLights = LIGHT_BUDGET;
         done.add(mat);
       }
     }

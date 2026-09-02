@@ -9,6 +9,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { SHIELD } from "#shared/constants";
 import { weaponDef, type WeaponTier } from "#shared/items";
+import { LIGHT_BUDGET } from "../world/Fireflies";
 
 /**
  * Щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y
@@ -24,12 +25,14 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
   wood.diffuseColor = new Color3(0.2, 0.13, 0.08);
   wood.emissiveColor = new Color3(0.05, 0.03, 0.02);
   wood.specularColor = new Color3(0.1, 0.1, 0.1);
+  wood.maxSimultaneousLights = LIGHT_BUDGET;
 
   const iron = new StandardMaterial("shieldIron", scene);
   iron.diffuseColor = new Color3(0.62, 0.65, 0.7);
   iron.emissiveColor = new Color3(0.16, 0.17, 0.2);
   iron.specularColor = new Color3(0.7, 0.7, 0.7);
   iron.specularPower = 48;
+  iron.maxSimultaneousLights = LIGHT_BUDGET;
 
   const r = SHIELD.radius;
 
@@ -78,10 +81,12 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   face.emissiveColor = new Color3(tint[0] * 0.22, tint[1] * 0.2, tint[2] * 0.1);
   face.specularColor = new Color3(0.85, 0.8, 0.5);
   face.specularPower = 64;
+  face.maxSimultaneousLights = LIGHT_BUDGET;
 
   const grim = new StandardMaterial("shieldGrip", scene);
   grim.diffuseColor = new Color3(tint[0] * 0.45, tint[1] * 0.4, tint[2] * 0.25);
   grim.specularColor = new Color3(0.3, 0.3, 0.2);
+  grim.maxSimultaneousLights = LIGHT_BUDGET;
 
   const w = SHIELD.radius * 2; // ширина вверху
   const h = SHIELD.radius * 3.1; // высота: заметно вытянут
