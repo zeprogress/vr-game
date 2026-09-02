@@ -1447,7 +1447,10 @@ export class CombatSystem {
       if (this.castHooked) {
         // Накопление заряда, пока есть мана; мана расходуется на лету.
         if (this.mana > 0 && this.charge < 1) {
-          this.charge = clamp(this.charge + dt / fb.chargeTime, 0, 1);
+          // Заряд идёт рывком в начале и замедляется к максимуму: держать
+          // до отсечки долго и невыгодно (маны много, прибавки мало).
+          const rate = (1 / fb.chargeTime) * (2.2 - 1.9 * this.charge);
+          this.charge = clamp(this.charge + rate * dt, 0, 1);
           this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
         }
         this.showChargeOrb(staff.mesh);

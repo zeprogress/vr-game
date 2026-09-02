@@ -539,7 +539,12 @@ export class ZoneRoom extends Room<ZoneState> {
     this.onMessage(MSG.loadout, (client: Client, msg: OverridesMsg) => {
       const rt = this.rt.get(client.sessionId);
       if (!rt || !msg || typeof msg !== "object" || Array.isArray(msg)) return;
-      rt.overrides = sanitizeOverrides(msg);
+      const next = sanitizeOverrides(msg);
+      // Пустой блок НЕ затирает сохранённую подгонку: если у клиента
+      // почистился localStorage, «Сохранить» не должно обнулить настройки
+      // на сервере. Осознанный сброс идёт покнопочно (resetTarget).
+      if (Object.keys(next).length === 0 && Object.keys(rt.overrides).length > 0) return;
+      rt.overrides = next;
       this.persist(client);
       store.flush(); // правят редко — пишем на диск сразу
     });
