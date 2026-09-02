@@ -1203,6 +1203,7 @@ export class CombatSystem {
   private readonly staffAxisZ = new Vector3();
   private readonly staffRotM = Matrix.Identity();
   private readonly staffOtherW = new Vector3();
+  private readonly staffQ = new Quaternion();
 
   /**
    * Посох: всегда прикреплён к основной руке (позиция без запаздывания —
@@ -1222,9 +1223,18 @@ export class CombatSystem {
     if (!item.hand2) {
       item.mesh.rotationQuaternion = null;
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
-      item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
-      // Сдвиг вдоль древка, чтобы выбранный хват лёг в кисть.
-      item.mesh.translate(new Vector3(0, 1, 0), -(gyPrimary - STAFF_GRIP_LOW), Space.LOCAL);
+      // Хват (local y=gyPrimary) должен лечь в t.pos: сдвигаем меш на
+      // повёрнутый вектор хвата. Явно, без mesh.translate — тот оставляет
+      // устаревший worldMatrix, и точка каста уезжала на пол-длины древка.
+      Quaternion.FromEulerAnglesToRef(t.rot[0], t.rot[1], t.rot[2], this.staffQ);
+      this.staffOtherW.set(0, gyPrimary * t.scale, 0);
+      this.staffOtherW.rotateByQuaternionToRef(this.staffQ, this.staffOtherW);
+      item.mesh.position.set(
+        t.pos[0] - this.staffOtherW.x,
+        t.pos[1] - this.staffOtherW.y,
+        t.pos[2] - this.staffOtherW.z,
+      );
+      item.mesh.computeWorldMatrix(true);
       return;
     }
 
@@ -1258,6 +1268,7 @@ export class CombatSystem {
       t.pos[1] + this.staffAxisZ.y,
       t.pos[2] + this.staffAxisZ.z,
     );
+    item.mesh.computeWorldMatrix(true);
   }
 
   private handAnchor(hand: Side): Node {
@@ -1650,7 +1661,8 @@ export class CombatSystem {
     const castTrig = !!castCtl?.inputSource.gamepad?.buttons[0]?.pressed;
     const castNode = castCtl?.grip ?? castCtl?.pointer;
 
-    const m = staff.mesh.getWorldMatrix();
+    // Форсируем — anchorStaff мог оставить кэш матрицы устаревшим на этот кадр.
+    const m = staff.mesh.computeWorldMatrix(true);
     Vector3.TransformCoordinatesToRef(new Vector3(...STAFF_CRYSTAL_LOCAL), m, this.castCrystalW);
     Vector3.TransformCoordinatesToRef(Vector3.ZeroReadOnly, m, this.castOriginW);
     const castPos = castNode?.getAbsolutePosition();
