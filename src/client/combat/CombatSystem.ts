@@ -74,6 +74,8 @@ export type ItemKind = "sword" | "bow" | "shield" | "staff";
 
 /** Оружие ближнего боя: меч и посох машутся и бьют одинаково (посох слабее). */
 const MELEE_KINDS = new Set<ItemKind>(["sword", "staff"]);
+/** Насколько близко кисть должна быть к точке хвата посоха, чтобы взять её второй рукой. */
+const STAFF_GRAB_RADIUS = 0.14;
 function isMelee(k: ItemKind): boolean {
   return MELEE_KINDS.has(k);
 }
@@ -732,7 +734,10 @@ export class CombatSystem {
     return Vector3.Distance(worldPos, low) <= Vector3.Distance(worldPos, high) ? "low" : "high";
   }
 
-  /** Свободная рука у посоха, который уже в другой руке — берём вторым хватом. */
+  /**
+   * Свободная рука прямо на свободном хвате посоха (не «где-то рядом», а в
+   * зоне самого хвата) — берём вторым хватом.
+   */
   private tryGrabStaffSecondHand(side: Side): boolean {
     const staff = this.items.find((i) => i.kind === "staff");
     if (!staff?.hand || staff.hand2 || staff.hand === side) return false;
@@ -742,14 +747,12 @@ export class CombatSystem {
     const m = staff.mesh.getWorldMatrix();
     const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
     const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
-    if (Math.min(Vector3.Distance(hp, low), Vector3.Distance(hp, high)) > COMBAT.equipReach) {
-      return false;
-    }
     const primaryGrip = staff.grip?.[staff.hand] ?? "low";
-    let want: "low" | "high" = Vector3.Distance(hp, low) < Vector3.Distance(hp, high) ? "low" : "high";
-    if (want === primaryGrip) want = primaryGrip === "low" ? "high" : "low"; // обе на один хват нельзя
+    // Берём только за СВОБОДНЫЙ хват и только если рука прямо на нём.
+    const freePt = primaryGrip === "low" ? high : low;
+    if (Vector3.Distance(hp, freePt) > STAFF_GRAB_RADIUS) return false;
     staff.hand2 = side;
-    staff.grip = { ...(staff.grip ?? {}), [side]: want };
+    staff.grip = { ...(staff.grip ?? {}), [side]: primaryGrip === "low" ? "high" : "low" };
     staff.mesh.rotationQuaternion = null;
     this.resetHand(side);
     this.haptic(side, 0.4, 50);
@@ -1199,61 +1202,62 @@ export class CombatSystem {
   private readonly staffAxisY = new Vector3();
   private readonly staffAxisZ = new Vector3();
   private readonly staffRotM = Matrix.Identity();
+  private readonly staffOtherW = new Vector3();
 
   /**
-   * Посох: одной рукой — поза из loadout со сдвигом вдоль древка под выбранный
-   * хват; двумя — древко встаёт по линии между кистями (нижняя рука — опора,
-   * задаёт позицию; обе — наклон; крутка — от основной руки).
+   * Посох: всегда прикреплён к основной руке (позиция без запаздывания —
+   * как меч). Одной рукой — поза из loadout со сдвигом вдоль древка под
+   * выбранный хват. Двумя — древко доворачивается по локальной оси так, чтобы
+   * смотреть на вторую кисть; выбранный хват основной руки лежит в кисти.
    */
   private anchorStaff(item: Item): void {
     const primary = item.hand as Side;
     const t = this.placement("staff", primary);
-    // Смещение вдоль древка: базовая поза — рука на нижнем хвате; за верхний
-    // держим — двигаем меш вниз на расстояние между хватами.
-    const shiftFor = (g: "low" | "high" | undefined): number =>
-      g === "high" ? -(STAFF_GRIP_HIGH - STAFF_GRIP_LOW) : 0;
+    const anchor = this.handAnchor(primary);
+    if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
+    item.mesh.scaling.setAll(t.scale);
+
+    const gyPrimary = (item.grip?.[primary] ?? "low") === "high" ? STAFF_GRIP_HIGH : STAFF_GRIP_LOW;
 
     if (!item.hand2) {
-      const anchor = this.handAnchor(primary);
-      if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
       item.mesh.rotationQuaternion = null;
-      item.mesh.scaling.setAll(t.scale);
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
       item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
-      item.mesh.translate(new Vector3(0, 1, 0), shiftFor(item.grip?.[primary]), Space.LOCAL);
+      // Сдвиг вдоль древка, чтобы выбранный хват лёг в кисть.
+      item.mesh.translate(new Vector3(0, 1, 0), -(gyPrimary - STAFF_GRIP_LOW), Space.LOCAL);
       return;
     }
 
-    // --- двуручный хват: в мире ---
-    const other = item.hand2 as Side;
-    const pA = this.controller(primary)?.grip?.getAbsolutePosition?.();
-    const pB = this.controller(other)?.grip?.getAbsolutePosition?.();
-    if (!pA || !pB) return;
-    const gPrimary = item.grip?.[primary] ?? "low";
-    const pLow = gPrimary === "low" ? pA : pB;
-    const pHigh = gPrimary === "low" ? pB : pA;
-
-    this.staffAxisY.copyFrom(pHigh).subtractInPlace(pLow);
+    // --- двуручный: доворот к второй кисти в осях родителя (руки) ---
+    const na = this.controller(primary)?.grip;
+    const nb = this.controller(item.hand2 as Side)?.grip;
+    if (!na || !nb) return;
+    na.computeWorldMatrix(true);
+    nb.computeWorldMatrix(true);
+    const parentInv = Matrix.Invert(anchor.getWorldMatrix());
+    // Направление на вторую кисть в локальных осях руки.
+    Vector3.TransformCoordinatesToRef(nb.absolutePosition, parentInv, this.staffOtherW);
+    const gPrimaryLow = (item.grip?.[primary] ?? "low") === "low";
+    // Ось +Y древка: от нижнего хвата к верхнему.
+    this.staffAxisY.copyFrom(this.staffOtherW);
+    if (!gPrimaryLow) this.staffAxisY.scaleInPlace(-1);
     if (this.staffAxisY.lengthSquared() < 1e-6) return;
     this.staffAxisY.normalize();
-    const ref =
-      (this.controller(primary)?.grip ?? this.controller(primary)?.pointer)?.getDirection(
-        new Vector3(0, 0, 1),
-      ) ?? new Vector3(0, 0, 1);
+    // Крутка вокруг древка следует за основной рукой (её локальная +Z).
+    const ref = Math.abs(this.staffAxisY.z) > 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1);
     Vector3.CrossToRef(ref, this.staffAxisY, this.staffAxisX);
-    if (this.staffAxisX.lengthSquared() < 1e-6) {
-      Vector3.CrossToRef(new Vector3(1, 0, 0), this.staffAxisY, this.staffAxisX);
-    }
     this.staffAxisX.normalize();
     Vector3.CrossToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ);
-
-    if (item.mesh.parent) item.mesh.parent = null;
-    item.mesh.scaling.setAll(t.scale);
     if (!item.mesh.rotationQuaternion) item.mesh.rotationQuaternion = new Quaternion();
     Matrix.FromXYZAxesToRef(this.staffAxisX, this.staffAxisY, this.staffAxisZ, this.staffRotM);
     Quaternion.FromRotationMatrixToRef(this.staffRotM, item.mesh.rotationQuaternion);
-    // Низ древка (local y=0) кладём в нижнюю кисть.
-    item.mesh.position.copyFrom(pLow);
+    // Хват основной руки (local y=gyPrimary) кладём в саму кисть.
+    this.staffAxisY.scaleToRef(-(gyPrimary * t.scale), this.staffAxisZ);
+    item.mesh.position.set(
+      t.pos[0] + this.staffAxisZ.x,
+      t.pos[1] + this.staffAxisZ.y,
+      t.pos[2] + this.staffAxisZ.z,
+    );
   }
 
   private handAnchor(hand: Side): Node {
@@ -1566,10 +1570,19 @@ export class CombatSystem {
     this.prevCastTrigger = false;
   }
 
-  /** Короткий луч от кристалла — куда уйдёт снаряд. Виден, пока копится заряд. */
-  private showAimRay(staffMesh: Mesh, dir: Vector3): void {
+  private readonly rayDirL = new Vector3();
+  private readonly rayAxisX = new Vector3();
+  private readonly rayAxisY = new Vector3();
+  private readonly rayRotM = Matrix.Identity();
+
+  /**
+   * Короткий луч от кристалла — куда уйдёт снаряд. Прикреплён к посоху и живёт
+   * в его локальных осях, поэтому не отстаёт от древка при движении.
+   */
+  private showAimRay(staff: Item, worldDir: Vector3): void {
+    const mesh = staff.mesh;
     if (!this.castRay) {
-      const mat = new StandardMaterial("castRayMat", staffMesh.getScene());
+      const mat = new StandardMaterial("castRayMat", mesh.getScene());
       mat.emissiveColor = new Color3(1, 0.5, 0.12);
       mat.diffuseColor = new Color3(0, 0, 0);
       mat.specularColor = new Color3(0, 0, 0);
@@ -1578,16 +1591,33 @@ export class CombatSystem {
       this.castRay = MeshBuilder.CreateBox(
         "castRay",
         { width: 0.016, height: 0.016, depth: 1 },
-        staffMesh.getScene(),
+        mesh.getScene(),
       );
       this.castRay.material = mat;
       this.castRay.isPickable = false;
     }
+    if (this.castRay.parent !== mesh) this.castRay.parent = mesh;
+    // Направление снаряда в локальные оси посоха.
+    Vector3.TransformNormalToRef(worldDir, Matrix.Invert(mesh.getWorldMatrix()), this.rayDirL);
+    if (this.rayDirL.lengthSquared() < 1e-6) return;
+    this.rayDirL.normalize();
+    const ref = Math.abs(this.rayDirL.y) > 0.9 ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0);
+    Vector3.CrossToRef(ref, this.rayDirL, this.rayAxisX);
+    this.rayAxisX.normalize();
+    Vector3.CrossToRef(this.rayDirL, this.rayAxisX, this.rayAxisY);
+    if (!this.castRay.rotationQuaternion) this.castRay.rotationQuaternion = new Quaternion();
+    Matrix.FromXYZAxesToRef(this.rayAxisX, this.rayAxisY, this.rayDirL, this.rayRotM);
+    Quaternion.FromRotationMatrixToRef(this.rayRotM, this.castRay.rotationQuaternion);
+
+    // Масштаб посоха в loadout = 1, поэтому локальные единицы = метры.
     const len = 0.45 + this.charge * 0.5;
-    const start = this.castCrystalW.add(dir.scale(0.06));
     this.castRay.scaling.set(1, 1, len);
-    this.castRay.position.copyFrom(start).addInPlace(dir.scale(len / 2));
-    this.castRay.lookAt(start.add(dir));
+    const off = 0.06 + len / 2;
+    this.castRay.position.set(
+      this.rayDirL.x * off,
+      STAFF_CRYSTAL_LOCAL[1] + this.rayDirL.y * off,
+      this.rayDirL.z * off,
+    );
     this.castRay.setEnabled(true);
   }
 
@@ -1659,7 +1689,7 @@ export class CombatSystem {
         this.castMode === "pull" && castPos
           ? this.castCrystalW.subtract(castPos)
           : this.castCrystalW.subtract(this.castOriginW);
-      if (aim.lengthSquared() > 1e-6) this.showAimRay(staff.mesh, aim.normalize());
+      if (aim.lengthSquared() > 1e-6) this.showAimRay(staff, aim.normalize());
       // Пульсирующая вибрация в руке с посохом — тем чаще/сильнее, чем больше заряд.
       this.castBuzzT += dt;
       if (this.castBuzzT >= 0.08) {
