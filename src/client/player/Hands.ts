@@ -177,9 +177,22 @@ export class Hands {
         }
       }
 
+      // glTF из FBX иногда приходит с обратным обходом треугольников — тогда
+      // ComputeNormals смотрит ВНУТРЬ, и свет на руке кажется идущим снизу.
+      // Сверяем с нормалями из файла и при расхождении переворачиваем.
+      const fileN = mesh.getVerticesData(VertexBuffer.NormalKind) as Float32Array | null;
+      let flipN = false;
+      if (fileN && fileN.length === rest.length) {
+        const probe = new Float32Array(rest.length);
+        VertexData.ComputeNormals(rest, indices, probe);
+        let dot = 0;
+        for (let i = 0; i < fileN.length; i++) dot += fileN[i] * probe[i];
+        flipN = dot < 0;
+      }
       const normalsFor = (pos: Float32Array, idx: number[]): Float32Array => {
         const out = new Float32Array(pos.length);
         VertexData.ComputeNormals(pos, idx, out);
+        if (flipN) for (let i = 0; i < out.length; i++) out[i] = -out[i];
         return out;
       };
       // Зеркало по X + разворот обхода треугольников (иначе вывернутся наружу).
