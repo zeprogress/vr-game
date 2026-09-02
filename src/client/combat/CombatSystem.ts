@@ -1409,13 +1409,41 @@ export class CombatSystem {
   private readonly castCrystalW = new Vector3();
   private readonly castOriginW = new Vector3();
 
+  private castRay: Mesh | null = null;
+
   private resetCast(): void {
     this.charge = 0;
     this.castHooked = false;
     this.castMode = "";
     this.castBuzzT = 0;
     this.chargeOrb?.setEnabled(false);
+    this.castRay?.setEnabled(false);
     this.prevCastTrigger = false;
+  }
+
+  /** Короткий луч от кристалла — куда уйдёт снаряд. Виден, пока копится заряд. */
+  private showAimRay(staffMesh: Mesh, dir: Vector3): void {
+    if (!this.castRay) {
+      const mat = new StandardMaterial("castRayMat", staffMesh.getScene());
+      mat.emissiveColor = new Color3(1, 0.5, 0.12);
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.alpha = 0.9;
+      this.castRay = MeshBuilder.CreateBox(
+        "castRay",
+        { width: 0.016, height: 0.016, depth: 1 },
+        staffMesh.getScene(),
+      );
+      this.castRay.material = mat;
+      this.castRay.isPickable = false;
+    }
+    const len = 0.45 + this.charge * 0.5;
+    const start = this.castCrystalW.add(dir.scale(0.06));
+    this.castRay.scaling.set(1, 1, len);
+    this.castRay.position.copyFrom(start).addInPlace(dir.scale(len / 2));
+    this.castRay.lookAt(start.add(dir));
+    this.castRay.setEnabled(true);
   }
 
   /**
@@ -1476,6 +1504,12 @@ export class CombatSystem {
         this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
       }
       this.showChargeOrb(staff.mesh);
+      // Луч-прицел: куда уйдёт снаряд, если отпустить сейчас.
+      const aim =
+        this.castMode === "pull" && castPos
+          ? this.castCrystalW.subtract(castPos)
+          : this.castCrystalW.subtract(this.castOriginW);
+      if (aim.lengthSquared() > 1e-6) this.showAimRay(staff.mesh, aim.normalize());
       // Пульсирующая вибрация в руке с посохом — тем чаще/сильнее, чем больше заряд.
       this.castBuzzT += dt;
       if (this.castBuzzT >= 0.08) {
@@ -1510,8 +1544,10 @@ export class CombatSystem {
           dz: dir.z,
           hand: holdHand,
         });
-        this.haptic(holdHand, 0.95, 90); // отдача
-        if (mode === "pull") this.haptic(castHand, 0.55, 55);
+        // Отдача выстрела: резкий толчок в руке с посохом + короткий добой.
+        this.haptic(holdHand, 1, 150);
+        setTimeout(() => this.haptic(holdHand, 0.7, 90), 55);
+        if (mode === "pull") this.haptic(castHand, 0.6, 90);
         this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
         this.emitSound("bow", origin);
       }

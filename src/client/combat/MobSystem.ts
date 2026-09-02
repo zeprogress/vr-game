@@ -119,25 +119,27 @@ export class NetMobs {
     this.boltGlowProto.isPickable = false;
     this.boltGlowProto.setEnabled(false);
 
-    // Вспышка попадания: бело-жёлтое ядро + оранжевое расходящееся кольцо.
+    // Вспышка попадания: плотное бело-жёлтое ядро + оранжевое расходящееся
+    // кольцо. Обычное альфа-смешивание (не аддитивное) — иначе на светлом небе
+    // огонь не виден.
     const flashMat = new StandardMaterial("burstFlashMat", scene);
-    flashMat.emissiveColor = new Color3(1, 0.85, 0.5);
+    flashMat.emissiveColor = new Color3(1, 0.93, 0.78);
     flashMat.diffuseColor = new Color3(0, 0, 0);
     flashMat.specularColor = new Color3(0, 0, 0);
     flashMat.disableLighting = true;
-    flashMat.alphaMode = Constants.ALPHA_ADD;
+    flashMat.alphaMode = Constants.ALPHA_COMBINE;
     flashMat.disableDepthWrite = true;
-    this.burstFlashProto = MeshBuilder.CreateSphere("burstFlash", { diameter: 1, segments: 8 }, scene);
+    this.burstFlashProto = MeshBuilder.CreateSphere("burstFlash", { diameter: 1, segments: 10 }, scene);
     this.burstFlashProto.material = flashMat;
     this.burstFlashProto.isPickable = false;
     this.burstFlashProto.setEnabled(false);
 
     const ringMat = new StandardMaterial("burstRingMat", scene);
-    ringMat.emissiveColor = new Color3(1, 0.4, 0.1);
+    ringMat.emissiveColor = new Color3(1, 0.42, 0.1);
     ringMat.diffuseColor = new Color3(0, 0, 0);
     ringMat.specularColor = new Color3(0, 0, 0);
     ringMat.disableLighting = true;
-    ringMat.alphaMode = Constants.ALPHA_ADD;
+    ringMat.alphaMode = Constants.ALPHA_COMBINE;
     ringMat.disableDepthWrite = true;
     ringMat.backFaceCulling = false;
     this.burstRingProto = MeshBuilder.CreatePlane("burstRing", { size: 1 }, scene);
@@ -168,8 +170,9 @@ export class NetMobs {
       ring,
       pos: pos.clone(),
       age: 0,
-      life: hit ? 0.4 : 0.24,
-      peak: radius * (hit ? 5.2 : 2.2),
+      life: hit ? 0.5 : 0.28,
+      // Даже мелкий быстрый снаряд бьёт заметно; крупный — огненный шар.
+      peak: Math.max(radius, 0.28) * (hit ? 5 : 2.4),
     });
     if (hit) this.sfx.at({ x: pos.x, y: pos.y, z: pos.z }, () => this.sfx.fireBurst(undefined, radius / 0.62));
   }
@@ -187,14 +190,14 @@ export class NetMobs {
         continue;
       }
       const fade = 1 - f;
-      // Ядро: вспыхивает и быстро сжимается-гаснет.
-      const flashScale = b.peak * 0.5 * (0.4 + 0.6 * Math.min(1, f * 3)) * (0.4 + fade);
+      // Ядро: мгновенно раздувается, держится, затем гаснет.
+      const flashScale = b.peak * (0.55 + 0.45 * Math.min(1, f * 4)) * (0.55 + 0.45 * fade);
       b.flash.scaling.setAll(flashScale);
-      (b.flash.material as StandardMaterial).alpha = fade * fade;
+      (b.flash.material as StandardMaterial).alpha = Math.min(1, fade * 1.7);
       // Кольцо: расходится наружу и истончается.
-      const ringScale = b.peak * (0.3 + 1.5 * f);
+      const ringScale = b.peak * (0.4 + 1.9 * f);
       b.ring.scaling.setAll(ringScale);
-      (b.ring.material as StandardMaterial).alpha = fade * 0.85;
+      (b.ring.material as StandardMaterial).alpha = fade * 0.8;
       if (cam) b.ring.lookAt(cam.globalPosition);
     }
   }
@@ -329,7 +332,7 @@ export class NetMobs {
         let hit = false;
         for (const m of this.mobs.values()) {
           const c = m.center?.();
-          if (c && Vector3.Distance(c, bo.pos) < bo.r + 1.1) {
+          if (c && Vector3.Distance(c, bo.pos) < bo.r + 1.7) {
             hit = true;
             break;
           }
@@ -337,7 +340,7 @@ export class NetMobs {
         if (!hit) {
           for (const d of this.dummies.values()) {
             const p = d.root.position;
-            if (Vector3.Distance(new Vector3(p.x, p.y + 0.9, p.z), bo.pos) < bo.r + 1) {
+            if (Vector3.Distance(new Vector3(p.x, p.y + 0.9, p.z), bo.pos) < bo.r + 1.5) {
               hit = true;
               break;
             }
