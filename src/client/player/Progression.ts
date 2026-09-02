@@ -1,5 +1,5 @@
 import { PROGRESSION } from "#shared/constants";
-import { fireboltDamage, maxManaFor, manaRegenFor } from "#shared/magic";
+import { fireboltDamage, healAmountFor, maxManaFor, manaRegenFor } from "#shared/magic";
 import {
   arrowDamageFor,
   arrowSpeedBonusFor,
@@ -157,6 +157,11 @@ export class Progression {
   /** Урон огнешара посоха при полном заряде (от интеллекта). */
   get fireboltMax(): number {
     return fireboltDamage(this.stats.int, 1);
+  }
+
+  /** Исцеление посохом при полном заряде (от интеллекта). */
+  get healMax(): number {
+    return healAmountFor(this.stats.int, 1);
   }
 
   // ---- сохранение ----

@@ -261,6 +261,8 @@ export interface HitMobMsg {
 }
 
 export interface CastMsg {
+  /** Заклинание. По умолчанию — огнешар. */
+  spell?: "bolt" | "heal";
   /** Заряд 0..1 (дольше держал — больше). */
   charge: number;
   /** «Натяг» второй руки 0..1 (дальше от кристалла — быстрее снаряд). */

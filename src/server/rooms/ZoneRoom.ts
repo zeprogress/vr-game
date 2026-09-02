@@ -94,6 +94,7 @@ import {
   fireboltSpeed,
   fireboltRadius,
   fireboltHitRadius,
+  healAmountFor,
 } from "#shared/magic";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
@@ -377,10 +378,23 @@ export class ZoneRoom extends Room<ZoneState> {
       // Держит ли посох (любой рукой) — иначе каст невозможен.
       const holds = p.leftCls === "staff" || p.rightCls === "staff";
       if (!holds) return;
-      if (this.elapsed - rt.lastCast < MAGIC.firebolt.cooldown) return;
 
       const charge = Math.max(0, Math.min(1, num(msg.charge, 0)));
       const pull = Math.max(0, Math.min(1, num(msg.pull, 0)));
+
+      // --- лечение (небоевое) ---
+      if (msg.spell === "heal") {
+        const h = MAGIC.heal;
+        if (this.elapsed - rt.lastCast < h.cooldown) return;
+        if (charge < h.minCharge || p.mana < h.minMana) return;
+        const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
+        p.mana = Math.max(0, p.mana - hcost);
+        rt.lastCast = this.elapsed;
+        p.hp = Math.min(p.maxHp, p.hp + healAmountFor(p.int, charge));
+        return;
+      }
+
+      if (this.elapsed - rt.lastCast < MAGIC.firebolt.cooldown) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
 

@@ -182,8 +182,11 @@ export class CombatSystem {
   }
   private prevCastTrigger = false;
   private prevHoldTrigger = false;
-  /** "pull" — тянем второй рукой от кристалла; "solo" — курком руки с посохом. */
-  private castMode: "" | "pull" | "solo" = "";
+  /**
+   * "pull" — тянем второй рукой от кристалла; "solo" — курком руки с посохом;
+   * "heal" — кристалл у груди, курок держащей руки (лечение).
+   */
+  private castMode: "" | "pull" | "solo" | "heal" = "";
   private castBuzzT = 0;
   private chargeOrb: Mesh | null = null;
 
@@ -614,6 +617,7 @@ export class CombatSystem {
     this.trackHandMotion(dt);
     this.updateString();
     this.updateFlights(dt);
+    this.updateHealPulses(dt);
 
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       if (!this.arrows[i].update(dt, this.arrowCtx)) {
@@ -1687,41 +1691,58 @@ export class CombatSystem {
     Vector3.TransformCoordinatesToRef(Vector3.ZeroReadOnly, m, this.castOriginW);
     const castPos = castNode?.getAbsolutePosition();
     const dist = castPos ? Vector3.Distance(castPos, this.castCrystalW) : 99;
+    const crystalToHead = Vector3.Distance(this.castCrystalW, this.player.eyePosition);
 
     const fb = MAGIC.firebolt;
 
     // --- зацеп ---
-    if (!this.castHooked && this.mana >= fb.minMana) {
-      if (castNode && castTrig && !this.prevCastTrigger && dist < 0.28) {
+    if (!this.castHooked) {
+      if (
+        holdTrig &&
+        !this.prevHoldTrigger &&
+        crystalToHead < MAGIC.heal.reach &&
+        this.mana >= MAGIC.heal.minMana
+      ) {
+        // Кристалл у груди + курок держащей руки — лечение.
         this.castHooked = true;
-        this.castMode = "pull";
-        this.haptic(castHand, 0.4, 45);
-        this.sfx.bowDraw();
-      } else if (holdTrig && !this.prevHoldTrigger) {
-        this.castHooked = true;
-        this.castMode = "solo";
+        this.castMode = "heal";
         this.haptic(holdHand, 0.4, 45);
         this.sfx.bowDraw();
+      } else if (this.mana >= fb.minMana) {
+        if (castNode && castTrig && !this.prevCastTrigger && dist < 0.28) {
+          this.castHooked = true;
+          this.castMode = "pull";
+          this.haptic(castHand, 0.4, 45);
+          this.sfx.bowDraw();
+        } else if (holdTrig && !this.prevHoldTrigger) {
+          this.castHooked = true;
+          this.castMode = "solo";
+          this.haptic(holdHand, 0.4, 45);
+          this.sfx.bowDraw();
+        }
       }
     }
 
+    const spec = this.castMode === "heal" ? MAGIC.heal : fb;
     const activeTrig = this.castMode === "pull" ? castTrig : holdTrig;
 
     if (this.castHooked && activeTrig) {
       // Накопление заряда, пока есть мана; мана расходуется на лету.
       if (this.mana > 0 && this.charge < 1) {
         // Ровнее по времени: полный заряд реально за ~chargeTime, без рывка.
-        const rate = (1 / fb.chargeTime) * (1.5 - 0.5 * this.charge);
+        const rate = (1 / spec.chargeTime) * (1.5 - 0.5 * this.charge);
         this.charge = clamp(this.charge + rate * dt, 0, 1);
-        this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+        this.mana = Math.max(0, this.mana - spec.manaPerSec * dt);
       }
       this.showChargeOrb(staff.mesh);
-      // Луч-прицел: куда уйдёт снаряд, если отпустить сейчас.
-      const aim =
-        this.castMode === "pull" && castPos
-          ? this.castCrystalW.subtract(castPos)
-          : this.castCrystalW.subtract(this.castOriginW);
-      if (aim.lengthSquared() > 1e-6) this.showAimRay(staff, aim.normalize());
+      // Луч-прицел — только у боевого каста (у лечения направления нет).
+      if (this.castMode !== "heal") {
+        const aim =
+          this.castMode === "pull" && castPos
+            ? this.castCrystalW.subtract(castPos)
+            : this.castCrystalW.subtract(this.castOriginW);
+        if (aim.lengthSquared() > 1e-6) this.showAimRay(staff, aim.normalize());
+      }
       // Пульсирующая вибрация в руке с посохом — тем чаще/сильнее, чем больше заряд.
       this.castBuzzT += dt;
       if (this.castBuzzT >= 0.08) {
@@ -1731,6 +1752,32 @@ export class CombatSystem {
     } else if (this.castHooked) {
       const charge = this.charge;
       const mode = this.castMode;
+
+      if (mode === "heal") {
+        this.resetCast();
+        if (charge >= MAGIC.heal.minCharge) {
+          this.onCast?.({
+            spell: "heal",
+            charge,
+            pull: 0,
+            ox: this.castCrystalW.x,
+            oy: this.castCrystalW.y,
+            oz: this.castCrystalW.z,
+            dx: 0,
+            dy: 1,
+            dz: 0,
+            hand: holdHand,
+          });
+          this.haptic(holdHand, 0.7, 130);
+          if (twoHand) this.haptic(staff.hand2 as Side, 0.5, 90);
+          this.spawnHealPulse(charge);
+          this.sfx.at(this.player.eyePosition, () => this.sfx.bowDraw());
+        }
+        this.prevCastTrigger = castTrig;
+        this.prevHoldTrigger = holdTrig;
+        return;
+      }
+
       let dir: Vector3;
       let pull: number;
       if (mode === "pull" && castPos) {
@@ -1787,10 +1834,51 @@ export class CombatSystem {
     }
     this.chargeOrb.parent = staffMesh;
     this.chargeOrb.position.set(...STAFF_CRYSTAL_LOCAL);
+    // Лечение — зелёное свечение, огнешар — оранжевое.
+    (this.chargeOrb.material as StandardMaterial).emissiveColor.copyFromFloats(
+      this.castMode === "heal" ? 0.3 : 1,
+      this.castMode === "heal" ? 1 : 0.55,
+      this.castMode === "heal" ? 0.45 : 0.15,
+    );
     const r = 0.04 + this.charge * 0.22;
     const flick = 0.9 + 0.1 * Math.sin(performance.now() * 0.04);
     this.chargeOrb.scaling.setAll(r * flick);
     this.chargeOrb.setEnabled(true);
+  }
+
+  private healPulses: { mesh: Mesh; age: number; life: number; peak: number }[] = [];
+
+  /** Мягкая зелёная волна на груди игрока при исцелении. */
+  private spawnHealPulse(charge: number): void {
+    const scene = this.player.camera.getScene();
+    const mesh = MeshBuilder.CreateSphere("healPulse", { diameter: 1, segments: 12 }, scene);
+    const mat = new StandardMaterial("healPulseMat", scene);
+    mat.emissiveColor = new Color3(0.35, 1, 0.5);
+    mat.diffuseColor = new Color3(0, 0, 0);
+    mat.specularColor = new Color3(0, 0, 0);
+    mat.disableLighting = true;
+    mat.alpha = 0.5; // StandardMaterial по умолчанию — обычное альфа-смешивание
+    mat.disableDepthWrite = true;
+    mesh.material = mat;
+    mesh.isPickable = false;
+    mesh.position.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.25, 0);
+    this.healPulses.push({ mesh, age: 0, life: 0.6, peak: 0.5 + charge * 0.7 });
+  }
+
+  private updateHealPulses(dt: number): void {
+    for (let i = this.healPulses.length - 1; i >= 0; i--) {
+      const h = this.healPulses[i];
+      h.age += dt;
+      const f = h.age / h.life;
+      if (f >= 1) {
+        h.mesh.dispose(false, true);
+        this.healPulses.splice(i, 1);
+        continue;
+      }
+      h.mesh.position.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.25, 0);
+      h.mesh.scaling.setAll(h.peak * (0.2 + 1.1 * f));
+      (h.mesh.material as StandardMaterial).alpha = (1 - f) * 0.5;
+    }
   }
 
   private readonly nockLocal = new Vector3();

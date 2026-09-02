@@ -41,6 +41,24 @@ export const MAGIC = {
     /** Между кастами. */
     cooldown: 0.9,
   },
+
+  /**
+   * Лечение — небоевое. Подносишь кристалл к груди (жест: кристалл близко к
+   * голове), держишь курок держащей рукой — копится, мана убывает. Отпустил —
+   * мгновенное исцеление тем сильнее, чем дольше держал.
+   */
+  heal: {
+    manaPerSec: 16,
+    chargeTime: 1.5,
+    minCharge: 0.15,
+    minMana: 8,
+    baseHeal: 8,
+    healPerCharge: 34, // полный ≈ 42 HP при интеллекте 1
+    intScale: 0.04,
+    cooldown: 1.5,
+    /** Кристалл ближе этого к голове — жест считается лечением, не огнешаром. */
+    reach: 0.5,
+  },
 } as const;
 
 export function maxManaFor(int: number): number {
@@ -56,6 +74,14 @@ export function fireboltDamage(int: number, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.firebolt.baseDamage + c * MAGIC.firebolt.damagePerCharge;
   const scale = 1 + (int - PROGRESSION.startStat) * MAGIC.firebolt.intScale;
+  return base * scale;
+}
+
+/** Сколько HP вернёт лечение: заряд 0..1, интеллект. */
+export function healAmountFor(int: number, charge: number): number {
+  const c = Math.max(0, Math.min(1, charge));
+  const base = MAGIC.heal.baseHeal + c * MAGIC.heal.healPerCharge;
+  const scale = 1 + (int - PROGRESSION.startStat) * MAGIC.heal.intScale;
   return base * scale;
 }
 
