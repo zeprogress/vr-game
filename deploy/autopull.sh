@@ -12,7 +12,12 @@ cd "$APPDIR"
 # не голодал. НЕ idle-класс (на busy-боксе сборка могла зависнуть навсегда).
 LOW="nice -n 10"
 
-sudo -u vrgame git fetch --quiet origin main
+# fetch может упасть по авторизации (токен в remote-URL протух / кэш истёк).
+# Явно об этом говорим, а не глотаем в общем "expected flush after ref listing".
+if ! sudo -u vrgame git fetch --quiet origin main; then
+  echo "autopull: git fetch не смог — проверь токен в 'git remote -v' (github_pat_...)"
+  exit 1
+fi
 REMOTE=$(sudo -u vrgame git rev-parse origin/main)
 BUILT=$(cat dist/.built 2>/dev/null || echo none)
 
@@ -21,6 +26,7 @@ if [ "$BUILT" = "$REMOTE" ] && [ "$(sudo -u vrgame git rev-parse HEAD)" = "$REMO
 fi
 
 echo "autopull: сборка $REMOTE (последняя успешная: $BUILT)"
+free -h | sed 's/^/autopull: /' # видно, если сборка потом упадёт по памяти
 sudo -u vrgame git merge --ff-only origin/main || sudo -u vrgame git reset --hard "$REMOTE"
 sudo -u vrgame $LOW npm ci
 sudo -u vrgame rm -rf dist.new
