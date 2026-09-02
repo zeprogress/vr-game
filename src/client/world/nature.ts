@@ -142,7 +142,11 @@ export async function loadGrass(
     mat.alphaCutOff = 0.3;
   }
   mat.diffuseColor = new Color3(0.5, 0.72, 0.38);
-  mat.emissiveColor = new Color3(0.11, 0.2, 0.09);
+  // Собственная яркость травы (вертикальные травинки ловят меньше света сверху).
+  // Днём — полная, ночью гаснет почти в ноль: иначе трава «светится» в темноте
+  // и лужицы света от светлячков в ней тонут. Модулируется в тике ниже.
+  const emiDay = new Color3(0.11, 0.2, 0.09);
+  mat.emissiveColor = emiDay.clone();
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
   mat.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
@@ -223,6 +227,10 @@ export async function loadGrass(
   return (dt: number, daylight: number) => {
     wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
     wind.time += dt * WIND.speed * Math.max(wind.scale, 0.05);
+    // Гасим собственную яркость к ночи (небольшой остаток — чтобы совсем
+    // не чернела там, где нет светлячков).
+    const k = 0.1 + 0.9 * daylight;
+    mat.emissiveColor.copyFromFloats(emiDay.r * k, emiDay.g * k, emiDay.b * k);
   };
 }
 
