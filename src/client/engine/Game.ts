@@ -642,13 +642,21 @@ export class Game {
    * Своё состояние с сервера: здоровье, смерть, прокачка.
    * Онлайн это единственный источник правды — клиент только отображает.
    */
+  private serverHp = -1;
+
   private syncSelf(dt: number, self: PlayerState): void {
-    const prevHp = this.player.hp;
-    this.player.setHp(self.hp);
-    // Резкий рост HP (зелье / лечащая магия) — зелёные крестики перед глазами.
-    if (self.hp - prevHp > 4 && prevHp > 0 && self.dead !== 1) {
-      this.healCrossFx?.burst(Math.min(1, (self.hp - prevHp) / 30));
+    // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
+    // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
+    if (
+      this.serverHp > 0 &&
+      self.hp - this.serverHp > 3 &&
+      self.dead !== 1 &&
+      !this.player.dead
+    ) {
+      this.healCrossFx?.burst(Math.min(1, (self.hp - this.serverHp) / 30));
     }
+    this.serverHp = self.hp;
+    this.player.setHp(self.hp);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
