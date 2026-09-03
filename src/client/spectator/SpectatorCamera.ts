@@ -5,6 +5,11 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { SPECTATE } from "#shared/constants";
 import { CINE_PATHS, ROTATION, samplePath } from "./cine";
 
+/** Камера-погоня за ботом («из глаз бота»): сзади-сверху под 45°. */
+const BOT_CAM_BACK = 4.5; // м позади бота (по горизонтали)
+const BOT_CAM_LEAD = 1.5; // на сколько цель взгляда впереди бота
+const BOT_CAM_AIM_Y = 0.6; // высота цели над точкой корпуса бота
+
 /** Кого показывает камера сейчас. */
 type Shot =
   | { kind: "overview" }
@@ -357,21 +362,22 @@ export class SpectatorCamera {
       }
       case "eyePlayer": {
         if (s.id.startsWith("bot:")) {
-          // Бот — не строго «из глаз», а чуть сзади-сверху: видно самого
-          // персонажа и куда он идёт. (eyePos у бота — на уровне пояса модели,
-          // поэтому подъём щедрый.)
+          // Бот — не «из глаз», а погоня сзади-сверху под 45°: в кадре и сам
+          // персонаж, и дорога перед ним. Высоту считаем из дистанции, чтобы
+          // угол оставался ровно 45° при любой правке BOT_CAM_*.
           const fx = this.eyeFwd.x;
           const fz = this.eyeFwd.z;
           const fl = Math.hypot(fx, fz) || 1;
+          const up = BOT_CAM_AIM_Y + BOT_CAM_BACK + BOT_CAM_LEAD;
           pos.set(
-            this.eyePos.x - (fx / fl) * 2.6,
-            this.eyePos.y + 2.3,
-            this.eyePos.z - (fz / fl) * 2.6,
+            this.eyePos.x - (fx / fl) * BOT_CAM_BACK,
+            this.eyePos.y + up,
+            this.eyePos.z - (fz / fl) * BOT_CAM_BACK,
           );
           tgt.set(
-            this.eyePos.x + (fx / fl) * 16,
-            this.eyePos.y + 1.6,
-            this.eyePos.z + (fz / fl) * 16,
+            this.eyePos.x + (fx / fl) * BOT_CAM_LEAD,
+            this.eyePos.y + BOT_CAM_AIM_Y,
+            this.eyePos.z + (fz / fl) * BOT_CAM_LEAD,
           );
           return;
         }

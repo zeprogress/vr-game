@@ -60,7 +60,7 @@ for (const key of BOT_SKIN_MODELS) {
     const h = hiY - loY;
     const clips = new Set(inst.animationGroups.map((g) => shortName(g.name)));
     const missing = want.filter((w) => !clips.has(w));
-    const SC = 1.04;
+    const SC = 0.78;
     const skinFace = meshes
       .filter((m) => /^(skin|face)/i.test(m.material?.name ?? ""))
       .map((m) => {

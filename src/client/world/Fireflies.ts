@@ -315,7 +315,7 @@ function clamp01(v: number): number {
  * расстояния и набирается многими остановками — иначе у края видно кольцо
  * или резкий обрыв.
  */
-function radialGlow(scene: Scene): DynamicTexture {
+export function radialGlow(scene: Scene): DynamicTexture {
   const S = 256;
   const tex = new DynamicTexture("fireflyGlow", { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
