@@ -21,7 +21,6 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { SpellLights } from "../world/SpellLights";
-import { BotLights } from "../world/BotLights";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
@@ -107,7 +106,7 @@ export class Game {
   private comfortVignette: ComfortVignette | null = null;
   private healCrossFx: HealCrossFx | null = null;
   private readonly spellLights: SpellLights;
-  private readonly botLights: BotLights;
+  private readonly botLights: import("../world/BotLights").BotLights;
   private readonly _botPos: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
@@ -146,6 +145,7 @@ export class Game {
     const zone = buildZone(this.scene);
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
+    this.botLights = zone.botLights;
 
     this.player = new PlayerController(this.scene, this.progression);
     this.player.setObstacles(zone.obstacles);
@@ -170,7 +170,6 @@ export class Game {
     this.report = report;
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.spellLights = new SpellLights(this.scene);
-    this.botLights = new BotLights(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;

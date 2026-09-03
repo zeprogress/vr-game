@@ -9,7 +9,6 @@ import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
 import { buildZone, type ZoneQuality } from "../world/Zone";
-import { BotLights } from "../world/BotLights";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -76,7 +75,7 @@ export class Spectator {
     net?: { hour: number; auto: number } | null,
   ) => void;
   private readonly groundHeight: (x: number, z: number) => number;
-  private readonly botLights: BotLights;
+  private readonly botLights: import("../world/BotLights").BotLights;
   private readonly _botPos: Vector3[] = [];
 
   private readonly avatars = new Map<string, RemoteAvatar>();
@@ -161,7 +160,7 @@ export class Spectator {
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
-    this.botLights = new BotLights(this.scene);
+    this.botLights = zone.botLights;
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 

@@ -303,7 +303,8 @@ export function recolorCharacter(root: TransformNode): void {
       flat.diffuseColor = base;
       flat.emissiveColor = base.scale(0.1);
       flat.specularColor = new Color3(0.04, 0.04, 0.04);
-      flat.maxSimultaneousLights = 3;
+      // 5 = небо + солнце + два факела ботов + ближайший светлячок.
+      flat.maxSimultaneousLights = 5;
       seen.set(src.id, flat);
     }
     mesh.material = flat;

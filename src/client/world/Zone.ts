@@ -12,11 +12,14 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
+import { BotLights } from "./BotLights";
 import { Fireflies } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
 
 export interface Zone {
+  /** Ночная подсветка от ботов зрителей (Ф10). Кормит Spectator/Game. */
+  botLights: BotLights;
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
   ground: Mesh;
   /** Высота земли в точке (аналитическая). */
@@ -71,6 +74,11 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
   const sun = new DirectionalLight("sun", day.sunDir, scene);
+  // Сразу за базовыми: материалы берут первые maxSimultaneousLights из
+  // scene.lights по порядку создания. Раньше факелы создавались после зоны,
+  // за пятью светлячками, и в шейдер мобов/персонажей/деревьев (потолок 3)
+  // не попадали вовсе — бот светил только земле и траве.
+  const botLights = new BotLights(scene);
 
   const sky = createSky(scene, day, quality.simpleSky);
 
@@ -119,6 +127,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   ]);
 
   return {
+    botLights,
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
     obstacles: [...trunks, ...rockObstacles],

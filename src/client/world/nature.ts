@@ -49,7 +49,7 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean)
   m.emissiveColor = new Color3(0.12, 0.18, 0.09); // листва вертикальная — ей нужно больше своей яркости
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
-  m.maxSimultaneousLights = lite ? 2 : 3;
+  m.maxSimultaneousLights = lite ? 2 : 5;
   return m;
 }
 
@@ -60,7 +60,7 @@ function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
   // ночью. Днём их лепит солнце, ночью пусть уходят в темноту.
   m.emissiveColor = new Color3(0.02, 0.013, 0.008);
   m.specularColor = new Color3(0, 0, 0);
-  m.maxSimultaneousLights = lite ? 2 : 3;
+  m.maxSimultaneousLights = lite ? 2 : 5;
   return m;
 }
 
@@ -266,7 +266,7 @@ export async function loadRocks(
     m.diffuseColor = new Color3(b + warm, b, b - warm * 0.5);
     m.emissiveColor = new Color3(b * 0.12, b * 0.12, b * 0.12);
     m.specularColor = new Color3(0, 0, 0);
-    m.maxSimultaneousLights = 3;
+    m.maxSimultaneousLights = 5;
     m.freeze();
     return m;
   });

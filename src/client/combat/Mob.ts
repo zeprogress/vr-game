@@ -43,7 +43,8 @@ function recolorRig(
     if (!src) continue;
     const name = src.name ?? "";
     const flat = new StandardMaterial(`${kind}_${name}`, rig.root.getScene());
-    flat.maxSimultaneousLights = 3;
+    // 5 = небо + солнце + два факела ботов + ближайший светлячок.
+    flat.maxSimultaneousLights = 5;
     m.material = flat;
 
     if (/eye/i.test(name)) {
