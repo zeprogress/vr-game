@@ -2,8 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
-import { Constants } from "@babylonjs/core/Engines/constants";
-import { BOT_TORCHES } from "./Fireflies";
+import { BOT_TORCHES, relightMaterials } from "./Fireflies";
 
 /**
  * Докуда добивает свет, м. Держим близко к лампе светлячка (FIREFLY.lightRange
@@ -88,7 +87,7 @@ export class BotLights {
       // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
       // как шейдер собран по дневному набору источников, и в него не попадают.
       // Набор изменился — говорим об этом явно. Бывает дважды за сутки.
-      this.scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
+      relightMaterials(this.scene);
     }
     if (!this.enabled) return;
 

@@ -64,6 +64,23 @@ export const FIREFLY = {
 export const BOT_TORCHES = 2;
 
 /**
+ * Сообщить материалам, что набор источников света изменился.
+ *
+ * Одного `markAllMaterialsAsDirty` мало: материалы зоны приходят
+ * замороженными (`checkReadyOnlyOnce`), а замороженный материал шейдер не
+ * пересобирает. Замер на проде: у земли ночью в `_lightSources` числились все
+ * девять источников, а в скомпилированном шейдере оставалось два и ни одного
+ * точечного — сборка была дневная. Поэтому сначала снимаем заморозку.
+ *
+ * Обратно морозить не надо: Babylon делает это сам, сразу после пересбора.
+ * Зовётся дважды за сутки, на рассвете и на закате.
+ */
+export function relightMaterials(scene: Scene): void {
+  for (const m of scene.materials) m.unfreeze();
+  scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
+}
+
+/**
  * Сколько источников света разом должен тянуть материал:
  * солнце + небо + лампы светлячков + 2 магических (кристалл посоха, огнешар)
  * + факелы ботов ночью.
@@ -206,9 +223,7 @@ export class Fireflies {
     // пересобирают, а набор источников только что изменился. Без этого земля
     // и трава остаются «дневными» — особенно заметно при ручном переводе
     // времени с пульта, когда переход происходит за один кадр.
-    if (this.lamps.length > 0) {
-      this.scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
-    }
+    if (this.lamps.length > 0) relightMaterials(this.scene);
   }
 
   /** `daylight` 0..1 из DayState: 1 — день (светлячков нет), 0 — ночь. */
