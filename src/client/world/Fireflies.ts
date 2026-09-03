@@ -202,6 +202,13 @@ export class Fireflies {
       g.pool.setEnabled(on);
     }
     for (const l of this.lamps) l.light.setEnabled(on);
+    // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
+    // пересобирают, а набор источников только что изменился. Без этого земля
+    // и трава остаются «дневными» — особенно заметно при ручном переводе
+    // времени с пульта, когда переход происходит за один кадр.
+    if (this.lamps.length > 0) {
+      this.scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
+    }
   }
 
   /** `daylight` 0..1 из DayState: 1 — день (светлячков нет), 0 — ночь. */
