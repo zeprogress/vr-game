@@ -278,7 +278,11 @@ class Mob {
 
     if (this.dead) {
       this.deadT += dt;
-      this.y -= dt * 0.6;
+      // Тонет не сразу: MOB.corpseHold секунд труп лежит на земле — ровно
+      // столько же его показывает клиент. Раньше труп жил около секунды, за
+      // неё погружение на 0.6 м просто прятало его; с выдержкой в 3 секунды
+      // он успевал уйти на 1.8 м, и оставалась одна тень.
+      if (this.deadT > MOB.corpseHold) this.y -= dt * 0.6;
       this.respawnIn -= dt;
       if (this.respawnIn <= 0) this.respawn();
       return;
