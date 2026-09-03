@@ -151,6 +151,11 @@ interface Bot {
   vz: number;
   reskinAt: number; // ms последней команды !skin (антиспам)
   sayAt: number; // ms последней реплики в чат (антиспам)
+  /** Секунд до касания клинка (0 — замаха нет). Урон наносится в этот момент. */
+  swingIn: number;
+  swingTarget: string | null; // по какому мобу замахнулись
+  swingDx: number; // направление удара, запомненное на начало замаха
+  swingDz: number;
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -936,6 +941,10 @@ export class ZoneRoom extends Room<ZoneState> {
       vz: 0,
       reskinAt: 0,
       sayAt: 0,
+      swingIn: 0,
+      swingTarget: null,
+      swingDx: 0,
+      swingDz: 1,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -975,8 +984,18 @@ export class ZoneRoom extends Room<ZoneState> {
   /** ИИ одного бота на кадр. */
   private tickBot(dt: number, bot: Bot): void {
     const p = bot.state;
-    if (p.dead) return; // возрождение — общий tickPlayers
+    if (p.dead) {
+      bot.swingIn = 0; // умер на замахе — удара не будет
+      bot.swingTarget = null;
+      return; // возрождение — общий tickPlayers
+    }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
+
+    // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
+    if (bot.swingIn > 0) {
+      bot.swingIn -= dt;
+      if (bot.swingIn <= 0) this.resolveBotHit(bot);
+    }
 
     const cx = RESPAWN.spawnX;
     const cz = RESPAWN.spawnZ;
@@ -1059,7 +1078,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
     // на смене цели и у путевых точек.
-    const wantSpeed = dist > stopAt ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5) : 0;
+    // На замахе ноги на месте: иначе модель «едет» посреди удара. Расталкивание
+    // при этом работает — соседи всё равно не должны стоять внутри.
+    const wantSpeed =
+      bot.swingIn > 0 ? 0 : dist > stopAt ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5) : 0;
     const wvx = dx * wantSpeed + sepX * BOT.separationForce;
     const wvz = dz * wantSpeed + sepZ * BOT.separationForce;
     const accel = Math.min(1, dt * 6);
@@ -1085,18 +1107,37 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.qz = 0;
     p.head.qw = Math.cos(bot.yaw / 2);
 
-    // Удар.
-    if (mob && dist < BOT.attackRange && bot.attackCd <= 0) {
-      const dmg = weaponDamage("sword", p.str, 1, p.agi);
-      const xp = this.sim.hitMob(mob.id, dmg, dx, dz);
+    // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
+    // касается моба через BOT.attackImpact — см. resolveBotHit().
+    if (mob && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
       bot.attackCd = BOT.attackCooldown;
+      bot.swingIn = BOT.attackImpact;
+      bot.swingTarget = mob.id;
+      bot.swingDx = dx;
+      bot.swingDz = dz;
       // Замах видят все — анимация на модельке бота + звук.
       const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay);
-      if (xp > 0) {
-        this.awardXp(undefined, p, xp);
-        bot.target = null;
-      }
+    }
+  }
+
+  /** Момент касания клинка: наносим урон, если моб ещё жив и достаём. */
+  private resolveBotHit(bot: Bot): void {
+    const id = bot.swingTarget;
+    bot.swingTarget = null;
+    bot.swingIn = 0;
+    if (!id) return;
+    const p = bot.state;
+    const mob = this.sim.mobs.get(id);
+    if (!mob || mob.dead) return; // добили, пока шёл замах — бьём воздух
+    // Моб мог чуть отойти за время замаха — небольшой допуск, иначе боты
+    // постоянно мажут по подвижным слизням.
+    if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > BOT.attackRange * 1.4) return;
+    const dmg = weaponDamage("sword", p.str, 1, p.agi);
+    const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
+    if (xp > 0) {
+      this.awardXp(undefined, p, xp);
+      bot.target = null;
     }
   }
 
