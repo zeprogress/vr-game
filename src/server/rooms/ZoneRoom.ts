@@ -85,11 +85,14 @@ import {
   type WeaponTier,
 } from "#shared/items";
 import {
+  atMaxLevel,
   grantXp,
   isStatName,
   maxHpFor,
   spendPoint,
+  xpToNext,
   type Progress,
+  type StatName,
 } from "#shared/progression";
 import {
   MAGIC,
@@ -151,6 +154,7 @@ interface Bot {
   vz: number;
   reskinAt: number; // ms последней команды !skin (антиспам)
   sayAt: number; // ms последней реплики в чат (антиспам)
+  statsAt: number; // ms последнего ответа про статы (антиспам)
   /** Секунд до касания клинка (0 — замаха нет). Урон наносится в этот момент. */
   swingIn: number;
   swingTarget: string | null; // по какому мобу замахнулись
@@ -834,6 +838,11 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
+    else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
+      this.sayStats(norm);
+    } else if (cmd === "!str" || cmd === "!agi" || cmd === "!int") {
+      this.spendBotPoint(norm, cmd.slice(1) as StatName, parts[1]);
+    }
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
   }
 
@@ -845,6 +854,66 @@ export class ZoneRoom extends Room<ZoneState> {
     this.twitch?.say(text);
   }
 
+  /** Русское имя атрибута для чата. */
+  private static statName(stat: StatName): string {
+    return stat === "str" ? "сила" : stat === "agi" ? "ловкость" : "интеллект";
+  }
+
+  /** `!stats` — показать прогресс своего бота. */
+  private sayStats(norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) return;
+    const now = Date.now();
+    if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
+    bot.statsAt = now;
+    const p = bot.state;
+    const xp = atMaxLevel(p.level) ? "макс" : `${Math.floor(p.xp)}/${xpToNext(p.level)}`;
+    const points =
+      p.unspent > 0 ? `свободных очков ${p.unspent} → !str !agi !int` : "свободных очков нет";
+    this.reply(
+      `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${p.maxHp} · ` +
+        `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · ${points}`,
+    );
+  }
+
+  /** `!str` / `!agi` / `!int` [сколько] — вложить очки в атрибут. */
+  private spendBotPoint(norm: string, stat: StatName, arg: string | undefined): void {
+    const bot = this.bots.get(norm);
+    if (!bot) return;
+    const p = bot.state;
+    if (p.unspent <= 0) {
+      // Без кулдауна тут был бы флуд отказами, поэтому делим его со !stats.
+      const now = Date.now();
+      if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
+      bot.statsAt = now;
+      this.reply(`@${bot.nick} свободных очков нет — их дают за новый уровень.`);
+      return;
+    }
+
+    const want = Math.max(1, Math.min(p.unspent, Math.floor(Number(arg)) || 1));
+    const prog = readProgress(p);
+    let done = 0;
+    while (done < want && spendPoint(prog, stat)) done++;
+    if (done === 0) return;
+    writeProgress(p, prog);
+
+    // Потолки HP/маны растут сразу — как в обработчике MSG.spend.
+    const beforeHp = p.maxHp;
+    p.maxHp = maxHpFor(p.str);
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp));
+    const beforeMana = p.maxMana;
+    p.maxMana = maxManaFor(p.int);
+    p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
+    this.persistBot(bot);
+
+    const name = ZoneRoom.statName(stat);
+    this.reply(
+      `@${bot.nick} ${name} ${prog[stat]}` +
+        (done > 1 ? ` (+${done})` : "") +
+        ` · осталось очков ${p.unspent}`,
+    );
+  }
+
   /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
   private sayInfo(): void {
     const now = Date.now();
@@ -853,7 +922,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
-        `${BOT.skins}) · обычное сообщение в чат он скажет вслух над головой. ` +
+        `${BOT.skins}) · !stats — его прогресс · !str/!agi/!int — вложить очко атрибута · ` +
+        "обычное сообщение в чат он скажет вслух над головой. " +
         "Зайти за своего героя самому: ссылка в описании стрима, ник — как в Twitch.",
     );
   }
@@ -984,6 +1054,7 @@ export class ZoneRoom extends Room<ZoneState> {
       vz: 0,
       reskinAt: 0,
       sayAt: 0,
+      statsAt: 0,
       swingIn: 0,
       swingTarget: null,
       swingDx: 0,

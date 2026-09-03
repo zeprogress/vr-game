@@ -376,6 +376,8 @@ export const BOT = {
   sayMaxLen: 90,
   /** Общий кулдаун ответа на `!info` в чат канала, с (ответ видят все). */
   infoCooldown: 20,
+  /** Кулдаун ответа про статы конкретного бота, с. */
+  statsCooldown: 6,
 } as const;
 
 /**
