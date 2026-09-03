@@ -343,9 +343,9 @@ export const SPECTATOR_KEY = "zepgame-spec-a19f3c7d5b";
  * Боты зрителей (Ф10). `!play` в чате Twitch поднимает бота под ником зрителя,
  * `!stop` убирает. Зритель входит по своему нику и забирает того же персонажа.
  */
-export const TWITCH_CHANNEL = "zep_game"; // TODO: заменить на реальный канал
+export const TWITCH_CHANNEL = "zeprogress";
 /** Ники, которым вход/бот разрешён всегда (помимо писавших в чат). */
-export const STREAM_NICKS = ["zep"];
+export const STREAM_NICKS = ["zeprogress", "zep"];
 export const BOT = {
   /** Радиус от точки спавна зоны, дальше которого бот не заходит и не бьёт. */
   zoneRadius: 26,
