@@ -109,6 +109,10 @@ export class SpectatorCamera {
   // Низкочастотный фильтр позы для кадров «из глаз».
   private readonly eyePos = new Vector3();
   private readonly eyeFwd = new Vector3(0, 0, 1);
+  // Отдельный, более вязкий фильтр для кадров вокруг бота: там камера висит
+  // в нескольких метрах, и доворот модели бьёт по ней с большим плечом.
+  private readonly botPos = new Vector3();
+  private readonly botFwd = new Vector3(0, 0, 1);
 
   constructor(
     scene: Scene,
@@ -218,6 +222,8 @@ export class SpectatorCamera {
     if (live) {
       this.eyePos.copyFrom(live.eye);
       this.eyeFwd.copyFrom(live.forward);
+      this.botPos.copyFrom(live.eye);
+      this.botFwd.copyFrom(live.forward);
     }
   }
 
@@ -348,6 +354,11 @@ export class SpectatorCamera {
     const k = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.eyeSmooth);
     lerpV(this.eyePos, live.eye, k, this.eyePos);
     lerpV(this.eyeFwd, live.forward, k, this.eyeFwd);
+
+    const kp = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamPosSmooth);
+    const kf = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamFwdSmooth);
+    lerpV(this.botPos, live.eye, kp, this.botPos);
+    lerpV(this.botFwd, live.forward, kf, this.botFwd);
   }
 
   private evalShot(s: Shot, ctx: DirectorCtx, pos: Vector3, tgt: Vector3): void {
@@ -400,15 +411,15 @@ export class SpectatorCamera {
         // Напротив: камера перед персонажем, смотрит ему в лицо (и на то,
         // что за его спиной). Направление берём горизонтальное — иначе
         // наклон головы швыряет камеру вверх-вниз.
-        const fx = this.eyeFwd.x;
-        const fz = this.eyeFwd.z;
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
         const fl = Math.hypot(fx, fz) || 1;
         pos.set(
-          this.eyePos.x + (fx / fl) * FRONT_DIST,
-          this.eyePos.y + FRONT_UP,
-          this.eyePos.z + (fz / fl) * FRONT_DIST,
+          this.botPos.x + (fx / fl) * FRONT_DIST,
+          this.botPos.y + FRONT_UP,
+          this.botPos.z + (fz / fl) * FRONT_DIST,
         );
-        tgt.set(this.eyePos.x, this.eyePos.y + FRONT_AIM_Y, this.eyePos.z);
+        tgt.set(this.botPos.x, this.botPos.y + FRONT_AIM_Y, this.botPos.z);
         return;
       }
       case "eyePlayer": {
@@ -416,19 +427,19 @@ export class SpectatorCamera {
           // Бот — не «из глаз», а погоня сзади-сверху под 45°: в кадре и сам
           // персонаж, и дорога перед ним. Высоту считаем из дистанции, чтобы
           // угол оставался ровно 45° при любой правке BOT_CAM_*.
-          const fx = this.eyeFwd.x;
-          const fz = this.eyeFwd.z;
+          const fx = this.botFwd.x;
+          const fz = this.botFwd.z;
           const fl = Math.hypot(fx, fz) || 1;
           const up = BOT_CAM_AIM_Y + BOT_CAM_BACK + BOT_CAM_LEAD;
           pos.set(
-            this.eyePos.x - (fx / fl) * BOT_CAM_BACK,
-            this.eyePos.y + up,
-            this.eyePos.z - (fz / fl) * BOT_CAM_BACK,
+            this.botPos.x - (fx / fl) * BOT_CAM_BACK,
+            this.botPos.y + up,
+            this.botPos.z - (fz / fl) * BOT_CAM_BACK,
           );
           tgt.set(
-            this.eyePos.x + (fx / fl) * BOT_CAM_LEAD,
-            this.eyePos.y + BOT_CAM_AIM_Y,
-            this.eyePos.z + (fz / fl) * BOT_CAM_LEAD,
+            this.botPos.x + (fx / fl) * BOT_CAM_LEAD,
+            this.botPos.y + BOT_CAM_AIM_Y,
+            this.botPos.z + (fz / fl) * BOT_CAM_LEAD,
           );
           return;
         }
