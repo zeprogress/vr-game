@@ -26,11 +26,16 @@ const BOT_MODEL_YAW = (() => {
   return p.has("byaw") && Number.isFinite(v) ? v : 0;
 })();
 /**
- * Единый масштаб персонажа (подобран так, что «обычный» рост ≈ 1.85 м).
- * Не нормируем по высоте: у ведьмы/мага шляпа, у гоблина низкий рост — пусть
- * так и будет, естественный разброс.
+ * Единый масштаб персонажа. Не нормируем по высоте: у ведьмы/мага шляпа, у
+ * гоблина низкий рост — пусть так и будет, естественный разброс. Подбор
+ * вживую: `?botscale=1.5` (1.04 ≈ обычный человек ×2).
  */
-const BOT_RIG_SCALE = 0.52;
+const BOT_RIG_SCALE = (() => {
+  const v = Number(new URLSearchParams(location.search).get("botscale"));
+  return Number.isFinite(v) && v > 0.1 && v < 4 ? v : 1.04;
+})();
+/** Масштаб заглушки — вровень с ригом (заглушка ~2.1 м «нативной», риг ~3.6). */
+const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 /** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
 const BOT_FEET_Y = -1.68;
 
@@ -199,12 +204,16 @@ export class RemoteAvatar implements Hittable {
       const stub = ((this.skin - 1) % 4) + 1;
       this.botBody = makeBotBody(this.scene, stub, this.mat.diffuseColor);
       this.botBody.parent = this.root;
+      this.botBody.scaling.setAll(BOT_STUB_SCALE);
+      // Заглушка сделана «ногами на -1.7»; после масштаба возвращаем их туда.
+      this.botBody.position.y = 1.7 * (BOT_STUB_SCALE - 1);
       // Пустая «голова» — держатель для eyeForward / NameTag якоря.
       this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
       this.head.parent = this.botBody;
       this.head.isVisible = false;
-      // Модельки бота выше «головы» плоского аватара — поднимаем плашку.
-      this.nameTag.setAnchorY(0.72);
+      // Модельки бота выше «головы» плоского аватара — поднимаем плашку
+      // (точное значение под рост модели ставит loadBotRig).
+      this.nameTag.setAnchorY(1.5 * BOT_STUB_SCALE);
       this.botRigWant = this.skin;
       void this.loadBotRig();
     } else if (mode === "vr") {
@@ -243,6 +252,11 @@ export class RemoteAvatar implements Hittable {
   /** Где сейчас голова — по ней голос звучит из нужного места. */
   get position(): Vector3 {
     return this.root.getAbsolutePosition();
+  }
+
+  /** Это бот зрителя (Ф10) с моделью персонажа. */
+  get isBot(): boolean {
+    return this.skin > 0;
   }
 
   private readonly _fwd = new Vector3();
@@ -500,6 +514,8 @@ export class RemoteAvatar implements Hittable {
         this.head.rotationQuaternion = Quaternion.Identity();
         this.head.isVisible = false;
         this.head.isPickable = false;
+        // Плашка — точно над макушкой конкретной модели.
+        this.nameTag.setAnchorY(BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3);
 
         this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
         this.botHolder = holder;

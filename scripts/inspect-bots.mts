@@ -60,13 +60,20 @@ for (const key of BOT_SKIN_MODELS) {
     const h = hiY - loY;
     const clips = new Set(inst.animationGroups.map((g) => shortName(g.name)));
     const missing = want.filter((w) => !clips.has(w));
-    const matNames = [...new Set(meshes.map((m) => m.material?.name))].join(",");
+    const SC = 1.04;
+    const skinFace = meshes
+      .filter((m) => /^(skin|face)/i.test(m.material?.name ?? ""))
+      .map((m) => {
+        const c = (m.material as { diffuseColor?: { r: number; g: number; b: number } }).diffuseColor;
+        return `${m.material?.name}=[${c ? [c.r, c.g, c.b].map((v) => v.toFixed(2)).join(",") : "?"}]`;
+      });
     console.log(
-      `  ${key.padEnd(16)} нативная h=${h.toFixed(2)} → в игре ${(h * 0.52).toFixed(2)} м  меши=${meshes.length} ` +
+      `  ${key.padEnd(16)} нативная h=${h.toFixed(2)} → в игре ${(h * SC).toFixed(2)} м  меши=${meshes.length} ` +
         `клипов=${clips.size} ` +
-        (missing.length ? `НЕТ ${missing.join(",")}` : "ok idle/walk/run/swordslash"),
+        (missing.length ? `НЕТ ${missing.join(",")}` : "ok") +
+        `  кожа: ${skinFace.join(" ") || "—"}`,
     );
-    if (key === BOT_SKIN_MODELS[0]) console.log(`     клипы: ${[...clips].join(", ")}\n     материалы: ${matNames}`);
+    if (key === BOT_SKIN_MODELS[0]) console.log(`     клипы: ${[...clips].join(", ")}`);
     for (const g of inst.animationGroups) g.dispose();
     for (const s of inst.skeletons) s.dispose();
     root.dispose(false, true);

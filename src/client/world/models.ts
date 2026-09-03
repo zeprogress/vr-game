@@ -248,24 +248,57 @@ const TINY = new Vector3(1e-3, 1e-3, 1e-3);
 
 const q = (v: number): number => Math.round(v * 10) / 10;
 
+const isSkinMat = (n: string): boolean => /^(skin|face)/i.test(n);
+const chroma = (c: Color3): number => Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+const lum = (c: Color3): number => c.r * 0.3 + c.g * 0.6 + c.b * 0.1;
+const DEFAULT_SKIN = new Color3(0.82, 0.62, 0.49); // тёплый бежевый
+
 /**
  * Персонаж из пака Quaternius: без текстур, цвет — в `baseColorFactor` и
  * хранится в ЛИНЕЙНОМ пространстве (тёмные значения вроде 0.013). Квантовать
  * их как `recolorFlat` нельзя — пропадут. Переводим в гамму и кладём в плоский
  * StandardMaterial (со скиннингом). Одна копия материала на исходный.
+ *
+ * Отдельно: у пака «Skin»/«Face» местами почти чёрные (лица рыцарей, гоблина).
+ * Такие перекрашиваем в натуральный тон — либо из явного цвета кожи этого же
+ * персонажа (гоблин — зелёный), либо в бежевый по умолчанию.
  */
 export function recolorCharacter(root: TransformNode): void {
+  const meshes = root.getChildMeshes(false);
+
+  const srcColor = new Map<string, Color3>();
+  for (const mesh of meshes) {
+    const src = mesh.material;
+    if (!src || srcColor.has(src.id)) continue;
+    const linSrc =
+      src instanceof PBRBaseMaterial && "albedoColor" in src
+        ? (src as unknown as { albedoColor: Color3 }).albedoColor
+        : new Color3(0.6, 0.6, 0.62);
+    srcColor.set(src.id, linSrc.toGammaSpace());
+  }
+
+  // Тон кожи персонажа: skin/face с явным цветом (светлый или с оттенком).
+  let skinTone = DEFAULT_SKIN;
+  for (const mesh of meshes) {
+    const src = mesh.material;
+    if (!src || !isSkinMat(src.name || "")) continue;
+    const c = srcColor.get(src.id);
+    if (c && (lum(c) > 0.35 || chroma(c) > 0.1)) {
+      skinTone = c;
+      break;
+    }
+  }
+
   const seen = new Map<string, StandardMaterial>();
-  for (const mesh of root.getChildMeshes(false)) {
+  for (const mesh of meshes) {
     const src = mesh.material;
     if (!src) continue;
     let flat = seen.get(src.id);
     if (!flat) {
-      const lin =
-        src instanceof PBRBaseMaterial && "albedoColor" in src
-          ? (src as unknown as { albedoColor: Color3 }).albedoColor
-          : new Color3(0.6, 0.6, 0.62);
-      const base = lin.toGammaSpace();
+      let base = srcColor.get(src.id) ?? DEFAULT_SKIN;
+      if (isSkinMat(src.name || "") && chroma(base) < 0.06 && lum(base) < 0.3) {
+        base = skinTone; // чёрная «кожа/лицо» из пака → натуральный тон
+      }
       flat = new StandardMaterial(`${src.name || "char"}_flat`, root.getScene());
       flat.diffuseColor = base;
       flat.emissiveColor = base.scale(0.1);

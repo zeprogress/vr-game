@@ -4,10 +4,12 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS, MOB } from "#shared/constants";
+import { BOSS, MOB, daylightAt } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
+import { LOADOUT } from "../config/loadout";
 import { buildZone, type ZoneQuality } from "../world/Zone";
+import { BotLights } from "../world/BotLights";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -74,6 +76,8 @@ export class Spectator {
     net?: { hour: number; auto: number } | null,
   ) => void;
   private readonly groundHeight: (x: number, z: number) => number;
+  private readonly botLights: BotLights;
+  private readonly _botPos: Vector3[] = [];
 
   private readonly avatars = new Map<string, RemoteAvatar>();
   private net: NetClient | null = null;
@@ -157,6 +161,7 @@ export class Spectator {
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
+    this.botLights = new BotLights(this.scene);
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
@@ -407,6 +412,11 @@ export class Spectator {
         }
       });
     }
+
+    // Ночью ближайший к камере бот светит вокруг себя.
+    this._botPos.length = 0;
+    for (const av of this.avatars.values()) if (av.isBot) this._botPos.push(av.position);
+    this.botLights.update(dt, daylightAt(LOADOUT.world.hour), this.cam.cam.position, this._botPos);
 
     // Режиссёр.
     this.cam.update(dt, {

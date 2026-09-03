@@ -21,6 +21,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { SpellLights } from "../world/SpellLights";
+import { BotLights } from "../world/BotLights";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
@@ -106,6 +107,8 @@ export class Game {
   private comfortVignette: ComfortVignette | null = null;
   private healCrossFx: HealCrossFx | null = null;
   private readonly spellLights: SpellLights;
+  private readonly botLights: BotLights;
+  private readonly _botPos: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -167,6 +170,7 @@ export class Game {
     this.report = report;
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.spellLights = new SpellLights(this.scene);
+    this.botLights = new BotLights(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -280,6 +284,14 @@ export class Game {
       );
       const fl = this.netMobs.fireLight();
       this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0);
+      this._botPos.length = 0;
+      for (const av of this.avatars.values()) if (av.isBot) this._botPos.push(av.position);
+      this.botLights.update(
+        dt,
+        dayState(LOADOUT.world.hour).daylight,
+        this.player.eyePosition,
+        this._botPos,
+      );
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();

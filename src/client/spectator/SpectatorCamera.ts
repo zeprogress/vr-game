@@ -356,7 +356,26 @@ export class SpectatorCamera {
         break;
       }
       case "eyePlayer": {
-        // Слегка позади глаз, чтобы не влезать в меш головы/тела.
+        if (s.id.startsWith("bot:")) {
+          // Бот — не строго «из глаз», а чуть сзади-сверху: видно самого
+          // персонажа и куда он идёт. (eyePos у бота — на уровне пояса модели,
+          // поэтому подъём щедрый.)
+          const fx = this.eyeFwd.x;
+          const fz = this.eyeFwd.z;
+          const fl = Math.hypot(fx, fz) || 1;
+          pos.set(
+            this.eyePos.x - (fx / fl) * 2.6,
+            this.eyePos.y + 2.3,
+            this.eyePos.z - (fz / fl) * 2.6,
+          );
+          tgt.set(
+            this.eyePos.x + (fx / fl) * 16,
+            this.eyePos.y + 1.6,
+            this.eyePos.z + (fz / fl) * 16,
+          );
+          return;
+        }
+        // Живой игрок — слегка позади глаз, чтобы не влезать в меш головы.
         pos.set(
           this.eyePos.x - this.eyeFwd.x * 0.15,
           this.eyePos.y - this.eyeFwd.y * 0.15 + 0.02,
