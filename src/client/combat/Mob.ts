@@ -20,6 +20,7 @@ import { NameTag } from "../ui/NameTag";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
+import { BlobShadow } from "../world/blobShadow";
 
 /** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
  *  моба. Подбор: `?myaw=<рад>`. (0 = −90° от исходного π/2.) */
@@ -191,6 +192,7 @@ export class Mob implements Hittable {
     // Полоса и плашка висят на отдельном узле: у босса тело крупное, а надписи
     // должны оставаться обычного размера — этот узел компенсирует масштаб.
     this.uiAnchor = new TransformNode("mobUi", scene);
+    this.shadow = new BlobShadow(scene, id);
     this.uiAnchor.parent = this.root;
 
     this.bar = new HealthBar3D(
@@ -227,6 +229,8 @@ export class Mob implements Hittable {
   }
 
   private readonly uiAnchor: TransformNode;
+  /** Пятно-тень под мобом: без неё прыжок читается как парение. */
+  private readonly shadow: BlobShadow;
 
   /** Подменить процедурную сферу моделью слизня из пака. */
   private async attachModel(): Promise<void> {
@@ -357,6 +361,10 @@ export class Mob implements Hittable {
       pos.z += (tz - pos.z) * k;
     }
     this.root.rotation.y = s.yaw;
+    // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
+    if (!this.dead) {
+      this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.15);
+    }
 
     // урон: hurtSeq вырос -> вспышка + рана + звук
     if (s.hurtSeq !== this.lastHurtSeq) {
@@ -387,10 +395,12 @@ export class Mob implements Hittable {
     if (s.dead && !this.dead) {
       this.dead = true;
       this.deathT = 0;
+      this.shadow.setEnabled(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
+      this.shadow.setEnabled(true);
       this.setBodyVisibility(1);
       this.setSquash(1, 1, 1);
       if (!this.rig) this.head.setEnabled(true);
@@ -551,6 +561,7 @@ export class Mob implements Hittable {
   }
 
   dispose(): void {
+    this.shadow.dispose();
     this.nameTag.dispose();
     this.bar.dispose();
     this.slamRing?.material?.dispose();
