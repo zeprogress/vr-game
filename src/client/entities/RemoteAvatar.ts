@@ -145,6 +145,8 @@ export class RemoteAvatar implements Hittable {
       this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
       this.head.parent = this.botBody;
       this.head.isVisible = false;
+      // Модельки бота выше «головы» плоского аватара — поднимаем плашку.
+      this.nameTag.setAnchorY(0.72);
     } else if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
       this.handL = this.makeHand("avatarHandL");

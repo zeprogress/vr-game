@@ -20,7 +20,7 @@ const LVL_FONT = "26px system-ui, sans-serif";
 export class NameTag {
   private readonly plane: Mesh;
   private readonly tex: DynamicTexture;
-  private readonly baseY: number;
+  private baseY: number;
   private readonly halfH: number;
 
   private readonly W: number;
@@ -125,6 +125,12 @@ export class NameTag {
 
   setEnabled(v: boolean): void {
     this.plane.setEnabled(v);
+  }
+
+  /** Поднять плашку — когда высота модели становится известна позже (боты). */
+  setAnchorY(y: number): void {
+    this.baseY = y;
+    this.plane.position.y = y + (this.plane.scaling.y - 1) * this.halfH;
   }
 
   /**
