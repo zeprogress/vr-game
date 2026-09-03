@@ -38,22 +38,32 @@ export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
 const FWD_Z = new Vector3(0, 0, 1);
 
-/** Рендерим на 100 мс в прошлом — между двумя пришедшими снапшотами. */
-const INTERP_DELAY = 100;
+/** Рендерим на N мс в прошлом — между двумя пришедшими снапшотами. Запас в
+ *  ~2.5 серверных тика: одна опоздавшая пачка не оголяет буфер (иначе рывок). */
+const INTERP_DELAY = 140;
 /** Если свежий снапшот старше — держим позу (не экстраполируем). */
-const HOLD_AFTER = 260;
-const BUFFER_MS = 600;
+const HOLD_AFTER = 300;
+const BUFFER_MS = 700;
+
+/** Клипы модели бота, которые реально используем (в паке их больше). */
+const BOT_CLIPS = ["idle", "walk", "run", "swordslash", "death"] as const;
 
 interface Snap {
   t: number;
   mode: PlayerMode;
-  head: readonly [number, number, number, number, number, number, number];
-  handL: readonly [number, number, number, number, number, number, number];
-  handR: readonly [number, number, number, number, number, number, number];
+  head: number[]; // 7: x y z qx qy qz qw
+  handL: number[];
+  handR: number[];
 }
 
-function snapXf(x: Xf): Snap["head"] {
-  return [x.x, x.y, x.z, x.qx, x.qy, x.qz, x.qw];
+function writeXf(d: number[], x: Xf): void {
+  d[0] = x.x;
+  d[1] = x.y;
+  d[2] = x.z;
+  d[3] = x.qx;
+  d[4] = x.qy;
+  d[5] = x.qz;
+  d[6] = x.qw;
 }
 
 /** Цвет игрока из его id — чтобы отличать аватары. */
@@ -85,7 +95,6 @@ export class RemoteAvatar implements Hittable {
   private mode: PlayerMode | null = null;
 
   // Анимации модели бота (crossfade по весам).
-  private animName = "idle";
   private readonly animW = new Map<string, number>();
   private planarSpeed = 0;
   private swingUntil = 0;
@@ -102,11 +111,14 @@ export class RemoteAvatar implements Hittable {
   private wantR: readonly [string, string] = ["", ""];
 
   private readonly buf: Snap[] = [];
+  /** Отработавшие снапшоты возвращаем сюда — не мусорим каждый тик. */
+  private readonly snapPool: Snap[] = [];
   private readonly _qa = new Quaternion();
   private readonly _qb = new Quaternion();
   /** Оценка реального интервала между снапшотами (ЕМА) и сырое время предыдущего. */
   private snapDt = 55;
   private lastPushRaw = 0;
+  private deadAnim = false;
 
   // --- PvP (этап 10) ---
   private hp = 100;
@@ -169,7 +181,7 @@ export class RemoteAvatar implements Hittable {
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
     this.animW.clear();
-    this.animName = "idle";
+    this.deadAnim = false;
     this.handL = this.handR = this.capsule = this.botBody = null;
     // Оружие висело на кистях/корпусе — пересоберём под новый режим.
     this.gearL?.dispose();
@@ -269,11 +281,27 @@ export class RemoteAvatar implements Hittable {
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
-    const last = this.buf[this.buf.length - 1];
-    const head = snapXf(p.head);
-    // Дедуп: сервер шлёт ~18 Гц, кадров больше — не копим одинаковое.
-    if (last && last.mode === p.mode && head.every((v, i) => Math.abs(v - last.head[i]) < 1e-4)) {
+    let last: Snap | undefined = this.buf[this.buf.length - 1];
+    const h = p.head;
+    // Дедуп без аллокации: сервер шлёт ~18 Гц, кадров больше — не копим одинаковое.
+    if (
+      last &&
+      last.mode === p.mode &&
+      Math.abs(h.x - last.head[0]) < 1e-4 &&
+      Math.abs(h.y - last.head[1]) < 1e-4 &&
+      Math.abs(h.z - last.head[2]) < 1e-4 &&
+      Math.abs(h.qx - last.head[3]) < 1e-4 &&
+      Math.abs(h.qy - last.head[4]) < 1e-4 &&
+      Math.abs(h.qz - last.head[5]) < 1e-4 &&
+      Math.abs(h.qw - last.head[6]) < 1e-4
+    ) {
       return;
+    }
+    // Телепорт (респавн) — не тащим модель интерполяцией через всю карту.
+    if (last && (Math.abs(h.x - last.head[0]) > 8 || Math.abs(h.z - last.head[2]) > 8)) {
+      for (const old of this.buf) this.snapPool.push(old);
+      this.buf.length = 0;
+      last = undefined;
     }
     // Снапшоты приходят ровным темпом на сервере, но НАБЛЮДАЕМ мы их на границах
     // кадров рендера (кэп 30 fps → интервал прыгает 33/66 мс). Если ставить метку
@@ -291,8 +319,24 @@ export class RemoteAvatar implements Hittable {
       else if (t > hi) t = hi;
     }
     this.lastPushRaw = now;
-    this.buf.push({ t, mode: p.mode, head, handL: snapXf(p.handL), handR: snapXf(p.handR) });
-    while (this.buf.length > 2 && this.buf[0].t < now - BUFFER_MS) this.buf.shift();
+
+    const s = this.snapPool.pop() ?? {
+      t: 0,
+      mode: "flat" as PlayerMode,
+      head: new Array<number>(7).fill(0),
+      handL: new Array<number>(7).fill(0),
+      handR: new Array<number>(7).fill(0),
+    };
+    s.t = t;
+    s.mode = p.mode;
+    writeXf(s.head, p.head);
+    writeXf(s.handL, p.handL);
+    writeXf(s.handR, p.handR);
+    this.buf.push(s);
+    while (this.buf.length > 2 && this.buf[0].t < now - BUFFER_MS) {
+      const old = this.buf.shift();
+      if (old) this.snapPool.push(old);
+    }
   }
 
   /** true — мы с этим игроком в PvP (у обоих флаг, он жив). */
@@ -416,12 +460,14 @@ export class RemoteAvatar implements Hittable {
       recolorCharacter(rig.root);
       for (const m of rig.meshes) m.isPickable = false;
 
-      // Клипы в покое; веса гоняет stepBotAnims().
-      for (const [n, g] of rig.anims) {
-        g.stop();
-        this.animW.set(n, n === "idle" ? 1 : 0);
-      }
-      this.animName = "idle";
+      // Все клипы в покой, кроме idle — его запускаем сразу, чтобы модель не
+      // мелькнула в T-позе. Дальше веса гоняет stepBotLocomotion().
+      for (const g of rig.anims.values()) g.stop();
+      for (const n of BOT_CLIPS) this.animW.set(n, n === "idle" ? 1 : 0);
+      const idle = rig.anims.get("idle");
+      idle?.start(true, 1, idle.from, idle.to, false);
+      idle?.setWeightForAllAnimatables(1);
+      this.deadAnim = false;
 
       // Готово — сносим заглушку, перецепляем якорь головы.
       this.botBody?.dispose(false, true);
@@ -447,6 +493,43 @@ export class RemoteAvatar implements Hittable {
 
   /** Каждый кадр для бота с моделью: выбор клипа по скорости + crossfade. */
   private stepBotLocomotion(now: number, dt: number): void {
+    const rig = this.botRig!;
+
+    // Смерть — приоритет: клип один раз, застываем на последнем кадре.
+    // Нет клипа в паке — валим модель набок.
+    if (this.dead) {
+      if (!this.deadAnim) {
+        this.deadAnim = true;
+        for (const n of BOT_CLIPS) {
+          if (n === "death") continue;
+          rig.anims.get(n)?.stop();
+          this.animW.set(n, 0);
+        }
+        const d = rig.anims.get("death");
+        if (d) {
+          d.start(false, 1, d.from, d.to, false);
+          d.setWeightForAllAnimatables(1);
+          this.animW.set("death", 1);
+        } else if (this.botHolder) {
+          this.botHolder.rotation.x = -Math.PI / 2;
+          this.botHolder.position.set(0, BOT_FEET_Y + 0.15, 0);
+        }
+      }
+      return;
+    }
+    if (this.deadAnim) {
+      this.deadAnim = false;
+      const d = rig.anims.get("death");
+      d?.stop();
+      d?.reset();
+      this.animW.set("death", 0);
+      if (this.botHolder) {
+        this.botHolder.rotation.x = 0;
+        this.botHolder.position.set(0, BOT_FEET_Y, 0);
+      }
+      this._prevPos.copyFrom(this.root.position);
+    }
+
     const p = this.root.position;
     // Кап на скачок (телепорт/первый кадр) — иначе «бег» на ровном месте.
     const inst = Math.min(12, Math.hypot(p.x - this._prevPos.x, p.z - this._prevPos.z) / Math.max(dt, 1e-3));
@@ -458,18 +541,21 @@ export class RemoteAvatar implements Hittable {
     else if (this.planarSpeed > 2.2) want = "run";
     else if (this.planarSpeed > 0.35) want = "walk";
     else want = "idle";
-    this.animName = want;
 
     const k = Math.min(1, dt * 12);
-    for (const [n, g] of this.botRig!.anims) {
-      const target = n === this.animName ? 1 : 0;
+    for (const n of BOT_CLIPS) {
+      if (n === "death") continue;
+      const g = rig.anims.get(n);
+      if (!g) continue;
+      const target = n === want ? 1 : 0;
       let w = this.animW.get(n) ?? 0;
       w += (target - w) * k;
       if (w <= 0.003) {
         w = 0;
-        if (g.isPlaying && n !== this.animName) g.stop();
-      } else if (!g.isPlaying) {
-        g.start(n !== "swordslash", n === "swordslash" ? 1.35 : 1, g.from, g.to, false);
+        if (g.isPlaying && n !== want) g.stop();
+      } else if (!g.isPlaying && n !== "swordslash") {
+        // swordslash перезапускается из playSwing(); в цикле его не гоняем.
+        g.start(true, 1, g.from, g.to, false);
       }
       this.animW.set(n, w);
       g.setWeightForAllAnimatables(w);
