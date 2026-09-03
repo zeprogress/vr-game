@@ -32,11 +32,15 @@ function bootSpectator(specKey: string): void {
     const v = Number(params.get(k));
     return Number.isFinite(v) && v > 0 ? v : undefined;
   };
+  // fpscap=0 — явно снять кэп пресета (иначе через `num` было бы undefined → пресет).
+  const fpsCap = params.has("fpscap")
+    ? Math.max(0, Number(params.get("fpscap")) || 0)
+    : undefined;
   void (async () => {
     const { Spectator } = await import("./spectator/Spectator");
     const spec = new Spectator(canvas, quality, debug, {
       rs: num("rs"),
-      fpsCap: num("fpscap"),
+      fpsCap,
       rw: num("rw"),
       rh: num("rh"),
       raw: params.get("rawcam") === "1",
