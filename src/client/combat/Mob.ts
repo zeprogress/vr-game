@@ -395,7 +395,6 @@ export class Mob implements Hittable {
     if (s.dead && !this.dead) {
       this.dead = true;
       this.deathT = 0;
-      this.shadow.setEnabled(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
@@ -416,13 +415,18 @@ export class Mob implements Hittable {
       this.bar.setVisible(false);
       this.nameTag.setEnabled(false);
       this.prevY = pos.y;
+      // Труп лежит MOB.corpseHold секунд и только потом тает: мгновенное
+      // исчезновение читалось как «моб телепортировался», а не «умер».
+      const fade = Math.max(0, this.deathT - MOB.corpseHold);
+      if (fade > 0) this.shadow.setEnabled(false);
       if (this.rig) {
-        // Даём проиграть Slime_Death, затем прячем.
-        if (this.deathT > 0.9) this.setBodyVisibility(Math.max(0, 1 - (this.deathT - 0.9) * 3));
+        // Death отыгрывает и застывает на последнем кадре — так и лежит.
+        this.setBodyVisibility(Math.max(0, 1 - fade * 2));
       } else {
+        // Процедурный: сплющиваем сразу — это и есть «упал», — а таем после выдержки.
         const k = Math.min(1, this.deathT / 0.4);
         this.setSquash(1 + k, Math.max(0.05, 1 - k), 1 + k);
-        this.setBodyVisibility(1 - k);
+        this.setBodyVisibility(Math.max(0, 1 - fade * 2));
       }
       return;
     }
