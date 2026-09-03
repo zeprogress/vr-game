@@ -376,8 +376,12 @@ export class Spectator {
     const now = performance.now();
     const room = this.net?.room;
 
-    // Зона (сутки, ветер, светлячки) — «позицию игрока» даём камеры.
-    this.zoneTick(dt, this.cam.cam.position, this.net?.worldClock ?? null);
+    // Зона (сутки, ветер, светлячки) — «позицию игрока» даём НЕ камеры, а
+    // точки, куда она смотрит. Светлячки раздают настоящий свет ближайшим к
+    // этой точке стайкам (дальше FIREFLY.lightFadeFrom = 18 м лампа гаснет), а
+    // камера-погоня висит в нескольких метрах над землёй и позади бота — по её
+    // позиции все стайки оказывались за порогом, и ночью гас весь свет мира.
+    this.zoneTick(dt, this.cam.target, this.net?.worldClock ?? null);
 
     // Аватары игроков + мобы для режиссёра.
     this._players.length = 0;
