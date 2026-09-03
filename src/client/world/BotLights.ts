@@ -26,7 +26,11 @@ const UP = -0.5;
  * получается ровное пятно с мягким краем. Ручка `?botlight=<n>` на месте.
  */
 const INTENSITY = (() => {
-  const v = Number(new URLSearchParams(location.search).get("botlight"));
+  // Сначала has(): без параметра get() даёт null, а Number(null) === 0 — ноль
+  // проходит проверку `>= 0`, и значение по умолчанию не бралось никогда.
+  const p = new URLSearchParams(location.search);
+  if (!p.has("botlight")) return 8;
+  const v = Number(p.get("botlight"));
   return Number.isFinite(v) && v >= 0 && v <= 40 ? v : 8;
 })();
 
