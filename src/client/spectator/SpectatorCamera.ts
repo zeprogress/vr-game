@@ -337,6 +337,17 @@ export class SpectatorCamera {
           samplePath(path, this.sinceSwitch / path.duration, this._pp, this._pl);
           pos.set(this._pp[0], this._pp[1], this._pp[2]);
           tgt.set(this._pl[0], this._pl[1], this._pl[2]);
+          // Страховка: сплайн (овершут Катмулла) не должен нырять к земле.
+          const minY = ctx.groundY(pos.x, pos.z) + 2.5;
+          if (pos.y < minY) {
+            tgt.y += minY - pos.y;
+            pos.y = minY;
+          }
+          // И не смотреть круче ~35° вниз — иначе «клевок» в землю на
+          // разворотах и когда камера проходит над точкой интереса.
+          const dh = Math.hypot(tgt.x - pos.x, tgt.z - pos.z);
+          const maxDrop = dh * 0.7; // tan(35°) ≈ 0.7
+          if (pos.y - tgt.y > maxDrop) tgt.y = pos.y - maxDrop;
           return;
         }
         break;
