@@ -183,7 +183,18 @@ export class Spectator {
     // ?debug=1 — ещё и сцена наружу: иначе с прода не заглянуть, какие
     // источники реально попали в шейдер конкретного материала.
     if (showDebug) {
-      (window as unknown as { __zep?: unknown }).__zep = { scene: this.scene, engine: this.engine };
+      (window as unknown as { __zep?: unknown }).__zep = {
+        scene: this.scene,
+        engine: this.engine,
+        // Чем кормим подсветку: без этих величин с прода не понять, чей
+        // расчёт даёт ноль — часы, дневной свет или сама BotLights.
+        state: () => ({
+          hour: LOADOUT.world.hour,
+          daylight: daylightAt(LOADOUT.world.hour),
+          bots: this._botPos.length,
+          botLightsNight: (this.botLights as unknown as { night: number }).night,
+        }),
+      };
     }
 
     // Отладочный счётчик — для замера на TOX3 (?debug=1). В эфире не нужен.
