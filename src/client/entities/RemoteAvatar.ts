@@ -90,6 +90,8 @@ export class RemoteAvatar implements Hittable {
   private botRig: RigInstance | null = null;
   private botHolder: TransformNode | null = null;
   private botRigLoading = false;
+  private botRigWant = 0; // какой skin должен быть на модели (0 — нет)
+  private builtRigSkin = 0; // какой skin уже собран
   private skin = 0;
   private builtSkin = -1;
   private mode: PlayerMode | null = null;
@@ -180,6 +182,7 @@ export class RemoteAvatar implements Hittable {
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
+    this.builtRigSkin = 0;
     this.animW.clear();
     this.deadAnim = false;
     this.handL = this.handR = this.capsule = this.botBody = null;
@@ -202,7 +205,8 @@ export class RemoteAvatar implements Hittable {
       this.head.isVisible = false;
       // Модельки бота выше «головы» плоского аватара — поднимаем плашку.
       this.nameTag.setAnchorY(0.72);
-      void this.loadBotRig(this.skin);
+      this.botRigWant = this.skin;
+      void this.loadBotRig();
     } else if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
       this.handL = this.makeHand("avatarHandL");
@@ -438,54 +442,71 @@ export class RemoteAvatar implements Hittable {
     this.botBody.position.z = 0.25 * chop;
   }
 
-  /** Подгрузить персонажа для бота и заменить им процедурную заглушку. */
-  private async loadBotRig(skinAtCall: number): Promise<void> {
-    if (this.botRigLoading) return;
+  /**
+   * Подгрузить персонажа для бота (skin = this.botRigWant) и заменить им
+   * заглушку / прежнюю модель. Если skin сменился во время загрузки (команда
+   * `!skin` в чате) — грузим заново.
+   */
+  private async loadBotRig(): Promise<void> {
+    if (this.botRigLoading) return; // уже крутится — подхватит новый botRigWant сам
     this.botRigLoading = true;
-    const model = BOT_SKIN_MODELS[(skinAtCall - 1) % BOT_SKIN_MODELS.length];
     try {
-      const make = await loadRig(this.scene, model);
-      if (this.disposed || this.skin !== skinAtCall || this.botRig) return;
-      const rig = make();
+      while (!this.disposed && this.botRigWant > 0 && this.builtRigSkin !== this.botRigWant) {
+        const want = this.botRigWant;
+        const model = BOT_SKIN_MODELS[(want - 1) % BOT_SKIN_MODELS.length];
+        let make: () => RigInstance;
+        try {
+          make = await loadRig(this.scene, model);
+        } catch {
+          this.builtRigSkin = want; // модель не пришла — оставляем заглушку, не долбим
+          continue;
+        }
+        if (this.disposed || this.botRigWant !== want) continue; // skin сменился — заново
+        const rig = make();
 
-      // Обёртка: масштаб + доворот держим здесь, трансформы самой модели не трогаем.
-      const holder = new TransformNode(`botModel_${this.id}`, this.scene);
-      holder.parent = this.root;
-      holder.rotationQuaternion = Quaternion.RotationYawPitchRoll(BOT_MODEL_YAW, 0, 0);
-      holder.position.set(0, BOT_FEET_Y, 0);
-      rig.root.parent = holder;
-      rig.root.position.setAll(0);
-      holder.scaling.setAll(BOT_RIG_SCALE);
+        // Прежняя модель (смена скина) — снять.
+        this.botRig?.dispose();
+        this.botHolder?.dispose();
+        this.botRig = this.botHolder = null;
 
-      recolorCharacter(rig.root);
-      for (const m of rig.meshes) m.isPickable = false;
+        // Обёртка: масштаб + доворот держим здесь, модель не трогаем.
+        const holder = new TransformNode(`botModel_${this.id}`, this.scene);
+        holder.parent = this.root;
+        holder.rotationQuaternion = Quaternion.RotationYawPitchRoll(BOT_MODEL_YAW, 0, 0);
+        holder.position.set(0, BOT_FEET_Y, 0);
+        rig.root.parent = holder;
+        rig.root.position.setAll(0);
+        holder.scaling.setAll(BOT_RIG_SCALE);
 
-      // Все клипы в покой, кроме idle — его запускаем сразу, чтобы модель не
-      // мелькнула в T-позе. Дальше веса гоняет stepBotLocomotion().
-      for (const g of rig.anims.values()) g.stop();
-      for (const n of BOT_CLIPS) this.animW.set(n, n === "idle" ? 1 : 0);
-      const idle = rig.anims.get("idle");
-      idle?.start(true, 1, idle.from, idle.to, false);
-      idle?.setWeightForAllAnimatables(1);
-      this.deadAnim = false;
+        recolorCharacter(rig.root);
+        for (const m of rig.meshes) m.isPickable = false;
 
-      // Готово — сносим заглушку, перецепляем якорь головы.
-      this.botBody?.dispose(false, true);
-      this.botBody = null;
-      this.head.dispose();
-      this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
-      this.head.parent = holder;
-      this.head.position.set(0, rig.nativeHeight * 0.82, 0);
-      this.head.rotationQuaternion = Quaternion.Identity();
-      this.head.isVisible = false;
-      this.head.isPickable = false;
+        // Все клипы в покой, кроме idle — его запускаем сразу, чтобы модель не
+        // мелькнула в T-позе. Дальше веса гоняет stepBotLocomotion().
+        for (const g of rig.anims.values()) g.stop();
+        for (const n of BOT_CLIPS) this.animW.set(n, n === "idle" ? 1 : 0);
+        const idle = rig.anims.get("idle");
+        idle?.start(true, 1, idle.from, idle.to, false);
+        idle?.setWeightForAllAnimatables(1);
+        this.deadAnim = false;
 
-      this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
-      this.botHolder = holder;
-      this.botRig = rig;
-      this.gearKeyR = this.gearKeyL = ""; // оружие боту-персонажу пока не вешаем
-    } catch {
-      // модель не пришла — остаётся процедурная заглушка
+        // Сносим заглушку, перецепляем якорь головы.
+        this.botBody?.dispose(false, true);
+        this.botBody = null;
+        this.head.dispose();
+        this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
+        this.head.parent = holder;
+        this.head.position.set(0, rig.nativeHeight * 0.82, 0);
+        this.head.rotationQuaternion = Quaternion.Identity();
+        this.head.isVisible = false;
+        this.head.isPickable = false;
+
+        this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
+        this.botHolder = holder;
+        this.botRig = rig;
+        this.builtRigSkin = want;
+        this.gearKeyR = this.gearKeyL = ""; // оружие боту-персонажу пока не вешаем
+      }
     } finally {
       this.botRigLoading = false;
     }

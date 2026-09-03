@@ -148,6 +148,7 @@ interface Bot {
   yaw: number; // сглаженный поворот модели
   vx: number; // сглаженная скорость — движение без рывков
   vz: number;
+  reskinAt: number; // ms последней команды !skin (антиспам)
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -810,9 +811,34 @@ export class ZoneRoom extends Room<ZoneState> {
     const norm = normNick(nick);
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
-    const cmd = text.trim().toLowerCase().split(/\s+/)[0];
+    const parts = text.trim().split(/\s+/);
+    const cmd = parts[0]?.toLowerCase();
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
     else if (cmd === "!stop" || cmd === "!leave") this.removeBot(norm);
+    else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
+  }
+
+  /** `!skin` / `!skin 3` — сменить модель своего бота (рандом или номер 1..N). */
+  private reskinBot(norm: string, arg: string | undefined): void {
+    const bot = this.bots.get(norm);
+    if (!bot) return;
+    const now = Date.now();
+    if (now - bot.reskinAt < 3000) return; // антиспам
+    bot.reskinAt = now;
+
+    const p = bot.state;
+    const n = arg ? parseInt(arg, 10) : NaN;
+    let next: number;
+    if (Number.isFinite(n) && n >= 1 && n <= BOT.skins) {
+      next = n;
+    } else {
+      next = 1 + Math.floor(Math.random() * BOT.skins);
+      if (BOT.skins > 1 && next === p.skin) next = (next % BOT.skins) + 1; // не тот же
+    }
+    if (next === p.skin) return;
+    p.skin = next;
+    this.persistBot(bot);
+    console.log(`[bot] ${bot.nick} модель → ${next}`);
   }
 
   private requestBot(nick: string, norm: string): void {
@@ -891,6 +917,7 @@ export class ZoneRoom extends Room<ZoneState> {
       yaw: 0,
       vx: 0,
       vz: 0,
+      reskinAt: 0,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
