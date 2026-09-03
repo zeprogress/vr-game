@@ -9,6 +9,7 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { WORLD } from "#shared/constants";
 import { terrainHeight as surface } from "#shared/terrain";
+import { trees } from "#shared/trees";
 
 export interface Terrain {
   mesh: Mesh;
@@ -24,6 +25,73 @@ const APRON = 2;
  * `skipInner` — не класть квадраты, целиком лежащие в игровой зоне (там свой меш).
  * UV в мировом масштабе игровой зоны, чтобы текстура тайлилась одинаково.
  */
+/** Ниже этого AO не темнит — иначе под рощей получается чернота. */
+const AO_FLOOR = 0.42;
+/** Радиус затенения под кроной, м (плюс вклад размера дерева). */
+const AO_TREE_REACH = 5;
+const AO_TREE_PER_SCALE = 3.2;
+/** Вклад впадин рельефа: ложбины темнее гребней. */
+const AO_RELIEF = 0.45;
+/** На каком перепаде с соседями впадина считается глубокой, м. */
+const AO_DIP_FULL = 0.4;
+
+/**
+ * Запечённое затенение по вершинам (вместо теней).
+ *
+ * Считаем один раз при сборке меша и кладём в цвета вершин: в рантайме это
+ * стоит ноль, шейдер их и так читает. Настоящие тени тут не годятся — солнце
+ * в мире движется, и запечённая тень верна лишь для одного его положения.
+ * AO от солнца не зависит и переживает весь суточный цикл.
+ *
+ * Два вклада:
+ *  - тень кроны: деревья детерминированы (#shared/trees), радиус берём по
+ *    кроне, а не по стволу — шаг сетки 2.5 м, на радиусе ствола затенение
+ *    попало бы в одну-две вершины и его никто бы не увидел;
+ *  - вогнутость рельефа: вершина ниже соседей — ложбина, темнее.
+ *
+ * Высоты соседей берём прямо из сетки, а не пересчитываем surface(): это
+ * убирает четыре вызова на вершину, самую дорогую часть запекания.
+ */
+function bakeAo(positions: number[], row: number): number[] {
+  const list = trees();
+  const n = positions.length / 3;
+  const colors: number[] = new Array(n * 4);
+
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+
+    // Кроны: чем ближе и крупнее дерево, тем темнее под ним.
+    let shade = 0;
+    for (const t of list) {
+      const reach = AO_TREE_REACH + t.scale * AO_TREE_PER_SCALE;
+      const dx = x - t.x;
+      const dz = z - t.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= reach * reach) continue;
+      const k = 1 - Math.sqrt(d2) / reach;
+      shade += k * k * (0.5 + t.scale * 0.3);
+    }
+
+    // Рельеф: сравниваем с четырьмя соседями по сетке (у края — сам с собой).
+    const col = i % row;
+    const left = col > 0 ? positions[(i - 1) * 3 + 1] : y;
+    const right = col < row - 1 ? positions[(i + 1) * 3 + 1] : y;
+    const up = i >= row ? positions[(i - row) * 3 + 1] : y;
+    const down = i + row < n ? positions[(i + row) * 3 + 1] : y;
+    const dip = (left + right + up + down) / 4 - y;
+    if (dip > 0) shade += Math.min(1, dip / AO_DIP_FULL) * AO_RELIEF;
+
+    const ao = Math.max(AO_FLOOR, 1 - Math.min(1, shade));
+    colors[i * 4] = ao;
+    colors[i * 4 + 1] = ao;
+    colors[i * 4 + 2] = ao;
+    colors[i * 4 + 3] = 1;
+  }
+  return colors;
+}
+
 function buildPatch(
   scene: Scene,
   name: string,
@@ -73,6 +141,7 @@ function buildPatch(
   vd.indices = indices;
   vd.normals = normals;
   vd.uvs = uvs;
+  vd.colors = bakeAo(positions, row);
   vd.applyToMesh(mesh);
   return mesh;
 }
