@@ -3,10 +3,15 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Light } from "@babylonjs/core/Lights/light";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import { BOT_TORCHES } from "./Fireflies";
 
 /** Докуда добивает свет бота, м. */
 const RANGE = 18;
+/** На сколько источник вынесен ВПЕРЁД от бота — светит в основном на морду. */
+const FORWARD = 1.1;
+/** И на сколько поднят над точкой корпуса. */
+const UP = 0.5;
 /**
  * Яркость источника. Подбор вживую: `?botlight=6`. Если и на большом значении
  * окружение не светлеет — значит источник вообще не попадает в шейдер земли
@@ -34,7 +39,7 @@ export class BotLights {
   private enabled = false;
   private readonly _order: number[] = [];
 
-  constructor(scene: Scene) {
+  constructor(private readonly scene: Scene) {
     for (let i = 0; i < BOT_TORCHES; i++) {
       const l = new PointLight(`botTorch${i}`, new Vector3(0, -100, 0), scene);
       l.range = RANGE;
@@ -56,7 +61,14 @@ export class BotLights {
    * @param ref      откуда мерить «ближайших» (камера спектатора / голова игрока)
    * @param bots     мировые позиции корпусов ботов
    */
-  update(dt: number, daylight: number, ref: Vector3, bots: readonly Vector3[]): void {
+  update(
+    dt: number,
+    daylight: number,
+    ref: Vector3,
+    bots: readonly Vector3[],
+    /** Куда смотрит каждый бот (единичное, горизонтальное). */
+    fwd: readonly Vector3[],
+  ): void {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
     this.night += (want - this.night) * Math.min(1, dt * 0.8);
 
@@ -64,6 +76,11 @@ export class BotLights {
     if (on !== this.enabled) {
       this.enabled = on;
       for (const l of this.lights) l.setEnabled(on);
+      // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
+      // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
+      // как шейдер собран по дневному набору источников, и в него не попадают.
+      // Набор изменился — говорим об этом явно. Бывает дважды за сутки.
+      this.scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
     }
     if (!this.enabled) return;
 
@@ -84,7 +101,11 @@ export class BotLights {
         continue;
       }
       const b = bots[bi];
-      l.position.set(b.x, b.y + 0.6, b.z);
+      const f = fwd[bi];
+      const fl = f ? Math.hypot(f.x, f.z) || 1 : 1;
+      const ox = f ? (f.x / fl) * FORWARD : 0;
+      const oz = f ? (f.z / fl) * FORWARD : 0;
+      l.position.set(b.x + ox, b.y + UP, b.z + oz);
       l.intensity = this.night * INTENSITY;
     }
   }

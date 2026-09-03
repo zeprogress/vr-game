@@ -77,6 +77,7 @@ export class Spectator {
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly botLights: import("../world/BotLights").BotLights;
   private readonly _botPos: Vector3[] = [];
+  private readonly _botFwd: Vector3[] = [];
 
   private readonly avatars = new Map<string, RemoteAvatar>();
   private net: NetClient | null = null;
@@ -425,8 +426,19 @@ export class Spectator {
 
     // Ночью ближайший к камере бот светит вокруг себя.
     this._botPos.length = 0;
-    for (const av of this.avatars.values()) if (av.isBot) this._botPos.push(av.position);
-    this.botLights.update(dt, daylightAt(LOADOUT.world.hour), this.cam.cam.position, this._botPos);
+    this._botFwd.length = 0;
+    for (const av of this.avatars.values()) {
+      if (!av.isBot) continue;
+      this._botPos.push(av.position);
+      this._botFwd.push(av.eyeForward);
+    }
+    this.botLights.update(
+      dt,
+      daylightAt(LOADOUT.world.hour),
+      this.cam.cam.position,
+      this._botPos,
+      this._botFwd,
+    );
 
     // Режиссёр.
     this.cam.update(dt, {

@@ -108,6 +108,7 @@ export class Game {
   private readonly spellLights: SpellLights;
   private readonly botLights: import("../world/BotLights").BotLights;
   private readonly _botPos: Vector3[] = [];
+  private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -284,12 +285,18 @@ export class Game {
       const fl = this.netMobs.fireLight();
       this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0);
       this._botPos.length = 0;
-      for (const av of this.avatars.values()) if (av.isBot) this._botPos.push(av.position);
+      this._botFwd.length = 0;
+      for (const av of this.avatars.values()) {
+        if (!av.isBot) continue;
+        this._botPos.push(av.position);
+        this._botFwd.push(av.eyeForward);
+      }
       this.botLights.update(
         dt,
         dayState(LOADOUT.world.hour).daylight,
         this.player.eyePosition,
         this._botPos,
+        this._botFwd,
       );
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
