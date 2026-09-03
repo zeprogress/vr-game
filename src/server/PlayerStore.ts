@@ -79,6 +79,13 @@ export class PlayerStore {
     this.dirty = true;
   }
 
+  /** Удалить запись целиком (сброс прогресса по `!delete`). */
+  del(token: string): boolean {
+    if (!this.records.delete(token)) return false;
+    this.dirty = true;
+    return true;
+  }
+
   /** Записать на диск, если что-то менялось. Атомарно (tmp + rename). */
   flush(): void {
     if (!this.dirty) return;

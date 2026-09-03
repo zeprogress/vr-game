@@ -347,6 +347,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
   private infoAt = 0; // ms последнего ответа на !info (общий кулдаун)
+  private readonly hintAt = new Map<string, number>(); // normNick -> ms последней подсказки
 
   override onCreate(): void {
     this.setState(new ZoneState());
@@ -840,8 +841,12 @@ export class ZoneRoom extends Room<ZoneState> {
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
-    } else if (cmd === "!str" || cmd === "!agi" || cmd === "!int") {
-      this.spendBotPoint(norm, cmd.slice(1) as StatName, parts[1]);
+    } else if (cmd === "!str" || cmd === "!dex" || cmd === "!int") {
+      // В чате ловкость — !dex, внутри она по-прежнему agi.
+      const stat: StatName = cmd === "!dex" ? "agi" : (cmd.slice(1) as StatName);
+      this.spendBotPoint(norm, stat, parts[1]);
+    } else if (cmd === "!delete" || cmd === "!reset") {
+      this.deleteBot(nick, norm);
     }
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
   }
@@ -859,10 +864,30 @@ export class ZoneRoom extends Room<ZoneState> {
     return stat === "str" ? "сила" : stat === "agi" ? "ловкость" : "интеллект";
   }
 
-  /** `!stats` — показать прогресс своего бота. */
+  /** Антиспам подсказок для ников без активного бота. */
+  private hintOk(norm: string): boolean {
+    const now = Date.now();
+    if (now - (this.hintAt.get(norm) ?? 0) < BOT.statsCooldown * 1000) return false;
+    this.hintAt.set(norm, now);
+    return true;
+  }
+
+  /** `!stats` — прогресс бота, а если его нет — что сделать, чтобы он был. */
   private sayStats(norm: string): void {
     const bot = this.bots.get(norm);
-    if (!bot) return;
+    if (!bot) {
+      if (!this.hintOk(norm)) return;
+      const rec = store.get(`nick:${norm}`);
+      if (rec) {
+        // Герой есть в сейве, просто сейчас не в мире.
+        this.reply(
+          `@${rec.nick || norm} герой ур.${rec.level} ждёт за воротами — !play, чтобы вывести его в мир.`,
+        );
+      } else {
+        this.reply(`@${norm} у тебя ещё нет героя — напиши !play, и он выйдет в мир.`);
+      }
+      return;
+    }
     const now = Date.now();
     if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
     bot.statsAt = now;
@@ -879,7 +904,10 @@ export class ZoneRoom extends Room<ZoneState> {
   /** `!str` / `!agi` / `!int` [сколько] — вложить очки в атрибут. */
   private spendBotPoint(norm: string, stat: StatName, arg: string | undefined): void {
     const bot = this.bots.get(norm);
-    if (!bot) return;
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${norm} героя нет в мире — сначала !play.`);
+      return;
+    }
     const p = bot.state;
     if (p.unspent <= 0) {
       // Без кулдауна тут был бы флуд отказами, поэтому делим его со !stats.
@@ -914,6 +942,36 @@ export class ZoneRoom extends Room<ZoneState> {
     );
   }
 
+  /**
+   * `!delete` — убрать героя и стереть его прогресс. Следующий `!play`
+   * создаст нового с 1 уровня.
+   */
+  private deleteBot(nick: string, norm: string): void {
+    if (this.nickIsPlayed(norm)) {
+      this.reply(`@${nick} нельзя удалять героя, пока играешь им сам — сначала выйди из игры.`);
+      return;
+    }
+    const token = `nick:${norm}`;
+    const had = this.bots.has(norm) || !!store.get(token);
+    if (!had) {
+      if (this.hintOk(norm)) this.reply(`@${nick} удалять нечего — героя ещё нет.`);
+      return;
+    }
+    // Сначала снимаем бота с карты, иначе автосохранение вернёт запись обратно.
+    const bot = this.bots.get(norm);
+    if (bot) {
+      this.state.players.delete(bot.id);
+      this.rt.delete(bot.id);
+      this.bots.delete(norm);
+    }
+    store.del(token);
+    store.flush(); // сброс должен пережить падение сервера сразу
+    this.playCd.delete(norm); // не заставляем ждать кулдаун !play после сброса
+    console.log(`[bot] удалён прогресс ${nick}`);
+    this.reply(`@${nick} герой удалён, прогресс обнулён. !play — начать заново с 1 уровня.`);
+    if (this.state.players.size === 0) this.wipeWorld("мир опустел");
+  }
+
   /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
   private sayInfo(): void {
     const now = Date.now();
@@ -922,7 +980,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
-        `${BOT.skins}) · !stats — его прогресс · !str/!agi/!int — вложить очко атрибута · ` +
+        `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
+        "!delete — стереть героя и начать заново · " +
         "обычное сообщение в чат он скажет вслух над головой. " +
         "Зайти за своего героя самому: ссылка в описании стрима, ник — как в Twitch.",
     );

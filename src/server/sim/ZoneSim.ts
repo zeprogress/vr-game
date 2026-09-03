@@ -128,6 +128,10 @@ class Mob {
   private wanderX = 0;
   private wanderZ = 0;
   private attackCd = 0;
+  /** Плевун: сколько уже пятится и сколько ещё нельзя пятиться. */
+  private retreatT = 0;
+  private restT = 0;
+  private retreatSide = Math.random() < 0.5 ? 1 : -1;
   private hurtCd = 0;
   private aggroed = false;
   private outOfRange = 0;
@@ -262,6 +266,15 @@ class Mob {
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     if (this.attackCd > 0) this.attackCd -= dt;
+    // Плевун: отход выдыхается, потом пауза, в которую его можно догнать.
+    if (this.restT > 0) {
+      this.restT -= dt;
+      if (this.restT <= 0) this.retreatSide = Math.random() < 0.5 ? 1 : -1;
+    } else if (this.retreatT > 0) {
+      // Копится только пока он реально пятится (см. ниже), само по себе тает.
+      this.retreatT -= dt * 0.35;
+      if (this.retreatT < 0) this.retreatT = 0;
+    }
 
     if (this.dead) {
       this.deadT += dt;
@@ -445,10 +458,23 @@ class Mob {
         this.hopCd = hopInterval;
         let hx = 0;
         let hz = 0;
+        let retreating = false;
         if (this.ranged) {
-          if (dist < SPITTER.keepDistance) {
-            hx = -dx;
-            hz = -dz;
+          if (dist < SPITTER.keepDistance && this.restT <= 0) {
+            // Отход по диагонали, а не строго назад: так он кружит, а не
+            // убегает по прямой от преследователя.
+            hx = -dx * 0.75 - dz * this.retreatSide * 0.66;
+            hz = -dz * 0.75 + dx * this.retreatSide * 0.66;
+            retreating = true;
+            this.retreatT += hopInterval;
+            if (this.retreatT >= SPITTER.retreatBurst) {
+              this.retreatT = 0;
+              this.restT = SPITTER.retreatRest;
+            }
+          } else if (dist < SPITTER.keepDistance) {
+            // Выдохся — только вбок, дистанцию больше не набирает.
+            hx = -dz * this.retreatSide;
+            hz = dx * this.retreatSide;
           } else if (dist > SPITTER.fireRange) {
             hx = dx;
             hz = dz;
@@ -463,8 +489,9 @@ class Mob {
         }
         if (hx !== 0 || hz !== 0) {
           [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
-          this.vx = hx * hopSpeed;
-          this.vz = hz * hopSpeed;
+          const spd = retreating ? hopSpeed * SPITTER.retreatSpeed : hopSpeed;
+          this.vx = hx * spd;
+          this.vz = hz * spd;
           this.vy = MOB.hopUp;
           this.grounded = false;
         }
