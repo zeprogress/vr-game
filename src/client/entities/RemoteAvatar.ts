@@ -17,6 +17,22 @@ import { NameTag } from "../ui/NameTag";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
+import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
+
+/** Доворот модели бота, если её «перёд» смотрит не в +Z. Подбор: `?byaw=<рад>`. */
+const BOT_MODEL_YAW = (() => {
+  const p = new URLSearchParams(location.search);
+  const v = Number(p.get("byaw"));
+  return p.has("byaw") && Number.isFinite(v) ? v : 0;
+})();
+/**
+ * Единый масштаб персонажа (подобран так, что «обычный» рост ≈ 1.85 м).
+ * Не нормируем по высоте: у ведьмы/мага шляпа, у гоблина низкий рост — пусть
+ * так и будет, естественный разброс.
+ */
+const BOT_RIG_SCALE = 0.52;
+/** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
+const BOT_FEET_Y = -1.68;
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -61,9 +77,21 @@ export class RemoteAvatar implements Hittable {
   private handR: Mesh | null = null;
   private capsule: Mesh | null = null;
   private botBody: TransformNode | null = null;
+  private botRig: RigInstance | null = null;
+  private botHolder: TransformNode | null = null;
+  private botRigLoading = false;
   private skin = 0;
   private builtSkin = -1;
   private mode: PlayerMode | null = null;
+
+  // Анимации модели бота (crossfade по весам).
+  private animName = "idle";
+  private readonly animW = new Map<string, number>();
+  private planarSpeed = 0;
+  private swingUntil = 0;
+  private lastUpdate = 0;
+  private readonly _prevPos = new Vector3();
+  private disposed = false;
 
   /** Оружие в руках — чтобы союзники видели, кто с чем. */
   private gearL: Mesh | null = null;
@@ -119,6 +147,13 @@ export class RemoteAvatar implements Hittable {
   /** Быстрый замах — по сети (act:swing). Виден на модельке бота. */
   playSwing(): void {
     this.swingAt = this.now;
+    const g = this.botRig?.anims.get("swordslash");
+    if (g) {
+      g.start(false, 1.35, g.from, g.to, false);
+      g.setWeightForAllAnimatables(1);
+      this.animW.set("swordslash", 1);
+      this.swingUntil = this.now + ((g.to - g.from) / 60 / 1.35) * 1000;
+    }
   }
 
   private setMode(mode: PlayerMode): void {
@@ -130,6 +165,11 @@ export class RemoteAvatar implements Hittable {
     this.handR?.dispose();
     this.capsule?.dispose();
     this.botBody?.dispose(false, true);
+    this.botRig?.dispose();
+    this.botHolder?.dispose();
+    this.botRig = this.botHolder = null;
+    this.animW.clear();
+    this.animName = "idle";
     this.handL = this.handR = this.capsule = this.botBody = null;
     // Оружие висело на кистях/корпусе — пересоберём под новый режим.
     this.gearL?.dispose();
@@ -138,8 +178,11 @@ export class RemoteAvatar implements Hittable {
     this.gearKeyL = this.gearKeyR = "";
 
     if (this.skin > 0) {
-      // Бот зрителя (Ф10): своя моделька, корпус целиком поворачивается по yaw.
-      this.botBody = makeBotBody(this.scene, this.skin, this.mat.diffuseColor);
+      // Бот зрителя (Ф10): персонаж из пака грузится асинхронно; пока не
+      // пришёл — показываем процедурную заглушку (4 варианта). Корпус целиком
+      // поворачивается по yaw (крутится this.root, см. update()).
+      const stub = ((this.skin - 1) % 4) + 1;
+      this.botBody = makeBotBody(this.scene, stub, this.mat.diffuseColor);
       this.botBody.parent = this.root;
       // Пустая «голова» — держатель для eyeForward / NameTag якоря.
       this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
@@ -147,6 +190,7 @@ export class RemoteAvatar implements Hittable {
       this.head.isVisible = false;
       // Модельки бота выше «головы» плоского аватара — поднимаем плашку.
       this.nameTag.setAnchorY(0.72);
+      void this.loadBotRig(this.skin);
     } else if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
       this.handL = this.makeHand("avatarHandL");
@@ -293,6 +337,8 @@ export class RemoteAvatar implements Hittable {
   /** Каждый кадр: ставим позу на INTERP_DELAY мс назад между снапшотами. */
   update(now: number): void {
     this.now = now;
+    const dt = this.lastUpdate > 0 ? Math.min(0.1, (now - this.lastUpdate) / 1000) : 0.016;
+    this.lastUpdate = now;
     this.syncBar();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
@@ -321,7 +367,8 @@ export class RemoteAvatar implements Hittable {
     if (this.skin > 0) {
       if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
       this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
-      this.animateSwing(now);
+      if (this.botRig) this.stepBotLocomotion(now, dt);
+      else this.animateSwing(now);
     } else {
       this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
       if (this.mode === "vr") {
@@ -345,6 +392,88 @@ export class RemoteAvatar implements Hittable {
     const chop = f < 0.35 ? f / 0.35 : 1 - (f - 0.35) / 0.65;
     this.botBody.rotation.x = -0.6 * chop;
     this.botBody.position.z = 0.25 * chop;
+  }
+
+  /** Подгрузить персонажа для бота и заменить им процедурную заглушку. */
+  private async loadBotRig(skinAtCall: number): Promise<void> {
+    if (this.botRigLoading) return;
+    this.botRigLoading = true;
+    const model = BOT_SKIN_MODELS[(skinAtCall - 1) % BOT_SKIN_MODELS.length];
+    try {
+      const make = await loadRig(this.scene, model);
+      if (this.disposed || this.skin !== skinAtCall || this.botRig) return;
+      const rig = make();
+
+      // Обёртка: масштаб + доворот держим здесь, трансформы самой модели не трогаем.
+      const holder = new TransformNode(`botModel_${this.id}`, this.scene);
+      holder.parent = this.root;
+      holder.rotationQuaternion = Quaternion.RotationYawPitchRoll(BOT_MODEL_YAW, 0, 0);
+      holder.position.set(0, BOT_FEET_Y, 0);
+      rig.root.parent = holder;
+      rig.root.position.setAll(0);
+      holder.scaling.setAll(BOT_RIG_SCALE);
+
+      recolorCharacter(rig.root);
+      for (const m of rig.meshes) m.isPickable = false;
+
+      // Клипы в покое; веса гоняет stepBotAnims().
+      for (const [n, g] of rig.anims) {
+        g.stop();
+        this.animW.set(n, n === "idle" ? 1 : 0);
+      }
+      this.animName = "idle";
+
+      // Готово — сносим заглушку, перецепляем якорь головы.
+      this.botBody?.dispose(false, true);
+      this.botBody = null;
+      this.head.dispose();
+      this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
+      this.head.parent = holder;
+      this.head.position.set(0, rig.nativeHeight * 0.82, 0);
+      this.head.rotationQuaternion = Quaternion.Identity();
+      this.head.isVisible = false;
+      this.head.isPickable = false;
+
+      this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
+      this.botHolder = holder;
+      this.botRig = rig;
+      this.gearKeyR = this.gearKeyL = ""; // оружие боту-персонажу пока не вешаем
+    } catch {
+      // модель не пришла — остаётся процедурная заглушка
+    } finally {
+      this.botRigLoading = false;
+    }
+  }
+
+  /** Каждый кадр для бота с моделью: выбор клипа по скорости + crossfade. */
+  private stepBotLocomotion(now: number, dt: number): void {
+    const p = this.root.position;
+    // Кап на скачок (телепорт/первый кадр) — иначе «бег» на ровном месте.
+    const inst = Math.min(12, Math.hypot(p.x - this._prevPos.x, p.z - this._prevPos.z) / Math.max(dt, 1e-3));
+    this._prevPos.copyFrom(p);
+    this.planarSpeed += (inst - this.planarSpeed) * Math.min(1, dt * 8);
+
+    let want: string;
+    if (now < this.swingUntil) want = "swordslash";
+    else if (this.planarSpeed > 2.2) want = "run";
+    else if (this.planarSpeed > 0.35) want = "walk";
+    else want = "idle";
+    this.animName = want;
+
+    const k = Math.min(1, dt * 12);
+    for (const [n, g] of this.botRig!.anims) {
+      const target = n === this.animName ? 1 : 0;
+      let w = this.animW.get(n) ?? 0;
+      w += (target - w) * k;
+      if (w <= 0.003) {
+        w = 0;
+        if (g.isPlaying && n !== this.animName) g.stop();
+      } else if (!g.isPlaying) {
+        g.start(n !== "swordslash", n === "swordslash" ? 1.35 : 1, g.from, g.to, false);
+      }
+      this.animW.set(n, w);
+      g.setWeightForAllAnimatables(w);
+    }
   }
 
   /** Полоска здоровья над головой — только пока мы с игроком в PvP. */
@@ -379,6 +508,10 @@ export class RemoteAvatar implements Hittable {
     const [cls, tier] = want;
     if (cls !== "sword" && cls !== "bow" && cls !== "shield") return null;
     if (!tier) return null;
+
+    // Бот с моделью персонажа: клип SwordSlash самодостаточен, отдельный меш
+    // меча пока не вешаем (нужен подбор в кость кулака «вживую»).
+    if (this.skin > 0 && this.botRig) return null;
 
     const mesh = this.makeWeapon!(cls as WeaponClass, tier as WeaponTier);
     mesh.isPickable = false;
@@ -427,10 +560,13 @@ export class RemoteAvatar implements Hittable {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.speakDot?.dispose();
     this.gearL?.dispose();
     this.gearR?.dispose();
     this.bar?.dispose();
+    this.botRig?.dispose();
+    this.botHolder?.dispose();
     this.nameTag.dispose();
     this.root.dispose(false, true);
   }

@@ -22,9 +22,32 @@ import "@babylonjs/loaders/glTF/2.0";
 
 export const MODELS = {
   slime: "/models/Slime.glb",
+  // Боты зрителей (Ф10): персонажи из Quaternius "Ultimate Animated Character
+  // Pack" (CC0), сконвертированы в .glb. Один скелет и один набор клипов на
+  // всех: Idle / Walk / Run / SwordSlash / RecieveHit / Death.
+  charKnight: "/models/chars/Knight_Male.glb",
+  charKnightGold: "/models/chars/Knight_Golden_Male.glb",
+  charWizard: "/models/chars/Wizard.glb",
+  charWitch: "/models/chars/Witch.glb",
+  charElf: "/models/chars/Elf.glb",
+  charNinja: "/models/chars/Ninja_Male.glb",
+  charGoblin: "/models/chars/Goblin_Male.glb",
+  charPirate: "/models/chars/Pirate_Male.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;
+
+/** skin 1..BOT.skins → модель бота. skin 0 — обычный аватар игрока. */
+export const BOT_SKIN_MODELS: readonly ModelName[] = [
+  "charKnight",
+  "charKnightGold",
+  "charWizard",
+  "charWitch",
+  "charElf",
+  "charNinja",
+  "charGoblin",
+  "charPirate",
+];
 
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
 
@@ -224,6 +247,35 @@ export async function loadRig(
 const TINY = new Vector3(1e-3, 1e-3, 1e-3);
 
 const q = (v: number): number => Math.round(v * 10) / 10;
+
+/**
+ * Персонаж из пака Quaternius: без текстур, цвет — в `baseColorFactor` и
+ * хранится в ЛИНЕЙНОМ пространстве (тёмные значения вроде 0.013). Квантовать
+ * их как `recolorFlat` нельзя — пропадут. Переводим в гамму и кладём в плоский
+ * StandardMaterial (со скиннингом). Одна копия материала на исходный.
+ */
+export function recolorCharacter(root: TransformNode): void {
+  const seen = new Map<string, StandardMaterial>();
+  for (const mesh of root.getChildMeshes(false)) {
+    const src = mesh.material;
+    if (!src) continue;
+    let flat = seen.get(src.id);
+    if (!flat) {
+      const lin =
+        src instanceof PBRBaseMaterial && "albedoColor" in src
+          ? (src as unknown as { albedoColor: Color3 }).albedoColor
+          : new Color3(0.6, 0.6, 0.62);
+      const base = lin.toGammaSpace();
+      flat = new StandardMaterial(`${src.name || "char"}_flat`, root.getScene());
+      flat.diffuseColor = base;
+      flat.emissiveColor = base.scale(0.1);
+      flat.specularColor = new Color3(0.04, 0.04, 0.04);
+      flat.maxSimultaneousLights = 3;
+      seen.set(src.id, flat);
+    }
+    mesh.material = flat;
+  }
+}
 
 /** PBR-материалы пака → наш плоский StandardMaterial. */
 export function recolorFlat(root: TransformNode, tint?: Color3): void {
