@@ -13,7 +13,7 @@ import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
 import { BotLights } from "./BotLights";
-import { Fireflies } from "./Fireflies";
+import { Fireflies, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
 
@@ -143,6 +143,14 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       if (net) {
         // Онлайн: пришла новая сверка с сервера — подхватываем её точно.
         if (net.hour !== lastNetHour) {
+          // Стрелки перевели с пульта — часы прыгают, и порог дня/ночи может
+          // проскочить между кадрами. Пересборка шейдеров привязана к этому
+          // порогу, поэтому на скачке зовём её отдельно: иначе земля остаётся
+          // с прежним набором источников. Обычную посекундную сверку
+          // (DAYCYCLE.syncSeconds) не трогаем — там шаг маленький.
+          if (Number.isFinite(lastNetHour) && Math.abs(net.hour - lastNetHour) > 0.25) {
+            relightMaterials(scene);
+          }
           hour = net.hour;
           lastNetHour = net.hour;
         } else if (auto) {
