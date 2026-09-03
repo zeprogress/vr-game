@@ -75,7 +75,9 @@ export class Spectator {
   private readonly avatars = new Map<string, RemoteAvatar>();
   private net: NetClient | null = null;
   private bossMusicOn = false;
-  private lastFrame = 0;
+  private lastRaf = 0;
+  private rafMs = 16.7; // сглаженный интервал между кадрами rAF (частота экрана)
+  private capStep = 0; // счётчик кадров для равномерного кэпа по vsync
   private lastShotReport = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
@@ -223,8 +225,22 @@ export class Spectator {
         this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
       }
       const now = performance.now();
-      if (this.fpsCap > 0 && now - this.lastFrame < 1000 / this.fpsCap - 1) return;
-      this.lastFrame = now;
+
+      // Кэп fps — равномерно по частоте экрана: рендерим каждый N-й кадр rAF
+      // (60 Гц + кэп 30 → каждый второй, ровно). Ограничение по времени
+      // (`now - last < step`) давало рывки: джиттер rAF то пропускал лишний
+      // кадр, то нет, и при среднем «30 fps» картина дёргалась.
+      if (this.lastRaf > 0) {
+        const d = now - this.lastRaf;
+        if (d > 4 && d < 100) this.rafMs += (d - this.rafMs) * 0.1;
+      }
+      this.lastRaf = now;
+      if (this.fpsCap > 0) {
+        const n = Math.max(1, Math.round(1000 / this.fpsCap / this.rafMs));
+        this.capStep = (this.capStep + 1) % n;
+        if (this.capStep !== 0) return;
+      }
+
       this.renderCount++;
       if (this.rateAt === 0) {
         this.rateAt = now;
