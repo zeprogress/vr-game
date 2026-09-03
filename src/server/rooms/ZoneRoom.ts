@@ -342,6 +342,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
   private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
+  private infoAt = 0; // ms последнего ответа на !info (общий кулдаун)
 
   override onCreate(): void {
     this.setState(new ZoneState());
@@ -376,8 +377,12 @@ export class ZoneRoom extends Room<ZoneState> {
     this.setSimulationInterval((deltaMs) => this.step(deltaMs / 1000), 50);
 
     // Чат Twitch: `!play` — бот под ником зрителя, `!stop` — убрать.
-    this.twitch = new TwitchChat(process.env.TWITCH_CHANNEL || TWITCH_CHANNEL, (nick, text) =>
-      this.onChat(nick, text),
+    this.twitch = new TwitchChat(
+      process.env.TWITCH_CHANNEL || TWITCH_CHANNEL,
+      (nick, text) => this.onChat(nick, text),
+      // Логин и токен бота — только из окружения (deploy/stream.env на VPS).
+      // Не заданы — чат читается как раньше, просто без ответов.
+      { user: process.env.TWITCH_BOT_USER, token: process.env.TWITCH_OAUTH },
     );
     this.twitch.start();
 
@@ -821,9 +826,36 @@ export class ZoneRoom extends Room<ZoneState> {
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase();
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
-    else if (cmd === "!stop" || cmd === "!leave") this.removeBot(norm);
+    else if (cmd === "!stop" || cmd === "!leave") {
+      if (this.bots.has(norm)) {
+        this.removeBot(norm);
+        this.reply(`@${nick} герой ушёл из мира. !play — вернуть.`);
+      }
+    }
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
+    else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
+  }
+
+  /**
+   * Ответ в чат канала. Работает, только если в окружении задан аккаунт бота
+   * (см. TwitchChat) — иначе тихо пропускается.
+   */
+  private reply(text: string): void {
+    this.twitch?.say(text);
+  }
+
+  /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
+  private sayInfo(): void {
+    const now = Date.now();
+    if (now - this.infoAt < BOT.infoCooldown * 1000) return;
+    this.infoAt = now;
+    this.reply(
+      "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
+        "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
+        `${BOT.skins}) · обычное сообщение в чат он скажет вслух над головой. ` +
+        "Зайти за своего героя самому: ссылка в описании стрима, ник — как в Twitch.",
+    );
   }
 
   /** Обычная реплика в чате канала — облачком над своим ботом (Ф10). */
@@ -861,19 +893,30 @@ export class ZoneRoom extends Room<ZoneState> {
     p.skin = next;
     this.persistBot(bot);
     console.log(`[bot] ${bot.nick} модель → ${next}`);
+    this.reply(`@${bot.nick} внешность ${next} из ${BOT.skins}.`);
   }
 
   private requestBot(nick: string, norm: string): void {
     if (!this.allowedNick(norm)) return;
-    if (this.nickIsPlayed(norm) || this.bots.has(norm)) return;
+    if (this.nickIsPlayed(norm)) {
+      this.reply(`@${nick} ты сейчас сам за этого героя — бот не нужен.`);
+      return;
+    }
+    if (this.bots.has(norm)) {
+      this.reply(`@${nick} твой герой уже в мире.`);
+      return;
+    }
     const now = Date.now();
-    if (now - (this.playCd.get(norm) ?? 0) < BOT.playCooldown * 1000) return;
+    if (now - (this.playCd.get(norm) ?? 0) < BOT.playCooldown * 1000) return; // антиспам, молча
     if (this.bots.size >= BOT.maxBots) {
       console.log(`[bot] отказ ${nick}: потолок ${BOT.maxBots}`);
+      this.reply(`@${nick} сейчас в мире максимум героев (${BOT.maxBots}) — попробуй чуть позже.`);
       return;
     }
     this.playCd.set(norm, now);
     this.spawnBot(nick, norm);
+    const p = this.bots.get(norm)?.state;
+    this.reply(`@${nick} твой герой вышел в мир, ур.${p?.level ?? 1}. !stop — убрать, !skin — сменить внешность.`);
   }
 
   private spawnBot(nick: string, norm: string): void {

@@ -374,6 +374,8 @@ export const BOT = {
   sayCooldown: 2,
   /** Максимум символов в реплике над ботом. */
   sayMaxLen: 90,
+  /** Общий кулдаун ответа на `!info` в чат канала, с (ответ видят все). */
+  infoCooldown: 20,
 } as const;
 
 /**
