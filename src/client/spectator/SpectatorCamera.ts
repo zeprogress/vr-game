@@ -232,7 +232,10 @@ export class SpectatorCamera {
    * Без `:id` — авто-выбор следующей цели (для ROTATION).
    */
   private resolveToken(tok: string, ctx: DirectorCtx): Shot | null {
-    const [kind, id] = tok.split(":");
+    // Только по первому «:» — id ботов вида `bot:<ник>` сам содержит двоеточие.
+    const ci = tok.indexOf(":");
+    const kind = ci < 0 ? tok : tok.slice(0, ci);
+    const id = ci < 0 ? "" : tok.slice(ci + 1);
     if (kind === "overview") return { kind: "overview" };
     if (kind === "orbitBoss") return ctx.boss ? { kind: "orbitBoss" } : null;
     if (kind === "eyeBoss") {
