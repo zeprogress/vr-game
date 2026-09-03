@@ -35,6 +35,8 @@ export class TwitchChat {
   private ready = false;
   private readonly queue: string[] = [];
   private sentAt: number[] = [];
+  /** Что мы недавно отправили — чтобы отличить эхо своего ответа от живого сообщения. */
+  private readonly recentSent: { t: number; text: string }[] = [];
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
   private warnedNoAuth = false;
 
@@ -113,6 +115,8 @@ export class TwitchChat {
     if (!msg) return;
     this.sentAt.push(now);
     this.ws.send(`PRIVMSG #${this.channel} :${msg}`);
+    this.recentSent.push({ t: now, text: msg });
+    if (this.recentSent.length > 12) this.recentSent.shift();
     console.log(`[twitch] -> ${msg.slice(0, 80)}`);
     if (this.queue.length > 0) this.drain();
   }
@@ -185,8 +189,13 @@ export class TwitchChat {
       if (!m) continue;
       const nick = m[1];
       const text = m[2].replace(/[\r\n]/g, "").trim();
-      // Своё же сообщение обратно не обрабатываем.
-      if (this.botUser && nick.toLowerCase() === this.botUser) continue;
+      // Отбрасываем только ЭХО собственного ответа, а не всё от нашего ника:
+      // аккаунт бота часто совпадает с аккаунтом стримера, и фильтр по нику
+      // глушил его же команды (!play, !info) в собственном чате.
+      if (this.botUser && nick.toLowerCase() === this.botUser) {
+        const t = Date.now();
+        if (this.recentSent.some((r) => t - r.t < 15_000 && r.text === text)) continue;
+      }
       try {
         this.onMessage(nick, text);
       } catch (e) {
