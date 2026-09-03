@@ -32,6 +32,7 @@ const TOWN_MUSIC = [
 ];
 const BOSS_MUSIC = "/music/boss.mp3";
 const UP = { x: 0, y: 1, z: 0 };
+const FORWARD_Z = new Vector3(0, 0, 1);
 
 /** Пресеты качества под слабое железо (TOX3). `?q=potato|low|med|high`. */
 export type Quality = "potato" | "low" | "med" | "high";
@@ -90,8 +91,14 @@ export class Spectator {
   private readonly debug: HTMLDivElement | null;
   private readonly overlay: Overlay | null;
 
+  // Пулы для tick(): режиссёру отдаём переиспользуемые объекты, без аллокаций
+  // каждый кадр (иначе минорный GC даёт редкие рывки на телефоне).
   private readonly _players: CtxPlayer[] = [];
   private readonly _mobs: CtxMob[] = [];
+  private readonly _playerPool: CtxPlayer[] = [];
+  private readonly _mobPool: CtxMob[] = [];
+  private readonly _boss = { id: "", pos: new Vector3(), aggro: false };
+  private readonly _fwd = new Vector3();
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -356,32 +363,45 @@ export class Spectator {
         av.setMyPvp(false);
         av.update(now);
         const head = av.position;
-        this._players.push({
-          id,
-          nick: p.nick,
-          pos: new Vector3(head.x, head.y - 0.5, head.z),
-          eye: head.clone(),
-          forward: av.eyeForward.clone(),
-        });
+        const i = this._players.length;
+        let e = this._playerPool[i];
+        if (!e) {
+          e = { id: "", nick: "", pos: new Vector3(), eye: new Vector3(), forward: new Vector3() };
+          this._playerPool[i] = e;
+        }
+        e.id = id;
+        e.nick = p.nick;
+        e.pos.copyFromFloats(head.x, head.y - 0.5, head.z);
+        e.eye.copyFrom(head);
+        e.forward.copyFrom(av.eyeForward);
+        this._players.push(e);
       });
 
       st.mobs.forEach((m, id) => {
         if (m.dead || m.kind === "shard") return;
         const r = MOB.bodyRadius * (m.scale > 0 ? m.scale : 1);
-        const f = new Vector3(Math.sin(m.yaw), 0, Math.cos(m.yaw));
-        // «Глаза» моба: перед мордой, чуть выше центра.
-        this._mobs.push({
-          id,
-          kind: m.kind,
-          eye: new Vector3(m.x + f.x * r * 0.9, m.y + r * 1.1, m.z + f.z * r * 0.9),
-          forward: f,
-        });
+        const fx = Math.sin(m.yaw);
+        const fz = Math.cos(m.yaw);
+        const i = this._mobs.length;
+        let e = this._mobPool[i];
+        if (!e) {
+          e = { id: "", kind: "", eye: new Vector3(), forward: new Vector3() };
+          this._mobPool[i] = e;
+        }
+        e.id = id;
+        e.kind = m.kind;
+        e.eye.copyFromFloats(m.x + fx * r * 0.9, m.y + r * 1.1, m.z + fz * r * 0.9);
+        e.forward.copyFromFloats(fx, 0, fz);
+        this._mobs.push(e);
         if (m.kind === "boss") {
           let aggro = m.windup > 0 || m.charging === 1 || m.enraged === 1;
           st.players.forEach((p) => {
             if (Math.hypot(p.head.x - m.x, p.head.z - m.z) < BOSS.aggroRange) aggro = true;
           });
-          boss = { id, pos: new Vector3(m.x, m.y, m.z), aggro };
+          this._boss.id = id;
+          this._boss.pos.copyFromFloats(m.x, m.y, m.z);
+          this._boss.aggro = aggro;
+          boss = this._boss;
         }
       });
     }
@@ -395,7 +415,8 @@ export class Spectator {
     });
 
     // Мобы, лут.
-    const fwd = this.cam.cam.getForwardRay().direction;
+    this.cam.cam.getDirectionToRef(FORWARD_Z, this._fwd);
+    const fwd = this._fwd;
     this.netMobs.update(dt, this.cam.cam.position, fwd);
     this.loot.update(dt);
 
