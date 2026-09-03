@@ -216,7 +216,7 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z) => this.playRemoteAct(k, x, y, z);
+    net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
     net.onReconnected = (room) => {
       this.attach(room);
       this.setStatus("");
@@ -508,11 +508,12 @@ export class Spectator {
   }
 
   /** Звук действия игрока по сети — как в игре, но без своих эффектов. */
-  private playRemoteAct(k: ActKind, x: number, y: number, z: number): void {
+  private playRemoteAct(k: ActKind, x: number, y: number, z: number, id: string): void {
     const at = { x, y, z };
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);
+        this.avatars.get(id)?.playSwing();
         break;
       case "step":
         this.sfx.at(at, () => this.sfx.footstep(0.85));

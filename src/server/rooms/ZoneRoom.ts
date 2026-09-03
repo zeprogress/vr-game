@@ -145,6 +145,9 @@ interface Bot {
   wanderCd: number;
   wanderX: number;
   wanderZ: number;
+  yaw: number; // сглаженный поворот модели
+  vx: number; // сглаженная скорость — движение без рывков
+  vz: number;
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -852,6 +855,10 @@ export class ZoneRoom extends Room<ZoneState> {
     p.mana = p.maxMana;
     p.rightCls = "sword";
     p.rightTier = "base";
+    p.skin =
+      typeof rec?.skin === "number" && rec.skin >= 1 && rec.skin <= BOT.skins
+        ? rec.skin
+        : 1 + Math.floor(Math.random() * BOT.skins);
     this.state.players.set(id, p);
 
     const rt: Runtime = {
@@ -881,6 +888,9 @@ export class ZoneRoom extends Room<ZoneState> {
       wanderCd: 0,
       wanderX: sx,
       wanderZ: sz,
+      yaw: 0,
+      vx: 0,
+      vz: 0,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -911,6 +921,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stowed: [],
       held: { left: null, right: { cls: "sword", tier: "base" } },
       overrides: {},
+      skin: p.skin,
       ...readProgress(p),
       bag: [],
     });
@@ -964,32 +975,49 @@ export class ZoneRoom extends Room<ZoneState> {
       tz = bot.wanderZ;
     }
 
-    let dx = tx - p.head.x;
-    let dz = tz - p.head.z;
-    const dist = Math.hypot(dx, dz) || 1;
-    dx /= dist;
-    dz /= dist;
-    const stopAt = mob ? BOT.attackRange * 0.7 : 0.4;
-    if (dist > stopAt) {
-      const stepLen = Math.min(BOT.moveSpeed * dt, dist - stopAt);
-      p.head.x += dx * stepLen;
-      p.head.z += dz * stepLen;
-      p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
-    }
+    const dxRaw = tx - p.head.x;
+    const dzRaw = tz - p.head.z;
+    const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
+    const dx = dxRaw / dist;
+    const dz = dzRaw / dist;
+    const stopAt = mob ? BOT.attackRange * 0.7 : 0.5;
 
-    // Поворот головы к цели (кватернион вокруг Y).
-    const yaw = Math.atan2(dx, dz);
-    bot.rt.yaw = yaw;
+    // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
+    // на смене цели и у путевых точек.
+    const wantSpeed = dist > stopAt ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5) : 0;
+    const wvx = dx * wantSpeed;
+    const wvz = dz * wantSpeed;
+    const accel = Math.min(1, dt * 6);
+    bot.vx += (wvx - bot.vx) * accel;
+    bot.vz += (wvz - bot.vz) * accel;
+    p.head.x += bot.vx * dt;
+    p.head.z += bot.vz * dt;
+    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
+
+    // Доворот модели — по фактической скорости (плавнее, чем к цели напрямую).
+    const spd = Math.hypot(bot.vx, bot.vz);
+    if (spd > 0.15) {
+      const wantYaw = Math.atan2(bot.vx, bot.vz);
+      let d = wantYaw - bot.yaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const maxStep = BOT.turnRate * dt;
+      bot.yaw += Math.abs(d) < maxStep ? d : Math.sign(d) * maxStep;
+    }
+    bot.rt.yaw = bot.yaw;
     p.head.qx = 0;
-    p.head.qy = Math.sin(yaw / 2);
+    p.head.qy = Math.sin(bot.yaw / 2);
     p.head.qz = 0;
-    p.head.qw = Math.cos(yaw / 2);
+    p.head.qw = Math.cos(bot.yaw / 2);
 
     // Удар.
     if (mob && dist < BOT.attackRange && bot.attackCd <= 0) {
       const dmg = weaponDamage("sword", p.str, 1, p.agi);
       const xp = this.sim.hitMob(mob.id, dmg, dx, dz);
       bot.attackCd = BOT.attackCooldown;
+      // Замах видят все — анимация на модельке бота + звук.
+      const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+      this.broadcast(MSG.act, relay);
       if (xp > 0) {
         this.awardXp(undefined, p, xp);
         bot.target = null;

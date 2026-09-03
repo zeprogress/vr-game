@@ -16,6 +16,7 @@ import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "../combat/Hittable";
+import { makeBotBody } from "./botModels";
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -59,6 +60,9 @@ export class RemoteAvatar implements Hittable {
   private handL: Mesh | null = null;
   private handR: Mesh | null = null;
   private capsule: Mesh | null = null;
+  private botBody: TransformNode | null = null;
+  private skin = 0;
+  private builtSkin = -1;
   private mode: PlayerMode | null = null;
 
   /** Оружие в руках — чтобы союзники видели, кто с чем. */
@@ -82,6 +86,9 @@ export class RemoteAvatar implements Hittable {
   private bar: HealthBar3D | null = null;
   private now = 0;
   private lastHitAt = -999;
+  private nick: string;
+  private level = 0; // 0 — ещё не знаем (первый push всегда перерисует плашку бота)
+  private swingAt = -999;
   /** Сообщить серверу о попадании по этому игроку. Ставит Game (только PvP). */
   onHit: ((weapon: WeaponKind, dir: Vector3) => void) | null = null;
   readonly id: string;
@@ -94,6 +101,7 @@ export class RemoteAvatar implements Hittable {
     private readonly makeWeapon: MakeWeapon | null = null,
   ) {
     this.id = id;
+    this.nick = nick;
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
 
@@ -105,24 +113,41 @@ export class RemoteAvatar implements Hittable {
     this.setMode(mode);
   }
 
+  /** Быстрый замах — по сети (act:swing). Виден на модельке бота. */
+  playSwing(): void {
+    this.swingAt = this.now;
+  }
+
   private setMode(mode: PlayerMode): void {
-    if (this.mode === mode) return;
+    if (this.mode === mode && this.builtSkin === this.skin) return;
     this.mode = mode;
+    this.builtSkin = this.skin;
     this.head?.dispose();
     this.handL?.dispose();
     this.handR?.dispose();
     this.capsule?.dispose();
-    this.handL = this.handR = this.capsule = null;
+    this.botBody?.dispose(false, true);
+    this.handL = this.handR = this.capsule = this.botBody = null;
     // Оружие висело на кистях/корпусе — пересоберём под новый режим.
     this.gearL?.dispose();
     this.gearR?.dispose();
     this.gearL = this.gearR = null;
     this.gearKeyL = this.gearKeyR = "";
 
-    if (mode === "vr") {
+    if (this.skin > 0) {
+      // Бот зрителя (Ф10): своя моделька, корпус целиком поворачивается по yaw.
+      this.botBody = makeBotBody(this.scene, this.skin, this.mat.diffuseColor);
+      this.botBody.parent = this.root;
+      // Пустая «голова» — держатель для eyeForward / NameTag якоря.
+      this.head = MeshBuilder.CreateBox("botHeadAnchor", { size: 0.01 }, this.scene);
+      this.head.parent = this.botBody;
+      this.head.isVisible = false;
+    } else if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
       this.handL = this.makeHand("avatarHandL");
       this.handR = this.makeHand("avatarHandR");
+      this.head.parent = this.root;
+      this.head.material = this.mat;
     } else {
       this.head = MeshBuilder.CreateSphere("avatarHead", { diameter: 0.24, segments: 8 }, this.scene);
       this.capsule = MeshBuilder.CreateCapsule(
@@ -134,10 +159,10 @@ export class RemoteAvatar implements Hittable {
       this.capsule.position.set(0, -0.85, 0);
       this.capsule.material = this.mat;
       this.capsule.isPickable = false;
+      this.head.parent = this.root;
+      this.head.material = this.mat;
     }
-    this.head.parent = this.root;
     this.head.rotationQuaternion = Quaternion.Identity();
-    this.head.material = this.mat;
     this.head.isPickable = false;
   }
 
@@ -185,6 +210,12 @@ export class RemoteAvatar implements Hittable {
   push(now: number, p: PlayerState): void {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
+    this.skin = p.skin ?? 0;
+    if (this.skin > 0 && (p.level !== this.level || this.nick !== p.nick)) {
+      this.level = p.level;
+      this.nick = p.nick;
+      this.nameTag.setInfo(p.nick, p.level);
+    }
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     this.dead = p.dead === 1;
@@ -265,12 +296,34 @@ export class RemoteAvatar implements Hittable {
     const s = stale || b.t === a.t ? 1 : (target - a.t) / (b.t - a.t);
 
     this.setMode(b.mode);
-    this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
-    if (this.mode === "vr") {
-      this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
-      this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
+    // Бот: поворачиваем корпус целиком (root); обычный аватар — только «голову».
+    if (this.skin > 0) {
+      if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
+      this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
+      this.animateSwing(now);
+    } else {
+      this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
+      if (this.mode === "vr") {
+        this.applyXf(this.handL!, this.handL!.rotationQuaternion!, a.handL, b.handL, s, false);
+        this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
+      }
     }
     this.applyGear();
+  }
+
+  /** Анимация замаха бота: короткий рывок-наклон корпуса и назад. */
+  private animateSwing(now: number): void {
+    if (!this.botBody) return;
+    const f = (now - this.swingAt) / 360;
+    if (f < 0 || f >= 1) {
+      this.botBody.rotation.x = 0;
+      this.botBody.position.z = 0;
+      return;
+    }
+    // Резкий замах вперёд (первая треть) и плавный возврат.
+    const chop = f < 0.35 ? f / 0.35 : 1 - (f - 0.35) / 0.65;
+    this.botBody.rotation.x = -0.6 * chop;
+    this.botBody.position.z = 0.25 * chop;
   }
 
   /** Полоска здоровья над головой — только пока мы с игроком в PvP. */

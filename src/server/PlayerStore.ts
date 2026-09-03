@@ -21,6 +21,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   /** Панельные настройки (положения рук/предметов, HUD, графика, голос). */
   overrides: Record<string, unknown>;
   bag: Slot[];
+  /** Внешность бота зрителя (Ф10) — держится за ником между сессиями. */
+  skin?: number;
   updatedAt: number;
 }
 

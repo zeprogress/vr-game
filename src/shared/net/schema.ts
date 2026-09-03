@@ -22,6 +22,8 @@ export class SlotState extends Schema {
 export class PlayerState extends Schema {
   @type("string") nick = "";
   @type("string") mode: PlayerMode = "flat";
+  /** Внешность бота зрителя: 0 — обычный аватар, 1..N — модель бота (Ф10). */
+  @type("uint8") skin = 0;
   @type(Xf) head = new Xf();
   @type(Xf) handL = new Xf();
   @type(Xf) handR = new Xf();

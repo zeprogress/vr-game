@@ -918,11 +918,12 @@ export class Game {
 
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   /** Звук чужого действия — объёмно от точки события (у аватара соседа). */
-  private playRemoteAct(k: ActKind, x: number, y: number, z: number, _id: string): void {
+  private playRemoteAct(k: ActKind, x: number, y: number, z: number, id: string): void {
     const at = { x, y, z };
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);
+        this.avatars.get(id)?.playSwing();
         break;
       case "step":
         this.sfx.at(at, () => this.sfx.footstep(0.85));

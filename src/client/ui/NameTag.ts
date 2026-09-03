@@ -10,6 +10,8 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 const BASE_W = 320; // ширина, под которую подобран физический размер плашки
 const H = 150;
+const NAME_FONT = "bold 40px system-ui, sans-serif";
+const LVL_FONT = "26px system-ui, sans-serif";
 
 /**
  * Плашка с именем и уровнем над мобом. Всегда развёрнута к камере
@@ -21,59 +23,35 @@ export class NameTag {
   private readonly baseY: number;
   private readonly halfH: number;
 
+  private readonly W: number;
+  private readonly accent: Color3;
+  private curName = "";
+  private curLevel: number | null = null;
+
   constructor(
     scene: Scene,
     parent: Node,
     offset: Vector3,
     name: string,
-    /** Уровень для мобов; null у игроков (вторая строка не рисуется). */
+    /** Уровень (вторая строка). null — не рисуется. Меняется через setInfo(). */
     level: number | null,
     accent: Color3 = new Color3(1, 0.86, 0.4),
   ) {
-    const nameFont = "bold 40px system-ui, sans-serif";
-    const lvlFont = "26px system-ui, sans-serif";
+    this.accent = accent;
 
-    // Меряем текст ОТДЕЛЬНЫМ канвасом и расширяем текстуру, если длинное имя
-    // не влезает в базовую ширину — иначе буквы срезаются по краям.
+    // Ширину закладываем сразу под имя И вторую строку — чтобы смена уровня
+    // не требовала пересоздавать текстуру.
     const measure = document.createElement("canvas").getContext("2d")!;
-    measure.font = nameFont;
+    measure.font = NAME_FONT;
     let textW = measure.measureText(name).width;
-    if (level !== null) {
-      measure.font = lvlFont;
-      textW = Math.max(textW, measure.measureText(`${level} ур.`).width);
-    }
+    measure.font = LVL_FONT;
+    textW = Math.max(textW, measure.measureText("999 ур.").width);
     const padX = 22;
-    const W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 12));
+    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 12));
 
-    this.tex = new DynamicTexture("nameTagTex", { width: W, height: H }, scene, false);
+    this.tex = new DynamicTexture("nameTagTex", { width: this.W, height: H }, scene, false);
     this.tex.hasAlpha = true;
-
-    const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, W, H);
-
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const padY = 10;
-    const contentH = level === null ? 44 : 74;
-    const boxW = Math.min(W - 6, textW + padX * 2);
-    const boxH = contentH + padY * 2;
-    const bx = (W - boxW) / 2;
-    const by = (H - boxH) / 2;
-    ctx.fillStyle = "rgba(12,14,20,0.34)";
-    roundRect(ctx, bx, by, boxW, boxH, 10);
-    ctx.fill();
-
-    ctx.fillStyle = "#f2f4fb";
-    ctx.font = nameFont;
-    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 14);
-
-    if (level !== null) {
-      ctx.fillStyle = `rgb(${accent.r * 255},${accent.g * 255},${accent.b * 255})`;
-      ctx.font = lvlFont;
-      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
-    }
-
-    this.tex.update(true);
+    this.paint(name, level);
 
     const mat = new StandardMaterial("nameTagMat", scene);
     mat.diffuseTexture = this.tex;
@@ -86,8 +64,8 @@ export class NameTag {
 
     // Физическую ширину тянем вслед за текстурой — так буквы в мире остаются
     // прежнего размера, плашка просто становится длиннее.
-    const planeW = 0.9 * (W / BASE_W);
-    const height = planeW * (H / W);
+    const planeW = 0.9 * (this.W / BASE_W);
+    const height = planeW * (H / this.W);
     this.plane = MeshBuilder.CreatePlane("nameTag", { width: planeW, height }, scene);
     this.plane.material = mat;
     this.plane.parent = parent;
@@ -99,6 +77,50 @@ export class NameTag {
 
     this.baseY = offset.y;
     this.halfH = height / 2;
+  }
+
+  /** Перерисовать содержимое плашки (имя / уровень меняются на лету). */
+  setInfo(name: string, level: number | null): void {
+    if (name === this.curName && level === this.curLevel) return;
+    this.paint(name, level);
+  }
+
+  private paint(name: string, level: number | null): void {
+    this.curName = name;
+    this.curLevel = level;
+    const W = this.W;
+    const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, W, H);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const measure = ctx;
+    measure.font = NAME_FONT;
+    let textW = measure.measureText(name).width;
+    if (level !== null) {
+      measure.font = LVL_FONT;
+      textW = Math.max(textW, measure.measureText(`${level} ур.`).width);
+    }
+    const padX = 22;
+    const padY = 10;
+    const contentH = level === null ? 44 : 74;
+    const boxW = Math.min(W - 6, textW + padX * 2);
+    const boxH = contentH + padY * 2;
+    ctx.fillStyle = "rgba(12,14,20,0.34)";
+    roundRect(ctx, (W - boxW) / 2, (H - boxH) / 2, boxW, boxH, 10);
+    ctx.fill();
+
+    ctx.fillStyle = "#f2f4fb";
+    ctx.font = NAME_FONT;
+    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 14);
+
+    if (level !== null) {
+      const a = this.accent;
+      ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
+      ctx.font = LVL_FONT;
+      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
+    }
+    this.tex.update(true);
   }
 
   setEnabled(v: boolean): void {
