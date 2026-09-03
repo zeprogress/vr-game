@@ -72,11 +72,19 @@ function bootGame(): void {
   (window as unknown as { game: Game; net: NetClient }).game = game;
   (window as unknown as { game: Game; net: NetClient }).net = net;
 
-  void runLogin(net, guestToken, {
-    isVrAvailable: () => game.isVrAvailable(),
-    whenXrReady: () => game.xrReady,
-    enterVR: () => game.enterVR(),
-  }).then(({ nick, online, vr }) => {
+  // ?stream — вход по нику Twitch: забрать своего бота (Ф10).
+  const streamMode = new URLSearchParams(location.search).has("stream");
+
+  void runLogin(
+    net,
+    guestToken,
+    {
+      isVrAvailable: () => game.isVrAvailable(),
+      whenXrReady: () => game.xrReady,
+      enterVR: () => game.enterVR(),
+    },
+    streamMode,
+  ).then(({ nick, online, vr }) => {
     game.setNick(nick);
     if (online) game.attachNet(net);
 

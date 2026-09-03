@@ -43,14 +43,18 @@ import {
 import {
   ADMIN_NICK,
   advanceHour,
+  BOT,
   DAYCYCLE,
   PLAYER,
   PLAYER_HP,
   PVP,
   RESPAWN,
   SPECTATOR_KEY,
+  STREAM_NICKS,
+  TWITCH_CHANNEL,
   WORLD,
 } from "#shared/constants";
+import { TwitchChat } from "../TwitchChat";
 import { terrainHeight } from "#shared/terrain";
 import {
   isWeaponKind,
@@ -127,6 +131,25 @@ interface Runtime {
   stowed: StowedWeapon[];
   /** Панельные настройки игрока (JSON как есть) — применяются только у него. */
   overrides: Record<string, unknown>;
+}
+
+/** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
+interface Bot {
+  nick: string; // отображаемый
+  norm: string; // нормализованный (ключ в this.bots)
+  id: string; // ключ в state.players / rt: "bot:<norm>"
+  state: PlayerState;
+  rt: Runtime;
+  target: string | null; // id моба
+  attackCd: number;
+  wanderCd: number;
+  wanderX: number;
+  wanderZ: number;
+}
+
+/** Нормализация ника для сравнения/ключей. */
+function normNick(n: string): string {
+  return n.trim().toLowerCase().slice(0, 24);
 }
 
 /** Оружие «с собой» из сейва — с проверкой, что класс и уровень существуют. */
@@ -280,6 +303,8 @@ interface JoinOpts {
   token?: string;
   /** Ключ невидимого спектатора для стрима (этап 17). */
   spectator?: string;
+  /** Вход по нику (Ф10): забрать своего бота / персонажа. Без токена. */
+  stream?: boolean;
 }
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
@@ -300,6 +325,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private clockSync = 0;
   /** Раз в 10 с скидываем всех игроков в store — чтобы деплой/сбой почти ничего не терял. */
   private persistClock = 0;
+
+  // ---- боты зрителей (Ф10) ----
+  private twitch: TwitchChat | null = null;
+  private readonly bots = new Map<string, Bot>(); // ключ — normNick
+  private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
+  private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
 
   override onCreate(): void {
     this.setState(new ZoneState());
@@ -332,6 +363,12 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     this.setSimulationInterval((deltaMs) => this.step(deltaMs / 1000), 50);
+
+    // Чат Twitch: `!play` — бот под ником зрителя, `!stop` — убрать.
+    this.twitch = new TwitchChat(process.env.TWITCH_CHANNEL || TWITCH_CHANNEL, (nick, text) =>
+      this.onChat(nick, text),
+    );
+    this.twitch.start();
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -748,6 +785,234 @@ export class ZoneRoom extends Room<ZoneState> {
     client?.send(MSG.levelUp, { level: p.level });
   }
 
+  // ---- боты зрителей (Ф10) ----
+
+  /** Ник допущен: в ручном списке или недавно писал в чат. */
+  private allowedNick(norm: string): boolean {
+    if (STREAM_NICKS.includes(norm)) return true;
+    const seen = this.chatSeen.get(norm) ?? 0;
+    return Date.now() - seen < BOT.chatWindowSec * 1000;
+  }
+
+  /** Этим ником сейчас играет живой клиент (не бот)? */
+  private nickIsPlayed(norm: string): boolean {
+    const want = `nick:${norm}`;
+    for (const [id, rt] of this.rt) {
+      if (!id.startsWith("bot:") && rt.token === want) return true;
+    }
+    return false;
+  }
+
+  private onChat(nick: string, text: string): void {
+    const norm = normNick(nick);
+    if (!norm) return;
+    this.chatSeen.set(norm, Date.now());
+    const cmd = text.trim().toLowerCase().split(/\s+/)[0];
+    if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
+    else if (cmd === "!stop" || cmd === "!leave") this.removeBot(norm);
+  }
+
+  private requestBot(nick: string, norm: string): void {
+    if (!this.allowedNick(norm)) return;
+    if (this.nickIsPlayed(norm) || this.bots.has(norm)) return;
+    const now = Date.now();
+    if (now - (this.playCd.get(norm) ?? 0) < BOT.playCooldown * 1000) return;
+    if (this.bots.size >= BOT.maxBots) {
+      console.log(`[bot] отказ ${nick}: потолок ${BOT.maxBots}`);
+      return;
+    }
+    this.playCd.set(norm, now);
+    this.spawnBot(nick, norm);
+  }
+
+  private spawnBot(nick: string, norm: string): void {
+    const id = `bot:${norm}`;
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+
+    const p = new PlayerState();
+    p.nick = nick.trim().slice(0, 16) || rec?.nick || "зритель";
+    p.mode = "flat";
+    const sx = RESPAWN.spawnX + (Math.random() - 0.5) * 8;
+    const sz = RESPAWN.spawnZ + (Math.random() - 0.5) * 8;
+    p.head.x = rec?.x ?? sx;
+    p.head.z = rec?.z ?? sz;
+    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
+    if (rec) {
+      p.level = rec.level;
+      p.xp = rec.xp;
+      p.unspent = rec.unspent;
+      p.str = rec.str;
+      p.agi = rec.agi;
+      p.int = rec.int;
+    }
+    p.maxHp = maxHpFor(p.str);
+    p.hp = p.maxHp;
+    p.maxMana = maxManaFor(p.int);
+    p.mana = p.maxMana;
+    p.rightCls = "sword";
+    p.rightTier = "base";
+    this.state.players.set(id, p);
+
+    const rt: Runtime = {
+      token,
+      guard: noGuard(),
+      lastHit: {},
+      sinceHurt: PLAYER_HP.regenDelay,
+      respawnIn: 0,
+      invuln: RESPAWN.invuln,
+      lastPvpAt: -999,
+      lastCast: -999,
+      yaw: 0,
+      owned: new Set(),
+      stowed: [],
+      overrides: {},
+    };
+    this.rt.set(id, rt);
+
+    this.bots.set(norm, {
+      nick: p.nick,
+      norm,
+      id,
+      state: p,
+      rt,
+      target: null,
+      attackCd: 0,
+      wanderCd: 0,
+      wanderX: sx,
+      wanderZ: sz,
+    });
+    console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
+  }
+
+  private removeBot(norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) return;
+    this.persistBot(bot);
+    this.state.players.delete(bot.id);
+    this.rt.delete(bot.id);
+    this.bots.delete(norm);
+    store.flush();
+    console.log(`[bot] - ${bot.nick} — ботов ${this.bots.size}`);
+    if (this.state.players.size === 0) this.wipeWorld("мир опустел");
+  }
+
+  private persistBot(bot: Bot): void {
+    const p = bot.state;
+    const edge = WORLD.size / 2 - 2;
+    store.put(bot.rt.token ?? `nick:${bot.norm}`, {
+      nick: p.nick,
+      x: clampAbs(p.head.x, edge),
+      y: p.head.y,
+      z: clampAbs(p.head.z, edge),
+      yaw: bot.rt.yaw,
+      hp: p.hp,
+      owned: [],
+      stowed: [],
+      held: { left: null, right: { cls: "sword", tier: "base" } },
+      overrides: {},
+      ...readProgress(p),
+      bag: [],
+    });
+  }
+
+  /** ИИ одного бота на кадр. */
+  private tickBot(dt: number, bot: Bot): void {
+    const p = bot.state;
+    if (p.dead) return; // возрождение — общий tickPlayers
+    bot.attackCd = Math.max(0, bot.attackCd - dt);
+
+    const cx = RESPAWN.spawnX;
+    const cz = RESPAWN.spawnZ;
+    const inZone = (x: number, z: number): boolean =>
+      Math.hypot(x - cx, z - cz) < BOT.zoneRadius;
+
+    // Цель: моб (не босс/осколок) в зоне.
+    let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
+    const okMob = (m: { dead: boolean; kind: string; x: number; z: number }): boolean =>
+      !m.dead && m.kind !== "boss" && m.kind !== "shard" && inZone(m.x, m.z);
+    if (!mob || !okMob(mob)) {
+      bot.target = null;
+      mob = undefined;
+      let bd = Infinity;
+      for (const m of this.sim.mobs.values()) {
+        if (!okMob(m)) continue;
+        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        if (d < bd) {
+          bd = d;
+          mob = m;
+        }
+      }
+      if (mob) bot.target = mob.id;
+    }
+
+    let tx: number;
+    let tz: number;
+    if (mob) {
+      tx = mob.x;
+      tz = mob.z;
+    } else {
+      bot.wanderCd -= dt;
+      if (bot.wanderCd <= 0) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * BOT.zoneRadius * 0.6;
+        bot.wanderX = cx + Math.cos(a) * r;
+        bot.wanderZ = cz + Math.sin(a) * r;
+        bot.wanderCd = BOT.wanderInterval;
+      }
+      tx = bot.wanderX;
+      tz = bot.wanderZ;
+    }
+
+    let dx = tx - p.head.x;
+    let dz = tz - p.head.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    dx /= dist;
+    dz /= dist;
+    const stopAt = mob ? BOT.attackRange * 0.7 : 0.4;
+    if (dist > stopAt) {
+      const stepLen = Math.min(BOT.moveSpeed * dt, dist - stopAt);
+      p.head.x += dx * stepLen;
+      p.head.z += dz * stepLen;
+      p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
+    }
+
+    // Поворот головы к цели (кватернион вокруг Y).
+    const yaw = Math.atan2(dx, dz);
+    bot.rt.yaw = yaw;
+    p.head.qx = 0;
+    p.head.qy = Math.sin(yaw / 2);
+    p.head.qz = 0;
+    p.head.qw = Math.cos(yaw / 2);
+
+    // Удар.
+    if (mob && dist < BOT.attackRange && bot.attackCd <= 0) {
+      const dmg = weaponDamage("sword", p.str, 1, p.agi);
+      const xp = this.sim.hitMob(mob.id, dmg, dx, dz);
+      bot.attackCd = BOT.attackCooldown;
+      if (xp > 0) {
+        this.awardXp(undefined, p, xp);
+        bot.target = null;
+      }
+    }
+  }
+
+  private tickBots(dt: number): void {
+    if (this.bots.size === 0) return;
+    const nowMs = Date.now();
+    for (const bot of [...this.bots.values()]) {
+      // Авто-деспавн: давно не писал в чат и никто им не играет.
+      if (
+        !STREAM_NICKS.includes(bot.norm) &&
+        nowMs - (this.chatSeen.get(bot.norm) ?? 0) > BOT.idleDespawnSec * 1000
+      ) {
+        this.removeBot(bot.norm);
+        continue;
+      }
+      this.tickBot(dt, bot);
+    }
+  }
+
   // ---- тик ----
 
   private step(dt: number): void {
@@ -767,8 +1032,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const c = this.clientOf(id);
         if (c) this.persist(c);
       });
+      for (const bot of this.bots.values()) this.persistBot(bot);
       world.save(this.sim.saveDrops());
     }
+
+    this.tickBots(dt);
 
     // Мана восстанавливается всегда (от интеллекта).
     this.state.players.forEach((p) => {
@@ -1003,7 +1271,21 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
 
-    const token = options?.token?.trim();
+    let token = options?.token?.trim();
+
+    // Вход по нику (Ф10): забрать своего бота / персонажа зрителя.
+    if (options?.stream) {
+      const norm = normNick(options?.nick ?? "");
+      if (!norm || !this.allowedNick(norm)) {
+        throw new Error("ник не допущен — напиши !play в чате канала");
+      }
+      if (this.nickIsPlayed(norm)) {
+        throw new Error("этим персонажем уже играют");
+      }
+      token = `nick:${norm}`;
+      this.removeBot(norm); // если был бот — его прогресс уходит в store под этим токеном
+    }
+
     const rec = token ? store.get(token) : undefined;
 
     const p = new PlayerState();
@@ -1102,10 +1384,20 @@ export class ZoneRoom extends Room<ZoneState> {
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       return;
     }
+    const rt = this.rt.get(client.sessionId);
+    const p = this.state.players.get(client.sessionId);
+    const streamNorm = rt?.token?.startsWith("nick:") ? rt.token.slice(5) : null;
+
     this.persist(client);
     this.state.players.delete(client.sessionId);
     this.rt.delete(client.sessionId);
     store.flush();
+
+    // Стрим-игрок вышел — персонаж продолжает жить ботом, пока ник допущен.
+    if (streamNorm && p && this.allowedNick(streamNorm) && this.bots.size < BOT.maxBots) {
+      this.spawnBot(p.nick, streamNorm);
+    }
+
     console.log(`[zone] - ${client.sessionId} — осталось игроков ${this.state.players.size}`);
     // Ни одного игрока (спектаторы не в счёт) — подчищаем лежащий лут.
     if (this.state.players.size === 0) this.wipeWorld("мир опустел");
@@ -1122,6 +1414,7 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Сервер останавливается (деплой) — сохраняем всех до расселения комнаты. */
   override onBeforeShutdown(): void {
     for (const client of this.clients) this.persist(client);
+    for (const bot of this.bots.values()) this.persistBot(bot);
     store.flush();
     const drops = this.sim.saveDrops();
     world.save(drops);
@@ -1130,6 +1423,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override onDispose(): void {
+    this.twitch?.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);
   }
 }

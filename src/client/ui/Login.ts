@@ -24,7 +24,12 @@ export interface LoginHooks {
  * и в мир попадаем только после старта VR-сессии. С обычного устройства —
  * сразу в мир, как раньше.
  */
-export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Promise<LoginResult> {
+export function runLogin(
+  net: NetClient,
+  token: string,
+  hooks: LoginHooks,
+  stream = false,
+): Promise<LoginResult> {
   document.head.appendChild(styleEl());
 
   const overlay = document.createElement("div");
@@ -32,9 +37,11 @@ export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Prom
   overlay.innerHTML = `
     <div class="login-box">
       <div class="login-title">VR GAME</div>
-      <input id="login-nick" maxlength="16" placeholder="Твой ник" autocomplete="off" spellcheck="false" />
-      <button id="login-play">Играть</button>
-      <button id="login-offline" class="ghost">Играть офлайн</button>
+      <input id="login-nick" maxlength="16" placeholder="${
+        stream ? "Твой ник в Twitch" : "Твой ник"
+      }" autocomplete="off" spellcheck="false" />
+      <button id="login-play">${stream ? "Забрать персонажа" : "Играть"}</button>
+      ${stream ? "" : '<button id="login-offline" class="ghost">Играть офлайн</button>'}
       <div id="login-status"></div>
     </div>`;
   document.body.appendChild(overlay);
@@ -42,7 +49,7 @@ export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Prom
   const box = overlay.querySelector<HTMLDivElement>(".login-box")!;
   const nickInput = overlay.querySelector<HTMLInputElement>("#login-nick")!;
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
-  const offlineBtn = overlay.querySelector<HTMLButtonElement>("#login-offline")!;
+  const offlineBtn = overlay.querySelector<HTMLButtonElement>("#login-offline");
   const status = overlay.querySelector<HTMLDivElement>("#login-status")!;
 
   nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
@@ -97,18 +104,23 @@ export function runLogin(net: NetClient, token: string, hooks: LoginHooks): Prom
     };
 
     playBtn.addEventListener("click", async () => {
-      playBtn.disabled = offlineBtn.disabled = true;
+      playBtn.disabled = true;
+      if (offlineBtn) offlineBtn.disabled = true;
       status.textContent = "Подключение…";
-      const ok = await net.connect(nick(), token);
-      if (!ok) {
+      const ok = await net.connect(nick(), token, stream);
+      if (ok) {
+        void proceed(true);
+      } else if (stream) {
+        status.textContent = "Не пустило — напиши !play в чате канала и попробуй снова";
+        playBtn.disabled = false;
+      } else {
         status.textContent = "Сервер недоступен — одиночный режим";
         setTimeout(() => void proceed(false), 900);
-      } else {
-        void proceed(true);
       }
     });
-    offlineBtn.addEventListener("click", () => {
-      playBtn.disabled = offlineBtn.disabled = true;
+    offlineBtn?.addEventListener("click", () => {
+      playBtn.disabled = true;
+      offlineBtn.disabled = true;
       void proceed(false);
     });
     nickInput.addEventListener("keydown", (e) => {

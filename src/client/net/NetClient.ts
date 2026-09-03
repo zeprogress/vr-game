@@ -80,6 +80,8 @@ export class NetClient {
 
   private nick = "";
   private token = "";
+  /** Вход по нику зрителя (Ф10): забрать своего бота, без гостевого токена. */
+  private stream = false;
   private reconnecting = false;
   private closedByUs = false;
 
@@ -99,11 +101,11 @@ export class NetClient {
   /** Ключ спектатора (этап 17). Задан — входим как невидимый наблюдатель. */
   private spectatorKey: string | null = null;
 
-  /** Параметры входа для reconnectLoop — обычный игрок или спектатор. */
-  private joinOpts(): { nick?: string; token?: string; spectator?: string } {
-    return this.spectatorKey !== null
-      ? { spectator: this.spectatorKey }
-      : { nick: this.nick, token: this.token };
+  /** Параметры входа для reconnectLoop — обычный игрок, зритель-по-нику или спектатор. */
+  private joinOpts(): { nick?: string; token?: string; spectator?: string; stream?: boolean } {
+    if (this.spectatorKey !== null) return { spectator: this.spectatorKey };
+    if (this.stream) return { nick: this.nick, stream: true };
+    return { nick: this.nick, token: this.token };
   }
 
   /** Войти невидимым спектатором для стрима. `true` — успех. */
@@ -130,16 +132,17 @@ export class NetClient {
   }
 
   /** `true` — успех, `false` — сервера нет (одиночный режим). */
-  async connect(nick: string, token: string): Promise<boolean> {
+  async connect(nick: string, token: string, stream = false): Promise<boolean> {
     this.nick = nick;
     this.token = token;
+    this.stream = stream;
     this.closedByUs = false;
     this.client = new Client();
     // Несколько попыток: сервер мог как раз перезапускаться (деплой ~10 с).
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
       try {
-        const room = await this.client.joinOrCreate<ZoneState>("zone", { nick, token });
+        const room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
         this.wireRoom(room);
         await firstSync(room);
         this.room = room;
