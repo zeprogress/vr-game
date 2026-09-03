@@ -8,10 +8,14 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const BASE_W = 320; // ширина, под которую подобран физический размер плашки
-const H = 150;
-const NAME_FONT = "bold 40px system-ui, sans-serif";
-const LVL_FONT = "26px system-ui, sans-serif";
+// Разрешение текстуры и кегль подняты в ~1.4 раза относительно физического
+// размера плашки (BASE_W растёт вместе с ними, planeW считается от их
+// отношения) — так плашку можно крупно масштабировать через setScale()
+// и она не мылится. Физический размер при этом прежний.
+const BASE_W = 448;
+const H = 208;
+const NAME_FONT = "bold 56px system-ui, sans-serif";
+const LVL_FONT = "36px system-ui, sans-serif";
 
 /**
  * Плашка с именем и уровнем над мобом. Всегда развёрнута к камере
@@ -46,8 +50,8 @@ export class NameTag {
     let textW = measure.measureText(name).width;
     measure.font = LVL_FONT;
     textW = Math.max(textW, measure.measureText("999 ур.").width);
-    const padX = 22;
-    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 12));
+    const padX = 30;
+    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 16));
 
     this.tex = new DynamicTexture("nameTagTex", { width: this.W, height: H }, scene, false);
     this.tex.hasAlpha = true;
@@ -101,24 +105,24 @@ export class NameTag {
       measure.font = LVL_FONT;
       textW = Math.max(textW, measure.measureText(`${level} ур.`).width);
     }
-    const padX = 22;
-    const padY = 10;
-    const contentH = level === null ? 44 : 74;
-    const boxW = Math.min(W - 6, textW + padX * 2);
+    const padX = 30;
+    const padY = 14;
+    const contentH = level === null ? 62 : 104;
+    const boxW = Math.min(W - 8, textW + padX * 2);
     const boxH = contentH + padY * 2;
     ctx.fillStyle = "rgba(12,14,20,0.34)";
-    roundRect(ctx, (W - boxW) / 2, (H - boxH) / 2, boxW, boxH, 10);
+    roundRect(ctx, (W - boxW) / 2, (H - boxH) / 2, boxW, boxH, 14);
     ctx.fill();
 
     ctx.fillStyle = "#f2f4fb";
     ctx.font = NAME_FONT;
-    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 14);
+    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 20);
 
     if (level !== null) {
       const a = this.accent;
       ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
       ctx.font = LVL_FONT;
-      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 30);
+      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 42);
     }
     this.tex.update(true);
   }

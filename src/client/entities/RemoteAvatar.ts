@@ -39,6 +39,8 @@ const BOT_RIG_SCALE = (() => {
 const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 /** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
 const BOT_FEET_Y = -1.68;
+/** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
+const BOT_TAG_SCALE = 2.1;
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -225,7 +227,8 @@ export class RemoteAvatar implements Hittable {
       this.head.parent = this.botBody;
       this.head.isVisible = false;
       // Модельки бота выше «головы» плоского аватара — поднимаем плашку
-      // (точное значение под рост модели ставит loadBotRig).
+      // (точное значение под рост модели ставит loadBotRig) и делаем крупнее.
+      this.nameTag.setScale(BOT_TAG_SCALE);
       this.nameTag.setAnchorY(1.5 * BOT_STUB_SCALE);
       this.botRigWant = this.skin;
       void this.loadBotRig();
@@ -531,7 +534,7 @@ export class RemoteAvatar implements Hittable {
         // Плашка — точно над макушкой конкретной модели, облачко — над плашкой.
         const tagY = BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3;
         this.nameTag.setAnchorY(tagY);
-        this.bubbleY = tagY + 0.95;
+        this.bubbleY = tagY + 1.25; // над увеличенной плашкой
         this.bubble?.setAnchorY(this.bubbleY);
 
         this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
