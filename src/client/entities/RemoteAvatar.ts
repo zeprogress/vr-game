@@ -41,6 +41,17 @@ const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 const BOT_FEET_Y = -1.68;
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
 const BOT_TAG_SCALE = 2.1;
+/**
+ * Постоянная сглаживания позиции бота, с. Симуляция сервера и рассылка
+ * патчей у Colyseus идут разными таймерами и дрейфуют: часть патчей ловит
+ * ноль шагов симуляции, часть — два. Снапшот с двойным перемещением
+ * интерполятор раскладывает на один ровный интервал сетки, и бот прыгает
+ * вперёд. Фильтр съедает эти ступеньки ценой отставания ~v*tau (на бегу это
+ * около 30 см — для чужой модели незаметно).
+ */
+const BOT_POS_TAU = 0.1;
+/** Скачок больше этого — телепорт (респавн), фильтр не тянем, ставим сразу. */
+const BOT_POS_SNAP = 5;
 
 export type MakeWeapon = (cls: WeaponClass, tier: WeaponTier) => Mesh;
 
@@ -111,6 +122,8 @@ export class RemoteAvatar implements Hittable {
   /** Текущий режим ходьбы — для гистерезиса порогов (иначе клип щёлкает). */
   private locoRun = false;
   private locoMove = false;
+  private readonly _smoothPos = new Vector3();
+  private smoothInit = false;
   private swingUntil = 0;
   private lastUpdate = 0;
   private readonly _prevPos = new Vector3();
@@ -206,6 +219,7 @@ export class RemoteAvatar implements Hittable {
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
     this.builtRigSkin = 0;
+    this.smoothInit = false;
     this.animW.clear();
     this.deadAnim = false;
     this.handL = this.handR = this.capsule = this.botBody = null;
@@ -449,6 +463,7 @@ export class RemoteAvatar implements Hittable {
     if (this.skin > 0) {
       if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
       this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
+      this.smoothBotPos(dt);
       if (this.botRig) this.stepBotLocomotion(now, dt);
       else this.animateSwing(now);
     } else {
@@ -549,6 +564,26 @@ export class RemoteAvatar implements Hittable {
     } finally {
       this.botRigLoading = false;
     }
+  }
+
+  /** Съедает ступеньки в позиции бота (см. BOT_POS_TAU). */
+  private smoothBotPos(dt: number): void {
+    const p = this.root.position;
+    if (!this.smoothInit) {
+      this._smoothPos.copyFrom(p);
+      this.smoothInit = true;
+      return;
+    }
+    const jump = Math.hypot(p.x - this._smoothPos.x, p.z - this._smoothPos.z);
+    if (jump > BOT_POS_SNAP) {
+      this._smoothPos.copyFrom(p); // респавн — догонять нечего
+      return;
+    }
+    const k = 1 - Math.exp(-dt / BOT_POS_TAU);
+    this._smoothPos.x += (p.x - this._smoothPos.x) * k;
+    this._smoothPos.y += (p.y - this._smoothPos.y) * k;
+    this._smoothPos.z += (p.z - this._smoothPos.z) * k;
+    p.copyFrom(this._smoothPos);
   }
 
   /** Каждый кадр для бота с моделью: выбор клипа по скорости + crossfade. */
