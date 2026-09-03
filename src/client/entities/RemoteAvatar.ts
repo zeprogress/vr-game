@@ -76,6 +76,9 @@ export class RemoteAvatar implements Hittable {
   private readonly buf: Snap[] = [];
   private readonly _qa = new Quaternion();
   private readonly _qb = new Quaternion();
+  /** Оценка реального интервала между снапшотами (ЕМА) и сырое время предыдущего. */
+  private snapDt = 55;
+  private lastPushRaw = 0;
 
   // --- PvP (этап 10) ---
   private hp = 100;
@@ -226,7 +229,23 @@ export class RemoteAvatar implements Hittable {
     if (last && last.mode === p.mode && head.every((v, i) => Math.abs(v - last.head[i]) < 1e-4)) {
       return;
     }
-    this.buf.push({ t: now, mode: p.mode, head, handL: snapXf(p.handL), handR: snapXf(p.handR) });
+    // Снапшоты приходят ровным темпом на сервере, но НАБЛЮДАЕМ мы их на границах
+    // кадров рендера (кэп 30 fps → интервал прыгает 33/66 мс). Если ставить метку
+    // по факту наблюдения, интерполяция «плывёт» по скорости — заметно, когда
+    // бот/игрок бежит. Кладём снапшоты на ровную сетку по оценке серверного
+    // темпа, мягко подтягивая её к реальному времени, чтобы не убегать.
+    let t = now;
+    if (last && this.lastPushRaw > 0) {
+      const real = now - this.lastPushRaw;
+      if (real > 8 && real < 500) this.snapDt += (real - this.snapDt) * 0.15;
+      t = last.t + this.snapDt;
+      const lo = now - this.snapDt * 1.5;
+      const hi = now + this.snapDt * 0.5;
+      if (t < lo) t = lo;
+      else if (t > hi) t = hi;
+    }
+    this.lastPushRaw = now;
+    this.buf.push({ t, mode: p.mode, head, handL: snapXf(p.handL), handR: snapXf(p.handR) });
     while (this.buf.length > 2 && this.buf[0].t < now - BUFFER_MS) this.buf.shift();
   }
 
