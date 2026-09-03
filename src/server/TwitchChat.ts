@@ -86,6 +86,7 @@ export class TwitchChat {
     if (!clean) return;
     if (this.queue.length >= QUEUE_MAX) return;
     this.queue.push(clean);
+    if (!this.ready) console.log("[twitch] сокет не готов — реплика в очереди");
     this.drain();
   }
 
@@ -112,6 +113,7 @@ export class TwitchChat {
     if (!msg) return;
     this.sentAt.push(now);
     this.ws.send(`PRIVMSG #${this.channel} :${msg}`);
+    console.log(`[twitch] -> ${msg.slice(0, 80)}`);
     if (this.queue.length > 0) this.drain();
   }
 
@@ -165,6 +167,9 @@ export class TwitchChat {
         this.ws?.send(line.replace("PING", "PONG"));
         continue;
       }
+      // Twitch объясняет отказы в NOTICE: неподтверждённая почта, followers-only,
+      // лимит темпа, бан. Без этого «сообщение не появилось» неотличимо от «не отправляли».
+      if (line.includes("NOTICE")) console.log(`[twitch] NOTICE: ${line.slice(0, 200)}`);
       // Токен протух или неверен — Twitch отвечает NOTICE и рвёт соединение.
       if (line.includes("NOTICE") && /authentication failed|improperly formatted auth/i.test(line)) {
         this.authFailed = true;
