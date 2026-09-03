@@ -229,6 +229,7 @@ export class Spectator {
     net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
     net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
+    net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
@@ -323,6 +324,10 @@ export class Spectator {
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
     else if (cmd.t === "cut") this.cam.cutNext();
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
+    else if (cmd.t === "bots") {
+      this.cam.botsOnly = cmd.on !== 0;
+      if (cmd.on !== 0) this.cam.auto = true; // режим имеет смысл только с авто
+    }
     else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
     else if (cmd.t === "overlay") this.overlay?.setConfig(cmd.patch);
     // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.

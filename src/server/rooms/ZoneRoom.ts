@@ -25,6 +25,7 @@ import {
   type ActMsg,
   type ActRelay,
   type ActKind,
+  type BotSayMsg,
   type VoiceMsg,
   isActKind,
   type OverridesMsg,
@@ -149,6 +150,7 @@ interface Bot {
   vx: number; // сглаженная скорость — движение без рывков
   vz: number;
   reskinAt: number; // ms последней команды !skin (антиспам)
+  sayAt: number; // ms последней реплики в чат (антиспам)
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -816,6 +818,21 @@ export class ZoneRoom extends Room<ZoneState> {
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
     else if (cmd === "!stop" || cmd === "!leave") this.removeBot(norm);
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
+    else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
+  }
+
+  /** Обычная реплика в чате канала — облачком над своим ботом (Ф10). */
+  private botSay(norm: string, text: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) return;
+    const now = Date.now();
+    if (now - bot.sayAt < BOT.sayCooldown * 1000) return;
+    // Схлопываем переносы/лишние пробелы и режем — облачко не резиновое.
+    const clean = text.replace(/\s+/g, " ").trim().slice(0, BOT.sayMaxLen);
+    if (!clean) return;
+    bot.sayAt = now;
+    const msg: BotSayMsg = { id: bot.id, text: clean };
+    this.broadcast(MSG.botSay, msg);
   }
 
   /** `!skin` / `!skin 3` — сменить модель своего бота (рандом или номер 1..N). */
@@ -918,6 +935,7 @@ export class ZoneRoom extends Room<ZoneState> {
       vx: 0,
       vz: 0,
       reskinAt: 0,
+      sayAt: 0,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -1009,11 +1027,41 @@ export class ZoneRoom extends Room<ZoneState> {
     const dz = dzRaw / dist;
     const stopAt = mob ? BOT.attackRange * 0.7 : 0.5;
 
+    // Расталкивание: без него боты, бегущие к одному мобу, слипаются в одну
+    // точку. Складываем с движением к цели ДО сглаживания скорости — иначе
+    // получается дрожь на месте.
+    let sepX = 0;
+    let sepZ = 0;
+    for (const other of this.bots.values()) {
+      if (other === bot || other.state.dead) continue;
+      const ox = p.head.x - other.state.head.x;
+      const oz = p.head.z - other.state.head.z;
+      const d2 = ox * ox + oz * oz;
+      if (d2 >= BOT.separation * BOT.separation) continue;
+      const d = Math.sqrt(d2);
+      if (d < 1e-3) {
+        // Ровно друг в друге — расталкиваем по стабильному признаку (id).
+        const a = bot.id < other.id ? 1 : -1;
+        sepX += a;
+        continue;
+      }
+      const push = (BOT.separation - d) / BOT.separation; // 0..1, у края мягко
+      sepX += (ox / d) * push;
+      sepZ += (oz / d) * push;
+    }
+
+    // Толпой суммарный толчок легко перевесит бег к цели — ограничиваем.
+    const sepLen = Math.hypot(sepX, sepZ);
+    if (sepLen > 1) {
+      sepX /= sepLen;
+      sepZ /= sepLen;
+    }
+
     // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
     // на смене цели и у путевых точек.
     const wantSpeed = dist > stopAt ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5) : 0;
-    const wvx = dx * wantSpeed;
-    const wvz = dz * wantSpeed;
+    const wvx = dx * wantSpeed + sepX * BOT.separationForce;
+    const wvz = dz * wantSpeed + sepZ * BOT.separationForce;
     const accel = Math.min(1, dt * 6);
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;

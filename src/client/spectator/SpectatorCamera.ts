@@ -10,11 +10,20 @@ const BOT_CAM_BACK = 4.5; // м позади бота (по горизонтал
 const BOT_CAM_LEAD = 1.5; // на сколько цель взгляда впереди бота
 const BOT_CAM_AIM_Y = 0.6; // высота цели над точкой корпуса бота
 
+/** Вид напротив: камера перед персонажем, смотрит ему в лицо. */
+const FRONT_DIST = 4.0; // м перед персонажем
+const FRONT_UP = 1.5; // подъём камеры над точкой корпуса
+const FRONT_AIM_Y = 0.35; // куда смотрим (грудь/лицо)
+
+/** Чередование кадров в режиме «только боты». */
+const BOT_ROTATION = ["eyePlayer", "orbitPlayer", "frontPlayer"] as const;
+
 /** Кого показывает камера сейчас. */
 type Shot =
   | { kind: "overview" }
   | { kind: "orbitPlayer"; id: string }
   | { kind: "eyePlayer"; id: string }
+  | { kind: "frontPlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
   | { kind: "path"; idx: number };
@@ -78,6 +87,13 @@ export class SpectatorCamera {
 
   /** Авто-ротация режиссёра. Выключена — камера держит текущий кадр. */
   auto = true;
+  /**
+   * Режим «только боты» (Ф10): авто-ротация ходит лишь по ботам зрителей и
+   * чередует из глаз → орбиту → вид напротив. Ботов нет — обычная ротация.
+   */
+  botsOnly = false;
+  private botRotIdx = 0;
+  private botPickI = 0;
   /** Следующий переход без блендинга (одноразово). */
   private cutNextFlag = false;
   private lastCtx: DirectorCtx | null = null;
@@ -124,7 +140,8 @@ export class SpectatorCamera {
   /** Кого камера показывает сейчас — для нижней плашки оверлея (Ф6). */
   get subject(): { type: "player" | "mob" | "none"; id?: string } {
     const s = this.shot;
-    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer") return { type: "player", id: s.id };
+    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer" || s.kind === "frontPlayer")
+      return { type: "player", id: s.id };
     if (s.kind === "eyeMob") return { type: "mob", id: s.id };
     if (s.kind === "orbitBoss" && this.lastCtx?.boss) return { type: "mob", id: this.lastCtx.boss.id };
     return { type: "none" };
@@ -153,7 +170,8 @@ export class SpectatorCamera {
     this.orbitClock += dt;
     this.sinceSwitch += dt;
 
-    const fighting = ctx.boss?.aggro === true;
+    // В режиме «только боты» бой у босса камеру не перехватывает.
+    const fighting = ctx.boss?.aggro === true && !this.botsOnly;
     const invalid = !this.shotValid(this.shot, ctx);
     // Путь идёт до конца своей длительности; остальные кадры — holdTime.
     const timedOut = this.shot.kind !== "path" && this.sinceSwitch >= SPECTATE.holdTime;
@@ -208,6 +226,21 @@ export class SpectatorCamera {
   }
 
   private nextShot(ctx: DirectorCtx, fighting: boolean): Shot {
+    // «Только боты» — приоритет над всем, включая бой у босса.
+    if (this.botsOnly) {
+      const bots = ctx.players.filter((p) => p.id.startsWith("bot:"));
+      if (bots.length > 0) {
+        const kind = BOT_ROTATION[this.botRotIdx % BOT_ROTATION.length];
+        this.botRotIdx++;
+        // Цель меняем, только когда прошли круг из трёх ракурсов — иначе
+        // зритель не успевает понять, за кем смотрит.
+        if (this.botRotIdx % BOT_ROTATION.length === 0) this.botPickI++;
+        const id = bots[this.botPickI % bots.length].id;
+        if (kind === "orbitPlayer") return { kind: "orbitPlayer", id };
+        if (kind === "frontPlayer") return { kind: "frontPlayer", id };
+        return { kind: "eyePlayer", id };
+      }
+    }
     if (fighting && ctx.boss) {
       // Ротация боя: орбита босса → из глаз босса → из глаз ближнего игрока.
       const near = this.playerNearestBoss(ctx);
@@ -251,7 +284,7 @@ export class SpectatorCamera {
       const idx = Number(id);
       return idx >= 0 && idx < CINE_PATHS.length ? { kind: "path", idx } : null;
     }
-    if (kind === "orbitPlayer" || kind === "eyePlayer") {
+    if (kind === "orbitPlayer" || kind === "eyePlayer" || kind === "frontPlayer") {
       let pid = id;
       if (!pid) {
         if (ctx.players.length === 0) return null;
@@ -260,7 +293,9 @@ export class SpectatorCamera {
       } else if (!ctx.players.some((p) => p.id === pid)) {
         return null;
       }
-      return kind === "orbitPlayer" ? { kind: "orbitPlayer", id: pid } : { kind: "eyePlayer", id: pid };
+      if (kind === "orbitPlayer") return { kind: "orbitPlayer", id: pid };
+      if (kind === "frontPlayer") return { kind: "frontPlayer", id: pid };
+      return { kind: "eyePlayer", id: pid };
     }
     if (kind === "eyeMob") {
       if (id) return ctx.mobs.some((m) => m.id === id) ? { kind: "eyeMob", id } : null;
@@ -273,7 +308,7 @@ export class SpectatorCamera {
   }
 
   private shotValid(s: Shot, ctx: DirectorCtx): boolean {
-    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer") {
+    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer" || s.kind === "frontPlayer") {
       return ctx.players.some((p) => p.id === s.id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
@@ -301,7 +336,8 @@ export class SpectatorCamera {
   /** Живая (несглаженная) поза «глаз» для кадра, если он такой. */
   private liveEye(s: Shot, ctx: DirectorCtx | null): { eye: Vector3; forward: Vector3 } | null {
     if (!ctx) return null;
-    if (s.kind === "eyePlayer") return ctx.players.find((p) => p.id === s.id) ?? null;
+    if (s.kind === "eyePlayer" || s.kind === "frontPlayer")
+      return ctx.players.find((p) => p.id === s.id) ?? null;
     if (s.kind === "eyeMob") return ctx.mobs.find((m) => m.id === s.id) ?? null;
     return null;
   }
@@ -360,6 +396,21 @@ export class SpectatorCamera {
         }
         break;
       }
+      case "frontPlayer": {
+        // Напротив: камера перед персонажем, смотрит ему в лицо (и на то,
+        // что за его спиной). Направление берём горизонтальное — иначе
+        // наклон головы швыряет камеру вверх-вниз.
+        const fx = this.eyeFwd.x;
+        const fz = this.eyeFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        pos.set(
+          this.eyePos.x + (fx / fl) * FRONT_DIST,
+          this.eyePos.y + FRONT_UP,
+          this.eyePos.z + (fz / fl) * FRONT_DIST,
+        );
+        tgt.set(this.eyePos.x, this.eyePos.y + FRONT_AIM_Y, this.eyePos.z);
+        return;
+      }
       case "eyePlayer": {
         if (s.id.startsWith("bot:")) {
           // Бот — не «из глаз», а погоня сзади-сверху под 45°: в кадре и сам
@@ -381,7 +432,7 @@ export class SpectatorCamera {
           );
           return;
         }
-        // Живой игрок — слегка позади глаз, чтобы не влезать в меш головы.
+        // Живой игрок — слегка позади глаз, чтобы не влезать в меш головы (VR).
         pos.set(
           this.eyePos.x - this.eyeFwd.x * 0.15,
           this.eyePos.y - this.eyeFwd.y * 0.15 + 0.02,

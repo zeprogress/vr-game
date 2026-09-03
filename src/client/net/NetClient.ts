@@ -20,6 +20,7 @@ import {
   type SetPvpMsg,
   type SpecCmd,
   type KillFeedMsg,
+  type BotSayMsg,
   type DropWeaponMsg,
   type ActKind,
   type ActMsg,
@@ -66,6 +67,8 @@ export class NetClient {
   /** Команда стрим-дашборда (этап 17 Ф5) — приходит другим спектаторам. */
   onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   onKillFeed: ((by: string, victim: string) => void) | null = null;
+  /** Хозяин бота написал в чат канала (Ф10). */
+  onBotSay: ((id: string, text: string) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -173,6 +176,7 @@ export class NetClient {
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
+    room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;

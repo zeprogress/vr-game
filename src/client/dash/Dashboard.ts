@@ -39,6 +39,8 @@ export class Dashboard {
   private mobEmptyEl!: HTMLDivElement;
   private auto = true;
   private readonly autoBtn: HTMLButtonElement;
+  private botsOnly = false;
+  private readonly botsBtn: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -76,6 +78,7 @@ export class Dashboard {
       this.nowEl = el("div", "");
       this.listEl = el("div", "");
       this.autoBtn = document.createElement("button");
+      this.botsBtn = document.createElement("button");
       return;
     }
 
@@ -90,6 +93,12 @@ export class Dashboard {
     this.autoBtn = this.bigBtn("Авто-режиссёр: ВКЛ", () => this.toggleAuto());
     this.autoBtn.style.background = "#1c3a24";
     this.root.appendChild(this.autoBtn);
+
+    // Режим «только боты»: камера ходит лишь по ботам зрителей, чередуя
+    // из глаз → орбиту → вид напротив.
+    this.botsBtn = this.bigBtn("Только боты: ВЫКЛ", () => this.toggleBots());
+    this.setBotsUi(false);
+    this.root.appendChild(this.botsBtn);
 
     // --- фиксированные кадры ---
     this.section("Кадры");
@@ -271,10 +280,12 @@ export class Dashboard {
       this.listEl.appendChild(el("div", "игроков нет — режиссёр крутит обзор и пути"));
     }
     for (const p of players) {
-      const row = this.listRow(`🎮 ${p.nick}`);
+      const bot = p.id.startsWith("bot:");
+      const row = this.listRow(`${bot ? "\u{1F916}" : "\u{1F3AE}"} ${p.nick}`);
       row.append(
         this.cmdBtn("орбита", { t: "cam", shot: `orbitPlayer:${p.id}` }, true),
         this.cmdBtn("из глаз", { t: "cam", shot: `eyePlayer:${p.id}` }, true),
+        this.cmdBtn("напротив", { t: "cam", shot: `frontPlayer:${p.id}` }, true),
       );
       this.listEl.appendChild(row);
     }
@@ -298,6 +309,13 @@ export class Dashboard {
   private toggleAuto(): void {
     this.setAutoUi(!this.auto);
     this.send({ t: "auto", on: this.auto ? 1 : 0 });
+  }
+
+  private toggleBots(): void {
+    this.setBotsUi(!this.botsOnly);
+    this.send({ t: "bots", on: this.botsOnly ? 1 : 0 });
+    // Режим осмыслен только с включённой авто-ротацией.
+    if (this.botsOnly && !this.auto) this.setAutoUi(true);
   }
 
   private toggleDayAuto(): void {
@@ -344,6 +362,12 @@ export class Dashboard {
     this.dayAuto = on;
     this.dayAutoBtn.textContent = `Авто-ход суток: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.dayAutoBtn.style.background = on ? "#1c3a24" : "#3a2020";
+  }
+
+  private setBotsUi(on: boolean): void {
+    this.botsOnly = on;
+    this.botsBtn.textContent = `Только боты: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.botsBtn.style.background = on ? "#1c3a24" : "#1d1f2b";
   }
 
   private setAutoUi(on: boolean): void {

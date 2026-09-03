@@ -14,6 +14,7 @@ import type { WeaponClass, WeaponTier } from "#shared/items";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
+import { SpeechBubble } from "../ui/SpeechBubble";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
@@ -87,6 +88,7 @@ export class RemoteAvatar implements Hittable {
   private readonly root: TransformNode;
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
+  private bubble: SpeechBubble | null = null;
   private head!: Mesh;
   private handL: Mesh | null = null;
   private handR: Mesh | null = null;
@@ -162,6 +164,17 @@ export class RemoteAvatar implements Hittable {
     this.nameTag = new NameTag(scene, this.root, new Vector3(0, 0.42, 0), nick, null);
     this.setMode(mode);
   }
+
+  /** Реплика хозяина бота из чата канала — облачко над головой (Ф10). */
+  say(text: string): void {
+    if (!this.bubble) {
+      this.bubble = new SpeechBubble(this.scene, this.root, this.bubbleY);
+    }
+    this.bubble.show(text);
+  }
+
+  /** Высота облачка: чуть выше плашки с ником. */
+  private bubbleY = 1.5;
 
   /** Быстрый замах — по сети (act:swing). Виден на модельке бота. */
   playSwing(): void {
@@ -401,6 +414,7 @@ export class RemoteAvatar implements Hittable {
     this.now = now;
     const dt = this.lastUpdate > 0 ? Math.min(0.1, (now - this.lastUpdate) / 1000) : 0.016;
     this.lastUpdate = now;
+    this.bubble?.update(dt);
     this.syncBar();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
@@ -514,8 +528,11 @@ export class RemoteAvatar implements Hittable {
         this.head.rotationQuaternion = Quaternion.Identity();
         this.head.isVisible = false;
         this.head.isPickable = false;
-        // Плашка — точно над макушкой конкретной модели.
-        this.nameTag.setAnchorY(BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3);
+        // Плашка — точно над макушкой конкретной модели, облачко — над плашкой.
+        const tagY = BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3;
+        this.nameTag.setAnchorY(tagY);
+        this.bubbleY = tagY + 0.95;
+        this.bubble?.setAnchorY(this.bubbleY);
 
         this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
         this.botHolder = holder;
@@ -688,6 +705,7 @@ export class RemoteAvatar implements Hittable {
     this.gearL?.dispose();
     this.gearR?.dispose();
     this.bar?.dispose();
+    this.bubble?.dispose();
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.nameTag.dispose();

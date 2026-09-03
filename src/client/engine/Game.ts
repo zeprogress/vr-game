@@ -832,6 +832,7 @@ export class Game {
 
     // Звук соседа — играем объёмно от его аватара / точки события.
     net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
+    net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
 
     // PvP: сервер подтвердил (или отклонил) переключение флага.
     net.onPvp = (on, wait) => {
@@ -1111,6 +1112,7 @@ export class Game {
       this.net.onPicked = null;
       this.net.onRtc = null;
       this.net.onAct = null;
+      this.net.onBotSay = null;
       this.net.onVoice = null;
       this.net.onPvp = null;
       this.net.onConnectionLost = null;
