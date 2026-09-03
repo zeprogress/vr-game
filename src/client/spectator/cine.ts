@@ -18,12 +18,22 @@ export interface CinePath {
   duration: number;
   /** Ключи; между ними — гладкий сплайн Катмулла–Рома. Минимум 2. */
   keys: PathKey[];
+  /**
+   * Подъём точки взгляда к высоте камеры: 0 (по умолчанию) — как в ключах;
+   * 1 — почти вровень с камерой (смотрим по горизонту, не в землю на
+   * разворотах и наборе высоты). Направление в плане (x,z) остаётся из ключей.
+   */
+  lookLevel?: number;
 }
+
+/** Насколько ниже камеры смотрим при lookLevel=1 (лёгкий наклон вниз). */
+const LOOK_DIP = 1.5;
 
 export const CINE_PATHS: CinePath[] = [
   {
     name: "Рассвет над лугом",
     duration: 26,
+    lookLevel: 0.55,
     keys: [
       { p: [-72, 3, -46], l: [-20, 2, -10] },
       { p: [-30, 5, -18], l: [10, 2, 6] },
@@ -35,6 +45,7 @@ export const CINE_PATHS: CinePath[] = [
   {
     name: "К обелискам",
     duration: 22,
+    lookLevel: 0.8,
     keys: [
       { p: [26, 4, 14], l: [0, 1, -12] },
       { p: [10, 3, -2], l: [0, 1, -12] },
@@ -46,6 +57,7 @@ export const CINE_PATHS: CinePath[] = [
   {
     name: "Тень багрового",
     duration: 24,
+    lookLevel: 0.25,
     keys: [
       { p: [8, 44, 8], l: [40, 6, 40] },
       { p: [34, 24, 34], l: [60, 5, 60] },
@@ -89,6 +101,12 @@ export function samplePath(path: CinePath, t: number, outP: number[], outL: numb
   for (let c = 0; c < 3; c++) {
     outP[c] = catmull(k0.p[c], k1.p[c], k2.p[c], k3.p[c], lt);
     outL[c] = catmull(k0.l[c], k1.l[c], k2.l[c], k3.l[c], lt);
+  }
+  // Подтягиваем взгляд к высоте камеры — чтобы на разворотах и наборе высоты
+  // камера не утыкалась в землю. План (x,z) точки взгляда не трогаем.
+  if (path.lookLevel) {
+    const w = path.lookLevel < 0 ? 0 : path.lookLevel > 1 ? 1 : path.lookLevel;
+    outL[1] += (outP[1] - LOOK_DIP - outL[1]) * w;
   }
 }
 
