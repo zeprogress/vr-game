@@ -108,6 +108,9 @@ export class RemoteAvatar implements Hittable {
   // Анимации модели бота (crossfade по весам).
   private readonly animW = new Map<string, number>();
   private planarSpeed = 0;
+  /** Текущий режим ходьбы — для гистерезиса порогов (иначе клип щёлкает). */
+  private locoRun = false;
+  private locoMove = false;
   private swingUntil = 0;
   private lastUpdate = 0;
   private readonly _prevPos = new Vector3();
@@ -593,10 +596,18 @@ export class RemoteAvatar implements Hittable {
     this._prevPos.copyFrom(p);
     this.planarSpeed += (inst - this.planarSpeed) * Math.min(1, dt * 8);
 
+    // Пороги с гистерезисом: у бота скорость гуляет около границы (тормозит
+    // у моба, толкается с соседями), и на одном пороге клип щёлкал бег↔шаг
+    // каждый кадр — это читалось как рывок.
+    const run = this.locoRun ? this.planarSpeed > 1.8 : this.planarSpeed > 2.4;
+    const move = this.locoMove ? this.planarSpeed > 0.25 : this.planarSpeed > 0.45;
+    this.locoRun = run;
+    this.locoMove = move;
+
     let want: string;
     if (now < this.swingUntil) want = "swordslash";
-    else if (this.planarSpeed > 2.2) want = "run";
-    else if (this.planarSpeed > 0.35) want = "walk";
+    else if (run) want = "run";
+    else if (move) want = "walk";
     else want = "idle";
 
     const k = Math.min(1, dt * 12);

@@ -9,29 +9,28 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-import { PLAYER } from "#shared/constants";
 import { radialGlow, BOT_TORCHES } from "./Fireflies";
 
 /** Докуда добивает свет бота, м. */
-const RANGE = 22;
-const INTENSITY = 4.6;
-/** Радиус светлого пятна на земле, м. */
-const POOL_RADIUS = 8;
-/** Яркость пятна в глубокую ночь. Аддитивно и складывается у соседних ботов,
- *  поэтому скромнее, чем у одиночного источника. */
-const POOL_ALPHA = 0.22;
+const RANGE = 14;
+const INTENSITY = 2.4;
+/** Радиус светящегося ореола, м. */
+const POOL_RADIUS = 5;
+/** Яркость ореола в глубокую ночь (аддитивно, у соседей складывается). */
+const POOL_ALPHA = 0.16;
+/** На какой высоте над корпусом висит ореол, м. */
+const POOL_UP = 0.5;
 
 /**
- * Ночная подсветка от ботов зрителей (Ф10).
+ * Ночная подсветка от ботов зрителей (Ф10). Сделана тем же способом, что и
+ * светлячки: видимое свечение даёт аддитивный спрайт с радиальным пятном,
+ * который висит в воздухе у бота и сам поворачивается лицом к активной камере
+ * (надёжнее `billboardMode` — в спектаторе с его риг-камерами тот подводил).
+ * Настоящее затенение по нормалям добавляет PointLight.
  *
- * Видимую «лужицу» на земле даёт не PointLight (его вклад в затенение мягкий
- * и на траве почти не читается), а лежащий на земле аддитивный спрайт с
- * радиальным пятном — он есть у КАЖДОГО бота и стоит почти ничего.
- * Настоящих PointLight'ов раздаём только BOT_TORCHES штук — ближайшим к
- * камере: они дороги (каждый попадает в шейдер земли, травы и деревьев).
- *
- * Днём всё гаснет; setEnabled дёргаем только на границе суток — как у
- * SpellLights и светлячков, чтобы не пересобирать шейдеры каждый кадр.
+ * Спрайт есть у КАЖДОГО бота — шейдеру освещения он ничего не стоит.
+ * PointLight'ов раздаём только BOT_TORCHES штук, ближайшим к камере: каждый
+ * попадает в шейдер земли, травы и деревьев. Днём всё гаснет.
  */
 export class BotLights {
   private readonly lights: PointLight[] = [];
@@ -40,10 +39,10 @@ export class BotLights {
   private readonly pools: InstancedMesh[] = [];
   private night = 0;
   private enabled = false;
-  private shown = 0; // сколько пятен сейчас включено
+  private shown = 0;
   private readonly _order: number[] = [];
 
-  constructor(scene: Scene) {
+  constructor(private readonly scene: Scene) {
     for (let i = 0; i < BOT_TORCHES; i++) {
       const l = new PointLight(`botTorch${i}`, new Vector3(0, -100, 0), scene);
       l.range = RANGE;
@@ -60,16 +59,15 @@ export class BotLights {
     this.poolMat.opacityTexture = glow;
     this.poolMat.diffuseColor = new Color3(0, 0, 0);
     this.poolMat.specularColor = new Color3(0, 0, 0);
-    this.poolMat.emissiveColor = new Color3(1, 0.8, 0.5);
+    this.poolMat.emissiveColor = new Color3(1, 0.82, 0.52);
     this.poolMat.disableLighting = true;
     this.poolMat.alphaMode = Constants.ALPHA_ADD;
     this.poolMat.disableDepthWrite = true;
-    this.poolMat.backFaceCulling = false;
+    this.poolMat.backFaceCulling = false; // повернётся любой стороной — рисуем обе
     this.poolMat.alpha = 0;
 
     this.poolProto = MeshBuilder.CreatePlane("botTorchPool", { size: POOL_RADIUS * 2 }, scene);
     this.poolProto.material = this.poolMat;
-    this.poolProto.rotation.x = Math.PI / 2; // плашмя на землю
     this.poolProto.isPickable = false;
     this.poolProto.renderingGroupId = 0;
     this.poolProto.isVisible = false; // рисуем только инстансы
@@ -78,7 +76,7 @@ export class BotLights {
   /**
    * @param daylight 0..1 (1 — день)
    * @param ref      откуда мерить «ближайших» (камера спектатора / голова игрока)
-   * @param bots     мировые позиции ботов (корпус = земля + PLAYER.eyeHeight)
+   * @param bots     мировые позиции корпусов ботов
    */
   update(dt: number, daylight: number, ref: Vector3, bots: readonly Vector3[]): void {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
@@ -95,20 +93,20 @@ export class BotLights {
     }
     if (!this.enabled) return;
 
-    // Пятно на земле — каждому боту.
+    // Ореол — каждому боту; поворачиваем к камере руками, как у светлячков.
     this.poolMat.alpha = this.night * POOL_ALPHA;
+    const cam = this.scene.activeCamera;
+    const look = cam ? cam.globalPosition : ref;
     for (let i = 0; i < bots.length; i++) {
       let pool = this.pools[i];
       if (!pool) {
         pool = this.poolProto.createInstance(`botTorchPool${i}`);
-        // Инстанс НЕ наследует трансформ прототипа — кладём плашмя сами.
-        pool.rotation.x = Math.PI / 2;
         pool.isPickable = false;
         this.pools.push(pool);
       }
       const b = bots[i];
-      // Корпус стоит на terrainHeight + eyeHeight — отсюда и земля под ним.
-      pool.position.set(b.x, b.y - PLAYER.eyeHeight + 0.12, b.z);
+      pool.position.set(b.x, b.y + POOL_UP, b.z);
+      pool.lookAt(look);
       if (i >= this.shown) pool.setEnabled(true);
     }
     for (let i = bots.length; i < this.shown; i++) this.pools[i].setEnabled(false);
@@ -130,7 +128,7 @@ export class BotLights {
         continue;
       }
       const b = bots[bi];
-      l.position.set(b.x, b.y + 0.9, b.z);
+      l.position.set(b.x, b.y + 0.6, b.z);
       l.intensity = this.night * INTENSITY;
     }
   }
