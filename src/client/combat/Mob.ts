@@ -363,7 +363,7 @@ export class Mob implements Hittable {
     this.root.rotation.y = s.yaw;
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
     if (!this.dead) {
-      this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.15);
+      this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
     }
 
     // урон: hurtSeq вырос -> вспышка + рана + звук
