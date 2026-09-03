@@ -2,24 +2,31 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
-import { Light } from "@babylonjs/core/Lights/light";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { BOT_TORCHES } from "./Fireflies";
 
-/** Докуда добивает свет бота, м. */
-const RANGE = 18;
+/**
+ * Докуда добивает свет, м. Держим близко к лампе светлячка (FIREFLY.lightRange
+ * = 11): та землю освещает исправно, и отходить от проверенной конфигурации
+ * без нужды не стоит. falloffType намеренно НЕ трогаем — у StandardMaterial
+ * тип затухания задают дефайны материала, а не источника.
+ */
+const RANGE = 13;
 /** На сколько источник вынесен ВПЕРЁД от бота — светит в основном на морду. */
 const FORWARD = 1.1;
-/** И на сколько поднят над точкой корпуса. */
-const UP = 0.5;
 /**
- * Яркость источника. Подбор вживую: `?botlight=6`. Если и на большом значении
- * окружение не светлеет — значит источник вообще не попадает в шейдер земли
- * (упёрлись в maxSimultaneousLights), и лечить надо бюджет, а не яркость.
+ * Смещение по высоте от точки корпуса (она на уровне глаз, ~1.7 м над землёй).
+ * Отрицательное: светлячки висят в 1.1 м над землёй и оттуда её достают, а с
+ * высоты 2.2 м земля освещалась заметно хуже.
+ */
+const UP = -0.5;
+/**
+ * Яркость источника. Подобрано вживую на стриме — 3. Ручка `?botlight=<n>`
+ * оставлена для дальнейшей подгонки, без параметра берётся это значение.
  */
 const INTENSITY = (() => {
   const v = Number(new URLSearchParams(location.search).get("botlight"));
-  return Number.isFinite(v) && v >= 0 && v <= 40 ? v : 1.5;
+  return Number.isFinite(v) && v >= 0 && v <= 40 ? v : 3;
 })();
 
 /**
@@ -43,10 +50,6 @@ export class BotLights {
     for (let i = 0; i < BOT_TORCHES; i++) {
       const l = new PointLight(`botTorch${i}`, new Vector3(0, -100, 0), scene);
       l.range = RANGE;
-      // Явно линейное затухание по range: у StandardMaterial поведение
-      // FALLOFF_DEFAULT зависит от дефайнов материала, и подбирать яркость
-      // вслепую под него — гадание.
-      l.falloffType = Light.FALLOFF_STANDARD;
       l.intensity = 0;
       l.diffuse = new Color3(1, 0.86, 0.62);
       l.specular = new Color3(0.12, 0.1, 0.06);
