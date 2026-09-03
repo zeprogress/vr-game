@@ -180,6 +180,12 @@ export class Spectator {
     this.status.textContent = "ZEP GAME — подключаюсь…";
     document.body.appendChild(this.status);
 
+    // ?debug=1 — ещё и сцена наружу: иначе с прода не заглянуть, какие
+    // источники реально попали в шейдер конкретного материала.
+    if (showDebug) {
+      (window as unknown as { __zep?: unknown }).__zep = { scene: this.scene, engine: this.engine };
+    }
+
     // Отладочный счётчик — для замера на TOX3 (?debug=1). В эфире не нужен.
     if (showDebug) {
       this.debug = document.createElement("div");
