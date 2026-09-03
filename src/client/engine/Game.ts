@@ -21,6 +21,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { SpellLights } from "../world/SpellLights";
+import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
@@ -108,6 +109,8 @@ export class Game {
   private readonly spellLights: SpellLights;
   private readonly botLights: import("../world/BotLights").BotLights;
   private readonly _botPos: Vector3[] = [];
+  /** Пятно-тень под самим игроком — опора при прыжке и в VR. */
+  private readonly ownShadow: BlobShadow;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
@@ -171,6 +174,7 @@ export class Game {
     this.report = report;
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.spellLights = new SpellLights(this.scene);
+    this.ownShadow = new BlobShadow(this.scene, "self");
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -298,6 +302,12 @@ export class Game {
         this._botPos,
         this._botFwd,
       );
+      // Своя тень: игрок стоит «глазами», ноги ниже на eyeHeight.
+      const eye = this.player.eyePosition;
+      this.ownShadow.setEnabled(!this.player.dead);
+      if (!this.player.dead) {
+        this.ownShadow.place(eye.x, eye.y - PLAYER.eyeHeight, eye.z, 0.5);
+      }
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();

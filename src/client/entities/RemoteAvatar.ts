@@ -19,6 +19,8 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
+import { BlobShadow } from "../world/blobShadow";
+import { PLAYER } from "#shared/constants";
 
 /** Доворот модели бота, если её «перёд» смотрит не в +Z. Подбор: `?byaw=<рад>`. */
 const BOT_MODEL_YAW = (() => {
@@ -39,6 +41,8 @@ const BOT_RIG_SCALE = (() => {
 const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 /** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
 const BOT_FEET_Y = -1.68;
+/** Радиус пятна-тени под аватаром, м. */
+const SHADOW_RADIUS = 0.5;
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
 const BOT_TAG_SCALE = 2.1;
 /**
@@ -102,6 +106,8 @@ export class RemoteAvatar implements Hittable {
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
   private bubble: SpeechBubble | null = null;
+  /** Пятно-тень под ногами: без неё модель читается как парящая. */
+  private readonly shadow: BlobShadow;
   private head!: Mesh;
   private handL: Mesh | null = null;
   private handR: Mesh | null = null;
@@ -179,6 +185,7 @@ export class RemoteAvatar implements Hittable {
     this.mat.diffuseColor = colorFor(id);
     this.mat.specularColor = new Color3(0.1, 0.1, 0.1);
 
+    this.shadow = new BlobShadow(scene, id);
     this.nameTag = new NameTag(scene, this.root, new Vector3(0, 0.42, 0), nick, null);
     this.setMode(mode);
   }
@@ -473,6 +480,10 @@ export class RemoteAvatar implements Hittable {
         this.applyXf(this.handR!, this.handR!.rotationQuaternion!, a.handR, b.handR, s, false);
       }
     }
+    // Тень — от ног: корпус аватара стоит на уровне глаз.
+    const p = this.root.position;
+    this.shadow.setEnabled(!this.dead);
+    if (!this.dead) this.shadow.place(p.x, p.y - PLAYER.eyeHeight, p.z, SHADOW_RADIUS);
     this.applyGear();
   }
 
@@ -750,6 +761,7 @@ export class RemoteAvatar implements Hittable {
 
   dispose(): void {
     this.disposed = true;
+    this.shadow.dispose();
     this.speakDot?.dispose();
     this.gearL?.dispose();
     this.gearR?.dispose();
