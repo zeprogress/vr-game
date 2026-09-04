@@ -71,22 +71,30 @@ export const CINE_PATHS: CinePath[] = [
 ];
 
 /**
- * Порядок кадров в спокойной ротации (вне боя с боссом). Токены:
- *   overview · orbitPlayer · eyePlayer · orbitBoss · eyeMob · path:<n>
+ * Порядок кадров в спокойной ротации, когда на сервере кто-то есть (игроки
+ * и/или боты) — вне боя с боссом. Кинопутей здесь нет намеренно: эфир всегда
+ * на живых, а не на заранее снятых пролётах. Токены:
+ *   overview · orbitPlayer · eyePlayer · orbitBoss · eyeMob
  * Невалидные в моменте (нет игроков / нет босса) режиссёр пропускает.
  */
 export const ROTATION: string[] = [
   "overview",
-  "path:0",
   "orbitPlayer",
   "eyePlayer",
-  "path:1",
   "orbitBoss",
   "eyeMob",
-  "path:2",
   "orbitPlayer",
+  "eyePlayer",
   "eyeMob",
 ];
+
+/**
+ * Ротация, когда на сервере совсем никого нет (ни игроков, ни ботов) —
+ * показывать нечего, крутим кинопути. Как только кто-то зайдёт, режиссёр
+ * сам вернётся на ROTATION (см. SpectatorCamera.nextShot). С пульта путь
+ * можно поставить и вручную в любой момент — это не трогает.
+ */
+export const ROTATION_IDLE: string[] = ["path:0", "path:1", "path:2", "overview"];
 
 /** Позиция и точка взгляда на пути в момент t (0..1). */
 export function samplePath(path: CinePath, t: number, outP: number[], outL: number[]): void {

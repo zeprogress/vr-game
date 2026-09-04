@@ -3,7 +3,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
 import { SPECTATE } from "#shared/constants";
-import { CINE_PATHS, ROTATION, samplePath } from "./cine";
+import { CINE_PATHS, ROTATION, ROTATION_IDLE, samplePath } from "./cine";
 
 /**
  * Камера-погоня за ботом («из глаз бота»): сзади, чуть сверху. Высота
@@ -84,7 +84,8 @@ export class SpectatorCamera {
   private shot: Shot = { kind: "overview" };
   private orbitClock = 0;
   private sinceSwitch = 999;
-  private rotIdx = 0; // позиция в ROTATION (спокойная ротация)
+  private rotIdx = 0; // позиция в ROTATION (спокойная ротация, кто-то на сервере есть)
+  private idleRotIdx = 0; // позиция в ROTATION_IDLE (сервер совсем пуст)
   private fightIdx = 0; // позиция в ротации боя
   private pickI = 0; // какого игрока/моба брать для *Player / eyeMob токенов
   private readonly _pp: number[] = [0, 0, 0];
@@ -256,13 +257,27 @@ export class SpectatorCamera {
       this.fightIdx = (this.fightIdx + 1) % fight.length;
       return fight[this.fightIdx];
     }
-    // Спокойная ротация: идём по ROTATION, пропуская невалидные токены.
-    for (let step = 1; step <= ROTATION.length; step++) {
-      const tok = ROTATION[(this.rotIdx + step) % ROTATION.length];
-      const shot = this.resolveToken(tok, ctx);
-      if (shot) {
-        this.rotIdx = (this.rotIdx + step) % ROTATION.length;
-        return shot;
+    // Кто-то на сервере есть (игрок или бот) — эфир на них, кинопути не
+    // предлагаем вообще; сервер совсем пуст — крутим их, показывать больше
+    // нечего. С пульта путь всё равно можно поставить вручную в любой момент
+    // (forceShot) — это идёт мимо этой ветки.
+    if (ctx.players.length > 0) {
+      for (let step = 1; step <= ROTATION.length; step++) {
+        const tok = ROTATION[(this.rotIdx + step) % ROTATION.length];
+        const shot = this.resolveToken(tok, ctx);
+        if (shot) {
+          this.rotIdx = (this.rotIdx + step) % ROTATION.length;
+          return shot;
+        }
+      }
+    } else {
+      for (let step = 1; step <= ROTATION_IDLE.length; step++) {
+        const tok = ROTATION_IDLE[(this.idleRotIdx + step) % ROTATION_IDLE.length];
+        const shot = this.resolveToken(tok, ctx);
+        if (shot) {
+          this.idleRotIdx = (this.idleRotIdx + step) % ROTATION_IDLE.length;
+          return shot;
+        }
       }
     }
     return { kind: "overview" };
