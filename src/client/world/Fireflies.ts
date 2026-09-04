@@ -128,6 +128,13 @@ export class Fireflies {
   private clock = 0;
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
   private night = 0;
+  /**
+   * Сколько ламп (настоящих PointLight) реально включать — лишние гасим.
+   * По умолчанию все; урезается на лету (см. setLampBudget), а не при
+   * создании, потому что VR/флэт решается уже после того, как зона
+   * построена (экран входа идёт после buildZone).
+   */
+  private lampBudget = Infinity;
 
   constructor(scene: Scene, terrain: Terrain, density = 1) {
     this.scene = scene;
@@ -218,12 +225,16 @@ export class Fireflies {
       for (const d of g.dots) d.setEnabled(on);
       g.pool.setEnabled(on);
     }
-    for (const l of this.lamps) l.light.setEnabled(on);
+    // Урезанные setLampBudget'ом лампы остаются погашенными даже с
+    // наступлением ночи — иначе этот вызов включил бы их обратно.
+    const budget = Math.min(this.lamps.length, this.lampBudget);
+    for (let i = 0; i < this.lamps.length; i++) this.lamps[i].light.setEnabled(on && i < budget);
     // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
     // пересобирают, а набор источников только что изменился. Без этого земля
     // и трава остаются «дневными» — особенно заметно при ручном переводе
-    // времени с пульта, когда переход происходит за один кадр.
-    if (this.lamps.length > 0) relightMaterials(this.scene);
+    // времени с пульта, когда переход происходит за один кадр. Бюджет 0 —
+    // источников не прибавилось, пересборка ничего не даст.
+    if (budget > 0) relightMaterials(this.scene);
   }
 
   /** `daylight` 0..1 из DayState: 1 — день (светлячков нет), 0 — ночь. */
@@ -277,6 +288,25 @@ export class Fireflies {
   }
 
   /**
+   * Урезать бюджет реальных ламп на лету — например, вошли в VR: экран
+   * входа идёт уже ПОСЛЕ buildZone, так что VR/флэт не выбрать при
+   * создании. Лишние сразу гасим — они же PointLight, каждая лишняя
+   * утяжеляет шейдер земли/травы/деревьев/персонажей, а в VR это бьёт
+   * вдвое (два глаза) на заметно более слабом GPU шлема.
+   */
+  setLampBudget(n: number): void {
+    this.lampBudget = n;
+    for (let i = 0; i < this.lamps.length; i++) {
+      if (i >= n) {
+        this.lamps[i].light.setEnabled(false);
+        this.lamps[i].light.intensity = 0;
+      } else if (this.night > 0.02) {
+        this.lamps[i].light.setEnabled(true);
+      }
+    }
+  }
+
+  /**
    * Настоящий свет достаётся ближайшим к игроку стайкам.
    *
    * Лампа не перескакивает на новую стайку сразу: сперва гаснет на старой и
@@ -284,18 +314,21 @@ export class Fireflies {
    * разом, когда набор ближайших менялся.
    */
   private updateLamps(dt: number, playerPos: Vector3): void {
+    const budget = Math.min(this.lamps.length, this.lampBudget);
     const nearest = [...this.groups]
       .sort(
         (a, b) =>
           Vector3.DistanceSquared(a.center, playerPos) -
           Vector3.DistanceSquared(b.center, playerPos),
       )
-      .slice(0, this.lamps.length);
+      .slice(0, budget);
 
     const k = 1 - Math.exp(-dt * 2.5); // скорость плавного перехода
     const taken = new Set(this.lamps.map((l) => l.group).filter(Boolean));
 
-    for (const lamp of this.lamps) {
+    for (let li = 0; li < this.lamps.length; li++) {
+      const lamp = this.lamps[li];
+      if (li >= budget) continue; // урезано — уже погашена в setLampBudget
       const keeps = lamp.group !== null && nearest.includes(lamp.group);
 
       // Своя стайка уехала из ближайших — гасим, а не переключаемся рывком.
@@ -320,7 +353,7 @@ export class Fireflies {
       lamp.level += (target - lamp.level) * k;
 
       if (g) lamp.light.position.copyFrom(g.center);
-      const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + this.lamps.indexOf(lamp));
+      const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + li);
       lamp.light.intensity = FIREFLY.lightIntensity * this.night * flicker * lamp.level;
     }
   }

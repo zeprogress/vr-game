@@ -49,6 +49,8 @@ export class BotLights {
   private readonly lights: PointLight[] = [];
   private night = 0;
   private enabled = false;
+  /** VR: те же PointLight'ы вдвое дороже (два глаза) на заметно слабом GPU шлема. */
+  private forceOff = false;
   private readonly _order: number[] = [];
 
   constructor(private readonly scene: Scene) {
@@ -62,6 +64,19 @@ export class BotLights {
       this.lights.push(l);
     }
 
+  }
+
+  /**
+   * Погасить факелы совсем, независимо от времени суток — например, вошли
+   * в VR: экран входа идёт уже ПОСЛЕ постройки зоны, так что VR/флэт не
+   * выбрать заранее. Сразу гасит текущие источники, если они горели.
+   */
+  setForceOff(v: boolean): void {
+    this.forceOff = v;
+    if (v && this.enabled) {
+      this.enabled = false;
+      for (const l of this.lights) l.setEnabled(false);
+    }
   }
 
   /**
@@ -80,7 +95,7 @@ export class BotLights {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
     this.night += (want - this.night) * Math.min(1, dt * 0.8);
 
-    const on = this.night > 0.02 && bots.length > 0;
+    const on = this.night > 0.02 && bots.length > 0 && !this.forceOff;
     if (on !== this.enabled) {
       this.enabled = on;
       for (const l of this.lights) l.setEnabled(on);

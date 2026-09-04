@@ -110,6 +110,7 @@ export class Game {
   private healCrossFx: HealCrossFx | null = null;
   private readonly spellLights: SpellLights;
   private readonly botLights: import("../world/BotLights").BotLights;
+  private readonly fireflies: import("../world/Fireflies").Fireflies;
   private readonly _botPos: Vector3[] = [];
   /** Пятно-тень под самим игроком — опора при прыжке и в VR. */
   private readonly ownShadow: BlobShadow;
@@ -165,6 +166,7 @@ export class Game {
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.botLights = zone.botLights;
+    this.fireflies = zone.fireflies;
 
     this.player = new PlayerController(this.scene, this.progression);
     this.player.setObstacles(zone.obstacles);
@@ -370,16 +372,33 @@ export class Game {
    * иначе браузер теряет «жест пользователя» и `requestSession` отклоняется.
    * Поэтому `xrReady` дожидается экран входа, а тут только синхронная проверка.
    */
+  /**
+   * VR-экран входа идёт уже ПОСЛЕ buildZone (см. main.ts) — ночная подсветка
+   * (пятерка ламп-светлячков + пара факелов у ботов, всё PointLight) заранее
+   * под VR не подстроить. На деле шлем заметно слабее десктопа и рендерит
+   * дважды (два глаза): те же источники, что на ПК почти бесплатны, в VR
+   * ночью тормозили так, что было заметно — и пропадало ровно на рассвете,
+   * когда обе системы гаснут. Гасим их совсем, как только вошли в VR.
+   */
+  private applyVrQuality(): void {
+    this.fireflies.setLampBudget(0);
+    this.botLights.setForceOff(true);
+  }
+
   enterVR(): Promise<boolean> {
     if (!this.xr) return Promise.resolve(false);
     const base = this.xr.baseExperience;
-    if (base.state === WebXRState.IN_XR) return Promise.resolve(true);
+    if (base.state === WebXRState.IN_XR) {
+      this.applyVrQuality();
+      return Promise.resolve(true);
+    }
 
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const done = (ok: boolean): void => {
         if (settled) return;
         settled = true;
+        if (ok) this.applyVrQuality();
         resolve(ok);
       };
       // Резолвимся по ФАКТУ входа в XR, а не по промису enterXRAsync — тот на

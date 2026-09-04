@@ -20,6 +20,8 @@ import { LOADOUT } from "../config/loadout";
 export interface Zone {
   /** Ночная подсветка от ботов зрителей (Ф10). Кормит Spectator/Game. */
   botLights: BotLights;
+  /** Светлячки — держим ссылку, чтобы урезать бюджет ламп на лету (VR). */
+  fireflies: Fireflies;
   /** Меш «земли» — нужен WebXR как пол и raycast'ам игрока. */
   ground: Mesh;
   /** Высота земли в точке (аналитическая). */
@@ -128,6 +130,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   return {
     botLights,
+    fireflies,
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
     obstacles: [...trunks, ...rockObstacles],
