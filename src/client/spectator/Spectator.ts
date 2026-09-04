@@ -88,6 +88,7 @@ export class Spectator {
   private rafMs = 16.7; // сглаженный интервал между кадрами rAF (частота экрана)
   private capStep = 0; // счётчик кадров для равномерного кэпа по vsync
   private lastShotReport = 0;
+  private lastCamReport = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
   private readonly reloadSec: number;
@@ -480,6 +481,13 @@ export class Spectator {
     if (room && now - this.lastShotReport > 2000) {
       this.lastShotReport = now;
       this.net?.sendSpecCmd({ t: "nowShot", shot: this.cam.shotKind });
+    }
+
+    // Раз в ~200 мс — позиция камеры для метки в мире у игроков (Ф10).
+    if (room && now - this.lastCamReport > 200) {
+      this.lastCamReport = now;
+      const t = this.cam.target;
+      this.net?.sendSpecCam({ x: p.x, y: p.y, z: p.z, tx: t.x, ty: t.y, tz: t.z });
     }
 
     if (this.overlay) this.updateOverlay(room?.state ?? null);

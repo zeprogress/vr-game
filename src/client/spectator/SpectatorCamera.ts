@@ -247,12 +247,9 @@ export class SpectatorCamera {
       }
     }
     if (fighting && ctx.boss) {
-      // Ротация боя: орбита босса → из глаз босса → из глаз ближнего игрока.
+      // Ротация боя: орбита босса → из глаз ближнего игрока.
       const near = this.playerNearestBoss(ctx);
-      const fight: Shot[] = [
-        { kind: "orbitBoss" },
-        { kind: "eyeMob", id: ctx.boss.id },
-      ];
+      const fight: Shot[] = [{ kind: "orbitBoss" }];
       if (near) fight.push({ kind: "eyePlayer", id: near.id });
       this.fightIdx = (this.fightIdx + 1) % fight.length;
       return fight[this.fightIdx];
@@ -295,10 +292,6 @@ export class SpectatorCamera {
     const id = ci < 0 ? "" : tok.slice(ci + 1);
     if (kind === "overview") return { kind: "overview" };
     if (kind === "orbitBoss") return ctx.boss ? { kind: "orbitBoss" } : null;
-    if (kind === "eyeBoss") {
-      const b = ctx.mobs.find((m) => m.kind === "boss");
-      return b ? { kind: "eyeMob", id: b.id } : null;
-    }
     if (kind === "path") {
       const idx = Number(id);
       return idx >= 0 && idx < CINE_PATHS.length ? { kind: "path", idx } : null;
@@ -317,11 +310,14 @@ export class SpectatorCamera {
       return { kind: "eyePlayer", id: pid };
     }
     if (kind === "eyeMob") {
-      if (id) return ctx.mobs.some((m) => m.id === id) ? { kind: "eyeMob", id } : null;
+      // Камеры «из глаз босса» больше нет нигде — ни явным id, ни авто-подбором.
+      if (id) {
+        const m = ctx.mobs.find((x) => x.id === id);
+        return m && m.kind !== "boss" ? { kind: "eyeMob", id } : null;
+      }
       const critters = ctx.mobs.filter((m) => m.kind === "slime" || m.kind === "spitter");
-      const list = critters.length ? critters : ctx.mobs;
-      if (list.length === 0) return null;
-      return { kind: "eyeMob", id: list[this.pickI % list.length].id };
+      if (critters.length === 0) return null;
+      return { kind: "eyeMob", id: critters[this.pickI % critters.length].id };
     }
     return null;
   }

@@ -41,6 +41,7 @@ import {
   type SetTimeMsg,
   type ComfortMsg,
   type SpecCmd,
+  type SpecCamMsg,
   type SetPvpMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
@@ -768,8 +769,25 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "mobsOn") {
         this.sim.mobsEnabled = msg.on !== 0;
         this.state.mobsOn = msg.on !== 0 ? 1 : 0;
+      } else if (msg.t === "specVisible") {
+        this.state.specVisible = msg.on !== 0 ? 1 : 0;
       }
       this.broadcast(MSG.specCmd, msg, { except: client });
+    });
+
+    // Позиция камеры стрима — только от рендерящего спектатора (у пульта
+    // своей камеры нет, он её и не шлёт). Троттлит сам клиент; здесь просто
+    // кладём в синхронизируемое состояние — метку в мире рисует Game.ts.
+    this.onMessage(MSG.specCam, (client: Client, msg: SpecCamMsg) => {
+      if (!this.spectators.has(client.sessionId) || !msg) return;
+      const n = (v: unknown, d: number): number => (Number.isFinite(v) ? (v as number) : d);
+      this.state.specX = n(msg.x, this.state.specX);
+      this.state.specY = n(msg.y, this.state.specY);
+      this.state.specZ = n(msg.z, this.state.specZ);
+      this.state.specTX = n(msg.tx, this.state.specTX);
+      this.state.specTY = n(msg.ty, this.state.specTY);
+      this.state.specTZ = n(msg.tz, this.state.specTZ);
+      this.state.specActive = 1;
     });
 
     console.log(`[zone] комната ${this.roomId} создана`);
@@ -2078,6 +2096,9 @@ export class ZoneRoom extends Room<ZoneState> {
   override onLeave(client: Client): void {
     if (this.spectators.delete(client.sessionId)) {
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
+      // Ни одного спектатора не осталось — метка камеры стрима больше не
+      // актуальна (мог уйти как раз рендерящий, а не только пульт).
+      if (this.spectators.size === 0) this.state.specActive = 0;
       return;
     }
     const rt = this.rt.get(client.sessionId);

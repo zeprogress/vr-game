@@ -42,8 +42,12 @@ export class Dashboard {
   private readonly autoBtn: HTMLButtonElement;
   private botsOnly = false;
   private readonly botsBtn: HTMLButtonElement;
-  private mobsOn = true;
+  // null — ещё не пришло состояние с сервера (см. refreshList): пока не
+  // сравнить с чем-то заведомо другим, кнопка держит плейсхолдер «—».
+  private mobsOn: boolean | null = null;
   private mobsBtn!: HTMLButtonElement;
+  private specVisible: boolean | null = null;
+  private specBtn!: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -111,7 +115,6 @@ export class Dashboard {
     fixed.append(
       this.cmdBtn("Обзор зоны", { t: "cam", shot: "overview" }),
       this.cmdBtn("Орбита босса", { t: "cam", shot: "orbitBoss" }),
-      this.cmdBtn("Из глаз босса", { t: "cam", shot: "eyeBoss" }),
     );
     this.root.appendChild(fixed);
 
@@ -226,6 +229,8 @@ export class Dashboard {
       "border:1px solid #6a3030;border-radius:10px;padding:10px;background:#241417";
     this.mobsBtn = this.bigBtn("Мобы: —", () => this.toggleMobs());
     admin.appendChild(this.mobsBtn);
+    this.specBtn = this.bigBtn("Камера стрима игрокам: —", () => this.toggleSpecVisible());
+    admin.appendChild(this.specBtn);
     const clearBtn = this.bigBtn("Очистить лут с земли", () => {
       if (!confirm("Убрать весь лежащий лут во всём мире? Действие необратимо.")) return;
       this.send({ t: "clearLoot" });
@@ -283,11 +288,14 @@ export class Dashboard {
     if (!st) return;
     if (st.dayAuto !== this.dayAuto) this.setDayAutoUi(st.dayAuto);
     if ((st.mobsOn !== 0) !== this.mobsOn) this.setMobsUi(st.mobsOn !== 0);
+    if ((st.specVisible !== 0) !== this.specVisible) this.setSpecUi(st.specVisible !== 0);
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
-      if (m.dead || m.kind === "shard") return;
-      const label = m.kind === "boss" ? "Босс" : m.kind === "spitter" ? "Плевун" : "Слизень";
+      // Босса тоже убрали из выбора — камеры «из глаз босса» больше нет:
+      // выбор бы просто молча ничего не делал (см. SpectatorCamera.resolveToken).
+      if (m.dead || m.kind === "shard" || m.kind === "boss") return;
+      const label = m.kind === "spitter" ? "Плевун" : "Слизень";
       mobs.push({ id, label });
     });
     const sig = players.map((p) => p.id).join() + "|" + mobs.map((m) => m.id).join();
@@ -348,6 +356,11 @@ export class Dashboard {
     this.send({ t: "mobsOn", on: this.mobsOn ? 1 : 0 });
   }
 
+  private toggleSpecVisible(): void {
+    this.setSpecUi(!this.specVisible);
+    this.send({ t: "specVisible", on: this.specVisible ? 1 : 0 });
+  }
+
   private toggleOverlay(key: OverlayToggle["key"]): void {
     this.ov[key] = this.ov[key] ? 0 : 1;
     this.saveOverlay();
@@ -398,6 +411,12 @@ export class Dashboard {
     this.mobsOn = on;
     this.mobsBtn.textContent = `Мобы: ${on ? "ВКЛ (дерутся)" : "ВЫКЛ (замерли)"}`;
     this.mobsBtn.style.background = on ? "#1d1f2b" : "#3a2020";
+  }
+
+  private setSpecUi(on: boolean): void {
+    this.specVisible = on;
+    this.specBtn.textContent = `Камера стрима игрокам: ${on ? "ВКЛ (видна)" : "ВЫКЛ (скрыта)"}`;
+    this.specBtn.style.background = on ? "#1d1f2b" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {

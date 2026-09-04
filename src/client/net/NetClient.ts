@@ -24,6 +24,7 @@ import {
   type SetSkinMsg,
   type SetLeaveBotMsg,
   type SpecCmd,
+  type SpecCamMsg,
   type KillFeedMsg,
   type BotSayMsg,
   type DropWeaponMsg,
@@ -309,6 +310,11 @@ export class NetClient {
   /** Команда стрим-дашборда/спектатора (этап 17 Ф5). */
   sendSpecCmd(cmd: SpecCmd): void {
     this.room?.send(MSG.specCmd, cmd);
+  }
+
+  /** Только рендерящий спектатор: где сейчас камера стрима. Троттлит вызывающий. */
+  sendSpecCam(msg: SpecCamMsg): void {
+    this.room?.send(MSG.specCam, msg);
   }
 
   /** Мой текущий флаг PvP (из состояния) — null офлайн. */

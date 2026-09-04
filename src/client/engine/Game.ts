@@ -21,6 +21,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
+import { NameTag } from "../ui/NameTag";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
@@ -114,6 +115,10 @@ export class Game {
   private readonly ownShadow: BlobShadow;
   /** Крестики над ЧУЖИМИ телами: свои игрок видит через HealCrossFx. */
   private readonly crossFx: WorldCrossFx;
+  /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
+  private specMarkerAnchor: TransformNode | null = null;
+  private specMarker: NameTag | null = null;
+  private specMarkerShown = false;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
@@ -179,6 +184,15 @@ export class Game {
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
+    this.specMarkerAnchor = new TransformNode("specCamAnchor", this.scene);
+    this.specMarker = new NameTag(
+      this.scene,
+      this.specMarkerAnchor,
+      new Vector3(0, 0, 0),
+      "📷 Камера стрима",
+      null,
+    );
+    this.specMarker.setEnabled(false);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -729,6 +743,13 @@ export class Game {
       if (dead) {
         this.hud.flashDamage(40);
         this.vrVignette?.flash(40);
+      } else {
+        // Единственное место, где реально снимаем экран смерти: self.dead —
+        // источник правды. onRespawn раньше делал это тоже, сам по себе,
+        // отдельным сообщением — если патч состояния приходил чуть позже
+        // него, вот этот блок ловил уже устаревшее dead:1 и включал экран
+        // смерти заново, уже без пары, которая его выключит.
+        this.hud.setDead(false);
       }
     }
     if (dead) {
@@ -819,9 +840,12 @@ export class Game {
     net.onMobHit = (dmg, fromX, fromZ, by) => this.takeMobHit(dmg, fromX, fromZ, by);
     net.onRespawn = (x, y, z) => {
       this.player.teleportTo(x, y, z);
-      this.player.dead = false;
-      this.hud.setDead(false);
       this.hud.flashDamage(20);
+      // player.dead / hud.setDead(false) сюда не пишем: это делает syncSelf
+      // по self.dead — иначе, если патч состояния приходит чуть позже этого
+      // сообщения, следующий тик ловит устаревшее dead:1 и включает экран
+      // смерти заново, уже без пары, которая его снова выключит (баг: после
+      // возрождения красная виньетка и счётчик оставались на экране).
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
     net.onPicked = (item, count) => {
@@ -1219,6 +1243,19 @@ export class Game {
       avatar.setMyPvp(myPvp);
       avatar.update(now);
     }
+
+    this.updateSpecMarker(net.room.state);
+  }
+
+  /** Метка камеры стрима (Ф10) — видна, только пока и подключён спектатор, и её не спрятали с пульта. */
+  private updateSpecMarker(st: ZoneState): void {
+    if (!this.specMarker || !this.specMarkerAnchor) return;
+    const show = st.specActive === 1 && st.specVisible === 1;
+    if (show !== this.specMarkerShown) {
+      this.specMarkerShown = show;
+      this.specMarker.setEnabled(show);
+    }
+    if (show) this.specMarkerAnchor.position.set(st.specX, st.specY, st.specZ);
   }
 
   private hapticBoth(): void {

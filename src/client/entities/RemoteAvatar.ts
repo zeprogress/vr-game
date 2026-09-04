@@ -107,8 +107,11 @@ const BOT_EMOTE_CLIP: Record<BotEmote, string> = {
   defeat: "defeat",
 };
 /** Длительности разовых клипов вне чат-эмоций, мс (замер по исходнику пака). */
-const HIT_REACT_MS = 650; // RecieveHit ≈ 0.625 с
-const PICKUP_MS = 1300; // PickUp ≈ 1.25 с
+// Обе анимации играются в 2× скорости (быстрее читаются в бою и не тормозят
+// подбор лута) — длительность здесь уже с поправкой на удвоенный темп.
+const HIT_PICKUP_SPEED = 2;
+const HIT_REACT_MS = 325; // RecieveHit ≈ 0.625 с / 2
+const PICKUP_MS = 650; // PickUp ≈ 1.25 с / 2
 
 interface Snap {
   t: number;
@@ -292,21 +295,21 @@ export class RemoteAvatar implements Hittable {
 
   /** Флинч от удара (act:hurt) — и у ботов, и у обычных игроков с моделью. */
   playHitReact(): void {
-    const until = this.playOneShot("recievehit", HIT_REACT_MS);
+    const until = this.playOneShot("recievehit", HIT_REACT_MS, HIT_PICKUP_SPEED);
     if (until) this.hitUntil = until;
   }
 
   /** Подобрал оружие или предмет с земли (act:pickup). */
   playPickup(): void {
-    const until = this.playOneShot("pickup", PICKUP_MS);
+    const until = this.playOneShot("pickup", PICKUP_MS, HIT_PICKUP_SPEED);
     if (until) this.pickupUntil = until;
   }
 
   /** Запускает разовый клип на полный вес; 0 — клипа нет (ещё не грузится риг). */
-  private playOneShot(clip: string, durationMs: number): number {
+  private playOneShot(clip: string, durationMs: number, speed = 1): number {
     const g = this.botRig?.anims.get(clip);
     if (!g) return 0;
-    g.start(false, 1, g.from, g.to, false);
+    g.start(false, speed, g.from, g.to, false);
     g.setWeightForAllAnimatables(1);
     this.animW.set(clip, 1);
     return this.now + durationMs;

@@ -22,17 +22,20 @@ import "@babylonjs/loaders/glTF/2.0";
 
 export const MODELS = {
   slime: "/models/Slime.glb",
-  // Боты зрителей (Ф10): персонажи из Quaternius "Ultimate Animated Character
-  // Pack" (CC0), сконвертированы в .glb. Один скелет и один набор клипов на
-  // всех: Idle / Walk / Run / SwordSlash / RecieveHit / Death.
+  // Боты зрителей и обычные игроки (Ф10): персонажи из Quaternius "Ultimate
+  // Animated Character Pack" (CC0), сконвертированы в .glb. Один скелет и
+  // один набор клипов на всех: Idle / Walk / Run / SwordSlash / RecieveHit /
+  // PickUp / Victory / Roll / Defeat / Death.
   charKnight: "/models/chars/Knight_Male.glb",
   charKnightGold: "/models/chars/Knight_Golden_Male.glb",
   charWizard: "/models/chars/Wizard.glb",
-  charWitch: "/models/chars/Witch.glb",
-  charElf: "/models/chars/Elf.glb",
   charNinja: "/models/chars/Ninja_Male.glb",
   charGoblin: "/models/chars/Goblin_Male.glb",
   charPirate: "/models/chars/Pirate_Male.glb",
+  charViking: "/models/chars/Viking_Male.glb",
+  charZombie: "/models/chars/Zombie_Male.glb",
+  charSoldier: "/models/chars/Soldier_Male.glb",
+  charCowboy: "/models/chars/Cowboy_Male.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;
@@ -42,23 +45,27 @@ export const BOT_SKIN_MODELS: readonly ModelName[] = [
   "charKnight",
   "charKnightGold",
   "charWizard",
-  "charWitch",
-  "charElf",
   "charNinja",
   "charGoblin",
   "charPirate",
+  "charViking",
+  "charZombie",
+  "charSoldier",
+  "charCowboy",
 ];
 
-/** Те же 8, человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
+/** Те же 10, человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
 export const BOT_SKIN_LABELS: readonly string[] = [
   "Рыцарь",
   "Золотой рыцарь",
   "Маг",
-  "Ведьма",
-  "Эльф",
   "Ниндзя",
   "Гоблин",
   "Пират",
+  "Викинг",
+  "Зомби",
+  "Солдат",
+  "Ковбой",
 ];
 
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
