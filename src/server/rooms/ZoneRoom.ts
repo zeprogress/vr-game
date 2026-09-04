@@ -1935,6 +1935,18 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       token = `nick:${norm}`;
       this.removeBot(norm); // если был бот — его прогресс уходит в store под этим токеном
+    } else {
+      // Обычный вход (не по ссылке ?stream=1), но ник — из допущенных
+      // (STREAM_NICKS или недавно писал в чат канала): тот же человек, что и
+      // его бот/зритель под этим ником, — заводить второй, никак не связанный
+      // аккаунт на один ник не нужно, иначе прогресс, лут и уровень расходятся.
+      // В отличие от ?stream, ошибкой не рубим: ник просто не подошёл — играем
+      // обычным гостевым токеном, как раньше.
+      const norm = normNick(options?.nick ?? "");
+      if (norm && this.allowedNick(norm) && !this.nickIsPlayed(norm)) {
+        token = `nick:${norm}`;
+        this.removeBot(norm);
+      }
     }
 
     const rec = token ? store.get(token) : undefined;
