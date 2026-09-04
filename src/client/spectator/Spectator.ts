@@ -168,6 +168,13 @@ export class Spectator {
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
 
+    // buildZone красит небо по LOADOUT.world.hour ПРЯМО СЕЙЧАС — а до
+    // подключения к серверу (первый кадр рисуем сразу, см. run()) это ещё
+    // старое значение с прошлой сессии, часто глубокая ночь (дефолт 2.77).
+    // Секунду-две зритель видел ночь, потом её резко сменяло настоящее
+    // время с сервера. Пока не подключились — красивее полдень, чем угадывать.
+    LOADOUT.world.hour = 12;
+
     const zone = buildZone(this.scene, {
       grass: preset.grass,
       fireflies: preset.fireflies,
