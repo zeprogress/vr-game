@@ -81,6 +81,17 @@ export class Hud {
     this.renderPanel();
   }
 
+  /**
+   * То же самое, но без exitPointerLock() — для Esc: браузер САМ снимает
+   * захват мыши на Esc (это нельзя ни отменить, ни опередить), и наш
+   * повторный вызов поверх уже идущего снятия иногда заметно тормозил
+   * появление панели.
+   */
+  private openPanelFromEsc(): void {
+    this.backdrop.style.display = "flex";
+    this.renderPanel();
+  }
+
   /** Спрятать без возврата захвата мыши (вызывается из pointerlockchange). */
   private hidePanel(): void {
     this.backdrop.style.display = "none";
@@ -125,9 +136,14 @@ export class Hud {
     this.prog = prog;
     prog.onChange(() => this.renderPanel());
     window.addEventListener("keydown", (e) => {
-      // Esc и так снимает захват мыши сам (браузер это не даёт отменить) —
-      // просто открываем/закрываем панель той же кнопкой, что и C.
-      if ((e.code === "KeyC" || e.code === "Escape") && !e.repeat) this.togglePanel();
+      if (e.repeat) return;
+      if (e.code === "KeyC") this.togglePanel();
+      else if (e.code === "Escape") {
+        // Открываем без exitPointerLock() (см. openPanelFromEsc) — Esc и так
+        // снимает захват мыши сам, наш вызов поверх только мешал.
+        if (this.panelOpen) this.closePanel();
+        else this.openPanelFromEsc();
+      }
     });
     this.backdrop.style.display = "none";
   }

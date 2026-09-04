@@ -88,6 +88,7 @@ function bootGame(): void {
       isVrAvailable: () => game.isVrAvailable(),
       whenXrReady: () => game.xrReady,
       enterVR: () => game.enterVR(),
+      requestPointerLock: () => game.requestPointerLock(),
     },
     streamMode,
   ).then(({ nick, online, vr }) => {

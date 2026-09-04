@@ -16,6 +16,13 @@ export interface LoginHooks {
   whenXrReady: () => Promise<void>;
   /** Запустить VR-сессию — вызывать прямо из обработчика клика. true — вошли. */
   enterVR: () => Promise<boolean>;
+  /**
+   * Захватить мышь сразу по клику «Играть» — вызывать синхронно, без await
+   * перед ней, иначе «жест пользователя» для requestPointerLock потеряется
+   * (тот же приём, что и у enterVR ниже). На тач-устройстве это просто
+   * ничего не делает — сам метод внутри себя это уже проверяет.
+   */
+  requestPointerLock: () => void;
 }
 
 /**
@@ -100,10 +107,14 @@ export function runLogin(
           if (document.getElementById("login")) finish(online, false);
         }, 20000);
       });
-      flatBtn.addEventListener("click", () => finish(online, false));
+      flatBtn.addEventListener("click", () => {
+        hooks.requestPointerLock();
+        finish(online, false);
+      });
     };
 
     playBtn.addEventListener("click", async () => {
+      hooks.requestPointerLock(); // синхронно, до await — см. requestPointerLock в LoginHooks
       playBtn.disabled = true;
       if (offlineBtn) offlineBtn.disabled = true;
       status.textContent = "Подключение…";
@@ -119,6 +130,7 @@ export function runLogin(
       }
     });
     offlineBtn?.addEventListener("click", () => {
+      hooks.requestPointerLock();
       playBtn.disabled = true;
       offlineBtn.disabled = true;
       void proceed(false);
