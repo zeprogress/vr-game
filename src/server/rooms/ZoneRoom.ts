@@ -148,6 +148,8 @@ interface Bot {
   state: PlayerState;
   rt: Runtime;
   target: string | null; // id моба
+  /** id лежащего золотого меча, за которым бот сейчас идёт (Ф10). */
+  lootTarget: string | null;
   attackCd: number;
   wanderCd: number;
   wanderX: number;
@@ -1141,12 +1143,16 @@ export class ZoneRoom extends Room<ZoneState> {
     p.hp = p.maxHp;
     p.maxMana = maxManaFor(p.int);
     p.mana = p.maxMana;
-    p.rightCls = "sword";
-    p.rightTier = "base";
+    // Меч сохраняем: если бот нашёл золотой (см. lootTarget в tickBot), он
+    // не должен откатываться до базового на каждом !play.
+    const savedHeld = sanitizeHeld(rec?.held);
+    p.rightCls = savedHeld.right?.cls ?? "sword";
+    p.rightTier = savedHeld.right?.tier ?? "base";
     p.leftCls = "shield";
     p.leftTier = "base";
-    // Зелья выдаём при каждом выходе в мир: подбирать лут бот не умеет,
-    // а без пополнения он однажды просто перестанет лечиться.
+    // Зелья выдаём при каждом выходе в мир — подбирать их на земле бот
+    // умеет (см. pickupLoot), но без стартового запаса первый бой может
+    // не пережить.
     const bag = emptyBag();
     addToBag(bag, "potion", BOT.potions);
     writeBag(p, bag);
@@ -1180,6 +1186,7 @@ export class ZoneRoom extends Room<ZoneState> {
       state: p,
       rt,
       target: null,
+      lootTarget: null,
       attackCd: 0,
       wanderCd: 0,
       wanderX: sx,
@@ -1221,12 +1228,12 @@ export class ZoneRoom extends Room<ZoneState> {
       z: clampAbs(p.head.z, edge),
       yaw: bot.rt.yaw,
       hp: p.hp,
-      owned: [],
+      // Золотой меч бот не "покупал" — нашёл на земле (lootTarget в tickBot),
+      // но право распоряжаться им то же: если зритель зайдёт за этого героя
+      // сам, он должен суметь и покидать его обратно (см. MSG.dropWeapon).
+      owned: p.rightTier === "gold" ? ["sword:gold"] : [],
       stowed: [],
-      held: {
-        left: { cls: "shield", tier: "base" },
-        right: { cls: "sword", tier: "base" },
-      },
+      held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
       overrides: {},
       skin: p.skin,
       ...readProgress(p),
@@ -1277,9 +1284,42 @@ export class ZoneRoom extends Room<ZoneState> {
       if (mob) bot.target = mob.id;
     }
 
+    // Золотой меч на земле рядом — идём за ним раньше, чем добивать моба:
+    // это разовый апгрейд, моб подождёт. Уже с золотым — не отвлекаемся.
+    let loot = p.rightTier !== "gold" && bot.lootTarget
+      ? this.sim.drops.get(bot.lootTarget)
+      : undefined;
+    if (p.rightTier !== "gold") {
+      const okLoot = (d: typeof loot): boolean => {
+        if (!d) return false;
+        const w = ITEMS[d.item].weapon;
+        return !!w && w.cls === "sword" && w.tier === "gold" && inZone(d.x, d.z);
+      };
+      if (!okLoot(loot)) {
+        bot.lootTarget = null;
+        loot = undefined;
+        let bd = Infinity;
+        for (const d of this.sim.drops.values()) {
+          if (!okLoot(d)) continue;
+          const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
+          if (dd < BOT.lootRadius && dd < bd) {
+            bd = dd;
+            loot = d;
+          }
+        }
+        if (loot) bot.lootTarget = loot.id;
+      }
+    }
+    // Пока идём за мечом, моба не бьём — но и цель по мобу не бросаем:
+    // okMob-выбор выше продолжает работать, просто движение приоритетнее.
+    const chasingMob = loot ? undefined : mob;
+
     let tx: number;
     let tz: number;
-    if (mob) {
+    if (loot) {
+      tx = loot.x;
+      tz = loot.z;
+    } else if (mob) {
       tx = mob.x;
       tz = mob.z;
     } else {
@@ -1300,7 +1340,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
     const dx = dxRaw / dist;
     const dz = dzRaw / dist;
-    const stopAt = mob ? BOT.attackRange * 0.7 : 0.5;
+    const stopAt = loot ? WEAPON_TAKE_REACH * 0.85 : mob ? BOT.attackRange * 0.7 : 0.5;
 
     // Расталкивание: без него боты, бегущие к одному мобу, слипаются в одну
     // точку. Складываем с движением к цели ДО сглаживания скорости — иначе
@@ -1372,16 +1412,32 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.qw = Math.cos(bot.yaw / 2);
 
     // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
-    // касается моба через BOT.attackImpact — см. resolveBotHit().
-    if (mob && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
+    // на земле идём молча — chasingMob пуст, пока loot не подобран.
+    if (chasingMob && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
       bot.attackCd = BOT.attackCooldown;
       bot.swingIn = BOT.attackImpact;
-      bot.swingTarget = mob.id;
+      bot.swingTarget = chasingMob.id;
       bot.swingDx = dx;
       bot.swingDz = dz;
       // Замах видят все — анимация на модельке бота + звук.
       const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay);
+    }
+
+    // Дошли до золотого меча — подбираем и сразу вооружаемся.
+    if (loot) {
+      const feetY = p.head.y - PLAYER.eyeHeight;
+      const d3 = Math.hypot(loot.x - p.head.x, loot.y - feetY, loot.z - p.head.z);
+      if (d3 <= WEAPON_TAKE_REACH) {
+        this.sim.takeDrop(loot.id);
+        bot.lootTarget = null;
+        p.rightCls = "sword";
+        p.rightTier = "gold";
+        bot.rt.owned.add(weaponKey("sword", "gold"));
+        this.persistBot(bot);
+        console.log(`[bot] ${bot.nick} подобрал золотой меч`);
+      }
     }
   }
 
