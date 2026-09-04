@@ -60,8 +60,16 @@ export class Hud {
   bindPointerLock(relock: () => void): void {
     this.relock = relock;
     document.addEventListener("pointerlockchange", () => {
-      // Вернулись в игру (кликнули по канвасу) — панель больше не нужна.
-      if (document.pointerLockElement) this.hidePanel();
+      if (document.pointerLockElement) {
+        // Вернулись в игру (кликнули по канвасу) — панель больше не нужна.
+        this.hidePanel();
+      } else if (!this.panelOpen) {
+        // Мышь отпустило (в т.ч. по Esc). Esc, которым это снято, сам браузер
+        // до нашего keydown-обработчика не доводит — только по этому событию
+        // и узнаём, что мышь освободилась, и открываем панель следом за ней,
+        // без второго нажатия.
+        this.openPanelFromEsc();
+      }
     });
   }
 
