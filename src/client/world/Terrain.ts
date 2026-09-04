@@ -32,23 +32,27 @@ const AO_FLOOR = 0.3;
 /** Радиус затенения под кроной, м (плюс вклад размера дерева). */
 const AO_TREE_REACH = 5;
 const AO_TREE_PER_SCALE = 3.2;
-/**
- * Камни ниже и мельче деревьев — тень короче и заметно слабее (это не
- * крона, а лёгкий прижим у основания), иначе мелкий камень тонет в кляксе.
- */
-const AO_ROCK_REACH = 0.6;
-const AO_ROCK_PER_SCALE = 1.6;
-const AO_ROCK_STRENGTH = 0.4;
-/**
- * Трава просвечивает — под кляксой не тень, а лёгкое сгущение цвета (густой
- * дёрн темнее голой земли). Слабее и рока, и особенно кроны дерева.
- */
-const AO_GRASS_PER_SIZE = 0.55;
-const AO_GRASS_STRENGTH = 0.22;
 /** Вклад впадин рельефа: ложбины темнее гребней. */
 const AO_RELIEF = 0.7;
 /** На каком перепаде с соседями впадина считается глубокой, м. */
 const AO_DIP_FULL = 0.4;
+
+/**
+ * Затенение под камнями и травой — НЕ в вершинах террейна (см. bakeAo ниже),
+ * а в отдельной текстуре-лайтмапе (applyGroundAo). Причина: сетка
+ * террейна шагом 2.5 м (WORLD.size/subdivisions) — у кроны дерева (7-10 м)
+ * это без разницы, а у мелкого камня или кляксы травы (радиус часто МЕНЬШЕ
+ * шага сетки) круг затенения проваливался между вершинами и не попадал ни в
+ * одну — визуально AO просто не было видно почти нигде. Текстура не зависит
+ * от геометрии, поэтому радиус можно взять честно вокруг объекта.
+ */
+const AO_ROCK_REACH = 1.2;
+const AO_ROCK_PER_SCALE = 2.2;
+const AO_ROCK_STRENGTH = 0.45;
+/** Трава просвечивает — сгущение цвета, а не тень, поэтому слабее камня. */
+const AO_GRASS_PER_SIZE = 1.3;
+const AO_GRASS_BASE = 0.4;
+const AO_GRASS_STRENGTH = 0.3;
 
 /**
  * Запечённое затенение по вершинам (вместо теней).
@@ -58,22 +62,19 @@ const AO_DIP_FULL = 0.4;
  * в мире движется, и запечённая тень верна лишь для одного его положения.
  * AO от солнца не зависит и переживает весь суточный цикл.
  *
- * Три вклада:
+ * Два вклада:
  *  - тень кроны: деревья детерминированы (#shared/trees), радиус берём по
  *    кроне, а не по стволу — шаг сетки 2.5 м, на радиусе ствола затенение
  *    попало бы в одну-две вершины и его никто бы не увидел;
- *  - камни (#shared/rocks): та же идея, но короче и слабее — не крона;
- *  - трава: клякс много (см. grassLayout.ts, общая раскладка с nature.ts),
- *    поэтому вклад на клячу — самый слабый из трёх, просто лёгкое сгущение;
  *  - вогнутость рельефа: вершина ниже соседей — ложбина, темнее.
+ *
+ * Камни и трава — см. applyGroundAo, у них радиус меньше шага сетки.
  *
  * Высоты соседей берём прямо из сетки, а не пересчитываем surface(): это
  * убирает четыре вызова на вершину, самую дорогую часть запекания.
  */
-function bakeAo(positions: number[], row: number, grassDensity: number): number[] {
+function bakeAo(positions: number[], row: number): number[] {
   const treeList = trees();
-  const rockList = rocks();
-  const grassBlobs = computeGrassLayout(grassDensity).blobs;
   const n = positions.length / 3;
   const colors: number[] = new Array(n * 4);
 
@@ -92,28 +93,6 @@ function bakeAo(positions: number[], row: number, grassDensity: number): number[
       if (d2 >= reach * reach) continue;
       const k = 1 - Math.sqrt(d2) / reach;
       shade += k * k * (0.5 + t.scale * 0.3);
-    }
-
-    // Камни: короткий и слабый прижим у основания.
-    for (const rk of rockList) {
-      const reach = AO_ROCK_REACH + rk.scale * AO_ROCK_PER_SCALE;
-      const dx = x - rk.x;
-      const dz = z - rk.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 >= reach * reach) continue;
-      const k = 1 - Math.sqrt(d2) / reach;
-      shade += k * k * AO_ROCK_STRENGTH;
-    }
-
-    // Трава: под каждой кляксой — лёгкое сгущение, не тень.
-    for (const gb of grassBlobs) {
-      const reach = gb.size * AO_GRASS_PER_SIZE;
-      const dx = x - gb.x;
-      const dz = z - gb.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 >= reach * reach) continue;
-      const k = 1 - Math.sqrt(d2) / reach;
-      shade += k * k * AO_GRASS_STRENGTH;
     }
 
     // Рельеф: сравниваем с четырьмя соседями по сетке (у края — сам с собой).
@@ -144,7 +123,6 @@ function buildPatch(
   step: number,
   inner: number,
   skipInner: boolean,
-  grassDensity: number,
 ): Mesh {
   const nx = Math.round((x1 - x0) / step);
   const nz = Math.round((z1 - z0) / step);
@@ -184,7 +162,7 @@ function buildPatch(
   vd.indices = indices;
   vd.normals = normals;
   vd.uvs = uvs;
-  vd.colors = bakeAo(positions, row, grassDensity);
+  vd.colors = bakeAo(positions, row);
   vd.applyToMesh(mesh);
   return mesh;
 }
@@ -201,9 +179,10 @@ export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
   const step = size / seg;
 
   const mat = grassMaterial(scene);
+  applyGroundAo(scene, mat, grassDensity);
 
   // Игровая зона: та же сетка, коллизии и raycast'ы игрока.
-  const mesh = buildPatch(scene, "terrain", -half, half, -half, half, step, half, false, grassDensity);
+  const mesh = buildPatch(scene, "terrain", -half, half, -half, half, step, half, false);
   mesh.checkCollisions = true;
   mesh.isPickable = true;
   mesh.material = mat;
@@ -212,18 +191,7 @@ export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
   // а те же холмы. Чисто декоративный: без коллизий и без пикинга, чуть ниже
   // игрового меша, поэтому в зоне перекрытия глубинный тест выигрывает зона.
   const far = half * (1 + 2 * APRON);
-  const apron = buildPatch(
-    scene,
-    "terrainApron",
-    -far,
-    far,
-    -far,
-    far,
-    step * 2,
-    half,
-    true,
-    grassDensity,
-  );
+  const apron = buildPatch(scene, "terrainApron", -far, far, -far, far, step * 2, half, true);
   apron.material = mat;
   apron.isPickable = false;
   apron.checkCollisions = false;
@@ -233,6 +201,76 @@ export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
   apron.freezeWorldMatrix();
 
   return { mesh, heightAt: surface };
+}
+
+/**
+ * AO камней и травы — отдельной текстурой-лайтмапом (см. константы AO_ROCK
+ * и AO_GRASS выше), а не вершинами террейна: их радиус затенения часто МЕНЬШЕ шага
+ * сетки (2.5 м), и в вершинах эффект почти нигде не попадал ни в одну из
+ * них. Текстура читает те же мировые UV (0..1 по всей игровой зоне, БЕЗ
+ * тайлинга — в отличие от diffuse/bump у grassMaterial), поэтому у объекта
+ * ровно его собственная позиция, а не повторяющийся узор.
+ *
+ * `lightmapTexture` + `useLightmapAsShadowmap` — штатный приём Babylon для
+ * «запечённой тени поверх освещения»: умножается на итоговый цвет, ровно то,
+ * что нужно для затемнения. `coordinatesIndex = 0` — своего UV2 у террейна
+ * нет, читаем тот же канал, что и diffuse (там он просто ещё и тайлится
+ * множителем на уровне текстуры, а не самого буфера).
+ */
+function applyGroundAo(scene: Scene, mat: StandardMaterial, grassDensity: number): void {
+  const S = 1024;
+  const tex = new DynamicTexture("groundAo", { width: S, height: S }, scene, false);
+  tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+  tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+  tex.coordinatesIndex = 0;
+  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, S, S);
+  ctx.globalCompositeOperation = "multiply";
+
+  const px = (m: number): number => (m / WORLD.size + 0.5) * S;
+  const pr = (m: number): number => (m / WORLD.size) * S;
+
+  const drawSpot = (x: number, z: number, reachM: number, strength: number): void => {
+    const r = pr(reachM);
+    if (r < 0.6) return; // меньше пикселя — рисовать нечего
+    const cx = px(x);
+    const cy = px(z);
+    const dark = Math.round((1 - strength) * 255);
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, `rgb(${dark},${dark},${dark})`);
+    grad.addColorStop(1, "rgb(255,255,255)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  for (const rk of rocks()) {
+    drawSpot(rk.x, rk.z, AO_ROCK_REACH + rk.scale * AO_ROCK_PER_SCALE, AO_ROCK_STRENGTH);
+  }
+  for (const gb of computeGrassLayout(grassDensity).blobs) {
+    drawSpot(gb.x, gb.z, AO_GRASS_BASE + gb.size * AO_GRASS_PER_SIZE, AO_GRASS_STRENGTH);
+  }
+
+  // У спавна клякс травы много и они перекрываются — умножение затемнений
+  // друг на друга там уходит почти в чёрный. Отдельным полом (как у AO_FLOOR
+  // в bakeAo) не даём итогу провалиться темнее AO_FLOOR*255.
+  const img = ctx.getImageData(0, 0, S, S);
+  const floor = Math.round(AO_FLOOR * 255);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] < floor) {
+      d[i] = floor;
+      d[i + 1] = floor;
+      d[i + 2] = floor;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  tex.update(false);
+  mat.lightmapTexture = tex;
+  mat.useLightmapAsShadowmap = true;
 }
 
 /**
