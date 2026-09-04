@@ -1412,7 +1412,15 @@ export class CombatSystem {
     if (primaryEdge && sw.t <= 0) {
       sw.t = COMBAT.swingDuration;
       sw.hitDone = false;
-      this.sfx.swordSwing(item.mesh.getAbsolutePosition());
+      const p = item.mesh.getAbsolutePosition();
+      this.sfx.swordSwing(p);
+      // Раньше звук замаха мечом/посохом в руке был только локальным — ни
+      // спектатор, ни соседний игрок его не слышали и, с тех пор как у
+      // обычных игроков тоже есть модель персонажа (Ф10), не видели анимацию
+      // SwordSlash на ней: playRemoteAct вешает её именно на этот акт.
+      // Безоружный удар (updateFlatMelee) и бой в VR (updateVRSwing) это уже
+      // делали — не хватало только этой, самой частой ветки.
+      this.emitSound("swing", p);
     }
     if (sw.t > 0) {
       sw.t -= dt;
