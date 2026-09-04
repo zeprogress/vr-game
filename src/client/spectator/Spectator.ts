@@ -163,8 +163,12 @@ export class Spectator {
 
     this.engine = new Engine(
       canvas,
-      true, // MSAA — пробуем включить, раньше было выключено («на Mali дорого»)
-      { stencil: false, antialias: true, powerPreference: "high-performance", doNotHandleContextLost: true },
+      false, // без MSAA: включали на пробу — с ним Larix (захват экрана в Twitch)
+      // отдавал совсем другие, перенасыщенные цвета, хотя на самом телефоне
+      // картинка была нормальной. Похоже на конфликт MSAA-резолва с тем, как
+      // Android MediaProjection читает канвас (браузер сам цвет поправляет
+      // на экране, голый захват — нет). На Mali это ещё и дорого само по себе.
+      { stencil: false, antialias: false, powerPreference: "high-performance", doNotHandleContextLost: true },
       false,
     );
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
