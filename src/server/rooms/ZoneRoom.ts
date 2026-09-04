@@ -734,6 +734,11 @@ export class ZoneRoom extends Room<ZoneState> {
         this.clockSync = 0;
       } else if (msg.t === "dayAuto") {
         this.state.dayAuto = msg.on ? 1 : 0;
+      } else if (msg.t === "clearLoot") {
+        this.wipeWorld("админ-панель пульта");
+      } else if (msg.t === "mobsOn") {
+        this.sim.mobsEnabled = msg.on !== 0;
+        this.state.mobsOn = msg.on !== 0 ? 1 : 0;
       }
       this.broadcast(MSG.specCmd, msg, { except: client });
     });

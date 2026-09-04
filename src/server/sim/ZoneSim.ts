@@ -763,6 +763,8 @@ class Bolt {
 
 /** Авторитетная симуляция зоны: мобы, куклы, плевки, снаряды игроков. */
 export class ZoneSim {
+  /** Админ-панель пульта: false — мобы замирают на месте (не тикают вовсе). */
+  mobsEnabled = true;
   readonly mobs = new Map<string, Mob>();
   readonly dummies = new Map<string, Dummy>();
   readonly balls = new Map<string, Ball>();
@@ -833,7 +835,7 @@ export class ZoneSim {
       this.balls.set(b.id, b);
     };
 
-    for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
     this.boltXp.length = 0;

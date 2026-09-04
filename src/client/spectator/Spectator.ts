@@ -344,7 +344,6 @@ export class Spectator {
   /** Команда со стрим-дашборда (этап 17 Ф5). */
   private applySpecCmd(cmd: SpecCmd): void {
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
-    else if (cmd.t === "cut") this.cam.cutNext();
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
     else if (cmd.t === "bots") {
       this.cam.botsOnly = cmd.on !== 0;

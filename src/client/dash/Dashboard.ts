@@ -42,6 +42,8 @@ export class Dashboard {
   private readonly autoBtn: HTMLButtonElement;
   private botsOnly = false;
   private readonly botsBtn: HTMLButtonElement;
+  private mobsOn = true;
+  private mobsBtn!: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -110,7 +112,6 @@ export class Dashboard {
       this.cmdBtn("Обзор зоны", { t: "cam", shot: "overview" }),
       this.cmdBtn("Орбита босса", { t: "cam", shot: "orbitBoss" }),
       this.cmdBtn("Из глаз босса", { t: "cam", shot: "eyeBoss" }),
-      this.cmdBtn("Склейка (cut)", { t: "cut" }),
     );
     this.root.appendChild(fixed);
 
@@ -218,6 +219,21 @@ export class Dashboard {
     }
     this.root.appendChild(time);
 
+    // --- админ-панель: редкие и необратимые действия, отдельно от съёмки ---
+    this.section("Админ-панель");
+    const admin = el("div", "");
+    admin.style.cssText =
+      "border:1px solid #6a3030;border-radius:10px;padding:10px;background:#241417";
+    this.mobsBtn = this.bigBtn("Мобы: —", () => this.toggleMobs());
+    admin.appendChild(this.mobsBtn);
+    const clearBtn = this.bigBtn("Очистить лут с земли", () => {
+      if (!confirm("Убрать весь лежащий лут во всём мире? Действие необратимо.")) return;
+      this.send({ t: "clearLoot" });
+    });
+    clearBtn.style.borderColor = "#8a3a3a";
+    admin.appendChild(clearBtn);
+    this.root.appendChild(admin);
+
     void this.connect(key);
   }
 
@@ -266,6 +282,7 @@ export class Dashboard {
     const st = this.room?.state;
     if (!st) return;
     if (st.dayAuto !== this.dayAuto) this.setDayAutoUi(st.dayAuto);
+    if ((st.mobsOn !== 0) !== this.mobsOn) this.setMobsUi(st.mobsOn !== 0);
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
@@ -326,6 +343,11 @@ export class Dashboard {
     this.send({ t: "dayAuto", on: next });
   }
 
+  private toggleMobs(): void {
+    this.setMobsUi(!this.mobsOn);
+    this.send({ t: "mobsOn", on: this.mobsOn ? 1 : 0 });
+  }
+
   private toggleOverlay(key: OverlayToggle["key"]): void {
     this.ov[key] = this.ov[key] ? 0 : 1;
     this.saveOverlay();
@@ -370,6 +392,12 @@ export class Dashboard {
     this.botsOnly = on;
     this.botsBtn.textContent = `Только боты: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.botsBtn.style.background = on ? "#1c3a24" : "#1d1f2b";
+  }
+
+  private setMobsUi(on: boolean): void {
+    this.mobsOn = on;
+    this.mobsBtn.textContent = `Мобы: ${on ? "ВКЛ (дерутся)" : "ВЫКЛ (замерли)"}`;
+    this.mobsBtn.style.background = on ? "#1d1f2b" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {

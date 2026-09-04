@@ -5,13 +5,18 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { SPECTATE } from "#shared/constants";
 import { CINE_PATHS, ROTATION, samplePath } from "./cine";
 
-/** Камера-погоня за ботом («из глаз бота»): сзади-сверху под 45°. */
+/**
+ * Камера-погоня за ботом («из глаз бота»): сзади, чуть сверху. Высота
+ * отдельно от BOT_CAM_BACK/LEAD (раньше её вообще не было — угол держали
+ * ровно 45° суммой трёх констант, отсюда и «слишком высоко»).
+ */
 const BOT_CAM_BACK = 4.5; // м позади бота (по горизонтали)
 const BOT_CAM_LEAD = 1.5; // на сколько цель взгляда впереди бота
 const BOT_CAM_AIM_Y = 0.6; // высота цели над точкой корпуса бота
+const BOT_CAM_UP = 4.0; // подъём самой камеры над точкой корпуса
 
 /** Вид напротив: камера перед персонажем, смотрит ему в лицо. */
-const FRONT_DIST = 7.0; // м перед персонажем
+const FRONT_DIST = 10.0; // м перед персонажем
 const FRONT_UP = 2.0; // подъём камеры над точкой корпуса
 const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 
@@ -94,8 +99,6 @@ export class SpectatorCamera {
   botsOnly = false;
   private botRotIdx = 0;
   private botPickI = 0;
-  /** Следующий переход без блендинга (одноразово). */
-  private cutNextFlag = false;
   private lastCtx: DirectorCtx | null = null;
 
   private readonly fromPos = new Vector3();
@@ -165,10 +168,6 @@ export class SpectatorCamera {
     }
   }
 
-  cutNext(): void {
-    this.cutNextFlag = true;
-  }
-
   update(dt: number, ctx: DirectorCtx): void {
     this.lastCtx = ctx;
     this.orbitClock += dt;
@@ -215,8 +214,7 @@ export class SpectatorCamera {
     this.fromTgt.copyFrom(this.curTgt);
     this.shot = shot;
     this.sinceSwitch = 0;
-    this.curBlend = this.cutNextFlag ? 0.001 : SPECTATE.blendTime;
-    this.cutNextFlag = false;
+    this.curBlend = SPECTATE.blendTime;
     // При входе в кадр «из глаз» снимаем задержку — прыгаем сразу к живой позе.
     const live = this.liveEye(shot, ctx);
     if (live) {
@@ -424,16 +422,14 @@ export class SpectatorCamera {
       }
       case "eyePlayer": {
         if (s.id.startsWith("bot:")) {
-          // Бот — не «из глаз», а погоня сзади-сверху под 45°: в кадре и сам
-          // персонаж, и дорога перед ним. Высоту считаем из дистанции, чтобы
-          // угол оставался ровно 45° при любой правке BOT_CAM_*.
+          // Бот — не «из глаз», а погоня сзади: в кадре и сам персонаж, и
+          // дорога перед ним.
           const fx = this.botFwd.x;
           const fz = this.botFwd.z;
           const fl = Math.hypot(fx, fz) || 1;
-          const up = BOT_CAM_AIM_Y + BOT_CAM_BACK + BOT_CAM_LEAD;
           pos.set(
             this.botPos.x - (fx / fl) * BOT_CAM_BACK,
-            this.botPos.y + up,
+            this.botPos.y + BOT_CAM_UP,
             this.botPos.z - (fz / fl) * BOT_CAM_BACK,
           );
           tgt.set(
