@@ -6,6 +6,11 @@ const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const hint = document.getElementById("hint") as HTMLDivElement;
 const params = new URLSearchParams(location.search);
 
+// ?gear=1 — панель живой настройки хвата оружия ботов (работает в любом режиме).
+if (params.get("gear") === "1") {
+  void import("./ui/GearTuner").then(({ mountGearTuner }) => mountGearTuner());
+}
+
 if (params.has("dash")) {
   bootDashboard();
 } else if (params.get("spectator")) {

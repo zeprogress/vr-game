@@ -21,6 +21,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER } from "#shared/constants";
+import { BOT_GEAR, onGearTuneChanged } from "./botGear";
 
 /** Доворот модели бота, если её «перёд» смотрит не в +Z. Подбор: `?byaw=<рад>`. */
 const BOT_MODEL_YAW = (() => {
@@ -42,28 +43,10 @@ const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 /** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
 const BOT_FEET_Y = -1.68;
 /**
- * Хват оружия у бота. Замер по скелету пака: направление локоть→кулак
- * совпадает с локальной осью Y кости `Fist.*` — то есть Y идёт вдоль
- * предплечья наружу. Клинок меча в модели тоже смотрит по +Y
- * (COMBAT.swordTipLocal), поэтому по оси он с предплечьем совпадает —
- * но разворот на π нужен: иначе клинок глядит ВНИЗ, вдоль опущенной руки,
- * а меч держат остриём вверх.
- *
- * Масштаб: кость наследует масштаб рига (BOT_RIG_SCALE), поэтому здесь он
- * обратный с поправкой на рост персонажа — иначе меч выглядит игрушечным
- * в руке двухметрового рыцаря.
+ * Хват оружия у бота живёт в botGear.ts: значения меняются панелью `?gear=1`
+ * прямо в игре. Замер по скелету пака: направление локоть→кулак совпадает с
+ * локальной осью Y кости `Fist.*` — Y идёт вдоль предплечья наружу.
  */
-const BOT_SWORD = { pos: [0, 0.05, 0] as const, rot: [Math.PI, 0, 0] as const, scale: 1.7 };
-/**
- * Щит сидит поперёк предплечья, как на ремне. Лицевая сторона у модели —
- * тонкая ось Y (замер габаритов: 0.66 × 0.14 × 0.66), поэтому разворот
- * уводит +Y с оси предплечья и ставит лицо наружу.
- *
- * Разворот НЕ константа: он считается при посадке (см. shieldRotFor). Углом
- * его не задать — модель из пака приходит со своим разворотом от загрузчика
- * glTF, и знак «вперёд» приходилось бы угадывать.
- */
-const BOT_SHIELD = { pos: [0, 0.05, 0] as const, scale: 1.6 };
 /** Радиус пятна-тени под аватаром, м. */
 const SHADOW_RADIUS = 0.5;
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
@@ -214,7 +197,11 @@ export class RemoteAvatar implements Hittable {
     this.shadow = new BlobShadow(scene, id);
     this.nameTag = new NameTag(scene, this.root, new Vector3(0, 0.42, 0), nick, null);
     this.setMode(mode);
+    this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
+
+  /** Отписка от панели настройки хвата (`?gear=1`). */
+  private offGearTune: () => void = () => {};
 
   /** Реплика хозяина бота из чата канала — облачко над головой (Ф10). */
   say(text: string): void {
@@ -755,12 +742,8 @@ export class RemoteAvatar implements Hittable {
         mesh.dispose();
         return null;
       }
-      const g = side === "left" ? BOT_SHIELD : BOT_SWORD;
       mesh.parent = fist;
-      mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
-      if (side === "left") mesh.rotation.copyFrom(this.shieldRotFor(fist));
-      else mesh.rotation.set(BOT_SWORD.rot[0], BOT_SWORD.rot[1], BOT_SWORD.rot[2]);
-      mesh.scaling.setAll(g.scale);
+      this.seatBotGear(mesh, side, fist);
       return mesh;
     }
 
@@ -780,6 +763,22 @@ export class RemoteAvatar implements Hittable {
       mesh.scaling.setAll(0.7);
     }
     return mesh;
+  }
+
+  /** Ставит меч/щит по текущим значениям BOT_GEAR (их двигает панель `?gear=1`). */
+  private seatBotGear(mesh: Mesh, side: "left" | "right", fist: TransformNode): void {
+    const g = side === "left" ? BOT_GEAR.shield : BOT_GEAR.sword;
+    mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
+    if (side === "left" && g.auto) mesh.rotation.copyFrom(this.shieldRotFor(fist));
+    else mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
+    mesh.scaling.setAll(g.scale);
+  }
+
+  /** Пересадка без пересборки мешей — по правке в панели настройки. */
+  private reseatBotGear(): void {
+    if (this.skin <= 0 || !this.botRig) return;
+    if (this.gearL && this.botFistL) this.seatBotGear(this.gearL, "left", this.botFistL);
+    if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, "right", this.botFistR);
   }
 
   /**
@@ -852,6 +851,7 @@ export class RemoteAvatar implements Hittable {
 
   dispose(): void {
     this.disposed = true;
+    this.offGearTune();
     this.shadow.dispose();
     this.speakDot?.dispose();
     this.gearL?.dispose();
