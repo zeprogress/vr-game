@@ -24,6 +24,8 @@ export const MSG = {
   levelUp: "lu",
   /** сервер -> все: кто кого убил — для кил-фида спектатора (этап 17 Ф9). */
   killFeed: "kf",
+  /** сервер -> все: топ-5 героев (ник/уровень/убийства) — для оверлея и !top (Ф10). */
+  leaderboard: "top",
   /** сервер -> все: хозяин бота написал в чат канала — показать над ботом (Ф10). */
   botSay: "bsay",
   /** клиент -> сервер: использовать предмет из ячейки сумки. */
@@ -78,6 +80,7 @@ export interface OverlayPatch {
   watching?: number;
   hp?: number;
   feed?: number;
+  top?: number;
 }
 
 /** Кто кого убил (этап 17 Ф9). `by` пуст — убил моб/среда. Строки уже готовы к показу. */
@@ -91,6 +94,14 @@ export interface BotSayMsg {
   /** id в state.players, вида `bot:<ник>`. */
   id: string;
   text: string;
+}
+
+/** Строка таблицы лидеров (Ф10): и живые герои, и офлайн из сейва. */
+export interface LeaderboardRow {
+  nick: string;
+  level: number;
+  xp: number;
+  kills: number;
 }
 
 /** Команды дашборда стрима (этап 17 Ф5). */

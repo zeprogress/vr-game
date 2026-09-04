@@ -23,6 +23,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   bag: Slot[];
   /** Внешность бота зрителя (Ф10) — держится за ником между сессиями. */
   skin?: number;
+  /** Добитых мобов за всё время — для таблицы лидеров (Ф10). */
+  kills?: number;
   updatedAt: number;
 }
 
@@ -44,6 +46,7 @@ function blank(token: string): PlayerRecord {
     held: { left: null, right: null },
     overrides: {},
     bag: emptyBag(),
+    kills: 0,
     updatedAt: 0,
   };
 }
@@ -70,6 +73,11 @@ export class PlayerStore {
 
   get(token: string): PlayerRecord | undefined {
     return this.records.get(token);
+  }
+
+  /** Все записи — для таблицы лидеров (Ф10). Не для горячего пути: копия. */
+  entries(): PlayerRecord[] {
+    return [...this.records.values()];
   }
 
   /** Обновить (или создать) запись. */

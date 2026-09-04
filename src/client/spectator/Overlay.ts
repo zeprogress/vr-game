@@ -1,4 +1,4 @@
-import type { OverlayPatch } from "#shared/net/messages";
+import type { OverlayPatch, LeaderboardRow } from "#shared/net/messages";
 
 /**
  * Оверлеи стрима (этап 17 Ф6).
@@ -28,6 +28,7 @@ interface Config {
   watching: boolean;
   hp: boolean;
   feed: boolean;
+  top: boolean;
 }
 
 const DEFAULT: Config = {
@@ -38,6 +39,7 @@ const DEFAULT: Config = {
   watching: true,
   hp: true,
   feed: true,
+  top: true,
 };
 
 const CSS = `
@@ -55,6 +57,13 @@ const CSS = `
 .ov-online { right:2.2vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
+.ov-top { left:2.2vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
+.ov-top b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
+  text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
+.ov-top div { display:flex; gap:.7vh; align-items:baseline; }
+.ov-top .rk { opacity:.7; width:2.4vh; flex:none; }
+.ov-top .nm { font-weight:700; }
+.ov-top .lv { opacity:.75; margin-left:.4vh; }
 .ov-watch { left:2.2vw; bottom:3vh; }
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
@@ -113,6 +122,8 @@ export class Overlay {
   private cardUntil = 0; // 0 — держать бесконечно (пока не скроют)
   private readonly feed: HTMLDivElement;
   private feedRows: { el: HTMLElement; until: number }[] = [];
+  private readonly top: HTMLDivElement;
+  private topRows: LeaderboardRow[] = [];
   private cfg: Config = { ...DEFAULT };
 
   constructor() {
@@ -147,8 +158,18 @@ export class Overlay {
     this.card.appendChild(t);
 
     this.feed = div("box ov-feed");
+    this.top = div("box ov-top");
 
-    this.root.append(this.wm, this.clock, this.online, this.watch, this.hp, this.feed, this.card);
+    this.root.append(
+      this.wm,
+      this.clock,
+      this.online,
+      this.watch,
+      this.hp,
+      this.feed,
+      this.card,
+      this.top,
+    );
     document.body.appendChild(this.root);
   }
 
@@ -160,7 +181,7 @@ export class Overlay {
     }
     const flag = (v: number | undefined): boolean | undefined =>
       v === undefined ? undefined : v !== 0;
-    for (const k of ["wm", "clock", "online", "watching", "hp", "feed"] as const) {
+    for (const k of ["wm", "clock", "online", "watching", "hp", "feed", "top"] as const) {
       const f = flag(patch[k]);
       if (f !== undefined) this.cfg[k] = f;
     }
@@ -183,6 +204,31 @@ export class Overlay {
     while (this.feedRows.length > 5) {
       this.feedRows.shift()?.el.remove();
     }
+  }
+
+  /** Топ-5 героев — приходит с сервера раз в 10 с (Ф10). */
+  setLeaderboard(rows: LeaderboardRow[]): void {
+    this.topRows = rows;
+    this.renderTop();
+  }
+
+  private renderTop(): void {
+    this.top.innerHTML = "<b>топ героев</b>";
+    const medal = ["🥇", "🥈", "🥉", "4", "5"];
+    this.topRows.slice(0, 5).forEach((r, i) => {
+      const row = document.createElement("div");
+      const rk = document.createElement("span");
+      rk.className = "rk";
+      rk.textContent = medal[i] ?? String(i + 1);
+      const nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = r.nick;
+      const lv = document.createElement("span");
+      lv.className = "lv";
+      lv.textContent = `ур.${r.level}`;
+      row.append(rk, nm, lv);
+      this.top.appendChild(row);
+    });
   }
 
   /**
@@ -210,6 +256,7 @@ export class Overlay {
     show(this.watch, this.cfg.watching);
     show(this.online, this.cfg.online && ctx.online.length > 0);
     show(this.feed, this.cfg.feed);
+    show(this.top, this.cfg.top && this.topRows.length > 0);
 
     if (this.feedRows.length) {
       this.feedRows = this.feedRows.filter((r) => {

@@ -26,6 +26,7 @@ import {
   type ActRelay,
   type ActKind,
   type BotSayMsg,
+  type LeaderboardRow,
   type VoiceMsg,
   isActKind,
   type OverridesMsg,
@@ -135,6 +136,8 @@ interface Runtime {
   stowed: StowedWeapon[];
   /** Панельные настройки игрока (JSON как есть) — применяются только у него. */
   overrides: Record<string, unknown>;
+  /** Добитых мобов за сессию + сейв — таблица лидеров (Ф10). */
+  kills: number;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -788,6 +791,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const xp = this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1);
     if (xp > 0) {
       this.awardXp(client, p, xp);
+      rt.kills++;
       if (victimKind && victimKind !== "shard") {
         const victim =
           victimKind === "boss" ? "Багровый" : victimKind === "spitter" ? "Плевун" : "Слизень";
@@ -821,6 +825,54 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   // ---- боты зрителей (Ф10) ----
+
+  /**
+   * Топ по ник-токенам (`nick:<ник>`) — только герои зрителей, обычных
+   * игроков без публичного ника в таблицу не тащим. Живые (бот в мире или
+   * зритель зашёл сам) перекрывают сейв — тот отстаёт до 10 с (см. step()).
+   * Сортировка: уровень → опыт → убийства.
+   */
+  private leaderboard(limit: number): LeaderboardRow[] {
+    const byNorm = new Map<string, LeaderboardRow>();
+    for (const rec of store.entries()) {
+      if (!rec.token.startsWith("nick:")) continue;
+      byNorm.set(rec.token.slice(5), {
+        nick: rec.nick || rec.token.slice(5),
+        level: rec.level,
+        xp: rec.xp,
+        kills: rec.kills ?? 0,
+      });
+    }
+    for (const [id, rt] of this.rt) {
+      if (!rt.token?.startsWith("nick:")) continue;
+      const p = this.state.players.get(id);
+      if (!p) continue;
+      byNorm.set(rt.token.slice(5), { nick: p.nick, level: p.level, xp: p.xp, kills: rt.kills });
+    }
+    return [...byNorm.values()]
+      .sort((a, b) => b.level - a.level || b.xp - a.xp || b.kills - a.kills)
+      .slice(0, limit);
+  }
+
+  private broadcastLeaderboard(): void {
+    if (this.clients.length === 0) return;
+    this.broadcast(MSG.leaderboard, this.leaderboard(5));
+  }
+
+  /** `!top` — топ-5 текстом в чат канала. */
+  private sayTop(): void {
+    const top = this.leaderboard(5);
+    if (top.length === 0) {
+      this.reply("Пока никто не начал приключение — !play, чтобы стать первым.");
+      return;
+    }
+    const medal = ["🥇", "🥈", "🥉", "4)", "5)"];
+    this.reply(
+      `Топ героев: ${top
+        .map((r, i) => `${medal[i]} ${r.nick} ур.${r.level} (${r.kills})`)
+        .join(" · ")}`,
+    );
+  }
 
   /** Ник допущен: в ручном списке или недавно писал в чат. */
   private allowedNick(norm: string): boolean {
@@ -861,6 +913,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.spendBotPoint(norm, stat, parts[1]);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
+    } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
+      this.sayTop();
     }
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
   }
@@ -995,7 +1049,7 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
-        "!delete — стереть героя и начать заново · " +
+        "!delete — стереть героя и начать заново · !top — таблица лидеров · " +
         "обычное сообщение в чат он скажет вслух над головой. " +
         "Зайти за своего героя самому: ссылка в описании стрима, ник — как в Twitch.",
     );
@@ -1115,6 +1169,7 @@ export class ZoneRoom extends Room<ZoneState> {
       owned: new Set(),
       stowed: [],
       overrides: {},
+      kills: rec?.kills ?? 0,
     };
     this.rt.set(id, rt);
 
@@ -1176,6 +1231,7 @@ export class ZoneRoom extends Room<ZoneState> {
       skin: p.skin,
       ...readProgress(p),
       bag: [],
+      kills: bot.rt.kills,
     });
   }
 
@@ -1368,6 +1424,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
     if (xp > 0) {
       this.awardXp(undefined, p, xp);
+      bot.rt.kills++;
       bot.target = null;
     }
   }
@@ -1409,6 +1466,7 @@ export class ZoneRoom extends Room<ZoneState> {
       });
       for (const bot of this.bots.values()) this.persistBot(bot);
       world.save(this.sim.saveDrops());
+      this.broadcastLeaderboard();
     }
 
     this.tickBots(dt);
@@ -1504,7 +1562,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Опыт за мобов, добитых огнём.
     for (const k of this.sim.boltXp) {
       const kp = this.state.players.get(k.owner);
-      if (kp) this.awardXp(this.clientOf(k.owner), kp, k.xp);
+      if (kp) {
+        this.awardXp(this.clientOf(k.owner), kp, k.xp);
+        const krt = this.rt.get(k.owner);
+        if (krt) krt.kills++;
+      }
     }
     for (const d of this.sim.drops.values()) {
       if (this.state.drops.has(d.id)) continue;
@@ -1643,6 +1705,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       this.spectators.add(client.sessionId);
       console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
+      // Не ждём 10-секундный тик — оверлей должен нарисовать таблицу сразу.
+      client.send(MSG.leaderboard, this.leaderboard(5));
       return;
     }
 
@@ -1707,6 +1771,7 @@ export class ZoneRoom extends Room<ZoneState> {
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),
       overrides: sanitizeOverrides(rec?.overrides),
+      kills: rec?.kills ?? 0,
     });
 
     client.send(
@@ -1750,6 +1815,7 @@ export class ZoneRoom extends Room<ZoneState> {
       overrides: rt.overrides,
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
+      kills: rt.kills,
     };
     store.put(rt.token, patch);
   }

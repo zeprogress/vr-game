@@ -249,6 +249,7 @@ export class Spectator {
     net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
     net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
+    net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
