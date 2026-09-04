@@ -3,7 +3,6 @@ import { NetClient } from "./net/NetClient";
 import { runLogin } from "./ui/Login";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
-const hint = document.getElementById("hint") as HTMLDivElement;
 const params = new URLSearchParams(location.search);
 
 // ?gear=1 — панель живой настройки хвата оружия ботов (работает в любом режиме).
@@ -21,7 +20,6 @@ if (params.has("dash")) {
 
 /** Пульт стрима (этап 17 Ф5): /?dash=КЛЮЧ (или ?dash=1 после первого раза). */
 function bootDashboard(): void {
-  hint.classList.add("hidden");
   void import("./dash/Dashboard").then(({ Dashboard }) => {
     (window as unknown as { dash: unknown }).dash = new Dashboard(params.get("dash"));
   });
@@ -29,7 +27,6 @@ function bootDashboard(): void {
 
 /** Невидимый спектатор для стрима (этап 17): /?spectator=КЛЮЧ. */
 function bootSpectator(specKey: string): void {
-  hint.classList.add("hidden");
   const q = params.get("q");
   const quality = q === "potato" || q === "low" || q === "med" || q === "high" ? q : "high";
   const debug = params.get("debug") === "1";
@@ -97,14 +94,10 @@ function bootGame(): void {
     game.setNick(nick);
     if (online) game.attachNet(net);
 
-    if (game.isTouch || vr) {
-      hint.classList.add("hidden"); // на телефоне и в VR подсказка клавиш не нужна
-    } else {
-      hint.classList.remove("hidden");
-      hint.addEventListener("click", () => game.requestPointerLock());
-      document.addEventListener("pointerlockchange", () => {
-        hint.classList.toggle("hidden", document.pointerLockElement === canvas);
-      });
+    // Плашки «кликни, чтобы войти» больше нет — сам канвас ловит клик и
+    // забирает захват мыши. На телефоне/VR указателя нет, слушатель не нужен.
+    if (!game.isTouch && !vr) {
+      canvas.addEventListener("click", () => game.requestPointerLock());
     }
   });
 }

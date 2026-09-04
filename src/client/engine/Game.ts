@@ -199,6 +199,7 @@ export class Game {
     this.hud.bindInventory(this.inventory);
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
     this.hud.bindSkin(1, (skin) => this.net?.sendSetSkin(skin));
+    this.hud.bindExit(() => void this.leaveWorld());
 
     // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
     const syncPotion = (): void => {
@@ -986,12 +987,16 @@ export class Game {
         break;
       case "hurt":
         this.sfx.at(at, () => this.sfx.playerHurt());
+        this.avatars.get(id)?.playHitReact();
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
         break;
       case "blockSword":
         this.sfx.at(at, () => this.sfx.block(0.5));
+        break;
+      case "pickup":
+        this.avatars.get(id)?.playPickup();
         break;
     }
   }

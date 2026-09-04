@@ -26,6 +26,7 @@ export class Hud {
   private toastTimer: number | null = null;
   private skin = 0;
   private onSkin: ((skin: number) => void) | null = null;
+  private onExit: (() => void) | null = null;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
@@ -62,6 +63,12 @@ export class Hud {
       // Вернулись в игру (кликнули по канвасу) — панель больше не нужна.
       if (document.pointerLockElement) this.hidePanel();
     });
+  }
+
+  /** Кнопка «Выйти в меню» внизу панели — на экран ввода ника. */
+  bindExit(fn: () => void): void {
+    this.onExit = fn;
+    this.renderPanel();
   }
 
   private get panelOpen(): boolean {
@@ -118,7 +125,9 @@ export class Hud {
     this.prog = prog;
     prog.onChange(() => this.renderPanel());
     window.addEventListener("keydown", (e) => {
-      if (e.code === "KeyC" && !e.repeat) this.togglePanel();
+      // Esc и так снимает захват мыши сам (браузер это не даёт отменить) —
+      // просто открываем/закрываем панель той же кнопкой, что и C.
+      if ((e.code === "KeyC" || e.code === "Escape") && !e.repeat) this.togglePanel();
     });
     this.backdrop.style.display = "none";
   }
@@ -291,9 +300,19 @@ export class Hud {
     keys.textContent =
       "WASD — движение · мышь — осмотреться · Space — прыжок\n" +
       "ЛКМ — удар · E — взять (держать = замах, отпустить = бросок) · Q — снять щит\n" +
-      "C — закрыть · Esc — выйти";
+      "C / Esc — открыть-закрыть эту панель";
     keys.style.whiteSpace = "pre-line";
     this.panel.appendChild(keys);
+
+    if (this.onExit) {
+      const exit = document.createElement("button");
+      exit.textContent = "Выйти в меню";
+      exit.style.cssText =
+        "width:100%;margin-top:12px;padding:10px;cursor:pointer;background:#3a2020;" +
+        "color:#ffd8d8;border:1px solid #8a3a3a;border-radius:6px;font:600 14px system-ui;";
+      exit.addEventListener("click", () => this.onExit?.());
+      this.panel.appendChild(exit);
+    }
   }
 }
 

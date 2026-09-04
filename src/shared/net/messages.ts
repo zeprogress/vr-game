@@ -102,10 +102,10 @@ export interface BotSayMsg {
 
 /**
  * Эмоции бота по команде из чата (Ф10). Только клипы, которые реально есть
- * в паке у всех 8 моделей: Victory/Roll/Jump — под них подобрали команды,
- * а не наоборот (никакого "!wave" — жеста взмаха в паке нет).
+ * в паке у всех 8 моделей: Victory/Roll/Jump/Defeat — под них подобрали
+ * команды, а не наоборот (никакого "!wave" — жеста взмаха в паке нет).
  */
-export type BotEmote = "cheer" | "roll" | "jump";
+export type BotEmote = "cheer" | "roll" | "jump" | "defeat";
 
 export interface EmoteMsg {
   /** id в state.players, вида `bot:<ник>`. */
@@ -171,7 +171,8 @@ export type ActKind =
   | "hurt" // получил урон
   | "blockShield" // блок щитом
   | "blockSword" // блок мечом
-  | "levelUp"; // получен новый уровень (крестики и звук над телом)
+  | "levelUp" // получен новый уровень (крестики и звук над телом)
+  | "pickup"; // поднял оружие или предмет с земли — анимация подбора
 
 const ACT_KINDS: readonly ActKind[] = [
   "swing",

@@ -557,6 +557,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.takeDrop(d.id);
       rt.owned.add(weaponKey(w.cls, w.tier)); // право пользоваться этим уровнем
       this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
+      // Соседям — анимация подбора на модельке (PickUp).
+      const relay: ActRelay = { k: "pickup", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z };
+      this.broadcast(MSG.act, relay, { except: client });
     });
 
     // Что в руках. Уровень принимаем только если игрок его действительно поднял.
@@ -997,10 +1000,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.deleteBot(nick, norm);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
-    } else if (cmd === "!cheer") {
+    } else if (cmd === "!cheer" || cmd === "!defeat") {
       // !roll и !jump убраны из чата: roll теперь сам иногда играет на
       // бегу, а отдельная команда под него/jump не нужна (см. tickBot).
-      this.botEmote(nick, norm, "cheer");
+      this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
     } else if (cmd === "!follow") {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
@@ -1146,7 +1149,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !cheer — эмоция · !follow <ник> / !come — идти рядом " +
+      "Ещё: !cheer/!defeat — эмоции · !follow <ник> / !come — идти рядом " +
         "(с ботом или стримером), !unfollow — назад к делам · обычное сообщение " +
         "в чат он скажет вслух над головой. Зайти за своего героя самому: " +
         "ссылка в описании стрима, ник — как в Twitch.",
@@ -1583,6 +1586,8 @@ export class ZoneRoom extends Room<ZoneState> {
         bot.rt.owned.add(weaponKey("sword", "gold"));
         this.persistBot(bot);
         console.log(`[bot] ${bot.nick} подобрал золотой меч`);
+        const relay: ActRelay = { k: "pickup", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+        this.broadcast(MSG.act, relay);
       }
     }
   }
@@ -1809,7 +1814,12 @@ export class ZoneRoom extends Room<ZoneState> {
         if (taken <= 0) continue; // сумка полна — лут остаётся лежать
         writeBag(p, bag);
         this.sim.takeDrop(d.id);
-        this.clientOf(id)?.send(MSG.picked, { item: d.item, count: taken });
+        const client = this.clientOf(id);
+        client?.send(MSG.picked, { item: d.item, count: taken });
+        // Соседям (и боту тоже — у него просто нет client, кому исключать) —
+        // анимация подбора на модельке.
+        const relay: ActRelay = { k: "pickup", id, x: p.head.x, y: p.head.y, z: p.head.z };
+        this.broadcast(MSG.act, relay, client ? { except: client } : undefined);
       }
     });
   }

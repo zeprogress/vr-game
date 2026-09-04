@@ -76,11 +76,39 @@ const HOLD_AFTER = 300;
 const BUFFER_MS = 700;
 
 /** Клипы модели бота, которые реально используем (в паке их больше). */
-const BOT_CLIPS = ["idle", "walk", "run", "swordslash", "victory", "roll", "jump", "death"] as const;
+const BOT_CLIPS = [
+  "idle",
+  "walk",
+  "run",
+  "swordslash",
+  "victory",
+  "roll",
+  "jump",
+  "defeat",
+  "recievehit",
+  "pickup",
+  "death",
+] as const;
 /** Клипы, которые не крутятся по кругу сами — их запускает конкретный триггер. */
-const BOT_ONE_SHOT_CLIPS = new Set<string>(["swordslash", "victory", "roll", "jump"]);
+const BOT_ONE_SHOT_CLIPS = new Set<string>([
+  "swordslash",
+  "victory",
+  "roll",
+  "jump",
+  "defeat",
+  "recievehit",
+  "pickup",
+]);
 /** Команда чата → короткое имя клипа (см. loadRig: имя анимации в нижнем регистре). */
-const BOT_EMOTE_CLIP: Record<BotEmote, string> = { cheer: "victory", roll: "roll", jump: "jump" };
+const BOT_EMOTE_CLIP: Record<BotEmote, string> = {
+  cheer: "victory",
+  roll: "roll",
+  jump: "jump",
+  defeat: "defeat",
+};
+/** Длительности разовых клипов вне чат-эмоций, мс (замер по исходнику пака). */
+const HIT_REACT_MS = 650; // RecieveHit ≈ 0.625 с
+const PICKUP_MS = 1300; // PickUp ≈ 1.25 с
 
 interface Snap {
   t: number;
@@ -129,6 +157,8 @@ export class RemoteAvatar implements Hittable {
   /** Кости кулаков рига — в них садится оружие бота. */
   private botFistR: TransformNode | null = null;
   private botFistL: TransformNode | null = null;
+  /** Кость головы — только наклон (pitch), корпус по ней не крутим. */
+  private botHead: TransformNode | null = null;
   private botRigLoading = false;
   private botRigWant = 0; // какой skin должен быть на модели (0 — нет)
   private builtRigSkin = 0; // какой skin уже собран
@@ -145,9 +175,13 @@ export class RemoteAvatar implements Hittable {
   private readonly _smoothPos = new Vector3();
   private smoothInit = false;
   private swingUntil = 0;
-  /** До этого момента играем эмоцию (!cheer/!roll/!jump) вместо локомоушена. */
+  /** До этого момента играем эмоцию (!cheer/!roll/!jump/!defeat) вместо локомоушена. */
   private emoteUntil = 0;
   private emoteClip: string | null = null;
+  /** Флинч от удара (RecieveHit) — короче и приоритетнее эмоции, не мешает замаху. */
+  private hitUntil = 0;
+  /** Подобрал оружие/предмет с земли (PickUp). */
+  private pickupUntil = 0;
   private lastUpdate = 0;
   private readonly _prevPos = new Vector3();
   private disposed = false;
@@ -165,6 +199,8 @@ export class RemoteAvatar implements Hittable {
   private readonly snapPool: Snap[] = [];
   private readonly _qa = new Quaternion();
   private readonly _qb = new Quaternion();
+  private readonly _headQ = new Quaternion();
+  private readonly _pitchQ = new Quaternion();
   /** Оценка реального интервала между снапшотами (ЕМА) и сырое время предыдущего. */
   private snapDt = 55;
   private lastPushRaw = 0;
@@ -247,13 +283,33 @@ export class RemoteAvatar implements Hittable {
   /** Эмоция по команде из чата (!cheer/!roll/!jump). Только у модели бота. */
   playEmote(emote: BotEmote): void {
     const clip = BOT_EMOTE_CLIP[emote];
+    const until = this.playOneShot(clip, BOT.emoteDuration[emote] * 1000);
+    if (until) {
+      this.emoteClip = clip;
+      this.emoteUntil = until;
+    }
+  }
+
+  /** Флинч от удара (act:hurt) — и у ботов, и у обычных игроков с моделью. */
+  playHitReact(): void {
+    const until = this.playOneShot("recievehit", HIT_REACT_MS);
+    if (until) this.hitUntil = until;
+  }
+
+  /** Подобрал оружие или предмет с земли (act:pickup). */
+  playPickup(): void {
+    const until = this.playOneShot("pickup", PICKUP_MS);
+    if (until) this.pickupUntil = until;
+  }
+
+  /** Запускает разовый клип на полный вес; 0 — клипа нет (ещё не грузится риг). */
+  private playOneShot(clip: string, durationMs: number): number {
     const g = this.botRig?.anims.get(clip);
-    if (!g) return;
+    if (!g) return 0;
     g.start(false, 1, g.from, g.to, false);
     g.setWeightForAllAnimatables(1);
     this.animW.set(clip, 1);
-    this.emoteClip = clip;
-    this.emoteUntil = this.now + BOT.emoteDuration[emote] * 1000;
+    return this.now + durationMs;
   }
 
   private setMode(mode: PlayerMode): void {
@@ -268,7 +324,7 @@ export class RemoteAvatar implements Hittable {
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
-    this.botFistR = this.botFistL = null;
+    this.botFistR = this.botFistL = this.botHead = null;
     this.builtRigSkin = 0;
     this.smoothInit = false;
     this.animW.clear();
@@ -530,7 +586,7 @@ export class RemoteAvatar implements Hittable {
         // Настройка хвата (?gear=1): не двигаем и не анимируем — держим позу.
         this.freezeBotPose();
       } else {
-        this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
+        this.applyBodyAndHeadXf(a.head, b.head, s);
         this.smoothBotPos(dt);
         if (this.botRig) this.stepBotLocomotion(now, dt);
         else this.animateSwing(now);
@@ -633,6 +689,7 @@ export class RemoteAvatar implements Hittable {
           null;
         this.botFistR = bone("Fist.R");
         this.botFistL = bone("Fist.L");
+        this.botHead = bone("Head");
 
         this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
         this.botHolder = holder;
@@ -760,6 +817,8 @@ export class RemoteAvatar implements Hittable {
 
     let want: string;
     if (now < this.swingUntil) want = "swordslash";
+    else if (now < this.hitUntil) want = "recievehit";
+    else if (now < this.pickupUntil) want = "pickup";
     else if (now < this.emoteUntil && this.emoteClip) want = this.emoteClip;
     else if (run) want = "run";
     else if (move) want = "walk";
@@ -923,6 +982,47 @@ export class RemoteAvatar implements Hittable {
     const zA = Vector3.Cross(xA, f);
     zA.normalize();
     return Vector3.RotationFromAxis(xA, f, zA);
+  }
+
+  /**
+   * Корпус модели персонажа поворачиваем только по курсу (yaw) — раньше сюда
+   * шёл кватернион головы целиком, и модель заваливалась вперёд/назад, стоило
+   * игроку посмотреть вверх/вниз. Наклон (pitch, до ±HEAD_PITCH_MAX) идёт
+   * отдельно, в кость Head — поверх того, что уже поставила анимация: этот
+   * метод вызывается из update(), которое сцена гоняет в onBeforeRenderObservable,
+   * а тот срабатывает СТРОГО после того, как Babylon применит клипы за кадр
+   * (см. Game.ts). Замер осей кости — см. коммит: локальная Y смотрит вдоль
+   * шеи вверх (как и у Fist.*), локальная X — влево-вправо, и знак угла
+   * совпадает с тем, что уже используют мышь/сеть (movementY>0 → pitch>0 →
+   * взгляд вниз).
+   */
+  private static readonly HEAD_PITCH_MAX = Math.PI / 4;
+  private static readonly HEAD_PITCH_AXIS = new Vector3(1, 0, 0);
+
+  private applyBodyAndHeadXf(a: Snap["head"], b: Snap["head"], s: number): void {
+    const x = a[0] + (b[0] - a[0]) * s;
+    const y = a[1] + (b[1] - a[1]) * s;
+    const z = a[2] + (b[2] - a[2]) * s;
+    this.root.position.set(x, y, z);
+
+    this._qa.set(a[3], a[4], a[5], a[6]);
+    this._qb.set(b[3], b[4], b[5], b[6]);
+    Quaternion.SlerpToRef(this._qa, this._qb, s, this._headQ);
+    // Реальный игрок никогда не крутит камеру по крену — распад на
+    // yaw/pitch честный (см. PlayerController.eyeRotation: кватернион
+    // всегда строится из чистых yaw+pitch, roll=0).
+    const euler = this._headQ.toEulerAngles();
+    Quaternion.RotationYawPitchRollToRef(euler.y, 0, 0, this.root.rotationQuaternion!);
+
+    if (this.botHead) {
+      const pitch = Math.max(
+        -RemoteAvatar.HEAD_PITCH_MAX,
+        Math.min(RemoteAvatar.HEAD_PITCH_MAX, euler.x),
+      );
+      Quaternion.RotationAxisToRef(RemoteAvatar.HEAD_PITCH_AXIS, pitch, this._pitchQ);
+      const base = this.botHead.rotationQuaternion ?? Quaternion.Identity();
+      this.botHead.rotationQuaternion = base.multiply(this._pitchQ);
+    }
   }
 
   /** node.position (или root) + кватернион = интерполяция a->b. `isRoot` — позиция мировая. */

@@ -7,18 +7,10 @@
     <style>
       html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
       #renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; outline: none; }
-      #hint {
-        position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-        color: #fff; font: 16px/1.4 system-ui, sans-serif; text-align: center;
-        background: rgba(0,0,0,0.6); padding: 20px 28px; border-radius: 10px;
-        cursor: pointer; user-select: none;
-      }
-      #hint.hidden { display: none; }
     </style>
   </head>
   <body>
     <canvas id="renderCanvas"></canvas>
-    <div id="hint" class="hidden">Кликни, чтобы войти</div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

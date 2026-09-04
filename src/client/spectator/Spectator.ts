@@ -582,12 +582,16 @@ export class Spectator {
         break;
       case "hurt":
         this.sfx.at(at, () => this.sfx.playerHurt());
+        this.avatars.get(id)?.playHitReact();
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
         break;
       case "blockSword":
         this.sfx.at(at, () => this.sfx.block(0.5));
+        break;
+      case "pickup":
+        this.avatars.get(id)?.playPickup();
         break;
     }
   }
