@@ -20,7 +20,8 @@ import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
-import { PLAYER } from "#shared/constants";
+import { PLAYER, BOT } from "#shared/constants";
+import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
 /** Доворот модели бота, если её «перёд» смотрит не в +Z. Подбор: `?byaw=<рад>`. */
@@ -75,7 +76,11 @@ const HOLD_AFTER = 300;
 const BUFFER_MS = 700;
 
 /** Клипы модели бота, которые реально используем (в паке их больше). */
-const BOT_CLIPS = ["idle", "walk", "run", "swordslash", "death"] as const;
+const BOT_CLIPS = ["idle", "walk", "run", "swordslash", "victory", "roll", "jump", "death"] as const;
+/** Клипы, которые не крутятся по кругу сами — их запускает конкретный триггер. */
+const BOT_ONE_SHOT_CLIPS = new Set<string>(["swordslash", "victory", "roll", "jump"]);
+/** Команда чата → короткое имя клипа (см. loadRig: имя анимации в нижнем регистре). */
+const BOT_EMOTE_CLIP: Record<BotEmote, string> = { cheer: "victory", roll: "roll", jump: "jump" };
 
 interface Snap {
   t: number;
@@ -140,6 +145,9 @@ export class RemoteAvatar implements Hittable {
   private readonly _smoothPos = new Vector3();
   private smoothInit = false;
   private swingUntil = 0;
+  /** До этого момента играем эмоцию (!cheer/!roll/!jump) вместо локомоушена. */
+  private emoteUntil = 0;
+  private emoteClip: string | null = null;
   private lastUpdate = 0;
   private readonly _prevPos = new Vector3();
   private disposed = false;
@@ -226,6 +234,18 @@ export class RemoteAvatar implements Hittable {
       this.animW.set("swordslash", 1);
       this.swingUntil = this.now + ((g.to - g.from) / 60 / 1.35) * 1000;
     }
+  }
+
+  /** Эмоция по команде из чата (!cheer/!roll/!jump). Только у модели бота. */
+  playEmote(emote: BotEmote): void {
+    const clip = BOT_EMOTE_CLIP[emote];
+    const g = this.botRig?.anims.get(clip);
+    if (!g) return;
+    g.start(false, 1, g.from, g.to, false);
+    g.setWeightForAllAnimatables(1);
+    this.animW.set(clip, 1);
+    this.emoteClip = clip;
+    this.emoteUntil = this.now + BOT.emoteDuration[emote] * 1000;
   }
 
   private setMode(mode: PlayerMode): void {
@@ -719,6 +739,7 @@ export class RemoteAvatar implements Hittable {
 
     let want: string;
     if (now < this.swingUntil) want = "swordslash";
+    else if (now < this.emoteUntil && this.emoteClip) want = this.emoteClip;
     else if (run) want = "run";
     else if (move) want = "walk";
     else want = "idle";
@@ -734,8 +755,9 @@ export class RemoteAvatar implements Hittable {
       if (w <= 0.003) {
         w = 0;
         if (g.isPlaying && n !== want) g.stop();
-      } else if (!g.isPlaying && n !== "swordslash") {
-        // swordslash перезапускается из playSwing(); в цикле его не гоняем.
+      } else if (!g.isPlaying && !BOT_ONE_SHOT_CLIPS.has(n)) {
+        // Разовые клипы (swordslash/эмоции) запускает их триггер — здесь
+        // только гоняем вес, чтобы не зациклить их же по кругу.
         g.start(true, 1, g.from, g.to, false);
       }
       this.animW.set(n, w);

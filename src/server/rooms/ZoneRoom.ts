@@ -27,6 +27,8 @@ import {
   type ActKind,
   type BotSayMsg,
   type LeaderboardRow,
+  type BotEmote,
+  type EmoteMsg,
   type VoiceMsg,
   isActKind,
   type OverridesMsg,
@@ -150,6 +152,12 @@ interface Bot {
   target: string | null; // id моба
   /** id лежащего золотого меча, за которым бот сейчас идёт (Ф10). */
   lootTarget: string | null;
+  /** Нормализованный ник, за которым идём между боями (!follow/!come, Ф10). null — никого. */
+  followNorm: string | null;
+  /** ms последней эмоции (!cheer/!roll/!jump) — антиспам. */
+  emoteAt: number;
+  /** ms — до этого момента бот стоит на месте, играет эмоцию. */
+  emoteFreezeUntil: number;
   attackCd: number;
   wanderCd: number;
   wanderX: number;
@@ -876,6 +884,45 @@ export class ZoneRoom extends Room<ZoneState> {
     );
   }
 
+  /** `!cheer` / `!roll` / `!jump` — разовая эмоция на модельке бота (Ф10). */
+  private botEmote(nick: string, norm: string, emote: BotEmote): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    const now = Date.now();
+    if (now - bot.emoteAt < BOT.emoteCooldown * 1000) return; // антиспам, молча
+    bot.emoteAt = now;
+    // Стоим смирно, пока играет клип — иначе модель "едет" под анимацией.
+    bot.emoteFreezeUntil = now + BOT.emoteDuration[emote] * 1000;
+    const msg: EmoteMsg = { id: bot.id, emote };
+    this.broadcast(MSG.emote, msg);
+  }
+
+  /**
+   * `!follow <ник>` / `!come` (алиас на стримера) / `!unfollow` — держаться
+   * рядом с кем-то между боями. `target` уже нормализован, `null` — снять.
+   */
+  private setFollow(nick: string, norm: string, target: string | null): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    bot.followNorm = target;
+    if (!target) {
+      this.reply(`@${nick} герой сам по себе — снова бродит и бьёт мобов.`);
+      return;
+    }
+    const here = [...this.state.players.values()].some((ps) => normNick(ps.nick) === target);
+    this.reply(
+      here
+        ? `@${nick} герой держится рядом с ${target}, пока не бьётся с мобом.`
+        : `@${nick} герой пойдёт к ${target}, как только тот появится в игре.`,
+    );
+  }
+
   /** Ник допущен: в ручном списке или недавно писал в чат. */
   private allowedNick(norm: string): boolean {
     if (STREAM_NICKS.includes(norm)) return true;
@@ -917,6 +964,14 @@ export class ZoneRoom extends Room<ZoneState> {
       this.deleteBot(nick, norm);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
+    } else if (cmd === "!cheer" || cmd === "!roll" || cmd === "!jump") {
+      this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
+    } else if (cmd === "!follow") {
+      this.setFollow(nick, norm, normNick(parts[1] ?? ""));
+    } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
+      this.setFollow(nick, norm, null);
+    } else if (cmd === "!come") {
+      this.setFollow(nick, norm, normNick(ADMIN_NICK));
     }
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
   }
@@ -1047,13 +1102,19 @@ export class ZoneRoom extends Room<ZoneState> {
     const now = Date.now();
     if (now - this.infoAt < BOT.infoCooldown * 1000) return;
     this.infoAt = now;
+    // Двумя сообщениями: одной строкой TwitchChat.say() режет на 460
+    // символов (see MAX_LEN) — список команд разросся и в одну не влезал.
     this.reply(
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
-        "!delete — стереть героя и начать заново · !top — таблица лидеров · " +
-        "обычное сообщение в чат он скажет вслух над головой. " +
-        "Зайти за своего героя самому: ссылка в описании стрима, ник — как в Twitch.",
+        "!delete — стереть героя и начать заново · !top — таблица лидеров.",
+    );
+    this.reply(
+      "Ещё: !cheer/!roll/!jump — эмоции · !follow <ник> / !come — идти рядом " +
+        "(с ботом или стримером), !unfollow — назад к делам · обычное сообщение " +
+        "в чат он скажет вслух над головой. Зайти за своего героя самому: " +
+        "ссылка в описании стрима, ник — как в Twitch.",
     );
   }
 
@@ -1187,6 +1248,9 @@ export class ZoneRoom extends Room<ZoneState> {
       rt,
       target: null,
       lootTarget: null,
+      followNorm: null,
+      emoteAt: 0,
+      emoteFreezeUntil: 0,
       attackCd: 0,
       wanderCd: 0,
       wanderX: sx,
@@ -1314,6 +1378,22 @@ export class ZoneRoom extends Room<ZoneState> {
     // okMob-выбор выше продолжает работать, просто движение приоритетнее.
     const chasingMob = loot ? undefined : mob;
 
+    // «!follow / !come»: бой всё равно важнее — догоняем только если мобов
+    // рядом нет (иначе вместо честного боя бот бы просто стоял столбом
+    // около зрителя). Ник ищем среди всех, живых и ботов — id у сессий
+    // меняется при переподключении, а ник нет.
+    let follow: { x: number; z: number } | undefined;
+    if (!loot && !mob && bot.followNorm) {
+      for (const [id, ps] of this.state.players) {
+        if (id === bot.id) continue;
+        if (normNick(ps.nick) === bot.followNorm) {
+          follow = ps.head;
+          break;
+        }
+      }
+      if (follow && !inZone(follow.x, follow.z)) follow = undefined;
+    }
+
     let tx: number;
     let tz: number;
     if (loot) {
@@ -1322,6 +1402,9 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (mob) {
       tx = mob.x;
       tz = mob.z;
+    } else if (follow) {
+      tx = follow.x;
+      tz = follow.z;
     } else {
       bot.wanderCd -= dt;
       if (bot.wanderCd <= 0) {
@@ -1340,7 +1423,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
     const dx = dxRaw / dist;
     const dz = dzRaw / dist;
-    const stopAt = loot ? WEAPON_TAKE_REACH * 0.85 : mob ? BOT.attackRange * 0.7 : 0.5;
+    const stopAt = loot
+      ? WEAPON_TAKE_REACH * 0.85
+      : mob
+        ? BOT.attackRange * 0.7
+        : follow
+          ? BOT.followRange
+          : 0.5;
 
     // Расталкивание: без него боты, бегущие к одному мобу, слипаются в одну
     // точку. Складываем с движением к цели ДО сглаживания скорости — иначе
@@ -1382,10 +1471,16 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
     // на смене цели и у путевых точек.
-    // На замахе ноги на месте: иначе модель «едет» посреди удара. Расталкивание
-    // при этом работает — соседи всё равно не должны стоять внутри.
+    // На замахе и на эмоции (!cheer/!roll/!jump) ноги на месте: иначе модель
+    // «едет» посреди анимации. Расталкивание при этом работает — соседи
+    // всё равно не должны стоять внутри.
+    const emoting = Date.now() < bot.emoteFreezeUntil;
     const wantSpeed =
-      bot.swingIn > 0 ? 0 : dist > stopAt ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5) : 0;
+      bot.swingIn > 0 || emoting
+        ? 0
+        : dist > stopAt
+          ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5)
+          : 0;
     const wvx = dx * wantSpeed + sepX * BOT.separationForce;
     const wvz = dz * wantSpeed + sepZ * BOT.separationForce;
     const accel = Math.min(1, dt * 6);
@@ -1414,7 +1509,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
-    if (chasingMob && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (chasingMob && !emoting && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
       bot.attackCd = BOT.attackCooldown;
       bot.swingIn = BOT.attackImpact;
       bot.swingTarget = chasingMob.id;

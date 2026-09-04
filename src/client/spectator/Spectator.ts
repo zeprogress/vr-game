@@ -251,6 +251,7 @@ export class Spectator {
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
+    net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.

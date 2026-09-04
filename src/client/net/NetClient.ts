@@ -5,6 +5,8 @@ import {
   MSG,
   type CharMsg,
   type LeaderboardRow,
+  type EmoteMsg,
+  type BotEmote,
   type HitMobMsg,
   type CastMsg,
   type LevelUpMsg,
@@ -72,6 +74,8 @@ export class NetClient {
   onBotSay: ((id: string, text: string) => void) | null = null;
   /** Топ-5 героев — раз в 10 с и сразу спектатору при входе (Ф10). */
   onLeaderboard: ((rows: LeaderboardRow[]) => void) | null = null;
+  /** Бот сыграл эмоцию по команде из чата (Ф10). */
+  onEmote: ((id: string, emote: BotEmote) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -181,6 +185,7 @@ export class NetClient {
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
+    room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
