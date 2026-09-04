@@ -22,8 +22,10 @@ export type GearTune = {
 };
 
 export const BOT_GEAR: { sword: GearTune; shield: GearTune } = {
-  sword: { pos: [0, 0.05, 0], rot: [Math.PI, 0, 0], scale: 1.7, auto: false },
-  shield: { pos: [0, 0.05, 0], rot: [0, 0, 0], scale: 1.6, auto: true },
+  // Подобрано вживую панелью ?gear=1. Разворот щита задан углом: расчёт по
+  // положению правой руки (auto) давал верную ось, но не тот наклон ремня.
+  sword: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
+  shield: { pos: [-0.1, 0.16, 0.135], rot: [-0.497, 0.633, 1.383], scale: 1.7, auto: false },
 };
 
 /**
