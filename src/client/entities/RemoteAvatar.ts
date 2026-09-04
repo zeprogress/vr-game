@@ -45,24 +45,25 @@ const BOT_FEET_Y = -1.68;
  * Хват оружия у бота. Замер по скелету пака: направление локоть→кулак
  * совпадает с локальной осью Y кости `Fist.*` — то есть Y идёт вдоль
  * предплечья наружу. Клинок меча в модели тоже смотрит по +Y
- * (COMBAT.swordTipLocal), поэтому меч садится в кулак БЕЗ доворота.
+ * (COMBAT.swordTipLocal), поэтому по оси он с предплечьем совпадает —
+ * но разворот на π нужен: иначе клинок глядит ВНИЗ, вдоль опущенной руки,
+ * а меч держат остриём вверх.
  *
  * Масштаб: кость наследует масштаб рига (BOT_RIG_SCALE), поэтому здесь он
  * обратный с поправкой на рост персонажа — иначе меч выглядит игрушечным
  * в руке двухметрового рыцаря.
  */
-const BOT_SWORD = { pos: [0, 0.05, 0] as const, rot: [0, 0, 0] as const, scale: 1.7 };
+const BOT_SWORD = { pos: [0, 0.05, 0] as const, rot: [Math.PI, 0, 0] as const, scale: 1.7 };
 /**
  * Щит сидит поперёк предплечья, как на ремне. Лицевая сторона у модели —
  * тонкая ось Y (замер габаритов: 0.66 × 0.14 × 0.66), поэтому разворот
  * уводит +Y с оси предплечья и ставит лицо наружу.
  *
- * Углы подобраны на живой сцене: посчитал направление «вперёд» персонажа в
- * КООРДИНАТАХ КОСТИ и убрал из него составляющую вдоль предплечья. Именно
- * поэтому величина пригодна как константа — она не зависит от позы, и щит
- * качается вместе с рукой во всех клипах.
+ * Разворот НЕ константа: он считается при посадке (см. shieldRotFor). Углом
+ * его не задать — модель из пака приходит со своим разворотом от загрузчика
+ * glTF, и знак «вперёд» приходилось бы угадывать.
  */
-const BOT_SHIELD = { pos: [0, 0.05, 0] as const, rot: [Math.PI / 2, 0.69, 0] as const, scale: 1.6 };
+const BOT_SHIELD = { pos: [0, 0.05, 0] as const, scale: 1.6 };
 /** Радиус пятна-тени под аватаром, м. */
 const SHADOW_RADIUS = 0.5;
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
@@ -757,7 +758,8 @@ export class RemoteAvatar implements Hittable {
       const g = side === "left" ? BOT_SHIELD : BOT_SWORD;
       mesh.parent = fist;
       mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
-      mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
+      if (side === "left") mesh.rotation.copyFrom(this.shieldRotFor(fist));
+      else mesh.rotation.set(BOT_SWORD.rot[0], BOT_SWORD.rot[1], BOT_SWORD.rot[2]);
       mesh.scaling.setAll(g.scale);
       return mesh;
     }
@@ -778,6 +780,51 @@ export class RemoteAvatar implements Hittable {
       mesh.scaling.setAll(0.7);
     }
     return mesh;
+  }
+
+  /**
+   * Разворот щита на левом предплечье.
+   *
+   * Лицевая сторона модели — её тонкая ось Y (габариты 0.66 × 0.14 × 0.66).
+   * Нужно, чтобы она смотрела «вперёд» персонажа и при этом была поперёк
+   * предплечья: щит носят на ремне, а не насаживают на руку.
+   *
+   * Где «перёд», определяем по правой руке, а не по знаку оси: в
+   * левосторонних координатах Babylon, если смотреть по +Z, правая рука
+   * лежит в +X. Загрузчик glTF приходит со своим разворотом модели, поэтому
+   * угадывать знак — верный способ ошибиться.
+   */
+  private shieldRotFor(fist: TransformNode): Vector3 {
+    // Матрицы должны быть свежими: кости двигает анимация, а посадка идёт
+    // сразу после загрузки рига, вне обычного порядка обновления.
+    this.root.computeWorldMatrix(true);
+    fist.computeWorldMatrix(true);
+    this.botFistR?.computeWorldMatrix(true);
+    const rootM = this.root.getWorldMatrix();
+    const inv = rootM.clone();
+    inv.invert();
+    const rHand = Vector3.TransformCoordinates(
+      (this.botFistR ?? fist).getAbsolutePosition(),
+      inv,
+    );
+    const sign = rHand.x >= 0 ? 1 : -1;
+
+    const fwdW = Vector3.TransformNormal(new Vector3(0, 0, sign), rootM);
+    fwdW.y = 0;
+    fwdW.normalize();
+
+    const boneInv = fist.getWorldMatrix().clone();
+    boneInv.invert();
+    const f = Vector3.TransformNormal(fwdW, boneInv);
+    f.y = 0; // убираем составляющую вдоль предплечья — щит идёт поперёк
+    if (f.lengthSquared() < 1e-6) f.set(0, 0, 1);
+    f.normalize();
+
+    const xA = Vector3.Cross(new Vector3(0, 1, 0), f);
+    xA.normalize();
+    const zA = Vector3.Cross(xA, f);
+    zA.normalize();
+    return Vector3.RotationFromAxis(xA, f, zA);
   }
 
   /** node.position (или root) + кватернион = интерполяция a->b. `isRoot` — позиция мировая. */
