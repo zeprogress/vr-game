@@ -9,12 +9,12 @@ import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
-import { WORLD } from "#shared/constants";
 import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
 import { LIGHT_BUDGET } from "./Fireflies";
+import { computeGrassLayout } from "./grassLayout";
 
 /**
  * Деревья и трава из внешнего пака (Stylized Nature MegaKit, CC0-ish).
@@ -31,26 +31,6 @@ const TREE_KINDS = [
 ];
 /** Множитель к размеру дерева поверх scale из общего списка. */
 const TREE_SCALE = 1.15;
-/** Плотность травы относительно WORLD.grassCount. */
-const GRASS_FACTOR = 1.8;
-/**
- * Трава — постоянным зерном, а не Math.random: раньше при каждой перезагрузке
- * страницы ковёр рассыпался заново (у каждого игрока свой), теперь всегда
- * один и тот же, как деревья/камни (#shared/trees, #shared/rocks) — только
- * тут это чисто декоративное, коллизий у травы нет, делить с сервером незачем.
- */
-const GRASS_SEED = 20260904;
-
-/** Тот же генератор, что у деревьев/камней (#shared/trees.ts) — один на всех. */
-function rng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
@@ -187,67 +167,26 @@ export async function loadGrass(
 
   const wind = new GrassWindPlugin(mat);
 
-  const rnd = rng(GRASS_SEED);
-  const reach = WORLD.size / 2 - 4;
-  const budget = Math.max(0, Math.round(WORLD.grassCount * density * GRASS_FACTOR));
+  // Раскладка (позиции клякс и травинок) — общая с Terrain.ts (AO под травой,
+  // см. bakeAo): чистая функция одного зерна, поэтому оба места получают
+  // одну и ту же карту независимо друг от друга.
+  const layout = computeGrassLayout(density);
   const matrices: Matrix[] = [];
   const phases: number[] = [];
   const colors: number[] = [];
   const up = new Vector3(0, 1, 0);
 
-  const pushBlade = (x: number, z: number): void => {
-    if (Math.hypot(x, z) < 1.5) return;
-    if (Math.abs(x) > reach || Math.abs(z) > reach) return;
-    const y = terrain.heightAt(x, z);
-    const s = 0.4 + rnd() * 0.36;
+  for (const bl of layout.blades) {
+    const y = terrain.heightAt(bl.x, bl.z);
     matrices.push(
       Matrix.Compose(
-        new Vector3(s, s * (0.9 + rnd() * 0.7), s),
-        Quaternion.RotationAxis(up, rnd() * Math.PI * 2),
-        new Vector3(x, y - 0.03, z),
+        new Vector3(bl.s, bl.s * bl.heightMul, bl.s),
+        Quaternion.RotationAxis(up, bl.yaw),
+        new Vector3(bl.x, y - 0.03, bl.z),
       ),
     );
-    phases.push((x * WIND.dirX + z * WIND.dirZ) * 0.55);
-    // Разброс яркости и оттенка на каждый пучок — множитель к цвету материала.
-    const b = 0.6 + rnd() * 0.9; // 0.6..1.5 — заметный разброс яркости
-    const warm = (rnd() - 0.45) * 0.5; // от жёлто-сухой до сочно-зелёной
-    colors.push(b + warm * 0.7, b + warm * 0.15, b - warm * 0.5, 1);
-  };
-
-  // Трава — из множества мелких клякс со случайным центром и размером.
-  // Раньше пятно у спавна было одним диском с синусоидальным краем и читалось
-  // «вентилятором»; теперь никакой общей формы — просто рваный ковёр.
-  const gauss2 = (): number => rnd() + rnd() + rnd() - 1.5; // ~[-1.5..1.5]
-
-  /** Набросать `total` травинок кляксами в круге радиуса `area` вокруг (cx,cz). */
-  const scatterClumps = (
-    cx: number,
-    cz: number,
-    area: number,
-    total: number,
-    centrePull: number, // 0 — равномерно по площади, >0 — гуще к центру
-  ): void => {
-    let placed = 0;
-    let guard = 0;
-    while (placed < total && guard++ < total * 3) {
-      const ca = rnd() * Math.PI * 2;
-      const cr = Math.pow(rnd(), 0.5 + centrePull) * area;
-      const kx = cx + Math.cos(ca) * cr;
-      const kz = cz + Math.sin(ca) * cr;
-      const size = 0.5 + rnd() * rnd() * 3.2; // радиус кляксы, м
-      const n = 5 + Math.floor(rnd() * rnd() * 26);
-      for (let i = 0; i < n && placed < total; i++) {
-        pushBlade(kx + gauss2() * size, kz + gauss2() * size);
-        placed++;
-      }
-    }
-  };
-
-  // Гуще вокруг спавна, реже — по всей карте, плюс совсем редкий ровный фон.
-  scatterClumps(0, 0, WORLD.grassRadius * 1.7, budget * 0.42, 0.9);
-  scatterClumps(0, 0, reach, budget * 0.46, 0.15);
-  for (let i = 0; i < budget * 0.12; i++) {
-    pushBlade((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
+    phases.push((bl.x * WIND.dirX + bl.z * WIND.dirZ) * 0.55);
+    colors.push(bl.b + bl.warm * 0.7, bl.b + bl.warm * 0.15, bl.b - bl.warm * 0.5, 1);
   }
 
   blade.thinInstanceAdd(matrices);

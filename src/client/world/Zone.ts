@@ -114,7 +114,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   /** Когда последний раз перерисовывали градиент купола. */
   let paintedAt = hour;
 
-  const terrain = createTerrain(scene);
+  const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
   const trunks = scatterTrees(scene, terrain, quality.minLights);
   const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights);

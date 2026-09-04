@@ -146,7 +146,11 @@ export class Spectator {
     } = {},
   ) {
     const preset = PRESETS[quality];
-    this.fpsCap = override.fpsCap ?? preset.fpsCap;
+    // 30 — жёсткий потолок на всех пресетах, включая high: `?fpscap=` можно
+    // только урезать дальше (слабый телефон), но не снять кэп или поднять
+    // выше 30 — раньше `?fpscap=0`/большое число это позволяли.
+    const requestedCap = override.fpsCap ?? preset.fpsCap;
+    this.fpsCap = requestedCap > 0 ? Math.min(requestedCap, 30) : 30;
 
     // Фиксированный размер рендера (?rw=1280&rh=720): браузер/Fully Kiosk не
     // будет менять его сам при изменении вьюпорта. Canvas тянется по CSS.
@@ -159,8 +163,8 @@ export class Spectator {
 
     this.engine = new Engine(
       canvas,
-      false, // без MSAA — на Mali это дорого
-      { stencil: false, antialias: false, powerPreference: "high-performance", doNotHandleContextLost: true },
+      true, // MSAA — пробуем включить, раньше было выключено («на Mali дорого»)
+      { stencil: false, antialias: true, powerPreference: "high-performance", doNotHandleContextLost: true },
       false,
     );
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);

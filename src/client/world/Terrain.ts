@@ -10,6 +10,8 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { WORLD } from "#shared/constants";
 import { terrainHeight as surface } from "#shared/terrain";
 import { trees } from "#shared/trees";
+import { rocks } from "#shared/rocks";
+import { computeGrassLayout } from "./grassLayout";
 
 export interface Terrain {
   mesh: Mesh;
@@ -30,6 +32,19 @@ const AO_FLOOR = 0.3;
 /** Радиус затенения под кроной, м (плюс вклад размера дерева). */
 const AO_TREE_REACH = 5;
 const AO_TREE_PER_SCALE = 3.2;
+/**
+ * Камни ниже и мельче деревьев — тень короче и заметно слабее (это не
+ * крона, а лёгкий прижим у основания), иначе мелкий камень тонет в кляксе.
+ */
+const AO_ROCK_REACH = 0.6;
+const AO_ROCK_PER_SCALE = 1.6;
+const AO_ROCK_STRENGTH = 0.4;
+/**
+ * Трава просвечивает — под кляксой не тень, а лёгкое сгущение цвета (густой
+ * дёрн темнее голой земли). Слабее и рока, и особенно кроны дерева.
+ */
+const AO_GRASS_PER_SIZE = 0.55;
+const AO_GRASS_STRENGTH = 0.22;
 /** Вклад впадин рельефа: ложбины темнее гребней. */
 const AO_RELIEF = 0.7;
 /** На каком перепаде с соседями впадина считается глубокой, м. */
@@ -43,17 +58,22 @@ const AO_DIP_FULL = 0.4;
  * в мире движется, и запечённая тень верна лишь для одного его положения.
  * AO от солнца не зависит и переживает весь суточный цикл.
  *
- * Два вклада:
+ * Три вклада:
  *  - тень кроны: деревья детерминированы (#shared/trees), радиус берём по
  *    кроне, а не по стволу — шаг сетки 2.5 м, на радиусе ствола затенение
  *    попало бы в одну-две вершины и его никто бы не увидел;
+ *  - камни (#shared/rocks): та же идея, но короче и слабее — не крона;
+ *  - трава: клякс много (см. grassLayout.ts, общая раскладка с nature.ts),
+ *    поэтому вклад на клячу — самый слабый из трёх, просто лёгкое сгущение;
  *  - вогнутость рельефа: вершина ниже соседей — ложбина, темнее.
  *
  * Высоты соседей берём прямо из сетки, а не пересчитываем surface(): это
  * убирает четыре вызова на вершину, самую дорогую часть запекания.
  */
-function bakeAo(positions: number[], row: number): number[] {
-  const list = trees();
+function bakeAo(positions: number[], row: number, grassDensity: number): number[] {
+  const treeList = trees();
+  const rockList = rocks();
+  const grassBlobs = computeGrassLayout(grassDensity).blobs;
   const n = positions.length / 3;
   const colors: number[] = new Array(n * 4);
 
@@ -64,7 +84,7 @@ function bakeAo(positions: number[], row: number): number[] {
 
     // Кроны: чем ближе и крупнее дерево, тем темнее под ним.
     let shade = 0;
-    for (const t of list) {
+    for (const t of treeList) {
       const reach = AO_TREE_REACH + t.scale * AO_TREE_PER_SCALE;
       const dx = x - t.x;
       const dz = z - t.z;
@@ -72,6 +92,28 @@ function bakeAo(positions: number[], row: number): number[] {
       if (d2 >= reach * reach) continue;
       const k = 1 - Math.sqrt(d2) / reach;
       shade += k * k * (0.5 + t.scale * 0.3);
+    }
+
+    // Камни: короткий и слабый прижим у основания.
+    for (const rk of rockList) {
+      const reach = AO_ROCK_REACH + rk.scale * AO_ROCK_PER_SCALE;
+      const dx = x - rk.x;
+      const dz = z - rk.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= reach * reach) continue;
+      const k = 1 - Math.sqrt(d2) / reach;
+      shade += k * k * AO_ROCK_STRENGTH;
+    }
+
+    // Трава: под каждой кляксой — лёгкое сгущение, не тень.
+    for (const gb of grassBlobs) {
+      const reach = gb.size * AO_GRASS_PER_SIZE;
+      const dx = x - gb.x;
+      const dz = z - gb.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= reach * reach) continue;
+      const k = 1 - Math.sqrt(d2) / reach;
+      shade += k * k * AO_GRASS_STRENGTH;
     }
 
     // Рельеф: сравниваем с четырьмя соседями по сетке (у края — сам с собой).
@@ -102,6 +144,7 @@ function buildPatch(
   step: number,
   inner: number,
   skipInner: boolean,
+  grassDensity: number,
 ): Mesh {
   const nx = Math.round((x1 - x0) / step);
   const nz = Math.round((z1 - z0) / step);
@@ -141,12 +184,17 @@ function buildPatch(
   vd.indices = indices;
   vd.normals = normals;
   vd.uvs = uvs;
-  vd.colors = bakeAo(positions, row);
+  vd.colors = bakeAo(positions, row, grassDensity);
   vd.applyToMesh(mesh);
   return mesh;
 }
 
-export function createTerrain(scene: Scene): Terrain {
+/**
+ * `grassDensity` — та же плотность (0..1), что уходит в scatterGrass:
+ * запечённое под травой AO должно совпадать с тем, что реально растёт на
+ * этом пресете качества (см. buildZone в Zone.ts).
+ */
+export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
   const size = WORLD.size;
   const seg = WORLD.subdivisions;
   const half = size / 2;
@@ -155,7 +203,7 @@ export function createTerrain(scene: Scene): Terrain {
   const mat = grassMaterial(scene);
 
   // Игровая зона: та же сетка, коллизии и raycast'ы игрока.
-  const mesh = buildPatch(scene, "terrain", -half, half, -half, half, step, half, false);
+  const mesh = buildPatch(scene, "terrain", -half, half, -half, half, step, half, false, grassDensity);
   mesh.checkCollisions = true;
   mesh.isPickable = true;
   mesh.material = mat;
@@ -164,7 +212,18 @@ export function createTerrain(scene: Scene): Terrain {
   // а те же холмы. Чисто декоративный: без коллизий и без пикинга, чуть ниже
   // игрового меша, поэтому в зоне перекрытия глубинный тест выигрывает зона.
   const far = half * (1 + 2 * APRON);
-  const apron = buildPatch(scene, "terrainApron", -far, far, -far, far, step * 2, half, true);
+  const apron = buildPatch(
+    scene,
+    "terrainApron",
+    -far,
+    far,
+    -far,
+    far,
+    step * 2,
+    half,
+    true,
+    grassDensity,
+  );
   apron.material = mat;
   apron.isPickable = false;
   apron.checkCollisions = false;
