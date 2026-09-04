@@ -174,7 +174,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       applyDay();
 
       windTick(dt, day.daylight);
-      fireflies.update(dt, playerPos, day.daylight, terrain);
+      fireflies.update(dt, playerPos, day.daylight);
 
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
       // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,

@@ -51,8 +51,6 @@ export const FIREFLY = {
   lightFadeFrom: 18,
   /** Ближе этого светит в полную силу, м. */
   lightFadeFull: 5,
-  /** Скорость дрейфа стайки по округе, м/с. */
-  driftSpeed: 0.45,
 } as const;
 
 /**
@@ -62,6 +60,27 @@ export const FIREFLY = {
  * доезжали до мобов, персонажей и деревьев — у тех потолок маленький.
  */
 export const BOT_TORCHES = 2;
+
+/**
+ * Стайки — постоянным зерном, а не Math.random: раньше при каждой
+ * перезагрузке светлячки высыпались в новых местах и потом ещё расплывались
+ * по карте (см. driftSpeed — убран); теперь стоят там же, где деревья/трава,
+ * все клиенты видят одно и то же. Огоньки внутри стайки по-прежнему вьются
+ * на своих локальных орбитах (это и делает их «светлячками», не лампами) —
+ * фиксирован только центр.
+ */
+const FIREFLY_SEED = 20260904;
+
+/** Тот же генератор, что у деревьев/камней/травы. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /**
  * Сообщить материалам, что набор источников света изменился.
@@ -88,9 +107,8 @@ export function relightMaterials(scene: Scene): void {
 export const LIGHT_BUDGET = FIREFLY.lamps + 2 + 2 + BOT_TORCHES;
 
 interface Group {
-  /** Куда стайка неспешно плывёт. */
+  /** Центр стайки — постоянный (см. GRASS_SEED-подобный FIREFLY_SEED ниже). */
   center: Vector3;
-  target: Vector3;
   dots: InstancedMesh[];
   /** Своя фаза у каждого огонька — чтобы вились вразнобой. */
   phase: number[];
@@ -178,10 +196,11 @@ export class Fireflies {
     this.poolProto.isVisible = false;
     this.poolProto.renderingGroupId = 0;
 
+    const rnd = rng(FIREFLY_SEED);
     const R = WORLD.grassRadius * 1.6;
     for (let g = 0; g < groups; g++) {
-      const a = (g / Math.max(1, groups)) * Math.PI * 2 + Math.random();
-      const r = 6 + Math.random() * R;
+      const a = (g / Math.max(1, groups)) * Math.PI * 2 + rnd();
+      const r = 6 + rnd() * R;
       const x = Math.cos(a) * r;
       const z = Math.sin(a) * r;
       const center = new Vector3(x, terrain.heightAt(x, z) + FIREFLY.height, z);
@@ -192,12 +211,12 @@ export class Fireflies {
         const dot = this.proto.createInstance(`firefly${g}_${i}`);
         dot.isPickable = false;
         dots.push(dot);
-        phase.push(Math.random() * Math.PI * 2);
+        phase.push(rnd() * Math.PI * 2);
       }
       const pool = this.poolProto.createInstance(`fireflyPool${g}`);
       pool.isPickable = false;
       pool.position.copyFrom(center);
-      this.groups.push({ center, target: center.clone(), dots, phase, pool });
+      this.groups.push({ center, dots, phase, pool });
     }
 
     // Нет стаек (density 0) — не заводим и точечные источники: на слабом GPU
@@ -238,7 +257,7 @@ export class Fireflies {
   }
 
   /** `daylight` 0..1 из DayState: 1 — день (светлячков нет), 0 — ночь. */
-  update(dt: number, playerPos: Vector3, daylight: number, terrain: Terrain): void {
+  update(dt: number, playerPos: Vector3, daylight: number): void {
     // Появляются и гаснут плавно, а не щелчком на восходе.
     const wantNight = 1 - daylight;
     this.night += (wantNight - this.night) * Math.min(1, dt * 0.7);
@@ -252,24 +271,12 @@ export class Fireflies {
     this.mat.alpha = this.night;
     this.poolMat.alpha = this.night * FIREFLY.poolAlpha;
 
+    // Центр стайки больше не движется (FIREFLY_SEED, зафиксировано) — его
+    // позицию у ореола уже выставили при создании, второй раз копировать
+    // незачем.
+    const cam = this.scene.activeCamera;
     for (const g of this.groups) {
-      // Стайка неспешно плывёт к новой точке и, дойдя, выбирает следующую.
-      const toTarget = g.target.subtract(g.center);
-      if (toTarget.length() < 0.4) {
-        const a = Math.random() * Math.PI * 2;
-        const r = 3 + Math.random() * 6;
-        const nx = g.center.x + Math.cos(a) * r;
-        const nz = g.center.z + Math.sin(a) * r;
-        g.target.set(nx, terrain.heightAt(nx, nz) + FIREFLY.height, nz);
-      } else {
-        toTarget.normalize().scaleInPlace(FIREFLY.driftSpeed * dt);
-        g.center.addInPlace(toTarget);
-      }
-
-      // Ореол едет вместе со стайкой (в воздухе, у её центра) и сам
-      // поворачивается лицом к активной камере — надёжнее billboardMode.
-      g.pool.position.copyFrom(g.center);
-      const cam = this.scene.activeCamera;
+      // Ореол сам поворачивается лицом к активной камере — надёжнее billboardMode.
       if (cam) g.pool.lookAt(cam.globalPosition);
 
       // Огоньки вьются вокруг центра по своим орбитам.
