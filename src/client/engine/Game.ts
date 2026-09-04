@@ -20,6 +20,7 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
+import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
@@ -111,6 +112,8 @@ export class Game {
   private readonly _botPos: Vector3[] = [];
   /** Пятно-тень под самим игроком — опора при прыжке и в VR. */
   private readonly ownShadow: BlobShadow;
+  /** Крестики над ЧУЖИМИ телами: свои игрок видит через HealCrossFx. */
+  private readonly crossFx: WorldCrossFx;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
@@ -175,6 +178,7 @@ export class Game {
     this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
+    this.crossFx = new WorldCrossFx(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -280,6 +284,7 @@ export class Game {
       this.vrVignette?.tick(dt);
       this.updateComfortVignette(dt);
       this.healCrossFx?.update(dt);
+      this.crossFx.update(dt);
       this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
@@ -959,6 +964,11 @@ export class Game {
         break;
       case "drink":
         this.sfx.at(at, () => this.sfx.drink());
+        this.crossFx.burst(x, y, z, 5, W_GREEN);
+        break;
+      case "levelUp":
+        this.sfx.at(at, () => this.sfx.levelUp());
+        this.crossFx.burst(x, y, z, 9, W_ORANGE);
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

@@ -140,7 +140,8 @@ export type ActKind =
   | "arrowHit" // стрела во что-то воткнулась
   | "hurt" // получил урон
   | "blockShield" // блок щитом
-  | "blockSword"; // блок мечом
+  | "blockSword" // блок мечом
+  | "levelUp"; // получен новый уровень (крестики и звук над телом)
 
 const ACT_KINDS: readonly ActKind[] = [
   "swing",

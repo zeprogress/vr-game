@@ -14,6 +14,7 @@ import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
+import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { Sfx } from "../audio/Sfx";
 import type { NetClient } from "../net/NetClient";
 import {
@@ -76,6 +77,7 @@ export class Spectator {
   ) => void;
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly botLights: import("../world/BotLights").BotLights;
+  private readonly crossFx: WorldCrossFx;
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
 
@@ -162,6 +164,7 @@ export class Spectator {
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
+    this.crossFx = new WorldCrossFx(this.scene);
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
@@ -464,6 +467,7 @@ export class Spectator {
     const fwd = this._fwd;
     this.netMobs.update(dt, this.cam.cam.position, fwd);
     this.loot.update(dt);
+    this.crossFx.update(dt);
 
     // Позиционный звук — из точки камеры в направлении взгляда.
     const p = this.cam.cam.position;
@@ -563,6 +567,11 @@ export class Spectator {
         break;
       case "drink":
         this.sfx.at(at, () => this.sfx.drink());
+        this.crossFx.burst(x, y, z, 5, CROSS_GREEN);
+        break;
+      case "levelUp":
+        this.sfx.at(at, () => this.sfx.levelUp());
+        this.crossFx.burst(x, y, z, 9, CROSS_ORANGE);
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

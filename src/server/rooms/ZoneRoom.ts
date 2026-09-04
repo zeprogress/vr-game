@@ -796,6 +796,12 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** id игрока/бота в state.players по его состоянию. */
+  private idOf(p: PlayerState): string | null {
+    for (const [id, st] of this.state.players) if (st === p) return id;
+    return null;
+  }
+
   private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
     const prog = readProgress(p);
     const levels = grantXp(prog, amount);
@@ -805,6 +811,13 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxHp = maxHpFor(p.str);
     p.hp = Math.min(p.maxHp, p.hp + LEVEL_UP_HEAL * levels);
     client?.send(MSG.levelUp, { level: p.level });
+    // Соседям (и спектатору) — чтобы над телом всплыли оранжевые крестики и
+    // прозвучал уровень. У бота клиента нет, так что это единственный сигнал.
+    const id = this.idOf(p);
+    if (id) {
+      const relay: ActRelay = { k: "levelUp", id, x: p.head.x, y: p.head.y, z: p.head.z };
+      this.broadcast(MSG.act, relay, client ? { except: client } : undefined);
+    }
   }
 
   // ---- боты зрителей (Ф10) ----
