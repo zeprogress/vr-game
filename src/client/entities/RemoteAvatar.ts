@@ -41,6 +41,23 @@ const BOT_RIG_SCALE = (() => {
 const BOT_STUB_SCALE = BOT_RIG_SCALE * 1.7;
 /** Ноги модели ниже локального нуля аватара (ноль = уровень глаз ≈ 1.7 м). */
 const BOT_FEET_Y = -1.68;
+/**
+ * Хват оружия у бота. Замер по скелету пака: направление локоть→кулак
+ * совпадает с локальной осью Y кости `Fist.*` — то есть Y идёт вдоль
+ * предплечья наружу. Клинок меча в модели тоже смотрит по +Y
+ * (COMBAT.swordTipLocal), поэтому меч садится в кулак БЕЗ доворота.
+ *
+ * Масштаб: кость наследует масштаб рига (BOT_RIG_SCALE), поэтому здесь он
+ * обратный с поправкой на рост персонажа — иначе меч выглядит игрушечным
+ * в руке двухметрового рыцаря.
+ */
+const BOT_SWORD = { pos: [0, 0.05, 0] as const, rot: [0, 0, 0] as const, scale: 1.7 };
+/**
+ * Щит держат поперёк предплечья, а не вдоль: его лицевая сторона смотрит
+ * по +Y модели (см. shield.flat в LOADOUT — там разворот на π/2 по X кладёт
+ * её вперёд). Тем же разворотом уводим лицо щита с оси предплечья.
+ */
+const BOT_SHIELD = { pos: [0, 0.05, 0] as const, rot: [Math.PI / 2, 0, 0] as const, scale: 1.7 };
 /** Радиус пятна-тени под аватаром, м. */
 const SHADOW_RADIUS = 0.5;
 /** Во сколько раз плашка бота крупнее обычной — её читают со стрима издалека. */
@@ -115,6 +132,9 @@ export class RemoteAvatar implements Hittable {
   private botBody: TransformNode | null = null;
   private botRig: RigInstance | null = null;
   private botHolder: TransformNode | null = null;
+  /** Кости кулаков рига — в них садится оружие бота. */
+  private botFistR: TransformNode | null = null;
+  private botFistL: TransformNode | null = null;
   private botRigLoading = false;
   private botRigWant = 0; // какой skin должен быть на модели (0 — нет)
   private builtRigSkin = 0; // какой skin уже собран
@@ -225,6 +245,7 @@ export class RemoteAvatar implements Hittable {
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
+    this.botFistR = this.botFistL = null;
     this.builtRigSkin = 0;
     this.smoothInit = false;
     this.animW.clear();
@@ -566,11 +587,17 @@ export class RemoteAvatar implements Hittable {
         this.bubbleY = tagY + 1.25; // над увеличенной плашкой
         this.bubble?.setAnchorY(this.bubbleY);
 
+        const bone = (n: string): TransformNode | null =>
+          (rig.root.getDescendants(false).find((d) => d.name === n) as TransformNode | undefined) ??
+          null;
+        this.botFistR = bone("Fist.R");
+        this.botFistL = bone("Fist.L");
+
         this._prevPos.copyFrom(this.root.position); // без ложного «бега» в первый кадр
         this.botHolder = holder;
         this.botRig = rig;
         this.builtRigSkin = want;
-        this.gearKeyR = this.gearKeyL = ""; // оружие боту-персонажу пока не вешаем
+        this.gearKeyR = this.gearKeyL = ""; // кости кулаков появились — пересобрать оружие в них
       }
     } finally {
       this.botRigLoading = false;
@@ -709,14 +736,26 @@ export class RemoteAvatar implements Hittable {
     if (cls !== "sword" && cls !== "bow" && cls !== "shield") return null;
     if (!tier) return null;
 
-    // Бот с моделью персонажа: клип SwordSlash самодостаточен, отдельный меш
-    // меча пока не вешаем (нужен подбор в кость кулака «вживую»).
-    if (this.skin > 0 && this.botRig) return null;
-
     const mesh = this.makeWeapon!(cls as WeaponClass, tier as WeaponTier);
     mesh.isPickable = false;
     mesh.rotationQuaternion = null; // ставим углами Эйлера
     for (const c of mesh.getChildMeshes()) c.isPickable = false;
+
+    // Бот с моделью персонажа: оружие садится в кость кулака и ездит с рукой
+    // во всех клипах, включая SwordSlash.
+    if (this.skin > 0 && this.botRig) {
+      const fist = side === "left" ? this.botFistL : this.botFistR;
+      if (!fist) {
+        mesh.dispose();
+        return null;
+      }
+      const g = side === "left" ? BOT_SHIELD : BOT_SWORD;
+      mesh.parent = fist;
+      mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
+      mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
+      mesh.scaling.setAll(g.scale);
+      return mesh;
+    }
 
     if (this.mode === "vr") {
       const hand = side === "left" ? this.handL : this.handR;

@@ -153,6 +153,7 @@ interface Bot {
   vx: number; // сглаженная скорость — движение без рывков
   vz: number;
   reskinAt: number; // ms последней команды !skin (антиспам)
+  drinkCd: number; // с до следующего глотка зелья
   sayAt: number; // ms последней реплики в чат (антиспам)
   statsAt: number; // ms последнего ответа про статы (антиспам)
   /** Секунд до касания клинка (0 — замаха нет). Урон наносится в этот момент. */
@@ -1075,6 +1076,13 @@ export class ZoneRoom extends Room<ZoneState> {
     p.mana = p.maxMana;
     p.rightCls = "sword";
     p.rightTier = "base";
+    p.leftCls = "shield";
+    p.leftTier = "base";
+    // Зелья выдаём при каждом выходе в мир: подбирать лут бот не умеет,
+    // а без пополнения он однажды просто перестанет лечиться.
+    const bag = emptyBag();
+    addToBag(bag, "potion", BOT.potions);
+    writeBag(p, bag);
     p.skin =
       typeof rec?.skin === "number" && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
@@ -1112,6 +1120,7 @@ export class ZoneRoom extends Room<ZoneState> {
       vx: 0,
       vz: 0,
       reskinAt: 0,
+      drinkCd: 0,
       sayAt: 0,
       statsAt: 0,
       swingIn: 0,
@@ -1146,7 +1155,10 @@ export class ZoneRoom extends Room<ZoneState> {
       hp: p.hp,
       owned: [],
       stowed: [],
-      held: { left: null, right: { cls: "sword", tier: "base" } },
+      held: {
+        left: { cls: "shield", tier: "base" },
+        right: { cls: "sword", tier: "base" },
+      },
       overrides: {},
       skin: p.skin,
       ...readProgress(p),
@@ -1163,6 +1175,8 @@ export class ZoneRoom extends Room<ZoneState> {
       return; // возрождение — общий tickPlayers
     }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
+    bot.drinkCd = Math.max(0, bot.drinkCd - dt);
+    this.botDrink(bot);
 
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
@@ -1300,6 +1314,29 @@ export class ZoneRoom extends Room<ZoneState> {
       const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay);
     }
+  }
+
+  /**
+   * Бот сам лечится: просел по здоровью — пьёт зелье из своей сумки.
+   * Повторяет обработчик MSG.useItem, которым лечится живой игрок, чтобы
+   * правила были одни и те же.
+   */
+  private botDrink(bot: Bot): void {
+    const p = bot.state;
+    if (bot.drinkCd > 0 || p.hp >= p.maxHp * BOT.drinkAt) return;
+
+    const bag = readBag(p);
+    const slot = bag.findIndex((s) => s.item && ITEMS[s.item].heal > 0 && s.count > 0);
+    if (slot < 0) return;
+    const used = takeOne(bag, slot);
+    if (!used) return;
+
+    writeBag(p, bag);
+    p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
+    bot.drinkCd = BOT.drinkCooldown;
+    // Соседям — звук глотка, как у игрока.
+    const relay: ActRelay = { k: "drink", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+    this.broadcast(MSG.act, relay);
   }
 
   /** Момент касания клинка: наносим урон, если моб ещё жив и достаём. */
