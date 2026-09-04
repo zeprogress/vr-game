@@ -388,6 +388,13 @@ export class Fireflies {
 
     const k = 1 - Math.exp(-dt * 2.5); // скорость плавного перехода
     const taken = new Set(this.lamps.map((l) => l.group).filter(Boolean));
+    // Лампа с нулевой яркостью раньше оставалась light.setEnabled(true) —
+    // компилируемый шейдер земли/травы/деревьев считает КАЖДЫЙ включённый
+    // источник на КАЖДОМ пикселе, даже если он даёт ноль света и камера
+    // смотрит совсем в другую сторону. Поэтому реально гасим (setEnabled),
+    // а не только обнуляем яркость — и это единственная причина ночного
+    // тормоза «в пустом углу сцены», не число объектов в кадре.
+    let toggled = false;
 
     for (let li = 0; li < this.lamps.length; li++) {
       const lamp = this.lamps[li];
@@ -418,7 +425,18 @@ export class Fireflies {
       if (g) lamp.light.position.copyFrom(g.center);
       const flicker = 0.85 + 0.15 * Math.sin(this.clock * 3 + li);
       lamp.light.intensity = FIREFLY.lightIntensity * this.night * flicker * lamp.level;
+
+      const shouldBeOn = lamp.level > 0.01;
+      if (shouldBeOn !== lamp.light.isEnabled()) {
+        lamp.light.setEnabled(shouldBeOn);
+        toggled = true;
+      }
     }
+    // Шейдеры зоны заморожены (checkReadyOnlyOnce) и сами не пересоберутся —
+    // пересборка не бесплатна, но лампа входит/выходит из радиуса далеко не
+    // каждый кадр, а цена одного лишнего активного источника на всех
+    // материалах карты куда выше редкой пересборки при пересечении границы.
+    if (toggled) relightMaterials(this.scene);
   }
 
   dispose(): void {

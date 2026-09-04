@@ -11,6 +11,14 @@ import { BOT_TORCHES, relightMaterials } from "./Fireflies";
  * тип затухания задают дефайны материала, а не источника.
  */
 const RANGE = 14;
+/**
+ * Дальше этого — свет физически не достаёт (RANGE), гасим совсем. Раньше
+ * факел оставался light.setEnabled(true) сколько угодно далеко от камеры —
+ * шейдер земли/травы всё равно считал его на КАЖДОМ пикселе экрана, даже
+ * если камера смотрит в другую сторону карты. Небольшой запас сверх RANGE —
+ * чтобы не мигал ровно на границе, пока бот идёт по кругу.
+ */
+const DARK_BEYOND = RANGE + 6;
 /** На сколько источник вынесен ВПЕРЁД от бота — светит в основном на морду. */
 const FORWARD = 1.1;
 /**
@@ -127,11 +135,16 @@ export class BotLights {
       );
     }
     const budget = Math.min(this.lights.length, this.budget);
+    let toggled = false;
     for (let i = 0; i < this.lights.length; i++) {
       const bi = i < budget ? this._order[i] : undefined;
       const l = this.lights[i];
       if (bi === undefined) {
         l.intensity = 0;
+        if (l.isEnabled()) {
+          l.setEnabled(false);
+          toggled = true;
+        }
         continue;
       }
       const b = bots[bi];
@@ -140,8 +153,16 @@ export class BotLights {
       const ox = f ? (f.x / fl) * FORWARD : 0;
       const oz = f ? (f.z / fl) * FORWARD : 0;
       l.position.set(b.x + ox, b.y + UP, b.z + oz);
-      l.intensity = this.night * INTENSITY;
+      const shouldBeOn = Vector3.Distance(l.position, ref) < DARK_BEYOND;
+      l.intensity = shouldBeOn ? this.night * INTENSITY : 0;
+      if (shouldBeOn !== l.isEnabled()) {
+        l.setEnabled(shouldBeOn);
+        toggled = true;
+      }
     }
+    // Замороженные материалы зоны сами не пересоберутся (см. relightMaterials
+    // выше) — бот заходит/выходит из радиуса не каждый кадр.
+    if (toggled) relightMaterials(this.scene);
   }
 
   dispose(): void {
