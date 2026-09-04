@@ -108,7 +108,12 @@ export class Hud {
   private closePanel(): void {
     if (!this.panelOpen) return;
     this.hidePanel();
-    this.relock?.();
+    // Через таймаут, не прямо здесь: если закрытие вызвал сам Esc, вызов
+    // requestPointerLock() СИНХРОННО в его же обработчике браузер иногда
+    // тихо отклоняет — Esc для него это как раз клавиша "отпустить",
+    // и захват той же связкой клавиш обратно он не даёт. Даже нулевая
+    // задержка выносит вызов в отдельный тик, и ограничение не срабатывает.
+    setTimeout(() => this.relock?.(), 0);
   }
 
   private togglePanel(): void {
