@@ -219,9 +219,11 @@ export class Fireflies {
       this.groups.push({ center, dots, phase, pool });
     }
 
-    // Нет стаек (density 0) — не заводим и точечные источники: на слабом GPU
-    // каждый лишний свет в шейдере дорогой.
-    const lampCount = groups === 0 ? 0 : FIREFLY.lamps;
+    // Раньше лампы не зависели от density вообще: у med (0.7, меньше стаек)
+    // всё равно горели все FIREFLY.lamps штук — самая дорогая часть системы
+    // (настоящий PointLight на шейдер земли/травы/деревьев) не облегчалась
+    // между "средне" и "максимум". Теперь считаем от той же density.
+    const lampCount = groups === 0 ? 0 : Math.max(1, Math.round(FIREFLY.lamps * density));
     for (let i = 0; i < lampCount; i++) {
       const lamp = new PointLight(`fireflyLamp${i}`, Vector3.Zero(), scene);
       lamp.diffuse = new Color3(...FIREFLY.lightColor);
