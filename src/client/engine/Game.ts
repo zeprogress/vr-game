@@ -199,6 +199,7 @@ export class Game {
     this.hud.bindInventory(this.inventory);
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
     this.hud.bindSkin(1, (skin) => this.net?.sendSetSkin(skin));
+    this.hud.bindLeaveBot(false, (on) => this.net?.sendSetLeaveBot(on));
     this.hud.bindExit(() => void this.leaveWorld());
 
     // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
@@ -1019,6 +1020,7 @@ export class Game {
     if (data.stowed?.length) this.combat.restoreStowed(data.stowed);
     // Настройки панели с сервера — главнее локальных.
     if (data.overrides && Object.keys(data.overrides).length) importOverrides(data.overrides);
+    if (data.leaveBot !== undefined) this.hud.setLeaveBot(data.leaveBot);
   }
 
   /**

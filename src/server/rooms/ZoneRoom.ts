@@ -35,6 +35,7 @@ import {
   type RtcMsg,
   type SpendMsg,
   type SetSkinMsg,
+  type SetLeaveBotMsg,
   type CastMsg,
   type WorldLoadoutMsg,
   type SetTimeMsg,
@@ -141,6 +142,8 @@ interface Runtime {
   overrides: Record<string, unknown>;
   /** Добитых мобов за сессию + сейв — таблица лидеров (Ф10). */
   kills: number;
+  /** Продолжать ли персонажа ботом после выхода. По умолчанию — нет. */
+  leaveBot: boolean;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -454,6 +457,16 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!Number.isFinite(n) || n < 1 || n > BOT.skins) return;
       p.skin = n;
       store.put(rt.token, { skin: n });
+    });
+
+    // Оставлять ли персонажа ботом после выхода (панель C). Срабатывает
+    // только у токенов nick:<ник> — у гостевого бот и так никогда не встаёт
+    // (см. onLeave), но флаг всё равно сохраняем, вреда нет.
+    this.onMessage(MSG.setLeaveBot, (client: Client, msg: SetLeaveBotMsg) => {
+      const rt = this.rt.get(client.sessionId);
+      if (!rt?.token) return;
+      rt.leaveBot = msg?.on !== 0;
+      store.put(rt.token, { leaveBot: rt.leaveBot });
     });
 
     this.onMessage(MSG.cast, (client: Client, msg: CastMsg) => {
@@ -1275,6 +1288,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stowed: [],
       overrides: {},
       kills: rec?.kills ?? 0,
+      leaveBot: rec?.leaveBot === true, // ботом не читается — только у живого игрока
     };
     this.rt.set(id, rt);
 
@@ -2008,6 +2022,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stowed: sanitizeStowed(rec?.stowed),
       overrides: sanitizeOverrides(rec?.overrides),
       kills: rec?.kills ?? 0,
+      leaveBot: rec?.leaveBot === true,
     });
 
     client.send(
@@ -2021,6 +2036,7 @@ export class ZoneRoom extends Room<ZoneState> {
             stowed: sanitizeStowed(rec.stowed),
             held: sanitizeHeld(rec.held),
             overrides: sanitizeOverrides(rec.overrides),
+            leaveBot: rec.leaveBot === true,
           }
         : null,
     );
@@ -2073,8 +2089,15 @@ export class ZoneRoom extends Room<ZoneState> {
     this.rt.delete(client.sessionId);
     store.flush();
 
-    // Стрим-игрок вышел — персонаж продолжает жить ботом, пока ник допущен.
-    if (streamNorm && p && this.allowedNick(streamNorm) && this.bots.size < BOT.maxBots) {
+    // Стрим-игрок вышел — персонаж продолжает жить ботом, только если сам
+    // это включил (панель C, по умолчанию — нет) и ник всё ещё допущен.
+    if (
+      streamNorm &&
+      p &&
+      rt?.leaveBot &&
+      this.allowedNick(streamNorm) &&
+      this.bots.size < BOT.maxBots
+    ) {
       this.spawnBot(p.nick, streamNorm);
     }
 

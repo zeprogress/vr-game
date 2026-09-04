@@ -25,6 +25,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   skin?: number;
   /** Добитых мобов за всё время — для таблицы лидеров (Ф10). */
   kills?: number;
+  /** Продолжать ли ботом после выхода (панель C). По умолчанию — нет. */
+  leaveBot?: boolean;
   updatedAt: number;
 }
 
@@ -47,6 +49,7 @@ function blank(token: string): PlayerRecord {
     overrides: {},
     bag: emptyBag(),
     kills: 0,
+    leaveBot: false,
     updatedAt: 0,
   };
 }

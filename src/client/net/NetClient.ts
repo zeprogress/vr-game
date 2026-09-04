@@ -22,6 +22,7 @@ import {
   type ComfortMsg,
   type SetPvpMsg,
   type SetSkinMsg,
+  type SetLeaveBotMsg,
   type SpecCmd,
   type KillFeedMsg,
   type BotSayMsg,
@@ -298,6 +299,11 @@ export class NetClient {
   /** Сменить модельку персонажа (панель C, плоский режим). 1..BOT.skins. */
   sendSetSkin(skin: number): void {
     this.room?.send(MSG.setSkin, { skin } satisfies SetSkinMsg);
+  }
+
+  /** Оставлять ли персонажа ботом после выхода (панель C). */
+  sendSetLeaveBot(on: boolean): void {
+    this.room?.send(MSG.setLeaveBot, { on: on ? 1 : 0 } satisfies SetLeaveBotMsg);
   }
 
   /** Команда стрим-дашборда/спектатора (этап 17 Ф5). */

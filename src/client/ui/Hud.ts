@@ -26,6 +26,8 @@ export class Hud {
   private toastTimer: number | null = null;
   private skin = 0;
   private onSkin: ((skin: number) => void) | null = null;
+  private leaveBot = false;
+  private onLeaveBot: ((on: boolean) => void) | null = null;
   private onExit: (() => void) | null = null;
 
   constructor() {
@@ -141,6 +143,23 @@ export class Hud {
   setSkin(skin: number): void {
     if (skin === this.skin) return;
     this.skin = skin;
+    this.renderPanel();
+  }
+
+  /**
+   * Подключить переключатель «оставить бота после выхода» — по умолчанию
+   * выключен: персонаж просто исчезает с сервера, ботом не продолжает.
+   */
+  bindLeaveBot(current: boolean, onChange: (on: boolean) => void): void {
+    this.leaveBot = current;
+    this.onLeaveBot = onChange;
+    this.renderPanel();
+  }
+
+  /** Сервер прислал сохранённое значение при входе/переподключении. */
+  setLeaveBot(on: boolean): void {
+    if (on === this.leaveBot) return;
+    this.leaveBot = on;
     this.renderPanel();
   }
 
@@ -332,6 +351,24 @@ export class Hud {
       "C / Esc — открыть-закрыть эту панель";
     keys.style.whiteSpace = "pre-line";
     this.panel.appendChild(keys);
+
+    if (this.onLeaveBot) {
+      const row = el("div", "display:flex;align-items:center;gap:8px;margin-top:14px;");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = this.leaveBot;
+      box.id = "hudLeaveBot";
+      box.addEventListener("change", () => {
+        this.leaveBot = box.checked;
+        this.onLeaveBot?.(box.checked);
+      });
+      const label = document.createElement("label");
+      label.htmlFor = "hudLeaveBot";
+      label.style.cssText = "font-size:13px;cursor:pointer;";
+      label.textContent = "Оставить бота после выхода";
+      row.append(box, label);
+      this.panel.appendChild(row);
+    }
 
     if (this.onExit) {
       const exit = document.createElement("button");

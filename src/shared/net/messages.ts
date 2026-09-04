@@ -20,6 +20,8 @@ export const MSG = {
   spend: "sp",
   /** клиент -> сервер: сменить модельку персонажа (панель C, плоский режим). */
   setSkin: "sk",
+  /** клиент -> сервер: оставлять ли персонажа ботом после выхода (панель C). */
+  setLeaveBot: "lb",
   /** сервер -> клиент: ты возродился, встань сюда. */
   respawn: "rs",
   /** сервер -> клиент: получен уровень (для тоста и звука). */
@@ -290,7 +292,12 @@ export interface HeldWeapons {
  * за спиной в прошлый раз. null — токен новый.
  */
 export type CharMsg =
-  | (SaveMsg & { stowed?: StowedWeapon[]; held?: HeldWeapons; overrides?: OverridesMsg })
+  | (SaveMsg & {
+      stowed?: StowedWeapon[];
+      held?: HeldWeapons;
+      overrides?: OverridesMsg;
+      leaveBot?: boolean;
+    })
   | null;
 
 export interface HitMobMsg {
@@ -343,6 +350,11 @@ export interface SpendMsg {
 /** Смена модельки персонажа (1..BOT.skins) из панели C. Только плоский режим. */
 export interface SetSkinMsg {
   skin: number;
+}
+
+/** Оставлять ли персонажа ботом после выхода (панель C). По умолчанию — нет. */
+export interface SetLeaveBotMsg {
+  on: number;
 }
 
 /** Куда встать после возрождения. */
