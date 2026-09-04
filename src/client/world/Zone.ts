@@ -64,14 +64,15 @@ export interface ZoneQuality {
   /** true — небо без облаков и без периодической перерисовки градиента. */
   simpleSky?: boolean;
   /**
-   * false — факелы у ботов зрителей (BotLights) совсем не зажигаются ночью.
-   * Те же PointLight, что у светлячков, только раньше не гасли ни на одном
-   * пресете — их создают ДО minLights-урезания материалов (см. ниже), и на
-   * потом созданных материалах персонажей (recolorCharacter) минимальный
-   * бюджет вообще не применялся. Пара факелов на слабом телефоне при паре
-   * ботов в кадре ночью — уже заметно.
+   * Сколько факелов ботов зрителей (BotLights, максимум BOT_TORCHES=2)
+   * зажигать ночью; `false` — совсем ни одного. Те же PointLight, что у
+   * светлячков, только раньше не гасли и не урезались ни на одном пресете —
+   * их создают ДО minLights-урезания материалов (см. ниже), и на потом
+   * созданных материалах персонажей (recolorCharacter) минимальный бюджет
+   * вообще не применялся. Пара факелов на слабом телефоне при паре ботов
+   * в кадре ночью — уже заметно.
    */
-  botTorches?: boolean;
+  botTorches?: boolean | number;
 }
 
 export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
@@ -90,7 +91,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   // за пятью светлячками, и в шейдер мобов/персонажей/деревьев (потолок 3)
   // не попадали вовсе — бот светил только земле и траве.
   const botLights = new BotLights(scene);
-  if (quality.botTorches === false) botLights.setForceOff(true);
+  if (typeof quality.botTorches === "number") botLights.setBudget(quality.botTorches);
+  else if (quality.botTorches === false) botLights.setForceOff(true);
 
   const sky = createSky(scene, day, quality.simpleSky);
 

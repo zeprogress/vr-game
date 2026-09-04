@@ -70,7 +70,10 @@ const PRESETS: Record<Quality, Preset> = {
     botTorches: false,
     fpsCap: 30,
   },
-  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, leanMobs: false, fpsCap: 30 },
+  // med не роняет картинку (трава/светлячки почти как на high), но ночная
+  // подсветка ботов всё равно 2 полноценных PointLight на телефон — режем
+  // до одного факела, визуально почти незаметно, а по свету вдвое дешевле.
+  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, leanMobs: false, botTorches: 1, fpsCap: 30 },
   high: { scaling: 1.0, grass: 1, fireflies: 1, leanMobs: false, fpsCap: 30 },
 };
 

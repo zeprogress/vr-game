@@ -49,8 +49,12 @@ export class BotLights {
   private readonly lights: PointLight[] = [];
   private night = 0;
   private enabled = false;
-  /** VR: те же PointLight'ы вдвое дороже (два глаза) на заметно слабом GPU шлема. */
-  private forceOff = false;
+  /**
+   * Сколько факелов из BOT_TORCHES реально зажигать. VR (два глаза, вдвое
+   * дороже) гасит все через setForceOff; слабый спектатор (?q=med на
+   * телефоне) может срезать половину через setBudget, не теряя эффект целиком.
+   */
+  private budget = BOT_TORCHES;
   private readonly _order: number[] = [];
 
   constructor(private readonly scene: Scene) {
@@ -72,10 +76,16 @@ export class BotLights {
    * выбрать заранее. Сразу гасит текущие источники, если они горели.
    */
   setForceOff(v: boolean): void {
-    this.forceOff = v;
-    if (v && this.enabled) {
-      this.enabled = false;
-      for (const l of this.lights) l.setEnabled(false);
+    this.setBudget(v ? 0 : BOT_TORCHES);
+  }
+
+  /** Сколько факелов из BOT_TORCHES разрешено зажигать (0..BOT_TORCHES). */
+  setBudget(n: number): void {
+    this.budget = n;
+    if (this.enabled) {
+      for (let i = 0; i < this.lights.length; i++) {
+        if (i >= n) this.lights[i].setEnabled(false);
+      }
     }
   }
 
@@ -95,10 +105,10 @@ export class BotLights {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
     this.night += (want - this.night) * Math.min(1, dt * 0.8);
 
-    const on = this.night > 0.02 && bots.length > 0 && !this.forceOff;
+    const on = this.night > 0.02 && bots.length > 0 && this.budget > 0;
     if (on !== this.enabled) {
       this.enabled = on;
-      for (const l of this.lights) l.setEnabled(on);
+      for (let i = 0; i < this.lights.length; i++) this.lights[i].setEnabled(on && i < this.budget);
       // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
       // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
       // как шейдер собран по дневному набору источников, и в него не попадают.
@@ -116,8 +126,9 @@ export class BotLights {
         (a, b) => Vector3.DistanceSquared(bots[a], ref) - Vector3.DistanceSquared(bots[b], ref),
       );
     }
+    const budget = Math.min(this.lights.length, this.budget);
     for (let i = 0; i < this.lights.length; i++) {
-      const bi = this._order[i];
+      const bi = i < budget ? this._order[i] : undefined;
       const l = this.lights[i];
       if (bi === undefined) {
         l.intensity = 0;
