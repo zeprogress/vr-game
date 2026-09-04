@@ -34,6 +34,7 @@ import {
   type OverridesMsg,
   type RtcMsg,
   type SpendMsg,
+  type SetSkinMsg,
   type CastMsg,
   type WorldLoadoutMsg,
   type SetTimeMsg,
@@ -154,7 +155,7 @@ interface Bot {
   lootTarget: string | null;
   /** Нормализованный ник, за которым идём между боями (!follow/!come, Ф10). null — никого. */
   followNorm: string | null;
-  /** ms последней эмоции (!cheer/!roll/!jump) — антиспам. */
+  /** ms последней эмоции (!cheer, авто-кувырок на бегу, левелап) — антиспам. */
   emoteAt: number;
   /** ms — до этого момента бот стоит на месте, играет эмоцию. */
   emoteFreezeUntil: number;
@@ -441,6 +442,18 @@ export class ZoneRoom extends Room<ZoneState> {
       const beforeMana = p.maxMana;
       p.maxMana = maxManaFor(p.int);
       p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
+    });
+
+    // Смена модельки (панель C) — реальные игроки теперь тоже её носят,
+    // не только боты. Живёт только в плоском режиме — рендер решает клиент.
+    this.onMessage(MSG.setSkin, (client: Client, msg: SetSkinMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt?.token) return;
+      const n = Math.floor(Number(msg?.skin));
+      if (!Number.isFinite(n) || n < 1 || n > BOT.skins) return;
+      p.skin = n;
+      store.put(rt.token, { skin: n });
     });
 
     this.onMessage(MSG.cast, (client: Client, msg: CastMsg) => {
@@ -837,6 +850,11 @@ export class ZoneRoom extends Room<ZoneState> {
       const relay: ActRelay = { k: "levelUp", id, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay, client ? { except: client } : undefined);
     }
+    // У бота уровень ещё и отмечаем эмоцией — виден со стороны на модельке.
+    if (id?.startsWith("bot:")) {
+      const bot = this.bots.get(id.slice(4));
+      if (bot) this.triggerEmote(bot, "cheer");
+    }
   }
 
   // ---- боты зрителей (Ф10) ----
@@ -889,15 +907,25 @@ export class ZoneRoom extends Room<ZoneState> {
     );
   }
 
-  /** `!cheer` / `!roll` / `!jump` — разовая эмоция на модельке бота (Ф10). */
+  /** `!cheer` — разовая эмоция на модельке бота (Ф10). */
   private botEmote(nick: string, norm: string, emote: BotEmote): void {
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
+    if (Date.now() - bot.emoteAt < BOT.emoteCooldown * 1000) return; // антиспам, молча
+    this.triggerEmote(bot, emote);
+  }
+
+  /**
+   * Пускает клип эмоции без проверки кулдауна из чата — общий момент для
+   * `!cheer` и автоматических триггеров (уровень, случайный кувырок на бегу).
+   * Сам кулдаун (`emoteAt`) всё равно ставим — иначе автотриггер и команда
+   * из чата могли бы наложиться друг на друга без паузы между ними.
+   */
+  private triggerEmote(bot: Bot, emote: BotEmote): void {
     const now = Date.now();
-    if (now - bot.emoteAt < BOT.emoteCooldown * 1000) return; // антиспам, молча
     bot.emoteAt = now;
     // Стоим смирно, пока играет клип — иначе модель "едет" под анимацией.
     bot.emoteFreezeUntil = now + BOT.emoteDuration[emote] * 1000;
@@ -969,8 +997,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.deleteBot(nick, norm);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
-    } else if (cmd === "!cheer" || cmd === "!roll" || cmd === "!jump") {
-      this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
+    } else if (cmd === "!cheer") {
+      // !roll и !jump убраны из чата: roll теперь сам иногда играет на
+      // бегу, а отдельная команда под него/jump не нужна (см. tickBot).
+      this.botEmote(nick, norm, "cheer");
     } else if (cmd === "!follow") {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
@@ -1116,7 +1146,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !cheer/!roll/!jump — эмоции · !follow <ник> / !come — идти рядом " +
+      "Ещё: !cheer — эмоция · !follow <ник> / !come — идти рядом " +
         "(с ботом или стримером), !unfollow — назад к делам · обычное сообщение " +
         "в чат он скажет вслух над головой. Зайти за своего героя самому: " +
         "ссылка в описании стрима, ник — как в Twitch.",
@@ -1321,13 +1351,17 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
-    this.botDrink(bot);
 
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
       bot.swingIn -= dt;
       if (bot.swingIn <= 0) this.resolveBotHit(bot);
     }
+
+    // Глоток — уже ПОСЛЕ добивания: добивание может дать уровень и полечить
+    // (LEVEL_UP_HEAL), а зелёные крестики зелья не должны мелькать вместе с
+    // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
+    this.botDrink(bot);
 
     const cx = RESPAWN.spawnX;
     const cz = RESPAWN.spawnZ;
@@ -1476,7 +1510,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
     // на смене цели и у путевых точек.
-    // На замахе и на эмоции (!cheer/!roll/!jump) ноги на месте: иначе модель
+    // На замахе и на эмоции (!cheer, авто-кувырок, левелап) ноги на месте: иначе модель
     // «едет» посреди анимации. Расталкивание при этом работает — соседи
     // всё равно не должны стоять внутри.
     const emoting = Date.now() < bot.emoteFreezeUntil;
@@ -1497,6 +1531,18 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Доворот модели — по фактической скорости (плавнее, чем к цели напрямую).
     const spd = Math.hypot(bot.vx, bot.vz);
+
+    // Кувырок сам собой на бегу — редко, только если сейчас не бой; кулдаун
+    // общий с !cheer, чтобы автотриггер и команда из чата не наложились.
+    if (
+      spd > BOT.moveSpeed * 0.7 &&
+      bot.swingIn <= 0 &&
+      Date.now() - bot.emoteAt > BOT.emoteCooldown * 1000 &&
+      Math.random() < BOT.rollChancePerSec * dt
+    ) {
+      this.triggerEmote(bot, "roll");
+    }
+
     if (spd > 0.15) {
       const wantYaw = Math.atan2(bot.vx, bot.vz);
       let d = wantYaw - bot.yaw;
@@ -1896,6 +1942,14 @@ export class ZoneRoom extends Room<ZoneState> {
       p.agi = rec.agi;
       p.int = rec.int;
     }
+    // Модель персонажа (панель C, плоский режим). Если заходят за бота —
+    // rec.skin уже стоит от него, модель не меняется. Новому токену без
+    // сейва даём случайную, а не заглушку по умолчанию: обычные игроки
+    // тоже должны выглядеть персонажем сразу, без похода в панель.
+    p.skin =
+      rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
+        ? rec.skin
+        : 1 + Math.floor(Math.random() * BOT.skins);
     p.maxHp = maxHpFor(p.str);
     p.maxMana = maxManaFor(p.int);
     p.mana = p.maxMana;
@@ -1972,6 +2026,9 @@ export class ZoneRoom extends Room<ZoneState> {
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: rt.kills,
+      // Даже если модель не меняли ни разу: случайная, выданная при входе
+      // без сейва, должна закрепиться за ником, а не выпадать заново.
+      skin: p.skin,
     };
     store.put(rt.token, patch);
   }

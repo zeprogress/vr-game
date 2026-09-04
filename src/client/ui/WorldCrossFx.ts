@@ -13,7 +13,7 @@ export { CROSS_GREEN, CROSS_ORANGE };
 const POOL = 48;
 const LIFE = 1.5; // с полёта
 const RISE = 1.6; // м вверх за жизнь
-const SPREAD = 0.55; // м разлёта по горизонтали
+const SPREAD = 0.9; // м разлёта по горизонтали
 
 interface Cross {
   mesh: Mesh;
@@ -40,8 +40,8 @@ export class WorldCrossFx {
   private next = 0;
 
   constructor(private readonly scene: Scene) {
-    const bar = MeshBuilder.CreateBox("wCrossH", { width: 0.22, height: 0.05, depth: 0.05 }, scene);
-    const post = MeshBuilder.CreateBox("wCrossV", { width: 0.05, height: 0.22, depth: 0.05 }, scene);
+    const bar = MeshBuilder.CreateBox("wCrossH", { width: 0.34, height: 0.08, depth: 0.08 }, scene);
+    const post = MeshBuilder.CreateBox("wCrossV", { width: 0.08, height: 0.34, depth: 0.08 }, scene);
     const merged = Mesh.MergeMeshes([bar, post], true, true);
     const proto = merged ?? bar;
     if (!merged) post.dispose();

@@ -16,6 +16,8 @@ const BASE_W = 448;
 const H = 208;
 const NAME_FONT = "bold 56px system-ui, sans-serif";
 const LVL_FONT = "36px system-ui, sans-serif";
+/** Метка бота зрителя перед ником — единственное отличие от живого игрока со стороны. */
+const BOT_MARK = "🤖 ";
 
 /**
  * Плашка с именем и уровнем над мобом. Всегда развёрнута к камере
@@ -40,6 +42,11 @@ export class NameTag {
     /** Уровень (вторая строка). null — не рисуется. Меняется через setInfo(). */
     level: number | null,
     accent: Color3 = new Color3(1, 0.86, 0.4),
+    /**
+     * Бот зрителя, а не живой игрок — оба теперь ходят с одной и той же
+     * моделью персонажа (Ф10), со стороны их иначе не отличить.
+     */
+    private readonly isBot: boolean = false,
   ) {
     this.accent = accent;
 
@@ -47,7 +54,7 @@ export class NameTag {
     // не требовала пересоздавать текстуру.
     const measure = document.createElement("canvas").getContext("2d")!;
     measure.font = NAME_FONT;
-    let textW = measure.measureText(name).width;
+    let textW = measure.measureText((isBot ? BOT_MARK : "") + name).width;
     measure.font = LVL_FONT;
     textW = Math.max(textW, measure.measureText("999 ур.").width);
     const padX = 30;
@@ -116,7 +123,11 @@ export class NameTag {
 
     ctx.fillStyle = "#f2f4fb";
     ctx.font = NAME_FONT;
-    ctx.fillText(name, W / 2, level === null ? H / 2 : H / 2 - 20);
+    ctx.fillText(
+      (this.isBot ? BOT_MARK : "") + name,
+      W / 2,
+      level === null ? H / 2 : H / 2 - 20,
+    );
 
     if (level !== null) {
       const a = this.accent;

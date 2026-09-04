@@ -1,11 +1,16 @@
 /**
- * Панель живой настройки хвата оружия у ботов: `?gear=1`.
+ * Панель живой настройки хвата оружия в руке модели персонажа: `?gear=1`.
  *
- * Зачем: посадку меча и щита в кость кулака не подобрать вслепую — модель из
+ * Зачем: посадку оружия в кость кулака не подобрать вслепую — модель из
  * пака приходит со своим разворотом от загрузчика glTF, и каждая проверка
  * «на глаз» стоила цикла сборка → деплой → зайти в игру. Панель двигает
- * значения в BOT_GEAR прямо во время игры и тут же пересаживает оружие на
- * всех ботах. Ничего не перезагружается, сервер не трогается.
+ * значения в BOT_GEAR прямо во время игры и тут же пересаживает оружие
+ * везде, где оно сейчас надето. Ничего не перезагружается, сервер не трогается.
+ *
+ * Значения общие для ботов зрителей И обычных игроков в плоском режиме —
+ * с тех пор как оба носят одну и ту же модель персонажа (Ф10). Меч и щит
+ * уже подобраны; лук и посох — только заготовка (см. BOT_GEAR), чтобы
+ * проверить их, нужен рядом кто-то, кто их держит.
  *
  * Подобранное лежит в localStorage (переживает F5) и показывается готовым
  * куском кода — его достаточно вписать в botGear.ts, чтобы уехало в прод.
@@ -19,7 +24,7 @@ import {
   type GearTune,
 } from "../entities/botGear";
 
-type Row = { part: "sword" | "shield"; field: "pos" | "rot"; axis: 0 | 1 | 2 };
+type Row = { part: "sword" | "shield" | "bow" | "staff"; field: "pos" | "rot"; axis: 0 | 1 | 2 };
 
 const CSS = `
 #gearTuner{position:fixed;top:8px;left:8px;z-index:9999;width:280px;max-height:92vh;
@@ -63,14 +68,14 @@ export function mountGearTuner(): () => void {
 
   const fmt = (n: number): string => (Math.abs(n) < 0.0005 ? "0" : n.toFixed(3));
   const dump = (): string => {
-    const one = (k: "sword" | "shield", g: GearTune): string =>
+    const one = (k: "sword" | "shield" | "bow" | "staff", g: GearTune): string =>
       `  ${k}: { pos: [${g.pos.map(fmt).join(", ")}], rot: [${g.rot
         .map(fmt)
         .join(", ")}], scale: ${fmt(g.scale)}, auto: ${g.auto} },`;
     return `export const BOT_GEAR = {\n${one("sword", BOT_GEAR.sword)}\n${one(
       "shield",
       BOT_GEAR.shield,
-    )}\n};`;
+    )}\n${one("bow", BOT_GEAR.bow)}\n${one("staff", BOT_GEAR.staff)}\n};`;
   };
 
   const sync = (): void => {
@@ -90,7 +95,7 @@ export function mountGearTuner(): () => void {
   };
 
   const slider = (
-    part: "sword" | "shield",
+    part: "sword" | "shield" | "bow" | "staff",
     field: "pos" | "rot",
     axis: 0 | 1 | 2,
     min: number,
@@ -123,7 +128,7 @@ export function mountGearTuner(): () => void {
     rows.push({ row: { part, field, axis }, slider: input, view });
   };
 
-  const scaleRow = (part: "sword" | "shield"): void => {
+  const scaleRow = (part: "sword" | "shield" | "bow" | "staff"): void => {
     const line = document.createElement("div");
     line.className = "r";
     const label = document.createElement("label");
@@ -146,7 +151,7 @@ export function mountGearTuner(): () => void {
     box.appendChild(line);
   };
 
-  const section = (title: string, part: "sword" | "shield"): void => {
+  const section = (title: string, part: "sword" | "shield" | "bow" | "staff"): void => {
     const h = document.createElement("h4");
     h.className = "sec";
     h.textContent = title;
@@ -234,6 +239,8 @@ export function mountGearTuner(): () => void {
 
   section("МЕЧ · правая рука", "sword");
   section("ЩИТ · левая рука", "shield");
+  section("ЛУК", "bow");
+  section("ПОСОХ", "staff");
 
   const btns = document.createElement("div");
   btns.className = "sec";

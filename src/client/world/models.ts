@@ -49,6 +49,18 @@ export const BOT_SKIN_MODELS: readonly ModelName[] = [
   "charPirate",
 ];
 
+/** Те же 8, человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
+export const BOT_SKIN_LABELS: readonly string[] = [
+  "Рыцарь",
+  "Золотой рыцарь",
+  "Маг",
+  "Ведьма",
+  "Эльф",
+  "Ниндзя",
+  "Гоблин",
+  "Пират",
+];
+
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
 
 export function containerFor(scene: Scene, path: string): Promise<AssetContainer> {

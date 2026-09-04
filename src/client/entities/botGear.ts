@@ -21,11 +21,15 @@ export type GearTune = {
   auto: boolean;
 };
 
-export const BOT_GEAR: { sword: GearTune; shield: GearTune } = {
+export const BOT_GEAR: { sword: GearTune; shield: GearTune; bow: GearTune; staff: GearTune } = {
   // Подобрано вживую панелью ?gear=1. Разворот щита задан углом: расчёт по
   // положению правой руки (auto) давал верную ось, но не тот наклон ремня.
   sword: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
   shield: { pos: [-0.1, 0.16, 0.135], rot: [-0.497, 0.633, 1.383], scale: 1.7, auto: false },
+  // Ещё не подобраны — только заготовка (по образцу меча, до правки на глаз).
+  // `auto` тут ничего не значит (он только для щита), но поле есть у всех.
+  bow: { pos: [0, 0.1, -0.05], rot: [0, -1.57, -1.3], scale: 1.7, auto: false },
+  staff: { pos: [0, 0.1, -0.05], rot: [0, 0, 0], scale: 1.7, auto: false },
 };
 
 /**
@@ -47,7 +51,7 @@ export function loadGearTune(): void {
     const raw = localStorage.getItem(KEY);
     if (!raw) return;
     const v = JSON.parse(raw) as Partial<typeof BOT_GEAR>;
-    for (const k of ["sword", "shield"] as const) {
+    for (const k of ["sword", "shield", "bow", "staff"] as const) {
       const s = v[k];
       if (!s) continue;
       const d = BOT_GEAR[k];

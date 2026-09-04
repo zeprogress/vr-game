@@ -197,6 +197,8 @@ export class Game {
     this.hud.bindProgression(this.progression);
     this.hud.bindPointerLock(() => this.requestPointerLock());
     this.hud.bindInventory(this.inventory);
+    // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
+    this.hud.bindSkin(1, (skin) => this.net?.sendSetSkin(skin));
 
     // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
     const syncPotion = (): void => {
@@ -694,6 +696,7 @@ export class Game {
   private serverHp = -1;
 
   private syncSelf(dt: number, self: PlayerState): void {
+    this.hud.setSkin(self.skin);
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
     // Повышение уровня тоже подливает HP — там крестики оранжевые.

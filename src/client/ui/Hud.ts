@@ -1,6 +1,7 @@
-import { PLAYER_HP } from "#shared/constants";
+import { PLAYER_HP, BOT } from "#shared/constants";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
+import { BOT_SKIN_LABELS } from "../world/models";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 
@@ -23,6 +24,8 @@ export class Hud {
   private prog: Progression | null = null;
   private inv: Inventory | null = null;
   private toastTimer: number | null = null;
+  private skin = 0;
+  private onSkin: ((skin: number) => void) | null = null;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
@@ -93,6 +96,23 @@ export class Hud {
     inv.onChange(() => this.renderPanel());
   }
 
+  /**
+   * Подключить смену модельки — в панели появится «Внешность» со стрелками.
+   * Видна только в плоском режиме (в VR панель C и так не открыть с клавиатуры).
+   */
+  bindSkin(current: number, onChange: (skin: number) => void): void {
+    this.skin = current;
+    this.onSkin = onChange;
+    this.renderPanel();
+  }
+
+  /** Сервер подтвердил новую модельку (или прислал её при входе/переподключении). */
+  setSkin(skin: number): void {
+    if (skin === this.skin) return;
+    this.skin = skin;
+    this.renderPanel();
+  }
+
   /** Подключить прогрессию — включает панель персонажа на клавишу C. */
   bindProgression(prog: Progression): void {
     this.prog = prog;
@@ -149,6 +169,36 @@ export class Hud {
   }
 
   /** Раздел «Сумка» внизу панели персонажа. */
+  /** Раздел «Внешность»: стрелками листаем 8 моделей, применяется сразу. */
+  private renderSkin(): void {
+    if (!this.onSkin) return;
+
+    const head = el("div", "margin-top:12px;padding-top:8px;border-top:1px solid #3a4056;font-weight:bold;");
+    head.textContent = "Внешность";
+    this.panel.appendChild(head);
+
+    const row = el("div", "display:flex;align-items:center;gap:8px;margin-top:6px;");
+    const arrow = (dir: -1 | 1): HTMLButtonElement => {
+      const btn = document.createElement("button");
+      btn.textContent = dir < 0 ? "‹" : "›";
+      btn.style.cssText =
+        "width:30px;height:28px;cursor:pointer;background:#2a2e40;color:#fff;" +
+        "border:1px solid #5a6480;border-radius:5px;font-weight:bold;font-size:16px;";
+      btn.addEventListener("click", () => {
+        // 1..BOT.skins по кругу.
+        const n = ((this.skin - 1 + dir + BOT.skins) % BOT.skins) + 1;
+        this.skin = n;
+        this.onSkin?.(n);
+        this.renderPanel();
+      });
+      return btn;
+    };
+    const label = el("span", "flex:1;text-align:center;");
+    label.textContent = BOT_SKIN_LABELS[this.skin - 1] ?? "…";
+    row.append(arrow(-1), label, arrow(1));
+    this.panel.appendChild(row);
+  }
+
   private renderBag(): void {
     const inv = this.inv;
     if (!inv) return;
@@ -234,6 +284,7 @@ export class Hud {
     free.textContent = `Свободных очков: ${p.unspent}`;
     this.panel.appendChild(free);
 
+    this.renderSkin();
     this.renderBag();
 
     const keys = el("div", "margin-top:14px;padding-top:10px;border-top:1px solid #3a4056;font-size:12px;opacity:0.6;line-height:1.7;");

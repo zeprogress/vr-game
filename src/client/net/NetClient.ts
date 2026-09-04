@@ -21,6 +21,7 @@ import {
   type SetTimeMsg,
   type ComfortMsg,
   type SetPvpMsg,
+  type SetSkinMsg,
   type SpecCmd,
   type KillFeedMsg,
   type BotSayMsg,
@@ -292,6 +293,11 @@ export class NetClient {
   /** Включить/выключить свой флаг PvP. Итог придёт через onPvp. */
   sendPvp(on: boolean): void {
     this.room?.send(MSG.setPvp, { on: on ? 1 : 0 } satisfies SetPvpMsg);
+  }
+
+  /** Сменить модельку персонажа (панель C, плоский режим). 1..BOT.skins. */
+  sendSetSkin(skin: number): void {
+    this.room?.send(MSG.setSkin, { skin } satisfies SetSkinMsg);
   }
 
   /** Команда стрим-дашборда/спектатора (этап 17 Ф5). */

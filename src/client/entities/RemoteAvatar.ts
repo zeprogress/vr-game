@@ -205,7 +205,15 @@ export class RemoteAvatar implements Hittable {
     this.mat.specularColor = new Color3(0.1, 0.1, 0.1);
 
     this.shadow = new BlobShadow(scene, id);
-    this.nameTag = new NameTag(scene, this.root, new Vector3(0, 0.42, 0), nick, null);
+    this.nameTag = new NameTag(
+      scene,
+      this.root,
+      new Vector3(0, 0.42, 0),
+      nick,
+      null,
+      undefined,
+      id.startsWith("bot:"),
+    );
     this.setMode(mode);
     this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
@@ -272,10 +280,13 @@ export class RemoteAvatar implements Hittable {
     this.gearL = this.gearR = null;
     this.gearKeyL = this.gearKeyR = "";
 
-    if (this.skin > 0) {
-      // Бот зрителя (Ф10): персонаж из пака грузится асинхронно; пока не
-      // пришёл — показываем процедурную заглушку (4 варианта). Корпус целиком
-      // поворачивается по yaw (крутится this.root, см. update()).
+    if (this.skin > 0 && mode === "flat") {
+      // Модель персонажа: раньше только у ботов зрителей (Ф10), теперь и у
+      // обычных игроков в плоском режиме — see MSG.setSkin. В VR у игрока
+      // настоящий трекинг рук, рига там нет — см. ветку ниже.
+      // Персонаж из пака грузится асинхронно; пока не пришёл — показываем
+      // процедурную заглушку (4 варианта). Корпус целиком поворачивается по
+      // yaw (крутится this.root, см. update()).
       const stub = ((this.skin - 1) % 4) + 1;
       this.botBody = makeBotBody(this.scene, stub, this.mat.diffuseColor);
       this.botBody.parent = this.root;
@@ -330,9 +341,14 @@ export class RemoteAvatar implements Hittable {
     return this.root.getAbsolutePosition();
   }
 
-  /** Это бот зрителя (Ф10) с моделью персонажа. */
+  /**
+   * Это бот зрителя (Ф10), а не обычный игрок. Раньше признаком была
+   * `skin > 0`, но теперь модель персонажа носят и обычные игроки — здесь
+   * важно именно «бот» (гейтит факелы BotLights и метку на плашке), поэтому
+   * смотрим на id: у ботов он всегда `bot:<ник>`.
+   */
   get isBot(): boolean {
-    return this.skin > 0;
+    return this.id.startsWith("bot:");
   }
 
   private readonly _fwd = new Vector3();
@@ -366,7 +382,10 @@ export class RemoteAvatar implements Hittable {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
     this.skin = p.skin ?? 0;
-    if (this.skin > 0 && (p.level !== this.level || this.nick !== p.nick)) {
+    // Уровень над головой — только у ботов, как и раньше (это была ветка
+    // skin>0, но теперь модель есть у всех: без замены на isBot уровень
+    // засветился бы и над обычными игроками — этого не просили).
+    if (this.isBot && (p.level !== this.level || this.nick !== p.nick)) {
       this.level = p.level;
       this.nick = p.nick;
       this.nameTag.setInfo(p.nick, p.level);
@@ -502,8 +521,10 @@ export class RemoteAvatar implements Hittable {
     const s = stale || b.t === a.t ? 1 : (target - a.t) / (b.t - a.t);
 
     this.setMode(b.mode);
-    // Бот: поворачиваем корпус целиком (root); обычный аватар — только «голову».
-    if (this.skin > 0) {
+    // Модель персонажа (плоский режим): поворачиваем корпус целиком (root).
+    // VR — только «голову», у рук честный трекинг контроллеров, root вслед
+    // за body-моделью здесь крутить нельзя (даже если skin>0 — см. setMode).
+    if (this.skin > 0 && this.mode === "flat") {
       if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
       if (GEAR_FREEZE.on && this.botRig) {
         // Настройка хвата (?gear=1): не двигаем и не анимируем — держим позу.
@@ -795,7 +816,7 @@ export class RemoteAvatar implements Hittable {
     cur?.dispose();
     markKey();
     const [cls, tier] = want;
-    if (cls !== "sword" && cls !== "bow" && cls !== "shield") return null;
+    if (cls !== "sword" && cls !== "bow" && cls !== "shield" && cls !== "staff") return null;
     if (!tier) return null;
 
     const mesh = this.makeWeapon!(cls as WeaponClass, tier as WeaponTier);
@@ -803,16 +824,17 @@ export class RemoteAvatar implements Hittable {
     mesh.rotationQuaternion = null; // ставим углами Эйлера
     for (const c of mesh.getChildMeshes()) c.isPickable = false;
 
-    // Бот с моделью персонажа: оружие садится в кость кулака и ездит с рукой
-    // во всех клипах, включая SwordSlash.
-    if (this.skin > 0 && this.botRig) {
+    // Модель персонажа (бот или обычный игрок в плоском режиме, см. botGear.ts):
+    // оружие садится в кость кулака и ездит с рукой во всех клипах, включая
+    // SwordSlash. В VR у игрока настоящий трекинг рук — сюда не попадает.
+    if (this.skin > 0 && this.mode === "flat" && this.botRig) {
       const fist = side === "left" ? this.botFistL : this.botFistR;
       if (!fist) {
         mesh.dispose();
         return null;
       }
       mesh.parent = fist;
-      this.seatBotGear(mesh, side, fist);
+      this.seatBotGear(mesh, cls, fist);
       return mesh;
     }
 
@@ -834,20 +856,28 @@ export class RemoteAvatar implements Hittable {
     return mesh;
   }
 
-  /** Ставит меч/щит по текущим значениям BOT_GEAR (их двигает панель `?gear=1`). */
-  private seatBotGear(mesh: Mesh, side: "left" | "right", fist: TransformNode): void {
-    const g = side === "left" ? BOT_GEAR.shield : BOT_GEAR.sword;
+  /**
+   * Ставит оружие в руке по текущим значениям BOT_GEAR (их двигает панель
+   * `?gear=1`) — класс оружия решает, какая запись используется, а не рука:
+   * щит всегда слева, но меч/лук/посох могут оказаться в любой руке.
+   */
+  private seatBotGear(mesh: Mesh, cls: string, fist: TransformNode): void {
+    const g =
+      cls === "shield" ? BOT_GEAR.shield
+      : cls === "bow" ? BOT_GEAR.bow
+      : cls === "staff" ? BOT_GEAR.staff
+      : BOT_GEAR.sword;
     mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
-    if (side === "left" && g.auto) mesh.rotation.copyFrom(this.shieldRotFor(fist));
+    if (cls === "shield" && g.auto) mesh.rotation.copyFrom(this.shieldRotFor(fist));
     else mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
     mesh.scaling.setAll(g.scale);
   }
 
   /** Пересадка без пересборки мешей — по правке в панели настройки. */
   private reseatBotGear(): void {
-    if (this.skin <= 0 || !this.botRig) return;
-    if (this.gearL && this.botFistL) this.seatBotGear(this.gearL, "left", this.botFistL);
-    if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, "right", this.botFistR);
+    if (this.skin <= 0 || this.mode !== "flat" || !this.botRig) return;
+    if (this.gearL && this.botFistL) this.seatBotGear(this.gearL, this.wantL[0], this.botFistL);
+    if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, this.wantR[0], this.botFistR);
   }
 
   /**
