@@ -21,7 +21,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
-import { NameTag } from "../ui/NameTag";
+import { SpecCamMarker } from "../world/SpecCamMarker";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
@@ -116,9 +116,9 @@ export class Game {
   /** Крестики над ЧУЖИМИ телами: свои игрок видит через HealCrossFx. */
   private readonly crossFx: WorldCrossFx;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
-  private specMarkerAnchor: TransformNode | null = null;
-  private specMarker: NameTag | null = null;
+  private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
+  private specRaysShown = true;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   loadoutPanel: LoadoutPanel | null = null;
@@ -145,6 +145,13 @@ export class Game {
   };
   /** Локальный отсчёт до возрождения — только для надписи на экране. */
   private deathCountdown = 0;
+  /**
+   * «Оставить бота после выхода» — источник правды для обеих панелей (C и
+   * запястье в VR): сервер не подтверждает этот тумблер отдельным
+   * сообщением, только начальным MSG.char, поэтому переключение из ЛЮБОЙ
+   * панели правит это поле сразу же (оптимистично), а не ждёт ответа.
+   */
+  private leaveBotOn = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
@@ -184,15 +191,7 @@ export class Game {
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
-    this.specMarkerAnchor = new TransformNode("specCamAnchor", this.scene);
-    this.specMarker = new NameTag(
-      this.scene,
-      this.specMarkerAnchor,
-      new Vector3(0, 0, 0),
-      "📷 Камера стрима",
-      null,
-    );
-    this.specMarker.setEnabled(false);
+    this.specMarker = new SpecCamMarker(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -213,7 +212,10 @@ export class Game {
     this.hud.bindInventory(this.inventory);
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
     this.hud.bindSkin(1, (skin) => this.net?.sendSetSkin(skin));
-    this.hud.bindLeaveBot(false, (on) => this.net?.sendSetLeaveBot(on));
+    this.hud.bindLeaveBot(false, (on) => {
+      this.leaveBotOn = on;
+      this.net?.sendSetLeaveBot(on);
+    });
     this.hud.bindExit(() => void this.leaveWorld());
 
     // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
@@ -550,6 +552,11 @@ export class Game {
     this.wristPanel.onTogglePvp = () => {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
+    this.wristPanel.onToggleLeaveBot = () => {
+      if (!this.net?.online) return;
+      this.leaveBotOn = !this.leaveBotOn;
+      this.net.sendSetLeaveBot(this.leaveBotOn);
+    };
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
@@ -629,6 +636,7 @@ export class Game {
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
     this.wristPanel?.setPvp(this.net?.pvpOn ?? false);
+    this.wristPanel?.setLeaveBot(this.leaveBotOn);
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
@@ -1044,7 +1052,10 @@ export class Game {
     if (data.stowed?.length) this.combat.restoreStowed(data.stowed);
     // Настройки панели с сервера — главнее локальных.
     if (data.overrides && Object.keys(data.overrides).length) importOverrides(data.overrides);
-    if (data.leaveBot !== undefined) this.hud.setLeaveBot(data.leaveBot);
+    if (data.leaveBot !== undefined) {
+      this.leaveBotOn = data.leaveBot;
+      this.hud.setLeaveBot(data.leaveBot);
+    }
   }
 
   /**
@@ -1248,14 +1259,26 @@ export class Game {
   }
 
   /** Метка камеры стрима (Ф10) — видна, только пока и подключён спектатор, и её не спрятали с пульта. */
+  private readonly _specPos = new Vector3();
+  private readonly _specTgt = new Vector3();
+
   private updateSpecMarker(st: ZoneState): void {
-    if (!this.specMarker || !this.specMarkerAnchor) return;
+    if (!this.specMarker) return;
     const show = st.specActive === 1 && st.specVisible === 1;
     if (show !== this.specMarkerShown) {
       this.specMarkerShown = show;
       this.specMarker.setEnabled(show);
     }
-    if (show) this.specMarkerAnchor.position.set(st.specX, st.specY, st.specZ);
+    const rays = st.specRaysVisible === 1;
+    if (rays !== this.specRaysShown) {
+      this.specRaysShown = rays;
+      this.specMarker.setRaysEnabled(rays);
+    }
+    if (show) {
+      this._specPos.set(st.specX, st.specY, st.specZ);
+      this._specTgt.set(st.specTX, st.specTY, st.specTZ);
+      this.specMarker.setPose(this._specPos, this._specTgt);
+    }
   }
 
   private hapticBoth(): void {

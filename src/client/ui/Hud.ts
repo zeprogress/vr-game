@@ -110,12 +110,23 @@ export class Hud {
   private closePanel(): void {
     if (!this.panelOpen) return;
     this.hidePanel();
-    // Через таймаут, не прямо здесь: если закрытие вызвал сам Esc, вызов
-    // requestPointerLock() СИНХРОННО в его же обработчике браузер иногда
-    // тихо отклоняет — Esc для него это как раз клавиша "отпустить",
-    // и захват той же связкой клавиш обратно он не даёт. Даже нулевая
-    // задержка выносит вызов в отдельный тик, и ограничение не срабатывает.
-    setTimeout(() => this.relock?.(), 0);
+    this.requestRelock(0);
+  }
+
+  /**
+   * После Esc браузер какое-то время (у Chrome — больше секунды) молча
+   * отклоняет requestPointerLock(), защищаясь от «поймал курсор — не
+   * отпущу»: один отложенный на тик вызов этого не переживает, мышь так и
+   * оставалась свободной, пока не кликнешь по экрану сам. Пробуем сразу и
+   * ещё несколько раз нарастающими паузами — как только получится,
+   * document.pointerLockElement станет истинным, дальше пробовать незачем.
+   */
+  private requestRelock(attempt: number): void {
+    if (document.pointerLockElement || this.panelOpen) return;
+    this.relock?.();
+    const delays = [60, 250, 600, 1200, 1800];
+    if (attempt >= delays.length) return;
+    setTimeout(() => this.requestRelock(attempt + 1), delays[attempt]);
   }
 
   private togglePanel(): void {

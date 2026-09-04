@@ -12,13 +12,14 @@ import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 const TEX_W = 512;
-const TEX_H = 664;
+const TEX_H = 704;
 /**
- * Выбираемых строк: характеристики + ячейки сумки + «PvP» + «выйти из мира».
- * X идёт по ним подряд.
+ * Выбираемых строк: характеристики + ячейки сумки + «PvP» + «оставить бота»
+ * + «выйти из мира». X идёт по ним подряд.
  */
-const ROWS = STATS.length + BAG.slots + 2;
+const ROWS = STATS.length + BAG.slots + 3;
 const PVP_ROW = STATS.length + BAG.slots;
+const LEAVE_BOT_ROW = PVP_ROW + 1;
 const EXIT_ROW = ROWS - 1;
 const GRID_COLS = 4;
 
@@ -41,10 +42,19 @@ export class WristPanel {
   onTogglePvp: (() => void) | null = null;
   /** Текущее состояние флага PvP (из состояния сервера). */
   private pvpOn = false;
+  /** Переключить «оставить бота после выхода». Ставит Game. */
+  onToggleLeaveBot: (() => void) | null = null;
+  private leaveBotOn = false;
 
   setPvp(on: boolean): void {
     if (on === this.pvpOn) return;
     this.pvpOn = on;
+    if (this.open) this.redraw();
+  }
+
+  setLeaveBot(on: boolean): void {
+    if (on === this.leaveBotOn) return;
+    this.leaveBotOn = on;
     if (this.open) this.redraw();
   }
 
@@ -134,6 +144,10 @@ export class WristPanel {
 
     if (this.selected === PVP_ROW) {
       this.onTogglePvp?.();
+      return;
+    }
+    if (this.selected === LEAVE_BOT_ROW) {
+      this.onToggleLeaveBot?.();
       return;
     }
     if (this.selected === EXIT_ROW) {
@@ -250,9 +264,22 @@ export class WristPanel {
       ctx.fillText("тебя могут атаковать игроки с PvP", 300, pvpY + 4);
     }
 
+    // Оставить бота после выхода
+    const leaveBotActive = this.selected === LEAVE_BOT_ROW;
+    const leaveBotY = 588;
+    if (leaveBotActive) {
+      ctx.fillStyle = "#263048";
+      ctx.fillRect(20, leaveBotY - 6, TEX_W - 40, 40);
+    }
+    ctx.font = `${leaveBotActive ? "bold " : ""}26px system-ui, sans-serif`;
+    ctx.fillStyle = leaveBotActive ? "#9fd0ff" : "#c9d2e6";
+    ctx.fillText(`${leaveBotActive ? "▸ " : "   "}Бот после выхода`, 26, leaveBotY);
+    ctx.fillStyle = this.leaveBotOn ? "#7ee081" : "#8c96ad";
+    ctx.fillText(this.leaveBotOn ? "оставить" : "не оставлять", 330, leaveBotY);
+
     // Выход из мира
     const exitActive = this.selected === EXIT_ROW;
-    const exitY = 598;
+    const exitY = 638;
     if (exitActive) {
       ctx.fillStyle = this.exitArmed > 0 ? "#4a2230" : "#2a2036";
       ctx.fillRect(20, exitY - 6, TEX_W - 40, 40);
@@ -269,7 +296,7 @@ export class WristPanel {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 636);
+    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 676);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);

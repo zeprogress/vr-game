@@ -48,6 +48,8 @@ export class Dashboard {
   private mobsBtn!: HTMLButtonElement;
   private specVisible: boolean | null = null;
   private specBtn!: HTMLButtonElement;
+  private specRaysVisible: boolean | null = null;
+  private specRaysBtn!: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -231,6 +233,8 @@ export class Dashboard {
     admin.appendChild(this.mobsBtn);
     this.specBtn = this.bigBtn("Камера стрима игрокам: —", () => this.toggleSpecVisible());
     admin.appendChild(this.specBtn);
+    this.specRaysBtn = this.bigBtn("Лучи направления камеры: —", () => this.toggleSpecRays());
+    admin.appendChild(this.specRaysBtn);
     const clearBtn = this.bigBtn("Очистить лут с земли", () => {
       if (!confirm("Убрать весь лежащий лут во всём мире? Действие необратимо.")) return;
       this.send({ t: "clearLoot" });
@@ -248,6 +252,15 @@ export class Dashboard {
     this.net.onSpecCmd = (cmd) => {
       if (cmd.t === "nowShot") this.nowEl.textContent = `в эфире: ${cmd.shot}`;
       else if (cmd.t === "auto") this.setAutoUi(cmd.on !== 0);
+      else if (cmd.t === "overlay") {
+        // Сервер теперь сам источник правды (переживает рестарт) — шлёт это
+        // сразу по подключению. Разошёл кто-то другой патч руками — тоже
+        // сюда, синхронизируем UI и локальный кэш вместо того, чтобы тихо
+        // разойтись с тем, что реально в эфире.
+        Object.assign(this.ov, cmd.patch);
+        this.saveOverlay();
+        this.refreshOverlayUi();
+      }
     };
     this.net.onReconnected = (room) => (this.room = room);
     const ok = await this.net.connectSpectator(key);
@@ -260,15 +273,6 @@ export class Dashboard {
     this.nowEl.textContent = "на связи";
     setInterval(() => this.refreshList(), 1500);
     this.refreshList();
-
-    // Спектатор может перезагрузиться (обновление сборки) и потерять конфиг
-    // оверлея — пере-шлём его сразу и затем периодически, лишним не помешает.
-    this.sendOverlayConfig();
-    setInterval(() => this.sendOverlayConfig(), 20_000);
-  }
-
-  private sendOverlayConfig(): void {
-    this.net.sendSpecCmd({ t: "overlay", patch: { ...this.ov } });
   }
 
   private send(cmd: SpecCmd): void {
@@ -289,6 +293,9 @@ export class Dashboard {
     if (st.dayAuto !== this.dayAuto) this.setDayAutoUi(st.dayAuto);
     if ((st.mobsOn !== 0) !== this.mobsOn) this.setMobsUi(st.mobsOn !== 0);
     if ((st.specVisible !== 0) !== this.specVisible) this.setSpecUi(st.specVisible !== 0);
+    if ((st.specRaysVisible !== 0) !== this.specRaysVisible) {
+      this.setSpecRaysUi(st.specRaysVisible !== 0);
+    }
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
@@ -361,6 +368,11 @@ export class Dashboard {
     this.send({ t: "specVisible", on: this.specVisible ? 1 : 0 });
   }
 
+  private toggleSpecRays(): void {
+    this.setSpecRaysUi(!this.specRaysVisible);
+    this.send({ t: "specRaysVisible", on: this.specRaysVisible ? 1 : 0 });
+  }
+
   private toggleOverlay(key: OverlayToggle["key"]): void {
     this.ov[key] = this.ov[key] ? 0 : 1;
     this.saveOverlay();
@@ -417,6 +429,12 @@ export class Dashboard {
     this.specVisible = on;
     this.specBtn.textContent = `Камера стрима игрокам: ${on ? "ВКЛ (видна)" : "ВЫКЛ (скрыта)"}`;
     this.specBtn.style.background = on ? "#1d1f2b" : "#3a2020";
+  }
+
+  private setSpecRaysUi(on: boolean): void {
+    this.specRaysVisible = on;
+    this.specRaysBtn.textContent = `Лучи направления камеры: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.specRaysBtn.style.background = on ? "#1d1f2b" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {

@@ -359,6 +359,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private clockSync = 0;
   /** Раз в 10 с скидываем всех игроков в store — чтобы деплой/сбой почти ничего не терял. */
   private persistClock = 0;
+  /** Текущий оверлей стрима (мердж патчей с пульта) — источник правды, переживает рестарт. */
+  private overlayCfg: Record<string, unknown> = {};
 
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
@@ -370,8 +372,16 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override onCreate(): void {
     this.setState(new ZoneState());
+    // Настройки пульта — переживают рестарт (Ф10): время суток, видимость
+    // метки камеры зрителя и её лучей, оверлей. Мобы/куклы всё равно
+    // считаются заново, их сюда не тащим.
+    const pult = world.loadPult();
+    this.worldHour = typeof pult.hour === "number" ? pult.hour : DAYCYCLE.startHour;
     this.state.hour = this.worldHour;
-    this.state.dayAuto = 1;
+    this.state.dayAuto = pult.dayAuto === false ? 0 : 1;
+    this.state.specVisible = pult.specVisible === false ? 0 : 1;
+    this.state.specRaysVisible = pult.specRaysVisible === false ? 0 : 1;
+    this.overlayCfg = { ...(pult.overlay ?? {}) };
     this.sim = new ZoneSim();
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
@@ -762,8 +772,10 @@ export class ZoneRoom extends Room<ZoneState> {
         this.state.hour = this.worldHour;
         this.state.dayAuto = 0; // ручной перевод останавливает авто-ход
         this.clockSync = 0;
+        world.savePult({ hour: this.worldHour, dayAuto: false });
       } else if (msg.t === "dayAuto") {
         this.state.dayAuto = msg.on ? 1 : 0;
+        world.savePult({ dayAuto: msg.on !== 0 });
       } else if (msg.t === "clearLoot") {
         this.wipeWorld("админ-панель пульта");
       } else if (msg.t === "mobsOn") {
@@ -771,6 +783,13 @@ export class ZoneRoom extends Room<ZoneState> {
         this.state.mobsOn = msg.on !== 0 ? 1 : 0;
       } else if (msg.t === "specVisible") {
         this.state.specVisible = msg.on !== 0 ? 1 : 0;
+        world.savePult({ specVisible: msg.on !== 0 });
+      } else if (msg.t === "specRaysVisible") {
+        this.state.specRaysVisible = msg.on !== 0 ? 1 : 0;
+        world.savePult({ specRaysVisible: msg.on !== 0 });
+      } else if (msg.t === "overlay" && msg.patch && typeof msg.patch === "object") {
+        Object.assign(this.overlayCfg, msg.patch);
+        world.savePult({ overlay: this.overlayCfg });
       }
       this.broadcast(MSG.specCmd, msg, { except: client });
     });
@@ -1951,6 +1970,12 @@ export class ZoneRoom extends Room<ZoneState> {
       console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Не ждём 10-секундный тик — оверлей должен нарисовать таблицу сразу.
       client.send(MSG.leaderboard, this.leaderboard(5));
+      // Оверлей теперь общий (переживает рестарт) — отдаём сразу, чтобы
+      // подключившийся дашборд/спектатор не остался на дефолтах/локальном
+      // кэше до первой ручной правки.
+      if (Object.keys(this.overlayCfg).length) {
+        client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
+      }
       return;
     }
 
