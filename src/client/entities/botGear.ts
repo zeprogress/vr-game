@@ -26,6 +26,17 @@ export const BOT_GEAR: { sword: GearTune; shield: GearTune } = {
   shield: { pos: [0, 0.05, 0], rot: [0, 0, 0], scale: 1.6, auto: true },
 };
 
+/**
+ * Заморозка бота на время настройки: он стоит на месте, анимация встаёт на
+ * выбранном кадре. Только клиент — сервер продолжает водить бота, поэтому
+ * после снятия заморозки тот окажется там, куда успел дойти.
+ */
+export const GEAR_FREEZE: { on: boolean; clip: string; frame: number } = {
+  on: false,
+  clip: "idle",
+  frame: 0,
+};
+
 const KEY = "zep.botgear";
 
 /** Подхватываем подобранное после перезагрузки — иначе настройка теряется. */

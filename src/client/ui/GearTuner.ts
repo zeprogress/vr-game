@@ -12,6 +12,7 @@
  */
 import {
   BOT_GEAR,
+  GEAR_FREEZE,
   loadGearTune,
   saveGearTune,
   notifyGearTuneChanged,
@@ -174,6 +175,62 @@ export function mountGearTuner(): () => void {
   const title = document.createElement("h4");
   title.textContent = "ХВАТ ОРУЖИЯ БОТА (?gear=1)";
   box.appendChild(title);
+
+  // Заморозка: подбирать посадку на бегущем боте невозможно.
+  {
+    const line = document.createElement("div");
+    line.className = "r";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = GEAR_FREEZE.on;
+    const lb = document.createElement("span");
+    lb.textContent = "заморозить бота";
+    lb.style.color = "#9aa3b2";
+    const poseWrap = document.createElement("div");
+
+    cb.addEventListener("change", () => {
+      GEAR_FREEZE.on = cb.checked;
+      poseWrap.style.display = cb.checked ? "" : "none";
+    });
+    line.append(cb, lb);
+    box.append(line, poseWrap);
+
+    const pose = document.createElement("div");
+    pose.className = "r";
+    const pl = document.createElement("label");
+    pl.textContent = "поза";
+    const sel = document.createElement("select");
+    for (const c of ["idle", "walk", "run", "swordslash"]) {
+      const o = document.createElement("option");
+      o.value = o.textContent = c;
+      sel.appendChild(o);
+    }
+    sel.value = GEAR_FREEZE.clip;
+    sel.addEventListener("change", () => (GEAR_FREEZE.clip = sel.value));
+    pose.append(pl, sel);
+
+    const fr = document.createElement("div");
+    fr.className = "r";
+    const fl = document.createElement("label");
+    fl.textContent = "кадр";
+    const fi = document.createElement("input");
+    fi.type = "range";
+    fi.min = "0";
+    fi.max = "1";
+    fi.step = "0.005";
+    fi.value = String(GEAR_FREEZE.frame);
+    const fv = document.createElement("span");
+    fv.className = "v";
+    fv.textContent = fmt(GEAR_FREEZE.frame);
+    fi.addEventListener("input", () => {
+      GEAR_FREEZE.frame = Number(fi.value);
+      fv.textContent = fmt(GEAR_FREEZE.frame);
+    });
+    fr.append(fl, fi, fv);
+
+    poseWrap.append(pose, fr);
+    poseWrap.style.display = GEAR_FREEZE.on ? "" : "none";
+  }
 
   section("МЕЧ · правая рука", "sword");
   section("ЩИТ · левая рука", "shield");

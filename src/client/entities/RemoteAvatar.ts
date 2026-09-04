@@ -21,7 +21,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER } from "#shared/constants";
-import { BOT_GEAR, onGearTuneChanged } from "./botGear";
+import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
 /** Доворот модели бота, если её «перёд» смотрит не в +Z. Подбор: `?byaw=<рад>`. */
 const BOT_MODEL_YAW = (() => {
@@ -161,6 +161,8 @@ export class RemoteAvatar implements Hittable {
   private snapDt = 55;
   private lastPushRaw = 0;
   private deadAnim = false;
+  /** Подпись позы заморозки (?gear=1) — чтобы не пересобирать её каждый кадр. */
+  private freezeSig = "";
 
   // --- PvP (этап 10) ---
   private hp = 100;
@@ -483,10 +485,15 @@ export class RemoteAvatar implements Hittable {
     // Бот: поворачиваем корпус целиком (root); обычный аватар — только «голову».
     if (this.skin > 0) {
       if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
-      this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
-      this.smoothBotPos(dt);
-      if (this.botRig) this.stepBotLocomotion(now, dt);
-      else this.animateSwing(now);
+      if (GEAR_FREEZE.on && this.botRig) {
+        // Настройка хвата (?gear=1): не двигаем и не анимируем — держим позу.
+        this.freezeBotPose();
+      } else {
+        this.applyXf(this.root, this.root.rotationQuaternion, a.head, b.head, s, true);
+        this.smoothBotPos(dt);
+        if (this.botRig) this.stepBotLocomotion(now, dt);
+        else this.animateSwing(now);
+      }
     } else {
       this.applyXf(this.root, this.head.rotationQuaternion!, a.head, b.head, s, true);
       if (this.mode === "vr") {
@@ -618,8 +625,48 @@ export class RemoteAvatar implements Hittable {
   }
 
   /** Каждый кадр для бота с моделью: выбор клипа по скорости + crossfade. */
+  /**
+   * Держим бота неподвижно на выбранном кадре выбранного клипа — иначе
+   * подбирать посадку оружия приходится по бегущей мишени. Позиция не
+   * трогается вовсе, так что бот замирает там, где его застали.
+   */
+  private freezeBotPose(): void {
+    const rig = this.botRig!;
+    // Поза меняется только по правке в панели: каждый кадр её не пересобираем,
+    // иначе start() перезапускал бы клип и картинка дрожала.
+    const sig = `${GEAR_FREEZE.clip}|${GEAR_FREEZE.frame.toFixed(4)}`;
+    if (sig !== this.freezeSig) {
+      this.freezeSig = sig;
+      for (const n of BOT_CLIPS) {
+        const g = rig.anims.get(n);
+        if (!g) continue;
+        const on = n === GEAR_FREEZE.clip;
+        if (on) {
+          if (!g.isStarted) g.start(true, 1, g.from, g.to, false);
+          g.setWeightForAllAnimatables(1);
+          g.goToFrame(g.from + (g.to - g.from) * GEAR_FREEZE.frame);
+          g.pause();
+        } else {
+          if (g.isStarted) g.stop();
+          g.setWeightForAllAnimatables(0);
+        }
+        this.animW.set(n, on ? 1 : 0);
+      }
+    }
+    this.deadAnim = false;
+    // Скорость копим от позиции: без сброса после разморозки мелькнёт «бег».
+    this._prevPos.copyFrom(this.root.position);
+    this.planarSpeed = 0;
+    this.reseatBotGear();
+  }
+
   private stepBotLocomotion(now: number, dt: number): void {
     const rig = this.botRig!;
+    if (this.freezeSig) {
+      // Только что сняли заморозку: клип стоит на паузе, вес разложит цикл ниже.
+      this.freezeSig = "";
+      for (const n of BOT_CLIPS) rig.anims.get(n)?.stop();
+    }
 
     // Смерть — приоритет: клип один раз, застываем на последнем кадре.
     // Нет клипа в паке — валим модель набок.
