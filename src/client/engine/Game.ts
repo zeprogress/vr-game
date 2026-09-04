@@ -195,6 +195,7 @@ export class Game {
     };
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
+    this.hud.bindPointerLock(() => this.requestPointerLock());
     this.hud.bindInventory(this.inventory);
 
     // Бутылочка на поясе показывает запас зелий и пьётся поднесением ко рту.
@@ -453,7 +454,10 @@ export class Game {
   }
 
   requestPointerLock(): void {
-    if (!this.isTouch) this.canvas.requestPointerLock();
+    if (this.isTouch) return;
+    // В новых браузерах возвращает Promise; в песочнице предпросмотра он
+    // отклоняется (WrongDocumentError) — гасим, чтобы не было висящего reject.
+    void Promise.resolve(this.canvas.requestPointerLock() as unknown).catch(() => {});
   }
 
   /**

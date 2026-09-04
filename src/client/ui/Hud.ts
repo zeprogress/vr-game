@@ -15,8 +15,11 @@ export class Hud {
   private readonly vignette: HTMLDivElement;
   private readonly lowVignette: HTMLDivElement;
   private readonly toastEl: HTMLDivElement;
+  private readonly backdrop: HTMLDivElement;
   private readonly panel: HTMLDivElement;
   private readonly deathEl: HTMLDivElement;
+  /** Вернуть управление в игру после закрытия панели (захват мыши). */
+  private relock: (() => void) | null = null;
   private prog: Progression | null = null;
   private inv: Inventory | null = null;
   private toastTimer: number | null = null;
@@ -30,7 +33,13 @@ export class Hud {
     this.vignette = el("div", VIGNETTE_CSS);
     this.lowVignette = el("div", LOW_VIGNETTE_CSS);
     this.toastEl = el("div", TOAST_CSS);
+    this.backdrop = el("div", BACKDROP_CSS);
     this.panel = el("div", PANEL_CSS);
+    this.backdrop.appendChild(this.panel);
+    this.backdrop.addEventListener("pointerdown", (e) => {
+      // Клик мимо панели — закрыть; клик по самой панели не всплывает сюда.
+      if (e.target === this.backdrop) this.closePanel();
+    });
     this.deathEl = el("div", DEATH_CSS);
 
     document.body.append(
@@ -38,9 +47,44 @@ export class Hud {
       this.lowVignette,
       this.vignette,
       this.toastEl,
-      this.panel,
+      this.backdrop,
       this.deathEl,
     );
+  }
+
+  /** Пока панель персонажа открыта, мышь свободна — этим вернём её в игру. */
+  bindPointerLock(relock: () => void): void {
+    this.relock = relock;
+    document.addEventListener("pointerlockchange", () => {
+      // Вернулись в игру (кликнули по канвасу) — панель больше не нужна.
+      if (document.pointerLockElement) this.hidePanel();
+    });
+  }
+
+  private get panelOpen(): boolean {
+    return this.backdrop.style.display === "flex";
+  }
+
+  private openPanel(): void {
+    this.backdrop.style.display = "flex";
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.renderPanel();
+  }
+
+  /** Спрятать без возврата захвата мыши (вызывается из pointerlockchange). */
+  private hidePanel(): void {
+    this.backdrop.style.display = "none";
+  }
+
+  private closePanel(): void {
+    if (!this.panelOpen) return;
+    this.hidePanel();
+    this.relock?.();
+  }
+
+  private togglePanel(): void {
+    if (this.panelOpen) this.closePanel();
+    else this.openPanel();
   }
 
   /** Подключить сумку — в панели персонажа появится раздел «Сумка». */
@@ -54,13 +98,9 @@ export class Hud {
     this.prog = prog;
     prog.onChange(() => this.renderPanel());
     window.addEventListener("keydown", (e) => {
-      if (e.code === "KeyC") {
-        this.panel.style.display = this.panel.style.display === "none" ? "block" : "none";
-        this.renderPanel();
-      }
+      if (e.code === "KeyC" && !e.repeat) this.togglePanel();
     });
-    this.panel.style.display = "none";
-    this.renderPanel();
+    this.backdrop.style.display = "none";
   }
 
   setHp(hp: number, max: number = PLAYER_HP.max): void {
@@ -155,10 +195,10 @@ export class Hud {
 
   private renderPanel(): void {
     const p = this.prog;
-    if (!p || this.panel.style.display === "none") return;
+    if (!p || !this.panelOpen) return;
     this.panel.replaceChildren();
 
-    const title = el("div", "font:bold 16px system-ui;margin-bottom:8px;");
+    const title = el("div", "font:bold 22px system-ui;margin-bottom:10px;");
     title.textContent = `Уровень ${p.level}`;
     this.panel.appendChild(title);
 
@@ -168,9 +208,9 @@ export class Hud {
 
     for (const s of STATS) {
       const row = el("div", "display:flex;align-items:center;gap:8px;margin:5px 0;");
-      const name = el("span", "width:96px;");
+      const name = el("span", "width:120px;");
       name.textContent = STAT_LABELS[s];
-      const val = el("span", "width:26px;text-align:right;font-weight:bold;");
+      const val = el("span", "width:32px;text-align:right;font-weight:bold;font-size:17px;");
       val.textContent = String(p.stats[s]);
       row.append(name, val);
 
@@ -178,8 +218,8 @@ export class Hud {
         const btn = document.createElement("button");
         btn.textContent = "+";
         btn.style.cssText =
-          "width:26px;height:24px;cursor:pointer;background:#2f7a35;color:#fff;" +
-          "border:1px solid #4c4;border-radius:4px;font-weight:bold;";
+          "width:30px;height:28px;cursor:pointer;background:#2f7a35;color:#fff;" +
+          "border:1px solid #4c4;border-radius:5px;font-weight:bold;font-size:16px;";
         btn.addEventListener("click", () => p.spend(s));
         row.appendChild(btn);
       }
@@ -196,9 +236,13 @@ export class Hud {
 
     this.renderBag();
 
-    const hint = el("div", "margin-top:8px;font-size:11px;opacity:0.55;");
-    hint.textContent = "C — закрыть";
-    this.panel.appendChild(hint);
+    const keys = el("div", "margin-top:14px;padding-top:10px;border-top:1px solid #3a4056;font-size:12px;opacity:0.6;line-height:1.7;");
+    keys.textContent =
+      "WASD — движение · мышь — осмотреться · Space — прыжок\n" +
+      "ЛКМ — удар · E — взять (держать = замах, отпустить = бросок) · Q — снять щит\n" +
+      "C — закрыть · Esc — выйти";
+    keys.style.whiteSpace = "pre-line";
+    this.panel.appendChild(keys);
   }
 }
 
@@ -248,7 +292,11 @@ const DEATH_CSS =
   "color:#ffdede;font:bold 28px system-ui,sans-serif;text-align:center;white-space:pre-line;" +
   "opacity:0;transition:opacity 0.5s;pointer-events:none;";
 
+const BACKDROP_CSS =
+  "position:fixed;inset:0;z-index:38;display:none;align-items:center;justify-content:center;" +
+  "background:rgba(6,8,14,0.55);backdrop-filter:blur(2px);";
+
 const PANEL_CSS =
-  "position:fixed;left:16px;top:52px;z-index:36;padding:12px 14px;width:210px;" +
-  "background:rgba(18,20,28,0.92);color:#e8ecf8;border:1px solid #5a6480;border-radius:8px;" +
-  "font:13px/1.4 system-ui,sans-serif;";
+  "width:min(440px,92vw);max-height:88vh;overflow-y:auto;padding:22px 26px;" +
+  "background:rgba(18,20,28,0.97);color:#e8ecf8;border:1px solid #5a6480;border-radius:12px;" +
+  "box-shadow:0 20px 60px rgba(0,0,0,0.5);font:15px/1.5 system-ui,sans-serif;";
