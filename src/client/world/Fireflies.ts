@@ -24,14 +24,18 @@ export const FIREFLY = {
   /** На какой высоте над землёй висит стайка, м. */
   height: 1.1,
   /**
-   * Сколько стаек реально светят.
+   * Сколько стаек реально светят настоящим PointLight (не считая
+   * запечённого пятна на земле — см. groundGlowRadius, оно есть у всех).
    *
    * Материал по умолчанию берёт не больше четырёх источников разом, а солнце
    * и небо уже занимают два — поэтому тем материалам, которым важен этот свет
    * (земля, трава, деревья), потолок поднят до LIGHT_BUDGET. Каждый лишний
-   * источник утяжеляет их шейдер, так что число тут — компромисс.
+   * источник утяжеляет их шейдер, так что число тут — компромисс. С тех пор
+   * как землю под дальними стайками красит статичное пятно, живой свет нужен
+   * только вблизи игрока — было 5, теперь 3 (LIGHT_BUDGET меньше для ВСЕХ
+   * материалов игры, не только спектатора).
    */
-  lamps: 5,
+  lamps: 3,
   /** Докуда добивает свет одной стайки, м. */
   lightRange: 11,
   lightIntensity: 1.7,
@@ -42,6 +46,17 @@ export const FIREFLY = {
    * при больших значениях центр выбивается в белый.
    */
   poolAlpha: 0.08,
+  /**
+   * Радиус «запечённого» пятна на земле под стайкой, м. Центры стаек теперь
+   * постоянны (FIREFLY_SEED), так что вместо настоящего PointLight у КАЖДОЙ
+   * стайки землю можно просто подкрасить статичным аддитивным пятном —
+   * дешевле на порядок (ни одного лишнего источника в шейдере земли/травы).
+   * Настоящая лампа остаётся только у ближайших к игроку/камере стаек — для
+   * честного объёма при проходе сквозь стайку.
+   */
+  groundGlowRadius: 5.5,
+  /** Насколько ярко пятно на земле (0..1). */
+  groundGlowAlpha: 0.22,
   /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
   lightColor: [1, 0.87, 0.55] as [number, number, number],
   /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
@@ -112,8 +127,10 @@ interface Group {
   dots: InstancedMesh[];
   /** Своя фаза у каждого огонька — чтобы вились вразнобой. */
   phase: number[];
-  /** Световое пятно на земле — оно и создаёт свечение у дальних стаек. */
+  /** Ореол в воздухе — обозначает саму стайку, повёрнут к камере. */
   pool: InstancedMesh;
+  /** Запечённое пятно на земле — плоское, статичное, без настоящего света. */
+  groundGlow: InstancedMesh;
 }
 
 /**
@@ -142,6 +159,8 @@ export class Fireflies {
   private readonly mat: StandardMaterial;
   private readonly poolProto: Mesh;
   private readonly poolMat: StandardMaterial;
+  private readonly groundProto: Mesh;
+  private readonly groundMat: StandardMaterial;
   private readonly scene: Scene;
   private clock = 0;
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
@@ -196,6 +215,31 @@ export class Fireflies {
     this.poolProto.isVisible = false;
     this.poolProto.renderingGroupId = 0;
 
+    // Запечённое пятно на земле: та же текстура, но лежит плашмя и не
+    // поворачивается к камере (в отличие от pool) — статичная «подсветка»
+    // вместо настоящего PointLight у каждой стайки, кроме ближайших.
+    this.groundMat = new StandardMaterial("fireflyGroundMat", scene);
+    this.groundMat.emissiveTexture = glow;
+    this.groundMat.opacityTexture = glow;
+    this.groundMat.diffuseColor = new Color3(0, 0, 0);
+    this.groundMat.specularColor = new Color3(0, 0, 0);
+    this.groundMat.emissiveColor = new Color3(...FIREFLY.poolColor);
+    this.groundMat.disableLighting = true;
+    this.groundMat.alphaMode = Constants.ALPHA_ADD;
+    this.groundMat.disableDepthWrite = true;
+    this.groundMat.backFaceCulling = false;
+    this.groundMat.alpha = 0;
+
+    this.groundProto = MeshBuilder.CreatePlane(
+      "fireflyGroundProto",
+      { size: FIREFLY.groundGlowRadius * 2 },
+      scene,
+    );
+    this.groundProto.material = this.groundMat;
+    this.groundProto.isPickable = false;
+    this.groundProto.isVisible = false;
+    this.groundProto.renderingGroupId = 0;
+
     const rnd = rng(FIREFLY_SEED);
     const R = WORLD.grassRadius * 1.6;
     for (let g = 0; g < groups; g++) {
@@ -216,7 +260,15 @@ export class Fireflies {
       const pool = this.poolProto.createInstance(`fireflyPool${g}`);
       pool.isPickable = false;
       pool.position.copyFrom(center);
-      this.groups.push({ center, dots, phase, pool });
+
+      // Лежит плашмя (поворот из вертикальной плоскости в горизонтальную)
+      // и чуть приподнят над землёй — иначе мерцает с террейном (z-fighting).
+      const groundGlow = this.groundProto.createInstance(`fireflyGround${g}`);
+      groundGlow.isPickable = false;
+      groundGlow.rotation.x = Math.PI / 2;
+      groundGlow.position.set(x, terrain.heightAt(x, z) + 0.03, z);
+
+      this.groups.push({ center, dots, phase, pool, groundGlow });
     }
 
     // Раньше лампы не зависели от density вообще: у med (0.7, меньше стаек)
@@ -245,6 +297,7 @@ export class Fireflies {
     for (const g of this.groups) {
       for (const d of g.dots) d.setEnabled(on);
       g.pool.setEnabled(on);
+      g.groundGlow.setEnabled(on);
     }
     // Урезанные setLampBudget'ом лампы остаются погашенными даже с
     // наступлением ночи — иначе этот вызов включил бы их обратно.
@@ -272,6 +325,7 @@ export class Fireflies {
     this.clock += dt;
     this.mat.alpha = this.night;
     this.poolMat.alpha = this.night * FIREFLY.poolAlpha;
+    this.groundMat.alpha = this.night * FIREFLY.groundGlowAlpha;
 
     // Центр стайки больше не движется (FIREFLY_SEED, зафиксировано) — его
     // позицию у ореола уже выставили при создании, второй раз копировать
@@ -371,10 +425,12 @@ export class Fireflies {
     for (const g of this.groups) {
       for (const d of g.dots) d.dispose();
       g.pool.dispose();
+      g.groundGlow.dispose();
     }
     for (const l of this.lamps) l.light.dispose();
     this.proto.dispose();
     this.poolProto.dispose();
+    this.groundProto.dispose();
   }
 }
 
