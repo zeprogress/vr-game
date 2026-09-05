@@ -52,6 +52,7 @@ import {
   advanceHour,
   BOT,
   DAYCYCLE,
+  MOB,
   PLAYER,
   PLAYER_HP,
   PVP,
@@ -159,6 +160,12 @@ interface Bot {
   lootTarget: string | null;
   /** Нормализованный ник, за которым идём между боями (!follow/!come, Ф10). null — никого. */
   followNorm: string | null;
+  /**
+   * Рейд на босса (!raid): идём к Багровому слизню и бьём его, забыв про
+   * зону и обычных мобов. Снимается победой над боссом, гибелью героя
+   * (одна попытка — один рейд) или повторным !raid.
+   */
+  raiding: boolean;
   /** ms последней эмоции (!cheer, авто-кувырок на бегу, левелап) — антиспам. */
   emoteAt: number;
   /** ms — до этого момента бот стоит на месте, играет эмоцию. */
@@ -990,12 +997,46 @@ export class ZoneRoom extends Room<ZoneState> {
    * `!follow <ник>` / `!come` (алиас на стримера) / `!unfollow` — держаться
    * рядом с кем-то между боями. `target` уже нормализован, `null` — снять.
    */
+  /** Босс-моб из симуляции (или undefined, пока не заспавнен). Тип выводится. */
+  private bossMob() {
+    for (const m of this.sim.mobs.values()) if (m.kind === "boss") return m;
+    return undefined;
+  }
+
+  /** `!raid` / `!boss` — послать/отозвать героя в рейд на Багрового слизня. */
+  private setRaid(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (bot.raiding) {
+      bot.raiding = false;
+      this.reply(`@${nick} герой вышел из рейда — снова бродит по зоне.`);
+      return;
+    }
+    const boss = this.bossMob();
+    if (!boss || boss.dead) {
+      this.reply(`@${nick} Багровый слизень сейчас повержен — вернётся позже.`);
+      return;
+    }
+    bot.raiding = true;
+    bot.followNorm = null; // рейд важнее !follow
+    const n = [...this.bots.values()].filter((b) => b.raiding).length;
+    this.reply(
+      n === 1
+        ? `@${nick} повёл героя на Багрового слизня! Пиши !raid — присоединиться, ещё !raid — выйти.`
+        : `@${nick} в рейде на Багрового. Героев идёт: ${n}.`,
+    );
+  }
+
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
+    bot.raiding = false; // !follow/!come/!stay отменяет рейд
     bot.followNorm = target;
     if (!target) {
       this.reply(`@${nick} герой сам по себе — снова бродит и бьёт мобов.`);
@@ -1060,6 +1101,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, null);
     } else if (cmd === "!come") {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
+    } else if (cmd === "!raid" || cmd === "!boss") {
+      this.setRaid(nick, norm);
     }
     else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
   }
@@ -1199,10 +1242,11 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !cheer/!defeat — эмоции · !follow <ник> / !come — идти рядом " +
-        "(с ботом или стримером), !unfollow — назад к делам · обычное сообщение " +
-        "в чат он скажет вслух над головой. Зайти за своего героя самому: " +
-        "ссылка в описании стрима, ник — как в Twitch.",
+      "Ещё: !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
+        "вместе — идём толпой) · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
+        "идти рядом, !unfollow — назад к делам · обычное сообщение в чат он скажет " +
+        "вслух над головой. Зайти за своего героя самому: ссылка в описании стрима, " +
+        "ник — как в Twitch.",
     );
   }
 
@@ -1338,6 +1382,7 @@ export class ZoneRoom extends Room<ZoneState> {
       target: null,
       lootTarget: null,
       followNorm: null,
+      raiding: false,
       emoteAt: 0,
       emoteFreezeUntil: 0,
       attackCd: 0,
@@ -1401,6 +1446,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.dead) {
       bot.swingIn = 0; // умер на замахе — удара не будет
       bot.swingTarget = null;
+      bot.raiding = false; // погиб в рейде — попытка окончена (можно снова !raid)
       return; // возрождение — общий tickPlayers
     }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
@@ -1421,6 +1467,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const cz = RESPAWN.spawnZ;
     const inZone = (x: number, z: number): boolean =>
       Math.hypot(x - cx, z - cz) < BOT.zoneRadius;
+
+    // Рейд (!raid): цель — босс, зона и обычные мобы побоку. Снимается, если
+    // босс уже повержен или ещё не заспавнен.
+    let raidBoss = bot.raiding ? this.bossMob() : undefined;
+    if (raidBoss?.dead) raidBoss = undefined;
+    if (bot.raiding && !raidBoss) bot.raiding = false;
 
     // Цель: моб (не босс/осколок) в зоне.
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
@@ -1469,7 +1521,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Пока идём за мечом, моба не бьём — но и цель по мобу не бросаем:
     // okMob-выбор выше продолжает работать, просто движение приоритетнее.
-    const chasingMob = loot ? undefined : mob;
+    // В рейде цель одна — босс, всё остальное игнорируем.
+    const chasingMob = raidBoss ?? (loot ? undefined : mob);
 
     // «!follow / !come»: бой всё равно важнее — догоняем только если мобов
     // рядом нет (иначе вместо честного боя бот бы просто стоял столбом
@@ -1489,7 +1542,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
     let tx: number;
     let tz: number;
-    if (loot) {
+    if (raidBoss) {
+      tx = raidBoss.x;
+      tz = raidBoss.z;
+    } else if (loot) {
       tx = loot.x;
       tz = loot.z;
     } else if (mob) {
@@ -1516,13 +1572,19 @@ export class ZoneRoom extends Room<ZoneState> {
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
     const dx = dxRaw / dist;
     const dz = dzRaw / dist;
-    const stopAt = loot
-      ? WEAPON_TAKE_REACH * 0.85
-      : mob
-        ? BOT.attackRange * 0.7
-        : follow
-          ? BOT.followRange
-          : 0.5;
+    // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
+    // а не от центра — иначе бот лезет внутрь туши и мажет (см. resolveBotHit).
+    const bossEdge = raidBoss ? MOB.bodyRadius * raidBoss.scale : 0;
+    const attackReach = bossEdge + BOT.attackRange;
+    const stopAt = raidBoss
+      ? bossEdge + BOT.attackRange * 0.6
+      : loot
+        ? WEAPON_TAKE_REACH * 0.85
+        : mob
+          ? BOT.attackRange * 0.7
+          : follow
+            ? BOT.followRange
+            : 0.5;
 
     // Расталкивание: без него боты, бегущие к одному мобу, слипаются в одну
     // точку. Складываем с движением к цели ДО сглаживания скорости — иначе
@@ -1614,7 +1676,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
-    if (chasingMob && !emoting && dist < BOT.attackRange && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
       bot.attackCd = BOT.attackCooldown;
       bot.swingIn = BOT.attackImpact;
       bot.swingTarget = chasingMob.id;
@@ -1676,8 +1738,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const mob = this.sim.mobs.get(id);
     if (!mob || mob.dead) return; // добили, пока шёл замах — бьём воздух
     // Моб мог чуть отойти за время замаха — небольшой допуск, иначе боты
-    // постоянно мажут по подвижным слизням.
-    if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > BOT.attackRange * 1.4) return;
+    // постоянно мажут по подвижным слизням. У босса ещё запас на радиус туши.
+    const reach =
+      BOT.attackRange * 1.4 + (mob.kind === "boss" ? MOB.bodyRadius * mob.scale : 0);
+    if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
     const dmg = weaponDamage("sword", p.str, 1, p.agi);
     const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
     if (xp > 0) {
