@@ -561,8 +561,10 @@ export class PlayerController {
         // стоит потянуть стик на себя).
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
         const backFade = clamp((inp.moveY + 0.5) / 0.35, 0, 1);
+        // Стик отклонён вбок «в упор» — доворот чуть быстрее (до ×2 при |moveX| = 1).
+        const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.7) / 0.3, 0, 1);
         if (!dragging && moving && backFade > 0.01) {
-          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * backFade));
+          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * backFade * sideBoost));
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);
