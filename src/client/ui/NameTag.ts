@@ -105,22 +105,6 @@ export class NameTag {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    const measure = ctx;
-    measure.font = NAME_FONT;
-    let textW = measure.measureText(name).width;
-    if (level !== null) {
-      measure.font = LVL_FONT;
-      textW = Math.max(textW, measure.measureText(`${level} ур.`).width);
-    }
-    const padX = 30;
-    const padY = 14;
-    const contentH = level === null ? 62 : 104;
-    const boxW = Math.min(W - 8, textW + padX * 2);
-    const boxH = contentH + padY * 2;
-    ctx.fillStyle = "rgba(12,14,20,0.34)";
-    roundRect(ctx, (W - boxW) / 2, (H - boxH) / 2, boxW, boxH, 14);
-    ctx.fill();
-
     ctx.fillStyle = "#f2f4fb";
     ctx.font = NAME_FONT;
     ctx.fillText(
@@ -161,21 +145,4 @@ export class NameTag {
     this.plane.dispose();
     this.tex.dispose();
   }
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
