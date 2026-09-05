@@ -3,10 +3,13 @@ import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 /** Метры зума на пиксель изменения расстояния между пальцами. */
 const ZOOM_PER_PX = 0.012;
-/** Прицел: мёртвая зона в центре кнопки и разгон панорамирования, рад/с. */
-const AIM_DEADZONE_PX = 10;
-const AIM_SPAN_PX = 40; // за столько пикселей от края мёртвой зоны — полная скорость
-const AIM_YAW_RATE = 2.8;
+/**
+ * Прицел, горизонталь: в мёртвой зоне у центра кнопки работает обычное
+ * перетаскивание; дальше добавляется инерция (скорость растёт от смещения).
+ */
+const AIM_DEADZONE_PX = 16;
+const AIM_SPAN_PX = 44; // за столько пикселей от края мёртвой зоны — полная скорость
+const AIM_YAW_RATE = 1.4; // рад/с на полном отклонении
 
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
@@ -154,8 +157,10 @@ export class TouchInput implements InputSource {
       if (e.pointerId !== this.atkPointer) return;
       this.atkPos = { x: e.clientX, y: e.clientY };
       if (this.aimMode) {
-        // Вертикаль — обычным перетаскиванием (наклон). Горизонталь —
-        // инерцией от смещения пальца от центра кнопки (см. sample()).
+        // Перетаскивание работает всегда (в т.ч. в мёртвой зоне) — и по
+        // вертикали (наклон), и по горизонтали (точная доводка). За мёртвой
+        // зоной к горизонтали добавляется инерция (см. sample()).
+        this.accYaw += (e.clientX - this.atkLast.x) * LOOK.touchSensitivity;
         this.accPitch += (e.clientY - this.atkLast.y) * LOOK.touchSensitivity;
         this.applyAtkKnob();
       }
