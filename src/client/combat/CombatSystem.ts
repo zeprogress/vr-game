@@ -880,6 +880,15 @@ export class CombatSystem {
       this.justPickedUp = true;
       return;
     }
+    // Смартфон: меч и посох — взаимоисключающие. Стоишь у второго — ✋ роняет
+    // то, что в руке (дальше вторым ✋ поднимешь другой).
+    if (this.player.thirdPerson) {
+      const main = this.held1("sword") ?? this.held1("staff");
+      if (main && this.nearbyOtherMainWeapon(main.kind)) {
+        if (released) this.throwItem(main, this.flatThrowVelocity(0));
+        return;
+      }
+    }
     // Смартфон: щит скидывается кнопкой ✋ и ВСЕГДА первым — раньше оружия.
     if (this.player.thirdPerson && this.shieldHand) {
       if (released) this.dropShieldFlat();
@@ -891,6 +900,21 @@ export class CombatSystem {
       if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
       return;
     }
+  }
+
+  /** Рядом валяется меч/посох другого класса, чем `heldKind` (смартфон). */
+  private nearbyOtherMainWeapon(heldKind: ItemKind): boolean {
+    const other: ItemKind = heldKind === "sword" ? "staff" : "sword";
+    const p = this.player.position;
+    const ws = this.nearestWorldWeapon?.(p);
+    if (ws && ws.cls === other && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH) return true;
+    return this.items.some(
+      (it) =>
+        it.kind === other &&
+        !it.hand &&
+        !it.stow &&
+        Vector3.Distance(p, it.mesh.getAbsolutePosition()) < COMBAT.equipReach,
+    );
   }
 
   /**
@@ -941,6 +965,14 @@ export class CombatSystem {
       return !this.weapon && !this.shieldHand; // лук берут только пустыми руками
     }
     if (!DUAL_WIELD[item.kind] && this.held1(item.kind)) return false;
+    // Смартфон: меч и посох одновременно не носим.
+    if (
+      this.player.thirdPerson &&
+      ((item.kind === "sword" && this.held1("staff")) ||
+        (item.kind === "staff" && this.held1("sword")))
+    ) {
+      return false;
+    }
     // Щит идёт в левую руку — она должна быть свободна (плоский режим).
     if (item.kind === "shield" && !this.player.inVR) {
       const l = this.inHand("left");

@@ -76,7 +76,10 @@ function bootSpectator(specKey: string): void {
 }
 
 function bootGame(): void {
-  const game = new Game(canvas);
+  const q = params.get("q");
+  const quality =
+    q === "potato" || q === "low" || q === "med" || q === "high" ? q : undefined;
+  const game = new Game(canvas, quality);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();
 

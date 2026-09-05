@@ -41,6 +41,12 @@ export class Hud {
   private readonly manaFill: HTMLDivElement;
 
   constructor() {
+    // `hidden` на элементе с инлайновым display:flex UA-стилем не перебивается —
+    // без этого правила кнопки с [hidden] так и оставались видимыми.
+    const st = document.createElement("style");
+    st.textContent = "[hidden]{display:none!important}";
+    document.head.appendChild(st);
+
     this.bar = el("div", HP_BAR_CSS);
     this.fill = el("div", HP_FILL_CSS);
     this.label = el("div", HP_LABEL_CSS);
@@ -140,6 +146,7 @@ export class Hud {
     });
 
     this.potionBtn = mkBtn(POTION_BTN_CSS, "", () => this.onDrinkPotion?.());
+    this.potionBtn.innerHTML = POTION_ICON + `<span class="pot-n"></span>`;
     this.updatePotionBtn();
 
     // Прицел по центру — виден только при натяге лука / зарядке посоха.
@@ -153,7 +160,8 @@ export class Hud {
     if (!this.potionBtn) return;
     const n = this.potionTotal();
     this.potionBtn.hidden = n <= 0 || this.panelOpen || this.aimOn;
-    this.potionBtn.textContent = String(n);
+    const badge = this.potionBtn.querySelector(".pot-n");
+    if (badge) badge.textContent = String(n);
   }
 
   private potionTotal(): number {
@@ -639,25 +647,36 @@ const PANEL_CSS_TOUCH =
 
 /** Кнопка меню (смартфон) — правый верхний угол, поверх HUD и панели. */
 const MENU_BTN_CSS =
-  "position:fixed;top:12px;right:12px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+  "position:fixed;top:20px;right:18px;z-index:39;width:44px;height:44px;border-radius:10px;" +
   "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
 
 /** Кнопка «на весь экран» (смартфон) — левее кнопки меню. */
 const FS_BTN_CSS =
-  "position:fixed;top:12px;right:64px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+  "position:fixed;top:20px;right:74px;z-index:39;width:44px;height:44px;border-radius:10px;" +
   "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
 
-/** Кнопка «выпить зелье» (смартфон) — красная, круглая, слева от кнопки удара. */
+/** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =
-  "position:fixed;right:120px;bottom:20px;z-index:12;width:64px;height:64px;border-radius:50%;" +
-  "display:flex;align-items:center;justify-content:center;font:700 22px system-ui,sans-serif;" +
-  "background:radial-gradient(circle at 38% 32%,#e8555b,#a51f26);color:#fff;" +
-  "border:2px solid rgba(255,200,200,0.55);box-shadow:0 3px 10px rgba(0,0,0,0.4);" +
-  "text-shadow:0 1px 2px rgba(0,0,0,0.6);-webkit-user-select:none;user-select:none;touch-action:none;";
+  "position:fixed;right:148px;bottom:58px;z-index:12;width:66px;height:66px;border-radius:50%;" +
+  "display:flex;align-items:center;justify-content:center;" +
+  "background:rgba(28,20,22,0.5);border:2px solid rgba(255,150,150,0.45);" +
+  "box-shadow:0 3px 10px rgba(0,0,0,0.4);-webkit-user-select:none;user-select:none;touch-action:none;";
+
+/** Рисунок красной круглой бутылочки внутри кнопки + бейдж с числом. */
+const POTION_ICON =
+  `<svg viewBox="0 0 24 24" width="40" height="40" style="pointer-events:none">` +
+  `<rect x="10" y="1.5" width="4" height="3.2" rx="0.6" fill="#cdd5e6"/>` +
+  `<path d="M9.4 4.5h5.2v3.1a8 8 0 1 1-5.2 0z" fill="#e8555b" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>` +
+  `<path d="M6.6 13a6 6 0 0 0 10.8 0 6 6 0 0 1-10.8 0z" fill="#a51f26"/>` +
+  `<ellipse cx="10" cy="12" rx="1.4" ry="2" fill="rgba(255,255,255,0.35)"/>` +
+  `</svg>` +
+  `<span class="pot-n" style="position:absolute;right:-2px;top:-2px;min-width:18px;height:18px;` +
+  `padding:0 3px;border-radius:9px;background:#a51f26;color:#fff;font:700 12px/18px system-ui;` +
+  `text-align:center;border:1px solid #fff"></span>`;
 
 /** Прицел по центру экрана (смартфон): натяг лука / зарядка посоха. */
 const CROSSHAIR_CSS =

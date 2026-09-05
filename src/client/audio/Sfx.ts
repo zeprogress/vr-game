@@ -12,24 +12,29 @@ export interface SoundAt {
  * Часть звуков объёмная: если передать точку `at`, звук идёт через PannerNode
  * и слышен с той стороны, где источник (моб, взмах, плевок).
  */
-/** Трек фоновой музыки: элемент + свой gain (для кроссфейда). */
-interface Track {
-  el: HTMLAudioElement;
-  /** Персональный gain трека (для фейда). null — контекст ещё не поднят. */
-  gain: GainNode | null;
+/** Играющий трек: буфер-источник + свой gain (для кроссфейда). */
+interface MusicVoice {
+  src: AudioBufferSourceNode;
+  gain: GainNode;
+  url: string;
 }
 
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
-  private music: Track | null = null;
   /**
-   * Общая «ручка громкости» музыки → destination. На iOS `audio.volume`
-   * игнорируется (всегда 1) — поэтому громкость держим GainNode'ом.
+   * Фоновая музыка играет через Web Audio (декодированный буфер), как и все
+   * прочие звуки — НЕ через <audio>. Так браузер не показывает «отдельный
+   * плеер» / медиа-контролы и громкость честно рулится GainNode'ом.
    */
+  private music: MusicVoice | null = null;
+  private fadeVoice: MusicVoice | null = null;
+  private musicWanted = false;
+  private musicLoading = false;
+  private readonly bufCache = new Map<string, AudioBuffer>();
+  /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
-  private readonly routed = new WeakSet<HTMLAudioElement>();
   private muted = false;
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
@@ -63,10 +68,9 @@ export class Sfx {
   resume(): void {
     this.ensure();
     this.ensureMusicBus();
-    // Первый жест мог случиться уже после startMusic — доводим маршрутизацию.
-    if (this.music) this.routeTrack(this.music);
     void this.ctx?.resume();
-    void this.music?.el.play().catch(() => {});
+    // Музыку могли попросить до первого жеста — заводим теперь.
+    if (this.musicWanted && !this.music) void this.startPlaylist(0.8);
   }
 
   /** Поднять общий музыкальный gain (после ctx). */
@@ -77,59 +81,50 @@ export class Sfx {
     this.musicBus.connect(this.ctx.destination);
   }
 
-  /**
-   * Пустить элемент трека через свой gain → musicBus. После этого элемент
-   * звучит ТОЛЬКО через граф Web Audio (его `.volume` больше ни на что не
-   * влияет — что и нужно на iOS). Идемпотентно.
-   */
-  private routeTrack(tr: Track): void {
-    this.ensureMusicBus();
-    if (!this.ctx || !this.musicBus) return;
-    tr.el.volume = 1;
-    if (!tr.gain) {
-      tr.gain = this.ctx.createGain();
-      tr.gain.gain.value = 1;
-      tr.gain.connect(this.musicBus);
-    }
-    if (!this.routed.has(tr.el)) {
-      try {
-        this.ctx.createMediaElementSource(tr.el).connect(tr.gain);
-        this.routed.add(tr.el);
-      } catch {
-        /* уже подключён или CORS — оставляем как есть */
-      }
-    }
-  }
-
-  private makeTrack(url: string): Track {
-    const el = new Audio(url);
-    el.preload = "auto";
-    el.volume = 1;
-    const tr: Track = { el, gain: null };
-    this.routeTrack(tr); // если ctx ещё нет — подхватит resume()
-    return tr;
-  }
-
-  /** Фоновая музыка: тихий цикл. Стартует при первом resume(). */
   private musicUrl = "";
   private musicVol = 0.045;
-  private fadeTimer: ReturnType<typeof setInterval> | null = null;
-  /** Уходящий на затухании трек — держим ссылку, чтобы точно его добить. */
-  private fadeOut: Track | null = null;
   /** Плейлист текущей музыки: из него после каждого трека берём случайный. */
   private playlist: string[] = [];
   private lastTrack = "";
 
-  /** Жёстко остановить и освободить элемент (и снять с него слушателей). */
-  private killTrack(tr: Track | null): void {
-    if (!tr) return;
-    tr.el.onended = null;
-    tr.el.pause();
-    tr.el.src = "";
+  /** Скачать и декодировать mp3 в AudioBuffer (маленький кэш). */
+  private async loadBuf(url: string): Promise<AudioBuffer | null> {
+    const hit = this.bufCache.get(url);
+    if (hit) return hit;
+    if (!this.ctx) return null;
     try {
-      tr.gain?.disconnect();
+      const arr = await fetch(url).then((r) => r.arrayBuffer());
+      const buf = await new Promise<AudioBuffer>((res, rej) =>
+        this.ctx!.decodeAudioData(arr, res, rej),
+      );
+      if (this.bufCache.size >= 3) {
+        const oldest = this.bufCache.keys().next().value as string | undefined;
+        if (oldest && oldest !== url) this.bufCache.delete(oldest);
+      }
+      this.bufCache.set(url, buf);
+      return buf;
     } catch {
-      /* уже отключён */
+      return null;
+    }
+  }
+
+  private killVoice(v: MusicVoice | null): void {
+    if (!v) return;
+    v.src.onended = null;
+    try {
+      v.src.stop();
+    } catch {
+      /* уже остановлен */
+    }
+    try {
+      v.src.disconnect();
+    } catch {
+      /* нет */
+    }
+    try {
+      v.gain.disconnect();
+    } catch {
+      /* нет */
     }
   }
 
@@ -142,48 +137,84 @@ export class Sfx {
     return track;
   }
 
-  /** Настроить элемент под плейлист: один трек — луп, несколько — по концу следующий. */
-  private wireRotation(a: HTMLAudioElement): void {
-    if (this.playlist.length > 1) {
-      a.loop = false;
-      a.onended = () => this.playNext();
-    } else {
-      a.loop = true;
-      a.onended = null;
+  private async playVoice(
+    url: string,
+    loop: boolean,
+    fadeInSec: number,
+  ): Promise<MusicVoice | null> {
+    this.ensureMusicBus();
+    if (!this.ctx || !this.musicBus) return null;
+    const wantKey = this.musicUrl;
+    const buf = await this.loadBuf(url);
+    if (!buf || !this.ctx || !this.musicBus || this.musicUrl !== wantKey) return null;
+
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = loop;
+    const gain = this.ctx.createGain();
+    src.connect(gain).connect(this.musicBus);
+    const voice: MusicVoice = { src, gain, url };
+    if (!loop) {
+      src.onended = () => {
+        if (this.music === voice) this.playNext();
+      };
+    }
+    const now = this.ctx.currentTime;
+    gain.gain.setValueAtTime(fadeInSec > 0 ? 0 : 1, now);
+    if (fadeInSec > 0) gain.gain.linearRampToValueAtTime(1, now + fadeInSec);
+    try {
+      src.start();
+    } catch {
+      this.killVoice(voice);
+      return null;
+    }
+    return voice;
+  }
+
+  /** Завести текущий плейлист (или один трек в луп). */
+  private async startPlaylist(fadeInSec = 0): Promise<void> {
+    if (!this.ctx || this.musicLoading) return;
+    this.musicLoading = true;
+    try {
+      const key = this.musicUrl;
+      const loop = this.playlist.length <= 1;
+      const v = await this.playVoice(this.pickTrack(), loop, fadeInSec);
+      if (!v) return;
+      if (this.musicUrl !== key) {
+        this.killVoice(v);
+        return;
+      }
+      this.killVoice(this.music);
+      this.music = v;
+    } finally {
+      this.musicLoading = false;
     }
   }
 
-  /** По концу трека — поставить следующий случайный. */
+  /** По концу трека — следующий случайный из плейлиста. */
   private playNext(): void {
-    if (this.playlist.length <= 1 || this.fadeTimer) return;
-    this.killTrack(this.music); // страховка: не оставляем старый элемент играть
-    const next = this.makeTrack(this.pickTrack());
-    this.music = next;
-    this.wireRotation(next.el);
-    void next.el.play().catch(() => {});
+    if (this.playlist.length <= 1 || this.fadeVoice) return;
+    this.music = null;
+    void this.startPlaylist(0);
   }
 
   /**
-   * Фоновая музыка. `src` — один файл (луп) или список: тогда играем случайный,
-   * а по его концу — следующий случайный из списка. Стартует при первом resume().
+   * Фоновая музыка. `src` — один файл (луп) или список: играем случайный, по
+   * концу — следующий случайный. Стартует при первом resume().
    */
   startMusic(src: string | string[], volume = 0.01): void {
-    if (this.music) return;
+    if (this.musicWanted) return;
+    this.musicWanted = true;
     this.playlist = Array.isArray(src) ? [...src] : [src];
     this.musicUrl = this.playlist.join("|");
     this.musicVol = volume;
     if (this.musicBus && !this.muted) this.musicBus.gain.value = volume;
-    const tr = this.makeTrack(this.pickTrack());
-    this.music = tr;
-    this.wireRotation(tr.el);
-    void tr.el.play().catch(() => {
-      /* браузер ждёт жеста — доиграем в resume() */
-    });
+    void this.startPlaylist(0.8);
   }
 
   /**
    * Сменить фоновую музыку с плавным переходом (~1.4 с). Тот же набор — no-op.
-   * `src` — файл или плейлист (см. startMusic). Для перехода на boss.mp3 и обратно.
+   * Для перехода на boss.mp3 и обратно.
    */
   setMusic(src: string | string[], volume = this.musicVol): void {
     const list = Array.isArray(src) ? [...src] : [src];
@@ -195,47 +226,32 @@ export class Sfx {
     this.playlist = list;
     this.musicUrl = key;
     this.musicVol = volume;
-    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume; // общая ручка = целевая
+    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume;
+    if (!this.ctx || !this.musicWanted) return;
 
-    // Прерываем предыдущий переход, если он ещё идёт: и таймер, и сам
-    // уходящий трек — иначе быстрые A→B→A копят параллельно играющие элементы.
-    if (this.fadeTimer) {
-      clearInterval(this.fadeTimer);
-      this.fadeTimer = null;
-    }
-    this.killTrack(this.fadeOut);
-
+    // Старый трек уводим на затухание.
+    this.killVoice(this.fadeVoice);
     const old = this.music;
-    this.fadeOut = old;
-    const next = this.makeTrack(this.pickTrack());
-    if (next.gain) next.gain.gain.value = 0;
-    else next.el.volume = 0;
-    this.music = next;
-    this.wireRotation(next.el);
-    void next.el.play().catch(() => {});
-
-    // Кроссфейд идёт по ПЕРСОНАЛЬНЫМ gain'ам треков (0→1 и 1→0), а musicBus
-    // уже стоит на целевой громкости.
-    let t = 0;
-    this.fadeTimer = setInterval(() => {
-      t += 0.05;
-      const k = Math.min(1, t / 1.4);
-      if (next.gain) next.gain.gain.value = k;
-      else next.el.volume = Math.max(0, Math.min(1, volume * k));
-      if (old?.gain) old.gain.gain.value = 1 - k;
-      else if (old) old.el.volume = Math.max(0, (old.el.volume || 0) * 0.9);
-      if (k >= 1) {
-        if (this.fadeTimer) clearInterval(this.fadeTimer);
-        this.fadeTimer = null;
-        this.killTrack(old);
-        if (this.fadeOut === old) this.fadeOut = null;
-      }
-    }, 50);
+    this.fadeVoice = old;
+    this.music = null;
+    if (old && this.ctx) {
+      const now = this.ctx.currentTime;
+      old.gain.gain.cancelScheduledValues(now);
+      old.gain.gain.setValueAtTime(old.gain.gain.value, now);
+      old.gain.gain.linearRampToValueAtTime(0, now + 1.4);
+      setTimeout(() => {
+        if (this.fadeVoice === old) {
+          this.killVoice(old);
+          this.fadeVoice = null;
+        }
+      }, 1600);
+    }
+    void this.startPlaylist(1.4);
   }
 
   setMusicVolume(v: number): void {
     this.musicVol = Math.max(0, Math.min(1, v));
-    if (this.musicBus && !this.fadeTimer && !this.muted) this.musicBus.gain.value = this.musicVol;
+    if (this.musicBus && !this.muted) this.musicBus.gain.value = this.musicVol;
   }
 
   get isMuted(): boolean {
@@ -246,7 +262,7 @@ export class Sfx {
   setMuted(m: boolean): void {
     this.muted = m;
     if (this.master) this.master.gain.value = m ? 0 : 0.45;
-    if (this.musicBus && !this.fadeTimer) this.musicBus.gain.value = m ? 0 : this.musicVol;
+    if (this.musicBus) this.musicBus.gain.value = m ? 0 : this.musicVol;
   }
 
   // --- строительные блоки ---

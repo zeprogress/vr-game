@@ -219,17 +219,17 @@ const STYLE = `<style>
 .touch-ui > * { position: absolute; }
 /* Осмотр и щипок-зум — по всему экрану (стик и кнопки лежат поверх). */
 .touch-look { inset: 0; }
-.touch-stick { left: 26px; bottom: 26px; width: 130px; height: 130px;
+.touch-stick { left: 40px; bottom: 44px; width: 130px; height: 130px;
   border-radius: 50%; background: rgba(255,255,255,0.12);
   border: 2px solid rgba(255,255,255,0.25); }
 .touch-knob { position: absolute; left: 40px; top: 40px; width: 50px; height: 50px;
   border-radius: 50%; background: rgba(255,255,255,0.5); }
-.touch-btn { right: 30px; width: 76px; height: 76px; border-radius: 50%;
+.touch-btn { right: 40px; width: 76px; height: 76px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: rgba(255,255,255,0.18); border: 2px solid rgba(255,255,255,0.3);
   color: #fff; }
-.touch-attack   { bottom: 40px; }
-.touch-interact { bottom: 132px; }
+.touch-attack   { right: 34px; bottom: 52px; width: 96px; height: 96px; font-size: 30px; }
+.touch-interact { bottom: 164px; }
 .touch-btn.touch-aiming { background: rgba(230,120,60,0.4);
   border-color: rgba(255,190,140,0.7); }
 </style>`;

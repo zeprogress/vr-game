@@ -12,6 +12,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Node } from "@babylonjs/core/node";
 
 import { buildZone } from "../world/Zone";
+import { PRESETS, type Quality } from "../config/quality";
 import { CombatSystem, STOW } from "../combat/CombatSystem";
 import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
@@ -157,15 +158,31 @@ export class Game {
    */
   private leaveBotOn = false;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(
+    private readonly canvas: HTMLCanvasElement,
+    quality?: Quality,
+  ) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
+    // Смартфон по умолчанию на пресете "med" (можно переопределить `?q=`).
+    this.isTouch =
+      window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+    const preset = PRESETS[quality ?? (this.isTouch ? "med" : "high")];
+    if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
+    this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
+
     preloadWeaponModels(this.scene); // модели меча/лука — до первого createSword
 
-    const zone = buildZone(this.scene);
+    const zone = buildZone(this.scene, {
+      grass: preset.grass,
+      fireflies: preset.fireflies,
+      minLights: preset.minLights,
+      simpleSky: preset.simpleSky,
+      botTorches: preset.botTorches,
+    });
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.botLights = zone.botLights;
@@ -192,7 +209,7 @@ export class Game {
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.report = report;
-    this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report);
+    this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report, preset.leanMobs);
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
@@ -269,8 +286,6 @@ export class Game {
     };
     this.showHp(this.player.hp);
 
-    this.isTouch =
-      window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.player.setInput(this.defaultInput());
 
     // Смартфон — вид от третьего лица: орбитальная камера + видимая модель.

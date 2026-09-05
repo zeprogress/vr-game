@@ -8,7 +8,8 @@ import { BOSS, MOB, daylightAt } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
-import { buildZone, type ZoneQuality } from "../world/Zone";
+import { buildZone } from "../world/Zone";
+import { PRESETS, type Quality } from "../config/quality";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
@@ -36,46 +37,7 @@ const BOSS_MUSIC = "/music/boss.mp3";
 const UP = { x: 0, y: 1, z: 0 };
 const FORWARD_Z = new Vector3(0, 0, 1);
 
-/** Пресеты качества под слабое железо (TOX3). `?q=potato|low|med|high`. */
-export type Quality = "potato" | "low" | "med" | "high";
-
-interface Preset extends ZoneQuality {
-  scaling: number; // engine.setHardwareScalingLevel — >1 рендерит в меньшем разрешении
-  fpsCap: number; // 0 — без ограничения
-  leanMobs: boolean;
-}
-
-const PRESETS: Record<Quality, Preset> = {
-  // Все пресеты кэпят 30 fps (стрим всё равно 30). Снять — `?fpscap=0`,
-  // другое значение — `?fpscap=60`.
-  // Совсем слабый GPU (Mali-G31): без травы, светлячков, облаков; 2 света;
-  // мобы облегчённые (без плашек, полосок HP, ран).
-  potato: {
-    scaling: 2.2,
-    grass: 0,
-    fireflies: 0,
-    minLights: true,
-    simpleSky: true,
-    leanMobs: true,
-    botTorches: false,
-    fpsCap: 30,
-  },
-  low: {
-    scaling: 1.5,
-    grass: 0,
-    fireflies: 0,
-    minLights: true,
-    simpleSky: true,
-    leanMobs: true,
-    botTorches: false,
-    fpsCap: 30,
-  },
-  // med не роняет картинку (трава/светлячки почти как на high), но ночная
-  // подсветка ботов всё равно 2 полноценных PointLight на телефон — режем
-  // до одного факела, визуально почти незаметно, а по свету вдвое дешевле.
-  med: { scaling: 1.15, grass: 0.5, fireflies: 0.7, leanMobs: false, botTorches: 1, fpsCap: 30 },
-  high: { scaling: 1.0, grass: 1, fireflies: 1, leanMobs: false, fpsCap: 30 },
-};
+export type { Quality };
 
 /**
  * Невидимый спектатор для стрима (этап 17, Ф1).
