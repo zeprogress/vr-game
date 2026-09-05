@@ -49,7 +49,8 @@ export function mountFogTuner(): () => void {
     const [r, g, b] = FOG_TUNE.nightColor;
     return (
       `nightColor: [${fmt(r)}, ${fmt(g)}, ${fmt(b)}],\n` +
-      `near: ${fmt(FOG_TUNE.near)},\nfar: ${fmt(FOG_TUNE.far)},`
+      `near: ${fmt(FOG_TUNE.near)},\nfar: ${fmt(FOG_TUNE.far)},\n` +
+      `dayNear: ${fmt(FOG_TUNE.dayNear)},\ndayFar: ${fmt(FOG_TUNE.dayFar)},`
     );
   };
 
@@ -96,26 +97,34 @@ export function mountFogTuner(): () => void {
   };
 
   const title = document.createElement("h4");
-  title.textContent = "НОЧНОЙ ТУМАН (?fog=1)";
+  title.textContent = "ТУМАН (?fog=1)";
   box.appendChild(title);
 
+  const section = (text: string): void => {
+    const h = document.createElement("h4");
+    h.className = "sec";
+    h.textContent = text;
+    box.appendChild(h);
+  };
+
+  section("ночь — цвет");
   const swRow = document.createElement("div");
   swRow.className = "r";
   const swLabel = document.createElement("label");
   swLabel.textContent = "цвет";
   swRow.append(swLabel, swatch);
   box.appendChild(swRow);
-
   slider("R", 0, 0.5, () => FOG_TUNE.nightColor[0], (v) => (FOG_TUNE.nightColor[0] = v));
   slider("G", 0, 0.5, () => FOG_TUNE.nightColor[1], (v) => (FOG_TUNE.nightColor[1] = v));
   slider("B", 0, 0.5, () => FOG_TUNE.nightColor[2], (v) => (FOG_TUNE.nightColor[2] = v));
 
-  const sec = document.createElement("h4");
-  sec.className = "sec";
-  sec.textContent = "радиус, м";
-  box.appendChild(sec);
-  slider("ясно до", 0, 200, () => FOG_TUNE.near, (v) => (FOG_TUNE.near = v));
-  slider("темно с", 2, 400, () => FOG_TUNE.far, (v) => (FOG_TUNE.far = v));
+  section("ночь — радиус, м");
+  slider("ясно до", 0, 300, () => FOG_TUNE.near, (v) => (FOG_TUNE.near = v));
+  slider("темно с", 2, 600, () => FOG_TUNE.far, (v) => (FOG_TUNE.far = v));
+
+  section("день — радиус, м");
+  slider("ясно до", 0, 300, () => FOG_TUNE.dayNear, (v) => (FOG_TUNE.dayNear = v));
+  slider("темно с", 2, 700, () => FOG_TUNE.dayFar, (v) => (FOG_TUNE.dayFar = v));
 
   const btns = document.createElement("div");
   btns.className = "sec";
@@ -138,7 +147,7 @@ export function mountFogTuner(): () => void {
 
   const hint = document.createElement("div");
   hint.className = "hint";
-  hint.textContent = "Нужна ночь (время — с пульта). Переживает F5. Готовое — в fogTune.ts.";
+  hint.textContent = "Время суток — с пульта. Переживает F5. Готовое — в fogTune.ts.";
   box.appendChild(hint);
 
   apply();

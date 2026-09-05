@@ -36,7 +36,10 @@ interface Palette {
   zenith: [number, number, number];
   horizon: [number, number, number];
   fog: [number, number, number];
-  /** LINEAR-туман, м: ясно до fogNear, полностью затянуто с fogFar. Ночь — из FOG_TUNE. */
+  /**
+   * LINEAR-туман, м: ясно до fogNear, полностью затянуто с fogFar.
+   * У DAY/NIGHT НЕ используется — берётся из FOG_TUNE (?fog=1); только DUSK.
+   */
   fogNear: number;
   fogFar: number;
   disc: [number, number, number];
@@ -59,7 +62,7 @@ const DAY: Palette = {
   zenith: [82, 132, 205],
   horizon: [206, 226, 240],
   fog: [0.78, 0.85, 0.92],
-  fogNear: 35,
+  fogNear: 35, // не используется — дневной туман из FOG_TUNE (?fog=1)
   fogFar: 320,
   disc: [1, 0.98, 0.9],
   cloud: [0.94, 0.96, 0.99], // днём почти белые
@@ -160,11 +163,13 @@ export function dayState(hour: number): DayState {
   // Ночной цвет тумана — из FOG_TUNE (панель ?fog=1), а не из NIGHT.fog:
   // синеватый NIGHT.fog при тумане читался дымкой вместо черноты.
   const fog = mix3(DAY.fog, FOG_TUNE.nightColor, DUSK.fog, wd, wn, wk);
-  // LINEAR-туман: ясно до fogNear м, полная стена с fogFar м. Ночные
-  // границы — из FOG_TUNE. light.fog делит расстояния (гуще → ближе).
+  // LINEAR-туман: ясно до fogNear м, полная стена с fogFar м. День и ночь —
+  // из FOG_TUNE (панель ?fog=1), сумерки — из палитры DUSK. light.fog делит
+  // расстояния (ручка «гуще» → туман ближе).
   const fogMul = 1 / Math.max(0.05, L.fog);
-  const fogNear = (DAY.fogNear * wd + FOG_TUNE.near * wn + DUSK.fogNear * wk) * fogMul;
-  const fogFar = (DAY.fogFar * wd + FOG_TUNE.far * wn + DUSK.fogFar * wk) * fogMul;
+  const fogNear =
+    (FOG_TUNE.dayNear * wd + FOG_TUNE.near * wn + DUSK.fogNear * wk) * fogMul;
+  const fogFar = (FOG_TUNE.dayFar * wd + FOG_TUNE.far * wn + DUSK.fogFar * wk) * fogMul;
   const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
   const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, wd, wn, wk);
   const zenith = mix3(DAY.zenith, NIGHT.zenith, DUSK.zenith, wd, wn, wk);

@@ -1,7 +1,7 @@
 /**
- * Живая настройка ночного тумана (LINEAR-режим): цвет + две дистанции —
- * до `near` метров ясно, с `far` метров полная стена. Панель `?fog=1`
- * (см. ui/FogTuner).
+ * Живая настройка тумана (LINEAR-режим): цвет ночного + по паре дистанций
+ * на день и на ночь — до `near` м ясно, с `far` м полная стена. Сумерки
+ * между ними интерполируются. Панель `?fog=1` (см. ui/FogTuner).
  *
  * Читается заново каждый кадр (DayTime.dayState → Sky.apply) — подписка не
  * нужна, панель просто меняет объект.
@@ -11,16 +11,20 @@
 export interface FogTune {
   /** Цвет тумана в глубокую ночь. Днём/в сумерках мешается с DAY/DUSK палитрой. */
   nightColor: [number, number, number];
-  /** Ясно до этой дистанции, м. */
+  /** Ночь: ясно до / полностью затянуто с, м. */
   near: number;
-  /** Полностью затянуто с этой дистанции, м. */
   far: number;
+  /** День: ясно до / полностью затянуто с, м. */
+  dayNear: number;
+  dayFar: number;
 }
 
 export const FOG_TUNE: FogTune = {
   nightColor: [0, 0, 0],
   near: 150,
   far: 400,
+  dayNear: 60,
+  dayFar: 520,
 };
 
 const KEY = "zep.fog";
@@ -35,6 +39,8 @@ export function loadFogTune(): void {
     }
     if (Number.isFinite(v.near)) FOG_TUNE.near = v.near as number;
     if (Number.isFinite(v.far)) FOG_TUNE.far = v.far as number;
+    if (Number.isFinite(v.dayNear)) FOG_TUNE.dayNear = v.dayNear as number;
+    if (Number.isFinite(v.dayFar)) FOG_TUNE.dayFar = v.dayFar as number;
   } catch {
     /* приватный режим/битый JSON — берём дефолты */
   }
