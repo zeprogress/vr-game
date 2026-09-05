@@ -10,11 +10,6 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { WORLD } from "#shared/constants";
 import { dayState, type DayState } from "./DayTime";
-import { LOADOUT } from "../config/loadout";
-import { FOG_TUNE } from "./fogTune";
-
-/** Плотность тумана в палитре; ручка light.fog — множитель к ней. */
-const BASE_FOG_DENSITY = 0.0055;
 
 /** Небо, которое умеет меняться со временем суток. */
 export interface Sky {
@@ -38,8 +33,11 @@ export function createSky(scene: Scene, start: DayState = dayState(12), simple =
   dome.applyFog = false;
   dome.freezeWorldMatrix();
 
-  scene.fogMode = Scene.FOGMODE_EXP2;
-  scene.fogDensity = BASE_FOG_DENSITY;
+  // LINEAR (не EXP2): даёт «радиус» напрямую — ясно до fogStart, полная
+  // стена с fogEnd. Границы приходят из DayState (палитра + FOG_TUNE, ?fog=1).
+  scene.fogMode = Scene.FOGMODE_LINEAR;
+  scene.fogStart = start.fogNear;
+  scene.fogEnd = start.fogFar;
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
 
   const sun = createSun(scene);
@@ -50,8 +48,8 @@ export function createSky(scene: Scene, start: DayState = dayState(12), simple =
   const sky: Sky = {
     apply(d) {
       scene.fogColor.copyFrom(d.fog);
-      // ручка из настроек × множитель из панели ?fog=1
-      scene.fogDensity = BASE_FOG_DENSITY * LOADOUT.light.fog * FOG_TUNE.density;
+      scene.fogStart = d.fogNear;
+      scene.fogEnd = d.fogFar;
       sun.apply(d);
       // Днём облака, ночью звёзды — обе смены плавные, по доле дневного света.
       clouds?.apply(d);

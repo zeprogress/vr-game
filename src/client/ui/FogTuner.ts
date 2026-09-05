@@ -1,9 +1,9 @@
 /**
  * Панель живой настройки ночного тумана: `?fog=1`.
  *
- * Цвет, в который EXP2-туман уводит даль ночью (синеватый по умолчанию
- * читался дымкой, хотели черноту), и множитель плотности. Читается
- * DayTime/Sky каждый кадр — подписка не нужна, панель просто меняет объект.
+ * Цвет + две дистанции (LINEAR-туман): «ясно до» N м и «темно с» M м.
+ * Читается DayTime/Sky каждый кадр — подписка не нужна, панель просто
+ * меняет объект.
  *
  * Подобранное лежит в localStorage (переживает F5) и показывается готовым
  * куском кода для вставки в fogTune.ts.
@@ -47,7 +47,10 @@ export function mountFogTuner(): () => void {
   const fmt = (n: number): string => (Math.abs(n) < 0.0005 ? "0" : n.toFixed(3));
   const dump = (): string => {
     const [r, g, b] = FOG_TUNE.nightColor;
-    return `nightColor: [${fmt(r)}, ${fmt(g)}, ${fmt(b)}],\ndensity: ${fmt(FOG_TUNE.density)},`;
+    return (
+      `nightColor: [${fmt(r)}, ${fmt(g)}, ${fmt(b)}],\n` +
+      `near: ${fmt(FOG_TUNE.near)},\nfar: ${fmt(FOG_TUNE.far)},`
+    );
   };
 
   const swatch = document.createElement("div");
@@ -109,9 +112,10 @@ export function mountFogTuner(): () => void {
 
   const sec = document.createElement("h4");
   sec.className = "sec";
-  sec.textContent = "плотность";
+  sec.textContent = "радиус, м";
   box.appendChild(sec);
-  slider("×", 0, 4, () => FOG_TUNE.density, (v) => (FOG_TUNE.density = v));
+  slider("ясно до", 0, 200, () => FOG_TUNE.near, (v) => (FOG_TUNE.near = v));
+  slider("темно с", 2, 400, () => FOG_TUNE.far, (v) => (FOG_TUNE.far = v));
 
   const btns = document.createElement("div");
   btns.className = "sec";
