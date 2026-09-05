@@ -15,6 +15,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
+import { GROUND_GLOW_TUNE, onGroundGlowTuneChanged } from "./groundGlowTune";
 
 /**
  * Пятно на земле — минимальный шейдер вместо StandardMaterial: у того без
@@ -77,26 +78,22 @@ export const FIREFLY = {
    */
   poolAlpha: 0.08,
   /**
-   * Радиус «запечённого» пятна на земле под стайкой, м. Центры стаек теперь
-   * постоянны (FIREFLY_SEED), так что вместо настоящего PointLight у КАЖДОЙ
-   * стайки землю можно просто подкрасить статичным аддитивным пятном —
-   * дешевле на порядок (ни одного лишнего источника в шейдере земли/травы).
-   * Настоящая лампа остаётся только у ближайших к игроку/камере стаек — для
-   * честного объёма при проходе сквозь стайку.
+   * Базовый радиус «запечённого» пятна на земле под стайкой, м — во сколько
+   * раз растянута геометрия при живой правке (см. GROUND_GLOW_TUNE.radius в
+   * groundGlowTune.ts, панель `?groundglow=1`), сам радиус/цвет/альфа/высота
+   * пятна оттуда, не отсюда. Центры стаек постоянны (FIREFLY_SEED), так что
+   * вместо настоящего PointLight у КАЖДОЙ стайки землю можно просто
+   * подкрасить статичным пятном — дешевле на порядок (ни одного лишнего
+   * источника в шейдере земли/травы). Настоящая лампа остаётся только у
+   * ближайших к игроку/камере стаек — для честного объёма при проходе
+   * сквозь стайку.
    */
   groundGlowRadius: 5.5,
-  /** Насколько ярко пятно на земле (0..1). Было 0.32 — слишком заметно. */
-  groundGlowAlpha: 0.18,
   /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
   lightColor: [1, 0.87, 0.55] as [number, number, number],
   /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
    * равно тянет к белому, поэтому база теплее). */
   poolColor: [1, 0.74, 0.16] as [number, number, number],
-  /**
-   * Цвет пятна на земле — своя, мягче poolColor. Было (1, 0.42, 0.04) —
-   * "сильно оранжевые"; потом (1, 0.65, 0.3) — попросили желтее, добавили G.
-   */
-  groundGlowColor: [1, 0.85, 0.35] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
   lightFadeFrom: 18,
   /** Ближе этого светит в полную силу, м. */
@@ -172,6 +169,8 @@ interface Group {
    * (~14), инстансинг тут и не нужен.
    */
   groundGlow: Mesh;
+  /** Высота земли под пятном (без учёта height-подстройки) — для GroundGlowTuner. */
+  groundBaseY: number;
 }
 
 /**
@@ -202,6 +201,8 @@ export class Fireflies {
   private readonly poolMat: StandardMaterial;
   private readonly groundProto: Mesh;
   private readonly groundMat: ShaderMaterial;
+  private readonly groundGlowTex: DynamicTexture;
+  private readonly unsubGroundGlowTune: () => void;
   private readonly scene: Scene;
   private clock = 0;
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
@@ -274,7 +275,8 @@ export class Fireflies {
     // emissiveColor/diffuseColor/alpha/освещения (см. комментарий у
     // GROUND_GLOW_SHADER) — минимальный ShaderMaterial: gl_FragColor прямо
     // из текстуры, без скрытых базовых цветов.
-    const groundGlowTex = radialGlow(scene, "fireflyGroundGlowTex", FIREFLY.groundGlowColor);
+    const groundGlowTex = radialGlow(scene, "fireflyGroundGlowTex", GROUND_GLOW_TUNE.color);
+    this.groundGlowTex = groundGlowTex;
     this.groundMat = new ShaderMaterial(
       "fireflyGroundMat",
       scene,
@@ -336,15 +338,18 @@ export class Fireflies {
       const clampTilt = (v: number): number => Math.max(-MAX_TILT, Math.min(MAX_TILT, v));
       const slopeX = (terrain.heightAt(x + D, z) - terrain.heightAt(x - D, z)) / (2 * D);
       const slopeZ = (terrain.heightAt(x, z + D) - terrain.heightAt(x, z - D)) / (2 * D);
+      const groundBaseY = terrain.heightAt(x, z);
       const groundGlow = this.groundProto.clone(`fireflyGround${g}`);
       groundGlow.isVisible = true;
       groundGlow.isPickable = false;
       groundGlow.rotation.x = Math.PI / 2 + clampTilt(Math.atan(slopeZ));
       groundGlow.rotation.z = -clampTilt(Math.atan(slopeX));
-      groundGlow.position.set(x, terrain.heightAt(x, z) + 0.4, z);
+      groundGlow.position.set(x, groundBaseY + GROUND_GLOW_TUNE.height, z);
+      const k0 = GROUND_GLOW_TUNE.radius / FIREFLY.groundGlowRadius;
+      groundGlow.scaling.set(k0, k0, k0);
       groundGlow.freezeWorldMatrix(); // не двигается — пересчитывать незачем
 
-      this.groups.push({ center, dots, phase, pool, groundGlow });
+      this.groups.push({ center, dots, phase, pool, groundGlow, groundBaseY });
     }
 
     // Раньше лампы не зависели от density вообще: у med (0.7, меньше стаек)
@@ -367,6 +372,24 @@ export class Fireflies {
     }
 
     this.setVisible(false);
+    this.unsubGroundGlowTune = onGroundGlowTuneChanged(() => this.applyGroundGlowTune());
+  }
+
+  /**
+   * Панель `?groundglow=1` (GroundGlowTuner) тронула цвет/радиус/высоту —
+   * перекрашиваем общую текстуру на месте и пересчитываем геометрию клонов.
+   * Альфа сюда не входит — она и так читается из GROUND_GLOW_TUNE каждый
+   * кадр в update().
+   */
+  private applyGroundGlowTune(): void {
+    paintRadialGlow(this.groundGlowTex, GROUND_GLOW_TUNE.color);
+    const k = GROUND_GLOW_TUNE.radius / FIREFLY.groundGlowRadius;
+    for (const g of this.groups) {
+      g.groundGlow.unfreezeWorldMatrix();
+      g.groundGlow.scaling.set(k, k, k);
+      g.groundGlow.position.y = g.groundBaseY + GROUND_GLOW_TUNE.height;
+      g.groundGlow.freezeWorldMatrix();
+    }
   }
 
   private setVisible(on: boolean): void {
@@ -402,7 +425,7 @@ export class Fireflies {
     this.clock += dt;
     this.mat.alpha = this.night;
     this.poolMat.alpha = this.night * FIREFLY.poolAlpha;
-    this.groundMat.setFloat("glowAlpha", this.night * FIREFLY.groundGlowAlpha);
+    this.groundMat.setFloat("glowAlpha", this.night * GROUND_GLOW_TUNE.alpha);
 
     // Центр стайки больше не движется (FIREFLY_SEED, зафиксировано) — его
     // позицию у ореола уже выставили при создании, второй раз копировать
@@ -499,6 +522,7 @@ export class Fireflies {
   }
 
   dispose(): void {
+    this.unsubGroundGlowTune();
     for (const g of this.groups) {
       for (const d of g.dots) d.dispose();
       g.pool.dispose();
@@ -528,9 +552,16 @@ export function radialGlow(
   const S = 256;
   const tex = new DynamicTexture(name, { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
+  paintRadialGlow(tex, rgb);
+  return tex;
+}
+
+/** Перекрашивает уже существующую текстуру — для живой правки (GroundGlowTuner). */
+export function paintRadialGlow(tex: DynamicTexture, rgb: readonly [number, number, number]): void {
+  const { width: S, height: S2 } = tex.getSize();
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
-  ctx.clearRect(0, 0, S, S);
-  const grad = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  ctx.clearRect(0, 0, S, S2);
+  const grad = ctx.createRadialGradient(S / 2, S2 / 2, 0, S / 2, S2 / 2, Math.min(S, S2) / 2);
   const [cr, cg, cb] = [Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)];
   const STOPS = 24;
   for (let i = 0; i <= STOPS; i++) {
@@ -539,7 +570,6 @@ export function radialGlow(
     grad.addColorStop(r, `rgba(${cr},${cg},${cb},${a.toFixed(4)})`);
   }
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, S, S);
+  ctx.fillRect(0, 0, S, S2);
   tex.update(true);
-  return tex;
 }

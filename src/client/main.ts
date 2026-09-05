@@ -10,6 +10,11 @@ if (params.get("gear") === "1") {
   void import("./ui/GearTuner").then(({ mountGearTuner }) => mountGearTuner());
 }
 
+// ?groundglow=1 — панель живой настройки пятна светлячков на земле.
+if (params.get("groundglow") === "1") {
+  void import("./ui/GroundGlowTuner").then(({ mountGroundGlowTuner }) => mountGroundGlowTuner());
+}
+
 if (params.has("dash")) {
   bootDashboard();
 } else if (params.get("spectator")) {
