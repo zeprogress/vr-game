@@ -29,6 +29,9 @@ export class Hud {
   private leaveBot = false;
   private onLeaveBot: ((on: boolean) => void) | null = null;
   private onExit: (() => void) | null = null;
+  /** Тач-режим: своя кнопка меню + крестик в панели, без возни с захватом мыши. */
+  private touch = false;
+  private menuBtn: HTMLDivElement | null = null;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
@@ -81,13 +84,31 @@ export class Hud {
     this.renderPanel();
   }
 
+  /**
+   * Смартфон: кнопка меню в правом верхнем углу открывает ту же панель
+   * персонажа, что и клавиша C на ПК. Крестик и тап мимо панели — закрыть.
+   */
+  enableTouchMenu(): void {
+    if (this.menuBtn) return;
+    this.touch = true;
+    const btn = el("div", MENU_BTN_CSS);
+    btn.textContent = "☰";
+    btn.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.togglePanel();
+    });
+    document.body.appendChild(btn);
+    this.menuBtn = btn;
+  }
+
   private get panelOpen(): boolean {
     return this.backdrop.style.display === "flex";
   }
 
   private openPanel(): void {
     this.backdrop.style.display = "flex";
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (!this.touch && document.pointerLockElement) document.exitPointerLock();
     this.renderPanel();
   }
 
@@ -110,7 +131,7 @@ export class Hud {
   private closePanel(): void {
     if (!this.panelOpen) return;
     this.hidePanel();
-    this.requestRelock(0);
+    if (!this.touch) this.requestRelock(0);
   }
 
   /**
@@ -316,6 +337,17 @@ export class Hud {
     if (!p || !this.panelOpen) return;
     this.panel.replaceChildren();
 
+    if (this.touch) {
+      const x = el("div", CLOSE_X_CSS);
+      x.textContent = "✕";
+      x.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closePanel();
+      });
+      this.panel.appendChild(x);
+    }
+
     const title = el("div", "font:bold 22px system-ui;margin-bottom:10px;");
     title.textContent = `Уровень ${p.level}`;
     this.panel.appendChild(title);
@@ -356,10 +388,13 @@ export class Hud {
     this.renderBag();
 
     const keys = el("div", "margin-top:14px;padding-top:10px;border-top:1px solid #3a4056;font-size:12px;opacity:0.6;line-height:1.7;");
-    keys.textContent =
-      "WASD — движение · мышь — осмотреться · Space — прыжок\n" +
-      "ЛКМ — удар · E — взять (держать = замах, отпустить = бросок) · Q — снять щит\n" +
-      "C / Esc — открыть-закрыть эту панель";
+    keys.textContent = this.touch
+      ? "Левый джойстик — движение · правая половина экрана — осмотр\n" +
+        "⚔ — удар · ✋ — взять предмет\n" +
+        "☰ / тап мимо панели — открыть-закрыть это меню"
+      : "WASD — движение · мышь — осмотреться\n" +
+        "ЛКМ — удар · E — взять (держать = замах, отпустить = бросок) · Q — снять щит\n" +
+        "C / Esc — открыть-закрыть эту панель";
     keys.style.whiteSpace = "pre-line";
     this.panel.appendChild(keys);
 
@@ -444,6 +479,19 @@ const BACKDROP_CSS =
   "background:rgba(6,8,14,0.55);backdrop-filter:blur(2px);";
 
 const PANEL_CSS =
-  "width:min(440px,92vw);max-height:88vh;overflow-y:auto;padding:22px 26px;" +
+  "position:relative;width:min(440px,92vw);max-height:88vh;overflow-y:auto;padding:22px 26px;" +
   "background:rgba(18,20,28,0.97);color:#e8ecf8;border:1px solid #5a6480;border-radius:12px;" +
   "box-shadow:0 20px 60px rgba(0,0,0,0.5);font:15px/1.5 system-ui,sans-serif;";
+
+/** Кнопка меню (смартфон) — правый верхний угол, поверх HUD и панели. */
+const MENU_BTN_CSS =
+  "position:fixed;top:12px;right:12px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+  "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
+  "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
+  "-webkit-user-select:none;user-select:none;touch-action:none;";
+
+/** Крестик закрытия в углу панели персонажа (смартфон). */
+const CLOSE_X_CSS =
+  "position:absolute;top:8px;right:10px;width:34px;height:34px;border-radius:8px;" +
+  "display:flex;align-items:center;justify-content:center;font:18px/1 system-ui,sans-serif;" +
+  "color:#cdd5e6;background:rgba(255,255,255,0.06);border:1px solid #4a5474;cursor:pointer;";

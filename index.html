@@ -2,15 +2,38 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>VR GAME — прототип</title>
     <style>
       html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
+      /* Никакого выделения, дабл-тап-зума, лупы при долгом тапе и подсветки касания. */
+      html, body {
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        -webkit-tap-highlight-color: transparent;
+        overscroll-behavior: none;
+      }
       #renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; outline: none; }
+      /* Ввод ника — единственное поле, где выделение и печать нужны. */
+      input, textarea { -webkit-user-select: text; user-select: text; }
     </style>
   </head>
   <body>
     <canvas id="renderCanvas"></canvas>
+    <script>
+      // Дабл-тап-зум и iOS-жест «щипок» глушим на корню.
+      document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+      for (const t of ["gesturestart", "gesturechange", "gestureend"]) {
+        document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
+      }
+    </script>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

@@ -132,7 +132,6 @@ export class Game {
   private readonly avatars = new Map<string, RemoteAvatar>();
   /** Своя модель — только на смартфоне (вид от третьего лица). */
   private localAvatar: LocalAvatar | null = null;
-  private prevTouchAttack = false;
   private readonly aim = new Vector3(0, 0, 1);
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
@@ -252,7 +251,6 @@ export class Game {
       this.sfx.at({ x: fx, y: fy, z: fz }, () => this.sfx.footstep(0.9));
       this.net?.sendAct("step", fx, fy, fz);
     };
-    this.player.hooks.jump = () => this.sfx.jump();
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
@@ -281,6 +279,10 @@ export class Game {
       this.player.enableThirdPerson();
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
+      this.hud.enableTouchMenu();
+      // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
+      this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
+      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.attackSpeed);
     }
 
     // Звук и музыка стартуют только по жесту пользователя.
@@ -875,9 +877,7 @@ export class Game {
   private updateLocalAvatar(dt: number): void {
     const av = this.localAvatar;
     if (!av) return;
-    const atk = this.player.lastInput.primaryAction;
-    if (atk && !this.prevTouchAttack) av.swing(this.progression.attackSpeed);
-    this.prevTouchAttack = atk;
+    // Замах дёргает сам CombatSystem через onMeleeSwing — тут только поза.
     const p = this.player.position;
     av.update(
       dt,

@@ -39,6 +39,7 @@ import { createShield } from "../items/Shield";
 import { createBow, tintBow, type BowParts } from "../items/Bow";
 import { createArrowProto, tintArrows, Arrow } from "./Arrow";
 import type { Hittable } from "./Hittable";
+import { BOT_GEAR } from "../entities/botGear";
 
 const TIP = new Vector3(...COMBAT.swordTipLocal);
 /** Локальная нормаль щита — «наружу» смотрит +Y. */
@@ -223,6 +224,18 @@ export class CombatSystem {
   private fistInit: Record<Side, boolean> = { left: false, right: false };
   private readonly fistCd: Record<Side, number> = { left: 0, right: 0 };
   private meleeFlatCd = 0;
+
+  /**
+   * Третье лицо (смартфон): замах рисует клип рига (LocalAvatar), а не
+   * поворот меша. Оружие висит в кости кулака. Удар откладываем на момент
+   * касания клипа — синхронно с анимацией.
+   */
+  private tpMeleeCd = 0;
+  private tpPendingHit: { kind: "sword" | "fist"; hand: Side; at: number } | null = null;
+  /** Ставит Game: узел кости кулака аватара (или null, если риг не готов). */
+  avatarFist: ((side: Side) => Node | null) | null = null;
+  /** Ставит Game: дёрнуть клип замаха у LocalAvatar. */
+  onMeleeSwing: (() => void) | null = null;
 
   private blockCd = 0;
   private bob = 0;
@@ -1251,10 +1264,25 @@ export class CombatSystem {
         this.anchorStaff(item);
         continue;
       }
-      const t = this.placement(item.kind, item.hand);
       const anchor = this.handAnchor(item.hand);
       if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
       item.mesh.rotationQuaternion = null;
+
+      if (this.player.thirdPerson && anchor !== this.player.camera) {
+        // Оружие в кости кулака — позы из BOT_GEAR (панель `?gear=1`), как у
+        // ботов. Замах не крутит меш: его двигает клип рига.
+        const g =
+          item.kind === "shield" ? BOT_GEAR.shield
+          : item.kind === "bow" ? BOT_GEAR.bow
+          : item.kind === "staff" ? BOT_GEAR.staff
+          : BOT_GEAR.sword;
+        item.mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
+        item.mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
+        item.mesh.scaling.setAll(g.scale);
+        continue;
+      }
+
+      const t = this.placement(item.kind, item.hand);
       item.mesh.position.set(t.pos[0], t.pos[1], t.pos[2]);
       item.mesh.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
       item.mesh.scaling.setAll(t.scale);
@@ -1359,6 +1387,11 @@ export class CombatSystem {
       const node = c?.grip ?? c?.pointer;
       if (node) return node;
     }
+    // Смартфон: оружие сидит в кости кулака видимой модели (как у ботов).
+    if (this.player.thirdPerson) {
+      const fist = this.avatarFist?.(hand);
+      if (fist) return fist;
+    }
     return this.player.camera;
   }
 
@@ -1407,6 +1440,12 @@ export class CombatSystem {
     const item = this.held1("sword") ?? this.held1("staff");
     if (!item?.hand) return;
     const side = item.hand;
+
+    if (this.player.thirdPerson) {
+      this.tpMelee(dt, primaryEdge, "sword", side, item);
+      return;
+    }
+
     const sw = this.swing[side];
 
     if (primaryEdge && sw.t <= 0) {
@@ -1437,6 +1476,60 @@ export class CombatSystem {
         this.tryHit(item);
       }
     }
+  }
+
+  /**
+   * Замах в режиме третьего лица (смартфон): анимацию рисует клип рига
+   * (LocalAvatar), меш оружия не крутим. Удар — синтетический прочёс вперёд
+   * ОТ ГЛАЗ, отложенный на момент касания клипа, чтобы совпадал с картинкой.
+   */
+  private tpMelee(
+    dt: number,
+    primaryEdge: boolean,
+    kind: "sword" | "fist",
+    hand: Side,
+    item: Item | null,
+  ): void {
+    this.tpMeleeCd = Math.max(0, this.tpMeleeCd - dt);
+    if (primaryEdge && this.tpMeleeCd <= 0 && this.turnCd <= 0) {
+      const atk = this.prog.attackSpeed;
+      this.tpMeleeCd = MELEE.tpSwingCd / atk;
+      this.onMeleeSwing?.();
+      const at = item?.mesh.getAbsolutePosition() ?? this.player.eyePosition;
+      this.sfx.swordSwing(at);
+      this.emitSound("swing", at);
+      this.tpPendingHit = {
+        kind,
+        hand,
+        at: performance.now() + (MELEE.tpContact / atk) * 1000,
+      };
+    }
+    const ph = this.tpPendingHit;
+    if (ph && performance.now() >= ph.at) {
+      this.tpPendingHit = null;
+      this.tpStrike(ph.kind, ph.hand);
+    }
+  }
+
+  private tpStrike(kind: "sword" | "fist", hand: Side): void {
+    const eye = this.player.eyePosition;
+    const f = this.player.eyeForward.clone();
+    f.y = 0;
+    if (f.lengthSquared() < 1e-6) return;
+    f.normalize();
+    const reach = kind === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach;
+    const tip = eye.add(f.scale(reach));
+    let landed = false;
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const s = t.hitSegment();
+      if (segmentDistance(eye, tip, s.a, s.b) <= s.radius + COMBAT.hitMargin) {
+        this.lastHitHand = hand;
+        const mid = s.a.add(s.b).scale(0.5);
+        if (t.hit(f, kind, closestPointOnSegment(mid, eye, tip))) landed = true;
+      }
+    }
+    if (landed) this.sfx.hitThud(kind === "sword" ? 1 : 0.55);
   }
 
   /** Каждый меч в руке машет сам по себе — след кончика свой у каждой руки. */
@@ -1562,6 +1655,10 @@ export class CombatSystem {
   }
 
   private updateFlatMelee(dt: number, primaryEdge: boolean): void {
+    if (this.player.thirdPerson) {
+      this.tpMelee(dt, primaryEdge, "fist", "right", null);
+      return;
+    }
     if (this.meleeFlatCd > 0) this.meleeFlatCd -= dt;
     if (!primaryEdge || this.meleeFlatCd > 0) return;
     this.meleeFlatCd = MELEE.cooldown / this.prog.attackSpeed;

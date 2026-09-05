@@ -93,11 +93,10 @@ export class XRInput implements InputSource {
       s.tuneInc = this.edge("tuneInc", pressed(lp, b.panelToggle));
       s.tuneStep = this.edge("tuneStep", pressed(rp, b.jump));
     } else {
-      // Обычный режим: панель персонажа и прыжок.
+      // Обычный режим: панель персонажа.
       s.panelToggle = this.edge("panel", pressed(lp, b.panelToggle));
       s.uiNext = this.edge("uiNext", pressed(lp, b.panelNext));
       s.uiConfirm = this.edge("uiSpend", pressed(rp, b.panelSpend));
-      s.jump = this.edge("jump", pressed(rp, b.jump));
     }
 
     if (lp) {

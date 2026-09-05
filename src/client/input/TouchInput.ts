@@ -16,7 +16,6 @@ export class TouchInput implements InputSource {
   private accPitch = 0;
   private attack = false;
   private interactBtn = false;
-  private jumpQueued = false;
 
   /** id активного пальца на джойстике / на зоне осмотра. */
   private movePointer: number | null = null;
@@ -37,9 +36,8 @@ export class TouchInput implements InputSource {
 
     const btnAttack = el("div", "touch-btn touch-attack", "⚔");
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
-    const btnJump = el("div", "touch-btn touch-jump", "⤴");
 
-    this.root.append(lookZone, stick, btnAttack, btnInteract, btnJump);
+    this.root.append(lookZone, stick, btnAttack, btnInteract);
     document.body.appendChild(this.root);
 
     // --- Осмотр: перетаскивание по правой зоне ---
@@ -85,10 +83,6 @@ export class TouchInput implements InputSource {
     // --- Кнопки ---
     hold(btnAttack, (v) => (this.attack = v));
     hold(btnInteract, (v) => (this.interactBtn = v));
-    btnJump.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      this.jumpQueued = true;
-    });
   }
 
   private updateStick(px: number, py: number): void {
@@ -111,11 +105,9 @@ export class TouchInput implements InputSource {
     s.lookPitch = this.accPitch;
     s.primaryAction = this.attack;
     s.interact = this.interactBtn;
-    s.jump = this.jumpQueued;
 
     this.accYaw = 0;
     this.accPitch = 0;
-    this.jumpQueued = false;
     return s;
   }
 
@@ -157,6 +149,5 @@ const STYLE = `<style>
   background: rgba(255,255,255,0.18); border: 2px solid rgba(255,255,255,0.3);
   color: #fff; }
 .touch-attack   { bottom: 40px; }
-.touch-interact { bottom: 132px; right: 118px; }
-.touch-jump     { bottom: 132px; }
+.touch-interact { bottom: 132px; }
 </style>`;

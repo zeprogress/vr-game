@@ -57,7 +57,6 @@ export class PlayerController {
   /** Хуки для звука/UI. Назначает Game. */
   readonly hooks: {
     step?: () => void;
-    jump?: () => void;
     land?: (impact: number) => void;
     hurt?: (hp: number, dmg: number) => void;
     heal?: (hp: number) => void;
@@ -491,14 +490,8 @@ export class PlayerController {
     const moved = Math.hypot(pos.x - bx, pos.z - bz) / Math.max(dt, 1e-3);
     this._planarSpeed += (moved - this._planarSpeed) * Math.min(1, dt * 8);
 
-    // --- Земля под ногами ---
+    // --- Земля под ногами (гравитация есть, прыжка нет) ---
     const groundY = this.rayDown();
-
-    if (inp.jump && this.grounded) {
-      this.verticalVelocity = PLAYER.jumpSpeed;
-      this.grounded = false;
-      this.hooks.jump?.();
-    }
 
     if (this.grounded && this.verticalVelocity <= 0) {
       if (groundY !== null) pos.y = groundY + PLAYER.eyeHeight;

@@ -13,8 +13,6 @@ export interface InputState {
   primaryAction: boolean;
   /** Взаимодействие (подобрать лут и т.п.). Удерживается. */
   interact: boolean;
-  /** Прыжок — нажат в этом кадре (фронт). */
-  jump: boolean;
   /** Сбросить щит (клавиша Q в плоском режиме) — нажат в этом кадре (фронт). */
   dropItem: boolean;
   /**
@@ -56,7 +54,6 @@ export function emptyInput(): InputState {
     lookPitch: 0,
     primaryAction: false,
     interact: false,
-    jump: false,
     dropItem: false,
     tune: null,
     panelToggle: false,
@@ -73,7 +70,7 @@ export function emptyInput(): InputState {
 export interface InputSource {
   /**
    * Снять состояние за текущий кадр. Вызывается ровно один раз за кадр.
-   * Накопленные дельты (look, jump) после вызова обнуляются.
+   * Накопленные дельты (look) после вызова обнуляются.
    */
   sample(): InputState;
   dispose(): void;
