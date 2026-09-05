@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
@@ -88,7 +88,7 @@ export const FIREFLY = {
    * ближайших к игроку/камере стаек — для честного объёма при проходе
    * сквозь стайку.
    */
-  groundGlowRadius: 5.5,
+  groundGlowRadius: 7.157,
   /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
   lightColor: [1, 0.87, 0.55] as [number, number, number],
   /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
@@ -325,25 +325,28 @@ export class Fireflies {
       pool.isPickable = false;
       pool.position.copyFrom(center);
 
-      // Лежит плашмя (поворот из вертикальной плоскости в горизонтальную),
-      // с лёгким наклоном под уклон рельефа против полукруглого среза на
-      // склоне — но полный наклон превращает круг в вытянутый эллипс (тоже
-      // не круг), поэтому берём максимум ±0.15 рад: смягчает срез на
-      // умеренном уклоне, не растягивая пятно на крутом. Приподнимаем
-      // заметно выше земли (не 0.03 — было мерцание, но и всё равно резало
-      // краем об склон): земля не идеально линейна на радиусе 5.5 м, а
-      // с запасом по высоте край плоскости не проваливается под неё.
+      // Лежит плашмя, с лёгким наклоном под уклон рельефа против полукруглого
+      // среза на склоне — но полный наклон превращает круг в вытянутый эллипс
+      // (тоже не круг), поэтому берём максимум ±0.15 рад: смягчает срез на
+      // умеренном уклоне, не растягивая пятно на крутом. Приподнимаем заметно
+      // выше земли (не 0.03 — было мерцание, но и всё равно резало краем об
+      // склон): земля не идеально линейна на радиусе 5.5 м, а с запасом по
+      // высоте край плоскости не проваливается под неё.
+      //
+      // Наклон — не два Euler-угла (rotation.x/z): они друг от друга зависят,
+      // и на асимметричном уклоне (X и Z разной величины) простая пара знаков
+      // ломалась — проверил вживую (TransformCoordinates по краям плоскости
+      // на реальных стайках). Кватернион по нормали земли работает корректно
+      // при любом соотношении slopeX/slopeZ.
       const D = 1.2;
       const MAX_TILT = 0.15;
-      const clampTilt = (v: number): number => Math.max(-MAX_TILT, Math.min(MAX_TILT, v));
       const slopeX = (terrain.heightAt(x + D, z) - terrain.heightAt(x - D, z)) / (2 * D);
       const slopeZ = (terrain.heightAt(x, z + D) - terrain.heightAt(x, z - D)) / (2 * D);
       const groundBaseY = terrain.heightAt(x, z);
       const groundGlow = this.groundProto.clone(`fireflyGround${g}`);
       groundGlow.isVisible = true;
       groundGlow.isPickable = false;
-      groundGlow.rotation.x = Math.PI / 2 + clampTilt(Math.atan(slopeZ));
-      groundGlow.rotation.z = -clampTilt(Math.atan(slopeX));
+      groundGlow.rotationQuaternion = groundTiltQuaternion(slopeX, slopeZ, MAX_TILT);
       groundGlow.position.set(x, groundBaseY + GROUND_GLOW_TUNE.height, z);
       const k0 = GROUND_GLOW_TUNE.radius / FIREFLY.groundGlowRadius;
       groundGlow.scaling.set(k0, k0, k0);
@@ -537,6 +540,31 @@ export class Fireflies {
 
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Поворот пятна на земле под уклон рельефа — прямым выравниванием нормали
+ * плоскости (дефолт CreatePlane — локальная +Z) по нормали земли, а не
+ * парой Euler-углов (rotation.x/z): те друг от друга зависят, и на
+ * асимметричном уклоне (X и Z разной величины) пара фиксированных знаков
+ * давала наклон в другую сторону. Проверено вживую (TransformCoordinates по
+ * краям плоскости на реальных стайках, все комбинации знаков) — этот
+ * способ даёт верный знак при любом соотношении slopeX/slopeZ.
+ */
+function groundTiltQuaternion(slopeX: number, slopeZ: number, maxTilt: number): Quaternion {
+  const tiltX = Math.max(-maxTilt, Math.min(maxTilt, Math.atan(slopeX)));
+  const tiltZ = Math.max(-maxTilt, Math.min(maxTilt, Math.atan(slopeZ)));
+  const tangentX = new Vector3(Math.cos(tiltX), Math.sin(tiltX), 0);
+  const tangentZ = new Vector3(0, Math.sin(tiltZ), Math.cos(tiltZ));
+  const normal = Vector3.Cross(tangentX, tangentZ);
+  if (normal.lengthSquared() < 1e-9) return Quaternion.Identity();
+  normal.normalize();
+  const from = new Vector3(0, 0, 1); // дефолтная локальная нормаль CreatePlane
+  const axis = Vector3.Cross(from, normal);
+  if (axis.lengthSquared() < 1e-9) return Quaternion.Identity();
+  axis.normalize();
+  const angle = Math.acos(Math.max(-1, Math.min(1, Vector3.Dot(from, normal))));
+  return Quaternion.RotationAxis(axis, angle);
 }
 
 /**
