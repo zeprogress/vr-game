@@ -39,6 +39,7 @@ export class LocalAvatar {
   private disposed = false;
 
   private swingUntil = 0;
+  private swingSpeed = 1;
   private hitUntil = 0;
   private hidden = false;
 
@@ -54,8 +55,16 @@ export class LocalAvatar {
     void this.reload();
   }
 
-  swing(): void {
-    this.swingUntil = performance.now() + SWING_MS;
+  /** speed — множитель темпа атаки (>1 быстрее): ускоряет и клип, и окно. */
+  swing(speed = 1): void {
+    this.swingSpeed = speed > 0.1 ? speed : 1;
+    this.swingUntil = performance.now() + SWING_MS / this.swingSpeed;
+    const g = this.rig?.anims.get("swordslash");
+    if (g) {
+      g.start(false, this.swingSpeed, g.from, g.to, false);
+      g.setWeightForAllAnimatables(1);
+      this.animW.set("swordslash", 1);
+    }
   }
   hurt(): void {
     this.hitUntil = performance.now() + HIT_MS;
@@ -159,7 +168,7 @@ export class LocalAvatar {
       } else if (!g.isPlaying && n === want) {
         // Разовый клип (swordslash/recievehit): триггер уже прошёл, но клип
         // мог доиграть — перезапускаем, пока окно не закрылось.
-        g.start(false, 1, g.from, g.to, false);
+        g.start(false, n === "swordslash" ? this.swingSpeed : 1, g.from, g.to, false);
       }
       this.animW.set(n, w);
       g.setWeightForAllAnimatables(w);

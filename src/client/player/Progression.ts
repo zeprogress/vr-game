@@ -4,6 +4,7 @@ import {
   arrowDamageFor,
   arrowSpeedBonusFor,
   atMaxLevel,
+  attackSpeedFromLevel,
   grantXp,
   maxHpFor,
   moveSpeedFor,
@@ -120,33 +121,39 @@ export class Progression {
   }
 
   // ---- производные величины ----
+  // База растёт от уровня (ускоряясь), атрибут — небольшой множитель поверх.
 
   get maxHp(): number {
-    return maxHpFor(this.stats.str);
+    return maxHpFor(this.level, this.stats.str);
   }
 
-  /** Множитель/добавка урона мечом (базовый удар = 1). */
+  /** Базовый множитель урона мечом (1 ур. + сила 1 = 1). Тир оружия — отдельно. */
   get swordDamage(): number {
-    return swordDamageFor(this.stats.str);
+    return swordDamageFor(this.level, this.stats.str);
   }
 
   get moveSpeed(): number {
-    return moveSpeedFor(this.stats.agi);
+    return moveSpeedFor(this.level, this.stats.agi);
   }
 
-  /** Добавка к скорости стрелы, м/с. */
+  /** Множитель темпа атаки (>1 — быстрее). Только от уровня. */
+  get attackSpeed(): number {
+    return attackSpeedFromLevel(this.level);
+  }
+
+  /** Добавка к скорости стрелы, м/с (от уровня). */
   get arrowSpeedBonus(): number {
-    return arrowSpeedBonusFor(this.stats.agi);
+    return arrowSpeedBonusFor(this.level);
   }
 
-  /** Урон стрелы (без тира оружия). */
+  /** Урон стрелы (без тира оружия) — от уровня и силы. */
   get arrowDamage(): number {
-    return arrowDamageFor(this.stats.agi);
+    return arrowDamageFor(this.level, this.stats.str);
   }
 
-  /** Потолок маны (от интеллекта). */
+  /** Потолок маны (уровень × интеллект). */
   get maxMana(): number {
-    return maxManaFor(this.stats.int);
+    return maxManaFor(this.level, this.stats.int);
   }
 
   /** Восстановление маны, ед/с (от интеллекта). */
@@ -154,14 +161,14 @@ export class Progression {
     return manaRegenFor(this.stats.int);
   }
 
-  /** Урон огнешара посоха при полном заряде (от интеллекта). */
+  /** Урон огнешара посоха при полном заряде (уровень × интеллект). */
   get fireboltMax(): number {
-    return fireboltDamage(this.stats.int, 1);
+    return fireboltDamage(this.level, this.stats.int, 1);
   }
 
-  /** Исцеление посохом при полном заряде (от интеллекта). */
+  /** Исцеление посохом при полном заряде (уровень × интеллект). */
   get healMax(): number {
-    return healAmountFor(this.stats.int, 1);
+    return healAmountFor(this.level, this.stats.int, 1);
   }
 
   // ---- сохранение ----

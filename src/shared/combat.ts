@@ -1,6 +1,6 @@
-import { ARROW, BOW, COMBAT, MELEE, PROGRESSION, SHIELD, THROW } from "./constants";
+import { ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
 
-import { arrowDamageFor, swordDamageFor } from "./progression";
+import { arrowDamageFor, weaponDamageBase } from "./progression";
 
 /** Чем игрок ударил. Урон и досягаемость сервер берёт отсюда, а не с клиента. */
 export type WeaponKind = "sword" | "fist" | "arrow" | "throw";
@@ -34,24 +34,25 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
 };
 
 /**
- * Урон оружия. Меч растёт от силы, всё остальное фиксировано;
- * `mult` — множитель уровня предмета в руке (бронза, золото).
+ * Урон оружия. Физ. урон растёт от УРОВНЯ (ускоряется) и множится на силу;
+ * `mult` — множитель тира предмета в руке (бронза, золото).
  */
 export function weaponDamage(
   kind: WeaponKind,
+  level: number,
   str: number,
   mult = 1,
-  agi: number = PROGRESSION.startStat,
 ): number {
   switch (kind) {
     case "sword":
-      return swordDamageFor(str) * mult;
+      return weaponDamageBase(level, str) * mult;
     case "fist":
-      return MELEE.damage; // кулак не зависит от того, что в другой руке
+      // Кулак вдвое слабее меча, но так же растёт от уровня/силы.
+      return MELEE.damage * weaponDamageBase(level, str);
     case "throw":
-      return THROW.damage * mult;
+      return THROW.damage * weaponDamageBase(level, str) * mult;
     case "arrow":
-      return arrowDamageFor(agi) * mult;
+      return arrowDamageFor(level, str) * mult;
   }
 }
 

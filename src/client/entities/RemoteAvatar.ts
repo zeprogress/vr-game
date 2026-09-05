@@ -21,6 +21,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
+import { attackSpeedFromLevel } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
@@ -272,15 +273,16 @@ export class RemoteAvatar implements Hittable {
   /** Высота облачка: чуть выше плашки с ником. */
   private bubbleY = 1.5;
 
-  /** Быстрый замах — по сети (act:swing). Виден на модельке бота. */
+  /** Быстрый замах — по сети (act:swing). Скорость клипа растёт с уровнем. */
   playSwing(): void {
     this.swingAt = this.now;
     const g = this.botRig?.anims.get("swordslash");
     if (g) {
-      g.start(false, 1.35, g.from, g.to, false);
+      const rate = 1.35 * attackSpeedFromLevel(this.level);
+      g.start(false, rate, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
       this.animW.set("swordslash", 1);
-      this.swingUntil = this.now + ((g.to - g.from) / 60 / 1.35) * 1000;
+      this.swingUntil = this.now + ((g.to - g.from) / 60 / rate) * 1000;
     }
   }
 
@@ -442,11 +444,11 @@ export class RemoteAvatar implements Hittable {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
     this.skin = p.skin ?? 0;
-    // Уровень над головой — только у ботов, как и раньше (это была ветка
-    // skin>0, но теперь модель есть у всех: без замены на isBot уровень
-    // засветился бы и над обычными игроками — этого не просили).
-    if (this.isBot && (p.level !== this.level || this.nick !== p.nick)) {
-      this.level = p.level;
+    // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
+    // ним рисуем только ботам — как и раньше.
+    const tagChanged = this.isBot && (p.level !== this.level || this.nick !== p.nick);
+    this.level = p.level;
+    if (tagChanged) {
       this.nick = p.nick;
       this.nameTag.setInfo(p.nick, p.level);
     }

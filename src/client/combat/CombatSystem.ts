@@ -151,9 +151,9 @@ export class CombatSystem {
   private windup = 0; // замах перед броском (плоский режим), 0..1
 
   /** Замах считается для каждой руки отдельно — мечей может быть два. */
-  private readonly swing: Record<Side, { t: number; hitDone: boolean }> = {
-    left: { t: 0, hitDone: false },
-    right: { t: 0, hitDone: false },
+  private readonly swing: Record<Side, { t: number; dur: number; hitDone: boolean }> = {
+    left: { t: 0, dur: COMBAT.swingDuration, hitDone: false },
+    right: { t: 0, dur: COMBAT.swingDuration, hitDone: false },
   };
   private swooshCd = 0;
   private readonly tipTrail: Record<Side, { p: Vector3; dir: Vector3; age: number }[]> = {
@@ -1410,7 +1410,9 @@ export class CombatSystem {
     const sw = this.swing[side];
 
     if (primaryEdge && sw.t <= 0) {
-      sw.t = COMBAT.swingDuration;
+      // Скорость атаки от уровня укорачивает замах — и удар, и анимацию.
+      sw.dur = COMBAT.swingDuration / this.prog.attackSpeed;
+      sw.t = sw.dur;
       sw.hitDone = false;
       const p = item.mesh.getAbsolutePosition();
       this.sfx.swordSwing(p);
@@ -1424,7 +1426,7 @@ export class CombatSystem {
     }
     if (sw.t > 0) {
       sw.t -= dt;
-      const phase = 1 - Math.max(0, sw.t) / COMBAT.swingDuration;
+      const phase = 1 - Math.max(0, sw.t) / sw.dur;
       const arc = Math.sin(phase * Math.PI);
       const base = LOADOUT.items[item.kind].flat.rot;
       // Клинок идёт вниз-ВПЕРЁД (локальный +Y заваливается к +Z, от игрока).
@@ -1562,7 +1564,7 @@ export class CombatSystem {
   private updateFlatMelee(dt: number, primaryEdge: boolean): void {
     if (this.meleeFlatCd > 0) this.meleeFlatCd -= dt;
     if (!primaryEdge || this.meleeFlatCd > 0) return;
-    this.meleeFlatCd = MELEE.cooldown;
+    this.meleeFlatCd = MELEE.cooldown / this.prog.attackSpeed;
     const eye = this.player.camera.globalPosition;
     this.sfx.swordSwing(eye);
     this.emitSound("swing", eye);

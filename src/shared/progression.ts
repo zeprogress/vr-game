@@ -34,28 +34,59 @@ export function atMaxLevel(level: number): boolean {
 }
 
 // ---- производные величины ----
+//
+// Схема: базовое значение растёт ОТ УРОВНЯ (ускоряясь), атрибут — небольшой
+// множитель поверх. str → HP и физ. урон, agi → бег, int → мана и магия.
+// Скорость атаки растёт только от уровня.
 
-export function maxHpFor(str: number): number {
-  return PLAYER_HP.max + (str - PROGRESSION.startStat) * PROGRESSION.hpPerStr;
+const P = PROGRESSION.perLevel;
+
+/** Накопленный рост к уровню: perLevel·L + accel·L·(L-1)/2, L = level-1. */
+export function levelGain(level: number, curve: { perLevel: number; accel: number }): number {
+  const L = Math.max(0, Math.floor(level) - 1);
+  return curve.perLevel * L + (curve.accel * L * (L - 1)) / 2;
 }
 
-/** Урон мечом (базовый удар = 1). */
-export function swordDamageFor(str: number): number {
-  return 1 + (str - PROGRESSION.startStat) * PROGRESSION.swordDamagePerStr;
+const strDmgMul = (str: number): number => 1 + (str - PROGRESSION.startStat) * PROGRESSION.str.dmgMul;
+
+/** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
+export function weaponDmgFromLevel(level: number): number {
+  return 1 + levelGain(level, P.weaponDmg);
 }
 
-export function moveSpeedFor(agi: number): number {
-  return PLAYER.runSpeed + (agi - PROGRESSION.startStat) * PROGRESSION.moveSpeedPerAgi;
+/** Итоговый базовый множитель физ. урона: уровень × сила. Тир оружия — отдельно. */
+export function weaponDamageBase(level: number, str: number): number {
+  return weaponDmgFromLevel(level) * strDmgMul(str);
 }
 
-/** Добавка к скорости стрелы, м/с. */
-export function arrowSpeedBonusFor(agi: number): number {
-  return (agi - PROGRESSION.startStat) * PROGRESSION.arrowSpeedPerAgi;
+/** Множитель темпа атаки (>1 — быстрее). Только от уровня, с потолком. */
+export function attackSpeedFromLevel(level: number): number {
+  return Math.min(P.atkSpeed.max, 1 + levelGain(level, P.atkSpeed));
 }
 
-/** Урон стрелы (база + за ловкость). Тир оружия домножается отдельно. */
-export function arrowDamageFor(agi: number): number {
-  return 1.3 + (agi - PROGRESSION.startStat) * PROGRESSION.arrowDamagePerAgi;
+export function maxHpFor(level: number, str: number): number {
+  const base = PLAYER_HP.max + levelGain(level, P.hp);
+  return base * (1 + (str - PROGRESSION.startStat) * PROGRESSION.str.hpMul);
+}
+
+/** Урон мечом (базовый удар на 1 ур. при силе 1 = 1). Совместимость имени. */
+export function swordDamageFor(level: number, str: number): number {
+  return weaponDamageBase(level, str);
+}
+
+export function moveSpeedFor(level: number, agi: number): number {
+  const base = PLAYER.runSpeed + levelGain(level, P.moveSpeed);
+  return base * (1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.moveMul);
+}
+
+/** Добавка к скорости стрелы, м/с — небольшая, от уровня. */
+export function arrowSpeedBonusFor(level: number): number {
+  return Math.max(0, Math.floor(level) - 1) * PROGRESSION.arrowSpeedPerLevel;
+}
+
+/** Урон стрелы (относительно меча ×1.3). Тир оружия домножается отдельно. */
+export function arrowDamageFor(level: number, str: number): number {
+  return 1.3 * weaponDamageBase(level, str);
 }
 
 // ---- изменения ----

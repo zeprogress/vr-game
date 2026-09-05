@@ -876,7 +876,7 @@ export class Game {
     const av = this.localAvatar;
     if (!av) return;
     const atk = this.player.lastInput.primaryAction;
-    if (atk && !this.prevTouchAttack) av.swing();
+    if (atk && !this.prevTouchAttack) av.swing(this.progression.attackSpeed);
     this.prevTouchAttack = atk;
     const p = this.player.position;
     av.update(
@@ -1200,7 +1200,12 @@ export class Game {
 
   private levelUpFx(level: number): void {
     this.sfx.levelUp();
-    this.hud.toast(`Уровень ${level}! +1 очко характеристик`);
+    const spd = this.progression.attackSpeed;
+    this.hud.toast(
+      `Уровень ${level}! Больше HP, маны, урона и скорости` +
+        (spd > 1.02 ? ` · атака ×${spd.toFixed(2)}` : "") +
+        ` · +1 очко`,
+    );
   }
 
   /**

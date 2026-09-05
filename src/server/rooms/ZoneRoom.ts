@@ -93,6 +93,7 @@ import {
 } from "#shared/items";
 import {
   atMaxLevel,
+  attackSpeedFromLevel,
   grantXp,
   isStatName,
   maxHpFor,
@@ -466,10 +467,10 @@ export class ZoneRoom extends Room<ZoneState> {
       writeProgress(p, prog);
       // Прибавку к потолку HP доливаем сразу — как это делал клиент.
       const before = p.maxHp;
-      p.maxHp = maxHpFor(p.str);
+      p.maxHp = maxHpFor(p.level, p.str);
       p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - before));
       const beforeMana = p.maxMana;
-      p.maxMana = maxManaFor(p.int);
+      p.maxMana = maxManaFor(p.level, p.int);
       p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
     });
 
@@ -524,7 +525,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
-        target.hp = Math.min(target.maxHp, target.hp + healAmountFor(p.int, charge));
+        target.hp = Math.min(target.maxHp, target.hp + healAmountFor(p.level, p.int, charge));
         return;
       }
 
@@ -547,7 +548,7 @@ export class ZoneRoom extends Room<ZoneState> {
         fireboltSpeed(pull),
         fireboltRadius(charge),
         fireboltHitRadius(charge),
-        fireboltDamage(p.int, charge),
+        fireboltDamage(p.level, p.int, charge),
         client.sessionId,
         MAGIC.firebolt.life,
       );
@@ -837,9 +838,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (msg.target !== "mob" && msg.target !== "dummy" && msg.target !== "player") return;
     if (!isWeaponKind(msg.weapon)) return;
 
-    // Темп: чаще, чем позволяет оружие, удары не засчитываются.
+    // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
+    // атаки от уровня укорачивает интервал.
     const last = rt.lastHit[msg.weapon];
-    if (last !== undefined && this.elapsed - last < WEAPON_RATE[msg.weapon]) return;
+    const rate = WEAPON_RATE[msg.weapon] / attackSpeedFromLevel(p.level);
+    if (last !== undefined && this.elapsed - last < rate) return;
 
     const hand = msg.hand === "left" ? "left" : "right";
 
@@ -858,7 +861,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpDmg = weaponDamage(msg.weapon, p.str, multIn(p, hand), p.agi) * PVP.damageMult;
+      const pvpDmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand)) * PVP.damageMult;
       this.hurtPlayer({
         target: msg.id,
         dmg: pvpDmg,
@@ -876,7 +879,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.str, multIn(p, hand), p.agi);
+    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand));
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -906,10 +909,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const prog = readProgress(p);
     const levels = grantXp(prog, amount);
     writeProgress(p, prog);
-    p.maxMana = maxManaFor(p.int);
+    p.maxMana = maxManaFor(p.level, p.int);
     if (levels <= 0) return;
-    p.maxHp = maxHpFor(p.str);
-    p.hp = Math.min(p.maxHp, p.hp + LEVEL_UP_HEAL * levels);
+    // Новый уровень: потолок HP вырос — доливаем разницу плюс бонус.
+    const beforeHp = p.maxHp;
+    p.maxHp = maxHpFor(p.level, p.str);
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp) + LEVEL_UP_HEAL * levels);
     client?.send(MSG.levelUp, { level: p.level });
     // Соседям (и спектатору) — чтобы над телом всплыли оранжевые крестики и
     // прозвучал уровень. У бота клиента нет, так что это единственный сигнал.
@@ -1192,10 +1197,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Потолки HP/маны растут сразу — как в обработчике MSG.spend.
     const beforeHp = p.maxHp;
-    p.maxHp = maxHpFor(p.str);
+    p.maxHp = maxHpFor(p.level, p.str);
     p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp));
     const beforeMana = p.maxMana;
-    p.maxMana = maxManaFor(p.int);
+    p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
     this.persistBot(bot);
 
@@ -1341,9 +1346,9 @@ export class ZoneRoom extends Room<ZoneState> {
       p.agi = rec.agi;
       p.int = rec.int;
     }
-    p.maxHp = maxHpFor(p.str);
+    p.maxHp = maxHpFor(p.level, p.str);
     p.hp = p.maxHp;
-    p.maxMana = maxManaFor(p.int);
+    p.maxMana = maxManaFor(p.level, p.int);
     p.mana = p.maxMana;
     // Меч сохраняем: если бот нашёл золотой (см. lootTarget в tickBot), он
     // не должен откатываться до базового на каждом !play.
@@ -1711,8 +1716,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
     if (chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
-      bot.attackCd = BOT.attackCooldown;
-      bot.swingIn = BOT.attackImpact;
+      // Скорость атаки от уровня: чаще бьёт и быстрее доводит замах —
+      // анимация на модельке ускоряется на клиенте под тот же множитель.
+      const atk = attackSpeedFromLevel(p.level);
+      bot.attackCd = BOT.attackCooldown / atk;
+      bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
       bot.swingDx = dx;
       bot.swingDz = dz;
@@ -1792,7 +1800,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const reach =
       BOT.attackRange * 1.4 + (mob.kind === "boss" ? MOB.bodyRadius * mob.scale : 0);
     if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
-    const dmg = weaponDamage("sword", p.str, 1, p.agi);
+    const dmg = weaponDamage("sword", p.level, p.str, 1);
     const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
     if (xp > 0) {
       this.awardXp(undefined, p, xp);
@@ -2147,8 +2155,8 @@ export class ZoneRoom extends Room<ZoneState> {
       rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
         : 1 + Math.floor(Math.random() * BOT.skins);
-    p.maxHp = maxHpFor(p.str);
-    p.maxMana = maxManaFor(p.int);
+    p.maxHp = maxHpFor(p.level, p.str);
+    p.maxMana = maxManaFor(p.level, p.int);
     p.mana = p.maxMana;
     // Руки заполняем из сейва СРАЗУ: иначе первое же сохранение (оно идёт
     // раз в 10 с) запишет пустые руки, ещё до того как клиент пришлёт свои.

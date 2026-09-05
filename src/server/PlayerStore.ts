@@ -42,7 +42,7 @@ function blank(token: string): PlayerRecord {
     z: RESPAWN.spawnZ,
     yaw: 0,
     ...p,
-    hp: maxHpFor(p.str),
+    hp: maxHpFor(p.level, p.str),
     owned: [],
     stowed: [],
     held: { left: null, right: null },

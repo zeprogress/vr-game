@@ -1,4 +1,5 @@
 import { PROGRESSION } from "./constants";
+import { levelGain } from "./progression";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -9,9 +10,8 @@ import { PROGRESSION } from "./constants";
  * Пока копишь, мана убывает; кончилась — заряд замирает.
  */
 export const MAGIC = {
-  /** Мана: базовый запас + прибавка за очко интеллекта. */
+  /** Мана: базовый запас. Рост от уровня — в PROGRESSION.perLevel.mana, множитель от int. */
   baseMana: 30,
-  manaPerInt: 14,
   /** Восстановление маны в секунду: база + за интеллект. */
   regenBase: 2.0,
   regenPerInt: 0.5,
@@ -31,10 +31,9 @@ export const MAGIC = {
     /** Радиус ВИЗУАЛА снаряда по заряду, м. При полном заряде — крупный шар. */
     minRadius: 0.12,
     maxRadius: 0.62,
-    /** Урон: база + за заряд, плюс масштаб от интеллекта. */
+    /** Урон: база + за заряд. Множится на magicPowerFor(level, int). */
     baseDamage: 1.0,
     damagePerCharge: 2.8,
-    intScale: 0.03, // +3% урона за очко интеллекта сверх стартового
     /** Дальность полёта и жизнь снаряда. */
     range: 34,
     life: 2.2,
@@ -53,8 +52,7 @@ export const MAGIC = {
     minCharge: 0.15,
     minMana: 8,
     baseHeal: 5,
-    healPerCharge: 20, // полный ≈ 25 HP при интеллекте 1
-    intScale: 0.04,
+    healPerCharge: 20, // полный ≈ 25 HP на 1 ур. при интеллекте 1
     cooldown: 1.5,
     /** Кристалл ближе этого к голове (своей или союзника) — жест лечения. */
     reach: 0.5,
@@ -63,28 +61,38 @@ export const MAGIC = {
   },
 } as const;
 
-export function maxManaFor(int: number): number {
-  return MAGIC.baseMana + (int - PROGRESSION.startStat) * MAGIC.manaPerInt;
+/**
+ * Множитель «силы магии»: базовый рост от УРОВНЯ (ускоряется) × небольшой
+ * множитель от интеллекта. Множит урон огнешара и объём лечения.
+ */
+export function magicPowerFor(level: number, int: number): number {
+  const lvl = 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
+  const intMul = 1 + (int - PROGRESSION.startStat) * PROGRESSION.int.magicMul;
+  return lvl * intMul;
+}
+
+/** Потолок маны: базовый запас растёт от уровня, интеллект множит. */
+export function maxManaFor(level: number, int: number): number {
+  const base = MAGIC.baseMana + levelGain(level, PROGRESSION.perLevel.mana);
+  return base * (1 + (int - PROGRESSION.startStat) * PROGRESSION.int.manaMul);
 }
 
 export function manaRegenFor(int: number): number {
   return MAGIC.regenBase + (int - PROGRESSION.startStat) * MAGIC.regenPerInt;
 }
 
-/** Урон огненного снаряда: заряд 0..1, интеллект. */
-export function fireboltDamage(int: number, charge: number): number {
+/** Урон огненного снаряда: заряд 0..1, уровень, интеллект. */
+export function fireboltDamage(level: number, int: number, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.firebolt.baseDamage + c * MAGIC.firebolt.damagePerCharge;
-  const scale = 1 + (int - PROGRESSION.startStat) * MAGIC.firebolt.intScale;
-  return base * scale;
+  return base * magicPowerFor(level, int);
 }
 
-/** Сколько HP вернёт лечение: заряд 0..1, интеллект. */
-export function healAmountFor(int: number, charge: number): number {
+/** Сколько HP вернёт лечение: заряд 0..1, уровень, интеллект. */
+export function healAmountFor(level: number, int: number, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.heal.baseHeal + c * MAGIC.heal.healPerCharge;
-  const scale = 1 + (int - PROGRESSION.startStat) * MAGIC.heal.intScale;
-  return base * scale;
+  return base * magicPowerFor(level, int);
 }
 
 export function fireboltSpeed(pull01: number): number {

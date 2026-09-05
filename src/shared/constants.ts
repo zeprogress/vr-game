@@ -254,12 +254,32 @@ export const PROGRESSION = {
   xpPerMob: 1,
   statPointsPerLevel: 1,
   startStat: 1, // сила/ловкость/интеллект на 1 уровне
-  /** Прибавки за каждое очко характеристики. */
-  hpPerStr: 10,
-  swordDamagePerStr: 0.35,
-  moveSpeedPerAgi: 0.12, // м/с
-  arrowSpeedPerAgi: 1.6, // м/с к скорости стрелы
-  arrowDamagePerAgi: 0.18, // урон стрелы за очко ловкости
+
+  /**
+   * Рост ОТ УРОВНЯ. gain(L) = perLevel·L + accel·L·(L-1)/2, где L = level-1.
+   * Прибавка на N-м уровне = perLevel + (N-1)·accel — с каждым уровнем больше.
+   * На 1 уровне рост нулевой (базовые значения = PLAYER_HP.max / MAGIC.baseMana
+   * / PLAYER.runSpeed / множитель 1).
+   */
+  perLevel: {
+    hp: { perLevel: 8, accel: 0.7 }, // +8 HP на 2 ур., +8.7 на 3, +9.4 на 4…
+    mana: { perLevel: 5, accel: 0.5 },
+    weaponDmg: { perLevel: 0.09, accel: 0.008 }, // множитель урона оружия (старт 1)
+    magicDmg: { perLevel: 0.09, accel: 0.008 }, // множитель силы магии (старт 1)
+    moveSpeed: { perLevel: 0.05, accel: 0.004 }, // м/с
+    atkSpeed: { perLevel: 0.03, accel: 0.0018, max: 2.6 }, // множитель темпа атаки (старт 1)
+  },
+
+  /**
+   * Атрибуты — небольшие МНОЖИТЕЛИ поверх наработанного уровнями, не добавки.
+   * str → HP и физ. урон; agi → скорость бега; int → мана и сила магии.
+   */
+  str: { hpMul: 0.04, dmgMul: 0.05 }, // +4% HP и +5% физ. урона за очко силы
+  agi: { moveMul: 0.03 }, // +3% скорости бега за очко ловкости
+  int: { manaMul: 0.05, magicMul: 0.06 }, // +5% маны и +6% силы магии за очко
+
+  /** Небольшая добавка к скорости стрелы за уровень, м/с. */
+  arrowSpeedPerLevel: 0.7,
 } as const;
 
 export const SHIELD = {
