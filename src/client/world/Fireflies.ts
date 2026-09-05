@@ -235,7 +235,10 @@ export class Fireflies {
     this.groundMat.specularColor = new Color3(0, 0, 0);
     this.groundMat.emissiveColor = new Color3(...FIREFLY.poolColor);
     this.groundMat.disableLighting = true;
-    this.groundMat.alphaMode = Constants.ALPHA_ADD;
+    // ALPHA_ADD (как у воздушного pool) на земле копил яркость поверх уже
+    // светлой травы и уходил в белёсое пятно вместо тёплого оттенка —
+    // обычное альфа-смешение вместо сложения выглядит именно тёплым пятном.
+    this.groundMat.alphaMode = Constants.ALPHA_COMBINE;
     this.groundMat.disableDepthWrite = true;
     this.groundMat.backFaceCulling = false;
     this.groundMat.alpha = 0;
@@ -273,9 +276,17 @@ export class Fireflies {
 
       // Лежит плашмя (поворот из вертикальной плоскости в горизонтальную)
       // и чуть приподнят над землёй — иначе мерцает с террейном (z-fighting).
+      // Плюс наклон под уклон рельефа: идеально горизонтальный круг на
+      // склоне наполовину уходит под землю (там его режет глубинный тест) —
+      // получались полукруглые полосы вместо ровных кругов. Меряем уклон
+      // соседними точками и слегка наклоняем плоскость под него.
+      const D = 1.2;
+      const slopeX = (terrain.heightAt(x + D, z) - terrain.heightAt(x - D, z)) / (2 * D);
+      const slopeZ = (terrain.heightAt(x, z + D) - terrain.heightAt(x, z - D)) / (2 * D);
       const groundGlow = this.groundProto.createInstance(`fireflyGround${g}`);
       groundGlow.isPickable = false;
-      groundGlow.rotation.x = Math.PI / 2;
+      groundGlow.rotation.x = Math.PI / 2 + Math.atan(slopeZ);
+      groundGlow.rotation.z = -Math.atan(slopeX);
       groundGlow.position.set(x, terrain.heightAt(x, z) + 0.03, z);
 
       this.groups.push({ center, dots, phase, pool, groundGlow });
