@@ -284,10 +284,15 @@ class Mob {
       return;
     }
 
-    // ближайший игрок
+    // ближайший игрок. Босс не гонится за теми, кто ушёл далеко от его угла
+    // (иначе рейд-боты, погибнув и возродившись на спавне, утаскивали его
+    // через всю карту).
+    const bossLeash =
+      this.kind === "boss" ? BOSS.aggroRange + BOSS.wanderRadius : Infinity;
     let np: SimPlayer | null = null;
     let best = Infinity;
     for (const p of players) {
+      if ((p.x - this.homeX) ** 2 + (p.z - this.homeZ) ** 2 > bossLeash * bossLeash) continue;
       const d = (p.x - this.x) ** 2 + (p.z - this.z) ** 2;
       if (d < best) {
         best = d;
@@ -525,6 +530,21 @@ class Mob {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.z += this.vz * dt;
+
+    // Босс не покидает свой угол: жёсткий поводок к дому (в бою всё равно
+    // может гоняться в пределах арены, но не убегать через всю карту).
+    if (this.kind === "boss") {
+      const hdx = this.x - this.homeX;
+      const hdz = this.z - this.homeZ;
+      const hd = Math.hypot(hdx, hdz);
+      const maxHd = BOSS.wanderRadius * 1.7;
+      if (hd > maxHd) {
+        this.x = this.homeX + (hdx / hd) * maxHd;
+        this.z = this.homeZ + (hdz / hd) * maxHd;
+        this.vx *= 0.3;
+        this.vz *= 0.3;
+      }
+    }
 
     const gy = terrainHeight(this.x, this.z);
     if (this.y <= gy) {

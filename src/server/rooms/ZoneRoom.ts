@@ -1025,7 +1025,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const n = [...this.bots.values()].filter((b) => b.raiding).length;
     this.reply(
       n === 1
-        ? `@${nick} повёл героя на Багрового слизня! Пиши !raid — присоединиться, ещё !raid — выйти.`
+        ? `@${nick} повёл героя на Багрового слизня! Погибнет — возродится и пойдёт снова, ` +
+            `пока Багровый не падёт. Ещё !raid — отозвать. Пишите вместе — идём толпой.`
         : `@${nick} в рейде на Багрового. Героев идёт: ${n}.`,
     );
   }
@@ -1446,7 +1447,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.dead) {
       bot.swingIn = 0; // умер на замахе — удара не будет
       bot.swingTarget = null;
-      bot.raiding = false; // погиб в рейде — попытка окончена (можно снова !raid)
+      // bot.raiding НЕ снимаем: возродится на спавне и снова пойдёт на босса,
+      // пока тот не убит или пока не напишут !raid ещё раз.
       return; // возрождение — общий tickPlayers
     }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
@@ -1576,8 +1578,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // а не от центра — иначе бот лезет внутрь туши и мажет (см. resolveBotHit).
     const bossEdge = raidBoss ? MOB.bodyRadius * raidBoss.scale : 0;
     const attackReach = bossEdge + BOT.attackRange;
+    // Держимся от края туши босса: он крупный и сам скачет — иначе бот
+    // оказывается внутри модели.
+    const bossKeepOut = bossEdge * 1.1 + PLAYER.radius + 0.35;
     const stopAt = raidBoss
-      ? bossEdge + BOT.attackRange * 0.6
+      ? bossKeepOut + 0.4
       : loot
         ? WEAPON_TAKE_REACH * 0.85
         : mob
@@ -1643,6 +1648,24 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.vz += (wvz - bot.vz) * accel;
     p.head.x += bot.vx * dt;
     p.head.z += bot.vz * dt;
+
+    // Жёстко не даём стоять внутри туши босса (соседей расталкивает цикл
+    // выше, а босса там нет — он моб). Толкаем строго наружу от центра.
+    if (raidBoss) {
+      const bx = p.head.x - raidBoss.x;
+      const bz = p.head.z - raidBoss.z;
+      const bd = Math.hypot(bx, bz);
+      if (bd > 1e-3 && bd < bossKeepOut) {
+        p.head.x = raidBoss.x + (bx / bd) * bossKeepOut;
+        p.head.z = raidBoss.z + (bz / bd) * bossKeepOut;
+        const inward = (bot.vx * bx + bot.vz * bz) / bd;
+        if (inward < 0) {
+          bot.vx -= (bx / bd) * inward;
+          bot.vz -= (bz / bd) * inward;
+        }
+      }
+    }
+
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
 
     // Доворот модели — по фактической скорости (плавнее, чем к цели напрямую).
