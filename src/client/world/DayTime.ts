@@ -1,6 +1,7 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { LOADOUT } from "../config/loadout";
+import { FOG_TUNE } from "./fogTune";
 
 /** Как выглядит мир в конкретный час. */
 export interface DayState {
@@ -76,7 +77,7 @@ const NIGHT: Palette = {
   ambI: 0.17,
   zenith: [2, 3, 9], // ночное небо густое, почти чёрное
   horizon: [8, 11, 24],
-  fog: [0.07, 0.09, 0.16],
+  fog: [0.07, 0.09, 0.16], // НЕ используется — ночной туман берётся из FOG_TUNE (?fog=1)
   disc: [0.85, 0.9, 1],
   cloud: [0.16, 0.18, 0.28],
 };
@@ -144,7 +145,10 @@ export function dayState(hour: number): DayState {
 
   const sun = mix3(daySun, NIGHT.sun, DUSK.sun, wd, wn, wk);
   const amb = mix3(dayAmb, NIGHT.amb, DUSK.amb, wd, wn, wk);
-  const fog = mix3(DAY.fog, NIGHT.fog, DUSK.fog, wd, wn, wk);
+  // Ночной цвет тумана — из FOG_TUNE (панель ?fog=1), а не из NIGHT.fog:
+  // при EXP2 туман ПОДСВЕЧИВАЕТ далёкую темень до своего цвета, и синеватый
+  // NIGHT.fog читался дымкой вместо черноты.
+  const fog = mix3(DAY.fog, FOG_TUNE.nightColor, DUSK.fog, wd, wn, wk);
   const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
   const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, wd, wn, wk);
   const zenith = mix3(DAY.zenith, NIGHT.zenith, DUSK.zenith, wd, wn, wk);

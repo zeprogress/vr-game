@@ -15,6 +15,11 @@ if (params.get("groundglow") === "1") {
   void import("./ui/GroundGlowTuner").then(({ mountGroundGlowTuner }) => mountGroundGlowTuner());
 }
 
+// ?fog=1 — панель живой настройки ночного тумана.
+if (params.get("fog") === "1") {
+  void import("./ui/FogTuner").then(({ mountFogTuner }) => mountFogTuner());
+}
+
 if (params.has("dash")) {
   bootDashboard();
 } else if (params.get("spectator")) {
