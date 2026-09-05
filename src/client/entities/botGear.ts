@@ -26,10 +26,9 @@ export const BOT_GEAR: { sword: GearTune; shield: GearTune; bow: GearTune; staff
   // положению правой руки (auto) давал верную ось, но не тот наклон ремня.
   sword: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
   shield: { pos: [-0.1, 0.16, 0.135], rot: [-0.497, 0.633, 1.383], scale: 1.7, auto: false },
-  // Ещё не подобраны — только заготовка (по образцу меча, до правки на глаз).
   // `auto` тут ничего не значит (он только для щита), но поле есть у всех.
-  bow: { pos: [0, 0.1, -0.05], rot: [0, -1.57, -1.3], scale: 1.7, auto: false },
-  staff: { pos: [0, 0.1, -0.05], rot: [0, 0, 0], scale: 1.7, auto: false },
+  bow: { pos: [-0.063, 0.251, 0.165], rot: [1.354, -1.688, -1.365], scale: 1.7, auto: false },
+  staff: { pos: [0, 0.1, -0.05], rot: [1.426, -0.333, -0.1], scale: 1.7, auto: false },
 };
 
 /**
