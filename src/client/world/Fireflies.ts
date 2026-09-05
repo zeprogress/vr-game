@@ -5,6 +5,8 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { Effect } from "@babylonjs/core/Materials/effect";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Constants } from "@babylonjs/core/Engines/constants";
@@ -13,6 +15,34 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { WORLD } from "#shared/constants";
 import type { Terrain } from "./Terrain";
+
+/**
+ * Пятно на земле — минимальный шейдер вместо StandardMaterial: у того без
+ * diffuseTexture в подложку неожиданно подмешивалась белая база независимо
+ * от emissiveColor/diffuseColor (перепроверено вживую — смена emissiveColor
+ * на чистый красный, alpha=1, maxSimultaneousLights=0 не меняли итоговый
+ * цвет вообще). Тут неоднозначности нет: gl_FragColor = сама текстура.
+ */
+const GROUND_GLOW_SHADER = "fireflyGroundGlow";
+Effect.ShadersStore[`${GROUND_GLOW_SHADER}VertexShader`] = `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+uniform mat4 worldViewProjection;
+varying vec2 vUV;
+void main(void) {
+  gl_Position = worldViewProjection * vec4(position, 1.0);
+  vUV = uv;
+}`;
+Effect.ShadersStore[`${GROUND_GLOW_SHADER}FragmentShader`] = `
+precision highp float;
+varying vec2 vUV;
+uniform sampler2D glowSampler;
+uniform float glowAlpha;
+void main(void) {
+  vec4 tex = texture2D(glowSampler, vUV);
+  gl_FragColor = vec4(tex.rgb, tex.a * glowAlpha);
+}`;
 
 export const FIREFLY = {
   /** Сколько стаек по округе. */
@@ -55,24 +85,18 @@ export const FIREFLY = {
    * честного объёма при проходе сквозь стайку.
    */
   groundGlowRadius: 5.5,
-  /**
-   * Насколько ярко пятно на земле (0..1). При обычном альфа-смешении (не
-   * аддитивном) низкая альфа почти целиком растворяет тёплый цвет в фоновом
-   * — ночная земля сама довольно нейтрально-серая, и слабая примесь оранжевого
-   * к ней просто не читается глазом, выходит белёсое пятно. Раньше было 0.22.
-   */
-  groundGlowAlpha: 0.55,
+  /** Насколько ярко пятно на земле (0..1). Было 0.32 — слишком заметно. */
+  groundGlowAlpha: 0.18,
   /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
   lightColor: [1, 0.87, 0.55] as [number, number, number],
   /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
    * равно тянет к белому, поэтому база теплее). */
   poolColor: [1, 0.74, 0.16] as [number, number, number],
   /**
-   * Цвет пятна на земле — отдельно от poolColor и заметно насыщеннее: тут
-   * не аддитив, а обычное смешение с фоном, и бледно-жёлтый на сером фоне
-   * читался почти белым.
+   * Цвет пятна на земле — своя, мягче poolColor. Было (1, 0.42, 0.04) —
+   * "сильно оранжевые"; потом (1, 0.65, 0.3) — попросили желтее, добавили G.
    */
-  groundGlowColor: [1, 0.42, 0.04] as [number, number, number],
+  groundGlowColor: [1, 0.85, 0.35] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
   lightFadeFrom: 18,
   /** Ближе этого светит в полную силу, м. */
@@ -140,8 +164,14 @@ interface Group {
   phase: number[];
   /** Ореол в воздухе — обозначает саму стайку, повёрнут к камере. */
   pool: InstancedMesh;
-  /** Запечённое пятно на земле — плоское, статичное, без настоящего света. */
-  groundGlow: InstancedMesh;
+  /**
+   * Запечённое пятно на земле — плоское, статичное, без настоящего света.
+   * Обычный клон, не InstancedMesh: его ShaderMaterial не поддерживает
+   * инстансинг-атрибуты Babylon (world0..world3), с createInstance()
+   * материал молча не готов и пятно вообще не рисуется. Стаек мало
+   * (~14), инстансинг тут и не нужен.
+   */
+  groundGlow: Mesh;
 }
 
 /**
@@ -171,7 +201,7 @@ export class Fireflies {
   private readonly poolProto: Mesh;
   private readonly poolMat: StandardMaterial;
   private readonly groundProto: Mesh;
-  private readonly groundMat: StandardMaterial;
+  private readonly groundMat: ShaderMaterial;
   private readonly scene: Scene;
   private clock = 0;
   /** Плавная доля ночи: 0 — день, 1 — глубокая ночь. */
@@ -236,23 +266,31 @@ export class Fireflies {
     this.poolProto.isVisible = false;
     this.poolProto.renderingGroupId = 0;
 
-    // Запечённое пятно на земле: та же текстура, но лежит плашмя и не
-    // поворачивается к камере (в отличие от pool) — статичная «подсветка»
-    // вместо настоящего PointLight у каждой стайки, кроме ближайших.
-    this.groundMat = new StandardMaterial("fireflyGroundMat", scene);
-    this.groundMat.emissiveTexture = glow;
-    this.groundMat.opacityTexture = glow;
-    this.groundMat.diffuseColor = new Color3(0, 0, 0);
-    this.groundMat.specularColor = new Color3(0, 0, 0);
-    this.groundMat.emissiveColor = new Color3(...FIREFLY.groundGlowColor);
-    this.groundMat.disableLighting = true;
-    // ALPHA_ADD (как у воздушного pool) на земле копил яркость поверх уже
-    // светлой травы и уходил в белёсое пятно вместо тёплого оттенка —
-    // обычное альфа-смешение вместо сложения выглядит именно тёплым пятном.
+    // Запечённое пятно на земле: лежит плашмя и не поворачивается к камере
+    // (в отличие от pool) — статичная «подсветка» вместо настоящего
+    // PointLight у каждой стайки, кроме ближайших.
+    //
+    // На StandardMaterial цвет упорно выходил белёсым независимо от
+    // emissiveColor/diffuseColor/alpha/освещения (см. комментарий у
+    // GROUND_GLOW_SHADER) — минимальный ShaderMaterial: gl_FragColor прямо
+    // из текстуры, без скрытых базовых цветов.
+    const groundGlowTex = radialGlow(scene, "fireflyGroundGlowTex", FIREFLY.groundGlowColor);
+    this.groundMat = new ShaderMaterial(
+      "fireflyGroundMat",
+      scene,
+      { vertex: GROUND_GLOW_SHADER, fragment: GROUND_GLOW_SHADER },
+      {
+        attributes: ["position", "uv"],
+        uniforms: ["worldViewProjection", "glowAlpha"],
+        samplers: ["glowSampler"],
+        needAlphaBlending: true,
+      },
+    );
+    this.groundMat.setTexture("glowSampler", groundGlowTex);
+    this.groundMat.setFloat("glowAlpha", 0);
     this.groundMat.alphaMode = Constants.ALPHA_COMBINE;
     this.groundMat.disableDepthWrite = true;
     this.groundMat.backFaceCulling = false;
-    this.groundMat.alpha = 0;
 
     this.groundProto = MeshBuilder.CreatePlane(
       "fireflyGroundProto",
@@ -285,20 +323,26 @@ export class Fireflies {
       pool.isPickable = false;
       pool.position.copyFrom(center);
 
-      // Лежит плашмя (поворот из вертикальной плоскости в горизонтальную)
-      // и чуть приподнят над землёй — иначе мерцает с террейном (z-fighting).
-      // Плюс наклон под уклон рельефа: идеально горизонтальный круг на
-      // склоне наполовину уходит под землю (там его режет глубинный тест) —
-      // получались полукруглые полосы вместо ровных кругов. Меряем уклон
-      // соседними точками и слегка наклоняем плоскость под него.
+      // Лежит плашмя (поворот из вертикальной плоскости в горизонтальную),
+      // с лёгким наклоном под уклон рельефа против полукруглого среза на
+      // склоне — но полный наклон превращает круг в вытянутый эллипс (тоже
+      // не круг), поэтому берём максимум ±0.15 рад: смягчает срез на
+      // умеренном уклоне, не растягивая пятно на крутом. Приподнимаем
+      // заметно выше земли (не 0.03 — было мерцание, но и всё равно резало
+      // краем об склон): земля не идеально линейна на радиусе 5.5 м, а
+      // с запасом по высоте край плоскости не проваливается под неё.
       const D = 1.2;
+      const MAX_TILT = 0.15;
+      const clampTilt = (v: number): number => Math.max(-MAX_TILT, Math.min(MAX_TILT, v));
       const slopeX = (terrain.heightAt(x + D, z) - terrain.heightAt(x - D, z)) / (2 * D);
       const slopeZ = (terrain.heightAt(x, z + D) - terrain.heightAt(x, z - D)) / (2 * D);
-      const groundGlow = this.groundProto.createInstance(`fireflyGround${g}`);
+      const groundGlow = this.groundProto.clone(`fireflyGround${g}`);
+      groundGlow.isVisible = true;
       groundGlow.isPickable = false;
-      groundGlow.rotation.x = Math.PI / 2 + Math.atan(slopeZ);
-      groundGlow.rotation.z = -Math.atan(slopeX);
-      groundGlow.position.set(x, terrain.heightAt(x, z) + 0.03, z);
+      groundGlow.rotation.x = Math.PI / 2 + clampTilt(Math.atan(slopeZ));
+      groundGlow.rotation.z = -clampTilt(Math.atan(slopeX));
+      groundGlow.position.set(x, terrain.heightAt(x, z) + 0.4, z);
+      groundGlow.freezeWorldMatrix(); // не двигается — пересчитывать незачем
 
       this.groups.push({ center, dots, phase, pool, groundGlow });
     }
@@ -358,7 +402,7 @@ export class Fireflies {
     this.clock += dt;
     this.mat.alpha = this.night;
     this.poolMat.alpha = this.night * FIREFLY.poolAlpha;
-    this.groundMat.alpha = this.night * FIREFLY.groundGlowAlpha;
+    this.groundMat.setFloat("glowAlpha", this.night * FIREFLY.groundGlowAlpha);
 
     // Центр стайки больше не движется (FIREFLY_SEED, зафиксировано) — его
     // позицию у ореола уже выставили при создании, второй раз копировать
@@ -476,18 +520,23 @@ function clamp01(v: number): number {
  * расстояния и набирается многими остановками — иначе у края видно кольцо
  * или резкий обрыв.
  */
-export function radialGlow(scene: Scene): DynamicTexture {
+export function radialGlow(
+  scene: Scene,
+  name = "fireflyGlow",
+  rgb: readonly [number, number, number] = [1, 1, 1],
+): DynamicTexture {
   const S = 256;
-  const tex = new DynamicTexture("fireflyGlow", { width: S, height: S }, scene, false);
+  const tex = new DynamicTexture(name, { width: S, height: S }, scene, false);
   tex.hasAlpha = true;
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
   ctx.clearRect(0, 0, S, S);
   const grad = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  const [cr, cg, cb] = [Math.round(rgb[0] * 255), Math.round(rgb[1] * 255), Math.round(rgb[2] * 255)];
   const STOPS = 24;
   for (let i = 0; i <= STOPS; i++) {
     const r = i / STOPS;
     const a = Math.pow(1 - r, 2.4); // мягкий, чуть более наполненный к центру спад
-    grad.addColorStop(r, `rgba(255,255,255,${a.toFixed(4)})`);
+    grad.addColorStop(r, `rgba(${cr},${cg},${cb},${a.toFixed(4)})`);
   }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, S, S);
