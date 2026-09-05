@@ -280,7 +280,6 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.hud.enableTouchMenu();
-      this.hud.bindDropShield(() => this.combat.dropShieldFlat());
       this.hud.bindDrinkPotion(() => {
         const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
         if (slot >= 0) this.inventory.use(slot);
@@ -321,6 +320,11 @@ export class Game {
       this.netMobs.update(dt, this.player.position, this.aim);
       this.loot.update(dt);
       this.combat.update(dt);
+      // Прицеливание луком/посохом: камера «в глаза» + прицел на след. кадр.
+      if (this.localAvatar) {
+        this.player.setAiming(this.combat.wantAim);
+        this.hud.setCrosshair(this.combat.wantAim);
+      }
       this.hands.update(dt);
       this.syncNet(dt);
       this.updateVoice(dt);
@@ -888,7 +892,7 @@ export class Game {
     const av = this.localAvatar;
     if (!av) return;
     // Замах дёргает сам CombatSystem через onMeleeSwing — тут только поза.
-    this.hud.setHasShield(this.combat.hasShield);
+    // Прицеливание → модель прячем (мы внутри неё).
     const p = this.player.position;
     av.update(
       dt,
@@ -897,7 +901,7 @@ export class Game {
       p.z,
       this.player.facing,
       this.player.planarSpeed,
-      this.player.dead || this.player.inVR,
+      this.player.dead || this.player.inVR || this.player.aiming,
     );
   }
 
@@ -907,6 +911,7 @@ export class Game {
    * «глаз», а те смотрят туда же, куда повёрнут персонаж.
    */
   private aimAssistTouch(dt: number): void {
+    if (this.player.aiming) return; // сам целится — не мешаем
     if (!this.player.lastInput.primaryAction || this.player.dead) return;
     if (this.player.planarSpeed > 1.5) return; // бежит — целится сам, куда бежит
     const eye = this.player.eyePosition;

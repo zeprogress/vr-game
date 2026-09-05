@@ -29,12 +29,11 @@ export class Hud {
   private leaveBot = false;
   private onLeaveBot: ((on: boolean) => void) | null = null;
   private onExit: (() => void) | null = null;
-  /** Тач-режим: своя кнопка меню + крестик в панели, без возни с захватом мыши. */
+  /** Тач-режим: свои кнопки на экране, без возни с захватом мыши. */
   private touch = false;
-  private menuBtn: HTMLDivElement | null = null;
+  private readonly touchButtons: HTMLDivElement[] = [];
   private potionBtn: HTMLDivElement | null = null;
-  private hasShield = false;
-  private onDropShield: (() => void) | null = null;
+  private crosshair: HTMLDivElement | null = null;
   private onDrinkPotion: (() => void) | null = null;
 
   constructor() {
@@ -89,35 +88,36 @@ export class Hud {
   }
 
   /**
-   * Смартфон: кнопка меню в правом верхнем углу открывает ту же панель
-   * персонажа, что и клавиша C на ПК. Крестик и тап мимо панели — закрыть.
+   * Смартфон: экранные кнопки — меню (та же панель, что C на ПК), полный
+   * экран, зелье; плюс прицел для стрельбы. Кнопки прячутся, пока открыта
+   * панель, — иначе крестик закрытия перекрывался кнопкой меню.
    */
   enableTouchMenu(): void {
-    if (this.menuBtn) return;
+    if (this.touch) return;
     this.touch = true;
     this.panel.style.cssText += PANEL_CSS_TOUCH;
 
-    const btn = el("div", MENU_BTN_CSS);
-    btn.textContent = "☰";
-    btn.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.togglePanel();
-    });
-    document.body.appendChild(btn);
-    this.menuBtn = btn;
+    const mkBtn = (css: string, label: string, onTap: () => void): HTMLDivElement => {
+      const b = el("div", css);
+      b.textContent = label;
+      b.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onTap();
+      });
+      document.body.appendChild(b);
+      this.touchButtons.push(b);
+      return b;
+    };
 
-    // Кнопка «на весь экран». На iOS Safari API нет — там подсказываем
-    // добавить игру на экран «Домой» (тогда браузерная панель пропадает).
-    const fs = el("div", FS_BTN_CSS);
-    fs.textContent = "⛶";
+    mkBtn(MENU_BTN_CSS, "☰", () => this.togglePanel());
+
+    // Полный экран. На iOS Safari API нет — подсказываем «на экран Домой».
     const el2 = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => unknown;
     };
     const canFs = !!el2.requestFullscreen || !!el2.webkitRequestFullscreen;
-    fs.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+    const fs = mkBtn(FS_BTN_CSS, "⛶", () => {
       if (!canFs) {
         this.toast("Полный экран: добавь игру на экран «Домой» через меню браузера");
         return;
@@ -126,28 +126,24 @@ export class Hud {
       if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => {});
     });
     document.addEventListener("fullscreenchange", () => {
-      fs.hidden = !!document.fullscreenElement;
+      if (!!document.fullscreenElement) fs.hidden = true;
     });
-    document.body.appendChild(fs);
 
-    // Кнопка «выпить зелье» — над кнопкой удара, с числом. Нет зелий — скрыта.
-    const pot = el("div", POTION_BTN_CSS);
-    pot.addEventListener("pointerdown", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.onDrinkPotion?.();
-    });
-    document.body.appendChild(pot);
-    this.potionBtn = pot;
+    this.potionBtn = mkBtn(POTION_BTN_CSS, "", () => this.onDrinkPotion?.());
     this.updatePotionBtn();
+
+    // Прицел по центру — виден только при натяге лука / зарядке посоха.
+    this.crosshair = el("div", CROSSHAIR_CSS);
+    this.crosshair.hidden = true;
+    document.body.appendChild(this.crosshair);
   }
 
   /** Обновить кнопку зелья: число и видимость. Зовёт bindInventory по onChange. */
   private updatePotionBtn(): void {
     if (!this.potionBtn) return;
     const n = this.potionTotal();
-    this.potionBtn.hidden = n <= 0;
-    this.potionBtn.textContent = `🧪${n}`;
+    this.potionBtn.hidden = n <= 0 || this.panelOpen;
+    this.potionBtn.textContent = String(n);
   }
 
   private potionTotal(): number {
@@ -158,21 +154,22 @@ export class Hud {
     return n;
   }
 
-  /** Кнопка «убрать щит» в тач-меню (на ПК/VR это клавиша Q / жест). */
-  bindDropShield(fn: () => void): void {
-    this.onDropShield = fn;
-  }
-
   /** Тап по кнопке зелья на экране (смартфон) — выпить одно зелье. */
   bindDrinkPotion(fn: () => void): void {
     this.onDrinkPotion = fn;
   }
 
-  /** Game зовёт каждый кадр: держит ли игрок щит (кнопка в меню зависит). */
-  setHasShield(v: boolean): void {
-    if (v === this.hasShield) return;
-    this.hasShield = v;
-    if (this.panelOpen) this.renderPanel();
+  /** Прицел (смартфон) — Game включает при натяге лука / зарядке посоха. */
+  setCrosshair(on: boolean): void {
+    if (this.crosshair) this.crosshair.hidden = !on;
+  }
+
+  /** Пока открыта панель — прячем экранные кнопки (иначе перекрывают крестик). */
+  private setTouchButtonsHidden(hidden: boolean): void {
+    for (const b of this.touchButtons) {
+      if (b === this.potionBtn) this.updatePotionBtn();
+      else b.hidden = hidden;
+    }
   }
 
   private get panelOpen(): boolean {
@@ -181,6 +178,7 @@ export class Hud {
 
   private openPanel(): void {
     this.backdrop.style.display = "flex";
+    if (this.touch) this.setTouchButtonsHidden(true);
     if (!this.touch && document.pointerLockElement) document.exitPointerLock();
     this.renderPanel();
   }
@@ -193,12 +191,14 @@ export class Hud {
    */
   private openPanelFromEsc(): void {
     this.backdrop.style.display = "flex";
+    if (this.touch) this.setTouchButtonsHidden(true);
     this.renderPanel();
   }
 
   /** Спрятать без возврата захвата мыши (вызывается из pointerlockchange). */
   private hidePanel(): void {
     this.backdrop.style.display = "none";
+    if (this.touch) this.setTouchButtonsHidden(false);
   }
 
   private closePanel(): void {
@@ -470,15 +470,6 @@ export class Hud {
     free.textContent = `Свободных очков: ${p.unspent}`;
     this.panel.appendChild(free);
 
-    if (t && this.hasShield && this.onDropShield) {
-      this.panel.appendChild(
-        this.panelButton("Убрать щит", "#26303f", "#cdd9ee", "#4a5474", () => {
-          this.onDropShield?.();
-          this.closePanel();
-        }),
-      );
-    }
-
     this.renderSkin();
     this.renderBag();
 
@@ -604,12 +595,19 @@ const FS_BTN_CSS =
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
 
-/** Кнопка «выпить зелье» (смартфон) — слева от кнопки удара, с числом. */
+/** Кнопка «выпить зелье» (смартфон) — красная, круглая, слева от кнопки удара. */
 const POTION_BTN_CSS =
-  "position:fixed;right:118px;bottom:44px;z-index:12;width:66px;height:66px;border-radius:50%;" +
-  "display:flex;align-items:center;justify-content:center;font:600 20px system-ui,sans-serif;" +
-  "background:rgba(46,90,60,0.5);color:#dff5e2;border:2px solid rgba(180,255,190,0.45);" +
-  "-webkit-user-select:none;user-select:none;touch-action:none;";
+  "position:fixed;right:120px;bottom:20px;z-index:12;width:64px;height:64px;border-radius:50%;" +
+  "display:flex;align-items:center;justify-content:center;font:700 22px system-ui,sans-serif;" +
+  "background:radial-gradient(circle at 38% 32%,#e8555b,#a51f26);color:#fff;" +
+  "border:2px solid rgba(255,200,200,0.55);box-shadow:0 3px 10px rgba(0,0,0,0.4);" +
+  "text-shadow:0 1px 2px rgba(0,0,0,0.6);-webkit-user-select:none;user-select:none;touch-action:none;";
+
+/** Прицел по центру экрана (смартфон): натяг лука / зарядка посоха. */
+const CROSSHAIR_CSS =
+  "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:13;pointer-events:none;" +
+  "width:26px;height:26px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;" +
+  "box-shadow:0 0 0 1px rgba(0,0,0,0.5),inset 0 0 0 1px rgba(0,0,0,0.5);";
 
 /** Крестик закрытия в углу панели персонажа (смартфон). */
 const CLOSE_X_CSS =

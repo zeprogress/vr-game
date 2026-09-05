@@ -237,6 +237,15 @@ export class CombatSystem {
   /** Ставит Game: дёрнуть клип замаха у LocalAvatar. */
   onMeleeSwing: (() => void) | null = null;
 
+  /** Смартфон: лук/посох — сколько держим кнопку и пауза между выстрелами. */
+  private tpRangedHold = 0;
+  private tpRangedCd = 0;
+  private tpAimOn = false;
+  /** Game читает каждый кадр: включить вид из глаз + прицел. */
+  get wantAim(): boolean {
+    return this.tpAimOn && (this.held === "bow" || this.held === "staff");
+  }
+
   private blockCd = 0;
   private bob = 0;
 
@@ -638,11 +647,19 @@ export class CombatSystem {
     this.anchorStowedItems();
     this.shoveWithHeldItems();
 
-    if (this.held === "sword" || this.held === "staff") {
+    const tpStaff = this.held === "staff" && this.player.thirdPerson;
+    if (tpStaff) {
+      // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
+      this.tpStaffCast(dt, inp.primaryAction, primaryReleased);
+    } else if (this.held === "sword" || this.held === "staff") {
       if (this.player.inVR) this.updateVRSwing(dt);
       else this.updateFlatSwing(dt, primaryEdge);
     } else if (this.held === "bow") {
-      this.updateBow(dt, inp.primaryAction, primaryReleased);
+      if (this.player.thirdPerson) {
+        this.tpBow(dt, inp.primaryAction, primaryReleased);
+      } else {
+        this.updateBow(dt, inp.primaryAction, primaryReleased);
+      }
     } else {
       // Свободные руки — рукопашная.
       if (this.player.inVR) this.updateVRMelee(dt);
@@ -652,7 +669,7 @@ export class CombatSystem {
     // Магия посоха: держащая рука машет как мечом (выше), вторая — тянет
     // энергию от кристалла и кастует. Только VR.
     if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
-    else if (this.charge !== 0 || this.castHooked) this.resetCast();
+    else if (!tpStaff && (this.charge !== 0 || this.castHooked)) this.resetCast();
 
     this.applyWindup();
     this.trackHandMotion(dt);
@@ -853,14 +870,19 @@ export class CombatSystem {
   }
 
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
+    if (this.justPickedUp) {
+      if (released) this.justPickedUp = false;
+      return;
+    }
+    // Смартфон: щит скидывается кнопкой ✋ и ВСЕГДА первым — раньше оружия.
+    if (this.player.thirdPerson && this.shieldHand) {
+      if (released) this.dropShieldFlat();
+      return;
+    }
     const w = this.weapon;
     if (w) {
-      if (this.justPickedUp) {
-        if (released) this.justPickedUp = false;
-      } else {
-        if (held) this.windup = clamp(this.windup + dt / THROW.flatWindup, 0, 1);
-        if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
-      }
+      if (held) this.windup = clamp(this.windup + dt / THROW.flatWindup, 0, 1);
+      if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
       return;
     }
     if (edge) {
@@ -1069,6 +1091,11 @@ export class CombatSystem {
     item.hand = side;
     item.hand2 = null;
     item.stow = null;
+    // Сбрасываем таймеры дальнего боя смартфона — иначе новое оружие «помнит»
+    // прошлый недодержанный натяг / чужой кулдаун.
+    this.tpRangedHold = 0;
+    this.tpRangedCd = 0;
+    this.tpAimOn = false;
     item.mesh.rotationQuaternion = null;
     if (item.kind === "staff") {
       const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
@@ -1755,6 +1782,113 @@ export class CombatSystem {
         const origin = this.player.camera.globalPosition.add(dir.scale(0.5));
         this.fire(origin, dir, power);
       }
+    }
+  }
+
+  /**
+   * Лук на смартфоне: короткий тап — выстрел на максимальной скорости сразу;
+   * держишь дольше tpAimHold — включается вид из глаз и прицел (аим), можно
+   * навести перетаскиванием, отпустил — выстрел (тоже макс. скорость).
+   * Между выстрелами пауза (tpCooldown / скорость атаки) — не поспамить.
+   */
+  private tpBow(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
+    this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
+    if (primaryHeld) {
+      if (this.tpRangedHold === 0 && this.tpRangedCd <= 0) this.sfx.bowDraw();
+      this.tpRangedHold += dt;
+    } else if (!primaryReleased) {
+      this.tpRangedHold = 0;
+      this.tpAimOn = false;
+    }
+    const aim = primaryHeld && this.tpRangedHold >= BOW.tpAimHold && this.tpRangedCd <= 0;
+    this.tpAimOn = aim;
+
+    const drawViz = !primaryHeld
+      ? 0
+      : aim
+        ? clamp(0.4 + (this.tpRangedHold - BOW.tpAimHold) / BOW.drawTimeFlat, 0, 1)
+        : clamp(this.tpRangedHold / BOW.tpAimHold, 0, 1) * 0.4;
+    this.nockArrow.setEnabled(drawViz > 0.02);
+    this.placeNockArrow(
+      new Vector3(
+        this.bowParts.nockRest.x,
+        this.bowParts.nockRest.y,
+        this.bowParts.nockRest.z + drawViz * BOW.drawPullFlat,
+      ),
+      new Vector3(0, 0, -1),
+    );
+
+    if (primaryReleased) {
+      this.tpRangedHold = 0;
+      this.tpAimOn = false;
+      this.nockArrow.setEnabled(false);
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
+      if (this.tpRangedCd > 0) return;
+      this.tpRangedCd = BOW.tpCooldown / this.prog.attackSpeed;
+      const dir = this.player.eyeForward.clone();
+      if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
+      dir.normalize();
+      const origin = this.player.eyePosition.add(dir.scale(0.4));
+      this.fire(origin, dir, 1);
+    }
+  }
+
+  /**
+   * Посох на смартфоне: как лук, только магией. Держишь кнопку удара —
+   * копится заряд (мана убывает), дольше tpAimHold — вид из глаз + прицел;
+   * отпускаешь — снаряд летит вперёд по взгляду.
+   */
+  private tpStaffCast(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
+    const fb = MAGIC.firebolt;
+    this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
+    const staff = this.held1("staff");
+
+    if (primaryHeld && staff) {
+      if (!this.castHooked && this.tpRangedCd <= 0 && this.mana >= fb.minMana) {
+        this.castHooked = true;
+        this.castMode = "solo";
+        this.charge = 0;
+        this.sfx.bowDraw();
+      }
+      this.tpRangedHold += dt;
+      if (this.castHooked && this.mana > 0 && this.charge < 1) {
+        const rate = (1 / fb.chargeTime) * (1.5 - 0.5 * this.charge);
+        this.charge = clamp(this.charge + rate * dt, 0, 1);
+        this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+      }
+      if (this.castHooked) this.showChargeOrb(staff.mesh);
+    } else if (!primaryReleased) {
+      // Кнопку отпустили не «через release» (потеря фокуса) — гасим заряд.
+      if (this.castHooked) this.resetCast();
+      this.tpRangedHold = 0;
+    }
+    this.tpAimOn = this.castHooked && this.tpRangedHold >= BOW.tpAimHold;
+
+    if (primaryReleased) {
+      const charge = this.charge;
+      const hooked = this.castHooked;
+      this.tpRangedHold = 0;
+      this.tpAimOn = false;
+      this.resetCast();
+      if (!hooked || charge < fb.minCharge) return;
+      this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+      const dir = this.player.eyeForward.clone();
+      if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
+      dir.normalize();
+      const origin = this.player.eyePosition.add(dir.scale(0.5));
+      this.onCast?.({
+        charge,
+        pull: charge,
+        ox: origin.x,
+        oy: origin.y,
+        oz: origin.z,
+        dx: dir.x,
+        dy: dir.y,
+        dz: dir.z,
+        hand: staff?.hand ?? "right",
+      });
+      this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
+      this.emitSound("bow", origin);
     }
   }
 

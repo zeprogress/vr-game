@@ -198,10 +198,31 @@ export class PlayerController {
     return this.tp !== null && this.xrCamera === null;
   }
 
+  /**
+   * Прицеливание (смартфон): камера уходит «в глаза», перетаскивание крутит
+   * взгляд (yaw + pitch), персонаж поворачивается вместе. Для стрельбы луком
+   * и посохом.
+   */
+  private _aiming = false;
+  get aiming(): boolean {
+    return this._aiming && this.thirdPerson;
+  }
+  setAiming(on: boolean): void {
+    if (on === this._aiming) return;
+    if (this.tp) {
+      // Переход без скачка: входим — взгляд продолжает направление обзора
+      // камеры; выходим — орбита возвращается за спину персонажа.
+      if (on) this.yaw = this.tp.yaw;
+      else this.tp.yaw = this.yaw;
+    }
+    this._aiming = on;
+  }
+
   /** Камера, которую должна рендерить сцена (в VR — гарнитуры). */
   get renderCamera(): Camera {
     if (this.xrCamera) return this.xrCamera;
-    return this.tp ? this.tp.camera : this.camera;
+    if (this.tp && !this.aiming) return this.tp.camera;
+    return this.camera;
   }
 
   /** Куда повёрнут персонаж (yaw в радианах). */
@@ -398,12 +419,13 @@ export class PlayerController {
     this.lastInput = inp;
     const pos = this.body.position;
     const vr = this.xrCamera !== null;
-    const tp = !vr && this.tp ? this.tp : null;
+    const aiming = this.aiming;
+    const tp = !vr && this.tp && !aiming ? this.tp : null;
 
     // --- Поворот ---
-    // Третье лицо: правое перетаскивание крутит ОБЗОР (камеру), не персонажа —
-    // его yaw доворачивается в сторону хода ниже. Первое лицо: мышь/тач крутят
-    // сам взгляд. VR: yaw — snap-turn, pitch всегда 0.
+    // Третье лицо: перетаскивание крутит ОБЗОР (орбиту камеры), персонаж
+    // доворачивается в сторону хода. Прицеливание/первое лицо: перетаскивание
+    // крутит сам взгляд (yaw+pitch). VR: yaw — snap-turn, pitch всегда 0.
     if (tp) {
       tp.applyLook(inp.lookYaw, inp.lookPitch);
       if (inp.zoom) tp.applyZoom(inp.zoom);
@@ -525,10 +547,12 @@ export class PlayerController {
     } else {
       this.camera.position.copyFrom(pos);
       this.camera.rotation.set(this.pitch, this.yaw, 0);
-      if (tp) {
-        // `camera` — теперь «глаза» для боя/сети/звука, но не рендерится.
-        // Освежаем её матрицы вручную, дальше двигаем орбитальную камеру.
+      if (this.tp) {
+        // `camera` — «глаза» для боя/сети/звука. В прицеле она же и рендерит,
+        // в обычном третьем лице — нет, поэтому матрицы освежаем вручную.
         this.camera.getViewMatrix(true);
+      }
+      if (tp) {
         // Камера всё время потихоньку заезжает за спину персонажа, пока он
         // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
         // на боковом стике это плавный доворот, а не рывок «спиралью».
@@ -539,6 +563,11 @@ export class PlayerController {
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);
       }
+    }
+
+    // Прицел ↔ третье лицо: сцена должна рендерить нужную камеру.
+    if (this.tp && this.scene.activeCamera !== this.renderCamera) {
+      this.scene.activeCamera = this.renderCamera;
     }
 
     // --- Реген здоровья после паузы без урона (офлайн; онлайн считает сервер) ---

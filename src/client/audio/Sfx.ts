@@ -12,11 +12,24 @@ export interface SoundAt {
  * Часть звуков объёмная: если передать точку `at`, звук идёт через PannerNode
  * и слышен с той стороны, где источник (моб, взмах, плевок).
  */
+/** Трек фоновой музыки: элемент + свой gain (для кроссфейда). */
+interface Track {
+  el: HTMLAudioElement;
+  /** Персональный gain трека (для фейда). null — контекст ещё не поднят. */
+  gain: GainNode | null;
+}
+
 export class Sfx {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
-  private music: HTMLAudioElement | null = null;
+  private music: Track | null = null;
+  /**
+   * Общая «ручка громкости» музыки → destination. На iOS `audio.volume`
+   * игнорируется (всегда 1) — поэтому громкость держим GainNode'ом.
+   */
+  private musicBus: GainNode | null = null;
+  private readonly routed = new WeakSet<HTMLAudioElement>();
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
   /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
@@ -48,8 +61,52 @@ export class Sfx {
 
   resume(): void {
     this.ensure();
+    this.ensureMusicBus();
+    // Первый жест мог случиться уже после startMusic — доводим маршрутизацию.
+    if (this.music) this.routeTrack(this.music);
     void this.ctx?.resume();
-    void this.music?.play().catch(() => {});
+    void this.music?.el.play().catch(() => {});
+  }
+
+  /** Поднять общий музыкальный gain (после ctx). */
+  private ensureMusicBus(): void {
+    if (this.musicBus || !this.ctx) return;
+    this.musicBus = this.ctx.createGain();
+    this.musicBus.gain.value = this.musicVol;
+    this.musicBus.connect(this.ctx.destination);
+  }
+
+  /**
+   * Пустить элемент трека через свой gain → musicBus. После этого элемент
+   * звучит ТОЛЬКО через граф Web Audio (его `.volume` больше ни на что не
+   * влияет — что и нужно на iOS). Идемпотентно.
+   */
+  private routeTrack(tr: Track): void {
+    this.ensureMusicBus();
+    if (!this.ctx || !this.musicBus) return;
+    tr.el.volume = 1;
+    if (!tr.gain) {
+      tr.gain = this.ctx.createGain();
+      tr.gain.gain.value = 1;
+      tr.gain.connect(this.musicBus);
+    }
+    if (!this.routed.has(tr.el)) {
+      try {
+        this.ctx.createMediaElementSource(tr.el).connect(tr.gain);
+        this.routed.add(tr.el);
+      } catch {
+        /* уже подключён или CORS — оставляем как есть */
+      }
+    }
+  }
+
+  private makeTrack(url: string): Track {
+    const el = new Audio(url);
+    el.preload = "auto";
+    el.volume = 1;
+    const tr: Track = { el, gain: null };
+    this.routeTrack(tr); // если ctx ещё нет — подхватит resume()
+    return tr;
   }
 
   /** Фоновая музыка: тихий цикл. Стартует при первом resume(). */
@@ -57,17 +114,22 @@ export class Sfx {
   private musicVol = 0.045;
   private fadeTimer: ReturnType<typeof setInterval> | null = null;
   /** Уходящий на затухании трек — держим ссылку, чтобы точно его добить. */
-  private fadeOut: HTMLAudioElement | null = null;
+  private fadeOut: Track | null = null;
   /** Плейлист текущей музыки: из него после каждого трека берём случайный. */
   private playlist: string[] = [];
   private lastTrack = "";
 
   /** Жёстко остановить и освободить элемент (и снять с него слушателей). */
-  private killTrack(a: HTMLAudioElement | null): void {
-    if (!a) return;
-    a.onended = null;
-    a.pause();
-    a.src = "";
+  private killTrack(tr: Track | null): void {
+    if (!tr) return;
+    tr.el.onended = null;
+    tr.el.pause();
+    tr.el.src = "";
+    try {
+      tr.gain?.disconnect();
+    } catch {
+      /* уже отключён */
+    }
   }
 
   /** Случайный трек плейлиста, по возможности не тот же, что играл только что. */
@@ -94,12 +156,10 @@ export class Sfx {
   private playNext(): void {
     if (this.playlist.length <= 1 || this.fadeTimer) return;
     this.killTrack(this.music); // страховка: не оставляем старый элемент играть
-    const next = new Audio(this.pickTrack());
-    next.preload = "auto";
-    next.volume = this.musicVol;
+    const next = this.makeTrack(this.pickTrack());
     this.music = next;
-    this.wireRotation(next);
-    void next.play().catch(() => {});
+    this.wireRotation(next.el);
+    void next.el.play().catch(() => {});
   }
 
   /**
@@ -111,12 +171,11 @@ export class Sfx {
     this.playlist = Array.isArray(src) ? [...src] : [src];
     this.musicUrl = this.playlist.join("|");
     this.musicVol = volume;
-    const a = new Audio(this.pickTrack());
-    a.volume = volume;
-    a.preload = "auto";
-    this.music = a;
-    this.wireRotation(a);
-    void a.play().catch(() => {
+    if (this.musicBus) this.musicBus.gain.value = volume;
+    const tr = this.makeTrack(this.pickTrack());
+    this.music = tr;
+    this.wireRotation(tr.el);
+    void tr.el.play().catch(() => {
       /* браузер ждёт жеста — доиграем в resume() */
     });
   }
@@ -135,6 +194,7 @@ export class Sfx {
     this.playlist = list;
     this.musicUrl = key;
     this.musicVol = volume;
+    if (this.musicBus) this.musicBus.gain.value = volume; // общая ручка = целевая
 
     // Прерываем предыдущий переход, если он ещё идёт: и таймер, и сам
     // уходящий трек — иначе быстрые A→B→A копят параллельно играющие элементы.
@@ -146,20 +206,23 @@ export class Sfx {
 
     const old = this.music;
     this.fadeOut = old;
-    const next = new Audio(this.pickTrack());
-    next.preload = "auto";
-    next.volume = 0;
+    const next = this.makeTrack(this.pickTrack());
+    if (next.gain) next.gain.gain.value = 0;
+    else next.el.volume = 0;
     this.music = next;
-    this.wireRotation(next);
-    void next.play().catch(() => {});
+    this.wireRotation(next.el);
+    void next.el.play().catch(() => {});
 
-    const oldStart = old ? old.volume : 0;
+    // Кроссфейд идёт по ПЕРСОНАЛЬНЫМ gain'ам треков (0→1 и 1→0), а musicBus
+    // уже стоит на целевой громкости.
     let t = 0;
     this.fadeTimer = setInterval(() => {
       t += 0.05;
       const k = Math.min(1, t / 1.4);
-      next.volume = Math.max(0, Math.min(1, volume * k));
-      if (old) old.volume = Math.max(0, oldStart * (1 - k));
+      if (next.gain) next.gain.gain.value = k;
+      else next.el.volume = Math.max(0, Math.min(1, volume * k));
+      if (old?.gain) old.gain.gain.value = 1 - k;
+      else if (old) old.el.volume = Math.max(0, (old.el.volume || 0) * 0.9);
       if (k >= 1) {
         if (this.fadeTimer) clearInterval(this.fadeTimer);
         this.fadeTimer = null;
@@ -171,7 +234,7 @@ export class Sfx {
 
   setMusicVolume(v: number): void {
     this.musicVol = Math.max(0, Math.min(1, v));
-    if (this.music && !this.fadeTimer) this.music.volume = this.musicVol;
+    if (this.musicBus && !this.fadeTimer) this.musicBus.gain.value = this.musicVol;
   }
 
   // --- строительные блоки ---
