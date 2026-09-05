@@ -15,8 +15,8 @@ export interface FogTune {
 }
 
 export const FOG_TUNE: FogTune = {
-  nightColor: [0.015, 0.018, 0.03],
-  density: 1,
+  nightColor: [0, 0, 0],
+  density: 0.15,
 };
 
 const KEY = "zep.fog";
