@@ -556,12 +556,13 @@ export class PlayerController {
         // Камера всё время потихоньку заезжает за спину персонажа, пока он
         // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
         // на боковом стике это плавный доворот, а не рывок «спиралью».
-        // При ходьбе назад — мёртвая зона: не докручиваем (иначе камера
-        // разворачивается вокруг, стоит потянуть стик на себя).
+        // При ходьбе назад авто-доворот плавно гаснет: полный при moveY ≥
+        // -0.15, ноль при moveY ≤ -0.5 (иначе камера разворачивается вокруг,
+        // стоит потянуть стик на себя).
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
-        const backing = inp.moveY < -0.35;
-        if (!dragging && moving && !backing) {
-          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate));
+        const backFade = clamp((inp.moveY + 0.5) / 0.35, 0, 1);
+        if (!dragging && moving && backFade > 0.01) {
+          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * backFade));
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);
