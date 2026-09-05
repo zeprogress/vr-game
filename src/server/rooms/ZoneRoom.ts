@@ -282,6 +282,14 @@ function readBag(p: PlayerState): Slot[] {
   return bag;
 }
 
+/** Сколько лечебных зелий в сумке — бот идёт за бутылкой, только если мало. */
+function countPotions(p: PlayerState): number {
+  return readBag(p).reduce(
+    (n, s) => n + (s.item && ITEMS[s.item].heal > 0 ? s.count : 0),
+    0,
+  );
+}
+
 function writeBag(p: PlayerState, bag: Slot[]): void {
   for (let i = 0; i < bag.length; i++) {
     const src = bag[i];
@@ -1495,31 +1503,34 @@ export class ZoneRoom extends Room<ZoneState> {
       if (mob) bot.target = mob.id;
     }
 
-    // Золотой меч на земле рядом — идём за ним раньше, чем добивать моба:
-    // это разовый апгрейд, моб подождёт. Уже с золотым — не отвлекаемся.
-    let loot = p.rightTier !== "gold" && bot.lootTarget
-      ? this.sim.drops.get(bot.lootTarget)
-      : undefined;
-    if (p.rightTier !== "gold") {
-      const okLoot = (d: typeof loot): boolean => {
-        if (!d) return false;
-        const w = ITEMS[d.item].weapon;
-        return !!w && w.cls === "sword" && w.tier === "gold" && inZone(d.x, d.z);
-      };
-      if (!okLoot(loot)) {
-        bot.lootTarget = null;
-        loot = undefined;
-        let bd = Infinity;
-        for (const d of this.sim.drops.values()) {
-          if (!okLoot(d)) continue;
-          const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
-          if (dd < BOT.lootRadius && dd < bd) {
-            bd = dd;
-            loot = d;
-          }
+    // Лут на земле — идём поднять раньше, чем добивать моба (моб подождёт).
+    // Приоритет: золотой меч (разовый апгрейд) > бутылка зелья (пока в сумке
+    // меньше BOT.potions+2 — не тащимся через полкарты за лишней).
+    const wantSword = p.rightTier !== "gold";
+    const wantPotion = countPotions(p) < BOT.potions + 2;
+    let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
+    const okLoot = (d: typeof loot): boolean => {
+      if (!d || !inZone(d.x, d.z)) return false;
+      const w = ITEMS[d.item].weapon;
+      if (w) return wantSword && w.cls === "sword" && w.tier === "gold";
+      return wantPotion && ITEMS[d.item].heal > 0;
+    };
+    if (!okLoot(loot)) {
+      bot.lootTarget = null;
+      loot = undefined;
+      let bestScore = -Infinity;
+      for (const d of this.sim.drops.values()) {
+        if (!okLoot(d)) continue;
+        const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
+        if (dd >= BOT.lootRadius) continue;
+        // меч всегда важнее бутылки; при прочих равных — что ближе.
+        const score = (ITEMS[d.item].weapon ? 1000 : 0) - dd;
+        if (score > bestScore) {
+          bestScore = score;
+          loot = d;
         }
-        if (loot) bot.lootTarget = loot.id;
       }
+      if (loot) bot.lootTarget = loot.id;
     }
     // Пока идём за мечом, моба не бьём — но и цель по мобу не бросаем:
     // okMob-выбор выше продолжает работать, просто движение приоритетнее.
@@ -1710,20 +1721,36 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.act, relay);
     }
 
-    // Дошли до золотого меча — подбираем и сразу вооружаемся.
+    // Дошли до лута — подбираем.
     if (loot) {
       const feetY = p.head.y - PLAYER.eyeHeight;
       const d3 = Math.hypot(loot.x - p.head.x, loot.y - feetY, loot.z - p.head.z);
       if (d3 <= WEAPON_TAKE_REACH) {
-        this.sim.takeDrop(loot.id);
+        let took = false;
+        if (ITEMS[loot.item].weapon) {
+          // золотой меч — вооружаемся
+          this.sim.takeDrop(loot.id);
+          p.rightCls = "sword";
+          p.rightTier = "gold";
+          bot.rt.owned.add(weaponKey("sword", "gold"));
+          this.persistBot(bot);
+          console.log(`[bot] ${bot.nick} подобрал золотой меч`);
+          took = true;
+        } else {
+          // бутылка зелья — в сумку
+          const bag = readBag(p);
+          const left = addToBag(bag, loot.item, loot.count);
+          if (loot.count - left > 0) {
+            writeBag(p, bag);
+            this.sim.takeDrop(loot.id);
+            took = true;
+          }
+        }
         bot.lootTarget = null;
-        p.rightCls = "sword";
-        p.rightTier = "gold";
-        bot.rt.owned.add(weaponKey("sword", "gold"));
-        this.persistBot(bot);
-        console.log(`[bot] ${bot.nick} подобрал золотой меч`);
-        const relay: ActRelay = { k: "pickup", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
-        this.broadcast(MSG.act, relay);
+        if (took) {
+          const relay: ActRelay = { k: "pickup", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+          this.broadcast(MSG.act, relay);
+        }
       }
     }
   }
