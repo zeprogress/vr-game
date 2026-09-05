@@ -3,6 +3,10 @@ import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 /** Метры зума на пиксель изменения расстояния между пальцами. */
 const ZOOM_PER_PX = 0.012;
+/** Прицел: мёртвая зона в центре кнопки и разгон панорамирования, рад/с. */
+const AIM_DEADZONE_PX = 10;
+const AIM_SPAN_PX = 40; // за столько пикселей от края мёртвой зоны — полная скорость
+const AIM_YAW_RATE = 2.8;
 
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
@@ -30,6 +34,11 @@ export class TouchInput implements InputSource {
   private aimMode = false;
   private atkPointer: number | null = null;
   private atkLast = { x: 0, y: 0 };
+  /** Центр кнопки удара и текущее положение пальца — для инерции панорамы. */
+  private atkCenter = { x: 0, y: 0 };
+  private atkPos = { x: 0, y: 0 };
+  private atkKnob: HTMLDivElement | null = null;
+  private lastSample = 0;
 
   /** id активного пальца на джойстике. */
   private movePointer: number | null = null;
@@ -53,6 +62,10 @@ export class TouchInput implements InputSource {
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
     this.btnAttack = btnAttack;
     this.btnInteract = btnInteract;
+    // Точка внутри кнопки удара — куда сдвинут палец в режиме прицела.
+    this.atkKnob = el("div", "touch-atk-knob");
+    this.atkKnob.hidden = true;
+    btnAttack.appendChild(this.atkKnob);
 
     this.root.append(lookZone, stick, btnAttack, btnInteract);
     document.body.appendChild(this.root);
@@ -126,7 +139,11 @@ export class TouchInput implements InputSource {
       e.preventDefault();
       this.atkPointer = e.pointerId;
       this.atkLast = { x: e.clientX, y: e.clientY };
+      this.atkPos = { x: e.clientX, y: e.clientY };
+      const r = btnAttack.getBoundingClientRect();
+      this.atkCenter = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       this.attack = true;
+      this.applyAtkKnob();
       try {
         btnAttack.setPointerCapture(e.pointerId);
       } catch {
@@ -135,9 +152,12 @@ export class TouchInput implements InputSource {
     });
     btnAttack.addEventListener("pointermove", (e) => {
       if (e.pointerId !== this.atkPointer) return;
+      this.atkPos = { x: e.clientX, y: e.clientY };
       if (this.aimMode) {
-        this.accYaw += (e.clientX - this.atkLast.x) * LOOK.touchSensitivity;
+        // Вертикаль — обычным перетаскиванием (наклон). Горизонталь —
+        // инерцией от смещения пальца от центра кнопки (см. sample()).
         this.accPitch += (e.clientY - this.atkLast.y) * LOOK.touchSensitivity;
+        this.applyAtkKnob();
       }
       this.atkLast = { x: e.clientX, y: e.clientY };
     });
@@ -145,9 +165,22 @@ export class TouchInput implements InputSource {
       if (e.pointerId !== this.atkPointer) return;
       this.atkPointer = null;
       this.attack = false;
+      this.applyAtkKnob();
     };
     btnAttack.addEventListener("pointerup", endAtk);
     btnAttack.addEventListener("pointercancel", endAtk);
+  }
+
+  /** Точка внутри кнопки удара — куда сдвинут палец (только в прицеле). */
+  private applyAtkKnob(): void {
+    const k = this.atkKnob;
+    if (!k) return;
+    const show = this.aimMode && this.atkPointer !== null;
+    k.hidden = !show;
+    if (!show) return;
+    const dx = Math.max(-34, Math.min(34, this.atkPos.x - this.atkCenter.x));
+    const dy = Math.max(-34, Math.min(34, this.atkPos.y - this.atkCenter.y));
+    k.style.transform = `translate(${dx}px, ${dy}px)`;
   }
 
   /** Game: вход/выход из прицела (лук/посох). Прячет ✋, ⚔ становится наводкой. */
@@ -156,6 +189,7 @@ export class TouchInput implements InputSource {
     this.aimMode = on;
     this.btnInteract.style.display = on ? "none" : "";
     this.btnAttack.classList.toggle("touch-aiming", on);
+    this.applyAtkKnob();
   }
 
   private updateStick(px: number, py: number): void {
@@ -171,6 +205,21 @@ export class TouchInput implements InputSource {
   }
 
   sample(): InputState {
+    const now = performance.now();
+    const dt = this.lastSample ? Math.min(0.05, (now - this.lastSample) / 1000) : 0;
+    this.lastSample = now;
+
+    // Прицел: инерция панорамы по горизонтали. Палец в центре кнопки —
+    // прицел стоит; чем дальше от центра, тем быстрее крутит.
+    if (this.aimMode && this.atkPointer !== null && dt > 0) {
+      const dx = this.atkPos.x - this.atkCenter.x;
+      const off = Math.abs(dx) - AIM_DEADZONE_PX;
+      if (off > 0) {
+        const m = Math.min(1, off / AIM_SPAN_PX);
+        this.accYaw += Math.sign(dx) * m * m * AIM_YAW_RATE * dt;
+      }
+    }
+
     const s = emptyInput();
     s.moveX = this.moveX;
     s.moveY = this.moveY;
@@ -232,4 +281,7 @@ const STYLE = `<style>
 .touch-interact { bottom: 140px; }
 .touch-btn.touch-aiming { background: rgba(230,120,60,0.4);
   border-color: rgba(255,190,140,0.7); }
+.touch-atk-knob { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+  margin: -11px 0 0 -11px; border-radius: 50%; background: rgba(255,255,255,0.85);
+  box-shadow: 0 0 6px rgba(0,0,0,0.4); pointer-events: none; }
 </style>`;

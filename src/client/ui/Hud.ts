@@ -117,6 +117,17 @@ export class Hud {
     this.touch = true;
     this.panel.style.cssText += PANEL_CSS_TOUCH;
 
+    // Смартфон: полоски и верхние кнопки — одним рядом у верха. Полоски
+    // сдвинуты правее от края, кнопки левее; выровнены по центру строки
+    // (кнопки top:12 h:44 → центр 34; полоса top:27 h:14 → центр 34).
+    this.bar.style.cssText +=
+      "left:40px;top:27px;width:min(160px,calc(100vw - 250px));height:14px;";
+    this.manaBar.style.cssText +=
+      "left:40px;top:46px;width:min(130px,calc(100vw - 285px));height:8px;";
+    // Надпись HP — внутри полоски по центру (сбоку налезала бы на кнопки).
+    this.label.style.cssText +=
+      "left:0;width:100%;margin-left:0;text-align:center;font-size:10px;";
+
     const mkBtn = (css: string, label: string, onTap: () => void): HTMLDivElement => {
       const b = el("div", css);
       b.textContent = label;
@@ -685,16 +696,16 @@ const PANEL_CSS_TOUCH =
 
 /** Общий вид кнопок в правом верхнем ряду (смартфон). `right` задаётся отдельно. */
 const TOP_BTN_BASE =
-  "position:fixed;top:46px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+  "position:fixed;top:12px;z-index:39;width:44px;height:44px;border-radius:10px;" +
   "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
 /** Кнопка меню — крайняя справа. */
-const MENU_BTN_CSS = TOP_BTN_BASE + "right:18px;";
+const MENU_BTN_CSS = TOP_BTN_BASE + "right:42px;";
 /** Кнопка «на весь экран» — левее меню. */
-const FS_BTN_CSS = TOP_BTN_BASE + "right:74px;";
+const FS_BTN_CSS = TOP_BTN_BASE + "right:98px;";
 /** Кнопка микрофона — левее фуллскрина (появляется, если дан доступ). */
-const MIC_BTN_CSS = TOP_BTN_BASE + "right:130px;";
+const MIC_BTN_CSS = TOP_BTN_BASE + "right:154px;";
 
 /** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =
