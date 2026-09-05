@@ -16,10 +16,10 @@ export interface GroundGlowTune {
 }
 
 export const GROUND_GLOW_TUNE: GroundGlowTune = {
-  color: [1, 1, 0.502],
-  alpha: 0.12,
-  radius: 7.157,
-  height: 0.479,
+  color: [1, 1, 0.445],
+  alpha: 0.101,
+  radius: 6.071,
+  height: 0.103,
 };
 
 const KEY = "zep.groundglow";
