@@ -4,7 +4,6 @@ const NICK_KEY = "lastNick";
 
 export interface LoginResult {
   nick: string;
-  online: boolean;
   /** Вошли в VR-сессию (иначе — плоский режим). */
   vr: boolean;
 }
@@ -26,10 +25,9 @@ export interface LoginHooks {
 }
 
 /**
- * Экран входа: ник → «Играть» / «Играть офлайн».
- * Если устройство — VR-шлем, после ника показываем экран «Войти в VR»,
- * и в мир попадаем только после старта VR-сессии. С обычного устройства —
- * сразу в мир, как раньше.
+ * Экран входа: ник → «Играть». Игра только онлайн — без сервера в мир не
+ * пускаем (кнопка повторяет попытку). Если устройство — VR-шлем, после ника
+ * показываем экран «Войти в VR».
  */
 export function runLogin(
   net: NetClient,
@@ -48,7 +46,6 @@ export function runLogin(
         stream ? "Твой ник в Twitch" : "Твой ник"
       }" autocomplete="off" spellcheck="false" />
       <button id="login-play">${stream ? "Забрать персонажа" : "Играть"}</button>
-      ${stream ? "" : '<button id="login-offline" class="ghost">Играть офлайн</button>'}
       <div id="login-status"></div>
     </div>`;
   document.body.appendChild(overlay);
@@ -56,7 +53,6 @@ export function runLogin(
   const box = overlay.querySelector<HTMLDivElement>(".login-box")!;
   const nickInput = overlay.querySelector<HTMLInputElement>("#login-nick")!;
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
-  const offlineBtn = overlay.querySelector<HTMLButtonElement>("#login-offline");
   const status = overlay.querySelector<HTMLDivElement>("#login-status")!;
 
   nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
@@ -65,16 +61,16 @@ export function runLogin(
   const nick = () => nickInput.value.trim() || "гость";
 
   return new Promise<LoginResult>((resolve) => {
-    const finish = (online: boolean, vr: boolean): void => {
+    const finish = (vr: boolean): void => {
       localStorage.setItem(NICK_KEY, nick());
       overlay.remove();
-      resolve({ nick: nick(), online, vr });
+      resolve({ nick: nick(), vr });
     };
 
-    /** Ник введён, соединение (не) поднято — дальше решаем про VR. */
-    const proceed = async (online: boolean): Promise<void> => {
+    /** Ник введён, соединение поднято — дальше решаем про VR. */
+    const proceed = async (): Promise<void> => {
       if (!(await hooks.isVrAvailable())) {
-        finish(online, false);
+        finish(false);
         return;
       }
       // Экран входа в VR.
@@ -95,7 +91,7 @@ export function runLogin(
         vrStatus.textContent = "Запуск VR…";
         // Без await до enterVR — иначе теряется «жест пользователя».
         hooks.enterVR().then((entered) => {
-          if (entered) finish(online, true);
+          if (entered) finish(true);
           else {
             vrBtn.disabled = false;
             vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
@@ -104,36 +100,28 @@ export function runLogin(
         // Подстраховка: если через 20 с всё ещё висим (в шлеме экран не виден) —
         // впускаем в мир, чтобы не застрять с пустой сценой.
         setTimeout(() => {
-          if (document.getElementById("login")) finish(online, false);
+          if (document.getElementById("login")) finish(false);
         }, 20000);
       });
       flatBtn.addEventListener("click", () => {
         hooks.requestPointerLock();
-        finish(online, false);
+        finish(false);
       });
     };
 
     playBtn.addEventListener("click", async () => {
       hooks.requestPointerLock(); // синхронно, до await — см. requestPointerLock в LoginHooks
       playBtn.disabled = true;
-      if (offlineBtn) offlineBtn.disabled = true;
       status.textContent = "Подключение…";
       const ok = await net.connect(nick(), token, stream);
       if (ok) {
-        void proceed(true);
-      } else if (stream) {
-        status.textContent = "Не пустило — напиши !play в чате канала и попробуй снова";
-        playBtn.disabled = false;
+        void proceed();
       } else {
-        status.textContent = "Сервер недоступен — одиночный режим";
-        setTimeout(() => void proceed(false), 900);
+        status.textContent = stream
+          ? "Не пустило — напиши !play в чате канала и попробуй снова"
+          : "Сервер недоступен — попробуй ещё раз";
+        playBtn.disabled = false;
       }
-    });
-    offlineBtn?.addEventListener("click", () => {
-      hooks.requestPointerLock();
-      playBtn.disabled = true;
-      offlineBtn.disabled = true;
-      void proceed(false);
     });
     nickInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !playBtn.disabled) playBtn.click();

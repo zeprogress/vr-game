@@ -32,8 +32,10 @@ export class Hud {
   /** Тач-режим: своя кнопка меню + крестик в панели, без возни с захватом мыши. */
   private touch = false;
   private menuBtn: HTMLDivElement | null = null;
+  private potionBtn: HTMLDivElement | null = null;
   private hasShield = false;
   private onDropShield: (() => void) | null = null;
+  private onDrinkPotion: (() => void) | null = null;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
@@ -93,6 +95,8 @@ export class Hud {
   enableTouchMenu(): void {
     if (this.menuBtn) return;
     this.touch = true;
+    this.panel.style.cssText += PANEL_CSS_TOUCH;
+
     const btn = el("div", MENU_BTN_CSS);
     btn.textContent = "☰";
     btn.addEventListener("pointerdown", (e) => {
@@ -102,11 +106,66 @@ export class Hud {
     });
     document.body.appendChild(btn);
     this.menuBtn = btn;
+
+    // Кнопка «на весь экран». На iOS Safari API нет — там подсказываем
+    // добавить игру на экран «Домой» (тогда браузерная панель пропадает).
+    const fs = el("div", FS_BTN_CSS);
+    fs.textContent = "⛶";
+    const el2 = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => unknown;
+    };
+    const canFs = !!el2.requestFullscreen || !!el2.webkitRequestFullscreen;
+    fs.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canFs) {
+        this.toast("Полный экран: добавь игру на экран «Домой» через меню браузера");
+        return;
+      }
+      const r = el2.requestFullscreen?.() ?? el2.webkitRequestFullscreen?.();
+      if (r && typeof (r as Promise<void>).catch === "function") (r as Promise<void>).catch(() => {});
+    });
+    document.addEventListener("fullscreenchange", () => {
+      fs.hidden = !!document.fullscreenElement;
+    });
+    document.body.appendChild(fs);
+
+    // Кнопка «выпить зелье» — над кнопкой удара, с числом. Нет зелий — скрыта.
+    const pot = el("div", POTION_BTN_CSS);
+    pot.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onDrinkPotion?.();
+    });
+    document.body.appendChild(pot);
+    this.potionBtn = pot;
+    this.updatePotionBtn();
+  }
+
+  /** Обновить кнопку зелья: число и видимость. Зовёт bindInventory по onChange. */
+  private updatePotionBtn(): void {
+    if (!this.potionBtn) return;
+    const n = this.potionTotal();
+    this.potionBtn.hidden = n <= 0;
+    this.potionBtn.textContent = `🧪${n}`;
+  }
+
+  private potionTotal(): number {
+    let n = 0;
+    for (const s of this.inv?.slots ?? []) {
+      if (s.item && ITEMS[s.item].heal > 0) n += s.count;
+    }
+    return n;
   }
 
   /** Кнопка «убрать щит» в тач-меню (на ПК/VR это клавиша Q / жест). */
   bindDropShield(fn: () => void): void {
     this.onDropShield = fn;
+  }
+
+  /** Тап по кнопке зелья на экране (смартфон) — выпить одно зелье. */
+  bindDrinkPotion(fn: () => void): void {
+    this.onDrinkPotion = fn;
   }
 
   /** Game зовёт каждый кадр: держит ли игрок щит (кнопка в меню зависит). */
@@ -172,7 +231,11 @@ export class Hud {
   /** Подключить сумку — в панели персонажа появится раздел «Сумка». */
   bindInventory(inv: Inventory): void {
     this.inv = inv;
-    inv.onChange(() => this.renderPanel());
+    inv.onChange(() => {
+      this.renderPanel();
+      this.updatePotionBtn();
+    });
+    this.updatePotionBtn();
   }
 
   /**
@@ -273,20 +336,29 @@ export class Hud {
 
   /** Раздел «Сумка» внизу панели персонажа. */
   /** Раздел «Внешность»: стрелками листаем 8 моделей, применяется сразу. */
+  private sectionHead(text: string): HTMLDivElement {
+    const t = this.touch;
+    const d = el(
+      "div",
+      `margin-top:${t ? 8 : 12}px;padding-top:${t ? 5 : 8}px;border-top:1px solid #3a4056;` +
+        `font-weight:bold;font-size:${t ? 13 : 15}px;`,
+    );
+    d.textContent = text;
+    return d;
+  }
+
   private renderSkin(): void {
     if (!this.onSkin) return;
 
-    const head = el("div", "margin-top:12px;padding-top:8px;border-top:1px solid #3a4056;font-weight:bold;");
-    head.textContent = "Внешность";
-    this.panel.appendChild(head);
+    this.panel.appendChild(this.sectionHead("Внешность"));
 
-    const row = el("div", "display:flex;align-items:center;gap:8px;margin-top:6px;");
+    const row = el("div", `display:flex;align-items:center;gap:8px;margin-top:${this.touch ? 4 : 6}px;`);
     const arrow = (dir: -1 | 1): HTMLButtonElement => {
       const btn = document.createElement("button");
       btn.textContent = dir < 0 ? "‹" : "›";
       btn.style.cssText =
-        "width:30px;height:28px;cursor:pointer;background:#2a2e40;color:#fff;" +
-        "border:1px solid #5a6480;border-radius:5px;font-weight:bold;font-size:16px;";
+        `width:${this.touch ? 34 : 30}px;height:${this.touch ? 30 : 28}px;cursor:pointer;` +
+        "background:#2a2e40;color:#fff;border:1px solid #5a6480;border-radius:5px;font-weight:bold;font-size:16px;";
       btn.addEventListener("click", () => {
         // 1..BOT.skins по кругу.
         const n = ((this.skin - 1 + dir + BOT.skins) % BOT.skins) + 1;
@@ -306,12 +378,10 @@ export class Hud {
     const inv = this.inv;
     if (!inv) return;
 
-    const head = el("div", "margin-top:12px;padding-top:8px;border-top:1px solid #3a4056;font-weight:bold;");
-    head.textContent = "Сумка";
-    this.panel.appendChild(head);
+    this.panel.appendChild(this.sectionHead("Сумка"));
 
     if (inv.isEmpty) {
-      const empty = el("div", "margin-top:6px;opacity:0.5;font-size:12px;");
+      const empty = el("div", "margin-top:4px;opacity:0.5;font-size:12px;");
       empty.textContent = "пусто";
       this.panel.appendChild(empty);
       return;
@@ -320,7 +390,7 @@ export class Hud {
     inv.slots.forEach((slot, i) => {
       if (!slot.item) return;
       const def = ITEMS[slot.item];
-      const row = el("div", "display:flex;align-items:center;gap:8px;margin:5px 0;");
+      const row = el("div", `display:flex;align-items:center;gap:8px;margin:${this.touch ? 2 : 5}px 0;`);
 
       const dot = el(
         "span",
@@ -333,7 +403,8 @@ export class Hud {
       cnt.textContent = `×${slot.count}`;
       row.append(dot, name, cnt);
 
-      if (def.heal > 0) {
+      // На смартфоне зелья пьются кнопкой на экране — в меню кнопки нет.
+      if (def.heal > 0 && !this.touch) {
         const btn = document.createElement("button");
         btn.textContent = "Выпить";
         btn.style.cssText =
@@ -350,8 +421,9 @@ export class Hud {
     const p = this.prog;
     if (!p || !this.panelOpen) return;
     this.panel.replaceChildren();
+    const t = this.touch; // компактнее: без подсказок, меньше отступы
 
-    if (this.touch) {
+    if (t) {
       const x = el("div", CLOSE_X_CSS);
       x.textContent = "✕";
       x.addEventListener("pointerdown", (e) => {
@@ -362,19 +434,17 @@ export class Hud {
       this.panel.appendChild(x);
     }
 
-    const title = el("div", "font:bold 22px system-ui;margin-bottom:10px;");
-    title.textContent = `Уровень ${p.level}`;
+    const title = el("div", `font:bold ${t ? 17 : 22}px system-ui;margin-bottom:${t ? 4 : 10}px;`);
+    title.textContent = p.atMaxLevel
+      ? `Уровень ${p.level} · макс`
+      : `Уровень ${p.level} · опыт ${p.xp}/${p.xpToNext()}`;
     this.panel.appendChild(title);
 
-    const xp = el("div", "margin-bottom:10px;opacity:0.85;");
-    xp.textContent = p.atMaxLevel ? "Максимальный уровень" : `Опыт ${p.xp} / ${p.xpToNext()}`;
-    this.panel.appendChild(xp);
-
     for (const s of STATS) {
-      const row = el("div", "display:flex;align-items:center;gap:8px;margin:5px 0;");
-      const name = el("span", "width:120px;");
+      const row = el("div", `display:flex;align-items:center;gap:8px;margin:${t ? 2 : 5}px 0;`);
+      const name = el("span", `flex:1;${t ? "" : "max-width:120px;"}`);
       name.textContent = STAT_LABELS[s];
-      const val = el("span", "width:32px;text-align:right;font-weight:bold;font-size:17px;");
+      const val = el("span", "width:28px;text-align:right;font-weight:bold;");
       val.textContent = String(p.stats[s]);
       row.append(name, val);
 
@@ -382,53 +452,38 @@ export class Hud {
         const btn = document.createElement("button");
         btn.textContent = "+";
         btn.style.cssText =
-          "width:30px;height:28px;cursor:pointer;background:#2f7a35;color:#fff;" +
-          "border:1px solid #4c4;border-radius:5px;font-weight:bold;font-size:16px;";
+          `width:${t ? 34 : 30}px;height:${t ? 30 : 28}px;cursor:pointer;background:#2f7a35;` +
+          "color:#fff;border:1px solid #4c4;border-radius:5px;font-weight:bold;font-size:16px;";
         btn.addEventListener("click", () => p.spend(s));
         row.appendChild(btn);
       }
       this.panel.appendChild(row);
 
-      const hint = el("div", "font-size:11px;opacity:0.5;margin:-2px 0 4px 0;");
-      hint.textContent = statHint(p, s);
-      this.panel.appendChild(hint);
+      if (!t) {
+        const hint = el("div", "font-size:11px;opacity:0.5;margin:-2px 0 4px 0;");
+        hint.textContent = statHint(p, s);
+        this.panel.appendChild(hint);
+      }
     }
 
-    const free = el("div", `margin-top:10px;${p.unspent > 0 ? "color:#7ee081;" : "opacity:0.6;"}`);
+    const free = el("div", `margin-top:${t ? 4 : 10}px;font-size:${t ? 12 : 15}px;${p.unspent > 0 ? "color:#7ee081;" : "opacity:0.6;"}`);
     free.textContent = `Свободных очков: ${p.unspent}`;
     this.panel.appendChild(free);
 
-    if (this.touch && this.hasShield && this.onDropShield) {
-      const drop = document.createElement("button");
-      drop.textContent = "Убрать щит";
-      drop.style.cssText =
-        "width:100%;margin-top:12px;padding:10px;cursor:pointer;background:#26303f;" +
-        "color:#cdd9ee;border:1px solid #4a5474;border-radius:6px;font:600 14px system-ui;";
-      drop.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.onDropShield?.();
-        this.closePanel();
-      });
-      this.panel.appendChild(drop);
+    if (t && this.hasShield && this.onDropShield) {
+      this.panel.appendChild(
+        this.panelButton("Убрать щит", "#26303f", "#cdd9ee", "#4a5474", () => {
+          this.onDropShield?.();
+          this.closePanel();
+        }),
+      );
     }
 
     this.renderSkin();
     this.renderBag();
 
-    const keys = el("div", "margin-top:14px;padding-top:10px;border-top:1px solid #3a4056;font-size:12px;opacity:0.6;line-height:1.7;");
-    keys.textContent = this.touch
-      ? "Левый джойстик — движение · правая половина экрана — осмотр\n" +
-        "⚔ — удар · ✋ — взять предмет\n" +
-        "☰ / тап мимо панели — открыть-закрыть это меню"
-      : "WASD — движение · мышь — осмотреться\n" +
-        "ЛКМ — удар · E — взять (держать = замах, отпустить = бросок) · Q — снять щит\n" +
-        "C / Esc — открыть-закрыть эту панель";
-    keys.style.whiteSpace = "pre-line";
-    this.panel.appendChild(keys);
-
     if (this.onLeaveBot) {
-      const row = el("div", "display:flex;align-items:center;gap:8px;margin-top:14px;");
+      const row = el("div", `display:flex;align-items:center;gap:8px;margin-top:${t ? 8 : 14}px;`);
       const box = document.createElement("input");
       box.type = "checkbox";
       box.checked = this.leaveBot;
@@ -446,14 +501,34 @@ export class Hud {
     }
 
     if (this.onExit) {
-      const exit = document.createElement("button");
-      exit.textContent = "Выйти в меню";
-      exit.style.cssText =
-        "width:100%;margin-top:12px;padding:10px;cursor:pointer;background:#3a2020;" +
-        "color:#ffd8d8;border:1px solid #8a3a3a;border-radius:6px;font:600 14px system-ui;";
-      exit.addEventListener("click", () => this.onExit?.());
-      this.panel.appendChild(exit);
+      this.panel.appendChild(
+        this.panelButton("Выйти в меню", "#3a2020", "#ffd8d8", "#8a3a3a", () => this.onExit?.()),
+      );
     }
+  }
+
+  /** Кнопка во всю ширину панели. */
+  private panelButton(
+    text: string,
+    bg: string,
+    fg: string,
+    border: string,
+    fn: () => void,
+  ): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.style.cssText =
+      `width:100%;margin-top:${this.touch ? 8 : 12}px;padding:${this.touch ? 8 : 10}px;` +
+      `cursor:pointer;background:${bg};color:${fg};border:1px solid ${border};` +
+      "border-radius:6px;font:600 14px system-ui;";
+    b.addEventListener(this.touch ? "pointerdown" : "click", (e) => {
+      if (this.touch) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      fn();
+    });
+    return b;
   }
 }
 
@@ -508,15 +583,32 @@ const BACKDROP_CSS =
   "background:rgba(6,8,14,0.55);backdrop-filter:blur(2px);";
 
 const PANEL_CSS =
-  "position:relative;width:min(440px,92vw);max-height:88vh;overflow-y:auto;padding:22px 26px;" +
+  "position:relative;width:min(440px,92vw);max-height:92vh;overflow-y:auto;padding:22px 26px;" +
   "background:rgba(18,20,28,0.97);color:#e8ecf8;border:1px solid #5a6480;border-radius:12px;" +
   "box-shadow:0 20px 60px rgba(0,0,0,0.5);font:15px/1.5 system-ui,sans-serif;";
+
+/** Компактная посадка панели на смартфоне — чтобы всё влезло без прокрутки. */
+const PANEL_CSS_TOUCH = "padding:12px 14px;font:13px/1.4 system-ui,sans-serif;";
 
 /** Кнопка меню (смартфон) — правый верхний угол, поверх HUD и панели. */
 const MENU_BTN_CSS =
   "position:fixed;top:12px;right:12px;z-index:39;width:44px;height:44px;border-radius:10px;" +
   "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
+  "-webkit-user-select:none;user-select:none;touch-action:none;";
+
+/** Кнопка «на весь экран» (смартфон) — левее кнопки меню. */
+const FS_BTN_CSS =
+  "position:fixed;top:12px;right:64px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+  "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
+  "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
+  "-webkit-user-select:none;user-select:none;touch-action:none;";
+
+/** Кнопка «выпить зелье» (смартфон) — слева от кнопки удара, с числом. */
+const POTION_BTN_CSS =
+  "position:fixed;right:118px;bottom:44px;z-index:12;width:66px;height:66px;border-radius:50%;" +
+  "display:flex;align-items:center;justify-content:center;font:600 20px system-ui,sans-serif;" +
+  "background:rgba(46,90,60,0.5);color:#dff5e2;border:2px solid rgba(180,255,190,0.45);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
 
 /** Крестик закрытия в углу панели персонажа (смартфон). */

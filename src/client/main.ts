@@ -106,40 +106,15 @@ function bootGame(): void {
       requestPointerLock: () => game.requestPointerLock(),
     },
     streamMode,
-  ).then(({ nick, online, vr }) => {
+  ).then(({ nick, vr }) => {
     game.setNick(nick);
-    if (online) game.attachNet(net);
+    game.attachNet(net); // игра только онлайн
+    game.enterWorld(); // теперь можно завести фоновую музыку
 
     // Плашки «кликни, чтобы войти» больше нет — сам канвас ловит клик и
     // забирает захват мыши. На телефоне/VR указателя нет, слушатель не нужен.
     if (!game.isTouch && !vr) {
       canvas.addEventListener("click", () => game.requestPointerLock());
     }
-
-    // Смартфон: разворачиваемся на весь экран. requestFullscreen работает
-    // только из жеста пользователя — пробуем сразу и на первый тап.
-    if (game.isTouch && !vr) enterFullscreen();
   });
-}
-
-/** Полноэкранный режим на телефоне: сразу и на первый тап (нужен жест). */
-function enterFullscreen(): void {
-  const go = (): void => {
-    if (document.fullscreenElement) return;
-    const el = document.documentElement as HTMLElement & {
-      webkitRequestFullscreen?: () => unknown;
-    };
-    const r = el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.();
-    if (r && typeof (r as Promise<void>).catch === "function") {
-      (r as Promise<void>).catch(() => {});
-    }
-  };
-  go();
-  const once = (): void => {
-    go();
-    window.removeEventListener("pointerdown", once);
-    window.removeEventListener("touchend", once);
-  };
-  window.addEventListener("pointerdown", once);
-  window.addEventListener("touchend", once);
 }

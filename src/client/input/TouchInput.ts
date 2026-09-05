@@ -53,7 +53,11 @@ export class TouchInput implements InputSource {
     lookZone.addEventListener("pointerdown", (e) => {
       if (this.lookPts.size >= 2) return;
       this.lookPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      lookZone.setPointerCapture(e.pointerId);
+      try {
+        lookZone.setPointerCapture(e.pointerId);
+      } catch {
+        /* палец уже ушёл — не критично */
+      }
       if (this.lookPts.size === 2) this.pinchLen = pinchDist();
     });
     lookZone.addEventListener("pointermove", (e) => {
@@ -161,7 +165,8 @@ const STYLE = `<style>
 .touch-ui { position: fixed; inset: 0; z-index: 10; touch-action: none;
   font: 22px system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
 .touch-ui > * { position: absolute; }
-.touch-look { right: 0; top: 0; width: 55%; height: 100%; }
+/* Осмотр и щипок-зум — по всему экрану (стик и кнопки лежат поверх). */
+.touch-look { inset: 0; }
 .touch-stick { left: 26px; bottom: 26px; width: 130px; height: 130px;
   border-radius: 50%; background: rgba(255,255,255,0.12);
   border: 2px solid rgba(255,255,255,0.25); }

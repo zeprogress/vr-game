@@ -281,13 +281,17 @@ export class Game {
       this.scene.activeCamera = this.player.renderCamera;
       this.hud.enableTouchMenu();
       this.hud.bindDropShield(() => this.combat.dropShieldFlat());
+      this.hud.bindDrinkPotion(() => {
+        const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
+        if (slot >= 0) this.inventory.use(slot);
+      });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.attackSpeed);
     }
 
-    // Звук и музыка стартуют только по жесту пользователя.
-    this.sfx.startMusic(TOWN_MUSIC, 0.045); // тихий фон
+    // Звук просыпается по первому жесту; музыку заводим только при входе в
+    // мир (enterWorld) — на экране ввода ника её быть не должно.
     const wake = () => this.sfx.resume();
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
@@ -623,6 +627,11 @@ export class Game {
   /** Ник этого игрока — задаётся из main.ts после входа. */
   setNick(nick: string): void {
     this.localNick = nick;
+  }
+
+  /** Вошли в мир (после экрана ввода ника). Заводим фоновую музыку. */
+  enterWorld(): void {
+    this.sfx.startMusic(TOWN_MUSIC, 0.045); // тихий фон — только в мире
   }
 
   /** Админ (ADMIN_NICK) — единственный, кто открывает панель настройки. */
