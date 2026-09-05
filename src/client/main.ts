@@ -20,6 +20,11 @@ if (params.get("fog") === "1") {
   void import("./ui/FogTuner").then(({ mountFogTuner }) => mountFogTuner());
 }
 
+// ?tpcam=1 — панель живой настройки камеры от третьего лица (смартфон).
+if (params.get("tpcam") === "1") {
+  void import("./ui/TpCamTuner").then(({ mountTpCamTuner }) => mountTpCamTuner());
+}
+
 if (params.has("dash")) {
   bootDashboard();
 } else if (params.get("spectator")) {

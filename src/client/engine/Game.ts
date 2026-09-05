@@ -49,6 +49,7 @@ import { XRInput } from "../input/XRInput";
 import type { InputSource } from "../input/InputSource";
 import type { NetClient } from "../net/NetClient";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
+import { LocalAvatar } from "../entities/LocalAvatar";
 import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
@@ -129,6 +130,9 @@ export class Game {
   // Сеть: чужие игроки.
   private net: NetClient | null = null;
   private readonly avatars = new Map<string, RemoteAvatar>();
+  /** Своя модель — только на смартфоне (вид от третьего лица). */
+  private localAvatar: LocalAvatar | null = null;
+  private prevTouchAttack = false;
   private readonly aim = new Vector3(0, 0, 1);
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
@@ -252,6 +256,7 @@ export class Game {
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
+      this.localAvatar?.hurt();
       this.showHp(hp);
       this.hud.setOpacity(1);
       this.playerBar3D?.setOpacity(1);
@@ -269,6 +274,14 @@ export class Game {
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.player.setInput(this.defaultInput());
+
+    // Смартфон — вид от третьего лица: орбитальная камера + видимая модель.
+    // Десктоп/VR остаются от первого лица.
+    if (this.isTouch) {
+      this.player.enableThirdPerson();
+      this.localAvatar = new LocalAvatar(this.scene);
+      this.scene.activeCamera = this.player.renderCamera;
+    }
 
     // Звук и музыка стартуют только по жесту пользователя.
     this.sfx.startMusic(TOWN_MUSIC, 0.045); // тихий фон
@@ -293,8 +306,11 @@ export class Game {
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
+      // Автонаводка удара (третье лицо) — до update(), чтобы «глаза» взяли yaw.
+      if (this.localAvatar) this.aimAssistTouch(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
+      if (this.localAvatar) this.updateLocalAvatar(dt);
       this.netMobs.update(dt, this.player.position, this.aim);
       this.loot.update(dt);
       this.combat.update(dt);
@@ -468,7 +484,7 @@ export class Game {
         this.player.exitXR();
         this.xrInput = null;
         this.player.setInput(this.defaultInput());
-        this.scene.activeCamera = this.player.camera;
+        this.scene.activeCamera = this.player.renderCamera;
         this.hands.detach(this.xr!);
         this.tearDownVrUi();
       }
@@ -740,6 +756,7 @@ export class Game {
 
   private syncSelf(dt: number, self: PlayerState): void {
     this.hud.setSkin(self.skin);
+    this.localAvatar?.setSkin(self.skin);
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
     // Повышение уровня тоже подливает HP — там крестики оранжевые.
@@ -852,6 +869,56 @@ export class Game {
 
   private defaultInput(): InputSource {
     return this.isTouch ? new TouchInput() : new DesktopInput(this.canvas);
+  }
+
+  /** Смартфон: держать модель у ног игрока и гонять её анимации. */
+  private updateLocalAvatar(dt: number): void {
+    const av = this.localAvatar;
+    if (!av) return;
+    const atk = this.player.lastInput.primaryAction;
+    if (atk && !this.prevTouchAttack) av.swing();
+    this.prevTouchAttack = atk;
+    const p = this.player.position;
+    av.update(
+      dt,
+      p.x,
+      p.y,
+      p.z,
+      this.player.facing,
+      this.player.planarSpeed,
+      this.player.dead || this.player.inVR,
+    );
+  }
+
+  /**
+   * Пока держат «атаку» и почти не двигаются — плавно доворачиваем персонажа
+   * к ближайшей цели в конусе перед ним. Удар в плоском бою летит по взгляду
+   * «глаз», а те смотрят туда же, куда повёрнут персонаж.
+   */
+  private aimAssistTouch(dt: number): void {
+    if (!this.player.lastInput.primaryAction || this.player.dead) return;
+    if (this.player.planarSpeed > 1.5) return; // бежит — целится сам, куда бежит
+    const eye = this.player.eyePosition;
+    const fy = this.player.facing;
+    const fdx = Math.sin(fy);
+    const fdz = Math.cos(fy);
+    let best: { x: number; z: number } | null = null;
+    let bestD = 7; // м, дальность автонаводки
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const s = t.hitSegment();
+      const cx = (s.a.x + s.b.x) / 2;
+      const cz = (s.a.z + s.b.z) / 2;
+      const dx = cx - eye.x;
+      const dz = cz - eye.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.3 || d > bestD) continue;
+      // Косинус угла между «вперёд» и направлением на цель ≥ cos(70°).
+      if ((dx * fdx + dz * fdz) / d < 0.34) continue;
+      bestD = d;
+      best = { x: cx, z: cz };
+    }
+    if (best) this.player.faceTowards(best.x, best.z, dt);
   }
 
   // ---- сеть: чужие игроки ----

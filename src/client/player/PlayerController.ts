@@ -2,6 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import type { Camera } from "@babylonjs/core/Cameras/camera";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -16,6 +17,8 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
+import { ThirdPersonCam } from "./ThirdPersonCam";
+import { TP_CAM_TUNE } from "./tpCamTune";
 
 const GROUND_SNAP = 0.2; // м, зазор до земли, при котором считаем «стоим»
 const STEP_HEIGHT = 0.35; // м, высоту ниже этого можно перешагнуть
@@ -38,6 +41,15 @@ export class PlayerController {
   private pitch = 0;
   private verticalVelocity = 0;
   private grounded = false;
+
+  /**
+   * Камера «от третьего лица» (смартфон). null — режим от первого лица
+   * (десктоп/VR). Включает Game через enableThirdPerson().
+   */
+  private tp: ThirdPersonCam | null = null;
+  /** Сглаженная горизонтальная скорость, м/с — для выбора клипа у LocalAvatar. */
+  private _planarSpeed = 0;
+  private readonly _feet = new Vector3();
 
   /** Ввод, снятый в последнем update() — читают другие системы (бой). */
   lastInput: InputState = emptyInput();
@@ -177,12 +189,46 @@ export class PlayerController {
     return this.xrCamera !== null;
   }
 
+  /** Перевести плоский режим в вид от третьего лица (только смартфон). */
+  enableThirdPerson(): void {
+    if (!this.tp) this.tp = new ThirdPersonCam(this.scene);
+  }
+
+  /** Сейчас управление идёт от третьего лица. */
+  get thirdPerson(): boolean {
+    return this.tp !== null && this.xrCamera === null;
+  }
+
+  /** Камера, которую должна рендерить сцена (в VR — гарнитуры). */
+  get renderCamera(): Camera {
+    if (this.xrCamera) return this.xrCamera;
+    return this.tp ? this.tp.camera : this.camera;
+  }
+
+  /** Куда повёрнут персонаж (yaw в радианах). */
+  get facing(): number {
+    return this.yaw;
+  }
+
+  /** Сглаженная горизонтальная скорость тела, м/с. */
+  get planarSpeed(): number {
+    return this._planarSpeed;
+  }
+
+  /** Плавно довернуть персонажа лицом к точке (автонаводка удара). */
+  faceTowards(x: number, z: number, dt: number): void {
+    const t = Math.atan2(x - this.body.position.x, z - this.body.position.z);
+    this.yaw = lerpAngle(this.yaw, t, Math.min(1, dt * 9));
+  }
+
   /**
    * Позиция глаз в мире. В VR — голова гарнитуры, в плоском режиме — камера.
    * ВАЖНО: в VR плоская `camera` не обновляется, брать её globalPosition нельзя.
    */
   get eyePosition(): Vector3 {
-    return (this.xrCamera ?? this.camera).globalPosition;
+    // В плоском режиме глаза = тело: `camera` может быть неактивной (третье
+    // лицо рендерит другая), и её globalPosition тогда не освежается.
+    return this.xrCamera ? this.xrCamera.globalPosition : this.body.position;
   }
 
   /** Направление взгляда в мире (единичное). */
@@ -353,11 +399,19 @@ export class PlayerController {
     this.lastInput = inp;
     const pos = this.body.position;
     const vr = this.xrCamera !== null;
+    const tp = !vr && this.tp ? this.tp : null;
 
     // --- Поворот ---
-    // yaw: мышь/тач в плоском режиме, snap-turn в VR. pitch — только плоский режим.
-    this.yaw += inp.lookYaw;
-    this.pitch = vr ? 0 : clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
+    // Третье лицо: правое перетаскивание крутит ОБЗОР (камеру), не персонажа —
+    // его yaw доворачивается в сторону хода ниже. Первое лицо: мышь/тач крутят
+    // сам взгляд. VR: yaw — snap-turn, pitch всегда 0.
+    if (tp) {
+      tp.applyLook(inp.lookYaw, inp.lookPitch);
+      this.pitch = 0;
+    } else {
+      this.yaw += inp.lookYaw;
+      this.pitch = vr ? 0 : clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
+    }
 
     // --- VR: физическая ходьба по комнате переносится в тело ---
     // Берём смещение головы в ЛОКАЛЬНЫХ осях рига (не зависит от snap-turn)
@@ -385,6 +439,10 @@ export class PlayerController {
       const l = Math.hypot(this.fwd.x, this.fwd.z) || 1;
       fx = this.fwd.x / l;
       fz = this.fwd.z / l;
+    } else if (tp) {
+      // Третье лицо: стик задаёт направление ОТНОСИТЕЛЬНО камеры.
+      fx = Math.sin(tp.yaw);
+      fz = Math.cos(tp.yaw);
     } else {
       fx = Math.sin(this.yaw);
       fz = Math.cos(this.yaw);
@@ -397,6 +455,11 @@ export class PlayerController {
     if (len > 1) {
       mx /= len;
       mz /= len;
+    }
+    const moving = len > 0.05;
+    // Третье лицо: персонаж доворачивается лицом туда, куда бежит.
+    if (tp && moving) {
+      this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * TP_CAM_TUNE.turnRate));
     }
     const speed = this.speed * dt;
     const bx = pos.x;
@@ -423,6 +486,10 @@ export class PlayerController {
 
     this.pushOutOfObstacles();
     this.clampToWorld();
+
+    // Сглаженная горизонтальная скорость — по фактическому смещению тела.
+    const moved = Math.hypot(pos.x - bx, pos.z - bz) / Math.max(dt, 1e-3);
+    this._planarSpeed += (moved - this._planarSpeed) * Math.min(1, dt * 8);
 
     // --- Земля под ногами ---
     const groundY = this.rayDown();
@@ -464,6 +531,21 @@ export class PlayerController {
     } else {
       this.camera.position.copyFrom(pos);
       this.camera.rotation.set(this.pitch, this.yaw, 0);
+      if (tp) {
+        // `camera` — теперь «глаза» для боя/сети/звука, но не рендерится.
+        // Освежаем её матрицы вручную, дальше двигаем орбитальную камеру.
+        this.camera.getViewMatrix(true);
+        // Камера сама заезжает за спину ТОЛЬКО когда игрок бежит примерно
+        // «от камеры» (стик вперёд). При боковом стике — нет: иначе база
+        // движения крутится вслед за камерой и получается спираль на месте.
+        const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
+        const mostlyForward = inp.moveY > 0.2 && Math.abs(inp.moveX) < 0.4;
+        if (!dragging && moving && mostlyForward) {
+          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate));
+        }
+        this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
+        tp.update(this._feet, this.isSolid, this.scene);
+      }
     }
 
     // --- Реген здоровья после паузы без урона (офлайн; онлайн считает сервер) ---
@@ -513,10 +595,17 @@ export class PlayerController {
     this.input?.dispose();
     this.teleReticle?.material?.dispose();
     this.teleReticle?.dispose();
+    this.tp?.camera.dispose();
     this.body.dispose();
   }
 }
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/** Интерполяция углов по кратчайшей дуге (радианы). */
+function lerpAngle(a: number, b: number, t: number): number {
+  const d = (((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
+  return a + d * t;
 }
