@@ -19,8 +19,8 @@ export interface FogTune {
 
 export const FOG_TUNE: FogTune = {
   nightColor: [0, 0, 0],
-  near: 12,
-  far: 55,
+  near: 150,
+  far: 400,
 };
 
 const KEY = "zep.fog";
