@@ -46,13 +46,28 @@ const AO_DIP_FULL = 0.4;
  * одну — визуально AO просто не было видно почти нигде. Текстура не зависит
  * от геометрии, поэтому радиус можно взять честно вокруг объекта.
  */
-const AO_ROCK_REACH = 1.2;
-const AO_ROCK_PER_SCALE = 2.2;
-const AO_ROCK_STRENGTH = 0.45;
-/** Трава просвечивает — сгущение цвета, а не тень, поэтому слабее камня. */
-const AO_GRASS_PER_SIZE = 1.3;
-const AO_GRASS_BASE = 0.4;
-const AO_GRASS_STRENGTH = 0.3;
+const AO_ROCK_REACH = 0.9;
+const AO_ROCK_PER_SCALE = 1.6;
+const AO_ROCK_STRENGTH = 0.4;
+/**
+ * Трава — тень НЕ по кляксе целиком (это давало ровно противоположную беду:
+ * в густом месте десятки кляксовых кругов перемножались почти в чёрное, а
+ * одиночная травинка вне всякой кляксы вообще не получала тени, хоть она
+ * тоже есть в layout.blades). Пятно на КАЖДУЮ травинку по отдельности —
+ * слабое само по себе, но там, где травинок много, они естественно
+ * складываются в более заметную тень, а одна травинка получает лёгкий,
+ * но всё же видимый след.
+ */
+const AO_GRASS_BLADE_REACH = 0.4;
+const AO_GRASS_BLADE_PER_SCALE = 0.8;
+const AO_GRASS_BLADE_STRENGTH = 0.1;
+/**
+ * Пол именно для этой текстуры (камни+трава), отдельный от AO_FLOOR у
+ * деревьев/рельефа: травинок так много и они так плотно перекрываются, что
+ * общий пол 0.3 всё равно уходил в сплошные тёмные пятна у густых куртин —
+ * тут порог мягче.
+ */
+const AO_GROUND_FLOOR = 0.5;
 
 /**
  * Запечённое затенение по вершинам (вместо теней).
@@ -249,15 +264,21 @@ function applyGroundAo(scene: Scene, mat: StandardMaterial, grassDensity: number
   for (const rk of rocks()) {
     drawSpot(rk.x, rk.z, AO_ROCK_REACH + rk.scale * AO_ROCK_PER_SCALE, AO_ROCK_STRENGTH);
   }
-  for (const gb of computeGrassLayout(grassDensity).blobs) {
-    drawSpot(gb.x, gb.z, AO_GRASS_BASE + gb.size * AO_GRASS_PER_SIZE, AO_GRASS_STRENGTH);
+  // По каждой травинке отдельно (не по кляксе целиком) — см. комментарий у
+  // AO_GRASS_BLADE_*.
+  for (const bl of computeGrassLayout(grassDensity).blades) {
+    drawSpot(
+      bl.x,
+      bl.z,
+      AO_GRASS_BLADE_REACH + bl.s * AO_GRASS_BLADE_PER_SCALE,
+      AO_GRASS_BLADE_STRENGTH,
+    );
   }
 
-  // У спавна клякс травы много и они перекрываются — умножение затемнений
-  // друг на друга там уходит почти в чёрный. Отдельным полом (как у AO_FLOOR
-  // в bakeAo) не даём итогу провалиться темнее AO_FLOOR*255.
+  // Даже слабые тени травинок в густом месте перемножаются друг на друга —
+  // не даём итогу провалиться темнее AO_GROUND_FLOOR*255.
   const img = ctx.getImageData(0, 0, S, S);
-  const floor = Math.round(AO_FLOOR * 255);
+  const floor = Math.round(AO_GROUND_FLOOR * 255);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i] < floor) {
