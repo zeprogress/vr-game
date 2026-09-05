@@ -171,6 +171,9 @@ export class CombatSystem {
   mana = 30;
   /** Игра шлёт серверу каст, когда посох выстрелил. */
   onCast: ((msg: CastMsg) => void) | null = null;
+  /** Пытались колдовать без маны — Game покажет предупреждение. */
+  onLowMana: (() => void) | null = null;
+  private lowManaCd = 0;
   /** Ближайший союзник к точке (для лечащей магии). Задаёт Game онлайн. */
   nearestAlly: ((pos: Vector3) => { id: string; pos: Vector3 } | null) | null = null;
   private healTargetId: string | null = null;
@@ -1883,14 +1886,20 @@ export class CombatSystem {
   private tpStaffCast(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
     const fb = MAGIC.firebolt;
     this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
+    this.lowManaCd = Math.max(0, this.lowManaCd - dt);
     const staff = this.held1("staff");
 
     if (primaryHeld && staff) {
-      if (!this.castHooked && this.tpRangedCd <= 0 && this.mana >= fb.minMana) {
-        this.castHooked = true;
-        this.castMode = "solo";
-        this.charge = 0;
-        this.sfx.bowDraw();
+      if (!this.castHooked && this.tpRangedCd <= 0) {
+        if (this.mana >= fb.minMana) {
+          this.castHooked = true;
+          this.castMode = "solo";
+          this.charge = 0;
+          this.sfx.bowDraw();
+        } else if (this.lowManaCd <= 0) {
+          this.lowManaCd = 2;
+          this.onLowMana?.();
+        }
       }
       this.tpRangedHold += dt;
       if (this.castHooked && this.mana > 0 && this.charge < 1) {

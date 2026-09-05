@@ -33,10 +33,14 @@ export class Hud {
   private touch = false;
   private readonly touchButtons: HTMLDivElement[] = [];
   private potionBtn: HTMLDivElement | null = null;
+  private micBtn: HTMLDivElement | null = null;
   private crosshair: HTMLDivElement | null = null;
   private onDrinkPotion: (() => void) | null = null;
-  private isMuted: (() => boolean) | null = null;
-  private onMute: ((m: boolean) => void) | null = null;
+  private onMicToggle: (() => void) | null = null;
+  private micOn: (() => boolean) | null = null;
+  /** Громкость 0..1 — слайдер в меню; near-0 глушит всё. */
+  private getVolume: (() => number) | null = null;
+  private setVolume: ((v: number) => void) | null = null;
   private readonly manaBar: HTMLDivElement;
   private readonly manaFill: HTMLDivElement;
 
@@ -153,6 +157,37 @@ export class Hud {
     this.crosshair = el("div", CROSSHAIR_CSS);
     this.crosshair.hidden = true;
     document.body.appendChild(this.crosshair);
+  }
+
+  /**
+   * Кнопка микрофона в верхнем ряду (смартфон) — появляется, когда игрок дал
+   * доступ. `on()` — включён ли микрофон сейчас; тап зовёт `toggle`.
+   */
+  enableMicButton(on: () => boolean, toggle: () => void): void {
+    this.micOn = on;
+    this.onMicToggle = toggle;
+    if (this.micBtn || !this.touch) {
+      this.updateMicBtn();
+      return;
+    }
+    const b = el("div", MIC_BTN_CSS);
+    b.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onMicToggle?.();
+      this.updateMicBtn();
+    });
+    document.body.appendChild(b);
+    this.micBtn = b;
+    this.touchButtons.push(b);
+    this.updateMicBtn();
+  }
+
+  private updateMicBtn(): void {
+    if (!this.micBtn) return;
+    const on = this.micOn?.() ?? false;
+    this.micBtn.textContent = on ? "🎙" : "🚫";
+    this.micBtn.style.opacity = on ? "1" : "0.6";
   }
 
   /** Обновить кнопку зелья: число и видимость. Зовёт bindInventory по onChange. */
@@ -333,10 +368,10 @@ export class Hud {
     if (show) this.manaFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
   }
 
-  /** Кнопка «звук» в меню. */
-  bindMute(isMuted: () => boolean, onMute: (m: boolean) => void): void {
-    this.isMuted = isMuted;
-    this.onMute = onMute;
+  /** Слайдер громкости в меню (0..1). Near-0 = полная тишина (music+sfx+voice). */
+  bindVolume(get: () => number, set: (v: number) => void): void {
+    this.getVolume = get;
+    this.setVolume = set;
   }
 
   flashDamage(dmg: number): void {
@@ -510,20 +545,23 @@ export class Hud {
     this.renderSkin();
     this.renderBag();
 
-    if (this.onMute && this.isMuted) {
-      const muted = this.isMuted();
-      this.panel.appendChild(
-        this.panelButton(
-          muted ? "Звук: выключен" : "Звук: включён",
-          muted ? "#3a2020" : "#20303a",
-          muted ? "#ffd8d8" : "#cde3ee",
-          "#4a5474",
-          () => {
-            this.onMute?.(!muted);
-            this.renderPanel();
-          },
-        ),
+    if (this.getVolume && this.setVolume) {
+      const row = el(
+        "div",
+        `display:flex;align-items:center;gap:8px;margin-top:${t ? 8 : 14}px;`,
       );
+      const lbl = el("span", "font-size:13px;opacity:0.8;white-space:nowrap;");
+      lbl.textContent = "Громкость";
+      const sld = document.createElement("input");
+      sld.type = "range";
+      sld.min = "0";
+      sld.max = "1";
+      sld.step = "0.02";
+      sld.value = String(this.getVolume());
+      sld.style.cssText = "flex:1;min-width:0;";
+      sld.addEventListener("input", () => this.setVolume?.(Number(sld.value)));
+      row.append(lbl, sld);
+      this.panel.appendChild(row);
     }
 
     if (this.onLeaveBot) {
@@ -645,23 +683,22 @@ const PANEL_CSS =
 const PANEL_CSS_TOUCH =
   "padding:44px 14px 14px;font:13px/1.4 system-ui,sans-serif;max-height:96vh;";
 
-/** Кнопка меню (смартфон) — правый верхний угол, поверх HUD и панели. */
-const MENU_BTN_CSS =
-  "position:fixed;top:20px;right:18px;z-index:39;width:44px;height:44px;border-radius:10px;" +
+/** Общий вид кнопок в правом верхнем ряду (смартфон). `right` задаётся отдельно. */
+const TOP_BTN_BASE =
+  "position:fixed;top:46px;z-index:39;width:44px;height:44px;border-radius:10px;" +
   "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
   "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
   "-webkit-user-select:none;user-select:none;touch-action:none;";
-
-/** Кнопка «на весь экран» (смартфон) — левее кнопки меню. */
-const FS_BTN_CSS =
-  "position:fixed;top:20px;right:74px;z-index:39;width:44px;height:44px;border-radius:10px;" +
-  "display:flex;align-items:center;justify-content:center;font:20px/1 system-ui,sans-serif;" +
-  "background:rgba(20,24,34,0.72);color:#e8ecf8;border:1px solid rgba(255,255,255,0.28);" +
-  "-webkit-user-select:none;user-select:none;touch-action:none;";
+/** Кнопка меню — крайняя справа. */
+const MENU_BTN_CSS = TOP_BTN_BASE + "right:18px;";
+/** Кнопка «на весь экран» — левее меню. */
+const FS_BTN_CSS = TOP_BTN_BASE + "right:74px;";
+/** Кнопка микрофона — левее фуллскрина (появляется, если дан доступ). */
+const MIC_BTN_CSS = TOP_BTN_BASE + "right:130px;";
 
 /** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =
-  "position:fixed;right:148px;bottom:58px;z-index:12;width:66px;height:66px;border-radius:50%;" +
+  "position:fixed;right:148px;bottom:36px;z-index:12;width:66px;height:66px;border-radius:50%;" +
   "display:flex;align-items:center;justify-content:center;" +
   "background:rgba(28,20,22,0.5);border:2px solid rgba(255,150,150,0.45);" +
   "box-shadow:0 3px 10px rgba(0,0,0,0.4);-webkit-user-select:none;user-select:none;touch-action:none;";

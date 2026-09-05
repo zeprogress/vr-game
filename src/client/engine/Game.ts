@@ -53,6 +53,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { LocalAvatar } from "../entities/LocalAvatar";
 import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
+import { SharpenPostProcess } from "@babylonjs/core/PostProcesses/sharpenPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { ActKind, CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
@@ -141,6 +142,10 @@ export class Game {
   /** Сглаживание краёв кадра и камера, к которой оно прицеплено. */
   private fxaa: FxaaPostProcess | null = null;
   private fxaaCam: Camera | null = null;
+  /** Резкость кадра (смартфон, `?sharpen=` 0..1.5). 0 — выключено. */
+  private sharpen: SharpenPostProcess | null = null;
+  private sharpenCam: Camera | null = null;
+  private sharpenAmount = 0;
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -173,6 +178,16 @@ export class Game {
     const preset = PRESETS[quality ?? (this.isTouch ? "med" : "high")];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
+
+    // Резкость: смартфон рендерит в меньшем разрешении, лёгкий шарпен
+    // компенсирует мыло. `?sharpen=` 0..1.5 переопределяет (для теста).
+    const spRaw = new URLSearchParams(location.search).get("sharpen");
+    const sp = spRaw === null ? NaN : Number(spRaw);
+    this.sharpenAmount = Number.isFinite(sp)
+      ? Math.max(0, Math.min(1.5, sp))
+      : this.isTouch
+        ? 0.35
+        : 0;
 
     preloadWeaponModels(this.scene); // модели меча/лука — до первого createSword
 
@@ -209,7 +224,14 @@ export class Game {
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.report = report;
-    this.netMobs = new NetMobs(this.scene, this.sfx, this.targets, report, preset.leanMobs);
+    this.netMobs = new NetMobs(
+      this.scene,
+      this.sfx,
+      this.targets,
+      report,
+      preset.leanMobs,
+      this.isTouch ? 2 : 1, // плашки мобов вдвое крупнее на телефоне
+    );
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
@@ -305,18 +327,25 @@ export class Game {
       this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.attackSpeed);
     }
 
-    // Звук: кнопка в меню полностью глушит всё (переживает F5).
+    // Общая громкость (слайдер в меню). Near-0 глушит звук, музыку и голос.
+    const applyVol = (v: number): void => {
+      this.sfx.setMasterVolume(v);
+      this.voice.setOutputVolume(v);
+    };
+    let vol0 = 1;
     try {
-      if (localStorage.getItem("zep.muted") === "1") this.sfx.setMuted(true);
+      const s = localStorage.getItem("zep.volume");
+      if (s !== null && Number.isFinite(Number(s))) vol0 = Math.max(0, Math.min(1, Number(s)));
     } catch {
       /* приватный режим */
     }
-    this.hud.bindMute(
-      () => this.sfx.isMuted,
-      (m) => {
-        this.sfx.setMuted(m);
+    applyVol(vol0);
+    this.hud.bindVolume(
+      () => this.sfx.masterVolume,
+      (v) => {
+        applyVol(v);
         try {
-          localStorage.setItem("zep.muted", m ? "1" : "0");
+          localStorage.setItem("zep.volume", String(v));
         } catch {
           /* приватный режим */
         }
@@ -329,13 +358,17 @@ export class Game {
     window.addEventListener("pointerdown", wake);
     window.addEventListener("keydown", wake);
 
-    // Выключатель микрофона: в шлеме он в панели настройки, а на десктопе
-    // до неё не добраться — поэтому клавиша M.
-    window.addEventListener("keydown", (e) => {
-      if (e.code !== "KeyM" || this.player.inVR) return;
+    // Выключатель микрофона: в шлеме он в панели настройки, на десктопе —
+    // клавиша M, на смартфоне — кнопка сверху (появляется после доступа).
+    const toggleMic = (): void => {
       LOADOUT.voice.mic = LOADOUT.voice.mic ? 0 : 1;
       this.hud.toast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
+    };
+    window.addEventListener("keydown", (e) => {
+      if (e.code !== "KeyM" || this.player.inVR) return;
+      toggleMic();
     });
+    this.micToggle = toggleMic;
 
     // Флаг PvP: на десктопе — клавиша P (в VR — строка в панели персонажа).
     window.addEventListener("keydown", (e) => {
@@ -929,6 +962,8 @@ export class Game {
 
   /** Тач-ввод (когда он активен) — Game дёргает setAiming при прицеливании. */
   private touchInput: TouchInput | null = null;
+  /** Переключатель микрофона — для кнопки на экране (смартфон). */
+  private micToggle: (() => void) | null = null;
 
   private defaultInput(): InputSource {
     if (!this.isTouch) return new DesktopInput(this.canvas);
@@ -1030,6 +1065,7 @@ export class Game {
     this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
     this.combat.onCast = (msg) => net.sendCast(msg);
+    this.combat.onLowMana = () => this.hud.toast("Не хватает маны");
     this.combat.nearestAlly = (pos) => {
       let best: { id: string; pos: Vector3 } | null = null;
       let bd = 1.2;
@@ -1082,6 +1118,10 @@ export class Game {
         return;
       }
       this.hud.toast("Микрофон готов");
+      // Смартфон: кнопка выключения микрофона в верхнем ряду.
+      if (this.isTouch && this.micToggle) {
+        this.hud.enableMicButton(() => LOADOUT.voice.mic !== 0, this.micToggle);
+      }
       for (const id of this.avatars.keys()) this.voice.addPeer(id);
     });
 
@@ -1219,16 +1259,37 @@ export class Game {
    * пересоздаём только при смене камеры или настройки.
    */
   private updateSmoothing(): void {
-    const want = LOADOUT.gfx.smooth !== 0;
     const cam = this.scene.activeCamera;
-    if (!want || !cam) {
+    const wantFxaa = LOADOUT.gfx.smooth !== 0 && !!cam;
+    if (wantFxaa && this.fxaaCam !== cam) {
       this.dropSmoothing();
-      return;
+      this.fxaa = new FxaaPostProcess("fxaa", 1, cam!);
+      this.fxaaCam = cam;
+    } else if (!wantFxaa && this.fxaa) {
+      this.dropSmoothing();
     }
-    if (this.fxaa && this.fxaaCam === cam) return;
-    this.dropSmoothing();
-    this.fxaa = new FxaaPostProcess("fxaa", 1, cam);
-    this.fxaaCam = cam;
+
+    // Резкость — после сглаживания, на той же камере.
+    const wantSharp = this.sharpenAmount > 0 && !!cam;
+    if (wantSharp && this.sharpenCam !== cam) {
+      this.dropSharpen();
+      this.sharpen = new SharpenPostProcess("sharpen", 1, cam!);
+      this.sharpen.edgeAmount = this.sharpenAmount;
+      this.sharpen.colorAmount = 1;
+      this.sharpenCam = cam;
+    } else if (!wantSharp && this.sharpen) {
+      this.dropSharpen();
+    } else if (this.sharpen) {
+      this.sharpen.edgeAmount = this.sharpenAmount;
+    }
+  }
+
+  private dropSharpen(): void {
+    if (!this.sharpen) return;
+    if (this.sharpenCam) this.sharpen.dispose(this.sharpenCam);
+    else this.sharpen.dispose();
+    this.sharpen = null;
+    this.sharpenCam = null;
   }
 
   /**
@@ -1331,6 +1392,7 @@ export class Game {
     this.combat.onWeaponLanded = null;
     this.combat.onSoundEvent = null;
     this.combat.onCast = null;
+    this.combat.onLowMana = null;
     this.combat.nearestAlly = null;
     this.player.netControlled = false;
     this.player.dead = false;

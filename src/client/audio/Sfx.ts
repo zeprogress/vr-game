@@ -35,9 +35,20 @@ export class Sfx {
   private readonly bufCache = new Map<string, AudioBuffer>();
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
-  private muted = false;
+  /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
+  private volume = 1;
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
+
+  private get dead(): boolean {
+    return this.volume < 0.03;
+  }
+  private masterTarget(): number {
+    return this.dead ? 0 : 0.45 * this.volume;
+  }
+  private musicTarget(): number {
+    return this.dead ? 0 : this.musicVol * this.volume;
+  }
   /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
   private spatialAt: SoundAt | null = null;
 
@@ -46,7 +57,7 @@ export class Sfx {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new Ctx();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.45;
+    this.master.gain.value = this.masterTarget();
     this.master.connect(this.ctx.destination);
 
     const len = Math.floor(this.ctx.sampleRate * 0.5);
@@ -77,7 +88,7 @@ export class Sfx {
   private ensureMusicBus(): void {
     if (this.musicBus || !this.ctx) return;
     this.musicBus = this.ctx.createGain();
-    this.musicBus.gain.value = this.muted ? 0 : this.musicVol;
+    this.musicBus.gain.value = this.musicTarget();
     this.musicBus.connect(this.ctx.destination);
   }
 
@@ -208,7 +219,7 @@ export class Sfx {
     this.playlist = Array.isArray(src) ? [...src] : [src];
     this.musicUrl = this.playlist.join("|");
     this.musicVol = volume;
-    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume;
+    if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
     void this.startPlaylist(0.8);
   }
 
@@ -226,7 +237,7 @@ export class Sfx {
     this.playlist = list;
     this.musicUrl = key;
     this.musicVol = volume;
-    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume;
+    if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
     if (!this.ctx || !this.musicWanted) return;
 
     // Старый трек уводим на затухание.
@@ -251,18 +262,21 @@ export class Sfx {
 
   setMusicVolume(v: number): void {
     this.musicVol = Math.max(0, Math.min(1, v));
-    if (this.musicBus && !this.muted) this.musicBus.gain.value = this.musicVol;
+    if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
   }
 
-  get isMuted(): boolean {
-    return this.muted;
+  get masterVolume(): number {
+    return this.volume;
   }
 
-  /** Полностью выключить/включить весь звук (кнопка в меню). */
-  setMuted(m: boolean): void {
-    this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.45;
-    if (this.musicBus) this.musicBus.gain.value = m ? 0 : this.musicVol;
+  /**
+   * Общая громкость (слайдер в меню). Ниже ~3% — полная тишина: и звуки, и
+   * музыка. Предохранитель от «тихого хвоста» при минимальной громкости.
+   */
+  setMasterVolume(v: number): void {
+    this.volume = Math.max(0, Math.min(1, v));
+    if (this.master) this.master.gain.value = this.masterTarget();
+    if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
   }
 
   // --- строительные блоки ---

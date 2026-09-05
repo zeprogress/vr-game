@@ -84,6 +84,8 @@ export class NetMobs {
     private readonly report: HitReporter,
     /** true — облегчённый вид мобов: без плашки, HP-полоски, ран; глаза остаются (слабый GPU). */
     private readonly leanMobs = false,
+    /** Множитель плашек мобов (смартфон — 2). */
+    private readonly mobUiScale = 1,
   ) {
     // Плевок в цвет своего моба, полупрозрачный.
     const spitBall = (name: string, tint: readonly [number, number, number]): Mesh => {
@@ -217,7 +219,7 @@ export class NetMobs {
     this.room = room;
 
     room.state.mobs.onAdd((s, id) => {
-      const m = new Mob(this.scene, s.kind, id, this.sfx, this.report, this.leanMobs);
+      const m = new Mob(this.scene, s.kind, id, this.sfx, this.report, this.leanMobs, this.mobUiScale);
       this.mobs.set(id, m);
       this.targets.push(m);
     }, true);

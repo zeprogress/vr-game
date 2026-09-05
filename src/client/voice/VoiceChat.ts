@@ -116,7 +116,18 @@ export class VoiceChat {
   /** Почему нет голоса — для честного сообщения игроку. */
   micError: string | null = null;
 
-  constructor(private readonly ctx: AudioContext) {}
+  /** Общий gain на выход всех собеседников — глушится вместе с музыкой. */
+  private readonly outGain: GainNode;
+
+  constructor(private readonly ctx: AudioContext) {
+    this.outGain = ctx.createGain();
+    this.outGain.connect(ctx.destination);
+  }
+
+  /** Громкость чужих голосов 0..1 (общий слайдер). <0.03 — тишина. */
+  setOutputVolume(v: number): void {
+    this.outGain.gain.value = v < 0.03 ? 0 : Math.max(0, Math.min(1, v));
+  }
 
   /** Спросить микрофон. Зовётся сразу после входа: там уже был жест игрока. */
   async start(selfId: string): Promise<boolean> {
@@ -356,7 +367,7 @@ export class VoiceChat {
     } else {
       input.connect(peer.gain);
     }
-    peer.gain.connect(this.ctx.destination);
+    peer.gain.connect(this.outGain);
   }
 
   // ---- голос через сервер (когда WebRTC не встал) ----

@@ -115,6 +115,8 @@ export class Mob implements Hittable {
     /** true — облегчённый вид (стрим на слабом GPU): непрозрачное тело,
      *  без плашки имени, полоски HP и ран. Глаза оставляем — с ними живее. */
     private readonly lean = false,
+    /** Множитель размера плашки/полоски — на смартфоне 2 (мелкий экран). */
+    private readonly uiScale = 1,
   ) {
     const opaque = this.lean;
     const cfg =
@@ -199,7 +201,7 @@ export class Mob implements Hittable {
       scene,
       this.uiAnchor,
       new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0),
-      0.7,
+      0.7 * this.uiScale,
     );
     this.bar.set(1);
     this.bar.setVisible(false);
@@ -486,9 +488,9 @@ export class Mob implements Hittable {
     this.nameTag.setEnabled(near);
     if (near) {
       // Издалека плашку не разобрать, поэтому на дальней границе она ×4,
-      // а по мере приближения плавно ужимается до ×2.
+      // а по мере приближения плавно ужимается до ×2. На смартфоне — вдвое.
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
-      this.nameTag.setScale(2 + t * 2);
+      this.nameTag.setScale((2 + t * 2) * this.uiScale);
     }
   }
 
