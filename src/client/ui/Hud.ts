@@ -35,12 +35,21 @@ export class Hud {
   private potionBtn: HTMLDivElement | null = null;
   private crosshair: HTMLDivElement | null = null;
   private onDrinkPotion: (() => void) | null = null;
+  private isMuted: (() => boolean) | null = null;
+  private onMute: ((m: boolean) => void) | null = null;
+  private readonly manaBar: HTMLDivElement;
+  private readonly manaFill: HTMLDivElement;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
     this.fill = el("div", HP_FILL_CSS);
     this.label = el("div", HP_LABEL_CSS);
     this.bar.append(this.fill, this.label);
+
+    this.manaBar = el("div", MANA_BAR_CSS);
+    this.manaFill = el("div", MANA_FILL_CSS);
+    this.manaBar.appendChild(this.manaFill);
+    this.manaBar.hidden = true;
 
     this.vignette = el("div", VIGNETTE_CSS);
     this.lowVignette = el("div", LOW_VIGNETTE_CSS);
@@ -56,6 +65,7 @@ export class Hud {
 
     document.body.append(
       this.bar,
+      this.manaBar,
       this.lowVignette,
       this.vignette,
       this.toastEl,
@@ -142,7 +152,7 @@ export class Hud {
   private updatePotionBtn(): void {
     if (!this.potionBtn) return;
     const n = this.potionTotal();
-    this.potionBtn.hidden = n <= 0 || this.panelOpen;
+    this.potionBtn.hidden = n <= 0 || this.panelOpen || this.aimOn;
     this.potionBtn.textContent = String(n);
   }
 
@@ -159,9 +169,16 @@ export class Hud {
     this.onDrinkPotion = fn;
   }
 
-  /** Прицел (смартфон) — Game включает при натяге лука / зарядке посоха. */
-  setCrosshair(on: boolean): void {
+  private aimOn = false;
+  /**
+   * Режим прицеливания (смартфон): прицел по центру, кнопки зелья/рук
+   * убираются — целишься кнопкой удара, отпускаешь — выстрел.
+   */
+  setAiming(on: boolean): void {
+    if (on === this.aimOn) return;
+    this.aimOn = on;
     if (this.crosshair) this.crosshair.hidden = !on;
+    this.updatePotionBtn();
   }
 
   /** Пока открыта панель — прячем экранные кнопки (иначе перекрывают крестик). */
@@ -300,6 +317,18 @@ export class Hud {
   /** 0..1 — плавное появление/исчезновение полосы. */
   setOpacity(a: number): void {
     this.bar.style.opacity = String(Math.max(0, Math.min(1, a)));
+  }
+
+  /** Полоска маны (плоский режим): показывается только с посохом в руках. */
+  setMana(frac: number, show: boolean): void {
+    this.manaBar.hidden = !show;
+    if (show) this.manaFill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+  }
+
+  /** Кнопка «звук» в меню. */
+  bindMute(isMuted: () => boolean, onMute: (m: boolean) => void): void {
+    this.isMuted = isMuted;
+    this.onMute = onMute;
   }
 
   flashDamage(dmg: number): void {
@@ -473,6 +502,22 @@ export class Hud {
     this.renderSkin();
     this.renderBag();
 
+    if (this.onMute && this.isMuted) {
+      const muted = this.isMuted();
+      this.panel.appendChild(
+        this.panelButton(
+          muted ? "Звук: выключен" : "Звук: включён",
+          muted ? "#3a2020" : "#20303a",
+          muted ? "#ffd8d8" : "#cde3ee",
+          "#4a5474",
+          () => {
+            this.onMute?.(!muted);
+            this.renderPanel();
+          },
+        ),
+      );
+    }
+
     if (this.onLeaveBot) {
       const row = el("div", `display:flex;align-items:center;gap:8px;margin-top:${t ? 8 : 14}px;`);
       const box = document.createElement("input");
@@ -538,9 +583,16 @@ function statHint(p: Progression, s: StatName): string {
 }
 
 const HP_BAR_CSS =
-  "position:fixed;left:16px;top:18px;width:390px;height:11px;z-index:35;" +
+  "position:fixed;left:16px;top:18px;width:min(390px,58vw);height:11px;z-index:35;" +
   "background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.4);border-radius:4px;overflow:visible;" +
   "transition:opacity 0.6s ease-out;";
+
+/** Полоска маны — под здоровьем, видна только с посохом в руках. */
+const MANA_BAR_CSS =
+  "position:fixed;left:16px;top:33px;width:min(320px,48vw);height:7px;z-index:35;" +
+  "background:rgba(0,0,0,0.5);border:1px solid rgba(120,160,255,0.5);border-radius:3px;overflow:hidden;";
+const MANA_FILL_CSS =
+  "position:absolute;inset:0;width:100%;background:#5b8cff;transition:width 0.12s linear;";
 
 const HP_FILL_CSS =
   "position:absolute;inset:0;width:100%;background:#4caf50;border-radius:3px;" +
@@ -578,8 +630,12 @@ const PANEL_CSS =
   "background:rgba(18,20,28,0.97);color:#e8ecf8;border:1px solid #5a6480;border-radius:12px;" +
   "box-shadow:0 20px 60px rgba(0,0,0,0.5);font:15px/1.5 system-ui,sans-serif;";
 
-/** Компактная посадка панели на смартфоне — чтобы всё влезло без прокрутки. */
-const PANEL_CSS_TOUCH = "padding:12px 14px;font:13px/1.4 system-ui,sans-serif;";
+/**
+ * Компактная посадка панели на смартфоне: всё влезает без прокрутки, а
+ * верхний отступ оставляет место крестику — он больше не лезет на «+».
+ */
+const PANEL_CSS_TOUCH =
+  "padding:44px 14px 14px;font:13px/1.4 system-ui,sans-serif;max-height:96vh;";
 
 /** Кнопка меню (смартфон) — правый верхний угол, поверх HUD и панели. */
 const MENU_BTN_CSS =
@@ -609,8 +665,8 @@ const CROSSHAIR_CSS =
   "width:26px;height:26px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;" +
   "box-shadow:0 0 0 1px rgba(0,0,0,0.5),inset 0 0 0 1px rgba(0,0,0,0.5);";
 
-/** Крестик закрытия в углу панели персонажа (смартфон). */
+/** Крестик закрытия в углу панели персонажа (смартфон) — в отступе сверху. */
 const CLOSE_X_CSS =
-  "position:absolute;top:8px;right:10px;width:34px;height:34px;border-radius:8px;" +
+  "position:absolute;top:8px;right:8px;width:36px;height:32px;border-radius:8px;" +
   "display:flex;align-items:center;justify-content:center;font:18px/1 system-ui,sans-serif;" +
-  "color:#cdd5e6;background:rgba(255,255,255,0.06);border:1px solid #4a5474;cursor:pointer;";
+  "color:#cdd5e6;background:rgba(255,255,255,0.08);border:1px solid #4a5474;cursor:pointer;z-index:2;";

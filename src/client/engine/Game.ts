@@ -279,6 +279,7 @@ export class Game {
       this.player.enableThirdPerson();
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
+      this.netMobs.boltViewScale = 2.4; // огнешар крупнее на телефоне
       this.hud.enableTouchMenu();
       this.hud.bindDrinkPotion(() => {
         const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
@@ -288,6 +289,24 @@ export class Game {
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.attackSpeed);
     }
+
+    // Звук: кнопка в меню полностью глушит всё (переживает F5).
+    try {
+      if (localStorage.getItem("zep.muted") === "1") this.sfx.setMuted(true);
+    } catch {
+      /* приватный режим */
+    }
+    this.hud.bindMute(
+      () => this.sfx.isMuted,
+      (m) => {
+        this.sfx.setMuted(m);
+        try {
+          localStorage.setItem("zep.muted", m ? "1" : "0");
+        } catch {
+          /* приватный режим */
+        }
+      },
+    );
 
     // Звук просыпается по первому жесту; музыку заводим только при входе в
     // мир (enterWorld) — на экране ввода ника её быть не должно.
@@ -320,10 +339,20 @@ export class Game {
       this.netMobs.update(dt, this.player.position, this.aim);
       this.loot.update(dt);
       this.combat.update(dt);
-      // Прицеливание луком/посохом: камера «в глаза» + прицел на след. кадр.
+      // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
+      // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
-        this.player.setAiming(this.combat.wantAim);
-        this.hud.setCrosshair(this.combat.wantAim);
+        const aim = this.combat.wantAim;
+        this.player.setAiming(aim);
+        this.hud.setAiming(aim);
+        this.touchInput?.setAiming(aim);
+      }
+      // Полоска маны в плоском режиме — только с посохом в руках.
+      if (!this.player.inVR) {
+        this.hud.setMana(
+          this.manaMax > 0 ? this.combat.mana / this.manaMax : 0,
+          this.combat.holdsStaff,
+        );
       }
       this.hands.update(dt);
       this.syncNet(dt);
@@ -883,8 +912,13 @@ export class Game {
     }
   }
 
+  /** Тач-ввод (когда он активен) — Game дёргает setAiming при прицеливании. */
+  private touchInput: TouchInput | null = null;
+
   private defaultInput(): InputSource {
-    return this.isTouch ? new TouchInput() : new DesktopInput(this.canvas);
+    if (!this.isTouch) return new DesktopInput(this.canvas);
+    this.touchInput = new TouchInput();
+    return this.touchInput;
   }
 
   /** Смартфон: держать модель у ног игрока и гонять её анимации. */

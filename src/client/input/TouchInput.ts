@@ -12,6 +12,8 @@ const ZOOM_PER_PX = 0.012;
 export class TouchInput implements InputSource {
   private readonly root: HTMLDivElement;
   private readonly knob: HTMLDivElement;
+  private readonly btnAttack: HTMLDivElement;
+  private readonly btnInteract: HTMLDivElement;
 
   private moveX = 0;
   private moveY = 0;
@@ -20,6 +22,14 @@ export class TouchInput implements InputSource {
   private accZoom = 0;
   private attack = false;
   private interactBtn = false;
+
+  /**
+   * Прицеливание: пока держишь кнопку удара, её перетаскивание крутит
+   * взгляд. Ставит Game через setAiming().
+   */
+  private aimMode = false;
+  private atkPointer: number | null = null;
+  private atkLast = { x: 0, y: 0 };
 
   /** id активного пальца на джойстике. */
   private movePointer: number | null = null;
@@ -41,6 +51,8 @@ export class TouchInput implements InputSource {
 
     const btnAttack = el("div", "touch-btn touch-attack", "⚔");
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
+    this.btnAttack = btnAttack;
+    this.btnInteract = btnInteract;
 
     this.root.append(lookZone, stick, btnAttack, btnInteract);
     document.body.appendChild(this.root);
@@ -106,8 +118,44 @@ export class TouchInput implements InputSource {
     stick.addEventListener("pointercancel", endMove);
 
     // --- Кнопки ---
-    hold(btnAttack, (v) => (this.attack = v));
     hold(btnInteract, (v) => (this.interactBtn = v));
+
+    // Кнопка удара: держишь — атака; в режиме прицела её перетаскивание
+    // крутит взгляд, отпускаешь — выстрел.
+    btnAttack.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      this.atkPointer = e.pointerId;
+      this.atkLast = { x: e.clientX, y: e.clientY };
+      this.attack = true;
+      try {
+        btnAttack.setPointerCapture(e.pointerId);
+      } catch {
+        /* палец уже ушёл */
+      }
+    });
+    btnAttack.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== this.atkPointer) return;
+      if (this.aimMode) {
+        this.accYaw += (e.clientX - this.atkLast.x) * LOOK.touchSensitivity;
+        this.accPitch += (e.clientY - this.atkLast.y) * LOOK.touchSensitivity;
+      }
+      this.atkLast = { x: e.clientX, y: e.clientY };
+    });
+    const endAtk = (e: PointerEvent): void => {
+      if (e.pointerId !== this.atkPointer) return;
+      this.atkPointer = null;
+      this.attack = false;
+    };
+    btnAttack.addEventListener("pointerup", endAtk);
+    btnAttack.addEventListener("pointercancel", endAtk);
+  }
+
+  /** Game: вход/выход из прицела (лук/посох). Прячет ✋, ⚔ становится наводкой. */
+  setAiming(on: boolean): void {
+    if (on === this.aimMode) return;
+    this.aimMode = on;
+    this.btnInteract.style.display = on ? "none" : "";
+    this.btnAttack.classList.toggle("touch-aiming", on);
   }
 
   private updateStick(px: number, py: number): void {
@@ -153,7 +201,11 @@ function el(tag: string, className: string, text = ""): HTMLDivElement {
 function hold(node: HTMLElement, set: (v: boolean) => void): void {
   node.addEventListener("pointerdown", (e) => {
     e.preventDefault();
-    node.setPointerCapture(e.pointerId);
+    try {
+      node.setPointerCapture(e.pointerId);
+    } catch {
+      /* палец уже ушёл */
+    }
     set(true);
   });
   const off = (): void => set(false);
@@ -178,4 +230,6 @@ const STYLE = `<style>
   color: #fff; }
 .touch-attack   { bottom: 40px; }
 .touch-interact { bottom: 132px; }
+.touch-btn.touch-aiming { background: rgba(230,120,60,0.4);
+  border-color: rgba(255,190,140,0.7); }
 </style>`;

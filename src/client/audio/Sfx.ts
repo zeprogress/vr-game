@@ -30,6 +30,7 @@ export class Sfx {
    */
   private musicBus: GainNode | null = null;
   private readonly routed = new WeakSet<HTMLAudioElement>();
+  private muted = false;
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
   /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
@@ -40,7 +41,7 @@ export class Sfx {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     this.ctx = new Ctx();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.45;
+    this.master.gain.value = this.muted ? 0 : 0.45;
     this.master.connect(this.ctx.destination);
 
     const len = Math.floor(this.ctx.sampleRate * 0.5);
@@ -72,7 +73,7 @@ export class Sfx {
   private ensureMusicBus(): void {
     if (this.musicBus || !this.ctx) return;
     this.musicBus = this.ctx.createGain();
-    this.musicBus.gain.value = this.musicVol;
+    this.musicBus.gain.value = this.muted ? 0 : this.musicVol;
     this.musicBus.connect(this.ctx.destination);
   }
 
@@ -171,7 +172,7 @@ export class Sfx {
     this.playlist = Array.isArray(src) ? [...src] : [src];
     this.musicUrl = this.playlist.join("|");
     this.musicVol = volume;
-    if (this.musicBus) this.musicBus.gain.value = volume;
+    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume;
     const tr = this.makeTrack(this.pickTrack());
     this.music = tr;
     this.wireRotation(tr.el);
@@ -194,7 +195,7 @@ export class Sfx {
     this.playlist = list;
     this.musicUrl = key;
     this.musicVol = volume;
-    if (this.musicBus) this.musicBus.gain.value = volume; // общая ручка = целевая
+    if (this.musicBus && !this.muted) this.musicBus.gain.value = volume; // общая ручка = целевая
 
     // Прерываем предыдущий переход, если он ещё идёт: и таймер, и сам
     // уходящий трек — иначе быстрые A→B→A копят параллельно играющие элементы.
@@ -234,7 +235,18 @@ export class Sfx {
 
   setMusicVolume(v: number): void {
     this.musicVol = Math.max(0, Math.min(1, v));
-    if (this.musicBus && !this.fadeTimer) this.musicBus.gain.value = this.musicVol;
+    if (this.musicBus && !this.fadeTimer && !this.muted) this.musicBus.gain.value = this.musicVol;
+  }
+
+  get isMuted(): boolean {
+    return this.muted;
+  }
+
+  /** Полностью выключить/включить весь звук (кнопка в меню). */
+  setMuted(m: boolean): void {
+    this.muted = m;
+    if (this.master) this.master.gain.value = m ? 0 : 0.45;
+    if (this.musicBus && !this.fadeTimer) this.musicBus.gain.value = m ? 0 : this.musicVol;
   }
 
   // --- строительные блоки ---

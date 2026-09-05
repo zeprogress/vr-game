@@ -63,6 +63,8 @@ export class NetMobs {
   private readonly bolts = new Map<string, BoltView>();
   private readonly boltCoreProto: Mesh;
   private readonly boltGlowProto: Mesh;
+  /** Смартфон: снаряды крупнее — на маленьком экране их не видно. */
+  boltViewScale = 1;
   private readonly burstFlashProto: Mesh;
   private readonly burstRingProto: Mesh;
   private readonly bursts: Burst[] = [];
@@ -327,10 +329,11 @@ export class NetMobs {
       bo.pos.z += (s.z - bo.pos.z) * k;
 
       const flick = 0.85 + 0.15 * Math.sin(bo.age * 40 + bo.pos.x);
+      const vs = this.boltViewScale;
       bo.core.position.copyFrom(bo.pos);
-      bo.core.scaling.setAll(bo.r * 2 * flick);
+      bo.core.scaling.setAll(bo.r * 2 * flick * vs);
       bo.glow.position.copyFrom(bo.pos);
-      bo.glow.scaling.setAll(bo.r * 6 * flick);
+      bo.glow.scaling.setAll(bo.r * 6 * flick * vs);
       if (cam) bo.glow.lookAt(cam.globalPosition);
     });
     for (const [id, bo] of this.bolts) {

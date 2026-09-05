@@ -95,10 +95,11 @@ export class Arrow {
   /** Если стрела воткнулась в живую цель — исчезает вместе с её гибелью. */
   private stuckTarget: Hittable | null = null;
 
-  constructor(proto: Mesh, pos: Vector3, vel: Vector3) {
+  constructor(proto: Mesh, pos: Vector3, vel: Vector3, scale = 1) {
     this.mesh = proto.clone("arrow");
     this.mesh.setEnabled(true);
     this.mesh.position.copyFrom(pos);
+    if (scale !== 1) this.mesh.scaling.setAll(scale);
     this.vel = vel.clone();
     this.face();
   }

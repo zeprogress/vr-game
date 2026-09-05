@@ -874,6 +874,12 @@ export class CombatSystem {
       if (released) this.justPickedUp = false;
       return;
     }
+    // Есть свободная рука и рядом лежит подходящий предмет — сначала ПОДБОР,
+    // а не выброс того, что уже в руке (баг: нельзя было взять второй предмет).
+    if (edge && this.tryPickupFlat()) {
+      this.justPickedUp = true;
+      return;
+    }
     // Смартфон: щит скидывается кнопкой ✋ и ВСЕГДА первым — раньше оружия.
     if (this.player.thirdPerson && this.shieldHand) {
       if (released) this.dropShieldFlat();
@@ -885,18 +891,13 @@ export class CombatSystem {
       if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
       return;
     }
-    if (edge) {
-      const before = this.weapon || this.shieldHand;
-      this.tryPickupFlat();
-      if (!before && (this.weapon || this.shieldHand)) this.justPickedUp = true;
-    }
   }
 
   /**
    * Плоский подбор: сам выбирает руку под предмет — щит в левую, оружие в
-   * правую (или в свободную). Так щит в руках не блокирует подбор меча/посоха.
+   * правую (или в свободную). true — что-то реально взяли.
    */
-  private tryPickupFlat(): void {
+  private tryPickupFlat(): boolean {
     const p = this.player.position;
     const ws = this.nearestWorldWeapon?.(p);
     let cls: ItemKind | null =
@@ -908,10 +909,12 @@ export class CombatSystem {
         .find((c) => c.d < COMBAT.equipReach && this.canPick(c.it));
       cls = near?.it.kind ?? null;
     }
-    if (!cls) return;
+    if (!cls) return false;
     const side: Side =
       cls === "shield" ? "left" : this.inHand("right") ? "left" : "right";
-    this.tryPickup(side);
+    const held0 = this.items.filter((i) => i.hand).length;
+    this.tryPickup(side); // сам вернётся, если рука занята / брать нельзя
+    return this.items.filter((i) => i.hand).length > held0;
   }
 
   /** Снять щит (плоский режим): улетает как брошенное оружие. */
@@ -1828,9 +1831,16 @@ export class CombatSystem {
       const dir = this.player.eyeForward.clone();
       if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
       dir.normalize();
-      const origin = this.player.eyePosition.add(dir.scale(0.4));
+      // Вылет из груди, не из глаз — стрела видна перед персонажем.
+      const origin = this.chestPos().add(dir.scale(0.5));
       this.fire(origin, dir, 1);
     }
+  }
+
+  private readonly _chest = new Vector3();
+  /** Точка вылета снарядов на смартфоне — грудь персонажа (ниже глаз). */
+  private chestPos(): Vector3 {
+    return this._chest.copyFrom(this.player.eyePosition).addInPlaceFromFloats(0, -0.45, 0);
   }
 
   /**
@@ -1865,17 +1875,18 @@ export class CombatSystem {
     this.tpAimOn = this.castHooked && this.tpRangedHold >= BOW.tpAimHold;
 
     if (primaryReleased) {
-      const charge = this.charge;
       const hooked = this.castHooked;
+      // Даже короткий тап даёт слабый снаряд (не «ничего не происходит»).
+      const charge = hooked ? Math.max(this.charge, fb.minCharge + 0.02) : 0;
       this.tpRangedHold = 0;
       this.tpAimOn = false;
       this.resetCast();
-      if (!hooked || charge < fb.minCharge) return;
+      if (!hooked) return;
       this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
       const dir = this.player.eyeForward.clone();
       if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
       dir.normalize();
-      const origin = this.player.eyePosition.add(dir.scale(0.5));
+      const origin = this.chestPos().add(dir.scale(0.5));
       this.onCast?.({
         charge,
         pull: charge,
@@ -2290,7 +2301,9 @@ export class CombatSystem {
 
     const p = Math.pow(clamp(power, 0, 1), BOW.powerCurve);
     const speed = BOW.minSpeed + p * (BOW.maxSpeed - BOW.minSpeed) + this.prog.arrowSpeedBonus;
-    this.arrows.push(new Arrow(this.arrowProto, origin, dir.scale(speed)));
+    // На маленьком экране родная стрела почти не видна — крупнее в 3-лице.
+    const scale = this.player.thirdPerson ? 2.6 : 1;
+    this.arrows.push(new Arrow(this.arrowProto, origin, dir.scale(speed), scale));
   }
 
   private readonly arrowCtx: {
