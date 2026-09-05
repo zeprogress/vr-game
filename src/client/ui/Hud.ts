@@ -32,6 +32,8 @@ export class Hud {
   /** Тач-режим: своя кнопка меню + крестик в панели, без возни с захватом мыши. */
   private touch = false;
   private menuBtn: HTMLDivElement | null = null;
+  private hasShield = false;
+  private onDropShield: (() => void) | null = null;
 
   constructor() {
     this.bar = el("div", HP_BAR_CSS);
@@ -100,6 +102,18 @@ export class Hud {
     });
     document.body.appendChild(btn);
     this.menuBtn = btn;
+  }
+
+  /** Кнопка «убрать щит» в тач-меню (на ПК/VR это клавиша Q / жест). */
+  bindDropShield(fn: () => void): void {
+    this.onDropShield = fn;
+  }
+
+  /** Game зовёт каждый кадр: держит ли игрок щит (кнопка в меню зависит). */
+  setHasShield(v: boolean): void {
+    if (v === this.hasShield) return;
+    this.hasShield = v;
+    if (this.panelOpen) this.renderPanel();
   }
 
   private get panelOpen(): boolean {
@@ -383,6 +397,21 @@ export class Hud {
     const free = el("div", `margin-top:10px;${p.unspent > 0 ? "color:#7ee081;" : "opacity:0.6;"}`);
     free.textContent = `Свободных очков: ${p.unspent}`;
     this.panel.appendChild(free);
+
+    if (this.touch && this.hasShield && this.onDropShield) {
+      const drop = document.createElement("button");
+      drop.textContent = "Убрать щит";
+      drop.style.cssText =
+        "width:100%;margin-top:12px;padding:10px;cursor:pointer;background:#26303f;" +
+        "color:#cdd9ee;border:1px solid #4a5474;border-radius:6px;font:600 14px system-ui;";
+      drop.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.onDropShield?.();
+        this.closePanel();
+      });
+      this.panel.appendChild(drop);
+    }
 
     this.renderSkin();
     this.renderBag();

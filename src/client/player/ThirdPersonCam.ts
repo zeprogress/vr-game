@@ -38,11 +38,20 @@ export class ThirdPersonCam {
     this.camera.fov = 0.95;
   }
 
-  /** Правое перетаскивание по экрану: крутим обзор вокруг персонажа. */
+  /**
+   * Перетаскивание по экрану: крутим обзор вокруг персонажа. Влево-вправо —
+   * прямо; вверх-вниз — инвертировано (палец вверх → камера опускается,
+   * взгляд идёт вверх).
+   */
   applyLook(dYaw: number, dPitch: number): void {
     const s = TP_CAM_TUNE.lookSens;
     this.yaw += dYaw * s;
-    this.pitch = clamp(this.pitch + dPitch * s, TP_CAM_TUNE.pitchMin, TP_CAM_TUNE.pitchMax);
+    this.pitch = clamp(this.pitch - dPitch * s, TP_CAM_TUNE.pitchMin, TP_CAM_TUNE.pitchMax);
+  }
+
+  /** Щипок: меняем длину удочки (зум). delta>0 — отдаляем. */
+  applyZoom(delta: number): void {
+    TP_CAM_TUNE.dist = clamp(TP_CAM_TUNE.dist + delta, TP_CAM_TUNE.distMin, TP_CAM_TUNE.distMax);
   }
 
   /** Плавно довести обзор за спину персонажа (когда игрок не крутит камеру). */

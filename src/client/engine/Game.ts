@@ -280,6 +280,7 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.hud.enableTouchMenu();
+      this.hud.bindDropShield(() => this.combat.dropShieldFlat());
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.attackSpeed);
@@ -878,6 +879,7 @@ export class Game {
     const av = this.localAvatar;
     if (!av) return;
     // Замах дёргает сам CombatSystem через onMeleeSwing — тут только поза.
+    this.hud.setHasShield(this.combat.hasShield);
     const p = this.player.position;
     av.update(
       dt,

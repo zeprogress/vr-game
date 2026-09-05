@@ -1,6 +1,9 @@
 import { LOOK } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
+/** Метры зума на пиксель изменения расстояния между пальцами. */
+const ZOOM_PER_PX = 0.012;
+
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
  * по правой половине экрана — осмотр, кнопки справа снизу — действия.
@@ -14,13 +17,15 @@ export class TouchInput implements InputSource {
   private moveY = 0;
   private accYaw = 0;
   private accPitch = 0;
+  private accZoom = 0;
   private attack = false;
   private interactBtn = false;
 
-  /** id активного пальца на джойстике / на зоне осмотра. */
+  /** id активного пальца на джойстике. */
   private movePointer: number | null = null;
-  private lookPointer: number | null = null;
-  private lookLast = { x: 0, y: 0 };
+  /** Пальцы на зоне осмотра: 1 — крутим обзор, 2 — щипок-зум. */
+  private readonly lookPts = new Map<number, { x: number; y: number }>();
+  private pinchLen: number | null = null;
   private moveOrigin = { x: 0, y: 0 };
   private readonly stickRadius = 55;
 
@@ -40,21 +45,37 @@ export class TouchInput implements InputSource {
     this.root.append(lookZone, stick, btnAttack, btnInteract);
     document.body.appendChild(this.root);
 
-    // --- Осмотр: перетаскивание по правой зоне ---
+    // --- Осмотр / зум: перетаскивание и щипок по правой зоне ---
+    const pinchDist = (): number => {
+      const [a, b] = [...this.lookPts.values()];
+      return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+    };
     lookZone.addEventListener("pointerdown", (e) => {
-      if (this.lookPointer !== null) return;
-      this.lookPointer = e.pointerId;
-      this.lookLast = { x: e.clientX, y: e.clientY };
+      if (this.lookPts.size >= 2) return;
+      this.lookPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       lookZone.setPointerCapture(e.pointerId);
+      if (this.lookPts.size === 2) this.pinchLen = pinchDist();
     });
     lookZone.addEventListener("pointermove", (e) => {
-      if (e.pointerId !== this.lookPointer) return;
-      this.accYaw += (e.clientX - this.lookLast.x) * LOOK.touchSensitivity;
-      this.accPitch += (e.clientY - this.lookLast.y) * LOOK.touchSensitivity;
-      this.lookLast = { x: e.clientX, y: e.clientY };
+      const pt = this.lookPts.get(e.pointerId);
+      if (!pt) return;
+      const dx = e.clientX - pt.x;
+      const dy = e.clientY - pt.y;
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      if (this.lookPts.size >= 2) {
+        // Щипок: пальцы врозь — приближаем (dist меньше), вместе — отдаляем.
+        const len = pinchDist();
+        if (this.pinchLen !== null) this.accZoom += (this.pinchLen - len) * ZOOM_PER_PX;
+        this.pinchLen = len;
+      } else {
+        this.accYaw += dx * LOOK.touchSensitivity;
+        this.accPitch += dy * LOOK.touchSensitivity;
+      }
     });
     const endLook = (e: PointerEvent): void => {
-      if (e.pointerId === this.lookPointer) this.lookPointer = null;
+      if (!this.lookPts.delete(e.pointerId)) return;
+      if (this.lookPts.size < 2) this.pinchLen = null;
     };
     lookZone.addEventListener("pointerup", endLook);
     lookZone.addEventListener("pointercancel", endLook);
@@ -103,11 +124,13 @@ export class TouchInput implements InputSource {
     s.moveY = this.moveY;
     s.lookYaw = this.accYaw;
     s.lookPitch = this.accPitch;
+    s.zoom = this.accZoom;
     s.primaryAction = this.attack;
     s.interact = this.interactBtn;
 
     this.accYaw = 0;
     this.accPitch = 0;
+    this.accZoom = 0;
     return s;
   }
 

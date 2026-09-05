@@ -406,6 +406,7 @@ export class PlayerController {
     // сам взгляд. VR: yaw — snap-turn, pitch всегда 0.
     if (tp) {
       tp.applyLook(inp.lookYaw, inp.lookPitch);
+      if (inp.zoom) tp.applyZoom(inp.zoom);
       this.pitch = 0;
     } else {
       this.yaw += inp.lookYaw;
@@ -528,12 +529,11 @@ export class PlayerController {
         // `camera` — теперь «глаза» для боя/сети/звука, но не рендерится.
         // Освежаем её матрицы вручную, дальше двигаем орбитальную камеру.
         this.camera.getViewMatrix(true);
-        // Камера сама заезжает за спину ТОЛЬКО когда игрок бежит примерно
-        // «от камеры» (стик вперёд). При боковом стике — нет: иначе база
-        // движения крутится вслед за камерой и получается спираль на месте.
+        // Камера всё время потихоньку заезжает за спину персонажа, пока он
+        // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
+        // на боковом стике это плавный доворот, а не рывок «спиралью».
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
-        const mostlyForward = inp.moveY > 0.2 && Math.abs(inp.moveX) < 0.4;
-        if (!dragging && moving && mostlyForward) {
+        if (!dragging && moving) {
           tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate));
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);

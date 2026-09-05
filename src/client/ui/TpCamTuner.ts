@@ -94,19 +94,21 @@ export function mountTpCamTuner(): () => void {
   };
 
   section("посадка");
-  slider("удочка, м", 1.5, 9, "dist");
+  slider("удочка, м", 1.5, 11, "dist");
   slider("высота, м", 0.6, 2.6, "pivotUp");
-  slider("зазор пол", 0.1, 1.5, "floorClear");
+  slider("зазор пол", 0.05, 1.5, "floorClear");
+  slider("зум мин", 1.5, 6, "distMin");
+  slider("зум макс", 5, 14, "distMax");
 
-  section("наклон, рад");
-  slider("старт", -0.4, 1.2, "pitchStart");
-  slider("мин", -0.6, 0.4, "pitchMin");
-  slider("макс", 0.4, 1.5, "pitchMax");
+  section("наклон, рад (>0 ниже/вверх, <0 выше/вниз)");
+  slider("старт", -1.2, 1.2, "pitchStart");
+  slider("мин", -1.4, 0.2, "pitchMin");
+  slider("макс", -0.2, 1.5, "pitchMax");
 
   section("отклик");
-  slider("доворот", 3, 24, "turnRate");
-  slider("догон кам.", 0, 8, "followRate");
-  slider("чувств.", 0.3, 2.5, "lookSens");
+  slider("доворот", 0, 24, "turnRate");
+  slider("догон кам.", 0, 6, "followRate");
+  slider("чувств.", 0, 2.5, "lookSens");
 
   const btns = document.createElement("div");
   btns.className = "sec";

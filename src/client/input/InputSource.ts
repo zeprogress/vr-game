@@ -9,6 +9,8 @@ export interface InputState {
   /** Поворот за этот кадр, в радианах. yaw — вокруг вертикали, pitch — вверх/вниз. */
   lookYaw: number;
   lookPitch: number;
+  /** Щипок двумя пальцами за этот кадр: >0 — отдалить камеру (третье лицо). */
+  zoom: number;
   /** Основное действие (атака). Удерживается. */
   primaryAction: boolean;
   /** Взаимодействие (подобрать лут и т.п.). Удерживается. */
@@ -52,6 +54,7 @@ export function emptyInput(): InputState {
     moveY: 0,
     lookYaw: 0,
     lookPitch: 0,
+    zoom: 0,
     primaryAction: false,
     interact: false,
     dropItem: false,

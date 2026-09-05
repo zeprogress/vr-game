@@ -865,9 +865,42 @@ export class CombatSystem {
     }
     if (edge) {
       const before = this.weapon || this.shieldHand;
-      this.tryPickup("right");
+      this.tryPickupFlat();
       if (!before && (this.weapon || this.shieldHand)) this.justPickedUp = true;
     }
+  }
+
+  /**
+   * Плоский подбор: сам выбирает руку под предмет — щит в левую, оружие в
+   * правую (или в свободную). Так щит в руках не блокирует подбор меча/посоха.
+   */
+  private tryPickupFlat(): void {
+    const p = this.player.position;
+    const ws = this.nearestWorldWeapon?.(p);
+    let cls: ItemKind | null =
+      ws && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH ? ws.cls : null;
+    if (!cls) {
+      const near = this.items
+        .map((it) => ({ it, d: Vector3.Distance(p, it.mesh.getAbsolutePosition()) }))
+        .sort((a, b) => a.d - b.d)
+        .find((c) => c.d < COMBAT.equipReach && this.canPick(c.it));
+      cls = near?.it.kind ?? null;
+    }
+    if (!cls) return;
+    const side: Side =
+      cls === "shield" ? "left" : this.inHand("right") ? "left" : "right";
+    this.tryPickup(side);
+  }
+
+  /** Снять щит (плоский режим): улетает как брошенное оружие. */
+  dropShieldFlat(): void {
+    const sh = this.held1("shield");
+    if (sh) this.throwItem(sh, this.flatThrowVelocity(0));
+  }
+
+  /** Держит ли игрок щит — для кнопки «убрать щит» в тач-меню. */
+  get hasShield(): boolean {
+    return this.shieldHand !== null;
   }
 
   /**
@@ -883,6 +916,11 @@ export class CombatSystem {
       return !this.weapon && !this.shieldHand; // лук берут только пустыми руками
     }
     if (!DUAL_WIELD[item.kind] && this.held1(item.kind)) return false;
+    // Щит идёт в левую руку — она должна быть свободна (плоский режим).
+    if (item.kind === "shield" && !this.player.inVR) {
+      const l = this.inHand("left");
+      if (l && l.kind !== "shield") return false;
+    }
     return true;
   }
 
@@ -1024,6 +1062,9 @@ export class CombatSystem {
 
   /** Положить предмет в руку и сбросить связанное с ним состояние. */
   private equip(item: Item, side: Side): void {
+    // Щит всегда в левой руке (кроме VR — там держат чем взяли). Так он не
+    // занимает руку под меч/посох и не мешает их поднять.
+    if (item.kind === "shield" && !this.player.inVR) side = "left";
     item.flight = null; // можно поймать на лету
     item.hand = side;
     item.hand2 = null;
