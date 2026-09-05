@@ -55,13 +55,24 @@ export const FIREFLY = {
    * честного объёма при проходе сквозь стайку.
    */
   groundGlowRadius: 5.5,
-  /** Насколько ярко пятно на земле (0..1). */
-  groundGlowAlpha: 0.22,
+  /**
+   * Насколько ярко пятно на земле (0..1). При обычном альфа-смешении (не
+   * аддитивном) низкая альфа почти целиком растворяет тёплый цвет в фоновом
+   * — ночная земля сама довольно нейтрально-серая, и слабая примесь оранжевого
+   * к ней просто не читается глазом, выходит белёсое пятно. Раньше было 0.22.
+   */
+  groundGlowAlpha: 0.55,
   /** Цвет самой лампы (падающего света) — жёлтый, но ближе к белому. */
   lightColor: [1, 0.87, 0.55] as [number, number, number],
   /** Цвет светящегося ореола — насыщеннее жёлтый (в аддитиве центр всё
    * равно тянет к белому, поэтому база теплее). */
   poolColor: [1, 0.74, 0.16] as [number, number, number],
+  /**
+   * Цвет пятна на земле — отдельно от poolColor и заметно насыщеннее: тут
+   * не аддитив, а обычное смешение с фоном, и бледно-жёлтый на сером фоне
+   * читался почти белым.
+   */
+  groundGlowColor: [1, 0.42, 0.04] as [number, number, number],
   /** С этого расстояния свет начинает разгораться, м. */
   lightFadeFrom: 18,
   /** Ближе этого светит в полную силу, м. */
@@ -233,7 +244,7 @@ export class Fireflies {
     this.groundMat.opacityTexture = glow;
     this.groundMat.diffuseColor = new Color3(0, 0, 0);
     this.groundMat.specularColor = new Color3(0, 0, 0);
-    this.groundMat.emissiveColor = new Color3(...FIREFLY.poolColor);
+    this.groundMat.emissiveColor = new Color3(...FIREFLY.groundGlowColor);
     this.groundMat.disableLighting = true;
     // ALPHA_ADD (как у воздушного pool) на земле копил яркость поверх уже
     // светлой травы и уходил в белёсое пятно вместо тёплого оттенка —
