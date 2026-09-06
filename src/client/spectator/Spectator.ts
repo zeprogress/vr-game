@@ -17,6 +17,7 @@ import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { Sfx } from "../audio/Sfx";
+import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
 import {
   SpectatorCamera,
@@ -66,12 +67,16 @@ export class Spectator {
 
   private readonly avatars = new Map<string, RemoteAvatar>();
   private net: NetClient | null = null;
+  /** Голос игроков в эфире — включает/выключает пульт (SpecCmd "specVoice"). */
+  private voice: VoiceChat | null = null;
+  private voiceOn = false;
   private bossMusicOn = false;
   private lastRaf = 0;
   private rafMs = 16.7; // сглаженный интервал между кадрами rAF (частота экрана)
   private capStep = 0; // счётчик кадров для равномерного кэпа по vsync
   private lastShotReport = 0;
   private lastCamReport = 0;
+  private lastVoiceNudge = 0;
   private readonly fpsCap: number;
   private readonly fixedSize: { w: number; h: number } | null;
   private readonly reloadSec: number;
@@ -241,11 +246,21 @@ export class Spectator {
     this.net = net;
     net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
     net.onReconnected = (room) => {
+      // Пиры голоса привязаны к старой сессии — пересобираем начисто.
+      const wantVoice = this.voiceOn;
+      if (this.voice) {
+        this.voice.dispose();
+        this.voice = null;
+        this.voiceOn = false;
+      }
       this.attach(room);
       this.setStatus("");
+      if (wantVoice) this.setVoice(true);
     };
     net.onConnectionLost = () => this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
     net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
+    net.onRtc = (msg) => void this.voice?.handle(msg);
+    net.onVoice = (id, t, d) => this.voice?.onVoicePacket(id, t, d);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
@@ -349,6 +364,7 @@ export class Spectator {
     }
     else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
     else if (cmd.t === "overlay") this.overlay?.setConfig(cmd.patch);
+    else if (cmd.t === "specVoice") this.setVoice(cmd.on !== 0);
     // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.
   }
 
@@ -366,10 +382,42 @@ export class Spectator {
       );
       av.setMyPvp(false); // спектатор не в PvP — полоски здоровья от боя не нужны
       this.avatars.set(id, av);
+      if (this.voice && !id.startsWith("bot:")) this.voice.addPeer(id);
     }, true);
     players.onRemove((_p, id) => {
       this.avatars.get(id)?.dispose();
       this.avatars.delete(id);
+      this.voice?.removePeer(id);
+    });
+  }
+
+  /**
+   * Голос игроков в эфире (команда пульта). Спектатор — только слушатель:
+   * микрофона у него нет, он лишь инициирует связь и принимает звук. Слышимость
+   * ровная (не по месту) — для стрима важнее разборчивость, чем панорама.
+   */
+  private setVoice(on: boolean): void {
+    if (on === this.voiceOn) return;
+    this.voiceOn = on;
+
+    if (!on) {
+      this.voice?.dispose();
+      this.voice = null;
+      for (const a of this.avatars.values()) a.setSpeaking(false);
+      return;
+    }
+
+    void this.sfx.resume();
+    const v = new VoiceChat(this.sfx.audioContext());
+    v.micEnabled = false;
+    v.spatial = false;
+    v.send = (m) => this.net?.sendRtc(m);
+    v.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
+    v.onSpeaking = (id, sp) => this.avatars.get(id)?.setSpeaking(sp);
+    this.voice = v;
+
+    this.net?.room?.state.players.forEach((_p, id) => {
+      if (!id.startsWith("bot:")) v.addPeer(id);
     });
   }
 
@@ -467,6 +515,15 @@ export class Spectator {
     this.netMobs.update(dt, this.cam.cam.position, fwd);
     this.loot.update(dt);
     this.crossFx.update(dt);
+    if (this.voice) {
+      this.voice.update(dt);
+      // Игрок мог дать микрофон уже после установки связи — периодически
+      // перезапрашиваем дорожку у тех, от кого её ещё нет.
+      if (now - this.lastVoiceNudge > 4000) {
+        this.lastVoiceNudge = now;
+        this.voice.renegotiateMissing();
+      }
+    }
 
     // Позиционный звук — из точки камеры в направлении взгляда.
     const p = this.cam.cam.position;

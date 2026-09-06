@@ -16,6 +16,8 @@ const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/world.json"
 export interface PultSettings {
   specVisible: boolean;
   specRaysVisible: boolean;
+  /** Слышит ли рендерящий спектатор голос игроков (по умолчанию нет). */
+  specVoice: boolean;
   hour: number;
   dayAuto: boolean;
   overlay: Record<string, unknown>;

@@ -194,13 +194,18 @@ export class VoiceChat {
     }
   }
 
-  /** Появился игрок — заводим с ним связь. */
-  addPeer(id: string): void {
+  /**
+   * Появился собеседник — заводим с ним связь. `callerOverride` задаётся,
+   * когда роль нельзя вывести из id: спектатор всегда звонящий (у него нет
+   * своего игрока в списке), а сторона, получившая offer первой, — всегда
+   * отвечающая (иначе glare: оба шлют offer и связь не встаёт).
+   */
+  addPeer(id: string, callerOverride?: boolean): void {
     if (id === this.selfId || this.peers.has(id)) return;
 
     const pc = new RTCPeerConnection({ iceServers: iceServers() });
     // Звонит тот, у кого id меньше: иначе оба звонят разом и связь путается.
-    const caller = this.selfId < id;
+    const caller = callerOverride ?? this.selfId < id;
     const peer: Peer = {
       pc,
       caller,
@@ -288,7 +293,9 @@ export class VoiceChat {
   /** Пришёл служебный пакет от другого игрока. */
   async handle(msg: RtcMsg): Promise<void> {
     if (!msg?.peer) return;
-    if (!this.peers.has(msg.peer)) this.addPeer(msg.peer);
+    // Первым пришёл offer от неизвестного пира (напр. спектатор) — мы
+    // отвечающая сторона, свой offer слать не должны.
+    if (!this.peers.has(msg.peer)) this.addPeer(msg.peer, msg.kind === "offer" ? false : undefined);
     const peer = this.peers.get(msg.peer);
     if (!peer) return;
 
@@ -522,6 +529,17 @@ export class VoiceChat {
   private idOf(peer: Peer): string {
     for (const [id, p] of this.peers) if (p === peer) return id;
     return "";
+  }
+
+  /**
+   * Спектатор: до кого ещё не доехала входящая дорожка — послать offer заново
+   * (микрофон у игрока мог включиться уже после установки связи, а обратный
+   * пере-договор шлёт только звонящая сторона — ей и является спектатор).
+   */
+  renegotiateMissing(): void {
+    for (const [id, peer] of this.peers) {
+      if (peer.caller && !peer.source && !peer.useRelay) void this.renegotiate(id, peer);
+    }
   }
 
   /** Переключить режим слышимости на лету. */

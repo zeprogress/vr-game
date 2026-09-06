@@ -397,6 +397,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.dayAuto = pult.dayAuto === false ? 0 : 1;
     this.state.specVisible = pult.specVisible === false ? 0 : 1;
     this.state.specRaysVisible = pult.specRaysVisible === false ? 0 : 1;
+    this.state.specVoice = pult.specVoice === true ? 1 : 0;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
     this.sim = new ZoneSim();
 
@@ -764,7 +765,9 @@ export class ZoneRoom extends Room<ZoneState> {
     this.onMessage(MSG.rtc, (client: Client, msg: RtcMsg) => {
       if (!msg?.peer || typeof msg.data !== "string") return;
       if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
-      if (!this.state.players.has(msg.peer)) return; // адресата в комнате нет
+      // Адресат — игрок в комнате или рендерящий спектатор (он слушает голос
+      // игроков для стрима, микрофона у него нет).
+      if (!this.state.players.has(msg.peer) && !this.spectators.has(msg.peer)) return;
       this.clientOf(msg.peer)?.send(MSG.rtc, {
         peer: client.sessionId,
         kind: msg.kind,
@@ -803,6 +806,9 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "specRaysVisible") {
         this.state.specRaysVisible = msg.on !== 0 ? 1 : 0;
         world.savePult({ specRaysVisible: msg.on !== 0 });
+      } else if (msg.t === "specVoice") {
+        this.state.specVoice = msg.on !== 0 ? 1 : 0;
+        world.savePult({ specVoice: msg.on !== 0 });
       } else if (msg.t === "overlay" && msg.patch && typeof msg.patch === "object") {
         Object.assign(this.overlayCfg, msg.patch);
         world.savePult({ overlay: this.overlayCfg });
@@ -2098,6 +2104,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (Object.keys(this.overlayCfg).length) {
         client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
       }
+      // Голос игроков на спектаторе (для стрима) — текущее состояние сразу,
+      // иначе подключившийся рендер-спектатор не знал бы, слушать ли.
+      client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
       return;
     }
 

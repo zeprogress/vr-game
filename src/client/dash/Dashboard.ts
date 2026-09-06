@@ -50,6 +50,8 @@ export class Dashboard {
   private specBtn!: HTMLButtonElement;
   private specRaysVisible: boolean | null = null;
   private specRaysBtn!: HTMLButtonElement;
+  private specVoice: boolean | null = null;
+  private specVoiceBtn!: HTMLButtonElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -224,6 +226,11 @@ export class Dashboard {
     }
     this.root.appendChild(time);
 
+    // --- звук эфира ---
+    this.section("Звук эфира");
+    this.specVoiceBtn = this.bigBtn("Голос игроков в эфире: —", () => this.toggleSpecVoice());
+    this.root.appendChild(this.specVoiceBtn);
+
     // --- админ-панель: редкие и необратимые действия, отдельно от съёмки ---
     this.section("Админ-панель");
     const admin = el("div", "");
@@ -296,6 +303,7 @@ export class Dashboard {
     if ((st.specRaysVisible !== 0) !== this.specRaysVisible) {
       this.setSpecRaysUi(st.specRaysVisible !== 0);
     }
+    if ((st.specVoice !== 0) !== this.specVoice) this.setSpecVoiceUi(st.specVoice !== 0);
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
@@ -373,6 +381,11 @@ export class Dashboard {
     this.send({ t: "specRaysVisible", on: this.specRaysVisible ? 1 : 0 });
   }
 
+  private toggleSpecVoice(): void {
+    this.setSpecVoiceUi(!this.specVoice);
+    this.send({ t: "specVoice", on: this.specVoice ? 1 : 0 });
+  }
+
   private toggleOverlay(key: OverlayToggle["key"]): void {
     this.ov[key] = this.ov[key] ? 0 : 1;
     this.saveOverlay();
@@ -435,6 +448,12 @@ export class Dashboard {
     this.specRaysVisible = on;
     this.specRaysBtn.textContent = `Лучи направления камеры: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.specRaysBtn.style.background = on ? "#1d1f2b" : "#3a2020";
+  }
+
+  private setSpecVoiceUi(on: boolean): void {
+    this.specVoice = on;
+    this.specVoiceBtn.textContent = `Голос игроков в эфире: ${on ? "ВКЛ (слышно)" : "ВЫКЛ"}`;
+    this.specVoiceBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {
