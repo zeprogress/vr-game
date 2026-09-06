@@ -479,9 +479,9 @@ export class PlayerController {
       mz /= len;
     }
     const moving = len > 0.05;
-    // Доворот камеры за спину — пропорционально отклонению стика (см.
-    // tpFollowAmount).
-    const tpFollow = tp ? tpFollowAmount(inp.moveX, inp.moveY) : 0;
+    // Доворот камеры за спину — пропорционально боковому отклонению стика
+    // (см. tpFollowAmount), одинаково вперёд и назад.
+    const tpFollow = tp ? tpFollowAmount(inp.moveX) : 0;
     // Третье лицо: персонаж всегда доворачивается лицом туда, куда бежит.
     if (tp && moving) {
       this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * TP_CAM_TUNE.turnRate));
@@ -557,13 +557,15 @@ export class PlayerController {
       }
       if (tp) {
         // Камера всё время потихоньку заезжает за спину персонажа, пока он
-        // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
-        // на боковом стике это плавный доворот, а не рывок «спиралью».
+        // движется и игрок не крутит обзор сам. Доворот идёт с постоянной
+        // (небольшой) скоростью — что рядом со спиной, что из положения назад.
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
         // Чем дальше стик вбок, тем быстрее доворот — плавно от ×1 к ×2.
         const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.3) / 0.7, 0, 1);
         if (!dragging && moving && tpFollow > 0.01) {
-          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * tpFollow * sideBoost));
+          // rad/кадр — предел поворота камеры за спину в этом кадре.
+          const step = dt * TP_CAM_TUNE.followRate * tpFollow * sideBoost;
+          tp.followBehind(this.yaw, step);
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);
@@ -632,19 +634,15 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 /**
- * Насколько активен доворот камеры за спину (0..1). Пропорционально
- * отклонению стика, от мёртвой зоны у центра до максимума РОВНО на полном
- * отклонении. При ходьбе назад (задний сектор стика) — ноль: персонаж
- * развернётся к камере лицом, а сама она стоит.
+ * Насколько активен доворот камеры за спину (0..1). Зависит ТОЛЬКО от
+ * бокового отклонения стика — задний сектор работает так же, как передний.
+ * Прямо вперёд и прямо назад (|moveX| ≈ 0) камера стоит; персонаж при этом
+ * сам разворачивается лицом к ходу. Чем больше вбок — тем быстрее доворот,
+ * максимум на полном отклонении.
  */
-function tpFollowAmount(mx: number, my: number): number {
-  // frontGate: 0 в заднем секторе стика (|mx|+my ≤ 0), 1 у чистого бока/вперёд
-  // (≥ 1). Квадрат — доворот вползает мягко, без рывка у границы сектора.
-  const g = clamp(Math.abs(mx) + my, 0, 1);
-  const frontGate = g * g;
+function tpFollowAmount(mx: number): number {
   const dead = TP_CAM_TUNE.followDead;
-  const reach = Math.max(Math.abs(mx), Math.abs(my));
-  return frontGate * clamp((reach - dead) / (1 - dead), 0, 1);
+  return clamp((Math.abs(mx) - dead) / (1 - dead), 0, 1);
 }
 
 /** Интерполяция углов по кратчайшей дуге (радианы). */

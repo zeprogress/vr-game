@@ -54,9 +54,16 @@ export class ThirdPersonCam {
     TP_CAM_TUNE.dist = clamp(TP_CAM_TUNE.dist + delta, TP_CAM_TUNE.distMin, TP_CAM_TUNE.distMax);
   }
 
-  /** Плавно довести обзор за спину персонажа (когда игрок не крутит камеру). */
-  followBehind(characterYaw: number, k: number): void {
-    this.yaw = lerpAngle(this.yaw, characterYaw, k);
+  /**
+   * Плавно довести обзор за спину персонажа (когда игрок не крутит камеру).
+   * `maxStep` — предел поворота за кадр (рад): доворот идёт с ПОСТОЯННОЙ
+   * скоростью, не быстрее вблизи и не медленнее вдали, поэтому «за спину из
+   * положения назад» ощущается так же неспешно, как лёгкая поправка при
+   * беге по диагонали.
+   */
+  followBehind(characterYaw: number, maxStep: number): void {
+    const d = shortestAngle(characterYaw - this.yaw);
+    this.yaw += clamp(d, -maxStep, maxStep);
   }
 
   /** feet — точка ног персонажа в мире. Зовётся каждый кадр после движения. */
@@ -108,8 +115,7 @@ function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-/** Кратчайший поворот от a к b (углы в радианах). */
-function lerpAngle(a: number, b: number, t: number): number {
-  const d = ((b - a) % (Math.PI * 2) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
-  return a + d * t;
+/** Разница углов, приведённая к [-π, π]. */
+function shortestAngle(d: number): number {
+  return ((d % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI;
 }
