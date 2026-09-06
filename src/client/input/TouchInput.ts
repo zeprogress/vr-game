@@ -8,8 +8,7 @@ const ZOOM_PER_PX = 0.012;
  * перетаскивание; дальше добавляется инерция (скорость растёт от смещения).
  */
 const AIM_DEADZONE_PX = 25;
-const AIM_SPAN_PX = 44; // за столько пикселей от края мёртвой зоны — полная скорость
-const AIM_YAW_RATE = 1.4; // рад/с на полном отклонении
+const AIM_YAW_RATE = 1.4; // рад/с инерции за мёртвой зоной (сразу, без разгона)
 
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
@@ -21,6 +20,7 @@ export class TouchInput implements InputSource {
   private readonly knob: HTMLDivElement;
   private readonly btnAttack: HTMLDivElement;
   private readonly btnInteract: HTMLDivElement;
+  private readonly btnFire: HTMLDivElement;
 
   private moveX = 0;
   private moveY = 0;
@@ -29,6 +29,8 @@ export class TouchInput implements InputSource {
   private accZoom = 0;
   private attack = false;
   private interactBtn = false;
+  /** Кнопка «выстрел» у джойстика — жива только в прицеле. */
+  private fireBtn = false;
 
   /**
    * Прицеливание: пока держишь кнопку удара, её перетаскивание крутит
@@ -63,14 +65,17 @@ export class TouchInput implements InputSource {
 
     const btnAttack = el("div", "touch-btn touch-attack", "⚔");
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
+    const btnFire = el("div", "touch-btn touch-fire", "➤");
+    btnFire.style.display = "none"; // видна только в прицеле
     this.btnAttack = btnAttack;
     this.btnInteract = btnInteract;
+    this.btnFire = btnFire;
     // Точка внутри кнопки удара — куда сдвинут палец в режиме прицела.
     this.atkKnob = el("div", "touch-atk-knob");
     this.atkKnob.hidden = true;
     btnAttack.appendChild(this.atkKnob);
 
-    this.root.append(lookZone, stick, btnAttack, btnInteract);
+    this.root.append(lookZone, stick, btnAttack, btnInteract, btnFire);
     document.body.appendChild(this.root);
 
     // --- Осмотр / зум: перетаскивание и щипок по правой зоне ---
@@ -135,6 +140,7 @@ export class TouchInput implements InputSource {
 
     // --- Кнопки ---
     hold(btnInteract, (v) => (this.interactBtn = v));
+    hold(btnFire, (v) => (this.fireBtn = v));
 
     // Кнопка удара: держишь — атака; в режиме прицела её перетаскивание
     // крутит взгляд, отпускаешь — выстрел.
@@ -193,6 +199,8 @@ export class TouchInput implements InputSource {
     if (on === this.aimMode) return;
     this.aimMode = on;
     this.btnInteract.style.display = on ? "none" : "";
+    this.btnFire.style.display = on ? "" : "none";
+    if (!on) this.fireBtn = false;
     this.btnAttack.classList.toggle("touch-aiming", on);
     this.applyAtkKnob();
   }
@@ -220,8 +228,9 @@ export class TouchInput implements InputSource {
       const dx = this.atkPos.x - this.atkCenter.x;
       const off = Math.abs(dx) - AIM_DEADZONE_PX;
       if (off > 0) {
-        const m = Math.min(1, off / AIM_SPAN_PX);
-        this.accYaw += Math.sign(dx) * m * m * AIM_YAW_RATE * dt;
+        // За мёртвой зоной инерция включается сразу на полную скорость —
+        // без плавного разгона.
+        this.accYaw += Math.sign(dx) * AIM_YAW_RATE * dt;
       }
     }
 
@@ -232,6 +241,7 @@ export class TouchInput implements InputSource {
     s.lookPitch = this.accPitch;
     s.zoom = this.accZoom;
     s.primaryAction = this.attack;
+    s.altFire = this.fireBtn;
     s.interact = this.interactBtn;
 
     this.accYaw = 0;
@@ -284,6 +294,9 @@ const STYLE = `<style>
   color: #fff; }
 .touch-attack   { right: 34px; bottom: 28px; width: 96px; height: 96px; font-size: 30px; }
 .touch-interact { bottom: 140px; }
+/* Кнопка «выстрел» в прицеле — над джойстиком движения, для левого пальца. */
+.touch-fire { left: 48px; bottom: 176px; width: 82px; height: 82px; font-size: 30px;
+  background: rgba(230,120,60,0.42); border-color: rgba(255,190,140,0.75); }
 .touch-btn.touch-aiming { background: rgba(230,120,60,0.4);
   border-color: rgba(255,190,140,0.7); }
 .touch-atk-knob { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;

@@ -653,13 +653,13 @@ export class CombatSystem {
     const tpStaff = this.held === "staff" && this.player.thirdPerson;
     if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
-      this.tpStaffCast(dt, inp.primaryAction, primaryReleased);
+      this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire);
     } else if (this.held === "sword" || this.held === "staff") {
       if (this.player.inVR) this.updateVRSwing(dt);
       else this.updateFlatSwing(dt, primaryEdge);
     } else if (this.held === "bow") {
       if (this.player.thirdPerson) {
-        this.tpBow(dt, inp.primaryAction, primaryReleased);
+        this.tpBow(dt, inp.primaryAction, primaryReleased, inp.altFire);
       } else {
         this.updateBow(dt, inp.primaryAction, primaryReleased);
       }
@@ -1829,7 +1829,12 @@ export class CombatSystem {
    * навести перетаскиванием, отпустил — выстрел (тоже макс. скорость).
    * Между выстрелами пауза (tpCooldown / скорость атаки) — не поспамить.
    */
-  private tpBow(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
+  private tpBow(
+    dt: number,
+    primaryHeld: boolean,
+    primaryReleased: boolean,
+    altFire = false,
+  ): void {
     this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
     if (primaryHeld) {
       if (this.tpRangedHold === 0 && this.tpRangedCd <= 0) this.sfx.bowDraw();
@@ -1838,8 +1843,23 @@ export class CombatSystem {
       this.tpRangedHold = 0;
       this.tpAimOn = false;
     }
-    const aim = primaryHeld && this.tpRangedHold >= BOW.tpAimHold && this.tpRangedCd <= 0;
+    // Прицел держится, пока зажата ⚔ и натяг дошёл до порога — кулдаун
+    // выстрела на это не влияет (иначе кнопка «выстрел» гасила бы прицел).
+    const aim = primaryHeld && this.tpRangedHold >= BOW.tpAimHold;
     this.tpAimOn = aim;
+
+    // Кнопка «выстрел» у джойстика: пока держишь ⚔ и целишься, стреляем ею,
+    // не сбрасывая прицел (⚔ отпустишь — выйдешь из прицела, см. ниже).
+    if (aim && altFire && this.tpRangedCd <= 0) {
+      this.tpRangedCd = BOW.tpCooldown / this.prog.attackSpeed;
+      this.nockArrow.setEnabled(false);
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
+      const d = this.player.eyeForward.clone();
+      if (d.lengthSquared() < 1e-6) d.set(0, 0, 1);
+      d.normalize();
+      this.fire(this.chestPos().add(d.scale(0.5)), d, 1);
+      return;
+    }
 
     const drawViz = !primaryHeld
       ? 0
@@ -1883,7 +1903,33 @@ export class CombatSystem {
    * копится заряд (мана убывает), дольше tpAimHold — вид из глаз + прицел;
    * отпускаешь — снаряд летит вперёд по взгляду.
    */
-  private tpStaffCast(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
+  /** Пустить огнешар вперёд по взгляду с текущим зарядом (смартфон, посох). */
+  private emitFirebolt(charge: number, hand: "left" | "right"): void {
+    const dir = this.player.eyeForward.clone();
+    if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize();
+    const origin = this.chestPos().add(dir.scale(0.5));
+    this.onCast?.({
+      charge,
+      pull: charge,
+      ox: origin.x,
+      oy: origin.y,
+      oz: origin.z,
+      dx: dir.x,
+      dy: dir.y,
+      dz: dir.z,
+      hand,
+    });
+    this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
+    this.emitSound("bow", origin);
+  }
+
+  private tpStaffCast(
+    dt: number,
+    primaryHeld: boolean,
+    primaryReleased: boolean,
+    altFire = false,
+  ): void {
     const fb = MAGIC.firebolt;
     this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
     this.lowManaCd = Math.max(0, this.lowManaCd - dt);
@@ -1913,7 +1959,18 @@ export class CombatSystem {
       if (this.castHooked) this.resetCast();
       this.tpRangedHold = 0;
     }
-    this.tpAimOn = this.castHooked && this.tpRangedHold >= BOW.tpAimHold;
+    const aim = this.castHooked && this.tpRangedHold >= BOW.tpAimHold;
+    this.tpAimOn = aim;
+
+    // Кнопка «выстрел» у джойстика: пускаем накопленный заряд, прицел и
+    // подкачка заряда продолжаются (⚔ не отпущена).
+    if (aim && altFire && this.castHooked && this.tpRangedCd <= 0) {
+      const charge = Math.max(this.charge, fb.minCharge + 0.02);
+      this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+      this.charge = 0;
+      this.emitFirebolt(charge, staff?.hand ?? "right");
+      return;
+    }
 
     if (primaryReleased) {
       const hooked = this.castHooked;
@@ -1924,23 +1981,7 @@ export class CombatSystem {
       this.resetCast();
       if (!hooked) return;
       this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
-      const dir = this.player.eyeForward.clone();
-      if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
-      dir.normalize();
-      const origin = this.chestPos().add(dir.scale(0.5));
-      this.onCast?.({
-        charge,
-        pull: charge,
-        ox: origin.x,
-        oy: origin.y,
-        oz: origin.z,
-        dx: dir.x,
-        dy: dir.y,
-        dz: dir.z,
-        hand: staff?.hand ?? "right",
-      });
-      this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
-      this.emitSound("bow", origin);
+      this.emitFirebolt(charge, staff?.hand ?? "right");
     }
   }
 

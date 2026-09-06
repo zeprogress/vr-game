@@ -13,6 +13,11 @@ export interface InputState {
   zoom: number;
   /** Основное действие (атака). Удерживается. */
   primaryAction: boolean;
+  /**
+   * Смартфон, режим прицеливания: отдельная кнопка «выстрел» у джойстика.
+   * Пока держишь ⚔ (прицел не сбрасывается), тап по ней = выстрел.
+   */
+  altFire: boolean;
   /** Взаимодействие (подобрать лут и т.п.). Удерживается. */
   interact: boolean;
   /** Сбросить щит (клавиша Q в плоском режиме) — нажат в этом кадре (фронт). */
@@ -56,6 +61,7 @@ export function emptyInput(): InputState {
     lookPitch: 0,
     zoom: 0,
     primaryAction: false,
+    altFire: false,
     interact: false,
     dropItem: false,
     tune: null,
