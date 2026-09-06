@@ -18,6 +18,10 @@ export interface PultSettings {
   specRaysVisible: boolean;
   /** Слышит ли рендерящий спектатор голос игроков (по умолчанию нет). */
   specVoice: boolean;
+  /** Озвучка сообщений чата на стриме. */
+  ttsOn: boolean;
+  /** Голос озвучки чата — Fish Audio reference_id. */
+  ttsVoice: string;
   hour: number;
   dayAuto: boolean;
   overlay: Record<string, unknown>;

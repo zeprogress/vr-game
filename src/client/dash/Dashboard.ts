@@ -2,6 +2,7 @@ import type { Room } from "colyseus.js";
 
 import type { ZoneState } from "#shared/net/schema";
 import type { SpecCmd, OverlayPatch } from "#shared/net/messages";
+import { TTS_VOICES } from "#shared/tts";
 import { NetClient } from "../net/NetClient";
 import { CINE_PATHS } from "../spectator/cine";
 
@@ -52,6 +53,9 @@ export class Dashboard {
   private specRaysBtn!: HTMLButtonElement;
   private specVoice: boolean | null = null;
   private specVoiceBtn!: HTMLButtonElement;
+  private ttsOn: boolean | null = null;
+  private ttsBtn!: HTMLButtonElement;
+  private ttsSel!: HTMLSelectElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -231,6 +235,21 @@ export class Dashboard {
     this.specVoiceBtn = this.bigBtn("Голос игроков в эфире: —", () => this.toggleSpecVoice());
     this.root.appendChild(this.specVoiceBtn);
 
+    this.ttsBtn = this.bigBtn("Озвучка чата: —", () => this.toggleTts());
+    this.root.appendChild(this.ttsBtn);
+    this.ttsSel = document.createElement("select");
+    this.ttsSel.style.cssText =
+      "width:100%;padding:10px;margin:2px 0 4px;border:1px solid #4a5570;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui";
+    for (const v of TTS_VOICES) {
+      const o = document.createElement("option");
+      o.value = v.ref;
+      o.textContent = v.name;
+      this.ttsSel.appendChild(o);
+    }
+    this.ttsSel.addEventListener("change", () => this.send({ t: "ttsVoice", ref: this.ttsSel.value }));
+    this.root.appendChild(this.ttsSel);
+
     // --- админ-панель: редкие и необратимые действия, отдельно от съёмки ---
     this.section("Админ-панель");
     const admin = el("div", "");
@@ -304,6 +323,8 @@ export class Dashboard {
       this.setSpecRaysUi(st.specRaysVisible !== 0);
     }
     if ((st.specVoice !== 0) !== this.specVoice) this.setSpecVoiceUi(st.specVoice !== 0);
+    if ((st.ttsOn !== 0) !== this.ttsOn) this.setTtsUi(st.ttsOn !== 0);
+    if (st.ttsVoice && this.ttsSel.value !== st.ttsVoice) this.ttsSel.value = st.ttsVoice;
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
     const mobs: { id: string; label: string }[] = [];
     st.mobs.forEach((m, id) => {
@@ -386,6 +407,11 @@ export class Dashboard {
     this.send({ t: "specVoice", on: this.specVoice ? 1 : 0 });
   }
 
+  private toggleTts(): void {
+    this.setTtsUi(!this.ttsOn);
+    this.send({ t: "tts", on: this.ttsOn ? 1 : 0 });
+  }
+
   private toggleOverlay(key: OverlayToggle["key"]): void {
     this.ov[key] = this.ov[key] ? 0 : 1;
     this.saveOverlay();
@@ -448,6 +474,13 @@ export class Dashboard {
     this.specRaysVisible = on;
     this.specRaysBtn.textContent = `Лучи направления камеры: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.specRaysBtn.style.background = on ? "#1d1f2b" : "#3a2020";
+  }
+
+  private setTtsUi(on: boolean): void {
+    this.ttsOn = on;
+    this.ttsBtn.textContent = `Озвучка чата: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.ttsBtn.style.background = on ? "#1c3a24" : "#3a2020";
+    this.ttsSel.style.display = on ? "" : "none";
   }
 
   private setSpecVoiceUi(on: boolean): void {

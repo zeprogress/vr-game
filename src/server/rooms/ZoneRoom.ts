@@ -63,6 +63,8 @@ import {
   WORLD,
 } from "#shared/constants";
 import { TwitchChat } from "../TwitchChat";
+import { synthChat, ttsAvailable } from "../tts";
+import { isTtsVoice, TTS_DEFAULT_VOICE } from "#shared/tts";
 import { terrainHeight } from "#shared/terrain";
 import {
   isWeaponKind,
@@ -382,6 +384,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private twitch: TwitchChat | null = null;
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
   private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
+  private readonly ttsLast = new Map<string, number>(); // normNick -> ms последней озвучки
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
   private infoAt = 0; // ms последнего ответа на !info (общий кулдаун)
   private readonly hintAt = new Map<string, number>(); // normNick -> ms последней подсказки
@@ -398,6 +401,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.specVisible = pult.specVisible === false ? 0 : 1;
     this.state.specRaysVisible = pult.specRaysVisible === false ? 0 : 1;
     this.state.specVoice = pult.specVoice === true ? 1 : 0;
+    this.state.ttsOn = pult.ttsOn === true ? 1 : 0;
+    this.state.ttsVoice = isTtsVoice(pult.ttsVoice ?? "") ? pult.ttsVoice! : TTS_DEFAULT_VOICE;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
     this.sim = new ZoneSim();
 
@@ -809,6 +814,12 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "specVoice") {
         this.state.specVoice = msg.on !== 0 ? 1 : 0;
         world.savePult({ specVoice: msg.on !== 0 });
+      } else if (msg.t === "tts") {
+        this.state.ttsOn = msg.on !== 0 ? 1 : 0;
+        world.savePult({ ttsOn: msg.on !== 0 });
+      } else if (msg.t === "ttsVoice" && isTtsVoice(msg.ref)) {
+        this.state.ttsVoice = msg.ref;
+        world.savePult({ ttsVoice: msg.ref });
       } else if (msg.t === "overlay" && msg.patch && typeof msg.patch === "object") {
         Object.assign(this.overlayCfg, msg.patch);
         world.savePult({ overlay: this.overlayCfg });
@@ -1124,7 +1135,30 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
     }
-    else if (cmd && !cmd.startsWith("!")) this.botSay(norm, text);
+    else if (cmd && !cmd.startsWith("!")) {
+      this.botSay(norm, text);
+      this.voiceChat(nick, norm, text);
+    }
+  }
+
+  /**
+   * Озвучка сообщения чата на стриме (Fish Audio). Трогает сеть/файлы только
+   * когда пульт включил озвучку И подключён рендерящий спектатор И задан ключ.
+   * Готовый mp3 шлём ТОЛЬКО спектаторам — игроки его не слышат.
+   */
+  private voiceChat(nick: string, norm: string, text: string): void {
+    if (!this.state.ttsOn || !ttsAvailable() || this.spectators.size === 0) return;
+    const now = Date.now();
+    if (now - (this.ttsLast.get(norm) ?? 0) < 4000) return; // не частим на одного
+    this.ttsLast.set(norm, now);
+    const voice = isTtsVoice(this.state.ttsVoice) ? this.state.ttsVoice : TTS_DEFAULT_VOICE;
+    void synthChat(text, voice).then((url) => {
+      if (!url || this.spectators.size === 0) return;
+      const cmd: SpecCmd = { t: "ttsPlay", url, nick };
+      for (const c of this.clients) {
+        if (this.spectators.has(c.sessionId)) c.send(MSG.specCmd, cmd);
+      }
+    });
   }
 
   /**

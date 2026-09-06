@@ -160,6 +160,12 @@ export type SpecCmd =
   | { t: "specRaysVisible"; on: number }
   /** Слышит ли рендерящий спектатор голосовую связь игроков (для стрима). */
   | { t: "specVoice"; on: number }
+  /** Озвучка сообщений чата на стриме: вкл/выкл (пульт). Применяет сервер. */
+  | { t: "tts"; on: number }
+  /** Голос озвучки чата (Fish Audio reference_id). Применяет сервер. */
+  | { t: "ttsVoice"; ref: string }
+  /** Сервер -> спектатор: проиграть готовый mp3 озвучки чата (url в /tts/…). */
+  | { t: "ttsPlay"; url: string; nick?: string }
   /** Дашборд -> спектатор: нижняя плашка/заставка. `secs<=0`/нет — держать
    *  бесконечно, пока не скроют; пустой `title` — скрыть. */
   | { t: "card"; title: string; sub?: string; secs?: number }

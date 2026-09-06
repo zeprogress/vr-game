@@ -159,6 +159,10 @@ export class ZoneState extends Schema {
   @type("uint8") specRaysVisible = 1;
   /** 1 — рендерящий спектатор слышит голосовую связь игроков (пульт, для стрима). */
   @type("uint8") specVoice = 0;
+  /** 1 — сообщения чата озвучиваются на стриме (пульт). */
+  @type("uint8") ttsOn = 0;
+  /** Голос озвучки чата — Fish Audio reference_id (пульт). */
+  @type("string") ttsVoice = "";
   /**
    * Общая подгонка снаряжения (частичный Loadout, JSON-строка): руки, VR-позы
    * оружия, HUD, пояс, свет. Админ правит в панели — применяется всем.

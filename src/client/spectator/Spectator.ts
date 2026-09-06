@@ -368,7 +368,30 @@ export class Spectator {
     else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
     else if (cmd.t === "overlay") this.overlay?.setConfig(cmd.patch);
     else if (cmd.t === "specVoice") this.setVoice(cmd.on !== 0);
+    else if (cmd.t === "ttsPlay") this.playChatTts(cmd.url);
     // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.
+  }
+
+  /**
+   * Озвучка сообщения чата (сервер уже синтезировал mp3). Модуль
+   * подгружается лениво — если озвучка на стриме не включена, его никто не
+   * тянет.
+   */
+  private tts: import("./SpectatorTts").SpectatorTts | null = null;
+  private ttsLoading = false;
+  private playChatTts(url: string): void {
+    if (this.tts) {
+      this.tts.enqueue(url);
+      return;
+    }
+    if (this.ttsLoading) return;
+    this.ttsLoading = true;
+    void this.sfx.resume();
+    void import("./SpectatorTts").then(({ SpectatorTts }) => {
+      this.tts = new SpectatorTts(this.sfx.audioContext());
+      this.ttsLoading = false;
+      this.tts.enqueue(url);
+    });
   }
 
   private attach(room: Room<ZoneState>): void {
