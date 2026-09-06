@@ -49,16 +49,18 @@
       );
 
       // iOS Safari: экранная лупа при долгом тапе, свайп-назад от края, дабл-тап
-      // зум — всё это native-жесты поверх touchstart. Гасим touchstart везде,
-      // КРОМЕ поля ввода ника и прокручиваемого меню. Указательные события
-      // (pointerdown/move/up) при этом продолжают работать — на них и держится
-      // управление, так что джойстик и кнопки не страдают.
+      // зум — всё это native-жесты поверх touchstart. Гасим touchstart ТОЛЬКО
+      // над игровой поверхностью (canvas и тач-оверлей) — там управление на
+      // указательных событиях, они переживают preventDefault. Обычный DOM-UI
+      // (вход, пульт, меню) не трогаем — иначе у <button> пропадает click, и
+      // кнопка «Играть» на телефоне переставала нажиматься. Лупу в UI и так
+      // глушит CSS (user-select/touch-callout: none).
       document.addEventListener(
         "touchstart",
         function (e) {
           var el = e.target;
-          if (el && el.closest && el.closest("input, textarea, select, #hudBackdrop")) return;
-          if (e.cancelable) e.preventDefault();
+          if (!el || !el.closest) return;
+          if (el.closest("#renderCanvas, .touch-ui") && e.cancelable) e.preventDefault();
         },
         { passive: false, capture: true },
       );
