@@ -32,6 +32,9 @@ const MODEL_YAW = (() => {
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/** Длительность процедурного замаха моба, с. */
+const ATTACK_DUR = 0.36;
+
 /** Перекрасить материалы модели: плоский цвет кинда, полупрозрачное желейное тело. */
 function recolorRig(
   rig: RigInstance,
@@ -87,6 +90,9 @@ export class Mob implements Hittable {
   private barTimer = 0;
   private hitCd = 0;
   private lastHurtSeq = 0;
+  private lastAtkSeq = 0;
+  /** Таймер процедурного замаха: пока > 0, тело играет атаку. */
+  private atkT = 0;
   private grounded = true;
   private prevY = 0;
   private readonly shove2 = new Vector3();
@@ -368,6 +374,13 @@ export class Mob implements Hittable {
       this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
     }
 
+    // атака моба: attackSeq вырос -> процедурный замах телом
+    if (s.attackSeq !== this.lastAtkSeq) {
+      this.lastAtkSeq = s.attackSeq;
+      if (!this.dead) this.atkT = ATTACK_DUR;
+    }
+    if (this.atkT > 0) this.atkT = Math.max(0, this.atkT - dt);
+
     // урон: hurtSeq вырос -> вспышка + рана + звук
     if (s.hurtSeq !== this.lastHurtSeq) {
       this.lastHurtSeq = s.hurtSeq;
@@ -433,7 +446,9 @@ export class Mob implements Hittable {
     const vy = dt > 1e-4 ? (pos.y - this.prevY) / dt : 0;
     this.prevY = pos.y;
     const sq = Math.max(0.4, 1 + vy * 0.04);
-    if (this.isBoss && s.charging) {
+    if (this.atkT > 0) {
+      this.applyAttackSquash();
+    } else if (this.isBoss && s.charging) {
       // Телеграф рывка: босс вытягивается вперёд по направлению взгляда,
       // сжимаясь с боков, и наливается багровым.
       const w = Math.max(0.35, s.windup);
@@ -502,6 +517,26 @@ export class Mob implements Hittable {
   private setSquash(x: number, y: number, z: number): void {
     const b = this.rig ? this.baseModelScale : 1;
     this.squash.scaling.set(x * b, y * b, z * b);
+  }
+
+  /**
+   * Процедурный замах во время атаки (модель без клипа атаки). Ось Z тела —
+   * это направление на цель (root повёрнут по s.yaw), поэтому «вперёд» =
+   * растянуть по Z. Слизень/босс: короткий замах назад и бросок-«укус».
+   * Плевун: резкий тычок вперёд с просадкой — «выплюнул».
+   */
+  private applyAttackSquash(): void {
+    const p = 1 - this.atkT / ATTACK_DUR; // 0 → 1 за время атаки
+    if (this.kind === "spitter") {
+      const jab = Math.sin(clamp01(p * 1.5) * Math.PI); // 0→1→0 к p≈0.67
+      this.setSquash(1 - jab * 0.16, 1 - jab * 0.22, 1 + jab * 0.36);
+    } else {
+      const wind = p < 0.28 ? Math.sin((p / 0.28) * Math.PI) : 0; // замах назад
+      const lunge = p >= 0.2 ? Math.sin(clamp01((p - 0.2) / 0.8) * Math.PI) : 0; // бросок
+      const z = 1 - wind * 0.16 + lunge * 0.62;
+      const xy = 1 + wind * 0.1 - lunge * 0.4;
+      this.setSquash(xy, xy, z);
+    }
   }
 
   private setBodyVisibility(v: number): void {

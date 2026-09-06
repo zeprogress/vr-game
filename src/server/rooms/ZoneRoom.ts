@@ -1890,6 +1890,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.dead = m.dead ? 1 : 0;
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;
+      s.attackSeq = m.attackSeq;
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       if (m.kind === "boss") {

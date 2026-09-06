@@ -136,6 +136,8 @@ class Mob {
   private aggroed = false;
   private outOfRange = 0;
   hurtSeq = 0;
+  /** ++ на каждую атаку (укус, плевок, слэм) — клиент играет замах моба. */
+  attackSeq = 0;
   hurtDx = 0;
   hurtDz = 0;
   private readonly homeX: number;
@@ -341,6 +343,7 @@ class Mob {
         this.vz *= 0.02;
         if (this.slamWindupT <= 0) {
           this.slamSeq = (this.slamSeq + 1) & 0xffff;
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
           this.slamCd = BOSS.slamCooldown / rage;
           this.vy = MOB.hopUp * 0.6;
           this.grounded = false;
@@ -408,6 +411,7 @@ class Mob {
               fromZ: this.z,
               projectile: false,
             });
+            this.attackSeq = (this.attackSeq + 1) & 0xffff;
             this.lungeHit = true;
           }
         }
@@ -598,10 +602,12 @@ class Mob {
       if (this.ranged) {
         if (dist < SPITTER.fireRange && this.attackCd <= 0) {
           this.attackCd = SPITTER.fireCooldown;
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
           spit(this, np);
         }
       } else if (dist < MOB.attackRange && this.attackCd <= 0) {
         this.attackCd = MOB.attackCooldown;
+        this.attackSeq = (this.attackSeq + 1) & 0xffff;
         hits.push({
           target: np.sessionId,
           dmg: MOB.attackDamage,

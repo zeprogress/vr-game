@@ -70,6 +70,8 @@ export class MobState extends Schema {
   @type("uint8") grounded = 1;
   /** ++ на каждый удар — клиент играет вспышку и рану. */
   @type("uint16") hurtSeq = 0;
+  /** ++ на каждую атаку моба (укус слизня, плевок, слэм) — клиент играет замах. */
+  @type("uint16") attackSeq = 0;
   @type("float32") hurtDx = 0;
   @type("float32") hurtDz = 0;
   /** Размер тела относительно обычного слизня (босс — крупнее, осколок — мельче). */
