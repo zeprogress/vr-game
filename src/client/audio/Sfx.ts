@@ -104,13 +104,24 @@ export class Sfx {
     if (hit) return hit;
     if (!this.ctx) return null;
     try {
-      const arr = await fetch(url).then((r) => r.arrayBuffer());
+      // С таймаутом: на мобильной сети fetch иногда виснет насмерть, и тогда
+      // плейлист застревал (musicLoading не снимался).
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), 15_000);
+      const arr = await fetch(url, { signal: ac.signal })
+        .then((r) => r.arrayBuffer())
+        .finally(() => clearTimeout(t));
       const buf = await new Promise<AudioBuffer>((res, rej) =>
         this.ctx!.decodeAudioData(arr, res, rej),
       );
-      if (this.bufCache.size >= 3) {
-        const oldest = this.bufCache.keys().next().value as string | undefined;
-        if (oldest && oldest !== url) this.bufCache.delete(oldest);
+      // Держим 4: текущий трек + предзагруженный следующий + запас на стыке.
+      if (this.bufCache.size >= 4) {
+        for (const k of this.bufCache.keys()) {
+          if (k !== url && k !== this.pendingNext && k !== this.music?.url) {
+            this.bufCache.delete(k);
+            break;
+          }
+        }
       }
       this.bufCache.set(url, buf);
       return buf;
@@ -182,31 +193,54 @@ export class Sfx {
     return voice;
   }
 
-  /** Завести текущий плейлист (или один трек в луп). */
-  private async startPlaylist(fadeInSec = 0): Promise<void> {
+  /** Заранее выбранный и подгруженный следующий трек — чтобы не было тишины на стыке. */
+  private pendingNext = "";
+
+  /** Завести текущий плейлист (или один трек в луп). `first` — конкретный трек. */
+  private async startPlaylist(fadeInSec = 0, first?: string): Promise<void> {
     if (!this.ctx || this.musicLoading) return;
     this.musicLoading = true;
     try {
       const key = this.musicUrl;
       const loop = this.playlist.length <= 1;
-      const v = await this.playVoice(this.pickTrack(), loop, fadeInSec);
-      if (!v) return;
+      // Битый файл / сорванная загрузка НЕ должны убивать плейлист: пробуем
+      // несколько треков подряд, а если совсем никак — заходим позже.
+      let v: MusicVoice | null = null;
+      const tries = Math.min(4, Math.max(1, this.playlist.length));
+      for (let i = 0; i < tries && !v && this.musicUrl === key; i++) {
+        const url = i === 0 && first ? first : this.pickTrack();
+        v = await this.playVoice(url, loop, fadeInSec);
+      }
       if (this.musicUrl !== key) {
         this.killVoice(v);
         return;
       }
+      if (!v) {
+        if (this.musicWanted) {
+          setTimeout(() => {
+            if (!this.music && this.musicWanted) void this.startPlaylist(0);
+          }, 8000);
+        }
+        return;
+      }
       this.killVoice(this.music);
       this.music = v;
+      // Следующий трек выбираем и подгружаем СЕЙЧАС — на стыке будет кэш-хит,
+      // без паузы на fetch+decode (~2 c для длинного mp3).
+      if (!loop) {
+        this.pendingNext = this.pickTrack();
+        void this.loadBuf(this.pendingNext);
+      }
     } finally {
       this.musicLoading = false;
     }
   }
 
-  /** По концу трека — следующий случайный из плейлиста. */
+  /** По концу трека — заранее подгруженный следующий. */
   private playNext(): void {
     if (this.playlist.length <= 1 || this.fadeVoice) return;
     this.music = null;
-    void this.startPlaylist(0);
+    void this.startPlaylist(0, this.pendingNext || undefined);
   }
 
   /**
