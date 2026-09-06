@@ -558,16 +558,18 @@ export class PlayerController {
         // на боковом стике это плавный доворот, а не рывок «спиралью».
         // Ось вперёд/назад: мёртвая зона у центра (|moveY| ≤ followDead) и
         // выход на полный доворот за followSpan — ОДИНАКОВО вперёд и назад.
-        // Боковой стик доворачивает независимо (как раньше), плюс на упоре
-        // вбок доворот чуть быстрее (sideBoost до ×2 при |moveX| = 1).
+        // Вбок доворачиваем, только когда боковое движение ПРЕОБЛАДАЕТ над
+        // вперёд/назад — иначе лёгкий увод пальца вбок при ходьбе назад
+        // убивал мёртвую зону (камера сразу разворачивалась).
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
         const axisFade = clamp(
           (Math.abs(inp.moveY) - TP_CAM_TUNE.followDead) / Math.max(0.01, TP_CAM_TUNE.followSpan),
           0,
           1,
         );
-        const sideFade = clamp(Math.abs(inp.moveX) / 0.12, 0, 1);
+        const sideFade = clamp((Math.abs(inp.moveX) - Math.abs(inp.moveY)) / 0.15, 0, 1);
         const fade = Math.max(axisFade, sideFade);
+        // На упоре вбок доворот чуть быстрее (sideBoost до ×2 при |moveX| = 1).
         const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.7) / 0.3, 0, 1);
         if (!dragging && moving && fade > 0.01) {
           tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * fade * sideBoost));
