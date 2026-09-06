@@ -70,6 +70,8 @@ export class Spectator {
   /** Голос игроков в эфире — включает/выключает пульт (SpecCmd "specVoice"). */
   private voice: VoiceChat | null = null;
   private voiceOn = false;
+  /** Кто сейчас говорит — для зелёного огонька в оверлее и над аватаром. */
+  private readonly speakingIds = new Set<string>();
   private bossMusicOn = false;
   private lastRaf = 0;
   private rafMs = 16.7; // сглаженный интервал между кадрами rAF (частота экрана)
@@ -252,6 +254,7 @@ export class Spectator {
         this.voice.dispose();
         this.voice = null;
         this.voiceOn = false;
+        this.speakingIds.clear();
       }
       this.attach(room);
       this.setStatus("");
@@ -403,6 +406,7 @@ export class Spectator {
     if (!on) {
       this.voice?.dispose();
       this.voice = null;
+      this.speakingIds.clear();
       for (const a of this.avatars.values()) a.setSpeaking(false);
       return;
     }
@@ -413,7 +417,11 @@ export class Spectator {
     v.spatial = false;
     v.send = (m) => this.net?.sendRtc(m);
     v.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
-    v.onSpeaking = (id, sp) => this.avatars.get(id)?.setSpeaking(sp);
+    v.onSpeaking = (id, sp) => {
+      if (sp) this.speakingIds.add(id);
+      else this.speakingIds.delete(id);
+      this.avatars.get(id)?.setSpeaking(sp);
+    };
     this.voice = v;
 
     this.net?.room?.state.players.forEach((_p, id) => {
@@ -590,8 +598,8 @@ export class Spectator {
       }
     }
 
-    const online: string[] = [];
-    st?.players.forEach((p) => online.push(p.nick));
+    const online: { nick: string; speaking: boolean }[] = [];
+    st?.players.forEach((p, id) => online.push({ nick: p.nick, speaking: this.speakingIds.has(id) }));
 
     this.overlay?.update({
       watching,

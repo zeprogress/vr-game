@@ -242,7 +242,7 @@ export class Game {
     this.voice.onSpeaking = (id, on) => this.avatars.get(id)?.setSpeaking(on);
     // Молчащий голос без объяснения выглядит поломкой — говорим прямо.
     this.voice.onPeerFailed = () => {
-      if (this.voiceWarned) return;
+      if (this.voiceWarned || this.voice.micDenied) return;
       this.voiceWarned = true;
       this.hud.toast("Голос не пробился: мешает VPN или сеть");
     };
@@ -1114,7 +1114,14 @@ export class Game {
     net.onVoice = (id, t, d) => this.voice.onVoicePacket(id, t, d);
     void this.voice.start(net.sessionId).then((ok) => {
       if (!ok) {
-        this.hud.toast(`Голос выключен: ${this.voice.micError ?? "нет микрофона"}`);
+        // Отказ в разрешении — частый случай на телефоне, говорим прямо и не
+        // пугаем потом «мешает VPN» (см. onPeerFailed).
+        this.voiceWarned = this.voice.micDenied;
+        this.hud.toast(
+          this.voice.micDenied
+            ? "Микрофон выключен: не дано разрешение в браузере"
+            : `Голос выключен: ${this.voice.micError ?? "нет микрофона"}`,
+        );
         return;
       }
       this.hud.toast("Микрофон готов");

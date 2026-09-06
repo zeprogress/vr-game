@@ -45,6 +45,8 @@ interface Peer {
   analyser: AnalyserNode | null;
   buf: Float32Array | null;
   speaking: boolean;
+  /** Сколько ещё держать «говорит» после последнего звука, с (антидребезг). */
+  speakHang: number;
   state: PeerState;
   // --- запасной путь: голос через сервер ---
   /** true — WebRTC не встал, слушаем через сервер. */
@@ -115,6 +117,8 @@ export class VoiceChat {
   speaking = false;
   /** Почему нет голоса — для честного сообщения игроку. */
   micError: string | null = null;
+  /** true — микрофон молчит именно из-за отказа в разрешении браузера. */
+  micDenied = false;
 
   /** Общий gain на выход всех собеседников — глушится вместе с музыкой. */
   private readonly outGain: GainNode;
@@ -137,14 +141,38 @@ export class VoiceChat {
       this.micError = "браузер не даёт доступ к микрофону";
       return false;
     }
+
+    // Разрешение могли отклонить в прошлый раз («запомнить решение») — тогда
+    // getUserMedia молча падает, и без этой проверки игрок видел бы
+    // невнятное «микрофон не найден». Permissions API есть не везде — если
+    // нет, просто пробуем getUserMedia как раньше.
+    try {
+      const perm = await navigator.permissions?.query({
+        name: "microphone" as PermissionName,
+      });
+      if (perm?.state === "denied") {
+        this.micDenied = true;
+        this.micError = "браузер не дал разрешение на микрофон";
+        return false;
+      }
+    } catch {
+      /* Permissions API нет или не знает 'microphone' — не критично */
+    }
+
     try {
       this.local = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         video: false,
       });
     } catch (e) {
-      this.micError = (e as Error).name === "NotAllowedError" ? "доступ не разрешён" : "микрофон не найден";
-      console.warn("[voice] микрофон недоступен:", (e as Error).message);
+      const name = (e as Error).name;
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        this.micDenied = true;
+        this.micError = "браузер не дал разрешение на микрофон";
+      } else {
+        this.micError = name === "NotFoundError" ? "микрофон не найден" : "микрофон недоступен";
+      }
+      console.warn("[voice] микрофон недоступен:", name, (e as Error).message);
       return false;
     }
 
@@ -216,6 +244,7 @@ export class VoiceChat {
       analyser: null,
       buf: null,
       speaking: false,
+      speakHang: 0,
       state: "новый",
       useRelay: false,
       relayTimer: null,
@@ -567,7 +596,12 @@ export class VoiceChat {
         if (pos) setPos(p.panner, pos.x, pos.y, -pos.z);
       }
       if (p.analyser && p.buf) {
-        const talking = rms(p.analyser, p.buf) > VOICE.speakLevel;
+        // Антидребезг: за паузами между словами уровень проседает ниже
+        // порога — без «хвоста» значок «говорит» частил бы. Держим ещё
+        // VOICE.hangover после последнего звука (как у своего микрофона).
+        if (rms(p.analyser, p.buf) > VOICE.speakLevel) p.speakHang = VOICE.hangover;
+        else p.speakHang = Math.max(0, p.speakHang - dt);
+        const talking = p.speakHang > 0;
         if (talking !== p.speaking) {
           p.speaking = talking;
           this.onSpeaking?.(id, talking);

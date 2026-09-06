@@ -16,8 +16,8 @@ export interface OverlayCtx {
   shotLabel: string;
   /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
-  /** Ники всех онлайн-игроков. */
-  online: string[];
+  /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
+  online: readonly { nick: string; speaking: boolean }[];
 }
 
 interface Config {
@@ -57,6 +57,9 @@ const CSS = `
 .ov-online { right:2.2vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
+.ov-online div { display:flex; gap:.7vh; align-items:center; justify-content:flex-end; }
+.ov-online i.spk { width:1vh; height:1vh; border-radius:50%; background:#3ad16b;
+  box-shadow:0 0 8px #3ad16b; flex:none; }
 .ov-top { left:2.2vw; top:6.4vh; font-size:1.7vh; line-height:1.6; }
 .ov-top b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
@@ -272,9 +275,14 @@ export class Overlay {
 
     if (this.cfg.online && ctx.online.length) {
       this.online.innerHTML = "<b>в игре</b>";
-      for (const n of ctx.online.slice(0, 7)) {
+      for (const p of ctx.online.slice(0, 7)) {
         const row = document.createElement("div");
-        row.textContent = n;
+        const dot = document.createElement("i");
+        dot.className = "spk";
+        if (!p.speaking) dot.style.visibility = "hidden"; // держит выравнивание
+        const nm = document.createElement("span");
+        nm.textContent = p.nick;
+        row.append(dot, nm);
         this.online.appendChild(row);
       }
       if (ctx.online.length > 7) {
