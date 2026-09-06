@@ -560,8 +560,8 @@ export class PlayerController {
         // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
         // на боковом стике это плавный доворот, а не рывок «спиралью».
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
-        // На упоре вбок доворот чуть быстрее (sideBoost до ×2 при |moveX| = 1).
-        const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.7) / 0.3, 0, 1);
+        // Чем дальше стик вбок, тем быстрее доворот — плавно от ×1 к ×2.
+        const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.3) / 0.7, 0, 1);
         if (!dragging && moving && tpFollow > 0.01) {
           tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * tpFollow * sideBoost));
         }
@@ -638,8 +638,10 @@ function clamp(v: number, lo: number, hi: number): number {
  * развернётся к камере лицом, а сама она стоит.
  */
 function tpFollowAmount(mx: number, my: number): number {
-  // frontGate: 1 в переднем/боковом секторе стика, 0 в заднем (±45°).
-  const frontGate = clamp((Math.abs(mx) + my) / 0.3, 0, 1);
+  // frontGate: 0 в заднем секторе стика (|mx|+my ≤ 0), 1 у чистого бока/вперёд
+  // (≥ 1). Квадрат — доворот вползает мягко, без рывка у границы сектора.
+  const g = clamp(Math.abs(mx) + my, 0, 1);
+  const frontGate = g * g;
   const dead = TP_CAM_TUNE.followDead;
   const reach = Math.max(Math.abs(mx), Math.abs(my));
   return frontGate * clamp((reach - dead) / (1 - dead), 0, 1);
