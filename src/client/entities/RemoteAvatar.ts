@@ -235,6 +235,8 @@ export class RemoteAvatar implements Hittable {
     nick: string,
     mode: PlayerMode,
     private readonly makeWeapon: MakeWeapon | null = null,
+    /** Множитель размера плашки с ником (на смартфоне 2 — мелкий экран). */
+    private readonly tagScale = 1,
   ) {
     this.id = id;
     this.nick = nick;
@@ -361,7 +363,7 @@ export class RemoteAvatar implements Hittable {
       this.head.isVisible = false;
       // Модельки бота выше «головы» плоского аватара — поднимаем плашку
       // (точное значение под рост модели ставит loadBotRig) и делаем крупнее.
-      this.nameTag.setScale(BOT_TAG_SCALE);
+      this.nameTag.setScale(BOT_TAG_SCALE * this.tagScale);
       this.nameTag.setAnchorY(1.5 * BOT_STUB_SCALE);
       this.botRigWant = this.skin;
       void this.loadBotRig();
@@ -687,7 +689,7 @@ export class RemoteAvatar implements Hittable {
         // Плашка — точно над макушкой конкретной модели, облачко — над плашкой.
         const tagY = BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3;
         this.nameTag.setAnchorY(tagY);
-        this.bubbleY = tagY + 1.25; // над увеличенной плашкой
+        this.bubbleY = tagY + 1.25 * this.tagScale; // над увеличенной плашкой
         this.bubble?.setAnchorY(this.bubbleY);
 
         const bone = (n: string): TransformNode | null =>

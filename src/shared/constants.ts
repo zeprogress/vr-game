@@ -136,7 +136,7 @@ export const SLIME_CFG: MobConfig = {
   hp: MOB.hp,
   xp: 1,
   tint: [0.2, 0.45, 0.95],
-  alpha: 0.62,
+  alpha: 0.46,
   ranged: false,
 };
 
@@ -146,7 +146,7 @@ export const SPITTER_CFG: MobConfig = {
   hp: SPITTER.hp,
   xp: 5,
   tint: [0.86, 0.52, 0.16],
-  alpha: 0.62,
+  alpha: 0.46,
   ranged: true,
 };
 
@@ -199,7 +199,7 @@ export const BOSS_CFG: MobConfig = {
   hp: BOSS.hp,
   xp: 90,
   tint: [0.82, 0.11, 0.13],
-  alpha: 0.93,
+  alpha: 0.74,
   ranged: false, // ближний бой первичен; плевок — своя логика в ZoneSim
 };
 
@@ -210,7 +210,7 @@ export const SHARD_CFG: MobConfig = {
   hp: 3,
   xp: 1,
   tint: [0.85, 0.2, 0.22],
-  alpha: 0.6,
+  alpha: 0.46,
   ranged: false,
 };
 

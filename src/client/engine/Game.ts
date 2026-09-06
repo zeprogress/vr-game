@@ -1161,8 +1161,13 @@ export class Game {
       if (id === this.net?.sessionId || this.avatars.has(id)) return;
       const p = players.get(id);
       if (!p) return;
-      const av = new RemoteAvatar(this.scene, id, p.nick, p.mode, (cls, tier) =>
-        makeWeaponMesh(this.scene, cls, tier),
+      const av = new RemoteAvatar(
+        this.scene,
+        id,
+        p.nick,
+        p.mode,
+        (cls, tier) => makeWeaponMesh(this.scene, cls, tier),
+        this.isTouch ? 2 : 1, // плашка ника крупнее на мелком экране
       );
       // PvP: чужой аватар — цель для оружия (сервер решит, пройдёт ли урон).
       av.onHit = (weapon, dir) => this.report?.(id, "player", weapon, dir.x, dir.z);

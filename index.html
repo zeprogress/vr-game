@@ -21,6 +21,13 @@
         overscroll-behavior: none;
       }
       #renderCanvas { width: 100vw; height: 100vh; display: block; touch-action: none; outline: none; }
+      /* Экранная лупа iOS при долгом тапе рождается из выделения текста —
+         глушим выделение и callout везде, кроме поля ввода ника. */
+      *:not(input):not(textarea) {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+      }
       /* Ввод ника — единственное поле, где выделение и печать нужны. */
       input, textarea { -webkit-user-select: text; user-select: text; }
     </style>
@@ -33,6 +40,14 @@
       for (const t of ["gesturestart", "gesturechange", "gestureend"]) {
         document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
       }
+      // Меню/лупа по долгому тапу — не на поле ввода ника.
+      document.addEventListener(
+        "contextmenu",
+        (e) => {
+          if (!(e.target instanceof HTMLInputElement)) e.preventDefault();
+        },
+        { passive: false },
+      );
 
       // Safari на iPhone закрывает страницу свайпом от левого края («назад»).
       // 1) Гасим touchstart в узкой кромке у краёв — там жест и рождается.
