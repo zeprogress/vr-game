@@ -70,6 +70,29 @@ export const BOT_SKIN_LABELS: readonly string[] = [
 
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
 
+/**
+ * Замер нативной высоты рига — вещь постоянная для модели, но при массовом
+ * одновременном создании экземпляров (переподключение к комнате: все мобы
+ * пересоздаются в одном кадре) bbox скина местами выходит вырожденным и
+ * замер даёт мусор. Держим первое удачное значение на (сцена, путь) и
+ * подставляем его, если текущий замер не удался — иначе моб уезжал в фолбэк
+ * `1` и становился раза в 1.7 крупнее.
+ */
+const nativeHeightCache = new WeakMap<Scene, Map<string, number>>();
+
+function rememberNativeHeight(scene: Scene, path: string, measured: number): number {
+  let byPath = nativeHeightCache.get(scene);
+  if (!byPath) {
+    byPath = new Map();
+    nativeHeightCache.set(scene, byPath);
+  }
+  if (Number.isFinite(measured) && measured > 0) {
+    byPath.set(path, measured);
+    return measured;
+  }
+  return byPath.get(path) ?? 1;
+}
+
 export function containerFor(scene: Scene, path: string): Promise<AssetContainer> {
   let byPath = cache.get(scene);
   if (!byPath) {
@@ -238,17 +261,21 @@ export async function loadRig(
     // мировым bbox каждого меша вручную — getHierarchyBoundingVectors тут врёт.
     root.computeWorldMatrix(true);
     for (const n of root.getDescendants(false)) n.computeWorldMatrix(true);
+    // Кости в позу: bbox скина без готовых матриц скелета выходит вырожденным
+    // (особенно при пачке экземпляров в одном кадре на переподключении).
+    for (const sk of r.skeletons) sk.prepare();
     let loY = Infinity;
     let hiY = -Infinity;
     for (const m of meshes) {
       if (m.getTotalVertices() === 0) continue;
-      m.refreshBoundingInfo({});
+      m.refreshBoundingInfo({ applySkeleton: true });
       m.computeWorldMatrix(true);
       const bb = m.getBoundingInfo().boundingBox;
       loY = Math.min(loY, bb.minimumWorld.y);
       hiY = Math.max(hiY, bb.maximumWorld.y);
     }
-    const nativeHeight = Number.isFinite(hiY - loY) && hiY > loY ? hiY - loY : 1;
+    const measured = Number.isFinite(hiY - loY) && hiY > loY ? hiY - loY : NaN;
+    const nativeHeight = rememberNativeHeight(scene, MODELS[name], measured);
     return {
       root,
       meshes,
