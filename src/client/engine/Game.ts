@@ -61,16 +61,7 @@ import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { ADMIN_NICK, BOSS, PLAYER, RESPAWN } from "#shared/constants";
-
-/** Спокойный фон: после каждого трека берётся случайный из набора. */
-const TOWN_MUSIC = [
-  "/music/town-dion.mp3",
-  "/music/castle-hall-1.mp3",
-  "/music/castle-hall-2.mp3",
-  "/music/village-waltz-1.mp3",
-  "/music/village-waltz-2.mp3",
-];
-const BOSS_MUSIC = "/music/boss.mp3";
+import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.

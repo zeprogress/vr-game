@@ -17,6 +17,7 @@ import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { Sfx } from "../audio/Sfx";
+import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
 import {
@@ -26,15 +27,6 @@ import {
   type CtxMob,
 } from "./SpectatorCamera";
 
-/** Спокойный фон: после каждого трека берётся случайный из набора. */
-const TOWN_MUSIC = [
-  "/music/town-dion.mp3",
-  "/music/castle-hall-1.mp3",
-  "/music/castle-hall-2.mp3",
-  "/music/village-waltz-1.mp3",
-  "/music/village-waltz-2.mp3",
-];
-const BOSS_MUSIC = "/music/boss.mp3";
 const UP = { x: 0, y: 1, z: 0 };
 const FORWARD_Z = new Vector3(0, 0, 1);
 
