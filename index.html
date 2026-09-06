@@ -33,6 +33,32 @@
       for (const t of ["gesturestart", "gesturechange", "gestureend"]) {
         document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
       }
+
+      // Safari на iPhone закрывает страницу свайпом от левого края («назад»).
+      // 1) Гасим touchstart в узкой кромке у краёв — там жест и рождается.
+      //    Джойстик начинается с 40px, кнопки — правее, так что не мешаем.
+      var EDGE = 22;
+      document.addEventListener(
+        "touchstart",
+        function (e) {
+          var t = e.touches[0];
+          if (!t) return;
+          if (t.clientX <= EDGE || t.clientX >= window.innerWidth - EDGE) {
+            e.preventDefault();
+          }
+        },
+        { passive: false, capture: true },
+      );
+      // 2) Подстраховка: держим «лишнюю» запись в истории. Свайп-назад
+      //    съедает её, а мы тут же возвращаем — со страницы не уходим.
+      try {
+        history.pushState(null, "", location.href);
+        window.addEventListener("popstate", function () {
+          history.pushState(null, "", location.href);
+        });
+      } catch (_) {
+        /* приватный режим и т.п. — не критично */
+      }
     </script>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
