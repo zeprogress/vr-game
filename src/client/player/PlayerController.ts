@@ -479,6 +479,9 @@ export class PlayerController {
       mz /= len;
     }
     const moving = len > 0.05;
+    // Насколько активен авто-доворот камеры за спину для этого стика (0 —
+    // мёртвая зона или ход назад, 1 — полное отклонение вбок / вперёд).
+    const tpFollow = tp ? tpFollowAmount(inp.moveX, inp.moveY) : 0;
     // Третье лицо: персонаж доворачивается лицом туда, куда бежит.
     if (tp && moving) {
       this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * TP_CAM_TUNE.turnRate));
@@ -556,23 +559,13 @@ export class PlayerController {
         // Камера всё время потихоньку заезжает за спину персонажа, пока он
         // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
         // на боковом стике это плавный доворот, а не рывок «спиралью».
-        // Ось вперёд/назад: мёртвая зона у центра (|moveY| ≤ followDead) и
-        // выход на полный доворот за followSpan — ОДИНАКОВО вперёд и назад.
-        // Вбок доворачиваем, только когда боковое движение ПРЕОБЛАДАЕТ над
-        // вперёд/назад — иначе лёгкий увод пальца вбок при ходьбе назад
-        // убивал мёртвую зону (камера сразу разворачивалась).
+        // tpFollow гасит доворот в мёртвой зоне и при ходьбе назад (на упоре
+        // назад камера должна стоять, а не разворачиваться вокруг персонажа).
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
-        const axisFade = clamp(
-          (Math.abs(inp.moveY) - TP_CAM_TUNE.followDead) / Math.max(0.01, TP_CAM_TUNE.followSpan),
-          0,
-          1,
-        );
-        const sideFade = clamp((Math.abs(inp.moveX) - Math.abs(inp.moveY)) / 0.15, 0, 1);
-        const fade = Math.max(axisFade, sideFade);
         // На упоре вбок доворот чуть быстрее (sideBoost до ×2 при |moveX| = 1).
         const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.7) / 0.3, 0, 1);
-        if (!dragging && moving && fade > 0.01) {
-          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * fade * sideBoost));
+        if (!dragging && moving && tpFollow > 0.01) {
+          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * tpFollow * sideBoost));
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);
@@ -638,6 +631,25 @@ export class PlayerController {
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/**
+ * Насколько активен авто-доворот камеры за спину для текущего стика (0..1).
+ * Вперёд и чистый сайдстеп → 1 (как раньше). Ход назад → быстро в 0: иначе
+ * камера разворачивается вокруг персонажа, стоит потянуть стик на себя. У
+ * самого центра — мёртвая зона, одинаковая для всех направлений.
+ */
+function tpFollowAmount(mx: number, my: number): number {
+  // Любой заметный ход назад глушит доворот (на упоре назад камера стоит).
+  // Именно по -moveY, без оглядки на moveX: иначе, добавляя вбок к движению
+  // назад, игрок «выкручивал» доворот обратно.
+  const backGate = clamp(1 + my / Math.max(0.05, TP_CAM_TUNE.followSpan), 0, 1);
+  // Сколько «просим» доворот: по отклонению вбок (или вперёд), от мёртвой
+  // зоны у центра до максимума РОВНО на полном отклонении джойстика.
+  const dead = TP_CAM_TUNE.followDead;
+  const reach = Math.max(Math.abs(mx), Math.max(0, my));
+  const amount = clamp((reach - dead) / (1 - dead), 0, 1);
+  return backGate * amount;
 }
 
 /** Интерполяция углов по кратчайшей дуге (радианы). */
