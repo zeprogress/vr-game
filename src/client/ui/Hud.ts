@@ -35,6 +35,7 @@ export class Hud {
   private potionBtn: HTMLDivElement | null = null;
   private micBtn: HTMLDivElement | null = null;
   private crosshair: HTMLDivElement | null = null;
+  private chargeRing: HTMLDivElement | null = null;
   private onDrinkPotion: (() => void) | null = null;
   private onMicToggle: (() => void) | null = null;
   private micOn: (() => boolean) | null = null;
@@ -173,6 +174,11 @@ export class Hud {
     this.crosshair = el("div", CROSSHAIR_CSS);
     this.crosshair.hidden = true;
     document.body.appendChild(this.crosshair);
+    // Кольцо вокруг прицела заполняется по часовой по мере накопления заряда —
+    // палец на кнопке ➤ саму заливку кнопки закрывает.
+    this.chargeRing = el("div", CHARGE_RING_CSS);
+    this.chargeRing.hidden = true;
+    document.body.appendChild(this.chargeRing);
   }
 
   /**
@@ -237,7 +243,17 @@ export class Hud {
     if (on === this.aimOn) return;
     this.aimOn = on;
     if (this.crosshair) this.crosshair.hidden = !on;
+    if (!on) this.setCharge(0);
     this.updatePotionBtn();
+  }
+
+  /** Уровень заряда 0..1 — кольцо вокруг прицела (Game кормит каждый кадр). */
+  setCharge(t: number): void {
+    const r = this.chargeRing;
+    if (!r) return;
+    const k = Math.max(0, Math.min(1, t));
+    r.hidden = k < 0.02 || !this.aimOn;
+    r.style.setProperty("--c", String(k));
   }
 
   /** Пока открыта панель — прячем экранные кнопки (иначе перекрывают крестик). */
@@ -760,6 +776,15 @@ const CROSSHAIR_CSS =
   "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:13;pointer-events:none;" +
   "width:26px;height:26px;border:2px solid rgba(255,255,255,0.85);border-radius:50%;" +
   "box-shadow:0 0 0 1px rgba(0,0,0,0.5),inset 0 0 0 1px rgba(0,0,0,0.5);";
+
+/** Кольцо накопления заряда вокруг прицела. `--c` (0..1) — доля заполнения. */
+const CHARGE_RING_CSS =
+  "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:13;pointer-events:none;" +
+  "width:58px;height:58px;border-radius:50%;" +
+  "background:conic-gradient(from -90deg,#78c8ff calc(var(--c,0)*360deg),rgba(255,255,255,0.14) 0);" +
+  "-webkit-mask:radial-gradient(closest-side,transparent 70%,#000 72%);" +
+  "mask:radial-gradient(closest-side,transparent 70%,#000 72%);" +
+  "filter:drop-shadow(0 0 4px rgba(120,200,255,0.6));";
 
 /** Крестик закрытия в углу панели персонажа (смартфон) — в отступе сверху. */
 const CLOSE_X_CSS =

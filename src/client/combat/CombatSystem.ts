@@ -630,7 +630,9 @@ export class CombatSystem {
     this.prevInteract = inp.interact;
     this.prevPrimary = inp.primaryAction;
     this.prevAltFire = inp.altFire;
-    if (primaryReleased) this.tpAltFired = false;
+    // Новое удержание ⚔ — сбрасываем «уже стрелял кнопкой ➤». НЕ на release:
+    // tpBow/tpStaffCast читают флаг в блоке primaryReleased уже после этого.
+    if (primaryEdge) this.tpAltFired = false;
 
     if (this.blockCd > 0) this.blockCd -= dt;
 

@@ -3,6 +3,13 @@ import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 /** Метры зума на пиксель изменения расстояния между пальцами. */
 const ZOOM_PER_PX = 0.012;
+/**
+ * Прицел кнопкой ⚔: у центра кнопки — обычное перетаскивание, дальше плавно
+ * (квадратично) добавляется инерция панорамы.
+ */
+const AIM_DEADZONE_PX = 25;
+const AIM_SPAN_PX = 44; // за столько пикселей от края мёртвой зоны — полная скорость
+const AIM_YAW_RATE = 0.9; // рад/с на полном отклонении (было 1.4 — просили помедленнее)
 
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
@@ -38,6 +45,7 @@ export class TouchInput implements InputSource {
   private atkCenter = { x: 0, y: 0 };
   private atkPos = { x: 0, y: 0 };
   private atkKnob: HTMLDivElement | null = null;
+  private lastSample = 0;
 
   /** id активного пальца на джойстике. */
   private movePointer: number | null = null;
@@ -224,7 +232,21 @@ export class TouchInput implements InputSource {
   }
 
   sample(): InputState {
-    // Прицел кнопкой ⚔: только перетаскивание (см. pointermove), без инерции.
+    const now = performance.now();
+    const dt = this.lastSample ? Math.min(0.05, (now - this.lastSample) / 1000) : 0;
+    this.lastSample = now;
+
+    // Прицел: перетаскивание (см. pointermove) + плавная инерция панорамы за
+    // мёртвой зоной — палец у центра кнопки, прицел стоит; дальше крутит.
+    if (this.aimMode && this.atkPointer !== null && dt > 0) {
+      const dx = this.atkPos.x - this.atkCenter.x;
+      const off = Math.abs(dx) - AIM_DEADZONE_PX;
+      if (off > 0) {
+        const m = Math.min(1, off / AIM_SPAN_PX);
+        this.accYaw += Math.sign(dx) * m * m * AIM_YAW_RATE * dt;
+      }
+    }
+
     const s = emptyInput();
     s.moveX = this.moveX;
     s.moveY = this.moveY;

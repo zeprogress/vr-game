@@ -385,8 +385,10 @@ export class Game {
         this.player.setAiming(aim);
         this.hud.setAiming(aim);
         this.touchInput?.setAiming(aim);
-        // Индикация накопления заряда на кнопке ➤.
-        this.touchInput?.setFireCharge(aim ? this.combat.chargeLevel : 0);
+        // Индикация накопления заряда: заливка кнопки ➤ + кольцо у прицела.
+        const charge = aim ? this.combat.chargeLevel : 0;
+        this.touchInput?.setFireCharge(charge);
+        this.hud.setCharge(charge);
       }
       // Полоска маны в плоском режиме — только с посохом в руках.
       if (!this.player.inVR) {
