@@ -3,12 +3,6 @@ import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
 /** Метры зума на пиксель изменения расстояния между пальцами. */
 const ZOOM_PER_PX = 0.012;
-/**
- * Прицел, горизонталь: в мёртвой зоне у центра кнопки работает обычное
- * перетаскивание; дальше добавляется инерция (скорость растёт от смещения).
- */
-const AIM_DEADZONE_PX = 25;
-const AIM_YAW_RATE = 1.4; // рад/с инерции за мёртвой зоной (сразу, без разгона)
 
 /**
  * Тач-управление для телефона: левый джойстик — движение, перетаскивание
@@ -21,6 +15,7 @@ export class TouchInput implements InputSource {
   private readonly btnAttack: HTMLDivElement;
   private readonly btnInteract: HTMLDivElement;
   private readonly btnFire: HTMLDivElement;
+  private readonly fireFill: HTMLDivElement;
 
   private moveX = 0;
   private moveY = 0;
@@ -43,7 +38,6 @@ export class TouchInput implements InputSource {
   private atkCenter = { x: 0, y: 0 };
   private atkPos = { x: 0, y: 0 };
   private atkKnob: HTMLDivElement | null = null;
-  private lastSample = 0;
 
   /** id активного пальца на джойстике. */
   private movePointer: number | null = null;
@@ -67,6 +61,8 @@ export class TouchInput implements InputSource {
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
     const btnFire = el("div", "touch-btn touch-fire", "➤");
     btnFire.style.display = "none"; // видна только в прицеле
+    this.fireFill = el("div", "touch-fire-fill");
+    btnFire.appendChild(this.fireFill);
     this.btnAttack = btnAttack;
     this.btnInteract = btnInteract;
     this.btnFire = btnFire;
@@ -200,9 +196,19 @@ export class TouchInput implements InputSource {
     this.aimMode = on;
     this.btnInteract.style.display = on ? "none" : "";
     this.btnFire.style.display = on ? "" : "none";
-    if (!on) this.fireBtn = false;
+    if (!on) {
+      this.fireBtn = false;
+      this.setFireCharge(0);
+    }
     this.btnAttack.classList.toggle("touch-aiming", on);
     this.applyAtkKnob();
+  }
+
+  /** Game: уровень накопленного заряда 0..1 — визуально заливает кнопку ➤. */
+  setFireCharge(t: number): void {
+    const k = Math.max(0, Math.min(1, t));
+    this.fireFill.style.transform = `scale(${k})`;
+    this.fireFill.style.opacity = k > 0.02 ? "1" : "0";
   }
 
   private updateStick(px: number, py: number): void {
@@ -218,22 +224,7 @@ export class TouchInput implements InputSource {
   }
 
   sample(): InputState {
-    const now = performance.now();
-    const dt = this.lastSample ? Math.min(0.05, (now - this.lastSample) / 1000) : 0;
-    this.lastSample = now;
-
-    // Прицел: инерция панорамы по горизонтали. Палец в центре кнопки —
-    // прицел стоит; чем дальше от центра, тем быстрее крутит.
-    if (this.aimMode && this.atkPointer !== null && dt > 0) {
-      const dx = this.atkPos.x - this.atkCenter.x;
-      const off = Math.abs(dx) - AIM_DEADZONE_PX;
-      if (off > 0) {
-        // За мёртвой зоной инерция включается сразу на полную скорость —
-        // без плавного разгона.
-        this.accYaw += Math.sign(dx) * AIM_YAW_RATE * dt;
-      }
-    }
-
+    // Прицел кнопкой ⚔: только перетаскивание (см. pointermove), без инерции.
     const s = emptyInput();
     s.moveX = this.moveX;
     s.moveY = this.moveY;
@@ -296,7 +287,13 @@ const STYLE = `<style>
 .touch-interact { bottom: 140px; }
 /* Кнопка «выстрел» в прицеле — над джойстиком движения, для левого пальца. */
 .touch-fire { left: 48px; bottom: 176px; width: 82px; height: 82px; font-size: 30px;
-  background: rgba(230,120,60,0.42); border-color: rgba(255,190,140,0.75); }
+  background: rgba(230,120,60,0.42); border-color: rgba(255,190,140,0.75);
+  overflow: hidden; }
+/* Заливка накопления заряда — растёт из центра при удержании. */
+.touch-fire-fill { position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  border-radius: 50%; background: radial-gradient(circle, rgba(120,200,255,0.9) 0%,
+  rgba(90,160,255,0.55) 70%, rgba(90,160,255,0) 100%); transform: scale(0); opacity: 0;
+  transition: opacity 0.08s linear; pointer-events: none; }
 .touch-btn.touch-aiming { background: rgba(230,120,60,0.4);
   border-color: rgba(255,190,140,0.7); }
 .touch-atk-knob { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
