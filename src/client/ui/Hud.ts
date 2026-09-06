@@ -117,6 +117,11 @@ export class Hud {
     this.touch = true;
     this.panel.style.cssText += PANEL_CSS_TOUCH;
 
+    // Поворот экрана при открытом меню — пересобрать (1 ↔ 2 колонки).
+    window.addEventListener("resize", () => {
+      if (this.panelOpen) this.renderPanel();
+    });
+
     // Смартфон: полоски и верхние кнопки — одним рядом у верха. Полоски
     // сдвинуты правее от края, кнопки левее; выровнены по центру строки
     // (кнопки top:12 h:44 → центр 34; полоса top:27 h:14 → центр 34).
@@ -598,6 +603,24 @@ export class Hud {
         this.panelButton("Выйти в меню", "#3a2020", "#ffd8d8", "#8a3a3a", () => this.onExit?.()),
       );
     }
+
+    if (t) this.fitPanelColumns();
+  }
+
+  /**
+   * Низкое окно (ландшафт телефона с тулбаром Safari) — раскладываем панель
+   * в две колонки, чтобы всё влезло по высоте без прокрутки. Крестик закрытия
+   * (absolute) в поток не идёт, его не трогаем.
+   */
+  private fitPanelColumns(): void {
+    const twoCol = window.innerHeight < 560 && window.innerWidth > 620;
+    this.panel.style.width = twoCol ? "min(660px, 94vw)" : "";
+    this.panel.style.columnCount = twoCol ? "2" : "";
+    for (const c of Array.from(this.panel.children)) {
+      if (c === this.panel.firstChild && (c as HTMLElement).textContent === "✕") continue;
+      (c as HTMLElement).style.breakInside = "avoid";
+      (c as HTMLElement).style.setProperty("-webkit-column-break-inside", "avoid");
+    }
   }
 
   /** Кнопка во всю ширину панели. */
@@ -679,7 +702,10 @@ const DEATH_CSS =
   "opacity:0;transition:opacity 0.5s;pointer-events:none;";
 
 const BACKDROP_CSS =
-  "position:fixed;inset:0;z-index:38;display:none;align-items:center;justify-content:center;" +
+  // height по svh (а не 100vh): в Safari на телефоне 100vh включает область
+  // за тулбаром, и панель по центру уезжала вверх под адресную строку.
+  "position:fixed;top:0;left:0;width:100%;height:100vh;height:100svh;z-index:38;display:none;" +
+  "align-items:center;justify-content:center;overflow-y:auto;padding:6px 0;box-sizing:border-box;" +
   "background:rgba(6,8,14,0.55);backdrop-filter:blur(2px);";
 
 const PANEL_CSS =
@@ -692,7 +718,10 @@ const PANEL_CSS =
  * верхний отступ оставляет место крестику — он больше не лезет на «+».
  */
 const PANEL_CSS_TOUCH =
-  "padding:44px 14px 14px;font:13px/1.4 system-ui,sans-serif;max-height:96vh;";
+  "padding:40px 14px 12px;font:13px/1.35 system-ui,sans-serif;max-height:94vh;max-height:94svh;" +
+  // Узкое окно (ландшафт с тулбаром Safari) — контент в две колонки, чтобы
+  // влез по высоте без прокрутки.
+  "column-gap:22px;";
 
 /** Общий вид кнопок в правом верхнем ряду (смартфон). `right` задаётся отдельно. */
 const TOP_BTN_BASE =
@@ -709,7 +738,7 @@ const MIC_BTN_CSS = TOP_BTN_BASE + "right:154px;";
 
 /** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =
-  "position:fixed;right:148px;bottom:36px;z-index:12;width:66px;height:66px;border-radius:50%;" +
+  "position:fixed;right:148px;bottom:16px;z-index:12;width:66px;height:66px;border-radius:50%;" +
   "display:flex;align-items:center;justify-content:center;" +
   "background:rgba(28,20,22,0.5);border:2px solid rgba(255,150,150,0.45);" +
   "box-shadow:0 3px 10px rgba(0,0,0,0.4);-webkit-user-select:none;user-select:none;touch-action:none;";
