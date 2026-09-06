@@ -556,15 +556,21 @@ export class PlayerController {
         // Камера всё время потихоньку заезжает за спину персонажа, пока он
         // движется и игрок не крутит обзор сам. followRate мал, поэтому даже
         // на боковом стике это плавный доворот, а не рывок «спиралью».
-        // При ходьбе назад авто-доворот плавно гаснет: полный при moveY ≥
-        // -0.15, ноль при moveY ≤ -0.5 (иначе камера разворачивается вокруг,
-        // стоит потянуть стик на себя).
+        // Ось вперёд/назад: мёртвая зона у центра (|moveY| ≤ followDead) и
+        // выход на полный доворот за followSpan — ОДИНАКОВО вперёд и назад.
+        // Боковой стик доворачивает независимо (как раньше), плюс на упоре
+        // вбок доворот чуть быстрее (sideBoost до ×2 при |moveX| = 1).
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
-        const backFade = clamp((inp.moveY + 0.5) / 0.35, 0, 1);
-        // Стик отклонён вбок «в упор» — доворот чуть быстрее (до ×2 при |moveX| = 1).
+        const axisFade = clamp(
+          (Math.abs(inp.moveY) - TP_CAM_TUNE.followDead) / Math.max(0.01, TP_CAM_TUNE.followSpan),
+          0,
+          1,
+        );
+        const sideFade = clamp(Math.abs(inp.moveX) / 0.12, 0, 1);
+        const fade = Math.max(axisFade, sideFade);
         const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.7) / 0.3, 0, 1);
-        if (!dragging && moving && backFade > 0.01) {
-          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * backFade * sideBoost));
+        if (!dragging && moving && fade > 0.01) {
+          tp.followBehind(this.yaw, Math.min(1, dt * TP_CAM_TUNE.followRate * fade * sideBoost));
         }
         this._feet.set(pos.x, pos.y - PLAYER.eyeHeight, pos.z);
         tp.update(this._feet, this.isSolid, this.scene);

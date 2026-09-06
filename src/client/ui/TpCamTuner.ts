@@ -108,6 +108,8 @@ export function mountTpCamTuner(): () => void {
   section("отклик");
   slider("доворот", 0, 24, "turnRate");
   slider("догон кам.", 0, 6, "followRate");
+  slider("мёртв.зона Y", 0, 0.6, "followDead");
+  slider("разгон Y", 0.05, 0.8, "followSpan");
   slider("чувств.", 0, 2.5, "lookSens");
 
   const btns = document.createElement("div");
