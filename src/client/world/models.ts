@@ -261,20 +261,27 @@ export async function loadRig(
     // мировым bbox каждого меша вручную — getHierarchyBoundingVectors тут врёт.
     root.computeWorldMatrix(true);
     for (const n of root.getDescendants(false)) n.computeWorldMatrix(true);
-    // Кости в позу: bbox скина без готовых матриц скелета выходит вырожденным
-    // (особенно при пачке экземпляров в одном кадре на переподключении).
-    for (const sk of r.skeletons) sk.prepare();
-    let loY = Infinity;
-    let hiY = -Infinity;
-    for (const m of meshes) {
-      if (m.getTotalVertices() === 0) continue;
-      m.refreshBoundingInfo({ applySkeleton: true });
-      m.computeWorldMatrix(true);
-      const bb = m.getBoundingInfo().boundingBox;
-      loY = Math.min(loY, bb.minimumWorld.y);
-      hiY = Math.max(hiY, bb.maximumWorld.y);
+    // Замер нативной высоты — вспомогательный, риг должен инстанцироваться в
+    // любом случае. Считаем по мировым bbox каждого меша (в bind-позе — БЕЗ
+    // applySkeleton: тот печёт CPU-скиннинг в общую геометрию и ломает
+    // остальные экземпляры той же модели, из-за чего модели «складывались»).
+    // Если замер вышел вырожденным — берём последнее удачное значение из кэша.
+    let measured = NaN;
+    try {
+      let loY = Infinity;
+      let hiY = -Infinity;
+      for (const m of meshes) {
+        if (m.getTotalVertices() === 0) continue;
+        m.refreshBoundingInfo({});
+        m.computeWorldMatrix(true);
+        const bb = m.getBoundingInfo().boundingBox;
+        loY = Math.min(loY, bb.minimumWorld.y);
+        hiY = Math.max(hiY, bb.maximumWorld.y);
+      }
+      if (Number.isFinite(hiY - loY) && hiY > loY) measured = hiY - loY;
+    } catch (e) {
+      console.warn("[models] замер высоты рига не удался:", (e as Error).message);
     }
-    const measured = Number.isFinite(hiY - loY) && hiY > loY ? hiY - loY : NaN;
     const nativeHeight = rememberNativeHeight(scene, MODELS[name], measured);
     return {
       root,
