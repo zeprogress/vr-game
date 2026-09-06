@@ -65,6 +65,7 @@ export class Hud {
     this.lowVignette = el("div", LOW_VIGNETTE_CSS);
     this.toastEl = el("div", TOAST_CSS);
     this.backdrop = el("div", BACKDROP_CSS);
+    this.backdrop.id = "hudBackdrop"; // index.html не глушит здесь touchstart (скролл меню)
     this.panel = el("div", PANEL_CSS);
     this.backdrop.appendChild(this.panel);
     this.backdrop.addEventListener("pointerdown", (e) => {

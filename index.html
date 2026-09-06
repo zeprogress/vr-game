@@ -40,7 +40,6 @@
       for (const t of ["gesturestart", "gesturechange", "gestureend"]) {
         document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
       }
-      // Меню/лупа по долгому тапу — не на поле ввода ника.
       document.addEventListener(
         "contextmenu",
         (e) => {
@@ -49,23 +48,22 @@
         { passive: false },
       );
 
-      // Safari на iPhone закрывает страницу свайпом от левого края («назад»).
-      // 1) Гасим touchstart в узкой кромке у краёв — там жест и рождается.
-      //    Джойстик начинается с 40px, кнопки — правее, так что не мешаем.
-      var EDGE = 22;
+      // iOS Safari: экранная лупа при долгом тапе, свайп-назад от края, дабл-тап
+      // зум — всё это native-жесты поверх touchstart. Гасим touchstart везде,
+      // КРОМЕ поля ввода ника и прокручиваемого меню. Указательные события
+      // (pointerdown/move/up) при этом продолжают работать — на них и держится
+      // управление, так что джойстик и кнопки не страдают.
       document.addEventListener(
         "touchstart",
         function (e) {
-          var t = e.touches[0];
-          if (!t) return;
-          if (t.clientX <= EDGE || t.clientX >= window.innerWidth - EDGE) {
-            e.preventDefault();
-          }
+          var el = e.target;
+          if (el && el.closest && el.closest("input, textarea, select, #hudBackdrop")) return;
+          if (e.cancelable) e.preventDefault();
         },
         { passive: false, capture: true },
       );
-      // 2) Подстраховка: держим «лишнюю» запись в истории. Свайп-назад
-      //    съедает её, а мы тут же возвращаем — со страницы не уходим.
+      // Подстраховка от свайпа-назад: держим «лишнюю» запись в истории —
+      // свайп съедает её, а popstate тут же возвращает.
       try {
         history.pushState(null, "", location.href);
         window.addEventListener("popstate", function () {
