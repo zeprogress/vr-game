@@ -94,7 +94,15 @@ const DRONE_AIM_Y = 0.4;
 const CROWD_ANGLE = 0.62; // горизонтальный отступ камеры (доля от dist)
 const CROWD_UP = 0.92; // высота камеры (доля от dist)
 const CROWD_MIN = 17;
-const CROWD_MAX = 40;
+const CROWD_MAX = 34;
+/**
+ * Кадр берёт не ВСЕХ героев, а самую плотную кучку: если народ разбрёлся по
+ * поляне, попытка вместить всех уводила камеру под потолок и герои
+ * превращались в точки. Считаем «группой» тех, кто в этом радиусе от ядра.
+ */
+const CROWD_GROUP_RADIUS = 16; // м вокруг самого «окружённого» героя
+/** Меньше этого в кучке — группы нет, кадр невалиден (режиссёр возьмёт другой). */
+const CROWD_MIN_MEMBERS = 2;
 
 /** Кого показывает камера сейчас. */
 type Shot =
@@ -456,9 +464,23 @@ export class SpectatorCamera {
     return true;
   }
 
-  /** Герои на поляне (вне безопасной зоны лагеря) — для кадра «Группа сверху». */
+  /**
+   * Самая плотная кучка героев на поляне (вне лагеря) — для «Группы сверху».
+   * Ядро — герой, вокруг которого в CROWD_GROUP_RADIUS больше всего соседей;
+   * в кадр идут только они. Разбежавшихся по карте не тянем: иначе камера
+   * улетала так высоко, что смотреть было не на что.
+   */
   private crowdPlayers(ctx: DirectorCtx): CtxPlayer[] {
-    return ctx.players.filter((p) => !inHubSafeZone(p.pos.x, p.pos.z));
+    const field = ctx.players.filter((p) => !inHubSafeZone(p.pos.x, p.pos.z));
+    if (field.length < CROWD_MIN_MEMBERS) return [];
+    let best: CtxPlayer[] = [];
+    for (const seed of field) {
+      const near = field.filter(
+        (o) => Math.hypot(o.pos.x - seed.pos.x, o.pos.z - seed.pos.z) <= CROWD_GROUP_RADIUS,
+      );
+      if (near.length > best.length) best = near;
+    }
+    return best.length >= CROWD_MIN_MEMBERS ? best : [];
   }
 
   private playerNearestBoss(ctx: DirectorCtx): CtxPlayer | null {
