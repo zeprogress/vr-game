@@ -354,6 +354,9 @@ export class Dashboard {
         this.cmdBtn("сбоку", { t: "cam", shot: `sidePlayer:${p.id}` }, true),
         this.cmdBtn("низко", { t: "cam", shot: `lowChase:${p.id}` }, true),
         this.cmdBtn("дрон", { t: "cam", shot: `dronePlayer:${p.id}` }, true),
+        this.cmdBtn("из-за плеча", { t: "cam", shot: `shoulderPlayer:${p.id}` }, true),
+        this.cmdBtn("снизу", { t: "cam", shot: `heroLow:${p.id}` }, true),
+        this.cmdBtn("дуэль", { t: "cam", shot: `duelPlayer:${p.id}` }, true),
       );
       this.listEl.appendChild(row);
     }

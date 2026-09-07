@@ -25,9 +25,12 @@ const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 const BOT_ROTATION = [
   "eyePlayer",
   "sidePlayer",
+  "shoulderPlayer",
   "crowd",
+  "duelPlayer",
   "lowChase",
   "orbitPlayer",
+  "heroLow",
   "dronePlayer",
   "frontPlayer",
 ] as const;
@@ -36,12 +39,47 @@ const BOT_ROTATION = [
 const SIDE_DIST = 7.5; // м вбок
 const SIDE_UP = 2.3; // подъём над точкой корпуса
 const SIDE_AIM_Y = 1.0;
+/**
+ * «Воздух перед лицом» (lead room): цель взгляда сдвинута ВПЕРЁД по ходу
+ * героя, поэтому сам он уезжает к заднему краю кадра, а перед ним остаётся
+ * место — куда он бежит и что там впереди. Классический приём трекинг-долли.
+ */
+const SIDE_LEAD = 3.4; // м вперёд по направлению героя
+/** Камеру чуть отодвигаем назад, чтобы герой не выпал из кадра при сдвиге цели. */
+const SIDE_BACK = 1.2;
 
 /** Низкая экшн-камера: почти у земли, вплотную позади — «бег от третьего лица». */
 const LOW_BACK = 3.2;
 const LOW_UP = 1.15;
 const LOW_LEAD = 3.0;
 const LOW_AIM_Y = 1.15;
+
+/**
+ * «Из-за плеча»: классический TPS-кадр — вплотную сзади-сбоку на высоте
+ * головы, с воздухом по ходу движения. Ближе и интимнее, чем eyePlayer.
+ */
+const SHOULDER_BACK = 2.6;
+const SHOULDER_SIDE = 1.15;
+const SHOULDER_UP = 1.9;
+const SHOULDER_LEAD = 6;
+const SHOULDER_AIM_Y = 1.35;
+
+/**
+ * «Снизу вверх»: камера почти у земли спереди-сбоку, смотрит на героя снизу —
+ * он выглядит крупным и внушительным (герой-шот).
+ */
+const HERO_DIST = 4.2;
+const HERO_SIDE = 2.0;
+const HERO_UP = 0.35;
+const HERO_AIM_Y = 1.7;
+
+/**
+ * «Дуэль»: в кадре и герой, и его ближайший противник — камера сбоку от
+ * линии между ними, смотрит в середину. Если рядом никого — обычный бок.
+ */
+const DUEL_MAX = 14; // м: дальше моба уже не считаем противником
+const DUEL_PAD = 5.5; // м запаса к дистанции камеры сверх половины разрыва
+const DUEL_UP = 2.6;
 
 /** «Дрон»: высоко и далеко позади героя, вид сверху-сзади в движении. */
 const DRONE_BACK = 13;
@@ -67,6 +105,9 @@ type Shot =
   | { kind: "sidePlayer"; id: string }
   | { kind: "lowChase"; id: string }
   | { kind: "dronePlayer"; id: string }
+  | { kind: "shoulderPlayer"; id: string }
+  | { kind: "heroLow"; id: string }
+  | { kind: "duelPlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
   | { kind: "crowd" }
@@ -109,6 +150,9 @@ const PLAYER_SHOTS = [
   "sidePlayer",
   "lowChase",
   "dronePlayer",
+  "shoulderPlayer",
+  "heroLow",
+  "duelPlayer",
 ] as const;
 type PlayerShotKind = (typeof PLAYER_SHOTS)[number];
 function isPlayerShotKind(k: string): k is PlayerShotKind {
@@ -116,8 +160,16 @@ function isPlayerShotKind(k: string): k is PlayerShotKind {
 }
 /** «Погоня сзади» — камера сглаживается вязким фильтром botPos/botFwd. */
 function usesBotFilter(k: string): boolean {
-  return k === "eyePlayer" || k === "frontPlayer" || k === "sidePlayer" ||
-    k === "lowChase" || k === "dronePlayer";
+  return (
+    k === "eyePlayer" ||
+    k === "frontPlayer" ||
+    k === "sidePlayer" ||
+    k === "lowChase" ||
+    k === "dronePlayer" ||
+    k === "shoulderPlayer" ||
+    k === "heroLow" ||
+    k === "duelPlayer"
+  );
 }
 
 function smoothstep(t: number): number {
@@ -516,11 +568,16 @@ export class SpectatorCamera {
         const px = (-fz / fl) * side;
         const pz = (fx / fl) * side;
         pos.set(
-          this.botPos.x + px * SIDE_DIST,
+          this.botPos.x + px * SIDE_DIST - (fx / fl) * SIDE_BACK,
           this.botPos.y + SIDE_UP,
-          this.botPos.z + pz * SIDE_DIST,
+          this.botPos.z + pz * SIDE_DIST - (fz / fl) * SIDE_BACK,
         );
-        tgt.set(this.botPos.x, this.botPos.y + SIDE_AIM_Y, this.botPos.z);
+        // Смотрим не в героя, а вперёд него — так перед лицом остаётся воздух.
+        tgt.set(
+          this.botPos.x + (fx / fl) * SIDE_LEAD,
+          this.botPos.y + SIDE_AIM_Y,
+          this.botPos.z + (fz / fl) * SIDE_LEAD,
+        );
         return;
       }
       case "lowChase": {
@@ -537,6 +594,87 @@ export class SpectatorCamera {
           this.botPos.y + LOW_AIM_Y,
           this.botPos.z + (fz / fl) * LOW_LEAD,
         );
+        return;
+      }
+      case "shoulderPlayer": {
+        // Из-за плеча: вплотную сзади-сбоку на высоте головы, воздух по ходу.
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
+        const px = (-fz / fl) * side;
+        const pz = (fx / fl) * side;
+        pos.set(
+          this.botPos.x - (fx / fl) * SHOULDER_BACK + px * SHOULDER_SIDE,
+          this.botPos.y + SHOULDER_UP,
+          this.botPos.z - (fz / fl) * SHOULDER_BACK + pz * SHOULDER_SIDE,
+        );
+        tgt.set(
+          this.botPos.x + (fx / fl) * SHOULDER_LEAD,
+          this.botPos.y + SHOULDER_AIM_Y,
+          this.botPos.z + (fz / fl) * SHOULDER_LEAD,
+        );
+        return;
+      }
+      case "heroLow": {
+        // Снизу вверх: камера у земли спереди-сбоку — герой смотрится крупно.
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? -1 : 1;
+        const px = (-fz / fl) * side;
+        const pz = (fx / fl) * side;
+        const gx = this.botPos.x + (fx / fl) * HERO_DIST + px * HERO_SIDE;
+        const gz = this.botPos.z + (fz / fl) * HERO_DIST + pz * HERO_SIDE;
+        pos.set(gx, ctx.groundY(gx, gz) + HERO_UP, gz);
+        tgt.set(this.botPos.x, this.botPos.y + HERO_AIM_Y, this.botPos.z);
+        return;
+      }
+      case "duelPlayer": {
+        // Двойной кадр: герой и ближайший к нему моб, камера сбоку от их линии.
+        const me = ctx.players.find((x) => x.id === s.id);
+        let foe: CtxMob | null = null;
+        let fd = DUEL_MAX;
+        if (me) {
+          for (const m of ctx.mobs) {
+            const d = Vector3.Distance(m.eye, me.pos);
+            if (d < fd) {
+              fd = d;
+              foe = m;
+            }
+          }
+        }
+        if (!foe) {
+          // Противника рядом нет — обычный бок с воздухом, чтобы кадр не сломался.
+          const fx = this.botFwd.x;
+          const fz = this.botFwd.z;
+          const fl = Math.hypot(fx, fz) || 1;
+          const px = -fz / fl;
+          const pz = fx / fl;
+          pos.set(
+            this.botPos.x + px * SIDE_DIST,
+            this.botPos.y + SIDE_UP,
+            this.botPos.z + pz * SIDE_DIST,
+          );
+          tgt.set(
+            this.botPos.x + (fx / fl) * SIDE_LEAD,
+            this.botPos.y + SIDE_AIM_Y,
+            this.botPos.z + (fz / fl) * SIDE_LEAD,
+          );
+          return;
+        }
+        const mx = (this.botPos.x + foe.eye.x) * 0.5;
+        const mz = (this.botPos.z + foe.eye.z) * 0.5;
+        let ax = foe.eye.x - this.botPos.x;
+        let az = foe.eye.z - this.botPos.z;
+        const al = Math.hypot(ax, az) || 1;
+        ax /= al;
+        az /= al;
+        // Перпендикуляр к линии «герой — противник»: оба в кадре, профилем.
+        const dist = al * 0.5 + DUEL_PAD;
+        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
+        pos.set(mx - az * dist * side, this.botPos.y + DUEL_UP, mz + ax * dist * side);
+        tgt.set(mx, this.botPos.y + 0.9, mz);
         return;
       }
       case "dronePlayer": {
