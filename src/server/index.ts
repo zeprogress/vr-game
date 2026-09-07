@@ -7,7 +7,11 @@ import { store } from "./store";
 const { Server } = colyseus;
 const PORT = Number(process.env.GAME_SERVER_PORT ?? 2567);
 
-const gameServer = new Server();
+// Пинг терпимее дефолта (3 с / 2 попытки ≈ 6–9 с): на мобильной сети и через
+// VPN понг запаздывал, сервер рвал живого клиента, тот переподключался — и у
+// стрим-игроков персонаж мигал в бота и обратно. ~15–20 с + окно
+// allowReconnection в ZoneRoom.onLeave.
+const gameServer = new Server({ pingInterval: 5000, pingMaxRetries: 3 });
 gameServer.define("zone", ZoneRoom);
 
 void gameServer.listen(PORT);

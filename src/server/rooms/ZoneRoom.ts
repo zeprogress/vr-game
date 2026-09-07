@@ -1846,17 +1846,21 @@ export class ZoneRoom extends Room<ZoneState> {
       this.awardXp(undefined, p, xp);
       bot.rt.kills++;
       bot.target = null;
+      // Бот активно фармит — не деспавним его по «тишине в чате».
+      this.chatSeen.set(bot.norm, Date.now());
     }
   }
 
   private tickBots(dt: number): void {
     if (this.bots.size === 0) return;
     const nowMs = Date.now();
+    // Пока идёт стрим (подключён спектатор) — держим ботов дольше: зрители
+    // ради них и заходят, а деспавн по 30-минутной тишине их зря снимал.
+    const idleLimit = BOT.idleDespawnSec * 1000 * (this.spectators.size > 0 ? 5 : 1);
     for (const bot of [...this.bots.values()]) {
-      // Авто-деспавн: давно не писал в чат и никто им не играет.
       if (
         !STREAM_NICKS.includes(bot.norm) &&
-        nowMs - (this.chatSeen.get(bot.norm) ?? 0) > BOT.idleDespawnSec * 1000
+        nowMs - (this.chatSeen.get(bot.norm) ?? 0) > idleLimit
       ) {
         this.removeBot(bot.norm);
         continue;
@@ -2284,7 +2288,7 @@ export class ZoneRoom extends Room<ZoneState> {
     store.put(rt.token, patch);
   }
 
-  override onLeave(client: Client): void {
+  override async onLeave(client: Client, consented?: boolean): Promise<void> {
     if (this.spectators.delete(client.sessionId)) {
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Ни одного спектатора не осталось — метка камеры стрима больше не
@@ -2296,7 +2300,20 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(client.sessionId);
     const streamNorm = rt?.token?.startsWith("nick:") ? rt.token.slice(5) : null;
 
-    this.persist(client);
+    // Обрыв связи (не осознанный выход) — держим место 20 с. Клиент сам
+    // переподключается тем же токеном (NetClient.reconnectLoop), и тогда
+    // персонаж не мигает в бота и обратно на каждом сетевом чихе.
+    this.persist(client); // на случай падения сервера в это окно
+    if (!consented && p) {
+      try {
+        await this.allowReconnection(client, 20);
+        console.log(`[zone] ~ ${client.sessionId} вернулся`);
+        return;
+      } catch {
+        console.log(`[zone] ${client.sessionId} не вернулся за 20 с`);
+      }
+    }
+
     this.state.players.delete(client.sessionId);
     this.rt.delete(client.sessionId);
     store.flush();

@@ -97,6 +97,8 @@ export class NetClient {
   private stream = false;
   private reconnecting = false;
   private closedByUs = false;
+  /** Токен для быстрого возврата в ту же сессию (Colyseus allowReconnection). */
+  private reconnectToken = "";
 
   get online(): boolean {
     return this.room !== null;
@@ -189,6 +191,7 @@ export class NetClient {
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
     room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));
+    this.reconnectToken = room.reconnectionToken;
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);
       this.room = null;
@@ -204,7 +207,20 @@ export class NetClient {
     for (let attempt = 0; attempt < 150 && !this.closedByUs; attempt++) {
       await new Promise((r) => setTimeout(r, 2000));
       try {
-        const room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
+        // Сначала пробуем вернуться В ТУ ЖЕ сессию (сервер держит место ~20 с
+        // после обрыва) — тогда персонаж не мигает в бота и обратно. Не вышло
+        // (место уже освободили / сервер перезапустился) — обычный вход.
+        let room: Room<ZoneState> | null = null;
+        if (this.reconnectToken && attempt < 8) {
+          try {
+            room = await this.client.reconnect<ZoneState>(this.reconnectToken);
+          } catch {
+            this.reconnectToken = "";
+          }
+        }
+        if (!room) {
+          room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
+        }
         this.wireRoom(room);
         await firstSync(room);
         this.room = room;
