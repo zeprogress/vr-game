@@ -942,15 +942,52 @@ export class CombatSystem {
       const near = this.items
         .map((it) => ({ it, d: Vector3.Distance(p, it.mesh.getAbsolutePosition()) }))
         .sort((a, b) => a.d - b.d)
-        .find((c) => c.d < COMBAT.equipReach && this.canPick(c.it));
+        .find(
+          (c) =>
+            c.d < COMBAT.equipReach &&
+            (this.canPick(c.it) || this.flatConflicts(c.it.kind).length > 0),
+        );
       cls = near?.it.kind ?? null;
     }
     if (!cls) return false;
+
+    // Мешает то, что уже в руках (щит↔лук, лук↔меч/посох, меч↔посох) — роняем
+    // это и берём новое одним действием.
+    const drop = this.flatConflicts(cls);
+    for (const it of drop) this.throwItem(it, this.flatThrowVelocity(0));
+
     const side: Side =
       cls === "shield" ? "left" : this.inHand("right") ? "left" : "right";
     const held0 = this.items.filter((i) => i.hand).length;
     this.tryPickup(side); // сам вернётся, если рука занята / брать нельзя
-    return this.items.filter((i) => i.hand).length > held0;
+    return drop.length > 0 || this.items.filter((i) => i.hand).length > held0;
+  }
+
+  /**
+   * Что в руках несовместимо с предметом класса `kind` (плоский режим) — его и
+   * надо уронить, чтобы взять новое. В VR рук две и хват физический — там пусто.
+   *
+   * - лук занимает обе руки: несовместим с мечом, посохом и щитом;
+   * - основная рука одна: меч и посох одновременно не носим;
+   * - щит несовместим только с луком.
+   */
+  private flatConflicts(kind: ItemKind): Item[] {
+    if (this.player.inVR) return [];
+    const bow = this.held1("bow");
+    const sword = this.held1("sword");
+    const staff = this.held1("staff");
+    const shield = this.held1("shield");
+    const out: Item[] = [];
+    if (kind === "bow") {
+      for (const it of [sword, staff, shield]) if (it) out.push(it);
+    } else if (kind === "shield") {
+      if (bow) out.push(bow);
+    } else if (kind === "sword" || kind === "staff") {
+      if (bow) out.push(bow);
+      const other = kind === "sword" ? staff : sword;
+      if (other) out.push(other);
+    }
+    return out;
   }
 
   /** Снять щит (плоский режим): улетает как брошенное оружие. */
