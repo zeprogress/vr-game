@@ -202,7 +202,9 @@ export class Spectator {
       "position:fixed;left:0;right:0;top:44%;text-align:center;color:#fff;" +
       "font:600 30px/1.4 system-ui,sans-serif;text-shadow:0 2px 12px #000;" +
       "pointer-events:none;z-index:10";
-    this.status.textContent = "ZEP GAME — подключаюсь…";
+    // OBS-режим: своих плашек не рисуем вовсе — заглушку кладёт стример слоем ниже.
+    this.status.textContent = this.obs ? "" : "ZEP GAME — подключаюсь…";
+    this.status.style.display = this.obs ? "none" : "block";
     document.body.appendChild(this.status);
 
     // ?debug=1 — ещё и сцена наружу: иначе с прода не заглянуть, какие
