@@ -1313,16 +1313,17 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
 
-    // Перекос характеристик сменился — меняем оружие бота на лету (кроме
-    // подобранного золотого меча).
-    if (p.rightTier !== "gold") {
-      const w = botWeaponFor(p.str, p.agi, p.int);
-      if (w !== p.rightCls) {
-        p.rightCls = w;
-        p.rightTier = "base";
-        p.leftCls = w === "bow" ? "" : "shield";
-        p.leftTier = w === "bow" ? "" : "base";
+    // Перекос характеристик сменился — меняем оружие бота на лету. Если он нёс
+    // найденный золотой меч, а билд стал не мечевым — меч падает на поляну.
+    const w = botWeaponFor(p.str, p.agi, p.int);
+    if (w !== p.rightCls) {
+      if (p.rightTier === "gold" && p.rightCls === "sword") {
+        this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
       }
+      p.rightCls = w;
+      p.rightTier = "base";
+      p.leftCls = w === "bow" ? "" : "shield";
+      p.leftTier = w === "bow" ? "" : "base";
     }
     this.persistBot(bot);
 
@@ -1477,14 +1478,18 @@ export class ZoneRoom extends Room<ZoneState> {
     // должны сбрасываться на каждом !play). Новому боту раздаём случайно:
     // часть — лучники/маги, остальные — мечники.
     const savedHeld = sanitizeHeld(rec?.held);
-    // Золотой меч подобран с земли (см. lootTarget) — оставляем. Иначе оружие
-    // по преобладающей характеристике: сила→меч, ловкость→лук, интеллект→посох
-    // (ничья / нет перекоса → меч).
-    const hasGold =
+    // Оружие строго по преобладающей характеристике: сила→меч, ловкость→лук,
+    // интеллект→посох (ничья / нет перекоса → меч).
+    const rc = botWeaponFor(p.str, p.agi, p.int);
+    const hadGold =
       savedHeld.right?.cls === "sword" && savedHeld.right?.tier === "gold";
-    const rc = hasGold ? "sword" : botWeaponFor(p.str, p.agi, p.int);
     p.rightCls = rc;
-    p.rightTier = hasGold ? "gold" : "base";
+    // Золотой меч (найден на земле) остаётся только у мечевого билда; иначе
+    // роняем его обратно на поляну — кто-нибудь подберёт.
+    p.rightTier = hadGold && rc === "sword" ? "gold" : "base";
+    if (hadGold && rc !== "sword") {
+      this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
+    }
     // Лук занимает обе руки — без щита; меч/посох — со щитом.
     p.leftCls = rc === "bow" ? "" : "shield";
     p.leftTier = rc === "bow" ? "" : "base";
