@@ -11,8 +11,10 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+
 import { HUB } from "#shared/hub";
-import { terrainHeight } from "#shared/terrain";
+import { terrainHeight, troddenAt } from "#shared/terrain";
 import type { Obstacle } from "../props";
 import { LIGHT_BUDGET } from "../Fireflies";
 import { buildHubCampfire } from "./HubCampfire";
@@ -82,6 +84,67 @@ function groundY(x: number, z: number): number {
   return terrainHeight(x, z);
 }
 
+function clamp01(v: number): number {
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * Земля лагеря — НЕ плоский диск: сетка колец, повторяющая рельеф (в лагере он
+ * с мелкими буграми, см. terrain.hubBump). Цвет в вершинах: у костра и на тропе
+ * к воротам земля вытоптана и светлее (`troddenAt`), к краю прозрачность
+ * сходит в ноль — лагерь мягко растворяется в траве поляны, без круглого шва.
+ */
+function buildCampGround(scene: Scene, cx: number, cz: number, mat: StandardMaterial): Mesh {
+  const R = HUB.campRadius + 3;
+  const rings = 34;
+  const segs = 72;
+  const pos: number[] = [];
+  const col: number[] = [];
+  const idx: number[] = [];
+  const put = (x: number, z: number): void => {
+    pos.push(x, terrainHeight(x, z) + 0.05, z);
+    const w = troddenAt(x, z);
+    col.push(
+      C.dirt.r + (C.path.r - C.dirt.r) * w,
+      C.dirt.g + (C.path.g - C.dirt.g) * w,
+      C.dirt.b + (C.path.b - C.dirt.b) * w,
+      clamp01((R - Math.hypot(x - cx, z - cz)) / 5),
+    );
+  };
+  put(cx, cz);
+  for (let ri = 1; ri <= rings; ri++) {
+    const rr = R * Math.pow(ri / rings, 0.85); // кольца гуще к центру
+    for (let si = 0; si < segs; si++) {
+      const a = (si / segs) * Math.PI * 2;
+      put(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr);
+    }
+  }
+  for (let si = 0; si < segs; si++) idx.push(0, 1 + ((si + 1) % segs), 1 + si);
+  for (let ri = 0; ri < rings - 1; ri++) {
+    const a0 = 1 + ri * segs;
+    const b0 = 1 + (ri + 1) * segs;
+    for (let si = 0; si < segs; si++) {
+      const s2 = (si + 1) % segs;
+      idx.push(a0 + si, b0 + s2, b0 + si);
+      idx.push(a0 + si, a0 + s2, b0 + s2);
+    }
+  }
+  const m = new Mesh("hubGround", scene);
+  const vd = new VertexData();
+  const normals: number[] = [];
+  VertexData.ComputeNormals(pos, idx, normals);
+  vd.positions = pos;
+  vd.indices = idx;
+  vd.colors = col;
+  vd.normals = normals;
+  vd.applyToMesh(m);
+  m.material = mat;
+  m.hasVertexAlpha = true;
+  m.isPickable = false;
+  m.receiveShadows = false;
+  return m;
+}
+
 export function buildHubBlockout(scene: Scene): HubBlockout {
   const root = new TransformNode("hub", scene);
   const cx = HUB.center.x;
@@ -110,7 +173,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // Обычные поверхности лагеря — их эмиссив-заливку крутит tick по дню/ночи.
   const dayLit: { m: StandardMaterial; base: Color3 }[] = [];
-  const matDirt = flatMat(scene, "hubDirt", C.dirt, undefined, dayLit);
   const matPath = flatMat(scene, "hubPath", C.path, undefined, dayLit);
   const matWood = flatMat(scene, "hubWood", C.wood, undefined, dayLit);
   const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight, undefined, dayLit);
@@ -118,30 +180,17 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   const matBanner = flatMat(scene, "hubBanner", C.banner, C.banner.scale(0.12));
   const lanternMat = flatMat(scene, "hubLantern", new Color3(1, 0.82, 0.5), new Color3(1, 0.7, 0.35));
 
-  // --- 1. Чистая земля лагеря: диск утоптанной земли поверх травы поляны ---
-  const pad = MeshBuilder.CreateDisc(
-    "hubGround",
-    { radius: HUB.campRadius, tessellation: 48 },
-    scene,
-  );
-  pad.rotation.x = Math.PI / 2;
-  pad.position.set(cx, groundY(cx, cz) + 0.03, cz);
-  pad.material = matDirt;
+  // --- 1-2. Земля лагеря: сетка по рельефу, вытоптанная у костра и к воротам ---
+  const matGround = new StandardMaterial("hubGroundMat", scene);
+  matGround.diffuseColor = new Color3(1, 1, 1); // цвет несут вершины
+  matGround.specularColor = new Color3(0, 0, 0);
+  matGround.backFaceCulling = false;
+  matGround.twoSidedLighting = true;
+  matGround.maxSimultaneousLights = LIGHT_BUDGET;
+  matGround.emissiveColor = C.dirt.scale(0.25);
+  dayLit.push({ m: matGround, base: C.dirt.clone() });
+  const pad = buildCampGround(scene, cx, cz, matGround);
   pad.parent = root;
-  pad.isPickable = false;
-  pad.receiveShadows = false;
-
-  // --- 2. Центральная площадь: более светлый утоптанный круг вокруг костра ---
-  const plaza = MeshBuilder.CreateDisc(
-    "hubPlaza",
-    { radius: HUB.plazaRadius, tessellation: 40 },
-    scene,
-  );
-  plaza.rotation.x = Math.PI / 2;
-  plaza.position.set(cx, groundY(cx, cz) + 0.05, cz);
-  plaza.material = matPath;
-  plaza.parent = root;
-  plaza.isPickable = false;
 
   // --- 3. Костёр в центре: каменное кольцо + брёвна + эмиссивное ядро ---
   const fire = new TransformNode("hubCampfire", scene);
@@ -396,13 +445,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   // --- 10. Тренировочная площадка: колышки-дистанции у чучел (сами чучела
   //         рисует существующая система Dummy по HUB.training.dummies) ---
   {
-    const t = HUB.zones.training;
-    const patch = MeshBuilder.CreateDisc("hubTrainDirt", { radius: 7, tessellation: 24 }, scene);
-    patch.rotation.x = Math.PI / 2;
-    patch.position.set(t.x, groundY(t.x, t.z) + 0.06, t.z);
-    patch.material = matPath;
-    patch.parent = root;
-    patch.isPickable = false;
     const stakes: Mesh[] = [];
     for (const d of HUB.training.dummies) {
       const s = MeshBuilder.CreateBox("trainStake", { width: 0.5, height: 0.12, depth: 0.5 }, scene);
