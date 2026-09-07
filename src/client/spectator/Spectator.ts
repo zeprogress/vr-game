@@ -59,6 +59,8 @@ export class Spectator {
   private readonly healAura: HealAuraFx;
   /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
   private readonly skillFx: SkillFx;
+  /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
+  private fadeTrees: ((x: number, z: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
@@ -194,6 +196,12 @@ export class Spectator {
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
+    // Камера стрима часто идёт вплотную к стволам — ближние деревья гасим,
+    // иначе крона закрывает весь кадр (в самой игре этого нет).
+    void import("../world/nature").then((m) => {
+      m.enableTreeFade();
+      this.fadeTrees = m.fadeTreesNear;
+    });
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
@@ -598,6 +606,8 @@ export class Spectator {
     this.crossFx.update(dt);
     this.healAura.update(dt);
     this.skillFx.update(dt);
+    const cp = this.cam.cam.position;
+    this.fadeTrees?.(cp.x, cp.z);
     if (this.voice) {
       this.voice.update(dt);
       // Игрок мог дать микрофон уже после установки связи — периодически

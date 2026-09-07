@@ -32,6 +32,51 @@ const TREE_KINDS = [
 /** Множитель к размеру дерева поверх scale из общего списка. */
 const TREE_SCALE = 1.15;
 
+/**
+ * Прозрачность деревьев у камеры (спектатор). Стрим часто ведёт камеру вплотную
+ * к стволу, и крона закрывает весь кадр — гасим ближние деревья, дальние не
+ * трогаем. Меши деревьев делят два материала на весь лес, поэтому гасим не
+ * материалом, а `mesh.visibility`: Babylon сам уводит такой меш в прозрачный
+ * проход (needAlphaBlendingForMesh учитывает visibility < 1).
+ */
+const FADE_NEAR = 2.5; // ближе — самая прозрачная
+const FADE_FAR = 9; // дальше — обычное дерево
+const FADE_MIN = 0.14; // насколько прозрачным становится вплотную
+
+interface TreeInstance {
+  x: number;
+  z: number;
+  meshes: import("@babylonjs/core/Meshes/abstractMesh").AbstractMesh[];
+  vis: number;
+}
+
+const treeInstances: TreeInstance[] = [];
+let fadeMats: StandardMaterial[] = [];
+let fadeOn = false;
+
+/**
+ * Включить затухание ближних деревьев (зовёт спектатор). Материалы леса
+ * заморожены ради производительности — для прозрачности их надо разморозить,
+ * поэтому это не делается по умолчанию: в игре деревья не гасим.
+ */
+export function enableTreeFade(): void {
+  fadeOn = true;
+  for (const m of fadeMats) m.unfreeze();
+}
+
+/** Раз в кадр: гасим деревья вокруг камеры. */
+export function fadeTreesNear(camX: number, camZ: number): void {
+  if (!fadeOn) return;
+  for (const t of treeInstances) {
+    const d = Math.hypot(t.x - camX, t.z - camZ);
+    const k = (d - FADE_NEAR) / (FADE_FAR - FADE_NEAR);
+    const want = k <= 0 ? FADE_MIN : k >= 1 ? 1 : FADE_MIN + (1 - FADE_MIN) * k;
+    if (Math.abs(want - t.vis) < 0.01) continue;
+    t.vis = want;
+    for (const m of t.meshes) m.visibility = want;
+  }
+}
+
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
@@ -102,9 +147,13 @@ export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): 
       mesh.freezeWorldMatrix();
     }
     root.freezeWorldMatrix();
+    treeInstances.push({ x: t.x, z: t.z, meshes: root.getChildMeshes(false), vis: 1 });
   });
+  fadeMats = [bark, leaf];
   bark.freeze();
   leaf.freeze();
+  // Спектатор мог включить затухание ещё до загрузки моделей.
+  if (fadeOn) enableTreeFade();
 }
 
 /** Трава thin-инстансами. Возвращает тик ветра (dt, daylight). */
