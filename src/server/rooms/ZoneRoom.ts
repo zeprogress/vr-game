@@ -1998,12 +1998,18 @@ export class ZoneRoom extends Room<ZoneState> {
       this.triggerEmote(bot, "roll");
     }
 
-    // Идём — смотрим по ходу; стоим и целимся (дальник) — на моба.
-    const facingYaw =
-      spd > 0.15
+    // Дальник, у которого цель в зоне выстрела, разворачивается на неё — даже
+    // на бегу (отход от подобравшегося моба). Иначе он «стрелял спиной»:
+    // корпус смотрел по ходу движения, а снаряд летел из затылка.
+    const wantAim = ranged && !!chasingMob && !emoting && dist < BOT.shootRange;
+    const aimYaw = Math.atan2(dx, dz);
+    // Идём — смотрим по ходу; целимся (дальник) — на моба.
+    const facingYaw = wantAim
+      ? aimYaw
+      : spd > 0.15
         ? Math.atan2(bot.vx, bot.vz)
         : ranged && chasingMob
-          ? Math.atan2(dx, dz)
+          ? aimYaw
           : null;
     if (facingYaw !== null) {
       let d = facingYaw - bot.yaw;
@@ -2011,6 +2017,14 @@ export class ZoneRoom extends Room<ZoneState> {
       while (d < -Math.PI) d += Math.PI * 2;
       const maxStep = BOT.turnRate * dt;
       bot.yaw += Math.abs(d) < maxStep ? d : Math.sign(d) * maxStep;
+    }
+    // Насколько корпус ещё не довёрнут на цель — по этому гейтим выстрел.
+    let aimErr = Math.PI;
+    if (wantAim) {
+      let e = aimYaw - bot.yaw;
+      while (e > Math.PI) e -= Math.PI * 2;
+      while (e < -Math.PI) e += Math.PI * 2;
+      aimErr = Math.abs(e);
     }
     bot.rt.yaw = bot.yaw;
     p.head.qx = 0;
@@ -2021,10 +2035,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальний бой: лучник/маг стреляет снарядом с дистанции (реальный Bolt в
     // симуляции — летит, бьёт, клиенты рисуют по kind).
     if (
-      ranged &&
+      wantAim &&
       chasingMob &&
-      !emoting &&
-      dist < BOT.shootRange &&
+      // Пока корпус не довёрнут на цель — не стреляем (никаких выстрелов в спину).
+      aimErr <= BOT.aimCone &&
       bot.attackCd <= 0 &&
       bot.swingIn <= 0
     ) {
