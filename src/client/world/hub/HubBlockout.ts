@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -15,6 +16,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import { HUB } from "#shared/hub";
 import { terrainHeight } from "#shared/terrain";
 import type { Obstacle } from "../props";
+import { buildHubCampfire } from "./HubCampfire";
 
 /**
  * HUB «Боевой лагерь» — BLOCKOUT v1. Только примитивы и простые материалы:
@@ -141,7 +143,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight, undefined, dayLit);
   const matStone = flatMat(scene, "hubStone", C.stone, undefined, dayLit);
   const matBanner = flatMat(scene, "hubBanner", C.banner, C.banner.scale(0.12));
-  const emberMat = flatMat(scene, "hubEmber", C.ember, C.ember);
   const lanternMat = flatMat(scene, "hubLantern", new Color3(1, 0.82, 0.5), new Color3(1, 0.7, 0.35));
 
   // --- 1. Чистая земля лагеря: диск утоптанной земли поверх травы поляны ---
@@ -201,21 +202,11 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   }
   merge(logs, "hubFireLogs", matWood, fire);
 
-  // Пламя — узкий конус в центре брёвен (не гигантский шар).
-  const ember = MeshBuilder.CreateCylinder(
-    "hubFlame",
-    { height: 1.1, diameterBottom: 0.7, diameterTop: 0, tessellation: 7 },
+  // Пламя, ореол, искры, угли — портированный костёр (см. HubCampfire).
+  const campfire = buildHubCampfire(
     scene,
+    new Vector3(HUB.campfire.pos.x, groundY(cx, cz) + 0.1, HUB.campfire.pos.z),
   );
-  ember.position.y = 0.62;
-  ember.material = emberMat;
-  ember.parent = fire;
-  ember.isPickable = false;
-  const emberCore = MeshBuilder.CreateSphere("hubEmberCore", { diameter: 0.5, segments: 6 }, scene);
-  emberCore.position.y = 0.28;
-  emberCore.material = emberMat;
-  emberCore.parent = fire;
-  emberCore.isPickable = false;
   obstacles.push({ x: HUB.campfire.pos.x, z: HUB.campfire.pos.z, r: HUB.campfire.radius + 0.4 });
 
   // --- 4. Скамьи + бочки + ящики вокруг костра ---
@@ -635,22 +626,25 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     board.isPickable = false;
   }
 
-  // ---- день/ночь: костёр и фонари ярче в темноте; NPC чуть покачиваются ----
-  const emberBase = C.ember.clone();
+  // ---- день/ночь: фонари/горн ярче в темноте; NPC покачиваются; костёр ----
   const lanternBase = new Color3(1, 0.7, 0.35);
   const forgeBase = new Color3(1, 0.35, 0.1);
+  let last = performance.now();
   function tick(daylight: number): void {
+    const now = performance.now();
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
     const d = Math.min(1, Math.max(0, daylight));
     const night = 1 - d;
     const glow = 0.25 + night * 0.9;
-    emberMat.emissiveColor.copyFrom(emberBase).scaleInPlace(0.5 + night * 0.6);
     lanternMat.emissiveColor.copyFrom(lanternBase).scaleInPlace(glow);
     forgeMat.emissiveColor.copyFrom(forgeBase).scaleInPlace(0.7 + night * 0.4);
+    campfire.tick(dt, d);
     // Обычные поверхности: днём подсвечиваем боковые грани (заливки от движка
     // нет), ночью гасим почти в ноль — лагерь не должен светиться сам.
     const fill = 0.06 + 0.42 * d;
     for (const g of dayLit) g.m.emissiveColor.copyFrom(g.base).scaleInPlace(fill);
-    const t = performance.now() / 1000;
+    const t = now / 1000;
     for (const n of npcs) {
       n.mesh.position.y = n.baseY + Math.sin(t * 1.6 + n.phase) * 0.03;
       n.mesh.rotation.y = Math.sin(t * 0.4 + n.phase) * 0.4;
@@ -662,6 +656,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     obstacles,
     tick,
     dispose(): void {
+      campfire.dispose();
       root.dispose(false, true);
     },
   };

@@ -204,6 +204,16 @@ interface Bot {
   hurtByMobAt: number;
 }
 
+/**
+ * Оружие бота по преобладающей характеристике: строго больше остальных —
+ * ловкость→лук, интеллект→посох; сила максимум или ничья → меч.
+ */
+function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | "staff" {
+  if (agi > str && agi > int) return "bow";
+  if (int > str && int > agi) return "staff";
+  return "sword";
+}
+
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
   return n.trim().toLowerCase().slice(0, 24);
@@ -1302,6 +1312,18 @@ export class ZoneRoom extends Room<ZoneState> {
     const beforeMana = p.maxMana;
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
+
+    // Перекос характеристик сменился — меняем оружие бота на лету (кроме
+    // подобранного золотого меча).
+    if (p.rightTier !== "gold") {
+      const w = botWeaponFor(p.str, p.agi, p.int);
+      if (w !== p.rightCls) {
+        p.rightCls = w;
+        p.rightTier = "base";
+        p.leftCls = w === "bow" ? "" : "shield";
+        p.leftTier = w === "bow" ? "" : "base";
+      }
+    }
     this.persistBot(bot);
 
     const name = ZoneRoom.statName(stat);
@@ -1455,17 +1477,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // должны сбрасываться на каждом !play). Новому боту раздаём случайно:
     // часть — лучники/маги, остальные — мечники.
     const savedHeld = sanitizeHeld(rec?.held);
-    let rc = savedHeld.right?.cls;
-    if (rc !== "sword" && rc !== "bow" && rc !== "staff") {
-      rc =
-        Math.random() < BOT.rangedShare
-          ? Math.random() < 0.5
-            ? "bow"
-            : "staff"
-          : "sword";
-    }
+    // Золотой меч подобран с земли (см. lootTarget) — оставляем. Иначе оружие
+    // по преобладающей характеристике: сила→меч, ловкость→лук, интеллект→посох
+    // (ничья / нет перекоса → меч).
+    const hasGold =
+      savedHeld.right?.cls === "sword" && savedHeld.right?.tier === "gold";
+    const rc = hasGold ? "sword" : botWeaponFor(p.str, p.agi, p.int);
     p.rightCls = rc;
-    p.rightTier = savedHeld.right?.tier ?? "base";
+    p.rightTier = hasGold ? "gold" : "base";
     // Лук занимает обе руки — без щита; меч/посох — со щитом.
     p.leftCls = rc === "bow" ? "" : "shield";
     p.leftTier = rc === "bow" ? "" : "base";

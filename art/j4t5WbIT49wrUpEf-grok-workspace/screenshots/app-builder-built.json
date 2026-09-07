@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Костёр лагеря",
+      "hasCanvas": true,
+      "bodyTextLen": 164,
+      "bodyTextHash": "44434fc2c76a553219864e93b2801a6e3bb8e93f420b0a546fdc75979ec623d2",
+      "bodyTextPrefix": "БОЕВОЙ ЛАГЕРЬ Костёр Центр площади. Радиус 2 м. Камни, поленья и",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Костёр лагеря",
+      "hasCanvas": true,
+      "bodyTextLen": 107,
+      "bodyTextHash": "cfd30a261fdf3e8b823aa6bf8ff4d05d039870906890d8544c889d78baf62a04",
+      "bodyTextPrefix": "БОЕВОЙ ЛАГЕРЬ Костёр Центр площади. Радиус 2 м. Камни, поленья и",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

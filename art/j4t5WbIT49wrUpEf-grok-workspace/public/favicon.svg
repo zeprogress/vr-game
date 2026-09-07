@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Campfire">
+  <rect width="32" height="32" rx="8" fill="#0C0B0A"/>
+  <path fill="#C46A3A" d="M16 4c3.6 5.2 7.4 8.2 7.4 13.1A7.4 7.4 0 1 1 8.6 17.1C8.6 12.2 12.4 9.2 16 4z"/>
+  <path fill="#F0E6D8" d="M16 11.2c1.8 2.4 3.5 3.8 3.5 6.4a3.5 3.5 0 1 1-7 0c0-2.6 1.7-4 3.5-6.4z"/>
+  <ellipse cx="8.4" cy="25.6" rx="4.2" ry="2.8" fill="#6E6A64"/>
+  <ellipse cx="16" cy="26.6" rx="4.6" ry="2.6" fill="#7A756E"/>
+  <ellipse cx="23.6" cy="25.6" rx="4.2" ry="2.8" fill="#6E6A64"/>
+</svg>
