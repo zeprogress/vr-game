@@ -46,28 +46,31 @@ const C = {
   ember: new Color3(1.0, 0.5, 0.15),
 };
 
+/**
+ * Плоский материал лагеря. `emissive` задан — самосветящийся (костёр, фонари),
+ * его крутит tick сам. Не задан — обычная поверхность: движок днём даёт нулевую
+ * заливку (ambient=0), и без подсветки боковые грани уходят в чёрное — как во
+ * всём паке, кладём эмиссив ~25% от цвета и модулируем его дневным светом в
+ * tick (ночью почти ноль, чтобы лагерь не светился сам).
+ */
 function flatMat(
   scene: Scene,
   name: string,
   color: Color3,
   emissive?: Color3,
-  _doubleSided = false,
+  dayLit?: { m: StandardMaterial; base: Color3 }[],
 ): StandardMaterial {
   const m = new StandardMaterial(name, scene);
   m.diffuseColor = color;
   m.specularColor = new Color3(0, 0, 0);
-  // Все примитивы лагеря — двусторонние: при scene.performancePriority
-  // (Intermediate/Aggressive) движок проставляет мешам
-  // overrideMaterialSideOrientation, и часть боксов/цилиндров рисовалась
-  // изнанкой (чёрной). Двусторонний материал + twoSidedLighting снимает вопрос
-  // до art-pass (замена на .glb). Небольшой эмиссив-пол — страховка на ночь.
   m.backFaceCulling = false;
   m.twoSidedLighting = true;
-  // Плоская заливка: blockout читается при любом свете и ракурсе (у части
-  // примитивов движок ставит «изнаночную» ориентацию — см. коммит). Art-pass
-  // заменит на .glb с нормальным освещением.
-  m.emissiveColor = emissive ?? color.scale(0.6);
-  m.diffuseColor = color.scale(0.5);
+  if (emissive) {
+    m.emissiveColor = emissive;
+  } else if (dayLit) {
+    m.emissiveColor = color.scale(0.25);
+    dayLit.push({ m, base: color.clone() });
+  }
   return m;
 }
 
@@ -75,6 +78,9 @@ function flatMat(
 function makeSignTexture(scene: Scene, title: string, body: string): StandardMaterial {
   const tex = new DynamicTexture(`hubSign_${title}`, { width: 512, height: 288 }, scene, false);
   const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+  // Грань +Z плоскости Babylon зеркалит текстуру по X — рисуем зеркально.
+  ctx.translate(512, 0);
+  ctx.scale(-1, 1);
   ctx.fillStyle = "#efe6d2";
   ctx.fillRect(0, 0, 512, 288);
   ctx.fillStyle = "#5a3a1e";
@@ -86,9 +92,7 @@ function makeSignTexture(scene: Scene, title: string, body: string): StandardMat
   ctx.fillText(title, 256, 78);
   ctx.font = "30px system-ui, sans-serif";
   body.split("\n").forEach((line, i) => ctx.fillText(line, 256, 150 + i * 44));
-  tex.update(false);
-  tex.uScale = -1; // CreatePlane отражает текстуру по горизонтали
-  tex.uOffset = 1;
+  tex.update(); // invertY по умолчанию — текст стоит правильно
   const m = new StandardMaterial(`hubSignMat_${title}`, scene);
   m.diffuseTexture = tex;
   m.emissiveTexture = tex;
@@ -129,11 +133,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     }
   };
 
-  const matDirt = flatMat(scene, "hubDirt", C.dirt);
-  const matPath = flatMat(scene, "hubPath", C.path);
-  const matWood = flatMat(scene, "hubWood", C.wood);
-  const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight);
-  const matStone = flatMat(scene, "hubStone", C.stone);
+  // Обычные поверхности лагеря — их эмиссив-заливку крутит tick по дню/ночи.
+  const dayLit: { m: StandardMaterial; base: Color3 }[] = [];
+  const matDirt = flatMat(scene, "hubDirt", C.dirt, undefined, dayLit);
+  const matPath = flatMat(scene, "hubPath", C.path, undefined, dayLit);
+  const matWood = flatMat(scene, "hubWood", C.wood, undefined, dayLit);
+  const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight, undefined, dayLit);
+  const matStone = flatMat(scene, "hubStone", C.stone, undefined, dayLit);
   const matBanner = flatMat(scene, "hubBanner", C.banner, C.banner.scale(0.12));
   const emberMat = flatMat(scene, "hubEmber", C.ember, C.ember);
   const lanternMat = flatMat(scene, "hubLantern", new Color3(1, 0.82, 0.5), new Color3(1, 0.7, 0.35));
@@ -227,6 +233,14 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       const leg = MeshBuilder.CreateBox(`benchLeg${i}_${s}`, { width: 0.16, height: 0.45, depth: 0.4 }, scene);
       leg.position.set(bx + Math.cos(a + Math.PI / 2) * s, groundY(bx, bz) + 0.22, bz + Math.sin(a + Math.PI / 2) * s);
       clutter.push(leg);
+    }
+    // коллизия вдоль скамьи (2 круга — длинная, одним не накрыть)
+    for (const s of [-0.7, 0.7]) {
+      obstacles.push({
+        x: bx + Math.cos(a + Math.PI / 2) * s,
+        z: bz + Math.sin(a + Math.PI / 2) * s,
+        r: 0.55,
+      });
     }
   }
   // бочки и ящики — врассыпную по краю площади
@@ -358,6 +372,22 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     fenceParts.push(rail);
   }
   merge(fenceParts, "hubFence", matWood);
+  // Забор — сплошная коллизия по кольцу (кроме проёма ворот): игрок выходит
+  // из лагеря только через ворота на дорогу к поляне.
+  {
+    const toGate = Math.atan2(g.dir.z, g.dir.x);
+    const ring = 40;
+    for (let i = 0; i < ring; i++) {
+      const a = (i / ring) * Math.PI * 2;
+      const da = Math.abs(((a - toGate + Math.PI) % (Math.PI * 2)) - Math.PI);
+      if (da < 0.62) continue; // проём ворот
+      obstacles.push({
+        x: cx + Math.cos(a) * (HUB.campRadius - 0.5),
+        z: cz + Math.sin(a) * (HUB.campRadius - 0.5),
+        r: 0.6,
+      });
+    }
+  }
 
   // --- 9. Оружейная: навес + стойки (само оружие ставит CombatSystem по
   //        zone.*Home — они уже указывают сюда, см. Zone.ts) ---
@@ -388,7 +418,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     const roof = MeshBuilder.CreatePlane("hubWeaponsCanopy", { width: 6, height: 4 }, scene);
     roof.rotation.x = Math.PI / 2;
     roof.position.set(w.x, gy0 + 2.6, w.z);
-    roof.material = flatMat(scene, "hubCanopyW", C.canvas, undefined, true);
+    roof.material = flatMat(scene, "hubCanopyW", C.canvas, undefined, dayLit);
     roof.parent = root;
     roof.isPickable = false;
     obstacles.push({ x: w.x, z: w.z, r: 1.4 });
@@ -429,7 +459,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     const roof = MeshBuilder.CreateCylinder("hubTentRoof", { height: 2.2, diameterBottom: 15, diameterTop: 0, tessellation: 4 }, scene);
     roof.position.set(mt.x, gy0 + 4.2, mt.z);
     roof.rotation.y = Math.PI / 4;
-    roof.material = flatMat(scene, "hubTentCanvas", C.canvas, undefined, true);
+    roof.material = flatMat(scene, "hubTentCanvas", C.canvas, undefined, dayLit);
     roof.parent = root;
     roof.isPickable = false;
     // стены-полотна с трёх сторон (вход со стороны площади открыт)
@@ -437,7 +467,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       const wall = MeshBuilder.CreatePlane("tentWall", { width: ww, height: 3.4 }, scene);
       wall.position.set(mt.x + wx, gy0 + 1.7, mt.z + wz);
       wall.rotation.y = ry;
-      wall.material = flatMat(scene, "hubTentWall", C.canvas.scale(0.92), undefined, true);
+      wall.material = flatMat(scene, "hubTentWall", C.canvas.scale(0.92), undefined, dayLit);
       wall.parent = root;
       wall.isPickable = false;
     }
@@ -446,7 +476,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     banner.material = matBanner;
     banner.parent = root;
     banner.isPickable = false;
-    obstacles.push({ x: mt.x - 3.5, z: mt.z, r: 2 }, { x: mt.x + 3.5, z: mt.z, r: 2 }, { x: mt.x, z: mt.z - 3.5, r: 2 });
+    // Коллизия по стенам шатра (задняя + две боковые), вход со стороны
+    // площади открыт.
+    for (let t = -1; t <= 1; t += 0.5) {
+      obstacles.push({ x: mt.x + t * 4.5, z: mt.z - 4, r: 0.7 }); // задняя
+      obstacles.push({ x: mt.x - 5, z: mt.z + t * 3.6, r: 0.7 }); // левая
+      obstacles.push({ x: mt.x + 5, z: mt.z + t * 3.6, r: 0.7 }); // правая
+    }
   }
 
   // --- 12. Смотровая башня (ориентир, виден отовсюду) ---
@@ -475,7 +511,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     const roof = MeshBuilder.CreateCylinder("towerRoof", { height: 1.8, diameterBottom: 5.4, diameterTop: 0, tessellation: 4 }, scene);
     roof.position.set(wt.x, gy0 + H + 2.1, wt.z);
     roof.rotation.y = Math.PI / 4;
-    roof.material = flatMat(scene, "hubTowerRoof", C.banner.scale(0.8), undefined, true);
+    roof.material = flatMat(scene, "hubTowerRoof", C.banner.scale(0.8), undefined, dayLit);
     roof.parent = root;
     roof.isPickable = false;
     const flag = MeshBuilder.CreatePlane("hubTowerFlag", { width: 1.6, height: 1 }, scene);
@@ -513,7 +549,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       const awn = MeshBuilder.CreatePlane("stallAwning", { width: 2.8, height: 1.8 }, scene);
       awn.rotation.x = Math.PI / 2.6;
       awn.position.set(sx, gy0 + 2.3, sz - 0.1);
-      awn.material = flatMat(scene, "hubAwn", i % 2 ? C.canvas : C.banner.scale(0.9), undefined, true);
+      awn.material = flatMat(scene, "hubAwn", i % 2 ? C.canvas : C.banner.scale(0.9), undefined, dayLit);
       awn.parent = root;
       awn.isPickable = false;
       obstacles.push({ x: sx, z: sz, r: 1.3 });
@@ -548,8 +584,8 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   }
 
   // --- 15. Placeholder NPC (idle-капсулы, лёгкое покачивание) + инструктор ---
-  const npcMat = flatMat(scene, "hubNpc", new Color3(0.42, 0.4, 0.45));
-  const instrMat = flatMat(scene, "hubInstr", new Color3(0.3, 0.42, 0.5));
+  const npcMat = flatMat(scene, "hubNpc", new Color3(0.42, 0.4, 0.45), undefined, dayLit);
+  const instrMat = flatMat(scene, "hubInstr", new Color3(0.3, 0.42, 0.5), undefined, dayLit);
   const npcs: { mesh: Mesh; phase: number; baseY: number }[] = [];
   const npcSpots: { x: number; z: number; instructor?: boolean }[] = [
     { x: cx + 2.5, z: cz + 3.5 },
@@ -604,11 +640,16 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   const lanternBase = new Color3(1, 0.7, 0.35);
   const forgeBase = new Color3(1, 0.35, 0.1);
   function tick(daylight: number): void {
-    const night = 1 - Math.min(1, Math.max(0, daylight));
+    const d = Math.min(1, Math.max(0, daylight));
+    const night = 1 - d;
     const glow = 0.25 + night * 0.9;
     emberMat.emissiveColor.copyFrom(emberBase).scaleInPlace(0.5 + night * 0.6);
     lanternMat.emissiveColor.copyFrom(lanternBase).scaleInPlace(glow);
     forgeMat.emissiveColor.copyFrom(forgeBase).scaleInPlace(0.7 + night * 0.4);
+    // Обычные поверхности: днём подсвечиваем боковые грани (заливки от движка
+    // нет), ночью гасим почти в ноль — лагерь не должен светиться сам.
+    const fill = 0.06 + 0.42 * d;
+    for (const g of dayLit) g.m.emissiveColor.copyFrom(g.base).scaleInPlace(fill);
     const t = performance.now() / 1000;
     for (const n of npcs) {
       n.mesh.position.y = n.baseY + Math.sin(t * 1.6 + n.phase) * 0.03;
