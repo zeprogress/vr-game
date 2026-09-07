@@ -106,7 +106,7 @@ export function resolveBlock(
     const cone = projectile ? SHIELD.swordProjectileCone : SHIELD.swordBlockCone;
     if (g.wx * ax + g.wz * az > Math.cos(cone)) {
       return {
-        mult: projectile ? SHIELD.blockedDamage : SHIELD.swordBlockedFraction,
+        mult: projectile ? SHIELD.swordProjectileFraction : SHIELD.swordBlockedFraction,
         by: 2,
       };
     }
