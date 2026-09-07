@@ -156,6 +156,12 @@ export const BOSS = {
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
   hp: 1000,
   scale: 4.25, // во столько раз крупнее обычного слизня
+  /**
+   * Модель слизня-босса шире сферического хитбокса `MOB.bodyRadius*scale` —
+   * без этого множителя боты в рейде заходили «внутрь» туши. Радиус тела для
+   * коллизий/дистанции удара = `MOB.bodyRadius * scale * bodyMult`.
+   */
+  bodyMult: 1.3,
   aggroRange: 28,
   wanderRadius: 16,
   hopSpeed: 3.5,

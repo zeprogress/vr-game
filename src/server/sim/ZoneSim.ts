@@ -597,11 +597,13 @@ class Mob {
     }
 
     // не проходит сквозь игроков
+    const bodyR =
+      this.kind === "boss" ? MOB.bodyRadius * this.scale * BOSS.bodyMult : MOB.bodyRadius * this.scale;
     for (const p of players) {
       const gx = this.x - p.x;
       const gz = this.z - p.z;
       const gd = Math.hypot(gx, gz);
-      const clr = PLAYER.radius + MOB.bodyRadius * this.scale;
+      const clr = PLAYER.radius + bodyR;
       if (gd > 1e-4 && gd < clr) {
         const push = (clr - gd) / gd;
         this.x += gx * push;

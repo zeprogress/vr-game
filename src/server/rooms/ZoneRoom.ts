@@ -50,6 +50,7 @@ import {
 import {
   ADMIN_NICK,
   advanceHour,
+  BOSS,
   BOT,
   DAYCYCLE,
   MOB,
@@ -1589,6 +1590,10 @@ export class ZoneRoom extends Room<ZoneState> {
     let raidBoss = bot.raiding ? this.bossMob() : undefined;
     if (raidBoss?.dead) raidBoss = undefined;
     if (bot.raiding && !raidBoss) bot.raiding = false;
+    // Сам босс, пока рейд активен — держим отдельно от `raidBoss` (его ниже
+    // могут обнулить, если бот отвлёкся на осколок): выталкивание из туши
+    // должно работать всегда, а не только пока цель — босс.
+    const raidBossMob = raidBoss;
 
     // Цель: моб (не босс/осколок) в зоне.
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
@@ -1733,11 +1738,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const dz = dzRaw / dist;
     // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
     // а не от центра — иначе бот лезет внутрь туши и мажет (см. resolveBotHit).
-    const bossEdge = raidBoss ? MOB.bodyRadius * raidBoss.scale : 0;
+    // Радиус туши шире сферического хитбокса — BOSS.bodyMult (модель слизня).
+    const bossR = (m: { scale: number }): number =>
+      MOB.bodyRadius * m.scale * BOSS.bodyMult;
+    const bossEdge = raidBoss ? bossR(raidBoss) : 0;
     const attackReach = bossEdge + BOT.attackRange;
     // Держимся от края туши босса: он крупный и сам скачет — иначе бот
     // оказывается внутри модели.
-    const bossKeepOut = bossEdge * 1.1 + PLAYER.radius + 0.35;
+    const bossKeepOut = bossEdge + PLAYER.radius + 0.35;
     const stopAt = raidBoss
       ? bossKeepOut + 0.4
       : loot
@@ -1807,14 +1815,16 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.z += bot.vz * dt;
 
     // Жёстко не даём стоять внутри туши босса (соседей расталкивает цикл
-    // выше, а босса там нет — он моб). Толкаем строго наружу от центра.
-    if (raidBoss) {
-      const bx = p.head.x - raidBoss.x;
-      const bz = p.head.z - raidBoss.z;
+    // выше, а босса там нет — он моб). Работает всё время рейда, даже когда
+    // бот отвлёкся на осколок и цель — не босс.
+    if (raidBossMob && !raidBossMob.dead) {
+      const keepOut = bossR(raidBossMob) + PLAYER.radius + 0.35;
+      const bx = p.head.x - raidBossMob.x;
+      const bz = p.head.z - raidBossMob.z;
       const bd = Math.hypot(bx, bz);
-      if (bd > 1e-3 && bd < bossKeepOut) {
-        p.head.x = raidBoss.x + (bx / bd) * bossKeepOut;
-        p.head.z = raidBoss.z + (bz / bd) * bossKeepOut;
+      if (bd > 1e-3 && bd < keepOut) {
+        p.head.x = raidBossMob.x + (bx / bd) * keepOut;
+        p.head.z = raidBossMob.z + (bz / bd) * keepOut;
         const inward = (bot.vx * bx + bot.vz * bz) / bd;
         if (inward < 0) {
           bot.vx -= (bx / bd) * inward;
@@ -1939,7 +1949,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Моб мог чуть отойти за время замаха — небольшой допуск, иначе боты
     // постоянно мажут по подвижным слизням. У босса ещё запас на радиус туши.
     const reach =
-      BOT.attackRange * 1.4 + (mob.kind === "boss" ? MOB.bodyRadius * mob.scale : 0);
+      BOT.attackRange * 1.4 +
+      (mob.kind === "boss" ? MOB.bodyRadius * mob.scale * BOSS.bodyMult : 0);
     if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
     // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
