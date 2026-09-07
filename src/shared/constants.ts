@@ -222,25 +222,60 @@ export const BOSS_CFG: MobConfig = {
 };
 
 /**
- * Лагеря усиленных мобов — расставлены по свободным местам карты (не в HUB и
- * не в углу босса). `elite` множит HP, урон, опыт и размер (визуально крупнее).
- * Каждый моб «прописан» у своей точки лагеря — туда же и возрождается.
+ * Виды усиленных мобов из лагерей. `kind` — база ИИ (slime = ближний бой,
+ * spitter = дальний). Множители — поверх базового моба этого kind. `scaleMul` —
+ * визуальный размер относительно обычного слизня. `tint` — перекрас (null —
+ * родная текстура пака).
+ */
+export interface EliteMobDef {
+  model: string;
+  name: string;
+  level: number;
+  kind: "slime" | "spitter";
+  hpMul: number;
+  dmgMul: number;
+  xpMul: number;
+  scaleMul: number;
+  tint: readonly [number, number, number] | null;
+}
+
+export const ELITE_MOBS: Record<string, EliteMobDef> = {
+  // Пчёлы: мелкие, кучные, бьют вблизи, слабые поодиночке (берут числом).
+  bee: {
+    model: "monBee", name: "Пчела", level: 3, kind: "slime",
+    hpMul: 0.7, dmgMul: 0.55, xpMul: 0.5, scaleMul: 0.5, tint: null,
+  },
+  spikyBlob: {
+    model: "monSpikyBlob", name: "Шипобрюх", level: 6, kind: "slime",
+    hpMul: 2.0, dmgMul: 1.7, xpMul: 2.2, scaleMul: 1.15, tint: null,
+  },
+  frog: {
+    model: "monFrog", name: "Болотная жаба", level: 7, kind: "slime",
+    hpMul: 1.9, dmgMul: 1.6, xpMul: 2.0, scaleMul: 0.75,
+    tint: [0.24, 0.7, 0.26], // перекрас в зелёный
+  },
+  cactoro: {
+    model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
+    hpMul: 2.5, dmgMul: 2.0, xpMul: 2.7, scaleMul: 1.2, tint: null,
+  },
+};
+
+/**
+ * Лагеря усиленных мобов — по свободным местам карты (не в HUB, не в углу
+ * босса). `type` → ELITE_MOBS. Каждый моб «прописан» у точки лагеря.
  */
 export const MOB_CAMPS: {
   x: number;
   z: number;
-  kind: "slime" | "spitter";
+  type: keyof typeof ELITE_MOBS;
   count: number;
-  elite: number;
   spread: number;
-  /** Ключ MODELS на клиенте (mon*) — вид моба лагеря. */
-  model: string;
 }[] = [
-  { x: -52, z: 44, kind: "spitter", count: 4, elite: 1.7, spread: 6, model: "monBee" },
-  { x: 56, z: 40, kind: "slime", count: 6, elite: 1.8, spread: 7, model: "monSpikyBlob" },
-  { x: 68, z: -32, kind: "spitter", count: 4, elite: 2.0, spread: 6, model: "monBee" },
-  { x: -66, z: 6, kind: "slime", count: 5, elite: 2.1, spread: 6, model: "monCactoro" },
-  { x: 8, z: 62, kind: "slime", count: 4, elite: 2.3, spread: 5, model: "monFrog" },
+  { x: -52, z: 44, type: "bee", count: 12, spread: 4 },
+  { x: 56, z: 40, type: "spikyBlob", count: 6, spread: 7 },
+  { x: 68, z: -32, type: "bee", count: 14, spread: 4 },
+  { x: -66, z: 6, type: "frog", count: 7, spread: 5 },
+  { x: 8, z: 62, type: "cactoro", count: 5, spread: 6 },
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

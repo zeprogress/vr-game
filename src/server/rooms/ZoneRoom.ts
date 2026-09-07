@@ -58,6 +58,7 @@ import {
   PLAYER_HP,
   PROGRESSION,
   PVP,
+  ELITE_MOBS,
   MOB_CAMPS,
   RESPAWN,
   SPITTER,
@@ -219,8 +220,10 @@ function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | 
   return "sword";
 }
 
-/** Лагеря мобов по возрастанию силы — для расселения ботов по уровню. */
-const CAMPS_BY_POWER = [...MOB_CAMPS].sort((a, b) => a.elite - b.elite);
+/** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
+const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
+  (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
+);
 
 /**
  * Куда высадить/возродить бота: чем выше уровень, тем ближе к сильным мобам.
@@ -474,6 +477,8 @@ export class ZoneRoom extends Room<ZoneState> {
       s.kind = m.kind;
       s.scale = m.scale;
       s.model = m.model;
+      s.mobName = m.eliteName;
+      s.mobLevel = m.eliteLevel;
       this.state.mobs.set(m.id, s);
     }
     for (const d of this.sim.dummies.values()) {
@@ -2249,6 +2254,8 @@ export class ZoneRoom extends Room<ZoneState> {
         s.kind = m.kind;
         s.scale = m.scale;
         s.model = m.model;
+        s.mobName = m.eliteName;
+        s.mobLevel = m.eliteLevel;
         this.state.mobs.set(m.id, s);
       }
       s.x = m.x;

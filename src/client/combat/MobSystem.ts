@@ -232,6 +232,8 @@ export class NetMobs {
         this.leanMobs,
         this.mobUiScale,
         s.model,
+        s.mobName,
+        s.mobLevel,
       );
       this.mobs.set(id, m);
       this.targets.push(m);

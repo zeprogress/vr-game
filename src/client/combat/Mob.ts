@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
-import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, ELITE_MOBS, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -127,6 +127,10 @@ export class Mob implements Hittable {
     private readonly uiScale = 1,
     /** Ключ MODELS: своя модель из пака (усиленные мобы лагерей). Пусто — стандарт. */
     private readonly modelName = "",
+    /** Переопределение имени в плашке (усиленные мобы). Пусто — по kind. */
+    mobName = "",
+    /** Переопределение уровня в плашке. 0 — по kind. */
+    mobLevel = 0,
   ) {
     const opaque = this.lean;
     const cfg =
@@ -137,6 +141,8 @@ export class Mob implements Hittable {
           : kind === "shard"
             ? SHARD_CFG
             : SLIME_CFG;
+    const tagName = mobName || cfg.name;
+    const tagLevel = mobLevel > 0 ? mobLevel : cfg.level;
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
@@ -220,8 +226,8 @@ export class Mob implements Hittable {
       scene,
       this.uiAnchor,
       new Vector3(0, MOB.bodyRadius * 2 + 0.78, 0),
-      cfg.name,
-      cfg.level,
+      tagName,
+      tagLevel,
       kind === "boss"
         ? new Color3(1, 0.3, 0.3)
         : cfg.ranged
@@ -283,7 +289,8 @@ export class Mob implements Hittable {
     // только стандартных слизней/плевунов/босса.
     if (this.modelName) {
       const { recolorMonster } = await import("../world/models");
-      recolorMonster(rig.root);
+      const def = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName);
+      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined);
     } else {
       recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
     }

@@ -2,6 +2,7 @@ import {
   BOSS,
   BOSS_CFG,
   COMBAT,
+  ELITE_MOBS,
   MOB,
   MOB_CAMPS,
   PLAYER,
@@ -232,16 +233,28 @@ class Mob {
   readonly dmgMul: number;
   /** Модель из пака для этого моба (ключ MODELS на клиенте). Пусто — стандарт. */
   readonly model: string;
+  /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
+  readonly eliteName: string;
+  readonly eliteLevel: number;
 
   constructor(
     readonly kind: MobKind,
     hx: number,
     hz: number,
-    /** >1 — усиленный моб лагеря: множит HP, урон, опыт и размер. */
-    elite = 1,
-    model = "",
+    /** Усиленный моб лагеря — множители и вид поверх базового моба этого kind. */
+    opts: {
+      model?: string;
+      name?: string;
+      level?: number;
+      hpMul?: number;
+      dmgMul?: number;
+      xpMul?: number;
+      scaleMul?: number;
+    } = {},
   ) {
-    this.model = model;
+    this.model = opts.model ?? "";
+    this.eliteName = opts.name ?? "";
+    this.eliteLevel = opts.level ?? 0;
     this.homeX = hx;
     this.homeZ = hz;
     this.x = hx;
@@ -257,15 +270,13 @@ class Mob {
           : kind === "shard"
             ? SHARD_CFG
             : SLIME_CFG;
-    const el = kind === "slime" || kind === "spitter" ? Math.max(1, elite) : 1;
-    this.hp = cfg.hp * el;
-    this.maxHp = cfg.hp * el;
+    this.hp = cfg.hp * (opts.hpMul ?? 1);
+    this.maxHp = this.hp;
     this.ranged = cfg.ranged;
-    this.xp = cfg.xp * el;
-    this.dmgMul = el;
+    this.xp = cfg.xp * (opts.xpMul ?? 1);
+    this.dmgMul = opts.dmgMul ?? 1;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
-    // Элита заметно, но не гротескно крупнее: +50% от превышения над 1.
-    this.scale = base * (1 + (el - 1) * 0.5);
+    this.scale = base * (opts.scaleMul ?? 1);
   }
 
   get aggro(): boolean {
@@ -901,11 +912,20 @@ export class ZoneSim {
     }
     // Лагеря усиленных мобов по свободным местам карты.
     for (const camp of MOB_CAMPS) {
+      const def = ELITE_MOBS[camp.type];
       for (let i = 0; i < camp.count; i++) {
         const a = (i / camp.count) * Math.PI * 2 + camp.x;
         const r = camp.spread * (0.35 + Math.random() * 0.65);
         const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
-        const m = new Mob(camp.kind, x, z, camp.elite, camp.model);
+        const m = new Mob(def.kind, x, z, {
+          model: def.model,
+          name: def.name,
+          level: def.level,
+          hpMul: def.hpMul,
+          dmgMul: def.dmgMul,
+          xpMul: def.xpMul,
+          scaleMul: def.scaleMul,
+        });
         this.mobs.set(m.id, m);
       }
     }

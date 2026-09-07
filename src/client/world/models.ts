@@ -380,7 +380,7 @@ export function recolorCharacter(root: TransformNode): void {
  * но переводим PBR → плоский StandardMaterial с эмиссивной заливкой — иначе в
  * дневном свете (ambient=0) вертикальные грани почти чёрные.
  */
-export function recolorMonster(root: TransformNode): void {
+export function recolorMonster(root: TransformNode, tint?: Color3): void {
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
     const src = mesh.material as
@@ -403,10 +403,12 @@ export function recolorMonster(root: TransformNode): void {
       if (tex) {
         flat.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
         flat.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
-        flat.emissiveColor = new Color3(0.32, 0.32, 0.32); // заливка текстурой
+        // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
+        flat.diffuseColor = tint ?? new Color3(1, 1, 1);
+        flat.emissiveColor = (tint ?? new Color3(1, 1, 1)).scale(0.3);
       } else {
-        flat.diffuseColor = base;
-        flat.emissiveColor = base.scale(0.28);
+        flat.diffuseColor = tint ?? base;
+        flat.emissiveColor = (tint ?? base).scale(0.28);
       }
       seen.set(src.id, flat);
     }
