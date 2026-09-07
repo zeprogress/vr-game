@@ -2455,7 +2455,18 @@ export class ZoneRoom extends Room<ZoneState> {
       az = 1;
     }
 
-    const block = resolveBlock(rt.guard, ax, az, h.projectile);
+    // Щит блокирует «по взгляду» у всех, кто не целится им физически: боты
+    // вообще не шлют guard, а на телефоне (третье лицо) щит висит на руке рига
+    // и его нормаль случайна. В VR оставляем как есть — там щитом реально
+    // подставляются, и подмена на взгляд обесценила бы блок.
+    let guard = rt.guard;
+    const holdsShield = p.leftCls === "shield" || p.rightCls === "shield";
+    if (holdsShield && p.mode !== "vr") {
+      const yaw = 2 * Math.atan2(p.head.qy, p.head.qw);
+      guard = { sx: Math.sin(yaw), sz: Math.cos(yaw), wx: guard.wx, wz: guard.wz };
+    }
+
+    const block = resolveBlock(guard, ax, az, h.projectile);
     const dmg = h.dmg * block.mult;
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
