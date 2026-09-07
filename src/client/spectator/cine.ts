@@ -109,13 +109,18 @@ export const CINE_PATHS: CinePath[] = [
 export const ROTATION: string[] = [
   "overview",
   "orbitPlayer",
+  "sidePlayer",
   "crowd",
   "eyePlayer",
+  "lowChase",
   "orbitBoss",
   "eyeMob",
+  "dronePlayer",
   "orbitPlayer",
+  "sidePlayer",
   "crowd",
   "eyePlayer",
+  "lowChase",
   "eyeMob",
 ];
 

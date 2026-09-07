@@ -3,6 +3,7 @@ import {
   BOSS_CFG,
   COMBAT,
   MOB,
+  MOB_CAMPS,
   PLAYER,
   SHARD,
   SHARD_CFG,
@@ -201,10 +202,15 @@ class Mob {
     return this.lungeWindupT > 0 || this.lungeT > 0;
   }
 
+  /** Множитель урона усиленного («элитного») моба из лагеря. 1 — обычный. */
+  readonly dmgMul: number;
+
   constructor(
     readonly kind: MobKind,
     hx: number,
     hz: number,
+    /** >1 — усиленный моб лагеря: множит HP, урон, опыт и размер. */
+    elite = 1,
   ) {
     this.homeX = hx;
     this.homeZ = hz;
@@ -221,11 +227,15 @@ class Mob {
           : kind === "shard"
             ? SHARD_CFG
             : SLIME_CFG;
-    this.hp = cfg.hp;
-    this.maxHp = cfg.hp;
+    const el = kind === "slime" || kind === "spitter" ? Math.max(1, elite) : 1;
+    this.hp = cfg.hp * el;
+    this.maxHp = cfg.hp * el;
     this.ranged = cfg.ranged;
-    this.xp = cfg.xp;
-    this.scale = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
+    this.xp = cfg.xp * el;
+    this.dmgMul = el;
+    const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
+    // Элита заметно, но не гротескно крупнее: +50% от превышения над 1.
+    this.scale = base * (1 + (el - 1) * 0.5);
   }
 
   get aggro(): boolean {
@@ -642,7 +652,7 @@ class Mob {
         this.attackSeq = (this.attackSeq + 1) & 0xffff;
         hits.push({
           target: np.sessionId,
-          dmg: MOB.attackDamage,
+          dmg: MOB.attackDamage * this.dmgMul,
           fromX: this.x,
           fromZ: this.z,
           projectile: false,
@@ -761,6 +771,8 @@ class Ball {
     public boss = false,
     /** id моба, который выстрелил (для переключения цели бота). */
     public owner = "",
+    /** Множитель урона плевка усиленного моба. */
+    public dmgMul = 1,
   ) {}
 
   /** true — шарик надо удалить. */
@@ -789,7 +801,7 @@ class Ball {
         const vh = Math.hypot(this.vx, this.vz) || 1;
         hits.push({
           target: p.sessionId,
-          dmg: SPITTER.ballDamage,
+          dmg: SPITTER.ballDamage * this.dmgMul,
           fromX: this.x - (this.vx / vh) * 4,
           fromZ: this.z - (this.vz / vh) * 4,
           projectile: true,
@@ -855,6 +867,17 @@ export class ZoneSim {
       const m = new Mob("spitter", x, z);
       this.mobs.set(m.id, m);
     }
+    // Лагеря усиленных мобов по свободным местам карты.
+    for (const camp of MOB_CAMPS) {
+      for (let i = 0; i < camp.count; i++) {
+        const a = (i / camp.count) * Math.PI * 2 + camp.x;
+        const r = camp.spread * (0.35 + Math.random() * 0.65);
+        const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
+        const m = new Mob(camp.kind, x, z, camp.elite);
+        this.mobs.set(m.id, m);
+      }
+    }
+
     // Босс — в дальнем углу.
     this.boss = new Mob("boss", BOSS.home[0], BOSS.home[1]);
     this.mobs.set(this.boss.id, this.boss);
@@ -925,6 +948,7 @@ export class ZoneSim {
         dz * SPITTER.ballSpeed,
         mob.kind === "boss",
         mob.id,
+        mob.dmgMul,
       );
       this.balls.set(b.id, b);
     };

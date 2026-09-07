@@ -22,7 +22,31 @@ const FRONT_UP = 2.0; // подъём камеры над точкой корп�
 const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 
 /** Чередование кадров в режиме «только боты». */
-const BOT_ROTATION = ["eyePlayer", "crowd", "orbitPlayer", "frontPlayer"] as const;
+const BOT_ROTATION = [
+  "eyePlayer",
+  "sidePlayer",
+  "crowd",
+  "lowChase",
+  "orbitPlayer",
+  "dronePlayer",
+  "frontPlayer",
+] as const;
+
+/** Боковой трекинг: камера едет сбоку вровень с героем, держит его в кадре. */
+const SIDE_DIST = 7.5; // м вбок
+const SIDE_UP = 2.3; // подъём над точкой корпуса
+const SIDE_AIM_Y = 1.0;
+
+/** Низкая экшн-камера: почти у земли, вплотную позади — «бег от третьего лица». */
+const LOW_BACK = 3.2;
+const LOW_UP = 1.15;
+const LOW_LEAD = 3.0;
+const LOW_AIM_Y = 1.15;
+
+/** «Дрон»: высоко и далеко позади героя, вид сверху-сзади в движении. */
+const DRONE_BACK = 13;
+const DRONE_UP = 9;
+const DRONE_AIM_Y = 0.4;
 
 /**
  * «Группа сверху»: неподвижный отвес-3/4 над центром толпы героев на поляне.
@@ -40,6 +64,9 @@ type Shot =
   | { kind: "orbitPlayer"; id: string }
   | { kind: "eyePlayer"; id: string }
   | { kind: "frontPlayer"; id: string }
+  | { kind: "sidePlayer"; id: string }
+  | { kind: "lowChase"; id: string }
+  | { kind: "dronePlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
   | { kind: "crowd" }
@@ -73,6 +100,25 @@ export interface DirectorCtx {
 }
 
 const CENTER = new Vector3(0, 0, 0);
+
+/** Кадры, привязанные к одному игроку/боту (общая логика выбора/валидации). */
+const PLAYER_SHOTS = [
+  "orbitPlayer",
+  "eyePlayer",
+  "frontPlayer",
+  "sidePlayer",
+  "lowChase",
+  "dronePlayer",
+] as const;
+type PlayerShotKind = (typeof PLAYER_SHOTS)[number];
+function isPlayerShotKind(k: string): k is PlayerShotKind {
+  return (PLAYER_SHOTS as readonly string[]).includes(k);
+}
+/** «Погоня сзади» — камера сглаживается вязким фильтром botPos/botFwd. */
+function usesBotFilter(k: string): boolean {
+  return k === "eyePlayer" || k === "frontPlayer" || k === "sidePlayer" ||
+    k === "lowChase" || k === "dronePlayer";
+}
 
 function smoothstep(t: number): number {
   const x = Math.min(1, Math.max(0, t));
@@ -160,8 +206,7 @@ export class SpectatorCamera {
   /** Кого камера показывает сейчас — для нижней плашки оверлея (Ф6). */
   get subject(): { type: "player" | "mob" | "none"; id?: string } {
     const s = this.shot;
-    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer" || s.kind === "frontPlayer")
-      return { type: "player", id: s.id };
+    if (isPlayerShotKind(s.kind)) return { type: "player", id: (s as { id: string }).id };
     if (s.kind === "eyeMob") return { type: "mob", id: s.id };
     if (s.kind === "orbitBoss" && this.lastCtx?.boss) return { type: "mob", id: this.lastCtx.boss.id };
     return { type: "none" };
@@ -239,7 +284,13 @@ export class SpectatorCamera {
   }
 
   private isFightShot(s: Shot): boolean {
-    return s.kind === "orbitBoss" || s.kind === "eyeMob" || s.kind === "eyePlayer";
+    return (
+      s.kind === "orbitBoss" ||
+      s.kind === "eyeMob" ||
+      s.kind === "eyePlayer" ||
+      s.kind === "lowChase" ||
+      s.kind === "sidePlayer"
+    );
   }
 
   private nextShot(ctx: DirectorCtx, fighting: boolean): Shot {
@@ -257,8 +308,7 @@ export class SpectatorCamera {
           if (shot) return shot; // нет группы на поляне — падаем на ракурс ниже
         }
         const id = bots[this.botPickI % bots.length].id;
-        if (kind === "orbitPlayer") return { kind: "orbitPlayer", id };
-        if (kind === "frontPlayer") return { kind: "frontPlayer", id };
+        if (isPlayerShotKind(kind)) return { kind, id } as Shot;
         return { kind: "eyePlayer", id };
       }
     }
@@ -266,7 +316,11 @@ export class SpectatorCamera {
       // Ротация боя: орбита босса → из глаз ближнего игрока.
       const near = this.playerNearestBoss(ctx);
       const fight: Shot[] = [{ kind: "orbitBoss" }];
-      if (near) fight.push({ kind: "eyePlayer", id: near.id });
+      if (near) {
+        fight.push({ kind: "eyePlayer", id: near.id });
+        fight.push({ kind: "sidePlayer", id: near.id });
+        fight.push({ kind: "lowChase", id: near.id });
+      }
       this.fightIdx = (this.fightIdx + 1) % fight.length;
       return fight[this.fightIdx];
     }
@@ -313,7 +367,7 @@ export class SpectatorCamera {
       const idx = Number(id);
       return idx >= 0 && idx < CINE_PATHS.length ? { kind: "path", idx } : null;
     }
-    if (kind === "orbitPlayer" || kind === "eyePlayer" || kind === "frontPlayer") {
+    if (isPlayerShotKind(kind)) {
       let pid = id;
       if (!pid) {
         if (ctx.players.length === 0) return null;
@@ -322,9 +376,7 @@ export class SpectatorCamera {
       } else if (!ctx.players.some((p) => p.id === pid)) {
         return null;
       }
-      if (kind === "orbitPlayer") return { kind: "orbitPlayer", id: pid };
-      if (kind === "frontPlayer") return { kind: "frontPlayer", id: pid };
-      return { kind: "eyePlayer", id: pid };
+      return { kind, id: pid } as Shot;
     }
     if (kind === "eyeMob") {
       // Камеры «из глаз босса» больше нет нигде — ни явным id, ни авто-подбором.
@@ -340,8 +392,8 @@ export class SpectatorCamera {
   }
 
   private shotValid(s: Shot, ctx: DirectorCtx): boolean {
-    if (s.kind === "orbitPlayer" || s.kind === "eyePlayer" || s.kind === "frontPlayer") {
-      return ctx.players.some((p) => p.id === s.id);
+    if (isPlayerShotKind(s.kind)) {
+      return ctx.players.some((p) => p.id === (s as { id: string }).id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
     if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
@@ -374,8 +426,8 @@ export class SpectatorCamera {
   /** Живая (несглаженная) поза «глаз» для кадра, если он такой. */
   private liveEye(s: Shot, ctx: DirectorCtx | null): { eye: Vector3; forward: Vector3 } | null {
     if (!ctx) return null;
-    if (s.kind === "eyePlayer" || s.kind === "frontPlayer")
-      return ctx.players.find((p) => p.id === s.id) ?? null;
+    if (usesBotFilter(s.kind))
+      return ctx.players.find((p) => p.id === (s as { id: string }).id) ?? null;
     if (s.kind === "eyeMob") return ctx.mobs.find((m) => m.id === s.id) ?? null;
     return null;
   }
@@ -452,6 +504,51 @@ export class SpectatorCamera {
           this.botPos.z + (fz / fl) * FRONT_DIST,
         );
         tgt.set(this.botPos.x, this.botPos.y + FRONT_AIM_Y, this.botPos.z);
+        return;
+      }
+      case "sidePlayer": {
+        // Камера сбоку, вровень с героем — трекинг-долли, пока он бежит.
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        // Перпендикуляр к ходу; сторону выбираем детерминированно по id.
+        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
+        const px = (-fz / fl) * side;
+        const pz = (fx / fl) * side;
+        pos.set(
+          this.botPos.x + px * SIDE_DIST,
+          this.botPos.y + SIDE_UP,
+          this.botPos.z + pz * SIDE_DIST,
+        );
+        tgt.set(this.botPos.x, this.botPos.y + SIDE_AIM_Y, this.botPos.z);
+        return;
+      }
+      case "lowChase": {
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        pos.set(
+          this.botPos.x - (fx / fl) * LOW_BACK,
+          this.botPos.y + LOW_UP,
+          this.botPos.z - (fz / fl) * LOW_BACK,
+        );
+        tgt.set(
+          this.botPos.x + (fx / fl) * LOW_LEAD,
+          this.botPos.y + LOW_AIM_Y,
+          this.botPos.z + (fz / fl) * LOW_LEAD,
+        );
+        return;
+      }
+      case "dronePlayer": {
+        const fx = this.botFwd.x;
+        const fz = this.botFwd.z;
+        const fl = Math.hypot(fx, fz) || 1;
+        pos.set(
+          this.botPos.x - (fx / fl) * DRONE_BACK,
+          this.botPos.y + DRONE_UP,
+          this.botPos.z - (fz / fl) * DRONE_BACK,
+        );
+        tgt.set(this.botPos.x, this.botPos.y + DRONE_AIM_Y, this.botPos.z);
         return;
       }
       case "eyePlayer": {

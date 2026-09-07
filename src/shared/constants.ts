@@ -221,6 +221,26 @@ export const BOSS_CFG: MobConfig = {
   ranged: false, // ближний бой первичен; плевок — своя логика в ZoneSim
 };
 
+/**
+ * Лагеря усиленных мобов — расставлены по свободным местам карты (не в HUB и
+ * не в углу босса). `elite` множит HP, урон, опыт и размер (визуально крупнее).
+ * Каждый моб «прописан» у своей точки лагеря — туда же и возрождается.
+ */
+export const MOB_CAMPS: {
+  x: number;
+  z: number;
+  kind: "slime" | "spitter";
+  count: number;
+  elite: number;
+  spread: number;
+}[] = [
+  { x: -52, z: 44, kind: "spitter", count: 4, elite: 1.7, spread: 6 },
+  { x: 56, z: 40, kind: "slime", count: 6, elite: 1.8, spread: 7 },
+  { x: 68, z: -32, kind: "spitter", count: 4, elite: 2.0, spread: 6 },
+  { x: -66, z: 6, kind: "slime", count: 5, elite: 2.1, spread: 6 },
+  { x: 8, z: 62, kind: "spitter", count: 3, elite: 2.3, spread: 5 },
+];
+
 /** Осколок босса: мелкий, быстрый, дохлый. */
 export const SHARD_CFG: MobConfig = {
   name: "Осколок",

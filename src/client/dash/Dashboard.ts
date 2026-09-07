@@ -351,6 +351,9 @@ export class Dashboard {
         this.cmdBtn("орбита", { t: "cam", shot: `orbitPlayer:${p.id}` }, true),
         this.cmdBtn("из глаз", { t: "cam", shot: `eyePlayer:${p.id}` }, true),
         this.cmdBtn("напротив", { t: "cam", shot: `frontPlayer:${p.id}` }, true),
+        this.cmdBtn("сбоку", { t: "cam", shot: `sidePlayer:${p.id}` }, true),
+        this.cmdBtn("низко", { t: "cam", shot: `lowChase:${p.id}` }, true),
+        this.cmdBtn("дрон", { t: "cam", shot: `dronePlayer:${p.id}` }, true),
       );
       this.listEl.appendChild(row);
     }

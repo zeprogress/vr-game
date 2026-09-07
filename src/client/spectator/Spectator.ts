@@ -290,6 +290,11 @@ export class Spectator {
     net.onRtc = (msg) => void this.voice?.handle(msg);
     net.onVoice = (id, t, d) => this.voice?.onVoicePacket(id, t, d);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
+    net.onBossEvent = (kind, by) => {
+      this.overlay?.bossBanner(kind, by);
+      if (kind === "down") this.sfx.bossFanfare();
+      else this.sfx.bossHorn();
+    };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);

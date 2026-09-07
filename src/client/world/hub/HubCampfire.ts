@@ -138,9 +138,9 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     m.setFloat("uAmp", wrap ? 0.16 : 0.22);
     m.setFloat("uWrap", wrap ? 1 : 0);
     m.setFloat("uAlpha", 1);
-    m.setColor3("uColorA", Color3.FromHexString("#fff6c8"));
-    m.setColor3("uColorB", Color3.FromHexString("#ff6a18"));
-    m.setColor3("uColorC", Color3.FromHexString("#6a0d00"));
+    m.setColor3("uColorA", Color3.FromHexString("#ffdf9c"));
+    m.setColor3("uColorB", Color3.FromHexString("#ff560c"));
+    m.setColor3("uColorC", Color3.FromHexString("#5c0a00"));
     m.alphaMode = Constants.ALPHA_ADD;
     m.backFaceCulling = false;
     m.disableDepthWrite = true;
@@ -212,14 +212,14 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     pl.renderingGroupId = 1;
     return pl;
   };
-  const glowIn = mkGlow(3.2, 0.5, "#ff9a42");
-  const glowOut = mkGlow(5.6, 0.2, "#ff6a22");
+  const glowIn = mkGlow(3.2, 0.5, "#ff8630");
+  const glowOut = mkGlow(5.6, 0.2, "#ff5c1a");
 
   // --- свет костра: PointLight, гаснет днём (переключение на границе суток,
   //     как у факелов ботов; в бюджете LIGHT_BUDGET учтён +1) ---
   const fireLight = new PointLight("hubCampfire", pos.clone(), scene);
   fireLight.range = 15;
-  fireLight.diffuse = new Color3(1, 0.62, 0.28);
+  fireLight.diffuse = new Color3(1, 0.54, 0.2);
   fireLight.specular = new Color3(0.18, 0.09, 0.03);
   fireLight.intensity = 0;
   fireLight.setEnabled(false);
