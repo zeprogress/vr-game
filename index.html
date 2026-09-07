@@ -9,6 +9,16 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>VR GAME — прототип</title>
+    <script>
+      // OBS Browser Source (?spectator=…&obs=1): убираем чёрный фон ещё до
+      // загрузки модуля, чтобы в OBS был виден слой-заглушка, а не чёрный экран.
+      if (/[?&]obs=1(&|$)/.test(location.search) && /[?&]spectator=/.test(location.search)) {
+        document.documentElement.style.setProperty("background", "transparent", "important");
+        var s = document.createElement("style");
+        s.textContent = "html,body{background:transparent!important}";
+        document.head.appendChild(s);
+      }
+    </script>
     <style>
       html, body { margin: 0; padding: 0; overflow: hidden; background: #000; }
       /* Никакого выделения, дабл-тап-зума, лупы при долгом тапе и подсветки касания. */
