@@ -248,6 +248,7 @@ export class CombatSystem {
   private tpRangedCd = 0;
   /** ПК/VR: пауза после выстрела из лука. */
   private flatBowCd = 0;
+  private flatStaffCd = 0;
   private tpAimOn = false;
   /** Game читает каждый кадр: включить вид из глаз + прицел. */
   get wantAim(): boolean {
@@ -662,9 +663,14 @@ export class CombatSystem {
 
     const tpStaff = this.held === "staff" && this.player.thirdPerson;
     const tpBow = this.held === "bow" && this.player.thirdPerson;
+    // ПК от первого лица: посох — магический жезл (держишь ЛКМ — копится
+    // заряд, отпустил — огнешар вперёд по взгляду), как лук.
+    const flatStaff = this.held === "staff" && !this.player.inVR && !this.player.thirdPerson;
     if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
       this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire, altFireReleased);
+    } else if (flatStaff) {
+      this.updateFlatStaff(dt, inp.primaryAction, primaryReleased);
     } else if (this.held === "sword" || this.held === "staff") {
       if (this.player.inVR) this.updateVRSwing(dt);
       else this.updateFlatSwing(dt, primaryEdge);
@@ -683,7 +689,9 @@ export class CombatSystem {
     // Магия посоха: держащая рука машет как мечом (выше), вторая — тянет
     // энергию от кристалла и кастует. Только VR.
     if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
-    else if (!tpStaff && !tpBow && (this.charge !== 0 || this.castHooked)) this.resetCast();
+    else if (!tpStaff && !tpBow && !flatStaff && (this.charge !== 0 || this.castHooked)) {
+      this.resetCast();
+    }
 
     this.applyWindup();
     this.trackHandMotion(dt);
@@ -1627,9 +1635,38 @@ export class CombatSystem {
       item.mesh.rotation.z = base[2] - arc * 0.45;
       if (phase > 0.3 && !sw.hitDone) {
         sw.hitDone = true;
-        this.tryHit(item);
+        this.flatStrike(item);
       }
     }
+  }
+
+  /**
+   * Удар мечом в плоском режиме — строго ВПЕРЁД по взгляду камеры, а не по
+   * фактическому (смещённому вправо) положению клинка в руке. Так удар идёт
+   * туда, куда смотришь, и по центру прицела.
+   */
+  private flatStrike(item: Item): void {
+    this.lastHitHand = item.hand ?? "right";
+    const eye = this.player.eyePosition;
+    const f = this.player.eyeForward.clone();
+    f.y = 0;
+    if (f.lengthSquared() < 1e-6) return;
+    f.normalize();
+    const guard = eye.add(f.scale(0.5));
+    const tip = eye.add(f.scale(2.4));
+    let landed = false;
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const s = t.hitSegment();
+      if (segmentDistance(guard, tip, s.a, s.b) <= s.radius + COMBAT.hitMargin) {
+        const mid = s.a.add(s.b).scale(0.5);
+        if (t.hit(f, "sword", closestPointOnSegment(mid, guard, tip))) {
+          landed = true;
+          this.haptic(this.heldHand, 0.7, 70);
+        }
+      }
+    }
+    if (landed) this.sfx.hitThud();
   }
 
   /**
@@ -1977,6 +2014,50 @@ export class CombatSystem {
     });
     this.sfx.at(origin, () => this.sfx.bowRelease(Math.min(1, 0.4 + charge)));
     this.emitSound("bow", origin);
+  }
+
+  /**
+   * Посох на ПК от первого лица: держишь ЛКМ — цепляемся за кристалл и копим
+   * заряд (мана убывает), отпустил — огнешар летит вперёд по взгляду.
+   * Пауза после выстрела — как у лука.
+   */
+  private updateFlatStaff(dt: number, primaryHeld: boolean, primaryReleased: boolean): void {
+    const fb = MAGIC.firebolt;
+    this.flatStaffCd = Math.max(0, this.flatStaffCd - dt);
+    this.lowManaCd = Math.max(0, this.lowManaCd - dt);
+    const staff = this.held1("staff");
+    if (!staff) {
+      if (this.castHooked) this.resetCast();
+      return;
+    }
+
+    if (primaryHeld && this.flatStaffCd <= 0) {
+      if (!this.castHooked) {
+        if (this.mana >= fb.minMana) {
+          this.castHooked = true;
+          this.castMode = "solo";
+          this.charge = 0;
+        } else if (this.lowManaCd <= 0) {
+          this.lowManaCd = 2;
+          this.onLowMana?.();
+        }
+      }
+      if (this.castHooked && this.mana > 0 && this.charge < 1) {
+        const rate = (1 / fb.chargeTime) * (1.5 - 0.5 * this.charge);
+        this.charge = clamp(this.charge + rate * dt, 0, 1);
+        this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+      }
+      if (this.castHooked) this.showChargeOrb(staff.mesh);
+    }
+
+    if (primaryReleased && this.castHooked) {
+      const charge = Math.max(this.charge, fb.minCharge + 0.02);
+      this.resetCast();
+      if (this.flatStaffCd <= 0) {
+        this.flatStaffCd = fb.cooldown / this.prog.attackSpeed;
+        this.emitFirebolt(charge, staff.hand ?? "right");
+      }
+    }
   }
 
   private tpStaffCast(

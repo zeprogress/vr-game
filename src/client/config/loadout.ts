@@ -130,7 +130,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   items: {
     sword: {
-      flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.55 },
+      flat: { pos: [0.3, -0.34, 0.92], rot: [-0.12, 0.04, -0.12], scale: 0.55 },
       vrLeft: { pos: [0.005, -0.02, -0.08], rot: [0.26, -1.56, -1.36], scale: 1 },
       vrRight: { pos: [-0.005, -0.015, -0.06], rot: [0.28, 1.46, 1.44], scale: 1 },
     },
@@ -150,7 +150,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
       vrRight: { pos: [-0.03, 0, 0.02], rot: [0.9, 0, 0], scale: 1 },
     },
     staff: {
-      flat: { pos: [0.42, -0.38, 0.85], rot: [-0.2, 0.25, -0.28], scale: 0.6 },
+      flat: { pos: [0.3, -0.34, 0.92], rot: [-0.12, 0.04, -0.12], scale: 0.6 },
       vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
       vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
     },
