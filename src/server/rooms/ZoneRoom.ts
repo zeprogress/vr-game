@@ -1578,10 +1578,10 @@ export class ZoneRoom extends Room<ZoneState> {
       z: clampAbs(p.head.z, edge),
       yaw: bot.rt.yaw,
       hp: p.hp,
-      // Золотой меч бот не "покупал" — нашёл на земле (lootTarget в tickBot),
+      // Золотое оружие бот не "покупал" — нашёл на земле (lootTarget в tickBot),
       // но право распоряжаться им то же: если зритель зайдёт за этого героя
       // сам, он должен суметь и покидать его обратно (см. MSG.dropWeapon).
-      owned: p.rightTier === "gold" ? ["sword:gold"] : [],
+      owned: p.rightTier === "gold" ? [weaponKey(p.rightCls as WeaponClass, "gold")] : [],
       stowed: [],
       held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
       overrides: {},
@@ -1699,15 +1699,15 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     // Лут на земле — идём поднять раньше, чем добивать моба (моб подождёт).
-    // Приоритет: золотой меч (разовый апгрейд) > бутылка зелья (пока в сумке
-    // меньше BOT.potions+2 — не тащимся через полкарты за лишней).
-    const wantSword = p.rightTier !== "gold";
+    // Приоритет: золотое оружие СВОЕГО класса (разовый апгрейд) > бутылка зелья
+    // (пока в сумке меньше BOT.potions+2 — не тащимся через полкарты за лишней).
+    const wantGoldWeapon = p.rightTier !== "gold";
     const wantPotion = countPotions(p) < BOT.potions + 2;
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d || !inZone(d.x, d.z)) return false;
       const w = ITEMS[d.item].weapon;
-      if (w) return wantSword && w.cls === "sword" && w.tier === "gold";
+      if (w) return wantGoldWeapon && w.cls === p.rightCls && w.tier === "gold";
       return wantPotion && ITEMS[d.item].heal > 0;
     };
     if (!okLoot(loot)) {
@@ -2001,14 +2001,17 @@ export class ZoneRoom extends Room<ZoneState> {
       const d3 = Math.hypot(loot.x - p.head.x, loot.y - feetY, loot.z - p.head.z);
       if (d3 <= WEAPON_TAKE_REACH) {
         let took = false;
-        if (ITEMS[loot.item].weapon) {
-          // золотой меч — вооружаемся
+        const lw = ITEMS[loot.item].weapon;
+        if (lw) {
+          // золотое оружие своего класса — вооружаемся
           this.sim.takeDrop(loot.id);
-          p.rightCls = "sword";
-          p.rightTier = "gold";
-          bot.rt.owned.add(weaponKey("sword", "gold"));
+          p.rightCls = lw.cls;
+          p.rightTier = lw.tier;
+          p.leftCls = lw.cls === "bow" ? "" : "shield";
+          p.leftTier = lw.cls === "bow" ? "" : "base";
+          bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
           this.persistBot(bot);
-          console.log(`[bot] ${bot.nick} подобрал золотой меч`);
+          console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}`);
           took = true;
         } else {
           // бутылка зелья — в сумку

@@ -68,6 +68,35 @@ export const CINE_PATHS: CinePath[] = [
       { p: [80, 10, 82], l: [74, 6, 74] },
     ],
   },
+  {
+    // Облёт лагеря (HUB, центр ~(-55,-55), радиус ~24). Кружим на ~30 м,
+    // смотрим на костёр в центре площади.
+    name: "Облёт лагеря",
+    duration: 26,
+    lookLevel: 0.35,
+    keys: [
+      { p: [-76, 10, -34], l: [-55, 3, -55] },
+      { p: [-47, 11, -26], l: [-55, 3, -55] },
+      { p: [-26, 12, -47], l: [-55, 3, -55] },
+      { p: [-34, 12, -76], l: [-55, 3, -55] },
+      { p: [-63, 11, -84], l: [-55, 3, -55] },
+      { p: [-84, 10, -63], l: [-55, 3, -55] },
+      { p: [-76, 10, -34], l: [-55, 3, -55] },
+    ],
+  },
+  {
+    // Низкий пролёт через площадь впритык мимо костра — от ворот к шатру.
+    name: "Мимо костра",
+    duration: 13,
+    lookLevel: 0.22,
+    keys: [
+      { p: [-38, 3.6, -40], l: [-52, 1.6, -52] },
+      { p: [-46, 2.7, -47], l: [-56, 1.2, -55] },
+      { p: [-52, 2.3, -52], l: [-58, 1.0, -58] },
+      { p: [-60, 2.7, -60], l: [-66, 1.4, -64] },
+      { p: [-72, 6.5, -70], l: [-82, 3.5, -76] },
+    ],
+  },
 ];
 
 /**
@@ -80,10 +109,12 @@ export const CINE_PATHS: CinePath[] = [
 export const ROTATION: string[] = [
   "overview",
   "orbitPlayer",
+  "crowd",
   "eyePlayer",
   "orbitBoss",
   "eyeMob",
   "orbitPlayer",
+  "crowd",
   "eyePlayer",
   "eyeMob",
 ];
@@ -94,7 +125,14 @@ export const ROTATION: string[] = [
  * сам вернётся на ROTATION (см. SpectatorCamera.nextShot). С пульта путь
  * можно поставить и вручную в любой момент — это не трогает.
  */
-export const ROTATION_IDLE: string[] = ["path:0", "path:1", "path:2", "overview"];
+export const ROTATION_IDLE: string[] = [
+  "path:0",
+  "path:3", // облёт лагеря
+  "path:1",
+  "path:4", // мимо костра
+  "path:2",
+  "overview",
+];
 
 /** Позиция и точка взгляда на пути в момент t (0..1). */
 export function samplePath(path: CinePath, t: number, outP: number[], outL: number[]): void {

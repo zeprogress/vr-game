@@ -3,6 +3,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
 import { SPECTATE } from "#shared/constants";
+import { inHubSafeZone } from "#shared/hub";
 import { CINE_PATHS, ROTATION, ROTATION_IDLE, samplePath } from "./cine";
 
 /**
@@ -21,7 +22,17 @@ const FRONT_UP = 2.0; // подъём камеры над точкой корп�
 const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 
 /** Чередование кадров в режиме «только боты». */
-const BOT_ROTATION = ["eyePlayer", "orbitPlayer", "frontPlayer"] as const;
+const BOT_ROTATION = ["eyePlayer", "crowd", "orbitPlayer", "frontPlayer"] as const;
+
+/**
+ * «Группа сверху»: неподвижный отвес-3/4 над центром толпы героев на поляне.
+ * Без кручения — камера плавно налетает и держит группу в кадре, кадр шире
+ * при большем разбросе.
+ */
+const CROWD_ANGLE = 0.62; // горизонтальный отступ камеры (доля от dist)
+const CROWD_UP = 0.92; // высота камеры (доля от dist)
+const CROWD_MIN = 17;
+const CROWD_MAX = 40;
 
 /** Кого показывает камера сейчас. */
 type Shot =
@@ -31,6 +42,7 @@ type Shot =
   | { kind: "frontPlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
+  | { kind: "crowd" }
   | { kind: "path"; idx: number };
 
 export interface CtxPlayer {
@@ -237,9 +249,13 @@ export class SpectatorCamera {
       if (bots.length > 0) {
         const kind = BOT_ROTATION[this.botRotIdx % BOT_ROTATION.length];
         this.botRotIdx++;
-        // Цель меняем, только когда прошли круг из трёх ракурсов — иначе
-        // зритель не успевает понять, за кем смотрит.
+        // Цель меняем, только когда прошли круг ракурсов — иначе зритель не
+        // успевает понять, за кем смотрит.
         if (this.botRotIdx % BOT_ROTATION.length === 0) this.botPickI++;
+        if (kind === "crowd") {
+          const shot = this.resolveToken("crowd", ctx);
+          if (shot) return shot; // нет группы на поляне — падаем на ракурс ниже
+        }
         const id = bots[this.botPickI % bots.length].id;
         if (kind === "orbitPlayer") return { kind: "orbitPlayer", id };
         if (kind === "frontPlayer") return { kind: "frontPlayer", id };
@@ -291,6 +307,7 @@ export class SpectatorCamera {
     const kind = ci < 0 ? tok : tok.slice(0, ci);
     const id = ci < 0 ? "" : tok.slice(ci + 1);
     if (kind === "overview") return { kind: "overview" };
+    if (kind === "crowd") return this.crowdPlayers(ctx).length > 0 ? { kind: "crowd" } : null;
     if (kind === "orbitBoss") return ctx.boss ? { kind: "orbitBoss" } : null;
     if (kind === "path") {
       const idx = Number(id);
@@ -327,11 +344,17 @@ export class SpectatorCamera {
       return ctx.players.some((p) => p.id === s.id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
+    if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
     if (s.kind === "path") {
       return s.idx < CINE_PATHS.length && this.sinceSwitch < CINE_PATHS[s.idx].duration;
     }
     return true;
+  }
+
+  /** Герои на поляне (вне безопасной зоны лагеря) — для кадра «Группа сверху». */
+  private crowdPlayers(ctx: DirectorCtx): CtxPlayer[] {
+    return ctx.players.filter((p) => !inHubSafeZone(p.pos.x, p.pos.z));
   }
 
   private playerNearestBoss(ctx: DirectorCtx): CtxPlayer | null {
@@ -462,6 +485,30 @@ export class SpectatorCamera {
           this.eyePos.z + this.eyeFwd.z * 20,
         );
         return;
+      }
+      case "crowd": {
+        const grp = this.crowdPlayers(ctx);
+        if (grp.length) {
+          let gx = 0;
+          let gz = 0;
+          for (const p of grp) {
+            gx += p.pos.x;
+            gz += p.pos.z;
+          }
+          gx /= grp.length;
+          gz /= grp.length;
+          let spread = 6;
+          for (const p of grp) {
+            spread = Math.max(spread, Math.hypot(p.pos.x - gx, p.pos.z - gz));
+          }
+          const dist = Math.min(CROWD_MAX, Math.max(CROWD_MIN, spread * 1.7 + 11));
+          const gy = ctx.groundY(gx, gz);
+          // Неподвижное 3/4-сверху смещение — камеру плавно ведёт trackShot.
+          pos.set(gx - dist * CROWD_ANGLE, gy + dist * CROWD_UP, gz - dist * CROWD_ANGLE * 0.6);
+          tgt.set(gx, gy + 1.4, gz);
+          return;
+        }
+        break;
       }
       case "eyeMob": {
         // Не буквально «из глаз», а погоня сзади-сверху: моба видно в кадре,

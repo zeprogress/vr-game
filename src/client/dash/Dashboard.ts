@@ -123,6 +123,7 @@ export class Dashboard {
     fixed.append(
       this.cmdBtn("Обзор зоны", { t: "cam", shot: "overview" }),
       this.cmdBtn("Орбита босса", { t: "cam", shot: "orbitBoss" }),
+      this.cmdBtn("Группа сверху", { t: "cam", shot: "crowd" }),
     );
     this.root.appendChild(fixed);
 
