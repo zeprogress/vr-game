@@ -114,13 +114,19 @@ export class NameTag {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
+    const nameY = level === null ? H / 2 : H / 2 - 20;
     ctx.fillStyle = "#f2f4fb";
     ctx.font = NAME_FONT;
-    ctx.fillText(
-      (this.isBot ? BOT_MARK : "") + name,
-      W / 2,
-      level === null ? H / 2 : H / 2 - 20,
-    );
+    // Сам ник — строго по центру плашки. Значок бота цепляем слева от ника,
+    // в центровке он не участвует (иначе надпись уезжала вправо).
+    ctx.textAlign = "center";
+    ctx.fillText(name, W / 2, nameY);
+    if (this.isBot) {
+      const nameW = ctx.measureText(name).width;
+      ctx.textAlign = "right";
+      ctx.fillText(BOT_MARK.trim(), W / 2 - nameW / 2 - 8, nameY);
+      ctx.textAlign = "center";
+    }
 
     if (level !== null) {
       const a = this.accent;
@@ -144,8 +150,8 @@ export class NameTag {
     const scene = this.plane.getScene();
     const w = this.planeW * 0.66;
     const barH = this.planeW * 0.05;
-    // Чуть ниже текста, но в пределах плашки — не улетает к макушке модели.
-    const y = -this.halfH * 0.32;
+    // Под строкой уровня, но в пределах плашки — не улетает к макушке модели.
+    const y = -this.halfH * 0.82;
     this.hpW = w;
 
     const bgMat = new StandardMaterial("nameHpBgMat", scene);
