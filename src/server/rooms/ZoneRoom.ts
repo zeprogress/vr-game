@@ -379,6 +379,11 @@ export class ZoneRoom extends Room<ZoneState> {
   private persistClock = 0;
   /** Текущий оверлей стрима (мердж патчей с пульта) — источник правды, переживает рестарт. */
   private overlayCfg: Record<string, unknown> = {};
+  // Состояние авто-режиссёра камеры стрима живёт на клиенте-спектаторе; здесь
+  // держим последнюю известную копию, чтобы пережить рестарт и отдать её
+  // заново подключившемуся спектатору/дашборду (Ф10 — «всё с пульта глобально»).
+  private pultAuto = true;
+  private pultBotsOnly = false;
 
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
@@ -404,7 +409,11 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.ttsOn = pult.ttsOn === true ? 1 : 0;
     this.state.ttsVoice = isTtsVoice(pult.ttsVoice ?? "") ? pult.ttsVoice! : TTS_DEFAULT_VOICE;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
+    this.pultAuto = pult.auto !== false;
+    this.pultBotsOnly = pult.botsOnly === true;
+    this.state.mobsOn = pult.mobsOn === false ? 0 : 1;
     this.sim = new ZoneSim();
+    this.sim.mobsEnabled = pult.mobsOn !== false;
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
     for (const m of this.sim.mobs.values()) {
@@ -805,6 +814,14 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "mobsOn") {
         this.sim.mobsEnabled = msg.on !== 0;
         this.state.mobsOn = msg.on !== 0 ? 1 : 0;
+        world.savePult({ mobsOn: msg.on !== 0 });
+      } else if (msg.t === "auto") {
+        this.pultAuto = msg.on !== 0;
+        world.savePult({ auto: this.pultAuto });
+      } else if (msg.t === "bots") {
+        this.pultBotsOnly = msg.on !== 0;
+        if (this.pultBotsOnly) this.pultAuto = true;
+        world.savePult({ botsOnly: this.pultBotsOnly, auto: this.pultAuto });
       } else if (msg.t === "specVisible") {
         this.state.specVisible = msg.on !== 0 ? 1 : 0;
         world.savePult({ specVisible: msg.on !== 0 });
@@ -2146,6 +2163,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // Голос игроков на спектаторе (для стрима) — текущее состояние сразу,
       // иначе подключившийся рендер-спектатор не знал бы, слушать ли.
       client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
+      // Авто-режиссёр и «только боты» — тоже общие и переживают рестарт.
+      client.send(MSG.specCmd, { t: "auto", on: this.pultAuto ? 1 : 0 } satisfies SpecCmd);
+      client.send(MSG.specCmd, { t: "bots", on: this.pultBotsOnly ? 1 : 0 } satisfies SpecCmd);
       return;
     }
 

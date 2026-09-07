@@ -278,6 +278,7 @@ export class Dashboard {
     this.net.onSpecCmd = (cmd) => {
       if (cmd.t === "nowShot") this.nowEl.textContent = `в эфире: ${cmd.shot}`;
       else if (cmd.t === "auto") this.setAutoUi(cmd.on !== 0);
+      else if (cmd.t === "bots") this.setBotsUi(cmd.on !== 0);
       else if (cmd.t === "overlay") {
         // Сервер теперь сам источник правды (переживает рестарт) — шлёт это
         // сразу по подключению. Разошёл кто-то другой патч руками — тоже

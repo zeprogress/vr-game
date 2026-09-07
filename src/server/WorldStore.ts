@@ -25,6 +25,12 @@ export interface PultSettings {
   hour: number;
   dayAuto: boolean;
   overlay: Record<string, unknown>;
+  /** Авто-режиссёр камеры стрима. */
+  auto: boolean;
+  /** Режим «только боты» у авто-режиссёра. */
+  botsOnly: boolean;
+  /** Включены ли мобы в мире. */
+  mobsOn: boolean;
 }
 
 interface WorldRecord {
