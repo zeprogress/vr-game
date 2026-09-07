@@ -370,8 +370,10 @@ export class Game {
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
-      // Автонаводка удара (третье лицо) — до update(), чтобы «глаза» взяли yaw.
-      if (this.localAvatar) this.aimAssistTouch(dt);
+      // Автонаводка удара (только третье лицо на смартфоне) — до update(),
+      // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
+      // и доворот к мобу воспринимается как «примагничивание взгляда».
+      if (this.localAvatar && this.player.thirdPerson) this.aimAssistTouch(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       if (this.localAvatar) this.updateLocalAvatar(dt);
@@ -990,6 +992,7 @@ export class Game {
    * «глаз», а те смотрят туда же, куда повёрнут персонаж.
    */
   private aimAssistTouch(dt: number): void {
+    if (!this.player.thirdPerson) return; // только смартфонное третье лицо, не VR
     if (this.player.aiming) return; // сам целится — не мешаем
     if (!this.player.lastInput.primaryAction || this.player.dead) return;
     if (this.player.planarSpeed > 1.5) return; // бежит — целится сам, куда бежит
