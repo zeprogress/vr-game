@@ -15,7 +15,6 @@ import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
-import { HealthBar3D } from "../ui/HealthBar3D";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
@@ -219,7 +218,6 @@ export class RemoteAvatar implements Hittable {
   private dead = false;
   private theirPvp = false;
   private myPvp = false;
-  private bar: HealthBar3D | null = null;
   private now = 0;
   private lastHitAt = -999;
   private nick: string;
@@ -257,6 +255,7 @@ export class RemoteAvatar implements Hittable {
       undefined,
       id.startsWith("bot:"),
     );
+    this.nameTag.showHp(); // зелёная полоска жизни под ником
     this.setMode(mode);
     this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
@@ -853,15 +852,9 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
-  /** Полоска здоровья над головой — только пока мы с игроком в PvP. */
+  /** Зелёная полоска жизни под ником — видна всегда (в бою желтеет/краснеет). */
   private syncBar(): void {
-    const show = this.pvpTarget;
-    if (show && !this.bar) {
-      this.bar = new HealthBar3D(this.scene, this.root, new Vector3(0, 0.5, 0), 0.5);
-    }
-    if (!this.bar) return;
-    this.bar.setVisible(show);
-    if (show) this.bar.set(this.maxHp > 0 ? Math.max(0, this.hp) / this.maxHp : 0);
+    this.nameTag.setHp(this.dead ? 0 : this.maxHp > 0 ? Math.max(0, this.hp) / this.maxHp : 1);
   }
 
   /** Показываем оружие в руках союзника — по данным сервера (leftCls/…). */
@@ -1063,7 +1056,6 @@ export class RemoteAvatar implements Hittable {
     this.speakDot?.dispose();
     this.gearL?.dispose();
     this.gearR?.dispose();
-    this.bar?.dispose();
     this.bubble?.dispose();
     this.botRig?.dispose();
     this.botHolder?.dispose();

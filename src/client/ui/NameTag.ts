@@ -30,9 +30,17 @@ export class NameTag {
   private readonly halfH: number;
 
   private readonly W: number;
+  private readonly planeW: number;
   private readonly accent: Color3;
   private curName = "";
   private curLevel: number | null = null;
+
+  /** Полоска здоровья под ником (создаётся по требованию через showHp). */
+  private hpBg: Mesh | null = null;
+  private hpFill: Mesh | null = null;
+  private hpFillMat: StandardMaterial | null = null;
+  private hpW = 0;
+  private hpFrac = 1;
 
   constructor(
     scene: Scene,
@@ -77,6 +85,7 @@ export class NameTag {
     // прежнего размера, плашка просто становится длиннее.
     const planeW = 0.9 * (this.W / BASE_W);
     const height = planeW * (H / this.W);
+    this.planeW = planeW;
     this.plane = MeshBuilder.CreatePlane("nameTag", { width: planeW, height }, scene);
     this.plane.material = mat;
     this.plane.parent = parent;
@@ -126,6 +135,57 @@ export class NameTag {
     this.plane.setEnabled(v);
   }
 
+  /**
+   * Включить полоску здоровья под ником (зелёная, желтеет/краснеет с уроном).
+   * Планки — дети плашки: сами едут за billboard, масштабом и якорем.
+   */
+  showHp(): void {
+    if (this.hpBg) return;
+    const scene = this.plane.getScene();
+    const w = this.planeW * 0.66;
+    const barH = this.planeW * 0.05;
+    const y = -this.halfH - barH * 1.1;
+    this.hpW = w;
+
+    const bgMat = new StandardMaterial("nameHpBgMat", scene);
+    bgMat.disableLighting = true;
+    bgMat.emissiveColor = new Color3(0.03, 0.03, 0.03);
+    bgMat.specularColor = new Color3(0, 0, 0);
+    bgMat.alpha = 0.65;
+    this.hpBg = MeshBuilder.CreatePlane("nameHpBg", { width: w + w * 0.06, height: barH * 1.5 }, scene);
+    this.hpBg.material = bgMat;
+    this.hpBg.parent = this.plane;
+    this.hpBg.position.set(0, y, 0.01);
+    this.hpBg.isPickable = false;
+    this.hpBg.renderingGroupId = 0;
+
+    this.hpFillMat = new StandardMaterial("nameHpFillMat", scene);
+    this.hpFillMat.disableLighting = true;
+    this.hpFillMat.specularColor = new Color3(0, 0, 0);
+    this.hpFillMat.emissiveColor = new Color3(0.25, 0.8, 0.3);
+    this.hpFill = MeshBuilder.CreatePlane("nameHpFill", { width: w, height: barH }, scene);
+    this.hpFill.material = this.hpFillMat;
+    this.hpFill.parent = this.hpBg;
+    this.hpFill.position.z = -0.01;
+    this.hpFill.isPickable = false;
+    this.hpFill.renderingGroupId = 0;
+    this.setHp(this.hpFrac);
+  }
+
+  /** Доля здоровья 0..1. */
+  setHp(frac: number): void {
+    const f = Math.max(0, Math.min(1, frac));
+    this.hpFrac = f;
+    if (!this.hpFill || !this.hpFillMat) return;
+    this.hpFill.scaling.x = Math.max(0.001, f);
+    this.hpFill.position.x = -(this.hpW * (1 - f)) / 2;
+    this.hpFillMat.emissiveColor.set(
+      f > 0.5 ? 0.25 : 0.85,
+      f > 0.25 ? 0.75 : 0.2,
+      f > 0.5 ? 0.3 : 0.15,
+    );
+  }
+
   /** Поднять плашку — когда высота модели становится известна позже (боты). */
   setAnchorY(y: number): void {
     this.baseY = y;
@@ -142,6 +202,8 @@ export class NameTag {
   }
 
   dispose(): void {
+    this.hpFill?.dispose();
+    this.hpBg?.dispose();
     this.plane.dispose();
     this.tex.dispose();
   }
