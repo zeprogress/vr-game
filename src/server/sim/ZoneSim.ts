@@ -252,7 +252,7 @@ class Mob {
       level?: number;
       hpMul?: number;
       dmgMul?: number;
-      xpMul?: number;
+      xp?: number;
       scaleMul?: number;
       flying?: boolean;
     } = {},
@@ -279,7 +279,7 @@ class Mob {
     this.hp = cfg.hp * (opts.hpMul ?? 1);
     this.maxHp = this.hp;
     this.ranged = cfg.ranged;
-    this.xp = cfg.xp * (opts.xpMul ?? 1);
+    this.xp = opts.xp ?? cfg.xp;
     this.dmgMul = opts.dmgMul ?? 1;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
@@ -973,8 +973,8 @@ export class ZoneSim {
           level: def.level,
           hpMul: def.hpMul,
           dmgMul: def.dmgMul,
-          xpMul: def.xpMul,
           scaleMul: def.scaleMul,
+          xp: def.xp,
           flying: def.flying,
         });
         this.mobs.set(m.id, m);
@@ -1060,7 +1060,6 @@ export class ZoneSim {
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
-    this.boltXp.length = 0;
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     // Полученный от босса урон — тоже вклад в бой (танк/приманка).
@@ -1072,9 +1071,6 @@ export class ZoneSim {
     }
     return hits;
   }
-
-  /** Опыт с добитых снарядами игрока мобов за последний тик: комната разошлёт. */
-  readonly boltXp: { owner: string; xp: number }[] = [];
 
   /** Запустить огненный снаряд игрока. */
   castBolt(
@@ -1124,8 +1120,7 @@ export class ZoneSim {
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
-        const xp = this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
-        if (xp > 0) this.boltXp.push({ owner: b.owner, xp });
+        this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
         return true;
       }
     }
@@ -1140,38 +1135,70 @@ export class ZoneSim {
     return false;
   }
 
-  /** Урон по мобу. Возвращает опыт за добивание (0 — если не убит). */
-  /** Опыт с добитого босса, поделённый между всеми, кто нанёс урон. Комната разошлёт. */
+  /**
+   * Опыт за добитых мобов, поделённый между всеми, кто нанёс урон (босс —
+   * гибридно, обычные мобы — пропорционально урону). Комната разошлёт.
+   */
   readonly bossXpShare: { owner: string; xp: number }[] = [];
+  readonly mobXpShare: { owner: string; xp: number }[] = [];
+  /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
+  readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
-  hitMob(id: string, dmg: number, dx: number, dz: number, attacker = ""): number {
+  /** Урон по мобу. Возвращает kind добитого моба (null — не убит). */
+  hitMob(id: string, dmg: number, dx: number, dz: number, attacker = ""): MobKind | null {
     const m = this.mobs.get(id);
-    if (!m) return 0;
-    if (attacker && dmg > 0 && m.kind === "boss") {
-      m.bump(attacker, "dmg", Math.min(dmg, Math.max(0, m.hp)), this.elapsed);
-    }
+    if (!m) return null;
+    // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
+    // а овеpкилл сверх остатка не должен раздувать долю.
+    const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz);
+    const dealt = Math.max(0, hpBefore - m.hp);
+    if (attacker && dealt > 0) m.bump(attacker, "dmg", dealt, this.elapsed);
 
     if (m.kind === "boss" && m.pendingSplit) {
       m.pendingSplit = false;
       this.spawnShards(m);
     }
 
-    if (!killed) return 0;
+    if (!killed) return null;
+    const kind = m.kind;
 
-    if (m.kind === "shard") {
+    if (kind === "shard") {
       this.mobs.delete(m.id); // осколки не возрождаются
-      return m.xp;
+    } else {
+      this.spawnLoot(m);
     }
-    if (m.kind === "boss") {
+    if (kind === "boss") {
       // Босс пал — осколки осыпаются.
       for (const [sid, s] of this.mobs) if (s.kind === "shard") this.mobs.delete(sid);
       this.splitBossXp(m);
-      this.spawnLoot(m);
-      return 0;
+    } else {
+      this.splitMobXp(m);
     }
-    this.spawnLoot(m);
-    return m.xp;
+    if (attacker) {
+      this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
+    }
+    return kind;
+  }
+
+  /**
+   * Обычный моб: опыт делится между добившими урон пропорционально урону
+   * (недавнему). Уровневый потолок накладывает уже комната.
+   */
+  private splitMobXp(m: Mob): void {
+    const RECENCY = 20; // с
+    let total = 0;
+    const parts: [string, number][] = [];
+    for (const [owner, c] of m.contrib) {
+      if (this.elapsed - c.last > RECENCY || c.dmg <= 0) continue;
+      parts.push([owner, c.dmg]);
+      total += c.dmg;
+    }
+    m.contrib.clear();
+    if (total <= 0) return;
+    for (const [owner, d] of parts) {
+      this.mobXpShare.push({ owner, xp: (m.xp * d) / total });
+    }
   }
 
   /**

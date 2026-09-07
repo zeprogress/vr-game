@@ -982,17 +982,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitDummy(msg.id, dmg);
       return;
     }
-    const victimKind = msg.target === "mob" ? this.sim.mobs.get(msg.id)?.kind : undefined;
-    const xp = this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
-    if (xp > 0) {
-      this.awardXp(client, p, xp);
-      rt.kills++;
-      if (victimKind && victimKind !== "shard") {
-        const victim =
-          victimKind === "boss" ? "Багровый" : victimKind === "spitter" ? "Плевун" : "Слизень";
-        this.broadcast(MSG.killFeed, { by: p.nick, victim });
-      }
-    }
+    // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
+    // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
+    this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
   }
 
   /** id игрока/бота в state.players по его состоянию. */
@@ -2171,10 +2163,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
     const dmg = weaponDamage("sword", p.level, p.str, multIn(p, "right"));
-    const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
-    if (xp > 0) {
-      this.awardXp(undefined, p, xp);
-      bot.rt.kills++;
+    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
+    // Опыт/kills — через общий делёж (sim.mobXpShare / mobKills).
+    if (killed) {
       bot.target = null;
       // Бот активно фармит — не деспавним его по «тишине в чате».
       this.chatSeen.set(bot.norm, Date.now());
@@ -2324,17 +2315,29 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.bolts.forEach((_s, id) => {
       if (!this.sim.bolts.has(id)) this.state.bolts.delete(id);
     });
-    // Опыт за мобов, добитых огнём.
-    for (const k of this.sim.boltXp) {
+    // Опыт за любых мобов — поделён между всеми, кто нанёс урон (sim.mobXpShare).
+    // Режем «не больше уровня за раз».
+    for (const k of this.sim.mobXpShare) {
       const kp = this.state.players.get(k.owner);
-      if (kp) {
-        this.awardXp(this.clientOf(k.owner), kp, k.xp);
-        const krt = this.rt.get(k.owner);
-        if (krt) krt.kills++;
-        // Бот активно фармит из лука/посоха — не деспавним по «тишине в чате».
-        if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
-      }
+      if (!kp) continue;
+      const lvlCap = xpToNext(kp.level);
+      const xp = Number.isFinite(lvlCap) ? Math.min(k.xp, lvlCap) : k.xp;
+      this.awardXp(this.clientOf(k.owner), kp, xp);
+      if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
     }
+    this.sim.mobXpShare.length = 0;
+    // Добивания: счётчик kills добившему + кил-фид (кроме осколков и босса —
+    // босса объявляем отдельно, по крупнейшему вкладу).
+    for (const k of this.sim.mobKills) {
+      const krt = this.rt.get(k.owner);
+      if (krt) krt.kills++;
+      if (k.kind === "shard" || k.kind === "boss") continue;
+      const kp = this.state.players.get(k.owner);
+      if (!kp) continue;
+      const victim = k.name || (k.kind === "spitter" ? "Плевун" : "Слизень");
+      this.broadcast(MSG.killFeed, { by: kp.nick, victim });
+    }
+    this.sim.mobKills.length = 0;
     // Опыт с босса — гибридный делёж (поровну + за вклад, с потолком) считает
     // ZoneSim. Здесь только раздаём и режем «не больше уровня за один бой».
     if (this.sim.bossXpShare.length) {
@@ -2346,8 +2349,6 @@ export class ZoneRoom extends Room<ZoneState> {
           const lvlCap = xpToNext(kp.level); // Infinity на максимальном уровне
           const xp = Number.isFinite(lvlCap) ? Math.min(k.xp, lvlCap) : k.xp;
           this.awardXp(this.clientOf(k.owner), kp, xp);
-          const krt = this.rt.get(k.owner);
-          if (krt) krt.kills++;
           if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
           if (xp > topXp) {
             topXp = xp;
