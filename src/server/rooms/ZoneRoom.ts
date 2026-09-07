@@ -58,6 +58,7 @@ import {
   PLAYER_HP,
   PROGRESSION,
   PVP,
+  MOB_CAMPS,
   RESPAWN,
   SPITTER,
   SPECTATOR_KEY,
@@ -203,6 +204,9 @@ interface Bot {
   /** id моба, недавно ударившего бота (плевун сзади в рейде) + когда (ms). */
   hurtByMob: string | null;
   hurtByMobAt: number;
+  /** Центр «зоны» бота — куда его высадили по уровню (поляна или лагерь). */
+  homeX: number;
+  homeZ: number;
 }
 
 /**
@@ -213,6 +217,29 @@ function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | 
   if (agi > str && agi > int) return "bow";
   if (int > str && int > agi) return "staff";
   return "sword";
+}
+
+/** Лагеря мобов по возрастанию силы — для расселения ботов по уровню. */
+const CAMPS_BY_POWER = [...MOB_CAMPS].sort((a, b) => a.elite - b.elite);
+
+/**
+ * Куда высадить/возродить бота: чем выше уровень, тем ближе к сильным мобам.
+ * До 5 ур. — обычная поляна у спавна; дальше — рядом с лагерем по силе.
+ */
+function botHome(level: number): { x: number; z: number } {
+  if (level < 5 || CAMPS_BY_POWER.length === 0) {
+    return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
+  }
+  const tier = Math.min(CAMPS_BY_POWER.length - 1, Math.floor((level - 5) / 3));
+  const c = CAMPS_BY_POWER[tier];
+  return { x: c.x, z: c.z };
+}
+
+/** Точка появления у дома бота: рядом, но с разбросом (не в куче мобов). */
+function botSpawnAt(home: { x: number; z: number }): { x: number; z: number } {
+  const a = Math.random() * Math.PI * 2;
+  const r = 9 + Math.random() * 7;
+  return { x: home.x + Math.cos(a) * r, z: home.z + Math.sin(a) * r };
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -446,6 +473,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const s = new MobState();
       s.kind = m.kind;
       s.scale = m.scale;
+      s.model = m.model;
       this.state.mobs.set(m.id, s);
     }
     for (const d of this.sim.dummies.values()) {
@@ -1517,11 +1545,6 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = new PlayerState();
     p.nick = nick.trim().slice(0, 16) || rec?.nick || "зритель";
     p.mode = "flat";
-    const sx = RESPAWN.spawnX + (Math.random() - 0.5) * 8;
-    const sz = RESPAWN.spawnZ + (Math.random() - 0.5) * 8;
-    p.head.x = rec?.x ?? sx;
-    p.head.z = rec?.z ?? sz;
-    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
     if (rec) {
       p.level = rec.level;
       p.xp = rec.xp;
@@ -1530,6 +1553,12 @@ export class ZoneRoom extends Room<ZoneState> {
       p.agi = rec.agi;
       p.int = rec.int;
     }
+    // Расселение по уровню: слабых — на поляну, прокачанных — к сильным лагерям.
+    const home = botHome(p.level);
+    const sp = botSpawnAt(home);
+    p.head.x = sp.x;
+    p.head.z = sp.z;
+    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
     p.maxHp = maxHpFor(p.level, p.str);
     p.hp = p.maxHp;
     p.maxMana = maxManaFor(p.level, p.int);
@@ -1597,8 +1626,8 @@ export class ZoneRoom extends Room<ZoneState> {
       emoteFreezeUntil: 0,
       attackCd: 0,
       wanderCd: 0,
-      wanderX: sx,
-      wanderZ: sz,
+      wanderX: sp.x,
+      wanderZ: sp.z,
       yaw: 0,
       vx: 0,
       vz: 0,
@@ -1612,6 +1641,8 @@ export class ZoneRoom extends Room<ZoneState> {
       swingDz: 1,
       hurtByMob: null,
       hurtByMobAt: 0,
+      homeX: home.x,
+      homeZ: home.z,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -1676,8 +1707,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
     this.botDrink(bot);
 
-    const cx = RESPAWN.spawnX;
-    const cz = RESPAWN.spawnZ;
+    // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
+    const cx = bot.homeX;
+    const cz = bot.homeZ;
     const inZone = (x: number, z: number): boolean =>
       Math.hypot(x - cx, z - cz) < BOT.zoneRadius;
 
@@ -2455,8 +2487,18 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private respawn(id: string, p: PlayerState, rt: Runtime): void {
-    // Возрождаемся в безопасном лагере (HUB), а не в поле среди мобов.
-    const sp = hubSpawnPoint();
+    // Боты возрождаются у своего дома (по уровню — может быть у лагеря);
+    // живые игроки — в безопасном лагере (HUB), а не в поле среди мобов.
+    const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
+    let sp: { x: number; z: number };
+    if (bot) {
+      const home = botHome(p.level); // уровень мог вырасти — пересчитываем
+      bot.homeX = home.x;
+      bot.homeZ = home.z;
+      sp = botSpawnAt(home);
+    } else {
+      sp = hubSpawnPoint();
+    }
     const x = sp.x;
     const z = sp.z;
     const y = terrainHeight(x, z) + PLAYER.eyeHeight;
