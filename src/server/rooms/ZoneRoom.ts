@@ -1857,7 +1857,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const reach =
       BOT.attackRange * 1.4 + (mob.kind === "boss" ? MOB.bodyRadius * mob.scale : 0);
     if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
-    const dmg = weaponDamage("sword", p.level, p.str, 1);
+    // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
+    // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
+    // игрока выходил выше при том же снаряжении.
+    const dmg = weaponDamage("sword", p.level, p.str, multIn(p, "right"));
     const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
     if (xp > 0) {
       this.awardXp(undefined, p, xp);
