@@ -42,6 +42,8 @@ export function weaponDamage(
   level: number,
   str: number,
   mult = 1,
+  /** Ловкость — нужна только для стрелы (её урон масштабируется от неё, не от силы). */
+  agi = str,
 ): number {
   switch (kind) {
     case "sword":
@@ -52,7 +54,7 @@ export function weaponDamage(
     case "throw":
       return THROW.damage * weaponDamageBase(level, str) * mult;
     case "arrow":
-      return arrowDamageFor(level, str) * mult;
+      return arrowDamageFor(level, agi) * mult;
   }
 }
 

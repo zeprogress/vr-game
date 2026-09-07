@@ -104,7 +104,7 @@ import {
 } from "#shared/items";
 import {
   atMaxLevel,
-  attackSpeedFromLevel,
+  attackSpeedFor,
   grantXp,
   isStatName,
   maxHpFor,
@@ -902,9 +902,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!isWeaponKind(msg.weapon)) return;
 
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
-    // атаки от уровня укорачивает интервал.
+    // атаки (уровень + ловкость) укорачивает интервал.
     const last = rt.lastHit[msg.weapon];
-    const rate = WEAPON_RATE[msg.weapon] / attackSpeedFromLevel(p.level);
+    const rate = WEAPON_RATE[msg.weapon] / attackSpeedFor(p.level, p.agi);
     if (last !== undefined && this.elapsed - last < rate) return;
 
     const hand = msg.hand === "left" ? "left" : "right";
@@ -924,7 +924,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpDmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand)) * PVP.damageMult;
+      const pvpDmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) * PVP.damageMult;
       this.hurtPlayer({
         target: msg.id,
         dmg: pvpDmg,
@@ -942,7 +942,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand));
+    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi);
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -1999,7 +1999,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.attackCd <= 0 &&
       bot.swingIn <= 0
     ) {
-      const atk = attackSpeedFromLevel(p.level);
+      const atk = attackSpeedFor(p.level, p.agi);
       const bow = p.rightCls === "bow";
       bot.attackCd = (bow ? BOT.bowCooldown : BOT.staffCooldown) / atk;
       const tgt = chasingMob;
@@ -2017,7 +2017,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
-          weaponDamage("arrow", p.level, p.str, mult),
+          weaponDamage("arrow", p.level, p.str, mult, p.agi),
           bot.id, 2.5, 1,
         );
       } else {
@@ -2044,7 +2044,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!ranged && chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
       // Скорость атаки от уровня: чаще бьёт и быстрее доводит замах —
       // анимация на модельке ускоряется на клиенте под тот же множитель.
-      const atk = attackSpeedFromLevel(p.level);
+      const atk = attackSpeedFor(p.level, p.agi);
       bot.attackCd = BOT.attackCooldown / atk;
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;

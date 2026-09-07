@@ -705,8 +705,9 @@ function el(tag: string, css: string): HTMLDivElement {
 /** Короткое описание — за что отвечает характеристика. */
 function statHint(p: Progression, s: StatName): string {
   // База растёт от уровня; атрибут — небольшой множитель поверх.
-  if (s === "str") return `× HP ${Math.round(p.maxHp)} · физ. урон ×${p.swordDamage.toFixed(2)}`;
-  if (s === "agi") return `× бег ${p.moveSpeed.toFixed(2)} м/с`;
+  if (s === "str") return `× HP ${Math.round(p.maxHp)} · ближний бой ×${p.swordDamage.toFixed(2)}`;
+  if (s === "agi")
+    return `× темп атаки ×${p.attackSpeed.toFixed(2)} · стрела ×${p.arrowDamage.toFixed(2)} · бег ${p.moveSpeed.toFixed(2)} м/с`;
   return `× мана ${Math.round(p.maxMana)} · огнешар ${p.fireboltMax.toFixed(1)} · хил ${Math.round(p.healMax)}`;
 }
 

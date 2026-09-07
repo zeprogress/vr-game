@@ -4,7 +4,7 @@ import {
   arrowDamageFor,
   arrowSpeedBonusFor,
   atMaxLevel,
-  attackSpeedFromLevel,
+  attackSpeedFor,
   grantXp,
   maxHpFor,
   moveSpeedFor,
@@ -136,9 +136,9 @@ export class Progression {
     return moveSpeedFor(this.level, this.stats.agi);
   }
 
-  /** Множитель темпа атаки (>1 — быстрее). Только от уровня. */
+  /** Множитель темпа атаки (>1 — быстрее): уровень × ловкость, потолок ×2.6. */
   get attackSpeed(): number {
-    return attackSpeedFromLevel(this.level);
+    return attackSpeedFor(this.level, this.stats.agi);
   }
 
   /** Добавка к скорости стрелы, м/с (от уровня). */
@@ -146,9 +146,9 @@ export class Progression {
     return arrowSpeedBonusFor(this.level);
   }
 
-  /** Урон стрелы (без тира оружия) — от уровня и силы. */
+  /** Урон стрелы (без тира оружия) — от уровня и ловкости. */
   get arrowDamage(): number {
-    return arrowDamageFor(this.level, this.stats.str);
+    return arrowDamageFor(this.level, this.stats.agi);
   }
 
   /** Потолок маны (уровень × интеллект). */

@@ -48,6 +48,8 @@ export function levelGain(level: number, curve: { perLevel: number; accel: numbe
 }
 
 const strDmgMul = (str: number): number => 1 + (str - PROGRESSION.startStat) * PROGRESSION.str.dmgMul;
+const agiRangedMul = (agi: number): number =>
+  1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.rangedDmgMul;
 
 /** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
 export function weaponDmgFromLevel(level: number): number {
@@ -59,9 +61,19 @@ export function weaponDamageBase(level: number, str: number): number {
   return weaponDmgFromLevel(level) * strDmgMul(str);
 }
 
-/** Множитель темпа атаки (>1 — быстрее). Только от уровня, с потолком. */
+/**
+ * Множитель темпа атаки (>1 — быстрее): рост от уровня × небольшой множитель
+ * от ловкости, общий потолок ×2.6. Действует и на меч, и на лук/посох.
+ */
+export function attackSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
+  const byLevel = 1 + levelGain(level, P.atkSpeed);
+  const byAgi = 1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.atkSpeedMul;
+  return Math.min(P.atkSpeed.max, byLevel * byAgi);
+}
+
+/** Совместимость: темп атаки только от уровня (где ловкость неизвестна, напр. чужой аватар). */
 export function attackSpeedFromLevel(level: number): number {
-  return Math.min(P.atkSpeed.max, 1 + levelGain(level, P.atkSpeed));
+  return attackSpeedFor(level);
 }
 
 export function maxHpFor(level: number, str: number): number {
@@ -84,9 +96,13 @@ export function arrowSpeedBonusFor(level: number): number {
   return Math.max(0, Math.floor(level) - 1) * PROGRESSION.arrowSpeedPerLevel;
 }
 
-/** Урон стрелы (относительно меча ×1.3). Тир оружия домножается отдельно. */
-export function arrowDamageFor(level: number, str: number): number {
-  return 1.3 * weaponDamageBase(level, str);
+/**
+ * Урон стрелы: база от уровня × ловкость (НЕ сила). Тир лука домножается
+ * отдельно. Базовый множитель 1.15 (был 1.3) — лук теперь получает ещё и
+ * темп стрельбы от ловкости, чтобы он не стал имбой.
+ */
+export function arrowDamageFor(level: number, agi: number): number {
+  return 1.15 * weaponDmgFromLevel(level) * agiRangedMul(agi);
 }
 
 // ---- изменения ----
