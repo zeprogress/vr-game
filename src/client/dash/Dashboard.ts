@@ -346,19 +346,33 @@ export class Dashboard {
     }
     for (const p of players) {
       const bot = p.id.startsWith("bot:");
-      const row = this.listRow(`${bot ? "\u{1F916}" : "\u{1F3AE}"} ${p.nick}`);
-      row.append(
-        this.cmdBtn("орбита", { t: "cam", shot: `orbitPlayer:${p.id}` }, true),
-        this.cmdBtn("из глаз", { t: "cam", shot: `eyePlayer:${p.id}` }, true),
-        this.cmdBtn("напротив", { t: "cam", shot: `frontPlayer:${p.id}` }, true),
-        this.cmdBtn("сбоку", { t: "cam", shot: `sidePlayer:${p.id}` }, true),
-        this.cmdBtn("низко", { t: "cam", shot: `lowChase:${p.id}` }, true),
-        this.cmdBtn("дрон", { t: "cam", shot: `dronePlayer:${p.id}` }, true),
-        this.cmdBtn("из-за плеча", { t: "cam", shot: `shoulderPlayer:${p.id}` }, true),
-        this.cmdBtn("снизу", { t: "cam", shot: `heroLow:${p.id}` }, true),
-        this.cmdBtn("дуэль", { t: "cam", shot: `duelPlayer:${p.id}` }, true),
-      );
-      this.listEl.appendChild(row);
+      // Ракурсов стало девять — в одну строку с ником они не влезали на
+      // телефоне. Ник отдельной строкой, кнопки — сеткой с переносом.
+      const block = el("div", "");
+      block.style.cssText =
+        "margin:8px 0 12px;padding:8px;border:1px solid #2a2f40;border-radius:10px";
+      const name = el("div", `${bot ? "\u{1F916}" : "\u{1F3AE}"} ${p.nick}`);
+      name.style.cssText =
+        "font-weight:600;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      const grid = el("div", "");
+      grid.style.cssText =
+        "display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px";
+      const cams: [string, string][] = [
+        ["орбита", "orbitPlayer"],
+        ["из глаз", "eyePlayer"],
+        ["напротив", "frontPlayer"],
+        ["сбоку", "sidePlayer"],
+        ["низко", "lowChase"],
+        ["дрон", "dronePlayer"],
+        ["из-за плеча", "shoulderPlayer"],
+        ["снизу", "heroLow"],
+        ["дуэль", "duelPlayer"],
+      ];
+      for (const [label, shot] of cams) {
+        grid.appendChild(this.cmdBtn(label, { t: "cam", shot: `${shot}:${p.id}` }, true));
+      }
+      block.append(name, grid);
+      this.listEl.appendChild(block);
     }
 
     // Выпадающий список мобов — сохраняем выбор, если моб ещё жив.
@@ -509,15 +523,6 @@ export class Dashboard {
     this.root.appendChild(s);
   }
 
-  private listRow(label: string): HTMLDivElement {
-    const row = el("div", "");
-    row.style.cssText = "display:flex;align-items:center;gap:8px;margin:6px 0";
-    const l = el("div", label);
-    l.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
-    row.appendChild(l);
-    return row;
-  }
-
   private bigBtn(text: string, on: () => void): HTMLButtonElement {
     const b = document.createElement("button");
     b.textContent = text;
@@ -533,7 +538,8 @@ export class Dashboard {
     b.textContent = text;
     b.style.cssText =
       `padding:${small ? "8px 12px" : "14px 10px"};border:1px solid #4a5570;border-radius:8px;` +
-      `background:#1d1f2b;color:#e8ecf8;font:${small ? "13px" : "600 14px"} system-ui;cursor:pointer`;
+      `background:#1d1f2b;color:#e8ecf8;font:${small ? "13px" : "600 14px"} system-ui;cursor:pointer;` +
+      "min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
     b.addEventListener("click", () => {
       this.send(cmd);
       b.style.background = "#2a5a3a";
