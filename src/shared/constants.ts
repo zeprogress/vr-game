@@ -233,12 +233,14 @@ export const MOB_CAMPS: {
   count: number;
   elite: number;
   spread: number;
+  /** Ключ MODELS на клиенте (mon*) — вид моба лагеря. */
+  model: string;
 }[] = [
-  { x: -52, z: 44, kind: "spitter", count: 4, elite: 1.7, spread: 6 },
-  { x: 56, z: 40, kind: "slime", count: 6, elite: 1.8, spread: 7 },
-  { x: 68, z: -32, kind: "spitter", count: 4, elite: 2.0, spread: 6 },
-  { x: -66, z: 6, kind: "slime", count: 5, elite: 2.1, spread: 6 },
-  { x: 8, z: 62, kind: "spitter", count: 3, elite: 2.3, spread: 5 },
+  { x: -52, z: 44, kind: "spitter", count: 4, elite: 1.7, spread: 6, model: "monBee" },
+  { x: 56, z: 40, kind: "slime", count: 6, elite: 1.8, spread: 7, model: "monSpikyBlob" },
+  { x: 68, z: -32, kind: "spitter", count: 4, elite: 2.0, spread: 6, model: "monBee" },
+  { x: -66, z: 6, kind: "slime", count: 5, elite: 2.1, spread: 6, model: "monCactoro" },
+  { x: 8, z: 62, kind: "slime", count: 4, elite: 2.3, spread: 5, model: "monFrog" },
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

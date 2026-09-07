@@ -230,6 +230,8 @@ class Mob {
 
   /** Множитель урона усиленного («элитного») моба из лагеря. 1 — обычный. */
   readonly dmgMul: number;
+  /** Модель из пака для этого моба (ключ MODELS на клиенте). Пусто — стандарт. */
+  readonly model: string;
 
   constructor(
     readonly kind: MobKind,
@@ -237,7 +239,9 @@ class Mob {
     hz: number,
     /** >1 — усиленный моб лагеря: множит HP, урон, опыт и размер. */
     elite = 1,
+    model = "",
   ) {
+    this.model = model;
     this.homeX = hx;
     this.homeZ = hz;
     this.x = hx;
@@ -901,7 +905,7 @@ export class ZoneSim {
         const a = (i / camp.count) * Math.PI * 2 + camp.x;
         const r = camp.spread * (0.35 + Math.random() * 0.65);
         const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
-        const m = new Mob(camp.kind, x, z, camp.elite);
+        const m = new Mob(camp.kind, x, z, camp.elite, camp.model);
         this.mobs.set(m.id, m);
       }
     }

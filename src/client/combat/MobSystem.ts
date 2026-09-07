@@ -223,7 +223,16 @@ export class NetMobs {
     this.room = room;
 
     room.state.mobs.onAdd((s, id) => {
-      const m = new Mob(this.scene, s.kind, id, this.sfx, this.report, this.leanMobs, this.mobUiScale);
+      const m = new Mob(
+        this.scene,
+        s.kind,
+        id,
+        this.sfx,
+        this.report,
+        this.leanMobs,
+        this.mobUiScale,
+        s.model,
+      );
       this.mobs.set(id, m);
       this.targets.push(m);
     }, true);

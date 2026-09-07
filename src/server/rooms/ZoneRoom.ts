@@ -2216,6 +2216,7 @@ export class ZoneRoom extends Room<ZoneState> {
         s = new MobState();
         s.kind = m.kind;
         s.scale = m.scale;
+        s.model = m.model;
         this.state.mobs.set(m.id, s);
       }
       s.x = m.x;

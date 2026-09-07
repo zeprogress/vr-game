@@ -14,7 +14,7 @@ import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
-import type { RigInstance } from "../world/models";
+import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
 import type { WeaponKind } from "#shared/combat";
@@ -106,6 +106,8 @@ export class Mob implements Hittable {
 
   /** Модель из пака (если подключена): она заменяет процедурную сферу. */
   private rig: RigInstance | null = null;
+  /** Клип «движение/прыжок» найденной модели (имя зависит от пака). */
+  private moveAnim: AnimationGroup | null = null;
   /** Узел, который тянем/сжимаем в прыжке: сфера или корень модели. */
   private squash: TransformNode;
   private curAnim: AnimationGroup | null = null;
@@ -123,6 +125,8 @@ export class Mob implements Hittable {
     private readonly lean = false,
     /** Множитель размера плашки/полоски — на смартфоне 2 (мелкий экран). */
     private readonly uiScale = 1,
+    /** Ключ MODELS: своя модель из пака (усиленные мобы лагерей). Пусто — стандарт. */
+    private readonly modelName = "",
   ) {
     const opaque = this.lean;
     const cfg =
@@ -247,7 +251,7 @@ export class Mob implements Hittable {
       const { loadRig } = await import("../world/models");
       // Без smoothNormals: пересчёт нормалей ломал их направление на модели из
       // FBX (свет ложился «снизу»). Берём нормали как в файле.
-      make = await loadRig(this.scene, "slime");
+      make = await loadRig(this.scene, (this.modelName || "slime") as ModelName);
     } catch {
       // модель не загрузилась — возвращаем процедурную сферу
       if (!this.root.isDisposed() && !this.dead) {
@@ -274,7 +278,26 @@ export class Mob implements Hittable {
     const base = (MOB.bodyRadius * 1.75) / rig.nativeHeight;
     holder.scaling.setAll(base);
 
-    recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
+    // Мобам лагерей (пчела и т.п.) оставляем родные текстуры пака (только
+    // эмиссивная заливка под дневной свет); перекрашиваем под цвет кинда
+    // только стандартных слизней/плевунов/босса.
+    if (this.modelName) {
+      const { recolorMonster } = await import("../world/models");
+      recolorMonster(rig.root);
+    } else {
+      recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
+    }
+
+    // Клип «движения»: у разных моделей пака он называется по-разному
+    // (Hop / Jump / Fast_Flying / Walk / Run). Запомним, что нашли.
+    this.moveAnim =
+      rig.anims.get("hop") ??
+      rig.anims.get("jump") ??
+      rig.anims.get("flying") ??
+      rig.anims.get("walk") ??
+      rig.anims.get("run") ??
+      rig.anims.get("idle") ??
+      null;
 
     // Процедурная сфера с глазами больше не нужна — сносим совсем.
     this.body.dispose();
@@ -466,7 +489,9 @@ export class Mob implements Hittable {
     // «Hop» — только пока моб в воздухе (серверный признак grounded); на земле
     // модель статична (желейное сжатие даёт setSquash по вертикальной скорости).
     if (this.rig && !this.dead) {
-      if (s.grounded === 0) this.playAnim(this.rig.anims.get("hop"), true);
+      // Летающим мобам (пчела) клип держим всегда — иначе «висят» замерев.
+      const flyer = !!this.moveAnim && !this.rig.anims.has("hop");
+      if (s.grounded === 0 || flyer) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
 

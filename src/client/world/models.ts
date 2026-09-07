@@ -36,6 +36,12 @@ export const MODELS = {
   charZombie: "/models/chars/Zombie_Male.glb",
   charSoldier: "/models/chars/Soldier_Male.glb",
   charCowboy: "/models/chars/Cowboy_Male.glb",
+  // Усиленные мобы лагерей: Quaternius "Ultimate Monsters" (CC0). .gltf со
+  // встроенными буферами/текстурами — грузятся как есть, без конвертации.
+  monBee: "/models/monsters/Armabee.gltf",
+  monSpikyBlob: "/models/monsters/GreenSpikyBlob.gltf",
+  monCactoro: "/models/monsters/Cactoro.gltf",
+  monFrog: "/models/monsters/Frog.gltf",
 } as const;
 
 export type ModelName = keyof typeof MODELS;
@@ -363,6 +369,45 @@ export function recolorCharacter(root: TransformNode): void {
       flat.specularColor = new Color3(0.04, 0.04, 0.04);
       // 5 = небо + солнце + два факела ботов + ближайший светлячок.
       flat.maxSimultaneousLights = 5;
+      seen.set(src.id, flat);
+    }
+    mesh.material = flat;
+  }
+}
+
+/**
+ * Мобы из пака "Ultimate Monsters": у них ЕСТЬ текстура (атлас). Оставляем её,
+ * но переводим PBR → плоский StandardMaterial с эмиссивной заливкой — иначе в
+ * дневном свете (ambient=0) вертикальные грани почти чёрные.
+ */
+export function recolorMonster(root: TransformNode): void {
+  const seen = new Map<string, StandardMaterial>();
+  for (const mesh of root.getChildMeshes(false)) {
+    const src = mesh.material as
+      | (StandardMaterial & { albedoTexture?: unknown; albedoColor?: Color3 })
+      | null;
+    if (!src) continue;
+    let flat = seen.get(src.id);
+    if (!flat) {
+      const tex =
+        (src as { albedoTexture?: unknown }).albedoTexture ??
+        (src as { diffuseTexture?: unknown }).diffuseTexture ??
+        null;
+      const base =
+        (src as { albedoColor?: Color3 }).albedoColor?.toGammaSpace() ??
+        (src as { diffuseColor?: Color3 }).diffuseColor ??
+        new Color3(0.7, 0.7, 0.7);
+      flat = new StandardMaterial(`${src.name || "mob"}_flat`, root.getScene());
+      flat.maxSimultaneousLights = 5;
+      flat.specularColor = new Color3(0.05, 0.05, 0.05);
+      if (tex) {
+        flat.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
+        flat.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
+        flat.emissiveColor = new Color3(0.32, 0.32, 0.32); // заливка текстурой
+      } else {
+        flat.diffuseColor = base;
+        flat.emissiveColor = base.scale(0.28);
+      }
       seen.set(src.id, flat);
     }
     mesh.material = flat;
