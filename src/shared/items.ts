@@ -136,22 +136,15 @@ export interface LootEntry {
 }
 
 export const LOOT: Record<MobKind, LootEntry[]> = {
-  slime: [
-    { id: "potion", chance: 0.18, min: 1, max: 1 },
-    { id: "gold_staff", chance: 0.012, min: 1, max: 1 },
-  ],
-  spitter: [
-    { id: "potion", chance: 0.3, min: 1, max: 1 },
-    { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
-    { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
-    { id: "gold_staff", chance: 0.05, min: 1, max: 1 },
-  ],
-  // Босс — щедрая добыча: зелья горстью и гарантированное золотое оружие.
+  // Обычные мобы — только зелья. Золотое оружие ВСЕХ видов падает лишь с босса.
+  slime: [{ id: "potion", chance: 0.14, min: 1, max: 1 }],
+  spitter: [{ id: "potion", chance: 0.24, min: 1, max: 1 }],
+  // Босс — щедрая добыча: зелья горстью и золотое оружие с приличным шансом.
   boss: [
     { id: "potion", chance: 1, min: 2, max: 3 },
-    { id: "gold_sword", chance: 0.5, min: 1, max: 1 },
-    { id: "gold_bow", chance: 0.5, min: 1, max: 1 },
-    { id: "gold_staff", chance: 0.5, min: 1, max: 1 },
+    { id: "gold_sword", chance: 0.4, min: 1, max: 1 },
+    { id: "gold_bow", chance: 0.4, min: 1, max: 1 },
+    { id: "gold_staff", chance: 0.4, min: 1, max: 1 },
   ],
   shard: [],
 };
