@@ -831,13 +831,9 @@ export class ZoneSim {
     // Босс — в дальнем углу.
     this.boss = new Mob("boss", BOSS.home[0], BOSS.home[1]);
     this.mobs.set(this.boss.id, this.boss);
-    for (const [dx, dz] of [
-      [-4, -6],
-      [-1.5, -8],
-      [1.5, -8],
-      [4, -6],
-    ] as const) {
-      const d = new Dummy(dx, terrainHeight(dx, dz), dz);
+    // Чучела — на тренировочной площадке лагеря (HUB).
+    for (const t of HUB.training.dummies) {
+      const d = new Dummy(t.x, terrainHeight(t.x, t.z), t.z);
       this.dummies.set(d.id, d);
     }
   }
