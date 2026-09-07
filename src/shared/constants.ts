@@ -237,13 +237,15 @@ export interface EliteMobDef {
   xpMul: number;
   scaleMul: number;
   tint: readonly [number, number, number] | null;
+  /** true — моб парит и не прыгает (пчела): плавно рулит на высоте. */
+  flying?: boolean;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
-  // Пчёлы: мелкие, кучные, бьют вблизи, слабые поодиночке (берут числом).
+  // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
   bee: {
     model: "monBee", name: "Пчела", level: 3, kind: "slime",
-    hpMul: 0.7, dmgMul: 0.55, xpMul: 0.5, scaleMul: 0.5, tint: null,
+    hpMul: 0.7, dmgMul: 0.55, xpMul: 0.5, scaleMul: 0.5, tint: null, flying: true,
   },
   spikyBlob: {
     model: "monSpikyBlob", name: "Шипобрюх", level: 6, kind: "slime",
@@ -256,13 +258,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   cactoro: {
     model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
-    hpMul: 2.5, dmgMul: 2.0, xpMul: 2.7, scaleMul: 1.2, tint: null,
+    hpMul: 2.7, dmgMul: 2.0, xpMul: 2.9, scaleMul: 1.6, tint: null,
   },
 };
 
 /**
  * Лагеря усиленных мобов — по свободным местам карты (не в HUB, не в углу
  * босса). `type` → ELITE_MOBS. Каждый моб «прописан» у точки лагеря.
+ * Чем выше уровень мобов — тем меньше их в стае.
  */
 export const MOB_CAMPS: {
   x: number;
@@ -271,11 +274,11 @@ export const MOB_CAMPS: {
   count: number;
   spread: number;
 }[] = [
-  { x: -52, z: 44, type: "bee", count: 12, spread: 4 },
-  { x: 56, z: 40, type: "spikyBlob", count: 6, spread: 7 },
-  { x: 68, z: -32, type: "bee", count: 14, spread: 4 },
-  { x: -66, z: 6, type: "frog", count: 7, spread: 5 },
-  { x: 8, z: 62, type: "cactoro", count: 5, spread: 6 },
+  { x: -52, z: 44, type: "bee", count: 10, spread: 4 },
+  { x: 68, z: -32, type: "bee", count: 12, spread: 4 },
+  { x: -18, z: -62, type: "spikyBlob", count: 5, spread: 6 },
+  { x: -66, z: 6, type: "frog", count: 4, spread: 5 },
+  { x: 8, z: 62, type: "cactoro", count: 3, spread: 6 },
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

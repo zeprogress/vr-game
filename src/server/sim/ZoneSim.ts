@@ -236,6 +236,10 @@ class Mob {
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
   readonly eliteName: string;
   readonly eliteLevel: number;
+  /** true — моб парит и не прыгает (пчела). */
+  readonly flying: boolean;
+  /** Фаза покачивания в полёте (жужжание). */
+  private flyBob = Math.random() * 6.28;
 
   constructor(
     readonly kind: MobKind,
@@ -250,11 +254,13 @@ class Mob {
       dmgMul?: number;
       xpMul?: number;
       scaleMul?: number;
+      flying?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
     this.eliteName = opts.name ?? "";
     this.eliteLevel = opts.level ?? 0;
+    this.flying = opts.flying ?? false;
     this.homeX = hx;
     this.homeZ = hz;
     this.x = hx;
@@ -540,7 +546,46 @@ class Mob {
       }
     }
 
-    if (this.grounded && this.slamWindupT <= 0 && this.lungeWindupT <= 0 && this.lungeT <= 0) {
+    if (this.flying) {
+      // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
+      let tx = 0;
+      let tz = 0;
+      if (chasing && dist > MOB.attackRange * 0.7) {
+        tx = dx;
+        tz = dz;
+      } else if (!chasing) {
+        let wdx = this.wanderX - this.x;
+        let wdz = this.wanderZ - this.z;
+        if (Math.hypot(wdx, wdz) < 1.2) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.sqrt(Math.random()) * MOB.wanderRadius;
+          this.wanderX = this.homeX + Math.cos(a) * r;
+          this.wanderZ = this.homeZ + Math.sin(a) * r;
+          wdx = this.wanderX - this.x;
+          wdz = this.wanderZ - this.z;
+        }
+        const wl = Math.hypot(wdx, wdz) || 1;
+        tx = wdx / wl;
+        tz = wdz / wl;
+      }
+      const spd = chasing ? hopSpeed : MOB.idleHopSpeed * 1.2;
+      const [sx, sz] = tx !== 0 || tz !== 0 ? steerAroundTrees(this.x, this.z, tx, tz) : [0, 0];
+      const acc = Math.min(1, dt * 4);
+      this.vx += (sx * spd - this.vx) * acc;
+      this.vz += (sz * spd - this.vz) * acc;
+      this.x += this.vx * dt;
+      this.z += this.vz * dt;
+      this.flyBob += dt * 9;
+      this.y = terrainHeight(this.x, this.z) + 1.35 + Math.sin(this.flyBob) * 0.12;
+      this.vy = 0;
+      this.grounded = true; // клиент: без прыжков/приземлений
+      if (Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
+    } else if (
+      this.grounded &&
+      this.slamWindupT <= 0 &&
+      this.lungeWindupT <= 0 &&
+      this.lungeT <= 0
+    ) {
       this.hopCd -= dt;
       if (this.hopCd <= 0 && chasing) {
         this.hopCd = hopInterval;
@@ -610,9 +655,12 @@ class Mob {
       this.vy -= MOB.gravity * dt;
     }
 
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    this.z += this.vz * dt;
+    // Летающий уже проинтегрировал x/z и выставил y выше — не трогаем.
+    if (!this.flying) {
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      this.z += this.vz * dt;
+    }
 
     // Босс не покидает свой угол: жёсткий поводок к дому (в бою всё равно
     // может гоняться в пределах арены, но не убегать через всю карту).
@@ -631,13 +679,15 @@ class Mob {
       }
     }
 
-    const gy = terrainHeight(this.x, this.z);
-    if (this.y <= gy) {
-      this.y = gy;
-      this.vy = 0;
-      this.vx *= 0.25;
-      this.vz *= 0.25;
-      this.grounded = true;
+    if (!this.flying) {
+      const gy = terrainHeight(this.x, this.z);
+      if (this.y <= gy) {
+        this.y = gy;
+        this.vy = 0;
+        this.vx *= 0.25;
+        this.vz *= 0.25;
+        this.grounded = true;
+      }
     }
 
     // не проходит сквозь стволы деревьев
@@ -925,6 +975,7 @@ export class ZoneSim {
           dmgMul: def.dmgMul,
           xpMul: def.xpMul,
           scaleMul: def.scaleMul,
+          flying: def.flying,
         });
         this.mobs.set(m.id, m);
       }
