@@ -23,6 +23,7 @@ import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
+import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
@@ -113,6 +114,8 @@ export class Game {
   private readonly crossFx: WorldCrossFx;
   /** Аура массового лечения бота-лекаря. */
   private readonly healAura: HealAuraFx;
+  /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
+  private readonly skillFx: SkillFx;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
@@ -230,6 +233,7 @@ export class Game {
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
+    this.skillFx = new SkillFx(this.scene);
     this.specMarker = new SpecCamMarker(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
@@ -422,6 +426,8 @@ export class Game {
       this.healCrossFx?.update(dt);
       this.crossFx.update(dt);
       this.healAura.update(dt);
+    this.skillFx.update(dt);
+      this.skillFx.update(dt);
       this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
@@ -1243,6 +1249,19 @@ export class Game {
         // Бот-лекарь начал каст: круг по земле + купол на всё время каста.
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at(at, () => this.sfx.levelUp());
+        break;
+      case "cleave": {
+        // Сектор строим по текущему развороту бота — он замер на замахе.
+        const av = this.avatars.get(id);
+        const f = av?.eyeForward;
+        const yaw = f ? Math.atan2(f.x, f.z) : 0;
+        this.skillFx.cleave(x, y, z, yaw, BOT.cleaveRange, BOT.cleaveCastTime);
+        this.sfx.swordSwing(at);
+        break;
+      }
+      case "arrowRain":
+        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
+        this.sfx.at(at, () => this.sfx.bowRelease(1));
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

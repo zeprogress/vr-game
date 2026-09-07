@@ -199,6 +199,13 @@ interface Bot {
   drinkCd: number; // с до следующего глотка зелья
   healCd: number; // с до следующего массового хила (посох)
   healCastT: number; // с до конца каста массового хила (>0 — кастует, стоит)
+  cleaveCd: number; // с до следующего рассекающего удара (меч)
+  cleaveCastT: number; // с до конца замаха рассекающего
+  cleaveYaw: number; // куда был направлен сектор в момент замаха
+  rainCd: number; // с до следующего града стрел (лук)
+  rainCastT: number; // с до конца замаха града
+  rainX: number; // куда намечен град
+  rainZ: number;
   sayAt: number; // ms последней реплики в чат (антиспам)
   statsAt: number; // ms последнего ответа про статы (антиспам)
   /** Секунд до касания клинка (0 — замаха нет). Урон наносится в этот момент. */
@@ -1656,6 +1663,13 @@ export class ZoneRoom extends Room<ZoneState> {
       drinkCd: 0,
       healCd: 0,
       healCastT: 0,
+      cleaveCd: 0,
+      cleaveCastT: 0,
+      cleaveYaw: 0,
+      rainCd: 0,
+      rainCastT: 0,
+      rainX: 0,
+      rainZ: 0,
       sayAt: 0,
       statsAt: 0,
       swingIn: 0,
@@ -1719,6 +1733,8 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
     bot.healCd = Math.max(0, bot.healCd - dt);
+    bot.cleaveCd = Math.max(0, bot.cleaveCd - dt);
+    bot.rainCd = Math.max(0, bot.rainCd - dt);
 
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
@@ -1731,6 +1747,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
     this.botDrink(bot);
     this.botGroupHeal(bot, dt);
+    this.botCleave(bot, dt);
+    this.botArrowRain(bot, dt);
 
     // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
     const cx = bot.homeX;
@@ -2246,6 +2264,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.rightCls !== "staff" || bot.healCd > 0) return;
     if (p.mana < h.minMana) return;
     if (this.woundedNear(p).length < BOT.healMinTargets) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
     // Начало каста: мана списывается сразу, бот замирает, вокруг горит аура.
     const cost = Math.min(p.mana, BOT.healCharge * h.chargeTime * h.manaPerSec);
@@ -2261,6 +2280,141 @@ export class ZoneRoom extends Room<ZoneState> {
       z: p.head.z,
     };
     this.broadcast(MSG.act, aura);
+  }
+
+  /**
+   * Бот с мечом — «Рассекающий удар»: массовый скилл по конусу перед собой.
+   * Замах (перед ботом горит красный сектор), потом урон всем внутри и
+   * отбрасывание. Скилл редкий: кулдаун + шанс срабатывания.
+   */
+  private botCleave(bot: Bot, dt: number): void {
+    const p = bot.state;
+
+    if (bot.cleaveCastT > 0) {
+      bot.cleaveCastT = Math.max(0, bot.cleaveCastT - dt);
+      if (bot.cleaveCastT > 0) return;
+      this.botCleaveLand(bot);
+      return;
+    }
+    if (p.rightCls !== "sword" || bot.cleaveCd > 0) return;
+    // Целимся туда, куда бот и так смотрит: сектор строится от его yaw.
+    if (this.mobsInCone(p, bot.yaw).length < BOT.cleaveMinTargets) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+
+    bot.cleaveCd = BOT.cleaveCooldown;
+    bot.cleaveCastT = BOT.cleaveCastTime;
+    bot.cleaveYaw = bot.yaw;
+    bot.emoteFreezeUntil = Date.now() + BOT.cleaveCastTime * 1000;
+    const fx: ActRelay = {
+      k: "cleave",
+      id: bot.id,
+      x: p.head.x,
+      y: p.head.y - PLAYER.eyeHeight,
+      z: p.head.z,
+    };
+    this.broadcast(MSG.act, fx);
+  }
+
+  /** Мобы в конусе перед точкой `p`, направление — `yaw`. */
+  private mobsInCone(p: PlayerState, yaw: number): { id: string; x: number; z: number }[] {
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    const cone = Math.cos(BOT.cleaveCone);
+    const out: { id: string; x: number; z: number }[] = [];
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead) continue;
+      const dx = m.x - p.head.x;
+      const dz = m.z - p.head.z;
+      const d = Math.hypot(dx, dz);
+      if (d > BOT.cleaveRange || d < 1e-3) continue;
+      if ((dx / d) * fx + (dz / d) * fz < cone) continue;
+      out.push({ id: m.id, x: m.x, z: m.z });
+    }
+    return out;
+  }
+
+  /** Замах дочитан — бьём и раскидываем всех, кто остался в секторе. */
+  private botCleaveLand(bot: Bot): void {
+    const p = bot.state;
+    const dmg =
+      weaponDamage("sword", p.level, p.str, multIn(p, "right")) * BOT.cleaveDamageMult;
+    for (const t of this.mobsInCone(p, bot.cleaveYaw)) {
+      const dx = t.x - p.head.x;
+      const dz = t.z - p.head.z;
+      const l = Math.hypot(dx, dz) || 1;
+      this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
+      this.sim.shoveMob(t.id, dx / l, dz / l, BOT.cleaveKnockback);
+    }
+    this.chatSeen.set(bot.norm, Date.now());
+  }
+
+  /**
+   * Бот с луком — «Град стрел»: намечает круг на земле там, где кучнее всего
+   * мобов, и через замах туда падает залп. Мобы успевают разбежаться.
+   */
+  private botArrowRain(bot: Bot, dt: number): void {
+    const p = bot.state;
+
+    if (bot.rainCastT > 0) {
+      bot.rainCastT = Math.max(0, bot.rainCastT - dt);
+      if (bot.rainCastT > 0) return;
+      this.botArrowRainLand(bot);
+      return;
+    }
+    if (p.rightCls !== "bow" || bot.rainCd > 0) return;
+    const spot = this.bestRainSpot(p);
+    if (!spot) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+
+    bot.rainCd = BOT.rainCooldown;
+    bot.rainCastT = BOT.rainCastTime;
+    bot.rainX = spot.x;
+    bot.rainZ = spot.z;
+    bot.emoteFreezeUntil = Date.now() + BOT.rainCastTime * 1000;
+    const fx: ActRelay = {
+      k: "arrowRain",
+      id: bot.id,
+      x: spot.x,
+      y: terrainHeight(spot.x, spot.z),
+      z: spot.z,
+    };
+    this.broadcast(MSG.act, fx);
+  }
+
+  /** Самый «кучный» моб в радиусе залпа — вокруг него и наметим круг. */
+  private bestRainSpot(p: PlayerState): { x: number; z: number } | null {
+    let best: { x: number; z: number } | null = null;
+    let bestN = 0;
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead) continue;
+      if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > BOT.rainRange) continue;
+      let n = 0;
+      for (const o of this.sim.mobs.values()) {
+        if (o.dead) continue;
+        if (Math.hypot(o.x - m.x, o.z - m.z) <= BOT.rainRadius) n++;
+      }
+      if (n > bestN) {
+        bestN = n;
+        best = { x: m.x, z: m.z };
+      }
+    }
+    return bestN >= BOT.rainMinTargets ? best : null;
+  }
+
+  /** Залп упал — урон всем, кто остался в круге. */
+  private botArrowRainLand(bot: Bot): void {
+    const p = bot.state;
+    const dmg =
+      weaponDamage("arrow", p.level, p.str, multIn(p, "right"), p.agi) * BOT.rainDamageMult;
+    for (const m of [...this.sim.mobs.values()]) {
+      if (m.dead) continue;
+      const dx = m.x - bot.rainX;
+      const dz = m.z - bot.rainZ;
+      if (Math.hypot(dx, dz) > BOT.rainRadius) continue;
+      const l = Math.hypot(dx, dz) || 1;
+      this.sim.hitMob(m.id, dmg, dx / l, dz / l, bot.id);
+    }
+    this.chatSeen.set(bot.norm, Date.now());
   }
 
   /** Кто рядом с ботом ранен и достаётся массовым хилом. */

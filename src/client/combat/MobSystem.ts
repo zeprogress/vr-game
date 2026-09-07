@@ -4,6 +4,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Constants } from "@babylonjs/core/Engines/constants";
@@ -158,6 +159,23 @@ export class NetMobs {
     ringMat.alphaMode = Constants.ALPHA_COMBINE;
     ringMat.disableDepthWrite = true;
     ringMat.backFaceCulling = false;
+    // Круглое кольцо, а не квадрат: плоскость без текстуры красилась ровной
+    // заливкой на всю карту — виден был оранжевый КВАДРАТ. Даём радиальный
+    // градиент и в emissive, и в opacity (diffuse при disableLighting не
+    // работает — те же грабли, что были у блика костра).
+    const ringTex = new DynamicTexture("burstRingTex", { width: 128, height: 128 }, scene, false);
+    const rc = ringTex.getContext() as unknown as CanvasRenderingContext2D;
+    const g = rc.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.0, "rgba(255,255,255,0.05)");
+    g.addColorStop(0.55, "rgba(255,255,255,0.45)");
+    g.addColorStop(0.82, "rgba(255,255,255,1)");
+    g.addColorStop(1.0, "rgba(255,255,255,0)");
+    rc.fillStyle = g;
+    rc.fillRect(0, 0, 128, 128);
+    ringTex.hasAlpha = true;
+    ringTex.update();
+    ringMat.emissiveTexture = ringTex;
+    ringMat.opacityTexture = ringTex;
     this.burstRingProto = MeshBuilder.CreatePlane("burstRing", { size: 1 }, scene);
     this.burstRingProto.material = ringMat;
     this.burstRingProto.isPickable = false;

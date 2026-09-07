@@ -17,6 +17,7 @@ import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
+import { SkillFx } from "../ui/SkillFx";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
@@ -56,6 +57,8 @@ export class Spectator {
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly botLights: import("../world/BotLights").BotLights;
   private readonly healAura: HealAuraFx;
+  /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
+  private readonly skillFx: SkillFx;
   private readonly crossFx: WorldCrossFx;
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
@@ -190,6 +193,7 @@ export class Spectator {
     this.botLights = zone.botLights;
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
+    this.skillFx = new SkillFx(this.scene);
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
@@ -593,6 +597,7 @@ export class Spectator {
     this.loot.update(dt);
     this.crossFx.update(dt);
     this.healAura.update(dt);
+    this.skillFx.update(dt);
     if (this.voice) {
       this.voice.update(dt);
       // Игрок мог дать микрофон уже после установки связи — периодически
@@ -717,6 +722,18 @@ export class Spectator {
       case "healAura":
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
+        break;
+      case "cleave": {
+        const av = this.avatars.get(id);
+        const f = av?.eyeForward;
+        const yaw = f ? Math.atan2(f.x, f.z) : 0;
+        this.skillFx.cleave(x, y, z, yaw, BOT.cleaveRange, BOT.cleaveCastTime);
+        this.sfx.swordSwing({ x, y, z });
+        break;
+      }
+      case "arrowRain":
+        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
+        this.sfx.at({ x, y, z }, () => this.sfx.bowRelease(1));
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

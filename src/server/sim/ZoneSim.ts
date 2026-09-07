@@ -297,6 +297,15 @@ class Mob {
   }
 
   /** true — моб убит этим ударом. */
+  /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
+  shove(dx: number, dz: number, power: number): void {
+    if (this.dead || this.kind === "boss") return; // босса с места не сдвинуть
+    this.vx += dx * power;
+    this.vz += dz * power;
+    this.vy += power * 0.35;
+    this.grounded = false;
+  }
+
   applyHit(dmg: number, dx: number, dz: number): boolean {
     if (this.dead || this.hurtCd > 0) return false;
     this.hurtCd = 0.2;
@@ -1242,6 +1251,11 @@ export class ZoneSim {
       this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
     }
     return kind;
+  }
+
+  /** Отбросить моба по id (рассекающий удар бота и т.п.). */
+  shoveMob(id: string, dx: number, dz: number, power: number): void {
+    this.mobs.get(id)?.shove(dx, dz, power);
   }
 
   /**
