@@ -38,6 +38,8 @@ interface WorldRecord {
   /** Общая подгонка положений/света — админ задаёт её всем из панели. */
   loadout?: Record<string, unknown>;
   pult?: Partial<PultSettings>;
+  /** Выбор голоса озвучки в чате: normNick -> Fish Audio reference_id. */
+  chatVoices?: Record<string, string>;
   savedAt: number;
 }
 
@@ -50,6 +52,7 @@ export class WorldStore {
   private drops: DropSave[] = [];
   private loadout: Record<string, unknown> = {};
   private pult: Partial<PultSettings> = {};
+  private chatVoices: Record<string, string> = {};
 
   constructor() {
     try {
@@ -61,6 +64,9 @@ export class WorldStore {
       }
       if (raw?.pult && typeof raw.pult === "object" && !Array.isArray(raw.pult)) {
         this.pult = raw.pult as Partial<PultSettings>;
+      }
+      if (raw?.chatVoices && typeof raw.chatVoices === "object" && !Array.isArray(raw.chatVoices)) {
+        this.chatVoices = raw.chatVoices as Record<string, string>;
       }
       console.log(
         `[world] восстановлено: лут ${this.drops.length}, общая подгонка ${Object.keys(this.loadout).length ? "есть" : "нет"}, пульт ${Object.keys(this.pult).length ? "есть" : "нет"}`,
@@ -101,6 +107,18 @@ export class WorldStore {
     this.writeFile();
   }
 
+  /** Выбранный зрителем голос озвучки в чате (null — не выбирал). */
+  chatVoice(norm: string): string | null {
+    return this.chatVoices[norm] ?? null;
+  }
+
+  /** Задать/сбросить (ref=null) голос зрителя и записать файл. */
+  setChatVoice(norm: string, ref: string | null): void {
+    if (ref) this.chatVoices[norm] = ref;
+    else delete this.chatVoices[norm];
+    this.writeFile();
+  }
+
   /** Записать на диск. Атомарно (tmp + rename). */
   save(drops: DropSave[]): void {
     // Держим в памяти актуальное: следующая комната в этом же процессе
@@ -118,6 +136,7 @@ export class WorldStore {
         drops: this.drops,
         loadout: this.loadout,
         pult: this.pult,
+        chatVoices: this.chatVoices,
         savedAt: Date.now(),
       };
       const tmp = `${FILE}.tmp`;

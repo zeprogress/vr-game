@@ -64,7 +64,13 @@ import {
 } from "#shared/constants";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
-import { isTtsVoice, TTS_DEFAULT_VOICE } from "#shared/tts";
+import {
+  isTtsVoice,
+  TTS_DEFAULT_VOICE,
+  ttsVoiceFromQuery,
+  ttsVoiceMenu,
+  ttsVoiceName,
+} from "#shared/tts";
 import { terrainHeight } from "#shared/terrain";
 import {
   isWeaponKind,
@@ -1152,11 +1158,34 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
+    } else if (cmd === "!voice" || cmd === "!голос") {
+      this.setChatVoice(nick, norm, parts.slice(1).join(" "));
     }
     else if (cmd && !cmd.startsWith("!")) {
       this.botSay(norm, text);
       this.voiceChat(nick, norm, text);
     }
+  }
+
+  /** `!voice` — зритель выбирает голос озвучки СВОИХ сообщений в чате. */
+  private setChatVoice(nick: string, norm: string, arg: string): void {
+    const a = arg.trim().toLowerCase();
+    if (!a || a === "list" || a === "список" || a === "?") {
+      this.reply(`@${nick} голоса: ${ttsVoiceMenu()} · выбрать: !voice <номер|имя>, сбросить: !voice off`);
+      return;
+    }
+    if (a === "off" || a === "выкл" || a === "сброс" || a === "reset") {
+      world.setChatVoice(norm, null);
+      this.reply(`@${nick} голос сброшен — озвучка общим голосом стрима.`);
+      return;
+    }
+    const ref = ttsVoiceFromQuery(arg);
+    if (!ref) {
+      this.reply(`@${nick} не нашёл такой голос. Список: !voice list`);
+      return;
+    }
+    world.setChatVoice(norm, ref);
+    this.reply(`@${nick} твой голос озвучки: ${ttsVoiceName(ref)}.`);
   }
 
   /**
@@ -1169,7 +1198,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const now = Date.now();
     if (now - (this.ttsLast.get(norm) ?? 0) < 4000) return; // не частим на одного
     this.ttsLast.set(norm, now);
-    const voice = isTtsVoice(this.state.ttsVoice) ? this.state.ttsVoice : TTS_DEFAULT_VOICE;
+    // Выбор зрителя (!voice) в приоритете; иначе общий голос стрима с пульта.
+    const own = world.chatVoice(norm);
+    const voice =
+      own && isTtsVoice(own)
+        ? own
+        : isTtsVoice(this.state.ttsVoice)
+          ? this.state.ttsVoice
+          : TTS_DEFAULT_VOICE;
     void synthChat(text, voice).then((url) => {
       if (!url || this.spectators.size === 0) return;
       const cmd: SpecCmd = { t: "ttsPlay", url, nick };
@@ -1316,9 +1352,10 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       "Ещё: !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
         "вместе — идём толпой) · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
-        "идти рядом, !unfollow — назад к делам · обычное сообщение в чат он скажет " +
-        "вслух над головой. Зайти за своего героя самому: ссылка в описании стрима, " +
-        "ник — как в Twitch.",
+        "идти рядом, !unfollow — назад к делам · !voice <номер|имя> — выбрать голос " +
+        "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
+        "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +
+        "стрима, ник — как в Twitch.",
     );
   }
 

@@ -28,3 +28,30 @@ export const TTS_DEFAULT_VOICE = TTS_VOICES[0].ref;
 export function isTtsVoice(ref: string): boolean {
   return TTS_VOICES.some((v) => v.ref === ref);
 }
+
+/** Имя голоса по ref (для ответа в чат). */
+export function ttsVoiceName(ref: string): string {
+  return TTS_VOICES.find((v) => v.ref === ref)?.name ?? "?";
+}
+
+/**
+ * Найти голос по запросу из чата: номер (1..N) или часть имени
+ * (регистронезависимо). Возвращает ref или null.
+ */
+export function ttsVoiceFromQuery(q: string): string | null {
+  const s = q.trim().toLowerCase();
+  if (!s) return null;
+  const n = Number(s);
+  if (Number.isInteger(n) && n >= 1 && n <= TTS_VOICES.length) {
+    return TTS_VOICES[n - 1].ref;
+  }
+  const exact = TTS_VOICES.find((v) => v.name.toLowerCase() === s);
+  if (exact) return exact.ref;
+  const partial = TTS_VOICES.find((v) => v.name.toLowerCase().includes(s));
+  return partial?.ref ?? null;
+}
+
+/** Список голосов для ответа в чат: «1 Володарский · 2 Паша Техник · …». */
+export function ttsVoiceMenu(): string {
+  return TTS_VOICES.map((v, i) => `${i + 1} ${v.name}`).join(" · ");
+}
