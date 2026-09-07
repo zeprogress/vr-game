@@ -144,7 +144,8 @@ export class NameTag {
     const scene = this.plane.getScene();
     const w = this.planeW * 0.66;
     const barH = this.planeW * 0.05;
-    const y = -this.halfH - barH * 1.1;
+    // Чуть ниже текста, но в пределах плашки — не улетает к макушке модели.
+    const y = -this.halfH * 0.32;
     this.hpW = w;
 
     const bgMat = new StandardMaterial("nameHpBgMat", scene);

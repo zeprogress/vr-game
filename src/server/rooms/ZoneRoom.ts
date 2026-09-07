@@ -2155,20 +2155,23 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       this.spectators.add(client.sessionId);
       console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
-      // Не ждём 10-секундный тик — оверлей должен нарисовать таблицу сразу.
-      client.send(MSG.leaderboard, this.leaderboard(5));
-      // Оверлей теперь общий (переживает рестарт) — отдаём сразу, чтобы
-      // подключившийся дашборд/спектатор не остался на дефолтах/локальном
-      // кэше до первой ручной правки.
-      if (Object.keys(this.overlayCfg).length) {
-        client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
-      }
-      // Голос игроков на спектаторе (для стрима) — текущее состояние сразу,
-      // иначе подключившийся рендер-спектатор не знал бы, слушать ли.
-      client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
-      // Авто-режиссёр и «только боты» — тоже общие и переживают рестарт.
-      client.send(MSG.specCmd, { t: "auto", on: this.pultAuto ? 1 : 0 } satisfies SpecCmd);
-      client.send(MSG.specCmd, { t: "bots", on: this.pultBotsOnly ? 1 : 0 } satisfies SpecCmd);
+      // Начальная синхронизация настроек пульта. Слать сразу из onJoin нельзя:
+      // клиент ещё не навесил room.onMessage(specCmd) (это происходит после
+      // того, как joinOrCreate у него зарезолвится), и colyseus.js такие
+      // сообщения молча роняет — спектатор открывался с недогруженным пультом.
+      // Небольшая задержка + повтор гарантируют доставку.
+      const pushInit = (): void => {
+        if (!this.spectators.has(client.sessionId)) return;
+        client.send(MSG.leaderboard, this.leaderboard(5));
+        if (Object.keys(this.overlayCfg).length) {
+          client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
+        }
+        client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
+        client.send(MSG.specCmd, { t: "auto", on: this.pultAuto ? 1 : 0 } satisfies SpecCmd);
+        client.send(MSG.specCmd, { t: "bots", on: this.pultBotsOnly ? 1 : 0 } satisfies SpecCmd);
+      };
+      this.clock.setTimeout(pushInit, 400);
+      this.clock.setTimeout(pushInit, 1500);
       return;
     }
 
