@@ -275,11 +275,13 @@ export const MOB_CAMPS: {
   count: number;
   spread: number;
 }[] = [
-  { x: -52, z: 44, type: "bee", count: 10, spread: 4 },
-  { x: 68, z: -32, type: "bee", count: 12, spread: 4 },
-  { x: -12, z: -68, type: "spikyBlob", count: 5, spread: 6 },
-  { x: -66, z: 6, type: "frog", count: 4, spread: 5 },
-  { x: 8, z: 62, type: "cactoro", count: 3, spread: 6 },
+  // Расставлены по силе от лагеря (HUB на (-55,-55)): слабые рядом,
+  // сильные — дальше. Дистанция от лагеря указана в комментарии.
+  { x: -13, z: -69, type: "bee", count: 10, spread: 4 }, // ~44 м, ур.3
+  { x: -69, z: -13, type: "bee", count: 12, spread: 4 }, // ~44 м, ур.3
+  { x: -35, z: 13, type: "spikyBlob", count: 5, spread: 6 }, // ~71 м, ур.6
+  { x: -25, z: 30, type: "frog", count: 4, spread: 5 }, // ~90 м, ур.7
+  { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
