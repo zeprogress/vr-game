@@ -118,7 +118,7 @@ export function isItemId(v: unknown): v is ItemId {
 export const BAG = {
   slots: 8,
   /** Ближе этого лут подбирается сам. */
-  pickupRadius: 1.4,
+  pickupRadius: 1.9,
   /** Сколько секунд обычный лут лежит, прежде чем растаять (3 минуты). */
   dropLife: 180,
   /** Разброс при выпадении нескольких предметов, м. */

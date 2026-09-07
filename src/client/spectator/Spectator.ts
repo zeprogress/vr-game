@@ -707,6 +707,7 @@ export class Spectator {
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));
+        this.avatars.get(id)?.playSwing();
         break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));

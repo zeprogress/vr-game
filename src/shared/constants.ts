@@ -390,7 +390,7 @@ export const TWITCH_CHANNEL = "zeprogress";
 export const STREAM_NICKS = ["zeprogress", "zep"];
 export const BOT = {
   /** Радиус от точки спавна зоны, дальше которого бот не заходит и не бьёт. */
-  zoneRadius: 26,
+  zoneRadius: 34,
   moveSpeed: 3.4, // м/с — базовый (fallback); фактический = moveSpeedFor(level,agi)*speedFactor
   /** Бот чуть медленнее живого игрока тех же статов — так читаемее на стриме. */
   speedFactor: 0.82,
@@ -451,7 +451,7 @@ export const BOT = {
   /** Не чаще, чем раз в столько секунд, с. */
   drinkCooldown: 5,
   /** Радиус, в котором бот замечает золотой меч на земле и идёт за ним, м. */
-  lootRadius: 22, // м — на этой дистанции бот замечает оружие/зелье на земле
+  lootRadius: 30, // м — на этой дистанции бот замечает оружие/зелье на земле
   /** Не чаще, чем раз в столько секунд, одна эмоция (!cheer/!roll/!jump). */
   emoteCooldown: 3,
   /** Как близко бот держится к тому, за кем идёт по !follow/!come, м. */

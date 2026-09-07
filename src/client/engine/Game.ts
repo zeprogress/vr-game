@@ -1215,6 +1215,9 @@ export class Game {
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));
+        // Отдельного клипа натяга у бота нет — берём взмах: рука дёргается,
+        // читается как выстрел. Лучше, чем застывшая поза.
+        this.avatars.get(id)?.playSwing();
         break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));
