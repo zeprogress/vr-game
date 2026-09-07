@@ -1603,6 +1603,28 @@ export class ZoneRoom extends Room<ZoneState> {
       if (mob) bot.target = mob.id;
     }
 
+    // Рейд, но по боту лупит обычный моб / осколок босса — сперва добиваем
+    // его (в радиусе raidAddRange и уже агрнут), потом снова к боссу. Делаем
+    // это, подменяя цель на моба и снимая raidBoss на текущий тик: всё
+    // движение/удар ниже уже умеют драться с обычным мобом.
+    if (raidBoss) {
+      let addD: number = BOT.raidAddRange;
+      let addId: string | null = null;
+      for (const m of this.sim.mobs.values()) {
+        if (m.dead || m.kind === "boss" || !m.aggro) continue;
+        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        if (d < addD) {
+          addD = d;
+          addId = m.id;
+        }
+      }
+      if (addId) {
+        mob = this.sim.mobs.get(addId);
+        bot.target = addId;
+        raidBoss = undefined;
+      }
+    }
+
     // Лут на земле — идём поднять раньше, чем добивать моба (моб подождёт).
     // Приоритет: золотой меч (разовый апгрейд) > бутылка зелья (пока в сумке
     // меньше BOT.potions+2 — не тащимся через полкарты за лишней).
