@@ -19,3 +19,8 @@ dist/
 
 # Сырые ассет-паки — из них берём точечные .glb в public/models/
 /art/kits/
+
+# крупные исходники арта — не в git
+art/*.zip
+art/*.png
+art/.DS_Store
