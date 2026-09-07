@@ -41,7 +41,7 @@ function distToSegment(px: number, pz: number, ax: number, az: number, bx: numbe
  */
 export function troddenAt(x: number, z: number): number {
   const dFire = Math.hypot(x - HUB.campfire.pos.x, z - HUB.campfire.pos.z);
-  const plaza = clamp01((10 - dFire) / 5); // круг у костра
+  const plaza = clamp01((12 - dFire) / 4); // круг у костра
   const dPath = distToSegment(
     x,
     z,

@@ -41,6 +41,10 @@ export interface HubBlockout {
 const C = {
   dirt: new Color3(0.36, 0.28, 0.19),
   path: new Color3(0.42, 0.34, 0.24),
+  /** Земля лагеря вне троп: тёмная почва с зеленцой — ближе к траве поляны. */
+  groundBase: new Color3(0.29, 0.31, 0.18),
+  /** Вытоптанное: у костра и по тропе к воротам — светлый плотный грунт. */
+  groundWorn: new Color3(0.55, 0.45, 0.31),
   wood: new Color3(0.34, 0.24, 0.16),
   woodLight: new Color3(0.5, 0.38, 0.25),
   stone: new Color3(0.45, 0.45, 0.47),
@@ -103,11 +107,13 @@ function buildCampGround(scene: Scene, cx: number, cz: number, mat: StandardMate
   const idx: number[] = [];
   const put = (x: number, z: number): void => {
     pos.push(x, terrainHeight(x, z) + 0.05, z);
+    // Чуть «шумим» базовый цвет, чтобы земля не была однотонной заливкой.
+    const n = 0.92 + 0.16 * (Math.sin(x * 0.9) * Math.cos(z * 0.77) * 0.5 + 0.5);
     const w = troddenAt(x, z);
     col.push(
-      C.dirt.r + (C.path.r - C.dirt.r) * w,
-      C.dirt.g + (C.path.g - C.dirt.g) * w,
-      C.dirt.b + (C.path.b - C.dirt.b) * w,
+      (C.groundBase.r + (C.groundWorn.r - C.groundBase.r) * w) * n,
+      (C.groundBase.g + (C.groundWorn.g - C.groundBase.g) * w) * n,
+      (C.groundBase.b + (C.groundWorn.b - C.groundBase.b) * w) * n,
       clamp01((R - Math.hypot(x - cx, z - cz)) / 5),
     );
   };
@@ -187,8 +193,10 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   matGround.backFaceCulling = false;
   matGround.twoSidedLighting = true;
   matGround.maxSimultaneousLights = LIGHT_BUDGET;
-  matGround.emissiveColor = C.dirt.scale(0.25);
-  dayLit.push({ m: matGround, base: C.dirt.clone() });
+  // Заливка у земли слабее, чем у построек: иначе плоский эмиссив «съедает»
+  // разницу между вытоптанным и обычным грунтом.
+  matGround.emissiveColor = C.groundBase.scale(0.12);
+  dayLit.push({ m: matGround, base: C.groundBase.scale(0.5) });
   const pad = buildCampGround(scene, cx, cz, matGround);
   pad.parent = root;
 
