@@ -203,7 +203,8 @@ export const BOSS_CFG: MobConfig = {
   name: "Багровый слизень",
   level: 6,
   hp: BOSS.hp,
-  xp: 90,
+  // Делится между всеми, кто нанёс боссу урон (см. ZoneSim.hitMob).
+  xp: 250,
   tint: [0.82, 0.11, 0.13],
   alpha: 0.74,
   ranged: false, // ближний бой первичен; плевок — своя логика в ZoneSim

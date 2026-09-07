@@ -944,7 +944,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const victimKind = msg.target === "mob" ? this.sim.mobs.get(msg.id)?.kind : undefined;
-    const xp = this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1);
+    const xp = this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
     if (xp > 0) {
       this.awardXp(client, p, xp);
       rt.kills++;
@@ -2074,7 +2074,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
     const dmg = weaponDamage("sword", p.level, p.str, multIn(p, "right"));
-    const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz);
+    const xp = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
     if (xp > 0) {
       this.awardXp(undefined, p, xp);
       bot.rt.kills++;
@@ -2234,6 +2234,26 @@ export class ZoneRoom extends Room<ZoneState> {
         // Бот активно фармит из лука/посоха — не деспавним по «тишине в чате».
         if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
       }
+    }
+    // Опыт с босса — поделён между всеми, кто нанёс урон (пропорционально урону).
+    if (this.sim.bossXpShare.length) {
+      let topOwner = "";
+      let topXp = -1;
+      for (const k of this.sim.bossXpShare) {
+        const kp = this.state.players.get(k.owner);
+        if (kp) {
+          this.awardXp(this.clientOf(k.owner), kp, k.xp);
+          const krt = this.rt.get(k.owner);
+          if (krt) krt.kills++;
+          if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
+          if (k.xp > topXp) {
+            topXp = k.xp;
+            topOwner = kp.nick;
+          }
+        }
+      }
+      if (topOwner) this.broadcast(MSG.killFeed, { by: topOwner, victim: "Багровый" });
+      this.sim.bossXpShare.length = 0;
     }
     for (const d of this.sim.drops.values()) {
       if (this.state.drops.has(d.id)) continue;

@@ -161,6 +161,8 @@ class Mob {
   readonly ranged: boolean;
   readonly xp: number;
   readonly scale: number;
+  /** Кто и сколько урона нанёс (для дележа опыта с босса). */
+  readonly dmgBy = new Map<string, number>();
 
   // --- босс ---
   private slamCd: number = BOSS.slamCooldown;
@@ -659,6 +661,7 @@ class Mob {
     this.shootQueue = 0;
     this.shootGap = 0;
     this.splitsDone = 0;
+    this.dmgBy.clear();
     this.hp = this.maxHp;
     this.dead = false;
     this.aggroed = false;
@@ -976,7 +979,7 @@ export class ZoneSim {
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
-        const xp = this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh);
+        const xp = this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
         if (xp > 0) this.boltXp.push({ owner: b.owner, xp });
         return true;
       }
@@ -993,9 +996,15 @@ export class ZoneSim {
   }
 
   /** Урон по мобу. Возвращает опыт за добивание (0 — если не убит). */
-  hitMob(id: string, dmg: number, dx: number, dz: number): number {
+  /** Опыт с добитого босса, поделённый между всеми, кто нанёс урон. Комната разошлёт. */
+  readonly bossXpShare: { owner: string; xp: number }[] = [];
+
+  hitMob(id: string, dmg: number, dx: number, dz: number, attacker = ""): number {
     const m = this.mobs.get(id);
     if (!m) return 0;
+    if (attacker && dmg > 0 && m.kind === "boss") {
+      m.dmgBy.set(attacker, (m.dmgBy.get(attacker) ?? 0) + dmg);
+    }
     const killed = m.applyHit(dmg, dx, dz);
 
     if (m.kind === "boss" && m.pendingSplit) {
@@ -1012,6 +1021,17 @@ export class ZoneSim {
     if (m.kind === "boss") {
       // Босс пал — осколки осыпаются.
       for (const [sid, s] of this.mobs) if (s.kind === "shard") this.mobs.delete(sid);
+      // Опыт делим пропорционально нанесённому урону между всеми участниками.
+      let total = 0;
+      for (const d of m.dmgBy.values()) total += d;
+      if (total > 0) {
+        for (const [owner, d] of m.dmgBy) {
+          this.bossXpShare.push({ owner, xp: (m.xp * d) / total });
+        }
+      }
+      m.dmgBy.clear();
+      this.spawnLoot(m);
+      return 0;
     }
     this.spawnLoot(m);
     return m.xp;

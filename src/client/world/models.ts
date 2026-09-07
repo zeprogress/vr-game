@@ -86,11 +86,16 @@ function rememberNativeHeight(scene: Scene, path: string, measured: number): num
     byPath = new Map();
     nativeHeightCache.set(scene, byPath);
   }
+  // Первый удачный замер для пути — истина на весь сеанс. Поздние экземпляры
+  // (слизни, доспавненные к толпе) не перезамеряют: общая геометрия рига к тому
+  // моменту уже поза/скиннинг соседних копий, и повторный замер вылезал крупнее.
+  const cached = byPath.get(path);
+  if (cached && cached > 0) return cached;
   if (Number.isFinite(measured) && measured > 0) {
     byPath.set(path, measured);
     return measured;
   }
-  return byPath.get(path) ?? 1;
+  return 1;
 }
 
 export function containerFor(scene: Scene, path: string): Promise<AssetContainer> {
