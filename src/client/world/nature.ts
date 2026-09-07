@@ -108,7 +108,12 @@ function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
 }
 
 /** Расставить 26 деревьев из общего списка (позиции — те же, что на сервере). */
-export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): Promise<void> {
+export async function loadTrees(
+  scene: Scene,
+  terrain: Terrain,
+  lite: boolean,
+  noInstances = false,
+): Promise<void> {
   await import("@babylonjs/loaders/glTF/2.0");
   // По одному, с отловом: в шлеме бывает, что один файл не доехал —
   // пусть не роняет весь лес, а просто станет меньше видов деревьев.
@@ -128,7 +133,11 @@ export async function loadTrees(scene: Scene, terrain: Terrain, lite: boolean): 
 
   treeList().forEach((t, i) => {
     const c = containers[i % containers.length];
-    const inst = c.instantiateModelsToScene((n) => n, false);
+    // doNotInstantiate — каждое дерево своим мешем: иначе прозрачность одного
+    // (mesh.visibility у спектатора) утаскивает в прозрачный проход весь лес.
+    const inst = c.instantiateModelsToScene((n) => n, false, {
+      doNotInstantiate: noInstances,
+    });
     const root = inst.rootNodes[0] as TransformNode | undefined;
     if (!root) return;
     root.position.set(t.x, terrain.heightAt(t.x, t.z) - 0.15, t.z);

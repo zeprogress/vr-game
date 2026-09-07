@@ -180,6 +180,7 @@ export class Spectator {
       fireflies: preset.fireflies,
       minLights: preset.minLights,
       simpleSky: preset.simpleSky,
+      treeFade: true, // гасим ближние деревья — нужны отдельные меши
     });
     // Спектатору не нужны ни пикинг, ни точный bounding. Но при светлячках
     // набор источников меняется с наступлением ночи, а Aggressive кэширует

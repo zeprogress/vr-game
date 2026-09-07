@@ -68,10 +68,15 @@ const SHOULDER_AIM_Y = 1.35;
  * «Снизу вверх»: камера почти у земли спереди-сбоку, смотрит на героя снизу —
  * он выглядит крупным и внушительным (герой-шот).
  */
-const HERO_DIST = 6.2; // м вперёд от героя (было 4.2 — стояла слишком близко)
+const HERO_DIST = 7.0; // м вперёд от героя
 const HERO_SIDE = 2.6; // м вбок
-const HERO_UP = 0.2; // м над землёй — почти вровень с травой
+const HERO_UP = 0.5; // м над землёй — камера лежит почти в траве
 const HERO_AIM_Y = 1.7;
+/**
+ * Общий пол камеры (groundY + 1.2) для этого кадра слишком высок — он и
+ * съедал весь «снизу вверх». Даём герой-шоту свой, низкий.
+ */
+const HERO_FLOOR = 0.35;
 
 /**
  * «Дуэль»: в кадре и герой, и его ближайший противник — камера сбоку от
@@ -315,7 +320,10 @@ export class SpectatorCamera {
     lerpV(this.fromPos, this.toPos, k, this._p);
     lerpV(this.fromTgt, this.toTgt, k, this._t);
 
-    const minY = ctx.groundY(this._p.x, this._p.z) + 1.2;
+    // Пол камеры: обычно 1.2 м над землёй, но «снизу вверх» на то и снизу —
+    // ему разрешаем лечь почти в траву, иначе кадр не отличить от обычного.
+    const floor = this.shot.kind === "heroLow" ? HERO_FLOOR : 1.2;
+    const minY = ctx.groundY(this._p.x, this._p.z) + floor;
     if (this._p.y < minY) this._p.y = minY;
 
     this.cam.position.copyFrom(this._p);

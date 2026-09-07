@@ -17,8 +17,13 @@ export interface Obstacle {
  * сервере и у всех клиентов). Модели грузим лениво из `nature.ts`
  * (glTF-загрузчик тяжёлый) — коллизии готовы сразу, деревья появляются следом.
  */
-export function scatterTrees(scene: Scene, terrain: Terrain, lite = false): Obstacle[] {
-  void import("./nature").then((m) => m.loadTrees(scene, terrain, lite));
+export function scatterTrees(
+  scene: Scene,
+  terrain: Terrain,
+  lite = false,
+  noInstances = false,
+): Obstacle[] {
+  void import("./nature").then((m) => m.loadTrees(scene, terrain, lite, noInstances));
   return treeList().map((t) => ({ x: t.x, z: t.z, r: t.r }));
 }
 

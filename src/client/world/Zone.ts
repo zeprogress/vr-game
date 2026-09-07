@@ -75,6 +75,13 @@ export interface ZoneQuality {
    * в кадре ночью — уже заметно.
    */
   botTorches?: boolean | number;
+  /**
+   * true — деревья ставятся отдельными мешами, а не GPU-инстансами. Нужно
+   * спектатору: инстансы рисуются одним вызовом с исходным мешем, и
+   * `visibility` на одном из них уводит в прозрачность ВЕСЬ лес. Дороже по
+   * draw-call'ам, поэтому в игре не включаем.
+   */
+  treeFade?: boolean;
 }
 
 export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
@@ -118,7 +125,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
-  const trunks = scatterTrees(scene, terrain, quality.minLights);
+  const trunks = scatterTrees(scene, terrain, quality.minLights, quality.treeFade);
   const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
 
