@@ -823,6 +823,8 @@ export class ZoneSim {
   readonly bolts = new Map<string, Bolt>();
   readonly drops = new Map<string, Drop>();
   private boss!: Mob;
+  /** Слизни, доспавненные под наплыв игроков (`!play`). Убираются, когда толпа расходится. */
+  private readonly extraSlimes = new Map<string, Mob>();
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -847,6 +849,34 @@ export class ZoneSim {
     for (const t of HUB.training.dummies) {
       const d = new Dummy(t.x, terrainHeight(t.x, t.z), t.z);
       this.dummies.set(d.id, d);
+    }
+  }
+
+  /**
+   * Держать `n` дополнительных слизней на поляне (ZoneRoom зовёт с числом,
+   * пропорциональным толпе `!play`-ботов). Меньше — лишних убираем (мёртвых в
+   * первую очередь), больше — доспавниваем у случайных точек поляны.
+   */
+  setExtraSlimes(n: number): void {
+    n = Math.max(0, Math.min(40, Math.floor(n)));
+    while (this.extraSlimes.size > n) {
+      // сперва мёртвые/деспавненные, иначе любой
+      let victim: string | undefined;
+      for (const [id, m] of this.extraSlimes) {
+        if (m.dead) { victim = id; break; }
+        victim ??= id;
+      }
+      if (!victim) break;
+      this.extraSlimes.delete(victim);
+      this.mobs.delete(victim);
+    }
+    while (this.extraSlimes.size < n) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 18 + Math.random() * 16;
+      const [x, z] = awayFromHub(Math.cos(a) * r, Math.sin(a) * r - 4);
+      const m = new Mob("slime", x, z);
+      this.mobs.set(m.id, m);
+      this.extraSlimes.set(m.id, m);
     }
   }
 

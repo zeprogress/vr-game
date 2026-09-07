@@ -2069,6 +2069,9 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private tickBots(dt: number): void {
+    // Наплыв игроков (`!play`): +2 слизня на бота, убираются когда толпа
+    // расходится. Дёшево — sim ничего не делает, если число не изменилось.
+    this.sim.setExtraSlimes(this.bots.size * 2);
     if (this.bots.size === 0) return;
     const nowMs = Date.now();
     // Пока идёт стрим (подключён спектатор) — держим ботов дольше: зрители
