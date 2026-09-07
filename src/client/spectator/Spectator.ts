@@ -4,7 +4,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS, MOB, daylightAt } from "#shared/constants";
+import { BOSS, BOT, MOB, daylightAt } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
@@ -16,6 +16,7 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
+import { HealAuraFx } from "../ui/HealAuraFx";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
@@ -54,6 +55,7 @@ export class Spectator {
   ) => void;
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly botLights: import("../world/BotLights").BotLights;
+  private readonly healAura: HealAuraFx;
   private readonly crossFx: WorldCrossFx;
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
@@ -187,6 +189,7 @@ export class Spectator {
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
     this.crossFx = new WorldCrossFx(this.scene);
+    this.healAura = new HealAuraFx(this.scene);
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
 
@@ -589,6 +592,7 @@ export class Spectator {
     this.netMobs.update(dt, this.cam.cam.position, fwd);
     this.loot.update(dt);
     this.crossFx.update(dt);
+    this.healAura.update(dt);
     if (this.voice) {
       this.voice.update(dt);
       // Игрок мог дать микрофон уже после установки связи — периодически
@@ -709,6 +713,10 @@ export class Spectator {
       case "levelUp":
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, CROSS_ORANGE);
+        break;
+      case "healAura":
+        this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+        this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

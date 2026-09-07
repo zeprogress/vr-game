@@ -51,6 +51,7 @@ import {
   ADMIN_NICK,
   advanceHour,
   BOSS,
+  COMBAT,
   BOT,
   DAYCYCLE,
   MOB,
@@ -124,6 +125,7 @@ import {
   fireboltSpeed,
   fireboltRadius,
   fireboltHitRadius,
+  fireboltSplashRadius,
   healAmountFor,
 } from "#shared/magic";
 import { inHubSafeZone, hubSpawnPoint } from "#shared/hub";
@@ -195,6 +197,8 @@ interface Bot {
   vz: number;
   reskinAt: number; // ms последней команды !skin (антиспам)
   drinkCd: number; // с до следующего глотка зелья
+  healCd: number; // с до следующего массового хила (посох)
+  healCastT: number; // с до конца каста массового хила (>0 — кастует, стоит)
   sayAt: number; // ms последней реплики в чат (антиспам)
   statsAt: number; // ms последнего ответа про статы (антиспам)
   /** Секунд до касания клинка (0 — замаха нет). Урон наносится в этот момент. */
@@ -617,6 +621,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastCast = this.elapsed;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
+      const boltDmg = fireboltDamage(p.level, p.int, charge);
       this.sim.castBolt(
         num(msg.ox, p.head.x),
         num(msg.oy, p.head.y),
@@ -625,9 +630,12 @@ export class ZoneRoom extends Room<ZoneState> {
         fireboltSpeed(pull),
         fireboltRadius(charge),
         fireboltHitRadius(charge),
-        fireboltDamage(p.level, p.int, charge),
+        boltDmg,
         client.sessionId,
         MAGIC.firebolt.life,
+        0,
+        fireboltSplashRadius(charge),
+        boltDmg * MAGIC.firebolt.splashFraction,
       );
     });
 
@@ -982,9 +990,25 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitDummy(msg.id, dmg);
       return;
     }
+    // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем
+    // вокруг того места, куда пришёлся клинок.
+    const struck = msg.target === "mob" ? this.sim.mobs.get(msg.id) : undefined;
+    const sx = struck?.x ?? 0;
+    const sy = struck?.y ?? 0;
+    const sz = struck?.z ?? 0;
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
     this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
+    // Меч задевает соседей рядом с целью — небольшой АОЕ.
+    if (struck && msg.weapon === "sword") {
+      this.sim.splashDamage(
+        sx, sy, sz,
+        COMBAT.swordSplashRadius,
+        dmg * COMBAT.swordSplashFraction,
+        msg.id,
+        client.sessionId,
+      );
+    }
   }
 
   /** id игрока/бота в state.players по его состоянию. */
@@ -1630,6 +1654,8 @@ export class ZoneRoom extends Room<ZoneState> {
       vz: 0,
       reskinAt: 0,
       drinkCd: 0,
+      healCd: 0,
+      healCastT: 0,
       sayAt: 0,
       statsAt: 0,
       swingIn: 0,
@@ -1692,6 +1718,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
+    bot.healCd = Math.max(0, bot.healCd - dt);
 
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
@@ -1703,6 +1730,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // (LEVEL_UP_HEAL), а зелёные крестики зелья не должны мелькать вместе с
     // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
     this.botDrink(bot);
+    this.botGroupHeal(bot, dt);
 
     // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
     const cx = bot.homeX;
@@ -2064,11 +2092,13 @@ export class ZoneRoom extends Room<ZoneState> {
           bot.id, 2.5, 1,
         );
       } else {
+        const bd = fireboltDamage(p.level, p.int, 0.7);
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),
-          fireboltDamage(p.level, p.int, 0.7),
+          bd,
           bot.id, MAGIC.firebolt.life, 0,
+          fireboltSplashRadius(0.7), bd * MAGIC.firebolt.splashFraction,
         );
       }
       const relay: ActRelay = {
@@ -2177,13 +2207,99 @@ export class ZoneRoom extends Room<ZoneState> {
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
     const dmg = weaponDamage("sword", p.level, p.str, multIn(p, "right"));
+    const sx = mob.x;
+    const sy = mob.y;
+    const sz = mob.z;
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
+    this.sim.splashDamage(
+      sx, sy, sz,
+      COMBAT.swordSplashRadius,
+      dmg * COMBAT.swordSplashFraction,
+      mob.id,
+      bot.id,
+    );
     // Опыт/kills — через общий делёж (sim.mobXpShare / mobKills).
     if (killed) {
       bot.target = null;
       // Бот активно фармит — не деспавним его по «тишине в чате».
       this.chatSeen.set(bot.norm, Date.now());
     }
+  }
+
+  /**
+   * Бот с посохом — групповой лекарь. Если рядом несколько раненых союзников
+   * (игроков или других ботов) — лечит всех разом вместо огнешара. Одного
+   * раненого не трогает: это именно массовый хил.
+   */
+  private botGroupHeal(bot: Bot, dt: number): void {
+    const p = bot.state;
+    const h = MAGIC.heal;
+
+    // Каст идёт — стоим и ждём; в конце выброс лечения.
+    if (bot.healCastT > 0) {
+      bot.healCastT = Math.max(0, bot.healCastT - dt);
+      if (bot.healCastT > 0) return;
+      this.botGroupHealLand(bot);
+      return;
+    }
+
+    if (p.rightCls !== "staff" || bot.healCd > 0) return;
+    if (p.mana < h.minMana) return;
+    if (this.woundedNear(p).length < BOT.healMinTargets) return;
+
+    // Начало каста: мана списывается сразу, бот замирает, вокруг горит аура.
+    const cost = Math.min(p.mana, BOT.healCharge * h.chargeTime * h.manaPerSec);
+    p.mana = Math.max(0, p.mana - cost);
+    bot.healCd = BOT.healCooldown;
+    bot.healCastT = BOT.healCastTime;
+    bot.emoteFreezeUntil = Date.now() + BOT.healCastTime * 1000;
+    const aura: ActRelay = {
+      k: "healAura",
+      id: bot.id,
+      x: p.head.x,
+      y: p.head.y - PLAYER.eyeHeight,
+      z: p.head.z,
+    };
+    this.broadcast(MSG.act, aura);
+  }
+
+  /** Кто рядом с ботом ранен и достаётся массовым хилом. */
+  private woundedNear(p: PlayerState): PlayerState[] {
+    const out: PlayerState[] = [];
+    this.state.players.forEach((ally) => {
+      if (ally.dead || ally.maxHp <= 0) return;
+      if (ally.hp >= ally.maxHp * BOT.healAt) return;
+      const d = Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z);
+      if (d > BOT.healRadius) return;
+      out.push(ally);
+    });
+    return out;
+  }
+
+  /** Каст дочитан — лечим всех раненых, кто к этому моменту рядом. */
+  private botGroupHealLand(bot: Bot): void {
+    const p = bot.state;
+    const targets = this.woundedNear(p);
+    const charge = BOT.healCharge;
+    const amount = healAmountFor(p.level, p.int, charge) * BOT.healGroupFraction;
+    for (const ally of targets) {
+      const before = ally.hp;
+      ally.hp = Math.min(ally.maxHp, ally.hp + amount);
+      const healed = ally.hp - before;
+      if (healed <= 0) continue;
+      // Зелёные крестики над телом — тем же актом, что и глоток зелья.
+      const relay: ActRelay = {
+        k: "drink",
+        id: this.idOf(ally) ?? bot.id,
+        x: ally.head.x,
+        y: ally.head.y,
+        z: ally.head.z,
+      };
+      this.broadcast(MSG.act, relay);
+      // Лечение союзника в бою с боссом — вклад в общий опыт.
+      this.sim.bossHeal(bot.id, healed);
+    }
+    this.chatSeen.set(bot.norm, Date.now());
   }
 
   private tickBots(dt: number): void {

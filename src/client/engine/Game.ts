@@ -22,6 +22,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
+import { HealAuraFx } from "../ui/HealAuraFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
@@ -60,7 +61,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { ADMIN_NICK, BOSS, PLAYER, RESPAWN } from "#shared/constants";
+import { ADMIN_NICK, BOSS, BOT, PLAYER, RESPAWN } from "#shared/constants";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -110,6 +111,8 @@ export class Game {
   private readonly ownShadow: BlobShadow;
   /** Крестики над ЧУЖИМИ телами: свои игрок видит через HealCrossFx. */
   private readonly crossFx: WorldCrossFx;
+  /** Аура массового лечения бота-лекаря. */
+  private readonly healAura: HealAuraFx;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
@@ -226,6 +229,7 @@ export class Game {
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);
+    this.healAura = new HealAuraFx(this.scene);
     this.specMarker = new SpecCamMarker(this.scene);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
@@ -417,6 +421,7 @@ export class Game {
       this.updateComfortVignette(dt);
       this.healCrossFx?.update(dt);
       this.crossFx.update(dt);
+      this.healAura.update(dt);
       this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
@@ -1233,6 +1238,11 @@ export class Game {
       case "levelUp":
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, W_ORANGE);
+        break;
+      case "healAura":
+        // Бот-лекарь начал каст: круг по земле + купол на всё время каста.
+        this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+        this.sfx.at(at, () => this.sfx.levelUp());
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));

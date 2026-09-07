@@ -926,6 +926,9 @@ class Bolt {
     public readonly maxLife: number,
     /** 0 — огнешар, 1 — стрела (меньше гравитации, свой вид на клиенте). */
     public readonly kind: number = 0,
+    /** АОЕ в точке попадания: радиус (м) и урон в эпицентре. 0 — без сплэша. */
+    public readonly splashR: number = 0,
+    public readonly splashDmg: number = 0,
   ) {}
 }
 
@@ -1139,6 +1142,8 @@ export class ZoneSim {
     owner: string,
     life: number,
     kind = 0,
+    splashR = 0,
+    splashDmg = 0,
   ): void {
     if (this.bolts.size >= 24) {
       const first = this.bolts.keys().next().value as string | undefined;
@@ -1148,7 +1153,7 @@ export class ZoneSim {
     const b = new Bolt(
       x, y, z,
       (dx / dl) * speed, (dy / dl) * speed, (dz / dl) * speed,
-      radius, hitRadius, dmg, owner, life, kind,
+      radius, hitRadius, dmg, owner, life, kind, splashR, splashDmg,
     );
     this.bolts.set(b.id, b);
   }
@@ -1164,7 +1169,11 @@ export class ZoneSim {
     b.z += b.vz * dt;
     b.life += dt;
     if (b.life > b.maxLife) return true;
-    if (b.y <= terrainHeight(b.x, b.z)) return true;
+    if (b.y <= terrainHeight(b.x, b.z)) {
+      // Огнешар в землю — всё равно рвётся: можно бить по ногам толпы.
+      this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, "", b.owner);
+      return true;
+    }
 
     for (const m of this.mobs.values()) {
       if (m.dead) continue;
@@ -1173,6 +1182,8 @@ export class ZoneSim {
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
+        // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
+        this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner);
         return true;
       }
     }
@@ -1231,6 +1242,38 @@ export class ZoneSim {
       this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
     }
     return kind;
+  }
+
+  /**
+   * Небольшой АОЕ вокруг точки (`x`,`y`,`z`): всем живым мобам в радиусе, кроме
+   * `skipId` (прямая цель — свой урон уже получила), доля урона, спадающая от
+   * эпицентра к краю. Урон идёт от `owner` — значит и опыт делится как обычно.
+   */
+  splashDamage(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+    dmg: number,
+    skipId: string,
+    owner: string,
+  ): void {
+    if (radius <= 0 || dmg <= 0) return;
+    // Копия списка: hitMob может удалить моба (осколки) прямо в цикле.
+    for (const m of [...this.mobs.values()]) {
+      if (m.dead || m.id === skipId) continue;
+      const dx = m.x - x;
+      const dz = m.z - z;
+      const body = MOB.bodyRadius * m.scale;
+      const dy = m.y + body * 0.5 - y;
+      const d = Math.hypot(dx, dz, dy) - body; // от края туши, не от центра
+      if (d >= radius) continue;
+      const k = 1 - Math.max(0, d) / radius; // спад к краю
+      const hit = dmg * k;
+      if (hit <= 0.01) continue;
+      const hl = Math.hypot(dx, dz) || 1;
+      this.hitMob(m.id, hit, dx / hl, dz / hl, owner);
+    }
   }
 
   /**

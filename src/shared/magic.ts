@@ -31,9 +31,20 @@ export const MAGIC = {
     /** Радиус ВИЗУАЛА снаряда по заряду, м. При полном заряде — крупный шар. */
     minRadius: 0.12,
     maxRadius: 0.62,
-    /** Урон: база + за заряд. Множится на magicPowerFor(level, int). */
-    baseDamage: 1.0,
-    damagePerCharge: 2.8,
+    /**
+     * Урон: база + за заряд. Множится на magicPowerFor(level, int).
+     * Слегка ослаблен (было 1.0 / 2.8) — в обмен на АОЕ в точке попадания.
+     */
+    baseDamage: 0.85,
+    damagePerCharge: 2.3,
+    /**
+     * Небольшой АОЕ в точке попадания: радиус растёт с зарядом, урон спадает
+     * от эпицентра к краю. Прямая цель получает полный урон, соседи — долю.
+     */
+    splashMinRadius: 0.9,
+    splashMaxRadius: 2.4,
+    /** Доля прямого урона в эпицентре сплэша (на краю — ноль). */
+    splashFraction: 0.5,
     /** Дальность полёта и жизнь снаряда. */
     range: 34,
     life: 2.2,
@@ -114,4 +125,11 @@ export function fireboltRadius(charge: number): number {
 export function fireboltHitRadius(charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   return 0.12 + c * 0.18; // 0.12..0.30 м
+}
+
+/** Радиус АОЕ в точке попадания огнешара, м. Растёт с зарядом. */
+export function fireboltSplashRadius(charge: number): number {
+  const c = Math.max(0, Math.min(1, charge));
+  const f = MAGIC.firebolt;
+  return f.splashMinRadius + c * (f.splashMaxRadius - f.splashMinRadius);
 }
