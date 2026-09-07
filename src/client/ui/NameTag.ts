@@ -150,8 +150,8 @@ export class NameTag {
     const scene = this.plane.getScene();
     const w = this.planeW * 0.66;
     const barH = this.planeW * 0.05;
-    // Над ником — у верхнего края плашки.
-    const y = this.halfH * 0.95 + barH;
+    // Над ником, но ближе к нему — не у самого верхнего края.
+    const y = this.halfH * 0.58;
     this.hpW = w;
 
     const bgMat = new StandardMaterial("nameHpBgMat", scene);
