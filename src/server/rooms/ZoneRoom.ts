@@ -1284,7 +1284,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const points =
       p.unspent > 0 ? `свободных очков ${p.unspent} → !str !dex !int` : "свободных очков нет";
     this.reply(
-      `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${p.maxHp} · ` +
+      `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)} · ` +
         `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · ${points}`,
     );
   }
