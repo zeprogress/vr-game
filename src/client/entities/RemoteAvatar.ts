@@ -20,7 +20,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
-import { attackSpeedFromLevel } from "#shared/progression";
+import { attackSpeedFromLevel, atMaxLevel, xpToNext } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
@@ -256,6 +256,7 @@ export class RemoteAvatar implements Hittable {
       id.startsWith("bot:"),
     );
     this.nameTag.showHp(); // зелёная полоска жизни под ником
+    if (id.startsWith("bot:")) this.nameTag.showXp(); // + полоска опыта до уровня
     this.setMode(mode);
     this.offGearTune = onGearTuneChanged(() => this.reseatBotGear());
   }
@@ -452,6 +453,9 @@ export class RemoteAvatar implements Hittable {
     if (tagChanged) {
       this.nick = p.nick;
       this.nameTag.setInfo(p.nick, p.level);
+    }
+    if (this.isBot) {
+      this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
     }
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;

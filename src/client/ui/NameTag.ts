@@ -42,6 +42,12 @@ export class NameTag {
   private hpW = 0;
   private hpFrac = 1;
 
+  /** Полоска опыта (тонкая, золотая) — только у ботов, через showXp. */
+  private xpBg: Mesh | null = null;
+  private xpFill: Mesh | null = null;
+  private xpW = 0;
+  private xpFrac = 0;
+
   constructor(
     scene: Scene,
     parent: Node,
@@ -179,6 +185,63 @@ export class NameTag {
     this.setHp(this.hpFrac);
   }
 
+  /**
+   * Тонкая полоска опыта над полоской жизни — сколько до следующего уровня.
+   * Ставится ботам; цвет не меняется (золото).
+   */
+  showXp(): void {
+    if (this.xpBg) return;
+    const scene = this.plane.getScene();
+    const w = this.planeW * 0.66;
+    const barH = this.planeW * 0.032;
+    // Над полоской жизни (та — на halfH*0.58), с зазором.
+    const y = this.halfH * 0.92;
+    this.xpW = w;
+
+    const bgMat = new StandardMaterial("nameXpBgMat", scene);
+    bgMat.disableLighting = true;
+    bgMat.emissiveColor = new Color3(0.03, 0.03, 0.03);
+    bgMat.specularColor = new Color3(0, 0, 0);
+    bgMat.alpha = 0.65;
+    this.xpBg = MeshBuilder.CreatePlane(
+      "nameXpBg",
+      { width: w + w * 0.06, height: barH * 1.6 },
+      scene,
+    );
+    this.xpBg.material = bgMat;
+    this.xpBg.parent = this.plane;
+    this.xpBg.position.set(0, y, 0.01);
+    this.xpBg.isPickable = false;
+    this.xpBg.renderingGroupId = 0;
+
+    const fillMat = new StandardMaterial("nameXpFillMat", scene);
+    fillMat.disableLighting = true;
+    fillMat.specularColor = new Color3(0, 0, 0);
+    fillMat.emissiveColor = new Color3(1, 0.8, 0.28);
+    this.xpFill = MeshBuilder.CreatePlane("nameXpFill", { width: w, height: barH }, scene);
+    this.xpFill.material = fillMat;
+    this.xpFill.parent = this.xpBg;
+    this.xpFill.position.z = -0.01;
+    this.xpFill.isPickable = false;
+    this.xpFill.renderingGroupId = 0;
+    this.setXp(this.xpFrac);
+  }
+
+  /** Доля опыта до следующего уровня 0..1. Отрицательное — максимальный уровень (полоска прячется). */
+  setXp(frac: number): void {
+    if (frac < 0) {
+      this.xpFrac = 1;
+      this.xpBg?.setEnabled(false);
+      return;
+    }
+    const f = Math.max(0, Math.min(1, frac));
+    this.xpFrac = f;
+    if (!this.xpFill) return;
+    this.xpBg?.setEnabled(true);
+    this.xpFill.scaling.x = Math.max(0.001, f);
+    this.xpFill.position.x = -(this.xpW * (1 - f)) / 2;
+  }
+
   /** Доля здоровья 0..1. */
   setHp(frac: number): void {
     const f = Math.max(0, Math.min(1, frac));
@@ -209,6 +272,8 @@ export class NameTag {
   }
 
   dispose(): void {
+    this.xpFill?.dispose();
+    this.xpBg?.dispose();
     this.hpFill?.dispose();
     this.hpBg?.dispose();
     this.plane.dispose();
