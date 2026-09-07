@@ -120,6 +120,8 @@ export interface PlayerHit {
   projectile: boolean;
   /** Ник атакующего игрока (PvP) — для кил-фида; нет — урон от моба/среды. */
   byName?: string;
+  /** id моба-источника урона (плевун, слизень) — бот по нему переключается. */
+  byMob?: string;
 }
 
 class Mob {
@@ -368,6 +370,7 @@ class Mob {
               dmg: BOSS.slamDamage,
               fromX: this.x,
               fromZ: this.z,
+              byMob: this.id,
               projectile: false,
             });
           }
@@ -423,6 +426,7 @@ class Mob {
               dmg: BOSS.lungeDamage,
               fromX: this.x,
               fromZ: this.z,
+              byMob: this.id,
               projectile: false,
             });
             this.attackSeq = (this.attackSeq + 1) & 0xffff;
@@ -628,6 +632,7 @@ class Mob {
           fromX: this.x,
           fromZ: this.z,
           projectile: false,
+          byMob: this.id,
         });
         this.vx -= dx * 2;
         this.vz -= dz * 2;
@@ -739,6 +744,8 @@ class Ball {
     public vy: number,
     public vz: number,
     public boss = false,
+    /** id моба, который выстрелил (для переключения цели бота). */
+    public owner = "",
   ) {}
 
   /** true — шарик надо удалить. */
@@ -771,6 +778,7 @@ class Ball {
           fromX: this.x - (this.vx / vh) * 4,
           fromZ: this.z - (this.vz / vh) * 4,
           projectile: true,
+          byMob: this.owner || undefined,
         });
         return true;
       }
@@ -869,6 +877,7 @@ export class ZoneSim {
         dy * SPITTER.ballSpeed,
         dz * SPITTER.ballSpeed,
         mob.kind === "boss",
+        mob.id,
       );
       this.balls.set(b.id, b);
     };

@@ -57,6 +57,7 @@ import {
   PLAYER_HP,
   PVP,
   RESPAWN,
+  SPITTER,
   SPECTATOR_KEY,
   STREAM_NICKS,
   TWITCH_CHANNEL,
@@ -196,6 +197,9 @@ interface Bot {
   swingTarget: string | null; // по какому мобу замахнулись
   swingDx: number; // направление удара, запомненное на начало замаха
   swingDz: number;
+  /** id моба, недавно ударившего бота (плевун сзади в рейде) + когда (ms). */
+  hurtByMob: string | null;
+  hurtByMobAt: number;
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -1509,6 +1513,8 @@ export class ZoneRoom extends Room<ZoneState> {
       swingTarget: null,
       swingDx: 0,
       swingDz: 1,
+      hurtByMob: null,
+      hurtByMobAt: 0,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -1608,20 +1614,38 @@ export class ZoneRoom extends Room<ZoneState> {
     // это, подменяя цель на моба и снимая raidBoss на текущий тик: всё
     // движение/удар ниже уже умеют драться с обычным мобом.
     if (raidBoss) {
-      let addD: number = BOT.raidAddRange;
       let addId: string | null = null;
-      for (const m of this.sim.mobs.values()) {
-        if (m.dead || m.kind === "boss" || !m.aggro) continue;
-        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
-        if (d < addD) {
-          addD = d;
-          addId = m.id;
+      // 1) Кто недавно нанёс урон боту (плевун сзади и т.п.) — приоритет.
+      //    Не по inZone (рейд идёт далеко от спавна), а по дистанции до бота:
+      //    плевун стреляет из ~20 м, дальше него не гонимся.
+      const hm = bot.hurtByMob ? this.sim.mobs.get(bot.hurtByMob) : undefined;
+      if (
+        hm &&
+        !hm.dead &&
+        hm.kind !== "boss" &&
+        Date.now() - bot.hurtByMobAt < BOT.raidAddMemory * 1000 &&
+        Math.hypot(hm.x - p.head.x, hm.z - p.head.z) < SPITTER.fireRange + 6
+      ) {
+        addId = bot.hurtByMob;
+      }
+      // 2) Иначе — ближайший агрнутый не-босс в радиусе (мельтешит у ног).
+      if (!addId) {
+        let addD: number = BOT.raidAddRange;
+        for (const m of this.sim.mobs.values()) {
+          if (m.dead || m.kind === "boss" || !m.aggro) continue;
+          const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+          if (d < addD) {
+            addD = d;
+            addId = m.id;
+          }
         }
       }
       if (addId) {
         mob = this.sim.mobs.get(addId);
         bot.target = addId;
         raidBoss = undefined;
+      } else {
+        bot.hurtByMob = null; // адов рядом нет — вернулись к боссу
       }
     }
 
@@ -2147,6 +2171,16 @@ export class ZoneRoom extends Room<ZoneState> {
     const dmg = h.dmg * block.mult;
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
+
+    // Бота ударил моб — запоминаем, чтобы в рейде он переключился и добил его
+    // (плевун бьёт издалека сзади и в raidAddRange не попадает).
+    if (h.byMob && h.target.startsWith("bot:")) {
+      const b = this.bots.get(h.target.slice(4));
+      if (b) {
+        b.hurtByMob = h.byMob;
+        b.hurtByMobAt = Date.now();
+      }
+    }
 
     this.clientOf(h.target)?.send(MSG.mobHit, {
       dmg,
