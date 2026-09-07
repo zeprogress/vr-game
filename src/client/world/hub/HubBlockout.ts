@@ -5,8 +5,6 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
@@ -46,6 +44,7 @@ const C = {
   stone: new Color3(0.45, 0.45, 0.47),
   canvas: new Color3(0.66, 0.62, 0.55),
   banner: new Color3(0.5, 0.16, 0.16),
+  medic: new Color3(0.24, 0.34, 0.52),
   ember: new Color3(1.0, 0.5, 0.15),
 };
 
@@ -75,34 +74,6 @@ function flatMat(
     m.emissiveColor = color.scale(0.25);
     dayLit.push({ m, base: color.clone() });
   }
-  return m;
-}
-
-/** Табличка: заголовок + текст на холсте. Blockout — потом станет .glb со знаком. */
-function makeSignTexture(scene: Scene, title: string, body: string): StandardMaterial {
-  const tex = new DynamicTexture(`hubSign_${title}`, { width: 512, height: 288 }, scene, false);
-  const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
-  // Грань +Z плоскости Babylon зеркалит текстуру по X — рисуем зеркально.
-  ctx.translate(512, 0);
-  ctx.scale(-1, 1);
-  ctx.fillStyle = "#efe6d2";
-  ctx.fillRect(0, 0, 512, 288);
-  ctx.fillStyle = "#5a3a1e";
-  ctx.lineWidth = 10;
-  ctx.strokeStyle = "#5a3a1e";
-  ctx.strokeRect(6, 6, 500, 276);
-  ctx.textAlign = "center";
-  ctx.font = "bold 52px system-ui, sans-serif";
-  ctx.fillText(title, 256, 78);
-  ctx.font = "30px system-ui, sans-serif";
-  body.split("\n").forEach((line, i) => ctx.fillText(line, 256, 150 + i * 44));
-  tex.update(); // invertY по умолчанию — текст стоит правильно
-  const m = new StandardMaterial(`hubSignMat_${title}`, scene);
-  m.diffuseTexture = tex;
-  m.emissiveTexture = tex;
-  m.specularColor = new Color3(0, 0, 0);
-  m.disableLighting = true;
-  m.backFaceCulling = false;
   return m;
 }
 
@@ -213,11 +184,11 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // --- 4. Скамьи + бочки + ящики вокруг костра ---
   const clutter: Mesh[] = [];
-  const benchN = 5;
+  const benchN = 6;
   for (let i = 0; i < benchN; i++) {
     const a = (i / benchN) * Math.PI * 2 + 0.5;
-    const bx = cx + Math.cos(a) * 4.2;
-    const bz = cz + Math.sin(a) * 4.2;
+    const bx = cx + Math.cos(a) * 5.2;
+    const bz = cz + Math.sin(a) * 5.2;
     const seat = MeshBuilder.CreateBox(`bench${i}`, { width: 2, height: 0.18, depth: 0.5 }, scene);
     seat.position.set(bx, groundY(bx, bz) + 0.45, bz);
     seat.rotation.y = a + Math.PI / 2;
@@ -238,12 +209,14 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   }
   // бочки и ящики — врассыпную по краю площади
   const props: { x: number; z: number; kind: "barrel" | "crate" }[] = [
-    { x: cx + 6.5, z: cz - 2.5, kind: "barrel" },
-    { x: cx + 7, z: cz - 1, kind: "crate" },
-    { x: cx - 6, z: cz + 4.5, kind: "barrel" },
-    { x: cx - 5, z: cz + 5.5, kind: "crate" },
-    { x: cx + 1, z: cz + 7, kind: "barrel" },
-    { x: cx - 7.5, z: cz - 4, kind: "crate" },
+    { x: cx + 11, z: cz - 4, kind: "barrel" },
+    { x: cx + 11.8, z: cz - 2.4, kind: "crate" },
+    { x: cx - 10, z: cz + 7.5, kind: "barrel" },
+    { x: cx - 8.8, z: cz + 8.8, kind: "crate" },
+    { x: cx + 2, z: cz + 12, kind: "barrel" },
+    { x: cx - 12.5, z: cz - 6, kind: "crate" },
+    { x: cx + 6, z: cz - 11, kind: "barrel" },
+    { x: cx - 4, z: cz - 12.5, kind: "crate" },
   ];
   for (const p of props) {
     const gy = groundY(p.x, p.z);
@@ -264,7 +237,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   // --- 5. Лагерные фонари на столбах (эмиссив, без PointLight) ---
   const lanternPosts: Mesh[] = [];
   const lanternGlobes: Mesh[] = [];
-  const lampN = 6;
+  const lampN = 8;
   for (let i = 0; i < lampN; i++) {
     const a = (i / lampN) * Math.PI * 2;
     const lx = cx + Math.cos(a) * (HUB.plazaRadius - 1);
@@ -334,13 +307,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // --- 8. Периметр лагеря: столбы с редким заборным пряслом (не глухая стена) ---
   const fenceParts: Mesh[] = [];
-  const postsN = 22;
+  const postsN = 30;
   for (let i = 0; i < postsN; i++) {
     const a = (i / postsN) * Math.PI * 2;
     // разрыв в заборе на стороне ворот
     const toGate = Math.atan2(g.dir.z, g.dir.x);
     let da = Math.abs(((a - toGate + Math.PI) % (Math.PI * 2)) - Math.PI);
-    if (da < 0.5) continue;
+    if (da < 0.15) continue;
     const fx = cx + Math.cos(a) * (HUB.campRadius - 0.5);
     const fz = cz + Math.sin(a) * (HUB.campRadius - 0.5);
     const fgy = groundY(fx, fz);
@@ -350,7 +323,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     // жердь к следующему столбу
     const a2 = ((i + 1) / postsN) * Math.PI * 2;
     da = Math.abs(((a2 - toGate + Math.PI) % (Math.PI * 2)) - Math.PI);
-    if (da < 0.5) continue;
+    if (da < 0.15) continue;
     const rail = MeshBuilder.CreateBox(`rail${i}`, {
       width: (Math.PI * 2 * HUB.campRadius) / postsN,
       height: 0.14,
@@ -369,15 +342,18 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   // из лагеря только через ворота на дорогу к поляне.
   {
     const toGate = Math.atan2(g.dir.z, g.dir.x);
-    const ring = 40;
+    // Круги должны перекрываться, иначе игрок пролезает между ними:
+    // шаг по дуге < 2r. Радиус вырос — считаем количество от длины окружности.
+    const rr = 1.2;
+    const ring = Math.ceil((2 * Math.PI * (HUB.campRadius - 0.5)) / (rr * 1.6));
     for (let i = 0; i < ring; i++) {
       const a = (i / ring) * Math.PI * 2;
       const da = Math.abs(((a - toGate + Math.PI) % (Math.PI * 2)) - Math.PI);
-      if (da < 0.62) continue; // проём ворот
+      if (da < 0.2) continue; // проём ворот
       obstacles.push({
         x: cx + Math.cos(a) * (HUB.campRadius - 0.5),
         z: cz + Math.sin(a) * (HUB.campRadius - 0.5),
-        r: 0.6,
+        r: rr,
       });
     }
   }
@@ -596,36 +572,98 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     body.isPickable = false;
     npcs.push({ mesh: body, phase: (s.x * 7.3 + s.z) % 6.28, baseY: gy0 + 0.85 });
     obstacles.push({ x: s.x, z: s.z, r: 0.4 });
-    if (s.instructor) {
-      const tag = makeSignTexture(scene, "ИНСТРУКТОР", "Возьми оружие. Попробуй чучела.\nПроверь управление. Готов — иди к воротам.");
-      const plane = MeshBuilder.CreatePlane("hubInstrSign", { width: 2.4, height: 1.4 }, scene);
-      plane.position.set(s.x, gy0 + 2.3, s.z);
-      plane.material = tag;
-      plane.rotation.y = Math.atan2(cx - s.x, cz - s.z); // лицом к площади
-      plane.parent = root;
-      plane.isPickable = false;
+  }
+
+  // --- 16. Палатка медика (синяя, юго-запад) ---
+  {
+    const md = HUB.zones.medic;
+    const gy0 = groundY(md.x, md.z);
+    const parts: Mesh[] = [];
+    for (const [sx, sz] of [[-2.6, -2.2], [2.6, -2.2], [-2.6, 2.2], [2.6, 2.2]] as const) {
+      const pole = MeshBuilder.CreateCylinder("medicPole", { height: 2.6, diameter: 0.16 }, scene);
+      pole.position.set(md.x + sx, gy0 + 1.3, md.z + sz);
+      parts.push(pole);
+    }
+    merge(parts, "hubMedicPoles", matWood);
+    const roof = MeshBuilder.CreateCylinder(
+      "hubMedicRoof",
+      { height: 1.5, diameterBottom: 8, diameterTop: 0, tessellation: 4 },
+      scene,
+    );
+    roof.position.set(md.x, gy0 + 3.3, md.z);
+    roof.rotation.y = Math.PI / 4;
+    roof.material = flatMat(scene, "hubMedicCanvas", C.medic, undefined, dayLit);
+    roof.parent = root;
+    roof.isPickable = false;
+    for (const [wx, wz, ww, ry] of [
+      [0, -2.2, 5.2, 0],
+      [-2.6, 0, 4.4, Math.PI / 2],
+    ] as const) {
+      const wall = MeshBuilder.CreatePlane("medicWall", { width: ww, height: 2.4 }, scene);
+      wall.position.set(md.x + wx, gy0 + 1.2, md.z + wz);
+      wall.rotation.y = ry;
+      wall.material = flatMat(scene, "hubMedicWall", C.medic.scale(0.85), undefined, dayLit);
+      wall.parent = root;
+      wall.isPickable = false;
+    }
+    for (let t = -1; t <= 1; t += 0.5) {
+      obstacles.push({ x: md.x + t * 2.4, z: md.z - 2.2, r: 0.6 });
+      obstacles.push({ x: md.x - 2.6, z: md.z + t * 2, r: 0.6 });
     }
   }
 
-  // --- 16. Таблички управления (устройство-агностично: все три варианта) ---
-  const signSpecs: { at: { x: number; z: number }; title: string; body: string }[] = [
-    { at: { x: cx + 3, z: cz - 4 }, title: "ДВИЖЕНИЕ", body: "WASD  ·  левый стик  ·  джойстик" },
-    { at: { x: HUB.zones.weapons.x, z: HUB.zones.weapons.z + 3 }, title: "ВЗЯТЬ", body: "E  ·  Grip  ·  подойти" },
-    { at: { x: HUB.zones.training.x, z: HUB.zones.training.z + 4 }, title: "АТАКА", body: "ЛКМ  ·  Trigger  ·  кнопка удара" },
-  ];
-  for (const s of signSpecs) {
-    const gy0 = groundY(s.at.x, s.at.z);
-    const post = MeshBuilder.CreateCylinder("hubSignPost", { height: 1.9, diameter: 0.12 }, scene);
-    post.position.set(s.at.x, gy0 + 0.95, s.at.z);
-    post.material = matWood;
-    post.parent = root;
-    post.isPickable = false;
-    const board = MeshBuilder.CreatePlane("hubSign", { width: 1.9, height: 1.05 }, scene);
-    board.position.set(s.at.x, gy0 + 1.9, s.at.z);
-    board.material = makeSignTexture(scene, s.title, s.body);
-    board.rotation.y = Math.atan2(cx - s.at.x, cz - s.at.z); // лицом к площади
-    board.parent = root;
-    board.isPickable = false;
+  // --- 17. Знамёна на шестах по кольцу площади (как на концепте) ---
+  {
+    const bannerParts: Mesh[] = [];
+    const n = 8;
+    const toGate = Math.atan2(g.dir.z, g.dir.x);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.4;
+      const da = Math.abs(((a - toGate + Math.PI) % (Math.PI * 2)) - Math.PI);
+      if (da < 0.45) continue; // не загораживаем проход к воротам
+      const bx = cx + Math.cos(a) * (HUB.plazaRadius + 1.5);
+      const bz = cz + Math.sin(a) * (HUB.plazaRadius + 1.5);
+      const bgy = groundY(bx, bz);
+      const pole = MeshBuilder.CreateCylinder("bannerPole", { height: 6.5, diameter: 0.18 }, scene);
+      pole.position.set(bx, bgy + 3.25, bz);
+      bannerParts.push(pole);
+      const cloth = MeshBuilder.CreatePlane("bannerCloth", { width: 1.1, height: 3.2 }, scene);
+      cloth.position.set(bx, bgy + 4.2, bz);
+      cloth.rotation.y = a + Math.PI / 2;
+      cloth.material = matBanner;
+      cloth.parent = root;
+      cloth.isPickable = false;
+      obstacles.push({ x: bx, z: bz, r: 0.3 });
+    }
+    merge(bannerParts, "hubBannerPoles", matWood);
+  }
+
+  // --- 18. Палатки игроков по периметру ---
+  {
+    const parts: Mesh[] = [];
+    const canvases: Mesh[] = [];
+    for (const t of HUB.playerTents) {
+      const tx = cx + Math.cos(t.a) * t.r;
+      const tz = cz + Math.sin(t.a) * t.r;
+      const tgy = groundY(tx, tz);
+      const face = t.a + Math.PI; // вход смотрит к центру
+      const ridge = MeshBuilder.CreateCylinder("ptRidge", { height: 3.4, diameter: 0.12 }, scene);
+      ridge.rotation.z = Math.PI / 2;
+      ridge.rotation.y = face;
+      ridge.position.set(tx, tgy + 1.9, tz);
+      parts.push(ridge);
+      const cone = MeshBuilder.CreateCylinder(
+        "ptCanvas",
+        { height: 2.0, diameterBottom: 3.6, diameterTop: 0, tessellation: 4 },
+        scene,
+      );
+      cone.position.set(tx, tgy + 1.0, tz);
+      cone.rotation.y = face + Math.PI / 4;
+      canvases.push(cone);
+      obstacles.push({ x: tx, z: tz, r: 1.5 });
+    }
+    merge(parts, "hubTentRidges", matWood);
+    merge(canvases, "hubPlayerTents", flatMat(scene, "hubPtCanvas", C.canvas.scale(0.95), undefined, dayLit));
   }
 
   // ---- день/ночь: фонари/горн ярче в темноте; NPC покачиваются; костёр ----

@@ -17,28 +17,28 @@ export const HUB = {
   center: HUB_CENTER,
 
   /** Радиус центральной площади (утоптанная земля вокруг костра), м. */
-  plazaRadius: 12,
+  plazaRadius: 17,
   /** Радиус всего лагеря — по нему рисуем «чистую землю» и ставим периметр. */
-  campRadius: 24,
+  campRadius: 30,
 
   /**
    * Safe-зона: сервер не даёт мобам агриться/бить и отключает PvP, пока игрок
    * внутри. Чуть больше лагеря — чтобы у самых ворот уже было безопасно.
    * Проверяется ТОЛЬКО на сервере (клиент не может сам объявить себя в safe).
    */
-  safeRadius: 27,
+  safeRadius: 33,
 
   /**
    * Ни один слизень/плевун не должен спавниться ближе этого к центру лагеря —
    * сервер перекидывает такие точки. Меньше safeRadius снаружи не бывает.
    */
-  mobExclusionRadius: 30,
+  mobExclusionRadius: 36,
 
   /** Костёр в центре площади (в мировых координатах = центр лагеря). */
   campfire: {
     pos: { x: HUB_CENTER.x, y: 0, z: HUB_CENTER.z },
     /** Радиус каменного кольца, м. */
-    radius: 2,
+    radius: 2.4,
   },
 
   /**
@@ -46,10 +46,10 @@ export const HUB = {
    * `dir` — единичный вектор наружу (к поляне), по нему кладём дорогу.
    */
   gate: {
-    pos: { x: -42, z: -42 },
+    pos: { x: -34, z: -34 },
     dir: { x: Math.SQRT1_2, z: Math.SQRT1_2 },
-    width: 6,
-    height: 5,
+    width: 8,
+    height: 6,
   },
 
   /**
@@ -66,14 +66,14 @@ export const HUB = {
    * (уже со смещением на центр лагеря). Сервер и клиент берут отсюда же.
    */
   spawns: [
-    { x: HUB_CENTER.x - 5, z: HUB_CENTER.z - 5 },
-    { x: HUB_CENTER.x + 4, z: HUB_CENTER.z - 6 },
-    { x: HUB_CENTER.x - 7, z: HUB_CENTER.z + 2 },
-    { x: HUB_CENTER.x + 6, z: HUB_CENTER.z + 1 },
-    { x: HUB_CENTER.x - 4, z: HUB_CENTER.z + 7 },
-    { x: HUB_CENTER.x + 4, z: HUB_CENTER.z + 6 },
-    { x: HUB_CENTER.x - 8, z: HUB_CENTER.z - 3 },
-    { x: HUB_CENTER.x + 8, z: HUB_CENTER.z - 2 },
+    { x: HUB_CENTER.x - 7, z: HUB_CENTER.z - 7 },
+    { x: HUB_CENTER.x + 6, z: HUB_CENTER.z - 8 },
+    { x: HUB_CENTER.x - 10, z: HUB_CENTER.z + 3 },
+    { x: HUB_CENTER.x + 9, z: HUB_CENTER.z + 2 },
+    { x: HUB_CENTER.x - 6, z: HUB_CENTER.z + 10 },
+    { x: HUB_CENTER.x + 6, z: HUB_CENTER.z + 9 },
+    { x: HUB_CENTER.x - 11, z: HUB_CENTER.z - 4 },
+    { x: HUB_CENTER.x + 11, z: HUB_CENTER.z - 3 },
   ] as const,
 
   /**
@@ -83,34 +83,52 @@ export const HUB = {
    */
   training: {
     dummies: [
-      { x: HUB_CENTER.x - 12, z: HUB_CENTER.z + 1 },
-      { x: HUB_CENTER.x - 13.5, z: HUB_CENTER.z + 3.5 },
-      { x: HUB_CENTER.x - 13.5, z: HUB_CENTER.z - 1.5 },
-      { x: HUB_CENTER.x - 16, z: HUB_CENTER.z + 6 },
-      { x: HUB_CENTER.x - 16, z: HUB_CENTER.z - 4 },
+      { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 1 },
+      { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z + 4.5 },
+      { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z - 2.5 },
+      { x: HUB_CENTER.x - 23, z: HUB_CENTER.z + 8 },
+      { x: HUB_CENTER.x - 23, z: HUB_CENTER.z - 6 },
     ] as const,
   },
 
   /**
-   * Зоны лагеря — смещения от центра. Blockout наполняет их примитивами,
-   * геймплей (оружейная, тренировка) подключается следующими срезами.
+   * Зоны лагеря — смещения от центра. Просторный круг: центральная площадь с
+   * костром пустая, всё строение вынесено на кольцо радиусом ~18–23 м, палатки
+   * игроков — по периметру. Планировка по концепту (см. art/HUB).
    */
   zones: {
-    /** Оружейная: стойки с существующим sword/bow/shield/staff. */
-    weapons: { x: HUB_CENTER.x + 9, z: HUB_CENTER.z + 2 },
-    /** Тренировочная площадка: мишени + манекен. */
-    training: { x: HUB_CENTER.x - 10, z: HUB_CENTER.z + 1 },
-    /** Торговые лавки (пока декор). */
-    market: { x: HUB_CENTER.x - 9, z: HUB_CENTER.z - 8 },
-    /** Кузница (пока декор). */
-    forge: { x: HUB_CENTER.x + 9, z: HUB_CENTER.z - 9 },
-    /** Главный шатёр (позади площади, дальше от ворот). */
-    mainTent: { x: HUB_CENTER.x - 3, z: HUB_CENTER.z - 12 },
-    /** Смотровая башня — ориентир, видна отовсюду. */
-    watchTower: { x: HUB_CENTER.x + 13, z: HUB_CENTER.z - 13 },
-    /** Инструктор — у входа на тренировочную площадку. */
-    instructor: { x: HUB_CENTER.x - 6, z: HUB_CENTER.z + 3 },
+    /** Оружейная: стойки с существующим sword/bow/shield/staff. Восток. */
+    weapons: { x: HUB_CENTER.x + 19, z: HUB_CENTER.z + 4 },
+    /** Тренировочная площадка: мишени + манекены. Запад. */
+    training: { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 2 },
+    /** Торговые лавки. Северо-запад. */
+    market: { x: HUB_CENTER.x - 14, z: HUB_CENTER.z - 16 },
+    /** Кузница. Юго-восток. */
+    forge: { x: HUB_CENTER.x + 16, z: HUB_CENTER.z - 15 },
+    /** Палатка медика. Юго-запад. */
+    medic: { x: HUB_CENTER.x - 20, z: HUB_CENTER.z - 10 },
+    /** Главный шатёр (позади площади, дальше от ворот). Юг. */
+    mainTent: { x: HUB_CENTER.x - 1, z: HUB_CENTER.z - 21 },
+    /** Смотровая башня — ориентир у ворот, видна отовсюду. */
+    watchTower: { x: HUB_CENTER.x + 10, z: HUB_CENTER.z + 20 },
+    /** Инструктор — на подходе к тренировочной площадке. */
+    instructor: { x: HUB_CENTER.x - 11, z: HUB_CENTER.z + 4 },
   },
+
+  /**
+   * Палатки игроков по периметру — угол (рад) и радиус от центра.
+   * Угол ворот ≈0.785 рад; вокруг него проём — палаток там нет.
+   */
+  playerTents: [
+    { a: 1.62, r: 25 },
+    { a: 2.3, r: 25.5 },
+    { a: 3.0, r: 25 },
+    { a: 3.7, r: 26 },
+    { a: 4.4, r: 25 },
+    { a: 5.1, r: 25.5 },
+    { a: 5.8, r: 25 },
+    { a: 6.2, r: 26 },
+  ] as const,
 } as const;
 
 /** Игрок внутри безопасной зоны лагеря? Проверка — на сервере. */

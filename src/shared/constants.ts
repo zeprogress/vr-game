@@ -277,7 +277,7 @@ export const MOB_CAMPS: {
 }[] = [
   { x: -52, z: 44, type: "bee", count: 10, spread: 4 },
   { x: 68, z: -32, type: "bee", count: 12, spread: 4 },
-  { x: -18, z: -62, type: "spikyBlob", count: 5, spread: 6 },
+  { x: -12, z: -68, type: "spikyBlob", count: 5, spread: 6 },
   { x: -66, z: 6, type: "frog", count: 4, spread: 5 },
   { x: 8, z: 62, type: "cactoro", count: 3, spread: 6 },
 ];
