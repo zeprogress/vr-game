@@ -345,6 +345,7 @@ class Mob {
     const chasing = this.aggroed && np !== null;
 
     const rage = this.enraged ? 1.5 : 1;
+    const rageDmg = this.enraged ? BOSS.rageDamageMult : 1;
     const hopSpeed =
       (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) * rage;
     const hopInterval =
@@ -369,7 +370,7 @@ class Mob {
             if (Math.hypot(p.x - this.x, p.z - this.z) > BOSS.slamRadius) continue;
             hits.push({
               target: p.sessionId,
-              dmg: BOSS.slamDamage,
+              dmg: BOSS.slamDamage * rageDmg,
               fromX: this.x,
               fromZ: this.z,
               byMob: this.id,
@@ -425,7 +426,7 @@ class Mob {
             }
             hits.push({
               target: p.sessionId,
-              dmg: BOSS.lungeDamage,
+              dmg: BOSS.lungeDamage * rageDmg,
               fromX: this.x,
               fromZ: this.z,
               byMob: this.id,

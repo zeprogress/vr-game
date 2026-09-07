@@ -162,37 +162,39 @@ export const BOSS = {
    * коллизий/дистанции удара = `MOB.bodyRadius * scale * bodyMult`.
    */
   bodyMult: 1.3,
-  aggroRange: 28,
+  aggroRange: 32,
   wanderRadius: 16,
-  hopSpeed: 3.5,
-  hopInterval: 0.66,
+  hopSpeed: 4.0,
+  hopInterval: 0.6,
   /** Подходишь ближе — замахивается на удар по площади. */
-  slamRange: 6.5,
-  slamWindup: 1.05, // с телеграфа (стоит на месте, «раздувается»)
-  slamCooldown: 3.6, // с между слэмами
-  slamRadius: 5, // м поражения
-  slamDamage: 24,
-  slamKnockback: 9,
+  slamRange: 7,
+  slamWindup: 0.95, // с телеграфа (стоит на месте, «раздувается»)
+  slamCooldown: 3.0, // с между слэмами
+  slamRadius: 5.5, // м поражения
+  slamDamage: 34,
+  slamKnockback: 10,
   /**
    * Рывок-таран: игрок вне зоны слэма, но в пределах агро — босс копит
    * замах и проносится сквозь по прямой, снося всех на пути.
    */
-  lungeWindup: 0.75, // с телеграфа
-  lungeCooldown: 6, // с между рывками
-  lungeSpeed: 13, // м/с в рывке
+  lungeWindup: 0.68, // с телеграфа
+  lungeCooldown: 4.5, // с между рывками
+  lungeSpeed: 14, // м/с в рывке
   lungeDuration: 0.5, // с
-  lungeDamage: 16,
+  lungeDamage: 26,
+  /** В ярости (enrageAt) слэм и таран бьют ещё сильнее. */
+  rageDamageMult: 1.35,
   /** Плевок: изредка кидает очередь слизистых сгустков в игрока на средней дистанции. */
-  shootCooldown: 8, // с между очередями
-  shootRange: [7, 26] as const, // м: в этой полосе дистанций стреляет
-  shootBurst: 3, // сгустков в очереди
+  shootCooldown: 6, // с между очередями
+  shootRange: [7, 28] as const, // м: в этой полосе дистанций стреляет
+  shootBurst: 4, // сгустков в очереди
   shootSpread: 2.2, // м бокового разброса сгустков на дальности цели
-  shootGap: 0.16, // с между сгустками очереди
+  shootGap: 0.15, // с между сгустками очереди
   /** Доли HP, при пересечении которых босс выбрасывает осколки. */
   splitAt: [0.75, 0.5, 0.25] as const,
   splitCount: 3,
-  /** Ниже этой доли HP — ярость: быстрее и бьёт чаще. */
-  enrageAt: 0.4,
+  /** Ниже этой доли HP — ярость: быстрее, бьёт чаще и сильнее. */
+  enrageAt: 0.5,
   respawn: 90, // с
   /** Ближе — играет boss.mp3; дальше musicOut — обратно (гистерезис). */
   musicRange: 26,
