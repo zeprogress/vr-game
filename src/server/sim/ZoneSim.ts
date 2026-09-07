@@ -307,8 +307,14 @@ class Mob {
     // ближайший игрок. Босс не гонится за теми, кто ушёл далеко от его угла
     // (иначе рейд-боты, погибнув и возродившись на спавне, утаскивали его
     // через всю карту).
+    // Пока агрит — тянется за игроком далеко (chaseLeash), может выйти из угла.
+    // Вне боя круг маленький: не уходит на поляну сам.
     const bossLeash =
-      this.kind === "boss" ? BOSS.aggroRange + BOSS.wanderRadius : Infinity;
+      this.kind === "boss"
+        ? this.aggroed
+          ? BOSS.chaseLeash
+          : BOSS.aggroRange + BOSS.wanderRadius
+        : Infinity;
     let np: SimPlayer | null = null;
     let best = Infinity;
     for (const p of players) {
@@ -562,7 +568,9 @@ class Mob {
       const hdx = this.x - this.homeX;
       const hdz = this.z - this.homeZ;
       const hd = Math.hypot(hdx, hdz);
-      const maxHd = BOSS.wanderRadius * 1.7;
+      // Жёсткая стена — всегда chaseLeash. Домой вне боя босс возвращается сам
+      // (idle-скачки нацелены в точку у дома), без телепорта-рывка к углу.
+      const maxHd = BOSS.chaseLeash;
       if (hd > maxHd) {
         this.x = this.homeX + (hdx / hd) * maxHd;
         this.z = this.homeZ + (hdz / hd) * maxHd;

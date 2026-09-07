@@ -193,7 +193,7 @@ export class NameTag {
     if (this.xpBg) return;
     const scene = this.plane.getScene();
     const w = this.planeW * 0.66;
-    const barH = this.planeW * 0.032;
+    const barH = this.planeW * 0.023;
     // Над полоской жизни (та — на halfH*0.58), с зазором.
     const y = this.halfH * 0.92;
     this.xpW = w;
@@ -217,7 +217,7 @@ export class NameTag {
     const fillMat = new StandardMaterial("nameXpFillMat", scene);
     fillMat.disableLighting = true;
     fillMat.specularColor = new Color3(0, 0, 0);
-    fillMat.emissiveColor = new Color3(1, 0.8, 0.28);
+    fillMat.emissiveColor = new Color3(0.62, 0.64, 0.68);
     this.xpFill = MeshBuilder.CreatePlane("nameXpFill", { width: w, height: barH }, scene);
     this.xpFill.material = fillMat;
     this.xpFill.parent = this.xpBg;

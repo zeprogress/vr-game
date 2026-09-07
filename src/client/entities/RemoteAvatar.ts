@@ -246,14 +246,16 @@ export class RemoteAvatar implements Hittable {
     this.mat.specularColor = new Color3(0.1, 0.1, 0.1);
 
     this.shadow = new BlobShadow(scene, id);
+    const isBotTag = id.startsWith("bot:");
     this.nameTag = new NameTag(
       scene,
       this.root,
       new Vector3(0, 0.42, 0),
       nick,
       null,
-      undefined,
-      id.startsWith("bot:"),
+      // Ботам — уровень голубым (у живых игроков плашка вообще не рисуется).
+      isBotTag ? new Color3(0.42, 0.72, 1) : undefined,
+      isBotTag,
     );
     this.nameTag.showHp(); // зелёная полоска жизни под ником
     if (id.startsWith("bot:")) this.nameTag.showXp(); // + полоска опыта до уровня

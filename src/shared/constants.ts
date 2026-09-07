@@ -164,39 +164,42 @@ export const BOSS = {
    * коллизий/дистанции удара = `MOB.bodyRadius * scale * bodyMult`.
    */
   bodyMult: 1.3,
-  aggroRange: 32,
+  aggroRange: 38,
   wanderRadius: 16,
-  hopSpeed: 4.0,
-  hopInterval: 0.6,
+  /** Пока босс агрит — гонится за игроком на такой дистанции от своего угла
+   *  (может выйти из респа и преследовать через поляну). Вне боя возвращается. */
+  chaseLeash: 75,
+  hopSpeed: 4.4,
+  hopInterval: 0.58,
   /** Подходишь ближе — замахивается на удар по площади. */
-  slamRange: 7,
-  slamWindup: 0.95, // с телеграфа (стоит на месте, «раздувается»)
-  slamCooldown: 3.0, // с между слэмами
-  slamRadius: 5.5, // м поражения
-  slamDamage: 34,
-  slamKnockback: 10,
+  slamRange: 7.5,
+  slamWindup: 0.9, // с телеграфа (стоит на месте, «раздувается»)
+  slamCooldown: 2.7, // с между слэмами
+  slamRadius: 6, // м поражения
+  slamDamage: 44,
+  slamKnockback: 11,
   /**
    * Рывок-таран: игрок вне зоны слэма, но в пределах агро — босс копит
    * замах и проносится сквозь по прямой, снося всех на пути.
    */
-  lungeWindup: 0.68, // с телеграфа
-  lungeCooldown: 4.5, // с между рывками
-  lungeSpeed: 14, // м/с в рывке
+  lungeWindup: 0.62, // с телеграфа
+  lungeCooldown: 4.0, // с между рывками
+  lungeSpeed: 15, // м/с в рывке
   lungeDuration: 0.5, // с
-  lungeDamage: 26,
+  lungeDamage: 34,
   /** В ярости (enrageAt) слэм и таран бьют ещё сильнее. */
-  rageDamageMult: 1.35,
+  rageDamageMult: 1.5,
   /** Плевок: изредка кидает очередь слизистых сгустков в игрока на средней дистанции. */
-  shootCooldown: 6, // с между очередями
-  shootRange: [7, 28] as const, // м: в этой полосе дистанций стреляет
-  shootBurst: 4, // сгустков в очереди
+  shootCooldown: 5.5, // с между очередями
+  shootRange: [7, 30] as const, // м: в этой полосе дистанций стреляет
+  shootBurst: 5, // сгустков в очереди
   shootSpread: 2.2, // м бокового разброса сгустков на дальности цели
-  shootGap: 0.15, // с между сгустками очереди
+  shootGap: 0.14, // с между сгустками очереди
   /** Доли HP, при пересечении которых босс выбрасывает осколки. */
   splitAt: [0.75, 0.5, 0.25] as const,
   splitCount: 3,
   /** Ниже этой доли HP — ярость: быстрее, бьёт чаще и сильнее. */
-  enrageAt: 0.5,
+  enrageAt: 0.55,
   respawn: 90, // с
   /** Ближе — играет boss.mp3; дальше musicOut — обратно (гистерезис). */
   musicRange: 26,
