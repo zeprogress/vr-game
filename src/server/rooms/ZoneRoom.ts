@@ -1638,10 +1638,18 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!mob || !okMob(mob)) {
       bot.target = null;
       mob = undefined;
+      // Сколько других ботов уже целятся в каждого моба — предпочитаем «своего».
+      const claimed = new Map<string, number>();
+      for (const other of this.bots.values()) {
+        if (other === bot || !other.target) continue;
+        claimed.set(other.target, (claimed.get(other.target) ?? 0) + 1);
+      }
       let bd = Infinity;
       for (const m of this.sim.mobs.values()) {
         if (!okMob(m)) continue;
-        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        const d =
+          Math.hypot(m.x - p.head.x, m.z - p.head.z) +
+          (claimed.get(m.id) ?? 0) * BOT.targetSpread;
         if (d < bd) {
           bd = d;
           mob = m;
