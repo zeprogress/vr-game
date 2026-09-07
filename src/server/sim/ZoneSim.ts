@@ -1058,6 +1058,7 @@ export class ZoneSim {
 
     this.elapsed += dt;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    this.separateMobs();
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
@@ -1070,6 +1071,57 @@ export class ZoneSim {
       }
     }
     return hits;
+  }
+
+  /**
+   * Мобы не влезают друг в друга: раздвигаем пересекающиеся тела после хода.
+   * Босс «тяжёлый» — мелочь расступается перед ним, сам он не сдвигается.
+   * Только позиция (не скорость): скорость крутит логика прыжков, а тут нужен
+   * лишь запрет на наложение — иначе стая пчёл слипается в один комок.
+   */
+  private separateMobs(): void {
+    const list: Mob[] = [];
+    for (const m of this.mobs.values()) if (!m.dead) list.push(m);
+    const bodyR = (m: Mob): number =>
+      MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1);
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      const ar = bodyR(a);
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        const clr = ar + bodyR(b);
+        let dx = b.x - a.x;
+        let dz = b.z - a.z;
+        if (dx > clr || dx < -clr || dz > clr || dz < -clr) continue;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= clr * clr) continue;
+        let d = Math.sqrt(d2);
+        if (d < 1e-4) {
+          // Ровно друг в друге — расталкиваем по детерминированной оси.
+          const ang = (i * 2.399963 + j) % (Math.PI * 2);
+          dx = Math.cos(ang);
+          dz = Math.sin(ang);
+          d = 1e-4;
+        } else {
+          dx /= d;
+          dz /= d;
+        }
+        const over = clr - d;
+        const aBoss = a.kind === "boss";
+        const bBoss = b.kind === "boss";
+        // Доля коррекции: тяжёлый (босс) стоит, лёгкий уходит на всю глубину.
+        const wa = aBoss === bBoss ? 0.5 : aBoss ? 0 : 1;
+        const wb = 1 - wa;
+        if (wa > 0) {
+          a.x -= dx * over * wa;
+          a.z -= dz * over * wa;
+        }
+        if (wb > 0) {
+          b.x += dx * over * wb;
+          b.z += dz * over * wb;
+        }
+      }
+    }
   }
 
   /** Запустить огненный снаряд игрока. */
