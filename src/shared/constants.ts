@@ -97,7 +97,7 @@ export const MOB = {
 /** Дальнобойный моб «Плевун»: держит дистанцию и стреляет шариками. */
 export const SPITTER = {
   count: 3,
-  hp: MOB.hp * 2, // вдвое живучее слизня
+  hp: 9, // живучее слизня (тот — стартовый мусор на 4 HP)
   aggroRange: 24, // м
   fireRange: 20, // м, с этой дистанции начинает плеваться
   keepDistance: 9, // м, ближе — отпрыгивает назад
@@ -232,7 +232,8 @@ export interface EliteMobDef {
   name: string;
   level: number;
   kind: "slime" | "spitter";
-  hpMul: number;
+  /** Абсолютное HP (не множитель базы): чем выше уровень — тем живучее. */
+  hp: number;
   dmgMul: number;
   /** Абсолютный опыт за моба (делится между участниками, не множитель базы). */
   xp: number;
@@ -246,20 +247,20 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
   bee: {
     model: "monBee", name: "Пчела", level: 3, kind: "slime",
-    hpMul: 0.7, dmgMul: 0.55, xp: 4, scaleMul: 0.5, tint: null, flying: true,
+    hp: 10, dmgMul: 0.55, xp: 4, scaleMul: 0.5, tint: null, flying: true,
   },
   spikyBlob: {
     model: "monSpikyBlob", name: "Шипобрюх", level: 6, kind: "slime",
-    hpMul: 2.0, dmgMul: 1.7, xp: 26, scaleMul: 1.15, tint: null,
+    hp: 60, dmgMul: 1.7, xp: 26, scaleMul: 1.15, tint: null,
   },
   frog: {
     model: "monFrog", name: "Болотная жаба", level: 7, kind: "slime",
-    hpMul: 1.9, dmgMul: 1.6, xp: 34, scaleMul: 0.75,
+    hp: 95, dmgMul: 1.6, xp: 34, scaleMul: 0.75,
     tint: [0.24, 0.7, 0.26], // перекрас в зелёный
   },
   cactoro: {
     model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
-    hpMul: 2.7, dmgMul: 2.0, xp: 55, scaleMul: 1.6, tint: null,
+    hp: 170, dmgMul: 2.0, xp: 55, scaleMul: 1.6, tint: null,
   },
 };
 

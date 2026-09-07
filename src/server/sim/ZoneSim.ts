@@ -250,7 +250,7 @@ class Mob {
       model?: string;
       name?: string;
       level?: number;
-      hpMul?: number;
+      hp?: number;
       dmgMul?: number;
       xp?: number;
       scaleMul?: number;
@@ -276,7 +276,7 @@ class Mob {
           : kind === "shard"
             ? SHARD_CFG
             : SLIME_CFG;
-    this.hp = cfg.hp * (opts.hpMul ?? 1);
+    this.hp = opts.hp ?? cfg.hp;
     this.maxHp = this.hp;
     this.ranged = cfg.ranged;
     this.xp = opts.xp ?? cfg.xp;
@@ -971,7 +971,7 @@ export class ZoneSim {
           model: def.model,
           name: def.name,
           level: def.level,
-          hpMul: def.hpMul,
+          hp: def.hp,
           dmgMul: def.dmgMul,
           scaleMul: def.scaleMul,
           xp: def.xp,
