@@ -7,10 +7,13 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/polyhedronBuilder";
+
+import { relightMaterials } from "../Fireflies";
 
 /**
  * Костёр лагеря — портирован из процедурного костра, что дал пользователь
@@ -184,11 +187,15 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     coals.push({ m: c, phase: i * 0.73 });
   }
 
-  // --- ореол: две билборд-плоскости, аддитив, пульс ---
+  // --- ореол: круглый радиальный градиент, аддитив, билборд, пульс ---
   const gt = glowTexture(scene);
   const mkGlow = (size: number, opacity: number, tint: string): Mesh => {
     const gm = new StandardMaterial(`hubGlowMat${size}`, scene);
-    gm.diffuseTexture = gt;
+    // Круглая форма — из самой текстуры: её RGB и альфа гаснут к краю, при
+    // аддитивном блендинге углы плоскости не видны (в отличие от плоского
+    // emissiveColor — от него был квадрат).
+    gm.emissiveTexture = gt;
+    gm.opacityTexture = gt;
     gm.emissiveColor = Color3.FromHexString(tint);
     gm.diffuseColor = new Color3(0, 0, 0);
     gm.specularColor = new Color3(0, 0, 0);
@@ -205,8 +212,18 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     pl.renderingGroupId = 1;
     return pl;
   };
-  const glowIn = mkGlow(2.6, 0.5, "#ff9a42");
-  const glowOut = mkGlow(4.6, 0.2, "#ff6a22");
+  const glowIn = mkGlow(3.2, 0.5, "#ff9a42");
+  const glowOut = mkGlow(5.6, 0.2, "#ff6a22");
+
+  // --- свет костра: PointLight, гаснет днём (переключение на границе суток,
+  //     как у факелов ботов; в бюджете LIGHT_BUDGET учтён +1) ---
+  const fireLight = new PointLight("hubCampfire", pos.clone(), scene);
+  fireLight.range = 15;
+  fireLight.diffuse = new Color3(1, 0.62, 0.28);
+  fireLight.specular = new Color3(0.18, 0.09, 0.03);
+  fireLight.intensity = 0;
+  fireLight.setEnabled(false);
+  let lightOn = false;
 
   // --- искры: пул мелких квадов, поднимаются и перерождаются ---
   const sparkMat = new StandardMaterial("hubSparkMat", scene);
@@ -270,6 +287,21 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
       s.m.position.set(s.x, s.y, s.z);
       s.m.scaling.setAll((1 - s.life / s.max) * (0.6 + 0.5 * (1 - day)));
     }
+
+    // Свет костра: включаем/выключаем ОДИН раз на границе суток (пересбор
+    // шейдеров дорогой — как у BotLights), между границами меняем только силу.
+    const night = 1 - day;
+    const wantOn = night > 0.06;
+    if (wantOn !== lightOn) {
+      lightOn = wantOn;
+      fireLight.setEnabled(wantOn);
+      relightMaterials(scene);
+    }
+    if (lightOn) {
+      const flick =
+        1 + Math.sin(time * 8.2) * 0.09 + Math.sin(time * 13.6) * 0.05 + Math.sin(time * 3.1) * 0.03;
+      fireLight.intensity = 2.1 * night * flick;
+    }
   }
   tick(0, 1);
 
@@ -277,6 +309,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     tick,
     dispose(): void {
       gt.dispose();
+      fireLight.dispose();
       root.dispose(false, true);
       sparkProto.dispose();
     },

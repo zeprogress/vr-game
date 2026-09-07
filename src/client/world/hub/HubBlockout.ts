@@ -16,6 +16,7 @@ import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 import { HUB } from "#shared/hub";
 import { terrainHeight } from "#shared/terrain";
 import type { Obstacle } from "../props";
+import { LIGHT_BUDGET } from "../Fireflies";
 import { buildHubCampfire } from "./HubCampfire";
 
 /**
@@ -67,6 +68,7 @@ function flatMat(
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
   m.twoSidedLighting = true;
+  m.maxSimultaneousLights = LIGHT_BUDGET; // ловит свет костра ночью
   if (emissive) {
     m.emissiveColor = emissive;
   } else if (dayLit) {

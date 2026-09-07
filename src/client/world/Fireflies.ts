@@ -151,7 +151,8 @@ export function relightMaterials(scene: Scene): void {
  * солнце + небо + лампы светлячков + 2 магических (кристалл посоха, огнешар)
  * + факелы ботов ночью.
  */
-export const LIGHT_BUDGET = FIREFLY.lamps + 2 + 2 + BOT_TORCHES;
+/** +1 — костёр в лагере (HUB) ночью. */
+export const LIGHT_BUDGET = FIREFLY.lamps + 2 + 2 + BOT_TORCHES + 1;
 
 interface Group {
   /** Центр стайки — постоянный (см. GRASS_SEED-подобный FIREFLY_SEED ниже). */
