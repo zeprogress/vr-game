@@ -111,6 +111,15 @@ export interface SimPlayer {
   z: number;
 }
 
+/** Вклад одного участника в бой с боссом. */
+interface BossContrib {
+  dmg: number;
+  heal: number;
+  taken: number;
+  /** sim-время (сек) последнего вклада — для окна давности. */
+  last: number;
+}
+
 /** Событие «моб/плевок ударил игрока» — комната разошлёт его. */
 export interface PlayerHit {
   target: string;
@@ -162,8 +171,25 @@ class Mob {
   readonly ranged: boolean;
   readonly xp: number;
   readonly scale: number;
-  /** Кто и сколько урона нанёс (для дележа опыта с босса). */
-  readonly dmgBy = new Map<string, number>();
+  /**
+   * Вклад участников боя с боссом (для гибридного дележа опыта):
+   * урон боссу, лечение союзников, полученный от босса урон + метка времени
+   * последнего вклада (окно давности отсекает «бил час назад» и залипшие
+   * записи ботов).
+   */
+  readonly contrib = new Map<string, BossContrib>();
+
+  /** Записать вклад в бой с боссом. */
+  bump(owner: string, field: "dmg" | "heal" | "taken", amount: number, now: number): void {
+    if (!owner || amount <= 0) return;
+    let c = this.contrib.get(owner);
+    if (!c) {
+      c = { dmg: 0, heal: 0, taken: 0, last: 0 };
+      this.contrib.set(owner, c);
+    }
+    c[field] += amount;
+    c.last = now;
+  }
 
   // --- босс ---
   private slamCd: number = BOSS.slamCooldown;
@@ -681,7 +707,7 @@ class Mob {
     this.shootQueue = 0;
     this.shootGap = 0;
     this.splitsDone = 0;
-    this.dmgBy.clear();
+    this.contrib.clear();
     this.hp = this.maxHp;
     this.dead = false;
     this.aggroed = false;
@@ -848,6 +874,8 @@ export class ZoneSim {
   readonly bolts = new Map<string, Bolt>();
   readonly drops = new Map<string, Drop>();
   private boss!: Mob;
+  /** sim-время в секундах (для окна давности вклада в бой с боссом). */
+  private elapsed = 0;
   /** Слизни, доспавненные под наплыв игроков (`!play`). Убираются, когда толпа расходится. */
   private readonly extraSlimes = new Map<string, Mob>();
 
@@ -953,12 +981,20 @@ export class ZoneSim {
       this.balls.set(b.id, b);
     };
 
+    this.elapsed += dt;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
     this.boltXp.length = 0;
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
+    // Полученный от босса урон — тоже вклад в бой (танк/приманка).
+    const boss = this.boss;
+    if (boss && !boss.dead) {
+      for (const h of hits) {
+        if (h.byMob === boss.id) boss.bump(h.target, "taken", h.dmg, this.elapsed);
+      }
+    }
     return hits;
   }
 
@@ -1037,7 +1073,7 @@ export class ZoneSim {
     const m = this.mobs.get(id);
     if (!m) return 0;
     if (attacker && dmg > 0 && m.kind === "boss") {
-      m.dmgBy.set(attacker, (m.dmgBy.get(attacker) ?? 0) + dmg);
+      m.bump(attacker, "dmg", Math.min(dmg, Math.max(0, m.hp)), this.elapsed);
     }
     const killed = m.applyHit(dmg, dx, dz);
 
@@ -1055,20 +1091,79 @@ export class ZoneSim {
     if (m.kind === "boss") {
       // Босс пал — осколки осыпаются.
       for (const [sid, s] of this.mobs) if (s.kind === "shard") this.mobs.delete(sid);
-      // Опыт делим пропорционально нанесённому урону между всеми участниками.
-      let total = 0;
-      for (const d of m.dmgBy.values()) total += d;
-      if (total > 0) {
-        for (const [owner, d] of m.dmgBy) {
-          this.bossXpShare.push({ owner, xp: (m.xp * d) / total });
-        }
-      }
-      m.dmgBy.clear();
+      this.splitBossXp(m);
       this.spawnLoot(m);
       return 0;
     }
     this.spawnLoot(m);
     return m.xp;
+  }
+
+  /**
+   * Гибридный делёж опыта с босса: половина пула — ПОРОВНУ между всеми
+   * участниками боя, половина — ЗА ВКЛАД (урон + лечение союзников +
+   * ½ полученного урона, сглажено √). Ни один не получает больше `cap` —
+   * срезанное перераспределяется остальным. Уровневый потолок (не больше
+   * ~уровня за раз) накладывает уже комната по `PlayerState.level`.
+   */
+  private splitBossXp(m: Mob): void {
+    const RECENCY = 90; // с — вклад «протух», если давно ничего не делал
+    const CAP_FRAC = 0.4; // не больше 40% пула в одни руки
+    const EQUAL_FRAC = 0.5; // доля пула, что делится поровну
+
+    const elig: { owner: string; score: number }[] = [];
+    for (const [owner, c] of m.contrib) {
+      if (this.elapsed - c.last > RECENCY) continue;
+      // Допуск: заметный урон ЛИБО хоть как-то держал бой (танк/хилер).
+      const meaningful = c.dmg >= m.maxHp * 0.03 || c.taken > 0 || c.heal > 0;
+      if (!meaningful) continue;
+      const raw = c.dmg + c.heal + c.taken * 0.5;
+      elig.push({ owner, score: Math.sqrt(Math.max(0, raw)) });
+    }
+    if (elig.length === 0) {
+      m.contrib.clear();
+      return;
+    }
+
+    const pool = m.xp;
+    const cap = pool * CAP_FRAC;
+    const equalEach = (pool * EQUAL_FRAC) / elig.length;
+    const perfPool = pool * (1 - EQUAL_FRAC);
+    let scoreSum = 0;
+    for (const e of elig) scoreSum += e.score;
+    if (scoreSum <= 0) scoreSum = 1;
+
+    const award = new Map<string, number>();
+    for (const e of elig) {
+      award.set(e.owner, Math.min(cap, equalEach + perfPool * (e.score / scoreSum)));
+    }
+    // Перераспределить срезанное потолком (один проход — достаточно).
+    let given = 0;
+    for (const v of award.values()) given += v;
+    let leftover = pool - given;
+    if (leftover > 0.01) {
+      const room = elig.filter((e) => (award.get(e.owner) ?? 0) < cap - 0.01);
+      let rSum = 0;
+      for (const e of room) rSum += e.score;
+      if (rSum > 0) {
+        for (const e of room) {
+          const cur = award.get(e.owner) ?? 0;
+          award.set(e.owner, Math.min(cap, cur + leftover * (e.score / rSum)));
+        }
+      }
+    }
+
+    for (const [owner, xp] of award) {
+      if (xp > 0) this.bossXpShare.push({ owner, xp });
+    }
+    m.contrib.clear();
+  }
+
+  /** Комната зовёт при удачном лечении союзника в бою с боссом. */
+  bossHeal(owner: string, amount: number): void {
+    if (this.boss && !this.boss.dead && this.boss.aggro) {
+      this.boss.bump(owner, "heal", amount, this.elapsed);
+    }
   }
 
   /** Выбросить осколки вокруг босса. */

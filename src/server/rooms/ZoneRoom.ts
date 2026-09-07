@@ -566,7 +566,10 @@ export class ZoneRoom extends Room<ZoneState> {
         const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
+        const beforeHp = target.hp;
         target.hp = Math.min(target.maxHp, target.hp + healAmountFor(p.level, p.int, charge));
+        // Лечение союзника в бою с боссом — вклад в общий опыт (гибридный делёж).
+        if (target !== p) this.sim.bossHeal(client.sessionId, target.hp - beforeHp);
         return;
       }
 
@@ -2292,19 +2295,22 @@ export class ZoneRoom extends Room<ZoneState> {
         if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
       }
     }
-    // Опыт с босса — поделён между всеми, кто нанёс урон (пропорционально урону).
+    // Опыт с босса — гибридный делёж (поровну + за вклад, с потолком) считает
+    // ZoneSim. Здесь только раздаём и режем «не больше уровня за один бой».
     if (this.sim.bossXpShare.length) {
       let topOwner = "";
       let topXp = -1;
       for (const k of this.sim.bossXpShare) {
         const kp = this.state.players.get(k.owner);
         if (kp) {
-          this.awardXp(this.clientOf(k.owner), kp, k.xp);
+          const lvlCap = xpToNext(kp.level); // Infinity на максимальном уровне
+          const xp = Number.isFinite(lvlCap) ? Math.min(k.xp, lvlCap) : k.xp;
+          this.awardXp(this.clientOf(k.owner), kp, xp);
           const krt = this.rt.get(k.owner);
           if (krt) krt.kills++;
           if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
-          if (k.xp > topXp) {
-            topXp = k.xp;
+          if (xp > topXp) {
+            topXp = xp;
             topOwner = kp.nick;
           }
         }
