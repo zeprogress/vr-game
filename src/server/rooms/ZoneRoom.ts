@@ -416,6 +416,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly ttsLast = new Map<string, number>(); // normNick -> ms последней озвучки
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
   private infoAt = 0; // ms последнего ответа на !info (общий кулдаун)
+  private bossFighting = false; // босс сейчас в бою (для баннера появления)
+  private bossAnnouncedAt = 0; // ms последнего баннера «БОСС ПОЯВИЛСЯ»
   private readonly hintAt = new Map<string, number>(); // normNick -> ms последней подсказки
 
   override onCreate(): void {
@@ -2308,7 +2310,22 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
       if (topOwner) this.broadcast(MSG.killFeed, { by: topOwner, victim: "Багровый" });
+      this.broadcast(MSG.bossEvent, { kind: "down", by: topOwner });
+      this.bossFighting = false;
       this.sim.bossXpShare.length = 0;
+    }
+
+    // Босс вступил в бой — баннер «БОСС ПОЯВИЛСЯ» (не чаще раза в минуту).
+    {
+      const boss = this.bossMob();
+      const active = !!boss && !boss.dead && boss.aggro;
+      if (active && !this.bossFighting && Date.now() - this.bossAnnouncedAt > 60_000) {
+        this.bossFighting = true;
+        this.bossAnnouncedAt = Date.now();
+        this.broadcast(MSG.bossEvent, { kind: "spawn" });
+      } else if (!active && this.bossFighting) {
+        this.bossFighting = false;
+      }
     }
     for (const d of this.sim.drops.values()) {
       if (this.state.drops.has(d.id)) continue;

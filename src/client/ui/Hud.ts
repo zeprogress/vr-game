@@ -24,6 +24,8 @@ export class Hud {
   private prog: Progression | null = null;
   private inv: Inventory | null = null;
   private toastTimer: number | null = null;
+  private readonly bannerEl: HTMLDivElement;
+  private bannerTimer: number | null = null;
   private skin = 0;
   private onSkin: ((skin: number) => void) | null = null;
   private leaveBot = false;
@@ -73,6 +75,14 @@ export class Hud {
       if (e.target === this.backdrop) this.closePanel();
     });
     this.deathEl = el("div", DEATH_CSS);
+    this.bannerEl = el("div", BANNER_CSS);
+
+    const bst = document.createElement("style");
+    bst.textContent =
+      ".hud-banner .bn-t{font:900 clamp(34px,7vw,84px)/1.05 system-ui,sans-serif;letter-spacing:0.04em;text-transform:uppercase}" +
+      ".hud-banner .bn-s{margin-top:10px;font:600 clamp(14px,2.2vw,22px) system-ui,sans-serif;opacity:0.9}";
+    document.head.appendChild(bst);
+    this.bannerEl.className = "hud-banner";
 
     document.body.append(
       this.bar,
@@ -80,6 +90,7 @@ export class Hud {
       this.lowVignette,
       this.vignette,
       this.toastEl,
+      this.bannerEl,
       this.backdrop,
       this.deathEl,
     );
@@ -438,6 +449,27 @@ export class Hud {
     }, 2200);
   }
 
+  /**
+   * Большой баннер во весь экран (появление / гибель босса).
+   * `tone`: "warn" — багровый, "win" — золотой.
+   */
+  banner(title: string, sub = "", tone: "warn" | "win" = "warn"): void {
+    const t = this.bannerEl;
+    t.innerHTML = `<div class="bn-t">${title}</div>${sub ? `<div class="bn-s">${sub}</div>` : ""}`;
+    t.style.color = tone === "win" ? "#ffe08a" : "#ff9b8a";
+    t.style.textShadow =
+      tone === "win"
+        ? "0 0 24px rgba(255,190,90,0.7),0 4px 10px rgba(0,0,0,0.6)"
+        : "0 0 24px rgba(220,40,30,0.7),0 4px 10px rgba(0,0,0,0.6)";
+    t.style.opacity = "1";
+    t.style.transform = "translate(-50%,-50%) scale(1)";
+    if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
+    this.bannerTimer = window.setTimeout(() => {
+      t.style.opacity = "0";
+      t.style.transform = "translate(-50%,-50%) scale(1.08)";
+    }, 4200);
+  }
+
   /** Раздел «Сумка» внизу панели персонажа. */
   /** Раздел «Внешность»: стрелками листаем 8 моделей, применяется сразу. */
   private sectionHead(text: string): HTMLDivElement {
@@ -710,6 +742,11 @@ const TOAST_CSS =
   "position:fixed;left:50%;top:22%;transform:translateX(-50%);z-index:36;" +
   "padding:10px 18px;background:rgba(20,22,30,0.85);color:#ffd166;border-radius:8px;" +
   "font:bold 16px system-ui,sans-serif;opacity:0;transition:opacity 0.4s;pointer-events:none;";
+
+const BANNER_CSS =
+  "position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(1);z-index:37;" +
+  "text-align:center;pointer-events:none;opacity:0;" +
+  "transition:opacity 0.5s ease,transform 0.5s ease;white-space:pre-line;";
 
 const DEATH_CSS =
   "position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;" +

@@ -367,6 +367,14 @@ export class Game {
       this.net.sendPvp(!this.net.pvpOn);
     });
 
+    // Зелье лечения на десктопе — X / 1 / F.
+    window.addEventListener("keydown", (e) => {
+      if (this.player.inVR || e.repeat) return;
+      if (e.code !== "KeyX" && e.code !== "Digit1" && e.code !== "KeyF") return;
+      const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
+      if (slot >= 0) this.inventory.use(slot);
+    });
+
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
@@ -1040,6 +1048,19 @@ export class Game {
       // возрождения красная виньетка и счётчик оставались на экране).
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
+    net.onBossEvent = (kind, by) => {
+      if (kind === "spawn") {
+        this.hud.banner("Босс появился", "Багровый слизень вышел на охоту", "warn");
+        this.sfx.bossHorn();
+      } else {
+        this.hud.banner(
+          "Босс повержен!",
+          by ? `Решающий удар: ${by}` : "",
+          "win",
+        );
+        this.sfx.bossFanfare();
+      }
+    };
     net.onPicked = (item, count) => {
       this.sfx.pickup();
       const w = ITEMS[item].weapon;
@@ -1416,6 +1437,7 @@ export class Game {
       this.net.onMobHit = null;
       this.net.onRespawn = null;
       this.net.onLevelUp = null;
+      this.net.onBossEvent = null;
       this.net.onPicked = null;
       this.net.onRtc = null;
       this.net.onAct = null;

@@ -706,6 +706,57 @@ export class Sfx {
     });
   }
 
+  /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
+  bossHorn(): void {
+    if (!this.ready()) return;
+    const t0 = this.t;
+    const notes = [
+      [98, 0], // G2
+      [73.42, 0.42], // D2
+    ] as const;
+    for (const [f, dt] of notes) {
+      const t = t0 + dt;
+      for (const mul of [1, 2, 3]) {
+        const o = this.ctx!.createOscillator();
+        o.type = "sawtooth";
+        o.frequency.setValueAtTime(f * mul, t);
+        o.frequency.linearRampToValueAtTime(f * mul * 0.985, t + 1.1);
+        const g = this.env(0.16 / mul, 0.06, 1.2, t, null);
+        o.connect(g);
+        o.start(t);
+        o.stop(t + 1.4);
+      }
+    }
+  }
+
+  /** Босс повержен: короткая триумфальная фанфара (мажорный аккорд + арпеджио). */
+  bossFanfare(): void {
+    if (!this.ready()) return;
+    const t0 = this.t;
+    // Арпеджио вверх, затем звенящий аккорд.
+    const arp = [392, 523.25, 659.25, 783.99, 1046.5];
+    arp.forEach((f, i) => {
+      const t = t0 + i * 0.1;
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, t);
+      const g = this.env(0.24, 0.008, 0.3, t, null);
+      o.connect(g);
+      o.start(t);
+      o.stop(t + 0.35);
+    });
+    const chordT = t0 + arp.length * 0.1;
+    for (const f of [523.25, 659.25, 783.99, 1046.5]) {
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, chordT);
+      const g = this.env(0.16, 0.02, 1.6, chordT, null);
+      o.connect(g);
+      o.start(chordT);
+      o.stop(chordT + 1.8);
+    }
+  }
+
   /** Глоток: пара низких «бульков» и выдох. */
   drink(): void {
     if (!this.ready()) return;
