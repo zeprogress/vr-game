@@ -114,6 +114,7 @@ import {
   fireboltHitRadius,
   healAmountFor,
 } from "#shared/magic";
+import { inHubSafeZone, hubSpawnPoint } from "#shared/hub";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
@@ -1922,10 +1923,13 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     });
 
-    // Мобы гоняются только за живыми.
+    // Мобы гоняются только за живыми и только за теми, кто ВНЕ безопасной зоны
+    // лагеря (HUB). Внутри HUB игрок для ИИ мобов не существует — ни агро, ни
+    // погони, ни ударов. Проверка серверная: клиент себя безопасным не объявит.
     const players: SimPlayer[] = [];
     this.state.players.forEach((p, id) => {
-      if (!p.dead) players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z });
+      if (p.dead || inHubSafeZone(p.head.x, p.head.z)) return;
+      players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z });
     });
 
     const hits = this.sim.tick(dt, players);
@@ -2124,8 +2128,10 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private respawn(id: string, p: PlayerState, rt: Runtime): void {
-    const x = RESPAWN.spawnX;
-    const z = RESPAWN.spawnZ;
+    // Возрождаемся в безопасном лагере (HUB), а не в поле среди мобов.
+    const sp = hubSpawnPoint();
+    const x = sp.x;
+    const z = sp.z;
     const y = terrainHeight(x, z) + PLAYER.eyeHeight;
     p.dead = 0;
     p.hp = p.maxHp;
@@ -2220,6 +2226,13 @@ export class ZoneRoom extends Room<ZoneState> {
       p.str = rec.str;
       p.agi = rec.agi;
       p.int = rec.int;
+    } else {
+      // Новичок без сейва — в лагерь (иначе первые кадры торчит в (0,0,0)
+      // посреди поляны, пока клиент не пришлёт свою позицию).
+      const sp = hubSpawnPoint();
+      p.head.x = sp.x;
+      p.head.z = sp.z;
+      p.head.y = terrainHeight(sp.x, sp.z) + PLAYER.eyeHeight;
     }
     // Модель персонажа (панель C, плоский режим). Если заходят за бота —
     // rec.skin уже стоит от него, модель не меняется. Новому токену без

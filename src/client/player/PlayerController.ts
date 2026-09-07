@@ -15,6 +15,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
+import { hubSpawnPoint } from "#shared/hub";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
 import { ThirdPersonCam } from "./ThirdPersonCam";
@@ -104,7 +105,10 @@ export class PlayerController {
   get sinceHurt(): number {
     return this.hurtTimer;
   }
-  private spawn = new Vector3(0, PLAYER.eyeHeight, -20);
+  private spawn = (() => {
+    const s = hubSpawnPoint();
+    return new Vector3(s.x, PLAYER.eyeHeight, s.z);
+  })();
   /** Стволы деревьев: из них игрока выталкивает наружу. */
   private obstacles: { x: number; z: number; r: number }[] = [];
 
@@ -168,7 +172,7 @@ export class PlayerController {
     this.body = MeshBuilder.CreateBox("playerBody", { size: PLAYER.radius * 2 }, scene);
     this.body.isVisible = false;
     this.body.isPickable = false;
-    this.body.position.set(0, PLAYER.eyeHeight, -20);
+    this.body.position.copyFrom(this.spawn);
 
     this.camera = new FreeCamera("player", this.body.position.clone(), scene);
     this.camera.minZ = 0.1;

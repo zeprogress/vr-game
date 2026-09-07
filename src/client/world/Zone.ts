@@ -15,6 +15,8 @@ import { dayState } from "./DayTime";
 import { BotLights } from "./BotLights";
 import { Fireflies, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
+import { HUB } from "#shared/hub";
+import { buildHubBlockout } from "./hub/HubBlockout";
 import { LOADOUT } from "../config/loadout";
 
 export interface Zone {
@@ -127,10 +129,20 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     }
   }
 
-  const swordHome = new Vector3(-1.3, terrain.heightAt(-1.3, -12) + 0.8, -12);
-  const bowHome = new Vector3(1.3, terrain.heightAt(1.3, -12) + 0.8, -12);
-  const shieldHome = new Vector3(-3.4, terrain.heightAt(-3.4, -12) + 0.75, -12);
-  const staffHome = new Vector3(3.4, terrain.heightAt(3.4, -12) + 0.9, -12);
+  // Базовое оружие — на стойках оружейной HUB (раньше было у старого спавна).
+  const wz = HUB.zones.weapons;
+  const wYaw = Math.atan2(HUB.center.x - wz.x, HUB.center.z - wz.z); // лицом к площади
+  const perpX = Math.cos(wYaw);
+  const perpZ = -Math.sin(wYaw);
+  const homeAt = (slot: number, lift: number): Vector3 => {
+    const hx = wz.x + perpX * slot;
+    const hz = wz.z + perpZ * slot;
+    return new Vector3(hx, terrain.heightAt(hx, hz) + lift, hz);
+  };
+  const swordHome = homeAt(-1.5, 0.8);
+  const bowHome = homeAt(-0.5, 0.8);
+  const shieldHome = homeAt(0.5, 0.75);
+  const staffHome = homeAt(1.5, 0.9);
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
   const rockObstacles = scatterRocks(scene, terrain, [
@@ -140,12 +152,15 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     staffHome,
   ]);
 
+  // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
+  const hub = buildHubBlockout(scene);
+
   return {
     botLights,
     fireflies,
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
-    obstacles: [...trunks, ...rockObstacles],
+    obstacles: [...trunks, ...rockObstacles, ...hub.obstacles],
     tick: (
       dt: number,
       playerPos: Vector3,
@@ -187,6 +202,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
       windTick(dt, day.daylight);
       fireflies.update(dt, playerPos, day.daylight);
+      hub.tick(day.daylight);
 
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
       // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,

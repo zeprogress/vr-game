@@ -11,6 +11,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
+import { HUB, HUB_CENTER } from "#shared/hub";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
 import {
@@ -43,6 +44,19 @@ const OBSTACLES: { x: number; z: number; r: number }[] = [
 
 /** Насколько далеко вперёд моб смотрит, выбирая куда прыгнуть. */
 const TREE_LOOKAHEAD = 3.5;
+
+/**
+ * Выталкивает точку спавна моба за пределы лагеря (HUB): в безопасной зоне
+ * мобов быть не должно. Толкаем радиально от центра лагеря.
+ */
+function awayFromHub(x: number, z: number): [number, number] {
+  const dx = x - HUB_CENTER.x;
+  const dz = z - HUB_CENTER.z;
+  const d = Math.hypot(dx, dz);
+  if (d >= HUB.mobExclusionRadius) return [x, z];
+  const k = d < 1e-3 ? 1 : HUB.mobExclusionRadius / d;
+  return [HUB_CENTER.x + dx * k * 1.05, HUB_CENTER.z + dz * k * 1.05];
+}
 
 /**
  * Отклоняет намеченное направление прыжка в сторону от ствола на пути.
@@ -802,14 +816,16 @@ export class ZoneSim {
     for (let i = 0; i < MOB.count; i++) {
       const a = (i / MOB.count) * Math.PI * 2 + 0.4;
       const r = 22 + Math.random() * 12;
-      const m = new Mob("slime", Math.cos(a) * r, Math.sin(a) * r - 4);
+      const [x, z] = awayFromHub(Math.cos(a) * r, Math.sin(a) * r - 4);
+      const m = new Mob("slime", x, z);
       this.mobs.set(m.id, m);
     }
     const [rMin, rMax] = SPITTER.spawnRadius;
     for (let i = 0; i < SPITTER.count; i++) {
       const a = (i / SPITTER.count) * Math.PI * 2 + 1.1;
       const r = rMin + Math.random() * (rMax - rMin);
-      const m = new Mob("spitter", Math.cos(a) * r, Math.sin(a) * r - 4);
+      const [x, z] = awayFromHub(Math.cos(a) * r, Math.sin(a) * r - 4);
+      const m = new Mob("spitter", x, z);
       this.mobs.set(m.id, m);
     }
     // Босс — в дальнем углу.
