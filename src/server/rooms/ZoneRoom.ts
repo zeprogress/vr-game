@@ -56,6 +56,7 @@ import {
   MOB,
   PLAYER,
   PLAYER_HP,
+  PROGRESSION,
   PVP,
   RESPAWN,
   SPITTER,
@@ -1158,6 +1159,13 @@ export class ZoneRoom extends Room<ZoneState> {
       // В чате ловкость — !dex, внутри она по-прежнему agi.
       const stat: StatName = cmd === "!dex" ? "agi" : (cmd.slice(1) as StatName);
       this.spendBotPoint(norm, stat, parts[1]);
+    } else if (
+      cmd === "!respec" ||
+      cmd === "!reroll" ||
+      cmd === "!перекачать" ||
+      cmd === "!сбросочки"
+    ) {
+      this.respecBot(norm);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
@@ -1365,6 +1373,52 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.state.players.size === 0) this.wipeWorld("мир опустел");
   }
 
+  /**
+   * `!respec` / `!reroll` / `!перекачать` — вернуть все вложенные очки атрибутов
+   * в запас. Уровень, опыт и всё прочее не трогаем.
+   */
+  private respecBot(norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${norm} героя нет в мире — сначала !play.`);
+      return;
+    }
+    const p = bot.state;
+    const base = PROGRESSION.startStat;
+    const back = p.str - base + (p.agi - base) + (p.int - base);
+    if (back <= 0) {
+      const now = Date.now();
+      if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
+      bot.statsAt = now;
+      this.reply(`@${bot.nick} очки атрибутов ещё не вложены — сбрасывать нечего.`);
+      return;
+    }
+    const prog = readProgress(p);
+    prog.str = prog.agi = prog.int = base;
+    prog.unspent += back;
+    writeProgress(p, prog);
+
+    // Потолки HP/маны пересчитываем от новых (базовых) атрибутов.
+    p.maxHp = maxHpFor(p.level, p.str);
+    p.hp = Math.min(p.hp, p.maxHp);
+    p.maxMana = maxManaFor(p.level, p.int);
+    p.mana = Math.min(p.mana, p.maxMana);
+
+    // Билд стал нейтральным — оружие возвращается к мечу (золотой не-меч роняем).
+    const w = botWeaponFor(p.str, p.agi, p.int);
+    if (w !== p.rightCls) {
+      if (p.rightTier === "gold" && p.rightCls === "sword") {
+        this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
+      }
+      p.rightCls = w;
+      p.rightTier = "base";
+      p.leftCls = w === "bow" ? "" : "shield";
+      p.leftTier = w === "bow" ? "" : "base";
+    }
+    this.persistBot(bot);
+    this.reply(`@${bot.nick} очки атрибутов сброшены · свободных очков ${p.unspent} → !str !dex !int`);
+  }
+
   /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
   private sayInfo(): void {
     const now = Date.now();
@@ -1376,6 +1430,7 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
+        "!respec — вернуть все очки атрибутов в запас · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(

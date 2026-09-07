@@ -246,6 +246,8 @@ export class CombatSystem {
   /** Смартфон: лук/посох — сколько держим кнопку и пауза между выстрелами. */
   private tpRangedHold = 0;
   private tpRangedCd = 0;
+  /** ПК/VR: пауза после выстрела из лука. */
+  private flatBowCd = 0;
   private tpAimOn = false;
   /** Game читает каждый кадр: включить вид из глаз + прицел. */
   get wantAim(): boolean {
@@ -1842,7 +1844,8 @@ export class CombatSystem {
       this.updateBowVR();
       return;
     }
-    if (primaryHeld) {
+    this.flatBowCd = Math.max(0, this.flatBowCd - dt);
+    if (primaryHeld && this.flatBowCd <= 0) {
       if (this.draw === 0) this.sfx.bowDraw();
       this.draw = clamp(this.draw + dt / BOW.drawTimeFlat, 0, 1);
     }
@@ -1865,6 +1868,7 @@ export class CombatSystem {
         const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
         const origin = this.player.camera.globalPosition.add(dir.scale(0.5));
         this.fire(origin, dir, power);
+        this.flatBowCd = BOW.flatCooldown / this.prog.attackSpeed;
       }
     }
   }
