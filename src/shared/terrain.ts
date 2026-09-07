@@ -22,13 +22,15 @@ export function terrainHeight(x: number, z: number): number {
   const d = Math.sqrt(x * x + z * z);
   h *= clamp01((d - 8) / 14);
 
-  // Ровная площадка под HUB: внутри plazaRadius — строго HUB_PAD_Y, дальше
-  // плавно возвращаемся к рельефу к границе campRadius.
+  // Ровная площадка под ВЕСЬ HUB: внутри campRadius — строго HUB_PAD_Y (иначе
+  // плоский диск земли лагеря тонет в рельефе и площадка выглядит рваной),
+  // дальше плавно возвращаемся к рельефу на 10 м.
   const hx = x - HUB_CENTER.x;
   const hz = z - HUB_CENTER.z;
   const hd = Math.sqrt(hx * hx + hz * hz);
-  if (hd < HUB.campRadius + 6) {
-    const t = clamp01((hd - HUB.plazaRadius) / (HUB.campRadius + 6 - HUB.plazaRadius));
+  const HUB_FADE = 10;
+  if (hd < HUB.campRadius + HUB_FADE) {
+    const t = clamp01((hd - HUB.campRadius) / HUB_FADE);
     h = HUB_PAD_Y + (h - HUB_PAD_Y) * t;
   }
   return h;
