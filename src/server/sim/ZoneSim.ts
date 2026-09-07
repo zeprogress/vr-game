@@ -808,6 +808,8 @@ class Bolt {
     public readonly dmg: number,
     public readonly owner: string,
     public readonly maxLife: number,
+    /** 0 — огнешар, 1 — стрела (меньше гравитации, свой вид на клиенте). */
+    public readonly kind: number = 0,
   ) {}
 }
 
@@ -910,6 +912,7 @@ export class ZoneSim {
     dmg: number,
     owner: string,
     life: number,
+    kind = 0,
   ): void {
     if (this.bolts.size >= 24) {
       const first = this.bolts.keys().next().value as string | undefined;
@@ -919,7 +922,7 @@ export class ZoneSim {
     const b = new Bolt(
       x, y, z,
       (dx / dl) * speed, (dy / dl) * speed, (dz / dl) * speed,
-      radius, hitRadius, dmg, owner, life,
+      radius, hitRadius, dmg, owner, life, kind,
     );
     this.bolts.set(b.id, b);
   }
@@ -929,7 +932,7 @@ export class ZoneSim {
     const px = b.x;
     const py = b.y;
     const pz = b.z;
-    b.vy -= SPITTER.ballGravity * 0.35 * dt; // огонь почти не проседает
+    b.vy -= SPITTER.ballGravity * (b.kind === 1 ? 0.5 : 0.35) * dt; // стрела чуть проседает
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.z += b.vz * dt;

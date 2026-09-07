@@ -107,6 +107,7 @@ import {
   grantXp,
   isStatName,
   maxHpFor,
+  moveSpeedFor,
   spendPoint,
   xpToNext,
   type Progress,
@@ -1450,13 +1451,24 @@ export class ZoneRoom extends Room<ZoneState> {
     p.hp = p.maxHp;
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = p.maxMana;
-    // Меч сохраняем: если бот нашёл золотой (см. lootTarget в tickBot), он
-    // не должен откатываться до базового на каждом !play.
+    // Оружие сохраняем (золотой меч из лута, ранее выданный лук/посох — не
+    // должны сбрасываться на каждом !play). Новому боту раздаём случайно:
+    // часть — лучники/маги, остальные — мечники.
     const savedHeld = sanitizeHeld(rec?.held);
-    p.rightCls = savedHeld.right?.cls ?? "sword";
+    let rc = savedHeld.right?.cls;
+    if (rc !== "sword" && rc !== "bow" && rc !== "staff") {
+      rc =
+        Math.random() < BOT.rangedShare
+          ? Math.random() < 0.5
+            ? "bow"
+            : "staff"
+          : "sword";
+    }
+    p.rightCls = rc;
     p.rightTier = savedHeld.right?.tier ?? "base";
-    p.leftCls = "shield";
-    p.leftTier = "base";
+    // Лук занимает обе руки — без щита; меч/посох — со щитом.
+    p.leftCls = rc === "bow" ? "" : "shield";
+    p.leftTier = rc === "bow" ? "" : "base";
     // Зелья выдаём при каждом выходе в мир — подбирать их на земле бот
     // умеет (см. pickupLoot), но без стартового запаса первый бой может
     // не пережить.
@@ -1746,15 +1758,24 @@ export class ZoneRoom extends Room<ZoneState> {
     // Держимся от края туши босса: он крупный и сам скачет — иначе бот
     // оказывается внутри модели.
     const bossKeepOut = bossEdge + PLAYER.radius + 0.35;
+    // Дальний бой: лучник/маг не подходит в упор — стоит на дистанции стрельбы
+    // и отходит, если моб подобрался (как плевун).
+    const ranged =
+      (p.rightCls === "bow" || p.rightCls === "staff") && !loot && !!chasingMob;
+    const rangedStop = bossEdge + BOT.shootKeepDist;
     const stopAt = raidBoss
-      ? bossKeepOut + 0.4
+      ? ranged
+        ? rangedStop
+        : bossKeepOut + 0.4
       : loot
         ? WEAPON_TAKE_REACH * 0.85
-        : mob
-          ? BOT.attackRange * 0.7
-          : follow
-            ? BOT.followRange
-            : 0.5;
+        : ranged && mob
+          ? BOT.shootKeepDist
+          : mob
+            ? BOT.attackRange * 0.7
+            : follow
+              ? BOT.followRange
+              : 0.5;
 
     // Расталкивание: без него боты, бегущие к одному мобу, слипаются в одну
     // точку. Складываем с движением к цели ДО сглаживания скорости — иначе
@@ -1800,12 +1821,19 @@ export class ZoneRoom extends Room<ZoneState> {
     // «едет» посреди анимации. Расталкивание при этом работает — соседи
     // всё равно не должны стоять внутри.
     const emoting = Date.now() < bot.emoteFreezeUntil;
+    // Скорость бега — от характеристик персонажа (как у живого игрока), чуть
+    // медленнее ради читаемости на стриме.
+    const botSpeed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
+    // Дальник отходит, если моб подобрался ближе shootKeepDist.
+    const retreat = ranged && chasingMob && dist < BOT.shootKeepDist - 1;
     const wantSpeed =
       bot.swingIn > 0 || emoting
         ? 0
-        : dist > stopAt
-          ? BOT.moveSpeed * Math.min(1, (dist - stopAt) / 1.5)
-          : 0;
+        : retreat
+          ? -botSpeed * 0.75
+          : dist > stopAt
+            ? botSpeed * Math.min(1, (dist - stopAt) / 1.5)
+            : 0;
     const wvx = dx * wantSpeed + sepX * BOT.separationForce;
     const wvz = dz * wantSpeed + sepZ * BOT.separationForce;
     const accel = Math.min(1, dt * 6);
@@ -1841,7 +1869,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Кувырок сам собой на бегу — редко, только если сейчас не бой; кулдаун
     // общий с !cheer, чтобы автотриггер и команда из чата не наложились.
     if (
-      spd > BOT.moveSpeed * 0.7 &&
+      spd > botSpeed * 0.7 &&
       bot.swingIn <= 0 &&
       Date.now() - bot.emoteAt > BOT.emoteCooldown * 1000 &&
       Math.random() < BOT.rollChancePerSec * dt
@@ -1849,9 +1877,15 @@ export class ZoneRoom extends Room<ZoneState> {
       this.triggerEmote(bot, "roll");
     }
 
-    if (spd > 0.15) {
-      const wantYaw = Math.atan2(bot.vx, bot.vz);
-      let d = wantYaw - bot.yaw;
+    // Идём — смотрим по ходу; стоим и целимся (дальник) — на моба.
+    const facingYaw =
+      spd > 0.15
+        ? Math.atan2(bot.vx, bot.vz)
+        : ranged && chasingMob
+          ? Math.atan2(dx, dz)
+          : null;
+    if (facingYaw !== null) {
+      let d = facingYaw - bot.yaw;
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       const maxStep = BOT.turnRate * dt;
@@ -1863,10 +1897,59 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.qz = 0;
     p.head.qw = Math.cos(bot.yaw / 2);
 
+    // Дальний бой: лучник/маг стреляет снарядом с дистанции (реальный Bolt в
+    // симуляции — летит, бьёт, клиенты рисуют по kind).
+    if (
+      ranged &&
+      chasingMob &&
+      !emoting &&
+      dist < BOT.shootRange &&
+      bot.attackCd <= 0 &&
+      bot.swingIn <= 0
+    ) {
+      const atk = attackSpeedFromLevel(p.level);
+      const bow = p.rightCls === "bow";
+      bot.attackCd = (bow ? BOT.bowCooldown : BOT.staffCooldown) / atk;
+      const tgt = chasingMob;
+      const ox = p.head.x;
+      const oy = p.head.y - 0.25;
+      const oz = p.head.z;
+      const aimY =
+        terrainHeight(tgt.x, tgt.z) + MOB.bodyRadius * (tgt.scale ?? 1) - oy;
+      const adx = tgt.x - ox;
+      const adz = tgt.z - oz;
+      // лёгкая компенсация проседания снаряда на дистанцию
+      const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
+      const mult = multIn(p, "right");
+      if (bow) {
+        this.sim.castBolt(
+          ox, oy, oz, adx, ady, adz,
+          BOT.arrowSpeed, 0.05, 0.2,
+          weaponDamage("arrow", p.level, p.str, mult),
+          bot.id, 2.5, 1,
+        );
+      } else {
+        this.sim.castBolt(
+          ox, oy, oz, adx, ady, adz,
+          BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),
+          fireboltDamage(p.level, p.int, 0.7),
+          bot.id, MAGIC.firebolt.life, 0,
+        );
+      }
+      const relay: ActRelay = {
+        k: bow ? "bow" : "swing",
+        id: bot.id,
+        x: p.head.x,
+        y: p.head.y,
+        z: p.head.z,
+      };
+      this.broadcast(MSG.act, relay);
+    }
+
     // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
-    if (chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (!ranged && chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
       // Скорость атаки от уровня: чаще бьёт и быстрее доводит замах —
       // анимация на модельке ускоряется на клиенте под тот же множитель.
       const atk = attackSpeedFromLevel(p.level);
@@ -2090,6 +2173,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!s) {
         s = new BoltState();
         s.r = bo.radius;
+        s.kind = bo.kind;
         this.state.bolts.set(bo.id, s);
       }
       s.x = bo.x;
@@ -2109,6 +2193,8 @@ export class ZoneRoom extends Room<ZoneState> {
         this.awardXp(this.clientOf(k.owner), kp, k.xp);
         const krt = this.rt.get(k.owner);
         if (krt) krt.kills++;
+        // Бот активно фармит из лука/посоха — не деспавним по «тишине в чате».
+        if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
       }
     }
     for (const d of this.sim.drops.values()) {

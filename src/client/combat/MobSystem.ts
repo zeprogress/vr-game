@@ -13,6 +13,7 @@ import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
 import type { ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";
 import { Dummy } from "./Dummy";
+import { createArrowProto } from "./Arrow";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 
@@ -37,6 +38,8 @@ interface BoltView {
   vel: Vector3;
   r: number;
   age: number;
+  /** kind 1 — стрела (лук бота): вместо огня рисуем древко по вектору скорости. */
+  arrow?: Mesh;
 }
 
 /** Вспышка на месте разрыва снаряда: раздувается и гаснет. */
@@ -63,6 +66,7 @@ export class NetMobs {
   private readonly bolts = new Map<string, BoltView>();
   private readonly boltCoreProto: Mesh;
   private readonly boltGlowProto: Mesh;
+  private arrowProto: Mesh | null = null;
   /** Смартфон: снаряды крупнее — на маленьком экране их не видно. */
   boltViewScale = 1;
   private readonly burstFlashProto: Mesh;
@@ -307,13 +311,21 @@ export class NetMobs {
     room.state.bolts.forEach((s, id) => {
       let bo = this.bolts.get(id);
       if (!bo) {
+        const isArrow = s.kind === 1;
         const core = this.boltCoreProto.clone(`bolt_${id}`);
         const glow = this.boltGlowProto.clone(`boltGlow_${id}`);
-        core.setEnabled(true);
-        glow.setEnabled(true);
+        core.setEnabled(!isArrow);
+        glow.setEnabled(!isArrow);
+        let arrow: Mesh | undefined;
+        if (isArrow) {
+          if (!this.arrowProto) this.arrowProto = createArrowProto(this.scene);
+          arrow = this.arrowProto.clone(`arrow_${id}`) ?? undefined;
+          arrow?.setEnabled(true);
+        }
         bo = {
           core,
           glow,
+          arrow,
           pos: new Vector3(s.x, s.y, s.z),
           vel: new Vector3(s.vx, s.vy, s.vz),
           r: s.r || 0.15,
@@ -330,13 +342,21 @@ export class NetMobs {
       bo.pos.y += (s.y - bo.pos.y) * k;
       bo.pos.z += (s.z - bo.pos.z) * k;
 
-      const flick = 0.85 + 0.15 * Math.sin(bo.age * 40 + bo.pos.x);
-      const vs = this.boltViewScale;
-      bo.core.position.copyFrom(bo.pos);
-      bo.core.scaling.setAll(bo.r * 2 * flick * vs);
-      bo.glow.position.copyFrom(bo.pos);
-      bo.glow.scaling.setAll(bo.r * 6 * flick * vs);
-      if (cam) bo.glow.lookAt(cam.globalPosition);
+      if (bo.arrow) {
+        bo.arrow.position.copyFrom(bo.pos);
+        if (bo.vel.lengthSquared() > 1e-4) {
+          bo.arrow.lookAt(bo.pos.add(bo.vel));
+        }
+        bo.arrow.scaling.setAll(Math.max(1, this.boltViewScale * 0.6));
+      } else {
+        const flick = 0.85 + 0.15 * Math.sin(bo.age * 40 + bo.pos.x);
+        const vs = this.boltViewScale;
+        bo.core.position.copyFrom(bo.pos);
+        bo.core.scaling.setAll(bo.r * 2 * flick * vs);
+        bo.glow.position.copyFrom(bo.pos);
+        bo.glow.scaling.setAll(bo.r * 6 * flick * vs);
+        if (cam) bo.glow.lookAt(cam.globalPosition);
+      }
     });
     for (const [id, bo] of this.bolts) {
       if (!room.state.bolts.has(id)) {
@@ -362,6 +382,7 @@ export class NetMobs {
         this.spawnBurst(bo.pos, bo.r, hit);
         bo.core.dispose();
         bo.glow.dispose();
+        bo.arrow?.dispose();
         this.bolts.delete(id);
       }
     }
@@ -401,6 +422,7 @@ export class NetMobs {
     for (const bo of this.bolts.values()) {
       bo.core.dispose();
       bo.glow.dispose();
+      bo.arrow?.dispose();
     }
     for (const b of this.bursts.values()) {
       b.flash.dispose(false, true);
