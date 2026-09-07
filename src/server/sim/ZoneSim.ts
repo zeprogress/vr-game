@@ -177,7 +177,7 @@ class Mob {
   private lungeDirZ = 1;
   private lungeHit = false;
   /** Плевок босса: кулдаун очереди, сколько сгустков осталось и пауза между ними. */
-  private shootCd = BOSS.shootCooldown;
+  private shootCd: number = BOSS.shootCooldown;
   private shootQueue = 0;
   private shootGap = 0;
   private splitsDone = 0;
@@ -350,7 +350,8 @@ class Mob {
     }
     const chasing = this.aggroed && np !== null;
 
-    const rage = this.enraged ? 1.5 : 1;
+    const rage = this.enraged ? BOSS.rageSpeedMult : 1;
+    const rageRate = this.enraged ? BOSS.rageRateMult : 1;
     const rageDmg = this.enraged ? BOSS.rageDamageMult : 1;
     const hopSpeed =
       (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) * rage;
@@ -369,7 +370,7 @@ class Mob {
         if (this.slamWindupT <= 0) {
           this.slamSeq = (this.slamSeq + 1) & 0xffff;
           this.attackSeq = (this.attackSeq + 1) & 0xffff;
-          this.slamCd = BOSS.slamCooldown / rage;
+          this.slamCd = BOSS.slamCooldown / rageRate;
           this.vy = MOB.hopUp * 0.6;
           this.grounded = false;
           for (const p of players) {
@@ -419,7 +420,7 @@ class Mob {
         if (this.lungeWindupT <= 0) {
           this.lungeT = BOSS.lungeDuration;
           this.lungeHit = false;
-          this.lungeCd = BOSS.lungeCooldown / rage;
+          this.lungeCd = BOSS.lungeCooldown / rageRate;
         }
       } else if (this.lungeT > 0) {
         this.lungeT -= dt;
@@ -468,7 +469,7 @@ class Mob {
           : null;
       if (this.shootQueue === 0 && this.shootCd <= 0 && shootTgt) {
         this.shootQueue = BOSS.shootBurst;
-        this.shootCd = BOSS.shootCooldown;
+        this.shootCd = BOSS.shootCooldown / rageRate;
         this.shootGap = 0;
       }
       if (this.shootQueue > 0 && this.shootGap <= 0) {
