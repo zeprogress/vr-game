@@ -150,8 +150,8 @@ export class NameTag {
     const scene = this.plane.getScene();
     const w = this.planeW * 0.66;
     const barH = this.planeW * 0.05;
-    // Под строкой уровня, но в пределах плашки — не улетает к макушке модели.
-    const y = -this.halfH * 0.82;
+    // Над ником — у верхнего края плашки.
+    const y = this.halfH * 0.95 + barH;
     this.hpW = w;
 
     const bgMat = new StandardMaterial("nameHpBgMat", scene);
