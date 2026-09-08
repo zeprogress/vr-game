@@ -260,6 +260,12 @@ export class Game {
         left: h.left as { cls: WeaponClass; tier: WeaponTier } | null,
         right: h.right as { cls: WeaponClass; tier: WeaponTier } | null,
         stowed: this.combat.stowedSnapshot(),
+        stats: {
+          level: this.progression.level,
+          str: this.progression.stats.str,
+          agi: this.progression.stats.agi,
+          int: this.progression.stats.int,
+        },
       };
     });
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.

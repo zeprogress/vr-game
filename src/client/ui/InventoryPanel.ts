@@ -1,14 +1,33 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
+import { weaponDamage } from "#shared/combat";
+import { attackSpeedFor } from "#shared/progression";
+import { fireboltDamage } from "#shared/magic";
+import { BOW, COMBAT, SHIELD } from "#shared/constants";
 
-/** Что сейчас в руках и за спиной — рисуем строкой «Снаряжение». */
-export interface Equipped {
-  left: { cls: WeaponClass; tier: WeaponTier } | null;
-  right: { cls: WeaponClass; tier: WeaponTier } | null;
-  stowed: { cls: WeaponClass; tier: WeaponTier; side: "left" | "right" }[];
+export interface WornWeapon {
+  cls: WeaponClass;
+  tier: WeaponTier;
 }
 
-/** Иконка оружия в руках — по классу и тиру (у базового тира картинки нет). */
+/** Характеристики героя — от них считаем цифры оружия в подсказке. */
+export interface HeroStats {
+  level: number;
+  str: number;
+  agi: number;
+  int: number;
+}
+
+/** Что надето и чем считать урон. */
+export interface Equipped {
+  left: WornWeapon | null;
+  right: WornWeapon | null;
+  stowed: (WornWeapon & { side: "left" | "right" })[];
+  stats: HeroStats;
+}
+
+/** Иконка оружия — по классу и тиру (у базового тира картинки нет). */
 function weaponIcon(cls: WeaponClass, tier: WeaponTier): string {
   if (tier !== "gold") return "";
   if (cls === "sword") return "gold_sword.png";
@@ -23,75 +42,218 @@ function el(tag: string, css: string): HTMLElement {
   return d;
 }
 
+const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
+
 /**
- * Инвентарь: сетка ячеек с иконками + строка снаряжения + описание выбранного.
+ * Характеристики предмета в руке — строками «название: значение».
+ * Считаем ровно теми же формулами, что и бой, чтобы цифра в подсказке
+ * совпадала с уроном в игре.
+ */
+function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
+  const d = weaponDef(w.cls, w.tier);
+  const spd = attackSpeedFor(s.level, s.agi);
+  const out: [string, string][] = [];
+
+  if (w.cls === "sword") {
+    const dmg = weaponDamage("sword", s.level, s.str, d.mult, s.agi);
+    out.push(["Урон", n1(dmg)]);
+    out.push(["Темп атаки", `×${n1(spd)}`]);
+    out.push(["Урон в секунду", n1(dmg * spd)]);
+    out.push(["По площади", `${COMBAT.swordSplashRadius} м · ${Math.round(COMBAT.swordSplashFraction * 100)}%`]);
+    out.push(["Растёт от", "силы"]);
+  } else if (w.cls === "bow") {
+    const dmg = weaponDamage("arrow", s.level, s.str, d.mult, s.agi);
+    out.push(["Урон стрелы", n1(dmg)]);
+    out.push(["Крит", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
+    out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
+    out.push(["Растёт от", "ловкости"]);
+  } else if (w.cls === "staff") {
+    out.push(["Магия (полный заряд)", n1(fireboltDamage(s.level, s.int, 1))]);
+    out.push(["Удар посохом", n1(weaponDamage("sword", s.level, s.str, d.mult, s.agi))]);
+    out.push(["Растёт от", "интеллекта"]);
+  } else {
+    out.push(["Блок", `гасит ${Math.round((1 - SHIELD.blockedDamage) * 100)}% урона`]);
+    out.push(["Сектор", `±${Math.round((SHIELD.blockCone * 180) / Math.PI)}°`]);
+  }
+  return out;
+}
+
+type Picked =
+  | { where: "bag"; i: number }
+  | { where: "equip"; slot: EquipSlot }
+  | null;
+
+/**
+ * Инвентарь: кукла снаряжения + сетка сумки + описание выбранного.
  *
- * Раньше сумка была списком строк «цветная точка — название — ×N», по которому
- * нельзя было понять ни сколько всего места, ни что вообще на тебе надето.
- * Здесь: видны ВСЕ ячейки (в том числе пустые — сразу ясен объём сумки),
- * предметы с настоящими иконками, а сверху — что в руках и за спиной.
+ * Слотов снаряжения восемь (две руки, шлем, тело, перчатки, ботинки, два
+ * кольца). Живые пока только руки — броня появится позже, но её место видно
+ * уже сейчас. При наведении (на ПК) или тапе (на телефоне) показываем
+ * характеристики предмета, посчитанные боевыми формулами.
  */
 export class InventoryPanel {
-  /** Какая ячейка выбрана (показываем её описание). -1 — ничего. */
-  private picked = -1;
+  private picked: Picked = null;
+  private tip: HTMLElement | null = null;
+  /** Последний контекст отрисовки — чтобы перерисовать себя по клику. */
+  private hostRef: HTMLElement | null = null;
+  private invRef: Inventory | null = null;
+  private eqRef: Equipped | null = null;
 
   constructor(private readonly touch: boolean) {}
 
-  /** Перерисовать целиком в `host`. Зовётся при каждом открытии/изменении. */
   render(host: HTMLElement, inv: Inventory, eq: Equipped | null): void {
+    this.hostRef = host;
+    this.invRef = inv;
+    this.eqRef = eq;
     const t = this.touch;
-    const cell = t ? 46 : 56;
+    const cell = t ? 46 : 54;
 
-    if (eq) host.appendChild(this.equipRow(eq, cell));
+    if (eq) host.appendChild(this.equipGrid(eq, cell));
 
+    host.appendChild(this.caption("СУМКА"));
     const grid = el(
       "div",
       `display:grid;grid-template-columns:repeat(4,${cell}px);gap:${t ? 5 : 7}px;` +
-        `margin-top:${t ? 5 : 8}px;justify-content:start;`,
+        "justify-content:start;",
     );
 
     for (let i = 0; i < BAG.slots; i++) {
       const slot = inv.slots[i];
       const item = slot?.item ?? null;
-      const box = this.cellBox(cell, item !== null, i === this.picked);
+      const active = this.picked?.where === "bag" && this.picked.i === i;
+      const box = this.cellBox(cell, item !== null, active);
 
       if (item) {
         box.appendChild(this.iconEl(item, cell));
-        if (slot.count > 1) {
-          const n = el(
-            "span",
-            "position:absolute;right:2px;bottom:1px;font:bold 12px system-ui;" +
-              "color:#fff;text-shadow:0 1px 3px #000,0 0 3px #000;pointer-events:none;",
-          );
-          n.textContent = String(slot.count);
-          box.appendChild(n);
-        }
-        box.title = `${ITEMS[item].name} — ${ITEMS[item].hint}`;
+        if (slot.count > 1) box.appendChild(this.badge(slot.count));
+        this.hoverTip(box, () => this.itemTipHtml(item, slot.count));
         box.addEventListener("click", () => {
           // Повторный тап по выбранной ячейке — использовать (зелье).
-          if (this.picked === i && inv.usable(i)) inv.use(i);
-          else this.picked = i;
-          this.rerender(host, inv, eq);
+          if (active && inv.usable(i)) inv.use(i);
+          else this.picked = { where: "bag", i };
+          this.refresh();
         });
       }
       grid.appendChild(box);
     }
     host.appendChild(grid);
-    host.appendChild(this.infoRow(inv));
+    host.appendChild(this.infoRow(inv, eq));
   }
 
   /** Перерисовка на месте: чистим только наш блок, не всю панель персонажа. */
-  private rerender(host: HTMLElement, inv: Inventory, eq: Equipped | null): void {
+  private refresh(): void {
+    const host = this.hostRef;
+    if (!host) return;
+    this.hideTip();
     host.replaceChildren();
-    this.render(host, inv, eq);
+    this.render(host, this.invRef!, this.eqRef);
   }
 
-  private cellBox(size: number, filled: boolean, active: boolean): HTMLElement {
+  private caption(text: string): HTMLElement {
+    const c = el("div", "font-size:11px;opacity:.55;margin:8px 0 4px;letter-spacing:.5px;");
+    c.textContent = text;
+    return c;
+  }
+
+  private badge(count: number): HTMLElement {
+    const n = el(
+      "span",
+      "position:absolute;right:2px;bottom:1px;font:bold 12px system-ui;" +
+        "color:#fff;text-shadow:0 1px 3px #000,0 0 3px #000;pointer-events:none;",
+    );
+    n.textContent = String(count);
+    return n;
+  }
+
+  // ---- кукла снаряжения ----
+
+  /** Сетка 4×2 из всех слотов снаряжения. Пустые подписаны, чем их занять. */
+  private equipGrid(eq: Equipped, cell: number): HTMLElement {
+    const wrap = el("div", "");
+    wrap.appendChild(this.caption("СНАРЯЖЕНИЕ"));
+
+    const grid = el(
+      "div",
+      `display:grid;grid-template-columns:repeat(4,${cell}px);gap:${this.touch ? 5 : 7}px;` +
+        "justify-content:start;",
+    );
+
+    for (const def of EQUIP_SLOTS) {
+      const w =
+        def.id === "rightHand" ? eq.right : def.id === "leftHand" ? eq.left : null;
+      const active = this.picked?.where === "equip" && this.picked.slot === def.id;
+      const box = this.cellBox(cell, !!w, active, !def.live && !w);
+
+      if (w) {
+        box.appendChild(this.weaponIconEl(w, cell));
+        this.hoverTip(box, () => this.weaponTipHtml(w, eq.stats));
+        box.style.cursor = "pointer";
+        box.addEventListener("click", () => {
+          this.picked = { where: "equip", slot: def.id };
+          this.refresh();
+        });
+      } else {
+        const cap = el(
+          "div",
+          `font-size:${this.touch ? 9 : 10}px;opacity:.4;text-align:center;` +
+            "line-height:1.15;padding:2px;pointer-events:none;",
+        );
+        cap.textContent = def.label;
+        box.appendChild(cap);
+        box.title = def.live
+          ? `${def.label} — ${def.hint}`
+          : `${def.label} — ${def.hint} (появится позже)`;
+      }
+      grid.appendChild(box);
+    }
+    wrap.appendChild(grid);
+
+    if (eq.stowed.length > 0) {
+      const back = el("div", "display:flex;gap:6px;align-items:center;margin-top:6px;");
+      const cap = el("div", "font-size:11px;opacity:.5;");
+      cap.textContent = "за спиной:";
+      back.appendChild(cap);
+      for (const st of eq.stowed) {
+        const s = Math.round(cell * 0.7);
+        const b = this.cellBox(s, true, false);
+        b.appendChild(this.weaponIconEl(st, s));
+        this.hoverTip(b, () => this.weaponTipHtml(st, eq.stats));
+        back.appendChild(b);
+      }
+      wrap.appendChild(back);
+    }
+    return wrap;
+  }
+
+  private weaponIconEl(w: WornWeapon, size: number): HTMLElement {
+    const icon = weaponIcon(w.cls, w.tier);
+    if (icon) return this.img(icon, size, weaponDef(w.cls, w.tier).name);
+    const d = weaponDef(w.cls, w.tier);
+    const c = d.tint.map((v) => Math.round(v * 255)).join(",");
+    return el(
+      "div",
+      `width:56%;height:56%;border-radius:5px;background:rgb(${c});` +
+        "box-shadow:0 1px 4px #000a;pointer-events:none;",
+    );
+  }
+
+  private img(file: string, size: number, alt: string): HTMLElement {
+    const img = document.createElement("img");
+    img.src = `/icons/${file}`;
+    img.alt = alt;
+    img.draggable = false;
+    const s = Math.round(size * 0.78);
+    img.style.cssText = `width:${s}px;height:${s}px;object-fit:contain;pointer-events:none;`;
+    return img;
+  }
+
+  private cellBox(size: number, filled: boolean, active: boolean, ghost = false): HTMLElement {
+    const border = active ? "#8fb4ff" : filled ? "#5a6480" : ghost ? "#2a3040" : "#333a4d";
     return el(
       "div",
       `position:relative;width:${size}px;height:${size}px;border-radius:8px;` +
-        `border:1px solid ${active ? "#8fb4ff" : filled ? "#5a6480" : "#333a4d"};` +
-        `background:${filled ? "#232839" : "#191d29"};` +
+        `border:1px ${ghost ? "dashed" : "solid"} ${border};` +
+        `background:${filled ? "#232839" : ghost ? "#15181f" : "#191d29"};` +
         `box-shadow:${active ? "0 0 0 1px #8fb4ff inset" : "none"};` +
         `cursor:${filled ? "pointer" : "default"};display:flex;` +
         "align-items:center;justify-content:center;",
@@ -104,87 +266,99 @@ export class InventoryPanel {
       const c = def.tint.map((v) => Math.round(v * 255)).join(",");
       return el("div", `width:60%;height:60%;border-radius:5px;background:rgb(${c});`);
     }
-    const img = document.createElement("img");
-    img.src = `/icons/${def.icon}`;
-    img.alt = def.name;
-    img.draggable = false;
-    img.style.cssText = `width:${Math.round(size * 0.78)}px;height:${Math.round(
-      size * 0.78,
-    )}px;object-fit:contain;pointer-events:none;`;
-    return img;
+    return this.img(def.icon, size, def.name);
   }
 
-  /** Строка «Снаряжение»: правая рука, левая рука, за спиной. */
-  private equipRow(eq: Equipped, cell: number): HTMLElement {
-    const wrap = el("div", "margin-top:6px;");
-    const cap = el("div", "font-size:11px;opacity:.55;margin-bottom:4px;");
-    cap.textContent = "СНАРЯЖЕНИЕ";
-    wrap.appendChild(cap);
+  // ---- подсказка при наведении ----
 
-    const row = el("div", "display:flex;gap:6px;flex-wrap:wrap;align-items:center;");
-    const one = (
-      label: string,
-      w: { cls: WeaponClass; tier: WeaponTier } | null,
-    ): HTMLElement => {
-      const s = Math.round(cell * 0.82);
-      const box = this.cellBox(s, !!w, false);
-      if (w) {
-        const icon = weaponIcon(w.cls, w.tier);
-        if (icon) {
-          const img = document.createElement("img");
-          img.src = `/icons/${icon}`;
-          img.draggable = false;
-          img.style.cssText = `width:${Math.round(s * 0.78)}px;height:${Math.round(
-            s * 0.78,
-          )}px;object-fit:contain;pointer-events:none;`;
-          box.appendChild(img);
-        } else {
-          const d = weaponDef(w.cls, w.tier);
-          const c = d.tint.map((v) => Math.round(v * 255)).join(",");
-          box.appendChild(el("div", `width:58%;height:58%;border-radius:5px;background:rgb(${c});`));
-        }
-        box.title = weaponDef(w.cls, w.tier).name;
-      }
-      const cellWrap = el("div", "display:flex;flex-direction:column;align-items:center;gap:2px;");
-      const cap2 = el("div", "font-size:10px;opacity:.5;");
-      cap2.textContent = label;
-      cellWrap.append(box, cap2);
-      return cellWrap;
-    };
-
-    row.append(one("прав.", eq.right), one("лев.", eq.left));
-    for (const st of eq.stowed) row.appendChild(one("спина", st));
-    if (!eq.right && !eq.left && eq.stowed.length === 0) {
-      const none = el("div", "font-size:12px;opacity:.5;align-self:center;");
-      none.textContent = "руки пусты — возьми оружие на стойках в лагере";
-      row.appendChild(none);
-    }
-    wrap.appendChild(row);
-    return wrap;
+  private hoverTip(box: HTMLElement, html: () => string): void {
+    if (this.touch) return; // на телефоне вместо подсказки работает строка описания
+    box.addEventListener("pointerenter", () => this.showTip(box, html()));
+    box.addEventListener("pointerleave", () => this.hideTip());
   }
 
-  /** Описание выбранного предмета + подсказка по горячим клавишам. */
-  private infoRow(inv: Inventory): HTMLElement {
+  private showTip(anchor: HTMLElement, html: string): void {
+    this.hideTip();
+    const tip = el(
+      "div",
+      "position:fixed;z-index:60;max-width:260px;padding:8px 10px;border-radius:8px;" +
+        "background:#11141c;border:1px solid #39415a;box-shadow:0 6px 20px #000a;" +
+        "font:12px/1.4 system-ui;color:#dfe4f0;pointer-events:none;",
+    );
+    tip.innerHTML = html;
+    document.body.appendChild(tip);
+    const r = anchor.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    tip.style.left = `${Math.max(6, Math.min(window.innerWidth - w - 6, r.left - w - 10))}px`;
+    tip.style.top = `${Math.max(6, Math.min(window.innerHeight - h - 6, r.top - 4))}px`;
+    this.tip = tip;
+  }
+
+  private hideTip(): void {
+    this.tip?.remove();
+    this.tip = null;
+  }
+
+  private statsHtml(rows: [string, string][]): string {
+    return rows
+      .map(
+        ([k, v]) =>
+          `<div style="display:flex;justify-content:space-between;gap:14px">` +
+          `<span style="opacity:.6">${k}</span><span style="font-weight:600">${v}</span></div>`,
+      )
+      .join("");
+  }
+
+  private weaponTipHtml(w: WornWeapon, s: HeroStats): string {
+    const d = weaponDef(w.cls, w.tier);
+    const color = w.tier === "gold" ? "#ffd24a" : "#dfe4f0";
+    return (
+      `<div style="font-weight:700;color:${color};margin-bottom:4px">${d.name}</div>` +
+      this.statsHtml(weaponStats(w, s))
+    );
+  }
+
+  private itemTipHtml(item: ItemId, count: number): string {
+    const def = ITEMS[item];
+    const rows: [string, string][] = [];
+    if (def.heal > 0) rows.push(["Лечит", `+${def.heal} HP`]);
+    rows.push(["В стопке", `${count} / ${def.stack}`]);
+    if (def.heal > 0) rows.push(["Клавиши", "X · 1 · F"]);
+    return (
+      `<div style="font-weight:700;margin-bottom:4px">${def.name}</div>` +
+      `<div style="opacity:.6;margin-bottom:4px">${def.hint}</div>` +
+      this.statsHtml(rows)
+    );
+  }
+
+  // ---- строка описания ----
+
+  private infoRow(inv: Inventory, eq: Equipped | null): HTMLElement {
     const box = el(
       "div",
       "margin-top:8px;min-height:34px;padding:6px 8px;border-radius:8px;" +
         "background:#171b26;border:1px solid #2b3143;font-size:12px;line-height:1.35;",
     );
-    const slot = this.picked >= 0 ? inv.slots[this.picked] : null;
+
+    if (this.picked?.where === "equip" && eq) {
+      const w = this.picked.slot === "rightHand" ? eq.right : eq.left;
+      if (w) {
+        box.innerHTML = this.weaponTipHtml(w, eq.stats);
+        return box;
+      }
+    }
+    const slot = this.picked?.where === "bag" ? inv.slots[this.picked.i] : null;
     if (!slot?.item) {
       box.style.opacity = "0.55";
       box.textContent = inv.isEmpty
         ? "Сумка пуста. Зелья и золотое оружие падают с мобов и босса."
-        : "Нажми на предмет — покажу, что это. Ещё раз — использовать.";
+        : this.touch
+          ? "Нажми на предмет — покажу характеристики. Ещё раз — использовать."
+          : "Наведи на предмет — покажу характеристики. Клик — выбрать, ещё раз — использовать.";
       return box;
     }
-    const def = ITEMS[slot.item];
-    const title = el("div", "font-weight:600;margin-bottom:2px;");
-    title.textContent = `${def.name}${slot.count > 1 ? ` ×${slot.count}` : ""}`;
-    const desc = el("div", "opacity:.75;");
-    desc.textContent =
-      def.heal > 0 ? `${def.hint} · +${def.heal} HP · клавиши X / 1 / F` : def.hint;
-    box.append(title, desc);
+    box.innerHTML = this.itemTipHtml(slot.item, slot.count);
     return box;
   }
 }
