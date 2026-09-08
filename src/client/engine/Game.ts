@@ -253,6 +253,15 @@ export class Game {
     this.hud.bindProgression(this.progression);
     this.hud.bindPointerLock(() => this.requestPointerLock());
     this.hud.bindInventory(this.inventory);
+    // Инвентарь показывает и снаряжение: что в руках и что за спиной.
+    this.hud.bindEquipped(() => {
+      const h = this.combat.handsSnapshot();
+      return {
+        left: h.left as { cls: WeaponClass; tier: WeaponTier } | null,
+        right: h.right as { cls: WeaponClass; tier: WeaponTier } | null,
+        stowed: this.combat.stowedSnapshot(),
+      };
+    });
     // Плейсхолдер до первого пакета с сервера — syncSelf поправит на реальный.
     this.hud.bindSkin(1, (skin) => this.net?.sendSetSkin(skin));
     this.hud.bindLeaveBot(false, (on) => {

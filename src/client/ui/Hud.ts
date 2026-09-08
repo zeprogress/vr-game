@@ -1,6 +1,7 @@
 import { PLAYER_HP, BOT } from "#shared/constants";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
+import { InventoryPanel, type Equipped } from "./InventoryPanel";
 import { BOT_SKIN_LABELS } from "../world/models";
 
 const STATS: StatName[] = ["str", "agi", "int"];
@@ -23,6 +24,10 @@ export class Hud {
   private relock: (() => void) | null = null;
   private prog: Progression | null = null;
   private inv: Inventory | null = null;
+  /** Сетка инвентаря (иконки, снаряжение, описания). */
+  private invPanel: InventoryPanel | null = null;
+  /** Откуда взять, что сейчас в руках и за спиной. */
+  private equipped: (() => Equipped) | null = null;
   private toastTimer: number | null = null;
   private readonly bannerEl: HTMLDivElement;
   private bannerTimer: number | null = null;
@@ -510,47 +515,20 @@ export class Hud {
     this.panel.appendChild(row);
   }
 
+  /** Показать, что сейчас в руках/за спиной (зовёт Game). */
+  bindEquipped(fn: () => Equipped): void {
+    this.equipped = fn;
+  }
+
   private renderBag(): void {
     const inv = this.inv;
     if (!inv) return;
-
-    this.panel.appendChild(this.sectionHead("Сумка"));
-
-    if (inv.isEmpty) {
-      const empty = el("div", "margin-top:4px;opacity:0.5;font-size:12px;");
-      empty.textContent = "пусто";
-      this.panel.appendChild(empty);
-      return;
-    }
-
-    inv.slots.forEach((slot, i) => {
-      if (!slot.item) return;
-      const def = ITEMS[slot.item];
-      const row = el("div", `display:flex;align-items:center;gap:8px;margin:${this.touch ? 2 : 5}px 0;`);
-
-      const dot = el(
-        "span",
-        `width:12px;height:12px;border-radius:3px;flex:none;` +
-          `background:rgb(${def.tint.map((c) => Math.round(c * 255)).join(",")});`,
-      );
-      const name = el("span", "flex:1;");
-      name.textContent = def.name;
-      const cnt = el("span", "font-weight:bold;");
-      cnt.textContent = `×${slot.count}`;
-      row.append(dot, name, cnt);
-
-      // На смартфоне зелья пьются кнопкой на экране — в меню кнопки нет.
-      if (def.heal > 0 && !this.touch) {
-        const btn = document.createElement("button");
-        btn.textContent = "Выпить";
-        btn.style.cssText =
-          "cursor:pointer;background:#2f4f7a;color:#fff;border:1px solid #4a7;" +
-          "border-radius:4px;font-size:11px;padding:2px 6px;";
-        btn.addEventListener("click", () => inv.use(i));
-        row.appendChild(btn);
-      }
-      this.panel.appendChild(row);
-    });
+    this.panel.appendChild(this.sectionHead("Инвентарь"));
+    if (!this.invPanel) this.invPanel = new InventoryPanel(this.touch);
+    // Свой контейнер: панель перерисовывает только себя, не всю карточку.
+    const host = el("div", "");
+    this.panel.appendChild(host);
+    this.invPanel.render(host, inv, this.equipped?.() ?? null);
   }
 
   private renderPanel(): void {

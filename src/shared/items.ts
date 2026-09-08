@@ -73,6 +73,8 @@ export interface ItemDef {
   heal: number;
   /** Цвет в мире и в сетке [r,g,b]. */
   tint: readonly [number, number, number];
+  /** Файл иконки в `public/icons/` (без пути). Пусто — рисуем цветной квадрат. */
+  icon: string;
   /**
    * Задан — это оружие, лежащее в мире. Такой предмет НЕ падает в сумку:
    * его берут рукой.
@@ -88,13 +90,19 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     stack: 99,
     heal: 40,
     tint: [0.9, 0.2, 0.35],
+    icon: "potion.png",
   },
-  gold_sword: weaponItem("sword", "gold", "Золото"),
-  gold_bow: weaponItem("bow", "gold", "Зол. лук"),
-  gold_staff: weaponItem("staff", "gold", "Зол. посох"),
+  gold_sword: weaponItem("sword", "gold", "Золото", "gold_sword.png"),
+  gold_bow: weaponItem("bow", "gold", "Зол. лук", "gold_bow.png"),
+  gold_staff: weaponItem("staff", "gold", "Зол. посох", "gold_staff.png"),
 };
 
-function weaponItem(cls: WeaponClass, tier: WeaponTier, short: string): ItemDef {
+function weaponItem(
+  cls: WeaponClass,
+  tier: WeaponTier,
+  short: string,
+  icon: string,
+): ItemDef {
   const d = weaponDef(cls, tier);
   return {
     name: d.name,
@@ -104,6 +112,7 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier, short: string): ItemDef 
     stack: 1,
     heal: 0,
     tint: d.tint,
+    icon,
     weapon: { cls, tier },
   };
 }
