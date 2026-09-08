@@ -30,7 +30,6 @@ const BOT_ROTATION = [
   "duelPlayer",
   "lowChase",
   "orbitPlayer",
-  "heroLow",
   "dronePlayer",
   "frontPlayer",
 ] as const;
@@ -63,20 +62,6 @@ const SHOULDER_SIDE = 1.15;
 const SHOULDER_UP = 2.05;
 const SHOULDER_LEAD = 6;
 const SHOULDER_AIM_Y = 0.75; // ниже точки корпуса — камера смотрит чуть вниз
-
-/**
- * «Снизу вверх»: камера почти у земли спереди-сбоку, смотрит на героя снизу —
- * он выглядит крупным и внушительным (герой-шот).
- */
-const HERO_DIST = 9.5; // м вперёд от героя
-const HERO_SIDE = 3.1; // м вбок
-const HERO_UP = 0.5; // м над землёй — камера лежит почти в траве
-const HERO_AIM_Y = 1.7;
-/**
- * Общий пол камеры (groundY + 1.2) для этого кадра слишком высок — он и
- * съедал весь «снизу вверх». Даём герой-шоту свой, низкий.
- */
-const HERO_FLOOR = 0.35;
 
 /**
  * «Дуэль»: в кадре и герой, и его ближайший противник — камера сбоку от
@@ -124,7 +109,6 @@ type Shot =
   | { kind: "lowChase"; id: string }
   | { kind: "dronePlayer"; id: string }
   | { kind: "shoulderPlayer"; id: string }
-  | { kind: "heroLow"; id: string }
   | { kind: "duelPlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
@@ -169,7 +153,6 @@ const PLAYER_SHOTS = [
   "lowChase",
   "dronePlayer",
   "shoulderPlayer",
-  "heroLow",
   "duelPlayer",
 ] as const;
 type PlayerShotKind = (typeof PLAYER_SHOTS)[number];
@@ -185,7 +168,6 @@ function usesBotFilter(k: string): boolean {
     k === "lowChase" ||
     k === "dronePlayer" ||
     k === "shoulderPlayer" ||
-    k === "heroLow" ||
     k === "duelPlayer"
   );
 }
@@ -334,10 +316,8 @@ export class SpectatorCamera {
     lerpV(this.fromPos, this.toPos, k, this._p);
     lerpV(this.fromTgt, this.toTgt, k, this._t);
 
-    // Пол камеры: обычно 1.2 м над землёй, но «снизу вверх» на то и снизу —
-    // ему разрешаем лечь почти в траву, иначе кадр не отличить от обычного.
-    const floor = this.shot.kind === "heroLow" ? HERO_FLOOR : 1.2;
-    const minY = ctx.groundY(this._p.x, this._p.z) + floor;
+    // Пол камеры — 1.2 м над землёй.
+    const minY = ctx.groundY(this._p.x, this._p.z) + 1.2;
     if (this._p.y < minY) this._p.y = minY;
 
     this.cam.position.copyFrom(this._p);
@@ -662,20 +642,6 @@ export class SpectatorCamera {
           this.botPos.y + SHOULDER_AIM_Y,
           this.botPos.z + (fz / fl) * SHOULDER_LEAD,
         );
-        return;
-      }
-      case "heroLow": {
-        // Снизу вверх: камера у земли спереди-сбоку — герой смотрится крупно.
-        const fx = this.botFwd.x;
-        const fz = this.botFwd.z;
-        const fl = Math.hypot(fx, fz) || 1;
-        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? -1 : 1;
-        const px = (-fz / fl) * side;
-        const pz = (fx / fl) * side;
-        const gx = this.botPos.x + (fx / fl) * HERO_DIST + px * HERO_SIDE;
-        const gz = this.botPos.z + (fz / fl) * HERO_DIST + pz * HERO_SIDE;
-        pos.set(gx, ctx.groundY(gx, gz) + HERO_UP, gz);
-        tgt.set(this.botPos.x, this.botPos.y + HERO_AIM_Y, this.botPos.z);
         return;
       }
       case "duelPlayer": {

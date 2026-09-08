@@ -20,7 +20,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
-import { meleeSpeedFor, atMaxLevel, xpToNext } from "#shared/progression";
+import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
 
@@ -282,7 +282,7 @@ export class RemoteAvatar implements Hittable {
     this.swingAt = this.now;
     const g = this.botRig?.anims.get("swordslash");
     if (g) {
-      const rate = 1.35 * meleeSpeedFor(this.level);
+      const rate = meleeAnimRate(this.level);
       g.start(false, rate, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
       this.animW.set("swordslash", 1);

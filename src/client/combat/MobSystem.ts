@@ -361,7 +361,11 @@ export class NetMobs {
           age: 0,
         };
         this.bolts.set(id, bo);
-        this.sfx.at({ x: s.x, y: s.y, z: s.z }, () => this.sfx.bowRelease(0.6));
+        // Стрелам (kind 1) звук выстрела даёт act:"bow" от стрелка — здесь бы
+        // вышел двойной. Огнешару (kind 0) свой act не шлётся — озвучиваем тут.
+        if ((s.kind ?? 0) === 0) {
+          this.sfx.at({ x: s.x, y: s.y, z: s.z }, () => this.sfx.bowRelease(0.6));
+        }
       }
       bo.age += dt;
       bo.vel.set(s.vx, s.vy, s.vz);

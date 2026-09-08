@@ -27,7 +27,7 @@ export const WEAPON_REACH: Record<WeaponKind, number> = {
 
 /** Минимум секунд между засчитанными ударами одним видом оружия. */
 export const WEAPON_RATE: Record<WeaponKind, number> = {
-  sword: COMBAT.hitCooldown * 0.6, // мягче клиентского, чтобы лаг не съедал удары
+  sword: COMBAT.hitCooldown * 0.85, // мягче клиентского, чтобы лаг не съедал удары
   fist: MELEE.cooldown * 0.6,
   arrow: 0.45, // серверный предел темпа стрельбы (клиент держит паузу сам)
   throw: 0.25,

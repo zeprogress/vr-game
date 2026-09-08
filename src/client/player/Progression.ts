@@ -6,6 +6,7 @@ import {
   atMaxLevel,
   attackSpeedFor,
   meleeSpeedFor,
+  meleeAnimRate,
   grantXp,
   maxHpFor,
   moveSpeedFor,
@@ -142,9 +143,14 @@ export class Progression {
     return attackSpeedFor(this.level, this.stats.agi);
   }
 
-  /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor), потолок ×1.9. */
+  /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor), потолок ×1.45. */
   get meleeSpeed(): number {
     return meleeSpeedFor(this.level, this.stats.agi);
+  }
+
+  /** Скорость клипа замаха — подстроена под темп атаки (см. meleeAnimRate). */
+  get meleeAnimRate(): number {
+    return meleeAnimRate(this.level, this.stats.agi);
   }
 
   /** Добавка к скорости стрелы, м/с (от уровня). */

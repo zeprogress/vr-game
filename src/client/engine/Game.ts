@@ -339,7 +339,7 @@ export class Game {
       });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeSpeed);
+      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate);
     }
 
     // Общая громкость (слайдер в меню). Near-0 глушит звук, музыку и голос.

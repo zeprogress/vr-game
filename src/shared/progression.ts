@@ -77,13 +77,24 @@ export function attackSpeedFromLevel(level: number): number {
 }
 
 /**
- * Темп атаки БЛИЖНЕГО боя (меч/кулак) — приглушённый: воины иначе к высоким
- * уровням машут как пропеллер. Ускорение от уровня/ловкости даёт лишь 55% от
- * общего темпа, потолок ×1.9 (у лука/посоха остаётся полный attackSpeedFor).
+ * Темп атаки БЛИЖНЕГО боя (меч/кулак) — сильно приглушённый: воины иначе к
+ * высоким уровням машут как пропеллер. Ускорение от уровня/ловкости даёт лишь
+ * 35% от общего темпа, потолок ×1.45 (у лука/посоха остаётся полный
+ * attackSpeedFor).
  */
 export function meleeSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
   const full = attackSpeedFor(level, agi);
-  return Math.min(1.9, 1 + (full - 1) * 0.55);
+  return Math.min(1.45, 1 + (full - 1) * 0.35);
+}
+
+/**
+ * Скорость проигрывания клипа замаха (SwordSlash). Клип длиннее реального
+ * интервала между ударами, поэтому его гоним быстрее темпа боя — так анимация
+ * успевает отыграть к следующему удару и «подстраивается» под скорость атаки
+ * героя (и на своём аватаре, и на чужих).
+ */
+export function meleeAnimRate(level: number, agi: number = PROGRESSION.startStat): number {
+  return 1.5 * meleeSpeedFor(level, agi);
 }
 
 export function maxHpFor(level: number, str: number): number {

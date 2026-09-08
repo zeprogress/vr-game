@@ -141,6 +141,9 @@ class Mob {
   y: number;
   z: number;
   yaw = 0;
+  /** Куда моб смотрит в покое (сейчас задаётся только боссу — в сторону поляны). */
+  restYaw = 0;
+  faceRest = false;
   vx = 0;
   vy = 0;
   vz = 0;
@@ -808,6 +811,7 @@ class Mob {
     this.outOfRange = 0;
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
+    if (this.faceRest) this.yaw = this.restYaw;
   }
 }
 
@@ -1015,8 +1019,11 @@ export class ZoneSim {
       }
     }
 
-    // Босс — в дальнем углу.
+    // Босс — в дальнем углу, лицом к поляне (центр мира).
     this.boss = new Mob("boss", BOSS.home[0], BOSS.home[1]);
+    this.boss.restYaw = Math.atan2(-BOSS.home[0], -BOSS.home[1]);
+    this.boss.yaw = this.boss.restYaw;
+    this.boss.faceRest = true;
     this.mobs.set(this.boss.id, this.boss);
     // Чучела — на тренировочной площадке лагеря (HUB).
     for (const t of HUB.training.dummies) {
