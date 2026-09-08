@@ -1862,10 +1862,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const wantPotion = countPotions(p) < BOT.potions + 2;
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
-      if (!d || !inZone(d.x, d.z)) return false;
+      if (!d) return false;
       const w = ITEMS[d.item].weapon;
+      // Золотое оружие с босса лежит далеко от домашней зоны бота — за ним
+      // идём в любом случае (радиус проверяем ниже). Зелья — только у дома.
       if (w) return wantGoldWeapon && w.cls === p.rightCls && w.tier === "gold";
-      return wantPotion && ITEMS[d.item].heal > 0;
+      return wantPotion && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
     };
     if (!okLoot(loot)) {
       bot.lootTarget = null;
@@ -1874,7 +1876,9 @@ export class ZoneRoom extends Room<ZoneState> {
       for (const d of this.sim.drops.values()) {
         if (!okLoot(d)) continue;
         const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
-        if (dd >= BOT.lootRadius) continue;
+        // За золотым оружием бот готов пробежать через полкарты (босс далеко).
+        const reach = ITEMS[d.item].weapon ? BOT.lootRadius * 3 : BOT.lootRadius;
+        if (dd >= reach) continue;
         // меч всегда важнее бутылки; при прочих равных — что ближе.
         const score = (ITEMS[d.item].weapon ? 1000 : 0) - dd;
         if (score > bestScore) {
