@@ -39,41 +39,82 @@ const TREE_SCALE = 1.15;
  * материалом, а `mesh.visibility`: Babylon сам уводит такой меш в прозрачный
  * проход (needAlphaBlendingForMesh учитывает visibility < 1).
  */
-const FADE_NEAR = 2.5; // ближе — самая прозрачная
+const FADE_NEAR = 2.5; // ближе — самая прозрачная ступень
 const FADE_FAR = 9; // дальше — обычное дерево
-const FADE_MIN = 0.14; // насколько прозрачным становится вплотную
+
+/**
+ * Ступени прозрачности (ближняя → дальняя). Гасим ПОДМЕНОЙ МАТЕРИАЛА, а не
+ * `mesh.visibility`: у листвы стоит transparencyMode=ALPHATEST с alphaCutOff,
+ * и visibility уводила альфу под порог — лист выпадал целиком вместо того,
+ * чтобы бледнеть. Ступеней мало: на весь лес восемь материалов, подмена —
+ * одна ссылка на меш.
+ */
+const FADE_STEPS = [0.16, 0.34, 0.56, 0.78];
 
 interface TreeInstance {
   x: number;
   z: number;
-  meshes: import("@babylonjs/core/Meshes/abstractMesh").AbstractMesh[];
-  vis: number;
+  bark: Mesh[];
+  leaf: Mesh[];
+  /** Индекс ступени прозрачности; -1 — обычное непрозрачное дерево. */
+  step: number;
 }
 
 const treeInstances: TreeInstance[] = [];
-let fadeMats: StandardMaterial[] = [];
+let baseBark: StandardMaterial | null = null;
+let baseLeaf: StandardMaterial | null = null;
+const fadeBark: StandardMaterial[] = [];
+const fadeLeaf: StandardMaterial[] = [];
 let fadeOn = false;
 
 /**
- * Включить затухание ближних деревьев (зовёт спектатор). Материалы леса
- * заморожены ради производительности — для прозрачности их надо разморозить,
- * поэтому это не делается по умолчанию: в игре деревья не гасим.
+ * Полупрозрачные копии коры и листвы. Строим ДО freeze() исходников.
+ */
+function buildFadeMaterials(bark: StandardMaterial, leaf: StandardMaterial): void {
+  if (fadeBark.length) return;
+  for (const a of FADE_STEPS) {
+    const b = bark.clone(`treeBarkFade${a}`);
+    b.alpha = a;
+    b.transparencyMode = 2; // ALPHABLEND
+    b.disableDepthWrite = true;
+    fadeBark.push(b);
+
+    const l = leaf.clone(`treeLeafFade${a}`);
+    l.alpha = a;
+    // Смешивание вместо отсечки — иначе полупрозрачный лист уходит под
+    // alphaCutOff целиком. Вырез листа (альфа текстуры) при этом сохраняется.
+    l.transparencyMode = 2;
+    l.useAlphaFromDiffuseTexture = true;
+    l.disableDepthWrite = true;
+    fadeLeaf.push(l);
+  }
+}
+
+/**
+ * Включить затухание ближних деревьев (зовёт спектатор). В игре не зовём:
+ * там деревья обычные, и лишних материалов не появляется.
  */
 export function enableTreeFade(): void {
   fadeOn = true;
-  for (const m of fadeMats) m.unfreeze();
 }
 
-/** Раз в кадр: гасим деревья вокруг камеры. */
+/** Раз в кадр: гасим деревья вокруг камеры, дальние возвращаем как были. */
 export function fadeTreesNear(camX: number, camZ: number): void {
-  if (!fadeOn) return;
+  if (!fadeOn || !baseBark || !baseLeaf || fadeBark.length === 0) return;
   for (const t of treeInstances) {
     const d = Math.hypot(t.x - camX, t.z - camZ);
-    const k = (d - FADE_NEAR) / (FADE_FAR - FADE_NEAR);
-    const want = k <= 0 ? FADE_MIN : k >= 1 ? 1 : FADE_MIN + (1 - FADE_MIN) * k;
-    if (Math.abs(want - t.vis) < 0.01) continue;
-    t.vis = want;
-    for (const m of t.meshes) m.visibility = want;
+    let step = -1;
+    if (d < FADE_FAR) {
+      const k = (d - FADE_NEAR) / (FADE_FAR - FADE_NEAR);
+      const c = k < 0 ? 0 : k > 1 ? 1 : k;
+      step = Math.min(FADE_STEPS.length - 1, Math.floor(c * FADE_STEPS.length));
+    }
+    if (step === t.step) continue;
+    t.step = step;
+    const bm = step < 0 ? baseBark : fadeBark[step];
+    const lm = step < 0 ? baseLeaf : fadeLeaf[step];
+    for (const m of t.bark) m.material = bm;
+    for (const m of t.leaf) m.material = lm;
   }
 }
 
@@ -144,9 +185,12 @@ export async function loadTrees(
     root.rotationQuaternion = Quaternion.RotationYawPitchRoll(t.yaw, 0, 0);
     root.scaling.setAll(TREE_SCALE * t.scale);
 
-    for (const mesh of root.getChildMeshes(false)) {
+    const barkMeshes: Mesh[] = [];
+    const leafMeshes: Mesh[] = [];
+    for (const mesh of root.getChildMeshes(false) as Mesh[]) {
       const isLeaf = /leaf|leav/i.test(mesh.material?.name ?? "");
       mesh.material = isLeaf ? leaf : bark;
+      (isLeaf ? leafMeshes : barkMeshes).push(mesh);
       // Ствол — тоньше (у модели раздутое основание), крона — чуть шире и ниже.
       if (isLeaf) mesh.scaling.set(1.15, 0.92, 1.15);
       else mesh.scaling.set(0.62, 1, 0.62);
@@ -156,13 +200,15 @@ export async function loadTrees(
       mesh.freezeWorldMatrix();
     }
     root.freezeWorldMatrix();
-    treeInstances.push({ x: t.x, z: t.z, meshes: root.getChildMeshes(false), vis: 1 });
+    treeInstances.push({ x: t.x, z: t.z, bark: barkMeshes, leaf: leafMeshes, step: -1 });
   });
-  fadeMats = [bark, leaf];
+  baseBark = bark;
+  baseLeaf = leaf;
+  // Полупрозрачные копии — только там, где они нужны (спектатор), и строго
+  // до freeze() исходников.
+  if (noInstances) buildFadeMaterials(bark, leaf);
   bark.freeze();
   leaf.freeze();
-  // Спектатор мог включить затухание ещё до загрузки моделей.
-  if (fadeOn) enableTreeFade();
 }
 
 /** Трава thin-инстансами. Возвращает тик ветра (dt, daylight). */
