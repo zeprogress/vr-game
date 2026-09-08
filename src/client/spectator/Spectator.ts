@@ -315,6 +315,13 @@ export class Spectator {
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
+    // Потеря WebGL-контекста: движок создан с doNotHandleContextLost, поэтому
+    // Babylon её НЕ восстанавливает — цикл рендера продолжает крутиться,
+    // observables работают (оверлей живой, часы идут), а GL-команды уходят в
+    // никуда: на стриме застывшая картинка при работающем оверлее. Лечим
+    // перезагрузкой страницы — для бокса это самый предсказуемый путь.
+    this.watchContextLoss();
+
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
     this.engine.runRenderLoop(() => {
@@ -372,6 +379,32 @@ export class Spectator {
     this.lostAt = 0;
     void this.watchForUpdates();
     return true;
+  }
+
+  /**
+   * Слежение за потерей WebGL-контекста. Ловим и событие, и опрос раз в 5 с —
+   * событие может прийти до того, как мы повесили обработчик (или не прийти
+   * вовсе на части драйверов).
+   */
+  private watchContextLoss(): void {
+    const canvas = this.engine.getRenderingCanvas();
+    if (!canvas) return;
+    let reloading = false;
+    const recover = (why: string): void => {
+      if (reloading) return;
+      reloading = true;
+      console.warn(`[spectator] WebGL-контекст потерян (${why}) — перезагружаюсь`);
+      this.setStatus("ZEP GAME — восстанавливаю рендер…");
+      setTimeout(() => location.reload(), 1500);
+    };
+    canvas.addEventListener("webglcontextlost", () => recover("событие"), { once: true });
+    const gl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) as
+      | WebGLRenderingContext
+      | null;
+    if (!gl) return;
+    setInterval(() => {
+      if (gl.isContextLost()) recover("опрос");
+    }, 5000);
   }
 
   /**
