@@ -60,16 +60,16 @@ const LOW_AIM_Y = 1.15;
  */
 const SHOULDER_BACK = 2.6;
 const SHOULDER_SIDE = 1.15;
-const SHOULDER_UP = 1.9;
+const SHOULDER_UP = 2.05;
 const SHOULDER_LEAD = 6;
-const SHOULDER_AIM_Y = 1.35;
+const SHOULDER_AIM_Y = 0.75; // ниже точки корпуса — камера смотрит чуть вниз
 
 /**
  * «Снизу вверх»: камера почти у земли спереди-сбоку, смотрит на героя снизу —
  * он выглядит крупным и внушительным (герой-шот).
  */
-const HERO_DIST = 7.0; // м вперёд от героя
-const HERO_SIDE = 2.6; // м вбок
+const HERO_DIST = 9.5; // м вперёд от героя
+const HERO_SIDE = 3.1; // м вбок
 const HERO_UP = 0.5; // м над землёй — камера лежит почти в траве
 const HERO_AIM_Y = 1.7;
 /**
@@ -85,6 +85,11 @@ const HERO_FLOOR = 0.35;
 const DUEL_MAX = 14; // м: дальше моба уже не считаем противником
 const DUEL_PAD = 5.5; // м запаса к дистанции камеры сверх половины разрыва
 const DUEL_UP = 2.6;
+/** Дуэль: вязкость слежения за противником и за самим кадром (1/с). */
+const DUEL_FOE_SMOOTH = 3.2;
+const DUEL_CAM_SMOOTH = 2.6;
+/** Насколько ближе должен быть новый моб, чтобы дуэль сменила противника (м). */
+const DUEL_SWITCH_MARGIN = 2.5;
 
 /** «Дрон»: высоко и далеко позади героя, вид сверху-сзади в движении. */
 const DRONE_BACK = 13;
@@ -232,6 +237,7 @@ export class SpectatorCamera {
   private readonly curTgt = new Vector3(0, 2, 0);
   private readonly _p = new Vector3();
   private readonly _t = new Vector3();
+  private frameDt = 0.016;
 
   // Низкочастотный фильтр позы для кадров «из глаз».
   private readonly eyePos = new Vector3();
@@ -240,6 +246,13 @@ export class SpectatorCamera {
   // в нескольких метрах, и доворот модели бьёт по ней с большим плечом.
   private readonly botPos = new Vector3();
   private readonly botFwd = new Vector3(0, 0, 1);
+  // Дуэльный кадр: сглаженная позиция противника + сглаженные поза/цель камеры,
+  // чтобы смена ближайшего моба и рывки его позиции не дёргали картинку.
+  private readonly duelFoe = new Vector3();
+  private duelFoeId: string | null = null;
+  private readonly duelPos = new Vector3();
+  private readonly duelTgt = new Vector3();
+  private duelInit = false;
 
   constructor(
     scene: Scene,
@@ -311,6 +324,7 @@ export class SpectatorCamera {
       this.switchTo(this.nextShot(ctx, fighting), ctx);
     }
 
+    this.frameDt = dt;
     // Обновляем фильтр позы для кадров «из глаз».
     this.trackEye(dt, ctx);
 
@@ -348,6 +362,10 @@ export class SpectatorCamera {
       this.eyeFwd.copyFrom(live.forward);
       this.botPos.copyFrom(live.eye);
       this.botFwd.copyFrom(live.forward);
+    }
+    if (shot.kind !== "duelPlayer") {
+      this.duelFoeId = null;
+      this.duelInit = false;
     }
   }
 
@@ -661,50 +679,88 @@ export class SpectatorCamera {
         return;
       }
       case "duelPlayer": {
-        // Двойной кадр: герой и ближайший к нему моб, камера сбоку от их линии.
+        // Двойной кадр: герой и его противник, камера сбоку от их линии.
+        // Всё сглажено: и позиция противника, и сама поза камеры — иначе смена
+        // ближайшего моба и рывки его координат дёргают картинку.
         const me = ctx.players.find((x) => x.id === s.id);
-        let foe: CtxMob | null = null;
-        let fd = DUEL_MAX;
-        if (me) {
+        const kFoe = 1 - Math.exp(-this.frameDt * DUEL_FOE_SMOOTH);
+        const kCam = 1 - Math.exp(-this.frameDt * DUEL_CAM_SMOOTH);
+
+        // Противник: держимся за текущего, пока он в силе; меняем только на
+        // ЗАМЕТНО более близкого — без этого камера скачет между мобами в куче.
+        let cur: CtxMob | null =
+          this.duelFoeId != null ? ctx.mobs.find((m) => m.id === this.duelFoeId) ?? null : null;
+        const curD = cur && me ? Vector3.Distance(cur.eye, me.pos) : Infinity;
+        if (me && (!cur || curD > DUEL_MAX)) {
+          let best: CtxMob | null = null;
+          let bd = DUEL_MAX;
           for (const m of ctx.mobs) {
             const d = Vector3.Distance(m.eye, me.pos);
-            if (d < fd) {
-              fd = d;
-              foe = m;
+            if (d < bd) {
+              bd = d;
+              best = m;
+            }
+          }
+          cur = best;
+        } else if (me && cur) {
+          for (const m of ctx.mobs) {
+            if (m.id === cur.id) continue;
+            if (Vector3.Distance(m.eye, me.pos) < curD - DUEL_SWITCH_MARGIN) {
+              cur = m;
+              break;
             }
           }
         }
-        if (!foe) {
+
+        let rawPos: Vector3;
+        let rawTgt: Vector3;
+        if (!cur) {
           // Противника рядом нет — обычный бок с воздухом, чтобы кадр не сломался.
+          this.duelFoeId = null;
           const fx = this.botFwd.x;
           const fz = this.botFwd.z;
           const fl = Math.hypot(fx, fz) || 1;
           const px = -fz / fl;
           const pz = fx / fl;
-          pos.set(
+          rawPos = new Vector3(
             this.botPos.x + px * SIDE_DIST,
             this.botPos.y + SIDE_UP,
             this.botPos.z + pz * SIDE_DIST,
           );
-          tgt.set(
+          rawTgt = new Vector3(
             this.botPos.x + (fx / fl) * SIDE_LEAD,
             this.botPos.y + SIDE_AIM_Y,
             this.botPos.z + (fz / fl) * SIDE_LEAD,
           );
-          return;
+        } else {
+          if (this.duelFoeId !== cur.id) {
+            this.duelFoeId = cur.id;
+            this.duelFoe.copyFrom(cur.eye); // новый противник — без наплыва
+          }
+          lerpV(this.duelFoe, cur.eye, kFoe, this.duelFoe);
+          const mx = (this.botPos.x + this.duelFoe.x) * 0.5;
+          const mz = (this.botPos.z + this.duelFoe.z) * 0.5;
+          let ax = this.duelFoe.x - this.botPos.x;
+          let az = this.duelFoe.z - this.botPos.z;
+          const al = Math.hypot(ax, az) || 1;
+          ax /= al;
+          az /= al;
+          const dist = al * 0.5 + DUEL_PAD;
+          const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
+          rawPos = new Vector3(mx - az * dist * side, this.botPos.y + DUEL_UP, mz + ax * dist * side);
+          rawTgt = new Vector3(mx, this.botPos.y + 0.9, mz);
         }
-        const mx = (this.botPos.x + foe.eye.x) * 0.5;
-        const mz = (this.botPos.z + foe.eye.z) * 0.5;
-        let ax = foe.eye.x - this.botPos.x;
-        let az = foe.eye.z - this.botPos.z;
-        const al = Math.hypot(ax, az) || 1;
-        ax /= al;
-        az /= al;
-        // Перпендикуляр к линии «герой — противник»: оба в кадре, профилем.
-        const dist = al * 0.5 + DUEL_PAD;
-        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
-        pos.set(mx - az * dist * side, this.botPos.y + DUEL_UP, mz + ax * dist * side);
-        tgt.set(mx, this.botPos.y + 0.9, mz);
+
+        if (!this.duelInit) {
+          this.duelPos.copyFrom(rawPos);
+          this.duelTgt.copyFrom(rawTgt);
+          this.duelInit = true;
+        } else {
+          lerpV(this.duelPos, rawPos, kCam, this.duelPos);
+          lerpV(this.duelTgt, rawTgt, kCam, this.duelTgt);
+        }
+        pos.copyFrom(this.duelPos);
+        tgt.copyFrom(this.duelTgt);
         return;
       }
       case "dronePlayer": {
