@@ -212,7 +212,7 @@ export class WristPanel {
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#c9d2e6";
     ctx.fillText(
-      p.atMaxLevel ? "Максимальный уровень" : `Опыт ${p.xp} / ${need}`,
+      p.atMaxLevel ? "Максимальный уровень" : `Опыт ${Math.floor(p.xp)} / ${Math.round(need)}`,
       barX,
       barY + 28,
     );

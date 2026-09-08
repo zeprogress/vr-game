@@ -551,7 +551,7 @@ export class Hud {
     const title = el("div", `font:bold ${t ? 17 : 22}px system-ui;margin-bottom:${t ? 4 : 10}px;`);
     title.textContent = p.atMaxLevel
       ? `Уровень ${p.level} · макс`
-      : `Уровень ${p.level} · опыт ${p.xp}/${p.xpToNext()}`;
+      : `Уровень ${p.level} · опыт ${Math.floor(p.xp)}/${Math.round(p.xpToNext())}`;
     this.panel.appendChild(title);
 
     for (const s of STATS) {
