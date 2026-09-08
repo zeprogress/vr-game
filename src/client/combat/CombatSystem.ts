@@ -94,8 +94,10 @@ interface Item {
   hand2?: Side | null;
   /** За какой хват держит каждая рука (посох): нижний / верхний. */
   grip?: Partial<Record<Side, "low" | "high">>;
-  /** Где лежит, когда его не держат. */
-  rest: { pos: Vector3; yaw: number; bob: boolean };
+  /** Где лежит/стоит, когда его не держат. */
+  rest: { pos: Vector3; yaw: number; bob: boolean;
+    /** Задан — предмет стоит неподвижно в этой ориентации (стойка HUB), без парения и вращения. */
+    stand?: Vector3 };
   /** Полётное состояние — не null, пока предмет летит. */
   flight: Flight | null;
   /** Рука, за спину которой предмет убран, либо null. */
@@ -300,6 +302,8 @@ export class CombatSystem {
     | null = null;
   /** Где лежит базовое оружие (камни у спавна) — туда возвращается лук. */
   private readonly homes: Record<ItemKind, Vector3>;
+  /** Куда «лицом» стоит оружие на стойке лагеря. */
+  private readonly weaponsFaceYaw: number;
 
   /** Сообщить соседям про звук (взмах/выстрел/стрела). */
   private emitSound(kind: "swing" | "bow" | "arrowHit", p: Vector3): void {
@@ -319,7 +323,10 @@ export class CombatSystem {
     bowHome: Vector3,
     shieldHome: Vector3,
     staffHome: Vector3,
+    /** Куда «лицом» стоит оружие на стойке лагеря (к площади). */
+    weaponsFaceYaw = 0,
   ) {
+    this.weaponsFaceYaw = weaponsFaceYaw;
     this.homes = {
       sword: swordHome.clone(),
       bow: bowHome.clone(),
@@ -338,6 +345,14 @@ export class CombatSystem {
       this.makeItem("shield", "base", shield, shieldHome),
       this.makeItem("staff", "base", staff, staffHome),
     ];
+    // Базовое оружие СТОИТ на стойке лагеря: вертикально, чуть завалено назад
+    // на планку, лицом к площади — не парит и не крутится, легко разглядеть и
+    // подойти взять. Позы возвращаются сюда же после того, как оружие бросили.
+    for (const it of this.items) {
+      it.rest.bob = false;
+      it.rest.stand = this.standPose(it.kind, weaponsFaceYaw);
+      this.layRest(it);
+    }
     this.backAnchor = new TransformNode("backAnchor", scene);
     this.beltAnchor = new TransformNode("beltAnchor", scene);
     this.potion = createPotion(scene);
@@ -1307,6 +1322,7 @@ export class CombatSystem {
         item.rest.pos.set(mesh.position.x, gy + 0.12, mesh.position.z);
         item.rest.yaw = Math.atan2(f.vel.x, f.vel.z) + Math.random() * 0.5 - 0.25;
         item.rest.bob = false;
+        item.rest.stand = undefined;
         item.flight = null;
         mesh.rotationQuaternion = null;
         this.layFlat(item);
@@ -1330,8 +1346,10 @@ export class CombatSystem {
       tintBow(item.mesh, "base");
       tintArrows("base");
       item.rest.pos.copyFrom(this.homes.bow);
-      item.rest.bob = true;
+      item.rest.bob = false;
+      item.rest.stand = this.standPose("bow", this.weaponsFaceYaw);
       item.mesh.rotationQuaternion = null;
+      this.layRest(item);
       return;
     }
     const i = this.items.indexOf(item);
@@ -1392,6 +1410,23 @@ export class CombatSystem {
     return this.heldHand === "left" ? "right" : "left";
   }
 
+  /** Ориентация предмета, стоящего на стойке лагеря (см. конструктор). */
+  private standPose(kind: ItemKind, faceYaw: number): Vector3 {
+    const LEAN = 0.16; // завал назад на планку, рад
+    if (kind === "shield") return new Vector3(-Math.PI / 2 + LEAN, faceYaw, 0);
+    if (kind === "bow") return new Vector3(LEAN, faceYaw + Math.PI / 2, 0);
+    // меч и посох — клинок/навершие вверх
+    return new Vector3(-LEAN, faceYaw, 0);
+  }
+
+  /** Поставить предмет в его позу покоя (стойка или «лежит плашмя»). */
+  private layRest(item: Item): void {
+    item.mesh.rotationQuaternion = null;
+    item.mesh.position.copyFrom(item.rest.pos);
+    if (item.rest.stand) item.mesh.rotation.copyFrom(item.rest.stand);
+    else item.mesh.rotation.set(Math.PI / 2, item.rest.yaw, 0);
+  }
+
   private layFlat(item: Item): void {
     item.mesh.rotationQuaternion = null;
     item.mesh.position.copyFrom(item.rest.pos);
@@ -1405,7 +1440,9 @@ export class CombatSystem {
     for (const item of this.items) {
       phase++;
       if (item.hand || item.flight || item.stow) continue;
-      if (item.rest.bob) {
+      if (item.rest.stand) {
+        this.layRest(item); // стоит на стойке — неподвижно
+      } else if (item.rest.bob) {
         item.mesh.position.set(
           item.rest.pos.x,
           item.rest.pos.y + Math.sin(this.bob * 2 + phase) * 0.08,

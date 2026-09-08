@@ -217,6 +217,7 @@ export class Game {
       zone.bowHome,
       zone.shieldHome,
       zone.staffHome,
+      zone.weaponsFaceYaw,
     );
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
