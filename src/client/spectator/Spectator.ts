@@ -18,6 +18,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
+import { RenderWatch } from "./RenderWatch";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
@@ -32,13 +33,6 @@ import {
 const UP = { x: 0, y: 1, z: 0 };
 const FORWARD_Z = new Vector3(0, 0, 1);
 const TRANSPARENT = new Color4(0, 0, 0, 0);
-
-/** Сторож зависаний: как часто щупаем кадр и когда считаем его застывшим. */
-const PROBE_EVERY = 8000; // мс между пробами картинки
-const PROBE_PX = 8; // сторона квадрата пикселей в центре кадра
-const PROBE_CAM_MOVE = 0.5; // м: камера должна была уехать, иначе проба не в счёт
-const PROBE_STALE_LIMIT = 3; // столько проб подряд без изменений — зависли
-const RENDER_STALL_MS = 10000; // мс без единого scene.render() — цикл умер
 
 export type { Quality };
 
@@ -101,16 +95,8 @@ export class Spectator {
   private live = false;
   /** performance.now() момента обрыва — держим картинку ещё пару секунд (сетевой чих). */
   private lostAt = 0;
-  /** Сторож зависаний: когда последний раз реально отрисовали кадр. */
-  private lastRenderAt = 0;
-  /** Когда снимать следующую пробу картинки (проверка «кадр не меняется»). */
-  private probeAt = 0;
-  private probeSig = -1;
-  private probeCamX = 0;
-  private probeCamZ = 0;
-  /** Сколько проб подряд картинка не менялась при движущейся камере. */
-  private probeStale = 0;
-  private reloading = false;
+  /** Сторож зависаний картинки + сбор диагностики (см. RenderWatch). */
+  private watch: RenderWatch | null = null;
 
   // Пулы для tick(): режиссёру отдаём переиспользуемые объекты, без аллокаций
   // каждый кадр (иначе минорный GC даёт редкие рывки на телефоне).
@@ -292,7 +278,16 @@ export class Spectator {
       else this.engine.resize();
     });
 
-    this.scene.onBeforeRenderObservable.add(() => this.tick());
+    // Бросок отсюда улетал бы наружу через scene.render() и обрывал цепочку
+    // rAF навсегда (Babylon ставит следующий кадр в очередь В КОНЦЕ цикла) —
+    // ровно так картинка и «зависала» при живом оверлее. Ловим и продолжаем.
+    this.scene.onBeforeRenderObservable.add(() => {
+      try {
+        this.tick();
+      } catch (e) {
+        this.watch?.onError("tick", e);
+      }
+    });
   }
 
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
@@ -332,59 +327,26 @@ export class Spectator {
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
-    // Сторож зависаний картинки (см. watchRenderHealth): и потеря контекста,
-    // и «цикл крутится, а кадр не меняется» — лечим перезагрузкой.
-    this.watchRenderHealth();
+    // Сторож зависаний картинки: ловит симптом (оверлей жив, кадр застыл),
+    // перезагружает страницу И собирает отчёт о причине — консоль браузер-
+    // источника OBS никто не видит, поэтому отчёт уходит в журнал сервера.
+    this.watch = new RenderWatch(
+      this.engine,
+      this.scene,
+      () => this.cam.cam.position,
+      () => this.renderRate,
+      (text) => this.net?.sendSpecCmd({ t: "diag", text }),
+      (text) => this.setStatus(text),
+    );
+    this.watch.start();
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
     this.engine.runRenderLoop(() => {
-      // Babylon сам пере-ресайзит canvas (ResizeObserver) под вьюпорт —
-      // при фиксированном размере каждый кадр возвращаем нужный (no-op, если совпал).
-      if (this.fixedSize) {
-        this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
-      }
-      const now = performance.now();
-
-      // Кэп fps — равномерно по частоте экрана: рендерим каждый N-й кадр rAF
-      // (60 Гц + кэп 30 → каждый второй, ровно). Ограничение по времени
-      // (`now - last < step`) давало рывки: джиттер rAF то пропускал лишний
-      // кадр, то нет, и при среднем «30 fps» картина дёргалась.
-      if (this.lastRaf > 0) {
-        const d = now - this.lastRaf;
-        if (d > 4 && d < 100) this.rafMs += (d - this.rafMs) * 0.1;
-      }
-      this.lastRaf = now;
-      if (this.fpsCap > 0) {
-        const n = Math.max(1, Math.round(1000 / this.fpsCap / this.rafMs));
-        this.capStep = (this.capStep + 1) % n;
-        if (this.capStep !== 0) return;
-      }
-
-      this.renderCount++;
-      if (this.rateAt === 0) {
-        this.rateAt = now;
-      } else if (now - this.rateAt > 1000) {
-        this.renderRate = (this.renderCount * 1000) / (now - this.rateAt);
-        this.renderCount = 0;
-        this.rateAt = now;
-      }
-
-      // OBS-режим: нет живой связи (и прошла пара секунд с обрыва) — не рисуем
-      // мир вовсе, отдаём прозрачный кадр. В OBS снизу видно слой-заглушку.
-      if (this.obs && !this.live && (this.lostAt === 0 || now - this.lostAt > 2500)) {
-        this.overlay?.setShown(false);
-        this.engine.clear(TRANSPARENT, true, true);
-        return;
-      }
-      if (this.obs) this.overlay?.setShown(true);
-      this.scene.render();
-      this.lastRenderAt = now;
-      // Пробу снимаем ИМЕННО здесь, сразу после отрисовки: из setInterval
-      // читать бэкбуфер нельзя — там уже может быть что угодно.
-      if (now >= this.probeAt) {
-        this.probeAt = now + PROBE_EVERY;
-        this.probeFrame();
+      try {
+        this.frame();
+      } catch (e) {
+        this.watch?.onError("frame", e);
       }
     });
 
@@ -403,89 +365,53 @@ export class Spectator {
   }
 
   /**
-   * Слежение за потерей WebGL-контекста. Ловим и событие, и опрос раз в 5 с —
-   * событие может прийти до того, как мы повесили обработчик (или не прийти
-   * вовсе на части драйверов).
+   * Один кадр стрима. Вынесен из runRenderLoop, чтобы весь его код был под
+   * общим try/catch: непойманный бросок отсюда навсегда обрывал цепочку rAF.
    */
-  /**
-   * Сторож зависаний картинки. Причины бывают разные (потеря WebGL-контекста,
-   * заглохший rAF, застрявший рендер-лист при performancePriority), симптом
-   * один: оверлей живой, картинка застыла. Поэтому ловим не причину, а сам
-   * симптом — и перезагружаем страницу.
-   *
-   * Две независимые проверки:
-   *  1) `setInterval` (не rAF!) — если давно не было ни одного `scene.render()`,
-   *     значит цикл рендера умер;
-   *  2) проба кадра — раз в PROBE_EVERY читаем несколько пикселей из центра.
-   *     Если картинка не меняется, ХОТЯ камера за это время уехала, — кадр
-   *     застыл. Движение камеры обязательно: без него ложно сработало бы на
-   *     статичной сцене.
-   */
-  private watchRenderHealth(): void {
-    const canvas = this.engine.getRenderingCanvas();
-    if (!canvas) return;
-    const gl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) as
-      | WebGLRenderingContext
-      | null;
-    canvas.addEventListener("webglcontextlost", () => this.recoverRender("контекст потерян"), {
-      once: true,
-    });
-    setInterval(() => {
-      if (gl?.isContextLost()) {
-        this.recoverRender("контекст потерян (опрос)");
-        return;
-      }
-      if (this.lastRenderAt > 0 && performance.now() - this.lastRenderAt > RENDER_STALL_MS) {
-        this.recoverRender("цикл рендера встал");
-      }
-    }, 5000);
-  }
-
-  /** Читает пятно пикселей из центра кадра и сравнивает с прошлой пробой. */
-  private probeFrame(): void {
-    const gl = this.engine._gl as WebGL2RenderingContext | undefined;
-    if (!gl) return;
-    const w = this.engine.getRenderWidth();
-    const h = this.engine.getRenderHeight();
-    if (w < 16 || h < 16) return;
-    const buf = new Uint8Array(PROBE_PX * PROBE_PX * 4);
-    try {
-      gl.readPixels(
-        Math.floor(w / 2) - PROBE_PX / 2,
-        Math.floor(h / 2) - PROBE_PX / 2,
-        PROBE_PX,
-        PROBE_PX,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        buf,
-      );
-    } catch {
-      return; // читать бэкбуфер не дали — сторож просто молчит
+  private frame(): void {
+    // Babylon сам пере-ресайзит canvas (ResizeObserver) под вьюпорт —
+    // при фиксированном размере каждый кадр возвращаем нужный (no-op, если совпал).
+    if (this.fixedSize) {
+      this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     }
-    let sig = 0;
-    for (let i = 0; i < buf.length; i += 4) sig = (sig * 31 + buf[i] + buf[i + 1] * 3) | 0;
+    const now = performance.now();
 
-    const cam = this.cam.cam.position;
-    const moved = Math.hypot(cam.x - this.probeCamX, cam.z - this.probeCamZ);
-    this.probeCamX = cam.x;
-    this.probeCamZ = cam.z;
-
-    if (this.probeSig === sig && moved > PROBE_CAM_MOVE) {
-      this.probeStale++;
-      if (this.probeStale >= PROBE_STALE_LIMIT) this.recoverRender("кадр не меняется");
-    } else {
-      this.probeStale = 0;
+    // Кэп fps — равномерно по частоте экрана: рендерим каждый N-й кадр rAF
+    // (60 Гц + кэп 30 → каждый второй, ровно). Ограничение по времени
+    // (`now - last < step`) давало рывки: джиттер rAF то пропускал лишний
+    // кадр, то нет, и при среднем «30 fps» картина дёргалась.
+    if (this.lastRaf > 0) {
+      const d = now - this.lastRaf;
+      if (d > 4 && d < 100) this.rafMs += (d - this.rafMs) * 0.1;
     }
-    this.probeSig = sig;
-  }
+    this.lastRaf = now;
+    if (this.fpsCap > 0) {
+      const n = Math.max(1, Math.round(1000 / this.fpsCap / this.rafMs));
+      this.capStep = (this.capStep + 1) % n;
+      if (this.capStep !== 0) return;
+    }
 
-  /** Единая точка восстановления: сказать в лог/статус и перезагрузиться. */
-  private recoverRender(why: string): void {
-    if (this.reloading) return;
-    this.reloading = true;
-    console.warn(`[spectator] рендер завис (${why}) — перезагружаюсь`);
-    this.setStatus("ZEP GAME — восстанавливаю рендер…");
-    setTimeout(() => location.reload(), 1500);
+    this.renderCount++;
+    if (this.rateAt === 0) {
+      this.rateAt = now;
+    } else if (now - this.rateAt > 1000) {
+      this.renderRate = (this.renderCount * 1000) / (now - this.rateAt);
+      this.renderCount = 0;
+      this.rateAt = now;
+    }
+
+    // OBS-режим: нет живой связи (и прошла пара секунд с обрыва) — не рисуем
+    // мир вовсе, отдаём прозрачный кадр. В OBS снизу видно слой-заглушку.
+    if (this.obs && !this.live && (this.lostAt === 0 || now - this.lostAt > 2500)) {
+      this.overlay?.setShown(false);
+      this.engine.clear(TRANSPARENT, true, true);
+      return;
+    }
+    if (this.obs) this.overlay?.setShown(true);
+    this.scene.render();
+    // Пробу кадра сторож снимает ИМЕННО здесь, сразу после отрисовки: из
+    // setInterval читать бэкбуфер нельзя — там уже может быть что угодно.
+    this.watch?.afterRender(now);
   }
 
   /**
@@ -761,8 +687,7 @@ export class Spectator {
         `${this.renderRate.toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
         ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}` +
-        ` · кадр ${((performance.now() - this.lastRenderAt) / 1000).toFixed(1)}с назад` +
-        ` · застой ${this.probeStale}`;
+        ` · ${this.watch?.debugLine() ?? ""}`;
     }
   }
 

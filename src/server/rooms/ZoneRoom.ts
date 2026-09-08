@@ -878,6 +878,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // подключениями; `time` применяет сам сервер.
     this.onMessage(MSG.specCmd, (client: Client, msg: SpecCmd) => {
       if (!this.spectators.has(client.sessionId) || !msg || typeof msg.t !== "string") return;
+      // Диагностика зависания картинки: пишем в журнал и НЕ рассылаем дальше —
+      // консоль браузер-источника OBS никто не видит, а journalctl мы читаем.
+      if (msg.t === "diag") {
+        if (typeof msg.text === "string") {
+          console.warn(`[spec-diag] ${msg.text.slice(0, 2000)}`);
+        }
+        return;
+      }
       if (msg.t === "time" && typeof msg.hour === "number" && Number.isFinite(msg.hour)) {
         this.worldHour = (((msg.hour % 24) + 24) % 24) as number;
         this.state.hour = this.worldHour;
