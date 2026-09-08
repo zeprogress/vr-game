@@ -33,6 +33,13 @@ const UP = { x: 0, y: 1, z: 0 };
 const FORWARD_Z = new Vector3(0, 0, 1);
 const TRANSPARENT = new Color4(0, 0, 0, 0);
 
+/** Сторож зависаний: как часто щупаем кадр и когда считаем его застывшим. */
+const PROBE_EVERY = 8000; // мс между пробами картинки
+const PROBE_PX = 8; // сторона квадрата пикселей в центре кадра
+const PROBE_CAM_MOVE = 0.5; // м: камера должна была уехать, иначе проба не в счёт
+const PROBE_STALE_LIMIT = 3; // столько проб подряд без изменений — зависли
+const RENDER_STALL_MS = 10000; // мс без единого scene.render() — цикл умер
+
 export type { Quality };
 
 /**
@@ -94,6 +101,16 @@ export class Spectator {
   private live = false;
   /** performance.now() момента обрыва — держим картинку ещё пару секунд (сетевой чих). */
   private lostAt = 0;
+  /** Сторож зависаний: когда последний раз реально отрисовали кадр. */
+  private lastRenderAt = 0;
+  /** Когда снимать следующую пробу картинки (проверка «кадр не меняется»). */
+  private probeAt = 0;
+  private probeSig = -1;
+  private probeCamX = 0;
+  private probeCamZ = 0;
+  /** Сколько проб подряд картинка не менялась при движущейся камере. */
+  private probeStale = 0;
+  private reloading = false;
 
   // Пулы для tick(): режиссёру отдаём переиспользуемые объекты, без аллокаций
   // каждый кадр (иначе минорный GC даёт редкие рывки на телефоне).
@@ -315,12 +332,9 @@ export class Spectator {
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
-    // Потеря WebGL-контекста: движок создан с doNotHandleContextLost, поэтому
-    // Babylon её НЕ восстанавливает — цикл рендера продолжает крутиться,
-    // observables работают (оверлей живой, часы идут), а GL-команды уходят в
-    // никуда: на стриме застывшая картинка при работающем оверлее. Лечим
-    // перезагрузкой страницы — для бокса это самый предсказуемый путь.
-    this.watchContextLoss();
+    // Сторож зависаний картинки (см. watchRenderHealth): и потеря контекста,
+    // и «цикл крутится, а кадр не меняется» — лечим перезагрузкой.
+    this.watchRenderHealth();
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
@@ -365,6 +379,13 @@ export class Spectator {
       }
       if (this.obs) this.overlay?.setShown(true);
       this.scene.render();
+      this.lastRenderAt = now;
+      // Пробу снимаем ИМЕННО здесь, сразу после отрисовки: из setInterval
+      // читать бэкбуфер нельзя — там уже может быть что угодно.
+      if (now >= this.probeAt) {
+        this.probeAt = now + PROBE_EVERY;
+        this.probeFrame();
+      }
     });
 
     const ok = await net.connectSpectator(key);
@@ -386,25 +407,85 @@ export class Spectator {
    * событие может прийти до того, как мы повесили обработчик (или не прийти
    * вовсе на части драйверов).
    */
-  private watchContextLoss(): void {
+  /**
+   * Сторож зависаний картинки. Причины бывают разные (потеря WebGL-контекста,
+   * заглохший rAF, застрявший рендер-лист при performancePriority), симптом
+   * один: оверлей живой, картинка застыла. Поэтому ловим не причину, а сам
+   * симптом — и перезагружаем страницу.
+   *
+   * Две независимые проверки:
+   *  1) `setInterval` (не rAF!) — если давно не было ни одного `scene.render()`,
+   *     значит цикл рендера умер;
+   *  2) проба кадра — раз в PROBE_EVERY читаем несколько пикселей из центра.
+   *     Если картинка не меняется, ХОТЯ камера за это время уехала, — кадр
+   *     застыл. Движение камеры обязательно: без него ложно сработало бы на
+   *     статичной сцене.
+   */
+  private watchRenderHealth(): void {
     const canvas = this.engine.getRenderingCanvas();
     if (!canvas) return;
-    let reloading = false;
-    const recover = (why: string): void => {
-      if (reloading) return;
-      reloading = true;
-      console.warn(`[spectator] WebGL-контекст потерян (${why}) — перезагружаюсь`);
-      this.setStatus("ZEP GAME — восстанавливаю рендер…");
-      setTimeout(() => location.reload(), 1500);
-    };
-    canvas.addEventListener("webglcontextlost", () => recover("событие"), { once: true });
     const gl = (canvas.getContext("webgl2") ?? canvas.getContext("webgl")) as
       | WebGLRenderingContext
       | null;
-    if (!gl) return;
+    canvas.addEventListener("webglcontextlost", () => this.recoverRender("контекст потерян"), {
+      once: true,
+    });
     setInterval(() => {
-      if (gl.isContextLost()) recover("опрос");
+      if (gl?.isContextLost()) {
+        this.recoverRender("контекст потерян (опрос)");
+        return;
+      }
+      if (this.lastRenderAt > 0 && performance.now() - this.lastRenderAt > RENDER_STALL_MS) {
+        this.recoverRender("цикл рендера встал");
+      }
     }, 5000);
+  }
+
+  /** Читает пятно пикселей из центра кадра и сравнивает с прошлой пробой. */
+  private probeFrame(): void {
+    const gl = this.engine._gl as WebGL2RenderingContext | undefined;
+    if (!gl) return;
+    const w = this.engine.getRenderWidth();
+    const h = this.engine.getRenderHeight();
+    if (w < 16 || h < 16) return;
+    const buf = new Uint8Array(PROBE_PX * PROBE_PX * 4);
+    try {
+      gl.readPixels(
+        Math.floor(w / 2) - PROBE_PX / 2,
+        Math.floor(h / 2) - PROBE_PX / 2,
+        PROBE_PX,
+        PROBE_PX,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        buf,
+      );
+    } catch {
+      return; // читать бэкбуфер не дали — сторож просто молчит
+    }
+    let sig = 0;
+    for (let i = 0; i < buf.length; i += 4) sig = (sig * 31 + buf[i] + buf[i + 1] * 3) | 0;
+
+    const cam = this.cam.cam.position;
+    const moved = Math.hypot(cam.x - this.probeCamX, cam.z - this.probeCamZ);
+    this.probeCamX = cam.x;
+    this.probeCamZ = cam.z;
+
+    if (this.probeSig === sig && moved > PROBE_CAM_MOVE) {
+      this.probeStale++;
+      if (this.probeStale >= PROBE_STALE_LIMIT) this.recoverRender("кадр не меняется");
+    } else {
+      this.probeStale = 0;
+    }
+    this.probeSig = sig;
+  }
+
+  /** Единая точка восстановления: сказать в лог/статус и перезагрузиться. */
+  private recoverRender(why: string): void {
+    if (this.reloading) return;
+    this.reloading = true;
+    console.warn(`[spectator] рендер завис (${why}) — перезагружаюсь`);
+    this.setStatus("ZEP GAME — восстанавливаю рендер…");
+    setTimeout(() => location.reload(), 1500);
   }
 
   /**
@@ -679,7 +760,9 @@ export class Spectator {
       this.debug.textContent =
         `${this.renderRate.toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
         ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
-        ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}`;
+        ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}` +
+        ` · кадр ${((performance.now() - this.lastRenderAt) / 1000).toFixed(1)}с назад` +
+        ` · застой ${this.probeStale}`;
     }
   }
 
