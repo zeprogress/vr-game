@@ -33,6 +33,16 @@ export class Sfx {
   private musicWanted = false;
   private musicLoading = false;
   private readonly bufCache = new Map<string, AudioBuffer>();
+  /** Сэмплы выстрела из лука (варианты) — грузятся один раз, не вытесняются. */
+  private static readonly BOW_SHOTS = [
+    "/sfx/bow-shot-1.mp3",
+    "/sfx/bow-shot-2.mp3",
+    "/sfx/bow-shot-3.mp3",
+    "/sfx/bow-shot-4.mp3",
+    "/sfx/bow-shot-5.mp3",
+  ];
+  private readonly bowShotBufs: AudioBuffer[] = [];
+  private bowShotsLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -319,6 +329,31 @@ export class Sfx {
     return this.ctx!.currentTime;
   }
 
+  /** Один раз подгрузить сэмплы выстрела (зовём на натяге — успевает к выстрелу). */
+  private preloadBowShots(): void {
+    if (this.bowShotsLoading || this.bowShotBufs.length || !this.ctx) return;
+    this.bowShotsLoading = true;
+    for (const url of Sfx.BOW_SHOTS) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => this.bowShotBufs.push(b))
+        .catch(() => {});
+    }
+  }
+
+  /** Проиграть готовый буфер разово, объёмно от текущей точки (this.spatialAt). */
+  private playSample(buf: AudioBuffer, gain = 1, rate = 1): void {
+    const src = this.ctx!.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const g = this.ctx!.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(this.spatialAt ? this.panAt(this.spatialAt) : this.master!);
+    src.start(this.t);
+  }
+
   private noise(): AudioBufferSourceNode {
     const s = this.ctx!.createBufferSource();
     s.buffer = this.noiseBuf;
@@ -543,6 +578,7 @@ export class Sfx {
 
   bowDraw(): void {
     if (!this.ready()) return;
+    this.preloadBowShots();
     const t = this.t;
     const n = this.noise();
     const bp = this.filter("bandpass", 400, 6);
@@ -556,6 +592,14 @@ export class Sfx {
 
   bowRelease(power: number): void {
     if (!this.ready()) return;
+    // Готов сэмпл — играем случайный вариант настоящего выстрела.
+    if (this.bowShotBufs.length > 0) {
+      const buf = this.bowShotBufs[(Math.random() * this.bowShotBufs.length) | 0];
+      // Полный натяг — чуть громче и ниже; слабый — тише и звонче.
+      this.playSample(buf, 0.55 + power * 0.5, 0.95 + (1 - power) * 0.12);
+      return;
+    }
+    this.preloadBowShots();
     const t = this.t;
     const base = 90 + power * 70;
     for (const mult of [1, 1.5, 2.01]) {

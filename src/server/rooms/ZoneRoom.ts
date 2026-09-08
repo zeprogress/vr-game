@@ -232,6 +232,11 @@ function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | 
   return "sword";
 }
 
+/** Танк — бот с мечом (и щитом). Ему идут бонусы BOT.tank. */
+function isTankBot(p: PlayerState): boolean {
+  return p.rightCls === "sword" && (p.leftCls === "shield" || p.leftCls === "");
+}
+
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
 const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
   (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
@@ -1758,6 +1763,17 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.cleaveCd = Math.max(0, bot.cleaveCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
 
+    // Танк крепче: держим его максимум HP с множителем BOT.tank.hpMul (при
+    // смене уровня/статов/оружия — доводим и текущее HP на прибавку).
+    {
+      const want = maxHpFor(p.level, p.str) * (isTankBot(p) ? BOT.tank.hpMul : 1);
+      if (Math.abs(p.maxHp - want) > 0.5) {
+        const gain = Math.max(0, want - p.maxHp);
+        p.maxHp = want;
+        p.hp = Math.min(want, p.hp + gain);
+      }
+    }
+
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
       bot.swingIn -= dt;
@@ -2256,7 +2272,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
-    const dmg = weaponDamage("sword", p.level, p.str, multIn(p, "right"));
+    const dmg =
+      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
+      (isTankBot(p) ? BOT.tank.dmgMul : 1);
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
@@ -2369,7 +2387,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private botCleaveLand(bot: Bot): void {
     const p = bot.state;
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right")) * BOT.cleaveDamageMult;
+      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
+      BOT.cleaveDamageMult *
+      (isTankBot(p) ? BOT.tank.dmgMul : 1);
     for (const t of this.mobsInCone(p, bot.cleaveYaw)) {
       const dx = t.x - p.head.x;
       const dz = t.z - p.head.z;
@@ -2823,8 +2843,12 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
-      if (p.hp > 0 && p.hp < p.maxHp && rt.sinceHurt > PLAYER_HP.regenDelay) {
-        p.hp = Math.min(p.maxHp, p.hp + PLAYER_HP.regen * dt);
+      // Танк-бот восстанавливается быстрее и раньше обычного.
+      const tank = id.startsWith("bot:") && isTankBot(p);
+      const regenDelay = PLAYER_HP.regenDelay * (tank ? BOT.tank.regenDelayMul : 1);
+      const regenRate = PLAYER_HP.regen * (tank ? BOT.tank.regenMul : 1);
+      if (p.hp > 0 && p.hp < p.maxHp && rt.sinceHurt > regenDelay) {
+        p.hp = Math.min(p.maxHp, p.hp + regenRate * dt);
       }
     });
   }

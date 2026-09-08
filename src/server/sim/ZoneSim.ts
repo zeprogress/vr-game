@@ -333,8 +333,14 @@ class Mob {
         if (before > BOSS.splitAt[this.splitsDone - 1]) this.pendingSplit = true;
       }
     }
-    // Обычный удар моба НЕ отталкивает (только замах-скиллы через shove()).
-    // Направление удара всё равно запоминаем — по нему клиент играет вздрагивание.
+    // Обычный удар слегка толкает моба — короткий нудж, не отлёт (далёкое
+    // отбрасывание осталось только у замах-скиллов через shove()). Урон при
+    // этом наносится как обычно (выше).
+    if (this.kind !== "boss") {
+      const kb = Math.min(0.6 + dmg * 0.22, 1.8);
+      this.vx += dx * kb;
+      this.vz += dz * kb;
+    }
     this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
     this.hurtDx = dx;
     this.hurtDz = dz;

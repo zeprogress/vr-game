@@ -13,6 +13,7 @@ export const TOWN_MUSIC = [
   "/music/village-waltz-2.mp3",
   "/music/village-dawn.mp3",
   "/music/medieval-dawn.mp3",
+  "/music/moonlit-meadow-path.mp3",
 ];
 
 export const BOSS_MUSIC = "/music/boss.mp3";
