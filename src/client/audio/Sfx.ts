@@ -706,29 +706,40 @@ export class Sfx {
     });
   }
 
-  /** Критический выстрел из лука: резкий звонкий «дзынь» + короткий свист. */
+  /** Критический выстрел из лука: тяжёлый мясистый удар с коротким низким гулом. */
   crit(): void {
     if (!this.ready()) return;
     const t = this.t;
+    // Низкое тело удара — падающая синусоида, даёт «вес».
+    const body = this.ctx!.createOscillator();
+    body.type = "sine";
+    body.frequency.setValueAtTime(190, t);
+    body.frequency.exponentialRampToValueAtTime(64, t + 0.22);
+    const bodyG = this.env(0.5, 0.002, 0.24, t);
+    body.connect(bodyG);
+    body.start(t);
+    body.stop(t + 0.3);
+    // Средний акцент — квинта в низком регистре, короткая.
     for (const [f, d] of [
-      [1760, 0],
-      [2637, 0.02],
+      [330, 0],
+      [247, 0.03],
     ] as const) {
       const o = this.ctx!.createOscillator();
       o.type = "triangle";
       o.frequency.setValueAtTime(f, t + d);
-      o.frequency.exponentialRampToValueAtTime(f * 0.6, t + d + 0.18);
-      const g = this.env(0.2, 0.002, 0.2, t + d);
+      o.frequency.exponentialRampToValueAtTime(f * 0.7, t + d + 0.16);
+      const g = this.env(0.18, 0.003, 0.16, t + d);
       o.connect(g);
       o.start(t + d);
-      o.stop(t + d + 0.26);
+      o.stop(t + d + 0.22);
     }
+    // Глухой транзиент-щелчок вместо свиста.
     const n = this.noise();
-    const bp = this.filter("bandpass", 3200, 4);
-    const ng = this.env(0.14, 0.001, 0.06, t);
+    const bp = this.filter("bandpass", 1100, 2);
+    const ng = this.env(0.22, 0.001, 0.05, t);
     n.connect(bp).connect(ng);
     n.start(t);
-    n.stop(t + 0.08);
+    n.stop(t + 0.07);
   }
 
   /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
