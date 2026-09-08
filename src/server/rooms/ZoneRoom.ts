@@ -109,6 +109,7 @@ import {
 import {
   atMaxLevel,
   attackSpeedFor,
+  meleeSpeedFor,
   grantXp,
   isStatName,
   maxHpFor,
@@ -966,7 +967,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
     // атаки (уровень + ловкость) укорачивает интервал.
     const last = rt.lastHit[msg.weapon];
-    const rate = WEAPON_RATE[msg.weapon] / attackSpeedFor(p.level, p.agi);
+    const meleeWpn = msg.weapon === "sword" || msg.weapon === "fist";
+    const spd = meleeWpn ? meleeSpeedFor(p.level, p.agi) : attackSpeedFor(p.level, p.agi);
+    const rate = WEAPON_RATE[msg.weapon] / spd;
     if (last !== undefined && this.elapsed - last < rate) return;
 
     const hand = msg.hand === "left" ? "left" : "right";
@@ -2181,9 +2184,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
     if (!ranged && chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
-      // Скорость атаки от уровня: чаще бьёт и быстрее доводит замах —
-      // анимация на модельке ускоряется на клиенте под тот же множитель.
-      const atk = attackSpeedFor(p.level, p.agi);
+      // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
+      // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
+      // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
+      const atk = meleeSpeedFor(p.level, p.agi);
       bot.attackCd = BOT.attackCooldown / atk;
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;

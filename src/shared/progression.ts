@@ -76,6 +76,16 @@ export function attackSpeedFromLevel(level: number): number {
   return attackSpeedFor(level);
 }
 
+/**
+ * Темп атаки БЛИЖНЕГО боя (меч/кулак) — приглушённый: воины иначе к высоким
+ * уровням машут как пропеллер. Ускорение от уровня/ловкости даёт лишь 55% от
+ * общего темпа, потолок ×1.9 (у лука/посоха остаётся полный attackSpeedFor).
+ */
+export function meleeSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
+  const full = attackSpeedFor(level, agi);
+  return Math.min(1.9, 1 + (full - 1) * 0.55);
+}
+
 export function maxHpFor(level: number, str: number): number {
   const base = PLAYER_HP.max + levelGain(level, P.hp);
   return base * (1 + (str - PROGRESSION.startStat) * PROGRESSION.str.hpMul);

@@ -1653,7 +1653,7 @@ export class CombatSystem {
 
     if (primaryEdge && sw.t <= 0) {
       // Скорость атаки от уровня укорачивает замах — и удар, и анимацию.
-      sw.dur = COMBAT.swingDuration / this.prog.attackSpeed;
+      sw.dur = COMBAT.swingDuration / this.prog.meleeSpeed;
       sw.t = sw.dur;
       sw.hitDone = false;
       const p = item.mesh.getAbsolutePosition();
@@ -1724,7 +1724,7 @@ export class CombatSystem {
   ): void {
     this.tpMeleeCd = Math.max(0, this.tpMeleeCd - dt);
     if (primaryEdge && this.tpMeleeCd <= 0 && this.turnCd <= 0) {
-      const atk = this.prog.attackSpeed;
+      const atk = this.prog.meleeSpeed;
       this.tpMeleeCd = MELEE.tpSwingCd / atk;
       this.onMeleeSwing?.();
       const at = item?.mesh.getAbsolutePosition() ?? this.player.eyePosition;
@@ -1893,7 +1893,7 @@ export class CombatSystem {
     }
     if (this.meleeFlatCd > 0) this.meleeFlatCd -= dt;
     if (!primaryEdge || this.meleeFlatCd > 0) return;
-    this.meleeFlatCd = MELEE.cooldown / this.prog.attackSpeed;
+    this.meleeFlatCd = MELEE.cooldown / this.prog.meleeSpeed;
     const eye = this.player.camera.globalPosition;
     this.sfx.swordSwing(eye);
     this.emitSound("swing", eye);

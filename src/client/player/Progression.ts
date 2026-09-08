@@ -5,6 +5,7 @@ import {
   arrowSpeedBonusFor,
   atMaxLevel,
   attackSpeedFor,
+  meleeSpeedFor,
   grantXp,
   maxHpFor,
   moveSpeedFor,
@@ -139,6 +140,11 @@ export class Progression {
   /** Множитель темпа атаки (>1 — быстрее): уровень × ловкость, потолок ×2.6. */
   get attackSpeed(): number {
     return attackSpeedFor(this.level, this.stats.agi);
+  }
+
+  /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor), потолок ×1.9. */
+  get meleeSpeed(): number {
+    return meleeSpeedFor(this.level, this.stats.agi);
   }
 
   /** Добавка к скорости стрелы, м/с (от уровня). */

@@ -596,7 +596,7 @@ export class Sfx {
     if (this.bowShotBufs.length > 0) {
       const buf = this.bowShotBufs[(Math.random() * this.bowShotBufs.length) | 0];
       // Полный натяг — чуть громче и ниже; слабый — тише и звонче.
-      this.playSample(buf, 0.55 + power * 0.5, 0.95 + (1 - power) * 0.12);
+      this.playSample(buf, 0.42 + power * 0.34, 0.96 + (1 - power) * 0.1);
       return;
     }
     this.preloadBowShots();
