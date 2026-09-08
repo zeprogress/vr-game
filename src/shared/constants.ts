@@ -162,7 +162,7 @@ export const SPITTER_CFG: MobConfig = {
 export const BOSS = {
   /** Дальний угол (+x, +z). */
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
-  hp: 1250,
+  hp: 1500,
   scale: 4.25, // во столько раз крупнее обычного слизня
   /**
    * Модель слизня-босса шире сферического хитбокса `MOB.bodyRadius*scale` —
@@ -221,7 +221,7 @@ export const BOSS_CFG: MobConfig = {
   level: 6,
   hp: BOSS.hp,
   // Делится между всеми, кто нанёс боссу урон (см. ZoneSim.hitMob).
-  xp: 250,
+  xp: 400,
   tint: [0.82, 0.11, 0.13],
   alpha: 0.74,
   ranged: false, // ближний бой первичен; плевок — своя логика в ZoneSim
