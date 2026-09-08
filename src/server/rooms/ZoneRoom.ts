@@ -2413,6 +2413,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (Math.hypot(dx, dz) > BOT.rainRadius) continue;
       const l = Math.hypot(dx, dz) || 1;
       this.sim.hitMob(m.id, dmg, dx / l, dz / l, bot.id);
+      // Пригвождает: несколько секунд моб не может сдвинуться с места.
+      this.sim.rootMob(m.id, BOT.rainRootTime);
     }
     this.chatSeen.set(bot.norm, Date.now());
   }

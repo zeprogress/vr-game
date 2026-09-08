@@ -297,6 +297,18 @@ class Mob {
   }
 
   /** true — моб убит этим ударом. */
+  /** Секунд, пока моб пригвождён к земле (град стрел) — не может двигаться. */
+  private rootedT = 0;
+  get rooted(): boolean {
+    return this.rootedT > 0;
+  }
+
+  /** Пригвоздить к земле на `sec` секунд: моб стоит, но бить не перестаёт. */
+  root(sec: number): void {
+    if (this.dead || this.kind === "boss") return; // босса не пришпилить
+    this.rootedT = Math.max(this.rootedT, sec);
+  }
+
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
     if (this.dead || this.kind === "boss") return; // босса с места не сдвинуть
@@ -555,7 +567,14 @@ class Mob {
       }
     }
 
-    if (this.flying) {
+    if (this.rootedT > 0) {
+      // Пригвождён градом стрел: с места не двигается. Вертикаль оставляем —
+      // летающего (пчелу) стрелы прибивают к земле, наземный просто стоит.
+      this.rootedT = Math.max(0, this.rootedT - dt);
+      this.vx = 0;
+      this.vz = 0;
+      this.vy -= MOB.gravity * dt;
+    } else if (this.flying) {
       // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
       let tx = 0;
       let tz = 0;
@@ -665,7 +684,8 @@ class Mob {
     }
 
     // Летающий уже проинтегрировал x/z и выставил y выше — не трогаем.
-    if (!this.flying) {
+    // Но пригвождённый летун падает как обычный моб, поэтому и он сюда идёт.
+    if (!this.flying || this.rootedT > 0) {
       this.x += this.vx * dt;
       this.y += this.vy * dt;
       this.z += this.vz * dt;
@@ -688,7 +708,7 @@ class Mob {
       }
     }
 
-    if (!this.flying) {
+    if (!this.flying || this.rootedT > 0) {
       const gy = terrainHeight(this.x, this.z);
       if (this.y <= gy) {
         this.y = gy;
@@ -1256,6 +1276,11 @@ export class ZoneSim {
   /** Отбросить моба по id (рассекающий удар бота и т.п.). */
   shoveMob(id: string, dx: number, dz: number, power: number): void {
     this.mobs.get(id)?.shove(dx, dz, power);
+  }
+
+  /** Пригвоздить моба к земле по id (град стрел). */
+  rootMob(id: string, sec: number): void {
+    this.mobs.get(id)?.root(sec);
   }
 
   /**
