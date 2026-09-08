@@ -1955,7 +1955,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // и отходит, если моб подобрался (как плевун).
     const ranged =
       (p.rightCls === "bow" || p.rightCls === "staff") && !loot && !!chasingMob;
-    const rangedStop = bossEdge + BOT.shootKeepDist;
+    // Маг бьёт вдвое ближе лучника — и дистанция стрельбы, и «держись подальше».
+    const rangeMul = p.rightCls === "staff" ? BOT.staffRangeMul : 1;
+    const shootRange = BOT.shootRange * rangeMul;
+    const shootKeep = BOT.shootKeepDist * rangeMul;
+    const rangedStop = bossEdge + shootKeep;
     const stopAt = raidBoss
       ? ranged
         ? rangedStop
@@ -1963,7 +1967,7 @@ export class ZoneRoom extends Room<ZoneState> {
       : loot
         ? WEAPON_TAKE_REACH * 0.85
         : ranged && mob
-          ? BOT.shootKeepDist
+          ? shootKeep
           : mob
             ? BOT.attackRange * 0.7
             : follow
@@ -2018,7 +2022,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // медленнее ради читаемости на стриме.
     const botSpeed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
-    const retreat = ranged && chasingMob && dist < BOT.shootKeepDist - 1;
+    const retreat = ranged && chasingMob && dist < shootKeep - 1;
     const wantSpeed =
       bot.swingIn > 0 || emoting
         ? 0
@@ -2073,7 +2077,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальник, у которого цель в зоне выстрела, разворачивается на неё — даже
     // на бегу (отход от подобравшегося моба). Иначе он «стрелял спиной»:
     // корпус смотрел по ходу движения, а снаряд летел из затылка.
-    const wantAim = ranged && !!chasingMob && !emoting && dist < BOT.shootRange;
+    const wantAim = ranged && !!chasingMob && !emoting && dist < shootRange;
     const aimYaw = Math.atan2(dx, dz);
     // Идём — смотрим по ходу; целимся (дальник) — на моба.
     const facingYaw = wantAim
