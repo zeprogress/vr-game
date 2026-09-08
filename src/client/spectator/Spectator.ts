@@ -793,7 +793,7 @@ export class Spectator {
         break;
       case "crit":
         this.crossFx.critMark(x, y + 0.4, z);
-        this.sfx.at(at, () => this.sfx.arrowHit("wood", 1));
+        this.sfx.at({ x, y, z }, () => this.sfx.crit());
         break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));

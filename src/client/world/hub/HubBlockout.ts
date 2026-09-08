@@ -226,12 +226,7 @@ function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: Dyna
  * в вытоптанный (светлее, `troddenAt`) у костра и на тропе к воротам; к краю
  * альфа сходит в ноль — лагерь без круглого шва растворяется в траве.
  */
-function buildCampGround(
-  scene: Scene,
-  cx: number,
-  cz: number,
-  dayLit: { m: StandardMaterial; base: Color3 }[],
-): Mesh {
+function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
   const R = HUB.campRadius + 3;
   const rings = 40;
   const segs = 80;
@@ -259,14 +254,16 @@ function buildCampGround(
       put(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr);
     }
   }
-  for (let si = 0; si < segs; si++) idx.push(0, 1 + ((si + 1) % segs), 1 + si);
+  // Обмотка против часовой (смотрим сверху) — нормали ComputeNormals смотрят
+  // ВВЕРХ, поверхность освещается солнцем так же, как земля поляны.
+  for (let si = 0; si < segs; si++) idx.push(0, 1 + si, 1 + ((si + 1) % segs));
   for (let ri = 0; ri < rings - 1; ri++) {
     const a0 = 1 + ri * segs;
     const b0 = 1 + (ri + 1) * segs;
     for (let si = 0; si < segs; si++) {
       const s2 = (si + 1) % segs;
-      idx.push(a0 + si, b0 + s2, b0 + si);
-      idx.push(a0 + si, a0 + s2, b0 + s2);
+      idx.push(a0 + si, b0 + si, b0 + s2);
+      idx.push(a0 + si, b0 + s2, a0 + s2);
     }
   }
   const m = new Mesh("hubGround", scene);
@@ -284,13 +281,13 @@ function buildCampGround(
   const mat = new StandardMaterial("hubGroundMat", scene);
   mat.diffuseTexture = diffuse;
   mat.bumpTexture = bump;
-  mat.bumpTexture.level = 0.5;
+  mat.bumpTexture.level = 0.45;
   mat.specularColor = new Color3(0, 0, 0);
   mat.maxSimultaneousLights = LIGHT_BUDGET;
-  mat.emissiveColor = new Color3(0.02, 0.017, 0.013);
-  dayLit.push({ m: mat, base: new Color3(0.22, 0.18, 0.13) });
+  // Как у земли поляны: крошечный собственный свет, остальное — солнце/небо.
+  mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
   m.material = mat;
-  m.hasVertexAlpha = true;
+  m.hasVertexAlpha = true; // только для мягкого края (альфа < 1 у кромки)
   m.isPickable = false;
   m.receiveShadows = false;
   return m;
@@ -332,7 +329,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // --- 1-2. Пол лагеря: земляная процедурная текстура (детализация как у
   //          земли поляны), вытоптанная у костра и на тропе к воротам ---
-  const pad = buildCampGround(scene, cx, cz, dayLit);
+  const pad = buildCampGround(scene, cx, cz);
   pad.parent = root;
 
   // --- 3. Костёр в центре: каменное кольцо + брёвна + эмиссивное ядро ---

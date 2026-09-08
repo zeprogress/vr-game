@@ -706,6 +706,31 @@ export class Sfx {
     });
   }
 
+  /** Критический выстрел из лука: резкий звонкий «дзынь» + короткий свист. */
+  crit(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    for (const [f, d] of [
+      [1760, 0],
+      [2637, 0.02],
+    ] as const) {
+      const o = this.ctx!.createOscillator();
+      o.type = "triangle";
+      o.frequency.setValueAtTime(f, t + d);
+      o.frequency.exponentialRampToValueAtTime(f * 0.6, t + d + 0.18);
+      const g = this.env(0.2, 0.002, 0.2, t + d);
+      o.connect(g);
+      o.start(t + d);
+      o.stop(t + d + 0.26);
+    }
+    const n = this.noise();
+    const bp = this.filter("bandpass", 3200, 4);
+    const ng = this.env(0.14, 0.001, 0.06, t);
+    n.connect(bp).connect(ng);
+    n.start(t);
+    n.stop(t + 0.08);
+  }
+
   /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
   bossHorn(): void {
     if (!this.ready()) return;

@@ -2126,7 +2126,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const mult = multIn(p, "right");
       if (bow) {
         const critM = rollCritMult("arrow");
-        if (critM > 1) this.critFx(p.head.x, p.head.y - 0.25, p.head.z, bot.id);
+        // Крит показываем на ЦЕЛИ (мобе), а не над стрелком.
+        if (critM > 1) this.critFx(tgt.x, tgt.y, tgt.z, bot.id);
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,

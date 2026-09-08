@@ -1286,9 +1286,9 @@ export class Game {
         this.avatars.get(id)?.playSwing();
         break;
       case "crit":
-        // Критический выстрел: один красный «X» прямо на мобе + звонкий удар.
+        // Критический выстрел: один красный «X» прямо на мобе + звонкий «дзынь».
         this.crossFx.critMark(x, y + 0.4, z);
-        this.sfx.at(at, () => this.sfx.arrowHit("wood", 1));
+        this.sfx.at(at, () => this.sfx.crit());
         break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));
