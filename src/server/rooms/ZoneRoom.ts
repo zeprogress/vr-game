@@ -82,6 +82,7 @@ import {
   isWeaponKind,
   noGuard,
   resolveBlock,
+  rollCritMult,
   weaponDamage,
   WEAPON_RATE,
   WEAPON_REACH,
@@ -972,7 +973,11 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpDmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) * PVP.damageMult;
+      const pvpCrit = rollCritMult(msg.weapon);
+      const pvpDmg =
+        weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) *
+        PVP.damageMult *
+        pvpCrit;
       this.hurtPlayer({
         target: msg.id,
         dmg: pvpDmg,
@@ -990,7 +995,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi);
+    // Крит — только у лука, бросает сервер (см. rollCritMult).
+    const crit = rollCritMult(msg.weapon);
+    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) * crit;
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -1003,6 +1010,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const sx = struck?.x ?? 0;
     const sy = struck?.y ?? 0;
     const sz = struck?.z ?? 0;
+    if (crit > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
     this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
@@ -1016,6 +1024,12 @@ export class ZoneRoom extends Room<ZoneState> {
         client.sessionId,
       );
     }
+  }
+
+  /** Вспышка критического выстрела в точке попадания — видят все. */
+  private critFx(x: number, y: number, z: number, by: string): void {
+    const relay: ActRelay = { k: "crit", id: by, x, y, z };
+    this.broadcast(MSG.act, relay);
   }
 
   /** id игрока/бота в state.players по его состоянию. */
@@ -2103,10 +2117,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
       const mult = multIn(p, "right");
       if (bow) {
+        const critM = rollCritMult("arrow");
+        if (critM > 1) this.critFx(p.head.x, p.head.y - 0.25, p.head.z, bot.id);
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
-          weaponDamage("arrow", p.level, p.str, mult, p.agi),
+          weaponDamage("arrow", p.level, p.str, mult, p.agi) * critM,
           bot.id, 2.5, 1,
         );
       } else {
@@ -2412,7 +2428,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const dz = m.z - bot.rainZ;
       if (Math.hypot(dx, dz) > BOT.rainRadius) continue;
       const l = Math.hypot(dx, dz) || 1;
-      this.sim.hitMob(m.id, dmg, dx / l, dz / l, bot.id);
+      // Крит бросаем на каждую цель отдельно — залп, а не один выстрел.
+      const critM = rollCritMult("arrow");
+      if (critM > 1) this.critFx(m.x, m.y, m.z, bot.id);
+      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, bot.id);
       // Пригвождает: несколько секунд моб не может сдвинуться с места.
       this.sim.rootMob(m.id, BOT.rainRootTime);
     }

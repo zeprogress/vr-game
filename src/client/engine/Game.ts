@@ -1269,6 +1269,11 @@ export class Game {
         // читается как выстрел. Лучше, чем застывшая поза.
         this.avatars.get(id)?.playSwing();
         break;
+      case "crit":
+        // Критический выстрел: оранжевые крестики и звонкий удар.
+        this.crossFx.burst(x, y, z, 7, W_ORANGE);
+        this.sfx.at(at, () => this.sfx.arrowHit("wood", 1));
+        break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));
         break;

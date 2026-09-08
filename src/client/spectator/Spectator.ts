@@ -750,6 +750,10 @@ export class Spectator {
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));
         this.avatars.get(id)?.playSwing();
         break;
+      case "crit":
+        this.crossFx.burst(x, y, z, 7, CROSS_ORANGE);
+        this.sfx.at(at, () => this.sfx.arrowHit("wood", 1));
+        break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));
         break;

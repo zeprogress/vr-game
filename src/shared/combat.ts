@@ -34,6 +34,16 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
 };
 
 /**
+ * Критический выстрел из лука: с шансом `BOW.critChance` урон множится на
+ * `BOW.critMult`. Бросок делает СЕРВЕР (иначе клиент крутил бы кубик сам).
+ * Возвращает множитель: 1 — обычный удар, critMult — крит.
+ */
+export function rollCritMult(kind: WeaponKind, rnd: () => number = Math.random): number {
+  if (kind !== "arrow") return 1;
+  return rnd() < BOW.critChance ? BOW.critMult : 1;
+}
+
+/**
  * Урон оружия. Физ. урон растёт от УРОВНЯ (ускоряется) и множится на силу;
  * `mult` — множитель тира предмета в руке (бронза, золото).
  */
