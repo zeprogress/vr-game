@@ -958,6 +958,8 @@ class Bolt {
     /** АОЕ в точке попадания: радиус (м) и урон в эпицентре. 0 — без сплэша. */
     public readonly splashR: number = 0,
     public readonly splashDmg: number = 0,
+    /** Крит: при попадании комната покажет красный «X» в точке. */
+    public readonly crit: boolean = false,
   ) {}
 }
 
@@ -1173,6 +1175,7 @@ export class ZoneSim {
     kind = 0,
     splashR = 0,
     splashDmg = 0,
+    crit = false,
   ): void {
     if (this.bolts.size >= 24) {
       const first = this.bolts.keys().next().value as string | undefined;
@@ -1182,7 +1185,7 @@ export class ZoneSim {
     const b = new Bolt(
       x, y, z,
       (dx / dl) * speed, (dy / dl) * speed, (dz / dl) * speed,
-      radius, hitRadius, dmg, owner, life, kind, splashR, splashDmg,
+      radius, hitRadius, dmg, owner, life, kind, splashR, splashDmg, crit,
     );
     this.bolts.set(b.id, b);
   }
@@ -1210,6 +1213,7 @@ export class ZoneSim {
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
+        if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner);
@@ -1233,6 +1237,8 @@ export class ZoneSim {
    */
   readonly bossXpShare: { owner: string; xp: number }[] = [];
   readonly mobXpShare: { owner: string; xp: number }[] = [];
+  /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
+  readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 

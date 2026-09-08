@@ -2126,13 +2126,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const mult = multIn(p, "right");
       if (bow) {
         const critM = rollCritMult("arrow");
-        // Крит показываем на ЦЕЛИ (мобе), а не над стрелком.
-        if (critM > 1) this.critFx(tgt.x, tgt.y, tgt.z, bot.id);
+        // Красный «X» — не сейчас, а в момент попадания стрелы (sim.critHits).
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
           weaponDamage("arrow", p.level, p.str, mult, p.agi) * critM,
-          bot.id, 2.5, 1,
+          bot.id, 2.5, 1, 0, 0, critM > 1,
         );
       } else {
         const bd = fireboltDamage(p.level, p.int, 0.7);
@@ -2640,6 +2639,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
     }
     this.sim.mobXpShare.length = 0;
+    // Криты снарядов — красный «X» в точке попадания стрелы.
+    for (const c of this.sim.critHits) this.critFx(c.x, c.y, c.z, c.owner);
+    this.sim.critHits.length = 0;
     // Добивания: счётчик kills добившему + кил-фид (кроме осколков и босса —
     // босса объявляем отдельно, по крупнейшему вкладу).
     for (const k of this.sim.mobKills) {
