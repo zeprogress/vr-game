@@ -431,6 +431,19 @@ class Mob {
     }
     const chasing = this.aggroed && np !== null;
 
+    // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
+    // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
+    // это сам отключает; далёкий аггро одиночного бота картину не ломает.
+    const bossFacingMeadow =
+      this.faceRest &&
+      this.grounded &&
+      this.slamWindupT <= 0 &&
+      this.lungeWindupT <= 0 &&
+      this.lungeT <= 0 &&
+      this.shootQueue === 0 &&
+      Math.hypot(this.vx, this.vz) < 0.25 &&
+      (this.x - this.homeX) ** 2 + (this.z - this.homeZ) ** 2 < (BOSS.wanderRadius + 4) ** 2;
+
     const rage = this.enraged ? BOSS.rageSpeedMult : 1;
     const rageRate = this.enraged ? BOSS.rageRateMult : 1;
     const rageDmg = this.enraged ? BOSS.rageDamageMult : 1;
@@ -610,7 +623,7 @@ class Mob {
       this.y = terrainHeight(this.x, this.z) + 1.35 + Math.sin(this.flyBob) * 0.12;
       this.vy = 0;
       this.grounded = true; // клиент: без прыжков/приземлений
-      if (Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
+      if (!bossFacingMeadow && Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
     } else if (
       this.grounded &&
       this.slamWindupT <= 0 &&
@@ -680,7 +693,7 @@ class Mob {
         this.vz = hz * spd;
         this.vy = MOB.hopUp * 0.7;
         this.grounded = false;
-        this.yaw = Math.atan2(hx, hz);
+        if (!this.faceRest) this.yaw = Math.atan2(hx, hz);
       }
     } else {
       this.vy -= MOB.gravity * dt;
@@ -761,7 +774,13 @@ class Mob {
       }
     }
 
-    if (chasing) this.yaw = Math.atan2(dx, dz);
+    if (chasing && !bossFacingMeadow) this.yaw = Math.atan2(dx, dz);
+    if (bossFacingMeadow) {
+      let dyaw = this.restYaw - this.yaw;
+      while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+      while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+      this.yaw += dyaw * Math.min(1, dt * 1.5);
+    }
 
     if (chasing && np && !isBoss) {
       if (this.ranged) {
