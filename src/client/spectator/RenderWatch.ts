@@ -110,6 +110,14 @@ export class RenderWatch {
     });
 
     setInterval(() => {
+      // Скрытая вкладка/окно — браузер сам замораживает rAF, это НЕ зависание.
+      // В OBS браузер-источник обычно рендерится и будучи «невидимым», но при
+      // сворачивании OBS или неактивной сцене вкладка честно уходит в hidden —
+      // тогда молчим, иначе поймали бы себя в цикл перезагрузок.
+      if (document.hidden) {
+        this.lastRenderAt = performance.now();
+        return;
+      }
       if (gl?.isContextLost() && this.ctxLostAt === 0) {
         // Событие не пришло (бывает на части драйверов), а контекст мёртв.
         this.ctxLostCount++;
@@ -235,6 +243,11 @@ export class RenderWatch {
     this.probeCamX = cam.x;
     this.probeCamZ = cam.z;
 
+    if (document.hidden) {
+      this.probeStale = 0;
+      this.probeSig = sig;
+      return;
+    }
     if (this.probeSig === sig && moved > PROBE_CAM_MOVE) {
       this.probeStale++;
       if (this.probeStale >= PROBE_STALE_LIMIT) this.freeze("кадр не меняется");
