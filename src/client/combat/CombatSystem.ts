@@ -1601,8 +1601,12 @@ export class CombatSystem {
   /**
    * Предметы в руках расталкивают мобов (не урон): прислонил меч/щит —
    * моб отъезжает; скорость толчка тем выше, чем быстрее движется рука.
+   *
+   * Только в VR: там это физическое взаимодействие рукой. На ПК/телефоне
+   * оружие ездит за камерой и толкало бы мобов при каждом взмахе — не нужно.
    */
   private shoveWithHeldItems(): void {
+    if (!this.player.inVR) return;
     for (const item of this.items) {
       if (!item.hand) continue;
       const kind = item.kind;

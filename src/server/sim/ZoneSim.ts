@@ -333,14 +333,8 @@ class Mob {
         if (before > BOSS.splitAt[this.splitsDone - 1]) this.pendingSplit = true;
       }
     }
-    // Босса не сдвинуть с места ударом, осколок — легко.
-    const kb = this.kind === "boss" ? 0 : Math.min(2.5 + dmg * 1.5, 7);
-    this.vx += dx * kb;
-    this.vz += dz * kb;
-    if (kb > 0) {
-      this.vy += 2.5;
-      this.grounded = false;
-    }
+    // Обычный удар моба НЕ отталкивает (только замах-скиллы через shove()).
+    // Направление удара всё равно запоминаем — по нему клиент играет вздрагивание.
     this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
     this.hurtDx = dx;
     this.hurtDz = dz;

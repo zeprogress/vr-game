@@ -706,41 +706,42 @@ export class Sfx {
     });
   }
 
-  /** Критический выстрел из лука: тяжёлый мясистый удар с коротким низким гулом. */
+  /** Критический выстрел из лука: увесистый удар с ясным, но не визгливым звоном. */
   crit(): void {
     if (!this.ready()) return;
     const t = this.t;
-    // Низкое тело удара — падающая синусоида, даёт «вес».
+    // Тело удара — падающая синусоида в среднем низу, даёт вес без гула.
     const body = this.ctx!.createOscillator();
     body.type = "sine";
-    body.frequency.setValueAtTime(190, t);
-    body.frequency.exponentialRampToValueAtTime(64, t + 0.22);
-    const bodyG = this.env(0.5, 0.002, 0.24, t);
+    body.frequency.setValueAtTime(300, t);
+    body.frequency.exponentialRampToValueAtTime(110, t + 0.2);
+    const bodyG = this.env(0.42, 0.002, 0.22, t);
     body.connect(bodyG);
     body.start(t);
-    body.stop(t + 0.3);
-    // Средний акцент — квинта в низком регистре, короткая.
+    body.stop(t + 0.28);
+    // Звонкий акцент — квинта в среднем регистре (октавой ниже прежнего писка).
     for (const [f, d] of [
-      [330, 0],
-      [247, 0.03],
+      [880, 0],
+      [1320, 0.02],
     ] as const) {
       const o = this.ctx!.createOscillator();
       o.type = "triangle";
       o.frequency.setValueAtTime(f, t + d);
-      o.frequency.exponentialRampToValueAtTime(f * 0.7, t + d + 0.16);
-      const g = this.env(0.18, 0.003, 0.16, t + d);
+      o.frequency.exponentialRampToValueAtTime(f * 0.62, t + d + 0.16);
+      const g = this.env(0.16, 0.003, 0.16, t + d);
       o.connect(g);
       o.start(t + d);
       o.stop(t + d + 0.22);
     }
-    // Глухой транзиент-щелчок вместо свиста.
+    // Короткий транзиент — чирк, но мягкий.
     const n = this.noise();
-    const bp = this.filter("bandpass", 1100, 2);
-    const ng = this.env(0.22, 0.001, 0.05, t);
+    const bp = this.filter("bandpass", 2000, 3);
+    const ng = this.env(0.16, 0.001, 0.05, t);
     n.connect(bp).connect(ng);
     n.start(t);
     n.stop(t + 0.07);
   }
+
 
   /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
   bossHorn(): void {
