@@ -68,7 +68,7 @@ export const BOW = {
   drawPullFlat: 0.42, // м, на сколько уходит назад тетива при полном натяге
   /** Критический выстрел: шанс и во сколько раз больнее. Только у лука. */
   critChance: 0.2,
-  critMult: 2,
+  critMult: 3,
 } as const;
 
 export const ARROW = {

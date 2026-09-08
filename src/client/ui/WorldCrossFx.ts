@@ -5,15 +5,27 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
-import { CROSS_GREEN, CROSS_ORANGE } from "./HealCrossFx";
+import { CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "./HealCrossFx";
 
-export { CROSS_GREEN, CROSS_ORANGE };
+export { CROSS_GREEN, CROSS_ORANGE, CROSS_RED };
 
 /** Сколько крестиков живёт одновременно на всю сцену. */
 const POOL = 48;
 const LIFE = 1.5; // с полёта
 const RISE = 1.6; // м вверх за жизнь
 const SPREAD = 0.9; // м разлёта по горизонтали
+
+/** Красный «X» критического удара — держится на мобе и тает. */
+const CRIT_POOL = 14;
+const CRIT_LIFE = 0.6; // с
+
+interface CritX {
+  mesh: Mesh;
+  age: number;
+  x: number;
+  y: number;
+  z: number;
+}
 
 interface Cross {
   mesh: Mesh;
@@ -38,6 +50,8 @@ interface Cross {
 export class WorldCrossFx {
   private readonly pool: Cross[] = [];
   private next = 0;
+  private readonly critPool: CritX[] = [];
+  private critNext = 0;
 
   constructor(private readonly scene: Scene) {
     const bar = MeshBuilder.CreateBox("wCrossH", { width: 0.34, height: 0.08, depth: 0.08 }, scene);
@@ -62,6 +76,43 @@ export class WorldCrossFx {
       m.setEnabled(false);
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
+
+    // Крит с лука — ОДИН красный крест, повёрнутый на 45° («X»), прямо на мобе.
+    const xa = MeshBuilder.CreateBox("critXa", { width: 0.62, height: 0.11, depth: 0.05 }, scene);
+    xa.rotation.z = Math.PI / 4;
+    const xb = MeshBuilder.CreateBox("critXb", { width: 0.62, height: 0.11, depth: 0.05 }, scene);
+    xb.rotation.z = -Math.PI / 4;
+    const xMerged = Mesh.MergeMeshes([xa, xb], true, true);
+    const xProto = xMerged ?? xa;
+    if (!xMerged) xb.dispose();
+    xProto.name = "critXProto";
+    for (let i = 0; i < CRIT_POOL; i++) {
+      const m = i === 0 ? xProto : xProto.clone(`critX${i}`);
+      const mat = new StandardMaterial(`critXMat${i}`, scene);
+      mat.emissiveColor = CROSS_RED.clone();
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.disableDepthWrite = true;
+      m.material = mat;
+      m.isPickable = false;
+      m.renderingGroupId = 1;
+      m.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      m.setEnabled(false);
+      this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
+    }
+  }
+
+  /** Красный «X» критического попадания — держится на мобе ~0.6 с и тает. */
+  critMark(x: number, y: number, z: number): void {
+    const c = this.critPool[this.critNext];
+    this.critNext = (this.critNext + 1) % this.critPool.length;
+    c.x = x;
+    c.y = y;
+    c.z = z;
+    c.age = 0;
+    c.mesh.position.set(x, y, z);
+    c.mesh.setEnabled(true);
   }
 
   /**
@@ -87,6 +138,21 @@ export class WorldCrossFx {
   }
 
   update(dt: number): void {
+    for (const c of this.critPool) {
+      if (c.age > CRIT_LIFE) continue;
+      c.age += dt;
+      if (c.age > CRIT_LIFE) {
+        c.mesh.setEnabled(false);
+        continue;
+      }
+      const t = c.age / CRIT_LIFE;
+      // Выпрыгивает крупнее, затем оседает; всплывает чуть-чуть.
+      const pop = t < 0.18 ? t / 0.18 : 1;
+      const settle = 1.35 - 0.35 * Math.min(1, (t - 0.18) / 0.3);
+      c.mesh.scaling.setAll(pop * settle);
+      c.mesh.position.set(c.x, c.y + t * 0.25, c.z);
+      (c.mesh.material as StandardMaterial).alpha = Math.min(1, (1 - t) * 2.5);
+    }
     for (const c of this.pool) {
       if (c.age > LIFE) continue;
       c.age += dt;
@@ -109,7 +175,7 @@ export class WorldCrossFx {
   }
 
   dispose(): void {
-    for (const c of this.pool) {
+    for (const c of [...this.pool, ...this.critPool]) {
       c.mesh.material?.dispose();
       c.mesh.dispose();
     }

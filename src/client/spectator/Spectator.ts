@@ -792,7 +792,7 @@ export class Spectator {
         this.avatars.get(id)?.playSwing();
         break;
       case "crit":
-        this.crossFx.burst(x, y, z, 7, CROSS_ORANGE);
+        this.crossFx.critMark(x, y + 0.4, z);
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 1));
         break;
       case "arrowHit":
