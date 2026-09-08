@@ -44,6 +44,8 @@ export interface Zone {
   bowHome: Vector3;
   shieldHome: Vector3;
   staffHome: Vector3;
+  /** Куда «лицом» смотрит оружие на стойке (к площади лагеря). */
+  weaponsFaceYaw: number;
 }
 
 /**
@@ -136,20 +138,24 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     }
   }
 
-  // Базовое оружие — на стойках оружейной HUB (раньше было у старого спавна).
+  // Базовое оружие стоит на стойке оружейной HUB — вертикально, не парит и не
+  // крутится (позы задаёт CombatSystem по weaponsFaceYaw). `lift` у каждого
+  // свой: столько от точки хвата до земли, чтобы предмет стоял на грунте.
   const wz = HUB.zones.weapons;
   const wYaw = Math.atan2(HUB.center.x - wz.x, HUB.center.z - wz.z); // лицом к площади
-  const perpX = Math.cos(wYaw);
-  const perpZ = -Math.sin(wYaw);
+  const alongX = Math.cos(wYaw); // вдоль планки стойки
+  const alongZ = -Math.sin(wYaw);
+  const fwdX = Math.sin(wYaw); // от стойки к площади (там стоит игрок)
+  const fwdZ = Math.cos(wYaw);
   const homeAt = (slot: number, lift: number): Vector3 => {
-    const hx = wz.x + perpX * slot;
-    const hz = wz.z + perpZ * slot;
+    const hx = wz.x + alongX * slot + fwdX * 0.35;
+    const hz = wz.z + alongZ * slot + fwdZ * 0.35;
     return new Vector3(hx, terrain.heightAt(hx, hz) + lift, hz);
   };
-  const swordHome = homeAt(-1.5, 0.8);
-  const bowHome = homeAt(-0.5, 0.8);
-  const shieldHome = homeAt(0.5, 0.75);
-  const staffHome = homeAt(1.5, 0.9);
+  const swordHome = homeAt(-1.8, 0.02);
+  const bowHome = homeAt(-0.6, 0.72);
+  const shieldHome = homeAt(0.6, 0.34);
+  const staffHome = homeAt(1.8, 0.5);
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
   const rockObstacles = scatterRocks(scene, terrain, [
@@ -229,5 +235,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     bowHome,
     shieldHome,
     staffHome,
+    weaponsFaceYaw: wYaw,
   };
 }

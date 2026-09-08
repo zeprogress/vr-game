@@ -71,10 +71,12 @@ export function terrainHeight(x: number, z: number): number {
   const hz = z - HUB_CENTER.z;
   const hd = Math.sqrt(hx * hx + hz * hz);
   const HUB_FADE = 10;
+  const HUB_RELIEF_KEEP = 0.35; // доля природного рельефа, остающаяся в лагере — не пирог
   if (hd < HUB.campRadius + HUB_FADE) {
     const t = clamp01((hd - HUB.campRadius) / HUB_FADE);
     const pad = HUB_PAD_Y + hubBump(x, z) * 0.22 * (1 - troddenAt(x, z));
-    h = pad + (h - pad) * t;
+    const blend = HUB_RELIEF_KEEP + (1 - HUB_RELIEF_KEEP) * t;
+    h = pad + (h - pad) * blend;
   }
   return h;
 }

@@ -9,13 +9,15 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
-import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 
 import { HUB } from "#shared/hub";
 import { terrainHeight, troddenAt } from "#shared/terrain";
 import type { Obstacle } from "../props";
+import { WORLD } from "#shared/constants";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { LIGHT_BUDGET } from "../Fireflies";
 import { buildHubCampfire } from "./HubCampfire";
 
@@ -93,33 +95,165 @@ function clamp01(v: number): number {
 }
 
 /**
- * Земля лагеря — НЕ плоский диск: сетка колец, повторяющая рельеф (в лагере он
- * с мелкими буграми, см. terrain.hubBump). Цвет в вершинах: у костра и на тропе
- * к воротам земля вытоптана и светлее (`troddenAt`), к краю прозрачность
- * сходит в ноль — лагерь мягко растворяется в траве поляны, без круглого шва.
+ * Процедурная текстура утоптанной земли лагеря — та же «кухня», что у травы
+ * поляны (периодический fbm + нормаль-мапа из поля высот), только палитра
+ * земляная: сухой плотный грунт, редкие камешки, темнее в ложбинах. Тайлится
+ * встык (шум периодичен по SPAN).
  */
-function buildCampGround(scene: Scene, cx: number, cz: number, mat: StandardMaterial): Mesh {
+function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: DynamicTexture } {
+  const S = 512;
+  const SPAN = 4;
+  const hash = (x: number, y: number): number => {
+    const n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  const pnoise = (x: number, y: number, cells: number): number => {
+    const xi = Math.floor(x);
+    const yi = Math.floor(y);
+    const xf = x - xi;
+    const yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf);
+    const v = yf * yf * (3 - 2 * yf);
+    const w = (n: number): number => ((n % cells) + cells) % cells;
+    const a = hash(w(xi), w(yi));
+    const b = hash(w(xi + 1), w(yi));
+    const c = hash(w(xi), w(yi + 1));
+    const e = hash(w(xi + 1), w(yi + 1));
+    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + e * u * v;
+  };
+  const fbm = (x: number, y: number, oct = 5): number => {
+    let f = 0;
+    let amp = 0.5;
+    for (let o = 0; o < oct; o++) {
+      const fr = 1 << o;
+      f += amp * pnoise(x * fr, y * fr, SPAN * fr);
+      amp *= 0.5;
+    }
+    return f;
+  };
+  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
+  const clc = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+  const dark = [74, 58, 42];
+  const midC = [122, 98, 70];
+  const lite = [158, 134, 98];
+  const pebble = [150, 150, 150];
+
+  const P = S * S;
+  const H = new Float32Array(P);
+  const R = new Uint8ClampedArray(P);
+  const G = new Uint8ClampedArray(P);
+  const B = new Uint8ClampedArray(P);
+
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      const i = py * S + px;
+      const u = (px / S) * SPAN;
+      const v = (py / S) * SPAN;
+      const wx = u + 0.7 * fbm(u + 5, v + 1, 3);
+      const wy = v + 0.7 * fbm(u + 3, v + 6, 3);
+      const macro = fbm(wx, wy);
+      const grain = pnoise(u * 46, v * 46, SPAN * 46);
+      const speck = pnoise(u * 120 + 7, v * 120 + 3, SPAN * 120);
+      const h = clc(0.5 + (macro - 0.5) * 0.8 + (grain - 0.5) * 0.4);
+      H[i] = h;
+      let col =
+        macro < 0.5
+          ? dark.map((c, k) => lerp(c, midC[k], macro * 2))
+          : midC.map((c, k) => lerp(c, lite[k], (macro - 0.5) * 2));
+      // мелкие камешки
+      const isPeb = speck > 0.93 ? (speck - 0.93) / 0.07 : 0;
+      col = col.map((c, k) => lerp(c, pebble[k], isPeb * 0.7));
+      const shade = (0.8 + h * 0.3) * (0.95 + grain * 0.1);
+      R[i] = col[0] * shade;
+      G[i] = col[1] * shade;
+      B[i] = col[2] * shade;
+    }
+  }
+
+  const diffuse = new DynamicTexture("hubGroundTex", { width: S, height: S }, scene, true);
+  const dctx = diffuse.getContext() as unknown as CanvasRenderingContext2D;
+  const dimg = dctx.createImageData(S, S);
+  for (let i = 0; i < P; i++) {
+    dimg.data[i * 4] = R[i];
+    dimg.data[i * 4 + 1] = G[i];
+    dimg.data[i * 4 + 2] = B[i];
+    dimg.data[i * 4 + 3] = 255;
+  }
+  dctx.putImageData(dimg, 0, 0);
+  diffuse.update(false);
+
+  const bump = new DynamicTexture("hubGroundBump", { width: S, height: S }, scene, false);
+  const bctx = bump.getContext() as unknown as CanvasRenderingContext2D;
+  const bimg = bctx.createImageData(S, S);
+  const str = 2.0;
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S; px++) {
+      const i = py * S + px;
+      const l = H[py * S + ((px - 1 + S) % S)];
+      const r = H[py * S + ((px + 1) % S)];
+      const t = H[((py - 1 + S) % S) * S + px];
+      const b = H[((py + 1) % S) * S + px];
+      let nx = (l - r) * str;
+      let ny = (t - b) * str;
+      const inv = 1 / Math.hypot(nx, ny, 1);
+      nx *= inv;
+      ny *= inv;
+      bimg.data[i * 4] = (nx * 0.5 + 0.5) * 255;
+      bimg.data[i * 4 + 1] = (ny * 0.5 + 0.5) * 255;
+      bimg.data[i * 4 + 2] = inv * 255;
+      bimg.data[i * 4 + 3] = 255;
+    }
+  }
+  bctx.putImageData(bimg, 0, 0);
+  bump.update(false);
+
+  const tile = (HUB.campRadius * 2) / 6; // ~6 м на повтор
+  for (const tx of [diffuse, bump]) {
+    tx.uScale = tile;
+    tx.vScale = tile;
+    tx.wrapU = Texture.WRAP_ADDRESSMODE;
+    tx.wrapV = Texture.WRAP_ADDRESSMODE;
+    tx.anisotropicFilteringLevel = 8;
+  }
+  return { diffuse, bump };
+}
+
+/**
+ * Пол лагеря — меш по рельефу, лежит на +0.04 м над террейном. Материал —
+ * земляная процедурная текстура (`campGroundTextures`) с тем же уровнем
+ * детализации и нормаль-мапой, что у земли поляны. Цвет вершин уводит грунт
+ * в вытоптанный (светлее, `troddenAt`) у костра и на тропе к воротам; к краю
+ * альфа сходит в ноль — лагерь без круглого шва растворяется в траве.
+ */
+function buildCampGround(
+  scene: Scene,
+  cx: number,
+  cz: number,
+  dayLit: { m: StandardMaterial; base: Color3 }[],
+): Mesh {
   const R = HUB.campRadius + 3;
-  const rings = 34;
-  const segs = 72;
+  const rings = 40;
+  const segs = 80;
+  const size = WORLD.size;
   const pos: number[] = [];
+  const uv: number[] = [];
   const col: number[] = [];
   const idx: number[] = [];
   const put = (x: number, z: number): void => {
-    pos.push(x, terrainHeight(x, z) + 0.05, z);
-    // Чуть «шумим» базовый цвет, чтобы земля не была однотонной заливкой.
-    const n = 0.92 + 0.16 * (Math.sin(x * 0.9) * Math.cos(z * 0.77) * 0.5 + 0.5);
+    pos.push(x, terrainHeight(x, z) + 0.04, z);
+    uv.push((x + size / 2) / size, (z + size / 2) / size);
     const w = troddenAt(x, z);
-    col.push(
-      (C.groundBase.r + (C.groundWorn.r - C.groundBase.r) * w) * n,
-      (C.groundBase.g + (C.groundWorn.g - C.groundBase.g) * w) * n,
-      (C.groundBase.b + (C.groundWorn.b - C.groundBase.b) * w) * n,
-      clamp01((R - Math.hypot(x - cx, z - cz)) / 5),
-    );
+    // Вытоптанное — светлее и ровнее; обычный грунт лагеря — чуть темнее.
+    const base = 0.86 - 0.06 * (Math.sin(x * 1.9) * Math.cos(z * 1.7) * 0.5 + 0.5);
+    const worn = 1.12;
+    const k = base + (worn - base) * w;
+    const edge = clamp01((R - Math.hypot(x - cx, z - cz)) / 6);
+    col.push(k, k, k, edge);
   };
   put(cx, cz);
   for (let ri = 1; ri <= rings; ri++) {
-    const rr = R * Math.pow(ri / rings, 0.85); // кольца гуще к центру
+    const rr = R * Math.pow(ri / rings, 0.85);
     for (let si = 0; si < segs; si++) {
       const a = (si / segs) * Math.PI * 2;
       put(cx + Math.cos(a) * rr, cz + Math.sin(a) * rr);
@@ -141,9 +275,20 @@ function buildCampGround(scene: Scene, cx: number, cz: number, mat: StandardMate
   VertexData.ComputeNormals(pos, idx, normals);
   vd.positions = pos;
   vd.indices = idx;
+  vd.uvs = uv;
   vd.colors = col;
   vd.normals = normals;
   vd.applyToMesh(m);
+
+  const { diffuse, bump } = campGroundTextures(scene);
+  const mat = new StandardMaterial("hubGroundMat", scene);
+  mat.diffuseTexture = diffuse;
+  mat.bumpTexture = bump;
+  mat.bumpTexture.level = 0.5;
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.maxSimultaneousLights = LIGHT_BUDGET;
+  mat.emissiveColor = new Color3(0.02, 0.017, 0.013);
+  dayLit.push({ m: mat, base: new Color3(0.22, 0.18, 0.13) });
   m.material = mat;
   m.hasVertexAlpha = true;
   m.isPickable = false;
@@ -184,20 +329,10 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight, undefined, dayLit);
   const matStone = flatMat(scene, "hubStone", C.stone, undefined, dayLit);
   const matBanner = flatMat(scene, "hubBanner", C.banner, C.banner.scale(0.12));
-  const lanternMat = flatMat(scene, "hubLantern", new Color3(1, 0.82, 0.5), new Color3(1, 0.7, 0.35));
 
-  // --- 1-2. Земля лагеря: сетка по рельефу, вытоптанная у костра и к воротам ---
-  const matGround = new StandardMaterial("hubGroundMat", scene);
-  matGround.diffuseColor = new Color3(1, 1, 1); // цвет несут вершины
-  matGround.specularColor = new Color3(0, 0, 0);
-  matGround.backFaceCulling = false;
-  matGround.twoSidedLighting = true;
-  matGround.maxSimultaneousLights = LIGHT_BUDGET;
-  // Заливка у земли слабее, чем у построек: иначе плоский эмиссив «съедает»
-  // разницу между вытоптанным и обычным грунтом.
-  matGround.emissiveColor = C.groundBase.scale(0.12);
-  dayLit.push({ m: matGround, base: C.groundBase.scale(0.5) });
-  const pad = buildCampGround(scene, cx, cz, matGround);
+  // --- 1-2. Пол лагеря: земляная процедурная текстура (детализация как у
+  //          земли поляны), вытоптанная у костра и на тропе к воротам ---
+  const pad = buildCampGround(scene, cx, cz, dayLit);
   pad.parent = root;
 
   // --- 3. Костёр в центре: каменное кольцо + брёвна + эмиссивное ядро ---
@@ -290,26 +425,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     obstacles.push({ x: p.x, z: p.z, r: 0.6 });
   }
   merge(clutter, "hubClutter", matWoodLite);
-
-  // --- 5. Лагерные фонари на столбах (эмиссив, без PointLight) ---
-  const lanternPosts: Mesh[] = [];
-  const lanternGlobes: Mesh[] = [];
-  const lampN = 8;
-  for (let i = 0; i < lampN; i++) {
-    const a = (i / lampN) * Math.PI * 2;
-    const lx = cx + Math.cos(a) * (HUB.plazaRadius - 1);
-    const lz = cz + Math.sin(a) * (HUB.plazaRadius - 1);
-    const gy = groundY(lx, lz);
-    const post = MeshBuilder.CreateCylinder(`lampPost${i}`, { height: 2.6, diameter: 0.14 }, scene);
-    post.position.set(lx, gy + 1.3, lz);
-    lanternPosts.push(post);
-    const globe = MeshBuilder.CreateSphere(`lampGlobe${i}`, { diameter: 0.34, segments: 6 }, scene);
-    globe.position.set(lx, gy + 2.55, lz);
-    lanternGlobes.push(globe);
-    obstacles.push({ x: lx, z: lz, r: 0.3 });
-  }
-  merge(lanternPosts, "hubLampPosts", matWood);
-  merge(lanternGlobes, "hubLampGlobes", lanternMat);
 
   // --- 6. Главные ворота: две башенки + перекладина + баннер ---
   const g = HUB.gate;
@@ -602,28 +717,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     obstacles.push({ x: f.x, z: f.z, r: 1.2 }, { x: f.x + 2, z: f.z, r: 0.4 });
   }
 
-  // --- 15. Placeholder NPC (idle-капсулы, лёгкое покачивание) + инструктор ---
-  const npcMat = flatMat(scene, "hubNpc", new Color3(0.42, 0.4, 0.45), undefined, dayLit);
-  const instrMat = flatMat(scene, "hubInstr", new Color3(0.3, 0.42, 0.5), undefined, dayLit);
-  const npcs: { mesh: Mesh; phase: number; baseY: number }[] = [];
-  const npcSpots: { x: number; z: number; instructor?: boolean }[] = [
-    { x: cx + 2.5, z: cz + 3.5 },
-    { x: cx - 2, z: cz + 3 },
-    { x: HUB.zones.market.x, z: HUB.zones.market.z + 2 },
-    { x: HUB.zones.forge.x + 0.6, z: HUB.zones.forge.z + 1.4 },
-    { x: HUB.zones.instructor.x, z: HUB.zones.instructor.z, instructor: true },
-  ];
-  for (const s of npcSpots) {
-    const gy0 = groundY(s.x, s.z);
-    const body = MeshBuilder.CreateCapsule(`hubNpc`, { radius: 0.28, height: 1.7 }, scene);
-    body.position.set(s.x, gy0 + 0.85, s.z);
-    body.material = s.instructor ? instrMat : npcMat;
-    body.parent = root;
-    body.isPickable = false;
-    npcs.push({ mesh: body, phase: (s.x * 7.3 + s.z) % 6.28, baseY: gy0 + 0.85 });
-    obstacles.push({ x: s.x, z: s.z, r: 0.4 });
-  }
-
   // --- 16. Палатка медика (синяя, юго-запад) ---
   {
     const md = HUB.zones.medic;
@@ -716,8 +809,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     merge(canvases, "hubPlayerTents", flatMat(scene, "hubPtCanvas", C.canvas.scale(0.95), undefined, dayLit));
   }
 
-  // ---- день/ночь: фонари/горн ярче в темноте; NPC покачиваются; костёр ----
-  const lanternBase = new Color3(1, 0.7, 0.35);
+  // ---- день/ночь: горн ярче в темноте; боковая заливка граней; костёр ----
   const forgeBase = new Color3(1, 0.35, 0.1);
   let last = performance.now();
   function tick(daylight: number): void {
@@ -726,19 +818,12 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     last = now;
     const d = Math.min(1, Math.max(0, daylight));
     const night = 1 - d;
-    const glow = 0.25 + night * 0.9;
-    lanternMat.emissiveColor.copyFrom(lanternBase).scaleInPlace(glow);
     forgeMat.emissiveColor.copyFrom(forgeBase).scaleInPlace(0.7 + night * 0.4);
     campfire.tick(dt, d);
     // Обычные поверхности: днём подсвечиваем боковые грани (заливки от движка
     // нет), ночью гасим почти в ноль — лагерь не должен светиться сам.
     const fill = 0.06 + 0.42 * d;
     for (const g of dayLit) g.m.emissiveColor.copyFrom(g.base).scaleInPlace(fill);
-    const t = now / 1000;
-    for (const n of npcs) {
-      n.mesh.position.y = n.baseY + Math.sin(t * 1.6 + n.phase) * 0.03;
-      n.mesh.rotation.y = Math.sin(t * 0.4 + n.phase) * 0.4;
-    }
   }
   tick(1);
 

@@ -1,4 +1,5 @@
 import { WORLD } from "#shared/constants";
+import { HUB, HUB_CENTER } from "#shared/hub";
 
 /**
  * Раскладка травы — чистая математика, без сцены и загрузки моделей.
@@ -75,6 +76,8 @@ export function computeGrassLayout(density: number): GrassLayout {
   const tryPush = (x: number, z: number): void => {
     if (Math.hypot(x, z) < 1.5) return;
     if (Math.abs(x) > reach || Math.abs(z) > reach) return;
+    // В лагере травы нет — только утоптанная земля (см. HubBlockout).
+    if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius) return;
     const s = 0.4 + rnd() * 0.36;
     const heightMul = 0.9 + rnd() * 0.7;
     const yaw = rnd() * Math.PI * 2;
