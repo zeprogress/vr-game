@@ -250,6 +250,12 @@ export interface EliteMobDef {
   tint: readonly [number, number, number] | null;
   /** true — моб парит и не прыгает (пчела): плавно рулит на высоте. */
   flying?: boolean;
+  /**
+   * Броня против ДАЛЬНЕГО боя: доля 0..1 урона стрел/огнешаров/града, которую
+   * съедает панцирь. Ближний бой броню игнорирует — вот и контрплей: лучник
+   * такого моба почти не берёт, мечник — берёт. 0/не задано — брони нет.
+   */
+  rangedArmor?: number;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -270,6 +276,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   cactoro: {
     model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
     hp: 170, dmgMul: 2.0, xp: 55, scaleMul: 1.6, tint: null,
+  },
+  // Орк-стрелок: бронированный дальний боец 15 ур. Панцирь режет 65% урона
+  // стрел/магии — для лучника это глухая стена, зато его залпы бьют больно и
+  // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
+  orcGunner: {
+    model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
+    hp: 420, dmgMul: 3.6, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.65,
   },
 };
 
@@ -292,6 +305,7 @@ export const MOB_CAMPS: {
   { x: -35, z: 13, type: "spikyBlob", count: 5, spread: 6 }, // ~71 м, ур.6
   { x: -25, z: 30, type: "frog", count: 4, spread: 5 }, // ~90 м, ур.7
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
+  { x: 73, z: -73, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, ~135 м, ур.15
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

@@ -42,6 +42,7 @@ export const MODELS = {
   monSpikyBlob: "/models/monsters/GreenSpikyBlob.gltf",
   monCactoro: "/models/monsters/Cactoro.gltf",
   monFrog: "/models/monsters/Frog.gltf",
+  monOrc: "/models/monsters/Orc.gltf",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

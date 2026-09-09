@@ -244,16 +244,19 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
 );
 
 /**
- * Куда высадить/возродить бота: чем выше уровень, тем ближе к сильным мобам.
- * До 5 ур. — обычная поляна у спавна; дальше — рядом с лагерем по силе.
+ * Куда высадить/возродить бота: селим у самого сильного лагеря, чей уровень
+ * мобов бот перерос на 2 (мечникам-танкам полегче, но не совсем пусто). До
+ * 5 ур. — обычная поляна у спавна. Самые прокачанные (18+) живут у орков.
  */
 function botHome(level: number): { x: number; z: number } {
   if (level < 5 || CAMPS_BY_POWER.length === 0) {
     return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
   }
-  const tier = Math.min(CAMPS_BY_POWER.length - 1, Math.floor((level - 5) / 3));
-  const c = CAMPS_BY_POWER[tier];
-  return { x: c.x, z: c.z };
+  let pick = CAMPS_BY_POWER[0];
+  for (const c of CAMPS_BY_POWER) {
+    if (ELITE_MOBS[c.type].level <= level - 3) pick = c;
+  }
+  return { x: pick.x, z: pick.z };
 }
 
 /** Точка появления у дома бота: рядом, но с разбросом (не в куче мобов). */
@@ -1029,7 +1032,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (crit > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
-    this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId);
+    this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId, msg.weapon === "arrow");
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
     if (struck && msg.weapon === "sword") {
       this.sim.splashDamage(
@@ -2471,7 +2474,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Крит бросаем на каждую цель отдельно — залп, а не один выстрел.
       const critM = rollCritMult("arrow");
       if (critM > 1) this.critFx(m.x, m.y, m.z, bot.id);
-      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, bot.id);
+      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, bot.id, true);
       // Пригвождает: несколько секунд моб не может сдвинуться с места.
       this.sim.rootMob(m.id, BOT.rainRootTime);
     }

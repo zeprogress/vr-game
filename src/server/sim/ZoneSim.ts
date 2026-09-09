@@ -234,6 +234,8 @@ class Mob {
 
   /** Множитель урона усиленного («элитного») моба из лагеря. 1 — обычный. */
   readonly dmgMul: number;
+  /** Броня против дальнего боя (0..1): доля урона стрел/магии, которую съедает панцирь. */
+  readonly rangedArmor: number;
   /** Модель из пака для этого моба (ключ MODELS на клиенте). Пусто — стандарт. */
   readonly model: string;
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
@@ -258,6 +260,7 @@ class Mob {
       xp?: number;
       scaleMul?: number;
       flying?: boolean;
+      rangedArmor?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -284,6 +287,7 @@ class Mob {
     this.ranged = cfg.ranged;
     this.xp = opts.xp ?? cfg.xp;
     this.dmgMul = opts.dmgMul ?? 1;
+    this.rangedArmor = Math.max(0, Math.min(0.95, opts.rangedArmor ?? 0));
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -1033,6 +1037,7 @@ export class ZoneSim {
           scaleMul: def.scaleMul,
           xp: def.xp,
           flying: def.flying,
+          rangedArmor: def.rangedArmor,
         });
         this.mobs.set(m.id, m);
       }
@@ -1229,7 +1234,7 @@ export class ZoneSim {
     if (b.life > b.maxLife) return true;
     if (b.y <= terrainHeight(b.x, b.z)) {
       // Огнешар в землю — всё равно рвётся: можно бить по ногам толпы.
-      this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, "", b.owner);
+      this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, "", b.owner, true);
       return true;
     }
 
@@ -1240,9 +1245,9 @@ export class ZoneSim {
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
-        this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner);
+        this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
-        this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner);
+        this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true);
         return true;
       }
     }
@@ -1269,9 +1274,18 @@ export class ZoneSim {
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
   /** Урон по мобу. Возвращает kind добитого моба (null — не убит). */
-  hitMob(id: string, dmg: number, dx: number, dz: number, attacker = ""): MobKind | null {
+  hitMob(
+    id: string,
+    dmg: number,
+    dx: number,
+    dz: number,
+    attacker = "",
+    /** true — попадание ДАЛЬНЕГО боя (стрела/огнешар/град): учитываем rangedArmor. */
+    rangedHit = false,
+  ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
+    if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
@@ -1328,6 +1342,8 @@ export class ZoneSim {
     dmg: number,
     skipId: string,
     owner: string,
+    /** true — АОЕ от огнешара (дальний бой): броня мобов учитывается. */
+    rangedHit = false,
   ): void {
     if (radius <= 0 || dmg <= 0) return;
     // Копия списка: hitMob может удалить моба (осколки) прямо в цикле.
@@ -1343,7 +1359,7 @@ export class ZoneSim {
       const hit = dmg * k;
       if (hit <= 0.01) continue;
       const hl = Math.hypot(dx, dz) || 1;
-      this.hitMob(m.id, hit, dx / hl, dz / hl, owner);
+      this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit);
     }
   }
 
