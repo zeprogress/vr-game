@@ -27,6 +27,7 @@ import {
   type SpecCamMsg,
   type KillFeedMsg,
   type BossEventMsg,
+  type WorldEventMsg,
   type BotSayMsg,
   type DropWeaponMsg,
   type ActKind,
@@ -76,6 +77,9 @@ export class NetClient {
   onKillFeed: ((by: string, victim: string) => void) | null = null;
   /** Событие босса: появился / повержен — баннер во весь экран + музыка. */
   onBossEvent: ((kind: "spawn" | "down", by?: string, loot?: string) => void) | null = null;
+  onWorldEvent:
+    | ((phase: "start" | "win" | "end", name: string, x: number, z: number) => void)
+    | null = null;
   /** Хозяин бота написал в чат канала (Ф10). */
   onBotSay: ((id: string, text: string) => void) | null = null;
   /** Топ-5 героев — раз в 10 с и сразу спектатору при входе (Ф10). */
@@ -192,6 +196,9 @@ export class NetClient {
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
     room.onMessage(MSG.bossEvent, (m: BossEventMsg) => this.onBossEvent?.(m.kind, m.by, m.loot));
+    room.onMessage(MSG.worldEvent, (m: WorldEventMsg) =>
+      this.onWorldEvent?.(m.phase, m.name, m.x, m.z),
+    );
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
     room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));

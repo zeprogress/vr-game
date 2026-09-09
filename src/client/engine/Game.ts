@@ -25,6 +25,7 @@ import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
+import { EventBeacon } from "../world/EventBeacon";
 import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
@@ -119,6 +120,7 @@ export class Game {
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
+  private eventBeacon: EventBeacon | null = null;
   private specRaysShown = true;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
@@ -236,6 +238,8 @@ export class Game {
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
     this.specMarker = new SpecCamMarker(this.scene);
+    this.eventBeacon = new EventBeacon(this.scene);
+    this.eventBeacon.bindGround(zone.groundHeight);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -410,6 +414,11 @@ export class Game {
       this.player.eyeForward.normalizeToRef(this.aim);
       if (this.localAvatar) this.updateLocalAvatar(dt);
       this.netMobs.update(dt, this.player.position, this.aim);
+      const est = this.net?.room?.state;
+      if (est && this.eventBeacon) {
+        this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
+        this.eventBeacon.update(dt);
+      }
       this.loot.update(dt);
       this.combat.update(dt);
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
@@ -1088,6 +1097,19 @@ export class Game {
         if (loot) this.hud.toast(`С босса выпало: ${loot}`);
       }
     };
+    net.onWorldEvent = (phase, name, x, z) => {
+      if (phase === "start") {
+        this.hud.banner(`${name}!`, "К бою — отбейте волну мобов", "warn");
+        this.sfx.bossHorn();
+      } else if (phase === "win") {
+        this.hud.banner(`${name} отражено`, "В эпицентре — награда", "win");
+        this.sfx.bossFanfare();
+      } else {
+        this.hud.banner(`${name} утихло`, "", "warn");
+      }
+      void x;
+      void z;
+    };
     net.onPicked = (item, count) => {
       this.sfx.pickup();
       const w = ITEMS[item].weapon;
@@ -1486,6 +1508,7 @@ export class Game {
       this.net.onRespawn = null;
       this.net.onLevelUp = null;
       this.net.onBossEvent = null;
+      this.net.onWorldEvent = null;
       this.net.onPicked = null;
       this.net.onRtc = null;
       this.net.onAct = null;

@@ -182,6 +182,13 @@ export class ZoneState extends Schema {
    * оружия, HUD, пояс, свет. Админ правит в панели — применяется всем.
    */
   @type("string") worldLoadout = "{}";
+  /** Динамическое событие (этап 14): 0 — нет, 1 — «Нашествие». */
+  @type("uint8") eventKind = 0;
+  /** Эпицентр активного события в мире. */
+  @type("float32") eventX = 0;
+  @type("float32") eventZ = 0;
+  /** Сколько врагов события осталось (для HUD-строки). */
+  @type("uint8") eventLeft = 0;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

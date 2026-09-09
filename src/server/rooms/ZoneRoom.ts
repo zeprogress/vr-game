@@ -46,6 +46,7 @@ import {
   type TakeWeaponMsg,
   type UseItemMsg,
   type Xf7,
+  type WorldEventMsg,
 } from "#shared/net/messages";
 import {
   ADMIN_NICK,
@@ -60,6 +61,7 @@ import {
   PROGRESSION,
   PVP,
   ELITE_MOBS,
+  EVENT,
   MOB_CAMPS,
   RESPAWN,
   SPITTER,
@@ -130,7 +132,7 @@ import {
   fireboltSplashRadius,
   healAmountFor,
 } from "#shared/magic";
-import { inHubSafeZone, hubSpawnPoint } from "#shared/hub";
+import { HUB, HUB_CENTER, inHubSafeZone, hubSpawnPoint } from "#shared/hub";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
@@ -910,6 +912,11 @@ export class ZoneRoom extends Room<ZoneState> {
         world.savePult({ dayAuto: msg.on !== 0 });
       } else if (msg.t === "clearLoot") {
         this.wipeWorld("админ-панель пульта");
+      } else if (msg.t === "forceEvent") {
+        if (this.eventPhase !== "active") {
+          this.eventPhase = "idle";
+          this.eventPhaseAt = Date.now();
+        }
       } else if (msg.t === "mobsOn") {
         this.sim.mobsEnabled = msg.on !== 0;
         this.state.mobsOn = msg.on !== 0 ? 1 : 0;
@@ -1251,6 +1258,126 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Выбрать точку нашествия: на поляне, подальше от HUB, угла босса и лагерей. */
+  private pickEventSpot(): { x: number; z: number } {
+    for (let t = 0; t < 24; t++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 22 + Math.random() * 34;
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r - 6;
+      if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.safeRadius + 10) continue; // не в лагере
+      if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 30) continue; // не у босса
+      if (MOB_CAMPS.some((c) => Math.hypot(x - c.x, z - c.z) < 18)) continue; // не в чужом лагере
+      return { x, z };
+    }
+    return { x: 8, z: -4 };
+  }
+
+  private eventSpawnWave(i: number): void {
+    const w = EVENT.invasion.waves[i];
+    if (!w) return;
+    const rad = EVENT.invasion.radius;
+    const at = (): [number, number] => {
+      const a = Math.random() * Math.PI * 2;
+      const r = rad * (0.3 + Math.random() * 0.7);
+      return [this.eventX + Math.cos(a) * r, this.eventZ + Math.sin(a) * r];
+    };
+    for (let k = 0; k < (w.base ?? 0); k++) {
+      const [x, z] = at();
+      this.sim.spawnEventMob("slime", x, z);
+    }
+    for (let k = 0; k < (w.ranged ?? 0); k++) {
+      const [x, z] = at();
+      this.sim.spawnEventMob("spitter", x, z);
+    }
+    if ("elite" in w && w.elite) {
+      const def = ELITE_MOBS[w.elite];
+      const [x, z] = at();
+      this.sim.spawnEventMob(def.kind, x, z, {
+        model: def.model, name: def.name, level: def.level, hp: def.hp,
+        dmgMul: def.dmgMul, scaleMul: def.scaleMul, xp: def.xp,
+        flying: def.flying, rangedArmor: def.rangedArmor,
+      });
+    }
+  }
+
+  private startEvent(): void {
+    const spot = this.pickEventSpot();
+    this.eventX = spot.x;
+    this.eventZ = spot.z;
+    this.eventPhase = "active";
+    this.eventPhaseAt = Date.now() + EVENT.hardTimeout * 1000;
+    this.eventWave = 0;
+    this.eventWaveAt = 0;
+    this.state.eventKind = 1;
+    this.state.eventX = spot.x;
+    this.state.eventZ = spot.z;
+    this.eventSpawnWave(0);
+    this.eventWave = 1;
+    this.state.eventLeft = Math.min(255, this.sim.eventMobsLeft());
+    this.broadcast(MSG.worldEvent, {
+      phase: "start", name: "Нашествие", x: spot.x, z: spot.z,
+    } satisfies WorldEventMsg);
+  }
+
+  private endEvent(win: boolean): void {
+    if (win) {
+      this.sim.dropPotions(this.eventX, this.eventZ, EVENT.invasion.rewardPotions);
+      if (Math.random() < EVENT.invasion.rewardGoldChance) {
+        const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
+        this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
+      }
+    }
+    this.sim.clearEventMobs();
+    this.eventPhase = "cooldown";
+    this.eventPhaseAt = Date.now() + EVENT.cooldown * 1000;
+    this.state.eventKind = 0;
+    this.state.eventLeft = 0;
+    this.broadcast(MSG.worldEvent, {
+      phase: win ? "win" : "end", name: "Нашествие", x: this.eventX, z: this.eventZ,
+    } satisfies WorldEventMsg);
+  }
+
+  private tickEvents(): void {
+    const now = Date.now();
+    if (this.eventPhase === "idle") {
+      if (this.eventPhaseAt === 0) {
+        // первый запуск таймера
+        this.eventPhaseAt =
+          now + (EVENT.idleMin + Math.random() * (EVENT.idleMax - EVENT.idleMin)) * 1000;
+        return;
+      }
+      // не начинаем событие, пока в мире вообще никого (ни игроков, ни ботов)
+      if (now >= this.eventPhaseAt && this.state.players.size > 0) this.startEvent();
+      return;
+    }
+    if (this.eventPhase === "active") {
+      const left = this.sim.eventMobsLeft();
+      this.state.eventLeft = Math.min(255, left);
+      if (left === 0) {
+        if (this.eventWave >= EVENT.invasion.waves.length) {
+          this.endEvent(true);
+          return;
+        }
+        if (this.eventWaveAt === 0) {
+          this.eventWaveAt = now + EVENT.invasion.waveGap * 1000;
+        } else if (now >= this.eventWaveAt) {
+          this.eventSpawnWave(this.eventWave);
+          this.eventWave++;
+          this.eventWaveAt = 0;
+        }
+      }
+      if (now >= this.eventPhaseAt) this.endEvent(false); // не успели — событие утихло
+      return;
+    }
+    // cooldown
+    if (now >= this.eventPhaseAt) {
+      this.eventPhase = "idle";
+      this.eventPhaseAt =
+        now + (EVENT.idleMin + Math.random() * (EVENT.idleMax - EVENT.idleMin)) * 1000;
+    }
+  }
+
 
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
@@ -1332,6 +1459,16 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
+    } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
+      if (norm === normNick(ADMIN_NICK) || STREAM_NICKS.includes(norm)) {
+        if (this.eventPhase === "active") {
+          this.reply(`@${nick} событие уже идёт.`);
+        } else {
+          this.eventPhase = "idle";
+          this.eventPhaseAt = Date.now(); // сработает следующим тиком
+          this.reply(`@${nick} нашествие вот-вот начнётся.`);
+        }
+      }
     } else if (cmd === "!voice" || cmd === "!голос") {
       this.setChatVoice(nick, norm, parts.slice(1).join(" "));
     }
@@ -2619,6 +2756,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcastLeaderboard();
     }
 
+    this.tickEvents();
     this.tickRaid();
     this.tickBots(dt);
 
@@ -2958,6 +3096,16 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly raidPending = new Set<string>();
   /** ms момента общего выступления (0 — отсчёт не идёт). */
   private raidGoAt = 0;
+
+  // ---- Динамические события (этап 14) ----
+  private eventPhase: "idle" | "active" | "cooldown" = "idle";
+  /** ms: когда сменить фазу (idle→active, active→cooldown по таймауту, cooldown→idle). */
+  private eventPhaseAt = 0;
+  private eventX = 0;
+  private eventZ = 0;
+  /** индекс текущей волны нашествия и ms следующего доспавна. */
+  private eventWave = 0;
+  private eventWaveAt = 0;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
    *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
    *  ботов по короткому таймауту. */

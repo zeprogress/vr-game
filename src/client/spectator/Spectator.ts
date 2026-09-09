@@ -18,6 +18,7 @@ import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
+import { EventBeacon } from "../world/EventBeacon";
 import { RenderWatch } from "./RenderWatch";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -60,6 +61,7 @@ export class Spectator {
   private readonly healAura: HealAuraFx;
   /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
   private readonly skillFx: SkillFx;
+  private readonly eventBeacon: EventBeacon;
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
@@ -200,6 +202,8 @@ export class Spectator {
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
+    this.eventBeacon = new EventBeacon(this.scene);
+    this.eventBeacon.bindGround(zone.groundHeight);
     // Камера стрима часто идёт вплотную к стволам — ближние деревья гасим,
     // иначе крона закрывает весь кадр (в самой игре этого нет).
     void import("../world/nature").then((m) => {
@@ -322,6 +326,17 @@ export class Spectator {
       this.overlay?.bossBanner(kind, by, loot);
       if (kind === "down") this.sfx.bossFanfare();
       else this.sfx.bossHorn();
+    };
+    net.onWorldEvent = (phase, name) => {
+      if (phase === "start") {
+        this.overlay?.showCard(`${name}!`, "мобы лезут волнами — герои сбегаются", 6);
+        this.sfx.bossHorn();
+      } else if (phase === "win") {
+        this.overlay?.showCard(`${name} отражено`, "", 5);
+        this.sfx.bossFanfare();
+      } else {
+        this.overlay?.showCard(`${name} утихло`, "", 4);
+      }
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
@@ -647,6 +662,11 @@ export class Spectator {
     this.crossFx.update(dt);
     this.healAura.update(dt);
     this.skillFx.update(dt);
+    const est = this.net?.room?.state;
+    if (est) {
+      this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
+      this.eventBeacon.update(dt);
+    }
     const cp = this.cam.cam.position;
     this.fadeTrees?.(cp.x, cp.z);
     if (this.voice) {

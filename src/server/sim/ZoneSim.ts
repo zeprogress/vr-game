@@ -1012,6 +1012,9 @@ export class ZoneSim {
   private elapsed = 0;
   /** Слизни, доспавненные под наплыв игроков (`!play`). Убираются, когда толпа расходится. */
   private readonly extraSlimes = new Map<string, Mob>();
+  /** Мобы активного динамического события (этап 14): не возрождаются, при
+   *  смерти сразу удаляются, считаются для HUD-строки. */
+  readonly eventMobs = new Set<string>();
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -1089,6 +1092,48 @@ export class ZoneSim {
       const m = new Mob("slime", x, z);
       this.mobs.set(m.id, m);
       this.extraSlimes.set(m.id, m);
+    }
+  }
+
+  /** Заспавнить моба события в точке (x,z) с разбросом; агрит сразу. Вернёт id. */
+  spawnEventMob(
+    kind: MobKind,
+    x: number,
+    z: number,
+    opts: ConstructorParameters<typeof Mob>[3] = {},
+  ): string {
+    const m = new Mob(kind, x, z, opts);
+    m.forceAggro();
+    this.mobs.set(m.id, m);
+    this.eventMobs.add(m.id);
+    return m.id;
+  }
+
+  /** Сколько живых мобов события осталось. */
+  eventMobsLeft(): number {
+    let n = 0;
+    for (const id of this.eventMobs) {
+      const m = this.mobs.get(id);
+      if (m && !m.dead) n++;
+    }
+    return n;
+  }
+
+  /** Снять всех мобов события (событие утихло/зачищено). */
+  clearEventMobs(): void {
+    for (const id of this.eventMobs) this.mobs.delete(id);
+    this.eventMobs.clear();
+  }
+
+  /** Россыпь зелий в точке (награда за событие). */
+  dropPotions(x: number, z: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * (BAG.dropSpread + 1);
+      const px = x + Math.cos(a) * r;
+      const pz = z + Math.sin(a) * r;
+      const d = new Drop("potion", 1, px, terrainHeight(px, pz) + BAG.dropHeight, pz);
+      this.drops.set(d.id, d);
     }
   }
 
@@ -1309,8 +1354,14 @@ export class ZoneSim {
     if (!killed) return null;
     const kind = m.kind;
 
-    if (kind === "shard") {
-      this.mobs.delete(m.id); // осколки не возрождаются
+    if (kind === "shard" || this.eventMobs.has(m.id)) {
+      this.eventMobs.delete(m.id);
+      this.mobs.delete(m.id); // осколки и мобы события не возрождаются
+      if (kind !== "shard") this.splitMobXp(m);
+      if (attacker && kind !== "shard") {
+        this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
+      }
+      return kind;
     } else {
       const rolled = this.spawnLoot(m);
       if (kind === "boss") {
