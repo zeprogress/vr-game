@@ -1665,6 +1665,8 @@ export class CombatSystem {
       // Безоружный удар (updateFlatMelee) и бой в VR (updateVRSwing) это уже
       // делали — не хватало только этой, самой частой ветки.
       this.emitSound("swing", p);
+      // Своя модель (вид от третьего лица / Ф10) — тот же клип замаха.
+      this.onMeleeSwing?.();
     }
     if (sw.t > 0) {
       sw.t -= dt;

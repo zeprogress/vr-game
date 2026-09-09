@@ -182,6 +182,8 @@ export class RemoteAvatar implements Hittable {
   private readonly _smoothPos = new Vector3();
   private smoothInit = false;
   private swingUntil = 0;
+  /** Скорость клипа замаха, с которой его запустил триггер. */
+  private swingRate = 1;
   /** До этого момента играем эмоцию (!cheer/!roll/!jump/!defeat) вместо локомоушена. */
   private emoteUntil = 0;
   private emoteClip: string | null = null;
@@ -287,6 +289,11 @@ export class RemoteAvatar implements Hittable {
     const g = this.botRig?.anims.get("swordslash");
     if (g) {
       const rate = meleeAnimRate(this.level);
+      this.swingRate = rate;
+      // Пере-замах, пока предыдущий клип ещё играет: Babylon .start() на уже
+      // запущенной группе — no-op, поэтому сначала жёстко сбрасываем.
+      if (g.isPlaying) g.stop();
+      g.reset();
       g.start(false, rate, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
       this.animW.set("swordslash", 1);
@@ -856,9 +863,13 @@ export class RemoteAvatar implements Hittable {
         w = 0;
         if (g.isPlaying && n !== want) g.stop();
       } else if (!g.isPlaying && !BOT_ONE_SHOT_CLIPS.has(n)) {
-        // Разовые клипы (swordslash/эмоции) запускает их триггер — здесь
-        // только гоняем вес, чтобы не зациклить их же по кругу.
+        // Циклические клипы (idle/walk/run) — гоняем сами, чтобы не заглохли.
         g.start(true, 1, g.from, g.to, false);
+      } else if (!g.isPlaying && n === want && BOT_ONE_SHOT_CLIPS.has(n)) {
+        // Разовый клип ещё «хочется» (окно открыто), но он уже доиграл —
+        // перезапускаем, иначе модель зависает на последнем кадре.
+        const rate = n === "swordslash" ? this.swingRate : 1;
+        g.start(false, rate, g.from, g.to, false);
       }
       this.animW.set(n, w);
       g.setWeightForAllAnimatables(w);

@@ -73,6 +73,9 @@ export class LocalAvatar {
       // Окно = реальная длина клипа с учётом скорости (как у ботов).
       this.swingUntil =
         performance.now() + ((g.to - g.from) / 60 / this.swingSpeed) * 1000;
+      // Babylon .start() на уже играющей группе — no-op: жёсткий сброс.
+      if (g.isPlaying) g.stop();
+      g.reset();
       g.start(false, this.swingSpeed, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
       this.animW.set("swordslash", 1);
