@@ -47,6 +47,10 @@ export class Sfx {
   private static readonly SWORD_HIT = "/sfx/sword-hit.mp3";
   private swordHitBuf: AudioBuffer | null = null;
   private swordHitLoading = false;
+  /** Сэмпл замаха мечом (art/sword_swing.wav, обрезан). */
+  private static readonly SWORD_SWING = "/sfx/sword-swing.mp3";
+  private swordSwingBuf: AudioBuffer | null = null;
+  private swordSwingLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -357,6 +361,17 @@ export class Sfx {
       .catch(() => {});
   }
 
+  /** Один раз подгрузить сэмпл замаха мечом. */
+  private preloadSwordSwing(): void {
+    if (this.swordSwingLoading || this.swordSwingBuf || !this.ctx) return;
+    this.swordSwingLoading = true;
+    fetch(Sfx.SWORD_SWING)
+      .then((r) => r.arrayBuffer())
+      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+      .then((b) => (this.swordSwingBuf = b))
+      .catch(() => {});
+  }
+
   /** Проиграть готовый буфер разово, объёмно от текущей точки (this.spatialAt). */
   private playSample(buf: AudioBuffer, gain = 1, rate = 1): void {
     const src = this.ctx!.createBufferSource();
@@ -561,6 +576,15 @@ export class Sfx {
   swordSwing(at?: SoundAt): void {
     if (!this.ready()) return;
     this.preloadSwordHit();
+    this.preloadSwordSwing();
+    if (this.swordSwingBuf) {
+      const play = () =>
+        this.playSample(this.swordSwingBuf!, 0.9, 0.97 + Math.random() * 0.06);
+      if (at) this.at(at, play);
+      else play();
+      return;
+    }
+    // Синтез-запасной, пока сэмпл не загрузился.
     const t = this.t;
     const n = this.noise();
     const bp = this.filter("bandpass", 600, 3.5);
