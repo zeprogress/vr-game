@@ -47,7 +47,7 @@ export class Sfx {
   private static readonly SWORD_HIT = "/sfx/sword-hit.wav";
   private swordHitBuf: AudioBuffer | null = null;
   private swordHitLoading = false;
-  /** Сэмпл замаха мечом (art/sword_swing.wav, обрезан). */
+  /** Сэмпл замаха мечом (art/sword_swing2.wav, обрезан). */
   private static readonly SWORD_SWING = "/sfx/sword-swing.wav";
   private swordSwingBuf: AudioBuffer | null = null;
   private swordSwingLoading = false;
