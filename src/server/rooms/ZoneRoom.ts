@@ -2682,6 +2682,16 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (bot.stunCastT > 0) {
       bot.stunCastT = Math.max(0, bot.stunCastT - dt);
+      // Звук — на один тик раньше приземления: компенсируем сетевой релей,
+      // чтобы у зрителя удар «щёлкал» ровно на завершении круга-замаха.
+      if (!bot.stunSoundDone && bot.stunCastT <= dt * 1.05) {
+        bot.stunSoundDone = true;
+        const p = bot.state;
+        this.broadcast(MSG.act, {
+          k: "stunHit", id: bot.id,
+          x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
+        } satisfies ActRelay);
+      }
       if (bot.stunCastT > 0) return;
       this.botStunBashLand(bot);
       return;
@@ -2720,11 +2730,15 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Волна дочитана — оглушаем всех в круге (символический урон). */
   private botStunBashLand(bot: Bot): void {
     const p = bot.state;
-    // Звук удара — ровно в момент, когда на мобах появляется стан.
-    this.broadcast(MSG.act, {
-      k: "stunHit", id: bot.id,
-      x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
-    } satisfies ActRelay);
+    // Звук уже ушёл на тик раньше (см. botStunBash) — здесь только на всякий
+    // случай, если очень большой dt проскочил окно упреждения.
+    if (!bot.stunSoundDone) {
+      bot.stunSoundDone = true;
+      this.broadcast(MSG.act, {
+        k: "stunHit", id: bot.id,
+        x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
+      } satisfies ActRelay);
+    }
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
       BOT.stunDamageMult *
