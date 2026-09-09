@@ -259,7 +259,7 @@ export class Spectator {
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
-    this.sfx.startMusic(TOWN_MUSIC, 0.05);
+    this.sfx.startMusic(TOWN_MUSIC, 0.07);
     const wake = (): void => this.sfx.resume();
     for (const ev of ["pointerdown", "keydown", "touchstart"] as const) {
       window.addEventListener(ev, wake, { once: true });
@@ -749,7 +749,7 @@ export class Spectator {
     });
     if (near === this.bossMusicOn) return;
     this.bossMusicOn = near;
-    this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.075 : 0.05);
+    this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.1 : 0.07);
   }
 
   /** Звук действия игрока по сети — как в игре, но без своих эффектов. */

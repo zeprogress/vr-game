@@ -744,7 +744,7 @@ export class Game {
 
   /** Вошли в мир (после экрана ввода ника). Заводим фоновую музыку. */
   enterWorld(): void {
-    this.sfx.startMusic(TOWN_MUSIC, 0.045); // тихий фон — только в мире
+    this.sfx.startMusic(TOWN_MUSIC, 0.065); // фон — только в мире
   }
 
   /** Админ (ADMIN_NICK) — единственный, кто открывает панель настройки. */
@@ -972,7 +972,7 @@ export class Game {
     }
     if (near === this.bossMusicOn) return;
     this.bossMusicOn = near;
-    this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.07 : 0.045);
+    this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.095 : 0.065);
   }
 
   private updateHpBarFade(): void {

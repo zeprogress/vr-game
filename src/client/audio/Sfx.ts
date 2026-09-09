@@ -54,7 +54,7 @@ export class Sfx {
     return this.volume < 0.03;
   }
   private masterTarget(): number {
-    return this.dead ? 0 : 0.45 * this.volume;
+    return this.dead ? 0 : 0.32 * this.volume;
   }
   private musicTarget(): number {
     return this.dead ? 0 : this.musicVol * this.volume;
@@ -103,7 +103,7 @@ export class Sfx {
   }
 
   private musicUrl = "";
-  private musicVol = 0.045;
+  private musicVol = 0.065;
   /** Плейлист текущей музыки: из него после каждого трека берём случайный. */
   private playlist: string[] = [];
   private lastTrack = "";
