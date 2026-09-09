@@ -1154,7 +1154,7 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
+    net.onAct = (k, x, y, z, id, d) => this.playRemoteAct(k, x, y, z, id, d);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
@@ -1271,7 +1271,14 @@ export class Game {
 
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   /** Звук чужого действия — объёмно от точки события (у аватара соседа). */
-  private playRemoteAct(k: ActKind, x: number, y: number, z: number, id: string): void {
+  private playRemoteAct(
+    k: ActKind,
+    x: number,
+    y: number,
+    z: number,
+    id: string,
+    d?: number,
+  ): void {
     const at = { x, y, z };
     switch (k) {
       case "swing":
@@ -1295,7 +1302,7 @@ export class Game {
         this.sfx.at(at, () => this.sfx.levelUp());
         break;
       case "stunBash":
-        this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
+        this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
         break;
       case "stunHit":
         this.sfx.at(at, () => this.sfx.groundBash());

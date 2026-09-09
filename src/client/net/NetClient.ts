@@ -67,7 +67,9 @@ export class NetClient {
   /** Служебный пакет голосового чата от другого игрока. */
   onRtc: ((msg: RtcMsg) => void) | null = null;
   /** Звуковое событие соседа: где и что произошло. */
-  onAct: ((k: ActKind, x: number, y: number, z: number, id: string) => void) | null = null;
+  onAct:
+    | ((k: ActKind, x: number, y: number, z: number, id: string, d?: number) => void)
+    | null = null;
   /** Голос соседа через сервер (opus-пакет). */
   onVoice: ((id: string, t: number, d: number[]) => void) | null = null;
   /** Ответ сервера на переключение PvP: фактическое значение (+ wait, если отказ). */
@@ -190,7 +192,7 @@ export class NetClient {
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
-    room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id));
+    room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id, m.d));
     room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));

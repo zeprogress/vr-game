@@ -2688,6 +2688,7 @@ export class ZoneRoom extends Room<ZoneState> {
       x: p.head.x,
       y: p.head.y - PLAYER.eyeHeight,
       z: p.head.z,
+      d: castT, // круг замаха живёт ровно столько, сколько сам замах
     };
     this.broadcast(MSG.act, fx);
   }

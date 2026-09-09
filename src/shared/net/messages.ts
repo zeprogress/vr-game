@@ -260,6 +260,8 @@ export interface ActMsg {
 /** Сервер -> остальным: у игрока `id` произошло событие. */
 export interface ActRelay extends ActMsg {
   id: string;
+  /** Длительность, с (напр. замах stunBash) — если событие её несёт. */
+  d?: number;
 }
 
 /**

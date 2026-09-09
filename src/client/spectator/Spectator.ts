@@ -297,7 +297,7 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id) => this.playRemoteAct(k, x, y, z, id);
+    net.onAct = (k, x, y, z, id, d) => this.playRemoteAct(k, x, y, z, id, d);
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
       const wantVoice = this.voiceOn;
@@ -778,7 +778,14 @@ export class Spectator {
   }
 
   /** Звук действия игрока по сети — как в игре, но без своих эффектов. */
-  private playRemoteAct(k: ActKind, x: number, y: number, z: number, id: string): void {
+  private playRemoteAct(
+    k: ActKind,
+    x: number,
+    y: number,
+    z: number,
+    id: string,
+    d?: number,
+  ): void {
     const at = { x, y, z };
     switch (k) {
       case "swing":
@@ -801,7 +808,7 @@ export class Spectator {
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
         break;
       case "stunBash":
-        this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
+        this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
         break;
       case "stunHit":
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
