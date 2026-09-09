@@ -1284,6 +1284,15 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Сколько героев (живых игроков и ботов) сейчас в мире — масштаб события. */
+  private heroesInWorld(): number {
+    let n = 0;
+    this.state.players.forEach((p) => {
+      if (!p.dead) n++;
+    });
+    return Math.max(1, n);
+  }
+
   /** Выбрать точку нашествия: на поляне, подальше от HUB, угла босса и лагерей. */
   private pickEventSpot(): { x: number; z: number } {
     for (let t = 0; t < 24; t++) {
@@ -1309,9 +1318,14 @@ export class ZoneRoom extends Room<ZoneState> {
       const r = rad * (0.15 + Math.random() * 0.6);
       return [this.eventX + Math.cos(a) * r, this.eventZ + Math.sin(a) * r];
     };
+    // Кол-во мобов кратно числу героев в мире (с общим потолком на волну).
+    const heroMul = this.heroesInWorld();
+    let budget = EVENT.invasion.waveMobCap;
     for (const { type, count } of wave) {
       const def = type in ELITE_MOBS ? ELITE_MOBS[type] : null;
-      for (let k = 0; k < count; k++) {
+      const n = Math.min(budget, count * heroMul);
+      budget -= n;
+      for (let k = 0; k < n; k++) {
         const [x, z] = at();
         if (def) {
           this.sim.spawnEventMob(def.kind, x, z, {
@@ -1348,7 +1362,11 @@ export class ZoneRoom extends Room<ZoneState> {
 
   private endEvent(win: boolean): void {
     if (win) {
-      this.sim.dropPotions(this.eventX, this.eventZ, EVENT.invasion.rewardPotions);
+      this.sim.dropPotions(
+        this.eventX,
+        this.eventZ,
+        Math.min(EVENT.invasion.rewardPotionCap, EVENT.invasion.rewardPotions * this.heroesInWorld()),
+      );
       if (Math.random() < EVENT.invasion.rewardGoldChance) {
         const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
         this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);

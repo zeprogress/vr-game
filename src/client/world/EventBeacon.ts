@@ -1,21 +1,22 @@
 import type { Scene } from "@babylonjs/core/scene";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { EVENT } from "#shared/constants";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
-import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 /**
- * Маяк динамического события (этап 14): высокий полупрозрачный столб света +
- * кольцо по земле в эпицентре. Виден издалека — к нему бегут игроки.
+ * Маяк динамического события (этап 14): широкий синий конус света над всей
+ * зоной события — от земли (диаметр ≈ зона) сужается вверх, пульсирует
+ * (то меньше, то больше). Виден издалека, к нему бегут игроки.
  */
 export class EventBeacon {
   private readonly root: TransformNode;
-  private readonly colMat: StandardMaterial;
-  private readonly ringMat: StandardMaterial;
-  private readonly ring: import("@babylonjs/core/Meshes/mesh").Mesh;
+  private readonly cone: Mesh;
+  private readonly mat: StandardMaterial;
   private t = 0;
   private shown = false;
   private groundY: (x: number, z: number) => number = () => 0;
@@ -24,36 +25,24 @@ export class EventBeacon {
     this.root = new TransformNode("eventBeacon", scene);
     this.root.setEnabled(false);
 
-    const col = MeshBuilder.CreateCylinder(
-      "eventBeaconCol",
-      { height: 60, diameterTop: 3.4, diameterBottom: 1.6, tessellation: 18 },
+    const base = EVENT.invasion.radius * 2; // диаметр у земли ≈ размер зоны
+    this.cone = MeshBuilder.CreateCylinder(
+      "eventBeaconCone",
+      { height: 28, diameterBottom: base, diameterTop: base * 0.25, tessellation: 24 },
       scene,
     );
-    this.colMat = new StandardMaterial("eventBeaconColMat", scene);
-    this.colMat.emissiveColor = new Color3(1, 0.45, 0.15);
-    this.colMat.diffuseColor = new Color3(0, 0, 0);
-    this.colMat.specularColor = new Color3(0, 0, 0);
-    this.colMat.disableLighting = true;
-    this.colMat.alphaMode = Constants.ALPHA_ADD;
-    this.colMat.alpha = 0.18;
-    this.colMat.backFaceCulling = false;
-    col.material = this.colMat;
-    col.isPickable = false;
-    col.position.y = 30;
-    col.parent = this.root;
-
-    this.ring = MeshBuilder.CreateDisc("eventBeaconRing", { radius: 1, tessellation: 40 }, scene);
-    this.ringMat = new StandardMaterial("eventBeaconRingMat", scene);
-    this.ringMat.emissiveColor = new Color3(1, 0.5, 0.18);
-    this.ringMat.diffuseColor = new Color3(0, 0, 0);
-    this.ringMat.specularColor = new Color3(0, 0, 0);
-    this.ringMat.disableLighting = true;
-    this.ringMat.alphaMode = Constants.ALPHA_ADD;
-    this.ringMat.alpha = 0.4;
-    this.ring.material = this.ringMat;
-    this.ring.rotation.x = Math.PI / 2;
-    this.ring.isPickable = false;
-    this.ring.parent = this.root;
+    this.mat = new StandardMaterial("eventBeaconMat", scene);
+    this.mat.emissiveColor = new Color3(0.25, 0.55, 1); // синий
+    this.mat.diffuseColor = new Color3(0, 0, 0);
+    this.mat.specularColor = new Color3(0, 0, 0);
+    this.mat.disableLighting = true;
+    this.mat.alphaMode = Constants.ALPHA_ADD;
+    this.mat.alpha = 0.16;
+    this.mat.backFaceCulling = false;
+    this.cone.material = this.mat;
+    this.cone.isPickable = false;
+    this.cone.position.y = 14;
+    this.cone.parent = this.root;
   }
 
   bindGround(fn: (x: number, z: number) => number): void {
@@ -63,9 +52,7 @@ export class EventBeacon {
   /** Включить/переставить маяк (kind 0 — спрятать). */
   set(kind: number, x: number, z: number): void {
     const on = kind > 0;
-    if (on) {
-      this.root.position.set(x, this.groundY(x, z), z);
-    }
+    if (on) this.root.position.set(x, this.groundY(x, z), z);
     if (on !== this.shown) {
       this.shown = on;
       this.root.setEnabled(on);
@@ -75,16 +62,15 @@ export class EventBeacon {
   update(dt: number): void {
     if (!this.shown) return;
     this.t += dt;
-    const pulse = 0.8 + Math.sin(this.t * 3) * 0.2;
-    this.colMat.alpha = 0.12 + pulse * 0.1;
-    this.ring.scaling.setAll(9 + Math.sin(this.t * 2) * 1.2);
-    this.ringMat.alpha = 0.25 + pulse * 0.2;
-    this.ring.rotation.y += dt * 0.5;
+    // Пульс: конус то шире, то у́же; прозрачность в такт.
+    const pulse = 1 + Math.sin(this.t * 2.2) * 0.28;
+    this.cone.scaling.set(pulse, 1, pulse);
+    this.mat.alpha = 0.1 + (0.5 + Math.sin(this.t * 2.2) * 0.5) * 0.14;
+    this.cone.rotation.y += dt * 0.25;
   }
 
   dispose(): void {
-    this.colMat.dispose();
-    this.ringMat.dispose();
+    this.mat.dispose();
     this.root.dispose(false, true);
   }
 }
