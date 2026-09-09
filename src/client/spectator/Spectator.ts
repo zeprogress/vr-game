@@ -750,7 +750,7 @@ export class Spectator {
 
     // Строка событий сверху: пока идёт нашествие — большими синими буквами.
     this.overlay?.setTicker(
-      st?.eventKind === 1 ? "Идёт эвент — нашествие мобов (!event)" : "",
+      st?.eventKind === 1 ? "Идёт ивент — нашествие мобов (!event)" : "",
     );
 
     this.overlay?.update({
