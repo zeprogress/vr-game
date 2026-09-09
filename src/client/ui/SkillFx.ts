@@ -2,16 +2,12 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
-import { BOT } from "#shared/constants";
 
-const RED = new Color3(1, 0.16, 0.12);
-const RED_HOT = new Color3(1, 0.62, 0.3);
 const RAIN = new Color3(1, 0.78, 0.28);
 const STUN = new Color3(1, 0.92, 0.4); // жёлтая волна оглушения
 
@@ -31,33 +27,6 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
   return m;
 }
 
-/** Плоский сектор радиуса 1 в XZ, раскрытый вдоль +Z на ±halfAngle. */
-function coneFan(scene: Scene, name: string, halfAngle: number, segs = 28): Mesh {
-  const pos: number[] = [0, 0, 0];
-  const idx: number[] = [];
-  for (let i = 0; i <= segs; i++) {
-    const a = -halfAngle + (i / segs) * halfAngle * 2;
-    pos.push(Math.sin(a), 0, Math.cos(a));
-  }
-  for (let i = 1; i <= segs; i++) idx.push(0, i + 1, i);
-  const m = new Mesh(name, scene);
-  const vd = new VertexData();
-  const nrm: number[] = [];
-  VertexData.ComputeNormals(pos, idx, nrm);
-  vd.positions = pos;
-  vd.indices = idx;
-  vd.normals = nrm;
-  vd.applyToMesh(m);
-  return m;
-}
-
-interface Cleave {
-  fan: Mesh;
-  age: number;
-  life: number;
-  radius: number;
-}
-
 interface Rain {
   ring: Mesh;
   shafts: Mesh[];
@@ -75,28 +44,17 @@ interface Stun {
 }
 
 /**
- * Визуал массовых скиллов ботов: красный сектор «Рассекающего удара» и
+ * Визуал массовых скиллов ботов: жёлтая волна «Оглушающего удара» и
  * золотой круг «Града стрел» с падающими древками. Общий пул на сцену —
  * используется и в игре, и у спектатора.
  */
 export class SkillFx {
-  private readonly cleaves: Cleave[] = [];
   private readonly rains: Rain[] = [];
   private readonly stuns: Stun[] = [];
-  private nextCleave = 0;
   private nextRain = 0;
   private nextStun = 0;
 
   constructor(scene: Scene) {
-    for (let i = 0; i < POOL; i++) {
-      const fan = coneFan(scene, `cleaveFan${i}`, BOT.cleaveCone);
-      fan.material = addMat(scene, `cleaveFanMat${i}`, RED);
-      fan.isPickable = false;
-      fan.renderingGroupId = 1;
-      fan.setEnabled(false);
-      this.cleaves.push({ fan, age: 1, life: 1, radius: 1 });
-    }
-
     for (let i = 0; i < POOL; i++) {
       const ring = MeshBuilder.CreateDisc(`rainRing${i}`, { radius: 1, tessellation: 44 }, scene);
       ring.material = addMat(scene, `rainRingMat${i}`, RAIN);
@@ -144,18 +102,6 @@ export class SkillFx {
     st.ring.setEnabled(true);
   }
 
-  /** Красный сектор перед ботом: `yaw` — куда смотрит, `life` — время замаха. */
-  cleave(x: number, y: number, z: number, yaw: number, radius: number, life: number): void {
-    const c = this.cleaves[this.nextCleave];
-    this.nextCleave = (this.nextCleave + 1) % this.cleaves.length;
-    c.age = 0;
-    c.life = Math.max(0.15, life);
-    c.radius = radius;
-    c.fan.position.set(x, y + 0.07, z);
-    c.fan.rotation.y = yaw;
-    c.fan.setEnabled(true);
-  }
-
   /** Круг града стрел на земле + падающие древки. */
   arrowRain(x: number, y: number, z: number, radius: number, life: number): void {
     const r = this.rains[this.nextRain];
@@ -175,22 +121,6 @@ export class SkillFx {
   }
 
   update(dt: number): void {
-    for (const c of this.cleaves) {
-      if (c.age >= c.life) continue;
-      c.age += dt;
-      if (c.age >= c.life) {
-        c.fan.setEnabled(false);
-        continue;
-      }
-      const t = c.age / c.life;
-      // Сектор выстреливает вперёд к концу замаха и вспыхивает на самом ударе.
-      const grow = 0.25 + 0.75 * (t * t);
-      c.fan.scaling.set(c.radius * grow, 1, c.radius * grow);
-      const mat = c.fan.material as StandardMaterial;
-      mat.alpha = 0.22 + 0.5 * t;
-      mat.emissiveColor.copyFrom(t > 0.85 ? RED_HOT : RED);
-    }
-
     for (const r of this.rains) {
       if (r.age >= r.life) continue;
       r.age += dt;
@@ -236,10 +166,6 @@ export class SkillFx {
   }
 
   dispose(): void {
-    for (const c of this.cleaves) {
-      c.fan.material?.dispose();
-      c.fan.dispose();
-    }
     for (const st of this.stuns) {
       st.ring.material?.dispose();
       st.ring.dispose();

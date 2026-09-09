@@ -201,9 +201,6 @@ interface Bot {
   drinkCd: number; // с до следующего глотка зелья
   healCd: number; // с до следующего массового хила (посох)
   healCastT: number; // с до конца каста массового хила (>0 — кастует, стоит)
-  cleaveCd: number; // с до следующего рассекающего удара (меч)
-  cleaveCastT: number; // с до конца замаха рассекающего
-  cleaveYaw: number; // куда был направлен сектор в момент замаха
   stunCd: number; // с до следующего оглушающего удара (меч)
   stunCastT: number; // с до конца замаха оглушающего
   rainCd: number; // с до следующего града стрел (лук)
@@ -1698,9 +1695,6 @@ export class ZoneRoom extends Room<ZoneState> {
       drinkCd: 0,
       healCd: 0,
       healCastT: 0,
-      cleaveCd: 0,
-      cleaveCastT: 0,
-      cleaveYaw: 0,
       stunCd: 0,
       stunCastT: 0,
       rainCd: 0,
@@ -1770,7 +1764,6 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
     bot.healCd = Math.max(0, bot.healCd - dt);
-    bot.cleaveCd = Math.max(0, bot.cleaveCd - dt);
     bot.stunCd = Math.max(0, bot.stunCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
 
@@ -1796,7 +1789,6 @@ export class ZoneRoom extends Room<ZoneState> {
     // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
     this.botDrink(bot);
     this.botGroupHeal(bot, dt);
-    this.botCleave(bot, dt);
     this.botStunBash(bot, dt);
     this.botArrowRain(bot, dt);
 
@@ -2345,74 +2337,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.broadcast(MSG.act, aura);
   }
 
-  /**
-   * Бот с мечом — «Рассекающий удар»: массовый скилл по конусу перед собой.
-   * Замах (перед ботом горит красный сектор), потом урон всем внутри и
-   * отбрасывание. Скилл редкий: кулдаун + шанс срабатывания.
-   */
-  private botCleave(bot: Bot, dt: number): void {
-    const p = bot.state;
 
-    if (bot.cleaveCastT > 0) {
-      bot.cleaveCastT = Math.max(0, bot.cleaveCastT - dt);
-      if (bot.cleaveCastT > 0) return;
-      this.botCleaveLand(bot);
-      return;
-    }
-    if (p.rightCls !== "sword" || bot.cleaveCd > 0 || bot.stunCastT > 0) return;
-    // Целимся туда, куда бот и так смотрит: сектор строится от его yaw.
-    if (this.mobsInCone(p, bot.yaw).length < BOT.cleaveMinTargets) return;
-    if (Math.random() >= BOT.skillChancePerSec * dt) return;
-
-    bot.cleaveCd = BOT.cleaveCooldown;
-    bot.cleaveCastT = BOT.cleaveCastTime;
-    bot.cleaveYaw = bot.yaw;
-    bot.emoteFreezeUntil = Date.now() + BOT.cleaveCastTime * 1000;
-    const fx: ActRelay = {
-      k: "cleave",
-      id: bot.id,
-      x: p.head.x,
-      y: p.head.y - PLAYER.eyeHeight,
-      z: p.head.z,
-    };
-    this.broadcast(MSG.act, fx);
-  }
-
-  /** Мобы в конусе перед точкой `p`, направление — `yaw`. */
-  private mobsInCone(p: PlayerState, yaw: number): { id: string; x: number; z: number }[] {
-    const fx = Math.sin(yaw);
-    const fz = Math.cos(yaw);
-    const cone = Math.cos(BOT.cleaveCone);
-    const out: { id: string; x: number; z: number }[] = [];
-    for (const m of this.sim.mobs.values()) {
-      if (m.dead) continue;
-      const dx = m.x - p.head.x;
-      const dz = m.z - p.head.z;
-      const d = Math.hypot(dx, dz);
-      if (d > BOT.cleaveRange || d < 1e-3) continue;
-      if ((dx / d) * fx + (dz / d) * fz < cone) continue;
-      out.push({ id: m.id, x: m.x, z: m.z });
-    }
-    return out;
-  }
-
-  /** Замах дочитан — бьём и раскидываем всех, кто остался в секторе. */
-  private botCleaveLand(bot: Bot): void {
-    const p = bot.state;
-    const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
-      BOT.cleaveDamageMult *
-      (isTankBot(p) ? BOT.tank.dmgMul : 1);
-    for (const t of this.mobsInCone(p, bot.cleaveYaw)) {
-      const dx = t.x - p.head.x;
-      const dz = t.z - p.head.z;
-      const l = Math.hypot(dx, dz) || 1;
-      this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
-      this.sim.shoveMob(t.id, dx / l, dz / l, BOT.cleaveKnockback);
-      this.sim.stunMob(t.id, BOT.cleaveStun);
-    }
-    this.chatSeen.set(bot.norm, Date.now());
-  }
 
   /**
    * Бот с мечом — «Оглушающий удар»: бьёт землю, вокруг расходится волна и
@@ -2428,7 +2353,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botStunBashLand(bot);
       return;
     }
-    if (p.rightCls !== "sword" || bot.stunCd > 0 || bot.cleaveCastT > 0) return;
+    if (p.rightCls !== "sword" || bot.stunCd > 0) return;
     if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
@@ -2592,9 +2517,12 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.setExtraSlimes(this.bots.size * 2);
     if (this.bots.size === 0) return;
     const nowMs = Date.now();
-    // Пока идёт стрим (подключён спектатор) — держим ботов дольше: зрители
-    // ради них и заходят, а деспавн по 30-минутной тишине их зря снимал.
-    const idleLimit = BOT.idleDespawnSec * 1000 * (this.spectators.size > 0 ? 5 : 1);
+    // Пока идёт стрим (подключён спектатор ИЛИ он был на связи последние 5
+    // минут — покрывает перезагрузку страницы спектатора) держим ботов
+    // дольше: зрители ради них и заходят, деспавн по 30-мин тишине зря снимал.
+    const streamActive =
+      this.spectators.size > 0 || nowMs - this.lastSpectatorAt < 5 * 60_000;
+    const idleLimit = BOT.idleDespawnSec * 1000 * (streamActive ? 5 : 1);
     for (const bot of [...this.bots.values()]) {
       if (
         !STREAM_NICKS.includes(bot.norm) &&
@@ -2965,6 +2893,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Спектаторы стрима — sessionId. В `state.players` их нет. */
   private readonly spectators = new Set<string>();
+  /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
+   *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
+   *  ботов по короткому таймауту. */
+  private lastSpectatorAt = 0;
 
   override onJoin(client: Client, options?: JoinOpts): void {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
@@ -2974,6 +2906,7 @@ export class ZoneRoom extends Room<ZoneState> {
         throw new Error("спектатор: неверный ключ");
       }
       this.spectators.add(client.sessionId);
+      this.lastSpectatorAt = Date.now();
       console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Начальная синхронизация настроек пульта. Слать сразу из onJoin нельзя:
       // клиент ещё не навесил room.onMessage(specCmd) (это происходит после
@@ -3143,6 +3076,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override async onLeave(client: Client, consented?: boolean): Promise<void> {
     if (this.spectators.delete(client.sessionId)) {
+      this.lastSpectatorAt = Date.now();
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Ни одного спектатора не осталось — метка камеры стрима больше не
       // актуальна (мог уйти как раз рендерящий, а не только пульт).

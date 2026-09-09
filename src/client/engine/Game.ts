@@ -1266,15 +1266,6 @@ export class Game {
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at(at, () => this.sfx.levelUp());
         break;
-      case "cleave": {
-        // Сектор строим по текущему развороту бота — он замер на замахе.
-        const av = this.avatars.get(id);
-        const f = av?.eyeForward;
-        const yaw = f ? Math.atan2(f.x, f.z) : 0;
-        this.skillFx.cleave(x, y, z, yaw, BOT.cleaveRange, BOT.cleaveCastTime);
-        this.sfx.swordSwing(at);
-        break;
-      }
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
         this.sfx.at(at, () => {

@@ -775,14 +775,6 @@ export class Spectator {
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
         break;
-      case "cleave": {
-        const av = this.avatars.get(id);
-        const f = av?.eyeForward;
-        const yaw = f ? Math.atan2(f.x, f.z) : 0;
-        this.skillFx.cleave(x, y, z, yaw, BOT.cleaveRange, BOT.cleaveCastTime);
-        this.sfx.swordSwing({ x, y, z });
-        break;
-      }
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
         this.sfx.at({ x, y, z }, () => {
