@@ -212,6 +212,7 @@ interface Bot {
   healCastT: number; // с до конца каста массового хила (>0 — кастует, стоит)
   stunCd: number; // с до следующего оглушающего удара (меч)
   stunCastT: number; // с до конца замаха оглушающего
+  stunSoundDone: boolean; // звук удара уже проигран за stunSoundLead до удара
   rainCd: number; // с до следующего града стрел (лук)
   rainCastT: number; // с до конца замаха града
   rainX: number; // куда намечен град
@@ -1987,6 +1988,7 @@ export class ZoneRoom extends Room<ZoneState> {
       healCastT: 0,
       stunCd: 0,
       stunCastT: 0,
+      stunSoundDone: false,
       rainCd: 0,
       rainCastT: 0,
       rainX: 0,
@@ -2667,6 +2669,14 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (bot.stunCastT > 0) {
       bot.stunCastT = Math.max(0, bot.stunCastT - dt);
+      // Звук удара — за stunSoundLead секунд ДО самого удара.
+      if (!bot.stunSoundDone && bot.stunCastT <= BOT.stunSoundLead) {
+        bot.stunSoundDone = true;
+        this.broadcast(MSG.act, {
+          k: "stunHit", id: bot.id,
+          x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
+        } satisfies ActRelay);
+      }
       if (bot.stunCastT > 0) return;
       this.botStunBashLand(bot);
       return;
@@ -2677,6 +2687,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     bot.stunCd = BOT.stunCooldown;
     bot.stunCastT = BOT.stunCastTime;
+    bot.stunSoundDone = false;
     bot.emoteFreezeUntil = Date.now() + BOT.stunCastTime * 1000;
     const fx: ActRelay = {
       k: "stunBash",
@@ -2714,10 +2725,6 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
       this.sim.stunMob(t.id, BOT.stunDuration);
     }
-    // Звук — в момент удара (клиент играет groundBash на "stunHit").
-    this.broadcast(MSG.act, {
-      k: "stunHit", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
-    } satisfies ActRelay);
     this.chatSeen.set(bot.norm, Date.now());
   }
 
