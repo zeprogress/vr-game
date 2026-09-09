@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { BuffAura } from "../ui/BuffAura";
 
 import {
   loadRig,
@@ -43,10 +44,18 @@ export class LocalAvatar {
   private swingSpeed = 1;
   private hitUntil = 0;
   private hidden = false;
+  private readonly buffAura: BuffAura;
+  private buffed = false;
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode("localAvatar", scene);
+    this.buffAura = new BuffAura(scene, this.root, 0.95, -0.55);
     void this.reload();
+  }
+
+  /** Бафф победы над событием — синяя аура. */
+  setBuffed(on: boolean): void {
+    this.buffed = on;
   }
 
   /** skin из PlayerState: 0 — базовый рыцарь, 1..N — модель из набора ботов. */
@@ -164,6 +173,8 @@ export class LocalAvatar {
     }
     this.root.position.set(eyeX, eyeY, eyeZ);
     this.root.rotation.y = yaw;
+    this.buffAura.setActive(this.buffed && !this.hidden);
+    this.buffAura.update(dt);
 
     const rig = this.rig;
     if (!rig || this.hidden) return;
@@ -204,6 +215,7 @@ export class LocalAvatar {
 
   dispose(): void {
     this.disposed = true;
+    this.buffAura.dispose();
     this.rig?.dispose();
     this.holder?.dispose();
     this.root.dispose();

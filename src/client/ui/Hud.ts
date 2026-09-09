@@ -31,6 +31,7 @@ export class Hud {
   private toastTimer: number | null = null;
   private readonly bannerEl: HTMLDivElement;
   private bannerTimer: number | null = null;
+  private readonly buffEl!: HTMLDivElement;
   private skin = 0;
   private onSkin: ((skin: number) => void) | null = null;
   private leaveBot = false;
@@ -81,6 +82,13 @@ export class Hud {
     });
     this.deathEl = el("div", DEATH_CSS);
     this.bannerEl = el("div", BANNER_CSS);
+    this.buffEl = el(
+      "div",
+      "position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:40;" +
+        "font:700 13px system-ui,sans-serif;color:#dff0ff;background:rgba(30,70,150,0.55);" +
+        "border:1px solid rgba(120,180,255,0.6);border-radius:14px;padding:4px 12px;" +
+        "text-shadow:0 1px 3px #000;pointer-events:none;display:none;",
+    );
 
     const bst = document.createElement("style");
     bst.textContent =
@@ -96,6 +104,7 @@ export class Hud {
       this.vignette,
       this.toastEl,
       this.bannerEl,
+      this.buffEl,
       this.backdrop,
       this.deathEl,
     );
@@ -458,6 +467,18 @@ export class Hud {
    * Большой баннер во весь экран (появление / гибель босса).
    * `tone`: "warn" — багровый, "win" — золотой.
    */
+  /** Полоска баффа победы над событием (0 — прячем). */
+  setBuff(secs: number): void {
+    if (secs <= 0) {
+      this.buffEl.style.display = "none";
+      return;
+    }
+    const m = Math.floor(secs / 60);
+    const ss = String(secs % 60).padStart(2, "0");
+    this.buffEl.textContent = `⚡ Благословение · ×2 опыт и урон · ${m}:${ss}`;
+    this.buffEl.style.display = "block";
+  }
+
   banner(title: string, sub = "", tone: "warn" | "win" = "warn"): void {
     const t = this.bannerEl;
     t.innerHTML = `<div class="bn-t">${title}</div>${sub ? `<div class="bn-s">${sub}</div>` : ""}`;

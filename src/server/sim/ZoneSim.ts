@@ -1015,6 +1015,8 @@ export class ZoneSim {
   /** Мобы активного динамического события (этап 14): не возрождаются, при
    *  смерти сразу удаляются, считаются для HUD-строки. */
   readonly eventMobs = new Set<string>();
+  /** Кто нанёс урон мобам события — участники (для баффа за победу). */
+  readonly eventDamagers = new Set<string>();
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -1345,7 +1347,10 @@ export class ZoneSim {
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz);
     const dealt = Math.max(0, hpBefore - m.hp);
-    if (attacker && dealt > 0) m.bump(attacker, "dmg", dealt, this.elapsed);
+    if (attacker && dealt > 0) {
+      m.bump(attacker, "dmg", dealt, this.elapsed);
+      if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);
+    }
 
     if (m.kind === "boss" && m.pendingSplit) {
       m.pendingSplit = false;

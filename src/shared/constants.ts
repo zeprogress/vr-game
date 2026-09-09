@@ -775,6 +775,10 @@ export const EVENT = {
     waveGap: 4,
     /** Сколько зелий сыплется в эпицентре за победу. */
     rewardPotions: 12,
+    /** Бафф всем участникам за зачистку: ×множитель опыта и урона на N минут. */
+    buffMinutes: 15,
+    buffXpMult: 2,
+    buffDmgMult: 2,
     /** Шанс, что вдобавок выпадет золотое оружие. */
     rewardGoldChance: 0.5,
   },

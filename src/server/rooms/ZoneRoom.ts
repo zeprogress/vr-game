@@ -168,6 +168,8 @@ interface Runtime {
   kills: number;
   /** Продолжать ли персонажа ботом после выхода. По умолчанию — нет. */
   leaveBot: boolean;
+  /** ms окончания баффа победы над событием (×2 опыт/урон). 0 — нет баффа. */
+  eventBuffUntil: number;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -655,7 +657,8 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastCast = this.elapsed;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
-      const boltDmg = fireboltDamage(p.level, p.int, charge);
+      const boltDmg =
+        fireboltDamage(p.level, p.int, charge) * this.buffMult(client.sessionId, "dmg");
       this.sim.castBolt(
         num(msg.ox, p.head.x),
         num(msg.oy, p.head.y),
@@ -1039,7 +1042,10 @@ export class ZoneRoom extends Room<ZoneState> {
     rt.lastHit[msg.weapon] = this.elapsed;
     // Крит — только у лука, бросает сервер (см. rollCritMult).
     const crit = rollCritMult(msg.weapon);
-    const dmg = weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) * crit;
+    const dmg =
+      weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) *
+      crit *
+      this.buffMult(client.sessionId, "dmg");
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -1078,6 +1084,13 @@ export class ZoneRoom extends Room<ZoneState> {
   private idOf(p: PlayerState): string | null {
     for (const [id, st] of this.state.players) if (st === p) return id;
     return null;
+  }
+
+  /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
+  private buffMult(ownerId: string, which: "xp" | "dmg"): number {
+    const rt = this.rt.get(ownerId);
+    if (!rt || rt.eventBuffUntil <= Date.now()) return 1;
+    return which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult;
   }
 
   private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
@@ -1340,7 +1353,24 @@ export class ZoneRoom extends Room<ZoneState> {
         const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
         this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
       }
+      // Бафф всем, кто бил мобов события: ×2 опыт и урон на buffMinutes.
+      const until = Date.now() + EVENT.invasion.buffMinutes * 60_000;
+      let n = 0;
+      for (const owner of this.sim.eventDamagers) {
+        const rt = this.rt.get(owner);
+        if (rt && this.state.players.has(owner)) {
+          rt.eventBuffUntil = until;
+          n++;
+        }
+      }
+      if (n > 0) {
+        this.reply(
+          `Нашествие отражено! ${n} героям — благословение на ${EVENT.invasion.buffMinutes} мин: ` +
+            `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона.`,
+        );
+      }
     }
+    this.sim.eventDamagers.clear();
     this.sim.clearEventMobs();
     this.eventPhase = "cooldown";
     this.eventPhaseAt = Date.now() + EVENT.cooldown * 1000;
@@ -1907,7 +1937,8 @@ export class ZoneRoom extends Room<ZoneState> {
       stowed: [],
       overrides: {},
       kills: rec?.kills ?? 0,
-      leaveBot: rec?.leaveBot === true, // ботом не читается — только у живого игрока
+      leaveBot: rec?.leaveBot === true,
+      eventBuffUntil: 0,
     };
     this.rt.set(id, rt);
 
@@ -2426,11 +2457,11 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
-          weaponDamage("arrow", p.level, p.str, mult, p.agi) * critM,
+          weaponDamage("arrow", p.level, p.str, mult, p.agi) * critM * this.buffMult(bot.id, "dmg"),
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
       } else {
-        const bd = fireboltDamage(p.level, p.int, 0.7);
+        const bd = fireboltDamage(p.level, p.int, 0.7) * this.buffMult(bot.id, "dmg");
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),
@@ -2547,7 +2578,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // игрока выходил выше при том же снаряжении.
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
-      (isTankBot(p) ? BOT.tank.dmgMul : 1);
+      (isTankBot(p) ? BOT.tank.dmgMul : 1) *
+      this.buffMult(bot.id, "dmg");
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
@@ -2655,7 +2687,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
       BOT.stunDamageMult *
-      (isTankBot(p) ? BOT.tank.dmgMul : 1);
+      (isTankBot(p) ? BOT.tank.dmgMul : 1) *
+      this.buffMult(bot.id, "dmg");
     for (const t of this.mobsInRadius(p, BOT.stunRadius)) {
       const dx = t.x - p.head.x;
       const dz = t.z - p.head.z;
@@ -2727,7 +2760,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private botArrowRainLand(bot: Bot): void {
     const p = bot.state;
     const dmg =
-      weaponDamage("arrow", p.level, p.str, multIn(p, "right"), p.agi) * BOT.rainDamageMult;
+      weaponDamage("arrow", p.level, p.str, multIn(p, "right"), p.agi) *
+      BOT.rainDamageMult *
+      this.buffMult(bot.id, "dmg");
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
       const dx = m.x - bot.rainX;
@@ -2938,7 +2973,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
       const lvlCap = xpToNext(kp.level);
-      const xp = Number.isFinite(lvlCap) ? Math.min(k.xp, lvlCap) : k.xp;
+      const raw = k.xp * this.buffMult(k.owner, "xp");
+      const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);
       if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
     }
@@ -2967,7 +3003,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const kp = this.state.players.get(k.owner);
         if (kp) {
           const lvlCap = xpToNext(kp.level); // Infinity на максимальном уровне
-          const xp = Number.isFinite(lvlCap) ? Math.min(k.xp, lvlCap) : k.xp;
+          const raw = k.xp * this.buffMult(k.owner, "xp");
+          const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
           this.awardXp(this.clientOf(k.owner), kp, xp);
           if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
           if (xp > topXp) {
@@ -3123,6 +3160,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
+      const buffLeft = Math.max(0, rt.eventBuffUntil - Date.now());
+      p.buffSecs = Math.min(65535, Math.ceil(buffLeft / 1000));
       // Танк-бот восстанавливается быстрее и раньше обычного.
       const tank = id.startsWith("bot:") && isTankBot(p);
       const regenDelay = PLAYER_HP.regenDelay * (tank ? BOT.tank.regenDelayMul : 1);
@@ -3312,6 +3351,7 @@ export class ZoneRoom extends Room<ZoneState> {
       overrides: sanitizeOverrides(rec?.overrides),
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
+      eventBuffUntil: 0,
     });
 
     client.send(
@@ -3326,6 +3366,7 @@ export class ZoneRoom extends Room<ZoneState> {
             held: sanitizeHeld(rec.held),
             overrides: sanitizeOverrides(rec.overrides),
             leaveBot: rec.leaveBot === true,
+            eventBuffUntil: 0,
           }
         : null,
     );

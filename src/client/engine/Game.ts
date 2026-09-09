@@ -907,6 +907,8 @@ export class Game {
     }
     this.serverHp = self.hp;
     this.player.setHp(self.hp);
+    this.localAvatar?.setBuffed((self.buffSecs ?? 0) > 0);
+    this.hud.setBuff(self.buffSecs ?? 0);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
@@ -1102,7 +1104,11 @@ export class Game {
         this.hud.banner(`${name}!`, "К бою — отбейте волну мобов", "warn");
         this.sfx.bossHorn();
       } else if (phase === "win") {
-        this.hud.banner(`${name} отражено`, "В эпицентре — награда", "win");
+        this.hud.banner(
+          `${name} отражено`,
+          "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
+          "win",
+        );
         this.sfx.bossFanfare();
       } else {
         this.hud.banner(`${name} утихло`, "", "warn");

@@ -332,7 +332,7 @@ export class Spectator {
         this.overlay?.showCard(`${name}!`, "мобы лезут волнами — герои сбегаются", 6);
         this.sfx.bossHorn();
       } else if (phase === "win") {
-        this.overlay?.showCard(`${name} отражено`, "", 5);
+        this.overlay?.showCard(`${name} отражено`, "участникам — ×2 опыт и урон на 15 мин", 6);
         this.sfx.bossFanfare();
       } else {
         this.overlay?.showCard(`${name} утихло`, "", 4);
