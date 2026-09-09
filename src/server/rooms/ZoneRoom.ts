@@ -1313,10 +1313,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const wave = EVENT.invasion.waves[i];
     if (!wave) return;
     const rad = EVENT.invasion.radius;
-    // Кучно: разброс от центра небольшой (0.15..0.75 радиуса).
+    // Кучно у центра: смещение к эпицентру (0..0.5 радиуса, с уклоном внутрь).
     const at = (): [number, number] => {
       const a = Math.random() * Math.PI * 2;
-      const r = rad * (0.15 + Math.random() * 0.6);
+      const r = rad * 0.5 * Math.random() * Math.random();
       return [this.eventX + Math.cos(a) * r, this.eventZ + Math.sin(a) * r];
     };
     // Кол-во мобов кратно числу героев в мире (с общим потолком на волну).
@@ -2677,10 +2677,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
+    const castT = isTankBot(p) ? BOT.tankStunCastTime : BOT.stunCastTime;
     bot.stunCd = BOT.stunCooldown;
-    bot.stunCastT = BOT.stunCastTime;
+    bot.stunCastT = castT;
     bot.stunSoundDone = false;
-    bot.emoteFreezeUntil = Date.now() + BOT.stunCastTime * 1000;
+    bot.emoteFreezeUntil = Date.now() + castT * 1000;
     const fx: ActRelay = {
       k: "stunBash",
       id: bot.id,

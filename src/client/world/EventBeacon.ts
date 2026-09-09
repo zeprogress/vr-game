@@ -9,8 +9,8 @@ import { EVENT } from "#shared/constants";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 /**
- * Маяк динамического события (этап 14): широкий синий конус света над всей
- * зоной события — от земли (диаметр ≈ зона) сужается вверх, пульсирует
+ * Маяк динамического события (этап 14): широкий ровный синий столб света над
+ * всей зоной события (без донышек, диаметр чуть больше зоны), пульсирует
  * (то меньше, то больше). Виден издалека, к нему бегут игроки.
  */
 export class EventBeacon {
@@ -25,10 +25,10 @@ export class EventBeacon {
     this.root = new TransformNode("eventBeacon", scene);
     this.root.setEnabled(false);
 
-    const base = EVENT.invasion.radius * 2; // диаметр у земли ≈ размер зоны
+    const base = EVENT.invasion.radius * 2.6; // ровный столб, чуть шире зоны
     this.cone = MeshBuilder.CreateCylinder(
       "eventBeaconCone",
-      { height: 28, diameterBottom: base, diameterTop: base * 0.25, tessellation: 24 },
+      { height: 28, diameter: base, tessellation: 24, cap: 0 /* без донышек */ },
       scene,
     );
     this.mat = new StandardMaterial("eventBeaconMat", scene);
