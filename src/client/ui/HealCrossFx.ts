@@ -24,7 +24,7 @@ const WORLD_UP = new Vector3(0, 1, 0);
 
 export const CROSS_GREEN = new Color3(0.3, 1, 0.42); // лечение
 export const CROSS_ORANGE = new Color3(1, 0.62, 0.12); // повышение уровня
-export const CROSS_RED = new Color3(1, 0.16, 0.12); // критический удар
+
 
 /**
  * Крестики, пролетающие снизу вверх перед глазами: зелёные при лечении,

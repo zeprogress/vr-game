@@ -4,10 +4,12 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { Constants } from "@babylonjs/core/Engines/constants";
 
-import { CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "./HealCrossFx";
+import { CROSS_GREEN, CROSS_ORANGE } from "./HealCrossFx";
 
-export { CROSS_GREEN, CROSS_ORANGE, CROSS_RED };
+export { CROSS_GREEN, CROSS_ORANGE };
 
 /** Сколько крестиков живёт одновременно на всю сцену. */
 const POOL = 48;
@@ -15,12 +17,13 @@ const LIFE = 1.5; // с полёта
 const RISE = 1.6; // м вверх за жизнь
 const SPREAD = 0.9; // м разлёта по горизонтали
 
-/** Красный «X» критического удара — держится на мобе и тает. */
-const CRIT_POOL = 14;
-const CRIT_LIFE = 0.6; // с
+/** Красная огненная вспышка критического выстрела — раздувается и гаснет. */
+const CRIT_POOL = 12;
+const CRIT_LIFE = 0.42; // с
 
-interface CritX {
-  mesh: Mesh;
+interface CritBurst {
+  core: Mesh;
+  ring: Mesh;
   age: number;
   x: number;
   y: number;
@@ -50,7 +53,7 @@ interface Cross {
 export class WorldCrossFx {
   private readonly pool: Cross[] = [];
   private next = 0;
-  private readonly critPool: CritX[] = [];
+  private readonly critPool: CritBurst[] = [];
   private critNext = 0;
 
   constructor(private readonly scene: Scene) {
@@ -77,33 +80,40 @@ export class WorldCrossFx {
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
 
-    // Крит с лука — ОДИН красный крест, повёрнутый на 45° («X»), прямо на мобе.
-    const xa = MeshBuilder.CreateBox("critXa", { width: 0.62, height: 0.11, depth: 0.05 }, scene);
-    xa.rotation.z = Math.PI / 4;
-    const xb = MeshBuilder.CreateBox("critXb", { width: 0.62, height: 0.11, depth: 0.05 }, scene);
-    xb.rotation.z = -Math.PI / 4;
-    const xMerged = Mesh.MergeMeshes([xa, xb], true, true);
-    const xProto = xMerged ?? xa;
-    if (!xMerged) xb.dispose();
-    xProto.name = "critXProto";
+    // Крит с лука — красная огненная вспышка на мобе: яркое ядро + кольцо.
+    const coreProto = MeshBuilder.CreateSphere("critCore", { diameter: 1, segments: 10 }, scene);
+    coreProto.setEnabled(false);
+    const ringProto = MeshBuilder.CreateSphere("critRing", { diameter: 1, segments: 12 }, scene);
+    ringProto.setEnabled(false);
     for (let i = 0; i < CRIT_POOL; i++) {
-      const m = i === 0 ? xProto : xProto.clone(`critX${i}`);
-      const mat = new StandardMaterial(`critXMat${i}`, scene);
-      mat.emissiveColor = CROSS_RED.clone();
-      mat.diffuseColor = new Color3(0, 0, 0);
-      mat.specularColor = new Color3(0, 0, 0);
-      mat.disableLighting = true;
-      mat.disableDepthWrite = true;
-      m.material = mat;
-      m.isPickable = false;
-      m.renderingGroupId = 1;
-      m.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      m.setEnabled(false);
-      this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
+      const core = i === 0 ? coreProto : coreProto.clone(`critCore${i}`);
+      const ring = i === 0 ? ringProto : ringProto.clone(`critRing${i}`);
+      const cMat = new StandardMaterial(`critCoreMat${i}`, scene);
+      cMat.emissiveColor = new Color3(1, 0.55, 0.35); // ядро — раскалённо-красное
+      cMat.diffuseColor = new Color3(0, 0, 0);
+      cMat.specularColor = new Color3(0, 0, 0);
+      cMat.disableLighting = true;
+      cMat.disableDepthWrite = true;
+      cMat.alphaMode = Constants.ALPHA_ADD;
+      const rMat = new StandardMaterial(`critRingMat${i}`, scene);
+      rMat.emissiveColor = new Color3(1, 0.12, 0.06); // кольцо — глубокий красный
+      rMat.diffuseColor = new Color3(0, 0, 0);
+      rMat.specularColor = new Color3(0, 0, 0);
+      rMat.disableLighting = true;
+      rMat.disableDepthWrite = true;
+      rMat.alphaMode = Constants.ALPHA_ADD;
+      for (const m of [core, ring]) {
+        m.isPickable = false;
+        m.renderingGroupId = 1;
+        m.setEnabled(false);
+      }
+      core.material = cMat;
+      ring.material = rMat;
+      this.critPool.push({ core, ring, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
     }
   }
 
-  /** Красный «X» критического попадания — держится на мобе ~0.6 с и тает. */
+  /** Красная огненная вспышка критического попадания — на мобе, быстро гаснет. */
   critMark(x: number, y: number, z: number): void {
     const c = this.critPool[this.critNext];
     this.critNext = (this.critNext + 1) % this.critPool.length;
@@ -111,8 +121,10 @@ export class WorldCrossFx {
     c.y = y;
     c.z = z;
     c.age = 0;
-    c.mesh.position.set(x, y, z);
-    c.mesh.setEnabled(true);
+    c.core.position.set(x, y, z);
+    c.ring.position.set(x, y, z);
+    c.core.setEnabled(true);
+    c.ring.setEnabled(true);
   }
 
   /**
@@ -142,16 +154,18 @@ export class WorldCrossFx {
       if (c.age > CRIT_LIFE) continue;
       c.age += dt;
       if (c.age > CRIT_LIFE) {
-        c.mesh.setEnabled(false);
+        c.core.setEnabled(false);
+        c.ring.setEnabled(false);
         continue;
       }
       const t = c.age / CRIT_LIFE;
-      // Выпрыгивает крупнее, затем оседает; всплывает чуть-чуть.
-      const pop = t < 0.18 ? t / 0.18 : 1;
-      const settle = 1.35 - 0.35 * Math.min(1, (t - 0.18) / 0.3);
-      c.mesh.scaling.setAll(pop * settle);
-      c.mesh.position.set(c.x, c.y + t * 0.25, c.z);
-      (c.mesh.material as StandardMaterial).alpha = Math.min(1, (1 - t) * 2.5);
+      // Ядро вспыхивает и быстро гаснет; кольцо расходится наружу.
+      const coreS = 0.5 + t * 1.6;
+      c.core.scaling.setAll(coreS);
+      (c.core.material as StandardMaterial).alpha = (1 - t) * (1 - t) * 0.9;
+      const ringS = 0.6 + Math.sqrt(t) * 3.4;
+      c.ring.scaling.setAll(ringS);
+      (c.ring.material as StandardMaterial).alpha = (1 - t) * 0.5;
     }
     for (const c of this.pool) {
       if (c.age > LIFE) continue;
@@ -175,9 +189,15 @@ export class WorldCrossFx {
   }
 
   dispose(): void {
-    for (const c of [...this.pool, ...this.critPool]) {
+    for (const c of this.pool) {
       c.mesh.material?.dispose();
       c.mesh.dispose();
+    }
+    for (const c of this.critPool) {
+      c.core.material?.dispose();
+      c.ring.material?.dispose();
+      c.core.dispose();
+      c.ring.dispose();
     }
     void this.scene;
   }
