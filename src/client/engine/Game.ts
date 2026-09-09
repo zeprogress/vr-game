@@ -1290,6 +1290,8 @@ export class Game {
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
+        break;
+      case "stunHit":
         this.sfx.at(at, () => this.sfx.groundBash());
         break;
       case "arrowRain":

@@ -744,14 +744,33 @@ export const EVENT = {
   /** Жёсткий предел на активную фазу — если не зачистили, событие утихает без награды, с. */
   hardTimeout: 5 * 60,
   invasion: {
-    /** Радиус, в котором лезут мобы вокруг точки события, м. */
-    radius: 12,
-    /** Волны: сколько и что в каждой (base = слизни, ranged = плевуны). */
+    /** Радиус, в котором лезут мобы вокруг точки события, м (кучнее — меньше). */
+    radius: 7,
+    /**
+     * Волны по нарастанию силы: 1-я — слабые мобы, дальше всё злее, в
+     * последней — орки-стрелки. `type`: "slime"/"spitter" — базовые, иначе
+     * ключ ELITE_MOBS.
+     */
     waves: [
-      { base: 5, ranged: 1 },
-      { base: 6, ranged: 3 },
-      { base: 4, ranged: 2, elite: "spikyBlob" as const },
-    ],
+      [
+        { type: "slime", count: 7 },
+        { type: "bee", count: 5 },
+      ],
+      [
+        { type: "slime", count: 4 },
+        { type: "spitter", count: 3 },
+        { type: "spikyBlob", count: 3 },
+      ],
+      [
+        { type: "spitter", count: 2 },
+        { type: "frog", count: 3 },
+        { type: "cactoro", count: 2 },
+      ],
+      [
+        { type: "cactoro", count: 3 },
+        { type: "orcGunner", count: 2 },
+      ],
+    ] as { type: string; count: number }[][],
     /** Пауза между волнами после зачистки предыдущей, с. */
     waveGap: 4,
     /** Сколько зелий сыплется в эпицентре за победу. */

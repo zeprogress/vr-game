@@ -191,6 +191,8 @@ interface Bot {
   /** !event: бот-игрока послан на активное событие мира — чистит там мобов,
    *  собирает лут, по окончании события возвращается домой сам. */
   eventing: boolean;
+  /** ms конца «уборочной» фазы после события — бот ещё собирает награду, потом домой (0 — не в ней). */
+  eventDoneAt: number;
   /** ms последней эмоции (!cheer, авто-кувырок на бегу, левелап) — антиспам. */
   emoteAt: number;
   /** ms — до этого момента бот стоит на месте, играет эмоцию. */
@@ -1279,30 +1281,29 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private eventSpawnWave(i: number): void {
-    const w = EVENT.invasion.waves[i];
-    if (!w) return;
+    const wave = EVENT.invasion.waves[i];
+    if (!wave) return;
     const rad = EVENT.invasion.radius;
+    // Кучно: разброс от центра небольшой (0.15..0.75 радиуса).
     const at = (): [number, number] => {
       const a = Math.random() * Math.PI * 2;
-      const r = rad * (0.3 + Math.random() * 0.7);
+      const r = rad * (0.15 + Math.random() * 0.6);
       return [this.eventX + Math.cos(a) * r, this.eventZ + Math.sin(a) * r];
     };
-    for (let k = 0; k < (w.base ?? 0); k++) {
-      const [x, z] = at();
-      this.sim.spawnEventMob("slime", x, z);
-    }
-    for (let k = 0; k < (w.ranged ?? 0); k++) {
-      const [x, z] = at();
-      this.sim.spawnEventMob("spitter", x, z);
-    }
-    if ("elite" in w && w.elite) {
-      const def = ELITE_MOBS[w.elite];
-      const [x, z] = at();
-      this.sim.spawnEventMob(def.kind, x, z, {
-        model: def.model, name: def.name, level: def.level, hp: def.hp,
-        dmgMul: def.dmgMul, scaleMul: def.scaleMul, xp: def.xp,
-        flying: def.flying, rangedArmor: def.rangedArmor,
-      });
+    for (const { type, count } of wave) {
+      const def = type in ELITE_MOBS ? ELITE_MOBS[type] : null;
+      for (let k = 0; k < count; k++) {
+        const [x, z] = at();
+        if (def) {
+          this.sim.spawnEventMob(def.kind, x, z, {
+            model: def.model, name: def.name, level: def.level, hp: def.hp,
+            dmgMul: def.dmgMul, scaleMul: def.scaleMul, xp: def.xp,
+            flying: def.flying, rangedArmor: def.rangedArmor,
+          });
+        } else {
+          this.sim.spawnEventMob(type === "spitter" ? "spitter" : "slime", x, z);
+        }
+      }
     }
   }
 
@@ -1405,6 +1406,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     bot.eventing = true;
+    bot.eventDoneAt = 0;
     bot.raiding = false;
     bot.followNorm = null;
     this.reply(`@${nick} герой выдвинулся на нашествие — зачистит и вернётся.`);
@@ -1914,6 +1916,7 @@ export class ZoneRoom extends Room<ZoneState> {
       followNorm: null,
       raiding: false,
       eventing: false,
+      eventDoneAt: 0,
       emoteAt: 0,
       emoteFreezeUntil: 0,
       attackCd: 0,
@@ -2034,11 +2037,20 @@ export class ZoneRoom extends Room<ZoneState> {
     let cz = bot.homeZ;
     if (bot.eventing) {
       if (this.state.eventKind === 0) {
-        bot.eventing = false; // событие кончилось — возвращаемся домой
-        bot.wanderCd = 0; // сразу выбрать точку блуждания у дома, а не у события
+        // Событие кончилось — ещё немного собираем награду в эпицентре, потом домой.
+        if (bot.eventDoneAt === 0) bot.eventDoneAt = Date.now() + 20_000;
+        if (Date.now() >= bot.eventDoneAt) {
+          bot.eventing = false;
+          bot.eventDoneAt = 0;
+          bot.wanderCd = 0;
+        } else {
+          cx = this.state.eventX;
+          cz = this.state.eventZ;
+        }
       } else {
         cx = this.state.eventX;
         cz = this.state.eventZ;
+        bot.eventDoneAt = 0;
       }
     }
     const inZone = (x: number, z: number): boolean =>
@@ -2133,7 +2145,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Золотое оружие с босса лежит далеко от домашней зоны бота — за ним
       // идём в любом случае (радиус проверяем ниже). Зелья — только у дома.
       if (w) return wantGoldWeapon && w.cls === p.rightCls && w.tier === "gold";
-      return wantPotion && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
+      return (wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
     };
     if (!okLoot(loot)) {
       bot.lootTarget = null;
@@ -2645,6 +2657,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
       this.sim.stunMob(t.id, BOT.stunDuration);
     }
+    // Звук — в момент удара (клиент играет groundBash на "stunHit").
+    this.broadcast(MSG.act, {
+      k: "stunHit", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
+    } satisfies ActRelay);
     this.chatSeen.set(bot.norm, Date.now());
   }
 

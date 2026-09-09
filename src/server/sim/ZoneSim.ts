@@ -1126,10 +1126,11 @@ export class ZoneSim {
   }
 
   /** Россыпь зелий в точке (награда за событие). */
-  dropPotions(x: number, z: number, count: number): void {
+  /** Награда за событие — зелья РАЗБРОСАНЫ по площадке (spread — радиус, м). */
+  dropPotions(x: number, z: number, count: number, spread = 6): void {
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * (BAG.dropSpread + 1);
+      const r = spread * (0.35 + Math.random() * 0.65);
       const px = x + Math.cos(a) * r;
       const pz = z + Math.sin(a) * r;
       const d = new Drop("potion", 1, px, terrainHeight(px, pz) + BAG.dropHeight, pz);

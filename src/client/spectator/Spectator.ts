@@ -797,6 +797,8 @@ export class Spectator {
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
+        break;
+      case "stunHit":
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "arrowRain":
