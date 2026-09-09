@@ -133,8 +133,11 @@ export function dayState(hour: number): DayState {
   const sunDir = sunPos.scale(-1);
 
   const elev = sunPos.y;
-  const day = clamp01((elev - 0.12) / 0.33);
-  const night = clamp01((-elev - 0.04) / 0.22);
+  // Золотой час специально растянут: день начинается только с более высокого
+  // солнца, ночь — с более низкого, за счёт этого утренние и вечерние
+  // тёплые краски (dusk) занимают заметно больше времени суток.
+  const day = clamp01((elev - 0.2) / 0.3);
+  const night = clamp01((-elev - 0.1) / 0.2);
   const dusk = clamp01(1 - day - night);
   const total = day + night + dusk || 1;
   const wd = day / total;
