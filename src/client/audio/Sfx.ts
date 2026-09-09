@@ -43,6 +43,10 @@ export class Sfx {
   ];
   private readonly bowShotBufs: AudioBuffer[] = [];
   private bowShotsLoading = false;
+  /** Сэмпл попадания мечом (art/sword_hit.wav, обрезан). */
+  private static readonly SWORD_HIT = "/sfx/sword-hit.mp3";
+  private swordHitBuf: AudioBuffer | null = null;
+  private swordHitLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -342,6 +346,17 @@ export class Sfx {
     }
   }
 
+  /** Один раз подгрузить сэмпл удара мечом (зовём на замахе — успевает к попаданию). */
+  private preloadSwordHit(): void {
+    if (this.swordHitLoading || this.swordHitBuf || !this.ctx) return;
+    this.swordHitLoading = true;
+    fetch(Sfx.SWORD_HIT)
+      .then((r) => r.arrayBuffer())
+      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+      .then((b) => (this.swordHitBuf = b))
+      .catch(() => {});
+  }
+
   /** Проиграть готовый буфер разово, объёмно от текущей точки (this.spatialAt). */
   private playSample(buf: AudioBuffer, gain = 1, rate = 1): void {
     const src = this.ctx!.createBufferSource();
@@ -545,6 +560,7 @@ export class Sfx {
 
   swordSwing(at?: SoundAt): void {
     if (!this.ready()) return;
+    this.preloadSwordHit();
     const t = this.t;
     const n = this.noise();
     const bp = this.filter("bandpass", 600, 3.5);
@@ -555,6 +571,17 @@ export class Sfx {
     n.connect(bp).connect(g);
     n.start(t);
     n.stop(t + 0.32);
+  }
+
+  /** Попадание мечом: сэмпл art/sword_hit.wav; пока не загружен — синтез hitThud. */
+  swordHit(vol = 1): void {
+    if (!this.ready()) return;
+    if (this.swordHitBuf) {
+      this.playSample(this.swordHitBuf, 0.95 * vol, 0.97 + Math.random() * 0.06);
+      return;
+    }
+    this.preloadSwordHit();
+    this.hitThud(vol);
   }
 
   hitThud(vol = 1): void {

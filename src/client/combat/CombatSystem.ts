@@ -1709,7 +1709,7 @@ export class CombatSystem {
         }
       }
     }
-    if (landed) this.sfx.hitThud();
+    if (landed) this.sfx.swordHit();
   }
 
   /**
@@ -1763,7 +1763,10 @@ export class CombatSystem {
         if (t.hit(f, kind, closestPointOnSegment(mid, eye, tip))) landed = true;
       }
     }
-    if (landed) this.sfx.hitThud(kind === "sword" ? 1 : 0.55);
+    if (landed) {
+      if (kind === "sword") this.sfx.swordHit();
+      else this.sfx.hitThud(0.55);
+    }
   }
 
   /** Каждый меч в руке машет сам по себе — след кончика свой у каждой руки. */
@@ -1829,7 +1832,7 @@ export class CombatSystem {
         const mid = seg.a.add(seg.b).scale(0.5);
         const contact = closestPointOnSegment(mid, guard, tip);
         if (t.hit(dir, "sword", contact)) {
-          this.sfx.hitThud();
+          this.sfx.swordHit();
           // Вибрирует именно та рука, которая держит меч.
           this.haptic(this.heldHand, 0.7, 70);
         }
