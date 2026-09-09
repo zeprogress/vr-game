@@ -242,9 +242,13 @@ function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | 
   return "sword";
 }
 
-/** Танк — бот с мечом (и щитом). Ему идут бонусы BOT.tank. */
-function isTankBot(p: PlayerState): boolean {
-  return p.rightCls === "sword" && (p.leftCls === "shield" || p.leftCls === "");
+/**
+ * Воин (он же танк, мечник) — бот с мечом в правой руке. Меч совместим только
+ * со вторым мечом или щитом (см. clampHandPair), поэтому проверка по правой
+ * руке достаточна. Все воины получают бонусы BOT.warrior.
+ */
+function isWarriorBot(p: PlayerState): boolean {
+  return p.rightCls === "sword";
 }
 
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
@@ -747,6 +751,15 @@ export class ZoneRoom extends Room<ZoneState> {
 
       const l = put(msg.left);
       const r = put(msg.right);
+      // Меч совместим только со вторым мечом или щитом: лук/посох в паре с
+      // мечом запрещены — вторую руку в этом случае освобождаем.
+      if (
+        (r.cls === "sword" && (l.cls === "bow" || l.cls === "staff")) ||
+        (l.cls === "sword" && (r.cls === "bow" || r.cls === "staff"))
+      ) {
+        l.cls = "";
+        l.tier = "";
+      }
       p.leftCls = l.cls;
       p.leftTier = l.tier;
       p.rightCls = r.cls;
@@ -2062,10 +2075,10 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.stunCd = Math.max(0, bot.stunCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
 
-    // Танк крепче: держим его максимум HP с множителем BOT.tank.hpMul (при
+    // Воин крепче: держим его максимум HP с множителем BOT.warrior.hpMul (при
     // смене уровня/статов/оружия — доводим и текущее HP на прибавку).
     {
-      const want = maxHpFor(p.level, p.str) * (isTankBot(p) ? BOT.tank.hpMul : 1);
+      const want = maxHpFor(p.level, p.str) * (isWarriorBot(p) ? BOT.warrior.hpMul : 1);
       if (Math.abs(p.maxHp - want) > 0.5) {
         const gain = Math.max(0, want - p.maxHp);
         p.maxHp = want;
@@ -2598,7 +2611,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // игрока выходил выше при том же снаряжении.
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
-      (isTankBot(p) ? BOT.tank.dmgMul : 1) *
+      (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
     const sx = mob.x;
     const sy = mob.y;
@@ -2677,7 +2690,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
-    const castT = isTankBot(p) ? BOT.tankStunCastTime : BOT.stunCastTime;
+    const castT = BOT.stunCastTime;
     bot.stunCd = BOT.stunCooldown;
     bot.stunCastT = castT;
     bot.stunSoundDone = false;
@@ -2715,7 +2728,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
       BOT.stunDamageMult *
-      (isTankBot(p) ? BOT.tank.dmgMul : 1) *
+      (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
     for (const t of this.mobsInRadius(p, BOT.stunRadius)) {
       const dx = t.x - p.head.x;
@@ -3186,10 +3199,10 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.sinceHurt += dt;
       const buffLeft = Math.max(0, rt.eventBuffUntil - Date.now());
       p.buffSecs = Math.min(65535, Math.ceil(buffLeft / 1000));
-      // Танк-бот восстанавливается быстрее и раньше обычного.
-      const tank = id.startsWith("bot:") && isTankBot(p);
-      const regenDelay = PLAYER_HP.regenDelay * (tank ? BOT.tank.regenDelayMul : 1);
-      const regenRate = PLAYER_HP.regen * (tank ? BOT.tank.regenMul : 1);
+      // Воин-бот восстанавливается быстрее и раньше обычного.
+      const warrior = id.startsWith("bot:") && isWarriorBot(p);
+      const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
+      const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
       if (p.hp > 0 && p.hp < p.maxHp && rt.sinceHurt > regenDelay) {
         p.hp = Math.min(p.maxHp, p.hp + regenRate * dt);
       }
