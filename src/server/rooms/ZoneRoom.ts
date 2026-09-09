@@ -188,6 +188,9 @@ interface Bot {
    * (одна попытка — один рейд) или повторным !raid.
    */
   raiding: boolean;
+  /** !event: бот-игрока послан на активное событие мира — чистит там мобов,
+   *  собирает лут, по окончании события возвращается домой сам. */
+  eventing: boolean;
   /** ms последней эмоции (!cheer, авто-кувырок на бегу, левелап) — антиспам. */
   emoteAt: number;
   /** ms — до этого момента бот стоит на месте, играет эмоцию. */
@@ -1206,6 +1209,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     bot.followNorm = null; // рейд важнее !follow
+    bot.eventing = false; // и важнее события
 
     // Бой уже идёт (кто-то в рейде) — новичок присоединяется сразу.
     if ([...this.bots.values()].some((b) => b.raiding)) {
@@ -1384,6 +1388,28 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
 
+  /** `!event` — послать бота зрителя на активное событие: чистить, собирать
+   *  лут, по окончании события вернуться домой. */
+  private sendBotToEvent(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (this.eventPhase !== "active") {
+      this.reply(`@${nick} сейчас в мире событий нет.`);
+      return;
+    }
+    if (bot.eventing) {
+      this.reply(`@${nick} герой уже там.`);
+      return;
+    }
+    bot.eventing = true;
+    bot.raiding = false;
+    bot.followNorm = null;
+    this.reply(`@${nick} герой выдвинулся на нашествие — зачистит и вернётся.`);
+  }
+
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
     if (!bot) {
@@ -1391,6 +1417,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     bot.raiding = false; // !follow/!come/!stay отменяет рейд
+    bot.eventing = false; // и событие
     bot.followNorm = target;
     if (!target) {
       this.reply(`@${nick} герой сам по себе — снова бродит и бьёт мобов.`);
@@ -1464,8 +1491,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
-    } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
-      if (norm === normNick(ADMIN_NICK) || STREAM_NICKS.includes(norm)) {
+    } else if (cmd === "!goevent") {
+      // Запустить событие может только админ стрима.
+      if (norm === "zeprogress") {
         if (this.eventPhase === "active") {
           this.reply(`@${nick} событие уже идёт.`);
         } else {
@@ -1475,6 +1503,8 @@ export class ZoneRoom extends Room<ZoneState> {
           this.reply(`@${nick} нашествие вот-вот начнётся.`);
         }
       }
+    } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
+      this.sendBotToEvent(nick, norm);
     } else if (cmd === "!voice" || cmd === "!голос") {
       this.setChatVoice(nick, norm, parts.slice(1).join(" "));
     }
@@ -1728,7 +1758,8 @@ export class ZoneRoom extends Room<ZoneState> {
     );
     this.reply(
       "Ещё: !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
-        "вместе — идём толпой) · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
+        "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
+        "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом, !unfollow — назад к делам · !voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
         "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +
@@ -1882,6 +1913,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lootTarget: null,
       followNorm: null,
       raiding: false,
+      eventing: false,
       emoteAt: 0,
       emoteFreezeUntil: 0,
       attackCd: 0,
@@ -1996,8 +2028,19 @@ export class ZoneRoom extends Room<ZoneState> {
     this.botArrowRain(bot, dt);
 
     // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
-    const cx = bot.homeX;
-    const cz = bot.homeZ;
+    // Пока бот на событии (!event) — «дом» временно смещаем в эпицентр:
+    // цель по мобам, подбор лута и блуждание сами перенастраиваются туда.
+    let cx = bot.homeX;
+    let cz = bot.homeZ;
+    if (bot.eventing) {
+      if (this.state.eventKind === 0) {
+        bot.eventing = false; // событие кончилось — возвращаемся домой
+        bot.wanderCd = 0; // сразу выбрать точку блуждания у дома, а не у события
+      } else {
+        cx = this.state.eventX;
+        cz = this.state.eventZ;
+      }
+    }
     const inZone = (x: number, z: number): boolean =>
       Math.hypot(x - cx, z - cz) < BOT.zoneRadius;
 
@@ -2143,6 +2186,10 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (mob) {
       tx = mob.x;
       tz = mob.z;
+    } else if (bot.eventing && Math.hypot(p.head.x - cx, p.head.z - cz) > BOT.zoneRadius * 0.8) {
+      // Ещё бежим к событию — прямо в эпицентр, без блужданий.
+      tx = cx;
+      tz = cz;
     } else if (follow) {
       tx = follow.x;
       tz = follow.z;
