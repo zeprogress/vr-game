@@ -751,6 +751,71 @@ export class Sfx {
   }
 
 
+  /**
+   * Воин — «Оглушающий удар»: тяжёлый удар в землю. Короткий замах-свист,
+   * затем низкий «бум» с гулом и трещиной по грунту.
+   */
+  groundBash(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    // замах — короткий восходящий свист
+    const sw = this.noise();
+    const swb = this.filter("bandpass", 500, 4);
+    swb.frequency.setValueAtTime(320, t);
+    swb.frequency.linearRampToValueAtTime(900, t + 0.28);
+    const swg = this.env(0.12, 0.05, 0.25, t);
+    sw.connect(swb).connect(swg);
+    sw.start(t);
+    sw.stop(t + 0.32);
+    // удар — низкий бум
+    const hit = t + 0.3;
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(110, hit);
+    o.frequency.exponentialRampToValueAtTime(34, hit + 0.3);
+    const og = this.env(0.7, 0.002, 0.34, hit);
+    o.connect(og);
+    o.start(hit);
+    o.stop(hit + 0.45);
+    // трещина по грунту — фильтрованный шум с быстрым спадом
+    const cr = this.noise();
+    const crf = this.filter("lowpass", 1600);
+    crf.frequency.setValueAtTime(1600, hit);
+    crf.frequency.exponentialRampToValueAtTime(260, hit + 0.2);
+    const crg = this.env(0.4, 0.001, 0.22, hit);
+    cr.connect(crf).connect(crg);
+    cr.start(hit);
+    cr.stop(hit + 0.28);
+  }
+
+  /**
+   * Лучник — «Град стрел»: свист восходящего залпа, затем россыпь ударов
+   * древков о землю (несколько коротких «тук» вразнобой).
+   */
+  arrowVolley(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    // общий свист поднимающегося залпа
+    const wh = this.noise();
+    const whb = this.filter("bandpass", 1200, 2);
+    whb.frequency.setValueAtTime(700, t);
+    whb.frequency.linearRampToValueAtTime(2200, t + 0.5);
+    const whg = this.env(0.16, 0.15, 0.4, t);
+    wh.connect(whb).connect(whg);
+    wh.start(t);
+    wh.stop(t + 0.6);
+    // россыпь попаданий — 9 коротких «тук» в разброс по времени
+    for (let i = 0; i < 9; i++) {
+      const ti = t + 0.55 + Math.random() * 0.45;
+      const n = this.noise();
+      const f = this.filter("bandpass", 1400 + Math.random() * 900, 3);
+      const g = this.env(0.14, 0.001, 0.05 + Math.random() * 0.03, ti);
+      n.connect(f).connect(g);
+      n.start(ti);
+      n.stop(ti + 0.09);
+    }
+  }
+
   /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
   bossHorn(): void {
     if (!this.ready()) return;

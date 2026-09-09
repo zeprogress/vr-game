@@ -1290,14 +1290,11 @@ export class Game {
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
-        this.sfx.at(at, () => {
-          this.sfx.hitThud(1);
-          this.sfx.block(0.6);
-        });
+        this.sfx.at(at, () => this.sfx.groundBash());
         break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
-        this.sfx.at(at, () => this.sfx.bowRelease(1));
+        this.sfx.at(at, () => this.sfx.arrowVolley());
         break;
       case "bow":
         this.sfx.at(at, () => this.sfx.bowRelease(0.8));
