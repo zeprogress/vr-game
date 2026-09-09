@@ -757,23 +757,15 @@ export class Sfx {
    */
   groundBash(): void {
     if (!this.ready()) return;
-    const t = this.t;
-    // короткий свист замаха — почти без задержки, чтобы удар совпал с эффектом
-    const sw = this.noise();
-    const swb = this.filter("bandpass", 600, 4);
-    swb.frequency.setValueAtTime(400, t);
-    swb.frequency.linearRampToValueAtTime(1100, t + 0.09);
-    const swg = this.env(0.14, 0.03, 0.09, t);
-    sw.connect(swb).connect(swg);
-    sw.start(t);
-    sw.stop(t + 0.12);
+    // Никакого «замаха» в звуке — телеграф-круг уже отыграл подготовку.
+    // Удар звучит РОВНО в момент вызова (t), с мгновенной атакой.
+    const hit = this.t;
     // удар — низкий бум
-    const hit = t + 0.06;
     const o = this.ctx!.createOscillator();
     o.type = "sine";
     o.frequency.setValueAtTime(120, hit);
     o.frequency.exponentialRampToValueAtTime(36, hit + 0.3);
-    const og = this.env(0.95, 0.002, 0.34, hit);
+    const og = this.env(0.95, 0.001, 0.34, hit);
     o.connect(og);
     o.start(hit);
     o.stop(hit + 0.45);
