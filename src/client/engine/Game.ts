@@ -1323,7 +1323,7 @@ export class Game {
       case "crit":
         // Критический выстрел: красная огненная вспышка на мобе + звук огнешара.
         this.crossFx.critMark(x, y + 0.4, z);
-        this.sfx.at(at, () => this.sfx.fireBurst(undefined, 1));
+        this.sfx.arrowCrit(at);
         break;
       case "arrowHit":
         this.sfx.at(at, () => this.sfx.arrowHit("wood", 0.8));

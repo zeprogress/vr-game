@@ -51,6 +51,10 @@ export class Sfx {
   private static readonly SWORD_SWING = "/sfx/sword-swing.wav";
   private swordSwingBuf: AudioBuffer | null = null;
   private swordSwingLoading = false;
+  /** Сэмпл крита стрелой (art/arrow_crit, обрезан). */
+  private static readonly ARROW_CRIT = "/sfx/arrow-crit.wav";
+  private arrowCritBuf: AudioBuffer | null = null;
+  private arrowCritLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -372,6 +376,17 @@ export class Sfx {
       .catch(() => {});
   }
 
+  /** Один раз подгрузить сэмпл крита стрелой. */
+  private preloadArrowCrit(): void {
+    if (this.arrowCritLoading || this.arrowCritBuf || !this.ctx) return;
+    this.arrowCritLoading = true;
+    fetch(Sfx.ARROW_CRIT)
+      .then((r) => r.arrayBuffer())
+      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+      .then((b) => (this.arrowCritBuf = b))
+      .catch(() => {});
+  }
+
   /** Проиграть готовый буфер разово, объёмно от текущей точки (this.spatialAt). */
   private playSample(buf: AudioBuffer, gain = 1, rate = 1): void {
     const src = this.ctx!.createBufferSource();
@@ -630,6 +645,7 @@ export class Sfx {
   bowDraw(): void {
     if (!this.ready()) return;
     this.preloadBowShots();
+    this.preloadArrowCrit();
     const t = this.t;
     const n = this.noise();
     const bp = this.filter("bandpass", 400, 6);
@@ -643,6 +659,7 @@ export class Sfx {
 
   bowRelease(power: number): void {
     if (!this.ready()) return;
+    this.preloadArrowCrit();
     // Готов сэмпл — играем случайный вариант настоящего выстрела.
     if (this.bowShotBufs.length > 0) {
       const buf = this.bowShotBufs[(Math.random() * this.bowShotBufs.length) | 0];
@@ -734,6 +751,20 @@ export class Sfx {
     o.connect(lp).connect(og);
     o.start(t);
     o.stop(t + 0.16);
+  }
+
+  /** Крит стрелой: сэмпл art/arrow_crit; пока не загружен — синтез fireBurst. */
+  arrowCrit(at?: SoundAt): void {
+    if (!this.ready()) return;
+    if (this.arrowCritBuf) {
+      const play = () =>
+        this.playSample(this.arrowCritBuf!, 0.95, 0.98 + Math.random() * 0.05);
+      if (at) this.at(at, play);
+      else play();
+      return;
+    }
+    this.preloadArrowCrit();
+    this.fireBurst(at, 1);
   }
 
   /** Разрыв огненного снаряда посоха. `power` 0..1 — крупнее заряд, глубже бум. */
