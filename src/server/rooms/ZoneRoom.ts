@@ -916,6 +916,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (this.eventPhase !== "active") {
           this.eventPhase = "idle";
           this.eventPhaseAt = Date.now();
+          this.eventForced = true;
         }
       } else if (msg.t === "mobsOn") {
         this.sim.mobsEnabled = msg.on !== 0;
@@ -1307,6 +1308,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.eventZ = spot.z;
     this.eventPhase = "active";
     this.eventPhaseAt = Date.now() + EVENT.hardTimeout * 1000;
+    this.eventForced = false;
     this.eventWave = 0;
     this.eventWaveAt = 0;
     this.state.eventKind = 1;
@@ -1347,8 +1349,11 @@ export class ZoneRoom extends Room<ZoneState> {
           now + (EVENT.idleMin + Math.random() * (EVENT.idleMax - EVENT.idleMin)) * 1000;
         return;
       }
-      // не начинаем событие, пока в мире вообще никого (ни игроков, ни ботов)
-      if (now >= this.eventPhaseAt && this.state.players.size > 0) this.startEvent();
+      // не начинаем событие, пока в мире вообще никого (ни игроков, ни ботов) —
+      // кроме ручного запуска (eventForced).
+      if (now >= this.eventPhaseAt && (this.eventForced || this.state.players.size > 0)) {
+        this.startEvent();
+      }
       return;
     }
     if (this.eventPhase === "active") {
@@ -1466,6 +1471,7 @@ export class ZoneRoom extends Room<ZoneState> {
         } else {
           this.eventPhase = "idle";
           this.eventPhaseAt = Date.now(); // сработает следующим тиком
+          this.eventForced = true;
           this.reply(`@${nick} нашествие вот-вот начнётся.`);
         }
       }
@@ -3106,6 +3112,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** индекс текущей волны нашествия и ms следующего доспавна. */
   private eventWave = 0;
   private eventWaveAt = 0;
+  /** true — событие запущено вручную (пульт/чат): не ждём игроков в мире. */
+  private eventForced = false;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
    *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
    *  ботов по короткому таймауту. */
