@@ -2665,7 +2665,6 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
-      s.burning = m.burning ? 1 : 0;
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
