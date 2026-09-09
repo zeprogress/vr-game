@@ -44,11 +44,11 @@ export class Sfx {
   private readonly bowShotBufs: AudioBuffer[] = [];
   private bowShotsLoading = false;
   /** Сэмпл попадания мечом (art/sword_hit.wav, обрезан). */
-  private static readonly SWORD_HIT = "/sfx/sword-hit.mp3";
+  private static readonly SWORD_HIT = "/sfx/sword-hit.wav";
   private swordHitBuf: AudioBuffer | null = null;
   private swordHitLoading = false;
   /** Сэмпл замаха мечом (art/sword_swing.wav, обрезан). */
-  private static readonly SWORD_SWING = "/sfx/sword-swing.mp3";
+  private static readonly SWORD_SWING = "/sfx/sword-swing.wav";
   private swordSwingBuf: AudioBuffer | null = null;
   private swordSwingLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
