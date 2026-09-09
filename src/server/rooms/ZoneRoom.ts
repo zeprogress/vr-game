@@ -277,6 +277,12 @@ function normNick(n: string): string {
   return n.trim().toLowerCase().slice(0, 24);
 }
 
+/** Сколько HP восстановит расходник: доля недостающего (healFrac) либо плоское (heal). */
+function potionHeal(def: { heal: number; healFrac: number }, hp: number, maxHp: number): number {
+  if (def.healFrac > 0) return Math.round(Math.max(0, maxHp - hp) * def.healFrac);
+  return def.heal;
+}
+
 /** Оружие «с собой» из сейва — с проверкой, что класс и уровень существуют. */
 function sanitizeCarried(v: unknown): CarriedWeapon | null {
   const w = v as CarriedWeapon | null;
@@ -681,7 +687,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const used = takeOne(bag, slot);
       if (!used) return;
       writeBag(p, bag);
-      p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
+      p.hp = Math.min(p.maxHp, p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp));
 
       // Соседям — звук глотка.
       const relay: ActRelay = {
@@ -2514,7 +2520,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!used) return;
 
     writeBag(p, bag);
-    p.hp = Math.min(p.maxHp, p.hp + ITEMS[used].heal);
+    p.hp = Math.min(p.maxHp, p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp));
     bot.drinkCd = BOT.drinkCooldown;
     // Соседям — звук глотка, как у игрока.
     const relay: ActRelay = { k: "drink", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };

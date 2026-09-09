@@ -79,6 +79,8 @@ export interface ItemDef {
    * Задан — это оружие, лежащее в мире. Такой предмет НЕ падает в сумку:
    * его берут рукой.
    */
+  /** Доля НЕДОСТАЮЩЕГО HP, которую восстанавливает предмет (0 — не лечит долей). */
+  healFrac: number;
   weapon?: { cls: WeaponClass; tier: WeaponTier };
 }
 
@@ -89,6 +91,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     hint: "восстановить здоровье",
     stack: 99,
     heal: 40,
+    healFrac: 0.5,
     tint: [0.9, 0.2, 0.35],
     icon: "potion.png",
   },
@@ -111,6 +114,7 @@ function weaponItem(
       cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
+    healFrac: 0,
     tint: d.tint,
     icon,
     weapon: { cls, tier },
@@ -146,11 +150,11 @@ export interface LootEntry {
 
 export const LOOT: Record<MobKind, LootEntry[]> = {
   // Обычные мобы — только зелья. Золотое оружие ВСЕХ видов падает лишь с босса.
-  slime: [{ id: "potion", chance: 0.14, min: 1, max: 1 }],
-  spitter: [{ id: "potion", chance: 0.24, min: 1, max: 1 }],
+  slime: [{ id: "potion", chance: 0.42, min: 1, max: 1 }],
+  spitter: [{ id: "potion", chance: 0.72, min: 1, max: 1 }],
   // Босс — щедрая добыча: зелья горстью и золотое оружие с приличным шансом.
   boss: [
-    { id: "potion", chance: 1, min: 2, max: 3 },
+    { id: "potion", chance: 1, min: 6, max: 9 },
     { id: "gold_sword", chance: 0.4, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.4, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.4, min: 1, max: 1 },

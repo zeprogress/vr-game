@@ -322,7 +322,8 @@ export class InventoryPanel {
   private itemTipHtml(item: ItemId, count: number): string {
     const def = ITEMS[item];
     const rows: [string, string][] = [];
-    if (def.heal > 0) rows.push(["Лечит", `+${def.heal} HP`]);
+    if (def.healFrac > 0) rows.push(["Лечит", `${Math.round(def.healFrac * 100)}% недостающего HP`]);
+    else if (def.heal > 0) rows.push(["Лечит", `+${def.heal} HP`]);
     rows.push(["В стопке", `${count} / ${def.stack}`]);
     if (def.heal > 0) rows.push(["Клавиши", "X · 1 · F"]);
     return (
