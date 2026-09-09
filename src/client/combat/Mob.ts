@@ -257,6 +257,22 @@ export class Mob implements Hittable {
     }
     this.stunStarMat = starMat;
 
+    // «Горение»: оранжевый пульсирующий ореол в центре тела, пока s.burning.
+    this.fireGlow = MeshBuilder.CreateSphere("mobBurn", { diameter: 1, segments: 8 }, scene);
+    const fireMat = new StandardMaterial("mobBurnMat", scene);
+    fireMat.emissiveColor = new Color3(1, 0.45, 0.12);
+    fireMat.diffuseColor = new Color3(0, 0, 0);
+    fireMat.specularColor = new Color3(0, 0, 0);
+    fireMat.disableLighting = true;
+    fireMat.alphaMode = 1; // ADD
+    fireMat.alpha = 0.5;
+    this.fireGlow.material = fireMat;
+    this.fireGlow.isPickable = false;
+    this.fireGlow.parent = this.root;
+    this.fireGlow.position.y = MOB.bodyRadius * 0.9;
+    this.fireGlow.setEnabled(false);
+    this.fireGlowMat = fireMat;
+
     // Модель из пака вместо сферы — для слизней/плевунов/босса, не в lean-режиме
     // (на стриме слабый GPU не потянет ~9 скелетов). Сферу и глаза прячем СРАЗУ
     // (синхронно), чтобы не было кадров с двумя моделями внахлёст; если модель
@@ -271,6 +287,8 @@ export class Mob implements Hittable {
   private readonly uiAnchor: TransformNode;
   private readonly stunSpin: TransformNode;
   private readonly stunStarMat: StandardMaterial;
+  private readonly fireGlow: Mesh;
+  private readonly fireGlowMat: StandardMaterial;
   /** Пятно-тень под мобом: без неё прыжок читается как парение. */
   private readonly shadow: BlobShadow;
 
@@ -441,6 +459,15 @@ export class Mob implements Hittable {
     if (stun) {
       this.stunSpin.rotation.y += dt * 6;
       this.stunStarMat.alpha = 0.75 + Math.sin(this.stunSpin.rotation.y * 3) * 0.2;
+    }
+
+    // горение: пульсирующий оранжевый ореол
+    const burn = s.burning === 1 && !s.dead;
+    if (burn !== this.fireGlow.isEnabled()) this.fireGlow.setEnabled(burn);
+    if (burn) {
+      const f = 0.85 + Math.sin(performance.now() * 0.02 + this.root.position.x) * 0.15;
+      this.fireGlow.scaling.setAll(MOB.bodyRadius * this.scale * (1.7 + f * 0.5));
+      this.fireGlowMat.alpha = 0.28 + f * 0.22;
     }
 
     // урон: hurtSeq вырос -> вспышка + рана + звук
@@ -667,6 +694,7 @@ export class Mob implements Hittable {
     this.bar.dispose();
     this.slamRing?.material?.dispose();
     this.stunStarMat.dispose();
+    this.fireGlowMat.dispose();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, true);

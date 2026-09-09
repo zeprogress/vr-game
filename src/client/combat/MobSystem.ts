@@ -412,7 +412,15 @@ export class NetMobs {
             }
           }
         }
-        this.spawnBurst(bo.pos, bo.r, hit);
+        if (bo.arrow) {
+          // Стрела бота: глухой «тук», без огненной вспышки/звука мага.
+          this.sfx.at(
+            { x: bo.pos.x, y: bo.pos.y, z: bo.pos.z },
+            () => this.sfx.arrowHit(hit ? "flesh" : "wood", 0.8),
+          );
+        } else {
+          this.spawnBurst(bo.pos, bo.r, hit);
+        }
         bo.core.dispose();
         bo.glow.dispose();
         bo.arrow?.dispose();

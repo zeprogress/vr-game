@@ -128,11 +128,11 @@ export class Spectator {
     // (загрузка страницы, рестарт сервера, обрыв) страница прозрачная —
     // можно подложить в OBS слой-заглушку «сервер перезагружается».
     this.obs = override.obs === true;
-    // 30 — жёсткий потолок на всех пресетах, включая high: `?fpscap=` можно
-    // только урезать дальше (слабый телефон), но не снять кэп или поднять
-    // выше 30 — раньше `?fpscap=0`/большое число это позволяли.
+    // Потолок fps: high — 60, остальные пресеты — 30. `?fpscap=` может только
+    // урезать дальше (слабый телефон), но не поднять выше потолка пресета.
+    const capMax = quality === "high" ? 60 : 30;
     const requestedCap = override.fpsCap ?? preset.fpsCap;
-    this.fpsCap = requestedCap > 0 ? Math.min(requestedCap, 30) : 30;
+    this.fpsCap = requestedCap > 0 ? Math.min(requestedCap, capMax) : capMax;
 
     // Фиксированный размер рендера (?rw=1280&rh=720): браузер/Fully Kiosk не
     // будет менять его сам при изменении вьюпорта. Canvas тянется по CSS.

@@ -12,6 +12,7 @@ import {
   SPITTER,
   SPITTER_CFG,
 } from "#shared/constants";
+import { MAGIC } from "#shared/magic";
 import { terrainHeight } from "#shared/terrain";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { trees } from "#shared/trees";
@@ -327,6 +328,21 @@ class Mob {
     this.stunnedT = Math.max(this.stunnedT, sec);
   }
 
+  /** Горение (дебафф мага): урон по времени. */
+  burnT = 0;
+  burnDps = 0;
+  burnOwner = "";
+  get burning(): boolean {
+    return this.burnT > 0;
+  }
+  /** Поджечь: продлевает таймер и берёт больший dps; владелец — для опыта. */
+  ignite(sec: number, dps: number, owner: string): void {
+    if (this.dead) return;
+    this.burnT = Math.max(this.burnT, sec);
+    this.burnDps = Math.max(this.burnDps, dps);
+    this.burnOwner = owner;
+  }
+
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
     if (this.dead || this.kind === "boss") return; // босса с места не сдвинуть
@@ -336,13 +352,15 @@ class Mob {
     this.grounded = false;
   }
 
-  applyHit(dmg: number, dx: number, dz: number): boolean {
-    if (this.dead || this.hurtCd > 0) return false;
-    this.hurtCd = 0.2;
+  applyHit(dmg: number, dx: number, dz: number, dot = false): boolean {
+    if (this.dead || (this.hurtCd > 0 && !dot)) return false;
+    if (!dot) this.hurtCd = 0.2;
     const before = this.hp / this.maxHp;
     this.hp -= dmg;
-    this.aggroed = true;
-    this.outOfRange = 0;
+    if (!dot) {
+      this.aggroed = true;
+      this.outOfRange = 0;
+    }
     // Босс пересёк порог доли HP — пора выбросить осколки.
     if (this.kind === "boss") {
       const after = this.hp / this.maxHp;
@@ -353,10 +371,12 @@ class Mob {
     }
     // Обычный удар НЕ толкает моба — ни воин, ни кто-либо. Отбрасывание есть
     // только у замах-скиллов через shove(). Направление удара запоминаем для
-    // вздрагивания на клиенте.
-    this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
-    this.hurtDx = dx;
-    this.hurtDz = dz;
+    // вздрагивания на клиенте. Урон по времени (горение) не даёт вздрагивания.
+    if (!dot) {
+      this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
+      this.hurtDx = dx;
+      this.hurtDz = dz;
+    }
     if (this.hp <= 0) {
       this.dead = true;
       this.deadT = 0;
@@ -842,6 +862,8 @@ class Mob {
     this.outOfRange = 0;
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
+    this.burnT = 0;
+    this.burnDps = 0;
     if (this.faceRest) this.yaw = this.restYaw;
   }
 }
@@ -1135,6 +1157,13 @@ export class ZoneSim {
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
+    // Горение: дебафф мага тикает уроном (как обычный вклад — делится в опыт).
+    for (const m of [...this.mobs.values()]) {
+      if (m.dead || m.burnT <= 0) continue;
+      m.burnT = Math.max(0, m.burnT - dt);
+      this.hitMob(m.id, m.burnDps * dt, 0, 0, m.burnOwner, true, true);
+      if (m.burnT <= 0) m.burnDps = 0;
+    }
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     // Полученный от босса урон — тоже вклад в бой (танк/приманка).
     const boss = this.boss;
@@ -1254,6 +1283,14 @@ export class ZoneSim {
         const vh = Math.hypot(b.vx, b.vz) || 1;
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true);
+        // Огнешар мага (kind 0) поджигает — «Горение» на несколько секунд.
+        if (b.kind === 0) {
+          m.ignite(
+            MAGIC.firebolt.burnSeconds,
+            b.dmg * MAGIC.firebolt.burnDpsFrac,
+            b.owner,
+          );
+        }
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true);
         return true;
@@ -1290,6 +1327,8 @@ export class ZoneSim {
     attacker = "",
     /** true — попадание ДАЛЬНЕГО боя (стрела/огнешар/град): учитываем rangedArmor. */
     rangedHit = false,
+    /** true — урон по времени (горение): без hurtCd и вздрагивания. */
+    dot = false,
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
@@ -1297,7 +1336,7 @@ export class ZoneSim {
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
-    const killed = m.applyHit(dmg, dx, dz);
+    const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
     if (attacker && dealt > 0) m.bump(attacker, "dmg", dealt, this.elapsed);
 

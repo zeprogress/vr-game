@@ -2577,11 +2577,11 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.setExtraSlimes(this.bots.size * 2);
     if (this.bots.size === 0) return;
     const nowMs = Date.now();
-    // Пока идёт стрим (подключён спектатор ИЛИ он был на связи последние 5
-    // минут — покрывает перезагрузку страницы спектатора) держим ботов
-    // дольше: зрители ради них и заходят, деспавн по 30-мин тишине зря снимал.
+    // Пока идёт стрим (подключён спектатор ИЛИ он был на связи последний час)
+    // держим ботов дольше: зрители ради них и заходят, а бот должен «повисеть»
+    // ещё час после того, как трансляция закрылась.
     const streamActive =
-      this.spectators.size > 0 || nowMs - this.lastSpectatorAt < 5 * 60_000;
+      this.spectators.size > 0 || nowMs - this.lastSpectatorAt < 60 * 60_000;
     const idleLimit = BOT.idleDespawnSec * 1000 * (streamActive ? 5 : 1);
     for (const bot of [...this.bots.values()]) {
       if (
@@ -2665,6 +2665,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
+      s.burning = m.burning ? 1 : 0;
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
