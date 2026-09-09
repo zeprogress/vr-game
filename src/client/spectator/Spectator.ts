@@ -718,7 +718,7 @@ export class Spectator {
       } else if (subj.type === "mob") {
         const m = st.mobs.get(subj.id);
         if (m && !m.dead) {
-          const name = Spectator.mobName(m.kind);
+          const name = m.mobName || Spectator.mobName(m.kind);
           watching = name;
           targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" };
         }
