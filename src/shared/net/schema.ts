@@ -94,6 +94,8 @@ export class MobState extends Schema {
   @type("uint8") enraged = 0;
   /** Телеграф рывка-тарана: 1 — босс вот-вот бросится по прямой. */
   @type("uint8") charging = 0;
+  /** 1 — моб оглушён (стоит столбом): клиент рисует «звёздочки» над головой. */
+  @type("uint8") stunned = 0;
 }
 
 export class DummyState extends Schema {

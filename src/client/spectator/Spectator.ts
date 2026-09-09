@@ -318,8 +318,8 @@ export class Spectator {
     net.onRtc = (msg) => void this.voice?.handle(msg);
     net.onVoice = (id, t, d) => this.voice?.onVoicePacket(id, t, d);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
-    net.onBossEvent = (kind, by) => {
-      this.overlay?.bossBanner(kind, by);
+    net.onBossEvent = (kind, by, loot) => {
+      this.overlay?.bossBanner(kind, by, loot);
       if (kind === "down") this.sfx.bossFanfare();
       else this.sfx.bossHorn();
     };
@@ -783,6 +783,13 @@ export class Spectator {
         this.sfx.swordSwing({ x, y, z });
         break;
       }
+      case "stunBash":
+        this.skillFx.stunBash(x, y, z, BOT.stunRadius, BOT.stunCastTime);
+        this.sfx.at({ x, y, z }, () => {
+          this.sfx.hitThud(1);
+          this.sfx.block(0.6);
+        });
+        break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.bowRelease(1));

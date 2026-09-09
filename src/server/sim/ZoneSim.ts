@@ -316,6 +316,17 @@ class Mob {
     this.rootedT = Math.max(this.rootedT, sec);
   }
 
+  /** Секунд оглушения — моб не двигается И не атакует (оглушающий удар воина). */
+  private stunnedT = 0;
+  get stunned(): boolean {
+    return this.stunnedT > 0;
+  }
+  /** Оглушить на `sec` секунд. Босс — иммунен (стан-локать нельзя). */
+  stun(sec: number): void {
+    if (this.dead || this.kind === "boss") return;
+    this.stunnedT = Math.max(this.stunnedT, sec);
+  }
+
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
     if (this.dead || this.kind === "boss") return; // босса с места не сдвинуть
@@ -340,14 +351,9 @@ class Mob {
         if (before > BOSS.splitAt[this.splitsDone - 1]) this.pendingSplit = true;
       }
     }
-    // Обычный удар слегка толкает моба — короткий нудж, не отлёт (далёкое
-    // отбрасывание осталось только у замах-скиллов через shove()). Урон при
-    // этом наносится как обычно (выше).
-    if (this.kind !== "boss") {
-      const kb = Math.min(0.6 + dmg * 0.22, 1.8);
-      this.vx += dx * kb;
-      this.vz += dz * kb;
-    }
+    // Обычный удар НЕ толкает моба — ни воин, ни кто-либо. Отбрасывание есть
+    // только у замах-скиллов через shove(). Направление удара запоминаем для
+    // вздрагивания на клиенте.
     this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
     this.hurtDx = dx;
     this.hurtDz = dz;
@@ -371,6 +377,7 @@ class Mob {
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     if (this.attackCd > 0) this.attackCd -= dt;
+    if (this.stunnedT > 0) this.stunnedT = Math.max(0, this.stunnedT - dt);
     // Плевун: отход выдыхается, потом пауза, в которую его можно догнать.
     if (this.restT > 0) {
       this.restT -= dt;
@@ -587,13 +594,14 @@ class Mob {
       }
     }
 
-    if (this.rootedT > 0) {
-      // Пригвождён градом стрел: с места не двигается. Вертикаль оставляем —
-      // летающего (пчелу) стрелы прибивают к земле, наземный просто стоит.
+    if (this.rootedT > 0 || this.stunnedT > 0) {
+      // Пригвождён (град стрел) или оглушён (удар воина): с места не двигается.
       this.rootedT = Math.max(0, this.rootedT - dt);
       this.vx = 0;
       this.vz = 0;
-      this.vy -= MOB.gravity * dt;
+      // Оглушённый летун застывает в воздухе; пригвождённый — падает как все.
+      if (this.stunnedT > 0 && this.flying) this.vy = 0;
+      else this.vy -= MOB.gravity * dt;
     } else if (this.flying) {
       // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
       let tx = 0;
@@ -786,7 +794,7 @@ class Mob {
       this.yaw += dyaw * Math.min(1, dt * 1.5);
     }
 
-    if (chasing && np && !isBoss) {
+    if (chasing && np && !isBoss && this.stunnedT <= 0) {
       if (this.ranged) {
         if (dist < SPITTER.fireRange && this.attackCd <= 0) {
           this.attackCd = SPITTER.fireCooldown;
@@ -1304,7 +1312,11 @@ export class ZoneSim {
     if (kind === "shard") {
       this.mobs.delete(m.id); // осколки не возрождаются
     } else {
-      this.spawnLoot(m);
+      const rolled = this.spawnLoot(m);
+      if (kind === "boss") {
+        this.bossLoot.length = 0;
+        this.bossLoot.push(...rolled);
+      }
     }
     if (kind === "boss") {
       // Босс пал — осколки осыпаются.
@@ -1327,6 +1339,11 @@ export class ZoneSim {
   /** Пригвоздить моба к земле по id (град стрел). */
   rootMob(id: string, sec: number): void {
     this.mobs.get(id)?.root(sec);
+  }
+
+  /** Оглушить моба по id (оглушающий удар воина). */
+  stunMob(id: string, sec: number): void {
+    this.mobs.get(id)?.stun(sec);
   }
 
   /**
@@ -1461,8 +1478,12 @@ export class ZoneSim {
   }
 
   /** Разыграть и разложить добычу вокруг убитого моба. */
-  private spawnLoot(m: Mob): void {
-    for (const { id, count } of rollLoot(m.kind, Math.random)) {
+  /** Что выпало с последнего убитого босса — комната читает и объявляет. */
+  readonly bossLoot: { id: ItemId; count: number }[] = [];
+
+  private spawnLoot(m: Mob): { id: ItemId; count: number }[] {
+    const rolled = rollLoot(m.kind, Math.random);
+    for (const { id, count } of rolled) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
@@ -1470,6 +1491,7 @@ export class ZoneSim {
       const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z);
       this.drops.set(d.id, d);
     }
+    return rolled;
   }
 
   /** Положить оружие на землю. Базовое не роняем — оно всегда доступно. */

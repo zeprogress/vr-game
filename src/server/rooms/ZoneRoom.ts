@@ -204,6 +204,8 @@ interface Bot {
   cleaveCd: number; // с до следующего рассекающего удара (меч)
   cleaveCastT: number; // с до конца замаха рассекающего
   cleaveYaw: number; // куда был направлен сектор в момент замаха
+  stunCd: number; // с до следующего оглушающего удара (меч)
+  stunCastT: number; // с до конца замаха оглушающего
   rainCd: number; // с до следующего града стрел (лук)
   rainCastT: number; // с до конца замаха града
   rainX: number; // куда намечен град
@@ -1699,6 +1701,8 @@ export class ZoneRoom extends Room<ZoneState> {
       cleaveCd: 0,
       cleaveCastT: 0,
       cleaveYaw: 0,
+      stunCd: 0,
+      stunCastT: 0,
       rainCd: 0,
       rainCastT: 0,
       rainX: 0,
@@ -1767,6 +1771,7 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
     bot.healCd = Math.max(0, bot.healCd - dt);
     bot.cleaveCd = Math.max(0, bot.cleaveCd - dt);
+    bot.stunCd = Math.max(0, bot.stunCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
 
     // Танк крепче: держим его максимум HP с множителем BOT.tank.hpMul (при
@@ -1792,6 +1797,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.botDrink(bot);
     this.botGroupHeal(bot, dt);
     this.botCleave(bot, dt);
+    this.botStunBash(bot, dt);
     this.botArrowRain(bot, dt);
 
     // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
@@ -2353,7 +2359,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botCleaveLand(bot);
       return;
     }
-    if (p.rightCls !== "sword" || bot.cleaveCd > 0) return;
+    if (p.rightCls !== "sword" || bot.cleaveCd > 0 || bot.stunCastT > 0) return;
     // Целимся туда, куда бот и так смотрит: сектор строится от его yaw.
     if (this.mobsInCone(p, bot.yaw).length < BOT.cleaveMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
@@ -2403,6 +2409,66 @@ export class ZoneRoom extends Room<ZoneState> {
       const l = Math.hypot(dx, dz) || 1;
       this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
       this.sim.shoveMob(t.id, dx / l, dz / l, BOT.cleaveKnockback);
+      this.sim.stunMob(t.id, BOT.cleaveStun);
+    }
+    this.chatSeen.set(bot.norm, Date.now());
+  }
+
+  /**
+   * Бот с мечом — «Оглушающий удар»: бьёт землю, вокруг расходится волна и
+   * все мобы в круге оглушены на несколько секунд. Урона почти нет — это
+   * контроль. Применяет даже на одного моба (BOT.stunMinTargets = 1).
+   */
+  private botStunBash(bot: Bot, dt: number): void {
+    const p = bot.state;
+
+    if (bot.stunCastT > 0) {
+      bot.stunCastT = Math.max(0, bot.stunCastT - dt);
+      if (bot.stunCastT > 0) return;
+      this.botStunBashLand(bot);
+      return;
+    }
+    if (p.rightCls !== "sword" || bot.stunCd > 0 || bot.cleaveCastT > 0) return;
+    if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+
+    bot.stunCd = BOT.stunCooldown;
+    bot.stunCastT = BOT.stunCastTime;
+    bot.emoteFreezeUntil = Date.now() + BOT.stunCastTime * 1000;
+    const fx: ActRelay = {
+      k: "stunBash",
+      id: bot.id,
+      x: p.head.x,
+      y: p.head.y - PLAYER.eyeHeight,
+      z: p.head.z,
+    };
+    this.broadcast(MSG.act, fx);
+  }
+
+  /** Мобы в круге радиуса `r` вокруг точки корпуса игрока/бота. */
+  private mobsInRadius(p: PlayerState, r: number): { id: string; x: number; z: number }[] {
+    const out: { id: string; x: number; z: number }[] = [];
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead) continue;
+      if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > r) continue;
+      out.push({ id: m.id, x: m.x, z: m.z });
+    }
+    return out;
+  }
+
+  /** Волна дочитана — оглушаем всех в круге (символический урон). */
+  private botStunBashLand(bot: Bot): void {
+    const p = bot.state;
+    const dmg =
+      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
+      BOT.stunDamageMult *
+      (isTankBot(p) ? BOT.tank.dmgMul : 1);
+    for (const t of this.mobsInRadius(p, BOT.stunRadius)) {
+      const dx = t.x - p.head.x;
+      const dz = t.z - p.head.z;
+      const l = Math.hypot(dx, dz) || 1;
+      this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
+      this.sim.stunMob(t.id, BOT.stunDuration);
     }
     this.chatSeen.set(bot.norm, Date.now());
   }
@@ -2609,6 +2675,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.attackSeq = m.attackSeq;
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
+      s.stunned = m.stunned ? 1 : 0;
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
@@ -2708,7 +2775,11 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
       if (topOwner) this.broadcast(MSG.killFeed, { by: topOwner, victim: "Багровый" });
-      this.broadcast(MSG.bossEvent, { kind: "down", by: topOwner });
+      const loot = this.sim.bossLoot
+        .map((l) => (l.count > 1 ? `${l.count}× ${ITEMS[l.id].short}` : ITEMS[l.id].name))
+        .join(" · ");
+      this.sim.bossLoot.length = 0;
+      this.broadcast(MSG.bossEvent, { kind: "down", by: topOwner, loot: loot || undefined });
       this.bossFighting = false;
       this.sim.bossXpShare.length = 0;
     }

@@ -13,6 +13,7 @@ import { BOT } from "#shared/constants";
 const RED = new Color3(1, 0.16, 0.12);
 const RED_HOT = new Color3(1, 0.62, 0.3);
 const RAIN = new Color3(1, 0.78, 0.28);
+const STUN = new Color3(1, 0.92, 0.4); // жёлтая волна оглушения
 
 const POOL = 3;
 /** Сколько древков падает в граде (визуал, урон считает сервер). */
@@ -66,6 +67,13 @@ interface Rain {
   radius: number;
 }
 
+interface Stun {
+  ring: Mesh;
+  age: number;
+  life: number;
+  radius: number;
+}
+
 /**
  * Визуал массовых скиллов ботов: красный сектор «Рассекающего удара» и
  * золотой круг «Града стрел» с падающими древками. Общий пул на сцену —
@@ -74,8 +82,10 @@ interface Rain {
 export class SkillFx {
   private readonly cleaves: Cleave[] = [];
   private readonly rains: Rain[] = [];
+  private readonly stuns: Stun[] = [];
   private nextCleave = 0;
   private nextRain = 0;
+  private nextStun = 0;
 
   constructor(scene: Scene) {
     for (let i = 0; i < POOL; i++) {
@@ -111,6 +121,27 @@ export class SkillFx {
       }
       this.rains.push({ ring, shafts, seeds: [], age: 1, life: 1, radius: 1 });
     }
+
+    for (let i = 0; i < POOL; i++) {
+      const ring = MeshBuilder.CreateDisc(`stunRing${i}`, { radius: 1, tessellation: 40 }, scene);
+      ring.material = addMat(scene, `stunRingMat${i}`, STUN);
+      ring.rotation.x = Math.PI / 2;
+      ring.isPickable = false;
+      ring.renderingGroupId = 1;
+      ring.setEnabled(false);
+      this.stuns.push({ ring, age: 1, life: 1, radius: 1 });
+    }
+  }
+
+  /** Жёлтая волна оглушения по земле: расходится из-под бота на всю область. */
+  stunBash(x: number, y: number, z: number, radius: number, life: number): void {
+    const st = this.stuns[this.nextStun];
+    this.nextStun = (this.nextStun + 1) % this.stuns.length;
+    st.age = 0;
+    st.life = Math.max(0.2, life);
+    st.radius = radius;
+    st.ring.position.set(x, y + 0.06, z);
+    st.ring.setEnabled(true);
   }
 
   /** Красный сектор перед ботом: `yaw` — куда смотрит, `life` — время замаха. */
@@ -189,12 +220,29 @@ export class SkillFx {
       }
       if (done) for (const sh of r.shafts) sh.setEnabled(false);
     }
+
+    for (const st of this.stuns) {
+      if (st.age >= st.life) continue;
+      st.age += dt;
+      if (st.age >= st.life) {
+        st.ring.setEnabled(false);
+        continue;
+      }
+      const t = st.age / st.life;
+      // Кольцо стремительно расходится наружу и гаснет.
+      st.ring.scaling.setAll(st.radius * (0.15 + 0.95 * Math.sqrt(t)));
+      (st.ring.material as StandardMaterial).alpha = (1 - t) * 0.55;
+    }
   }
 
   dispose(): void {
     for (const c of this.cleaves) {
       c.fan.material?.dispose();
       c.fan.dispose();
+    }
+    for (const st of this.stuns) {
+      st.ring.material?.dispose();
+      st.ring.dispose();
     }
     for (const r of this.rains) {
       r.ring.material?.dispose();

@@ -235,6 +235,28 @@ export class Mob implements Hittable {
           : new Color3(0.85, 0.9, 1),
     );
 
+    // «Звёздочки» оглушения: три жёлтых кубика вращаются над головой, пока
+    // s.stunned. Дёшево, читается сразу.
+    this.stunSpin = new TransformNode("mobStun", scene);
+    this.stunSpin.parent = this.uiAnchor;
+    this.stunSpin.position.y = MOB.bodyRadius * 2 + 0.5;
+    this.stunSpin.setEnabled(false);
+    const starMat = new StandardMaterial("mobStunMat", scene);
+    starMat.emissiveColor = new Color3(1, 0.92, 0.4);
+    starMat.diffuseColor = new Color3(0, 0, 0);
+    starMat.specularColor = new Color3(0, 0, 0);
+    starMat.disableLighting = true;
+    for (let i = 0; i < 3; i++) {
+      const star = MeshBuilder.CreateBox(`mobStunStar${i}`, { size: 0.13 }, scene);
+      star.material = starMat;
+      star.isPickable = false;
+      star.parent = this.stunSpin;
+      const a = (i / 3) * Math.PI * 2;
+      star.position.set(Math.cos(a) * 0.32, Math.sin(a * 2) * 0.05, Math.sin(a) * 0.32);
+      star.rotation.set(0.6, a, 0.4);
+    }
+    this.stunStarMat = starMat;
+
     // Модель из пака вместо сферы — для слизней/плевунов/босса, не в lean-режиме
     // (на стриме слабый GPU не потянет ~9 скелетов). Сферу и глаза прячем СРАЗУ
     // (синхронно), чтобы не было кадров с двумя моделями внахлёст; если модель
@@ -247,6 +269,8 @@ export class Mob implements Hittable {
   }
 
   private readonly uiAnchor: TransformNode;
+  private readonly stunSpin: TransformNode;
+  private readonly stunStarMat: StandardMaterial;
   /** Пятно-тень под мобом: без неё прыжок читается как парение. */
   private readonly shadow: BlobShadow;
 
@@ -410,6 +434,14 @@ export class Mob implements Hittable {
       if (!this.dead) this.atkT = ATTACK_DUR;
     }
     if (this.atkT > 0) this.atkT = Math.max(0, this.atkT - dt);
+
+    // оглушение: звёздочки над головой вращаются, пока s.stunned
+    const stun = s.stunned === 1 && !s.dead;
+    if (stun !== this.stunSpin.isEnabled()) this.stunSpin.setEnabled(stun);
+    if (stun) {
+      this.stunSpin.rotation.y += dt * 6;
+      this.stunStarMat.alpha = 0.75 + Math.sin(this.stunSpin.rotation.y * 3) * 0.2;
+    }
 
     // урон: hurtSeq вырос -> вспышка + рана + звук
     if (s.hurtSeq !== this.lastHurtSeq) {
@@ -634,6 +666,7 @@ export class Mob implements Hittable {
     this.nameTag.dispose();
     this.bar.dispose();
     this.slamRing?.material?.dispose();
+    this.stunStarMat.dispose();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, true);
