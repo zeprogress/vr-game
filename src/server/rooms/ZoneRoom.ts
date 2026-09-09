@@ -1167,16 +1167,24 @@ export class ZoneRoom extends Room<ZoneState> {
     return undefined;
   }
 
-  /** `!raid` / `!boss` — послать/отозвать героя в рейд на Багрового слизня. */
+  /**
+   * `!raid` / `!boss` — записать героя в отряд на Багрового. Отряд копится:
+   * пока не набралось BOT.raidMinParty, все ждут; как набралось — общий
+   * отсчёт BOT.raidDelaySec, затем весь отряд выступает разом. Повторный
+   * !raid — выйти (из очереди или из рейда).
+   */
   private setRaid(nick: string, norm: string): void {
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
-    if (bot.raiding) {
+    // Повторный !raid — отмена (из рейда или из очереди).
+    if (bot.raiding || this.raidPending.has(norm)) {
       bot.raiding = false;
-      this.reply(`@${nick} герой вышел из рейда — снова бродит по зоне.`);
+      this.raidPending.delete(norm);
+      if (this.raidPending.size < BOT.raidMinParty) this.raidGoAt = 0;
+      this.reply(`@${nick} герой вышел из рейда.`);
       return;
     }
     const boss = this.bossMob();
@@ -1184,16 +1192,60 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} Багровый слизень сейчас повержен — вернётся позже.`);
       return;
     }
-    bot.raiding = true;
     bot.followNorm = null; // рейд важнее !follow
-    const n = [...this.bots.values()].filter((b) => b.raiding).length;
-    this.reply(
-      n === 1
-        ? `@${nick} повёл героя на Багрового слизня! Погибнет — возродится и пойдёт снова, ` +
-            `пока Багровый не падёт. Ещё !raid — отозвать. Пишите вместе — идём толпой.`
-        : `@${nick} в рейде на Багрового. Героев идёт: ${n}.`,
-    );
+
+    // Бой уже идёт (кто-то в рейде) — новичок присоединяется сразу.
+    if ([...this.bots.values()].some((b) => b.raiding)) {
+      bot.raiding = true;
+      this.reply(`@${nick} присоединился к рейду на Багрового!`);
+      return;
+    }
+
+    this.raidPending.add(norm);
+    const k = this.raidPending.size;
+    if (k >= BOT.raidMinParty && this.raidGoAt === 0) {
+      this.raidGoAt = Date.now() + BOT.raidDelaySec * 1000;
+    }
+    if (this.raidGoAt > 0) {
+      const secs = Math.max(1, Math.ceil((this.raidGoAt - Date.now()) / 1000));
+      this.reply(`@${nick} в отряде! Героев: ${k}. Выступаем через ~${secs} с — пишите !raid, идём вместе.`);
+    } else {
+      const need = BOT.raidMinParty - k;
+      this.reply(
+        `@${nick} записан в отряд на Багрового (${k}/${BOT.raidMinParty}). ` +
+          `Ещё ${need} — и через ${BOT.raidDelaySec} с идём все разом.`,
+      );
+    }
   }
+
+  /** Отсчёт общего выступления отряда на босса (зовётся из step). */
+  private tickRaid(): void {
+    if (this.raidGoAt === 0) return;
+    // Босс исчез/повержен, пока копились — отменяем сбор.
+    const boss = this.bossMob();
+    if (!boss || boss.dead) {
+      this.raidPending.clear();
+      this.raidGoAt = 0;
+      return;
+    }
+    if (Date.now() < this.raidGoAt) return;
+
+    let gone = 0;
+    for (const n of this.raidPending) {
+      const bot = this.bots.get(n);
+      if (bot) {
+        bot.raiding = true;
+        bot.followNorm = null;
+        gone++;
+      }
+    }
+    this.raidPending.clear();
+    this.raidGoAt = 0;
+    if (gone > 0) {
+      this.reply(`Отряд из ${gone} героев пошёл на Багрового слизня! За ним — до победы.`);
+    }
+  }
+
 
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
@@ -1718,6 +1770,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private removeBot(norm: string): void {
     const bot = this.bots.get(norm);
     if (!bot) return;
+    if (this.raidPending.delete(norm) && this.raidPending.size < BOT.raidMinParty) {
+      this.raidGoAt = 0;
+    }
     this.persistBot(bot);
     this.state.players.delete(bot.id);
     this.rt.delete(bot.id);
@@ -2559,6 +2614,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcastLeaderboard();
     }
 
+    this.tickRaid();
     this.tickBots(dt);
 
     // Мана восстанавливается всегда (от интеллекта).
@@ -2893,6 +2949,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Спектаторы стрима — sessionId. В `state.players` их нет. */
   private readonly spectators = new Set<string>();
+  /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
+  private readonly raidPending = new Set<string>();
+  /** ms момента общего выступления (0 — отсчёт не идёт). */
+  private raidGoAt = 0;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
    *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
    *  ботов по короткому таймауту. */
