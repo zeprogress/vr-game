@@ -1076,6 +1076,15 @@ export class ZoneRoom extends Room<ZoneState> {
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
     this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId, msg.weapon === "arrow");
+    // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
+    // сыграл локальный предсказанный звук, без сетевой задержки).
+    if (struck && msg.weapon === "sword") {
+      this.broadcast(
+        MSG.act,
+        { k: "swordHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay,
+        { except: client },
+      );
+    }
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
     if (struck && msg.weapon === "sword") {
       this.sim.splashDamage(
@@ -2617,6 +2626,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const sy = mob.y;
     const sz = mob.z;
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
+    // Звук удара мечом — как у живого игрока, слышат все вокруг.
+    this.broadcast(MSG.act, {
+      k: "swordHit", id: bot.id, x: sx, y: sy, z: sz,
+    } satisfies ActRelay);
     this.sim.splashDamage(
       sx, sy, sz,
       COMBAT.swordSplashRadius,

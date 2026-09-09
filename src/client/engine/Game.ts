@@ -1307,6 +1307,9 @@ export class Game {
       case "stunHit":
         this.sfx.at(at, () => this.sfx.groundBash());
         break;
+      case "swordHit":
+        this.sfx.at(at, () => this.sfx.swordHit());
+        break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
         this.sfx.at(at, () => this.sfx.arrowVolley());
