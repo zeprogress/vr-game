@@ -758,31 +758,40 @@ export class Sfx {
   groundBash(): void {
     if (!this.ready()) return;
     const t = this.t;
-    // замах — короткий восходящий свист
+    // короткий свист замаха — почти без задержки, чтобы удар совпал с эффектом
     const sw = this.noise();
-    const swb = this.filter("bandpass", 500, 4);
-    swb.frequency.setValueAtTime(320, t);
-    swb.frequency.linearRampToValueAtTime(900, t + 0.28);
-    const swg = this.env(0.12, 0.05, 0.25, t);
+    const swb = this.filter("bandpass", 600, 4);
+    swb.frequency.setValueAtTime(400, t);
+    swb.frequency.linearRampToValueAtTime(1100, t + 0.09);
+    const swg = this.env(0.14, 0.03, 0.09, t);
     sw.connect(swb).connect(swg);
     sw.start(t);
-    sw.stop(t + 0.32);
+    sw.stop(t + 0.12);
     // удар — низкий бум
-    const hit = t + 0.3;
+    const hit = t + 0.06;
     const o = this.ctx!.createOscillator();
     o.type = "sine";
-    o.frequency.setValueAtTime(110, hit);
-    o.frequency.exponentialRampToValueAtTime(34, hit + 0.3);
-    const og = this.env(0.7, 0.002, 0.34, hit);
+    o.frequency.setValueAtTime(120, hit);
+    o.frequency.exponentialRampToValueAtTime(36, hit + 0.3);
+    const og = this.env(0.95, 0.002, 0.34, hit);
     o.connect(og);
     o.start(hit);
     o.stop(hit + 0.45);
+    // звонкий металлический призвук поверх удара
+    const ring = this.ctx!.createOscillator();
+    ring.type = "triangle";
+    ring.frequency.setValueAtTime(540, hit);
+    ring.frequency.exponentialRampToValueAtTime(300, hit + 0.18);
+    const rg = this.env(0.32, 0.001, 0.16, hit);
+    ring.connect(rg);
+    ring.start(hit);
+    ring.stop(hit + 0.22);
     // трещина по грунту — фильтрованный шум с быстрым спадом
     const cr = this.noise();
-    const crf = this.filter("lowpass", 1600);
-    crf.frequency.setValueAtTime(1600, hit);
-    crf.frequency.exponentialRampToValueAtTime(260, hit + 0.2);
-    const crg = this.env(0.4, 0.001, 0.22, hit);
+    const crf = this.filter("lowpass", 2000);
+    crf.frequency.setValueAtTime(2000, hit);
+    crf.frequency.exponentialRampToValueAtTime(300, hit + 0.2);
+    const crg = this.env(0.52, 0.001, 0.22, hit);
     cr.connect(crf).connect(crg);
     cr.start(hit);
     cr.stop(hit + 0.28);

@@ -10,11 +10,12 @@ const LS_KEY = "zepDashKey";
 const LS_OVERLAY = "zepOverlayCfg";
 
 interface OverlayToggle {
-  key: "wm" | "clock" | "online" | "watching" | "hp" | "feed" | "top";
+  key: "wm" | "clock" | "online" | "watching" | "hp" | "feed" | "top" | "ticker";
   label: string;
 }
 
 const OVERLAY_TOGGLES: OverlayToggle[] = [
+  { key: "ticker", label: "Строка событий (сверху)" },
   { key: "wm", label: "Вотермарк" },
   { key: "clock", label: "Часы (МСК)" },
   { key: "online", label: "Список онлайн" },
@@ -70,6 +71,7 @@ export class Dashboard {
     hp: 1,
     feed: 1,
     top: 1,
+    ticker: 1,
   };
   private readonly ovBtns = new Map<string, HTMLButtonElement>();
 

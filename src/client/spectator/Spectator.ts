@@ -748,6 +748,11 @@ export class Spectator {
     const online: { nick: string; speaking: boolean }[] = [];
     st?.players.forEach((p, id) => online.push({ nick: p.nick, speaking: this.speakingIds.has(id) }));
 
+    // Строка событий сверху: пока идёт нашествие — большими синими буквами.
+    this.overlay?.setTicker(
+      st?.eventKind === 1 ? "Идёт эвент — нашествие мобов (!event)" : "",
+    );
+
     this.overlay?.update({
       watching,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),

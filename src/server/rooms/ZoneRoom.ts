@@ -2669,14 +2669,6 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (bot.stunCastT > 0) {
       bot.stunCastT = Math.max(0, bot.stunCastT - dt);
-      // Звук удара — за stunSoundLead секунд ДО самого удара.
-      if (!bot.stunSoundDone && bot.stunCastT <= BOT.stunSoundLead) {
-        bot.stunSoundDone = true;
-        this.broadcast(MSG.act, {
-          k: "stunHit", id: bot.id,
-          x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
-        } satisfies ActRelay);
-      }
       if (bot.stunCastT > 0) return;
       this.botStunBashLand(bot);
       return;
@@ -2713,6 +2705,11 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Волна дочитана — оглушаем всех в круге (символический урон). */
   private botStunBashLand(bot: Bot): void {
     const p = bot.state;
+    // Звук удара — ровно в момент, когда на мобах появляется стан.
+    this.broadcast(MSG.act, {
+      k: "stunHit", id: bot.id,
+      x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
+    } satisfies ActRelay);
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
       BOT.stunDamageMult *
