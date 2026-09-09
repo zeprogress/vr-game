@@ -17,13 +17,12 @@ const LIFE = 1.5; // с полёта
 const RISE = 1.6; // м вверх за жизнь
 const SPREAD = 0.9; // м разлёта по горизонтали
 
-/** Красная огненная вспышка критического выстрела — раздувается и гаснет. */
+/** Красная вспышка критического выстрела — вспыхивает на мобе и гаснет. */
 const CRIT_POOL = 12;
-const CRIT_LIFE = 0.42; // с
+const CRIT_LIFE = 0.36; // с
 
 interface CritBurst {
-  core: Mesh;
-  ring: Mesh;
+  mesh: Mesh;
   age: number;
   x: number;
   y: number;
@@ -80,40 +79,27 @@ export class WorldCrossFx {
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
 
-    // Крит с лука — красная огненная вспышка на мобе: яркое ядро + кольцо.
-    const coreProto = MeshBuilder.CreateSphere("critCore", { diameter: 1, segments: 10 }, scene);
-    coreProto.setEnabled(false);
-    const ringProto = MeshBuilder.CreateSphere("critRing", { diameter: 1, segments: 12 }, scene);
-    ringProto.setEnabled(false);
+    // Крит с лука — маленькая насыщенно-красная вспышка на мобе.
+    const critProto = MeshBuilder.CreateSphere("critFlash", { diameter: 1, segments: 10 }, scene);
+    critProto.setEnabled(false);
     for (let i = 0; i < CRIT_POOL; i++) {
-      const core = i === 0 ? coreProto : coreProto.clone(`critCore${i}`);
-      const ring = i === 0 ? ringProto : ringProto.clone(`critRing${i}`);
-      const cMat = new StandardMaterial(`critCoreMat${i}`, scene);
-      cMat.emissiveColor = new Color3(1, 0.55, 0.35); // ядро — раскалённо-красное
-      cMat.diffuseColor = new Color3(0, 0, 0);
-      cMat.specularColor = new Color3(0, 0, 0);
-      cMat.disableLighting = true;
-      cMat.disableDepthWrite = true;
-      cMat.alphaMode = Constants.ALPHA_ADD;
-      const rMat = new StandardMaterial(`critRingMat${i}`, scene);
-      rMat.emissiveColor = new Color3(1, 0.12, 0.06); // кольцо — глубокий красный
-      rMat.diffuseColor = new Color3(0, 0, 0);
-      rMat.specularColor = new Color3(0, 0, 0);
-      rMat.disableLighting = true;
-      rMat.disableDepthWrite = true;
-      rMat.alphaMode = Constants.ALPHA_ADD;
-      for (const m of [core, ring]) {
-        m.isPickable = false;
-        m.renderingGroupId = 1;
-        m.setEnabled(false);
-      }
-      core.material = cMat;
-      ring.material = rMat;
-      this.critPool.push({ core, ring, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
+      const m = i === 0 ? critProto : critProto.clone(`critFlash${i}`);
+      const mat = new StandardMaterial(`critFlashMat${i}`, scene);
+      mat.emissiveColor = new Color3(1, 0.03, 0.02); // насыщенный глубокий красный
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.disableDepthWrite = true;
+      mat.alphaMode = Constants.ALPHA_COMBINE; // сплошной красный, не выбеливается
+      m.material = mat;
+      m.isPickable = false;
+      m.renderingGroupId = 1;
+      m.setEnabled(false);
+      this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
     }
   }
 
-  /** Красная огненная вспышка критического попадания — на мобе, быстро гаснет. */
+  /** Красная вспышка критического попадания — на мобе, быстро гаснет. */
   critMark(x: number, y: number, z: number): void {
     const c = this.critPool[this.critNext];
     this.critNext = (this.critNext + 1) % this.critPool.length;
@@ -121,10 +107,8 @@ export class WorldCrossFx {
     c.y = y;
     c.z = z;
     c.age = 0;
-    c.core.position.set(x, y, z);
-    c.ring.position.set(x, y, z);
-    c.core.setEnabled(true);
-    c.ring.setEnabled(true);
+    c.mesh.position.set(x, y, z);
+    c.mesh.setEnabled(true);
   }
 
   /**
@@ -154,18 +138,13 @@ export class WorldCrossFx {
       if (c.age > CRIT_LIFE) continue;
       c.age += dt;
       if (c.age > CRIT_LIFE) {
-        c.core.setEnabled(false);
-        c.ring.setEnabled(false);
+        c.mesh.setEnabled(false);
         continue;
       }
       const t = c.age / CRIT_LIFE;
-      // Ядро вспыхивает и быстро гаснет; кольцо расходится наружу.
-      const coreS = 0.5 + t * 1.6;
-      c.core.scaling.setAll(coreS);
-      (c.core.material as StandardMaterial).alpha = (1 - t) * (1 - t) * 0.9;
-      const ringS = 0.6 + Math.sqrt(t) * 3.4;
-      c.ring.scaling.setAll(ringS);
-      (c.ring.material as StandardMaterial).alpha = (1 - t) * 0.5;
+      // Резко вспыхивает и быстро гаснет — небольшой размер.
+      c.mesh.scaling.setAll(0.3 + t * 0.7);
+      (c.mesh.material as StandardMaterial).alpha = (1 - t) * (1 - t);
     }
     for (const c of this.pool) {
       if (c.age > LIFE) continue;
@@ -194,10 +173,8 @@ export class WorldCrossFx {
       c.mesh.dispose();
     }
     for (const c of this.critPool) {
-      c.core.material?.dispose();
-      c.ring.material?.dispose();
-      c.core.dispose();
-      c.ring.dispose();
+      c.mesh.material?.dispose();
+      c.mesh.dispose();
     }
     void this.scene;
   }
