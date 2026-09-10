@@ -824,6 +824,42 @@ export class Game {
     printLoadout();
   }
 
+  private probe = { relight: 0, lightToggle: 0, matDirty: 0, lastLight: "" };
+  /** Считаем, кто дёргает свет/материалы каждый кадр (только под ?perf=1). */
+  private installPerfProbes(): void {
+    const p = this.probe;
+    const scn = this.scene as unknown as {
+      markAllMaterialsAsDirty: (f: number, cb?: unknown) => void;
+    };
+    const origMAD = scn.markAllMaterialsAsDirty.bind(this.scene);
+    scn.markAllMaterialsAsDirty = (f: number, cb?: unknown) => {
+      p.matDirty++;
+      return origMAD(f, cb);
+    };
+    // Light.setEnabled — общий прототип.
+    const anyLight = this.scene.lights[0] as unknown as {
+      constructor: { prototype: { setEnabled: (v: boolean) => void } };
+    };
+    if (anyLight) {
+      const proto = Object.getPrototypeOf(Object.getPrototypeOf(anyLight)) as {
+        setEnabled?: (v: boolean) => void;
+      };
+      // Node.prototype.setEnabled
+      const nodeProto = proto.setEnabled ? proto : null;
+      if (nodeProto?.setEnabled) {
+        const orig = nodeProto.setEnabled;
+        nodeProto.setEnabled = function (this: { getClassName?: () => string; name?: string }, v: boolean) {
+          const cn = this.getClassName?.() ?? "";
+          if (/Light/.test(cn)) {
+            p.lightToggle++;
+            p.lastLight = `${this.name ?? "?"}=${v}`;
+          }
+          return orig.call(this, v);
+        };
+      }
+    }
+  }
+
   /** Какие шейдеры движок скомпилировал с прошлого вызова — ищем per-frame пересборку. */
   private diffEffects(): string[] {
     const cache = (this.engine as unknown as { _compiledEffects?: Record<string, unknown> })
@@ -884,6 +920,9 @@ export class Game {
       drawCalls: this.perfInstr?.drawCallsCounter.current ?? null,
       shaderMs: this.engInstr ? Math.round(this.engInstr.shaderCompilationTimeCounter.current) : null,
       shaderN: this.engInstr ? this.engInstr.shaderCompilationTimeCounter.count : null,
+      probeMatDirty: this.probe.matDirty,
+      probeLightToggle: this.probe.lightToggle,
+      probeLastLight: this.probe.lastLight,
       newEffects: this.diffEffects(),
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
@@ -943,6 +982,7 @@ export class Game {
 
     if (this.showPerfHud) {
       if (!this.perfInstr) {
+        this.installPerfProbes();
         this.perfInstr = new SceneInstrumentation(this.scene);
         this.perfInstr.captureActiveMeshesEvaluationTime = true;
         this.perfInstr.captureRenderTime = true;

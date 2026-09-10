@@ -20,6 +20,8 @@ export class VrPerfHud {
   private readonly tex: DynamicTexture;
   private acc = 0;
   private prevShaderN = 0;
+  private prevMatDirty = 0;
+  private prevLightTog = 0;
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("perfTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -77,17 +79,30 @@ export class VrPerfHud {
     const delta = shaderN - this.prevShaderN;
     this.prevShaderN = shaderN;
 
-    row(24, "FPS", s.fps, fps > 0 && fps < 55);
-    row(78, "мс  кадр / JS", `${s.msFrame ?? "?"} / ${s.msJS ?? "?"}`);
-    row(132, "Шейдеры  всего / +тик", `${shaderN} / +${delta}`, delta > 0);
-    row(186, "Мешей актив", s.activeMeshes);
+    row(20, "FPS", s.fps, fps > 0 && fps < 55);
+    row(70, "мс  кадр / JS", `${s.msFrame ?? "?"} / ${s.msJS ?? "?"}`);
+    row(120, "Шейдеры всего / +тик", `${shaderN} / +${delta}`, delta > 0);
 
-    ctx.font = "bold 34px system-ui, sans-serif";
+    const md = Number(s.probeMatDirty ?? 0);
+    const lt = Number(s.probeLightToggle ?? 0);
+    const dMd = md - this.prevMatDirty;
+    const dLt = lt - this.prevLightTog;
+    this.prevMatDirty = md;
+    this.prevLightTog = lt;
+    ctx.font = "24px monospace";
+    ctx.fillStyle = dMd > 0 || dLt > 0 ? "#ff7a7a" : "#ffd166";
+    ctx.fillText(
+      `markDirty +${dMd}/тик · свет toggle +${dLt}/тик · ${s.probeLastLight ?? ""}`,
+      30,
+      176,
+    );
+
+    ctx.font = "bold 30px system-ui, sans-serif";
     ctx.fillStyle = "#ff9d9d";
-    ctx.fillText("Свежие компиляции шейдеров:", 30, 258);
+    ctx.fillText("Свежие компиляции шейдеров:", 30, 220);
 
     const eff = (s.newEffects as string[]) ?? [];
-    let y = 306;
+    let y = 262;
     if (eff.length === 0) {
       ctx.font = "30px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
