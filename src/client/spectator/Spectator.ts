@@ -5,6 +5,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOSS, BOT, MOB, daylightAt } from "#shared/constants";
+import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
@@ -726,6 +727,22 @@ export class Spectator {
   }
 
   /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
+  private changelogIdx = 0;
+  private changelogAt = 0;
+
+  /** Свежие изменения игры — по одной короткой строке, перебором. */
+  private changelogLine(): string {
+    const items = CHANGELOG.slice(0, CHANGELOG_SHOWN);
+    if (items.length === 0) return "";
+    const now = performance.now();
+    if (this.changelogAt === 0) this.changelogAt = now;
+    if (now - this.changelogAt > CHANGELOG_HOLD_SEC * 1000) {
+      this.changelogAt = now;
+      this.changelogIdx = (this.changelogIdx + 1) % items.length;
+    }
+    return `Что нового · ${items[this.changelogIdx % items.length]}`;
+  }
+
   private updateOverlay(st: ZoneState | null): void {
     const subj = this.cam.subject;
     let watching: string | null = null;
@@ -751,10 +768,12 @@ export class Spectator {
     const online: { nick: string; speaking: boolean }[] = [];
     st?.players.forEach((p, id) => online.push({ nick: p.nick, speaking: this.speakingIds.has(id) }));
 
-    // Строка событий сверху: пока идёт нашествие — большими синими буквами.
-    this.overlay?.setTicker(
-      st?.eventKind === 1 ? "Идёт ивент — нашествие мобов (!event)" : "",
-    );
+    // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
+    if (st?.eventKind === 1) {
+      this.overlay?.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
+    } else {
+      this.overlay?.setTicker(this.changelogLine(), "news");
+    }
 
     this.overlay?.update({
       watching,
