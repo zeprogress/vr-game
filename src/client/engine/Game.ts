@@ -64,7 +64,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { ADMIN_NICK, BOSS, BOT, PLAYER, RESPAWN, SKILL } from "#shared/constants";
+import { BOSS, BOT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -777,9 +777,9 @@ export class Game {
     this.sfx.startMusic(TOWN_MUSIC, 0.065); // фон — только в мире
   }
 
-  /** Админ (ADMIN_NICK) — единственный, кто открывает панель настройки. */
+  /** Админ (ADMIN_NICKS) — открывает панель настройки экипировки в VR. */
   private get isAdmin(): boolean {
-    return this.localNick.trim().toLowerCase() === ADMIN_NICK;
+    return isAdminNick(this.localNick);
   }
 
   private handNode(side: "left" | "right", fallback: Node): Node {

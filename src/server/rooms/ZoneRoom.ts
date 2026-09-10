@@ -51,6 +51,7 @@ import {
 } from "#shared/net/messages";
 import {
   ADMIN_NICK,
+  isAdminNick,
   advanceHour,
   AFFIX,
   BOSS,
@@ -915,7 +916,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Время суток переводит только админ — часы общие для всей зоны.
     this.onMessage(MSG.setTime, (client: Client, msg: SetTimeMsg) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
+      if (!p || !isAdminNick(p.nick) || !msg) return;
       if (Number.isFinite(msg.hour)) {
         this.worldHour = (((msg.hour as number) % 24) + 24) % 24;
       }
@@ -928,7 +929,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Общие настройки комфорта VR (виньетка, режим перемещения) — только админ.
     this.onMessage(MSG.comfort, (client: Client, msg: ComfortMsg) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK || !msg) return;
+      if (!p || !isAdminNick(p.nick) || !msg) return;
       if (msg.vignette !== undefined) this.state.comfortVignette = msg.vignette ? 1 : 0;
       if (msg.teleport !== undefined) this.state.teleportMove = msg.teleport ? 1 : 0;
     });
@@ -937,7 +938,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // перезапуск сервера. Клиент шлёт частичный Loadout (hands/items/belt/hud/light).
     this.onMessage(MSG.setWorldLoadout, (client: Client, msg: WorldLoadoutMsg) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK) return;
+      if (!p || !isAdminNick(p.nick)) return;
       if (!msg || typeof msg !== "object" || Array.isArray(msg)) return;
       let json: string;
       try {
@@ -953,7 +954,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Очистка мира от лежащего лута — по кнопке в панели, только админ.
     this.onMessage(MSG.clearWorld, (client: Client) => {
       const p = this.state.players.get(client.sessionId);
-      if (!p || p.nick.trim().toLowerCase() !== ADMIN_NICK) return;
+      if (!p || !isAdminNick(p.nick)) return;
       this.wipeWorld(`админ ${p.nick}`);
     });
 

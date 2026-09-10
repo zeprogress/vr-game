@@ -525,8 +525,15 @@ export const DAYCYCLE = {
   syncSeconds: 5,
 } as const;
 
-/** Кто может открывать панель настройки и переводить время всему миру. */
+/** Основной ник админа — на него бота наводят по !follow и т.п. */
 export const ADMIN_NICK = "zep";
+/** Все ники с правами админа (панель настройки, перевод времени, !-команды). */
+export const ADMIN_NICKS = ["zep", "zeprogress"] as const;
+
+/** true — у этого ника есть права админа (регистр и пробелы не важны). */
+export function isAdminNick(nick: string): boolean {
+  return (ADMIN_NICKS as readonly string[]).includes(nick.trim().toLowerCase());
+}
 
 /**
  * Ключ невидимого спектатора для стрима (этап 17). Открывается страницей
