@@ -25,33 +25,14 @@ function hubBump(x: number, z: number): number {
   );
 }
 
-/** Расстояние от точки до отрезка (для «вытоптанной» тропы к воротам). */
-function distToSegment(px: number, pz: number, ax: number, az: number, bx: number, bz: number): number {
-  const vx = bx - ax;
-  const vz = bz - az;
-  const len2 = vx * vx + vz * vz || 1;
-  const t = clamp01(((px - ax) * vx + (pz - az) * vz) / len2);
-  return Math.hypot(px - (ax + vx * t), pz - (az + vz * t));
-}
-
 /**
  * Насколько земля лагеря «вытоптана» в этой точке (0..1): 1 — плотно
- * утоптано (площадь у костра и тропа к воротам), 0 — обычная бугристая земля.
+ * утоптано (площадь у костра), 0 — обычная бугристая земля.
  * Используют и террейн (гасит бугры), и клиент (красит землю).
  */
 export function troddenAt(x: number, z: number): number {
   const dFire = Math.hypot(x - HUB.campfire.pos.x, z - HUB.campfire.pos.z);
-  const plaza = clamp01((12 - dFire) / 4); // круг у костра
-  const dPath = distToSegment(
-    x,
-    z,
-    HUB_CENTER.x,
-    HUB_CENTER.z,
-    HUB.gate.pos.x + HUB.gate.dir.x * 6,
-    HUB.gate.pos.z + HUB.gate.dir.z * 6,
-  );
-  const path = clamp01((4.5 - dPath) / 3); // тропа к воротам
-  return Math.max(plaza, path);
+  return clamp01((12 - dFire) / 4); // круг у костра
 }
 
 /**

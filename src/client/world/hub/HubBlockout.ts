@@ -41,11 +41,9 @@ export interface HubBlockout {
 
 // ---- палитра лагеря (десатурированная: дерево / камень / холст / металл) ----
 const C = {
-  dirt: new Color3(0.36, 0.28, 0.19),
-  path: new Color3(0.42, 0.34, 0.24),
   /** Земля лагеря вне троп: тёмная почва с зеленцой — ближе к траве поляны. */
   groundBase: new Color3(0.29, 0.31, 0.18),
-  /** Вытоптанное: у костра и по тропе к воротам — светлый плотный грунт. */
+  /** Вытоптанное: у костра — светлый плотный грунт. */
   groundWorn: new Color3(0.55, 0.45, 0.31),
   wood: new Color3(0.34, 0.24, 0.16),
   woodLight: new Color3(0.5, 0.38, 0.25),
@@ -223,7 +221,7 @@ function campGroundTextures(scene: Scene): { diffuse: DynamicTexture; bump: Dyna
  * Пол лагеря — меш по рельефу, лежит на +0.04 м над террейном. Материал —
  * земляная процедурная текстура (`campGroundTextures`) с тем же уровнем
  * детализации и нормаль-мапой, что у земли поляны. Цвет вершин уводит грунт
- * в вытоптанный (светлее, `troddenAt`) у костра и на тропе к воротам; к краю
+ * в вытоптанный (светлее, `troddenAt`) у костра; к краю
  * альфа сходит в ноль — лагерь без круглого шва растворяется в траве.
  */
 function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
@@ -321,14 +319,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // Обычные поверхности лагеря — их эмиссив-заливку крутит tick по дню/ночи.
   const dayLit: { m: StandardMaterial; base: Color3 }[] = [];
-  const matPath = flatMat(scene, "hubPath", C.path, undefined, dayLit);
   const matWood = flatMat(scene, "hubWood", C.wood, undefined, dayLit);
   const matWoodLite = flatMat(scene, "hubWoodLite", C.woodLight, undefined, dayLit);
   const matStone = flatMat(scene, "hubStone", C.stone, undefined, dayLit);
   const matBanner = flatMat(scene, "hubBanner", C.banner, C.banner.scale(0.12));
 
   // --- 1-2. Пол лагеря: земляная процедурная текстура (детализация как у
-  //          земли поляны), вытоптанная у костра и на тропе к воротам ---
+  //          земли поляны), вытоптанная у костра ---
   const pad = buildCampGround(scene, cx, cz);
   pad.parent = root;
 
@@ -455,26 +452,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   gateBanner.parent = root;
   gateBanner.isPickable = false;
 
-  // --- 7. Утоптанная дорога от ворот к поляне (сегментами по рельефу) ---
-  const segs = 10;
-  const pathParts: Mesh[] = [];
-  for (let i = 0; i < segs; i++) {
-    const t0 = i / segs;
-    const t1 = (i + 1) / segs;
-    const mx = g.pos.x + g.dir.x * HUB.path.length * ((t0 + t1) / 2);
-    const mz = g.pos.z + g.dir.z * HUB.path.length * ((t0 + t1) / 2);
-    const seg = MeshBuilder.CreateBox(`hubPath${i}`, {
-      width: HUB.path.width,
-      height: 0.1,
-      depth: (HUB.path.length / segs) * 1.15,
-    }, scene);
-    seg.position.set(mx, groundY(mx, mz) + 0.04, mz);
-    seg.rotation.y = Math.atan2(g.dir.x, g.dir.z);
-    pathParts.push(seg);
-  }
-  merge(pathParts, "hubPath", matPath);
-
-  // --- 8. Периметр лагеря: столбы с редким заборным пряслом (не глухая стена) ---
+  // --- 7. Периметр лагеря: столбы с редким заборным пряслом (не глухая стена) ---
   const fenceParts: Mesh[] = [];
   const postsN = 30;
   for (let i = 0; i < postsN; i++) {
