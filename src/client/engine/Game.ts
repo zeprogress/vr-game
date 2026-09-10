@@ -532,9 +532,45 @@ export class Game {
    * ночью тормозили так, что было заметно — и пропадало ровно на рассвете,
    * когда обе системы гаснут. Гасим их совсем, как только вошли в VR.
    */
+  private vrQualityOn = false;
   private applyVrQuality(): void {
+    if (this.vrQualityOn) return;
+    this.vrQualityOn = true;
+    // Ночная подсветка (PointLight'ы) — совсем гасим: в шлеме каждый источник
+    // бьёт вдвое (два глаза) на слабом GPU.
     this.fireflies.setLampBudget(0);
     this.botLights.setForceOff(true);
+    // Трава — самый тяжёлый меш сцены (тысячи thin-instance с alpha-cutout).
+    // На «Высоком» её ковёр в шлеме роняет и разрешение (динамический скейл
+    // Quest), и частоту. Грузится асинхронно и сама зовёт setEnabled(true) —
+    // поэтому гасим с повторами, пока профиль активен.
+    this.hideGrassForVr(20);
+    // Агрессивная выбраковка + гарантия нативного разрешения буфера глаза.
+    this.scene.performancePriority = 2;
+    if (this.engine.getHardwareScalingLevel() > 1) this.engine.setHardwareScalingLevel(1);
+    console.log("[xr] VR-профиль: трава/ночные лампы off, aggressive culling");
+  }
+
+  private hideGrassForVr(tries: number): void {
+    if (!this.vrQualityOn) return;
+    const g = this.scene.getMeshByName("grassBlade");
+    if (g) {
+      g.setEnabled(false);
+      return;
+    }
+    if (tries > 0) setTimeout(() => this.hideGrassForVr(tries - 1), 300);
+  }
+
+  /** Вернуть флэт-настройки при выходе из VR. */
+  private restoreFlatQuality(): void {
+    if (!this.vrQualityOn) return;
+    this.vrQualityOn = false;
+    const preset = PRESETS[this.quality];
+    this.fireflies.setLampBudget(Infinity); // дефолт — без ограничения
+    if (preset.botTorches !== false) this.botLights.setForceOff(false);
+    this.scene.getMeshByName("grassBlade")?.setEnabled((preset.grass ?? 1) > 0);
+    this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
+    if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
   }
 
   enterVR(): Promise<boolean> {
@@ -581,28 +617,32 @@ export class Game {
 
   private async setupXR(): Promise<void> {
     if (!("xr" in navigator)) return;
-    // Резкость картинки в шлеме: framebufferScaleFactor=1 у Babylon по умолчанию
-    // = «рекомендованное» браузером разрешение (у Quest занижено ради fps).
-    // `?fbscale=` 0.7..1.6 переопределяет; 1.15 по умолчанию — заметно резче,
-    // фиксированная фовеация (ниже) возвращает часть нагрузки.
+    // Разрешение буфера глаза. Babylon по умолчанию framebufferScaleFactor=1
+    // (= «рекомендованное» браузером). `?fbscale=` переопределяет — только для
+    // теста, по умолчанию НЕ трогаем, чтобы не загонять GPU в репроекцию.
     const fsRaw = Number(new URLSearchParams(location.search).get("fbscale"));
-    const fbScale = Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(1.6, Math.max(0.6, fsRaw)) : 1.15;
+    const fbScale =
+      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : undefined;
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
         disableTeleportation: true,
         disablePointerSelection: true, // без лазера у контроллеров
         inputOptions: { doNotLoadControllerMeshes: true }, // рисуем свои кисти
-        outputCanvasOptions: {
-          // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
-          canvasOptions: {
-            antialias: true,
-            depth: true,
-            stencil: true,
-            alpha: true,
-            framebufferScaleFactor: fbScale,
-          },
-        },
+        ...(fbScale
+          ? {
+              outputCanvasOptions: {
+                // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
+                canvasOptions: {
+                  antialias: true,
+                  depth: true,
+                  stencil: true,
+                  alpha: true,
+                  framebufferScaleFactor: fbScale,
+                },
+              },
+            }
+          : {}),
       });
     } catch (e) {
       console.warn("WebXR недоступен:", e);
@@ -624,6 +664,7 @@ export class Game {
       if (overlay) overlay.style.display = state === WebXRState.NOT_IN_XR ? "" : "none";
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
+        this.applyVrQuality(); // на случай входа мимо enterVR() (штатная кнопка Babylon)
         this.requestMaxFrameRate();
         this.tuneXrRendering();
         this.player.enterXR(base.camera);
@@ -640,6 +681,7 @@ export class Game {
         this.scene.activeCamera = this.player.renderCamera;
         this.hands.detach(this.xr!);
         this.tearDownVrUi();
+        this.restoreFlatQuality();
       }
     });
   }
@@ -692,9 +734,11 @@ export class Game {
     const sm = this.xr?.baseExperience.sessionManager;
     if (!sm) return;
     try {
+      // Лёгкая фиксированная фовеация: периферия чуть грубее (глазом почти не
+      // видно), центр — как есть. `?fov=` переопределяет (0 — выкл, 1 — макс).
       if (sm.isFixedFoveationSupported) {
         const want = Number(new URLSearchParams(location.search).get("fov"));
-        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 1;
+        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.3;
         console.log(`[xr] фиксированная фовеация = ${sm.fixedFoveation}`);
       }
     } catch (e) {
@@ -1502,6 +1546,14 @@ export class Game {
    */
   private updateSmoothing(): void {
     const cam = this.scene.activeCamera;
+    // В VR пост-обработка (FXAA + шарпен) идёт двумя полноэкранными проходами
+    // в стерео на слабом GPU шлема — снимаем совсем, сглаживание даёт MSAA
+    // самого буфера глаза (antialias у XR-слоя).
+    if (this.player.inVR) {
+      if (this.fxaa) this.dropSmoothing();
+      if (this.sharpen) this.dropSharpen();
+      return;
+    }
     const wantFxaa = LOADOUT.gfx.smooth !== 0 && !!cam;
     if (wantFxaa && this.fxaaCam !== cam) {
       this.dropSmoothing();
