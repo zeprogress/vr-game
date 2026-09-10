@@ -1472,7 +1472,13 @@ export class ZoneRoom extends Room<ZoneState> {
         scaleMul: e.scaleMul, xp: e.xp,
         rangedArmor: e.rangedArmor,
       });
-      this.huntAddAt = Date.now() + eh.addGap * 1000;
+      this.huntDmgBase = MOB.attackDamage * e.dmgMul * dmgMul;
+      const t0 = Date.now();
+      this.huntAddAt = t0 + eh.addGap * 1000;
+      this.huntNovaAt = t0 + eh.novaGap * 1000;
+      this.huntLobAt = t0 + eh.lobGap * 1000;
+      this.huntNovaFireAt = 0;
+      this.huntLobFireAt = 0;
       this.state.eventLeft = 1;
       this.broadcast(MSG.worldEvent, {
         phase: "start", name: "Охота", x: spot.x, z: spot.z,
@@ -1530,6 +1536,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
     this.huntBossId = "";
+    this.huntNovaFireAt = 0;
+    this.huntLobFireAt = 0;
     this.sim.eventDamagers.clear();
     this.sim.clearEventMobs();
     this.eventPhase = "cooldown";
@@ -1539,6 +1547,76 @@ export class ZoneRoom extends Room<ZoneState> {
     this.broadcast(MSG.worldEvent, {
       phase: win ? "win" : "end", name: this.eventName(), x: this.eventX, z: this.eventZ,
     } satisfies WorldEventMsg);
+  }
+
+  /**
+   * Уникальные атаки Грибного владыки: «Спорова волна» (АОЕ вокруг него после
+   * телеграф-кольца) и «Спора-залп» (отметка под героем, затем удар по площади).
+   * Урон наносим напрямую через hurtPlayer, визуал — переиспользуем FX ботов.
+   */
+  private tickHuntAttacks(
+    now: number,
+    boss: { x: number; y: number; z: number },
+    eh: typeof EVENT.eliteHunt,
+  ): void {
+    const hurtAround = (cx: number, cz: number, r: number, dmg: number, proj: boolean): void => {
+      this.state.players.forEach((p, id) => {
+        if (p.dead) return;
+        if (Math.hypot(p.head.x - cx, p.head.z - cz) > r) return;
+        this.hurtPlayer({
+          target: id, dmg, fromX: cx, fromZ: cz, projectile: proj, byMob: this.huntBossId,
+        });
+      });
+    };
+
+    // --- Спорова волна ---
+    if (now >= this.huntNovaAt) {
+      this.huntNovaAt = now + eh.novaGap * 1000;
+      this.huntNovaFireAt = now + eh.novaDelay * 1000;
+      this.broadcast(MSG.act, {
+        k: "stunBash", id: this.huntBossId,
+        x: boss.x, y: boss.y, z: boss.z, d: eh.novaDelay,
+      } satisfies ActRelay);
+    }
+    if (this.huntNovaFireAt > 0 && now >= this.huntNovaFireAt) {
+      this.huntNovaFireAt = 0;
+      hurtAround(boss.x, boss.z, eh.novaRadius, this.huntDmgBase * eh.novaDmgMul, false);
+      this.broadcast(MSG.act, {
+        k: "stunHit", id: this.huntBossId, x: boss.x, y: boss.y, z: boss.z,
+      } satisfies ActRelay);
+    }
+
+    // --- Спора-залп по герою ---
+    if (now >= this.huntLobAt) {
+      // цель — случайный живой герой в разумной близости
+      const near: { x: number; z: number }[] = [];
+      this.state.players.forEach((p) => {
+        if (!p.dead && Math.hypot(p.head.x - boss.x, p.head.z - boss.z) < 26) {
+          near.push({ x: p.head.x, z: p.head.z });
+        }
+      });
+      if (near.length > 0) {
+        const t = near[(Math.random() * near.length) | 0];
+        this.huntLobX = t.x;
+        this.huntLobZ = t.z;
+        this.huntLobAt = now + eh.lobGap * 1000;
+        this.huntLobFireAt = now + eh.lobDelay * 1000;
+        this.broadcast(MSG.act, {
+          k: "arrowRain", id: this.huntBossId,
+          x: t.x, y: terrainHeight(t.x, t.z) + PLAYER.eyeHeight, z: t.z,
+        } satisfies ActRelay);
+      } else {
+        this.huntLobAt = now + 2000; // некого бить — ждём
+      }
+    }
+    if (this.huntLobFireAt > 0 && now >= this.huntLobFireAt) {
+      this.huntLobFireAt = 0;
+      const y = terrainHeight(this.huntLobX, this.huntLobZ) + 0.5;
+      hurtAround(this.huntLobX, this.huntLobZ, eh.lobRadius, this.huntDmgBase * eh.lobDmgMul, true);
+      this.broadcast(MSG.act, {
+        k: "stunHit", id: this.huntBossId, x: this.huntLobX, y, z: this.huntLobZ,
+      } satisfies ActRelay);
+    }
   }
 
   private tickEvents(): void {
@@ -1587,6 +1665,7 @@ export class ZoneRoom extends Room<ZoneState> {
             });
           }
         }
+        this.tickHuntAttacks(now, boss, eh);
       } else if (left === 0) {
         // Нашествие: волна зачищена — следующая, либо победа.
         if (this.eventWave >= EVENT.invasion.waves.length) {
@@ -3514,9 +3593,16 @@ export class ZoneRoom extends Room<ZoneState> {
   private eventForced = false;
   /** Тип идущего события: 1 — нашествие мобов, 2 — охота на элиту. */
   private activeEventKind: 1 | 2 = 1;
-  /** Охота: id самого владыки (победа = его смерть) и ms следующего призыва миньонов. */
+  /** Охота: id владыки (победа = его смерть), базовый урон спец-атак и таймеры. */
   private huntBossId = "";
+  private huntDmgBase = 0;
   private huntAddAt = 0;
+  private huntNovaAt = 0;
+  private huntNovaFireAt = 0;
+  private huntLobAt = 0;
+  private huntLobFireAt = 0;
+  private huntLobX = 0;
+  private huntLobZ = 0;
   /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота. */
   private forcedEventKind: 0 | 1 | 2 = 0;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы

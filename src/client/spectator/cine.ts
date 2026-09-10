@@ -113,7 +113,6 @@ export const ROTATION: string[] = [
   "duelPlayer",
   "crowd",
   "eyePlayer",
-  "shoulderPlayer",
   "orbitBoss",
   "eyeMob",
   "heroLow",
@@ -123,7 +122,6 @@ export const ROTATION: string[] = [
   "duelPlayer",
   "crowd",
   "eyePlayer",
-  "shoulderPlayer",
   "eyeMob",
 ];
 

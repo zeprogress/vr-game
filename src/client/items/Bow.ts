@@ -2,7 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { spawnWeaponModel, tierTint } from "./weaponModels";
+import { attachLegendaryGlow, spawnWeaponModel, tierTint } from "./weaponModels";
 
 export interface BowParts {
   mesh: Mesh;
@@ -39,6 +39,7 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   gold.parent = root;
 
   applyBowTier(root, tier);
+  if (tier === "legendary") attachLegendaryGlow(scene, root, 0.7);
 
   return {
     mesh: root,

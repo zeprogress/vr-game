@@ -10,6 +10,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { SHIELD } from "#shared/constants";
 import { weaponDef, type WeaponTier } from "#shared/items";
 import { LIGHT_BUDGET } from "../world/Fireflies";
+import { attachLegendaryGlow } from "./weaponModels";
 
 /**
  * Щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y
@@ -125,5 +126,6 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   shield.rotation.y = Math.PI / 2;
   shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
+  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.5);
   return shield;
 }

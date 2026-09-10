@@ -1,13 +1,48 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Constants } from "@babylonjs/core/Engines/constants";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+
+/**
+ * Фиолетовое пульсирующее свечение легендарного оружия — тот же приём, что у
+ * ауры баффа: аддитивная полупрозрачная сфера вокруг предмета, дышит сама
+ * (onBeforeRender), снимается вместе с мешем.
+ */
+export function attachLegendaryGlow(scene: Scene, host: Mesh, radius = 0.6): void {
+  const shell = MeshBuilder.CreateSphere("legGlow", { diameter: radius * 2, segments: 10 }, scene);
+  const mat = new StandardMaterial("legGlowMat", scene);
+  mat.emissiveColor = new Color3(0.6, 0.22, 1);
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.disableLighting = true;
+  mat.alphaMode = Constants.ALPHA_ADD;
+  mat.backFaceCulling = false;
+  mat.alpha = 0.12;
+  shell.material = mat;
+  shell.isPickable = false;
+  shell.parent = host;
+  let t = 0;
+  const obs = scene.onBeforeRenderObservable.add(() => {
+    t += scene.getEngine().getDeltaTime() / 1000;
+    const p = 0.85 + Math.sin(t * 3) * 0.15;
+    shell.scaling.setAll(p);
+    mat.alpha = 0.08 + p * 0.08;
+  });
+  host.onDisposeObservable.add(() => {
+    scene.onBeforeRenderObservable.remove(obs);
+    mat.dispose();
+    shell.dispose();
+  });
+}
 
 /**
  * Цвет для перекраски оружия по тиру. base/gold — цвет из пака (undefined),

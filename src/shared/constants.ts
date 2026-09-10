@@ -288,7 +288,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
   worldElite: {
     model: "monMushKing", name: "Грибной владыка", level: 25, kind: "slime",
-    hp: 1400, dmgMul: 2.6, xp: 460, scaleMul: 2.1, tint: [0.55, 0.35, 0.75],
+    hp: 4200, dmgMul: 2.6, xp: 520, scaleMul: 2.1, tint: [0.55, 0.35, 0.75],
     rangedArmor: 0.35,
   },
 };
@@ -859,5 +859,18 @@ export const EVENT = {
     /** Ниже этой доли HP — впадает в ярость: быстрее двигается и бьёт сильнее. */
     enrageAt: 0.4,
     enrageDmgMul: 1.45,
+    /**
+     * Уникальные атаки владыки (урон — доли от `MOB.attackDamage`·dmgMul):
+     * «Спорова волна» — телеграф-кольцо, затем АОЕ вокруг владыки;
+     * «Спора-залп» — отмечает точку под героем, через задержку туда бьёт.
+     */
+    novaGap: 9,
+    novaDelay: 1.1,
+    novaRadius: 5.5,
+    novaDmgMul: 1.7,
+    lobGap: 6,
+    lobDelay: 1.5,
+    lobRadius: 4,
+    lobDmgMul: 1.2,
   },
 } as const;

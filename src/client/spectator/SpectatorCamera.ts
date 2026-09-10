@@ -25,7 +25,6 @@ const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 const BOT_ROTATION = [
   "eyePlayer",
   "sidePlayer",
-  "shoulderPlayer",
   "crowd",
   "duelPlayer",
   "orbitPlayer",
@@ -52,11 +51,6 @@ const SIDE_BACK = 1.2;
  * «Из-за плеча»: классический TPS-кадр — вплотную сзади-сбоку на высоте
  * головы, с воздухом по ходу движения. Ближе и интимнее, чем eyePlayer.
  */
-const SHOULDER_BACK = 2.6;
-const SHOULDER_SIDE = 1.15;
-const SHOULDER_UP = 2.05;
-const SHOULDER_LEAD = 6;
-const SHOULDER_AIM_Y = 0.75; // ниже точки корпуса — камера смотрит чуть вниз
 
 /**
  * «Дуэль»: в кадре и герой, и его ближайший противник — камера сбоку от
@@ -102,7 +96,6 @@ type Shot =
   | { kind: "frontPlayer"; id: string }
   | { kind: "sidePlayer"; id: string }
   | { kind: "dronePlayer"; id: string }
-  | { kind: "shoulderPlayer"; id: string }
   | { kind: "duelPlayer"; id: string }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
@@ -145,7 +138,6 @@ const PLAYER_SHOTS = [
   "frontPlayer",
   "sidePlayer",
   "dronePlayer",
-  "shoulderPlayer",
   "duelPlayer",
 ] as const;
 type PlayerShotKind = (typeof PLAYER_SHOTS)[number];
@@ -159,7 +151,6 @@ function usesBotFilter(k: string): boolean {
     k === "frontPlayer" ||
     k === "sidePlayer" ||
     k === "dronePlayer" ||
-    k === "shoulderPlayer" ||
     k === "duelPlayer"
   );
 }
@@ -595,26 +586,6 @@ export class SpectatorCamera {
           this.botPos.x + (fx / fl) * SIDE_LEAD,
           this.botPos.y + SIDE_AIM_Y,
           this.botPos.z + (fz / fl) * SIDE_LEAD,
-        );
-        return;
-      }
-      case "shoulderPlayer": {
-        // Из-за плеча: вплотную сзади-сбоку на высоте головы, воздух по ходу.
-        const fx = this.botFwd.x;
-        const fz = this.botFwd.z;
-        const fl = Math.hypot(fx, fz) || 1;
-        const side = (s.id.charCodeAt(s.id.length - 1) & 1) === 0 ? 1 : -1;
-        const px = (-fz / fl) * side;
-        const pz = (fx / fl) * side;
-        pos.set(
-          this.botPos.x - (fx / fl) * SHOULDER_BACK + px * SHOULDER_SIDE,
-          this.botPos.y + SHOULDER_UP,
-          this.botPos.z - (fz / fl) * SHOULDER_BACK + pz * SHOULDER_SIDE,
-        );
-        tgt.set(
-          this.botPos.x + (fx / fl) * SHOULDER_LEAD,
-          this.botPos.y + SHOULDER_AIM_Y,
-          this.botPos.z + (fz / fl) * SHOULDER_LEAD,
         );
         return;
       }

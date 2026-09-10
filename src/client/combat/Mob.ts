@@ -489,6 +489,8 @@ export class Mob implements Hittable {
     if (s.dead && !this.dead) {
       this.dead = true;
       this.deathT = 0;
+      this.burnGlow = 0;
+      this.burnFx?.setEnabled(false);
       this.shadow.setEnabled(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));

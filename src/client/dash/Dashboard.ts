@@ -365,7 +365,6 @@ export class Dashboard {
         ["напротив", "frontPlayer"],
         ["сбоку", "sidePlayer"],
         ["дрон", "dronePlayer"],
-        ["из-за плеча", "shoulderPlayer"],
         ["снизу", "heroLow"],
         ["дуэль", "duelPlayer"],
       ];

@@ -2,7 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
-import { spawnWeaponModel, tierTint } from "./weaponModels";
+import { attachLegendaryGlow, spawnWeaponModel, tierTint } from "./weaponModels";
 
 /**
  * Меч — модель из пака (Ultimate RPG Items Pack). Начало координат — в рукояти,
@@ -14,9 +14,11 @@ import { spawnWeaponModel, tierTint } from "./weaponModels";
  * сдвиг +0.06 ставят кончик ровно на 1.02, а гарду — примерно в origin.
  */
 export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
-  return spawnWeaponModel(scene, tier === "base" ? "sword" : "sword_gold", {
+  const m = spawnWeaponModel(scene, tier === "base" ? "sword" : "sword_gold", {
     scale: 0.5,
     offset: new Vector3(0, 0.06, 0),
     tint: tierTint("sword", tier),
   });
+  if (tier === "legendary") attachLegendaryGlow(scene, m, 0.55);
+  return m;
 }

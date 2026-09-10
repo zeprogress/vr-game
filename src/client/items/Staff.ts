@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
+import { attachLegendaryGlow } from "./weaponModels";
 
 /**
  * Посох — фокус для магии и слабое двуручное оружие ближнего боя.
@@ -126,6 +127,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   staff.name = "staff";
 
   attachGem(scene, staff, gold, storm);
+  if (storm) attachLegendaryGlow(scene, staff, 0.75);
   return staff;
 }
 

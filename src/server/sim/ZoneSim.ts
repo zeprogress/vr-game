@@ -389,6 +389,9 @@ class Mob {
       this.slamWindupT = 0;
       this.lungeWindupT = 0;
       this.lungeT = 0;
+      this.burningT = 0;
+      this.burnDps = 0;
+      this.raging = false;
       this.respawnIn = this.kind === "boss" ? BOSS.respawn : MOB.respawn;
       return true;
     }
@@ -866,6 +869,12 @@ class Mob {
     this.dead = false;
     this.aggroed = false;
     this.outOfRange = 0;
+    this.burningT = 0;
+    this.burnDps = 0;
+    this.burnBy = "";
+    this.stunnedT = 0;
+    this.rootedT = 0;
+    this.raging = false;
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
     if (this.faceRest) this.yaw = this.restYaw;
