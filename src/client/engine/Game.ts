@@ -534,25 +534,42 @@ export class Game {
       for (const m of this.scene.meshes) {
         const names = rootNames(m).join("|");
         const mat = m.material?.name ?? "";
-        let cat = "";
-        if (m.name === "grassBlade") cat = "grass";
-        else if (/firefly/i.test(names)) cat = "fireflies";
-        else if (/^stars$|^cloud/i.test(m.name)) cat = "sky";
-        else if (/bark|leaf|leav|Tree/i.test(mat + names)) cat = "trees";
-        else if (/Rock/i.test(names)) cat = "rocks";
-        else if (/\bhub\b|hub/i.test(names) && /hub/i.test(m.name + names)) cat = "hub";
-        else if (/\bmob\b/.test(names)) cat = "mobs";
-        else if (/avatar_/.test(names)) cat = "bots";
-        if (cat && off.has(cat) && m.isEnabled()) {
+        const cats: string[] = [];
+        if (m.name === "grassBlade") cats.push("grass");
+        if (/firefly/i.test(names)) cats.push("fireflies");
+        if (/^stars$|^cloud/i.test(m.name)) cats.push("sky");
+        if (/bark|leaf|leav|Tree/i.test(mat + names)) cats.push("trees");
+        if (/Rock/i.test(names)) cats.push("rocks");
+        if (/hubFire/i.test(names) || /hubFire|hubGlow|hubSpark|hubCoal/i.test(m.name))
+          cats.push("campfire");
+        if (/\bhub\b|hub/i.test(names + m.name)) cats.push("hub");
+        if (/\bmob\b/.test(names) || /monMush|monSlime|Bee|Frog|Cactoro|Orc/i.test(names + mat))
+          cats.push("mobs");
+        if (/avatar_/.test(names)) cats.push("bots");
+        if (cats.some((c) => off.has(c)) && m.isEnabled()) {
           m.setEnabled(false);
           hidden++;
         }
       }
       if (off.has("fireflies")) this.fireflies.setLampBudget(0);
+      // Кусты по имени TransformNode (на случай, если у мешей имена не говорящие).
+      for (const [flag, node] of [
+        ["campfire", "hubFire"],
+        ["hub", "hub"],
+      ] as const) {
+        if (!off.has(flag)) continue;
+        const t = this.scene.getTransformNodeByName(node);
+        t?.getChildMeshes(false).forEach((cm) => {
+          if (cm.isEnabled()) {
+            cm.setEnabled(false);
+            hidden++;
+          }
+        });
+      }
       console.log(`[off] спрятано ${hidden} мешей категорий:`, [...off]);
     };
     run();
-    for (const ms of [1500, 4000, 8000]) setTimeout(run, ms);
+    for (const ms of [1500, 4000, 8000, 14000]) setTimeout(run, ms);
   }
 
   /** Готовность WebXR — экран входа ждёт её перед показом кнопки «Войти в VR». */
