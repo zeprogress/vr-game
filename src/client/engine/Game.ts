@@ -504,6 +504,52 @@ export class Game {
 
   start(): void {
     this.engine.runRenderLoop(() => this.scene.render());
+    this.applyOffFlags();
+  }
+
+  /**
+   * Диагностика: `?off=grass,fireflies,sky,trees,rocks,hub,mobs,bots` прячет
+   * категории объектов, чтобы бинарным поиском найти, что роняет кадр в VR.
+   * Повторяется — модели грузятся асинхронно.
+   */
+  private applyOffFlags(): void {
+    const raw = new URLSearchParams(location.search).get("off");
+    if (!raw) return;
+    const off = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+    const rootNames = (m: { parent: unknown; name: string }): string[] => {
+      const out: string[] = [];
+      let n: unknown = m;
+      while (n && typeof n === "object") {
+        const nm = (n as { name?: string }).name;
+        if (nm) out.push(nm);
+        n = (n as { parent?: unknown }).parent;
+      }
+      return out;
+    };
+    const run = (): void => {
+      let hidden = 0;
+      for (const m of this.scene.meshes) {
+        const names = rootNames(m).join("|");
+        const mat = m.material?.name ?? "";
+        let cat = "";
+        if (m.name === "grassBlade") cat = "grass";
+        else if (/firefly/i.test(names)) cat = "fireflies";
+        else if (/^stars$|^cloud/i.test(m.name)) cat = "sky";
+        else if (/bark|leaf|leav|Tree/i.test(mat + names)) cat = "trees";
+        else if (/Rock/i.test(names)) cat = "rocks";
+        else if (/\bhub\b|hub/i.test(names) && /hub/i.test(m.name + names)) cat = "hub";
+        else if (/\bmob\b/.test(names)) cat = "mobs";
+        else if (/avatar_/.test(names)) cat = "bots";
+        if (cat && off.has(cat) && m.isEnabled()) {
+          m.setEnabled(false);
+          hidden++;
+        }
+      }
+      if (off.has("fireflies")) this.fireflies.setLampBudget(0);
+      console.log(`[off] спрятано ${hidden} мешей категорий:`, [...off]);
+    };
+    run();
+    for (const ms of [1500, 4000, 8000]) setTimeout(run, ms);
   }
 
   /** Готовность WebXR — экран входа ждёт её перед показом кнопки «Войти в VR». */
