@@ -192,7 +192,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
           // с прежним набором источников. Обычную посекундную сверку
           // (DAYCYCLE.syncSeconds) не трогаем — там шаг маленький.
           if (Number.isFinite(lastNetHour) && Math.abs(net.hour - lastNetHour) > 0.25) {
-            relightMaterials(scene);
+            relightMaterials(scene, "Zone.hourJump");
           }
           hour = net.hour;
           lastNetHour = net.hour;

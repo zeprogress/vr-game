@@ -114,7 +114,7 @@ export class BotLights {
       // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
       // как шейдер собран по дневному набору источников, и в него не попадают.
       // Набор изменился — говорим об этом явно. Бывает дважды за сутки.
-      relightMaterials(this.scene);
+      relightMaterials(this.scene, "BotLights");
     }
     if (!this.enabled) return;
 

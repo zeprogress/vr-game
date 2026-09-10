@@ -295,7 +295,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     if (wantOn !== lightOn) {
       lightOn = wantOn;
       fireLight.setEnabled(wantOn);
-      relightMaterials(scene);
+      relightMaterials(scene, "HubCampfire");
     }
     if (lightOn) {
       const flick =

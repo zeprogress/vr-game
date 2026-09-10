@@ -27,6 +27,7 @@ import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
 import { EventBeacon } from "../world/EventBeacon";
 import { SpellLights } from "../world/SpellLights";
+import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
@@ -863,19 +864,19 @@ export class Game {
     } catch {
       /* не критично */
     }
-    // Light.setEnabled — общий прототип.
-    const anyLight = this.scene.lights[0] as unknown as {
-      constructor: { prototype: { setEnabled: (v: boolean) => void } };
-    };
+    // setEnabled — идём вверх по цепочке прототипов до того, у кого он ЕСТЬ (Node).
+    const anyLight = this.scene.lights[0];
     if (anyLight) {
-      const proto = Object.getPrototypeOf(Object.getPrototypeOf(anyLight)) as {
-        setEnabled?: (v: boolean) => void;
-      };
-      // Node.prototype.setEnabled
-      const nodeProto = proto.setEnabled ? proto : null;
-      if (nodeProto?.setEnabled) {
-        const orig = nodeProto.setEnabled;
-        nodeProto.setEnabled = function (this: { getClassName?: () => string; name?: string }, v: boolean) {
+      let proto = Object.getPrototypeOf(anyLight) as Record<string, unknown> | null;
+      while (proto && !Object.prototype.hasOwnProperty.call(proto, "setEnabled")) {
+        proto = Object.getPrototypeOf(proto);
+      }
+      const orig = proto?.setEnabled as ((v: boolean) => void) | undefined;
+      if (proto && orig) {
+        (proto as { setEnabled: (v: boolean) => void }).setEnabled = function (
+          this: { getClassName?: () => string; name?: string },
+          v: boolean,
+        ) {
           const cn = this.getClassName?.() ?? "";
           if (/Light/.test(cn)) {
             p.lightToggle++;
@@ -951,6 +952,7 @@ export class Game {
       probeLightToggle: this.probe.lightToggle,
       probeLastLight: this.probe.lastLight,
       probeMadWho: this.probe.madWho,
+      probeRelight: `relight ${RELIGHT_STATS.count} (${RELIGHT_STATS.last})`,
       newEffects: this.diffEffects(),
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,

@@ -141,7 +141,12 @@ function rng(seed: number): () => number {
  * Обратно морозить не надо: Babylon делает это сам, сразу после пересбора.
  * Зовётся дважды за сутки, на рассвете и на закате.
  */
-export function relightMaterials(scene: Scene): void {
+/** Диагностика: кто и сколько раз звал relightMaterials (читает VrPerfHud). */
+export const RELIGHT_STATS = { count: 0, last: "" };
+
+export function relightMaterials(scene: Scene, who = "?"): void {
+  RELIGHT_STATS.count++;
+  RELIGHT_STATS.last = who;
   for (const m of scene.materials) m.unfreeze();
   scene.markAllMaterialsAsDirty(Constants.MATERIAL_LightDirtyFlag);
 }
