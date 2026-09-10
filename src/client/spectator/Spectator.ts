@@ -6,7 +6,7 @@ import type { Room } from "colyseus.js";
 
 import { BOSS, BOT, MOB, daylightAt } from "#shared/constants";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
-import type { ZoneState } from "#shared/net/schema";
+import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
 import { buildZone } from "../world/Zone";
@@ -25,6 +25,10 @@ import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
+import { weaponDamage } from "#shared/combat";
+import { armorFrac, moveSpeedFor, attackSpeedFor } from "#shared/progression";
+import { magicResistFrac, fireboltDamage } from "#shared/magic";
+import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import {
   SpectatorCamera,
   type DirectorCtx,
@@ -727,6 +731,30 @@ export class Spectator {
   }
 
   /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
+  /** Краткие боевые характеристики игрока для панели «смотрим» (без атрибутов). */
+  private static playerStatLine(p: PlayerState): string {
+    const parts: string[] = [`ур. ${p.level}`];
+    const cls = p.rightCls as WeaponClass | "";
+    const tier = (p.rightTier || "base") as WeaponTier;
+    const tierMul = cls && cls !== "shield" ? weaponDef(cls, tier).mult : 1;
+    if (cls === "bow") {
+      parts.push(`лук ×${weaponDamage("arrow", p.level, p.str, tierMul, p.agi).toFixed(1)}`);
+    } else if (cls === "staff") {
+      parts.push(`магия ×${fireboltDamage(p.level, p.int, 1).toFixed(1)}`);
+    } else if (cls === "sword" || cls === "") {
+      parts.push(`меч ×${weaponDamage("sword", p.level, p.str, tierMul, p.agi).toFixed(1)}`);
+    }
+    const arm = armorFrac(p.str);
+    const mres = magicResistFrac(p.int);
+    if (arm >= 0.03) parts.push(`броня ${Math.round(arm * 100)}%`);
+    if (mres >= 0.05) parts.push(`маг.защ ${Math.round(mres * 100)}%`);
+    parts.push(`${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с`);
+    // темп атаки — только если заметно выше базы
+    const spd = attackSpeedFor(p.level, p.agi);
+    if (spd >= 1.15) parts.push(`темп ×${spd.toFixed(2)}`);
+    return parts.join(" · ");
+  }
+
   private changelogIdx = 0;
   private changelogAt = 0;
 
@@ -746,6 +774,7 @@ export class Spectator {
   private updateOverlay(st: ZoneState | null): void {
     const subj = this.cam.subject;
     let watching: string | null = null;
+    let watchStats: string | null = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
     if (st && subj.id) {
@@ -753,6 +782,7 @@ export class Spectator {
         const p = st.players.get(subj.id);
         if (p) {
           watching = p.nick;
+          watchStats = Spectator.playerStatLine(p);
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {
@@ -777,6 +807,7 @@ export class Spectator {
 
     this.overlay?.update({
       watching,
+      watchStats,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,

@@ -16,6 +16,8 @@ export interface OverlayCtx {
   shotLabel: string;
   /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
+  /** Краткие характеристики игрока под ником в «смотрим» (без атрибутов). */
+  watchStats: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
   online: readonly { nick: string; speaking: boolean }[];
 }
@@ -75,6 +77,8 @@ const CSS = `
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
 .ov-watch span { display:block; font-weight:800; font-size:3.2vh; margin-top:.4vh; }
+.ov-watch i { display:block; font-style:normal; font-weight:500; font-size:1.5vh;
+  opacity:.85; margin-top:.35vh; letter-spacing:.02em; }
 .ov-hp { left:50%; bottom:3vh; transform:translateX(-50%); width:34vw; text-align:center; }
 .ov-hp b { font-weight:700; font-size:1.9vh; letter-spacing:.05em; }
 .ov-hp .bar { margin-top:.8vh; height:1.3vh; border-radius:1vh; overflow:hidden;
@@ -112,9 +116,9 @@ const CSS = `
   color:#5ba8ff; max-width:80vw;
   -webkit-text-stroke:.12vh #000;
   text-shadow:0 0 2.2vh rgba(60,140,255,.65), 0 .2vh .35vh rgba(0,0,0,.75); }
-.ov-ticker.news { top:9.4vh; font-size:2vh; font-weight:800; letter-spacing:.04em;
-  text-transform:none; color:#9cc7ff; -webkit-text-stroke:.08vh #000;
-  text-shadow:0 0 1.4vh rgba(60,140,255,.5), 0 .15vh .3vh rgba(0,0,0,.7); }
+.ov-ticker.news { top:9vh; font-size:1.9vh; font-weight:400; letter-spacing:normal;
+  text-transform:none; color:#fff; -webkit-text-stroke:0;
+  text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 `;
 
 function mskTime(): string {
@@ -394,7 +398,9 @@ export class Overlay {
       }
     }
 
-    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.shotLabel}` : "";
+    const watchSig = this.cfg.watching
+      ? `${ctx.watching}|${ctx.shotLabel}|${ctx.watchStats ?? ""}`
+      : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
@@ -404,6 +410,11 @@ export class Overlay {
         const s = document.createElement("span");
         s.textContent = ctx.watching;
         this.watch.append(b, s);
+        if (ctx.watchStats) {
+          const i = document.createElement("i");
+          i.textContent = ctx.watchStats;
+          this.watch.append(i);
+        }
       } else {
         this.watch.innerHTML = `<b>${ctx.shotLabel}</b>`;
       }
