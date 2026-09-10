@@ -75,10 +75,11 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
  */
 function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   const tint = weaponDef("shield", tier).tint;
+  const g = tier === "legendary" ? 0.7 : 0.2; // легендарка светится
 
   const face = new StandardMaterial("shieldFace", scene);
   face.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
-  face.emissiveColor = new Color3(tint[0] * 0.22, tint[1] * 0.2, tint[2] * 0.1);
+  face.emissiveColor = new Color3(tint[0] * g, tint[1] * g, tint[2] * g);
   face.specularColor = new Color3(0.85, 0.8, 0.5);
   face.specularPower = 64;
   face.maxSimultaneousLights = LIGHT_BUDGET;

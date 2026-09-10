@@ -18,5 +18,6 @@ export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
     scale: 0.5,
     offset: new Vector3(0, 0.06, 0),
     tint: tierTint("sword", tier),
+    glow: tier === "legendary" ? 0.7 : undefined,
   });
 }

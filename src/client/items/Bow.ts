@@ -33,7 +33,8 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
 
   const gold = spawnWeaponModel(scene, "bow_gold", {
     ...BOW_FIT,
-    tint: tierTint("bow", tier), // легендарка — зелёный отлив «Лука охотника»
+    tint: tierTint("bow", tier), // легендарка — фиолетовый отлив + свечение
+    glow: tier === "legendary" ? 0.7 : undefined,
   });
   gold.name = "bow_gold";
   gold.parent = root;

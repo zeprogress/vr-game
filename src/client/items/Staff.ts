@@ -41,7 +41,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   wood.diffuseColor = storm
     ? new Color3(0.42, 0.32, 0.6)
     : gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
-  wood.emissiveColor = wood.diffuseColor.scale(0.12);
+  wood.emissiveColor = wood.diffuseColor.scale(storm ? 0.6 : 0.12);
   wood.specularColor = new Color3(0.05, 0.05, 0.05);
   wood.maxSimultaneousLights = LIGHT_BUDGET;
 
@@ -56,7 +56,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   metal.diffuseColor = storm
     ? new Color3(0.6, 0.5, 0.85)
     : gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
-  metal.emissiveColor = metal.diffuseColor.scale(0.12);
+  metal.emissiveColor = metal.diffuseColor.scale(storm ? 0.55 : 0.12);
   metal.specularColor = new Color3(0.75, 0.75, 0.8);
   metal.specularPower = 80;
   metal.maxSimultaneousLights = LIGHT_BUDGET;

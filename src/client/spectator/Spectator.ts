@@ -337,19 +337,19 @@ export class Spectator {
       if (phase === "start") {
         this.overlay?.showCard(
           hunt ? "Охота на элиту!" : `${name}!`,
-          hunt ? "в мире объявился Древний страж — редкая добыча" : "мобы лезут волнами — герои сбегаются",
+          hunt ? "в мире объявился Грибной владыка — редкая добыча" : "мобы лезут волнами — герои сбегаются",
           6,
         );
         this.sfx.bossHorn();
       } else if (phase === "win") {
         this.overlay?.showCard(
-          hunt ? "Древний страж повержен" : `${name} отражено`,
+          hunt ? "Грибной владыка повержен" : `${name} отражено`,
           "участникам — ×2 опыт и урон + легендарка" + (hunt ? "" : " на 15 мин"),
           6,
         );
         this.sfx.bossFanfare();
       } else {
-        this.overlay?.showCard(hunt ? "Древний страж ушёл" : `${name} утихло`, "", 4);
+        this.overlay?.showCard(hunt ? "Грибной владыка ушёл" : `${name} утихло`, "", 4);
       }
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);

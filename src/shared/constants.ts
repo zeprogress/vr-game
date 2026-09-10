@@ -284,10 +284,11 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
     hp: 420, dmgMul: 3.6, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.65,
   },
-  // Цель события «Охота на элиту»: одиночный именной бугай, редкая добыча.
+  // Цель события «Охота на элиту»: одиночный именной босс, редкая добыча.
+  // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
   worldElite: {
-    model: "monOrc", name: "Древний страж", level: 25, kind: "slime",
-    hp: 2400, dmgMul: 3.0, xp: 420, scaleMul: 2.0, tint: [0.75, 0.2, 0.9],
+    model: "monMushKing", name: "Грибной владыка", level: 25, kind: "slime",
+    hp: 1400, dmgMul: 2.6, xp: 460, scaleMul: 2.1, tint: [0.55, 0.35, 0.75],
     rangedArmor: 0.35,
   },
 };
@@ -842,12 +843,21 @@ export const EVENT = {
     /** Бафф участникам за победу — короче, чем у нашествия. */
     buffMinutes: 10,
     /**
-     * Масштаб от числа героев в мире: множитель = 1 + (герои−1)·perHero,
-     * с потолком. HP и урон стража растут отдельно.
+     * Масштаб по числу героев В РАДИУСЕ `scaleRadius` от точки события
+     * (не по всему миру — иначе боты-зеваки раздувают стража): множитель =
+     * 1 + (герои−1)·perHero, с потолком. HP и урон растут отдельно.
      */
-    hpPerHero: 0.6,
-    hpCap: 8,
-    dmgPerHero: 0.12,
-    dmgCap: 2,
+    scaleRadius: 45,
+    hpPerHero: 0.5,
+    hpCap: 4,
+    dmgPerHero: 0.1,
+    dmgCap: 1.6,
+    /** Владыка периодически призывает миньонов (спорами) — фаза-«разберись с мелочью». */
+    addGap: 20,
+    addType: "spikyBlob",
+    addCount: 2,
+    /** Ниже этой доли HP — впадает в ярость: быстрее двигается и бьёт сильнее. */
+    enrageAt: 0.4,
+    enrageDmgMul: 1.45,
   },
 } as const;

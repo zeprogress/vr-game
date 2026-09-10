@@ -52,6 +52,8 @@ export interface WeaponFit {
   offset?: Vector3;
   /** Принудительный цвет всех материалов (иначе из пака). */
   tint?: Color3;
+  /** Свечение 0..1 (легендарка): эмиссив = tint·glow вместо обычного слабого. */
+  glow?: number;
   /** Куда вешать (по умолчанию — на возвращаемый root). */
   parent?: TransformNode;
 }
@@ -108,7 +110,10 @@ export function spawnWeaponModel(
       const mat = m.material as StandardMaterial | null;
       if (mat && "emissiveColor" in mat && !done.has(mat)) {
         mat.diffuseColor = Color3.Lerp(mat.diffuseColor, new Color3(1, 1, 1), 0.3);
-        mat.emissiveColor = mat.diffuseColor.scale(0.13);
+        mat.emissiveColor =
+          fit.glow && fit.tint
+            ? fit.tint.scale(fit.glow)
+            : mat.diffuseColor.scale(0.13);
         mat.specularColor = new Color3(0.35, 0.35, 0.35);
         mat.specularPower = 48;
         // recolorFlat ставит потолок в 2 источника (для статичных пропов).

@@ -1375,6 +1375,19 @@ export class ZoneRoom extends Room<ZoneState> {
     return Math.max(1, n);
   }
 
+  /** Сколько героев РЯДОМ с точкой (в радиусе r) — масштаб охоты на элиту. */
+  private heroesNear(x: number, z: number, r: number): number {
+    let n = 0;
+    const r2 = r * r;
+    this.state.players.forEach((p) => {
+      if (p.dead) return;
+      const dx = p.head.x - x;
+      const dz = p.head.z - z;
+      if (dx * dx + dz * dz <= r2) n++;
+    });
+    return Math.max(1, n);
+  }
+
   /** Выбрать точку нашествия: на поляне, подальше от HUB, угла босса и лагерей. */
   private pickEventSpot(): { x: number; z: number } {
     for (let t = 0; t < 24; t++) {
@@ -1446,17 +1459,20 @@ export class ZoneRoom extends Room<ZoneState> {
       // Охота: один именной бугай, жирнее и злее от числа героев в мире.
       const e = ELITE_MOBS[EVENT.eliteHunt.eliteKey];
       const eh = EVENT.eliteHunt;
-      const heroes = this.heroesInWorld();
+      // Масштаб — по героям РЯДОМ с точкой, а не по всему миру: иначе десятки
+      // ботов-зевак по всей карте раздували стража до неубиваемого.
+      const heroes = this.heroesNear(spot.x, spot.z, eh.scaleRadius);
       const hpMul = Math.min(eh.hpCap, 1 + (heroes - 1) * eh.hpPerHero);
       const dmgMul = Math.min(eh.dmgCap, 1 + (heroes - 1) * eh.dmgPerHero);
       this.eventPhaseAt = Date.now() + eh.hardTimeout * 1000;
-      this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
+      this.huntBossId = this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
         model: e.model, name: e.name, level: e.level,
         hp: Math.round(e.hp * hpMul),
         dmgMul: e.dmgMul * dmgMul,
         scaleMul: e.scaleMul, xp: e.xp,
         rangedArmor: e.rangedArmor,
       });
+      this.huntAddAt = Date.now() + eh.addGap * 1000;
       this.state.eventLeft = 1;
       this.broadcast(MSG.worldEvent, {
         phase: "start", name: "Охота", x: spot.x, z: spot.z,
@@ -1507,12 +1523,13 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (n > 0) {
         this.reply(
-          (hunt ? "Древний страж повержен! " : "Нашествие отражено! ") +
+          (hunt ? "Грибной владыка повержен! " : "Нашествие отражено! ") +
             `${n} героям — благословение на ${minutes} мин: ` +
             `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона.`,
         );
       }
     }
+    this.huntBossId = "";
     this.sim.eventDamagers.clear();
     this.sim.clearEventMobs();
     this.eventPhase = "cooldown";
@@ -1544,10 +1561,31 @@ export class ZoneRoom extends Room<ZoneState> {
       const left = this.sim.eventMobsLeft();
       this.state.eventLeft = Math.min(255, left);
       if (this.activeEventKind === 2) {
-        // Охота: элита убита — победа.
-        if (left === 0) {
+        // Охота: победа = смерть самого владыки (миньоны не в счёт).
+        const boss = this.sim.mobs.get(this.huntBossId);
+        if (!boss || boss.dead) {
           this.endEvent(true);
           return;
+        }
+        const eh = EVENT.eliteHunt;
+        // Ярость ниже порога HP: быстрее двигается (Mob.enraged) + бьёт сильнее.
+        if (!boss.raging && boss.hp / boss.maxHp < eh.enrageAt) {
+          boss.raging = true;
+          this.reply(`${boss.eliteName} впадает в ярость!`);
+        }
+        // Периодический призыв миньонов — «разберись с мелочью».
+        if (now >= this.huntAddAt) {
+          this.huntAddAt = now + eh.addGap * 1000;
+          const adef = ELITE_MOBS[eh.addType];
+          for (let i = 0; i < eh.addCount; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 2 + Math.random() * 3;
+            this.sim.spawnEventMob(adef.kind, boss.x + Math.cos(a) * r, boss.z + Math.sin(a) * r, {
+              model: adef.model, name: adef.name, level: adef.level, hp: adef.hp,
+              dmgMul: adef.dmgMul, scaleMul: adef.scaleMul, xp: adef.xp,
+              flying: adef.flying, rangedArmor: adef.rangedArmor,
+            });
+          }
         }
       } else if (left === 0) {
         // Нашествие: волна зачищена — следующая, либо победа.
@@ -3155,10 +3193,10 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
+      s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
-        s.enraged = m.enraged ? 1 : 0;
         s.charging = m.charging ? 1 : 0;
       }
     }
@@ -3359,8 +3397,13 @@ export class ZoneRoom extends Room<ZoneState> {
       (p.leftCls === "shield" && p.leftTier === "legendary") ||
       (p.rightCls === "shield" && p.rightTier === "legendary");
     const block = resolveBlock(guard, ax, az, h.projectile, aegis);
+    // Разъярённый владыка события бьёт сильнее.
+    let inDmg = h.dmg;
+    if (h.byMob && h.byMob === this.huntBossId && this.sim.mobs.get(this.huntBossId)?.raging) {
+      inDmg *= EVENT.eliteHunt.enrageDmgMul;
+    }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
-    let dmg = h.dmg * block.mult * (1 - armorFrac(p.str));
+    let dmg = inDmg * block.mult * (1 - armorFrac(p.str));
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
@@ -3471,6 +3514,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private eventForced = false;
   /** Тип идущего события: 1 — нашествие мобов, 2 — охота на элиту. */
   private activeEventKind: 1 | 2 = 1;
+  /** Охота: id самого владыки (победа = его смерть) и ms следующего призыва миньонов. */
+  private huntBossId = "";
+  private huntAddAt = 0;
   /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота. */
   private forcedEventKind: 0 | 1 | 2 = 0;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы

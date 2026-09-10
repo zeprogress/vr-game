@@ -558,8 +558,8 @@ export class Mob implements Hittable {
     }
     if (this.slamRingT > 0) this.animateSlamRing(dt);
 
-    // Ярость: пульсирующее багровое свечение.
-    if (this.isBoss && s.enraged) {
+    // Ярость: пульсирующее багровое свечение (босс и разъярённый элита события).
+    if (s.enraged && !s.dead) {
       this.ragePulse += dt * 6;
       this.flash = Math.max(this.flash, 0.25 + Math.sin(this.ragePulse) * 0.15);
     }

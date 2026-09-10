@@ -222,8 +222,12 @@ class Mob {
   get permanent(): boolean {
     return this.kind !== "shard";
   }
+  /** Принудительная ярость (элита события ниже порога HP) — ставит комната. */
+  raging = false;
   get enraged(): boolean {
-    return this.kind === "boss" && !this.dead && this.hp / this.maxHp < BOSS.enrageAt;
+    if (this.dead) return false;
+    if (this.raging) return true;
+    return this.kind === "boss" && this.hp / this.maxHp < BOSS.enrageAt;
   }
   /** Готовность слэма/рывка 0..1 (для телеграфа на клиенте). */
   get slamTelegraph(): number {
@@ -351,9 +355,14 @@ class Mob {
     this.grounded = false;
   }
 
-  applyHit(dmg: number, dx: number, dz: number): boolean {
-    if (this.dead || this.hurtCd > 0) return false;
-    this.hurtCd = 0.2;
+  applyHit(dmg: number, dx: number, dz: number, dot = false): boolean {
+    if (this.dead) return false;
+    // Тик горения (dot) НЕ проходит через кулдаун удара и не ставит его —
+    // иначе постоянный DoT блокировал бы обычные удары («неубиваемый» моб).
+    if (!dot) {
+      if (this.hurtCd > 0) return false;
+      this.hurtCd = 0.2;
+    }
     const before = this.hp / this.maxHp;
     this.hp -= dmg;
     this.aggroed = true;
@@ -368,10 +377,12 @@ class Mob {
     }
     // Обычный удар НЕ толкает моба — ни воин, ни кто-либо. Отбрасывание есть
     // только у замах-скиллов через shove(). Направление удара запоминаем для
-    // вздрагивания на клиенте.
-    this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
-    this.hurtDx = dx;
-    this.hurtDz = dz;
+    // вздрагивания на клиенте. У DoT вздрагивания/звука нет — только урон.
+    if (!dot) {
+      this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
+      this.hurtDx = dx;
+      this.hurtDz = dz;
+    }
     if (this.hp <= 0) {
       this.dead = true;
       this.deadT = 0;
@@ -1352,7 +1363,7 @@ export class ZoneSim {
       if (m.dead || m.burningT <= 0) continue;
       m.burningT = Math.max(0, m.burningT - dt);
       const tick = m.burnDps * dt;
-      if (tick > 0) this.hitMob(m.id, tick, 0, 0, m.burnBy);
+      if (tick > 0) this.hitMob(m.id, tick, 0, 0, m.burnBy, false, true);
       if (m.burningT <= 0) {
         m.burnDps = 0;
         m.burnBy = "";
@@ -1368,6 +1379,8 @@ export class ZoneSim {
     attacker = "",
     /** true — попадание ДАЛЬНЕГО боя (стрела/огнешар/град): учитываем rangedArmor. */
     rangedHit = false,
+    /** true — тик горения: без кулдауна удара, без вздрагивания/звука. */
+    dot = false,
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
@@ -1375,7 +1388,7 @@ export class ZoneSim {
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
-    const killed = m.applyHit(dmg, dx, dz);
+    const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
