@@ -34,6 +34,10 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "sword:gold": "gold_sword",
   "bow:gold": "gold_bow",
   "staff:gold": "gold_staff",
+  "sword:legendary": "leg_sword",
+  "bow:legendary": "leg_bow",
+  "shield:legendary": "leg_shield",
+  "staff:legendary": "leg_staff",
 };
 
 /** Препятствия (стволы + крупные камни) — общие с клиентом, один раз. */
@@ -325,6 +329,17 @@ class Mob {
   stun(sec: number): void {
     if (this.dead || this.kind === "boss") return;
     this.stunnedT = Math.max(this.stunnedT, sec);
+  }
+
+  /** Горение от Пламенного меча: DoT `dps` на `sec` секунд, опыт — тому, кто поджёг. */
+  burningT = 0;
+  burnDps = 0;
+  burnBy = "";
+  ignite(dps: number, sec: number, by: string): void {
+    if (this.dead || this.kind === "boss" || this.kind === "shard") return;
+    this.burningT = Math.max(this.burningT, sec);
+    this.burnDps = Math.max(this.burnDps, dps);
+    this.burnBy = by;
   }
 
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
@@ -1179,6 +1194,7 @@ export class ZoneSim {
 
     this.elapsed += dt;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    this.tickBurning(dt);
     this.separateMobs();
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
@@ -1330,6 +1346,20 @@ export class ZoneSim {
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
   /** Урон по мобу. Возвращает kind добитого моба (null — не убит). */
+  /** Тик горения (Пламенный меч): DoT по всем тлеющим мобам, опыт — поджёгшему. */
+  private tickBurning(dt: number): void {
+    for (const m of this.mobs.values()) {
+      if (m.dead || m.burningT <= 0) continue;
+      m.burningT = Math.max(0, m.burningT - dt);
+      const tick = m.burnDps * dt;
+      if (tick > 0) this.hitMob(m.id, tick, 0, 0, m.burnBy);
+      if (m.burningT <= 0) {
+        m.burnDps = 0;
+        m.burnBy = "";
+      }
+    }
+  }
+
   hitMob(
     id: string,
     dmg: number,

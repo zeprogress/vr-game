@@ -98,6 +98,8 @@ export class MobState extends Schema {
   @type("uint8") charging = 0;
   /** 1 — моб оглушён (стоит столбом): клиент рисует «звёздочки» над головой. */
   @type("uint8") stunned = 0;
+  /** Секунд горения (Пламенный меч) — клиент рисует тлеющее свечение. */
+  @type("uint8") burning = 0;
 }
 
 export class DummyState extends Schema {

@@ -19,6 +19,7 @@ export class EventBeacon {
   private readonly mat: StandardMaterial;
   private t = 0;
   private shown = false;
+  private kind = 0;
   private groundY: (x: number, z: number) => number = () => 0;
 
   constructor(scene: Scene) {
@@ -49,10 +50,15 @@ export class EventBeacon {
     this.groundY = fn;
   }
 
-  /** Включить/переставить маяк (kind 0 — спрятать). */
+  /** Включить/переставить маяк (kind 0 — спрятать; 1 — нашествие/синий, 2 — охота/янтарный). */
   set(kind: number, x: number, z: number): void {
     const on = kind > 0;
     if (on) this.root.position.set(x, this.groundY(x, z), z);
+    if (on && kind !== this.kind) {
+      this.kind = kind;
+      this.mat.emissiveColor =
+        kind === 2 ? new Color3(1, 0.62, 0.2) : new Color3(0.25, 0.55, 1);
+    }
     if (on !== this.shown) {
       this.shown = on;
       this.root.setEnabled(on);

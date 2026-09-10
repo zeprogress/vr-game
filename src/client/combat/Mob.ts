@@ -87,6 +87,8 @@ export class Mob implements Hittable {
   private dead = false;
   private deathT = 0;
   private flash = 0;
+  /** 0..1 — насколько ярко моб тлеет (Пламенный меч). */
+  private burnGlow = 0;
   private barTimer = 0;
   private hitCd = 0;
   private lastHurtSeq = 0;
@@ -463,9 +465,17 @@ export class Mob implements Hittable {
       this.bar.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
 
+    // Горение (Пламенный меч): тлеющий оранжевый пульс, пока s.burning > 0.
+    if (s.burning > 0 && !s.dead) {
+      this.burnGlow = Math.min(1, this.burnGlow + dt * 5);
+    } else {
+      this.burnGlow = Math.max(0, this.burnGlow - dt * 3);
+    }
+    const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
+
     this.mat.emissiveColor.set(
-      this.tint[0] * 0.28 + this.flash * 0.6,
-      this.tint[1] * 0.2 + this.flash * 0.1,
+      this.tint[0] * 0.28 + this.flash * 0.6 + ember,
+      this.tint[1] * 0.2 + this.flash * 0.1 + ember * 0.35,
       this.tint[2] * 0.32,
     );
 

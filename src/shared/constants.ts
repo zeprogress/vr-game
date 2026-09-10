@@ -284,6 +284,12 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
     hp: 420, dmgMul: 3.6, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.65,
   },
+  // Цель события «Охота на элиту»: одиночный именной бугай, редкая добыча.
+  worldElite: {
+    model: "monOrc", name: "Древний страж", level: 25, kind: "slime",
+    hp: 2400, dmgMul: 3.0, xp: 420, scaleMul: 2.0, tint: [0.75, 0.2, 0.9],
+    rangedArmor: 0.35,
+  },
 };
 
 /**
@@ -423,6 +429,21 @@ export const PROGRESSION = {
 
   /** Небольшая добавка к скорости стрелы за уровень, м/с. */
   arrowSpeedPerLevel: 0.7,
+} as const;
+
+/**
+ * Числовые эффекты легендарных аффиксов (см. items.ts WeaponAffix).
+ * fire — Пламенный меч, crit — Лук охотника, guard — Эгида, storm — Посох бури.
+ */
+export const AFFIX = {
+  /** Горение: доля урона удара, наносимая в секунду, и сколько секунд горит. */
+  fire: { burnSec: 4, burnDpsFrac: 0.2 },
+  /** Лук: прибавка к шансу крита (поверх BOW.critChance). */
+  crit: { chanceBonus: 0.25 },
+  /** Щит: сквозь блок проходит меньше урона + шире рабочий сектор (рад). */
+  guard: { blockedDamage: 0.12, coneBonus: 0.25 },
+  /** Посох: множители радиуса и доли АОЕ огнешара. */
+  storm: { splashRadiusMul: 1.6, splashFracMul: 1.5 },
 } as const;
 
 export const SHIELD = {
@@ -810,5 +831,15 @@ export const EVENT = {
     buffDmgMult: 2,
     /** Шанс, что вдобавок выпадет золотое оружие. */
     rewardGoldChance: 0.5,
+  },
+  /** Событие «Охота на элиту»: один именной бугай, гарантированная легендарка. */
+  eliteHunt: {
+    eliteKey: "worldElite",
+    /** Своя жёсткая граница активной фазы, с (бой с одним толстым мобом дольше). */
+    hardTimeout: 4 * 60,
+    /** Зелий в награду (разбросом у точки). */
+    rewardPotions: 4,
+    /** Бафф участникам за победу — короче, чем у нашествия. */
+    buffMinutes: 10,
   },
 } as const;

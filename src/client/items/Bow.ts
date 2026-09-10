@@ -2,7 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { spawnWeaponModel } from "./weaponModels";
+import { spawnWeaponModel, tierTint } from "./weaponModels";
 
 export interface BowParts {
   mesh: Mesh;
@@ -31,7 +31,10 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   wood.name = "bow_wood";
   wood.parent = root;
 
-  const gold = spawnWeaponModel(scene, "bow_gold", BOW_FIT);
+  const gold = spawnWeaponModel(scene, "bow_gold", {
+    ...BOW_FIT,
+    tint: tierTint("bow", tier), // легендарка — зелёный отлив «Лука охотника»
+  });
   gold.name = "bow_gold";
   gold.parent = root;
 
@@ -47,8 +50,8 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
 
 function applyBowTier(root: Mesh, tier: WeaponTier): void {
   for (const n of root.getChildren()) {
-    if (n.name === "bow_wood") n.setEnabled(tier !== "gold");
-    else if (n.name === "bow_gold") n.setEnabled(tier === "gold");
+    if (n.name === "bow_wood") n.setEnabled(tier === "base");
+    else if (n.name === "bow_gold") n.setEnabled(tier !== "base");
   }
 }
 

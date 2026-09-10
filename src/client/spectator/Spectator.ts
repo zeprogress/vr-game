@@ -333,14 +333,23 @@ export class Spectator {
       else this.sfx.bossHorn();
     };
     net.onWorldEvent = (phase, name) => {
+      const hunt = name === "Охота";
       if (phase === "start") {
-        this.overlay?.showCard(`${name}!`, "мобы лезут волнами — герои сбегаются", 6);
+        this.overlay?.showCard(
+          hunt ? "Охота на элиту!" : `${name}!`,
+          hunt ? "в мире объявился Древний страж — редкая добыча" : "мобы лезут волнами — герои сбегаются",
+          6,
+        );
         this.sfx.bossHorn();
       } else if (phase === "win") {
-        this.overlay?.showCard(`${name} отражено`, "участникам — ×2 опыт и урон на 15 мин", 6);
+        this.overlay?.showCard(
+          hunt ? "Древний страж повержен" : `${name} отражено`,
+          "участникам — ×2 опыт и урон + легендарка" + (hunt ? "" : " на 15 мин"),
+          6,
+        );
         this.sfx.bossFanfare();
       } else {
-        this.overlay?.showCard(`${name} утихло`, "", 4);
+        this.overlay?.showCard(hunt ? "Древний страж ушёл" : `${name} утихло`, "", 4);
       }
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
@@ -757,6 +766,7 @@ export class Spectator {
 
   /** Ярлык оружия/щита в руке для панели «HP цели». */
   private static weaponLabel(cls: string, tier: string): string | null {
+    if (tier === "legendary") return weaponDef(cls as WeaponClass, "legendary").name.toLowerCase();
     if (cls === "shield") return "щит";
     const base =
       cls === "sword" ? "меч" : cls === "bow" ? "лук" : cls === "staff" ? "посох" : null;
@@ -834,6 +844,8 @@ export class Spectator {
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
     if (st?.eventKind === 1) {
       this.overlay?.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
+    } else if (st?.eventKind === 2) {
+      this.overlay?.setTicker("Идёт ивент — охота на элиту (!event)", "event");
     } else {
       this.overlay?.setTicker(this.changelogLine(), "news");
     }

@@ -1,10 +1,10 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { weaponDef, type WeaponClass, type WeaponDef, type WeaponTier } from "#shared/items";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
 import { fireboltDamage } from "#shared/magic";
-import { BOW, COMBAT, SHIELD } from "#shared/constants";
+import { AFFIX, BOW, COMBAT, SHIELD } from "#shared/constants";
 
 export interface WornWeapon {
   cls: WeaponClass;
@@ -72,11 +72,21 @@ function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Удар посохом", n1(weaponDamage("sword", s.level, s.str, d.mult, s.agi))]);
     out.push(["Растёт от", "интеллекта (магия), силы+ловкости (удар)"]);
   } else {
-    out.push(["Блок", `гасит ${Math.round((1 - SHIELD.blockedDamage) * 100)}% урона`]);
-    out.push(["Сектор", `±${Math.round((SHIELD.blockCone * 180) / Math.PI)}°`]);
+    const blocked = d.affix === "guard" ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage;
+    const cone = SHIELD.blockCone + (d.affix === "guard" ? AFFIX.guard.coneBonus : 0);
+    out.push(["Блок", `гасит ${Math.round((1 - blocked) * 100)}% урона`]);
+    out.push(["Сектор", `±${Math.round((cone * 180) / Math.PI)}°`]);
   }
+  if (d.affix) out.push(["Эффект", AFFIX_TEXT[d.affix]]);
   return out;
 }
+
+const AFFIX_TEXT: Record<NonNullable<WeaponDef["affix"]>, string> = {
+  fire: `Горение: ${AFFIX.fire.burnSec} с урона по времени`,
+  crit: `Крит +${Math.round(AFFIX.crit.chanceBonus * 100)}%`,
+  guard: `Блок ${Math.round((1 - AFFIX.guard.blockedDamage) * 100)}% · шире сектор`,
+  storm: `АОЕ огнешара ×${AFFIX.storm.splashRadiusMul}`,
+};
 
 type Picked =
   | { where: "bag"; i: number }
@@ -312,7 +322,8 @@ export class InventoryPanel {
 
   private weaponTipHtml(w: WornWeapon, s: HeroStats): string {
     const d = weaponDef(w.cls, w.tier);
-    const color = w.tier === "gold" ? "#ffd24a" : "#dfe4f0";
+    const color =
+      w.tier === "legendary" ? "#c77dff" : w.tier === "gold" ? "#ffd24a" : "#dfe4f0";
     return (
       `<div style="font-weight:700;color:${color};margin-bottom:4px">${d.name}</div>` +
       this.statsHtml(weaponStats(w, s))

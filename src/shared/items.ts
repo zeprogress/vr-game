@@ -1,6 +1,14 @@
 import type { MobKind } from "./net/schema";
 
-export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_staff";
+export type ItemId =
+  | "potion"
+  | "gold_sword"
+  | "gold_bow"
+  | "gold_staff"
+  | "leg_sword"
+  | "leg_bow"
+  | "leg_shield"
+  | "leg_staff";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -8,10 +16,14 @@ export type ItemId = "potion" | "gold_sword" | "gold_bow" | "gold_staff";
  */
 export type WeaponClass = "sword" | "bow" | "shield" | "staff";
 /**
- * Уровень внутри класса. Всего два: `base` — обычное оружие из пака, лежит на
- * камнях с самого начала; `gold` — золотой вариант, редкая добыча с мобов.
+ * Уровень внутри класса. `base` — обычное оружие из пака, лежит на камнях с
+ * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
+ * `legendary` — именное оружие с механическим аффиксом (см. `affix`).
  */
-export type WeaponTier = "base" | "gold";
+export type WeaponTier = "base" | "gold" | "legendary";
+
+/** Механический эффект легендарного оружия. Числа — в constants.ts (AFFIX). */
+export type WeaponAffix = "fire" | "crit" | "guard" | "storm";
 
 export interface WeaponDef {
   cls: WeaponClass;
@@ -21,6 +33,8 @@ export interface WeaponDef {
   mult: number;
   /** Цвет клинка / дуги / диска. */
   tint: readonly [number, number, number];
+  /** Аффикс легендарки (только у tier === "legendary"). */
+  affix?: WeaponAffix;
 }
 
 export type WeaponKey = `${WeaponClass}:${WeaponTier}`;
@@ -39,6 +53,36 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
   "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
   "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
+
+  // Легендарки — именное оружие с аффиксом. Урон чуть выше золота, плюс эффект.
+  "sword:legendary": {
+    cls: "sword", tier: "legendary", name: "Пламенный меч", mult: 4.5,
+    tint: [1, 0.45, 0.2], affix: "fire",
+  },
+  "bow:legendary": {
+    cls: "bow", tier: "legendary", name: "Лук охотника", mult: 3.4,
+    tint: [0.3, 0.85, 0.4], affix: "crit",
+  },
+  "shield:legendary": {
+    cls: "shield", tier: "legendary", name: "Эгида", mult: 1,
+    tint: [0.5, 0.7, 1], affix: "guard",
+  },
+  "staff:legendary": {
+    cls: "staff", tier: "legendary", name: "Посох бури", mult: 2.3,
+    tint: [0.7, 0.5, 1], affix: "storm",
+  },
+};
+
+/** Аффикс оружия по классу/тиру — удобно для боевых формул. */
+export function weaponAffix(cls: WeaponClass, tier: WeaponTier): WeaponAffix | undefined {
+  return tier === "legendary" ? WEAPONS[weaponKey(cls, tier)]?.affix : undefined;
+}
+
+const AFFIX_HINT: Record<WeaponAffix, string> = {
+  fire: "легендарный · горение",
+  crit: "легендарный · крит",
+  guard: "легендарный · усиленный блок",
+  storm: "легендарный · сильнее AoE",
 };
 
 export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
@@ -50,7 +94,7 @@ export function isWeaponClass(v: unknown): v is WeaponClass {
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
-  return v === "base" || v === "gold";
+  return v === "base" || v === "gold" || v === "legendary";
 }
 
 /** Можно ли держать два предмета этого класса одновременно (по одному в руке). */
@@ -98,6 +142,10 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   gold_sword: weaponItem("sword", "gold", "Золото", "gold_sword.png"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук", "gold_bow.png"),
   gold_staff: weaponItem("staff", "gold", "Зол. посох", "gold_staff.png"),
+  leg_sword: weaponItem("sword", "legendary", "Пламя", "gold_sword.png"),
+  leg_bow: weaponItem("bow", "legendary", "Лук охот.", "gold_bow.png"),
+  leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
+  leg_staff: weaponItem("staff", "legendary", "Посох бури", "gold_staff.png"),
 };
 
 function weaponItem(
@@ -110,8 +158,9 @@ function weaponItem(
   return {
     name: d.name,
     short,
-    hint:
-      cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
+    hint: d.affix
+      ? AFFIX_HINT[d.affix]
+      : cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
     healFrac: 0,
@@ -158,6 +207,11 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_sword", chance: 0.4, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.4, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.4, min: 1, max: 1 },
+    // Легендарки — редко: чаще их роняет событие «Охота на элиту».
+    { id: "leg_sword", chance: 0.12, min: 1, max: 1 },
+    { id: "leg_bow", chance: 0.12, min: 1, max: 1 },
+    { id: "leg_shield", chance: 0.12, min: 1, max: 1 },
+    { id: "leg_staff", chance: 0.12, min: 1, max: 1 },
   ],
   shard: [],
 };

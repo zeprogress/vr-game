@@ -213,7 +213,8 @@ export class CombatSystem {
   /** Цвет свечения кристалла (по уровню посоха; в будущем — по самому посоху). */
   crystalColor(): Color3 {
     const staff = this.held1("staff");
-    if (staff?.tier === "gold") this.crystalCol.copyFromFloats(0.95, 0.78, 0.32);
+    if (staff?.tier === "legendary") this.crystalCol.copyFromFloats(0.7, 0.5, 1);
+    else if (staff?.tier === "gold") this.crystalCol.copyFromFloats(0.95, 0.78, 0.32);
     else this.crystalCol.copyFromFloats(0.78, 0.8, 0.9);
     return this.crystalCol;
   }

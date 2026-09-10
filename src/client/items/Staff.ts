@@ -35,9 +35,12 @@ export const STAFF_CRYSTAL_LOCAL: readonly [number, number, number] = [0, 1.05, 
 
 export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   const gold = tier === "gold";
+  const storm = tier === "legendary"; // «Посох бури» — фиолетовый
 
   const wood = new StandardMaterial("staffWood", scene);
-  wood.diffuseColor = gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
+  wood.diffuseColor = storm
+    ? new Color3(0.42, 0.32, 0.6)
+    : gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
   wood.emissiveColor = wood.diffuseColor.scale(0.12);
   wood.specularColor = new Color3(0.05, 0.05, 0.05);
   wood.maxSimultaneousLights = LIGHT_BUDGET;
@@ -50,7 +53,9 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   cloth.maxSimultaneousLights = LIGHT_BUDGET;
 
   const metal = new StandardMaterial("staffFerrule", scene);
-  metal.diffuseColor = gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
+  metal.diffuseColor = storm
+    ? new Color3(0.6, 0.5, 0.85)
+    : gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
   metal.emissiveColor = metal.diffuseColor.scale(0.12);
   metal.specularColor = new Color3(0.75, 0.75, 0.8);
   metal.specularPower = 80;
@@ -120,12 +125,12 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   if (!staff) throw new Error("не удалось собрать посох");
   staff.name = "staff";
 
-  attachGem(scene, staff, gold);
+  attachGem(scene, staff, gold, storm);
   return staff;
 }
 
 /** Кристалл на верхушке — грузится асинхронно и подвешивается на посох. */
-function attachGem(scene: Scene, staff: Mesh, gold: boolean): void {
+function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false): void {
   void containerFor(scene, "/models/weapons/crystal.glb").then((c) => {
     if (staff.isDisposed()) return;
     const inst = c.instantiateModelsToScene((n) => n, false);
@@ -140,9 +145,11 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean): void {
     for (const m of src.getChildMeshes(false)) {
       const mat = m.material as StandardMaterial | null;
       if (mat && "emissiveColor" in mat) {
-        const glow = gold
-          ? new Color3(0.9, 0.78, 0.38)
-          : new Color3(0.78, 0.8, 0.9); // белый светящийся камень
+        const glow = storm
+          ? new Color3(0.7, 0.5, 1)
+          : gold
+            ? new Color3(0.9, 0.78, 0.38)
+            : new Color3(0.78, 0.8, 0.9); // белый светящийся камень
         mat.diffuseColor = glow.scale(0.6);
         mat.emissiveColor = glow;
         mat.specularColor = new Color3(0.7, 0.7, 0.8);

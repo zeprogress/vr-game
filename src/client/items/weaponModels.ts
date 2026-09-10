@@ -7,6 +7,17 @@ import type { StandardMaterial } from "@babylonjs/core/Materials/standardMateria
 
 import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
+import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+
+/**
+ * Цвет для перекраски оружия по тиру. base/gold — цвет из пака (undefined),
+ * legendary — цвет аффикса (огонь / охота / эгида / буря), из WeaponDef.tint.
+ */
+export function tierTint(cls: WeaponClass, tier: WeaponTier): Color3 | undefined {
+  if (tier !== "legendary") return undefined;
+  const t = weaponDef(cls, tier).tint;
+  return new Color3(t[0], t[1], t[2]);
+}
 
 /**
  * Модели оружия из пака (Ultimate RPG Items Pack, Quaternius): только плоские

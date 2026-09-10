@@ -1103,18 +1103,25 @@ export class Game {
       }
     };
     net.onWorldEvent = (phase, name, x, z) => {
+      const hunt = name === "Охота";
       if (phase === "start") {
-        this.hud.banner(`${name}!`, "К бою — отбейте волну мобов", "warn");
+        this.hud.banner(
+          hunt ? "Охота на элиту!" : `${name}!`,
+          hunt ? "В мире объявился Древний страж — редкая добыча" : "К бою — отбейте волну мобов",
+          "warn",
+        );
         this.sfx.bossHorn();
       } else if (phase === "win") {
         this.hud.banner(
-          `${name} отражено`,
-          "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
+          hunt ? "Древний страж повержен" : `${name} отражено`,
+          hunt
+            ? "Легендарка в эпицентре · участникам — ×2 опыт и урон"
+            : "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
           "win",
         );
         this.sfx.bossFanfare();
       } else {
-        this.hud.banner(`${name} утихло`, "", "warn");
+        this.hud.banner(hunt ? "Древний страж ушёл" : `${name} утихло`, "", "warn");
       }
       void x;
       void z;

@@ -51,6 +51,7 @@ import {
 import {
   ADMIN_NICK,
   advanceHour,
+  AFFIX,
   BOSS,
   COMBAT,
   BOT,
@@ -100,11 +101,13 @@ import {
   isWeaponTier,
   ITEMS,
   takeOne,
+  weaponAffix,
   weaponDef,
   weaponKey,
   WEAPON_TAKE_REACH,
   type ItemId,
   type Slot,
+  type WeaponAffix,
   type WeaponClass,
   type WeaponTier,
 } from "#shared/items";
@@ -434,6 +437,12 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
   return h ? weaponDef(h.cls, h.tier).mult : 1;
 }
 
+/** Легендарный аффикс оружия в руке (или где угодно, если рука не важна). */
+function affixIn(p: PlayerState, hand: "left" | "right"): WeaponAffix | undefined {
+  const h = heldIn(p, hand);
+  return h ? weaponAffix(h.cls, h.tier) : undefined;
+}
+
 function readProgress(p: PlayerState): Progress {
   return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int };
 }
@@ -697,6 +706,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
       const boltDmg =
         fireboltDamage(p.level, p.int, charge) * this.buffMult(client.sessionId, "dmg");
+      // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара.
+      const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left") === "storm";
+      const splRad = fireboltSplashRadius(charge) * (storm ? AFFIX.storm.splashRadiusMul : 1);
+      const splFrac = MAGIC.firebolt.splashFraction * (storm ? AFFIX.storm.splashFracMul : 1);
       this.sim.castBolt(
         num(msg.ox, p.head.x),
         num(msg.oy, p.head.y),
@@ -709,8 +722,8 @@ export class ZoneRoom extends Room<ZoneState> {
         client.sessionId,
         MAGIC.firebolt.life,
         0,
-        fireboltSplashRadius(charge),
-        boltDmg * MAGIC.firebolt.splashFraction,
+        splRad,
+        boltDmg * splFrac,
       );
     });
 
@@ -1090,8 +1103,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    // Крит — только у лука, бросает сервер (см. rollCritMult).
-    const crit = rollCritMult(msg.weapon);
+    const affix = affixIn(p, hand);
+    // Крит — только у лука; «Лук охотника» (легендарка) критует чаще.
+    const crit = rollCritMult(msg.weapon, Math.random, affix === "crit");
     const dmg =
       weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) *
       crit *
@@ -1112,6 +1126,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
     this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId, msg.weapon === "arrow");
+    // Пламенный меч — поджигаем цель (DoT на несколько секунд).
+    if (affix === "fire" && msg.weapon === "sword" && struck) {
+      struck.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, client.sessionId);
+    }
     // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
     // сыграл локальный предсказанный звук, без сетевой задержки).
     if (struck && msg.weapon === "sword") {
@@ -1399,18 +1417,44 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  private eventName(): string {
+    return this.activeEventKind === 2 ? "Охота" : "Нашествие";
+  }
+
   private startEvent(): void {
     const spot = this.pickEventSpot();
     this.eventX = spot.x;
     this.eventZ = spot.z;
     this.eventPhase = "active";
-    this.eventPhaseAt = Date.now() + EVENT.hardTimeout * 1000;
     this.eventForced = false;
     this.eventWave = 0;
     this.eventWaveAt = 0;
-    this.state.eventKind = 1;
+    // Тип: форс из !goevent, иначе 50/50.
+    this.activeEventKind =
+      this.forcedEventKind !== 0 ? this.forcedEventKind : Math.random() < 0.5 ? 1 : 2;
+    this.forcedEventKind = 0;
+    this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
     this.state.eventZ = spot.z;
+
+    if (this.activeEventKind === 2) {
+      // Охота: один именной бугай.
+      const e = ELITE_MOBS[EVENT.eliteHunt.eliteKey];
+      this.eventPhaseAt = Date.now() + EVENT.eliteHunt.hardTimeout * 1000;
+      this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
+        model: e.model, name: e.name, level: e.level, hp: e.hp,
+        dmgMul: e.dmgMul, scaleMul: e.scaleMul, xp: e.xp,
+        rangedArmor: e.rangedArmor,
+      });
+      this.state.eventLeft = 1;
+      this.broadcast(MSG.worldEvent, {
+        phase: "start", name: "Охота", x: spot.x, z: spot.z,
+      } satisfies WorldEventMsg);
+      return;
+    }
+
+    // Нашествие: волны.
+    this.eventPhaseAt = Date.now() + EVENT.hardTimeout * 1000;
     this.eventSpawnWave(0);
     this.eventWave = 1;
     this.state.eventLeft = Math.min(255, this.sim.eventMobsLeft());
@@ -1420,18 +1464,28 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private endEvent(win: boolean): void {
+    const hunt = this.activeEventKind === 2;
     if (win) {
-      this.sim.dropPotions(
-        this.eventX,
-        this.eventZ,
-        Math.min(EVENT.invasion.rewardPotionCap, EVENT.invasion.rewardPotions * this.heroesInWorld()),
-      );
-      if (Math.random() < EVENT.invasion.rewardGoldChance) {
+      const potions = hunt
+        ? EVENT.eliteHunt.rewardPotions
+        : Math.min(
+            EVENT.invasion.rewardPotionCap,
+            EVENT.invasion.rewardPotions * this.heroesInWorld(),
+          );
+      this.sim.dropPotions(this.eventX, this.eventZ, potions);
+
+      if (hunt) {
+        // Охота — гарантированная легендарка случайного класса.
+        const cls = (["sword", "bow", "shield", "staff"] as const)[Math.floor(Math.random() * 4)];
+        this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
+      } else if (Math.random() < EVENT.invasion.rewardGoldChance) {
         const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
         this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
       }
-      // Бафф всем, кто бил мобов события: ×2 опыт и урон на buffMinutes.
-      const until = Date.now() + EVENT.invasion.buffMinutes * 60_000;
+
+      // Бафф всем, кто бил мобов события: ×2 опыт и урон.
+      const minutes = hunt ? EVENT.eliteHunt.buffMinutes : EVENT.invasion.buffMinutes;
+      const until = Date.now() + minutes * 60_000;
       let n = 0;
       for (const owner of this.sim.eventDamagers) {
         const rt = this.rt.get(owner);
@@ -1442,7 +1496,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (n > 0) {
         this.reply(
-          `Нашествие отражено! ${n} героям — благословение на ${EVENT.invasion.buffMinutes} мин: ` +
+          (hunt ? "Древний страж повержен! " : "Нашествие отражено! ") +
+            `${n} героям — благословение на ${minutes} мин: ` +
             `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона.`,
         );
       }
@@ -1454,7 +1509,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.eventKind = 0;
     this.state.eventLeft = 0;
     this.broadcast(MSG.worldEvent, {
-      phase: win ? "win" : "end", name: "Нашествие", x: this.eventX, z: this.eventZ,
+      phase: win ? "win" : "end", name: this.eventName(), x: this.eventX, z: this.eventZ,
     } satisfies WorldEventMsg);
   }
 
@@ -1477,7 +1532,14 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.eventPhase === "active") {
       const left = this.sim.eventMobsLeft();
       this.state.eventLeft = Math.min(255, left);
-      if (left === 0) {
+      if (this.activeEventKind === 2) {
+        // Охота: элита убита — победа.
+        if (left === 0) {
+          this.endEvent(true);
+          return;
+        }
+      } else if (left === 0) {
+        // Нашествие: волна зачищена — следующая, либо победа.
         if (this.eventWave >= EVENT.invasion.waves.length) {
           this.endEvent(true);
           return;
@@ -1522,7 +1584,9 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.eventDoneAt = 0;
     bot.raiding = false;
     bot.followNorm = null;
-    this.reply(`@${nick} герой выдвинулся на нашествие — зачистит и вернётся.`);
+    this.reply(
+      `@${nick} герой выдвинулся на ${this.activeEventKind === 2 ? "охоту" : "нашествие"} — зачистит и вернётся.`,
+    );
   }
 
   private setFollow(nick: string, norm: string, target: string | null): void {
@@ -1607,15 +1671,19 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
     } else if (cmd === "!goevent") {
-      // Запустить событие может только админ стрима.
+      // Запустить событие может только админ стрима. Необязательный аргумент —
+      // тип: hunt/охота или invasion/нашествие (иначе — случайный).
       if (norm === "zeprogress") {
         if (this.eventPhase === "active") {
           this.reply(`@${nick} событие уже идёт.`);
         } else {
+          const a = (parts[1] ?? "").toLowerCase();
+          this.forcedEventKind =
+            a === "hunt" || a === "охота" ? 2 : a === "invasion" || a === "нашествие" ? 1 : 0;
           this.eventPhase = "idle";
           this.eventPhaseAt = Date.now(); // сработает следующим тиком
           this.eventForced = true;
-          this.reply(`@${nick} нашествие вот-вот начнётся.`);
+          this.reply(`@${nick} событие вот-вот начнётся.`);
         }
       }
     } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
@@ -2556,8 +2624,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // лёгкая компенсация проседания снаряда на дистанцию
       const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
       const mult = multIn(p, "right");
+      const botAffix = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier);
       if (bow) {
-        const critM = rollCritMult("arrow");
+        const critM = rollCritMult("arrow", Math.random, botAffix === "crit");
         // Красный «X» — не сейчас, а в момент попадания стрелы (sim.critHits).
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
@@ -2567,12 +2636,14 @@ export class ZoneRoom extends Room<ZoneState> {
         );
       } else {
         const bd = fireboltDamage(p.level, p.int, 0.7) * this.buffMult(bot.id, "dmg");
+        const s = botAffix === "storm";
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),
           bd,
           bot.id, MAGIC.firebolt.life, 0,
-          fireboltSplashRadius(0.7), bd * MAGIC.firebolt.splashFraction,
+          fireboltSplashRadius(0.7) * (s ? AFFIX.storm.splashRadiusMul : 1),
+          bd * MAGIC.firebolt.splashFraction * (s ? AFFIX.storm.splashFracMul : 1),
         );
       }
       const relay: ActRelay = {
@@ -2692,6 +2763,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const sy = mob.y;
     const sz = mob.z;
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
+    if (weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "fire") {
+      mob.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, bot.id);
+    }
     // Звук удара мечом — как у живого игрока, слышат все вокруг.
     this.broadcast(MSG.act, {
       k: "swordHit", id: bot.id, x: sx, y: sy, z: sz,
@@ -3044,6 +3118,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
+      s.burning = Math.min(255, Math.ceil(m.burningT));
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
@@ -3244,7 +3319,10 @@ export class ZoneRoom extends Room<ZoneState> {
       guard = { sx: Math.sin(yaw), sz: Math.cos(yaw), wx: guard.wx, wz: guard.wz };
     }
 
-    const block = resolveBlock(guard, ax, az, h.projectile);
+    const aegis =
+      (p.leftCls === "shield" && p.leftTier === "legendary") ||
+      (p.rightCls === "shield" && p.rightTier === "legendary");
+    const block = resolveBlock(guard, ax, az, h.projectile, aegis);
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     let dmg = h.dmg * block.mult * (1 - armorFrac(p.str));
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
@@ -3355,6 +3433,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private eventWaveAt = 0;
   /** true — событие запущено вручную (пульт/чат): не ждём игроков в мире. */
   private eventForced = false;
+  /** Тип идущего события: 1 — нашествие мобов, 2 — охота на элиту. */
+  private activeEventKind: 1 | 2 = 1;
+  /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота. */
+  private forcedEventKind: 0 | 1 | 2 = 0;
   /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
    *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
    *  ботов по короткому таймауту. */

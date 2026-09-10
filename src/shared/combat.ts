@@ -1,4 +1,4 @@
-import { ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
+import { AFFIX, ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
 
 import { agiDamageMul, arrowDamageFor, weaponDamageBase } from "./progression";
 
@@ -38,9 +38,15 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
  * `BOW.critMult`. Бросок делает СЕРВЕР (иначе клиент крутил бы кубик сам).
  * Возвращает множитель: 1 — обычный удар, critMult — крит.
  */
-export function rollCritMult(kind: WeaponKind, rnd: () => number = Math.random): number {
+export function rollCritMult(
+  kind: WeaponKind,
+  rnd: () => number = Math.random,
+  /** Стрельба из «Лука охотника» (легендарка) — повышенный шанс крита. */
+  hunterBow = false,
+): number {
   if (kind !== "arrow") return 1;
-  return rnd() < BOW.critChance ? BOW.critMult : 1;
+  const chance = BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0);
+  return rnd() < chance ? BOW.critMult : 1;
 }
 
 /**
@@ -107,12 +113,15 @@ export function resolveBlock(
   ax: number,
   az: number,
   projectile: boolean,
+  /** Щит — легендарная «Эгида»: гасит больше и сектор шире. */
+  aegis = false,
 ): BlockResult {
   if (!g) return { mult: 1, by: 0 };
 
   if (g.sx !== 0 || g.sz !== 0) {
-    if (g.sx * ax + g.sz * az > Math.cos(SHIELD.blockCone)) {
-      return { mult: SHIELD.blockedDamage, by: 1 };
+    const cone = SHIELD.blockCone + (aegis ? AFFIX.guard.coneBonus : 0);
+    if (g.sx * ax + g.sz * az > Math.cos(cone)) {
+      return { mult: aegis ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage, by: 1 };
     }
   }
 
