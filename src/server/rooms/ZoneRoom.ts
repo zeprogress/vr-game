@@ -1447,9 +1447,13 @@ export class ZoneRoom extends Room<ZoneState> {
     this.eventForced = false;
     this.eventWave = 0;
     this.eventWaveAt = 0;
-    // Тип: форс из !goevent, иначе 50/50.
+    // Тип: форс из !goevent, иначе нашествие чаще охоты (EVENT.huntChance).
     this.activeEventKind =
-      this.forcedEventKind !== 0 ? this.forcedEventKind : Math.random() < 0.5 ? 1 : 2;
+      this.forcedEventKind !== 0
+        ? this.forcedEventKind
+        : Math.random() < EVENT.huntChance
+          ? 2
+          : 1;
     this.forcedEventKind = 0;
     this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
