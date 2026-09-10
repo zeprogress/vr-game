@@ -34,7 +34,9 @@ export function createSky(scene: Scene, start: DayState = dayState(12), simple =
 
   // LINEAR (не EXP2): даёт «радиус» напрямую — ясно до fogStart, полная
   // стена с fogEnd. Границы приходят из DayState (палитра + FOG_TUNE, ?fog=1).
-  scene.fogMode = Scene.FOGMODE_LINEAR;
+  // ?nofog=1 — полностью выключить туман (диагностика производительности).
+  const noFog = new URLSearchParams(location.search).has("nofog");
+  scene.fogMode = noFog ? Scene.FOGMODE_NONE : Scene.FOGMODE_LINEAR;
   scene.fogStart = start.fogNear;
   scene.fogEnd = start.fogFar;
   scene.fogColor = new Color3(0.78, 0.85, 0.92);
