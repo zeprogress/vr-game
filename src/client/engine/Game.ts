@@ -824,7 +824,7 @@ export class Game {
     printLoadout();
   }
 
-  private probe = { relight: 0, lightToggle: 0, matDirty: 0, lastLight: "" };
+  private probe = { relight: 0, lightToggle: 0, matDirty: 0, lastLight: "", madWho: "" };
   /** Считаем, кто дёргает свет/материалы каждый кадр (только под ?perf=1). */
   private installPerfProbes(): void {
     const p = this.probe;
@@ -834,6 +834,11 @@ export class Game {
     const origMAD = scn.markAllMaterialsAsDirty.bind(this.scene);
     scn.markAllMaterialsAsDirty = (f: number, cb?: unknown) => {
       p.matDirty++;
+      // Кто вызвал: берём осмысленный кадр стека (не Game/Babylon-обёртки).
+      const st = (new Error().stack ?? "").split("\n").slice(2, 9);
+      const hit = st.find((l) => /\.ts|nature|Fireflies|Hub|Zone|Sky|DayTime|models|Mob|Avatar/.test(l))
+        ?? st[0] ?? "";
+      p.madWho = hit.trim().replace(/^at\s+/, "").slice(0, 46) + ` [flag ${f}]`;
       return origMAD(f, cb);
     };
     // Light.setEnabled — общий прототип.
@@ -923,6 +928,7 @@ export class Game {
       probeMatDirty: this.probe.matDirty,
       probeLightToggle: this.probe.lightToggle,
       probeLastLight: this.probe.lastLight,
+      probeMadWho: this.probe.madWho,
       newEffects: this.diffEffects(),
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,

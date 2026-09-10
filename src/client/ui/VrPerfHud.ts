@@ -92,17 +92,20 @@ export class VrPerfHud {
     ctx.font = "24px monospace";
     ctx.fillStyle = dMd > 0 || dLt > 0 ? "#ff7a7a" : "#ffd166";
     ctx.fillText(
-      `markDirty +${dMd}/тик · свет toggle +${dLt}/тик · ${s.probeLastLight ?? ""}`,
+      `markDirty +${dMd}/тик · свет toggle +${dLt}/тик`,
       30,
-      176,
+      166,
     );
+    ctx.font = "20px monospace";
+    ctx.fillStyle = "#ffd166";
+    ctx.fillText(`кто: ${s.probeMadWho ?? ""}`, 30, 194);
 
-    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.font = "bold 28px system-ui, sans-serif";
     ctx.fillStyle = "#ff9d9d";
-    ctx.fillText("Свежие компиляции шейдеров:", 30, 220);
+    ctx.fillText("Свежие компиляции шейдеров:", 30, 226);
 
     const eff = (s.newEffects as string[]) ?? [];
-    let y = 262;
+    let y = 264;
     if (eff.length === 0) {
       ctx.font = "30px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
