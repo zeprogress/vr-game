@@ -629,20 +629,33 @@ export class Game {
   }
 
   /**
-   * Просим шлем о самой высокой поддерживаемой частоте кадров. По умолчанию
-   * Quest-браузер часто отдаёт 72 Гц (а 2D-панель — вовсе 60); список
-   * доступен только после старта сессии. Если движок не будет успевать —
-   * шлем сам опустит частоту (репроекция), хуже не станет.
+   * Просим шлем о самой высокой поддерживаемой частоте кадров — в ЛЮБОМ
+   * пресете качества (кэп fps из PRESETS в VR не применяется). По умолчанию
+   * Quest-браузер отдаёт 72 Гц (Quest 3 умеет 90/120), а 2D-панель — 60.
+   * Список `supportedFrameRates` наполняется не сразу после старта сессии,
+   * поэтому пробуем несколько раз. Если движок не будет успевать — шлем сам
+   * опустит частоту репроекцией, хуже не станет.
    */
-  private requestMaxFrameRate(): void {
+  private requestMaxFrameRate(tries = 12): void {
     const sm = this.xr?.baseExperience.sessionManager;
-    const rates = sm?.supportedFrameRates;
-    if (!sm || !rates || rates.length === 0) return;
+    if (!sm || !sm.inXRSession) return;
+    const rates = sm.supportedFrameRates;
+    if (!rates || rates.length === 0) {
+      if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), 500);
+      return;
+    }
     const target = Math.max(...Array.from(rates));
-    if (!Number.isFinite(target) || target <= (sm.currentFrameRate ?? 0)) return;
+    if (!Number.isFinite(target)) return;
+    if (target <= (sm.currentFrameRate ?? 0)) {
+      console.log(`[xr] частота кадров уже ${sm.currentFrameRate} Гц (макс ${target})`);
+      return;
+    }
     sm.updateTargetFrameRate(target)
-      .then(() => console.log(`[xr] запрошено ${target} Гц`))
-      .catch((e: unknown) => console.warn("[xr] частоту кадров сменить не вышло:", e));
+      .then(() => console.log(`[xr] запрошено ${target} Гц (было ${sm.currentFrameRate ?? "?"})`))
+      .catch((e: unknown) => {
+        console.warn("[xr] частоту кадров сменить не вышло:", e);
+        if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), 800);
+      });
   }
 
   requestPointerLock(): void {
