@@ -192,9 +192,9 @@ export class NetMobs {
     const n = this.burstSeq++;
     const flash = this.burstFlashProto.clone(`burstF_${n}`);
     const ring = this.burstRingProto.clone(`burstR_${n}`);
-    // Свой материал на каждую вспышку — гасим alpha индивидуально.
-    flash.material = this.burstFlashProto.material!.clone(`burstFm_${n}`);
-    ring.material = this.burstRingProto.material!.clone(`burstRm_${n}`);
+    // Материал общий (клон материала клонировал и текстуру, а сеттер hasAlpha
+    // на свежей текстуре дёргал markAllMaterialsAsDirty каждый разрыв снаряда —
+    // это роняло кадр в VR). Индивидуальное затухание — через mesh.visibility.
     flash.setEnabled(true);
     ring.setEnabled(true);
     flash.position.copyFrom(pos);
@@ -227,11 +227,11 @@ export class NetMobs {
       // Ядро: мгновенно раздувается, держится, затем гаснет.
       const flashScale = b.peak * (0.55 + 0.45 * Math.min(1, f * 4)) * (0.55 + 0.45 * fade);
       b.flash.scaling.setAll(flashScale);
-      (b.flash.material as StandardMaterial).alpha = Math.min(1, fade * 1.7);
+      b.flash.visibility = Math.min(1, fade * 1.7);
       // Кольцо: расходится наружу и истончается.
       const ringScale = b.peak * (0.4 + 1.9 * f);
       b.ring.scaling.setAll(ringScale);
-      (b.ring.material as StandardMaterial).alpha = fade * 0.8;
+      b.ring.visibility = fade * 0.8;
       if (cam) b.ring.lookAt(cam.globalPosition);
     }
   }
