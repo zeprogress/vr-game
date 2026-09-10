@@ -420,6 +420,9 @@ export class Spectator {
     if (this.obs && !this.live && (this.lostAt === 0 || now - this.lostAt > 2500)) {
       this.overlay?.setShown(false);
       this.engine.clear(TRANSPARENT, true, true);
+      // Цикл rAF жив — просто ждём связь. Иначе сторож примет паузу без
+      // связи за «цикл рендера встал» и уйдёт в цикл перезагрузок.
+      this.watch?.afterRender(now);
       return;
     }
     if (this.obs) this.overlay?.setShown(true);
