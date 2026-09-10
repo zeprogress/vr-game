@@ -57,7 +57,10 @@ export function asQuality(v: string | null): Quality | null {
   return v === "potato" || v === "low" || v === "med" || v === "high" ? v : null;
 }
 
-/** На телефоне выше «Среднего» не пускаем — тянет только на слабых. */
-export function clampQuality(q: Quality, isTouch: boolean): Quality {
-  return isTouch && q === "high" ? "med" : q;
+/**
+ * На телефоне выше «Среднего» не пускаем — тянет только на слабых.
+ * `restrict` = устройство с тач-вводом, но без иммерсивного WebXR (т.е. не шлем).
+ */
+export function clampQuality(q: Quality, restrict: boolean): Quality {
+  return restrict && q === "high" ? "med" : q;
 }

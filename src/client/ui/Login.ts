@@ -16,6 +16,8 @@ export interface LoginHooks {
   currentQuality: () => Quality;
   /** Тач-устройство: переключатель качества не даёт выбрать выше «Среднего». */
   isTouch: () => boolean;
+  /** Телефон (тач без WebXR): в переключателе качества нет «Высокого». */
+  restrictQuality: () => boolean;
   /** Дождаться готовности WebXR (до этого кнопку «Войти в VR» не жмём). */
   whenXrReady: () => Promise<void>;
   /** Запустить VR-сессию — вызывать прямо из обработчика клика. true — вошли. */
@@ -43,7 +45,7 @@ export function runLogin(
   document.head.appendChild(styleEl());
 
   const curQ = hooks.currentQuality();
-  const qOpts = hooks.isTouch()
+  const qOpts = hooks.restrictQuality()
     ? QUALITY_LABELS.filter((x) => x.q !== "high") // на телефоне не выше «Среднего»
     : QUALITY_LABELS;
   const qButtons = qOpts

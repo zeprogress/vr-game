@@ -31,7 +31,7 @@ if (params.has("dash")) {
 } else if (params.get("spectator")) {
   bootSpectator(params.get("spectator") as string);
 } else {
-  bootGame();
+  void bootGame();
 }
 
 /** Пульт стрима (этап 17 Ф5): /?dash=КЛЮЧ (или ?dash=1 после первого раза). */
@@ -77,15 +77,31 @@ function bootSpectator(specKey: string): void {
   })();
 }
 
-function bootGame(): void {
+async function bootGame(): Promise<void> {
   // Качество: явный ?q= (для отладки, без ограничений) > выбор игрока на входе
   // (на телефоне не выше «Среднего») > авто по железу.
   const isTouch =
     window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  // VR-шлем тоже «coarse pointer», но тянет «Высокое» — ограничиваем только
+  // телефоны (тач без иммерсивного WebXR). Проверка быстрая; на всякий случай
+  // не ждём дольше 600 мс и тогда считаем устройство телефоном.
+  const xrCapable = await Promise.race([
+    (async () => {
+      try {
+        const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } })
+          .xr;
+        return xr?.isSessionSupported ? await xr.isSessionSupported("immersive-vr") : false;
+      } catch {
+        return false;
+      }
+    })(),
+    new Promise<boolean>((r) => setTimeout(() => r(false), 600)),
+  ]);
+  const restrictQ = isTouch && !xrCapable;
   const stored = asQuality(localStorage.getItem(QUALITY_KEY));
   const quality =
     asQuality(params.get("q")) ??
-    (stored ? clampQuality(stored, isTouch) : undefined);
+    (stored ? clampQuality(stored, restrictQ) : undefined);
   const game = new Game(canvas, quality);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();
@@ -116,6 +132,7 @@ function bootGame(): void {
       requestPointerLock: () => game.requestPointerLock(),
       currentQuality: () => game.quality,
       isTouch: () => game.isTouch,
+      restrictQuality: () => restrictQ,
     },
     streamMode,
   ).then(({ nick, vr }) => {
