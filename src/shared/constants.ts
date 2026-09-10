@@ -288,8 +288,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
   worldElite: {
     model: "monMushKing", name: "Грибной владыка", level: 25, kind: "slime",
-    hp: 4200, dmgMul: 2.6, xp: 520, scaleMul: 2.1, tint: [0.55, 0.35, 0.75],
-    rangedArmor: 0.35,
+    hp: 12600, dmgMul: 3.4, xp: 640, scaleMul: 2.2, tint: [0.55, 0.35, 0.75],
+    rangedArmor: 0.4,
   },
 };
 
@@ -853,24 +853,24 @@ export const EVENT = {
     dmgPerHero: 0.1,
     dmgCap: 1.6,
     /** Владыка периодически призывает миньонов (спорами) — фаза-«разберись с мелочью». */
-    addGap: 20,
+    addGap: 15,
     addType: "spikyBlob",
-    addCount: 2,
+    addCount: 3,
     /** Ниже этой доли HP — впадает в ярость: быстрее двигается и бьёт сильнее. */
-    enrageAt: 0.4,
-    enrageDmgMul: 1.45,
+    enrageAt: 0.45,
+    enrageDmgMul: 1.7,
     /**
      * Уникальные атаки владыки (урон — доли от `MOB.attackDamage`·dmgMul):
      * «Спорова волна» — телеграф-кольцо, затем АОЕ вокруг владыки;
      * «Спора-залп» — отмечает точку под героем, через задержку туда бьёт.
      */
-    novaGap: 9,
-    novaDelay: 1.1,
-    novaRadius: 5.5,
-    novaDmgMul: 1.7,
-    lobGap: 6,
-    lobDelay: 1.5,
-    lobRadius: 4,
-    lobDmgMul: 1.2,
+    novaGap: 7,
+    novaDelay: 1.05,
+    novaRadius: 6,
+    novaDmgMul: 2.4,
+    lobGap: 4.5,
+    lobDelay: 1.4,
+    lobRadius: 4.2,
+    lobDmgMul: 1.8,
   },
 } as const;
