@@ -1,10 +1,9 @@
 import { Scene } from "@babylonjs/core/scene";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
@@ -86,45 +85,42 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
   mat.disableDepthWrite = true;
   mat.alpha = 0;
 
-  const proto = MeshBuilder.CreateSphere("starProto", { diameter: 1, segments: 3 }, scene);
-  proto.material = mat;
-  proto.isPickable = false;
-  proto.isVisible = false;
-  proto.applyFog = false;
-
-  // Узел едет за головой, поэтому звёзды не смещаются, когда игрок идёт.
-  const root = new TransformNode("starRoot", scene);
-  proto.parent = root;
-
+  // 260 звёзд — ОДИН меш (склейка), иначе на слабом GPU шлема это 260
+  // прозрачных вызовов отрисовки каждый кадр ночью.
+  const parts: Mesh[] = [];
   for (let i = 0; i < COUNT; i++) {
     // Равномерно по сфере, но только верхняя половина — под землёй звёзд не видно.
     const u = Math.random();
     const y = Math.pow(Math.random(), 0.7); // гуще к горизонту, как в жизни
     const r = Math.sqrt(1 - y * y);
     const a = u * Math.PI * 2;
-    const star = proto.createInstance(`star${i}`);
-    star.parent = root;
-    star.position.set(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R);
-    // Достаточно крупные, чтобы сглаживание их не «размазывало» кадр в кадр,
-    // но не раздувались в кляксы.
-    const size = 0.8 + Math.random() * 0.4;
-    star.scaling.setAll(size);
-    star.isPickable = false;
+    const s = MeshBuilder.CreateSphere(`starPart${i}`, { diameter: 1, segments: 3 }, scene);
+    s.position.set(Math.cos(a) * r * R, y * R, Math.sin(a) * r * R);
+    s.scaling.setAll(0.8 + Math.random() * 0.4);
+    parts.push(s);
   }
+  const merged = Mesh.MergeMeshes(parts, true, true) as Mesh;
+  merged.name = "stars";
+  merged.material = mat;
+  merged.isPickable = false;
+  merged.applyFog = false;
+  merged.doNotSyncBoundingInfo = true;
+  merged.alwaysSelectAsActiveMesh = true;
 
+  // Меш едет за головой, поэтому звёзды не смещаются, когда игрок идёт.
   scene.onBeforeRenderObservable.add(() => {
     const cam = scene.activeCamera;
-    if (cam) root.position.copyFrom(cam.globalPosition);
+    if (cam) merged.position.copyFrom(cam.globalPosition);
   });
 
-  root.setEnabled(false);
+  merged.setEnabled(false);
 
   return {
     apply(d) {
       const night = 1 - d.daylight;
       mat.alpha = night;
       const on = night > 0.02;
-      if (root.isEnabled() !== on) root.setEnabled(on);
+      if (merged.isEnabled() !== on) merged.setEnabled(on);
     },
   };
 }
@@ -188,26 +184,31 @@ function createClouds(scene: Scene): { apply(d: DayState): void } {
   mat.alpha = 0.95;
   mat.disableLighting = true;
 
-  const proto = MeshBuilder.CreateSphere("cloudProto", { diameter: 1, segments: 6 }, scene);
-  proto.material = mat;
-  proto.isPickable = false;
-  proto.isVisible = false;
   mat.disableDepthWrite = true; // облака полупрозрачные и не должны спорить по глубине
 
   const clouds: { root: Mesh; speed: number }[] = [];
   const span = WORLD.size * 1.6;
 
+  // Каждое облако — ОДИН склеенный меш из клубов, а не 4-7 прозрачных инстансов.
   for (let i = 0; i < 13; i++) {
-    const root = proto.clone(`cloud${i}`);
-    root.isVisible = false;
-    const puffs = 3 + Math.floor(Math.random() * 4);
-    for (let p = 0; p < puffs; p++) {
-      const puff = proto.createInstance(`cloud${i}_${p}`);
-      puff.parent = root;
-      puff.position.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 8);
+    const puffs: Mesh[] = [];
+    const n = 3 + Math.floor(Math.random() * 4);
+    for (let p = 0; p < n; p++) {
+      const puff = MeshBuilder.CreateSphere(`cloudPuff${i}_${p}`, { diameter: 1, segments: 6 }, scene);
+      puff.position.set(
+        (Math.random() - 0.5) * 14,
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 8,
+      );
       const sc = 4 + Math.random() * 5;
       puff.scaling.set(sc, sc * 0.55, sc);
+      puffs.push(puff);
     }
+    const root = Mesh.MergeMeshes(puffs, true, true) as Mesh;
+    root.name = `cloud${i}`;
+    root.material = mat;
+    root.isPickable = false;
+    root.applyFog = false;
     root.position.set(
       (Math.random() - 0.5) * span,
       50 + Math.random() * 25,

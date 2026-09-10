@@ -297,11 +297,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   const cz = HUB.center.z;
   const obstacles: Obstacle[] = [];
 
+  const noMerge = new URLSearchParams(location.search).has("nomerge");
+
   /**
-   * Собрать группу примитивов: объединяем в один меш ради Quest, но у
-   * `Mesh.MergeMeshes` в этой сборке box-геометрия после объединения не
-   * освещается (конусы/цилиндры — норм). Пока blockout — не объединяем; на
-   * этапе art-pass заменим на .glb, вопрос уйдёт сам.
+   * Склеить группу примитивов в ОДИН меш — ради шлема: 200+ отдельных вызовов
+   * отрисовки лагеря роняют кадр. После `Mesh.MergeMeshes` пересчитываем
+   * нормали (иначе box-геометрия не ловит свет костра). `?nomerge=1` — оставить
+   * по отдельности (на случай, если склейка что-то ломает).
    */
   const merge = (
     parts: Mesh[],
@@ -309,12 +311,26 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     mat: StandardMaterial,
     parent: TransformNode = root,
   ): void => {
-    for (const p of parts) {
-      p.material = mat;
-      p.parent = parent;
-      p.isPickable = false;
-      p.name = name;
+    if (parts.length === 0) return;
+    if (noMerge || parts.length === 1) {
+      for (const p of parts) {
+        p.material = mat;
+        p.parent = parent;
+        p.isPickable = false;
+        p.name = name;
+      }
+      return;
     }
+    for (const p of parts) p.material = mat;
+    const m = Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+    if (!m) return;
+    m.name = name;
+    m.material = mat;
+    m.parent = parent;
+    m.isPickable = false;
+    m.createNormals(true); // без этого склеенные box'ы не освещаются
+    m.freezeWorldMatrix();
+    m.doNotSyncBoundingInfo = true;
   };
 
   // Обычные поверхности лагеря — их эмиссив-заливку крутит tick по дню/ночи.
