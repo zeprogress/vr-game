@@ -19,6 +19,7 @@ export class VrPerfHud {
   private readonly plane: Mesh;
   private readonly tex: DynamicTexture;
   private acc = 0;
+  private prevShaderN = 0;
 
   constructor(scene: Scene, parent: Node) {
     this.tex = new DynamicTexture("perfTex", { width: TEX_W, height: TEX_H }, scene, false);
@@ -72,10 +73,14 @@ export class VrPerfHud {
     };
 
     const fps = Number(s.fps ?? 0);
+    const shaderN = Number(s.shaderN ?? 0);
+    const shaderDelta = shaderN - this.prevShaderN;
+    this.prevShaderN = shaderN;
     line(12, "FPS", s.fps, fps > 0 && fps < 55);
     line(35, "мс: кадр / JS / cull / render",
       `${s.msFrame ?? "?"} / ${s.msJS ?? "?"} / ${s.msCull ?? "?"} / ${s.msRender ?? "?"}`);
-    line(58, "Вызовов отрисовки", s.drawCalls, Number(s.drawCalls ?? 0) > 400);
+    line(58, "Компиляций шейдеров: всего / +тик",
+      `${shaderN} / +${shaderDelta}`, shaderDelta > 0);
     line(81, "Буфер глаза", s.eyeBuffer);
     line(104, "hardwareScaling", s.hardwareScaling, Number(s.hardwareScaling ?? 1) !== 1);
     line(127, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);

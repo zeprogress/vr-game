@@ -32,6 +32,7 @@ import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
+import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
@@ -131,6 +132,7 @@ export class Game {
   private wristPanel: WristPanel | null = null;
   private perfHud: VrPerfHud | null = null;
   private perfInstr: SceneInstrumentation | null = null;
+  private engInstr: EngineInstrumentation | null = null;
   private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -809,6 +811,8 @@ export class Game {
         : null,
       msRender: this.perfInstr ? Math.round(this.perfInstr.renderTimeCounter.current) : null,
       drawCalls: this.perfInstr?.drawCallsCounter.current ?? null,
+      shaderMs: this.engInstr ? Math.round(this.engInstr.shaderCompilationTimeCounter.current) : null,
+      shaderN: this.engInstr ? this.engInstr.shaderCompilationTimeCounter.count : null,
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
       eyeBuffer: layer ? `${layer.framebufferWidth}x${layer.framebufferHeight}` : null,
@@ -873,6 +877,8 @@ export class Game {
         this.perfInstr.captureInterFrameTime = true;
         this.perfInstr.captureFrameTime = true;
         this.perfInstr.captureParticlesRenderTime = true;
+        this.engInstr = new EngineInstrumentation(this.engine);
+        this.engInstr.captureShaderCompilationTime = true;
       }
       this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
     }
