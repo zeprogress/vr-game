@@ -18,6 +18,8 @@ export interface OverlayCtx {
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
   /** Краткие характеристики игрока под ником в «смотрим» (без атрибутов). */
   watchStats: string | null;
+  /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
+  watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
   online: readonly { nick: string; speaking: boolean }[];
 }
@@ -77,10 +79,12 @@ const CSS = `
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
 .ov-watch span { display:block; font-weight:800; font-size:3.2vh; margin-top:.4vh; }
-.ov-watch i { display:block; font-style:normal; font-weight:500; font-size:1.5vh;
-  opacity:.85; margin-top:.35vh; letter-spacing:.02em; }
+.ov-watch i { display:block; font-style:normal; font-weight:500; font-size:1.8vh;
+  opacity:.88; margin-top:.4vh; letter-spacing:.02em; }
 .ov-hp { left:50%; bottom:3vh; transform:translateX(-50%); width:34vw; text-align:center; }
 .ov-hp b { font-weight:700; font-size:1.9vh; letter-spacing:.05em; }
+.ov-hp i { display:block; font-style:normal; font-weight:500; font-size:1.5vh;
+  opacity:.82; margin-top:.5vh; letter-spacing:.02em; }
 .ov-hp .bar { margin-top:.8vh; height:1.3vh; border-radius:1vh; overflow:hidden;
   background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.25); }
 .ov-hp .fill { height:100%; background:linear-gradient(90deg,#3ad07a,#8fe45a);
@@ -116,7 +120,7 @@ const CSS = `
   color:#5ba8ff; max-width:80vw;
   -webkit-text-stroke:.12vh #000;
   text-shadow:0 0 2.2vh rgba(60,140,255,.65), 0 .2vh .35vh rgba(0,0,0,.75); }
-.ov-ticker.news { top:9vh; font-size:1.9vh; font-weight:400; letter-spacing:normal;
+.ov-ticker.news { top:9vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   text-transform:none; color:#fff; -webkit-text-stroke:0;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 `;
@@ -144,6 +148,7 @@ export class Overlay {
   private readonly hp: HTMLDivElement;
   private readonly hpFill: HTMLDivElement;
   private readonly hpLabel: HTMLElement;
+  private readonly hpInv: HTMLElement;
   private readonly card: HTMLDivElement;
   private readonly cardTitle: HTMLElement;
   private readonly cardSub: HTMLElement;
@@ -189,7 +194,8 @@ export class Overlay {
     const bar = div("bar");
     this.hpFill = div("fill");
     bar.appendChild(this.hpFill);
-    this.hp.append(this.hpLabel, bar);
+    this.hpInv = document.createElement("i");
+    this.hp.append(this.hpLabel, bar, this.hpInv);
 
     this.card = div("box ov-card");
     const t = div("t");
@@ -426,6 +432,9 @@ export class Overlay {
       this.hp.classList.toggle("boss", hp.boss);
       this.hpFill.style.width = `${Math.round(Math.max(0, Math.min(1, hp.frac)) * 100)}%`;
       this.hpLabel.textContent = `${hp.name} — ${Math.max(0, Math.ceil(hp.cur))}/${Math.round(hp.max)}`;
+      const inv = ctx.watchInv ?? "";
+      show(this.hpInv, inv.length > 0);
+      if (this.hpInv.textContent !== inv) this.hpInv.textContent = inv;
     } else {
       show(this.hp, false);
     }

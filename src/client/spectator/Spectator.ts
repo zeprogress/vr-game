@@ -28,7 +28,7 @@ import type { NetClient } from "../net/NetClient";
 import { weaponDamage } from "#shared/combat";
 import { armorFrac, moveSpeedFor, attackSpeedFor } from "#shared/progression";
 import { magicResistFrac, fireboltDamage } from "#shared/magic";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import {
   SpectatorCamera,
   type DirectorCtx,
@@ -755,6 +755,37 @@ export class Spectator {
     return parts.join(" · ");
   }
 
+  /** Ярлык оружия/щита в руке для панели «HP цели». */
+  private static weaponLabel(cls: string, tier: string): string | null {
+    if (cls === "shield") return "щит";
+    const base =
+      cls === "sword" ? "меч" : cls === "bow" ? "лук" : cls === "staff" ? "посох" : null;
+    if (!base) return null;
+    return tier === "gold" ? `золотой ${base}` : base;
+  }
+
+  /** Краткий инвентарь игрока: что в руках + содержимое сумки. */
+  private static playerInvLine(p: PlayerState): string {
+    const hands: string[] = [];
+    const r = Spectator.weaponLabel(p.rightCls, p.rightTier);
+    const l = Spectator.weaponLabel(p.leftCls, p.leftTier);
+    if (r) hands.push(r);
+    if (l && l !== r) hands.push(l);
+
+    const counts = new Map<string, number>();
+    p.bag.forEach((s) => {
+      if (s.item && s.count > 0) counts.set(s.item, (counts.get(s.item) ?? 0) + s.count);
+    });
+    const bag: string[] = [];
+    for (const [id, n] of counts) {
+      const short = id === "potion" ? "зелья" : (ITEMS[id as ItemId]?.short ?? id).toLowerCase();
+      bag.push(`${short} ×${n}`);
+    }
+
+    const parts = [...hands, ...bag];
+    return parts.length ? parts.join(" · ") : "";
+  }
+
   private changelogIdx = 0;
   private changelogAt = 0;
 
@@ -768,13 +799,14 @@ export class Spectator {
       this.changelogAt = now;
       this.changelogIdx = (this.changelogIdx + 1) % items.length;
     }
-    return `Что нового · ${items[this.changelogIdx % items.length]}`;
+    return items[this.changelogIdx % items.length];
   }
 
   private updateOverlay(st: ZoneState | null): void {
     const subj = this.cam.subject;
     let watching: string | null = null;
     let watchStats: string | null = null;
+    let watchInv: string | null = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
     if (st && subj.id) {
@@ -783,6 +815,7 @@ export class Spectator {
         if (p) {
           watching = p.nick;
           watchStats = Spectator.playerStatLine(p);
+          watchInv = Spectator.playerInvLine(p);
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {
@@ -808,6 +841,7 @@ export class Spectator {
     this.overlay?.update({
       watching,
       watchStats,
+      watchInv,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,
