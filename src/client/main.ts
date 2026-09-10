@@ -82,26 +82,28 @@ async function bootGame(): Promise<void> {
   // (на телефоне не выше «Среднего») > авто по железу.
   const isTouch =
     window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-  // VR-шлем тоже «coarse pointer», но тянет «Высокое» — ограничиваем только
-  // телефоны (тач без иммерсивного WebXR). Проверка быстрая; на всякий случай
-  // не ждём дольше 600 мс и тогда считаем устройство телефоном.
+  // VR-шлем тоже «coarse pointer», но тянет «Высокое» — ограничиваем по качеству
+  // только телефоны (тач без иммерсивного WebXR). navigator.xr на телефоне без
+  // шлема отвечает сразу (или его вовсе нет); если проверка зависла — это почти
+  // наверняка медленный браузер шлема, поэтому по таймауту НЕ ограничиваем.
   const xrCapable = await Promise.race([
     (async () => {
       try {
         const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } })
           .xr;
-        return xr?.isSessionSupported ? await xr.isSessionSupported("immersive-vr") : false;
+        if (!xr?.isSessionSupported) return false;
+        return await xr.isSessionSupported("immersive-vr");
       } catch {
         return false;
       }
     })(),
-    new Promise<boolean>((r) => setTimeout(() => r(false), 600)),
+    new Promise<boolean>((r) => setTimeout(() => r(true), 1500)),
   ]);
   const restrictQ = isTouch && !xrCapable;
   const stored = asQuality(localStorage.getItem(QUALITY_KEY));
   const quality =
     asQuality(params.get("q")) ??
-    (stored ? clampQuality(stored, restrictQ) : undefined);
+    (stored ? clampQuality(stored, restrictQ) : xrCapable ? "high" : undefined);
   const game = new Game(canvas, quality);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();

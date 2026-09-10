@@ -459,7 +459,6 @@ export class Game {
       this.healCrossFx?.update(dt);
       this.crossFx.update(dt);
       this.healAura.update(dt);
-    this.skillFx.update(dt);
       this.skillFx.update(dt);
       this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
       this.spellLights.setCrystal(
@@ -582,12 +581,28 @@ export class Game {
 
   private async setupXR(): Promise<void> {
     if (!("xr" in navigator)) return;
+    // Резкость картинки в шлеме: framebufferScaleFactor=1 у Babylon по умолчанию
+    // = «рекомендованное» браузером разрешение (у Quest занижено ради fps).
+    // `?fbscale=` 0.7..1.6 переопределяет; 1.15 по умолчанию — заметно резче,
+    // фиксированная фовеация (ниже) возвращает часть нагрузки.
+    const fsRaw = Number(new URLSearchParams(location.search).get("fbscale"));
+    const fbScale = Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(1.6, Math.max(0.6, fsRaw)) : 1.15;
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
         disableTeleportation: true,
         disablePointerSelection: true, // без лазера у контроллеров
         inputOptions: { doNotLoadControllerMeshes: true }, // рисуем свои кисти
+        outputCanvasOptions: {
+          // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
+          canvasOptions: {
+            antialias: true,
+            depth: true,
+            stencil: true,
+            alpha: true,
+            framebufferScaleFactor: fbScale,
+          },
+        },
       });
     } catch (e) {
       console.warn("WebXR недоступен:", e);
@@ -610,6 +625,7 @@ export class Game {
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
         this.requestMaxFrameRate();
+        this.tuneXrRendering();
         this.player.enterXR(base.camera);
         this.xrInput = new XRInput(this.xr!);
         this.player.setInput(this.xrInput);
@@ -636,26 +652,64 @@ export class Game {
    * поэтому пробуем несколько раз. Если движок не будет успевать — шлем сам
    * опустит частоту репроекцией, хуже не станет.
    */
-  private requestMaxFrameRate(tries = 12): void {
+  private requestMaxFrameRate(tries = 20): void {
+    const retry = (ms: number): void => {
+      if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), ms);
+    };
     const sm = this.xr?.baseExperience.sessionManager;
-    if (!sm || !sm.inXRSession) return;
+    // Пока сессия не поднялась или список частот пуст — ждём и пробуем снова
+    // (на Quest он наполняется с задержкой после старта сессии).
+    if (!sm || !sm.inXRSession) {
+      retry(400);
+      return;
+    }
     const rates = sm.supportedFrameRates;
     if (!rates || rates.length === 0) {
-      if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), 500);
+      retry(400);
       return;
     }
     const target = Math.max(...Array.from(rates));
     if (!Number.isFinite(target)) return;
     if (target <= (sm.currentFrameRate ?? 0)) {
-      console.log(`[xr] частота кадров уже ${sm.currentFrameRate} Гц (макс ${target})`);
+      console.log(`[xr] частота кадров ${sm.currentFrameRate} Гц (макс ${target}) — ок`);
       return;
     }
     sm.updateTargetFrameRate(target)
       .then(() => console.log(`[xr] запрошено ${target} Гц (было ${sm.currentFrameRate ?? "?"})`))
       .catch((e: unknown) => {
         console.warn("[xr] частоту кадров сменить не вышло:", e);
-        if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), 800);
+        retry(800);
       });
+  }
+
+  /**
+   * Разовая донастройка рендера шлема после старта сессии: фиксированная
+   * фовеация (периферия рендерится грубее — экономит GPU, глазом почти не
+   * видно) и лог фактического разрешения буфера глаза, чтобы понимать,
+   * упирается ли картинка в разрешение или в частоту кадров.
+   */
+  private tuneXrRendering(): void {
+    const sm = this.xr?.baseExperience.sessionManager;
+    if (!sm) return;
+    try {
+      if (sm.isFixedFoveationSupported) {
+        const want = Number(new URLSearchParams(location.search).get("fov"));
+        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 1;
+        console.log(`[xr] фиксированная фовеация = ${sm.fixedFoveation}`);
+      }
+    } catch (e) {
+      console.warn("[xr] фовеацию задать не вышло:", e);
+    }
+    // Разрешение буфера глаза (после того как слой создан).
+    setTimeout(() => {
+      const layer = (sm.session?.renderState as { baseLayer?: XRWebGLLayer })?.baseLayer;
+      if (layer) {
+        console.log(
+          `[xr] буфер глаза ${layer.framebufferWidth}×${layer.framebufferHeight}, ` +
+            `частота ${sm.currentFrameRate ?? "?"} Гц`,
+        );
+      }
+    }, 1500);
   }
 
   requestPointerLock(): void {
