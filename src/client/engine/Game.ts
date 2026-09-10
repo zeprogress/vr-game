@@ -833,11 +833,17 @@ export class Game {
     for (const k of Object.keys(cache)) {
       if (!this.prevEffectKeys.has(k)) {
         this.prevEffectKeys.add(k);
-        // Ключ длинный (shaderName+defines) — берём начало, там имя и главные define'ы.
-        added.push(k.replace(/\n/g, " ").slice(0, 90));
+        // Ключ = "<vertex>+<fragment>@<defines>". Имя шейдера + характерные define'ы.
+        const at = k.indexOf("@");
+        const name = at > 0 ? k.slice(0, at) : k;
+        const defs = at > 0 ? k.slice(at + 1) : "";
+        const flags = (defs.match(/#define (FOG|INSTANCES|INSTANCESCOLOR|CLIPPLANE\d?|LOGARITHMICDEPTH|NUM_BONE_INFLUENCERS \d|LIGHT\d|SHADOW\d|THIN_INSTANCES|MORPHTARGETS)\b/g) ?? [])
+          .map((d) => d.replace("#define ", ""))
+          .join(",");
+        added.push(`${name} [${flags || defs.length + "б"}]`);
       }
     }
-    if (added.length) this.lastNewEffects = added.slice(-4);
+    if (added.length) this.lastNewEffects = [...this.lastNewEffects, ...added].slice(-8);
     return this.lastNewEffects;
   }
 
