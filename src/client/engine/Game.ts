@@ -30,6 +30,7 @@ import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
+import { VrPerfHud } from "../ui/VrPerfHud";
 import type { WornWeapon } from "../ui/itemStats";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
@@ -127,6 +128,8 @@ export class Game {
   private specRaysShown = true;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
+  private perfHud: VrPerfHud | null = null;
+  private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
   xr: WebXRDefaultExperience | null = null;
@@ -836,6 +839,8 @@ export class Game {
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
+    if (this.showPerfHud) this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
+
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(
       this.scene,
@@ -901,6 +906,8 @@ export class Game {
   }
 
   private tearDownVrUi(): void {
+    this.perfHud?.dispose();
+    this.perfHud = null;
     this.wristPanel?.dispose();
     this.wristPanel = null;
     this.loadoutPanel?.dispose();
@@ -945,6 +952,7 @@ export class Game {
       );
     }
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
+    this.perfHud?.update(dt, this.vrDiag());
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
     // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
