@@ -841,5 +841,13 @@ export const EVENT = {
     rewardPotions: 4,
     /** Бафф участникам за победу — короче, чем у нашествия. */
     buffMinutes: 10,
+    /**
+     * Масштаб от числа героев в мире: множитель = 1 + (герои−1)·perHero,
+     * с потолком. HP и урон стража растут отдельно.
+     */
+    hpPerHero: 0.6,
+    hpCap: 8,
+    dmgPerHero: 0.12,
+    dmgCap: 2,
   },
 } as const;

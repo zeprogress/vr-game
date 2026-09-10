@@ -1443,12 +1443,18 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.eventZ = spot.z;
 
     if (this.activeEventKind === 2) {
-      // Охота: один именной бугай.
+      // Охота: один именной бугай, жирнее и злее от числа героев в мире.
       const e = ELITE_MOBS[EVENT.eliteHunt.eliteKey];
-      this.eventPhaseAt = Date.now() + EVENT.eliteHunt.hardTimeout * 1000;
+      const eh = EVENT.eliteHunt;
+      const heroes = this.heroesInWorld();
+      const hpMul = Math.min(eh.hpCap, 1 + (heroes - 1) * eh.hpPerHero);
+      const dmgMul = Math.min(eh.dmgCap, 1 + (heroes - 1) * eh.dmgPerHero);
+      this.eventPhaseAt = Date.now() + eh.hardTimeout * 1000;
       this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
-        model: e.model, name: e.name, level: e.level, hp: e.hp,
-        dmgMul: e.dmgMul, scaleMul: e.scaleMul, xp: e.xp,
+        model: e.model, name: e.name, level: e.level,
+        hp: Math.round(e.hp * hpMul),
+        dmgMul: e.dmgMul * dmgMul,
+        scaleMul: e.scaleMul, xp: e.xp,
         rangedArmor: e.rangedArmor,
       });
       this.state.eventLeft = 1;
