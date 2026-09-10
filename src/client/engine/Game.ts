@@ -171,16 +171,18 @@ export class Game {
   constructor(
     private readonly canvas: HTMLCanvasElement,
     quality?: Quality,
+    xrCapable = false,
   ) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
-    // Смартфон по умолчанию на пресете "med" (можно переопределить `?q=`).
+    // Смартфон по умолчанию на "med"; шлем — на "high" (в VR всё равно сверху
+    // ложится лёгкий VR-профиль, но НЕ мобильный scaling/leanMobs); десктоп — "high".
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-    this.quality = quality ?? (this.isTouch ? "med" : "high");
+    this.quality = quality ?? (xrCapable ? "high" : this.isTouch ? "med" : "high");
     const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
@@ -412,6 +414,12 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
+      // Гарантия: VR-профиль включён ровно тогда, когда мы в шлеме — какие бы
+      // события состояния XR ни пришли (или не пришли).
+      if (this.player.inVR !== this.vrQualityOn) {
+        if (this.player.inVR) this.applyVrQuality();
+        else this.restoreFlatQuality();
+      }
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
       // Автонаводка удара (только третье лицо на смартфоне) — до update(),
       // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
@@ -503,14 +511,20 @@ export class Game {
   /** Готовность WebXR — экран входа ждёт её перед показом кнопки «Войти в VR». */
   xrReady: Promise<void> = Promise.resolve();
 
-  /** Может ли это устройство в иммерсивный VR (шлем). Не виснет: таймаут 2.5 с. */
+  /** Может ли это устройство в иммерсивный VR (шлем). Не виснет: таймаут 6 с. */
   async isVrAvailable(): Promise<boolean> {
     try {
       const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } }).xr;
-      if (!xr?.isSessionSupported) return false;
-      const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), 2500));
-      return await Promise.race([xr.isSessionSupported("immersive-vr"), timeout]);
-    } catch {
+      if (!xr?.isSessionSupported) {
+        console.log("[xr] navigator.xr нет — VR недоступен");
+        return false;
+      }
+      const timeout = new Promise<boolean>((r) => setTimeout(() => r(false), 6000));
+      const ok = await Promise.race([xr.isSessionSupported("immersive-vr"), timeout]);
+      console.log(`[xr] isSessionSupported(immersive-vr) = ${ok}`);
+      return ok;
+    } catch (e) {
+      console.warn("[xr] проверка VR упала:", e);
       return false;
     }
   }
@@ -545,10 +559,16 @@ export class Game {
     // Quest), и частоту. Грузится асинхронно и сама зовёт setEnabled(true) —
     // поэтому гасим с повторами, пока профиль активен.
     this.hideGrassForVr(20);
-    // Агрессивная выбраковка + гарантия нативного разрешения буфера глаза.
+    // Агрессивная выбраковка + ПРИНУДИТЕЛЬНО нативное разрешение буфера глаза:
+    // «мобильные» пресеты ставят hardwareScaling 1.15 (рендер в 87% линейно) —
+    // в шлеме это заметное мыло, а «медленнее рендер» тут не нужно.
     this.scene.performancePriority = 2;
-    if (this.engine.getHardwareScalingLevel() > 1) this.engine.setHardwareScalingLevel(1);
-    console.log("[xr] VR-профиль: трава/ночные лампы off, aggressive culling");
+    const hw = this.engine.getHardwareScalingLevel();
+    if (hw !== 1) this.engine.setHardwareScalingLevel(1);
+    console.log(
+      `[xr] VR-профиль включён (пресет «${this.quality}»): трава off, ночные лампы off, ` +
+        `hardwareScaling ${hw} -> 1, aggressive culling`,
+    );
   }
 
   private hideGrassForVr(tries: number): void {
@@ -780,6 +800,31 @@ export class Game {
    */
   printLoadout(): void {
     printLoadout();
+  }
+
+  /** Диагностика производительности VR: `game.vrDiag()` из консоли. */
+  vrDiag(): Record<string, unknown> {
+    const sm = this.xr?.baseExperience.sessionManager;
+    const layer = (sm?.session?.renderState as { baseLayer?: XRWebGLLayer } | undefined)?.baseLayer;
+    const grass = this.scene.getMeshByName("grassBlade");
+    return {
+      inVR: this.player.inVR,
+      isTouch: this.isTouch,
+      quality: this.quality,
+      hardwareScaling: this.engine.getHardwareScalingLevel(),
+      vrProfileOn: this.vrQualityOn,
+      fps: Math.round(this.engine.getFps()),
+      xrFrameRate: sm?.currentFrameRate ?? null,
+      xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
+      eyeBuffer: layer ? `${layer.framebufferWidth}x${layer.framebufferHeight}` : null,
+      fixedFoveation: sm?.fixedFoveation ?? null,
+      grassEnabled: grass ? grass.isEnabled() : "нет меша",
+      fxaa: !!this.fxaa,
+      sharpen: !!this.sharpen,
+      activeMeshes: this.scene.getActiveMeshes().length,
+      totalMeshes: this.scene.meshes.length,
+      lights: this.scene.lights.filter((l) => l.isEnabled()).length,
+    };
   }
 
   /**

@@ -103,7 +103,7 @@ async function bootGame(): Promise<void> {
   const stored = asQuality(localStorage.getItem(QUALITY_KEY));
   const quality =
     asQuality(params.get("q")) ?? (stored ? clampQuality(stored, restrictQ) : undefined);
-  const game = new Game(canvas, quality);
+  const game = new Game(canvas, quality, xrCapable);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();
 
