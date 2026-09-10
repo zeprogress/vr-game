@@ -30,6 +30,7 @@ import { SpellLights } from "../world/SpellLights";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
+import type { WornWeapon } from "../ui/itemStats";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
   LOADOUT,
@@ -63,7 +64,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { ADMIN_NICK, BOSS, BOT, PLAYER, RESPAWN } from "#shared/constants";
+import { ADMIN_NICK, BOSS, BOT, PLAYER, RESPAWN, SKILL } from "#shared/constants";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -136,6 +137,9 @@ export class Game {
   /** Своя модель — только на смартфоне (вид от третьего лица). */
   private localAvatar: LocalAvatar | null = null;
   private readonly aim = new Vector3(0, 0, 1);
+  /** Локальный кулдаун активного умения оружия, с (сервер тоже сверяет). */
+  private skillCdLeft = 0;
+  private skillCdTotal = 1;
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
   /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
@@ -424,6 +428,7 @@ export class Game {
       }
       this.loot.update(dt);
       this.combat.update(dt);
+      this.updateSkillAbility(dt);
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
@@ -809,6 +814,13 @@ export class Game {
     if (inp.panelToggle) this.wristPanel?.toggle();
     this.wristPanel?.setPvp(this.net?.pvpOn ?? false);
     this.wristPanel?.setLeaveBot(this.leaveBotOn);
+    if (this.wristPanel) {
+      const h = this.combat.handsSnapshot();
+      this.wristPanel.setHands(
+        h.right as WornWeapon | null,
+        h.left as WornWeapon | null,
+      );
+    }
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
@@ -1040,6 +1052,40 @@ export class Game {
    * к ближайшей цели в конусе перед ним. Удар в плоском бою летит по взгляду
    * «глаз», а те смотрят туда же, куда повёрнут персонаж.
    */
+  /**
+   * Активное умение оружия — воин «Оглушающий удар», лучник «Град стрел».
+   * Клиент только отсчитывает кулдаун для кнопки; урон/контроль считает сервер,
+   * а телеграф и FX прилетают эхом через playRemoteAct.
+   */
+  private updateSkillAbility(dt: number): void {
+    if (this.skillCdLeft > 0) this.skillCdLeft = Math.max(0, this.skillCdLeft - dt);
+    const kind = this.combat.abilityKind;
+    const inp = this.player.lastInput;
+    if (
+      inp.ability &&
+      kind &&
+      !this.player.dead &&
+      this.skillCdLeft <= 0 &&
+      this.net?.online
+    ) {
+      const msg: { kind: "stunBash" | "arrowRain"; x?: number; z?: number } = { kind };
+      if (kind === "arrowRain") {
+        const hl = Math.hypot(this.aim.x, this.aim.z) || 1;
+        const p = this.player.position;
+        msg.x = p.x + (this.aim.x / hl) * SKILL.arrowRain.range;
+        msg.z = p.z + (this.aim.z / hl) * SKILL.arrowRain.range;
+      }
+      this.net.sendSkill(msg);
+      this.skillCdTotal =
+        kind === "stunBash" ? SKILL.stunBash.cooldown : SKILL.arrowRain.cooldown;
+      this.skillCdLeft = this.skillCdTotal;
+    }
+    // Индикатор готовности на кнопке умения (телефон) и на запястье (VR).
+    const frac = kind ? this.skillCdLeft / this.skillCdTotal : -1;
+    this.touchInput?.setSkillCd(frac);
+    this.wristPanel?.setSkillCd(frac);
+  }
+
   private aimAssistTouch(dt: number): void {
     if (!this.player.thirdPerson) return; // только смартфонное третье лицо, не VR
     if (this.player.aiming) return; // сам целится — не мешаем

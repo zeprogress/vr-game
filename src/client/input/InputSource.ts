@@ -22,6 +22,8 @@ export interface InputState {
   interact: boolean;
   /** Сбросить щит (клавиша Q в плоском режиме) — нажат в этом кадре (фронт). */
   dropItem: boolean;
+  /** Активное умение оружия (воин — оглушение, лучник — град стрел) — фронт. */
+  ability: boolean;
   /**
    * Не null только в VR при зажатой кнопке настройки меча (X на левом): сырые
    * оси стиков для правки положения меча в руке. Локомоция в это время подавлена.
@@ -64,6 +66,7 @@ export function emptyInput(): InputState {
     altFire: false,
     interact: false,
     dropItem: false,
+    ability: false,
     tune: null,
     panelToggle: false,
     uiNext: false,

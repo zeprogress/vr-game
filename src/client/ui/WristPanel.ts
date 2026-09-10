@@ -7,21 +7,34 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
+import { weaponDef, type WeaponTier } from "#shared/items";
+
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { BAG, ITEMS, type Inventory } from "../player/Inventory";
+import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 const TEX_W = 512;
-const TEX_H = 704;
+const TEX_H = 1000;
+/** Слоты рук: правая, левая (только показ характеристик, без действия). */
+const HAND_ROWS = 2;
 /**
- * Выбираемых строк: характеристики + ячейки сумки + «PvP» + «оставить бота»
- * + «выйти из мира». X идёт по ним подряд.
+ * Выбираемых строк: характеристики + ячейки сумки + две руки + «PvP»
+ * + «оставить бота» + «выйти из мира». X идёт по ним подряд.
  */
-const ROWS = STATS.length + BAG.slots + 3;
-const PVP_ROW = STATS.length + BAG.slots;
+const ROWS = STATS.length + BAG.slots + HAND_ROWS + 3;
+const RIGHT_HAND_ROW = STATS.length + BAG.slots;
+const LEFT_HAND_ROW = RIGHT_HAND_ROW + 1;
+const PVP_ROW = RIGHT_HAND_ROW + HAND_ROWS;
 const LEAVE_BOT_ROW = PVP_ROW + 1;
 const EXIT_ROW = ROWS - 1;
 const GRID_COLS = 4;
+
+const TIER_COLOR: Record<WeaponTier, string> = {
+  base: "#c9d2e6",
+  gold: "#ffd166",
+  legendary: "#c77dff",
+};
 
 /**
  * Информационная панель персонажа на левой руке (VR): характеристики
@@ -45,6 +58,28 @@ export class WristPanel {
   /** Переключить «оставить бота после выхода». Ставит Game. */
   onToggleLeaveBot: (() => void) | null = null;
   private leaveBotOn = false;
+  private rightHand: WornWeapon | null = null;
+  private leftHand: WornWeapon | null = null;
+  /** Остаток кулдауна умения 0..1; <0 — умения нет (нет меча/лука). */
+  private skillCd = -1;
+
+  /** Game: что сейчас в руках — для слотов рук и их характеристик. */
+  setHands(right: WornWeapon | null, left: WornWeapon | null): void {
+    const same = (a: WornWeapon | null, b: WornWeapon | null): boolean =>
+      a === b || (!!a && !!b && a.cls === b.cls && a.tier === b.tier);
+    if (same(right, this.rightHand) && same(left, this.leftHand)) return;
+    this.rightHand = right;
+    this.leftHand = left;
+    if (this.open) this.redraw();
+  }
+
+  /** Game: остаток кулдауна умения (0 — готово, 1 — только применили, <0 — нет). */
+  setSkillCd(frac: number): void {
+    const q = frac < 0 ? -1 : Math.round(Math.max(0, Math.min(1, frac)) * 20) / 20;
+    if (q === this.skillCd) return;
+    this.skillCd = q;
+    if (this.open) this.redraw();
+  }
 
   setPvp(on: boolean): void {
     if (on === this.pvpOn) return;
@@ -142,6 +177,9 @@ export class WristPanel {
     }
     if (!confirm) return;
 
+    if (this.selected === RIGHT_HAND_ROW || this.selected === LEFT_HAND_ROW) {
+      return; // слоты рук — только показ характеристик
+    }
     if (this.selected === PVP_ROW) {
       this.onTogglePvp?.();
       return;
@@ -245,10 +283,11 @@ export class WristPanel {
     ctx.fillText(`Свободных очков: ${p.unspent}`, 26, 296);
 
     this.drawBag(ctx);
+    this.drawHandsAndStats(ctx);
 
     // PvP
     const pvpActive = this.selected === PVP_ROW;
-    const pvpY = 548;
+    const pvpY = 838;
     if (pvpActive) {
       ctx.fillStyle = "#263048";
       ctx.fillRect(20, pvpY - 6, TEX_W - 40, 40);
@@ -266,7 +305,7 @@ export class WristPanel {
 
     // Оставить бота после выхода
     const leaveBotActive = this.selected === LEAVE_BOT_ROW;
-    const leaveBotY = 588;
+    const leaveBotY = 882;
     if (leaveBotActive) {
       ctx.fillStyle = "#263048";
       ctx.fillRect(20, leaveBotY - 6, TEX_W - 40, 40);
@@ -279,7 +318,7 @@ export class WristPanel {
 
     // Выход из мира
     const exitActive = this.selected === EXIT_ROW;
-    const exitY = 638;
+    const exitY = 928;
     if (exitActive) {
       ctx.fillStyle = this.exitArmed > 0 ? "#4a2230" : "#2a2036";
       ctx.fillRect(20, exitY - 6, TEX_W - 40, 40);
@@ -296,10 +335,112 @@ export class WristPanel {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#79839a";
-    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 676);
+    ctx.fillText("X — выбрать · B — действие · Y — закрыть", 26, 968);
 
     // invertY=true — иначе в этой сборке Babylon текстура рисуется вверх ногами.
     this.tex.update(true);
+  }
+
+  /** Слоты рук, характеристики выбранного предмета и кулдаун умения. */
+  private drawHandsAndStats(ctx: CanvasRenderingContext2D): void {
+    ctx.strokeStyle = "#3a4258";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(26, 556);
+    ctx.lineTo(TEX_W - 26, 556);
+    ctx.stroke();
+
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillStyle = "#e8ecf8";
+    ctx.fillText("РУКИ", 26, 566);
+
+    const hands: [string, WornWeapon | null, number][] = [
+      ["Правая", this.rightHand, RIGHT_HAND_ROW],
+      ["Левая", this.leftHand, LEFT_HAND_ROW],
+    ];
+    let y = 600;
+    for (const [label, w, row] of hands) {
+      const active = this.selected === row;
+      if (active) {
+        ctx.fillStyle = "#263048";
+        ctx.fillRect(20, y - 4, TEX_W - 40, 36);
+      }
+      ctx.font = `${active ? "bold " : ""}24px system-ui, sans-serif`;
+      ctx.fillStyle = active ? "#9fd0ff" : "#c9d2e6";
+      ctx.fillText(`${active ? "▸ " : "   "}${label}`, 26, y);
+      if (w) {
+        const d = weaponDef(w.cls, w.tier);
+        ctx.fillStyle = TIER_COLOR[w.tier];
+        ctx.fillText(d.name, 170, y);
+      } else {
+        ctx.fillStyle = "#6b7488";
+        ctx.fillText("пусто", 170, y);
+      }
+      y += 40;
+    }
+
+    // Характеристики выбранного: оружие руки или расходник из сумки.
+    const stats = this.selectedStats();
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillStyle = "#e8ecf8";
+    ctx.fillText("ХАРАКТЕРИСТИКИ", 26, 690);
+    ctx.font = "20px system-ui, sans-serif";
+    let sy = 720;
+    if (stats.length === 0) {
+      ctx.fillStyle = "#8c96ad";
+      ctx.fillText("выбери оружие руки или предмет сумки", 26, sy);
+    } else {
+      for (const [k, v] of stats.slice(0, 5)) {
+        ctx.fillStyle = "#8c96ad";
+        ctx.fillText(k, 26, sy);
+        ctx.fillStyle = "#dbe2f2";
+        ctx.fillText(v, 260, sy);
+        sy += 26;
+      }
+    }
+
+    // Кулдаун активного умения оружия.
+    ctx.font = "20px system-ui, sans-serif";
+    ctx.fillStyle = "#8c96ad";
+    ctx.fillText("Умение", 26, 802);
+    if (this.skillCd < 0) {
+      ctx.fillStyle = "#6b7488";
+      ctx.fillText("нет (нужен меч или лук)", 260, 802);
+    } else if (this.skillCd <= 0.001) {
+      ctx.fillStyle = "#7ee081";
+      ctx.fillText("готово — нажми стик", 260, 802);
+    } else {
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText("перезарядка…", 260, 802);
+    }
+  }
+
+  /** Характеристики выделенной строки: оружие руки или расходник сумки. */
+  private selectedStats(): [string, string][] {
+    const hero: HeroStats = {
+      level: this.prog.level,
+      str: this.prog.stats.str,
+      agi: this.prog.stats.agi,
+      int: this.prog.stats.int,
+    };
+    if (this.selected === RIGHT_HAND_ROW && this.rightHand) {
+      return weaponStats(this.rightHand, hero);
+    }
+    if (this.selected === LEFT_HAND_ROW && this.leftHand) {
+      return weaponStats(this.leftHand, hero);
+    }
+    const bagIdx = this.selected - STATS.length;
+    if (bagIdx >= 0 && bagIdx < BAG.slots) {
+      const slot = this.inv.slots[bagIdx];
+      if (slot?.item) {
+        const def = ITEMS[slot.item];
+        const out: [string, string][] = [["Предмет", def.short]];
+        if (def.heal > 0) out.push(["Лечит", `+${def.heal} HP`]);
+        out.push(["В сумке", `x${slot.count}`]);
+        return out;
+      }
+    }
+    return [];
   }
 
   /** Сетка сумки: 4x2 ячейки, выбранная подсвечена. */

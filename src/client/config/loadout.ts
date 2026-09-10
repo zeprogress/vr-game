@@ -67,6 +67,8 @@ export interface Loadout {
     panelSpend: number;
     /** Правый: прыжок. Он же «сменить шаг», когда открыта панель настроек. */
     jump: number;
+    /** Любой: нажатие стика — активное умение оружия (воин/лучник). */
+    ability: number;
   };
   /** Мир. */
   world: {
@@ -160,6 +162,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
     panelNext: 4, // X на левом
     panelSpend: 5, // B на правом
     jump: 4, // A на правом
+    ability: 3, // нажатие стика (любая рука)
   },
   world: {
     hour: 2.77, // час суток: свет, небо и место солнца

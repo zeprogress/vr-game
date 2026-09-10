@@ -9,6 +9,7 @@ import {
   type BotEmote,
   type HitMobMsg,
   type CastMsg,
+  type SkillMsg,
   type LevelUpMsg,
   type MobHitMsg,
   type MoveMsg,
@@ -276,6 +277,11 @@ export class NetClient {
   /** Каст огненного снаряда посохом (мана/урон/снаряд — сервер). */
   sendCast(msg: CastMsg): void {
     this.room?.send(MSG.cast, msg);
+  }
+
+  /** Активное умение оружия (воин — оглушение, лучник — град стрел). */
+  sendSkill(msg: SkillMsg): void {
+    this.room?.send(MSG.skill, msg);
   }
 
   /** Заявка потратить очко характеристики. */

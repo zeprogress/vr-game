@@ -23,6 +23,8 @@ export class TouchInput implements InputSource {
   private readonly btnInteract: HTMLDivElement;
   private readonly btnFire: HTMLDivElement;
   private readonly fireFill: HTMLDivElement;
+  private readonly btnAbility: HTMLDivElement;
+  private readonly abilityCd: HTMLDivElement;
 
   private moveX = 0;
   private moveY = 0;
@@ -31,6 +33,8 @@ export class TouchInput implements InputSource {
   private accZoom = 0;
   private attack = false;
   private interactBtn = false;
+  /** Фронт тапа по кнопке умения — читается один раз в sample(). */
+  private abilityTap = false;
   /** Кнопка «выстрел» у джойстика — жива только в прицеле. */
   private fireBtn = false;
 
@@ -71,6 +75,10 @@ export class TouchInput implements InputSource {
     btnFire.style.display = "none"; // видна только в прицеле
     this.fireFill = el("div", "touch-fire-fill");
     btnFire.appendChild(this.fireFill);
+    const btnAbility = el("div", "touch-btn touch-ability", "✦");
+    this.abilityCd = el("div", "touch-ability-cd");
+    btnAbility.appendChild(this.abilityCd);
+    this.btnAbility = btnAbility;
     this.btnAttack = btnAttack;
     this.btnInteract = btnInteract;
     this.btnFire = btnFire;
@@ -79,7 +87,7 @@ export class TouchInput implements InputSource {
     this.atkKnob.hidden = true;
     btnAttack.appendChild(this.atkKnob);
 
-    this.root.append(lookZone, stick, btnAttack, btnInteract, btnFire);
+    this.root.append(lookZone, stick, btnAttack, btnInteract, btnFire, btnAbility);
     document.body.appendChild(this.root);
 
     // --- Осмотр / зум: перетаскивание и щипок по правой зоне ---
@@ -145,6 +153,10 @@ export class TouchInput implements InputSource {
     // --- Кнопки ---
     hold(btnInteract, (v) => (this.interactBtn = v));
     hold(btnFire, (v) => (this.fireBtn = v));
+    btnAbility.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      this.abilityTap = true;
+    });
 
     // Кнопка удара: держишь — атака; в режиме прицела её перетаскивание
     // крутит взгляд, отпускаешь — выстрел.
@@ -212,6 +224,21 @@ export class TouchInput implements InputSource {
     this.applyAtkKnob();
   }
 
+  /**
+   * Game: остаток кулдауна умения 0..1 (1 — только применили, 0 — готово).
+   * Отрицательное значение — умения нет (нет меча/лука), кнопку прячем.
+   */
+  setSkillCd(frac: number): void {
+    if (frac < 0) {
+      this.btnAbility.style.display = "none";
+      return;
+    }
+    this.btnAbility.style.display = "";
+    const k = Math.max(0, Math.min(1, frac));
+    this.abilityCd.style.transform = `scaleY(${k})`;
+    this.btnAbility.style.opacity = k > 0.01 ? "0.5" : "1";
+  }
+
   /** Game: уровень накопленного заряда 0..1 — визуально заливает кнопку ➤. */
   setFireCharge(t: number): void {
     const k = Math.max(0, Math.min(1, t));
@@ -256,6 +283,8 @@ export class TouchInput implements InputSource {
     s.primaryAction = this.attack;
     s.altFire = this.fireBtn;
     s.interact = this.interactBtn;
+    s.ability = this.abilityTap;
+    this.abilityTap = false;
 
     this.accYaw = 0;
     this.accPitch = 0;
@@ -307,6 +336,12 @@ const STYLE = `<style>
   color: #fff; }
 .touch-attack   { right: 34px; bottom: 28px; width: 96px; height: 96px; font-size: 30px; }
 .touch-interact { bottom: 140px; }
+/* Кнопка умения — слева от большой кнопки удара. */
+.touch-ability { right: 148px; bottom: 40px; width: 66px; height: 66px; font-size: 26px;
+  background: rgba(120,90,220,0.4); border-color: rgba(190,160,255,0.7); overflow: hidden; }
+.touch-ability-cd { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%;
+  background: rgba(20,10,40,0.55); transform-origin: bottom; transform: scaleY(0);
+  pointer-events: none; }
 /* Кнопка «выстрел» в прицеле — над джойстиком движения, для левого пальца. */
 .touch-fire { left: 48px; bottom: 176px; width: 82px; height: 82px; font-size: 30px;
   background: rgba(230,120,60,0.42); border-color: rgba(255,190,140,0.75);

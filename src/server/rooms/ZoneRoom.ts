@@ -37,6 +37,7 @@ import {
   type SetSkinMsg,
   type SetLeaveBotMsg,
   type CastMsg,
+  type SkillMsg,
   type WorldLoadoutMsg,
   type SetTimeMsg,
   type ComfortMsg,
@@ -65,6 +66,7 @@ import {
   EVENT,
   MOB_CAMPS,
   RESPAWN,
+  SKILL,
   SPITTER,
   SPECTATOR_KEY,
   STREAM_NICKS,
@@ -162,6 +164,8 @@ interface Runtime {
   lastPvpAt: number;
   /** Момент последнего каста посохом — для кулдауна. */
   lastCast: number;
+  /** Момент последнего активного умения оружия (воин/лучник) — для кулдауна. */
+  lastSkillAt: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
@@ -730,6 +734,74 @@ export class ZoneRoom extends Room<ZoneState> {
         splRad,
         boltDmg * splFrac,
       );
+    });
+
+    this.onMessage(MSG.skill, (client: Client, msg: SkillMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || p.dead || !msg) return;
+      const holds = (cls: string): boolean => p.rightCls === cls || p.leftCls === cls;
+      const id = client.sessionId;
+
+      if (msg.kind === "stunBash") {
+        if (!holds("sword")) return;
+        const s = SKILL.stunBash;
+        if (this.elapsed - rt.lastSkillAt < s.cooldown) return;
+        rt.lastSkillAt = this.elapsed;
+        const hand = p.rightCls === "sword" ? "right" : "left";
+        const dmg =
+          weaponDamage("sword", p.level, p.str, multIn(p, hand), p.agi) *
+          s.dmgMult *
+          this.buffMult(id, "dmg");
+        const fx: ActRelay = {
+          k: "stunBash",
+          id,
+          x: p.head.x,
+          y: p.head.y - PLAYER.eyeHeight,
+          z: p.head.z,
+          d: s.castTime,
+        };
+        this.broadcast(MSG.act, fx);
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(id);
+          if (!pp || pp.dead) return;
+          this.broadcast(MSG.act, {
+            k: "stunHit", id,
+            x: pp.head.x, y: pp.head.y - PLAYER.eyeHeight, z: pp.head.z,
+          } satisfies ActRelay);
+          this.stunBashAt(pp, id, s.radius, s.duration, dmg);
+        }, s.castTime * 1000);
+        return;
+      }
+
+      if (msg.kind === "arrowRain") {
+        if (!holds("bow")) return;
+        const s = SKILL.arrowRain;
+        if (this.elapsed - rt.lastSkillAt < s.cooldown) return;
+        rt.lastSkillAt = this.elapsed;
+        // Точка круга: то, что прислал клиент, но не дальше s.range от игрока.
+        let tx = num(msg.x, p.head.x);
+        let tz = num(msg.z, p.head.z);
+        const ddx = tx - p.head.x;
+        const ddz = tz - p.head.z;
+        const dl = Math.hypot(ddx, ddz);
+        if (dl > s.range) {
+          tx = p.head.x + (ddx / dl) * s.range;
+          tz = p.head.z + (ddz / dl) * s.range;
+        }
+        const hand = p.rightCls === "bow" ? "right" : "left";
+        const dmg =
+          weaponDamage("arrow", p.level, p.str, multIn(p, hand), p.agi) *
+          s.dmgMult *
+          this.buffMult(id, "dmg");
+        this.broadcast(MSG.act, {
+          k: "arrowRain", id, x: tx, y: terrainHeight(tx, tz), z: tz,
+        } satisfies ActRelay);
+        this.clock.setTimeout(() => {
+          if (!this.state.players.get(id)) return;
+          this.arrowRainAt(tx, tz, id, s.radius, s.rootTime, dmg);
+        }, s.castTime * 1000);
+      }
     });
 
     this.onMessage(MSG.useItem, (client: Client, msg: UseItemMsg) => {
@@ -2213,6 +2285,7 @@ export class ZoneRoom extends Room<ZoneState> {
       invuln: RESPAWN.invuln,
       lastPvpAt: -999,
       lastCast: -999,
+      lastSkillAt: -999,
       yaw: 0,
       owned: new Set(),
       stowed: [],
@@ -3054,14 +3127,28 @@ export class ZoneRoom extends Room<ZoneState> {
       BOT.stunDamageMult *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
-    for (const t of this.mobsInRadius(p, BOT.stunRadius)) {
+    this.stunBashAt(p, bot.id, BOT.stunRadius, BOT.stunDuration, dmg);
+    this.chatSeen.set(bot.norm, Date.now());
+  }
+
+  /**
+   * Оглушающая волна вокруг корпуса `p` — общая для бота и игрока: урон + стан
+   * всем мобам в радиусе.
+   */
+  private stunBashAt(
+    p: PlayerState,
+    ownerId: string,
+    radius: number,
+    duration: number,
+    dmg: number,
+  ): void {
+    for (const t of this.mobsInRadius(p, radius)) {
       const dx = t.x - p.head.x;
       const dz = t.z - p.head.z;
       const l = Math.hypot(dx, dz) || 1;
-      this.sim.hitMob(t.id, dmg, dx / l, dz / l, bot.id);
-      this.sim.stunMob(t.id, BOT.stunDuration);
+      this.sim.hitMob(t.id, dmg, dx / l, dz / l, ownerId);
+      this.sim.stunMob(t.id, duration);
     }
-    this.chatSeen.set(bot.norm, Date.now());
   }
 
   /**
@@ -3124,20 +3211,32 @@ export class ZoneRoom extends Room<ZoneState> {
       weaponDamage("arrow", p.level, p.str, multIn(p, "right"), p.agi) *
       BOT.rainDamageMult *
       this.buffMult(bot.id, "dmg");
+    this.arrowRainAt(bot.rainX, bot.rainZ, bot.id, BOT.rainRadius, BOT.rainRootTime, dmg);
+    this.chatSeen.set(bot.norm, Date.now());
+  }
+
+  /** Град стрел по кругу (cx,cz) — общий для бота и игрока: урон + пригвождение. */
+  private arrowRainAt(
+    cx: number,
+    cz: number,
+    ownerId: string,
+    radius: number,
+    rootT: number,
+    dmg: number,
+  ): void {
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
-      const dx = m.x - bot.rainX;
-      const dz = m.z - bot.rainZ;
-      if (Math.hypot(dx, dz) > BOT.rainRadius) continue;
+      const dx = m.x - cx;
+      const dz = m.z - cz;
+      if (Math.hypot(dx, dz) > radius) continue;
       const l = Math.hypot(dx, dz) || 1;
       // Крит бросаем на каждую цель отдельно — залп, а не один выстрел.
       const critM = rollCritMult("arrow");
-      if (critM > 1) this.critFx(m.x, m.y, m.z, bot.id);
-      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, bot.id, true);
+      if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
+      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, ownerId, true);
       // Пригвождает: несколько секунд моб не может сдвинуться с места.
-      this.sim.rootMob(m.id, BOT.rainRootTime);
+      this.sim.rootMob(m.id, rootT);
     }
-    this.chatSeen.set(bot.norm, Date.now());
   }
 
   /** Кто рядом с ботом ранен и достаётся массовым хилом. */
@@ -3732,6 +3831,7 @@ export class ZoneRoom extends Room<ZoneState> {
       invuln: RESPAWN.invuln,
       lastPvpAt: -999,
       lastCast: -999,
+      lastSkillAt: -999,
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),

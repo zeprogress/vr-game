@@ -193,6 +193,15 @@ export class CombatSystem {
   get holdsStaff(): boolean {
     return !!this.held1("staff");
   }
+  /**
+   * Какое активное умение оружия доступно сейчас: меч — оглушающий удар, лук —
+   * град стрел. null, если в руках ни того, ни другого.
+   */
+  get abilityKind(): "stunBash" | "arrowRain" | null {
+    if (this.held1("sword")) return "stunBash";
+    if (this.held1("bow")) return "arrowRain";
+    return null;
+  }
   /** Текущий заряд 0..1 (0 — не кастуем) — для подсветки кристалла. */
   get chargeLevel(): number {
     return this.charge;

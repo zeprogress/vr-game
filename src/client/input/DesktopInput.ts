@@ -11,6 +11,7 @@ export class DesktopInput implements InputSource {
   private accPitch = 0;
   private mouseDown = false;
   private dropQueued = false;
+  private abilityQueued = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     window.addEventListener("keydown", this.onKeyDown);
@@ -24,6 +25,8 @@ export class DesktopInput implements InputSource {
   private onKeyDown = (e: KeyboardEvent): void => {
     this.keys.add(e.code);
     if (e.code === "KeyQ") this.dropQueued = true;
+    // Space — активное умение оружия. Не повторять от авто-repeat зажатой клавиши.
+    if (e.code === "Space" && !e.repeat) this.abilityQueued = true;
   };
   private onKeyUp = (e: KeyboardEvent): void => {
     this.keys.delete(e.code);
@@ -54,10 +57,12 @@ export class DesktopInput implements InputSource {
     s.primaryAction = this.mouseDown;
     s.interact = k.has("KeyE");
     s.dropItem = this.dropQueued;
+    s.ability = this.abilityQueued;
 
     this.accYaw = 0;
     this.accPitch = 0;
     this.dropQueued = false;
+    this.abilityQueued = false;
     return s;
   }
 
