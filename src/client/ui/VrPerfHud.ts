@@ -96,17 +96,19 @@ export class VrPerfHud {
       30,
       164,
     );
-    ctx.font = "19px monospace";
+    ctx.font = "16px monospace";
     ctx.fillStyle = "#ffd166";
-    ctx.fillText(`flag: ${s.probeMadWho ?? ""}`, 30, 190);
-    ctx.fillText(`${s.probeRelight ?? ""}`, 30, 210);
+    const who = String(s.probeMadWho ?? "");
+    ctx.fillText(who.slice(0, 96), 30, 186);
+    ctx.fillText(who.slice(96, 192), 30, 206);
+    ctx.fillText(`${s.probeRelight ?? ""}`, 30, 226);
 
-    ctx.font = "bold 26px system-ui, sans-serif";
+    ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#ff9d9d";
-    ctx.fillText("Свежие компиляции шейдеров:", 30, 238);
+    ctx.fillText("Свежие компиляции шейдеров:", 30, 252);
 
     const eff = (s.newEffects as string[]) ?? [];
-    let y = 274;
+    let y = 286;
     if (eff.length === 0) {
       ctx.font = "30px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";

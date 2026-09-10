@@ -833,9 +833,22 @@ export class Game {
       markAllMaterialsAsDirty: (f: number, cb?: unknown) => void;
     };
     const origMAD = scn.markAllMaterialsAsDirty.bind(this.scene);
+    const flags: Record<number, number> = {};
     scn.markAllMaterialsAsDirty = (f: number, cb?: unknown) => {
       p.matDirty++;
-      p.madWho = `flag ${f}`;
+      flags[f] = (flags[f] ?? 0) + 1;
+      // Стек: показываем 3 «интересных» кадра (не Game/обёртку).
+      const st = (new Error().stack ?? "")
+        .split("\n")
+        .slice(2, 12)
+        .map((l) => l.trim().replace(/^at\s+/, "").replace(/https?:\/\/[^ )]+\//, ""))
+        .filter((l) => l && !/markAllMaterialsAsDirty|installPerfProbes/.test(l));
+      p.madWho =
+        Object.entries(flags)
+          .map(([k, v]) => `f${k}:${v}`)
+          .join(" ") +
+        " | " +
+        st.slice(0, 3).join(" << ");
       return origMAD(f, cb);
     };
     // Патчим сеттеры BaseTexture, которые дёргают markAllMaterialsAsDirty —
