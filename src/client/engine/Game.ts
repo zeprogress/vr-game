@@ -31,6 +31,7 @@ import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristPanel } from "../ui/WristPanel";
 import { VrPerfHud } from "../ui/VrPerfHud";
+import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
 import { LoadoutPanel } from "../ui/LoadoutPanel";
 import {
@@ -129,6 +130,7 @@ export class Game {
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristPanel | null = null;
   private perfHud: VrPerfHud | null = null;
+  private perfInstr: SceneInstrumentation | null = null;
   private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -777,6 +779,30 @@ export class Game {
     const sm = this.xr?.baseExperience.sessionManager;
     const layer = (sm?.session?.renderState as { baseLayer?: XRWebGLLayer } | undefined)?.baseLayer;
     const grass = this.scene.getMeshByName("grassBlade");
+    // Разбивка активных мешей по категориям — видно, кто грузит кадр.
+    const active = this.scene.getActiveMeshes();
+    const bucket: Record<string, number> = {};
+    const under = (m: { parent: unknown; name: string }, root: string): boolean => {
+      let n: unknown = m;
+      while (n && typeof n === "object") {
+        if ((n as { name?: string }).name === root) return true;
+        n = (n as { parent?: unknown }).parent;
+      }
+      return false;
+    };
+    for (let i = 0; i < active.length; i++) {
+      const m = active.data[i];
+      if (!m) continue;
+      const mat = m.material?.name ?? "";
+      let k = "прочее";
+      if (m.name === "grassBlade") k = "трава";
+      else if (under(m, "hub")) k = "лагерь";
+      else if (/bark|leaf|leav/i.test(mat)) k = "деревья";
+      else if (m.skeleton) k = "риг (боты/мобы/игрок)";
+      else if (/mob|slime|bee|frog|cactoro|orc|blob|mush|spitter/i.test(m.name)) k = "мобы";
+      else if (/spark|ember|flame|fire|firefly|glow|aura|bolt/i.test(m.name + mat)) k = "эффекты";
+      bucket[k] = (bucket[k] ?? 0) + 1;
+    }
     return {
       inVR: this.player.inVR,
       isTouch: this.isTouch,
@@ -784,6 +810,7 @@ export class Game {
       hardwareScaling: this.engine.getHardwareScalingLevel(),
       vrProfileOn: this.vrQualityOn,
       fps: Math.round(this.engine.getFps()),
+      drawCalls: this.perfInstr?.drawCallsCounter.current ?? null,
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
       eyeBuffer: layer ? `${layer.framebufferWidth}x${layer.framebufferHeight}` : null,
@@ -791,9 +818,10 @@ export class Game {
       grassEnabled: grass ? grass.isEnabled() : "нет меша",
       fxaa: !!this.fxaa,
       sharpen: !!this.sharpen,
-      activeMeshes: this.scene.getActiveMeshes().length,
+      activeMeshes: active.length,
       totalMeshes: this.scene.meshes.length,
       lights: this.scene.lights.filter((l) => l.isEnabled()).length,
+      byCategory: bucket,
     };
   }
 
@@ -839,7 +867,13 @@ export class Game {
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
-    if (this.showPerfHud) this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
+    if (this.showPerfHud) {
+      if (!this.perfInstr) {
+        this.perfInstr = new SceneInstrumentation(this.scene);
+        this.perfInstr.captureActiveMeshesEvaluationTime = true;
+      }
+      this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
+    }
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
     this.wristPanel = new WristPanel(

@@ -7,8 +7,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const TEX_W = 620;
-const TEX_H = 210;
+const TEX_W = 640;
+const TEX_H = 340;
 
 /**
  * Отладочная плашка в VR: `?perf=1`. Висит перед лицом снизу, показывает
@@ -63,22 +63,39 @@ export class VrPerfHud {
 
     ctx.textBaseline = "top";
     const line = (y: number, label: string, val: unknown, warn = false): void => {
-      ctx.font = "20px system-ui, sans-serif";
+      ctx.font = "19px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
-      ctx.fillText(label, 18, y);
-      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillText(label, 16, y);
+      ctx.font = "bold 19px system-ui, sans-serif";
       ctx.fillStyle = warn ? "#ff8a8a" : "#dbe2f2";
-      ctx.fillText(String(val ?? "—"), 250, y);
+      ctx.fillText(String(val ?? "—"), 240, y);
     };
 
     const fps = Number(s.fps ?? 0);
-    line(14, "FPS", s.fps, fps > 0 && fps < 60);
-    line(42, "Частота шлема", s.xrFrameRate);
-    line(70, "Буфер глаза", s.eyeBuffer);
-    line(98, "hardwareScaling", s.hardwareScaling, Number(s.hardwareScaling ?? 1) !== 1);
-    line(126, "Мешей (актив/всего)", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
-    line(154, "Света / фовеация", `${s.lights ?? "?"} / ${s.fixedFoveation ?? "?"}`);
-    line(182, "inVR / профиль", `${s.inVR} / ${s.vrProfileOn}`);
+    line(12, "FPS", s.fps, fps > 0 && fps < 55);
+    line(37, "Вызовов отрисовки", s.drawCalls, Number(s.drawCalls ?? 0) > 400);
+    line(62, "Частота шлема", s.xrFrameRate);
+    line(87, "Буфер глаза", s.eyeBuffer);
+    line(112, "hardwareScaling", s.hardwareScaling, Number(s.hardwareScaling ?? 1) !== 1);
+    line(137, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
+    line(162, "Света", s.lights);
+
+    // Разбивка активных мешей по категориям.
+    ctx.font = "18px system-ui, sans-serif";
+    ctx.fillStyle = "#9fd0ff";
+    ctx.fillText("Активные меши по типам:", 16, 194);
+    const cats = Object.entries((s.byCategory as Record<string, number>) ?? {}).sort(
+      (a, b) => b[1] - a[1],
+    );
+    let y = 220;
+    for (const [name, n] of cats.slice(0, 5)) {
+      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillStyle = "#8c96ad";
+      ctx.fillText(name, 28, y);
+      ctx.fillStyle = "#dbe2f2";
+      ctx.fillText(String(n), 300, y);
+      y += 24;
+    }
 
     this.tex.update(true);
   }
