@@ -78,6 +78,8 @@ export class Game {
   readonly inventory = new Inventory();
   readonly hands: Hands;
   readonly isTouch: boolean;
+  /** Действующий пресет качества (из `?q=`, выбора игрока или авто по железу). */
+  readonly quality: Quality;
   private readonly ground: Mesh;
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
@@ -174,7 +176,8 @@ export class Game {
     // Смартфон по умолчанию на пресете "med" (можно переопределить `?q=`).
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-    const preset = PRESETS[quality ?? (this.isTouch ? "med" : "high")];
+    this.quality = quality ?? (this.isTouch ? "med" : "high");
+    const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
 

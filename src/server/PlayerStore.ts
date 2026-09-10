@@ -27,6 +27,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   kills?: number;
   /** Продолжать ли ботом после выхода (панель C). По умолчанию — нет. */
   leaveBot?: boolean;
+  /** ВРЕМЕННО (KEEP_BOTS_FOREVER): бот сейчас в мире — восстановить после рестарта. */
+  botActive?: boolean;
   updatedAt: number;
 }
 

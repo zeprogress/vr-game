@@ -3,6 +3,17 @@ import type { ZoneQuality } from "../world/Zone";
 /** Пресеты качества под слабое железо. `?q=potato|low|med|high`. */
 export type Quality = "potato" | "low" | "med" | "high";
 
+/** localStorage: качество, выбранное игроком на экране входа. */
+export const QUALITY_KEY = "qualityPref";
+
+/** Подписи пресетов для переключателя на экране входа (от слабого к сильному). */
+export const QUALITY_LABELS: readonly { q: Quality; label: string }[] = [
+  { q: "potato", label: "Минимум" },
+  { q: "low", label: "Низкое" },
+  { q: "med", label: "Среднее" },
+  { q: "high", label: "Высокое" },
+];
+
 export interface Preset extends ZoneQuality {
   /** engine.setHardwareScalingLevel — >1 рендерит в меньшем разрешении. */
   scaling: number;
@@ -41,7 +52,12 @@ export const PRESETS: Record<Quality, Preset> = {
   high: { scaling: 1.0, grass: 1, fireflies: 1, leanMobs: false, fpsCap: 0 },
 };
 
-/** Валидировать строку из `?q=`. */
+/** Валидировать строку из `?q=` или localStorage. */
 export function asQuality(v: string | null): Quality | null {
   return v === "potato" || v === "low" || v === "med" || v === "high" ? v : null;
+}
+
+/** На телефоне выше «Среднего» не пускаем — тянет только на слабых. */
+export function clampQuality(q: Quality, isTouch: boolean): Quality {
+  return isTouch && q === "high" ? "med" : q;
 }

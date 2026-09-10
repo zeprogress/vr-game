@@ -287,6 +287,13 @@ function normNick(n: string): string {
   return n.trim().toLowerCase().slice(0, 24);
 }
 
+/**
+ * ВРЕМЕННО: боты зрителей живут бесконечно (не деспавнятся по простою) и
+ * восстанавливаются после перезапуска сервера из сохранённых записей.
+ * Вернуть `false`, чтобы отключить.
+ */
+const KEEP_BOTS_FOREVER = true;
+
 /** Сколько HP восстановит расходник: доля недостающего (healFrac) либо плоское (heal). */
 function potionHeal(def: { heal: number; healFrac: number }, hp: number, maxHp: number): number {
   if (def.healFrac > 0) return Math.round(Math.max(0, maxHp - hp) * def.healFrac);
@@ -557,6 +564,8 @@ export class ZoneRoom extends Room<ZoneState> {
       { user: process.env.TWITCH_BOT_USER, token: process.env.TWITCH_OAUTH },
     );
     this.twitch.start();
+
+    if (KEEP_BOTS_FOREVER) this.restoreBots();
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -2042,12 +2051,38 @@ export class ZoneRoom extends Room<ZoneState> {
       this.raidGoAt = 0;
     }
     this.persistBot(bot);
+    // Явно ушёл из мира — после рестарта не поднимаем (KEEP_BOTS_FOREVER).
+    store.put(bot.rt.token ?? `nick:${norm}`, { botActive: false });
     this.state.players.delete(bot.id);
     this.rt.delete(bot.id);
     this.bots.delete(norm);
     store.flush();
     console.log(`[bot] - ${bot.nick} — ботов ${this.bots.size}`);
     if (this.state.players.size === 0) this.wipeWorld("мир опустел");
+  }
+
+  /**
+   * ВРЕМЕННО (KEEP_BOTS_FOREVER): при старте комнаты поднимаем всех ботов,
+   * которые были в мире до перезапуска, из сохранённых записей (`nick:*`).
+   */
+  private restoreBots(): void {
+    let n = 0;
+    const cutoff = Date.now() - 3 * 3600_000; // не поднимаем давно заброшенных
+    for (const rec of store.entries()) {
+      if (!rec.token?.startsWith("nick:")) continue;
+      if (rec.botActive === false) continue; // явно сделал !stop
+      if (rec.botActive !== true && (rec.updatedAt ?? 0) < cutoff) continue;
+      const norm = normNick(rec.token.slice(5));
+      if (!norm || this.bots.has(norm)) continue;
+      if (this.bots.size >= BOT.maxBots) {
+        console.log(`[bot] восстановление остановлено на потолке ${BOT.maxBots}`);
+        break;
+      }
+      this.spawnBot(rec.nick || norm, norm);
+      this.chatSeen.set(norm, Date.now());
+      n++;
+    }
+    if (n) console.log(`[bot] восстановлено после рестарта: ${n}`);
   }
 
   private persistBot(bot: Bot): void {
@@ -2071,6 +2106,7 @@ export class ZoneRoom extends Room<ZoneState> {
       ...readProgress(p),
       bag: [],
       kills: bot.rt.kills,
+      botActive: true, // в мире — восстановить после рестарта (KEEP_BOTS_FOREVER)
     });
   }
 
@@ -2905,6 +2941,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const idleLimit = BOT.idleDespawnSec * 1000 * (streamActive ? 5 : 1);
     for (const bot of [...this.bots.values()]) {
       if (
+        !KEEP_BOTS_FOREVER && // ВРЕМЕННО: боты не деспавнятся по простою
         !STREAM_NICKS.includes(bot.norm) &&
         nowMs - (this.chatSeen.get(bot.norm) ?? 0) > idleLimit
       ) {

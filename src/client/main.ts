@@ -1,6 +1,7 @@
 import { Game } from "./engine/Game";
 import { NetClient } from "./net/NetClient";
 import { runLogin } from "./ui/Login";
+import { asQuality, clampQuality, QUALITY_KEY } from "./config/quality";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
@@ -77,9 +78,14 @@ function bootSpectator(specKey: string): void {
 }
 
 function bootGame(): void {
-  const q = params.get("q");
+  // Качество: явный ?q= (для отладки, без ограничений) > выбор игрока на входе
+  // (на телефоне не выше «Среднего») > авто по железу.
+  const isTouch =
+    window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+  const stored = asQuality(localStorage.getItem(QUALITY_KEY));
   const quality =
-    q === "potato" || q === "low" || q === "med" || q === "high" ? q : undefined;
+    asQuality(params.get("q")) ??
+    (stored ? clampQuality(stored, isTouch) : undefined);
   const game = new Game(canvas, quality);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();
@@ -108,6 +114,8 @@ function bootGame(): void {
       whenXrReady: () => game.xrReady,
       enterVR: () => game.enterVR(),
       requestPointerLock: () => game.requestPointerLock(),
+      currentQuality: () => game.quality,
+      isTouch: () => game.isTouch,
     },
     streamMode,
   ).then(({ nick, vr }) => {
