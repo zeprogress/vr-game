@@ -168,34 +168,25 @@ export class Game {
    */
   private leaveBotOn = false;
 
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
-    quality?: Quality,
-    xrCapable = false,
-  ) {
+  constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
-    // Смартфон по умолчанию на "med"; шлем — на "high" (в VR всё равно сверху
-    // ложится лёгкий VR-профиль, но НЕ мобильный scaling/leanMobs); десктоп — "high".
+    // Выбора качества больше нет — всегда максимум на всех платформах (в VR
+    // сверху ложится лёгкий профиль, см. applyVrQuality).
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-    this.quality = quality ?? (xrCapable ? "high" : this.isTouch ? "med" : "high");
+    this.quality = "high";
     const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
 
-    // Резкость: смартфон рендерит в меньшем разрешении, лёгкий шарпен
-    // компенсирует мыло. `?sharpen=` 0..1.5 переопределяет (для теста).
+    // Резкость кадра — только по явному `?sharpen=` 0..1.5 (для теста).
     const spRaw = new URLSearchParams(location.search).get("sharpen");
     const sp = spRaw === null ? NaN : Number(spRaw);
-    this.sharpenAmount = Number.isFinite(sp)
-      ? Math.max(0, Math.min(1.5, sp))
-      : this.isTouch
-        ? 0.35
-        : 0;
+    this.sharpenAmount = Number.isFinite(sp) ? Math.max(0, Math.min(1.5, sp)) : 0;
 
     preloadWeaponModels(this.scene); // модели меча/лука — до первого createSword
 
@@ -550,47 +541,23 @@ export class Game {
   private applyVrQuality(): void {
     if (this.vrQualityOn) return;
     this.vrQualityOn = true;
-    // Ночная подсветка (PointLight'ы) — совсем гасим: в шлеме каждый источник
-    // бьёт вдвое (два глаза) на слабом GPU.
+    // Единственное, что режем в VR: ночные PointLight'ы (лампы светлячков +
+    // факелы ботов). В шлеме каждый источник считается дважды (два глаза) и
+    // ночью это ощутимо тормозило; днём они и так погашены. Всё остальное —
+    // трава, разрешение, эффекты — на максимуме, как на десктопе.
     this.fireflies.setLampBudget(0);
     this.botLights.setForceOff(true);
-    // Трава — самый тяжёлый меш сцены (тысячи thin-instance с alpha-cutout).
-    // На «Высоком» её ковёр в шлеме роняет и разрешение (динамический скейл
-    // Quest), и частоту. Грузится асинхронно и сама зовёт setEnabled(true) —
-    // поэтому гасим с повторами, пока профиль активен.
-    this.hideGrassForVr(20);
-    // Агрессивная выбраковка + ПРИНУДИТЕЛЬНО нативное разрешение буфера глаза:
-    // «мобильные» пресеты ставят hardwareScaling 1.15 (рендер в 87% линейно) —
-    // в шлеме это заметное мыло, а «медленнее рендер» тут не нужно.
-    this.scene.performancePriority = 2;
-    const hw = this.engine.getHardwareScalingLevel();
-    if (hw !== 1) this.engine.setHardwareScalingLevel(1);
-    console.log(
-      `[xr] VR-профиль включён (пресет «${this.quality}»): трава off, ночные лампы off, ` +
-        `hardwareScaling ${hw} -> 1, aggressive culling`,
-    );
+    // Гарантия нативного разрешения буфера глаза.
+    if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);
+    console.log("[xr] VR: ночные лампы off, разрешение нативное, остальное — максимум");
   }
 
-  private hideGrassForVr(tries: number): void {
-    if (!this.vrQualityOn) return;
-    const g = this.scene.getMeshByName("grassBlade");
-    if (g) {
-      g.setEnabled(false);
-      return;
-    }
-    if (tries > 0) setTimeout(() => this.hideGrassForVr(tries - 1), 300);
-  }
-
-  /** Вернуть флэт-настройки при выходе из VR. */
+  /** Вернуть всё при выходе из VR. */
   private restoreFlatQuality(): void {
     if (!this.vrQualityOn) return;
     this.vrQualityOn = false;
-    const preset = PRESETS[this.quality];
     this.fireflies.setLampBudget(Infinity); // дефолт — без ограничения
-    if (preset.botTorches !== false) this.botLights.setForceOff(false);
-    this.scene.getMeshByName("grassBlade")?.setEnabled((preset.grass ?? 1) > 0);
-    this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
-    if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
+    this.botLights.setForceOff(false);
   }
 
   enterVR(): Promise<boolean> {

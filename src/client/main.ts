@@ -1,7 +1,6 @@
 import { Game } from "./engine/Game";
 import { NetClient } from "./net/NetClient";
 import { runLogin } from "./ui/Login";
-import { asQuality, clampQuality, QUALITY_KEY } from "./config/quality";
 
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
@@ -31,7 +30,7 @@ if (params.has("dash")) {
 } else if (params.get("spectator")) {
   bootSpectator(params.get("spectator") as string);
 } else {
-  void bootGame();
+  bootGame();
 }
 
 /** Пульт стрима (этап 17 Ф5): /?dash=КЛЮЧ (или ?dash=1 после первого раза). */
@@ -77,33 +76,10 @@ function bootSpectator(specKey: string): void {
   })();
 }
 
-async function bootGame(): Promise<void> {
-  // Качество: явный ?q= (для отладки, без ограничений) > выбор игрока на входе
-  // (на телефоне не выше «Среднего») > авто по железу.
-  const isTouch =
-    window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
-  // VR-шлем тоже «coarse pointer», но тянет «Высокое» — ограничиваем по качеству
-  // только телефоны (тач без иммерсивного WebXR). navigator.xr на телефоне без
-  // шлема отвечает сразу (или его вовсе нет); если проверка зависла — это почти
-  // наверняка медленный браузер шлема, поэтому по таймауту НЕ ограничиваем.
-  const xrCapable = await Promise.race([
-    (async () => {
-      try {
-        const xr = (navigator as { xr?: { isSessionSupported?(m: string): Promise<boolean> } })
-          .xr;
-        if (!xr?.isSessionSupported) return false;
-        return await xr.isSessionSupported("immersive-vr");
-      } catch {
-        return false;
-      }
-    })(),
-    new Promise<boolean>((r) => setTimeout(() => r(true), 1500)),
-  ]);
-  const restrictQ = isTouch && !xrCapable;
-  const stored = asQuality(localStorage.getItem(QUALITY_KEY));
-  const quality =
-    asQuality(params.get("q")) ?? (stored ? clampQuality(stored, restrictQ) : undefined);
-  const game = new Game(canvas, quality, xrCapable);
+function bootGame(): void {
+  // Качество графики выбора больше нет — всегда максимум на всех платформах.
+  // В VR сверху ложится лёгкий профиль (см. Game.applyVrQuality).
+  const game = new Game(canvas);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR();
 
@@ -131,9 +107,6 @@ async function bootGame(): Promise<void> {
       whenXrReady: () => game.xrReady,
       enterVR: () => game.enterVR(),
       requestPointerLock: () => game.requestPointerLock(),
-      currentQuality: () => game.quality,
-      isTouch: () => game.isTouch,
-      restrictQuality: () => restrictQ,
     },
     streamMode,
   ).then(({ nick, vr }) => {
