@@ -443,6 +443,11 @@ function affixIn(p: PlayerState, hand: "left" | "right"): WeaponAffix | undefine
   return h ? weaponAffix(h.cls, h.tier) : undefined;
 }
 
+/** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
+function tierRank(t: WeaponTier | string): number {
+  return t === "legendary" ? 2 : t === "gold" ? 1 : 0;
+}
+
 function readProgress(p: PlayerState): Progress {
   return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int };
 }
@@ -1828,11 +1833,11 @@ export class ZoneRoom extends Room<ZoneState> {
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
 
     // Перекос характеристик сменился — меняем оружие бота на лету. Если он нёс
-    // найденный золотой меч, а билд стал не мечевым — меч падает на поляну.
+    // найденный апгрейд (gold/legendary), а билд сменил класс — оружие падает.
     const w = botWeaponFor(p.str, p.agi, p.int);
     if (w !== p.rightCls) {
-      if (p.rightTier === "gold" && p.rightCls === "sword") {
-        this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
+      if (p.rightTier !== "base" && isWeaponClass(p.rightCls)) {
+        this.sim.dropWeapon(p.rightCls, p.rightTier as WeaponTier, p.head.x, p.head.z);
       }
       p.rightCls = w;
       p.rightTier = "base";
@@ -1910,11 +1915,11 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.mana, p.maxMana);
 
-    // Билд стал нейтральным — оружие возвращается к мечу (золотой не-меч роняем).
+    // Билд стал нейтральным — оружие возвращается к мечу (апгрейд не-меч роняем).
     const w = botWeaponFor(p.str, p.agi, p.int);
     if (w !== p.rightCls) {
-      if (p.rightTier === "gold" && p.rightCls === "sword") {
-        this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
+      if (p.rightTier !== "base" && isWeaponClass(p.rightCls)) {
+        this.sim.dropWeapon(p.rightCls, p.rightTier as WeaponTier, p.head.x, p.head.z);
       }
       p.rightCls = w;
       p.rightTier = "base";
@@ -2044,18 +2049,22 @@ export class ZoneRoom extends Room<ZoneState> {
     // Оружие строго по преобладающей характеристике: сила→меч, ловкость→лук,
     // интеллект→посох (ничья / нет перекоса → меч).
     const rc = botWeaponFor(p.str, p.agi, p.int);
-    const hadGold =
-      savedHeld.right?.cls === "sword" && savedHeld.right?.tier === "gold";
+    // Найденный на земле апгрейд (gold/legendary) СВОЕГО класса — сохраняем;
+    // не своего — роняем обратно, кто-нибудь подберёт.
+    const savedRight = savedHeld.right;
+    const keepRight =
+      savedRight && savedRight.cls === rc && savedRight.tier !== "base";
     p.rightCls = rc;
-    // Золотой меч (найден на земле) остаётся только у мечевого билда; иначе
-    // роняем его обратно на поляну — кто-нибудь подберёт.
-    p.rightTier = hadGold && rc === "sword" ? "gold" : "base";
-    if (hadGold && rc !== "sword") {
-      this.sim.dropWeapon("sword", "gold", p.head.x, p.head.z);
+    p.rightTier = keepRight ? savedRight!.tier : "base";
+    if (savedRight && savedRight.tier !== "base" && savedRight.cls !== rc) {
+      this.sim.dropWeapon(savedRight.cls, savedRight.tier, p.head.x, p.head.z);
     }
-    // Лук занимает обе руки — без щита; меч/посох — со щитом.
+    // Лук занимает обе руки — без щита; меч/посох — со щитом (легендарная
+    // «Эгида» из лута сохраняется).
+    const keepAegis =
+      rc !== "bow" && savedHeld.left?.cls === "shield" && savedHeld.left.tier === "legendary";
     p.leftCls = rc === "bow" ? "" : "shield";
-    p.leftTier = rc === "bow" ? "" : "base";
+    p.leftTier = rc === "bow" ? "" : keepAegis ? "legendary" : "base";
     // Зелья выдаём при каждом выходе в мир — подбирать их на земле бот
     // умеет (см. pickupLoot), но без стартового запаса первый бой может
     // не пережить.
@@ -2187,7 +2196,14 @@ export class ZoneRoom extends Room<ZoneState> {
       // Золотое оружие бот не "покупал" — нашёл на земле (lootTarget в tickBot),
       // но право распоряжаться им то же: если зритель зайдёт за этого героя
       // сам, он должен суметь и покидать его обратно (см. MSG.dropWeapon).
-      owned: p.rightTier === "gold" ? [weaponKey(p.rightCls as WeaponClass, "gold")] : [],
+      owned: [
+        ...(p.rightTier === "gold" || p.rightTier === "legendary"
+          ? [weaponKey(p.rightCls as WeaponClass, p.rightTier as WeaponTier)]
+          : []),
+        ...(p.leftCls === "shield" && p.leftTier === "legendary"
+          ? [weaponKey("shield", "legendary")]
+          : []),
+      ],
       stowed: [],
       held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
       overrides: {},
@@ -2344,17 +2360,25 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     // Лут на земле — идём поднять раньше, чем добивать моба (моб подождёт).
-    // Приоритет: золотое оружие СВОЕГО класса (разовый апгрейд) > бутылка зелья
+    // Приоритет: апгрейд оружия СВОЕГО класса (gold/legendary) > бутылка зелья
     // (пока в сумке меньше BOT.potions+2 — не тащимся через полкарты за лишней).
-    const wantGoldWeapon = p.rightTier !== "gold";
     const wantPotion = countPotions(p) < BOT.potions + 2;
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d) return false;
       const w = ITEMS[d.item].weapon;
-      // Золотое оружие с босса лежит далеко от домашней зоны бота — за ним
-      // идём в любом случае (радиус проверяем ниже). Зелья — только у дома.
-      if (w) return wantGoldWeapon && w.cls === p.rightCls && w.tier === "gold";
+      if (w) {
+        // Легендарная «Эгида» — апгрейд ЛЕВОЙ руки (у кого щит есть).
+        if (w.cls === "shield") {
+          return (
+            w.tier === "legendary" &&
+            p.leftCls === "shield" &&
+            (p.leftTier as WeaponTier) !== "legendary"
+          );
+        }
+        // Оружие своего класса — берём, только если тир ВЫШЕ текущего.
+        return w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
+      }
       return (wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
     };
     if (!okLoot(loot)) {
@@ -2682,12 +2706,18 @@ export class ZoneRoom extends Room<ZoneState> {
         let took = false;
         const lw = ITEMS[loot.item].weapon;
         if (lw) {
-          // золотое оружие своего класса — вооружаемся
           this.sim.takeDrop(loot.id);
-          p.rightCls = lw.cls;
-          p.rightTier = lw.tier;
-          p.leftCls = lw.cls === "bow" ? "" : "shield";
-          p.leftTier = lw.cls === "bow" ? "" : "base";
+          if (lw.cls === "shield") {
+            // «Эгида» — в левую руку, правое оружие не трогаем.
+            p.leftCls = "shield";
+            p.leftTier = lw.tier;
+          } else {
+            const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+            p.rightCls = lw.cls;
+            p.rightTier = lw.tier;
+            p.leftCls = lw.cls === "bow" ? "" : "shield";
+            p.leftTier = lw.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+          }
           bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
           this.persistBot(bot);
           console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}`);
