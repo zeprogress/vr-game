@@ -7,8 +7,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const TEX_W = 660;
-const TEX_H = 440;
+const TEX_W = 680;
+const TEX_H = 470;
 
 /**
  * Отладочная плашка в VR: `?perf=1`. Висит перед лицом снизу, показывает
@@ -86,21 +86,34 @@ export class VrPerfHud {
     line(127, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
     line(150, "Света / частота шлема", `${s.lights ?? "?"} / ${s.xrFrameRate ?? "?"}`);
 
+    // Недавно скомпилированные шейдеры — если тут что-то каждый тик, это оно.
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillStyle = "#ff8a8a";
+    ctx.fillText("Свежие компиляции шейдеров:", 16, 182);
+    const eff = (s.newEffects as string[]) ?? [];
+    let y = 204;
+    for (const e of eff.slice(-4)) {
+      ctx.fillStyle = "#dbe2f2";
+      ctx.font = "14px monospace";
+      ctx.fillText(e.slice(0, 52), 20, y);
+      y += 19;
+    }
+
     // Разбивка активных мешей по «основе» имени.
-    ctx.font = "18px system-ui, sans-serif";
+    ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#9fd0ff";
-    ctx.fillText("Активные меши по имени (топ):", 16, 182);
+    ctx.fillText("Активные меши (топ):", 16, y + 8);
+    y += 30;
     const cats = Object.entries((s.byCategory as Record<string, number>) ?? {}).sort(
       (a, b) => b[1] - a[1],
     );
-    let y = 208;
-    for (const [name, n] of cats.slice(0, 9)) {
-      ctx.font = "17px system-ui, sans-serif";
+    for (const [name, n] of cats.slice(0, 5)) {
+      ctx.font = "15px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
       ctx.fillText(name.slice(0, 34), 28, y);
       ctx.fillStyle = n >= 100 ? "#ff8a8a" : "#dbe2f2";
       ctx.fillText(String(n), 470, y);
-      y += 23;
+      y += 20;
     }
 
     this.tex.update(true);

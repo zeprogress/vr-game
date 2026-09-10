@@ -133,6 +133,8 @@ export class Game {
   private perfHud: VrPerfHud | null = null;
   private perfInstr: SceneInstrumentation | null = null;
   private engInstr: EngineInstrumentation | null = null;
+  private prevEffectKeys = new Set<string>();
+  private lastNewEffects: string[] = [];
   private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
@@ -822,6 +824,23 @@ export class Game {
     printLoadout();
   }
 
+  /** Какие шейдеры движок скомпилировал с прошлого вызова — ищем per-frame пересборку. */
+  private diffEffects(): string[] {
+    const cache = (this.engine as unknown as { _compiledEffects?: Record<string, unknown> })
+      ._compiledEffects;
+    if (!cache) return this.lastNewEffects;
+    const added: string[] = [];
+    for (const k of Object.keys(cache)) {
+      if (!this.prevEffectKeys.has(k)) {
+        this.prevEffectKeys.add(k);
+        // Ключ длинный (shaderName+defines) — берём начало, там имя и главные define'ы.
+        added.push(k.replace(/\n/g, " ").slice(0, 90));
+      }
+    }
+    if (added.length) this.lastNewEffects = added.slice(-4);
+    return this.lastNewEffects;
+  }
+
   /** Диагностика производительности VR: `game.vrDiag()` из консоли. */
   vrDiag(): Record<string, unknown> {
     const sm = this.xr?.baseExperience.sessionManager;
@@ -859,6 +878,7 @@ export class Game {
       drawCalls: this.perfInstr?.drawCallsCounter.current ?? null,
       shaderMs: this.engInstr ? Math.round(this.engInstr.shaderCompilationTimeCounter.current) : null,
       shaderN: this.engInstr ? this.engInstr.shaderCompilationTimeCounter.count : null,
+      newEffects: this.diffEffects(),
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
       eyeBuffer: layer ? `${layer.framebufferWidth}x${layer.framebufferHeight}` : null,
