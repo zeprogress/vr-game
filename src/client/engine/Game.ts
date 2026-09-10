@@ -834,13 +834,35 @@ export class Game {
     const origMAD = scn.markAllMaterialsAsDirty.bind(this.scene);
     scn.markAllMaterialsAsDirty = (f: number, cb?: unknown) => {
       p.matDirty++;
-      // Кто вызвал: берём осмысленный кадр стека (не Game/Babylon-обёртки).
-      const st = (new Error().stack ?? "").split("\n").slice(2, 9);
-      const hit = st.find((l) => /\.ts|nature|Fireflies|Hub|Zone|Sky|DayTime|models|Mob|Avatar/.test(l))
-        ?? st[0] ?? "";
-      p.madWho = hit.trim().replace(/^at\s+/, "").slice(0, 46) + ` [flag ${f}]`;
+      p.madWho = `flag ${f}`;
       return origMAD(f, cb);
     };
+    // Патчим сеттеры BaseTexture, которые дёргают markAllMaterialsAsDirty —
+    // показываем ИМЯ текстуры (nameTagTex / skyGrad / sayTex / …).
+    try {
+      const bt = this.scene.textures[0];
+      if (bt) {
+        let proto = Object.getPrototypeOf(bt) as object | null;
+        while (proto && !Object.getOwnPropertyDescriptor(proto, "hasAlpha")) {
+          proto = Object.getPrototypeOf(proto);
+        }
+        const d = proto && Object.getOwnPropertyDescriptor(proto, "hasAlpha");
+        if (d?.set && d.get && proto) {
+          const set = d.set;
+          Object.defineProperty(proto, "hasAlpha", {
+            get: d.get,
+            set(this: { name?: string; _hasAlpha?: boolean }, v: boolean) {
+              if (this._hasAlpha !== v) {
+                p.madWho = `hasAlpha:${this.name ?? "?"}=${v}`;
+              }
+              set.call(this, v);
+            },
+          });
+        }
+      }
+    } catch {
+      /* не критично */
+    }
     // Light.setEnabled — общий прототип.
     const anyLight = this.scene.lights[0] as unknown as {
       constructor: { prototype: { setEnabled: (v: boolean) => void } };
