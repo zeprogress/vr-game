@@ -7,8 +7,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const TEX_W = 640;
-const TEX_H = 340;
+const TEX_W = 660;
+const TEX_H = 440;
 
 /**
  * Отладочная плашка в VR: `?perf=1`. Висит перед лицом снизу, показывает
@@ -80,21 +80,21 @@ export class VrPerfHud {
     line(137, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
     line(162, "Света", s.lights);
 
-    // Разбивка активных мешей по категориям.
+    // Разбивка активных мешей по «основе» имени.
     ctx.font = "18px system-ui, sans-serif";
     ctx.fillStyle = "#9fd0ff";
-    ctx.fillText("Активные меши по типам:", 16, 194);
+    ctx.fillText("Активные меши по имени (топ):", 16, 194);
     const cats = Object.entries((s.byCategory as Record<string, number>) ?? {}).sort(
       (a, b) => b[1] - a[1],
     );
     let y = 220;
-    for (const [name, n] of cats.slice(0, 5)) {
-      ctx.font = "18px system-ui, sans-serif";
+    for (const [name, n] of cats.slice(0, 9)) {
+      ctx.font = "17px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
-      ctx.fillText(name, 28, y);
-      ctx.fillStyle = "#dbe2f2";
-      ctx.fillText(String(n), 300, y);
-      y += 24;
+      ctx.fillText(name.slice(0, 34), 28, y);
+      ctx.fillStyle = n >= 100 ? "#ff8a8a" : "#dbe2f2";
+      ctx.fillText(String(n), 470, y);
+      y += 23;
     }
 
     this.tex.update(true);

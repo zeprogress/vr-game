@@ -779,28 +779,20 @@ export class Game {
     const sm = this.xr?.baseExperience.sessionManager;
     const layer = (sm?.session?.renderState as { baseLayer?: XRWebGLLayer } | undefined)?.baseLayer;
     const grass = this.scene.getMeshByName("grassBlade");
-    // Разбивка активных мешей по категориям — видно, кто грузит кадр.
+    // Разбивка активных мешей по «основе» имени (без цифр/координат/instance) —
+    // видно поимённо, кто плодит меши.
     const active = this.scene.getActiveMeshes();
     const bucket: Record<string, number> = {};
-    const under = (m: { parent: unknown; name: string }, root: string): boolean => {
-      let n: unknown = m;
-      while (n && typeof n === "object") {
-        if ((n as { name?: string }).name === root) return true;
-        n = (n as { parent?: unknown }).parent;
-      }
-      return false;
-    };
+    const stem = (name: string): string =>
+      name
+        .replace(/\s*\(.*$/, "") // "(instance of ...)"
+        .replace(/[_.-]?-?\d[\d._-]*$/, "") // хвост из цифр/координат
+        .replace(/\d+/g, "") // цифры внутри
+        .trim() || "?";
     for (let i = 0; i < active.length; i++) {
       const m = active.data[i];
       if (!m) continue;
-      const mat = m.material?.name ?? "";
-      let k = "прочее";
-      if (m.name === "grassBlade") k = "трава";
-      else if (under(m, "hub")) k = "лагерь";
-      else if (/bark|leaf|leav/i.test(mat)) k = "деревья";
-      else if (m.skeleton) k = "риг (боты/мобы/игрок)";
-      else if (/mob|slime|bee|frog|cactoro|orc|blob|mush|spitter/i.test(m.name)) k = "мобы";
-      else if (/spark|ember|flame|fire|firefly|glow|aura|bolt/i.test(m.name + mat)) k = "эффекты";
+      const k = stem(m.name);
       bucket[k] = (bucket[k] ?? 0) + 1;
     }
     return {
