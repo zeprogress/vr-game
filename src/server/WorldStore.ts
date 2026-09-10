@@ -31,6 +31,8 @@ export interface PultSettings {
   botsOnly: boolean;
   /** Включены ли мобы в мире. */
   mobsOn: boolean;
+  /** Токен одноразовой чистки ботов — см. BOT_WIPE_TOKEN в ZoneRoom. */
+  botWipe: string;
 }
 
 interface WorldRecord {

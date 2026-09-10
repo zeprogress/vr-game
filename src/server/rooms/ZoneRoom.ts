@@ -294,6 +294,13 @@ function normNick(n: string): string {
  */
 const KEEP_BOTS_FOREVER = true;
 
+/**
+ * Одноразовая чистка всех ботов зрителей. Поменять токен → при следующем
+ * старте сервера все записи `nick:*` помечаются botActive:false (прогресс
+ * сохраняется, бот просто не поднимается; зритель вернёт его через `!play`).
+ */
+const BOT_WIPE_TOKEN = "2026-09-10-a";
+
 /** Сколько HP восстановит расходник: доля недостающего (healFrac) либо плоское (heal). */
 function potionHeal(def: { heal: number; healFrac: number }, hp: number, maxHp: number): number {
   if (def.healFrac > 0) return Math.round(Math.max(0, maxHp - hp) * def.healFrac);
@@ -564,6 +571,20 @@ export class ZoneRoom extends Room<ZoneState> {
       { user: process.env.TWITCH_BOT_USER, token: process.env.TWITCH_OAUTH },
     );
     this.twitch.start();
+
+    // Разовая чистка ботов: при смене BOT_WIPE_TOKEN — один раз всех гасим.
+    if (pult.botWipe !== BOT_WIPE_TOKEN) {
+      let w = 0;
+      for (const rec of store.entries()) {
+        if (rec.token?.startsWith("nick:") && rec.botActive !== false) {
+          store.put(rec.token, { botActive: false });
+          w++;
+        }
+      }
+      store.flush();
+      world.savePult({ botWipe: BOT_WIPE_TOKEN });
+      console.log(`[bot] одноразовая чистка: снято ${w} ботов (токен ${BOT_WIPE_TOKEN})`);
+    }
 
     if (KEEP_BOTS_FOREVER) this.restoreBots();
 
