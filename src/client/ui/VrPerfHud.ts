@@ -44,12 +44,12 @@ export class VrPerfHud {
     this.draw({});
   }
 
-  /** stats — то же, что отдаёт game.vrDiag(). Троттлится внутри. */
-  update(dt: number, stats: Record<string, unknown>): void {
+  /** getStats — вернуть game.vrDiag(). Зовётся ТОЛЬКО на троттле (дорогой обход мешей). */
+  update(dt: number, getStats: () => Record<string, unknown>): void {
     this.acc += dt;
-    if (this.acc < 0.3) return;
+    if (this.acc < 0.5) return;
     this.acc = 0;
-    this.draw(stats);
+    this.draw(getStats());
   }
 
   private draw(s: Record<string, unknown>): void {
@@ -73,21 +73,22 @@ export class VrPerfHud {
 
     const fps = Number(s.fps ?? 0);
     line(12, "FPS", s.fps, fps > 0 && fps < 55);
-    line(37, "Вызовов отрисовки", s.drawCalls, Number(s.drawCalls ?? 0) > 400);
-    line(62, "Частота шлема", s.xrFrameRate);
-    line(87, "Буфер глаза", s.eyeBuffer);
-    line(112, "hardwareScaling", s.hardwareScaling, Number(s.hardwareScaling ?? 1) !== 1);
-    line(137, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
-    line(162, "Света", s.lights);
+    line(35, "мс: кадр / JS / cull / render",
+      `${s.msFrame ?? "?"} / ${s.msJS ?? "?"} / ${s.msCull ?? "?"} / ${s.msRender ?? "?"}`);
+    line(58, "Вызовов отрисовки", s.drawCalls, Number(s.drawCalls ?? 0) > 400);
+    line(81, "Буфер глаза", s.eyeBuffer);
+    line(104, "hardwareScaling", s.hardwareScaling, Number(s.hardwareScaling ?? 1) !== 1);
+    line(127, "Мешей актив / всего", `${s.activeMeshes ?? "?"} / ${s.totalMeshes ?? "?"}`);
+    line(150, "Света / частота шлема", `${s.lights ?? "?"} / ${s.xrFrameRate ?? "?"}`);
 
     // Разбивка активных мешей по «основе» имени.
     ctx.font = "18px system-ui, sans-serif";
     ctx.fillStyle = "#9fd0ff";
-    ctx.fillText("Активные меши по имени (топ):", 16, 194);
+    ctx.fillText("Активные меши по имени (топ):", 16, 182);
     const cats = Object.entries((s.byCategory as Record<string, number>) ?? {}).sort(
       (a, b) => b[1] - a[1],
     );
-    let y = 220;
+    let y = 208;
     for (const [name, n] of cats.slice(0, 9)) {
       ctx.font = "17px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";

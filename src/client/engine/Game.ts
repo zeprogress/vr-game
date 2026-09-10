@@ -802,6 +802,12 @@ export class Game {
       hardwareScaling: this.engine.getHardwareScalingLevel(),
       vrProfileOn: this.vrQualityOn,
       fps: Math.round(this.engine.getFps()),
+      msFrame: this.perfInstr ? Math.round(this.perfInstr.frameTimeCounter.current) : null,
+      msJS: this.perfInstr ? Math.round(this.perfInstr.interFrameTimeCounter.current) : null,
+      msCull: this.perfInstr
+        ? Math.round(this.perfInstr.activeMeshesEvaluationTimeCounter.current)
+        : null,
+      msRender: this.perfInstr ? Math.round(this.perfInstr.renderTimeCounter.current) : null,
       drawCalls: this.perfInstr?.drawCallsCounter.current ?? null,
       xrFrameRate: sm?.currentFrameRate ?? null,
       xrSupportedRates: sm?.supportedFrameRates ? Array.from(sm.supportedFrameRates) : null,
@@ -863,6 +869,10 @@ export class Game {
       if (!this.perfInstr) {
         this.perfInstr = new SceneInstrumentation(this.scene);
         this.perfInstr.captureActiveMeshesEvaluationTime = true;
+        this.perfInstr.captureRenderTime = true;
+        this.perfInstr.captureInterFrameTime = true;
+        this.perfInstr.captureFrameTime = true;
+        this.perfInstr.captureParticlesRenderTime = true;
       }
       this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
     }
@@ -978,7 +988,7 @@ export class Game {
       );
     }
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
-    this.perfHud?.update(dt, this.vrDiag());
+    this.perfHud?.update(dt, () => this.vrDiag());
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
     // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
