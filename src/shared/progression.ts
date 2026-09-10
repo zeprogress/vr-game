@@ -47,9 +47,30 @@ export function levelGain(level: number, curve: { perLevel: number; accel: numbe
   return curve.perLevel * L + (curve.accel * L * (L - 1)) / 2;
 }
 
-const strDmgMul = (str: number): number => 1 + (str - PROGRESSION.startStat) * PROGRESSION.str.dmgMul;
+/**
+ * «Эффективное» число вложенных очков атрибута с учётом затухания: первые
+ * `softCap` — полностью, дальше — с коэффициентом `softRate`. Все множители
+ * от атрибутов считаются от этого значения, а не от сырого числа очков.
+ */
+export function statScale(value: number): number {
+  const n = Math.max(0, value - PROGRESSION.startStat);
+  const cap = PROGRESSION.softCap;
+  return n <= cap ? n : cap + (n - cap) * PROGRESSION.softRate;
+}
+
+const strDmgMul = (str: number): number => 1 + statScale(str) * PROGRESSION.str.dmgMul;
 const agiRangedMul = (agi: number): number =>
-  1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.rangedDmgMul;
+  1 + statScale(agi) * PROGRESSION.agi.rangedDmgMul;
+
+/** Универсально: множитель урона ЛЮБЫМ оружием от ловкости (меч/кулак/бросок). */
+export function agiDamageMul(agi: number): number {
+  return 1 + statScale(agi) * PROGRESSION.agi.dmgMul;
+}
+
+/** Универсально: доля урона, поглощаемая бронёй от силы (любой источник). */
+export function armorFrac(str: number): number {
+  return Math.min(PROGRESSION.str.armorCap, statScale(str) * PROGRESSION.str.armorMul);
+}
 
 /** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
 export function weaponDmgFromLevel(level: number): number {
@@ -67,7 +88,7 @@ export function weaponDamageBase(level: number, str: number): number {
  */
 export function attackSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
   const byLevel = 1 + levelGain(level, P.atkSpeed);
-  const byAgi = 1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.atkSpeedMul;
+  const byAgi = 1 + statScale(agi) * PROGRESSION.agi.atkSpeedMul;
   return Math.min(P.atkSpeed.max, byLevel * byAgi);
 }
 
@@ -99,7 +120,7 @@ export function meleeAnimRate(level: number, agi: number = PROGRESSION.startStat
 
 export function maxHpFor(level: number, str: number): number {
   const base = PLAYER_HP.max + levelGain(level, P.hp);
-  return base * (1 + (str - PROGRESSION.startStat) * PROGRESSION.str.hpMul);
+  return base * (1 + statScale(str) * PROGRESSION.str.hpMul);
 }
 
 /** Урон мечом (базовый удар на 1 ур. при силе 1 = 1). Совместимость имени. */
@@ -109,7 +130,7 @@ export function swordDamageFor(level: number, str: number): number {
 
 export function moveSpeedFor(level: number, agi: number): number {
   const base = PLAYER.runSpeed + levelGain(level, P.moveSpeed);
-  return base * (1 + (agi - PROGRESSION.startStat) * PROGRESSION.agi.moveMul);
+  return base * (1 + statScale(agi) * PROGRESSION.agi.moveMul);
 }
 
 /** Добавка к скорости стрелы, м/с — небольшая, от уровня. */

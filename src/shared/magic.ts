@@ -1,5 +1,5 @@
 import { PROGRESSION } from "./constants";
-import { levelGain } from "./progression";
+import { levelGain, statScale } from "./progression";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -78,18 +78,28 @@ export const MAGIC = {
  */
 export function magicPowerFor(level: number, int: number): number {
   const lvl = 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
-  const intMul = 1 + (int - PROGRESSION.startStat) * PROGRESSION.int.magicMul;
+  const intMul = 1 + statScale(int) * PROGRESSION.int.magicMul;
   return lvl * intMul;
 }
 
 /** Потолок маны: базовый запас растёт от уровня, интеллект множит. */
 export function maxManaFor(level: number, int: number): number {
   const base = MAGIC.baseMana + levelGain(level, PROGRESSION.perLevel.mana);
-  return base * (1 + (int - PROGRESSION.startStat) * PROGRESSION.int.manaMul);
+  return base * (1 + statScale(int) * PROGRESSION.int.manaMul);
 }
 
 export function manaRegenFor(int: number): number {
-  return MAGIC.regenBase + (int - PROGRESSION.startStat) * MAGIC.regenPerInt;
+  return MAGIC.regenBase + statScale(int) * MAGIC.regenPerInt;
+}
+
+/** Универсально: доля урона снарядов/магии, поглощаемая от интеллекта. */
+export function magicResistFrac(int: number): number {
+  return Math.min(PROGRESSION.int.resistCap, statScale(int) * PROGRESSION.int.resistMul);
+}
+
+/** Универсально: множитель лечения зельями от интеллекта. */
+export function potionPowerFor(int: number): number {
+  return 1 + statScale(int) * PROGRESSION.int.potionMul;
 }
 
 /** Урон огненного снаряда: заряд 0..1, уровень, интеллект. */

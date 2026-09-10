@@ -112,6 +112,7 @@ import {
   atMaxLevel,
   attackSpeedFor,
   meleeSpeedFor,
+  armorFrac,
   grantXp,
   isStatName,
   maxHpFor,
@@ -125,6 +126,8 @@ import {
   MAGIC,
   maxManaFor,
   manaRegenFor,
+  magicResistFrac,
+  potionPowerFor,
   fireboltDamage,
   fireboltSpeed,
   fireboltRadius,
@@ -695,7 +698,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const used = takeOne(bag, slot);
       if (!used) return;
       writeBag(p, bag);
-      p.hp = Math.min(p.maxHp, p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp));
+      p.hp = Math.min(
+        p.maxHp,
+        p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p.int),
+      );
 
       // Соседям — звук глотка.
       const relay: ActRelay = {
@@ -2593,7 +2599,10 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!used) return;
 
     writeBag(p, bag);
-    p.hp = Math.min(p.maxHp, p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp));
+    p.hp = Math.min(
+      p.maxHp,
+      p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p.int),
+    );
     bot.drinkCd = BOT.drinkCooldown;
     // Соседям — звук глотка, как у игрока.
     const relay: ActRelay = { k: "drink", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
@@ -2619,7 +2628,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
+      weaponDamage("sword", p.level, p.str, multIn(p, "right"), p.agi) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
     const sx = mob.x;
@@ -2753,7 +2762,7 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right")) *
+      weaponDamage("sword", p.level, p.str, multIn(p, "right"), p.agi) *
       BOT.stunDamageMult *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
@@ -3178,7 +3187,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     const block = resolveBlock(guard, ax, az, h.projectile);
-    const dmg = h.dmg * block.mult;
+    // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
+    let dmg = h.dmg * block.mult * (1 - armorFrac(p.str));
+    if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
 

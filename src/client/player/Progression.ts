@@ -1,6 +1,15 @@
 import { PROGRESSION } from "#shared/constants";
-import { fireboltDamage, healAmountFor, maxManaFor, manaRegenFor } from "#shared/magic";
 import {
+  fireboltDamage,
+  healAmountFor,
+  magicResistFrac,
+  maxManaFor,
+  manaRegenFor,
+  potionPowerFor,
+} from "#shared/magic";
+import {
+  agiDamageMul,
+  armorFrac,
   arrowDamageFor,
   arrowSpeedBonusFor,
   atMaxLevel,
@@ -129,9 +138,24 @@ export class Progression {
     return maxHpFor(this.level, this.stats.str);
   }
 
-  /** Базовый множитель урона мечом (1 ур. + сила 1 = 1). Тир оружия — отдельно. */
+  /** Базовый множитель урона мечом (уровень×сила×ловкость). Тир оружия — отдельно. */
   get swordDamage(): number {
-    return swordDamageFor(this.level, this.stats.str);
+    return swordDamageFor(this.level, this.stats.str) * agiDamageMul(this.stats.agi);
+  }
+
+  /** Броня от силы: доля поглощаемого урона (любой источник), 0..cap. */
+  get armor(): number {
+    return armorFrac(this.stats.str);
+  }
+
+  /** Магзащита от интеллекта: доля поглощаемого урона снарядов/магии, 0..cap. */
+  get magicResist(): number {
+    return magicResistFrac(this.stats.int);
+  }
+
+  /** Множитель лечения зельями от интеллекта. */
+  get potionPower(): number {
+    return potionPowerFor(this.stats.int);
   }
 
   get moveSpeed(): number {

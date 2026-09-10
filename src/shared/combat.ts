@@ -1,6 +1,6 @@
 import { ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
 
-import { arrowDamageFor, weaponDamageBase } from "./progression";
+import { agiDamageMul, arrowDamageFor, weaponDamageBase } from "./progression";
 
 /** Чем игрок ударил. Урон и досягаемость сервер берёт отсюда, а не с клиента. */
 export type WeaponKind = "sword" | "fist" | "arrow" | "throw";
@@ -57,13 +57,15 @@ export function weaponDamage(
 ): number {
   switch (kind) {
     case "sword":
-      return weaponDamageBase(level, str) * mult;
+      // Урон от силы (уровень×сила), плюс универсальная добавка от ловкости.
+      return weaponDamageBase(level, str) * agiDamageMul(agi) * mult;
     case "fist":
-      // Кулак вдвое слабее меча, но так же растёт от уровня/силы.
-      return MELEE.damage * weaponDamageBase(level, str);
+      // Кулак вдвое слабее меча, но так же растёт от уровня/силы/ловкости.
+      return MELEE.damage * weaponDamageBase(level, str) * agiDamageMul(agi);
     case "throw":
-      return THROW.damage * weaponDamageBase(level, str) * mult;
+      return THROW.damage * weaponDamageBase(level, str) * agiDamageMul(agi) * mult;
     case "arrow":
+      // Стрела масштабируется от ловкости своей формулой — двойного учёта нет.
       return arrowDamageFor(level, agi) * mult;
   }
 }
