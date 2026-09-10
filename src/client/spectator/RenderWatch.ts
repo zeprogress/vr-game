@@ -21,8 +21,8 @@ const LS_KEY = "specFreezeReport";
 /** Метки времени недавних авто-перезагрузок — гасим «шторм» перезагрузок. */
 const LS_RELOADS = "specReloadTimes";
 const RELOAD_WINDOW_MS = 5 * 60_000; // окно, в котором считаем перезагрузки
-const RELOAD_BASE_MS = 1500; // задержка первой перезагрузки
-const RELOAD_MAX_MS = 120_000; // потолок задержки при частых срывах
+const RELOAD_BASE_MS = 1500; // задержка перезагрузки при 1-2 срывах
+const RELOAD_MAX_MS = 15_000; // потолок задержки при частых срывах
 
 interface Sample {
   /** Секунд от старта страницы. */
@@ -143,8 +143,16 @@ export class RenderWatch {
     setInterval(() => this.sample(), SAMPLE_EVERY);
     this.sample();
 
-    // Продержались 3 минуты без срыва — счётчик «шторма» перезагрузок обнуляем,
-    // чтобы разовый сбой через час не начинался с уже растянутой паузы.
+    // Если прошлый срыв был давно (>2 мин) — это разовый случай, не «шторм»:
+    // счётчик сразу обнуляем, чтобы новый сбой лечился без растянутой паузы.
+    try {
+      const arr = JSON.parse(localStorage.getItem(LS_RELOADS) ?? "[]") as number[];
+      const last = arr[arr.length - 1];
+      if (!last || Date.now() - last > 120_000) localStorage.removeItem(LS_RELOADS);
+    } catch {
+      /* нет стораджа */
+    }
+    // Продержались 90 секунд без срыва — тоже обнуляем.
     setTimeout(() => {
       if (!this.reloading) {
         try {
@@ -153,7 +161,7 @@ export class RenderWatch {
           /* нет стораджа */
         }
       }
-    }, 180_000);
+    }, 90_000);
 
     // Отчёт с прошлой жизни страницы (перед перезагрузкой) — отдать на сервер.
     this.flushPending();
@@ -329,10 +337,9 @@ export class RenderWatch {
     this.report(text);
     this.setStatus("ZEP GAME — восстанавливаю рендер…");
 
-    // Анти-шторм: если за последние 5 минут уже перезагружались несколько раз,
-    // значит проблема не лечится обновлением страницы (сдох GPU-процесс CEF,
-    // кончились WebGL-контексты, память бокса). Растягиваем паузу, чтобы не
-    // молотить reload раз в секунду и не превратить стрим в чёрный экран.
+    // Анти-шторм: первые пару срывов лечим сразу, дальше слегка растягиваем
+    // паузу (не больше RELOAD_MAX_MS) — только чтобы не молотить reload
+    // подряд, если проблема системная. Быстрое восстановление важнее.
     let times: number[] = [];
     try {
       times = (JSON.parse(localStorage.getItem(LS_RELOADS) ?? "[]") as number[])
@@ -340,20 +347,21 @@ export class RenderWatch {
     } catch {
       /* нет стораджа — считаем это первым срывом */
     }
-    const delay = Math.min(RELOAD_MAX_MS, RELOAD_BASE_MS * 2 ** times.length);
+    const over = Math.max(0, times.length - 1); // первые два срыва — без штрафа
+    const delay = Math.min(RELOAD_MAX_MS, RELOAD_BASE_MS + over * 3000);
     times.push(Date.now());
     try {
-      localStorage.setItem(LS_RELOADS, JSON.stringify(times.slice(-10)));
+      localStorage.setItem(LS_RELOADS, JSON.stringify(times.slice(-8)));
     } catch {
       /* переживём */
     }
 
-    // Перед перезагрузкой явно отпускаем WebGL-контекст: CEF/Chrome не всегда
-    // освобождает его при reload, и после нескольких срывов новый Engine уже
-    // не может создать контекст — страница «не загружается».
+    // Быстро отпустить контекст (расширение, не полный dispose — тот в
+    // софт-рендере CEF может подвиснуть на секунды). reload и так рвёт страницу.
     try {
       this.engine.stopRenderLoop();
-      this.engine.dispose();
+      const gl = (this.engine as unknown as { _gl?: WebGL2RenderingContext })._gl;
+      gl?.getExtension("WEBGL_lose_context")?.loseContext();
     } catch {
       /* уже мёртв */
     }

@@ -6,7 +6,6 @@
  * набора. `BOSS_MUSIC` — рядом с живым боссом.
  */
 export const TOWN_MUSIC = [
-  "/music/town-dion.mp3",
   "/music/castle-hall-1.mp3",
   "/music/castle-hall-2.mp3",
   "/music/village-waltz-1.mp3",
