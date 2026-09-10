@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
+import { Constants } from "@babylonjs/core/Engines/constants";
 
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -89,6 +90,11 @@ export class Mob implements Hittable {
   private flash = 0;
   /** 0..1 — насколько ярко моб тлеет (Пламенный меч). */
   private burnGlow = 0;
+  /** Языки пламени над мобом, пока он горит (ленивое создание). */
+  private burnFx: TransformNode | null = null;
+  private burnFlames: Mesh[] = [];
+  private burnMat: StandardMaterial | null = null;
+  private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
   private lastHurtSeq = 0;
@@ -465,12 +471,12 @@ export class Mob implements Hittable {
       this.bar.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
 
-    // Горение (Пламенный меч): тлеющий оранжевый пульс, пока s.burning > 0.
-    if (s.burning > 0 && !s.dead) {
-      this.burnGlow = Math.min(1, this.burnGlow + dt * 5);
-    } else {
-      this.burnGlow = Math.max(0, this.burnGlow - dt * 3);
-    }
+    // Горение (Пламенный меч): языки пламени над мобом + тлеющий пульс тела.
+    const burning = s.burning > 0 && !s.dead;
+    this.burnGlow = burning
+      ? Math.min(1, this.burnGlow + dt * 5)
+      : Math.max(0, this.burnGlow - dt * 3);
+    this.updateBurnFx(dt);
     const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
 
     this.mat.emissiveColor.set(
@@ -622,6 +628,53 @@ export class Mob implements Hittable {
     }
   }
 
+  /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
+   *  и всплывают. Создаётся при первом горении, дальше просто вкл/выкл. */
+  private updateBurnFx(dt: number): void {
+    if (this.burnGlow <= 0.001) {
+      this.burnFx?.setEnabled(false);
+      return;
+    }
+    if (!this.burnFx) {
+      const scene = this.root.getScene();
+      this.burnFx = new TransformNode("mobBurn", scene);
+      this.burnFx.parent = this.root;
+      this.burnMat = new StandardMaterial("mobBurnMat", scene);
+      this.burnMat.disableLighting = true;
+      this.burnMat.diffuseColor = new Color3(0, 0, 0);
+      this.burnMat.specularColor = new Color3(0, 0, 0);
+      this.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
+      this.burnMat.alphaMode = Constants.ALPHA_ADD;
+      this.burnMat.disableDepthWrite = true;
+      const r = MOB.bodyRadius;
+      for (let i = 0; i < 5; i++) {
+        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r * 1.7 }, scene);
+        f.material = this.burnMat;
+        f.isPickable = false;
+        f.billboardMode = Mesh.BILLBOARDMODE_Y;
+        f.renderingGroupId = 1;
+        const a = (i / 5) * Math.PI * 2;
+        f.position.set(Math.cos(a) * r * 0.55, r * 0.4, Math.sin(a) * r * 0.55);
+        f.parent = this.burnFx;
+        this.burnFlames.push(f);
+      }
+    }
+    this.burnFx.setEnabled(true);
+    this.burnT += dt;
+    const r = MOB.bodyRadius;
+    for (let i = 0; i < this.burnFlames.length; i++) {
+      const f = this.burnFlames[i];
+      const ph = this.burnT * 7 + i * 1.7;
+      const rise = (this.burnT * 1.8 + i * 0.37) % 1;
+      f.position.y = r * (0.15 + rise * 1.5);
+      const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
+      f.scaling.setAll(Math.max(0.05, s));
+    }
+    if (this.burnMat) {
+      this.burnMat.alpha = 0.55 * this.burnGlow;
+    }
+  }
+
   private playAnim(g: AnimationGroup | undefined | null, loop: boolean): void {
     if (!g || g === this.curAnim) return;
     this.curAnim?.stop();
@@ -678,6 +731,7 @@ export class Mob implements Hittable {
     this.bar.dispose();
     this.slamRing?.material?.dispose();
     this.stunStarMat.dispose();
+    this.burnMat?.dispose();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, true);

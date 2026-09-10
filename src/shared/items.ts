@@ -55,7 +55,7 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
 
   // Легендарки — именное оружие с аффиксом. Урон чуть выше золота, плюс эффект.
-  // Все фиолетовые и светятся в игре (единый «легендарный» вид).
+  // Все фиолетовые (единый «легендарный» вид).
   "sword:legendary": {
     cls: "sword", tier: "legendary", name: "Пламенный меч", mult: 4.5,
     tint: [0.62, 0.3, 1], affix: "fire",

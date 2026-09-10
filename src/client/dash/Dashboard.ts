@@ -364,7 +364,6 @@ export class Dashboard {
         ["из глаз", "eyePlayer"],
         ["напротив", "frontPlayer"],
         ["сбоку", "sidePlayer"],
-        ["низко", "lowChase"],
         ["дрон", "dronePlayer"],
         ["из-за плеча", "shoulderPlayer"],
         ["снизу", "heroLow"],

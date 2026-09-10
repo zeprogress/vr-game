@@ -438,7 +438,7 @@ export const PROGRESSION = {
  */
 export const AFFIX = {
   /** Горение: доля урона удара, наносимая в секунду, и сколько секунд горит. */
-  fire: { burnSec: 4, burnDpsFrac: 0.2 },
+  fire: { burnSec: 6, burnDpsFrac: 0.4 },
   /** Лук: прибавка к шансу крита (поверх BOW.critChance). */
   crit: { chanceBonus: 0.25 },
   /** Щит: сквозь блок проходит меньше урона + шире рабочий сектор (рад). */

@@ -28,7 +28,6 @@ const BOT_ROTATION = [
   "shoulderPlayer",
   "crowd",
   "duelPlayer",
-  "lowChase",
   "orbitPlayer",
   "dronePlayer",
   "frontPlayer",
@@ -48,10 +47,6 @@ const SIDE_LEAD = 3.4; // м вперёд по направлению героя
 const SIDE_BACK = 1.2;
 
 /** Низкая экшн-камера: почти у земли, вплотную позади — «бег от третьего лица». */
-const LOW_BACK = 3.2;
-const LOW_UP = 1.15;
-const LOW_LEAD = 3.0;
-const LOW_AIM_Y = 1.15;
 
 /**
  * «Из-за плеча»: классический TPS-кадр — вплотную сзади-сбоку на высоте
@@ -106,7 +101,6 @@ type Shot =
   | { kind: "eyePlayer"; id: string }
   | { kind: "frontPlayer"; id: string }
   | { kind: "sidePlayer"; id: string }
-  | { kind: "lowChase"; id: string }
   | { kind: "dronePlayer"; id: string }
   | { kind: "shoulderPlayer"; id: string }
   | { kind: "duelPlayer"; id: string }
@@ -150,7 +144,6 @@ const PLAYER_SHOTS = [
   "eyePlayer",
   "frontPlayer",
   "sidePlayer",
-  "lowChase",
   "dronePlayer",
   "shoulderPlayer",
   "duelPlayer",
@@ -165,7 +158,6 @@ function usesBotFilter(k: string): boolean {
     k === "eyePlayer" ||
     k === "frontPlayer" ||
     k === "sidePlayer" ||
-    k === "lowChase" ||
     k === "dronePlayer" ||
     k === "shoulderPlayer" ||
     k === "duelPlayer"
@@ -354,7 +346,6 @@ export class SpectatorCamera {
       s.kind === "orbitBoss" ||
       s.kind === "eyeMob" ||
       s.kind === "eyePlayer" ||
-      s.kind === "lowChase" ||
       s.kind === "sidePlayer"
     );
   }
@@ -385,7 +376,6 @@ export class SpectatorCamera {
       if (near) {
         fight.push({ kind: "eyePlayer", id: near.id });
         fight.push({ kind: "sidePlayer", id: near.id });
-        fight.push({ kind: "lowChase", id: near.id });
       }
       this.fightIdx = (this.fightIdx + 1) % fight.length;
       return fight[this.fightIdx];
@@ -605,22 +595,6 @@ export class SpectatorCamera {
           this.botPos.x + (fx / fl) * SIDE_LEAD,
           this.botPos.y + SIDE_AIM_Y,
           this.botPos.z + (fz / fl) * SIDE_LEAD,
-        );
-        return;
-      }
-      case "lowChase": {
-        const fx = this.botFwd.x;
-        const fz = this.botFwd.z;
-        const fl = Math.hypot(fx, fz) || 1;
-        pos.set(
-          this.botPos.x - (fx / fl) * LOW_BACK,
-          this.botPos.y + LOW_UP,
-          this.botPos.z - (fz / fl) * LOW_BACK,
-        );
-        tgt.set(
-          this.botPos.x + (fx / fl) * LOW_LEAD,
-          this.botPos.y + LOW_AIM_Y,
-          this.botPos.z + (fz / fl) * LOW_LEAD,
         );
         return;
       }
