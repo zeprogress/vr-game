@@ -24,14 +24,14 @@ export interface TowerLightTune {
 }
 
 export const TOWER_LIGHT_TUNE: TowerLightTune = {
-  nightMul: 0.178,
+  nightMul: 0.36,
   floorEmissive: 0,
   wallEmissive: 0,
   ceilEmissive: 0,
   mobEmissiveMul: 0,
-  spotAngleDeg: 22.569,
+  spotAngleDeg: 17.48,
   spotExponent: 0.5,
-  spotIntensity: 10.302,
+  spotIntensity: 1.831,
   spotHeightOffset: 5,
 };
 

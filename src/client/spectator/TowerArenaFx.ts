@@ -11,7 +11,7 @@ import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { SpotLight } from "@babylonjs/core/Lights/spotLight";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
@@ -29,6 +29,9 @@ import type { Sfx } from "../audio/Sfx";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
+
+/** Кэшированный "вниз" — от него доворачиваем видимый луч прожектора на цель. */
+const DOWN = Vector3.Down();
 
 /** Мобов на арене одновременно — с запасом (см. floorMobCount, максимум 10). */
 const MAX_MOBS = 10;
@@ -150,6 +153,13 @@ export class TowerArenaFx {
   /** Прожектор с потолка — статичная точка подвеса, лучом жёстко следит за героем. */
   private spot!: SpotLight;
   private heroShadow!: InstancedMesh;
+  /** Видимый в воздухе луч прожектора — просто конус, свет сам по себе луч не рисует. */
+  private beamHolder!: TransformNode;
+  private beamMesh!: Mesh;
+  private beamMat!: StandardMaterial;
+  /** Мягкое пятно поверх резкого физического обреза света на полу. */
+  private softSpotMesh!: Mesh;
+  private softSpotMat!: StandardMaterial;
   private label!: Mesh;
   private labelTex!: DynamicTexture;
 
@@ -269,6 +279,73 @@ export class TowerArenaFx {
     this.spot.specular = new Color3(1, 0.98, 0.92);
     this.spot.intensity = TOWER_LIGHT_TUNE.spotIntensity;
     this.spot.range = H * 1.3;
+
+    // Видимый в воздухе луч — сама SpotLight ничего не рисует, только светит.
+    // Конус с вертикальным градиентом (плотнее у источника, к полу тает) +
+    // аддитивный блендинг — дешёвая имитация volumetric light без пост-эффектов.
+    const beamTex = new DynamicTexture("towerBeamTex", { width: 8, height: 128 }, this.scene, false);
+    const btx = beamTex.getContext() as CanvasRenderingContext2D;
+    const g = btx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, "rgba(255,235,200,0.55)"); // у прожектора (верх конуса)
+    g.addColorStop(1, "rgba(255,235,200,0)"); // у пола (низ конуса)
+    btx.fillStyle = g;
+    btx.fillRect(0, 0, 8, 128);
+    beamTex.update();
+    beamTex.hasAlpha = true;
+    this.beamMat = new StandardMaterial("towerBeamMat", this.scene);
+    this.beamMat.diffuseTexture = beamTex;
+    this.beamMat.emissiveTexture = beamTex;
+    this.beamMat.opacityTexture = beamTex;
+    this.beamMat.useAlphaFromDiffuseTexture = true;
+    this.beamMat.disableLighting = true;
+    this.beamMat.specularColor = new Color3(0, 0, 0);
+    this.beamMat.backFaceCulling = false;
+    this.beamMat.alphaMode = Constants.ALPHA_ADD;
+    this.beamMat.disableDepthWrite = true;
+    this.beamHolder = new TransformNode("towerBeamHolder", this.scene);
+    this.beamHolder.parent = this.root;
+    this.beamMesh = MeshBuilder.CreateCylinder(
+      "towerBeam",
+      { diameterTop: 0.1, diameterBottom: 1, height: 1, tessellation: 20 },
+      this.scene,
+    );
+    this.beamMesh.material = this.beamMat;
+    this.beamMesh.isPickable = false;
+    this.beamMesh.parent = this.beamHolder;
+    // Пивот конуса запекаем в вершины (а не просто mesh.position) — иначе при
+    // scaling.y узкий торец "уезжал" бы от держателя (offset позиции не
+    // масштабируется вместе с геометрией, классическая ловушка pivot≠scale).
+    this.beamMesh.position.y = -0.5;
+    this.beamMesh.bakeCurrentTransformIntoVertices();
+
+    // Мягкое пятно на полу под лучом — настоящий физический свет даёт резкий
+    // обрез по конусу (особенно на низком spotExponent), это поверх него
+    // просто визуально размывает край радиальным градиентом, аддитивно.
+    const softTex = new DynamicTexture("towerSoftSpotTex", { width: 128, height: 128 }, this.scene, false);
+    const stx = softTex.getContext() as CanvasRenderingContext2D;
+    const rg = stx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    rg.addColorStop(0, "rgba(255,235,200,0.35)");
+    rg.addColorStop(0.7, "rgba(255,235,200,0.12)");
+    rg.addColorStop(1, "rgba(255,235,200,0)");
+    stx.fillStyle = rg;
+    stx.fillRect(0, 0, 128, 128);
+    softTex.update();
+    softTex.hasAlpha = true;
+    this.softSpotMat = new StandardMaterial("towerSoftSpotMat", this.scene);
+    this.softSpotMat.diffuseTexture = softTex;
+    this.softSpotMat.emissiveTexture = softTex;
+    this.softSpotMat.opacityTexture = softTex;
+    this.softSpotMat.useAlphaFromDiffuseTexture = true;
+    this.softSpotMat.disableLighting = true;
+    this.softSpotMat.specularColor = new Color3(0, 0, 0);
+    this.softSpotMat.backFaceCulling = false;
+    this.softSpotMat.alphaMode = Constants.ALPHA_ADD;
+    this.softSpotMat.disableDepthWrite = true;
+    this.softSpotMesh = MeshBuilder.CreateDisc("towerSoftSpot", { radius: 1, tessellation: 32 }, this.scene);
+    this.softSpotMesh.material = this.softSpotMat;
+    this.softSpotMesh.isPickable = false;
+    this.softSpotMesh.parent = this.root;
+    this.softSpotMesh.rotation.x = Math.PI / 2;
 
     this.heroShadow = shadowProtoFor(this.scene).createInstance("towerHeroShadow");
     this.heroShadow.parent = this.root;
@@ -504,6 +581,10 @@ export class TowerArenaFx {
     const tagY = Math.min(targetHeight + 0.6, 3.2);
     const tag = new NameTag(this.scene, anchor, new Vector3(0, tagY, 0), name, level);
     tag.showHp();
+    // Тесная арена, высокие боссы — своя же модель часто закрывает плашку
+    // (см. NameTag.setAlwaysOnTop). На поляне так не делаем — там честно
+    // прячется за телом/стеной, здесь спектатору важнее видеть HP/имя.
+    tag.setAlwaysOnTop(true);
 
     // Тень под ногами — на анкоре (scale=1), не на holder, по той же причине,
     // что и табличка: иначе пятно "плавало" бы по размеру вместе с моделью.
@@ -818,7 +899,21 @@ export class TowerArenaFx {
     // луч на героя — от фиксированной точки подвеса к его нынешним ногам.
     const spotTarget = new Vector3(heroLocal.x, 0, heroLocal.z);
     spotTarget.subtractToRef(this.spot.position, this.spot.direction);
+    const spotDist = this.spot.direction.length();
     this.spot.direction.normalize();
+
+    // Видимый луч и мягкое пятно на полу следуют за той же целью/направлением.
+    this.beamHolder.position.copyFrom(this.spot.position);
+    this.beamHolder.rotationQuaternion ??= new Quaternion();
+    Quaternion.FromUnitVectorsToRef(DOWN, this.spot.direction, this.beamHolder.rotationQuaternion);
+    this.beamMesh.scaling.y = Math.max(0.1, spotDist);
+    const angleRad = (TOWER_LIGHT_TUNE.spotAngleDeg * Math.PI) / 180;
+    const endR = Math.max(0.3, spotDist * Math.tan(angleRad));
+    this.beamMesh.scaling.x = endR * 2;
+    this.beamMesh.scaling.z = endR * 2;
+    this.softSpotMesh.position.copyFrom(spotTarget);
+    this.softSpotMesh.position.y = 0.03;
+    this.softSpotMesh.scaling.setAll(endR * 1.15);
 
     // Тень героя — тот же плоский приём, что и у мобов, только пол под ногами
     // ровно y=0 (обычный BlobShadow тут не подходит: он мерит рельеф ПОЛЯНЫ

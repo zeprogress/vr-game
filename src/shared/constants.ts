@@ -321,7 +321,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
-    hp: 680, dmgMul: 8, xp: 1050, scaleMul: 1.9, tint: null,
+    hp: 680, dmgMul: 8, xp: 2100, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },

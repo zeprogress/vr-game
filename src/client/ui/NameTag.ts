@@ -6,6 +6,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 // Разрешение текстуры и кегль подняты в ~1.4 раза относительно физического
@@ -47,6 +48,8 @@ export class NameTag {
   private xpFill: Mesh | null = null;
   private xpW = 0;
   private xpFrac = 0;
+  /** См. setAlwaysOnTop() — плашка видна сквозь модель, а не только когда та не мешает. */
+  private alwaysOnTop = false;
 
   constructor(
     scene: Scene,
@@ -182,6 +185,7 @@ export class NameTag {
     this.hpFill.position.z = -0.01;
     this.hpFill.isPickable = false;
     this.hpFill.renderingGroupId = 0;
+    if (this.alwaysOnTop) this.applyAlwaysOnTop();
     this.setHp(this.hpFrac);
   }
 
@@ -269,6 +273,29 @@ export class NameTag {
   setScale(k: number): void {
     this.plane.scaling.setAll(k);
     this.plane.position.y = this.baseY + (k - 1) * this.halfH;
+  }
+
+  /**
+   * Плашка видна СКВОЗЬ модель (не загораживается ею) — по умолчанию выключено
+   * (обычные мобы на поляне честно прячутся за своим же телом/стеной/деревом).
+   * Нужно, например, в тесной башне: высокий босс закрывает свою же плашку.
+   */
+  setAlwaysOnTop(on: boolean): void {
+    this.alwaysOnTop = on;
+    this.applyAlwaysOnTop();
+  }
+
+  private applyAlwaysOnTop(): void {
+    const on = this.alwaysOnTop;
+    for (const m of [this.plane, this.hpBg, this.hpFill, this.xpBg, this.xpFill]) {
+      if (!m?.material) continue;
+      // disableDepthTest — не просто "рисуй после", а буквально не сверяться
+      // с буфером глубины: иначе своё же тело моба (уже в буфере) закрывало
+      // бы плашку у высоких боссов независимо от порядка рендер-групп.
+      (m.material as StandardMaterial).depthFunction = on ? Constants.ALWAYS : 0;
+      (m.material as StandardMaterial).disableDepthWrite = on;
+      m.renderingGroupId = on ? 1 : 0;
+    }
   }
 
   dispose(): void {
