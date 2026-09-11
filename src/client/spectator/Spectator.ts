@@ -911,8 +911,16 @@ export class Spectator {
     });
   }
 
-  /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. */
+  /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же
+   *  музыка весь забег (по спеке "фоновая музыка в этом мире как на боссе"). */
   private updateBossMusic(): void {
+    if (this._towerStatus) {
+      if (!this.bossMusicOn) {
+        this.bossMusicOn = true;
+        this.sfx.setMusic(BOSS_MUSIC, 0.1);
+      }
+      return;
+    }
     const mobs = this.net?.room?.state.mobs;
     if (!mobs) return;
     const c = this.cam.cam.position;

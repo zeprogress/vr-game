@@ -340,10 +340,27 @@ export class TowerArenaFx {
     };
   }
 
+  /**
+   * НЕ вызываем inst.dispose() (models.ts): тот делает root.dispose(false, true)
+   * — сносит материалы/текстуры меша. loadRig грузит через instantiateModelsToScene
+   * с cloneMaterials=false (см. models.ts), т.е. материал у ВСЕХ инстансов одной
+   * модели — ОДИН и тот же объект на весь контейнер (общий на всю сцену,
+   * закэширован в containerFor). Снос "своих" материалов при обычном dispose()
+   * ломал материал для всех будущих мобов этой модели — ровно то самое
+   * "модельки не прогружаются после первого прохождения" (второй забег
+   * повторно упирается в тот же вид на этаже 1 — монстр уже без материала).
+   * Анимации/скелет per-инстансные — их гасим отдельно, геометрию сносим
+   * БЕЗ материалов (root.dispose(false, false)).
+   */
+  private disposeRigInstance(inst: RigInstance): void {
+    inst.anims.forEach((g) => g.dispose());
+    inst.root.dispose(false, false);
+  }
+
   private disposeModels(): void {
     for (const p of this.mobModels) {
       p?.tag.dispose();
-      p?.inst.dispose();
+      if (p) this.disposeRigInstance(p.inst);
       p?.holder.dispose();
       p?.anchor.dispose();
       p?.burnMat?.dispose();
@@ -351,7 +368,7 @@ export class TowerArenaFx {
     this.mobModels.fill(null);
     if (this.bossModel) {
       this.bossModel.tag.dispose();
-      this.bossModel.inst.dispose();
+      this.disposeRigInstance(this.bossModel.inst);
       this.bossModel.holder.dispose();
       this.bossModel.anchor.dispose();
       this.bossModel.burnMat?.dispose();

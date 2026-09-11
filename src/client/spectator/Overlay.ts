@@ -135,7 +135,7 @@ const CSS = `
 .ov-ticker.news { top:9vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   text-transform:none; color:#fff; -webkit-text-stroke:0;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
-.ov-towerstatus { right:2.2vw; top:10.4vh; text-align:right; font-size:1.7vh; }
+.ov-towerstatus { left:2.2vw; top:34vh; text-align:left; font-size:1.7vh; }
 .ov-towerstatus b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-towerstatus span { display:block; font-weight:800; font-size:2.2vh; }
