@@ -151,7 +151,7 @@ import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
-import { TOWER, TOWER_HIDE } from "#shared/tower";
+import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 
 const { Room } = colyseus;
 
@@ -1575,13 +1575,19 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.activeEventKind === 3) {
       // Башня: не бой на месте, а открытое окно очереди — !event ставит героя
       // в неё, попытки идут по одной в отдельной TowerRoom (см. tickEvents).
+      // Маячок/тикер должны указывать на декоративную башню на карте, а не
+      // на случайную pickEventSpot() — там реально ничего не происходит.
+      this.eventX = TOWER_PROP_POS.x;
+      this.eventZ = TOWER_PROP_POS.z;
+      this.state.eventX = TOWER_PROP_POS.x;
+      this.state.eventZ = TOWER_PROP_POS.z;
       this.eventPhaseAt = Date.now() + EVENT.tower.hardTimeout * 1000;
       this.towerQueue.length = 0;
       this.towerDone.clear();
       this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
       this.state.eventLeft = 0;
       this.broadcast(MSG.worldEvent, {
-        phase: "start", name: "Башня", x: spot.x, z: spot.z,
+        phase: "start", name: "Башня", x: TOWER_PROP_POS.x, z: TOWER_PROP_POS.z,
       } satisfies WorldEventMsg);
       return;
     }

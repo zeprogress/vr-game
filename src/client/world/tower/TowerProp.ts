@@ -8,15 +8,8 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { terrainHeight } from "#shared/terrain";
+import { TOWER_PROP_POS } from "#shared/tower";
 import type { Obstacle } from "../props";
-
-/**
- * Точка на карте у угла босса, но за пределами его 22-метровой «чистой»
- * зоны (см. `trees.ts`/`rocks.ts`) — сбоку/позади него от типового ракурса
- * камеры (со стороны поляны). Чисто декоративно: сама башня («Hunter Tower»)
- * — отдельная комната Colyseus, к этому объекту гейм-плей не привязан.
- */
-const TOWER_PROP_POS = { x: 48, z: 80 } as const;
 
 export interface TowerProp {
   obstacles: Obstacle[];

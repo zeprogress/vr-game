@@ -57,7 +57,11 @@ export class EventBeacon {
     if (on && kind !== this.kind) {
       this.kind = kind;
       this.mat.emissiveColor =
-        kind === 2 ? new Color3(1, 0.62, 0.2) : new Color3(0.25, 0.55, 1);
+        kind === 2
+          ? new Color3(1, 0.62, 0.2)
+          : kind === 3
+            ? new Color3(0.75, 0.35, 1)
+            : new Color3(0.25, 0.55, 1);
     }
     if (on !== this.shown) {
       this.shown = on;

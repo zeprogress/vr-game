@@ -343,14 +343,22 @@ export class Spectator {
     };
     net.onWorldEvent = (phase, name) => {
       const hunt = name === "Охота";
+      const tower = name === "Башня";
       if (phase === "start") {
         this.overlay?.showCard(
-          hunt ? "Охота на элиту!" : `${name}!`,
-          hunt ? "в мире объявился Грибной владыка — редкая добыча" : "мобы лезут волнами — герои сбегаются",
+          tower ? "Охотничья башня!" : hunt ? "Охота на элиту!" : `${name}!`,
+          tower
+            ? "герои по очереди штурмуют башню — !event, чтобы встать в очередь"
+            : hunt
+              ? "в мире объявился Грибной владыка — редкая добыча"
+              : "мобы лезут волнами — герои сбегаются",
           6,
         );
         this.sfx.bossHorn();
       } else if (phase === "win") {
+        // У башни нет общей награды за окно — награда персональная за каждый
+        // забег (см. серверный endEvent/onTowerRunDone), карточка тут не нужна.
+        if (tower) return;
         this.overlay?.showCard(
           hunt ? "Грибной владыка повержен" : `${name} отражено`,
           "участникам — ×2 опыт и урон + легендарка" + (hunt ? "" : " на 15 мин"),
@@ -358,7 +366,11 @@ export class Spectator {
         );
         this.sfx.bossFanfare();
       } else {
-        this.overlay?.showCard(hunt ? "Грибной владыка ушёл" : `${name} утихло`, "", 4);
+        this.overlay?.showCard(
+          tower ? "Охотничья башня закрылась" : hunt ? "Грибной владыка ушёл" : `${name} утихло`,
+          "",
+          4,
+        );
       }
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
@@ -896,6 +908,8 @@ export class Spectator {
       this.overlay?.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
     } else if (st?.eventKind === 2) {
       this.overlay?.setTicker("Идёт ивент — охота на элиту (!event)", "event");
+    } else if (st?.eventKind === 3) {
+      this.overlay?.setTicker("Идёт ивент — Охотничья башня (!event)", "event");
     } else {
       this.overlay?.setTicker(this.changelogLine(), "news");
     }
