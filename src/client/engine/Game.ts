@@ -717,10 +717,10 @@ export class Game {
       return;
     }
 
-    // WebXR Layers + multiview: оба глаза рендерятся за один проход. На Quest
-    // это ~1.5× по кадру. `?nolayers=1` — отключить, если что-то поедет
-    // (мультивью не дружит с постпроцессами — у нас их в VR и так нет).
-    if (!qp.has("nolayers")) {
+    // WebXR Layers + multiview: оба глаза за один проход (~1.5× по кадру), НО
+    // на части сборок Quest-браузера с ним не входит в сессию — поэтому только
+    // по явному `?layers=1`.
+    if (qp.has("layers")) {
       try {
         this.xr.baseExperience.featuresManager.enableFeature(
           WebXRFeatureName.LAYERS,
