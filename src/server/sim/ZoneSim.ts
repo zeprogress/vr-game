@@ -3,6 +3,7 @@ import {
   BOSS_CFG,
   COMBAT,
   ELITE_MOBS,
+  MAGE_SPELL,
   MOB,
   MOB_CAMPS,
   PLAYER,
@@ -244,6 +245,14 @@ class Mob {
   readonly dmgMul: number;
   /** Броня против дальнего боя (0..1): доля урона стрел/магии, которую съедает панцирь. */
   readonly rangedArmor: number;
+  /** Физическая броня (0..1): доля урона меча/стрел, магию не режет. */
+  readonly physArmor: number;
+  /** Множитель урона магии (>1 — уязвим). */
+  readonly magicVulnMul: number;
+  /** Множитель урона крита (>1 — уязвим). */
+  readonly critVulnMul: number;
+  /** true — дальняя атака моба взрывается по площади (Чародей руин). */
+  readonly spellAoe: boolean;
   /** Модель из пака для этого моба (ключ MODELS на клиенте). Пусто — стандарт. */
   readonly model: string;
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
@@ -269,6 +278,10 @@ class Mob {
       scaleMul?: number;
       flying?: boolean;
       rangedArmor?: number;
+      physArmor?: number;
+      magicVulnMul?: number;
+      critVulnMul?: number;
+      spellAoe?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -296,6 +309,10 @@ class Mob {
     this.xp = opts.xp ?? cfg.xp;
     this.dmgMul = opts.dmgMul ?? 1;
     this.rangedArmor = Math.max(0, Math.min(0.95, opts.rangedArmor ?? 0));
+    this.physArmor = Math.max(0, Math.min(0.95, opts.physArmor ?? 0));
+    this.magicVulnMul = Math.max(0, opts.magicVulnMul ?? 1);
+    this.critVulnMul = Math.max(0, opts.critVulnMul ?? 1);
+    this.spellAoe = opts.spellAoe ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -963,6 +980,9 @@ class Ball {
     public owner = "",
     /** Множитель урона плевка усиленного моба. */
     public dmgMul = 1,
+    /** Чародей руин: заряд взрывается по площади вокруг прямой цели. 0 — обычный плевок. */
+    public aoeRadius = 0,
+    public aoeFrac = 0,
   ) {}
 
   /** true — шарик надо удалить. */
@@ -997,6 +1017,25 @@ class Ball {
           projectile: true,
           byMob: this.owner || undefined,
         });
+        // Чародей руин: доля урона — по площади вокруг прямой цели, спадает к краю.
+        if (this.aoeRadius > 0 && this.aoeFrac > 0) {
+          for (const p2 of players) {
+            if (p2.sessionId === p.sessionId) continue;
+            const dd = Math.hypot(p2.x - this.x, p2.z - this.z);
+            if (dd >= this.aoeRadius) continue;
+            const k = 1 - dd / this.aoeRadius;
+            const aoeDmg = SPITTER.ballDamage * this.dmgMul * this.aoeFrac * k;
+            if (aoeDmg <= 0.01) continue;
+            hits.push({
+              target: p2.sessionId,
+              dmg: aoeDmg,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: true,
+              byMob: this.owner || undefined,
+            });
+          }
+        }
         return true;
       }
     }
@@ -1086,6 +1125,10 @@ export class ZoneSim {
           xp: def.xp,
           flying: def.flying,
           rangedArmor: def.rangedArmor,
+          physArmor: def.physArmor,
+          magicVulnMul: def.magicVulnMul,
+          critVulnMul: def.critVulnMul,
+          spellAoe: def.spellAoe,
         });
         this.mobs.set(m.id, m);
       }
@@ -1208,6 +1251,8 @@ export class ZoneSim {
         mob.kind === "boss",
         mob.id,
         mob.dmgMul,
+        mob.spellAoe ? MAGE_SPELL.splashRadius : 0,
+        mob.spellAoe ? MAGE_SPELL.splashFrac : 0,
       );
       this.balls.set(b.id, b);
     };
@@ -1326,7 +1371,7 @@ export class ZoneSim {
     if (b.life > b.maxLife) return true;
     if (b.y <= terrainHeight(b.x, b.z)) {
       // Огнешар в землю — всё равно рвётся: можно бить по ногам толпы.
-      this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, "", b.owner, true);
+      this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, "", b.owner, true, b.kind === 0);
       return true;
     }
 
@@ -1337,9 +1382,10 @@ export class ZoneSim {
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
-        this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true);
+        const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
+        this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
-        this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true);
+        this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
       }
     }
@@ -1390,10 +1436,17 @@ export class ZoneSim {
     rangedHit = false,
     /** true — тик горения: без кулдауна удара, без вздрагивания/звука. */
     dot = false,
+    /** true — урон магией (огнешар/АОЕ): physArmor не действует, magicVulnMul — действует. */
+    magic = false,
+    /** true — крит (сейчас только лук): учитываем critVulnMul. */
+    crit = false,
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
     if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
+    if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
+    if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
+    if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
@@ -1470,6 +1523,8 @@ export class ZoneSim {
     owner: string,
     /** true — АОЕ от огнешара (дальний бой): броня мобов учитывается. */
     rangedHit = false,
+    /** true — урон магией: physArmor не действует, magicVulnMul — действует. */
+    magic = false,
   ): void {
     if (radius <= 0 || dmg <= 0) return;
     // Копия списка: hitMob может удалить моба (осколки) прямо в цикле.
@@ -1485,7 +1540,7 @@ export class ZoneSim {
       const hit = dmg * k;
       if (hit <= 0.01) continue;
       const hl = Math.hypot(dx, dz) || 1;
-      this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit);
+      this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit, false, magic);
     }
   }
 

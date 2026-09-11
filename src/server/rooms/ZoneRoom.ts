@@ -1203,7 +1203,10 @@ export class ZoneRoom extends Room<ZoneState> {
     if (crit > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
-    this.sim.hitMob(msg.id, dmg, dx || 0, dz || 1, client.sessionId, msg.weapon === "arrow");
+    this.sim.hitMob(
+      msg.id, dmg, dx || 0, dz || 1, client.sessionId,
+      msg.weapon === "arrow", false, false, crit > 1,
+    );
     // Пламенный меч — поджигаем цель (DoT на несколько секунд).
     if (affix === "fire" && msg.weapon === "sword" && struck) {
       struck.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, client.sessionId);
@@ -1269,7 +1272,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // У бота уровень ещё и отмечаем эмоцией — виден со стороны на модельке.
     if (id?.startsWith("bot:")) {
       const bot = this.bots.get(id.slice(4));
-      if (bot) this.triggerEmote(bot, "cheer");
+      if (bot) {
+        this.triggerEmote(bot, "cheer");
+        // Дом бота по уровню мог смениться (перерос лагерь) — не ждём
+        // следующей смерти/возрождения, переселяем сразу.
+        const home = botHome(p.level);
+        bot.homeX = home.x;
+        bot.homeZ = home.z;
+      }
     }
   }
 
