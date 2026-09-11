@@ -2,6 +2,7 @@
 import colyseus from "colyseus";
 
 import { ZoneRoom } from "./rooms/ZoneRoom";
+import { TowerRoom } from "./rooms/TowerRoom";
 import { store } from "./store";
 
 const { Server } = colyseus;
@@ -13,6 +14,9 @@ const PORT = Number(process.env.GAME_SERVER_PORT ?? 2567);
 // allowReconnection в ZoneRoom.onLeave.
 const gameServer = new Server({ pingInterval: 5000, pingMaxRetries: 3 });
 gameServer.define("zone", ZoneRoom);
+// Охотничья башня — приватная комната на одну попытку (см. TowerRunManager в
+// ZoneRoom, matchMaker.createRoom("tower_room", ...); клиент сюда напрямую не джойнит).
+gameServer.define("tower_room", TowerRoom);
 
 void gameServer.listen(PORT);
 console.log(`[server] Colyseus слушает :${PORT}`);

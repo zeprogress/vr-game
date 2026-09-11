@@ -147,6 +147,8 @@ import { HUB, HUB_CENTER, inHubSafeZone, hubSpawnPoint } from "#shared/hub";
 import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
+import { TowerRunManager } from "./TowerRunManager";
+import type { TowerRunResult } from "./TowerRoom";
 
 const { Room } = colyseus;
 
@@ -1525,7 +1527,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private eventName(): string {
-    return this.activeEventKind === 2 ? "Охота" : "Нашествие";
+    return this.activeEventKind === 3 ? "Башня" : this.activeEventKind === 2 ? "Охота" : "Нашествие";
   }
 
   private startEvent(): void {
@@ -1536,17 +1538,31 @@ export class ZoneRoom extends Room<ZoneState> {
     this.eventForced = false;
     this.eventWave = 0;
     this.eventWaveAt = 0;
-    // Тип: форс из !goevent, иначе нашествие чаще охоты (EVENT.huntChance).
-    this.activeEventKind =
-      this.forcedEventKind !== 0
-        ? this.forcedEventKind
-        : Math.random() < EVENT.huntChance
-          ? 2
-          : 1;
+    // Тип: форс из !goevent, иначе кумулятивный ролл — башня/охота/нашествие
+    // (EVENT.towerChance/huntChance, остаток — нашествие).
+    if (this.forcedEventKind !== 0) {
+      this.activeEventKind = this.forcedEventKind;
+    } else {
+      const r = Math.random();
+      this.activeEventKind = r < EVENT.towerChance ? 3 : r < EVENT.towerChance + EVENT.huntChance ? 2 : 1;
+    }
     this.forcedEventKind = 0;
     this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
     this.state.eventZ = spot.z;
+
+    if (this.activeEventKind === 3) {
+      // Башня: не бой на месте, а открытое окно очереди — !event ставит героя
+      // в неё, попытки идут по одной в отдельной TowerRoom (см. tickEvents).
+      this.eventPhaseAt = Date.now() + EVENT.tower.hardTimeout * 1000;
+      this.towerQueue.length = 0;
+      this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
+      this.state.eventLeft = 0;
+      this.broadcast(MSG.worldEvent, {
+        phase: "start", name: "Башня", x: spot.x, z: spot.z,
+      } satisfies WorldEventMsg);
+      return;
+    }
 
     if (this.activeEventKind === 2) {
       // Охота: один именной бугай, жирнее и злее от числа героев в мире.
@@ -1590,8 +1606,11 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private endEvent(win: boolean): void {
+    const tower = this.activeEventKind === 3;
     const hunt = this.activeEventKind === 2;
-    if (win) {
+    // Башня не бьётся на месте — награда там персональная, за каждый забег
+    // отдельно (см. onTowerRunDone), а не общая на всех при закрытии окна.
+    if (win && !tower) {
       const potions = hunt
         ? EVENT.eliteHunt.rewardPotions
         : Math.min(
@@ -1759,6 +1778,17 @@ export class ZoneRoom extends Room<ZoneState> {
           }
         }
         this.tickHuntAttacks(now, boss, eh);
+      } else if (this.activeEventKind === 3) {
+        // Башня: пока не идёт попытка — вынимаем следующего из очереди; если
+        // очередь пуста и давно не было новых записей — закрываем окно.
+        if (!this.towerRuns.running) {
+          const heroId = this.towerQueue.shift();
+          if (heroId) this.startTowerRun(heroId);
+          else if (now >= this.towerQueueOpenUntil) {
+            this.endEvent(true);
+            return;
+          }
+        }
       } else if (left === 0) {
         // Нашествие: волна зачищена — следующая, либо победа.
         if (this.eventWave >= EVENT.invasion.waves.length) {
@@ -1808,6 +1838,48 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       `@${nick} герой выдвинулся на ${this.activeEventKind === 2 ? "охоту" : "нашествие"} — зачистит и вернётся.`,
     );
+  }
+
+  /** `!event` при активной башне — встать в очередь на попытку (не спатиальный джойн). */
+  private joinTowerQueue(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (this.towerQueue.includes(bot.id)) {
+      this.reply(`@${nick} герой уже в очереди.`);
+      return;
+    }
+    this.towerQueue.push(bot.id);
+    this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
+    this.reply(`@${nick} герой встал в очередь на башню (№${this.towerQueue.length}).`);
+  }
+
+  /** Поднять TowerRoom для очередного героя из очереди башни. */
+  private startTowerRun(heroId: string): void {
+    const p = this.state.players.get(heroId);
+    if (!p) return; // герой вышел из мира, пока стоял в очереди — пропускаем
+    const nick = p.nick;
+    this.towerRuns.start(heroId, nick, (r) => this.onTowerRunDone(heroId, nick, r)).catch((e) => {
+      console.warn("[tower] не удалось создать комнату:", (e as Error).message);
+    });
+    this.reply(`${nick} заходит в Охотничью башню!`);
+  }
+
+  /** Попытка в TowerRoom закончилась — записать результат, снова ждать очередь. */
+  private onTowerRunDone(heroId: string, nick: string, r: TowerRunResult): void {
+    const rt = this.rt.get(heroId);
+    if (rt?.token) {
+      const prev = store.get(rt.token);
+      store.put(rt.token, {
+        bestTowerFloor: Math.max(prev?.bestTowerFloor ?? 0, r.floorReached),
+        towerShards: (prev?.towerShards ?? 0) + r.towerShards,
+      });
+    }
+    const verb = r.phase === "cleared" ? "покорил башню целиком!" : `дошёл до этажа ${r.floorReached}.`;
+    this.reply(`${nick} ${verb}`);
+    this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
   }
 
   private setFollow(nick: string, norm: string, target: string | null): void {
@@ -1893,14 +1965,20 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setRaid(nick, norm);
     } else if (cmd === "!goevent") {
       // Запустить событие может только админ стрима. Необязательный аргумент —
-      // тип: hunt/охота или invasion/нашествие (иначе — случайный).
+      // тип: hunt/охота, invasion/нашествие, tower/башня (иначе — случайный).
       if (norm === "zeprogress") {
         if (this.eventPhase === "active") {
           this.reply(`@${nick} событие уже идёт.`);
         } else {
           const a = (parts[1] ?? "").toLowerCase();
           this.forcedEventKind =
-            a === "hunt" || a === "охота" ? 2 : a === "invasion" || a === "нашествие" ? 1 : 0;
+            a === "hunt" || a === "охота"
+              ? 2
+              : a === "tower" || a === "башня"
+                ? 3
+                : a === "invasion" || a === "нашествие"
+                  ? 1
+                  : 0;
           this.eventPhase = "idle";
           this.eventPhaseAt = Date.now(); // сработает следующим тиком
           this.eventForced = true;
@@ -1908,7 +1986,11 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
     } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
-      this.sendBotToEvent(nick, norm);
+      if (this.eventPhase === "active" && this.activeEventKind === 3) {
+        this.joinTowerQueue(nick, norm);
+      } else {
+        this.sendBotToEvent(nick, norm);
+      }
     } else if (cmd === "!voice" || cmd === "!голос") {
       this.setChatVoice(nick, norm, parts.slice(1).join(" "));
     }
@@ -3759,8 +3841,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private eventWaveAt = 0;
   /** true — событие запущено вручную (пульт/чат): не ждём игроков в мире. */
   private eventForced = false;
-  /** Тип идущего события: 1 — нашествие мобов, 2 — охота на элиту. */
-  private activeEventKind: 1 | 2 = 1;
+  /** Тип идущего события: 1 — нашествие мобов, 2 — охота на элиту, 3 — башня. */
+  private activeEventKind: 1 | 2 | 3 = 1;
   /** Охота: id владыки (победа = его смерть), базовый урон спец-атак и таймеры. */
   private huntBossId = "";
   private huntDmgBase = 0;
@@ -3771,8 +3853,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private huntLobFireAt = 0;
   private huntLobX = 0;
   private huntLobZ = 0;
-  /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота. */
-  private forcedEventKind: 0 | 1 | 2 = 0;
+  /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота, 3 — башня. */
+  private forcedEventKind: 0 | 1 | 2 | 3 = 0;
+  /** Башня: очередь id героев (см. `!event` при activeEventKind===3) и её жизненный цикл. */
+  private readonly towerQueue: string[] = [];
+  private towerQueueOpenUntil = 0;
+  private readonly towerRuns = new TowerRunManager();
 
   override onJoin(client: Client, options?: JoinOpts): void {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.

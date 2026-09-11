@@ -25,6 +25,10 @@ export interface PlayerRecord extends SaveMsg, Progress {
   skin?: number;
   /** Добитых мобов за всё время — для таблицы лидеров (Ф10). */
   kills?: number;
+  /** Самый высокий этаж «Охотничьей башни», до которого дошёл герой. */
+  bestTowerFloor?: number;
+  /** Ресурс с мини-боссов башни (название/применение — TBD). */
+  towerShards?: number;
   /** Продолжать ли ботом после выхода (панель C). По умолчанию — нет. */
   leaveBot?: boolean;
   /** ВРЕМЕННО (KEEP_BOTS_FOREVER): бот сейчас в мире — восстановить после рестарта. */
@@ -51,6 +55,8 @@ function blank(token: string): PlayerRecord {
     overrides: {},
     bag: emptyBag(),
     kills: 0,
+    bestTowerFloor: 0,
+    towerShards: 0,
     leaveBot: false,
     updatedAt: 0,
   };
