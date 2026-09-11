@@ -105,6 +105,15 @@ export class PlayerStore {
     return true;
   }
 
+  /** Обнулить статистику «Охотничьей башни» у всех — топ по этажам с чистого листа. */
+  resetTowerStats(): void {
+    for (const r of this.records.values()) {
+      r.bestTowerFloor = 0;
+      r.towerShards = 0;
+    }
+    this.dirty = true;
+  }
+
   /** Записать на диск, если что-то менялось. Атомарно (tmp + rename). */
   flush(): void {
     if (!this.dirty) return;

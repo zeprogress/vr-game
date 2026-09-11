@@ -136,10 +136,10 @@ const CSS = `
   text-transform:none; color:#fff; -webkit-text-stroke:0;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 .ov-towerstatus { left:2.2vw; top:34vh; text-align:left; font-size:1.7vh; }
-.ov-towerstatus b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
+.ov-towerstatus b { display:block; font-size:3.9vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-towerstatus span { display:block; font-weight:800; font-size:2.2vh; }
-.ov-towerstatus i { display:block; font-style:normal; opacity:.85; font-size:1.5vh; margin-top:.2vh; }
+.ov-towerstatus span { display:block; font-weight:800; font-size:6.6vh; }
+.ov-towerstatus i { display:block; font-style:normal; opacity:.85; font-size:4.5vh; margin-top:.2vh; }
 .ov-towerstatus.boss span { color:#ff9a95; }
 `;
 

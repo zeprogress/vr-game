@@ -61,7 +61,8 @@ function shadowTexture(scene: Scene): DynamicTexture {
   return tex;
 }
 
-function protoFor(scene: Scene): Mesh {
+/** Экспортирован для мест с плоским полом (напр. TowerArenaFx) — свой класс без наклона по рельефу. */
+export function protoFor(scene: Scene): Mesh {
   const found = protos.get(scene);
   if (found) return found;
 

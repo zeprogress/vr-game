@@ -2156,6 +2156,12 @@ export class ZoneRoom extends Room<ZoneState> {
           this.reply(`@${nick} событие вот-вот начнётся.`);
         }
       }
+    } else if (cmd === "!resettower" || cmd === "!сбростопбашни") {
+      if (isAdminNick(nick)) {
+        store.resetTowerStats();
+        this.broadcastLeaderboard();
+        this.reply(`@${nick} топ «Охотничьей башни» обнулён.`);
+      }
     } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
       if (this.eventPhase === "active" && this.activeEventKind === 3) {
         this.joinTowerQueue(nick, norm);
