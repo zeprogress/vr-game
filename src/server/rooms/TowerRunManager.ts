@@ -29,7 +29,16 @@ export class TowerRunManager {
   async start(
     heroId: string,
     heroNick: string,
-    stats: { level: number; str: number; agi: number },
+    stats: {
+      level: number;
+      str: number;
+      agi: number;
+      int: number;
+      leftCls: string;
+      leftTier: string;
+      rightCls: string;
+      rightTier: string;
+    },
     onDone: (r: TowerRunResult) => void,
     onFloor?: (floor: number) => void,
     onSnapshot?: (s: TowerSnapshot) => void,
@@ -46,6 +55,11 @@ export class TowerRunManager {
         level: stats.level,
         str: stats.str,
         agi: stats.agi,
+        int: stats.int,
+        leftCls: stats.leftCls,
+        leftTier: stats.leftTier,
+        rightCls: stats.rightCls,
+        rightTier: stats.rightTier,
         onFloor,
         onSnapshot,
         onResult: (r: TowerRunResult) => {

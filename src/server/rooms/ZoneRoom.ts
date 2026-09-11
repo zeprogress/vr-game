@@ -1925,7 +1925,16 @@ export class ZoneRoom extends Room<ZoneState> {
       .start(
         heroId,
         nick,
-        { level: p.level, str: p.str, agi: p.agi },
+        {
+          level: p.level,
+          str: p.str,
+          agi: p.agi,
+          int: p.int,
+          leftCls: p.leftCls,
+          leftTier: p.leftTier,
+          rightCls: p.rightCls,
+          rightTier: p.rightTier,
+        },
         (r) => this.onTowerRunDone(heroId, nick, r),
         (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
         (s) => this.onTowerSnapshot(heroId, s),

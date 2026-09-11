@@ -1,4 +1,5 @@
 import type { OverlayPatch, LeaderboardRow, TowerBoardRow } from "#shared/net/messages";
+import { TOWER } from "#shared/tower";
 
 /**
  * Оверлеи стрима (этап 17 Ф6).
@@ -22,6 +23,8 @@ export interface OverlayCtx {
   watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
   online: readonly { nick: string; speaking: boolean }[];
+  /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
+  towerStatus: { heroNick: string; floor: number; mobsLeft: number; mobsTotal: number; bossActive: boolean } | null;
 }
 
 interface Config {
@@ -132,6 +135,12 @@ const CSS = `
 .ov-ticker.news { top:9vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   text-transform:none; color:#fff; -webkit-text-stroke:0;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
+.ov-towerstatus { right:2.2vw; top:10.4vh; text-align:right; font-size:1.7vh; }
+.ov-towerstatus b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
+  text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
+.ov-towerstatus span { display:block; font-weight:800; font-size:2.2vh; }
+.ov-towerstatus i { display:block; font-style:normal; opacity:.85; font-size:1.5vh; margin-top:.2vh; }
+.ov-towerstatus.boss span { color:#ff9a95; }
 `;
 
 function mskTime(): string {
@@ -176,6 +185,8 @@ export class Overlay {
   private readonly ticker: HTMLDivElement;
   private tickerText = "";
   private tickerKind: "event" | "news" = "event";
+  private readonly towerStatus: HTMLDivElement;
+  private lastTowerStatusSig = "";
   private cfg: Config = { ...DEFAULT };
   // Кэш последнего отрисованного состояния — не трогаем DOM, пока данные не
   // изменились (update() зовётся каждый кадр; за часы стрима постоянный
@@ -220,6 +231,7 @@ export class Overlay {
     this.top = div("box ov-top");
     this.towerTop = div("box ov-towertop");
     this.ticker = div("box ov-ticker");
+    this.towerStatus = div("box ov-towerstatus");
 
     this.boss = div("box ov-boss");
     this.bossTitle = document.createElement("s");
@@ -238,6 +250,7 @@ export class Overlay {
       this.top,
       this.towerTop,
       this.ticker,
+      this.towerStatus,
     );
     document.body.appendChild(this.root);
   }
@@ -482,6 +495,26 @@ export class Overlay {
     if (this.cardUntil && now > this.cardUntil) {
       this.card.classList.remove("show");
       this.cardUntil = 0;
+    }
+
+    const ts = ctx.towerStatus;
+    show(this.towerStatus, this.cfg.clock && !!ts);
+    if (ts) {
+      const sig = `${ts.heroNick}|${ts.floor}|${ts.mobsLeft}|${ts.mobsTotal}|${ts.bossActive ? 1 : 0}`;
+      if (sig !== this.lastTowerStatusSig) {
+        this.lastTowerStatusSig = sig;
+        this.towerStatus.classList.toggle("boss", ts.bossActive);
+        this.towerStatus.innerHTML = "";
+        const b = document.createElement("b");
+        b.textContent = "Охотничья башня";
+        const span = document.createElement("span");
+        span.textContent = `Этаж ${ts.floor}/${TOWER.floors}`;
+        const i = document.createElement("i");
+        i.textContent = ts.bossActive ? `${ts.heroNick} · мини-босс` : `${ts.heroNick} · мобов ${ts.mobsLeft}/${ts.mobsTotal}`;
+        this.towerStatus.append(b, span, i);
+      }
+    } else {
+      this.lastTowerStatusSig = "";
     }
   }
 

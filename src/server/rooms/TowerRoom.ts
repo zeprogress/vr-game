@@ -11,8 +11,10 @@ import {
   floorMonster,
   type FloorArchetype,
 } from "#shared/tower";
-import { weaponDamage } from "#shared/combat";
-import { maxHpFor, moveSpeedFor } from "#shared/progression";
+import { noGuard, resolveBlock, weaponDamage, type GuardState } from "#shared/combat";
+import { armorFrac, dodgeChance, maxHpFor, moveSpeedFor } from "#shared/progression";
+import { magicResistFrac } from "#shared/magic";
+import { WEAPONS, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -56,6 +58,12 @@ export interface TowerRoomOptions {
   level: number;
   str: number;
   agi: number;
+  int: number;
+  /** Реально надетое оружие/щит героя — как в основном мире (сумка/руки не переносится, только это). */
+  leftCls: string;
+  leftTier: string;
+  rightCls: string;
+  rightTier: string;
   onResult?: (r: TowerRunResult) => void;
   /** Вызывается при входе на каждый следующий этаж (кроме первого) — для чата/лога. */
   onFloor?: (floor: number) => void;
@@ -159,6 +167,14 @@ export class TowerRoom extends Room<TowerState> {
   /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
   private heroDmg: number = TOWER.hero.dmg;
   private heroMoveSpeed: number = TOWER.hero.moveSpeed;
+  private heroStr = 0;
+  private heroAgi = 0;
+  private heroInt = 0;
+  /** Щит в руке — блокирует по направлению взгляда героя (он всегда смотрит на цель). */
+  private heroGuard: GuardState | null = null;
+  private heroAegis = false;
+  /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
+  private heroOneHanded = true;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -170,7 +186,24 @@ export class TowerRoom extends Room<TowerState> {
 
     // Урон/HP/скорость — от РЕАЛЬНЫХ характеристик героя (level/str/agi), как
     // и в основном мире (weaponDamage/maxHpFor/moveSpeedFor), не константы.
-    this.heroDmg = weaponDamage("sword", options.level, options.str, 1, options.agi);
+    this.heroStr = options.str;
+    this.heroAgi = options.agi;
+    this.heroInt = options.int;
+    // Оружие/щит — то, что реально надето (banки нельзя, а меч/щит — можно и нужно).
+    const rightW =
+      options.rightCls && options.rightTier
+        ? WEAPONS[weaponKey(options.rightCls as WeaponClass, options.rightTier as WeaponTier)]
+        : undefined;
+    const weaponKind = options.rightCls === "sword" ? "sword" : "fist";
+    const weaponMult = weaponKind === "sword" ? (rightW?.mult ?? 1) : 1;
+    this.heroDmg = weaponDamage(weaponKind, options.level, options.str, weaponMult, options.agi);
+    const holdsShield = options.leftCls === "shield" || options.rightCls === "shield";
+    this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
+    this.heroAegis =
+      (options.leftCls === "shield" && options.leftTier === "legendary") ||
+      (options.rightCls === "shield" && options.rightTier === "legendary");
+    // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
+    this.heroOneHanded = options.leftCls === "";
     this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
     const heroMaxHp = maxHpFor(options.level, options.str);
 
@@ -226,7 +259,7 @@ export class TowerRoom extends Room<TowerState> {
         if (m.atkCd <= 0) {
           m.atkCd += this.mobAtkInterval;
           m.atkPulse = true;
-          this.hurtHero(floorMobDmg(this.state.floor));
+          this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, this.archetype !== "melee");
           if (this.state.phase !== "running") return;
         }
       }
@@ -244,7 +277,7 @@ export class TowerRoom extends Room<TowerState> {
         if (b.atkCd <= 0) {
           b.atkCd += b.atkInterval;
           b.atkPulse = true;
-          this.hurtHero(b.dmg);
+          this.hurtHero(b.dmg, b.x, b.z, this.archetype !== "melee");
           if (this.state.phase !== "running") return;
         }
       }
@@ -304,8 +337,32 @@ export class TowerRoom extends Room<TowerState> {
     if (this.mobs.length === 0 && !this.boss) this.spawnBoss();
   }
 
-  private hurtHero(dmg: number): void {
-    this.state.heroHp = Math.max(0, this.state.heroHp - dmg);
+  /**
+   * Урон по герою — с учётом щита/уворота/брони, как и в основном мире
+   * (`ZoneRoom.hurtPlayer`): герой всегда смотрит на цель, так что щит
+   * направлен по `heroYaw`, а не в случайную сторону.
+   */
+  private hurtHero(dmg: number, fromX: number, fromZ: number, projectile: boolean): void {
+    let ax = fromX - this.hero.x;
+    let az = fromZ - this.hero.z;
+    const L = Math.hypot(ax, az);
+    if (L > 1e-6) {
+      ax /= L;
+      az /= L;
+    } else {
+      ax = 0;
+      az = 1;
+    }
+    const guard: GuardState | undefined = this.heroGuard
+      ? { sx: Math.sin(this.heroYaw), sz: Math.cos(this.heroYaw), wx: 0, wz: 0 }
+      : undefined;
+    const dodged = Math.random() < dodgeChance(this.heroAgi, this.heroOneHanded);
+    const block = dodged
+      ? { mult: 0 as const, by: 3 as const }
+      : resolveBlock(guard, ax, az, projectile, this.heroAegis);
+    let real = dmg * block.mult * (1 - armorFrac(this.heroStr));
+    if (projectile) real *= 1 - magicResistFrac(this.heroInt);
+    this.state.heroHp = Math.max(0, this.state.heroHp - real);
     if (this.state.heroHp <= 0) this.finish("dead");
   }
 

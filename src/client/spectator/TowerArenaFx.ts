@@ -42,6 +42,10 @@ const PALETTES: readonly Palette[] = [
 interface ModelPlacement {
   inst: RigInstance;
   holder: TransformNode;
+  /** НЕ масштабированный узел для таблички — holder.scaling разный у разных
+   *  моделей (нативная высота модели отличается), и табличка на holder
+   *  "плавала" по высоте/размеру от этажа к этажу. Якорь всегда scale=1. */
+  anchor: TransformNode;
   tag: NameTag;
   attackAnim: AnimationGroupLike | null;
   lastAtkPulse: boolean;
@@ -84,6 +88,7 @@ export class TowerArenaFx {
 
   private lastFloor = -1;
   private wasActive = false;
+  private lastHeroId = "";
   private modelName = "";
   private loadSeq = 0;
   private mobModels: (ModelPlacement | null)[] = new Array(MAX_MOBS).fill(null);
@@ -270,11 +275,14 @@ export class TowerArenaFx {
     this.disposeModels();
     this.modelName = fm.model;
     for (let i = 0; i < MAX_MOBS; i++) {
-      this.mobModels[i] = this.placeModel(make(), 1.1, fm.name, floor);
-      this.mobModels[i]!.holder.setEnabled(false);
+      const p = this.placeModel(make(), 1.1, fm.name, floor);
+      p.holder.setEnabled(false);
+      p.anchor.setEnabled(false);
+      this.mobModels[i] = p;
     }
     this.bossModel = this.placeModel(make(), 1.1 * TOWER.bossScaleMul, `${fm.name} (босс этажа)`, floor);
     this.bossModel.holder.setEnabled(false);
+    this.bossModel.anchor.setEnabled(false);
   }
 
   private placeModel(inst: RigInstance, targetHeight: number, name: string, level: number): ModelPlacement {
@@ -290,10 +298,14 @@ export class TowerArenaFx {
     const attackAnim =
       inst.anims.get("attack") ?? inst.anims.get("bite") ?? inst.anims.get("hit") ?? null;
 
-    // Табличка имя+уровень+ХП — тот же компонент, что у мобов основной игры.
-    const tag = new NameTag(this.scene, holder, new Vector3(0, targetHeight + 0.6, 0), name, level);
+    // Табличка — на СВОЁМ узле (scale=1), не на holder: holder масштабирован
+    // по nativeHeight конкретной модели (разная у разных мобов), и табличка
+    // на нём "плавала" по высоте/размеру от этажа к этажу.
+    const anchor = new TransformNode("towerTagAnchor", this.scene);
+    anchor.parent = this.root;
+    const tag = new NameTag(this.scene, anchor, new Vector3(0, targetHeight + 0.6, 0), name, level);
     tag.showHp();
-    return { inst, holder, tag, attackAnim, lastAtkPulse: false };
+    return { inst, holder, anchor, tag, attackAnim, lastAtkPulse: false };
   }
 
   private disposeModels(): void {
@@ -301,12 +313,14 @@ export class TowerArenaFx {
       p?.tag.dispose();
       p?.inst.dispose();
       p?.holder.dispose();
+      p?.anchor.dispose();
     }
     this.mobModels.fill(null);
     if (this.bossModel) {
       this.bossModel.tag.dispose();
       this.bossModel.inst.dispose();
       this.bossModel.holder.dispose();
+      this.bossModel.anchor.dispose();
       this.bossModel = null;
     }
     this.modelName = "";
@@ -320,12 +334,16 @@ export class TowerArenaFx {
 
   /**
    * Раз в кадр. `active` — идёт ли сейчас хоть один забег (по факту — не
-   * больше одного одновременно, см. очередь башни). `mobs` — живые позиции
-   * (МИРОВЫЕ координаты, как их шлёт ZoneRoom) обычных мобов и, если есть,
-   * босса последней записью с `boss: true`.
+   * больше одного одновременно, см. очередь башни). `heroId` — кто именно
+   * (для обнаружения смены героя — см. lastHeroId ниже: очередь может
+   * передать эстафету СРАЗУ, в одном и том же сетевом тике, без промежутка
+   * "никого нет" — простого active:false->true для сброса недостаточно).
+   * `mobs` — живые позиции (МИРОВЫЕ координаты, как их шлёт ZoneRoom)
+   * обычных мобов и, если есть, босса последней записью с `boss: true`.
    */
   update(
     active: boolean,
+    heroId: string,
     floor: number,
     bossActive: boolean,
     mobs: readonly TowerLiveMob[],
@@ -333,17 +351,20 @@ export class TowerArenaFx {
     if (!active) {
       if (this.built) this.root.setEnabled(false);
       this.wasActive = false;
+      this.lastHeroId = "";
       return;
     }
     this.ensureBuilt();
     this.root.setEnabled(true);
-    if (!this.wasActive) {
-      // Новый забег (возможно, другой герой) — форсируем свежую загрузку
+    if (!this.wasActive || heroId !== this.lastHeroId) {
+      // Новый забег (в т.ч. другой герой СРАЗУ следом за предыдущим, без
+      // видимого "никого нет" между ними) — форсируем свежую загрузку
       // модели, даже если номер этажа случайно совпал с тем, на котором
       // закончился предыдущий: иначе на арене могли остаться (или не
       // появиться) чужие модели предыдущего забега.
       this.lastFloor = -1;
     }
+    this.lastHeroId = heroId;
     this.wasActive = true;
 
     if (floor !== this.lastFloor) {
@@ -361,7 +382,11 @@ export class TowerArenaFx {
       const slot = hasModels ? this.mobModels[regularIdx] : null;
       if (slot) {
         slot.holder.setEnabled(true);
-        slot.holder.position.set(m.x - this.root.position.x, 0, m.z - this.root.position.z);
+        slot.anchor.setEnabled(true);
+        const lx = m.x - this.root.position.x;
+        const lz = m.z - this.root.position.z;
+        slot.holder.position.set(lx, 0, lz);
+        slot.anchor.position.set(lx, 0, lz);
         slot.holder.rotation.y = m.yaw;
         slot.tag.setHp(m.hpFrac);
         this.pulseAttack(slot, m.atkPulse);
@@ -369,18 +394,26 @@ export class TowerArenaFx {
       regularIdx++;
     }
     if (hasModels) {
-      for (let i = regularIdx; i < MAX_MOBS; i++) this.mobModels[i]?.holder.setEnabled(false);
+      for (let i = regularIdx; i < MAX_MOBS; i++) {
+        this.mobModels[i]?.holder.setEnabled(false);
+        this.mobModels[i]?.anchor.setEnabled(false);
+      }
       if (bossActive && this.bossModel) {
         const boss = mobs.find((m) => m.boss);
         this.bossModel.holder.setEnabled(!!boss);
+        this.bossModel.anchor.setEnabled(!!boss);
         if (boss) {
-          this.bossModel.holder.position.set(boss.x - this.root.position.x, 0, boss.z - this.root.position.z);
+          const lx = boss.x - this.root.position.x;
+          const lz = boss.z - this.root.position.z;
+          this.bossModel.holder.position.set(lx, 0, lz);
+          this.bossModel.anchor.position.set(lx, 0, lz);
           this.bossModel.holder.rotation.y = boss.yaw;
           this.bossModel.tag.setHp(boss.hpFrac);
           this.pulseAttack(this.bossModel, boss.atkPulse);
         }
       } else {
         this.bossModel?.holder.setEnabled(false);
+        this.bossModel?.anchor.setEnabled(false);
       }
     }
   }

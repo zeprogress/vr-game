@@ -76,6 +76,8 @@ export class Spectator {
   private readonly towerFx: TowerArenaFx;
   /** Живые позиции мобов текущего забега (мировые координаты) — с сервера. */
   private _towerMobs: TowerLiveMob[] = [];
+  /** Статус текущего забега башни для оверлея (этаж/мобы/босс) — с сервера. */
+  private _towerStatus: OverlayCtx["towerStatus"] = null;
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
 
@@ -605,6 +607,7 @@ export class Spectator {
     this._mobs.length = 0;
     let boss: DirectorCtx["boss"] = null;
     let towerActive = false;
+    let towerHeroId = "";
     let towerFloor = 0;
     let towerBossActive = false;
     if (room) {
@@ -634,11 +637,20 @@ export class Spectator {
         // тут только сама арена (пол/стены/потолок/мобы), одна на всех.
         if (p.towerFloor > 0) {
           towerActive = true;
+          towerHeroId = id;
           towerFloor = p.towerFloor;
           towerBossActive = p.towerBossActive === 1;
+          this._towerStatus = {
+            heroNick: p.nick,
+            floor: p.towerFloor,
+            mobsLeft: p.towerMobsLeft,
+            mobsTotal: p.towerMobsTotal,
+            bossActive: towerBossActive,
+          };
         }
       });
-      this.towerFx.update(towerActive, towerFloor, towerBossActive, this._towerMobs);
+      if (!towerActive) this._towerStatus = null;
+      this.towerFx.update(towerActive, towerHeroId, towerFloor, towerBossActive, this._towerMobs);
 
       st.mobs.forEach((m, id) => {
         if (m.dead || m.kind === "shard") return;
@@ -879,6 +891,7 @@ export class Spectator {
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,
+      towerStatus: this._towerStatus,
     });
   }
 
