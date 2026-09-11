@@ -25,6 +25,12 @@ if (params.get("tpcam") === "1") {
   void import("./ui/TpCamTuner").then(({ mountTpCamTuner }) => mountTpCamTuner());
 }
 
+// ?towerlight=1 — панель живой настройки освещения «Охотничьей башни»
+// (нужен спектатор с активной ареной — см. ?towertest=1 у bootSpectator).
+if (params.get("towerlight") === "1") {
+  void import("./ui/TowerLightTuner").then(({ mountTowerLightTuner }) => mountTowerLightTuner());
+}
+
 if (params.has("dash")) {
   bootDashboard();
 } else if (params.get("spectator")) {

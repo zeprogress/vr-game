@@ -6,8 +6,10 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { Light } from "@babylonjs/core/Lights/light";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { SpotLight } from "@babylonjs/core/Lights/spotLight";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Constants } from "@babylonjs/core/Engines/constants";
@@ -22,6 +24,7 @@ import { TOWER, TOWER_HIDE, floorMonster } from "#shared/tower";
 import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
 import { protoFor as shadowProtoFor } from "../world/blobShadow";
 import { NameTag } from "../ui/NameTag";
+import { TOWER_LIGHT_TUNE } from "./towerLightTune";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
@@ -61,9 +64,6 @@ const PALETTES: readonly Palette[] = (
   light: desat(p.light, DESAT * 0.6), // свет чуть меньше — не терять цвет прожектора/сцены совсем
   intensity: p.intensity,
 }));
-
-/** Насколько приглушить общий свет комнаты — "почти ночь" (по просьбе). */
-const NIGHT_MUL = 0.1;
 
 interface ModelPlacement {
   inst: RigInstance;
@@ -151,14 +151,31 @@ export class TowerArenaFx {
   private bossModel: ModelPlacement | null = null;
   private projectiles: Projectile[] = [];
   private projMat: StandardMaterial | null = null;
+  /** Высота стен текущей арены — нужна прожектору, чтобы пересчитать позицию live (тюнер). */
+  private arenaH = 0;
+  /** "Родные" emissiveColor мобов (recolorMonster) — чтобы тюнер мог их живо гасить/включать. */
+  private mobEmissiveMats: { mat: StandardMaterial; base: Color3 }[] = [];
 
   constructor(private readonly scene: Scene) {}
+
+  /**
+   * Мировые огни (солнце/заполняющий/ночной — DayTime, Sky и т.п.) не знают
+   * про арену и без этого заливали бы её поверх нашего "почти ночь" — у них
+   * нет includedOnlyMeshes (это огни НА ВСЮ сцену). Единственный встречный
+   * рычаг — excludedMeshes самого света. Не трогаем НАШИ огни (this.light/
+   * this.spot) — их и так ограничивает includedOnlyMeshes.
+   */
+  private excludeFromWorldLight(l: Light, mesh: AbstractMesh): void {
+    if (l === this.light || l === (this.spot as Light | undefined)) return;
+    if (l.excludedMeshes.indexOf(mesh) === -1) l.excludedMeshes.push(mesh);
+  }
 
   private ensureBuilt(): void {
     if (this.built) return;
     this.built = true;
     const R = TOWER.arena.radius;
     const H = TOWER.arena.wallHeight;
+    this.arenaH = H;
     // Локальный y=0 — пол ПОД НОГАМИ героя (его голова синхронна TOWER_HIDE.y).
     this.root = new TransformNode("towerArena", this.scene);
     this.root.position.set(TOWER_HIDE.x, TOWER_HIDE.y - PLAYER.eyeHeight, TOWER_HIDE.z);
@@ -197,6 +214,16 @@ export class TowerArenaFx {
     this.ceilMesh.isPickable = false;
     this.ceilMesh.material = this.ceilMat;
 
+    // includedOnlyMeshes на НАШИХ огнях защищает основной мир от них — но не
+    // наоборот: солнце/дневной свет сцены глобальны (без includedOnlyMeshes)
+    // и всё равно заливали бы пол/стены/потолок поверх "почти ночи" ниже.
+    // Исключаем нашу геометрию из ВСЕХ уже существующих огней сцены разом.
+    for (const l of this.scene.lights) {
+      this.excludeFromWorldLight(l, this.floorMesh);
+      this.excludeFromWorldLight(l, this.wallMesh);
+      this.excludeFromWorldLight(l, this.ceilMesh);
+    }
+
     // Один источник света на всю арену — не задевает основной мир и его
     // материалы (includedOnlyMeshes), пересоздавать на каждый этаж не
     // надо — просто перекрашиваем/двигаем (см. applyPalette). Приглушённый
@@ -212,17 +239,17 @@ export class TowerArenaFx {
     // в комнате. Не задевает основной мир — та же includedOnlyMeshes-защита.
     this.spot = new SpotLight(
       "towerSpot",
-      new Vector3(0, H - 0.4, 0),
+      new Vector3(0, H - TOWER_LIGHT_TUNE.spotHeightOffset, 0),
       new Vector3(0, -1, 0),
-      Math.PI / 16,
-      4,
+      (TOWER_LIGHT_TUNE.spotAngleDeg * Math.PI) / 180,
+      TOWER_LIGHT_TUNE.spotExponent,
       this.scene,
     );
     this.spot.parent = this.root;
     this.spot.includedOnlyMeshes = [this.floorMesh, this.wallMesh];
     this.spot.diffuse = new Color3(1, 0.98, 0.92);
     this.spot.specular = new Color3(1, 0.98, 0.92);
-    this.spot.intensity = 9;
+    this.spot.intensity = TOWER_LIGHT_TUNE.spotIntensity;
     this.spot.range = H * 1.3;
 
     this.heroShadow = shadowProtoFor(this.scene).createInstance("towerHeroShadow");
@@ -310,27 +337,58 @@ export class TowerArenaFx {
     floorTex.uScale = R / 3;
     floorTex.vScale = R / 3;
     this.floorMat.diffuseTexture = floorTex;
-    // Эмиссив держит только САМЫЙ минимум видимости сам по себе (не зависит
-    // от light) — почти темнота, контраст с прожектором должен быть жёсткий.
-    this.floorMat.emissiveColor.copyFromFloats(pal.floor[0] * 0.055, pal.floor[1] * 0.055, pal.floor[2] * 0.055);
+    // Эмиссив — весь через тюнер (TOWER_LIGHT_TUNE), по умолчанию 0 (убрали
+    // собственное свечение по просьбе): видимость держат только light+spot.
+    const t = TOWER_LIGHT_TUNE;
+    this.floorMat.emissiveColor.copyFromFloats(pal.floor[0] * t.floorEmissive, pal.floor[1] * t.floorEmissive, pal.floor[2] * t.floorEmissive);
 
     const wallTex = this.cachedTex(`towerWallTex_${idx}`, pal.wall, idx * 3 + 1);
     wallTex.uScale = (2 * Math.PI * R) / 6;
     wallTex.vScale = H / 4;
     this.wallMat.diffuseTexture = wallTex;
-    this.wallMat.emissiveColor.copyFromFloats(pal.wall[0] * 0.045, pal.wall[1] * 0.045, pal.wall[2] * 0.045);
+    this.wallMat.emissiveColor.copyFromFloats(pal.wall[0] * t.wallEmissive, pal.wall[1] * t.wallEmissive, pal.wall[2] * t.wallEmissive);
 
     const ceilTex = this.cachedTex(`towerCeilTex_${idx}`, pal.ceiling, idx * 3 + 2);
     ceilTex.uScale = R / 3;
     ceilTex.vScale = R / 3;
     this.ceilMat.diffuseTexture = ceilTex;
-    this.ceilMat.emissiveColor.copyFromFloats(pal.ceiling[0] * 0.035, pal.ceiling[1] * 0.035, pal.ceiling[2] * 0.035);
+    this.ceilMat.emissiveColor.copyFromFloats(pal.ceiling[0] * t.ceilEmissive, pal.ceiling[1] * t.ceilEmissive, pal.ceiling[2] * t.ceilEmissive);
 
     this.light.diffuse.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
     this.light.specular.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
-    // Почти ночь — общий свет сильно приглушён (см. NIGHT_MUL), видимость
-    // держит эмиссив материалов выше плюс яркий прожектор на герое.
-    this.light.intensity = pal.intensity * NIGHT_MUL;
+    // Почти ночь — общий свет сильно приглушён (см. TOWER_LIGHT_TUNE.nightMul),
+    // видимость держит эмиссив материалов (по умолчанию 0) плюс прожектор.
+    this.light.intensity = pal.intensity * t.nightMul;
+  }
+
+  /** Прожектор — угол/резкость/яркость/высота подвеса, всё из тюнера. */
+  private applySpotTune(): void {
+    if (!this.built) return;
+    const t = TOWER_LIGHT_TUNE;
+    this.spot.angle = (t.spotAngleDeg * Math.PI) / 180;
+    this.spot.exponent = t.spotExponent;
+    this.spot.intensity = t.spotIntensity;
+    this.spot.position.y = this.arenaH - t.spotHeightOffset;
+  }
+
+  /** Возвращает "родное" (recolorMonster) свечение мобов, домноженное на тюнер. */
+  private refreshMobEmissive(): void {
+    const mul = TOWER_LIGHT_TUNE.mobEmissiveMul;
+    for (const { mat, base } of this.mobEmissiveMats) {
+      mat.emissiveColor.copyFrom(base).scaleInPlace(mul);
+    }
+  }
+
+  /**
+   * Публичный хук для панели `?towerlight=1` (см. towerLightTune.ts) — переприменить
+   * ВСЁ освещение без пересоздания арены/перезагрузки моделей: свет+прожектор
+   * сразу, эмиссив пола/стен/потолка через принудительный re-apply палитры.
+   */
+  refreshLighting(): void {
+    if (!this.built) return;
+    this.applySpotTune();
+    this.refreshMobEmissive();
+    if (this.lastFloor > 0) this.applyPalette(this.lastFloor);
   }
 
   private paintLabel(floor: number): void {
@@ -385,6 +443,25 @@ export class TowerArenaFx {
     const base = targetHeight / (inst.nativeHeight || 1);
     holder.scaling.setAll(base);
     recolorMonster(inst.root);
+    // recolorMonster сам красит модели свечением (emissiveColor) — в башне
+    // это читалось как "свои" мобы светятся сами по себе, независимо от
+    // комнатного освещения. Гасим/включаем через тюнер (0 по умолчанию —
+    // самосвет убран по просьбе), не трогая сам recolorMonster (общий код).
+    const seenMat = new Set<StandardMaterial>();
+    for (const mesh of inst.root.getChildMeshes(false)) {
+      // Мировые огни (солнце и т.п.) без этого заливали бы моба поверх
+      // "почти ночь" — та же причина, что и у пола/стен (см. ensureBuilt).
+      for (const l of this.scene.lights) this.excludeFromWorldLight(l, mesh);
+      // Прожектор должен реально подсвечивать моба, когда луч на нём —
+      // раньше includedOnlyMeshes был только пол/стены, мобы стрелка не
+      // задевала вообще (они читались тёмным силуэтом всегда).
+      this.spot.includedOnlyMeshes?.push(mesh);
+      const mat = mesh.material as StandardMaterial | null;
+      if (!mat || seenMat.has(mat)) continue;
+      seenMat.add(mat);
+      this.mobEmissiveMats.push({ mat, base: mat.emissiveColor.clone() });
+      mat.emissiveColor.scaleInPlace(TOWER_LIGHT_TUNE.mobEmissiveMul);
+    }
     const moveAnim = inst.anims.get("walk") ?? inst.anims.get("idle") ?? inst.anims.get("hop") ?? null;
     moveAnim?.play(true);
     const attackAnim =
@@ -432,6 +509,10 @@ export class TowerArenaFx {
   }
 
   private disposeModels(): void {
+    // Прожектор копил ссылки на мешей моба в includedOnlyMeshes (см.
+    // placeModel) — сбрасываем до пола/стен перед сносом старых моделей,
+    // иначе список рос бы бесконечно мёртвыми ссылками с каждым этажом.
+    if (this.spot) this.spot.includedOnlyMeshes = [this.floorMesh, this.wallMesh];
     for (const p of this.mobModels) {
       p?.tag.dispose();
       if (p) this.disposeRigInstance(p.inst);
@@ -449,6 +530,7 @@ export class TowerArenaFx {
       this.bossModel = null;
     }
     this.modelName = "";
+    this.mobEmissiveMats.length = 0;
   }
 
   /**

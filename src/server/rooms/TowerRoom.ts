@@ -12,8 +12,8 @@ import {
   type FloorArchetype,
 } from "#shared/tower";
 import { noGuard, resolveBlock, weaponDamage, type GuardState } from "#shared/combat";
-import { armorFrac, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
-import { magicResistFrac } from "#shared/magic";
+import { armorFrac, attackSpeedFor, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
+import { fireboltDamage, magicResistFrac } from "#shared/magic";
 import { WEAPONS, weaponAffix, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
 import { AFFIX, BOT } from "#shared/constants";
 
@@ -102,6 +102,8 @@ export interface TowerSnapshot {
   heroAtkPulse: boolean;
   /** true ровно на тот тик, когда клинок ДОШЁЛ до цели — звук удара мечом. */
   heroSwordHit: boolean;
+  /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
+  heroRangedPulse: boolean;
   /** Звук/FX по герою за этот тик — попал/заблокировал/увернулся (см. ZoneRoom.hurtPlayer). */
   heroHitFx: { k: "hurt" | "blockShield" | "blockSword" | "dodge"; x: number; z: number }[];
   mobs: TowerMobSnapshot[];
@@ -200,6 +202,13 @@ export class TowerRoom extends Room<TowerState> {
   private heroOneHanded = true;
   /** Пламенный меч — удар героя поджигает цель (см. AFFIX.fire, tickBurning). */
   private heroFireAffix = false;
+  /** Лук/посох — герой стреляет с дистанции (как основной мир), не бежит в упор рукопашной. */
+  private heroRanged = false;
+  private heroWeaponKind: "sword" | "fist" | "bow" | "staff" = "fist";
+  /** Темп дальнего боя (attackSpeedFor) — у лука/посоха он полный, не приглушённый как у меча. */
+  private heroAtkSpeed = 1;
+  /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
+  private heroRangedPulse = false;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -219,9 +228,28 @@ export class TowerRoom extends Room<TowerState> {
       options.rightCls && options.rightTier
         ? WEAPONS[weaponKey(options.rightCls as WeaponClass, options.rightTier as WeaponTier)]
         : undefined;
-    const weaponKind = options.rightCls === "sword" ? "sword" : "fist";
-    const weaponMult = weaponKind === "sword" ? (rightW?.mult ?? 1) : 1;
-    this.heroDmg = weaponDamage(weaponKind, options.level, options.str, weaponMult, options.agi);
+    const weaponKind: typeof this.heroWeaponKind =
+      options.rightCls === "sword"
+        ? "sword"
+        : options.rightCls === "bow"
+          ? "bow"
+          : options.rightCls === "staff"
+            ? "staff"
+            : "fist";
+    this.heroWeaponKind = weaponKind;
+    this.heroRanged = weaponKind === "bow" || weaponKind === "staff";
+    this.heroAtkSpeed = attackSpeedFor(options.level, options.agi);
+    // Лук/меч тянут тир оружия (мультом); посох — магия считает от level/int
+    // напрямую (fireboltDamage), тир посоха на урон не влияет — как и в
+    // основном мире (см. ZoneRoom: fireboltDamage без multIn).
+    if (weaponKind === "bow") {
+      this.heroDmg = weaponDamage("arrow", options.level, options.str, rightW?.mult ?? 1, options.agi);
+    } else if (weaponKind === "staff") {
+      // 0.7 — тот же фиксированный заряд, что и у ботов-магов (ZoneRoom.tickBot).
+      this.heroDmg = fireboltDamage(options.level, options.int, 0.7);
+    } else {
+      this.heroDmg = weaponDamage(weaponKind, options.level, options.str, rightW?.mult ?? 1, options.agi);
+    }
     const holdsShield = options.leftCls === "shield" || options.rightCls === "shield";
     this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
     this.heroAegis =
@@ -271,19 +299,39 @@ export class TowerRoom extends Room<TowerState> {
     }
 
     // --- герой: бежит к ближайшей живой цели (и всегда смотрит на неё) ---
+    this.heroRangedPulse = false;
     const target = this.nearestTarget();
     if (target) {
       this.heroYaw = Math.atan2(target.x - this.hero.x, target.z - this.hero.z);
       const d = Math.hypot(target.x - this.hero.x, target.z - this.hero.z);
-      if (d > TOWER.hero.atkRange) {
+      const atkRange = this.heroRanged ? SHOOT_RANGE : TOWER.hero.atkRange;
+      if (d > atkRange) {
         moveToward(this.hero, target.x, target.z, this.heroMoveSpeed, dt);
       } else {
+        // Лук/посох — не лезем в упор: чуть отходим, если моб слишком близко.
+        if (this.heroRanged && d < atkRange * 0.5) {
+          const bx = (this.hero.x - target.x) / (d || 1);
+          const bz = (this.hero.z - target.z) / (d || 1);
+          this.hero.x += bx * this.heroMoveSpeed * 0.5 * dt;
+          this.hero.z += bz * this.heroMoveSpeed * 0.5 * dt;
+          clampToArena(this.hero);
+        }
         this.heroAtkCd -= dt;
         if (this.heroAtkCd <= 0 && this.heroSwingIn <= 0) {
-          this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
-          this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
-          this.heroSwingTarget = target;
-          this.heroAtkPulse = true;
+          if (this.heroRanged) {
+            // Дальний бой без замаха-виндапа — как боты-стрелки/маги в основном
+            // мире (ZoneRoom.tickBot): урон применяется сразу, а не через паузу.
+            this.heroAtkCd =
+              (this.heroWeaponKind === "bow" ? BOT.bowCooldown : BOT.staffCooldown) / this.heroAtkSpeed;
+            this.heroRangedPulse = true;
+            this.heroAttack(target);
+            if ((this.state.phase as TowerPhase) !== "running") return;
+          } else {
+            this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
+            this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
+            this.heroSwingTarget = target;
+            this.heroAtkPulse = true;
+          }
         }
       }
     }
@@ -560,6 +608,7 @@ export class TowerRoom extends Room<TowerState> {
       heroYaw: this.heroYaw,
       heroAtkPulse: this.heroAtkPulse,
       heroSwordHit: this.heroSwordHit,
+      heroRangedPulse: this.heroRangedPulse,
       heroHitFx: this.heroHitFx,
       mobs: [
         ...this.mobs.map((m) => ({

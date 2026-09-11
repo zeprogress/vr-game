@@ -1998,6 +1998,12 @@ export class ZoneRoom extends Room<ZoneState> {
         k: "swordHit", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
       } satisfies ActRelay);
     }
+    // Герой с луком/посохом выстрелил — та же анимация/звук, что и у ботов-стрелков/магов.
+    if (s.heroRangedPulse) {
+      this.broadcast(MSG.act, {
+        k: "bow", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
+      } satisfies ActRelay);
+    }
     // Урон/блок/уворот по герою — те же звуки/FX, что у любого игрока (см. hurtPlayer),
     // только рассылаются отсюда: hurtPlayer() рано выходит для героев в башне.
     for (const fx of s.heroHitFx) {
@@ -2161,6 +2167,12 @@ export class ZoneRoom extends Room<ZoneState> {
         store.resetTowerStats();
         this.broadcastLeaderboard();
         this.reply(`@${nick} топ «Охотничьей башни» обнулён.`);
+      }
+    } else if (cmd === "!stopbots" || cmd === "!выгнатьботов") {
+      if (isAdminNick(nick)) {
+        const n = this.bots.size;
+        for (const norm2 of [...this.bots.keys()]) this.removeBot(norm2);
+        this.reply(`@${nick} все боты (${n}) распущены.`);
       }
     } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
       if (this.eventPhase === "active" && this.activeEventKind === 3) {

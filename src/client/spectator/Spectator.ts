@@ -5,6 +5,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOSS, BOT, MOB, daylightAt } from "#shared/constants";
+import { TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
@@ -78,6 +79,13 @@ export class Spectator {
   private _towerMobs: TowerLiveMob[] = [];
   /** Статус текущего забега башни для оверлея (этаж/мобы/босс) — с сервера. */
   private _towerStatus: OverlayCtx["towerStatus"] = null;
+  /**
+   * `?towertest=1` — герой на арене «стоит» синтетически (без реального
+   * забега/бота), только чтобы можно было живьём подгонять освещение
+   * (см. TowerLightTuner) на локальном сервере, не гоняя реальную очередь.
+   * Этаж переключает панель (window.__towerTestFloor, слайдер тюнера).
+   */
+  private readonly towerTestMode = new URLSearchParams(location.search).get("towertest") === "1";
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
 
@@ -214,6 +222,9 @@ export class Spectator {
     this.botLights = zone.botLights;
     this.crossFx = new WorldCrossFx(this.scene);
     this.towerFx = new TowerArenaFx(this.scene);
+    // Крючок для панели ?towerlight=1 (TowerLightTuner) — та не привязана к
+    // конкретному экрану/классу, читает арену через глобальный указатель.
+    (window as unknown as { __towerArenaFx?: unknown }).__towerArenaFx = this.towerFx;
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);
@@ -668,6 +679,33 @@ export class Spectator {
         }
       });
       if (!towerActive) this._towerStatus = null;
+
+      if (this.towerTestMode) {
+        const floor = Math.max(
+          1,
+          Math.min(20, (window as unknown as { __towerTestFloor?: number }).__towerTestFloor ?? 1),
+        );
+        towerActive = true;
+        towerHeroId = "debug";
+        towerFloor = floor;
+        towerBossActive = false;
+        towerHeroX = TOWER_HIDE.x;
+        towerHeroY = TOWER_HIDE.y;
+        towerHeroZ = TOWER_HIDE.z;
+        this._towerMobs = [
+          { x: TOWER_HIDE.x + 4, z: TOWER_HIDE.z + 2, yaw: 0, hpFrac: 1, boss: false, atkPulse: false, ranged: false, burning: false },
+          { x: TOWER_HIDE.x - 5, z: TOWER_HIDE.z + 1, yaw: 1.5, hpFrac: 0.6, boss: false, atkPulse: false, ranged: true, burning: false },
+          { x: TOWER_HIDE.x - 2, z: TOWER_HIDE.z - 5, yaw: 3, hpFrac: 1, boss: false, atkPulse: false, ranged: false, burning: false },
+        ];
+        this._towerStatus = {
+          heroNick: "тест (?towertest=1)",
+          floor,
+          mobsLeft: this._towerMobs.length,
+          mobsTotal: this._towerMobs.length,
+          bossActive: false,
+        };
+      }
+
       this.towerFx.update(
         dt,
         towerActive,
@@ -732,6 +770,15 @@ export class Spectator {
       boss,
       groundY: this.groundHeight,
     });
+    if (this.towerTestMode) {
+      // Обычный авто-режиссёр камеры не знает про синтетический тестовый
+      // забег (это чисто клиентская подмена, сервер о ней не в курсе) — без
+      // этого он тут же перезаписал бы позицию своим текущим кадром (облёт/
+      // орбита где-то на поляне). Форсируем ПОСЛЕ cam.update(), не до —
+      // иначе он побеждает. Смотрим прямо в центр этажа сбоку-сверху.
+      this.cam.cam.position.set(TOWER_HIDE.x + 9, TOWER_HIDE.y + 2.5, TOWER_HIDE.z + 9);
+      this.cam.cam.setTarget(new Vector3(TOWER_HIDE.x, TOWER_HIDE.y - 1, TOWER_HIDE.z));
+    }
 
     // Мобы, лут.
     this.cam.cam.getDirectionToRef(FORWARD_Z, this._fwd);
