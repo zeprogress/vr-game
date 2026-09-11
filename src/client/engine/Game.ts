@@ -1,8 +1,12 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
-import { Color4 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Collisions/collisionCoordinator";
 
 import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
@@ -515,6 +519,39 @@ export class Game {
   start(): void {
     this.engine.runRenderLoop(() => this.scene.render());
     this.applyOffFlags();
+    if (new URLSearchParams(location.search).has("xrtest")) this.applyXrTestMode();
+  }
+
+  /**
+   * `?xrtest=1` — ИСТИННО пустая сцена: прячем вообще все меши/свет, кроме
+   * одного тестового кубика. Проверяет гипотезу «дело не в контенте, а в
+   * самой настройке движка/XR с самого начала» — если и тут низкий fps,
+   * значит баг не в контенте вообще, а в фундаменте (Engine/Scene/XR setup).
+   */
+  private applyXrTestMode(): void {
+    const cube = MeshBuilder.CreateBox("xrTestCube", { size: 0.4 }, this.scene);
+    const mat = new StandardMaterial("xrTestMat", this.scene);
+    mat.diffuseColor = new Color3(1, 0.3, 0.3);
+    cube.material = mat;
+    cube.isPickable = false;
+    // Висит перед головой — не зависит от того, где на карте игрок.
+    this.scene.onBeforeRenderObservable.add(() => {
+      const cam = this.scene.activeCamera;
+      if (!cam) return;
+      const f = cam.getDirection(Vector3.Forward());
+      cube.position.copyFrom(cam.globalPosition).addInPlace(f.scale(2));
+    });
+    const run = (): void => {
+      for (const m of this.scene.meshes) {
+        if (m === cube || /^vrPerfHud$/.test(m.name)) continue;
+        if (m.isEnabled()) m.setEnabled(false);
+      }
+      for (const l of this.scene.lights) l.setEnabled(l instanceof HemisphericLight);
+      this.scene.fogEnabled = false;
+      console.log(`[xrtest] мешей всего ${this.scene.meshes.length}, активен только xrTestCube`);
+    };
+    run();
+    for (const ms of [1000, 3000, 6000, 10000]) setTimeout(run, ms);
   }
 
   /**
