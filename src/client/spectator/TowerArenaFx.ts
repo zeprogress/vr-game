@@ -313,6 +313,10 @@ export class TowerArenaFx {
     this.beamMat.opacityTexture = beamTex;
     this.beamMat.useAlphaFromDiffuseTexture = true;
     this.beamMat.disableLighting = true;
+    // emissiveColor по умолчанию чёрный — а при disableLighting=true итоговый
+    // цвет = emissiveColor * emissiveTexture, так что без этой строки текстура
+    // луча умножается на чёрный и луч невидим целиком, при ЛЮБОЙ альфе.
+    this.beamMat.emissiveColor = new Color3(1, 1, 1);
     this.beamMat.specularColor = new Color3(0, 0, 0);
     this.beamMat.backFaceCulling = false;
     this.beamMat.alphaMode = Constants.ALPHA_ADD;
@@ -327,11 +331,18 @@ export class TowerArenaFx {
     this.beamMesh.material = this.beamMat;
     this.beamMesh.isPickable = false;
     this.beamMesh.parent = this.beamHolder;
-    // Пивот конуса запекаем в вершины (а не просто mesh.position) — иначе при
-    // scaling.y узкий торец "уезжал" бы от держателя (offset позиции не
-    // масштабируется вместе с геометрией, классическая ловушка pivot≠scale).
-    this.beamMesh.position.y = -0.5;
-    this.beamMesh.bakeCurrentTransformIntoVertices();
+    // Без явной группы рендера прозрачный конус попадает в группу 0 вместе с
+    // непрозрачной геометрией арены и там НЕ рендерится вовсе (проверено
+    // напрямую в движке) — группа 1 как у остальной полупрозрачной мелочи
+    // (дымка, мягкое пятно на полу) чинит это.
+    this.beamMesh.renderingGroupId = 1;
+    // Пивот конуса — узкий (верхний) торец, через setPivotPoint (НЕ через
+    // mesh.position + bakeCurrentTransformIntoVertices — тот печёт ПОЛНУЮ
+    // мировую матрицу на момент вызова в вершины, а меш остаётся на месте в
+    // иерархии: родительский трансформ применялся бы ДВАЖДЫ, и луч улетал
+    // на тысячи метров в стороне от арены). setPivotPoint просто сдвигает
+    // точку, вокруг которой масштабируется/вращается меш, ничего не печёт.
+    this.beamMesh.setPivotPoint(new Vector3(0, 0.5, 0));
 
     // Мягкое пятно на полу под лучом — настоящий физический свет даёт резкий
     // обрез по конусу (особенно на низком spotExponent), это поверх него
