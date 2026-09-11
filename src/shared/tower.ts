@@ -62,7 +62,10 @@ export function floorMobHp(floor: number): number {
 }
 
 export function floorMobDmg(floor: number): number {
-  return 4 * (1 + 0.12 * (floor - 1));
+  // x2 по просьбе — множитель тут, а не в местах вызова: боссы берут dmg от
+  // этой же функции (floorMobDmg(floor) * bossDmgMul), так что удвоение
+  // автоматически прикладывается и к мобам, и к мини-боссам/супербоссу.
+  return 2 * 4 * (1 + 0.12 * (floor - 1));
 }
 
 /** Мобы бьют чуть чаще на верхних этажах, но не чаще раза в 0.6с. */

@@ -1986,6 +1986,19 @@ export class ZoneRoom extends Room<ZoneState> {
         k: "swing", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
       } satisfies ActRelay);
     }
+    // Клинок дошёл до цели — звук удара (см. TowerRoom.resolveHeroSwing/BOT.attackImpact).
+    if (s.heroSwordHit) {
+      this.broadcast(MSG.act, {
+        k: "swordHit", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
+      } satisfies ActRelay);
+    }
+    // Урон/блок/уворот по герою — те же звуки/FX, что у любого игрока (см. hurtPlayer),
+    // только рассылаются отсюда: hurtPlayer() рано выходит для героев в башне.
+    for (const fx of s.heroHitFx) {
+      this.broadcast(MSG.act, {
+        k: fx.k, id: heroId, x: TOWER_HIDE.x + fx.x, y: p.head.y, z: TOWER_HIDE.z + fx.z,
+      } satisfies ActRelay);
+    }
     this.broadcast(MSG.towerMobs, {
       heroId,
       mobs: s.mobs.map((m) => ({

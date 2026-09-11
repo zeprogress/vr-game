@@ -12,10 +12,10 @@ import {
   type FloorArchetype,
 } from "#shared/tower";
 import { noGuard, resolveBlock, weaponDamage, type GuardState } from "#shared/combat";
-import { armorFrac, dodgeChance, maxHpFor, moveSpeedFor } from "#shared/progression";
+import { armorFrac, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
 import { magicResistFrac } from "#shared/magic";
 import { WEAPONS, weaponAffix, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
-import { AFFIX } from "#shared/constants";
+import { AFFIX, BOT } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -98,8 +98,12 @@ export interface TowerSnapshot {
   heroX: number;
   heroZ: number;
   heroYaw: number;
-  /** true ровно на тот тик, когда герой ударил — рассылка "swing" в основной мир. */
+  /** true ровно на тот тик, когда герой НАЧАЛ замах — рассылка "swing" в основной мир. */
   heroAtkPulse: boolean;
+  /** true ровно на тот тик, когда клинок ДОШЁЛ до цели — звук удара мечом. */
+  heroSwordHit: boolean;
+  /** Звук/FX по герою за этот тик — попал/заблокировал/увернулся (см. ZoneRoom.hurtPlayer). */
+  heroHitFx: { k: "hurt" | "blockShield" | "blockSword" | "dodge"; x: number; z: number }[];
   mobs: TowerMobSnapshot[];
 }
 
@@ -114,6 +118,8 @@ interface LiveMob {
   /** Горение от Пламенного меча (см. AFFIX.fire) — секунд осталось / урон в секунду. */
   burnT: number;
   burnDps: number;
+  /** Своя фаза для стрейфа дальних мобов (см. ZoneRoom.tickBot strPhase) — группа не дёргается в такт. */
+  phase: number;
 }
 
 interface LiveBoss extends LiveMob {
@@ -166,12 +172,21 @@ export class TowerRoom extends Room<TowerState> {
   private heroYaw = 0;
   private heroAtkCd = 0;
   private heroAtkPulse = false;
+  /** Windup удара — клинок реально достигает цели через BOT.attackImpact/атк, не мгновенно
+   *  (см. ZoneRoom.resolveBotHit) — раньше урон применялся в тот же тик, что и "swing". */
+  private heroSwingIn = 0;
+  private heroSwingTarget: LiveMob | null = null;
+  private heroSwordHit = false;
+  private heroHitFx: TowerSnapshot["heroHitFx"] = [];
+  /** Темп ближнего боя от реальных характеристик (см. meleeSpeedFor) — не константа. */
+  private heroMeleeSpeed = 1;
   private mobs: LiveMob[] = [];
   private mobAtkInterval = 1;
   private boss: LiveBoss | null = null;
   private towerShards = 0;
   private archetype: FloorArchetype = "melee";
   private mobRange: number = TOWER.mob.atkRange;
+  private elapsedSec = 0;
   /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
   private heroDmg: number = TOWER.hero.dmg;
   private heroMoveSpeed: number = TOWER.hero.moveSpeed;
@@ -217,6 +232,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroFireAffix =
       weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier) === "fire";
     this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, options.agi);
     const heroMaxHp = maxHpFor(options.level, options.str);
 
     const state = new TowerState();
@@ -232,6 +248,7 @@ export class TowerRoom extends Room<TowerState> {
 
   private step(dt: number): void {
     if (this.state.phase !== "running") return;
+    this.elapsedSec += dt;
     this.state.timeLeftSec = Math.max(0, this.state.timeLeftSec - dt);
     if (this.state.timeLeftSec <= 0) {
       this.finish("timeout");
@@ -239,8 +256,19 @@ export class TowerRoom extends Room<TowerState> {
     }
 
     this.heroAtkPulse = false;
+    this.heroSwordHit = false;
+    this.heroHitFx = [];
     for (const m of this.mobs) m.atkPulse = false;
     if (this.boss) this.boss.atkPulse = false;
+
+    // Клинок реально долетает до цели с задержкой (как у ботов в основном
+    // мире, см. ZoneRoom.resolveBotHit) — "swing" (замах) шлётся в момент
+    // старта атаки, а урон/звук удара — здесь, когда окно долетело.
+    if (this.heroSwingIn > 0) {
+      this.heroSwingIn -= dt;
+      if (this.heroSwingIn <= 0) this.resolveHeroSwing();
+      if ((this.state.phase as TowerPhase) !== "running") return;
+    }
 
     // --- герой: бежит к ближайшей живой цели (и всегда смотрит на неё) ---
     const target = this.nearestTarget();
@@ -251,11 +279,11 @@ export class TowerRoom extends Room<TowerState> {
         moveToward(this.hero, target.x, target.z, this.heroMoveSpeed, dt);
       } else {
         this.heroAtkCd -= dt;
-        if (this.heroAtkCd <= 0) {
-          this.heroAtkCd += TOWER.hero.atkIntervalSec;
+        if (this.heroAtkCd <= 0 && this.heroSwingIn <= 0) {
+          this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
+          this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
+          this.heroSwingTarget = target;
           this.heroAtkPulse = true;
-          this.heroAttack(target);
-          if ((this.state.phase as TowerPhase) !== "running") return;
         }
       }
     }
@@ -263,18 +291,20 @@ export class TowerRoom extends Room<TowerState> {
     this.tickBurning(dt);
     if ((this.state.phase as TowerPhase) !== "running") return;
 
-    // --- мобы: бегут к герою (ranged/flyer — держат дистанцию и «стреляют»), смотрят на него ---
+    // --- мобы: бегут к герою (ranged/flyer — держат дистанцию, стрейфятся и «стреляют»), смотрят на него ---
+    const ranged = this.archetype !== "melee";
     for (const m of this.mobs) {
       m.yaw = Math.atan2(this.hero.x - m.x, this.hero.z - m.z);
       const d = Math.hypot(this.hero.x - m.x, this.hero.z - m.z);
       if (d > this.mobRange) {
         moveToward(m, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
       } else {
+        if (ranged) this.rangedShuffle(m, d, dt);
         m.atkCd -= dt;
         if (m.atkCd <= 0) {
           m.atkCd += this.mobAtkInterval;
           m.atkPulse = true;
-          this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, this.archetype !== "melee");
+          this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, ranged);
           if (this.state.phase !== "running") return;
         }
       }
@@ -288,11 +318,12 @@ export class TowerRoom extends Room<TowerState> {
       if (d > this.mobRange * 1.3) {
         moveToward(b, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
       } else {
+        if (ranged) this.rangedShuffle(b, d, dt);
         b.atkCd -= dt;
         if (b.atkCd <= 0) {
           b.atkCd += b.atkInterval;
           b.atkPulse = true;
-          this.hurtHero(b.dmg, b.x, b.z, this.archetype !== "melee");
+          this.hurtHero(b.dmg, b.x, b.z, ranged);
           if (this.state.phase !== "running") return;
         }
       }
@@ -302,6 +333,28 @@ export class TowerRoom extends Room<TowerState> {
   }
 
   /** Мобы чуть расталкиваются друг от друга — иначе слипаются в одну точку у героя. */
+  /**
+   * Дальний/летающий моб в радиусе атаки не стоит столбом — отходит, если герой
+   * подобрался ближе половины дистанции, и плавно ходит боком (перпендикуляр к
+   * линии на цель), пока не подошёл — та же формула, что и у ботов-лучников/магов
+   * в основном мире (см. ZoneRoom.tickBot, strPhase/strafeX/strafeZ).
+   */
+  private rangedShuffle(m: { x: number; z: number; phase: number }, d: number, dt: number): void {
+    const dx = (this.hero.x - m.x) / (d || 1);
+    const dz = (this.hero.z - m.z) / (d || 1);
+    const speed = TOWER.mob.moveSpeed * 0.6;
+    const keep = this.mobRange * 0.55;
+    if (d < keep) {
+      m.x -= dx * speed * dt;
+      m.z -= dz * speed * dt;
+    } else {
+      const s = Math.sin((this.elapsedSec * 0.5 + m.phase * 10) * Math.PI * 2);
+      m.x += -dz * speed * 0.7 * s * dt;
+      m.z += dx * speed * 0.7 * s * dt;
+    }
+    clampToArena(m);
+  }
+
   private separateMobs(): void {
     for (let i = 0; i < this.mobs.length; i++) {
       for (let j = i + 1; j < this.mobs.length; j++) {
@@ -336,6 +389,16 @@ export class TowerRoom extends Room<TowerState> {
     }
     if (best) return best;
     return this.boss;
+  }
+
+  /** Клинок дошёл до цели (см. heroSwingIn) — цель могла уже умереть (сгорела) или уйти. */
+  private resolveHeroSwing(): void {
+    const target = this.heroSwingTarget;
+    this.heroSwingTarget = null;
+    if (!target || target.hp <= 0) return;
+    if (target !== this.boss && this.mobs.indexOf(target) < 0) return;
+    this.heroAttack(target);
+    this.heroSwordHit = true;
   }
 
   private heroAttack(target: LiveMob): void {
@@ -408,6 +471,10 @@ export class TowerRoom extends Room<TowerState> {
     let real = dmg * block.mult * (1 - armorFrac(this.heroStr));
     if (projectile) real *= 1 - magicResistFrac(this.heroInt);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
+    // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):
+    // "MISS" при увороте рисуется над ИСТОЧНИКОМ удара, звук блока/удара — над героем.
+    const k = block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";
+    this.heroHitFx.push({ k, x: block.by === 3 ? fromX : this.hero.x, z: block.by === 3 ? fromZ : this.hero.z });
     if (this.state.heroHp <= 0) this.finish("dead");
   }
 
@@ -433,6 +500,7 @@ export class TowerRoom extends Room<TowerState> {
         atkPulse: false,
         burnT: 0,
         burnDps: 0,
+        phase: Math.random(),
       };
     });
     this.boss = null;
@@ -459,6 +527,7 @@ export class TowerRoom extends Room<TowerState> {
       atkPulse: false,
       burnT: 0,
       burnDps: 0,
+      phase: Math.random(),
     };
     this.state.bossActive = 1;
     this.state.bossHp = hp;
@@ -490,6 +559,8 @@ export class TowerRoom extends Room<TowerState> {
       heroZ: this.hero.z,
       heroYaw: this.heroYaw,
       heroAtkPulse: this.heroAtkPulse,
+      heroSwordHit: this.heroSwordHit,
+      heroHitFx: this.heroHitFx,
       mobs: [
         ...this.mobs.map((m) => ({
           x: m.x, z: m.z, yaw: m.yaw, hpFrac: m.hp / m.maxHp, boss: false, atkPulse: m.atkPulse,

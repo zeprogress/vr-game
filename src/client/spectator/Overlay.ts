@@ -498,7 +498,10 @@ export class Overlay {
     }
 
     const ts = ctx.towerStatus;
-    show(this.towerStatus, this.cfg.clock && !!ts);
+    // Раньше было завязано на cfg.clock — если на пульте выключены часы,
+    // панель этажа гасла вместе с ними, хотя это разные виджеты. Своего
+    // тумблера у неё нет, поэтому вешаем на cfg.top (тот же, что у топов).
+    show(this.towerStatus, this.cfg.top && !!ts);
     if (ts) {
       const sig = `${ts.heroNick}|${ts.floor}|${ts.mobsLeft}|${ts.mobsTotal}|${ts.bossActive ? 1 : 0}`;
       if (sig !== this.lastTowerStatusSig) {
