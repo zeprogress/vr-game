@@ -10,6 +10,9 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
+import { floorMonster, TOWER } from "#shared/tower";
+import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
+
 /** Сколько слотов мобов держим всегда — максимум по floorMobCount (см. tower.ts). */
 const MAX_MOBS = 10;
 /** Палитра площадки/декора — своя на этаж (по floor % длины), для «разных» этажей без 3D-арт-работы. */
@@ -37,6 +40,11 @@ function setBarFrac(fg: Mesh, frac: number): void {
   fg.position.x = -BAR_FG_HALF_W * (1 - f);
 }
 
+interface ModelPlacement {
+  inst: RigInstance;
+  holder: TransformNode;
+}
+
 interface Rig {
   root: TransformNode;
   platform: Mesh;
@@ -51,6 +59,12 @@ interface Rig {
   label: Mesh;
   labelTex: DynamicTexture;
   lastFloor: number;
+  /** Модель этажа, если уже загрузилась — иначе видны кубы-заглушки (mobSlots/boss). */
+  modelName: string;
+  mobModels: (ModelPlacement | null)[];
+  bossModel: ModelPlacement | null;
+  /** Токен против гонки: этаж может смениться раньше, чем догрузится предыдущий. */
+  loadSeq: number;
 }
 
 export interface TowerFxEntry {
@@ -187,7 +201,64 @@ export class TowerArenaFx {
     return {
       root, platform, platMat, mobSlots, boss, bossMat, bossBarBg, bossBarFg,
       heroBarBg, heroBarFg, label, labelTex, lastFloor: -1,
+      modelName: "", mobModels: new Array(MAX_MOBS).fill(null), bossModel: null, loadSeq: 0,
     };
+  }
+
+  /**
+   * Догрузить модель этажа (Quaternius, см. FLOOR_MONSTERS) и подменить ею
+   * кубы-заглушки — асинхронно, с защитой от гонки (этаж мог смениться ещё
+   * раз, пока эта модель грузилась). Если загрузка не удалась — кубы и
+   * останутся, это не баг, а честный фолбэк.
+   */
+  private async loadFloorModel(rig: Rig, floor: number): Promise<void> {
+    const fm = floorMonster(floor);
+    const mySeq = ++rig.loadSeq;
+    let make: (() => RigInstance) | null = null;
+    try {
+      make = await loadRig(this.scene, fm.model as ModelName);
+    } catch {
+      return;
+    }
+    if (rig.root.isDisposed() || rig.loadSeq !== mySeq) return; // устарело или риг снесён
+
+    this.disposeFloorModels(rig);
+    rig.modelName = fm.model;
+    for (let i = 0; i < rig.mobSlots.length; i++) {
+      const placement = this.placeModel(make(), rig.root, rig.mobSlots[i].position, 1.1);
+      rig.mobModels[i] = placement;
+      rig.mobSlots[i].setEnabled(false); // кубик больше не нужен — есть модель
+    }
+    rig.bossModel = this.placeModel(make(), rig.root, rig.boss.position, 1.1 * TOWER.bossScaleMul);
+    rig.boss.setEnabled(false);
+  }
+
+  /** Поставить экземпляр модели на место кубика-заглушки, подогнав высоту. */
+  private placeModel(inst: RigInstance, parent: TransformNode, pos: Vector3, targetHeight: number): ModelPlacement {
+    const holder = new TransformNode("towerModelHolder", this.scene);
+    holder.parent = parent;
+    holder.position.copyFrom(pos);
+    inst.root.parent = holder;
+    inst.root.position.set(0, 0, 0);
+    const base = targetHeight / (inst.nativeHeight || 1);
+    holder.scaling.setAll(base);
+    recolorMonster(inst.root); // родная текстура пака + эмиссив под дневной свет
+    const anim = inst.anims.get("idle") ?? inst.anims.get("walk") ?? inst.anims.get("hop") ?? null;
+    anim?.play(true);
+    return { inst, holder };
+  }
+
+  private disposeFloorModels(rig: Rig): void {
+    for (const p of rig.mobModels) {
+      p?.inst.dispose();
+      p?.holder.dispose();
+    }
+    rig.mobModels.fill(null);
+    if (rig.bossModel) {
+      rig.bossModel.inst.dispose();
+      rig.bossModel.holder.dispose();
+      rig.bossModel = null;
+    }
   }
 
   private paintLabel(rig: Rig, floor: number): void {
@@ -219,11 +290,18 @@ export class TowerArenaFx {
         const pal = PALETTES[(e.floor - 1) % PALETTES.length];
         rig.platMat.diffuseColor.copyFromFloats(pal[0], pal[1], pal[2]);
         rig.platMat.emissiveColor.copyFromFloats(pal[0] * 0.35, pal[1] * 0.35, pal[2] * 0.35);
+        void this.loadFloorModel(rig, e.floor);
       }
 
-      for (let i = 0; i < rig.mobSlots.length; i++) rig.mobSlots[i].setEnabled(i < e.mobsLeft);
+      const hasModels = rig.modelName !== "";
+      for (let i = 0; i < rig.mobSlots.length; i++) {
+        const on = i < e.mobsLeft;
+        if (hasModels) rig.mobModels[i]?.holder.setEnabled(on);
+        else rig.mobSlots[i].setEnabled(on);
+      }
 
-      rig.boss.setEnabled(e.bossActive);
+      if (hasModels) rig.bossModel?.holder.setEnabled(e.bossActive);
+      else rig.boss.setEnabled(e.bossActive);
       rig.bossBarBg.setEnabled(e.bossActive);
       rig.bossBarFg.setEnabled(e.bossActive);
       if (e.bossActive) setBarFrac(rig.bossBarFg, e.bossHpFrac);
@@ -238,6 +316,8 @@ export class TowerArenaFx {
   }
 
   private disposeRig(rig: Rig): void {
+    rig.loadSeq++; // ещё не пришедшую загрузку модели тоже глушим
+    this.disposeFloorModels(rig);
     rig.labelTex.dispose();
     rig.root.dispose(false, true); // и меши-дети, и их материалы
   }
