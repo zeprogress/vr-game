@@ -307,7 +307,7 @@ const RESTORE_BOTS_ON_START = true;
  * старте сервера все записи `nick:*` помечаются botActive:false (прогресс
  * сохраняется, бот просто не поднимается; зритель вернёт его через `!play`).
  */
-const BOT_WIPE_TOKEN = "2026-09-10-a";
+const BOT_WIPE_TOKEN = "2026-09-11-a";
 
 /** Сколько HP восстановит расходник: доля недостающего (healFrac) либо плоское (heal). */
 function potionHeal(def: { heal: number; healFrac: number }, hp: number, maxHp: number): number {
