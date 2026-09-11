@@ -17,6 +17,7 @@ import { Fireflies, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { HUB } from "#shared/hub";
 import { buildHubBlockout } from "./hub/HubBlockout";
+import { buildTowerProp } from "./tower/TowerProp";
 import { LOADOUT } from "../config/loadout";
 
 export interface Zone {
@@ -167,13 +168,16 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
   const hub = buildHubBlockout(scene);
+  // Охотничья башня — только визуальная веха у угла босса (сам ивент/бой —
+  // отдельная комната Colyseus, к этому мешу не привязан).
+  const towerProp = buildTowerProp(scene);
 
   return {
     botLights,
     fireflies,
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
-    obstacles: [...trunks, ...rockObstacles, ...hub.obstacles],
+    obstacles: [...trunks, ...rockObstacles, ...hub.obstacles, ...towerProp.obstacles],
     tick: (
       dt: number,
       playerPos: Vector3,

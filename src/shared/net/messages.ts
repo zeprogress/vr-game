@@ -36,6 +36,8 @@ export const MSG = {
   worldEvent: "we",
   /** сервер -> все: топ-5 героев (ник/уровень/убийства) — для оверлея и !top (Ф10). */
   leaderboard: "top",
+  /** сервер -> все: топ-5 по лучшему этажу Охотничьей башни — для оверлея. */
+  towerBoard: "twtop",
   /** сервер -> все: хозяин бота написал в чат канала — показать над ботом (Ф10). */
   botSay: "bsay",
   /** сервер -> все: бот сыграл эмоцию по команде из чата (Ф10). */
@@ -159,6 +161,13 @@ export interface LeaderboardRow {
   level: number;
   xp: number;
   kills: number;
+}
+
+/** Строка таблицы «Охотничья башня»: лучший этаж, до которого дошёл герой. */
+export interface TowerBoardRow {
+  nick: string;
+  floor: number;
+  shards: number;
 }
 
 /** Команды дашборда стрима (этап 17 Ф5). */

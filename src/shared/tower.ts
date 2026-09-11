@@ -58,3 +58,46 @@ export function floorMobDmg(floor: number): number {
 export function floorMobAtkIntervalSec(floor: number): number {
   return Math.max(0.6, 1.3 - 0.02 * floor);
 }
+
+/**
+ * Этаж → модель (ключ MODELS на клиенте, см. `src/client/world/models.ts`)
+ * + архетип характера — заготовка для фазы будущего апгрейда TowerArenaFx
+ * (сейчас там кубы-заглушки). Правило спеки: мини-босс = та же модель,
+ * просто крупнее (см. TOWER.bossScaleMul) — одна модель покрывает этаж
+ * целиком. Модели скопированы из Quaternius Ultimate Monsters (см. Фазу E).
+ */
+export type FloorArchetype = "melee" | "ranged" | "flyer";
+
+export interface FloorMonster {
+  model: string;
+  archetype: FloorArchetype;
+}
+
+export const FLOOR_MONSTERS: readonly FloorMonster[] = [
+  { model: "monAlien", archetype: "melee" },
+  { model: "monCat", archetype: "melee" },
+  { model: "monChicken", archetype: "melee" },
+  { model: "monDog", archetype: "melee" },
+  { model: "monGreenBlob", archetype: "melee" },
+  { model: "monMushnub", archetype: "melee" },
+  { model: "monPinkBlob", archetype: "ranged" },
+  { model: "monYeti", archetype: "melee" },
+  { model: "monBirb", archetype: "flyer" },
+  { model: "monBlueDemon", archetype: "ranged" },
+  { model: "monBunny", archetype: "melee" },
+  { model: "monDemon", archetype: "ranged" },
+  { model: "monDino", archetype: "melee" },
+  { model: "monFish", archetype: "flyer" },
+  { model: "monMonkroose", archetype: "melee" },
+  { model: "monOrcSkull", archetype: "ranged" },
+  { model: "monTribal", archetype: "melee" },
+  { model: "monNinja", archetype: "melee" },
+  { model: "monAlpaking", archetype: "flyer" },
+  { model: "monDragonEvolved", archetype: "ranged" }, // этаж 20 — супербосс
+];
+
+/** Модель+архетип для этажа (1-based); за пределами таблицы — последняя запись. */
+export function floorMonster(floor: number): FloorMonster {
+  const i = Math.min(FLOOR_MONSTERS.length, Math.max(1, floor)) - 1;
+  return FLOOR_MONSTERS[i];
+}

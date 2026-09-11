@@ -27,6 +27,7 @@ import {
   type ActKind,
   type BotSayMsg,
   type LeaderboardRow,
+  type TowerBoardRow,
   type BotEmote,
   type EmoteMsg,
   type VoiceMsg,
@@ -1325,9 +1326,24 @@ export class ZoneRoom extends Room<ZoneState> {
       .slice(0, limit);
   }
 
+  /** Топ по лучшему этажу «Охотничьей башни» (тот же паттерн, что leaderboard). */
+  private towerLeaderboard(limit: number): TowerBoardRow[] {
+    const byNorm = new Map<string, TowerBoardRow>();
+    for (const rec of store.entries()) {
+      if (!rec.token.startsWith("nick:") || !rec.bestTowerFloor) continue;
+      byNorm.set(rec.token.slice(5), {
+        nick: rec.nick || rec.token.slice(5),
+        floor: rec.bestTowerFloor,
+        shards: rec.towerShards ?? 0,
+      });
+    }
+    return [...byNorm.values()].sort((a, b) => b.floor - a.floor || b.shards - a.shards).slice(0, limit);
+  }
+
   private broadcastLeaderboard(): void {
     if (this.clients.length === 0) return;
     this.broadcast(MSG.leaderboard, this.leaderboard(5));
+    this.broadcast(MSG.towerBoard, this.towerLeaderboard(5));
   }
 
   /** `!top` — топ-5 текстом в чат канала. */
@@ -1960,6 +1976,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const verb = r.phase === "cleared" ? "покорил башню целиком!" : `дошёл до этажа ${r.floorReached}.`;
     this.reply(`${nick} ${verb}`);
     this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
+    this.broadcastLeaderboard(); // новый результат виден у спектатора сразу, не ждём след. триггера
   }
 
   private setFollow(nick: string, norm: string, target: string | null): void {
@@ -3966,6 +3983,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const pushInit = (): void => {
         if (!this.spectators.has(client.sessionId)) return;
         client.send(MSG.leaderboard, this.leaderboard(5));
+        client.send(MSG.towerBoard, this.towerLeaderboard(5));
         if (Object.keys(this.overlayCfg).length) {
           client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
         }

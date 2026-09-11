@@ -45,6 +45,28 @@ export const MODELS = {
   monOrc: "/models/monsters/Orc.gltf",
   monMushKing: "/models/monsters/MushroomKing.gltf",
   monWizard: "/models/monsters/Wizard.gltf",
+  // Охотничья башня (фаза E): по одной модели на этаж 1-19 + супербосс на
+  // 20-м — те же Quaternius Ultimate Monsters, ранее не задействованные.
+  monAlien: "/models/monsters/Alien.gltf",
+  monCat: "/models/monsters/Cat.gltf",
+  monChicken: "/models/monsters/Chicken.gltf",
+  monDog: "/models/monsters/Dog.gltf",
+  monGreenBlob: "/models/monsters/GreenBlob.gltf",
+  monMushnub: "/models/monsters/Mushnub.gltf",
+  monPinkBlob: "/models/monsters/PinkBlob.gltf",
+  monYeti: "/models/monsters/Yeti.gltf",
+  monBirb: "/models/monsters/Birb.gltf",
+  monBlueDemon: "/models/monsters/BlueDemon.gltf",
+  monBunny: "/models/monsters/Bunny.gltf",
+  monDemon: "/models/monsters/Demon.gltf",
+  monDino: "/models/monsters/Dino.gltf",
+  monFish: "/models/monsters/Fish.gltf",
+  monMonkroose: "/models/monsters/Monkroose.gltf",
+  monOrcSkull: "/models/monsters/Orc_Skull.gltf",
+  monTribal: "/models/monsters/Tribal.gltf",
+  monNinja: "/models/monsters/Ninja.gltf",
+  monAlpaking: "/models/monsters/Alpaking.gltf",
+  monDragonEvolved: "/models/monsters/Dragon_Evolved.gltf",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

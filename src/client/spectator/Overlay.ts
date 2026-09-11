@@ -1,4 +1,4 @@
-import type { OverlayPatch, LeaderboardRow } from "#shared/net/messages";
+import type { OverlayPatch, LeaderboardRow, TowerBoardRow } from "#shared/net/messages";
 
 /**
  * Оверлеи стрима (этап 17 Ф6).
@@ -75,6 +75,15 @@ const CSS = `
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; }
 .ov-top .nm { font-weight:700; }
 .ov-top .lv { opacity:.75; margin-left:.4vh; }
+.ov-towertop { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; }
+.ov-towertop b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
+  text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
+.ov-towertop div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
+.ov-towertop .rk { flex:none; width:3vh; text-align:center; line-height:1; opacity:.7;
+  font-size:1.7vh; font-variant-numeric:tabular-nums; }
+.ov-towertop .rk.medal { font-size:2.5vh; opacity:1; }
+.ov-towertop .nm { font-weight:700; }
+.ov-towertop .lv { opacity:.75; margin-left:.4vh; }
 .ov-watch { left:2.2vw; bottom:3vh; }
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
@@ -161,6 +170,9 @@ export class Overlay {
   private bossUntil = 0;
   private readonly top: HTMLDivElement;
   private topRows: LeaderboardRow[] = [];
+  /** Топ по «Охотничьей башне» — своя панель под основным топом. */
+  private readonly towerTop: HTMLDivElement;
+  private towerTopRows: TowerBoardRow[] = [];
   private readonly ticker: HTMLDivElement;
   private tickerText = "";
   private tickerKind: "event" | "news" = "event";
@@ -206,6 +218,7 @@ export class Overlay {
 
     this.feed = div("box ov-feed");
     this.top = div("box ov-top");
+    this.towerTop = div("box ov-towertop");
     this.ticker = div("box ov-ticker");
 
     this.boss = div("box ov-boss");
@@ -223,6 +236,7 @@ export class Overlay {
       this.card,
       this.boss,
       this.top,
+      this.towerTop,
       this.ticker,
     );
     document.body.appendChild(this.root);
@@ -289,6 +303,31 @@ export class Overlay {
     });
   }
 
+  /** Топ-5 по «Охотничьей башне» — тот же ритм, что и setLeaderboard. */
+  setTowerBoard(rows: TowerBoardRow[]): void {
+    this.towerTopRows = rows;
+    this.renderTowerTop();
+  }
+
+  private renderTowerTop(): void {
+    this.towerTop.innerHTML = "<b>башня — лучший этаж</b>";
+    const medal = ["🥇", "🥈", "🥉"];
+    this.towerTopRows.slice(0, 5).forEach((r, i) => {
+      const row = document.createElement("div");
+      const rk = document.createElement("span");
+      rk.className = i < 3 ? "rk medal" : "rk";
+      rk.textContent = medal[i] ?? String(i + 1);
+      const nm = document.createElement("span");
+      nm.className = "nm";
+      nm.textContent = r.nick;
+      const lv = document.createElement("span");
+      lv.className = "lv";
+      lv.textContent = `этаж ${r.floor}`;
+      row.append(rk, nm, lv);
+      this.towerTop.appendChild(row);
+    });
+  }
+
   /**
    * Заставка/нижняя треть с дашборда.
    * `secs <= 0` — держать бесконечно, пока не скроют. Пустой `title` — скрыть.
@@ -350,6 +389,7 @@ export class Overlay {
     show(this.online, this.cfg.online && ctx.online.length > 0);
     show(this.feed, this.cfg.feed);
     show(this.top, this.cfg.top && this.topRows.length > 0);
+    show(this.towerTop, this.cfg.top && this.towerTopRows.length > 0);
     const tickOn = this.cfg.ticker && this.tickerText.length > 0;
     show(this.ticker, tickOn);
     if (tickOn) {
