@@ -537,7 +537,8 @@ export class Game {
         const cats: string[] = [];
         if (m.name === "grassBlade") cats.push("grass");
         if (/firefly/i.test(names)) cats.push("fireflies");
-        if (/^stars$|^cloud/i.test(m.name)) cats.push("sky");
+        if (/^stars$|^cloud|^skyDome$|^sun$/i.test(m.name)) cats.push("sky");
+        if (/terrain|ground|^groundAo|hubGround|campGround/i.test(m.name + names)) cats.push("terrain");
         if (/bark|leaf|leav|Tree/i.test(mat + names)) cats.push("trees");
         if (/Rock/i.test(names)) cats.push("rocks");
         if (/hubFire/i.test(names) || /hubFire|hubGlow|hubSpark|hubCoal/i.test(m.name))
@@ -680,29 +681,29 @@ export class Game {
     // Разрешение буфера глаза. Babylon по умолчанию framebufferScaleFactor=1
     // (= «рекомендованное» браузером). `?fbscale=` переопределяет — только для
     // теста, по умолчанию НЕ трогаем, чтобы не загонять GPU в репроекцию.
-    const fsRaw = Number(new URLSearchParams(location.search).get("fbscale"));
+    const qp = new URLSearchParams(location.search);
+    const fsRaw = Number(qp.get("fbscale"));
     const fbScale =
-      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : undefined;
+      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : 1;
+    // ?noaa=1 — без MSAA у буфера глаза. Резолв MSAA на большом стерео-RT
+    // может стоить 10-20 мс на GPU шлема даже при пустой сцене.
+    const aa = !qp.has("noaa");
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
         disableTeleportation: true,
         disablePointerSelection: true, // без лазера у контроллеров
         inputOptions: { doNotLoadControllerMeshes: true }, // рисуем свои кисти
-        ...(fbScale
-          ? {
-              outputCanvasOptions: {
-                // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
-                canvasOptions: {
-                  antialias: true,
-                  depth: true,
-                  stencil: true,
-                  alpha: true,
-                  framebufferScaleFactor: fbScale,
-                },
-              },
-            }
-          : {}),
+        outputCanvasOptions: {
+          // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
+          canvasOptions: {
+            antialias: aa,
+            depth: true,
+            stencil: true,
+            alpha: true,
+            framebufferScaleFactor: fbScale,
+          },
+        },
       });
     } catch (e) {
       console.warn("WebXR недоступен:", e);
