@@ -9,13 +9,12 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
-import { Ray } from "@babylonjs/core/Culling/ray";
-import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
 import { hubSpawnPoint } from "#shared/hub";
+import { terrainHeight } from "#shared/terrain";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
 import { ThirdPersonCam } from "./ThirdPersonCam";
@@ -312,10 +311,9 @@ export class PlayerController {
     const tx = pos.x + dx * reach;
     const tz = pos.z + dz * reach;
 
-    const ray = new Ray(new Vector3(tx, pos.y + 3, tz), Vector3.Down(), 60);
-    const gy = this.scene.pickWithRay(ray, this.isSolid)?.pickedPoint?.y ?? null;
+    const gy = terrainHeight(tx, tz);
     const edge = WORLD.size / 2 - 1;
-    let valid = gy !== null && Math.abs(tx) < edge && Math.abs(tz) < edge;
+    let valid = Math.abs(tx) < edge && Math.abs(tz) < edge;
     if (valid) {
       for (const o of this.obstacles) {
         if (Math.hypot(tx - o.x, tz - o.z) < o.r + PLAYER.radius) {
@@ -324,7 +322,7 @@ export class PlayerController {
         }
       }
     }
-    this.teleTarget.set(tx, gy ?? pos.y - PLAYER.eyeHeight, tz);
+    this.teleTarget.set(tx, gy, tz);
     this.teleValid = valid;
     this.teleAimed = true;
     this.showTeleReticle(valid);
@@ -397,9 +395,7 @@ export class PlayerController {
   /** Поставить тело на поверхность в текущей точке (x, z). */
   placeOnGround(): void {
     const p = this.body.position;
-    const ray = new Ray(new Vector3(p.x, 500, p.z), Vector3.Down(), 1000);
-    const hit = this.scene.pickWithRay(ray, this.isSolid);
-    if (hit?.pickedPoint) p.y = hit.pickedPoint.y + PLAYER.eyeHeight;
+    p.y = terrainHeight(p.x, p.z) + PLAYER.eyeHeight;
     this.verticalVelocity = 0;
   }
 
@@ -593,32 +589,34 @@ export class PlayerController {
     void inp.interact;
   }
 
-  /** Движение по одной горизонтальной оси с упором в стены (3 луча по высоте). */
+  /**
+   * Движение по одной горизонтальной оси. Земля — аналитический рельеф
+   * (heightfield, без нависаний), поэтому «стена» — это просто слишком
+   * резкий подъём под ногами в точке назначения; сравниваем высоты вместо
+   * 3 лучей по мешу в scene.pickWithRay — то же самое, но на порядок дешевле
+   * (это была главная трата кадра в VR — ~8 мс каждый кадр, включая лёгкое
+   * покачивание головой в комнате).
+   */
   private moveAxis(dx: number, dz: number): void {
     const dist = Math.abs(dx) + Math.abs(dz);
     if (dist < 1e-5) return;
     const pos = this.body.position;
-    const dir = new Vector3(Math.sign(dx), 0, Math.sign(dz));
+    const dirX = Math.sign(dx);
+    const dirZ = Math.sign(dz);
     const feetY = pos.y - PLAYER.eyeHeight;
 
-    let allowed = dist;
-    for (const h of [STEP_HEIGHT + 0.05, PLAYER.eyeHeight * 0.6, PLAYER.eyeHeight - 0.15]) {
-      const ray = new Ray(new Vector3(pos.x, feetY + h, pos.z), dir, dist + PLAYER.radius);
-      const hit = this.scene.pickWithRay(ray, this.isSolid);
-      if (hit?.hit && hit.distance < Infinity) {
-        allowed = Math.min(allowed, Math.max(0, hit.distance - PLAYER.radius));
-      }
-    }
-    pos.x += dir.x * allowed;
-    pos.z += dir.z * allowed;
+    const destX = pos.x + dirX * dist;
+    const destZ = pos.z + dirZ * dist;
+    const stepUp = terrainHeight(destX, destZ) - feetY;
+    const allowed = stepUp > STEP_HEIGHT ? 0 : dist;
+    pos.x += dirX * allowed;
+    pos.z += dirZ * allowed;
   }
 
-  /** Y поверхности под телом или null. */
+  /** Y поверхности под телом — аналитически (см. moveAxis), не лучом по мешу. */
   private rayDown(): number | null {
     const pos = this.body.position;
-    const ray = new Ray(pos.clone(), Vector3.Down(), PLAYER.eyeHeight + 0.6);
-    const hit = this.scene.pickWithRay(ray, this.isSolid);
-    return hit?.pickedPoint?.y ?? null;
+    return terrainHeight(pos.x, pos.z);
   }
 
   private isSolid = (m: AbstractMesh): boolean =>
