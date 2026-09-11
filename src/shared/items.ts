@@ -203,16 +203,12 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
   slime: [{ id: "potion", chance: 0.14, min: 1, max: 1 }],
   spitter: [{ id: "potion", chance: 0.24, min: 1, max: 1 }],
   // Босс — щедрая добыча: зелья горстью и золотое оружие с приличным шансом.
+  // Легендарки с него больше не падают — только с события «Охота на элиту».
   boss: [
     { id: "potion", chance: 1, min: 2, max: 3 },
     { id: "gold_sword", chance: 0.4, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.4, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.4, min: 1, max: 1 },
-    // Легендарки — редко: чаще их роняет событие «Охота на элиту».
-    { id: "leg_sword", chance: 0.12, min: 1, max: 1 },
-    { id: "leg_bow", chance: 0.12, min: 1, max: 1 },
-    { id: "leg_shield", chance: 0.12, min: 1, max: 1 },
-    { id: "leg_staff", chance: 0.12, min: 1, max: 1 },
   ],
   shard: [],
 };
