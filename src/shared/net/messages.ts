@@ -182,6 +182,8 @@ export interface TowerMobsMsg {
     hpFrac: number;
     boss: boolean;
     atkPulse: boolean;
+    ranged: boolean;
+    burning: boolean;
   }[];
 }
 

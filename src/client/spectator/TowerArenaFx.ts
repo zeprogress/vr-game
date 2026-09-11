@@ -8,10 +8,12 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { PLAYER } from "#shared/constants";
 import { TOWER, TOWER_HIDE, floorMonster } from "#shared/tower";
@@ -49,6 +51,17 @@ interface ModelPlacement {
   tag: NameTag;
   attackAnim: AnimationGroupLike | null;
   lastAtkPulse: boolean;
+  /** holder.scaling базовый множитель (targetHeight/nativeHeight) — поверх него
+   *  накладывается процедурный «замах» (см. applyAttackSquash), не заменяя его. */
+  baseScale: number;
+  /** Секунд осталось у текущего замаха — 0 значит «стоит спокойно». */
+  atkT: number;
+  /** Плавно 0..1 — насколько сильно горит (Пламенный меч), как в Mob.ts. */
+  burnGlow: number;
+  burnFx: TransformNode | null;
+  burnMat: StandardMaterial | null;
+  burnFlames: Mesh[];
+  burnT: number;
 }
 
 /** Достаточно play()/stop() — тащить весь тип AnimationGroup незачем. */
@@ -57,6 +70,18 @@ interface AnimationGroupLike {
   stop(): void;
 }
 
+/** Летящий «снаряд» дальнего моба к герою — просто светящийся шарик, без хитрегистрации. */
+interface Projectile {
+  mesh: Mesh;
+  from: Vector3;
+  to: Vector3;
+  t: number;
+  dur: number;
+}
+
+/** Длительность процедурного замаха — то же значение, что и в Mob.ts. */
+const ATTACK_DUR = 0.36;
+
 export interface TowerLiveMob {
   x: number;
   z: number;
@@ -64,6 +89,8 @@ export interface TowerLiveMob {
   hpFrac: number;
   boss: boolean;
   atkPulse: boolean;
+  ranged: boolean;
+  burning: boolean;
 }
 
 /**
@@ -93,6 +120,8 @@ export class TowerArenaFx {
   private loadSeq = 0;
   private mobModels: (ModelPlacement | null)[] = new Array(MAX_MOBS).fill(null);
   private bossModel: ModelPlacement | null = null;
+  private projectiles: Projectile[] = [];
+  private projMat: StandardMaterial | null = null;
 
   constructor(private readonly scene: Scene) {}
 
@@ -305,7 +334,10 @@ export class TowerArenaFx {
     anchor.parent = this.root;
     const tag = new NameTag(this.scene, anchor, new Vector3(0, targetHeight + 0.6, 0), name, level);
     tag.showHp();
-    return { inst, holder, anchor, tag, attackAnim, lastAtkPulse: false };
+    return {
+      inst, holder, anchor, tag, attackAnim, lastAtkPulse: false,
+      baseScale: base, atkT: 0, burnGlow: 0, burnFx: null, burnMat: null, burnFlames: [], burnT: 0,
+    };
   }
 
   private disposeModels(): void {
@@ -314,6 +346,7 @@ export class TowerArenaFx {
       p?.inst.dispose();
       p?.holder.dispose();
       p?.anchor.dispose();
+      p?.burnMat?.dispose();
     }
     this.mobModels.fill(null);
     if (this.bossModel) {
@@ -321,15 +354,125 @@ export class TowerArenaFx {
       this.bossModel.inst.dispose();
       this.bossModel.holder.dispose();
       this.bossModel.anchor.dispose();
+      this.bossModel.burnMat?.dispose();
       this.bossModel = null;
     }
     this.modelName = "";
   }
 
-  /** Замах — проиграть боевую анимацию раз (если у модели она есть), не заново, если уже играет. */
-  private pulseAttack(p: ModelPlacement, pulse: boolean): void {
-    if (pulse && !p.lastAtkPulse) p.attackAnim?.play(false);
+  /**
+   * Замах: проиграть боевую анимацию раз, если у модели она реально есть
+   * (у большинства паковских мобов — нет, см. mob-visuals.md), и ВСЕГДА —
+   * процедурный squash поверх holder.scaling (как в основном мире, Mob.ts),
+   * иначе на моделях без клипа атака вообще незаметна.
+   */
+  private pulseAttack(p: ModelPlacement, pulse: boolean, ranged: boolean): void {
+    if (pulse && !p.lastAtkPulse) {
+      p.attackAnim?.play(false);
+      p.atkT = ATTACK_DUR;
+    }
     p.lastAtkPulse = pulse;
+    if (p.atkT > 0) {
+      const t = 1 - p.atkT / ATTACK_DUR; // 0 → 1 за время замаха
+      let x = 1, y = 1, z = 1;
+      if (ranged) {
+        const jab = Math.sin(Math.min(1, t * 1.5) * Math.PI);
+        x = 1 - jab * 0.16; y = 1 - jab * 0.22; z = 1 + jab * 0.36;
+      } else {
+        const wind = t < 0.28 ? Math.sin((t / 0.28) * Math.PI) : 0;
+        const lunge = t >= 0.2 ? Math.sin(Math.min(1, (t - 0.2) / 0.8) * Math.PI) : 0;
+        z = 1 - wind * 0.16 + lunge * 0.62;
+        x = 1 + wind * 0.1 - lunge * 0.4;
+        y = x;
+      }
+      p.holder.scaling.set(x * p.baseScale, y * p.baseScale, z * p.baseScale);
+    } else {
+      p.holder.scaling.setAll(p.baseScale);
+    }
+  }
+
+  /** Тик замаха/горения — общий для мобов и босса, зовётся каждый кадр. */
+  private tickModelFx(p: ModelPlacement, dt: number, burning: boolean): void {
+    if (p.atkT > 0) p.atkT = Math.max(0, p.atkT - dt);
+    p.burnGlow = burning
+      ? Math.min(1, p.burnGlow + dt * 5)
+      : Math.max(0, p.burnGlow - dt * 3);
+    this.updateBurnFx(p, dt);
+  }
+
+  /** Языки пламени над горящим мобом — тот же приём, что и в основном мире (Mob.ts). */
+  private updateBurnFx(p: ModelPlacement, dt: number): void {
+    if (p.burnGlow <= 0.001) {
+      p.burnFx?.setEnabled(false);
+      return;
+    }
+    if (!p.burnFx) {
+      const scene = this.scene;
+      p.burnFx = new TransformNode("towerMobBurn", scene);
+      p.burnFx.parent = p.holder;
+      p.burnMat = new StandardMaterial("towerMobBurnMat", scene);
+      p.burnMat.disableLighting = true;
+      p.burnMat.diffuseColor = new Color3(0, 0, 0);
+      p.burnMat.specularColor = new Color3(0, 0, 0);
+      p.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
+      p.burnMat.alphaMode = Constants.ALPHA_ADD;
+      p.burnMat.disableDepthWrite = true;
+      for (let i = 0; i < 5; i++) {
+        const f = MeshBuilder.CreatePlane(`towerMobFlame${i}`, { size: 1 }, scene);
+        f.material = p.burnMat;
+        f.isPickable = false;
+        f.billboardMode = Mesh.BILLBOARDMODE_Y;
+        f.renderingGroupId = 1;
+        const a = (i / 5) * Math.PI * 2;
+        f.position.set(Math.cos(a) * 0.4, 0.3, Math.sin(a) * 0.4);
+        f.parent = p.burnFx;
+        p.burnFlames.push(f);
+      }
+    }
+    p.burnFx.setEnabled(true);
+    p.burnT += dt;
+    for (let i = 0; i < p.burnFlames.length; i++) {
+      const f = p.burnFlames[i];
+      const ph = p.burnT * 7 + i * 1.7;
+      const rise = (p.burnT * 1.8 + i * 0.37) % 1;
+      f.position.y = 0.1 + rise * 1.1;
+      const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * p.burnGlow;
+      f.scaling.setAll(Math.max(0.05, s));
+    }
+    if (p.burnMat) p.burnMat.alpha = 0.55 * p.burnGlow;
+  }
+
+  /** Снаряд дальнего моба — светящийся шарик, летит к герою и исчезает. */
+  private spawnProjectile(from: Vector3, to: Vector3): void {
+    if (!this.projMat) {
+      this.projMat = new StandardMaterial("towerProjMat", this.scene);
+      this.projMat.disableLighting = true;
+      this.projMat.diffuseColor = new Color3(0, 0, 0);
+      this.projMat.specularColor = new Color3(0, 0, 0);
+      this.projMat.emissiveColor = new Color3(1, 0.65, 0.25);
+      this.projMat.alphaMode = Constants.ALPHA_ADD;
+      this.projMat.disableDepthWrite = true;
+    }
+    const mesh = MeshBuilder.CreateSphere("towerProj", { diameter: 0.28 }, this.scene);
+    mesh.material = this.projMat;
+    mesh.isPickable = false;
+    mesh.parent = this.root;
+    mesh.position.copyFrom(from);
+    const dist = Vector3.Distance(from, to);
+    this.projectiles.push({ mesh, from: from.clone(), to: to.clone(), t: 0, dur: Math.max(0.12, dist / 16) });
+  }
+
+  private updateProjectiles(dt: number): void {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const pr = this.projectiles[i];
+      pr.t += dt;
+      const k = Math.min(1, pr.t / pr.dur);
+      Vector3.LerpToRef(pr.from, pr.to, k, pr.mesh.position);
+      if (k >= 1) {
+        pr.mesh.dispose();
+        this.projectiles.splice(i, 1);
+      }
+    }
   }
 
   /**
@@ -342,16 +485,22 @@ export class TowerArenaFx {
    * обычных мобов и, если есть, босса последней записью с `boss: true`.
    */
   update(
+    dt: number,
     active: boolean,
     heroId: string,
     floor: number,
     bossActive: boolean,
     mobs: readonly TowerLiveMob[],
+    heroX: number,
+    heroY: number,
+    heroZ: number,
   ): void {
     if (!active) {
       if (this.built) this.root.setEnabled(false);
       this.wasActive = false;
       this.lastHeroId = "";
+      for (const pr of this.projectiles) pr.mesh.dispose();
+      this.projectiles.length = 0;
       return;
     }
     this.ensureBuilt();
@@ -374,6 +523,13 @@ export class TowerArenaFx {
       void this.loadFloorModel(floor);
     }
 
+    // Локальная цель для снарядов дальних мобов — примерно торс героя.
+    const heroLocal = new Vector3(
+      heroX - this.root.position.x,
+      Math.max(1, heroY - this.root.position.y),
+      heroZ - this.root.position.z,
+    );
+
     const hasModels = this.modelName !== "";
     let regularIdx = 0;
     for (const m of mobs) {
@@ -389,7 +545,12 @@ export class TowerArenaFx {
         slot.anchor.position.set(lx, 0, lz);
         slot.holder.rotation.y = m.yaw;
         slot.tag.setHp(m.hpFrac);
-        this.pulseAttack(slot, m.atkPulse);
+        const wasPulsing = slot.lastAtkPulse;
+        this.pulseAttack(slot, m.atkPulse, m.ranged);
+        this.tickModelFx(slot, dt, m.burning);
+        if (m.ranged && m.atkPulse && !wasPulsing) {
+          this.spawnProjectile(new Vector3(lx, 1.1, lz), heroLocal);
+        }
       }
       regularIdx++;
     }
@@ -409,18 +570,27 @@ export class TowerArenaFx {
           this.bossModel.anchor.position.set(lx, 0, lz);
           this.bossModel.holder.rotation.y = boss.yaw;
           this.bossModel.tag.setHp(boss.hpFrac);
-          this.pulseAttack(this.bossModel, boss.atkPulse);
+          const wasPulsing = this.bossModel.lastAtkPulse;
+          this.pulseAttack(this.bossModel, boss.atkPulse, boss.ranged);
+          this.tickModelFx(this.bossModel, dt, boss.burning);
+          if (boss.ranged && boss.atkPulse && !wasPulsing) {
+            this.spawnProjectile(new Vector3(lx, 1.1 * TOWER.bossScaleMul, lz), heroLocal);
+          }
         }
       } else {
         this.bossModel?.holder.setEnabled(false);
         this.bossModel?.anchor.setEnabled(false);
       }
     }
+    this.updateProjectiles(dt);
   }
 
   dispose(): void {
     if (!this.built) return;
     this.disposeModels();
+    for (const pr of this.projectiles) pr.mesh.dispose();
+    this.projectiles.length = 0;
+    this.projMat?.dispose();
     for (const t of this.texCache.values()) t.dispose();
     this.texCache.clear();
     this.labelTex.dispose();

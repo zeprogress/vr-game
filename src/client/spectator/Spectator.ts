@@ -610,6 +610,9 @@ export class Spectator {
     let towerHeroId = "";
     let towerFloor = 0;
     let towerBossActive = false;
+    let towerHeroX = 0;
+    let towerHeroZ = 0;
+    let towerHeroY = 0;
     if (room) {
       const st = room.state;
       st.players.forEach((p, id) => {
@@ -640,6 +643,9 @@ export class Spectator {
           towerHeroId = id;
           towerFloor = p.towerFloor;
           towerBossActive = p.towerBossActive === 1;
+          towerHeroX = head.x;
+          towerHeroY = head.y;
+          towerHeroZ = head.z;
           this._towerStatus = {
             heroNick: p.nick,
             floor: p.towerFloor,
@@ -650,7 +656,17 @@ export class Spectator {
         }
       });
       if (!towerActive) this._towerStatus = null;
-      this.towerFx.update(towerActive, towerHeroId, towerFloor, towerBossActive, this._towerMobs);
+      this.towerFx.update(
+        dt,
+        towerActive,
+        towerHeroId,
+        towerFloor,
+        towerBossActive,
+        this._towerMobs,
+        towerHeroX,
+        towerHeroY,
+        towerHeroZ,
+      );
 
       st.mobs.forEach((m, id) => {
         if (m.dead || m.kind === "shard") return;

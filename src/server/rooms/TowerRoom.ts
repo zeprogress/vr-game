@@ -14,7 +14,8 @@ import {
 import { noGuard, resolveBlock, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, dodgeChance, maxHpFor, moveSpeedFor } from "#shared/progression";
 import { magicResistFrac } from "#shared/magic";
-import { WEAPONS, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
+import { WEAPONS, weaponAffix, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AFFIX } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -80,6 +81,10 @@ export interface TowerMobSnapshot {
   boss: boolean;
   /** true ровно на тот тик, когда моб ударил — клиент играет замах/анимацию раз. */
   atkPulse: boolean;
+  /** Дальний/летающий архетип — клиент рисует «выстрел» до героя на atkPulse. */
+  ranged: boolean;
+  /** Горит (Пламенный меч) — клиент рисует языки пламени. */
+  burning: boolean;
 }
 
 export interface TowerSnapshot {
@@ -106,6 +111,9 @@ interface LiveMob {
   maxHp: number;
   atkCd: number;
   atkPulse: boolean;
+  /** Горение от Пламенного меча (см. AFFIX.fire) — секунд осталось / урон в секунду. */
+  burnT: number;
+  burnDps: number;
 }
 
 interface LiveBoss extends LiveMob {
@@ -175,6 +183,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroAegis = false;
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
+  /** Пламенный меч — удар героя поджигает цель (см. AFFIX.fire, tickBurning). */
+  private heroFireAffix = false;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -204,6 +214,8 @@ export class TowerRoom extends Room<TowerState> {
       (options.rightCls === "shield" && options.rightTier === "legendary");
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = options.leftCls === "";
+    this.heroFireAffix =
+      weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier) === "fire";
     this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
     const heroMaxHp = maxHpFor(options.level, options.str);
 
@@ -247,6 +259,9 @@ export class TowerRoom extends Room<TowerState> {
         }
       }
     }
+
+    this.tickBurning(dt);
+    if ((this.state.phase as TowerPhase) !== "running") return;
 
     // --- мобы: бегут к герою (ranged/flyer — держат дистанцию и «стреляют»), смотрят на него ---
     for (const m of this.mobs) {
@@ -324,7 +339,18 @@ export class TowerRoom extends Room<TowerState> {
   }
 
   private heroAttack(target: LiveMob): void {
-    target.hp -= this.heroDmg;
+    // Пламенный меч — так же, как в основном мире (ZoneRoom.hitMob + tickBurning):
+    // удар поджигает цель на AFFIX.fire.burnSec, тикает отдельно в tickBurning().
+    if (this.heroFireAffix) {
+      target.burnT = Math.max(target.burnT, AFFIX.fire.burnSec);
+      target.burnDps = Math.max(target.burnDps, this.heroDmg * AFFIX.fire.burnDpsFrac);
+    }
+    this.applyDamage(target, this.heroDmg);
+  }
+
+  /** Общий путь урона по мобу/боссу — от удара героя и от тика горения. */
+  private applyDamage(target: LiveMob, dmg: number): void {
+    target.hp -= dmg;
     if (target.hp > 0) return;
     if (target === this.boss) {
       this.towerShards++;
@@ -335,6 +361,25 @@ export class TowerRoom extends Room<TowerState> {
     if (idx >= 0) this.mobs.splice(idx, 1);
     this.state.mobsLeft = this.mobs.length;
     if (this.mobs.length === 0 && !this.boss) this.spawnBoss();
+  }
+
+  /** DoT горения (Пламенный меч) — как ZoneSim.tickBurning, но на мобов/босса этажа. */
+  private tickBurning(dt: number): void {
+    for (const m of [...this.mobs]) {
+      if (m.burnT <= 0) continue;
+      m.burnT = Math.max(0, m.burnT - dt);
+      const tick = m.burnDps * dt;
+      if (tick > 0) this.applyDamage(m, tick);
+      if (m.burnT <= 0) m.burnDps = 0;
+      if ((this.state.phase as TowerPhase) !== "running") return;
+    }
+    const b = this.boss;
+    if (b && b.burnT > 0) {
+      b.burnT = Math.max(0, b.burnT - dt);
+      const tick = b.burnDps * dt;
+      if (tick > 0) this.applyDamage(b, tick);
+      if (b.burnT <= 0) b.burnDps = 0;
+    }
   }
 
   /**
@@ -386,6 +431,8 @@ export class TowerRoom extends Room<TowerState> {
         maxHp: hp,
         atkCd: this.mobAtkInterval * Math.random(),
         atkPulse: false,
+        burnT: 0,
+        burnDps: 0,
       };
     });
     this.boss = null;
@@ -410,6 +457,8 @@ export class TowerRoom extends Room<TowerState> {
       atkCd: this.mobAtkInterval * 0.5,
       atkInterval: floorMobAtkIntervalSec(floor) * 0.8,
       atkPulse: false,
+      burnT: 0,
+      burnDps: 0,
     };
     this.state.bossActive = 1;
     this.state.bossHp = hp;
@@ -444,11 +493,13 @@ export class TowerRoom extends Room<TowerState> {
       mobs: [
         ...this.mobs.map((m) => ({
           x: m.x, z: m.z, yaw: m.yaw, hpFrac: m.hp / m.maxHp, boss: false, atkPulse: m.atkPulse,
+          ranged: this.archetype !== "melee", burning: m.burnT > 0,
         })),
         ...(this.boss
           ? [{
               x: this.boss.x, z: this.boss.z, yaw: this.boss.yaw,
               hpFrac: this.boss.hp / this.boss.maxHp, boss: true, atkPulse: this.boss.atkPulse,
+              ranged: this.archetype !== "melee", burning: this.boss.burnT > 0,
             }]
           : []),
       ],

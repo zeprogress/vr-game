@@ -1995,6 +1995,8 @@ export class ZoneRoom extends Room<ZoneState> {
         hpFrac: m.hpFrac,
         boss: m.boss,
         atkPulse: m.atkPulse,
+        ranged: m.ranged,
+        burning: m.burning,
       })),
     } satisfies TowerMobsMsg);
   }
@@ -3822,6 +3824,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(h.target);
     const rt = this.rt.get(h.target);
     if (!p || !rt || p.dead || rt.invuln > 0) return;
+    // Герой в башне: его HP считает и пишет TowerRoom (onTowerSnapshot), сам он
+    // спрятан высоко над картой (TOWER_HIDE) в её же X/Z — мобы основного мира
+    // мерят дистанцию до цели только по x/z (без Y, см. ZoneSim.ts), поэтому
+    // без этой проверки мобы у центра карты могли «доставать» героя башни и
+    // рвать ему HP параллельно с боем в башне (скачки HP туда-сюда).
+    if (p.towerFloor > 0) return;
 
     // Направление ОТ игрока К источнику удара.
     let ax = h.fromX - p.head.x;
