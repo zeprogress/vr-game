@@ -296,11 +296,11 @@ function normNick(n: string): string {
 }
 
 /**
- * ВРЕМЕННО: боты зрителей живут бесконечно (не деспавнятся по простою) и
- * восстанавливаются после перезапуска сервера из сохранённых записей.
- * Вернуть `false`, чтобы отключить.
+ * Боты зрителей ПЕРЕЖИВАЮТ перезапуск сервера (восстанавливаются из записей),
+ * но снимаются, если хозяин-ник не писал в чат канала дольше BOT.ownerAbsentSec
+ * (см. tickBots). Фарм самого бота таймер не продлевает.
  */
-const KEEP_BOTS_FOREVER = true;
+const RESTORE_BOTS_ON_START = true;
 
 /**
  * Одноразовая чистка всех ботов зрителей. Поменять токен → при следующем
@@ -605,7 +605,7 @@ export class ZoneRoom extends Room<ZoneState> {
       console.log(`[bot] одноразовая чистка: снято ${w} ботов (токен ${BOT_WIPE_TOKEN})`);
     }
 
-    if (KEEP_BOTS_FOREVER) this.restoreBots();
+    if (RESTORE_BOTS_ON_START) this.restoreBots();
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -2350,7 +2350,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.raidGoAt = 0;
     }
     this.persistBot(bot);
-    // Явно ушёл из мира — после рестарта не поднимаем (KEEP_BOTS_FOREVER).
+    // Явно ушёл из мира (!stop или тайм-аут по хозяину) — после рестарта не поднимаем.
     store.put(bot.rt.token ?? `nick:${norm}`, { botActive: false });
     this.state.players.delete(bot.id);
     this.rt.delete(bot.id);
@@ -2361,7 +2361,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * ВРЕМЕННО (KEEP_BOTS_FOREVER): при старте комнаты поднимаем всех ботов,
+   * При старте комнаты поднимаем ботов, помеченных botActive (пережили рестарт),
    * которые были в мире до перезапуска, из сохранённых записей (`nick:*`).
    */
   private restoreBots(): void {
@@ -2412,7 +2412,7 @@ export class ZoneRoom extends Room<ZoneState> {
       ...readProgress(p),
       bag: [],
       kills: bot.rt.kills,
-      botActive: true, // в мире — восстановить после рестарта (KEEP_BOTS_FOREVER)
+      botActive: true, // в мире — восстановить после рестарта
     });
   }
 
@@ -3009,11 +3009,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.id,
     );
     // Опыт/kills — через общий делёж (sim.mobXpShare / mobKills).
-    if (killed) {
-      bot.target = null;
-      // Бот активно фармит — не деспавним его по «тишине в чате».
-      this.chatSeen.set(bot.norm, Date.now());
-    }
+    if (killed) bot.target = null;
   }
 
   /**
@@ -3129,7 +3125,6 @@ export class ZoneRoom extends Room<ZoneState> {
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
     this.stunBashAt(p, bot.id, BOT.stunRadius, BOT.stunDuration, dmg);
-    this.chatSeen.set(bot.norm, Date.now());
   }
 
   /**
@@ -3213,7 +3208,6 @@ export class ZoneRoom extends Room<ZoneState> {
       BOT.rainDamageMult *
       this.buffMult(bot.id, "dmg");
     this.arrowRainAt(bot.rainX, bot.rainZ, bot.id, BOT.rainRadius, BOT.rainRootTime, dmg);
-    this.chatSeen.set(bot.norm, Date.now());
   }
 
   /** Град стрел по кругу (cx,cz) — общий для бота и игрока: урон + пригвождение. */
@@ -3276,7 +3270,6 @@ export class ZoneRoom extends Room<ZoneState> {
       // Лечение союзника в бою с боссом — вклад в общий опыт.
       this.sim.bossHeal(bot.id, healed);
     }
-    this.chatSeen.set(bot.norm, Date.now());
   }
 
   private tickBots(dt: number): void {
@@ -3285,17 +3278,16 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.setExtraSlimes(this.bots.size * 2);
     if (this.bots.size === 0) return;
     const nowMs = Date.now();
-    // Пока идёт стрим (подключён спектатор ИЛИ он был на связи последний час)
-    // держим ботов дольше: зрители ради них и заходят, а бот должен «повисеть»
-    // ещё час после того, как трансляция закрылась.
-    const streamActive =
-      this.spectators.size > 0 || nowMs - this.lastSpectatorAt < 60 * 60_000;
-    const idleLimit = BOT.idleDespawnSec * 1000 * (streamActive ? 5 : 1);
+    // Снимаем бота, если ХОЗЯИН-ник не писал в чат канала дольше ownerAbsentSec.
+    // `chatSeen` теперь пополняется ТОЛЬКО настоящими сообщениями хозяина
+    // (см. onChat) — фарм самого бота таймер не двигает. Ники из STREAM_NICKS
+    // (тестовые/стримерские) живут всегда.
+    const absentLimit = BOT.ownerAbsentSec * 1000;
     for (const bot of [...this.bots.values()]) {
       if (
-        !KEEP_BOTS_FOREVER && // ВРЕМЕННО: боты не деспавнятся по простою
         !STREAM_NICKS.includes(bot.norm) &&
-        nowMs - (this.chatSeen.get(bot.norm) ?? 0) > idleLimit
+        !this.nickIsPlayed(bot.norm) &&
+        nowMs - (this.chatSeen.get(bot.norm) ?? 0) > absentLimit
       ) {
         this.removeBot(bot.norm);
         continue;
@@ -3439,7 +3431,6 @@ export class ZoneRoom extends Room<ZoneState> {
       const raw = k.xp * this.buffMult(k.owner, "xp");
       const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);
-      if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
     }
     this.sim.mobXpShare.length = 0;
     // Криты снарядов — красный «X» в точке попадания стрелы.
@@ -3469,7 +3460,6 @@ export class ZoneRoom extends Room<ZoneState> {
           const raw = k.xp * this.buffMult(k.owner, "xp");
           const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
           this.awardXp(this.clientOf(k.owner), kp, xp);
-          if (k.owner.startsWith("bot:")) this.chatSeen.set(k.owner.slice(4), Date.now());
           if (xp > topXp) {
             topXp = xp;
             topOwner = kp.nick;
@@ -3709,10 +3699,6 @@ export class ZoneRoom extends Room<ZoneState> {
   private huntLobZ = 0;
   /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота. */
   private forcedEventKind: 0 | 1 | 2 = 0;
-  /** Когда спектатор последний раз был на связи — чтобы перезагрузка страницы
-   *  спектатора (пара секунд без связи) не роняла «стрим-режим» и не снимала
-   *  ботов по короткому таймауту. */
-  private lastSpectatorAt = 0;
 
   override onJoin(client: Client, options?: JoinOpts): void {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
@@ -3722,7 +3708,6 @@ export class ZoneRoom extends Room<ZoneState> {
         throw new Error("спектатор: неверный ключ");
       }
       this.spectators.add(client.sessionId);
-      this.lastSpectatorAt = Date.now();
       console.log(`[zone] + спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Начальная синхронизация настроек пульта. Слать сразу из onJoin нельзя:
       // клиент ещё не навесил room.onMessage(specCmd) (это происходит после
@@ -3895,7 +3880,6 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override async onLeave(client: Client, consented?: boolean): Promise<void> {
     if (this.spectators.delete(client.sessionId)) {
-      this.lastSpectatorAt = Date.now();
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       // Ни одного спектатора не осталось — метка камеры стрима больше не
       // актуальна (мог уйти как раз рендерящий, а не только пульт).
