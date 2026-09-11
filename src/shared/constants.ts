@@ -239,14 +239,9 @@ export const BOSS_CFG: MobConfig = {
 export interface EliteMobDef {
   model: string;
   name: string;
+  /** Уровень моба. Он же — порог расселения ботов в botHome (ZoneRoom): бот
+   *  едет в лагерь, чей level он перерос на 3 (level + 3 &lt;= уровень бота). */
   level: number;
-  /**
-   * Уровень ДЛЯ РАССЕЛЕНИЯ БОТОВ (см. `botHome` в ZoneRoom): бот едет в
-   * лагерь, чей `botLevel` он перерос на 3. Не задано — берётся `level`.
-   * Нужно отдельно от `level`, когда желаемый порог расселения (у Чародея
-   * руин — «с 20-го») не совпадает с «уровень минус 3» от его же уровня.
-   */
-  botLevel?: number;
   kind: "slime" | "spitter";
   /** Абсолютное HP (не множитель базы): чем выше уровень — тем живучее. */
   hp: number;
@@ -317,13 +312,12 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику
   // с «Луком охотника». Новая механика: заряд заклинания взрывается по
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
+  // level:17, а не 20 — порог расселения ботов в botHome это level+3, а
+  // самых прокачанных (20+) нужно вести именно сюда, в самый мощный лагерь.
   ruinMage: {
-    model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
+    model: "monWizard", name: "Чародей руин", level: 17, kind: "spitter",
     hp: 680, dmgMul: 4.4, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
-    // Расселять ботов сюда с 20 ур. (не с 23, как дал бы обычный запас
-    // «перерос на 3» от их же боевого уровня) — самый мощный лагерь.
-    botLevel: 17,
   },
 };
 

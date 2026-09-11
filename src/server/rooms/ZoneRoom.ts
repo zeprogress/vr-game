@@ -262,12 +262,10 @@ function isWarriorBot(p: PlayerState): boolean {
   return p.rightCls === "sword";
 }
 
-/** Уровень лагеря ДЛЯ РАССЕЛЕНИЯ (см. EliteMobDef.botLevel) — обычно = level. */
-const campBotLevel = (type: keyof typeof ELITE_MOBS): number =>
-  ELITE_MOBS[type].botLevel ?? ELITE_MOBS[type].level;
-
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
-const CAMPS_BY_POWER = [...MOB_CAMPS].sort((a, b) => campBotLevel(a.type) - campBotLevel(b.type));
+const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
+  (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
+);
 
 /**
  * Куда высадить/возродить бота: селим у самого сильного лагеря, чей уровень
@@ -280,7 +278,7 @@ function botHome(level: number): { x: number; z: number } {
   }
   let pick = CAMPS_BY_POWER[0];
   for (const c of CAMPS_BY_POWER) {
-    if (campBotLevel(c.type) <= level - 3) pick = c;
+    if (ELITE_MOBS[c.type].level <= level - 3) pick = c;
   }
   return { x: pick.x, z: pick.z };
 }
