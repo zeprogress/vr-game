@@ -119,6 +119,18 @@ interface ImpactBurst {
   life: number;
 }
 
+/** Дрейфующее пятно дымки — по кругу вокруг центра, чуть покачиваясь по высоте. */
+interface HazeBit {
+  mesh: Mesh;
+  baseA: number;
+  baseR: number;
+  baseY: number;
+  phase: number;
+}
+
+/** Пятен дымки в арене — немного, дёшево по кадру. */
+const HAZE_COUNT = 6;
+
 /** Длительность процедурного замаха — то же значение, что и в Mob.ts. */
 const ATTACK_DUR = 0.36;
 
@@ -160,6 +172,9 @@ export class TowerArenaFx {
   /** Мягкое пятно поверх резкого физического обреза света на полу. */
   private softSpotMesh!: Mesh;
   private softSpotMat!: StandardMaterial;
+  /** Дымка — несколько дрейфующих мягких пятен в воздухе арены. */
+  private hazeMat!: StandardMaterial;
+  private hazeBits: HazeBit[] = [];
   private label!: Mesh;
   private labelTex!: DynamicTexture;
 
@@ -346,6 +361,42 @@ export class TowerArenaFx {
     this.softSpotMesh.isPickable = false;
     this.softSpotMesh.parent = this.root;
     this.softSpotMesh.rotation.x = Math.PI / 2;
+
+    // Лёгкая дымка в воздухе — несколько больших мягких полупрозрачных пятен,
+    // медленно дрейфующих по кругу. Дешёвая имитация тумана без глобального
+    // scene.fog (тот один на всю сцену и задел бы основной мир целиком).
+    const hazeTex = new DynamicTexture("towerHazeTex", { width: 128, height: 128 }, this.scene, false);
+    const htx = hazeTex.getContext() as CanvasRenderingContext2D;
+    const hg = htx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    hg.addColorStop(0, "rgba(210,210,215,0.16)");
+    hg.addColorStop(0.6, "rgba(210,210,215,0.08)");
+    hg.addColorStop(1, "rgba(210,210,215,0)");
+    htx.fillStyle = hg;
+    htx.fillRect(0, 0, 128, 128);
+    hazeTex.update();
+    hazeTex.hasAlpha = true;
+    this.hazeMat = new StandardMaterial("towerHazeMat", this.scene);
+    this.hazeMat.diffuseTexture = hazeTex;
+    this.hazeMat.opacityTexture = hazeTex;
+    this.hazeMat.useAlphaFromDiffuseTexture = true;
+    this.hazeMat.disableLighting = true;
+    this.hazeMat.emissiveColor = new Color3(0.7, 0.7, 0.72);
+    this.hazeMat.specularColor = new Color3(0, 0, 0);
+    this.hazeMat.backFaceCulling = false;
+    this.hazeMat.disableDepthWrite = true;
+    const R0 = TOWER.arena.radius;
+    for (let i = 0; i < HAZE_COUNT; i++) {
+      const m = MeshBuilder.CreatePlane(`towerHaze${i}`, { size: 10 + Math.random() * 6 }, this.scene);
+      m.material = this.hazeMat;
+      m.isPickable = false;
+      m.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      m.parent = this.root;
+      m.renderingGroupId = 1;
+      const a = (i / HAZE_COUNT) * Math.PI * 2;
+      const r = R0 * (0.3 + Math.random() * 0.5);
+      m.position.set(Math.cos(a) * r, 1.5 + Math.random() * 4, Math.sin(a) * r);
+      this.hazeBits.push({ mesh: m, baseA: a, baseR: r, baseY: m.position.y, phase: Math.random() * 10 });
+    }
 
     this.heroShadow = shadowProtoFor(this.scene).createInstance("towerHeroShadow");
     this.heroShadow.parent = this.root;
@@ -788,6 +839,18 @@ export class TowerArenaFx {
       }
     }
     this.updateBursts(dt);
+    this.updateHaze(dt);
+  }
+
+  private updateHaze(dt: number): void {
+    for (const h of this.hazeBits) {
+      h.phase += dt * 0.15;
+      const a = h.baseA + Math.sin(h.phase) * 0.4;
+      const r = h.baseR + Math.sin(h.phase * 0.6) * 1.5;
+      h.mesh.position.x = Math.cos(a) * r;
+      h.mesh.position.z = Math.sin(a) * r;
+      h.mesh.position.y = h.baseY + Math.sin(h.phase * 0.8) * 0.6;
+    }
   }
 
   /** Вспышка+звук попадания снаряда — та же озвучка, что и у огнешара в основном мире. */

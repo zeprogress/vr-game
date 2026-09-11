@@ -189,6 +189,8 @@ export class TowerRoom extends Room<TowerState> {
   private archetype: FloorArchetype = "melee";
   private mobRange: number = TOWER.mob.atkRange;
   private elapsedSec = 0;
+  /** Секунд до начала боя на текущем этаже (см. spawnFloor) — 0 значит "бой идёт". */
+  private floorStartDelay = 0;
   /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
   private heroDmg: number = TOWER.hero.dmg;
   private heroMoveSpeed: number = TOWER.hero.moveSpeed;
@@ -276,6 +278,13 @@ export class TowerRoom extends Room<TowerState> {
 
   private step(dt: number): void {
     if (this.state.phase !== "running") return;
+    // Пауза-"вдох" перед боем на этаже (2с, см. spawnFloor) — герой и мобы
+    // просто стоят, таймер забега тоже не тикает (не наказывать за интро).
+    if (this.floorStartDelay > 0) {
+      this.floorStartDelay -= dt;
+      this.emitSnapshot();
+      return;
+    }
     this.elapsedSec += dt;
     this.state.timeLeftSec = Math.max(0, this.state.timeLeftSec - dt);
     if (this.state.timeLeftSec <= 0) {
@@ -528,6 +537,7 @@ export class TowerRoom extends Room<TowerState> {
 
   private spawnFloor(floor: number): void {
     this.state.floor = floor;
+    this.floorStartDelay = 2;
     // Герой стартует у КРАЯ арены (не посередине), мобы — рассыпаны по
     // ПРОТИВОПОЛОЖНОЙ дуге — по просьбе: не оказываться сразу в толпе.
     const heroAngle = Math.random() * Math.PI * 2;

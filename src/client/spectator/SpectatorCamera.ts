@@ -4,7 +4,17 @@ import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
 import { SPECTATE } from "#shared/constants";
 import { inHubSafeZone } from "#shared/hub";
+import { TOWER_PROP_POS } from "#shared/tower";
+import { terrainHeight } from "#shared/terrain";
 import { CINE_PATHS, ROTATION, ROTATION_IDLE, samplePath } from "./cine";
+
+/** Подлёт камеры к декоративной башне на поляне перед стартом забега (см. EVENT.tower.approachSec). */
+const TOWER_APPROACH_DUR = 2.3; // с — чуть короче approachSec на сервере, добор — на blendTime
+const TOWER_APPROACH_START_DIST = 34; // м — откуда камера начинает лететь
+const TOWER_APPROACH_END_DIST = 8; // м — где заканчивает, у подножья
+const TOWER_APPROACH_START_UP = 16; // высота начала над землёй
+const TOWER_APPROACH_END_UP = 5; // высота конца над землёй
+const TOWER_APPROACH_AIM_UP = 14; // куда смотрим — повыше на саму башню
 
 /**
  * Камера-погоня за ботом («из глаз бота»): сзади, чуть сверху. Высота
@@ -103,6 +113,7 @@ type Shot =
   | { kind: "dronePlayer"; id: string }
   | { kind: "duelPlayer"; id: string }
   | { kind: "heroLow"; id: string }
+  | { kind: "towerApproach" }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
   | { kind: "crowd" }
@@ -183,6 +194,8 @@ function lerpV(a: Vector3, b: Vector3, k: number, out: Vector3): void {
 export class SpectatorCamera {
   readonly cam: FreeCamera;
   private shot: Shot = { kind: "overview" };
+  /** Момент (performance.now()) входа в кадр "подлёт к башне" — см. TOWER_APPROACH_DUR. */
+  private towerApproachStart = 0;
   private orbitClock = 0;
   private sinceSwitch = 999;
   private rotIdx = 0; // позиция в ROTATION (спокойная ротация, кто-то на сервере есть)
@@ -323,6 +336,7 @@ export class SpectatorCamera {
   private switchTo(shot: Shot, ctx: DirectorCtx): void {
     this.fromPos.copyFrom(this.cam.position);
     this.fromTgt.copyFrom(this.curTgt);
+    if (shot.kind === "towerApproach") this.towerApproachStart = performance.now();
     this.shot = shot;
     this.sinceSwitch = 0;
     this.curBlend = SPECTATE.blendTime;
@@ -416,6 +430,7 @@ export class SpectatorCamera {
     const kind = ci < 0 ? tok : tok.slice(0, ci);
     const id = ci < 0 ? "" : tok.slice(ci + 1);
     if (kind === "overview") return { kind: "overview" };
+    if (kind === "towerApproach") return { kind: "towerApproach" };
     if (kind === "crowd") return this.crowdPlayers(ctx).length > 0 ? { kind: "crowd" } : null;
     if (kind === "orbitBoss") return ctx.boss ? { kind: "orbitBoss" } : null;
     if (kind === "path") {
@@ -781,6 +796,24 @@ export class SpectatorCamera {
           this.eyePos.y - 0.4,
           this.eyePos.z + (fz / fl) * 8,
         );
+        return;
+      }
+      case "towerApproach": {
+        // Камера летит со стороны поляны к декоративной башне (см. TowerProp.ts)
+        // перед стартом забега — герой ещё виден в мире, ничего не изменилось.
+        const tx = TOWER_PROP_POS.x;
+        const tz = TOWER_PROP_POS.z;
+        const groundY = terrainHeight(tx, tz);
+        // Тот же угол, с которого у башни окна (см. TowerProp.ts: сторона к центру карты).
+        const dl = Math.hypot(tx, tz) || 1;
+        const dx = -tx / dl;
+        const dz = -tz / dl;
+        const t = Math.min(1, (performance.now() - this.towerApproachStart) / (TOWER_APPROACH_DUR * 1000));
+        const k = smoothstep(t);
+        const dist = TOWER_APPROACH_START_DIST + (TOWER_APPROACH_END_DIST - TOWER_APPROACH_START_DIST) * k;
+        const up = TOWER_APPROACH_START_UP + (TOWER_APPROACH_END_UP - TOWER_APPROACH_START_UP) * k;
+        pos.set(tx + dx * dist, groundY + up, tz + dz * dist);
+        tgt.set(tx, groundY + TOWER_APPROACH_AIM_UP, tz);
         return;
       }
     }

@@ -1923,9 +1923,24 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Поднять TowerRoom для очередного героя из очереди башни. */
   private startTowerRun(heroId: string): void {
+    if (!this.state.players.has(heroId)) return;
+    // Камера сперва летит К декоративной башне на поляне (TOWER_PROP_POS) —
+    // герой ещё виден в мире, ничего не телепортировано. Сам забег (и его
+    // жёсткая привязка камеры к герою) стартует чуть погодя, см. ниже.
+    this.broadcast(MSG.specCmd, { t: "cam", shot: "towerApproach" } satisfies SpecCmd);
+    this.clock.setTimeout(() => this.enterTowerRun(heroId), EVENT.tower.approachSec * 1000);
+  }
+
+  /** Собственно начало забега — вызывается после короткого подлёта камеры к башне. */
+  private enterTowerRun(heroId: string): void {
     const p = this.state.players.get(heroId);
     const bot = heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4)) : undefined;
-    if (!p || !bot) return; // герой вышел из мира, пока стоял в очереди — пропускаем
+    if (!p || !bot) {
+      // Герой вышел из мира, пока камера летела к башне, — не оставляем
+      // спектатора висеть на "подлёте" навсегда.
+      this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
+      return;
+    }
     const nick = p.nick;
     // Прячем тело за картой и глушим обычный AI (tickBot) на время забега —
     // иначе герой одновременно дерётся в основном мире и лезет по этажам.

@@ -22,7 +22,7 @@ export const TOWER_HIDE = { x: 0, y: 260, z: 0 } as const;
  * стоит сама башня, а не на случайную pickEventSpot(), как у нашествия/охоты
  * без физической точки).
  */
-export const TOWER_PROP_POS = { x: 48, z: 80 } as const;
+export const TOWER_PROP_POS = { x: 34, z: 83 } as const;
 
 export const TOWER = {
   /** Сколько этажей всего; последний — супербосс. */

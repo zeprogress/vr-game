@@ -78,7 +78,7 @@ const CSS = `
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; }
 .ov-top .nm { font-weight:700; }
 .ov-top .lv { opacity:.75; margin-left:.4vh; }
-.ov-towertop { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; }
+.ov-towertop { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
 .ov-towertop b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-towertop div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
