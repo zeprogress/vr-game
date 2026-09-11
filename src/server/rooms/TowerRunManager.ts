@@ -18,7 +18,12 @@ export class TowerRunManager {
   }
 
   /** Поднять TowerRoom для героя `heroId`/`heroNick`; `onDone` зовётся ровно раз. */
-  async start(heroId: string, heroNick: string, onDone: (r: TowerRunResult) => void): Promise<void> {
+  async start(
+    heroId: string,
+    heroNick: string,
+    onDone: (r: TowerRunResult) => void,
+    onFloor?: (floor: number) => void,
+  ): Promise<void> {
     if (this.running) throw new Error("tower: попытка уже идёт");
     const seed = (Math.random() * 0xffffffff) >>> 0;
     let done = false;
@@ -26,6 +31,7 @@ export class TowerRunManager {
       heroId,
       heroNick,
       seed,
+      onFloor,
       onResult: (r: TowerRunResult) => {
         if (done) return; // защита от двойного вызова (finish() гарантирует один раз, но не лишнее)
         done = true;

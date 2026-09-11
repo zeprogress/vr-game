@@ -1861,9 +1861,19 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(heroId);
     if (!p) return; // герой вышел из мира, пока стоял в очереди — пропускаем
     const nick = p.nick;
-    this.towerRuns.start(heroId, nick, (r) => this.onTowerRunDone(heroId, nick, r)).catch((e) => {
-      console.warn("[tower] не удалось создать комнату:", (e as Error).message);
-    });
+    this.towerRuns
+      .start(
+        heroId,
+        nick,
+        (r) => this.onTowerRunDone(heroId, nick, r),
+        (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
+      )
+      .catch((e) => {
+        console.warn("[tower] не удалось создать комнату:", (e as Error).message);
+        // Иначе провал тихо виснет: очередь уже сдвинута, а герой как будто
+        // "зашёл и пропал" — без этого сообщения не отличить от бага.
+        this.reply(`${nick}: башня не запустилась (${(e as Error).message}).`);
+      });
     this.reply(`${nick} заходит в Охотничью башню!`);
   }
 
