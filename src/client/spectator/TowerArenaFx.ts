@@ -22,6 +22,21 @@ const PALETTES: readonly [number, number, number][] = [
   [0.32, 0.16, 0.42], // пустота
 ];
 
+/** Ширина планок-заливок (bossBarFg/heroBarFg) в их СОБСТВЕННЫХ локальных
+ *  единицах — родительский масштаб (0.7 у полосы героя) применяется сам. */
+const BAR_FG_HALF_W = 1.15;
+
+/**
+ * Сжать полосу HP от ПРАВОГО края (левый — фиксирован), без billboard-качания:
+ * `fg` — ребёнок billboard-подложки, свой billboardMode/pivot ему не нужен —
+ * просто сдвигаем локальную позицию вместе со scaling.x.
+ */
+function setBarFrac(fg: Mesh, frac: number): void {
+  const f = Math.max(0.001, Math.min(1, frac));
+  fg.scaling.x = f;
+  fg.position.x = -BAR_FG_HALF_W * (1 - f);
+}
+
 interface Rig {
   root: TransformNode;
   platform: Mesh;
@@ -118,21 +133,26 @@ export class TowerArenaFx {
     bossBarBg.material = barBgMat;
     bossBarBg.setEnabled(false);
 
+    // ВАЖНО: полоса-заливка (fg) — РЕБЁНОК подложки (bg), а не root, и БЕЗ
+    // своего billboardMode/pivot. Билборд поворачивает меш вокруг его pivot;
+    // если сама fg билбордится да ещё с pivot на левом краю (чтобы шкала
+    // сжималась от края, а не от центра) — она вращается вокруг ЭТОЙ точки,
+    // а не центра, и на орбите камеры видимо "сползает"/качается. Ребёнок
+    // billboard-меша просто наследует его поворот целиком, без своего.
     const bossFgMat = new StandardMaterial(`towerBossBarFgMat_${id}`, this.scene);
     bossFgMat.diffuseColor = new Color3(0.75, 0.1, 0.75);
     bossFgMat.emissiveColor = new Color3(0.4, 0.05, 0.4);
     bossFgMat.specularColor = new Color3(0, 0, 0);
     bossFgMat.disableLighting = true;
     const bossBarFg = MeshBuilder.CreatePlane(`towerBossBarFg_${id}`, { width: 2.3, height: 0.16 }, this.scene);
-    bossBarFg.parent = root;
-    bossBarFg.position.set(0, 2.3, -5.49);
-    bossBarFg.billboardMode = Mesh.BILLBOARDMODE_Y;
+    bossBarFg.parent = bossBarBg;
+    bossBarFg.position.set(0, 0, -0.01);
     bossBarFg.isPickable = false;
     bossBarFg.material = bossFgMat;
     bossBarFg.setEnabled(false);
-    bossBarFg.setPivotPoint(new Vector3(-1.15, 0, 0));
 
     const heroBarBg = bossBarBg.clone(`towerHeroBarBg_${id}`);
+    heroBarBg.parent = root;
     heroBarBg.position.set(0, 2.7, 0);
     heroBarBg.scaling.set(0.7, 0.7, 1);
     heroBarBg.setEnabled(true);
@@ -141,13 +161,11 @@ export class TowerArenaFx {
     heroFgMat.emissiveColor = new Color3(0.05, 0.35, 0.1);
     heroFgMat.specularColor = new Color3(0, 0, 0);
     heroFgMat.disableLighting = true;
-    const heroBarFg = MeshBuilder.CreatePlane(`towerHeroBarFg_${id}`, { width: 2.3 * 0.7, height: 0.16 * 0.7 }, this.scene);
-    heroBarFg.parent = root;
-    heroBarFg.position.set(0, 2.7, 0.01);
-    heroBarFg.billboardMode = Mesh.BILLBOARDMODE_Y;
+    const heroBarFg = MeshBuilder.CreatePlane(`towerHeroBarFg_${id}`, { width: 2.3, height: 0.16 }, this.scene);
+    heroBarFg.parent = heroBarBg;
+    heroBarFg.position.set(0, 0, -0.01);
     heroBarFg.isPickable = false;
     heroBarFg.material = heroFgMat;
-    heroBarFg.setPivotPoint(new Vector3(-0.805, 0, 0));
 
     const labelTex = new DynamicTexture(`towerLabelTex_${id}`, { width: 256, height: 64 }, this.scene, false);
     labelTex.hasAlpha = true;
@@ -208,9 +226,9 @@ export class TowerArenaFx {
       rig.boss.setEnabled(e.bossActive);
       rig.bossBarBg.setEnabled(e.bossActive);
       rig.bossBarFg.setEnabled(e.bossActive);
-      if (e.bossActive) rig.bossBarFg.scaling.x = Math.max(0.001, e.bossHpFrac);
+      if (e.bossActive) setBarFrac(rig.bossBarFg, e.bossHpFrac);
 
-      rig.heroBarFg.scaling.x = Math.max(0.001, e.heroHpFrac);
+      setBarFrac(rig.heroBarFg, e.heroHpFrac);
     }
     for (const [id, rig] of this.rigs) {
       if (seen.has(id)) continue;
