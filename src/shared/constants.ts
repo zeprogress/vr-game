@@ -239,8 +239,9 @@ export const BOSS_CFG: MobConfig = {
 export interface EliteMobDef {
   model: string;
   name: string;
-  /** Уровень моба. Он же — порог расселения ботов в botHome (ZoneRoom): бот
-   *  едет в лагерь, чей level он перерос на 3 (level + 3 &lt;= уровень бота). */
+  /** Уровень моба (табличка/сила). Он же — потолок для расселения ботов в
+   *  botHome (ZoneRoom): бот идёт в самый сильный лагерь, чей level не выше
+   *  его собственного уровня + 3 (челлендж чуть выше бота, а не ниже). */
   level: number;
   kind: "slime" | "spitter";
   /** Абсолютное HP (не множитель базы): чем выше уровень — тем живучее. */
@@ -312,10 +313,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику
   // с «Луком охотника». Новая механика: заряд заклинания взрывается по
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
-  // level:17, а не 20 — порог расселения ботов в botHome это level+3, а
-  // самых прокачанных (20+) нужно вести именно сюда, в самый мощный лагерь.
   ruinMage: {
-    model: "monWizard", name: "Чародей руин", level: 17, kind: "spitter",
+    model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
     hp: 680, dmgMul: 4.4, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
   },
@@ -479,8 +478,8 @@ export const AFFIX = {
   fire: { burnSec: 6, burnDpsFrac: 0.4 },
   /** Лук: прибавка к шансу крита (поверх BOW.critChance). */
   crit: { chanceBonus: 0.25 },
-  /** Щит: сквозь блок проходит меньше урона + шире рабочий сектор (рад). */
-  guard: { blockedDamage: 0.12, coneBonus: 0.25 },
+  /** Щит: сквозь блок проходит меньше урона (Эгида блокирует 60%) + шире сектор (рад). */
+  guard: { blockedDamage: 0.4, coneBonus: 0.25 },
   /** Посох: множители радиуса и доли АОЕ огнешара. */
   storm: { splashRadiusMul: 1.6, splashFracMul: 1.5 },
 } as const;

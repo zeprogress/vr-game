@@ -269,8 +269,8 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
 
 /**
  * Куда высадить/возродить бота: селим у самого сильного лагеря, чей уровень
- * мобов бот перерос на 2 (мечникам-танкам полегче, но не совсем пусто). До
- * 5 ур. — обычная поляна у спавна. Самые прокачанные (18+) живут у орков.
+ * мобов НЕ ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До
+ * 5 ур. — обычная поляна у спавна.
  */
 function botHome(level: number): { x: number; z: number } {
   if (level < 5 || CAMPS_BY_POWER.length === 0) {
@@ -278,7 +278,7 @@ function botHome(level: number): { x: number; z: number } {
   }
   let pick = CAMPS_BY_POWER[0];
   for (const c of CAMPS_BY_POWER) {
-    if (ELITE_MOBS[c.type].level <= level - 3) pick = c;
+    if (ELITE_MOBS[c.type].level <= level + 3) pick = c;
   }
   return { x: pick.x, z: pick.z };
 }

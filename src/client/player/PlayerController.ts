@@ -71,6 +71,23 @@ export class PlayerController {
   netControlled = false;
   /** Лежит мёртвый: ввод игнорируется до возрождения. */
   dead = false;
+  /** Оглушён (спец-атака моба): секунд до конца, ввод глушим так же, как у мёртвого. */
+  stunnedSec = 0;
+  /** Отбрасывание (спец-атака моба): затухающий импульс, м/с — не зависит от ввода. */
+  private knockVX = 0;
+  private knockVZ = 0;
+
+  /** Оглушить на `sec` секунд (не сбрасывает более долгий текущий стан). */
+  applyStun(sec: number): void {
+    this.stunnedSec = Math.max(this.stunnedSec, sec);
+  }
+
+  /** Толчок от точки (dirX,dirZ уже направление ОТ источника) с силой power, м/с. */
+  applyKnockback(dirX: number, dirZ: number, power: number): void {
+    const l = Math.hypot(dirX, dirZ) || 1;
+    this.knockVX = (dirX / l) * power;
+    this.knockVZ = (dirZ / l) * power;
+  }
 
   // --- телепорт-перемещение (VR, включает админ на весь мир) ---
   private teleportMode = false;
@@ -414,9 +431,22 @@ export class PlayerController {
 
   /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
   update(dt: number): void {
-    // Мёртвый не ходит и не бьёт — ввод глушим целиком.
-    const inp = this.dead ? emptyInput() : (this.input?.sample() ?? emptyInput());
+    if (this.stunnedSec > 0) this.stunnedSec = Math.max(0, this.stunnedSec - dt);
+    // Мёртвый/оглушённый не ходит и не бьёт — ввод глушим целиком.
+    const inp =
+      this.dead || this.stunnedSec > 0 ? emptyInput() : (this.input?.sample() ?? emptyInput());
     this.lastInput = inp;
+    // Отбрасывание — независимо от ввода (даже во время стана), затухает.
+    if (Math.abs(this.knockVX) > 0.05 || Math.abs(this.knockVZ) > 0.05) {
+      this.moveAxis(this.knockVX * dt, 0);
+      this.moveAxis(0, this.knockVZ * dt);
+      const decay = Math.max(0, 1 - dt * 4);
+      this.knockVX *= decay;
+      this.knockVZ *= decay;
+    } else {
+      this.knockVX = 0;
+      this.knockVZ = 0;
+    }
     const pos = this.body.position;
     const vr = this.xrCamera !== null;
     const aiming = this.aiming;
