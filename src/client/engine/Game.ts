@@ -426,6 +426,7 @@ export class Game {
 
     this.scene.onBeforeRenderObservable.add(() => {
       const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
+      this.markStart();
       // Гарантия: VR-профиль включён ровно тогда, когда мы в шлеме — какие бы
       // события состояния XR ни пришли (или не пришли).
       if (this.player.inVR !== this.vrQualityOn) {
@@ -433,14 +434,18 @@ export class Game {
         else this.restoreFlatQuality();
       }
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
+      this.mark("zoneTick");
       // Автонаводка удара (только третье лицо на смартфоне) — до update(),
       // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
       // и доворот к мобу воспринимается как «примагничивание взгляда».
       if (this.localAvatar && this.player.thirdPerson) this.aimAssistTouch(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
+      this.mark("player");
       if (this.localAvatar) this.updateLocalAvatar(dt);
+      this.mark("localAvatar");
       this.netMobs.update(dt, this.player.position, this.aim);
+      this.mark("netMobs");
       const est = this.net?.room?.state;
       if (est && this.eventBeacon) {
         this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
@@ -448,6 +453,7 @@ export class Game {
       }
       this.loot.update(dt);
       this.combat.update(dt);
+      this.mark("combat");
       this.updateSkillAbility(dt);
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
@@ -469,10 +475,14 @@ export class Game {
         );
       }
       this.hands.update(dt);
+      this.mark("hands");
       this.syncNet(dt);
+      this.mark("syncNet");
       this.updateVoice(dt);
+      this.mark("voice");
       this.updateSmoothing();
       this.updateVrUi(dt);
+      this.mark("vrUi");
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
       this.updateComfortVignette(dt);
@@ -488,6 +498,7 @@ export class Game {
       );
       const fl = this.netMobs.fireLight();
       this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0);
+      this.mark("fx");
       this._botPos.length = 0;
       this._botFwd.length = 0;
       for (const av of this.avatars.values()) {
@@ -502,6 +513,7 @@ export class Game {
         this._botPos,
         this._botFwd,
       );
+      this.mark("botLights");
       // Своя тень: игрок стоит «глазами», ноги ниже на eyeHeight.
       const eye = this.player.eyePosition;
       this.ownShadow.setEnabled(!this.player.dead);
@@ -511,6 +523,7 @@ export class Game {
       this.applyWorldLoadoutIfChanged();
       this.updateHpBarFade();
       this.updateBossMusic();
+      this.mark("rest");
     });
 
     window.addEventListener("resize", () => this.engine.resize());
@@ -902,6 +915,18 @@ export class Game {
   }
 
   private probe = { relight: 0, lightToggle: 0, matDirty: 0, lastLight: "", madWho: "" };
+  /** Тайминги секций кадровой логики (мс, сглажено) — видно в ?perf=1/?fps=1. */
+  private readonly secTimes: Record<string, number> = {};
+  private secT0 = 0;
+  private markStart(): void {
+    this.secT0 = performance.now();
+  }
+  private mark(name: string): void {
+    const t = performance.now();
+    const dt = t - this.secT0;
+    this.secTimes[name] = this.secTimes[name] === undefined ? dt : this.secTimes[name] * 0.85 + dt * 0.15;
+    this.secT0 = t;
+  }
   /** Считаем, кто дёргает свет/материалы каждый кадр (только под ?perf=1). */
   private installPerfProbes(): void {
     const p = this.probe;
@@ -1000,6 +1025,14 @@ export class Game {
     return this.lastNewEffects;
   }
 
+  /** Топ секций кадровой логики по мс — сглаженные тайминги markStart/mark. */
+  private sectionsStr(): string {
+    return Object.entries(this.secTimes)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k}:${v.toFixed(1)}`)
+      .join(" ");
+  }
+
   /** Диагностика производительности VR: `game.vrDiag()` из консоли. */
   vrDiag(): Record<string, unknown> {
     const sm = this.xr?.baseExperience.sessionManager;
@@ -1013,6 +1046,7 @@ export class Game {
         hardwareScaling: this.engine.getHardwareScalingLevel(),
         activeMeshes: this.scene.getActiveMeshes().length,
         totalMeshes: this.scene.meshes.length,
+        sections: this.sectionsStr(),
       };
     }
     const grass = this.scene.getMeshByName("grassBlade");
@@ -1065,6 +1099,7 @@ export class Game {
       totalMeshes: this.scene.meshes.length,
       lights: this.scene.lights.filter((l) => l.isEnabled()).length,
       byCategory: bucket,
+      sections: this.sectionsStr(),
     };
   }
 

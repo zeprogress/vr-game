@@ -8,9 +8,9 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 const FULL_W = 1200;
-const FULL_H = 780;
-const LITE_W = 420;
-const LITE_H = 150;
+const FULL_H = 830;
+const LITE_W = 460;
+const LITE_H = 190;
 
 /**
  * Крупная отладочная плашка в VR: `?perf=1`. Висит перед лицом, крупный текст —
@@ -89,6 +89,11 @@ export class VrPerfHud {
         24,
         104,
       );
+      ctx.fillStyle = "#ffd166";
+      ctx.font = "17px monospace";
+      const secL = String(s.sections ?? "");
+      ctx.fillText(secL.slice(0, 60), 24, 134);
+      ctx.fillText(secL.slice(60, 120), 24, 154);
       this.tex.update(true);
       return;
     }
@@ -111,32 +116,38 @@ export class VrPerfHud {
     row(70, "мс  кадр / JS", `${s.msFrame ?? "?"} / ${s.msJS ?? "?"}`);
     row(120, "Шейдеры всего / +тик", `${shaderN} / +${delta}`, delta > 0);
 
+    ctx.font = "18px monospace";
+    ctx.fillStyle = "#7ee081";
+    const secL = String(s.sections ?? "");
+    ctx.fillText(`секции: ${secL.slice(0, 55)}`, 30, 154);
+    ctx.fillText(secL.slice(55, 110), 118, 174);
+
     const md = Number(s.probeMatDirty ?? 0);
     const lt = Number(s.probeLightToggle ?? 0);
     const dMd = md - this.prevMatDirty;
     const dLt = lt - this.prevLightTog;
     this.prevMatDirty = md;
     this.prevLightTog = lt;
-    ctx.font = "24px monospace";
+    ctx.font = "22px monospace";
     ctx.fillStyle = dMd > 0 || dLt > 0 ? "#ff7a7a" : "#ffd166";
     ctx.fillText(
       `markDirty +${dMd}/тик · свет toggle +${dLt}/тик · ${s.probeLastLight ?? ""}`,
       30,
-      164,
+      200,
     );
-    ctx.font = "16px monospace";
+    ctx.font = "15px monospace";
     ctx.fillStyle = "#ffd166";
     const who = String(s.probeMadWho ?? "");
-    ctx.fillText(who.slice(0, 96), 30, 186);
-    ctx.fillText(who.slice(96, 192), 30, 206);
-    ctx.fillText(`${s.probeRelight ?? ""}`, 30, 226);
+    ctx.fillText(who.slice(0, 96), 30, 222);
+    ctx.fillText(who.slice(96, 192), 30, 240);
+    ctx.fillText(`${s.probeRelight ?? ""}`, 30, 258);
 
-    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = "#ff9d9d";
-    ctx.fillText("Свежие компиляции шейдеров:", 30, 252);
+    ctx.fillText("Свежие компиляции шейдеров:", 30, 282);
 
     const eff = (s.newEffects as string[]) ?? [];
-    let y = 286;
+    let y = 314;
     if (eff.length === 0) {
       ctx.font = "30px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
