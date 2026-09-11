@@ -266,6 +266,8 @@ export interface ActRelay extends ActMsg {
   id: string;
   /** Длительность, с (напр. замах stunBash) — если событие её несёт. */
   d?: number;
+  /** id моба-источника (kind "dodge" — «MISS» следом за движущейся целью). */
+  mobId?: string;
 }
 
 /**
@@ -420,6 +422,8 @@ export interface MobHitMsg {
   stunSec?: number;
   /** Сила отбрасывания ОТ источника удара, м/с. Нет — не толкает. */
   knockback?: number;
+  /** id моба-источника (для «MISS» уворота — следом за движущейся целью). */
+  byMob?: string;
 }
 
 export interface SpendMsg {

@@ -304,7 +304,7 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id, d) => this.playRemoteAct(k, x, y, z, id, d);
+    net.onAct = (k, x, y, z, id, d, mobId) => this.playRemoteAct(k, x, y, z, id, d, mobId);
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
       const wantVoice = this.voiceOn;
@@ -886,6 +886,7 @@ export class Spectator {
     z: number,
     id: string,
     d?: number,
+    mobId?: string,
   ): void {
     const at = { x, y, z };
     switch (k) {
@@ -936,9 +937,18 @@ export class Spectator {
         this.sfx.at(at, () => this.sfx.playerHurt());
         this.avatars.get(id)?.playHitReact();
         break;
-      case "dodge":
-        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY);
+      case "dodge": {
+        const mob = mobId;
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, mob
+          ? () => {
+              const m = this.netMobs.getMob(mob);
+              if (!m) return null;
+              const c = m.center();
+              return { x: c.x, y: c.y - 1, z: c.z };
+            }
+          : null);
         break;
+      }
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
         break;

@@ -3660,6 +3660,7 @@ export class ZoneRoom extends Room<ZoneState> {
       by: block.by,
       stunSec: dodged ? undefined : h.stunSec,
       knockback: dodged ? undefined : h.knockback,
+      byMob: h.byMob,
     });
 
     // Соседям — звук/FX: щёлкнул щит, звякнул меч, увернулся или охнул от урона.
@@ -3669,7 +3670,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // блока/удара позиция — сам игрок, как раньше.
     const relayX = block.by === 3 ? h.fromX : p.head.x;
     const relayZ = block.by === 3 ? h.fromZ : p.head.z;
-    const relay: ActRelay = { k, id: h.target, x: relayX, y: p.head.y, z: relayZ };
+    const relay: ActRelay = {
+      k,
+      id: h.target,
+      x: relayX,
+      y: p.head.y,
+      z: relayZ,
+      mobId: block.by === 3 ? h.byMob : undefined,
+    };
     this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {

@@ -42,6 +42,9 @@ interface MissText {
   x: number;
   y: number;
   z: number;
+  /** Источник удара движется (моб гонится) — держим текст над ним, а не на
+   *  застывшей точке атаки; null — источника нет/уже нет, точка неподвижна. */
+  follow: (() => { x: number; y: number; z: number } | null) | null;
 }
 
 interface Cross {
@@ -145,7 +148,7 @@ export class WorldCrossFx {
       m.renderingGroupId = 1;
       m.billboardMode = Mesh.BILLBOARDMODE_Y;
       m.setEnabled(false);
-      this.missPool.push({ mesh: m, age: MISS_LIFE + 1, x: 0, y: 0, z: 0 });
+      this.missPool.push({ mesh: m, age: MISS_LIFE + 1, x: 0, y: 0, z: 0, follow: null });
     }
   }
 
@@ -166,12 +169,22 @@ export class WorldCrossFx {
    * перед показом (чтобы текст всплыл ПОСЛЕ того, как замах/выстрел визуально
    * долетел, а не в момент броска кубика на сервере).
    */
-  missText(x: number, y: number, z: number, delay = 0): void {
+  missText(
+    x: number,
+    y: number,
+    z: number,
+    delay = 0,
+    /** Опрашивается каждый кадр, пока текст живёт — источник (моб) мог
+     *  убежать вперёд за время задержки/показа. null — источник исчез,
+     *  дальше держим последнюю известную точку неподвижно. */
+    follow: (() => { x: number; y: number; z: number } | null) | null = null,
+  ): void {
     const t = this.missPool[this.missNext];
     this.missNext = (this.missNext + 1) % this.missPool.length;
     t.x = x;
     t.y = y;
     t.z = z;
+    t.follow = follow;
     t.age = -delay;
     t.mesh.setEnabled(false); // включится в update(), когда age дойдёт до 0
   }
@@ -233,6 +246,19 @@ export class WorldCrossFx {
     for (const t of this.missPool) {
       if (t.age > MISS_LIFE) continue;
       t.age += dt;
+      // Источник (моб) мог убежать вперёд — досаживаем точку на его текущее
+      // место и во время задержки, и всё время показа (не только в момент
+      // появления), иначе текст «отстаёт» и повисает между целью и игроком.
+      if (t.follow) {
+        const p = t.follow();
+        if (p) {
+          t.x = p.x;
+          t.y = p.y;
+          t.z = p.z;
+        } else {
+          t.follow = null; // источник исчез — дальше точка неподвижна
+        }
+      }
       if (t.age < 0) continue; // ещё ждём (задержка до конца атаки)
       if (t.age > MISS_LIFE) {
         t.mesh.setEnabled(false);

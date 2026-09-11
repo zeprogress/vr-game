@@ -66,6 +66,7 @@ export class NetClient {
         by: BlockedBy,
         stunSec?: number,
         knockback?: number,
+        byMob?: string,
       ) => void)
     | null = null;
   /** Сервер возродил игрока — встать в эту точку. */
@@ -78,7 +79,15 @@ export class NetClient {
   onRtc: ((msg: RtcMsg) => void) | null = null;
   /** Звуковое событие соседа: где и что произошло. */
   onAct:
-    | ((k: ActKind, x: number, y: number, z: number, id: string, d?: number) => void)
+    | ((
+        k: ActKind,
+        x: number,
+        y: number,
+        z: number,
+        id: string,
+        d?: number,
+        mobId?: string,
+      ) => void)
     | null = null;
   /** Голос соседа через сервер (opus-пакет). */
   onVoice: ((id: string, t: number, d: number[]) => void) | null = null;
@@ -198,13 +207,15 @@ export class NetClient {
       else this.pendingChar = data;
     });
     room.onMessage(MSG.mobHit, (m: MobHitMsg) =>
-      this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback),
+      this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback, m.byMob),
     );
     room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));
-    room.onMessage(MSG.act, (m: ActRelay) => this.onAct?.(m.k, m.x, m.y, m.z, m.id, m.d));
+    room.onMessage(MSG.act, (m: ActRelay) =>
+      this.onAct?.(m.k, m.x, m.y, m.z, m.id, m.d, m.mobId),
+    );
     room.onMessage(MSG.voice, (m: VoiceRelay) => this.onVoice?.(m.id, m.t, m.d));
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));

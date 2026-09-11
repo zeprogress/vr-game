@@ -236,6 +236,11 @@ export class NetMobs {
     }
   }
 
+  /** Живой моб по id — например, чтобы «MISS» шёл следом за движущейся целью. */
+  getMob(id: string): Mob | undefined {
+    return this.mobs.get(id);
+  }
+
   attach(room: Room<ZoneState>): void {
     this.detach();
     this.room = room;

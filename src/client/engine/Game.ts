@@ -1574,8 +1574,8 @@ export class Game {
   attachNet(net: NetClient): void {
     this.net = net;
     net.onChar = (data) => this.applyChar(data);
-    net.onMobHit = (dmg, fromX, fromZ, by, stunSec, knockback) =>
-      this.takeMobHit(dmg, fromX, fromZ, by, stunSec, knockback);
+    net.onMobHit = (dmg, fromX, fromZ, by, stunSec, knockback, byMob) =>
+      this.takeMobHit(dmg, fromX, fromZ, by, stunSec, knockback, byMob);
     net.onRespawn = (x, y, z) => {
       this.player.teleportTo(x, y, z);
       this.hud.flashDamage(20);
@@ -1661,7 +1661,7 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id, d) => this.playRemoteAct(k, x, y, z, id, d);
+    net.onAct = (k, x, y, z, id, d, mobId) => this.playRemoteAct(k, x, y, z, id, d, mobId);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
@@ -1785,6 +1785,7 @@ export class Game {
     z: number,
     id: string,
     d?: number,
+    mobId?: string,
   ): void {
     const at = { x, y, z };
     switch (k) {
@@ -1841,7 +1842,8 @@ export class Game {
         break;
       case "dodge":
         // x,y,z — источник удара (моб), не увернувшийся; см. hurtPlayer.
-        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY);
+        // mobId есть — моб мог убежать вперёд за время задержки, следуем за ним.
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, this.missFollowMob(mobId));
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
@@ -1983,6 +1985,7 @@ export class Game {
     by: BlockedBy,
     stunSec?: number,
     knockback?: number,
+    byMob?: string,
   ): void {
     const eye = this.player.eyePosition;
     const dir = new Vector3(eye.x - fromX, 0, eye.z - fromZ);
@@ -1990,8 +1993,9 @@ export class Game {
     else dir.set(0, 0, 1);
     if (by === 3) {
       // Увернулся: ни урона, ни станa/отбрасывания — «MISS» над источником
-      // удара, но не раньше, чем замах/выстрел визуально долетит.
-      this.crossFx.missText(fromX, eye.y - 1, fromZ, MISS_FX_DELAY);
+      // удара, но не раньше, чем замах/выстрел визуально долетит. Моб мог
+      // убежать вперёд за это время — следуем за ним, а не за застывшей точкой.
+      this.crossFx.missText(fromX, eye.y - 1, fromZ, MISS_FX_DELAY, this.missFollowMob(byMob));
       return;
     }
     if (by !== 0) this.combat.playBlock(by);
@@ -2002,6 +2006,17 @@ export class Game {
     // полоса и виньетка не отставали. syncSelf() тут же всё сверит с сервером.
     this.player.setHp(this.player.hp - dmg);
     this.player.hurtFx(dmg, dir);
+  }
+
+  /** Резолвер для WorldCrossFx.missText: живая точка над мобом id, или null. */
+  private missFollowMob(id?: string): (() => { x: number; y: number; z: number } | null) | null {
+    if (!id) return null;
+    return () => {
+      const m = this.netMobs.getMob(id);
+      if (!m) return null;
+      const c = m.center();
+      return { x: c.x, y: c.y - 1, z: c.z };
+    };
   }
 
   private saveNow(): void {
