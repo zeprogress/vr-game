@@ -98,9 +98,12 @@ export class TowerArenaFx {
     this.wallMat = new StandardMaterial("towerWallMat", this.scene);
     this.wallMat.specularColor = new Color3(0, 0, 0);
     this.wallMat.backFaceCulling = false; // смотрим изнутри цилиндра
+    // Высота чуть больше H: торцы цилиндра (его собственные "крышки") уходят
+    // за пределы пола/потолка вместо совпадения с ними в одной плоскости —
+    // иначе это z-fighting и пол/потолок заметно мерцают.
     this.wallMesh = MeshBuilder.CreateCylinder(
       "towerWall",
-      { diameter: R * 2, height: H, tessellation: 32, sideOrientation: Mesh.DOUBLESIDE },
+      { diameter: R * 2, height: H + 0.4, tessellation: 32, sideOrientation: Mesh.DOUBLESIDE },
       this.scene,
     );
     this.wallMesh.position.y = H / 2;

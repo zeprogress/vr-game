@@ -8,7 +8,12 @@ import {
   floorMobCount,
   floorMobDmg,
   floorMobHp,
+  floorMonster,
+  type FloorArchetype,
 } from "#shared/tower";
+
+/** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
+const SHOOT_RANGE = 8;
 
 const { Room } = colyseus;
 
@@ -132,6 +137,8 @@ export class TowerRoom extends Room<TowerState> {
   private mobAtkInterval = 1;
   private boss: LiveBoss | null = null;
   private towerShards = 0;
+  private archetype: FloorArchetype = "melee";
+  private mobRange: number = TOWER.mob.atkRange;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -176,10 +183,10 @@ export class TowerRoom extends Room<TowerState> {
       }
     }
 
-    // --- мобы: бегут к герою, в упор — бьют по своему таймеру ---
+    // --- мобы: бегут к герою (ranged/flyer — держат дистанцию и «стреляют») ---
     for (const m of this.mobs) {
       const d = Math.hypot(this.hero.x - m.x, this.hero.z - m.z);
-      if (d > TOWER.mob.atkRange) {
+      if (d > this.mobRange) {
         moveToward(m, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
       } else {
         m.atkCd -= dt;
@@ -195,7 +202,7 @@ export class TowerRoom extends Room<TowerState> {
     if (this.boss) {
       const b = this.boss;
       const d = Math.hypot(this.hero.x - b.x, this.hero.z - b.z);
-      if (d > TOWER.mob.atkRange * 1.3) {
+      if (d > this.mobRange * 1.3) {
         moveToward(b, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
       } else {
         b.atkCd -= dt;
@@ -270,6 +277,8 @@ export class TowerRoom extends Room<TowerState> {
     this.state.floor = floor;
     this.hero.x = 0;
     this.hero.z = 0;
+    this.archetype = floorMonster(floor).archetype;
+    this.mobRange = this.archetype === "melee" ? TOWER.mob.atkRange : SHOOT_RANGE;
     const n = floorMobCount(floor);
     const hp = floorMobHp(floor);
     this.mobAtkInterval = floorMobAtkIntervalSec(floor);

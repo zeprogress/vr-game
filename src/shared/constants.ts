@@ -306,7 +306,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
   orcGunner: {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
-    hp: 420, dmgMul: 3.6, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.65,
+    hp: 420, dmgMul: 3.6, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.3,
   },
   // Цель события «Охота на элиту»: одиночный именной босс, редкая добыча.
   // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
@@ -321,7 +321,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
-    hp: 680, dmgMul: 6, xp: 210, scaleMul: 1.9, tint: null,
+    hp: 680, dmgMul: 8, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },
@@ -333,7 +333,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const MAGE_NOVA = {
   radius: 5,
-  damage: 95,
+  damage: 120,
   windup: 1.1,
   cooldown: 9,
   stunSec: 1.6,
