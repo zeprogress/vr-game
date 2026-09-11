@@ -63,7 +63,7 @@ const PALETTES: readonly Palette[] = (
 }));
 
 /** Насколько приглушить общий свет комнаты — "почти ночь" (по просьбе). */
-const NIGHT_MUL = 0.32;
+const NIGHT_MUL = 0.1;
 
 interface ModelPlacement {
   inst: RigInstance;
@@ -214,15 +214,15 @@ export class TowerArenaFx {
       "towerSpot",
       new Vector3(0, H - 0.4, 0),
       new Vector3(0, -1, 0),
-      Math.PI / 7,
-      2,
+      Math.PI / 16,
+      4,
       this.scene,
     );
     this.spot.parent = this.root;
     this.spot.includedOnlyMeshes = [this.floorMesh, this.wallMesh];
     this.spot.diffuse = new Color3(1, 0.98, 0.92);
     this.spot.specular = new Color3(1, 0.98, 0.92);
-    this.spot.intensity = 2.4;
+    this.spot.intensity = 9;
     this.spot.range = H * 1.3;
 
     this.heroShadow = shadowProtoFor(this.scene).createInstance("towerHeroShadow");
@@ -310,21 +310,21 @@ export class TowerArenaFx {
     floorTex.uScale = R / 3;
     floorTex.vScale = R / 3;
     this.floorMat.diffuseTexture = floorTex;
-    // Эмиссив держит МИНИМАЛЬНУЮ видимость сам по себе (не зависит от light) —
-    // почти ночь, но не чёрный экран: слегка приподнят против прежнего (0.12→0.16).
-    this.floorMat.emissiveColor.copyFromFloats(pal.floor[0] * 0.16, pal.floor[1] * 0.16, pal.floor[2] * 0.16);
+    // Эмиссив держит только САМЫЙ минимум видимости сам по себе (не зависит
+    // от light) — почти темнота, контраст с прожектором должен быть жёсткий.
+    this.floorMat.emissiveColor.copyFromFloats(pal.floor[0] * 0.055, pal.floor[1] * 0.055, pal.floor[2] * 0.055);
 
     const wallTex = this.cachedTex(`towerWallTex_${idx}`, pal.wall, idx * 3 + 1);
     wallTex.uScale = (2 * Math.PI * R) / 6;
     wallTex.vScale = H / 4;
     this.wallMat.diffuseTexture = wallTex;
-    this.wallMat.emissiveColor.copyFromFloats(pal.wall[0] * 0.14, pal.wall[1] * 0.14, pal.wall[2] * 0.14);
+    this.wallMat.emissiveColor.copyFromFloats(pal.wall[0] * 0.045, pal.wall[1] * 0.045, pal.wall[2] * 0.045);
 
     const ceilTex = this.cachedTex(`towerCeilTex_${idx}`, pal.ceiling, idx * 3 + 2);
     ceilTex.uScale = R / 3;
     ceilTex.vScale = R / 3;
     this.ceilMat.diffuseTexture = ceilTex;
-    this.ceilMat.emissiveColor.copyFromFloats(pal.ceiling[0] * 0.11, pal.ceiling[1] * 0.11, pal.ceiling[2] * 0.11);
+    this.ceilMat.emissiveColor.copyFromFloats(pal.ceiling[0] * 0.035, pal.ceiling[1] * 0.035, pal.ceiling[2] * 0.035);
 
     this.light.diffuse.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
     this.light.specular.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
