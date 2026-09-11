@@ -1270,16 +1270,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.act, relay, client ? { except: client } : undefined);
     }
     // У бота уровень ещё и отмечаем эмоцией — виден со стороны на модельке.
+    // Дом бота по уровню (может смениться лагерь) пересчитывает tickBot.
     if (id?.startsWith("bot:")) {
       const bot = this.bots.get(id.slice(4));
-      if (bot) {
-        this.triggerEmote(bot, "cheer");
-        // Дом бота по уровню мог смениться (перерос лагерь) — не ждём
-        // следующей смерти/возрождения, переселяем сразу.
-        const home = botHome(p.level);
-        bot.homeX = home.x;
-        bot.homeZ = home.z;
-      }
+      if (bot) this.triggerEmote(bot, "cheer");
     }
   }
 
@@ -2441,6 +2435,17 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.healCd = Math.max(0, bot.healCd - dt);
     bot.stunCd = Math.max(0, bot.stunCd - dt);
     bot.rainCd = Math.max(0, bot.rainCd - dt);
+
+    // Дом бота по уровню мог смениться (перерос лагерь, в т.ч. ещё ДО этого
+    // деплоя — у уже прокачанных ботов дом иначе не пересчитать). Дёшево —
+    // сверяем каждый тик, двигаем только при реальной смене.
+    {
+      const home = botHome(p.level);
+      if (home.x !== bot.homeX || home.z !== bot.homeZ) {
+        bot.homeX = home.x;
+        bot.homeZ = home.z;
+      }
+    }
 
     // Воин крепче: держим его максимум HP с множителем BOT.warrior.hpMul (при
     // смене уровня/статов/оружия — доводим и текущее HP на прибавку).
