@@ -1925,6 +1925,7 @@ export class ZoneRoom extends Room<ZoneState> {
       .start(
         heroId,
         nick,
+        { level: p.level, str: p.str, agi: p.agi },
         (r) => this.onTowerRunDone(heroId, nick, r),
         (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
         (s) => this.onTowerSnapshot(heroId, s),
@@ -1956,6 +1957,12 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!p) return;
     p.head.x = TOWER_HIDE.x + s.heroX;
     p.head.z = TOWER_HIDE.z + s.heroZ;
+    // Герой поворачивается лицом к цели — та же конвенция yaw->кватернион,
+    // что и у ботов в основном мире (см. tickBot).
+    p.head.qx = 0;
+    p.head.qy = Math.sin(s.heroYaw / 2);
+    p.head.qz = 0;
+    p.head.qw = Math.cos(s.heroYaw / 2);
     p.hp = s.heroHp;
     p.maxHp = s.heroMaxHp;
     p.towerFloor = s.floor;
@@ -1963,13 +1970,22 @@ export class ZoneRoom extends Room<ZoneState> {
     p.towerMobsTotal = s.mobsTotal;
     p.towerBossActive = s.bossActive ? 1 : 0;
     p.towerBossHpFrac = s.bossHpFrac;
+    // Замах мечом — переиспользуем обычный relay "swing": аватар героя играет
+    // ту же анимацию удара, что и у любого живого игрока/бота.
+    if (s.heroAtkPulse) {
+      this.broadcast(MSG.act, {
+        k: "swing", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
+      } satisfies ActRelay);
+    }
     this.broadcast(MSG.towerMobs, {
       heroId,
       mobs: s.mobs.map((m) => ({
         x: TOWER_HIDE.x + m.x,
         z: TOWER_HIDE.z + m.z,
+        yaw: m.yaw,
         hpFrac: m.hpFrac,
         boss: m.boss,
+        atkPulse: m.atkPulse,
       })),
     } satisfies TowerMobsMsg);
   }

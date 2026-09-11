@@ -175,7 +175,14 @@ export interface TowerBoardRow {
 /** Живые позиции мобов текущего забега башни — мировые координаты. */
 export interface TowerMobsMsg {
   heroId: string;
-  mobs: { x: number; z: number; hpFrac: number; boss: boolean }[];
+  mobs: {
+    x: number;
+    z: number;
+    yaw: number;
+    hpFrac: number;
+    boss: boolean;
+    atkPulse: boolean;
+  }[];
 }
 
 /** Команды дашборда стрима (этап 17 Ф5). */

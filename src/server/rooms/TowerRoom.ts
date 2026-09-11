@@ -11,6 +11,8 @@ import {
   floorMonster,
   type FloorArchetype,
 } from "#shared/tower";
+import { weaponDamage } from "#shared/combat";
+import { maxHpFor, moveSpeedFor } from "#shared/progression";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -50,6 +52,10 @@ export interface TowerRoomOptions {
   heroId: string;
   heroNick: string;
   seed: number;
+  /** Настоящие характеристики героя — урон/HP/скорость в башне считаются от них, как в основном мире. */
+  level: number;
+  str: number;
+  agi: number;
   onResult?: (r: TowerRunResult) => void;
   /** Вызывается при входе на каждый следующий этаж (кроме первого) — для чата/лога. */
   onFloor?: (floor: number) => void;
@@ -60,8 +66,12 @@ export interface TowerRoomOptions {
 export interface TowerMobSnapshot {
   x: number;
   z: number;
+  /** Куда смотрит (рад, та же конвенция yaw, что и в основном мире). */
+  yaw: number;
   hpFrac: number;
   boss: boolean;
+  /** true ровно на тот тик, когда моб ударил — клиент играет замах/анимацию раз. */
+  atkPulse: boolean;
 }
 
 export interface TowerSnapshot {
@@ -74,15 +84,20 @@ export interface TowerSnapshot {
   heroMaxHp: number;
   heroX: number;
   heroZ: number;
+  heroYaw: number;
+  /** true ровно на тот тик, когда герой ударил — рассылка "swing" в основной мир. */
+  heroAtkPulse: boolean;
   mobs: TowerMobSnapshot[];
 }
 
 interface LiveMob {
   x: number;
   z: number;
+  yaw: number;
   hp: number;
   maxHp: number;
   atkCd: number;
+  atkPulse: boolean;
 }
 
 interface LiveBoss extends LiveMob {
@@ -132,13 +147,18 @@ export class TowerRoom extends Room<TowerState> {
   private finished = false;
 
   private readonly hero = { x: 0, z: 0 };
+  private heroYaw = 0;
   private heroAtkCd = 0;
+  private heroAtkPulse = false;
   private mobs: LiveMob[] = [];
   private mobAtkInterval = 1;
   private boss: LiveBoss | null = null;
   private towerShards = 0;
   private archetype: FloorArchetype = "melee";
   private mobRange: number = TOWER.mob.atkRange;
+  /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
+  private heroDmg: number = TOWER.hero.dmg;
+  private heroMoveSpeed: number = TOWER.hero.moveSpeed;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -148,11 +168,17 @@ export class TowerRoom extends Room<TowerState> {
     this.onFloor = options.onFloor;
     this.onSnapshot = options.onSnapshot;
 
+    // Урон/HP/скорость — от РЕАЛЬНЫХ характеристик героя (level/str/agi), как
+    // и в основном мире (weaponDamage/maxHpFor/moveSpeedFor), не константы.
+    this.heroDmg = weaponDamage("sword", options.level, options.str, 1, options.agi);
+    this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
+    const heroMaxHp = maxHpFor(options.level, options.str);
+
     const state = new TowerState();
     state.heroNick = options.heroNick;
     state.timeLeftSec = TOWER.timeLimitSec;
-    state.heroMaxHp = TOWER.hero.maxHp;
-    state.heroHp = TOWER.hero.maxHp;
+    state.heroMaxHp = heroMaxHp;
+    state.heroHp = heroMaxHp;
     this.setState(state);
 
     this.spawnFloor(1);
@@ -167,24 +193,31 @@ export class TowerRoom extends Room<TowerState> {
       return;
     }
 
-    // --- герой: бежит к ближайшей живой цели, у цели — бьёт по таймеру ---
+    this.heroAtkPulse = false;
+    for (const m of this.mobs) m.atkPulse = false;
+    if (this.boss) this.boss.atkPulse = false;
+
+    // --- герой: бежит к ближайшей живой цели (и всегда смотрит на неё) ---
     const target = this.nearestTarget();
     if (target) {
+      this.heroYaw = Math.atan2(target.x - this.hero.x, target.z - this.hero.z);
       const d = Math.hypot(target.x - this.hero.x, target.z - this.hero.z);
       if (d > TOWER.hero.atkRange) {
-        moveToward(this.hero, target.x, target.z, TOWER.hero.moveSpeed, dt);
+        moveToward(this.hero, target.x, target.z, this.heroMoveSpeed, dt);
       } else {
         this.heroAtkCd -= dt;
         if (this.heroAtkCd <= 0) {
           this.heroAtkCd += TOWER.hero.atkIntervalSec;
+          this.heroAtkPulse = true;
           this.heroAttack(target);
           if ((this.state.phase as TowerPhase) !== "running") return;
         }
       }
     }
 
-    // --- мобы: бегут к герою (ranged/flyer — держат дистанцию и «стреляют») ---
+    // --- мобы: бегут к герою (ranged/flyer — держат дистанцию и «стреляют»), смотрят на него ---
     for (const m of this.mobs) {
+      m.yaw = Math.atan2(this.hero.x - m.x, this.hero.z - m.z);
       const d = Math.hypot(this.hero.x - m.x, this.hero.z - m.z);
       if (d > this.mobRange) {
         moveToward(m, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
@@ -192,6 +225,7 @@ export class TowerRoom extends Room<TowerState> {
         m.atkCd -= dt;
         if (m.atkCd <= 0) {
           m.atkCd += this.mobAtkInterval;
+          m.atkPulse = true;
           this.hurtHero(floorMobDmg(this.state.floor));
           if (this.state.phase !== "running") return;
         }
@@ -201,6 +235,7 @@ export class TowerRoom extends Room<TowerState> {
 
     if (this.boss) {
       const b = this.boss;
+      b.yaw = Math.atan2(this.hero.x - b.x, this.hero.z - b.z);
       const d = Math.hypot(this.hero.x - b.x, this.hero.z - b.z);
       if (d > this.mobRange * 1.3) {
         moveToward(b, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
@@ -208,6 +243,7 @@ export class TowerRoom extends Room<TowerState> {
         b.atkCd -= dt;
         if (b.atkCd <= 0) {
           b.atkCd += b.atkInterval;
+          b.atkPulse = true;
           this.hurtHero(b.dmg);
           if (this.state.phase !== "running") return;
         }
@@ -255,7 +291,7 @@ export class TowerRoom extends Room<TowerState> {
   }
 
   private heroAttack(target: LiveMob): void {
-    target.hp -= TOWER.hero.dmg;
+    target.hp -= this.heroDmg;
     if (target.hp > 0) return;
     if (target === this.boss) {
       this.towerShards++;
@@ -288,9 +324,11 @@ export class TowerRoom extends Room<TowerState> {
       return {
         x: Math.cos(a) * r,
         z: Math.sin(a) * r,
+        yaw: 0,
         hp,
         maxHp: hp,
         atkCd: this.mobAtkInterval * Math.random(),
+        atkPulse: false,
       };
     });
     this.boss = null;
@@ -310,10 +348,11 @@ export class TowerRoom extends Room<TowerState> {
     const a = Math.random() * Math.PI * 2;
     const r = ARENA_R * 0.6;
     this.boss = {
-      x: Math.cos(a) * r, z: Math.sin(a) * r,
+      x: Math.cos(a) * r, z: Math.sin(a) * r, yaw: 0,
       hp, maxHp: hp, dmg,
       atkCd: this.mobAtkInterval * 0.5,
       atkInterval: floorMobAtkIntervalSec(floor) * 0.8,
+      atkPulse: false,
     };
     this.state.bossActive = 1;
     this.state.bossHp = hp;
@@ -343,9 +382,18 @@ export class TowerRoom extends Room<TowerState> {
       heroMaxHp: this.state.heroMaxHp,
       heroX: this.hero.x,
       heroZ: this.hero.z,
+      heroYaw: this.heroYaw,
+      heroAtkPulse: this.heroAtkPulse,
       mobs: [
-        ...this.mobs.map((m) => ({ x: m.x, z: m.z, hpFrac: m.hp / m.maxHp, boss: false })),
-        ...(this.boss ? [{ x: this.boss.x, z: this.boss.z, hpFrac: this.boss.hp / this.boss.maxHp, boss: true }] : []),
+        ...this.mobs.map((m) => ({
+          x: m.x, z: m.z, yaw: m.yaw, hpFrac: m.hp / m.maxHp, boss: false, atkPulse: m.atkPulse,
+        })),
+        ...(this.boss
+          ? [{
+              x: this.boss.x, z: this.boss.z, yaw: this.boss.yaw,
+              hpFrac: this.boss.hp / this.boss.maxHp, boss: true, atkPulse: this.boss.atkPulse,
+            }]
+          : []),
       ],
     });
   }

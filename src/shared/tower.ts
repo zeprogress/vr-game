@@ -82,29 +82,31 @@ export type FloorArchetype = "melee" | "ranged" | "flyer";
 export interface FloorMonster {
   model: string;
   archetype: FloorArchetype;
+  /** Отображаемое имя — над мобом, как у обычных мобов основной игры. */
+  name: string;
 }
 
 export const FLOOR_MONSTERS: readonly FloorMonster[] = [
-  { model: "monAlien", archetype: "melee" },
-  { model: "monCat", archetype: "melee" },
-  { model: "monChicken", archetype: "melee" },
-  { model: "monDog", archetype: "melee" },
-  { model: "monGreenBlob", archetype: "melee" },
-  { model: "monMushnub", archetype: "melee" },
-  { model: "monPinkBlob", archetype: "ranged" },
-  { model: "monYeti", archetype: "melee" },
-  { model: "monBirb", archetype: "flyer" },
-  { model: "monBlueDemon", archetype: "ranged" },
-  { model: "monBunny", archetype: "melee" },
-  { model: "monDemon", archetype: "ranged" },
-  { model: "monDino", archetype: "melee" },
-  { model: "monFish", archetype: "flyer" },
-  { model: "monMonkroose", archetype: "melee" },
-  { model: "monOrcSkull", archetype: "ranged" },
-  { model: "monTribal", archetype: "melee" },
-  { model: "monNinja", archetype: "melee" },
-  { model: "monAlpaking", archetype: "flyer" },
-  { model: "monDragonEvolved", archetype: "ranged" }, // этаж 20 — супербосс
+  { model: "monAlien", archetype: "melee", name: "Пришелец" },
+  { model: "monCat", archetype: "melee", name: "Одичавший кот" },
+  { model: "monChicken", archetype: "melee", name: "Бешеная курица" },
+  { model: "monDog", archetype: "melee", name: "Дворовый пёс" },
+  { model: "monGreenBlob", archetype: "melee", name: "Зелёный слизень" },
+  { model: "monMushnub", archetype: "melee", name: "Грибовик" },
+  { model: "monPinkBlob", archetype: "ranged", name: "Розовый плевун" },
+  { model: "monYeti", archetype: "melee", name: "Йети" },
+  { model: "monBirb", archetype: "flyer", name: "Птер" },
+  { model: "monBlueDemon", archetype: "ranged", name: "Синий демон" },
+  { model: "monBunny", archetype: "melee", name: "Кровожадный кролик" },
+  { model: "monDemon", archetype: "ranged", name: "Демон руин" },
+  { model: "monDino", archetype: "melee", name: "Динозавр" },
+  { model: "monFish", archetype: "flyer", name: "Летучая рыба" },
+  { model: "monMonkroose", archetype: "melee", name: "Обезьян-лось" },
+  { model: "monOrcSkull", archetype: "ranged", name: "Орк-костолом" },
+  { model: "monTribal", archetype: "melee", name: "Соплеменник" },
+  { model: "monNinja", archetype: "melee", name: "Ниндзя башни" },
+  { model: "monAlpaking", archetype: "flyer", name: "Альпакороль" },
+  { model: "monDragonEvolved", archetype: "ranged", name: "Дракон башни" }, // этаж 20 — супербосс
 ];
 
 /** Модель+архетип для этажа (1-based); за пределами таблицы — последняя запись. */

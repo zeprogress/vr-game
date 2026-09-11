@@ -16,6 +16,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { PLAYER } from "#shared/constants";
 import { TOWER, TOWER_HIDE, floorMonster } from "#shared/tower";
 import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
+import { NameTag } from "../ui/NameTag";
 
 /** Мобов на арене одновременно — с запасом (см. floorMobCount, максимум 10). */
 const MAX_MOBS = 10;
@@ -41,13 +42,24 @@ const PALETTES: readonly Palette[] = [
 interface ModelPlacement {
   inst: RigInstance;
   holder: TransformNode;
+  tag: NameTag;
+  attackAnim: AnimationGroupLike | null;
+  lastAtkPulse: boolean;
+}
+
+/** Достаточно play()/stop() — тащить весь тип AnimationGroup незачем. */
+interface AnimationGroupLike {
+  play(loop?: boolean): void;
+  stop(): void;
 }
 
 export interface TowerLiveMob {
   x: number;
   z: number;
+  yaw: number;
   hpFrac: number;
   boss: boolean;
+  atkPulse: boolean;
 }
 
 /**
@@ -71,6 +83,7 @@ export class TowerArenaFx {
   private labelTex!: DynamicTexture;
 
   private lastFloor = -1;
+  private wasActive = false;
   private modelName = "";
   private loadSeq = 0;
   private mobModels: (ModelPlacement | null)[] = new Array(MAX_MOBS).fill(null);
@@ -257,14 +270,14 @@ export class TowerArenaFx {
     this.disposeModels();
     this.modelName = fm.model;
     for (let i = 0; i < MAX_MOBS; i++) {
-      this.mobModels[i] = this.placeModel(make(), 1.1);
+      this.mobModels[i] = this.placeModel(make(), 1.1, fm.name, floor);
       this.mobModels[i]!.holder.setEnabled(false);
     }
-    this.bossModel = this.placeModel(make(), 1.1 * TOWER.bossScaleMul);
+    this.bossModel = this.placeModel(make(), 1.1 * TOWER.bossScaleMul, `${fm.name} (босс этажа)`, floor);
     this.bossModel.holder.setEnabled(false);
   }
 
-  private placeModel(inst: RigInstance, targetHeight: number): ModelPlacement {
+  private placeModel(inst: RigInstance, targetHeight: number, name: string, level: number): ModelPlacement {
     const holder = new TransformNode("towerModelHolder", this.scene);
     holder.parent = this.root;
     inst.root.parent = holder;
@@ -272,23 +285,37 @@ export class TowerArenaFx {
     const base = targetHeight / (inst.nativeHeight || 1);
     holder.scaling.setAll(base);
     recolorMonster(inst.root);
-    const anim = inst.anims.get("walk") ?? inst.anims.get("idle") ?? inst.anims.get("hop") ?? null;
-    anim?.play(true);
-    return { inst, holder };
+    const moveAnim = inst.anims.get("walk") ?? inst.anims.get("idle") ?? inst.anims.get("hop") ?? null;
+    moveAnim?.play(true);
+    const attackAnim =
+      inst.anims.get("attack") ?? inst.anims.get("bite") ?? inst.anims.get("hit") ?? null;
+
+    // Табличка имя+уровень+ХП — тот же компонент, что у мобов основной игры.
+    const tag = new NameTag(this.scene, holder, new Vector3(0, targetHeight + 0.6, 0), name, level);
+    tag.showHp();
+    return { inst, holder, tag, attackAnim, lastAtkPulse: false };
   }
 
   private disposeModels(): void {
     for (const p of this.mobModels) {
+      p?.tag.dispose();
       p?.inst.dispose();
       p?.holder.dispose();
     }
     this.mobModels.fill(null);
     if (this.bossModel) {
+      this.bossModel.tag.dispose();
       this.bossModel.inst.dispose();
       this.bossModel.holder.dispose();
       this.bossModel = null;
     }
     this.modelName = "";
+  }
+
+  /** Замах — проиграть боевую анимацию раз (если у модели она есть), не заново, если уже играет. */
+  private pulseAttack(p: ModelPlacement, pulse: boolean): void {
+    if (pulse && !p.lastAtkPulse) p.attackAnim?.play(false);
+    p.lastAtkPulse = pulse;
   }
 
   /**
@@ -305,10 +332,19 @@ export class TowerArenaFx {
   ): void {
     if (!active) {
       if (this.built) this.root.setEnabled(false);
+      this.wasActive = false;
       return;
     }
     this.ensureBuilt();
     this.root.setEnabled(true);
+    if (!this.wasActive) {
+      // Новый забег (возможно, другой герой) — форсируем свежую загрузку
+      // модели, даже если номер этажа случайно совпал с тем, на котором
+      // закончился предыдущий: иначе на арене могли остаться (или не
+      // появиться) чужие модели предыдущего забега.
+      this.lastFloor = -1;
+    }
+    this.wasActive = true;
 
     if (floor !== this.lastFloor) {
       this.lastFloor = floor;
@@ -326,6 +362,9 @@ export class TowerArenaFx {
       if (slot) {
         slot.holder.setEnabled(true);
         slot.holder.position.set(m.x - this.root.position.x, 0, m.z - this.root.position.z);
+        slot.holder.rotation.y = m.yaw;
+        slot.tag.setHp(m.hpFrac);
+        this.pulseAttack(slot, m.atkPulse);
       }
       regularIdx++;
     }
@@ -334,7 +373,12 @@ export class TowerArenaFx {
       if (bossActive && this.bossModel) {
         const boss = mobs.find((m) => m.boss);
         this.bossModel.holder.setEnabled(!!boss);
-        if (boss) this.bossModel.holder.position.set(boss.x - this.root.position.x, 0, boss.z - this.root.position.z);
+        if (boss) {
+          this.bossModel.holder.position.set(boss.x - this.root.position.x, 0, boss.z - this.root.position.z);
+          this.bossModel.holder.rotation.y = boss.yaw;
+          this.bossModel.tag.setHp(boss.hpFrac);
+          this.pulseAttack(this.bossModel, boss.atkPulse);
+        }
       } else {
         this.bossModel?.holder.setEnabled(false);
       }
