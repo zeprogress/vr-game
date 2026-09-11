@@ -1738,6 +1738,14 @@ export class ZoneRoom extends Room<ZoneState> {
 
   private tickEvents(): void {
     const now = Date.now();
+    // Камера спектатора зафиксирована на герое башни — периодически меняем
+    // ТОЛЬКО вид (из глаз / орбита), сам субъект не трогаем, пока не выйдет.
+    if (this.towerCamHeroId && now >= this.towerCamAt) {
+      this.towerCamAt = now + 9000;
+      this.towerCamEye = !this.towerCamEye;
+      const shot = (this.towerCamEye ? "eyePlayer:" : "orbitPlayer:") + this.towerCamHeroId;
+      this.broadcast(MSG.specCmd, { t: "cam", shot } satisfies SpecCmd);
+    }
     if (this.eventPhase === "idle") {
       if (this.eventPhaseAt === 0) {
         // первый запуск таймера
@@ -1877,7 +1885,14 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.inTower = true;
     p.head.x = TOWER_HIDE.x;
     p.head.z = TOWER_HIDE.z;
-    p.head.y = PLAYER.eyeHeight;
+    p.head.y = TOWER_HIDE.y;
+    // Камера спектатора — жёстко на герое до конца забега (только смена вида
+    // из глаз/орбиты, не переключение на другого): иначе авто-режиссёр тут
+    // же уводит взгляд на кого-то ещё, кто реально дерётся в мире. Сама смена
+    // вида — в tickEvents() (см. towerCamHeroId), не одноразово здесь.
+    this.towerCamHeroId = heroId;
+    this.towerCamEye = true;
+    this.towerCamAt = 0; // сработает следующим тиком
     this.towerRuns
       .start(
         heroId,
@@ -1890,6 +1905,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // Иначе провал тихо виснет: очередь уже сдвинута, а герой как будто
         // "зашёл и пропал" — без этого сообщения не отличить от бага.
         bot.inTower = false;
+        this.towerCamHeroId = "";
+        this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
         this.reply(`${nick}: башня не запустилась (${(e as Error).message}).`);
       });
     this.reply(`${nick} заходит в Охотничью башню!`);
@@ -1904,6 +1921,10 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.state.head.x = back.x;
       bot.state.head.z = back.z;
       bot.state.head.y = terrainHeight(back.x, back.z) + PLAYER.eyeHeight;
+    }
+    if (this.towerCamHeroId === heroId) {
+      this.towerCamHeroId = "";
+      this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
     }
     const rt = this.rt.get(heroId);
     if (rt?.token) {
@@ -3900,6 +3921,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly towerRuns = new TowerRunManager();
   /** id героев, уже отстоявших/прошедших башню в ТЕКУЩЕМ окне — второй раз не пускаем. */
   private readonly towerDone = new Set<string>();
+  /** Камера спектатора зафиксирована на этом герое башни ("" — не зафиксирована). */
+  private towerCamHeroId = "";
+  private towerCamAt = 0;
+  private towerCamEye = true;
 
   override onJoin(client: Client, options?: JoinOpts): void {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
