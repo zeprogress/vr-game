@@ -101,7 +101,7 @@ export const FLOOR_MONSTERS: readonly FloorMonster[] = [
   { model: "monAlien", archetype: "melee", name: "Пришелец" },
   { model: "monCat", archetype: "melee", name: "Одичавший кот" },
   { model: "monChicken", archetype: "melee", name: "Бешеная курица" },
-  { model: "monDog", archetype: "melee", name: "Дворовый пёс" },
+  { model: "monFrog", archetype: "melee", name: "Болотная жаба" },
   { model: "monGreenBlob", archetype: "melee", name: "Зелёный слизень" },
   { model: "monMushnub", archetype: "melee", name: "Грибовик" },
   { model: "monPinkBlob", archetype: "ranged", name: "Розовый плевун" },

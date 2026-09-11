@@ -456,6 +456,14 @@ export class TowerArenaFx {
       // раньше includedOnlyMeshes был только пол/стены, мобы стрелка не
       // задевала вообще (они читались тёмным силуэтом всегда).
       this.spot.includedOnlyMeshes?.push(mesh);
+      // Мобы вне луча прожектора должны получать хотя бы тусклый общий
+      // свет комнаты (this.light) — иначе на них не остаётся НИ ОДНОГО
+      // действующего огня, и Babylon в этом случае рендерит StandardMaterial
+      // как будто без освещения вовсе: ПОЛНЫЙ diffuseColor без затемнения
+      // (тот самый "самосвет" — на деле баг движка на нулевом наборе огней,
+      // а не наше emissive, оно и так было 0). Добавляем — даже совсем
+      // тусклый (nightMul=0) реальный источник не даёт сработать фолбэку.
+      this.light.includedOnlyMeshes?.push(mesh);
       const mat = mesh.material as StandardMaterial | null;
       if (!mat || seenMat.has(mat)) continue;
       seenMat.add(mat);
@@ -509,10 +517,11 @@ export class TowerArenaFx {
   }
 
   private disposeModels(): void {
-    // Прожектор копил ссылки на мешей моба в includedOnlyMeshes (см.
-    // placeModel) — сбрасываем до пола/стен перед сносом старых моделей,
-    // иначе список рос бы бесконечно мёртвыми ссылками с каждым этажом.
+    // Прожектор и общий свет копили ссылки на мешей моба в includedOnlyMeshes
+    // (см. placeModel) — сбрасываем перед сносом старых моделей, иначе
+    // список рос бы бесконечно мёртвыми ссылками с каждым этажом.
     if (this.spot) this.spot.includedOnlyMeshes = [this.floorMesh, this.wallMesh];
+    if (this.light) this.light.includedOnlyMeshes = [this.floorMesh, this.wallMesh, this.ceilMesh];
     for (const p of this.mobModels) {
       p?.tag.dispose();
       if (p) this.disposeRigInstance(p.inst);
