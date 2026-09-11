@@ -45,6 +45,7 @@ import {
   type ComfortMsg,
   type SpecCmd,
   type SpecCamMsg,
+  type DmgHitsMsg,
   type SetPvpMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
@@ -563,6 +564,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.specVisible = pult.specVisible === false ? 0 : 1;
     this.state.specRaysVisible = pult.specRaysVisible === false ? 0 : 1;
     this.state.specVoice = pult.specVoice === true ? 1 : 0;
+    this.state.dmgNumbers = pult.dmgNumbers === false ? 0 : 1;
     this.state.ttsOn = pult.ttsOn === true ? 1 : 0;
     this.state.ttsVoice = isTtsVoice(pult.ttsVoice ?? "") ? pult.ttsVoice! : TTS_DEFAULT_VOICE;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
@@ -1113,6 +1115,9 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "specVoice") {
         this.state.specVoice = msg.on !== 0 ? 1 : 0;
         world.savePult({ specVoice: msg.on !== 0 });
+      } else if (msg.t === "dmgNumbers") {
+        this.state.dmgNumbers = msg.on !== 0 ? 1 : 0;
+        world.savePult({ dmgNumbers: msg.on !== 0 });
       } else if (msg.t === "tts") {
         this.state.ttsOn = msg.on !== 0 ? 1 : 0;
         world.savePult({ ttsOn: msg.on !== 0 });
@@ -3758,6 +3763,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // Криты снарядов — красный «X» в точке попадания стрелы.
     for (const c of this.sim.critHits) this.critFx(c.x, c.y, c.z, c.owner);
     this.sim.critHits.length = 0;
+    // Числа урона у спектатора — батчем за тик, только если тумблер включён
+    // (не тратим сеть/CPU зря, если никто не смотрит или выключено с пульта).
+    if (this.sim.dmgHits.length) {
+      if (this.state.dmgNumbers) {
+        this.broadcast(MSG.dmgHits, { hits: this.sim.dmgHits } satisfies DmgHitsMsg);
+      }
+      this.sim.dmgHits.length = 0;
+    }
     // Добивания: счётчик kills добившему + кил-фид (кроме осколков и босса —
     // босса объявляем отдельно, по крупнейшему вкладу).
     for (const k of this.sim.mobKills) {
@@ -4092,6 +4105,7 @@ export class ZoneRoom extends Room<ZoneState> {
           client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
         }
         client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
+        client.send(MSG.specCmd, { t: "dmgNumbers", on: this.state.dmgNumbers } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "auto", on: this.pultAuto ? 1 : 0 } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "bots", on: this.pultBotsOnly ? 1 : 0 } satisfies SpecCmd);
       };

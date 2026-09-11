@@ -386,6 +386,9 @@ export class Spectator {
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onTowerBoard = (rows) => this.overlay?.setTowerBoard(rows);
+    net.onDmgHits = (msg) => {
+      for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+    };
     net.onTowerMobs = (msg) => { this._towerMobs = msg.mobs; };
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);

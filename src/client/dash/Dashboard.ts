@@ -54,6 +54,8 @@ export class Dashboard {
   private specRaysBtn!: HTMLButtonElement;
   private specVoice: boolean | null = null;
   private specVoiceBtn!: HTMLButtonElement;
+  private dmgNumbers: boolean | null = null;
+  private dmgNumbersBtn!: HTMLButtonElement;
   private ttsOn: boolean | null = null;
   private ttsBtn!: HTMLButtonElement;
   private ttsSel!: HTMLSelectElement;
@@ -237,6 +239,8 @@ export class Dashboard {
     this.section("Звук эфира");
     this.specVoiceBtn = this.bigBtn("Голос игроков в эфире: —", () => this.toggleSpecVoice());
     this.root.appendChild(this.specVoiceBtn);
+    this.dmgNumbersBtn = this.bigBtn("Числа урона у мобов: —", () => this.toggleDmgNumbers());
+    this.root.appendChild(this.dmgNumbersBtn);
 
     this.ttsBtn = this.bigBtn("Озвучка чата: —", () => this.toggleTts());
     this.root.appendChild(this.ttsBtn);
@@ -327,6 +331,7 @@ export class Dashboard {
       this.setSpecRaysUi(st.specRaysVisible !== 0);
     }
     if ((st.specVoice !== 0) !== this.specVoice) this.setSpecVoiceUi(st.specVoice !== 0);
+    if ((st.dmgNumbers !== 0) !== this.dmgNumbers) this.setDmgNumbersUi(st.dmgNumbers !== 0);
     if ((st.ttsOn !== 0) !== this.ttsOn) this.setTtsUi(st.ttsOn !== 0);
     if (st.ttsVoice && this.ttsSel.value !== st.ttsVoice) this.ttsSel.value = st.ttsVoice;
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
@@ -429,6 +434,11 @@ export class Dashboard {
     this.send({ t: "specVoice", on: this.specVoice ? 1 : 0 });
   }
 
+  private toggleDmgNumbers(): void {
+    this.setDmgNumbersUi(!this.dmgNumbers);
+    this.send({ t: "dmgNumbers", on: this.dmgNumbers ? 1 : 0 });
+  }
+
   private toggleTts(): void {
     this.setTtsUi(!this.ttsOn);
     this.send({ t: "tts", on: this.ttsOn ? 1 : 0 });
@@ -509,6 +519,12 @@ export class Dashboard {
     this.specVoice = on;
     this.specVoiceBtn.textContent = `Голос игроков в эфире: ${on ? "ВКЛ (слышно)" : "ВЫКЛ"}`;
     this.specVoiceBtn.style.background = on ? "#1c3a24" : "#3a2020";
+  }
+
+  private setDmgNumbersUi(on: boolean): void {
+    this.dmgNumbers = on;
+    this.dmgNumbersBtn.textContent = `Числа урона у мобов: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.dmgNumbersBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
   private setAutoUi(on: boolean): void {

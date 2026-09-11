@@ -188,6 +188,8 @@ export class ZoneState extends Schema {
   @type("uint8") specRaysVisible = 1;
   /** 1 — рендерящий спектатор слышит голосовую связь игроков (пульт, для стрима). */
   @type("uint8") specVoice = 0;
+  /** Показывать ли у спектатора всплывающие числа урона по мобам. По умолчанию — да. */
+  @type("uint8") dmgNumbers = 1;
   /** 1 — сообщения чата озвучиваются на стриме (пульт). */
   @type("uint8") ttsOn = 0;
   /** Голос озвучки чата — Fish Audio reference_id (пульт). */

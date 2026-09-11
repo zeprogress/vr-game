@@ -1460,6 +1460,8 @@ export class ZoneSim {
   readonly mobXpShare: { owner: string; xp: number }[] = [];
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
+  /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
+  readonly dmgHits: { x: number; y: number; z: number; dmg: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
@@ -1507,6 +1509,9 @@ export class ZoneSim {
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
       if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);
+    }
+    if (dealt > 0 && !dot) {
+      this.dmgHits.push({ x: m.x, y: m.y + MOB.bodyRadius * m.scale * 1.4, z: m.z, dmg: Math.round(dealt) });
     }
 
     if (m.kind === "boss" && m.pendingSplit) {

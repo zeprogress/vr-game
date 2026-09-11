@@ -18,6 +18,8 @@ export interface PultSettings {
   specRaysVisible: boolean;
   /** Слышит ли рендерящий спектатор голос игроков (по умолчанию нет). */
   specVoice: boolean;
+  /** Показывать ли у спектатора числа урона по мобам (по умолчанию да). */
+  dmgNumbers: boolean;
   /** Озвучка сообщений чата на стриме. */
   ttsOn: boolean;
   /** Голос озвучки чата — Fish Audio reference_id. */

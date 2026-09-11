@@ -28,6 +28,11 @@ const MISS_POOL = 6;
 const MISS_LIFE = 0.7; // с всплытия/угасания
 const MISS_RISE = 0.8; // м
 
+/** Числа урона по мобам — всплывают и гаснут, каждое своим текстом. */
+const DMG_POOL = 24;
+const DMG_LIFE = 0.9; // с
+const DMG_RISE = 1.1; // м
+
 interface CritBurst {
   mesh: Mesh;
   age: number;
@@ -45,6 +50,19 @@ interface MissText {
   /** Источник удара движется (моб гонится) — держим текст над ним, а не на
    *  застывшей точке атаки; null — источника нет/уже нет, точка неподвижна. */
   follow: (() => { x: number; y: number; z: number } | null) | null;
+}
+
+interface DmgNumber {
+  mesh: Mesh;
+  tex: DynamicTexture;
+  mat: StandardMaterial;
+  age: number;
+  x: number;
+  y: number;
+  z: number;
+  /** Небольшой случайный снос в сторону — числа не сыплются друг на друга. */
+  dx: number;
+  dz: number;
 }
 
 interface Cross {
@@ -74,6 +92,8 @@ export class WorldCrossFx {
   private critNext = 0;
   private readonly missPool: MissText[] = [];
   private missNext = 0;
+  private readonly dmgPool: DmgNumber[] = [];
+  private dmgNext = 0;
 
   constructor(private readonly scene: Scene) {
     const bar = MeshBuilder.CreateBox("wCrossH", { width: 0.34, height: 0.08, depth: 0.08 }, scene);
@@ -150,6 +170,35 @@ export class WorldCrossFx {
       m.setEnabled(false);
       this.missPool.push({ mesh: m, age: MISS_LIFE + 1, x: 0, y: 0, z: 0, follow: null });
     }
+
+    // Числа урона — свой DynamicTexture на слот (текст разный каждый раз),
+    // но клипов немного (DMG_POOL) и перерисовка только при активации слота,
+    // не каждый кадр — дёшево.
+    const dmgProto = MeshBuilder.CreatePlane("dmgNum", { width: 0.9, height: 0.34 }, scene);
+    dmgProto.isPickable = false;
+    dmgProto.renderingGroupId = 1;
+    dmgProto.billboardMode = Mesh.BILLBOARDMODE_Y;
+    dmgProto.setEnabled(false);
+    for (let i = 0; i < DMG_POOL; i++) {
+      const m = i === 0 ? dmgProto : dmgProto.clone(`dmgNum${i}`);
+      const tex = new DynamicTexture(`dmgNumTex${i}`, { width: 160, height: 64 }, scene, false);
+      tex.hasAlpha = true;
+      const mat = new StandardMaterial(`dmgNumMat${i}`, scene);
+      mat.diffuseTexture = tex;
+      mat.emissiveTexture = tex;
+      mat.opacityTexture = tex;
+      mat.useAlphaFromDiffuseTexture = true;
+      mat.disableLighting = true;
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.backFaceCulling = false;
+      mat.disableDepthWrite = true;
+      m.material = mat;
+      m.isPickable = false;
+      m.renderingGroupId = 1;
+      m.billboardMode = Mesh.BILLBOARDMODE_Y;
+      m.setEnabled(false);
+      this.dmgPool.push({ mesh: m, tex, mat, age: DMG_LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
+    }
   }
 
   /** Красная вспышка критического попадания — на мобе, быстро гаснет. */
@@ -187,6 +236,28 @@ export class WorldCrossFx {
     t.follow = follow;
     t.age = -delay;
     t.mesh.setEnabled(false); // включится в update(), когда age дойдёт до 0
+  }
+
+  /** Число нанесённого урона всплывает над мобом и гаснет. */
+  damageNumber(x: number, y: number, z: number, dmg: number): void {
+    const d = this.dmgPool[this.dmgNext];
+    this.dmgNext = (this.dmgNext + 1) % this.dmgPool.length;
+    d.x = x;
+    d.y = y;
+    d.z = z;
+    d.dx = (Math.random() - 0.5) * 0.5;
+    d.dz = (Math.random() - 0.5) * 0.5;
+    d.age = 0;
+    const ctx = d.tex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 160, 64);
+    ctx.font = "700 34px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255,225,120,0.95)";
+    ctx.fillText(String(dmg), 80, 32);
+    d.tex.update();
+    d.mesh.position.set(x, y, z);
+    d.mesh.setEnabled(true);
   }
 
   /**
@@ -271,6 +342,19 @@ export class WorldCrossFx {
       t.mesh.scaling.setAll(pop * (1 - k * 0.15));
       t.mesh.visibility = Math.min(1, (1 - k) * 2.2);
     }
+    for (const d of this.dmgPool) {
+      if (d.age > DMG_LIFE) continue;
+      d.age += dt;
+      if (d.age > DMG_LIFE) {
+        d.mesh.setEnabled(false);
+        continue;
+      }
+      const k = d.age / DMG_LIFE;
+      d.mesh.position.set(d.x + d.dx * k, d.y + DMG_RISE * k, d.z + d.dz * k);
+      const pop = Math.min(1, d.age / 0.1);
+      d.mesh.scaling.setAll(pop * (1 - k * 0.1));
+      d.mat.alpha = Math.min(1, (1 - k) * 2.2);
+    }
   }
 
   dispose(): void {
@@ -281,6 +365,11 @@ export class WorldCrossFx {
     for (const c of this.critPool) {
       c.mesh.material?.dispose();
       c.mesh.dispose();
+    }
+    for (const d of this.dmgPool) {
+      d.tex.dispose();
+      d.mat.dispose();
+      d.mesh.dispose();
     }
     this.missPool[0]?.mesh.material?.dispose(); // общий на весь пул
     for (const t of this.missPool) t.mesh.dispose();
