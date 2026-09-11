@@ -149,6 +149,7 @@ import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
 import type { TowerRunResult } from "./TowerRoom";
+import { TOWER_HIDE } from "#shared/tower";
 
 const { Room } = colyseus;
 
@@ -210,6 +211,9 @@ interface Bot {
   /** !event: бот-игрока послан на активное событие мира — чистит там мобов,
    *  собирает лут, по окончании события возвращается домой сам. */
   eventing: boolean;
+  /** Сейчас в Охотничьей башне (своя TowerRoom) — тело спрятано и заморожено
+   *  в основном мире, tickBot() его вообще не трогает. */
+  inTower: boolean;
   /** ms конца «уборочной» фазы после события — бот ещё собирает награду, потом домой (0 — не в ней). */
   eventDoneAt: number;
   /** ms последней эмоции (!cheer, авто-кувырок на бегу, левелап) — антиспам. */
@@ -1556,6 +1560,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // в неё, попытки идут по одной в отдельной TowerRoom (см. tickEvents).
       this.eventPhaseAt = Date.now() + EVENT.tower.hardTimeout * 1000;
       this.towerQueue.length = 0;
+      this.towerDone.clear();
       this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
       this.state.eventLeft = 0;
       this.broadcast(MSG.worldEvent, {
@@ -1851,7 +1856,12 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} герой уже в очереди.`);
       return;
     }
+    if (this.towerDone.has(bot.id)) {
+      this.reply(`@${nick} герой уже отходил в башню в этот раз — ждите следующего события.`);
+      return;
+    }
     this.towerQueue.push(bot.id);
+    this.towerDone.add(bot.id); // бронируем место сразу — не даём встать второй раз, пока ждёт
     this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
     this.reply(`@${nick} герой встал в очередь на башню (№${this.towerQueue.length}).`);
   }
@@ -1859,8 +1869,15 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Поднять TowerRoom для очередного героя из очереди башни. */
   private startTowerRun(heroId: string): void {
     const p = this.state.players.get(heroId);
-    if (!p) return; // герой вышел из мира, пока стоял в очереди — пропускаем
+    const bot = heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4)) : undefined;
+    if (!p || !bot) return; // герой вышел из мира, пока стоял в очереди — пропускаем
     const nick = p.nick;
+    // Прячем тело за картой и глушим обычный AI (tickBot) на время забега —
+    // иначе герой одновременно дерётся в основном мире и лезет по этажам.
+    bot.inTower = true;
+    p.head.x = TOWER_HIDE.x;
+    p.head.z = TOWER_HIDE.z;
+    p.head.y = PLAYER.eyeHeight;
     this.towerRuns
       .start(
         heroId,
@@ -1872,13 +1889,22 @@ export class ZoneRoom extends Room<ZoneState> {
         console.warn("[tower] не удалось создать комнату:", (e as Error).message);
         // Иначе провал тихо виснет: очередь уже сдвинута, а герой как будто
         // "зашёл и пропал" — без этого сообщения не отличить от бага.
+        bot.inTower = false;
         this.reply(`${nick}: башня не запустилась (${(e as Error).message}).`);
       });
     this.reply(`${nick} заходит в Охотничью башню!`);
   }
 
-  /** Попытка в TowerRoom закончилась — записать результат, снова ждать очередь. */
+  /** Попытка в TowerRoom закончилась — записать результат, вернуть героя, снова ждать очередь. */
   private onTowerRunDone(heroId: string, nick: string, r: TowerRunResult): void {
+    const bot = heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4)) : undefined;
+    if (bot) {
+      bot.inTower = false;
+      const back = botSpawnAt({ x: bot.homeX, z: bot.homeZ });
+      bot.state.head.x = back.x;
+      bot.state.head.z = back.z;
+      bot.state.head.y = terrainHeight(back.x, back.z) + PLAYER.eyeHeight;
+    }
     const rt = this.rt.get(heroId);
     if (rt?.token) {
       const prev = store.get(rt.token);
@@ -2417,6 +2443,7 @@ export class ZoneRoom extends Room<ZoneState> {
       followNorm: null,
       raiding: false,
       eventing: false,
+      inTower: false,
       eventDoneAt: 0,
       emoteAt: 0,
       emoteFreezeUntil: 0,
@@ -2535,6 +2562,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // пока тот не убит или пока не напишут !raid ещё раз.
       return; // возрождение — общий tickPlayers
     }
+    // В Охотничьей башне — тело спрятано за картой, обычный AI тут не при делах.
+    if (bot.inTower) return;
     // Оглушён спец-атакой моба (Чародей руин) — стоит столбом, ни шага, ни удара.
     if (bot.rt.stunnedUntil > this.elapsed) return;
     bot.attackCd = Math.max(0, bot.attackCd - dt);
@@ -3869,6 +3898,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly towerQueue: string[] = [];
   private towerQueueOpenUntil = 0;
   private readonly towerRuns = new TowerRunManager();
+  /** id героев, уже отстоявших/прошедших башню в ТЕКУЩЕМ окне — второй раз не пускаем. */
+  private readonly towerDone = new Set<string>();
 
   override onJoin(client: Client, options?: JoinOpts): void {
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
