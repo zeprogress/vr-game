@@ -7,6 +7,8 @@ import "@babylonjs/core/Collisions/collisionCoordinator";
 
 import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
+import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
+import "@babylonjs/core/XR/features/WebXRLayers";
 
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Node } from "@babylonjs/core/node";
@@ -713,6 +715,22 @@ export class Game {
     } catch (e) {
       console.warn("WebXR недоступен:", e);
       return;
+    }
+
+    // WebXR Layers + multiview: оба глаза рендерятся за один проход. На Quest
+    // это ~1.5× по кадру. `?nolayers=1` — отключить, если что-то поедет
+    // (мультивью не дружит с постпроцессами — у нас их в VR и так нет).
+    if (!qp.has("nolayers")) {
+      try {
+        this.xr.baseExperience.featuresManager.enableFeature(
+          WebXRFeatureName.LAYERS,
+          "latest",
+          { preferMultiviewOnInit: true },
+        );
+        console.log("[xr] WebXR Layers включены (multiview)");
+      } catch (e) {
+        console.warn("[xr] WebXR Layers не включились:", e);
+      }
     }
 
     // Своей кнопкой входа управляет экран входа. Штатную кнопку Babylon
