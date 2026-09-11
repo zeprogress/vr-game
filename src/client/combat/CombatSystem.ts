@@ -792,19 +792,26 @@ export class CombatSystem {
 
   // ---- взять / метнуть ----
 
-  /** VR: каждая рука отдельно. За плечом grip прячет/достаёт, иначе берёт/метает. */
+  /**
+   * VR: каждая рука отдельно. Грип — ПЕРЕКЛЮЧАТЕЛЬ (по просьбе): нажал —
+   * взял, предмет дальше держится сам без удержания кнопки; СЛЕДУЮЩЕЕ
+   * нажатие тем же грипом — бросок/уборка за спину (или отпуск второй руки
+   * посоха), как раньше при отпускании. За плечом grip прячет/достаёт.
+   */
   private handleGripsVR(): void {
     for (const side of ["left", "right"] as Side[]) {
       const down = this.gripDown(side);
       const was = this.gripPrev[side];
+      const pressed = down && !was; // новое нажатие в этот кадр
       this.gripPrev[side] = down;
 
-      // Бутылочка с пояса: берётся свободной рукой, отпускается обратно на пояс.
+      // Бутылочка с пояса — по-старому, держится, пока зажат грип
+      // (короткое действие, тумблер тут не просили и не нужен).
       if (this.potionHand === side) {
         if (!down && was) this.potionHand = null;
         continue;
       }
-      if (down && !was && this.handAtPotion(side) && !this.inHand(side)) {
+      if (pressed && this.handAtPotion(side) && !this.inHand(side)) {
         this.potionHand = side;
         this.haptic(side, 0.35, 45);
         continue;
@@ -813,12 +820,12 @@ export class CombatSystem {
       const atShoulder = this.handAtShoulder(side);
       const item = this.inHand(side);
       if (item) {
-        if (!down && was) {
+        if (pressed) {
           if (item.kind === "staff" && item.hand2) {
-            // Двуручный хват: отпустил одну руку — посох остаётся в другой.
+            // Двуручный хват: повторный грип этой рукой — посох остаётся в другой.
             this.releaseStaffHand(item, side);
           } else if (atShoulder && !this.stowedItem(side)) {
-            // Отпустил за плечом и слот свободен -> убрать за спину.
+            // Повторный грип за плечом и слот свободен -> убрать за спину.
             this.stowItem(item, side);
           } else {
             this.throwItem(item, this.vrThrowVelocity(side));
@@ -826,7 +833,7 @@ export class CombatSystem {
         }
         continue;
       }
-      if (down && !was) {
+      if (pressed) {
         // Грип свободной рукой у тетивы / кристалла — это натяг, не «взять».
         if (this.handIsDrawing(side)) continue;
         // Нажал за плечом и там что-то лежит -> достать; иначе взять вторую руку
