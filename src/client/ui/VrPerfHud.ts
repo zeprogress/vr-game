@@ -7,8 +7,10 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-const TEX_W = 1200;
-const TEX_H = 780;
+const FULL_W = 1200;
+const FULL_H = 780;
+const LITE_W = 420;
+const LITE_H = 150;
 
 /**
  * Крупная отладочная плашка в VR: `?perf=1`. Висит перед лицом, крупный текст —
@@ -22,9 +24,17 @@ export class VrPerfHud {
   private prevShaderN = 0;
   private prevMatDirty = 0;
   private prevLightTog = 0;
+  private readonly w: number;
+  private readonly h: number;
 
-  constructor(scene: Scene, parent: Node) {
-    this.tex = new DynamicTexture("perfTex", { width: TEX_W, height: TEX_H }, scene, false);
+  constructor(
+    scene: Scene,
+    parent: Node,
+    private readonly lite = false,
+  ) {
+    this.w = lite ? LITE_W : FULL_W;
+    this.h = lite ? LITE_H : FULL_H;
+    this.tex = new DynamicTexture("perfTex", { width: this.w, height: this.h }, scene, false);
     const mat = new StandardMaterial("perfMat", scene);
     mat.diffuseTexture = this.tex;
     mat.emissiveTexture = this.tex;
@@ -33,37 +43,55 @@ export class VrPerfHud {
     mat.backFaceCulling = false;
     this.tex.hasAlpha = true;
 
+    const width = lite ? 0.4 : 1.1;
     this.plane = MeshBuilder.CreatePlane(
       "vrPerfHud",
-      { width: 1.1, height: 1.1 * (TEX_H / TEX_W) },
+      { width, height: width * (this.h / this.w) },
       scene,
     );
     this.plane.material = mat;
     this.plane.parent = parent;
-    this.plane.position.set(0, -0.05, 0.75); // почти по центру взгляда, близко
+    this.plane.position.set(0, lite ? -0.28 : -0.05, lite ? 0.9 : 0.75);
     this.plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.plane.isPickable = false;
     this.plane.renderingGroupId = 3;
     this.draw({});
   }
 
-  /** getStats — вернуть game.vrDiag(). Зовётся ТОЛЬКО на троттле (дорогой обход мешей). */
+  /** getStats — вернуть game.vrDiag(). Зовётся ТОЛЬКО на троттле. */
   update(dt: number, getStats: () => Record<string, unknown>): void {
     this.acc += dt;
-    if (this.acc < 0.5) return;
+    if (this.acc < (this.lite ? 0.5 : 0.5)) return;
     this.acc = 0;
     this.draw(getStats());
   }
 
   private draw(s: Record<string, unknown>): void {
     const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, TEX_W, TEX_H);
+    ctx.clearRect(0, 0, this.w, this.h);
     ctx.fillStyle = "rgba(6,8,14,0.9)";
-    ctx.fillRect(0, 0, TEX_W, TEX_H);
+    ctx.fillRect(0, 0, this.w, this.h);
     ctx.strokeStyle = "#5a6480";
     ctx.lineWidth = 4;
-    ctx.strokeRect(3, 3, TEX_W - 6, TEX_H - 6);
+    ctx.strokeRect(3, 3, this.w - 6, this.h - 6);
     ctx.textBaseline = "top";
+
+    if (this.lite) {
+      const fpsL = Number(s.fps ?? 0);
+      ctx.font = "bold 48px system-ui, sans-serif";
+      ctx.fillStyle = fpsL > 0 && fpsL < 55 ? "#ff7a7a" : "#7ee081";
+      ctx.fillText(`FPS ${s.fps ?? "?"}`, 24, 16);
+      ctx.font = "24px system-ui, sans-serif";
+      ctx.fillStyle = "#c9d2e6";
+      ctx.fillText(`${s.xrFrameRate ?? "?"} Гц · буфер ${s.eyeBuffer ?? "?"}`, 24, 74);
+      ctx.fillText(
+        `мешей ${s.activeMeshes ?? "?"}/${s.totalMeshes ?? "?"} · scale ${s.hardwareScaling ?? "?"}`,
+        24,
+        104,
+      );
+      this.tex.update(true);
+      return;
+    }
 
     const row = (y: number, label: string, val: unknown, warn = false): void => {
       ctx.font = "34px system-ui, sans-serif";

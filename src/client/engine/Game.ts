@@ -137,6 +137,11 @@ export class Game {
   private prevEffectKeys = new Set<string>();
   private lastNewEffects: string[] = [];
   private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
+  /** ?perf=1 включает тяжёлую диагностику (инструментовка + патчи прототипов);
+   *  ?perf=lite или ?fps=1 — только FPS, без накладных расходов. */
+  private readonly lightPerf =
+    new URLSearchParams(location.search).has("fps") ||
+    new URLSearchParams(location.search).get("perf") === "lite";
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
   xr: WebXRDefaultExperience | null = null;
@@ -748,20 +753,16 @@ export class Game {
   }
 
   /**
-   * Просим шлем о самой высокой поддерживаемой частоте кадров — в ЛЮБОМ
-   * пресете качества (кэп fps из PRESETS в VR не применяется). По умолчанию
-   * Quest-браузер отдаёт 72 Гц (Quest 3 умеет 90/120), а 2D-панель — 60.
-   * Список `supportedFrameRates` наполняется не сразу после старта сессии,
-   * поэтому пробуем несколько раз. Если движок не будет успевать — шлем сам
-   * опустит частоту репроекцией, хуже не станет.
+   * Целевая частота кадров шлема. РАНЬШЕ просили максимум (120 на Quest 3) —
+   * но приложение столько не тянет, и просьба о 120 только заставляет
+   * композитор чаще репроецировать. Теперь по умолчанию 72 Гц (родной дефолт
+   * Quest-браузера, самый стабильный), `?hz=90` / `?hz=120` — переопределить.
    */
   private requestMaxFrameRate(tries = 20): void {
     const retry = (ms: number): void => {
       if (tries > 0) setTimeout(() => this.requestMaxFrameRate(tries - 1), ms);
     };
     const sm = this.xr?.baseExperience.sessionManager;
-    // Пока сессия не поднялась или список частот пуст — ждём и пробуем снова
-    // (на Quest он наполняется с задержкой после старта сессии).
     if (!sm || !sm.inXRSession) {
       retry(400);
       return;
@@ -771,14 +772,16 @@ export class Game {
       retry(400);
       return;
     }
-    const target = Math.max(...Array.from(rates));
-    if (!Number.isFinite(target)) return;
-    if (target <= (sm.currentFrameRate ?? 0)) {
-      console.log(`[xr] частота кадров ${sm.currentFrameRate} Гц (макс ${target}) — ок`);
+    const want = Number(new URLSearchParams(location.search).get("hz")) || 72;
+    const list = Array.from(rates).sort((a, b) => a - b);
+    // Ближайшая поддерживаемая, не выше желаемой (иначе самая низкая).
+    const target = [...list].reverse().find((r) => r <= want + 0.5) ?? list[0];
+    if (!Number.isFinite(target) || Math.abs(target - (sm.currentFrameRate ?? 0)) < 1) {
+      console.log(`[xr] частота кадров ${sm.currentFrameRate} Гц (цель ${target}) — ок`);
       return;
     }
     sm.updateTargetFrameRate(target)
-      .then(() => console.log(`[xr] запрошено ${target} Гц (было ${sm.currentFrameRate ?? "?"})`))
+      .then(() => console.log(`[xr] частота кадров -> ${target} Гц (было ${sm.currentFrameRate ?? "?"})`))
       .catch((e: unknown) => {
         console.warn("[xr] частоту кадров сменить не вышло:", e);
         retry(800);
@@ -946,6 +949,17 @@ export class Game {
   vrDiag(): Record<string, unknown> {
     const sm = this.xr?.baseExperience.sessionManager;
     const layer = (sm?.session?.renderState as { baseLayer?: XRWebGLLayer } | undefined)?.baseLayer;
+    if (this.lightPerf) {
+      // Лёгкий режим (?fps=1): без обхода мешей и инструментовки.
+      return {
+        fps: Math.round(this.engine.getFps()),
+        xrFrameRate: sm?.currentFrameRate ?? null,
+        eyeBuffer: layer ? `${layer.framebufferWidth}x${layer.framebufferHeight}` : null,
+        hardwareScaling: this.engine.getHardwareScalingLevel(),
+        activeMeshes: this.scene.getActiveMeshes().length,
+        totalMeshes: this.scene.meshes.length,
+      };
+    }
     const grass = this.scene.getMeshByName("grassBlade");
     // Разбивка активных мешей по «основе» имени (без цифр/координат/instance) —
     // видно поимённо, кто плодит меши.
@@ -1041,8 +1055,8 @@ export class Game {
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
-    if (this.showPerfHud) {
-      if (!this.perfInstr) {
+    if (this.showPerfHud || this.lightPerf) {
+      if (this.showPerfHud && !this.lightPerf && !this.perfInstr) {
         this.installPerfProbes();
         this.perfInstr = new SceneInstrumentation(this.scene);
         this.perfInstr.captureActiveMeshesEvaluationTime = true;
@@ -1053,7 +1067,7 @@ export class Game {
         this.engInstr = new EngineInstrumentation(this.engine);
         this.engInstr.captureShaderCompilationTime = true;
       }
-      this.perfHud = new VrPerfHud(this.scene, this.hudAnchor);
+      this.perfHud = new VrPerfHud(this.scene, this.hudAnchor, this.lightPerf);
     }
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
