@@ -266,6 +266,25 @@ function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | 
   return "sword";
 }
 
+const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2 };
+
+/**
+ * Лучший тир класса `cls`, который герой КОГДА-ЛИБО честно поднимал —
+ * `rt.owned`/`PlayerRecord.owned` копит это на весь аккаунт, а не только
+ * то, что сейчас в руке или спрятано за спиной в VR (см. `stowed`). Бот
+ * должен выходить с лучшим из когда-либо заработанного, а не только с тем,
+ * что случайно осталось в руках на момент !stop.
+ */
+function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): WeaponTier {
+  let best: WeaponTier = "base";
+  for (const key of owned ?? []) {
+    const [c, t] = key.split(":") as [string, WeaponTier | undefined];
+    if (c !== cls || !t || !(t in TIER_RANK)) continue;
+    if (TIER_RANK[t] > TIER_RANK[best]) best = t;
+  }
+  return best;
+}
+
 /**
  * Воин (он же танк, мечник) — бот с мечом в правой руке. Меч совместим только
  * со вторым мечом или щитом (см. clampHandPair), поэтому проверка по правой
@@ -2541,22 +2560,25 @@ export class ZoneRoom extends Room<ZoneState> {
     // Оружие строго по преобладающей характеристике: сила→меч, ловкость→лук,
     // интеллект→посох (ничья / нет перекоса → меч).
     const rc = botWeaponFor(p.str, p.agi, p.int);
-    // Найденный на земле апгрейд (gold/legendary) СВОЕГО класса — сохраняем;
-    // не своего — роняем обратно, кто-нибудь подберёт.
+    // Лучший тир СВОЕГО класса из всего, что герой когда-либо честно поднял
+    // (rt.owned/PlayerRecord.owned — копится на весь аккаунт), а не только
+    // то, что осталось в руке или спрятано за спиной в VR на момент !stop:
+    // подобрал легендарку, убрал за спину поносить базовым — бот всё равно
+    // должен выйти с лучшим.
+    const rightTier = bestOwnedTier(rec?.owned, rc);
+    // Найденный на земле апгрейд НЕ своего класса — не подходит боту, роняем
+    // обратно, кто-нибудь подберёт (owned не разрешает пользоваться чужим).
     const savedRight = savedHeld.right;
-    const keepRight =
-      savedRight && savedRight.cls === rc && savedRight.tier !== "base";
-    p.rightCls = rc;
-    p.rightTier = keepRight ? savedRight!.tier : "base";
     if (savedRight && savedRight.tier !== "base" && savedRight.cls !== rc) {
       this.sim.dropWeapon(savedRight.cls, savedRight.tier, p.head.x, p.head.z);
     }
-    // Лук занимает обе руки — без щита; меч/посох — со щитом (легендарная
-    // «Эгида» из лута сохраняется).
-    const keepAegis =
-      rc !== "bow" && savedHeld.left?.cls === "shield" && savedHeld.left.tier === "legendary";
+    p.rightCls = rc;
+    p.rightTier = rightTier;
+    // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
+    // когда-либо честно поднятый тир (та же логика, что и для правой руки).
+    const leftTier = bestOwnedTier(rec?.owned, "shield");
     p.leftCls = rc === "bow" ? "" : "shield";
-    p.leftTier = rc === "bow" ? "" : keepAegis ? "legendary" : "base";
+    p.leftTier = rc === "bow" ? "" : leftTier;
     // Зелья выдаём при каждом выходе в мир — подбирать их на земле бот
     // умеет (см. pickupLoot), но без стартового запаса первый бой может
     // не пережить.
@@ -2580,7 +2602,10 @@ export class ZoneRoom extends Room<ZoneState> {
       lastCast: -999,
       lastSkillAt: -999,
       yaw: 0,
-      owned: new Set(),
+      // Раньше начиналось пустым — бот "забывал" всё, что честно поднял
+      // раньше (см. bestOwnedTier выше). Тот же паттерн, что и для живого
+      // игрока при джойне (ниже в этом файле).
+      owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: [],
       overrides: {},
       kills: rec?.kills ?? 0,
