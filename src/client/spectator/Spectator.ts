@@ -947,8 +947,10 @@ export class Spectator {
       }
     }
 
-    const online: { nick: string; speaking: boolean }[] = [];
-    st?.players.forEach((p, id) => online.push({ nick: p.nick, speaking: this.speakingIds.has(id) }));
+    const online: { nick: string; speaking: boolean; bot: boolean }[] = [];
+    st?.players.forEach((p, id) =>
+      online.push({ nick: p.nick, speaking: this.speakingIds.has(id), bot: id.startsWith("bot:") }),
+    );
 
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
     if (st?.eventKind === 1) {

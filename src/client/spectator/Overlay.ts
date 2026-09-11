@@ -22,7 +22,7 @@ export interface OverlayCtx {
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
   watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
-  online: readonly { nick: string; speaking: boolean }[];
+  online: readonly { nick: string; speaking: boolean; bot: boolean }[];
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: { heroNick: string; floor: number; mobsLeft: number; mobsTotal: number; bossActive: boolean } | null;
 }
@@ -191,8 +191,8 @@ export class Overlay {
   // Кэш последнего отрисованного состояния — не трогаем DOM, пока данные не
   // изменились (update() зовётся каждый кадр; за часы стрима постоянный
   // innerHTML+createElement подвешивал слабый стрим-бокс).
-  private lastOnlineSig = " ";
-  private lastWatchSig = " ";
+  private lastOnlineSig = " ";
+  private lastWatchSig = " ";
   private lastClock = "";
 
   constructor() {
@@ -433,8 +433,8 @@ export class Overlay {
     const onlineSig = this.cfg.online
       ? ctx.online
           .slice(0, 7)
-          .map((p) => `${p.nick}${p.speaking ? 1 : 0}`)
-          .join("") + `${ctx.online.length}`
+          .map((p) => `${p.nick}${p.speaking ? 1 : 0}${p.bot ? 1 : 0}`)
+          .join("|") + `${ctx.online.length}`
       : "";
     if (this.cfg.online && ctx.online.length && onlineSig !== this.lastOnlineSig) {
       this.lastOnlineSig = onlineSig;
@@ -445,7 +445,7 @@ export class Overlay {
         dot.className = "spk";
         if (!p.speaking) dot.style.visibility = "hidden"; // держит выравнивание
         const nm = document.createElement("span");
-        nm.textContent = p.nick;
+        nm.textContent = (p.bot ? "🤖 " : "") + p.nick;
         row.append(dot, nm);
         this.online.appendChild(row);
       }

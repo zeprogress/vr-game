@@ -3175,7 +3175,10 @@ export class ZoneRoom extends Room<ZoneState> {
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
       } else {
-        const bd = fireboltDamage(p.level, p.int, 0.7) * this.buffMult(bot.id, "dmg");
+        // По летающим — чуть больнее: их сложнее достать ближнику, магу это
+        // компенсирует (по просьбе).
+        const flyingMul = tgt.flying ? 1.25 : 1;
+        const bd = fireboltDamage(p.level, p.int, 0.7) * flyingMul * this.buffMult(bot.id, "dmg");
         const s = botAffix === "storm";
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
