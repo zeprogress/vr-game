@@ -6,6 +6,7 @@ import {
   type CharMsg,
   type LeaderboardRow,
   type TowerBoardRow,
+  type TowerMobsMsg,
   type EmoteMsg,
   type BotEmote,
   type HitMobMsg,
@@ -108,6 +109,8 @@ export class NetClient {
   onLeaderboard: ((rows: LeaderboardRow[]) => void) | null = null;
   /** Топ-5 по лучшему этажу Охотничьей башни — та же частота, что и leaderboard. */
   onTowerBoard: ((rows: TowerBoardRow[]) => void) | null = null;
+  /** Живые позиции мобов текущего забега башни (мировые координаты). */
+  onTowerMobs: ((msg: TowerMobsMsg) => void) | null = null;
   /** Бот сыграл эмоцию по команде из чата (Ф10). */
   onEmote: ((id: string, emote: BotEmote) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
@@ -230,6 +233,7 @@ export class NetClient {
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
     room.onMessage(MSG.towerBoard, (m: TowerBoardRow[]) => this.onTowerBoard?.(m));
+    room.onMessage(MSG.towerMobs, (m: TowerMobsMsg) => this.onTowerMobs?.(m));
     room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));
     this.reconnectToken = room.reconnectionToken;
     room.onLeave((code) => {

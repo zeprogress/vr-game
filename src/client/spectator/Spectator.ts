@@ -17,7 +17,7 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
-import { TowerArenaFx, type TowerFxEntry } from "./TowerArenaFx";
+import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
@@ -74,7 +74,8 @@ export class Spectator {
   private fadeTrees: ((x: number, z: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
   private readonly towerFx: TowerArenaFx;
-  private readonly _towerEntries: TowerFxEntry[] = [];
+  /** Живые позиции мобов текущего забега (мировые координаты) — с сервера. */
+  private _towerMobs: TowerLiveMob[] = [];
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
 
@@ -360,6 +361,7 @@ export class Spectator {
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onTowerBoard = (rows) => this.overlay?.setTowerBoard(rows);
+    net.onTowerMobs = (msg) => { this._towerMobs = msg.mobs; };
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
@@ -601,8 +603,10 @@ export class Spectator {
     // Аватары игроков + мобы для режиссёра.
     this._players.length = 0;
     this._mobs.length = 0;
-    this._towerEntries.length = 0;
     let boss: DirectorCtx["boss"] = null;
+    let towerActive = false;
+    let towerFloor = 0;
+    let towerBossActive = false;
     if (room) {
       const st = room.state;
       st.players.forEach((p, id) => {
@@ -625,22 +629,16 @@ export class Spectator {
         e.forward.copyFrom(av.eyeForward);
         this._players.push(e);
 
-        // Охотничья башня (фаза C, v1): герой стоит на скрытой точке — тут
-        // достраиваем декоративную арену вокруг него из снимка TowerRoom.
+        // Охотничья башня — герой реально бегает по арене (позиция и ХП
+        // приходят как обычные head.x/z и hp/maxHp, см. onTowerSnapshot);
+        // тут только сама арена (пол/стены/потолок/мобы), одна на всех.
         if (p.towerFloor > 0) {
-          this._towerEntries.push({
-            id,
-            pos: new Vector3(head.x, head.y - 1.6, head.z),
-            floor: p.towerFloor,
-            mobsLeft: p.towerMobsLeft,
-            mobsTotal: p.towerMobsTotal,
-            bossActive: p.towerBossActive === 1,
-            bossHpFrac: p.towerBossHpFrac,
-            heroHpFrac: p.towerHeroHpFrac,
-          });
+          towerActive = true;
+          towerFloor = p.towerFloor;
+          towerBossActive = p.towerBossActive === 1;
         }
       });
-      this.towerFx.update(this._towerEntries);
+      this.towerFx.update(towerActive, towerFloor, towerBossActive, this._towerMobs);
 
       st.mobs.forEach((m, id) => {
         if (m.dead || m.kind === "shard") return;

@@ -59,13 +59,14 @@ export class PlayerState extends Schema {
 
   // ---- Охотничья башня: снимок боя в TowerRoom (отдельная комната) для
   // визуала у спектатора/игрока — сама симуляция считается там, здесь
-  // только зеркало на чтение. 0 — герой сейчас не в башне. ----
+  // только зеркало на чтение. 0 — герой сейчас не в башне. ХП героя — те же
+  // hp/maxHp выше (не отдельное поле): та же полоска, что и у персонажа.
+  // Позиция героя — те же head.x/y/z (реально бегает по арене).
   @type("uint8") towerFloor = 0;
   @type("uint8") towerMobsLeft = 0;
   @type("uint8") towerMobsTotal = 0;
   @type("uint8") towerBossActive = 0;
   @type("float32") towerBossHpFrac = 0;
-  @type("float32") towerHeroHpFrac = 1;
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

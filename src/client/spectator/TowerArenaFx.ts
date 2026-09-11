@@ -4,186 +4,132 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-import { floorMonster, TOWER } from "#shared/tower";
+import { PLAYER } from "#shared/constants";
+import { TOWER, TOWER_HIDE, floorMonster } from "#shared/tower";
 import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
 
-/** Сколько слотов мобов держим всегда — максимум по floorMobCount (см. tower.ts). */
+/** Мобов на арене одновременно — с запасом (см. floorMobCount, максимум 10). */
 const MAX_MOBS = 10;
-/** Палитра площадки/декора — своя на этаж (по floor % длины), для «разных» этажей без 3D-арт-работы. */
-const PALETTES: readonly [number, number, number][] = [
-  [0.42, 0.42, 0.46], // камень
-  [0.55, 0.18, 0.14], // лава
-  [0.2, 0.36, 0.5], // лёд
-  [0.22, 0.4, 0.2], // заросли
-  [0.62, 0.58, 0.5], // кость
-  [0.32, 0.16, 0.42], // пустота
-];
 
-/** Ширина планок-заливок (bossBarFg/heroBarFg) в их СОБСТВЕННЫХ локальных
- *  единицах — родительский масштаб (0.7 у полосы героя) применяется сам. */
-const BAR_FG_HALF_W = 1.15;
-
-/**
- * Сжать полосу HP от ПРАВОГО края (левый — фиксирован), без billboard-качания:
- * `fg` — ребёнок billboard-подложки, свой billboardMode/pivot ему не нужен —
- * просто сдвигаем локальную позицию вместе со scaling.x.
- */
-function setBarFrac(fg: Mesh, frac: number): void {
-  const f = Math.max(0.001, Math.min(1, frac));
-  fg.scaling.x = f;
-  fg.position.x = -BAR_FG_HALF_W * (1 - f);
+interface Palette {
+  floor: readonly [number, number, number];
+  wall: readonly [number, number, number];
+  ceiling: readonly [number, number, number];
+  light: readonly [number, number, number];
+  intensity: number;
 }
+
+/** Своя палитра+свет на каждый этаж (по кругу) — чтобы этажи ощущались разными. */
+const PALETTES: readonly Palette[] = [
+  { floor: [0.42, 0.42, 0.46], wall: [0.3, 0.3, 0.34], ceiling: [0.22, 0.22, 0.25], light: [0.85, 0.85, 0.95], intensity: 1.1 }, // камень
+  { floor: [0.5, 0.16, 0.1], wall: [0.32, 0.11, 0.08], ceiling: [0.18, 0.06, 0.05], light: [1, 0.45, 0.15], intensity: 1.4 }, // лава
+  { floor: [0.22, 0.4, 0.55], wall: [0.16, 0.28, 0.4], ceiling: [0.1, 0.18, 0.28], light: [0.4, 0.75, 1], intensity: 1.2 }, // лёд
+  { floor: [0.2, 0.38, 0.18], wall: [0.14, 0.26, 0.13], ceiling: [0.08, 0.16, 0.08], light: [0.55, 1, 0.45], intensity: 1.0 }, // заросли
+  { floor: [0.58, 0.54, 0.46], wall: [0.4, 0.37, 0.3], ceiling: [0.26, 0.24, 0.2], light: [1, 0.95, 0.8], intensity: 1.2 }, // кость
+  { floor: [0.28, 0.14, 0.38], wall: [0.18, 0.08, 0.26], ceiling: [0.1, 0.04, 0.16], light: [0.75, 0.35, 1], intensity: 1.3 }, // пустота
+];
 
 interface ModelPlacement {
   inst: RigInstance;
   holder: TransformNode;
 }
 
-interface Rig {
-  root: TransformNode;
-  platform: Mesh;
-  platMat: StandardMaterial;
-  mobSlots: Mesh[];
-  boss: Mesh;
-  bossMat: StandardMaterial;
-  bossBarBg: Mesh;
-  bossBarFg: Mesh;
-  heroBarBg: Mesh;
-  heroBarFg: Mesh;
-  label: Mesh;
-  labelTex: DynamicTexture;
-  lastFloor: number;
-  /** Модель этажа, если уже загрузилась — иначе видны кубы-заглушки (mobSlots/boss). */
-  modelName: string;
-  mobModels: (ModelPlacement | null)[];
-  bossModel: ModelPlacement | null;
-  /** Токен против гонки: этаж может смениться раньше, чем догрузится предыдущий. */
-  loadSeq: number;
-}
-
-export interface TowerFxEntry {
-  id: string;
-  pos: Vector3;
-  floor: number;
-  mobsLeft: number;
-  mobsTotal: number;
-  bossActive: boolean;
-  bossHpFrac: number;
-  heroHpFrac: number;
+export interface TowerLiveMob {
+  x: number;
+  z: number;
+  hpFrac: number;
+  boss: boolean;
 }
 
 /**
- * Визуал «Охотничьей башни» (фаза C, v1) — герой физически стоит на далёкой
- * скрытой точке (TOWER_HIDE), сама симуляция боя в отдельной TowerRoom (числа,
- * без пространства); здесь только декоративная площадка+мобы-заглушки+босс+
- * полоски HP вокруг него, собранные из примитивов (моделей пака пока нет —
- * это Фаза E). Один риг на героя, по факту почти всегда только один активен.
+ * Визуал «Охотничьей башни» — ОДНА постоянная арена в фиксированной точке
+ * карты (TOWER_HIDE): герой и мобы реально бегают внутри нею (позиции
+ * приходят с сервера тик в тик), сам зал — просторный (см. TOWER.arena) с
+ * полом/стенами/потолком и своим освещением на этаж. Одновременно активен
+ * максимум один забег — отдельный «риг на игрока» тут не нужен.
  */
 export class TowerArenaFx {
-  private readonly rigs = new Map<string, Rig>();
+  private built = false;
+  private root!: TransformNode;
+  private floorMesh!: Mesh;
+  private wallMesh!: Mesh;
+  private ceilMesh!: Mesh;
+  private floorMat!: StandardMaterial;
+  private wallMat!: StandardMaterial;
+  private ceilMat!: StandardMaterial;
+  private light!: PointLight;
+  private label!: Mesh;
+  private labelTex!: DynamicTexture;
+
+  private lastFloor = -1;
+  private modelName = "";
+  private loadSeq = 0;
+  private mobModels: (ModelPlacement | null)[] = new Array(MAX_MOBS).fill(null);
+  private bossModel: ModelPlacement | null = null;
 
   constructor(private readonly scene: Scene) {}
 
-  private buildRig(id: string): Rig {
-    const root = new TransformNode(`towerRig_${id}`, this.scene);
+  private ensureBuilt(): void {
+    if (this.built) return;
+    this.built = true;
+    const R = TOWER.arena.radius;
+    const H = TOWER.arena.wallHeight;
+    // Локальный y=0 — пол ПОД НОГАМИ героя (его голова синхронна TOWER_HIDE.y).
+    this.root = new TransformNode("towerArena", this.scene);
+    this.root.position.set(TOWER_HIDE.x, TOWER_HIDE.y - PLAYER.eyeHeight, TOWER_HIDE.z);
 
-    const platform = MeshBuilder.CreateCylinder(
-      `towerPlat_${id}`,
-      { diameter: 11, height: 0.3, tessellation: 24 },
+    this.floorMat = new StandardMaterial("towerFloorMat", this.scene);
+    this.floorMat.specularColor = new Color3(0, 0, 0);
+    this.floorMesh = MeshBuilder.CreateDisc("towerFloor", { radius: R, tessellation: 48 }, this.scene);
+    this.floorMesh.rotation.x = Math.PI / 2; // нормаль вверх
+    this.floorMesh.parent = this.root;
+    this.floorMesh.isPickable = false;
+    this.floorMesh.material = this.floorMat;
+
+    this.wallMat = new StandardMaterial("towerWallMat", this.scene);
+    this.wallMat.specularColor = new Color3(0, 0, 0);
+    this.wallMat.backFaceCulling = false; // смотрим изнутри цилиндра
+    this.wallMesh = MeshBuilder.CreateCylinder(
+      "towerWall",
+      { diameter: R * 2, height: H, tessellation: 32, sideOrientation: Mesh.DOUBLESIDE },
       this.scene,
     );
-    platform.parent = root;
-    platform.position.y = -0.15;
-    platform.isPickable = false;
-    const platMat = new StandardMaterial(`towerPlatMat_${id}`, this.scene);
-    platMat.specularColor = new Color3(0, 0, 0);
-    platform.material = platMat;
+    this.wallMesh.position.y = H / 2;
+    this.wallMesh.parent = this.root;
+    this.wallMesh.isPickable = false;
+    this.wallMesh.material = this.wallMat;
 
-    const mobProto = MeshBuilder.CreateBox(`towerMobProto_${id}`, { size: 0.9 }, this.scene);
-    const mobMat = new StandardMaterial(`towerMobMat_${id}`, this.scene);
-    mobMat.diffuseColor = new Color3(0.7, 0.1, 0.1);
-    mobMat.emissiveColor = new Color3(0.25, 0.02, 0.02);
-    mobMat.specularColor = new Color3(0, 0, 0);
-    mobProto.material = mobMat;
-    mobProto.isPickable = false;
-    mobProto.parent = root;
-    const mobSlots: Mesh[] = [];
-    for (let i = 0; i < MAX_MOBS; i++) {
-      const m = i === 0 ? mobProto : mobProto.clone(`towerMob_${id}_${i}`);
-      const a = (i / MAX_MOBS) * Math.PI * 2;
-      m.position.set(Math.cos(a) * 4, 0.45, Math.sin(a) * 4);
-      m.parent = root;
-      mobSlots.push(m);
-    }
+    this.ceilMat = new StandardMaterial("towerCeilMat", this.scene);
+    this.ceilMat.specularColor = new Color3(0, 0, 0);
+    this.ceilMat.backFaceCulling = false; // смотрим снизу
+    this.ceilMesh = MeshBuilder.CreateDisc("towerCeil", { radius: R, tessellation: 48 }, this.scene);
+    this.ceilMesh.rotation.x = -Math.PI / 2;
+    this.ceilMesh.position.y = H;
+    this.ceilMesh.parent = this.root;
+    this.ceilMesh.isPickable = false;
+    this.ceilMesh.material = this.ceilMat;
 
-    const boss = MeshBuilder.CreateBox(`towerBoss_${id}`, { size: 1.8 }, this.scene);
-    boss.position.set(0, 0.9, -5.5);
-    boss.parent = root;
-    boss.isPickable = false;
-    const bossMat = new StandardMaterial(`towerBossMat_${id}`, this.scene);
-    bossMat.diffuseColor = new Color3(0.5, 0.15, 0.55);
-    bossMat.emissiveColor = new Color3(0.2, 0.05, 0.22);
-    bossMat.specularColor = new Color3(0, 0, 0);
-    boss.material = bossMat;
-    boss.setEnabled(false);
+    // Один источник света на всю арену — не задевает основной мир и его
+    // материалы (includedOnlyMeshes), пересоздавать на каждый этаж не
+    // надо — просто перекрашиваем/двигаем (см. applyPalette).
+    this.light = new PointLight("towerLight", new Vector3(0, H * 0.55, 0), this.scene);
+    this.light.parent = this.root;
+    this.light.includedOnlyMeshes = [this.floorMesh, this.wallMesh, this.ceilMesh];
+    this.light.range = R * 2.2;
 
-    const barBgMat = new StandardMaterial(`towerBarBgMat_${id}`, this.scene);
-    barBgMat.diffuseColor = new Color3(0.08, 0.08, 0.08);
-    barBgMat.specularColor = new Color3(0, 0, 0);
-    barBgMat.disableLighting = true;
-    barBgMat.emissiveColor = new Color3(0.08, 0.08, 0.08);
-
-    const bossBarBg = MeshBuilder.CreatePlane(`towerBossBarBg_${id}`, { width: 2.4, height: 0.24 }, this.scene);
-    bossBarBg.parent = root;
-    bossBarBg.position.set(0, 2.3, -5.5);
-    bossBarBg.billboardMode = Mesh.BILLBOARDMODE_Y;
-    bossBarBg.isPickable = false;
-    bossBarBg.material = barBgMat;
-    bossBarBg.setEnabled(false);
-
-    // ВАЖНО: полоса-заливка (fg) — РЕБЁНОК подложки (bg), а не root, и БЕЗ
-    // своего billboardMode/pivot. Билборд поворачивает меш вокруг его pivot;
-    // если сама fg билбордится да ещё с pivot на левом краю (чтобы шкала
-    // сжималась от края, а не от центра) — она вращается вокруг ЭТОЙ точки,
-    // а не центра, и на орбите камеры видимо "сползает"/качается. Ребёнок
-    // billboard-меша просто наследует его поворот целиком, без своего.
-    const bossFgMat = new StandardMaterial(`towerBossBarFgMat_${id}`, this.scene);
-    bossFgMat.diffuseColor = new Color3(0.75, 0.1, 0.75);
-    bossFgMat.emissiveColor = new Color3(0.4, 0.05, 0.4);
-    bossFgMat.specularColor = new Color3(0, 0, 0);
-    bossFgMat.disableLighting = true;
-    const bossBarFg = MeshBuilder.CreatePlane(`towerBossBarFg_${id}`, { width: 2.3, height: 0.16 }, this.scene);
-    bossBarFg.parent = bossBarBg;
-    bossBarFg.position.set(0, 0, -0.01);
-    bossBarFg.isPickable = false;
-    bossBarFg.material = bossFgMat;
-    bossBarFg.setEnabled(false);
-
-    const heroBarBg = bossBarBg.clone(`towerHeroBarBg_${id}`);
-    heroBarBg.parent = root;
-    heroBarBg.position.set(0, 2.7, 0);
-    heroBarBg.scaling.set(0.7, 0.7, 1);
-    heroBarBg.setEnabled(true);
-    const heroFgMat = new StandardMaterial(`towerHeroBarFgMat_${id}`, this.scene);
-    heroFgMat.diffuseColor = new Color3(0.15, 0.8, 0.25);
-    heroFgMat.emissiveColor = new Color3(0.05, 0.35, 0.1);
-    heroFgMat.specularColor = new Color3(0, 0, 0);
-    heroFgMat.disableLighting = true;
-    const heroBarFg = MeshBuilder.CreatePlane(`towerHeroBarFg_${id}`, { width: 2.3, height: 0.16 }, this.scene);
-    heroBarFg.parent = heroBarBg;
-    heroBarFg.position.set(0, 0, -0.01);
-    heroBarFg.isPickable = false;
-    heroBarFg.material = heroFgMat;
-
-    const labelTex = new DynamicTexture(`towerLabelTex_${id}`, { width: 256, height: 64 }, this.scene, false);
+    const labelTex = new DynamicTexture("towerArenaLabelTex", { width: 256, height: 64 }, this.scene, false);
     labelTex.hasAlpha = true;
-    const labelMat = new StandardMaterial(`towerLabelMat_${id}`, this.scene);
+    this.labelTex = labelTex;
+    const labelMat = new StandardMaterial("towerArenaLabelMat", this.scene);
     labelMat.diffuseTexture = labelTex;
     labelMat.emissiveTexture = labelTex;
     labelMat.opacityTexture = labelTex;
@@ -191,139 +137,215 @@ export class TowerArenaFx {
     labelMat.disableLighting = true;
     labelMat.specularColor = new Color3(0, 0, 0);
     labelMat.backFaceCulling = false;
-    const label = MeshBuilder.CreatePlane(`towerLabel_${id}`, { width: 3, height: 0.75 }, this.scene);
-    label.parent = root;
-    label.position.set(0, 3.4, 0);
-    label.billboardMode = Mesh.BILLBOARDMODE_Y;
-    label.isPickable = false;
-    label.material = labelMat;
+    this.label = MeshBuilder.CreatePlane("towerArenaLabel", { width: 4, height: 1 }, this.scene);
+    this.label.parent = this.root;
+    this.label.position.set(0, H * 0.4, -(R - 0.3));
+    this.label.billboardMode = Mesh.BILLBOARDMODE_Y;
+    this.label.isPickable = false;
+    this.label.material = labelMat;
+  }
 
-    return {
-      root, platform, platMat, mobSlots, boss, bossMat, bossBarBg, bossBarFg,
-      heroBarBg, heroBarFg, label, labelTex, lastFloor: -1,
-      modelName: "", mobModels: new Array(MAX_MOBS).fill(null), bossModel: null, loadSeq: 0,
+  /** Простая процедурная «крапинка» на тон палитры — не плоская заливка. */
+  private buildTileTexture(name: string, base: readonly [number, number, number], variant: number): DynamicTexture {
+    const S = 128;
+    const tex = new DynamicTexture(name, { width: S, height: S }, this.scene, false);
+    const ctx = tex.getContext() as CanvasRenderingContext2D;
+    const [r, g, b] = base.map((c) => Math.round(c * 255));
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, S, S);
+    // Псевдослучайные крапинки/трещины — детерминировано по variant, чтобы
+    // одна и та же палитра всегда давала одну и ту же текстуру (кэш ниже).
+    let seed = variant * 9301 + 49297;
+    const rnd = (): number => {
+      seed = (seed * 9301 + 49297) % 233280;
+      return seed / 233280;
     };
+    for (let i = 0; i < 260; i++) {
+      const x = rnd() * S;
+      const y = rnd() * S;
+      const rad = 1 + rnd() * 2.4;
+      const shade = 0.65 + rnd() * 0.5;
+      ctx.fillStyle = `rgba(${Math.min(255, r * shade)},${Math.min(255, g * shade)},${Math.min(255, b * shade)},0.55)`;
+      ctx.beginPath();
+      ctx.arc(x, y, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Лёгкая сетка стыков — читается как кладка/панели, не голая заливка.
+    ctx.strokeStyle = `rgba(0,0,0,0.18)`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const p = (i / 4) * S;
+      ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, S); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(S, p); ctx.stroke();
+    }
+    tex.update(false);
+    tex.wrapU = Texture.WRAP_ADDRESSMODE;
+    tex.wrapV = Texture.WRAP_ADDRESSMODE;
+    return tex;
   }
 
-  /**
-   * Догрузить модель этажа (Quaternius, см. FLOOR_MONSTERS) и подменить ею
-   * кубы-заглушки — асинхронно, с защитой от гонки (этаж мог смениться ещё
-   * раз, пока эта модель грузилась). Если загрузка не удалась — кубы и
-   * останутся, это не баг, а честный фолбэк.
-   */
-  private async loadFloorModel(rig: Rig, floor: number): Promise<void> {
-    const fm = floorMonster(floor);
-    const mySeq = ++rig.loadSeq;
-    let make: (() => RigInstance) | null = null;
-    try {
-      make = await loadRig(this.scene, fm.model as ModelName);
-    } catch {
-      return;
+  private readonly texCache = new Map<string, DynamicTexture>();
+  private cachedTex(key: string, base: readonly [number, number, number], variant: number): DynamicTexture {
+    let t = this.texCache.get(key);
+    if (!t) {
+      t = this.buildTileTexture(key, base, variant);
+      this.texCache.set(key, t);
     }
-    if (rig.root.isDisposed() || rig.loadSeq !== mySeq) return; // устарело или риг снесён
-
-    this.disposeFloorModels(rig);
-    rig.modelName = fm.model;
-    for (let i = 0; i < rig.mobSlots.length; i++) {
-      const placement = this.placeModel(make(), rig.root, rig.mobSlots[i].position, 1.1);
-      rig.mobModels[i] = placement;
-      rig.mobSlots[i].setEnabled(false); // кубик больше не нужен — есть модель
-    }
-    rig.bossModel = this.placeModel(make(), rig.root, rig.boss.position, 1.1 * TOWER.bossScaleMul);
-    rig.boss.setEnabled(false);
+    return t;
   }
 
-  /** Поставить экземпляр модели на место кубика-заглушки, подогнав высоту. */
-  private placeModel(inst: RigInstance, parent: TransformNode, pos: Vector3, targetHeight: number): ModelPlacement {
-    const holder = new TransformNode("towerModelHolder", this.scene);
-    holder.parent = parent;
-    holder.position.copyFrom(pos);
-    inst.root.parent = holder;
-    inst.root.position.set(0, 0, 0);
-    const base = targetHeight / (inst.nativeHeight || 1);
-    holder.scaling.setAll(base);
-    recolorMonster(inst.root); // родная текстура пака + эмиссив под дневной свет
-    const anim = inst.anims.get("idle") ?? inst.anims.get("walk") ?? inst.anims.get("hop") ?? null;
-    anim?.play(true);
-    return { inst, holder };
+  private applyPalette(floor: number): void {
+    const idx = (floor - 1) % PALETTES.length;
+    const pal = PALETTES[idx];
+    const R = TOWER.arena.radius;
+    const H = TOWER.arena.wallHeight;
+
+    const floorTex = this.cachedTex(`towerFloorTex_${idx}`, pal.floor, idx * 3);
+    floorTex.uScale = R / 3;
+    floorTex.vScale = R / 3;
+    this.floorMat.diffuseTexture = floorTex;
+    this.floorMat.emissiveColor.copyFromFloats(pal.floor[0] * 0.12, pal.floor[1] * 0.12, pal.floor[2] * 0.12);
+
+    const wallTex = this.cachedTex(`towerWallTex_${idx}`, pal.wall, idx * 3 + 1);
+    wallTex.uScale = (2 * Math.PI * R) / 6;
+    wallTex.vScale = H / 4;
+    this.wallMat.diffuseTexture = wallTex;
+    this.wallMat.emissiveColor.copyFromFloats(pal.wall[0] * 0.1, pal.wall[1] * 0.1, pal.wall[2] * 0.1);
+
+    const ceilTex = this.cachedTex(`towerCeilTex_${idx}`, pal.ceiling, idx * 3 + 2);
+    ceilTex.uScale = R / 3;
+    ceilTex.vScale = R / 3;
+    this.ceilMat.diffuseTexture = ceilTex;
+    this.ceilMat.emissiveColor.copyFromFloats(pal.ceiling[0] * 0.08, pal.ceiling[1] * 0.08, pal.ceiling[2] * 0.08);
+
+    this.light.diffuse.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
+    this.light.specular.copyFromFloats(pal.light[0], pal.light[1], pal.light[2]);
+    this.light.intensity = pal.intensity;
   }
 
-  private disposeFloorModels(rig: Rig): void {
-    for (const p of rig.mobModels) {
-      p?.inst.dispose();
-      p?.holder.dispose();
-    }
-    rig.mobModels.fill(null);
-    if (rig.bossModel) {
-      rig.bossModel.inst.dispose();
-      rig.bossModel.holder.dispose();
-      rig.bossModel = null;
-    }
-  }
-
-  private paintLabel(rig: Rig, floor: number): void {
-    const ctx = rig.labelTex.getContext() as CanvasRenderingContext2D;
+  private paintLabel(floor: number): void {
+    const ctx = this.labelTex.getContext() as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, 256, 64);
     ctx.font = "700 34px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillStyle = "rgba(240,240,245,0.95)";
     ctx.fillText(`Этаж ${floor}`, 128, 34);
-    rig.labelTex.update();
+    this.labelTex.update();
   }
 
-  /** Раз в кадр: `entries` — только герои, у кого сейчас идёт забег (towerFloor > 0). */
-  update(entries: readonly TowerFxEntry[]): void {
-    const seen = new Set<string>();
-    for (const e of entries) {
-      seen.add(e.id);
-      let rig = this.rigs.get(e.id);
-      if (!rig) {
-        rig = this.buildRig(e.id);
-        this.rigs.set(e.id, rig);
-      }
-      rig.root.position.copyFrom(e.pos);
-
-      if (rig.lastFloor !== e.floor) {
-        rig.lastFloor = e.floor;
-        this.paintLabel(rig, e.floor);
-        const pal = PALETTES[(e.floor - 1) % PALETTES.length];
-        rig.platMat.diffuseColor.copyFromFloats(pal[0], pal[1], pal[2]);
-        rig.platMat.emissiveColor.copyFromFloats(pal[0] * 0.35, pal[1] * 0.35, pal[2] * 0.35);
-        void this.loadFloorModel(rig, e.floor);
-      }
-
-      const hasModels = rig.modelName !== "";
-      for (let i = 0; i < rig.mobSlots.length; i++) {
-        const on = i < e.mobsLeft;
-        if (hasModels) rig.mobModels[i]?.holder.setEnabled(on);
-        else rig.mobSlots[i].setEnabled(on);
-      }
-
-      if (hasModels) rig.bossModel?.holder.setEnabled(e.bossActive);
-      else rig.boss.setEnabled(e.bossActive);
-      rig.bossBarBg.setEnabled(e.bossActive);
-      rig.bossBarFg.setEnabled(e.bossActive);
-      if (e.bossActive) setBarFrac(rig.bossBarFg, e.bossHpFrac);
-
-      setBarFrac(rig.heroBarFg, e.heroHpFrac);
+  /**
+   * Догрузить модель этажа (см. FLOOR_MONSTERS) и подменить ею предыдущую —
+   * асинхронно, с защитой от гонки (этаж мог смениться ещё раз, пока модель
+   * грузилась). Пока не готово (или если не удалось) — слот просто скрыт,
+   * не заглушка-кубик: пространство важнее, чем всегда что-то показывать.
+   */
+  private async loadFloorModel(floor: number): Promise<void> {
+    const fm = floorMonster(floor);
+    const mySeq = ++this.loadSeq;
+    let make: (() => RigInstance) | null = null;
+    try {
+      make = await loadRig(this.scene, fm.model as ModelName);
+    } catch {
+      return;
     }
-    for (const [id, rig] of this.rigs) {
-      if (seen.has(id)) continue;
-      this.disposeRig(rig);
-      this.rigs.delete(id);
+    if (this.loadSeq !== mySeq) return; // этаж успел смениться ещё раз
+
+    this.disposeModels();
+    this.modelName = fm.model;
+    for (let i = 0; i < MAX_MOBS; i++) {
+      this.mobModels[i] = this.placeModel(make(), 1.1);
+      this.mobModels[i]!.holder.setEnabled(false);
     }
+    this.bossModel = this.placeModel(make(), 1.1 * TOWER.bossScaleMul);
+    this.bossModel.holder.setEnabled(false);
   }
 
-  private disposeRig(rig: Rig): void {
-    rig.loadSeq++; // ещё не пришедшую загрузку модели тоже глушим
-    this.disposeFloorModels(rig);
-    rig.labelTex.dispose();
-    rig.root.dispose(false, true); // и меши-дети, и их материалы
+  private placeModel(inst: RigInstance, targetHeight: number): ModelPlacement {
+    const holder = new TransformNode("towerModelHolder", this.scene);
+    holder.parent = this.root;
+    inst.root.parent = holder;
+    inst.root.position.set(0, 0, 0);
+    const base = targetHeight / (inst.nativeHeight || 1);
+    holder.scaling.setAll(base);
+    recolorMonster(inst.root);
+    const anim = inst.anims.get("walk") ?? inst.anims.get("idle") ?? inst.anims.get("hop") ?? null;
+    anim?.play(true);
+    return { inst, holder };
+  }
+
+  private disposeModels(): void {
+    for (const p of this.mobModels) {
+      p?.inst.dispose();
+      p?.holder.dispose();
+    }
+    this.mobModels.fill(null);
+    if (this.bossModel) {
+      this.bossModel.inst.dispose();
+      this.bossModel.holder.dispose();
+      this.bossModel = null;
+    }
+    this.modelName = "";
+  }
+
+  /**
+   * Раз в кадр. `active` — идёт ли сейчас хоть один забег (по факту — не
+   * больше одного одновременно, см. очередь башни). `mobs` — живые позиции
+   * (МИРОВЫЕ координаты, как их шлёт ZoneRoom) обычных мобов и, если есть,
+   * босса последней записью с `boss: true`.
+   */
+  update(
+    active: boolean,
+    floor: number,
+    bossActive: boolean,
+    mobs: readonly TowerLiveMob[],
+  ): void {
+    if (!active) {
+      if (this.built) this.root.setEnabled(false);
+      return;
+    }
+    this.ensureBuilt();
+    this.root.setEnabled(true);
+
+    if (floor !== this.lastFloor) {
+      this.lastFloor = floor;
+      this.applyPalette(floor);
+      this.paintLabel(floor);
+      void this.loadFloorModel(floor);
+    }
+
+    const hasModels = this.modelName !== "";
+    let regularIdx = 0;
+    for (const m of mobs) {
+      if (m.boss) continue;
+      if (regularIdx >= MAX_MOBS) break;
+      const slot = hasModels ? this.mobModels[regularIdx] : null;
+      if (slot) {
+        slot.holder.setEnabled(true);
+        slot.holder.position.set(m.x - this.root.position.x, 0, m.z - this.root.position.z);
+      }
+      regularIdx++;
+    }
+    if (hasModels) {
+      for (let i = regularIdx; i < MAX_MOBS; i++) this.mobModels[i]?.holder.setEnabled(false);
+      if (bossActive && this.bossModel) {
+        const boss = mobs.find((m) => m.boss);
+        this.bossModel.holder.setEnabled(!!boss);
+        if (boss) this.bossModel.holder.position.set(boss.x - this.root.position.x, 0, boss.z - this.root.position.z);
+      } else {
+        this.bossModel?.holder.setEnabled(false);
+      }
+    }
   }
 
   dispose(): void {
-    for (const rig of this.rigs.values()) this.disposeRig(rig);
-    this.rigs.clear();
+    if (!this.built) return;
+    this.disposeModels();
+    for (const t of this.texCache.values()) t.dispose();
+    this.texCache.clear();
+    this.labelTex.dispose();
+    this.light.dispose();
+    this.root.dispose(false, true);
+    this.built = false;
   }
 }

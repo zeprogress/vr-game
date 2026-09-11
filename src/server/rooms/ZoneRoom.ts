@@ -28,6 +28,7 @@ import {
   type BotSayMsg,
   type LeaderboardRow,
   type TowerBoardRow,
+  type TowerMobsMsg,
   type BotEmote,
   type EmoteMsg,
   type VoiceMsg,
@@ -150,7 +151,7 @@ import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
-import { TOWER_HIDE } from "#shared/tower";
+import { TOWER, TOWER_HIDE } from "#shared/tower";
 
 const { Room } = colyseus;
 
@@ -1909,7 +1910,10 @@ export class ZoneRoom extends Room<ZoneState> {
     p.towerMobsTotal = 0;
     p.towerBossActive = 0;
     p.towerBossHpFrac = 0;
-    p.towerHeroHpFrac = 1;
+    // ХП героя в башне — та же полоска, что и у персонажа (p.hp/p.maxHp
+    // напрямую, не отдельное поле): подхватит существующий UI "цель".
+    p.maxHp = TOWER.hero.maxHp;
+    p.hp = TOWER.hero.maxHp;
     // Камера спектатора — жёстко на герое до конца забега (только смена вида
     // из глаз/орбиты, не переключение на другого): иначе авто-режиссёр тут
     // же уводит взгляд на кого-то ещё, кто реально дерётся в мире. Сама смена
@@ -1931,6 +1935,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // "зашёл и пропал" — без этого сообщения не отличить от бага.
         bot.inTower = false;
         p.towerFloor = 0;
+        p.maxHp = maxHpFor(p.level, p.str);
+        p.hp = p.maxHp;
         this.towerCamHeroId = "";
         this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
         this.reply(`${nick}: башня не запустилась (${(e as Error).message}).`);
@@ -1938,16 +1944,34 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(`${nick} заходит в Охотничью башню!`);
   }
 
-  /** Тик боя в TowerRoom — зеркалим сводку в PlayerState для визуала (Zone/Spectator). */
+  /**
+   * Тик боя в TowerRoom — зеркалим сводку для визуала. Позиция и ХП героя
+   * идут ПРЯМО в стандартные поля PlayerState (head.x/z, hp/maxHp) — герой
+   * реально бегает по арене (TOWER_HIDE + локальные координаты) той же
+   * походкой/аватаром, что и на поляне, и его ХП показывает тот же UI, что
+   * и у любого другого игрока (не отдельная полоска).
+   */
   private onTowerSnapshot(heroId: string, s: TowerSnapshot): void {
     const p = this.state.players.get(heroId);
     if (!p) return;
+    p.head.x = TOWER_HIDE.x + s.heroX;
+    p.head.z = TOWER_HIDE.z + s.heroZ;
+    p.hp = s.heroHp;
+    p.maxHp = s.heroMaxHp;
     p.towerFloor = s.floor;
     p.towerMobsLeft = s.mobsLeft;
     p.towerMobsTotal = s.mobsTotal;
     p.towerBossActive = s.bossActive ? 1 : 0;
     p.towerBossHpFrac = s.bossHpFrac;
-    p.towerHeroHpFrac = s.heroHpFrac;
+    this.broadcast(MSG.towerMobs, {
+      heroId,
+      mobs: s.mobs.map((m) => ({
+        x: TOWER_HIDE.x + m.x,
+        z: TOWER_HIDE.z + m.z,
+        hpFrac: m.hpFrac,
+        boss: m.boss,
+      })),
+    } satisfies TowerMobsMsg);
   }
 
   /** Попытка в TowerRoom закончилась — записать результат, вернуть героя, снова ждать очередь. */
@@ -1960,6 +1984,10 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.state.head.z = back.z;
       bot.state.head.y = terrainHeight(back.x, back.z) + PLAYER.eyeHeight;
       bot.state.towerFloor = 0; // сняли арену — герой вернулся
+      // ХП в башне жило в тех же полях, что и обычное (см. onTowerSnapshot) —
+      // возвращаем настоящий потолок героя и лечим с дороги.
+      bot.state.maxHp = maxHpFor(bot.state.level, bot.state.str);
+      bot.state.hp = bot.state.maxHp;
     }
     if (this.towerCamHeroId === heroId) {
       this.towerCamHeroId = "";
@@ -3879,6 +3907,9 @@ export class ZoneRoom extends Room<ZoneState> {
         if (rt.respawnIn <= 0) this.respawn(id, p, rt);
         return;
       }
+      // В башне ХП считает и пишет сама TowerRoom (см. onTowerSnapshot) —
+      // обычный реген тут же накинул бы очки поверх и смазал бы урон боя.
+      if (id.startsWith("bot:") && this.bots.get(id.slice(4))?.inTower) return;
       if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
       const buffLeft = Math.max(0, rt.eventBuffUntil - Date.now());

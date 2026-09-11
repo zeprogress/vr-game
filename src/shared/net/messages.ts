@@ -38,6 +38,8 @@ export const MSG = {
   leaderboard: "top",
   /** сервер -> все: топ-5 по лучшему этажу Охотничьей башни — для оверлея. */
   towerBoard: "twtop",
+  /** сервер -> все: живые позиции мобов текущего забега башни (мировые коорд.), для визуала. */
+  towerMobs: "twmobs",
   /** сервер -> все: хозяин бота написал в чат канала — показать над ботом (Ф10). */
   botSay: "bsay",
   /** сервер -> все: бот сыграл эмоцию по команде из чата (Ф10). */
@@ -168,6 +170,12 @@ export interface TowerBoardRow {
   nick: string;
   floor: number;
   shards: number;
+}
+
+/** Живые позиции мобов текущего забега башни — мировые координаты. */
+export interface TowerMobsMsg {
+  heroId: string;
+  mobs: { x: number; z: number; hpFrac: number; boss: boolean }[];
 }
 
 /** Команды дашборда стрима (этап 17 Ф5). */
