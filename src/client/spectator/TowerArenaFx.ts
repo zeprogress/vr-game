@@ -25,6 +25,7 @@ import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../wo
 import { protoFor as shadowProtoFor } from "../world/blobShadow";
 import { NameTag } from "../ui/NameTag";
 import { TOWER_LIGHT_TUNE } from "./towerLightTune";
+import type { Sfx } from "../audio/Sfx";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
@@ -98,11 +99,21 @@ interface AnimationGroupLike {
 
 /** Летящий «снаряд» дальнего моба к герою — просто светящийся шарик, без хитрегистрации. */
 interface Projectile {
-  mesh: Mesh;
+  /** Родитель core+glow — двигаем один узел, а не два меша по отдельности. */
+  holder: TransformNode;
+  core: Mesh;
+  glow: Mesh;
   from: Vector3;
   to: Vector3;
   t: number;
   dur: number;
+}
+
+/** Вспышка попадания снаряда — расширяется и гаснет, как огнешар в основном мире. */
+interface ImpactBurst {
+  mesh: Mesh;
+  age: number;
+  life: number;
 }
 
 /** Длительность процедурного замаха — то же значение, что и в Mob.ts. */
@@ -150,13 +161,20 @@ export class TowerArenaFx {
   private mobModels: (ModelPlacement | null)[] = new Array(MAX_MOBS).fill(null);
   private bossModel: ModelPlacement | null = null;
   private projectiles: Projectile[] = [];
-  private projMat: StandardMaterial | null = null;
+  private coreMat: StandardMaterial | null = null;
+  private glowMat: StandardMaterial | null = null;
+  private bursts: ImpactBurst[] = [];
+  private burstMat: StandardMaterial | null = null;
   /** Высота стен текущей арены — нужна прожектору, чтобы пересчитать позицию live (тюнер). */
   private arenaH = 0;
   /** "Родные" emissiveColor мобов (recolorMonster) — чтобы тюнер мог их живо гасить/включать. */
   private mobEmissiveMats: { mat: StandardMaterial; base: Color3 }[] = [];
 
-  constructor(private readonly scene: Scene) {}
+  constructor(
+    private readonly scene: Scene,
+    /** Для звука выстрела/попадания дальних мобов — тот же Sfx, что и у остальной сцены. */
+    private readonly sfx: Sfx,
+  ) {}
 
   /**
    * Мировые огни (солнце/заполняющий/ночной — DayTime, Sky и т.п.) не знают
@@ -480,7 +498,11 @@ export class TowerArenaFx {
     // на нём "плавала" по высоте/размеру от этажа к этажу.
     const anchor = new TransformNode("towerTagAnchor", this.scene);
     anchor.parent = this.root;
-    const tag = new NameTag(this.scene, anchor, new Vector3(0, targetHeight + 0.6, 0), name, level);
+    // У высоких боссов (растут до x3 к этажу x3 масштаба самого босса) плашка
+    // на уровне "рост+0.6" улетала выше камеры и была не видна спектатору —
+    // ограничиваем потолком, дальше она просто ниже макушки, не выше её.
+    const tagY = Math.min(targetHeight + 0.6, 3.2);
+    const tag = new NameTag(this.scene, anchor, new Vector3(0, tagY, 0), name, level);
     tag.showHp();
 
     // Тень под ногами — на анкоре (scale=1), не на holder, по той же причине,
@@ -625,23 +647,46 @@ export class TowerArenaFx {
   }
 
   /** Снаряд дальнего моба — светящийся шарик, летит к герою и исчезает. */
+  /**
+   * Снаряд дальнего моба — ядро+свечение, как настоящий firebolt/стрела в
+   * основном мире (см. MobSystem.ts, тот же приём: core sphere + billboard
+   * glow plane). Раньше был один плоский шарик без свечения — "не видно
+   * как обычно". По прилёту — вспышка+звук (spawnImpact), тоже как обычно.
+   */
   private spawnProjectile(from: Vector3, to: Vector3): void {
-    if (!this.projMat) {
-      this.projMat = new StandardMaterial("towerProjMat", this.scene);
-      this.projMat.disableLighting = true;
-      this.projMat.diffuseColor = new Color3(0, 0, 0);
-      this.projMat.specularColor = new Color3(0, 0, 0);
-      this.projMat.emissiveColor = new Color3(1, 0.65, 0.25);
-      this.projMat.alphaMode = Constants.ALPHA_ADD;
-      this.projMat.disableDepthWrite = true;
+    if (!this.coreMat) {
+      this.coreMat = new StandardMaterial("towerProjCoreMat", this.scene);
+      this.coreMat.disableLighting = true;
+      this.coreMat.diffuseColor = new Color3(0, 0, 0);
+      this.coreMat.specularColor = new Color3(0, 0, 0);
+      this.coreMat.emissiveColor = new Color3(1, 0.85, 0.5);
+      this.coreMat.alphaMode = Constants.ALPHA_ADD;
+      this.coreMat.disableDepthWrite = true;
+
+      this.glowMat = new StandardMaterial("towerProjGlowMat", this.scene);
+      this.glowMat.disableLighting = true;
+      this.glowMat.diffuseColor = new Color3(0, 0, 0);
+      this.glowMat.specularColor = new Color3(0, 0, 0);
+      this.glowMat.emissiveColor = new Color3(1, 0.55, 0.2);
+      this.glowMat.alphaMode = Constants.ALPHA_ADD;
+      this.glowMat.disableDepthWrite = true;
+      this.glowMat.backFaceCulling = false;
+      this.glowMat.alpha = 0.55;
     }
-    const mesh = MeshBuilder.CreateSphere("towerProj", { diameter: 0.28 }, this.scene);
-    mesh.material = this.projMat;
-    mesh.isPickable = false;
-    mesh.parent = this.root;
-    mesh.position.copyFrom(from);
+    const holder = new TransformNode("towerProjHolder", this.scene);
+    holder.parent = this.root;
+    holder.position.copyFrom(from);
+    const core = MeshBuilder.CreateSphere("towerProjCore", { diameter: 0.26, segments: 8 }, this.scene);
+    core.material = this.coreMat;
+    core.isPickable = false;
+    core.parent = holder;
+    const glow = MeshBuilder.CreatePlane("towerProjGlow", { size: 0.9 }, this.scene);
+    glow.material = this.glowMat;
+    glow.isPickable = false;
+    glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    glow.parent = holder;
     const dist = Vector3.Distance(from, to);
-    this.projectiles.push({ mesh, from: from.clone(), to: to.clone(), t: 0, dur: Math.max(0.12, dist / 16) });
+    this.projectiles.push({ holder, core, glow, from: from.clone(), to: to.clone(), t: 0, dur: Math.max(0.12, dist / 16) });
   }
 
   private updateProjectiles(dt: number): void {
@@ -649,11 +694,57 @@ export class TowerArenaFx {
       const pr = this.projectiles[i];
       pr.t += dt;
       const k = Math.min(1, pr.t / pr.dur);
-      Vector3.LerpToRef(pr.from, pr.to, k, pr.mesh.position);
+      Vector3.LerpToRef(pr.from, pr.to, k, pr.holder.position);
+      // Живое мерцание свечения — не статичная точка.
+      const flick = 0.85 + 0.15 * Math.sin(pr.t * 26);
+      pr.glow.scaling.setAll(flick);
       if (k >= 1) {
-        pr.mesh.dispose();
+        this.spawnImpact(pr.holder.position.clone());
+        pr.core.dispose();
+        pr.glow.dispose();
+        pr.holder.dispose();
         this.projectiles.splice(i, 1);
       }
+    }
+    this.updateBursts(dt);
+  }
+
+  /** Вспышка+звук попадания снаряда — та же озвучка, что и у огнешара в основном мире. */
+  private spawnImpact(pos: Vector3): void {
+    if (!this.burstMat) {
+      this.burstMat = new StandardMaterial("towerBurstMat", this.scene);
+      this.burstMat.disableLighting = true;
+      this.burstMat.diffuseColor = new Color3(0, 0, 0);
+      this.burstMat.specularColor = new Color3(0, 0, 0);
+      this.burstMat.emissiveColor = new Color3(1, 0.6, 0.25);
+      this.burstMat.alphaMode = Constants.ALPHA_ADD;
+      this.burstMat.disableDepthWrite = true;
+      this.burstMat.backFaceCulling = false;
+    }
+    const mesh = MeshBuilder.CreatePlane("towerBurst", { size: 1 }, this.scene);
+    mesh.material = this.burstMat;
+    mesh.isPickable = false;
+    mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    mesh.parent = this.root;
+    mesh.position.copyFrom(pos);
+    mesh.scaling.setAll(0.2);
+    this.bursts.push({ mesh, age: 0, life: 0.32 });
+    const world = pos.add(this.root.position);
+    this.sfx.at({ x: world.x, y: world.y, z: world.z }, () => this.sfx.fireBurst(undefined, 0.7));
+  }
+
+  private updateBursts(dt: number): void {
+    for (let i = this.bursts.length - 1; i >= 0; i--) {
+      const b = this.bursts[i];
+      b.age += dt;
+      const f = b.age / b.life;
+      if (f >= 1) {
+        b.mesh.dispose();
+        this.bursts.splice(i, 1);
+        continue;
+      }
+      b.mesh.scaling.setAll(0.2 + f * 1.6);
+      (b.mesh.material as StandardMaterial).alpha = 1 - f;
     }
   }
 
@@ -681,8 +772,14 @@ export class TowerArenaFx {
       if (this.built) this.root.setEnabled(false);
       this.wasActive = false;
       this.lastHeroId = "";
-      for (const pr of this.projectiles) pr.mesh.dispose();
+      for (const pr of this.projectiles) {
+        pr.core.dispose();
+        pr.glow.dispose();
+        pr.holder.dispose();
+      }
       this.projectiles.length = 0;
+      for (const b of this.bursts) b.mesh.dispose();
+      this.bursts.length = 0;
       return;
     }
     this.ensureBuilt();
@@ -786,9 +883,17 @@ export class TowerArenaFx {
   dispose(): void {
     if (!this.built) return;
     this.disposeModels();
-    for (const pr of this.projectiles) pr.mesh.dispose();
+    for (const pr of this.projectiles) {
+      pr.core.dispose();
+      pr.glow.dispose();
+      pr.holder.dispose();
+    }
     this.projectiles.length = 0;
-    this.projMat?.dispose();
+    for (const b of this.bursts) b.mesh.dispose();
+    this.bursts.length = 0;
+    this.coreMat?.dispose();
+    this.glowMat?.dispose();
+    this.burstMat?.dispose();
     for (const t of this.texCache.values()) t.dispose();
     this.texCache.clear();
     this.labelTex.dispose();

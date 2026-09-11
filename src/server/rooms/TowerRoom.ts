@@ -528,16 +528,22 @@ export class TowerRoom extends Room<TowerState> {
 
   private spawnFloor(floor: number): void {
     this.state.floor = floor;
-    this.hero.x = 0;
-    this.hero.z = 0;
+    // Герой стартует у КРАЯ арены (не посередине), мобы — рассыпаны по
+    // ПРОТИВОПОЛОЖНОЙ дуге — по просьбе: не оказываться сразу в толпе.
+    const heroAngle = Math.random() * Math.PI * 2;
+    const heroR = ARENA_R * 0.8;
+    this.hero.x = Math.cos(heroAngle) * heroR;
+    this.hero.z = Math.sin(heroAngle) * heroR;
     this.archetype = floorMonster(floor).archetype;
     this.mobRange = this.archetype === "melee" ? TOWER.mob.atkRange : SHOOT_RANGE;
     const n = floorMobCount(floor);
     const hp = floorMobHp(floor);
     this.mobAtkInterval = floorMobAtkIntervalSec(floor);
+    const oppositeAngle = heroAngle + Math.PI;
+    const spread = Math.PI * 0.8; // ~145° дуга напротив героя
     this.mobs = Array.from({ length: n }, (_v, i) => {
-      const a = (i / n) * Math.PI * 2 + Math.random() * 0.3;
-      const r = ARENA_R * (0.55 + Math.random() * 0.3);
+      const a = oppositeAngle + (n > 1 ? (i / (n - 1) - 0.5) * spread : 0) + (Math.random() - 0.5) * 0.3;
+      const r = ARENA_R * (0.35 + Math.random() * 0.35);
       return {
         x: Math.cos(a) * r,
         z: Math.sin(a) * r,
@@ -565,7 +571,10 @@ export class TowerRoom extends Room<TowerState> {
     const floor = this.state.floor;
     const hp = floorMobHp(floor) * TOWER.bossHpMul;
     const dmg = floorMobDmg(floor) * TOWER.bossDmgMul;
-    const a = Math.random() * Math.PI * 2;
+    // Тоже с противоположной от героя стороны (тот к этому моменту мог
+    // уйти от исходной точки спавна, поэтому меряем от ТЕКУЩЕЙ позиции).
+    const heroD = Math.hypot(this.hero.x, this.hero.z);
+    const a = heroD > 0.5 ? Math.atan2(this.hero.z, this.hero.x) + Math.PI : Math.random() * Math.PI * 2;
     const r = ARENA_R * 0.6;
     this.boss = {
       x: Math.cos(a) * r, z: Math.sin(a) * r, yaw: 0,

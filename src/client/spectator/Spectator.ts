@@ -4,8 +4,8 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS, BOT, MOB, daylightAt } from "#shared/constants";
-import { TOWER_HIDE } from "#shared/tower";
+import { BOSS, BOT, MOB, PLAYER, daylightAt } from "#shared/constants";
+import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
@@ -221,7 +221,7 @@ export class Spectator {
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
     this.crossFx = new WorldCrossFx(this.scene);
-    this.towerFx = new TowerArenaFx(this.scene);
+    this.towerFx = new TowerArenaFx(this.scene, this.sfx);
     // Крючок для панели ?towerlight=1 (TowerLightTuner) — та не привязана к
     // конкретному экрану/классу, читает арену через глобальный указатель.
     (window as unknown as { __towerArenaFx?: unknown }).__towerArenaFx = this.towerFx;
@@ -773,6 +773,27 @@ export class Spectator {
       boss,
       groundY: this.groundHeight,
     });
+    if (towerActive) {
+      // Авто-режиссёр камеры не знает о стенах арены башни (это отдельная,
+      // всегда одна и та же геометрия в фиксированной точке карты) — без
+      // этого камера при облёте/орбите могла улететь СКВОЗЬ стену наружу.
+      // Заворачиваем позицию камеры внутрь цилиндра арены, не трогая цель
+      // взгляда (director сам решает, куда смотреть).
+      const margin = 1.2;
+      const R = TOWER.arena.radius - margin;
+      const floorY = TOWER_HIDE.y - PLAYER.eyeHeight + margin;
+      const ceilY = TOWER_HIDE.y - PLAYER.eyeHeight + TOWER.arena.wallHeight - margin;
+      const cp = this.cam.cam.position;
+      const lx = cp.x - TOWER_HIDE.x;
+      const lz = cp.z - TOWER_HIDE.z;
+      const d = Math.hypot(lx, lz);
+      if (d > R) {
+        const k = R / d;
+        cp.x = TOWER_HIDE.x + lx * k;
+        cp.z = TOWER_HIDE.z + lz * k;
+      }
+      cp.y = Math.min(ceilY, Math.max(floorY, cp.y));
+    }
     if (this.towerTestMode) {
       // Обычный авто-режиссёр камеры не знает про синтетический тестовый
       // забег (это чисто клиентская подмена, сервер о ней не в курсе) — без
