@@ -150,11 +150,10 @@ export function arrowSpeedBonusFor(level: number): number {
 
 /**
  * Урон стрелы: база от уровня × ловкость (НЕ сила). Тир лука домножается
- * отдельно. Базовый множитель 1.15 (был 1.3) — лук теперь получает ещё и
- * темп стрельбы от ловкости, чтобы он не стал имбой.
+ * отдельно. Базовый множитель 1.3 — чуть поднят по просьбе (было 1.15).
  */
 export function arrowDamageFor(level: number, agi: number): number {
-  return 1.15 * weaponDmgFromLevel(level) * agiRangedMul(agi);
+  return 1.3 * weaponDmgFromLevel(level) * agiRangedMul(agi);
 }
 
 // ---- изменения ----
