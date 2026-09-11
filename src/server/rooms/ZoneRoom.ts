@@ -3712,18 +3712,16 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private respawn(id: string, p: PlayerState, rt: Runtime): void {
-    // Боты возрождаются у своего дома (по уровню — может быть у лагеря);
-    // живые игроки — в безопасном лагере (HUB), а не в поле среди мобов.
+    // И боты, и живые игроки возрождаются в безопасном лагере (HUB), а не
+    // в поле среди мобов — дальше бот сам добежит до места прокачки (дом
+    // по уровню, может смениться лагерь — уровень мог вырасти).
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
-    let sp: { x: number; z: number };
     if (bot) {
-      const home = botHome(p.level); // уровень мог вырасти — пересчитываем
+      const home = botHome(p.level);
       bot.homeX = home.x;
       bot.homeZ = home.z;
-      sp = botSpawnAt(home);
-    } else {
-      sp = hubSpawnPoint();
     }
+    const sp = hubSpawnPoint();
     const x = sp.x;
     const z = sp.z;
     const y = terrainHeight(x, z) + PLAYER.eyeHeight;
