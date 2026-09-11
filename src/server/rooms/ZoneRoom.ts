@@ -92,6 +92,7 @@ import {
   weaponDamage,
   WEAPON_RATE,
   WEAPON_REACH,
+  type BlockedBy,
   type GuardState,
   type WeaponKind,
 } from "#shared/combat";
@@ -119,6 +120,7 @@ import {
   attackSpeedFor,
   meleeSpeedFor,
   armorFrac,
+  dodgeChance,
   grantXp,
   isStatName,
   maxHpFor,
@@ -181,6 +183,8 @@ interface Runtime {
   leaveBot: boolean;
   /** ms окончания баффа победы над событием (×2 опыт/урон). 0 — нет баффа. */
   eventBuffUntil: number;
+  /** Секунда игрового времени (this.elapsed), до которой оглушён (спец-атака моба). */
+  stunnedUntil: number;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -288,6 +292,14 @@ function botSpawnAt(home: { x: number; z: number }): { x: number; z: number } {
   const a = Math.random() * Math.PI * 2;
   const r = 9 + Math.random() * 7;
   return { x: home.x + Math.cos(a) * r, z: home.z + Math.sin(a) * r };
+}
+
+/** Стабильный псевдослучайный сдвиг фазы 0..1 по строке — чтобы боты
+ *  стрейфились не в такт друг другу (без своего поля состояния на бота). */
+function strPhase(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return (h % 1000) / 1000;
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -2298,6 +2310,7 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
+      stunnedUntil: 0,
     };
     this.rt.set(id, rt);
 
@@ -2430,6 +2443,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // пока тот не убит или пока не напишут !raid ещё раз.
       return; // возрождение — общий tickPlayers
     }
+    // Оглушён спец-атакой моба (Чародей руин) — стоит столбом, ни шага, ни удара.
+    if (bot.rt.stunnedUntil > this.elapsed) return;
     bot.attackCd = Math.max(0, bot.attackCd - dt);
     bot.drinkCd = Math.max(0, bot.drinkCd - dt);
     bot.healCd = Math.max(0, bot.healCd - dt);
@@ -2763,8 +2778,19 @@ export class ZoneRoom extends Room<ZoneState> {
           : dist > stopAt
             ? botSpeed * Math.min(1, (dist - stopAt) / 1.5)
             : 0;
-    const wvx = dx * wantSpeed + sepX * BOT.separationForce;
-    const wvz = dz * wantSpeed + sepZ * BOT.separationForce;
+    // Лучник/маг на дистанции — не столбом: плавно ходит боком туда-сюда,
+    // не сбивая прицел (перпендикуляр к линии на цель). Фаза своя у каждого
+    // бота (по id), чтобы группа не дёргалась в такт.
+    let strafeX = 0;
+    let strafeZ = 0;
+    if (ranged && !retreat && dist <= stopAt && !emoting && bot.swingIn <= 0) {
+      const s = Math.sin((this.elapsed * 0.5 + strPhase(bot.id) * 10) * Math.PI * 2);
+      const strafeSpeed = botSpeed * 0.4 * s;
+      strafeX = -dz * strafeSpeed;
+      strafeZ = dx * strafeSpeed;
+    }
+    const wvx = dx * wantSpeed + sepX * BOT.separationForce + strafeX;
+    const wvz = dz * wantSpeed + sepZ * BOT.separationForce + strafeZ;
     const accel = Math.min(1, dt * 6);
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
@@ -3388,6 +3414,10 @@ export class ZoneRoom extends Room<ZoneState> {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;
         s.charging = m.charging ? 1 : 0;
+      } else if (m.novaCaster) {
+        // Чародей руин: тот же телеграф/кольцо, что у слэма босса.
+        s.windup = m.novaTelegraph;
+        s.slamSeq = m.novaSeq;
       }
     }
     this.state.mobs.forEach((_s, id) => {
@@ -3584,7 +3614,11 @@ export class ZoneRoom extends Room<ZoneState> {
     const aegis =
       (p.leftCls === "shield" && p.leftTier === "legendary") ||
       (p.rightCls === "shield" && p.rightTier === "legendary");
-    const block = resolveBlock(guard, ax, az, h.projectile, aegis);
+    // Уворот (ловкость): один предмет в руках (лук/посох — обе руки заняты
+    // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
+    const oneHanded = p.leftCls === "";
+    const dodged = Math.random() < dodgeChance(p.agi, oneHanded);
+    const block = dodged ? { mult: 0, by: 3 as BlockedBy } : resolveBlock(guard, ax, az, h.projectile, aegis);
     // Разъярённый владыка события бьёт сильнее.
     let inDmg = h.dmg;
     if (h.byMob && h.byMob === this.huntBossId && this.sim.mobs.get(this.huntBossId)?.raging) {
@@ -3595,6 +3629,19 @@ export class ZoneRoom extends Room<ZoneState> {
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
+
+    // Увернулся — спец-эффекты атаки (оглушение/отбрасывание) тоже мимо.
+    // (Клиент живого игрока применит стан/отбрасывание сам — см. MSG.mobHit ниже.)
+    if (!dodged) {
+      if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
+      if (h.knockback && h.target.startsWith("bot:")) {
+        // Живой игрок отталкивает себя сам (см. MobHitMsg.knockback) — сервер
+        // не двигает его тело; бот — сервер сам, толкаем позицию напрямую.
+        const dist = h.knockback * 0.35;
+        p.head.x -= ax * dist;
+        p.head.z -= az * dist;
+      }
+    }
 
     // Бота ударил моб — запоминаем, чтобы в рейде он переключился и добил его
     // (плевун бьёт издалека сзади и в raidAddRange не попадает).
@@ -3611,12 +3658,18 @@ export class ZoneRoom extends Room<ZoneState> {
       fromX: h.fromX,
       fromZ: h.fromZ,
       by: block.by,
+      stunSec: dodged ? undefined : h.stunSec,
+      knockback: dodged ? undefined : h.knockback,
     });
 
-    // Соседям — звук: щёлкнул щит, звякнул меч или охнул от урона.
+    // Соседям — звук/FX: щёлкнул щит, звякнул меч, увернулся или охнул от урона.
     const k: ActKind =
-      block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : "hurt";
-    const relay: ActRelay = { k, id: h.target, x: p.head.x, y: p.head.y, z: p.head.z };
+      block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";
+    // «MISS» над мобом (источником удара), а не над увернувшимся; для звуков
+    // блока/удара позиция — сам игрок, как раньше.
+    const relayX = block.by === 3 ? h.fromX : p.head.x;
+    const relayZ = block.by === 3 ? h.fromZ : p.head.z;
+    const relay: ActRelay = { k, id: h.target, x: relayX, y: p.head.y, z: relayZ };
     this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {
@@ -3840,6 +3893,7 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
+      stunnedUntil: 0,
     });
 
     client.send(

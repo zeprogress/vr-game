@@ -95,8 +95,8 @@ export function noGuard(): GuardState {
   return { sx: 0, sz: 0, wx: 0, wz: 0 };
 }
 
-/** Чем заблокировано: 0 — ничем, 1 — щитом, 2 — мечом. */
-export type BlockedBy = 0 | 1 | 2;
+/** Чем заблокировано: 0 — ничем, 1 — щитом, 2 — мечом, 3 — уворот (ловкость). */
+export type BlockedBy = 0 | 1 | 2 | 3;
 
 export interface BlockResult {
   /** Множитель урона: 0 — погашено полностью, 1 — прошло целиком. */

@@ -61,7 +61,7 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
     tint: [0.62, 0.3, 1], affix: "fire",
   },
   "bow:legendary": {
-    cls: "bow", tier: "legendary", name: "Лук охотника", mult: 3.4,
+    cls: "bow", tier: "legendary", name: "Лук охотника", mult: 3.7,
     tint: [0.62, 0.3, 1], affix: "crit",
   },
   "shield:legendary": {

@@ -58,7 +58,16 @@ export class NetClient {
   /** Вызывается один раз при входе: персонаж с сервера или null (новый токен). */
   onChar: ((data: CharMsg) => void) | null = null;
   /** Моб/плевок ударил игрока: прошедший урон, откуда и чем отбито. */
-  onMobHit: ((dmg: number, fromX: number, fromZ: number, by: BlockedBy) => void) | null = null;
+  onMobHit:
+    | ((
+        dmg: number,
+        fromX: number,
+        fromZ: number,
+        by: BlockedBy,
+        stunSec?: number,
+        knockback?: number,
+      ) => void)
+    | null = null;
   /** Сервер возродил игрока — встать в эту точку. */
   onRespawn: ((x: number, y: number, z: number) => void) | null = null;
   /** Получен новый уровень. */
@@ -188,7 +197,9 @@ export class NetClient {
       if (this.onChar) this.onChar(data);
       else this.pendingChar = data;
     });
-    room.onMessage(MSG.mobHit, (m: MobHitMsg) => this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by));
+    room.onMessage(MSG.mobHit, (m: MobHitMsg) =>
+      this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback),
+    );
     room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));

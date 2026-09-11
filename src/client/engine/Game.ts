@@ -1574,7 +1574,8 @@ export class Game {
   attachNet(net: NetClient): void {
     this.net = net;
     net.onChar = (data) => this.applyChar(data);
-    net.onMobHit = (dmg, fromX, fromZ, by) => this.takeMobHit(dmg, fromX, fromZ, by);
+    net.onMobHit = (dmg, fromX, fromZ, by, stunSec, knockback) =>
+      this.takeMobHit(dmg, fromX, fromZ, by, stunSec, knockback);
     net.onRespawn = (x, y, z) => {
       this.player.teleportTo(x, y, z);
       this.hud.flashDamage(20);
@@ -1838,6 +1839,10 @@ export class Game {
         this.sfx.at(at, () => this.sfx.playerHurt());
         this.avatars.get(id)?.playHitReact();
         break;
+      case "dodge":
+        // x,y,z — источник удара (моб), не увернувшийся; см. hurtPlayer.
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY);
+        break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
         break;
@@ -1971,13 +1976,28 @@ export class Game {
    * Сервер сообщил об ударе: урон уже посчитан с учётом щита и меча,
    * клиент только играет эффекты. HP придёт состоянием.
    */
-  private takeMobHit(dmg: number, fromX: number, fromZ: number, by: BlockedBy): void {
-    if (by !== 0) this.combat.playBlock(by);
-    if (dmg <= 0) return;
+  private takeMobHit(
+    dmg: number,
+    fromX: number,
+    fromZ: number,
+    by: BlockedBy,
+    stunSec?: number,
+    knockback?: number,
+  ): void {
     const eye = this.player.eyePosition;
     const dir = new Vector3(eye.x - fromX, 0, eye.z - fromZ);
     if (dir.lengthSquared() > 1e-6) dir.normalize();
     else dir.set(0, 0, 1);
+    if (by === 3) {
+      // Увернулся: ни урона, ни станa/отбрасывания — «MISS» над источником
+      // удара, но не раньше, чем замах/выстрел визуально долетит.
+      this.crossFx.missText(fromX, eye.y - 1, fromZ, MISS_FX_DELAY);
+      return;
+    }
+    if (by !== 0) this.combat.playBlock(by);
+    if (stunSec) this.player.applyStun(stunSec);
+    if (knockback) this.player.applyKnockback(dir.x, dir.z, knockback);
+    if (dmg <= 0) return;
     // Сообщение приходит раньше патча состояния — снимаем HP сразу, чтобы
     // полоса и виньетка не отставали. syncSelf() тут же всё сверит с сервером.
     this.player.setHp(this.player.hp - dmg);
@@ -2147,6 +2167,13 @@ export class Game {
 
 /** Мировая вертикаль — ориентация слушателя для звука по месту. */
 const UP = new Vector3(0, 1, 0);
+
+/**
+ * Задержка «MISS» после уворота: сервер решает попадание/промах В МОМЕНТ
+ * замаха/выстрела (не когда он визуально долетел) — ждём, чтобы текст не
+ * всплывал раньше, чем атака отыграет.
+ */
+const MISS_FX_DELAY = 0.35;
 
 function zeros7(): Xf7 {
   return [0, 0, 0, 0, 0, 0, 1];

@@ -3,8 +3,10 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Constants } from "@babylonjs/core/Engines/constants";
 
 import { CROSS_GREEN, CROSS_ORANGE } from "./HealCrossFx";
@@ -21,9 +23,22 @@ const SPREAD = 0.9; // м разлёта по горизонтали
 const CRIT_POOL = 12;
 const CRIT_LIFE = 0.36; // с
 
+/** «MISS» — уворот от атаки. Всплывает НАД ИСТОЧНИКОМ удара (мобом). */
+const MISS_POOL = 6;
+const MISS_LIFE = 0.7; // с всплытия/угасания
+const MISS_RISE = 0.8; // м
+
 interface CritBurst {
   mesh: Mesh;
   age: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface MissText {
+  mesh: Mesh;
+  age: number; // < 0 — задержка перед показом (ждём конца атаки), см. missText()
   x: number;
   y: number;
   z: number;
@@ -54,6 +69,8 @@ export class WorldCrossFx {
   private next = 0;
   private readonly critPool: CritBurst[] = [];
   private critNext = 0;
+  private readonly missPool: MissText[] = [];
+  private missNext = 0;
 
   constructor(private readonly scene: Scene) {
     const bar = MeshBuilder.CreateBox("wCrossH", { width: 0.34, height: 0.08, depth: 0.08 }, scene);
@@ -97,6 +114,39 @@ export class WorldCrossFx {
       m.setEnabled(false);
       this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
     }
+
+    // «MISS» — один общий текстовый материал (не клонируем — дорого пересобирать
+    // шейдеры в горячем пути), пул планок отличается только позицией/видимостью.
+    const missTex = new DynamicTexture("missTex", { width: 256, height: 96 }, scene, false);
+    missTex.hasAlpha = true;
+    const ctx = missTex.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 256, 96);
+    ctx.font = "700 56px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(235,235,235,0.95)";
+    ctx.fillText("MISS", 128, 52);
+    missTex.update();
+    const missMat = new StandardMaterial("missMat", scene);
+    missMat.diffuseTexture = missTex;
+    missMat.emissiveTexture = missTex;
+    missMat.opacityTexture = missTex;
+    missMat.useAlphaFromDiffuseTexture = true;
+    missMat.disableLighting = true;
+    missMat.specularColor = new Color3(0, 0, 0);
+    missMat.backFaceCulling = false;
+    missMat.disableDepthWrite = true;
+    const missProto = MeshBuilder.CreatePlane("missText", { width: 1.1, height: (1.1 * 96) / 256 }, scene);
+    missProto.setEnabled(false);
+    for (let i = 0; i < MISS_POOL; i++) {
+      const m = i === 0 ? missProto : missProto.clone(`missText${i}`);
+      m.material = missMat; // ОБЩИЙ материал на все планки — без клонов текстуры
+      m.isPickable = false;
+      m.renderingGroupId = 1;
+      m.billboardMode = Mesh.BILLBOARDMODE_Y;
+      m.setEnabled(false);
+      this.missPool.push({ mesh: m, age: MISS_LIFE + 1, x: 0, y: 0, z: 0 });
+    }
   }
 
   /** Красная вспышка критического попадания — на мобе, быстро гаснет. */
@@ -109,6 +159,21 @@ export class WorldCrossFx {
     c.age = 0;
     c.mesh.position.set(x, y, z);
     c.mesh.setEnabled(true);
+  }
+
+  /**
+   * Уворот от атаки: «MISS» над источником удара. `delay` — сколько подождать
+   * перед показом (чтобы текст всплыл ПОСЛЕ того, как замах/выстрел визуально
+   * долетел, а не в момент броска кубика на сервере).
+   */
+  missText(x: number, y: number, z: number, delay = 0): void {
+    const t = this.missPool[this.missNext];
+    this.missNext = (this.missNext + 1) % this.missPool.length;
+    t.x = x;
+    t.y = y;
+    t.z = z;
+    t.age = -delay;
+    t.mesh.setEnabled(false); // включится в update(), когда age дойдёт до 0
   }
 
   /**
@@ -165,6 +230,21 @@ export class WorldCrossFx {
       c.mesh.scaling.setAll(pop * (1 - t * 0.25));
       (c.mesh.material as StandardMaterial).alpha = Math.min(1, (1 - t) * 2.2) * 0.95;
     }
+    for (const t of this.missPool) {
+      if (t.age > MISS_LIFE) continue;
+      t.age += dt;
+      if (t.age < 0) continue; // ещё ждём (задержка до конца атаки)
+      if (t.age > MISS_LIFE) {
+        t.mesh.setEnabled(false);
+        continue;
+      }
+      const k = t.age / MISS_LIFE;
+      t.mesh.setEnabled(true);
+      t.mesh.position.set(t.x, t.y + MISS_RISE * k, t.z);
+      const pop = Math.min(1, t.age / 0.1);
+      t.mesh.scaling.setAll(pop * (1 - k * 0.15));
+      t.mesh.visibility = Math.min(1, (1 - k) * 2.2);
+    }
   }
 
   dispose(): void {
@@ -176,6 +256,8 @@ export class WorldCrossFx {
       c.mesh.material?.dispose();
       c.mesh.dispose();
     }
+    this.missPool[0]?.mesh.material?.dispose(); // общий на весь пул
+    for (const t of this.missPool) t.mesh.dispose();
     void this.scene;
   }
 }

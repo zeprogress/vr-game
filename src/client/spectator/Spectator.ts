@@ -37,6 +37,8 @@ import {
 } from "./SpectatorCamera";
 
 const UP = { x: 0, y: 1, z: 0 };
+/** См. Game.ts MISS_FX_DELAY — держим то же значение для спектатора. */
+const MISS_FX_DELAY = 0.35;
 const FORWARD_Z = new Vector3(0, 0, 1);
 const TRANSPARENT = new Color4(0, 0, 0, 0);
 
@@ -933,6 +935,9 @@ export class Spectator {
       case "hurt":
         this.sfx.at(at, () => this.sfx.playerHurt());
         this.avatars.get(id)?.playHitReact();
+        break;
+      case "dodge":
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY);
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));

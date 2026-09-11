@@ -72,6 +72,16 @@ export function armorFrac(str: number): number {
   return Math.min(PROGRESSION.str.armorCap, statScale(str) * PROGRESSION.str.armorMul);
 }
 
+/**
+ * Шанс увернуться от ЛЮБОЙ атаки (0..1) от ловкости. Один предмет в руках
+ * (лук/посох — держится обеими руками) — вдвое подвижнее, чем с занятой
+ * второй рукой (щит/второй меч): свободнее корпус, легче уйти с линии удара.
+ */
+export function dodgeChance(agi: number, oneHanded: boolean): number {
+  const base = statScale(agi) * PROGRESSION.agi.dodgeMul;
+  return Math.min(PROGRESSION.agi.dodgeCap, base * (oneHanded ? 2 : 1));
+}
+
 /** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
 export function weaponDmgFromLevel(level: number): number {
   return 1 + levelGain(level, P.weaponDmg);

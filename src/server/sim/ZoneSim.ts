@@ -3,6 +3,7 @@ import {
   BOSS_CFG,
   COMBAT,
   ELITE_MOBS,
+  MAGE_NOVA,
   MAGE_SPELL,
   MOB,
   MOB_CAMPS,
@@ -138,6 +139,10 @@ export interface PlayerHit {
   byName?: string;
   /** id моба-источника урона (плевун, слизень) — бот по нему переключается. */
   byMob?: string;
+  /** Оглушение цели на N секунд (спец-атака моба). Нет — не оглушает. */
+  stunSec?: number;
+  /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
+  knockback?: number;
 }
 
 class Mob {
@@ -253,6 +258,18 @@ class Mob {
   readonly critVulnMul: number;
   /** true — дальняя атака моба взрывается по площади (Чародей руин). */
   readonly spellAoe: boolean;
+  /** true — периодическое заклинание по площади вокруг себя (Чародей руин). */
+  readonly novaCaster: boolean;
+  private novaCd = 0;
+  private novaWindupT = 0;
+  /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
+  novaSeq = 0;
+
+  /** Прогресс телеграфа заклинания 0..1 (0 — только начал, 1 — вот-вот ударит). */
+  get novaTelegraph(): number {
+    if (this.novaWindupT > 0) return 1 - this.novaWindupT / MAGE_NOVA.windup;
+    return 0;
+  }
   /** Модель из пака для этого моба (ключ MODELS на клиенте). Пусто — стандарт. */
   readonly model: string;
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
@@ -282,6 +299,7 @@ class Mob {
       magicVulnMul?: number;
       critVulnMul?: number;
       spellAoe?: boolean;
+      novaCaster?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -313,6 +331,7 @@ class Mob {
     this.magicVulnMul = Math.max(0, opts.magicVulnMul ?? 1);
     this.critVulnMul = Math.max(0, opts.critVulnMul ?? 1);
     this.spellAoe = opts.spellAoe ?? false;
+    this.novaCaster = opts.novaCaster ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -487,6 +506,38 @@ class Mob {
       this.outOfRange = 0;
     }
     const chasing = this.aggroed && np !== null;
+
+    // Чародей руин: заклинание по площади вокруг себя — телеграф, потом урон
+    // + оглушение и отбрасывание всех игроков/ботов в радиусе.
+    if (this.novaCaster) {
+      if (this.novaCd > 0) this.novaCd -= dt;
+      if (this.novaWindupT > 0) {
+        this.novaWindupT -= dt;
+        if (this.novaWindupT <= 0) {
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.novaSeq = (this.novaSeq + 1) & 0xffff;
+          this.novaCd = MAGE_NOVA.cooldown;
+          for (const p of players) {
+            const ndx = p.x - this.x;
+            const ndz = p.z - this.z;
+            const nd = Math.hypot(ndx, ndz);
+            if (nd > MAGE_NOVA.radius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MAGE_NOVA.damage,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+              byMob: this.id,
+              stunSec: MAGE_NOVA.stunSec,
+              knockback: MAGE_NOVA.knockback,
+            });
+          }
+        }
+      } else if (chasing && this.novaCd <= 0 && dist < MAGE_NOVA.radius * 1.3) {
+        this.novaWindupT = MAGE_NOVA.windup;
+      }
+    }
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1129,6 +1180,7 @@ export class ZoneSim {
           magicVulnMul: def.magicVulnMul,
           critVulnMul: def.critVulnMul,
           spellAoe: def.spellAoe,
+          novaCaster: def.novaCaster,
         });
         this.mobs.set(m.id, m);
       }

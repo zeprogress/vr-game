@@ -121,6 +121,8 @@ export class Mob implements Hittable {
   private curAnim: AnimationGroup | null = null;
 
   private readonly isBoss: boolean;
+  /** true — у моба своя площадная атака (Чародей руин): те же FX телеграфа/кольца, что у босса. */
+  private readonly hasNovaFx: boolean;
 
   constructor(
     private readonly scene: Scene,
@@ -154,6 +156,9 @@ export class Mob implements Hittable {
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
+    this.hasNovaFx =
+      this.isBoss ||
+      !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.novaCaster;
 
     this.root = new TransformNode("mob", scene);
 
@@ -535,8 +540,8 @@ export class Mob implements Hittable {
       const w = Math.max(0.35, s.windup);
       this.setSquash(Math.max(0.5, 1 - w * 0.3), Math.max(0.6, 1 - w * 0.2), 1 + w * 0.7);
       this.flash = Math.max(this.flash, 0.35 + w * 0.35);
-    } else if (this.isBoss && s.windup > 0) {
-      // Телеграф слэма: босс приседает и раздувается вширь.
+    } else if (this.hasNovaFx && s.windup > 0) {
+      // Телеграф слэма/нова-заклинания: приседает и раздувается вширь.
       const w = s.windup;
       this.setSquash(1 + w * 0.4, Math.max(0.45, 1 - w * 0.45), 1 + w * 0.4);
       this.flash = Math.max(this.flash, w * 0.5);
@@ -553,8 +558,8 @@ export class Mob implements Hittable {
       else this.stopAnim();
     }
 
-    // Слэм: ++slamSeq -> ударная волна по земле + грохот.
-    if (this.isBoss && s.slamSeq !== this.lastSlamSeq) {
+    // Слэм/нова: ++slamSeq -> ударная волна по земле + грохот.
+    if (this.hasNovaFx && s.slamSeq !== this.lastSlamSeq) {
       this.lastSlamSeq = s.slamSeq;
       this.startSlamRing();
       this.playIfNear(playerPos, () => {

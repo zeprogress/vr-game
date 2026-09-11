@@ -274,6 +274,12 @@ export interface EliteMobDef {
    * мобы бьют только по одной цели). Радиус/доля — в `MAGE_SPELL`.
    */
   spellAoe?: boolean;
+  /**
+   * Ещё одна новая механика: периодическое заклинание по площади ВОКРУГ
+   * СЕБЯ — телеграф (присед/раздутие + кольцо на земле), потом урон, оглушение
+   * и отбрасывание всех игроков/ботов в радиусе (см. `MAGE_NOVA`).
+   */
+  novaCaster?: boolean;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -317,7 +323,21 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
     hp: 680, dmgMul: 4.4, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
+    novaCaster: true,
   },
+};
+
+/**
+ * Чародей руин: заклинание по площади ВОКРУГ СЕБЯ — телеграф, потом урон
+ * (больнее обычного удара) + оглушение и отбрасывание в радиусе.
+ */
+export const MAGE_NOVA = {
+  radius: 5,
+  damage: 70,
+  windup: 1.1,
+  cooldown: 9,
+  stunSec: 1.6,
+  knockback: 10, // м/с импульс отбрасывания
 };
 
 /**
@@ -456,6 +476,8 @@ export const PROGRESSION = {
     atkSpeedMul: 0.01, // +1% темпа атаки за очко (поверх роста от уровня, потолок ×2.6)
     rangedDmgMul: 0.03, // +3% урона стрелы за очко (сверх универсального ниже)
     dmgMul: 0.015, // универсально: +1.5% урона ЛЮБЫМ оружием за очко (меч/кулак/бросок)
+    dodgeMul: 0.012, // универсально: +1.2% шанс увернуться от атаки за очко (×2 с одним оружием в руках)
+    dodgeCap: 0.3, // потолок шанса уворота (уже после ×2 у одноручных)
   },
   int: {
     manaMul: 0.05, // +5% маны за очко
