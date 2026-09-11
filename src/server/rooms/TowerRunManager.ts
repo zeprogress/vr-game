@@ -1,6 +1,6 @@
 import colyseus from "colyseus";
 
-import type { TowerRunResult } from "./TowerRoom";
+import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 
 const { matchMaker } = colyseus;
 
@@ -31,6 +31,7 @@ export class TowerRunManager {
     heroNick: string,
     onDone: (r: TowerRunResult) => void,
     onFloor?: (floor: number) => void,
+    onSnapshot?: (s: TowerSnapshot) => void,
   ): Promise<void> {
     if (this.running) throw new Error("tower: попытка уже идёт");
     this.starting = true;
@@ -42,6 +43,7 @@ export class TowerRunManager {
         heroNick,
         seed,
         onFloor,
+        onSnapshot,
         onResult: (r: TowerRunResult) => {
           if (done) return; // защита от двойного вызова (finish() гарантирует один раз, но не лишнее)
           done = true;

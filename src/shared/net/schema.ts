@@ -56,6 +56,16 @@ export class PlayerState extends Schema {
 
   /** Сумка (этап 8). Длина фиксирована — BAG.slots. */
   @type([SlotState]) bag = new ArraySchema<SlotState>();
+
+  // ---- Охотничья башня: снимок боя в TowerRoom (отдельная комната) для
+  // визуала у спектатора/игрока — сама симуляция считается там, здесь
+  // только зеркало на чтение. 0 — герой сейчас не в башне. ----
+  @type("uint8") towerFloor = 0;
+  @type("uint8") towerMobsLeft = 0;
+  @type("uint8") towerMobsTotal = 0;
+  @type("uint8") towerBossActive = 0;
+  @type("float32") towerBossHpFrac = 0;
+  @type("float32") towerHeroHpFrac = 1;
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

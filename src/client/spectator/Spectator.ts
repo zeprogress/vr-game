@@ -17,6 +17,7 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
+import { TowerArenaFx, type TowerFxEntry } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
@@ -72,6 +73,8 @@ export class Spectator {
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
+  private readonly towerFx: TowerArenaFx;
+  private readonly _towerEntries: TowerFxEntry[] = [];
   private readonly _botPos: Vector3[] = [];
   private readonly _botFwd: Vector3[] = [];
 
@@ -207,6 +210,7 @@ export class Spectator {
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
     this.crossFx = new WorldCrossFx(this.scene);
+    this.towerFx = new TowerArenaFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);
@@ -596,6 +600,7 @@ export class Spectator {
     // Аватары игроков + мобы для режиссёра.
     this._players.length = 0;
     this._mobs.length = 0;
+    this._towerEntries.length = 0;
     let boss: DirectorCtx["boss"] = null;
     if (room) {
       const st = room.state;
@@ -618,7 +623,23 @@ export class Spectator {
         e.eye.copyFrom(head);
         e.forward.copyFrom(av.eyeForward);
         this._players.push(e);
+
+        // Охотничья башня (фаза C, v1): герой стоит на скрытой точке — тут
+        // достраиваем декоративную арену вокруг него из снимка TowerRoom.
+        if (p.towerFloor > 0) {
+          this._towerEntries.push({
+            id,
+            pos: new Vector3(head.x, head.y - 1.6, head.z),
+            floor: p.towerFloor,
+            mobsLeft: p.towerMobsLeft,
+            mobsTotal: p.towerMobsTotal,
+            bossActive: p.towerBossActive === 1,
+            bossHpFrac: p.towerBossHpFrac,
+            heroHpFrac: p.towerHeroHpFrac,
+          });
+        }
       });
+      this.towerFx.update(this._towerEntries);
 
       st.mobs.forEach((m, id) => {
         if (m.dead || m.kind === "shard") return;

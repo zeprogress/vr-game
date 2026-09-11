@@ -49,6 +49,17 @@ export interface TowerRoomOptions {
   onResult?: (r: TowerRunResult) => void;
   /** Вызывается при входе на каждый следующий этаж (кроме первого) — для чата/лога. */
   onFloor?: (floor: number) => void;
+  /** Каждый тик — сводка для визуала (зеркало в PlayerState.tower* у ZoneRoom). */
+  onSnapshot?: (s: TowerSnapshot) => void;
+}
+
+export interface TowerSnapshot {
+  floor: number;
+  mobsLeft: number;
+  mobsTotal: number;
+  bossActive: boolean;
+  bossHpFrac: number;
+  heroHpFrac: number;
 }
 
 interface LiveMob {
@@ -74,6 +85,7 @@ export class TowerRoom extends Room<TowerState> {
   override maxClients = 1;
   private onResult: TowerRoomOptions["onResult"];
   private onFloor: TowerRoomOptions["onFloor"];
+  private onSnapshot: TowerRoomOptions["onSnapshot"];
   private finished = false;
 
   private mobs: LiveMob[] = [];
@@ -89,6 +101,7 @@ export class TowerRoom extends Room<TowerState> {
     this.autoDispose = false;
     this.onResult = options.onResult;
     this.onFloor = options.onFloor;
+    this.onSnapshot = options.onSnapshot;
 
     const state = new TowerState();
     state.heroNick = options.heroNick;
@@ -132,6 +145,15 @@ export class TowerRoom extends Room<TowerState> {
         if (this.state.phase !== "running") return;
       }
     }
+
+    this.onSnapshot?.({
+      floor: this.state.floor,
+      mobsLeft: this.state.mobsLeft,
+      mobsTotal: this.state.mobsTotal,
+      bossActive: this.state.bossActive === 1,
+      bossHpFrac: this.state.bossMaxHp > 0 ? this.state.bossHp / this.state.bossMaxHp : 0,
+      heroHpFrac: this.state.heroMaxHp > 0 ? this.state.heroHp / this.state.heroMaxHp : 0,
+    });
   }
 
   /** Герой бьёт первого живого моба волны, а когда волна выбита — мини-босса. */

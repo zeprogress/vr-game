@@ -148,7 +148,7 @@ import { store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
-import type { TowerRunResult } from "./TowerRoom";
+import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER_HIDE } from "#shared/tower";
 
 const { Room } = colyseus;
@@ -1886,6 +1886,14 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.x = TOWER_HIDE.x;
     p.head.z = TOWER_HIDE.z;
     p.head.y = TOWER_HIDE.y;
+    // Сразу выставляем этаж 1 — не ждём первого снимка (он придёт тиком
+    // позже), клиент строит арену сразу по фронту towerFloor: 0 -> 1.
+    p.towerFloor = 1;
+    p.towerMobsLeft = 0;
+    p.towerMobsTotal = 0;
+    p.towerBossActive = 0;
+    p.towerBossHpFrac = 0;
+    p.towerHeroHpFrac = 1;
     // Камера спектатора — жёстко на герое до конца забега (только смена вида
     // из глаз/орбиты, не переключение на другого): иначе авто-режиссёр тут
     // же уводит взгляд на кого-то ещё, кто реально дерётся в мире. Сама смена
@@ -1899,17 +1907,31 @@ export class ZoneRoom extends Room<ZoneState> {
         nick,
         (r) => this.onTowerRunDone(heroId, nick, r),
         (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
+        (s) => this.onTowerSnapshot(heroId, s),
       )
       .catch((e) => {
         console.warn("[tower] не удалось создать комнату:", (e as Error).message);
         // Иначе провал тихо виснет: очередь уже сдвинута, а герой как будто
         // "зашёл и пропал" — без этого сообщения не отличить от бага.
         bot.inTower = false;
+        p.towerFloor = 0;
         this.towerCamHeroId = "";
         this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
         this.reply(`${nick}: башня не запустилась (${(e as Error).message}).`);
       });
     this.reply(`${nick} заходит в Охотничью башню!`);
+  }
+
+  /** Тик боя в TowerRoom — зеркалим сводку в PlayerState для визуала (Zone/Spectator). */
+  private onTowerSnapshot(heroId: string, s: TowerSnapshot): void {
+    const p = this.state.players.get(heroId);
+    if (!p) return;
+    p.towerFloor = s.floor;
+    p.towerMobsLeft = s.mobsLeft;
+    p.towerMobsTotal = s.mobsTotal;
+    p.towerBossActive = s.bossActive ? 1 : 0;
+    p.towerBossHpFrac = s.bossHpFrac;
+    p.towerHeroHpFrac = s.heroHpFrac;
   }
 
   /** Попытка в TowerRoom закончилась — записать результат, вернуть героя, снова ждать очередь. */
@@ -1921,6 +1943,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.state.head.x = back.x;
       bot.state.head.z = back.z;
       bot.state.head.y = terrainHeight(back.x, back.z) + PLAYER.eyeHeight;
+      bot.state.towerFloor = 0; // сняли арену — герой вернулся
     }
     if (this.towerCamHeroId === heroId) {
       this.towerCamHeroId = "";
