@@ -240,6 +240,13 @@ export interface EliteMobDef {
   model: string;
   name: string;
   level: number;
+  /**
+   * Уровень ДЛЯ РАССЕЛЕНИЯ БОТОВ (см. `botHome` в ZoneRoom): бот едет в
+   * лагерь, чей `botLevel` он перерос на 3. Не задано — берётся `level`.
+   * Нужно отдельно от `level`, когда желаемый порог расселения (у Чародея
+   * руин — «с 20-го») не совпадает с «уровень минус 3» от его же уровня.
+   */
+  botLevel?: number;
   kind: "slime" | "spitter";
   /** Абсолютное HP (не множитель базы): чем выше уровень — тем живучее. */
   hp: number;
@@ -314,6 +321,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
     hp: 680, dmgMul: 4.4, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
+    // Расселять ботов сюда с 20 ур. (не с 23, как дал бы обычный запас
+    // «перерос на 3» от их же боевого уровня) — самый мощный лагерь.
+    botLevel: 17,
   },
 };
 
