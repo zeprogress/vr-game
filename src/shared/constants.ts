@@ -321,7 +321,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
-    hp: 680, dmgMul: 4.4, xp: 210, scaleMul: 1.9, tint: null,
+    hp: 680, dmgMul: 6, xp: 210, scaleMul: 1.9, tint: null,
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },
@@ -333,7 +333,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const MAGE_NOVA = {
   radius: 5,
-  damage: 70,
+  damage: 95,
   windup: 1.1,
   cooldown: 9,
   stunSec: 1.6,
@@ -482,8 +482,8 @@ export const PROGRESSION = {
   int: {
     manaMul: 0.05, // +5% маны за очко
     magicMul: 0.06, // +6% силы магии за очко
-    resistMul: 0.02, // универсально: доля поглощаемого урона СНАРЯДОВ/магии за очко
-    resistCap: 0.5, // потолок магзащиты
+    resistMul: 0.03, // универсально: доля поглощаемого урона СНАРЯДОВ/магии за очко
+    resistCap: 0.6, // потолок магзащиты
     potionMul: 0.03, // универсально: +3% к лечению зельями за очко
   },
 
