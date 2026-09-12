@@ -140,6 +140,15 @@ export function containerFor(scene: Scene, path: string): Promise<AssetContainer
     // Контейнер не добавляется в сцену — меши-исходники и так не рисуются,
     // instantiateModelsToScene() делает с них копии.
     pending = LoadAssetContainerAsync(path, scene);
+    const byPathRef = byPath;
+    // Неудачная загрузка НЕ должна навсегда "отравлять" кэш этим путём — иначе
+    // одна сетевая заминка/сбой ассета оставляет ВСЕХ, кто грузит эту модель
+    // (все следующие боты/мобы с этим скином), с заглушкой до перезагрузки
+    // страницы. Убираем отклонённый промис, чтобы следующий вызов реально
+    // повторил загрузку.
+    pending.catch(() => {
+      if (byPathRef.get(path) === pending) byPathRef.delete(path);
+    });
     byPath.set(path, pending);
   }
   return pending;

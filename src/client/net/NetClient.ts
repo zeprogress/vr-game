@@ -49,6 +49,32 @@ import type { ItemId } from "#shared/items";
 const SEND_HZ = 18;
 const SEND_EVERY = 1000 / SEND_HZ;
 
+/** Сколько ждём один joinOrCreate/reconnect, прежде чем считать попытку зависшей. */
+const JOIN_TIMEOUT_MS = 7000;
+
+/**
+ * Colyseus.js ничем не ограничивает время рукопожатия WebSocket — если оно
+ * подвисло (сеть/DNS/momentary недоступность VPS при автопуле), промис
+ * joinOrCreate/reconnect может не решиться вообще, и цикл повторных попыток
+ * никогда не пробует снова (просто вечно ждёт). Обрубаем таймаутом, чтобы
+ * "подключаюсь…" не зависало навсегда.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`таймаут ${ms}мс`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 /**
  * Клиент игрового сервера: комната zone, отдача транспорта с троттлингом,
  * загрузка/сохранение персонажа по гостевому токену.
@@ -167,7 +193,10 @@ export class NetClient {
     for (let attempt = 0; attempt < 6; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
       try {
-        const room = await this.client.joinOrCreate<ZoneState>("zone", { spectator: key });
+        const room = await withTimeout(
+          this.client.joinOrCreate<ZoneState>("zone", { spectator: key }),
+          JOIN_TIMEOUT_MS,
+        );
         this.wireRoom(room);
         await firstSync(room);
         this.room = room;
@@ -193,7 +222,10 @@ export class NetClient {
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
       try {
-        const room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
+        const room = await withTimeout(
+          this.client.joinOrCreate<ZoneState>("zone", this.joinOpts()),
+          JOIN_TIMEOUT_MS,
+        );
         this.wireRoom(room);
         await firstSync(room);
         this.room = room;
@@ -260,13 +292,19 @@ export class NetClient {
         let room: Room<ZoneState> | null = null;
         if (this.reconnectToken && attempt < 8) {
           try {
-            room = await this.client.reconnect<ZoneState>(this.reconnectToken);
+            room = await withTimeout(
+              this.client.reconnect<ZoneState>(this.reconnectToken),
+              JOIN_TIMEOUT_MS,
+            );
           } catch {
             this.reconnectToken = "";
           }
         }
         if (!room) {
-          room = await this.client.joinOrCreate<ZoneState>("zone", this.joinOpts());
+          room = await withTimeout(
+            this.client.joinOrCreate<ZoneState>("zone", this.joinOpts()),
+            JOIN_TIMEOUT_MS,
+          );
         }
         this.wireRoom(room);
         await firstSync(room);

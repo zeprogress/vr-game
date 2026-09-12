@@ -18,7 +18,7 @@ import { SpeechBubble } from "../ui/SpeechBubble";
 import { BuffAura } from "../ui/BuffAura";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
-import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance } from "../world/models";
+import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
 import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
@@ -652,6 +652,24 @@ export class RemoteAvatar implements Hittable {
    * заглушку / прежнюю модель. Если skin сменился во время загрузки (команда
    * `!skin` в чате) — грузим заново.
    */
+  /**
+   * loadRig() с несколькими попытками — сетевая заминка/сбой ассета не должна
+   * навсегда оставлять бота с примитивной заглушкой (см. containerFor() в
+   * models.ts: сам провальный промис больше не застревает в кэше навечно,
+   * но конкретно ЭТОТ вызов всё равно может попасть на неудачное окно).
+   */
+  private async loadRigWithRetry(model: ModelName, attempts = 3): Promise<() => RigInstance> {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await loadRig(this.scene, model);
+      } catch (e) {
+        if (i === attempts - 1) throw e;
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+    throw new Error("unreachable");
+  }
+
   private async loadBotRig(): Promise<void> {
     if (this.botRigLoading) return; // уже крутится — подхватит новый botRigWant сам
     this.botRigLoading = true;
@@ -661,10 +679,20 @@ export class RemoteAvatar implements Hittable {
         const model = BOT_SKIN_MODELS[(want - 1) % BOT_SKIN_MODELS.length];
         let make: () => RigInstance;
         try {
-          make = await loadRig(this.scene, model);
-        } catch {
-          this.builtRigSkin = want; // модель не пришла — оставляем заглушку, не долбим
-          continue;
+          make = await this.loadRigWithRetry(model);
+        } catch (e) {
+          // 3 попытки подряд не помогли — оставляем заглушку, но НЕ навсегда:
+          // не трогаем builtRigSkin и планируем ещё один заход через паузу
+          // (сеть/ассет могли отвиснуть окончательно только что). Разрыв
+          // while, а не return — botRigLoading снимется в finally, иначе
+          // guard в начале функции навсегда заблокирует повторный вызов.
+          console.warn(`[avatar] бот: модель ${model} не загрузилась, заглушка`, (e as Error).message);
+          if (!this.disposed) {
+            setTimeout(() => {
+              if (!this.disposed) void this.loadBotRig();
+            }, 10000);
+          }
+          break;
         }
         if (this.disposed || this.botRigWant !== want) continue; // skin сменился — заново
         const rig = make();
