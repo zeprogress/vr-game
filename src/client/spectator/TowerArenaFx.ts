@@ -35,6 +35,11 @@ const DOWN = Vector3.Down();
 
 /** Мобов на арене одновременно — с запасом (см. floorMobCount, максимум 10). */
 const MAX_MOBS = 10;
+/** Сглаживание позиции моба/босса (см. ModelPlacement.smoothX/Z) — та же
+ *  постоянная, что и у ботов в основном мире (RemoteAvatar.BOT_POS_TAU). */
+const MOB_POS_TAU = 0.1;
+/** Скачок больше этого, м — не сглаживаем (телепорт/новый моб в слоте), а сразу снэпаем. */
+const MOB_POS_SNAP = 4;
 
 interface Palette {
   floor: readonly [number, number, number];
@@ -92,6 +97,15 @@ interface ModelPlacement {
   burnT: number;
   /** Тёмное пятно под ногами — как у мобов на поляне (BlobShadow), но без наклона: пол плоский. */
   shadow: InstancedMesh;
+  /**
+   * Сглаженная позиция (см. MOB_POS_TAU) — сырые x/z из снапшота обновляются
+   * раз в тик сервера (100мс), а рендер идёт на ~60 кадрах/с, так что без
+   * сглаживания моб дёргано "скачет" между снапшотами вместо плавного бега
+   * (тот же приём, что у ботов в основном мире, см. RemoteAvatar.smoothBotPos).
+   */
+  smoothX: number;
+  smoothZ: number;
+  smoothInit: boolean;
 }
 
 /** Достаточно play()/stop() — тащить весь тип AnimationGroup незачем. */
@@ -681,7 +695,7 @@ export class TowerArenaFx {
     return {
       inst, holder, anchor, tag, attackAnim, lastAtkPulse: false,
       baseScale: base, atkT: 0, burnGlow: 0, burnFx: null, burnMat: null, burnFlames: [], burnT: 0,
-      shadow,
+      shadow, smoothX: 0, smoothZ: 0, smoothInit: false,
     };
   }
 
@@ -726,6 +740,30 @@ export class TowerArenaFx {
     }
     this.modelName = "";
     this.mobEmissiveMats.length = 0;
+  }
+
+  /**
+   * Съедает "ступеньки" в позиции моба/босса между снапшотами сервера (10 Гц)
+   * при рендере на ~60 fps — тот же приём, что и у ботов в основном мире
+   * (см. RemoteAvatar.smoothBotPos). Возвращает сглаженные x/z для отрисовки.
+   */
+  private smoothMobPos(p: ModelPlacement, rawX: number, rawZ: number, dt: number): [number, number] {
+    if (!p.smoothInit) {
+      p.smoothX = rawX;
+      p.smoothZ = rawZ;
+      p.smoothInit = true;
+      return [rawX, rawZ];
+    }
+    const jump = Math.hypot(rawX - p.smoothX, rawZ - p.smoothZ);
+    if (jump > MOB_POS_SNAP) {
+      p.smoothX = rawX;
+      p.smoothZ = rawZ;
+      return [rawX, rawZ];
+    }
+    const k = 1 - Math.exp(-dt / MOB_POS_TAU);
+    p.smoothX += (rawX - p.smoothX) * k;
+    p.smoothZ += (rawZ - p.smoothZ) * k;
+    return [p.smoothX, p.smoothZ];
   }
 
   /**
@@ -1027,8 +1065,9 @@ export class TowerArenaFx {
       if (slot) {
         slot.holder.setEnabled(true);
         slot.anchor.setEnabled(true);
-        const lx = m.x - this.root.position.x;
-        const lz = m.z - this.root.position.z;
+        const rawX = m.x - this.root.position.x;
+        const rawZ = m.z - this.root.position.z;
+        const [lx, lz] = this.smoothMobPos(slot, rawX, rawZ, dt);
         slot.holder.position.set(lx, 0, lz);
         slot.anchor.position.set(lx, 0, lz);
         slot.holder.rotation.y = m.yaw;
@@ -1052,8 +1091,9 @@ export class TowerArenaFx {
         this.bossModel.holder.setEnabled(!!boss);
         this.bossModel.anchor.setEnabled(!!boss);
         if (boss) {
-          const lx = boss.x - this.root.position.x;
-          const lz = boss.z - this.root.position.z;
+          const rawX = boss.x - this.root.position.x;
+          const rawZ = boss.z - this.root.position.z;
+          const [lx, lz] = this.smoothMobPos(this.bossModel, rawX, rawZ, dt);
           this.bossModel.holder.position.set(lx, 0, lz);
           this.bossModel.anchor.position.set(lx, 0, lz);
           this.bossModel.holder.rotation.y = boss.yaw;

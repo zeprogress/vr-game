@@ -11,9 +11,9 @@ import {
   floorMonster,
   type FloorArchetype,
 } from "#shared/tower";
-import { noGuard, resolveBlock, weaponDamage, type GuardState } from "#shared/combat";
+import { noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, attackSpeedFor, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
-import { fireboltDamage, magicResistFrac } from "#shared/magic";
+import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import { WEAPONS, weaponAffix, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
 import { AFFIX, BOT } from "#shared/constants";
 
@@ -106,6 +106,13 @@ export interface TowerSnapshot {
   heroRangedPulse: boolean;
   /** Звук/FX по герою за этот тик — попал/заблокировал/увернулся (см. ZoneRoom.hurtPlayer). */
   heroHitFx: { k: "hurt" | "blockShield" | "blockSword" | "dodge"; x: number; z: number }[];
+  /**
+   * Активные умения героя — кританул из лука, воин заносит/бьёт оглушающим
+   * ударом, лучник намечает/роняет град стрел. Та же рассылка ActRelay, что
+   * и у ботов в основном мире (см. ZoneRoom.botStunBash/botArrowRain) —
+   * клиент уже умеет рисовать эти FX по k+x+z, id ему не нужен.
+   */
+  heroSkillFx: { k: "crit" | "stunBash" | "stunHit" | "arrowRain"; x: number; z: number; d?: number }[];
   mobs: TowerMobSnapshot[];
 }
 
@@ -122,6 +129,10 @@ interface LiveMob {
   burnDps: number;
   /** Своя фаза для стрейфа дальних мобов (см. ZoneRoom.tickBot strPhase) — группа не дёргается в такт. */
   phase: number;
+  /** Оглушён (Оглушающий удар воина) — не двигается и не атакует, см. mob.stun() в ZoneSim. */
+  stunnedT: number;
+  /** Пригвождён (Град стрел лучника) — не двигается, но атакует, если уже в радиусе. */
+  rootedT: number;
 }
 
 interface LiveBoss extends LiveMob {
@@ -211,6 +222,17 @@ export class TowerRoom extends Room<TowerState> {
   private heroAtkSpeed = 1;
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
   private heroRangedPulse = false;
+  /** Крит/скиллы за этот тик — та же идея, что heroHitFx, см. TowerSnapshot.heroSkillFx. */
+  private heroSkillFx: TowerSnapshot["heroSkillFx"] = [];
+  /** Воин — «Оглушающий удар» (см. BOT.stun*): кулдаун и текущий замах (0 — не кастует). */
+  private heroStunCd = 0;
+  private heroStunCastT = 0;
+  private heroStunSoundDone = false;
+  /** Лучник — «Град стрел» (см. BOT.rain*): кулдаун, замах и метка на земле. */
+  private heroRainCd = 0;
+  private heroRainCastT = 0;
+  private heroRainX = 0;
+  private heroRainZ = 0;
 
   override onCreate(options: TowerRoomOptions): void {
     // Комнату почти наверняка никто не джойнит (герой — чаще бот без своего
@@ -282,6 +304,15 @@ export class TowerRoom extends Room<TowerState> {
     // просто стоят, таймер забега тоже не тикает (не наказывать за интро).
     if (this.floorStartDelay > 0) {
       this.floorStartDelay -= dt;
+      // Баг "долбит замах на новом этаже": эти флаги — событийные (клиент
+      // трактует true как "прямо сейчас произошло"), а раньше не сбрасывались
+      // на время паузы — последний true с предыдущего этажа (например, клинок
+      // как раз дошёл до цели, добив босса) эхом рассылался КАЖДЫЙ тик паузы.
+      this.heroAtkPulse = false;
+      this.heroSwordHit = false;
+      this.heroRangedPulse = false;
+      this.heroHitFx = [];
+      this.heroSkillFx = [];
       this.emitSnapshot();
       return;
     }
@@ -295,6 +326,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroAtkPulse = false;
     this.heroSwordHit = false;
     this.heroHitFx = [];
+    this.heroSkillFx = [];
     for (const m of this.mobs) m.atkPulse = false;
     if (this.boss) this.boss.atkPulse = false;
 
@@ -333,7 +365,14 @@ export class TowerRoom extends Room<TowerState> {
             this.heroAtkCd =
               (this.heroWeaponKind === "bow" ? BOT.bowCooldown : BOT.staffCooldown) / this.heroAtkSpeed;
             this.heroRangedPulse = true;
-            this.heroAttack(target);
+            // Крит — только у лука (см. rollCritMult: kind!=="arrow" => 1), как
+            // и в основном мире. У посоха вместо этого — АОЕ (см. heroAttack).
+            let critM = 1;
+            if (this.heroWeaponKind === "bow") {
+              critM = rollCritMult("arrow");
+              if (critM > 1) this.heroSkillFx.push({ k: "crit", x: target.x, z: target.z });
+            }
+            this.heroAttack(target, critM);
             if ((this.state.phase as TowerPhase) !== "running") return;
           } else {
             this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
@@ -348,15 +387,26 @@ export class TowerRoom extends Room<TowerState> {
     this.tickBurning(dt);
     if ((this.state.phase as TowerPhase) !== "running") return;
 
+    // --- умения героя: воин — Оглушающий удар, лучник — Град стрел (см. ниже) ---
+    this.tickHeroSkills(dt);
+    if ((this.state.phase as TowerPhase) !== "running") return;
+
     // --- мобы: бегут к герою (ranged/flyer — держат дистанцию, стрейфятся и «стреляют»), смотрят на него ---
     const ranged = this.archetype !== "melee";
     for (const m of this.mobs) {
+      // Оглушён Оглушающим ударом — не двигается и не атакует, только тикает таймер.
+      if (m.stunnedT > 0) {
+        m.stunnedT = Math.max(0, m.stunnedT - dt);
+        continue;
+      }
+      if (m.rootedT > 0) m.rootedT = Math.max(0, m.rootedT - dt);
       m.yaw = Math.atan2(this.hero.x - m.x, this.hero.z - m.z);
       const d = Math.hypot(this.hero.x - m.x, this.hero.z - m.z);
       if (d > this.mobRange) {
-        moveToward(m, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
+        // Пригвождён Градом стрел — не двигается, но бьёт, если уже в радиусе.
+        if (m.rootedT <= 0) moveToward(m, this.hero.x, this.hero.z, TOWER.mob.moveSpeed, dt);
       } else {
-        if (ranged) this.rangedShuffle(m, d, dt);
+        if (ranged && m.rootedT <= 0) this.rangedShuffle(m, d, dt);
         m.atkCd -= dt;
         if (m.atkCd <= 0) {
           m.atkCd += this.mobAtkInterval;
@@ -458,14 +508,39 @@ export class TowerRoom extends Room<TowerState> {
     this.heroSwordHit = true;
   }
 
-  private heroAttack(target: LiveMob): void {
+  /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
+  private heroAttack(target: LiveMob, dmgMult = 1): void {
+    const dmg = this.heroDmg * dmgMult;
     // Пламенный меч — так же, как в основном мире (ZoneRoom.hitMob + tickBurning):
     // удар поджигает цель на AFFIX.fire.burnSec, тикает отдельно в tickBurning().
     if (this.heroFireAffix) {
       target.burnT = Math.max(target.burnT, AFFIX.fire.burnSec);
-      target.burnDps = Math.max(target.burnDps, this.heroDmg * AFFIX.fire.burnDpsFrac);
+      target.burnDps = Math.max(target.burnDps, dmg * AFFIX.fire.burnDpsFrac);
     }
-    this.applyDamage(target, this.heroDmg);
+    this.applyDamage(target, dmg);
+    if ((this.state.phase as TowerPhase) !== "running") return;
+    // Маг — огнешар цепляет соседей вокруг цели, как в основном мире (см.
+    // MAGIC.firebolt.splash*): урон спадает от эпицентра к краю. Бот-маг
+    // (и герой-маг в башне, см. onCreate) всегда кастует с зарядом 0.7 —
+    // тот же радиус/доля, что и у ботов-магов (ZoneRoom.tickBot).
+    if (this.heroWeaponKind === "staff") {
+      this.splashDamage(target, fireboltSplashRadius(0.7), dmg * MAGIC.firebolt.splashFraction);
+    }
+  }
+
+  /** АОЕ вокруг `center` (кроме самого `center`) — доля урона спадает от эпицентра к краю. */
+  private splashDamage(center: LiveMob, radius: number, dmg: number): void {
+    if (radius <= 0 || dmg <= 0) return;
+    const all: LiveMob[] = this.boss ? [...this.mobs, this.boss] : this.mobs;
+    for (const m of all) {
+      if (m === center || m.hp <= 0) continue;
+      const d = Math.hypot(m.x - center.x, m.z - center.z);
+      if (d >= radius) continue;
+      const hit = dmg * (1 - d / radius);
+      if (hit <= 0.01) continue;
+      this.applyDamage(m, hit);
+      if ((this.state.phase as TowerPhase) !== "running") return;
+    }
   }
 
   /** Общий путь урона по мобу/боссу — от удара героя и от тика горения. */
@@ -481,6 +556,110 @@ export class TowerRoom extends Room<TowerState> {
     if (idx >= 0) this.mobs.splice(idx, 1);
     this.state.mobsLeft = this.mobs.length;
     if (this.mobs.length === 0 && !this.boss) this.spawnBoss();
+  }
+
+  /**
+   * Активные умения героя — та же логика триггера/кулдауна, что у ботов
+   * (см. ZoneRoom.botStunBash/botArrowRain): у воина с мечом — оглушающая
+   * волна по кругу, у лучника — град стрел по самому "кучному" месту.
+   */
+  private tickHeroSkills(dt: number): void {
+    if (this.heroStunCd > 0) this.heroStunCd = Math.max(0, this.heroStunCd - dt);
+    if (this.heroRainCd > 0) this.heroRainCd = Math.max(0, this.heroRainCd - dt);
+    if (this.heroWeaponKind === "sword") this.tickStunBash(dt);
+    else if (this.heroWeaponKind === "bow") this.tickArrowRain(dt);
+  }
+
+  private tickStunBash(dt: number): void {
+    if (this.heroStunCastT > 0) {
+      this.heroStunCastT = Math.max(0, this.heroStunCastT - dt);
+      // Звук — на тик раньше приземления (см. ZoneRoom.botStunBash: компенсация релея).
+      if (!this.heroStunSoundDone && this.heroStunCastT <= dt * 1.05) {
+        this.heroStunSoundDone = true;
+        this.heroSkillFx.push({ k: "stunHit", x: this.hero.x, z: this.hero.z });
+      }
+      if (this.heroStunCastT > 0) return;
+      this.landStunBash();
+      return;
+    }
+    if (this.heroStunCd > 0) return;
+    if (this.mobsNear(this.hero.x, this.hero.z, BOT.stunRadius).length < BOT.stunMinTargets) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+    this.heroStunCd = BOT.stunCooldown;
+    this.heroStunCastT = BOT.stunCastTime;
+    this.heroStunSoundDone = false;
+    this.heroSkillFx.push({ k: "stunBash", x: this.hero.x, z: this.hero.z, d: BOT.stunCastTime });
+  }
+
+  private landStunBash(): void {
+    if (!this.heroStunSoundDone) {
+      this.heroStunSoundDone = true;
+      this.heroSkillFx.push({ k: "stunHit", x: this.hero.x, z: this.hero.z });
+    }
+    const dmg = this.heroDmg * BOT.stunDamageMult;
+    for (const m of this.mobsNear(this.hero.x, this.hero.z, BOT.stunRadius)) {
+      this.applyDamage(m, dmg);
+      if ((this.state.phase as TowerPhase) !== "running") return;
+      if (m !== this.boss) m.stunnedT = Math.max(m.stunnedT, BOT.stunDuration);
+    }
+  }
+
+  private tickArrowRain(dt: number): void {
+    if (this.heroRainCastT > 0) {
+      this.heroRainCastT = Math.max(0, this.heroRainCastT - dt);
+      if (this.heroRainCastT > 0) return;
+      this.landArrowRain();
+      return;
+    }
+    if (this.heroRainCd > 0) return;
+    const spot = this.bestRainSpot();
+    if (!spot) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+    this.heroRainCd = BOT.rainCooldown;
+    this.heroRainCastT = BOT.rainCastTime;
+    this.heroRainX = spot.x;
+    this.heroRainZ = spot.z;
+    this.heroSkillFx.push({ k: "arrowRain", x: spot.x, z: spot.z, d: BOT.rainCastTime });
+  }
+
+  /** Самое «кучное» место среди мобов в радиусе залпа — вокруг него и наметим круг. */
+  private bestRainSpot(): { x: number; z: number } | null {
+    const all: LiveMob[] = this.boss ? [...this.mobs, this.boss] : this.mobs;
+    let best: { x: number; z: number } | null = null;
+    let bestN = 0;
+    for (const m of all) {
+      if (Math.hypot(m.x - this.hero.x, m.z - this.hero.z) > BOT.rainRange) continue;
+      let n = 0;
+      for (const o of all) {
+        if (Math.hypot(o.x - m.x, o.z - m.z) <= BOT.rainRadius) n++;
+      }
+      if (n > bestN) {
+        bestN = n;
+        best = { x: m.x, z: m.z };
+      }
+    }
+    return bestN >= BOT.rainMinTargets ? best : null;
+  }
+
+  private landArrowRain(): void {
+    const all: LiveMob[] = this.boss ? [...this.mobs, this.boss] : this.mobs;
+    for (const m of [...all]) {
+      if (m.hp <= 0) continue;
+      const d = Math.hypot(m.x - this.heroRainX, m.z - this.heroRainZ);
+      if (d > BOT.rainRadius) continue;
+      // Крит бросаем на каждую цель отдельно — залп, а не один выстрел (см. ZoneRoom.arrowRainAt).
+      const critM = rollCritMult("arrow");
+      if (critM > 1) this.heroSkillFx.push({ k: "crit", x: m.x, z: m.z });
+      this.applyDamage(m, this.heroDmg * BOT.rainDamageMult * critM);
+      if ((this.state.phase as TowerPhase) !== "running") return;
+      if (m !== this.boss) m.rootedT = Math.max(m.rootedT, BOT.rainRootTime);
+    }
+  }
+
+  /** Мобы/босс в радиусе `r` вокруг точки — общий хелпер для скиллов героя. */
+  private mobsNear(x: number, z: number, r: number): LiveMob[] {
+    const all: LiveMob[] = this.boss ? [...this.mobs, this.boss] : this.mobs;
+    return all.filter((m) => Math.hypot(m.x - x, m.z - z) <= r);
   }
 
   /** DoT горения (Пламенный меч) — как ZoneSim.tickBurning, но на мобов/босса этажа. */
@@ -565,6 +744,8 @@ export class TowerRoom extends Room<TowerState> {
         burnT: 0,
         burnDps: 0,
         phase: Math.random(),
+        stunnedT: 0,
+        rootedT: 0,
       };
     });
     this.boss = null;
@@ -573,6 +754,19 @@ export class TowerRoom extends Room<TowerState> {
     this.state.bossActive = 0;
     this.state.bossHp = 0;
     this.state.bossMaxHp = 0;
+    // Атаки/умения — с чистого листа: висящий "true"/замах с предыдущего этажа
+    // (например, клинок как раз дошёл до цели, добив босса) не должен эхом
+    // рассылаться на новом этаже (см. также сброс в step()'s floorStartDelay).
+    this.heroAtkCd = 0;
+    this.heroAtkPulse = false;
+    this.heroSwingIn = 0;
+    this.heroSwingTarget = null;
+    this.heroSwordHit = false;
+    this.heroRangedPulse = false;
+    this.heroHitFx = [];
+    this.heroSkillFx = [];
+    this.heroStunCastT = 0;
+    this.heroRainCastT = 0;
     this.emitSnapshot();
   }
 
@@ -595,6 +789,8 @@ export class TowerRoom extends Room<TowerState> {
       burnT: 0,
       burnDps: 0,
       phase: Math.random(),
+      stunnedT: 0,
+      rootedT: 0,
     };
     this.state.bossActive = 1;
     this.state.bossHp = hp;
@@ -629,6 +825,7 @@ export class TowerRoom extends Room<TowerState> {
       heroSwordHit: this.heroSwordHit,
       heroRangedPulse: this.heroRangedPulse,
       heroHitFx: this.heroHitFx,
+      heroSkillFx: this.heroSkillFx,
       mobs: [
         ...this.mobs.map((m) => ({
           x: m.x, z: m.z, yaw: m.yaw, hpFrac: m.hp / m.maxHp, boss: false, atkPulse: m.atkPulse,

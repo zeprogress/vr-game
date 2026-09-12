@@ -2050,6 +2050,14 @@ export class ZoneRoom extends Room<ZoneState> {
         k: fx.k, id: heroId, x: TOWER_HIDE.x + fx.x, y: p.head.y, z: TOWER_HIDE.z + fx.z,
       } satisfies ActRelay);
     }
+    // Крит из лука / оглушающий удар воина / град стрел лучника — те же FX,
+    // что и у ботов в основном мире (см. ZoneRoom.botStunBash/botArrowRain);
+    // клиент рисует их чисто по k+x+z, id ему не нужен.
+    for (const fx of s.heroSkillFx) {
+      this.broadcast(MSG.act, {
+        k: fx.k, id: heroId, x: TOWER_HIDE.x + fx.x, y: p.head.y, z: TOWER_HIDE.z + fx.z, d: fx.d,
+      } satisfies ActRelay);
+    }
     this.broadcast(MSG.towerMobs, {
       heroId,
       mobs: s.mobs.map((m) => ({
