@@ -60,7 +60,15 @@ export function mountTowerLightTuner(): () => void {
       `spotAngleDeg: ${fmt(t.spotAngleDeg)},\n` +
       `spotExponent: ${fmt(t.spotExponent)},\n` +
       `spotIntensity: ${fmt(t.spotIntensity)},\n` +
-      `spotHeightOffset: ${fmt(t.spotHeightOffset)},`
+      `spotHeightOffset: ${fmt(t.spotHeightOffset)},\n` +
+      `beamWidthMul: ${fmt(t.beamWidthMul)},\n` +
+      `beamAlpha: ${fmt(t.beamAlpha)},\n` +
+      `beamColorR: ${fmt(t.beamColorR)},\n` +
+      `beamColorG: ${fmt(t.beamColorG)},\n` +
+      `beamColorB: ${fmt(t.beamColorB)},\n` +
+      `beamAlphaTop: ${fmt(t.beamAlphaTop)},\n` +
+      `beamAlphaBottom: ${fmt(t.beamAlphaBottom)},\n` +
+      `beamEndY: ${fmt(t.beamEndY)},`
     );
   };
 
@@ -136,6 +144,16 @@ export function mountTowerLightTuner(): () => void {
   slider("резкость края", 0.5, 12, () => TOWER_LIGHT_TUNE.spotExponent, (v) => (TOWER_LIGHT_TUNE.spotExponent = v));
   slider("яркость", 0, 25, () => TOWER_LIGHT_TUNE.spotIntensity, (v) => (TOWER_LIGHT_TUNE.spotIntensity = v));
   slider("ниже потолка, м", 0, 5, () => TOWER_LIGHT_TUNE.spotHeightOffset, (v) => (TOWER_LIGHT_TUNE.spotHeightOffset = v));
+
+  section("видимый луч");
+  slider("ширина", 0.2, 4, () => TOWER_LIGHT_TUNE.beamWidthMul, (v) => (TOWER_LIGHT_TUNE.beamWidthMul = v));
+  slider("прозрачность", 0, 2, () => TOWER_LIGHT_TUNE.beamAlpha, (v) => (TOWER_LIGHT_TUNE.beamAlpha = v));
+  slider("цвет: R", 0, 1, () => TOWER_LIGHT_TUNE.beamColorR, (v) => (TOWER_LIGHT_TUNE.beamColorR = v));
+  slider("цвет: G", 0, 1, () => TOWER_LIGHT_TUNE.beamColorG, (v) => (TOWER_LIGHT_TUNE.beamColorG = v));
+  slider("цвет: B", 0, 1, () => TOWER_LIGHT_TUNE.beamColorB, (v) => (TOWER_LIGHT_TUNE.beamColorB = v));
+  slider("альфа сверху", 0, 1, () => TOWER_LIGHT_TUNE.beamAlphaTop, (v) => (TOWER_LIGHT_TUNE.beamAlphaTop = v));
+  slider("альфа снизу", 0, 1, () => TOWER_LIGHT_TUNE.beamAlphaBottom, (v) => (TOWER_LIGHT_TUNE.beamAlphaBottom = v));
+  slider("высота конца, м", -3, 5, () => TOWER_LIGHT_TUNE.beamEndY, (v) => (TOWER_LIGHT_TUNE.beamEndY = v));
 
   const btns = document.createElement("div");
   btns.className = "sec";

@@ -21,6 +21,20 @@ export interface TowerLightTune {
   spotIntensity: number;
   /** На сколько метров прожектор подвешен НИЖЕ потолка. */
   spotHeightOffset: number;
+  /** Видимый в воздухе луч (конус): множитель ширины относительно угла прожектора. */
+  beamWidthMul: number;
+  /** Видимый луч: общий множитель альфы (прозрачности) поверх градиента. */
+  beamAlpha: number;
+  /** Видимый луч: цвет, 0..1 по каналам. */
+  beamColorR: number;
+  beamColorG: number;
+  beamColorB: number;
+  /** Видимый луч: альфа градиента у прожектора (верх конуса). */
+  beamAlphaTop: number;
+  /** Видимый луч: альфа градиента у пола (низ конуса). */
+  beamAlphaBottom: number;
+  /** Видимый луч: высота его нижнего конца над полом, м (отрицательная — уходит под пол). */
+  beamEndY: number;
 }
 
 export const TOWER_LIGHT_TUNE: TowerLightTune = {
@@ -29,10 +43,18 @@ export const TOWER_LIGHT_TUNE: TowerLightTune = {
   wallEmissive: 0,
   ceilEmissive: 0,
   mobEmissiveMul: 0,
-  spotAngleDeg: 17.48,
+  spotAngleDeg: 17.988,
   spotExponent: 0.5,
   spotIntensity: 1.831,
   spotHeightOffset: 5,
+  beamWidthMul: 0.487,
+  beamAlpha: 0.253,
+  beamColorR: 1,
+  beamColorG: 1,
+  beamColorB: 1,
+  beamAlphaTop: 1,
+  beamAlphaBottom: 0,
+  beamEndY: -0.499,
 };
 
 const KEY = "zep.towerlight";

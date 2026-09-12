@@ -169,6 +169,7 @@ export class TowerArenaFx {
   private beamHolder!: TransformNode;
   private beamMesh!: Mesh;
   private beamMat!: StandardMaterial;
+  private beamTex!: DynamicTexture;
   /** Мягкое пятно поверх резкого физического обреза света на полу. */
   private softSpotMesh!: Mesh;
   private softSpotMat!: StandardMaterial;
@@ -298,19 +299,14 @@ export class TowerArenaFx {
     // Видимый в воздухе луч — сама SpotLight ничего не рисует, только светит.
     // Конус с вертикальным градиентом (плотнее у источника, к полу тает) +
     // аддитивный блендинг — дешёвая имитация volumetric light без пост-эффектов.
-    const beamTex = new DynamicTexture("towerBeamTex", { width: 8, height: 128 }, this.scene, false);
-    const btx = beamTex.getContext() as CanvasRenderingContext2D;
-    const g = btx.createLinearGradient(0, 0, 0, 128);
-    g.addColorStop(0, "rgba(255,235,200,0.55)"); // у прожектора (верх конуса)
-    g.addColorStop(1, "rgba(255,235,200,0)"); // у пола (низ конуса)
-    btx.fillStyle = g;
-    btx.fillRect(0, 0, 8, 128);
-    beamTex.update();
-    beamTex.hasAlpha = true;
+    // Сам градиент (цвет/альфа сверху-снизу) перерисовывается в rebuildBeamTexture()
+    // из TOWER_LIGHT_TUNE — тут только первая заливка дефолтами.
+    this.beamTex = new DynamicTexture("towerBeamTex", { width: 8, height: 128 }, this.scene, false);
+    this.beamTex.hasAlpha = true;
     this.beamMat = new StandardMaterial("towerBeamMat", this.scene);
-    this.beamMat.diffuseTexture = beamTex;
-    this.beamMat.emissiveTexture = beamTex;
-    this.beamMat.opacityTexture = beamTex;
+    this.beamMat.diffuseTexture = this.beamTex;
+    this.beamMat.emissiveTexture = this.beamTex;
+    this.beamMat.opacityTexture = this.beamTex;
     this.beamMat.useAlphaFromDiffuseTexture = true;
     this.beamMat.disableLighting = true;
     // emissiveColor по умолчанию чёрный — а при disableLighting=true итоговый
@@ -321,11 +317,18 @@ export class TowerArenaFx {
     this.beamMat.backFaceCulling = false;
     this.beamMat.alphaMode = Constants.ALPHA_ADD;
     this.beamMat.disableDepthWrite = true;
+    this.rebuildBeamTexture();
     this.beamHolder = new TransformNode("towerBeamHolder", this.scene);
     this.beamHolder.parent = this.root;
     this.beamMesh = MeshBuilder.CreateCylinder(
       "towerBeam",
-      { diameterTop: 0.1, diameterBottom: 1, height: 1, tessellation: 20 },
+      // NO_CAP — без обеих крышек: нижняя (широкая, у пола) смотрелась плоской
+      // "заглушкой" поверх мягкого пятна на полу вместо мягкого исчезновения
+      // луча, а верхняя всё равно почти не видна (узкий торец у прожектора).
+      // ВАЖНО: именно Mesh.CAP_END (только верхняя крышка) ломает рендер конуса
+      // целиком — луч становится полностью невидимым при любых alpha/цвете
+      // (проверено вживую); причина не выяснена, но NO_CAP работает штатно.
+      { diameterTop: 0.1, diameterBottom: 1, height: 1, tessellation: 20, cap: Mesh.NO_CAP },
       this.scene,
     );
     this.beamMesh.material = this.beamMat;
@@ -526,6 +529,24 @@ export class TowerArenaFx {
     this.spot.exponent = t.spotExponent;
     this.spot.intensity = t.spotIntensity;
     this.spot.position.y = this.arenaH - t.spotHeightOffset;
+    this.beamMat.alpha = t.beamAlpha;
+    this.rebuildBeamTexture();
+  }
+
+  /** Перерисовывает градиент видимого луча (цвет + альфа сверху/снизу) из тюнера. */
+  private rebuildBeamTexture(): void {
+    const t = TOWER_LIGHT_TUNE;
+    const r = Math.round(t.beamColorR * 255);
+    const gCol = Math.round(t.beamColorG * 255);
+    const b = Math.round(t.beamColorB * 255);
+    const btx = this.beamTex.getContext() as CanvasRenderingContext2D;
+    btx.clearRect(0, 0, 8, 128);
+    const g = btx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, `rgba(${r},${gCol},${b},${t.beamAlphaTop})`); // у прожектора (верх конуса)
+    g.addColorStop(1, `rgba(${r},${gCol},${b},${t.beamAlphaBottom})`); // у пола (низ конуса)
+    btx.fillStyle = g;
+    btx.fillRect(0, 0, 8, 128);
+    this.beamTex.update();
   }
 
   /** Возвращает "родное" (recolorMonster) свечение мобов, домноженное на тюнер. */
@@ -980,9 +1001,12 @@ export class TowerArenaFx {
     this.beamHolder.position.copyFrom(this.spot.position);
     this.beamHolder.rotationQuaternion ??= new Quaternion();
     Quaternion.FromUnitVectorsToRef(DOWN, this.spot.direction, this.beamHolder.rotationQuaternion);
-    this.beamMesh.scaling.y = Math.max(0.1, spotDist);
+    // beamEndY поднимает/опускает видимый нижний конец луча относительно пола
+    // (0 — доходит ровно до земли, отрицательное — уходит под пол, чтобы не
+    // было видимого зазора между лучом и мягким пятном на полу).
+    this.beamMesh.scaling.y = Math.max(0.1, spotDist - TOWER_LIGHT_TUNE.beamEndY);
     const angleRad = (TOWER_LIGHT_TUNE.spotAngleDeg * Math.PI) / 180;
-    const endR = Math.max(0.3, spotDist * Math.tan(angleRad));
+    const endR = Math.max(0.3, spotDist * Math.tan(angleRad)) * TOWER_LIGHT_TUNE.beamWidthMul;
     this.beamMesh.scaling.x = endR * 2;
     this.beamMesh.scaling.z = endR * 2;
     this.softSpotMesh.position.copyFrom(spotTarget);
