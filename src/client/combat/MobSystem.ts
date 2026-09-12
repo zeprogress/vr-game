@@ -204,9 +204,9 @@ export class NetMobs {
       ring,
       pos: pos.clone(),
       age: 0,
-      life: hit ? 0.5 : 0.28,
+      life: hit ? 0.6 : 0.28,
       // Даже мелкий быстрый снаряд бьёт заметно; крупный — огненный шар.
-      peak: Math.max(radius, 0.28) * (hit ? 5 : 2.4),
+      peak: Math.max(radius, 0.28) * (hit ? 6.5 : 2.4),
     });
     if (hit) this.sfx.at({ x: pos.x, y: pos.y, z: pos.z }, () => this.sfx.fireBurst(undefined, radius / 0.62));
   }
@@ -229,7 +229,7 @@ export class NetMobs {
       b.flash.scaling.setAll(flashScale);
       b.flash.visibility = Math.min(1, fade * 1.7);
       // Кольцо: расходится наружу и истончается.
-      const ringScale = b.peak * (0.4 + 1.9 * f);
+      const ringScale = b.peak * (0.4 + 2.6 * f);
       b.ring.scaling.setAll(ringScale);
       b.ring.visibility = fade * 0.8;
       if (cam) b.ring.lookAt(cam.globalPosition);

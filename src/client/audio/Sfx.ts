@@ -55,6 +55,14 @@ export class Sfx {
   private static readonly ARROW_CRIT = "/sfx/arrow-crit.wav";
   private arrowCritBuf: AudioBuffer | null = null;
   private arrowCritLoading = false;
+  /** Сэмплы попадания огненного снаряда посоха (варианты, art/fireball_hit_*). */
+  private static readonly FIREBALL_HITS = [
+    "/sfx/fireball-hit-1.wav",
+    "/sfx/fireball-hit-2.wav",
+    "/sfx/fireball-hit-3.wav",
+  ];
+  private readonly fireballHitBufs: AudioBuffer[] = [];
+  private fireballHitsLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -385,6 +393,19 @@ export class Sfx {
       .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
       .then((b) => (this.arrowCritBuf = b))
       .catch(() => {});
+  }
+
+  /** Один раз подгрузить сэмплы попадания огнешара (зовём на запуске снаряда — успевает к удару). */
+  private preloadFireballHits(): void {
+    if (this.fireballHitsLoading || this.fireballHitBufs.length || !this.ctx) return;
+    this.fireballHitsLoading = true;
+    for (const url of Sfx.FIREBALL_HITS) {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then((b) => this.fireballHitBufs.push(b))
+        .catch(() => {});
+    }
   }
 
   /** Проиграть готовый буфер разово, объёмно от текущей точки (this.spatialAt). */
@@ -770,6 +791,14 @@ export class Sfx {
   /** Разрыв огненного снаряда посоха. `power` 0..1 — крупнее заряд, глубже бум. */
   fireBurst(at: SoundAt | undefined, power = 0.5): void {
     if (!this.ready()) return;
+    this.preloadFireballHits();
+    // Готовы сэмплы — играем случайный вариант настоящего взрыва вместо синтеза.
+    if (this.fireballHitBufs.length > 0) {
+      const buf = this.fireballHitBufs[(Math.random() * this.fireballHitBufs.length) | 0];
+      const p = Math.max(0, Math.min(1, power));
+      this.playSample(buf, 0.75 + p * 0.25, 0.97 + Math.random() * 0.06);
+      return;
+    }
     const t = this.t;
     const p = Math.max(0, Math.min(1, power));
     // Низкий "бум".

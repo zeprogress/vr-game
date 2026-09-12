@@ -126,9 +126,10 @@ interface Projectile {
   dur: number;
 }
 
-/** Вспышка попадания снаряда — расширяется и гаснет, как огнешар в основном мире. */
+/** Вспышка попадания снаряда — ядро+кольцо, расширяются и гаснут, как огнешар в основном мире. */
 interface ImpactBurst {
   mesh: Mesh;
+  ring: Mesh;
   age: number;
   life: number;
 }
@@ -205,6 +206,7 @@ export class TowerArenaFx {
   private glowMat: StandardMaterial | null = null;
   private bursts: ImpactBurst[] = [];
   private burstMat: StandardMaterial | null = null;
+  private burstRingMat: StandardMaterial | null = null;
   /** Высота стен текущей арены — нужна прожектору, чтобы пересчитать позицию live (тюнер). */
   private arenaH = 0;
   /** "Родные" emissiveColor мобов (recolorMonster) — чтобы тюнер мог их живо гасить/включать. */
@@ -923,17 +925,46 @@ export class TowerArenaFx {
     }
   }
 
-  /** Вспышка+звук попадания снаряда — та же озвучка, что и у огнешара в основном мире. */
+  /**
+   * Вспышка+звук попадания снаряда — ядро (яркая аддитивная точка) + расходящееся
+   * кольцо, та же пара, что и у огнешара на поляне (см. MobSystem.spawnBurst);
+   * материалы — общие синглтоны (клонируем только геометрию меша, не материал —
+   * см. mob-visuals.md/vr-perf-shader-storm.md: клон материала с текстурой в
+   * горячем пути роняет кадр в VR шторм-компиляцией шейдеров).
+   */
   private spawnImpact(pos: Vector3): void {
     if (!this.burstMat) {
       this.burstMat = new StandardMaterial("towerBurstMat", this.scene);
       this.burstMat.disableLighting = true;
       this.burstMat.diffuseColor = new Color3(0, 0, 0);
       this.burstMat.specularColor = new Color3(0, 0, 0);
-      this.burstMat.emissiveColor = new Color3(1, 0.6, 0.25);
+      this.burstMat.emissiveColor = new Color3(1, 0.85, 0.55);
       this.burstMat.alphaMode = Constants.ALPHA_ADD;
       this.burstMat.disableDepthWrite = true;
       this.burstMat.backFaceCulling = false;
+    }
+    if (!this.burstRingMat) {
+      this.burstRingMat = new StandardMaterial("towerBurstRingMat", this.scene);
+      this.burstRingMat.disableLighting = true;
+      this.burstRingMat.diffuseColor = new Color3(0, 0, 0);
+      this.burstRingMat.specularColor = new Color3(0, 0, 0);
+      this.burstRingMat.emissiveColor = new Color3(1, 0.45, 0.12);
+      this.burstRingMat.alphaMode = Constants.ALPHA_ADD;
+      this.burstRingMat.disableDepthWrite = true;
+      this.burstRingMat.backFaceCulling = false;
+      const ringTex = new DynamicTexture("towerBurstRingTex", { width: 128, height: 128 }, this.scene, false);
+      const rc = ringTex.getContext() as CanvasRenderingContext2D;
+      const g = rc.createRadialGradient(64, 64, 0, 64, 64, 64);
+      g.addColorStop(0.0, "rgba(255,255,255,0.05)");
+      g.addColorStop(0.55, "rgba(255,255,255,0.45)");
+      g.addColorStop(0.82, "rgba(255,255,255,1)");
+      g.addColorStop(1.0, "rgba(255,255,255,0)");
+      rc.fillStyle = g;
+      rc.fillRect(0, 0, 128, 128);
+      ringTex.hasAlpha = true;
+      ringTex.update();
+      this.burstRingMat.emissiveTexture = ringTex;
+      this.burstRingMat.opacityTexture = ringTex;
     }
     const mesh = MeshBuilder.CreatePlane("towerBurst", { size: 1 }, this.scene);
     mesh.material = this.burstMat;
@@ -941,8 +972,15 @@ export class TowerArenaFx {
     mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
     mesh.parent = this.root;
     mesh.position.copyFrom(pos);
-    mesh.scaling.setAll(0.2);
-    this.bursts.push({ mesh, age: 0, life: 0.32 });
+    mesh.scaling.setAll(0.22);
+    const ring = MeshBuilder.CreatePlane("towerBurstRing", { size: 1 }, this.scene);
+    ring.material = this.burstRingMat;
+    ring.isPickable = false;
+    ring.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    ring.parent = this.root;
+    ring.position.copyFrom(pos);
+    ring.scaling.setAll(0.1);
+    this.bursts.push({ mesh, ring, age: 0, life: 0.4 });
     const world = pos.add(this.root.position);
     this.sfx.at({ x: world.x, y: world.y, z: world.z }, () => this.sfx.fireBurst(undefined, 0.7));
   }
@@ -954,11 +992,19 @@ export class TowerArenaFx {
       const f = b.age / b.life;
       if (f >= 1) {
         b.mesh.dispose();
+        b.ring.dispose();
         this.bursts.splice(i, 1);
         continue;
       }
-      b.mesh.scaling.setAll(0.2 + f * 1.6);
-      (b.mesh.material as StandardMaterial).alpha = 1 - f;
+      const fade = 1 - f;
+      // Ядро: мгновенно раздувается и держится ярко, потом гаснет.
+      b.mesh.scaling.setAll(0.35 + 1.9 * Math.min(1, f * 5) * (0.6 + 0.4 * fade));
+      // alpha меняем через visibility (не material.alpha — материал общий на
+      // все вспышки сразу, менять его alpha ломало бы соседние).
+      b.mesh.visibility = Math.min(1, fade * 1.8);
+      // Кольцо: расходится наружу и истончается — та же формула, что на поляне.
+      b.ring.scaling.setAll(0.3 + 2.6 * f);
+      b.ring.visibility = fade * 0.85;
     }
   }
 
@@ -1122,11 +1168,15 @@ export class TowerArenaFx {
       pr.holder.dispose();
     }
     this.projectiles.length = 0;
-    for (const b of this.bursts) b.mesh.dispose();
+    for (const b of this.bursts) {
+      b.mesh.dispose();
+      b.ring.dispose();
+    }
     this.bursts.length = 0;
     this.coreMat?.dispose();
     this.glowMat?.dispose();
     this.burstMat?.dispose();
+    this.burstRingMat?.dispose();
     for (const t of this.texCache.values()) t.dispose();
     this.texCache.clear();
     this.labelTex.dispose();
