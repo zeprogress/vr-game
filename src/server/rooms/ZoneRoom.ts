@@ -3213,8 +3213,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const ox = p.head.x;
       const oy = p.head.y - 0.25;
       const oz = p.head.z;
-      const aimY =
-        terrainHeight(tgt.x, tgt.z) + MOB.bodyRadius * (tgt.scale ?? 1) - oy;
+      // tgt.y — РЕАЛЬНАЯ высота моба (для летающих — высота полёта, не земля
+      // под ними). Раньше тут стоял terrainHeight(tgt.x,tgt.z), то есть прицел
+      // всегда целился в землю под летающим мобом — лучник/маг стабильно мазал.
+      const aimY = tgt.y + MOB.bodyRadius * (tgt.scale ?? 1) - oy;
       const adx = tgt.x - ox;
       const adz = tgt.z - oz;
       // лёгкая компенсация проседания снаряда на дистанцию
