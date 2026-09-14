@@ -673,19 +673,20 @@ export class Sfx {
   }
 
   /**
-   * Попадание Пламенным мечом, которое подожгло цель: сэмпл art/fire.wav
-   * ВМЕСТО обычного swordHit — звук не накладывается поверх, а заменяется
-   * (см. ZoneRoom: broadcast "swordHitFire" вместо "swordHit" на этот удар).
-   * Пока не загружен — обычный swordHit как запасной, тишины не будет.
+   * Цель подожжена Пламенным мечом: сэмпл art/fire.wav — звук эффекта
+   * горения, ДОПОЛНИТЕЛЬНО к обычному swordHit (тот играет отдельно, как и
+   * раньше), не вместо него. Каждый вызов создаёт свой независимый источник
+   * (playSample → createBufferSource) — предыдущий не обрывается, доигрывает
+   * до конца сам; новый поджог просто запускает ещё один поверх (не глушим).
+   * Пока сэмпл не загружен — тихо ждём следующего поджога, без запасного звука.
    */
-  swordHitFire(vol = 1): void {
+  igniteFx(vol = 1): void {
     if (!this.ready()) return;
     if (this.fireHitBuf) {
       this.playSample(this.fireHitBuf, 0.9 * vol, 0.97 + Math.random() * 0.06);
       return;
     }
     this.preloadFireHit();
-    this.swordHit(vol);
   }
 
   hitThud(vol = 1): void {

@@ -349,7 +349,13 @@ export class TowerRoom extends Room<TowerState> {
     if (this.heroSwingIn > 0) {
       this.heroSwingIn -= dt;
       if (this.heroSwingIn <= 0) this.resolveHeroSwing();
-      if ((this.state.phase as TowerPhase) !== "running") return;
+      if ((this.state.phase as TowerPhase) !== "running") {
+        // Забег закончился ЭТИМ ударом (добили босса/последнего моба) — не
+        // теряем финальный снапшот (heroSwordHit и т.п.), иначе клиент
+        // никогда не увидит вспышку/звук решающего удара.
+        this.emitSnapshot();
+        return;
+      }
     }
 
     // --- герой: бежит к ближайшей живой цели (и всегда смотрит на неё) ---
@@ -388,7 +394,13 @@ export class TowerRoom extends Room<TowerState> {
               if (critM > 1) this.heroSkillFx.push({ k: "crit", x: target.x, z: target.z });
             }
             this.heroAttack(target, critM);
-            if ((this.state.phase as TowerPhase) !== "running") return;
+            if ((this.state.phase as TowerPhase) !== "running") {
+              // Тот самый случай "мага с посохом": выстрел добил цель и
+              // закончил этаж/забег — без этого клиент терял снаряд и
+              // вспышку попадания РОВНО на решающем выстреле.
+              this.emitSnapshot();
+              return;
+            }
           } else {
             this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
             this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
@@ -400,11 +412,17 @@ export class TowerRoom extends Room<TowerState> {
     }
 
     this.tickBurning(dt);
-    if ((this.state.phase as TowerPhase) !== "running") return;
+    if ((this.state.phase as TowerPhase) !== "running") {
+      this.emitSnapshot();
+      return;
+    }
 
     // --- умения героя: воин — Оглушающий удар, лучник — Град стрел (см. ниже) ---
     this.tickHeroSkills(dt);
-    if ((this.state.phase as TowerPhase) !== "running") return;
+    if ((this.state.phase as TowerPhase) !== "running") {
+      this.emitSnapshot();
+      return;
+    }
 
     // --- мобы: бегут к герою (ranged/flyer — держат дистанцию, стрейфятся и «стреляют»), смотрят на него ---
     const ranged = this.archetype !== "melee";
@@ -427,7 +445,10 @@ export class TowerRoom extends Room<TowerState> {
           m.atkCd += this.mobAtkInterval;
           m.atkPulse = true;
           this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, ranged);
-          if (this.state.phase !== "running") return;
+          if (this.state.phase !== "running") {
+            this.emitSnapshot();
+            return;
+          }
         }
       }
     }
@@ -446,7 +467,10 @@ export class TowerRoom extends Room<TowerState> {
           b.atkCd += b.atkInterval;
           b.atkPulse = true;
           this.hurtHero(b.dmg, b.x, b.z, ranged);
-          if (this.state.phase !== "running") return;
+          if (this.state.phase !== "running") {
+            this.emitSnapshot();
+            return;
+          }
         }
       }
     }
