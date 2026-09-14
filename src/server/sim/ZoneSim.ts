@@ -260,6 +260,8 @@ class Mob {
   readonly spellAoe: boolean;
   /** true — периодическое заклинание по площади вокруг себя (Чародей руин). */
   readonly novaCaster: boolean;
+  /** Ниже этой доли HP — сам себе выставляет `raging = true` (см. tick()). undefined — никогда. */
+  readonly enrageAt: number | undefined;
   private novaCd = 0;
   private novaWindupT = 0;
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
@@ -300,6 +302,7 @@ class Mob {
       critVulnMul?: number;
       spellAoe?: boolean;
       novaCaster?: boolean;
+      enrageAt?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -332,6 +335,7 @@ class Mob {
     this.critVulnMul = Math.max(0, opts.critVulnMul ?? 1);
     this.spellAoe = opts.spellAoe ?? false;
     this.novaCaster = opts.novaCaster ?? false;
+    this.enrageAt = opts.enrageAt;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -551,6 +555,14 @@ class Mob {
       this.shootQueue === 0 &&
       Math.hypot(this.vx, this.vz) < 0.25 &&
       (this.x - this.homeX) ** 2 + (this.z - this.homeZ) ** 2 < (BOSS.wanderRadius + 4) ** 2;
+
+    // Лагерный элитный моб (см. EliteMobDef.enrageAt) сам себе включает ярость
+    // ниже порога HP — раньше это умел только внешний контроллер события
+    // (ZoneRoom для eliteHunt-босса); теперь любой моб с enrageAt делает это
+    // самостоятельно, без спец-кода снаружи.
+    if (this.enrageAt !== undefined && !this.raging && this.hp / this.maxHp < this.enrageAt) {
+      this.raging = true;
+    }
 
     const rage = this.enraged ? BOSS.rageSpeedMult : 1;
     const rageRate = this.enraged ? BOSS.rageRateMult : 1;
@@ -903,7 +915,7 @@ class Mob {
         this.attackSeq = (this.attackSeq + 1) & 0xffff;
         hits.push({
           target: np.sessionId,
-          dmg: MOB.attackDamage * this.dmgMul,
+          dmg: MOB.attackDamage * this.dmgMul * rageDmg,
           fromX: this.x,
           fromZ: this.z,
           projectile: false,
@@ -1181,6 +1193,7 @@ export class ZoneSim {
           critVulnMul: def.critVulnMul,
           spellAoe: def.spellAoe,
           novaCaster: def.novaCaster,
+          enrageAt: def.enrageAt,
         });
         this.mobs.set(m.id, m);
       }
