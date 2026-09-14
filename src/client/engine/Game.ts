@@ -1817,6 +1817,9 @@ export class Game {
       case "swordHit":
         this.sfx.at(at, () => this.sfx.swordHit());
         break;
+      case "swordHitFire":
+        this.sfx.at(at, () => this.sfx.swordHitFire());
+        break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
         this.sfx.at(at, () => this.sfx.arrowVolley());

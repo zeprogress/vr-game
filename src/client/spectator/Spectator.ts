@@ -1074,6 +1074,9 @@ export class Spectator {
       case "swordHit":
         this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
+      case "swordHitFire":
+        this.sfx.at({ x, y, z }, () => this.sfx.swordHitFire());
+        break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.arrowVolley());

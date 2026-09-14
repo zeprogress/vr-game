@@ -54,6 +54,10 @@ export class Sfx {
   private static readonly SWORD_HIT = "/sfx/sword-hit.wav";
   private swordHitBuf: AudioBuffer | null = null;
   private swordHitLoading = false;
+  /** Сэмпл поджога Пламенным мечом (art/fire.wav) — играет ВМЕСТО swordHit, не поверх. */
+  private static readonly FIRE_HIT = "/sfx/fire-hit.wav";
+  private fireHitBuf: AudioBuffer | null = null;
+  private fireHitLoading = false;
   /** Сэмпл замаха мечом (art/sword_swing2.wav, обрезан). */
   private static readonly SWORD_SWING = "/sfx/sword-swing.wav";
   private swordSwingBuf: AudioBuffer | null = null;
@@ -386,6 +390,17 @@ export class Sfx {
       .catch(() => {});
   }
 
+  /** Один раз подгрузить сэмпл поджога Пламенным мечом. */
+  private preloadFireHit(): void {
+    if (this.fireHitLoading || this.fireHitBuf || !this.ctx) return;
+    this.fireHitLoading = true;
+    fetch(Sfx.FIRE_HIT)
+      .then((r) => r.arrayBuffer())
+      .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+      .then((b) => (this.fireHitBuf = b))
+      .catch(() => {});
+  }
+
   /** Один раз подгрузить сэмпл замаха мечом. */
   private preloadSwordSwing(): void {
     if (this.swordSwingLoading || this.swordSwingBuf || !this.ctx) return;
@@ -655,6 +670,22 @@ export class Sfx {
     }
     this.preloadSwordHit();
     this.hitThud(vol);
+  }
+
+  /**
+   * Попадание Пламенным мечом, которое подожгло цель: сэмпл art/fire.wav
+   * ВМЕСТО обычного swordHit — звук не накладывается поверх, а заменяется
+   * (см. ZoneRoom: broadcast "swordHitFire" вместо "swordHit" на этот удар).
+   * Пока не загружен — обычный swordHit как запасной, тишины не будет.
+   */
+  swordHitFire(vol = 1): void {
+    if (!this.ready()) return;
+    if (this.fireHitBuf) {
+      this.playSample(this.fireHitBuf, 0.9 * vol, 0.97 + Math.random() * 0.06);
+      return;
+    }
+    this.preloadFireHit();
+    this.swordHit(vol);
   }
 
   hitThud(vol = 1): void {

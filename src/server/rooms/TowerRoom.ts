@@ -102,6 +102,8 @@ export interface TowerSnapshot {
   heroAtkPulse: boolean;
   /** true ровно на тот тик, когда клинок ДОШЁЛ до цели — звук удара мечом. */
   heroSwordHit: boolean;
+  /** Пламенный меч в руке — при heroSwordHit клиент играет звук горения вместо обычного удара. */
+  heroFireAffix: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
   heroRangedPulse: boolean;
   /** Каким оружием бьёт герой — клиент рисует летящий снаряд только для посоха. */
@@ -836,6 +838,7 @@ export class TowerRoom extends Room<TowerState> {
       heroYaw: this.heroYaw,
       heroAtkPulse: this.heroAtkPulse,
       heroSwordHit: this.heroSwordHit,
+      heroFireAffix: this.heroFireAffix,
       heroRangedPulse: this.heroRangedPulse,
       heroWeaponKind: this.heroWeaponKind,
       heroRangedTargetX: this.heroRangedTargetX,

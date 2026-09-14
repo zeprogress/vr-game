@@ -1256,15 +1256,17 @@ export class ZoneRoom extends Room<ZoneState> {
       msg.weapon === "arrow", false, false, crit > 1,
     );
     // Пламенный меч — поджигаем цель (DoT на несколько секунд).
-    if (affix === "fire" && msg.weapon === "sword" && struck) {
-      struck.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, client.sessionId);
+    const ignited = affix === "fire" && msg.weapon === "sword" && !!struck;
+    if (ignited) {
+      struck!.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, client.sessionId);
     }
     // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
-    // сыграл локальный предсказанный звук, без сетевой задержки).
+    // сыграл локальный предсказанный звук, без сетевой задержки). Поджёг —
+    // звук горения ВМЕСТО обычного удара, не поверх него.
     if (struck && msg.weapon === "sword") {
       this.broadcast(
         MSG.act,
-        { k: "swordHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay,
+        { k: ignited ? "swordHitFire" : "swordHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay,
         { except: client },
       );
     }
@@ -2041,9 +2043,11 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     // Клинок дошёл до цели — звук удара (см. TowerRoom.resolveHeroSwing/BOT.attackImpact).
+    // Пламенный меч — звук горения ВМЕСТО обычного удара, не поверх него.
     if (s.heroSwordHit) {
       this.broadcast(MSG.act, {
-        k: "swordHit", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
+        k: s.heroFireAffix ? "swordHitFire" : "swordHit",
+        id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
       } satisfies ActRelay);
     }
     // Герой с луком/посохом выстрелил — та же анимация/звук, что и у ботов-стрелков/магов.
@@ -3384,12 +3388,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const sy = mob.y;
     const sz = mob.z;
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
-    if (weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "fire") {
+    const ignited = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "fire";
+    if (ignited) {
       mob.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, bot.id);
     }
-    // Звук удара мечом — как у живого игрока, слышат все вокруг.
+    // Звук удара мечом — как у живого игрока, слышат все вокруг. Поджёг —
+    // звук горения ВМЕСТО обычного удара, не поверх него.
     this.broadcast(MSG.act, {
-      k: "swordHit", id: bot.id, x: sx, y: sy, z: sz,
+      k: ignited ? "swordHitFire" : "swordHit", id: bot.id, x: sx, y: sy, z: sz,
     } satisfies ActRelay);
     this.sim.splashDamage(
       sx, sy, sz,
