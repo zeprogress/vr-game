@@ -1373,6 +1373,7 @@ export class Game {
     this.serverHp = self.hp;
     this.player.setHp(self.hp);
     this.localAvatar?.setBuffed((self.buffSecs ?? 0) > 0);
+    this.localAvatar?.setStunned(self.stunned === 1);
     this.hud.setBuff(self.buffSecs ?? 0);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт

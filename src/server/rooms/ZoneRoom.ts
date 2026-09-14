@@ -3420,12 +3420,13 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.woundedNear(p).length < BOT.healMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
-    // Начало каста: мана списывается сразу, бот замирает, вокруг горит аура.
+    // Начало каста: мана списывается сразу, бот радостно "cheer"'ит (клип
+    // ~1.9с — почти ровно длина каста), вокруг горит аура.
     const cost = Math.min(p.mana, BOT.healCharge * h.chargeTime * h.manaPerSec);
     p.mana = Math.max(0, p.mana - cost);
     bot.healCd = BOT.healCooldown;
     bot.healCastT = BOT.healCastTime;
-    bot.emoteFreezeUntil = Date.now() + BOT.healCastTime * 1000;
+    this.triggerEmote(bot, "cheer");
     const aura: ActRelay = {
       k: "healAura",
       id: bot.id,
@@ -3715,6 +3716,14 @@ export class ZoneRoom extends Room<ZoneState> {
       if (p.mana < p.maxMana) {
         p.mana = Math.min(p.maxMana, p.mana + manaRegenFor(p.int) * dt);
       }
+    });
+
+    // Оглушение (см. hurtPlayer: rt.stunnedUntil, "Чародей руин") — в схему,
+    // чтобы соседи/спектатор видели звёздочки над героем, а не только сам
+    // оглушённый ощущал заморозку управления (тот применяет её себе локально).
+    this.state.players.forEach((p, id) => {
+      const rt = this.rt.get(id);
+      p.stunned = rt && rt.stunnedUntil > this.elapsed ? 1 : 0;
     });
 
     // Мобы гоняются только за живыми и только за теми, кто ВНЕ безопасной зоны

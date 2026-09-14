@@ -16,6 +16,7 @@ import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
 import { BuffAura } from "../ui/BuffAura";
+import { StunStarsFx } from "../ui/StunStarsFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
@@ -151,6 +152,8 @@ export class RemoteAvatar implements Hittable {
   private readonly nameTag: NameTag;
   private bubble: SpeechBubble | null = null;
   private readonly buffAura: BuffAura;
+  private readonly stunStars: StunStarsFx;
+  private stunned = false;
   private buffed = false;
   /** Пятно-тень под ногами: без неё модель читается как парящая. */
   private readonly shadow: BlobShadow;
@@ -247,6 +250,7 @@ export class RemoteAvatar implements Hittable {
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
     this.buffAura = new BuffAura(scene, this.root, 0.95, -0.55);
+    this.stunStars = new StunStarsFx(scene, this.root, 0.4);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
     this.mat.diffuseColor = colorFor(id);
@@ -477,6 +481,7 @@ export class RemoteAvatar implements Hittable {
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     this.buffed = (p.buffSecs ?? 0) > 0;
+    this.stunned = p.stunned === 1;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
     let last: Snap | undefined = this.buf[this.buf.length - 1];
@@ -584,6 +589,8 @@ export class RemoteAvatar implements Hittable {
     this.bubble?.update(dt);
     this.buffAura.setActive(this.buffed && !this.dead);
     this.buffAura.update(dt);
+    this.stunStars.setActive(this.stunned && !this.dead);
+    this.stunStars.update(dt);
     this.syncBar();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
@@ -1117,6 +1124,7 @@ export class RemoteAvatar implements Hittable {
     this.botHolder?.dispose();
     this.nameTag.dispose();
     this.buffAura.dispose();
+    this.stunStars.dispose();
     this.root.dispose(false, true);
   }
 }

@@ -101,7 +101,9 @@ export class HealAuraFx {
       // Ярче к концу каста — момент выброса лечения читается.
       const k = 0.35 + 0.65 * t;
       (a.disc.material as StandardMaterial).alpha = 0.5 * k;
-      (a.dome.material as StandardMaterial).alpha = 0.22 * k;
+      // Купол прозрачнее (было 0.22×k) — по просьбе, полусферу слишком плотно
+      // закрывало обзор союзникам внутри неё.
+      (a.dome.material as StandardMaterial).alpha = 0.11 * k;
     }
   }
 
