@@ -347,12 +347,12 @@ export class Spectator {
     net.onRtc = (msg) => void this.voice?.handle(msg);
     net.onVoice = (id, t, d) => this.voice?.onVoicePacket(id, t, d);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
-    net.onBossEvent = (kind, by, loot) => {
-      this.overlay?.bossBanner(kind, by, loot);
+    net.onBossEvent = (kind, by, loot, lootItems) => {
+      this.overlay?.bossBanner(kind, by, loot, lootItems);
       if (kind === "down") this.sfx.bossFanfare();
       else this.sfx.bossHorn();
     };
-    net.onWorldEvent = (phase, name) => {
+    net.onWorldEvent = (phase, name, _x, _z, loot) => {
       const hunt = name === "Охота";
       const tower = name === "Башня";
       if (phase === "start") {
@@ -363,7 +363,7 @@ export class Spectator {
             : hunt
               ? "в мире объявился Грибной владыка — редкая добыча"
               : "мобы лезут волнами — герои сбегаются",
-          6,
+          9,
         );
         this.sfx.bossHorn();
       } else if (phase === "win") {
@@ -372,15 +372,16 @@ export class Spectator {
         if (tower) return;
         this.overlay?.showCard(
           hunt ? "Грибной владыка повержен" : `${name} отражено`,
-          "участникам — ×2 опыт и урон + легендарка" + (hunt ? "" : " на 15 мин"),
-          6,
+          "участникам — ×2 опыт и урон" + (hunt ? "" : " на 15 мин"),
+          10,
+          loot,
         );
         this.sfx.bossFanfare();
       } else {
         this.overlay?.showCard(
           tower ? "Охотничья башня закрылась" : hunt ? "Грибной владыка ушёл" : `${name} утихло`,
           "",
-          4,
+          6,
         );
       }
     };

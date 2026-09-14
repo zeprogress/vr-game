@@ -1,5 +1,6 @@
-import type { OverlayPatch, LeaderboardRow, TowerBoardRow } from "#shared/net/messages";
+import type { OverlayPatch, LeaderboardRow, TowerBoardRow, LootItem } from "#shared/net/messages";
 import { TOWER } from "#shared/tower";
+import { ITEMS } from "#shared/items";
 
 /**
  * Оверлеи стрима (этап 17 Ф6).
@@ -127,6 +128,19 @@ const CSS = `
   opacity:.9; margin-top:1vh; }
 .ov-boss.warn s { color:#ff9b8a; text-shadow:0 0 3vh rgba(220,40,30,.7),0 .5vh 1vh rgba(0,0,0,.6); }
 .ov-boss.win s { color:#ffe08a; text-shadow:0 0 3vh rgba(255,190,90,.7),0 .5vh 1vh rgba(0,0,0,.6); }
+/* Баннер с лутом (успешный ивент/добит босс) — крупнее + иконки добычи. */
+.ov-boss.has-loot s { font-size:8.2vh; }
+.ov-boss.has-loot u { font-size:2.7vh; }
+.ov-card.has-loot .t s { font-size:4.4vh; }
+.ov-card.has-loot .t u { font-size:2.3vh; }
+.ov-loot { display:flex; gap:1.4vh; justify-content:center; margin-top:1.6vh; }
+.ov-loot .it { position:relative; width:7vh; height:7vh; border-radius:1.2vh;
+  background:rgba(0,0,0,.35); border:.15vh solid rgba(255,255,255,.25);
+  display:flex; align-items:center; justify-content:center; box-shadow:0 .4vh 1.4vh rgba(0,0,0,.5); }
+.ov-loot .it img { width:72%; height:72%; object-fit:contain; }
+.ov-loot .it .tint { width:60%; height:60%; border-radius:.6vh; }
+.ov-loot .it .cnt { position:absolute; right:.3vh; bottom:.1vh; font:800 1.6vh system-ui,sans-serif;
+  color:#fff; text-shadow:0 .1vh .3vh #000,0 0 .3vh #000; }
 .ov-ticker { left:50%; top:12vh; transform:translateX(-50%); text-align:center;
   font-weight:900; font-size:3.4vh; letter-spacing:.03em; text-transform:uppercase;
   color:#5ba8ff; max-width:80vw;
@@ -170,12 +184,14 @@ export class Overlay {
   private readonly card: HTMLDivElement;
   private readonly cardTitle: HTMLElement;
   private readonly cardSub: HTMLElement;
+  private readonly cardLoot: HTMLDivElement;
   private cardUntil = 0; // 0 — держать бесконечно (пока не скроют)
   private readonly feed: HTMLDivElement;
   private feedRows: { el: HTMLElement; until: number }[] = [];
   private readonly boss: HTMLDivElement;
   private readonly bossTitle: HTMLElement;
   private readonly bossSub: HTMLElement;
+  private readonly bossLoot: HTMLDivElement;
   private bossUntil = 0;
   private readonly top: HTMLDivElement;
   private topRows: LeaderboardRow[] = [];
@@ -224,7 +240,8 @@ export class Overlay {
     const t = div("t");
     this.cardTitle = document.createElement("s");
     this.cardSub = document.createElement("u");
-    t.append(this.cardTitle, this.cardSub);
+    this.cardLoot = div("ov-loot");
+    t.append(this.cardTitle, this.cardSub, this.cardLoot);
     this.card.appendChild(t);
 
     this.feed = div("box ov-feed");
@@ -236,7 +253,8 @@ export class Overlay {
     this.boss = div("box ov-boss");
     this.bossTitle = document.createElement("s");
     this.bossSub = document.createElement("u");
-    this.boss.append(this.bossTitle, this.bossSub);
+    this.bossLoot = div("ov-loot");
+    this.boss.append(this.bossTitle, this.bossSub, this.bossLoot);
 
     this.root.append(
       this.wm,
@@ -341,11 +359,46 @@ export class Overlay {
     });
   }
 
+  /** Иконка (или цветной квадрат — нет своей картинки) + счётчик, для баннера с лутом. */
+  private renderLoot(el: HTMLDivElement, loot: LootItem[] | undefined): void {
+    el.innerHTML = "";
+    if (!loot || loot.length === 0) {
+      el.style.display = "none";
+      return;
+    }
+    el.style.display = "flex";
+    for (const l of loot) {
+      const def = ITEMS[l.id];
+      const it = div("it");
+      it.title = def.name;
+      if (def.icon) {
+        const img = document.createElement("img");
+        img.src = `/icons/${def.icon}`;
+        img.alt = def.name;
+        img.draggable = false;
+        it.appendChild(img);
+      } else {
+        const tint = div("tint");
+        const c = def.tint.map((v) => Math.round(v * 255)).join(",");
+        tint.style.background = `rgb(${c})`;
+        it.appendChild(tint);
+      }
+      if (l.count > 1) {
+        const cnt = document.createElement("span");
+        cnt.className = "cnt";
+        cnt.textContent = `×${l.count}`;
+        it.appendChild(cnt);
+      }
+      el.appendChild(it);
+    }
+  }
+
   /**
    * Заставка/нижняя треть с дашборда.
    * `secs <= 0` — держать бесконечно, пока не скроют. Пустой `title` — скрыть.
+   * `loot` — успешный ивент: показать иконки добычи, баннер крупнее.
    */
-  showCard(title: string, sub = "", secs = 0): void {
+  showCard(title: string, sub = "", secs = 0, loot?: LootItem[]): void {
     if (!title) {
       this.card.classList.remove("show");
       this.cardUntil = 0;
@@ -354,30 +407,32 @@ export class Overlay {
     this.cardTitle.textContent = title;
     this.cardSub.textContent = sub;
     this.cardSub.style.display = sub ? "block" : "none";
+    this.renderLoot(this.cardLoot, loot);
+    this.card.classList.toggle("has-loot", !!loot && loot.length > 0);
     this.card.classList.add("show");
     this.cardUntil = secs > 0 ? performance.now() + secs * 1000 : 0;
   }
 
   /** Большой баннер по центру: босс появился / повержен. */
-  bossBanner(kind: "spawn" | "down", by?: string, loot?: string): void {
+  bossBanner(kind: "spawn" | "down", by?: string, loot?: string, lootItems?: LootItem[]): void {
     this.boss.classList.remove("warn", "win");
     if (kind === "down") {
       this.boss.classList.add("win");
       this.bossTitle.textContent = "Босс повержен!";
-      this.bossSub.textContent = [
-        by ? `Решающий удар: ${by}` : "",
-        loot ? `Добыча: ${loot}` : "",
-      ]
-        .filter(Boolean)
-        .join("   ·   ");
+      this.bossSub.textContent = by ? `Решающий удар: ${by}` : "";
+      void loot;
     } else {
       this.boss.classList.add("warn");
       this.bossTitle.textContent = "Босс появился";
       this.bossSub.textContent = "Багровый слизень вышел на охоту";
     }
     this.bossSub.style.display = this.bossSub.textContent ? "block" : "none";
+    this.renderLoot(this.bossLoot, kind === "down" ? lootItems : undefined);
+    this.boss.classList.toggle("has-loot", kind === "down" && !!lootItems && lootItems.length > 0);
     this.boss.classList.add("show");
-    this.bossUntil = performance.now() + 5200;
+    // С лутом — дольше на экране, есть что разглядеть; без — тоже дольше, чем
+    // раньше (было 5200 фиксированно на всё подряд).
+    this.bossUntil = performance.now() + (kind === "down" && lootItems?.length ? 9000 : 7000);
   }
 
   /**

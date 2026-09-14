@@ -32,6 +32,7 @@ import {
   type KillFeedMsg,
   type BossEventMsg,
   type WorldEventMsg,
+  type LootItem,
   type BotSayMsg,
   type DropWeaponMsg,
   type ActKind,
@@ -126,9 +127,11 @@ export class NetClient {
   onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   onKillFeed: ((by: string, victim: string) => void) | null = null;
   /** Событие босса: появился / повержен — баннер во весь экран + музыка. */
-  onBossEvent: ((kind: "spawn" | "down", by?: string, loot?: string) => void) | null = null;
+  onBossEvent:
+    | ((kind: "spawn" | "down", by?: string, loot?: string, lootItems?: LootItem[]) => void)
+    | null = null;
   onWorldEvent:
-    | ((phase: "start" | "win" | "end", name: string, x: number, z: number) => void)
+    | ((phase: "start" | "win" | "end", name: string, x: number, z: number, loot?: LootItem[]) => void)
     | null = null;
   /** Хозяин бота написал в чат канала (Ф10). */
   onBotSay: ((id: string, text: string) => void) | null = null;
@@ -260,9 +263,11 @@ export class NetClient {
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
-    room.onMessage(MSG.bossEvent, (m: BossEventMsg) => this.onBossEvent?.(m.kind, m.by, m.loot));
+    room.onMessage(MSG.bossEvent, (m: BossEventMsg) =>
+      this.onBossEvent?.(m.kind, m.by, m.loot, m.lootItems),
+    );
     room.onMessage(MSG.worldEvent, (m: WorldEventMsg) =>
-      this.onWorldEvent?.(m.phase, m.name, m.x, m.z),
+      this.onWorldEvent?.(m.phase, m.name, m.x, m.z, m.loot),
     );
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));

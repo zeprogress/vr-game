@@ -1716,12 +1716,14 @@ export class ZoneSim {
   }
 
   /** Положить оружие на землю. Базовое не роняем — оно всегда доступно. */
-  dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number): void {
-    if (tier === "base") return;
+  /** Возвращает id реально упавшего предмета (для баннера с иконкой) или null. */
+  dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number): ItemId | null {
+    if (tier === "base") return null;
     const item = WEAPON_DROP[weaponKey(cls, tier)];
-    if (!item) return;
+    if (!item) return null;
     const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z);
     this.drops.set(d.id, d);
+    return item;
   }
 
   /** Весь лут на земле — чтобы записать его перед остановкой сервера. */

@@ -126,6 +126,12 @@ export interface KillFeedMsg {
   victim: string;
 }
 
+/** Один вид добычи в баннере окончания ивента/босса — для отрисовки иконкой. */
+export interface LootItem {
+  id: ItemId;
+  count: number;
+}
+
 /** Динамическое событие мира — для баннера. */
 export interface WorldEventMsg {
   phase: "start" | "win" | "end";
@@ -134,6 +140,8 @@ export interface WorldEventMsg {
   /** Эпицентр (для стрелки/камеры). */
   x: number;
   z: number;
+  /** Только для "win": что выпало (оружие/зелья) — баннер рисует иконками. */
+  loot?: LootItem[];
 }
 
 /** Событие босса для баннера во весь экран. `by` — ник добившего (для "повержен"). */
@@ -142,6 +150,8 @@ export interface BossEventMsg {
   by?: string;
   /** Только для "down": что выпало с босса, готовой строкой («Золотой меч · 3× Зелье»). */
   loot?: string;
+  /** То же самое, но структурой id+count — баннер рисует иконками. */
+  lootItems?: LootItem[];
 }
 
 /** Реплика хозяина бота из чата канала — облачко над ботом (Ф10). */

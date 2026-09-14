@@ -31,6 +31,13 @@ export class Sfx {
   private music: MusicVoice | null = null;
   private fadeVoice: MusicVoice | null = null;
   private musicWanted = false;
+  /**
+   * Звук ивента/босса, запрошенный до первого жеста пользователя (AudioContext
+   * ещё suspended, ready() молча отказал) — переигрываем один раз сразу же
+   * после resume(), а не теряем совсем. Только последний — событие/босс не
+   * может анонситься чаще, чем раз в несколько секунд, стек не нужен.
+   */
+  private pendingEventSound: (() => void) | null = null;
   private musicLoading = false;
   private readonly bufCache = new Map<string, AudioBuffer>();
   /** Сэмплы выстрела из лука (варианты) — грузятся один раз, не вытесняются. */
@@ -109,7 +116,13 @@ export class Sfx {
   resume(): void {
     this.ensure();
     this.ensureMusicBus();
-    void this.ctx?.resume();
+    void this.ctx?.resume().then(() => {
+      // Звук ивента/босса мог потеряться, если случился ДО этого resume —
+      // ready() был false в момент вызова. Доигрываем один раз сейчас.
+      const fn = this.pendingEventSound;
+      this.pendingEventSound = null;
+      fn?.();
+    });
     // Музыку могли попросить до первого жеста — заводим теперь.
     if (this.musicWanted && !this.music) void this.startPlaylist(0.8);
   }
@@ -930,7 +943,10 @@ export class Sfx {
 
   /** Босс вступил в бой: низкий тревожный «рог» из двух нот. */
   bossHorn(): void {
-    if (!this.ready()) return;
+    if (!this.ready()) {
+      this.pendingEventSound = () => this.bossHorn();
+      return;
+    }
     const t0 = this.t;
     const notes = [
       [98, 0], // G2
@@ -953,7 +969,10 @@ export class Sfx {
 
   /** Босс повержен: короткая триумфальная фанфара (мажорный аккорд + арпеджио). */
   bossFanfare(): void {
-    if (!this.ready()) return;
+    if (!this.ready()) {
+      this.pendingEventSound = () => this.bossFanfare();
+      return;
+    }
     const t0 = this.t;
     // Арпеджио вверх, затем звенящий аккорд.
     const arp = [392, 523.25, 659.25, 783.99, 1046.5];

@@ -1586,20 +1586,17 @@ export class Game {
       // возрождения красная виньетка и счётчик оставались на экране).
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
-    net.onBossEvent = (kind, by, loot) => {
+    net.onBossEvent = (kind, by, _loot, lootItems) => {
       if (kind === "spawn") {
         this.hud.banner("Босс появился", "Багровый слизень вышел на охоту", "warn");
         this.sfx.bossHorn();
       } else {
-        const sub = [by ? `Решающий удар: ${by}` : "", loot ? `Добыча: ${loot}` : ""]
-          .filter(Boolean)
-          .join("   ·   ");
-        this.hud.banner("Босс повержен!", sub, "win");
+        const sub = by ? `Решающий удар: ${by}` : "";
+        this.hud.banner("Босс повержен!", sub, "win", lootItems);
         this.sfx.bossFanfare();
-        if (loot) this.hud.toast(`С босса выпало: ${loot}`);
       }
     };
-    net.onWorldEvent = (phase, name, x, z) => {
+    net.onWorldEvent = (phase, name, x, z, loot) => {
       const hunt = name === "Охота";
       if (phase === "start") {
         this.hud.banner(
@@ -1615,6 +1612,7 @@ export class Game {
             ? "Легендарка в эпицентре · участникам — ×2 опыт и урон"
             : "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
           "win",
+          loot,
         );
         this.sfx.bossFanfare();
       } else {

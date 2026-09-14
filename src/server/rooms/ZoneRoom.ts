@@ -51,6 +51,7 @@ import {
   type UseItemMsg,
   type Xf7,
   type WorldEventMsg,
+  type LootItem,
 } from "#shared/net/messages";
 import {
   ADMIN_NICK,
@@ -1665,6 +1666,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const hunt = this.activeEventKind === 2;
     // Башня не бьётся на месте — награда там персональная, за каждый забег
     // отдельно (см. onTowerRunDone), а не общая на всех при закрытии окна.
+    let winLoot: LootItem[] | undefined;
     if (win && !tower) {
       const potions = hunt
         ? EVENT.eliteHunt.rewardPotions
@@ -1673,14 +1675,17 @@ export class ZoneRoom extends Room<ZoneState> {
             EVENT.invasion.rewardPotions * this.heroesInWorld(),
           );
       this.sim.dropPotions(this.eventX, this.eventZ, potions);
+      winLoot = potions > 0 ? [{ id: "potion", count: potions }] : [];
 
       if (hunt) {
         // Охота — гарантированная легендарка случайного класса.
         const cls = (["sword", "bow", "shield", "staff"] as const)[Math.floor(Math.random() * 4)];
-        this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
+        const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
+        if (dropped) winLoot.push({ id: dropped, count: 1 });
       } else if (Math.random() < EVENT.invasion.rewardGoldChance) {
         const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
-        this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
+        const dropped = this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
+        if (dropped) winLoot.push({ id: dropped, count: 1 });
       }
 
       // Бафф всем, кто бил мобов события: ×2 опыт и урон.
@@ -1713,6 +1718,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.eventLeft = 0;
     this.broadcast(MSG.worldEvent, {
       phase: win ? "win" : "end", name: this.eventName(), x: this.eventX, z: this.eventZ,
+      loot: win ? winLoot : undefined,
     } satisfies WorldEventMsg);
   }
 
@@ -3862,8 +3868,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const loot = this.sim.bossLoot
         .map((l) => (l.count > 1 ? `${l.count}× ${ITEMS[l.id].short}` : ITEMS[l.id].name))
         .join(" · ");
+      const lootItems: LootItem[] = this.sim.bossLoot.map((l) => ({ id: l.id, count: l.count }));
       this.sim.bossLoot.length = 0;
-      this.broadcast(MSG.bossEvent, { kind: "down", by: topOwner, loot: loot || undefined });
+      this.broadcast(MSG.bossEvent, {
+        kind: "down", by: topOwner, loot: loot || undefined,
+        lootItems: lootItems.length ? lootItems : undefined,
+      });
       this.bossFighting = false;
       this.sim.bossXpShare.length = 0;
     }

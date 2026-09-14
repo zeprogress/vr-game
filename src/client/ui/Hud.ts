@@ -1,4 +1,5 @@
 import { PLAYER_HP, BOT } from "#shared/constants";
+import type { LootItem } from "#shared/net/messages";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
 import { InventoryPanel, type Equipped } from "./InventoryPanel";
@@ -93,7 +94,18 @@ export class Hud {
     const bst = document.createElement("style");
     bst.textContent =
       ".hud-banner .bn-t{font:900 clamp(34px,7vw,84px)/1.05 system-ui,sans-serif;letter-spacing:0.04em;text-transform:uppercase}" +
-      ".hud-banner .bn-s{margin-top:10px;font:600 clamp(14px,2.2vw,22px) system-ui,sans-serif;opacity:0.9}";
+      ".hud-banner .bn-s{margin-top:10px;font:600 clamp(14px,2.2vw,22px) system-ui,sans-serif;opacity:0.9}" +
+      // Баннер с лутом (успешный ивент/босс) — крупнее текст + иконки.
+      ".hud-banner.hud-banner-loot .bn-t{font-size:clamp(40px,8.4vw,100px)}" +
+      ".hud-banner.hud-banner-loot .bn-s{font-size:clamp(16px,2.6vw,26px)}" +
+      ".hud-banner .bn-loot{margin-top:16px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}" +
+      ".hud-banner .bn-loot-item{position:relative;width:clamp(48px,7vw,74px);height:clamp(48px,7vw,74px);" +
+      "border-radius:12px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.25);" +
+      "display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.5)}" +
+      ".hud-banner .bn-loot-item img{width:72%;height:72%;object-fit:contain}" +
+      ".hud-banner .bn-loot-tint{width:60%;height:60%;border-radius:6px}" +
+      ".hud-banner .bn-loot-cnt{position:absolute;right:3px;bottom:1px;font:800 13px system-ui,sans-serif;" +
+      "color:#fff;text-shadow:0 1px 3px #000,0 0 3px #000}";
     document.head.appendChild(bst);
     this.bannerEl.className = "hud-banner";
 
@@ -479,9 +491,33 @@ export class Hud {
     this.buffEl.style.display = "block";
   }
 
-  banner(title: string, sub = "", tone: "warn" | "win" = "warn"): void {
+  /** Иконка (или цветной квадрат — см. InventoryPanel.iconEl) + счётчик для баннера с лутом. */
+  private lootRowHtml(loot: LootItem[]): string {
+    const items = loot
+      .map((l) => {
+        const def = ITEMS[l.id];
+        const pic = def.icon
+          ? `<img src="/icons/${def.icon}" alt="${def.name}" draggable="false"/>`
+          : `<div class="bn-loot-tint" style="background:rgb(${def.tint.map((v) => Math.round(v * 255)).join(",")})"></div>`;
+        const cnt = l.count > 1 ? `<span class="bn-loot-cnt">×${l.count}</span>` : "";
+        return `<div class="bn-loot-item" title="${def.name}">${pic}${cnt}</div>`;
+      })
+      .join("");
+    return `<div class="bn-loot">${items}</div>`;
+  }
+
+  /**
+   * Большой баннер во весь экран (появление / гибель босса, ивент). `tone`:
+   * "win" — золотой, иначе багровый. `loot` — успешный ивент/босс: баннер
+   * крупнее и с иконками добычи, держится на экране дольше.
+   */
+  banner(title: string, sub = "", tone: "warn" | "win" = "warn", loot?: LootItem[]): void {
     const t = this.bannerEl;
-    t.innerHTML = `<div class="bn-t">${title}</div>${sub ? `<div class="bn-s">${sub}</div>` : ""}`;
+    const hasLoot = !!loot && loot.length > 0;
+    t.innerHTML =
+      `<div class="bn-t">${title}</div>${sub ? `<div class="bn-s">${sub}</div>` : ""}` +
+      (hasLoot ? this.lootRowHtml(loot!) : "");
+    t.classList.toggle("hud-banner-loot", hasLoot);
     t.style.color = tone === "win" ? "#ffe08a" : "#ff9b8a";
     t.style.textShadow =
       tone === "win"
@@ -490,10 +526,15 @@ export class Hud {
     t.style.opacity = "1";
     t.style.transform = "translate(-50%,-50%) scale(1)";
     if (this.bannerTimer !== null) window.clearTimeout(this.bannerTimer);
-    this.bannerTimer = window.setTimeout(() => {
-      t.style.opacity = "0";
-      t.style.transform = "translate(-50%,-50%) scale(1.08)";
-    }, 4200);
+    // Дольше держим на экране (было 4200 у всех без исключения); с лутом —
+    // ещё дольше, есть что разглядеть.
+    this.bannerTimer = window.setTimeout(
+      () => {
+        t.style.opacity = "0";
+        t.style.transform = "translate(-50%,-50%) scale(1.08)";
+      },
+      hasLoot ? 9000 : 6500,
+    );
   }
 
   /** Раздел «Сумка» внизу панели персонажа. */
