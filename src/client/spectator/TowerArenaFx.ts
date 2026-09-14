@@ -135,6 +135,7 @@ interface ImpactSpark {
 
 interface ImpactBurst {
   mesh: Mesh;
+  hot: Mesh;
   ring: Mesh;
   sparks: ImpactSpark[];
   pos: Vector3;
@@ -214,6 +215,7 @@ export class TowerArenaFx {
   private glowMat: StandardMaterial | null = null;
   private bursts: ImpactBurst[] = [];
   private burstMat: StandardMaterial | null = null;
+  private burstHotMat: StandardMaterial | null = null;
   private burstRingMat: StandardMaterial | null = null;
   private burstSparkMat: StandardMaterial | null = null;
   /** Высота стен текущей арены — нужна прожектору, чтобы пересчитать позицию live (тюнер). */
@@ -943,14 +945,41 @@ export class TowerArenaFx {
    */
   private spawnImpact(pos: Vector3): void {
     if (!this.burstMat) {
+      // Раньше — плоский квадрат сплошного цвета (заметно на тёмном фоне
+      // арены). Радиальный градиент — читается как настоящий клубок пламени.
       this.burstMat = new StandardMaterial("towerBurstMat", this.scene);
-      this.burstMat.disableLighting = true;
       this.burstMat.diffuseColor = new Color3(0, 0, 0);
       this.burstMat.specularColor = new Color3(0, 0, 0);
-      this.burstMat.emissiveColor = new Color3(1, 0.85, 0.55);
+      this.burstMat.disableLighting = true;
+      this.burstMat.emissiveColor = new Color3(1, 1, 1);
       this.burstMat.alphaMode = Constants.ALPHA_ADD;
       this.burstMat.disableDepthWrite = true;
       this.burstMat.backFaceCulling = false;
+      const flashTex = new DynamicTexture("towerBurstFlashTex", { width: 128, height: 128 }, this.scene, false);
+      const fc = flashTex.getContext() as CanvasRenderingContext2D;
+      const fg = fc.createRadialGradient(64, 64, 0, 64, 64, 64);
+      fg.addColorStop(0.0, "rgba(255,250,235,0.9)");
+      fg.addColorStop(0.4, "rgba(255,190,110,0.75)");
+      fg.addColorStop(0.75, "rgba(255,120,50,0.35)");
+      fg.addColorStop(1.0, "rgba(255,90,30,0)");
+      fc.fillStyle = fg;
+      fc.fillRect(0, 0, 128, 128);
+      flashTex.hasAlpha = true;
+      flashTex.update();
+      this.burstMat.emissiveTexture = flashTex;
+      this.burstMat.opacityTexture = flashTex;
+    }
+    if (!this.burstHotMat) {
+      // Маленькое ослепительно-белое ядро поверх градиента — короткий "хлоп"
+      // в момент попадания, та же добавка, что и на поляне (MobSystem).
+      this.burstHotMat = new StandardMaterial("towerBurstHotMat", this.scene);
+      this.burstHotMat.emissiveColor = new Color3(1, 1, 1);
+      this.burstHotMat.diffuseColor = new Color3(0, 0, 0);
+      this.burstHotMat.specularColor = new Color3(0, 0, 0);
+      this.burstHotMat.disableLighting = true;
+      this.burstHotMat.alphaMode = Constants.ALPHA_ADD;
+      this.burstHotMat.disableDepthWrite = true;
+      this.burstHotMat.backFaceCulling = false;
     }
     if (!this.burstRingMat) {
       this.burstRingMat = new StandardMaterial("towerBurstRingMat", this.scene);
@@ -982,6 +1011,12 @@ export class TowerArenaFx {
     mesh.parent = this.root;
     mesh.position.copyFrom(pos);
     mesh.scaling.setAll(0.22);
+    const hot = MeshBuilder.CreateSphere("towerBurstHot", { diameter: 1, segments: 8 }, this.scene);
+    hot.material = this.burstHotMat;
+    hot.isPickable = false;
+    hot.parent = this.root;
+    hot.position.copyFrom(pos);
+    hot.scaling.setAll(0.1);
     const ring = MeshBuilder.CreatePlane("towerBurstRing", { size: 1 }, this.scene);
     ring.material = this.burstRingMat;
     ring.isPickable = false;
@@ -1016,7 +1051,7 @@ export class TowerArenaFx {
         speed: 2.2 + Math.random() * 2.6,
       });
     }
-    this.bursts.push({ mesh, ring, sparks, pos: pos.clone(), age: 0, life: 0.4 });
+    this.bursts.push({ mesh, hot, ring, sparks, pos: pos.clone(), age: 0, life: 0.4 });
     const world = pos.add(this.root.position);
     this.sfx.at({ x: world.x, y: world.y, z: world.z }, () => this.sfx.fireBurst(undefined, 0.7));
   }
@@ -1028,17 +1063,22 @@ export class TowerArenaFx {
       const f = b.age / b.life;
       if (f >= 1) {
         b.mesh.dispose();
+        b.hot.dispose();
         b.ring.dispose();
         for (const s of b.sparks) s.mesh.dispose();
         this.bursts.splice(i, 1);
         continue;
       }
       const fade = 1 - f;
-      // Ядро: мгновенно раздувается и держится ярко, потом гаснет.
+      // Ядро (градиентный билборд): мгновенно раздувается и держится ярко, потом гаснет.
       b.mesh.scaling.setAll(0.35 + 1.9 * Math.min(1, f * 5) * (0.6 + 0.4 * fade));
       // alpha меняем через visibility (не material.alpha — материал общий на
       // все вспышки сразу, менять его alpha ломало бы соседние).
       b.mesh.visibility = Math.min(1, fade * 1.8);
+      // Ослепительное ядро — очень короткий "хлоп" в момент попадания.
+      const hotFade = Math.max(0, 1 - f * 5);
+      b.hot.scaling.setAll(0.5 * (0.7 + 0.3 * hotFade));
+      b.hot.visibility = hotFade;
       // Кольцо: расходится наружу и истончается — та же формула, что на поляне.
       b.ring.scaling.setAll(0.3 + 2.6 * f);
       b.ring.visibility = fade * 0.85;
@@ -1085,7 +1125,12 @@ export class TowerArenaFx {
         pr.holder.dispose();
       }
       this.projectiles.length = 0;
-      for (const b of this.bursts) b.mesh.dispose();
+      for (const b of this.bursts) {
+        b.mesh.dispose();
+        b.hot.dispose();
+        b.ring.dispose();
+        for (const s of b.sparks) s.mesh.dispose();
+      }
       this.bursts.length = 0;
       return;
     }
@@ -1217,6 +1262,7 @@ export class TowerArenaFx {
     this.projectiles.length = 0;
     for (const b of this.bursts) {
       b.mesh.dispose();
+      b.hot.dispose();
       b.ring.dispose();
       for (const s of b.sparks) s.mesh.dispose();
     }
@@ -1224,6 +1270,7 @@ export class TowerArenaFx {
     this.coreMat?.dispose();
     this.glowMat?.dispose();
     this.burstMat?.dispose();
+    this.burstHotMat?.dispose();
     this.burstRingMat?.dispose();
     this.burstSparkMat?.dispose();
     for (const t of this.texCache.values()) t.dispose();

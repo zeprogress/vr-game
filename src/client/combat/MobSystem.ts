@@ -53,6 +53,7 @@ interface Spark {
 /** Вспышка на месте разрыва снаряда: раздувается и гаснет. */
 interface Burst {
   flash: Mesh;
+  hot: Mesh;
   ring: Mesh;
   sparks: Spark[];
   pos: Vector3;
@@ -79,6 +80,7 @@ export class NetMobs {
   /** Смартфон: снаряды крупнее — на маленьком экране их не видно. */
   boltViewScale = 1;
   private readonly burstFlashProto: Mesh;
+  private readonly burstHotProto: Mesh;
   private readonly burstRingProto: Mesh;
   private readonly burstSparkProto: Mesh;
   private readonly bursts: Burst[] = [];
@@ -145,20 +147,50 @@ export class NetMobs {
     this.boltGlowProto.isPickable = false;
     this.boltGlowProto.setEnabled(false);
 
-    // Вспышка попадания: плотное бело-жёлтое ядро + оранжевое расходящееся
-    // кольцо. Обычное альфа-смешивание (не аддитивное) — иначе на светлом небе
-    // огонь не виден.
+    // Вспышка попадания: раньше плоско залитая сфера (силуэт без градиента —
+    // выглядела скорее шариком, чем огнём). Теперь билборд с радиальным
+    // градиентом (белое-горячее ядро → жёлтый → оранжевый край) — читается
+    // как настоящий клубок пламени. Обычное альфа-смешивание (не аддитивное)
+    // — иначе на светлом небе огонь не виден.
     const flashMat = new StandardMaterial("burstFlashMat", scene);
-    flashMat.emissiveColor = new Color3(1, 0.93, 0.78);
     flashMat.diffuseColor = new Color3(0, 0, 0);
     flashMat.specularColor = new Color3(0, 0, 0);
     flashMat.disableLighting = true;
     flashMat.alphaMode = Constants.ALPHA_COMBINE;
     flashMat.disableDepthWrite = true;
-    this.burstFlashProto = MeshBuilder.CreateSphere("burstFlash", { diameter: 1, segments: 10 }, scene);
+    flashMat.backFaceCulling = false;
+    const flashTex = new DynamicTexture("burstFlashTex", { width: 128, height: 128 }, scene, false);
+    const fc = flashTex.getContext() as unknown as CanvasRenderingContext2D;
+    const fg = fc.createRadialGradient(64, 64, 0, 64, 64, 64);
+    fg.addColorStop(0.0, "rgba(255,255,250,1)");
+    fg.addColorStop(0.35, "rgba(255,225,150,0.95)");
+    fg.addColorStop(0.65, "rgba(255,150,60,0.7)");
+    fg.addColorStop(1.0, "rgba(255,90,30,0)");
+    fc.fillStyle = fg;
+    fc.fillRect(0, 0, 128, 128);
+    flashTex.hasAlpha = true;
+    flashTex.update();
+    flashMat.emissiveTexture = flashTex;
+    flashMat.opacityTexture = flashTex;
+    this.burstFlashProto = MeshBuilder.CreatePlane("burstFlash", { size: 1 }, scene);
     this.burstFlashProto.material = flashMat;
     this.burstFlashProto.isPickable = false;
     this.burstFlashProto.setEnabled(false);
+
+    // Маленькое ослепительно-белое ядро поверх градиента — аддитивное, очень
+    // короткая жизнь: то, что даёт настоящий "хлоп" в момент попадания.
+    const hotMat = new StandardMaterial("burstHotMat", scene);
+    hotMat.emissiveColor = new Color3(1, 1, 1);
+    hotMat.diffuseColor = new Color3(0, 0, 0);
+    hotMat.specularColor = new Color3(0, 0, 0);
+    hotMat.disableLighting = true;
+    hotMat.alphaMode = Constants.ALPHA_ADD;
+    hotMat.disableDepthWrite = true;
+    hotMat.backFaceCulling = false;
+    this.burstHotProto = MeshBuilder.CreateSphere("burstHot", { diameter: 1, segments: 8 }, scene);
+    this.burstHotProto.material = hotMat;
+    this.burstHotProto.isPickable = false;
+    this.burstHotProto.setEnabled(false);
 
     const ringMat = new StandardMaterial("burstRingMat", scene);
     ringMat.emissiveColor = new Color3(1, 0.42, 0.1);
@@ -212,24 +244,28 @@ export class NetMobs {
     if (this.bursts.length >= 10) {
       const old = this.bursts.shift();
       old?.flash.dispose(false, true);
+      old?.hot.dispose(false, true);
       old?.ring.dispose(false, true);
       for (const s of old?.sparks ?? []) s.mesh.dispose(false, true);
     }
     const n = this.burstSeq++;
     const flash = this.burstFlashProto.clone(`burstF_${n}`);
+    const hot = this.burstHotProto.clone(`burstH_${n}`);
     const ring = this.burstRingProto.clone(`burstR_${n}`);
     // Материал общий (клон материала клонировал и текстуру, а сеттер hasAlpha
     // на свежей текстуре дёргал markAllMaterialsAsDirty каждый разрыв снаряда —
     // это роняло кадр в VR). Индивидуальное затухание — через mesh.visibility.
     flash.setEnabled(true);
+    hot.setEnabled(true);
     ring.setEnabled(true);
     flash.position.copyFrom(pos);
+    hot.position.copyFrom(pos);
     ring.position.copyFrom(pos);
     // Искры — только на реальном попадании (угасший в воздухе снаряд бьёт тише,
     // без разлёта углей). Разлетаются в случайных направлениях "вверх-в стороны".
     const sparks: Spark[] = [];
     if (hit) {
-      const count = 7;
+      const count = 9;
       for (let i = 0; i < count; i++) {
         const s = this.burstSparkProto.clone(`burstS_${n}_${i}`);
         s.setEnabled(true);
@@ -243,6 +279,7 @@ export class NetMobs {
     }
     this.bursts.push({
       flash,
+      hot,
       ring,
       sparks,
       pos: pos.clone(),
@@ -262,16 +299,23 @@ export class NetMobs {
       const f = b.age / b.life;
       if (f >= 1) {
         b.flash.dispose(false, true);
+        b.hot.dispose(false, true);
         b.ring.dispose(false, true);
         for (const s of b.sparks) s.mesh.dispose(false, true);
         this.bursts.splice(i, 1);
         continue;
       }
       const fade = 1 - f;
-      // Ядро: мгновенно раздувается, держится, затем гаснет.
+      // Ядро (градиентный билборд): мгновенно раздувается, держится, гаснет.
       const flashScale = b.peak * (0.55 + 0.45 * Math.min(1, f * 4)) * (0.55 + 0.45 * fade);
       b.flash.scaling.setAll(flashScale);
       b.flash.visibility = Math.min(1, fade * 1.7);
+      if (cam) b.flash.lookAt(cam.globalPosition);
+      // Ослепительное ядро — очень короткая вспышка в первый момент попадания,
+      // гаснет гораздо быстрее самого ядра (тот самый "хлоп").
+      const hotFade = Math.max(0, 1 - f * 5);
+      b.hot.scaling.setAll(b.peak * 0.5 * (0.7 + 0.3 * hotFade));
+      b.hot.visibility = hotFade;
       // Кольцо: расходится наружу и истончается.
       const ringScale = b.peak * (0.4 + 2.6 * f);
       b.ring.scaling.setAll(ringScale);
@@ -527,6 +571,7 @@ export class NetMobs {
     }
     for (const b of this.bursts.values()) {
       b.flash.dispose(false, true);
+      b.hot.dispose(false, true);
       b.ring.dispose(false, true);
       for (const s of b.sparks) s.mesh.dispose(false, true);
     }
