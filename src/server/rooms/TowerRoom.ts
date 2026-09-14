@@ -104,6 +104,11 @@ export interface TowerSnapshot {
   heroSwordHit: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
   heroRangedPulse: boolean;
+  /** Каким оружием бьёт герой — клиент рисует летящий снаряд только для посоха. */
+  heroWeaponKind: "sword" | "fist" | "bow" | "staff";
+  /** Локальные координаты цели В МОМЕНТ выстрела — снаряд летит именно туда. */
+  heroRangedTargetX: number;
+  heroRangedTargetZ: number;
   /** Звук/FX по герою за этот тик — попал/заблокировал/увернулся (см. ZoneRoom.hurtPlayer). */
   heroHitFx: { k: "hurt" | "blockShield" | "blockSword" | "dodge"; x: number; z: number }[];
   /**
@@ -222,6 +227,9 @@ export class TowerRoom extends Room<TowerState> {
   private heroAtkSpeed = 1;
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
   private heroRangedPulse = false;
+  /** Локальные координаты цели в момент дальнего выстрела героя (см. heroRangedPulse). */
+  private heroRangedTargetX = 0;
+  private heroRangedTargetZ = 0;
   /** Крит/скиллы за этот тик — та же идея, что heroHitFx, см. TowerSnapshot.heroSkillFx. */
   private heroSkillFx: TowerSnapshot["heroSkillFx"] = [];
   /** Воин — «Оглушающий удар» (см. BOT.stun*): кулдаун и текущий замах (0 — не кастует). */
@@ -368,6 +376,8 @@ export class TowerRoom extends Room<TowerState> {
             this.heroAtkCd =
               (this.heroWeaponKind === "bow" ? BOT.bowCooldown : BOT.staffCooldown) / this.heroAtkSpeed;
             this.heroRangedPulse = true;
+            this.heroRangedTargetX = target.x;
+            this.heroRangedTargetZ = target.z;
             // Крит — только у лука (см. rollCritMult: kind!=="arrow" => 1), как
             // и в основном мире. У посоха вместо этого — АОЕ (см. heroAttack).
             let critM = 1;
@@ -827,6 +837,9 @@ export class TowerRoom extends Room<TowerState> {
       heroAtkPulse: this.heroAtkPulse,
       heroSwordHit: this.heroSwordHit,
       heroRangedPulse: this.heroRangedPulse,
+      heroWeaponKind: this.heroWeaponKind,
+      heroRangedTargetX: this.heroRangedTargetX,
+      heroRangedTargetZ: this.heroRangedTargetZ,
       heroHitFx: this.heroHitFx,
       heroSkillFx: this.heroSkillFx,
       mobs: [

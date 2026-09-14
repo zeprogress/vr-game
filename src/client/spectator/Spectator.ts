@@ -77,6 +77,8 @@ export class Spectator {
   private readonly towerFx: TowerArenaFx;
   /** Живые позиции мобов текущего забега (мировые координаты) — с сервера. */
   private _towerMobs: TowerLiveMob[] = [];
+  /** Дальний выстрел героя (лук/посох) за этот тик — снаряд рисуется только для посоха. */
+  private _towerHeroRanged = { pulse: false, weaponKind: "fist", targetX: 0, targetZ: 0 };
   /** Статус текущего забега башни для оверлея (этаж/мобы/босс) — с сервера. */
   private _towerStatus: OverlayCtx["towerStatus"] = null;
   /**
@@ -390,7 +392,15 @@ export class Spectator {
     net.onDmgHits = (msg) => {
       for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
     };
-    net.onTowerMobs = (msg) => { this._towerMobs = msg.mobs; };
+    net.onTowerMobs = (msg) => {
+      this._towerMobs = msg.mobs;
+      this._towerHeroRanged = {
+        pulse: msg.heroRangedPulse,
+        weaponKind: msg.heroWeaponKind,
+        targetX: msg.heroTargetX,
+        targetZ: msg.heroTargetZ,
+      };
+    };
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
@@ -720,6 +730,7 @@ export class Spectator {
         towerHeroX,
         towerHeroY,
         towerHeroZ,
+        this._towerHeroRanged,
       );
 
       st.mobs.forEach((m, id) => {

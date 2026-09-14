@@ -202,6 +202,12 @@ export interface TowerMobsMsg {
     ranged: boolean;
     burning: boolean;
   }[];
+  /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
+  heroRangedPulse: boolean;
+  heroWeaponKind: "sword" | "fist" | "bow" | "staff";
+  /** Куда именно летел выстрел — мировые координаты цели в момент выстрела. */
+  heroTargetX: number;
+  heroTargetZ: number;
 }
 
 /** Команды дашборда стрима (этап 17 Ф5). */

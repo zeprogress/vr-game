@@ -2079,6 +2079,10 @@ export class ZoneRoom extends Room<ZoneState> {
         ranged: m.ranged,
         burning: m.burning,
       })),
+      heroRangedPulse: s.heroRangedPulse,
+      heroWeaponKind: s.heroWeaponKind,
+      heroTargetX: TOWER_HIDE.x + s.heroRangedTargetX,
+      heroTargetZ: TOWER_HIDE.z + s.heroRangedTargetZ,
     } satisfies TowerMobsMsg);
   }
 
