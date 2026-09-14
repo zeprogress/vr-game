@@ -329,9 +329,12 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   // Голем-крушитель: тяжёлый ближний боец 26 ур., ходит стаей. Пока цел —
   // обычный медленный громила; ниже 40% HP впадает в ярость (см. Mob.enrageAt
-  // в ZoneSim.ts) — быстрее и больнее бьёт, как босс (BOSS.rage*).
+  // в ZoneSim.ts) — быстрее и больнее бьёт, как босс (BOSS.rage*). Модель —
+  // Yeti (крупный громила из стиля "Big" пака, тот же, что и на 8 этаже
+  // башни — Goleling оказался мелким летающим существом из стиля "Flying",
+  // на голема совсем не похож).
   golem: {
-    model: "monGoleling", name: "Голем-крушитель", level: 26, kind: "slime",
+    model: "monYeti", name: "Голем-крушитель", level: 26, kind: "slime",
     hp: 950, dmgMul: 4.5, xp: 260, scaleMul: 1.7, tint: null,
     enrageAt: 0.4,
   },
@@ -378,9 +381,9 @@ export const MOB_CAMPS: {
   { x: -35, z: 13, type: "spikyBlob", count: 5, spread: 6 }, // ~71 м, ур.6
   { x: -25, z: 30, type: "frog", count: 4, spread: 5 }, // ~90 м, ур.7
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
-  { x: 73, z: -73, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, ~135 м, ур.15
+  { x: 80, z: -80, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, у самого края, ур.15
   { x: -74, z: 74, type: "ruinMage", count: 4, spread: 7 }, // СЗ угол (свободный), ~185 м, ур.20
-  { x: 78, z: -83, type: "golem", count: 8, spread: 6 }, // ЮВ угол, ещё дальше орков, ур.26
+  { x: -13, z: -80, type: "golem", count: 8, spread: 8 }, // рядом с пчёлами (-13,-69), ур.26
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

@@ -45,7 +45,6 @@ export const MODELS = {
   monOrc: "/models/monsters/Orc.gltf",
   monMushKing: "/models/monsters/MushroomKing.gltf",
   monWizard: "/models/monsters/Wizard.gltf",
-  monGoleling: "/models/monsters/Goleling_Evolved.gltf",
   // Охотничья башня (фаза E): по одной модели на этаж 1-19 + супербосс на
   // 20-м — те же Quaternius Ultimate Monsters, ранее не задействованные.
   monAlien: "/models/monsters/Alien.gltf",
