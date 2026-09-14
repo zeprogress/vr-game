@@ -127,9 +127,17 @@ interface Projectile {
 }
 
 /** Вспышка попадания снаряда — ядро+кольцо, расширяются и гаснут, как огнешар в основном мире. */
+interface ImpactSpark {
+  mesh: Mesh;
+  dir: Vector3;
+  speed: number;
+}
+
 interface ImpactBurst {
   mesh: Mesh;
   ring: Mesh;
+  sparks: ImpactSpark[];
+  pos: Vector3;
   age: number;
   life: number;
 }
@@ -207,6 +215,7 @@ export class TowerArenaFx {
   private bursts: ImpactBurst[] = [];
   private burstMat: StandardMaterial | null = null;
   private burstRingMat: StandardMaterial | null = null;
+  private burstSparkMat: StandardMaterial | null = null;
   /** Высота стен текущей арены — нужна прожектору, чтобы пересчитать позицию live (тюнер). */
   private arenaH = 0;
   /** "Родные" emissiveColor мобов (recolorMonster) — чтобы тюнер мог их живо гасить/включать. */
@@ -980,7 +989,34 @@ export class TowerArenaFx {
     ring.parent = this.root;
     ring.position.copyFrom(pos);
     ring.scaling.setAll(0.1);
-    this.bursts.push({ mesh, ring, age: 0, life: 0.4 });
+    if (!this.burstSparkMat) {
+      this.burstSparkMat = new StandardMaterial("towerBurstSparkMat", this.scene);
+      this.burstSparkMat.disableLighting = true;
+      this.burstSparkMat.diffuseColor = new Color3(0, 0, 0);
+      this.burstSparkMat.specularColor = new Color3(0, 0, 0);
+      this.burstSparkMat.emissiveColor = new Color3(1, 0.85, 0.4);
+      this.burstSparkMat.alphaMode = Constants.ALPHA_ADD;
+      this.burstSparkMat.disableDepthWrite = true;
+      this.burstSparkMat.backFaceCulling = false;
+    }
+    // Искры-угольки — та же добавка, что и у огнешара на поляне (см.
+    // MobSystem.spawnBurst): без них раздувающийся шар+кольцо читался
+    // слишком гладко, "почти не менялся" на глаз.
+    const sparks: ImpactSpark[] = [];
+    for (let i = 0; i < 7; i++) {
+      const s = MeshBuilder.CreatePlane("towerBurstSpark", { size: 1 }, this.scene);
+      s.material = this.burstSparkMat;
+      s.isPickable = false;
+      s.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      s.parent = this.root;
+      s.position.copyFrom(pos);
+      sparks.push({
+        mesh: s,
+        dir: new Vector3(Math.random() - 0.5, Math.random() * 0.9 + 0.1, Math.random() - 0.5).normalize(),
+        speed: 2.2 + Math.random() * 2.6,
+      });
+    }
+    this.bursts.push({ mesh, ring, sparks, pos: pos.clone(), age: 0, life: 0.4 });
     const world = pos.add(this.root.position);
     this.sfx.at({ x: world.x, y: world.y, z: world.z }, () => this.sfx.fireBurst(undefined, 0.7));
   }
@@ -993,6 +1029,7 @@ export class TowerArenaFx {
       if (f >= 1) {
         b.mesh.dispose();
         b.ring.dispose();
+        for (const s of b.sparks) s.mesh.dispose();
         this.bursts.splice(i, 1);
         continue;
       }
@@ -1005,6 +1042,16 @@ export class TowerArenaFx {
       // Кольцо: расходится наружу и истончается — та же формула, что на поляне.
       b.ring.scaling.setAll(0.3 + 2.6 * f);
       b.ring.visibility = fade * 0.85;
+      // Искры: летят наружу по прямой, чуть тормозя "гравитацией".
+      for (const s of b.sparks) {
+        const dist = s.speed * b.age * (1 - 0.5 * f);
+        s.mesh.position.copyFrom(b.pos);
+        s.mesh.position.x += s.dir.x * dist;
+        s.mesh.position.y += s.dir.y * dist - 1.4 * b.age * b.age;
+        s.mesh.position.z += s.dir.z * dist;
+        s.mesh.scaling.setAll(0.16 * fade);
+        s.mesh.visibility = fade;
+      }
     }
   }
 
@@ -1171,12 +1218,14 @@ export class TowerArenaFx {
     for (const b of this.bursts) {
       b.mesh.dispose();
       b.ring.dispose();
+      for (const s of b.sparks) s.mesh.dispose();
     }
     this.bursts.length = 0;
     this.coreMat?.dispose();
     this.glowMat?.dispose();
     this.burstMat?.dispose();
     this.burstRingMat?.dispose();
+    this.burstSparkMat?.dispose();
     for (const t of this.texCache.values()) t.dispose();
     this.texCache.clear();
     this.labelTex.dispose();

@@ -227,6 +227,7 @@ export class RemoteAvatar implements Hittable {
   private lastHitAt = -999;
   private nick: string;
   private level = 0; // 0 — ещё не знаем (первый push всегда перерисует плашку бота)
+  private hasUnspent = false;
   private swingAt = -999;
   /** Сообщить серверу о попадании по этому игроку. Ставит Game (только PvP). */
   onHit: ((weapon: WeaponKind, dir: Vector3) => void) | null = null;
@@ -461,11 +462,14 @@ export class RemoteAvatar implements Hittable {
     this.skin = p.skin ?? 0;
     // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
     // ним рисуем только ботам — как и раньше.
-    const tagChanged = this.isBot && (p.level !== this.level || this.nick !== p.nick);
+    const unspent = p.unspent > 0;
+    const tagChanged =
+      this.isBot && (p.level !== this.level || this.nick !== p.nick || unspent !== this.hasUnspent);
     this.level = p.level;
+    this.hasUnspent = unspent;
     if (tagChanged) {
       this.nick = p.nick;
-      this.nameTag.setInfo(p.nick, p.level);
+      this.nameTag.setInfo(p.nick, p.level, unspent);
     }
     if (this.isBot) {
       this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));

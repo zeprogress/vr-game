@@ -755,10 +755,13 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastCast = this.elapsed;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
-      const boltDmg =
-        fireboltDamage(p.level, p.int, charge) * this.buffMult(client.sessionId, "dmg");
-      // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара.
+      // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара, плюс сам
+      // выстрел чуть больнее (AFFIX.storm.dmgMul).
       const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left") === "storm";
+      const boltDmg =
+        fireboltDamage(p.level, p.int, charge) *
+        (storm ? AFFIX.storm.dmgMul : 1) *
+        this.buffMult(client.sessionId, "dmg");
       const splRad = fireboltSplashRadius(charge) * (storm ? AFFIX.storm.splashRadiusMul : 1);
       const splFrac = MAGIC.firebolt.splashFraction * (storm ? AFFIX.storm.splashFracMul : 1);
       this.sim.castBolt(
@@ -3231,8 +3234,12 @@ export class ZoneRoom extends Room<ZoneState> {
         // По летающим — чуть больнее: их сложнее достать ближнику, магу это
         // компенсирует (по просьбе).
         const flyingMul = tgt.flying ? 1.25 : 1;
-        const bd = fireboltDamage(p.level, p.int, 0.7) * flyingMul * this.buffMult(bot.id, "dmg");
         const s = botAffix === "storm";
+        const bd =
+          fireboltDamage(p.level, p.int, 0.7) *
+          flyingMul *
+          (s ? AFFIX.storm.dmgMul : 1) *
+          this.buffMult(bot.id, "dmg");
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),

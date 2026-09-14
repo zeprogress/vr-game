@@ -502,8 +502,8 @@ export const AFFIX = {
   crit: { chanceBonus: 0.25 },
   /** Щит: сквозь блок проходит меньше урона (Эгида блокирует 60%) + шире сектор (рад). */
   guard: { blockedDamage: 0.4, coneBonus: 0.25 },
-  /** Посох: множители радиуса и доли АОЕ огнешара. */
-  storm: { splashRadiusMul: 1.6, splashFracMul: 1.5 },
+  /** Посох: множители радиуса и доли АОЕ огнешара + прямого урона выстрела. */
+  storm: { splashRadiusMul: 1.6, splashFracMul: 1.5, dmgMul: 1.2 },
 } as const;
 
 export const SHIELD = {

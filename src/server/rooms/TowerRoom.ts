@@ -281,8 +281,11 @@ export class TowerRoom extends Room<TowerState> {
       (options.rightCls === "shield" && options.rightTier === "legendary");
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = options.leftCls === "";
-    this.heroFireAffix =
-      weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier) === "fire";
+    const rightAffix = weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier);
+    this.heroFireAffix = rightAffix === "fire";
+    // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
+    // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
+    if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
     this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
     this.heroMeleeSpeed = meleeSpeedFor(options.level, options.agi);
     const heroMaxHp = maxHpFor(options.level, options.str);

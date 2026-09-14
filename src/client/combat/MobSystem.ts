@@ -43,10 +43,18 @@ interface BoltView {
   arrow?: Mesh;
 }
 
+/** Одна искра-уголёк, разлетающаяся из эпицентра взрыва (см. Burst.sparks). */
+interface Spark {
+  mesh: Mesh;
+  dir: Vector3;
+  speed: number;
+}
+
 /** Вспышка на месте разрыва снаряда: раздувается и гаснет. */
 interface Burst {
   flash: Mesh;
   ring: Mesh;
+  sparks: Spark[];
   pos: Vector3;
   age: number;
   life: number;
@@ -72,6 +80,7 @@ export class NetMobs {
   boltViewScale = 1;
   private readonly burstFlashProto: Mesh;
   private readonly burstRingProto: Mesh;
+  private readonly burstSparkProto: Mesh;
   private readonly bursts: Burst[] = [];
   private burstSeq = 0;
   /** Ночная подсветка от огнешара — позиция и сила. Обновляется в update(). */
@@ -180,6 +189,22 @@ export class NetMobs {
     this.burstRingProto.material = ringMat;
     this.burstRingProto.isPickable = false;
     this.burstRingProto.setEnabled(false);
+
+    // Искры-угольки: маленькие яркие квадратики, разлетающиеся из эпицентра —
+    // без них раздувающийся шар+кольцо читался слишком гладко и "не заметно
+    // менялся" на глаз (было лишь чуть крупнее). Общий материал на все искры.
+    const sparkMat = new StandardMaterial("burstSparkMat", scene);
+    sparkMat.emissiveColor = new Color3(1, 0.85, 0.4);
+    sparkMat.diffuseColor = new Color3(0, 0, 0);
+    sparkMat.specularColor = new Color3(0, 0, 0);
+    sparkMat.disableLighting = true;
+    sparkMat.alphaMode = Constants.ALPHA_ADD;
+    sparkMat.disableDepthWrite = true;
+    sparkMat.backFaceCulling = false;
+    this.burstSparkProto = MeshBuilder.CreatePlane("burstSpark", { size: 1 }, scene);
+    this.burstSparkProto.material = sparkMat;
+    this.burstSparkProto.isPickable = false;
+    this.burstSparkProto.setEnabled(false);
   }
 
   /** Разрыв снаряда: `hit` — попал по цели (ярче, со звуком), иначе — угас. */
@@ -188,6 +213,7 @@ export class NetMobs {
       const old = this.bursts.shift();
       old?.flash.dispose(false, true);
       old?.ring.dispose(false, true);
+      for (const s of old?.sparks ?? []) s.mesh.dispose(false, true);
     }
     const n = this.burstSeq++;
     const flash = this.burstFlashProto.clone(`burstF_${n}`);
@@ -199,9 +225,26 @@ export class NetMobs {
     ring.setEnabled(true);
     flash.position.copyFrom(pos);
     ring.position.copyFrom(pos);
+    // Искры — только на реальном попадании (угасший в воздухе снаряд бьёт тише,
+    // без разлёта углей). Разлетаются в случайных направлениях "вверх-в стороны".
+    const sparks: Spark[] = [];
+    if (hit) {
+      const count = 7;
+      for (let i = 0; i < count; i++) {
+        const s = this.burstSparkProto.clone(`burstS_${n}_${i}`);
+        s.setEnabled(true);
+        s.position.copyFrom(pos);
+        sparks.push({
+          mesh: s,
+          dir: new Vector3(Math.random() - 0.5, Math.random() * 0.9 + 0.1, Math.random() - 0.5).normalize(),
+          speed: 2.2 + Math.random() * 2.6,
+        });
+      }
+    }
     this.bursts.push({
       flash,
       ring,
+      sparks,
       pos: pos.clone(),
       age: 0,
       life: hit ? 0.6 : 0.28,
@@ -220,6 +263,7 @@ export class NetMobs {
       if (f >= 1) {
         b.flash.dispose(false, true);
         b.ring.dispose(false, true);
+        for (const s of b.sparks) s.mesh.dispose(false, true);
         this.bursts.splice(i, 1);
         continue;
       }
@@ -233,6 +277,17 @@ export class NetMobs {
       b.ring.scaling.setAll(ringScale);
       b.ring.visibility = fade * 0.8;
       if (cam) b.ring.lookAt(cam.globalPosition);
+      // Искры: летят наружу по прямой, чуть тормозя гравитацией, гаснут к концу жизни.
+      for (const s of b.sparks) {
+        const dist = s.speed * b.age * (1 - 0.5 * f);
+        s.mesh.position.copyFrom(b.pos);
+        s.mesh.position.x += s.dir.x * dist;
+        s.mesh.position.y += s.dir.y * dist - 1.4 * b.age * b.age; // лёгкое падение
+        s.mesh.position.z += s.dir.z * dist;
+        s.mesh.scaling.setAll(b.peak * 0.16 * fade);
+        s.mesh.visibility = fade;
+        if (cam) s.mesh.lookAt(cam.globalPosition);
+      }
     }
   }
 
@@ -473,6 +528,7 @@ export class NetMobs {
     for (const b of this.bursts.values()) {
       b.flash.dispose(false, true);
       b.ring.dispose(false, true);
+      for (const s of b.sparks) s.mesh.dispose(false, true);
     }
     this.bursts.length = 0;
     this.mobs.clear();

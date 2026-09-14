@@ -35,6 +35,7 @@ export class NameTag {
   private readonly accent: Color3;
   private curName = "";
   private curLevel: number | null = null;
+  private curUnspent = false;
 
   /** Полоска здоровья под ником (создаётся по требованию через showHp). */
   private hpBg: Mesh | null = null;
@@ -108,15 +109,21 @@ export class NameTag {
     this.halfH = height / 2;
   }
 
-  /** Перерисовать содержимое плашки (имя / уровень меняются на лету). */
-  setInfo(name: string, level: number | null): void {
-    if (name === this.curName && level === this.curLevel) return;
-    this.paint(name, level);
+  /**
+   * Перерисовать содержимое плашки (имя / уровень меняются на лету).
+   * `hasUnspent` — есть неизрасходованные очки атрибутов (PlayerState.unspent
+   * > 0): красный "!" рядом с уровнем — сигнал зрителю/чату, что боту нужно
+   * раздать статы (`!str`/`!dex`/`!int`).
+   */
+  setInfo(name: string, level: number | null, hasUnspent = false): void {
+    if (name === this.curName && level === this.curLevel && hasUnspent === this.curUnspent) return;
+    this.paint(name, level, hasUnspent);
   }
 
-  private paint(name: string, level: number | null): void {
+  private paint(name: string, level: number | null, hasUnspent = false): void {
     this.curName = name;
     this.curLevel = level;
+    this.curUnspent = hasUnspent;
     const W = this.W;
     const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
     ctx.clearRect(0, 0, W, H);
@@ -141,7 +148,19 @@ export class NameTag {
       const a = this.accent;
       ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
       ctx.font = LVL_FONT;
-      ctx.fillText(`${level} ур.`, W / 2, H / 2 + 42);
+      const lvlY = H / 2 + 42;
+      const lvlText = `${level} ур.`;
+      ctx.fillText(lvlText, W / 2, lvlY);
+      if (hasUnspent) {
+        // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал
+        // бы текст уровня туда-сюда каждый раз, когда очки появляются/тратятся).
+        const lvlW = ctx.measureText(lvlText).width;
+        ctx.fillStyle = "#ff3b30";
+        ctx.font = "bold 40px system-ui, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("!", W / 2 + lvlW / 2 + 10, lvlY + 1);
+        ctx.textAlign = "center";
+      }
     }
     this.tex.update(true);
   }
