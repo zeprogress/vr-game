@@ -588,6 +588,12 @@ export class TowerRoom extends Room<TowerState> {
     if (target.hp > 0) return;
     if (target === this.boss) {
       this.towerShards++;
+      // Снапшот ЭТОГО тика (решающий удар — heroRangedPulse/heroSwordHit/
+      // heroSkillFx и т.п.) — ДО advanceFloor()/spawnFloor(), которые тут же
+      // сбрасывают эти самые флаги под чистый старт нового этажа. Без этого
+      // клиент никогда не видел вспышку/снаряд ИМЕННО добивающего удара по
+      // боссу — ровно тот случай, что не решил более ранний фикс early-return.
+      this.emitSnapshot();
       this.advanceFloor();
       return;
     }
