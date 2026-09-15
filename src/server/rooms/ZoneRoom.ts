@@ -2516,11 +2516,11 @@ export class ZoneRoom extends Room<ZoneState> {
           ? " [в руке]"
           : "";
       const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
-      return `${i + 1}) ${weaponDef(w.cls, w.tier).name} (${w.tier}, id ${w.id}) — ${affixes}${equipped}`;
+      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${w.tier} — ${affixes}${equipped}`;
     });
     const more = t.rt.weapons.length > 8 ? ` …и ещё ${t.rt.weapons.length - 8}` : "";
     this.reply(
-      `@${nick} склад: ${lines.join(" | ")}${more} — !equip <номер>, !scrap <номер> — на лом.`,
+      `@${nick} склад: ${lines.join(" | ")}${more} — !equip/!scrap <номер>.`,
     );
   }
 
