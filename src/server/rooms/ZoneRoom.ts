@@ -948,6 +948,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.takeDrop(d.id);
       rt.owned.add(weaponKey(w.cls, w.tier)); // право пользоваться этим уровнем
       if (d.instance) rt.weapons.push(d.instance); // конкретный раскатанный инстанс — в склад
+      this.announcePickup(p.nick, w.cls, w.tier, d.instance);
       this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
       // Соседям — анимация подбора на модельке (PickUp).
       const relay: ActRelay = { k: "pickup", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z };
@@ -2402,6 +2403,22 @@ export class ZoneRoom extends Room<ZoneState> {
     return true;
   }
 
+  /**
+   * Объявление в чат о подобранном золотом/легендарном оружии — с роллами,
+   * если они есть. База не объявляем (не редкость, и не дропается вообще).
+   */
+  private announcePickup(
+    nick: string,
+    cls: WeaponClass,
+    tier: WeaponTier,
+    instance?: WeaponInstance,
+  ): void {
+    if (tier === "base") return;
+    const name = weaponDef(cls, tier).name;
+    const affixes = instance?.affixes.length ? instance.affixes.map(affixLabel).join(", ") : "без роллов";
+    this.reply(`${nick} подобрал ${name} (${tier}) — ${affixes}`);
+  }
+
   /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для "!weapons"/"!equip". */
   private findWeaponsTarget(norm: string): { id: string; p: PlayerState; rt: Runtime } | null {
     const bot = this.bots.get(norm);
@@ -3585,6 +3602,7 @@ export class ZoneRoom extends Room<ZoneState> {
           bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
           if (loot.instance) bot.rt.weapons.push(loot.instance);
           this.persistBot(bot);
+          this.announcePickup(bot.nick, lw.cls, lw.tier, loot.instance);
           console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}${upgrade ? "" : " (в склад)"}`);
           took = true;
         } else {
