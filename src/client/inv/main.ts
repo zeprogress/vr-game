@@ -80,7 +80,7 @@ function renderInv(msg: InvMsg): void {
               `<div class="weapon ${w.tier}">` +
               `<div><div class="name">${w.num}) ${escapeHtml(w.name)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              `</div><div class="meta">${w.tier}<br>id ${w.id}</div>` +
+              `</div><div class="meta">${w.tier}</div>` +
               `</div>`
             );
           })

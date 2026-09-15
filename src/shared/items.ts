@@ -225,9 +225,9 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
   // Легендарки с него больше не падают — только с события «Охота на элиту».
   boss: [
     { id: "potion", chance: 1, min: 2, max: 3 },
-    { id: "gold_sword", chance: 0.16, min: 1, max: 1 },
-    { id: "gold_bow", chance: 0.16, min: 1, max: 1 },
-    { id: "gold_staff", chance: 0.16, min: 1, max: 1 },
+    { id: "gold_sword", chance: 0.1, min: 1, max: 1 },
+    { id: "gold_bow", chance: 0.1, min: 1, max: 1 },
+    { id: "gold_staff", chance: 0.1, min: 1, max: 1 },
   ],
   shard: [],
 };

@@ -3103,7 +3103,10 @@ export class ZoneRoom extends Room<ZoneState> {
       overrides: {},
       skin: p.skin,
       ...readProgress(p),
-      bag: [],
+      // Раньше тут всегда было [] — у бота при каждом persistBot() (подбор,
+      // трата очка и т.п.) стирался весь бэг, включая "Лом" от !scrap: ресурс
+      // фактически не переживал следующее же случайное событие.
+      bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: bot.rt.kills,
       weapons: bot.rt.weapons,
       equippedWeaponId: bot.rt.equippedWeaponId,

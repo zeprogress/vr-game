@@ -84,10 +84,10 @@ export function floorMobAtkIntervalSec(floor: number): number {
 /**
  * Шанс дропа оружия с этажного босса — растёт с этажом (последний, TOWER.floors,
  * обрабатывается отдельно как гарантированный — см. вызывающий код в TowerRoom).
- * Этаж 1 ≈ 5%, этаж 10 ≈ 45.5%, этаж 19 ≈ 86%.
+ * Этаж 1 ≈ 3%, этаж 10 ≈ 30%, этаж 19 ≈ 57%.
  */
 export function towerWeaponChance(floor: number): number {
-  return Math.min(0.9, 0.05 + 0.045 * (floor - 1));
+  return Math.min(0.7, 0.03 + 0.03 * (floor - 1));
 }
 
 /**
