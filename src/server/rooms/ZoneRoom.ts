@@ -111,6 +111,7 @@ import {
   isWeaponClass,
   isWeaponTier,
   ITEMS,
+  scrapValue,
   takeOne,
   weaponAffix,
   weaponDef,
@@ -2267,6 +2268,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sayWeapons(nick, norm);
     } else if (cmd === "!equip" || cmd === "!надеть") {
       this.equipWeapon(nick, norm, parts[1]);
+    } else if (cmd === "!scrap" || cmd === "!разобрать") {
+      this.scrapWeapon(nick, norm, parts[1]);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
     } else if (cmd === "!cheer" || cmd === "!defeat") {
@@ -2431,10 +2434,19 @@ export class ZoneRoom extends Room<ZoneState> {
       return `${i + 1}) ${weaponDef(w.cls, w.tier).name} (${w.tier}, id ${w.id}) — ${affixes}${equipped}`;
     });
     const more = t.rt.weapons.length > 8 ? ` …и ещё ${t.rt.weapons.length - 8}` : "";
-    this.reply(`@${nick} склад: ${lines.join(" | ")}${more} — !equip <номер>`);
+    this.reply(
+      `@${nick} склад: ${lines.join(" | ")}${more} — !equip <номер>, !scrap <номер> — на лом.`,
+    );
   }
 
   /** `!equip <номер|id>` — вручную закрепить конкретный собранный инстанс в руке. */
+  /** Номер (1-based, как в "!weapons") или id → конкретный инстанс из склада. */
+  private resolveWeaponArg(rt: Runtime, arg: string): WeaponInstance | null {
+    const n = Number(arg);
+    if (Number.isInteger(n) && n >= 1 && n <= rt.weapons.length) return rt.weapons[n - 1];
+    return rt.weapons.find((x) => x.id === arg) ?? null;
+  }
+
   private equipWeapon(nick: string, norm: string, arg: string | undefined): void {
     const t = this.findWeaponsTarget(norm);
     if (!t) {
@@ -2445,11 +2457,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} укажи номер или id: !equip 2 (список — !weapons).`);
       return;
     }
-    const n = Number(arg);
-    const w =
-      Number.isInteger(n) && n >= 1 && n <= t.rt.weapons.length
-        ? t.rt.weapons[n - 1]
-        : (t.rt.weapons.find((x) => x.id === arg) ?? null);
+    const w = this.resolveWeaponArg(t.rt, arg);
     if (!w) {
       this.reply(`@${nick} нет такого предмета — список: !weapons.`);
       return;
@@ -2477,6 +2485,49 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
     this.reply(`@${nick} надел ${weaponDef(w.cls, w.tier).name} — ${affixes}`);
+  }
+
+  /** `!scrap <номер|id>` — навсегда разобрать инстанс оружия на "Лом" (задел под крафт). */
+  private scrapWeapon(nick: string, norm: string, arg: string | undefined): void {
+    const t = this.findWeaponsTarget(norm);
+    if (!t) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (!arg) {
+      this.reply(`@${nick} укажи номер или id: !scrap 2 (список — !weapons).`);
+      return;
+    }
+    const w = this.resolveWeaponArg(t.rt, arg);
+    if (!w) {
+      this.reply(`@${nick} нет такого предмета — список: !weapons.`);
+      return;
+    }
+    const { p, rt } = t;
+    const idx = rt.weapons.indexOf(w);
+    rt.weapons.splice(idx, 1);
+    // Разобрали то, что было надето — руки не остаются пустыми: правая
+    // сама переключается на голую базу того же класса, левая — на щит/пусто,
+    // как и при обычном подборе апгрейда.
+    if (rt.equippedWeaponId.left === w.id) {
+      rt.equippedWeaponId.left = null;
+      p.leftTier = "base";
+    }
+    if (rt.equippedWeaponId.right === w.id) {
+      rt.equippedWeaponId.right = null;
+      p.rightTier = "base";
+    }
+    const scrap = scrapValue(w);
+    const bag = readBag(p);
+    addToBag(bag, "scrap", scrap);
+    writeBag(p, bag);
+    const bot = this.bots.get(norm);
+    if (bot) this.persistBot(bot);
+    else {
+      const client = this.clientOf(t.id);
+      if (client) this.persist(client);
+    }
+    this.reply(`@${nick} разобрал ${weaponDef(w.cls, w.tier).name} — получено лома: ${scrap}`);
   }
 
   /** `!stats` — прогресс бота, а если его нет — что сделать, чтобы он был. */
@@ -2658,6 +2709,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
+        "!scrap <номер> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
         "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +

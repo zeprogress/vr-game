@@ -8,7 +8,8 @@ export type ItemId =
   | "leg_sword"
   | "leg_bow"
   | "leg_shield"
-  | "leg_staff";
+  | "leg_staff"
+  | "scrap";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -147,6 +148,16 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   leg_bow: weaponItem("bow", "legendary", "Лук охот.", "gold_bow.png"),
   leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
   leg_staff: weaponItem("staff", "legendary", "Посох бури", "gold_staff.png"),
+  scrap: {
+    name: "Лом оружия",
+    short: "Лом",
+    hint: "переработка оружия — задел под будущий крафт",
+    stack: 999,
+    heal: 0,
+    healFrac: 0,
+    tint: [0.55, 0.5, 0.45],
+    icon: "",
+  },
 };
 
 function weaponItem(
@@ -371,6 +382,12 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   let s = 0;
   for (const a of affixes) if (a.sub === sub) s += a.value;
   return s;
+}
+
+/** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
+export function scrapValue(w: WeaponInstance): number {
+  const base = w.tier === "legendary" ? 3 : w.tier === "gold" ? 1 : 0;
+  return base + w.affixes.length;
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
