@@ -903,9 +903,19 @@ export class Spectator {
     if (arm >= 0.03) parts.push(`броня ${Math.round(arm * 100)}%`);
     if (mres >= 0.05) parts.push(`маг.защ ${Math.round(mres * 100)}%`);
     parts.push(`${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с`);
-    // темп атаки — только если заметно выше базы
-    const spd = attackSpeedFor(p.level, p.agi);
-    if (spd >= 1.15) parts.push(`темп ×${spd.toFixed(2)}`);
+    // Ролл "скорость атаки" (см. items.ts affixLabel) — синкается текстом в
+    // leftAffix/rightAffix, тут вытаскиваем число обратно для темпа.
+    const affixText = cls && p.rightCls === cls ? p.rightAffix : p.leftAffix;
+    const bonusMatch = affixText?.match(/\+([\d.]+)% скорость атаки/);
+    const speedBonus = bonusMatch ? Number(bonusMatch[1]) / 100 : 0;
+    if (cls === "staff") {
+      // У посоха темп атаки рукой (от ловкости) магии не касается — каст
+      // на фиксированном кулдауне, ускоряет его только ролл на предмете.
+      if (speedBonus > 0) parts.push(`темп магии ×${(1 + speedBonus).toFixed(2)}`);
+    } else {
+      const spd = attackSpeedFor(p.level, p.agi) * (1 + speedBonus);
+      if (spd >= 1.15) parts.push(`темп ×${spd.toFixed(2)}`);
+    }
     return parts.join(" · ");
   }
 
