@@ -1,7 +1,6 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
-import { Schema } from "@colyseus/schema";
 
 import {
   affixLabel,
@@ -16,15 +15,6 @@ import { store } from "../store";
 interface InventoryJoinOptions {
   viewToken?: string;
 }
-
-/**
- * Пустая схема — Colyseus сериализует состояние комнаты клиенту сразу при
- * джойне, и без setState() (state === undefined) это падало с ошибкой
- * сервера (WS-код 4002, "закрыто с ошибкой") ДО того, как onJoin вообще
- * успевал что-то отправить. Данные шлём не через схему, а обычным
- * сообщением ("inv") — схема нужна только чтобы не было undefined.
- */
-class InventoryState extends Schema {}
 
 /** Название+роллы надетого в руке — null, если рука пуста/базовая. */
 function handInfo(
@@ -46,48 +36,65 @@ function handInfo(
  * путь, что и у обычного джойна в игру, только сюда шлём viewToken вместо
  * guestToken и сразу получаем данные ОДНИМ сообщением, без схемы/тика.
  */
-export class InventoryRoom extends colyseus.Room<InventoryState> {
+export class InventoryRoom extends colyseus.Room {
   override onCreate(): void {
     this.autoDispose = true;
-    this.setState(new InventoryState());
+    // Сознательно НЕ зовём setState(): пустая Schema ("class X extends Schema {}",
+    // без единого @type-поля) у @colyseus/schema в этой версии ломает рефлексию
+    // на клиенте ("v is not a constructor" при decode) — хуже, чем без неё.
+    // Без setState() комната остаётся на дефолтном NoneSerializer (id "none",
+    // getFullState()===null) — он и на клиенте, и на сервере уже зарегистрирован
+    // из коробки, посылать вообще нечего. Данные — только через client.send().
   }
 
   override onJoin(client: Client, options: InventoryJoinOptions): void {
-    const token = typeof options?.viewToken === "string" ? options.viewToken : "";
-    const rec = token ? store.entries().find((r) => r.viewToken === token) : undefined;
-    if (!rec) {
-      client.send("inv", { ok: false });
-      return;
+    try {
+      const token = typeof options?.viewToken === "string" ? options.viewToken : "";
+      const rec = token ? store.entries().find((r) => r.viewToken === token) : undefined;
+      if (!rec) {
+        client.send("inv", { ok: false });
+        return;
+      }
+      const weaponsList = rec.weapons ?? [];
+      const weapons = weaponsList.map((w) => ({
+        id: w.id,
+        tier: w.tier,
+        name: weaponDef(w.cls, w.tier).name,
+        affixes: w.affixes.map(affixLabel),
+        equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
+      }));
+      const misc = (rec.bag ?? [])
+        .filter((s) => s.item && s.count > 0)
+        .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
+      client.send("inv", {
+        ok: true,
+        nick: rec.nick,
+        hands: {
+          left: handInfo(
+            rec.held?.left?.cls ?? "",
+            rec.held?.left?.tier ?? "",
+            rec.equippedWeaponId?.left,
+            weaponsList,
+          ),
+          right: handInfo(
+            rec.held?.right?.cls ?? "",
+            rec.held?.right?.tier ?? "",
+            rec.equippedWeaponId?.right,
+            weaponsList,
+          ),
+        },
+        weapons,
+        misc,
+      });
+    } catch (e) {
+      // Пока не восстановлен SSH на прод — единственный способ увидеть причину
+      // падения на сервере: прислать её же клиенту, а не гадать по коду закрытия.
+      console.error("[inv] onJoin упал:", e);
+      try {
+        client.send("inv", { ok: false, error: String(e) });
+      } catch {
+        /* сокет уже мёртв — ничего не поделать */
+      }
     }
-    const weaponsList = rec.weapons ?? [];
-    const weapons = weaponsList.map((w) => ({
-      id: w.id,
-      tier: w.tier,
-      name: weaponDef(w.cls, w.tier).name,
-      affixes: w.affixes.map(affixLabel),
-      equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
-    }));
-    const misc = (rec.bag ?? [])
-      .filter((s) => s.item && s.count > 0)
-      .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
-    client.send("inv", {
-      ok: true,
-      nick: rec.nick,
-      hands: {
-        left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", rec.equippedWeaponId?.left, weaponsList),
-        right: handInfo(
-          rec.held?.right?.cls ?? "",
-          rec.held?.right?.tier ?? "",
-          rec.equippedWeaponId?.right,
-          weaponsList,
-        ),
-      },
-      weapons,
-      misc,
-    });
-    // Закрыть соединение должен сам клиент ПОСЛЕ того, как обработает
-    // сообщение (см. src/client/inv/main.ts) — закрытие отсюда синхронно
-    // с send() иногда обгоняло доставку и рвало сокет (code 4002) раньше,
-    // чем colyseus.js успевал разобрать входящее.
   }
 }

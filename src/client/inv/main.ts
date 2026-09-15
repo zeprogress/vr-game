@@ -24,6 +24,7 @@ interface InvMsg {
   hands?: { left: InvHand | null; right: InvHand | null };
   weapons?: InvWeapon[];
   misc?: InvMisc[];
+  error?: string;
 }
 
 const titleEl = document.getElementById("title")!;
@@ -52,7 +53,11 @@ function handHtml(label: string, h: InvHand | null): string {
 
 function renderInv(msg: InvMsg): void {
   if (!msg.ok) {
-    renderError("Ссылка недействительна — попроси новую командой !inv в чате.");
+    renderError(
+      msg.error
+        ? `Ошибка сервера: ${escapeHtml(msg.error)}`
+        : "Ссылка недействительна — попроси новую командой !inv в чате.",
+    );
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
