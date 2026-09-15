@@ -3195,22 +3195,19 @@ export class ZoneRoom extends Room<ZoneState> {
     // Приоритет: апгрейд оружия СВОЕГО класса (gold/legendary) > бутылка зелья
     // (пока в сумке меньше BOT.potions+2 — не тащимся через полкарты за лишней).
     const wantPotion = countPotions(p) < BOT.potions + 2;
+    // Апгрейд своего снаряжения — то, что бот реально наденет (не путать с
+    // "любое оружие берём в склад" ниже, см. okLoot).
+    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean =>
+      w.cls === "shield"
+        ? p.leftCls === "shield" && tierRank(w.tier) > tierRank(p.leftTier as WeaponTier)
+        : w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d) return false;
       const w = ITEMS[d.item].weapon;
-      if (w) {
-        // Легендарная «Эгида» — апгрейд ЛЕВОЙ руки (у кого щит есть).
-        if (w.cls === "shield") {
-          return (
-            w.tier === "legendary" &&
-            p.leftCls === "shield" &&
-            (p.leftTier as WeaponTier) !== "legendary"
-          );
-        }
-        // Оружие своего класса — берём, только если тир ВЫШЕ текущего.
-        return w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
-      }
+      // Любое оружие берём — своего класса наденем, чужого просто унесём
+      // в склад (!equip потом вручную, если сменит билд, или !scrap на лом).
+      if (w) return inZone(d.x, d.z);
       return (wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
     };
     if (!okLoot(loot)) {
@@ -3219,12 +3216,14 @@ export class ZoneRoom extends Room<ZoneState> {
       let bestScore = -Infinity;
       for (const d of this.sim.drops.values()) {
         if (!okLoot(d)) continue;
+        const w = ITEMS[d.item].weapon;
+        // Апгрейд своего класса бот готов забрать через полкарты; чужого
+        // класса — просто прибрать по пути, не делать ради него крюк.
+        const reach = w ? (isEquipUpgrade(w) ? BOT.lootRadius * 3 : BOT.lootRadius) : BOT.lootRadius;
         const dd = Math.hypot(d.x - p.head.x, d.z - p.head.z);
-        // За золотым оружием бот готов пробежать через полкарты (босс далеко).
-        const reach = ITEMS[d.item].weapon ? BOT.lootRadius * 3 : BOT.lootRadius;
         if (dd >= reach) continue;
-        // меч всегда важнее бутылки; при прочих равных — что ближе.
-        const score = (ITEMS[d.item].weapon ? 1000 : 0) - dd;
+        // апгрейд > любое другое оружие > бутылка; при прочих равных — что ближе.
+        const score = (w ? (isEquipUpgrade(w) ? 2000 : 1000) : 0) - dd;
         if (score > bestScore) {
           bestScore = score;
           loot = d;
@@ -3566,21 +3565,27 @@ export class ZoneRoom extends Room<ZoneState> {
         const lw = ITEMS[loot.item].weapon;
         if (lw) {
           this.sim.takeDrop(loot.id);
-          if (lw.cls === "shield") {
-            // «Эгида» — в левую руку, правое оружие не трогаем.
-            p.leftCls = "shield";
-            p.leftTier = lw.tier;
-          } else {
-            const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
-            p.rightCls = lw.cls;
-            p.rightTier = lw.tier;
-            p.leftCls = lw.cls === "bow" ? "" : "shield";
-            p.leftTier = lw.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+          // Одеваем ТОЛЬКО реальный апгрейд своего снаряжения. Оружие
+          // чужого класса (или тира не выше текущего) просто уходит в
+          // склад — бот его несёт, но не переодевается в него сам.
+          const upgrade = isEquipUpgrade(lw);
+          if (upgrade) {
+            if (lw.cls === "shield") {
+              // «Эгида» — в левую руку, правое оружие не трогаем.
+              p.leftCls = "shield";
+              p.leftTier = lw.tier;
+            } else {
+              const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+              p.rightCls = lw.cls;
+              p.rightTier = lw.tier;
+              p.leftCls = lw.cls === "bow" ? "" : "shield";
+              p.leftTier = lw.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+            }
           }
           bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
           if (loot.instance) bot.rt.weapons.push(loot.instance);
           this.persistBot(bot);
-          console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}`);
+          console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}${upgrade ? "" : " (в склад)"}`);
           took = true;
         } else {
           // бутылка зелья — в сумку
