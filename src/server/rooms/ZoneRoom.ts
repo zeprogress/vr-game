@@ -276,7 +276,9 @@ interface Bot {
 
 /**
  * Оружие бота по преобладающей характеристике: строго больше остальных —
- * ловкость→лук, интеллект→посох; сила максимум или ничья → меч.
+ * ловкость→лук, интеллект→посох; сила максимум или ничья → меч. Применяется
+ * ТОЛЬКО пока в руке базовый тир (см. вызывающий код) — как только герой
+ * нашёл честный апгрейд, класс дальше выбирает сам игрок, одевая оружие.
  */
 function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | "staff" {
   if (agi > str && agi > int) return "bow";
@@ -2729,17 +2731,18 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
 
-    // Перекос характеристик сменился — меняем оружие бота на лету. Если он нёс
-    // найденный апгрейд (gold/legendary), а билд сменил класс — оружие падает.
-    const w = botWeaponFor(p.str, p.agi, p.int);
-    if (w !== p.rightCls) {
-      if (p.rightTier !== "base" && isWeaponClass(p.rightCls)) {
-        this.sim.dropWeapon(p.rightCls, p.rightTier as WeaponTier, p.head.x, p.head.z);
+    // Класс меняем автоматически ТОЛЬКО пока в руке база (нечего терять —
+    // менять есть на что только внутри одного тира). Как только герой нашёл
+    // честный апгрейд (gold/legendary), дальше класс выбирает сам игрок,
+    // одевая оружие — вложенные очки его больше не трогают и не роняют.
+    if (p.rightTier === "base") {
+      const w = botWeaponFor(p.str, p.agi, p.int);
+      if (w !== p.rightCls) {
+        p.rightCls = w;
+        p.rightTier = "base";
+        p.leftCls = w === "bow" ? "" : "shield";
+        p.leftTier = w === "bow" ? "" : "base";
       }
-      p.rightCls = w;
-      p.rightTier = "base";
-      p.leftCls = w === "bow" ? "" : "shield";
-      p.leftTier = w === "bow" ? "" : "base";
     }
     this.persistBot(bot);
 
@@ -2937,24 +2940,24 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = p.maxMana;
     // Оружие сохраняем (золотой меч из лута, ранее выданный лук/посох — не
-    // должны сбрасываться на каждом !play). Новому боту раздаём случайно:
-    // часть — лучники/маги, остальные — мечники.
+    // должны сбрасываться на каждом !play).
     const savedHeld = sanitizeHeld(rec?.held);
-    // Оружие строго по преобладающей характеристике: сила→меч, ловкость→лук,
-    // интеллект→посох (ничья / нет перекоса → меч).
-    const rc = botWeaponFor(p.str, p.agi, p.int);
+    // Класс по преобладающей характеристике — ТОЛЬКО пока в руке база
+    // (нечего терять). Раньше botWeaponFor(str,agi,int) пересчитывал класс
+    // на каждом !play и РОНЯЛ на землю честно найденный апгрейд, если билд
+    // сменился, — герой мог выйти без легендарки просто из-за того, что
+    // вложил очки не в тот стат. Как только герой нашёл gold/legendary,
+    // класс дальше выбирает сам игрок, одевая оружие — сохранённый переживает
+    // выход как есть.
+    const savedRight = savedHeld.right;
+    const rc =
+      savedRight && savedRight.tier !== "base" ? savedRight.cls : botWeaponFor(p.str, p.agi, p.int);
     // Лучший тир СВОЕГО класса из всего, что герой когда-либо честно поднял
     // (rt.owned/PlayerRecord.owned — копится на весь аккаунт), а не только
     // то, что осталось в руке или спрятано за спиной в VR на момент !stop:
     // подобрал легендарку, убрал за спину поносить базовым — бот всё равно
     // должен выйти с лучшим.
     const rightTier = bestOwnedTier(rec?.owned, rc);
-    // Найденный на земле апгрейд НЕ своего класса — не подходит боту, роняем
-    // обратно, кто-нибудь подберёт (owned не разрешает пользоваться чужим).
-    const savedRight = savedHeld.right;
-    if (savedRight && savedRight.tier !== "base" && savedRight.cls !== rc) {
-      this.sim.dropWeapon(savedRight.cls, savedRight.tier, p.head.x, p.head.z);
-    }
     p.rightCls = rc;
     p.rightTier = rightTier;
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
