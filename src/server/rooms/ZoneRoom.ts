@@ -192,6 +192,10 @@ interface Runtime {
   eventBuffUntil: number;
   /** Секунда игрового времени (this.elapsed), до которой оглушён (спец-атака моба). */
   stunnedUntil: number;
+  /** id моба, по которому только что ударили (для «!follow»-телохранителя — фокус-фаер). */
+  lastHitMobId: string | null;
+  /** Секунда игрового времени (this.elapsed) последнего удара по lastHitMobId. */
+  lastHitMobAt: number;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -1245,6 +1249,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем
     // вокруг того места, куда пришёлся клинок.
     const struck = msg.target === "mob" ? this.sim.mobs.get(msg.id) : undefined;
+    if (struck) {
+      // Для «!follow»-телохранителя: кого сейчас бьёт цель (фокус-фаер).
+      rt.lastHitMobId = struck.id;
+      rt.lastHitMobAt = this.elapsed;
+    }
     const sx = struck?.x ?? 0;
     const sy = struck?.y ?? 0;
     const sz = struck?.z ?? 0;
@@ -2658,6 +2667,8 @@ export class ZoneRoom extends Room<ZoneState> {
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
       stunnedUntil: 0,
+      lastHitMobId: null,
+      lastHitMobAt: 0,
     };
     this.rt.set(id, rt);
 
@@ -2937,6 +2948,46 @@ export class ZoneRoom extends Room<ZoneState> {
         raidBoss = undefined;
       } else {
         bot.hurtByMob = null; // адов рядом нет — вернулись к боссу
+      }
+    }
+
+    // «!follow»-телохранитель: не в рейде и есть цель для сопровождения —
+    // бьём в первую очередь того, кто атакует цель, а если на неё никто не
+    // напал — того, кого атакует цель сама (фокус-фаер). Приоритет выше
+    // обычного «ближайший моб», но ниже активного !raid.
+    if (!raidBoss && bot.followNorm) {
+      let followedId: string | null = null;
+      for (const [id, ps] of this.state.players) {
+        if (id === bot.id) continue;
+        if (normNick(ps.nick) === bot.followNorm) {
+          followedId = id;
+          break;
+        }
+      }
+      if (followedId) {
+        let guardId: string | null = null;
+        for (const m of this.sim.mobs.values()) {
+          if (m.dead || m.kind === "boss" || !m.aggro) continue;
+          if (m.targetId === followedId) {
+            guardId = m.id;
+            break;
+          }
+        }
+        if (!guardId) {
+          const followedBot = this.bots.get(bot.followNorm);
+          const followedRt = this.rt.get(followedId);
+          const assistId = followedBot
+            ? followedBot.target
+            : followedRt && this.elapsed - followedRt.lastHitMobAt < BOT.guardAssistMemory
+              ? followedRt.lastHitMobId
+              : null;
+          if (assistId) {
+            const am = this.sim.mobs.get(assistId);
+            if (am && !am.dead && am.kind !== "boss") guardId = am.id;
+          }
+        }
+        if (guardId && guardId !== bot.target) bot.target = guardId;
+        if (guardId) mob = this.sim.mobs.get(guardId);
       }
     }
 
@@ -4306,6 +4357,8 @@ export class ZoneRoom extends Room<ZoneState> {
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
       stunnedUntil: 0,
+      lastHitMobId: null,
+      lastHitMobAt: 0,
     });
 
     client.send(

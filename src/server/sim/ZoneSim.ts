@@ -177,6 +177,8 @@ class Mob {
   private outOfRange = 0;
   /** true, пока моб бежит домой напрямик после того, как погоня увела его за wanderRadius. */
   private returningHome = false;
+  /** sessionId игрока/бота, за которым сейчас гонится (null — никого не преследует). Для «!follow»-телохранителя. */
+  targetId: string | null = null;
   hurtSeq = 0;
   /** ++ на каждую атаку (укус, плевок, слэм) — клиент играет замах моба. */
   attackSeq = 0;
@@ -520,6 +522,7 @@ class Mob {
       if (homeDist > MOB.leashDistance) this.aggroed = false;
     }
     const chasing = this.aggroed && np !== null;
+    this.targetId = chasing ? (np?.sessionId ?? null) : null;
 
     // Чародей руин: заклинание по площади вокруг себя — телеграф, потом урон
     // + оглушение и отбрасывание всех игроков/ботов в радиусе.
