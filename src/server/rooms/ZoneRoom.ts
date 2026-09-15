@@ -546,6 +546,15 @@ function tierRank(t: WeaponTier | string): number {
   return t === "legendary" ? 2 : t === "gold" ? 1 : 0;
 }
 
+/**
+ * Можно ли `id` подбирать этот дроп прямо сейчас — бронь за добившим моба
+ * (BAG.lootOwnerSec) не даёт чужому боту/игроку утащить трофей раньше, чем
+ * до него дойдёт тот, кто его выбил (раздел 8 плана).
+ */
+function lootFreeFor(d: { ownerId: string | null; ownerUntil: number }, id: string): boolean {
+  return !d.ownerId || d.ownerId === id || Date.now() > d.ownerUntil;
+}
+
 function readProgress(p: PlayerState): Progress {
   return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int };
 }
@@ -940,6 +949,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const d = this.sim.drops.get(msg.id);
       const w = d ? ITEMS[d.item].weapon : undefined;
       if (!d || !w) return; // не оружие или его уже забрали
+      if (!lootFreeFor(d, client.sessionId)) return; // чужой трофей, бронь ещё не истекла
 
       const feetY = p.head.y - PLAYER.eyeHeight;
       const dist = Math.hypot(d.x - p.head.x, d.y - feetY, d.z - p.head.z);
@@ -3250,7 +3260,7 @@ export class ZoneRoom extends Room<ZoneState> {
         : w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
-      if (!d) return false;
+      if (!d || !lootFreeFor(d, bot.id)) return false; // чужой трофей — не бежим и не претендуем
       const w = ITEMS[d.item].weapon;
       // Любое оружие берём — своего класса наденем, чужого просто унесём
       // в склад (!equip потом вручную, если сменит билд, или !scrap на лом).
@@ -4275,6 +4285,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const feetY = p.head.y - PLAYER.eyeHeight;
       for (const d of [...this.sim.drops.values()]) {
         if (ITEMS[d.item].weapon) continue; // оружие берут рукой, само в сумку не прыгает
+        if (!lootFreeFor(d, id)) continue; // чужой трофей — бронь ещё не истекла
         const dy = d.y - feetY;
         const dist = Math.hypot(d.x - p.head.x, dy, d.z - p.head.z);
         if (dist > BAG.pickupRadius) continue;

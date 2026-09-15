@@ -1007,6 +1007,10 @@ class Mob {
 class Drop {
   readonly id = nid();
   life = 0;
+  /** Кто добил моба (sessionId/bot id) — временная бронь трофея, см. ownerUntil. */
+  ownerId: string | null = null;
+  /** Date.now() (мс), до которого трофей закреплён за ownerId — как и другие похожие таймеры (см. BOT.raidAddMemory). */
+  ownerUntil = 0;
 
   constructor(
     readonly item: ItemId,
@@ -1588,7 +1592,7 @@ export class ZoneSim {
       }
       return kind;
     } else {
-      const rolled = this.spawnLoot(m);
+      const rolled = this.spawnLoot(m, attacker);
       if (kind === "boss") {
         this.bossLoot.length = 0;
         this.bossLoot.push(...rolled);
@@ -1759,7 +1763,7 @@ export class ZoneSim {
   /** Что выпало с последнего убитого босса — комната читает и объявляет. */
   readonly bossLoot: { id: ItemId; count: number }[] = [];
 
-  private spawnLoot(m: Mob): { id: ItemId; count: number }[] {
+  private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number }[] {
     const rolled = rollLoot(m.kind, Math.random);
     // Оружие — отдельный ролл поверх таблицы LOOT (та знает только про
     // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
@@ -1795,6 +1799,12 @@ export class ZoneSim {
       const w = ITEMS[id].weapon;
       const instance = w ? rollWeaponInstance(w.cls, w.tier) : undefined;
       const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
+      // Бронь за добившим — иначе чужой бот-зритель рядом утащит трофей
+      // быстрее, чем игрок успеет подойти (раздел 8 плана).
+      if (attacker) {
+        d.ownerId = attacker;
+        d.ownerUntil = Date.now() + BAG.lootOwnerSec * 1000;
+      }
       this.drops.set(d.id, d);
     }
     return rolled;
