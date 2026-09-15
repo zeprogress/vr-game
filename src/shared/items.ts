@@ -272,3 +272,122 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
   if (s.count <= 0) s.item = null;
   return id;
 }
+
+// ---- Рандомные аффиксы оружия (PoE-style, поверх tier) ----
+
+/** Семейство рычага — на предмете не бывает двух роллов одного семейства. */
+export type AffixKind = "dmg" | "atkSpeed" | "crit";
+/** Конкретный под-вид ролла внутри семейства. */
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult";
+
+export interface RolledAffix {
+  kind: AffixKind;
+  sub: AffixSub;
+  /** Величина: для *Pct/*Chance — доля (0.12 = +12%), для critMult — абсолютная добавка к множителю. */
+  value: number;
+}
+
+/** Инстанс сдропанного оружия — конкретный, со своими роллами (в отличие от WeaponDef — общего шаблона тира). */
+export interface WeaponInstance {
+  id: string;
+  cls: WeaponClass;
+  tier: WeaponTier;
+  affixes: RolledAffix[];
+}
+
+const AFFIX_FAMILIES: Record<AffixKind, AffixSub[]> = {
+  dmg: ["dmgFlat", "dmgPct"],
+  atkSpeed: ["atkSpeedPct"],
+  crit: ["critChance", "critMult"],
+};
+
+const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
+  dmgFlat: [0.05, 0.15],
+  dmgPct: [0.08, 0.2],
+  atkSpeedPct: [0.05, 0.15],
+  critChance: [0.05, 0.15],
+  critMult: [0.3, 0.8],
+};
+
+const AFFIX_LABEL: Record<AffixSub, string> = {
+  dmgFlat: "урона",
+  dmgPct: "урона",
+  atkSpeedPct: "скорость атаки",
+  critChance: "шанс крита",
+  critMult: "силу крита",
+};
+
+/** Текст ролла для тултипа/чата, напр. "+12% урона" или "+0.5 к силе крита". */
+export function affixLabel(a: RolledAffix): string {
+  const pct = a.sub !== "critMult";
+  const v = pct ? Math.round(a.value * 100) : Math.round(a.value * 10) / 10;
+  return `+${v}${pct ? "%" : ""} ${AFFIX_LABEL[a.sub]}`;
+}
+
+function rollAffix(rnd: () => number): RolledAffix {
+  const kinds = Object.keys(AFFIX_FAMILIES) as AffixKind[];
+  const kind = kinds[Math.floor(rnd() * kinds.length)];
+  const subs = AFFIX_FAMILIES[kind];
+  const sub = subs[Math.floor(rnd() * subs.length)];
+  const [lo, hi] = AFFIX_RANGES[sub];
+  return { kind, sub, value: lo + rnd() * (hi - lo) };
+}
+
+/** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
+function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
+  if (tier === "base") return 0;
+  if (tier === "gold") return rnd() < 0.3 ? 2 : 1;
+  return rnd() < 0.4 ? 3 : 2; // legendary
+}
+
+function shortId(rnd: () => number): string {
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
+  let out = "";
+  for (let i = 0; i < 8; i++) out += chars[Math.floor(rnd() * chars.length)];
+  return out;
+}
+
+/** Раскатать новый инстанс дропнутого оружия — тир задаёт кол-во роллов, семейства не повторяются. */
+export function rollWeaponInstance(
+  cls: WeaponClass,
+  tier: WeaponTier,
+  rnd: () => number = Math.random,
+): WeaponInstance {
+  const count = rollAffixCount(tier, rnd);
+  const affixes: RolledAffix[] = [];
+  const used = new Set<AffixKind>();
+  let guard = 0;
+  while (affixes.length < count && guard++ < 50) {
+    const a = rollAffix(rnd);
+    if (used.has(a.kind)) continue;
+    used.add(a.kind);
+    affixes.push(a);
+  }
+  return { id: shortId(rnd), cls, tier, affixes };
+}
+
+/** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
+export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
+  let s = 0;
+  for (const a of affixes) if (a.sub === sub) s += a.value;
+  return s;
+}
+
+/** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
+export function bestWeaponInstance(
+  weapons: WeaponInstance[],
+  cls: WeaponClass,
+  tier: WeaponTier,
+): WeaponInstance | null {
+  let best: WeaponInstance | null = null;
+  let bestScore = -Infinity;
+  for (const w of weapons) {
+    if (w.cls !== cls || w.tier !== tier) continue;
+    const score = w.affixes.reduce((s, a) => s + a.value, 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = w;
+    }
+  }
+  return best;
+}

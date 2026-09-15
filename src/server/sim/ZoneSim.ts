@@ -23,9 +23,11 @@ import {
   isItemId,
   ITEMS,
   rollLoot,
+  rollWeaponInstance,
   weaponKey,
   type ItemId,
   type WeaponClass,
+  type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
 import type { MobKind } from "#shared/net/schema";
@@ -1007,6 +1009,8 @@ class Drop {
     readonly x: number,
     readonly y: number,
     readonly z: number,
+    /** Для оружия — конкретный раскатанный инстанс (аффиксы). У расходников — undefined. */
+    readonly instance?: WeaponInstance,
   ) {}
 
   /** true — пора убрать. Оружие лежит намного дольше обычного лута (час), а не тает за 3 минуты. */
@@ -1024,6 +1028,7 @@ export interface DropSave {
   y: number;
   z: number;
   life: number;
+  instance?: WeaponInstance;
 }
 
 class Dummy {
@@ -1756,7 +1761,9 @@ export class ZoneSim {
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
       const z = m.z + Math.sin(a) * r;
-      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z);
+      const w = ITEMS[id].weapon;
+      const instance = w ? rollWeaponInstance(w.cls, w.tier) : undefined;
+      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
       this.drops.set(d.id, d);
     }
     return rolled;
@@ -1768,7 +1775,8 @@ export class ZoneSim {
     if (tier === "base") return null;
     const item = WEAPON_DROP[weaponKey(cls, tier)];
     if (!item) return null;
-    const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z);
+    const instance = rollWeaponInstance(cls, tier);
+    const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
     this.drops.set(d.id, d);
     return item;
   }
@@ -1782,6 +1790,7 @@ export class ZoneSim {
       y: d.y,
       z: d.z,
       life: d.life,
+      instance: d.instance,
     }));
   }
 
@@ -1791,7 +1800,7 @@ export class ZoneSim {
       if (!s || !isItemId(s.item)) continue;
       const count = Math.floor(Number(s.count));
       if (!Number.isFinite(count) || count <= 0) continue;
-      const d = new Drop(s.item, count, Number(s.x), Number(s.y), Number(s.z));
+      const d = new Drop(s.item, count, Number(s.x), Number(s.y), Number(s.z), s.instance);
       if (!Number.isFinite(d.x) || !Number.isFinite(d.y) || !Number.isFinite(d.z)) continue;
       d.life = Number.isFinite(s.life) ? Number(s.life) : 0;
       this.drops.set(d.id, d);

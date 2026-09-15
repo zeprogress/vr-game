@@ -102,7 +102,9 @@ import {
 } from "#shared/combat";
 import {
   addToBag,
+  affixSum,
   BAG,
+  bestWeaponInstance,
   emptyBag,
   isItemId,
   isWeaponClass,
@@ -117,6 +119,7 @@ import {
   type Slot,
   type WeaponAffix,
   type WeaponClass,
+  type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
 import {
@@ -196,6 +199,8 @@ interface Runtime {
   lastHitMobId: string | null;
   /** Секунда игрового времени (this.elapsed) последнего удара по lastHitMobId. */
   lastHitMobAt: number;
+  /** Собранные инстансы оружия (весь склад, не только надетое). */
+  weapons: WeaponInstance[];
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -491,6 +496,29 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
 function affixIn(p: PlayerState, hand: "left" | "right"): WeaponAffix | undefined {
   const h = heldIn(p, hand);
   return h ? weaponAffix(h.cls, h.tier) : undefined;
+}
+
+/**
+ * Конкретный раскатанный инстанс оружия в руке — лучший из тех, что честно
+ * подобрал игрок для этого класса+тира (см. bestWeaponInstance). Пока нет
+ * ручного выбора конкретного инстанса под экипировку — берём самый сильный.
+ */
+function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponInstance | null {
+  const h = heldIn(p, hand);
+  return h ? bestWeaponInstance(rt.weapons, h.cls, h.tier) : null;
+}
+
+/** Доп. множитель урона от роллов аффиксов (dmgFlat/dmgPct суммируются как один множитель). */
+function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
+  const w = rolledIn(p, hand, rt);
+  if (!w) return 1;
+  return 1 + affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct");
+}
+
+/** Доп. множитель скорости атаки/каста от ролла atkSpeedPct. */
+function rolledAtkSpeedMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
+  const w = rolledIn(p, hand, rt);
+  return w ? 1 + affixSum(w.affixes, "atkSpeedPct") : 1;
 }
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
@@ -899,6 +927,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
       this.sim.takeDrop(d.id);
       rt.owned.add(weaponKey(w.cls, w.tier)); // право пользоваться этим уровнем
+      if (d.instance) rt.weapons.push(d.instance); // конкретный раскатанный инстанс — в склад
       this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
       // Соседям — анимация подбора на модельке (PickUp).
       const relay: ActRelay = { k: "pickup", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z };
@@ -1186,15 +1215,17 @@ export class ZoneRoom extends Room<ZoneState> {
     if (msg.target !== "mob" && msg.target !== "dummy" && msg.target !== "player") return;
     if (!isWeaponKind(msg.weapon)) return;
 
+    const hand = msg.hand === "left" ? "left" : "right";
+
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
-    // атаки (уровень + ловкость) укорачивает интервал.
+    // атаки (уровень + ловкость + ролл "скорость атаки" на предмете) укорачивает интервал.
     const last = rt.lastHit[msg.weapon];
     const meleeWpn = msg.weapon === "sword" || msg.weapon === "fist";
-    const spd = meleeWpn ? meleeSpeedFor(p.level, p.agi) : attackSpeedFor(p.level, p.agi);
+    const spd =
+      (meleeWpn ? meleeSpeedFor(p.level, p.agi) : attackSpeedFor(p.level, p.agi)) *
+      rolledAtkSpeedMul(p, hand, rt);
     const rate = WEAPON_RATE[msg.weapon] / spd;
     if (last !== undefined && this.elapsed - last < rate) return;
-
-    const hand = msg.hand === "left" ? "left" : "right";
 
     // PvP: урон между игроками — только если у ОБОИХ включён флаг.
     if (msg.target === "player") {
@@ -1234,10 +1265,18 @@ export class ZoneRoom extends Room<ZoneState> {
 
     rt.lastHit[msg.weapon] = this.elapsed;
     const affix = affixIn(p, hand);
-    // Крит — только у лука; «Лук охотника» (легендарка) критует чаще.
-    const crit = rollCritMult(msg.weapon, Math.random, affix === "crit");
+    const rolled = rolledIn(p, hand, rt);
+    // База крита — только у лука («Лук охотника» критует чаще); роллы "крит"
+    // на конкретном инстансе добавляют шанс/силу крита ЛЮБОМУ оружию.
+    const crit = rollCritMult(
+      msg.weapon,
+      Math.random,
+      affix === "crit",
+      rolled ? affixSum(rolled.affixes, "critChance") : 0,
+      rolled ? affixSum(rolled.affixes, "critMult") : 0,
+    );
     const dmg =
-      weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) *
+      weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand) * rolledDmgMul(p, hand, rt), p.agi) *
       crit *
       this.buffMult(client.sessionId, "dmg");
     const [dx, dz] = unit2(msg.dx, msg.dz);
@@ -2669,6 +2708,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
+      weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
     };
     this.rt.set(id, rt);
 
@@ -2788,6 +2828,7 @@ export class ZoneRoom extends Room<ZoneState> {
       ...readProgress(p),
       bag: [],
       kills: bot.rt.kills,
+      weapons: bot.rt.weapons,
       botActive: true, // в мире — восстановить после рестарта
     });
   }
@@ -3292,10 +3333,17 @@ export class ZoneRoom extends Room<ZoneState> {
       const adz = tgt.z - oz;
       // лёгкая компенсация проседания снаряда на дистанцию
       const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
-      const mult = multIn(p, "right");
+      const mult = multIn(p, "right") * rolledDmgMul(p, "right", bot.rt);
       const botAffix = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier);
+      const botRolled = rolledIn(p, "right", bot.rt);
       if (bow) {
-        const critM = rollCritMult("arrow", Math.random, botAffix === "crit");
+        const critM = rollCritMult(
+          "arrow",
+          Math.random,
+          botAffix === "crit",
+          botRolled ? affixSum(botRolled.affixes, "critChance") : 0,
+          botRolled ? affixSum(botRolled.affixes, "critMult") : 0,
+        );
         // Красный «X» — не сейчас, а в момент попадания стрелы (sim.critHits).
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
@@ -3371,6 +3419,7 @@ export class ZoneRoom extends Room<ZoneState> {
             p.leftTier = lw.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
           }
           bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
+          if (loot.instance) bot.rt.weapons.push(loot.instance);
           this.persistBot(bot);
           console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}`);
           took = true;
@@ -3437,14 +3486,23 @@ export class ZoneRoom extends Room<ZoneState> {
     // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
+    const botRolledSword = rolledIn(p, "right", bot.rt);
+    const swordCrit = rollCritMult(
+      "sword",
+      Math.random,
+      false,
+      botRolledSword ? affixSum(botRolledSword.affixes, "critChance") : 0,
+      botRolledSword ? affixSum(botRolledSword.affixes, "critMult") : 0,
+    );
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right"), p.agi) *
+      weaponDamage("sword", p.level, p.str, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt), p.agi) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
+      swordCrit *
       this.buffMult(bot.id, "dmg");
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
-    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id);
+    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, swordCrit > 1);
     const ignited = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "fire";
     if (ignited) {
       mob.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, bot.id);
@@ -4359,6 +4417,7 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
+      weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
     });
 
     client.send(
@@ -4405,6 +4464,7 @@ export class ZoneRoom extends Room<ZoneState> {
       ...readProgress(p),
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: rt.kills,
+      weapons: rt.weapons,
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,

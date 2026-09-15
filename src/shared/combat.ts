@@ -34,19 +34,25 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
 };
 
 /**
- * Критический выстрел из лука: с шансом `BOW.critChance` урон множится на
- * `BOW.critMult`. Бросок делает СЕРВЕР (иначе клиент крутил бы кубик сам).
- * Возвращает множитель: 1 — обычный удар, critMult — крит.
+ * Крит: у лука есть база (`BOW.critChance`/`BOW.critMult`), у остальных видов
+ * оружия своего крита нет — но `extraChance`/`extraMult` (рандомные роллы
+ * "крит" на конкретном инстансе оружия, см. items.ts RolledAffix) добавляют
+ * шанс и силу крита ЛЮБОМУ оружию, раз аффиксы теперь не привязаны к классу.
+ * Бросок делает СЕРВЕР (иначе клиент крутил бы кубик сам).
+ * Возвращает множитель: 1 — обычный удар, иначе — сила крита.
  */
 export function rollCritMult(
   kind: WeaponKind,
   rnd: () => number = Math.random,
   /** Стрельба из «Лука охотника» (легендарка) — повышенный шанс крита. */
   hunterBow = false,
+  extraChance = 0,
+  extraMult = 0,
 ): number {
-  if (kind !== "arrow") return 1;
-  const chance = BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0);
-  return rnd() < chance ? BOW.critMult : 1;
+  const baseChance = kind === "arrow" ? BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0) : 0;
+  const chance = baseChance + extraChance;
+  if (chance <= 0) return 1;
+  return rnd() < chance ? BOW.critMult + extraMult : 1;
 }
 
 /**

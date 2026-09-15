@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { PLAYER, RESPAWN } from "#shared/constants";
 import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
-import { emptyBag, type Slot } from "#shared/items";
+import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 export interface PlayerRecord extends SaveMsg, Progress {
@@ -33,6 +33,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   leaveBot?: boolean;
   /** ВРЕМЕННО (KEEP_BOTS_FOREVER): бот сейчас в мире — восстановить после рестарта. */
   botActive?: boolean;
+  /** Собранное оружие-инстансы (каждое со своими роллами аффиксов) — весь склад персонажа. */
+  weapons?: WeaponInstance[];
   updatedAt: number;
 }
 
@@ -58,6 +60,7 @@ function blank(token: string): PlayerRecord {
     bestTowerFloor: 0,
     towerShards: 0,
     leaveBot: false,
+    weapons: [],
     updatedAt: 0,
   };
 }
