@@ -2798,17 +2798,10 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.mana, p.maxMana);
 
-    // Билд стал нейтральным — оружие возвращается к мечу (апгрейд не-меч роняем).
-    const w = botWeaponFor(p.str, p.agi, p.int);
-    if (w !== p.rightCls) {
-      if (p.rightTier !== "base" && isWeaponClass(p.rightCls)) {
-        this.sim.dropWeapon(p.rightCls, p.rightTier as WeaponTier, p.head.x, p.head.z);
-      }
-      p.rightCls = w;
-      p.rightTier = "base";
-      p.leftCls = w === "bow" ? "" : "shield";
-      p.leftTier = w === "bow" ? "" : "base";
-    }
+    // Оружие в руках теперь НЕ трогаем — раньше сброс атрибутов до нейтральных
+    // автоматически переключал класс оружия (botWeaponFor) и ронял на землю
+    // всё, что было надето не-мечом, включая честно подобранные аффиксы.
+    // Игрок сам решает, что держать в руках — respec это менять не должен.
     this.persistBot(bot);
     this.reply(`@${bot.nick} очки атрибутов сброшены · свободных очков ${p.unspent} → !str !dex !int`);
   }
