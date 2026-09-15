@@ -175,6 +175,8 @@ class Mob {
   private hurtCd = 0;
   private aggroed = false;
   private outOfRange = 0;
+  /** true, пока моб бежит домой напрямик после того, как погоня увела его за wanderRadius. */
+  private returningHome = false;
   hurtSeq = 0;
   /** ++ на каждую атаку (укус, плевок, слэм) — клиент играет замах моба. */
   attackSeq = 0;
@@ -509,6 +511,14 @@ class Mob {
     } else {
       this.outOfRange = 0;
     }
+    // Обычный моб (не босс — у того свой жёсткий поводок ниже) слишком
+    // далеко утащен от точки спавна: бросает погоню НЕМЕДЛЕННО, не дожидаясь
+    // таймера MOB.leash, и дальше бежит домой (см. ветку возврата в
+    // праздношатании ниже).
+    if (!isBoss && this.aggroed) {
+      const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
+      if (homeDist > MOB.leashDistance) this.aggroed = false;
+    }
     const chasing = this.aggroed && np !== null;
 
     // Чародей руин: заклинание по площади вокруг себя — телеграф, потом урон
@@ -718,22 +728,33 @@ class Mob {
       if (chasing && dist > MOB.attackRange * 0.7) {
         tx = dx;
         tz = dz;
-      } else if (!chasing) {
-        let wdx = this.wanderX - this.x;
-        let wdz = this.wanderZ - this.z;
-        if (Math.hypot(wdx, wdz) < 1.2) {
-          const a = Math.random() * Math.PI * 2;
-          const r = Math.sqrt(Math.random()) * MOB.wanderRadius;
-          this.wanderX = this.homeX + Math.cos(a) * r;
-          this.wanderZ = this.homeZ + Math.sin(a) * r;
+      } else {
+        // Улетела погоней далеко от дома — сперва летит напрямик домой на
+        // боевой скорости, а не лениво дрейфует к случайной точке рядом.
+        const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
+        const returning = homeDist > MOB.wanderRadius;
+        let wdx: number, wdz: number;
+        if (returning) {
+          wdx = this.homeX - this.x;
+          wdz = this.homeZ - this.z;
+        } else {
           wdx = this.wanderX - this.x;
           wdz = this.wanderZ - this.z;
+          if (Math.hypot(wdx, wdz) < 1.2) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.sqrt(Math.random()) * MOB.wanderRadius;
+            this.wanderX = this.homeX + Math.cos(a) * r;
+            this.wanderZ = this.homeZ + Math.sin(a) * r;
+            wdx = this.wanderX - this.x;
+            wdz = this.wanderZ - this.z;
+          }
         }
         const wl = Math.hypot(wdx, wdz) || 1;
         tx = wdx / wl;
         tz = wdz / wl;
+        this.returningHome = returning;
       }
-      const spd = chasing ? hopSpeed : MOB.idleHopSpeed * 1.2;
+      const spd = chasing ? hopSpeed : this.returningHome ? hopSpeed : MOB.idleHopSpeed * 1.2;
       const [sx, sz] = tx !== 0 || tz !== 0 ? steerAroundTrees(this.x, this.z, tx, tz) : [0, 0];
       const acc = Math.min(1, dt * 4);
       this.vx += (sx * spd - this.vx) * acc;
@@ -795,21 +816,32 @@ class Mob {
         }
       } else if (this.hopCd <= 0) {
         // Праздношатание вне боя: лениво скачем к точке в пределах wanderRadius от дома.
+        // Но если погоня увела далеко за этот радиус — сперва скачем НАПРЯМИК
+        // домой на обычной (не ленивой) скорости, а не мелкими случайными шагами.
         this.hopCd = MOB.idleHopInterval * (0.7 + Math.random() * 0.7);
         const wr = isBoss ? BOSS.wanderRadius : MOB.wanderRadius;
-        let wdx = this.wanderX - this.x;
-        let wdz = this.wanderZ - this.z;
-        if (Math.hypot(wdx, wdz) < 1.5) {
-          const a = Math.random() * Math.PI * 2;
-          const r = Math.sqrt(Math.random()) * wr;
-          this.wanderX = this.homeX + Math.cos(a) * r;
-          this.wanderZ = this.homeZ + Math.sin(a) * r;
+        const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
+        const returning = !isBoss && homeDist > wr;
+        this.returningHome = returning;
+        let wdx: number, wdz: number;
+        if (returning) {
+          wdx = this.homeX - this.x;
+          wdz = this.homeZ - this.z;
+        } else {
           wdx = this.wanderX - this.x;
           wdz = this.wanderZ - this.z;
+          if (Math.hypot(wdx, wdz) < 1.5) {
+            const a = Math.random() * Math.PI * 2;
+            const r = Math.sqrt(Math.random()) * wr;
+            this.wanderX = this.homeX + Math.cos(a) * r;
+            this.wanderZ = this.homeZ + Math.sin(a) * r;
+            wdx = this.wanderX - this.x;
+            wdz = this.wanderZ - this.z;
+          }
         }
         const wl = Math.hypot(wdx, wdz) || 1;
         const [hx, hz] = steerAroundTrees(this.x, this.z, wdx / wl, wdz / wl);
-        const spd = isBoss ? MOB.idleHopSpeed * 0.7 : MOB.idleHopSpeed;
+        const spd = isBoss ? MOB.idleHopSpeed * 0.7 : returning ? MOB.hopSpeed : MOB.idleHopSpeed;
         this.vx = hx * spd;
         this.vz = hz * spd;
         this.vy = MOB.hopUp * 0.7;
