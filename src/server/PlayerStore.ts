@@ -37,6 +37,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   weapons?: WeaponInstance[];
   /** Какой инстанс закреплён в какой руке ("!equip") — null/отсутствует — автовыбор лучшего. */
   equippedWeaponId?: { left: string | null; right: string | null };
+  /** Секрет для веб-страницы инвентаря ("!inv") — отдельный от guestToken/nick:, только на чтение своего склада. */
+  viewToken?: string;
   updatedAt: number;
 }
 

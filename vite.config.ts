@@ -173,6 +173,13 @@ export default defineConfig({
     outDir: "dist",
     chunkSizeWarningLimit: 2000,
     rollupOptions: {
+      // Вторая точка входа — веб-страница инвентаря ("!inv" в чате). Без
+      // явного input вторая .html не попадёт в сборку (dev-сервер её и так
+      // отдаёт по прямому URL, а prod-билд — только объявленные входы).
+      input: {
+        main: resolve(root, "index.html"),
+        inv: resolve(root, "inv.html"),
+      },
       output: {
         // Babylon — отдельным вендор-чанком: меньше пик памяти при сборке
         // (важно на 1 ГБ VPS) и кэшируется отдельно от нашего кода.

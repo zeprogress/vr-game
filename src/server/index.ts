@@ -3,6 +3,7 @@ import colyseus from "colyseus";
 
 import { ZoneRoom } from "./rooms/ZoneRoom";
 import { TowerRoom } from "./rooms/TowerRoom";
+import { InventoryRoom } from "./rooms/InventoryRoom";
 import { store } from "./store";
 
 const { Server } = colyseus;
@@ -17,6 +18,9 @@ gameServer.define("zone", ZoneRoom);
 // Охотничья башня — приватная комната на одну попытку (см. TowerRunManager в
 // ZoneRoom, matchMaker.createRoom("tower_room", ...); клиент сюда напрямую не джойнит).
 gameServer.define("tower_room", TowerRoom);
+// Веб-страница инвентаря ("!inv" в чате) — см. InventoryRoom.ts, разовый
+// джойн-и-ответ через уже проксированный matchmake/WS, без нового HTTP-роута.
+gameServer.define("inventory_room", InventoryRoom);
 
 void gameServer.listen(PORT);
 console.log(`[server] Colyseus слушает :${PORT}`);

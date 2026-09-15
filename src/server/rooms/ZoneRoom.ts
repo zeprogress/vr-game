@@ -1,4 +1,5 @@
 import colyseus from "colyseus";
+import { randomUUID } from "node:crypto";
 import type { Client } from "colyseus";
 
 import {
@@ -205,6 +206,8 @@ interface Runtime {
   weapons: WeaponInstance[];
   /** Какой именно инстанс сейчас в какой руке (ручной выбор через "!equip"). null — автовыбор лучшего. */
   equippedWeaponId: { left: string | null; right: string | null };
+  /** Секрет для "!inv" — генерится лениво при первом запросе, не при каждом join. */
+  viewToken: string;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -2278,8 +2281,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.respecBot(norm);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
-    } else if (cmd === "!weapons" || cmd === "!оружие" || cmd === "!инвентарь") {
+    } else if (cmd === "!weapons" || cmd === "!оружие") {
       this.sayWeapons(nick, norm);
+    } else if (cmd === "!inv" || cmd === "!инвентарь" || cmd === "!бэг") {
+      this.sayInvLink(nick, norm);
     } else if (cmd === "!equip" || cmd === "!надеть") {
       this.equipWeapon(nick, norm, parts[1]);
     } else if (cmd === "!scrap" || cmd === "!разобрать") {
@@ -2442,6 +2447,23 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt) return { id, p, rt };
     }
     return null;
+  }
+
+  /** `!inv` — прислать ссылку на веб-страницу инвентаря (только просмотр). */
+  private sayInvLink(nick: string, norm: string): void {
+    const t = this.findWeaponsTarget(norm);
+    if (!t) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (!t.rt.viewToken) t.rt.viewToken = randomUUID();
+    const bot = this.bots.get(norm);
+    if (bot) this.persistBot(bot);
+    else {
+      const client = this.clientOf(t.id);
+      if (client) this.persist(client);
+    }
+    this.reply(`@${nick} твой инвентарь: https://zepgame.duckdns.org/inv.html?t=${t.rt.viewToken}`);
   }
 
   /** `!weapons` — список собранного оружия-инстансов с номерами для "!equip". */
@@ -2765,6 +2787,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
+        "!inv — ссылка на веб-инвентарь (просмотр) · " +
         "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
         "!scrap <номер|1,2,3|all> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
@@ -2924,6 +2947,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
+      viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
     };
     this.rt.set(id, rt);
 
@@ -3045,6 +3069,7 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: bot.rt.kills,
       weapons: bot.rt.weapons,
       equippedWeaponId: bot.rt.equippedWeaponId,
+      viewToken: bot.rt.viewToken,
       botActive: true, // в мире — восстановить после рестарта
     });
   }
@@ -4649,6 +4674,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
+      viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
     });
 
     client.send(
@@ -4697,6 +4723,7 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: rt.kills,
       weapons: rt.weapons,
       equippedWeaponId: rt.equippedWeaponId,
+      viewToken: rt.viewToken,
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,

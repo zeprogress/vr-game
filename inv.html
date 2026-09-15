@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZEP GAME — Инвентарь</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #14161f;
+        color: #dfe4f0;
+        font-family: system-ui, sans-serif;
+        padding: 20px 16px 60px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      .sub {
+        opacity: 0.6;
+        font-size: 13px;
+        margin-bottom: 20px;
+      }
+      .card {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .weapon {
+        background: #2a2e40;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .weapon .name {
+        font-weight: 700;
+      }
+      .weapon.legendary .name {
+        color: #c77dff;
+      }
+      .weapon.gold .name {
+        color: #ffd24a;
+      }
+      .weapon .affixes {
+        color: #7db8ff;
+        font-size: 13px;
+        margin-top: 2px;
+      }
+      .weapon .meta {
+        font-size: 12px;
+        opacity: 0.55;
+        white-space: nowrap;
+        text-align: right;
+      }
+      .badge {
+        display: inline-block;
+        background: rgba(76, 175, 80, 0.25);
+        color: #7ee081;
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+      .empty,
+      .error {
+        opacity: 0.6;
+        padding: 20px 0;
+      }
+      button#mechBtn {
+        margin-top: 24px;
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(91, 140, 255, 0.55);
+        color: #dff0ff;
+        font-weight: 700;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      #mech {
+        display: none;
+        margin-top: 16px;
+        background: #1e2130;
+        border-radius: 8px;
+        padding: 16px;
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      #mech h2 {
+        font-size: 14px;
+        margin: 16px 0 6px;
+        color: #ffe08a;
+      }
+      #mech h2:first-child {
+        margin-top: 0;
+      }
+      #mech code {
+        background: rgba(255, 255, 255, 0.08);
+        padding: 1px 5px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 id="title">Инвентарь</h1>
+      <div class="sub" id="sub">загрузка…</div>
+      <div id="list"></div>
+      <button id="mechBtn">📖 Механики игры</button>
+      <div id="mech"></div>
+    </div>
+    <script type="module" src="/src/client/inv/main.ts"></script>
+  </body>
+</html>
