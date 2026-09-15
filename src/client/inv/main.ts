@@ -1,11 +1,11 @@
 import { Client } from "colyseus.js";
 
 interface InvWeapon {
+  num: number;
   id: string;
   tier: "base" | "gold" | "legendary";
   name: string;
   affixes: string[];
-  equipped: boolean;
 }
 
 interface InvHand {
@@ -73,13 +73,12 @@ function renderInv(msg: InvMsg): void {
     weapons.length === 0
       ? '<div class="empty">Склад пуст — золотое и легендарное оружие падает с боёв.</div>'
       : weapons
-          .map((w, i) => {
+          .map((w) => {
             const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
             return (
               `<div class="weapon ${w.tier}">` +
-              `<div><div class="name">${i + 1}) ${escapeHtml(w.name)}</div>` +
+              `<div><div class="name">${w.num}) ${escapeHtml(w.name)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              (w.equipped ? '<div class="badge">⚔️ в бою</div>' : "") +
               `</div><div class="meta">${w.tier}<br>id ${w.id}</div>` +
               `</div>`
             );
@@ -96,19 +95,38 @@ function renderInv(msg: InvMsg): void {
   listEl.innerHTML = `${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
-if (!token) {
-  renderError("Нет токена в ссылке — попроси актуальную командой !inv в чате.");
-} else {
+/**
+ * WS-соединение на слабом VPS изредка обрывается прямо на джойне (не баг в
+ * этой комнате — тот же флаки-обрыв бывает и у основной игры) — вместо того
+ * чтобы сразу показывать ошибку, тихо пробуем ещё пару раз с паузой.
+ */
+const MAX_ATTEMPTS = 3;
+function connect(attempt = 0): void {
+  let done = false;
   const client = new Client();
+  const fail = (): void => {
+    if (done) return;
+    done = true;
+    if (attempt + 1 < MAX_ATTEMPTS) setTimeout(() => connect(attempt + 1), 500);
+    else renderError("Не получилось связаться с сервером — попробуй перезагрузить страницу.");
+  };
   client
     .joinOrCreate<never>("inventory_room", { viewToken: token })
     .then((room) => {
+      room.onError(() => fail());
       room.onMessage("inv", (msg: InvMsg) => {
+        done = true;
         renderInv(msg);
         room.leave(); // сервер прислал всё одним сообщением — держать сокет незачем
       });
     })
-    .catch(() => renderError("Не получилось связаться с сервером — попробуй перезагрузить страницу."));
+    .catch(fail);
+}
+
+if (!token) {
+  renderError("Нет токена в ссылке — попроси актуальную командой !inv в чате.");
+} else {
+  connect();
 }
 
 // ---- статичный раздел "Механики игры" ----

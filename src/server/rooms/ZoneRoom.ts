@@ -842,9 +842,22 @@ export class ZoneRoom extends Room<ZoneState> {
       // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара, плюс сам
       // выстрел чуть больнее (AFFIX.storm.dmgMul).
       const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left") === "storm";
+      // Роллы "крит" на посохе раньше тоже никуда не доходили (только tryHit
+      // для меча/лука) — посоха нет в WeaponKind, поэтому kind="sword" ниже
+      // просто заглушка: у неё и так нулевая база крита, важны только
+      // extraChance/extraMult с конкретного инстанса.
+      const staffRolled = rolledIn(p, staffHand, rt);
+      const critM = rollCritMult(
+        "sword",
+        Math.random,
+        false,
+        staffRolled ? affixSum(staffRolled.affixes, "critChance") : 0,
+        staffRolled ? affixSum(staffRolled.affixes, "critMult") : 0,
+      );
       const boltDmg =
         fireboltDamage(p.level, p.int, charge) *
         (storm ? AFFIX.storm.dmgMul : 1) *
+        critM *
         this.buffMult(client.sessionId, "dmg");
       const splRad = fireboltSplashRadius(charge) * (storm ? AFFIX.storm.splashRadiusMul : 1);
       const splFrac = MAGIC.firebolt.splashFraction * (storm ? AFFIX.storm.splashFracMul : 1);
@@ -862,6 +875,7 @@ export class ZoneRoom extends Room<ZoneState> {
         0,
         splRad,
         boltDmg * splFrac,
+        critM > 1,
       );
     });
 
@@ -2596,22 +2610,27 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const { rt } = t;
     const isAll = ["all", "все", "всё"].includes(arg.toLowerCase());
-    let targets: WeaponInstance[];
+    let picked: WeaponInstance[];
     if (isAll) {
-      // Безопасный дефолт: то, что сейчас в руках, "all" не трогает.
-      targets = rt.weapons.filter(
-        (w) => w.id !== rt.equippedWeaponId.left && w.id !== rt.equippedWeaponId.right,
-      );
+      picked = [...rt.weapons];
     } else {
       const found = new Set<WeaponInstance>();
       for (const part of arg.split(",").map((s) => s.trim()).filter(Boolean)) {
         const w = this.resolveWeaponArg(rt, part);
         if (w) found.add(w);
       }
-      targets = [...found];
+      picked = [...found];
     }
+    // Надетое сломать нельзя, пока не заменишь — сначала !equip другое.
+    const equippedIds = new Set([rt.equippedWeaponId.left, rt.equippedWeaponId.right].filter(Boolean));
+    const targets = picked.filter((w) => !equippedIds.has(w.id));
+    const skippedEquipped = picked.length - targets.length;
     if (targets.length === 0) {
-      this.reply(`@${nick} нечего разбирать — список: !weapons.`);
+      this.reply(
+        skippedEquipped > 0
+          ? `@${nick} это сейчас в руках — сначала !equip другое, потом !scrap.`
+          : `@${nick} нечего разбирать — список: !weapons.`,
+      );
       return;
     }
     let scrap = 0;
@@ -2627,7 +2646,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const desc =
       targets.length === 1 ? weaponDef(targets[0].cls, targets[0].tier).name : `${targets.length} предметов`;
-    this.reply(`@${nick} разобрал ${desc} — получено лома: ${scrap}`);
+    const skippedNote = skippedEquipped > 0 ? ` (${skippedEquipped} в руках пропустил)` : "";
+    this.reply(`@${nick} разобрал ${desc} — получено лома: ${scrap}${skippedNote}`);
   }
 
   /** `!stats` — прогресс бота, а если его нет — что сделать, чтобы он был. */

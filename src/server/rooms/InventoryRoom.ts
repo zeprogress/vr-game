@@ -56,13 +56,21 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const weaponsList = rec.weapons ?? [];
-      const weapons = weaponsList.map((w) => ({
-        id: w.id,
-        tier: w.tier,
-        name: weaponDef(w.cls, w.tier).name,
-        affixes: w.affixes.map(affixLabel),
-        equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
-      }));
+      // Надетое показываем отдельно (см. hands ниже) — тут оставляем только
+      // то, что реально можно выбрать номером/id в "!equip"/"!scrap" на
+      // ПРОСТО НОМЕР этого предмета в rt.weapons (num — та же нумерация,
+      // что и у "!weapons" в чате), а не позицию после фильтрации: иначе
+      // номер на странице разъехался бы с тем, что реально примет чат-команда.
+      const weapons = weaponsList
+        .map((w, i) => ({
+          num: i + 1,
+          id: w.id,
+          tier: w.tier,
+          name: weaponDef(w.cls, w.tier).name,
+          affixes: w.affixes.map(affixLabel),
+          equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
+        }))
+        .filter((w) => !w.equipped);
       const misc = (rec.bag ?? [])
         .filter((s) => s.item && s.count > 0)
         .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
