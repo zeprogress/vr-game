@@ -35,6 +35,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   botActive?: boolean;
   /** Собранное оружие-инстансы (каждое со своими роллами аффиксов) — весь склад персонажа. */
   weapons?: WeaponInstance[];
+  /** Какой инстанс закреплён в какой руке ("!equip") — null/отсутствует — автовыбор лучшего. */
+  equippedWeaponId?: { left: string | null; right: string | null };
   updatedAt: number;
 }
 

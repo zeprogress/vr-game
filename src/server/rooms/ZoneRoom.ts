@@ -102,6 +102,7 @@ import {
 } from "#shared/combat";
 import {
   addToBag,
+  affixLabel,
   affixSum,
   BAG,
   bestWeaponInstance,
@@ -201,6 +202,8 @@ interface Runtime {
   lastHitMobAt: number;
   /** Собранные инстансы оружия (весь склад, не только надетое). */
   weapons: WeaponInstance[];
+  /** Какой именно инстанс сейчас в какой руке (ручной выбор через "!equip"). null — автовыбор лучшего. */
+  equippedWeaponId: { left: string | null; right: string | null };
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -377,6 +380,15 @@ function sanitizeHeld(v: unknown): HeldWeapons {
   return { left: sanitizeCarried(h?.left), right: sanitizeCarried(h?.right) };
 }
 
+/** Закреплённый вручную инстанс на руку ("!equip") — строка-id или null. */
+function sanitizeEquipped(v: unknown): { left: string | null; right: string | null } {
+  const e = v as { left?: unknown; right?: unknown } | undefined;
+  return {
+    left: typeof e?.left === "string" ? e.left : null,
+    right: typeof e?.right === "string" ? e.right : null,
+  };
+}
+
 /** Принять панельные настройки: это должен быть небольшой JSON-объект. */
 function sanitizeOverrides(v: unknown): Record<string, unknown> {
   if (!v || typeof v !== "object" || Array.isArray(v)) return {};
@@ -499,13 +511,20 @@ function affixIn(p: PlayerState, hand: "left" | "right"): WeaponAffix | undefine
 }
 
 /**
- * Конкретный раскатанный инстанс оружия в руке — лучший из тех, что честно
- * подобрал игрок для этого класса+тира (см. bestWeaponInstance). Пока нет
- * ручного выбора конкретного инстанса под экипировку — берём самый сильный.
+ * Конкретный раскатанный инстанс оружия в руке. Если игрок закрепил
+ * конкретный экземпляр через "!equip" (и тот всё ещё в его складе и
+ * совпадает с надетым классом+тиром) — берём его; иначе автовыбор
+ * лучшего инстанса этого класса+тира (см. bestWeaponInstance).
  */
 function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponInstance | null {
   const h = heldIn(p, hand);
-  return h ? bestWeaponInstance(rt.weapons, h.cls, h.tier) : null;
+  if (!h) return null;
+  const pinnedId = rt.equippedWeaponId[hand];
+  if (pinnedId) {
+    const pinned = rt.weapons.find((w) => w.id === pinnedId);
+    if (pinned && pinned.cls === h.cls && pinned.tier === h.tier) return pinned;
+  }
+  return bestWeaponInstance(rt.weapons, h.cls, h.tier);
 }
 
 /** Доп. множитель урона от роллов аффиксов (dmgFlat/dmgPct суммируются как один множитель). */
@@ -2244,6 +2263,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.respecBot(norm);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
+    } else if (cmd === "!weapons" || cmd === "!оружие" || cmd === "!инвентарь") {
+      this.sayWeapons(nick, norm);
+    } else if (cmd === "!equip" || cmd === "!надеть") {
+      this.equipWeapon(nick, norm, parts[1]);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
     } else if (cmd === "!cheer" || cmd === "!defeat") {
@@ -2374,6 +2397,86 @@ export class ZoneRoom extends Room<ZoneState> {
     if (now - (this.hintAt.get(norm) ?? 0) < BOT.statsCooldown * 1000) return false;
     this.hintAt.set(norm, now);
     return true;
+  }
+
+  /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для "!weapons"/"!equip". */
+  private findWeaponsTarget(norm: string): { id: string; p: PlayerState; rt: Runtime } | null {
+    const bot = this.bots.get(norm);
+    if (bot) return { id: bot.id, p: bot.state, rt: bot.rt };
+    for (const [id, p] of this.state.players) {
+      if (normNick(p.nick) !== norm) continue;
+      const rt = this.rt.get(id);
+      if (rt) return { id, p, rt };
+    }
+    return null;
+  }
+
+  /** `!weapons` — список собранного оружия-инстансов с номерами для "!equip". */
+  private sayWeapons(nick: string, norm: string): void {
+    const t = this.findWeaponsTarget(norm);
+    if (!t) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (t.rt.weapons.length === 0) {
+      this.reply(`@${nick} склад пуст — золотое и легендарное оружие падает с боёв.`);
+      return;
+    }
+    const lines = t.rt.weapons.slice(0, 8).map((w, i) => {
+      const equipped =
+        t.rt.equippedWeaponId.left === w.id || t.rt.equippedWeaponId.right === w.id
+          ? " [в руке]"
+          : "";
+      const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
+      return `${i + 1}) ${weaponDef(w.cls, w.tier).name} (${w.tier}, id ${w.id}) — ${affixes}${equipped}`;
+    });
+    const more = t.rt.weapons.length > 8 ? ` …и ещё ${t.rt.weapons.length - 8}` : "";
+    this.reply(`@${nick} склад: ${lines.join(" | ")}${more} — !equip <номер>`);
+  }
+
+  /** `!equip <номер|id>` — вручную закрепить конкретный собранный инстанс в руке. */
+  private equipWeapon(nick: string, norm: string, arg: string | undefined): void {
+    const t = this.findWeaponsTarget(norm);
+    if (!t) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (!arg) {
+      this.reply(`@${nick} укажи номер или id: !equip 2 (список — !weapons).`);
+      return;
+    }
+    const n = Number(arg);
+    const w =
+      Number.isInteger(n) && n >= 1 && n <= t.rt.weapons.length
+        ? t.rt.weapons[n - 1]
+        : (t.rt.weapons.find((x) => x.id === arg) ?? null);
+    if (!w) {
+      this.reply(`@${nick} нет такого предмета — список: !weapons.`);
+      return;
+    }
+    const { p, rt } = t;
+    if (w.cls === "shield") {
+      p.leftCls = "shield";
+      p.leftTier = w.tier;
+      rt.equippedWeaponId.left = w.id;
+    } else {
+      const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+      p.rightCls = w.cls;
+      p.rightTier = w.tier;
+      p.leftCls = w.cls === "bow" ? "" : "shield";
+      p.leftTier = w.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+      rt.equippedWeaponId.right = w.id;
+      if (w.cls === "bow") rt.equippedWeaponId.left = null;
+    }
+    rt.owned.add(weaponKey(w.cls, w.tier));
+    const bot = this.bots.get(norm);
+    if (bot) this.persistBot(bot);
+    else {
+      const client = this.clientOf(t.id);
+      if (client) this.persist(client);
+    }
+    const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
+    this.reply(`@${nick} надел ${weaponDef(w.cls, w.tier).name} — ${affixes}`);
   }
 
   /** `!stats` — прогресс бота, а если его нет — что сделать, чтобы он был. */
@@ -2553,7 +2656,9 @@ export class ZoneRoom extends Room<ZoneState> {
       "Ещё: !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
-        "идти рядом, !unfollow — назад к делам · !voice <номер|имя> — выбрать голос " +
+        "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
+        "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
+        "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
         "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +
         "стрима, ник — как в Twitch.",
@@ -2709,6 +2814,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
+      equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
     };
     this.rt.set(id, rt);
 
@@ -2829,6 +2935,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bag: [],
       kills: bot.rt.kills,
       weapons: bot.rt.weapons,
+      equippedWeaponId: bot.rt.equippedWeaponId,
       botActive: true, // в мире — восстановить после рестарта
     });
   }
@@ -4418,6 +4525,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
+      equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
     });
 
     client.send(
@@ -4465,6 +4573,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: rt.kills,
       weapons: rt.weapons,
+      equippedWeaponId: rt.equippedWeaponId,
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,
