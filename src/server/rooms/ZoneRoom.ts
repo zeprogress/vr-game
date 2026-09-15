@@ -3959,6 +3959,13 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       p.stunned = rt && rt.stunnedUntil > this.elapsed ? 1 : 0;
+      // Текст роллов надетого инстанса — для тултипа в инвентаре (Ф14).
+      if (rt) {
+        const lw = rolledIn(p, "left", rt);
+        const rw = rolledIn(p, "right", rt);
+        p.leftAffix = lw ? lw.affixes.map(affixLabel).join(", ") : "";
+        p.rightAffix = rw ? rw.affixes.map(affixLabel).join(", ") : "";
+      }
     });
 
     // Мобы гоняются только за живыми и только за теми, кто ВНЕ безопасной зоны

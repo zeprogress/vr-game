@@ -7,6 +7,8 @@ import { AFFIX, BOW, COMBAT, SHIELD } from "#shared/constants";
 export interface WornWeapon {
   cls: WeaponClass;
   tier: WeaponTier;
+  /** Текст случайных роллов конкретного подобранного инстанса ("+12% урона, +6% крит"). */
+  affix?: string;
 }
 
 /** Характеристики героя — от них считаем цифры оружия в подсказке. */
@@ -63,5 +65,6 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Сектор", `±${Math.round((cone * 180) / Math.PI)}°`]);
   }
   if (d.affix) out.push(["Эффект", AFFIX_TEXT[d.affix]]);
+  if (w.affix) out.push(["Роллы", w.affix]);
   return out;
 }

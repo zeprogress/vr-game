@@ -282,9 +282,16 @@ export class Game {
     // Инвентарь показывает и снаряжение: что в руках и что за спиной.
     this.hud.bindEquipped(() => {
       const h = this.combat.handsSnapshot();
+      // Текст роллов ("+12% урона" и т.п.) — сервер считает и держит в
+      // своём PlayerState (leftAffix/rightAffix), клиент их только читает.
+      const self = this.net?.self;
       return {
-        left: h.left as { cls: WeaponClass; tier: WeaponTier } | null,
-        right: h.right as { cls: WeaponClass; tier: WeaponTier } | null,
+        left: h.left
+          ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon)
+          : null,
+        right: h.right
+          ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon)
+          : null,
         stowed: this.combat.stowedSnapshot(),
         stats: {
           level: this.progression.level,
@@ -1265,9 +1272,10 @@ export class Game {
     this.wristPanel?.setLeaveBot(this.leaveBotOn);
     if (this.wristPanel) {
       const h = this.combat.handsSnapshot();
+      const self = this.net?.self;
       this.wristPanel.setHands(
-        h.right as WornWeapon | null,
-        h.left as WornWeapon | null,
+        h.right ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon) : null,
+        h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
     }
     this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
