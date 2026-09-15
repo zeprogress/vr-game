@@ -529,11 +529,11 @@ export const AFFIX = {
  */
 export const DROP_CHANCE = {
   /** Обычный моб (не элитный, не ивентовый) — золото, легендарки не бывает. */
-  regularGold: 0.02,
+  regularGold: 0.008,
   /** Элитный лагерный моб (ELITE_MOBS) — заметно щедрее обычного. */
-  eliteGold: 0.1,
+  eliteGold: 0.05,
   eliteLegendary: 0.01,
-  /** Мировой босс — доп. шанс легендарки ПОВЕРХ существующих 40%/класс золота. */
+  /** Мировой босс — доп. шанс легендарки ПОВЕРХ золота (см. LOOT.boss в items.ts). */
   bossLegendary: 0.05,
 } as const;
 

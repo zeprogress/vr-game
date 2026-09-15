@@ -82,6 +82,24 @@ export function floorMobAtkIntervalSec(floor: number): number {
 }
 
 /**
+ * Шанс дропа оружия с этажного босса — растёт с этажом (последний, TOWER.floors,
+ * обрабатывается отдельно как гарантированный — см. вызывающий код в TowerRoom).
+ * Этаж 1 ≈ 5%, этаж 10 ≈ 45.5%, этаж 19 ≈ 86%.
+ */
+export function towerWeaponChance(floor: number): number {
+  return Math.min(0.9, 0.05 + 0.045 * (floor - 1));
+}
+
+/**
+ * Доля легендарок среди этих дропов — 0 до этажа 9, дальше растёт до
+ * потолка 0.5 (последний этаж — отдельный гарантированный случай, см.
+ * вызывающий код в TowerRoom, ему эта доля не указ).
+ */
+export function towerLegendaryShare(floor: number): number {
+  return Math.max(0, Math.min(0.5, (floor - 9) / 11));
+}
+
+/**
  * Этаж → модель (ключ MODELS на клиенте, см. `src/client/world/models.ts`)
  * + архетип характера — заготовка для фазы будущего апгрейда TowerArenaFx
  * (сейчас там кубы-заглушки). Правило спеки: мини-босс = та же модель,

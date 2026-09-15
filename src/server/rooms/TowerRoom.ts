@@ -9,12 +9,23 @@ import {
   floorMobDmg,
   floorMobHp,
   floorMonster,
+  towerLegendaryShare,
+  towerWeaponChance,
   type FloorArchetype,
 } from "#shared/tower";
 import { noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, attackSpeedFor, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
 import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
-import { WEAPONS, weaponAffix, weaponKey, type WeaponClass, type WeaponTier } from "#shared/items";
+import {
+  isWeaponClass,
+  rollWeaponInstance,
+  WEAPONS,
+  weaponAffix,
+  weaponKey,
+  type WeaponClass,
+  type WeaponInstance,
+  type WeaponTier,
+} from "#shared/items";
 import { AFFIX, BOT } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
@@ -28,6 +39,8 @@ export interface TowerRunResult {
   floorReached: number;
   towerShards: number;
   phase: Exclude<TowerPhase, "running">;
+  /** Оружие, выбитое с этажных боссов за весь забег — сразу в склад героя, без физ. дропа. */
+  drops: WeaponInstance[];
 }
 
 /**
@@ -225,6 +238,10 @@ export class TowerRoom extends Room<TowerState> {
   /** Лук/посох — герой стреляет с дистанции (как основной мир), не бежит в упор рукопашной. */
   private heroRanged = false;
   private heroWeaponKind: "sword" | "fist" | "bow" | "staff" = "fist";
+  /** Класс оружия героя (правая рука) — что именно дропаем с этажных боссов. */
+  private heroCls: WeaponClass = "sword";
+  /** Оружие, выбитое за этот забег — уходит в TowerRunResult.drops при finish(). */
+  private drops: WeaponInstance[] = [];
   /** Темп дальнего боя (attackSpeedFor) — у лука/посоха он полный, не приглушённый как у меча. */
   private heroAtkSpeed = 1;
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
@@ -271,6 +288,7 @@ export class TowerRoom extends Room<TowerState> {
             ? "staff"
             : "fist";
     this.heroWeaponKind = weaponKind;
+    this.heroCls = isWeaponClass(options.rightCls) ? options.rightCls : "sword";
     this.heroRanged = weaponKind === "bow" || weaponKind === "staff";
     this.heroAtkSpeed = attackSpeedFor(options.level, options.agi);
     // Лук/меч тянут тир оружия (мультом); посох — магия считает от level/int
@@ -582,12 +600,29 @@ export class TowerRoom extends Room<TowerState> {
     }
   }
 
+  /**
+   * Шанс дропа с этажного босса — растёт с этажом (towerWeaponChance),
+   * тир смещается к легендарке ближе к вершине (towerLegendaryShare).
+   * Последний этаж — отдельный гарантированный случай, кульминация забега.
+   * Оружие сразу класса героя (в башне класс не сменить, дропать чужой
+   * смысла нет) и сразу в склад — на арене нет "земли с дропом".
+   */
+  private rollFloorDrop(floor: number): void {
+    const isFinal = floor >= TOWER.floors;
+    const dropped = isFinal || Math.random() < towerWeaponChance(floor);
+    if (!dropped) return;
+    const legendaryChance = isFinal ? 0.6 : towerLegendaryShare(floor);
+    const tier: WeaponTier = Math.random() < legendaryChance ? "legendary" : "gold";
+    this.drops.push(rollWeaponInstance(this.heroCls, tier));
+  }
+
   /** Общий путь урона по мобу/боссу — от удара героя и от тика горения. */
   private applyDamage(target: LiveMob, dmg: number): void {
     target.hp -= dmg;
     if (target.hp > 0) return;
     if (target === this.boss) {
       this.towerShards++;
+      this.rollFloorDrop(this.state.floor);
       // Снапшот ЭТОГО тика (решающий удар — heroRangedPulse/heroSwordHit/
       // heroSkillFx и т.п.) — ДО advanceFloor()/spawnFloor(), которые тут же
       // сбрасывают эти самые флаги под чистый старт нового этажа. Без этого
@@ -895,7 +930,12 @@ export class TowerRoom extends Room<TowerState> {
     if (this.finished) return;
     this.finished = true;
     this.state.phase = phase;
-    this.onResult?.({ floorReached: this.state.floor, towerShards: this.towerShards, phase });
+    this.onResult?.({
+      floorReached: this.state.floor,
+      towerShards: this.towerShards,
+      phase,
+      drops: this.drops,
+    });
     // Небольшая пауза — зрители у спектатора успевают увидеть исход, прежде
     // чем комната (и её состояние) исчезнет.
     this.clock.setTimeout(() => void this.disconnect(), 3000);
