@@ -64,7 +64,10 @@ if (!token) {
   client
     .joinOrCreate<never>("inventory_room", { viewToken: token })
     .then((room) => {
-      room.onMessage("inv", (msg: InvMsg) => renderInv(msg));
+      room.onMessage("inv", (msg: InvMsg) => {
+        renderInv(msg);
+        room.leave(); // сервер прислал всё одним сообщением — держать сокет незачем
+      });
     })
     .catch(() => renderError("Не получилось связаться с сервером — попробуй перезагрузить страницу."));
 }

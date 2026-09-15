@@ -27,7 +27,6 @@ export class InventoryRoom extends colyseus.Room {
     const rec = token ? store.entries().find((r) => r.viewToken === token) : undefined;
     if (!rec) {
       client.send("inv", { ok: false });
-      client.leave();
       return;
     }
     const weapons = (rec.weapons ?? []).map((w) => ({
@@ -38,8 +37,9 @@ export class InventoryRoom extends colyseus.Room {
       equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
     }));
     client.send("inv", { ok: true, nick: rec.nick, weapons });
-    // Разовый запрос-ответ — держать соединение незачем, страница сама не
-    // переоткрывает джойн (просто перезагрузка страницы шлёт новый).
-    client.leave();
+    // Закрыть соединение должен сам клиент ПОСЛЕ того, как обработает
+    // сообщение (см. src/client/inv/main.ts) — закрытие отсюда синхронно
+    // с send() иногда обгоняло доставку и рвало сокет (code 1005) раньше,
+    // чем colyseus.js успевал разобрать входящее.
   }
 }
