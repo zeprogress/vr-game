@@ -112,6 +112,7 @@ import {
   isWeaponClass,
   isWeaponTier,
   ITEMS,
+  plainWeaponInstance,
   scrapValue,
   takeOne,
   weaponAffix,
@@ -550,6 +551,19 @@ function tierRank(t: WeaponTier | string): number {
 }
 
 /**
+ * Оружие тира gold/legendary, которое было в руке ДО появления склада
+ * инстансов (или подобрано в обход этого пути), не имеет записи в
+ * rt.weapons — если его сейчас снимут (смена оружия), деться ему некуда,
+ * пропадёт безвозвратно. Перед любой сменой рук докладываем такой предмет
+ * в склад "голым" (без роллов) инстансом, если там ещё нет ни одного.
+ */
+function preserveLegacyWeapon(rt: Runtime, cls: string, tier: string): void {
+  if (tier === "base" || !isWeaponClass(cls) || !isWeaponTier(tier)) return;
+  if (rt.weapons.some((w) => w.cls === cls && w.tier === tier)) return;
+  rt.weapons.push(plainWeaponInstance(cls, tier));
+}
+
+/**
  * Можно ли `id` подбирать этот дроп прямо сейчас — бронь за добившим моба
  * (BAG.lootOwnerSec) не даёт чужому боту/игроку утащить трофей раньше, чем
  * до него дойдёт тот, кто его выбил (раздел 8 плана).
@@ -787,7 +801,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // --- лечение (небоевое) ---
       if (msg.spell === "heal") {
         const h = MAGIC.heal;
-        if (this.elapsed - rt.lastCast < h.cooldown) return;
+        const healHand = p.rightCls === "staff" ? "right" : "left";
+        if (this.elapsed - rt.lastCast < h.cooldown / rolledAtkSpeedMul(p, healHand, rt)) return;
         if (charge < h.minCharge || p.mana < h.minMana) return;
         // Цель: союзник в радиусе, иначе сам.
         let target = p;
@@ -809,7 +824,11 @@ export class ZoneRoom extends Room<ZoneState> {
         return;
       }
 
-      if (this.elapsed - rt.lastCast < MAGIC.firebolt.cooldown) return;
+      // Ролл "скорость атаки" на посохе укорачивает и кулдаун каста —
+      // раньше применялся только к tryHit() (меч/лук), сюда не доходил.
+      const staffHand = p.rightCls === "staff" ? "right" : "left";
+      const castCooldown = MAGIC.firebolt.cooldown / rolledAtkSpeedMul(p, staffHand, rt);
+      if (this.elapsed - rt.lastCast < castCooldown) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
 
@@ -2516,10 +2535,12 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const { p, rt } = t;
     if (w.cls === "shield") {
+      preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
       p.leftCls = "shield";
       p.leftTier = w.tier;
       rt.equippedWeaponId.left = w.id;
     } else {
+      preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
       const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
       p.rightCls = w.cls;
       p.rightTier = w.tier;
@@ -3653,10 +3674,12 @@ export class ZoneRoom extends Room<ZoneState> {
           const upgrade = isEquipUpgrade(lw);
           if (upgrade) {
             if (lw.cls === "shield") {
+              preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
               // «Эгида» — в левую руку, правое оружие не трогаем.
               p.leftCls = "shield";
               p.leftTier = lw.tier;
             } else {
+              preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
               const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
               p.rightCls = lw.cls;
               p.rightTier = lw.tier;

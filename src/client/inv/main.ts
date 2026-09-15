@@ -8,10 +8,22 @@ interface InvWeapon {
   equipped: boolean;
 }
 
+interface InvHand {
+  name: string;
+  affixes: string[];
+}
+
+interface InvMisc {
+  name: string;
+  count: number;
+}
+
 interface InvMsg {
   ok: boolean;
   nick?: string;
+  hands?: { left: InvHand | null; right: InvHand | null };
   weapons?: InvWeapon[];
+  misc?: InvMisc[];
 }
 
 const titleEl = document.getElementById("title")!;
@@ -29,32 +41,54 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+function handHtml(label: string, h: InvHand | null): string {
+  if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
+  const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
+  return (
+    `<div class="hand"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}</span>` +
+    `<div class="affixes">${escapeHtml(affixes)}</div></div>`
+  );
+}
+
 function renderInv(msg: InvMsg): void {
   if (!msg.ok) {
     renderError("Ссылка недействительна — попроси новую командой !inv в чате.");
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
+  subEl.textContent = "";
+
+  const hands = msg.hands;
+  const handsHtml = hands
+    ? `<div class="hands">${handHtml("Правая рука", hands.right)}${handHtml("Левая рука", hands.left)}</div>`
+    : "";
+
   const weapons = msg.weapons ?? [];
-  if (weapons.length === 0) {
-    subEl.textContent = "";
-    listEl.innerHTML = '<div class="empty">Склад пуст — золотое и легендарное оружие падает с боёв.</div>';
-    return;
-  }
-  subEl.textContent = `Предметов: ${weapons.length}`;
-  listEl.innerHTML = weapons
-    .map((w, i) => {
-      const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
-      return (
-        `<div class="weapon ${w.tier}">` +
-        `<div><div class="name">${i + 1}) ${escapeHtml(w.name)}</div>` +
-        `<div class="affixes">${escapeHtml(affixes)}</div>` +
-        (w.equipped ? '<div class="badge">⚔️ в бою</div>' : "") +
-        `</div><div class="meta">${w.tier}<br>id ${w.id}</div>` +
-        `</div>`
-      );
-    })
-    .join("");
+  const weaponsHtml =
+    weapons.length === 0
+      ? '<div class="empty">Склад пуст — золотое и легендарное оружие падает с боёв.</div>'
+      : weapons
+          .map((w, i) => {
+            const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
+            return (
+              `<div class="weapon ${w.tier}">` +
+              `<div><div class="name">${i + 1}) ${escapeHtml(w.name)}</div>` +
+              `<div class="affixes">${escapeHtml(affixes)}</div>` +
+              (w.equipped ? '<div class="badge">⚔️ в бою</div>' : "") +
+              `</div><div class="meta">${w.tier}<br>id ${w.id}</div>` +
+              `</div>`
+            );
+          })
+          .join("");
+
+  const misc = msg.misc ?? [];
+  const miscHtml =
+    misc.length === 0
+      ? ""
+      : `<h2 class="section">Прочее</h2>` +
+        misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
+
+  listEl.innerHTML = `${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 if (!token) {

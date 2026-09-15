@@ -383,6 +383,17 @@ export function rollWeaponInstance(
   return { id: shortId(rnd), cls, tier, affixes };
 }
 
+/**
+ * "Голый" инстанс без роллов — для оружия, надетого ДО того, как появился
+ * склад инстансов (легаси-предметы: были в руках/owned, но никогда не
+ * проходили через дроп). Без этого переключение на другое оружие через
+ * "!equip" просто стирало такой предмет — его не было в rt.weapons, некуда
+ * было деться. См. preserveLegacyWeapon в ZoneRoom.ts.
+ */
+export function plainWeaponInstance(cls: WeaponClass, tier: WeaponTier): WeaponInstance {
+  return { id: shortId(Math.random), cls, tier, affixes: [] };
+}
+
 /** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
 export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   let s = 0;

@@ -51,7 +51,8 @@
       .weapon.gold .name {
         color: #ffd24a;
       }
-      .weapon .affixes {
+      .weapon .affixes,
+      .hand .affixes {
         color: #7db8ff;
         font-size: 13px;
         margin-top: 2px;
@@ -75,6 +76,44 @@
       .error {
         opacity: 0.6;
         padding: 20px 0;
+      }
+      .section {
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.55;
+        margin: 22px 0 10px;
+      }
+      .section:first-child {
+        margin-top: 0;
+      }
+      .hands {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .hand {
+        flex: 1 1 220px;
+        background: #2a2e40;
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      .hand.empty-hand {
+        opacity: 0.5;
+      }
+      .hand-label {
+        opacity: 0.6;
+        font-size: 12px;
+      }
+      .hand-name {
+        font-weight: 700;
+      }
+      .misc {
+        background: #2a2e40;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-bottom: 6px;
       }
       button#mechBtn {
         margin-top: 24px;
