@@ -2,6 +2,7 @@ import {
   BOSS,
   BOSS_CFG,
   COMBAT,
+  DROP_CHANCE,
   ELITE_MOBS,
   MAGE_NOVA,
   MAGE_SPELL,
@@ -43,6 +44,10 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "shield:legendary": "leg_shield",
   "staff:legendary": "leg_staff",
 };
+/** У щита нет золотого тира — только базовый/легендарный. */
+const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff"];
+const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield"];
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 /** Препятствия (стволы + крупные камни) — общие с клиентом, один раз. */
 const OBSTACLES: { x: number; z: number; r: number }[] = [
@@ -1756,6 +1761,32 @@ export class ZoneSim {
 
   private spawnLoot(m: Mob): { id: ItemId; count: number }[] {
     const rolled = rollLoot(m.kind, Math.random);
+    // Оружие — отдельный ролл поверх таблицы LOOT (та знает только про
+    // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
+    // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
+    // различаем по Mob.eliteName, а не по kind — см. DROP_CHANCE.
+    if (m.kind === "boss") {
+      if (Math.random() < DROP_CHANCE.bossLegendary) {
+        const cls = pick(LEGENDARY_CLASSES);
+        const item = WEAPON_DROP[weaponKey(cls, "legendary")];
+        if (item) rolled.push({ id: item, count: 1 });
+      }
+    } else if (m.kind !== "shard") {
+      const elite = m.eliteName !== "";
+      const goldChance = elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold;
+      const legendaryChance = elite ? DROP_CHANCE.eliteLegendary : 0;
+      const tier: WeaponTier | null =
+        legendaryChance > 0 && Math.random() < legendaryChance
+          ? "legendary"
+          : Math.random() < goldChance
+            ? "gold"
+            : null;
+      if (tier) {
+        const cls = pick(tier === "legendary" ? LEGENDARY_CLASSES : GOLD_CLASSES);
+        const item = WEAPON_DROP[weaponKey(cls, tier)];
+        if (item) rolled.push({ id: item, count: 1 });
+      }
+    }
     for (const { id, count } of rolled) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;

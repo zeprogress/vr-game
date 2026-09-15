@@ -521,6 +521,22 @@ export const AFFIX = {
   storm: { splashRadiusMul: 1.6, splashFracMul: 1.5, dmgMul: 1.2 },
 } as const;
 
+/**
+ * Шанс дропа оружия (за килл, независимо от таблицы LOOT с зельями) —
+ * растёт с "щедростью" источника: обычный моб < элитный лагерный < мировой
+ * босс. Элитных мобов от обычных отличает Mob.eliteName (оба делят один
+ * MobKind — slime/spitter — так что через LOOT-таблицу это не выразить).
+ */
+export const DROP_CHANCE = {
+  /** Обычный моб (не элитный, не ивентовый) — золото, легендарки не бывает. */
+  regularGold: 0.02,
+  /** Элитный лагерный моб (ELITE_MOBS) — заметно щедрее обычного. */
+  eliteGold: 0.1,
+  eliteLegendary: 0.01,
+  /** Мировой босс — доп. шанс легендарки ПОВЕРХ существующих 40%/класс золота. */
+  bossLegendary: 0.05,
+} as const;
+
 export const SHIELD = {
   equipReach: 2.6,
   radius: 0.32, // м, радиус диска щита
