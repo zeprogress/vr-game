@@ -1006,11 +1006,10 @@ class Drop {
     readonly z: number,
   ) {}
 
-  /** true — пора убрать. Оружие не тает: лежит, пока его не подберут. */
+  /** true — пора убрать. Оружие лежит намного дольше обычного лута (час), а не тает за 3 минуты. */
   tick(dt: number): boolean {
-    if (ITEMS[this.item].weapon) return false;
     this.life += dt;
-    return this.life > BAG.dropLife;
+    return this.life > (ITEMS[this.item].weapon ? BAG.weaponDropLife : BAG.dropLife);
   }
 }
 
