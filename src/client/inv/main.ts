@@ -10,6 +10,7 @@ interface InvWeapon {
 
 interface InvHand {
   name: string;
+  tier: "gold" | "legendary";
   affixes: string[];
 }
 
@@ -46,7 +47,7 @@ function handHtml(label: string, h: InvHand | null): string {
   if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
   const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
   return (
-    `<div class="hand"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}</span>` +
+    `<div class="hand ${h.tier}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}</span>` +
     `<div class="affixes">${escapeHtml(affixes)}</div></div>`
   );
 }

@@ -9,6 +9,7 @@ import {
   ITEMS,
   weaponDef,
   type WeaponInstance,
+  type WeaponTier,
 } from "#shared/items";
 import { store } from "../store";
 
@@ -16,16 +17,16 @@ interface InventoryJoinOptions {
   viewToken?: string;
 }
 
-/** Название+роллы надетого в руке — null, если рука пуста/базовая. */
+/** Название+тир+роллы надетого в руке — null, если рука пуста/базовая. */
 function handInfo(
   cls: string,
   tier: string,
   equippedId: string | null | undefined,
   weapons: WeaponInstance[],
-): { name: string; affixes: string[] } | null {
+): { name: string; tier: WeaponTier; affixes: string[] } | null {
   if (!isWeaponClass(cls) || !isWeaponTier(tier) || tier === "base") return null;
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
-  return { name: weaponDef(cls, tier).name, affixes: inst ? inst.affixes.map(affixLabel) : [] };
+  return { name: weaponDef(cls, tier).name, tier, affixes: inst ? inst.affixes.map(affixLabel) : [] };
 }
 
 /**
