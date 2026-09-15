@@ -2569,12 +2569,24 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const { p, rt } = t;
     if (w.cls === "shield") {
+      // Лук занимает ОБЕ руки — если он был в правой, слетает вместе со щитом.
+      if (p.rightCls === "bow") {
+        preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
+        p.rightCls = "sword";
+        p.rightTier = "base";
+        rt.equippedWeaponId.right = null;
+      }
       preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
       p.leftCls = "shield";
       p.leftTier = w.tier;
       rt.equippedWeaponId.left = w.id;
     } else {
       preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
+      // Одеваем лук — он один занимает обе руки, щит (если был) слетает.
+      if (w.cls === "bow" && p.leftCls === "shield") {
+        preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
+        rt.equippedWeaponId.left = null;
+      }
       const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
       p.rightCls = w.cls;
       p.rightTier = w.tier;
