@@ -1054,6 +1054,10 @@ export class ZoneRoom extends Room<ZoneState> {
               side: s.side,
             }))
         : [];
+      // Иначе rec.held в сторе (и веб-инвентарь "!inv") показывал бы то, что
+      // было надето на момент последнего MSG.save, а не сейчас — обычная
+      // смена оружия в игре персист не триггерила вообще.
+      this.persist(client);
     });
 
     // Голосовой чат: сервер — только «телефонистка». Он пересылает пакет
@@ -2301,9 +2305,9 @@ export class ZoneRoom extends Room<ZoneState> {
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
-    } else if (cmd === "!str" || cmd === "!dex" || cmd === "!int") {
-      // В чате ловкость — !dex, внутри она по-прежнему agi.
-      const stat: StatName = cmd === "!dex" ? "agi" : (cmd.slice(1) as StatName);
+    } else if (cmd === "!str" || cmd === "!dex" || cmd === "!agi" || cmd === "!int") {
+      // В чате ловкость — !dex (запасной алиас !agi на всякий случай), внутри она по-прежнему agi.
+      const stat: StatName = cmd === "!dex" || cmd === "!agi" ? "agi" : (cmd.slice(1) as StatName);
       this.spendBotPoint(norm, stat, parts[1]);
     } else if (
       cmd === "!respec" ||
