@@ -57,21 +57,23 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const weaponsList = rec.weapons ?? [];
-      // Надетое показываем отдельно (см. hands ниже) — тут оставляем только
-      // то, что реально можно выбрать номером/id в "!equip"/"!scrap" на
-      // ПРОСТО НОМЕР этого предмета в rt.weapons (num — та же нумерация,
-      // что и у "!weapons" в чате), а не позицию после фильтрации: иначе
-      // номер на странице разъехался бы с тем, что реально примет чат-команда.
+      // Надетое показываем отдельно (см. hands ниже), а не в общем списке —
+      // и номер тут даём ПОДРЯД только по видимой (ненадетой) части, ровно
+      // как считает resolveWeaponArg на сервере ("!equip"/"!scrap" в чате).
+      // Раньше номер был честной позицией в rt.weapons: если надетый предмет
+      // сидел в середине склада, у остальных номера съезжали с дырой.
+      const equippedIds = new Set(
+        [rec.equippedWeaponId?.left, rec.equippedWeaponId?.right].filter((id): id is string => !!id),
+      );
       const weapons = weaponsList
+        .filter((w) => !equippedIds.has(w.id))
         .map((w, i) => ({
           num: i + 1,
           id: w.id,
           tier: w.tier,
           name: weaponDef(w.cls, w.tier).name,
           affixes: w.affixes.map(affixLabel),
-          equipped: rec.equippedWeaponId?.left === w.id || rec.equippedWeaponId?.right === w.id,
-        }))
-        .filter((w) => !w.equipped);
+        }));
       const misc = (rec.bag ?? [])
         .filter((s) => s.item && s.count > 0)
         .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));

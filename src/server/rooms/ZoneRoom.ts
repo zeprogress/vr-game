@@ -2510,29 +2510,43 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
-    if (t.rt.weapons.length === 0) {
-      this.reply(`@${nick} склад пуст — золотое и легендарное оружие падает с боёв.`);
+    const list = this.nonEquippedWeapons(t.rt);
+    if (list.length === 0) {
+      this.reply(`@${nick} в складе (не считая надетого) пусто — золотое и легендарное оружие падает с боёв.`);
       return;
     }
-    const lines = t.rt.weapons.slice(0, 8).map((w, i) => {
-      const equipped =
-        t.rt.equippedWeaponId.left === w.id || t.rt.equippedWeaponId.right === w.id
-          ? " [в руке]"
-          : "";
+    const lines = list.slice(0, 8).map((w, i) => {
       const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
-      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${w.tier} — ${affixes}${equipped}`;
+      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${w.tier} — ${affixes}`;
     });
-    const more = t.rt.weapons.length > 8 ? ` …и ещё ${t.rt.weapons.length - 8}` : "";
+    const more = list.length > 8 ? ` …и ещё ${list.length - 8}` : "";
     this.reply(
       `@${nick} склад: ${lines.join(" | ")}${more} — !equip/!scrap <номер>.`,
     );
   }
 
   /** `!equip <номер|id>` — вручную закрепить конкретный собранный инстанс в руке. */
-  /** Номер (1-based, как в "!weapons") или id → конкретный инстанс из склада. */
+  /**
+   * Оружие в складе, которое НЕ надето прямо сейчас — единственное, что
+   * реально имеет смысл выбирать номером (надетое и так видно в "руках",
+   * и его нельзя ни переэкипировать на себя же, ни сломать). Раньше номер
+   * был "честной" позицией в rt.weapons, и если надетый предмет оказывался
+   * в середине склада, у остальных номера съезжали с дырой на его месте —
+   * теперь нумеруем ТОЛЬКО эту, "видимую" часть, подряд без пропусков.
+   */
+  private nonEquippedWeapons(rt: Runtime): WeaponInstance[] {
+    return rt.weapons.filter(
+      (w) => w.id !== rt.equippedWeaponId.left && w.id !== rt.equippedWeaponId.right,
+    );
+  }
+
+  /** Номер (1-based среди НЕнадетого, как в "!weapons") или id → конкретный инстанс. */
   private resolveWeaponArg(rt: Runtime, arg: string): WeaponInstance | null {
     const n = Number(arg);
-    if (Number.isInteger(n) && n >= 1 && n <= rt.weapons.length) return rt.weapons[n - 1];
+    if (Number.isInteger(n) && n >= 1) {
+      const list = this.nonEquippedWeapons(rt);
+      if (n <= list.length) return list[n - 1];
+    }
     return rt.weapons.find((x) => x.id === arg) ?? null;
   }
 
