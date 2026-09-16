@@ -18,6 +18,7 @@ import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
+import { trackMobMaterial } from "./mobLightTune";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
@@ -65,6 +66,7 @@ function recolorRig(
     // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
     flat.alpha = alpha;
     flat.backFaceCulling = true;
+    trackMobMaterial(flat); // ?moblight=1 — живая подстройка поверх базовых цветов
   }
 }
 
@@ -172,6 +174,7 @@ export class Mob implements Hittable {
     // сортировки. Слизень выглядит плотным, зато почти бесплатно по заполнению.
     this.mat.alpha = opaque ? 1 : cfg.alpha;
     this.mat.backFaceCulling = true;
+    trackMobMaterial(this.mat); // ?moblight=1 — живая подстройка поверх базовых цветов
 
     this.body = MeshBuilder.CreateSphere("mobBody", { diameter: MOB.bodyRadius * 2, segments: 8 }, scene);
     this.body.material = this.mat;

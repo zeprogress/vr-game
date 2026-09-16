@@ -20,6 +20,11 @@ if (params.get("fog") === "1") {
   void import("./ui/FogTuner").then(({ mountFogTuner }) => mountFogTuner());
 }
 
+// ?moblight=1 — панель живой настройки освещения полевых мобов (не башня).
+if (params.get("moblight") === "1") {
+  void import("./ui/MobLightTuner").then(({ mountMobLightTuner }) => mountMobLightTuner());
+}
+
 // ?tpcam=1 — панель живой настройки камеры от третьего лица (смартфон).
 if (params.get("tpcam") === "1") {
   void import("./ui/TpCamTuner").then(({ mountTpCamTuner }) => mountTpCamTuner());

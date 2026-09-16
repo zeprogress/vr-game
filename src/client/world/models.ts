@@ -10,6 +10,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/loaders/glTF/2.0";
+import { trackMobMaterial } from "../combat/mobLightTune";
 
 /**
  * Пайплайн внешних ассетов (этап 12).
@@ -460,6 +461,7 @@ export function recolorMonster(root: TransformNode, tint?: Color3): void {
         flat.diffuseColor = tint ?? base;
         flat.emissiveColor = (tint ?? base).scale(0.28);
       }
+      trackMobMaterial(flat); // ?moblight=1 — живая подстройка поверх базовых цветов
       seen.set(src.id, flat);
     }
     mesh.material = flat;
