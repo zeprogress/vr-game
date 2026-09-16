@@ -2977,11 +2977,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const leftTier = bestOwnedTier(rec?.owned, "shield");
     p.leftCls = rc === "bow" ? "" : "shield";
     p.leftTier = rc === "bow" ? "" : leftTier;
-    // Зелья выдаём при каждом выходе в мир — подбирать их на земле бот
-    // умеет (см. pickupLoot), но без стартового запаса первый бой может
-    // не пережить.
-    const bag = emptyBag();
-    addToBag(bag, "potion", BOT.potions);
+    // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
+    // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от !scrap
+    // (и любые другие расходники) стирался при первом же выходе бота в мир
+    // после того, как их накопили. Зелья лишь ДОБАВЛЯЕМ до стартового
+    // запаса, а не пересоздаём бэг — без него первый бой может не пережить.
+    const bag = restoreBag(rec?.bag);
+    const potions = bag.reduce((n, s) => n + (s.item === "potion" ? s.count : 0), 0);
+    if (potions < BOT.potions) addToBag(bag, "potion", BOT.potions - potions);
     writeBag(p, bag);
     p.skin =
       typeof rec?.skin === "number" && rec.skin >= 1 && rec.skin <= BOT.skins
