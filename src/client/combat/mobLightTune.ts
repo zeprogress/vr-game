@@ -20,9 +20,9 @@ export interface MobLightTune {
 
 export const MOB_LIGHT_TUNE: MobLightTune = {
   diffuseMul: 1,
-  emissiveMul: 1,
-  specularMul: 1,
-  maxLights: 5,
+  emissiveMul: 0.5,
+  specularMul: 0.75,
+  maxLights: 3,
 };
 
 const KEY = "zep.moblight";
