@@ -234,7 +234,7 @@ function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
   const col: number[] = [];
   const idx: number[] = [];
   const put = (x: number, z: number): void => {
-    pos.push(x, terrainHeight(x, z) + 0.04, z);
+    pos.push(x, terrainHeight(x, z) + 0.07, z);
     uv.push((x + size / 2) / size, (z + size / 2) / size);
     const w = troddenAt(x, z);
     // Вытоптанное — светлее и ровнее; обычный грунт лагеря — чуть темнее.
