@@ -659,6 +659,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private bossFighting = false; // босс сейчас в бою (для баннера появления)
   private bossAnnouncedAt = 0; // ms последнего баннера «БОСС ПОЯВИЛСЯ»
   private readonly hintAt = new Map<string, number>(); // normNick -> ms последней подсказки
+  /** Копится в step() до BOT.tipIntervalSec — см. maybeSayTip(). */
+  private tipClock = 0;
+  /** По кругу — следующий индекс в TIPS для maybeSayTip(). */
+  private tipIdx = 0;
 
   override onCreate(): void {
     this.setState(new ZoneState());
@@ -2848,6 +2852,26 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(`@${bot.nick} очки атрибутов сброшены · свободных очков ${p.unspent} → !str !dex !int`);
   }
 
+  /** Обычная реплика в чате раз в BOT.tipIntervalSec — см. maybeSayTip(). */
+  private static readonly TIPS: readonly string[] = [
+    "Совет: !inv — веб-инвентарь, там видно оружие и его случайные характеристики (аффиксы).",
+    "Совет: !weapons — что на складе у героя, !equip <номер> — надеть другое оружие оттуда.",
+    "Совет: !scrap <номер|1,2,3|all> — разобрать ненужное оружие на лом (задел под крафт).",
+    "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
+    "Совет: у золотого и легендарного оружия бывают случайные роллы — урон, скорость атаки, крит.",
+    "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
+  ];
+
+  /** Раз во сколько-то минут — случайная подсказка в чат, если герои в мире есть. */
+  private maybeSayTip(dt: number): void {
+    if (this.bots.size === 0) return; // стрим скорее всего не идёт — не засорять чат
+    this.tipClock += dt;
+    if (this.tipClock < BOT.tipIntervalSec) return;
+    this.tipClock = 0;
+    this.reply(ZoneRoom.TIPS[this.tipIdx]);
+    this.tipIdx = (this.tipIdx + 1) % ZoneRoom.TIPS.length;
+  }
+
   /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
   private sayInfo(): void {
     const now = Date.now();
@@ -4173,6 +4197,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickEvents();
     this.tickRaid();
     this.tickBots(dt);
+    this.maybeSayTip(dt);
 
     // Мана восстанавливается всегда (от интеллекта).
     this.state.players.forEach((p) => {
