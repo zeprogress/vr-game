@@ -55,6 +55,30 @@ export function rocks(): Rock[] {
       solid,
     });
   }
+  // За игровой зоной — редкие камни в кольце, тот же приём, что и в
+  // trees.ts: "фартук" земли (Terrain.ts) не должен выглядеть пустым, но
+  // без LOD/culling у камней плотность там держим намного ниже, чем в зоне.
+  const ringOuter = reach + 70;
+  for (let i = 0; i < 16; i++) {
+    const a = r() * Math.PI * 2;
+    const rad = reach + r() * (ringOuter - reach);
+    const x = Math.cos(a) * rad;
+    const z = Math.sin(a) * rad;
+    if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue;
+    const scale = 0.22 + r() ** 2 * 0.75;
+    const solid = scale > 0.42;
+    out.push({
+      x,
+      z,
+      kind: Math.floor(r() * 3),
+      scale,
+      yaw: r() * Math.PI * 2,
+      tilt: [(r() - 0.5) * 0.5, (r() - 0.5) * 0.5],
+      r: solid ? scale * 1.15 + 0.2 : 0,
+      solid,
+    });
+  }
+
   cached = out;
   return out;
 }

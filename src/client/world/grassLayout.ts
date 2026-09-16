@@ -119,6 +119,24 @@ export function computeGrassLayout(density: number): GrassLayout {
     tryPush((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
   }
 
+  // За игровой зоной — редкий пояс травы (та же логика, что у деревьев и
+  // камней): "фартук" земли не должен выглядеть голым. Трава — тонкие
+  // инстансы, дешёвая, так что тут можно не так экономить, как с деревьями.
+  const ringOuter = reach + 70;
+  const ringCount = Math.round(budget * 0.2);
+  for (let i = 0; i < ringCount; i++) {
+    const a = rnd() * Math.PI * 2;
+    const rad = reach + rnd() * (ringOuter - reach);
+    const x = Math.cos(a) * rad;
+    const z = Math.sin(a) * rad;
+    const s = 0.4 + rnd() * 0.36;
+    const heightMul = 0.9 + rnd() * 0.7;
+    const yaw = rnd() * Math.PI * 2;
+    const b = 0.6 + rnd() * 0.9;
+    const warm = (rnd() - 0.45) * 0.5;
+    blades.push({ x, z, s, heightMul, yaw, b, warm });
+  }
+
   cached = { blades, blobs };
   cachedDensity = density;
   return cached;

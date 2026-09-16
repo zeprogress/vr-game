@@ -72,6 +72,22 @@ export function trees(): Tree[] {
     add((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
   }
 
+  // За игровой зоной — редкое кольцо деревьев, чтобы декоративный "фартук"
+  // земли (Terrain.ts, APRON) не выглядел пустым из зоны. Заметно реже
+  // самой зоны (тут нет LOD/culling у деревьев — см. nature.ts, поэтому не
+  // тянем плотность на весь фартук в 450м, только у видимого края).
+  const ringOuter = reach + 70;
+  const ringCount = Math.round(WORLD.treeCount * 0.5);
+  for (let i = 0; i < ringCount; i++) {
+    const a = rnd() * Math.PI * 2;
+    const rad = reach + rnd() * (ringOuter - reach);
+    const x = Math.cos(a) * rad;
+    const z = Math.sin(a) * rad;
+    if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue;
+    const scale = 0.75 + rnd() * 1.0;
+    out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
+  }
+
   cached = out;
   return out;
 }
