@@ -115,11 +115,10 @@ export class LocalAvatar {
         const want = this.skin;
         let make: () => RigInstance;
         try {
-          // smoothNormals пробовали включить (модели глб, не FBX-моб-пак) —
-          // но тот же баг, что и в Mob.ts: пересчёт нормалей уводит свет,
-          // герой выглядит подсвеченным снизу днём. Откатили, берём нормали
-          // из файла как есть.
-          make = await loadRig(this.scene, this.model());
+          // smoothNormals: убирает фасетчатый вид. Раньше уводило свет
+          // ровно на 180° (зеркальный масштаб в трансформе меша) — теперь
+          // models.ts компенсирует это по знаку определителя мировой матрицы.
+          make = await loadRig(this.scene, this.model(), { smoothNormals: true });
         } catch {
           return; // модель не пришла — остаёмся без тела, не долбим
         }

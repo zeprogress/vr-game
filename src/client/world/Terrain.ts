@@ -381,11 +381,15 @@ function grassMaterial(scene: Scene): StandardMaterial {
       const patch = fbm(wx * 2 + 40, wy * 2 + 40, 5); // проплешины
       const tuft = fbm(wx * 4 - 12, wy * 4 + 7, 4); // кустики / мох
       const grain = pnoise(u * 40, v * 40, SPAN * 40); // мелкое зерно
-      const blade = pnoise(u * 90 + v * 12, v * 6, SPAN * 6); // штрихи «по травинке»
+      // Штрихи «по травинке» — были слишком анизотропны (90:6, почти прямые
+      // линии) и читались как "полосатость", а не фактура травы. Сделали
+      // соотношение мягче (36:6) — ближе к диагональным мазкам, не полосам.
+      const blade = pnoise(u * 36 + v * 12, v * 6, SPAN * 6);
 
-      // Рельеф дёрна: крупная волна + бугорки от кустиков + зерно.
+      // Рельеф дёрна: крупная волна + бугорки от кустиков + чуть зерна
+      // (было 0.35 — слишком заметно "зернило" бамп-карту вблизи).
       const h = clamp01(
-        0.5 + (macro - 0.5) * 0.7 + (tuft - 0.5) * 0.5 + (grain - 0.5) * 0.35,
+        0.5 + (macro - 0.5) * 0.7 + (tuft - 0.5) * 0.5 + (grain - 0.5) * 0.15,
       );
       H[i] = h;
 
@@ -403,10 +407,12 @@ function grassMaterial(scene: Scene): StandardMaterial {
       const bare = smooth(0.66, 0.82, patch);
       col = col.map((c, k) => lerp(c, dirt[k], bare * 0.85));
 
-      // Затенение по рельефу + анизотропные штрихи + зерно.
+      // Затенение по рельефу + анизотропные штрихи + зерно — оба заметно
+      // приглушены (было по 0.12): вблизи именно они читались как "пиксели"
+      // и "полосы", а не как фактура травы.
       const ao = 0.78 + h * 0.32;
-      const streak = 0.94 + blade * 0.12;
-      const gr = 0.94 + grain * 0.12;
+      const streak = 0.97 + blade * 0.06;
+      const gr = 0.97 + grain * 0.06;
       const shade = ao * streak * gr;
       R[i] = col[0] * shade;
       G[i] = col[1] * shade;
@@ -434,7 +440,7 @@ function grassMaterial(scene: Scene): StandardMaterial {
   const bctx = bumpDt.getContext() as unknown as CanvasRenderingContext2D;
   const bimg = bctx.createImageData(S, S);
   const bd = bimg.data;
-  const strength = 2.2;
+  const strength = 1.3; // было 2.2 — слишком резко подчёркивало мелкий шум как "пиксели"
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
       const i = py * S + px;

@@ -8,6 +8,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { PBRBaseMaterial } from "@babylonjs/core/Materials/PBR/pbrBaseMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/loaders/glTF/2.0";
 
 /**
@@ -267,6 +268,21 @@ export async function loadRig(
         try {
           (m as unknown as { forceSharedVertices(): void }).forceSharedVertices();
           (m as unknown as { createNormals(updatable: boolean): void }).createNormals(true);
+          // createNormals считает нормали по «сырым» треугольникам в
+          // локальном пространстве — если в трансформе меша/родителя зашит
+          // зеркальный (отрицательный) масштаб (обычное дело у риг-паков),
+          // готовые нормали оказываются развёрнуты РОВНО на 180° — свет как
+          // будто бьёт с обратной стороны от солнца. Подтверждено на глаз
+          // (герой был освещён ровно противоположно солнцу). Компенсируем
+          // по знаку определителя мировой матрицы.
+          m.computeWorldMatrix(true);
+          if (m.getWorldMatrix().determinant() < 0) {
+            const normals = m.getVerticesData(VertexBuffer.NormalKind);
+            if (normals) {
+              for (let i = 0; i < normals.length; i++) normals[i] = -normals[i];
+              m.setVerticesData(VertexBuffer.NormalKind, normals, true);
+            }
+          }
         } catch {
           /* сварка сломала бы скиннинг — оставляем как есть */
         }
