@@ -160,10 +160,14 @@ export class NetClient {
   private token = "";
   /** Вход по нику зрителя (Ф10): забрать своего бота, без гостевого токена. */
   private stream = false;
+  /** Пароль для ника из ADMIN_NICKS — сервер проверяет в onJoin. */
+  private adminPass = "";
   private reconnecting = false;
   private closedByUs = false;
   /** Токен для быстрого возврата в ту же сессию (Colyseus allowReconnection). */
   private reconnectToken = "";
+  /** Сообщение последней неудачной попытки connect() — для UI (см. Login.ts). */
+  lastJoinError = "";
 
   get online(): boolean {
     return this.room !== null;
@@ -182,10 +186,16 @@ export class NetClient {
   private spectatorKey: string | null = null;
 
   /** Параметры входа для reconnectLoop — обычный игрок, зритель-по-нику или спектатор. */
-  private joinOpts(): { nick?: string; token?: string; spectator?: string; stream?: boolean } {
+  private joinOpts(): {
+    nick?: string;
+    token?: string;
+    spectator?: string;
+    stream?: boolean;
+    adminPass?: string;
+  } {
     if (this.spectatorKey !== null) return { spectator: this.spectatorKey };
-    if (this.stream) return { nick: this.nick, stream: true };
-    return { nick: this.nick, token: this.token };
+    if (this.stream) return { nick: this.nick, stream: true, adminPass: this.adminPass };
+    return { nick: this.nick, token: this.token, adminPass: this.adminPass };
   }
 
   /** Войти невидимым спектатором для стрима. `true` — успех. */
@@ -214,13 +224,15 @@ export class NetClient {
     return false;
   }
 
-  /** `true` — успех, `false` — сервера нет (одиночный режим). */
-  async connect(nick: string, token: string, stream = false): Promise<boolean> {
+  /** `true` — успех, `false` — сервера нет (одиночный режим) или неверный пароль админ-ника. */
+  async connect(nick: string, token: string, stream = false, adminPass = ""): Promise<boolean> {
     this.nick = nick;
     this.token = token;
     this.stream = stream;
+    this.adminPass = adminPass;
     this.closedByUs = false;
     this.client = new Client();
+    this.lastJoinError = "";
     // Несколько попыток: сервер мог как раз перезапускаться (деплой ~10 с).
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2500));
@@ -235,7 +247,10 @@ export class NetClient {
         console.log(`[net] в комнате ${room.roomId} как ${room.sessionId}`);
         return true;
       } catch (e) {
-        console.warn(`[net] вход не удался (попытка ${attempt + 1}):`, (e as Error).message);
+        this.lastJoinError = (e as Error).message ?? "";
+        console.warn(`[net] вход не удался (попытка ${attempt + 1}):`, this.lastJoinError);
+        // Неверный пароль — не сервер тормозит, повторами это не лечится.
+        if (this.lastJoinError.includes("пароль администратора")) break;
       }
     }
     this.client = null;

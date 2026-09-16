@@ -1,4 +1,5 @@
 import type { NetClient } from "../net/NetClient";
+import { isAdminNick } from "#shared/constants";
 
 const NICK_KEY = "lastNick";
 
@@ -47,6 +48,7 @@ export function runLogin(
       <input id="login-nick" maxlength="16" placeholder="${
         stream ? "Твой ник в Twitch" : "Твой ник"
       }" autocomplete="off" spellcheck="false" />
+      <input id="login-pass" type="password" placeholder="Пароль администратора" autocomplete="off" style="display:none" />
       <button id="login-play">${stream ? "Забрать персонажа" : "Играть"}</button>
       <div id="login-status"></div>
     </div>`;
@@ -54,11 +56,22 @@ export function runLogin(
 
   const box = overlay.querySelector<HTMLDivElement>(".login-box")!;
   const nickInput = overlay.querySelector<HTMLInputElement>("#login-nick")!;
+  const passInput = overlay.querySelector<HTMLInputElement>("#login-pass")!;
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
   const status = overlay.querySelector<HTMLDivElement>("#login-status")!;
 
   nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
   setTimeout(() => nickInput.focus(), 50);
+
+  // Поле пароля — только когда ник совпадает с ADMIN_NICKS (см. shared/constants).
+  // Без пароля сервер такой ник просто не пустит (ZoneRoom.onJoin) — раньше
+  // ЛЮБОЙ посетитель мог вписать "zeprogress" в это же поле и получить
+  // админ-команды в чате, ник там ничем не был защищён.
+  const syncPassVisibility = (): void => {
+    passInput.style.display = isAdminNick(nickInput.value.trim()) ? "" : "none";
+  };
+  nickInput.addEventListener("input", syncPassVisibility);
+  syncPassVisibility();
 
   const nick = () => nickInput.value.trim() || "гость";
 
@@ -116,9 +129,12 @@ export function runLogin(
       hooks.requestPointerLock(); // синхронно, до await — см. requestPointerLock в LoginHooks
       playBtn.disabled = true;
       status.textContent = "Подключение…";
-      const ok = await net.connect(nick(), token, stream);
+      const ok = await net.connect(nick(), token, stream, passInput.value);
       if (ok) {
         void proceed();
+      } else if (net.lastJoinError.includes("пароль администратора")) {
+        status.textContent = "Неверный пароль администратора";
+        playBtn.disabled = false;
       } else {
         status.textContent = stream
           ? "Не пустило — напиши !play в чате канала и попробуй снова"
@@ -127,6 +143,9 @@ export function runLogin(
       }
     });
     nickInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !playBtn.disabled) playBtn.click();
+    });
+    passInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !playBtn.disabled) playBtn.click();
     });
   });

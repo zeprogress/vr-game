@@ -608,7 +608,20 @@ interface JoinOpts {
   spectator?: string;
   /** Вход по нику (Ф10): забрать своего бота / персонажа. Без токена. */
   stream?: boolean;
+  /** Пароль админ-ника (ADMIN_NICKS) — см. проверку в начале onJoin. */
+  adminPass?: string;
 }
+
+/**
+ * Пароль для входа под ником из ADMIN_NICKS. Только из окружения — раньше
+ * ник был просто текстом в поле логина на сайте: любой посетитель мог
+ * вписать "zeprogress" и получить админ-команды в чате (isAdminNick
+ * сверяет только сам ник, а его никто не проверял). НЕ давать сюда
+ * встроенный дефолт (в отличие от SPEC_KEY ниже) — этот файл собирается и
+ * в клиентский бандл, дефолт в исходнике был бы виден в devtools каждому.
+ * Пусто — вход под админ-ником просто запрещён (безопасно по умолчанию).
+ */
+const ADMIN_PASS = process.env.ADMIN_PASS || "";
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
@@ -4646,6 +4659,15 @@ export class ZoneRoom extends Room<ZoneState> {
       this.clock.setTimeout(pushInit, 400);
       this.clock.setTimeout(pushInit, 1500);
       return;
+    }
+
+    // Ник совпадает с ADMIN_NICKS — без верного пароля в мир не пускаем
+    // вообще (не "заходи гостем", а отказ), иначе легко перепутать: игрок
+    // думает, что зашёл под своим обычным ником, а по факту не вошёл.
+    if (isAdminNick(normNick(options?.nick ?? ""))) {
+      if (!ADMIN_PASS || options?.adminPass !== ADMIN_PASS) {
+        throw new Error("неверный пароль администратора");
+      }
     }
 
     let token = options?.token?.trim();
