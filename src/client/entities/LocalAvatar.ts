@@ -115,10 +115,11 @@ export class LocalAvatar {
         const want = this.skin;
         let make: () => RigInstance;
         try {
-          // Модели героев — glb (не FBX-моб-пак, где смена нормалей однажды
-          // ломала свет, см. комментарий в Mob.ts) — сглаживание тут безопасно
-          // и убирает «фасетчатый» низкополигональный вид.
-          make = await loadRig(this.scene, this.model(), { smoothNormals: true });
+          // smoothNormals пробовали включить (модели глб, не FBX-моб-пак) —
+          // но тот же баг, что и в Mob.ts: пересчёт нормалей уводит свет,
+          // герой выглядит подсвеченным снизу днём. Откатили, берём нормали
+          // из файла как есть.
+          make = await loadRig(this.scene, this.model());
         } catch {
           return; // модель не пришла — остаёмся без тела, не долбим
         }

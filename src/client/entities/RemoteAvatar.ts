@@ -672,9 +672,9 @@ export class RemoteAvatar implements Hittable {
   private async loadRigWithRetry(model: ModelName, attempts = 3): Promise<() => RigInstance> {
     for (let i = 0; i < attempts; i++) {
       try {
-        // Модели героев — glb, сглаживание нормалей тут безопасно (в отличие
-        // от FBX-моб-пака в Mob.ts, где оно однажды ломало свет).
-        return await loadRig(this.scene, model, { smoothNormals: true });
+        // smoothNormals откатили — тот же баг, что и в Mob.ts: пересчёт
+        // нормалей уводит свет, герой выглядит подсвеченным снизу днём.
+        return await loadRig(this.scene, model);
       } catch (e) {
         if (i === attempts - 1) throw e;
         await new Promise((r) => setTimeout(r, 800));
