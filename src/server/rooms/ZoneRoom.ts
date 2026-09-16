@@ -690,6 +690,11 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.mobsOn = pult.mobsOn === false ? 0 : 1;
     this.sim = new ZoneSim();
     this.sim.mobsEnabled = pult.mobsOn !== false;
+    // Уровень убийцы (для угасания шанса золотого дропа после 15 ур., см.
+    // goldDropMulForLevel) — Sim сам PlayerState не хранит, id одинаково
+    // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
+    // и те, и другие лежат в state.players.
+    this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
     for (const m of this.sim.mobs.values()) {

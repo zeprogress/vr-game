@@ -537,6 +537,22 @@ export const DROP_CHANCE = {
   bossLegendary: 0.01,
 } as const;
 
+/**
+ * Угасание шанса ЗОЛОТОГО оружия (не легендарки — та и так только у элиты/
+ * босса) с уровнем героя, добившего моба: до 15 уровня — как обычно, дальше
+ * линейно падает до нуля к 25-му. Смысл — не заваливать золотом персонажа,
+ * который его уже перерос, и подтолкнуть к легендаркам/событиям на высоких
+ * уровнях. Не трогает мировой шанс дропа как таковой (DROP_CHANCE) — это
+ * отдельный множитель поверх него.
+ */
+export function goldDropMulForLevel(level: number): number {
+  const GOLD_DECAY_FROM = 15;
+  const GOLD_DECAY_TO = 25;
+  if (level <= GOLD_DECAY_FROM) return 1;
+  if (level >= GOLD_DECAY_TO) return 0;
+  return 1 - (level - GOLD_DECAY_FROM) / (GOLD_DECAY_TO - GOLD_DECAY_FROM);
+}
+
 export const SHIELD = {
   equipReach: 2.6,
   radius: 0.32, // м, радиус диска щита

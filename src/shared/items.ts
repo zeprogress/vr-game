@@ -326,6 +326,19 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   critMult: [0.3, 0.8],
 };
 
+/**
+ * Посох роллит потолок роллов выше, чем меч/лук (по просьбе) — множитель
+ * ТОЛЬКО на верхнюю границу диапазона (нижняя не трогается, обычный слабый
+ * ролл остаётся обычным слабым). См. rollAffix.
+ */
+const STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
+  dmgFlat: 1.4,
+  dmgPct: 1.4,
+  atkSpeedPct: 1.25,
+  critChance: 1.25,
+  critMult: 1.3,
+};
+
 const AFFIX_LABEL: Record<AffixSub, string> = {
   dmgFlat: "урона",
   dmgPct: "урона",
@@ -341,12 +354,13 @@ export function affixLabel(a: RolledAffix): string {
   return `+${v}${pct ? "%" : ""} ${AFFIX_LABEL[a.sub]}`;
 }
 
-function rollAffix(rnd: () => number): RolledAffix {
+function rollAffix(rnd: () => number, cls: WeaponClass): RolledAffix {
   const kinds = Object.keys(AFFIX_FAMILIES) as AffixKind[];
   const kind = kinds[Math.floor(rnd() * kinds.length)];
   const subs = AFFIX_FAMILIES[kind];
   const sub = subs[Math.floor(rnd() * subs.length)];
-  const [lo, hi] = AFFIX_RANGES[sub];
+  const [lo, base] = AFFIX_RANGES[sub];
+  const hi = cls === "staff" ? base * STAFF_RANGE_HI_MUL[sub] : base;
   return { kind, sub, value: lo + rnd() * (hi - lo) };
 }
 
@@ -375,7 +389,7 @@ export function rollWeaponInstance(
   const used = new Set<AffixKind>();
   let guard = 0;
   while (affixes.length < count && guard++ < 50) {
-    const a = rollAffix(rnd);
+    const a = rollAffix(rnd, cls);
     if (used.has(a.kind)) continue;
     used.add(a.kind);
     affixes.push(a);

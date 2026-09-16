@@ -1,9 +1,11 @@
 import {
+  AFFIX,
   BOSS,
   BOSS_CFG,
   COMBAT,
   DROP_CHANCE,
   ELITE_MOBS,
+  goldDropMulForLevel,
   MAGE_NOVA,
   MAGE_SPELL,
   MOB,
@@ -1202,6 +1204,13 @@ export class ZoneSim {
   readonly eventMobs = new Set<string>();
   /** Кто нанёс урон мобам события — участники (для баффа за победу). */
   readonly eventDamagers = new Set<string>();
+  /**
+   * Уровень героя по его id (sessionId живого игрока или "bot:<ник>") — Sim
+   * сам уровней не хранит (это PlayerState в ZoneRoom), комната подставляет
+   * реальный лукап при onCreate. Нужен для угасания шанса золотого дропа
+   * после 15 уровня (см. spawnLoot, goldDropMulForLevel).
+   */
+  getAttackerLevel: (id: string) => number = () => 1;
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -1497,6 +1506,9 @@ export class ZoneSim {
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
+        // Огнешар поджигает врождённо (не аффикс) — как Пламенный меч, но у
+        // мага это база класса: горит и прямая цель, и все задетые АОЕ (ниже).
+        if (magic) m.ignite(b.dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
@@ -1659,6 +1671,9 @@ export class ZoneSim {
       if (hit <= 0.01) continue;
       const hl = Math.hypot(dx, dz) || 1;
       this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit, false, magic);
+      // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
+      // кого задело АОЕ, не только на прямую цель.
+      if (magic) m.ignite(hit * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, owner);
     }
   }
 
@@ -1777,7 +1792,8 @@ export class ZoneSim {
       }
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
-      const goldChance = elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold;
+      const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
+      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul;
       const legendaryChance = elite ? DROP_CHANCE.eliteLegendary : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
