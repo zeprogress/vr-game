@@ -115,7 +115,10 @@ export class LocalAvatar {
         const want = this.skin;
         let make: () => RigInstance;
         try {
-          make = await loadRig(this.scene, this.model());
+          // Модели героев — glb (не FBX-моб-пак, где смена нормалей однажды
+          // ломала свет, см. комментарий в Mob.ts) — сглаживание тут безопасно
+          // и убирает «фасетчатый» низкополигональный вид.
+          make = await loadRig(this.scene, this.model(), { smoothNormals: true });
         } catch {
           return; // модель не пришла — остаёмся без тела, не долбим
         }

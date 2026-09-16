@@ -466,7 +466,7 @@ function grassMaterial(scene: Scene): StandardMaterial {
     tx.vScale = tile;
     tx.wrapU = Texture.WRAP_ADDRESSMODE;
     tx.wrapV = Texture.WRAP_ADDRESSMODE;
-    tx.anisotropicFilteringLevel = 8; // резче под острым углом (взгляд в шлеме)
+    tx.anisotropicFilteringLevel = 16; // резче под острым углом (взгляд в шлеме/издали)
   }
 
   const mat = new StandardMaterial("terrainMat", scene);
