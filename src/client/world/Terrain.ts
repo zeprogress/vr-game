@@ -68,6 +68,17 @@ const AO_GRASS_BLADE_STRENGTH = 0.1;
  * тут порог мягче.
  */
 const AO_GROUND_FLOOR = 0.5;
+/**
+ * Тень кроны дерева — тоже сюда (текстура), НЕ в вершины террейна. Раньше
+ * была в bakeAo() (вершины), рассуждение было "радиус кроны (7-10 м)
+ * больше шага сетки (2.5 м), значит попадёт в несколько вершин и будет
+ * видно" — технически верно, но ЛИНЕЙНАЯ интерполяция между всего
+ * несколькими вершинами поперёк большого треугольника рисовала не мягкий
+ * круг, а резкий "ромб"/"кайт" по диагоналям сетки (плоские грани). Та же
+ * тень текстурой (1024×1024, drawSpot — готовый радиальный градиент, уже
+ * используется для камней/травы) — гладкий круг независимо от геометрии.
+ */
+const AO_TREE_STRENGTH = 0.55;
 
 /**
  * Запечённое затенение по вершинам (вместо теней).
@@ -89,26 +100,16 @@ const AO_GROUND_FLOOR = 0.5;
  * убирает четыре вызова на вершину, самую дорогую часть запекания.
  */
 function bakeAo(positions: number[], row: number): number[] {
-  const treeList = trees();
   const n = positions.length / 3;
   const colors: number[] = new Array(n * 4);
 
   for (let i = 0; i < n; i++) {
-    const x = positions[i * 3];
     const y = positions[i * 3 + 1];
-    const z = positions[i * 3 + 2];
 
-    // Кроны: чем ближе и крупнее дерево, тем темнее под ним.
+    // Тень кроны дерева ушла в applyGroundAo (текстура, гладкий круг) —
+    // тут вершинами она рисовала резкие "ромбы" по диагоналям сетки
+    // (шаг 2.5 м слишком крупный для линейной интерполяции круга).
     let shade = 0;
-    for (const t of treeList) {
-      const reach = AO_TREE_REACH + t.scale * AO_TREE_PER_SCALE;
-      const dx = x - t.x;
-      const dz = z - t.z;
-      const d2 = dx * dx + dz * dz;
-      if (d2 >= reach * reach) continue;
-      const k = 1 - Math.sqrt(d2) / reach;
-      shade += k * k * (0.5 + t.scale * 0.3);
-    }
 
     // Рельеф: сравниваем с четырьмя соседями по сетке (у края — сам с собой).
     const col = i % row;
@@ -268,6 +269,9 @@ function applyGroundAo(scene: Scene, mat: StandardMaterial, grassDensity: number
 
   for (const rk of rocks()) {
     drawSpot(rk.x, rk.z, AO_ROCK_REACH + rk.scale * AO_ROCK_PER_SCALE, AO_ROCK_STRENGTH);
+  }
+  for (const t of trees()) {
+    drawSpot(t.x, t.z, AO_TREE_REACH + t.scale * AO_TREE_PER_SCALE, AO_TREE_STRENGTH);
   }
   // По каждой травинке отдельно (не по кляксе целиком) — см. комментарий у
   // AO_GRASS_BLADE_*.

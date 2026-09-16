@@ -104,7 +104,9 @@ export class BotLights {
     fwd: readonly Vector3[],
   ): void {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
-    this.night += (want - this.night) * Math.min(1, dt * 0.8);
+    // Было 0.8 — с наступлением ночи факелы разгорались за ~1-2 с, слишком
+    // резко на глаз. 0.25 — то же плавное схождение, но за ~4-5 с.
+    this.night += (want - this.night) * Math.min(1, dt * 0.25);
 
     const on = this.night > 0.02 && bots.length > 0 && this.budget > 0;
     if (on !== this.enabled) {
