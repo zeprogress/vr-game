@@ -89,7 +89,7 @@ interface ModelPlacement {
   baseScale: number;
   /** Секунд осталось у текущего замаха — 0 значит «стоит спокойно». */
   atkT: number;
-  /** Плавно 0..1 — насколько сильно горит (Пламенный меч), как в Mob.ts. */
+  /** Плавно 0..1 — насколько сильно горит (поджог мага), как в Mob.ts. */
   burnGlow: number;
   burnFx: TransformNode | null;
   burnMat: StandardMaterial | null;

@@ -96,7 +96,7 @@ export interface TowerMobSnapshot {
   atkPulse: boolean;
   /** Дальний/летающий архетип — клиент рисует «выстрел» до героя на atkPulse. */
   ranged: boolean;
-  /** Горит (Пламенный меч) — клиент рисует языки пламени. */
+  /** Горит (поджог мага) — клиент рисует языки пламени. */
   burning: boolean;
 }
 
@@ -115,8 +115,8 @@ export interface TowerSnapshot {
   heroAtkPulse: boolean;
   /** true ровно на тот тик, когда клинок ДОШЁЛ до цели — звук удара мечом. */
   heroSwordHit: boolean;
-  /** Пламенный меч в руке — при heroSwordHit клиент играет звук горения вместо обычного удара. */
-  heroFireAffix: boolean;
+  /** Меч вампира в руке — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
+  heroVampAffix: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
   heroRangedPulse: boolean;
   /** Каким оружием бьёт герой — клиент рисует летящий снаряд только для посоха. */
@@ -233,8 +233,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroAegis = false;
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
-  /** Пламенный меч — удар героя поджигает цель (см. AFFIX.fire, tickBurning). */
-  private heroFireAffix = false;
+  /** Меч вампира — удар героя лечит его самого (см. AFFIX.vamp). */
+  private heroVampAffix = false;
   /** Лук/посох — герой стреляет с дистанции (как основной мир), не бежит в упор рукопашной. */
   private heroRanged = false;
   private heroWeaponKind: "sword" | "fist" | "bow" | "staff" = "fist";
@@ -310,7 +310,7 @@ export class TowerRoom extends Room<TowerState> {
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = options.leftCls === "";
     const rightAffix = weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier);
-    this.heroFireAffix = rightAffix === "fire";
+    this.heroVampAffix = rightAffix === "vamp";
     // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
     // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
     if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
@@ -568,25 +568,34 @@ export class TowerRoom extends Room<TowerState> {
   /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
-    // Пламенный меч — так же, как в основном мире (ZoneRoom.hitMob + tickBurning):
-    // удар поджигает цель на AFFIX.fire.burnSec, тикает отдельно в tickBurning().
-    if (this.heroFireAffix) {
+    // Меч вампира — часть урона возвращается герою как HP (см. AFFIX.vamp).
+    if (this.heroVampAffix) {
+      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * AFFIX.vamp.healFrac);
+    }
+    // Врождённый поджог мага — как в основном мире (ZoneSim.tickBolt): ДпС
+    // считается от МАКСИМАЛЬНОГО HP цели, а не от урона удара (см. AFFIX.fire).
+    if (this.heroWeaponKind === "staff") {
       target.burnT = Math.max(target.burnT, AFFIX.fire.burnSec);
-      target.burnDps = Math.max(target.burnDps, dmg * AFFIX.fire.burnDpsFrac);
+      target.burnDps = Math.max(target.burnDps, target.maxHp * AFFIX.fire.burnHpFrac);
     }
     this.applyDamage(target, dmg);
     if ((this.state.phase as TowerPhase) !== "running") return;
     // Маг — огнешар цепляет соседей вокруг цели, как в основном мире (см.
     // MAGIC.firebolt.splash*): урон спадает от эпицентра к краю. Бот-маг
     // (и герой-маг в башне, см. onCreate) всегда кастует с зарядом 0.7 —
-    // тот же радиус/доля, что и у ботов-магов (ZoneRoom.tickBot).
+    // тот же радиус/доля, что и у ботов-магов (ZoneRoom.tickBot). Соседей
+    // тоже поджигаем (см. ZoneSim.splashDamage) — тем же AFFIX.fire.
     if (this.heroWeaponKind === "staff") {
-      this.splashDamage(target, fireboltSplashRadius(0.7), dmg * MAGIC.firebolt.splashFraction);
+      this.splashDamage(target, fireboltSplashRadius(0.7), dmg * MAGIC.firebolt.splashFraction, true);
     }
   }
 
-  /** АОЕ вокруг `center` (кроме самого `center`) — доля урона спадает от эпицентра к краю. */
-  private splashDamage(center: LiveMob, radius: number, dmg: number): void {
+  /**
+   * АОЕ вокруг `center` (кроме самого `center`) — доля урона спадает от
+   * эпицентра к краю. `magic` — огнешар мага: заодно поджигает всех задетых
+   * (см. AFFIX.fire), как в основном мире (ZoneSim.splashDamage).
+   */
+  private splashDamage(center: LiveMob, radius: number, dmg: number, magic = false): void {
     if (radius <= 0 || dmg <= 0) return;
     const all: LiveMob[] = this.boss ? [...this.mobs, this.boss] : this.mobs;
     for (const m of all) {
@@ -596,6 +605,10 @@ export class TowerRoom extends Room<TowerState> {
       const hit = dmg * (1 - d / radius);
       if (hit <= 0.01) continue;
       this.applyDamage(m, hit);
+      if (magic) {
+        m.burnT = Math.max(m.burnT, AFFIX.fire.burnSec);
+        m.burnDps = Math.max(m.burnDps, m.maxHp * AFFIX.fire.burnHpFrac);
+      }
       if ((this.state.phase as TowerPhase) !== "running") return;
     }
   }
@@ -742,7 +755,7 @@ export class TowerRoom extends Room<TowerState> {
     return all.filter((m) => Math.hypot(m.x - x, m.z - z) <= r);
   }
 
-  /** DoT горения (Пламенный меч) — как ZoneSim.tickBurning, но на мобов/босса этажа. */
+  /** DoT горения (врождённый поджог мага) — как ZoneSim.tickBurning, но на мобов/босса этажа. */
   private tickBurning(dt: number): void {
     for (const m of [...this.mobs]) {
       if (m.burnT <= 0) continue;
@@ -903,7 +916,7 @@ export class TowerRoom extends Room<TowerState> {
       heroYaw: this.heroYaw,
       heroAtkPulse: this.heroAtkPulse,
       heroSwordHit: this.heroSwordHit,
-      heroFireAffix: this.heroFireAffix,
+      heroVampAffix: this.heroVampAffix,
       heroRangedPulse: this.heroRangedPulse,
       heroWeaponKind: this.heroWeaponKind,
       heroRangedTargetX: this.heroRangedTargetX,

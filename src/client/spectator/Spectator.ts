@@ -17,7 +17,7 @@ import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
-import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE } from "../ui/WorldCrossFx";
+import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "../ui/WorldCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -1084,8 +1084,8 @@ export class Spectator {
       case "swordHit":
         this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
-      case "ignite":
-        this.sfx.at({ x, y, z }, () => this.sfx.igniteFx());
+      case "vampHit":
+        this.crossFx.burst(x, y, z, 5, CROSS_RED);
         break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);

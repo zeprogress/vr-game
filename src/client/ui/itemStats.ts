@@ -22,7 +22,7 @@ export interface HeroStats {
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
 export const AFFIX_TEXT: Record<NonNullable<WeaponDef["affix"]>, string> = {
-  fire: `Горение: ${AFFIX.fire.burnSec} с урона по времени`,
+  vamp: `Вампиризм: ${Math.round(AFFIX.vamp.healFrac * 100)}% урона — в HP`,
   crit: `Крит +${Math.round(AFFIX.crit.chanceBonus * 100)}%`,
   guard: `Блок ${Math.round((1 - AFFIX.guard.blockedDamage) * 100)}% · шире сектор`,
   storm: `АОЕ огнешара ×${AFFIX.storm.splashRadiusMul}`,

@@ -24,7 +24,7 @@ export type WeaponClass = "sword" | "bow" | "shield" | "staff";
 export type WeaponTier = "base" | "gold" | "legendary";
 
 /** Механический эффект легендарного оружия. Числа — в constants.ts (AFFIX). */
-export type WeaponAffix = "fire" | "crit" | "guard" | "storm";
+export type WeaponAffix = "vamp" | "crit" | "guard" | "storm";
 
 export interface WeaponDef {
   cls: WeaponClass;
@@ -58,8 +58,8 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   // Легендарки — именное оружие с аффиксом. Урон чуть выше золота, плюс эффект.
   // Все фиолетовые (единый «легендарный» вид).
   "sword:legendary": {
-    cls: "sword", tier: "legendary", name: "Пламенный меч", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "fire",
+    cls: "sword", tier: "legendary", name: "Меч вампира", mult: 4.5,
+    tint: [0.62, 0.3, 1], affix: "vamp",
   },
   "bow:legendary": {
     cls: "bow", tier: "legendary", name: "Лук охотника", mult: 4.1,
@@ -81,7 +81,7 @@ export function weaponAffix(cls: WeaponClass, tier: WeaponTier): WeaponAffix | u
 }
 
 const AFFIX_HINT: Record<WeaponAffix, string> = {
-  fire: "легендарный · горение",
+  vamp: "легендарный · вампиризм",
   crit: "легендарный · крит",
   guard: "легендарный · усиленный блок",
   storm: "легендарный · сильнее AoE",
@@ -144,7 +144,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   gold_sword: weaponItem("sword", "gold", "Золото", "gold_sword.png"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук", "gold_bow.png"),
   gold_staff: weaponItem("staff", "gold", "Зол. посох", "gold_staff.png"),
-  leg_sword: weaponItem("sword", "legendary", "Пламя", "gold_sword.png"),
+  leg_sword: weaponItem("sword", "legendary", "Вампир", "gold_sword.png"),
   leg_bow: weaponItem("bow", "legendary", "Лук охот.", "gold_bow.png"),
   leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
   leg_staff: weaponItem("staff", "legendary", "Посох бури", "gold_staff.png"),

@@ -27,7 +27,7 @@ import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
-import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE } from "../ui/WorldCrossFx";
+import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
@@ -1825,8 +1825,8 @@ export class Game {
       case "swordHit":
         this.sfx.at(at, () => this.sfx.swordHit());
         break;
-      case "ignite":
-        this.sfx.at(at, () => this.sfx.igniteFx());
+      case "vampHit":
+        this.crossFx.burst(x, y, z, 5, W_RED);
         break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);

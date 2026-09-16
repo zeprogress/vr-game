@@ -1506,9 +1506,10 @@ export class ZoneSim {
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
-        // Огнешар поджигает врождённо (не аффикс) — как Пламенный меч, но у
-        // мага это база класса: горит и прямая цель, и все задетые АОЕ (ниже).
-        if (magic) m.ignite(b.dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, b.owner);
+        // Огнешар поджигает врождённо (не аффикс, а база класса мага) —
+        // горит и прямая цель, и все задетые АОЕ (ниже). ДпС — от
+        // МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
+        if (magic) m.ignite(m.maxHp * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
@@ -1539,7 +1540,7 @@ export class ZoneSim {
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
   /** Урон по мобу. Возвращает kind добитого моба (null — не убит). */
-  /** Тик горения (Пламенный меч): DoT по всем тлеющим мобам, опыт — поджёгшему. */
+  /** Тик горения (врождённый поджог мага): DoT по всем тлеющим мобам, опыт — поджёгшему. */
   private tickBurning(dt: number): void {
     for (const m of this.mobs.values()) {
       if (m.dead || m.burningT <= 0) continue;
@@ -1672,8 +1673,9 @@ export class ZoneSim {
       const hl = Math.hypot(dx, dz) || 1;
       this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit, false, magic);
       // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
-      // кого задело АОЕ, не только на прямую цель.
-      if (magic) m.ignite(hit * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, owner);
+      // кого задело АОЕ, не только на прямую цель. ДпС — от максимального
+      // HP каждой конкретной цели (см. AFFIX.fire), не от доли АОЕ-урона.
+      if (magic) m.ignite(m.maxHp * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, owner);
     }
   }
 

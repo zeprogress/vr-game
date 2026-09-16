@@ -9,9 +9,9 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Constants } from "@babylonjs/core/Engines/constants";
 
-import { CROSS_GREEN, CROSS_ORANGE } from "./HealCrossFx";
+import { CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "./HealCrossFx";
 
-export { CROSS_GREEN, CROSS_ORANGE };
+export { CROSS_GREEN, CROSS_ORANGE, CROSS_RED };
 
 /** Сколько крестиков живёт одновременно на всю сцену. */
 const POOL = 48;

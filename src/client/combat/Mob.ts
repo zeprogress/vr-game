@@ -90,7 +90,7 @@ export class Mob implements Hittable {
   private dead = false;
   private deathT = 0;
   private flash = 0;
-  /** 0..1 — насколько ярко моб тлеет (Пламенный меч). */
+  /** 0..1 — насколько ярко моб тлеет (поджог мага). */
   private burnGlow = 0;
   /** Языки пламени над мобом, пока он горит (ленивое создание). */
   private burnFx: TransformNode | null = null;
@@ -479,7 +479,7 @@ export class Mob implements Hittable {
       this.bar.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
 
-    // Горение (Пламенный меч): языки пламени над мобом + тлеющий пульс тела.
+    // Горение (поджог мага): языки пламени над мобом + тлеющий пульс тела.
     const burning = s.burning > 0 && !s.dead;
     this.burnGlow = burning
       ? Math.min(1, this.burnGlow + dt * 5)

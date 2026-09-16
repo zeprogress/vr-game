@@ -1398,23 +1398,23 @@ export class ZoneRoom extends Room<ZoneState> {
       msg.id, dmg, dx || 0, dz || 1, client.sessionId,
       msg.weapon === "arrow", false, false, crit > 1,
     );
-    // Пламенный меч — поджигаем цель (DoT на несколько секунд).
-    const ignited = affix === "fire" && msg.weapon === "sword" && !!struck;
-    if (ignited) {
-      struck!.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, client.sessionId);
+    // Меч вампира — часть нанесённого урона возвращается владельцу как HP.
+    const vamped = affix === "vamp" && msg.weapon === "sword" && !!struck;
+    if (vamped) {
+      p.hp = Math.min(p.maxHp, p.hp + dmg * AFFIX.vamp.healFrac);
     }
     // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
     // сыграл локальный предсказанный звук, без сетевой задержки) — как и
-    // раньше, безусловно. Поджёг — отдельный звук горения ДОПОЛНИТЕЛЬНО,
-    // не вместо (см. "ignite" ниже).
+    // раньше, безусловно. Вампиризм — отдельная вспышка ДОПОЛНИТЕЛЬНО,
+    // не вместо (см. "vampHit" ниже).
     if (struck && msg.weapon === "sword") {
       this.broadcast(
         MSG.act,
         { k: "swordHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay,
         { except: client },
       );
-      if (ignited) {
-        this.broadcast(MSG.act, { k: "ignite", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay);
+      if (vamped) {
+        this.broadcast(MSG.act, { k: "vampHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay);
       }
     }
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
@@ -2190,13 +2190,13 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     // Клинок дошёл до цели — звук удара (см. TowerRoom.resolveHeroSwing/BOT.attackImpact).
-    // Пламенный меч — отдельный звук горения ДОПОЛНИТЕЛЬНО, не вместо.
+    // Меч вампира — отдельная вспышка ДОПОЛНИТЕЛЬНО, не вместо.
     if (s.heroSwordHit) {
       this.broadcast(MSG.act, {
         k: "swordHit", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z,
       } satisfies ActRelay);
-      if (s.heroFireAffix) {
-        this.broadcast(MSG.act, { k: "ignite", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+      if (s.heroVampAffix) {
+        this.broadcast(MSG.act, { k: "vampHit", id: heroId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
       }
     }
     // Герой с луком/посохом выстрелил — та же анимация/звук, что и у ботов-стрелков/магов.
@@ -3867,17 +3867,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const sy = mob.y;
     const sz = mob.z;
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, swordCrit > 1);
-    const ignited = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "fire";
-    if (ignited) {
-      mob.ignite(dmg * AFFIX.fire.burnDpsFrac, AFFIX.fire.burnSec, bot.id);
+    const vamped = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "vamp";
+    if (vamped) {
+      p.hp = Math.min(p.maxHp, p.hp + dmg * AFFIX.vamp.healFrac);
     }
-    // Звук удара мечом — как у живого игрока, слышат все вокруг. Поджёг —
-    // отдельный звук горения ДОПОЛНИТЕЛЬНО, не вместо.
+    // Звук удара мечом — как у живого игрока, слышат все вокруг. Вампиризм —
+    // отдельная вспышка ДОПОЛНИТЕЛЬНО, не вместо.
     this.broadcast(MSG.act, {
       k: "swordHit", id: bot.id, x: sx, y: sy, z: sz,
     } satisfies ActRelay);
-    if (ignited) {
-      this.broadcast(MSG.act, { k: "ignite", id: bot.id, x: sx, y: sy, z: sz } satisfies ActRelay);
+    if (vamped) {
+      this.broadcast(MSG.act, { k: "vampHit", id: bot.id, x: sx, y: sy, z: sz } satisfies ActRelay);
     }
     this.sim.splashDamage(
       sx, sy, sz,
