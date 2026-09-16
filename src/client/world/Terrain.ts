@@ -19,12 +19,21 @@ export interface Terrain {
   heightAt(x: number, z: number): number;
 }
 
-/** На сколько мировых «сторон» продлеваем землю за игровую зону (в каждую сторону). */
-const APRON = 2;
+/**
+ * На сколько мировых «сторон» продлеваем землю за игровую зону (за каждый
+ * край). Раньше этот декоративный «фартук» был ОТДЕЛЬНЫМ мешем — вдвое
+ * крупнее шагом сетки и чуть ниже по Y (`position.y=-0.06`), чтобы игровая
+ * зона выигрывала z-fighting на стыке. У шва между двумя мешами оставались
+ * заметные артефакты (перепад тесселяции + разная высота ровно на границе),
+ * которые не лечились подгонкой одного только AO/текстуры (WRAP вместо
+ * CLAMP убрал только «ободок» лайтмапы, но не саму геометрическую щель).
+ * Теперь вся земля — ОДИН меш одним шагом сетки: шва просто нет, потому что
+ * нет границы между двумя разными объектами.
+ */
+const APRON = 1;
 
 /**
  * Строит участок рельефа [x0..x1]×[z0..z1] сеткой с шагом `step`.
- * `skipInner` — не класть квадраты, целиком лежащие в игровой зоне (там свой меш).
  * UV в мировом масштабе игровой зоны, чтобы текстура тайлилась одинаково.
  */
 /** Ниже этого AO не темнит — иначе под рощей получается чернота. */
@@ -137,8 +146,6 @@ function buildPatch(
   z0: number,
   z1: number,
   step: number,
-  inner: number,
-  skipInner: boolean,
 ): Mesh {
   const nx = Math.round((x1 - x0) / step);
   const nz = Math.round((z1 - z0) / step);
@@ -158,13 +165,6 @@ function buildPatch(
   const row = nx + 1;
   for (let iz = 0; iz < nz; iz++) {
     for (let ix = 0; ix < nx; ix++) {
-      if (skipInner) {
-        // Оставляем нахлёст в одну ячейку внутрь зоны: прячет щель на стыке
-        // (у фартука шаг вдвое крупнее игрового меша).
-        const cx = x0 + (ix + 0.5) * step;
-        const cz = z0 + (iz + 0.5) * step;
-        if (Math.abs(cx) < inner - step && Math.abs(cz) < inner - step) continue;
-      }
       const a = iz * row + ix;
       indices.push(a, a + 1, a + row, a + 1, a + row + 1, a + row);
     }
@@ -197,24 +197,18 @@ export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
   const mat = grassMaterial(scene);
   applyGroundAo(scene, mat, grassDensity);
 
-  // Игровая зона: та же сетка, коллизии и raycast'ы игрока.
-  const mesh = buildPatch(scene, "terrain", -half, half, -half, half, step, half, false);
+  // Вся земля — одно полотно: игровая зона и декоративный «фартук» за её
+  // краем — ОДНА сетка без стыков. Коллизии/пикинг включены на весь меш
+  // (не только зону) — это не проблема, т.к. игрок и так не выходит за
+  // зону по другим правилам, а сплошная коллизия даже безопаснее старой
+  // (раньше фартук был непроходим-невидим — падать было некуда, но и
+  // опереться на него было нельзя).
+  const far = half * (1 + 2 * APRON);
+  const mesh = buildPatch(scene, "terrain", -far, far, -far, far, step);
   mesh.checkCollisions = true;
   mesh.isPickable = true;
   mesh.material = mat;
-
-  // Фартук: земля тянется дальше во все стороны — за краем зоны не пустота,
-  // а те же холмы. Чисто декоративный: без коллизий и без пикинга, чуть ниже
-  // игрового меша, поэтому в зоне перекрытия глубинный тест выигрывает зона.
-  const far = half * (1 + 2 * APRON);
-  const apron = buildPatch(scene, "terrainApron", -far, far, -far, far, step * 2, half, true);
-  apron.material = mat;
-  apron.isPickable = false;
-  apron.checkCollisions = false;
-  apron.position.y = -0.06;
-  apron.doNotSyncBoundingInfo = true;
-  apron.alwaysSelectAsActiveMesh = true;
-  apron.freezeWorldMatrix();
+  mesh.freezeWorldMatrix();
 
   return { mesh, heightAt: surface };
 }
