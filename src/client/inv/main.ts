@@ -43,6 +43,14 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
+/** Тир по-русски — CSS-класс/ключ ("legendary" и т.п.) остаётся как есть, но
+ *  сам текст под карточкой игрок не должен видеть по-английски. */
+const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
+  base: "база",
+  gold: "золото",
+  legendary: "уникальное",
+};
+
 function handHtml(label: string, h: InvHand | null): string {
   if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
   const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
@@ -80,7 +88,7 @@ function renderInv(msg: InvMsg): void {
               `<div class="weapon ${w.tier}">` +
               `<div><div class="name">${w.num}) ${escapeHtml(w.name)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              `</div><div class="meta">${w.tier}</div>` +
+              `</div><div class="meta">${TIER_RU[w.tier]}</div>` +
               `</div>`
             );
           })
