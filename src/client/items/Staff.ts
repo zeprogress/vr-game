@@ -127,7 +127,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   staff.name = "staff";
 
   attachGem(scene, staff, gold, storm);
-  if (storm) attachLegendaryGlow(scene, staff, 0.75, 0.5);
+  if (storm) attachLegendaryGlow(scene, staff, 0.375, 0.5);
   return staff;
 }
 
