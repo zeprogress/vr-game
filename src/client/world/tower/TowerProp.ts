@@ -18,8 +18,12 @@ export interface TowerProp {
   dispose(): void;
 }
 
-/** Радиус/высота — прямой ствол без сужения, вдвое выше прежнего силуэта. */
-const RADIUS = 5;
+/**
+ * Радиус/высота — прямой ствол без сужения. Высота была уже удвоена раньше;
+ * теперь по просьбе вдвое шире (RADIUS 5→10) — тоньше на фоне поляны
+ * смотрелась несоразмерно высоте.
+ */
+const RADIUS = 10;
 const BODY_H = 64;
 const ROOF_H = 10;
 
@@ -87,7 +91,9 @@ export function buildTowerProp(scene: Scene): TowerProp {
   root.position.set(x, groundY, z);
 
   const mat = new StandardMaterial("towerPropMat", scene);
-  mat.diffuseTexture = buildStoneTexture(scene, 6, 10);
+  // uRepeat вдвое больше прежнего — окружность ствола удвоилась вместе с
+  // RADIUS, без этого кладка растянулась бы вдвое шире по кирпичу.
+  mat.diffuseTexture = buildStoneTexture(scene, 12, 10);
   mat.specularColor = new Color3(0, 0, 0);
 
   const roofMat = new StandardMaterial("towerPropRoofMat", scene);
