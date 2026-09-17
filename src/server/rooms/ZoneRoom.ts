@@ -156,7 +156,7 @@ import {
   healAmountFor,
 } from "#shared/magic";
 import { HUB, HUB_CENTER, inHubSafeZone, hubSpawnPoint } from "#shared/hub";
-import { store, world } from "../store";
+import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
@@ -2317,6 +2317,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const norm = normNick(nick);
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
+    chatLog.append(nick, text);
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase();
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
