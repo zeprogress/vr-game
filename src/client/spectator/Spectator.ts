@@ -1085,7 +1085,7 @@ export class Spectator {
         this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
       case "vampHit":
-        this.crossFx.burst(x, y, z, 5, CROSS_RED);
+        this.crossFx.burst(x, y, z, 2, CROSS_RED);
         break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);

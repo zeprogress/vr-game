@@ -1826,7 +1826,7 @@ export class Game {
         this.sfx.at(at, () => this.sfx.swordHit());
         break;
       case "vampHit":
-        this.crossFx.burst(x, y, z, 5, W_RED);
+        this.crossFx.burst(x, y, z, 2, W_RED);
         break;
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);

@@ -81,10 +81,10 @@ export function weaponAffix(cls: WeaponClass, tier: WeaponTier): WeaponAffix | u
 }
 
 const AFFIX_HINT: Record<WeaponAffix, string> = {
-  vamp: "легендарный · вампиризм",
-  crit: "легендарный · крит",
-  guard: "легендарный · усиленный блок",
-  storm: "легендарный · сильнее AoE",
+  vamp: "уникальное · вампиризм",
+  crit: "уникальное · крит",
+  guard: "уникальное · усиленный блок",
+  storm: "уникальное · сильнее AoE",
 };
 
 export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
@@ -97,6 +97,21 @@ export function isWeaponClass(v: unknown): v is WeaponClass {
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
   return v === "base" || v === "gold" || v === "legendary";
+}
+
+/**
+ * Название тира по-русски для чата/инвентаря. `legendary` внутри кода и в
+ * ItemId ("leg_sword" и т.п.) остаётся как есть — это просто ключ, менять
+ * его означало бы переименовывать пол-игры без всякой пользы; здесь только
+ * то, что реально видит игрок (было "легендарное" → стало "уникальное").
+ */
+const TIER_RU: Record<WeaponTier, string> = {
+  base: "база",
+  gold: "золото",
+  legendary: "уникальное",
+};
+export function tierRu(tier: WeaponTier): string {
+  return TIER_RU[tier];
 }
 
 /** Можно ли держать два предмета этого класса одновременно (по одному в руке). */

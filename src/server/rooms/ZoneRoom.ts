@@ -115,6 +115,7 @@ import {
   plainWeaponInstance,
   scrapValue,
   takeOne,
+  tierRu,
   weaponAffix,
   weaponDef,
   weaponKey,
@@ -2495,7 +2496,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (tier === "base") return;
     const name = weaponDef(cls, tier).name;
     const affixes = instance?.affixes.length ? instance.affixes.map(affixLabel).join(", ") : "без роллов";
-    this.reply(`${nick} подобрал ${name} (${tier}) — ${affixes}`);
+    this.reply(`${nick} подобрал ${name} (${tierRu(tier)}) — ${affixes}`);
   }
 
   /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для "!weapons"/"!equip". */
@@ -2536,12 +2537,12 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const list = this.nonEquippedWeapons(t.rt);
     if (list.length === 0) {
-      this.reply(`@${nick} в складе (не считая надетого) пусто — золотое и легендарное оружие падает с боёв.`);
+      this.reply(`@${nick} в складе (не считая надетого) пусто — золотое и уникальное оружие падает с боёв.`);
       return;
     }
     const lines = list.slice(0, 8).map((w, i) => {
       const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
-      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${w.tier} — ${affixes}`;
+      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${tierRu(w.tier)} — ${affixes}`;
     });
     const more = list.length > 8 ? ` …и ещё ${list.length - 8}` : "";
     this.reply(
@@ -2872,7 +2873,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !weapons — что на складе у героя, !equip <номер> — надеть другое оружие оттуда.",
     "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
-    "Совет: у золотого и легендарного оружия бывают случайные роллы — урон, скорость атаки, крит.",
+    "Совет: у золотого и уникального оружия бывают случайные роллы — урон, скорость атаки, крит.",
     "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
   ];
 

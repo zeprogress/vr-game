@@ -126,6 +126,6 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   shield.rotation.y = Math.PI / 2;
   shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
-  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.5);
+  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.5, 1 / 1.5);
   return shield;
 }

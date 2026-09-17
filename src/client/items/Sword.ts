@@ -19,6 +19,6 @@ export function createSword(scene: Scene, tier: WeaponTier = "base"): Mesh {
     offset: new Vector3(0, 0.06, 0),
     tint: tierTint("sword", tier),
   });
-  if (tier === "legendary") attachLegendaryGlow(scene, m, 0.55);
+  if (tier === "legendary") attachLegendaryGlow(scene, m, 0.55, 0.5);
   return m;
 }

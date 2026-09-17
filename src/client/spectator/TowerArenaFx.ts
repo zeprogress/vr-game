@@ -858,7 +858,7 @@ export class TowerArenaFx {
       const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * p.burnGlow;
       f.scaling.setAll(Math.max(0.05, s));
     }
-    if (p.burnMat) p.burnMat.alpha = 0.55 * p.burnGlow;
+    if (p.burnMat) p.burnMat.alpha = 0.275 * p.burnGlow;
   }
 
   /** Снаряд дальнего моба — светящийся шарик, летит к герою и исчезает. */

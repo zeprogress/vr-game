@@ -39,7 +39,7 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   gold.parent = root;
 
   applyBowTier(root, tier);
-  if (tier === "legendary") attachLegendaryGlow(scene, root, 0.7);
+  if (tier === "legendary") attachLegendaryGlow(scene, root, 0.7, 0.5);
 
   return {
     mesh: root,

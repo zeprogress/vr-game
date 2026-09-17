@@ -681,7 +681,7 @@ export class Mob implements Hittable {
       f.scaling.setAll(Math.max(0.05, s));
     }
     if (this.burnMat) {
-      this.burnMat.alpha = 0.55 * this.burnGlow;
+      this.burnMat.alpha = 0.275 * this.burnGlow;
     }
   }
 

@@ -17,7 +17,13 @@ import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
  * ауры баффа: аддитивная полупрозрачная сфера вокруг предмета, дышит сама
  * (onBeforeRender), снимается вместе с мешем.
  */
-export function attachLegendaryGlow(scene: Scene, host: Mesh, radius = 0.6): void {
+export function attachLegendaryGlow(
+  scene: Scene,
+  host: Mesh,
+  radius = 0.6,
+  /** Множитель яркости — не размера. Оружие ×0.5, Эгида ×(1/1.5) по просьбе. */
+  intensity = 1,
+): void {
   const shell = MeshBuilder.CreateSphere("legGlow", { diameter: radius * 2, segments: 10 }, scene);
   const mat = new StandardMaterial("legGlowMat", scene);
   mat.emissiveColor = new Color3(0.6, 0.22, 1);
@@ -26,7 +32,7 @@ export function attachLegendaryGlow(scene: Scene, host: Mesh, radius = 0.6): voi
   mat.disableLighting = true;
   mat.alphaMode = Constants.ALPHA_ADD;
   mat.backFaceCulling = false;
-  mat.alpha = 0.12;
+  mat.alpha = 0.12 * intensity;
   shell.material = mat;
   shell.isPickable = false;
   shell.parent = host;
@@ -35,7 +41,7 @@ export function attachLegendaryGlow(scene: Scene, host: Mesh, radius = 0.6): voi
     t += scene.getEngine().getDeltaTime() / 1000;
     const p = 0.85 + Math.sin(t * 3) * 0.15;
     shell.scaling.setAll(p);
-    mat.alpha = 0.08 + p * 0.08;
+    mat.alpha = (0.08 + p * 0.08) * intensity;
   });
   host.onDisposeObservable.add(() => {
     scene.onBeforeRenderObservable.remove(obs);
