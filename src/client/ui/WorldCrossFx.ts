@@ -119,8 +119,34 @@ export class WorldCrossFx {
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
 
-    // Крит с лука — маленькая насыщенно-красная вспышка на мобе.
-    const critProto = MeshBuilder.CreateSphere("critFlash", { diameter: 1, segments: 10 }, scene);
+    // Крит с лука — маленькая насыщенно-красная вспышка на мобе. Форма —
+    // острая звезда-разрыв (не гладкий шар): рисуем зубцы на альфа-канале
+    // текстуры, сам billboard-план разворачивается прямо на камеру.
+    const critStarTex = new DynamicTexture("critStarTex", { width: 128, height: 128 }, scene, false);
+    critStarTex.hasAlpha = true;
+    {
+      const sctx = critStarTex.getContext() as CanvasRenderingContext2D;
+      sctx.clearRect(0, 0, 128, 128);
+      sctx.fillStyle = "white";
+      const cx = 64;
+      const cy = 64;
+      const spikes = 7;
+      const outerR = 62;
+      const innerR = 18;
+      sctx.beginPath();
+      for (let i = 0; i < spikes * 2; i++) {
+        const r = i % 2 === 0 ? outerR : innerR;
+        const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        if (i === 0) sctx.moveTo(px, py);
+        else sctx.lineTo(px, py);
+      }
+      sctx.closePath();
+      sctx.fill();
+      critStarTex.update();
+    }
+    const critProto = MeshBuilder.CreatePlane("critFlash", { size: 1 }, scene);
     critProto.setEnabled(false);
     for (let i = 0; i < CRIT_POOL; i++) {
       const m = i === 0 ? critProto : critProto.clone(`critFlash${i}`);
@@ -128,12 +154,15 @@ export class WorldCrossFx {
       mat.emissiveColor = new Color3(1, 0.03, 0.02); // насыщенный глубокий красный
       mat.diffuseColor = new Color3(0, 0, 0);
       mat.specularColor = new Color3(0, 0, 0);
+      mat.opacityTexture = critStarTex; // альфа-звезда режет план на острые зубцы
       mat.disableLighting = true;
       mat.disableDepthWrite = true;
+      mat.backFaceCulling = false;
       mat.alphaMode = Constants.ALPHA_COMBINE; // сплошной красный, не выбеливается
       m.material = mat;
       m.isPickable = false;
       m.renderingGroupId = 1;
+      m.billboardMode = Mesh.BILLBOARDMODE_ALL;
       m.setEnabled(false);
       this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
     }
@@ -210,6 +239,7 @@ export class WorldCrossFx {
     c.z = z;
     c.age = 0;
     c.mesh.position.set(x, y, z);
+    c.mesh.rotation.z = Math.random() * Math.PI * 2; // не одна и та же звезда каждый раз
     c.mesh.setEnabled(true);
   }
 
