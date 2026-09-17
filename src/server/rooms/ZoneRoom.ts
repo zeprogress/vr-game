@@ -2348,7 +2348,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sayInvLink(nick, norm);
     } else if (cmd === "!equip" || cmd === "!надеть") {
       this.equipWeapon(nick, norm, parts[1]);
-    } else if (cmd === "!scrap" || cmd === "!разобрать") {
+    } else if (cmd === "!scrap" || cmd === "!разобрать" || cmd === "!лом") {
       this.scrapWeapon(nick, norm, parts[1]);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
@@ -2651,7 +2651,10 @@ export class ZoneRoom extends Room<ZoneState> {
     return scrapValue(w);
   }
 
-  /** `!scrap <номер|id>`, `!scrap 1,3,5` (списком) или `!scrap all` (весь склад, кроме надетого). */
+  /**
+   * `!scrap <номер|id>`, `!scrap 1,3,5` (списком), `!scrap all` (весь склад,
+   * кроме надетого) или `!scrap gold` (только золотое, остальные тиры не трогает).
+   */
   private scrapWeapon(nick: string, norm: string, arg: string | undefined): void {
     const t = this.findWeaponsTarget(norm);
     if (!t) {
@@ -2659,14 +2662,20 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (!arg) {
-      this.reply(`@${nick} укажи номер, список через запятую или "all": !scrap 2 (список — !weapons).`);
+      this.reply(
+        `@${nick} укажи номер, список через запятую, "all" или "gold": !scrap 2 (список — !weapons).`,
+      );
       return;
     }
     const { rt } = t;
-    const isAll = ["all", "все", "всё"].includes(arg.toLowerCase());
+    const argLower = arg.toLowerCase();
+    const isAll = ["all", "все", "всё"].includes(argLower);
+    const isGold = ["gold", "золото", "золотое"].includes(argLower);
     let picked: WeaponInstance[];
     if (isAll) {
       picked = [...rt.weapons];
+    } else if (isGold) {
+      picked = rt.weapons.filter((w) => w.tier === "gold");
     } else {
       const found = new Set<WeaponInstance>();
       for (const part of arg.split(",").map((s) => s.trim()).filter(Boolean)) {
@@ -2861,7 +2870,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private static readonly TIPS: readonly string[] = [
     "Совет: !inv — веб-инвентарь, там видно оружие и его случайные характеристики (аффиксы).",
     "Совет: !weapons — что на складе у героя, !equip <номер> — надеть другое оружие оттуда.",
-    "Совет: !scrap <номер|1,2,3|all> — разобрать ненужное оружие на лом (задел под крафт).",
+    "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и легендарного оружия бывают случайные роллы — урон, скорость атаки, крит.",
     "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
@@ -2898,7 +2907,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!inv — ссылка на веб-инвентарь (просмотр) · " +
         "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
-        "!scrap <номер|1,2,3|all> — разобрать на лом (задел под крафт) · " +
+        "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
         "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +
