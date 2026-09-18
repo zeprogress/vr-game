@@ -108,6 +108,8 @@ export class Mob implements Hittable {
   private readonly shove2 = new Vector3();
   /** Труп уже полностью растворился: корень выключен до возрождения. */
   private deadHidden = false;
+  /** Корень выключен, потому что моб вне кадра (см. applyState). */
+  private viewHidden = false;
   private init = false;
   /** Размер тела (босс — крупнее). Приходит из состояния. */
   private scale = 1;
@@ -441,8 +443,16 @@ export class Mob implements Hittable {
       pos.z += (tz - pos.z) * k;
     }
     this.root.rotation.y = s.yaw;
+    // Моб за спиной камеры / вне кадра: выключаем его узлы целиком (Babylon не
+    // обходит их для отсечения/матриц) и не двигаем тень. Запас по радиусу
+    // большой — камера успевает довернуть, пока план кадра отстаёт на кадр.
+    const inView = this.inFrustum(pos, 6 + 4 * this.scale);
+    if (!this.deadHidden && inView === this.viewHidden) {
+      this.viewHidden = !inView;
+      this.root.setEnabled(inView);
+    }
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
-    if (!this.dead) {
+    if (!this.dead && inView) {
       this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
     }
 
@@ -508,6 +518,7 @@ export class Mob implements Hittable {
       this.dead = false;
       if (this.deadHidden) {
         this.deadHidden = false;
+        this.viewHidden = false;
         this.root.setEnabled(true);
       }
       this.shadow.setEnabled(true);
@@ -627,9 +638,19 @@ export class Mob implements Hittable {
     const dx = pos.x - cam.x;
     const dz = pos.z - cam.z;
     if (dx * dx + dz * dz > Mob.ANIM_RANGE * Mob.ANIM_RANGE) return false;
+    return this.inFrustum(pos, 2 + 2.5 * this.scale);
+  }
+
+  /**
+   * Попадает ли шар вокруг моба (радиус r) в пирамиду видимости камеры по
+   * планам прошлого кадра. В VR (стерео-риг) план один на оба глаза — там не
+   * отсекаем, чтобы не терять мобов с краю одного из глаз.
+   */
+  private inFrustum(pos: Vector3, r: number): boolean {
     const planes = this.scene.frustumPlanes;
     if (!planes) return true;
-    const r = 2 + 2.5 * this.scale;
+    const cam = this.scene.activeCamera as { rigCameras?: unknown[] } | null;
+    if (cam?.rigCameras?.length) return true;
     const y = pos.y + MOB.bodyRadius * this.scale;
     for (const p of planes) {
       if (p.normal.x * pos.x + p.normal.y * y + p.normal.z * pos.z + p.d < -r) return false;
