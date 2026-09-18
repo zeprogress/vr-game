@@ -3561,7 +3561,10 @@ export class ZoneRoom extends Room<ZoneState> {
         : ranged && mob
           ? shootKeep
           : mob
-            ? BOT.attackRange * 0.7
+            ? // Не ближе, чем граница тела моба + радиус героя: иначе симуляция
+              // выталкивает моб из-под бота, и тот «бульдозерит» его назад,
+              // пока бежит в упор (крупные элитные мобы, scale > 1.3).
+              Math.max(BOT.attackRange * 0.7, PLAYER.radius + MOB.bodyRadius * mob.scale + 0.2)
             : follow
               ? BOT.followRange
               : 0.5;
@@ -3894,7 +3897,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // постоянно мажут по подвижным слизням. У босса ещё запас на радиус туши.
     const reach =
       BOT.attackRange * 1.4 +
-      (mob.kind === "boss" ? MOB.bodyRadius * mob.scale * BOSS.bodyMult : 0);
+      (mob.kind === "boss"
+        ? MOB.bodyRadius * mob.scale * BOSS.bodyMult
+        : Math.max(0, MOB.bodyRadius * (mob.scale - 1))); // край крупного тела, не центр
     if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
     // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
