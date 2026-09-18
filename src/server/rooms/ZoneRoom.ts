@@ -106,6 +106,7 @@ import {
 } from "#shared/combat";
 import {
   addToBag,
+  HEAL_CARRY_MAX,
   affixLabel,
   affixSum,
   BAG,
@@ -648,6 +649,21 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
     const count = Math.floor(num(s.count, 0));
     if (count <= 0) continue;
     bag[i] = { item: s.item, count: Math.min(count, ITEMS[s.item].stack) };
+  }
+  // Лимит банок хп (HEAL_CARRY_MAX): лишнее у уже накопивших срезаем при
+  // загрузке сейва — с конца сумки, чтобы основные стопки остались целыми.
+  const have = new Map<string, number>();
+  for (const s of bag) if (s.item && ITEMS[s.item].heal > 0) have.set(s.item, (have.get(s.item) ?? 0) + s.count);
+  for (const [id, total] of have) {
+    let over = total - HEAL_CARRY_MAX;
+    for (let i = bag.length - 1; i >= 0 && over > 0; i--) {
+      const s = bag[i];
+      if (s.item !== id) continue;
+      const cut = Math.min(over, s.count);
+      s.count -= cut;
+      over -= cut;
+      if (s.count <= 0) bag[i] = { item: null, count: 0 };
+    }
   }
   return bag;
 }

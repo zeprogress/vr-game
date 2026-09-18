@@ -563,7 +563,7 @@ export const AFFIX = {
   /** Посох: множители радиуса и доли АОЕ огнешара + прямого урона выстрела. */
   storm: { splashRadiusMul: 1.6, splashFracMul: 1.5, dmgMul: 1.2 },
   /** Меч вампира: доля нанесённого удара мечом, возвращаемая владельцу как HP. */
-  vamp: { healFrac: 0.15 },
+  vamp: { healFrac: 0.1 },
 } as const;
 
 /**
