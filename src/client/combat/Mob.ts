@@ -106,6 +106,8 @@ export class Mob implements Hittable {
   private grounded = true;
   private prevY = 0;
   private readonly shove2 = new Vector3();
+  /** Труп уже полностью растворился: корень выключен до возрождения. */
+  private deadHidden = false;
   private init = false;
   /** Размер тела (босс — крупнее). Приходит из состояния. */
   private scale = 1;
@@ -504,6 +506,10 @@ export class Mob implements Hittable {
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
       this.dead = false;
+      if (this.deadHidden) {
+        this.deadHidden = false;
+        this.root.setEnabled(true);
+      }
       this.shadow.setEnabled(true);
       this.setBodyVisibility(1);
       this.setSquash(1, 1, 1);
@@ -520,6 +526,15 @@ export class Mob implements Hittable {
       this.bar.setVisible(false);
       this.nameTag.setEnabled(false);
       this.prevY = pos.y;
+      if (this.deathT > 1.5) {
+        // Растворился — не тратим кадры на невидимый труп (визуальность, снятие
+        // анимаций, обход узлов). Включим обратно при возрождении.
+        if (!this.deadHidden) {
+          this.deadHidden = true;
+          this.root.setEnabled(false);
+        }
+        return;
+      }
       if (this.rig) {
         // Даём проиграть Slime_Death, затем прячем.
         if (this.deathT > 0.9) this.setBodyVisibility(Math.max(0, 1 - (this.deathT - 0.9) * 3));
@@ -557,7 +572,10 @@ export class Mob implements Hittable {
     if (this.rig && !this.dead) {
       // Летающим мобам (пчела) клип держим всегда — иначе «висят» замерев.
       const flyer = !!this.moveAnim && !this.rig.anims.has("hop");
-      if (s.grounded === 0 || flyer) this.playAnim(this.moveAnim, true);
+      // Скелетная анимация вне кадра/вдали не нужна: у 20+ пчёл она крутилась
+      // вечно, даже когда их никто не видит.
+      const seen = this.animVisible(pos, playerPos);
+      if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
 
@@ -587,9 +605,10 @@ export class Mob implements Hittable {
     if (this.lean) return;
 
     // плашка — только рядом и примерно в поле зрения
-    const toMob = new Vector3(pos.x - playerPos.x, 0, pos.z - playerPos.z);
-    const md = toMob.length();
-    const facing = md < 1e-3 || Vector3.Dot(toMob.scale(1 / md), playerAim) > -0.25;
+    const dx = pos.x - playerPos.x;
+    const dz = pos.z - playerPos.z;
+    const md = Math.hypot(dx, dz);
+    const facing = md < 1e-3 || (dx * playerAim.x + dz * playerAim.z) / md > -0.25;
     const near = md < MOB.nameTagRange && facing;
     this.nameTag.setEnabled(near);
     if (near) {
@@ -598,6 +617,24 @@ export class Mob implements Hittable {
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
       this.nameTag.setScale((2 + t * 2) * this.uiScale);
     }
+  }
+
+  /** Дальше этого от камеры скелетную анимацию моба не крутим. */
+  private static readonly ANIM_RANGE = 85;
+
+  /** Моб в кадре и не слишком далеко — тогда анимацию стоит считать. */
+  private animVisible(pos: Vector3, cam: Vector3): boolean {
+    const dx = pos.x - cam.x;
+    const dz = pos.z - cam.z;
+    if (dx * dx + dz * dz > Mob.ANIM_RANGE * Mob.ANIM_RANGE) return false;
+    const planes = this.scene.frustumPlanes;
+    if (!planes) return true;
+    const r = 2 + 2.5 * this.scale;
+    const y = pos.y + MOB.bodyRadius * this.scale;
+    for (const p of planes) {
+      if (p.normal.x * pos.x + p.normal.y * y + p.normal.z * pos.z + p.d < -r) return false;
+    }
+    return true;
   }
 
   private playIfNear(playerPos: Vector3, fn: () => void, range = 28): void {

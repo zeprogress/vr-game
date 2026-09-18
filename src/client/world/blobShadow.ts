@@ -93,6 +93,12 @@ const _fwd = new Vector3(0, 0, 1);
 /** Пятно под одним объектом. Двигать через `place()`. */
 export class BlobShadow {
   private readonly mesh: InstancedMesh;
+  /** Последние параметры place(): у стоящего моба они не меняются — пересчёт
+   *  (5 запросов высоты рельефа + базис) пропускаем. */
+  private lx = NaN;
+  private ly = NaN;
+  private lz = NaN;
+  private lr = NaN;
 
   constructor(scene: Scene, name: string) {
     this.mesh = protoFor(scene).createInstance(`blobShadow_${name}`);
@@ -104,6 +110,18 @@ export class BlobShadow {
    * @param radius радиус пятна на земле, м
    */
   place(x: number, y: number, z: number, radius: number): void {
+    if (
+      Math.abs(x - this.lx) < 2e-3 &&
+      Math.abs(y - this.ly) < 2e-3 &&
+      Math.abs(z - this.lz) < 2e-3 &&
+      Math.abs(radius - this.lr) < 2e-3
+    ) {
+      return;
+    }
+    this.lx = x;
+    this.ly = y;
+    this.lz = z;
+    this.lr = radius;
     const ground = terrainHeight(x, z);
 
     // Нормаль рельефа: по ней кладём диск, иначе он режется о склон.
