@@ -195,7 +195,14 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
           // порогу, поэтому на скачке зовём её отдельно: иначе земля остаётся
           // с прежним набором источников. Обычную посекундную сверку
           // (DAYCYCLE.syncSeconds) не трогаем — там шаг маленький.
-          if (Number.isFinite(lastNetHour) && Math.abs(net.hour - lastNetHour) > 0.25) {
+          // Скачок считаем от ПРОГНОЗА клиента (`hour` — часы, которые мы сами
+          // гоним между сверками), а не от прошлой сверки: ночью часы идут в
+          // разы быстрее, и обычный шаг между сверками сам был больше 0.25 ч —
+          // пересборка ВСЕХ материалов шла на каждой сверке (~раз в 5 с) и
+          // подвешивала стрим на секунды (журнал ?perf=1). По кругу суток.
+          let jump = Math.abs(net.hour - hour);
+          if (jump > 12) jump = 24 - jump;
+          if (Number.isFinite(lastNetHour) && jump > 0.25) {
             relightMaterials(scene, "Zone.hourJump");
           }
           hour = net.hour;
