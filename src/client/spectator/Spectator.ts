@@ -533,7 +533,7 @@ export class Spectator {
     const bundle = async (): Promise<string | null> => {
       try {
         const html = await fetch(`/?_=${Date.now()}`, { cache: "no-store" }).then((r) => r.text());
-        return html.match(/assets\/index-[\w-]+\.js/)?.[0] ?? null;
+        return html.match(/assets\/main-[\w-]+\.js/)?.[0] ?? null;
       } catch {
         return null;
       }
