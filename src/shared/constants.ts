@@ -361,9 +361,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monYeti", name: "Голем-крушитель", level: 26, kind: "slime",
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
-    hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 2.55, tint: null,
+    hp: 950, dmgMul: 6, xp: 6300, scaleMul: 2.55, tint: null,
     splitAt: 0.3, splitCount: 3, splitScaleMul: 0.5, splitHpFrac: 0.45,
-    splitDmgMul: 0.5, splitSpeedMul: 3, splitXp: 3000, splitChildXp: 1500,
+    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 3000, splitChildXp: 1500,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
     splitReviveSec: 45,
@@ -558,7 +558,7 @@ export const AFFIX = {
   /** Посох: множители радиуса и доли АОЕ огнешара + прямого урона выстрела. */
   storm: { splashRadiusMul: 1.6, splashFracMul: 1.5, dmgMul: 1.2 },
   /** Меч вампира: доля нанесённого удара мечом, возвращаемая владельцу как HP. */
-  vamp: { healFrac: 0.3 },
+  vamp: { healFrac: 0.22 },
 } as const;
 
 /**
