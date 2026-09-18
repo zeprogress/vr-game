@@ -1095,7 +1095,7 @@ class Drop {
     readonly instance?: WeaponInstance,
   ) {}
 
-  /** true — пора убрать. Оружие лежит намного дольше обычного лута (час), а не тает за 3 минуты. */
+  /** true — пора убрать. Оружие лежит дольше обычного лута (BAG.weaponDropLife, 15 минут против 5). */
   tick(dt: number): boolean {
     this.life += dt;
     return this.life > (ITEMS[this.item].weapon ? BAG.weaponDropLife : BAG.dropLife);
