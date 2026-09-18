@@ -436,7 +436,7 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
 
 /** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
 export function scrapValue(w: WeaponInstance): number {
-  const base = w.tier === "legendary" ? 3 : w.tier === "gold" ? 1 : 0;
+  const base = w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
   return base + w.affixes.length;
 }
 
