@@ -281,6 +281,27 @@ export function addToBag(bag: Slot[], id: ItemId, count: number): number {
   const max = ITEMS[id].stack;
   let left = count;
 
+  // Лечебные банки: всего в сумке не больше HEAL_CARRY_MAX (сверх — не влезает,
+  // остаётся лежать на земле). Остальные предметы ограничены только ячейками.
+  if (ITEMS[id].heal > 0) {
+    let have = 0;
+    for (const s of bag) if (s.item === id) have += s.count;
+    const capLeft = Math.max(0, HEAL_CARRY_MAX - have);
+    if (capLeft < left) {
+      const over = left - capLeft;
+      left = capLeft;
+      return over + fillBag(bag, id, left, max);
+    }
+  }
+  return fillBag(bag, id, left, max);
+}
+
+/** Максимум лечебных банок одного вида в сумке. */
+export const HEAL_CARRY_MAX = 99;
+
+function fillBag(bag: Slot[], id: ItemId, count: number, max: number): number {
+  let left = count;
+
   for (const s of bag) {
     if (left <= 0) break;
     if (s.item !== id || s.count >= max) continue;
