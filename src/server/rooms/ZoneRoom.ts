@@ -60,8 +60,10 @@ import {
   advanceHour,
   AFFIX,
   BOSS,
+  BOW,
   COMBAT,
   BOT,
+  SWORD_CRIT_MULT,
   DAYCYCLE,
   MOB,
   PLAYER,
@@ -1406,7 +1408,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit)
     // добавляют шанс/силу крита ЛЮБОМУ оружию.
     const rc = rolledCrit(p, hand, rt);
-    const crit = rollCritMult(msg.weapon, Math.random, affix === "crit", rc.chance, rc.mult);
+    const crit = rollCritMult(
+      msg.weapon,
+      Math.random,
+      affix === "crit",
+      rc.chance,
+      rc.mult,
+      msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult,
+    );
     const dmg =
       weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand) * rolledDmgMul(p, hand, rt), p.agi) *
       crit *
@@ -3912,7 +3921,14 @@ export class ZoneRoom extends Room<ZoneState> {
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
     const botSwordCrit = rolledCrit(p, "right", bot.rt);
-    const swordCrit = rollCritMult("sword", Math.random, false, botSwordCrit.chance, botSwordCrit.mult);
+    const swordCrit = rollCritMult(
+      "sword",
+      Math.random,
+      false,
+      botSwordCrit.chance,
+      botSwordCrit.mult,
+      SWORD_CRIT_MULT,
+    );
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt), p.agi) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *

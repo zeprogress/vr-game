@@ -48,11 +48,13 @@ export function rollCritMult(
   hunterBow = false,
   extraChance = 0,
   extraMult = 0,
+  /** Базовая кратность крита: у лука/посоха BOW.critMult, у меча — SWORD_CRIT_MULT. */
+  baseMult: number = BOW.critMult,
 ): number {
   const baseChance = kind === "arrow" ? BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0) : 0;
   const chance = baseChance + extraChance;
   if (chance <= 0) return 1;
-  return rnd() < chance ? BOW.critMult + extraMult : 1;
+  return rnd() < chance ? baseMult + extraMult : 1;
 }
 
 /**
