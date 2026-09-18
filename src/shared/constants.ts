@@ -73,6 +73,8 @@ export const BOW = {
 
 /** Базовая кратность крита меча (у лука — BOW.critMult = 3). Ролл «силы крита» добавляется сверху. */
 export const SWORD_CRIT_MULT = 1.5;
+/** Базовая кратность крита посоха (огнешар); ролл «силы крита» добавляется сверху. */
+export const STAFF_CRIT_MULT = 2;
 
 export const ARROW = {
   gravity: 16, // м/с²

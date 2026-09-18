@@ -63,6 +63,7 @@ import {
   BOW,
   COMBAT,
   BOT,
+  STAFF_CRIT_MULT,
   SWORD_CRIT_MULT,
   DAYCYCLE,
   MOB,
@@ -920,7 +921,14 @@ export class ZoneRoom extends Room<ZoneState> {
       // просто заглушка: у неё и так нулевая база крита, важны только
       // extraChance/extraMult с конкретного инстанса.
       const staffCrit = rolledCrit(p, staffHand, rt);
-      const critM = rollCritMult("sword", Math.random, false, staffCrit.chance, staffCrit.mult);
+      const critM = rollCritMult(
+        "sword",
+        Math.random,
+        false,
+        staffCrit.chance,
+        staffCrit.mult,
+        STAFF_CRIT_MULT,
+      );
       const boltDmg =
         fireboltDamage(p.level, p.int, charge) *
         rolledDmgMul(p, staffHand, rt) *
