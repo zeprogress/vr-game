@@ -227,6 +227,10 @@ interface Bot {
   target: string | null; // id моба
   /** id лежащего золотого меча, за которым бот сейчас идёт (Ф10). */
   lootTarget: string | null;
+  /** Date.now(), когда бот взял текущую lootTarget — защита от «стоит у лута вечно». */
+  lootSince: number;
+  /** Лут, до которого бот не смог добраться/поднять за отведённое время — больше не выбираем. */
+  lootSkip: Set<string>;
   /** Нормализованный ник, за которым идём между боями (!follow/!come, Ф10). null — никого. */
   followNorm: string | null;
   /**
@@ -3136,6 +3140,8 @@ export class ZoneRoom extends Room<ZoneState> {
       rt,
       target: null,
       lootTarget: null,
+      lootSince: 0,
+      lootSkip: new Set<string>(),
       followNorm: null,
       raiding: false,
       eventing: false,
@@ -3372,6 +3378,21 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (mob) bot.target = mob.id;
     }
+    // Некого выбрать в зоне, но по боту бьёт моб рядом (вышел за радиус зоны —
+    // например, погнался за героем от эпицентра события): отбиваемся, а не стоим.
+    if (!mob && !bot.raiding && bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000) {
+      const hm = this.sim.mobs.get(bot.hurtByMob);
+      if (
+        hm &&
+        !hm.dead &&
+        hm.kind !== "boss" &&
+        hm.kind !== "shard" &&
+        Math.hypot(hm.x - p.head.x, hm.z - p.head.z) < 14
+      ) {
+        mob = hm;
+        bot.target = hm.id;
+      }
+    }
 
     // Рейд, но по боту лупит обычный моб / осколок босса — сперва добиваем
     // его (в радиусе raidAddRange и уже агрнут), потом снова к боссу. Делаем
@@ -3466,11 +3487,16 @@ export class ZoneRoom extends Room<ZoneState> {
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d || !lootFreeFor(d, bot.id)) return false; // чужой трофей — не бежим и не претендуем
+      if (bot.lootSkip.has(d.id)) return false; // уже пробовали и не вышло
       const w = ITEMS[d.item].weapon;
       // Любое оружие берём — своего класса наденем, чужого просто унесём
       // в склад (!equip потом вручную, если сменит билд, или !scrap на лом).
       if (w) return inZone(d.x, d.z);
-      return (wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0;
+      if (!((wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0)) return false;
+      // Сумка полна — поднять не выйдет: бот иначе вечно «подбирал» бы бутылку,
+      // стоя на месте, пока его бьют мобы (баг на событии).
+      const probe = readBag(p);
+      return addToBag(probe, d.item, d.count) < d.count;
     };
     if (!okLoot(loot)) {
       bot.lootTarget = null;
@@ -3491,7 +3517,18 @@ export class ZoneRoom extends Room<ZoneState> {
           loot = d;
         }
       }
-      if (loot) bot.lootTarget = loot.id;
+      if (loot) {
+        bot.lootTarget = loot.id;
+        bot.lootSince = Date.now();
+      }
+    }
+    // Слишком долго идём/стоим у одного и того же лута (недоступен, застрял) —
+    // бросаем его и возвращаемся к мобам.
+    if (loot && Date.now() - bot.lootSince > 12_000) {
+      if (bot.lootSkip.size > 40) bot.lootSkip.clear();
+      bot.lootSkip.add(loot.id);
+      bot.lootTarget = null;
+      loot = undefined;
     }
     // Пока идём за мечом, моба не бьём — но и цель по мобу не бросаем:
     // okMob-выбор выше продолжает работать, просто движение приоритетнее.

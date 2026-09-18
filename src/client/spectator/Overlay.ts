@@ -64,6 +64,8 @@ const CSS = `
 @keyframes ovpulse { 0%,100%{opacity:1} 50%{opacity:.35} }
 .ov-clock { right:2.2vw; top:2.4vh; font-weight:700; font-size:2.3vh; letter-spacing:.06em;
   text-align:right; }
+.ov-clock small { font-size:1.5vh; font-weight:600; opacity:.7; margin-left:.7vh;
+  letter-spacing:.04em; }
 .ov-online { right:2.2vw; top:6.4vh; text-align:right; font-size:1.7vh; line-height:1.5; opacity:.9; }
 .ov-online b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
@@ -141,12 +143,12 @@ const CSS = `
 .ov-loot .it .tint { width:60%; height:60%; border-radius:.6vh; }
 .ov-loot .it .cnt { position:absolute; right:.3vh; bottom:.1vh; font:800 1.6vh system-ui,sans-serif;
   color:#fff; text-shadow:0 .1vh .3vh #000,0 0 .3vh #000; }
-.ov-ticker { left:50%; top:11vh; transform:translateX(-50%); text-align:center;
+.ov-ticker { left:50%; top:4vh; transform:translateX(-50%); text-align:center;
   font-weight:800; font-size:5.2vh; letter-spacing:.02em; text-transform:none;
   color:#1f7bff; max-width:86vw;
   text-shadow:0 0 .5vh rgba(0,0,0,.95), 0 0 1.4vh rgba(0,0,0,.9),
     0 0 3vh rgba(0,0,0,.8), 0 0 5vh rgba(0,0,0,.6); }
-.ov-ticker.news { top:9vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
+.ov-ticker.news { top:7vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 .ov-towerstatus { left:2.2vw; top:34vh; text-align:left; font-size:1.7vh; }
@@ -480,7 +482,9 @@ export class Overlay {
     if (this.cfg.clock) {
       const t = mskTime();
       if (t !== this.lastClock) {
-        this.clock.textContent = t;
+        const tail = document.createElement("small");
+        tail.textContent = "(мск)";
+        this.clock.replaceChildren(document.createTextNode(t), tail);
         this.lastClock = t;
       }
     }
