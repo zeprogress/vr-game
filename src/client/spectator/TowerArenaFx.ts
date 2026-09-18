@@ -26,6 +26,7 @@ import { protoFor as shadowProtoFor } from "../world/blobShadow";
 import { NameTag } from "../ui/NameTag";
 import { TOWER_LIGHT_TUNE } from "./towerLightTune";
 import type { Sfx } from "../audio/Sfx";
+import { flameTexture } from "../ui/GlowSprite";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
@@ -740,6 +741,7 @@ export class TowerArenaFx {
       if (p) this.disposeRigInstance(p.inst);
       p?.holder.dispose();
       p?.anchor.dispose();
+      p?.burnMat?.diffuseTexture?.dispose();
       p?.burnMat?.dispose();
     }
     this.mobModels.fill(null);
@@ -748,6 +750,7 @@ export class TowerArenaFx {
       this.disposeRigInstance(this.bossModel.inst);
       this.bossModel.holder.dispose();
       this.bossModel.anchor.dispose();
+      this.bossModel.burnMat?.diffuseTexture?.dispose();
       this.bossModel.burnMat?.dispose();
       this.bossModel = null;
     }
@@ -831,13 +834,18 @@ export class TowerArenaFx {
       p.burnFx.parent = p.holder;
       p.burnMat = new StandardMaterial("towerMobBurnMat", scene);
       p.burnMat.disableLighting = true;
-      p.burnMat.diffuseColor = new Color3(0, 0, 0);
       p.burnMat.specularColor = new Color3(0, 0, 0);
-      p.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
+      const flameTex = flameTexture(scene);
+      p.burnMat.diffuseTexture = flameTex;
+      p.burnMat.emissiveTexture = flameTex;
+      p.burnMat.opacityTexture = flameTex;
+      p.burnMat.useAlphaFromDiffuseTexture = true;
       p.burnMat.alphaMode = Constants.ALPHA_ADD;
       p.burnMat.disableDepthWrite = true;
+      p.burnMat.backFaceCulling = false;
       for (let i = 0; i < 5; i++) {
-        const f = MeshBuilder.CreatePlane(`towerMobFlame${i}`, { size: 1 }, scene);
+        // Уже книзу, острее к вершине — под форму текстуры flameTexture (не квадрат).
+        const f = MeshBuilder.CreatePlane(`towerMobFlame${i}`, { width: 0.7, height: 1.05 }, scene);
         f.material = p.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;

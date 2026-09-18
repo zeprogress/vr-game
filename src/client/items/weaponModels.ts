@@ -6,16 +6,18 @@ import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { radialGlowTexture } from "../ui/GlowSprite";
 
 /**
- * Фиолетовое пульсирующее свечение легендарного оружия — тот же приём, что у
- * ауры баффа: аддитивная полупрозрачная сфера вокруг предмета, дышит сама
- * (onBeforeRender), снимается вместе с мешем.
+ * Фиолетовое пульсирующее свечение уникального оружия — плоский billboard-
+ * спрайт (не 3D-сфера, см. BuffAura.ts — та же переделка и по той же
+ * причине): всегда развёрнут на камеру, а край круга гладкий по построению
+ * (готовый радиальный градиент в текстуре), без вопроса числа сегментов.
  */
 export function attachLegendaryGlow(
   scene: Scene,
@@ -24,17 +26,19 @@ export function attachLegendaryGlow(
   /** Множитель яркости — не размера. Оружие ×0.5, Эгида ×(1/1.5) по просьбе. */
   intensity = 1,
 ): void {
-  const shell = MeshBuilder.CreateSphere("legGlow", { diameter: radius * 2, segments: 10 }, scene);
+  const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
   const mat = new StandardMaterial("legGlowMat", scene);
   mat.emissiveColor = new Color3(0.6, 0.22, 1);
   mat.diffuseColor = new Color3(0, 0, 0);
   mat.specularColor = new Color3(0, 0, 0);
+  mat.opacityTexture = radialGlowTexture(scene);
   mat.disableLighting = true;
   mat.alphaMode = Constants.ALPHA_ADD;
   mat.backFaceCulling = false;
   mat.alpha = 0.12 * intensity;
   shell.material = mat;
   shell.isPickable = false;
+  shell.billboardMode = Mesh.BILLBOARDMODE_ALL;
   shell.parent = host;
   let t = 0;
   const obs = scene.onBeforeRenderObservable.add(() => {
@@ -45,6 +49,7 @@ export function attachLegendaryGlow(
   });
   host.onDisposeObservable.add(() => {
     scene.onBeforeRenderObservable.remove(obs);
+    mat.opacityTexture?.dispose();
     mat.dispose();
     shell.dispose();
   });

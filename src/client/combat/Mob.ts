@@ -23,6 +23,7 @@ import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 import { BlobShadow } from "../world/blobShadow";
+import { flameTexture } from "../ui/GlowSprite";
 
 /** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
  *  моба. Подбор: `?myaw=<рад>`. (0 = −90° от исходного π/2.) */
@@ -651,14 +652,19 @@ export class Mob implements Hittable {
       this.burnFx.parent = this.root;
       this.burnMat = new StandardMaterial("mobBurnMat", scene);
       this.burnMat.disableLighting = true;
-      this.burnMat.diffuseColor = new Color3(0, 0, 0);
       this.burnMat.specularColor = new Color3(0, 0, 0);
-      this.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
+      const flameTex = flameTexture(scene);
+      this.burnMat.diffuseTexture = flameTex;
+      this.burnMat.emissiveTexture = flameTex;
+      this.burnMat.opacityTexture = flameTex;
+      this.burnMat.useAlphaFromDiffuseTexture = true;
       this.burnMat.alphaMode = Constants.ALPHA_ADD;
       this.burnMat.disableDepthWrite = true;
+      this.burnMat.backFaceCulling = false;
       const r = MOB.bodyRadius;
       for (let i = 0; i < 5; i++) {
-        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r * 1.7 }, scene);
+        // Уже книзу, острее к вершине — под форму текстуры flameTexture (не квадрат).
+        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { width: r * 1.3, height: r * 1.9 }, scene);
         f.material = this.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
@@ -741,6 +747,7 @@ export class Mob implements Hittable {
     this.bar.dispose();
     this.slamRing?.material?.dispose();
     this.stunStarMat.dispose();
+    this.burnMat?.diffuseTexture?.dispose();
     this.burnMat?.dispose();
     this.rig?.dispose();
     this.rig = null;
