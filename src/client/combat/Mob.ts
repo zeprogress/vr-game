@@ -5,10 +5,10 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
-import { Constants } from "@babylonjs/core/Engines/constants";
 
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -23,7 +23,7 @@ import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
 import { BlobShadow } from "../world/blobShadow";
-import { flameTexture } from "../ui/GlowSprite";
+import { sharedMobFireMaterial } from "../world/FireShader";
 
 /** Доворот модели, чтобы её «перёд» (глаза) совпал с направлением взгляда
  *  моба. Подбор: `?myaw=<рад>`. (0 = −90° от исходного π/2.) */
@@ -96,7 +96,8 @@ export class Mob implements Hittable {
   /** Языки пламени над мобом, пока он горит (ленивое создание). */
   private burnFx: TransformNode | null = null;
   private burnFlames: Mesh[] = [];
-  private burnMat: StandardMaterial | null = null;
+  /** Общий на всю сцену шейдер-материал (см. sharedMobFireMaterial) — этот моб им не владеет, не диспозит. */
+  private burnMat: ShaderMaterial | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -639,8 +640,11 @@ export class Mob implements Hittable {
     }
   }
 
-  /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
-   *  и всплывают. Создаётся при первом горении, дальше просто вкл/выкл. */
+  /** Языки пламени над горящим мобом: та же процедурная шейдер-текстура
+   *  огня, что и у костра лагеря (см. FireShader.ts), а не плоская карточка.
+   *  Материал общий на всю сцену (sharedMobFireMaterial) — компиляция
+   *  шейдера не бесплатна, а горящих мобов может быть много разом.
+   *  Создаётся при первом горении, дальше просто вкл/выкл. */
   private updateBurnFx(dt: number): void {
     if (this.burnGlow <= 0.001) {
       this.burnFx?.setEnabled(false);
@@ -650,20 +654,9 @@ export class Mob implements Hittable {
       const scene = this.root.getScene();
       this.burnFx = new TransformNode("mobBurn", scene);
       this.burnFx.parent = this.root;
-      this.burnMat = new StandardMaterial("mobBurnMat", scene);
-      this.burnMat.disableLighting = true;
-      this.burnMat.specularColor = new Color3(0, 0, 0);
-      const flameTex = flameTexture(scene);
-      this.burnMat.diffuseTexture = flameTex;
-      this.burnMat.emissiveTexture = flameTex;
-      this.burnMat.opacityTexture = flameTex;
-      this.burnMat.useAlphaFromDiffuseTexture = true;
-      this.burnMat.alphaMode = Constants.ALPHA_ADD;
-      this.burnMat.disableDepthWrite = true;
-      this.burnMat.backFaceCulling = false;
+      this.burnMat = sharedMobFireMaterial(scene);
       const r = MOB.bodyRadius;
       for (let i = 0; i < 5; i++) {
-        // Уже книзу, острее к вершине — под форму текстуры flameTexture (не квадрат).
         const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { width: r * 1.3, height: r * 1.9 }, scene);
         f.material = this.burnMat;
         f.isPickable = false;
@@ -677,17 +670,18 @@ export class Mob implements Hittable {
     }
     this.burnFx.setEnabled(true);
     this.burnT += dt;
+    this.burnMat?.setFloat("uTime", this.burnT);
     const r = MOB.bodyRadius;
     for (let i = 0; i < this.burnFlames.length; i++) {
       const f = this.burnFlames[i];
       const ph = this.burnT * 7 + i * 1.7;
       const rise = (this.burnT * 1.8 + i * 0.37) % 1;
       f.position.y = r * (0.15 + rise * 1.5);
+      // Материал общий на всех горящих мобов — угасание рисуем размером
+      // плана (масштаб к нулю), а не альфой материала (та была бы одна на
+      // всех сразу).
       const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
       f.scaling.setAll(Math.max(0.05, s));
-    }
-    if (this.burnMat) {
-      this.burnMat.alpha = 0.275 * this.burnGlow;
     }
   }
 
@@ -747,8 +741,11 @@ export class Mob implements Hittable {
     this.bar.dispose();
     this.slamRing?.material?.dispose();
     this.stunStarMat.dispose();
-    this.burnMat?.diffuseTexture?.dispose();
-    this.burnMat?.dispose();
+    // burnMat — общий на всю сцену материал (sharedMobFireMaterial), этот
+    // моб им не владеет. root.dispose(..., true) ниже рекурсивно диспозит
+    // материалы ВСЕХ дочерних мешей — отвязываем общий материал от планов
+    // пламени заранее, иначе он пропал бы у всех остальных горящих мобов.
+    for (const f of this.burnFlames) f.material = null;
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, true);

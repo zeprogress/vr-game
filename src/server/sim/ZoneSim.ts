@@ -154,8 +154,23 @@ export interface PlayerHit {
   knockback?: number;
 }
 
+/**
+ * Общая на пару осколков голема (см. Mob.splitGroup, ZoneSim.splitGolem):
+ * пока хоть один жив — просто мобы как мобы (сами не возрождаются, см.
+ * ZoneSim.hitMob). Когда умер последний — на месте гибели встаёт свежий
+ * целый голем (та же точка спавна и полные характеристики — opts).
+ */
+interface GolemSplitGroup {
+  remaining: number;
+  homeX: number;
+  homeZ: number;
+  opts: ConstructorParameters<typeof Mob>[3];
+}
+
 class Mob {
   readonly id = nid();
+  /** Это осколок голема из пары — см. GolemSplitGroup. undefined — обычный моб. */
+  splitGroup?: GolemSplitGroup;
   x: number;
   y: number;
   z: number;
@@ -1686,6 +1701,18 @@ export class ZoneSim {
     if (attacker) {
       this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
     }
+    // Осколок голема сам НЕ возрождается (иначе за игровую сессию все
+    // големы лагеря необратимо усыхали бы до вечных мелких копий — баг,
+    // который и просили починить): убираем из мира насовсем, а когда
+    // умрёт последний осколок пары — на её месте встаёт целый голем.
+    if (m.splitGroup) {
+      this.mobs.delete(m.id);
+      const g = m.splitGroup;
+      if (--g.remaining <= 0) {
+        const revived = new Mob(m.kind, g.homeX, g.homeZ, g.opts);
+        this.mobs.set(revived.id, revived);
+      }
+    }
     return kind;
   }
 
@@ -1778,6 +1805,37 @@ export class ZoneSim {
    * m.xp = splitChildXp (уже не долю от родителя, а фиксированное число).
    */
   private splitGolem(m: Mob): void {
+    // Полный комплект для возрождения ЦЕЛОГО голема, когда умрут оба
+    // осколка (см. GolemSplitGroup, hitMob) — характеристики родителя, ДО
+    // уменьшения под осколки.
+    const group: GolemSplitGroup = {
+      remaining: m.splitCount,
+      homeX: m.x,
+      homeZ: m.z,
+      opts: {
+        model: m.model,
+        name: m.eliteName,
+        level: m.eliteLevel,
+        hp: m.maxHp,
+        dmgMul: m.dmgMul,
+        scaleMul: m.scale,
+        speedMul: m.speedMul,
+        xp: m.xp,
+        flying: m.flying,
+        rangedArmor: m.rangedArmor,
+        physArmor: m.physArmor,
+        magicVulnMul: m.magicVulnMul,
+        critVulnMul: m.critVulnMul,
+        splitAt: m.splitAt,
+        splitCount: m.splitCount,
+        splitScaleMul: m.splitScaleMul,
+        splitHpFrac: m.splitHpFrac,
+        splitDmgMul: m.splitDmgMul,
+        splitSpeedMul: m.splitSpeedMul,
+        splitXp: m.splitXp,
+        splitChildXp: m.splitChildXp,
+      },
+    };
     this.mobs.delete(m.id);
     this.splitXpPool(m, m.splitXp);
     for (let i = 0; i < m.splitCount; i++) {
@@ -1801,6 +1859,7 @@ export class ZoneSim {
         magicVulnMul: m.magicVulnMul,
         critVulnMul: m.critVulnMul,
       });
+      child.splitGroup = group;
       child.forceAggro();
       this.mobs.set(child.id, child);
     }
