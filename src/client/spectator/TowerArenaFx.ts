@@ -4,7 +4,6 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import type { Light } from "@babylonjs/core/Lights/light";
@@ -27,7 +26,6 @@ import { protoFor as shadowProtoFor } from "../world/blobShadow";
 import { NameTag } from "../ui/NameTag";
 import { TOWER_LIGHT_TUNE } from "./towerLightTune";
 import type { Sfx } from "../audio/Sfx";
-import { sharedMobFireMaterial } from "../world/FireShader";
 
 /** Плоский пол арены — своя тень без наклона по рельефу (см. blobShadow.ts). */
 const SHADOW_PROTO_SIZE = 2;
@@ -94,8 +92,7 @@ interface ModelPlacement {
   /** Плавно 0..1 — насколько сильно горит (поджог мага), как в Mob.ts. */
   burnGlow: number;
   burnFx: TransformNode | null;
-  /** Общий на всю сцену шейдер-материал (sharedMobFireMaterial) — не наш, не диспозим. */
-  burnMat: ShaderMaterial | null;
+  burnMat: StandardMaterial | null;
   burnFlames: Mesh[];
   burnT: number;
   /** Тёмное пятно под ногами — как у мобов на поляне (BlobShadow), но без наклона: пол плоский. */
@@ -743,9 +740,7 @@ export class TowerArenaFx {
       if (p) this.disposeRigInstance(p.inst);
       p?.holder.dispose();
       p?.anchor.dispose();
-      // burnMat — общий шейдер-материал на всю сцену (sharedMobFireMaterial),
-      // не наш: не диспозим (holder.dispose() выше и так не трогает материалы
-      // без явного disposeMaterialAndTextures=true).
+      p?.burnMat?.dispose();
     }
     this.mobModels.fill(null);
     if (this.bossModel) {
@@ -753,6 +748,7 @@ export class TowerArenaFx {
       this.disposeRigInstance(this.bossModel.inst);
       this.bossModel.holder.dispose();
       this.bossModel.anchor.dispose();
+      this.bossModel.burnMat?.dispose();
       this.bossModel = null;
     }
     this.modelName = "";
@@ -823,8 +819,7 @@ export class TowerArenaFx {
     this.updateBurnFx(p, dt);
   }
 
-  /** Языки пламени над горящим мобом — тот же процедурный шейдер огня, что
-   *  и у костра лагеря/мобов основного мира (см. FireShader.ts). */
+  /** Языки пламени над горящим мобом — тот же приём, что и в основном мире (Mob.ts). */
   private updateBurnFx(p: ModelPlacement, dt: number): void {
     if (p.burnGlow <= 0.001) {
       p.burnFx?.setEnabled(false);
@@ -834,9 +829,15 @@ export class TowerArenaFx {
       const scene = this.scene;
       p.burnFx = new TransformNode("towerMobBurn", scene);
       p.burnFx.parent = p.holder;
-      p.burnMat = sharedMobFireMaterial(scene);
+      p.burnMat = new StandardMaterial("towerMobBurnMat", scene);
+      p.burnMat.disableLighting = true;
+      p.burnMat.diffuseColor = new Color3(0, 0, 0);
+      p.burnMat.specularColor = new Color3(0, 0, 0);
+      p.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
+      p.burnMat.alphaMode = Constants.ALPHA_ADD;
+      p.burnMat.disableDepthWrite = true;
       for (let i = 0; i < 5; i++) {
-        const f = MeshBuilder.CreatePlane(`towerMobFlame${i}`, { width: 0.7, height: 1.05 }, scene);
+        const f = MeshBuilder.CreatePlane(`towerMobFlame${i}`, { size: 1 }, scene);
         f.material = p.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
@@ -849,16 +850,15 @@ export class TowerArenaFx {
     }
     p.burnFx.setEnabled(true);
     p.burnT += dt;
-    p.burnMat?.setFloat("uTime", p.burnT);
     for (let i = 0; i < p.burnFlames.length; i++) {
       const f = p.burnFlames[i];
       const ph = p.burnT * 7 + i * 1.7;
       const rise = (p.burnT * 1.8 + i * 0.37) % 1;
       f.position.y = 0.1 + rise * 1.1;
-      // Материал общий на всех горящих мобов — угасание рисуем размером.
       const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * p.burnGlow;
       f.scaling.setAll(Math.max(0.05, s));
     }
+    if (p.burnMat) p.burnMat.alpha = 0.275 * p.burnGlow;
   }
 
   /** Снаряд дальнего моба — светящийся шарик, летит к герою и исчезает. */

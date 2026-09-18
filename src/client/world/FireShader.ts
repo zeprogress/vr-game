@@ -4,10 +4,10 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
 
 /**
- * Процедурный шейдер пламени — источник: костёр лагеря (HubCampfire.ts,
- * портирован из grok-workspace/src/campfire). Вынесен сюда, чтобы тот же
- * "живой" огонь (fbm-шум, волнистые языки, не квадратная карточка) мог
- * гореть и на мобах (Mob.ts/TowerArenaFx.ts), а не только у костра.
+ * Процедурный шейдер пламени костра лагеря — портирован из
+ * grok-workspace/src/campfire, см. HubCampfire.ts. (Пробовали переиспользовать
+ * его же для поджога мобов — попросили вернуть прежний эффект там, так что
+ * этот модуль сейчас нужен только костру.)
  */
 export const FIRE_VERT = /* glsl */ `
 precision highp float;
@@ -105,25 +105,5 @@ export function makeFireMaterial(scene: Scene, name: string, wrap: boolean): Sha
   m.alphaMode = Constants.ALPHA_ADD;
   m.backFaceCulling = false;
   m.disableDepthWrite = true;
-  return m;
-}
-
-/**
- * Один общий материал на ВСЮ сцену (не по одному на моба!) — компиляция
- * шейдера не бесплатна, а горящих мобов бывает много одновременно; общий
- * uTime/цвета через всех — незаметная мелочь на глаз, зато без "шторма"
- * пересборки шейдеров (см. memory: vr-perf-shader-storm).
- */
-const shared = new WeakMap<Scene, ShaderMaterial>();
-export function sharedMobFireMaterial(scene: Scene): ShaderMaterial {
-  let m = shared.get(scene);
-  if (!m) {
-    m = makeFireMaterial(scene, "mobFireShared", false);
-    shared.set(scene, m);
-    scene.onDisposeObservable.addOnce(() => {
-      m?.dispose();
-      shared.delete(scene);
-    });
-  }
   return m;
 }

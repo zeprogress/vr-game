@@ -162,8 +162,11 @@ export interface PlayerHit {
  */
 interface GolemSplitGroup {
   remaining: number;
+  kind: MobKind;
+  /** Настоящее место спавна голема в лагере, НЕ точка, где погиб осколок. */
   homeX: number;
   homeZ: number;
+  reviveSec: number;
   opts: ConstructorParameters<typeof Mob>[3];
 }
 
@@ -208,8 +211,9 @@ class Mob {
   attackSeq = 0;
   hurtDx = 0;
   hurtDz = 0;
-  private readonly homeX: number;
-  private readonly homeZ: number;
+  /** Точка спавна (не текущая позиция) — публично для ZoneSim.splitGolem. */
+  readonly homeX: number;
+  readonly homeZ: number;
   readonly ranged: boolean;
   readonly xp: number;
   readonly scale: number;
@@ -299,6 +303,7 @@ class Mob {
   readonly splitSpeedMul: number;
   readonly splitXp: number;
   readonly splitChildXp: number;
+  readonly splitReviveSec: number;
   /** Множитель скорости движения — 1 обычно, у осколков голема выше. */
   readonly speedMul: number;
   private splitDone = false;
@@ -366,6 +371,7 @@ class Mob {
       splitSpeedMul?: number;
       splitXp?: number;
       splitChildXp?: number;
+      splitReviveSec?: number;
       /** Множитель скорости движения — 1 обычно, у осколков голема выше. */
       speedMul?: number;
     } = {},
@@ -409,6 +415,7 @@ class Mob {
     this.splitSpeedMul = opts.splitSpeedMul ?? 1;
     this.splitXp = opts.splitXp ?? 0;
     this.splitChildXp = opts.splitChildXp ?? 0;
+    this.splitReviveSec = opts.splitReviveSec ?? MOB.respawn;
     this.speedMul = opts.speedMul ?? 1;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
@@ -1275,6 +1282,14 @@ export class ZoneSim {
    * после 15 уровня (см. spawnLoot, goldDropMulForLevel).
    */
   getAttackerLevel: (id: string) => number = () => 1;
+  /** Целые големы, ждущие своей очереди вернуться (см. splitGolem, tick). */
+  private readonly pendingRevivals: {
+    at: number;
+    kind: MobKind;
+    homeX: number;
+    homeZ: number;
+    opts: ConstructorParameters<typeof Mob>[3];
+  }[] = [];
 
   constructor() {
     for (let i = 0; i < MOB.count; i++) {
@@ -1321,6 +1336,7 @@ export class ZoneSim {
           splitHpFrac: def.splitHpFrac,
           splitDmgMul: def.splitDmgMul,
           splitSpeedMul: def.splitSpeedMul,
+          splitReviveSec: def.splitReviveSec,
           splitXp: def.splitXp,
           splitChildXp: def.splitChildXp,
         });
@@ -1452,6 +1468,15 @@ export class ZoneSim {
     };
 
     this.elapsed += dt;
+    // Целые големы, дождавшиеся своей очереди (см. splitGolem) — вернуть на
+    // их собственное место спавна в лагере, не туда, где погиб осколок.
+    for (let i = this.pendingRevivals.length - 1; i >= 0; i--) {
+      const r = this.pendingRevivals[i];
+      if (this.elapsed < r.at) continue;
+      this.pendingRevivals.splice(i, 1);
+      const revived = new Mob(r.kind, r.homeX, r.homeZ, r.opts);
+      this.mobs.set(revived.id, revived);
+    }
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     this.tickBurning(dt);
     this.separateMobs();
@@ -1709,8 +1734,13 @@ export class ZoneSim {
       this.mobs.delete(m.id);
       const g = m.splitGroup;
       if (--g.remaining <= 0) {
-        const revived = new Mob(m.kind, g.homeX, g.homeZ, g.opts);
-        this.mobs.set(revived.id, revived);
+        this.pendingRevivals.push({
+          at: this.elapsed + g.reviveSec,
+          kind: g.kind,
+          homeX: g.homeX,
+          homeZ: g.homeZ,
+          opts: g.opts,
+        });
       }
     }
     return kind;
@@ -1810,8 +1840,12 @@ export class ZoneSim {
     // уменьшения под осколки.
     const group: GolemSplitGroup = {
       remaining: m.splitCount,
-      homeX: m.x,
-      homeZ: m.z,
+      kind: m.kind,
+      // Настоящее место спавна в лагере — НЕ текущая позиция (голем мог
+      // отойти в погоне за героем далеко от своего места).
+      homeX: m.homeX,
+      homeZ: m.homeZ,
+      reviveSec: m.splitReviveSec,
       opts: {
         model: m.model,
         name: m.eliteName,
@@ -1834,6 +1868,7 @@ export class ZoneSim {
         splitSpeedMul: m.splitSpeedMul,
         splitXp: m.splitXp,
         splitChildXp: m.splitChildXp,
+        splitReviveSec: m.splitReviveSec,
       },
     };
     this.mobs.delete(m.id);

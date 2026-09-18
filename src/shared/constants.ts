@@ -299,6 +299,8 @@ export interface EliteMobDef {
   splitSpeedMul?: number;
   splitXp?: number;
   splitChildXp?: number;
+  /** Через сколько секунд после гибели ПОСЛЕДНЕГО осколка вернётся целый голем. */
+  splitReviveSec?: number;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -362,6 +364,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 2.55, tint: null,
     splitAt: 0.3, splitCount: 2, splitScaleMul: 0.5, splitHpFrac: 0.15,
     splitDmgMul: 0.5, splitSpeedMul: 2, splitXp: 3000, splitChildXp: 1500,
+    // Целый голем возвращается не сразу и не там, где погиб осколок — а
+    // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
+    splitReviveSec: 45,
   },
 };
 
