@@ -210,6 +210,21 @@ export interface TowerMobsMsg {
   heroTargetZ: number;
 }
 
+/** Данные о кадре камеры для вынесенного оверлея (SpecCmd "ovl"). */
+export interface OvlCam {
+  /** Кого смотрим: ник/имя моба или null. */
+  w: string | null;
+  /** Краткие характеристики / инвентарь героя (строки под ником). */
+  ws: string | null;
+  wi: string | null;
+  /** Подпись кадра без цели. */
+  sl: string;
+  /** HP цели: доля, текущее, максимум, имя, босс ли — или null. */
+  hp: { f: number; c: number; m: number; n: string; b: boolean } | null;
+  /** id игроков, которые сейчас говорят по голосовой связи. */
+  sp: string[];
+}
+
 /** Команды дашборда стрима (этап 17 Ф5). */
 export type SpecCmd =
   /** Принудительно поставить кадр. `shot` — токен: overview / orbitBoss /
@@ -252,6 +267,9 @@ export type SpecCmd =
   | { t: "overlay"; patch: OverlayPatch }
   /** Рендерящий спектатор -> дашбордам: какой кадр сейчас в эфире. */
   | { t: "nowShot"; shot: string }
+  /** Рендерящий спектатор -> страница оверлея (overlay.html): что сейчас в кадре.
+   *  Оверлей вынесен в отдельный Browser Source и сам камеры не знает. */
+  | { t: "ovl"; d: OvlCam }
   /** Спектатор -> сервер: отчёт сторожа о зависании картинки (в журнал).
    *  Дашбордам не рассылается: это диагностика, а не команда. */
   | { t: "diag"; text: string };

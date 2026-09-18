@@ -115,6 +115,10 @@ export class Spectator {
   private readonly status: HTMLDivElement;
   private readonly debug: HTMLDivElement | null;
   private readonly overlay: Overlay | null;
+  /** Отдаём данные кадра внешнему оверлею (overlay=ext). */
+  private readonly relayOvl: boolean;
+  private lastOvlAt = 0;
+  private lastOvlSig = "";
   /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
   private readonly obs: boolean;
   private live = false;
@@ -145,7 +149,7 @@ export class Spectator {
       rh?: number;
       raw?: boolean;
       reloadSec?: number;
-      overlay?: boolean;
+      overlay?: boolean | "ext";
       obs?: boolean;
     } = {},
   ) {
@@ -287,7 +291,11 @@ export class Spectator {
     }
 
     // Оверлеи стрима (Ф6): вотермарк, часы, онлайн, «смотрим», HP цели, заставки.
-    this.overlay = override.overlay === false ? null : new Overlay();
+    // overlay=ext: DOM-оверлей вынесен в отдельный Browser Source (overlay.html),
+    // а тут только отдаём ему данные кадра (SpecCmd "ovl") — главный поток сцены
+    // не тратится на DOM.
+    this.overlay = override.overlay === false || override.overlay === "ext" ? null : new Overlay();
+    this.relayOvl = override.overlay === "ext";
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
@@ -867,7 +875,7 @@ export class Spectator {
       this.net?.sendSpecCam({ x: p.x, y: p.y, z: p.z, tx: t.x, ty: t.y, tz: t.z });
     }
 
-    if (this.overlay) this.updateOverlay(room?.state ?? null);
+    if (this.overlay || this.relayOvl) this.updateOverlay(room?.state ?? null);
 
     if (this.debug) {
       const st = room?.state;
@@ -998,6 +1006,32 @@ export class Spectator {
           targetHp = { frac: m.hp / (m.maxHp || 1), cur: m.hp, max: m.maxHp, name, boss: m.kind === "boss" };
         }
       }
+    }
+
+    if (this.relayOvl) {
+      // Шлём при изменении (не чаще 4 раз в с) и «пульс» раз в 2 с — чтобы
+      // оверлей, открывшийся позже, быстро получил кадр.
+      const now = performance.now();
+      const sp = [...this.speakingIds];
+      const sig = `${watching}|${watchStats}|${watchInv}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
+      if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 250) || now - this.lastOvlAt > 2000) {
+        this.lastOvlSig = sig;
+        this.lastOvlAt = now;
+        this.net?.sendSpecCmd({
+          t: "ovl",
+          d: {
+            w: watching,
+            ws: watchStats,
+            wi: watchInv,
+            sl: Spectator.shotLabel(this.cam.shotKind),
+            hp: targetHp
+              ? { f: targetHp.frac, c: targetHp.cur, m: targetHp.max, n: targetHp.name, b: targetHp.boss }
+              : null,
+            sp,
+          },
+        });
+      }
+      if (!this.overlay) return;
     }
 
     const online: { nick: string; speaking: boolean; bot: boolean }[] = [];
