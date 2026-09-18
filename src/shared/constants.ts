@@ -365,10 +365,11 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   golem: {
     model: "monYeti", name: "Голем-крушитель", level: 26, kind: "slime",
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
-    // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
-    hp: 950, dmgMul: 6, xp: 6300, scaleMul: 2.55, tint: null,
+    // xp: изначально втрое выше Чародея руин (ruinMage.xp=2100), затем ещё ×2
+    // по просьбе — и за целого голема (xp), и за раскол (splitXp); осколки — как были.
+    hp: 950, dmgMul: 6, xp: 12600, scaleMul: 2.55, tint: null,
     splitAt: 0.3, splitCount: 3, splitScaleMul: 0.5, splitHpFrac: 0.45,
-    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 3000, splitChildXp: 1500,
+    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 6000, splitChildXp: 1500,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
     splitReviveSec: 45,
