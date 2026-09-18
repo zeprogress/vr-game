@@ -105,8 +105,9 @@ export class LootDrops {
         v.mesh.position.set(s.x, s.y + lift, s.z);
         v.mesh.rotation.set(Math.PI, this.clock * 0.6 + v.phase, 0.22);
       } else {
-        v.mesh.position.set(s.x, s.y + 0.06 + Math.sin(this.clock * 2 + v.phase) * 0.05, s.z);
-        v.mesh.rotation.y = this.clock * 1.2 + v.phase;
+        // Банки и прочий расходуемый лут лежат неподвижно: без покачивания и вращения.
+        v.mesh.position.set(s.x, s.y + 0.06, s.z);
+        v.mesh.rotation.y = v.phase;
       }
     });
 
