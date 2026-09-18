@@ -3539,7 +3539,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const bossR = (m: { scale: number }): number =>
       MOB.bodyRadius * m.scale * BOSS.bodyMult;
     const bossEdge = raidBoss ? bossR(raidBoss) : 0;
-    const attackReach = bossEdge + BOT.attackRange;
+    // Крупный обычный моб: бот останавливается дальше от центра (см. stopAt ниже),
+    // поэтому и замах должен начинаться с этой же дистанции — иначе бот стоит
+    // перед големом и не бьёт (его центр дальше 1.7 м).
+    const mobBodyExtra =
+      mob && !raidBoss
+        ? Math.max(0, PLAYER.radius + MOB.bodyRadius * mob.scale + 0.2 - BOT.attackRange * 0.7)
+        : 0;
+    const attackReach = bossEdge + BOT.attackRange + mobBodyExtra;
     // Держимся от края туши босса: он крупный и сам скачет — иначе бот
     // оказывается внутри модели.
     const bossKeepOut = bossEdge + PLAYER.radius + 0.35;
