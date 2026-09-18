@@ -31,7 +31,7 @@ export class BuffAura {
     this.mat.disableLighting = true;
     this.mat.alphaMode = Constants.ALPHA_ADD;
     // Было 0.14 у сферы — вдвое прозрачнее по просьбе.
-    this.mat.alpha = 0.22;
+    this.mat.alpha = 0.28;
     this.mat.backFaceCulling = false;
     this.shell.material = this.mat;
     this.shell.isPickable = false;
@@ -53,7 +53,7 @@ export class BuffAura {
     const pulse = 0.85 + Math.sin(this.t * 3.2) * 0.15;
     this.shell.scaling.setAll(pulse);
     // Было 0.1 + pulse*0.1 у сферы — вдвое прозрачнее по просьбе.
-    this.mat.alpha = 0.17 + pulse * 0.15;
+    this.mat.alpha = 0.22 + pulse * 0.19;
   }
 
   dispose(): void {
