@@ -141,17 +141,11 @@ const CSS = `
 .ov-loot .it .tint { width:60%; height:60%; border-radius:.6vh; }
 .ov-loot .it .cnt { position:absolute; right:.3vh; bottom:.1vh; font:800 1.6vh system-ui,sans-serif;
   color:#fff; text-shadow:0 .1vh .3vh #000,0 0 .3vh #000; }
-.ov-ticker { left:50%; top:12vh; transform:translateX(-50%); text-align:center;
-  font-weight:700; font-size:3.6vh; letter-spacing:.02em; text-transform:none;
-  color:#4da3ff; max-width:80vw;
-  text-shadow:0 0 .6vh rgba(150,205,255,.95), 0 0 1.6vh rgba(70,150,255,.85),
-    0 0 3.6vh rgba(40,110,255,.6), 0 .2vh .5vh rgba(0,0,0,.55);
-  animation:ovglow 2.8s ease-in-out infinite; }
-@keyframes ovglow {
-  0%,100% { text-shadow:0 0 .6vh rgba(150,205,255,.95), 0 0 1.6vh rgba(70,150,255,.85),
-    0 0 3.6vh rgba(40,110,255,.6), 0 .2vh .5vh rgba(0,0,0,.55); }
-  50% { text-shadow:0 0 .8vh rgba(170,215,255,1), 0 0 2.2vh rgba(80,160,255,.95),
-    0 0 4.8vh rgba(50,120,255,.75), 0 .2vh .5vh rgba(0,0,0,.55); } }
+.ov-ticker { left:50%; top:11vh; transform:translateX(-50%); text-align:center;
+  font-weight:800; font-size:5.2vh; letter-spacing:.02em; text-transform:none;
+  color:#1f7bff; max-width:86vw;
+  text-shadow:0 0 .5vh rgba(0,0,0,.95), 0 0 1.4vh rgba(0,0,0,.9),
+    0 0 3vh rgba(0,0,0,.8), 0 0 5vh rgba(0,0,0,.6); }
 .ov-ticker.news { top:9vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
