@@ -322,7 +322,7 @@ export class WorldCrossFx {
       }
       const t = c.age / CRIT_LIFE;
       // Резко вспыхивает и быстро гаснет — небольшой размер.
-      c.mesh.scaling.setAll(0.3 + t * 0.7);
+      c.mesh.scaling.setAll(0.5 + t * 1.2); // ×1.7 от прежних 0.3..1.0
       (c.mesh.material as StandardMaterial).alpha = (1 - t) * (1 - t);
     }
     for (const c of this.pool) {
