@@ -35,7 +35,7 @@ export function attachLegendaryGlow(
   mat.disableLighting = true;
   mat.alphaMode = Constants.ALPHA_ADD;
   mat.backFaceCulling = false;
-  mat.alpha = 0.12 * intensity;
+  mat.alpha = 0.4 * intensity;
   shell.material = mat;
   shell.isPickable = false;
   shell.billboardMode = Mesh.BILLBOARDMODE_ALL;
@@ -45,7 +45,7 @@ export function attachLegendaryGlow(
     t += scene.getEngine().getDeltaTime() / 1000;
     const p = 0.85 + Math.sin(t * 3) * 0.15;
     shell.scaling.setAll(p);
-    mat.alpha = (0.08 + p * 0.08) * intensity;
+    mat.alpha = (0.28 + p * 0.28) * intensity;
   });
   host.onDisposeObservable.add(() => {
     scene.onBeforeRenderObservable.remove(obs);
