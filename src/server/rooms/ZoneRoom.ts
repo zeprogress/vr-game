@@ -214,6 +214,8 @@ interface Runtime {
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
 interface Bot {
+  /** Date.now() появления героя — «новый герой» для приоритета камеры спектатора. */
+  spawnedAt: number;
   nick: string; // отображаемый
   norm: string; // нормализованный (ключ в this.bots)
   id: string; // ключ в state.players / rt: "bot:<norm>"
@@ -3109,6 +3111,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.rt.set(id, rt);
 
     this.bots.set(norm, {
+      spawnedAt: Date.now(),
       nick: p.nick,
       norm,
       id,
@@ -4601,11 +4604,31 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /**
+   * Приоритет героя для авто-камеры спектатора: 2 — участвует в событии или
+   * идёт на босса, 1 — героя только что добавили, 0 — остальные.
+   */
+  private camPrioOf(id: string, p: PlayerState): number {
+    const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
+    if (bot) {
+      if (bot.eventing || bot.raiding) return 2;
+      return Date.now() - bot.spawnedAt < 120_000 ? 1 : 0;
+    }
+    if (
+      this.state.eventKind !== 0 &&
+      Math.hypot(p.head.x - this.state.eventX, p.head.z - this.state.eventZ) < BOT.zoneRadius
+    ) {
+      return 2;
+    }
+    return 0;
+  }
+
   /** Реген, отсчёт до возрождения. */
   private tickPlayers(dt: number): void {
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       if (!rt) return;
+      p.camPrio = this.camPrioOf(id, p);
       if (p.dead) {
         rt.respawnIn -= dt;
         if (rt.respawnIn <= 0) this.respawn(id, p, rt);

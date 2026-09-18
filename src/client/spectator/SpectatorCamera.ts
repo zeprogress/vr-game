@@ -6,7 +6,7 @@ import { SPECTATE } from "#shared/constants";
 import { inHubSafeZone } from "#shared/hub";
 import { TOWER_PROP_POS } from "#shared/tower";
 import { terrainHeight } from "#shared/terrain";
-import { CINE_PATHS, ROTATION, ROTATION_IDLE, samplePath } from "./cine";
+import { CINE_PATHS, INTRO_PATH, ROTATION, ROTATION_IDLE, samplePath } from "./cine";
 
 /** Подлёт камеры к декоративной башне на поляне перед стартом забега (см. EVENT.tower.approachSec). */
 const TOWER_APPROACH_DUR = 2.3; // с — чуть короче approachSec на сервере, добор — на blendTime
@@ -128,6 +128,8 @@ export interface CtxPlayer {
   eye: Vector3;
   /** Направление взгляда головы (единичное). */
   forward: Vector3;
+  /** Приоритет камеры: 2 — событие/рейд, 1 — недавно добавлен, 0 — обычный. */
+  prio: number;
 }
 
 export interface CtxMob {
@@ -290,8 +292,29 @@ export class SpectatorCamera {
     }
   }
 
+  /** Начать эфир кадром «Вся поляна» (5 с) — при запуске и после рестарта сервера. */
+  startIntro(): void {
+    this.introPending = true;
+  }
+  private introPending = false;
+
+  /**
+   * Кого брать в авто-выборе героя: если есть участники события/рейда — только
+   * они, иначе недавно добавленные, иначе все.
+   */
+  private prioPool<T extends { prio?: number }>(list: T[]): T[] {
+    let top = 0;
+    for (const p of list) top = Math.max(top, p.prio ?? 0);
+    return top > 0 ? list.filter((p) => (p.prio ?? 0) === top) : list;
+  }
+
   update(dt: number, ctx: DirectorCtx): void {
     this.lastCtx = ctx;
+    if (this.introPending) {
+      this.introPending = false;
+      this.idleRotIdx = 0;
+      this.switchTo({ kind: "path", idx: INTRO_PATH }, ctx);
+    }
     this.orbitClock += dt;
     this.sinceSwitch += dt;
 
@@ -366,7 +389,7 @@ export class SpectatorCamera {
   private nextShot(ctx: DirectorCtx, fighting: boolean): Shot {
     // «Только боты» — приоритет над всем, включая бой у босса.
     if (this.botsOnly) {
-      const bots = ctx.players.filter((p) => p.id.startsWith("bot:"));
+      const bots = this.prioPool(ctx.players.filter((p) => p.id.startsWith("bot:")));
       if (bots.length > 0) {
         const kind = BOT_ROTATION[this.botRotIdx % BOT_ROTATION.length];
         this.botRotIdx++;
@@ -441,8 +464,9 @@ export class SpectatorCamera {
       let pid = id;
       if (!pid) {
         if (ctx.players.length === 0) return null;
-        this.pickI = (this.pickI + 1) % ctx.players.length;
-        pid = ctx.players[this.pickI].id;
+        const pool = this.prioPool(ctx.players);
+        this.pickI = (this.pickI + 1) % (ctx.players.length * 60);
+        pid = pool[this.pickI % pool.length].id;
       } else if (!ctx.players.some((p) => p.id === pid)) {
         return null;
       }

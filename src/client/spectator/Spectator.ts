@@ -125,6 +125,7 @@ export class Spectator {
 
   // Пулы для tick(): режиссёру отдаём переиспользуемые объекты, без аллокаций
   // каждый кадр (иначе минорный GC даёт редкие рывки на телефоне).
+  private introDone = false;
   private readonly _players: CtxPlayer[] = [];
   private readonly _mobs: CtxMob[] = [];
   private readonly _playerPool: CtxPlayer[] = [];
@@ -335,6 +336,7 @@ export class Spectator {
         this.speakingIds.clear();
       }
       this.attach(room);
+      this.cam.startIntro(); // после рестарта сервера — снова с общего плана
       this.setStatus("");
       this.live = true;
       this.lostAt = 0;
@@ -650,6 +652,10 @@ export class Spectator {
     let towerHeroX = 0;
     let towerHeroZ = 0;
     let towerHeroY = 0;
+    if (room && !this.introDone) {
+      this.introDone = true;
+      this.cam.startIntro();
+    }
     if (room) {
       const st = room.state;
       st.players.forEach((p, id) => {
@@ -662,7 +668,7 @@ export class Spectator {
         const i = this._players.length;
         let e = this._playerPool[i];
         if (!e) {
-          e = { id: "", nick: "", pos: new Vector3(), eye: new Vector3(), forward: new Vector3() };
+          e = { id: "", nick: "", pos: new Vector3(), eye: new Vector3(), forward: new Vector3(), prio: 0 };
           this._playerPool[i] = e;
         }
         e.id = id;
@@ -670,6 +676,7 @@ export class Spectator {
         e.pos.copyFromFloats(head.x, head.y - 0.5, head.z);
         e.eye.copyFrom(head);
         e.forward.copyFrom(av.eyeForward);
+        e.prio = p.camPrio;
         this._players.push(e);
 
         // Охотничья башня — герой реально бегает по арене (позиция и ХП
