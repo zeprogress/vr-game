@@ -413,7 +413,7 @@ export const MOB_CAMPS: {
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
   { x: 80, z: -80, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, у самого края, ур.15
   { x: -74, z: 74, type: "ruinMage", count: 4, spread: 7 }, // СЗ угол (свободный), ~185 м, ур.20
-  { x: -13, z: -80, type: "golem", count: 12, spread: 10 }, // ур.26
+  { x: -13, z: -80, type: "golem", count: 15, spread: 14 }, // ур.26
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
