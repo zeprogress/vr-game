@@ -744,8 +744,13 @@ export class Mob implements Hittable {
     this.slamRing?.material?.dispose();
     this.stunStarMat.dispose();
     this.burnMat?.dispose();
+    this.mat.dispose();
+    // Свои «плоские» материалы гасим без текстур: атлас общий у всех копий модели.
+    for (const m of this.rig?.meshes ?? []) {
+      if (m.material?.name.endsWith("_flat")) m.material.dispose(false, false);
+    }
     this.rig?.dispose();
     this.rig = null;
-    this.root.dispose(false, true);
+    this.root.dispose(false, false);
   }
 }

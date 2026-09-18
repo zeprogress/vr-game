@@ -353,7 +353,10 @@ export async function loadRig(
       dispose() {
         for (const g of r.animationGroups) g.dispose();
         for (const s of r.skeletons) s.dispose();
-        root.dispose(false, true);
+        // Материалы/текстуры инстансов общие с закэшированным контейнером —
+        // рекурсивное удаление текстур чернило и стирало модели всех остальных
+        // копий (голем раскололся → пропали модели у всех големов).
+        root.dispose(false, false);
       },
     };
   };
