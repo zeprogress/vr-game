@@ -281,11 +281,27 @@ class Mob {
   readonly splitScaleMul: number;
   readonly splitHpFrac: number;
   readonly splitDmgMul: number;
+  readonly splitSpeedMul: number;
   readonly splitXp: number;
   readonly splitChildXp: number;
+  /** Множитель скорости движения — 1 обычно, у осколков голема выше. */
+  readonly speedMul: number;
   private splitDone = false;
-  /** ZoneSim прочтёт и сбросит: моб пересёк порог раскола — заменить копиями. */
-  pendingGolemSplit = false;
+  /**
+   * true один раз (первый вызов после пересечения порога) — проверяем
+   * СРАЗУ по факту урона (`hpBefore` — HP до этого попадания), а не на
+   * следующем тике: иначе при переборе (один удар сразу и ниже splitAt, и
+   * в 0 HP) флаг просто не успевал бы выставиться до обработки смерти, и
+   * голем умирал бы как обычный моб, минуя раскол.
+   */
+  checkSplitThreshold(hpBefore: number): boolean {
+    if (this.splitAt === undefined || this.splitDone) return false;
+    if (hpBefore / this.maxHp > this.splitAt && this.hp / this.maxHp <= this.splitAt) {
+      this.splitDone = true;
+      return true;
+    }
+    return false;
+  }
   private novaCd = 0;
   private novaWindupT = 0;
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
@@ -332,8 +348,11 @@ class Mob {
       splitScaleMul?: number;
       splitHpFrac?: number;
       splitDmgMul?: number;
+      splitSpeedMul?: number;
       splitXp?: number;
       splitChildXp?: number;
+      /** Множитель скорости движения — 1 обычно, у осколков голема выше. */
+      speedMul?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -372,8 +391,10 @@ class Mob {
     this.splitScaleMul = opts.splitScaleMul ?? 0.5;
     this.splitHpFrac = opts.splitHpFrac ?? 0.15;
     this.splitDmgMul = opts.splitDmgMul ?? 0.5;
+    this.splitSpeedMul = opts.splitSpeedMul ?? 1;
     this.splitXp = opts.splitXp ?? 0;
     this.splitChildXp = opts.splitChildXp ?? 0;
+    this.speedMul = opts.speedMul ?? 1;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -611,18 +632,14 @@ class Mob {
       this.raging = true;
     }
 
-    // Раскол (Голем-крушитель): пересёк порог HP — комната/сим заменит его
-    // мелкими копиями (см. pendingGolemSplit, обработка в hitMob()).
-    if (this.splitAt !== undefined && !this.splitDone && this.hp / this.maxHp <= this.splitAt) {
-      this.splitDone = true;
-      this.pendingGolemSplit = true;
-    }
 
     const rage = this.enraged ? BOSS.rageSpeedMult : 1;
     const rageRate = this.enraged ? BOSS.rageRateMult : 1;
     const rageDmg = this.enraged ? BOSS.rageDamageMult : 1;
     const hopSpeed =
-      (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) * rage;
+      (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) *
+      rage *
+      this.speedMul;
     const hopInterval =
       (isBoss ? BOSS.hopInterval : this.kind === "shard" ? SHARD.hopInterval : MOB.hopInterval) /
       rage;
@@ -1288,6 +1305,7 @@ export class ZoneSim {
           splitScaleMul: def.splitScaleMul,
           splitHpFrac: def.splitHpFrac,
           splitDmgMul: def.splitDmgMul,
+          splitSpeedMul: def.splitSpeedMul,
           splitXp: def.splitXp,
           splitChildXp: def.splitChildXp,
         });
@@ -1632,8 +1650,10 @@ export class ZoneSim {
       this.spawnShards(m);
     }
 
-    if (m.pendingGolemSplit) {
-      m.pendingGolemSplit = false;
+    // Проверяем СРАЗУ по факту этого удара (hpBefore), не на следующем тике —
+    // иначе при переборе (один удар и ниже порога, и в 0 HP разом) раскол не
+    // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
+    if (m.checkSplitThreshold(hpBefore)) {
       this.splitGolem(m);
       return null;
     }
@@ -1766,11 +1786,14 @@ export class ZoneSim {
       const z = m.z + Math.sin(a) * 1.3;
       const child = new Mob(m.kind, x, z, {
         model: m.model,
-        name: m.eliteName,
+        // Другое имя, не как у родителя — по просьбе (совпадение имён у
+        // живого голема и его же осколков подозревали в путанице логики).
+        name: "Осколок голема",
         level: m.eliteLevel,
         hp: Math.max(1, Math.round(m.maxHp * m.splitHpFrac)),
         dmgMul: m.dmgMul * m.splitDmgMul,
         scaleMul: m.scale * m.splitScaleMul,
+        speedMul: m.speedMul * m.splitSpeedMul,
         xp: m.splitChildXp,
         flying: m.flying,
         rangedArmor: m.rangedArmor,
