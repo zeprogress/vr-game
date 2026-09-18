@@ -275,6 +275,17 @@ class Mob {
   readonly novaCaster: boolean;
   /** Ниже этой доли HP — сам себе выставляет `raging = true` (см. tick()). undefined — никогда. */
   readonly enrageAt: number | undefined;
+  /** Раскол (Голем-крушитель) — см. EliteMobDef.splitAt и комментарий там же. */
+  readonly splitAt: number | undefined;
+  readonly splitCount: number;
+  readonly splitScaleMul: number;
+  readonly splitHpFrac: number;
+  readonly splitDmgMul: number;
+  readonly splitXp: number;
+  readonly splitChildXp: number;
+  private splitDone = false;
+  /** ZoneSim прочтёт и сбросит: моб пересёк порог раскола — заменить копиями. */
+  pendingGolemSplit = false;
   private novaCd = 0;
   private novaWindupT = 0;
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
@@ -316,6 +327,13 @@ class Mob {
       spellAoe?: boolean;
       novaCaster?: boolean;
       enrageAt?: number;
+      splitAt?: number;
+      splitCount?: number;
+      splitScaleMul?: number;
+      splitHpFrac?: number;
+      splitDmgMul?: number;
+      splitXp?: number;
+      splitChildXp?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -349,6 +367,13 @@ class Mob {
     this.spellAoe = opts.spellAoe ?? false;
     this.novaCaster = opts.novaCaster ?? false;
     this.enrageAt = opts.enrageAt;
+    this.splitAt = opts.splitAt;
+    this.splitCount = opts.splitCount ?? 0;
+    this.splitScaleMul = opts.splitScaleMul ?? 0.5;
+    this.splitHpFrac = opts.splitHpFrac ?? 0.15;
+    this.splitDmgMul = opts.splitDmgMul ?? 0.5;
+    this.splitXp = opts.splitXp ?? 0;
+    this.splitChildXp = opts.splitChildXp ?? 0;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -584,6 +609,13 @@ class Mob {
     // самостоятельно, без спец-кода снаружи.
     if (this.enrageAt !== undefined && !this.raging && this.hp / this.maxHp < this.enrageAt) {
       this.raging = true;
+    }
+
+    // Раскол (Голем-крушитель): пересёк порог HP — комната/сим заменит его
+    // мелкими копиями (см. pendingGolemSplit, обработка в hitMob()).
+    if (this.splitAt !== undefined && !this.splitDone && this.hp / this.maxHp <= this.splitAt) {
+      this.splitDone = true;
+      this.pendingGolemSplit = true;
     }
 
     const rage = this.enraged ? BOSS.rageSpeedMult : 1;
@@ -1251,6 +1283,13 @@ export class ZoneSim {
           spellAoe: def.spellAoe,
           novaCaster: def.novaCaster,
           enrageAt: def.enrageAt,
+          splitAt: def.splitAt,
+          splitCount: def.splitCount,
+          splitScaleMul: def.splitScaleMul,
+          splitHpFrac: def.splitHpFrac,
+          splitDmgMul: def.splitDmgMul,
+          splitXp: def.splitXp,
+          splitChildXp: def.splitChildXp,
         });
         this.mobs.set(m.id, m);
       }
@@ -1593,6 +1632,12 @@ export class ZoneSim {
       this.spawnShards(m);
     }
 
+    if (m.pendingGolemSplit) {
+      m.pendingGolemSplit = false;
+      this.splitGolem(m);
+      return null;
+    }
+
     if (!killed) return null;
     const kind = m.kind;
 
@@ -1680,10 +1725,11 @@ export class ZoneSim {
   }
 
   /**
-   * Обычный моб: опыт делится между добившими урон пропорционально урону
-   * (недавнему). Уровневый потолок накладывает уже комната.
+   * Опыт делится между добившими урон пропорционально урону (недавнему) —
+   * общий алгоритм для обычной смерти моба (пул = m.xp) и раскола голема
+   * (пул = m.splitXp, см. splitGolem). Уровневый потолок накладывает комната.
    */
-  private splitMobXp(m: Mob): void {
+  private splitXpPool(m: Mob, pool: number): void {
     const RECENCY = 20; // с
     let total = 0;
     const parts: [string, number][] = [];
@@ -1693,9 +1739,47 @@ export class ZoneSim {
       total += c.dmg;
     }
     m.contrib.clear();
-    if (total <= 0) return;
+    if (total <= 0 || pool <= 0) return;
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, xp: (m.xp * d) / total });
+      this.mobXpShare.push({ owner, xp: (pool * d) / total });
+    }
+  }
+
+  private splitMobXp(m: Mob): void {
+    this.splitXpPool(m, m.xp);
+  }
+
+  /**
+   * Голем-крушитель на EliteMobDef.splitAt доле HP не умирает — пропадает и
+   * на его месте появляются splitCount мелких копий (доля размера/HP/урона
+   * от родителя — EliteMobDef.splitScaleMul/splitHpFrac/splitDmgMul).
+   * Раскол засчитывается как отдельная добыча: участникам сразу выдаётся
+   * splitXp, а каждый осколок при СВОЕЙ смерти обычным путём даёт
+   * m.xp = splitChildXp (уже не долю от родителя, а фиксированное число).
+   */
+  private splitGolem(m: Mob): void {
+    this.mobs.delete(m.id);
+    this.splitXpPool(m, m.splitXp);
+    for (let i = 0; i < m.splitCount; i++) {
+      const a = (i / m.splitCount) * Math.PI * 2 + Math.random() * 0.6;
+      const x = m.x + Math.cos(a) * 1.3;
+      const z = m.z + Math.sin(a) * 1.3;
+      const child = new Mob(m.kind, x, z, {
+        model: m.model,
+        name: m.eliteName,
+        level: m.eliteLevel,
+        hp: Math.max(1, Math.round(m.maxHp * m.splitHpFrac)),
+        dmgMul: m.dmgMul * m.splitDmgMul,
+        scaleMul: m.scale * m.splitScaleMul,
+        xp: m.splitChildXp,
+        flying: m.flying,
+        rangedArmor: m.rangedArmor,
+        physArmor: m.physArmor,
+        magicVulnMul: m.magicVulnMul,
+        critVulnMul: m.critVulnMul,
+      });
+      child.forceAggro();
+      this.mobs.set(child.id, child);
     }
   }
 

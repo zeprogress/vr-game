@@ -283,6 +283,20 @@ export interface EliteMobDef {
   novaCaster?: boolean;
   /** Ниже этой доли HP — моб впадает в ярость (быстрее и больнее бьёт, см. BOSS.rage*). */
   enrageAt?: number;
+  /**
+   * Раскол (Голем-крушитель): на этой доле HP моб не умирает как обычно —
+   * пропадает и на его месте появляются `splitCount` мелких копий. Раскол
+   * засчитывается как отдельная "добыча" — участникам сразу выдаётся
+   * `splitXp` (не обычный xp), а каждая мелкая копия при СВОЕЙ смерти даёт
+   * `splitChildXp`. Размер/HP/урон копий — доля от родителя (см. ZoneSim).
+   */
+  splitAt?: number;
+  splitCount?: number;
+  splitScaleMul?: number;
+  splitHpFrac?: number;
+  splitDmgMul?: number;
+  splitXp?: number;
+  splitChildXp?: number;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -328,17 +342,22 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },
-  // Голем-крушитель: тяжёлый ближний боец 26 ур., ходит стаей. Пока цел —
-  // обычный медленный громила; ниже 40% HP впадает в ярость (см. Mob.enrageAt
-  // в ZoneSim.ts) — быстрее и больнее бьёт, как босс (BOSS.rage*). Модель —
-  // Yeti (крупный громила из стиля "Big" пака, тот же, что и на 8 этаже
-  // башни — Goleling оказался мелким летающим существом из стиля "Flying",
-  // на голема совсем не похож).
+  // Голем-крушитель: тяжёлый ближний боец 26 ур., ходит стаей. Модель — Yeti
+  // (крупный громила из стиля "Big" пака, тот же, что и на 8 этаже башни —
+  // Goleling оказался мелким летающим существом из стиля "Flying", на
+  // голема совсем не похож). Без ярости (была, убрали по просьбе).
+  //
+  // На 30% HP не умирает как обычно, а раскалывается на двух мелких —
+  // вполовину меньше размером, 15% HP родителя и вдвое слабее бьют. Раскол
+  // сам по себе даёт 3000 xp (вместо обычных при смерти), каждый осколок
+  // при своей смерти — ещё по 1500.
   golem: {
     model: "monYeti", name: "Голем-крушитель", level: 26, kind: "slime",
+    // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
-    hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 1.7, tint: null,
-    enrageAt: 0.4,
+    hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 2.55, tint: null,
+    splitAt: 0.3, splitCount: 2, splitScaleMul: 0.5, splitHpFrac: 0.15,
+    splitDmgMul: 0.5, splitXp: 3000, splitChildXp: 1500,
   },
 };
 
