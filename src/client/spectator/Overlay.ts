@@ -143,7 +143,7 @@ const CSS = `
   color:#fff; text-shadow:0 .1vh .3vh #000,0 0 .3vh #000; }
 .ov-ticker { left:50%; top:12vh; transform:translateX(-50%); text-align:center;
   font-weight:700; font-size:3.6vh; letter-spacing:.02em; text-transform:none;
-  color:#eef6ff; max-width:80vw;
+  color:#4da3ff; max-width:80vw;
   text-shadow:0 0 .6vh rgba(150,205,255,.95), 0 0 1.6vh rgba(70,150,255,.85),
     0 0 3.6vh rgba(40,110,255,.6), 0 .2vh .5vh rgba(0,0,0,.55);
   animation:ovglow 2.8s ease-in-out infinite; }
