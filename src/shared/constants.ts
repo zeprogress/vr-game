@@ -362,7 +362,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
     hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 2.55, tint: null,
-    splitAt: 0.3, splitCount: 2, splitScaleMul: 0.5, splitHpFrac: 0.15,
+    splitAt: 0.3, splitCount: 2, splitScaleMul: 0.5, splitHpFrac: 0.45,
     splitDmgMul: 0.5, splitSpeedMul: 2, splitXp: 3000, splitChildXp: 1500,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
@@ -413,7 +413,7 @@ export const MOB_CAMPS: {
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
   { x: 80, z: -80, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, у самого края, ур.15
   { x: -74, z: 74, type: "ruinMage", count: 4, spread: 7 }, // СЗ угол (свободный), ~185 м, ур.20
-  { x: -13, z: -80, type: "golem", count: 8, spread: 8 }, // ур.26
+  { x: -13, z: -80, type: "golem", count: 12, spread: 10 }, // ур.26
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
