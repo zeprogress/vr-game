@@ -318,11 +318,13 @@ export class NameTag {
   }
 
   dispose(): void {
-    this.xpFill?.dispose();
-    this.xpBg?.dispose();
-    this.hpFill?.dispose();
-    this.hpBg?.dispose();
-    this.plane.dispose();
+    // (false, true) — вместе с материалом (и его текстурой): иначе на каждый
+    // убранный моб/героя в сцене оставался nameTagMat и полоски (утечка).
+    this.xpFill?.dispose(false, true);
+    this.xpBg?.dispose(false, true);
+    this.hpFill?.dispose(false, true);
+    this.hpBg?.dispose(false, true);
+    this.plane.dispose(false, true);
     this.tex.dispose();
   }
 }

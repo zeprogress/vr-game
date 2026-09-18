@@ -24,6 +24,7 @@ import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
 import { RenderWatch } from "./RenderWatch";
 import { PerfProbe } from "./PerfProbe";
+import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
@@ -305,7 +306,9 @@ export class Spectator {
         (text) => this.net?.sendSpecCmd({ t: "diag", text }),
         () =>
           `кадр камеры ${this.cam.shotKind}, мобов ${this.net?.room?.state.mobs.size ?? 0}, ` +
-          `игроков ${this.net?.room?.state.players.size ?? 0}, рендер ${this.renderRate.toFixed(0)} fps`,
+          `игроков ${this.net?.room?.state.players.size ?? 0}, рендер ${this.renderRate.toFixed(0)} fps, ` +
+          `сцена: материалов ${this.scene.materials.length}, мешей ${this.scene.meshes.length}, ` +
+          `текстур ${this.scene.textures.length}, relight ${RELIGHT_STATS.count} (${RELIGHT_STATS.last})`,
       );
     }
 

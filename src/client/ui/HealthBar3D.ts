@@ -109,6 +109,10 @@ export class HealthBar3D {
   }
 
   dispose(): void {
+    // Материалы — свои у каждой полоски: без явного dispose они копились в
+    // scene.materials на каждого созданного и убранного моба (утечка).
     this.bg.dispose();
+    this.bgMat.dispose();
+    this.fillMat.dispose();
   }
 }
