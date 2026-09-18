@@ -774,18 +774,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
 
   // --- 18. Палатки игроков по периметру ---
   {
-    const parts: Mesh[] = [];
     const canvases: Mesh[] = [];
     for (const t of HUB.playerTents) {
       const tx = cx + Math.cos(t.a) * t.r;
       const tz = cz + Math.sin(t.a) * t.r;
       const tgy = groundY(tx, tz);
       const face = t.a + Math.PI; // вход смотрит к центру
-      const ridge = MeshBuilder.CreateCylinder("ptRidge", { height: 3.4, diameter: 0.12 }, scene);
-      ridge.rotation.z = Math.PI / 2;
-      ridge.rotation.y = face;
-      ridge.position.set(tx, tgy + 1.9, tz);
-      parts.push(ridge);
+      // Верхняя жёрдочка-конёк у палаток убрана по просьбе (торчала над конусом).
       const cone = MeshBuilder.CreateCylinder(
         "ptCanvas",
         { height: 2.0, diameterBottom: 3.6, diameterTop: 0, tessellation: 4 },
@@ -796,7 +791,6 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       canvases.push(cone);
       obstacles.push({ x: tx, z: tz, r: 1.5 });
     }
-    merge(parts, "hubTentRidges", matWood);
     merge(canvases, "hubPlayerTents", flatMat(scene, "hubPtCanvas", C.canvas.scale(0.95), undefined, dayLit));
   }
 
