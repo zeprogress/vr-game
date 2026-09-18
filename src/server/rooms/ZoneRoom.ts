@@ -1002,7 +1002,7 @@ export class ZoneRoom extends Room<ZoneState> {
           s.dmgMult *
           this.buffMult(id, "dmg");
         this.broadcast(MSG.act, {
-          k: "arrowRain", id, x: tx, y: terrainHeight(tx, tz), z: tz,
+          k: "arrowRain", id, x: tx, y: terrainHeight(tx, tz), z: tz, d: s.castTime,
         } satisfies ActRelay);
         this.clock.setTimeout(() => {
           if (!this.state.players.get(id)) return;

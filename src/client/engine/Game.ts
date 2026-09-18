@@ -1829,7 +1829,8 @@ export class Game {
         this.crossFx.burst(x, y, z, 2, W_RED);
         break;
       case "arrowRain":
-        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, BOT.rainCastTime);
+        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime);
+        this.avatars.get(id)?.playEmote("cheer");
         this.sfx.at(at, () => this.sfx.arrowVolley());
         break;
       case "bow":

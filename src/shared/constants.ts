@@ -362,8 +362,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
     hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 2.55, tint: null,
-    splitAt: 0.3, splitCount: 2, splitScaleMul: 0.5, splitHpFrac: 0.45,
-    splitDmgMul: 0.5, splitSpeedMul: 2, splitXp: 3000, splitChildXp: 1500,
+    splitAt: 0.3, splitCount: 3, splitScaleMul: 0.5, splitHpFrac: 0.45,
+    splitDmgMul: 0.5, splitSpeedMul: 3, splitXp: 3000, splitChildXp: 1500,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
     splitReviveSec: 45,
@@ -820,10 +820,10 @@ export const BOT = {
   rainDamageMult: 2.4, // во столько раз сильнее одной стрелы
   // Было 1.2 — вдвое медленнее по просьбе (визуал замаха/падения стрел
   // делит эту же константу с реальной задержкой урона, см. arrowRainAt).
-  rainCastTime: 2.4,
+  rainCastTime: 1.2,
   rainCooldown: 16, // с между залпами
   /** Град пригвождает: попавшие мобы столько секунд не могут сдвинуться. */
-  rainRootTime: 3,
+  rainRootTime: 5,
   /**
    * Скиллы не выстреливают в первую же готовую секунду: когда условия сошлись
    * и кулдаун вышел, бот бросает кубик каждый тик с этим шансом в секунду.
@@ -1086,9 +1086,9 @@ export const SKILL = {
     cooldown: 14,
     // Было 0.9 — вдвое медленнее по просьбе (тот же визуал замаха, что и у
     // ботов, см. BOT.rainCastTime — держим пропорцию между ними).
-    castTime: 1.8,
+    castTime: 0.9,
     radius: 6.5, // м круга поражения (было 4.5 — расширили АОЕ по просьбе)
-    rootTime: 2.5, // с обездвиживания попавших мобов
+    rootTime: 5, // с обездвиживания попавших мобов
     dmgMult: 0.9, // во столько раз сильнее одной стрелы каждому в круге
     range: 22, // м вперёд от игрока, куда ложится круг
   },
