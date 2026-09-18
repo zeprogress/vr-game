@@ -23,6 +23,7 @@ import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
 import { RenderWatch } from "./RenderWatch";
+import { PerfProbe } from "./PerfProbe";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
@@ -117,6 +118,8 @@ export class Spectator {
   private readonly overlay: Overlay | null;
   /** Отдаём данные кадра внешнему оверлею (overlay=ext). */
   private readonly relayOvl: boolean;
+  /** ?perf=1 — замер кадра по этапам, плохие кадры уходят в журнал сервера. */
+  private probe: PerfProbe | null = null;
   private lastOvlAt = 0;
   private lastOvlSig = "";
   /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
@@ -151,6 +154,7 @@ export class Spectator {
       reloadSec?: number;
       overlay?: boolean | "ext";
       obs?: boolean;
+      perf?: boolean;
     } = {},
   ) {
     const preset = PRESETS[quality];
@@ -296,6 +300,14 @@ export class Spectator {
     // не тратится на DOM.
     this.overlay = override.overlay === false || override.overlay === "ext" ? null : new Overlay();
     this.relayOvl = override.overlay === "ext";
+    if (override.perf) {
+      this.probe = new PerfProbe(
+        (text) => this.net?.sendSpecCmd({ t: "diag", text }),
+        () =>
+          `кадр камеры ${this.cam.shotKind}, мобов ${this.net?.room?.state.mobs.size ?? 0}, ` +
+          `игроков ${this.net?.room?.state.players.size ?? 0}, рендер ${this.renderRate.toFixed(0)} fps`,
+      );
+    }
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
@@ -498,7 +510,10 @@ export class Spectator {
       return;
     }
     if (this.obs) this.overlay?.setShown(true);
+    this.probe?.frameStart(now);
     this.scene.render();
+    this.probe?.mark("render+gpu");
+    this.probe?.frameEnd();
     // Пробу кадра сторож снимает ИМЕННО здесь, сразу после отрисовки: из
     // setInterval читать бэкбуфер нельзя — там уже может быть что угодно.
     this.watch?.afterRender(now);
@@ -647,7 +662,9 @@ export class Spectator {
     const room = this.net?.room;
 
     // Зона (сутки, ветер, светлячки) — «позицию игрока» даём камеры.
+    this.probe?.mark("pre-tick");
     this.zoneTick(dt, this.cam.cam.position, this.net?.worldClock ?? null);
+    this.probe?.mark("zone");
 
     // Аватары игроков + мобы для режиссёра.
     this._players.length = 0;
@@ -793,6 +810,7 @@ export class Spectator {
       this._botFwd,
     );
 
+    this.probe?.mark("avatars");
     // Режиссёр.
     this.cam.update(dt, {
       players: this._players,
@@ -831,10 +849,12 @@ export class Spectator {
       this.cam.cam.setTarget(new Vector3(TOWER_HIDE.x, TOWER_HIDE.y - 1, TOWER_HIDE.z));
     }
 
+    this.probe?.mark("director");
     // Мобы, лут.
     this.cam.cam.getDirectionToRef(FORWARD_Z, this._fwd);
     const fwd = this._fwd;
     this.netMobs.update(dt, this.cam.cam.position, fwd);
+    this.probe?.mark("mobs");
     this.loot.update(dt);
     this.crossFx.update(dt);
     this.healAura.update(dt);
@@ -860,6 +880,7 @@ export class Spectator {
     const p = this.cam.cam.position;
     this.sfx.setListener({ x: p.x, y: p.y, z: p.z }, { x: fwd.x, y: fwd.y, z: fwd.z }, UP);
 
+    this.probe?.mark("fx+audio");
     this.updateBossMusic();
 
     // Раз в ~2 с сообщаем дашбордам, какой кадр сейчас в эфире.
@@ -876,6 +897,7 @@ export class Spectator {
     }
 
     if (this.overlay || this.relayOvl) this.updateOverlay(room?.state ?? null);
+    this.probe?.mark("overlay");
 
     if (this.debug) {
       const st = room?.state;
@@ -884,7 +906,8 @@ export class Spectator {
         `${this.renderRate.toFixed(0)} fps · рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()}` +
         ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}` +
-        ` · ${this.watch?.debugLine() ?? ""}`;
+        ` · ${this.watch?.debugLine() ?? ""}` +
+        (this.probe ? ` · ${this.probe.line}` : "");
     }
   }
 

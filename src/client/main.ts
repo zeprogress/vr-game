@@ -74,6 +74,7 @@ function bootSpectator(specKey: string): void {
       raw: params.get("rawcam") === "1",
       overlay: params.get("overlay") === "ext" ? "ext" : params.get("overlay") !== "0",
       obs: params.get("obs") === "1",
+      perf: params.get("perf") === "1",
       reloadSec: (() => {
         const v = Number(params.get("reload"));
         return params.has("reload") && Number.isFinite(v) ? v : undefined;
