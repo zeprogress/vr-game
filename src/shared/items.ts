@@ -159,10 +159,14 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   gold_sword: weaponItem("sword", "gold", "Золото", "gold_sword.png"),
   gold_bow: weaponItem("bow", "gold", "Зол. лук", "gold_bow.png"),
   gold_staff: weaponItem("staff", "gold", "Зол. посох", "gold_staff.png"),
-  leg_sword: weaponItem("sword", "legendary", "Вампир", "gold_sword.png"),
-  leg_bow: weaponItem("bow", "legendary", "Лук охот.", "gold_bow.png"),
+  // Иконка "" — рендерится цветным квадратом тира (см. Hud.lootRowHtml,
+  // InventoryPanel.iconEl, Overlay), а не картинкой: раньше тут стояли те же
+  // PNG, что и у золотого оружия, и баннер дропа с элиты показывал иконку
+  // золотого меча, хотя на самом деле выпало уникальное — не отличить на глаз.
+  leg_sword: weaponItem("sword", "legendary", "Вампир", ""),
+  leg_bow: weaponItem("bow", "legendary", "Лук охот.", ""),
   leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
-  leg_staff: weaponItem("staff", "legendary", "Посох бури", "gold_staff.png"),
+  leg_staff: weaponItem("staff", "legendary", "Посох бури", ""),
   scrap: {
     name: "Лом оружия",
     short: "Лом",

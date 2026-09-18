@@ -535,17 +535,58 @@ function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponIn
   return bestWeaponInstance(rt.weapons, h.cls, h.tier);
 }
 
+/**
+ * Щит (Эгида) сам не атакует, но роллы на нём — не бутафория: он всегда во
+ * ВТОРОЙ руке от бьющего оружия (пара с луком/посохом невозможна — оба
+ * занимают обе руки, см. equipWeapon), поэтому его аффиксы усиливают удар
+ * ТОЙ руки, что держит меч. `attackHand` — рука бьющего оружия.
+ */
+function shieldRolledIn(p: PlayerState, attackHand: "left" | "right", rt: Runtime): WeaponInstance | null {
+  const off = attackHand === "left" ? "right" : "left";
+  const h = heldIn(p, off);
+  if (!h || h.cls !== "shield") return null;
+  return rolledIn(p, off, rt);
+}
+
 /** Доп. множитель урона от роллов аффиксов (dmgFlat/dmgPct суммируются как один множитель). */
 function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
   const w = rolledIn(p, hand, rt);
-  if (!w) return 1;
-  return 1 + affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct");
+  const sh = shieldRolledIn(p, hand, rt);
+  let bonus = 0;
+  if (w) bonus += affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct");
+  if (sh) bonus += affixSum(sh.affixes, "dmgFlat") + affixSum(sh.affixes, "dmgPct");
+  return 1 + bonus;
 }
 
 /** Доп. множитель скорости атаки/каста от ролла atkSpeedPct. */
 function rolledAtkSpeedMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
   const w = rolledIn(p, hand, rt);
-  return w ? 1 + affixSum(w.affixes, "atkSpeedPct") : 1;
+  const sh = shieldRolledIn(p, hand, rt);
+  let bonus = 0;
+  if (w) bonus += affixSum(w.affixes, "atkSpeedPct");
+  if (sh) bonus += affixSum(sh.affixes, "atkSpeedPct");
+  return 1 + bonus;
+}
+
+/** Доп. крит от роллов аффиксов на бьющем оружии И на щите в другой руке (см. shieldRolledIn). */
+function rolledCrit(
+  p: PlayerState,
+  hand: "left" | "right",
+  rt: Runtime,
+): { chance: number; mult: number } {
+  const w = rolledIn(p, hand, rt);
+  const sh = shieldRolledIn(p, hand, rt);
+  let chance = 0;
+  let mult = 0;
+  if (w) {
+    chance += affixSum(w.affixes, "critChance");
+    mult += affixSum(w.affixes, "critMult");
+  }
+  if (sh) {
+    chance += affixSum(sh.affixes, "critChance");
+    mult += affixSum(sh.affixes, "critMult");
+  }
+  return { chance, mult };
 }
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
@@ -843,7 +884,10 @@ export class ZoneRoom extends Room<ZoneState> {
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
         const beforeHp = target.hp;
-        target.hp = Math.min(target.maxHp, target.hp + healAmountFor(p.level, p.int, charge));
+        target.hp = Math.min(
+          target.maxHp,
+          target.hp + healAmountFor(p.level, p.int, charge) * rolledDmgMul(p, healHand, rt),
+        );
         // Лечение союзника в бою с боссом — вклад в общий опыт (гибридный делёж).
         if (target !== p) this.sim.bossHeal(client.sessionId, target.hp - beforeHp);
         return;
@@ -871,16 +915,11 @@ export class ZoneRoom extends Room<ZoneState> {
       // для меча/лука) — посоха нет в WeaponKind, поэтому kind="sword" ниже
       // просто заглушка: у неё и так нулевая база крита, важны только
       // extraChance/extraMult с конкретного инстанса.
-      const staffRolled = rolledIn(p, staffHand, rt);
-      const critM = rollCritMult(
-        "sword",
-        Math.random,
-        false,
-        staffRolled ? affixSum(staffRolled.affixes, "critChance") : 0,
-        staffRolled ? affixSum(staffRolled.affixes, "critMult") : 0,
-      );
+      const staffCrit = rolledCrit(p, staffHand, rt);
+      const critM = rollCritMult("sword", Math.random, false, staffCrit.chance, staffCrit.mult);
       const boltDmg =
         fireboltDamage(p.level, p.int, charge) *
+        rolledDmgMul(p, staffHand, rt) *
         (storm ? AFFIX.storm.dmgMul : 1) *
         critM *
         this.buffMult(client.sessionId, "dmg");
@@ -1361,16 +1400,11 @@ export class ZoneRoom extends Room<ZoneState> {
 
     rt.lastHit[msg.weapon] = this.elapsed;
     const affix = affixIn(p, hand);
-    const rolled = rolledIn(p, hand, rt);
     // База крита — только у лука («Лук охотника» критует чаще); роллы "крит"
-    // на конкретном инстансе добавляют шанс/силу крита ЛЮБОМУ оружию.
-    const crit = rollCritMult(
-      msg.weapon,
-      Math.random,
-      affix === "crit",
-      rolled ? affixSum(rolled.affixes, "critChance") : 0,
-      rolled ? affixSum(rolled.affixes, "critMult") : 0,
-    );
+    // на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit)
+    // добавляют шанс/силу крита ЛЮБОМУ оружию.
+    const rc = rolledCrit(p, hand, rt);
+    const crit = rollCritMult(msg.weapon, Math.random, affix === "crit", rc.chance, rc.mult);
     const dmg =
       weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand) * rolledDmgMul(p, hand, rt), p.agi) *
       crit *
@@ -3724,6 +3758,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const s = botAffix === "storm";
         const bd =
           fireboltDamage(p.level, p.int, 0.7) *
+          rolledDmgMul(p, "right", bot.rt) *
           flyingMul *
           (s ? AFFIX.storm.dmgMul : 1) *
           this.buffMult(bot.id, "dmg");
@@ -3861,14 +3896,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
     // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
     // игрока выходил выше при том же снаряжении.
-    const botRolledSword = rolledIn(p, "right", bot.rt);
-    const swordCrit = rollCritMult(
-      "sword",
-      Math.random,
-      false,
-      botRolledSword ? affixSum(botRolledSword.affixes, "critChance") : 0,
-      botRolledSword ? affixSum(botRolledSword.affixes, "critMult") : 0,
-    );
+    const botSwordCrit = rolledCrit(p, "right", bot.rt);
+    const swordCrit = rollCritMult("sword", Math.random, false, botSwordCrit.chance, botSwordCrit.mult);
     const dmg =
       weaponDamage("sword", p.level, p.str, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt), p.agi) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
@@ -4142,7 +4171,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = bot.state;
     const targets = this.woundedNear(p);
     const charge = BOT.healCharge;
-    const amount = healAmountFor(p.level, p.int, charge) * BOT.healGroupFraction;
+    const amount =
+      healAmountFor(p.level, p.int, charge) * BOT.healGroupFraction * rolledDmgMul(p, "right", bot.rt);
     for (const ally of targets) {
       const before = ally.hp;
       ally.hp = Math.min(ally.maxHp, ally.hp + amount);

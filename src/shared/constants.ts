@@ -336,7 +336,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // на голема совсем не похож).
   golem: {
     model: "monYeti", name: "Голем-крушитель", level: 26, kind: "slime",
-    hp: 950, dmgMul: 4.5, xp: 260, scaleMul: 1.7, tint: null,
+    // xp втрое выше Чародея руин (ruinMage.xp=2100) — по просьбе.
+    hp: 950, dmgMul: 4.5, xp: 6300, scaleMul: 1.7, tint: null,
     enrageAt: 0.4,
   },
 };
@@ -978,7 +979,7 @@ export const EVENT = {
     /** …но не больше этого. */
     rewardPotionCap: 60,
     /** Бафф всем участникам за зачистку: ×множитель опыта и урона на N минут. */
-    buffMinutes: 15,
+    buffMinutes: 30,
     buffXpMult: 2,
     buffDmgMult: 2,
     /** Шанс, что вдобавок выпадет золотое оружие. */
@@ -991,8 +992,8 @@ export const EVENT = {
     hardTimeout: 4 * 60,
     /** Зелий в награду (разбросом у точки). */
     rewardPotions: 4,
-    /** Бафф участникам за победу — короче, чем у нашествия. */
-    buffMinutes: 10,
+    /** Бафф участникам за победу. */
+    buffMinutes: 30,
     /**
      * Масштаб по числу героев В РАДИУСЕ `scaleRadius` от точки события
      * (не по всему миру — иначе боты-зеваки раздувают стража): множитель =
