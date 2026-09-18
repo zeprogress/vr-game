@@ -102,6 +102,10 @@ const CROWD_MAX = 34;
 const CROWD_GROUP_RADIUS = 16; // м вокруг самого «окружённого» героя
 /** Меньше этого в кучке — группы нет, кадр невалиден (режиссёр возьмёт другой). */
 const CROWD_MIN_MEMBERS = 2;
+/** Вязкость слежения кадра «группа» за центром и размером группы (1/с). */
+const CROWD_CENTER_SMOOTH = 1.1;
+const CROWD_ZOOM_OUT = 1.4; // группа разошлась — отъезжаем быстрее
+const CROWD_ZOOM_IN = 0.45; // сжалась — приближаемся медленно
 
 /** Кого показывает камера сейчас. */
 type Shot =
@@ -241,6 +245,11 @@ export class SpectatorCamera {
   private readonly duelPos = new Vector3();
   private readonly duelTgt = new Vector3();
   private duelInit = false;
+  /** Сглаженный кадр «группа сверху»: центр, дистанция. crowdInit сбрасывается при входе в кадр. */
+  private crowdInit = false;
+  private crowdX = 0;
+  private crowdZ = 0;
+  private crowdDist = 0;
 
   constructor(
     scene: Scene,
@@ -371,6 +380,7 @@ export class SpectatorCamera {
       this.botPos.copyFrom(live.eye);
       this.botFwd.copyFrom(live.forward);
     }
+    if (shot.kind !== "crowd") this.crowdInit = false;
     if (shot.kind !== "duelPlayer") {
       this.duelFoeId = null;
       this.duelInit = false;
@@ -794,7 +804,26 @@ export class SpectatorCamera {
           for (const p of grp) {
             spread = Math.max(spread, Math.hypot(p.pos.x - gx, p.pos.z - gz));
           }
-          const dist = Math.min(CROWD_MAX, Math.max(CROWD_MIN, spread * 1.7 + 11));
+          let dist = Math.min(CROWD_MAX, Math.max(CROWD_MIN, spread * 1.7 + 11));
+          // Состав группы меняется скачком (кто-то вошёл в радиус или ушёл) —
+          // центр и дистанцию ведём вязким фильтром, а не берём как есть.
+          // Отъезжаем быстрее, чем подъезжаем: кто-то вошёл — надо успеть вместить.
+          if (!this.crowdInit) {
+            this.crowdInit = true;
+            this.crowdX = gx;
+            this.crowdZ = gz;
+            this.crowdDist = dist;
+          } else {
+            const dt = this.frameDt;
+            const kc = 1 - Math.exp(-dt * CROWD_CENTER_SMOOTH);
+            const kd = 1 - Math.exp(-dt * (dist > this.crowdDist ? CROWD_ZOOM_OUT : CROWD_ZOOM_IN));
+            this.crowdX += (gx - this.crowdX) * kc;
+            this.crowdZ += (gz - this.crowdZ) * kc;
+            this.crowdDist += (dist - this.crowdDist) * kd;
+          }
+          gx = this.crowdX;
+          gz = this.crowdZ;
+          dist = this.crowdDist;
           const gy = ctx.groundY(gx, gz);
           // Неподвижное 3/4-сверху смещение — камеру плавно ведёт trackShot.
           pos.set(gx - dist * CROWD_ANGLE, gy + dist * CROWD_UP, gz - dist * CROWD_ANGLE * 0.6);
