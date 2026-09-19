@@ -139,10 +139,13 @@ export class BlobShadow {
     // Чем выше объект, тем шире и бледнее пятно — по нему и читается прыжок.
     const h = Math.max(0, y - ground);
     const k = Math.min(1, h / FADE_HEIGHT);
-    const s = ((radius * 2) / PROTO_SIZE) * (1 + k * 0.6);
+    // Бледнеть пятно «в воздухе» нельзя через visibility: у InstancedMesh оно не
+    // работает и Babylon на каждый вызов пишет предупреждение в консоль (десятки
+    // в секунду — это само стоило процессорного времени в VR). Вместо этого
+    // высоко в прыжке пятно чуть сжимается — тоже читается как высота.
+    const s = ((radius * 2) / PROTO_SIZE) * (1 + k * 0.6) * (1 - k * 0.3);
     this.mesh.position.set(x, ground + LIFT, z);
     this.mesh.scaling.set(s, s, s);
-    this.mesh.visibility = 1 - k * 0.75;
   }
 
   setEnabled(on: boolean): void {

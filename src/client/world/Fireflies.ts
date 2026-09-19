@@ -29,10 +29,19 @@ Effect.ShadersStore[`${GROUND_GLOW_SHADER}VertexShader`] = `
 precision highp float;
 attribute vec3 position;
 attribute vec2 uv;
-uniform mat4 worldViewProjection;
+uniform mat4 world;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
 varying vec2 vUV;
 void main(void) {
-  gl_Position = worldViewProjection * vec4(position, 1.0);
+  vec4 wp = world * vec4(position, 1.0);
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * wp; } else { gl_Position = viewProjectionR * wp; }
+#else
+  gl_Position = viewProjection * wp;
+#endif
   vUV = uv;
 }`;
 Effect.ShadersStore[`${GROUND_GLOW_SHADER}FragmentShader`] = `
@@ -289,7 +298,7 @@ export class Fireflies {
       { vertex: GROUND_GLOW_SHADER, fragment: GROUND_GLOW_SHADER },
       {
         attributes: ["position", "uv"],
-        uniforms: ["worldViewProjection", "glowAlpha"],
+        uniforms: ["world", "viewProjection", "glowAlpha"],
         samplers: ["glowSampler"],
         needAlphaBlending: true,
       },

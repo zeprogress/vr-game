@@ -742,7 +742,9 @@ export class Mob implements Hittable {
 
   private setBodyVisibility(v: number): void {
     if (this.rig) {
-      for (const m of this.rig.meshes) m.visibility = v;
+      // Инстансы (неанимированные части модели) visibility игнорируют и ругаются
+      // в консоль — трогаем только настоящие меши.
+      for (const m of this.rig.meshes) if (!m.isAnInstance) m.visibility = v;
     } else {
       this.body.visibility = v;
     }

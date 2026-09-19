@@ -13,7 +13,11 @@ export const FIRE_VERT = /* glsl */ `
 precision highp float;
 attribute vec3 position;
 attribute vec2 uv;
-uniform mat4 worldViewProjection;
+uniform mat4 world;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR; // правый глаз: Babylon кладёт сюда матрицу сам
+#endif
 uniform float uTime;
 uniform float uAmp;
 varying vec2 vUv;
@@ -26,7 +30,12 @@ void main() {
   p.x += (n1 + n2 * 0.55) * uAmp * top;
   p.z += (n2 - n1 * 0.4) * uAmp * top * 0.85;
   p.y += abs(n1) * 0.07 * top;
-  gl_Position = worldViewProjection * vec4(p, 1.0);
+  vec4 wp = world * vec4(p, 1.0);
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * wp; } else { gl_Position = viewProjectionR * wp; }
+#else
+  gl_Position = viewProjection * wp;
+#endif
 }
 `;
 
@@ -89,7 +98,7 @@ export function makeFireMaterial(scene: Scene, name: string, wrap: boolean): Sha
     {
       attributes: ["position", "uv"],
       uniforms: [
-        "worldViewProjection", "uTime", "uAmp", "uWrap", "uAlpha",
+        "world", "viewProjection", "uTime", "uAmp", "uWrap", "uAlpha",
         "uColorA", "uColorB", "uColorC",
       ],
       needAlphaBlending: true,

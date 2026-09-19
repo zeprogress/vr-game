@@ -410,7 +410,7 @@ export function recolorCharacter(root: TransformNode): void {
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of meshes) {
     const src = mesh.material;
-    if (!src) continue;
+    if (!src || mesh.isAnInstance) continue; // на инстансе материал не меняется (и Babylon шумит в консоль)
     let flat = seen.get(src.id);
     if (!flat) {
       let base = srcColor.get(src.id) ?? DEFAULT_SKIN;

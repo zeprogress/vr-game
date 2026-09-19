@@ -350,7 +350,7 @@ export async function loadRocks(
     root.scaling.setAll(s);
     const rm = mats[Math.floor(Math.random() * mats.length)];
     for (const m of root.getChildMeshes(false)) {
-      m.material = rm;
+      if (!m.isAnInstance) m.material = rm; // на инстансе не применяется (и шумит в консоль)
       m.isPickable = false;
       m.doNotSyncBoundingInfo = true;
       m.alwaysSelectAsActiveMesh = true;
