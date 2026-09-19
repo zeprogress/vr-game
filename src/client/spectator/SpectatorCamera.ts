@@ -156,6 +156,8 @@ export interface DirectorCtx {
 }
 
 const CENTER = new Vector3(0, 0, 0);
+/** Обычный вертикальный угол обзора камеры спектатора, рад. */
+const DEFAULT_FOV = 0.9;
 
 /** Кадры, привязанные к одному игроку/боту (общая логика выбора/валидации). */
 const PLAYER_SHOTS = [
@@ -266,7 +268,7 @@ export class SpectatorCamera {
     );
     this.cam.minZ = 0.2;
     this.cam.maxZ = 600;
-    this.cam.fov = 0.9;
+    this.cam.fov = DEFAULT_FOV;
     this.cam.inputs.clear(); // камерой рулим только кодом
     scene.activeCamera = this.cam;
   }
@@ -363,6 +365,12 @@ export class SpectatorCamera {
     this.cam.position.copyFrom(this._p);
     this.curTgt.copyFrom(this._t);
     this.cam.setTarget(this._t);
+
+    // Угол обзора: у кинопути может быть свой (fov), иначе обычный. Меняем
+    // плавно, чтобы вход/выход из кадра не дёргал перспективу.
+    const wantFov =
+      this.shot.kind === "path" ? (CINE_PATHS[this.shot.idx]?.fov ?? DEFAULT_FOV) : DEFAULT_FOV;
+    this.cam.fov += (wantFov - this.cam.fov) * (1 - Math.exp(-dt * 2.5));
   }
 
   // ---- режиссура ----
