@@ -1,3 +1,4 @@
+import { terrainHeight } from "#shared/terrain";
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -67,7 +68,7 @@ export class ThirdPersonCam {
   }
 
   /** feet — точка ног персонажа в мире. Зовётся каждый кадр после движения. */
-  update(feet: Vector3, solid: (m: AbstractMesh) => boolean, scene: Scene): void {
+  update(feet: Vector3, _solid?: (m: AbstractMesh) => boolean, _scene?: Scene): void {
     const t = TP_CAM_TUNE;
     this.pivot.set(feet.x, feet.y + t.pivotUp, feet.z);
 
@@ -83,12 +84,37 @@ export class ThirdPersonCam {
     this._ray.origin.copyFrom(this.pivot);
     this._ray.direction.set(-dx, -dy, -dz);
     this._ray.length = t.dist + COLLIDE_PAD;
-    const hit = scene.pickWithRay(this._ray, solid);
-    if (hit?.hit && hit.pickedPoint) {
-      const n = hit.getNormal(true);
-      if (!n || Math.abs(n.y) < 0.6) {
-        dist = clamp(hit.distance - COLLIDE_PAD, MIN_DIST, t.dist);
+    // Единственная твёрдая геометрия — террейн (47 тыс. вершин, без подразбиения):
+    // pickWithRay по нему каждый кадр съедал ~30% CPU на телефоне и шлеме.
+    // Считаем аналитически по terrainHeight: шагаем вдоль луча назад и ищем,
+    // где он уходит под землю; крутой склон (нормаль y<0.6) — препятствие.
+    const total = t.dist + COLLIDE_PAD;
+    const STEP = 0.4;
+    let prevS = 0;
+    for (let s = STEP; s <= total + 1e-6; s += STEP) {
+      const x = this.pivot.x - dx * s;
+      const y = this.pivot.y - dy * s;
+      const z = this.pivot.z - dz * s;
+      if (y < terrainHeight(x, z)) {
+        // уточняем точку входа бисекцией
+        let lo = prevS;
+        let hi = s;
+        for (let i = 0; i < 5; i++) {
+          const m = (lo + hi) / 2;
+          const below =
+            this.pivot.y - dy * m < terrainHeight(this.pivot.x - dx * m, this.pivot.z - dz * m);
+          if (below) hi = m;
+          else lo = m;
+        }
+        const hx = this.pivot.x - dx * hi;
+        const hz = this.pivot.z - dz * hi;
+        const gx = terrainHeight(hx + 0.3, hz) - terrainHeight(hx - 0.3, hz);
+        const gz = terrainHeight(hx, hz + 0.3) - terrainHeight(hx, hz - 0.3);
+        const ny = 1 / Math.sqrt(1 + (gx / 0.6) ** 2 + (gz / 0.6) ** 2);
+        if (ny < 0.6) dist = clamp(hi - COLLIDE_PAD, MIN_DIST, t.dist);
+        break;
       }
+      prevS = s;
     }
 
     this.pos.set(
@@ -98,13 +124,8 @@ export class ThirdPersonCam {
     );
 
     // 2. Пол: не пускаем камеру под землю (и не даём «клюнуть» в неё).
-    this._ray.origin.set(this.pos.x, this.pos.y + 3, this.pos.z);
-    this._ray.direction.set(0, -1, 0);
-    this._ray.length = 6;
-    const floor = scene.pickWithRay(this._ray, solid);
-    if (floor?.pickedPoint && this.pos.y < floor.pickedPoint.y + t.floorClear) {
-      this.pos.y = floor.pickedPoint.y + t.floorClear;
-    }
+    const floorY = terrainHeight(this.pos.x, this.pos.z);
+    if (this.pos.y < floorY + t.floorClear) this.pos.y = floorY + t.floorClear;
 
     this.camera.position.copyFrom(this.pos);
     this.camera.setTarget(this.pivot);
