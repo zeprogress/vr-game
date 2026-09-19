@@ -277,7 +277,32 @@ export class SpectatorCamera {
     return this.curTgt;
   }
 
+  /**
+   * Свободная камера: позу задают снаружи (окно `?freecam=1` или чужая поза с
+   * сервера), режиссёр ждёт. `clearManual()` — вернуться к прежнему кадру.
+   */
+  setManual(pos: Vector3, tgt: Vector3, fov: number): void {
+    if (!this.manual) this.manual = { pos: new Vector3(), tgt: new Vector3(), fov };
+    this.manual.pos.copyFrom(pos);
+    this.manual.tgt.copyFrom(tgt);
+    this.manual.fov = fov;
+  }
+
+  clearManual(): void {
+    if (!this.manual) return;
+    this.manual = null;
+    this.manualEnded = true;
+  }
+
+  get isManual(): boolean {
+    return this.manual !== null;
+  }
+
+  private manual: { pos: Vector3; tgt: Vector3; fov: number } | null = null;
+  private manualEnded = false;
+
   get shotKind(): string {
+    if (this.manual) return "free";
     if (this.shot.kind === "path") {
       return `path «${CINE_PATHS[this.shot.idx]?.name ?? "?"}»`;
     }
@@ -325,6 +350,18 @@ export class SpectatorCamera {
 
   update(dt: number, ctx: DirectorCtx): void {
     this.lastCtx = ctx;
+    if (this.manual) {
+      this.cam.position.copyFrom(this.manual.pos);
+      this.curTgt.copyFrom(this.manual.tgt);
+      this.cam.setTarget(this.manual.tgt);
+      this.cam.fov += (this.manual.fov - this.cam.fov) * (1 - Math.exp(-dt * 8));
+      return;
+    }
+    if (this.manualEnded) {
+      // Свободная камера закрыта — плавно возвращаемся к кадру, что шёл до неё.
+      this.manualEnded = false;
+      this.switchTo(this.shot, ctx);
+    }
     if (this.introPending) {
       this.introPending = false;
       this.idleRotIdx = 0;

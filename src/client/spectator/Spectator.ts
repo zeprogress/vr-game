@@ -24,6 +24,7 @@ import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
 import { RenderWatch } from "./RenderWatch";
 import { PerfProbe } from "./PerfProbe";
+import { FreeCamControl } from "./FreeCamControl";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -123,6 +124,16 @@ export class Spectator {
   private probe: PerfProbe | null = null;
   private lastOvlAt = 0;
   private lastOvlRun = 0;
+  /** Окно свободной камеры: контроллер и служебное состояние. */
+  private freeCtl: FreeCamControl | null = null;
+  private freeInit = false;
+  private lastFreeSend = 0;
+  private readonly _freeTgt = new Vector3();
+  /** Чужая свободная камера (её окно открыто): целевая и текущая (сглаженная) позы. */
+  private remoteFree: {
+    pos: Vector3; tgt: Vector3; fov: number;
+    curPos: Vector3; curTgt: Vector3; curFov: number; at: number;
+  } | null = null;
   private lastOvlSig = "";
   /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
   private readonly obs: boolean;
@@ -157,6 +168,8 @@ export class Spectator {
       overlay?: boolean | "ext";
       obs?: boolean;
       perf?: boolean;
+      /** Окно свободной камеры (?freecam=1): управляется рукой, поза уходит спектаторам. */
+      freecam?: boolean;
     } = {},
   ) {
     const preset = PRESETS[quality];
@@ -300,8 +313,20 @@ export class Spectator {
     // overlay=ext: DOM-оверлей вынесен в отдельный Browser Source (overlay.html),
     // а тут только отдаём ему данные кадра (SpecCmd "ovl") — главный поток сцены
     // не тратится на DOM.
-    this.overlay = override.overlay === false || override.overlay === "ext" ? null : new Overlay();
+    this.overlay =
+      override.overlay === false || override.overlay === "ext" || override.freecam ? null : new Overlay();
     this.relayOvl = override.overlay === "ext";
+    if (override.freecam) {
+      this.freeCtl = new FreeCamControl(canvas);
+      this.freeCtl.onClose = () => {
+        this.net?.sendSpecCmd({ t: "free", on: 0 });
+      };
+      // Закрыли вкладку — сообщаем, пока соединение ещё живо (на всякий случай:
+      // сервер и сам увидит обрыв и вернёт спектаторов).
+      window.addEventListener("beforeunload", () => {
+        if (this.freeCtl && !this.freeCtl.closed) this.net?.sendSpecCmd({ t: "free", on: 0 });
+      });
+    }
     if (override.perf) {
       this.probe = new PerfProbe(
         (text) => this.net?.sendSpecCmd({ t: "diag", text }),
@@ -315,7 +340,8 @@ export class Spectator {
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
     // добиваемся включения повторными resume() и по возврату вкладки.
-    this.sfx.startMusic(TOWN_MUSIC, 0.07);
+    if (this.freeCtl) this.sfx.setMasterVolume(0); // окно свободной камеры — без звука
+    else this.sfx.startMusic(TOWN_MUSIC, 0.07);
     const wake = (): void => this.sfx.resume();
     for (const ev of ["pointerdown", "keydown", "touchstart"] as const) {
       window.addEventListener(ev, wake, { once: true });
@@ -566,7 +592,100 @@ export class Spectator {
   }
 
   /** Команда со стрим-дашборда (этап 17 Ф5). */
+  /**
+   * Свободная камера. В окне `?freecam=1`: берём стартовую позу у текущей камеры
+   * стрима (state.spec*), летаем руками и шлём позу серверу (~15 Гц). В обычном
+   * спектаторе: пока чужая поза свежая — показываем её (плавно), иначе режиссёр.
+   */
+  private driveFreeCam(dt: number, room: Room<ZoneState> | undefined | null): void {
+    const now = performance.now();
+    const ctl = this.freeCtl;
+    if (ctl) {
+      if (ctl.closed) {
+        this.cam.clearManual();
+        return;
+      }
+      if (!this.freeInit && room) {
+        this.freeInit = true;
+        const st = room.state;
+        if (st.specActive === 1) {
+          ctl.setFromPose(st.specX, st.specY, st.specZ, st.specTX, st.specTY, st.specTZ);
+        } else {
+          ctl.setFromPose(0, 60, -80, 0, 0, 0);
+        }
+      }
+      if (!this.freeInit) return; // ждём связь — стартовую позу ещё не знаем
+      ctl.update(dt);
+      const tgt = ctl.target(this._freeTgt);
+      this.cam.setManual(ctl.pos, tgt, ctl.fov);
+      if (room && now - this.lastFreeSend > 66) {
+        this.lastFreeSend = now;
+        this.net?.sendSpecCmd({
+          t: "free", on: 1,
+          x: ctl.pos.x, y: ctl.pos.y, z: ctl.pos.z,
+          tx: tgt.x, ty: tgt.y, tz: tgt.z, fov: ctl.fov,
+        });
+      }
+      return;
+    }
+    const rf = this.remoteFree;
+    if (!rf) return;
+    // Окно молчит дольше 3 с (сеть/зависло) — не держим чужой вид вечно.
+    if (now - rf.at > 3000) {
+      this.remoteFree = null;
+      this.cam.clearManual();
+      return;
+    }
+    const k = 1 - Math.exp(-dt * 12);
+    rf.curPos.x += (rf.pos.x - rf.curPos.x) * k;
+    rf.curPos.y += (rf.pos.y - rf.curPos.y) * k;
+    rf.curPos.z += (rf.pos.z - rf.curPos.z) * k;
+    rf.curTgt.x += (rf.tgt.x - rf.curTgt.x) * k;
+    rf.curTgt.y += (rf.tgt.y - rf.curTgt.y) * k;
+    rf.curTgt.z += (rf.tgt.z - rf.curTgt.z) * k;
+    rf.curFov += (rf.fov - rf.curFov) * k;
+    this.cam.setManual(rf.curPos, rf.curTgt, rf.curFov);
+  }
+
+  private applyFreeCmd(cmd: Extract<SpecCmd, { t: "free" }>): void {
+    if (this.freeCtl) return; // само окно свободной камеры чужих поз не слушает
+    if (!cmd.on) {
+      this.remoteFree = null;
+      this.cam.clearManual();
+      return;
+    }
+    if (
+      cmd.x === undefined || cmd.y === undefined || cmd.z === undefined ||
+      cmd.tx === undefined || cmd.ty === undefined || cmd.tz === undefined
+    ) {
+      return;
+    }
+    const fov = Number.isFinite(cmd.fov) ? Math.max(0.2, Math.min(2.4, cmd.fov as number)) : 0.9;
+    const now = performance.now();
+    let rf = this.remoteFree;
+    if (!rf) {
+      // Перехват: стартуем от того, что показывали, — плавный «подлёт» к чужой позе.
+      rf = {
+        pos: new Vector3(), tgt: new Vector3(), fov,
+        curPos: this.cam.cam.position.clone(),
+        curTgt: this.cam.target.clone(),
+        curFov: this.cam.cam.fov,
+        at: now,
+      };
+      this.remoteFree = rf;
+    }
+    rf.pos.set(cmd.x, cmd.y, cmd.z);
+    rf.tgt.set(cmd.tx, cmd.ty, cmd.tz);
+    rf.fov = fov;
+    rf.at = now;
+  }
+
   private applySpecCmd(cmd: SpecCmd): void {
+    if (cmd.t === "free") {
+      this.applyFreeCmd(cmd);
+      return;
+    }
+    if (this.freeCtl) return; // окно свободной камеры: команды пульта не для него
     if (cmd.t === "cam") this.cam.forceShot(cmd.shot);
     else if (cmd.t === "auto") this.cam.auto = cmd.on !== 0;
     else if (cmd.t === "bots") {
@@ -815,6 +934,7 @@ export class Spectator {
     );
 
     this.probe?.mark("avatars");
+    this.driveFreeCam(dt, room);
     // Режиссёр.
     this.cam.update(dt, {
       players: this._players,
@@ -822,7 +942,7 @@ export class Spectator {
       boss,
       groundY: this.groundHeight,
     });
-    if (towerActive) {
+    if (towerActive && !this.cam.isManual) {
       // Авто-режиссёр камеры не знает о стенах арены башни (это отдельная,
       // всегда одна и та же геометрия в фиксированной точке карты) — без
       // этого камера при облёте/орбите могла улететь СКВОЗЬ стену наружу.
@@ -843,7 +963,7 @@ export class Spectator {
       }
       cp.y = Math.min(ceilY, Math.max(floorY, cp.y));
     }
-    if (this.towerTestMode) {
+    if (this.towerTestMode && !this.cam.isManual) {
       // Обычный авто-режиссёр камеры не знает про синтетический тестовый
       // забег (это чисто клиентская подмена, сервер о ней не в курсе) — без
       // этого он тут же перезаписал бы позицию своим текущим кадром (облёт/
@@ -888,13 +1008,13 @@ export class Spectator {
     this.updateBossMusic();
 
     // Раз в ~2 с сообщаем дашбордам, какой кадр сейчас в эфире.
-    if (room && now - this.lastShotReport > 2000) {
+    if (room && !this.freeCtl && now - this.lastShotReport > 2000) {
       this.lastShotReport = now;
       this.net?.sendSpecCmd({ t: "nowShot", shot: this.cam.shotKind });
     }
 
     // Раз в ~200 мс — позиция камеры для метки в мире у игроков (Ф10).
-    if (room && now - this.lastCamReport > 200) {
+    if (room && !this.freeCtl && now - this.lastCamReport > 200) {
       this.lastCamReport = now;
       const t = this.cam.target;
       this.net?.sendSpecCam({ x: p.x, y: p.y, z: p.z, tx: t.x, ty: t.y, tz: t.z });
@@ -926,6 +1046,7 @@ export class Spectator {
   }
 
   private static shotLabel(kind: string): string {
+    if (kind === "free") return "Свободная камера";
     if (kind === "overview") return "Обзор зоны";
     if (kind.startsWith("path ")) return `Пролёт: ${kind.slice(6, -1)}`;
     if (kind === "orbitBoss") return "Багровый";

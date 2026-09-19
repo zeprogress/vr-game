@@ -1304,6 +1304,14 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         return;
       }
+      if (msg.t === "free") {
+        // Свободная камера: запоминаем владельца, чтобы при закрытии его окна
+        // (обрыв соединения) вернуть остальных спектаторов в авто-режим.
+        if (msg.on) this.freeCamOwner = client.sessionId;
+        else if (this.freeCamOwner === client.sessionId) this.freeCamOwner = "";
+        this.broadcast(MSG.specCmd, msg, { except: client });
+        return;
+      }
       if (msg.t === "time" && typeof msg.hour === "number" && Number.isFinite(msg.hour)) {
         this.worldHour = (((msg.hour % 24) + 24) % 24) as number;
         this.state.hour = this.worldHour;
@@ -4780,6 +4788,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Спектаторы стрима — sessionId. В `state.players` их нет. */
   private readonly spectators = new Set<string>();
+  /** sessionId спектатора со свободной камерой (окно `?freecam=1`), "" — нет. */
+  private freeCamOwner = "";
   /** Когда живой игрок зашёл (sessionId → Date.now()) — для приоритета камеры. */
   private readonly joinedAt = new Map<string, number>();
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
@@ -5025,6 +5035,11 @@ export class ZoneRoom extends Room<ZoneState> {
   override async onLeave(client: Client, consented?: boolean): Promise<void> {
     if (this.spectators.delete(client.sessionId)) {
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
+      if (this.freeCamOwner === client.sessionId) {
+        // Окно свободной камеры закрыли — спектаторы возвращаются в свой режим.
+        this.freeCamOwner = "";
+        this.broadcast(MSG.specCmd, { t: "free", on: 0 } satisfies SpecCmd);
+      }
       // Ни одного спектатора не осталось — метка камеры стрима больше не
       // актуальна (мог уйти как раз рендерящий, а не только пульт).
       if (this.spectators.size === 0) this.state.specActive = 0;
