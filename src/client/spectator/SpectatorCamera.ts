@@ -47,6 +47,9 @@ const BOT_ROTATION = [
   "frontPlayer",
 ] as const;
 
+/** Ракурсы на новичка (prio 3): чередуем, каждый круг — следующий новичок. */
+const FRESH_ROTATION = ["eyePlayer", "sidePlayer", "orbitPlayer", "frontPlayer", "duelPlayer", "dronePlayer"] as const;
+
 /** Боковой трекинг: камера едет сбоку вровень с героем, держит его в кадре. */
 const SIDE_DIST = 7.5; // м вбок
 const SIDE_UP = 2.3; // подъём над точкой корпуса
@@ -219,6 +222,7 @@ export class SpectatorCamera {
    */
   botsOnly = false;
   private botRotIdx = 0;
+  private freshIdx = 0;
   private botPickI = 0;
   private lastCtx: DirectorCtx | null = null;
 
@@ -413,6 +417,18 @@ export class SpectatorCamera {
         const id = bots[this.botPickI % bots.length].id;
         if (isPlayerShotKind(kind)) return { kind, id } as Shot;
         return { kind: "eyePlayer", id };
+      }
+    }
+    // Новички (prio 3: только что !play или зашёл в игру) — в первую очередь и
+    // чаще: пока такой есть, в эфире идут только ракурсы на него, без обзоров
+    // и мобов. Бой с боссом всё же важнее.
+    if (!(fighting && ctx.boss)) {
+      const fresh = ctx.players.filter((p) => p.prio >= 3);
+      if (fresh.length > 0) {
+        this.freshIdx++;
+        const kind = FRESH_ROTATION[this.freshIdx % FRESH_ROTATION.length];
+        const id = fresh[Math.floor(this.freshIdx / FRESH_ROTATION.length) % fresh.length].id;
+        return { kind, id } as Shot;
       }
     }
     if (fighting && ctx.boss) {

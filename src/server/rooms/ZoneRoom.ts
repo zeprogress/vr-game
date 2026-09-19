@@ -668,6 +668,9 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
   return bag;
 }
 
+/** Сколько мс герой считается «новичком» для камеры спектатора. */
+const FRESH_MS = 180_000;
+
 interface JoinOpts {
   nick?: string;
   token?: string;
@@ -3046,12 +3049,13 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     this.playCd.set(norm, now);
-    this.spawnBot(nick, norm);
+    this.spawnBot(nick, norm, true);
     const p = this.bots.get(norm)?.state;
     this.reply(`@${nick} твой герой вышел в мир, ур.${p?.level ?? 1}. !stop — убрать, !skin — сменить внешность.`);
   }
 
-  private spawnBot(nick: string, norm: string): void {
+  /** `fresh` — герой только что заказан командой !play (а не поднят из сейва при рестарте): камера спектатора показывает его чаще. */
+  private spawnBot(nick: string, norm: string, fresh = false): void {
     const id = `bot:${norm}`;
     const token = `nick:${norm}`;
     const rec = store.get(token);
@@ -3148,7 +3152,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.rt.set(id, rt);
 
     this.bots.set(norm, {
-      spawnedAt: Date.now(),
+      spawnedAt: fresh ? Date.now() : 0,
       nick: p.nick,
       norm,
       id,
@@ -4694,15 +4698,19 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Приоритет героя для авто-камеры спектатора: 2 — участвует в событии или
-   * идёт на босса, 1 — героя только что добавили, 0 — остальные.
+   * Приоритет героя для авто-камеры спектатора: 3 — новичок (заказал !play
+   * или зашёл в игру менее 3 минут назад), 2 — участвует в событии или идёт
+   * на босса, 0 — остальные.
    */
   private camPrioOf(id: string, p: PlayerState): number {
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
     if (bot) {
+      if (bot.spawnedAt > 0 && Date.now() - bot.spawnedAt < FRESH_MS) return 3;
       if (bot.eventing || bot.raiding) return 2;
-      return Date.now() - bot.spawnedAt < 120_000 ? 1 : 0;
+      return 0;
     }
+    const joined = this.joinedAt.get(id);
+    if (joined !== undefined && Date.now() - joined < FRESH_MS) return 3;
     if (
       this.state.eventKind !== 0 &&
       Math.hypot(p.head.x - this.state.eventX, p.head.z - this.state.eventZ) < BOT.zoneRadius
@@ -4772,6 +4780,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Спектаторы стрима — sessionId. В `state.players` их нет. */
   private readonly spectators = new Set<string>();
+  /** Когда живой игрок зашёл (sessionId → Date.now()) — для приоритета камеры. */
+  private readonly joinedAt = new Map<string, number>();
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
   private readonly raidPending = new Set<string>();
   /** ms момента общего выступления (0 — отсчёт не идёт). */
@@ -4932,6 +4942,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.hour = this.worldHour;
     this.clockSync = 0;
 
+    this.joinedAt.set(client.sessionId, Date.now());
     this.rt.set(client.sessionId, {
       token,
       guard: noGuard(),
@@ -5039,6 +5050,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     this.state.players.delete(client.sessionId);
     this.rt.delete(client.sessionId);
+    this.joinedAt.delete(client.sessionId);
     store.flush();
 
     // Стрим-игрок вышел — персонаж продолжает жить ботом, только если сам
