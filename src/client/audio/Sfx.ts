@@ -77,14 +77,18 @@ export class Sfx {
   /** Где сейчас «уши» — по ним отодвигаем слишком близкие источники. */
   private readonly ear = { x: 0, y: 0, z: 0 };
 
+  /** Личные множители из меню (0..1): громкость эффектов и музыки. */
+  private sfxLevel = 1;
+  private musicLevel = 1;
+
   private get dead(): boolean {
     return this.volume < 0.03;
   }
   private masterTarget(): number {
-    return this.dead ? 0 : 0.32 * this.volume;
+    return this.dead ? 0 : 0.32 * this.volume * this.sfxLevel;
   }
   private musicTarget(): number {
-    return this.dead ? 0 : this.musicVol * this.volume;
+    return this.dead ? 0 : this.musicVol * this.volume * this.musicLevel;
   }
   /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
   private spatialAt: SoundAt | null = null;
@@ -339,6 +343,18 @@ export class Sfx {
 
   setMusicVolume(v: number): void {
     this.musicVol = Math.max(0, Math.min(1, v));
+    if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
+  }
+
+  /** Личная громкость эффектов (меню «Настройки»), 0..1. */
+  setEffectsLevel(v: number): void {
+    this.sfxLevel = Math.max(0, Math.min(1, v));
+    if (this.master) this.master.gain.value = this.masterTarget();
+  }
+
+  /** Личная громкость музыки (меню «Настройки»), 0..1. */
+  setMusicLevel(v: number): void {
+    this.musicLevel = Math.max(0, Math.min(1, v));
     if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
   }
 

@@ -5,6 +5,7 @@ import {
   MSG,
   type CharMsg,
   type LeaderboardRow,
+  type WeaponsListMsg,
   type TowerBoardRow,
   type DmgHitsMsg,
   type TowerMobsMsg,
@@ -137,6 +138,9 @@ export class NetClient {
   onBotSay: ((id: string, text: string) => void) | null = null;
   /** Топ-5 героев — раз в 10 с и сразу спектатору при входе (Ф10). */
   onLeaderboard: ((rows: LeaderboardRow[]) => void) | null = null;
+  /** Склад оружия (последний присланный сервером) — инвентарь в игре его показывает. */
+  warehouse: WeaponsListMsg | null = null;
+  onWarehouse: ((m: WeaponsListMsg) => void) | null = null;
   /** Топ-5 по лучшему этажу Охотничьей башни — та же частота, что и leaderboard. */
   onTowerBoard: ((rows: TowerBoardRow[]) => void) | null = null;
   onDmgHits: ((msg: DmgHitsMsg) => void) | null = null;
@@ -286,6 +290,10 @@ export class NetClient {
     );
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
+    room.onMessage(MSG.weaponsList, (m: WeaponsListMsg) => {
+      this.warehouse = m;
+      this.onWarehouse?.(m);
+    });
     room.onMessage(MSG.towerBoard, (m: TowerBoardRow[]) => this.onTowerBoard?.(m));
     room.onMessage(MSG.dmgHits, (m: DmgHitsMsg) => this.onDmgHits?.(m));
     room.onMessage(MSG.towerMobs, (m: TowerMobsMsg) => this.onTowerMobs?.(m));

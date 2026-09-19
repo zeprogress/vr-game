@@ -3,6 +3,7 @@ import type { LootItem } from "#shared/net/messages";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
 import { InventoryPanel, type Equipped } from "./InventoryPanel";
+import type { WarehouseWeapon } from "#shared/net/messages";
 import { BOT_SKIN_LABELS } from "../world/models";
 
 const STATS: StatName[] = ["str", "agi", "int"];
@@ -582,6 +583,12 @@ export class Hud {
     this.equipped = fn;
   }
 
+  /** Склад оружия для списка в инвентаре (Game отдаёт то, что прислал сервер). */
+  bindWarehouse(fn: () => WarehouseWeapon[]): void {
+    this.warehouseFn = fn;
+  }
+  private warehouseFn: (() => WarehouseWeapon[]) | null = null;
+
   private renderBag(): void {
     const inv = this.inv;
     if (!inv) return;
@@ -590,6 +597,7 @@ export class Hud {
     // Свой контейнер: панель перерисовывает только себя, не всю карточку.
     const host = el("div", "");
     this.panel.appendChild(host);
+    this.invPanel.warehouse = this.warehouseFn?.() ?? [];
     this.invPanel.render(host, inv, this.equipped?.() ?? null);
   }
 

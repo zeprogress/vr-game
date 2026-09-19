@@ -35,6 +35,11 @@ export interface InputState {
   uiNext: boolean;
   /** Панель персонажа: вложить очко (фронт). */
   uiConfirm: boolean;
+  /** Меню на руке открыто: навигация левым стиком (-1/0/1 щелчками с повтором). */
+  menuNavX: number;
+  menuNavY: number;
+  /** Курок правой руки нажат (лазер меню). */
+  rightTrigger: boolean;
 
   /** Открыть/закрыть панель настройки экипировки (фронт). */
   tuneToggle: boolean;
@@ -71,6 +76,9 @@ export function emptyInput(): InputState {
     panelToggle: false,
     uiNext: false,
     uiConfirm: false,
+    menuNavX: 0,
+    menuNavY: 0,
+    rightTrigger: false,
     tuneToggle: false,
     tuneNavY: 0,
     tuneDec: false,

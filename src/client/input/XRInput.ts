@@ -35,6 +35,13 @@ export class XRInput implements InputSource {
    */
   tuneOpen = false;
 
+  /**
+   * Ставится извне: меню на левой руке открыто — левый стик выбирает пункты меню
+   * (движение подавлено), правый по-прежнему поворачивает.
+   */
+  menuOpen = false;
+  private navHeld: { x: number; y: number; at: number } = { x: 0, y: 0, at: 0 };
+
   private readonly addObs: Observer<WebXRInputSource> | null;
   private readonly removeObs: Observer<WebXRInputSource> | null;
 
@@ -102,9 +109,32 @@ export class XRInput implements InputSource {
     }
 
     if (lp) {
-      s.moveX = dz(lp.axes[2] ?? 0);
-      s.moveY = -dz(lp.axes[3] ?? 0);
+      const mx = dz(lp.axes[2] ?? 0);
+      const my = -dz(lp.axes[3] ?? 0);
+      if (this.menuOpen && !this.tuneOpen) {
+        // Меню открыто: стик не двигает героя, а выбирает пункты. Щелчок при
+        // отклонении >0.6, повтор каждые 0.22 с при удержании.
+        const nx = Math.abs(mx) > 0.6 ? Math.sign(mx) : 0;
+        const ny = Math.abs(my) > 0.6 ? -Math.sign(my) : 0; // вверх по стику = вверх по меню (−y экрана)
+        const now = performance.now();
+        const same = nx === this.navHeld.x && ny === this.navHeld.y;
+        if ((nx !== 0 || ny !== 0) && (!same || now - this.navHeld.at > 220)) {
+          // Первое нажатие — сразу, повтор — с задержкой 0.22 с после первого.
+          if (!same) this.navHeld.at = now + 180; // чуть дольше перед автоповтором
+          else this.navHeld.at = now;
+          s.menuNavX = nx;
+          s.menuNavY = ny;
+        }
+        this.navHeld.x = nx;
+        this.navHeld.y = ny;
+      } else {
+        s.moveX = mx;
+        s.moveY = my;
+        this.navHeld.x = 0;
+        this.navHeld.y = 0;
+      }
     }
+    s.rightTrigger = pressed(rp, 0);
 
     // --- Snap-turn с правого стика ---
     const turn = rp?.axes[2] ?? 0;

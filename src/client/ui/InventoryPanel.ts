@@ -1,6 +1,7 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
+import type { WarehouseWeapon } from "#shared/net/messages";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 export type { HeroStats, WornWeapon } from "./itemStats";
@@ -49,6 +50,9 @@ export class InventoryPanel {
   private invRef: Inventory | null = null;
   private eqRef: Equipped | null = null;
 
+  /** Склад оружия (с сервера) — показывается под сумкой, как и в VR-меню. */
+  warehouse: WarehouseWeapon[] = [];
+
   constructor(private readonly touch: boolean) {}
 
   render(host: HTMLElement, inv: Inventory, eq: Equipped | null): void {
@@ -88,6 +92,39 @@ export class InventoryPanel {
     }
     host.appendChild(grid);
     host.appendChild(this.infoRow(inv, eq));
+    host.appendChild(this.warehouseList());
+  }
+
+  /** Склад оружия: название (очки роллов) и тексты роллов. */
+  private warehouseList(): HTMLElement {
+    const wrap = el("div", "");
+    wrap.appendChild(this.caption(`СКЛАД ОРУЖИЯ (${this.warehouse.length})`));
+    if (this.warehouse.length === 0) {
+      const e = el("div", "font-size:12px;opacity:.5;");
+      e.textContent = "пусто — золотое и уникальное оружие падает с боёв";
+      wrap.appendChild(e);
+      return wrap;
+    }
+    const tierColor: Record<WeaponTier, string> = { base: "#c9d2e6", gold: "#ffd166", legendary: "#c77dff" };
+    for (const w of this.warehouse) {
+      const d = weaponDef(w.cls, w.tier);
+      const row = el(
+        "div",
+        `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor[w.tier]};`,
+      );
+      const name = el("div", `font-size:13px;font-weight:600;color:${tierColor[w.tier]};`);
+      name.textContent = d.name;
+      if (w.affixes.length) {
+        const q = el("span", "color:#f2c74b;margin-left:6px;font-weight:600;");
+        q.textContent = `(${w.quality})`;
+        name.appendChild(q);
+      }
+      const aff = el("div", "font-size:11.5px;color:#7db8ff;margin-top:1px;");
+      aff.textContent = w.affixes.join(", ") || "без роллов";
+      row.append(name, aff);
+      wrap.appendChild(row);
+    }
+    return wrap;
   }
 
   /** Перерисовка на месте: чистим только наш блок, не всю панель персонажа. */

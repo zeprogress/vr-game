@@ -36,6 +36,8 @@ export const MSG = {
   worldEvent: "we",
   /** сервер -> все: топ-5 героев (ник/уровень/убийства) — для оверлея и !top (Ф10). */
   leaderboard: "top",
+  /** сервер -> клиент: склад оружия игрока (все инстансы с роллами) — для инвентаря в игре. */
+  weaponsList: "wpn",
   /** сервер -> все: топ-5 по лучшему этажу Охотничьей башни — для оверлея. */
   towerBoard: "twtop",
   /** сервер -> все: живые позиции мобов текущего забега башни (мировые коорд.), для визуала. */
@@ -407,6 +409,23 @@ export interface SaveMsg {
   y: number;
   z: number;
   yaw: number;
+}
+
+/** Одно оружие на складе игрока: инстанс с роллами (для списка в инвентаре). */
+export interface WarehouseWeapon {
+  id: string;
+  cls: WeaponClass;
+  tier: WeaponTier;
+  /** Тексты роллов («+12% урона»). */
+  affixes: string[];
+  /** Сумма очков роллов (1..33 за каждый) — число в скобках у названия. */
+  quality: number;
+}
+
+/** Склад оружия целиком + что сейчас закреплено в руках (id инстансов). */
+export interface WeaponsListMsg {
+  list: WarehouseWeapon[];
+  equipped: { left: string | null; right: string | null };
 }
 
 /** Оружие «с собой»: класс и уровень. */

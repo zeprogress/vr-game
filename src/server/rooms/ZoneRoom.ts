@@ -52,6 +52,7 @@ import {
   type UseItemMsg,
   type Xf7,
   type WorldEventMsg,
+  type WeaponsListMsg,
   type LootItem,
 } from "#shared/net/messages";
 import {
@@ -108,6 +109,7 @@ import {
   addToBag,
   HEAL_CARRY_MAX,
   affixLabel,
+  weaponQuality,
   affixSum,
   BAG,
   bestWeaponInstance,
@@ -188,6 +190,8 @@ interface Runtime {
   lastCast: number;
   /** Массовый хил игрока: когда начат каст (сек. комнаты, -1 — не идёт) и когда последний раз сработал. */
   massHealAt: number;
+  /** Подпись последнего отправленного клиенту склада оружия (чтобы слать только при изменении). */
+  weaponsSig?: string;
   lastMassHeal: number;
   /** Момент последнего активного умения оружия (воин/лучник) — для кулдауна. */
   lastSkillAt: number;
@@ -4800,12 +4804,41 @@ export class ZoneRoom extends Room<ZoneState> {
     return 0;
   }
 
+  /** Склад оружия — клиенту, когда изменился (инвентарь в игре показывает то же, что веб-инвентарь). */
+  private syncWarehouse(id: string, rt: Runtime): void {
+    if (id.startsWith("bot:")) return;
+    const sig =
+      rt.weapons.map((w) => w.id).join(",") +
+      "|" +
+      (rt.equippedWeaponId?.left ?? "") +
+      "|" +
+      (rt.equippedWeaponId?.right ?? "");
+    if (sig === rt.weaponsSig) return;
+    const client = this.clientOf(id);
+    if (!client) return;
+    rt.weaponsSig = sig;
+    client.send(MSG.weaponsList, {
+      list: rt.weapons.map((w) => ({
+        id: w.id,
+        cls: w.cls,
+        tier: w.tier,
+        affixes: w.affixes.map(affixLabel),
+        quality: weaponQuality(w),
+      })),
+      equipped: {
+        left: rt.equippedWeaponId?.left ?? null,
+        right: rt.equippedWeaponId?.right ?? null,
+      },
+    } satisfies WeaponsListMsg);
+  }
+
   /** Реген, отсчёт до возрождения. */
   private tickPlayers(dt: number): void {
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       if (!rt) return;
       p.camPrio = this.camPrioOf(id, p);
+      this.syncWarehouse(id, rt);
       if (p.dead) {
         rt.respawnIn -= dt;
         if (rt.respawnIn <= 0) this.respawn(id, p, rt);

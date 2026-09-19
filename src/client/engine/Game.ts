@@ -36,7 +36,8 @@ import { SpellLights } from "../world/SpellLights";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
-import { WristPanel } from "../ui/WristPanel";
+import { WristMenu } from "../ui/WristMenu";
+import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
@@ -76,6 +77,7 @@ import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BOSS, BOT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
+import { VR_SETTINGS, onVrSettingsChanged } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -137,7 +139,7 @@ export class Game {
   private eventBeacon: EventBeacon | null = null;
   private specRaysShown = true;
   private readonly _botFwd: Vector3[] = [];
-  private wristPanel: WristPanel | null = null;
+  private wristPanel: WristMenu | null = null;
   private perfHud: VrPerfHud | null = null;
   private perfInstr: SceneInstrumentation | null = null;
   private engInstr: EngineInstrumentation | null = null;
@@ -280,6 +282,7 @@ export class Game {
     this.hud.bindProgression(this.progression);
     this.hud.bindPointerLock(() => this.requestPointerLock());
     this.hud.bindInventory(this.inventory);
+    this.hud.bindWarehouse(() => this.net?.warehouse?.list ?? []);
     // Инвентарь показывает и снаряжение: что в руках и что за спиной.
     this.hud.bindEquipped(() => {
       const h = this.combat.handsSnapshot();
@@ -388,6 +391,13 @@ export class Game {
       /* приватный режим */
     }
     applyVol(vol0);
+    // Личные громкости музыки/эффектов (VR-меню, вкладка «Настройки») — сверху общей.
+    const applyLevels = (): void => {
+      this.sfx.setEffectsLevel(VR_SETTINGS.sfx);
+      this.sfx.setMusicLevel(VR_SETTINGS.music);
+    };
+    applyLevels();
+    onVrSettingsChanged(applyLevels);
     this.hud.bindVolume(
       () => this.sfx.masterVolume,
       (v) => {
@@ -1169,26 +1179,24 @@ export class Game {
     }
 
     // Панели цепляются к кистям (или к контроллеру, если кисть ещё не создана).
-    this.wristPanel = new WristPanel(
+    this.wristPanel = new WristMenu(
       this.scene,
       this.handNode("left", cam),
       this.progression,
       this.inventory,
     );
-    this.wristPanel.onExit = () => void this.leaveWorld();
+    // Выход из игры: спрашиваем «оставить бота?» — ответ уходит на сервер перед выходом.
+    this.wristPanel.onExit = (keepBot) => {
+      this.leaveBotOn = keepBot;
+      if (this.net?.online) this.net.sendSetLeaveBot(keepBot);
+      void this.leaveWorld();
+    };
     this.wristPanel.onTogglePvp = () => {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
-    };
-    this.wristPanel.onToggleLeaveBot = () => {
-      if (!this.net?.online) return;
-      this.leaveBotOn = !this.leaveBotOn;
-      this.net.sendSetLeaveBot(this.leaveBotOn);
     };
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
-    // Комфорт VR (виньетка, режим перемещения) — общий для мира: на сервер.
-    this.loadoutPanel.onComfort = (patch) => this.net?.sendComfort(patch);
     this.loadoutPanel.onClearWorld = () => this.net?.sendClearWorld();
     // «Сохранить» онлайн: положения/свет — ВСЕМ (общая подгонка на сервере),
     // голос/сглаживание — по токену этого игрока/устройства.
@@ -1279,7 +1287,24 @@ export class Game {
         h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
     }
-    this.wristPanel?.update(inp.uiNext, inp.uiConfirm, dt);
+    if (this.wristPanel) {
+      // Меню открыто — левый стик выбирает пункты, а не двигает героя.
+      if (this.xrInput) this.xrInput.menuOpen = this.wristPanel.visible;
+      this.wristPanel.setStowed(
+        this.combat.stowedSnapshot().map((s) => ({ ...s }) as WornWeapon & { side: "left" | "right" }),
+      );
+      const wh = this.net?.warehouse;
+      if (wh) this.wristPanel.setWarehouse(wh.list, wh.equipped);
+      this.wristPanel.update({
+        navX: inp.menuNavX,
+        navY: inp.menuNavY,
+        confirm: inp.uiConfirm,
+        tabNext: inp.uiNext,
+        ray: this.wristPanel.visible ? this.menuPointerRay() : null,
+        trigger: inp.rightTrigger,
+        dt,
+      });
+    }
     this.perfHud?.update(dt, () => this.vrDiag());
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
@@ -1312,6 +1337,24 @@ export class Game {
     }
   }
 
+  private readonly _menuRay = new Ray(Vector3.Zero(), Vector3.Forward(), 2);
+
+  /**
+   * Лазер меню: появляется, когда правую руку поднесли к меню на левой руке
+   * (ближе ~0.5 м к панели). Луч — указка правого контроллера.
+   */
+  private menuPointerRay(): { origin: Vector3; dir: Vector3 } | null {
+    const panel = this.wristPanel;
+    const right = this.xr?.input.controllers.find((c) => c.inputSource.handedness === "right");
+    if (!panel || !right) return null;
+    const node = right.grip ?? right.pointer;
+    const hand = node?.getAbsolutePosition();
+    if (!hand) return null;
+    if (Vector3.Distance(hand, panel.mesh.getAbsolutePosition()) > 0.5) return null;
+    right.getWorldPointerRayToRef(this._menuRay);
+    return { origin: this._menuRay.origin, dir: this._menuRay.direction };
+  }
+
   private lowHpT = 0;
   private tuneClock = 0;
   private tuneTaps: number[] = [];
@@ -1334,12 +1377,10 @@ export class Game {
    */
   private updateComfortVignette(dt: number): void {
     if (!this.comfortVignette) return; // существует только в VR
-    const st = this.net?.room?.state;
-    const allowed = (st?.comfortVignette ?? 1) !== 0;
-    const teleport = (st?.teleportMove ?? 0) !== 0;
-    // Держим LOADOUT в курсе актуальных значений — панель их показывает.
-    LOADOUT.comfort.vignette = allowed ? 1 : 0;
-    LOADOUT.comfort.teleport = teleport ? 1 : 0;
+    // Личные настройки игрока (меню «Настройки»): виньетка по умолчанию вкл,
+    // телепорт по умолчанию выкл. Общего (серверного) значения больше нет.
+    const allowed = VR_SETTINGS.vignette;
+    const teleport = VR_SETTINGS.teleport;
     this.player.setTeleportMode(teleport);
 
     const inp = this.player.lastInput;

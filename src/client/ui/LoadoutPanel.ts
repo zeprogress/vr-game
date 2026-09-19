@@ -58,8 +58,6 @@ const TARGETS: Target[] = [
   { key: "light:day", label: "Освещение", kind: "light" },
   { key: "voice:chat", label: "Голос", kind: "voice" },
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
-  { key: "comfort:vignette", label: "Виньетка движения (всем)", kind: "comfort" },
-  { key: "comfort:move", label: "Перемещение · телепорт (всем)", kind: "comfort" },
   { key: "world:clear", label: "Очистить мир от лута (всем)", kind: "action" },
 ];
 
