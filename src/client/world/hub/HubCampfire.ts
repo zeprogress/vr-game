@@ -61,16 +61,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     return m;
   };
 
-  const cone = MeshBuilder.CreateCylinder(
-    "hubFireCone",
-    { diameterTop: 0.02, diameterBottom: 0.64, height: 1.55, tessellation: 14, cap: Mesh.NO_CAP },
-    scene,
-  );
-  cone.position.set(0, 0.86, 0);
-  cone.material = makeFireMat(true);
-  cone.parent = root;
-  cone.isPickable = false;
-  cone.renderingGroupId = 1;
+  // Конус-обёртка с «языками» по периметру убран: давал треугольные зубцы вокруг огня.
 
   for (let i = 0; i < 3; i++) {
     const pl = MeshBuilder.CreatePlane("hubFirePlane", { width: 1.0 - i * 0.12, height: 1.8 - i * 0.22 }, scene);
@@ -79,7 +70,6 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     pl.material = makeFireMat(false);
     pl.parent = root;
     pl.isPickable = false;
-    pl.renderingGroupId = 1;
   }
 
   // --- угли: несколько эмиссивных камешков, пульсируют ---
@@ -126,11 +116,10 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     gm.disableDepthWrite = true;
     const pl = MeshBuilder.CreatePlane(`hubGlow${size}`, { size }, scene);
     pl.material = gm;
-    pl.position.set(0, 0.55, 0);
+    pl.position.set(0, 0.9, 0);
     pl.billboardMode = Mesh.BILLBOARDMODE_ALL;
     pl.parent = root;
     pl.isPickable = false;
-    pl.renderingGroupId = 1;
     return pl;
   };
   const glowIn = mkGlow(3.2, 0.5, "#ff8630");
@@ -183,7 +172,6 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
   sparkMat.backFaceCulling = false;
   sparkMesh.isPickable = false;
   sparkMesh.alwaysSelectAsActiveMesh = true;
-  sparkMesh.renderingGroupId = 1;
   const invRoot = new Matrix();
   const camR = new Vector3();
   const camU = new Vector3();
