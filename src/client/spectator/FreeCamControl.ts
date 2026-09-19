@@ -3,9 +3,13 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 /**
  * Свободная камера для отдельного окна (`/?spectator=КЛЮЧ&freecam=1`): летаем
  * по миру руками, а поза уходит на сервер и оттуда — рендерящим спектаторам
- * (они на время показывают вид этого окна). Управление:
- *   ЛКМ/ПКМ + движение мыши — обзор · W/A/S/D — полёт по взгляду · Space/E — вверх ·
- *   Q/C — вниз · Shift — быстрее · колесо — скорость · слайдер — угол обзора.
+ * (они на время показывают вид этого окна).
+ *
+ * Компьютер: зажать кнопку мыши и двигать — обзор; W/A/S/D — полёт по взгляду;
+ * Space/E вверх, Q/C вниз; Shift быстрее; колесо — скорость.
+ * Телефон: один палец — обзор; два пальца: щипок — вперёд/назад по взгляду,
+ * сдвиг обоими — вбок и вверх/вниз.
+ * На экране только слайдер угла обзора (снизу слева) и кнопка «Закрыть» (справа сверху).
  */
 export class FreeCamControl {
   readonly pos = new Vector3();
@@ -19,15 +23,15 @@ export class FreeCamControl {
   onClose: (() => void) | null = null;
 
   private readonly keys = new Set<string>();
-  private dragging = false;
+  private readonly pointers = new Map<number, { x: number; y: number }>();
   private readonly panel: HTMLDivElement;
-  private readonly speedLabel: HTMLSpanElement;
-  private readonly fovLabel: HTMLSpanElement;
+  private readonly closeBtn: HTMLButtonElement;
   private readonly fovInput: HTMLInputElement;
   private readonly cleanups: (() => void)[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     canvas.style.cursor = "grab";
+    canvas.style.touchAction = "none";
     const on = <T extends EventTarget>(t: T, ev: string, fn: (e: never) => void, opt?: AddEventListenerOptions): void => {
       t.addEventListener(ev, fn as EventListener, opt);
       this.cleanups.push(() => t.removeEventListener(ev, fn as EventListener));
@@ -36,19 +40,47 @@ export class FreeCamControl {
     on(canvas, "contextmenu", (e: Event) => e.preventDefault());
     on(canvas, "pointerdown", (e: PointerEvent) => {
       if (this.closed) return;
-      this.dragging = true;
+      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = "grabbing";
     });
-    on(canvas, "pointerup", (e: PointerEvent) => {
-      this.dragging = false;
-      canvas.style.cursor = "grab";
+    const release = (e: PointerEvent): void => {
+      this.pointers.delete(e.pointerId);
+      if (this.pointers.size === 0) canvas.style.cursor = "grab";
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-    });
+    };
+    on(canvas, "pointerup", release);
+    on(canvas, "pointercancel", release);
     on(canvas, "pointermove", (e: PointerEvent) => {
-      if (!this.dragging || this.closed) return;
-      this.yaw += e.movementX * 0.0035;
-      this.pitch = Math.max(-1.553, Math.min(1.553, this.pitch - e.movementY * 0.0035));
+      const prev = this.pointers.get(e.pointerId);
+      if (!prev || this.closed) return;
+      if (this.pointers.size === 1) {
+        // Один палец / мышь: поворот взгляда.
+        const sens = e.pointerType === "touch" ? 0.005 : 0.0035;
+        this.yaw += (e.clientX - prev.x) * sens;
+        this.pitch = Math.max(-1.553, Math.min(1.553, this.pitch - (e.clientY - prev.y) * sens));
+        prev.x = e.clientX;
+        prev.y = e.clientY;
+        return;
+      }
+      // Два пальца: считаем щипок и сдвиг центра относительно прошлого кадра.
+      const other = [...this.pointers.entries()].find(([id]) => id !== e.pointerId)?.[1];
+      if (!other) return;
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const c0x = (prev.x + other.x) / 2;
+      const c0y = (prev.y + other.y) / 2;
+      prev.x = e.clientX;
+      prev.y = e.clientY;
+      const d1 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const c1x = (prev.x + other.x) / 2;
+      const c1y = (prev.y + other.y) / 2;
+      const cp = Math.cos(this.pitch);
+      const fwd = (d1 - d0) * this.speed * 0.01; // щипок наружу — вперёд
+      const strafe = -(c1x - c0x) * this.speed * 0.004; // «схватили» мир и потянули
+      const lift = (c1y - c0y) * this.speed * 0.004;
+      this.pos.x += Math.sin(this.yaw) * cp * fwd + Math.cos(this.yaw) * strafe;
+      this.pos.y = Math.max(1.5, this.pos.y + Math.sin(this.pitch) * fwd + lift);
+      this.pos.z += Math.cos(this.yaw) * cp * fwd - Math.sin(this.yaw) * strafe;
     });
     on(
       canvas,
@@ -56,7 +88,6 @@ export class FreeCamControl {
       (e: WheelEvent) => {
         e.preventDefault();
         this.speed = Math.max(2, Math.min(400, this.speed * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
-        this.refreshLabels();
       },
       { passive: false },
     );
@@ -67,30 +98,32 @@ export class FreeCamControl {
     on(window, "keyup", (e: KeyboardEvent) => this.keys.delete(e.code));
     on(window, "blur", () => this.keys.clear());
 
+    // Только слайдер угла обзора (снизу слева) и маленькая кнопка «Закрыть» (справа сверху).
     this.panel = document.createElement("div");
     this.panel.style.cssText =
-      "position:fixed;left:12px;top:12px;z-index:20;padding:10px 12px;border-radius:8px;" +
-      "background:rgba(12,13,18,.78);color:#fff;font:13px/1.45 system-ui,sans-serif;" +
-      "min-width:240px;user-select:none;";
-    this.panel.innerHTML =
-      "<b>Свободная камера</b><div style='opacity:.7;font-size:11.5px;margin:2px 0 8px'>" +
-      "мышь — обзор · WASD — полёт · Space/Q — вверх/вниз<br>Shift — быстрее · колесо — скорость</div>" +
-      "<div>Угол обзора: <span data-fov></span></div>" +
-      "<input data-fovin type='range' min='0.3' max='2.2' step='0.01' style='width:100%'>" +
-      "<div style='margin:6px 0'>Скорость: <span data-spd></span></div>" +
-      "<button style='width:100%;padding:6px;border:0;border-radius:6px;background:#e8433f;color:#fff;" +
-      "font-weight:700;cursor:pointer'>Закрыть камеру</button>";
-    this.fovLabel = this.panel.querySelector("[data-fov]") as HTMLSpanElement;
-    this.speedLabel = this.panel.querySelector("[data-spd]") as HTMLSpanElement;
-    this.fovInput = this.panel.querySelector("[data-fovin]") as HTMLInputElement;
+      "position:fixed;left:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:20;" +
+      "width:min(46vw,260px);padding:10px 12px;border-radius:10px;background:rgba(12,13,18,.55);";
+    this.fovInput = document.createElement("input");
+    this.fovInput.type = "range";
+    this.fovInput.min = "0.3";
+    this.fovInput.max = "2.2";
+    this.fovInput.step = "0.01";
     this.fovInput.value = String(this.fov);
+    this.fovInput.style.cssText = "width:100%;margin:0;display:block;touch-action:pan-x;";
     this.fovInput.addEventListener("input", () => {
       this.fov = Number(this.fovInput.value);
-      this.refreshLabels();
     });
-    this.panel.querySelector("button")!.addEventListener("click", () => this.close());
+    this.panel.appendChild(this.fovInput);
     document.body.appendChild(this.panel);
-    this.refreshLabels();
+
+    this.closeBtn = document.createElement("button");
+    this.closeBtn.textContent = "Закрыть";
+    this.closeBtn.style.cssText =
+      "position:fixed;right:12px;top:max(12px,env(safe-area-inset-top));z-index:20;padding:5px 10px;" +
+      "border:0;border-radius:6px;background:rgba(232,67,63,.85);color:#fff;font:600 12px system-ui,sans-serif;" +
+      "cursor:pointer;";
+    this.closeBtn.addEventListener("click", () => this.close());
+    document.body.appendChild(this.closeBtn);
   }
 
   /** Встать в позу (x,y,z) и смотреть на (tx,ty,tz) — стартовое положение. */
@@ -106,7 +139,6 @@ export class FreeCamControl {
       this.fov = fov;
       this.fovInput.value = String(fov);
     }
-    this.refreshLabels();
   }
 
   /** Куда смотрим — точка впереди по взгляду. */
@@ -146,22 +178,17 @@ export class FreeCamControl {
     }
   }
 
-  private refreshLabels(): void {
-    this.fovLabel.textContent = `${Math.round((this.fov * 180) / Math.PI)}°`;
-    this.speedLabel.textContent = `${Math.round(this.speed)} м/с`;
-  }
-
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.panel.innerHTML =
-      "<b>Свободная камера закрыта</b><div style='opacity:.75;margin-top:4px'>Спектатор вернулся в авто-режим. " +
-      "Это окно можно закрыть.</div>";
+    this.panel.remove();
+    this.closeBtn.remove();
     this.onClose?.();
   }
 
   dispose(): void {
     for (const c of this.cleanups) c();
     this.panel.remove();
+    this.closeBtn.remove();
   }
 }
