@@ -632,12 +632,18 @@ export class Mob implements Hittable {
 
   /** Дальше этого от камеры скелетную анимацию моба не крутим. */
   private static readonly ANIM_RANGE = 85;
+  /** В VR мобов дальше этого (м) не рисуем и не считаем. */
+  private static readonly VR_CULL_RANGE = 48;
+  /** В VR скелетную анимацию считаем только ближе этого (м). */
+  private static readonly VR_ANIM_RANGE = 28;
 
   /** Моб в кадре и не слишком далеко — тогда анимацию стоит считать. */
   private animVisible(pos: Vector3, cam: Vector3): boolean {
     const dx = pos.x - cam.x;
     const dz = pos.z - cam.z;
-    if (dx * dx + dz * dz > Mob.ANIM_RANGE * Mob.ANIM_RANGE) return false;
+    const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
+    const range = vr ? Mob.VR_ANIM_RANGE : Mob.ANIM_RANGE;
+    if (dx * dx + dz * dz > range * range) return false;
     return this.inFrustum(pos, 2 + 2.5 * this.scale);
   }
 
@@ -647,10 +653,28 @@ export class Mob implements Hittable {
    * отсекаем, чтобы не терять мобов с краю одного из глаз.
    */
   private inFrustum(pos: Vector3, r: number): boolean {
+    const cam = this.scene.activeCamera as
+      | { rigCameras?: unknown[]; globalPosition: Vector3; getWorldMatrix(): { m: ArrayLike<number> } }
+      | null;
+    if (cam?.rigCameras?.length) {
+      // VR (стерео-риг): плана кадра на оба глаза нет, зато Quest тянет мобов из
+      // последних сил — прячем дальних (гистерезис ±4 м) и тех, что явно за
+      // спиной (угол больше ~110° от взгляда), остальное рисуем как есть.
+      const cp = cam.globalPosition;
+      const dx = pos.x - cp.x;
+      const dz = pos.z - cp.z;
+      const d2 = dx * dx + dz * dz;
+      const lim = this.viewHidden ? Mob.VR_CULL_RANGE + 4 : Mob.VR_CULL_RANGE;
+      if (d2 > lim * lim) return false;
+      if (d2 > 36) {
+        const m = cam.getWorldMatrix().m;
+        const fl = Math.hypot(m[8], m[10]) || 1;
+        if ((dx * m[8] + dz * m[10]) / (Math.sqrt(d2) * fl) < -0.35) return false;
+      }
+      return true;
+    }
     const planes = this.scene.frustumPlanes;
     if (!planes) return true;
-    const cam = this.scene.activeCamera as { rigCameras?: unknown[] } | null;
-    if (cam?.rigCameras?.length) return true;
     const y = pos.y + MOB.bodyRadius * this.scale;
     for (const p of planes) {
       if (p.normal.x * pos.x + p.normal.y * y + p.normal.z * pos.z + p.d < -r) return false;
