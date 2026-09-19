@@ -75,6 +75,7 @@ import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BOSS, BOT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
+import { MANA_ENABLED } from "#shared/magic";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -478,7 +479,7 @@ export class Game {
       if (!this.player.inVR) {
         this.hud.setMana(
           this.manaMax > 0 ? this.combat.mana / this.manaMax : 0,
-          this.combat.holdsStaff,
+          MANA_ENABLED && this.combat.holdsStaff,
         );
       }
       this.hands.update(dt);
@@ -1470,7 +1471,7 @@ export class Game {
     this.playerBar3D?.setOpacity(opacity);
     // Мана: показываем только с посохом в руках; ярче, пока копится заряд.
     if (this.manaBar3D) {
-      const show = this.combat.holdsStaff;
+      const show = MANA_ENABLED && this.combat.holdsStaff;
       const bright = this.combat.chargingMagic || this.combat.mana < this.manaMax - 0.5;
       this.manaBar3D.setOpacity(show ? (bright ? 1 : opacity) : 0);
       this.manaBar3D.set(this.manaMax > 0 ? this.combat.mana / this.manaMax : 0);
@@ -1653,7 +1654,10 @@ export class Game {
     this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
     this.combat.onCast = (msg) => net.sendCast(msg);
-    this.combat.onLowMana = () => this.hud.toast("Не хватает маны");
+    this.combat.onLowMana = () => {
+      if (MANA_ENABLED) this.hud.toast("Не хватает маны");
+    };
+    this.combat.onMassHealStart = (x, y, z) => this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
     this.combat.nearestAlly = (pos) => {
       let best: { id: string; pos: Vector3 } | null = null;
       let bd = 1.2;
@@ -2072,6 +2076,7 @@ export class Game {
     this.combat.onSoundEvent = null;
     this.combat.onCast = null;
     this.combat.onLowMana = null;
+    this.combat.onMassHealStart = null;
     this.combat.nearestAlly = null;
     this.player.netControlled = false;
     this.player.dead = false;

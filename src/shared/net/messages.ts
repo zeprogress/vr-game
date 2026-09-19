@@ -453,7 +453,7 @@ export interface HitMobMsg {
 
 export interface CastMsg {
   /** Заклинание. По умолчанию — огнешар. */
-  spell?: "bolt" | "heal";
+  spell?: "bolt" | "heal" | "massHealStart" | "massHeal" | "massHealCancel";
   /** Лечение: sessionId союзника-цели. Пусто/свой id — лечим себя. */
   targetId?: string;
   /** Заряд 0..1 (дольше держал — больше). */

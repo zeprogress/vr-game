@@ -751,7 +751,7 @@ function statHint(p: Progression, s: StatName): string {
     return `HP ${Math.round(p.maxHp)} · ближний бой ×${p.swordDamage.toFixed(2)} · броня ${pct(p.armor)}`;
   if (s === "agi")
     return `темп атаки ×${p.attackSpeed.toFixed(2)} · урон любым оружием · бег ${p.moveSpeed.toFixed(2)} м/с`;
-  return `мана ${Math.round(p.maxMana)} · магия ×${p.fireboltMax.toFixed(1)} · магзащита ${pct(p.magicResist)} · зелья +${pct(p.potionPower - 1)}`;
+  return `магия ×${p.fireboltMax.toFixed(1)} · магзащита ${pct(p.magicResist)} · зелья +${pct(p.potionPower - 1)}`;
 }
 
 const HP_BAR_CSS =

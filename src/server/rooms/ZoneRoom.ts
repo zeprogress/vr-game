@@ -186,6 +186,9 @@ interface Runtime {
   lastPvpAt: number;
   /** Момент последнего каста посохом — для кулдауна. */
   lastCast: number;
+  /** Массовый хил игрока: когда начат каст (сек. комнаты, -1 — не идёт) и когда последний раз сработал. */
+  massHealAt: number;
+  lastMassHeal: number;
   /** Момент последнего активного умения оружия (воин/лучник) — для кулдауна. */
   lastSkillAt: number;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
@@ -891,6 +894,40 @@ export class ZoneRoom extends Room<ZoneState> {
 
       const charge = Math.max(0, Math.min(1, num(msg.charge, 0)));
       const pull = Math.max(0, Math.min(1, num(msg.pull, 0)));
+
+      // --- массовое лечение: посох над головой + курок (как у ботов, то же время каста) ---
+      if (msg.spell === "massHealStart") {
+        if (this.elapsed - rt.lastMassHeal < MAGIC.heal.massCooldown) return;
+        rt.massHealAt = this.elapsed;
+        // Аура вокруг кастера — тем же актом, что у ботов; сам кастер рисует её локально.
+        this.broadcast(
+          MSG.act,
+          {
+            k: "healAura",
+            id: client.sessionId,
+            x: p.head.x,
+            y: p.head.y - PLAYER.eyeHeight,
+            z: p.head.z,
+          } satisfies ActRelay,
+          { except: client },
+        );
+        return;
+      }
+      if (msg.spell === "massHeal") {
+        const started = rt.massHealAt;
+        rt.massHealAt = -1;
+        if (started < 0) return;
+        const dur = this.elapsed - started;
+        // Не додержал каст (или прислали слишком поздно) — ничего не происходит.
+        if (dur < BOT.healCastTime - 0.4 || dur > BOT.healCastTime + 8) return;
+        rt.lastMassHeal = this.elapsed;
+        this.playerMassHealLand(client.sessionId, p, rt);
+        return;
+      }
+      if (msg.spell === "massHealCancel") {
+        rt.massHealAt = -1;
+        return;
+      }
 
       // --- лечение (небоевое) ---
       if (msg.spell === "heal") {
@@ -3139,6 +3176,8 @@ export class ZoneRoom extends Room<ZoneState> {
       invuln: RESPAWN.invuln,
       lastPvpAt: -999,
       lastCast: -999,
+      massHealAt: -1,
+      lastMassHeal: -999,
       lastSkillAt: -999,
       yaw: 0,
       // Раньше начиналось пустым — бот "забывал" всё, что честно поднял
@@ -4257,6 +4296,29 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Каст массового хила игрока дочитан: лечим всех раненых вокруг (и себя) — как у ботов. */
+  private playerMassHealLand(casterId: string, p: PlayerState, rt: Runtime): void {
+    const hand = p.rightCls === "staff" ? "right" : "left";
+    const amount =
+      healAmountFor(p.level, p.int, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, hand, rt);
+    this.state.players.forEach((ally) => {
+      if (ally.dead || ally.maxHp <= 0 || ally.hp >= ally.maxHp) return;
+      if (Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z) > BOT.healRadius) return;
+      const before = ally.hp;
+      ally.hp = Math.min(ally.maxHp, ally.hp + amount);
+      const healed = ally.hp - before;
+      if (healed <= 0) return;
+      this.broadcast(MSG.act, {
+        k: "drink",
+        id: this.idOf(ally) ?? casterId,
+        x: ally.head.x,
+        y: ally.head.y,
+        z: ally.head.z,
+      } satisfies ActRelay);
+      this.sim.bossHeal(casterId, healed);
+    });
+  }
+
   /** Кто рядом с ботом ранен и достаётся массовым хилом. */
   private woundedNear(p: PlayerState): PlayerState[] {
     const out: PlayerState[] = [];
@@ -4962,6 +5024,8 @@ export class ZoneRoom extends Room<ZoneState> {
       invuln: RESPAWN.invuln,
       lastPvpAt: -999,
       lastCast: -999,
+      massHealAt: -1,
+      lastMassHeal: -999,
       lastSkillAt: -999,
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),

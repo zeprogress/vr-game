@@ -14,7 +14,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 
-import { BELT, BOW, COMBAT, HOLSTER, MELEE, SHIELD, THROW } from "#shared/constants";
+import { BELT, BOT, BOW, COMBAT, HOLSTER, MELEE, PLAYER, SHIELD, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import {
   DUAL_WIELD,
@@ -233,7 +233,11 @@ export class CombatSystem {
    * "pull" — тянем второй рукой от кристалла; "solo" — курком руки с посохом;
    * "heal" — кристалл у груди, курок держащей руки (лечение).
    */
-  private castMode: "" | "pull" | "solo" | "heal" = "";
+  private castMode: "" | "pull" | "solo" | "heal" | "mass" = "";
+  /** Массовый хил: сколько секунд уже держим каст (нужно BOT.healCastTime). */
+  private massT = 0;
+  /** Game рисует у себя ауру массового хила (остальным её шлёт сервер). */
+  onMassHealStart: ((x: number, y: number, z: number) => void) | null = null;
   private castBuzzT = 0;
   private chargeOrb: Mesh | null = null;
 
@@ -2343,6 +2347,73 @@ export class CombatSystem {
     const healGesture = crystalToHead < MAGIC.heal.reach || allyClose;
 
     const fb = MAGIC.firebolt;
+
+    // --- массовый хил: посох поднят над головой + курок; держать BOT.healCastTime ---
+    const eye = this.player.eyePosition;
+    const raisedHigh =
+      this.castCrystalW.y > eye.y + 0.25 &&
+      Math.hypot(this.castCrystalW.x - eye.x, this.castCrystalW.z - eye.z) < 0.9;
+    if (!this.castHooked && holdTrig && !this.prevHoldTrigger && raisedHigh) {
+      this.castHooked = true;
+      this.castMode = "mass";
+      this.massT = 0;
+      this.onCast?.({
+        spell: "massHealStart",
+        charge: 0,
+        pull: 0,
+        ox: this.castCrystalW.x,
+        oy: this.castCrystalW.y,
+        oz: this.castCrystalW.z,
+        dx: 0,
+        dy: 1,
+        dz: 0,
+        hand: holdHand,
+      });
+      this.onMassHealStart?.(eye.x, eye.y - PLAYER.eyeHeight, eye.z);
+      this.haptic(holdHand, 0.5, 60);
+      this.sfx.bowDraw();
+    }
+    if (this.castHooked && this.castMode === "mass") {
+      const stillRaised = this.castCrystalW.y > eye.y + 0.05;
+      const sendMass = (spell: "massHeal" | "massHealCancel"): void =>
+        this.onCast?.({
+          spell,
+          charge: 1,
+          pull: 0,
+          ox: this.castCrystalW.x,
+          oy: this.castCrystalW.y,
+          oz: this.castCrystalW.z,
+          dx: 0,
+          dy: 1,
+          dz: 0,
+          hand: holdHand,
+        });
+      if (holdTrig && stillRaised) {
+        this.massT += dt;
+        this.charge = clamp(this.massT / BOT.healCastTime, 0, 1);
+        this.showChargeOrb(staff.mesh);
+        this.castBuzzT += dt;
+        if (this.castBuzzT >= 0.08) {
+          this.castBuzzT = 0;
+          this.haptic(holdHand, 0.1 + 0.35 * this.charge, 22);
+        }
+        if (this.massT >= BOT.healCastTime) {
+          // Досидели весь каст — лечение срабатывает на сервере.
+          sendMass("massHeal");
+          this.haptic(holdHand, 0.9, 160);
+          this.sfx.at(this.castCrystalW.clone(), () => this.sfx.bowRelease(1));
+          this.resetCast();
+        }
+      } else {
+        // Опустил посох или отпустил курок раньше срока — каст отменён, ничего не происходит.
+        sendMass("massHealCancel");
+        this.haptic(holdHand, 0.25, 50);
+        this.resetCast();
+      }
+      this.prevCastTrigger = castTrig;
+      this.prevHoldTrigger = holdTrig;
+      return;
+    }
 
     // --- зацеп ---
     if (!this.castHooked) {
