@@ -136,6 +136,8 @@ export class Spectator {
   private remoteFree: {
     pos: Vector3; tgt: Vector3; fov: number;
     curPos: Vector3; curTgt: Vector3; curFov: number; at: number;
+    /** Первая ступень каскадного фильтра (см. driveFreeCam). */
+    midPos: Vector3; midTgt: Vector3; midFov: number;
     /** Сглаживать движение (включено переключателем в окне свободной камеры). */
     smooth: boolean;
   } | null = null;
@@ -661,14 +663,38 @@ export class Spectator {
     }
     // Сглаживание: чем меньше «скорость» фильтра, тем плавнее (и запаздывает
     // сильнее). Выключено — почти напрямую, только чтобы гасить дрожь сети.
-    const k = 1 - Math.exp(-dt * (rf.smooth ? 4.5 : 30));
-    rf.curPos.x += (rf.pos.x - rf.curPos.x) * k;
-    rf.curPos.y += (rf.pos.y - rf.curPos.y) * k;
-    rf.curPos.z += (rf.pos.z - rf.curPos.z) * k;
-    rf.curTgt.x += (rf.tgt.x - rf.curTgt.x) * k;
-    rf.curTgt.y += (rf.tgt.y - rf.curTgt.y) * k;
-    rf.curTgt.z += (rf.tgt.z - rf.curTgt.z) * k;
-    rf.curFov += (rf.fov - rf.curFov) * k;
+    if (rf.smooth) {
+      // Два фильтра подряд (каскад): резкий рывок управления сначала разгоняет
+      // «промежуточную» точку, и только потом её догоняет камера — скорость
+      // нарастает и гаснет плавно, а не щелчком, как у одного фильтра.
+      const k = 1 - Math.exp(-dt * 3);
+      rf.midPos.x += (rf.pos.x - rf.midPos.x) * k;
+      rf.midPos.y += (rf.pos.y - rf.midPos.y) * k;
+      rf.midPos.z += (rf.pos.z - rf.midPos.z) * k;
+      rf.midTgt.x += (rf.tgt.x - rf.midTgt.x) * k;
+      rf.midTgt.y += (rf.tgt.y - rf.midTgt.y) * k;
+      rf.midTgt.z += (rf.tgt.z - rf.midTgt.z) * k;
+      rf.midFov += (rf.fov - rf.midFov) * k;
+      rf.curPos.x += (rf.midPos.x - rf.curPos.x) * k;
+      rf.curPos.y += (rf.midPos.y - rf.curPos.y) * k;
+      rf.curPos.z += (rf.midPos.z - rf.curPos.z) * k;
+      rf.curTgt.x += (rf.midTgt.x - rf.curTgt.x) * k;
+      rf.curTgt.y += (rf.midTgt.y - rf.curTgt.y) * k;
+      rf.curTgt.z += (rf.midTgt.z - rf.curTgt.z) * k;
+      rf.curFov += (rf.midFov - rf.curFov) * k;
+    } else {
+      const k = 1 - Math.exp(-dt * 30);
+      rf.midPos.copyFrom(rf.curPos); // без сглаживания держим фильтр «в теле»
+      rf.midTgt.copyFrom(rf.curTgt);
+      rf.midFov = rf.curFov;
+      rf.curPos.x += (rf.pos.x - rf.curPos.x) * k;
+      rf.curPos.y += (rf.pos.y - rf.curPos.y) * k;
+      rf.curPos.z += (rf.pos.z - rf.curPos.z) * k;
+      rf.curTgt.x += (rf.tgt.x - rf.curTgt.x) * k;
+      rf.curTgt.y += (rf.tgt.y - rf.curTgt.y) * k;
+      rf.curTgt.z += (rf.tgt.z - rf.curTgt.z) * k;
+      rf.curFov += (rf.fov - rf.curFov) * k;
+    }
     this.cam.setManual(rf.curPos, rf.curTgt, rf.curFov);
   }
 
@@ -728,6 +754,9 @@ export class Spectator {
         curPos: this.cam.cam.position.clone(),
         curTgt: this.cam.target.clone(),
         curFov: this.cam.cam.fov,
+        midPos: this.cam.cam.position.clone(),
+        midTgt: this.cam.target.clone(),
+        midFov: this.cam.cam.fov,
         at: now,
         smooth: cmd.sm !== 0,
       };

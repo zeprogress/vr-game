@@ -332,7 +332,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
   orcGunner: {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
-    hp: 420, dmgMul: 2.4, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.3,
+    hp: 210, dmgMul: 1.7, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.3,
   },
   // Цель события «Охота на элиту»: одиночный именной босс, редкая добыча.
   // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
