@@ -618,9 +618,11 @@ export class SpectatorCamera {
           }
           // И не смотреть круче ~35° вниз — иначе «клевок» в землю на
           // разворотах и когда камера проходит над точкой интереса.
-          const dh = Math.hypot(tgt.x - pos.x, tgt.z - pos.z);
-          const maxDrop = dh * 0.7; // tan(35°) ≈ 0.7
-          if (pos.y - tgt.y > maxDrop) tgt.y = pos.y - maxDrop;
+          if (!path.freePitch) {
+            const dh = Math.hypot(tgt.x - pos.x, tgt.z - pos.z);
+            const maxDrop = dh * 0.7; // tan(35°) ≈ 0.7
+            if (pos.y - tgt.y > maxDrop) tgt.y = pos.y - maxDrop;
+          }
           return;
         }
         break;
