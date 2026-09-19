@@ -459,10 +459,27 @@ export class Mob implements Hittable {
     if (!this.deadHidden && inView === this.viewHidden) {
       this.viewHidden = !inView;
       this.root.setEnabled(inView);
+      this.shadow.setEnabled(inView && !this.dead); // тень — отдельный инстанс, не ребёнок root
     }
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
     if (!this.dead && inView) {
       this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
+    }
+
+    // Невидимый живой моб (вне лимита/за спиной/далеко): ни эффектов, ни анимации,
+    // ни плашки — только держим счётчики событий в актуальном виде, чтобы при
+    // появлении не выстрелили накопившиеся удары/звуки. Это главный выигрыш по
+    // времени кадра (netMobs) на слабом шлеме: живых мобов десятки, видны единицы.
+    if (!inView && !s.dead && !this.dead) {
+      this.lastAtkSeq = s.attackSeq;
+      this.lastHurtSeq = s.hurtSeq;
+      this.lastSlamSeq = s.slamSeq;
+      this.grounded = s.grounded === 1;
+      this.prevY = pos.y;
+      this.atkT = 0;
+      this.flash = 0;
+      this.stopAnim();
+      return;
     }
 
     // атака моба: attackSeq вырос -> процедурный замах телом

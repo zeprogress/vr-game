@@ -75,6 +75,7 @@ export class NetMobs {
   /** VR: id мобов, которых рисуем в этом кадре (ближайшие) и у которых показываем плашку. */
   private readonly vrDrawSet = new Set<string>();
   private readonly vrUiSet = new Set<string>();
+  private rankT = 0;
   private readonly dummies = new Map<string, Dummy>();
   private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh; // плевок плевуна
@@ -374,9 +375,12 @@ export class NetMobs {
     // плашки имён — ещё у меньшего числа. Мобы вне лимита продолжают
     // обновляться логикой, просто невидимы.
     const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
-    this.vrDrawSet.clear();
-    this.vrUiSet.clear();
-    if (vr) {
+    // Ранжирование — 4 раза в секунду (сортировка каждый кадр — лишняя стоимость).
+    this.rankT -= dt;
+    if (vr && this.rankT <= 0) {
+      this.rankT = 0.25;
+      this.vrDrawSet.clear();
+      this.vrUiSet.clear();
       const ranked: { id: string; d: number; boss: boolean }[] = [];
       room.state.mobs.forEach((s, id) => {
         if (s.dead) {
@@ -397,7 +401,7 @@ export class NetMobs {
     room.state.mobs.forEach((s, id) => {
       this.mobs
         .get(id)
-        ?.applyState(s, dt, playerPos, playerAim, vr ? this.vrDrawSet.has(id) : true, vr ? this.vrUiSet.has(id) : true);
+        ?.applyState(s, dt, playerPos, playerAim, vr ? !!s.dead || this.vrDrawSet.has(id) : true, vr ? this.vrUiSet.has(id) : true);
     });
     room.state.dummies.forEach((s, id) => {
       this.dummies.get(id)?.applyState(s, dt);
