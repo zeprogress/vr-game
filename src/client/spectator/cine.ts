@@ -109,8 +109,8 @@ export const CINE_PATHS: CinePath[] = [
     duration: 5,
     freePitch: true,
     keys: [
-      { p: [0, 195, 0], l: [0, 0, 6] },
-      { p: [0, 190, 0], l: [0, 0, 6] },
+      { p: [0, 280, 0], l: [0, 0, 8] },
+      { p: [0, 270, 0], l: [0, 0, 8] },
     ],
   },
 ];
