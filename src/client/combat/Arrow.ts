@@ -6,7 +6,6 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Ray } from "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
@@ -143,17 +142,18 @@ export class Arrow {
 
       // Единственная «твёрдая» геометрия — террейн (47 тыс. вершин без подразбиения):
       // рейкаст по нему на каждую стрелу каждый кадр съедал десятки мс в VR.
-      // Пока стрела заведомо выше земли на обоих концах отрезка — не трогаем.
-      const cur = this.mesh.position;
-      const ground = Math.max(terrainHeight(prev.x, prev.z), terrainHeight(cur.x, cur.z));
-      const hit =
-        Math.min(prev.y, cur.y) > ground + 0.5
-          ? null
-          : ctx.scene.pickWithRay(new Ray(prev, dir, len), ctx.isSolid);
-      if (hit?.hit && hit.pickedPoint) {
-        ctx.onHit("wood", hit.pickedPoint.clone());
-        this.stopAt(hit.pickedPoint.subtract(dir.scale(0.12)));
-        return true;
+      // Землю проверяем аналитически по terrainHeight, по 3 точкам отрезка.
+      for (let k = 1; k <= 3; k++) {
+        const f = k / 3;
+        const px = prev.x + seg.x * f;
+        const py = prev.y + seg.y * f;
+        const pz = prev.z + seg.z * f;
+        if (py <= terrainHeight(px, pz)) {
+          const at = new Vector3(px, py, pz);
+          ctx.onHit("wood", at.clone());
+          this.stopAt(at.subtract(dir.scale(0.12)));
+          return true;
+        }
       }
     }
 
