@@ -16,6 +16,8 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
  * `?vrcull=<м>` — порог для деревьев (камни — на 10 м ближе); 0 — выключить.
  */
 export class VrCull {
+  /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
+  private small: { m: AbstractMesh; r: number }[] = [];
   private trees: AbstractMesh[] = [];
   private rocks: AbstractMesh[] = [];
   private readonly hidden = new Set<AbstractMesh>();
@@ -35,9 +37,13 @@ export class VrCull {
   private scan(): void {
     const trees: AbstractMesh[] = [];
     const rocks: AbstractMesh[] = [];
+    const small: { m: AbstractMesh; r: number }[] = [];
     for (const m of this.scene.meshes) {
-      if (m.name.startsWith("CommonTree")) trees.push(m);
-      else if (m.name.startsWith("Rock_Medium")) {
+      const n = m.name;
+      if (n.startsWith("firefly")) small.push({ m, r: 30 });
+      else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
+      else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) trees.push(m);
+      else if (n.startsWith("Rock_Medium")) {
         rocks.push(m);
         m.alwaysSelectAsActiveMesh = false; // пусть работает отсечение по кадру
       } else if (m.getTotalVertices() === 0 && !m.isAnInstance && m.isVisible && m.getChildren().length > 0) {
@@ -48,6 +54,7 @@ export class VrCull {
     }
     this.trees = trees;
     this.rocks = rocks;
+    this.small = small;
   }
 
   update(dt: number, cam: Vector3): void {
@@ -62,6 +69,13 @@ export class VrCull {
     this.cullT = 0.4;
     this.apply(this.trees, cam, this.treeR);
     this.apply(this.rocks, cam, this.rockR);
+    for (const s of this.small) {
+      if (s.m.isDisposed()) continue;
+      const p = s.m.getAbsolutePosition();
+      const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
+      // isVisible, а не setEnabled: enabled у светлячков ведёт их собственный день/ночь.
+      s.m.isVisible = d2 <= s.r * s.r;
+    }
   }
 
   private apply(list: AbstractMesh[], cam: Vector3, r: number): void {
@@ -87,6 +101,7 @@ export class VrCull {
     for (const m of this.hidden) if (!m.isDisposed()) m.setEnabled(true);
     this.hidden.clear();
     for (const m of this.roots) if (!m.isDisposed()) m.isVisible = true;
+    for (const s of this.small) if (!s.m.isDisposed()) s.m.isVisible = true;
     this.roots.clear();
   }
 }
