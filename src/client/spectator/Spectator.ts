@@ -1356,6 +1356,12 @@ export class Spectator {
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, CROSS_ORANGE);
         break;
+      case "healHit": {
+        const av = this.avatars.get(id);
+        const p = av ? av.position : { x, y, z };
+        this.crossFx.burst(p.x, p.y - 0.3, p.z, 6, CROSS_GREEN);
+        break;
+      }
       case "healAura":
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());

@@ -4358,7 +4358,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const healed = ally.hp - before;
       if (healed <= 0) return;
       this.broadcast(MSG.act, {
-        k: "drink",
+        k: "healHit",
         id: this.idOf(ally) ?? casterId,
         x: ally.head.x,
         y: ally.head.y,
@@ -4395,7 +4395,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (healed <= 0) continue;
       // Зелёные крестики над телом — тем же актом, что и глоток зелья.
       const relay: ActRelay = {
-        k: "drink",
+        k: "healHit",
         id: this.idOf(ally) ?? bot.id,
         x: ally.head.x,
         y: ally.head.y,

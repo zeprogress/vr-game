@@ -123,6 +123,7 @@ export class WristMenu {
   private dialog = false;
   private popup: Popup | null = null;
   private whPage = 0;
+  private locs = new Map<string, string>();
   private dirty = true;
   private lastDraw = 0;
   private prevTrigger = false;
@@ -1059,6 +1060,7 @@ export class WristMenu {
       ctx.fillText("оружие падает с боёв", x + 4, top + 34);
       return;
     }
+    this.locs = this.locations();
     const slice = this.warehouse.slice(this.whPage * WH_PER_PAGE, (this.whPage + 1) * WH_PER_PAGE);
     slice.forEach((wp, i) => {
       const cx = x + (i % WH_COLS) * (cw + 8);
@@ -1067,9 +1069,37 @@ export class WristMenu {
     });
   }
 
+  /**
+   * Где сейчас лежит каждое оружие склада — по ФАКТИЧЕСКОМУ снаряжению (что в
+   * руках и за спиной), а не по «закреплённому» id с сервера (тот мог устареть).
+   * У каждого предмета склада — не больше одного места; нет места — подписи нет.
+   */
+  private locations(): Map<string, string> {
+    const out = new Map<string, string>();
+    const used = new Set<string>();
+    const claim = (w: WornWeapon | null, label: string, preferId: string | null): void => {
+      if (!w || w.tier === "base") return;
+      const cands = this.warehouse.filter((x) => x.cls === w.cls && x.tier === w.tier && !used.has(x.id));
+      if (cands.length === 0) return;
+      let pick = preferId ? cands.find((x) => x.id === preferId) : undefined;
+      if (!pick) pick = cands.reduce((a, b) => (b.quality > a.quality ? b : a));
+      used.add(pick.id);
+      out.set(pick.id, label);
+    };
+    const bow =
+      this.leftHand?.cls === "bow" ? this.leftHand : this.rightHand?.cls === "bow" ? this.rightHand : null;
+    if (bow) claim(bow, "в руках", this.equippedIds.left ?? this.equippedIds.right);
+    else {
+      claim(this.leftHand, "в левой руке", this.equippedIds.left);
+      claim(this.rightHand, "в правой руке", this.equippedIds.right);
+    }
+    for (const s of this.stowed) claim(s, s.side === "left" ? "за левым плечом" : "за правым плечом", null);
+    return out;
+  }
+
   private warehouseCell(ctx: CanvasRenderingContext2D, wp: WarehouseWeapon, x: number, y: number, w: number, h: number): void {
     const d = weaponDef(wp.cls, wp.tier);
-    const eq = this.equippedIds.left === wp.id ? "в левой" : this.equippedIds.right === wp.id ? "в правой" : "";
+    const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
       info: [`${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],

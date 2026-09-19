@@ -1254,7 +1254,7 @@ export class CombatSystem {
       this.noAutoPickup = null;
     }
     const ws = this.nearestWorldWeapon(p);
-    if (!ws || Vector3.Distance(p, ws.pos) > WEAPON_TAKE_REACH * 0.85) return;
+    if (!ws || Vector3.Distance(p, ws.pos) > WEAPON_TAKE_REACH * 0.85 || this.recentlyTaken(ws.id)) return;
     this.autoPickupCd = 0.7;
     // Свободная рука (правая раньше) — пробуем взять в руку.
     for (const side of ["right", "left"] as Side[]) {
@@ -1262,7 +1262,7 @@ export class CombatSystem {
       if (this.tryPickupWorldWeapon(side)) return;
     }
     // Руки заняты / не подошло — на склад.
-    this.onTakeWorldWeapon?.(ws.id);
+    this.takeWorldWeapon(ws.id);
     this.haptic("right", 0.3, 50);
   }
 
@@ -1407,11 +1407,29 @@ export class CombatSystem {
     return null;
   }
 
+  /** Уже отправленные серверу заявки «беру»: пока сервер не убрал предмет с земли, второй раз не берём (иначе двойник в другой руке). */
+  private readonly takenDrops = new Map<string, number>();
+
+  private takeWorldWeapon(id: string): void {
+    this.takenDrops.set(id, performance.now());
+    this.onTakeWorldWeapon?.(id);
+  }
+
+  private recentlyTaken(id: string): boolean {
+    const t = this.takenDrops.get(id);
+    if (t === undefined) return false;
+    if (performance.now() - t > 5000) {
+      this.takenDrops.delete(id);
+      return false;
+    }
+    return true;
+  }
+
   private tryPickupWorldWeapon(side: Side): boolean {
     const p = this.player.position;
     if (this.inHand(side)) return false;
     const ws = this.nearestWorldWeapon?.(p);
-    if (!ws || Vector3.Distance(p, ws.pos) >= WEAPON_TAKE_REACH) return false;
+    if (!ws || Vector3.Distance(p, ws.pos) >= WEAPON_TAKE_REACH || this.recentlyTaken(ws.id)) return false;
     // Лук в игре один: тетива и стрела привязаны к его мешу, поэтому
     // золотой не создаёт второй лук, а поднимает уровень этого.
     if (ws.cls === "bow") {
@@ -1420,7 +1438,7 @@ export class CombatSystem {
         bow.tier = ws.tier;
         tintBow(bow.mesh, ws.tier);
         tintArrows(ws.tier); // золотому луку — золотые стрелы
-        this.onTakeWorldWeapon?.(ws.id);
+        this.takeWorldWeapon(ws.id);
         this.equip(bow, side);
         return true;
       }
@@ -1431,7 +1449,7 @@ export class CombatSystem {
     const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
     if (this.canPick(item)) {
       this.items.push(item);
-      this.onTakeWorldWeapon?.(ws.id);
+      this.takeWorldWeapon(ws.id);
       this.equip(item, side);
       return true;
     }

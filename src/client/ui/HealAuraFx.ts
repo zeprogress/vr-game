@@ -100,7 +100,9 @@ export class HealAuraFx {
       a.dome.scaling.set(r, r * 0.55, r);
       // Ярче к концу каста — момент выброса лечения читается.
       const k = 0.35 + 0.65 * t;
-      (a.disc.material as StandardMaterial).alpha = 0.5 * k;
+      // Нижний круг прозрачнее (было 0.5×k) — один и тот же эффект и у кастера,
+      // и у остальных, и у зрителя (везде рисует этот класс с теми же числами).
+      (a.disc.material as StandardMaterial).alpha = 0.22 * k;
       // Купол прозрачнее (было 0.22×k) — по просьбе, полусферу слишком плотно
       // закрывало обзор союзникам внутри неё.
       (a.dome.material as StandardMaterial).alpha = 0.11 * k;

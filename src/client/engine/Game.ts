@@ -1924,6 +1924,13 @@ export class Game {
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, W_ORANGE);
         break;
+      case "healHit": {
+        // Массовое лечение дошло до героя: зелёные крестики на нём самом.
+        const av = this.avatars.get(id);
+        const p = av ? av.position : { x, y, z };
+        this.crossFx.burst(p.x, p.y - 0.3, p.z, 6, W_GREEN);
+        break;
+      }
       case "healAura":
         // Бот-лекарь начал каст: круг по земле + купол на всё время каста.
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
