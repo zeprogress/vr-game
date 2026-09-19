@@ -1,3 +1,4 @@
+import { vrLights } from "./vrLights";
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -36,7 +37,7 @@ export class SpellLights {
   setDaylight(dt: number, daylight: number): void {
     const want = Math.max(0, Math.min(1, 1 - daylight * 1.6));
     this.night += (want - this.night) * Math.min(1, dt * 0.8);
-    const on = this.night > 0.02;
+    const on = this.night > 0.02 && !vrLights.off;
     if (on !== this.enabled) {
       this.enabled = on;
       this.crystal.setEnabled(on);

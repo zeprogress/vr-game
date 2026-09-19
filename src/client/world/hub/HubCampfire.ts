@@ -1,3 +1,4 @@
+import { vrLights } from "../vrLights";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -201,7 +202,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     // Свет костра: включаем/выключаем ОДИН раз на границе суток (пересбор
     // шейдеров дорогой — как у BotLights), между границами меняем только силу.
     const night = 1 - day;
-    const wantOn = night > 0.06;
+    const wantOn = night > 0.06 && !vrLights.off;
     if (wantOn !== lightOn) {
       lightOn = wantOn;
       fireLight.setEnabled(wantOn);

@@ -1,3 +1,4 @@
+import { vrLights } from "../world/vrLights";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -728,6 +729,7 @@ export class Game {
     // трава, разрешение, эффекты — на максимуме, как на десктопе.
     this.fireflies.setLampBudget(0);
     this.botLights.setForceOff(true);
+    vrLights.off = true;
     // Гарантия нативного разрешения буфера глаза.
     if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);
     console.log("[xr] VR: ночные лампы off, разрешение нативное, остальное — максимум");
@@ -739,6 +741,7 @@ export class Game {
     this.vrQualityOn = false;
     this.fireflies.setLampBudget(Infinity); // дефолт — без ограничения
     this.botLights.setForceOff(false);
+    vrLights.off = false;
   }
 
   enterVR(): Promise<boolean> {
