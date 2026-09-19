@@ -1,9 +1,11 @@
 import { vrLights } from "../vrLights";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -85,7 +87,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
   coalMat.diffuseColor = new Color3(0.14, 0.08, 0.05);
   coalMat.emissiveColor = new Color3(1, 0.28, 0.07);
   coalMat.specularColor = new Color3(0, 0, 0);
-  const coals: { m: Mesh; phase: number }[] = [];
+  const coalMeshes: Mesh[] = [];
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2 + 0.2;
     const d = 0.12 + (i % 4) * 0.08;
@@ -95,8 +97,16 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     c.material = coalMat;
     c.parent = root;
     c.isPickable = false;
-    coals.push({ m: c, phase: i * 0.73 });
+    coalMeshes.push(c);
   }
+  // 10 углей одним мешем: материал у них общий (пульс и так был один на всех),
+  // а лишние draw call'ы на Quest дороги.
+  const coalsMesh = Mesh.MergeMeshes(coalMeshes, true, true, undefined, false, false) ?? coalMeshes[0];
+  coalsMesh.name = "hubCoals";
+  // MergeMeshes запекает мировые матрицы (включая родителя root) — без parent.
+  coalsMesh.parent = null;
+  coalsMesh.isPickable = false;
+  coalsMesh.freezeWorldMatrix();
 
   // --- ореол: круглый радиальный градиент, аддитив, билборд, пульс ---
   const gt = glowTexture(scene);
@@ -144,26 +154,39 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
   sparkMat.disableLighting = true;
   sparkMat.alphaMode = Constants.ALPHA_ADD;
   sparkMat.disableDepthWrite = true;
-  const sparkProto = MeshBuilder.CreatePlane("hubSparkProto", { size: 0.05 }, scene);
-  sparkProto.material = sparkMat;
-  sparkProto.billboardMode = Mesh.BILLBOARDMODE_ALL;
-  sparkProto.isPickable = false;
-  sparkProto.renderingGroupId = 1;
-  sparkProto.setEnabled(false);
-  interface Spark { m: Mesh; x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; }
+  interface Spark { x: number; y: number; z: number; vx: number; vy: number; vz: number; life: number; max: number; }
   const rnd = (): number => Math.random();
+  const SPARKS = 26;
   const sparks: Spark[] = [];
-  for (let i = 0; i < 26; i++) {
-    const m = sparkProto.clone(`hubSpark${i}`);
-    m.setEnabled(true);
-    m.parent = root;
+  for (let i = 0; i < SPARKS; i++) {
     sparks.push({
-      m,
       x: (rnd() - 0.5) * 0.3, y: 0.2 + rnd() * 0.4, z: (rnd() - 0.5) * 0.3,
       vx: (rnd() - 0.5) * 0.15, vy: 0.55 + rnd() * 0.7, vz: (rnd() - 0.5) * 0.15,
       life: rnd(), max: 0.7 + rnd() * 0.9,
     });
   }
+  // Все искры — один динамический меш: квады, повёрнутые к камере на CPU
+  // (26 отдельных билбордов = 26 draw call'ов на кадр).
+  const sparkPos = new Float32Array(SPARKS * 12);
+  const sparkIdx: number[] = [];
+  for (let i = 0; i < SPARKS; i++) {
+    const o = i * 4;
+    sparkIdx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+  }
+  const sparkMesh = new Mesh("hubSparks", scene);
+  const svd = new VertexData();
+  svd.positions = sparkPos;
+  svd.indices = sparkIdx;
+  svd.applyToMesh(sparkMesh, true);
+  sparkMesh.material = sparkMat;
+  sparkMesh.parent = root;
+  sparkMat.backFaceCulling = false;
+  sparkMesh.isPickable = false;
+  sparkMesh.alwaysSelectAsActiveMesh = true;
+  sparkMesh.renderingGroupId = 1;
+  const invRoot = new Matrix();
+  const camR = new Vector3();
+  const camU = new Vector3();
 
   let time = 0;
   function tick(dt: number, daylight: number): void {
@@ -182,10 +205,8 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
     // Днём ореол почти не виден (солнце и так светит), ночью в полную силу.
     (glowIn.material as StandardMaterial).alpha = 0.16 + 0.5 * (1 - day);
     (glowOut.material as StandardMaterial).alpha = 0.06 + 0.24 * (1 - day);
-    for (const c of coals) {
-      const k = 0.55 + Math.sin(time * (2.4 + (c.phase % 1) * 2) + c.phase) * 0.35;
-      (c.m.material as StandardMaterial).emissiveColor.set(1 * k, 0.28 * k, 0.07 * k);
-    }
+    const ck = 0.55 + Math.sin(time * 3.4) * 0.35;
+    coalMat.emissiveColor.set(1 * ck, 0.28 * ck, 0.07 * ck);
     for (const s of sparks) {
       s.life += d;
       if (s.life >= s.max) {
@@ -195,8 +216,28 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
         s.max = 0.65 + rnd();
       }
       s.x += s.vx * d; s.y += s.vy * d; s.z += s.vz * d; s.vy += 0.12 * d;
-      s.m.position.set(s.x, s.y, s.z);
-      s.m.scaling.setAll((1 - s.life / s.max) * (0.6 + 0.5 * (1 - day)));
+    }
+    // Пересобираем квады искр: ось «вправо/вверх» камеры в локальных координатах костра.
+    const cam = scene.activeCamera;
+    if (cam) {
+      root.computeWorldMatrix(true);
+      root.getWorldMatrix().invertToRef(invRoot);
+      const cw = cam.getWorldMatrix();
+      Vector3.TransformNormalFromFloatsToRef(cw.m[0], cw.m[1], cw.m[2], invRoot, camR);
+      Vector3.TransformNormalFromFloatsToRef(cw.m[4], cw.m[5], cw.m[6], invRoot, camU);
+      const k = 0.6 + 0.5 * (1 - day);
+      for (let i = 0; i < SPARKS; i++) {
+        const sp = sparks[i];
+        const h = 0.025 * (1 - sp.life / sp.max) * k;
+        const o = i * 12;
+        const rx = camR.x * h, ry = camR.y * h, rz = camR.z * h;
+        const ux = camU.x * h, uy = camU.y * h, uz = camU.z * h;
+        sparkPos[o] = sp.x - rx - ux; sparkPos[o + 1] = sp.y - ry - uy; sparkPos[o + 2] = sp.z - rz - uz;
+        sparkPos[o + 3] = sp.x + rx - ux; sparkPos[o + 4] = sp.y + ry - uy; sparkPos[o + 5] = sp.z + rz - uz;
+        sparkPos[o + 6] = sp.x + rx + ux; sparkPos[o + 7] = sp.y + ry + uy; sparkPos[o + 8] = sp.z + rz + uz;
+        sparkPos[o + 9] = sp.x - rx + ux; sparkPos[o + 10] = sp.y - ry + uy; sparkPos[o + 11] = sp.z - rz + uz;
+      }
+      sparkMesh.updateVerticesData(VertexBuffer.PositionKind, sparkPos, false, false);
     }
 
     // Свет костра: включаем/выключаем ОДИН раз на границе суток (пересбор
@@ -222,7 +263,8 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
       gt.dispose();
       fireLight.dispose();
       root.dispose(false, true);
-      sparkProto.dispose();
+      sparkMesh.dispose();
+      coalsMesh.dispose();
     },
   };
 }
