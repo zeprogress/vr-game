@@ -411,7 +411,16 @@ export class Mob implements Hittable {
 
   // ---- вид ----
 
-  applyState(s: MobState, dt: number, playerPos: Vector3, playerAim: Vector3): void {
+  applyState(
+    s: MobState,
+    dt: number,
+    playerPos: Vector3,
+    playerAim: Vector3,
+    /** VR: моб в числе ближайших, которых рисуем (иначе отключаем целиком). */
+    drawAllowed = true,
+    /** VR: показывать ли плашку имени. */
+    uiAllowed = true,
+  ): void {
     if (this.hitCd > 0) this.hitCd -= dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
 
@@ -446,7 +455,7 @@ export class Mob implements Hittable {
     // Моб за спиной камеры / вне кадра: выключаем его узлы целиком (Babylon не
     // обходит их для отсечения/матриц) и не двигаем тень. Запас по радиусу
     // большой — камера успевает довернуть, пока план кадра отстаёт на кадр.
-    const inView = this.inFrustum(pos, 6 + 4 * this.scale);
+    const inView = drawAllowed && this.inFrustum(pos, 6 + 4 * this.scale);
     if (!this.deadHidden && inView === this.viewHidden) {
       this.viewHidden = !inView;
       this.root.setEnabled(inView);
@@ -620,7 +629,7 @@ export class Mob implements Hittable {
     const dz = pos.z - playerPos.z;
     const md = Math.hypot(dx, dz);
     const facing = md < 1e-3 || (dx * playerAim.x + dz * playerAim.z) / md > -0.25;
-    const near = md < MOB.nameTagRange && facing;
+    const near = md < MOB.nameTagRange && facing && uiAllowed;
     this.nameTag.setEnabled(near);
     if (near) {
       // Издалека плашку не разобрать, поэтому на дальней границе она ×4,

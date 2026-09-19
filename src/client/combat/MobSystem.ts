@@ -61,6 +61,10 @@ interface Burst {
   peak: number;
 }
 
+/** VR: сколько ближайших мобов рисуем и сколько из них с плашкой имени. */
+const VR_MAX_MOBS = 14;
+const VR_MAX_UI = 5;
+
 /**
  * Мобы, куклы и плевки — ВИД поверх состояния сервера (этап 6).
  * Держит `targets` (общий массив для CombatSystem) в актуальном виде.
@@ -68,6 +72,9 @@ interface Burst {
 export class NetMobs {
   private room: Room<ZoneState> | null = null;
   private readonly mobs = new Map<string, Mob>();
+  /** VR: id мобов, которых рисуем в этом кадре (ближайшие) и у которых показываем плашку. */
+  private readonly vrDrawSet = new Set<string>();
+  private readonly vrUiSet = new Set<string>();
   private readonly dummies = new Map<string, Dummy>();
   private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh; // плевок плевуна
@@ -363,8 +370,34 @@ export class NetMobs {
     const room = this.room;
     if (!room) return;
 
+    // VR: рисуем только ближайших мобов (лимит), остальные отключены целиком;
+    // плашки имён — ещё у меньшего числа. Мобы вне лимита продолжают
+    // обновляться логикой, просто невидимы.
+    const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
+    this.vrDrawSet.clear();
+    this.vrUiSet.clear();
+    if (vr) {
+      const ranked: { id: string; d: number; boss: boolean }[] = [];
+      room.state.mobs.forEach((s, id) => {
+        if (s.dead) {
+          this.vrDrawSet.add(id); // проигрывает смерть, сам скроется через 1.5 с
+          return;
+        }
+        const d = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
+        ranked.push({ id, d, boss: s.kind === "boss" });
+      });
+      ranked.sort((a, b) => a.d - b.d);
+      let n = 0;
+      for (const r of ranked) {
+        if (r.boss || n < VR_MAX_MOBS) this.vrDrawSet.add(r.id);
+        if (n < VR_MAX_UI) this.vrUiSet.add(r.id);
+        n++;
+      }
+    }
     room.state.mobs.forEach((s, id) => {
-      this.mobs.get(id)?.applyState(s, dt, playerPos, playerAim);
+      this.mobs
+        .get(id)
+        ?.applyState(s, dt, playerPos, playerAim, vr ? this.vrDrawSet.has(id) : true, vr ? this.vrUiSet.has(id) : true);
     });
     room.state.dummies.forEach((s, id) => {
       this.dummies.get(id)?.applyState(s, dt);
