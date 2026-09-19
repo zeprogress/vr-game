@@ -38,6 +38,7 @@ import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristMenu, type MenuAction } from "../ui/WristMenu";
 import { VrHud } from "../ui/VrHud";
+import { VrCull } from "../world/VrCull";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
@@ -143,6 +144,7 @@ export class Game {
   private wristPanel: WristMenu | null = null;
   /** Надписи в VR: события мира, подсказки, «кто говорит». */
   private vrHud: VrHud | null = null;
+  private vrCull: VrCull | null = null;
   private readonly voiceSpeakers = new Set<string>();
   private tts: import("../spectator/SpectatorTts").SpectatorTts | null = null;
   private ttsLoading = false;
@@ -1283,6 +1285,8 @@ export class Game {
     this.manaBar3D = null;
     this.vrHud?.dispose();
     this.vrHud = null;
+    this.vrCull?.dispose();
+    this.vrCull = null;
     this.hudAnchor?.dispose();
     this.hudAnchor = null;
     this.vrVignette?.dispose();
@@ -1319,6 +1323,8 @@ export class Game {
         h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
     }
+    if (!this.vrCull) this.vrCull = new VrCull(this.scene); // деревья/камни вдали и пустые корни glTF — не считаем
+    this.vrCull.update(dt, this.player.eyePosition);
     // Надписи в VR: затухание, «кто говорит» (голос игроков + озвучка чата — одним видом).
     if (this.vrHud) {
       this.vrHud.update(dt);
