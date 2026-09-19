@@ -597,9 +597,43 @@ export class CombatSystem {
     }
   }
 
+  /**
+   * Смена оружия «рука ↔ спина»: `held` из руки уходит на плечо, оружие с плеча
+   * берётся в ту же руку. Если новое оружие в этой руке недопустимо (лук при
+   * занятой второй руке и т.п.) — ничего не меняем, только короткий отклик.
+   */
+  private swapWithStowed(held: Item, side: Side): void {
+    const back = this.stowedItem(side);
+    if (!back || back === held) return;
+    // Проверка допустимости на «воображаемом» состоянии: held уже убран, back с плеча.
+    const heldHand = held.hand;
+    const heldHand2 = held.hand2;
+    held.hand = null;
+    held.hand2 = null;
+    held.stow = side;
+    back.stow = null;
+    const ok = this.canPick(back);
+    held.stow = null;
+    held.hand = heldHand;
+    held.hand2 = heldHand2;
+    back.stow = side;
+    if (!ok) {
+      this.haptic(side, 0.3, 60); // нельзя — рука остаётся как есть
+      return;
+    }
+    // Сначала освобождаем плечо (back → в руку через drawItem), затем убираем held.
+    this.stowItem(held, side); // теперь на плече два: held и back — временно
+    this.drawItemFrom(back, side);
+    this.haptic(side, 0.7, 90);
+  }
+
   private drawItem(side: Side): void {
     const item = this.stowedItem(side);
     if (!item) return;
+    this.drawItemFrom(item, side);
+  }
+
+  private drawItemFrom(item: Item, side: Side): void {
     const kind = item.kind;
     item.stow = null;
     item.flight = null;
@@ -831,6 +865,10 @@ export class CombatSystem {
           } else if (atShoulder && !this.stowedItem(side)) {
             // Повторный грип за плечом и слот свободен -> убрать за спину.
             this.stowItem(item, side);
+          } else if (atShoulder && this.stowedItem(side)) {
+            // За плечом уже лежит другое оружие — меняем местами: то, что в руке,
+            // уходит за спину, а то, что было за спиной, оказывается в руке.
+            this.swapWithStowed(item, side);
           } else {
             this.throwItem(item, this.vrThrowVelocity(side));
           }

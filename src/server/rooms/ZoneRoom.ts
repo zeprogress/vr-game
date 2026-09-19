@@ -3292,7 +3292,13 @@ export class ZoneRoom extends Room<ZoneState> {
   private persistBot(bot: Bot): void {
     const p = bot.state;
     const edge = WORLD.size / 2 - 2;
-    store.put(bot.rt.token ?? `nick:${bot.norm}`, {
+    const token = bot.rt.token ?? `nick:${bot.norm}`;
+    // Запись общая с живым персонажем этого ника: то, чего у бота нет (убранное
+    // за спину в VR, права на оружие, личные подгонки), НЕ затираем — раньше
+    // persistBot писал stowed: [] и урезал owned до надетого, и оружие «терялось»,
+    // стоило боту персистнуться между заходами игрока.
+    const prev = store.get(token);
+    store.put(token, {
       nick: p.nick,
       x: clampAbs(p.head.x, edge),
       y: p.head.y,
@@ -3303,16 +3309,20 @@ export class ZoneRoom extends Room<ZoneState> {
       // но право распоряжаться им то же: если зритель зайдёт за этого героя
       // сам, он должен суметь и покидать его обратно (см. MSG.dropWeapon).
       owned: [
-        ...(p.rightTier === "gold" || p.rightTier === "legendary"
-          ? [weaponKey(p.rightCls as WeaponClass, p.rightTier as WeaponTier)]
-          : []),
-        ...(p.leftCls === "shield" && p.leftTier === "legendary"
-          ? [weaponKey("shield", "legendary")]
-          : []),
+        ...new Set([
+          ...(Array.isArray(prev?.owned) ? prev!.owned : []),
+          ...bot.rt.owned,
+          ...(p.rightTier === "gold" || p.rightTier === "legendary"
+            ? [weaponKey(p.rightCls as WeaponClass, p.rightTier as WeaponTier)]
+            : []),
+          ...(p.leftCls === "shield" && p.leftTier === "legendary"
+            ? [weaponKey("shield", "legendary")]
+            : []),
+        ]),
       ],
-      stowed: [],
+      stowed: sanitizeStowed(prev?.stowed),
       held: { left: heldIn(p, "left"), right: heldIn(p, "right") },
-      overrides: {},
+      overrides: prev?.overrides ?? {},
       skin: p.skin,
       ...readProgress(p),
       // Раньше тут всегда было [] — у бота при каждом persistBot() (подбор,
