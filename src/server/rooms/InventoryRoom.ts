@@ -8,6 +8,7 @@ import {
   isWeaponTier,
   ITEMS,
   weaponDef,
+  weaponQuality,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
@@ -23,10 +24,15 @@ function handInfo(
   tier: string,
   equippedId: string | null | undefined,
   weapons: WeaponInstance[],
-): { name: string; tier: WeaponTier; affixes: string[] } | null {
+): { name: string; tier: WeaponTier; affixes: string[]; quality: number } | null {
   if (!isWeaponClass(cls) || !isWeaponTier(tier) || tier === "base") return null;
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
-  return { name: weaponDef(cls, tier).name, tier, affixes: inst ? inst.affixes.map(affixLabel) : [] };
+  return {
+    name: weaponDef(cls, tier).name,
+    tier,
+    affixes: inst ? inst.affixes.map(affixLabel) : [],
+    quality: inst ? weaponQuality(inst) : 0,
+  };
 }
 
 /**
@@ -73,6 +79,7 @@ export class InventoryRoom extends colyseus.Room {
           tier: w.tier,
           name: weaponDef(w.cls, w.tier).name,
           affixes: w.affixes.map(affixLabel),
+          quality: weaponQuality(w),
         }));
       const misc = (rec.bag ?? [])
         .filter((s) => s.item && s.count > 0)

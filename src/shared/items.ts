@@ -404,6 +404,25 @@ function rollAffix(rnd: () => number, cls: WeaponClass): RolledAffix {
   return { kind, sub, value: lo + rnd() * (hi - lo) };
 }
 
+/** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
+export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
+  const [lo, base] = AFFIX_RANGES[a.sub];
+  const hi = cls === "staff" ? base * STAFF_RANGE_HI_MUL[a.sub] : base;
+  const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 1;
+  return 1 + 32 * t;
+}
+
+/**
+ * Насколько роллы предмета близки к максимуму — сумма очков всех аффиксов
+ * (каждый 1..33): все на минимуме и их 2 → 2, 3 → 3; на максимуме по 33 за ролл.
+ * Показывается в скобках рядом с названием оружия в инвентаре.
+ */
+export function weaponQuality(w: WeaponInstance): number {
+  let sum = 0;
+  for (const a of w.affixes) sum += affixPoints(a, w.cls);
+  return Math.round(sum);
+}
+
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
 function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
   if (tier === "base") return 0;

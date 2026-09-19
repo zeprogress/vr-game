@@ -6,12 +6,15 @@ interface InvWeapon {
   tier: "base" | "gold" | "legendary";
   name: string;
   affixes: string[];
+  /** Сумма очков роллов (1..33 за ролл) — показывается в скобках у названия. */
+  quality: number;
 }
 
 interface InvHand {
   name: string;
   tier: "gold" | "legendary";
   affixes: string[];
+  quality: number;
 }
 
 interface InvMisc {
@@ -51,11 +54,16 @@ const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
   legendary: "уникальное",
 };
 
+/** « (N)» — очки роллов; у оружия без роллов ничего не пишем. */
+function qualityTag(q: number, count: number): string {
+  return count > 0 ? ` <span class="quality">(${q})</span>` : "";
+}
+
 function handHtml(label: string, h: InvHand | null): string {
   if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
   const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
   return (
-    `<div class="hand ${h.tier}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}</span>` +
+    `<div class="hand ${h.tier}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}${qualityTag(h.quality, h.affixes.length)}</span>` +
     `<div class="affixes">${escapeHtml(affixes)}</div></div>`
   );
 }
@@ -86,7 +94,7 @@ function renderInv(msg: InvMsg): void {
             const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
             return (
               `<div class="weapon ${w.tier}">` +
-              `<div><div class="name">${w.num}) ${escapeHtml(w.name)}</div>` +
+              `<div><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
               `</div><div class="meta">${TIER_RU[w.tier]}</div>` +
               `</div>`
