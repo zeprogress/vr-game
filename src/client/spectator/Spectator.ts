@@ -122,6 +122,7 @@ export class Spectator {
   /** ?perf=1 — замер кадра по этапам, плохие кадры уходят в журнал сервера. */
   private probe: PerfProbe | null = null;
   private lastOvlAt = 0;
+  private lastOvlRun = 0;
   private lastOvlSig = "";
   /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
   private readonly obs: boolean;
@@ -899,7 +900,13 @@ export class Spectator {
       this.net?.sendSpecCam({ x: p.x, y: p.y, z: p.z, tx: t.x, ty: t.y, tz: t.z });
     }
 
-    if (this.overlay || this.relayOvl) this.updateOverlay(room?.state ?? null);
+    // Оверлей считаем 5 раз в секунду, а не каждый кадр: строки характеристик,
+    // сигнатуры и массивы «онлайн» каждый кадр давали лишний мусор для GC, а
+    // на экране всё равно меняются редко (HP-полоска сглажена CSS).
+    if ((this.overlay || this.relayOvl) && now - this.lastOvlRun >= 200) {
+      this.lastOvlRun = now;
+      this.updateOverlay(room?.state ?? null);
+    }
     this.probe?.mark("overlay");
 
     if (this.debug) {
@@ -1040,7 +1047,7 @@ export class Spectator {
       const now = performance.now();
       const sp = [...this.speakingIds];
       const sig = `${watching}|${watchStats}|${watchInv}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
-      if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 250) || now - this.lastOvlAt > 2000) {
+      if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
         this.lastOvlSig = sig;
         this.lastOvlAt = now;
         this.net?.sendSpecCmd({
