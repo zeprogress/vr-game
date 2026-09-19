@@ -338,7 +338,8 @@ export class Spectator {
           `кадр камеры ${this.cam.shotKind}, мобов ${this.net?.room?.state.mobs.size ?? 0}, ` +
           `игроков ${this.net?.room?.state.players.size ?? 0}, рендер ${this.renderRate.toFixed(0)} fps, ` +
           `сцена: материалов ${this.scene.materials.length}, мешей ${this.scene.meshes.length}, ` +
-          `текстур ${this.scene.textures.length}, relight ${RELIGHT_STATS.count} (${RELIGHT_STATS.last})`,
+          `текстур ${this.scene.textures.length}, relight ${RELIGHT_STATS.count} (${RELIGHT_STATS.last}), ` +
+          this.botLights.debugInfo(),
       );
     }
 
@@ -1041,6 +1042,7 @@ export class Spectator {
         ` · дисплей ${screen.width}×${screen.height} · CSS ${innerWidth}×${innerHeight} · dpr ${dpr.toFixed(2)}` +
         ` · игроков ${st?.players.size ?? 0} · ${this.cam.shotKind}` +
         ` · ${this.watch?.debugLine() ?? ""}` +
+        ` · ${this.botLights.debugInfo()}` +
         (this.probe ? ` · ${this.probe.line}` : "");
     }
   }

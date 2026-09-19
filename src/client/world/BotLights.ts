@@ -52,6 +52,7 @@ export class BotLights {
   private readonly lights: PointLight[] = [];
   private night = 0;
   private enabled = false;
+  private relitStrong = false;
   /**
    * Сколько факелов из BOT_TORCHES реально зажигать. VR (два глаза, вдвое
    * дороже) гасит все через setForceOff; слабый спектатор (?q=med на
@@ -128,6 +129,7 @@ export class BotLights {
     const on = this.night > 0.02 && bots.length > 0 && this.budget > 0;
     if (on !== this.enabled) {
       this.enabled = on;
+      if (!on) this.relitStrong = false;
       for (let i = 0; i < this.lights.length; i++) this.lights[i].setEnabled(on && i < this.budget);
       // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
       // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
@@ -149,6 +151,14 @@ export class BotLights {
     this._order.sort(
       (a, b) => Vector3.DistanceSquared(bots[a], ref) - Vector3.DistanceSquared(bots[b], ref),
     );
+    // Страховка: когда факелы реально разгорелись, ещё раз пересобираем
+    // материалы зоны — на случай, если первая пересборка (в момент включения,
+    // когда свет был на нуле) отработала до того, как замороженные материалы
+    // земли/травы её подхватили. Один раз за ночь.
+    if (!this.relitStrong && this.night > 0.3) {
+      this.relitStrong = true;
+      relightMaterials(this.scene, "BotLights.strong");
+    }
     const budget = Math.min(this.lights.length, this.budget);
     const near = this._order.slice(0, budget);
 
@@ -199,6 +209,13 @@ export class BotLights {
       l.position.set(b.x + ox, b.y + UP, b.z + oz);
       l.intensity = this.night * INTENSITY * this.level[i];
     }
+  }
+
+  /** Диагностика для отчёта ?perf=1 / плашки ?debug=1. */
+  debugInfo(): string {
+    const on = this.lights.filter((l) => l.isEnabled()).length;
+    const lit = this.lights.filter((l) => l.intensity > 0.01).length;
+    return `факелы: ночь ${this.night.toFixed(2)}, включено ${on}, светят ${lit}, бюджет ${this.budget}`;
   }
 
   dispose(): void {
