@@ -106,7 +106,7 @@ export const FIREFLY = {
  * scene.lights по порядку создания, и в хвосте (за светлячками) факелы не
  * доезжали до мобов, персонажей и деревьев — у тех потолок маленький.
  */
-export const BOT_TORCHES = 2;
+export const BOT_TORCHES = 4;
 
 /**
  * Стайки — постоянным зерном, а не Math.random: раньше при каждой

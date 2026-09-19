@@ -11,6 +11,10 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
  * сдвиг обоими — вбок и вверх/вниз.
  * На экране только слайдер угла обзора (снизу слева) и кнопка «Закрыть» (справа сверху).
  */
+/** Границы угла обзора, рад: самый широкий ~126°, самый узкий 10°. */
+const FOV_MAX = 2.2;
+const FOV_MIN = (10 * Math.PI) / 180;
+
 export class FreeCamControl {
   readonly pos = new Vector3();
   yaw = 0;
@@ -75,9 +79,9 @@ export class FreeCamControl {
       const c1x = (prev.x + other.x) / 2;
       const c1y = (prev.y + other.y) / 2;
       const cp = Math.cos(this.pitch);
-      const fwd = (d1 - d0) * this.speed * 0.01; // щипок наружу — вперёд
-      const strafe = -(c1x - c0x) * this.speed * 0.004; // «схватили» мир и потянули
-      const lift = (c1y - c0y) * this.speed * 0.004;
+      const fwd = (d1 - d0) * this.speed * 0.003; // щипок наружу — вперёд
+      const strafe = -(c1x - c0x) * this.speed * 0.0015; // «схватили» мир и потянули
+      const lift = (c1y - c0y) * this.speed * 0.0015;
       this.pos.x += Math.sin(this.yaw) * cp * fwd + Math.cos(this.yaw) * strafe;
       this.pos.y = Math.max(1.5, this.pos.y + Math.sin(this.pitch) * fwd + lift);
       this.pos.z += Math.cos(this.yaw) * cp * fwd - Math.sin(this.yaw) * strafe;
@@ -105,13 +109,14 @@ export class FreeCamControl {
       "width:min(46vw,260px);padding:10px 12px;border-radius:10px;background:rgba(12,13,18,.55);";
     this.fovInput = document.createElement("input");
     this.fovInput.type = "range";
-    this.fovInput.min = "0.3";
-    this.fovInput.max = "2.2";
-    this.fovInput.step = "0.01";
-    this.fovInput.value = String(this.fov);
+    // Инверсия: значение слайдера = −fov. Влево — шире угол, вправо — уже (до 10°).
+    this.fovInput.min = String(-FOV_MAX);
+    this.fovInput.max = String(-FOV_MIN);
+    this.fovInput.step = "0.005";
+    this.fovInput.value = String(-this.fov);
     this.fovInput.style.cssText = "width:100%;margin:0;display:block;touch-action:pan-x;";
     this.fovInput.addEventListener("input", () => {
-      this.fov = Number(this.fovInput.value);
+      this.fov = -Number(this.fovInput.value);
     });
     this.panel.appendChild(this.fovInput);
     document.body.appendChild(this.panel);
@@ -137,7 +142,7 @@ export class FreeCamControl {
     this.pitch = Math.max(-1.553, Math.min(1.553, Math.asin(dy / len)));
     if (fov && Number.isFinite(fov)) {
       this.fov = fov;
-      this.fovInput.value = String(fov);
+      this.fovInput.value = String(-Math.max(FOV_MIN, Math.min(FOV_MAX, fov)));
     }
   }
 

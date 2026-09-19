@@ -25,6 +25,7 @@ import { EventBeacon } from "../world/EventBeacon";
 import { RenderWatch } from "./RenderWatch";
 import { PerfProbe } from "./PerfProbe";
 import { FreeCamControl } from "./FreeCamControl";
+import { BOT_TORCHES } from "../world/Fireflies";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -246,6 +247,9 @@ export class Spectator {
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
+    // Стрим и свободная камера: зажигаем все факелы (4), а не 2 как в игре — иначе
+    // при повороте камеры свет «пропадает» у ботов, что не вошли в двойку ближайших.
+    if (preset.botTorches === undefined) this.botLights.setBudget(BOT_TORCHES);
     this.crossFx = new WorldCrossFx(this.scene);
     this.towerFx = new TowerArenaFx(this.scene, this.sfx);
     // Крючок для панели ?towerlight=1 (TowerLightTuner) — та не привязана к
@@ -660,7 +664,7 @@ export class Spectator {
     ) {
       return;
     }
-    const fov = Number.isFinite(cmd.fov) ? Math.max(0.2, Math.min(2.4, cmd.fov as number)) : 0.9;
+    const fov = Number.isFinite(cmd.fov) ? Math.max(0.15, Math.min(2.4, cmd.fov as number)) : 0.9;
     const now = performance.now();
     let rf = this.remoteFree;
     if (!rf) {

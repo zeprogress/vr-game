@@ -11,6 +11,8 @@ import { BOT_TORCHES, relightMaterials } from "./Fireflies";
  * тип затухания задают дефайны материала, а не источника.
  */
 const RANGE = 14;
+/** Сколько факелов зажигать по умолчанию (игра); спектатор поднимает до BOT_TORCHES через setBudget. */
+const DEFAULT_TORCHES = 2;
 /** На сколько источник вынесен ВПЕРЁД от бота — светит в основном на морду. */
 const FORWARD = 1.1;
 /**
@@ -55,7 +57,11 @@ export class BotLights {
    * дороже) гасит все через setForceOff; слабый спектатор (?q=med на
    * телефоне) может срезать половину через setBudget, не теряя эффект целиком.
    */
-  private budget = BOT_TORCHES;
+  private budget = DEFAULT_TORCHES;
+  /** Чей свет: индекс бота в массиве `bots` (-1 — источник свободен). */
+  private readonly owner: number[] = [];
+  private readonly retiring: boolean[] = [];
+  private readonly level: number[] = [];
   private readonly _order: number[] = [];
 
   constructor(private readonly scene: Scene) {
@@ -67,6 +73,9 @@ export class BotLights {
       l.specular = new Color3(0.12, 0.1, 0.06);
       l.setEnabled(false);
       this.lights.push(l);
+      this.owner.push(-1);
+      this.retiring.push(false);
+      this.level.push(0);
     }
 
   }
@@ -84,9 +93,17 @@ export class BotLights {
   setBudget(n: number): void {
     this.budget = n;
     if (this.enabled) {
+      // Набор включённых источников изменился — замороженным материалам зоны
+      // (земля, трава) надо об этом сказать, иначе прибавка не попадёт в шейдер.
+      let changed = false;
       for (let i = 0; i < this.lights.length; i++) {
-        if (i >= n) this.lights[i].setEnabled(false);
+        const want = i < n;
+        if (this.lights[i].isEnabled() !== want) {
+          this.lights[i].setEnabled(want);
+          changed = true;
+        }
       }
+      if (changed) relightMaterials(this.scene, "BotLights.budget");
     }
   }
 
@@ -121,29 +138,66 @@ export class BotLights {
     if (!this.enabled) return;
 
 
-    // Настоящие источники — ближайшим к камере.
+    // Настоящие источники — ближайшим к камере. Назначение «липкое»: свет
+    // остаётся у своего бота, пока тот в числе ближайших; уходит — плавно
+    // гаснет на месте, и только потом освободившийся источник переезжает к
+    // новому боту и плавно разгорается. Раньше при каждом изменении порядка
+    // «ближайших» свет мгновенно перескакивал с одного бота на другого — на
+    // стриме и свободной камере это читалось как мигание/пропадание факелов.
     this._order.length = 0;
     for (let i = 0; i < bots.length; i++) this._order.push(i);
-    if (bots.length > this.lights.length) {
-      this._order.sort(
-        (a, b) => Vector3.DistanceSquared(bots[a], ref) - Vector3.DistanceSquared(bots[b], ref),
-      );
-    }
+    this._order.sort(
+      (a, b) => Vector3.DistanceSquared(bots[a], ref) - Vector3.DistanceSquared(bots[b], ref),
+    );
     const budget = Math.min(this.lights.length, this.budget);
+    const near = this._order.slice(0, budget);
+
     for (let i = 0; i < this.lights.length; i++) {
-      const bi = i < budget ? this._order[i] : undefined;
+      const o = this.owner[i];
+      if (o < 0) continue;
+      if (o >= bots.length) {
+        this.owner[i] = -1; // бот исчез
+        this.level[i] = 0;
+      } else {
+        this.retiring[i] = !near.includes(o);
+      }
+    }
+    for (const b of near) {
+      if (this.owner.includes(b)) continue;
+      // Нужен свободный (погасший) источник; занятые уходящие ждут своего затухания.
+      for (let i = 0; i < budget; i++) {
+        if (this.owner[i] < 0) {
+          this.owner[i] = b;
+          this.retiring[i] = false;
+          this.level[i] = 0;
+          break;
+        }
+      }
+    }
+
+    const kf = Math.min(1, dt * 4);
+    for (let i = 0; i < this.lights.length; i++) {
       const l = this.lights[i];
-      if (bi === undefined) {
+      const o = this.owner[i];
+      if (o < 0 || i >= budget) {
         l.intensity = 0;
         continue;
       }
-      const b = bots[bi];
-      const f = fwd[bi];
+      const target = this.retiring[i] ? 0 : 1;
+      this.level[i] += (target - this.level[i]) * kf;
+      if (this.retiring[i] && this.level[i] < 0.03) {
+        this.owner[i] = -1;
+        this.level[i] = 0;
+        l.intensity = 0;
+        continue;
+      }
+      const b = bots[o];
+      const f = fwd[o];
       const fl = f ? Math.hypot(f.x, f.z) || 1 : 1;
       const ox = f ? (f.x / fl) * FORWARD : 0;
       const oz = f ? (f.z / fl) * FORWARD : 0;
       l.position.set(b.x + ox, b.y + UP, b.z + oz);
-      l.intensity = this.night * INTENSITY;
+      l.intensity = this.night * INTENSITY * this.level[i];
     }
   }
 
