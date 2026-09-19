@@ -7,6 +7,7 @@ import {
   type LeaderboardRow,
   type WeaponsListMsg,
   type WarehouseActMsg,
+  type TtsPlayMsg,
   type TowerBoardRow,
   type DmgHitsMsg,
   type TowerMobsMsg,
@@ -142,6 +143,8 @@ export class NetClient {
   /** Склад оружия (последний присланный сервером) — инвентарь в игре его показывает. */
   warehouse: WeaponsListMsg | null = null;
   onWarehouse: ((m: WeaponsListMsg) => void) | null = null;
+  /** Озвучка сообщения чата Twitch (VR-игроку, если включена в меню). */
+  onTtsPlay: ((m: TtsPlayMsg) => void) | null = null;
   /** Топ-5 по лучшему этажу Охотничьей башни — та же частота, что и leaderboard. */
   onTowerBoard: ((rows: TowerBoardRow[]) => void) | null = null;
   onDmgHits: ((msg: DmgHitsMsg) => void) | null = null;
@@ -291,6 +294,7 @@ export class NetClient {
     );
     room.onMessage(MSG.botSay, (m: BotSayMsg) => this.onBotSay?.(m.id, m.text));
     room.onMessage(MSG.leaderboard, (m: LeaderboardRow[]) => this.onLeaderboard?.(m));
+    room.onMessage(MSG.ttsPlay, (m: TtsPlayMsg) => this.onTtsPlay?.(m));
     room.onMessage(MSG.weaponsList, (m: WeaponsListMsg) => {
       this.warehouse = m;
       this.onWarehouse?.(m);
@@ -438,6 +442,11 @@ export class NetClient {
   }
 
   /** Оставлять ли персонажа ботом после выхода (панель C). */
+  /** Слушаю ли озвучку чата (VR + настройка). */
+  sendTtsListen(on: boolean): void {
+    this.room?.send(MSG.ttsListen, { on: on ? 1 : 0 });
+  }
+
   /** Действие с оружием на складе из меню на руке. */
   sendWarehouseAct(msg: WarehouseActMsg): void {
     this.room?.send(MSG.warehouseAct, msg);

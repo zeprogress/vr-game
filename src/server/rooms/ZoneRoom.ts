@@ -54,6 +54,7 @@ import {
   type WorldEventMsg,
   type WeaponsListMsg,
   type WarehouseActMsg,
+  type TtsPlayMsg,
   type LootItem,
 } from "#shared/net/messages";
 import {
@@ -193,6 +194,8 @@ interface Runtime {
   massHealAt: number;
   /** Подпись последнего отправленного клиенту склада оружия (чтобы слать только при изменении). */
   weaponsSig?: string;
+  /** Игрок (VR) слушает озвучку чата Twitch — ему шлём ttsPlay. */
+  ttsListen?: boolean;
   lastMassHeal: number;
   /** Момент последнего активного умения оружия (воин/лучник) — для кулдауна. */
   lastSkillAt: number;
@@ -1140,6 +1143,12 @@ export class ZoneRoom extends Room<ZoneState> {
       // Соседям — анимация подбора на модельке (PickUp).
       const relay: ActRelay = { k: "pickup", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay, { except: client });
+    });
+
+    // Игрок в VR включил/выключил озвучку чата Twitch у себя.
+    this.onMessage(MSG.ttsListen, (client: Client, msg: { on?: number }) => {
+      const rt = this.rt.get(client.sessionId);
+      if (rt) rt.ttsListen = msg?.on === 1;
     });
 
     // Меню на руке: действия с оружием на складе.
@@ -2602,7 +2611,12 @@ export class ZoneRoom extends Room<ZoneState> {
    * Готовый mp3 шлём ТОЛЬКО спектаторам — игроки его не слышат.
    */
   private voiceChat(nick: string, norm: string, text: string): void {
-    if (!this.state.ttsOn || !ttsAvailable() || this.spectators.size === 0) return;
+    const listeners = (): string[] => {
+      const out: string[] = [];
+      for (const [id, r] of this.rt) if (r.ttsListen && !id.startsWith("bot:")) out.push(id);
+      return out;
+    };
+    if (!this.state.ttsOn || !ttsAvailable() || (this.spectators.size === 0 && listeners().length === 0)) return;
     const now = Date.now();
     if (now - (this.ttsLast.get(norm) ?? 0) < 4000) return; // не частим на одного
     this.ttsLast.set(norm, now);
@@ -2615,10 +2629,12 @@ export class ZoneRoom extends Room<ZoneState> {
           ? this.state.ttsVoice
           : TTS_DEFAULT_VOICE;
     void synthChat(text, voice).then((url) => {
-      if (!url || this.spectators.size === 0) return;
+      if (!url) return;
       const cmd: SpecCmd = { t: "ttsPlay", url, nick };
+      const heard = new Set(listeners());
       for (const c of this.clients) {
         if (this.spectators.has(c.sessionId)) c.send(MSG.specCmd, cmd);
+        else if (heard.has(c.sessionId)) c.send(MSG.ttsPlay, { url, nick } satisfies TtsPlayMsg);
       }
     });
   }

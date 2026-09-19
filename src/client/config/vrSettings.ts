@@ -14,11 +14,13 @@ export interface VrSettings {
   sfx: number;
   mic: boolean;
   spatial: boolean;
+  /** Слышать озвучку чата Twitch (когда её включил стример). */
+  tts: boolean;
 }
 
 const KEY = "zepVrSettings";
 
-const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: true, spatial: true };
+const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: true, spatial: true, tts: true };
 
 function load(): VrSettings {
   try {
@@ -32,6 +34,7 @@ function load(): VrSettings {
         sfx: clamp01(v.sfx, DEFAULTS.sfx),
         mic: typeof v.mic === "boolean" ? v.mic : DEFAULTS.mic,
         spatial: typeof v.spatial === "boolean" ? v.spatial : DEFAULTS.spatial,
+        tts: typeof v.tts === "boolean" ? v.tts : DEFAULTS.tts,
       };
     }
   } catch {

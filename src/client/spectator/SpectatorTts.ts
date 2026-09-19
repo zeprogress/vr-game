@@ -7,7 +7,9 @@
  * он в бандл спектатора вообще не тянется.
  */
 export class SpectatorTts {
-  private readonly queue: string[] = [];
+  private readonly queue: { url: string; nick: string }[] = [];
+  /** Кто сейчас говорит (ник автора сообщения) или null, когда тихо — для значка в VR. */
+  onSpeaking: ((nick: string | null) => void) | null = null;
   private playing = false;
   private readonly gain: GainNode;
 
@@ -24,11 +26,16 @@ export class SpectatorTts {
     this.gain.gain.value = Math.max(0, Math.min(1, v));
   }
 
-  enqueue(url: string): void {
+  enqueue(url: string, nick = ""): void {
     // Не копим бесконечно — на бурном чате старые реплики уже неактуальны.
     if (this.queue.length >= 4) this.queue.shift();
-    this.queue.push(url);
+    this.queue.push({ url, nick });
     void this.pump();
+  }
+
+  /** Сбросить очередь (озвучку выключили в меню). Уже играющая реплика доиграет. */
+  clear(): void {
+    this.queue.length = 0;
   }
 
   private async pump(): Promise<void> {
@@ -36,10 +43,12 @@ export class SpectatorTts {
     this.playing = true;
     try {
       while (this.queue.length) {
-        const url = this.queue.shift()!;
-        await this.playOne(url).catch((e) =>
+        const item = this.queue.shift()!;
+        this.onSpeaking?.(item.nick || null);
+        await this.playOne(item.url).catch((e) =>
           console.warn("[tts] не проиграл:", (e as Error).message),
         );
+        this.onSpeaking?.(null);
       }
     } finally {
       this.playing = false;

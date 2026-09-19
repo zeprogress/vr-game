@@ -37,6 +37,7 @@ import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
 import { WristMenu, type MenuAction } from "../ui/WristMenu";
+import { VrHud } from "../ui/VrHud";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
@@ -70,7 +71,7 @@ import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import { SharpenPostProcess } from "@babylonjs/core/PostProcesses/sharpenPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { ActKind, CharMsg, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
+import type { ActKind, CharMsg, LootItem, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
@@ -140,6 +141,13 @@ export class Game {
   private specRaysShown = true;
   private readonly _botFwd: Vector3[] = [];
   private wristPanel: WristMenu | null = null;
+  /** Надписи в VR: события мира, подсказки, «кто говорит». */
+  private vrHud: VrHud | null = null;
+  private readonly voiceSpeakers = new Set<string>();
+  private tts: import("../spectator/SpectatorTts").SpectatorTts | null = null;
+  private ttsLoading = false;
+  private ttsNick = "";
+  private ttsListenSent = -1;
   private perfHud: VrPerfHud | null = null;
   private perfInstr: SceneInstrumentation | null = null;
   private engInstr: EngineInstrumentation | null = null;
@@ -267,16 +275,20 @@ export class Game {
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
-    this.voice.onSpeaking = (id, on) => this.avatars.get(id)?.setSpeaking(on);
+    this.voice.onSpeaking = (id, on) => {
+      this.avatars.get(id)?.setSpeaking(on);
+      if (on) this.voiceSpeakers.add(id);
+      else this.voiceSpeakers.delete(id);
+    };
     // Молчащий голос без объяснения выглядит поломкой — говорим прямо.
     this.voice.onPeerFailed = () => {
       if (this.voiceWarned || this.voice.micDenied) return;
       this.voiceWarned = true;
-      this.hud.toast("Голос не пробился: мешает VPN или сеть");
+      this.notifyToast("Голос не пробился: мешает VPN или сеть");
     };
     this.voice.onPeerState = (_id, state) => {
-      if (state === "говорим") this.hud.toast("Голос: связь установлена");
-      else if (state === "соединяется") this.hud.toast("Голос: соединяюсь…");
+      if (state === "говорим") this.notifyToast("Голос: связь установлена");
+      else if (state === "соединяется") this.notifyToast("Голос: соединяюсь…");
     };
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
@@ -436,7 +448,7 @@ export class Game {
     const toggleMic = (): void => {
       LOADOUT.voice.mic = LOADOUT.voice.mic ? 0 : 1;
       setVrSettings({ mic: LOADOUT.voice.mic !== 0 }); // и в меню на руке, и запомнить
-      this.hud.toast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
+      this.notifyToast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
     };
     window.addEventListener("keydown", (e) => {
       if (e.code !== "KeyM" || this.player.inVR) return;
@@ -1175,6 +1187,7 @@ export class Game {
     );
     this.manaBar3D.setOpacity(0);
 
+    this.vrHud = new VrHud(this.scene, this.hudAnchor);
     this.vrVignette = new VrVignette(this.scene);
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
@@ -1268,6 +1281,8 @@ export class Game {
     this.playerBar3D = null;
     this.manaBar3D?.dispose();
     this.manaBar3D = null;
+    this.vrHud?.dispose();
+    this.vrHud = null;
     this.hudAnchor?.dispose();
     this.hudAnchor = null;
     this.vrVignette?.dispose();
@@ -1303,6 +1318,24 @@ export class Game {
         h.right ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon) : null,
         h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
+    }
+    // Надписи в VR: затухание, «кто говорит» (голос игроков + озвучка чата — одним видом).
+    if (this.vrHud) {
+      this.vrHud.update(dt);
+      const names: string[] = [];
+      for (const id of this.voiceSpeakers) {
+        const n = this.net?.room?.state.players.get(id)?.nick;
+        if (n) names.push(n);
+      }
+      if (this.ttsNick) names.push(this.ttsNick);
+      this.vrHud.setSpeakers(names);
+    }
+    // Слушаю ли озвучку чата Twitch: сообщаем серверу при смене (VR + настройка в меню).
+    const wantTts = this.player.inVR && VR_SETTINGS.tts ? 1 : 0;
+    if (wantTts !== this.ttsListenSent && this.net?.online) {
+      this.ttsListenSent = wantTts;
+      this.net.sendTtsListen(wantTts === 1);
+      if (!wantTts) this.tts?.clear();
     }
     // Каст массового хила: стоим на месте.
     if (this.xrInput) this.xrInput.moveLocked = this.combat.chargingMass;
@@ -1359,9 +1392,43 @@ export class Game {
     }
   }
 
+  /** Баннер события: обычный (плоский) HUD + панель в VR, где DOM не виден. */
+  private notifyBanner(title: string, sub = "", tone: "warn" | "win" = "warn", loot?: LootItem[]): void {
+    this.hud.banner(title, sub, tone, loot);
+    this.vrHud?.showBanner(title, sub, tone);
+  }
+
+  private notifyToast(text: string): void {
+    this.hud.toast(text);
+    this.vrHud?.showToast(text);
+  }
+
+  /** Озвучка чата Twitch в VR (сервер шлёт только тем, кто включил в меню). */
+  private playChatTts(url: string, nick: string): void {
+    if (!this.player.inVR || !VR_SETTINGS.tts) return;
+    const vol = (): number => 0.9 * this.sfx.masterVolume * VR_SETTINGS.sfx;
+    if (this.tts) {
+      this.tts.setVolume(vol());
+      this.tts.enqueue(url, nick);
+      return;
+    }
+    if (this.ttsLoading) return;
+    this.ttsLoading = true;
+    void this.sfx.resume();
+    void import("../spectator/SpectatorTts").then(({ SpectatorTts }) => {
+      const t = new SpectatorTts(this.sfx.audioContext(), vol());
+      t.onSpeaking = (n) => {
+        this.ttsNick = n ?? "";
+      };
+      this.tts = t;
+      this.ttsLoading = false;
+      t.enqueue(url, nick);
+    });
+  }
+
   /** Действия с оружием из меню на руке: склад ↔ рука/спина, обмен рука ↔ плечо, на землю, на лом. */
   private menuWeaponAction(a: MenuAction): void {
-    const toast = (t: string): void => this.hud.toast(t);
+    const toast = (t: string): void => this.notifyToast(t);
     const fail = (err: string | null): boolean => {
       if (err) toast(err);
       return !!err;
@@ -1707,25 +1774,25 @@ export class Game {
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
     net.onBossEvent = (kind, by, _loot, lootItems) => {
       if (kind === "spawn") {
-        this.hud.banner("Босс появился", "Багровый слизень вышел на охоту", "warn");
+        this.notifyBanner("Босс появился", "Багровый слизень вышел на охоту", "warn");
         this.sfx.bossHorn();
       } else {
         const sub = by ? `Решающий удар: ${by}` : "";
-        this.hud.banner("Босс повержен!", sub, "win", lootItems);
+        this.notifyBanner("Босс повержен!", sub, "win", lootItems);
         this.sfx.bossFanfare();
       }
     };
     net.onWorldEvent = (phase, name, x, z, loot) => {
       const hunt = name === "Охота";
       if (phase === "start") {
-        this.hud.banner(
+        this.notifyBanner(
           hunt ? "Охота на элиту!" : `${name}!`,
           hunt ? "В мире объявился Грибной владыка — редкая добыча" : "К бою — отбейте волну мобов",
           "warn",
         );
         this.sfx.bossHorn();
       } else if (phase === "win") {
-        this.hud.banner(
+        this.notifyBanner(
           hunt ? "Грибной владыка повержен" : `${name} отражено`,
           hunt
             ? "Легендарка в эпицентре · участникам — ×2 опыт и урон"
@@ -1735,7 +1802,7 @@ export class Game {
         );
         this.sfx.bossFanfare();
       } else {
-        this.hud.banner(hunt ? "Грибной владыка ушёл" : `${name} утихло`, "", "warn");
+        this.notifyBanner(hunt ? "Грибной владыка ушёл" : `${name} утихло`, "", "warn");
       }
       void x;
       void z;
@@ -1746,9 +1813,9 @@ export class Game {
       if (w) {
         const d = weaponDef(w.cls, w.tier);
         this.sfx.levelUp();
-        this.hud.toast(w.cls === "shield" ? d.name : `${d.name}: урон ×${d.mult}`);
+        this.notifyToast(w.cls === "shield" ? d.name : `${d.name}: урон ×${d.mult}`);
       } else {
-        this.hud.toast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
+        this.notifyToast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
       }
     };
 
@@ -1764,8 +1831,9 @@ export class Game {
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
     this.combat.onCast = (msg) => net.sendCast(msg);
     this.combat.onLowMana = () => {
-      if (MANA_ENABLED) this.hud.toast("Не хватает маны");
+      if (MANA_ENABLED) this.notifyToast("Не хватает маны");
     };
+    this.combat.onMassHealCooldown = (sec) => this.notifyToast(`Массовый хил перезаряжается: ${Math.ceil(sec)} с`);
     this.combat.onMassHealStart = (x, y, z) => this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
     this.combat.nearestAlly = (pos) => {
       let best: { id: string; pos: Vector3 } | null = null;
@@ -1782,15 +1850,16 @@ export class Game {
 
     // Звук соседа — играем объёмно от его аватара / точки события.
     net.onAct = (k, x, y, z, id, d, mobId) => this.playRemoteAct(k, x, y, z, id, d, mobId);
+    net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
 
     // PvP: сервер подтвердил (или отклонил) переключение флага.
     net.onPvp = (on, wait) => {
       if (wait !== undefined) {
-        this.hud.toast(`Выйти из PvP можно через ${wait} с — недавно был бой`);
+        this.notifyToast(`Выйти из PvP можно через ${wait} с — недавно был бой`);
       } else {
-        this.hud.toast(
+        this.notifyToast(
           on
             ? "PvP включён — игроки с PvP могут тебя атаковать"
             : "PvP выключен",
@@ -1799,12 +1868,13 @@ export class Game {
     };
 
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
-    net.onConnectionLost = () => this.hud.toast("Связь потеряна — переподключаюсь…");
+    net.onConnectionLost = () => this.notifyToast("Связь потеряна — переподключаюсь…");
     net.onReconnected = (room) => {
       this.attachRoom(room);
       this.handsKey = ""; // заново сообщить серверу, что в руках и за спиной
+      this.ttsListenSent = -1; // и снова — слушаю ли озвучку чата
       this.saveNow();
-      this.hud.toast("Снова в игре");
+      this.notifyToast("Снова в игре");
     };
     if (net.room) this.attachRoom(net.room);
 
@@ -1818,14 +1888,14 @@ export class Game {
         // Отказ в разрешении — частый случай на телефоне, говорим прямо и не
         // пугаем потом «мешает VPN» (см. onPeerFailed).
         this.voiceWarned = this.voice.micDenied;
-        this.hud.toast(
+        this.notifyToast(
           this.voice.micDenied
             ? "Микрофон выключен: не дано разрешение в браузере"
             : `Голос выключен: ${this.voice.micError ?? "нет микрофона"}`,
         );
         return;
       }
-      this.hud.toast("Микрофон готов");
+      this.notifyToast("Микрофон готов");
       // Смартфон: кнопка выключения микрофона в верхнем ряду.
       if (this.isTouch && this.micToggle) {
         this.hud.enableMicButton(() => LOADOUT.voice.mic !== 0, this.micToggle);
@@ -2108,7 +2178,7 @@ export class Game {
   private levelUpFx(level: number): void {
     this.sfx.levelUp();
     const spd = this.progression.attackSpeed;
-    this.hud.toast(
+    this.notifyToast(
       `Уровень ${level}! Больше HP, маны, урона и скорости` +
         (spd > 1.02 ? ` · атака ×${spd.toFixed(2)}` : "") +
         ` · +1 очко`,
@@ -2203,6 +2273,7 @@ export class Game {
     this.combat.onCast = null;
     this.combat.onLowMana = null;
     this.combat.onMassHealStart = null;
+    this.combat.onMassHealCooldown = null;
     this.combat.nearestAlly = null;
     this.player.netControlled = false;
     this.player.dead = false;
@@ -2218,6 +2289,7 @@ export class Game {
       this.net.onPicked = null;
       this.net.onRtc = null;
       this.net.onAct = null;
+      this.net.onTtsPlay = null;
       this.net.onBotSay = null;
       this.net.onEmote = null;
       this.net.onVoice = null;

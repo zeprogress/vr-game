@@ -1418,6 +1418,9 @@ export class WristMenu {
     toggle("set:spatial", "Звук голоса по месту", "голоса игроков слышны от их положения; выкл — ровно", VR_SETTINGS.spatial, () =>
       setVrSettings({ spatial: !VR_SETTINGS.spatial }),
     );
+    toggle("set:tts", "Озвучка чата Twitch", "голоса сообщений чата стрима слышны в игре", VR_SETTINGS.tts, () =>
+      setVrSettings({ tts: !VR_SETTINGS.tts }),
+    );
     toggle("set:pvp", "PvP с игроками", "тебя смогут атаковать другие игроки с PvP", this.pvpOn, () => this.onTogglePvp?.());
   }
 }

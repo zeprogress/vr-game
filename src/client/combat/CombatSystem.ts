@@ -249,6 +249,10 @@ export class CombatSystem {
   private castMode: "" | "pull" | "solo" | "heal" | "mass" = "";
   /** Массовый хил: сколько секунд уже держим каст (нужно BOT.healCastTime). */
   private massT = 0;
+  /** Когда массовый хил снова готов (performance.now, мс). */
+  private massReadyAt = 0;
+  /** Каст массового хила не начат — кулдаун; Game показывает подсказку (сек. до готовности). */
+  onMassHealCooldown: ((secLeft: number) => void) | null = null;
   /** Game рисует у себя ауру массового хила (остальным её шлёт сервер). */
   onMassHealStart: ((x: number, y: number, z: number) => void) | null = null;
   private castBuzzT = 0;
@@ -2615,6 +2619,15 @@ export class CombatSystem {
       this.castCrystalW.y > eye.y + 0.25 &&
       Math.hypot(this.castCrystalW.x - eye.x, this.castCrystalW.z - eye.z) < 0.9;
     if (!this.castHooked && holdTrig && !this.prevHoldTrigger && raisedHigh) {
+      const left = (this.massReadyAt - performance.now()) / 1000;
+      if (left > 0) {
+        // Кулдаун: каст не начинаем вообще (ни купола, ни заряда), только короткий отклик.
+        this.haptic(holdHand, 0.25, 45);
+        this.onMassHealCooldown?.(left);
+        this.prevHoldTrigger = holdTrig;
+        this.prevCastTrigger = castTrig;
+        return;
+      }
       this.castHooked = true;
       this.castMode = "mass";
       this.massT = 0;
@@ -2661,6 +2674,7 @@ export class CombatSystem {
         if (this.massT >= BOT.healCastTime) {
           // Досидели весь каст — лечение срабатывает на сервере.
           sendMass("massHeal");
+          this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
           this.haptic(holdHand, 0.9, 160);
           this.sfx.at(this.castCrystalW.clone(), () => this.sfx.bowRelease(1));
           this.resetCast();
