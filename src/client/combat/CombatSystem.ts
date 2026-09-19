@@ -154,6 +154,19 @@ export class CombatSystem {
   /** В этом удержании ⚔ уже был выстрел кнопкой ➤ — на отпускании ⚔ не стреляем. */
   private tpAltFired = false;
   private justPickedUp = false; // взяли тем же нажатием E — не бросать сразу
+  /**
+   * Рука, которой сейчас пользуются как лазерной указкой меню на руке (VR): её
+   * оружие и хваты на это время «глухие» — курок и грип не бьют, не кастуют, не
+   * бросают, а меч не наносит ударов. Ставит Game.
+   */
+  uiLockHand: Side | null = null;
+  /** Идёт каст массового хила (посох над головой) — Game на это время запрещает ходить. */
+  get chargingMass(): boolean {
+    return this.castHooked && this.castMode === "mass";
+  }
+  /** Не подбирать оружие с земли автоматически, пока игрок не отойдёт от этой точки (сбросил/выбросил сам). */
+  private noAutoPickup: { x: number; z: number } | null = null;
+  private autoPickupCd = 0;
   private windup = 0; // замах перед броском (плоский режим), 0..1
 
   /** Замах считается для каждой руки отдельно — мечей может быть два. */
@@ -724,12 +737,22 @@ export class CombatSystem {
     this.anchorStowedItems();
     this.shoveWithHeldItems();
 
+    // Рука-указка меню (лазер): её оружие не реагирует вообще — ни ударов, ни каста.
+    const w0 = this.weapon;
+    const lockedWeapon =
+      this.uiLockHand !== null &&
+      this.player.inVR &&
+      (!w0 || w0.hand === this.uiLockHand || w0.hand2 === this.uiLockHand);
+    if (this.player.inVR) this.autoPickupWeapons(dt);
+
     const tpStaff = this.held === "staff" && this.player.thirdPerson;
     const tpBow = this.held === "bow" && this.player.thirdPerson;
     // ПК от первого лица: посох — магический жезл (держишь ЛКМ — копится
     // заряд, отпустил — огнешар вперёд по взгляду), как лук.
     const flatStaff = this.held === "staff" && !this.player.inVR && !this.player.thirdPerson;
-    if (tpStaff) {
+    if (lockedWeapon) {
+      this.resetCast();
+    } else if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
       this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire, altFireReleased);
     } else if (flatStaff) {
@@ -751,7 +774,9 @@ export class CombatSystem {
 
     // Магия посоха: держащая рука машет как мечом (выше), вторая — тянет
     // энергию от кристалла и кастует. Только VR.
-    if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
+    if (lockedWeapon) {
+      /* лазер меню — каст не идёт */
+    } else if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
     else if (!tpStaff && !tpBow && !flatStaff && (this.charge !== 0 || this.castHooked)) {
       this.resetCast();
     }
@@ -842,6 +867,7 @@ export class CombatSystem {
       const was = this.gripPrev[side];
       const pressed = down && !was; // новое нажатие в этот кадр
       this.gripPrev[side] = down;
+      if (this.uiLockHand === side) continue; // рука-указка меню: хваты не работают
 
       // Бутылочка с пояса — по-старому, держится, пока зажат грип
       // (короткое действие, тумблер тут не просили и не нужен).
@@ -1208,39 +1234,163 @@ export class CombatSystem {
     }
   }
 
+  /** Сбросил/выбросил оружие сам — не подбираем автоматически, пока не отойдёт на ~3.5 м. */
+  suppressAutoPickup(): void {
+    const p = this.player.position;
+    this.noAutoPickup = { x: p.x, z: p.z };
+  }
+
+  /**
+   * VR: подошёл к оружию на земле — оно подбирается само. Есть свободная рука,
+   * которой можно его держать, — берётся сразу в руку; руки заняты (или оружие
+   * не подходит к тому, что в руках) — уходит на склад персонажа.
+   */
+  private autoPickupWeapons(dt: number): void {
+    this.autoPickupCd = Math.max(0, this.autoPickupCd - dt);
+    if (this.autoPickupCd > 0 || !this.nearestWorldWeapon) return;
+    const p = this.player.position;
+    if (this.noAutoPickup) {
+      if (Math.hypot(p.x - this.noAutoPickup.x, p.z - this.noAutoPickup.z) < 3.5) return;
+      this.noAutoPickup = null;
+    }
+    const ws = this.nearestWorldWeapon(p);
+    if (!ws || Vector3.Distance(p, ws.pos) > WEAPON_TAKE_REACH * 0.85) return;
+    this.autoPickupCd = 0.7;
+    // Свободная рука (правая раньше) — пробуем взять в руку.
+    for (const side of ["right", "left"] as Side[]) {
+      if (this.uiLockHand === side || this.inHand(side)) continue;
+      if (this.tryPickupWorldWeapon(side)) return;
+    }
+    // Руки заняты / не подошло — на склад.
+    this.onTakeWorldWeapon?.(ws.id);
+    this.haptic("right", 0.3, 50);
+  }
+
+  /** Оружие с земли (лут) — в свободную руку. true — взято в руку; false — не подошло/рядом нет. */
+  // ---- склад (меню на руке) ----
+
+  /** Убрать предмет из мира «на склад»: базовые/лук возвращаются на своё место, остальные исчезают. */
+  private retireItem(item: Item): void {
+    item.hand = null;
+    item.hand2 = null;
+    item.stow = null;
+    item.grip = undefined;
+    item.flight = null;
+    if (item.kind === "bow") {
+      this.nockArrow.setEnabled(false);
+      this.draw = 0;
+      this.vrNocked = false;
+    }
+    this.resetCast();
+    item.mesh.parent = null;
+    item.mesh.rotationQuaternion = null;
+    if (item.kind === "bow" || item.tier === "base") {
+      item.mesh.position.copyFrom(item.rest.pos); // стойка/камень — на месте
+      return;
+    }
+    const i = this.items.indexOf(item);
+    if (i >= 0) this.items.splice(i, 1);
+    item.mesh.dispose();
+  }
+
+  /** Убрать оружие из руки или из-за спины на склад. true — было что убирать. */
+  removeToWarehouse(where: "hand" | "back", side: Side): boolean {
+    const item = where === "hand" ? this.inHand(side) : this.stowedItem(side);
+    if (!item) return false;
+    this.retireItem(item);
+    this.haptic(side, 0.4, 60);
+    this.sfx.bowDraw();
+    return true;
+  }
+
+  /**
+   * Достать оружие со склада в руку. Если предпочтительная рука занята — берём
+   * другую свободную; иначе убираем то, что в руке, за спину (если плечо свободно).
+   * Возвращает текст ошибки или null при успехе.
+   */
+  equipFromWarehouse(cls: WeaponClass, tier: WeaponTier): string | null {
+    const item = this.weaponForRestore(cls, tier);
+    if (!item) return "не удалось достать";
+    const kind = item.kind;
+    const pref: Side = kind === "shield" ? "left" : "right";
+    const other: Side = pref === "left" ? "right" : "left";
+    let side: Side = pref;
+    if (this.inHand(side)) {
+      if (!this.inHand(other) && !this.stowedItem(side)) {
+        side = other;
+      } else {
+        const cur = this.inHand(side);
+        if (cur && !this.stowedItem(side)) this.stowItem(cur, side);
+        else if (!this.inHand(other)) side = other;
+        else {
+          this.retireItem(item);
+          return "руки заняты, а плечи заняты — освободи место";
+        }
+      }
+    }
+    if (!this.canPick(item)) {
+      // Например, лук при занятой второй руке — освобождаем её за спину, если можно.
+      const o = this.inHand(other);
+      if (o && !this.stowedItem(other)) this.stowItem(o, other);
+    }
+    if (!this.canPick(item)) {
+      this.retireItem(item);
+      return "это оружие сейчас нельзя взять в руку";
+    }
+    this.equip(item, side);
+    return null;
+  }
+
+  /** Достать оружие со склада и убрать сразу за спину. Возвращает текст ошибки или null. */
+  stowFromWarehouse(cls: WeaponClass, tier: WeaponTier): string | null {
+    const side: Side | null = !this.stowedItem("right") ? "right" : !this.stowedItem("left") ? "left" : null;
+    if (!side) return "за спиной нет свободного плеча";
+    const item = this.weaponForRestore(cls, tier);
+    if (!item) return "не удалось достать";
+    item.hand = null;
+    item.hand2 = null;
+    item.stow = side;
+    return null;
+  }
+
+  private tryPickupWorldWeapon(side: Side): boolean {
+    const p = this.player.position;
+    if (this.inHand(side)) return false;
+    const ws = this.nearestWorldWeapon?.(p);
+    if (!ws || Vector3.Distance(p, ws.pos) >= WEAPON_TAKE_REACH) return false;
+    // Лук в игре один: тетива и стрела привязаны к его мешу, поэтому
+    // золотой не создаёт второй лук, а поднимает уровень этого.
+    if (ws.cls === "bow") {
+      const bow = this.bowItem;
+      if (this.canPick(bow)) {
+        bow.tier = ws.tier;
+        tintBow(bow.mesh, ws.tier);
+        tintArrows(ws.tier); // золотому луку — золотые стрелы
+        this.onTakeWorldWeapon?.(ws.id);
+        this.equip(bow, side);
+        return true;
+      }
+      return false;
+    }
+    const fresh = this.makeWeaponMesh?.(ws.cls, ws.tier);
+    if (!fresh) return false;
+    const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
+    if (this.canPick(item)) {
+      this.items.push(item);
+      this.onTakeWorldWeapon?.(ws.id);
+      this.equip(item, side);
+      return true;
+    }
+    fresh.dispose();
+    return false;
+  }
+
   private tryPickup(side: Side): void {
     const p = this.player.position;
     if (this.inHand(side)) return; // рука занята
 
     // Оружие, лежащее в мире (лут), берётся вперёд обычных предметов.
-    const ws = this.nearestWorldWeapon?.(p);
-    if (ws && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH) {
-      // Лук в игре один: тетива и стрела привязаны к его мешу, поэтому
-      // золотой не создаёт второй лук, а поднимает уровень этого.
-      if (ws.cls === "bow") {
-        const bow = this.bowItem;
-        if (this.canPick(bow)) {
-          bow.tier = ws.tier;
-          tintBow(bow.mesh, ws.tier);
-          tintArrows(ws.tier); // золотому луку — золотые стрелы
-          this.onTakeWorldWeapon?.(ws.id);
-          this.equip(bow, side);
-          return;
-        }
-      } else {
-        const fresh = this.makeWeaponMesh?.(ws.cls, ws.tier);
-        if (fresh) {
-          const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
-          if (this.canPick(item)) {
-            this.items.push(item);
-            this.onTakeWorldWeapon?.(ws.id);
-            this.equip(item, side);
-            return;
-          }
-          fresh.dispose();
-        }
-      }
-    }
+    if (this.tryPickupWorldWeapon(side)) return;
 
     const near = this.items
       .map((it) => ({ it, d: Vector3.Distance(p, it.mesh.getAbsolutePosition()) }))
@@ -1334,6 +1484,7 @@ export class CombatSystem {
     if (hand) this.motion[hand].init = false;
     this.windup = 0;
     this.justPickedUp = false;
+    this.suppressAutoPickup(); // бросил сам — не подхватывать обратно на лету
     this.sfx.swordSwing(worldPos);
     this.emitSound("swing", worldPos);
 
@@ -2612,8 +2763,10 @@ export class CombatSystem {
       heal ? 1 : 0.55,
       heal ? 0.45 : 0.15,
     );
-    const r = 0.04 + this.charge * 0.22;
-    const flick = 0.9 + 0.1 * Math.sin(performance.now() * 0.04);
+    // Шар на кристалле растёт с зарядом; на максимуме — заметно крупнее и пульсирует.
+    const full = this.charge >= 0.999;
+    const r = 0.04 + this.charge * 0.3 + (full ? 0.06 : 0);
+    const flick = (full ? 0.85 : 0.9) + (full ? 0.15 : 0.1) * Math.sin(performance.now() * (full ? 0.06 : 0.04));
     this.chargeOrb.scaling.setAll(r * flick);
     this.chargeOrb.setEnabled(true);
 

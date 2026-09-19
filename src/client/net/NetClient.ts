@@ -6,6 +6,7 @@ import {
   type CharMsg,
   type LeaderboardRow,
   type WeaponsListMsg,
+  type WarehouseActMsg,
   type TowerBoardRow,
   type DmgHitsMsg,
   type TowerMobsMsg,
@@ -437,6 +438,11 @@ export class NetClient {
   }
 
   /** Оставлять ли персонажа ботом после выхода (панель C). */
+  /** Действие с оружием на складе из меню на руке. */
+  sendWarehouseAct(msg: WarehouseActMsg): void {
+    this.room?.send(MSG.warehouseAct, msg);
+  }
+
   sendSetLeaveBot(on: boolean): void {
     this.room?.send(MSG.setLeaveBot, { on: on ? 1 : 0 } satisfies SetLeaveBotMsg);
   }

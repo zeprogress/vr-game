@@ -36,7 +36,7 @@ import { SpellLights } from "../world/SpellLights";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
 import { dayState } from "../world/DayTime";
-import { WristMenu } from "../ui/WristMenu";
+import { WristMenu, type MenuAction } from "../ui/WristMenu";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
@@ -1194,6 +1194,7 @@ export class Game {
     this.wristPanel.onTogglePvp = () => {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
+    this.wristPanel.onAction = (a) => this.menuWeaponAction(a);
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
@@ -1287,6 +1288,8 @@ export class Game {
         h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
     }
+    // Каст массового хила: стоим на месте.
+    if (this.xrInput) this.xrInput.moveLocked = this.combat.chargingMass;
     if (this.wristPanel) {
       // Меню открыто — левый стик выбирает пункты, а не двигает героя.
       if (this.xrInput) this.xrInput.menuOpen = this.wristPanel.visible;
@@ -1295,12 +1298,15 @@ export class Game {
       );
       const wh = this.net?.warehouse;
       if (wh) this.wristPanel.setWarehouse(wh.list, wh.equipped);
+      const ray = this.wristPanel.visible ? this.menuPointerRay() : null;
+      // Пока правая рука — лазерная указка меню, её оружие и хваты «глухие».
+      this.combat.uiLockHand = ray ? "right" : null;
       this.wristPanel.update({
         navX: inp.menuNavX,
         navY: inp.menuNavY,
         confirm: inp.uiConfirm,
         tabNext: inp.uiNext,
-        ray: this.wristPanel.visible ? this.menuPointerRay() : null,
+        ray,
         trigger: inp.rightTrigger,
         dt,
       });
@@ -1337,6 +1343,40 @@ export class Game {
     }
   }
 
+  /** Действия с оружием из меню на руке: склад ↔ рука/спина, на землю, на лом. */
+  private menuWeaponAction(a: MenuAction): void {
+    const toast = (t: string): void => this.hud.toast(t);
+    if (a.act === "toWarehouse") {
+      this.combat.removeToWarehouse(a.src, a.side);
+      toast("Убрано на склад");
+      return;
+    }
+    if (a.act === "toHand") {
+      const err = this.combat.equipFromWarehouse(a.cls, a.tier);
+      if (err) {
+        toast(err);
+        return;
+      }
+      // Какой рукой взяли — по ней сервер закрепляет именно этот инстанс (с его роллами).
+      const h = this.combat.handsSnapshot();
+      const hand = h.right?.cls === a.cls && h.right.tier === a.tier ? "right" : "left";
+      this.net?.sendWarehouseAct({ id: a.id, act: "hand", hand });
+      return;
+    }
+    if (a.act === "toBack") {
+      const err = this.combat.stowFromWarehouse(a.cls, a.tier);
+      if (err) toast(err);
+      return;
+    }
+    // drop / scrap: если этот инстанс сейчас в руке — сначала убираем его из руки.
+    const eq = this.net?.warehouse?.equipped;
+    if (eq?.left === a.id) this.combat.removeToWarehouse("hand", "left");
+    if (eq?.right === a.id) this.combat.removeToWarehouse("hand", "right");
+    if (a.act === "drop") this.combat.suppressAutoPickup(); // не подбирать обратно, пока не отойдёшь
+    this.net?.sendWarehouseAct({ id: a.id, act: a.act });
+    toast(a.act === "scrap" ? "Разобрано на лом" : "Брошено на землю");
+  }
+
   private readonly _menuRay = new Ray(Vector3.Zero(), Vector3.Forward(), 2);
 
   /**
@@ -1350,7 +1390,7 @@ export class Game {
     const node = right.grip ?? right.pointer;
     const hand = node?.getAbsolutePosition();
     if (!hand) return null;
-    if (Vector3.Distance(hand, panel.mesh.getAbsolutePosition()) > 0.5) return null;
+    if (Vector3.Distance(hand, panel.mesh.getAbsolutePosition()) > 0.65) return null;
     right.getWorldPointerRayToRef(this._menuRay);
     return { origin: this._menuRay.origin, dir: this._menuRay.direction };
   }
@@ -1402,6 +1442,8 @@ export class Game {
    * Онлайн это единственный источник правды — клиент только отображает.
    */
   private serverHp = -1;
+  /** Когда последний раз сработал вампиризм у себя — чтобы не рисовать зелёные крестики поверх красных. */
+  private lastVampAt = 0;
 
   private syncSelf(dt: number, self: PlayerState): void {
     this.hud.setSkin(self.skin);
@@ -1416,7 +1458,8 @@ export class Game {
       this.serverHp > 0 &&
       self.hp - this.serverHp > 2 &&
       self.dead !== 1 &&
-      !this.player.dead
+      !this.player.dead &&
+      performance.now() - this.lastVampAt > 600
     ) {
       this.healCrossFx?.burst(Math.min(1, (self.hp - this.serverHp) / 30));
     }
@@ -1870,9 +1913,19 @@ export class Game {
       case "swordHit":
         this.sfx.at(at, () => this.sfx.swordHit());
         break;
-      case "vampHit":
-        this.crossFx.burst(x, y, z, 2, W_RED);
+      case "vampHit": {
+        // Красные крестики — на самом герое (кто подпитался), а не на мобе; у
+        // себя — ещё и перед глазами (красные вместо зелёных от роста HP).
+        if (id === this.net?.sessionId) {
+          this.lastVampAt = performance.now();
+          this.healCrossFx?.burst(0.7, W_RED);
+        } else {
+          const av = this.avatars.get(id);
+          if (av) this.crossFx.burst(av.position.x, av.position.y - 0.4, av.position.z, 4, W_RED);
+          else this.crossFx.burst(x, y, z, 4, W_RED);
+        }
         break;
+      }
       case "arrowRain":
         this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime);
         this.avatars.get(id)?.playEmote("cheer");

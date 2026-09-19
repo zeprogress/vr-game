@@ -53,6 +53,7 @@ import {
   type Xf7,
   type WorldEventMsg,
   type WeaponsListMsg,
+  type WarehouseActMsg,
   type LootItem,
 } from "#shared/net/messages";
 import {
@@ -1139,6 +1140,40 @@ export class ZoneRoom extends Room<ZoneState> {
       // Соседям — анимация подбора на модельке (PickUp).
       const relay: ActRelay = { k: "pickup", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay, { except: client });
+    });
+
+    // Меню на руке: действия с оружием на складе.
+    this.onMessage(MSG.warehouseAct, (client: Client, msg: WarehouseActMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || p.dead || !msg || typeof msg.id !== "string") return;
+      const w = rt.weapons.find((x) => x.id === msg.id);
+      if (!w) return;
+      if (msg.act === "hand") {
+        const hand = w.cls === "shield" ? "left" : msg.hand === "left" ? "left" : "right";
+        rt.equippedWeaponId[hand] = w.id;
+        rt.owned.add(weaponKey(w.cls, w.tier));
+      } else if (msg.act === "scrap") {
+        const scrap = this.scrapOne({ p, rt }, w);
+        if (scrap > 0) {
+          const bag = readBag(p);
+          addToBag(bag, "scrap", scrap);
+          writeBag(p, bag);
+        }
+      } else if (msg.act === "drop") {
+        const idx = rt.weapons.indexOf(w);
+        if (idx < 0) return;
+        rt.weapons.splice(idx, 1);
+        if (rt.equippedWeaponId.left === w.id) rt.equippedWeaponId.left = null;
+        if (rt.equippedWeaponId.right === w.id) rt.equippedWeaponId.right = null;
+        const edge = WORLD.size / 2 - 2;
+        const x = clampAbs(p.head.x + Math.sin(rt.yaw) * 1.1, edge);
+        const z = clampAbs(p.head.z + Math.cos(rt.yaw) * 1.1, edge);
+        this.sim.dropInstance(w, x, z);
+      } else {
+        return;
+      }
+      this.persist(client);
     });
 
     // Что в руках. Уровень принимаем только если игрок его действительно поднял.

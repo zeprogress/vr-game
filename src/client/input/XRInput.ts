@@ -40,6 +40,8 @@ export class XRInput implements InputSource {
    * (движение подавлено), правый по-прежнему поворачивает.
    */
   menuOpen = false;
+  /** Идёт каст массового хила — ходить нельзя (стик только поворачивает камеру). */
+  moveLocked = false;
   private navHeld: { x: number; y: number; at: number } = { x: 0, y: 0, at: 0 };
 
   private readonly addObs: Observer<WebXRInputSource> | null;
@@ -128,8 +130,8 @@ export class XRInput implements InputSource {
         this.navHeld.x = nx;
         this.navHeld.y = ny;
       } else {
-        s.moveX = mx;
-        s.moveY = my;
+        s.moveX = this.moveLocked ? 0 : mx;
+        s.moveY = this.moveLocked ? 0 : my;
         this.navHeld.x = 0;
         this.navHeld.y = 0;
       }

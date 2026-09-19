@@ -19,18 +19,21 @@ import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int"];
-const TEX_W = 640;
-const TEX_H = 960;
-const PLANE_W = 0.3;
+const TEX_W = 1200;
+const TEX_H = 900;
+const PLANE_W = 0.5;
 
-/** Вертикальная раскладка: вкладки, окно прокручиваемого содержимого, строка описания, «Выйти». */
+/** Раскладка: вкладки сверху, содержимое, строка описания, «Выйти» (всегда внизу). Без прокруток. */
 const TAB_Y = 8;
-const TAB_H = 56;
-const VIEW_Y = 76;
-const VIEW_H = 736;
-const INFO_Y = 818;
-const EXIT_Y = 886;
-const EXIT_H = 58;
+const TAB_H = 48;
+const VIEW_Y = 66;
+const INFO_Y = 786;
+const EXIT_Y = 846;
+const EXIT_H = 46;
+/** Склад: ячейки сеткой по страницам. */
+const WH_COLS = 4;
+const WH_ROWS = 6;
+const WH_PER_PAGE = WH_COLS * WH_ROWS;
 
 const TIER_COLOR: Record<WeaponTier, string> = {
   base: "#c9d2e6",
@@ -45,8 +48,9 @@ const TIER_BG: Record<WeaponTier, string> = {
 
 type Tab = "char" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
+type Side = "left" | "right";
 
-/** Кликабельная область. Координаты — внутри прокручиваемого окна (fixed=false) или экрана (fixed=true). */
+/** Кликабельная область (экранные координаты текстуры). */
 interface Widget {
   id: string;
   x: number;
@@ -54,7 +58,6 @@ interface Widget {
   w: number;
   h: number;
   kind: Kind;
-  fixed: boolean;
   /** Слайдер: текущее значение 0..1. */
   val?: number;
   act?: () => void;
@@ -85,11 +88,24 @@ export interface MenuInput {
   dt: number;
 }
 
+/** Что игрок выбрал в меню сделать с оружием (обрабатывает Game). */
+export type MenuAction =
+  | { act: "toWarehouse"; src: "hand" | "back"; side: Side }
+  | { act: "toHand" | "toBack" | "drop" | "scrap"; id: string; cls: WeaponClass; tier: WeaponTier };
+
+/** Всплывающее меню действий над выбранным оружием. */
+interface Popup {
+  title: string;
+  sub: string;
+  color: string;
+  buttons: { id: string; label: string; hint?: string; color: string; act: () => void }[];
+}
+
 /**
  * Меню на левой руке (VR): вкладки «Персонаж» и «Настройки», внизу всегда
- * видна кнопка «Выйти из игры» (спрашивает, оставить ли героя ботом).
- * Управление: левый стик (выбор), кнопка подтверждения, либо лазер правой
- * руки, когда её поднесли к меню, и курок.
+ * видна кнопка «Выйти из игры» (спрашивает, оставить ли героя ботом). Без
+ * прокруток. Управление: левый стик (выбор), кнопка подтверждения, либо лазер
+ * правой руки, когда её поднесли к меню, и курок.
  */
 export class WristMenu {
   private readonly plane: Mesh;
@@ -98,11 +114,11 @@ export class WristMenu {
   private laserPts: Vector3[] = [new Vector3(), new Vector3(0, 0, 1)];
   private open = false;
   private tab: Tab = "char";
-  private scroll = 0;
-  private contentH = VIEW_H;
   private focusId = "tab:char";
   private hoverId = "";
   private dialog = false;
+  private popup: Popup | null = null;
+  private whPage = 0;
   private dirty = true;
   private lastDraw = 0;
   private prevTrigger = false;
@@ -112,12 +128,14 @@ export class WristMenu {
   /** Игрок подтвердил выход: keepBot — оставить героя ботом. Ставит Game. */
   onExit: ((keepBot: boolean) => void) | null = null;
   onTogglePvp: (() => void) | null = null;
+  /** Действие с оружием (в руку / за спину / на землю / разобрать / убрать на склад). Ставит Game. */
+  onAction: ((a: MenuAction) => void) | null = null;
 
   private pvpOn = false;
   private leaveBotOn = false;
   private rightHand: WornWeapon | null = null;
   private leftHand: WornWeapon | null = null;
-  private stowed: (WornWeapon & { side: "left" | "right" })[] = [];
+  private stowed: (WornWeapon & { side: Side })[] = [];
   private warehouse: WarehouseWeapon[] = [];
   private equippedIds: { left: string | null; right: string | null } = { left: null, right: null };
   private skillCd = -1;
@@ -145,7 +163,7 @@ export class WristMenu {
     );
     this.plane.material = mat;
     this.plane.parent = parent;
-    this.plane.position.set(0, 0.2, 0);
+    this.plane.position.set(0, 0.24, 0);
     this.plane.billboardMode = Mesh.BILLBOARDMODE_ALL;
     this.plane.isPickable = false;
     this.plane.renderingGroupId = 2;
@@ -178,7 +196,7 @@ export class WristMenu {
     this.dirty = true;
   }
 
-  setStowed(list: (WornWeapon & { side: "left" | "right" })[]): void {
+  setStowed(list: (WornWeapon & { side: Side })[]): void {
     const sig = (l: typeof list): string => l.map((s) => `${s.side}${s.cls}${s.tier}`).join("|");
     if (sig(list) === sig(this.stowed)) return;
     this.stowed = list;
@@ -212,7 +230,7 @@ export class WristMenu {
     this.dirty = true;
   }
 
-  /** Текущее значение «оставить бота» — подсвечивается по умолчанию в вопросе при выходе. */
+  /** Текущее значение «оставить бота» — подсказка в вопросе при выходе. */
   setLeaveBot(on: boolean): void {
     this.leaveBotOn = on;
   }
@@ -242,6 +260,7 @@ export class WristMenu {
     if (!this.open) {
       this.laser.setEnabled(false);
       this.dialog = false;
+      this.popup = null;
     } else {
       this.dirty = true;
     }
@@ -264,7 +283,7 @@ export class WristMenu {
   update(o: MenuInput): void {
     if (!this.open) return;
 
-    if (o.tabNext && !this.dialog) this.switchTab(this.tab === "char" ? "set" : "char");
+    if (o.tabNext && !this.dialog && !this.popup) this.switchTab(this.tab === "char" ? "set" : "char");
 
     // Лазер: луч правой руки → точка на плоскости меню.
     let hit: { u: number; v: number } | null = null;
@@ -284,7 +303,7 @@ export class WristMenu {
           this.dragSlider = w.id;
           this.setSliderFromU(w, hit.u);
         } else {
-          w.act?.();
+          this.activate(w);
         }
       }
     }
@@ -297,15 +316,25 @@ export class WristMenu {
 
     // Левый стик: выбор.
     if (o.navX !== 0 || o.navY !== 0) this.navigate(o.navX, o.navY);
-    if (o.confirm) this.widgets.find((w) => w.id === this.focusId)?.act?.();
+    if (o.confirm) {
+      const f = this.widgets.find((w) => w.id === this.focusId);
+      if (f) this.activate(f);
+    }
 
-    // Перерисовка не чаще ~25 раз/с: 640×960 текстура заметно дороже обычной.
+    // Перерисовка не чаще ~25 раз/с: большая текстура заметно дороже обычной.
     const now = performance.now();
     if (this.dirty && now - this.lastDraw > 40) {
       this.lastDraw = now;
       this.dirty = false;
       this.redraw();
     }
+  }
+
+  /** Нажатие на виджет: действие + сразу перерисовка (тумблеры меняют вид, не дожидаясь ухода лазера). */
+  private activate(w: Widget): void {
+    w.act?.();
+    this.dirty = true;
+    this.lastDraw = 0; // не ждать паузу перед перерисовкой после нажатия
   }
 
   // ---- лазер ----
@@ -360,20 +389,22 @@ export class WristMenu {
 
   // ---- виджеты, фокус ----
 
-  private screenY(w: Widget): number {
-    return w.fixed ? w.y : w.y + VIEW_Y - this.scroll;
+  /** Модальный слой (вопрос при выходе / меню действий): активны только его виджеты. */
+  private modalPrefix(): string {
+    return this.dialog ? "dlg:" : this.popup ? "pop:" : "";
+  }
+
+  private activeWidgets(): Widget[] {
+    const pre = this.modalPrefix();
+    if (pre) return this.widgets.filter((w) => w.id.startsWith(pre));
+    return this.widgets.filter((w) => !w.id.startsWith("dlg:") && !w.id.startsWith("pop:"));
   }
 
   private widgetAt(u: number, v: number): Widget | null {
-    // Верхние (фиксированные) — первыми: они рисуются поверх содержимого.
-    for (let i = this.widgets.length - 1; i >= 0; i--) {
-      const w = this.widgets[i];
-      if (this.dialog && !w.id.startsWith("dlg:")) continue;
-      const y = this.screenY(w);
-      if (u < w.x || u > w.x + w.w || v < y || v > y + w.h) continue;
-      // Содержимое видно только в окне прокрутки.
-      if (!w.fixed && (v < VIEW_Y || v > VIEW_Y + VIEW_H)) continue;
-      return w;
+    const list = this.activeWidgets();
+    for (let i = list.length - 1; i >= 0; i--) {
+      const w = list[i];
+      if (u >= w.x && u <= w.x + w.w && v >= w.y && v <= w.y + w.h) return w;
     }
     return null;
   }
@@ -381,34 +412,21 @@ export class WristMenu {
   private focus(id: string): void {
     if (this.focusId === id) return;
     this.focusId = id;
-    this.ensureVisible();
     this.dirty = true;
-  }
-
-  private ensureVisible(): void {
-    const w = this.widgets.find((x) => x.id === this.focusId);
-    if (!w || w.fixed) return;
-    if (w.y < this.scroll) this.scroll = Math.max(0, w.y - 12);
-    else if (w.y + w.h > this.scroll + VIEW_H) this.scroll = Math.min(this.maxScroll(), w.y + w.h - VIEW_H + 12);
-  }
-
-  private maxScroll(): number {
-    return Math.max(0, this.contentH - VIEW_H);
   }
 
   private switchTab(t: Tab): void {
     if (this.tab === t) return;
     this.tab = t;
-    this.scroll = 0;
     this.focusId = `tab:${t}`;
     this.dirty = true;
-    this.redraw(); // виджеты новой вкладки нужны сразу
+    this.lastDraw = 0;
   }
 
   /** Перемещение фокуса стиком: по геометрии; на слайдере ←/→ меняют значение; на вкладках — переключают. */
   private navigate(dx: number, dy: number): void {
-    const cur = this.widgets.find((w) => w.id === this.focusId);
-    const list = this.widgets.filter((w) => (this.dialog ? w.id.startsWith("dlg:") : !w.id.startsWith("dlg:")));
+    const list = this.activeWidgets();
+    const cur = list.find((w) => w.id === this.focusId);
     if (!cur) {
       this.focusId = list[0]?.id ?? "";
       this.dirty = true;
@@ -417,28 +435,27 @@ export class WristMenu {
     if (dx !== 0 && cur.kind === "slider" && cur.set) {
       cur.set(Math.max(0, Math.min(1, (cur.val ?? 0) + dx * 0.1)));
       this.dirty = true;
+      this.lastDraw = 0;
       return;
     }
-    if (dx !== 0 && cur.kind === "tab") {
+    if (dx !== 0 && cur.kind === "tab" && !this.modalPrefix()) {
       this.switchTab(dx > 0 ? "set" : "char");
       return;
     }
     const cx = cur.x + cur.w / 2;
-    const cy = this.screenY(cur) + cur.h / 2;
+    const cy = cur.y + cur.h / 2;
     let best: Widget | null = null;
     let bestScore = Infinity;
     for (const w of list) {
       if (w === cur) continue;
-      const wx = w.x + w.w / 2;
-      const wy = this.screenY(w) + w.h / 2;
-      const ddx = wx - cx;
-      const ddy = wy - cy;
+      const ddx = w.x + w.w / 2 - cx;
+      const ddy = w.y + w.h / 2 - cy;
       let score: number;
       if (dy !== 0) {
         if (Math.sign(ddy) !== dy || Math.abs(ddy) < 6) continue;
         score = Math.abs(ddy) + Math.abs(ddx) * 0.6;
       } else {
-        if (Math.sign(ddx) !== dx || Math.abs(ddx) < 6 || Math.abs(ddy) > 46) continue;
+        if (Math.sign(ddx) !== dx || Math.abs(ddx) < 6 || Math.abs(ddy) > 60) continue;
         score = Math.abs(ddx) + Math.abs(ddy) * 2;
       }
       if (score < bestScore) {
@@ -447,12 +464,14 @@ export class WristMenu {
       }
     }
     if (best) this.focus(best.id);
+    this.lastDraw = 0;
   }
 
   private setSliderFromU(w: Widget, u: number): void {
     // Дорожка нарисована с отступом 14 px по краям виджета.
     w.set?.(Math.max(0, Math.min(1, (u - (w.x + 14)) / (w.w - 28))));
     this.dirty = true;
+    this.lastDraw = 0;
   }
 
   // ---- рисование ----
@@ -482,25 +501,17 @@ export class WristMenu {
     ctx.strokeRect(3, 3, TEX_W - 6, TEX_H - 6);
     ctx.textBaseline = "top";
 
-    // Содержимое (прокручиваемое) строим первым — его высота нужна для прокрутки.
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(4, VIEW_Y, TEX_W - 8, VIEW_H);
-    ctx.clip();
-    ctx.translate(0, VIEW_Y - this.scroll);
-    this.contentH = this.tab === "char" ? this.drawCharacter(ctx) : this.drawSettings(ctx);
-    ctx.restore();
-    if (this.scroll > this.maxScroll()) this.scroll = this.maxScroll();
-    this.drawScrollBar(ctx);
-
+    if (this.tab === "char") this.drawCharacter(ctx);
+    else this.drawSettings(ctx);
     this.drawTabs(ctx);
-    this.drawInfo(ctx);
     this.drawExit(ctx);
+    this.drawInfo(ctx);
     if (this.dialog) this.drawExitDialog(ctx);
+    else if (this.popup) this.drawPopup(ctx);
 
-    // Первый запуск / после смены вкладки — фокус на существующем виджете.
-    if (!this.widgets.some((w) => w.id === this.focusId)) {
-      this.focusId = this.dialog ? "dlg:cancel" : `tab:${this.tab}`;
+    // Фокус должен указывать на существующий виджет активного слоя.
+    if (!this.activeWidgets().some((w) => w.id === this.focusId)) {
+      this.focusId = this.activeWidgets()[0]?.id ?? "";
     }
 
     this.tex.update(true);
@@ -521,10 +532,10 @@ export class WristMenu {
       ["char", "Персонаж"],
       ["set", "Настройки"],
     ];
-    const w = (TEX_W - 24) / 2;
+    const w = 300;
     tabs.forEach(([id, label], i) => {
       const wd = this.add({
-        id: `tab:${id}`, x: 12 + i * w, y: TAB_Y, w: w - 6, h: TAB_H, kind: "tab", fixed: true,
+        id: `tab:${id}`, x: 12 + i * (w + 8), y: TAB_Y, w, h: TAB_H, kind: "tab",
         act: () => this.switchTab(id),
       });
       const active = this.tab === id;
@@ -535,42 +546,32 @@ export class WristMenu {
       ctx.lineWidth = st.stroke ? st.lw : 2;
       ctx.strokeRect(wd.x, wd.y, wd.w, wd.h);
       ctx.fillStyle = active ? "#ffffff" : "#aab4cc";
-      ctx.font = `${active ? "bold " : ""}30px system-ui, sans-serif`;
+      ctx.font = `${active ? "bold " : ""}28px system-ui, sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(label, wd.x + wd.w / 2, wd.y + 12);
+      ctx.fillText(label, wd.x + wd.w / 2, wd.y + 9);
       ctx.textAlign = "left";
     });
   }
 
-  private drawScrollBar(ctx: CanvasRenderingContext2D): void {
-    if (this.contentH <= VIEW_H) return;
-    const trackH = VIEW_H - 8;
-    const barH = Math.max(40, (VIEW_H / this.contentH) * trackH);
-    const y = VIEW_Y + 4 + (this.scroll / this.maxScroll()) * (trackH - barH);
-    ctx.fillStyle = "#3a4258";
-    ctx.fillRect(TEX_W - 12, y, 6, barH);
-  }
-
   private drawInfo(ctx: CanvasRenderingContext2D): void {
     ctx.fillStyle = "#171b26";
-    ctx.fillRect(12, INFO_Y, TEX_W - 24, 62);
+    ctx.fillRect(12, INFO_Y, TEX_W - 24, 54);
     const f = this.widgets.find((w) => w.id === this.focusId);
     const [a, b] = f?.info ?? ["", ""];
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = "#dbe2f2";
-    ctx.fillText(a || "Стик — выбор · B — нажать · X — вкладка", 22, INFO_Y + 6);
+    ctx.fillText(a || "Стик — выбор · B — нажать · X — вкладка · Y — закрыть", 22, INFO_Y + 5);
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#8c96ad";
-    ctx.fillText(b, 22, INFO_Y + 34);
+    ctx.fillText(b, 22, INFO_Y + 30);
   }
 
   private drawExit(ctx: CanvasRenderingContext2D): void {
     const wd = this.add({
-      id: "exit", x: 12, y: EXIT_Y, w: TEX_W - 24, h: EXIT_H, kind: "button", fixed: true,
+      id: "exit", x: 12, y: EXIT_Y, w: TEX_W - 24, h: EXIT_H, kind: "button",
       act: () => {
         this.dialog = true;
         this.focusId = "dlg:cancel";
-        this.dirty = true;
       },
     });
     const st = this.styleFor(wd);
@@ -580,33 +581,33 @@ export class WristMenu {
     ctx.lineWidth = st.lw;
     ctx.strokeRect(wd.x, wd.y, wd.w, wd.h);
     ctx.fillStyle = "#ffb0b0";
-    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.font = "bold 28px system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Выйти из игры", wd.x + wd.w / 2, wd.y + 13);
+    ctx.fillText("Выйти из игры", wd.x + wd.w / 2, wd.y + 9);
     ctx.textAlign = "left";
   }
 
   private drawExitDialog(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = "rgba(6,8,12,.82)";
+    ctx.fillStyle = "rgba(6,8,12,.84)";
     ctx.fillRect(4, 4, TEX_W - 8, TEX_H - 8);
-    const x = 40;
-    const w = TEX_W - 80;
+    const w = 520;
+    const x = (TEX_W - w) / 2;
     ctx.fillStyle = "#171b26";
-    ctx.fillRect(x, 250, w, 460);
+    ctx.fillRect(x, 200, w, 470);
     ctx.strokeStyle = "#5a6480";
     ctx.lineWidth = 3;
-    ctx.strokeRect(x, 250, w, 460);
+    ctx.strokeRect(x, 200, w, 470);
     ctx.fillStyle = "#e8ecf8";
     ctx.font = "bold 34px system-ui, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("Выйти из игры?", TEX_W / 2, 276);
+    ctx.fillText("Выйти из игры?", TEX_W / 2, 226);
     ctx.font = "24px system-ui, sans-serif";
     ctx.fillStyle = "#aab4cc";
-    ctx.fillText("Оставить героя ботом в мире?", TEX_W / 2, 330);
+    ctx.fillText("Оставить героя ботом в мире?", TEX_W / 2, 280);
     ctx.textAlign = "left";
 
     const btn = (id: string, y: number, label: string, sub: string, color: string, act: () => void): void => {
-      const wd = this.add({ id, x: x + 24, y, w: w - 48, h: 92, kind: "button", fixed: true, act });
+      const wd = this.add({ id, x: x + 24, y, w: w - 48, h: 92, kind: "button", act });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || "#1f2533";
       ctx.fillRect(wd.x, wd.y, wd.w, wd.h);
@@ -622,56 +623,120 @@ export class WristMenu {
       ctx.fillText(sub, wd.x + wd.w / 2, wd.y + 56);
       ctx.textAlign = "left";
     };
-    btn("dlg:keep", 372, "Оставить бота", this.leaveBotOn ? "герой продолжит играть сам · как раньше" : "герой продолжит играть сам", "#7ee081", () => {
+    btn("dlg:keep", 322, "Оставить бота", this.leaveBotOn ? "герой продолжит играть сам · как раньше" : "герой продолжит играть сам", "#7ee081", () => {
       this.dialog = false;
       this.onExit?.(true);
     });
-    btn("dlg:drop", 480, "Не оставлять", this.leaveBotOn ? "герой исчезнет из мира" : "герой исчезнет из мира · как раньше", "#ffd166", () => {
+    btn("dlg:drop", 428, "Не оставлять", this.leaveBotOn ? "герой исчезнет из мира" : "герой исчезнет из мира · как раньше", "#ffd166", () => {
       this.dialog = false;
       this.onExit?.(false);
     });
-    btn("dlg:cancel", 588, "Отмена", "вернуться в игру", "#9fb2d8", () => {
+    btn("dlg:cancel", 534, "Отмена", "вернуться в игру", "#9fb2d8", () => {
       this.dialog = false;
       this.focusId = "exit";
-      this.dirty = true;
     });
+  }
+
+  private drawPopup(ctx: CanvasRenderingContext2D): void {
+    const pp = this.popup!;
+    ctx.fillStyle = "rgba(6,8,12,.84)";
+    ctx.fillRect(4, 4, TEX_W - 8, TEX_H - 8);
+    const w = 560;
+    const bh = 66;
+    const h = 130 + pp.buttons.length * (bh + 10) + 14;
+    const x = (TEX_W - w) / 2;
+    const y = Math.max(60, (TEX_H - h) / 2);
+    ctx.fillStyle = "#171b26";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = pp.color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
+    ctx.textAlign = "center";
+    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.fillStyle = pp.color;
+    ctx.fillText(pp.title, TEX_W / 2, y + 16);
+    ctx.font = "18px system-ui, sans-serif";
+    ctx.fillStyle = "#7db8ff";
+    this.wrapCentered(ctx, pp.sub, TEX_W / 2, y + 58, w - 40, 22, 2);
+    ctx.textAlign = "left";
+    pp.buttons.forEach((b, i) => {
+      const wd = this.add({
+        id: b.id, x: x + 24, y: y + 110 + i * (bh + 10), w: w - 48, h: bh, kind: "button",
+        act: b.act,
+      });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || "#1f2533";
+      ctx.fillRect(wd.x, wd.y, wd.w, wd.h);
+      ctx.strokeStyle = st.stroke || b.color;
+      ctx.lineWidth = st.lw;
+      ctx.strokeRect(wd.x, wd.y, wd.w, wd.h);
+      ctx.fillStyle = b.color;
+      ctx.font = "bold 27px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(b.label, wd.x + wd.w / 2, wd.y + (b.hint ? 8 : 18));
+      if (b.hint) {
+        ctx.font = "17px system-ui, sans-serif";
+        ctx.fillStyle = "#8c96ad";
+        ctx.fillText(b.hint, wd.x + wd.w / 2, wd.y + 40);
+      }
+      ctx.textAlign = "left";
+    });
+  }
+
+  private wrapCentered(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number, maxW: number, lh: number, maxLines: number): void {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let line = "";
+    for (const wd of words) {
+      const t = line ? `${line} ${wd}` : wd;
+      if (ctx.measureText(t).width > maxW && line) {
+        lines.push(line);
+        line = wd;
+      } else {
+        line = t;
+      }
+    }
+    if (line) lines.push(line);
+    lines.slice(0, maxLines).forEach((l, i) => ctx.fillText(l, cx, y + i * lh));
   }
 
   // ---- вкладка «Персонаж» ----
 
-  private drawCharacter(ctx: CanvasRenderingContext2D): number {
+  private drawCharacter(ctx: CanvasRenderingContext2D): void {
     const p = this.prog;
     const hero = this.hero();
-    let y = 4;
+    const LX = 12;
+    const LW = 560; // левая колонка
+    let y = VIEW_Y;
 
     // Уровень и опыт.
-    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.font = "bold 32px system-ui, sans-serif";
     ctx.fillStyle = "#ffd166";
-    ctx.fillText(`Ур. ${p.level}`, 20, y);
+    ctx.fillText(`Ур. ${p.level}`, LX + 8, y);
     const need = p.xpToNext();
     const frac = p.atMaxLevel ? 1 : Math.min(1, p.xp / need);
     ctx.font = "22px system-ui, sans-serif";
     ctx.fillStyle = "#c9d2e6";
     ctx.textAlign = "right";
-    ctx.fillText(p.atMaxLevel ? "максимальный уровень" : `опыт ${Math.floor(p.xp)} / ${Math.round(need)}`, TEX_W - 24, y + 8);
+    ctx.fillText(p.atMaxLevel ? "максимальный уровень" : `опыт ${Math.floor(p.xp)} / ${Math.round(need)}`, LX + LW - 6, y + 6);
     ctx.textAlign = "left";
-    y += 46;
+    y += 42;
     ctx.fillStyle = "#242a38";
-    ctx.fillRect(20, y, TEX_W - 44, 18);
+    ctx.fillRect(LX + 8, y, LW - 16, 16);
     ctx.fillStyle = "#4a9be8";
-    ctx.fillRect(20, y, (TEX_W - 44) * frac, 18);
+    ctx.fillRect(LX + 8, y, (LW - 16) * frac, 16);
     ctx.strokeStyle = "#5a6480";
     ctx.lineWidth = 2;
-    ctx.strokeRect(20, y, TEX_W - 44, 18);
-    y += 34;
+    ctx.strokeRect(LX + 8, y, LW - 16, 16);
+    y += 28;
 
     // Характеристики.
     for (const s of STATS) {
       const canSpend = p.unspent > 0;
       const wd = this.add({
-        id: `stat:${s}`, x: 12, y, w: TEX_W - 36, h: 48, kind: "button", fixed: false,
+        id: `stat:${s}`, x: LX, y, w: LW, h: 42, kind: "button",
         act: () => {
-          if (p.spend(s)) this.dirty = true;
+          p.spend(s);
         },
         info: [`${STAT_LABELS[s]}: ${p.stats[s]}`, canSpend ? "нажми — вложить свободное очко" : this.statHint(s)],
       });
@@ -686,100 +751,88 @@ export class WristMenu {
         ctx.strokeRect(wd.x, y, wd.w, wd.h);
       }
       ctx.fillStyle = "#c9d2e6";
-      ctx.font = "28px system-ui, sans-serif";
-      ctx.fillText(STAT_LABELS[s], 24, y + 9);
+      ctx.font = "26px system-ui, sans-serif";
+      ctx.fillText(STAT_LABELS[s], LX + 12, y + 7);
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 28px system-ui, sans-serif";
-      ctx.fillText(String(p.stats[s]), 250, y + 9);
-      ctx.font = "19px system-ui, sans-serif";
+      ctx.font = "bold 26px system-ui, sans-serif";
+      ctx.fillText(String(p.stats[s]), LX + 200, y + 7);
+      ctx.font = "18px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
-      ctx.fillText(this.statHint(s), 310, y + 14);
+      ctx.fillText(this.statHint(s), LX + 250, y + 12);
       if (canSpend) {
         ctx.fillStyle = "#2f7a3a";
-        ctx.fillRect(TEX_W - 92, y + 6, 56, 36);
+        ctx.fillRect(LX + LW - 60, y + 4, 50, 34);
         ctx.fillStyle = "#e9ffe9";
-        ctx.font = "bold 30px system-ui, sans-serif";
+        ctx.font = "bold 28px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("+", TEX_W - 64, y + 8);
+        ctx.fillText("+", LX + LW - 35, y + 5);
         ctx.textAlign = "left";
       }
-      y += 52;
+      y += 46;
     }
-    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = p.unspent > 0 ? "#7ee081" : "#6b7488";
-    ctx.fillText(`Свободных очков: ${p.unspent}`, 20, y + 2);
-    y += 40;
+    ctx.fillText(`Свободных очков: ${p.unspent}`, LX + 8, y);
+    y += 34;
 
     // В руках — отдельная панель.
-    y = this.section(ctx, "В РУКАХ", y);
-    const hands: [string, WornWeapon | null, "left" | "right"][] = [
+    y = this.section(ctx, LX, LW, "В РУКАХ", y);
+    const hands: [string, WornWeapon | null, Side][] = [
       ["Правая рука", this.rightHand, "right"],
       ["Левая рука", this.leftHand, "left"],
     ];
     hands.forEach(([label, w, side], i) => {
-      this.weaponCard(ctx, `hand:${side}`, 12 + i * 312, y, 306, 128, label, w, hero, this.handQuality(w, side));
+      this.weaponCard(ctx, `hand:${side}`, LX + i * 282, y, 274, 112, label, w, hero, this.handQuality(w, side), () => {
+        if (w) this.openHeldPopup("hand", side, w, hero);
+      });
     });
-    y += 138;
+    y += 122;
 
-    // За спиной.
-    y = this.section(ctx, "ЗА СПИНОЙ", y);
-    (["right", "left"] as const).forEach((side, i) => {
-      const s = this.stowed.find((x) => x.side === side) ?? null;
-      const label = side === "right" ? "Правое плечо" : "Левое плечо";
-      this.weaponCard(ctx, `back:${side}`, 12 + i * 312, y, 306, 100, label, s, hero, undefined);
+    // За спиной: левое плечо слева, правое — справа.
+    y = this.section(ctx, LX, LW, "ЗА СПИНОЙ", y);
+    (["left", "right"] as const).forEach((side, i) => {
+      const st = this.stowed.find((x) => x.side === side) ?? null;
+      const label = side === "left" ? "Левое плечо" : "Правое плечо";
+      this.weaponCard(ctx, `back:${side}`, LX + i * 282, y, 274, 92, label, st, hero, undefined, () => {
+        if (st) this.openHeldPopup("back", side, st, hero);
+      });
     });
-    y += 110;
+    y += 102;
 
     // Сумка.
-    y = this.section(ctx, "СУМКА", y);
-    const cw = 146;
-    const ch = 78;
+    y = this.section(ctx, LX, LW, "СУМКА", y);
+    const cw = 134;
+    const ch = 58;
     for (let i = 0; i < BAG.slots; i++) {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      const x = 12 + col * (cw + 8);
-      const cy = y + row * (ch + 8);
-      this.bagCell(ctx, i, x, cy, cw, ch);
+      this.bagCell(ctx, i, LX + (i % 4) * (cw + 8), y + Math.floor(i / 4) * (ch + 8), cw, ch);
     }
-    y += Math.ceil(BAG.slots / 4) * (ch + 8) + 8;
+    y += Math.ceil(BAG.slots / 4) * (ch + 8) + 2;
 
-    // Склад оружия.
-    y = this.section(ctx, `СКЛАД ОРУЖИЯ (${this.warehouse.length})`, y);
-    if (this.warehouse.length === 0) {
-      ctx.font = "22px system-ui, sans-serif";
-      ctx.fillStyle = "#6b7488";
-      ctx.fillText("пусто — золотое и уникальное оружие падает с боёв", 20, y + 4);
-      y += 40;
-    }
-    for (const w of this.warehouse) {
-      this.warehouseRow(ctx, w, y);
-      y += 74;
-    }
-
-    // Кулдаун умения — в конце.
-    ctx.font = "20px system-ui, sans-serif";
+    ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#8c96ad";
-    ctx.fillText("Умение оружия", 20, y + 6);
+    ctx.fillText("Умение оружия", LX + 8, y + 4);
     ctx.fillStyle = this.skillCd < 0 ? "#6b7488" : this.skillCd <= 0.001 ? "#7ee081" : "#ffd166";
     ctx.fillText(
       this.skillCd < 0 ? "нет (нужен меч или лук)" : this.skillCd <= 0.001 ? "готово — нажми стик" : "перезарядка…",
-      260,
-      y + 6,
+      LX + 200,
+      y + 4,
     );
-    return y + 44;
+
+    // Правая колонка: склад оружия (сетка, страницы).
+    this.drawWarehouse(ctx, 590, VIEW_Y, TEX_W - 590 - 12);
   }
 
-  private section(ctx: CanvasRenderingContext2D, title: string, y: number): number {
+  private section(ctx: CanvasRenderingContext2D, x: number, w: number, title: string, y: number): number {
     ctx.strokeStyle = "#3a4258";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(20, y + 2);
-    ctx.lineTo(TEX_W - 20, y + 2);
+    ctx.moveTo(x + 8, y + 2);
+    ctx.lineTo(x + w - 8, y + 2);
     ctx.stroke();
-    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = "#e8ecf8";
-    ctx.fillText(title, 20, y + 10);
-    return y + 44;
+    ctx.fillText(title, x + 8, y + 8);
+    return y + 38;
   }
 
   private statHint(s: StatName): string {
@@ -790,7 +843,7 @@ export class WristMenu {
   }
 
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
-  private handQuality(w: WornWeapon | null, side: "left" | "right"): number | undefined {
+  private handQuality(w: WornWeapon | null, side: Side): number | undefined {
     if (!w || w.tier === "base") return undefined;
     const id = this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
@@ -814,17 +867,18 @@ export class WristMenu {
     item: WornWeapon | null,
     hero: HeroStats,
     quality: number | undefined,
+    onPick: () => void,
   ): void {
     let info: [string, string] = [label, "пусто"];
     if (item) {
       const d = weaponDef(item.cls, item.tier);
       const stats = weaponStats(item, hero);
       info = [
-        `${d.name}${quality ? ` (${quality})` : ""}`,
+        `${d.name}${quality ? ` (${quality})` : ""} — нажми: убрать на склад`,
         stats.slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ") || (item.affix ?? ""),
       ];
     }
-    const wd = this.add({ id, x, y, w, h, kind: "card", fixed: false, info });
+    const wd = this.add({ id, x, y, w, h, kind: "card", info, act: onPick });
     const st = this.styleFor(wd);
     ctx.fillStyle = st.fill || (item ? TIER_BG[item.tier] : "#161a24");
     ctx.fillRect(x, y, w, h);
@@ -832,29 +886,31 @@ export class WristMenu {
     ctx.lineWidth = st.stroke ? st.lw : 2;
     ctx.strokeRect(x, y, w, h);
 
-    ctx.font = "18px system-ui, sans-serif";
+    ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#7c88a4";
     ctx.fillText(label, x + 10, y + 6);
     if (!item) {
-      ctx.font = "24px system-ui, sans-serif";
+      ctx.font = "22px system-ui, sans-serif";
       ctx.fillStyle = "#4d566c";
-      ctx.fillText("пусто", x + 10, y + h / 2 - 6);
+      ctx.fillText("пусто", x + 10, y + h / 2 - 4);
       return;
     }
-    const iconS = h > 110 ? 76 : 60;
-    this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 30, iconS);
+    const iconS = h > 100 ? 72 : 56;
+    this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS);
     const d = weaponDef(item.cls, item.tier);
-    ctx.font = "bold 23px system-ui, sans-serif";
+    ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
-    ctx.fillText(d.name, x + iconS + 20, y + 30);
+    ctx.fillText(d.name, x + iconS + 20, y + 28);
+    let ty = y + 54;
     if (quality) {
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${quality})`, x + iconS + 20, y + 56);
+      ctx.fillText(`(${quality})`, x + iconS + 20, ty);
+      ty += 26;
     }
-    if (item.affix) {
-      ctx.font = "17px system-ui, sans-serif";
+    if (item.affix && h > 100) {
+      ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7db8ff";
-      this.wrapText(ctx, item.affix, x + iconS + 20, y + (quality ? 82 : 60), w - iconS - 30, 20, h > 110 ? 2 : 1);
+      this.wrapText(ctx, item.affix, x + iconS + 20, ty, w - iconS - 28, 19, 2);
     }
   }
 
@@ -865,9 +921,9 @@ export class WristMenu {
       ? [def.name, def.heal > 0 ? `лечит +${def.heal} HP · нажми, чтобы выпить` : `в сумке ×${slot.count}`]
       : ["Пустая ячейка", ""];
     const wd = this.add({
-      id: `bag:${i}`, x, y, w, h, kind: "cell", fixed: false, info,
+      id: `bag:${i}`, x, y, w, h, kind: "cell", info,
       act: () => {
-        if (this.inv.use(i)) this.dirty = true;
+        this.inv.use(i);
       },
     });
     const st = this.styleFor(wd);
@@ -877,47 +933,170 @@ export class WristMenu {
     ctx.lineWidth = st.stroke ? st.lw : 2;
     ctx.strokeRect(x, y, w, h);
     if (!def) return;
-    this.drawItemIcon(ctx, def.icon, def.tint, x + 8, y + 10, 56);
-    ctx.font = "bold 26px system-ui, sans-serif";
+    this.drawItemIcon(ctx, def.icon, def.tint, x + 6, y + 6, 46);
+    ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#ffd166";
-    ctx.fillText(`×${slot.count}`, x + 72, y + 14);
-    ctx.font = "17px system-ui, sans-serif";
+    ctx.fillText(`×${slot.count}`, x + 58, y + 8);
+    ctx.font = "16px system-ui, sans-serif";
     ctx.fillStyle = "#9fb2d8";
-    ctx.fillText(def.short, x + 72, y + 46);
+    ctx.fillText(def.short, x + 58, y + 34);
   }
 
-  private warehouseRow(ctx: CanvasRenderingContext2D, w: WarehouseWeapon, y: number): void {
-    const d = weaponDef(w.cls, w.tier);
-    const eq =
-      this.equippedIds.left === w.id ? "в левой" : this.equippedIds.right === w.id ? "в правой" : "";
+  // ---- склад ----
+
+  private drawWarehouse(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
+    const pages = Math.max(1, Math.ceil(this.warehouse.length / WH_PER_PAGE));
+    if (this.whPage >= pages) this.whPage = pages - 1;
+    ctx.strokeStyle = "#3a4258";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y + 2);
+    ctx.lineTo(x + w, y + 2);
+    ctx.stroke();
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillStyle = "#e8ecf8";
+    ctx.fillText(`СКЛАД ОРУЖИЯ (${this.warehouse.length})`, x, y + 8);
+
+    // Страницы: ‹ 1/2 ›
+    if (pages > 1) {
+      const bx = x + w - 200;
+      const nav = (id: string, bxx: number, label: string, delta: number): void => {
+        const wd = this.add({
+          id, x: bxx, y: y + 2, w: 46, h: 36, kind: "button",
+          act: () => {
+            this.whPage = Math.max(0, Math.min(pages - 1, this.whPage + delta));
+          },
+          info: ["Страница склада", `${this.whPage + 1} из ${pages}`],
+        });
+        const st = this.styleFor(wd);
+        ctx.fillStyle = st.fill || "#1f2533";
+        ctx.fillRect(wd.x, wd.y, wd.w, wd.h);
+        ctx.strokeStyle = st.stroke || "#4a5470";
+        ctx.lineWidth = st.lw;
+        ctx.strokeRect(wd.x, wd.y, wd.w, wd.h);
+        ctx.fillStyle = "#cfe0ff";
+        ctx.font = "bold 26px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(label, wd.x + wd.w / 2, wd.y + 4);
+        ctx.textAlign = "left";
+      };
+      nav("wh:prev", bx, "‹", -1);
+      ctx.font = "22px system-ui, sans-serif";
+      ctx.fillStyle = "#aab4cc";
+      ctx.textAlign = "center";
+      ctx.fillText(`${this.whPage + 1}/${pages}`, bx + 100, y + 8);
+      ctx.textAlign = "left";
+      nav("wh:next", bx + 154, "›", 1);
+    }
+
+    const top = y + 48;
+    const cw = Math.floor((w - (WH_COLS - 1) * 8) / WH_COLS);
+    const ch = 98;
+    if (this.warehouse.length === 0) {
+      ctx.font = "21px system-ui, sans-serif";
+      ctx.fillStyle = "#6b7488";
+      ctx.fillText("пусто — золотое и уникальное", x + 4, top + 6);
+      ctx.fillText("оружие падает с боёв", x + 4, top + 34);
+      return;
+    }
+    const slice = this.warehouse.slice(this.whPage * WH_PER_PAGE, (this.whPage + 1) * WH_PER_PAGE);
+    slice.forEach((wp, i) => {
+      const cx = x + (i % WH_COLS) * (cw + 8);
+      const cy = top + Math.floor(i / WH_COLS) * (ch + 8);
+      this.warehouseCell(ctx, wp, cx, cy, cw, ch);
+    });
+  }
+
+  private warehouseCell(ctx: CanvasRenderingContext2D, wp: WarehouseWeapon, x: number, y: number, w: number, h: number): void {
+    const d = weaponDef(wp.cls, wp.tier);
+    const eq = this.equippedIds.left === wp.id ? "в левой" : this.equippedIds.right === wp.id ? "в правой" : "";
     const wd = this.add({
-      id: `wh:${w.id}`, x: 12, y, w: TEX_W - 36, h: 68, kind: "card", fixed: false,
-      info: [`${d.name}${w.affixes.length ? ` (${w.quality})` : ""}`, w.affixes.join(", ") || "без роллов"],
+      id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
+      info: [`${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
+      act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
-    ctx.fillStyle = st.fill || TIER_BG[w.tier];
-    ctx.fillRect(wd.x, y, wd.w, wd.h);
-    ctx.strokeStyle = st.stroke || TIER_COLOR[w.tier];
-    ctx.lineWidth = st.stroke ? st.lw : 1;
-    ctx.strokeRect(wd.x, y, wd.w, wd.h);
-    this.drawWeaponIcon(ctx, w.cls, w.tier, 20, y + 6, 56);
-    ctx.font = "bold 22px system-ui, sans-serif";
-    ctx.fillStyle = TIER_COLOR[w.tier];
-    ctx.fillText(d.name, 88, y + 6);
-    if (w.affixes.length) {
+    ctx.fillStyle = st.fill || TIER_BG[wp.tier];
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
+    ctx.lineWidth = st.stroke ? st.lw : 1.5;
+    ctx.strokeRect(x, y, w, h);
+    this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52);
+    ctx.font = "bold 17px system-ui, sans-serif";
+    ctx.fillStyle = TIER_COLOR[wp.tier];
+    ctx.fillText(this.shortName(d.name), x + 62, y + 8);
+    if (wp.affixes.length) {
+      ctx.font = "bold 22px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${w.quality})`, 88 + ctx.measureText(d.name).width + 10, y + 6);
+      ctx.fillText(`(${wp.quality})`, x + 62, y + 36);
     }
     if (eq) {
-      ctx.font = "17px system-ui, sans-serif";
+      ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
-      ctx.textAlign = "right";
-      ctx.fillText(eq, TEX_W - 34, y + 8);
-      ctx.textAlign = "left";
+      ctx.fillText(eq, x + 8, y + h - 24);
     }
-    ctx.font = "17px system-ui, sans-serif";
-    ctx.fillStyle = "#7db8ff";
-    this.wrapText(ctx, w.affixes.join(", ") || "без роллов", 88, y + 36, TEX_W - 130, 20, 1);
+  }
+
+  private shortName(n: string): string {
+    return n.length > 12 ? `${n.slice(0, 11)}…` : n;
+  }
+
+  // ---- всплывающие меню действий ----
+
+  private scrapGain(wp: WarehouseWeapon): number {
+    return (wp.tier === "legendary" ? 10 : wp.tier === "gold" ? 1 : 0) + wp.affixes.length;
+  }
+
+  private openWarehousePopup(wp: WarehouseWeapon): void {
+    const d = weaponDef(wp.cls, wp.tier);
+    const send = (act: "toHand" | "toBack" | "drop" | "scrap"): void => {
+      this.popup = null;
+      this.focusId = `wh:${wp.id}`;
+      this.onAction?.({ act, id: wp.id, cls: wp.cls, tier: wp.tier });
+    };
+    this.popup = {
+      title: `${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""}`,
+      sub: wp.affixes.join(", ") || "без роллов",
+      color: TIER_COLOR[wp.tier],
+      buttons: [
+        { id: "pop:hand", label: "Взять в руку", color: "#7ee081", act: () => send("toHand") },
+        { id: "pop:back", label: "Убрать за спину", color: "#9fd0ff", act: () => send("toBack") },
+        { id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") },
+        { id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") },
+        { id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() },
+      ],
+    };
+    this.focusId = "pop:hand";
+  }
+
+  private openHeldPopup(src: "hand" | "back", side: Side, w: WornWeapon, hero: HeroStats): void {
+    const d = weaponDef(w.cls, w.tier);
+    const q = src === "hand" ? this.handQuality(w, side) : undefined;
+    const stats = weaponStats(w, hero).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ");
+    this.popup = {
+      title: `${d.name}${q ? ` (${q})` : ""}`,
+      sub: w.affix || stats || (src === "hand" ? "в руке" : "за спиной"),
+      color: TIER_COLOR[w.tier],
+      buttons: [
+        {
+          id: "pop:store",
+          label: "Убрать на склад",
+          hint: "оружие останется у персонажа",
+          color: "#7ee081",
+          act: () => {
+            this.popup = null;
+            this.focusId = `${src}:${side}`;
+            this.onAction?.({ act: "toWarehouse", src, side });
+          },
+        },
+        { id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() },
+      ],
+    };
+    this.focusId = "pop:store";
+  }
+
+  private closePopup(): void {
+    this.popup = null;
   }
 
   private wrapText(
@@ -1036,10 +1215,11 @@ export class WristMenu {
 
   // ---- вкладка «Настройки» ----
 
-  private drawSettings(ctx: CanvasRenderingContext2D): number {
-    let y = 8;
+  private drawSettings(ctx: CanvasRenderingContext2D): void {
+    let y = VIEW_Y;
+    const W = TEX_W - 24;
     const toggle = (id: string, label: string, hint: string, on: boolean, act: () => void): void => {
-      const wd = this.add({ id, x: 12, y, w: TEX_W - 36, h: 78, kind: "toggle", fixed: false, act, info: [label, hint] });
+      const wd = this.add({ id, x: 12, y, w: W, h: 72, kind: "toggle", act, info: [label, hint] });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || "#171b26";
       ctx.fillRect(wd.x, y, wd.w, wd.h);
@@ -1048,17 +1228,22 @@ export class WristMenu {
       ctx.strokeRect(wd.x, y, wd.w, wd.h);
       ctx.font = "bold 28px system-ui, sans-serif";
       ctx.fillStyle = "#e8ecf8";
-      ctx.fillText(label, 26, y + 10);
-      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillText(label, 28, y + 8);
+      ctx.font = "19px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
-      ctx.fillText(hint, 26, y + 46);
+      ctx.fillText(hint, 28, y + 42);
       // Переключатель.
-      const tx = TEX_W - 130;
+      const tx = TEX_W - 150;
       ctx.fillStyle = on ? "#2f7a3a" : "#3a4258";
-      ctx.fillRect(tx, y + 18, 84, 42);
+      ctx.fillRect(tx, y + 14, 92, 44);
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(on ? tx + 46 : tx + 4, y + 22, 34, 34);
-      y += 90;
+      ctx.fillRect(on ? tx + 50 : tx + 4, y + 18, 38, 36);
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillStyle = on ? "#9fffb0" : "#aab4cc";
+      ctx.textAlign = "right";
+      ctx.fillText(on ? "ВКЛ" : "ВЫКЛ", tx - 12, y + 24);
+      ctx.textAlign = "left";
+      y += 82;
     };
     toggle("set:vignette", "Виньетка при движении", "затемняет края, меньше укачивает", VR_SETTINGS.vignette, () =>
       setVrSettings({ vignette: !VR_SETTINGS.vignette }),
@@ -1069,7 +1254,7 @@ export class WristMenu {
 
     const slider = (id: string, label: string, val: number, set: (v: number) => void): void => {
       const wd = this.add({
-        id, x: 12, y, w: TEX_W - 36, h: 92, kind: "slider", fixed: false, val, set: (v) => set(v),
+        id, x: 12, y, w: W, h: 92, kind: "slider", val, set: (v) => set(v),
         info: [label, `${Math.round(val * 100)}%`],
       });
       const st = this.styleFor(wd);
@@ -1080,7 +1265,7 @@ export class WristMenu {
       ctx.strokeRect(wd.x, y, wd.w, wd.h);
       ctx.font = "bold 28px system-ui, sans-serif";
       ctx.fillStyle = "#e8ecf8";
-      ctx.fillText(label, 26, y + 8);
+      ctx.fillText(label, 28, y + 8);
       ctx.textAlign = "right";
       ctx.fillStyle = "#ffd166";
       ctx.fillText(`${Math.round(val * 100)}%`, TEX_W - 40, y + 8);
@@ -1095,12 +1280,11 @@ export class WristMenu {
       ctx.beginPath();
       ctx.arc(wd.x + 14 + (wd.w - 28) * val, ty + 6, 15, 0, Math.PI * 2);
       ctx.fill();
-      y += 104;
+      y += 102;
     };
     slider("set:music", "Громкость музыки", VR_SETTINGS.music, (v) => setVrSettings({ music: v }));
     slider("set:sfx", "Громкость эффектов", VR_SETTINGS.sfx, (v) => setVrSettings({ sfx: v }));
 
     toggle("set:pvp", "PvP с игроками", "тебя смогут атаковать другие игроки с PvP", this.pvpOn, () => this.onTogglePvp?.());
-    return y + 8;
   }
 }
