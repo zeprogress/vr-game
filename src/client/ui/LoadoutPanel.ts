@@ -56,7 +56,6 @@ const TARGETS: Target[] = [
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
   { key: "light:day", label: "Освещение", kind: "light" },
-  { key: "voice:chat", label: "Голос", kind: "voice" },
   { key: "gfx:smooth", label: "Сглаживание", kind: "gfx" },
   { key: "world:clear", label: "Очистить мир от лута (всем)", kind: "action" },
 ];

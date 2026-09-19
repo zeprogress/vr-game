@@ -91,7 +91,11 @@ export interface MenuInput {
 /** Что игрок выбрал в меню сделать с оружием (обрабатывает Game). */
 export type MenuAction =
   | { act: "toWarehouse"; src: "hand" | "back"; side: Side }
-  | { act: "toHand" | "toBack" | "drop" | "scrap"; id: string; cls: WeaponClass; tier: WeaponTier };
+  /** Из руки за плечо / со спины в руку — та же сторона (левая рука ↔ левое плечо), занято — меняются. */
+  | { act: "handToBack" | "backToHand"; side: Side }
+  /** Со склада в руку / за плечо этой стороны (что там было — на склад). */
+  | { act: "whToHand" | "whToBack"; side: Side; id: string; cls: WeaponClass; tier: WeaponTier }
+  | { act: "drop" | "scrap"; id: string; cls: WeaponClass; tier: WeaponTier };
 
 /** Всплывающее меню действий над выбранным оружием. */
 interface Popup {
@@ -777,11 +781,18 @@ export class WristMenu {
 
     // В руках — отдельная панель.
     y = this.section(ctx, LX, LW, "В РУКАХ", y);
+    // Лук занимает обе руки: он показывается в левой, а в правой — стрела.
+    const bow =
+      this.leftHand?.cls === "bow" ? this.leftHand : this.rightHand?.cls === "bow" ? this.rightHand : null;
     const hands: [string, WornWeapon | null, Side][] = [
-      ["Правая рука", this.rightHand, "right"],
-      ["Левая рука", this.leftHand, "left"],
+      ["Левая рука", bow ? bow : this.leftHand, "left"],
+      ["Правая рука", bow ? null : this.rightHand, "right"],
     ];
     hands.forEach(([label, w, side], i) => {
+      if (bow && side === "right") {
+        this.arrowCard(ctx, LX + i * 282, y, 274, 112);
+        return;
+      }
       this.weaponCard(ctx, `hand:${side}`, LX + i * 282, y, 274, 112, label, w, hero, this.handQuality(w, side), () => {
         if (w) this.openHeldPopup("hand", side, w, hero);
       });
@@ -845,7 +856,8 @@ export class WristMenu {
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
   private handQuality(w: WornWeapon | null, side: Side): number | undefined {
     if (!w || w.tier === "base") return undefined;
-    const id = this.equippedIds[side];
+    // Лук в интерфейсе стоит в левой руке, а закреплён мог быть за любой.
+    const id = w.cls === "bow" ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
     if (byId) return byId.quality;
     let best: WarehouseWeapon | undefined;
@@ -912,6 +924,54 @@ export class WristMenu {
       ctx.fillStyle = "#7db8ff";
       this.wrapText(ctx, item.affix, x + iconS + 20, ty, w - iconS - 28, 19, 2);
     }
+  }
+
+  /** Правая «рука» при луке: значок стрелы — лук занимает обе руки. */
+  private arrowCard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    const wd = this.add({
+      id: "hand:right", x, y, w, h, kind: "card",
+      info: ["Стрела", "лук занимает обе руки — правая рука тянет тетиву"],
+    });
+    const st = this.styleFor(wd);
+    ctx.fillStyle = st.fill || "#161a24";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = st.stroke || "#3a4258";
+    ctx.lineWidth = st.stroke ? st.lw : 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.font = "17px system-ui, sans-serif";
+    ctx.fillStyle = "#7c88a4";
+    ctx.fillText("Правая рука", x + 10, y + 6);
+    // Стрела: древко, наконечник, оперение.
+    ctx.save();
+    ctx.translate(x + 16, y + 34);
+    ctx.strokeStyle = "#c9d2e6";
+    ctx.fillStyle = "#c9d2e6";
+    ctx.lineCap = "round";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(6, 60);
+    ctx.lineTo(70, 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(70, 0);
+    ctx.lineTo(82, 4);
+    ctx.lineTo(74, 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(6, 60);
+    ctx.lineTo(0, 48);
+    ctx.moveTo(16, 52);
+    ctx.lineTo(8, 40);
+    ctx.stroke();
+    ctx.restore();
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillStyle = "#c9d2e6";
+    ctx.fillText("Стрела", x + 112, y + 34);
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillStyle = "#7c88a4";
+    this.wrapText(ctx, "лук занимает обе руки", x + 112, y + 64, w - 122, 19, 2);
   }
 
   private bagCell(ctx: CanvasRenderingContext2D, i: number, x: number, y: number, w: number, h: number): void {
@@ -1047,50 +1107,87 @@ export class WristMenu {
     return (wp.tier === "legendary" ? 10 : wp.tier === "gold" ? 1 : 0) + wp.affixes.length;
   }
 
+  private sideName(side: Side, gen: "hand" | "shoulder", acc: boolean): string {
+    // «левую руку / левое плечо», «правую руку / правое плечо»
+    const l = side === "left";
+    if (gen === "hand") return acc ? (l ? "левую руку" : "правую руку") : l ? "левая рука" : "правая рука";
+    return l ? "левое плечо" : "правое плечо";
+  }
+
   private openWarehousePopup(wp: WarehouseWeapon): void {
     const d = weaponDef(wp.cls, wp.tier);
-    const send = (act: "toHand" | "toBack" | "drop" | "scrap"): void => {
+    const isBow = wp.cls === "bow";
+    const send = (a: MenuAction): void => {
       this.popup = null;
       this.focusId = `wh:${wp.id}`;
-      this.onAction?.({ act, id: wp.id, cls: wp.cls, tier: wp.tier });
+      this.onAction?.(a);
     };
+    const base = { id: wp.id, cls: wp.cls, tier: wp.tier };
+    const buttons: Popup["buttons"] = [];
+    if (isBow) {
+      buttons.push({ id: "pop:handL", label: "Взять в руки", hint: "лук занимает обе руки, остальное — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "left", ...base }) });
+    } else {
+      buttons.push({ id: "pop:handL", label: "В левую руку", hint: "что в ней — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "left", ...base }) });
+      buttons.push({ id: "pop:handR", label: "В правую руку", hint: "что в ней — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "right", ...base }) });
+    }
+    buttons.push({ id: "pop:backL", label: "За левое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "left", ...base }) });
+    buttons.push({ id: "pop:backR", label: "За правое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "right", ...base }) });
+    buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
+    buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() });
     this.popup = {
       title: `${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""}`,
       sub: wp.affixes.join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
-      buttons: [
-        { id: "pop:hand", label: "Взять в руку", color: "#7ee081", act: () => send("toHand") },
-        { id: "pop:back", label: "Убрать за спину", color: "#9fd0ff", act: () => send("toBack") },
-        { id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") },
-        { id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") },
-        { id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() },
-      ],
+      buttons,
     };
-    this.focusId = "pop:hand";
+    this.focusId = "pop:handL";
   }
 
+  /** Меню над оружием в руке / за спиной: склад, либо перенос на ту же сторону (рука ↔ плечо), с обменом. */
   private openHeldPopup(src: "hand" | "back", side: Side, w: WornWeapon, hero: HeroStats): void {
     const d = weaponDef(w.cls, w.tier);
     const q = src === "hand" ? this.handQuality(w, side) : undefined;
     const stats = weaponStats(w, hero).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ");
+    const done = (a: MenuAction): void => {
+      this.popup = null;
+      this.focusId = `${src}:${side}`;
+      this.onAction?.(a);
+    };
+    const buttons: Popup["buttons"] = [
+      {
+        id: "pop:store",
+        label: "Убрать на склад",
+        hint: "оружие останется у персонажа",
+        color: "#7ee081",
+        act: () => done({ act: "toWarehouse", src, side }),
+      },
+    ];
+    if (src === "hand") {
+      const occupied = this.stowed.some((x) => x.side === side);
+      buttons.push({
+        id: "pop:move",
+        label: `За ${this.sideName(side, "shoulder", true)}`,
+        hint: occupied ? "там уже лежит — поменяются местами" : "на то же плечо, что и рука",
+        color: "#9fd0ff",
+        act: () => done({ act: "handToBack", side }),
+      });
+    } else {
+      const occupied = side === "left" ? !!this.leftHand || this.rightHand?.cls === "bow" : !!this.rightHand || this.leftHand?.cls === "bow";
+      buttons.push({
+        id: "pop:move",
+        label: `В ${this.sideName(side, "hand", true)}`,
+        hint: occupied ? "там уже оружие — поменяются местами" : "в ту же сторону, что и плечо",
+        color: "#9fd0ff",
+        act: () => done({ act: "backToHand", side }),
+      });
+    }
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() });
     this.popup = {
       title: `${d.name}${q ? ` (${q})` : ""}`,
       sub: w.affix || stats || (src === "hand" ? "в руке" : "за спиной"),
       color: TIER_COLOR[w.tier],
-      buttons: [
-        {
-          id: "pop:store",
-          label: "Убрать на склад",
-          hint: "оружие останется у персонажа",
-          color: "#7ee081",
-          act: () => {
-            this.popup = null;
-            this.focusId = `${src}:${side}`;
-            this.onAction?.({ act: "toWarehouse", src, side });
-          },
-        },
-        { id: "pop:cancel", label: "Отмена", color: "#8c96ad", act: () => this.closePopup() },
-      ],
+      buttons,
     };
     this.focusId = "pop:store";
   }
@@ -1285,6 +1382,12 @@ export class WristMenu {
     slider("set:music", "Громкость музыки", VR_SETTINGS.music, (v) => setVrSettings({ music: v }));
     slider("set:sfx", "Громкость эффектов", VR_SETTINGS.sfx, (v) => setVrSettings({ sfx: v }));
 
+    toggle("set:mic", "Микрофон", "твой голос слышат другие игроки", VR_SETTINGS.mic, () =>
+      setVrSettings({ mic: !VR_SETTINGS.mic }),
+    );
+    toggle("set:spatial", "Звук голоса по месту", "голоса игроков слышны от их положения; выкл — ровно", VR_SETTINGS.spatial, () =>
+      setVrSettings({ spatial: !VR_SETTINGS.spatial }),
+    );
     toggle("set:pvp", "PvP с игроками", "тебя смогут атаковать другие игроки с PvP", this.pvpOn, () => this.onTogglePvp?.());
   }
 }

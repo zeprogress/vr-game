@@ -77,7 +77,7 @@ import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BOSS, BOT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
-import { VR_SETTINGS, onVrSettingsChanged } from "../config/vrSettings";
+import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
 /**
@@ -289,13 +289,21 @@ export class Game {
       // Текст роллов ("+12% урона" и т.п.) — сервер считает и держит в
       // своём PlayerState (leftAffix/rightAffix), клиент их только читает.
       const self = this.net?.self;
+      // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (везде одинаково).
+      const bow = h.left?.cls === "bow" ? h.left : h.right?.cls === "bow" ? h.right : null;
+      const bowAffix = self?.rightAffix || self?.leftAffix || undefined;
       return {
-        left: h.left
-          ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon)
-          : null,
-        right: h.right
-          ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon)
-          : null,
+        arrow: !!bow,
+        left: bow
+          ? ({ ...bow, affix: bowAffix } as WornWeapon)
+          : h.left
+            ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon)
+            : null,
+        right: bow
+          ? null
+          : h.right
+            ? ({ ...h.right, affix: self?.rightAffix || undefined } as WornWeapon)
+            : null,
         stowed: this.combat.stowedSnapshot(),
         stats: {
           level: this.progression.level,
@@ -397,7 +405,14 @@ export class Game {
       this.sfx.setMusicLevel(VR_SETTINGS.music);
     };
     applyLevels();
+    // Микрофон и «звук по месту» — тоже личные настройки из меню (для всех, не только админа).
+    const applyVoice = (): void => {
+      LOADOUT.voice.mic = VR_SETTINGS.mic ? 1 : 0;
+      LOADOUT.voice.spatial = VR_SETTINGS.spatial ? 1 : 0;
+    };
+    applyVoice();
     onVrSettingsChanged(applyLevels);
+    onVrSettingsChanged(applyVoice);
     this.hud.bindVolume(
       () => this.sfx.masterVolume,
       (v) => {
@@ -420,6 +435,7 @@ export class Game {
     // клавиша M, на смартфоне — кнопка сверху (появляется после доступа).
     const toggleMic = (): void => {
       LOADOUT.voice.mic = LOADOUT.voice.mic ? 0 : 1;
+      setVrSettings({ mic: LOADOUT.voice.mic !== 0 }); // и в меню на руке, и запомнить
       this.hud.toast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
     };
     window.addEventListener("keydown", (e) => {
@@ -1343,38 +1359,47 @@ export class Game {
     }
   }
 
-  /** Действия с оружием из меню на руке: склад ↔ рука/спина, на землю, на лом. */
+  /** Действия с оружием из меню на руке: склад ↔ рука/спина, обмен рука ↔ плечо, на землю, на лом. */
   private menuWeaponAction(a: MenuAction): void {
     const toast = (t: string): void => this.hud.toast(t);
-    if (a.act === "toWarehouse") {
-      this.combat.removeToWarehouse(a.src, a.side);
-      toast("Убрано на склад");
-      return;
-    }
-    if (a.act === "toHand") {
-      const err = this.combat.equipFromWarehouse(a.cls, a.tier);
-      if (err) {
-        toast(err);
+    const fail = (err: string | null): boolean => {
+      if (err) toast(err);
+      return !!err;
+    };
+    switch (a.act) {
+      case "toWarehouse":
+        this.combat.removeToWarehouse(a.src, a.side);
+        toast("Убрано на склад");
+        return;
+      case "handToBack":
+        fail(this.combat.handToBack(a.side));
+        return;
+      case "backToHand":
+        fail(this.combat.backToHand(a.side));
+        return;
+      case "whToBack":
+        fail(this.combat.placeOnBackFromWarehouse(a.cls, a.tier, a.side));
+        return;
+      case "whToHand": {
+        if (fail(this.combat.placeInHandFromWarehouse(a.cls, a.tier, a.side))) return;
+        // Какой рукой держим — по ней сервер закрепляет именно этот инстанс (с его роллами).
+        const h = this.combat.handsSnapshot();
+        const hand = h.left?.cls === a.cls && h.left.tier === a.tier ? "left" : "right";
+        this.net?.sendWarehouseAct({ id: a.id, act: "hand", hand });
         return;
       }
-      // Какой рукой взяли — по ней сервер закрепляет именно этот инстанс (с его роллами).
-      const h = this.combat.handsSnapshot();
-      const hand = h.right?.cls === a.cls && h.right.tier === a.tier ? "right" : "left";
-      this.net?.sendWarehouseAct({ id: a.id, act: "hand", hand });
-      return;
+      case "drop":
+      case "scrap": {
+        // Если этот инстанс сейчас в руке — сначала убираем его из руки.
+        const eq = this.net?.warehouse?.equipped;
+        if (eq?.left === a.id) this.combat.removeToWarehouse("hand", "left");
+        if (eq?.right === a.id) this.combat.removeToWarehouse("hand", "right");
+        if (a.act === "drop") this.combat.suppressAutoPickup(); // не подбирать обратно, пока не отойдёшь
+        this.net?.sendWarehouseAct({ id: a.id, act: a.act });
+        toast(a.act === "scrap" ? "Разобрано на лом" : "Брошено на землю");
+        return;
+      }
     }
-    if (a.act === "toBack") {
-      const err = this.combat.stowFromWarehouse(a.cls, a.tier);
-      if (err) toast(err);
-      return;
-    }
-    // drop / scrap: если этот инстанс сейчас в руке — сначала убираем его из руки.
-    const eq = this.net?.warehouse?.equipped;
-    if (eq?.left === a.id) this.combat.removeToWarehouse("hand", "left");
-    if (eq?.right === a.id) this.combat.removeToWarehouse("hand", "right");
-    if (a.act === "drop") this.combat.suppressAutoPickup(); // не подбирать обратно, пока не отойдёшь
-    this.net?.sendWarehouseAct({ id: a.id, act: a.act });
-    toast(a.act === "scrap" ? "Разобрано на лом" : "Брошено на землю");
   }
 
   private readonly _menuRay = new Ray(Vector3.Zero(), Vector3.Forward(), 2);

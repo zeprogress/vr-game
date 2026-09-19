@@ -11,6 +11,7 @@ interface InvWeapon {
 }
 
 interface InvHand {
+  cls?: string;
   name: string;
   tier: "gold" | "legendary";
   affixes: string[];
@@ -81,8 +82,12 @@ function renderInv(msg: InvMsg): void {
   subEl.textContent = "";
 
   const hands = msg.hands;
+  // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (как в игре).
+  const bow = hands ? (hands.left?.cls === "bow" ? hands.left : hands.right?.cls === "bow" ? hands.right : null) : null;
   const handsHtml = hands
-    ? `<div class="hands">${handHtml("Правая рука", hands.right)}${handHtml("Левая рука", hands.left)}</div>`
+    ? bow
+      ? `<div class="hands"><div class="hand empty-hand">Правая рука: <b>Стрела</b> — лук занимает обе руки</div>${handHtml("Левая рука", bow)}</div>`
+      : `<div class="hands">${handHtml("Правая рука", hands.right)}${handHtml("Левая рука", hands.left)}</div>`
     : "";
 
   const weapons = msg.weapons ?? [];

@@ -1293,9 +1293,19 @@ export class CombatSystem {
     item.mesh.dispose();
   }
 
+  /**
+   * Предмет в «ячейке руки» как её видит меню: лук занимает обе руки и
+   * показывается в ЛЕВОЙ (в правой — стрела), остальное — как есть.
+   */
+  private handSlotItem(side: Side): Item | null {
+    const bow = this.held1("bow");
+    if (bow) return side === "left" ? bow : null;
+    return this.inHand(side);
+  }
+
   /** Убрать оружие из руки или из-за спины на склад. true — было что убирать. */
   removeToWarehouse(where: "hand" | "back", side: Side): boolean {
-    const item = where === "hand" ? this.inHand(side) : this.stowedItem(side);
+    const item = where === "hand" ? this.handSlotItem(side) : this.stowedItem(side);
     if (!item) return false;
     this.retireItem(item);
     this.haptic(side, 0.4, 60);
@@ -1304,49 +1314,93 @@ export class CombatSystem {
   }
 
   /**
-   * Достать оружие со склада в руку. Если предпочтительная рука занята — берём
-   * другую свободную; иначе убираем то, что в руке, за спину (если плечо свободно).
-   * Возвращает текст ошибки или null при успехе.
+   * Можно ли будет держать `item` в руке, если `removed` из рук уберут (пробный
+   * прогон без изменений): те же правила, что у canPick — лук только с пустыми
+   * руками, меч только со вторым мечом или щитом и т.д.
    */
-  equipFromWarehouse(cls: WeaponClass, tier: WeaponTier): string | null {
-    const item = this.weaponForRestore(cls, tier);
-    if (!item) return "не удалось достать";
-    const kind = item.kind;
-    const pref: Side = kind === "shield" ? "left" : "right";
-    const other: Side = pref === "left" ? "right" : "left";
-    let side: Side = pref;
-    if (this.inHand(side)) {
-      if (!this.inHand(other) && !this.stowedItem(side)) {
-        side = other;
-      } else {
-        const cur = this.inHand(side);
-        if (cur && !this.stowedItem(side)) this.stowItem(cur, side);
-        else if (!this.inHand(other)) side = other;
-        else {
-          this.retireItem(item);
-          return "руки заняты, а плечи заняты — освободи место";
-        }
-      }
+  private canHoldWithout(item: Item, removed: Item[]): boolean {
+    const saved = removed.map((o) => ({ o, h: o.hand, h2: o.hand2 }));
+    for (const o of removed) {
+      o.hand = null;
+      o.hand2 = null;
     }
-    if (!this.canPick(item)) {
-      // Например, лук при занятой второй руке — освобождаем её за спину, если можно.
-      const o = this.inHand(other);
-      if (o && !this.stowedItem(other)) this.stowItem(o, other);
+    const wasStow = item.stow;
+    item.stow = null;
+    const ok = this.canPick(item);
+    item.stow = wasStow;
+    for (const r of saved) {
+      r.o.hand = r.h;
+      r.o.hand2 = r.h2;
     }
-    if (!this.canPick(item)) {
-      this.retireItem(item);
-      return "это оружие сейчас нельзя взять в руку";
+    return ok;
+  }
+
+  /** Положить предмет в руку `side` (лук — всегда в «левую», занимая обе). */
+  private putInHand(item: Item, side: Side): void {
+    item.stow = null;
+    this.equip(item, item.kind === "bow" ? "left" : side);
+  }
+
+  /**
+   * Из руки за плечо той же стороны. Если на плече уже что-то лежит — меняются
+   * местами (то, что было на плече, оказывается в этой руке). null — успех.
+   */
+  handToBack(side: Side): string | null {
+    const x = this.handSlotItem(side);
+    if (!x) return "в этой руке пусто";
+    const y = this.stowedItem(side);
+    if (!y) {
+      this.stowItem(x, side);
+      return null;
     }
-    this.equip(item, side);
+    if (!this.canHoldWithout(y, [x])) return "лук занимает обе руки — сначала освободи вторую";
+    this.stowItem(x, side); // на плече временно два предмета — сразу достаём второй
+    this.putInHand(y, side);
     return null;
   }
 
-  /** Достать оружие со склада и убрать сразу за спину. Возвращает текст ошибки или null. */
-  stowFromWarehouse(cls: WeaponClass, tier: WeaponTier): string | null {
-    const side: Side | null = !this.stowedItem("right") ? "right" : !this.stowedItem("left") ? "left" : null;
-    if (!side) return "за спиной нет свободного плеча";
+  /** Со спины в руку той же стороны; рука занята — меняются местами. null — успех. */
+  backToHand(side: Side): string | null {
+    const y = this.stowedItem(side);
+    if (!y) return "за этим плечом пусто";
+    const x = this.handSlotItem(side);
+    if (!this.canHoldWithout(y, x ? [x] : [])) return "лук занимает обе руки — сначала освободи вторую";
+    if (x) this.stowItem(x, side);
+    this.putInHand(y, side);
+    return null;
+  }
+
+  /**
+   * Со склада в руку `side`. Тот, кто был в этой руке (и лук, если он занимает
+   * обе), уходит на склад. Лук берётся в обе руки — всё, что в руках, на склад.
+   */
+  placeInHandFromWarehouse(cls: WeaponClass, tier: WeaponTier, side: Side): string | null {
     const item = this.weaponForRestore(cls, tier);
-    if (!item) return "не удалось достать";
+    if (!item) return cls === "bow" ? "лук уже у тебя (в руках или за спиной)" : "не удалось достать";
+    const removed: Item[] = [];
+    if (item.kind === "bow") {
+      for (const o of this.items) if (o !== item && (o.hand || o.hand2)) removed.push(o);
+    } else {
+      const b = this.held1("bow");
+      if (b) removed.push(b);
+      const occ = this.inHand(side);
+      if (occ && !removed.includes(occ)) removed.push(occ);
+    }
+    if (!this.canHoldWithout(item, removed)) {
+      this.retireItem(item);
+      return "это оружие сюда не подходит";
+    }
+    for (const o of removed) this.retireItem(o);
+    this.putInHand(item, side);
+    return null;
+  }
+
+  /** Со склада за плечо `side`; что там лежало — на склад. null — успех. */
+  placeOnBackFromWarehouse(cls: WeaponClass, tier: WeaponTier, side: Side): string | null {
+    const item = this.weaponForRestore(cls, tier);
+    if (!item) return cls === "bow" ? "лук уже у тебя (в руках или за спиной)" : "не удалось достать";
+    const occ = this.stowedItem(side);
+    if (occ) this.retireItem(occ);
     item.hand = null;
     item.hand2 = null;
     item.stow = side;

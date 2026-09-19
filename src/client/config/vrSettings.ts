@@ -4,18 +4,21 @@
  * права на общие значения больше нет.
  *  • vignette — виньетка (тоннель) при движении стиком: по умолчанию ВКЛ;
  *  • teleport — перемещение телепортом вместо стика: по умолчанию ВЫКЛ;
- *  • music / sfx — громкость музыки и эффектов, 0..1.
+ *  • music / sfx — громкость музыки и эффектов, 0..1;
+ *  • mic — микрофон включён; spatial — голоса игроков «по месту» (иначе ровно).
  */
 export interface VrSettings {
   vignette: boolean;
   teleport: boolean;
   music: number;
   sfx: number;
+  mic: boolean;
+  spatial: boolean;
 }
 
 const KEY = "zepVrSettings";
 
-const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1 };
+const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: true, spatial: true };
 
 function load(): VrSettings {
   try {
@@ -27,6 +30,8 @@ function load(): VrSettings {
         teleport: typeof v.teleport === "boolean" ? v.teleport : DEFAULTS.teleport,
         music: clamp01(v.music, DEFAULTS.music),
         sfx: clamp01(v.sfx, DEFAULTS.sfx),
+        mic: typeof v.mic === "boolean" ? v.mic : DEFAULTS.mic,
+        spatial: typeof v.spatial === "boolean" ? v.spatial : DEFAULTS.spatial,
       };
     }
   } catch {

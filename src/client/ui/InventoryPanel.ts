@@ -12,6 +12,8 @@ export interface Equipped {
   right: WornWeapon | null;
   stowed: (WornWeapon & { side: "left" | "right" })[];
   stats: HeroStats;
+  /** Лук занимает обе руки: он в левой, а в правой показываем стрелу. */
+  arrow?: boolean;
 }
 
 /** Иконка оружия — по классу и тиру (у базового тира картинки нет). */
@@ -166,6 +168,18 @@ export class InventoryPanel {
     );
 
     for (const def of EQUIP_SLOTS) {
+      if (def.id === "rightHand" && eq.arrow) {
+        const ab = this.cellBox(cell, true, false);
+        ab.innerHTML =
+          '<svg viewBox="0 0 100 100" width="62%" height="62%" style="pointer-events:none">' +
+          '<line x1="14" y1="86" x2="78" y2="22" stroke="#c9d2e6" stroke-width="6" stroke-linecap="round"/>' +
+          '<polygon points="90,10 62,20 80,38" fill="#c9d2e6"/>' +
+          '<line x1="14" y1="86" x2="6" y2="70" stroke="#c9d2e6" stroke-width="4" stroke-linecap="round"/>' +
+          '<line x1="26" y1="74" x2="16" y2="58" stroke="#c9d2e6" stroke-width="4" stroke-linecap="round"/></svg>';
+        ab.title = "Стрела — лук занимает обе руки";
+        grid.appendChild(ab);
+        continue;
+      }
       const w =
         def.id === "rightHand" ? eq.right : def.id === "leftHand" ? eq.left : null;
       const active = this.picked?.where === "equip" && this.picked.slot === def.id;

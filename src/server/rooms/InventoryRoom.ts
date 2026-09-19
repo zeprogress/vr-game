@@ -24,10 +24,11 @@ function handInfo(
   tier: string,
   equippedId: string | null | undefined,
   weapons: WeaponInstance[],
-): { name: string; tier: WeaponTier; affixes: string[]; quality: number } | null {
+): { cls: string; name: string; tier: WeaponTier; affixes: string[]; quality: number } | null {
   if (!isWeaponClass(cls) || !isWeaponTier(tier) || tier === "base") return null;
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
   return {
+    cls,
     name: weaponDef(cls, tier).name,
     tier,
     affixes: inst ? inst.affixes.map(affixLabel) : [],
