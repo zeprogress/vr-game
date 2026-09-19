@@ -3,6 +3,7 @@ import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
@@ -826,6 +827,36 @@ export class RemoteAvatar implements Hittable {
     this.reseatBotGear();
   }
 
+  /** Клипы на паузе, потому что бот вне кадра (см. stepBotLocomotion). */
+  private animFrozen = false;
+  private readonly pausedClips: AnimationGroup[] = [];
+  private static readonly ANIM_RANGE = 100;
+
+  /**
+   * Бот вне пирамиды видимости (с запасом) или дальше ANIM_RANGE от камеры.
+   * План кадра — с прошлого кадра. В VR (стерео-риг) не отсекаем.
+   */
+  private isAnimOffscreen(): boolean {
+    const cam = this.root.getScene().activeCamera as
+      | { globalPosition?: Vector3; rigCameras?: unknown[] }
+      | null;
+    if (!cam || cam.rigCameras?.length) return false;
+    const p = this.root.position;
+    const cp = cam.globalPosition;
+    if (cp) {
+      const dx = p.x - cp.x;
+      const dz = p.z - cp.z;
+      if (dx * dx + dz * dz > RemoteAvatar.ANIM_RANGE * RemoteAvatar.ANIM_RANGE) return true;
+    }
+    const planes = this.root.getScene().frustumPlanes;
+    if (!planes) return false;
+    const y = p.y - 0.8; // корпус стоит на уровне глаз
+    for (const pl of planes) {
+      if (pl.normal.x * p.x + pl.normal.y * y + pl.normal.z * p.z + pl.d < -4) return true;
+    }
+    return false;
+  }
+
   private stepBotLocomotion(now: number, dt: number): void {
     const rig = this.botRig!;
     if (this.freezeSig) {
@@ -874,6 +905,28 @@ export class RemoteAvatar implements Hittable {
     const inst = Math.min(12, Math.hypot(p.x - this._prevPos.x, p.z - this._prevPos.z) / Math.max(dt, 1e-3));
     this._prevPos.copyFrom(p);
     this.planarSpeed += (inst - this.planarSpeed) * Math.min(1, dt * 8);
+
+    // Вне кадра / далеко от камеры скелетную анимацию не считаем: клипы на
+    // паузу (Babylon на каждый кадр создаёт объекты под каждую кость — это
+    // мусор для GC), а вернулся в кадр — снимаем паузу. Позицию и скорость
+    // копим выше в любом случае.
+    if (this.isAnimOffscreen()) {
+      if (!this.animFrozen) {
+        this.animFrozen = true;
+        for (const g of rig.anims.values()) {
+          if (g.isPlaying) {
+            g.pause();
+            this.pausedClips.push(g);
+          }
+        }
+      }
+      return;
+    }
+    if (this.animFrozen) {
+      this.animFrozen = false;
+      for (const g of this.pausedClips) g.restart();
+      this.pausedClips.length = 0;
+    }
 
     // Пороги с гистерезисом: у бота скорость гуляет около границы (тормозит
     // у моба, толкается с соседями), и на одном пороге клип щёлкал бег↔шаг
