@@ -82,8 +82,39 @@ export class Mob implements Hittable {
   private readonly head: TransformNode;
   private readonly hitAnchor: TransformNode;
   private readonly mat: StandardMaterial;
-  private readonly bar: HealthBar3D;
-  private readonly nameTag: NameTag;
+  private bar: HealthBar3D | null = null;
+  private nameTag: NameTag | null = null;
+  private readonly tagName: string;
+  private readonly tagLevel: number;
+  private readonly tagColor: Color3;
+
+  private getBar(): HealthBar3D {
+    if (!this.bar) {
+      this.bar = new HealthBar3D(
+        this.scene,
+        this.uiAnchor,
+        new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0),
+        0.7 * this.uiScale,
+      );
+      this.bar.set(1);
+      this.bar.setVisible(false);
+    }
+    return this.bar;
+  }
+
+  private getTag(): NameTag {
+    if (!this.nameTag) {
+      this.nameTag = new NameTag(
+        this.scene,
+        this.uiAnchor,
+        new Vector3(0, MOB.bodyRadius * 2 + 0.78, 0),
+        this.tagName,
+        this.tagLevel,
+        this.tagColor,
+      );
+    }
+    return this.nameTag;
+  }
 
   private readonly tint: readonly [number, number, number];
   private readonly bodyAlpha: number;
@@ -235,49 +266,19 @@ export class Mob implements Hittable {
     this.shadow = new BlobShadow(scene, id);
     this.uiAnchor.parent = this.root;
 
-    this.bar = new HealthBar3D(
-      scene,
-      this.uiAnchor,
-      new Vector3(0, MOB.bodyRadius * 2 + 0.35, 0),
-      0.7 * this.uiScale,
-    );
-    this.bar.set(1);
-    this.bar.setVisible(false);
-
-    this.nameTag = new NameTag(
-      scene,
-      this.uiAnchor,
-      new Vector3(0, MOB.bodyRadius * 2 + 0.78, 0),
-      tagName,
-      tagLevel,
+    // Полоска и плашка строятся лениво (getBar/getTag): 60+ мобов на карте
+    // держали 200+ скрытых мешей, которые сцена обходит каждый кадр.
+    this.tagName = tagName;
+    this.tagLevel = tagLevel;
+    this.tagColor =
       kind === "boss"
         ? new Color3(1, 0.3, 0.3)
         : cfg.ranged
           ? new Color3(1, 0.6, 0.25)
-          : new Color3(0.85, 0.9, 1),
-    );
+          : new Color3(0.85, 0.9, 1);
 
-    // «Звёздочки» оглушения: три жёлтых кубика вращаются над головой, пока
-    // s.stunned. Дёшево, читается сразу.
-    this.stunSpin = new TransformNode("mobStun", scene);
-    this.stunSpin.parent = this.uiAnchor;
-    this.stunSpin.position.y = MOB.bodyRadius * 2 + 0.5;
-    this.stunSpin.setEnabled(false);
-    const starMat = new StandardMaterial("mobStunMat", scene);
-    starMat.emissiveColor = new Color3(1, 0.92, 0.4);
-    starMat.diffuseColor = new Color3(0, 0, 0);
-    starMat.specularColor = new Color3(0, 0, 0);
-    starMat.disableLighting = true;
-    for (let i = 0; i < 3; i++) {
-      const star = MeshBuilder.CreateBox(`mobStunStar${i}`, { size: 0.13 }, scene);
-      star.material = starMat;
-      star.isPickable = false;
-      star.parent = this.stunSpin;
-      const a = (i / 3) * Math.PI * 2;
-      star.position.set(Math.cos(a) * 0.32, Math.sin(a * 2) * 0.05, Math.sin(a) * 0.32);
-      star.rotation.set(0.6, a, 0.4);
-    }
-    this.stunStarMat = starMat;
+    // «Звёздочки» оглушения строятся лениво (buildStunStars) — у 60+ мобов
+    // на карте это 200 лишних мешей, которые сцена обходит каждый кадр.
 
     // Модель из пака вместо сферы — для слизней/плевунов/босса, не в lean-режиме
     // (на стриме слабый GPU не потянет ~9 скелетов). Сферу и глаза прячем СРАЗУ
@@ -291,8 +292,32 @@ export class Mob implements Hittable {
   }
 
   private readonly uiAnchor: TransformNode;
-  private readonly stunSpin: TransformNode;
-  private readonly stunStarMat: StandardMaterial;
+  private stunSpin: TransformNode | null = null;
+  private stunStarMat: StandardMaterial | null = null;
+
+  /** Три жёлтых кубика вращаются над головой, пока s.stunned. Дёшево, читается сразу. */
+  private buildStunStars(): void {
+    const scene = this.scene;
+    const spin = new TransformNode("mobStun", scene);
+    spin.parent = this.uiAnchor;
+    spin.position.y = MOB.bodyRadius * 2 + 0.5;
+    const starMat = new StandardMaterial("mobStunMat", scene);
+    starMat.emissiveColor = new Color3(1, 0.92, 0.4);
+    starMat.diffuseColor = new Color3(0, 0, 0);
+    starMat.specularColor = new Color3(0, 0, 0);
+    starMat.disableLighting = true;
+    for (let i = 0; i < 3; i++) {
+      const star = MeshBuilder.CreateBox(`mobStunStar${i}`, { size: 0.13 }, scene);
+      star.material = starMat;
+      star.isPickable = false;
+      star.parent = spin;
+      const a = (i / 3) * Math.PI * 2;
+      star.position.set(Math.cos(a) * 0.32, Math.sin(a * 2) * 0.05, Math.sin(a) * 0.32);
+      star.rotation.set(0.6, a, 0.4);
+    }
+    this.stunSpin = spin;
+    this.stunStarMat = starMat;
+  }
   /** Пятно-тень под мобом: без неё прыжок читается как парение. */
   private readonly shadow: BlobShadow;
 
@@ -493,10 +518,14 @@ export class Mob implements Hittable {
 
     // оглушение: звёздочки над головой вращаются, пока s.stunned
     const stun = s.stunned === 1 && !s.dead;
-    if (stun !== this.stunSpin.isEnabled()) this.stunSpin.setEnabled(stun);
-    if (stun) {
-      this.stunSpin.rotation.y += dt * 6;
-      this.stunStarMat.alpha = 0.75 + Math.sin(this.stunSpin.rotation.y * 3) * 0.2;
+    if (stun && !this.stunSpin) this.buildStunStars();
+    const spin = this.stunSpin;
+    if (spin) {
+      if (stun !== spin.isEnabled()) spin.setEnabled(stun);
+      if (stun) {
+        spin.rotation.y += dt * 6;
+        if (this.stunStarMat) this.stunStarMat.alpha = 0.75 + Math.sin(spin.rotation.y * 3) * 0.2;
+      }
     }
 
 
@@ -506,8 +535,9 @@ export class Mob implements Hittable {
       this.flash = 1;
       if (!this.lean) {
         this.barTimer = 3;
-        this.bar.set(Math.max(0, s.hp) / s.maxHp);
-        this.bar.setOpacity(1);
+        const bar = this.getBar();
+        bar.set(Math.max(0, s.hp) / s.maxHp);
+        bar.setOpacity(1);
       }
       if (!s.dead) {
         this.playIfNear(playerPos, () => this.sfx.mobHurt(pos));
@@ -516,7 +546,7 @@ export class Mob implements Hittable {
 
     if (this.barTimer > 0 && !this.lean) {
       this.barTimer -= dt;
-      this.bar.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
+      this.bar?.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
 
     // Горение (поджог мага): языки пламени над мобом + тлеющий пульс тела.
@@ -553,8 +583,8 @@ export class Mob implements Hittable {
       this.setBodyVisibility(1);
       this.setSquash(1, 1, 1);
       if (!this.rig) this.head.setEnabled(true);
-      this.nameTag.setEnabled(true);
-      this.bar.setVisible(false);
+      this.nameTag?.setEnabled(true);
+      this.bar?.setVisible(false);
       this.barTimer = 0;
       this.stopAnim();
     }
@@ -562,8 +592,8 @@ export class Mob implements Hittable {
     if (this.dead) {
       this.deathT += dt;
       if (!this.rig) this.head.setEnabled(false);
-      this.bar.setVisible(false);
-      this.nameTag.setEnabled(false);
+      this.bar?.setVisible(false);
+      this.nameTag?.setEnabled(false);
       this.prevY = pos.y;
       if (this.deathT > 1.5) {
         // Растворился — не тратим кадры на невидимый труп (визуальность, снятие
@@ -649,12 +679,12 @@ export class Mob implements Hittable {
     const md = Math.hypot(dx, dz);
     const facing = md < 1e-3 || (dx * playerAim.x + dz * playerAim.z) / md > -0.25;
     const near = md < MOB.nameTagRange && facing && uiAllowed;
-    this.nameTag.setEnabled(near);
+    if (near || this.nameTag) this.getTag().setEnabled(near);
     if (near) {
       // Издалека плашку не разобрать, поэтому на дальней границе она ×4,
       // а по мере приближения плавно ужимается до ×2. На смартфоне — вдвое.
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
-      this.nameTag.setScale((2 + t * 2) * this.uiScale);
+      this.getTag().setScale((2 + t * 2) * this.uiScale);
     }
   }
 
@@ -851,10 +881,10 @@ export class Mob implements Hittable {
 
   dispose(): void {
     this.shadow.dispose();
-    this.nameTag.dispose();
-    this.bar.dispose();
+    this.nameTag?.dispose();
+    this.bar?.dispose();
     this.slamRing?.material?.dispose();
-    this.stunStarMat.dispose();
+    this.stunStarMat?.dispose();
     this.burnMat?.dispose();
     this.mat.dispose();
     // Свои «плоские» материалы гасим без текстур: атлас общий у всех копий модели.

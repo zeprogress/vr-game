@@ -926,6 +926,16 @@ export class Game {
         sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.3;
         console.log(`[xr] фиксированная фовеация = ${sm.fixedFoveation}`);
       }
+      // Режим Layers (multiview): baseLayer нет, фовеация задаётся на самом слое
+      // (по умолчанию там 0 — то есть выключена).
+      else {
+        const layer = (sm.session?.renderState as { layers?: { fixedFoveation?: number }[] })?.layers?.[0];
+        if (layer && typeof layer.fixedFoveation === "number") {
+          const want = Number(new URLSearchParams(location.search).get("fov"));
+          layer.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.3;
+          console.log(`[xr] фовеация слоя = ${layer.fixedFoveation}`);
+        }
+      }
     } catch (e) {
       console.warn("[xr] фовеацию задать не вышло:", e);
     }
