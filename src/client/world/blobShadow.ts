@@ -111,10 +111,10 @@ export class BlobShadow {
    */
   place(x: number, y: number, z: number, radius: number): void {
     if (
-      Math.abs(x - this.lx) < 2e-3 &&
-      Math.abs(y - this.ly) < 2e-3 &&
-      Math.abs(z - this.lz) < 2e-3 &&
-      Math.abs(radius - this.lr) < 2e-3
+      Math.abs(x - this.lx) < 3e-2 &&
+      Math.abs(y - this.ly) < 3e-2 &&
+      Math.abs(z - this.lz) < 3e-2 &&
+      Math.abs(radius - this.lr) < 3e-2
     ) {
       return;
     }

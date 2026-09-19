@@ -100,7 +100,12 @@ export class HealthBar3D {
 
   /** 0..1 — плавное появление/исчезновение. */
   setOpacity(a: number): void {
-    this.opacity = clamp01(a);
+    // Ступенями по 1/8: плавное появление/затухание раньше меняло alpha
+    // материала КАЖДЫЙ кадр у каждого раненого моба — а смена alpha помечает
+    // материал «грязным» (в профиле с шлема setOpacity был одним из самых дорогих).
+    const q = Math.round(clamp01(a) * 8) / 8;
+    if (q === this.opacity) return;
+    this.opacity = q;
     this.bgMat.alpha = 0.6 * this.opacity;
     this.fillMat.alpha = this.opacity;
     const on = this.opacity > 0.02;

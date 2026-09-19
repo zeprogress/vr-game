@@ -108,6 +108,8 @@ export class Mob implements Hittable {
   private readonly shove2 = new Vector3();
   /** Труп уже полностью растворился: корень выключен до возрождения. */
   private deadHidden = false;
+  /** VR: накопленное время, пока моб невидим и обновляется редко (см. NetMobs.update). */
+  idleAcc = 0;
   /** Корень выключен, потому что моб вне кадра (см. applyState). */
   private viewHidden = false;
   private init = false;

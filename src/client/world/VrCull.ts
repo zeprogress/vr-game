@@ -27,8 +27,8 @@ export class VrCull {
 
   constructor(private readonly scene: Scene) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : 70;
-    this.treeR = Number.isFinite(v) ? v : 70;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : 60;
+    this.treeR = Number.isFinite(v) ? v : 60;
     this.rockR = Math.max(0, this.treeR - 10);
   }
 

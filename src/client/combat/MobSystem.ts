@@ -399,9 +399,19 @@ export class NetMobs {
       }
     }
     room.state.mobs.forEach((s, id) => {
-      this.mobs
-        .get(id)
-        ?.applyState(s, dt, playerPos, playerAim, vr ? !!s.dead || this.vrDrawSet.has(id) : true, vr ? this.vrUiSet.has(id) : true);
+      const m = this.mobs.get(id);
+      if (!m) return;
+      const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
+      let mdt = dt;
+      if (vr && !draw) {
+        // Невидимого живого моба обновляем 4 раза в секунду (dt копится): он всё
+        // равно не рисуется, а обход десятков схем каждый кадр — это и был netMobs.
+        m.idleAcc += dt;
+        if (m.idleAcc < 0.25) return;
+        mdt = m.idleAcc;
+      }
+      m.idleAcc = 0;
+      m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
     });
     room.state.dummies.forEach((s, id) => {
       this.dummies.get(id)?.applyState(s, dt);
