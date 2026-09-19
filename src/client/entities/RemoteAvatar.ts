@@ -593,6 +593,7 @@ export class RemoteAvatar implements Hittable {
     this.stunStars.setActive(this.stunned && !this.dead);
     this.stunStars.update(dt);
     this.syncBar();
+    this.vrCullDraw();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
 
@@ -642,6 +643,32 @@ export class RemoteAvatar implements Hittable {
     this.shadow.setEnabled(!this.dead);
     if (!this.dead) this.shadow.place(p.x, p.y - PLAYER.eyeHeight, p.z, SHADOW_RADIUS);
     this.applyGear();
+  }
+
+  /** VR: далёкого героя не рисуем вовсе (гистерезис 8 м). */
+  private vrCullDraw(): void {
+    const cam = this.root.getScene().activeCamera as
+      | { globalPosition?: Vector3; rigCameras?: unknown[] }
+      | null;
+    if (!cam?.rigCameras?.length || !cam.globalPosition) {
+      if (this.vrHidden) {
+        this.vrHidden = false;
+        this.root.setEnabled(true);
+      }
+      return;
+    }
+    const p = this.root.position;
+    const dx = p.x - cam.globalPosition.x;
+    const dz = p.z - cam.globalPosition.z;
+    const d2 = dx * dx + dz * dz;
+    const R = RemoteAvatar.VR_DRAW_RANGE;
+    if (!this.vrHidden && d2 > R * R) {
+      this.vrHidden = true;
+      this.root.setEnabled(false);
+    } else if (this.vrHidden && d2 < (R - 8) * (R - 8)) {
+      this.vrHidden = false;
+      this.root.setEnabled(true);
+    }
   }
 
   /** Анимация замаха бота: короткий рывок-наклон корпуса и назад. */
@@ -831,6 +858,10 @@ export class RemoteAvatar implements Hittable {
   private animFrozen = false;
   private readonly pausedClips: AnimationGroup[] = [];
   private static readonly ANIM_RANGE = 100;
+  /** В VR анимируем и рисуем ботов только вблизи: далёкие — шум для draw call'ов. */
+  private static readonly VR_ANIM_RANGE = 40;
+  private static readonly VR_DRAW_RANGE = 75;
+  private vrHidden = false;
 
   /**
    * Бот вне пирамиды видимости (с запасом) или дальше ANIM_RANGE от камеры.
@@ -840,9 +871,16 @@ export class RemoteAvatar implements Hittable {
     const cam = this.root.getScene().activeCamera as
       | { globalPosition?: Vector3; rigCameras?: unknown[] }
       | null;
-    if (!cam || cam.rigCameras?.length) return false;
+    if (!cam) return false;
     const p = this.root.position;
     const cp = cam.globalPosition;
+    if (cam.rigCameras?.length) {
+      // VR: пирамиды видимости нет (две камеры), режем по расстоянию.
+      if (!cp) return false;
+      const dx = p.x - cp.x;
+      const dz = p.z - cp.z;
+      return dx * dx + dz * dz > RemoteAvatar.VR_ANIM_RANGE * RemoteAvatar.VR_ANIM_RANGE;
+    }
     if (cp) {
       const dx = p.x - cp.x;
       const dz = p.z - cp.z;
