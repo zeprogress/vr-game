@@ -325,7 +325,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   cactoro: {
     model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
-    hp: 170, dmgMul: 2.0, xp: 55, scaleMul: 1.6, tint: null,
+    hp: 85, dmgMul: 1.4, xp: 55, scaleMul: 1.6, tint: null,
   },
   // Орк-стрелок: бронированный дальний боец 15 ур. Панцирь режет 65% урона
   // стрел/магии — для лучника это глухая стена, зато его залпы бьют больно и
