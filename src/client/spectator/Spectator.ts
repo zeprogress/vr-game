@@ -1,7 +1,7 @@
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
 import { BOSS, BOT, MOB, PLAYER, daylightAt } from "#shared/constants";
@@ -128,12 +128,16 @@ export class Spectator {
   /** Окно свободной камеры: контроллер и служебное состояние. */
   private freeCtl: FreeCamControl | null = null;
   private freeInit = false;
+  /** Герой, за которым следит свободная камера (id аватара), "" — нет. */
+  private followId = "";
   private lastFreeSend = 0;
   private readonly _freeTgt = new Vector3();
   /** Чужая свободная камера (её окно открыто): целевая и текущая (сглаженная) позы. */
   private remoteFree: {
     pos: Vector3; tgt: Vector3; fov: number;
     curPos: Vector3; curTgt: Vector3; curFov: number; at: number;
+    /** Сглаживать движение (включено переключателем в окне свободной камеры). */
+    smooth: boolean;
   } | null = null;
   private lastOvlSig = "";
   /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
@@ -325,6 +329,15 @@ export class Spectator {
       this.freeCtl.onClose = () => {
         this.net?.sendSpecCmd({ t: "free", on: 0 });
       };
+      // Тап по герою — слежение (взгляд ведёт цель, позицию двигаем руками).
+      this.freeCtl.onTap = (x, y) => {
+        const id = this.pickHero(x, y);
+        if (id) {
+          this.followId = id;
+          this.freeCtl?.setFollowing(true);
+        }
+      };
+      this.freeCtl.onUnfollow = () => this.stopFollow();
       // Закрыли вкладку — сообщаем, пока соединение ещё живо (на всякий случай:
       // сервер и сам увидит обрыв и вернёт спектаторов).
       window.addEventListener("beforeunload", () => {
@@ -620,6 +633,11 @@ export class Spectator {
         }
       }
       if (!this.freeInit) return; // ждём связь — стартовую позу ещё не знаем
+      if (this.followId) {
+        const av = this.avatars.get(this.followId);
+        if (!av) this.stopFollow();
+        else ctl.trackTarget(av.position.x, av.position.y - 0.6, av.position.z, dt);
+      }
       ctl.update(dt);
       const tgt = ctl.target(this._freeTgt);
       this.cam.setManual(ctl.pos, tgt, ctl.fov);
@@ -628,7 +646,7 @@ export class Spectator {
         this.net?.sendSpecCmd({
           t: "free", on: 1,
           x: ctl.pos.x, y: ctl.pos.y, z: ctl.pos.z,
-          tx: tgt.x, ty: tgt.y, tz: tgt.z, fov: ctl.fov,
+          tx: tgt.x, ty: tgt.y, tz: tgt.z, fov: ctl.fov, sm: ctl.smooth ? 1 : 0,
         });
       }
       return;
@@ -641,7 +659,9 @@ export class Spectator {
       this.cam.clearManual();
       return;
     }
-    const k = 1 - Math.exp(-dt * 12);
+    // Сглаживание: чем меньше «скорость» фильтра, тем плавнее (и запаздывает
+    // сильнее). Выключено — почти напрямую, только чтобы гасить дрожь сети.
+    const k = 1 - Math.exp(-dt * (rf.smooth ? 4.5 : 30));
     rf.curPos.x += (rf.pos.x - rf.curPos.x) * k;
     rf.curPos.y += (rf.pos.y - rf.curPos.y) * k;
     rf.curPos.z += (rf.pos.z - rf.curPos.z) * k;
@@ -650,6 +670,39 @@ export class Spectator {
     rf.curTgt.z += (rf.tgt.z - rf.curTgt.z) * k;
     rf.curFov += (rf.fov - rf.curFov) * k;
     this.cam.setManual(rf.curPos, rf.curTgt, rf.curFov);
+  }
+
+  private stopFollow(): void {
+    this.followId = "";
+    this.freeCtl?.setFollowing(false);
+  }
+
+  /** Герой под точкой касания (CSS-пиксели): ближайший к ней в радиусе ~70 px. */
+  private pickHero(cssX: number, cssY: number): string {
+    const canvas = this.engine.getRenderingCanvas();
+    if (!canvas) return "";
+    const rw = this.engine.getRenderWidth();
+    const rh = this.engine.getRenderHeight();
+    const k = rw / Math.max(1, canvas.clientWidth);
+    const px = cssX * k;
+    const py = cssY * k;
+    const vp = this.cam.cam.viewport.toGlobal(rw, rh);
+    const tm = this.scene.getTransformMatrix();
+    const v = new Vector3();
+    let best = "";
+    let bestD = 70 * k;
+    for (const [id, av] of this.avatars) {
+      const p = av.position;
+      // Точка корпуса героя (position — уровень глаз).
+      Vector3.ProjectToRef(new Vector3(p.x, p.y - 0.6, p.z), Matrix.IdentityReadOnly, tm, vp, v);
+      if (v.z < 0 || v.z > 1) continue; // за камерой / за дальней плоскостью
+      const d = Math.hypot(v.x - px, v.y - py);
+      if (d < bestD) {
+        bestD = d;
+        best = id;
+      }
+    }
+    return best;
   }
 
   private applyFreeCmd(cmd: Extract<SpecCmd, { t: "free" }>): void {
@@ -676,6 +729,7 @@ export class Spectator {
         curTgt: this.cam.target.clone(),
         curFov: this.cam.cam.fov,
         at: now,
+        smooth: cmd.sm !== 0,
       };
       this.remoteFree = rf;
     }
@@ -683,6 +737,7 @@ export class Spectator {
     rf.tgt.set(cmd.tx, cmd.ty, cmd.tz);
     rf.fov = fov;
     rf.at = now;
+    rf.smooth = cmd.sm !== 0;
   }
 
   private applySpecCmd(cmd: SpecCmd): void {

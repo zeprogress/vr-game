@@ -25,11 +25,22 @@ export class FreeCamControl {
   closed = false;
   /** Нажали «Закрыть» — Spectator сообщает серверу. */
   onClose: (() => void) | null = null;
+  /** Сглаживать ли движение камеры у спектаторов (переключатель справа снизу). */
+  smooth = true;
+  /** Короткое касание/клик в точке экрана (CSS-пиксели) — выбор героя для слежения. */
+  onTap: ((x: number, y: number) => void) | null = null;
+  /** Нажали «Отцепиться» в режиме слежения. */
+  onUnfollow: (() => void) | null = null;
+  /** Режим слежения за объектом: поворот и наклон ведёт цель, движение — руками. */
+  following = false;
 
   private readonly keys = new Set<string>();
   private readonly pointers = new Map<number, { x: number; y: number }>();
   private readonly panel: HTMLDivElement;
   private readonly closeBtn: HTMLButtonElement;
+  private readonly unfollowBtn: HTMLButtonElement;
+  /** Для распознавания «тапа»: где и когда нажали, был ли сдвиг/второй палец. */
+  private tap: { id: number; x: number; y: number; t: number; moved: boolean } | null = null;
   private readonly fovInput: HTMLInputElement;
   private readonly cleanups: (() => void)[] = [];
 
@@ -47,8 +58,18 @@ export class FreeCamControl {
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       canvas.setPointerCapture(e.pointerId);
       canvas.style.cursor = "grabbing";
+      // Первый палец — кандидат в «тап»; второй палец отменяет.
+      this.tap =
+        this.pointers.size === 1
+          ? { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false }
+          : null;
     });
     const release = (e: PointerEvent): void => {
+      const tp = this.tap;
+      if (tp && tp.id === e.pointerId && !tp.moved && performance.now() - tp.t < 350 && e.type === "pointerup") {
+        this.onTap?.(e.clientX, e.clientY);
+      }
+      if (tp && tp.id === e.pointerId) this.tap = null;
       this.pointers.delete(e.pointerId);
       if (this.pointers.size === 0) canvas.style.cursor = "grab";
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
@@ -58,7 +79,22 @@ export class FreeCamControl {
     on(canvas, "pointermove", (e: PointerEvent) => {
       const prev = this.pointers.get(e.pointerId);
       if (!prev || this.closed) return;
+      if (this.tap && Math.hypot(e.clientX - this.tap.x, e.clientY - this.tap.y) > 8) this.tap.moved = true;
+      if (this.pointers.size > 1) this.tap = null;
       if (this.pointers.size === 1) {
+        if (this.following) {
+          // Слежение: поворот ведёт цель, палец двигает саму камеру (вбок и вверх/вниз).
+          const dx = e.clientX - prev.x;
+          const dy = e.clientY - prev.y;
+          const strafe = -dx * this.speed * 0.004;
+          const lift = dy * this.speed * 0.004;
+          this.pos.x += Math.cos(this.yaw) * strafe;
+          this.pos.y = Math.max(1.5, this.pos.y + lift);
+          this.pos.z += -Math.sin(this.yaw) * strafe;
+          prev.x = e.clientX;
+          prev.y = e.clientY;
+          return;
+        }
         // Один палец / мышь: поворот взгляда.
         const sens = e.pointerType === "touch" ? 0.005 : 0.0035;
         this.yaw += (e.clientX - prev.x) * sens;
@@ -129,6 +165,61 @@ export class FreeCamControl {
       "cursor:pointer;";
     this.closeBtn.addEventListener("click", () => this.close());
     document.body.appendChild(this.closeBtn);
+
+    // Переключатель сглаживания — справа снизу.
+    const sm = document.createElement("label");
+    sm.style.cssText =
+      "position:fixed;right:14px;bottom:max(14px,env(safe-area-inset-bottom));z-index:20;display:flex;" +
+      "align-items:center;gap:8px;padding:8px 12px;border-radius:10px;background:rgba(12,13,18,.55);" +
+      "color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;user-select:none;";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.checked = this.smooth;
+    box.style.cssText = "width:18px;height:18px;margin:0;";
+    box.addEventListener("change", () => {
+      this.smooth = box.checked;
+    });
+    sm.append(box, document.createTextNode("Сглаживание"));
+    document.body.appendChild(sm);
+    this.smoothBox = sm;
+
+    // «Отцепиться» — слева сверху, только пока идёт слежение.
+    this.unfollowBtn = document.createElement("button");
+    this.unfollowBtn.textContent = "Отцепиться";
+    this.unfollowBtn.style.cssText =
+      "position:fixed;left:12px;top:max(12px,env(safe-area-inset-top));z-index:20;padding:6px 12px;" +
+      "border:0;border-radius:6px;background:rgba(32,110,230,.9);color:#fff;font:600 13px system-ui,sans-serif;" +
+      "cursor:pointer;display:none;";
+    this.unfollowBtn.addEventListener("click", () => this.onUnfollow?.());
+    document.body.appendChild(this.unfollowBtn);
+  }
+
+  private smoothBox: HTMLLabelElement | null = null;
+
+  /** Включить/выключить режим слежения (и показать/скрыть кнопку «Отцепиться»). */
+  setFollowing(on: boolean): void {
+    this.following = on;
+    this.unfollowBtn.style.display = on ? "block" : "none";
+  }
+
+  /**
+   * Слежение: плавно довернуть взгляд на точку (x,y,z). Вызывается каждый кадр,
+   * пока идёт слежение; позицию камеры не трогает.
+   */
+  trackTarget(x: number, y: number, z: number, dt: number): void {
+    const dx = x - this.pos.x;
+    const dy = y - this.pos.y;
+    const dz = z - this.pos.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 0.5) return;
+    const wantYaw = Math.atan2(dx, dz);
+    const wantPitch = Math.max(-1.553, Math.min(1.553, Math.asin(dy / len)));
+    let dyaw = wantYaw - this.yaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    const k = 1 - Math.exp(-dt * 8);
+    this.yaw += dyaw * k;
+    this.pitch += (wantPitch - this.pitch) * k;
   }
 
   /** Встать в позу (x,y,z) и смотреть на (tx,ty,tz) — стартовое положение. */
@@ -188,6 +279,8 @@ export class FreeCamControl {
     this.closed = true;
     this.panel.remove();
     this.closeBtn.remove();
+    this.unfollowBtn.remove();
+    this.smoothBox?.remove();
     this.onClose?.();
   }
 
@@ -195,5 +288,7 @@ export class FreeCamControl {
     for (const c of this.cleanups) c();
     this.panel.remove();
     this.closeBtn.remove();
+    this.unfollowBtn.remove();
+    this.smoothBox?.remove();
   }
 }

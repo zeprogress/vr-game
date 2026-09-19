@@ -272,7 +272,7 @@ export type SpecCmd =
   | { t: "ovl"; d: OvlCam }
   /** Свободная камера (отдельное окно `?freecam=1`) -> все спектаторы: положение
    *  и угол обзора. `on: 0` — камера закрыта, спектаторы возвращаются в свой режим. */
-  | { t: "free"; on: number; x?: number; y?: number; z?: number; tx?: number; ty?: number; tz?: number; fov?: number }
+  | { t: "free"; on: number; x?: number; y?: number; z?: number; tx?: number; ty?: number; tz?: number; fov?: number; sm?: number }
   /** Спектатор -> сервер: отчёт сторожа о зависании картинки (в журнал).
    *  Дашбордам не рассылается: это диагностика, а не команда. */
   | { t: "diag"; text: string };
