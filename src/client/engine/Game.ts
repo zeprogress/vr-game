@@ -12,6 +12,8 @@ import "@babylonjs/core/Collisions/collisionCoordinator";
 import { WebXRDefaultExperience } from "@babylonjs/core/XR/webXRDefaultExperience";
 import { WebXRState } from "@babylonjs/core/XR/webXRTypes";
 import { WebXRFeatureName } from "@babylonjs/core/XR/webXRFeaturesManager";
+// Без этого импорта режим ?layers=1 (multiview) падает: "createMultiviewRenderTargetTexture is not a function".
+import "@babylonjs/core/Engines/Extensions/engine.multiview";
 import "@babylonjs/core/XR/features/WebXRLayers";
 
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
