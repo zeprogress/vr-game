@@ -1,7 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { Observer } from "@babylonjs/core/Misc/observable";
-import { Vector2, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Node } from "@babylonjs/core/node";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
@@ -11,38 +9,32 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 const NAME = "comfortVignette";
 
-// Точки во view-space для считывания проекции: ось глаза и смещения на tan=1.
-const AXIS = new Vector3(0, 0, 1);
-const OFF_X = new Vector3(1, 0, 1);
-const OFF_Y = new Vector3(0, 1, 1);
+// Тоннель — плоскость на расстоянии 1 м перед головой (ребёнок камеры гарнитуры),
+// поэтому координата на плоскости = tan угла от взгляда. Так одна и та же геометрия
+// работает при любом режиме отрисовки (два прохода или multiview), а апертуры обоих
+// глаз смотрят в одну точку и при слиянии дают ровный круг.
+const DIST = 1;
+const SIZE = 6;
 
-// Экранный квад на весь вьюпорт — растягивается одинаково в любой FOV.
 Effect.ShadersStore[`${NAME}VertexShader`] = `
 precision highp float;
 attribute vec3 position;
-attribute vec2 uv;
-varying vec2 vUV;
+uniform mat4 world;
+uniform mat4 viewProjection;
+varying vec2 vP;
 void main() {
-  vUV = uv;
-  gl_Position = vec4(position.x * 2.0, position.y * 2.0, -1.0, 1.0);
+  vP = position.xy * ${SIZE.toFixed(1)};
+  gl_Position = viewProjection * world * vec4(position, 1.0);
 }
 `;
 
-// Круглый тоннель в УГЛОВЫХ координатах глаза. Центр — оптическая ось (не центр
-// вьюпорта: у каждого глаза фрустум асимметричный), масштаб — NDC на единицу
-// tan(угла). Поэтому апертуры обоих глаз смотрят в одну точку и при слиянии
-// дают ровный круг, без овала и без полосы у носа.
 Effect.ShadersStore[`${NAME}FragmentShader`] = `
 precision highp float;
-varying vec2 vUV;
+varying vec2 vP;
 uniform float intensity;  // 0..1 — сила тоннеля движения
 uniform float blink;      // 0..1 — сплошное затемнение (телепорт-блинк)
-uniform vec2 center;      // оптическая ось глаза в NDC
-uniform vec2 angScale;    // NDC на единицу tan(угла) по осям
 void main() {
-  vec2 d = (vUV - vec2(0.5)) * 2.0;
-  vec2 ang = (d - center) / angScale;   // угловое смещение от оси (в tan)
-  float r = length(ang);
+  float r = length(vP) / ${DIST.toFixed(1)};   // tan угла от направления взгляда
   float inner = mix(1.16, 0.40, clamp(intensity, 0.0, 1.0));
   float tunnel = smoothstep(inner, inner + 0.24, r);
   float a = max(tunnel, clamp(blink, 0.0, 1.0));
@@ -63,20 +55,15 @@ export class ComfortVignette {
   private readonly mat: ShaderMaterial;
   private amt = 0; // сила тоннеля 0..1 (со сглаживанием)
   private blinkAmt = 0;
-  private readonly camObs: Observer<Camera> | null;
-  private readonly center = new Vector2(0, 0);
-  private readonly angScale = new Vector2(1, 1);
 
-  constructor(scene: Scene) {
+  constructor(scene: Scene, camera: Node | null) {
     this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
       attributes: ["position", "uv"],
-      uniforms: ["intensity", "blink", "center", "angScale"],
+      uniforms: ["intensity", "blink", "world", "viewProjection"],
       needAlphaBlending: true,
     });
     this.mat.setFloat("intensity", 0);
     this.mat.setFloat("blink", 0);
-    this.mat.setVector2("center", this.center);
-    this.mat.setVector2("angScale", this.angScale);
     this.mat.backFaceCulling = false;
     this.mat.alphaMode = Constants.ALPHA_COMBINE;
     this.mat.alpha = 0.999;
@@ -84,27 +71,14 @@ export class ComfortVignette {
 
     this.quad = MeshBuilder.CreatePlane(NAME, { width: 1, height: 1 }, scene);
     this.quad.material = this.mat;
+    if (camera) this.quad.parent = camera;
+    this.quad.position.set(0, 0, DIST);
+    this.quad.scaling.setAll(SIZE);
     this.quad.isPickable = false;
     this.quad.applyFog = false;
     this.quad.alwaysSelectAsActiveMesh = true;
     this.quad.renderingGroupId = 3; // поверх всего
     this.quad.setEnabled(false);
-
-    // Перед отрисовкой каждого глаза берём его оптическую ось и угловой масштаб
-    // из матрицы проекции — у левого/правого глаза фрустум разный.
-    this.camObs = scene.onBeforeCameraRenderObservable.add((cam) => {
-      const proj = cam.getProjectionMatrix();
-      const axis = Vector3.TransformCoordinates(AXIS, proj); // ось глаза в NDC
-      const hx = Vector3.TransformCoordinates(OFF_X, proj);
-      const hy = Vector3.TransformCoordinates(OFF_Y, proj);
-      this.center.set(axis.x, axis.y);
-      this.angScale.set(
-        Math.max(1e-3, Math.abs(hx.x - axis.x)),
-        Math.max(1e-3, Math.abs(hy.y - axis.y)),
-      );
-      this.mat.setVector2("center", this.center);
-      this.mat.setVector2("angScale", this.angScale);
-    });
   }
 
   /** Мгновенно затемнить на телепорт-прыжок — дальше само гаснет. */
@@ -134,7 +108,6 @@ export class ComfortVignette {
   }
 
   dispose(): void {
-    this.camObs?.remove();
     this.quad.dispose();
     this.mat.dispose();
   }

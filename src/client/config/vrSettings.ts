@@ -5,7 +5,7 @@
  *  • vignette — виньетка (тоннель) при движении стиком: по умолчанию ВКЛ;
  *  • teleport — перемещение телепортом вместо стика: по умолчанию ВЫКЛ;
  *  • music / sfx — громкость музыки и эффектов, 0..1;
- *  • mic — микрофон включён; spatial — голоса игроков «по месту» (иначе ровно).
+ *  • mic — микрофон включён (по умолчанию ВЫКЛ); spatial — голоса «по месту» (по умолчанию ВЫКЛ).
  */
 export interface VrSettings {
   vignette: boolean;
@@ -19,14 +19,22 @@ export interface VrSettings {
 }
 
 const KEY = "zepVrSettings";
+/** Версия умолчаний: при повышении микрофон и «по месту» один раз сбрасываются в новые умолчания. */
+const VER_KEY = "zepVrSettingsVer";
+const VER = 2;
 
-const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: true, spatial: true, tts: true };
+const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: false, spatial: false, tts: true };
 
 function load(): VrSettings {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const v = JSON.parse(raw) as Partial<VrSettings>;
+      if (localStorage.getItem(VER_KEY) !== String(VER)) {
+        v.mic = DEFAULTS.mic;
+        v.spatial = DEFAULTS.spatial;
+        localStorage.setItem(VER_KEY, String(VER));
+      }
       return {
         vignette: typeof v.vignette === "boolean" ? v.vignette : DEFAULTS.vignette,
         teleport: typeof v.teleport === "boolean" ? v.teleport : DEFAULTS.teleport,
@@ -37,6 +45,7 @@ function load(): VrSettings {
         tts: typeof v.tts === "boolean" ? v.tts : DEFAULTS.tts,
       };
     }
+    localStorage.setItem(VER_KEY, String(VER));
   } catch {
     /* приватный режим и т.п. — работаем с умолчаниями */
   }

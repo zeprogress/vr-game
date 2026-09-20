@@ -85,6 +85,7 @@ import {
   TWITCH_CHANNEL,
   WORLD,
 } from "#shared/constants";
+import { clampToDisk } from "#shared/geometry";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
 import {
@@ -850,9 +851,7 @@ export class ZoneRoom extends Room<ZoneState> {
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);
       // За край карты не пускаем даже кривого клиента.
-      const edge = WORLD.size / 2 - 2;
-      p.head.x = clampAbs(p.head.x, edge);
-      p.head.z = clampAbs(p.head.z, edge);
+      clampToDisk(p.head, WORLD.playRadius);
       const g = msg.guard;
       [rt.guard.sx, rt.guard.sz] = unit2(g?.sx, g?.sz);
       [rt.guard.wx, rt.guard.wz] = unit2(g?.wx, g?.wz);

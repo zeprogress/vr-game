@@ -54,3 +54,13 @@ export function closestPointOnSegment(p: Vector3, a: Vector3, b: Vector3): Vecto
   const t = clamp01(Vector3.Dot(p.subtract(a), ab) / len2);
   return a.add(ab.scale(t));
 }
+
+/** Прижать точку (x, z) к кругу радиуса r с центром в нуле. Меняет `p` на месте. */
+export function clampToDisk(p: { x: number; z: number }, r: number): void {
+  const d2 = p.x * p.x + p.z * p.z;
+  if (d2 > r * r) {
+    const k = r / Math.sqrt(d2);
+    p.x *= k;
+    p.z *= k;
+  }
+}

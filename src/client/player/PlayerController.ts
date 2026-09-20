@@ -13,6 +13,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
+import { clampToDisk } from "#shared/geometry";
 import { hubSpawnPoint } from "#shared/hub";
 import { terrainHeight } from "#shared/terrain";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
@@ -162,12 +163,7 @@ export class PlayerController {
 
   /** Не выпускать за край карты — там кончается земля. */
   private clampToWorld(): void {
-    const lim = WORLD.size / 2 - 2;
-    const p = this.body.position;
-    if (p.x < -lim) p.x = -lim;
-    else if (p.x > lim) p.x = lim;
-    if (p.z < -lim) p.z = -lim;
-    else if (p.z > lim) p.z = lim;
+    clampToDisk(this.body.position, WORLD.playRadius);
   }
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
@@ -336,8 +332,7 @@ export class PlayerController {
     const tz = pos.z + dz * reach;
 
     const gy = terrainHeight(tx, tz);
-    const edge = WORLD.size / 2 - 1;
-    let valid = Math.abs(tx) < edge && Math.abs(tz) < edge;
+    let valid = Math.hypot(tx, tz) < WORLD.playRadius - 1;
     if (valid) {
       for (const o of this.obstacles) {
         if (Math.hypot(tx - o.x, tz - o.z) < o.r + PLAYER.radius) {

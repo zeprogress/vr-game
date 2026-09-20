@@ -14,7 +14,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 
-import { BELT, BOT, BOW, COMBAT, HOLSTER, MELEE, PLAYER, SHIELD, THROW } from "#shared/constants";
+import { BELT, BOT, BOW, COMBAT, HOLSTER, MELEE, PLAYER, SHIELD, SKILL, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import {
   DUAL_WIELD,
@@ -801,6 +801,9 @@ export class CombatSystem {
     else if (!tpStaff && !tpBow && !flatStaff && (this.charge !== 0 || this.castHooked)) {
       this.resetCast();
     }
+
+    if (this.player.inVR) this.updateVrSkills(lockedWeapon);
+    else if (this.rainMark?.isEnabled()) this.cancelRainAim();
 
     this.applyWindup();
     this.trackHandMotion(dt);
@@ -2512,6 +2515,162 @@ export class CombatSystem {
       }
     }
     this.prevVrTrigger = trigger;
+  }
+
+  // ---- умения жестом (VR) ----
+
+  /** Game: применить умение (проверка кулдауна, предупреждение и отправка на сервер). */
+  onVrSkill: ((kind: "stunBash" | "arrowRain", x?: number, z?: number) => void) | null = null;
+  private skillPrevTrig: Record<Side, boolean> = { left: false, right: false };
+  /** Рука лука, которая сейчас целит град стрел (метка на земле), либо null. */
+  private rainAimHand: Side | null = null;
+  private rainMark: Mesh | null = null;
+  private readonly rainAt = new Vector3();
+  private readonly rayO = new Vector3();
+  private readonly rayD = new Vector3();
+
+  /**
+   * Умения жестом: меч поднят над головой + курок руки с мечом — «Оглушающий
+   * удар» (как массовый хил посохом). Лук: рука с луком поднята + курок — на
+   * земле появляется метка, куда указывает рука; отпустил курок — град стрел.
+   */
+  private updateVrSkills(locked: boolean): void {
+    const eye = this.player.eyePosition;
+    const sides: Side[] = ["left", "right"];
+    for (const side of sides) {
+      const pad = this.controller(side)?.inputSource.gamepad;
+      const trig = !!pad?.buttons[0]?.pressed;
+      const edge = trig && !this.skillPrevTrig[side];
+      this.skillPrevTrig[side] = trig;
+      if (locked && this.uiLockHand === side) {
+        if (this.rainAimHand === side) this.cancelRainAim();
+        continue;
+      }
+      const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+      if (!node) continue;
+      const hp = node.getAbsolutePosition();
+      const raised =
+        hp.y > eye.y + 0.1 && Math.hypot(hp.x - eye.x, hp.z - eye.z) < 0.8;
+
+      if (this.rainAimHand === side) {
+        if (!this.held1("bow", side) || this.player.dead) {
+          this.cancelRainAim();
+        } else if (trig) {
+          this.updateRainAim(side);
+        } else {
+          const x = this.rainAt.x;
+          const z = this.rainAt.z;
+          this.cancelRainAim();
+          this.haptic(side, 0.7, 90);
+          this.onVrSkill?.("arrowRain", x, z);
+        }
+        continue;
+      }
+
+      if (!edge || !raised) continue;
+      if (this.held1("sword", side)) {
+        this.haptic(side, 0.6, 80);
+        this.onVrSkill?.("stunBash");
+      } else if (this.held1("bow", side)) {
+        this.rainAimHand = side;
+        this.haptic(side, 0.35, 45);
+        this.updateRainAim(side);
+      }
+    }
+  }
+
+  /** Метка града стрел: пересечение луча руки с землёй, не дальше дальности умения. */
+  private updateRainAim(side: Side): void {
+    const c = this.controller(side);
+    const node = c?.pointer ?? c?.grip;
+    if (!node) return;
+    this.rayO.copyFrom(node.getAbsolutePosition());
+    node.getDirectionToRef(Vector3.Forward(), this.rayD);
+    const eye = this.player.eyePosition;
+    const range = SKILL.arrowRain.range;
+    // Шагаем по лучу до земли; не попали — берём точку по горизонтальному направлению на дальности.
+    let hit = false;
+    let px = this.rayO.x;
+    let pz = this.rayO.z;
+    let lo = 0;
+    let hi = 0;
+    for (let t = 0.5; t <= 60; t += 0.5) {
+      const x = this.rayO.x + this.rayD.x * t;
+      const y = this.rayO.y + this.rayD.y * t;
+      const z = this.rayO.z + this.rayD.z * t;
+      if (y <= this.groundHeight(x, z)) {
+        lo = t - 0.5;
+        hi = t;
+        hit = true;
+        break;
+      }
+    }
+    if (hit) {
+      for (let i = 0; i < 6; i++) {
+        const m = (lo + hi) / 2;
+        const x = this.rayO.x + this.rayD.x * m;
+        const y = this.rayO.y + this.rayD.y * m;
+        const z = this.rayO.z + this.rayD.z * m;
+        if (y <= this.groundHeight(x, z)) hi = m;
+        else lo = m;
+      }
+      px = this.rayO.x + this.rayD.x * hi;
+      pz = this.rayO.z + this.rayD.z * hi;
+    } else {
+      const hl = Math.hypot(this.rayD.x, this.rayD.z) || 1;
+      px = eye.x + (this.rayD.x / hl) * range;
+      pz = eye.z + (this.rayD.z / hl) * range;
+    }
+    const dx = px - eye.x;
+    const dz = pz - eye.z;
+    const dl = Math.hypot(dx, dz);
+    if (dl > range) {
+      px = eye.x + (dx / dl) * range;
+      pz = eye.z + (dz / dl) * range;
+    }
+    this.rainAt.set(px, this.groundHeight(px, pz), pz);
+    this.showRainMark();
+  }
+
+  private showRainMark(): void {
+    if (!this.rainMark) {
+      const scene = this.bow.getScene();
+      const r = SKILL.arrowRain.radius;
+      const mat = new StandardMaterial("rainMarkMat", scene);
+      mat.emissiveColor = new Color3(1, 0.55, 0.12);
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.disableDepthWrite = true;
+      mat.backFaceCulling = false;
+      mat.alpha = 0.2;
+      const disc = MeshBuilder.CreateDisc("rainMark", { radius: r, tessellation: 40 }, scene);
+      disc.rotation.x = Math.PI / 2;
+      disc.material = mat;
+      disc.isPickable = false;
+      disc.applyFog = false;
+      const ringMat = mat.clone("rainMarkRingMat");
+      ringMat.alpha = 0.85;
+      const ring = MeshBuilder.CreateTorus(
+        "rainMarkRing",
+        { diameter: r * 2, thickness: 0.14, tessellation: 48 },
+        scene,
+      );
+      ring.material = ringMat;
+      ring.isPickable = false;
+      ring.applyFog = false;
+      ring.parent = disc;
+      // Диск повёрнут на 90° вокруг X — тор (лежит в XZ) в его осях встаёт плашмя.
+      ring.rotation.x = -Math.PI / 2;
+      this.rainMark = disc;
+    }
+    this.rainMark.position.set(this.rainAt.x, this.rainAt.y + 0.12, this.rainAt.z);
+    if (!this.rainMark.isEnabled()) this.rainMark.setEnabled(true);
+  }
+
+  private cancelRainAim(): void {
+    this.rainAimHand = null;
+    this.rainMark?.setEnabled(false);
   }
 
   // ---- магия посоха ----

@@ -110,7 +110,7 @@ export class VoiceChat {
   onPeerState: ((id: string, state: PeerState) => void) | null = null;
 
   /** Микрофон включён (иначе молчим, но слушаем). */
-  micEnabled = true;
+  micEnabled = false;
   /** Слышать по месту или всех ровно. */
   spatial = true;
   /** Свой голос сейчас идёт в эфир. */

@@ -21,6 +21,7 @@ export const LOOK = {
 
 export const WORLD = {
   size: 180, // м, сторона зоны
+  playRadius: 108, // м, круглая граница, за которую игрока не пускают (от центра поляны)
   subdivisions: 72, // плотность сетки террейна
   treeCount: 48,
   grassCount: 2000,

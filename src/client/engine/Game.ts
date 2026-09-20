@@ -1231,7 +1231,7 @@ export class Game {
     const headCam = this.xr?.baseExperience.camera ?? this.scene.activeCamera;
     this.vrWasted = new VrWasted(this.scene, headCam);
     this.vrStars = new VrStunStars(this.scene, headCam);
-    this.comfortVignette = new ComfortVignette(this.scene);
+    this.comfortVignette = new ComfortVignette(this.scene, headCam);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
     if (this.showPerfHud || this.lightPerf) {
@@ -1752,29 +1752,42 @@ export class Game {
    * Клиент только отсчитывает кулдаун для кнопки; урон/контроль считает сервер,
    * а телеграф и FX прилетают эхом через playRemoteAct.
    */
-  private updateSkillAbility(dt: number): void {
-    if (this.skillCdLeft > 0) this.skillCdLeft = Math.max(0, this.skillCdLeft - dt);
-    const kind = this.combat.abilityKind;
-    const inp = this.player.lastInput;
-    if (
-      inp.ability &&
-      kind &&
-      !this.player.dead &&
-      this.skillCdLeft <= 0 &&
-      this.net?.online
-    ) {
-      const msg: { kind: "stunBash" | "arrowRain"; x?: number; z?: number } = { kind };
-      if (kind === "arrowRain") {
+  /** Применить умение: проверка готовности (иначе предупреждение) и отправка на сервер. */
+  private castSkill(kind: "stunBash" | "arrowRain", x?: number, z?: number): void {
+    if (this.player.dead || !this.net?.online) return;
+    if (this.skillCdLeft > 0) {
+      const name = kind === "stunBash" ? "Оглушающий удар" : "Град стрел";
+      const now = performance.now();
+      if (now - this.skillWarnAt > 1200) {
+        this.skillWarnAt = now;
+        this.notifyToast(`${name} ещё не готов: ${Math.ceil(this.skillCdLeft)} с`);
+      }
+      return;
+    }
+    const msg: { kind: "stunBash" | "arrowRain"; x?: number; z?: number } = { kind };
+    if (kind === "arrowRain") {
+      if (x !== undefined && z !== undefined) {
+        msg.x = x;
+        msg.z = z;
+      } else {
         const hl = Math.hypot(this.aim.x, this.aim.z) || 1;
         const p = this.player.position;
         msg.x = p.x + (this.aim.x / hl) * SKILL.arrowRain.range;
         msg.z = p.z + (this.aim.z / hl) * SKILL.arrowRain.range;
       }
-      this.net.sendSkill(msg);
-      this.skillCdTotal =
-        kind === "stunBash" ? SKILL.stunBash.cooldown : SKILL.arrowRain.cooldown;
-      this.skillCdLeft = this.skillCdTotal;
     }
+    this.net.sendSkill(msg);
+    this.skillCdTotal = kind === "stunBash" ? SKILL.stunBash.cooldown : SKILL.arrowRain.cooldown;
+    this.skillCdLeft = this.skillCdTotal;
+  }
+
+  private skillWarnAt = 0;
+
+  private updateSkillAbility(dt: number): void {
+    if (this.skillCdLeft > 0) this.skillCdLeft = Math.max(0, this.skillCdLeft - dt);
+    const kind = this.combat.abilityKind;
+    const inp = this.player.lastInput;
+    if (inp.ability && kind) this.castSkill(kind);
     // Индикатор готовности на кнопке умения (телефон) и на запястье (VR).
     const frac = kind ? this.skillCdLeft / this.skillCdTotal : -1;
     this.touchInput?.setSkillCd(frac);
@@ -1892,6 +1905,7 @@ export class Game {
     this.combat.onLowMana = () => {
       if (MANA_ENABLED) this.notifyToast("Не хватает маны");
     };
+    this.combat.onVrSkill = (kind, x, z) => this.castSkill(kind, x, z);
     this.combat.onMassHealCooldown = (sec) => this.notifyToast(`Массовый хил перезаряжается: ${Math.ceil(sec)} с`);
     this.combat.onMassHealStart = (x, y, z) => this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
     this.combat.nearestAlly = (pos) => {
@@ -2336,6 +2350,7 @@ export class Game {
     this.combat.onCast = null;
     this.combat.onLowMana = null;
     this.combat.onMassHealStart = null;
+    this.combat.onVrSkill = null;
     this.combat.onMassHealCooldown = null;
     this.combat.nearestAlly = null;
     this.player.netControlled = false;
