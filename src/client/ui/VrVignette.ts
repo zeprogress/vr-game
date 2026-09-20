@@ -57,6 +57,9 @@ export class VrVignette {
   private flashAmt = 0;
   private lowAmt = 0; // 0..1 «нехватка здоровья»
   private pulseT = 0;
+  /** Смерть: постоянная тёмно-красная виньетка (WASTED), плавно нарастает. */
+  private deathAmt = 0;
+  private deathOn = false;
 
   constructor(scene: Scene) {
     this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
@@ -96,7 +99,14 @@ export class VrVignette {
     this.apply();
   }
 
+  setDeath(on: boolean): void {
+    this.deathOn = on;
+    if (!on) this.deathAmt = 0;
+    this.apply();
+  }
+
   tick(dt: number): void {
+    if (this.deathOn && this.deathAmt < 1) this.deathAmt = Math.min(1, this.deathAmt + dt * 0.9);
     if (this.flashAmt > 0) {
       this.flashAmt = Math.max(0, this.flashAmt - dt * VIGNETTE.fadeSpeed);
     }
@@ -108,7 +118,7 @@ export class VrVignette {
     // Пульсация усиливается по мере падения HP.
     const pulse = 1 + VIGNETTE.lowPulse * this.lowAmt * Math.sin(this.pulseT);
     const low = this.lowAmt * this.lowAmt * VIGNETTE.lowMaxAlpha * pulse;
-    const amt = Math.max(this.flashAmt, low);
+    const amt = Math.max(this.flashAmt, low, this.deathAmt * 0.92);
     this.mat.setFloat("intensity", amt);
     this.quad.setEnabled(amt > 0.005);
   }

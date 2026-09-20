@@ -22,6 +22,10 @@ export class Hud {
   private readonly backdrop: HTMLDivElement;
   private readonly panel: HTMLDivElement;
   private readonly deathEl: HTMLDivElement;
+  private readonly deathTitle: HTMLDivElement;
+  private readonly deathSub: HTMLDivElement;
+  private deathOn = false;
+  private lastDeathSec = -1;
   /** Вернуть управление в игру после закрытия панели (захват мыши). */
   private relock: (() => void) | null = null;
   private prog: Progression | null = null;
@@ -83,6 +87,12 @@ export class Hud {
       if (e.target === this.backdrop) this.closePanel();
     });
     this.deathEl = el("div", DEATH_CSS);
+    // «WASTED» как в GTA: тёмный экран с красной виньеткой, по центру красная надпись,
+    // медленно растёт. Строится один раз, дальше — только смена opacity/transform (CSS).
+    this.deathTitle = el("div", DEATH_TITLE_CSS);
+    this.deathTitle.textContent = "WASTED";
+    this.deathSub = el("div", DEATH_SUB_CSS);
+    this.deathEl.append(this.deathTitle, this.deathSub);
     this.bannerEl = el("div", BANNER_CSS);
     this.buffEl = el(
       "div",
@@ -458,12 +468,28 @@ export class Hud {
     this.lowVignette.style.opacity = String(Math.max(0, Math.min(1, alpha)));
   }
 
-  /** Экран смерти: затемнение и отсчёт до возрождения. */
+  /** Экран смерти («WASTED» + отсчёт до возрождения); при возрождении всё убирается. */
   setDead(dead: boolean, secondsLeft = 0): void {
-    this.deathEl.style.opacity = dead ? "1" : "0";
     if (dead) {
+      if (!this.deathOn) {
+        this.deathOn = true;
+        this.lastDeathSec = -1;
+        // Стартовое состояние без перехода, затем плавный «наезд» надписи.
+        this.deathTitle.style.transition = "none";
+        this.deathTitle.style.transform = "scale(0.88)";
+        this.deathEl.style.opacity = "1";
+        void this.deathTitle.offsetHeight;
+        this.deathTitle.style.transition = "transform 8s cubic-bezier(0.15,0.6,0.3,1)";
+        this.deathTitle.style.transform = "scale(1.08)";
+      }
       const t = Math.max(0, Math.ceil(secondsLeft));
-      this.deathEl.textContent = t > 0 ? `Вы погибли\nВозрождение через ${t}…` : "Вы погибли";
+      if (t !== this.lastDeathSec) {
+        this.lastDeathSec = t;
+        this.deathSub.textContent = t > 0 ? `Возрождение через ${t}…` : "";
+      }
+    } else if (this.deathOn) {
+      this.deathOn = false;
+      this.deathEl.style.opacity = "0";
     }
   }
 
@@ -801,10 +827,19 @@ const BANNER_CSS =
   "transition:opacity 0.5s ease,transform 0.5s ease;white-space:pre-line;";
 
 const DEATH_CSS =
-  "position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;" +
-  "background:radial-gradient(ellipse at center,rgba(60,0,0,0.55),rgba(0,0,0,0.9));" +
-  "color:#ffdede;font:bold 28px system-ui,sans-serif;text-align:center;white-space:pre-line;" +
-  "opacity:0;transition:opacity 0.5s;pointer-events:none;";
+  "position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+  "background:radial-gradient(ellipse at center,rgba(20,0,0,0.5) 25%,rgba(0,0,0,0.9) 100%);" +
+  "box-shadow:inset 0 0 22vmin rgba(190,0,0,0.75);" +
+  "opacity:0;transition:opacity 1.2s ease-out;pointer-events:none;";
+
+const DEATH_TITLE_CSS =
+  "font:900 clamp(56px,16vw,190px)/1 Impact,'Arial Black','Helvetica Neue',Arial,sans-serif;" +
+  "letter-spacing:0.09em;color:#c9252b;text-shadow:0 4px 22px rgba(0,0,0,0.85),0 0 3px rgba(20,0,0,0.9);" +
+  "-webkit-text-stroke:2px rgba(20,0,0,0.85);will-change:transform;";
+
+const DEATH_SUB_CSS =
+  "margin-top:2vmin;font:600 clamp(14px,2.4vw,26px) system-ui,sans-serif;color:#ffd6d6;" +
+  "text-shadow:0 2px 8px #000;letter-spacing:0.05em;";
 
 const BACKDROP_CSS =
   // height по svh (а не 100vh): в Safari на телефоне 100vh включает область

@@ -28,6 +28,8 @@ import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { HealthBar3D } from "../ui/HealthBar3D";
+import { VrWasted } from "../ui/VrWasted";
+import { VrStunStars } from "../ui/VrStunStars";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
@@ -125,6 +127,8 @@ export class Game {
   private manaBar3D: HealthBar3D | null = null;
   private manaMax = 30;
   private vrVignette: VrVignette | null = null;
+  private vrWasted: VrWasted | null = null;
+  private vrStars: VrStunStars | null = null;
   private comfortVignette: ComfortVignette | null = null;
   private healCrossFx: HealCrossFx | null = null;
   private readonly spellLights: SpellLights;
@@ -538,6 +542,8 @@ export class Game {
       this.mark("vrUi");
       this.updateLowHealthVignette(dt);
       this.vrVignette?.tick(dt);
+      this.vrWasted?.tick(dt);
+      this.vrStars?.tick(dt);
       this.updateComfortVignette(dt);
       this.healCrossFx?.update(dt);
       this.crossFx.update(dt);
@@ -734,6 +740,7 @@ export class Game {
     // считается на оба глаза); свет костра лагеря и заклинаний по-прежнему выключен.
     this.botLights.setBudget(2);
     vrLights.off = true;
+    vrLights.spell = true; // свет посоха/огнешара ночью в VR — есть (костёр лагеря — нет)
     // Гарантия нативного разрешения буфера глаза.
     if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);
     console.log("[xr] VR: ночные лампы off, разрешение нативное, остальное — максимум");
@@ -746,6 +753,7 @@ export class Game {
     this.fireflies.setLampBudget(Infinity); // дефолт — без ограничения
     this.botLights.setForceOff(false);
     vrLights.off = false;
+    vrLights.spell = false;
   }
 
   enterVR(): Promise<boolean> {
@@ -1215,6 +1223,8 @@ export class Game {
 
     this.vrHud = new VrHud(this.scene, this.hudAnchor);
     this.vrVignette = new VrVignette(this.scene);
+    this.vrWasted = new VrWasted(this.scene);
+    this.vrStars = new VrStunStars(this.scene);
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 
@@ -1315,6 +1325,10 @@ export class Game {
     this.hudAnchor = null;
     this.vrVignette?.dispose();
     this.vrVignette = null;
+    this.vrWasted?.dispose();
+    this.vrWasted = null;
+    this.vrStars?.dispose();
+    this.vrStars = null;
     this.comfortVignette?.dispose();
     this.comfortVignette = null;
     this.healCrossFx?.dispose();
@@ -1593,6 +1607,7 @@ export class Game {
     this.player.setHp(self.hp);
     this.localAvatar?.setBuffed((self.buffSecs ?? 0) > 0);
     this.localAvatar?.setStunned(self.stunned === 1);
+    this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
     this.hud.setBuff(self.buffSecs ?? 0);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
@@ -1608,7 +1623,11 @@ export class Game {
       if (dead) {
         this.hud.flashDamage(40);
         this.vrVignette?.flash(40);
+        this.vrVignette?.setDeath(true);
+        this.vrWasted?.setDead(true);
       } else {
+        this.vrVignette?.setDeath(false);
+        this.vrWasted?.setDead(false);
         // Единственное место, где реально снимаем экран смерти: self.dead —
         // источник правды. onRespawn раньше делал это тоже, сам по себе,
         // отдельным сообщением — если патч состояния приходил чуть позже
