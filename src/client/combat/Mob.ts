@@ -691,7 +691,7 @@ export class Mob implements Hittable {
   /** Дальше этого от камеры скелетную анимацию моба не крутим. */
   private static readonly ANIM_RANGE = 85;
   /** В VR мобов дальше этого (м) не рисуем и не считаем. */
-  private static readonly VR_CULL_RANGE = 100;
+  private static readonly VR_CULL_RANGE = 130;
   /** В VR скелетную анимацию считаем только ближе этого (м). */
   private static readonly VR_ANIM_RANGE = 28;
 

@@ -375,9 +375,38 @@ export async function loadGrass(
     colors.push(bl.b + bl.warm * 0.7, bl.b + bl.warm * 0.15, bl.b - bl.warm * 0.5, 1);
   }
 
-  blade.thinInstanceAdd(matrices);
-  blade.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
-  blade.thinInstanceSetBuffer("color", new Float32Array(colors), 4, true);
+  // Траву режем на квадраты CELL×CELL м: каждый — отдельный меш со своими
+  // thin-инстансами и настоящим bbox. Раньше один меш на 4000 пучков (620 тыс.
+  // треугольников) рисовался целиком всегда, без отсечения; теперь на плоском
+  // экране работает отсечение по кадру, а в VR — VrCull (сектора дальности).
+  const CELL = 45;
+  const cells = new Map<string, number[]>();
+  layout.blades.forEach((bl, i) => {
+    const key = `${Math.floor(bl.x / CELL)},${Math.floor(bl.z / CELL)}`;
+    const list = cells.get(key);
+    if (list) list.push(i);
+    else cells.set(key, [i]);
+  });
+  // Клоны делаем до добавления инстансов (иначе они унаследовали бы чужие буферы).
+  const chunks: Mesh[] = [blade];
+  while (chunks.length < cells.size) chunks.push(blade.clone("grassBlade") as Mesh);
+  let ci = 0;
+  for (const [key, ids] of cells) {
+    const mesh = chunks[ci++];
+    mesh.name = "grassBlade";
+    mesh.thinInstanceAdd(ids.map((i) => matrices[i]));
+    mesh.thinInstanceSetBuffer("windPhase", new Float32Array(ids.map((i) => phases[i])), 1, true);
+    const col = new Float32Array(ids.length * 4);
+    ids.forEach((i, n) => col.set(colors.slice(i * 4, i * 4 + 4), n * 4));
+    mesh.thinInstanceSetBuffer("color", col, 4, true);
+    mesh.thinInstanceRefreshBoundingInfo(true);
+    const [kx, kz] = key.split(",").map(Number);
+    // Центр и радиус ячейки — для VrCull (у thin-инстанс-меша позиция всегда 0,0,0).
+    mesh.metadata = { cullX: (kx + 0.5) * CELL, cullZ: (kz + 0.5) * CELL, cullR: CELL * 0.71 };
+    mesh.isPickable = false;
+    mesh.freezeWorldMatrix();
+    mesh.doNotSyncBoundingInfo = true;
+  }
 
   return (dt: number, daylight: number) => {
     wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);

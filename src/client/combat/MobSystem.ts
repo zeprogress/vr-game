@@ -234,9 +234,9 @@ export class NetMobs {
   private spawnBurst(pos: Vector3, radius: number, hit: boolean): void {
     if (this.bursts.length >= 10) {
       const old = this.bursts.shift();
-      old?.flash.dispose(false, true);
-      old?.ring.dispose(false, true);
-      for (const s of old?.sparks ?? []) s.mesh.dispose(false, true);
+      old?.flash.dispose(false, false);
+      old?.ring.dispose(false, false);
+      for (const s of old?.sparks ?? []) s.mesh.dispose(false, false);
     }
     const n = this.burstSeq++;
     const flash = this.burstFlashProto.clone(`burstF_${n}`);
@@ -284,9 +284,9 @@ export class NetMobs {
       b.age += dt;
       const f = b.age / b.life;
       if (f >= 1) {
-        b.flash.dispose(false, true);
-        b.ring.dispose(false, true);
-        for (const s of b.sparks) s.mesh.dispose(false, true);
+        b.flash.dispose(false, false);
+        b.ring.dispose(false, false);
+        for (const s of b.sparks) s.mesh.dispose(false, false);
         this.bursts.splice(i, 1);
         continue;
       }
@@ -589,9 +589,9 @@ export class NetMobs {
       bo.arrow?.dispose();
     }
     for (const b of this.bursts.values()) {
-      b.flash.dispose(false, true);
-      b.ring.dispose(false, true);
-      for (const s of b.sparks) s.mesh.dispose(false, true);
+      b.flash.dispose(false, false);
+      b.ring.dispose(false, false);
+      for (const s of b.sparks) s.mesh.dispose(false, false);
     }
     this.bursts.length = 0;
     this.mobs.clear();

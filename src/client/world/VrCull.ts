@@ -20,13 +20,15 @@ const BEHIND_NEAR = 14;
 /** Центральный конус ±30° — полная дальность; боковые секторы до ±60° — SIDE_K от неё. */
 const COS_CENTER = Math.cos((30 * Math.PI) / 180);
 const COS_SIDE = Math.cos((60 * Math.PI) / 180);
-const SIDE_K = 2 / 3;
+const SIDE_K = 0.75;
 
 export class VrCull {
   /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
   private small: { m: AbstractMesh; r: number }[] = [];
   private trees: AbstractMesh[] = [];
   private rocks: AbstractMesh[] = [];
+  /** Куски травы (thin-инстансы, центр/радиус — в metadata.cullX/Z/R). Только в VR. */
+  private grass: AbstractMesh[] = [];
   private readonly hidden = new Set<AbstractMesh>();
   private readonly roots = new Set<AbstractMesh>();
   private scanT = 0;
@@ -40,7 +42,7 @@ export class VrCull {
     readonly vr = true,
   ) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 150 : 60;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 200 : 60;
     this.treeR = Number.isFinite(v) ? v : 60;
     this.rockR = Math.max(0, this.treeR - (this.vr ? 20 : 10));
   }
@@ -48,10 +50,12 @@ export class VrCull {
   private scan(): void {
     const trees: AbstractMesh[] = [];
     const rocks: AbstractMesh[] = [];
+    const grass: AbstractMesh[] = [];
     const small: { m: AbstractMesh; r: number }[] = [];
     for (const m of this.scene.meshes) {
       const n = m.name;
-      if (n.startsWith("firefly")) small.push({ m, r: 30 });
+      if (n === "grassBlade") grass.push(m);
+      else if (n.startsWith("firefly")) small.push({ m, r: 30 });
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
       else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {
         trees.push(m);
@@ -68,6 +72,7 @@ export class VrCull {
     }
     this.trees = trees;
     this.rocks = rocks;
+    this.grass = grass;
     this.small = small;
   }
 
@@ -94,6 +99,8 @@ export class VrCull {
     }
     this.apply(this.trees, cam, this.treeR, fx, fz);
     this.apply(this.rocks, cam, this.rockR, fx, fz);
+    // Трава: на плоском экране её отсекает Babylon по кадру, в VR — те же сектора, что у деревьев.
+    if (this.vr) this.apply(this.grass, cam, this.treeR, fx, fz);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();
@@ -113,8 +120,14 @@ export class VrCull {
     const sector = fx !== 0 || fz !== 0;
     for (const m of list) {
       if (m.isDisposed()) continue;
-      const p = m.getAbsolutePosition();
-      const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
+      const md = m.metadata as { cullX?: number; cullZ?: number; cullR?: number } | null;
+      const chunk = md && md.cullX !== undefined && md.cullZ !== undefined;
+      const p = chunk ? { x: md.cullX as number, z: md.cullZ as number } : m.getAbsolutePosition();
+      const rad = chunk ? (md.cullR ?? 0) : 0;
+      const d2raw = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
+      // Кусок травы большой: считаем по его ближнему краю.
+      const dNear = Math.max(0, Math.sqrt(d2raw) - rad);
+      const d2 = dNear * dNear;
       const off = this.hidden.has(m);
       // Видимому объекту границы чуть шире (гистерезис), спрятанному — чуть уже.
       const pad = off ? -6 : 6;
@@ -125,7 +138,14 @@ export class VrCull {
       } else if (d2 <= BEHIND_NEAR * BEHIND_NEAR) {
         far = false;
       } else {
-        const cosA = ((p.x - cam.x) * fx + (p.z - cam.z) * fz) / Math.sqrt(d2);
+        let cosA = ((p.x - cam.x) * fx + (p.z - cam.z) * fz) / Math.max(1e-3, Math.sqrt(d2raw));
+        if (rad > 0 && d2raw > rad * rad) {
+          // Большой кусок: берём угол к его ближайшему к оси краю.
+          const ang = Math.max(0, Math.acos(Math.max(-1, Math.min(1, cosA))) - Math.asin(rad / Math.sqrt(d2raw)));
+          cosA = Math.cos(ang);
+        } else if (rad > 0) {
+          cosA = 1; // камера внутри куска
+        }
         const da = off ? -0.03 : 0.03; // ≈ ±3–5° по косинусу
         let lim: number;
         if (cosA > COS_CENTER - da) lim = r + pad;
