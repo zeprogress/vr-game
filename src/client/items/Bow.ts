@@ -2,7 +2,6 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MultiMaterial } from "@babylonjs/core/Materials/multiMaterial";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { attachLegendaryGlow, spawnWeaponModel, tierTint } from "./weaponModels";
 
@@ -18,17 +17,13 @@ export interface BowParts {
 const BOW_FIT = { scale: 0.69, yaw: Math.PI / 2 } as const;
 
 /**
- * В модели лука из пака есть своя тетива (отдельный подмеш с материалом «White»).
+ * В модели лука из пака есть своя тетива (отдельный меш `…_primitive2` с материалом «White»).
  * Рабочую тетиву рисует игра (CombatSystem.bowString), поэтому родную убираем.
  */
 function dropModelString(fit: TransformNode): void {
   for (const m of fit.getChildMeshes(false)) {
-    const mm = m.material;
-    if (!(mm instanceof MultiMaterial)) continue;
-    for (const sm of m.subMeshes.slice()) {
-      const sub = mm.subMaterials[sm.materialIndex];
-      if (sub && /white/i.test(sub.name)) sm.dispose();
-    }
+    // glTF режет модель на меши по материалам: тетива — третий (`…_primitive2`, 36 вершин).
+    if (/_primitive2$/.test(m.name) && m.getTotalVertices() <= 40) m.dispose();
   }
 }
 

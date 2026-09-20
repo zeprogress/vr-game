@@ -60,7 +60,7 @@ export function createArrowProto(scene: Scene): Mesh {
   fletchMat.diffuseColor = new Color3(0.8, 0.2, 0.2);
   fletchMat.specularColor = new Color3(0, 0, 0);
 
-  const shaft = MeshBuilder.CreateBox("a_shaft", { width: 0.012, height: 0.012, depth: 0.7 }, scene);
+  const shaft = MeshBuilder.CreateBox("a_shaft", { width: 0.012, height: 0.012, depth: 0.9 }, scene);
   shaft.material = shaftMat;
 
   const head = MeshBuilder.CreateCylinder(
@@ -69,11 +69,11 @@ export function createArrowProto(scene: Scene): Mesh {
     scene,
   );
   head.rotation.x = Math.PI / 2; // ось Y -> +Z
-  head.position.z = 0.39;
+  head.position.z = 0.49;
   head.material = headMat;
 
   const f1 = MeshBuilder.CreateBox("a_f1", { width: 0.001, height: 0.05, depth: 0.1 }, scene);
-  f1.position.z = -0.3;
+  f1.position.z = -0.4;
   f1.material = fletchMat;
   const f2 = f1.clone("a_f2");
   f2.rotation.z = Math.PI / 2;

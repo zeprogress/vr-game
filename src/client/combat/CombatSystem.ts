@@ -3093,7 +3093,7 @@ export class CombatSystem {
     this.nockLocal.copyFrom(nock);
     const d = dir.length() > 1e-4 ? dir.normalize() : new Vector3(0, 0, -1);
     this.nockArrow.rotation.set(-Math.asin(clamp(d.y, -1, 1)), Math.atan2(d.x, d.z), 0);
-    this.nockArrow.position.copyFrom(nock).addInPlace(d.scale(0.34));
+    this.nockArrow.position.copyFrom(nock).addInPlace(d.scale(0.44));
   }
 
   private updateString(): void {
