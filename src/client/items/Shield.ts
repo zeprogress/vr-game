@@ -30,7 +30,7 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
 
   const iron = new StandardMaterial("shieldIron", scene);
   iron.diffuseColor = new Color3(0.62, 0.65, 0.7);
-  iron.emissiveColor = new Color3(0.16, 0.17, 0.2);
+  iron.emissiveColor = new Color3(0.07, 0.075, 0.09);
   iron.specularColor = new Color3(0.7, 0.7, 0.7);
   iron.specularPower = 48;
   iron.maxSimultaneousLights = LIGHT_BUDGET;

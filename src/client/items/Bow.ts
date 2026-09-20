@@ -43,12 +43,11 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   wood.name = "bow_wood";
   wood.parent = root;
 
-  const gold = spawnWeaponModel(scene, "bow_gold", {
-    ...BOW_FIT,
-    tint: tierTint("bow", tier), // легендарка — фиолетовый отлив
-  }, dropModelString);
+  const gold = spawnWeaponModel(scene, "bow_gold", BOW_FIT, dropModelString);
   gold.name = "bow_gold";
   gold.parent = root;
+  // Уникальный лук — золотая модель в цвете аффикса (та же геометрия, своя перекраска).
+  if (tier === "legendary") makeLegendModel(scene, root);
 
   applyBowTier(root, tier);
   if (tier === "legendary") attachLegendaryGlow(scene, root, 0.35, 0.5);
@@ -82,10 +81,26 @@ function placeString(parts: BowParts, tier: WeaponTier): void {
   parts.nockRest.set(0, 0, a.z);
 }
 
+function makeLegendModel(scene: Scene, root: Mesh): void {
+  const legend = spawnWeaponModel(
+    scene,
+    "bow_gold",
+    { ...BOW_FIT, tint: tierTint("bow", "legendary") },
+    dropModelString,
+  );
+  legend.name = "bow_legend";
+  legend.parent = root;
+}
+
 function applyBowTier(root: Mesh, tier: WeaponTier): void {
+  // Лук в руках создаётся обычным, поэтому модель уникального собираем при первой надобности.
+  if (tier === "legendary" && !root.getChildren().some((n) => n.name === "bow_legend")) {
+    makeLegendModel(root.getScene(), root);
+  }
   for (const n of root.getChildren()) {
     if (n.name === "bow_wood") n.setEnabled(tier === "base");
-    else if (n.name === "bow_gold") n.setEnabled(tier !== "base");
+    else if (n.name === "bow_gold") n.setEnabled(tier === "gold");
+    else if (n.name === "bow_legend") n.setEnabled(tier === "legendary");
   }
 }
 

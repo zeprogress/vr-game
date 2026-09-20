@@ -42,14 +42,14 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   wood.diffuseColor = storm
     ? new Color3(0.42, 0.32, 0.6)
     : gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
-  wood.emissiveColor = wood.diffuseColor.scale(0.12);
+  wood.emissiveColor = wood.diffuseColor.scale(0.05);
   wood.specularColor = new Color3(0.05, 0.05, 0.05);
   wood.maxSimultaneousLights = LIGHT_BUDGET;
 
   // Обмотки — белая ткань, заподлицо с древком (без утолщения).
   const cloth = new StandardMaterial("staffGrip", scene);
   cloth.diffuseColor = new Color3(0.86, 0.86, 0.82);
-  cloth.emissiveColor = new Color3(0.14, 0.14, 0.13);
+  cloth.emissiveColor = new Color3(0.06, 0.06, 0.055);
   cloth.specularColor = new Color3(0, 0, 0);
   cloth.maxSimultaneousLights = LIGHT_BUDGET;
 
@@ -57,7 +57,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   metal.diffuseColor = storm
     ? new Color3(0.6, 0.5, 0.85)
     : gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
-  metal.emissiveColor = metal.diffuseColor.scale(0.12);
+  metal.emissiveColor = metal.diffuseColor.scale(0.05);
   metal.specularColor = new Color3(0.75, 0.75, 0.8);
   metal.specularPower = 80;
   metal.maxSimultaneousLights = LIGHT_BUDGET;

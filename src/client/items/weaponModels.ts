@@ -154,7 +154,7 @@ export function spawnWeaponModel(
       const mat = m.material as StandardMaterial | null;
       if (mat && "emissiveColor" in mat && !done.has(mat)) {
         mat.diffuseColor = Color3.Lerp(mat.diffuseColor, new Color3(1, 1, 1), 0.3);
-        mat.emissiveColor = mat.diffuseColor.scale(0.13);
+        mat.emissiveColor = mat.diffuseColor.scale(0.05); // было 0.13 — оружие «светилось» само
         mat.specularColor = new Color3(0.35, 0.35, 0.35);
         mat.specularPower = 48;
         // recolorFlat ставит потолок в 2 источника (для статичных пропов).

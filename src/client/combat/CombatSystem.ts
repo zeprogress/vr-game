@@ -400,8 +400,8 @@ export class CombatSystem {
       scene,
     );
     const stringMat = new StandardMaterial("bowStringMat", scene);
-    stringMat.diffuseColor = new Color3(0.85, 0.85, 0.8);
-    stringMat.emissiveColor = new Color3(0.25, 0.25, 0.23);
+    stringMat.diffuseColor = new Color3(0.68, 0.66, 0.6);
+    stringMat.emissiveColor = new Color3(0.03, 0.03, 0.03); // тетива не светится сама
     stringMat.specularColor = new Color3(0, 0, 0);
     this.bowString.material = stringMat;
     this.bowString.parent = bow;

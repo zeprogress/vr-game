@@ -567,6 +567,11 @@ export class Game {
         this._botPos.push(av.position);
         this._botFwd.push(av.eyeForward);
       }
+      // VR: свой факел перед собой, как у ботов, — если в руках не посох (у посоха свой свет от кристалла).
+      if (this.player.inVR && !this.player.dead && !this.combat.holdsStaff) {
+        this._botPos.push(this.player.eyePosition);
+        this._botFwd.push(this.player.eyeForward);
+      }
       this.botLights.update(
         dt,
         dayState(LOADOUT.world.hour).daylight,
