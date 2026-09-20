@@ -343,7 +343,7 @@ export class Overlay {
   }
 
   private renderTowerTop(): void {
-    this.towerTop.innerHTML = "<b>башня — лучший этаж</b>";
+    this.towerTop.innerHTML = "<b>башня</b>";
     const medal = ["🥇", "🥈", "🥉"];
     this.towerTopRows.slice(0, 5).forEach((r, i) => {
       const row = document.createElement("div");
@@ -355,7 +355,7 @@ export class Overlay {
       nm.textContent = r.nick;
       const lv = document.createElement("span");
       lv.className = "lv";
-      lv.textContent = `этаж ${r.floor}`;
+      lv.textContent = r.cleared ? "покорил" : `этаж ${r.floor}`;
       row.append(rk, nm, lv);
       this.towerTop.appendChild(row);
     });

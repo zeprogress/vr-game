@@ -9,6 +9,7 @@ import {
   MAGE_NOVA,
   MAGE_SPELL,
   MOB,
+  FLYER_HIT_BONUS,
   MOB_CAMPS,
   PLAYER,
   SHARD,
@@ -1596,7 +1597,7 @@ export class ZoneSim {
 
     for (const m of this.mobs.values()) {
       if (m.dead) continue;
-      const r = b.hitRadius + MOB.bodyRadius * m.scale;
+      const r = b.hitRadius + MOB.bodyRadius * m.scale + (m.flying ? FLYER_HIT_BONUS : 0);
       const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;

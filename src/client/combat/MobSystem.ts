@@ -306,7 +306,7 @@ export class NetMobs {
       // Кольцо: расходится наружу и истончается.
       const ringScale = b.peak * (0.4 + 2.6 * f);
       b.ring.scaling.setAll(ringScale);
-      b.ring.visibility = fade * 0.4; // белая волна — вдвое прозрачнее
+      b.ring.visibility = fade * 0.2; // белая волна: 0.8 → 0.4 → 0.2
       if (cam) b.ring.lookAt(cam.globalPosition);
       // Искры: летят наружу по прямой, чуть тормозя гравитацией, гаснут к концу жизни.
       for (const s of b.sparks) {

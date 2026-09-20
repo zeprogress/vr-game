@@ -18,7 +18,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
-import { BOSS_CFG, ELITE_MOBS, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, ELITE_MOBS, FLYER_HIT_BONUS, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -360,6 +360,8 @@ export class Mob implements Hittable {
   /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
   private lodProxies: InstancedMesh[] | null = null;
   private lodFar = false;
+  /** Мелкий летающий моб (пчела) — увеличенный хитбокс. */
+  private readonly flyer: boolean;
   private rigReady = false;
   private lodTint: readonly [number, number, number] = [0.5, 0.8, 0.5];
   /** Труп уже полностью растворился: корень выключен до возрождения. */
@@ -420,6 +422,7 @@ export class Mob implements Hittable {
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
+    this.flyer = !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.flying;
     this.hasNovaFx =
       this.isBoss ||
       !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.novaCaster;
@@ -628,7 +631,7 @@ export class Mob implements Hittable {
     return {
       a: p.add(new Vector3(0, 0.1, 0)),
       b: p.add(new Vector3(0, MOB.bodyRadius * 2 * sc, 0)),
-      radius: MOB.hitRadius * sc,
+      radius: MOB.hitRadius * sc + (this.flyer ? FLYER_HIT_BONUS : 0),
     };
   }
 

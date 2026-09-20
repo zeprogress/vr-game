@@ -27,6 +27,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   kills?: number;
   /** Самый высокий этаж «Охотничьей башни», до которого дошёл герой. */
   bestTowerFloor?: number;
+  /** Когда герой впервые прошёл башню целиком (мс с эпохи) — порядок «каким по счёту». */
+  towerClearedAt?: number;
   /** Ресурс с мини-боссов башни (название/применение — TBD). */
   towerShards?: number;
   /** Продолжать ли ботом после выхода (панель C). По умолчанию — нет. */
@@ -117,6 +119,7 @@ export class PlayerStore {
     for (const r of this.records.values()) {
       r.bestTowerFloor = 0;
       r.towerShards = 0;
+      r.towerClearedAt = undefined;
     }
     this.dirty = true;
   }

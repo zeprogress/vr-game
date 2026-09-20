@@ -730,7 +730,9 @@ export class Game {
     // ночью это ощутимо тормозило; днём они и так погашены. Всё остальное —
     // трава, разрешение, эффекты — на максимуме, как на десктопе.
     this.fireflies.setLampBudget(0);
-    this.botLights.setForceOff(true);
+    // Факелы героев ночью в VR оставляем, но не больше двух ближайших (каждый источник
+    // считается на оба глаза); свет костра лагеря и заклинаний по-прежнему выключен.
+    this.botLights.setBudget(2);
     vrLights.off = true;
     // Гарантия нативного разрешения буфера глаза.
     if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);

@@ -1,7 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { impostorsIs3D, impostorsReady, impostorsUpdate } from "./TreeImpostors";
+import { impostorsIs3D, impostorsUpdate } from "./TreeImpostors";
 import { COS_CENTER, COS_SIDE, FAR_CENTER, NEAR_3D, SIDE_K } from "./cullSectors";
 
 /**
@@ -98,33 +98,11 @@ export class VrCull {
       }
     }
     // Дальше NEAR_3D настоящая модель дерева не нужна — там снимок-билборд (TreeImpostors).
-    const imp = impostorsReady();
-    if (imp) {
-      // Одно решение на дерево (модель или снимок) принимает TreeImpostors.
-      impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
-      const unmapped: AbstractMesh[] = [];
-      for (const m of this.trees) {
-        if (m.isDisposed()) continue;
-        const is3d = impostorsIs3D(m);
-        if (is3d === undefined) {
-          unmapped.push(m); // не из списка снимков — обычная логика радиусов
-          continue;
-        }
-        const hide = is3d === false;
-        const off = this.hidden.has(m);
-        if (hide && !off) {
-          m.setEnabled(false);
-          this.hidden.add(m);
-        } else if (!hide && off) {
-          m.setEnabled(true);
-          this.hidden.delete(m);
-        }
-      }
-      if (unmapped.length) this.apply(unmapped, cam, this.treeR, fx, fz);
-    } else {
-      this.apply(this.trees, cam, this.treeR, fx, fz);
-    }
-    this.apply(this.rocks, cam, this.rockR, fx, fz);
+    // Одно решение на дерево/камень (модель или снимок) принимает TreeImpostors; меши без
+    // записи там (снимки ещё не готовы / вид без снимка) — обычная логика радиусов.
+    impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
+    this.applyImp(this.trees, this.treeR, cam, fx, fz);
+    this.applyImp(this.rocks, this.rockR, cam, fx, fz);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();
@@ -132,6 +110,28 @@ export class VrCull {
       // isVisible, а не setEnabled: enabled у светлячков ведёт их собственный день/ночь.
       s.m.isVisible = d2 <= s.r * s.r;
     }
+  }
+
+  private applyImp(list: AbstractMesh[], r: number, cam: Vector3, fx: number, fz: number): void {
+    const unmapped: AbstractMesh[] = [];
+    for (const m of list) {
+      if (m.isDisposed()) continue;
+      const is3d = impostorsIs3D(m);
+      if (is3d === undefined) {
+        unmapped.push(m);
+        continue;
+      }
+      const hide = is3d === false;
+      const off = this.hidden.has(m);
+      if (hide && !off) {
+        m.setEnabled(false);
+        this.hidden.add(m);
+      } else if (!hide && off) {
+        m.setEnabled(true);
+        this.hidden.delete(m);
+      }
+    }
+    if (unmapped.length) this.apply(unmapped, cam, r, fx, fz);
   }
 
   /**

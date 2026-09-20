@@ -16,7 +16,7 @@ import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
-import { TreeImpostors } from "./TreeImpostors";
+import { TreeImpostors, type ImpostorTree } from "./TreeImpostors";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { computeGrassLayout } from "./grassLayout";
 
@@ -444,6 +444,7 @@ export async function loadRocks(
     return m;
   });
 
+  const rockRecs: ImpostorTree[] = [];
   const place = (
     kind: number,
     x: number,
@@ -467,6 +468,10 @@ export async function loadRocks(
       m.doNotSyncBoundingInfo = true;
     }
     root.freezeWorldMatrix();
+    const geo = root.getChildMeshes(false).filter((m) => m.getTotalVertices() > 0) as Mesh[];
+    if (geo.length) {
+      rockRecs.push({ kind: kind % containers.length, x, y: root.position.y, z, scale: s, meshes: geo });
+    }
   };
 
   // Под оружием — небольшой камень-постамент, верх ~0.7 м.
@@ -476,4 +481,6 @@ export async function loadRocks(
   for (const rk of rockList()) {
     place(rk.kind, rk.x, rk.z, rk.scale, rk.yaw, rk.tilt[0], rk.tilt[1]);
   }
+  // Дальние камни — снимки-билборды (как у деревьев), см. TreeImpostors.
+  if (rockRecs.length) new TreeImpostors(scene, rockRecs, "rock", 0.9);
 }

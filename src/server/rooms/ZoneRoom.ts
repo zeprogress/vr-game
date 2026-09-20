@@ -1676,16 +1676,28 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Топ по лучшему этажу «Охотничьей башни» (тот же паттерн, что leaderboard). */
   private towerLeaderboard(limit: number): TowerBoardRow[] {
-    const byNorm = new Map<string, TowerBoardRow>();
+    const byNorm = new Map<string, TowerBoardRow & { at: number }>();
     for (const rec of store.entries()) {
       if (!rec.token.startsWith("nick:") || !rec.bestTowerFloor) continue;
+      // Прошёл целиком: есть отметка времени ИЛИ лучший этаж = последний (старые записи без отметки).
+      const cleared = rec.towerClearedAt !== undefined || rec.bestTowerFloor >= TOWER.floors;
       byNorm.set(rec.token.slice(5), {
         nick: rec.nick || rec.token.slice(5),
         floor: rec.bestTowerFloor,
         shards: rec.towerShards ?? 0,
+        cleared,
+        at: rec.towerClearedAt ?? 0,
       });
     }
-    return [...byNorm.values()].sort((a, b) => b.floor - a.floor || b.shards - a.shards).slice(0, limit);
+    // Сначала «покорившие» — по порядку прохождения (кто раньше — тот выше), затем остальные по этажу.
+    return [...byNorm.values()]
+      .sort((a, b) => {
+        if (!!a.cleared !== !!b.cleared) return a.cleared ? -1 : 1;
+        if (a.cleared && b.cleared) return a.at - b.at || b.shards - a.shards;
+        return b.floor - a.floor || b.shards - a.shards;
+      })
+      .slice(0, limit)
+      .map(({ at: _at, ...row }) => row);
   }
 
   private broadcastLeaderboard(): void {
@@ -2436,6 +2448,8 @@ export class ZoneRoom extends Room<ZoneState> {
       store.put(rt.token, {
         bestTowerFloor: Math.max(prev?.bestTowerFloor ?? 0, r.floorReached),
         towerShards: (prev?.towerShards ?? 0) + r.towerShards,
+        // Первое полное прохождение фиксируем временем — по нему строится порядок «каким по счёту».
+        towerClearedAt: prev?.towerClearedAt ?? (r.phase === "cleared" ? Date.now() : undefined),
         weapons: rt.weapons,
       });
       for (const w of r.drops) this.announcePickup(nick, w.cls, w.tier, w);

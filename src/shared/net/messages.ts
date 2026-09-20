@@ -195,6 +195,8 @@ export interface TowerBoardRow {
   nick: string;
   floor: number;
   shards: number;
+  /** Прошёл башню целиком («покорил»). Такие идут первыми — по порядку прохождения. */
+  cleared?: boolean;
 }
 
 /** Живые позиции мобов текущего забега башни — мировые координаты. */

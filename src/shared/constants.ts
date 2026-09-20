@@ -84,6 +84,9 @@ export const ARROW = {
   maxAlive: 16, // потолок числа стрел
 } as const;
 
+/** Добавка к радиусу попадания для мелких летающих мобов (пчёлы): по ним трудно попасть снарядом/стрелой. */
+export const FLYER_HIT_BONUS = 0.35;
+
 export const MOB = {
   count: 5,
   hp: 4,
@@ -347,7 +350,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
-    hp: 680, dmgMul: 8, xp: 2100, scaleMul: 1.9, tint: null,
+    hp: 340, dmgMul: 5, xp: 2100, scaleMul: 1.9, tint: null, // слабее: hp 680→340, dmgMul 8→5
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },
@@ -382,9 +385,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const MAGE_NOVA = {
   radius: 5,
-  damage: 120,
+  damage: 75, // было 120
   windup: 1.1,
-  cooldown: 9,
+  cooldown: 11, // было 9
   stunSec: 1.6,
   knockback: 10, // м/с импульс отбрасывания
 };
