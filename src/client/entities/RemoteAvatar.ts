@@ -208,6 +208,9 @@ export class RemoteAvatar implements Hittable {
   private gearKeyL = "";
   private gearKeyR = "";
   private wantL: readonly [string, string] = ["", ""];
+  /** keyOf(want*) — считается при приходе состояния, не каждый кадр. */
+  private wantKeyL = ":";
+  private wantKeyR = ":";
   private wantR: readonly [string, string] = ["", ""];
 
   private readonly buf: Snap[] = [];
@@ -485,6 +488,8 @@ export class RemoteAvatar implements Hittable {
   push(now: number, p: PlayerState): void {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
+    this.wantKeyL = keyOf(this.wantL);
+    this.wantKeyR = keyOf(this.wantR);
     this.skin = p.skin ?? 0;
     if (!this.isBot) this.nameTag.setPlatform(p.plat ?? 0);
     // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
@@ -1039,8 +1044,9 @@ export class RemoteAvatar implements Hittable {
   /** Показываем оружие в руках союзника — по данным сервера (leftCls/…). */
   private applyGear(): void {
     if (!this.makeWeapon) return;
-    this.gearL = this.fitGear("left", this.wantL, this.gearL, () => (this.gearKeyL = keyOf(this.wantL)), this.gearKeyL);
-    this.gearR = this.fitGear("right", this.wantR, this.gearR, () => (this.gearKeyR = keyOf(this.wantR)), this.gearKeyR);
+    // Ключи считаются один раз при приходе состояния (push), а не строкой каждый кадр (мусор для GC).
+    if (this.wantKeyL !== this.gearKeyL) this.gearL = this.fitGear("left", this.wantL, this.gearL, () => (this.gearKeyL = this.wantKeyL), this.gearKeyL, this.wantKeyL);
+    if (this.wantKeyR !== this.gearKeyR) this.gearR = this.fitGear("right", this.wantR, this.gearR, () => (this.gearKeyR = this.wantKeyR), this.gearKeyR, this.wantKeyR);
   }
 
   private fitGear(
@@ -1049,8 +1055,8 @@ export class RemoteAvatar implements Hittable {
     cur: Mesh | null,
     markKey: () => void,
     curKey: string,
+    key: string,
   ): Mesh | null {
-    const key = keyOf(want);
     if (key === curKey) return cur;
     cur?.dispose();
     markKey();

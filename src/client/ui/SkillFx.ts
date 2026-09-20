@@ -4,6 +4,10 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { Effect } from "@babylonjs/core/Materials/effect";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
@@ -12,8 +16,106 @@ const RAIN = new Color3(1, 0.78, 0.28);
 const STUN = new Color3(1, 0.92, 0.4); // жёлтая волна оглушения
 
 const POOL = 3;
+
 /** Сколько древков падает в граде (визуал, урон считает сервер). */
 const SHAFTS = 22;
+
+/**
+ * Древки града стрел — ОДИН меш из SHAFTS вертикальных квадов на каждый круг; позицию, момент
+ * падения и прозрачность каждого древка считает вершинный шейдер (хэш от индекса и сида каста).
+ * Из JS за кадр — одно число (`uT`, прогресс каста), вместо покадрового обновления 22 мешей.
+ */
+const SHAFT = "rainShafts";
+Effect.ShadersStore[`${SHAFT}VertexShader`] = `
+precision highp float;
+attribute vec3 position;
+attribute float aShaft;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
+uniform mat4 view;
+uniform vec3 uCenter;
+uniform float uRadius;
+uniform float uT;
+uniform float uSeed;
+varying float vAlpha;
+float hash(float n) { return fract(sin(n * 12.9898 + uSeed) * 43758.5453); }
+void main() {
+  float k = aShaft;
+  float a = hash(k * 3.1) * 6.2831853;
+  float r = sqrt(hash(k * 7.7 + 1.3)) * uRadius;
+  // Древки сыплются волной к концу замаха, каждое летит свой отрезок 0.35.
+  float ts = 0.45 + (k / ${SHAFTS}.0) * 0.55 + hash(k * 5.3 + 2.1) * 0.12;
+  float local = (uT - ts) / 0.35;
+  if (local < 0.0 || local > 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vAlpha = 0.0; return; }
+  vec3 c = uCenter + vec3(cos(a) * r, (1.0 - local) * 9.0 + 0.5, sin(a) * r);
+  vec3 tv = view[3].xyz;
+  vec3 cam = -vec3(dot(view[0].xyz, tv), dot(view[1].xyz, tv), dot(view[2].xyz, tv));
+  vec3 h = normalize(vec3(cam.x - c.x, 0.0, cam.z - c.z) + vec3(1e-4, 0.0, 0.0));
+  vec3 right = vec3(-h.z, 0.0, h.x);
+  // Тонкое древко 1.1 м: внизу шире (0.06), вверху уже (0.02).
+  float w = mix(0.06, 0.02, position.y + 0.5);
+  vec3 p = c + right * (position.x * w) + vec3(0.0, position.y * 1.1, 0.0);
+  vAlpha = min(1.0, (1.0 - local) * 3.0) * 0.9;
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(p, 1.0); } else { gl_Position = viewProjectionR * vec4(p, 1.0); }
+#else
+  gl_Position = viewProjection * vec4(p, 1.0);
+#endif
+}
+`;
+Effect.ShadersStore[`${SHAFT}FragmentShader`] = `
+precision highp float;
+varying float vAlpha;
+void main() { gl_FragColor = vec4(1.0, 0.78, 0.28, vAlpha); }
+`;
+
+let shaftSource: Mesh | null = null;
+function makeShaftMesh(scene: Scene, name: string): Mesh {
+  if (!shaftSource || shaftSource.isDisposed() || shaftSource.getScene() !== scene) {
+    const pos: number[] = [];
+    const idx: number[] = [];
+    const attr: number[] = [];
+    for (let k = 0; k < SHAFTS; k++) {
+      for (const [x, y] of [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]]) {
+        pos.push(x, y, 0);
+        attr.push(k);
+      }
+      idx.push(k * 4, k * 4 + 1, k * 4 + 2, k * 4, k * 4 + 2, k * 4 + 3);
+    }
+    shaftSource = new Mesh("rainShaftSrc", scene);
+    const vd = new VertexData();
+    vd.positions = pos;
+    vd.indices = idx;
+    vd.applyToMesh(shaftSource);
+    shaftSource.setVerticesData("aShaft", attr, false, 1);
+    shaftSource.isPickable = false;
+    shaftSource.setEnabled(false);
+  }
+  const m = shaftSource.clone(name);
+  m.isPickable = false;
+  m.alwaysSelectAsActiveMesh = true;
+  m.setEnabled(false);
+  return m;
+}
+
+function makeShaftMaterial(scene: Scene, name: string): ShaderMaterial {
+  const m = new ShaderMaterial(name, scene, SHAFT, {
+    attributes: ["position", "aShaft"],
+    uniforms: ["viewProjection", "view", "uCenter", "uRadius", "uT", "uSeed"],
+    needAlphaBlending: true,
+  });
+  m.setVector3("uCenter", Vector3.Zero());
+  m.setFloat("uRadius", 1);
+  m.setFloat("uT", 0);
+  m.setFloat("uSeed", 0);
+  m.alphaMode = Constants.ALPHA_ADD;
+  m.backFaceCulling = false;
+  m.disableDepthWrite = true;
+  return m;
+}
+
 
 function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
   const m = new StandardMaterial(name, scene);
@@ -32,15 +134,14 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
 
 interface Rain {
   dome: Mesh;
-  shafts: Mesh[];
-  seeds: { a: number; r: number; t: number }[];
+  shafts: Mesh;
+  shaftMat: ShaderMaterial;
   age: number;
   life: number;
   radius: number;
 }
 
 interface Stun {
-  ring: Mesh;
   dome: Mesh;
   age: number;
   life: number;
@@ -66,34 +167,19 @@ export class SkillFx {
       dome.isPickable = false;
       dome.setEnabled(false);
 
-      const shafts: Mesh[] = [];
-      const shaftMat = addMat(scene, `rainShaftMat${i}`, RAIN);
-      for (let k = 0; k < SHAFTS; k++) {
-        const sh = MeshBuilder.CreateCylinder(
-          `rainShaft${i}_${k}`,
-          { height: 1.1, diameterTop: 0.02, diameterBottom: 0.06, tessellation: 4 },
-          scene,
-        );
-        sh.material = shaftMat;
-        sh.isPickable = false;
-        sh.setEnabled(false);
-        shafts.push(sh);
-      }
-      this.rains.push({ dome, shafts, seeds: [], age: 1, life: 1, radius: 1 });
+      const shaftMat = makeShaftMaterial(scene, `rainShaftMat${i}`);
+      const shafts = makeShaftMesh(scene, `rainShafts${i}`);
+      shafts.material = shaftMat;
+      this.rains.push({ dome, shafts, shaftMat, age: 1, life: 1, radius: 1 });
     }
 
     for (let i = 0; i < POOL; i++) {
-      const ring = MeshBuilder.CreateDisc(`stunRing${i}`, { radius: 1, tessellation: 40 }, scene);
-      ring.material = addMat(scene, `stunRingMat${i}`, STUN);
-      ring.rotation.x = Math.PI / 2;
-      ring.isPickable = false;
-      ring.setEnabled(false);
       // Купол над кольцом — прозрачности как у массового хила (купол 0.16, нижний диск 0.13).
       const dome = MeshBuilder.CreateSphere(`stunDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
       dome.material = addMat(scene, `stunDomeMat${i}`, STUN.scale(0.55));
       dome.isPickable = false;
       dome.setEnabled(false);
-      this.stuns.push({ ring, dome, age: 1, life: 1, radius: 1 });
+      this.stuns.push({ dome, age: 1, life: 1, radius: 1 });
     }
   }
 
@@ -117,13 +203,11 @@ export class SkillFx {
     r.radius = radius;
     r.dome.position.set(x, y + 0.02, z);
     r.dome.setEnabled(true);
-    r.seeds = r.shafts.map((_, k) => ({
-      a: Math.random() * Math.PI * 2,
-      r: Math.sqrt(Math.random()) * radius,
-      // Древки сыплются волной к концу замаха, а не все разом.
-      t: 0.45 + (k / SHAFTS) * 0.55 + Math.random() * 0.12,
-    }));
-    for (const sh of r.shafts) sh.setEnabled(false);
+    r.shaftMat.setVector3("uCenter", new Vector3(x, y + 0.02, z));
+    r.shaftMat.setFloat("uRadius", radius);
+    r.shaftMat.setFloat("uSeed", Math.random() * 100);
+    r.shaftMat.setFloat("uT", 0);
+    r.shafts.setEnabled(true);
   }
 
   update(dt: number): void {
@@ -139,23 +223,9 @@ export class SkillFx {
       (r.dome.material as StandardMaterial).alpha = 0.32 * (0.45 + 0.55 * t) * (done ? 0 : 1);
       if (done) r.dome.setEnabled(false);
 
-      for (let k = 0; k < r.shafts.length; k++) {
-        const sh = r.shafts[k];
-        const seed = r.seeds[k];
-        if (!seed) continue;
-        // Каждое древко летит свой отрезок времени: от t0 до t0+0.35.
-        const local = (t - seed.t) / 0.35;
-        if (local < 0 || local > 1) {
-          sh.setEnabled(false);
-          continue;
-        }
-        sh.setEnabled(true);
-        const px = r.dome.position.x + Math.cos(seed.a) * seed.r;
-        const pz = r.dome.position.z + Math.sin(seed.a) * seed.r;
-        sh.position.set(px, r.dome.position.y + (1 - local) * 9 + 0.5, pz);
-        (sh.material as StandardMaterial).alpha = Math.min(1, (1 - local) * 3) * 0.9;
-      }
-      if (done) for (const sh of r.shafts) sh.setEnabled(false);
+      // Древки целиком на GPU: из JS только прогресс каста.
+      if (done) r.shafts.setEnabled(false);
+      else r.shaftMat.setFloat("uT", t);
     }
 
     for (const st of this.stuns) {
@@ -177,16 +247,14 @@ export class SkillFx {
 
   dispose(): void {
     for (const st of this.stuns) {
-      st.ring.material?.dispose();
-      st.ring.dispose();
       st.dome.material?.dispose();
       st.dome.dispose();
     }
     for (const r of this.rains) {
       r.dome.material?.dispose();
       r.dome.dispose();
-      r.shafts[0]?.material?.dispose();
-      for (const sh of r.shafts) sh.dispose();
+      r.shaftMat.dispose();
+      r.shafts.dispose();
     }
   }
 }

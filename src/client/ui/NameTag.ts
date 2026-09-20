@@ -44,7 +44,10 @@ export class NameTag {
   private hpFill: Mesh | null = null;
   private hpFillMat: StandardMaterial | null = null;
   private hpW = 0;
+  private curScale = 1;
   private hpFrac = 1;
+  /** Полоска хоть раз выставлена (до этого guard по изменению не срабатывает). */
+  private hpShown = false;
 
   /** Полоска опыта (тонкая, золотая) — только у ботов, через showXp. */
   private xpBg: Mesh | null = null;
@@ -282,8 +285,12 @@ export class NameTag {
   /** Доля здоровья 0..1. */
   setHp(frac: number): void {
     const f = Math.max(0, Math.min(1, frac));
+    // Зовётся каждый кадр у каждого героя: без смены значения ничего не трогаем (иначе
+    // scaling/position/цвет дёргали пересчёт матрицы и uniform'ов впустую).
+    if (this.hpFill && Math.abs(f - this.hpFrac) < 0.002 && this.hpShown) return;
     this.hpFrac = f;
     if (!this.hpFill || !this.hpFillMat) return;
+    this.hpShown = true;
     this.hpFill.scaling.x = Math.max(0.001, f);
     this.hpFill.position.x = -(this.hpW * (1 - f)) / 2;
     this.hpFillMat.emissiveColor.set(
@@ -304,6 +311,8 @@ export class NameTag {
    * плашка не налезала на моба.
    */
   setScale(k: number): void {
+    if (Math.abs(k - this.curScale) < 0.002) return; // зовётся каждый кадр — без изменения не трогаем
+    this.curScale = k;
     this.plane.scaling.setAll(k);
     this.plane.position.y = this.baseY + (k - 1) * this.halfH;
   }
