@@ -1,5 +1,6 @@
 import { WORLD, BOSS } from "./constants";
-import { HUB } from "./hub";
+import { HUB, HUB_CENTER } from "./hub";
+import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "./tower";
 
 /** Камень в мире: где, какой модели, как повёрнут и насколько крупный. */
 export interface Rock {
@@ -26,6 +27,12 @@ function rng(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Места, где камней быть не должно: весь лагерь (включая большой шатёр) и вокруг декоративной башни. */
+function clearSpot(x: number, z: number): boolean {
+  if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius + 2) return true;
+  return Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR;
 }
 
 let cached: Rock[] | null = null;
@@ -58,6 +65,7 @@ export function rocks(): Rock[] {
     // Камень внутри главного шатра лагеря — убран. Проверка ПОСЛЕ всех r():
     // последовательность остальных камней не сдвигается.
     if (Math.hypot(x - HUB.zones.mainTent.x, z - HUB.zones.mainTent.z) < 7) continue;
+    if (clearSpot(x, z)) continue;
     out.push(rock);
   }
   // За игровой зоной — редкие камни в кольце, тот же приём, что и в
@@ -72,7 +80,7 @@ export function rocks(): Rock[] {
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue;
     const scale = 0.22 + r() ** 2 * 0.75;
     const solid = scale > 0.42;
-    out.push({
+    const ring: Rock = {
       x,
       z,
       kind: Math.floor(r() * 3),
@@ -81,7 +89,9 @@ export function rocks(): Rock[] {
       tilt: [(r() - 0.5) * 0.5, (r() - 0.5) * 0.5],
       r: solid ? scale * 1.15 + 0.2 : 0,
       solid,
-    });
+    };
+    if (clearSpot(x, z)) continue; // все r() уже вызваны — остальные камни не сдвигаются
+    out.push(ring);
   }
 
   cached = out;

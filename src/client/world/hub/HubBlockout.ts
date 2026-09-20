@@ -77,7 +77,7 @@ function flatMat(
   if (emissive) {
     m.emissiveColor = emissive;
   } else if (dayLit) {
-    m.emissiveColor = color.scale(0.25);
+    m.emissiveColor = color.scale(0.12);
     dayLit.push({ m, base: color.clone() });
   }
   return m;
@@ -807,7 +807,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     campfire.tick(dt, d);
     // Обычные поверхности: днём подсвечиваем боковые грани (заливки от движка
     // нет), ночью гасим почти в ноль — лагерь не должен светиться сам.
-    const fill = 0.06 + 0.42 * d;
+    const fill = 0.03 + 0.2 * d; // собственное свечение лагеря вдвое слабее
     for (const g of dayLit) g.m.emissiveColor.copyFrom(g.base).scaleInPlace(fill);
   }
   tick(1);

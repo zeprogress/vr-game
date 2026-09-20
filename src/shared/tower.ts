@@ -23,6 +23,8 @@ export const TOWER_HIDE = { x: 0, y: 260, z: 0 } as const;
  * без физической точки).
  */
 export const TOWER_PROP_POS = { x: 34, z: 83 } as const;
+/** Вокруг декоративной башни (радиус, м) нет камней и травы — ствол чисто стоит на земле. */
+export const TOWER_PROP_CLEAR = 22;
 
 export const TOWER = {
   /** Сколько этажей всего; последний — супербосс. */

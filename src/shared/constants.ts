@@ -351,7 +351,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // площади (см. MAGE_SPELL) — до этого мобы били только по одной цели.
   ruinMage: {
     model: "monWizard", name: "Чародей руин", level: 20, kind: "spitter",
-    hp: 340, dmgMul: 5, xp: 2100, scaleMul: 1.9, tint: null, // слабее: hp 680→340, dmgMul 8→5
+    hp: 290, dmgMul: 4, xp: 2100, scaleMul: 1.9, tint: null, // слабее: hp 680→340→290, dmgMul 8→5→4
     physArmor: 0.55, magicVulnMul: 1.6, critVulnMul: 1.5, spellAoe: true,
     novaCaster: true,
   },
@@ -386,9 +386,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
  */
 export const MAGE_NOVA = {
   radius: 5,
-  damage: 75, // было 120
+  damage: 60, // было 120→75
   windup: 1.1,
-  cooldown: 11, // было 9
+  cooldown: 13, // было 9→11
   stunSec: 1.6,
   knockback: 10, // м/с импульс отбрасывания
 };

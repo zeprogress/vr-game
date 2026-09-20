@@ -1,5 +1,6 @@
 import { WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
+import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
 
 /**
  * Раскладка травы — чистая математика, без сцены и загрузки моделей.
@@ -55,6 +56,12 @@ export interface GrassLayout {
   blobs: GrassBlob[];
 }
 
+/** Травы нет в лагере (утоптанная земля) и вокруг декоративной башни. */
+function noGrass(x: number, z: number): boolean {
+  if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius) return true;
+  return Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR;
+}
+
 let cached: GrassLayout | null = null;
 let cachedDensity = -1;
 
@@ -77,7 +84,7 @@ export function computeGrassLayout(density: number): GrassLayout {
     if (Math.hypot(x, z) < 1.5) return;
     if (Math.abs(x) > reach || Math.abs(z) > reach) return;
     // В лагере травы нет — только утоптанная земля (см. HubBlockout).
-    if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius) return;
+    if (noGrass(x, z)) return;
     const s = 0.4 + rnd() * 0.36;
     const heightMul = 0.9 + rnd() * 0.7;
     const yaw = rnd() * Math.PI * 2;
@@ -134,6 +141,7 @@ export function computeGrassLayout(density: number): GrassLayout {
     const yaw = rnd() * Math.PI * 2;
     const b = 0.6 + rnd() * 0.9;
     const warm = (rnd() - 0.45) * 0.5;
+    if (noGrass(x, z)) continue; // пояс за зоной тоже не лезет в лагерь и к башне
     blades.push({ x, z, s, heightMul, yaw, b, warm });
   }
 
