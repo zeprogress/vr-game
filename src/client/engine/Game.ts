@@ -1347,7 +1347,7 @@ export class Game {
       this.vrCull = null;
     }
     if (!this.vrCull) this.vrCull = new VrCull(this.scene, this.player.inVR); // деревья/камни вдали и пустые корни glTF — не считаем
-    this.vrCull.update(dt, this.player.eyePosition);
+    this.vrCull.update(dt, this.player.eyePosition, this.player.eyeForward);
     // Надписи в VR: затухание, «кто говорит» (голос игроков + озвучка чата — одним видом).
     if (this.vrHud) {
       this.vrHud.update(dt);

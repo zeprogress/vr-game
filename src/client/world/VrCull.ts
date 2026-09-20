@@ -15,6 +15,12 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
  *    камней снимаем «всегда активен» (они обходили отсечение по кадру).
  * `?vrcull=<м>` — порог для деревьев (камни — на 10 м ближе); 0 — выключить.
  */
+/** Ближе этого объекты не прячем по направлению (крутанулся — они рядом). */
+const BEHIND_NEAR = 14;
+/** Прячем при угле от взгляда > 130° (90° + запас на snap-turn 30° и голову); гистерезис 10°. */
+const COS_HIDE = Math.cos((130 * Math.PI) / 180);
+const COS_SHOW = Math.cos((120 * Math.PI) / 180);
+
 export class VrCull {
   /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
   private small: { m: AbstractMesh; r: number }[] = [];
@@ -33,7 +39,7 @@ export class VrCull {
     readonly vr = true,
   ) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : 60;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 90 : 60;
     this.treeR = Number.isFinite(v) ? v : 60;
     this.rockR = Math.max(0, this.treeR - 10);
   }
@@ -64,7 +70,7 @@ export class VrCull {
     this.small = small;
   }
 
-  update(dt: number, cam: Vector3): void {
+  update(dt: number, cam: Vector3, fwd?: Vector3): void {
     if (this.treeR <= 0) return;
     this.scanT -= dt;
     if (this.scanT <= 0) {
@@ -73,9 +79,20 @@ export class VrCull {
     }
     this.cullT -= dt;
     if (this.cullT > 0) return;
-    this.cullT = 0.4;
-    this.apply(this.trees, cam, this.treeR);
-    this.apply(this.rocks, cam, this.rockR);
+    this.cullT = 0.2;
+    // VR: то, что строго позади (с запасом на щелчок snap-turn 30° и поворот головы),
+    // не рисуем — дальность зато больше. fwd — взгляд в плоскости XZ.
+    let fx = 0;
+    let fz = 0;
+    if (this.vr && fwd) {
+      const l = Math.hypot(fwd.x, fwd.z);
+      if (l > 1e-3) {
+        fx = fwd.x / l;
+        fz = fwd.z / l;
+      }
+    }
+    this.apply(this.trees, cam, this.treeR, fx, fz);
+    this.apply(this.rocks, cam, this.rockR, fx, fz);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();
@@ -85,14 +102,19 @@ export class VrCull {
     }
   }
 
-  private apply(list: AbstractMesh[], cam: Vector3, r: number): void {
+  private apply(list: AbstractMesh[], cam: Vector3, r: number, fx = 0, fz = 0): void {
     for (const m of list) {
       if (m.isDisposed()) continue;
       const p = m.getAbsolutePosition();
       const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
       const off = this.hidden.has(m);
       const lim = off ? r - 6 : r + 6;
-      const far = d2 > lim * lim;
+      let far = d2 > lim * lim;
+      if (!far && (fx !== 0 || fz !== 0) && d2 > BEHIND_NEAR * BEHIND_NEAR) {
+        // cos угла между взглядом и направлением на объект; спрятан — за «широким задом»
+        const cosA = ((p.x - cam.x) * fx + (p.z - cam.z) * fz) / Math.sqrt(d2);
+        far = off ? cosA < COS_SHOW : cosA < COS_HIDE;
+      }
       if (far && !off) {
         m.setEnabled(false);
         this.hidden.add(m);
