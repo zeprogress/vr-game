@@ -1091,8 +1091,8 @@ export class Mob implements Hittable {
         this.rigTint.push({ m, r: m.emissiveColor.r, g: m.emissiveColor.g, b: m.emissiveColor.b });
       }
     }
-    const k = this.burnGlow * (0.55 + 0.2 * Math.sin(performance.now() * 0.009));
-    for (const t of this.rigTint) t.m.emissiveColor.set(t.r + 0.75 * k, t.g + 0.26 * k, t.b + 0.03 * k);
+    const k = this.burnGlow * (0.65 + 0.2 * Math.sin(performance.now() * 0.009));
+    for (const t of this.rigTint) t.m.emissiveColor.set(t.r + 1.15 * k, t.g + 0.38 * k, t.b + 0.04 * k); // сильнее (было 0.75/0.26/0.03)
     this.rigTintOn = true;
   }
 
