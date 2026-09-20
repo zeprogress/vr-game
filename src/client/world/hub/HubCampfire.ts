@@ -64,7 +64,7 @@ export function buildHubCampfire(scene: Scene, pos: Vector3): HubCampfire {
   // Конус-обёртка с «языками» по периметру убран: давал треугольные зубцы вокруг огня.
 
   for (let i = 0; i < 3; i++) {
-    const pl = MeshBuilder.CreatePlane("hubFirePlane", { width: 1.0 - i * 0.12, height: 1.8 - i * 0.22 }, scene);
+    const pl = MeshBuilder.CreatePlane("hubFirePlane", { width: (1.0 - i * 0.12) * 2, height: 1.8 - i * 0.22 }, scene);
     pl.position.set(0, 0.82 - i * 0.05, 0);
     pl.rotation.y = i * 1.05;
     pl.material = makeFireMat(false);
