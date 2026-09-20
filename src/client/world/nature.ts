@@ -292,8 +292,10 @@ export async function loadTrees(
         done.add(srcM);
         const near = leafCardLod(srcM, 2, `${srcM.name}_lod1`);
         const far = leafCardLod(srcM, 4, `${srcM.name}_lod2`);
+        const far2 = leafCardLod(srcM, 8, `${srcM.name}_lod3`);
         if (near) srcM.addLODLevel(28, near);
         if (far) srcM.addLODLevel(50, far);
+        if (far2) srcM.addLODLevel(85, far2);
       }
     }
   }

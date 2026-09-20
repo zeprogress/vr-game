@@ -64,7 +64,7 @@ const DAY: Palette = {
   fog: [0.78, 0.85, 0.92],
   fogNear: 35, // не используется — дневной туман из FOG_TUNE (?fog=1)
   fogFar: 320,
-  disc: [1, 0.98, 0.9],
+  disc: [1, 0.97, 0.82], // днём белый с лёгкой желтизной
   cloud: [0.94, 0.96, 0.99], // днём почти белые
 };
 
@@ -173,8 +173,14 @@ export function dayState(hour: number): DayState {
   const fogNear =
     (FOG_TUNE.dayNear * wd + FOG_TUNE.near * wn + DUSK.fogNear * wk) * fogMul;
   const fogFar = (FOG_TUNE.dayFar * wd + FOG_TUNE.far * wn + DUSK.fogFar * wk) * fogMul;
-  const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, wd, wn, wk);
-  const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, wd, wn, wk);
+  // Диск и облака «отбеливаются» раньше, чем меняется свет: с dusk-палитрой они
+  // держались малиновыми до самых 8 утра / после 16 вечера, хотя солнце уже высоко.
+  const dS = clamp01((elev - 0.05) / 0.2);
+  const nS = night;
+  const kS = clamp01(1 - dS - nS);
+  const tS = dS + nS + kS || 1;
+  const disc = mix3(DAY.disc, NIGHT.disc, DUSK.disc, dS / tS, nS / tS, kS / tS);
+  const cloud = mix3(DAY.cloud, NIGHT.cloud, DUSK.cloud, dS / tS, nS / tS, kS / tS);
   const zenith = mix3(DAY.zenith, NIGHT.zenith, DUSK.zenith, wd, wn, wk);
   const horizon = mix3(DAY.horizon, NIGHT.horizon, DUSK.horizon, wd, wn, wk);
 

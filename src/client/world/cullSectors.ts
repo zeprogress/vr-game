@@ -12,4 +12,4 @@ export const FAR_CENTER = 250;
 /** Дальность в боковых полосах, м (175 / 250). */
 export const SIDE_K = 175 / 250;
 /** Настоящая 3D-модель дерева — до этого расстояния, дальше снимок. */
-export const NEAR_3D = 75;
+export const NEAR_3D = 110;

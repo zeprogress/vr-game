@@ -14,7 +14,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { COS_CENTER, COS_SIDE, SIDE_K } from "./cullSectors";
 
 /** Ширина зоны наплыва (м): снимок проступает за FADE_W до границы модели. */
-const FADE_W = 18;
+const FADE_W = 30;
 
 /**
  * Дальние деревья — плоские «снимки» вместо моделей.
@@ -91,12 +91,10 @@ uniform float uFogEnd;
 void main() {
   vec4 c = texture2D(tex, vUv);
   if (c.a < 0.4) discard;
-  // Плавный наплыв: экранная растушёвка (dither) — доля пикселей снимка растёт с vFade.
-  float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
-  if (vFade < ign) discard;
   vec3 col = c.rgb * uLit * 0.9;
   float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
-  gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
+  // Наплыв — настоящая прозрачность (без зерна): у снимка alpha растёт с vFade.
+  gl_FragColor = vec4(mix(col, uFogColor, f), vFade);
 }
 `;
 
@@ -324,6 +322,7 @@ export class TreeImpostors {
         attributes: ["position", "uv"], // world0..3 добавит Babylon для thin-инстансов
         uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd"],
         samplers: ["tex"],
+        needAlphaBlending: true,
       },
     );
     mat.setTexture("tex", rtt);
@@ -332,6 +331,7 @@ export class TreeImpostors {
     mat.setFloat("uFogStart", scene.fogStart);
     mat.setFloat("uFogEnd", scene.fogEnd);
     mat.backFaceCulling = false;
+    mat.alphaMode = Constants.ALPHA_COMBINE;
     mesh.material = mat;
     mesh.isPickable = false;
     mesh.alwaysSelectAsActiveMesh = true;
