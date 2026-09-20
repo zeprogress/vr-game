@@ -12,21 +12,13 @@ import type { Camera } from "@babylonjs/core/Cameras/camera";
  * лицевая сторона плоскости — это −Z, поэтому картинка получается зеркальной. Лечится
  * подачей в расчёт камеры, отражённой через центр объекта (тогда на настоящую камеру
  * смотрит −Z, как у обычного билборда).
+ *
+ * Подмена computeWorldMatrix ставится ТОЛЬКО на сами билборд-узлы (свойством экземпляра),
+ * а не на прототип: иначе обёртка платила бы за каждый вызов у всех ~1700 узлов сцены
+ * (в профиле шлема это было ~1% кадра).
  */
 const USE_POSITION = TransformNode.BILLBOARDMODE_USE_POSITION;
-
-const desc = Object.getOwnPropertyDescriptor(TransformNode.prototype, "billboardMode");
-if (desc?.get && desc.set) {
-  const set = desc.set;
-  Object.defineProperty(TransformNode.prototype, "billboardMode", {
-    configurable: true,
-    enumerable: desc.enumerable,
-    get: desc.get,
-    set(this: TransformNode, v: number) {
-      set.call(this, v & 7 ? v | USE_POSITION : v);
-    },
-  });
-}
+const protoCompute = TransformNode.prototype.computeWorldMatrix;
 
 interface FakeCam {
   globalPosition: Vector3;
@@ -45,18 +37,35 @@ const fake: FakeCam = {
   },
 };
 
-const orig = TransformNode.prototype.computeWorldMatrix;
-TransformNode.prototype.computeWorldMatrix = function (this: TransformNode, force = false, camera: Camera | null = null) {
-  if ((this.billboardMode & USE_POSITION) !== 0 && (this.billboardMode & 7) !== 0) {
-    const cam = camera ?? this.getScene().activeCamera;
-    if (cam) {
-      // _absolutePosition — с прошлого расчёта (getAbsolutePosition() тут зациклился бы).
-      const p = (this as unknown as { _absolutePosition: Vector3 })._absolutePosition;
-      const g = cam.globalPosition;
-      fake.real = cam;
-      fake.globalPosition.copyFromFloats(2 * p.x - g.x, 2 * p.y - g.y, 2 * p.z - g.z);
-      return orig.call(this, force, fake as unknown as Camera);
-    }
+function billboardCompute(this: TransformNode, force = false, camera: Camera | null = null) {
+  const cam = camera ?? this.getScene().activeCamera;
+  if (cam) {
+    // _absolutePosition — с прошлого расчёта (getAbsolutePosition() тут зациклился бы).
+    const p = (this as unknown as { _absolutePosition: Vector3 })._absolutePosition;
+    const g = cam.globalPosition;
+    fake.real = cam;
+    fake.globalPosition.copyFromFloats(2 * p.x - g.x, 2 * p.y - g.y, 2 * p.z - g.z);
+    return protoCompute.call(this, force, fake as unknown as Camera);
   }
-  return orig.call(this, force, camera);
-};
+  return protoCompute.call(this, force, camera);
+}
+
+const desc = Object.getOwnPropertyDescriptor(TransformNode.prototype, "billboardMode");
+if (desc?.get && desc.set) {
+  const set = desc.set;
+  Object.defineProperty(TransformNode.prototype, "billboardMode", {
+    configurable: true,
+    enumerable: desc.enumerable,
+    get: desc.get,
+    set(this: TransformNode, v: number) {
+      const on = (v & 7) !== 0;
+      set.call(this, on ? v | USE_POSITION : v);
+      const own = Object.prototype.hasOwnProperty.call(this, "computeWorldMatrix");
+      if (on && !own) {
+        (this as unknown as { computeWorldMatrix: typeof billboardCompute }).computeWorldMatrix = billboardCompute;
+      } else if (!on && own) {
+        delete (this as unknown as { computeWorldMatrix?: unknown }).computeWorldMatrix;
+      }
+    },
+  });
+}

@@ -367,6 +367,8 @@ export class Mob implements Hittable {
   private lodFar = false;
   /** Дальний LOD включён (игровой клиент). У спектатора модели всегда полные — анимация вдали не режется. */
   farLodOn = false;
+  /** Живая схема состояния этого моба (обновляется Colyseus на месте) — чтобы не искать её в Map каждый кадр. */
+  st: MobState | null = null;
   /** Мелкий летающий моб (пчела) — увеличенный хитбокс. */
   private readonly flyer: boolean;
   private rigReady = false;

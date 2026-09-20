@@ -345,6 +345,7 @@ export class NetMobs {
       s.mobName,
       s.mobLevel,
     );
+    m.st = s;
     m.farLodOn = this.lazy; // упрощённая модель вдали — только для игроков, не для спектатора
     this.mobs.set(id, m);
     this.targets.push(m);
@@ -453,9 +454,11 @@ export class NetMobs {
         this.materialize(room, playerPos);
       }
     }
-    room.state.mobs.forEach((s, id) => {
-      const m = this.mobs.get(id);
-      if (!m) return;
+    // Идём по созданным видам (у каждого своя ссылка на живую схему), а не по всей схеме мобов
+    // с геттерами Colyseus: forEach по 60+ схемам каждый кадр стоил ~3% кадра в профиле шлема.
+    this.mobs.forEach((m, id) => {
+      const s = m.st;
+      if (!s) return;
       const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
       let mdt = dt;
       if (this.lazy && !s.dead && draw && MOB_FAR_UPDATE_R > 0) {
