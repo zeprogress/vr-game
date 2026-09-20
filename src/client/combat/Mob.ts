@@ -1164,7 +1164,7 @@ export class Mob implements Hittable {
         m = MeshBuilder.CreateSphere("mageNova", { diameter: 2, segments: 20, slice: 0.5 }, this.scene);
       }
       const mat = new StandardMaterial(this.isBoss ? "bossSlamMat" : "mageNovaMat", this.scene);
-      mat.emissiveColor = this.isBoss ? new Color3(1, 0.35, 0.2) : new Color3(0.62, 0.4, 1);
+      mat.emissiveColor = this.isBoss ? new Color3(1, 0.35, 0.2) : new Color3(1, 0.16, 0.1);
       mat.diffuseColor = new Color3(0, 0, 0);
       mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;

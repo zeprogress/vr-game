@@ -13,7 +13,7 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 
 const RAIN = new Color3(1, 0.78, 0.28);
-const STUN = new Color3(1, 0.92, 0.4); // жёлтая волна оглушения
+const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
 
 const POOL = 3;
 
@@ -159,7 +159,7 @@ interface Stun {
 }
 
 /**
- * Визуал массовых скиллов ботов: жёлтая волна «Оглушающего удара» и
+ * Визуал массовых скиллов ботов: красная волна «Оглушающего удара» и
  * золотой круг «Града стрел» с падающими древками. Общий пул на сцену —
  * используется и в игре, и у спектатора.
  */
@@ -193,7 +193,7 @@ export class SkillFx {
     }
   }
 
-  /** Жёлтая волна оглушения по земле: расходится из-под бота на всю область. */
+  /** Красная волна оглушения по земле: расходится из-под бота на всю область. */
   stunBash(x: number, y: number, z: number, radius: number, life: number): void {
     const st = this.stuns[this.nextStun];
     this.nextStun = (this.nextStun + 1) % this.stuns.length;
