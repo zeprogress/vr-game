@@ -31,7 +31,7 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
 }
 
 interface Rain {
-  ring: Mesh;
+  dome: Mesh;
   shafts: Mesh[];
   seeds: { a: number; r: number; t: number }[];
   age: number;
@@ -60,11 +60,11 @@ export class SkillFx {
 
   constructor(scene: Scene) {
     for (let i = 0; i < POOL; i++) {
-      const ring = MeshBuilder.CreateDisc(`rainRing${i}`, { radius: 1, tessellation: 44 }, scene);
-      ring.material = addMat(scene, `rainRingMat${i}`, RAIN);
-      ring.rotation.x = Math.PI / 2;
-      ring.isPickable = false;
-      ring.setEnabled(false);
+      // Купол вместо плоского круга на земле (как у оглушения), нижний диск убран.
+      const dome = MeshBuilder.CreateSphere(`rainDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
+      dome.material = addMat(scene, `rainDomeMat${i}`, RAIN.scale(0.55));
+      dome.isPickable = false;
+      dome.setEnabled(false);
 
       const shafts: Mesh[] = [];
       const shaftMat = addMat(scene, `rainShaftMat${i}`, RAIN);
@@ -79,7 +79,7 @@ export class SkillFx {
         sh.setEnabled(false);
         shafts.push(sh);
       }
-      this.rains.push({ ring, shafts, seeds: [], age: 1, life: 1, radius: 1 });
+      this.rains.push({ dome, shafts, seeds: [], age: 1, life: 1, radius: 1 });
     }
 
     for (let i = 0; i < POOL; i++) {
@@ -115,8 +115,8 @@ export class SkillFx {
     r.age = 0;
     r.life = Math.max(0.3, life);
     r.radius = radius;
-    r.ring.position.set(x, y + 0.06, z);
-    r.ring.setEnabled(true);
+    r.dome.position.set(x, y + 0.02, z);
+    r.dome.setEnabled(true);
     r.seeds = r.shafts.map((_, k) => ({
       a: Math.random() * Math.PI * 2,
       r: Math.sqrt(Math.random()) * radius,
@@ -132,11 +132,12 @@ export class SkillFx {
       r.age += dt;
       const done = r.age >= r.life;
       const t = Math.min(1, r.age / r.life);
-      // Круг пульсирует и наливается — телеграф «сюда сейчас прилетит».
+      // Купол пульсирует и наливается — телеграф «сюда сейчас прилетит» (плотность как у оглушения, 0.32).
       const pulse = 1 + Math.sin(r.age * 11) * 0.03;
-      r.ring.scaling.setAll(r.radius * pulse);
-      (r.ring.material as StandardMaterial).alpha = (0.18 + 0.42 * t) * (done ? 0 : 1);
-      if (done) r.ring.setEnabled(false);
+      const rr = r.radius * pulse;
+      r.dome.scaling.set(rr, rr * 0.55, rr);
+      (r.dome.material as StandardMaterial).alpha = 0.32 * (0.45 + 0.55 * t) * (done ? 0 : 1);
+      if (done) r.dome.setEnabled(false);
 
       for (let k = 0; k < r.shafts.length; k++) {
         const sh = r.shafts[k];
@@ -149,9 +150,9 @@ export class SkillFx {
           continue;
         }
         sh.setEnabled(true);
-        const px = r.ring.position.x + Math.cos(seed.a) * seed.r;
-        const pz = r.ring.position.z + Math.sin(seed.a) * seed.r;
-        sh.position.set(px, r.ring.position.y + (1 - local) * 9 + 0.5, pz);
+        const px = r.dome.position.x + Math.cos(seed.a) * seed.r;
+        const pz = r.dome.position.z + Math.sin(seed.a) * seed.r;
+        sh.position.set(px, r.dome.position.y + (1 - local) * 9 + 0.5, pz);
         (sh.material as StandardMaterial).alpha = Math.min(1, (1 - local) * 3) * 0.9;
       }
       if (done) for (const sh of r.shafts) sh.setEnabled(false);
@@ -182,8 +183,8 @@ export class SkillFx {
       st.dome.dispose();
     }
     for (const r of this.rains) {
-      r.ring.material?.dispose();
-      r.ring.dispose();
+      r.dome.material?.dispose();
+      r.dome.dispose();
       r.shafts[0]?.material?.dispose();
       for (const sh of r.shafts) sh.dispose();
     }

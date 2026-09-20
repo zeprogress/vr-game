@@ -1379,8 +1379,8 @@ export class Spectator {
       case "vampHit": {
         // Красные крестики — на самом герое, что подпитался (не на мобе).
         const av = this.avatars.get(id);
-        if (av) this.crossFx.burst(av.position.x, av.position.y - 0.4, av.position.z, 4, CROSS_RED);
-        else this.crossFx.burst(x, y, z, 4, CROSS_RED);
+        if (av) this.crossFx.burst(av.position.x, av.position.y - 0.4, av.position.z, 2, CROSS_RED);
+        else this.crossFx.burst(x, y, z, 2, CROSS_RED);
         break;
       }
       case "arrowRain":
