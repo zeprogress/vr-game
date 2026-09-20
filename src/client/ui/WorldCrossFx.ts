@@ -119,30 +119,50 @@ export class WorldCrossFx {
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
 
-    // Крит с лука — маленькая насыщенно-красная вспышка на мобе. Форма —
-    // острая звезда-разрыв (не гладкий шар): рисуем зубцы на альфа-канале
-    // текстуры, сам billboard-план разворачивается прямо на камеру.
-    const critStarTex = new DynamicTexture("critStarTex", { width: 128, height: 128 }, scene, false);
+    // Крит — красные лучи из центра (вместо прежней звезды): пучок тонких сужающихся к концу
+    // лучей разной длины + яркое ядро. Рисуем в альфа-канал текстуры, сам billboard-план
+    // разворачивается на камеру, а во время жизни ещё и чуть вращается.
+    const critStarTex = new DynamicTexture("critStarTex", { width: 256, height: 256 }, scene, false);
     critStarTex.hasAlpha = true;
     {
       const sctx = critStarTex.getContext() as CanvasRenderingContext2D;
-      sctx.clearRect(0, 0, 128, 128);
-      sctx.fillStyle = "white";
-      const cx = 64;
-      const cy = 64;
-      const spikes = 7;
-      const outerR = 62;
-      const innerR = 18;
-      sctx.beginPath();
-      for (let i = 0; i < spikes * 2; i++) {
-        const r = i % 2 === 0 ? outerR : innerR;
-        const a = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
-        const px = cx + Math.cos(a) * r;
-        const py = cy + Math.sin(a) * r;
-        if (i === 0) sctx.moveTo(px, py);
-        else sctx.lineTo(px, py);
+      sctx.clearRect(0, 0, 256, 256);
+      const cx = 128;
+      const cy = 128;
+      const rays = 18;
+      // Простая детерминированная «случайность»: длина и ширина лучей неровные, но одинаковые у всех вспышек.
+      const rnd = (i: number): number => {
+        const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+        return v - Math.floor(v);
+      };
+      for (let i = 0; i < rays; i++) {
+        const long = i % 2 === 0;
+        const len = (long ? 122 : 78) * (0.82 + 0.3 * rnd(i));
+        const halfW = (long ? 0.075 : 0.06) * (0.8 + 0.4 * rnd(i + 40)); // полуширина у основания, рад
+        const ang = (i / rays) * Math.PI * 2 + (rnd(i + 90) - 0.5) * 0.12;
+        // Луч — узкий треугольник от центра к острию; яркость падает к кончику.
+        const tx = cx + Math.cos(ang) * len;
+        const ty = cy + Math.sin(ang) * len;
+        const g = sctx.createLinearGradient(cx, cy, tx, ty);
+        g.addColorStop(0, "rgba(255,255,255,1)");
+        g.addColorStop(0.55, "rgba(255,255,255,0.85)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        sctx.fillStyle = g;
+        sctx.beginPath();
+        sctx.moveTo(tx, ty);
+        sctx.lineTo(cx + Math.cos(ang + Math.PI / 2) * len * halfW * 0.55, cy + Math.sin(ang + Math.PI / 2) * len * halfW * 0.55);
+        sctx.lineTo(cx + Math.cos(ang - Math.PI / 2) * len * halfW * 0.55, cy + Math.sin(ang - Math.PI / 2) * len * halfW * 0.55);
+        sctx.closePath();
+        sctx.fill();
       }
-      sctx.closePath();
+      // Ядро: яркое пятно с мягким краем.
+      const core = sctx.createRadialGradient(cx, cy, 0, cx, cy, 30);
+      core.addColorStop(0, "rgba(255,255,255,1)");
+      core.addColorStop(0.6, "rgba(255,255,255,0.9)");
+      core.addColorStop(1, "rgba(255,255,255,0)");
+      sctx.fillStyle = core;
+      sctx.beginPath();
+      sctx.arc(cx, cy, 30, 0, Math.PI * 2);
       sctx.fill();
       critStarTex.update();
     }
@@ -322,7 +342,8 @@ export class WorldCrossFx {
       }
       const t = c.age / CRIT_LIFE;
       // Резко вспыхивает и быстро гаснет — небольшой размер.
-      c.mesh.scaling.setAll(0.5 + t * 1.2); // ×1.7 от прежних 0.3..1.0
+      c.mesh.scaling.setAll(0.55 + t * 1.3); // лучи разлетаются
+      c.mesh.rotation.z = t * 0.5; // и чуть поворачиваются
       (c.mesh.material as StandardMaterial).alpha = (1 - t) * (1 - t);
     }
     for (const c of this.pool) {
