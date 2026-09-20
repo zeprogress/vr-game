@@ -353,6 +353,9 @@ export class Mob implements Hittable {
   private burnMat: ShaderMaterial | null = null;
   /** Крупные «квадраты» пламени, как было раньше (плюс россыпь мелких). */
   private burnBig: Mesh[] = [];
+  /** Материалы модели с исходным свечением — для красно-оранжевого оттенка при горении. */
+  private rigTint: { m: StandardMaterial; r: number; g: number; b: number }[] | null = null;
+  private rigTintOn = false;
   private burnMatBig: ShaderMaterial | null = null;
   private burnT = 0;
   private barTimer = 0;
@@ -797,6 +800,7 @@ export class Mob implements Hittable {
       ? Math.min(1, this.burnGlow + dt * 5)
       : Math.max(0, this.burnGlow - dt * 3);
     this.updateBurnFx(dt);
+    this.updateRigBurnTint();
     const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
 
     this.mat.emissiveColor.set(
@@ -1061,6 +1065,35 @@ export class Mob implements Hittable {
     } else {
       this.body.visibility = v;
     }
+  }
+
+  /**
+   * Горящая модель слегка наливается красно-оранжевым (добавка к эмиссии материалов, они у
+   * моба свои — см. recolorMonster/recolorRig). Пульсирует, при затухании горения
+   * возвращается к исходному свечению.
+   */
+  private updateRigBurnTint(): void {
+    if (!this.rig || !this.rigReady) return;
+    if (this.burnGlow <= 0.001) {
+      if (this.rigTintOn && this.rigTint) {
+        for (const t of this.rigTint) t.m.emissiveColor.set(t.r, t.g, t.b);
+      }
+      this.rigTintOn = false;
+      return;
+    }
+    if (!this.rigTint) {
+      const seen = new Set<StandardMaterial>();
+      this.rigTint = [];
+      for (const mesh of this.rig.meshes) {
+        const m = mesh.material as StandardMaterial | null;
+        if (!m || !m.emissiveColor || seen.has(m)) continue;
+        seen.add(m);
+        this.rigTint.push({ m, r: m.emissiveColor.r, g: m.emissiveColor.g, b: m.emissiveColor.b });
+      }
+    }
+    const k = this.burnGlow * (0.55 + 0.2 * Math.sin(performance.now() * 0.009));
+    for (const t of this.rigTint) t.m.emissiveColor.set(t.r + 0.75 * k, t.g + 0.26 * k, t.b + 0.03 * k);
+    this.rigTintOn = true;
   }
 
   /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
