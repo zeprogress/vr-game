@@ -20,19 +20,20 @@ export interface TowerProp {
 
 /**
  * Радиус/высота — прямой ствол без сужения. Высота была уже удвоена раньше;
- * теперь по просьбе вдвое шире (RADIUS 5→10) — тоньше на фоне поляны
+ * теперь по просьбе вдвое шире (RADIUS 5→10), затем ещё чуть шире (12) — тоньше на фоне поляны
  * смотрелась несоразмерно высоте.
  */
-const RADIUS = 10;
+const RADIUS = 12;
 const BODY_H = 64;
 const ROOF_H = 10;
 
 /** Кладка из серого камня — та же процедурная крапинка+сетка, что и в TowerArenaFx. */
 function buildStoneTexture(scene: Scene, uRepeat: number, vRepeat: number): DynamicTexture {
   const S = 256;
-  const tex = new DynamicTexture("towerPropStoneTex", { width: S, height: S }, scene, false);
+  // Мипмапы обязательны: без них мелкая кладка издали даёт муар.
+  const tex = new DynamicTexture("towerPropStoneTex", { width: S, height: S }, scene, true, Texture.TRILINEAR_SAMPLINGMODE);
   const ctx = tex.getContext() as CanvasRenderingContext2D;
-  ctx.fillStyle = "rgb(120,118,114)";
+  ctx.fillStyle = "rgb(128,128,130)"; // нейтрально-серый
   ctx.fillRect(0, 0, S, S);
   let seed = 12345;
   const rnd = (): number => {
@@ -44,7 +45,7 @@ function buildStoneTexture(scene: Scene, uRepeat: number, vRepeat: number): Dyna
     const y = rnd() * S;
     const r = 1 + rnd() * 2.6;
     const shade = 0.6 + rnd() * 0.55;
-    ctx.fillStyle = `rgba(${Math.round(140 * shade)},${Math.round(138 * shade)},${Math.round(132 * shade)},0.6)`;
+    ctx.fillStyle = `rgba(${Math.round(140 * shade)},${Math.round(140 * shade)},${Math.round(142 * shade)},0.6)`;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -52,7 +53,7 @@ function buildStoneTexture(scene: Scene, uRepeat: number, vRepeat: number): Dyna
   // Ряды каменной кладки — горизонтальные швы + смещённые вертикальные (кирпичная перевязка).
   const rowH = S / 10;
   ctx.strokeStyle = "rgba(30,28,26,0.5)";
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 4; // толще шов — читается и не пропадает на расстоянии
   for (let row = 0; row <= 10; row++) {
     const y = row * rowH;
     ctx.beginPath();
@@ -68,7 +69,7 @@ function buildStoneTexture(scene: Scene, uRepeat: number, vRepeat: number): Dyna
       ctx.stroke();
     }
   }
-  tex.update(false);
+  tex.update(true);
   tex.wrapU = Texture.WRAP_ADDRESSMODE;
   tex.wrapV = Texture.WRAP_ADDRESSMODE;
   tex.uScale = uRepeat;
@@ -93,7 +94,18 @@ export function buildTowerProp(scene: Scene): TowerProp {
   const mat = new StandardMaterial("towerPropMat", scene);
   // uRepeat вдвое больше прежнего — окружность ствола удвоилась вместе с
   // RADIUS, без этого кладка растянулась бы вдвое шире по кирпичу.
-  mat.diffuseTexture = buildStoneTexture(scene, 12, 10);
+  // Крупная кладка: блок ~3 м × 2 м (тайл — 4 блока по кругу и 10 рядов по высоте).
+  const circumference = 2 * Math.PI * RADIUS;
+  // Юбка ствола под землю: рельеф вокруг неравный, иначе между землёй и башней видны просветы.
+  let minGround = groundY;
+  for (let i = 0; i < 32; i++) {
+    const a = (i / 32) * Math.PI * 2;
+    for (const rr of [RADIUS, RADIUS + 2]) {
+      minGround = Math.min(minGround, terrainHeight(x + Math.cos(a) * rr, z + Math.sin(a) * rr));
+    }
+  }
+  const skirt = groundY - minGround + 1.5;
+  mat.diffuseTexture = buildStoneTexture(scene, Math.round(circumference / 12.5), (BODY_H + skirt) / 20);
   mat.specularColor = new Color3(0, 0, 0);
 
   const roofMat = new StandardMaterial("towerPropRoofMat", scene);
@@ -108,10 +120,10 @@ export function buildTowerProp(scene: Scene): TowerProp {
   // Ствол — один прямой цилиндр (не сужается кверху), вдвое выше прежнего силуэта.
   const body = MeshBuilder.CreateCylinder(
     "towerPropBody",
-    { height: BODY_H, diameter: RADIUS * 2, tessellation: 16 },
+    { height: BODY_H + skirt, diameter: RADIUS * 2, tessellation: 24 },
     scene,
   );
-  body.position.y = BODY_H / 2;
+  body.position.y = (BODY_H - skirt) / 2;
   body.material = mat;
   body.parent = root;
   body.isPickable = false;
@@ -121,7 +133,7 @@ export function buildTowerProp(scene: Scene): TowerProp {
   // Крыша-конус, пропорционально приподнята на новую высоту ствола.
   const roof = MeshBuilder.CreateCylinder(
     "towerPropRoof",
-    { height: ROOF_H, diameterTop: 0, diameterBottom: RADIUS * 2 + 1, tessellation: 16 },
+    { height: ROOF_H, diameterTop: 0, diameterBottom: RADIUS * 2 + 1, tessellation: 24 },
     scene,
   );
   roof.position.y = BODY_H + ROOF_H / 2;
