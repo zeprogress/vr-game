@@ -55,11 +55,14 @@ void main() {
   vec3 base = world3.xyz;
   float sx = world0.x;
   float sy = world1.y;
-  // Вправо от камеры в плоскости XZ — цилиндрический билборд (не заваливается).
-  vec3 right = normalize(vec3(view[0][0], 0.0, view[2][0]));
-  vec3 p = base + right * (position.x * sx) + vec3(0.0, position.y * sy, 0.0);
+  // Билборд смотрит НА ПОЗИЦИЮ камеры (цилиндрический: вокруг вертикали), а не по её
+  // направлению взгляда — иначе при повороте головы деревья «крутятся» вместе с ней.
   vec3 t = view[3].xyz;
   vec3 cam = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+  vec3 toCam = cam - base;
+  vec3 d = normalize(vec3(toCam.x, 0.0, toCam.z) + vec3(1e-4, 0.0, 0.0));
+  vec3 right = vec3(-d.z, 0.0, d.x);
+  vec3 p = base + right * (position.x * sx) + vec3(0.0, position.y * sy, 0.0);
   vDist = length(p - cam);
   vUv = uv;
 #ifdef MULTIVIEW

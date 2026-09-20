@@ -54,6 +54,14 @@ export class VrCull {
     const small: { m: AbstractMesh; r: number }[] = [];
     for (const m of this.scene.meshes) {
       const n = m.name;
+      // LOD-меши листвы (имя начинается с CommonTree, позиция — начало координат) —
+      // не трогаем: раньше они отключались за пределами радиуса от (0,0), и у лагеря
+      // деревья на 28–60 м пропадали. Возвращаем включёнными то, что успели отключить.
+      if ((m as { isBlocked?: boolean }).isBlocked) {
+        if (!m.isEnabled()) m.setEnabled(true);
+        this.hidden.delete(m);
+        continue;
+      }
       if (n.startsWith("firefly")) small.push({ m, r: 30 });
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
       else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {

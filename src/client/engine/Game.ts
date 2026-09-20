@@ -1,3 +1,4 @@
+import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
