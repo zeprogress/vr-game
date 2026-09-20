@@ -11,7 +11,7 @@ import "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
-import { makeBurnFlameMaterial } from "../world/BurnFlameMat";
+import { createBurnFlameMesh, makeBurnFlameMaterial } from "../world/BurnFlameMat";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
@@ -297,9 +297,6 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
   return [src];
 }
 
-/** Размеры языков пламени (множитель к r): 2 средних и 16 мелких. */
-const FLAME_SIZES = [0.78, 0.68, 0.42, 0.36, 0.4, 0.32, 0.38, 0.34, 0.44, 0.3, 0.37, 0.33, 0.41, 0.31, 0.39, 0.35, 0.3, 0.36];
-
 export class Mob implements Hittable {
   readonly root: TransformNode;
   private readonly body: Mesh;
@@ -349,14 +346,12 @@ export class Mob implements Hittable {
   private burnGlow = 0;
   /** Языки пламени над мобом, пока он горит (ленивое создание). */
   private burnFx: TransformNode | null = null;
-  private burnFlames: Mesh[] = [];
   private burnMat: ShaderMaterial | null = null;
   /** Крупные «квадраты» пламени, как было раньше (плюс россыпь мелких). */
-  private burnBig: Mesh[] = [];
+  private burnMesh: Mesh | null = null;
   /** Материалы модели с исходным свечением — для красно-оранжевого оттенка при горении. */
   private rigTint: { m: StandardMaterial; r: number; g: number; b: number }[] | null = null;
   private rigTintOn = false;
-  private burnMatBig: ShaderMaterial | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -1109,59 +1104,18 @@ export class Mob implements Hittable {
       const scene = this.root.getScene();
       this.burnFx = new TransformNode("mobBurn", scene);
       this.burnFx.parent = this.root;
+      // Весь огонь — один меш из 23 квадов, всплытие/пульсацию/билборд считает шейдер (BurnFlameMat).
       this.burnMat = makeBurnFlameMaterial(scene);
-      const r = MOB.bodyRadius;
-      // Огонь — россыпь: несколько средних «языков» и много мелких (большие квадраты
-      // выглядели грубо). Размер каждого — множитель к плоскости r×r.
-      for (let i = 0; i < FLAME_SIZES.length; i++) {
-        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r }, scene);
-        f.material = this.burnMat;
-        f.isPickable = false;
-        // Поворот к камере и сдвиг к ней на толщину моба — в шейдере (BurnFlameMat): огонь виден
-        // сквозь тело самого моба, но не сквозь землю и предметы.
-        const a = (i / FLAME_SIZES.length) * Math.PI * 2 * 2.3; // винтом, чтобы мелкие не сходились в одном месте
-        // По кругу у поверхности тела (было 0.55 r — внутри тела, огонь скрывало).
-        f.position.set(Math.cos(a) * r * 0.95, r * 0.4, Math.sin(a) * r * 0.95);
-        f.parent = this.burnFx;
-        this.burnFlames.push(f);
-      }
-      // Прежние 5 крупных карточек (r×1.7, ближе к центру тела) — видны сквозь тело моба.
-      this.burnMatBig = makeBurnFlameMaterial(scene);
-      for (let i = 0; i < 5; i++) {
-        const f = MeshBuilder.CreatePlane(`mobFlameBig${i}`, { size: r * 1.7 }, scene);
-        f.material = this.burnMatBig;
-        f.isPickable = false;
-        const a = (i / 5) * Math.PI * 2;
-        f.position.set(Math.cos(a) * r * 0.55, r * 0.4, Math.sin(a) * r * 0.55);
-        f.parent = this.burnFx;
-        this.burnBig.push(f);
-      }
+      this.burnMat.setFloat("uR", MOB.bodyRadius);
+      this.burnMesh = createBurnFlameMesh(scene, "mobFlames");
+      this.burnMesh.material = this.burnMat;
+      this.burnMesh.parent = this.burnFx;
     }
     this.burnFx.setEnabled(true);
     this.burnT += dt;
-    const r = MOB.bodyRadius;
-    for (let i = 0; i < this.burnFlames.length; i++) {
-      const f = this.burnFlames[i];
-      const ph = this.burnT * 7 + i * 1.7;
-      const rise = (this.burnT * 1.8 + i * 0.37) % 1;
-      f.position.y = r * (0.15 + rise * 1.5);
-      const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
-      f.scaling.setAll(Math.max(0.03, s * FLAME_SIZES[i]));
-    }
-    for (let i = 0; i < this.burnBig.length; i++) {
-      const f = this.burnBig[i];
-      const ph = this.burnT * 7 + i * 1.7;
-      const rise = (this.burnT * 1.8 + i * 0.37) % 1;
-      f.position.y = r * (0.15 + rise * 1.5);
-      const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
-      f.scaling.setAll(Math.max(0.05, s));
-    }
-    if (this.burnMatBig) {
-      this.burnMatBig.setFloat("uAlpha", 0.275 * this.burnGlow);
-      this.burnMatBig.setFloat("uShift", MOB.bodyRadius * 2 * this.scale);
-    }
     if (this.burnMat) {
-      this.burnMat.setFloat("uAlpha", 0.38 * this.burnGlow);
+      this.burnMat.setFloat("uTime", this.burnT);
+      this.burnMat.setFloat("uGlow", this.burnGlow);
       this.burnMat.setFloat("uShift", MOB.bodyRadius * 2 * this.scale);
     }
   }
@@ -1240,7 +1194,7 @@ export class Mob implements Hittable {
     this.slamRing?.material?.dispose();
     this.stunStarMat?.dispose();
     this.burnMat?.dispose();
-    this.burnMatBig?.dispose();
+    this.burnMesh?.dispose();
     this.mat.dispose();
     // Свои «плоские» материалы гасим без текстур: атлас общий у всех копий модели.
     for (const m of this.rig?.meshes ?? []) {
