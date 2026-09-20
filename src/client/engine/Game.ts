@@ -797,7 +797,11 @@ export class Game {
       Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : 1;
     // ?noaa=1 — без MSAA у буфера глаза. Резолв MSAA на большом стерео-RT
     // может стоить 10-20 мс на GPU шлема даже при пустой сцене.
-    const aa = !qp.has("noaa");
+    // Браузер автономного шлема (Quest/Pico): MSAA у буфера глаза и режим Layers
+    // (multiview — один проход на оба глаза) включены по умолчанию — это ~2× по
+    // CPU-части кадра. Вернуть: `?aa=1` (сглаживание), `?layers=0` (без multiview).
+    const headsetBrowser = /OculusBrowser|Quest|PicoBrowser|Pico/i.test(navigator.userAgent);
+    const aa = !(qp.has("noaa") || (headsetBrowser && !qp.has("aa")));
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
@@ -823,7 +827,7 @@ export class Game {
     // WebXR Layers + multiview: оба глаза за один проход (~1.5× по кадру), НО
     // на части сборок Quest-браузера с ним не входит в сессию — поэтому только
     // по явному `?layers=1`.
-    if (qp.has("layers")) {
+    if (qp.get("layers") !== "0" && (qp.has("layers") || headsetBrowser)) {
       try {
         this.xr.baseExperience.featuresManager.enableFeature(
           WebXRFeatureName.LAYERS,

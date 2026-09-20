@@ -812,6 +812,15 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   }
   tick(1);
 
+  // Всё статичное в лагере замораживаем: часть мешей (навесы, знамёна, стены
+  // шатров) склеивалась без freezeWorldMatrix и пересчитывала матрицы каждый кадр.
+  // Огонь/ореолы/искры (billboard и динамические вершины) не трогаем.
+  for (const m of root.getChildMeshes(false)) {
+    if (/Fire|Glow|Spark|Coal/i.test(m.name) || m.isWorldMatrixFrozen) continue;
+    m.freezeWorldMatrix();
+    m.doNotSyncBoundingInfo = true;
+  }
+
   return {
     obstacles,
     tick,
