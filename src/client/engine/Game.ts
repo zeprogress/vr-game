@@ -214,9 +214,10 @@ export class Game {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
-    // Диагностика: ?noubo=1 — без uniform-буферов (UBO): на ANGLE/Vulkan шлема их запись и
-    // привязка на каждую отрисовку могут стоить дороже обычных uniform-вызовов.
-    if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
+    // Uniform-буферы (UBO) Babylon отключены: на шлеме (ANGLE/Vulkan) их запись и привязка на каждую
+    // отрисовку стоили дороже обычных uniform-вызовов — замер на Quest 3: 35 → 46–58 fps в той же
+    // сцене. `?ubo=1` возвращает их (для сравнения).
+    if (!new URLSearchParams(location.search).has("ubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
