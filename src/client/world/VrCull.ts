@@ -17,9 +17,10 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
  */
 /** Ближе этого объекты не прячем по направлению (крутанулся — они рядом). */
 const BEHIND_NEAR = 14;
-/** Прячем при угле от взгляда > 130° (90° + запас на snap-turn 30° и голову); гистерезис 10°. */
-const COS_HIDE = Math.cos((130 * Math.PI) / 180);
-const COS_SHOW = Math.cos((120 * Math.PI) / 180);
+/** Центральный конус ±30° — полная дальность; боковые секторы до ±60° — SIDE_K от неё. */
+const COS_CENTER = Math.cos((30 * Math.PI) / 180);
+const COS_SIDE = Math.cos((60 * Math.PI) / 180);
+const SIDE_K = 2 / 3;
 
 export class VrCull {
   /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
@@ -39,9 +40,9 @@ export class VrCull {
     readonly vr = true,
   ) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 90 : 60;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 150 : 60;
     this.treeR = Number.isFinite(v) ? v : 60;
-    this.rockR = Math.max(0, this.treeR - 10);
+    this.rockR = Math.max(0, this.treeR - (this.vr ? 20 : 10));
   }
 
   private scan(): void {
@@ -102,18 +103,35 @@ export class VrCull {
     }
   }
 
+  /**
+   * VR: дальность зависит от направления. Строго вперёд (±30° от взгляда) — на
+   * полную `r`, в боковых секторах 30–60° — на 2/3 `r`, остальное вокруг не
+   * рисуется (кроме ближних BEHIND_NEAR м). Поворот щелчками, поэтому границы
+   * держим с гистерезисом; на плоском экране (fx=fz=0) — просто круг радиуса r.
+   */
   private apply(list: AbstractMesh[], cam: Vector3, r: number, fx = 0, fz = 0): void {
+    const sector = fx !== 0 || fz !== 0;
     for (const m of list) {
       if (m.isDisposed()) continue;
       const p = m.getAbsolutePosition();
       const d2 = (p.x - cam.x) ** 2 + (p.z - cam.z) ** 2;
       const off = this.hidden.has(m);
-      const lim = off ? r - 6 : r + 6;
-      let far = d2 > lim * lim;
-      if (!far && (fx !== 0 || fz !== 0) && d2 > BEHIND_NEAR * BEHIND_NEAR) {
-        // cos угла между взглядом и направлением на объект; спрятан — за «широким задом»
+      // Видимому объекту границы чуть шире (гистерезис), спрятанному — чуть уже.
+      const pad = off ? -6 : 6;
+      let far: boolean;
+      if (!sector) {
+        const lim = r + pad;
+        far = d2 > lim * lim;
+      } else if (d2 <= BEHIND_NEAR * BEHIND_NEAR) {
+        far = false;
+      } else {
         const cosA = ((p.x - cam.x) * fx + (p.z - cam.z) * fz) / Math.sqrt(d2);
-        far = off ? cosA < COS_SHOW : cosA < COS_HIDE;
+        const da = off ? -0.03 : 0.03; // ≈ ±3–5° по косинусу
+        let lim: number;
+        if (cosA > COS_CENTER - da) lim = r + pad;
+        else if (cosA > COS_SIDE - da) lim = r * SIDE_K + pad;
+        else lim = 0;
+        far = lim <= 0 || d2 > lim * lim;
       }
       if (far && !off) {
         m.setEnabled(false);

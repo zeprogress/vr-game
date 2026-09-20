@@ -62,7 +62,7 @@ interface Burst {
 }
 
 /** VR: сколько ближайших мобов рисуем и сколько из них с плашкой имени. */
-const VR_MAX_MOBS = 14;
+const VR_MAX_MOBS = 20;
 const VR_MAX_UI = 5;
 
 /**
