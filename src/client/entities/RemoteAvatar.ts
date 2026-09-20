@@ -339,6 +339,23 @@ export class RemoteAvatar implements Hittable {
     return this.now + durationMs;
   }
 
+  /**
+   * Рисуем ли персонажа моделью с анимациями (а не кубиками/капсулой). Раньше — только в
+   * плоском режиме со skin>0; теперь и VR-игроков для всех наблюдателей показываем той же
+   * моделью, что и игроков за ПК (голова наклоняется, все клипы ходьбы/боя работают).
+   */
+  private usesRig(): boolean {
+    return this.mode === "vr" || (this.mode === "flat" && this.skin > 0);
+  }
+
+  /** Номер внешности для модели: выбранный игроком, а у VR-игрока без выбора — стабильный по id. */
+  private rigSkin(): number {
+    if (this.skin > 0) return this.skin;
+    let h = 0;
+    for (let i = 0; i < this.id.length; i++) h = (h * 31 + this.id.charCodeAt(i)) | 0;
+    return 1 + (Math.abs(h) % BOT.skins);
+  }
+
   private setMode(mode: PlayerMode): void {
     if (this.mode === mode && this.builtSkin === this.skin) return;
     this.mode = mode;
@@ -363,14 +380,14 @@ export class RemoteAvatar implements Hittable {
     this.gearL = this.gearR = null;
     this.gearKeyL = this.gearKeyR = "";
 
-    if (this.skin > 0 && mode === "flat") {
+    if (this.usesRig()) {
       // Модель персонажа: раньше только у ботов зрителей (Ф10), теперь и у
-      // обычных игроков в плоском режиме — see MSG.setSkin. В VR у игрока
-      // настоящий трекинг рук, рига там нет — см. ветку ниже.
+      // обычных игроков в плоском режиме — see MSG.setSkin, и у VR-игроков (руки —
+      // анимации модели, без IK по контроллерам).
       // Персонаж из пака грузится асинхронно; пока не пришёл — показываем
       // процедурную заглушку (4 варианта). Корпус целиком поворачивается по
       // yaw (крутится this.root, см. update()).
-      const stub = ((this.skin - 1) % 4) + 1;
+      const stub = ((this.rigSkin() - 1) % 4) + 1;
       this.botBody = makeBotBody(this.scene, stub, this.mat.diffuseColor);
       this.botBody.parent = this.root;
       this.botBody.scaling.setAll(BOT_STUB_SCALE);
@@ -384,7 +401,7 @@ export class RemoteAvatar implements Hittable {
       // (точное значение под рост модели ставит loadBotRig) и делаем крупнее.
       this.nameTag.setScale(BOT_TAG_SCALE * this.tagScale);
       this.nameTag.setAnchorY(1.5 * BOT_STUB_SCALE);
-      this.botRigWant = this.skin;
+      this.botRigWant = this.rigSkin();
       void this.loadBotRig();
     } else if (mode === "vr") {
       this.head = MeshBuilder.CreateBox("avatarHead", { size: 0.22 }, this.scene);
@@ -620,7 +637,7 @@ export class RemoteAvatar implements Hittable {
     // Модель персонажа (плоский режим): поворачиваем корпус целиком (root).
     // VR — только «голову», у рук честный трекинг контроллеров, root вслед
     // за body-моделью здесь крутить нельзя (даже если skin>0 — см. setMode).
-    if (this.skin > 0 && this.mode === "flat") {
+    if (this.usesRig()) {
       if (!this.root.rotationQuaternion) this.root.rotationQuaternion = Quaternion.Identity();
       if (GEAR_FREEZE.on && this.botRig) {
         // Настройка хвата (?gear=1): не двигаем и не анимируем — держим позу.
@@ -1043,7 +1060,7 @@ export class RemoteAvatar implements Hittable {
     // Модель персонажа (бот или обычный игрок в плоском режиме, см. botGear.ts):
     // оружие садится в кость кулака и ездит с рукой во всех клипах, включая
     // SwordSlash. В VR у игрока настоящий трекинг рук — сюда не попадает.
-    if (this.skin > 0 && this.mode === "flat" && this.botRig) {
+    if (this.usesRig() && this.botRig) {
       const fist = side === "left" ? this.botFistL : this.botFistR;
       if (!fist) {
         mesh.dispose();
@@ -1091,7 +1108,7 @@ export class RemoteAvatar implements Hittable {
 
   /** Пересадка без пересборки мешей — по правке в панели настройки. */
   private reseatBotGear(): void {
-    if (this.skin <= 0 || this.mode !== "flat" || !this.botRig) return;
+    if (!this.usesRig() || !this.botRig) return;
     if (this.gearL && this.botFistL) this.seatBotGear(this.gearL, this.wantL[0], this.botFistL);
     if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, this.wantR[0], this.botFistR);
   }

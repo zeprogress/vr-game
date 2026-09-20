@@ -41,6 +41,7 @@ interface Rain {
 
 interface Stun {
   ring: Mesh;
+  dome: Mesh;
   age: number;
   life: number;
   radius: number;
@@ -87,7 +88,12 @@ export class SkillFx {
       ring.rotation.x = Math.PI / 2;
       ring.isPickable = false;
       ring.setEnabled(false);
-      this.stuns.push({ ring, age: 1, life: 1, radius: 1 });
+      // Купол над кольцом — прозрачности как у массового хила (купол 0.16, нижний диск 0.13).
+      const dome = MeshBuilder.CreateSphere(`stunDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
+      dome.material = addMat(scene, `stunDomeMat${i}`, STUN.scale(0.55));
+      dome.isPickable = false;
+      dome.setEnabled(false);
+      this.stuns.push({ ring, dome, age: 1, life: 1, radius: 1 });
     }
   }
 
@@ -100,6 +106,8 @@ export class SkillFx {
     st.radius = radius;
     st.ring.position.set(x, y + 0.06, z);
     st.ring.setEnabled(true);
+    st.dome.position.set(x, y + 0.02, z);
+    st.dome.setEnabled(true);
   }
 
   /** Круг града стрел на земле + падающие древки. */
@@ -156,12 +164,18 @@ export class SkillFx {
       st.age += dt;
       if (st.age >= st.life) {
         st.ring.setEnabled(false);
+        st.dome.setEnabled(false);
         continue;
       }
       const t = st.age / st.life;
-      // Кольцо стремительно расходится наружу и гаснет.
-      st.ring.scaling.setAll(st.radius * (0.15 + 0.95 * Math.sqrt(t)));
-      (st.ring.material as StandardMaterial).alpha = (1 - t) * 0.55;
+      // Волна стремительно расходится наружу и гаснет: нижний диск и купол над ним, с теми же
+      // прозрачностями, что у массового хила (диск 0.13, купол 0.16).
+      const r = st.radius * (0.15 + 0.95 * Math.sqrt(t));
+      st.ring.scaling.setAll(r);
+      st.dome.scaling.set(r, r * 0.55, r);
+      const fade = 1 - t;
+      (st.ring.material as StandardMaterial).alpha = 0.13 * fade;
+      (st.dome.material as StandardMaterial).alpha = 0.16 * fade;
     }
   }
 
@@ -169,6 +183,8 @@ export class SkillFx {
     for (const st of this.stuns) {
       st.ring.material?.dispose();
       st.ring.dispose();
+      st.dome.material?.dispose();
+      st.dome.dispose();
     }
     for (const r of this.rains) {
       r.ring.material?.dispose();
