@@ -902,6 +902,10 @@ export class TowerRoom extends Room<TowerState> {
   }
 
   private emitSnapshot(): void {
+    // После finish() результат уже ушёл в ZoneRoom (герой возвращён, арена снята) —
+    // запоздалый снапшот того же тика снова поднимал p.towerFloor и камера
+    // спектатора застревала на арене навсегда.
+    if (this.finished) return;
     if (this.boss) this.state.bossHp = Math.max(0, this.boss.hp);
     this.onSnapshot?.({
       floor: this.state.floor,

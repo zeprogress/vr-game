@@ -2337,6 +2337,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private onTowerSnapshot(heroId: string, s: TowerSnapshot): void {
     const p = this.state.players.get(heroId);
     if (!p) return;
+    if (!this.towerRuns.running) return; // забег уже закончен — не воскрешаем арену запоздалым снапшотом
     p.head.x = TOWER_HIDE.x + s.heroX;
     p.head.z = TOWER_HIDE.z + s.heroZ;
     // Герой поворачивается лицом к цели — та же конвенция yaw->кватернион,
