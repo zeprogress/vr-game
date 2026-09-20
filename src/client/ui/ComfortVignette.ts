@@ -22,10 +22,18 @@ precision highp float;
 attribute vec3 position;
 uniform mat4 world;
 uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
 varying vec2 vP;
 void main() {
   vP = position.xy * ${SIZE.toFixed(1)};
-  gl_Position = viewProjection * world * vec4(position, 1.0);
+  vec4 wp = world * vec4(position, 1.0);
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * wp; } else { gl_Position = viewProjectionR * wp; }
+#else
+  gl_Position = viewProjection * wp;
+#endif
 }
 `;
 
