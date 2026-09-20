@@ -138,7 +138,7 @@ export class WorldCrossFx {
       const cy = 128;
       // Широкий красный ореол.
       const halo = c.createRadialGradient(cx, cy, 8, cx, cy, 78);
-      halo.addColorStop(0, "rgba(255,70,60,0.7)");
+      halo.addColorStop(0, "rgba(255,40,30,0.95)");
       halo.addColorStop(1, "rgba(255,20,20,0)");
       c.fillStyle = halo;
       c.beginPath();
@@ -157,11 +157,11 @@ export class WorldCrossFx {
         const ty = cy + Math.sin(ang) * len;
         const nx = -Math.sin(ang);
         const ny = Math.cos(ang);
-        const half = 128 * sp.w * 0.5 + 2;
+        const half = 128 * sp.w * 0.5 * 1.7 + 3; // потолще — читаются издали
         const g = c.createLinearGradient(cx, cy, tx, ty);
-        g.addColorStop(0, "rgba(255,225,215,1)");
-        g.addColorStop(0.35, "rgba(255,70,55,1)");
-        g.addColorStop(1, "rgba(200,10,10,0.9)");
+        g.addColorStop(0, "rgba(255,190,175,1)");
+        g.addColorStop(0.3, "rgba(255,30,20,1)");
+        g.addColorStop(1, "rgba(230,0,0,1)");
         c.fillStyle = g;
         c.beginPath();
         c.moveTo(tx, ty);
@@ -171,16 +171,16 @@ export class WorldCrossFx {
         c.fill();
       });
       // Обруч вокруг ядра (как светлое кольцо на референсе).
-      c.strokeStyle = "rgba(255,120,105,0.95)";
-      c.lineWidth = 4;
+      c.strokeStyle = "rgba(255,60,50,1)";
+      c.lineWidth = 7;
       c.beginPath();
       c.arc(cx, cy, 36, 0, Math.PI * 2);
       c.stroke();
       // Раскалённое ядро.
       const core = c.createRadialGradient(cx, cy, 0, cx, cy, 34);
-      core.addColorStop(0, "rgba(255,245,240,1)");
-      core.addColorStop(0.45, "rgba(255,150,130,1)");
-      core.addColorStop(1, "rgba(235,30,25,0.9)");
+      core.addColorStop(0, "rgba(255,225,215,1)");
+      core.addColorStop(0.4, "rgba(255,70,55,1)");
+      core.addColorStop(1, "rgba(240,10,10,1)");
       c.fillStyle = core;
       c.beginPath();
       c.arc(cx, cy, 34, 0, Math.PI * 2);
@@ -195,8 +195,8 @@ export class WorldCrossFx {
       const cx = 128;
       const cy = 128;
       // Пунктирное кольцо.
-      c.strokeStyle = "rgba(255,60,50,0.95)";
-      c.lineWidth = 5;
+      c.strokeStyle = "rgba(255,25,20,1)";
+      c.lineWidth = 9;
       c.lineCap = "round";
       const dashes = 20;
       for (let i = 0; i < dashes; i++) {
@@ -206,17 +206,17 @@ export class WorldCrossFx {
         c.stroke();
       }
       // Искры-точки вокруг.
-      c.fillStyle = "rgba(255,150,125,1)";
-      for (let i = 0; i < 16; i++) {
+      c.fillStyle = "rgba(255,70,55,1)";
+      for (let i = 0; i < 20; i++) {
         const ang = rnd(i + 60) * Math.PI * 2;
         const r = 62 + rnd(i + 80) * 62;
         c.beginPath();
-        c.arc(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 2 + rnd(i + 99) * 3, 0, Math.PI * 2);
+        c.arc(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 3.5 + rnd(i + 99) * 4, 0, Math.PI * 2);
         c.fill();
       }
       // Короткие радиальные штрихи за кольцом.
-      c.strokeStyle = "rgba(255,90,75,0.95)";
-      c.lineWidth = 3;
+      c.strokeStyle = "rgba(255,40,30,1)";
+      c.lineWidth = 5;
       for (let i = 0; i < 8; i++) {
         const ang = (i / 8) * Math.PI * 2 + rnd(i + 130) * 0.5;
         const r0 = 106 + rnd(i + 140) * 6;
@@ -231,6 +231,7 @@ export class WorldCrossFx {
       const mat = new StandardMaterial(name, scene);
       mat.emissiveTexture = tex; // цвет запечён в текстуру (ядро светлее, лучи красные)
       mat.opacityTexture = tex;
+      mat.emissiveColor = new Color3(0.55, 0, 0); // добавка красного — насыщеннее, не блёклая
       mat.diffuseColor = new Color3(0, 0, 0);
       mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
@@ -418,16 +419,16 @@ export class WorldCrossFx {
       // Фаза 1: вспышка — резко раздувается и гаснет за первую половину жизни.
       const f = Math.min(1, c.age / (CRIT_LIFE * 0.55));
       const ease = 1 - (1 - f) * (1 - f);
-      c.mesh.scaling.setAll(0.7 + ease * 1.1);
+      c.mesh.scaling.setAll(1.5 + ease * 1.9); // крупнее
       c.mesh.rotation.z += dt * 0.6;
-      (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : (1 - f) * (1 - f * 0.4);
+      (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : Math.min(1, 1.6 * (1 - f));
       c.mesh.setEnabled(f < 1);
       // Фаза 2: кольцо с искрами расходится с 18% жизни и тает к концу.
       const u = (t - 0.18) / 0.82;
       if (u > 0) {
         if (!c.ring.isEnabled()) c.ring.setEnabled(true);
-        c.ring.scaling.setAll(0.55 + u * 1.5);
-        (c.ring.material as StandardMaterial).alpha = (1 - u) * (1 - u) * 0.95;
+        c.ring.scaling.setAll(1.3 + u * 2.6);
+        (c.ring.material as StandardMaterial).alpha = Math.min(1, 1.5 * (1 - u));
       }
     }
     for (const c of this.pool) {
