@@ -4,6 +4,9 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -80,30 +83,162 @@ function recolorRig(
  */
 
 /**
- * Дальний LOD моба: голая сфера-инстанс вместо модели со скелетом. Инстансы
- * одного цвета сливаются в один draw call; материал общий на тон.
+ * Дальний LOD моба: упрощённая копия САМОЙ модели без скелета (≈200 треугольников),
+ * а не сфера — чтобы силуэт (рога, руки, крылья) читался издали. Геометрия
+ * берётся из позы покоя реальной модели и схлопывается кластеризацией вершин по
+ * сетке; материал — копия материала модели (текстура-атлас, цвета). Источник один
+ * на вид моба, у каждого моба — инстансы (один draw call на вид).
  */
-const lodSources = new Map<string, Mesh>();
-function makeLodProxy(scene: Scene, tint: readonly [number, number, number], parent: TransformNode): InstancedMesh {
-  // Инстансы берут материал источника, поэтому источник — свой на каждый тон.
-  const key = tint.map((v) => v.toFixed(2)).join(",");
-  let src = lodSources.get(key);
-  if (!src || src.isDisposed() || src.getScene() !== scene) {
-    src = MeshBuilder.CreateSphere(`mobLodSrc_${key}`, { diameter: MOB.bodyRadius * 2, segments: 6 }, scene);
-    src.isPickable = false;
-    src.isVisible = false; // инстансы остаются видимыми
-    const mat = new StandardMaterial(`mobLodMat_${key}`, scene);
-    mat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
-    mat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
-    mat.specularColor = new Color3(0, 0, 0);
-    src.material = mat;
-    lodSources.set(key, src);
+const lodCache = new Map<string, Mesh[] | null>();
+
+function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: TransformNode): Mesh[] | null {
+  root.computeWorldMatrix(true);
+  const inv = root.getWorldMatrix().clone().invert();
+  interface Grp { mat: StandardMaterial; pos: number[]; uv: number[]; idx: number[] }
+  const groups = new Map<unknown, Grp>();
+  const tmp = new Vector3();
+  let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const m of rigMeshes) {
+    const src = (m.isAnInstance ? (m as InstancedMesh).sourceMesh : m) as Mesh;
+    const pos = src.getVerticesData(VertexBuffer.PositionKind);
+    const idx = src.getIndices();
+    const mat = m.material as StandardMaterial | null;
+    if (!pos || !idx || !mat) continue;
+    const uv = src.getVerticesData(VertexBuffer.UVKind);
+    m.computeWorldMatrix(true);
+    const W = m.getWorldMatrix().multiply(inv);
+    let g = groups.get(mat);
+    if (!g) {
+      g = { mat, pos: [], uv: [], idx: [] };
+      groups.set(mat, g);
+    }
+    const base = g.pos.length / 3;
+    for (let i = 0; i < pos.length; i += 3) {
+      Vector3.TransformCoordinatesFromFloatsToRef(pos[i], pos[i + 1], pos[i + 2], W, tmp);
+      g.pos.push(tmp.x, tmp.y, tmp.z);
+      if (tmp.y < minY) minY = tmp.y;
+      if (tmp.y > maxY) maxY = tmp.y;
+      if (tmp.x < minX) minX = tmp.x;
+      if (tmp.x > maxX) maxX = tmp.x;
+      if (tmp.z < minZ) minZ = tmp.z;
+      if (tmp.z > maxZ) maxZ = tmp.z;
+      const vi = i / 3;
+      g.uv.push(uv ? uv[vi * 2] : 0, uv ? uv[vi * 2 + 1] : 0);
+    }
+    for (let i = 0; i < idx.length; i++) g.idx.push(idx[i] + base);
   }
-  const inst = src.createInstance("mobLod");
-  inst.parent = parent;
-  inst.position.y = MOB.bodyRadius;
-  inst.isPickable = false;
-  return inst;
+  if (groups.size === 0) return null;
+  // Проверка адекватности: поза покоя должна давать модель ожидаемой высоты,
+  // стоящую на земле, иначе (скелет тянет вершины иначе) — откат на сферу.
+  const expect = MOB.bodyRadius * 1.75;
+  const h = maxY - minY;
+  if (!(h > expect * 0.5 && h < expect * 1.8) || Math.abs(minY) > expect * 0.45) return null;
+  if (Math.abs((minX + maxX) / 2) > expect || Math.abs((minZ + maxZ) / 2) > expect) return null;
+
+  // Кластеризация: увеличиваем ячейку, пока суммарно не уложимся в ~220 треугольников.
+  const size = Math.max(maxX - minX, h, maxZ - minZ);
+  let cell = size / 16;
+  type Out = { pos: number[]; uv: number[]; idx: number[] };
+  const cluster = (g: Grp, c: number): Out => {
+    const cellOf = new Map<number, number>();
+    const sum: number[] = []; // x,y,z,u,v,count
+    const remap = new Int32Array(g.pos.length / 3);
+    for (let i = 0; i < remap.length; i++) {
+      const ix = Math.floor((g.pos[i * 3] - minX) / c);
+      const iy = Math.floor((g.pos[i * 3 + 1] - minY) / c);
+      const iz = Math.floor((g.pos[i * 3 + 2] - minZ) / c);
+      const k = (ix * 1024 + iy) * 1024 + iz;
+      let ci = cellOf.get(k);
+      if (ci === undefined) {
+        ci = sum.length / 6;
+        cellOf.set(k, ci);
+        sum.push(0, 0, 0, 0, 0, 0);
+      }
+      remap[i] = ci;
+      sum[ci * 6] += g.pos[i * 3];
+      sum[ci * 6 + 1] += g.pos[i * 3 + 1];
+      sum[ci * 6 + 2] += g.pos[i * 3 + 2];
+      sum[ci * 6 + 3] += g.uv[i * 2];
+      sum[ci * 6 + 4] += g.uv[i * 2 + 1];
+      sum[ci * 6 + 5] += 1;
+    }
+    const pos: number[] = [];
+    const uv: number[] = [];
+    for (let ci = 0; ci < sum.length / 6; ci++) {
+      const n = sum[ci * 6 + 5];
+      pos.push(sum[ci * 6] / n, sum[ci * 6 + 1] / n, sum[ci * 6 + 2] / n);
+      uv.push(sum[ci * 6 + 3] / n, sum[ci * 6 + 4] / n);
+    }
+    const idx: number[] = [];
+    const seen = new Set<string>();
+    for (let t = 0; t < g.idx.length; t += 3) {
+      const a = remap[g.idx[t]], b = remap[g.idx[t + 1]], c2 = remap[g.idx[t + 2]];
+      if (a === b || b === c2 || a === c2) continue;
+      const key3 = [a, b, c2].sort((x, y) => x - y).join(",");
+      if (seen.has(key3)) continue;
+      seen.add(key3);
+      idx.push(a, b, c2);
+    }
+    return { pos, uv, idx };
+  };
+  let outs: Out[] = [];
+  for (let it = 0; it < 30; it++) {
+    outs = [...groups.values()].map((g) => cluster(g, cell));
+    const tris = outs.reduce((n, o) => n + o.idx.length / 3, 0);
+    if (tris <= 220) break;
+    cell *= 1.18;
+  }
+  const srcs: Mesh[] = [];
+  let gi = 0;
+  for (const g of groups.values()) {
+    const o = outs[gi++];
+    if (o.idx.length < 9) continue;
+    const mesh = new Mesh(`mobLod_${key}_${gi}`, scene);
+    const vd = new VertexData();
+    vd.positions = o.pos;
+    vd.indices = o.idx;
+    vd.uvs = o.uv;
+    const nor: number[] = [];
+    VertexData.ComputeNormals(o.pos, o.idx, nor);
+    vd.normals = nor;
+    vd.applyToMesh(mesh);
+    const mat = new StandardMaterial(`mobLodMat_${key}_${gi}`, scene);
+    mat.diffuseTexture = g.mat.diffuseTexture;
+    mat.emissiveTexture = g.mat.emissiveTexture;
+    mat.diffuseColor = g.mat.diffuseColor?.clone() ?? new Color3(0.7, 0.7, 0.7);
+    mat.emissiveColor = g.mat.emissiveColor?.clone() ?? new Color3(0.2, 0.2, 0.2);
+    mat.specularColor = new Color3(0, 0, 0);
+    mat.backFaceCulling = false;
+    mesh.material = mat;
+    mesh.isPickable = false;
+    mesh.isVisible = false; // инстансы остаются видимыми
+    srcs.push(mesh);
+  }
+  return srcs.length ? srcs : null;
+}
+
+/** Запасной вариант, если у модели нет вменяемой позы покоя: сфера (как раньше). */
+function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[] {
+  const key = tint.map((v) => v.toFixed(2)).join(",");
+  const cached = lodCache.get(`sphere|${key}`);
+  if (cached && !cached[0].isDisposed()) return cached;
+  const src = MeshBuilder.CreateSphere(`mobLodSrc_${key}`, { diameter: MOB.bodyRadius * 2, segments: 6 }, scene);
+  src.position.y = 0;
+  src.bakeCurrentTransformIntoVertices();
+  const v = src.getVerticesData(VertexBuffer.PositionKind);
+  if (v) {
+    for (let i = 1; i < v.length; i += 3) v[i] += MOB.bodyRadius;
+    src.setVerticesData(VertexBuffer.PositionKind, v);
+  }
+  src.isPickable = false;
+  src.isVisible = false;
+  const mat = new StandardMaterial(`mobLodMat_${key}`, scene);
+  mat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+  mat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
+  mat.specularColor = new Color3(0, 0, 0);
+  src.material = mat;
+  lodCache.set(`sphere|${key}`, [src]);
+  return [src];
 }
 
 export class Mob implements Hittable {
@@ -168,8 +303,9 @@ export class Mob implements Hittable {
   private prevY = 0;
   private readonly shove2 = new Vector3();
   /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
-  private lodProxy: InstancedMesh | null = null;
+  private lodProxies: InstancedMesh[] | null = null;
   private lodFar = false;
+  private rigReady = false;
   private lodTint: readonly [number, number, number] = [0.5, 0.8, 0.5];
   /** Труп уже полностью растворился: корень выключен до возрождения. */
   private deadHidden = false;
@@ -418,6 +554,7 @@ export class Mob implements Hittable {
     this.head.dispose(false, true);
     this.squash = holder;
     this.baseModelScale = base;
+    this.rigReady = true; // материалы перекрашены — можно строить дальний LOD
 
     // «Hop» проигрываем только в прыжке (см. applyState), в покое — статика.
   }
@@ -733,15 +870,26 @@ export class Mob implements Hittable {
   private setFarLod(want: boolean): void {
     const rig = this.rig;
     if (!rig || want === this.lodFar) return;
+    if (want && !this.rigReady) return; // модель ещё не перекрашена
+    if (want && !this.lodProxies) {
+      const key = `${this.modelName}|${this.kind}`;
+      let srcs = lodCache.get(key);
+      if (srcs === undefined || (srcs && srcs[0].isDisposed())) {
+        srcs = lodBuild(this.scene, key, rig.meshes, this.root);
+        lodCache.set(key, srcs);
+      }
+      if (!srcs) srcs = lodSphere(this.scene, this.lodTint);
+      this.lodProxies = srcs.map((src) => {
+        const inst = src.createInstance("mobLod");
+        inst.parent = this.root;
+        inst.isPickable = false;
+        return inst;
+      });
+    }
     this.lodFar = want;
     rig.root.setEnabled(!want);
-    if (want) {
-      if (!this.lodProxy) this.lodProxy = makeLodProxy(this.scene, this.lodTint, this.root);
-      this.lodProxy.setEnabled(true);
-      this.stopAnim();
-    } else {
-      this.lodProxy?.setEnabled(false);
-    }
+    for (const p of this.lodProxies ?? []) p.setEnabled(want);
+    if (want) this.stopAnim();
   }
 
   private updateFarLod(pos: Vector3, cam: Vector3): void {
