@@ -27,8 +27,6 @@ export class VrCull {
   private small: { m: AbstractMesh; r: number }[] = [];
   private trees: AbstractMesh[] = [];
   private rocks: AbstractMesh[] = [];
-  /** Куски травы (thin-инстансы, центр/радиус — в metadata.cullX/Z/R). Только в VR. */
-  private grass: AbstractMesh[] = [];
   private readonly hidden = new Set<AbstractMesh>();
   private readonly roots = new Set<AbstractMesh>();
   private scanT = 0;
@@ -50,12 +48,10 @@ export class VrCull {
   private scan(): void {
     const trees: AbstractMesh[] = [];
     const rocks: AbstractMesh[] = [];
-    const grass: AbstractMesh[] = [];
     const small: { m: AbstractMesh; r: number }[] = [];
     for (const m of this.scene.meshes) {
       const n = m.name;
-      if (n === "grassBlade") grass.push(m);
-      else if (n.startsWith("firefly")) small.push({ m, r: 30 });
+      if (n.startsWith("firefly")) small.push({ m, r: 30 });
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
       else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {
         trees.push(m);
@@ -72,7 +68,6 @@ export class VrCull {
     }
     this.trees = trees;
     this.rocks = rocks;
-    this.grass = grass;
     this.small = small;
   }
 
@@ -99,8 +94,6 @@ export class VrCull {
     }
     this.apply(this.trees, cam, this.treeR, fx, fz);
     this.apply(this.rocks, cam, this.rockR, fx, fz);
-    // Трава: на плоском экране её отсекает Babylon по кадру, в VR — те же сектора, что у деревьев.
-    if (this.vr) this.apply(this.grass, cam, this.treeR, fx, fz);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();
