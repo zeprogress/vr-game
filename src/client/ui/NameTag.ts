@@ -155,7 +155,7 @@ export class NameTag {
 
     if (this.platform > 0) {
       const nameW = ctx.measureText(name).width;
-      drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 34, nameY, 46);
+      drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 40, nameY, 46);
     }
 
     if (level !== null) {
@@ -345,14 +345,25 @@ export class NameTag {
 
 
 /**
- * Значок платформы, нарисованный контуром: 1 — монитор, 2 — смартфон, 3 — VR-шлем.
- * (cx, cy) — центр, `h` — высота значка в пикселях текстуры плашки.
+ * Значок платформы в сером кружке (чтобы белый рисунок не сливался с белым ником):
+ * 1 — монитор, 2 — смартфон, 3 — VR-шлем (очки с ремешком). (cx, cy) — центр кружка,
+ * `h` — его диаметр в пикселях текстуры плашки.
  */
 function drawPlatformIcon(ctx: CanvasRenderingContext2D, kind: number, cx: number, cy: number, h: number): void {
   ctx.save();
-  ctx.strokeStyle = "#e9ecf6";
-  ctx.fillStyle = "#e9ecf6";
-  ctx.lineWidth = 5;
+  const R = h * 0.6;
+  const BG = "#4a4f5e";
+  ctx.fillStyle = BG;
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle = "#ffffff";
+  ctx.lineWidth = 4;
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
   const rr = (x: number, y: number, w: number, hh: number, r: number): void => {
@@ -366,39 +377,59 @@ function drawPlatformIcon(ctx: CanvasRenderingContext2D, kind: number, cx: numbe
   };
   if (kind === 1) {
     // Монитор: экран + ножка + основание.
-    const w = h * 1.15;
-    const sh = h * 0.72;
-    rr(cx - w / 2, cy - h / 2, w, sh, 4);
+    const w = R * 1.1;
+    const sh = R * 0.75;
+    rr(cx - w / 2, cy - R * 0.5, w, sh, 3);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(cx, cy - h / 2 + sh);
-    ctx.lineTo(cx, cy + h / 2 - 4);
-    ctx.moveTo(cx - w * 0.28, cy + h / 2 - 2);
-    ctx.lineTo(cx + w * 0.28, cy + h / 2 - 2);
+    ctx.moveTo(cx, cy - R * 0.5 + sh);
+    ctx.lineTo(cx, cy + R * 0.42);
+    ctx.moveTo(cx - w * 0.3, cy + R * 0.42);
+    ctx.lineTo(cx + w * 0.3, cy + R * 0.42);
     ctx.stroke();
   } else if (kind === 2) {
     // Смартфон: вертикальный прямоугольник с точкой-кнопкой.
-    const w = h * 0.58;
-    rr(cx - w / 2, cy - h / 2, w, h, 6);
+    const w = R * 0.68;
+    const ph = R * 1.15;
+    rr(cx - w / 2, cy - ph / 2, w, ph, 4);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx, cy + h / 2 - 8, 2.6, 0, Math.PI * 2);
+    ctx.arc(cx, cy + ph / 2 - 6, 2.4, 0, Math.PI * 2);
     ctx.fill();
   } else if (kind === 3) {
-    // VR-шлем: широкий визор с двумя линзами и ремешком.
-    const w = h * 1.5;
-    const vh = h * 0.72;
-    rr(cx - w / 2, cy - vh / 2, w, vh, 9);
-    ctx.stroke();
+    // VR-шлем: сплошной визор с вырезом под нос и парой линз + ремешок по бокам.
+    const w = R * 1.35;
+    const vh = R * 0.75;
+    const x0 = cx - w / 2;
+    const y0 = cy - vh / 2;
     ctx.beginPath();
-    ctx.arc(cx - w * 0.2, cy, vh * 0.2, 0, Math.PI * 2);
-    ctx.arc(cx + w * 0.2, cy, vh * 0.2, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.moveTo(x0 + 6, y0);
+    ctx.lineTo(x0 + w - 6, y0);
+    ctx.arcTo(x0 + w, y0, x0 + w, y0 + 6, 6);
+    ctx.lineTo(x0 + w, y0 + vh - 8);
+    ctx.arcTo(x0 + w, y0 + vh, x0 + w - 8, y0 + vh, 8);
+    ctx.lineTo(cx + w * 0.16, y0 + vh); // до выреза
+    ctx.quadraticCurveTo(cx, y0 + vh - vh * 0.42, cx - w * 0.16, y0 + vh); // вырез под нос
+    ctx.lineTo(x0 + 8, y0 + vh);
+    ctx.arcTo(x0, y0 + vh, x0, y0 + vh - 8, 8);
+    ctx.lineTo(x0, y0 + 6);
+    ctx.arcTo(x0, y0, x0 + 6, y0, 6);
+    ctx.closePath();
+    ctx.fill();
+    // Линзы — цвета подложки.
+    ctx.fillStyle = BG;
     ctx.beginPath();
-    ctx.moveTo(cx - w / 2, cy - vh * 0.15);
-    ctx.lineTo(cx - w / 2 - 6, cy - vh * 0.15);
-    ctx.moveTo(cx + w / 2, cy - vh * 0.15);
-    ctx.lineTo(cx + w / 2 + 6, cy - vh * 0.15);
+    ctx.arc(cx - w * 0.26, cy - vh * 0.06, vh * 0.2, 0, Math.PI * 2);
+    ctx.arc(cx + w * 0.26, cy - vh * 0.06, vh * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Ремешок: короткие дужки по бокам.
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x0, cy - vh * 0.18);
+    ctx.lineTo(x0 - 6, cy - vh * 0.18);
+    ctx.moveTo(x0 + w, cy - vh * 0.18);
+    ctx.lineTo(x0 + w + 6, cy - vh * 0.18);
     ctx.stroke();
   }
   ctx.restore();
