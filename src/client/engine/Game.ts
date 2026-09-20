@@ -1262,6 +1262,7 @@ export class Game {
       if (this.net?.online) this.net.sendSetLeaveBot(keepBot);
       void this.leaveWorld();
     };
+    this.wristPanel.onSkin = (skin) => this.net?.sendSetSkin(skin);
     this.wristPanel.onTogglePvp = () => {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
@@ -1593,6 +1594,7 @@ export class Game {
 
   private syncSelf(dt: number, self: PlayerState): void {
     this.hud.setSkin(self.skin);
+    this.wristPanel?.setSkin(self.skin);
     this.localAvatar?.setSkin(self.skin);
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).

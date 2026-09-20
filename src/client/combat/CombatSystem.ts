@@ -763,7 +763,11 @@ export class CombatSystem {
     const lockedWeapon =
       this.uiLockHand !== null &&
       this.player.inVR &&
-      (!w0 || w0.hand === this.uiLockHand || w0.hand2 === this.uiLockHand);
+      (!w0 ||
+        w0.hand === this.uiLockHand ||
+        w0.hand2 === this.uiLockHand ||
+        // Лук: курком свободной руки (натяг) — ею же и жмут в меню лазером, стрелять нельзя.
+        (w0.kind === "bow" && this.drawHand() === this.uiLockHand));
     if (this.player.inVR) this.autoPickupWeapons(dt);
 
     const tpStaff = this.held === "staff" && this.player.thirdPerson;
@@ -773,6 +777,12 @@ export class CombatSystem {
     const flatStaff = this.held === "staff" && !this.player.inVR && !this.player.thirdPerson;
     if (lockedWeapon) {
       this.resetCast();
+      if (this.vrNocked) {
+        this.vrNocked = false;
+        this.draw = 0;
+        this.nockArrow.setEnabled(false);
+        this.nockLocal.copyFrom(this.bowParts.nockRest);
+      }
     } else if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
       this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire, altFireReleased);
@@ -1207,6 +1217,7 @@ export class CombatSystem {
       if (bow.hand || bow.stow) return null; // лук уже занят
       bow.tier = tier;
       tintBow(bow.mesh, tier);
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
       tintArrows(tier); // золотому луку — золотые стрелы
       bow.flight = null;
       bow.mesh.rotationQuaternion = null;
@@ -1461,6 +1472,7 @@ export class CombatSystem {
       if (this.canPick(bow)) {
         bow.tier = ws.tier;
         tintBow(bow.mesh, ws.tier);
+        this.nockLocal.copyFrom(this.bowParts.nockRest);
         tintArrows(ws.tier); // золотому луку — золотые стрелы
         this.takeWorldWeapon(ws.id);
         this.equip(bow, side);
@@ -1650,6 +1662,7 @@ export class CombatSystem {
       // Лук в игре один — не удаляем, а возвращаем к базовому виду и на камень.
       item.tier = "base";
       tintBow(item.mesh, "base");
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
       tintArrows("base");
       item.rest.pos.copyFrom(this.homes.bow);
       item.rest.bob = false;
@@ -2644,7 +2657,7 @@ export class CombatSystem {
       mat.disableLighting = true;
       mat.disableDepthWrite = true;
       mat.backFaceCulling = false;
-      mat.alpha = 0.3;
+      mat.alpha = 0.32;
       // Купол (как у самого града), без кольца/диска на земле.
       const dome = MeshBuilder.CreateSphere("rainMark", { diameter: 2, segments: 14, slice: 0.5 }, scene);
       dome.scaling.set(r, r * 0.55, r);

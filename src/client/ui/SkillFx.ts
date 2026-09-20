@@ -228,14 +228,13 @@ export class SkillFx {
       if (r.age >= r.life) continue;
       r.age += dt;
       const done = r.age >= r.life;
-      // Замах: купол пульсирует и наливается («сюда сейчас прилетит»); потом держится, пока
+      // Замах: купол пульсирует (той же плотности 0.32, что у купола оглушения); потом держится, пока
       // сыплются стрелы, и гаснет в последние 0.4 с.
       const pulse = 1 + Math.sin(r.age * 11) * 0.03;
       const rr = r.radius * pulse;
       r.dome.scaling.set(rr, rr * 0.55, rr);
-      const t = Math.min(1, r.age / r.cast);
       const fadeOut = Math.min(1, (r.life - r.age) / 0.4);
-      (r.dome.material as StandardMaterial).alpha = done ? 0 : 0.32 * (0.45 + 0.55 * t) * fadeOut;
+      (r.dome.material as StandardMaterial).alpha = done ? 0 : 0.32 * fadeOut;
       if (done) r.dome.setEnabled(false);
 
       // Древки целиком на GPU: из JS только время.

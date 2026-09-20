@@ -1183,7 +1183,7 @@ export class Mob implements Hittable {
   }
 
   private slamAlpha(): number {
-    return this.isBoss ? 0.9 : 0.4;
+    return this.isBoss ? 0.9 : 0.32; // купол мага — как купол оглушения мечника
   }
 
   /** Локальный масштаб волны в фазе k (0..1): босс ~5 м, купол мага — ровно радиус новы в мире. */

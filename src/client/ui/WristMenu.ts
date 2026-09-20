@@ -16,6 +16,8 @@ import type { WarehouseWeapon } from "#shared/net/messages";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
+import { BOT } from "#shared/constants";
+import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int"];
@@ -226,6 +228,16 @@ export class WristMenu {
     const q = frac < 0 ? -1 : Math.round(Math.max(0, Math.min(1, frac)) * 20) / 20;
     if (q === this.skillCd) return;
     this.skillCd = q;
+    this.dirty = true;
+  }
+
+  /** Выбор модели: Game шлёт серверу (1..BOT.skins). */
+  onSkin: ((skin: number) => void) | null = null;
+  private skin = 1;
+
+  setSkin(skin: number): void {
+    if (skin === this.skin) return;
+    this.skin = skin;
     this.dirty = true;
   }
 
@@ -1346,31 +1358,31 @@ export class WristMenu {
     let y = VIEW_Y;
     const W = TEX_W - 24;
     const toggle = (id: string, label: string, hint: string, on: boolean, act: () => void): void => {
-      const wd = this.add({ id, x: 12, y, w: W, h: 72, kind: "toggle", act, info: [label, hint] });
+      const wd = this.add({ id, x: 12, y, w: W, h: 56, kind: "toggle", act, info: [label, hint] });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || "#171b26";
       ctx.fillRect(wd.x, y, wd.w, wd.h);
       ctx.strokeStyle = st.stroke || "#2c3446";
       ctx.lineWidth = st.lw;
       ctx.strokeRect(wd.x, y, wd.w, wd.h);
-      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.font = "bold 26px system-ui, sans-serif";
       ctx.fillStyle = "#e8ecf8";
-      ctx.fillText(label, 28, y + 8);
-      ctx.font = "19px system-ui, sans-serif";
+      ctx.fillText(label, 28, y + 2);
+      ctx.font = "18px system-ui, sans-serif";
       ctx.fillStyle = "#8c96ad";
-      ctx.fillText(hint, 28, y + 42);
+      ctx.fillText(hint, 28, y + 32);
       // Переключатель.
       const tx = TEX_W - 150;
       ctx.fillStyle = on ? "#2f7a3a" : "#3a4258";
-      ctx.fillRect(tx, y + 14, 92, 44);
+      ctx.fillRect(tx, y + 6, 92, 44);
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(on ? tx + 50 : tx + 4, y + 18, 38, 36);
+      ctx.fillRect(on ? tx + 50 : tx + 4, y + 10, 38, 36);
       ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillStyle = on ? "#9fffb0" : "#aab4cc";
       ctx.textAlign = "right";
-      ctx.fillText(on ? "ВКЛ" : "ВЫКЛ", tx - 12, y + 24);
+      ctx.fillText(on ? "ВКЛ" : "ВЫКЛ", tx - 12, y + 16);
       ctx.textAlign = "left";
-      y += 82;
+      y += 64;
     };
     toggle("set:vignette", "Виньетка при движении", "затемняет края, меньше укачивает", VR_SETTINGS.vignette, () =>
       setVrSettings({ vignette: !VR_SETTINGS.vignette }),
@@ -1381,7 +1393,7 @@ export class WristMenu {
 
     const slider = (id: string, label: string, val: number, set: (v: number) => void): void => {
       const wd = this.add({
-        id, x: 12, y, w: W, h: 92, kind: "slider", val, set: (v) => set(v),
+        id, x: 12, y, w: W, h: 78, kind: "slider", val, set: (v) => set(v),
         info: [label, `${Math.round(val * 100)}%`],
       });
       const st = this.styleFor(wd);
@@ -1392,13 +1404,13 @@ export class WristMenu {
       ctx.strokeRect(wd.x, y, wd.w, wd.h);
       ctx.font = "bold 28px system-ui, sans-serif";
       ctx.fillStyle = "#e8ecf8";
-      ctx.fillText(label, 28, y + 8);
+      ctx.fillText(label, 28, y + 4);
       ctx.textAlign = "right";
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(`${Math.round(val * 100)}%`, TEX_W - 40, y + 8);
+      ctx.fillText(`${Math.round(val * 100)}%`, TEX_W - 40, y + 4);
       ctx.textAlign = "left";
       // Дорожка на всю ширину виджета (значение считается по нажатию на неё).
-      const ty = y + 62;
+      const ty = y + 50;
       ctx.fillStyle = "#2a3040";
       ctx.fillRect(wd.x + 14, ty, wd.w - 28, 12);
       ctx.fillStyle = "#4a9be8";
@@ -1407,7 +1419,7 @@ export class WristMenu {
       ctx.beginPath();
       ctx.arc(wd.x + 14 + (wd.w - 28) * val, ty + 6, 15, 0, Math.PI * 2);
       ctx.fill();
-      y += 102;
+      y += 86;
     };
     slider("set:music", "Громкость музыки", VR_SETTINGS.music, (v) => setVrSettings({ music: v }));
     slider("set:sfx", "Громкость эффектов", VR_SETTINGS.sfx, (v) => setVrSettings({ sfx: v }));
@@ -1421,6 +1433,33 @@ export class WristMenu {
     toggle("set:tts", "Озвучка чата Twitch", "голоса сообщений чата стрима слышны в игре", VR_SETTINGS.tts, () =>
       setVrSettings({ tts: !VR_SETTINGS.tts }),
     );
+    // Модель персонажа: нажатие — следующая по кругу.
+    {
+      const label = BOT_SKIN_LABELS[this.skin - 1] ?? "…";
+      const wd = this.add({
+        id: "set:skin", x: 12, y, w: W, h: 56, kind: "toggle",
+        act: () => this.onSkin?.((this.skin % BOT.skins) + 1),
+        info: ["Модель персонажа", "нажми — следующая по кругу"],
+      });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || "#171b26";
+      ctx.fillRect(wd.x, y, wd.w, wd.h);
+      ctx.strokeStyle = st.stroke || "#2c3446";
+      ctx.lineWidth = st.lw;
+      ctx.strokeRect(wd.x, y, wd.w, wd.h);
+      ctx.font = "bold 26px system-ui, sans-serif";
+      ctx.fillStyle = "#e8ecf8";
+      ctx.fillText("Модель персонажа", 28, y + 2);
+      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillStyle = "#8c96ad";
+      ctx.fillText(`${this.skin} из ${BOT.skins} — нажми, чтобы сменить`, 28, y + 32);
+      ctx.font = "bold 26px system-ui, sans-serif";
+      ctx.fillStyle = "#ffd166";
+      ctx.textAlign = "right";
+      ctx.fillText(`${label}  ▶`, TEX_W - 40, y + 14);
+      ctx.textAlign = "left";
+      y += 64;
+    }
     toggle("set:pvp", "PvP с игроками", "тебя смогут атаковать другие игроки с PvP", this.pvpOn, () => this.onTogglePvp?.());
   }
 }
