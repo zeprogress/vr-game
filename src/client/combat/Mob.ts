@@ -296,6 +296,9 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
   return [src];
 }
 
+/** Размеры языков пламени (множитель к r): 3 средних и 9 мелких. */
+const FLAME_SIZES = [1.05, 0.95, 0.85, 0.5, 0.45, 0.55, 0.4, 0.5, 0.42, 0.48, 0.38, 0.45];
+
 export class Mob implements Hittable {
   readonly root: TransformNode;
   private readonly body: Mesh;
@@ -1077,15 +1080,17 @@ export class Mob implements Hittable {
       this.burnMat.alphaMode = Constants.ALPHA_ADD;
       this.burnMat.disableDepthWrite = true;
       const r = MOB.bodyRadius;
-      for (let i = 0; i < 5; i++) {
-        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r * 1.7 }, scene);
+      // Огонь — россыпь: несколько средних «языков» и много мелких (большие квадраты
+      // выглядели грубо). Размер каждого — множитель к плоскости r×r.
+      for (let i = 0; i < FLAME_SIZES.length; i++) {
+        const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r }, scene);
         f.material = this.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
         // Рисуем раньше тела моба в прозрачной очереди: у полупрозрачного тела огонь виден
         // сквозь него (а земля по-прежнему закрывает — это обычная очередь с тестом глубины).
         f.alphaIndex = 0;
-        const a = (i / 5) * Math.PI * 2;
+        const a = (i / FLAME_SIZES.length) * Math.PI * 2 * 2.3; // винтом, чтобы мелкие не сходились в одном месте
         // По кругу у поверхности тела (было 0.55 r — внутри тела, огонь скрывало).
         f.position.set(Math.cos(a) * r * 0.95, r * 0.4, Math.sin(a) * r * 0.95);
         f.parent = this.burnFx;
@@ -1101,7 +1106,7 @@ export class Mob implements Hittable {
       const rise = (this.burnT * 1.8 + i * 0.37) % 1;
       f.position.y = r * (0.15 + rise * 1.5);
       const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
-      f.scaling.setAll(Math.max(0.05, s));
+      f.scaling.setAll(Math.max(0.03, s * FLAME_SIZES[i]));
     }
     if (this.burnMat) {
       this.burnMat.alpha = 0.275 * this.burnGlow;
