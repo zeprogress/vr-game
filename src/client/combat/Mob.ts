@@ -296,8 +296,8 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
   return [src];
 }
 
-/** Размеры языков пламени (множитель к r): 3 средних и 9 мелких. */
-const FLAME_SIZES = [1.05, 0.95, 0.85, 0.5, 0.45, 0.55, 0.4, 0.5, 0.42, 0.48, 0.38, 0.45];
+/** Размеры языков пламени (множитель к r): 2 средних и 16 мелких. */
+const FLAME_SIZES = [0.78, 0.68, 0.42, 0.36, 0.4, 0.32, 0.38, 0.34, 0.44, 0.3, 0.37, 0.33, 0.41, 0.31, 0.39, 0.35, 0.3, 0.36];
 
 export class Mob implements Hittable {
   readonly root: TransformNode;
@@ -1109,7 +1109,7 @@ export class Mob implements Hittable {
       f.scaling.setAll(Math.max(0.03, s * FLAME_SIZES[i]));
     }
     if (this.burnMat) {
-      this.burnMat.alpha = 0.275 * this.burnGlow;
+      this.burnMat.alpha = 0.38 * this.burnGlow; // было 0.275 — чуть плотнее
     }
   }
 
