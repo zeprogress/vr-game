@@ -169,6 +169,7 @@ import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { TowerRunManager } from "./TowerRunManager";
+import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 
@@ -814,6 +815,30 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     this.setSimulationInterval((deltaMs) => this.step(deltaMs / 1000), 50);
+    serverPerf.storeInfo = () => ({
+      flushMs: store.lastFlush.ms,
+      bytes: store.lastFlush.bytes,
+      flushes: store.lastFlush.count,
+    });
+    serverPerf.start(() => {
+      // Трафик — байты, записанные/прочитанные сокетами клиентов (монотонные счётчики ws).
+      let out = 0;
+      let inn = 0;
+      for (const c of this.clients) {
+        const sock = (c as unknown as { ref?: { _socket?: { bytesWritten?: number; bytesRead?: number } } }).ref?._socket;
+        out += sock?.bytesWritten ?? 0;
+        inn += sock?.bytesRead ?? 0;
+      }
+      return {
+        clients: this.clients.length,
+        players: this.state.players.size,
+        mobs: this.sim.mobs.size,
+        drops: this.state.drops.size,
+        bolts: this.state.bolts.size,
+        bytesOut: out,
+        bytesIn: inn,
+      };
+    });
 
     // Чат Twitch: `!play` — бот под ником зрителя, `!stop` — убрать.
     this.twitch = new TwitchChat(
@@ -4494,6 +4519,20 @@ export class ZoneRoom extends Room<ZoneState> {
   // ---- тик ----
 
   private step(dt: number): void {
+    const perfT0 = serverPerf.now();
+    this.stepInner(dt);
+    serverPerf.tick(serverPerf.now() - perfT0);
+  }
+
+  /** Диагностика (server/perf.ts): время патча состояния — сериализация и отправка всем клиентам. */
+  override broadcastPatch(): boolean {
+    const t0 = serverPerf.now();
+    const r = super.broadcastPatch();
+    serverPerf.section("patch", serverPerf.now() - t0);
+    return r;
+  }
+
+  private stepInner(dt: number): void {
     this.elapsed += dt;
     if (this.state.dayAuto !== 0) this.worldHour = advanceHour(this.worldHour, dt);
     // Раз в syncSeconds сверяем клиентов — между сверками они крутят часы сами.
@@ -4505,6 +4544,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
     this.persistClock += dt;
     if (this.persistClock >= 10) {
+      const perfP0 = serverPerf.now();
       this.persistClock = 0;
       this.state.players.forEach((_p, id) => {
         const c = this.clientOf(id);
@@ -4513,11 +4553,14 @@ export class ZoneRoom extends Room<ZoneState> {
       for (const bot of this.bots.values()) this.persistBot(bot);
       world.save(this.sim.saveDrops());
       this.broadcastLeaderboard();
+      serverPerf.section("persist", serverPerf.now() - perfP0);
     }
 
     this.tickEvents();
     this.tickRaid();
+    const perfB0 = serverPerf.now();
     this.tickBots(dt);
+    serverPerf.section("bots", serverPerf.now() - perfB0);
     this.maybeSayTip(dt);
 
     // Мана восстанавливается всегда (от интеллекта).
@@ -4551,7 +4594,9 @@ export class ZoneRoom extends Room<ZoneState> {
       players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z });
     });
 
+    const perfS0 = serverPerf.now();
     const hits = this.sim.tick(dt, players);
+    serverPerf.section("sim", serverPerf.now() - perfS0);
 
     // sim -> схема. Осколки босса появляются/исчезают — заводим схему на лету.
     for (const m of this.sim.mobs.values()) {
@@ -5309,6 +5354,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override onDispose(): void {
     this.twitch?.stop();
+    serverPerf.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);
   }
 }

@@ -125,14 +125,22 @@ export class PlayerStore {
   }
 
   /** Записать на диск, если что-то менялось. Атомарно (tmp + rename). */
+  /** Диагностика (server/perf.ts): последняя запись — сколько заняла и сколько байт. */
+  readonly lastFlush = { ms: 0, bytes: 0, count: 0 };
+
   flush(): void {
     if (!this.dirty) return;
     try {
+      const t0 = performance.now();
       mkdirSync(dirname(FILE), { recursive: true });
       const tmp = `${FILE}.tmp`;
-      writeFileSync(tmp, JSON.stringify([...this.records.values()], null, 2));
+      const json = JSON.stringify([...this.records.values()], null, 2);
+      writeFileSync(tmp, json);
       renameSync(tmp, FILE);
       this.dirty = false;
+      this.lastFlush.ms = performance.now() - t0;
+      this.lastFlush.bytes = json.length;
+      this.lastFlush.count++;
     } catch (e) {
       console.warn("[store] players.json не записан:", (e as Error).message);
     }
