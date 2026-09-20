@@ -1,7 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
-import { impostorsReady, impostorsUpdate } from "./TreeImpostors";
+import { impostorsIs3D, impostorsReady, impostorsUpdate } from "./TreeImpostors";
 
 /**
  * Отсечение сцены для VR (Quest считает всё дважды — на два глаза).
@@ -105,9 +105,25 @@ export class VrCull {
     }
     // Дальше NEAR_3D настоящая модель дерева не нужна — там снимок-билборд (TreeImpostors).
     const imp = impostorsReady();
-    this.apply(this.trees, cam, imp ? NEAR_3D : this.treeR, fx, fz);
+    if (imp) {
+      // Одно решение на дерево (модель или снимок) принимает TreeImpostors.
+      impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
+      for (const m of this.trees) {
+        if (m.isDisposed()) continue;
+        const hide = impostorsIs3D(m) === false;
+        const off = this.hidden.has(m);
+        if (hide && !off) {
+          m.setEnabled(false);
+          this.hidden.add(m);
+        } else if (!hide && off) {
+          m.setEnabled(true);
+          this.hidden.delete(m);
+        }
+      }
+    } else {
+      this.apply(this.trees, cam, this.treeR, fx, fz);
+    }
     this.apply(this.rocks, cam, this.rockR, fx, fz);
-    if (imp) impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();

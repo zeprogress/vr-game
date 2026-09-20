@@ -84,7 +84,7 @@ uniform float uFogEnd;
 void main() {
   vec4 c = texture2D(tex, vUv);
   if (c.a < 0.4) discard;
-  vec3 col = c.rgb * uLit;
+  vec3 col = c.rgb * uLit * 0.9;
   float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
   gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
 }
@@ -110,6 +110,10 @@ export function impostorsReady(): boolean {
 export function impostorsUpdate(cam: Vector3, fx: number, fz: number, farR: number, nearR: number): void {
   current?.update(cam, fx, fz, farR, nearR);
 }
+/** Показывать ли настоящую 3D-модель для этого меша дерева (undefined — меш не из списка). */
+export function impostorsIs3D(mesh: { getAbsolutePosition(): Vector3 }): boolean | undefined {
+  return current?.is3D(mesh);
+}
 export function impostorsDaylight(daylight: number): void {
   current?.setDaylight(daylight);
 }
@@ -118,12 +122,21 @@ export class TreeImpostors {
   ready = false;
   private readonly kinds = new Map<number, Kind>();
   private lit = 1;
+  private far: Uint8Array;
+  private vis3: Uint8Array;
+  private impVis: Uint8Array;
+  private readonly keyMap = new Map<string, number>();
+  private readonly meshIdx = new WeakMap<object, number>();
 
   constructor(
     private readonly scene: Scene,
     private readonly trees: ImpostorTree[],
   ) {
     current = this;
+    this.far = new Uint8Array(trees.length);
+    this.vis3 = new Uint8Array(trees.length).fill(1);
+    this.impVis = new Uint8Array(trees.length);
+    trees.forEach((t, i) => this.keyMap.set(`${t.x.toFixed(1)}|${t.z.toFixed(1)}`, i));
     void this.capture();
   }
 
@@ -178,10 +191,10 @@ export class TreeImpostors {
         cm.useAlphaFromDiffuseTexture = true;
         cm.transparencyMode = 1; // ALPHATEST
         cm.alphaCutOff = 0.28;
-        cm.emissiveColor = new Color3(0.78, 0.86, 0.66); // листва: как днём на свету
+        cm.emissiveColor = new Color3(0.5, 0.58, 0.42); // листва: темнее, чем «на свету» — вдали она сливается с фоном
       } else {
         const d = om?.diffuseColor ?? new Color3(0.3, 0.2, 0.13);
-        cm.emissiveColor = new Color3(d.r * 1.5, d.g * 1.5, d.b * 1.5);
+        cm.emissiveColor = new Color3(d.r * 1.1, d.g * 1.1, d.b * 1.1);
       }
       cm.diffuseColor = new Color3(0, 0, 0);
       cm.specularColor = new Color3(0, 0, 0);
@@ -323,35 +336,8 @@ export class TreeImpostors {
       ids: list.map((t) => this.trees.indexOf(t)),
       shown: new Uint8Array(list.length),
     });
-    // Всё скрыто, пока update() не решит иначе.
-    this.writeAll(kind, () => false, new Vector3());
-  }
-
-  private writeAll(kind: number, visible: (t: ImpostorTree) => boolean, _cam: Vector3): void {
-    const k = this.kinds.get(kind);
-    if (!k) return;
-    let count = 0;
-    for (let n = 0; n < k.ids.length; n++) {
-      const t = this.trees[k.ids[n]];
-      const vis = visible(t);
-      k.shown[n] = vis ? 1 : 0;
-      if (!vis) continue;
-      const r = t.scale / k.refScale;
-      // Compose: масштаб (w*r, h*r, 1), позиция (x, y + yOff*r, z).
-      const o = count * 16;
-      k.buf.fill(0, o, o + 16);
-      k.buf[o] = k.w * r;
-      k.buf[o + 5] = k.h * r;
-      k.buf[o + 10] = 1;
-      k.buf[o + 12] = t.x;
-      k.buf[o + 13] = t.y + k.yOff * r;
-      k.buf[o + 14] = t.z;
-      k.buf[o + 15] = 1;
-      count++;
-    }
-    k.mesh.thinInstanceCount = count;
-    k.mesh.thinInstanceBufferUpdated("matrix");
-    k.mesh.setEnabled(count > 0);
+    mesh.thinInstanceCount = 0;
+    mesh.setEnabled(false);
   }
 
   /** Дневная освещённость 0..1 → яркость снимков. */
@@ -366,31 +352,75 @@ export class TreeImpostors {
     }
   }
 
+  /** Индекс дерева по мешу (позиция корня = позиция дерева). */
+  private idxOf(mesh: { getAbsolutePosition(): Vector3 }): number | undefined {
+    const cached = this.meshIdx.get(mesh);
+    if (cached !== undefined) return cached >= 0 ? cached : undefined;
+    const p = mesh.getAbsolutePosition();
+    const i = this.keyMap.get(`${p.x.toFixed(1)}|${p.z.toFixed(1)}`);
+    this.meshIdx.set(mesh, i ?? -1);
+    return i;
+  }
+
+  is3D(mesh: { getAbsolutePosition(): Vector3 }): boolean | undefined {
+    const i = this.idxOf(mesh);
+    return i === undefined ? undefined : this.vis3[i] === 1;
+  }
+
   /**
-   * Раз в ~0.2 с: какие деревья показывать снимком. Между `nearR` (там ещё настоящая
-   * модель) и `farR`; в VR (fx/fz ≠ 0) — по секторам: ±30° — farR, до ±60° — 3/4 farR.
+   * Раз в ~0.2 с: у каждого дерева ОДНО решение — настоящая модель (ближе `nearR`) или
+   * снимок (дальше, до `farR`); переключение с гистерезисом ±3 м, поэтому модель и снимок
+   * никогда не показываются вместе и не пропадают оба. В VR (fx/fz ≠ 0) — по секторам:
+   * ±30° — farR, до ±60° — 3/4 farR, остальное вокруг не рисуем (кроме ближних 14 м).
    */
   update(cam: Vector3, fx: number, fz: number, farR: number, nearR: number): void {
     if (!this.ready) return;
     const sector = fx !== 0 || fz !== 0;
-    for (const kind of this.kinds.keys()) {
-      this.writeAll(
-        kind,
-        (t) => {
-          const dx = t.x - cam.x;
-          const dz = t.z - cam.z;
-          const d = Math.hypot(dx, dz);
-          if (d <= nearR - 2) return false; // тут настоящая модель
-          let lim = farR;
-          if (sector) {
-            const cosA = (dx * fx + dz * fz) / Math.max(1e-3, d);
-            lim = cosA > 0.83 ? farR : cosA > 0.47 ? farR * 0.75 : 0;
-          }
-          return d <= lim;
-        },
-        cam,
-      );
+    for (let i = 0; i < this.trees.length; i++) {
+      const t = this.trees[i];
+      const dx = t.x - cam.x;
+      const dz = t.z - cam.z;
+      const d = Math.hypot(dx, dz);
+      const wasFar = this.far[i] === 1;
+      const isFar = d > nearR + (wasFar ? -3 : 3);
+      this.far[i] = isFar ? 1 : 0;
+      let lim = farR;
+      if (sector) {
+        const cosA = (dx * fx + dz * fz) / Math.max(1e-3, d);
+        const da = this.vis3[i] === 1 || this.shownImp(i) ? 0.03 : -0.03;
+        lim = cosA > 0.866 - da ? farR : cosA > 0.5 - da ? farR * 0.75 : 0;
+      }
+      const inRange = d <= 14 || d <= lim;
+      this.vis3[i] = !isFar && inRange ? 1 : 0;
+      this.impVis[i] = isFar && d <= lim ? 1 : 0;
     }
+    for (const [kind, k] of this.kinds) {
+      let count = 0;
+      for (let n = 0; n < k.ids.length; n++) {
+        const ti = k.ids[n];
+        if (this.impVis[ti] !== 1) continue;
+        const t = this.trees[ti];
+        const r = t.scale / k.refScale;
+        const o = count * 16;
+        k.buf.fill(0, o, o + 16);
+        k.buf[o] = k.w * r;
+        k.buf[o + 5] = k.h * r;
+        k.buf[o + 10] = 1;
+        k.buf[o + 12] = t.x;
+        k.buf[o + 13] = t.y + k.yOff * r;
+        k.buf[o + 14] = t.z;
+        k.buf[o + 15] = 1;
+        count++;
+      }
+      k.mesh.thinInstanceCount = count;
+      k.mesh.thinInstanceBufferUpdated("matrix");
+      k.mesh.setEnabled(count > 0);
+      void kind;
+    }
+  }
+
+  private shownImp(i: number): boolean {
+    return this.impVis[i] === 1;
   }
 
   dispose(): void {
