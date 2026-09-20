@@ -11,6 +11,10 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { Scene as SceneCls } from "@babylonjs/core/scene";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
+import { COS_CENTER, COS_SIDE, SIDE_K } from "./cullSectors";
+
+/** Ширина зоны наплыва (м): снимок проступает за FADE_W до границы модели. */
+const FADE_W = 18;
 
 /**
  * Дальние деревья — плоские «снимки» вместо моделей.
@@ -50,8 +54,10 @@ uniform mat4 viewProjectionR;
 uniform mat4 view;
 varying vec2 vUv;
 varying float vDist;
+varying float vFade;
 void main() {
   vec3 base = world3.xyz;
+  vFade = world2.x; // 0..1 — наплыв снимка (см. update)
   float sx = world0.x;
   float sy = world1.y;
   // Билборд смотрит НА ПОЗИЦИЮ камеры (цилиндрический: вокруг вертикали), а не по её
@@ -76,6 +82,7 @@ const FRAG = /* glsl */ `
 precision highp float;
 varying vec2 vUv;
 varying float vDist;
+varying float vFade;
 uniform sampler2D tex;
 uniform float uLit;
 uniform vec3 uFogColor;
@@ -84,6 +91,9 @@ uniform float uFogEnd;
 void main() {
   vec4 c = texture2D(tex, vUv);
   if (c.a < 0.4) discard;
+  // Плавный наплыв: экранная растушёвка (dither) — доля пикселей снимка растёт с vFade.
+  float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (vFade < ign) discard;
   vec3 col = c.rgb * uLit * 0.9;
   float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
   gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
@@ -111,7 +121,7 @@ export function impostorsUpdate(cam: Vector3, fx: number, fz: number, farR: numb
   current?.update(cam, fx, fz, farR, nearR);
 }
 /** Показывать ли настоящую 3D-модель для этого меша дерева (undefined — меш не из списка). */
-export function impostorsIs3D(mesh: { getAbsolutePosition(): Vector3 }): boolean | undefined {
+export function impostorsIs3D(mesh: { metadata?: unknown }): boolean | undefined {
   return current?.is3D(mesh);
 }
 export function impostorsDaylight(daylight: number): void {
@@ -125,8 +135,7 @@ export class TreeImpostors {
   private far: Uint8Array;
   private vis3: Uint8Array;
   private impVis: Uint8Array;
-  private readonly keyMap = new Map<string, number>();
-  private readonly meshIdx = new WeakMap<object, number>();
+  private fade: Float32Array;
 
   constructor(
     private readonly scene: Scene,
@@ -136,7 +145,10 @@ export class TreeImpostors {
     this.far = new Uint8Array(trees.length);
     this.vis3 = new Uint8Array(trees.length).fill(1);
     this.impVis = new Uint8Array(trees.length);
-    trees.forEach((t, i) => this.keyMap.set(`${t.x.toFixed(1)}|${t.z.toFixed(1)}`, i));
+    this.fade = new Float32Array(trees.length);
+    trees.forEach((t, i) => {
+      for (const m of t.meshes) m.metadata = { ...(m.metadata ?? {}), treeIdx: i };
+    });
     void this.capture();
   }
 
@@ -156,6 +168,8 @@ export class TreeImpostors {
       }
     }
     this.ready = this.kinds.size > 0;
+    const per = [...byKind].map(([k, l]) => `${k}:${l.length}${this.kinds.has(k) ? "" : "(БЕЗ снимка)"}`).join(" ");
+    console.log(`[impostor] виды деревьев (вид:число): ${per}`);
   }
 
   private captureKind(kind: number, list: ImpostorTree[]): Promise<void> {
@@ -352,26 +366,20 @@ export class TreeImpostors {
     }
   }
 
-  /** Индекс дерева по мешу (позиция корня = позиция дерева). */
-  private idxOf(mesh: { getAbsolutePosition(): Vector3 }): number | undefined {
-    const cached = this.meshIdx.get(mesh);
-    if (cached !== undefined) return cached >= 0 ? cached : undefined;
-    const p = mesh.getAbsolutePosition();
-    const i = this.keyMap.get(`${p.x.toFixed(1)}|${p.z.toFixed(1)}`);
-    this.meshIdx.set(mesh, i ?? -1);
-    return i;
-  }
-
-  is3D(mesh: { getAbsolutePosition(): Vector3 }): boolean | undefined {
-    const i = this.idxOf(mesh);
+  /** Настоящая модель для этого меша дерева? undefined — меш не из списка (обычная логика радиусов). */
+  is3D(mesh: { metadata?: unknown }): boolean | undefined {
+    const md = mesh.metadata as { treeIdx?: number } | null | undefined;
+    const i = md?.treeIdx;
     return i === undefined ? undefined : this.vis3[i] === 1;
   }
 
   /**
-   * Раз в ~0.2 с: у каждого дерева ОДНО решение — настоящая модель (ближе `nearR`) или
-   * снимок (дальше, до `farR`); переключение с гистерезисом ±3 м, поэтому модель и снимок
-   * никогда не показываются вместе и не пропадают оба. В VR (fx/fz ≠ 0) — по секторам:
-   * ±30° — farR, до ±60° — 3/4 farR, остальное вокруг не рисуем (кроме ближних 14 м).
+   * Раз в ~0.2 с: у каждого дерева ОДНО решение. Модель — до `nearR` (гистерезис ±3 м),
+   * снимок — дальше; за FADE_W до границы снимок начинает проступать (растушёвка), пока
+   * модель ещё на месте — смена идёт наплывом, без скачка. Если для вида дерева снимка
+   * нет — модель остаётся до самой дальности (дерево не исчезает без замены).
+   * В VR (fx/fz ≠ 0) — по секторам (cullSectors): центр — farR, боковые — SIDE_K·farR,
+   * остальное вокруг не рисуем (кроме ближних 14 м).
    */
   update(cam: Vector3, fx: number, fz: number, farR: number, nearR: number): void {
     if (!this.ready) return;
@@ -381,20 +389,24 @@ export class TreeImpostors {
       const dx = t.x - cam.x;
       const dz = t.z - cam.z;
       const d = Math.hypot(dx, dz);
+      const hasImp = this.kinds.has(t.kind);
       const wasFar = this.far[i] === 1;
-      const isFar = d > nearR + (wasFar ? -3 : 3);
+      const isFar = hasImp && d > nearR + (wasFar ? -3 : 3);
       this.far[i] = isFar ? 1 : 0;
       let lim = farR;
       if (sector) {
         const cosA = (dx * fx + dz * fz) / Math.max(1e-3, d);
-        const da = this.vis3[i] === 1 || this.shownImp(i) ? 0.03 : -0.03;
-        lim = cosA > 0.866 - da ? farR : cosA > 0.5 - da ? farR * 0.75 : 0;
+        const da = this.vis3[i] === 1 || this.impVis[i] === 1 ? 0.03 : -0.03;
+        lim = cosA > COS_CENTER - da ? farR : cosA > COS_SIDE - da ? farR * SIDE_K : 0;
       }
       const inRange = d <= 14 || d <= lim;
       this.vis3[i] = !isFar && inRange ? 1 : 0;
-      this.impVis[i] = isFar && d <= lim ? 1 : 0;
+      // Снимок: от (nearR − FADE_W) до lim; яркость наплыва 0→1 по зоне.
+      const showImp = hasImp && d > nearR - FADE_W && d <= lim;
+      this.impVis[i] = showImp ? 1 : 0;
+      this.fade[i] = Math.max(0, Math.min(1, (d - (nearR - FADE_W)) / FADE_W));
     }
-    for (const [kind, k] of this.kinds) {
+    for (const k of this.kinds.values()) {
       let count = 0;
       for (let n = 0; n < k.ids.length; n++) {
         const ti = k.ids[n];
@@ -405,6 +417,7 @@ export class TreeImpostors {
         k.buf.fill(0, o, o + 16);
         k.buf[o] = k.w * r;
         k.buf[o + 5] = k.h * r;
+        k.buf[o + 8] = this.fade[ti]; // world2.x — наплыв (шейдер читает как vFade)
         k.buf[o + 10] = 1;
         k.buf[o + 12] = t.x;
         k.buf[o + 13] = t.y + k.yOff * r;
@@ -415,12 +428,7 @@ export class TreeImpostors {
       k.mesh.thinInstanceCount = count;
       k.mesh.thinInstanceBufferUpdated("matrix");
       k.mesh.setEnabled(count > 0);
-      void kind;
     }
-  }
-
-  private shownImp(i: number): boolean {
-    return this.impVis[i] === 1;
   }
 
   dispose(): void {

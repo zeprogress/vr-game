@@ -107,6 +107,22 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
     const uv = src.getVerticesData(VertexBuffer.UVKind);
     m.computeWorldMatrix(true);
     const W = m.getWorldMatrix().multiply(inv);
+    // Скинненый меш: берём позу, в которой моб реально стоит сейчас (покой после
+    // stopAnim), а не «позу привязки» — у слизня они разные (сплющивание по фазе).
+    const sk = m.skeleton ?? src.skeleton;
+    let skin: Float32Array | null = null;
+    let mi: Float32Array | null = null;
+    let mw: Float32Array | null = null;
+    let mie: Float32Array | null = null;
+    let mwe: Float32Array | null = null;
+    if (sk) {
+      sk.prepare(true);
+      skin = sk.getTransformMatrices(m);
+      mi = src.getVerticesData(VertexBuffer.MatricesIndicesKind) as Float32Array | null;
+      mw = src.getVerticesData(VertexBuffer.MatricesWeightsKind) as Float32Array | null;
+      mie = src.getVerticesData(VertexBuffer.MatricesIndicesExtraKind) as Float32Array | null;
+      mwe = src.getVerticesData(VertexBuffer.MatricesWeightsExtraKind) as Float32Array | null;
+    }
     let g = groups.get(mat);
     if (!g) {
       g = { mat, pos: [], uv: [], idx: [] };
@@ -114,7 +130,32 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
     }
     const base = g.pos.length / 3;
     for (let i = 0; i < pos.length; i += 3) {
-      Vector3.TransformCoordinatesFromFloatsToRef(pos[i], pos[i + 1], pos[i + 2], W, tmp);
+      let px = pos[i];
+      let py = pos[i + 1];
+      let pz = pos[i + 2];
+      if (skin && mi && mw) {
+        const vi4 = (i / 3) * 4;
+        let sx = 0, sy = 0, sz = 0, wsum = 0;
+        for (let k = 0; k < 8; k++) {
+          const ex = k >= 4;
+          const idxArr = ex ? mie : mi;
+          const wArr = ex ? mwe : mw;
+          if (!idxArr || !wArr) continue;
+          const w = wArr[vi4 + (k & 3)];
+          if (!w) continue;
+          const o = idxArr[vi4 + (k & 3)] * 16;
+          sx += w * (px * skin[o] + py * skin[o + 4] + pz * skin[o + 8] + skin[o + 12]);
+          sy += w * (px * skin[o + 1] + py * skin[o + 5] + pz * skin[o + 9] + skin[o + 13]);
+          sz += w * (px * skin[o + 2] + py * skin[o + 6] + pz * skin[o + 10] + skin[o + 14]);
+          wsum += w;
+        }
+        if (wsum > 0.001) {
+          px = sx;
+          py = sy;
+          pz = sz;
+        }
+      }
+      Vector3.TransformCoordinatesFromFloatsToRef(px, py, pz, W, tmp);
       g.pos.push(tmp.x, tmp.y, tmp.z);
       if (tmp.y < minY) minY = tmp.y;
       if (tmp.y > maxY) maxY = tmp.y;
@@ -889,6 +930,7 @@ export class Mob implements Hittable {
       const key = `${this.modelName}|${this.kind}`;
       let srcs = lodCache.get(key);
       if (srcs === undefined || (srcs && srcs[0].isDisposed())) {
+        this.stopAnim(); // поза покоя — как моб выглядит вдали
         srcs = lodBuild(this.scene, key, rig.meshes, this.root);
         lodCache.set(key, srcs);
       }

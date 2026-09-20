@@ -2,6 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { impostorsIs3D, impostorsReady, impostorsUpdate } from "./TreeImpostors";
+import { COS_CENTER, COS_SIDE, FAR_CENTER, NEAR_3D, SIDE_K } from "./cullSectors";
 
 /**
  * Отсечение сцены для VR (Quest считает всё дважды — на два глаза).
@@ -18,13 +19,6 @@ import { impostorsIs3D, impostorsReady, impostorsUpdate } from "./TreeImpostors"
  */
 /** Ближе этого объекты не прячем по направлению (крутанулся — они рядом). */
 const BEHIND_NEAR = 14;
-/** Центральный конус ±30° — полная дальность; боковые секторы до ±60° — SIDE_K от неё. */
-const COS_CENTER = Math.cos((30 * Math.PI) / 180);
-const COS_SIDE = Math.cos((60 * Math.PI) / 180);
-const SIDE_K = 0.75;
-/** Полная 3D-модель дерева — только до этого расстояния, дальше снимок. */
-const NEAR_3D = 60;
-
 export class VrCull {
   /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
   private small: { m: AbstractMesh; r: number }[] = [];
@@ -43,9 +37,9 @@ export class VrCull {
     readonly vr = true,
   ) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 200 : 150;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? FAR_CENTER : 150;
     this.treeR = Number.isFinite(v) ? v : 60;
-    this.rockR = this.vr ? 180 : 50;
+    this.rockR = this.vr ? FAR_CENTER - 20 : 50;
   }
 
   private scan(): void {
@@ -108,9 +102,15 @@ export class VrCull {
     if (imp) {
       // Одно решение на дерево (модель или снимок) принимает TreeImpostors.
       impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
+      const unmapped: AbstractMesh[] = [];
       for (const m of this.trees) {
         if (m.isDisposed()) continue;
-        const hide = impostorsIs3D(m) === false;
+        const is3d = impostorsIs3D(m);
+        if (is3d === undefined) {
+          unmapped.push(m); // не из списка снимков — обычная логика радиусов
+          continue;
+        }
+        const hide = is3d === false;
         const off = this.hidden.has(m);
         if (hide && !off) {
           m.setEnabled(false);
@@ -120,6 +120,7 @@ export class VrCull {
           this.hidden.delete(m);
         }
       }
+      if (unmapped.length) this.apply(unmapped, cam, this.treeR, fx, fz);
     } else {
       this.apply(this.trees, cam, this.treeR, fx, fz);
     }
