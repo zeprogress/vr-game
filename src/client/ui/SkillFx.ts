@@ -24,6 +24,9 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
   m.disableDepthWrite = true;
   m.alphaMode = Constants.ALPHA_ADD;
   m.backFaceCulling = false;
+  // Раньше эффекты сидели в renderingGroupId=1 (там глубина стирается) и просвечивали сквозь землю и
+  // предметы; теперь обычная очередь с тестом глубины, а круги на земле подтянуты к камере.
+  m.zOffset = -4;
   return m;
 }
 
@@ -60,7 +63,6 @@ export class SkillFx {
       ring.material = addMat(scene, `rainRingMat${i}`, RAIN);
       ring.rotation.x = Math.PI / 2;
       ring.isPickable = false;
-      ring.renderingGroupId = 1;
       ring.setEnabled(false);
 
       const shafts: Mesh[] = [];
@@ -73,7 +75,6 @@ export class SkillFx {
         );
         sh.material = shaftMat;
         sh.isPickable = false;
-        sh.renderingGroupId = 1;
         sh.setEnabled(false);
         shafts.push(sh);
       }
@@ -85,7 +86,6 @@ export class SkillFx {
       ring.material = addMat(scene, `stunRingMat${i}`, STUN);
       ring.rotation.x = Math.PI / 2;
       ring.isPickable = false;
-      ring.renderingGroupId = 1;
       ring.setEnabled(false);
       this.stuns.push({ ring, age: 1, life: 1, radius: 1 });
     }

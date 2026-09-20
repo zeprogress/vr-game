@@ -1082,7 +1082,6 @@ export class Mob implements Hittable {
         f.material = this.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
-        f.renderingGroupId = 1;
         const a = (i / 5) * Math.PI * 2;
         f.position.set(Math.cos(a) * r * 0.55, r * 0.4, Math.sin(a) * r * 0.55);
         f.parent = this.burnFx;
