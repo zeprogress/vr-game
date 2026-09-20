@@ -42,10 +42,13 @@ export class VrCull {
       const n = m.name;
       if (n.startsWith("firefly")) small.push({ m, r: 30 });
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
-      else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) trees.push(m);
+      else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {
+        trees.push(m);
+        m.alwaysSelectAsActiveMesh = true; // в VR — только отсечение по расстоянию
+      }
       else if (n.startsWith("Rock_Medium")) {
         rocks.push(m);
-        m.alwaysSelectAsActiveMesh = false; // пусть работает отсечение по кадру
+        m.alwaysSelectAsActiveMesh = true; // в VR — только отсечение по расстоянию
       } else if (m.getTotalVertices() === 0 && !m.isAnInstance && m.isVisible && m.getChildren().length > 0) {
         // Корень без геометрии (glTF __root__) — только у него есть дети-меши.
         m.isVisible = false;
@@ -102,6 +105,8 @@ export class VrCull {
     this.hidden.clear();
     for (const m of this.roots) if (!m.isDisposed()) m.isVisible = true;
     for (const s of this.small) if (!s.m.isDisposed()) s.m.isVisible = true;
+    for (const m of this.trees) if (!m.isDisposed()) m.alwaysSelectAsActiveMesh = false;
+    for (const m of this.rocks) if (!m.isDisposed()) m.alwaysSelectAsActiveMesh = false;
     this.roots.clear();
   }
 }

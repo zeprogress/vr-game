@@ -195,9 +195,12 @@ export async function loadTrees(
       if (isLeaf) mesh.scaling.set(1.15, 0.92, 1.15);
       else mesh.scaling.set(0.62, 1, 0.62);
       mesh.isPickable = false;
-      mesh.doNotSyncBoundingInfo = true;
-      mesh.alwaysSelectAsActiveMesh = true; // дерево статично — bbox не считаем
+      // Сначала замораживаем (при этом bbox синхронизируется с мировой матрицей),
+      // и только потом отключаем пересчёт. Раньше стояло alwaysSelectAsActiveMesh —
+      // все деревья рисовались всегда, даже за спиной; теперь работает отсечение
+      // по кадру. (В VR отсечением ведёт VrCull — по расстоянию.)
       mesh.freezeWorldMatrix();
+      mesh.doNotSyncBoundingInfo = true;
     }
     root.freezeWorldMatrix();
     treeInstances.push({ x: t.x, z: t.z, bark: barkMeshes, leaf: leafMeshes, step: -1 });
@@ -352,9 +355,8 @@ export async function loadRocks(
     for (const m of root.getChildMeshes(false)) {
       if (!m.isAnInstance) m.material = rm; // на инстансе не применяется (и шумит в консоль)
       m.isPickable = false;
+      m.freezeWorldMatrix(); // до doNotSync: иначе bbox остаётся в начале координат
       m.doNotSyncBoundingInfo = true;
-      m.alwaysSelectAsActiveMesh = true;
-      m.freezeWorldMatrix();
     }
     root.freezeWorldMatrix();
   };
