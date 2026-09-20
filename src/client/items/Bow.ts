@@ -50,7 +50,6 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   if (tier === "legendary") makeLegendModel(scene, root);
 
   applyBowTier(root, tier);
-  if (tier === "legendary") attachLegendaryGlow(scene, root, 0.35, 0.5);
 
   const parts: BowParts = {
     mesh: root,
@@ -97,6 +96,10 @@ function applyBowTier(root: Mesh, tier: WeaponTier): void {
   if (tier === "legendary" && !root.getChildren().some((n) => n.name === "bow_legend")) {
     makeLegendModel(root.getScene(), root);
   }
+  // Свечение уникального: создаём при первой надобности, у остальных уровней гасим.
+  const glow = root.getChildren().find((n) => n.name === "legGlow");
+  if (tier === "legendary" && !glow) attachLegendaryGlow(root.getScene(), root, 0.35, 0.5);
+  else glow?.setEnabled(tier === "legendary");
   for (const n of root.getChildren()) {
     if (n.name === "bow_wood") n.setEnabled(tier === "base");
     else if (n.name === "bow_gold") n.setEnabled(tier === "gold");

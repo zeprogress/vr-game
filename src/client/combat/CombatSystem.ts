@@ -465,6 +465,11 @@ export class CombatSystem {
   }
 
   /** Что в этой руке (учитывая двуручный хват посоха). */
+  /** В руке есть оружие или щит (для сжатия кисти в VR). */
+  handOccupied(hand: Side): boolean {
+    return this.inHand(hand) !== null;
+  }
+
   private inHand(hand: Side): Item | null {
     return this.items.find((i) => i.hand === hand || i.hand2 === hand) ?? null;
   }
@@ -1319,7 +1324,19 @@ export class CombatSystem {
     this.resetCast();
     item.mesh.parent = null;
     item.mesh.rotationQuaternion = null;
-    if (item.kind === "bow" || item.tier === "base") {
+    if (item.kind === "bow") {
+      // Лук один: на склад уходит «содержимое» (золото/уникальный), а на стойке снова обычный.
+      item.tier = "base";
+      tintBow(item.mesh, "base");
+      this.nockLocal.copyFrom(this.bowParts.nockRest);
+      tintArrows("base");
+      item.rest.pos.copyFrom(this.homes.bow);
+      item.rest.bob = false;
+      item.rest.stand = this.standPose("bow", this.weaponsFaceYaw);
+      this.layRest(item);
+      return;
+    }
+    if (item.tier === "base") {
       item.mesh.position.copyFrom(item.rest.pos); // стойка/камень — на месте
       return;
     }

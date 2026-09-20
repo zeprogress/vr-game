@@ -21,6 +21,9 @@ const FIST_ARC = 2.5;
 /** Большой палец: поворот поперёк ладони (рад) и лёгкое опускание. */
 const THUMB_SWING = 1.3;
 
+/** Насколько сжата кисть, пока в руке предмет (0..1). */
+const HOLD_CURL = 0.9;
+
 interface Hand {
   side: Side;
   root: TransformNode;
@@ -61,6 +64,8 @@ interface Glove {
  * Из консоли: `game.hands.turn("left","y")`, `game.hands.tune({scale:0.14})`.
  */
 export class Hands {
+  /** Что-то удерживается в руке (Game выставляет каждый кадр) — пальцы сжаты. */
+  readonly holding: Record<Side, boolean> = { left: false, right: false };
   private readonly hands: Hand[] = [];
   private addObs: Observer<WebXRInputSource> | null = null;
   private removeObs: Observer<WebXRInputSource> | null = null;
@@ -264,7 +269,8 @@ export class Hands {
 
       const btn = h.controller.inputSource.gamepad?.buttons[1];
       const grip = btn ? btn.value || (btn.pressed ? 1 : 0) : 0;
-      const target = Math.min(1, grip * cfg.curl); // «сгиб» — множитель силы
+      // Оружие/щит в руке — кисть сжата в захвате, даже если кнопку хвата не жмут.
+      const target = Math.min(1, Math.max(grip * cfg.curl, this.holding[h.side] ? HOLD_CURL : 0)); // «сгиб» — множитель силы
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
       const c = h.curl;
 

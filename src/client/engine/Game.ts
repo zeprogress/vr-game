@@ -533,6 +533,8 @@ export class Game {
           MANA_ENABLED && this.combat.holdsStaff,
         );
       }
+      this.hands.holding.left = this.combat.handOccupied("left");
+      this.hands.holding.right = this.combat.handOccupied("right");
       this.hands.update(dt);
       this.mark("hands");
       this.syncNet(dt);
