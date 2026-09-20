@@ -5,6 +5,8 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { Effect } from "@babylonjs/core/Materials/effect";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
@@ -14,11 +16,80 @@ import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { radialGlowTexture } from "../ui/GlowSprite";
 
 /**
- * Фиолетовое пульсирующее свечение уникального оружия — плоский billboard-
- * спрайт (не 3D-сфера, см. BuffAura.ts — та же переделка и по той же
- * причине): всегда развёрнут на камеру, а край круга гладкий по построению
- * (готовый радиальный градиент в текстуре), без вопроса числа сегментов.
+ * Фиолетовое пульсирующее свечение уникального оружия — плоский спрайт, который
+ * ВЕРШИННЫЙ ШЕЙДЕР сам разворачивает к глазам (по осям матрицы вида), поэтому
+ * ему не нужен ни billboardMode (пересчёт матрицы на CPU каждый кадр, из-за
+ * которого свечение «плыло» при движении стиком), ни покадровый JS: пульсация
+ * тоже в шейдере, время подставляется при привязке материала. Материал и
+ * текстура общие на сцену (по яркости).
  */
+const GLOW = "legendGlow";
+Effect.ShadersStore[`${GLOW}VertexShader`] = `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+uniform mat4 world;
+uniform mat4 view;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
+uniform float uT;
+uniform float uAmp;
+varying vec2 vUV;
+varying float vA;
+void main() {
+  float p = 0.85 + sin(uT * 3.0) * 0.15;
+  vA = (0.36 + p * 0.36) * uAmp;
+  vUV = uv;
+  vec3 c = world[3].xyz;
+  float sc = length(world[0].xyz) * p;
+  vec3 right = vec3(view[0][0], view[1][0], view[2][0]);
+  vec3 up = vec3(view[0][1], view[1][1], view[2][1]);
+  vec3 wp = c + (right * position.x + up * position.y) * sc;
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(wp, 1.0); } else { gl_Position = viewProjectionR * vec4(wp, 1.0); }
+#else
+  gl_Position = viewProjection * vec4(wp, 1.0);
+#endif
+}
+`;
+Effect.ShadersStore[`${GLOW}FragmentShader`] = `
+precision highp float;
+varying vec2 vUV;
+varying float vA;
+uniform sampler2D tex;
+void main() {
+  float a = texture2D(tex, vUV).a * vA;
+  gl_FragColor = vec4(0.6, 0.22, 1.0, a);
+}
+`;
+
+const glowMats = new WeakMap<Scene, Map<number, ShaderMaterial>>();
+
+function glowMaterial(scene: Scene, amp: number): ShaderMaterial {
+  let byAmp = glowMats.get(scene);
+  if (!byAmp) glowMats.set(scene, (byAmp = new Map()));
+  let mat = byAmp.get(amp);
+  if (!mat) {
+    mat = new ShaderMaterial(`${GLOW}Mat${amp}`, scene, GLOW, {
+      attributes: ["position", "uv"],
+      uniforms: ["world", "view", "viewProjection", "uT", "uAmp"],
+      samplers: ["tex"],
+      needAlphaBlending: true,
+    });
+    mat.setTexture("tex", radialGlowTexture(scene));
+    mat.setFloat("uAmp", amp);
+    mat.alphaMode = Constants.ALPHA_ADD;
+    mat.backFaceCulling = false;
+    mat.disableDepthWrite = true;
+    const m = mat;
+    mat.onBindObservable.add(() => m.getEffect()?.setFloat("uT", performance.now() / 1000));
+    byAmp.set(amp, mat);
+  }
+  return mat;
+}
+
 export function attachLegendaryGlow(
   scene: Scene,
   host: Mesh,
@@ -27,32 +98,11 @@ export function attachLegendaryGlow(
   intensity = 1,
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
-  const mat = new StandardMaterial("legGlowMat", scene);
-  mat.emissiveColor = new Color3(0.6, 0.22, 1);
-  mat.diffuseColor = new Color3(0, 0, 0);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.opacityTexture = radialGlowTexture(scene);
-  mat.disableLighting = true;
-  mat.alphaMode = Constants.ALPHA_ADD;
-  mat.backFaceCulling = false;
-  mat.alpha = 0.52 * intensity;
-  shell.material = mat;
+  shell.material = glowMaterial(scene, Math.round(intensity * 1000) / 1000);
   shell.isPickable = false;
-  shell.billboardMode = Mesh.BILLBOARDMODE_ALL;
   shell.parent = host;
-  let t = 0;
-  const obs = scene.onBeforeRenderObservable.add(() => {
-    t += scene.getEngine().getDeltaTime() / 1000;
-    const p = 0.85 + Math.sin(t * 3) * 0.15;
-    shell.scaling.setAll(p);
-    mat.alpha = (0.36 + p * 0.36) * intensity;
-  });
-  host.onDisposeObservable.add(() => {
-    scene.onBeforeRenderObservable.remove(obs);
-    mat.opacityTexture?.dispose();
-    mat.dispose();
-    shell.dispose();
-  });
+  // Развёрнут шейдером, а рамка у плоскости остаётся «плашмя»: не даём отсечь его по ней.
+  shell.alwaysSelectAsActiveMesh = true;
 }
 
 /**
