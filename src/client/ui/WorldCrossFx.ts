@@ -21,7 +21,7 @@ const SPREAD = 0.9; // м разлёта по горизонтали
 
 /** Красная вспышка критического выстрела — вспыхивает на мобе и гаснет. */
 const CRIT_POOL = 12;
-const CRIT_LIFE = 0.36; // с
+const CRIT_LIFE = 0.5; // с
 
 /** «MISS» — уворот от атаки. Всплывает НАД ИСТОЧНИКОМ удара (мобом). */
 const MISS_POOL = 6;
@@ -35,6 +35,8 @@ const DMG_RISE = 1.1; // м
 
 interface CritBurst {
   mesh: Mesh;
+  /** Второй план: пунктирное кольцо с искрами (появляется чуть позже вспышки). */
+  ring: Mesh;
   age: number;
   x: number;
   y: number;
@@ -119,72 +121,140 @@ export class WorldCrossFx {
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
     }
 
-    // Крит — красные лучи из центра (вместо прежней звезды): пучок тонких сужающихся к концу
-    // лучей разной длины + яркое ядро. Рисуем в альфа-канал текстуры, сам billboard-план
-    // разворачивается на камеру, а во время жизни ещё и чуть вращается.
-    const critStarTex = new DynamicTexture("critStarTex", { width: 256, height: 256 }, scene, false);
-    critStarTex.hasAlpha = true;
+    // Крит — по мотивам референса (VFX-«искра»): 1) яркая вспышка — раскалённое ядро с ореолом и
+    // острыми тонкими лучами разной длины; 2) следом расходится пунктирное кольцо с искрами и
+    // короткими штрихами. Красная гамма: ядро почти белое → красное. Две текстуры, два
+    // billboard-плана на вспышку (пул общий), цвет запечён в текстуры.
+    const rnd = (i: number): number => {
+      const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
+      return v - Math.floor(v);
+    };
+    const flashTex = new DynamicTexture("critFlashTex", { width: 256, height: 256 }, scene, false);
+    flashTex.hasAlpha = true;
     {
-      const sctx = critStarTex.getContext() as CanvasRenderingContext2D;
-      sctx.clearRect(0, 0, 256, 256);
+      const c = flashTex.getContext() as CanvasRenderingContext2D;
+      c.clearRect(0, 0, 256, 256);
       const cx = 128;
       const cy = 128;
-      const rays = 18;
-      // Простая детерминированная «случайность»: длина и ширина лучей неровные, но одинаковые у всех вспышек.
-      const rnd = (i: number): number => {
-        const v = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-        return v - Math.floor(v);
-      };
-      for (let i = 0; i < rays; i++) {
-        const long = i % 2 === 0;
-        const len = (long ? 122 : 78) * (0.82 + 0.3 * rnd(i));
-        const halfW = (long ? 0.075 : 0.06) * (0.8 + 0.4 * rnd(i + 40)); // полуширина у основания, рад
-        const ang = (i / rays) * Math.PI * 2 + (rnd(i + 90) - 0.5) * 0.12;
-        // Луч — узкий треугольник от центра к острию; яркость падает к кончику.
+      // Широкий красный ореол.
+      const halo = c.createRadialGradient(cx, cy, 8, cx, cy, 78);
+      halo.addColorStop(0, "rgba(255,70,60,0.7)");
+      halo.addColorStop(1, "rgba(255,20,20,0)");
+      c.fillStyle = halo;
+      c.beginPath();
+      c.arc(cx, cy, 78, 0, Math.PI * 2);
+      c.fill();
+      // Острые лучи: 3 очень длинных, 4 средних, 6 коротких; тонкие, сужаются в иглу.
+      const spikes: { len: number; w: number }[] = [
+        { len: 126, w: 0.05 }, { len: 118, w: 0.045 }, { len: 124, w: 0.05 },
+        { len: 96, w: 0.05 }, { len: 88, w: 0.055 }, { len: 100, w: 0.05 }, { len: 92, w: 0.055 },
+        { len: 62, w: 0.06 }, { len: 58, w: 0.065 }, { len: 66, w: 0.06 }, { len: 54, w: 0.07 }, { len: 60, w: 0.065 }, { len: 56, w: 0.07 },
+      ];
+      spikes.forEach((sp, i) => {
+        const ang = (i / spikes.length) * Math.PI * 2 + (rnd(i + 5) - 0.5) * 0.35;
+        const len = sp.len * (0.92 + 0.16 * rnd(i + 20));
         const tx = cx + Math.cos(ang) * len;
         const ty = cy + Math.sin(ang) * len;
-        const g = sctx.createLinearGradient(cx, cy, tx, ty);
-        g.addColorStop(0, "rgba(255,255,255,1)");
-        g.addColorStop(0.55, "rgba(255,255,255,0.85)");
-        g.addColorStop(1, "rgba(255,255,255,0)");
-        sctx.fillStyle = g;
-        sctx.beginPath();
-        sctx.moveTo(tx, ty);
-        sctx.lineTo(cx + Math.cos(ang + Math.PI / 2) * len * halfW * 0.55, cy + Math.sin(ang + Math.PI / 2) * len * halfW * 0.55);
-        sctx.lineTo(cx + Math.cos(ang - Math.PI / 2) * len * halfW * 0.55, cy + Math.sin(ang - Math.PI / 2) * len * halfW * 0.55);
-        sctx.closePath();
-        sctx.fill();
-      }
-      // Ядро: яркое пятно с мягким краем.
-      const core = sctx.createRadialGradient(cx, cy, 0, cx, cy, 30);
-      core.addColorStop(0, "rgba(255,255,255,1)");
-      core.addColorStop(0.6, "rgba(255,255,255,0.9)");
-      core.addColorStop(1, "rgba(255,255,255,0)");
-      sctx.fillStyle = core;
-      sctx.beginPath();
-      sctx.arc(cx, cy, 30, 0, Math.PI * 2);
-      sctx.fill();
-      critStarTex.update();
+        const nx = -Math.sin(ang);
+        const ny = Math.cos(ang);
+        const half = 128 * sp.w * 0.5 + 2;
+        const g = c.createLinearGradient(cx, cy, tx, ty);
+        g.addColorStop(0, "rgba(255,225,215,1)");
+        g.addColorStop(0.35, "rgba(255,70,55,1)");
+        g.addColorStop(1, "rgba(200,10,10,0.9)");
+        c.fillStyle = g;
+        c.beginPath();
+        c.moveTo(tx, ty);
+        c.lineTo(cx + nx * half, cy + ny * half);
+        c.lineTo(cx - nx * half, cy - ny * half);
+        c.closePath();
+        c.fill();
+      });
+      // Обруч вокруг ядра (как светлое кольцо на референсе).
+      c.strokeStyle = "rgba(255,120,105,0.95)";
+      c.lineWidth = 4;
+      c.beginPath();
+      c.arc(cx, cy, 36, 0, Math.PI * 2);
+      c.stroke();
+      // Раскалённое ядро.
+      const core = c.createRadialGradient(cx, cy, 0, cx, cy, 34);
+      core.addColorStop(0, "rgba(255,245,240,1)");
+      core.addColorStop(0.45, "rgba(255,150,130,1)");
+      core.addColorStop(1, "rgba(235,30,25,0.9)");
+      c.fillStyle = core;
+      c.beginPath();
+      c.arc(cx, cy, 34, 0, Math.PI * 2);
+      c.fill();
+      flashTex.update();
     }
+    const ringTex = new DynamicTexture("critRingTex", { width: 256, height: 256 }, scene, false);
+    ringTex.hasAlpha = true;
+    {
+      const c = ringTex.getContext() as CanvasRenderingContext2D;
+      c.clearRect(0, 0, 256, 256);
+      const cx = 128;
+      const cy = 128;
+      // Пунктирное кольцо.
+      c.strokeStyle = "rgba(255,60,50,0.95)";
+      c.lineWidth = 5;
+      c.lineCap = "round";
+      const dashes = 20;
+      for (let i = 0; i < dashes; i++) {
+        const a0 = (i / dashes) * Math.PI * 2;
+        c.beginPath();
+        c.arc(cx, cy, 98, a0, a0 + (Math.PI * 2) / dashes * 0.55);
+        c.stroke();
+      }
+      // Искры-точки вокруг.
+      c.fillStyle = "rgba(255,150,125,1)";
+      for (let i = 0; i < 16; i++) {
+        const ang = rnd(i + 60) * Math.PI * 2;
+        const r = 62 + rnd(i + 80) * 62;
+        c.beginPath();
+        c.arc(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 2 + rnd(i + 99) * 3, 0, Math.PI * 2);
+        c.fill();
+      }
+      // Короткие радиальные штрихи за кольцом.
+      c.strokeStyle = "rgba(255,90,75,0.95)";
+      c.lineWidth = 3;
+      for (let i = 0; i < 8; i++) {
+        const ang = (i / 8) * Math.PI * 2 + rnd(i + 130) * 0.5;
+        const r0 = 106 + rnd(i + 140) * 6;
+        c.beginPath();
+        c.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+        c.lineTo(cx + Math.cos(ang) * (r0 + 14 + rnd(i + 150) * 10), cy + Math.sin(ang) * (r0 + 14 + rnd(i + 150) * 10));
+        c.stroke();
+      }
+      ringTex.update();
+    }
+    const makeCritMat = (name: string, tex: DynamicTexture): StandardMaterial => {
+      const mat = new StandardMaterial(name, scene);
+      mat.emissiveTexture = tex; // цвет запечён в текстуру (ядро светлее, лучи красные)
+      mat.opacityTexture = tex;
+      mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
+      mat.disableLighting = true;
+      mat.disableDepthWrite = true;
+      mat.backFaceCulling = false;
+      mat.alphaMode = Constants.ALPHA_COMBINE;
+      return mat;
+    };
     const critProto = MeshBuilder.CreatePlane("critFlash", { size: 1 }, scene);
     critProto.setEnabled(false);
     for (let i = 0; i < CRIT_POOL; i++) {
       const m = i === 0 ? critProto : critProto.clone(`critFlash${i}`);
-      const mat = new StandardMaterial(`critFlashMat${i}`, scene);
-      mat.emissiveColor = new Color3(1, 0.03, 0.02); // насыщенный глубокий красный
-      mat.diffuseColor = new Color3(0, 0, 0);
-      mat.specularColor = new Color3(0, 0, 0);
-      mat.opacityTexture = critStarTex; // альфа-звезда режет план на острые зубцы
-      mat.disableLighting = true;
-      mat.disableDepthWrite = true;
-      mat.backFaceCulling = false;
-      mat.alphaMode = Constants.ALPHA_COMBINE; // сплошной красный, не выбеливается
-      m.material = mat;
+      m.material = makeCritMat(`critFlashMat${i}`, flashTex);
       m.isPickable = false;
       m.renderingGroupId = 1;
       m.billboardMode = Mesh.BILLBOARDMODE_ALL;
       m.setEnabled(false);
-      this.critPool.push({ mesh: m, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
+      const r = critProto.clone(`critRing${i}`);
+      r.material = makeCritMat(`critRingMat${i}`, ringTex);
+      r.isPickable = false;
+      r.renderingGroupId = 1;
+      r.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      r.setEnabled(false);
+      this.critPool.push({ mesh: m, ring: r, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
     }
 
     // «MISS» — один общий текстовый материал (не клонируем — дорого пересобирать
@@ -259,8 +329,11 @@ export class WorldCrossFx {
     c.z = z;
     c.age = 0;
     c.mesh.position.set(x, y, z);
-    c.mesh.rotation.z = Math.random() * Math.PI * 2; // не одна и та же звезда каждый раз
+    c.ring.position.set(x, y, z);
+    c.mesh.rotation.z = Math.random() * Math.PI * 2; // не одна и та же вспышка каждый раз
+    c.ring.rotation.z = Math.random() * Math.PI * 2;
     c.mesh.setEnabled(true);
+    c.ring.setEnabled(false); // включится в update() чуть позже вспышки
   }
 
   /**
@@ -338,13 +411,24 @@ export class WorldCrossFx {
       c.age += dt;
       if (c.age > CRIT_LIFE) {
         c.mesh.setEnabled(false);
+        c.ring.setEnabled(false);
         continue;
       }
       const t = c.age / CRIT_LIFE;
-      // Резко вспыхивает и быстро гаснет — небольшой размер.
-      c.mesh.scaling.setAll(0.55 + t * 1.3); // лучи разлетаются
-      c.mesh.rotation.z = t * 0.5; // и чуть поворачиваются
-      (c.mesh.material as StandardMaterial).alpha = (1 - t) * (1 - t);
+      // Фаза 1: вспышка — резко раздувается и гаснет за первую половину жизни.
+      const f = Math.min(1, c.age / (CRIT_LIFE * 0.55));
+      const ease = 1 - (1 - f) * (1 - f);
+      c.mesh.scaling.setAll(0.7 + ease * 1.1);
+      c.mesh.rotation.z += dt * 0.6;
+      (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : (1 - f) * (1 - f * 0.4);
+      c.mesh.setEnabled(f < 1);
+      // Фаза 2: кольцо с искрами расходится с 18% жизни и тает к концу.
+      const u = (t - 0.18) / 0.82;
+      if (u > 0) {
+        if (!c.ring.isEnabled()) c.ring.setEnabled(true);
+        c.ring.scaling.setAll(0.55 + u * 1.5);
+        (c.ring.material as StandardMaterial).alpha = (1 - u) * (1 - u) * 0.95;
+      }
     }
     for (const c of this.pool) {
       if (c.age > LIFE) continue;
@@ -416,6 +500,8 @@ export class WorldCrossFx {
     for (const c of this.critPool) {
       c.mesh.material?.dispose();
       c.mesh.dispose();
+      c.ring.material?.dispose();
+      c.ring.dispose();
     }
     for (const d of this.dmgPool) {
       d.tex.dispose();
