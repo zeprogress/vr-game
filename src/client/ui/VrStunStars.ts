@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Node } from "@babylonjs/core/node";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
@@ -13,16 +14,27 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
  * время. Пока герой не оглушён, меш выключен.
  */
 const NAME = "stunStars";
+/** Ширина полосы со звёздами (м); отношение 3.6:1 соответствует константе A в шейдере. */
+const BAND_W = 0.9;
 
 Effect.ShadersStore[`${NAME}VertexShader`] = `
 precision highp float;
 attribute vec3 position;
 attribute vec2 uv;
+uniform mat4 world;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
 varying vec2 vUV;
 void main() {
   vUV = uv;
-  // Полоса вверху обзора: ширина ±0.55, высота ±0.16, центр на y=+0.62.
-  gl_Position = vec4(position.x * 2.0 * 0.55, position.y * 2.0 * 0.16 + 0.62, -1.0, 1.0);
+  vec4 wp = world * vec4(position, 1.0);
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * wp; } else { gl_Position = viewProjectionR * wp; }
+#else
+  gl_Position = viewProjection * wp;
+#endif
 }
 `;
 
@@ -68,10 +80,10 @@ export class VrStunStars {
   private t = 0;
   private on = false;
 
-  constructor(scene: Scene) {
+  constructor(scene: Scene, camera: Node | null) {
     this.mat = new ShaderMaterial(`${NAME}Mat`, scene, NAME, {
       attributes: ["position", "uv"],
-      uniforms: ["t", "alpha"],
+      uniforms: ["world", "viewProjection", "t", "alpha"],
       needAlphaBlending: true,
     });
     this.mat.setFloat("t", 0);
@@ -79,7 +91,10 @@ export class VrStunStars {
     this.mat.backFaceCulling = false;
     this.mat.alphaMode = Constants.ALPHA_COMBINE;
     this.mat.disableDepthWrite = true;
-    this.mesh = MeshBuilder.CreatePlane(NAME, { width: 1, height: 1 }, scene);
+    // Обычный меш в ~0.95 м перед лицом, чуть выше центра, привязан к камере (см. VrWasted).
+    this.mesh = MeshBuilder.CreatePlane(NAME, { width: BAND_W, height: BAND_W / 3.6 }, scene);
+    if (camera) this.mesh.parent = camera;
+    this.mesh.position.set(0, 0.36, 0.95);
     this.mesh.material = this.mat;
     this.mesh.isPickable = false;
     this.mesh.applyFog = false;

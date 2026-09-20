@@ -1223,8 +1223,9 @@ export class Game {
 
     this.vrHud = new VrHud(this.scene, this.hudAnchor);
     this.vrVignette = new VrVignette(this.scene);
-    this.vrWasted = new VrWasted(this.scene);
-    this.vrStars = new VrStunStars(this.scene);
+    const headCam = this.xr?.baseExperience.camera ?? this.scene.activeCamera;
+    this.vrWasted = new VrWasted(this.scene, headCam);
+    this.vrStars = new VrStunStars(this.scene, headCam);
     this.comfortVignette = new ComfortVignette(this.scene);
     this.healCrossFx = new HealCrossFx(this.scene, this.player);
 

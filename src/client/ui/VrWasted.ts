@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Node } from "@babylonjs/core/node";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Effect } from "@babylonjs/core/Materials/effect";
@@ -32,12 +33,20 @@ Effect.ShadersStore[`${TXT}VertexShader`] = `
 precision highp float;
 attribute vec3 position;
 attribute vec2 uv;
-uniform float sx;
-uniform float sy;
+uniform mat4 world;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
 varying vec2 vUV;
 void main() {
   vUV = uv;
-  gl_Position = vec4(position.x * 2.0 * sx, position.y * 2.0 * sy, -1.0, 1.0);
+  vec4 wp = world * vec4(position, 1.0);
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * wp; } else { gl_Position = viewProjectionR * wp; }
+#else
+  gl_Position = viewProjection * wp;
+#endif
 }
 `;
 Effect.ShadersStore[`${TXT}FragmentShader`] = `
@@ -55,8 +64,9 @@ void main() {
 
 const TEX_W = 1024;
 const TEX_H = 256;
-/** Примерное соотношение сторон вьюпорта глаза (Quest 3: ~1680×1760). */
-const EYE_ASPECT = 0.95;
+/** Ширина надписи (м) и расстояние от глаз (м). */
+const TEXT_W = 1.05;
+const TEXT_DIST = 1.0;
 
 export class VrWasted {
   private readonly dim: Mesh;
@@ -67,7 +77,7 @@ export class VrWasted {
   private t = 0;
   private on = false;
 
-  constructor(scene: Scene) {
+  constructor(scene: Scene, camera: Node | null) {
     this.dimMat = new ShaderMaterial(`${DIM}Mat`, scene, DIM, {
       attributes: ["position"],
       uniforms: ["a"],
@@ -118,18 +128,21 @@ export class VrWasted {
 
     this.textMat = new ShaderMaterial(`${TXT}Mat`, scene, TXT, {
       attributes: ["position", "uv"],
-      uniforms: ["sx", "sy", "alpha"],
+      uniforms: ["world", "viewProjection", "alpha"],
       samplers: ["tex"],
       needAlphaBlending: true,
     });
     this.textMat.setTexture("tex", this.tex);
     this.textMat.setFloat("alpha", 0);
-    this.textMat.setFloat("sx", 0.7);
-    this.textMat.setFloat("sy", 0.17);
     this.textMat.backFaceCulling = false;
     this.textMat.alphaMode = Constants.ALPHA_COMBINE;
     this.textMat.disableDepthWrite = true;
-    this.text = MeshBuilder.CreatePlane(TXT, { width: 1, height: 1 }, scene);
+    // Текст — обычный меш в 1 м перед лицом (привязан к камере): каждый глаз видит его со своей
+    // проекции, поэтому картинка сходится в одну (у экранного квада в clip-space она двоилась —
+    // у Quest проекции глаз несимметричны).
+    this.text = MeshBuilder.CreatePlane(TXT, { width: TEXT_W, height: (TEXT_W * TEX_H) / TEX_W }, scene);
+    if (camera) this.text.parent = camera;
+    this.text.position.set(0, 0, TEXT_DIST);
     this.text.material = this.textMat;
     this.text.isPickable = false;
     this.text.applyFog = false;
@@ -158,9 +171,7 @@ export class VrWasted {
     // Затемнение нарастает за ~1.2 с; текст проступает с 0.35 до 1.3 с и медленно растёт.
     this.dimMat.setFloat("a", 0.6 * smooth(t / 1.2));
     this.textMat.setFloat("alpha", 0.95 * smooth((t - 0.35) / 0.95));
-    const sx = 0.62 * (0.9 + 0.1 * smooth(t / 1.6) + Math.min(t, 6) * 0.012);
-    this.textMat.setFloat("sx", sx);
-    this.textMat.setFloat("sy", (sx * EYE_ASPECT * TEX_H) / TEX_W);
+    this.text.scaling.setAll(0.9 + 0.1 * smooth(t / 1.6) + Math.min(t, 6) * 0.012);
   }
 
   dispose(): void {
