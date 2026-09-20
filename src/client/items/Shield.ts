@@ -11,6 +11,7 @@ import { SHIELD } from "#shared/constants";
 import { weaponDef, type WeaponTier } from "#shared/items";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 import { attachLegendaryGlow } from "./weaponModels";
+import { mergeByMaterial } from "./flatMerge";
 
 /**
  * Щит. Плоскость щита — XZ, «наружу» смотрит локальная ось +Y
@@ -61,7 +62,7 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
   grip.position.y = -0.05;
   grip.material = wood;
 
-  const shield = Mesh.MergeMeshes([body, rim, boss, grip], true, true, undefined, false, true);
+  const shield = mergeByMaterial([body, rim, boss, grip]);
   if (!shield) throw new Error("не удалось собрать щит");
   shield.name = "shield";
   return shield;
@@ -116,7 +117,7 @@ function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
   grip.material = grim;
   parts.push(grip);
 
-  const shield = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+  const shield = mergeByMaterial(parts);
   if (!shield) throw new Error("не удалось собрать треугольный щит");
 
   // Переносим начало координат в рукоять и разворачиваем — всё вживляем

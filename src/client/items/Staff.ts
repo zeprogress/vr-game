@@ -12,6 +12,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import { containerFor, recolorFlat } from "../world/models";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 import { attachLegendaryGlow } from "./weaponModels";
+import { mergeByMaterial } from "./flatMerge";
 
 /**
  * Посох — фокус для магии и слабое двуручное оружие ближнего боя.
@@ -122,7 +123,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   collarLo.material = metal;
   parts.push(collarLo);
 
-  const staff = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
+  const staff = mergeByMaterial(parts);
   if (!staff) throw new Error("не удалось собрать посох");
   staff.name = "staff";
 

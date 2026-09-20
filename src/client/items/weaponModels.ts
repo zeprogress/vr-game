@@ -11,6 +11,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
+import { flattenToVertexColors } from "./flatMerge";
 import { LIGHT_BUDGET } from "../world/Fireflies";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { radialGlowTexture } from "../ui/GlowSprite";
@@ -214,6 +215,11 @@ export function spawnWeaponModel(
       }
     }
     onReady?.(fitNode);
+
+    // Все детали модели — в один меш с цветами в вершинах: одна отрисовка вместо 4–6.
+    const parts = src.getChildMeshes(false).filter((m): m is Mesh => m instanceof Mesh && m.getTotalVertices() > 0);
+    const flat = flattenToVertexColors(scene, fit.parent ?? root, parts, `${key}_flat`);
+    if (flat) src.dispose(false, true);
   });
   return root;
 }
