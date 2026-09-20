@@ -345,6 +345,7 @@ export class NetMobs {
       s.mobName,
       s.mobLevel,
     );
+    m.farLodOn = this.lazy; // упрощённая модель вдали — только для игроков, не для спектатора
     this.mobs.set(id, m);
     this.targets.push(m);
   }
@@ -457,7 +458,7 @@ export class NetMobs {
       if (!m) return;
       const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
       let mdt = dt;
-      if (!s.dead && draw && MOB_FAR_UPDATE_R > 0) {
+      if (this.lazy && !s.dead && draw && MOB_FAR_UPDATE_R > 0) {
         // Дальнего видимого моба считаем ~20 раз в секунду (позиция и так сглаживается).
         const d2 = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
         if (d2 > MOB_FAR_UPDATE_R * MOB_FAR_UPDATE_R) {

@@ -360,6 +360,8 @@ export class Mob implements Hittable {
   /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
   private lodProxies: InstancedMesh[] | null = null;
   private lodFar = false;
+  /** Дальний LOD включён (игровой клиент). У спектатора модели всегда полные — анимация вдали не режется. */
+  farLodOn = false;
   /** Мелкий летающий моб (пчела) — увеличенный хитбокс. */
   private readonly flyer: boolean;
   private rigReady = false;
@@ -952,7 +954,7 @@ export class Mob implements Hittable {
   }
 
   private updateFarLod(pos: Vector3, cam: Vector3): void {
-    if (!this.rig) return;
+    if (!this.rig || !this.farLodOn) return;
     if (this.dead || this.isBoss || this.hasNovaFx) {
       this.setFarLod(false);
       return;
