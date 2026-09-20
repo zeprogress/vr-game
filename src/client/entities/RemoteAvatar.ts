@@ -23,6 +23,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
+import { terrainHeight } from "#shared/terrain";
 import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
 import { BOT_GEAR, GEAR_FREEZE, onGearTuneChanged } from "./botGear";
@@ -1178,6 +1179,11 @@ export class RemoteAvatar implements Hittable {
     const y = a[1] + (b[1] - a[1]) * s;
     const z = a[2] + (b[2] - a[2]) * s;
     this.root.position.set(x, y, z);
+    // VR: высота шлема у каждого своя (рост, приседание), а модель одна — ставим её ногами на землю,
+    // а не на фиксированной высоте от глаз (иначе проваливалась при низком шлеме и парила при высоком).
+    if (this.mode === "vr" && this.botHolder) {
+      this.botHolder.position.y = terrainHeight(x, z) - y + (this.deadAnim ? 0.17 : 0.02);
+    }
 
     this._qa.set(a[3], a[4], a[5], a[6]);
     this._qb.set(b[3], b[4], b[5], b[6]);

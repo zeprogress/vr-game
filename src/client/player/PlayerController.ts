@@ -279,7 +279,14 @@ export class PlayerController {
   private readonly _eyeQ = new Quaternion();
   /** Поворот головы в мире (кватернион) — для сетевого аватара. */
   get eyeRotation(): Quaternion {
-    const cam = this.xrCamera ?? this.camera;
+    // VR: у камеры риг-родитель (xrRig) с поворотом snap-turn — берём МИРОВУЮ ориентацию из
+    // матрицы; локальный rotationQuaternion не содержит yaw рига, и остальные видели
+    // модель игрока повёрнутой не туда.
+    if (this.xrCamera) {
+      this.xrCamera.getWorldMatrix().decompose(undefined, this._eyeQ);
+      return this._eyeQ;
+    }
+    const cam = this.camera;
     if (cam.rotationQuaternion) return this._eyeQ.copyFrom(cam.rotationQuaternion);
     Quaternion.FromEulerVectorToRef(cam.rotation, this._eyeQ); // FreeCamera: euler -> quat
     return this._eyeQ;
