@@ -1679,8 +1679,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const byNorm = new Map<string, TowerBoardRow & { at: number }>();
     for (const rec of store.entries()) {
       if (!rec.token.startsWith("nick:") || !rec.bestTowerFloor) continue;
-      // Прошёл целиком: есть отметка времени ИЛИ лучший этаж = последний (старые записи без отметки).
-      const cleared = rec.towerClearedAt !== undefined || rec.bestTowerFloor >= TOWER.floors;
+      // «Покорил» — только если реально убил всё (отметка ставится при фазе cleared). Дошёл до
+      // 20-го этажа и погиб — это просто «этаж 20».
+      const cleared = rec.towerClearedAt !== undefined;
       byNorm.set(rec.token.slice(5), {
         nick: rec.nick || rec.token.slice(5),
         floor: rec.bestTowerFloor,
