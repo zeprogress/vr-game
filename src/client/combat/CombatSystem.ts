@@ -2531,7 +2531,7 @@ export class CombatSystem {
 
   /**
    * Умения жестом: меч поднят над головой + курок руки с мечом — «Оглушающий
-   * удар» (как массовый хил посохом). Лук: рука с луком поднята + курок — на
+   * удар» (как массовый хил посохом). Лук: курок руки с луком (поднимать не нужно) — на
    * земле появляется метка, куда указывает рука; отпустил курок — град стрел.
    */
   private updateVrSkills(locked: boolean): void {
@@ -2567,8 +2567,8 @@ export class CombatSystem {
         continue;
       }
 
-      if (!edge || !raised) continue;
-      if (this.held1("sword", side)) {
+      if (!edge) continue;
+      if (raised && this.held1("sword", side)) {
         this.haptic(side, 0.6, 80);
         this.onVrSkill?.("stunBash");
       } else if (this.held1("bow", side)) {
@@ -2644,28 +2644,16 @@ export class CombatSystem {
       mat.disableLighting = true;
       mat.disableDepthWrite = true;
       mat.backFaceCulling = false;
-      mat.alpha = 0.2;
-      const disc = MeshBuilder.CreateDisc("rainMark", { radius: r, tessellation: 40 }, scene);
-      disc.rotation.x = Math.PI / 2;
-      disc.material = mat;
-      disc.isPickable = false;
-      disc.applyFog = false;
-      const ringMat = mat.clone("rainMarkRingMat");
-      ringMat.alpha = 0.85;
-      const ring = MeshBuilder.CreateTorus(
-        "rainMarkRing",
-        { diameter: r * 2, thickness: 0.14, tessellation: 48 },
-        scene,
-      );
-      ring.material = ringMat;
-      ring.isPickable = false;
-      ring.applyFog = false;
-      ring.parent = disc;
-      // Диск повёрнут на 90° вокруг X — тор (лежит в XZ) в его осях встаёт плашмя.
-      ring.rotation.x = -Math.PI / 2;
-      this.rainMark = disc;
+      mat.alpha = 0.3;
+      // Купол (как у самого града), без кольца/диска на земле.
+      const dome = MeshBuilder.CreateSphere("rainMark", { diameter: 2, segments: 14, slice: 0.5 }, scene);
+      dome.scaling.set(r, r * 0.55, r);
+      dome.material = mat;
+      dome.isPickable = false;
+      dome.applyFog = false;
+      this.rainMark = dome;
     }
-    this.rainMark.position.set(this.rainAt.x, this.rainAt.y + 0.12, this.rainAt.z);
+    this.rainMark.position.set(this.rainAt.x, this.rainAt.y + 0.02, this.rainAt.z);
     if (!this.rainMark.isEnabled()) this.rainMark.setEnabled(true);
   }
 
