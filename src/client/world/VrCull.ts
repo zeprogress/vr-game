@@ -27,7 +27,11 @@ export class VrCull {
   private readonly treeR: number;
   private readonly rockR: number;
 
-  constructor(private readonly scene: Scene) {
+  constructor(
+    private readonly scene: Scene,
+    /** VR: деревья/камни всегда «активны» (bbox по двум глазам ненадёжен), режем по расстоянию. Плоский экран: ещё и отсечение по кадру. */
+    readonly vr = true,
+  ) {
     const p = new URLSearchParams(location.search);
     const v = p.has("vrcull") ? Number(p.get("vrcull")) : 60;
     this.treeR = Number.isFinite(v) ? v : 60;
@@ -44,11 +48,11 @@ export class VrCull {
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
       else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {
         trees.push(m);
-        m.alwaysSelectAsActiveMesh = true; // в VR — только отсечение по расстоянию
+        m.alwaysSelectAsActiveMesh = this.vr; // в VR — только отсечение по расстоянию
       }
       else if (n.startsWith("Rock_Medium")) {
         rocks.push(m);
-        m.alwaysSelectAsActiveMesh = true; // в VR — только отсечение по расстоянию
+        m.alwaysSelectAsActiveMesh = this.vr; // в VR — только отсечение по расстоянию
       } else if (m.getTotalVertices() === 0 && !m.isAnInstance && m.isVisible && m.getChildren().length > 0) {
         // Корень без геометрии (glTF __root__) — только у него есть дети-меши.
         m.isVisible = false;

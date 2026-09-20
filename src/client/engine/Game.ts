@@ -1342,7 +1342,11 @@ export class Game {
         h.left ? ({ ...h.left, affix: self?.leftAffix || undefined } as WornWeapon) : null,
       );
     }
-    if (!this.vrCull) this.vrCull = new VrCull(this.scene); // деревья/камни вдали и пустые корни glTF — не считаем
+    if (this.vrCull && this.vrCull.vr !== this.player.inVR) {
+      this.vrCull.dispose();
+      this.vrCull = null;
+    }
+    if (!this.vrCull) this.vrCull = new VrCull(this.scene, this.player.inVR); // деревья/камни вдали и пустые корни glTF — не считаем
     this.vrCull.update(dt, this.player.eyePosition);
     // Надписи в VR: затухание, «кто говорит» (голос игроков + озвучка чата — одним видом).
     if (this.vrHud) {

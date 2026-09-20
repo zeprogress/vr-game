@@ -1,5 +1,8 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { Mesh as MeshImpl } from "@babylonjs/core/Meshes/mesh";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -148,6 +151,62 @@ function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
   return m;
 }
 
+
+/**
+ * Облегчённая копия листвы: листва — карточки-квады (4 вершины, 6 индексов), для
+ * дальнего LOD оставляем каждую `every`-ю и увеличиваем оставшиеся на √every
+ * (площадь покрытия ~та же, альфа-тест дешевле). null — меш не «карточный».
+ */
+function leafCardLod(src: Mesh, every: number, name: string): Mesh | null {
+  const pos = src.getVerticesData(VertexBuffer.PositionKind);
+  const idx = src.getIndices();
+  if (!pos || !idx || pos.length % 12 !== 0) return null;
+  const cards = pos.length / 12;
+  if (idx.length !== cards * 6) return null;
+  for (let c = 0; c < cards; c++) {
+    for (let k = 0; k < 6; k++) {
+      const v = idx[c * 6 + k];
+      if (v < c * 4 || v > c * 4 + 3) return null; // не по порядку — не трогаем
+    }
+  }
+  const nor = src.getVerticesData(VertexBuffer.NormalKind);
+  const uv = src.getVerticesData(VertexBuffer.UVKind);
+  const kept: number[] = [];
+  for (let c = 0; c < cards; c += every) kept.push(c);
+  const grow = Math.sqrt(every);
+  const oPos = new Float32Array(kept.length * 12);
+  const oNor = nor ? new Float32Array(kept.length * 12) : null;
+  const oUv = uv ? new Float32Array(kept.length * 8) : null;
+  const oIdx: number[] = [];
+  kept.forEach((c, n) => {
+    let cx = 0, cy = 0, cz = 0;
+    for (let v = 0; v < 4; v++) {
+      cx += pos[(c * 4 + v) * 3]; cy += pos[(c * 4 + v) * 3 + 1]; cz += pos[(c * 4 + v) * 3 + 2];
+    }
+    cx /= 4; cy /= 4; cz /= 4;
+    for (let v = 0; v < 4; v++) {
+      const si = (c * 4 + v) * 3;
+      const di = (n * 4 + v) * 3;
+      oPos[di] = cx + (pos[si] - cx) * grow;
+      oPos[di + 1] = cy + (pos[si + 1] - cy) * grow;
+      oPos[di + 2] = cz + (pos[si + 2] - cz) * grow;
+      if (oNor && nor) { oNor[di] = nor[si]; oNor[di + 1] = nor[si + 1]; oNor[di + 2] = nor[si + 2]; }
+      if (oUv && uv) { oUv[(n * 4 + v) * 2] = uv[(c * 4 + v) * 2]; oUv[(n * 4 + v) * 2 + 1] = uv[(c * 4 + v) * 2 + 1]; }
+    }
+    for (let k = 0; k < 6; k++) oIdx.push(idx[c * 6 + k] - c * 4 + n * 4);
+  });
+  const lod = new MeshImpl(name, src.getScene());
+  const vd = new VertexData();
+  vd.positions = oPos;
+  if (oNor) vd.normals = oNor;
+  if (oUv) vd.uvs = oUv;
+  vd.indices = oIdx;
+  vd.applyToMesh(lod);
+  lod.material = src.material;
+  lod.isPickable = false;
+  return lod;
+}
+
 /** Расставить 26 деревьев из общего списка (позиции — те же, что на сервере). */
 export async function loadTrees(
   scene: Scene,
@@ -189,7 +248,11 @@ export async function loadTrees(
     const leafMeshes: Mesh[] = [];
     for (const mesh of root.getChildMeshes(false) as Mesh[]) {
       const isLeaf = /leaf|leav/i.test(mesh.material?.name ?? "");
-      mesh.material = isLeaf ? leaf : bark;
+      // У инстанса материал не присваивается (setter — no-op): красим исходный меш,
+      // иначе у игроков (не noInstances) деревья оставались с оригинальным тяжёлым
+      // PBR из glTF, а дешёвые лёгкие материалы получал только спектатор.
+      const paint = mesh.isAnInstance ? (mesh as unknown as InstancedMesh).sourceMesh : mesh;
+      paint.material = isLeaf ? leaf : bark;
       (isLeaf ? leafMeshes : barkMeshes).push(mesh);
       // Ствол — тоньше (у модели раздутое основание), крона — чуть шире и ниже.
       if (isLeaf) mesh.scaling.set(1.15, 0.92, 1.15);
@@ -205,6 +268,22 @@ export async function loadTrees(
     root.freezeWorldMatrix();
     treeInstances.push({ x: t.x, z: t.z, bark: barkMeshes, leaf: leafMeshes, step: -1 });
   });
+  // LOD листвы (только у игроков с инстансами; у спектатора — свои меши и подмена
+  // материалов на прозрачность, LOD там не нужен). Инстансы берут LOD исходника.
+  if (!noInstances) {
+    const done = new Set<Mesh>();
+    for (const t of treeInstances) {
+      for (const m of t.leaf) {
+        const srcM = (m.isAnInstance ? (m as unknown as InstancedMesh).sourceMesh : m) as Mesh;
+        if (done.has(srcM)) continue;
+        done.add(srcM);
+        const near = leafCardLod(srcM, 2, `${srcM.name}_lod1`);
+        const far = leafCardLod(srcM, 4, `${srcM.name}_lod2`);
+        if (near) srcM.addLODLevel(28, near);
+        if (far) srcM.addLODLevel(50, far);
+      }
+    }
+  }
   baseBark = bark;
   baseLeaf = leaf;
   // Полупрозрачные копии — только там, где они нужны (спектатор), и строго
