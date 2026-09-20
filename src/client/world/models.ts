@@ -141,7 +141,14 @@ export function containerFor(scene: Scene, path: string): Promise<AssetContainer
   if (!pending) {
     // Контейнер не добавляется в сцену — меши-исходники и так не рисуются,
     // instantiateModelsToScene() делает с них копии.
-    pending = LoadAssetContainerAsync(path, scene);
+    pending = LoadAssetContainerAsync(path, scene).then((c) => {
+      // glTF-загрузчик сам запускает «первую анимацию» контейнера, и она крутилась вечно на
+      // исходных узлах, которых никто не видит (замер на шлеме: ~580 из ~1000 анимируемых
+      // объектов сцены, ~3 мс кадра). instantiateModelsToScene() клонирует группы уже
+      // остановленными — своими клипами модель управляет сама.
+      for (const g of c.animationGroups) g.stop();
+      return c;
+    });
     const byPathRef = byPath;
     // Неудачная загрузка НЕ должна навсегда "отравлять" кэш этим путём — иначе
     // одна сетевая заминка/сбой ассета оставляет ВСЕХ, кто грузит эту модель

@@ -103,6 +103,7 @@ export class Hands {
     try {
       await import("@babylonjs/loaders/glTF/2.0"); // регистрирует glTF-загрузчик
       const container = await LoadAssetContainerAsync("/models/Hand.glb", this.scene);
+      for (const g of container.animationGroups) g.stop(); // см. models.ts: загрузчик сам запускает первую анимацию
       const inst = container.instantiateModelsToScene((n) => n, false);
       const root = inst.rootNodes[0] as Node | undefined;
       const mesh = root
