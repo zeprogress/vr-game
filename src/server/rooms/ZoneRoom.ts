@@ -1085,16 +1085,12 @@ export class ZoneRoom extends Room<ZoneState> {
           tz = p.head.z + (ddz / dl) * s.range;
         }
         const hand = p.rightCls === "bow" ? "right" : "left";
-        const dmg =
-          weaponDamage("arrow", p.level, p.str, multIn(p, hand), p.agi) *
-          s.dmgMult *
-          this.buffMult(id, "dmg");
         this.broadcast(MSG.act, {
           k: "arrowRain", id, x: tx, y: terrainHeight(tx, tz), z: tz, d: s.castTime,
         } satisfies ActRelay);
         this.clock.setTimeout(() => {
           if (!this.state.players.get(id)) return;
-          this.arrowRainAt(tx, tz, id, s.radius, s.rootTime, dmg);
+          this.arrowRainAt(tx, tz, id, s.radius, p, hand, rt);
         }, s.castTime * 1000);
       }
     });
@@ -4353,35 +4349,59 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Залп упал — урон всем, кто остался в круге. */
   private botArrowRainLand(bot: Bot): void {
-    const p = bot.state;
-    const dmg =
-      weaponDamage("arrow", p.level, p.str, multIn(p, "right"), p.agi) *
-      BOT.rainDamageMult *
-      this.buffMult(bot.id, "dmg");
-    this.arrowRainAt(bot.rainX, bot.rainZ, bot.id, BOT.rainRadius, BOT.rainRootTime, dmg);
+    this.arrowRainAt(bot.rainX, bot.rainZ, bot.id, BOT.rainRadius, bot.state, "right", bot.rt);
   }
 
-  /** Град стрел по кругу (cx,cz) — общий для бота и игрока: урон + пригвождение. */
+  /**
+   * Град стрел по кругу (cx,cz) — общий для бота и игрока. Область держится
+   * SKILL.arrowRain.duration секунд: за это время в круг падает `hits` залпов, каждый
+   * бьёт всех внутри уроном ОДНОЙ стрелы стрелка (характеристики, роллы, аффиксы, крит,
+   * баффы — как обычный выстрел), а мобы всё это время пригвождены к земле.
+   */
   private arrowRainAt(
     cx: number,
     cz: number,
     ownerId: string,
     radius: number,
-    rootT: number,
-    dmg: number,
+    p: PlayerState,
+    hand: "left" | "right",
+    rt: Runtime,
   ): void {
-    for (const m of [...this.sim.mobs.values()]) {
-      if (m.dead) continue;
-      const dx = m.x - cx;
-      const dz = m.z - cz;
-      if (Math.hypot(dx, dz) > radius) continue;
-      const l = Math.hypot(dx, dz) || 1;
-      // Крит бросаем на каждую цель отдельно — залп, а не один выстрел.
-      const critM = rollCritMult("arrow");
-      if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
-      this.sim.hitMob(m.id, dmg * critM, dx / l, dz / l, ownerId, true);
-      // Пригвождает: несколько секунд моб не может сдвинуться с места.
-      this.sim.rootMob(m.id, rootT);
+    const { hits, duration } = SKILL.arrowRain;
+    const step = duration / hits;
+    const y = terrainHeight(cx, cz);
+    const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
+    const affix = affixIn(p, hand);
+    const rc = rolledCrit(p, hand, rt);
+    const t0 = this.elapsed;
+
+    const pin = (): void => {
+      const left = duration - (this.elapsed - t0) + 0.25;
+      for (const m of this.sim.mobs.values()) {
+        if (m.dead || Math.hypot(m.x - cx, m.z - cz) > radius) continue;
+        this.sim.rootMob(m.id, left);
+      }
+    };
+    pin(); // пригвождены с первой секунды, не с первого залпа
+
+    for (let i = 0; i < hits; i++) {
+      this.clock.setTimeout(() => {
+        pin();
+        this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y, z: cz } satisfies ActRelay);
+        const base =
+          weaponDamage("arrow", p.level, p.str, mult, p.agi) * this.buffMult(ownerId, "dmg");
+        for (const m of [...this.sim.mobs.values()]) {
+          if (m.dead) continue;
+          const dx = m.x - cx;
+          const dz = m.z - cz;
+          const d = Math.hypot(dx, dz);
+          if (d > radius) continue;
+          // Крит — на каждую стрелу и цель отдельно.
+          const critM = rollCritMult("arrow", Math.random, affix === "crit", rc.chance, rc.mult);
+          if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
+          this.sim.hitMob(m.id, base * critM, dx / (d || 1), dz / (d || 1), ownerId, true);
+        }
+      }, step * (i + 0.5) * 1000);
     }
   }
 
@@ -4558,6 +4578,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
+      s.pinned = m.rooted ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
       if (m.kind === "boss") {

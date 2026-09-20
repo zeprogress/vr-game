@@ -120,6 +120,8 @@ export class MobState extends Schema {
   @type("uint8") stunned = 0;
   /** Секунд горения (врождённый поджог мага) — клиент рисует тлеющее свечение. */
   @type("uint8") burning = 0;
+  /** 1 — моб пригвождён градом стрел: клиент рисует торчащие стрелы. (Поле в конце схемы.) */
+  @type("uint8") pinned = 0;
 }
 
 export class DummyState extends Schema {

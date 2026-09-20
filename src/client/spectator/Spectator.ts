@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS, BOT, MOB, PLAYER, daylightAt } from "#shared/constants";
+import { BOSS, BOT, MOB, PLAYER, SKILL, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1384,8 +1384,11 @@ export class Spectator {
         break;
       }
       case "arrowRain":
-        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime);
+        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
         this.avatars.get(id)?.playEmote("cheer");
+        this.sfx.at({ x, y, z }, () => this.sfx.arrowVolley());
+        break;
+      case "rainTick":
         this.sfx.at({ x, y, z }, () => this.sfx.arrowVolley());
         break;
       case "bow":

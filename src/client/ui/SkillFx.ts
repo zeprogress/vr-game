@@ -37,18 +37,24 @@ uniform mat4 viewProjectionR;
 uniform mat4 view;
 uniform vec3 uCenter;
 uniform float uRadius;
-uniform float uT;
+uniform float uT;    // секунд с начала каста
+uniform float uCast; // длительность замаха: до неё древков нет
+uniform float uDur;  // сколько секунд после замаха идёт град
 uniform float uSeed;
 varying float vAlpha;
 float hash(float n) { return fract(sin(n * 12.9898 + uSeed) * 43758.5453); }
 void main() {
   float k = aShaft;
-  float a = hash(k * 3.1) * 6.2831853;
-  float r = sqrt(hash(k * 7.7 + 1.3)) * uRadius;
-  // Древки сыплются волной к концу замаха, каждое летит свой отрезок 0.35.
-  float ts = 0.45 + (k / ${SHAFTS}.0) * 0.55 + hash(k * 5.3 + 2.1) * 0.12;
-  float local = (uT - ts) / 0.35;
-  if (local < 0.0 || local > 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vAlpha = 0.0; return; }
+  // После замаха древки сыплются по кругу: у каждого свой сдвиг, период 0.7 с, летит 0.35 с,
+  // при каждом новом заходе — новая точка внутри круга.
+  float t2 = uT - uCast;
+  float off = hash(k * 5.3 + 2.1) * 0.7;
+  float cyc = (t2 - off) / 0.7;
+  float local = fract(cyc) / 0.5;
+  if (t2 < 0.0 || t2 > uDur || cyc < 0.0 || local > 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vAlpha = 0.0; return; }
+  float n = floor(cyc);
+  float a = hash(k * 3.1 + n * 17.0) * 6.2831853;
+  float r = sqrt(hash(k * 7.7 + 1.3 + n * 29.0)) * uRadius;
   vec3 c = uCenter + vec3(cos(a) * r, (1.0 - local) * 9.0 + 0.5, sin(a) * r);
   vec3 tv = view[3].xyz;
   vec3 cam = -vec3(dot(view[0].xyz, tv), dot(view[1].xyz, tv), dot(view[2].xyz, tv));
@@ -103,12 +109,14 @@ function makeShaftMesh(scene: Scene, name: string): Mesh {
 function makeShaftMaterial(scene: Scene, name: string): ShaderMaterial {
   const m = new ShaderMaterial(name, scene, SHAFT, {
     attributes: ["position", "aShaft"],
-    uniforms: ["viewProjection", "view", "uCenter", "uRadius", "uT", "uSeed"],
+    uniforms: ["viewProjection", "view", "uCenter", "uRadius", "uT", "uCast", "uDur", "uSeed"],
     needAlphaBlending: true,
   });
   m.setVector3("uCenter", Vector3.Zero());
   m.setFloat("uRadius", 1);
   m.setFloat("uT", 0);
+  m.setFloat("uCast", 1);
+  m.setFloat("uDur", 3);
   m.setFloat("uSeed", 0);
   m.alphaMode = Constants.ALPHA_ADD;
   m.backFaceCulling = false;
@@ -138,6 +146,8 @@ interface Rain {
   shaftMat: ShaderMaterial;
   age: number;
   life: number;
+  /** Замах до падения (телеграф); дальше ещё `life - cast` секунд идёт град. */
+  cast: number;
   radius: number;
 }
 
@@ -170,7 +180,7 @@ export class SkillFx {
       const shaftMat = makeShaftMaterial(scene, `rainShaftMat${i}`);
       const shafts = makeShaftMesh(scene, `rainShafts${i}`);
       shafts.material = shaftMat;
-      this.rains.push({ dome, shafts, shaftMat, age: 1, life: 1, radius: 1 });
+      this.rains.push({ dome, shafts, shaftMat, age: 1, life: 1, cast: 1, radius: 1 });
     }
 
     for (let i = 0; i < POOL; i++) {
@@ -194,12 +204,13 @@ export class SkillFx {
     st.dome.setEnabled(true);
   }
 
-  /** Круг града стрел на земле + падающие древки. */
-  arrowRain(x: number, y: number, z: number, radius: number, life: number): void {
+  /** Круг града стрел на земле + падающие древки: `cast` — замах, потом `hold` секунд град. */
+  arrowRain(x: number, y: number, z: number, radius: number, cast: number, hold: number): void {
     const r = this.rains[this.nextRain];
     this.nextRain = (this.nextRain + 1) % this.rains.length;
     r.age = 0;
-    r.life = Math.max(0.3, life);
+    r.cast = Math.max(0.3, cast);
+    r.life = r.cast + hold;
     r.radius = radius;
     r.dome.position.set(x, y + 0.02, z);
     r.dome.setEnabled(true);
@@ -207,6 +218,8 @@ export class SkillFx {
     r.shaftMat.setFloat("uRadius", radius);
     r.shaftMat.setFloat("uSeed", Math.random() * 100);
     r.shaftMat.setFloat("uT", 0);
+    r.shaftMat.setFloat("uCast", r.cast);
+    r.shaftMat.setFloat("uDur", hold);
     r.shafts.setEnabled(true);
   }
 
@@ -215,17 +228,19 @@ export class SkillFx {
       if (r.age >= r.life) continue;
       r.age += dt;
       const done = r.age >= r.life;
-      const t = Math.min(1, r.age / r.life);
-      // Купол пульсирует и наливается — телеграф «сюда сейчас прилетит» (плотность как у оглушения, 0.32).
+      // Замах: купол пульсирует и наливается («сюда сейчас прилетит»); потом держится, пока
+      // сыплются стрелы, и гаснет в последние 0.4 с.
       const pulse = 1 + Math.sin(r.age * 11) * 0.03;
       const rr = r.radius * pulse;
       r.dome.scaling.set(rr, rr * 0.55, rr);
-      (r.dome.material as StandardMaterial).alpha = 0.32 * (0.45 + 0.55 * t) * (done ? 0 : 1);
+      const t = Math.min(1, r.age / r.cast);
+      const fadeOut = Math.min(1, (r.life - r.age) / 0.4);
+      (r.dome.material as StandardMaterial).alpha = done ? 0 : 0.32 * (0.45 + 0.55 * t) * fadeOut;
       if (done) r.dome.setEnabled(false);
 
-      // Древки целиком на GPU: из JS только прогресс каста.
+      // Древки целиком на GPU: из JS только время.
       if (done) r.shafts.setEnabled(false);
-      else r.shaftMat.setFloat("uT", t);
+      else r.shaftMat.setFloat("uT", r.age);
     }
 
     for (const st of this.stuns) {

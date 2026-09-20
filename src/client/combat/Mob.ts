@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { createPinArrows } from "./PinArrows";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -529,6 +530,9 @@ export class Mob implements Hittable {
   }
 
   private readonly uiAnchor: TransformNode;
+  /** Стрелы пригвождения (град стрел): включатель создаётся лениво, при первом пригвождении. */
+  private setPins: ((on: boolean) => void) | null = null;
+  private pinOn = false;
   private stunSpin: TransformNode | null = null;
   private stunStarMat: StandardMaterial | null = null;
 
@@ -770,6 +774,14 @@ export class Mob implements Hittable {
       }
     }
 
+
+    // пригвождение градом стрел: торчащие стрелы, пока s.pinned (инстансы, без покадровой работы)
+    const pin = s.pinned === 1 && !s.dead;
+    if (pin !== this.pinOn) {
+      this.pinOn = pin;
+      if (pin && !this.setPins) this.setPins = createPinArrows(this.scene, this.root, MOB.bodyRadius);
+      this.setPins?.(pin);
+    }
 
     // урон: hurtSeq вырос -> вспышка + рана + звук
     if (s.hurtSeq !== this.lastHurtSeq) {

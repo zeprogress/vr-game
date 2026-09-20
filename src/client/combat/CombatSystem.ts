@@ -2574,6 +2574,7 @@ export class CombatSystem {
       } else if (this.held1("bow", side)) {
         this.rainAimHand = side;
         this.haptic(side, 0.35, 45);
+        this.sfx.bowDraw();
         this.updateRainAim(side);
       }
     }

@@ -1777,6 +1777,7 @@ export class Game {
       }
     }
     this.net.sendSkill(msg);
+    if (this.player.inVR) this.sfx.bowRelease(1); // отклик жеста, как у массового хила
     this.skillCdTotal = kind === "stunBash" ? SKILL.stunBash.cooldown : SKILL.arrowRain.cooldown;
     this.skillCdLeft = this.skillCdTotal;
   }
@@ -2105,8 +2106,12 @@ export class Game {
         break;
       }
       case "arrowRain":
-        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime);
+        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
         this.avatars.get(id)?.playEmote("cheer");
+        this.sfx.at(at, () => this.sfx.arrowVolley());
+        break;
+      case "rainTick":
+        // Очередной залп по области: звук не прерывается все 3 секунды града.
         this.sfx.at(at, () => this.sfx.arrowVolley());
         break;
       case "bow":
