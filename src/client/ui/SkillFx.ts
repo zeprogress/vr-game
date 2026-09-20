@@ -170,7 +170,7 @@ export class SkillFx {
       const r = st.radius * (0.15 + 0.95 * Math.sqrt(t));
       st.dome.scaling.set(r, r * 0.55, r);
       const fade = 1 - t;
-      (st.dome.material as StandardMaterial).alpha = 0.16 * fade;
+      (st.dome.material as StandardMaterial).alpha = 0.32 * fade; // было 0.16 — плотнее вдвое
     }
   }
 
