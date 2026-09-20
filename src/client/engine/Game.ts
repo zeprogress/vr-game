@@ -2369,6 +2369,7 @@ export class Game {
 
     const m = this.moveMsg;
     m.mode = this.player.inVR ? "vr" : "flat";
+    m.plat = this.player.inVR ? 3 : this.isTouch ? 2 : 1; // значок у ника: шлем / смартфон / компьютер
     const g = this.combat.guardState();
     m.guard.sx = g.sx;
     m.guard.sz = g.sz;

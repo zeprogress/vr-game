@@ -74,6 +74,8 @@ export class PlayerState extends Schema {
   @type("uint8") towerMobsTotal = 0;
   @type("uint8") towerBossActive = 0;
   @type("float32") towerBossHpFrac = 0;
+  /** Платформа игрока: 0 — не известна (бот), 1 — компьютер, 2 — смартфон, 3 — VR-шлем. */
+  @type("uint8") plat = 0;
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

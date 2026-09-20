@@ -166,6 +166,8 @@ export class RemoteAvatar implements Hittable {
   private botBody: TransformNode | null = null;
   private botRig: RigInstance | null = null;
   private botHolder: TransformNode | null = null;
+  /** Высота плашки над ногами модели (для VR: плашка привязана к земле, а не к качающейся голове). */
+  private botTagH = 0;
   /** Кости кулаков рига — в них садится оружие бота. */
   private botFistR: TransformNode | null = null;
   private botFistL: TransformNode | null = null;
@@ -369,6 +371,7 @@ export class RemoteAvatar implements Hittable {
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
+    this.botTagH = 0;
     this.botFistR = this.botFistL = this.botHead = null;
     this.builtRigSkin = 0;
     this.smoothInit = false;
@@ -483,6 +486,7 @@ export class RemoteAvatar implements Hittable {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
     this.skin = p.skin ?? 0;
+    if (!this.isBot) this.nameTag.setPlatform(p.plat ?? 0);
     // Уровень нужен всем (скорость анимации замаха), а плашку над головой с
     // ним рисуем только ботам — как и раньше.
     const unspent = p.unspent > 0;
@@ -794,6 +798,7 @@ export class RemoteAvatar implements Hittable {
         this.head.isPickable = false;
         // Плашка — точно над макушкой конкретной модели, облачко — над плашкой.
         const tagY = BOT_FEET_Y + rig.nativeHeight * BOT_RIG_SCALE + 0.3;
+        this.botTagH = rig.nativeHeight * BOT_RIG_SCALE + 0.3;
         this.nameTag.setAnchorY(tagY);
         this.bubbleY = tagY + 1.25 * this.tagScale; // над увеличенной плашкой
         this.bubble?.setAnchorY(this.bubbleY);
@@ -1182,7 +1187,10 @@ export class RemoteAvatar implements Hittable {
     // VR: высота шлема у каждого своя (рост, приседание), а модель одна — ставим её ногами на землю,
     // а не на фиксированной высоте от глаз (иначе проваливалась при низком шлеме и парила при высоком).
     if (this.mode === "vr" && this.botHolder) {
-      this.botHolder.position.y = terrainHeight(x, z) - y + (this.deadAnim ? 0.17 : 0.02);
+      const hy = terrainHeight(x, z) - y + (this.deadAnim ? 0.17 : 0.02);
+      this.botHolder.position.y = hy;
+      // Плашка над головой стоит по высоте модели, а не едет за шлемом (он качается).
+      if (this.botTagH > 0) this.nameTag.setAnchorY(hy + this.botTagH);
     }
 
     this._qa.set(a[3], a[4], a[5], a[6]);

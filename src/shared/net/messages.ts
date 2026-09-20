@@ -404,6 +404,8 @@ export type Xf7 = [number, number, number, number, number, number, number];
 
 export interface MoveMsg {
   mode: PlayerMode;
+  /** Платформа: 1 — ПК, 2 — смартфон, 3 — VR (значок у ника). */
+  plat?: number;
   head: Xf7;
   /** Кисти шлём только в VR; в плоском режиме — нули (клиент их не рисует). */
   handL: Xf7;

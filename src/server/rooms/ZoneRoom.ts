@@ -845,6 +845,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const rt = this.rt.get(client.sessionId);
       if (!p || !rt || !msg) return;
       if (msg.mode === "vr" || msg.mode === "flat") p.mode = msg.mode;
+      if (msg.plat === 1 || msg.plat === 2 || msg.plat === 3) p.plat = msg.plat;
       applyXf(p.head, msg.head);
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);

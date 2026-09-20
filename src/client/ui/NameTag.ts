@@ -36,6 +36,8 @@ export class NameTag {
   private curName = "";
   private curLevel: number | null = null;
   private curUnspent = false;
+  /** Платформа игрока: 0 — нет значка, 1 — ПК, 2 — смартфон, 3 — VR. */
+  private platform = 0;
 
   /** Полоска здоровья под ником (создаётся по требованию через showHp). */
   private hpBg: Mesh | null = null;
@@ -76,7 +78,7 @@ export class NameTag {
     measure.font = LVL_FONT;
     textW = Math.max(textW, measure.measureText("999 ур.").width);
     const padX = 30;
-    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 16));
+    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 16 + (isBot ? 0 : 64))); // запас слева под значок платформы
 
     this.tex = new DynamicTexture("nameTagTex", { width: this.W, height: H }, scene, false);
     this.tex.hasAlpha = true;
@@ -120,6 +122,13 @@ export class NameTag {
     this.paint(name, level, hasUnspent);
   }
 
+  /** Значок платформы слева от ника (у ботов не задаётся). */
+  setPlatform(kind: number): void {
+    if (kind === this.platform) return;
+    this.platform = kind;
+    this.paint(this.curName, this.curLevel, this.curUnspent);
+  }
+
   private paint(name: string, level: number | null, hasUnspent = false): void {
     this.curName = name;
     this.curLevel = level;
@@ -142,6 +151,11 @@ export class NameTag {
       ctx.textAlign = "right";
       ctx.fillText(BOT_MARK.trim(), W / 2 - nameW / 2 - 8, nameY);
       ctx.textAlign = "center";
+    }
+
+    if (this.platform > 0) {
+      const nameW = ctx.measureText(name).width;
+      drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 34, nameY, 46);
     }
 
     if (level !== null) {
@@ -327,4 +341,65 @@ export class NameTag {
     this.plane.dispose(false, true);
     this.tex.dispose();
   }
+}
+
+
+/**
+ * Значок платформы, нарисованный контуром: 1 — монитор, 2 — смартфон, 3 — VR-шлем.
+ * (cx, cy) — центр, `h` — высота значка в пикселях текстуры плашки.
+ */
+function drawPlatformIcon(ctx: CanvasRenderingContext2D, kind: number, cx: number, cy: number, h: number): void {
+  ctx.save();
+  ctx.strokeStyle = "#e9ecf6";
+  ctx.fillStyle = "#e9ecf6";
+  ctx.lineWidth = 5;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  const rr = (x: number, y: number, w: number, hh: number, r: number): void => {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + hh, r);
+    ctx.arcTo(x + w, y + hh, x, y + hh, r);
+    ctx.arcTo(x, y + hh, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  };
+  if (kind === 1) {
+    // Монитор: экран + ножка + основание.
+    const w = h * 1.15;
+    const sh = h * 0.72;
+    rr(cx - w / 2, cy - h / 2, w, sh, 4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - h / 2 + sh);
+    ctx.lineTo(cx, cy + h / 2 - 4);
+    ctx.moveTo(cx - w * 0.28, cy + h / 2 - 2);
+    ctx.lineTo(cx + w * 0.28, cy + h / 2 - 2);
+    ctx.stroke();
+  } else if (kind === 2) {
+    // Смартфон: вертикальный прямоугольник с точкой-кнопкой.
+    const w = h * 0.58;
+    rr(cx - w / 2, cy - h / 2, w, h, 6);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy + h / 2 - 8, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === 3) {
+    // VR-шлем: широкий визор с двумя линзами и ремешком.
+    const w = h * 1.5;
+    const vh = h * 0.72;
+    rr(cx - w / 2, cy - vh / 2, w, vh, 9);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx - w * 0.2, cy, vh * 0.2, 0, Math.PI * 2);
+    ctx.arc(cx + w * 0.2, cy, vh * 0.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - w / 2, cy - vh * 0.15);
+    ctx.lineTo(cx - w / 2 - 6, cy - vh * 0.15);
+    ctx.moveTo(cx + w / 2, cy - vh * 0.15);
+    ctx.lineTo(cx + w / 2 + 6, cy - vh * 0.15);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
