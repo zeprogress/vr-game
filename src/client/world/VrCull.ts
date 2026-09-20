@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { impostorsReady, impostorsUpdate } from "./TreeImpostors";
 
 /**
  * Отсечение сцены для VR (Quest считает всё дважды — на два глаза).
@@ -21,6 +22,8 @@ const BEHIND_NEAR = 14;
 const COS_CENTER = Math.cos((30 * Math.PI) / 180);
 const COS_SIDE = Math.cos((60 * Math.PI) / 180);
 const SIDE_K = 0.75;
+/** Полная 3D-модель дерева — только до этого расстояния, дальше снимок. */
+const NEAR_3D = 60;
 
 export class VrCull {
   /** Светлячки и мелочь лагеря: скрываем через isVisible (их enabled ведёт свой код — день/ночь). */
@@ -40,9 +43,9 @@ export class VrCull {
     readonly vr = true,
   ) {
     const p = new URLSearchParams(location.search);
-    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 200 : 60;
+    const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? 200 : 150;
     this.treeR = Number.isFinite(v) ? v : 60;
-    this.rockR = Math.max(0, this.treeR - (this.vr ? 20 : 10));
+    this.rockR = this.vr ? 180 : 50;
   }
 
   private scan(): void {
@@ -92,8 +95,11 @@ export class VrCull {
         fz = fwd.z / l;
       }
     }
-    this.apply(this.trees, cam, this.treeR, fx, fz);
+    // Дальше NEAR_3D настоящая модель дерева не нужна — там снимок-билборд (TreeImpostors).
+    const imp = impostorsReady();
+    this.apply(this.trees, cam, imp ? NEAR_3D : this.treeR, fx, fz);
     this.apply(this.rocks, cam, this.rockR, fx, fz);
+    if (imp) impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();

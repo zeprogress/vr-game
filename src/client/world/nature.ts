@@ -16,6 +16,7 @@ import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
 import { GrassWindPlugin, WIND } from "./GrassWind";
+import { TreeImpostors } from "./TreeImpostors";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { computeGrassLayout } from "./grassLayout";
 
@@ -57,6 +58,9 @@ const FADE_STEPS = [0.16, 0.34, 0.56, 0.78];
 interface TreeInstance {
   x: number;
   z: number;
+  y: number;
+  kind: number;
+  scale: number;
   bark: Mesh[];
   leaf: Mesh[];
   /** Индекс ступени прозрачности; -1 — обычное непрозрачное дерево. */
@@ -266,7 +270,16 @@ export async function loadTrees(
       mesh.doNotSyncBoundingInfo = true;
     }
     root.freezeWorldMatrix();
-    treeInstances.push({ x: t.x, z: t.z, bark: barkMeshes, leaf: leafMeshes, step: -1 });
+    treeInstances.push({
+      x: t.x,
+      z: t.z,
+      y: root.position.y,
+      kind: i % containers.length,
+      scale: root.scaling.x,
+      bark: barkMeshes,
+      leaf: leafMeshes,
+      step: -1,
+    });
   });
   // LOD листвы (только у игроков с инстансами; у спектатора — свои меши и подмена
   // материалов на прозрачность, LOD там не нужен). Инстансы берут LOD исходника.
@@ -283,6 +296,20 @@ export async function loadTrees(
         if (far) srcM.addLODLevel(50, far);
       }
     }
+  }
+  // Дальние деревья — снимки-билборды (только у игроков; у спектатора деревья с прозрачностью).
+  if (!noInstances) {
+    new TreeImpostors(
+      scene,
+      treeInstances.map((t) => ({
+        kind: t.kind,
+        x: t.x,
+        y: t.y,
+        z: t.z,
+        scale: t.scale,
+        meshes: [...t.bark, ...t.leaf],
+      })),
+    );
   }
   baseBark = bark;
   baseLeaf = leaf;

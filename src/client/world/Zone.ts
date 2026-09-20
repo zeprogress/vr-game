@@ -12,6 +12,7 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState } from "./DayTime";
+import { impostorsDaylight } from "./TreeImpostors";
 import { BotLights } from "./BotLights";
 import { Fireflies, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
@@ -223,6 +224,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       applyDay();
 
       windTick(dt, day.daylight);
+      impostorsDaylight(day.daylight);
       fireflies.update(dt, playerPos, day.daylight);
       hub.tick(day.daylight);
 
