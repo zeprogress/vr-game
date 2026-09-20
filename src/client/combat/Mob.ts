@@ -10,10 +10,11 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
+import { makeBurnFlameMaterial } from "../world/BurnFlameMat";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
-import { Constants } from "@babylonjs/core/Engines/constants";
 
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -349,7 +350,7 @@ export class Mob implements Hittable {
   /** Языки пламени над мобом, пока он горит (ленивое создание). */
   private burnFx: TransformNode | null = null;
   private burnFlames: Mesh[] = [];
-  private burnMat: StandardMaterial | null = null;
+  private burnMat: ShaderMaterial | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -1072,13 +1073,7 @@ export class Mob implements Hittable {
       const scene = this.root.getScene();
       this.burnFx = new TransformNode("mobBurn", scene);
       this.burnFx.parent = this.root;
-      this.burnMat = new StandardMaterial("mobBurnMat", scene);
-      this.burnMat.disableLighting = true;
-      this.burnMat.diffuseColor = new Color3(0, 0, 0);
-      this.burnMat.specularColor = new Color3(0, 0, 0);
-      this.burnMat.emissiveColor = new Color3(1, 0.5, 0.12);
-      this.burnMat.alphaMode = Constants.ALPHA_ADD;
-      this.burnMat.disableDepthWrite = true;
+      this.burnMat = makeBurnFlameMaterial(scene);
       const r = MOB.bodyRadius;
       // Огонь — россыпь: несколько средних «языков» и много мелких (большие квадраты
       // выглядели грубо). Размер каждого — множитель к плоскости r×r.
@@ -1086,10 +1081,8 @@ export class Mob implements Hittable {
         const f = MeshBuilder.CreatePlane(`mobFlame${i}`, { size: r }, scene);
         f.material = this.burnMat;
         f.isPickable = false;
-        f.billboardMode = Mesh.BILLBOARDMODE_Y;
-        // Рисуем раньше тела моба в прозрачной очереди: у полупрозрачного тела огонь виден
-        // сквозь него (а земля по-прежнему закрывает — это обычная очередь с тестом глубины).
-        f.alphaIndex = 0;
+        // Поворот к камере и сдвиг к ней на толщину моба — в шейдере (BurnFlameMat): огонь виден
+        // сквозь тело самого моба, но не сквозь землю и предметы.
         const a = (i / FLAME_SIZES.length) * Math.PI * 2 * 2.3; // винтом, чтобы мелкие не сходились в одном месте
         // По кругу у поверхности тела (было 0.55 r — внутри тела, огонь скрывало).
         f.position.set(Math.cos(a) * r * 0.95, r * 0.4, Math.sin(a) * r * 0.95);
@@ -1109,7 +1102,8 @@ export class Mob implements Hittable {
       f.scaling.setAll(Math.max(0.03, s * FLAME_SIZES[i]));
     }
     if (this.burnMat) {
-      this.burnMat.alpha = 0.38 * this.burnGlow; // было 0.275 — чуть плотнее
+      this.burnMat.setFloat("uAlpha", 0.38 * this.burnGlow);
+      this.burnMat.setFloat("uShift", MOB.bodyRadius * 2 * this.scale);
     }
   }
 
