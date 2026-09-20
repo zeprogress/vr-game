@@ -14,7 +14,12 @@ if (desc?.get && desc.set) {
     enumerable: desc.enumerable,
     get: desc.get,
     set(this: TransformNode, v: number) {
-      set.call(this, v & 7 ? v | TransformNode.BILLBOARDMODE_USE_POSITION : v);
+      const on = (v & 7) !== 0;
+      set.call(this, on ? v | TransformNode.BILLBOARDMODE_USE_POSITION : v);
+      // В режиме USE_POSITION Babylon разворачивает локальный +Z на камеру, и лицевая
+      // сторона плоскости (−Z) смотрит от зрителя — картинка зеркальная (и режется
+      // backface culling). Разворот на 180° по Y до билборда это чинит.
+      if (on && !this.rotationQuaternion) this.rotation.y = Math.PI;
     },
   });
 }

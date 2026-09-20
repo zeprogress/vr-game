@@ -5,8 +5,7 @@ import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 import { Camera } from "@babylonjs/core/Cameras/camera";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTargetTexture";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
@@ -151,6 +150,7 @@ export class TreeImpostors {
     const ref = list[0];
     // Клоны реальных мешей эталонного дерева (у инстансов свой sourceMesh — берём только настоящие).
     const clones: Mesh[] = [];
+    const capMats: StandardMaterial[] = [];
     for (const m of ref.meshes) {
       const src = (m.isAnInstance ? (m as unknown as { sourceMesh: Mesh }).sourceMesh : m) as Mesh;
       const c = src.clone(`impCap_${kind}_${clones.length}`, null, true);
@@ -166,6 +166,28 @@ export class TreeImpostors {
       c.rotationQuaternion = rq;
       c.scaling.copyFrom(scl);
       c.position.copyFrom(pos);
+      // Своя эмиссивная копия материала: снимок не зависит от света сцены и не
+      // трогает общие (замороженные) материалы деревьев.
+      const om = m.material as (StandardMaterial & { diffuseTexture?: unknown }) | null;
+      const cm = new StandardMaterial(`impCapMat_${kind}_${clones.length}`, scene);
+      cm.disableLighting = true;
+      const tex = (om?.diffuseTexture ?? null) as StandardMaterial["diffuseTexture"];
+      if (tex) {
+        cm.diffuseTexture = tex;
+        cm.emissiveTexture = tex;
+        cm.useAlphaFromDiffuseTexture = true;
+        cm.transparencyMode = 1; // ALPHATEST
+        cm.alphaCutOff = 0.28;
+        cm.emissiveColor = new Color3(0.78, 0.86, 0.66); // листва: как днём на свету
+      } else {
+        const d = om?.diffuseColor ?? new Color3(0.3, 0.2, 0.13);
+        cm.emissiveColor = new Color3(d.r * 1.5, d.g * 1.5, d.b * 1.5);
+      }
+      cm.diffuseColor = new Color3(0, 0, 0);
+      cm.specularColor = new Color3(0, 0, 0);
+      cm.backFaceCulling = false;
+      c.material = cm;
+      capMats.push(cm);
       c.layerMask = MASK;
       c.isPickable = false;
       c.setEnabled(true);
@@ -217,19 +239,7 @@ export class TreeImpostors {
     rtt.wrapU = Constants.TEXTURE_CLAMP_ADDRESSMODE;
     rtt.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
 
-    // Свет снимка — свой, дневной (сцена может быть ночью); остальные источники клонов не освещают.
-    const hemi = new HemisphericLight(`impHemi_${kind}`, new Vector3(0, 1, 0), scene);
-    hemi.intensity = 0.95;
-    hemi.diffuse = new Color3(1, 1, 1);
-    hemi.groundColor = new Color3(0.45, 0.45, 0.45);
-    hemi.includedOnlyMeshes = clones;
-    const sun = new DirectionalLight(`impSun_${kind}`, new Vector3(-0.4, -0.8, 0.5), scene);
-    sun.intensity = 1.1;
-    sun.includedOnlyMeshes = clones;
-    for (const l of scene.lights) {
-      if (l === hemi || l === sun) continue;
-      l.excludedMeshes.push(...clones);
-    }
+    // Свет не используем вовсе: у клонов свои материалы с эмиссивной заливкой (см. выше).
 
     // Туман в снимок не пишем.
     let fog = scene.fogMode;
@@ -255,16 +265,9 @@ export class TreeImpostors {
         if (idx >= 0) scene.customRenderTargets.splice(idx, 1);
         rtt.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
         setTimeout(() => {
-          for (const l of scene.lights) {
-            for (const c of clones) {
-              const i = l.excludedMeshes.indexOf(c);
-              if (i >= 0) l.excludedMeshes.splice(i, 1);
-            }
-          }
-          hemi.dispose();
-          sun.dispose();
           cam.dispose();
           for (const c of clones) c.dispose();
+          for (const mt of capMats) mt.dispose();
         }, 100);
         resolve();
       });

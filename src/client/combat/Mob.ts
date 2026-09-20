@@ -132,12 +132,12 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
   // стоящую на земле, иначе (скелет тянет вершины иначе) — откат на сферу.
   const expect = MOB.bodyRadius * 1.75;
   const h = maxY - minY;
-  if (!(h > expect * 0.5 && h < expect * 1.8) || Math.abs(minY) > expect * 0.45) return null;
-  if (Math.abs((minX + maxX) / 2) > expect || Math.abs((minZ + maxZ) / 2) > expect) return null;
+  if (!(h > expect * 0.4 && h < expect * 2.2)) return null;
+  if (Math.abs((minX + maxX) / 2) > expect * 1.5 || Math.abs((minZ + maxZ) / 2) > expect * 1.5) return null;
 
-  // Кластеризация: увеличиваем ячейку, пока суммарно не уложимся в ~220 треугольников.
+  // Кластеризация: увеличиваем ячейку, пока суммарно не уложимся в ~650 треугольников.
   const size = Math.max(maxX - minX, h, maxZ - minZ);
-  let cell = size / 16;
+  let cell = size / 26;
   type Out = { pos: number[]; uv: number[]; idx: number[] };
   const cluster = (g: Grp, c: number): Out => {
     const cellOf = new Map<number, number>();
@@ -163,11 +163,25 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
       sum[ci * 6 + 5] += 1;
     }
     const pos: number[] = [];
-    const uv: number[] = [];
     for (let ci = 0; ci < sum.length / 6; ci++) {
       const n = sum[ci * 6 + 5];
       pos.push(sum[ci * 6] / n, sum[ci * 6 + 1] / n, sum[ci * 6 + 2] / n);
-      uv.push(sum[ci * 6 + 3] / n, sum[ci * 6 + 4] / n);
+    }
+    // UV — у ближайшей к центру ячейки настоящей вершины (усреднение размазывало цвета
+    // атласа между соседними частями модели).
+    const uv: number[] = new Array((sum.length / 6) * 2).fill(0);
+    const best = new Float32Array(sum.length / 6).fill(Infinity);
+    for (let i = 0; i < remap.length; i++) {
+      const ci = remap[i];
+      const dx = g.pos[i * 3] - pos[ci * 3];
+      const dy = g.pos[i * 3 + 1] - pos[ci * 3 + 1];
+      const dz = g.pos[i * 3 + 2] - pos[ci * 3 + 2];
+      const d = dx * dx + dy * dy + dz * dz;
+      if (d < best[ci]) {
+        best[ci] = d;
+        uv[ci * 2] = g.uv[i * 2];
+        uv[ci * 2 + 1] = g.uv[i * 2 + 1];
+      }
     }
     const idx: number[] = [];
     const seen = new Set<string>();
@@ -185,7 +199,7 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
   for (let it = 0; it < 30; it++) {
     outs = [...groups.values()].map((g) => cluster(g, cell));
     const tris = outs.reduce((n, o) => n + o.idx.length / 3, 0);
-    if (tris <= 220) break;
+    if (tris <= 650) break;
     cell *= 1.18;
   }
   const srcs: Mesh[] = [];
