@@ -18,7 +18,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
-import { BOSS_CFG, ELITE_MOBS, FLYER_HIT_BONUS, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -1118,38 +1118,55 @@ export class Mob implements Hittable {
     this.curAnim = null;
   }
 
-  /** Ударная волна слэма: плоское кольцо на земле, разбегается и гаснет. */
+  /**
+   * Ударная волна слэма. Босс — плоское кольцо на земле, разбегается и гаснет.
+   * Чародей руин (нова с отталкиванием) — полупрозрачный КУПОЛ: полусфера
+   * раздувается до радиуса новы (MAGE_NOVA.radius) и гаснет.
+   */
   private startSlamRing(): void {
     if (!this.slamRing) {
-      const m = MeshBuilder.CreateTorus(
-        "bossSlam",
-        { diameter: 2, thickness: 0.18, tessellation: 24 },
-        this.scene,
-      );
-      const mat = new StandardMaterial("bossSlamMat", this.scene);
-      mat.emissiveColor = new Color3(1, 0.35, 0.2);
+      let m: Mesh;
+      if (this.isBoss) {
+        m = MeshBuilder.CreateTorus("bossSlam", { diameter: 2, thickness: 0.18, tessellation: 24 }, this.scene);
+        m.rotation.x = Math.PI / 2;
+      } else {
+        m = MeshBuilder.CreateSphere("mageNova", { diameter: 2, segments: 20, slice: 0.5 }, this.scene);
+      }
+      const mat = new StandardMaterial(this.isBoss ? "bossSlamMat" : "mageNovaMat", this.scene);
+      mat.emissiveColor = this.isBoss ? new Color3(1, 0.35, 0.2) : new Color3(0.62, 0.4, 1);
       mat.diffuseColor = new Color3(0, 0, 0);
+      mat.specularColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
-      mat.alpha = 0.9;
+      mat.backFaceCulling = false;
+      mat.disableDepthWrite = true;
+      mat.alpha = this.slamAlpha();
       m.material = mat;
       m.isPickable = false;
-      m.rotation.x = Math.PI / 2;
       m.parent = this.root;
       this.slamRing = m;
     }
     this.slamRing.setEnabled(true);
-    this.slamRing.scaling.setAll(0.3);
-    (this.slamRing.material as StandardMaterial).alpha = 0.9;
+    this.slamRing.scaling.setAll(this.slamScale(0));
+    (this.slamRing.material as StandardMaterial).alpha = this.slamAlpha();
     this.slamRingT = 0.45;
+  }
+
+  private slamAlpha(): number {
+    return this.isBoss ? 0.9 : 0.4;
+  }
+
+  /** Локальный масштаб волны в фазе k (0..1): босс ~5 м, купол мага — ровно радиус новы в мире. */
+  private slamScale(k: number): number {
+    if (this.isBoss) return 0.3 + k * 4.7;
+    return (MAGE_NOVA.radius / Math.max(0.1, this.scale)) * (0.15 + 0.85 * k);
   }
 
   private animateSlamRing(dt: number): void {
     if (!this.slamRing) return;
     this.slamRingT -= dt;
     const k = 1 - Math.max(0, this.slamRingT) / 0.45;
-    // Радиус слэма ~5 м; кольцо-меш базово 2 м -> масштаб до ~5.
-    this.slamRing.scaling.setAll(0.3 + k * 4.7);
-    (this.slamRing.material as StandardMaterial).alpha = 0.9 * (1 - k);
+    this.slamRing.scaling.setAll(this.slamScale(k));
+    (this.slamRing.material as StandardMaterial).alpha = this.slamAlpha() * (1 - k);
     if (this.slamRingT <= 0) this.slamRing.setEnabled(false);
   }
 
