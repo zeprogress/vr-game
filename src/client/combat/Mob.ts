@@ -1082,8 +1082,12 @@ export class Mob implements Hittable {
         f.material = this.burnMat;
         f.isPickable = false;
         f.billboardMode = Mesh.BILLBOARDMODE_Y;
+        // Рисуем раньше тела моба в прозрачной очереди: у полупрозрачного тела огонь виден
+        // сквозь него (а земля по-прежнему закрывает — это обычная очередь с тестом глубины).
+        f.alphaIndex = 0;
         const a = (i / 5) * Math.PI * 2;
-        f.position.set(Math.cos(a) * r * 0.55, r * 0.4, Math.sin(a) * r * 0.55);
+        // По кругу у поверхности тела (было 0.55 r — внутри тела, огонь скрывало).
+        f.position.set(Math.cos(a) * r * 0.95, r * 0.4, Math.sin(a) * r * 0.95);
         f.parent = this.burnFx;
         this.burnFlames.push(f);
       }

@@ -104,8 +104,6 @@ export class SkillFx {
     st.age = 0;
     st.life = Math.max(0.2, life);
     st.radius = radius;
-    st.ring.position.set(x, y + 0.06, z);
-    st.ring.setEnabled(true);
     st.dome.position.set(x, y + 0.02, z);
     st.dome.setEnabled(true);
   }
@@ -163,18 +161,15 @@ export class SkillFx {
       if (st.age >= st.life) continue;
       st.age += dt;
       if (st.age >= st.life) {
-        st.ring.setEnabled(false);
         st.dome.setEnabled(false);
         continue;
       }
       const t = st.age / st.life;
-      // Волна стремительно расходится наружу и гаснет: нижний диск и купол над ним, с теми же
-      // прозрачностями, что у массового хила (диск 0.13, купол 0.16).
+      // Волна стремительно расходится наружу и гаснет: только купол (нижний диск убран по
+      // просьбе), прозрачность как у купола массового хила — 0.16.
       const r = st.radius * (0.15 + 0.95 * Math.sqrt(t));
-      st.ring.scaling.setAll(r);
       st.dome.scaling.set(r, r * 0.55, r);
       const fade = 1 - t;
-      (st.ring.material as StandardMaterial).alpha = 0.13 * fade;
       (st.dome.material as StandardMaterial).alpha = 0.16 * fade;
     }
   }
