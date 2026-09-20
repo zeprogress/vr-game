@@ -75,6 +75,8 @@ interface Cross {
   z: number;
   dx: number;
   dz: number;
+  /** Множитель непрозрачности (вампиризм — полупрозрачные). */
+  a: number;
 }
 
 /**
@@ -118,7 +120,7 @@ export class WorldCrossFx {
       m.renderingGroupId = 1; // поверх мира, но под интерфейсом
       m.billboardMode = Mesh.BILLBOARDMODE_Y;
       m.setEnabled(false);
-      this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0 });
+      this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0, a: 1 });
     }
 
     // Крит — по мотивам референса (VFX-«искра»): 1) яркая вспышка — раскалённое ядро с ореолом и
@@ -389,7 +391,7 @@ export class WorldCrossFx {
    * @param count сколько штук
    * @param color цвет (CROSS_GREEN / CROSS_ORANGE)
    */
-  burst(x: number, y: number, z: number, count: number, color: Color3): void {
+  burst(x: number, y: number, z: number, count: number, color: Color3, alpha = 1): void {
     for (let i = 0; i < count; i++) {
       const c = this.pool[this.next];
       this.next = (this.next + 1) % this.pool.length;
@@ -401,6 +403,7 @@ export class WorldCrossFx {
       c.dx = Math.cos(a) * 0.18;
       c.dz = Math.sin(a) * 0.18;
       c.age = -i * 0.07; // волной, а не пачкой
+      c.a = alpha;
       (c.mesh.material as StandardMaterial).emissiveColor.copyFrom(color);
       c.mesh.setEnabled(true);
     }
@@ -421,14 +424,14 @@ export class WorldCrossFx {
       const ease = 1 - (1 - f) * (1 - f);
       c.mesh.scaling.setAll(1.5 + ease * 1.9); // крупнее
       c.mesh.rotation.z += dt * 0.6;
-      (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : Math.min(1, 1.6 * (1 - f));
+      (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : Math.min(0.8, 1.6 * (1 - f)); // чуть прозрачнее
       c.mesh.setEnabled(f < 1);
       // Фаза 2: кольцо с искрами расходится с 18% жизни и тает к концу.
       const u = (t - 0.18) / 0.82;
       if (u > 0) {
         if (!c.ring.isEnabled()) c.ring.setEnabled(true);
         c.ring.scaling.setAll(1.3 + u * 2.6);
-        (c.ring.material as StandardMaterial).alpha = Math.min(1, 1.5 * (1 - u));
+        (c.ring.material as StandardMaterial).alpha = Math.min(0.8, 1.5 * (1 - u));
       }
     }
     for (const c of this.pool) {
@@ -448,7 +451,7 @@ export class WorldCrossFx {
       // Всплывает и тает; в самом начале ещё и «выпрыгивает» размером.
       const pop = Math.min(1, c.age / 0.12);
       c.mesh.scaling.setAll(pop * (1 - t * 0.25));
-      (c.mesh.material as StandardMaterial).alpha = Math.min(1, (1 - t) * 2.2) * 0.95;
+      (c.mesh.material as StandardMaterial).alpha = Math.min(1, (1 - t) * 2.2) * 0.95 * c.a;
     }
     for (const t of this.missPool) {
       if (t.age > MISS_LIFE) continue;

@@ -2079,11 +2079,11 @@ export class Game {
         // себя — ещё и перед глазами (красные вместо зелёных от роста HP).
         if (id === this.net?.sessionId) {
           this.lastVampAt = performance.now();
-          this.healCrossFx?.burst(0.2, W_RED); // меньше крестиков от вампиризма (было 0.7 → 8 шт, теперь 5)
+          this.healCrossFx?.burst(0.2, W_RED, 0.4); // меньше крестиков от вампиризма (было 0.7 → 8 шт, теперь 5)
         } else {
           const av = this.avatars.get(id);
-          if (av) this.crossFx.burst(av.position.x, av.position.y - 0.4, av.position.z, 2, W_RED);
-          else this.crossFx.burst(x, y, z, 2, W_RED);
+          if (av) this.crossFx.burst(av.position.x, av.position.y - 0.4, av.position.z, 2, W_RED, 0.4);
+          else this.crossFx.burst(x, y, z, 2, W_RED, 0.4);
         }
         break;
       }

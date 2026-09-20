@@ -18,6 +18,8 @@ interface Cross {
   life: number;
   x: number;
   driftX: number;
+  /** Множитель непрозрачности (вампиризм — полупрозрачные). */
+  a: number;
 }
 
 const WORLD_UP = new Vector3(0, 1, 0);
@@ -65,7 +67,7 @@ export class HealCrossFx {
   }
 
   /** Выпустить волну крестиков. strength 0..1 — сколько; color — цвет. */
-  burst(strength = 1, color: Color3 = CROSS_GREEN): void {
+  burst(strength = 1, color: Color3 = CROSS_GREEN, alpha = 1): void {
     const s = Math.max(0.2, Math.min(1, strength));
     const n = 4 + Math.round(s * 5);
     for (let i = 0; i < n; i++) {
@@ -80,6 +82,7 @@ export class HealCrossFx {
         life: 1.0 + Math.random() * 0.5,
         x: (Math.random() - 0.5) * 0.6,
         driftX: (Math.random() - 0.5) * 0.12,
+        a: alpha,
       });
     }
   }
@@ -117,7 +120,7 @@ export class HealCrossFx {
       c.mesh.lookAt(pos); // плоскостью к лицу
       c.mesh.scaling.setAll(0.6 + 0.5 * Math.min(1, f * 4));
       const fade = f < 0.12 ? f / 0.12 : 1 - (f - 0.12) / 0.88;
-      (c.mesh.material as StandardMaterial).alpha = Math.max(0, fade) * 0.95;
+      (c.mesh.material as StandardMaterial).alpha = Math.max(0, fade) * 0.95 * c.a;
     }
   }
 
