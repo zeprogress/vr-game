@@ -746,6 +746,14 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
+    // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
+    for (const nick of ["flannel_"]) {
+      const rec = store.get(`nick:${nick}`);
+      if (rec && rec.towerClearedAt === undefined) {
+        store.put(`nick:${nick}`, { towerClearedAt: Date.now(), bestTowerFloor: Math.max(rec.bestTowerFloor ?? 0, TOWER.floors) });
+      }
+    }
     this.setState(new ZoneState());
     // Зона — единственный постоянный мир. НЕ распускаем комнату, когда из неё
     // вышел последний клиент: иначе перезагрузка страницы спектатора (на
