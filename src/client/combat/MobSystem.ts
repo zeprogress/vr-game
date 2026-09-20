@@ -237,17 +237,44 @@ export class NetMobs {
     this.burstSparkProto.setEnabled(false);
   }
 
+  /** Пул мешей эффектов: клон/удаление на каждый снаряд и разрыв давали GC и лишнюю работу. */
+  private readonly meshPool = new Map<Mesh, Mesh[]>();
+  private readonly meshOwner = new WeakMap<Mesh, Mesh>();
+
+  private acquire(proto: Mesh, name: string): Mesh {
+    const m = this.meshPool.get(proto)?.pop() ?? proto.clone(name);
+    m.name = name;
+    this.meshOwner.set(m, proto);
+    m.setEnabled(true);
+    return m;
+  }
+
+  private recycle(m: Mesh): void {
+    const proto = this.meshOwner.get(m);
+    if (!proto) {
+      m.dispose(false, false);
+      return;
+    }
+    m.setEnabled(false);
+    m.visibility = 1;
+    m.scaling.setAll(1);
+    let list = this.meshPool.get(proto);
+    if (!list) this.meshPool.set(proto, (list = []));
+    if (list.length < 40) list.push(m);
+    else m.dispose(false, false);
+  }
+
   /** Разрыв снаряда: `hit` — попал по цели (ярче, со звуком), иначе — угас. */
   private spawnBurst(pos: Vector3, radius: number, hit: boolean): void {
     if (this.bursts.length >= 10) {
-      const old = this.bursts.shift();
-      old?.flash.dispose(false, false);
-      old?.ring.dispose(false, false);
-      for (const s of old?.sparks ?? []) s.mesh.dispose(false, false);
+      const old = this.bursts.shift()!;
+      this.recycle(old.flash);
+      this.recycle(old.ring);
+      for (const s of old.sparks) this.recycle(s.mesh);
     }
     const n = this.burstSeq++;
-    const flash = this.burstFlashProto.clone(`burstF_${n}`);
-    const ring = this.burstRingProto.clone(`burstR_${n}`);
+    const flash = this.acquire(this.burstFlashProto, `burstF_${n}`);
+    const ring = this.acquire(this.burstRingProto, `burstR_${n}`);
     // Материал общий (клон материала клонировал и текстуру, а сеттер hasAlpha
     // на свежей текстуре дёргал markAllMaterialsAsDirty каждый разрыв снаряда —
     // это роняло кадр в VR). Индивидуальное затухание — через mesh.visibility.
@@ -261,7 +288,7 @@ export class NetMobs {
     if (hit) {
       const count = 9;
       for (let i = 0; i < count; i++) {
-        const s = this.burstSparkProto.clone(`burstS_${n}_${i}`);
+        const s = this.acquire(this.burstSparkProto, `burstS_${n}_${i}`);
         s.setEnabled(true);
         s.position.copyFrom(pos);
         sparks.push({
@@ -291,9 +318,9 @@ export class NetMobs {
       b.age += dt;
       const f = b.age / b.life;
       if (f >= 1) {
-        b.flash.dispose(false, false);
-        b.ring.dispose(false, false);
-        for (const s of b.sparks) s.mesh.dispose(false, false);
+        this.recycle(b.flash);
+        this.recycle(b.ring);
+        for (const s of b.sparks) this.recycle(s.mesh);
         this.bursts.splice(i, 1);
         continue;
       }
@@ -534,14 +561,14 @@ export class NetMobs {
       let bo = this.bolts.get(id);
       if (!bo) {
         const isArrow = s.kind === 1;
-        const core = this.boltCoreProto.clone(`bolt_${id}`);
-        const glow = this.boltGlowProto.clone(`boltGlow_${id}`);
+        const core = this.acquire(this.boltCoreProto, `bolt_${id}`);
+        const glow = this.acquire(this.boltGlowProto, `boltGlow_${id}`);
         core.setEnabled(!isArrow);
         glow.setEnabled(!isArrow);
         let arrow: Mesh | undefined;
         if (isArrow) {
           if (!this.arrowProto) this.arrowProto = createArrowProto(this.scene);
-          arrow = this.arrowProto.clone(`arrow_${id}`) ?? undefined;
+          arrow = this.acquire(this.arrowProto, `arrow_${id}`);
           arrow?.setEnabled(true);
         }
         bo = {
@@ -614,9 +641,9 @@ export class NetMobs {
         } else {
           this.spawnBurst(bo.pos, bo.r, hit);
         }
-        bo.core.dispose();
-        bo.glow.dispose();
-        bo.arrow?.dispose();
+        this.recycle(bo.core);
+        this.recycle(bo.glow);
+        if (bo.arrow) this.recycle(bo.arrow);
         this.bolts.delete(id);
       }
     }
@@ -654,16 +681,18 @@ export class NetMobs {
     }
     for (const b of this.balls.values()) b.mesh.dispose();
     for (const bo of this.bolts.values()) {
-      bo.core.dispose();
-      bo.glow.dispose();
-      bo.arrow?.dispose();
+      this.recycle(bo.core);
+      this.recycle(bo.glow);
+      if (bo.arrow) this.recycle(bo.arrow);
     }
     for (const b of this.bursts.values()) {
-      b.flash.dispose(false, false);
-      b.ring.dispose(false, false);
-      for (const s of b.sparks) s.mesh.dispose(false, false);
+      this.recycle(b.flash);
+      this.recycle(b.ring);
+      for (const s of b.sparks) this.recycle(s.mesh);
     }
     this.bursts.length = 0;
+    for (const list of this.meshPool.values()) for (const m of list) m.dispose(false, false);
+    this.meshPool.clear();
     this.mobs.clear();
     this.dummies.clear();
     this.balls.clear();

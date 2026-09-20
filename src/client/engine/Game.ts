@@ -510,7 +510,7 @@ export class Game {
         this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
         this.eventBeacon.update(dt);
       }
-      this.loot.update(dt);
+      this.loot.update(dt, this.player.position);
       this.combat.update(dt);
       this.mark("combat");
       this.updateSkillAbility(dt);

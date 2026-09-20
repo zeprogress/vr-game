@@ -2,6 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
@@ -15,8 +16,14 @@ import { createStaff } from "../items/Staff";
 import { createPotionMesh } from "../items/Potion";
 import type { ZoneState } from "#shared/net/schema";
 
+/** Лут дальше этого от игрока не рисуется и даже не создаётся (с гистерезисом). */
+const DROP_SHOW_R = 45;
+const DROP_HIDE_R = 52;
+const WEAPON_SHOW_R = 70;
+const WEAPON_HIDE_R = 80;
+
 interface DropView {
-  mesh: Mesh;
+  mesh: AbstractMesh;
   base: number;
   phase: number;
   /** Оружие стоит воткнутым в землю, а не качается кубиком. */
@@ -68,24 +75,44 @@ export class LootDrops {
     this.room = room;
   }
 
-  update(dt: number): void {
+  /** `from` — позиция игрока для отсечения дальнего лута; без неё рисуется всё (спектатор). */
+  update(dt: number, from?: Vector3): void {
     const room = this.room;
     if (!room) return;
     this.clock += dt;
 
     room.state.drops.forEach((s, id) => {
       let v = this.views.get(id);
+      if (!isItemId(s.item)) return;
+      const isWeapon = !!ITEMS[s.item].weapon;
+      if (from) {
+        const dx = s.x - from.x;
+        const dz = s.z - from.z;
+        const d2 = dx * dx + dz * dz;
+        const show = isWeapon ? WEAPON_SHOW_R : DROP_SHOW_R;
+        const hide = isWeapon ? WEAPON_HIDE_R : DROP_HIDE_R;
+        if (!v) {
+          if (d2 > show * show) return;
+        } else if (d2 > hide * hide) {
+          if (v.mesh.isEnabled()) v.mesh.setEnabled(false);
+          return;
+        } else if (!v.mesh.isEnabled() && d2 <= show * show) {
+          v.mesh.setEnabled(true);
+        }
+      }
       if (!v) {
-        if (!isItemId(s.item)) return;
         const factory = this.weaponFactory.get(s.item);
-        let mesh: Mesh;
+        let mesh: AbstractMesh;
         if (factory) {
           mesh = factory();
           mesh.name = `drop_${id}`;
         } else {
           const proto = this.protos.get(s.item);
           if (!proto) return;
-          mesh = proto.clone(`drop_${id}`);
+          // Инстанс: все банки/кубики одного вида идут одним вызовом отрисовки.
+          mesh = proto.createInstance(`drop_${id}`);
+          mesh.isPickable = false;
+          mesh.scaling.copyFrom(proto.scaling);
         }
         mesh.setEnabled(true);
         // Разводим фазу по id, чтобы кучка лута не качалась синхронно.

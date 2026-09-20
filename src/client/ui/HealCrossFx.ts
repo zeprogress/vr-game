@@ -38,6 +38,7 @@ export class HealCrossFx {
   private readonly proto: Mesh;
   private readonly crosses: Cross[] = [];
   private seq = 0;
+  private readonly mats = new Map<string, StandardMaterial>();
   private readonly right = new Vector3();
   private readonly up = new Vector3();
   private readonly at = new Vector3();
@@ -66,15 +67,26 @@ export class HealCrossFx {
     this.proto = m;
   }
 
+  /** Общий материал на цвет: прозрачность крестика идёт через mesh.visibility, клонов материала нет. */
+  private matFor(color: Color3): StandardMaterial {
+    const key = `${color.r},${color.g},${color.b}`;
+    let mat = this.mats.get(key);
+    if (!mat) {
+      mat = this.proto.material!.clone(`healCrossMat_${key}`) as StandardMaterial;
+      mat.emissiveColor.copyFrom(color);
+      mat.alpha = 1;
+      this.mats.set(key, mat);
+    }
+    return mat;
+  }
+
   /** Выпустить волну крестиков. strength 0..1 — сколько; color — цвет. */
   burst(strength = 1, color: Color3 = CROSS_GREEN, alpha = 1): void {
     const s = Math.max(0.2, Math.min(1, strength));
     const n = 4 + Math.round(s * 5);
     for (let i = 0; i < n; i++) {
       const mesh = this.proto.clone(`healCross_${this.seq++}`);
-      const mat = this.proto.material!.clone(`healCrossMat_${this.seq}`) as StandardMaterial;
-      mat.emissiveColor.copyFrom(color);
-      mesh.material = mat;
+      mesh.material = this.matFor(color);
       mesh.setEnabled(false);
       this.crosses.push({
         mesh,
@@ -104,7 +116,7 @@ export class HealCrossFx {
       if (c.age < 0) continue;
       const f = c.age / c.life;
       if (f >= 1) {
-        c.mesh.dispose(false, true);
+        c.mesh.dispose(false, false);
         this.crosses.splice(i, 1);
         continue;
       }
@@ -120,13 +132,15 @@ export class HealCrossFx {
       c.mesh.lookAt(pos); // плоскостью к лицу
       c.mesh.scaling.setAll(0.6 + 0.5 * Math.min(1, f * 4));
       const fade = f < 0.12 ? f / 0.12 : 1 - (f - 0.12) / 0.88;
-      (c.mesh.material as StandardMaterial).alpha = Math.max(0, fade) * 0.95 * c.a;
+      c.mesh.visibility = Math.max(0, fade) * 0.95 * c.a;
     }
   }
 
   dispose(): void {
-    for (const c of this.crosses) c.mesh.dispose(false, true);
+    for (const c of this.crosses) c.mesh.dispose(false, false);
     this.crosses.length = 0;
     this.proto.dispose(false, true);
+    for (const m of this.mats.values()) m.dispose();
+    this.mats.clear();
   }
 }

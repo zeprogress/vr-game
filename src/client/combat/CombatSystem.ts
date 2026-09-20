@@ -518,6 +518,9 @@ export class CombatSystem {
 
   // ---- прятать за спину ----
 
+  /** Оружие за спиной, которое мы скрыли (рука не у плеча). */
+  private readonly stowHidden = new Set<Item>();
+
   private stowedItem(side: Side): Item | null {
     return this.items.find((i) => i.stow === side) ?? null;
   }
@@ -691,7 +694,21 @@ export class CombatSystem {
 
   private anchorStowedItems(): void {
     for (const item of this.items) {
-      if (!item.stow) continue;
+      if (!item.stow) {
+        // Вышло с плеча (в руку/в мир) — вернуть видимость, если её гасили мы.
+        if (this.stowHidden.delete(item)) item.mesh.setEnabled(true);
+        continue;
+      }
+      // Запасное оружие за спиной не показываем и не обрабатываем — только когда
+      // рука заведена за это плечо (взять/поменять).
+      if (!this.handAtShoulder(item.stow)) {
+        if (!this.stowHidden.has(item)) {
+          this.stowHidden.add(item);
+          item.mesh.setEnabled(false);
+        }
+        continue;
+      }
+      if (this.stowHidden.delete(item)) item.mesh.setEnabled(true);
       const t = STOW[item.kind][item.stow];
       if (item.mesh.parent !== this.backAnchor) item.mesh.parent = this.backAnchor;
       item.mesh.rotationQuaternion = null;

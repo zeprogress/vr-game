@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -28,45 +29,48 @@ export interface PotionBottle {
  * и табличка с числом зелий в сумке.
  */
 /**
- * Та же бутылочка, но одним мешем и без таблички — для лута, лежащего
- * в мире. Модель общая с той, что висит у игрока на поясе.
+ * Бутылочка для лута, лежащего в мире: один низкополигональный меш,
+ * один непрозрачный материал, цвета в вершинах. Их на земле больше всего,
+ * поэтому важна дешевизна (один сабмеш, инстансы батчатся в один вызов).
  */
 export function createPotionMesh(scene: Scene): Mesh {
-  const parts = potionParts(scene);
-  const mesh = Mesh.MergeMeshes(parts, true, true, undefined, false, true);
-  if (!mesh) throw new Error("не удалось собрать бутылочку");
-  mesh.name = "potionDrop";
-  return mesh;
-}
-
-/** Тело, горлышко и пробка — общая заготовка для пояса и для лута. */
-function potionParts(scene: Scene): Mesh[] {
   const tint = ITEMS.potion.tint;
-  const glass = new StandardMaterial("potionGlass", scene);
-  glass.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
-  glass.emissiveColor = new Color3(tint[0] * 0.45, tint[1] * 0.2, tint[2] * 0.25);
-  glass.specularColor = new Color3(0.8, 0.8, 0.8);
-  glass.specularPower = 64;
-  glass.alpha = 0.85;
+  const glassCol = new Color4(tint[0], tint[1], tint[2], 1);
+  const corkCol = new Color4(0.42, 0.3, 0.16, 1);
 
-  const cork = new StandardMaterial("potionCork", scene);
-  cork.diffuseColor = new Color3(0.42, 0.3, 0.16);
-  cork.specularColor = new Color3(0, 0, 0);
-
-  const body = MeshBuilder.CreateSphere("p_body", { diameter: 0.075, segments: 8 }, scene);
+  const body = MeshBuilder.CreateSphere("p_body", { diameter: 0.075, segments: 5 }, scene);
   body.scaling.y = 1.25;
   body.bakeCurrentTransformIntoVertices();
-  body.material = glass;
+  const neck = MeshBuilder.CreateCylinder("p_neck", { height: 0.07, diameter: 0.03, tessellation: 6 }, scene);
+  neck.position.y = 0.068;
+  neck.bakeCurrentTransformIntoVertices();
+  const stopper = MeshBuilder.CreateCylinder("p_cork", { height: 0.022, diameter: 0.034, tessellation: 6 }, scene);
+  stopper.position.y = 0.11;
+  stopper.bakeCurrentTransformIntoVertices();
 
-  const neck = MeshBuilder.CreateCylinder("p_neck", { height: 0.05, diameter: 0.028 }, scene);
-  neck.position.y = 0.058;
-  neck.material = glass;
+  const paint = (m: Mesh, c: Color4): void => {
+    const n = m.getTotalVertices();
+    const cols = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) cols.set([c.r, c.g, c.b, 1], i * 4);
+    m.setVerticesData(VertexBuffer.ColorKind, cols);
+  };
+  paint(body, glassCol);
+  paint(neck, glassCol);
+  paint(stopper, corkCol);
 
-  const stopper = MeshBuilder.CreateCylinder("p_cork", { height: 0.022, diameter: 0.032 }, scene);
-  stopper.position.y = 0.09;
-  stopper.material = cork;
+  const mesh = Mesh.MergeMeshes([body, neck, stopper], true, true, undefined, false, false);
+  if (!mesh) throw new Error("не удалось собрать бутылочку");
+  mesh.name = "potionDrop";
 
-  return [body, neck, stopper];
+  const mat = new StandardMaterial("potionDropMat", scene);
+  mat.diffuseColor = new Color3(1, 1, 1); // цвет берётся из вершин
+  mat.emissiveColor = new Color3(0.32, 0.16, 0.18);
+  mat.specularColor = new Color3(0, 0, 0);
+  mesh.material = mat;
+  mesh.useVertexColors = true;
+  mesh.hasVertexAlpha = false;
+  mat.freeze();
+  return mesh;
 }
 
 export function createPotion(scene: Scene): PotionBottle {
