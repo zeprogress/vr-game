@@ -351,6 +351,9 @@ export class Mob implements Hittable {
   private burnFx: TransformNode | null = null;
   private burnFlames: Mesh[] = [];
   private burnMat: ShaderMaterial | null = null;
+  /** Крупные «квадраты» пламени, как было раньше (плюс россыпь мелких). */
+  private burnBig: Mesh[] = [];
+  private burnMatBig: ShaderMaterial | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -1089,6 +1092,17 @@ export class Mob implements Hittable {
         f.parent = this.burnFx;
         this.burnFlames.push(f);
       }
+      // Прежние 5 крупных карточек (r×1.7, ближе к центру тела) — видны сквозь тело моба.
+      this.burnMatBig = makeBurnFlameMaterial(scene);
+      for (let i = 0; i < 5; i++) {
+        const f = MeshBuilder.CreatePlane(`mobFlameBig${i}`, { size: r * 1.7 }, scene);
+        f.material = this.burnMatBig;
+        f.isPickable = false;
+        const a = (i / 5) * Math.PI * 2;
+        f.position.set(Math.cos(a) * r * 0.55, r * 0.4, Math.sin(a) * r * 0.55);
+        f.parent = this.burnFx;
+        this.burnBig.push(f);
+      }
     }
     this.burnFx.setEnabled(true);
     this.burnT += dt;
@@ -1100,6 +1114,18 @@ export class Mob implements Hittable {
       f.position.y = r * (0.15 + rise * 1.5);
       const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
       f.scaling.setAll(Math.max(0.03, s * FLAME_SIZES[i]));
+    }
+    for (let i = 0; i < this.burnBig.length; i++) {
+      const f = this.burnBig[i];
+      const ph = this.burnT * 7 + i * 1.7;
+      const rise = (this.burnT * 1.8 + i * 0.37) % 1;
+      f.position.y = r * (0.15 + rise * 1.5);
+      const s = (1 - rise) * (0.7 + 0.5 * Math.sin(ph)) * this.burnGlow;
+      f.scaling.setAll(Math.max(0.05, s));
+    }
+    if (this.burnMatBig) {
+      this.burnMatBig.setFloat("uAlpha", 0.275 * this.burnGlow);
+      this.burnMatBig.setFloat("uShift", MOB.bodyRadius * 2 * this.scale);
     }
     if (this.burnMat) {
       this.burnMat.setFloat("uAlpha", 0.38 * this.burnGlow);
@@ -1181,6 +1207,7 @@ export class Mob implements Hittable {
     this.slamRing?.material?.dispose();
     this.stunStarMat?.dispose();
     this.burnMat?.dispose();
+    this.burnMatBig?.dispose();
     this.mat.dispose();
     // Свои «плоские» материалы гасим без текстур: атлас общий у всех копий модели.
     for (const m of this.rig?.meshes ?? []) {
