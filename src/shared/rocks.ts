@@ -1,4 +1,5 @@
 import { WORLD, BOSS } from "./constants";
+import { HUB } from "./hub";
 
 /** Камень в мире: где, какой модели, как повёрнут и насколько крупный. */
 export interface Rock {
@@ -43,7 +44,7 @@ export function rocks(): Rock[] {
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue; // арена босса — чисто
     const scale = 0.22 + r() ** 2 * 0.75; // много мелких, редко валун
     const solid = scale > 0.42;
-    out.push({
+    const rock: Rock = {
       x,
       z,
       kind: Math.floor(r() * 3),
@@ -53,7 +54,11 @@ export function rocks(): Rock[] {
       // модель ~3 ед. в поперечнике; запас, чтобы не влезать в бок
       r: solid ? scale * 1.15 + 0.2 : 0,
       solid,
-    });
+    };
+    // Камень внутри главного шатра лагеря — убран. Проверка ПОСЛЕ всех r():
+    // последовательность остальных камней не сдвигается.
+    if (Math.hypot(x - HUB.zones.mainTent.x, z - HUB.zones.mainTent.z) < 7) continue;
+    out.push(rock);
   }
   // За игровой зоной — редкие камни в кольце, тот же приём, что и в
   // trees.ts: "фартук" земли (Terrain.ts) не должен выглядеть пустым, но

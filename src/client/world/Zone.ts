@@ -153,18 +153,16 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     const hz = wz.z + alongZ * slot + fwdZ * 0.35;
     return new Vector3(hx, terrain.heightAt(hx, hz) + lift, hz);
   };
-  const swordHome = homeAt(-1.8, 0.02);
+  // Каменных постаментов под оружием больше нет — предмет стоит прямо на земле.
+  // Lift подобран по замеру габаритов в стойке (нижняя точка модели = грунт +2 см):
+  // раньше меч и посох уходили в землю на ~11 см, камень это скрывал.
+  const swordHome = homeAt(-1.8, 0.155);
   const bowHome = homeAt(-0.6, 0.72);
-  const shieldHome = homeAt(0.6, 0.34);
-  const staffHome = homeAt(1.8, 0.5);
+  const shieldHome = homeAt(0.6, 0.35);
+  const staffHome = homeAt(1.8, 0.63);
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
-  const rockObstacles = scatterRocks(scene, terrain, [
-    swordHome,
-    bowHome,
-    shieldHome,
-    staffHome,
-  ]);
+  const rockObstacles = scatterRocks(scene, terrain, []);
 
   // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
   const hub = buildHubBlockout(scene);
