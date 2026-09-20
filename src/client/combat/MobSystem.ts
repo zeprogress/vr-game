@@ -11,7 +11,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import type { Room } from "colyseus.js";
 
 import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
-import type { ZoneState } from "#shared/net/schema";
+import type { MobState, ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";
 import { Dummy } from "./Dummy";
 import { createArrowProto } from "./Arrow";
@@ -64,6 +64,13 @@ interface Burst {
 /** VR: сколько ближайших мобов рисуем и сколько из них с плашкой имени. */
 const VR_MAX_MOBS = 20;
 const VR_MAX_UI = 5;
+
+/** Ленивые виды мобов: создаём ближе SPAWN_R, сносим дальше DESPAWN_R (м); за проход — не больше MAT_PER_PASS. */
+const MOB_SPAWN_R = 150;
+const MOB_DESPAWN_R = 185;
+const MAT_PER_PASS = 4;
+/** Мобов дальше (м) обновляем не каждый кадр, а ~20 раз в секунду. */
+const MOB_FAR_UPDATE_R = 50;
 
 /**
  * Мобы, куклы и плевки — ВИД поверх состояния сервера (этап 6).
@@ -320,25 +327,65 @@ export class NetMobs {
     return this.mobs.get(id);
   }
 
+  /** Ленивое создание видов мобов: только рядом с игроком (включать для игровых клиентов). */
+  lazy = false;
+  private matT = 0;
+
+  private createMob(id: string, s: MobState): void {
+    if (this.mobs.has(id)) return;
+    const m = new Mob(
+      this.scene,
+      s.kind,
+      id,
+      this.sfx,
+      this.report,
+      this.leanMobs,
+      this.mobUiScale,
+      s.model,
+      s.mobName,
+      s.mobLevel,
+    );
+    this.mobs.set(id, m);
+    this.targets.push(m);
+  }
+
+  /**
+   * Раз в 0.25 с: создаём виды подошедших мобов (ближайшие первыми, не больше
+   * MAT_PER_PASS за проход — чтобы не было всплеска) и сносим тех, кто ушёл дальше
+   * DESPAWN_R. Дальние мобы живут только данными из состояния сервера.
+   */
+  private materialize(room: Room<ZoneState>, pp: Vector3): void {
+    const cand: { id: string; s: MobState; d2: number }[] = [];
+    const drop: string[] = [];
+    room.state.mobs.forEach((s, id) => {
+      const d2 = (s.x - pp.x) ** 2 + (s.z - pp.z) ** 2;
+      const boss = s.kind === "boss";
+      if (this.mobs.has(id)) {
+        if (!boss && d2 > MOB_DESPAWN_R * MOB_DESPAWN_R) drop.push(id);
+      } else if (!s.dead && (boss || d2 <= MOB_SPAWN_R * MOB_SPAWN_R)) {
+        cand.push({ id, s, d2 });
+      }
+    });
+    for (const id of drop) {
+      const m = this.mobs.get(id);
+      if (!m) continue;
+      this.mobs.delete(id);
+      this.removeTarget(m);
+      m.dispose();
+    }
+    cand.sort((a, b) => a.d2 - b.d2);
+    for (let i = 0; i < Math.min(MAT_PER_PASS, cand.length); i++) this.createMob(cand[i].id, cand[i].s);
+  }
+
   attach(room: Room<ZoneState>): void {
     this.detach();
     this.room = room;
 
     room.state.mobs.onAdd((s, id) => {
-      const m = new Mob(
-        this.scene,
-        s.kind,
-        id,
-        this.sfx,
-        this.report,
-        this.leanMobs,
-        this.mobUiScale,
-        s.model,
-        s.mobName,
-        s.mobLevel,
-      );
-      this.mobs.set(id, m);
-      this.targets.push(m);
+      // Ленивый режим (игроки): объект Mob (модель, скелет, материалы) создаём,
+      // только когда моб подошёл ближе SPAWN_R — см. materialize().
+      if (this.lazy) return;
+      this.createMob(id, s);
     }, true);
     room.state.mobs.onRemove((_s, id) => {
       const m = this.mobs.get(id);
@@ -398,11 +445,30 @@ export class NetMobs {
         n++;
       }
     }
+    if (this.lazy) {
+      this.matT -= dt;
+      if (this.matT <= 0) {
+        this.matT = 0.25;
+        this.materialize(room, playerPos);
+      }
+    }
     room.state.mobs.forEach((s, id) => {
       const m = this.mobs.get(id);
       if (!m) return;
       const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
       let mdt = dt;
+      if (!s.dead && draw && MOB_FAR_UPDATE_R > 0) {
+        // Дальнего видимого моба считаем ~20 раз в секунду (позиция и так сглаживается).
+        const d2 = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
+        if (d2 > MOB_FAR_UPDATE_R * MOB_FAR_UPDATE_R) {
+          m.idleAcc += dt;
+          if (m.idleAcc < 0.05) return;
+          mdt = m.idleAcc;
+          m.idleAcc = 0;
+          m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
+          return;
+        }
+      }
       if (vr && !draw) {
         // Невидимого живого моба обновляем 4 раза в секунду (dt копится): он всё
         // равно не рисуется, а обход десятков схем каждый кадр — это и был netMobs.

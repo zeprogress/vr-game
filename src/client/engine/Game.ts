@@ -269,6 +269,7 @@ export class Game {
       preset.leanMobs,
       this.isTouch ? 2 : 1, // плашки мобов вдвое крупнее на телефоне
     );
+    this.netMobs.lazy = true; // виды мобов — только рядом с игроком (см. NetMobs.materialize)
     this.spellLights = new SpellLights(this.scene);
     this.ownShadow = new BlobShadow(this.scene, "self");
     this.crossFx = new WorldCrossFx(this.scene);

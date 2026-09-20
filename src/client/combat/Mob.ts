@@ -3,6 +3,8 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
+import "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
@@ -76,6 +78,34 @@ function recolorRig(
  * клиент интерполирует и играет вспышки, раны, сжатие, звуки. Попадания
  * игрока по мобу считает клиент и репортит серверу через `report`.
  */
+
+/**
+ * Дальний LOD моба: голая сфера-инстанс вместо модели со скелетом. Инстансы
+ * одного цвета сливаются в один draw call; материал общий на тон.
+ */
+const lodSources = new Map<string, Mesh>();
+function makeLodProxy(scene: Scene, tint: readonly [number, number, number], parent: TransformNode): InstancedMesh {
+  // Инстансы берут материал источника, поэтому источник — свой на каждый тон.
+  const key = tint.map((v) => v.toFixed(2)).join(",");
+  let src = lodSources.get(key);
+  if (!src || src.isDisposed() || src.getScene() !== scene) {
+    src = MeshBuilder.CreateSphere(`mobLodSrc_${key}`, { diameter: MOB.bodyRadius * 2, segments: 6 }, scene);
+    src.isPickable = false;
+    src.isVisible = false; // инстансы остаются видимыми
+    const mat = new StandardMaterial(`mobLodMat_${key}`, scene);
+    mat.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+    mat.emissiveColor = new Color3(tint[0] * 0.28, tint[1] * 0.2, tint[2] * 0.32);
+    mat.specularColor = new Color3(0, 0, 0);
+    src.material = mat;
+    lodSources.set(key, src);
+  }
+  const inst = src.createInstance("mobLod");
+  inst.parent = parent;
+  inst.position.y = MOB.bodyRadius;
+  inst.isPickable = false;
+  return inst;
+}
+
 export class Mob implements Hittable {
   readonly root: TransformNode;
   private readonly body: Mesh;
@@ -137,6 +167,10 @@ export class Mob implements Hittable {
   private grounded = true;
   private prevY = 0;
   private readonly shove2 = new Vector3();
+  /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
+  private lodProxy: InstancedMesh | null = null;
+  private lodFar = false;
+  private lodTint: readonly [number, number, number] = [0.5, 0.8, 0.5];
   /** Труп уже полностью растворился: корень выключен до возрождения. */
   private deadHidden = false;
   /** VR: накопленное время, пока моб невидим и обновляется редко (см. NetMobs.update). */
@@ -362,8 +396,10 @@ export class Mob implements Hittable {
       const { recolorMonster } = await import("../world/models");
       const def = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName);
       recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined);
+      if (def?.tint) this.lodTint = def.tint;
     } else {
       recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
+      this.lodTint = this.tint;
     }
 
     // Клип «движения»: у разных моделей пака он называется по-разному
@@ -509,6 +545,8 @@ export class Mob implements Hittable {
       return;
     }
 
+    this.updateFarLod(pos, playerPos);
+
     // атака моба: attackSeq вырос -> процедурный замах телом
     if (s.attackSeq !== this.lastAtkSeq) {
       this.lastAtkSeq = s.attackSeq;
@@ -570,6 +608,7 @@ export class Mob implements Hittable {
       this.burnGlow = 0;
       this.burnFx?.setEnabled(false);
       this.shadow.setEnabled(false);
+      this.setFarLod(false);
       if (this.rig) this.playAnim(this.rig.anims.get("death"), false);
       this.playIfNear(playerPos, () => this.sfx.mobDie(pos));
     } else if (!s.dead && this.dead) {
@@ -686,6 +725,34 @@ export class Mob implements Hittable {
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
       this.getTag().setScale((2 + t * 2) * this.uiScale);
     }
+  }
+
+  /** Дальше этого (м) живого моба рисуем сферой вместо модели со скелетом. */
+  private static readonly LOD_FAR = 55;
+
+  private setFarLod(want: boolean): void {
+    const rig = this.rig;
+    if (!rig || want === this.lodFar) return;
+    this.lodFar = want;
+    rig.root.setEnabled(!want);
+    if (want) {
+      if (!this.lodProxy) this.lodProxy = makeLodProxy(this.scene, this.lodTint, this.root);
+      this.lodProxy.setEnabled(true);
+      this.stopAnim();
+    } else {
+      this.lodProxy?.setEnabled(false);
+    }
+  }
+
+  private updateFarLod(pos: Vector3, cam: Vector3): void {
+    if (!this.rig) return;
+    if (this.dead || this.isBoss || this.hasNovaFx) {
+      this.setFarLod(false);
+      return;
+    }
+    const lim = this.lodFar ? Mob.LOD_FAR - 6 : Mob.LOD_FAR;
+    const d2 = (pos.x - cam.x) ** 2 + (pos.z - cam.z) ** 2;
+    this.setFarLod(d2 > lim * lim);
   }
 
   /** Дальше этого от камеры скелетную анимацию моба не крутим. */
