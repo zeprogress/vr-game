@@ -188,42 +188,45 @@ function createClouds(scene: Scene): { apply(d: DayState): void } {
 
   mat.disableDepthWrite = true; // облака полупрозрачные и не должны спорить по глубине
 
-  const clouds: { root: Mesh; speed: number }[] = [];
+  // Все облака — ДВА меша (медленные и быстрые), а не 13: каждый меш — отдельная отрисовка и
+  // пересчёт матрицы каждый кадр. Дрейф общий на группу; чтобы край поля не «прыгал» при
+  // возврате, у группы вторая копия облаков сдвинута на −span (узор периодичен по span).
+  const groups: { mesh: Mesh; speed: number; off: number }[] = [];
   const span = WORLD.size * 1.6;
 
-  // Каждое облако — ОДИН склеенный меш из клубов, а не 4-7 прозрачных инстансов.
-  for (let i = 0; i < 13; i++) {
+  for (const speed of [0.6, 1.15]) {
     const puffs: Mesh[] = [];
-    const n = 3 + Math.floor(Math.random() * 4);
-    for (let p = 0; p < n; p++) {
-      const puff = MeshBuilder.CreateSphere(`cloudPuff${i}_${p}`, { diameter: 1, segments: 6 }, scene);
-      puff.position.set(
-        (Math.random() - 0.5) * 14,
-        (Math.random() - 0.5) * 3,
-        (Math.random() - 0.5) * 8,
-      );
-      const sc = 4 + Math.random() * 5;
-      puff.scaling.set(sc, sc * 0.55, sc);
-      puffs.push(puff);
+    for (let i = 0; i < 7; i++) {
+      const cx = (Math.random() - 0.5) * span;
+      const cy = 50 + Math.random() * 25;
+      const cz = (Math.random() - 0.5) * span;
+      const n = 3 + Math.floor(Math.random() * 4);
+      for (let p = 0; p < n; p++) {
+        const lx = (Math.random() - 0.5) * 14;
+        const ly = (Math.random() - 0.5) * 3;
+        const lz = (Math.random() - 0.5) * 8;
+        const sc = 4 + Math.random() * 5;
+        for (const shift of [0, -span]) {
+          const puff = MeshBuilder.CreateSphere(`cloudPuff`, { diameter: 1, segments: 6 }, scene);
+          puff.position.set(cx + lx + shift, cy + ly, cz + lz);
+          puff.scaling.set(sc, sc * 0.55, sc);
+          puffs.push(puff);
+        }
+      }
     }
-    const root = Mesh.MergeMeshes(puffs, true, true) as Mesh;
-    root.name = `cloud${i}`;
-    root.material = mat;
-    root.isPickable = false;
-    root.applyFog = false;
-    root.position.set(
-      (Math.random() - 0.5) * span,
-      50 + Math.random() * 25,
-      (Math.random() - 0.5) * span,
-    );
-    clouds.push({ root, speed: 0.5 + Math.random() * 0.8 });
+    const mesh = Mesh.MergeMeshes(puffs, true, true) as Mesh;
+    mesh.name = `cloud${groups.length}`;
+    mesh.material = mat;
+    mesh.isPickable = false;
+    mesh.applyFog = false;
+    groups.push({ mesh, speed, off: 0 });
   }
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = scene.getEngine().getDeltaTime() / 1000;
-    for (const c of clouds) {
-      c.root.position.x += c.speed * dt;
-      if (c.root.position.x > span / 2) c.root.position.x = -span / 2;
+    for (const g of groups) {
+      g.off = (g.off + g.speed * dt) % span;
+      g.mesh.position.x = g.off;
     }
   });
 
@@ -234,8 +237,8 @@ function createClouds(scene: Scene): { apply(d: DayState): void } {
       mat.emissiveColor.copyFrom(d.cloud);
       mat.alpha = FULL * d.daylight;
       const on = mat.alpha > 0.02;
-      for (const c of clouds) {
-        if (c.root.isEnabled() !== on) c.root.setEnabled(on);
+      for (const g of groups) {
+        if (g.mesh.isEnabled() !== on) g.mesh.setEnabled(on);
       }
     },
   };

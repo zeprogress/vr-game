@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -56,23 +57,23 @@ export class Dummy implements Hittable {
     this.figure.parent = this.root;
     this.figure.position.y = 1.0;
 
+    // Туловище, голова и руки — один меш (общий материал): раньше три отдельных отрисовки на куклу.
     const torso = MeshBuilder.CreateCapsule("d_torso", { height: 1.0, radius: 0.28 }, scene);
     torso.position.y = 0.5;
-    torso.material = this.mat;
-    torso.parent = this.figure;
-    torso.isPickable = false;
-
     const head = MeshBuilder.CreateSphere("d_head", { diameter: 0.34, segments: 6 }, scene);
     head.position.y = 1.15;
-    head.material = this.mat;
-    head.parent = this.figure;
-    head.isPickable = false;
-
     const arms = MeshBuilder.CreateBox("d_arms", { width: 1.2, height: 0.16, depth: 0.16 }, scene);
     arms.position.y = 0.75;
-    arms.material = this.mat;
-    arms.parent = this.figure;
-    arms.isPickable = false;
+    const body = Mesh.MergeMeshes([torso, head, arms], true, true) ?? torso;
+    body.name = "d_body";
+    body.material = this.mat;
+    body.parent = this.figure;
+    body.isPickable = false;
+
+    // Стойка не двигается — матрицу считаем один раз.
+    this.root.computeWorldMatrix(true);
+    post.computeWorldMatrix(true);
+    post.freezeWorldMatrix();
   }
 
   get alive(): boolean {

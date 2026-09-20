@@ -547,15 +547,20 @@ export class Mob implements Hittable {
     starMat.diffuseColor = new Color3(0, 0, 0);
     starMat.specularColor = new Color3(0, 0, 0);
     starMat.disableLighting = true;
+    // Три кубика — один меш: одна отрисовка на оглушённого моба вместо трёх.
+    const parts: Mesh[] = [];
     for (let i = 0; i < 3; i++) {
       const star = MeshBuilder.CreateBox(`mobStunStar${i}`, { size: 0.13 }, scene);
-      star.material = starMat;
-      star.isPickable = false;
-      star.parent = spin;
       const a = (i / 3) * Math.PI * 2;
       star.position.set(Math.cos(a) * 0.32, Math.sin(a * 2) * 0.05, Math.sin(a) * 0.32);
       star.rotation.set(0.6, a, 0.4);
+      parts.push(star);
     }
+    const stars = Mesh.MergeMeshes(parts, true, true) ?? parts[0];
+    stars.name = "mobStunStar";
+    stars.material = starMat;
+    stars.isPickable = false;
+    stars.parent = spin;
     this.stunSpin = spin;
     this.stunStarMat = starMat;
   }

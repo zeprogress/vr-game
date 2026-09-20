@@ -1,6 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
@@ -90,19 +89,78 @@ const _t = new Vector3();
 const _b = new Vector3();
 const _fwd = new Vector3(0, 0, 1);
 
+/**
+ * Все пятна сцены — ОДИН меш с тонкими инстансами (thin instances): раньше у каждого моба и
+ * героя был свой InstancedMesh, и на каждый из них шёл пересчёт матрицы, регистрация в кадре и
+ * запись в буфер инстансов (~20 штук — заметная доля CPU-времени кадра в VR). Теперь слот —
+ * 16 чисел в общем буфере, который грузится на GPU одним вызовом, только если что-то менялось.
+ */
+interface Batch {
+  mesh: Mesh;
+  buf: Float32Array;
+  cap: number;
+  used: number; // верхняя граница занятых слотов
+  free: number[];
+  dirty: boolean;
+}
+const batches = new WeakMap<Scene, Batch>();
+const ZERO16 = new Float32Array(16);
+
+function batchFor(scene: Scene): Batch {
+  const found = batches.get(scene);
+  if (found && !found.mesh.isDisposed()) return found;
+  const mesh = MeshBuilder.CreatePlane("blobShadows", { size: PROTO_SIZE }, scene);
+  mesh.material = protoFor(scene).material;
+  mesh.isPickable = false;
+  mesh.alwaysSelectAsActiveMesh = true; // границы пятен по всей карте — не отсекаем по рамке плоскости
+  const b: Batch = { mesh, buf: new Float32Array(64 * 16), cap: 64, used: 0, free: [], dirty: false };
+  mesh.thinInstanceSetBuffer("matrix", b.buf, 16, false);
+  mesh.thinInstanceCount = 0;
+  scene.onBeforeRenderObservable.add(() => {
+    if (!b.dirty) return;
+    b.dirty = false;
+    mesh.thinInstanceCount = b.used;
+    mesh.thinInstanceBufferUpdated("matrix");
+  });
+  batches.set(scene, b);
+  return b;
+}
+
+function grow(b: Batch): void {
+  const cap = b.cap * 2;
+  const buf = new Float32Array(cap * 16);
+  buf.set(b.buf);
+  b.buf = buf;
+  b.cap = cap;
+  b.mesh.thinInstanceSetBuffer("matrix", buf, 16, false);
+}
+
 /** Пятно под одним объектом. Двигать через `place()`. */
 export class BlobShadow {
-  private readonly mesh: InstancedMesh;
+  private readonly batch: Batch;
+  private readonly slot: number;
+  private enabled = true;
   /** Последние параметры place(): у стоящего моба они не меняются — пересчёт
    *  (5 запросов высоты рельефа + базис) пропускаем. */
   private lx = NaN;
   private ly = NaN;
   private lz = NaN;
   private lr = NaN;
+  private disposed = false;
+  private readonly m = new Float32Array(16);
 
-  constructor(scene: Scene, name: string) {
-    this.mesh = protoFor(scene).createInstance(`blobShadow_${name}`);
-    this.mesh.isPickable = false;
+  constructor(scene: Scene, _name: string) {
+    this.batch = batchFor(scene);
+    const b = this.batch;
+    this.slot = b.free.pop() ?? b.used++;
+    if (this.slot >= b.cap) grow(b);
+    this.write(ZERO16); // пока не размещено — пятна нет
+  }
+
+  private write(m: Float32Array): void {
+    const b = this.batch;
+    b.buf.set(m, this.slot * 16);
+    b.dirty = true;
   }
 
   /**
@@ -110,6 +168,7 @@ export class BlobShadow {
    * @param radius радиус пятна на земле, м
    */
   place(x: number, y: number, z: number, radius: number): void {
+    if (this.disposed) return;
     if (
       Math.abs(x - this.lx) < 3e-2 &&
       Math.abs(y - this.ly) < 3e-2 &&
@@ -134,25 +193,31 @@ export class BlobShadow {
     if (_t.lengthSquared() < 1e-6) _t.set(1, 0, 0);
     _t.normalize();
     Vector3.CrossToRef(_n, _t, _b);
-    Vector3.RotationFromAxisToRef(_t, _b, _n, this.mesh.rotation);
 
     // Чем выше объект, тем шире и бледнее пятно — по нему и читается прыжок.
     const h = Math.max(0, y - ground);
     const k = Math.min(1, h / FADE_HEIGHT);
-    // Бледнеть пятно «в воздухе» нельзя через visibility: у InstancedMesh оно не
-    // работает и Babylon на каждый вызов пишет предупреждение в консоль (десятки
-    // в секунду — это само стоило процессорного времени в VR). Вместо этого
-    // высоко в прыжке пятно чуть сжимается — тоже читается как высота.
+    // Высоко в прыжке пятно чуть сжимается — тоже читается как высота.
     const s = ((radius * 2) / PROTO_SIZE) * (1 + k * 0.6) * (1 - k * 0.3);
-    this.mesh.position.set(x, ground + LIFT, z);
-    this.mesh.scaling.set(s, s, s);
+    // Матрица «масштаб · поворот · сдвиг» из базиса (t, b, n) прямо в буфер (строки Babylon).
+    const m = this.m;
+    m[0] = _t.x * s; m[1] = _t.y * s; m[2] = _t.z * s; m[3] = 0;
+    m[4] = _b.x * s; m[5] = _b.y * s; m[6] = _b.z * s; m[7] = 0;
+    m[8] = _n.x * s; m[9] = _n.y * s; m[10] = _n.z * s; m[11] = 0;
+    m[12] = x; m[13] = ground + LIFT; m[14] = z; m[15] = 1;
+    if (this.enabled) this.write(m);
   }
 
   setEnabled(on: boolean): void {
-    this.mesh.setEnabled(on);
+    if (this.disposed || on === this.enabled) return;
+    this.enabled = on;
+    this.write(on && Number.isFinite(this.lx) ? this.m : ZERO16);
   }
 
   dispose(): void {
-    this.mesh.dispose();
+    if (this.disposed) return;
+    this.disposed = true;
+    this.write(ZERO16);
+    this.batch.free.push(this.slot);
   }
 }
