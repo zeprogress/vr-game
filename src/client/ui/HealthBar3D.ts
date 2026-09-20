@@ -49,7 +49,6 @@ export class HealthBar3D {
     this.bg.parent = parent;
     this.bg.position.copyFrom(offset);
     this.bg.isPickable = false;
-    this.bg.renderingGroupId = 1;
     if (billboard) {
       // Только вокруг вертикали — полоска не заваливается вместе с обзором.
       // preserveParentRotationForBillboard=false (по умолчанию) означает, что
@@ -67,7 +66,6 @@ export class HealthBar3D {
     this.fill.parent = this.bg;
     this.fill.position.z = -0.01;
     this.fill.isPickable = false;
-    this.fill.renderingGroupId = 1;
 
     this.width = width;
   }

@@ -117,7 +117,7 @@ export class WorldCrossFx {
       mat.disableDepthWrite = true;
       m.material = mat;
       m.isPickable = false;
-      m.renderingGroupId = 1; // поверх мира, но под интерфейсом
+      // Обычная очередь с тестом глубины (раньше renderingGroupId=1 — просвечивало сквозь стены).
       m.billboardMode = Mesh.BILLBOARDMODE_Y;
       m.setEnabled(false);
       this.pool.push({ mesh: m, age: LIFE + 1, x: 0, y: 0, z: 0, dx: 0, dz: 0, a: 1 });
@@ -248,13 +248,11 @@ export class WorldCrossFx {
       const m = i === 0 ? critProto : critProto.clone(`critFlash${i}`);
       m.material = makeCritMat(`critFlashMat${i}`, flashTex);
       m.isPickable = false;
-      m.renderingGroupId = 1;
       m.billboardMode = Mesh.BILLBOARDMODE_ALL;
       m.setEnabled(false);
       const r = critProto.clone(`critRing${i}`);
       r.material = makeCritMat(`critRingMat${i}`, ringTex);
       r.isPickable = false;
-      r.renderingGroupId = 1;
       r.billboardMode = Mesh.BILLBOARDMODE_ALL;
       r.setEnabled(false);
       this.critPool.push({ mesh: m, ring: r, age: CRIT_LIFE + 1, x: 0, y: 0, z: 0 });
@@ -419,10 +417,30 @@ export class WorldCrossFx {
         continue;
       }
       const t = c.age / CRIT_LIFE;
+      // Вспышка сидит в центре моба: сдвигаем её вдоль луча к камере на его толщину (размер
+      // компенсируем) — она проходит тест глубины против тела моба, но не просвечивает стены.
+      const cam = this.scene.activeCamera?.globalPosition;
+      let k = 1;
+      let px = c.x;
+      let py = c.y;
+      let pz = c.z;
+      if (cam) {
+        const vx = c.x - cam.x;
+        const vy = c.y - cam.y;
+        const vz = c.z - cam.z;
+        const d = Math.max(0.01, Math.hypot(vx, vy, vz));
+        const shift = Math.min(0.9, d * 0.8);
+        px -= (vx / d) * shift;
+        py -= (vy / d) * shift;
+        pz -= (vz / d) * shift;
+        k = (d - shift) / d;
+      }
+      c.mesh.position.set(px, py, pz);
+      c.ring.position.set(px, py, pz);
       // Фаза 1: вспышка — резко раздувается и гаснет за первую половину жизни.
       const f = Math.min(1, c.age / (CRIT_LIFE * 0.55));
       const ease = 1 - (1 - f) * (1 - f);
-      c.mesh.scaling.setAll(1.5 + ease * 1.9); // крупнее
+      c.mesh.scaling.setAll((1.5 + ease * 1.9) * k); // крупнее
       c.mesh.rotation.z += dt * 0.6;
       (c.mesh.material as StandardMaterial).alpha = f >= 1 ? 0 : Math.min(0.8, 1.6 * (1 - f)); // чуть прозрачнее
       c.mesh.setEnabled(f < 1);
@@ -430,7 +448,7 @@ export class WorldCrossFx {
       const u = (t - 0.18) / 0.82;
       if (u > 0) {
         if (!c.ring.isEnabled()) c.ring.setEnabled(true);
-        c.ring.scaling.setAll(1.3 + u * 2.6);
+        c.ring.scaling.setAll((1.3 + u * 2.6) * k);
         (c.ring.material as StandardMaterial).alpha = Math.min(0.8, 1.5 * (1 - u));
       }
     }
