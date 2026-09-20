@@ -3,9 +3,7 @@ import type { Node } from "@babylonjs/core/node";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { clamp01 } from "#shared/geometry";
 
@@ -16,80 +14,97 @@ import { clamp01 } from "#shared/geometry";
  * полоска всегда развёрнута к игроку, но остаётся параллельной горизонту
  * и не заваливается, когда смотришь сверху или снизу.
  */
+const barMats = new WeakMap<Scene, StandardMaterial>();
+
+/** Один материал на сцену: цвета берутся из вершин, прозрачность — через mesh.visibility. */
+function barMaterial(scene: Scene): StandardMaterial {
+  let m = barMats.get(scene);
+  if (m && !m.getScene().isDisposed) return m;
+  m = new StandardMaterial("hpBarMat", scene);
+  m.disableLighting = true;
+  m.diffuseColor = new Color3(0, 0, 0);
+  m.emissiveColor = new Color3(1, 1, 1); // итог = (diffuse + emissive) · цвет вершины
+  m.specularColor = new Color3(0, 0, 0);
+  barMats.set(scene, m);
+  return m;
+}
+
+const BG_RGBA = [0.04, 0.04, 0.04, 0.6];
+
 export class HealthBar3D {
-  private readonly bg: Mesh;
-  private readonly fill: Mesh;
-  private readonly bgMat: StandardMaterial;
-  private readonly fillMat: StandardMaterial;
+  /** Фон и заполнение — ОДИН меш (два квада, цвета в вершинах): раньше два меша и два материала на моба. */
+  private readonly mesh: Mesh;
   private opacity = 1;
+  private readonly positions: Float32Array;
+  private readonly colors: Float32Array;
+  private lastQ = -1;
 
   constructor(
     scene: Scene,
     parent: Node,
     offset: Vector3,
-    width = 0.8,
+    private readonly width = 0.8,
     billboard = true,
     fillHeight = 0.1,
     /** "hp" — зелёный/жёлтый/красный по доле; "mana" — синий. */
     private readonly hue: "hp" | "mana" = "hp",
   ) {
-    this.bgMat = new StandardMaterial("hpBgMat", scene);
-    const bgMat = this.bgMat;
-    bgMat.disableLighting = true;
-    bgMat.emissiveColor = new Color3(0.04, 0.04, 0.04);
-    bgMat.specularColor = new Color3(0, 0, 0);
-    bgMat.alpha = 0.6;
-
-    this.bg = MeshBuilder.CreatePlane(
-      "hpBg",
-      { width: width + 0.06, height: fillHeight * 1.4 },
-      scene,
-    );
-    this.bg.material = bgMat;
-    this.bg.parent = parent;
-    this.bg.position.copyFrom(offset);
-    this.bg.isPickable = false;
+    const bw = width + 0.06;
+    const bh = fillHeight * 1.4;
+    // Квад 0 — фон, квад 1 — заполнение (чуть ближе к камере, z = -0.01).
+    this.positions = new Float32Array([
+      -bw / 2, -bh / 2, 0, bw / 2, -bh / 2, 0, bw / 2, bh / 2, 0, -bw / 2, bh / 2, 0,
+      -width / 2, -fillHeight / 2, -0.01, width / 2, -fillHeight / 2, -0.01,
+      width / 2, fillHeight / 2, -0.01, -width / 2, fillHeight / 2, -0.01,
+    ]);
+    this.colors = new Float32Array(8 * 4);
+    for (let i = 0; i < 4; i++) this.colors.set(BG_RGBA, i * 4);
+    const mesh = new Mesh("hpBar", scene);
+    mesh.setVerticesData("position", this.positions, true);
+    mesh.setVerticesData("color", this.colors, true, 4);
+    mesh.setVerticesData("normal", new Float32Array(8 * 3).map((_, i) => (i % 3 === 2 ? -1 : 0)), false);
+    mesh.setIndices([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7]);
+    mesh.hasVertexAlpha = true;
+    mesh.material = barMaterial(scene);
+    mesh.parent = parent;
+    mesh.position.copyFrom(offset);
+    mesh.isPickable = false;
     if (billboard) {
       // Только вокруг вертикали — полоска не заваливается вместе с обзором.
-      // preserveParentRotationForBillboard=false (по умолчанию) означает, что
-      // поворот родителя-моба игнорируется, и полоска смотрит строго на камеру.
-      this.bg.billboardMode = Mesh.BILLBOARDMODE_Y;
+      mesh.billboardMode = Mesh.BILLBOARDMODE_Y;
     }
-
-    this.fillMat = new StandardMaterial("hpFillMat", scene);
-    this.fillMat.disableLighting = true;
-    this.fillMat.emissiveColor = new Color3(0.25, 0.8, 0.3);
-    this.fillMat.specularColor = new Color3(0, 0, 0);
-
-    this.fill = MeshBuilder.CreatePlane("hpFill", { width, height: fillHeight }, scene);
-    this.fill.material = this.fillMat;
-    this.fill.parent = this.bg;
-    this.fill.position.z = -0.01;
-    this.fill.isPickable = false;
-
-    this.width = width;
+    this.mesh = mesh;
+    this.set(1);
   }
-
-  private readonly width: number;
 
   set(frac: number): void {
     const f = clamp01(frac);
-    this.fill.scaling.x = Math.max(0.001, f);
-    this.fill.position.x = -(this.width * (1 - f)) / 2;
+    // Пишем в буферы только при заметном изменении (шаг 1/64).
+    const q = Math.round(f * 64);
+    if (q === this.lastQ) return;
+    this.lastQ = q;
+    const w = this.width;
+    const x1 = -w / 2 + w * Math.max(0.001, f);
+    this.positions[12] = x1; // правый низ заполнения
+    this.positions[18] = x1; // правый верх
+    let r: number;
+    let g: number;
+    let b: number;
     if (this.hue === "mana") {
-      this.fillMat.emissiveColor.set(0.2, 0.42, 0.95);
+      [r, g, b] = [0.2, 0.42, 0.95];
     } else {
-      this.fillMat.emissiveColor.set(
-        f > 0.5 ? 0.25 : 0.85,
-        f > 0.25 ? 0.75 : 0.2,
-        f > 0.5 ? 0.3 : 0.15,
-      );
+      r = f > 0.5 ? 0.25 : 0.85;
+      g = f > 0.25 ? 0.75 : 0.2;
+      b = f > 0.5 ? 0.3 : 0.15;
     }
+    for (let i = 4; i < 8; i++) this.colors.set([r, g, b, 1], i * 4);
+    this.mesh.updateVerticesData("position", this.positions);
+    this.mesh.updateVerticesData("color", this.colors);
   }
 
   /** Переставить полоску (её положение правится в панели настройки). */
   moveTo(x: number, y: number, z: number): void {
-    this.bg.position.set(x, y, z);
+    this.mesh.position.set(x, y, z);
   }
 
   setVisible(v: boolean): void {
@@ -98,24 +113,16 @@ export class HealthBar3D {
 
   /** 0..1 — плавное появление/исчезновение. */
   setOpacity(a: number): void {
-    // Ступенями по 1/8: плавное появление/затухание раньше меняло alpha
-    // материала КАЖДЫЙ кадр у каждого раненого моба — а смена alpha помечает
-    // материал «грязным» (в профиле с шлема setOpacity был одним из самых дорогих).
+    // Ступенями по 1/8, через mesh.visibility (материал общий — его alpha трогать нельзя).
     const q = Math.round(clamp01(a) * 8) / 8;
     if (q === this.opacity) return;
     this.opacity = q;
-    this.bgMat.alpha = 0.6 * this.opacity;
-    this.fillMat.alpha = this.opacity;
-    const on = this.opacity > 0.02;
-    this.bg.setEnabled(on);
-    this.fill.setEnabled(on);
+    this.mesh.visibility = q;
+    this.mesh.setEnabled(q > 0.02);
   }
 
   dispose(): void {
-    // Материалы — свои у каждой полоски: без явного dispose они копились в
-    // scene.materials на каждого созданного и убранного моба (утечка).
-    this.bg.dispose();
-    this.bgMat.dispose();
-    this.fillMat.dispose();
+    // Материал общий на сцену — не трогаем.
+    this.mesh.dispose();
   }
 }

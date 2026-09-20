@@ -857,7 +857,7 @@ export class Game {
         this.xr.baseExperience.featuresManager.enableFeature(
           WebXRFeatureName.LAYERS,
           "latest",
-          { preferMultiviewOnInit: true, projectionLayerInit: { antialias: aa } },
+          { preferMultiviewOnInit: true, projectionLayerInit: { antialias: aa, scaleFactor: fbScale } },
         );
         console.log("[xr] WebXR Layers включены (multiview)");
       } catch (e) {
