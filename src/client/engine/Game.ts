@@ -2065,9 +2065,11 @@ export class Game {
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
+        // Звук — в момент активации умения (а не в конце замаха, как раньше по stunHit).
+        this.sfx.at(at, () => this.sfx.groundBash());
         break;
       case "stunHit":
-        this.sfx.at(at, () => this.sfx.groundBash());
+        // Звук перенесён на начало (stunBash); само оглушение считает сервер.
         break;
       case "swordHit":
         this.sfx.at(at, () => this.sfx.swordHit());

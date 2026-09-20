@@ -1369,10 +1369,10 @@ export class Spectator {
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
+        this.sfx.at({ x, y, z }, () => this.sfx.groundBash()); // звук — в момент активации
         break;
       case "stunHit":
-        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
-        break;
+        break; // звук перенесён на начало (stunBash)
       case "swordHit":
         this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
