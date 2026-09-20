@@ -822,6 +822,9 @@ export class Game {
         floorMeshes: [this.ground],
         disableTeleportation: true,
         disablePointerSelection: true, // без лазера у контроллеров
+        // Трекинг рук Babylon включает по умолчанию: 2×25 мешей-суставов в сцене и ~50 чтений поз
+        // суставов из XR каждый кадр. Игра управляется контроллерами — не нужен.
+        disableHandTracking: true,
         inputOptions: { doNotLoadControllerMeshes: true }, // рисуем свои кисти
         outputCanvasOptions: {
           // Полный набор — Babylon НЕ мержит с дефолтами, а заменяет целиком.
