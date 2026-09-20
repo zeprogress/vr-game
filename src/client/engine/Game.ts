@@ -128,6 +128,8 @@ export class Game {
   private manaMax = 30;
   private vrVignette: VrVignette | null = null;
   private vrWasted: VrWasted | null = null;
+  /** Последняя отправленная платформа (0 — ещё не отправляли в этой сессии). */
+  private lastSentPlat = 0;
   private vrStars: VrStunStars | null = null;
   private comfortVignette: ComfortVignette | null = null;
   private healCrossFx: HealCrossFx | null = null;
@@ -1924,6 +1926,7 @@ export class Game {
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
     net.onConnectionLost = () => this.notifyToast("Связь потеряна — переподключаюсь…");
     net.onReconnected = (room) => {
+      this.lastSentPlat = 0; // новая сессия на сервере — платформу нужно сообщить заново
       this.attachRoom(room);
       this.handsKey = ""; // заново сообщить серверу, что в руках и за спиной
       this.ttsListenSent = -1; // и снова — слушаю ли озвучку чата
@@ -2306,6 +2309,7 @@ export class Game {
   }
 
   private detachNet(): void {
+    this.lastSentPlat = 0;
     if (this.saveTimer !== null) window.clearInterval(this.saveTimer);
     if (this.saveDebounce !== null) window.clearTimeout(this.saveDebounce);
     window.removeEventListener("beforeunload", this.beforeUnload);
@@ -2369,7 +2373,15 @@ export class Game {
 
     const m = this.moveMsg;
     m.mode = this.player.inVR ? "vr" : "flat";
-    m.plat = this.player.inVR ? 3 : this.isTouch ? 2 : 1; // значок у ника: шлем / смартфон / компьютер
+    // Платформа (значок у ника) — не в каждом пакете, а только при первой отправке в сессии и
+    // при смене (вход/выход из VR): сервер хранит её в состоянии игрока.
+    const plat = this.player.inVR ? 3 : this.isTouch ? 2 : 1;
+    if (plat !== this.lastSentPlat) {
+      m.plat = plat;
+      this.lastSentPlat = plat;
+    } else {
+      m.plat = undefined;
+    }
     const g = this.combat.guardState();
     m.guard.sx = g.sx;
     m.guard.sz = g.sz;
