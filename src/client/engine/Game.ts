@@ -47,6 +47,7 @@ import { VrHud } from "../ui/VrHud";
 import { VrCull } from "../world/VrCull";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
+import { FpsCounter } from "../ui/FpsCounter";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
@@ -161,6 +162,8 @@ export class Game {
   private ttsNick = "";
   private ttsListenSent = -1;
   private perfHud: VrPerfHud | null = null;
+  /** `?fps=1` — голый счётчик кадров над полоской здоровья. */
+  private fpsCounter: FpsCounter | null = null;
   private perfInstr: SceneInstrumentation | null = null;
   private engInstr: EngineInstrumentation | null = null;
   private prevEffectKeys = new Set<string>();
@@ -219,6 +222,7 @@ export class Game {
     // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.
     if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
+    if (new URLSearchParams(location.search).has("fps")) this.fpsCounter = new FpsCounter();
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
@@ -818,12 +822,12 @@ export class Game {
     // теста, по умолчанию НЕ трогаем, чтобы не загонять GPU в репроекцию.
     const qp = new URLSearchParams(location.search);
     const fsRaw = Number(qp.get("fbscale"));
-    // По умолчанию в шлеме буфер глаза — 0.75 от рекомендованного: замер на Quest 3 с штатной динамикой
-    // частот — 36 fps при 1.0 и ~51 fps при 0.75 (при 36 fps GPU по «низкой загрузке» сбрасывал частоты, и
-    // кадр не возвращался к 72). `?fbscale=1` — прежняя чёткость.
+    // По умолчанию в шлеме буфер глаза ×2 от рекомендованного и без MSAA: так картинка чётче и гладко без
+    // сглаживания краёв (свой выбор игрока; по замерам MSAA почти не влияла на fps). `?fbscale=<0.5..2>`
+    // меняет разрешение, `?aa=1` включает MSAA.
     const isHeadset = /OculusBrowser|Quest|PicoBrowser|Pico/i.test(navigator.userAgent);
     const fbScale =
-      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : isHeadset ? 0.75 : 1;
+      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : isHeadset ? 2 : 1;
     // ?noaa=1 — без MSAA у буфера глаза. Резолв MSAA на большом стерео-RT
     // может стоить 10-20 мс на GPU шлема даже при пустой сцене.
     // Браузер автономного шлема (Quest/Pico): режим Layers (multiview — один проход на
@@ -831,7 +835,7 @@ export class Game {
     // Сглаживание: MSAA (у Quest тайловая GPU — самый дешёвый вариант; FXAA/постпроцесс
     // в VR — отдельные полноэкранные проходы, их не используем). `?noaa=1` — выключить.
     const headsetBrowser = /OculusBrowser|Quest|PicoBrowser|Pico/i.test(navigator.userAgent);
-    const aa = !qp.has("noaa");
+    const aa = qp.has("aa") ? true : qp.has("noaa") ? false : !isHeadset;
     try {
       this.xr = await WebXRDefaultExperience.CreateAsync(this.scene, {
         floorMeshes: [this.ground],
@@ -1229,6 +1233,7 @@ export class Game {
       0.05, // вдвое тоньше
     );
     this.playerBar3D.set(this.player.hp / this.player.maxHp);
+    this.fpsCounter?.attachVr(this.scene, this.hudAnchor, new Vector3(hp[0], hp[1], hp[2]));
     // Полоска маны — под здоровьем, чуть уже. Видна только когда в руках посох.
     this.manaBar3D = new HealthBar3D(
       this.scene,
@@ -1331,6 +1336,8 @@ export class Game {
   private tearDownVrUi(): void {
     this.perfHud?.dispose();
     this.perfHud = null;
+    this.fpsCounter?.dispose();
+    this.fpsCounter = null;
     this.wristPanel?.dispose();
     this.wristPanel = null;
     this.loadoutPanel?.dispose();
@@ -1431,6 +1438,7 @@ export class Game {
       });
     }
     this.perfHud?.update(dt, () => this.vrDiag());
+    this.fpsCounter?.update(dt);
 
     // Панель настройки экипировки: открыть — только 5 нажатий B за 3 с
     // (чтобы случайно не всплывала). Открытую закрывает одиночный B.
