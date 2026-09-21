@@ -6,7 +6,7 @@ import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { BaseTexture } from "@babylonjs/core/Materials/Textures/baseTexture";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
@@ -431,17 +431,45 @@ export async function loadRocks(
   const containers = await Promise.all(
     ROCK_KINDS.map((k) => LoadAssetContainerAsync(`/models/nature/${k}.gltf`, scene)),
   );
-  // Небольшой пул материалов с разбросом по яркости/оттенку — камни не однотонные.
-  const mats = Array.from({ length: 6 }, (_, i) => {
-    const m = new StandardMaterial(`rockMat${i}`, scene);
-    const b = 0.22 + (i / 5) * 0.22; // 0.22..0.44 — только яркость
-    const warm = (i % 3) * 0.015 - 0.015; // −0.015..+0.015, чуть тёплый/холодный
-    m.diffuseColor = new Color3(b + warm, b, b - warm * 0.5);
-    m.emissiveColor = new Color3(b * 0.12, b * 0.12, b * 0.12);
-    m.specularColor = new Color3(0, 0, 0);
-    m.maxSimultaneousLights = 5;
-    m.freeze();
-    return m;
+  // Один общий материал на все камни; разброс по яркости/оттенку — цветом ИНСТАНСА (instancedBuffers.color):
+  // раньше у каждого камня был свой меш с одним из 6 материалов (до 23 отрисовок), теперь на вид камня —
+  // один источник и все его камни в одной отрисовке (3 вместо ~20).
+  const BASE = 0.33;
+  const mat = new StandardMaterial("rockMat", scene);
+  mat.diffuseColor = new Color3(BASE, BASE, BASE);
+  mat.emissiveColor = new Color3(BASE * 0.12, BASE * 0.12, BASE * 0.12);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.maxSimultaneousLights = 5;
+  mat.freeze();
+
+  // Источники: геометрия камня в системе корня (трансформ узлов модели запечён в вершины).
+  const protos: Mesh[][] = containers.map((c, kind) => {
+    const inst = c.instantiateModelsToScene((n) => n, false);
+    const root = inst.rootNodes[0] as TransformNode | undefined;
+    const out: Mesh[] = [];
+    if (!root) return out;
+    root.position.setAll(0);
+    root.rotationQuaternion = Quaternion.Identity();
+    root.scaling.setAll(1);
+    root.computeWorldMatrix(true);
+    const geoms = root.getChildMeshes(false).filter((m) => m.getTotalVertices() > 0) as Mesh[];
+    for (const m of geoms) {
+      const rel = m.computeWorldMatrix(true).clone();
+      m.parent = null;
+      m.position.setAll(0);
+      m.rotationQuaternion = null;
+      m.rotation.setAll(0);
+      m.scaling.setAll(1);
+      m.bakeTransformIntoVertices(rel);
+      m.name = `Rock_Medium_${kind + 1}`;
+      m.material = mat;
+      m.isPickable = false;
+      m.isVisible = false; // рисуем только инстансы
+      m.registerInstancedBuffer("color", 4);
+      out.push(m);
+    }
+    root.dispose(true, false);
+    return out;
   });
 
   const rockRecs: ImpostorTree[] = [];
@@ -454,24 +482,26 @@ export async function loadRocks(
     tiltX: number,
     tiltZ: number,
   ): void => {
-    const inst = containers[kind % containers.length].instantiateModelsToScene((n) => n, false);
-    const root = inst.rootNodes[0] as TransformNode | undefined;
-    if (!root) return;
-    root.position.set(x, terrain.heightAt(x, z) - s * 0.35, z); // чуть врос в землю
-    root.rotationQuaternion = Quaternion.RotationYawPitchRoll(yaw, tiltX, tiltZ);
-    root.scaling.setAll(s);
-    const rm = mats[Math.floor(Math.random() * mats.length)];
-    for (const m of root.getChildMeshes(false)) {
-      if (!m.isAnInstance) m.material = rm; // на инстансе не применяется (и шумит в консоль)
-      m.isPickable = false;
-      m.freezeWorldMatrix(); // до doNotSync: иначе bbox остаётся в начале координат
-      m.doNotSyncBoundingInfo = true;
+    const srcs = protos[kind % protos.length];
+    if (!srcs.length) return;
+    const y = terrain.heightAt(x, z) - s * 0.35; // чуть врос в землю
+    const q = Quaternion.RotationYawPitchRoll(yaw, tiltX, tiltZ);
+    const b = 0.22 + Math.floor(Math.random() * 6) * 0.044; // 0.22..0.44 — яркость, как у прежних 6 материалов
+    const warm = (Math.floor(Math.random() * 3)) * 0.015 - 0.015;
+    const color = new Color4((b + warm) / BASE, b / BASE, (b - warm * 0.5) / BASE, 1);
+    const geo: Mesh[] = [];
+    for (const src of srcs) {
+      const inst = src.createInstance(src.name);
+      inst.position.set(x, y, z);
+      inst.rotationQuaternion = q.clone();
+      inst.scaling.setAll(s);
+      inst.instancedBuffers.color = color;
+      inst.isPickable = false;
+      inst.freezeWorldMatrix(); // до doNotSync: иначе bbox остаётся в начале координат
+      inst.doNotSyncBoundingInfo = true;
+      geo.push(inst as unknown as Mesh);
     }
-    root.freezeWorldMatrix();
-    const geo = root.getChildMeshes(false).filter((m) => m.getTotalVertices() > 0) as Mesh[];
-    if (geo.length) {
-      rockRecs.push({ kind: kind % containers.length, x, y: root.position.y, z, scale: s, meshes: geo });
-    }
+    rockRecs.push({ kind: kind % containers.length, x, y, z, scale: s, meshes: geo });
   };
 
   // Под оружием — небольшой камень-постамент, верх ~0.7 м.

@@ -76,6 +76,11 @@ export class Dummy implements Hittable {
     post.freezeWorldMatrix();
   }
 
+  /** Далеко от игрока — кукла целиком отключена (нет отрисовок и пересчёта матриц). */
+  setNear(on: boolean): void {
+    if (this.root.isEnabled() !== on) this.root.setEnabled(on);
+  }
+
   get alive(): boolean {
     return !this.dying;
   }

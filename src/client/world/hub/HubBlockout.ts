@@ -749,6 +749,7 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   // --- 17. Знамёна на шестах по кольцу площади (как на концепте) ---
   {
     const bannerParts: Mesh[] = [];
+    const clothParts: Mesh[] = [];
     const n = 8;
     const toGate = Math.atan2(g.dir.z, g.dir.x);
     for (let i = 0; i < n; i++) {
@@ -764,12 +765,12 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
       const cloth = MeshBuilder.CreatePlane("bannerCloth", { width: 1.1, height: 3.2 }, scene);
       cloth.position.set(bx, bgy + 4.2, bz);
       cloth.rotation.y = a + Math.PI / 2;
-      cloth.material = matBanner;
-      cloth.parent = root;
-      cloth.isPickable = false;
+      clothParts.push(cloth);
       obstacles.push({ x: bx, z: bz, r: 0.3 });
     }
     merge(bannerParts, "hubBannerPoles", matWood);
+    // Полотнища — один меш (раньше по одной отрисовке на знамя).
+    merge(clothParts, "hubBannerCloth", matBanner);
   }
 
   // --- 18. Палатки игроков по периметру ---

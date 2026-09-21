@@ -31,7 +31,6 @@ export class NameTag {
   private readonly halfH: number;
 
   private readonly W: number;
-  private readonly planeW: number;
   private readonly accent: Color3;
   private curName = "";
   private curLevel: number | null = null;
@@ -39,21 +38,16 @@ export class NameTag {
   /** Платформа игрока: 0 — нет значка, 1 — ПК, 2 — смартфон, 3 — VR. */
   private platform = 0;
 
-  /** Полоска здоровья под ником (создаётся по требованию через showHp). */
-  private hpBg: Mesh | null = null;
-  private hpFill: Mesh | null = null;
-  private hpFillMat: StandardMaterial | null = null;
-  private hpW = 0;
-  private curScale = 1;
+  /**
+   * Полоски здоровья и опыта рисуются В ТУ ЖЕ текстуру плашки (раньше это были ещё 4 отдельных меша
+   * со своими материалами — 5 отрисовок на героя вместо одной). Перерисовка — только при изменении значений.
+   */
+  private hpOn = false;
   private hpFrac = 1;
-  /** Полоска хоть раз выставлена (до этого guard по изменению не срабатывает). */
-  private hpShown = false;
-
-  /** Полоска опыта (тонкая, золотая) — только у ботов, через showXp. */
-  private xpBg: Mesh | null = null;
-  private xpFill: Mesh | null = null;
-  private xpW = 0;
+  private xpOn = false;
+  private xpHidden = false;
   private xpFrac = 0;
+  private curScale = 1;
   /** См. setAlwaysOnTop() — плашка видна сквозь модель, а не только когда та не мешает. */
   private alwaysOnTop = false;
 
@@ -100,7 +94,6 @@ export class NameTag {
     // прежнего размера, плашка просто становится длиннее.
     const planeW = 0.9 * (this.W / BASE_W);
     const height = planeW * (H / this.W);
-    this.planeW = planeW;
     this.plane = MeshBuilder.CreatePlane("nameTag", { width: planeW, height }, scene);
     this.plane.material = mat;
     this.plane.parent = parent;
@@ -179,125 +172,68 @@ export class NameTag {
         ctx.textAlign = "center";
       }
     }
+    this.paintBars(ctx);
     this.tex.update(true);
+  }
+
+  /** Полоски над ником — те же положения и пропорции, что были у отдельных мешей. */
+  private paintBars(ctx: CanvasRenderingContext2D): void {
+    const W = this.W;
+    const barW = W * 0.66;
+    const cx = W / 2;
+    const bar = (yCenter: number, hFill: number, hBg: number, frac: number, fill: string): void => {
+      ctx.fillStyle = "rgba(8,8,8,0.65)";
+      ctx.fillRect(cx - (barW * 1.06) / 2, yCenter - hBg / 2, barW * 1.06, hBg);
+      ctx.fillStyle = fill;
+      ctx.fillRect(cx - barW / 2, yCenter - hFill / 2, barW * Math.max(0.004, frac), hFill);
+    };
+    if (this.xpOn && !this.xpHidden) {
+      // центр на 0.92·halfH над серединой плашки
+      bar(H * (0.5 - 0.46), W * 0.023, W * 0.023 * 1.6, this.xpFrac, "rgb(158,163,173)");
+    }
+    if (this.hpOn) {
+      const f = this.hpFrac;
+      const r = f > 0.5 ? 64 : 217;
+      const g = f > 0.25 ? 191 : 51;
+      const b = f > 0.5 ? 77 : 38;
+      bar(H * (0.5 - 0.29), W * 0.05, W * 0.05 * 1.5, f, `rgb(${r},${g},${b})`);
+    }
   }
 
   setEnabled(v: boolean): void {
     this.plane.setEnabled(v);
   }
 
-  /**
-   * Включить полоску здоровья под ником (зелёная, желтеет/краснеет с уроном).
-   * Планки — дети плашки: сами едут за billboard, масштабом и якорем.
-   */
+  /** Включить полоску здоровья под ником (зелёная, желтеет/краснеет с уроном). */
   showHp(): void {
-    if (this.hpBg) return;
-    const scene = this.plane.getScene();
-    const w = this.planeW * 0.66;
-    const barH = this.planeW * 0.05;
-    // Над ником, но ближе к нему — не у самого верхнего края.
-    const y = this.halfH * 0.58;
-    this.hpW = w;
-
-    const bgMat = new StandardMaterial("nameHpBgMat", scene);
-    bgMat.disableLighting = true;
-    bgMat.emissiveColor = new Color3(0.03, 0.03, 0.03);
-    bgMat.specularColor = new Color3(0, 0, 0);
-    bgMat.alpha = 0.65;
-    this.hpBg = MeshBuilder.CreatePlane("nameHpBg", { width: w + w * 0.06, height: barH * 1.5 }, scene);
-    this.hpBg.material = bgMat;
-    this.hpBg.parent = this.plane;
-    this.hpBg.position.set(0, y, 0.01);
-    this.hpBg.isPickable = false;
-    this.hpBg.renderingGroupId = 0;
-
-    this.hpFillMat = new StandardMaterial("nameHpFillMat", scene);
-    this.hpFillMat.disableLighting = true;
-    this.hpFillMat.specularColor = new Color3(0, 0, 0);
-    this.hpFillMat.emissiveColor = new Color3(0.25, 0.8, 0.3);
-    this.hpFill = MeshBuilder.CreatePlane("nameHpFill", { width: w, height: barH }, scene);
-    this.hpFill.material = this.hpFillMat;
-    this.hpFill.parent = this.hpBg;
-    this.hpFill.position.z = -0.01;
-    this.hpFill.isPickable = false;
-    this.hpFill.renderingGroupId = 0;
-    if (this.alwaysOnTop) this.applyAlwaysOnTop();
-    this.setHp(this.hpFrac);
+    if (this.hpOn) return;
+    this.hpOn = true;
+    this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
-  /**
-   * Тонкая полоска опыта над полоской жизни — сколько до следующего уровня.
-   * Ставится ботам; цвет не меняется (золото).
-   */
+  /** Тонкая полоска опыта над полоской жизни — сколько до следующего уровня (боты; золото/серый). */
   showXp(): void {
-    if (this.xpBg) return;
-    const scene = this.plane.getScene();
-    const w = this.planeW * 0.66;
-    const barH = this.planeW * 0.023;
-    // Над полоской жизни (та — на halfH*0.58), с зазором.
-    const y = this.halfH * 0.92;
-    this.xpW = w;
-
-    const bgMat = new StandardMaterial("nameXpBgMat", scene);
-    bgMat.disableLighting = true;
-    bgMat.emissiveColor = new Color3(0.03, 0.03, 0.03);
-    bgMat.specularColor = new Color3(0, 0, 0);
-    bgMat.alpha = 0.65;
-    this.xpBg = MeshBuilder.CreatePlane(
-      "nameXpBg",
-      { width: w + w * 0.06, height: barH * 1.6 },
-      scene,
-    );
-    this.xpBg.material = bgMat;
-    this.xpBg.parent = this.plane;
-    this.xpBg.position.set(0, y, 0.01);
-    this.xpBg.isPickable = false;
-    this.xpBg.renderingGroupId = 0;
-
-    const fillMat = new StandardMaterial("nameXpFillMat", scene);
-    fillMat.disableLighting = true;
-    fillMat.specularColor = new Color3(0, 0, 0);
-    fillMat.emissiveColor = new Color3(0.62, 0.64, 0.68);
-    this.xpFill = MeshBuilder.CreatePlane("nameXpFill", { width: w, height: barH }, scene);
-    this.xpFill.material = fillMat;
-    this.xpFill.parent = this.xpBg;
-    this.xpFill.position.z = -0.01;
-    this.xpFill.isPickable = false;
-    this.xpFill.renderingGroupId = 0;
-    this.setXp(this.xpFrac);
+    if (this.xpOn) return;
+    this.xpOn = true;
+    this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
   /** Доля опыта до следующего уровня 0..1. Отрицательное — максимальный уровень (полоска прячется). */
   setXp(frac: number): void {
-    if (frac < 0) {
-      this.xpFrac = 1;
-      this.xpBg?.setEnabled(false);
-      return;
-    }
-    const f = Math.max(0, Math.min(1, frac));
+    const hidden = frac < 0;
+    const f = hidden ? 1 : Math.max(0, Math.min(1, frac));
+    if (hidden === this.xpHidden && Math.abs(f - this.xpFrac) < 0.005) return;
+    this.xpHidden = hidden;
     this.xpFrac = f;
-    if (!this.xpFill) return;
-    this.xpBg?.setEnabled(true);
-    this.xpFill.scaling.x = Math.max(0.001, f);
-    this.xpFill.position.x = -(this.xpW * (1 - f)) / 2;
+    if (this.xpOn) this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
-  /** Доля здоровья 0..1. */
+  /** Доля здоровья 0..1. Зовётся каждый кадр: текстура перерисовывается, только если значение заметно изменилось. */
   setHp(frac: number): void {
     const f = Math.max(0, Math.min(1, frac));
-    // Зовётся каждый кадр у каждого героя: без смены значения ничего не трогаем (иначе
-    // scaling/position/цвет дёргали пересчёт матрицы и uniform'ов впустую).
-    if (this.hpFill && Math.abs(f - this.hpFrac) < 0.002 && this.hpShown) return;
+    if (Math.abs(f - this.hpFrac) < 0.01 && !(f === 0 && this.hpFrac !== 0)) return;
     this.hpFrac = f;
-    if (!this.hpFill || !this.hpFillMat) return;
-    this.hpShown = true;
-    this.hpFill.scaling.x = Math.max(0.001, f);
-    this.hpFill.position.x = -(this.hpW * (1 - f)) / 2;
-    this.hpFillMat.emissiveColor.set(
-      f > 0.5 ? 0.25 : 0.85,
-      f > 0.25 ? 0.75 : 0.2,
-      f > 0.5 ? 0.3 : 0.15,
-    );
+    if (this.hpOn) this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
   /** Поднять плашку — когда высота модели становится известна позже (боты). */
@@ -329,7 +265,7 @@ export class NameTag {
 
   private applyAlwaysOnTop(): void {
     const on = this.alwaysOnTop;
-    for (const m of [this.plane, this.hpBg, this.hpFill, this.xpBg, this.xpFill]) {
+    for (const m of [this.plane]) {
       if (!m?.material) continue;
       // disableDepthTest — не просто "рисуй после", а буквально не сверяться
       // с буфером глубины: иначе своё же тело моба (уже в буфере) закрывало
@@ -343,10 +279,6 @@ export class NameTag {
   dispose(): void {
     // (false, true) — вместе с материалом (и его текстурой): иначе на каждый
     // убранный моб/героя в сцене оставался nameTagMat и полоски (утечка).
-    this.xpFill?.dispose(false, true);
-    this.xpBg?.dispose(false, true);
-    this.hpFill?.dispose(false, true);
-    this.hpBg?.dispose(false, true);
     this.plane.dispose(false, true);
     this.tex.dispose();
   }

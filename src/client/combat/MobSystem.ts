@@ -537,7 +537,15 @@ export class NetMobs {
     secAdd("mobs.viewsUpdate", sp);
     sp = secNow();
     room.state.dummies.forEach((s, id) => {
-      this.dummies.get(id)?.applyState(s, dt);
+      const d = this.dummies.get(id);
+      if (!d) return;
+      // Куклы стоят в лагере: дальше ~60 м не рисуем и не считаем (с запасом на гистерезис).
+      const dx = d.root.position.x - playerPos.x;
+      const dz = d.root.position.z - playerPos.z;
+      const dist2 = dx * dx + dz * dz;
+      const lim = d.root.isEnabled() ? 66 : 58;
+      d.setNear(dist2 < lim * lim);
+      if (d.root.isEnabled()) d.applyState(s, dt);
     });
 
     // Плевки: множество появляется/исчезает — синхронизируем меши.
