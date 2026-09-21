@@ -58,9 +58,10 @@ export class TreeThin {
         tm.isPickable = false;
         tm.alwaysSelectAsActiveMesh = true;
         tm.doNotSyncBoundingInfo = true;
-        // Зеркальные экземпляры (отрицательный определитель) Babylon у обычных мешей разворачивает сам,
-        // у тонких инстансов — нет: без этого видна изнанка, а лицо срезается.
-        if (mirrored) tm.sideOrientation = 1;
+        // Порядок обхода граней — как у исходной модели: glTF-загрузчик ставит мешам свой (у нового меша он
+        // другой — видна изнанка, лицо срезается). Зеркальные экземпляры (отрицательный определитель) Babylon
+        // у обычных мешей разворачивает сам, у тонких инстансов — нет: им обход обратный.
+        tm.sideOrientation = mirrored ? 1 - src.sideOrientation : src.sideOrientation;
         tm.setEnabled(false);
         const buf = new Float32Array(16 * 16);
         tm.thinInstanceSetBuffer("matrix", buf, 16, false);
