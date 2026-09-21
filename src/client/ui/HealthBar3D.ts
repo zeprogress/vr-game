@@ -85,8 +85,8 @@ export class HealthBar3D {
     this.lastQ = q;
     const w = this.width;
     const x1 = -w / 2 + w * Math.max(0.001, f);
-    this.positions[12] = x1; // правый низ заполнения
-    this.positions[18] = x1; // правый верх
+    this.positions[15] = x1; // x правого нижнего угла заполнения (вершина 5)
+    this.positions[18] = x1; // x правого верхнего угла (вершина 6)
     let r: number;
     let g: number;
     let b: number;
