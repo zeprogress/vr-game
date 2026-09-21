@@ -423,10 +423,6 @@ export class Mob implements Hittable {
   private burnMat: ShaderMaterial | null = null;
   /** Крупные «квадраты» пламени, как было раньше (плюс россыпь мелких). */
   private burnMesh: Mesh | null = null;
-  /** Материалы модели с исходным свечением — для красно-оранжевого оттенка при горении. */
-  private rigTint: { m: StandardMaterial; r: number; g: number; b: number }[] | null = null;
-  private rigTintOn = false;
-  private rigBurnMeshes: { mesh: AbstractMesh; shared: StandardMaterial }[] | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -899,7 +895,6 @@ export class Mob implements Hittable {
       ? Math.min(1, this.burnGlow + dt * 5)
       : Math.max(0, this.burnGlow - dt * 3);
     this.updateBurnFx(dt);
-    this.updateRigBurnTint();
     const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
 
     this.mat.emissiveColor.set(
@@ -1185,47 +1180,9 @@ export class Mob implements Hittable {
     }
   }
 
-  /**
-   * Горящая модель слегка наливается красно-оранжевым (добавка к эмиссии материалов, они у
-   * моба свои — см. recolorMonster/recolorRig). Пульсирует, при затухании горения
-   * возвращается к исходному свечению.
-   */
-  private updateRigBurnTint(): void {
-    if (!this.rig || !this.rigReady) return;
-    if (this.burnGlow <= 0.001) {
-      if (this.rigTintOn) this.endRigBurn();
-      return;
-    }
-    if (!this.rigTint) {
-      // Материалы модели общие на всех мобов вида — на время горения даём мобу личные копии.
-      const priv = new Map<unknown, StandardMaterial>();
-      this.rigTint = [];
-      this.rigBurnMeshes = [];
-      for (const mesh of this.rig.meshes) {
-        const shared = mesh.material as StandardMaterial | null;
-        if (!shared || !shared.emissiveColor) continue;
-        let own = priv.get(shared);
-        if (!own) {
-          own = shared.clone(`${shared.name}_burn`);
-          priv.set(shared, own);
-          this.rigTint.push({ m: own, r: shared.emissiveColor.r, g: shared.emissiveColor.g, b: shared.emissiveColor.b });
-        }
-        this.rigBurnMeshes.push({ mesh, shared });
-        mesh.material = own;
-      }
-    }
-    const k = this.burnGlow * (0.65 + 0.2 * Math.sin(performance.now() * 0.009));
-    for (const t of this.rigTint) t.m.emissiveColor.set(t.r + 1.15 * k, t.g + 0.38 * k, t.b + 0.04 * k); // сильнее (было 0.75/0.26/0.03)
-    this.rigTintOn = true;
-  }
-
-  /** Горение кончилось — вернуть общие материалы, личные копии убрать. */
-  private endRigBurn(): void {
-    for (const b of this.rigBurnMeshes ?? []) if (!b.mesh.isDisposed()) b.mesh.material = b.shared;
-    for (const t of this.rigTint ?? []) t.m.dispose(false, false);
-    this.rigTint = null;
-    this.rigBurnMeshes = null;
-    this.rigTintOn = false;
+  /** Насколько моб горит 0..1 — от него зависит ночной свет огня (MobSystem.fireLight). */
+  get burning(): number {
+    return this.burnGlow;
   }
 
   /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
@@ -1335,8 +1292,6 @@ export class Mob implements Hittable {
     this.burnMat?.dispose();
     this.burnMesh?.dispose();
     this.mat.dispose();
-    // Материалы модели общие на вид моба — не трогаем; личные копии горения — убираем.
-    if (this.rigTintOn) this.endRigBurn();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, false);

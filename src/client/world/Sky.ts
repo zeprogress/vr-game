@@ -30,7 +30,9 @@ export function createSky(scene: Scene, start: DayState = dayState(12), simple =
   dome.infiniteDistance = true;
   dome.isPickable = false;
   dome.applyFog = false;
-  dome.freezeWorldMatrix();
+  // НЕ замораживаем матрицу: infiniteDistance ведёт купол за камерой. Замороженный стоял в центре карты, и у края
+  // звёзды (радиус 420 вокруг головы) выходили за его стенку (радиус 450) и скрывались — с той стороны, куда подходишь.
+  dome.alwaysSelectAsActiveMesh = true;
 
   // LINEAR (не EXP2): даёт «радиус» напрямую — ясно до fogStart, полная
   // стена с fogEnd. Границы приходят из DayState (палитра + FOG_TUNE, ?fog=1).

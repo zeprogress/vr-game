@@ -710,6 +710,26 @@ export class NetMobs {
         }
       }
     }
+    // Горящий моб светит оранжевым (тот же единственный огненный свет, набор источников не меняется):
+    // берём самого горячего, если он ярче огнешара. Соседи подсвечиваются сами.
+    if (this.fireLightPower < 2.4) {
+      let best = 0;
+      let bestMob: Mob | null = null;
+      for (const m of this.mobs.values()) {
+        const g = m.burning;
+        if (g > best) {
+          best = g;
+          bestMob = m;
+        }
+      }
+      if (bestMob && best > 0.05 && 2.4 * best > this.fireLightPower) {
+        this.fireLightPower = 2.4 * best;
+        const c = bestMob.center?.();
+        if (c) this.fireLightPos.copyFrom(c);
+        else this.fireLightPos.copyFrom(bestMob.root.position);
+        this.fireLightPos.y += 0.6;
+      }
+    }
   }
 
   detach(): void {

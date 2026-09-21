@@ -15,7 +15,6 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
-import { GrassWindPlugin, WIND } from "./GrassWind";
 import { TreeImpostors, type ImpostorTree } from "./TreeImpostors";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { computeGrassLayout } from "./grassLayout";
@@ -380,14 +379,13 @@ export async function loadGrass(
   blade.name = "grassBlade";
   blade.setEnabled(true);
 
-  const wind = new GrassWindPlugin(mat);
+  // Ветра на траве нет (был вершинный шейдер с атрибутом фазы на каждый пучок) — ни плагина, ни буфера фаз.
 
   // Раскладка (позиции клякс и травинок) — общая с Terrain.ts (AO под травой,
   // см. bakeAo): чистая функция одного зерна, поэтому оба места получают
   // одну и ту же карту независимо друг от друга.
   const layout = computeGrassLayout(density);
   const matrices: Matrix[] = [];
-  const phases: number[] = [];
   const colors: number[] = [];
   const up = new Vector3(0, 1, 0);
 
@@ -400,20 +398,19 @@ export async function loadGrass(
         new Vector3(bl.x, y - 0.03, bl.z),
       ),
     );
-    phases.push((bl.x * WIND.dirX + bl.z * WIND.dirZ) * 0.55);
     colors.push(bl.b + bl.warm * 0.7, bl.b + bl.warm * 0.15, bl.b - bl.warm * 0.5, 1);
   }
 
   blade.thinInstanceAdd(matrices);
-  blade.thinInstanceSetBuffer("windPhase", new Float32Array(phases), 1, true);
   blade.thinInstanceSetBuffer("color", new Float32Array(colors), 4, true);
 
-  return (dt: number, daylight: number) => {
-    wind.scale += (daylight - wind.scale) * Math.min(1, dt * 0.6);
-    wind.time += dt * WIND.speed * Math.max(wind.scale, 0.05);
+  let lastK = -1;
+  return (_dt: number, daylight: number) => {
     // Гасим собственную яркость к ночи (остаток чуть больше — трава ночью
-    // не должна проваливаться в полную черноту).
+    // не должна проваливаться в полную черноту). Пишем только при заметном сдвиге.
     const k = 0.2 + 0.8 * daylight;
+    if (Math.abs(k - lastK) < 0.004) return;
+    lastK = k;
     mat.emissiveColor.copyFromFloats(emiDay.r * k, emiDay.g * k, emiDay.b * k);
   };
 }
