@@ -58,9 +58,13 @@ export class SpellLights {
   }
 
   /** Огненный свет: позиция снаряда / взрыва (null — ничего нет), сила 0..~6. */
-  setFire(pos: Vector3 | null, power: number): void {
+  setFire(pos: Vector3 | null, power: number, burn = false): void {
     if (!this.enabled) return;
     if (pos && power > 0.01) {
+      // Горящий моб — глубже оранжевый и с чуть большим радиусом, чем огнешар.
+      if (burn) this.fire.diffuse.set(1, 0.4, 0.07);
+      else this.fire.diffuse.set(1, 0.55, 0.2);
+      this.fire.range = burn ? 16 : 13;
       this.fire.position.copyFrom(pos);
       this.fire.intensity = this.night * power;
     } else {

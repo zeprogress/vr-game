@@ -105,6 +105,11 @@ export class NetMobs {
   /** Ночная подсветка от огнешара — позиция и сила. Обновляется в update(). */
   private readonly fireLightPos = new Vector3();
   private fireLightPower = 0;
+  private burnHold = 0;
+  private burnLightPow = 0;
+  private readonly burnLightPos = new Vector3();
+  /** Свет сейчас от горящего моба (а не от огнешара) — светит оранжевее. */
+  fireBurn = false;
   fireLight(): { pos: Vector3; power: number } | null {
     return this.fireLightPower > 0.01 ? { pos: this.fireLightPos, power: this.fireLightPower } : null;
   }
@@ -711,24 +716,30 @@ export class NetMobs {
       }
     }
     // Горящий моб светит оранжевым (тот же единственный огненный свет, набор источников не меняется):
-    // берём самого горячего, если он ярче огнешара. Соседи подсвечиваются сами.
-    if (this.fireLightPower < 2.4) {
-      let best = 0;
-      let bestMob: Mob | null = null;
-      for (const m of this.mobs.values()) {
-        const g = m.burning;
-        if (g > best) {
-          best = g;
-          bestMob = m;
-        }
+    // берём самого горячего. Сила сглажена и держится ещё чуть после того, как огонь пропал из состояния,
+    // — иначе свет мигал бы с каждым сбоем поля `burning`. Соседи подсвечиваются сами.
+    let best = 0;
+    let bestMob: Mob | null = null;
+    for (const m of this.mobs.values()) {
+      const g = m.burning;
+      if (g > best) {
+        best = g;
+        bestMob = m;
       }
-      if (bestMob && best > 0.05 && 2.4 * best > this.fireLightPower) {
-        this.fireLightPower = 2.4 * best;
-        const c = bestMob.center?.();
-        if (c) this.fireLightPos.copyFrom(c);
-        else this.fireLightPos.copyFrom(bestMob.root.position);
-        this.fireLightPos.y += 0.6;
-      }
+    }
+    if (bestMob && best > 0.05) {
+      this.burnHold = 0.6;
+      const c = bestMob.center?.();
+      if (c) this.burnLightPos.copyFrom(c);
+      else this.burnLightPos.copyFrom(bestMob.root.position);
+      this.burnLightPos.y += 0.6;
+    } else this.burnHold = Math.max(0, this.burnHold - dt);
+    const want = this.burnHold > 0 ? 4.6 * (0.9 + 0.1 * Math.sin(performance.now() * 0.011)) : 0;
+    this.burnLightPow += (want - this.burnLightPow) * Math.min(1, dt * 8);
+    this.fireBurn = this.burnLightPow > this.fireLightPower;
+    if (this.fireBurn && this.burnLightPow > 0.05) {
+      this.fireLightPower = this.burnLightPow;
+      this.fireLightPos.copyFrom(this.burnLightPos);
     }
   }
 

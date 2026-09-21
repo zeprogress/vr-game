@@ -570,7 +570,7 @@ export class Game {
         this.combat.chargeLevel,
       );
       const fl = this.netMobs.fireLight();
-      this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0);
+      this.spellLights.setFire(fl?.pos ?? null, fl?.power ?? 0, this.netMobs.fireBurn);
       this.mark("fx");
       this._botPos.length = 0;
       this._botFwd.length = 0;

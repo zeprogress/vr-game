@@ -701,11 +701,20 @@ export class Mob implements Hittable {
     this.squash = holder;
     this.baseModelScale = base;
     this.rigReady = true; // материалы перекрашены — можно строить дальний LOD
+    // Летуны (пчёлы): модель висит выше корня — огонь поднимаем на высоту её низа, иначе он горит под мобом.
+    this.root.computeWorldMatrix(true);
+    holder.computeWorldMatrix(true);
+    const bb = holder.getHierarchyBoundingVectors(true);
+    const sy = Math.max(0.05, Math.abs(this.root.scaling.y));
+    this.burnBaseY = Math.max(0, (bb.min.y - this.root.getAbsolutePosition().y) / sy);
+    if (this.burnFx) this.burnFx.position.y = this.burnBaseY;
 
     // «Hop» проигрываем только в прыжке (см. applyState), в покое — статика.
   }
 
   private baseModelScale = 1;
+  /** На сколько выше корня начинается модель (у летунов), локальные единицы — сюда поднимаем огонь. */
+  private burnBaseY = 0;
 
   // ---- Hittable ----
 
@@ -1198,6 +1207,7 @@ export class Mob implements Hittable {
       const scene = this.root.getScene();
       this.burnFx = new TransformNode("mobBurn", scene);
       this.burnFx.parent = this.root;
+      this.burnFx.position.y = this.burnBaseY;
       // Весь огонь — один меш из 23 квадов, всплытие/пульсацию/билборд считает шейдер (BurnFlameMat).
       this.burnMat = makeBurnFlameMaterial(scene);
       this.burnMat.setFloat("uR", MOB.bodyRadius);
