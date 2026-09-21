@@ -72,7 +72,11 @@ function recolorRig(
       // secondary — светлее (блик/пузики), primary — базовый цвет кинда
       const k = /secondary/i.test(name) ? 1.4 : 1;
       flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
-      flat.emissiveColor = noGlow ? new Color3(tint[0] * 0.14, tint[1] * 0.14, tint[2] * 0.14) : new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
+      // Слизень, плевун и багровый — чуть больше прежнего свечения (было 0.14/0.1/0.16); осколки — как были.
+      flat.emissiveColor =
+        kind === "shard"
+          ? new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16)
+          : new Color3(tint[0] * 0.2, tint[1] * 0.15, tint[2] * 0.23);
       flat.specularColor = new Color3(0.06, 0.06, 0.06);
       // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
       flat.alpha = alpha;

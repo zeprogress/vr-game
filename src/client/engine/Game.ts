@@ -2444,6 +2444,7 @@ export class Game {
 
   /** Каждый кадр: отдать свой транспорт, применить чужой. */
   private handsCheckN = 0;
+  private avTick = 0;
   private syncNet(dt: number): void {
     const net = this.net;
     if (!net?.online || !net.room) {
@@ -2502,7 +2503,16 @@ export class Game {
     const myPvp = self?.pvp === 1;
 
     const players = net.room.state.players;
+    // Удалённые герои дальше 25 м — через кадр (по очереди: половина в чётный кадр, половина в нечётный); ближние — каждый кадр.
+    const eye = this.player.eyePosition;
+    this.avTick++;
+    let ai = 0;
     for (const [id, avatar] of this.avatars) {
+      ai++;
+      const ap = avatar.position;
+      const dx = ap.x - eye.x;
+      const dz = ap.z - eye.z;
+      if (dx * dx + dz * dz > 625 && ((ai + this.avTick) & 1) === 1) continue;
       const p = players.get(id);
       if (p) avatar.push(now, p);
       avatar.setMyPvp(myPvp);

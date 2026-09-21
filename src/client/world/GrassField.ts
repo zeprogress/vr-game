@@ -12,6 +12,9 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import type { Terrain } from "./Terrain";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { noGrass } from "./grassLayout";
+import { MOB_CAMPS } from "#shared/constants";
+import { HUB, HUB_CENTER } from "#shared/hub";
+import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
 
 /**
  * Трава и кусты — ТОЛЬКО перед игроком.
@@ -31,10 +34,7 @@ const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
 const R_GRASS_BASE = 92; // дальность травы (редкие пучки), м
 const R_BUSH_BASE = 60;
-const COS_HALF = Math.cos((62 * Math.PI) / 180);
-/** Вблизи (до NEAR_WIDE м) конус шире (±88°): при быстром повороте головы трава у ног не «выскакивает» на краю кадра. */
-const COS_WIDE = Math.cos((88 * Math.PI) / 180);
-const NEAR_WIDE = 20;
+const COS_HALF = Math.cos((60 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
 const REACH = 165; // дальше от центра карты травы нет
@@ -66,6 +66,23 @@ const smooth = (e0: number, e1: number, v: number): number => {
   const t = v <= e0 ? 0 : v >= e1 ? 1 : (v - e0) / (e1 - e0);
   return t * t * (3 - 2 * t);
 };
+
+/** Множитель густоты (0.3–1): реже в середине поляны, у точек спавна мобов, за лагерем и у декоративной башни. */
+function sparseMul(x: number, z: number): number {
+  let m = 1;
+  const dc = Math.hypot(x, z);
+  if (dc < 24) m *= 0.3 + 0.7 * smooth(8, 24, dc);
+  for (const c of MOB_CAMPS) {
+    const r = c.spread + 4;
+    const d = Math.hypot(x - c.x, z - c.z);
+    if (d < r + 8) m *= 0.3 + 0.7 * smooth(r - 2, r + 8, d);
+  }
+  const dh = Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z);
+  if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
+  const dt = Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z);
+  if (dt < TOWER_PROP_CLEAR + 24) m *= 0.4 + 0.6 * smooth(TOWER_PROP_CLEAR, TOWER_PROP_CLEAR + 24, dt);
+  return m;
+}
 
 interface Kind {
   mesh: Mesh;
@@ -171,9 +188,10 @@ export async function loadGrassField(
       bm.transparencyMode = 1;
       bm.alphaCutOff = 0.28;
     }
-    // Без собственного свечения; освещается только небом и солнцем (2 источника) — факелы, светлячки и огонь на кусты не влияют.
-    bm.diffuseColor = new Color3(0.5, 0.72, 0.38);
-    bm.emissiveColor = new Color3(0, 0, 0);
+    // Освещение только небом и солнцем (2 источника); влияние солнца ослаблено, чтобы тень не была чёрной, а солнечная сторона — засвеченной,
+    // плюс совсем чуть-чуть собственного свечения.
+    bm.diffuseColor = new Color3(0.34, 0.49, 0.26);
+    bm.emissiveColor = new Color3(0.055, 0.085, 0.04);
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = 2;
@@ -199,7 +217,7 @@ export async function loadGrassField(
         const hill = smooth(-1.4, 1.8, y);
         // «Хаос»: крупные поляны и проплешины (почти пусто), средние участки и густые заросли.
         const q = vnoise(x, z, 27, 100) * 0.68 + vnoise(x, z, 9, 101) * 0.32;
-        const keep = (0.015 + 0.985 * smooth(0.36, 0.6, q)) * (1.35 - 1.0 * hill);
+        const keep = (0.015 + 0.985 * smooth(0.36, 0.6, q)) * (1.35 - 1.0 * hill) * sparseMul(x, z);
         if (hash(ix, iz, 0) > keep * density) continue;
         // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
         const rd = hash(ix, iz, 30);
@@ -274,7 +292,7 @@ export async function loadGrassField(
     const d = Math.hypot(dx, dz);
     const half = CHUNK * CELL * 0.75; // ~радиус куска
     if (d > reach + half) return true;
-    if (d < NEAR_WIDE + half) return false;
+    if (d < half * 2) return false;
     const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
     return ang - Math.asin(Math.min(1, half / d)) > Math.acos(COS_HALF) + 0.3;
   };
@@ -330,7 +348,7 @@ export async function loadGrassField(
           // Без плавных врастаний: пучок либо есть, либо нет (дальность — у каждой клетки своя, вдали он мелкий).
           const d = Math.sqrt(d2);
           const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
-          if (cosA < (d < NEAR_WIDE ? COS_WIDE : COS_HALF)) continue;
+          if (cosA < COS_HALF) continue;
           const k = kinds[a[o + 10]];
           const sx = a[o + 5];
           write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
@@ -354,11 +372,11 @@ export async function loadGrassField(
           if (d2 > R_BUSH * R_BUSH) continue;
           // кучками: где-то рощицы кустов, где-то ни одного
           const clump = smooth(0.58, 0.82, vnoise(x, z, 23, 105));
-          if (hash(ix, iz, 20) > (0.02 + 0.3 * clump) * density) continue;
+          if (hash(ix, iz, 20) > (0.01 + 0.13 * clump) * sparseMul(x, z) * density) continue;
           if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
           const d = Math.sqrt(d2);
           const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
-          if (cosA < (d < NEAR_WIDE ? COS_WIDE : COS_HALF)) continue;
+          if (cosA < COS_HALF) continue;
           const sc = 0.45 + hash(ix, iz, 23) * 0.75;
           write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.8 + hash(ix, iz, 25) * 0.5), 1, 1, 1);
         }
