@@ -1962,8 +1962,10 @@ export class CombatSystem {
    * Только в VR: там это физическое взаимодействие рукой. На ПК/телефоне
    * оружие ездит за камерой и толкало бы мобов при каждом взмахе — не нужно.
    */
+  private shoveN = 0;
   private shoveWithHeldItems(): void {
     if (!this.player.inVR) return;
+    if ((this.shoveN++ & 1) === 1) return; // через кадр (толчок вдвое сильнее — суммарно то же)
     for (const item of this.items) {
       if (!item.hand) continue;
       const kind = item.kind;
@@ -1979,7 +1981,7 @@ export class CombatSystem {
         rad = SHIELD.radius + 0.05;
       }
       const handSpeed = this.player.inVR ? this.motion[item.hand].vel.length() : 2;
-      const strength = Math.min(6, 1.4 + handSpeed);
+      const strength = Math.min(6, 1.4 + handSpeed) * 2;
       for (const t of this.targets) {
         if (!t.alive || !t.shove || !t.center) continue;
         const s = t.hitSegment();

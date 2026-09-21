@@ -131,6 +131,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   let paintedAt = hour;
   let dayAt = Number.NaN;
   let dayAcc = 0;
+  let hubTickN = 0;
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
@@ -249,7 +250,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       fireflies.update(dt, playerPos, day.daylight);
       secAdd("zone.fireflies", sp);
       sp = secNow();
-      hub.tick(day.daylight);
+      if ((hubTickN++ & 1) === 0) hub.tick(day.daylight); // костёр и свечение лагеря — через кадр (его dt считается по часам)
       secAdd("zone.hub", sp);
 
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
@@ -260,7 +261,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       // В сумерках (небо быстро меняет цвет) красим часто, днём и ночью — редко.
       const moved = Math.abs(hour - paintedAt);
       const twilight = day.daylight > 0.03 && day.daylight < 0.97;
-      const step = quality.simpleSky ? (twilight ? 0.03 : 0.4) : 0.004;
+      const step = quality.simpleSky ? (twilight ? 0.03 : 0.4) : 0.012;
       if (moved > step || moved > 23) {
         paintedAt = hour;
         const sr = secNow();

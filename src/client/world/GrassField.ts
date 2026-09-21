@@ -157,8 +157,10 @@ export async function loadGrassField(
 
   // Кусты: свой материал — листва с текстурой куста, без вершинных цветов.
   let kBush = -1;
+  let bushMat: StandardMaterial | null = null;
   if (cBush) {
     const bm = new StandardMaterial("bushMat", scene);
+    bushMat = bm;
     // Родная текстура куста (TwistedTree) — тёмно-красная; берём зелёный лист обычных деревьев (та же раскладка карточек).
     const bt = new Texture("/models/nature/Leaves_NormalTree_C.png", scene, false, false);
     if (bt) {
@@ -168,8 +170,9 @@ export async function loadGrassField(
       bm.transparencyMode = 1;
       bm.alphaCutOff = 0.28;
     }
-    bm.diffuseColor = new Color3(0.72, 0.82, 0.6);
-    bm.emissiveColor = new Color3(0, 0, 0); // без собственного свечения — только свет сцены
+    // Как у травы: то же diffuse и число источников; собственное свечение — лишь малая доля травяного (к ночи гаснет).
+    bm.diffuseColor = new Color3(0.5, 0.72, 0.38);
+    bm.emissiveColor = new Color3(0.03, 0.05, 0.022);
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
@@ -213,7 +216,8 @@ export async function loadGrassField(
         a[o + 3] = z;
         a[o + 4] = hash(ix, iz, 7) * Math.PI * 2;
         a[o + 5] = 0.4 + hash(ix, iz, 8) * 0.36;
-        a[o + 6] = (0.8 + hash(ix, iz, 9) * 0.9) * (1.18 - 0.42 * hill);
+        // Высота: невысокая (не утопать в траве); высокие виды ещё ниже своего роста, на холмах — короче.
+        a[o + 6] = (0.62 + hash(ix, iz, 9) * 0.5) * (1.05 - 0.4 * hill) * (kind === kShort ? 1 : 0.8);
         a[o + 7] = b + warm * 0.7;
         a[o + 8] = b + warm * 0.15;
         a[o + 9] = b - warm * 0.5;
@@ -385,6 +389,7 @@ export async function loadGrassField(
     if (Math.abs(kk - lastK) >= 0.004) {
       lastK = kk;
       mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
+      bushMat?.emissiveColor.copyFromFloats(emiDay.r * 0.27 * kk, emiDay.g * 0.25 * kk, emiDay.b * 0.25 * kk);
     }
     acc += dt;
     if (acc < 0.2) return;
