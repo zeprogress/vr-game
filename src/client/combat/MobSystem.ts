@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { secNow, secAdd } from "../engine/secProf";
+import { secNow, secAdd, secCount } from "../engine/secProf";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -490,6 +490,7 @@ export class NetMobs {
     this.mobs.forEach((m, id) => {
       const s = m.st;
       if (!s) return;
+      secCount("#mobs.iter");
       const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
       let mdt = dt;
       if (this.lazy && !s.dead && draw && MOB_FAR_UPDATE_R > 0) {
@@ -500,7 +501,8 @@ export class NetMobs {
           if (m.idleAcc < 0.05) return;
           mdt = m.idleAcc;
           m.idleAcc = 0;
-          m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
+          secCount("#mobs.applyState");
+      m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
           return;
         }
       }
@@ -512,6 +514,7 @@ export class NetMobs {
         mdt = m.idleAcc;
       }
       m.idleAcc = 0;
+      secCount("#mobs.applyState");
       m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
     });
     secAdd("mobs.viewsUpdate", sp);

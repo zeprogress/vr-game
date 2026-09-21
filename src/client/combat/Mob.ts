@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { secNow, secAdd, secCount } from "../engine/secProf";
 import { createPinArrows } from "./PinArrows";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -697,6 +698,7 @@ export class Mob implements Hittable {
     /** VR: показывать ли плашку имени. */
     uiAllowed = true,
   ): void {
+    let sp = secNow();
     if (this.hitCd > 0) this.hitCd -= dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 3);
 
@@ -741,6 +743,7 @@ export class Mob implements Hittable {
     if (!this.dead && inView) {
       this.shadow.place(pos.x, pos.y, pos.z, MOB.bodyRadius * this.scale * 1.75);
     }
+    secAdd("mob.pos+view+shadow", sp);
 
     // Невидимый живой моб (вне лимита/за спиной/далеко): ни эффектов, ни анимации,
     // ни плашки — только держим счётчики событий в актуальном виде, чтобы при
@@ -755,10 +758,15 @@ export class Mob implements Hittable {
       this.atkT = 0;
       this.flash = 0;
       this.stopAnim();
+      secCount("#mob.hiddenPath");
       return;
     }
+    secCount("#mob.fullPath");
 
+    sp = secNow();
     this.updateFarLod(pos, playerPos);
+    secAdd("mob.farLod", sp);
+    sp = secNow();
 
     // атака моба: attackSeq вырос -> процедурный замах телом
     if (s.attackSeq !== this.lastAtkSeq) {
@@ -807,6 +815,8 @@ export class Mob implements Hittable {
       this.barTimer -= dt;
       this.bar?.setOpacity(this.barTimer > 0.7 ? 1 : Math.max(0, this.barTimer / 0.7));
     }
+    secAdd("mob.status(atk/stun/pin/hurt/bar)", sp);
+    sp = secNow();
 
     // Горение (поджог мага): языки пламени над мобом + тлеющий пульс тела.
     const burning = s.burning > 0 && !s.dead;
@@ -823,6 +833,8 @@ export class Mob implements Hittable {
       this.tint[2] * 0.32,
     );
 
+    secAdd("mob.burn+tint", sp);
+    sp = secNow();
     // смерть / возрождение
     if (s.dead && !this.dead) {
       this.dead = true;
@@ -876,6 +888,8 @@ export class Mob implements Hittable {
       return;
     }
 
+    secAdd("mob.deathLogic", sp);
+    sp = secNow();
     // сжатие в прыжке — по вертикальной скорости
     const vy = dt > 1e-4 ? (pos.y - this.prevY) / dt : 0;
     this.prevY = pos.y;
@@ -909,6 +923,8 @@ export class Mob implements Hittable {
       else this.stopAnim();
     }
 
+    secAdd("mob.squash+anim", sp);
+    sp = secNow();
     // Слэм/нова: ++slamSeq -> ударная волна по земле + грохот.
     if (this.hasNovaFx && s.slamSeq !== this.lastSlamSeq) {
       this.lastSlamSeq = s.slamSeq;
@@ -931,8 +947,10 @@ export class Mob implements Hittable {
     if (s.grounded === 0 && this.grounded) this.playIfNear(playerPos, () => this.sfx.mobHop(pos), 20);
     this.grounded = s.grounded === 1;
 
+    secAdd("mob.slam+misc", sp);
     // Облегчённый вид (стрим): без плашки и полоски HP — их рисует оверлей страницы.
     if (this.lean) return;
+    sp = secNow();
 
     // плашка — только рядом и примерно в поле зрения
     const dx = pos.x - playerPos.x;
@@ -947,6 +965,7 @@ export class Mob implements Hittable {
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
       this.getTag().setScale((2 + t * 2) * this.uiScale);
     }
+    secAdd("mob.nameTag", sp);
   }
 
   /** Дальше этого (м) живого моба рисуем сферой вместо модели со скелетом. */

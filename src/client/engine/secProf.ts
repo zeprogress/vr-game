@@ -25,6 +25,12 @@ export function secAdd(name: string, t0: number): void {
   SEC.acc[name] = (SEC.acc[name] ?? 0) + (performance.now() - t0);
 }
 
+/** Счётчик событий за кадр (в отчёте с префиксом #, среднее число на кадр). */
+export function secCount(name: string, n = 1): void {
+  if (!SEC.on) return;
+  SEC.acc[name] = (SEC.acc[name] ?? 0) + n;
+}
+
 /** Конец кадра: свернуть накопленное в скользящее среднее по кадрам (вызывает Game). */
 export function secEndFrame(): void {
   if (!SEC.on) return;
@@ -40,6 +46,6 @@ export function secReport(top = 24): string {
   return Object.entries(SEC.times)
     .sort((a, b) => b[1] - a[1])
     .slice(0, top)
-    .map(([k, v]) => `${k}:${v.toFixed(2)}`)
+    .map(([k, v]) => `${k}:${v.toFixed(k.startsWith("#") ? 1 : 2)}`)
     .join(" ");
 }
