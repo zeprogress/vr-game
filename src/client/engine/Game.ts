@@ -95,11 +95,11 @@ import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
  * Выбирает источник ввода по устройству и подключает WebXR.
  */
-/** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 0.5. (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
+/** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 0.8. (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
 function ffrLevel(): number {
   const q = new URLSearchParams(location.search);
-  const want = q.has("fov") ? Number(q.get("fov")) : 0.5;
-  return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.5;
+  const want = q.has("fov") ? Number(q.get("fov")) : 0.8;
+  return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.8;
 }
 
 export class Game {
@@ -846,12 +846,12 @@ export class Game {
     // теста, по умолчанию НЕ трогаем, чтобы не загонять GPU в репроекцию.
     const qp = new URLSearchParams(location.search);
     const fsRaw = Number(qp.get("fbscale"));
-    // По умолчанию в шлеме буфер глаза ×2 от рекомендованного и без MSAA: так картинка чётче и гладко без
+    // По умолчанию в шлеме буфер глаза ×1.4 от рекомендованного (×2 упирался в GPU: фрагментов вдвое больше) и без MSAA: так картинка чётче и гладко без
     // сглаживания краёв (свой выбор игрока; по замерам MSAA почти не влияла на fps). `?fbscale=<0.5..2>`
     // меняет разрешение, `?aa=1` включает MSAA.
     const isHeadset = /OculusBrowser|Quest|PicoBrowser|Pico/i.test(navigator.userAgent);
     const fbScale =
-      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : isHeadset ? 2 : 1;
+      Number.isFinite(fsRaw) && fsRaw > 0 ? Math.min(2, Math.max(0.5, fsRaw)) : isHeadset ? 1.4 : 1;
     // ?noaa=1 — без MSAA у буфера глаза. Резолв MSAA на большом стерео-RT
     // может стоить 10-20 мс на GPU шлема даже при пустой сцене.
     // Браузер автономного шлема (Quest/Pico): режим Layers (multiview — один проход на
