@@ -14,7 +14,7 @@ import type { Room } from "colyseus.js";
 import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
 import type { MobState, ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";
-import { Dummy } from "./Dummy";
+import { Dummy, flushDummies } from "./Dummy";
 import { createArrowProto } from "./Arrow";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
@@ -547,6 +547,7 @@ export class NetMobs {
       d.setNear(dist2 < lim * lim);
       if (d.root.isEnabled()) d.applyState(s, dt);
     });
+    flushDummies(this.scene);
 
     // Плевки: множество появляется/исчезает — синхронизируем меши.
     secAdd("mobs.dummies", sp);
