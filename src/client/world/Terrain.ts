@@ -11,7 +11,6 @@ import { WORLD } from "#shared/constants";
 import { terrainHeight as surface } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
-import { computeGrassLayout } from "./grassLayout";
 
 export interface Terrain {
   mesh: Mesh;
@@ -58,18 +57,6 @@ const AO_DIP_FULL = 0.4;
 const AO_ROCK_REACH = 0.9;
 const AO_ROCK_PER_SCALE = 1.6;
 const AO_ROCK_STRENGTH = 0.4;
-/**
- * Трава — тень НЕ по кляксе целиком (это давало ровно противоположную беду:
- * в густом месте десятки кляксовых кругов перемножались почти в чёрное, а
- * одиночная травинка вне всякой кляксы вообще не получала тени, хоть она
- * тоже есть в layout.blades). Пятно на КАЖДУЮ травинку по отдельности —
- * слабое само по себе, но там, где травинок много, они естественно
- * складываются в более заметную тень, а одна травинка получает лёгкий,
- * но всё же видимый след.
- */
-const AO_GRASS_BLADE_REACH = 0.4;
-const AO_GRASS_BLADE_PER_SCALE = 0.8;
-const AO_GRASS_BLADE_STRENGTH = 0.1;
 /**
  * Пол именно для этой текстуры (камни+трава), отдельный от AO_FLOOR у
  * деревьев/рельефа: травинок так много и они так плотно перекрываются, что
@@ -188,14 +175,14 @@ function buildPatch(
  * запечённое под травой AO должно совпадать с тем, что реально растёт на
  * этом пресете качества (см. buildZone в Zone.ts).
  */
-export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
+export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
   const size = WORLD.size;
   const seg = WORLD.subdivisions;
   const half = size / 2;
   const step = size / seg;
 
   const mat = grassMaterial(scene);
-  applyGroundAo(scene, mat, grassDensity);
+  applyGroundAo(scene, mat);
 
   // Вся земля — одно полотно: игровая зона и декоративный «фартук» за её
   // краем — ОДНА сетка без стыков. Коллизии/пикинг включены на весь меш
@@ -227,7 +214,7 @@ export function createTerrain(scene: Scene, grassDensity = 1): Terrain {
  * нет, читаем тот же канал, что и diffuse (там он просто ещё и тайлится
  * множителем на уровне текстуры, а не самого буфера).
  */
-function applyGroundAo(scene: Scene, mat: StandardMaterial, grassDensity: number): void {
+function applyGroundAo(scene: Scene, mat: StandardMaterial): void {
   const S = 1024;
   const tex = new DynamicTexture("groundAo", { width: S, height: S }, scene, false);
   // WRAP, не CLAMP: за пределами игровой зоны (±half) у "фартука" (apron,
@@ -267,16 +254,7 @@ function applyGroundAo(scene: Scene, mat: StandardMaterial, grassDensity: number
   for (const t of trees()) {
     drawSpot(t.x, t.z, AO_TREE_REACH + t.scale * AO_TREE_PER_SCALE, AO_TREE_STRENGTH);
   }
-  // По каждой травинке отдельно (не по кляксе целиком) — см. комментарий у
-  // AO_GRASS_BLADE_*.
-  for (const bl of computeGrassLayout(grassDensity).blades) {
-    drawSpot(
-      bl.x,
-      bl.z,
-      AO_GRASS_BLADE_REACH + bl.s * AO_GRASS_BLADE_PER_SCALE,
-      AO_GRASS_BLADE_STRENGTH,
-    );
-  }
+  // Затенения под травой нет: трава теперь растёт только перед игроком (GrassField), заранее запечь её позиции нельзя.
 
   // Даже слабые тени травинок в густом месте перемножаются друг на друга —
   // не даём итогу провалиться темнее AO_GROUND_FLOOR*255.

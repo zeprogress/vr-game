@@ -57,7 +57,7 @@ export interface GrassLayout {
 }
 
 /** Травы нет в лагере (утоптанная земля) и вокруг декоративной башни. */
-function noGrass(x: number, z: number): boolean {
+export function noGrass(x: number, z: number): boolean {
   if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius) return true;
   return Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR;
 }

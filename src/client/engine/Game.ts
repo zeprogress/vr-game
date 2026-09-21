@@ -671,7 +671,7 @@ export class Game {
         const names = rootNames(m).join("|");
         const mat = m.material?.name ?? "";
         const cats: string[] = [];
-        if (m.name === "grassBlade") cats.push("grass");
+        if (/^grassBlade|^grassBush/.test(m.name)) cats.push("grass");
         if (/firefly/i.test(names)) cats.push("fireflies");
         if (/^stars$|^cloud|^skyDome$|^sun$/i.test(m.name)) cats.push("sky");
         if (/terrain|ground|^groundAo|hubGround|campGround/i.test(m.name + names)) cats.push("terrain");

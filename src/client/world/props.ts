@@ -49,8 +49,8 @@ export function scatterGrass(
   lite = false,
 ): (dt: number, daylight: number) => void {
   let tick: (dt: number, daylight: number) => void = () => {};
-  void import("./nature").then(async (m) => {
-    tick = await m.loadGrass(scene, terrain, density, lite);
+  void import("./GrassField").then(async (m) => {
+    tick = await m.loadGrassField(scene, terrain, density, lite);
   });
   return (dt, daylight) => tick(dt, daylight);
 }
