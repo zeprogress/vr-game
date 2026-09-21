@@ -8,7 +8,10 @@ export const SEC = {
   on:
     typeof location !== "undefined" &&
     (new URLSearchParams(location.search).has("sec") || new URLSearchParams(location.search).has("perf")),
+  /** Сглаженные мс НА КАДР (редкие подсекции усредняются по всем кадрам, а не по своим вызовам). */
   times: {} as Record<string, number>,
+  /** Накоплено за текущий кадр. */
+  acc: {} as Record<string, number>,
 };
 
 /** Старт замера подсекции (0, если диагностика выключена). */
@@ -19,9 +22,17 @@ export function secNow(): number {
 /** Закончить замер подсекции `name`, начатый `secNow()`. */
 export function secAdd(name: string, t0: number): void {
   if (!SEC.on) return;
-  const dt = performance.now() - t0;
-  const cur = SEC.times[name];
-  SEC.times[name] = cur === undefined ? dt : cur * 0.9 + dt * 0.1;
+  SEC.acc[name] = (SEC.acc[name] ?? 0) + (performance.now() - t0);
+}
+
+/** Конец кадра: свернуть накопленное в скользящее среднее по кадрам (вызывает Game). */
+export function secEndFrame(): void {
+  if (!SEC.on) return;
+  for (const k of Object.keys(SEC.acc)) {
+    const cur = SEC.times[k] ?? 0;
+    SEC.times[k] = cur * 0.97 + SEC.acc[k] * 0.03;
+    SEC.acc[k] = 0;
+  }
 }
 
 /** Топ подсекций по времени: `имя:мс`. */

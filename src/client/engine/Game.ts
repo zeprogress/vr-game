@@ -48,7 +48,7 @@ import { VrCull } from "../world/VrCull";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { FpsCounter } from "../ui/FpsCounter";
-import { secReport } from "./secProf";
+import { secReport, secEndFrame } from "./secProf";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
@@ -599,6 +599,7 @@ export class Game {
       this.updateHpBarFade();
       this.updateBossMusic();
       this.mark("rest");
+      secEndFrame();
     });
 
     window.addEventListener("resize", () => this.engine.resize());
