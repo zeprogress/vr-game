@@ -63,7 +63,8 @@ interface Burst {
 }
 
 /** VR: сколько ближайших мобов рисуем и сколько из них с плашкой имени. */
-const VR_MAX_MOBS = 20;
+/** Сколько ближайших мобов рисуем в VR (`?maxmobs=<n>` — для подбора значения замером). */
+const VR_MAX_MOBS = Math.max(1, Number(new URLSearchParams(location.search).get("maxmobs")) || 20);
 const VR_MAX_UI = 5;
 
 /** Ленивые виды мобов: создаём ближе SPAWN_R, сносим дальше DESPAWN_R (м); за проход — не больше MAT_PER_PASS. */
@@ -84,6 +85,8 @@ export class NetMobs {
   private readonly vrDrawSet = new Set<string>();
   private readonly vrUiSet = new Set<string>();
   private rankT = 0;
+  private readonly rankD: number[] = [];
+  private readonly rankId: string[] = [];
   private readonly dummies = new Map<string, Dummy>();
   private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh; // плевок плевуна
@@ -459,21 +462,35 @@ export class NetMobs {
       this.rankT = 0.25;
       this.vrDrawSet.clear();
       this.vrUiSet.clear();
-      const ranked: { id: string; d: number; boss: boolean }[] = [];
-      room.state.mobs.forEach((s, id) => {
+      // Ближайшие K мобов без полной сортировки: небольшой упорядоченный список со вставкой
+      // (K ≈ 20), обход — по созданным видам (живые ссылки на схему), а не по схеме с геттерами Colyseus.
+      const cap = Math.max(VR_MAX_MOBS, VR_MAX_UI);
+      const topD = this.rankD;
+      const topId = this.rankId;
+      let cnt = 0;
+      this.mobs.forEach((m, id) => {
+        const s = m.st;
+        if (!s) return;
         if (s.dead) {
           this.vrDrawSet.add(id); // проигрывает смерть, сам скроется через 1.5 с
           return;
         }
+        if (s.kind === "boss") this.vrDrawSet.add(id); // босса рисуем всегда
         const d = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
-        ranked.push({ id, d, boss: s.kind === "boss" });
+        if (cnt === cap && d >= topD[cnt - 1]) return;
+        let i = cnt < cap ? cnt : cnt - 1;
+        while (i > 0 && topD[i - 1] > d) {
+          topD[i] = topD[i - 1];
+          topId[i] = topId[i - 1];
+          i--;
+        }
+        topD[i] = d;
+        topId[i] = id;
+        if (cnt < cap) cnt++;
       });
-      ranked.sort((a, b) => a.d - b.d);
-      let n = 0;
-      for (const r of ranked) {
-        if (r.boss || n < VR_MAX_MOBS) this.vrDrawSet.add(r.id);
-        if (n < VR_MAX_UI) this.vrUiSet.add(r.id);
-        n++;
+      for (let i = 0; i < cnt; i++) {
+        if (i < VR_MAX_MOBS) this.vrDrawSet.add(topId[i]);
+        if (i < VR_MAX_UI) this.vrUiSet.add(topId[i]);
       }
     }
     if (this.lazy) {

@@ -1,7 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { secNow, secAdd, secCount } from "../engine/secProf";
 import { createPinArrows } from "./PinArrows";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -93,6 +93,75 @@ function recolorRig(
  * на вид моба, у каждого моба — инстансы (один draw call на вид).
  */
 const lodCache = new Map<string, Mesh[] | null>();
+
+/**
+ * Дальние мобы (LOD) — тонкие инстансы (thin instances) на общем мешe-источнике вида: раньше у каждого
+ * дальнего моба было по InstancedMesh на деталь, и на каждый шёл пересчёт матрицы и регистрация в кадре
+ * (десятки узлов). Теперь слот — 16 чисел в буфере, который грузится на GPU одним вызовом раз в кадр.
+ * Пока слотов нет — сам меш-источник отключён (иначе он рисовался бы один раз в нуле координат).
+ */
+class LodBatch {
+  private buf = new Float32Array(32 * 16);
+  private cap = 32;
+  private used = 0;
+  private readonly free: number[] = [];
+  private readonly on = new Set<number>();
+  private dirty = false;
+
+  constructor(private readonly mesh: Mesh) {
+    mesh.isVisible = true;
+    mesh.isPickable = false;
+    mesh.alwaysSelectAsActiveMesh = true;
+    mesh.thinInstanceSetBuffer("matrix", this.buf, 16, false);
+    mesh.thinInstanceCount = 0;
+    mesh.setEnabled(false);
+    mesh.getScene().onBeforeRenderObservable.add(() => {
+      if (!this.dirty) return;
+      this.dirty = false;
+      mesh.thinInstanceCount = this.used;
+      mesh.thinInstanceBufferUpdated("matrix");
+      mesh.setEnabled(this.on.size > 0);
+    });
+  }
+
+  acquire(): number {
+    const slot = this.free.pop() ?? this.used++;
+    if (slot >= this.cap) {
+      this.cap *= 2;
+      const nb = new Float32Array(this.cap * 16);
+      nb.set(this.buf);
+      this.buf = nb;
+      this.mesh.thinInstanceSetBuffer("matrix", nb, 16, false);
+    }
+    this.buf.fill(0, slot * 16, slot * 16 + 16);
+    this.dirty = true;
+    return slot;
+  }
+
+  /** Показать слот с матрицей мира `m` (true) или спрятать (false). */
+  set(slot: number, on: boolean, m?: Matrix): void {
+    if (on && m) {
+      m.copyToArray(this.buf, slot * 16);
+      this.on.add(slot);
+    } else {
+      this.buf.fill(0, slot * 16, slot * 16 + 16);
+      this.on.delete(slot);
+    }
+    this.dirty = true;
+  }
+
+  release(slot: number): void {
+    this.set(slot, false);
+    this.free.push(slot);
+  }
+}
+
+const lodBatches = new WeakMap<Mesh, LodBatch>();
+function lodBatchOf(src: Mesh): LodBatch {
+  let b = lodBatches.get(src);
+  if (!b) lodBatches.set(src, (b = new LodBatch(src)));
+  return b;
+}
 
 function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: TransformNode): Mesh[] | null {
   root.computeWorldMatrix(true);
@@ -365,7 +434,7 @@ export class Mob implements Hittable {
   private prevY = 0;
   private readonly shove2 = new Vector3();
   /** Дальний LOD: модель выключена, вместо неё сфера-инстанс. */
-  private lodProxies: InstancedMesh[] | null = null;
+  private lodSlots: { batch: LodBatch; slot: number }[] | null = null;
   private lodFar = false;
   /** Дальний LOD включён (игровой клиент). У спектатора модели всегда полные — анимация вдали не режется. */
   farLodOn = false;
@@ -738,6 +807,7 @@ export class Mob implements Hittable {
       this.viewHidden = !inView;
       this.root.setEnabled(inView);
       this.shadow.setEnabled(inView && !this.dead); // тень — отдельный инстанс, не ребёнок root
+      this.refreshLod();
     }
     // Пятно остаётся на земле, пока моб в прыжке — по нему видно высоту.
     if (!this.dead && inView) {
@@ -765,6 +835,7 @@ export class Mob implements Hittable {
 
     sp = secNow();
     this.updateFarLod(pos, playerPos);
+    if (this.lodFar) this.refreshLod();
     secAdd("mob.farLod", sp);
     sp = secNow();
 
@@ -975,7 +1046,7 @@ export class Mob implements Hittable {
     const rig = this.rig;
     if (!rig || want === this.lodFar) return;
     if (want && !this.rigReady) return; // модель ещё не перекрашена
-    if (want && !this.lodProxies) {
+    if (want && !this.lodSlots) {
       const key = `${this.modelName}|${this.kind}`;
       let srcs = lodCache.get(key);
       if (srcs === undefined || (srcs && srcs[0].isDisposed())) {
@@ -984,17 +1055,24 @@ export class Mob implements Hittable {
         lodCache.set(key, srcs);
       }
       if (!srcs) srcs = lodSphere(this.scene, this.lodTint);
-      this.lodProxies = srcs.map((src) => {
-        const inst = src.createInstance("mobLod");
-        inst.parent = this.root;
-        inst.isPickable = false;
-        return inst;
+      this.lodSlots = srcs.map((src) => {
+        const batch = lodBatchOf(src);
+        return { batch, slot: batch.acquire() };
       });
     }
     this.lodFar = want;
     rig.root.setEnabled(!want);
-    for (const p of this.lodProxies ?? []) p.setEnabled(want);
+    this.refreshLod();
     if (want) this.stopAnim();
+  }
+
+  /** Матрицы дальних (LOD) слотов: показываем, пока моб далеко, жив и в кадре; иначе прячем. */
+  private refreshLod(): void {
+    if (!this.lodSlots) return;
+    const show = this.lodFar && !this.dead && !this.viewHidden && !this.deadHidden;
+    if (show) this.root.computeWorldMatrix(true);
+    const m = this.root.getWorldMatrix();
+    for (const l of this.lodSlots) l.batch.set(l.slot, show, m);
   }
 
   private updateFarLod(pos: Vector3, cam: Vector3): void {
@@ -1011,7 +1089,7 @@ export class Mob implements Hittable {
   /** Дальше этого от камеры скелетную анимацию моба не крутим. */
   private static readonly ANIM_RANGE = 85;
   /** В VR мобов дальше этого (м) не рисуем и не считаем. */
-  private static readonly VR_CULL_RANGE = 130;
+  private static readonly VR_CULL_RANGE = Number(new URLSearchParams(location.search).get("mobrange")) || 130; // ?mobrange=<м> — для подбора замером
   /** В VR скелетную анимацию считаем только ближе этого (м). */
   private static readonly VR_ANIM_RANGE = 28;
 
@@ -1226,6 +1304,8 @@ export class Mob implements Hittable {
   }
 
   dispose(): void {
+    for (const l of this.lodSlots ?? []) l.batch.release(l.slot);
+    this.lodSlots = null;
     this.shadow.dispose();
     this.nameTag?.dispose();
     this.bar?.dispose();
