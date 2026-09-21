@@ -49,6 +49,7 @@ import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { FpsCounter } from "../ui/FpsCounter";
 import { secReport, secEndFrame } from "./secProf";
+import { installFlushPacing, type FlushPacing } from "./glFlushPacing";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
@@ -163,6 +164,8 @@ export class Game {
   private ttsNick = "";
   private ttsListenSent = -1;
   private perfHud: VrPerfHud | null = null;
+  /** Промежуточный gl.flush() в кадре VR (см. glFlushPacing). */
+  private flushPacing: FlushPacing | null = null;
   /** `?fps=1` — голый счётчик кадров над полоской здоровья. */
   private fpsCounter: FpsCounter | null = null;
   private perfInstr: SceneInstrumentation | null = null;
@@ -758,6 +761,12 @@ export class Game {
     this.botLights.setBudget(2);
     vrLights.off = true;
     vrLights.spell = true; // свет посоха/огнешара ночью в VR — есть (костёр лагеря — нет)
+    // Сброс буфера GL-команд на середине кадра: JS и процесс GPU работают параллельно (+10–15 fps на Quest 3).
+    // `?flush=<доля>` подбирает точку, `?flush=0` — выключает.
+    if (!this.flushPacing) {
+      const fp = new URLSearchParams(location.search).get("flush");
+      this.flushPacing = installFlushPacing(this.engine, fp === null ? 0.5 : Number(fp));
+    }
     // Гарантия нативного разрешения буфера глаза.
     if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);
     console.log("[xr] VR: ночные лампы off, разрешение нативное, остальное — максимум");
@@ -771,6 +780,8 @@ export class Game {
     this.botLights.setForceOff(false);
     vrLights.off = false;
     vrLights.spell = false;
+    this.flushPacing?.dispose();
+    this.flushPacing = null;
   }
 
   enterVR(): Promise<boolean> {
