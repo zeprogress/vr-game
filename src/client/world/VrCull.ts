@@ -75,7 +75,8 @@ export class VrCull {
         this.roots.add(m);
       }
     }
-    if (this.vr && !this.thin && !new URLSearchParams(location.search).has("nothin")) this.thin = new TreeThin(this.scene);
+    const qp = new URLSearchParams(location.search);
+    if ((this.vr || qp.has("thin")) && !this.thin && !qp.has("nothin")) this.thin = new TreeThin(this.scene);
     if (this.thin) {
       for (const m of trees) this.thin.add(m);
       for (const m of rocks) this.thin.add(m);
