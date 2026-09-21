@@ -305,12 +305,13 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
    * нормали (иначе box-геометрия не ловит свет костра). `?nomerge=1` — оставить
    * по отдельности (на случай, если склейка что-то ломает).
    */
-  const merge = (
-    parts: Mesh[],
-    name: string,
-    mat: StandardMaterial,
-    parent: TransformNode = root,
-  ): void => {
+  /**
+   * Куски с ОДНИМ материалом и общим родителем (корень лагеря) копятся и склеиваются в ОДИН меш на
+   * материал в `flushMerges()` — забор, ворота, стойка, шатры, вышка, лавки и т.д. были десятком отдельных
+   * отрисовок с одним и тем же деревом. Куски с особым родителем (костёр) склеиваются сразу, как раньше.
+   */
+  const pending = new Map<StandardMaterial, Mesh[]>();
+  const mergeNow = (parts: Mesh[], name: string, mat: StandardMaterial, parent: TransformNode): void => {
     if (parts.length === 0) return;
     if (noMerge || parts.length === 1) {
       for (const p of parts) {
@@ -331,6 +332,24 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     m.createNormals(true); // без этого склеенные box'ы не освещаются
     m.freezeWorldMatrix();
     m.doNotSyncBoundingInfo = true;
+  };
+  const merge = (
+    parts: Mesh[],
+    name: string,
+    mat: StandardMaterial,
+    parent: TransformNode = root,
+  ): void => {
+    if (noMerge || parent !== root) {
+      mergeNow(parts, name, mat, parent);
+      return;
+    }
+    const list = pending.get(mat) ?? [];
+    list.push(...parts);
+    pending.set(mat, list);
+  };
+  const flushMerges = (): void => {
+    for (const [mat, list] of pending) mergeNow(list, `hub_${mat.name}`, mat, root);
+    pending.clear();
   };
 
   // Обычные поверхности лагеря — их эмиссив-заливку крутит tick по дню/ночи.
@@ -812,6 +831,8 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     for (const g of dayLit) g.m.emissiveColor.copyFrom(g.base).scaleInPlace(fill);
   }
   tick(1);
+
+  flushMerges();
 
   // Всё статичное в лагере замораживаем: часть мешей (навесы, знамёна, стены
   // шатров) склеивалась без freezeWorldMatrix и пересчитывала матрицы каждый кадр.

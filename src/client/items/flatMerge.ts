@@ -108,3 +108,34 @@ export function flattenToVertexColors(scene: Scene, base: TransformNode, meshes:
   return out;
 }
 
+
+/**
+ * Собрать детали (процедурные меши со своими материалами) в ОДИН меш с цветами в вершинах и общим
+ * материалом `weaponFlat`: одна отрисовка на предмет вместо числа материалов. Цвет = diffuse + часть
+ * emissive материала (свечение «запекается» в цвет). Исходные меши удаляются.
+ */
+export function mergeToVertexColors(scene: Scene, parts: Mesh[]): Mesh | null {
+  const used = new Set<Material>();
+  for (const p of parts) {
+    if (p.material) used.add(p.material);
+    const mat = p.material as StandardMaterial | null;
+    const d = mat && "diffuseColor" in mat ? mat.diffuseColor : new Color3(0.6, 0.6, 0.62);
+    const e = mat && "emissiveColor" in mat ? mat.emissiveColor : Color3.Black();
+    const r = Math.min(1, d.r + e.r * 0.8);
+    const g = Math.min(1, d.g + e.g * 0.8);
+    const b = Math.min(1, d.b + e.b * 0.8);
+    const n = p.getTotalVertices();
+    const cols = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) cols.set([r, g, b, 1], i * 4);
+    p.setVerticesData(VertexBuffer.ColorKind, cols);
+    p.material = null;
+  }
+  const m = Mesh.MergeMeshes(parts, true, true, undefined, false, false);
+  for (const mt of used) mt.dispose(); // прежние материалы деталей больше не нужны
+  if (!m) return null;
+  m.material = weaponFlatMaterial(scene);
+  m.useVertexColors = true;
+  m.hasVertexAlpha = false;
+  m.isPickable = false;
+  return m;
+}
