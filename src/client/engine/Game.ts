@@ -761,11 +761,11 @@ export class Game {
     this.botLights.setBudget(2);
     vrLights.off = true;
     vrLights.spell = true; // свет посоха/огнешара ночью в VR — есть (костёр лагеря — нет)
-    // Сброс буфера GL-команд на середине кадра: JS и процесс GPU работают параллельно (+10–15 fps на Quest 3).
-    // `?flush=<доля>` подбирает точку, `?flush=0` — выключает.
-    if (!this.flushPacing) {
-      const fp = new URLSearchParams(location.search).get("flush");
-      this.flushPacing = installFlushPacing(this.engine, fp === null ? 0.5 : Number(fp));
+    // ОТКЛЮЧЕНО по умолчанию: промежуточный gl.flush() (glFlushPacing) в браузере Quest приводит к тому, что
+    // отрисовки ПОСЛЕ сброса пропадают (нет мобов, камней, крон деревьев, травы) — прежний «прирост fps» был
+    // от недорисованного кадра. Включается только явным `?flush=<доля>` для диагностики.
+    if (!this.flushPacing && new URLSearchParams(location.search).has("flush")) {
+      this.flushPacing = installFlushPacing(this.engine, Number(new URLSearchParams(location.search).get("flush")));
     }
     // Гарантия нативного разрешения буфера глаза.
     if (this.engine.getHardwareScalingLevel() !== 1) this.engine.setHardwareScalingLevel(1);
