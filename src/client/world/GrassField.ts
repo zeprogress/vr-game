@@ -29,11 +29,9 @@ const CELL = 0.5; // шаг сетки травы, м
 const CHUNK = 16; // клеток в куске по стороне (кэш)
 const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
-const R_GRASS = 68; // дальность травы (редкие пучки), м
-const R_BUSH = 46;
-const R_NEAR = 5; // вокруг игрока трава всегда — за спиной не должно быть плешей рядом
+const R_GRASS = 92; // дальность травы (редкие пучки), м
+const R_BUSH = 60;
 const COS_HALF = Math.cos((62 * Math.PI) / 180);
-const FADE = 6; // на этой ширине у дальней границы клетки пучок «врастает» (там он мелкий и далеко)
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
 const REACH = 165; // дальше от центра карты травы нет
@@ -188,13 +186,16 @@ export async function loadGrassField(
         const x = (ix + 0.5 + (hash(ix, iz, 1) - 0.5) * 0.9) * CELL;
         const z = (iz + 0.5 + (hash(ix, iz, 2) - 0.5) * 0.9) * CELL;
         if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
+        const y = terrain.heightAt(x, z);
+        // Рельеф: в низинах гуще и выше, на холмах реже и ниже.
+        const hill = smooth(-1.4, 1.8, y);
         // «Хаос»: крупные поляны и проплешины (почти пусто), средние участки и густые заросли.
         const q = vnoise(x, z, 27, 100) * 0.68 + vnoise(x, z, 9, 101) * 0.32;
-        const keep = 0.015 + 0.985 * smooth(0.36, 0.6, q);
+        const keep = (0.015 + 0.985 * smooth(0.36, 0.6, q)) * (1.35 - 1.0 * hill);
         if (hash(ix, iz, 0) > keep * density) continue;
         // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
         const rd = hash(ix, iz, 30);
-        const dmax = rd < 0.06 ? R_GRASS : rd < 0.26 ? 36 : 15;
+        const dmax = rd < 0.05 ? R_GRASS : rd < 0.22 ? 50 : 24;
         // Виды: в основном низкая, высокая и метёлки — пятнами.
         const tallP = 0.03 + 0.4 * smooth(0.6, 0.84, vnoise(x, z, 18, 103));
         const wispP = 0.015 + 0.16 * smooth(0.68, 0.9, vnoise(x, z, 14, 104));
@@ -204,11 +205,11 @@ export async function loadGrassField(
         const warm = (hash(ix, iz, 6) - 0.45) * 0.5;
         a[o] = dmax;
         a[o + 1] = x;
-        a[o + 2] = terrain.heightAt(x, z) - 0.03;
+        a[o + 2] = y - 0.03;
         a[o + 3] = z;
         a[o + 4] = hash(ix, iz, 7) * Math.PI * 2;
         a[o + 5] = 0.4 + hash(ix, iz, 8) * 0.36;
-        a[o + 6] = 0.8 + hash(ix, iz, 9) * 0.9;
+        a[o + 6] = (0.8 + hash(ix, iz, 9) * 0.9) * (1.18 - 0.42 * hill);
         a[o + 7] = b + warm * 0.7;
         a[o + 8] = b + warm * 0.15;
         a[o + 9] = b - warm * 0.5;
@@ -263,7 +264,7 @@ export async function loadGrassField(
     const d = Math.hypot(dx, dz);
     const half = CHUNK * CELL * 0.75; // ~радиус куска
     if (d > reach + half) return true;
-    if (d < R_NEAR + half * 2) return false;
+    if (d < half * 2) return false;
     const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
     return ang - Math.asin(Math.min(1, half / d)) > Math.acos(COS_HALF) + 0.3;
   };
@@ -303,18 +304,13 @@ export async function loadGrassField(
           const dz = a[o + 3] - cz;
           const d2 = dx * dx + dz * dz;
           if (d2 > dmax * dmax) continue;
+          // Без плавных врастаний: пучок либо есть, либо нет (дальность — у каждой клетки своя, вдали он мелкий).
           const d = Math.sqrt(d2);
-          // Дальний край КЛЕТКИ (не общий радиус): пучок появляется вдали мелким и подрастает по мере приближения.
-          let f = Math.min(1, (dmax - d) / FADE);
-          if (d > R_NEAR) {
-            const cosA = (dx * fx + dz * fz) / d;
-            if (cosA < COS_HALF - 0.12) continue;
-            f = Math.min(f, (cosA - (COS_HALF - 0.12)) / 0.12);
-          }
-          if (f <= 0.02) continue;
+          const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
+          if (cosA < COS_HALF) continue;
           const k = kinds[a[o + 10]];
-          const sx = a[o + 5] * (0.55 + 0.45 * f);
-          write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6] * f, a[o + 7], a[o + 8], a[o + 9]);
+          const sx = a[o + 5];
+          write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
         }
       }
     }
@@ -338,14 +334,9 @@ export async function loadGrassField(
           if (hash(ix, iz, 20) > (0.02 + 0.3 * clump) * density) continue;
           if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
           const d = Math.sqrt(d2);
-          let f = Math.min(1, (R_BUSH - d) / FADE);
-          if (d > R_NEAR) {
-            const cosA = (dx * fx + dz * fz) / d;
-            if (cosA < COS_HALF - 0.12) continue;
-            f = Math.min(f, (cosA - (COS_HALF - 0.12)) / 0.12);
-          }
-          if (f <= 0.02) continue;
-          const sc = (0.45 + hash(ix, iz, 23) * 0.75) * (0.5 + 0.5 * f);
+          const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
+          if (cosA < COS_HALF) continue;
+          const sc = 0.45 + hash(ix, iz, 23) * 0.75;
           write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.8 + hash(ix, iz, 25) * 0.5), 1, 1, 1);
         }
       }

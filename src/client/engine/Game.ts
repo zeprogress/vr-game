@@ -981,7 +981,7 @@ export class Game {
       // видно), центр — как есть. `?fov=` переопределяет (0 — выкл, 1 — макс).
       if (sm.isFixedFoveationSupported) {
         const want = Number(new URLSearchParams(location.search).get("fov"));
-        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.3;
+        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.6;
         console.log(`[xr] фиксированная фовеация = ${sm.fixedFoveation}`);
       }
       // Режим Layers (multiview): baseLayer нет, фовеация задаётся на самом слое
@@ -990,7 +990,7 @@ export class Game {
         const layer = (sm.session?.renderState as { layers?: { fixedFoveation?: number }[] })?.layers?.[0];
         if (layer && typeof layer.fixedFoveation === "number") {
           const want = Number(new URLSearchParams(location.search).get("fov"));
-          layer.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.3;
+          layer.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.6;
           console.log(`[xr] фовеация слоя = ${layer.fixedFoveation}`);
         }
       }
