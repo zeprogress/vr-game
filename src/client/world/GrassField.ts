@@ -32,6 +32,9 @@ const BUSH_CELL = 3.4;
 const R_GRASS_BASE = 92; // дальность травы (редкие пучки), м
 const R_BUSH_BASE = 60;
 const COS_HALF = Math.cos((62 * Math.PI) / 180);
+/** Вблизи (до NEAR_WIDE м) конус шире (±88°): при быстром повороте головы трава у ног не «выскакивает» на краю кадра. */
+const COS_WIDE = Math.cos((88 * Math.PI) / 180);
+const NEAR_WIDE = 20;
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
 const REACH = 165; // дальше от центра карты травы нет
@@ -271,12 +274,13 @@ export async function loadGrassField(
     const d = Math.hypot(dx, dz);
     const half = CHUNK * CELL * 0.75; // ~радиус куска
     if (d > reach + half) return true;
-    if (d < half * 2) return false;
+    if (d < NEAR_WIDE + half) return false;
     const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
     return ang - Math.asin(Math.min(1, half / d)) > Math.acos(COS_HALF) + 0.3;
   };
 
   let rebuilds = 0;
+  const order: { gx: number; gz: number; d: number }[] = [];
   const rebuild = (cx: number, cz: number, fx: number, fz: number): void => {
     for (const k of kinds) k.n = 0;
     pending = false;
@@ -289,13 +293,25 @@ export async function loadGrassField(
     const x1 = Math.floor((cx + R_GRASS) / span);
     const z0 = Math.floor((cz - R_GRASS) / span);
     const z1 = Math.floor((cz + R_GRASS) / span);
+    // Куски идут от ближних к дальним: при ограниченном бюджете расчёта первыми достраиваются те, что у ног
+    // (иначе трава вблизи появлялась с задержкой, пока считались дальние).
+    order.length = 0;
     for (let gx = x0; gx <= x1; gx++) {
       for (let gz = z0; gz <= z1; gz++) {
-        if (chunkOut((gx + 0.5) * span, (gz + 0.5) * span, cx, cz, fx, fz, R_GRASS)) continue;
+        const mx = (gx + 0.5) * span;
+        const mz = (gz + 0.5) * span;
+        if (chunkOut(mx, mz, cx, cz, fx, fz, R_GRASS)) continue;
+        order.push({ gx, gz, d: Math.hypot(mx - cx, mz - cz) });
+      }
+    }
+    order.sort((p, q) => p.d - q.d);
+    for (const { gx, gz, d: cd } of order) {
+      {
         const key = chunkKey(gx, gz);
         let a = chunks.get(key);
         if (!a) {
-          if (built > 0 && performance.now() - t0 > limit) {
+          // Ближние (до ~16 м) считаем всегда; дальние — пока есть бюджет.
+          if (cd > 16 && built > 0 && performance.now() - t0 > limit) {
             pending = true; // не всё посчитано за раз — пересоберём на следующем тике
             continue;
           }
@@ -314,7 +330,7 @@ export async function loadGrassField(
           // Без плавных врастаний: пучок либо есть, либо нет (дальность — у каждой клетки своя, вдали он мелкий).
           const d = Math.sqrt(d2);
           const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
-          if (cosA < COS_HALF) continue;
+          if (cosA < (d < NEAR_WIDE ? COS_WIDE : COS_HALF)) continue;
           const k = kinds[a[o + 10]];
           const sx = a[o + 5];
           write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
@@ -342,7 +358,7 @@ export async function loadGrassField(
           if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
           const d = Math.sqrt(d2);
           const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
-          if (cosA < COS_HALF) continue;
+          if (cosA < (d < NEAR_WIDE ? COS_WIDE : COS_HALF)) continue;
           const sc = 0.45 + hash(ix, iz, 23) * 0.75;
           write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.8 + hash(ix, iz, 25) * 0.5), 1, 1, 1);
         }

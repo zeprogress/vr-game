@@ -2443,6 +2443,7 @@ export class Game {
   }
 
   /** Каждый кадр: отдать свой транспорт, применить чужой. */
+  private handsCheckN = 0;
   private syncNet(dt: number): void {
     const net = this.net;
     if (!net?.online || !net.room) {
@@ -2478,19 +2479,22 @@ export class Game {
     const now = performance.now();
     net.sendMove(now, m);
 
-    // Что в руках — только когда поменялось: по этому сервер считает урон.
-    const hands = this.combat.handsSnapshot();
-    const stowed = this.combat.stowedSnapshot();
-    const key =
-      `${hands.left?.cls ?? ""}:${hands.left?.tier ?? ""}|${hands.right?.cls ?? ""}:${hands.right?.tier ?? ""}` +
-      `|${stowed.map((s) => `${s.side}:${s.cls}:${s.tier}`).sort().join(",")}`;
-    if (key !== this.handsKey) {
-      this.handsKey = key;
-      net.sendHands({
-        left: hands.left as { cls: WeaponClass; tier: WeaponTier } | null,
-        right: hands.right as { cls: WeaponClass; tier: WeaponTier } | null,
-        stowed,
-      });
+    // Что в руках — только когда поменялось: по этому сервер считает урон. Проверяем раз в 3 кадра (~80–100 мс):
+    // снимки и ключ — это массивы и строки на каждый кадр (мусор для GC), а смена оружия куда реже.
+    if ((this.handsCheckN++ % 3) === 0) {
+      const hands = this.combat.handsSnapshot();
+      const stowed = this.combat.stowedSnapshot();
+      const key =
+        `${hands.left?.cls ?? ""}:${hands.left?.tier ?? ""}|${hands.right?.cls ?? ""}:${hands.right?.tier ?? ""}` +
+        `|${stowed.map((s) => `${s.side}:${s.cls}:${s.tier}`).sort().join(",")}`;
+      if (key !== this.handsKey) {
+        this.handsKey = key;
+        net.sendHands({
+          left: hands.left as { cls: WeaponClass; tier: WeaponTier } | null,
+          right: hands.right as { cls: WeaponClass; tier: WeaponTier } | null,
+          stowed,
+        });
+      }
     }
 
     const self = net.self;

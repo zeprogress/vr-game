@@ -3136,7 +3136,22 @@ export class CombatSystem {
     this.nockArrow.position.copyFrom(nock).addInPlace(d.scale(0.44));
   }
 
+  private readonly strLast = new Float32Array(9);
   private updateString(): void {
+    // Тетива — не пересобираем, если лука не видно или три её точки не сдвинулись (обновление трубки каждый кадр — заливка вершин в GPU).
+    if (!this.bowString.isEnabled()) return;
+    const a = this.bowParts.topTip;
+    const b = this.nockLocal;
+    const c = this.bowParts.bottomTip;
+    const L = this.strLast;
+    if (
+      Math.abs(a.x - L[0]) + Math.abs(a.y - L[1]) + Math.abs(a.z - L[2]) +
+        Math.abs(b.x - L[3]) + Math.abs(b.y - L[4]) + Math.abs(b.z - L[5]) +
+        Math.abs(c.x - L[6]) + Math.abs(c.y - L[7]) + Math.abs(c.z - L[8]) < 1e-4
+    ) {
+      return;
+    }
+    L[0] = a.x; L[1] = a.y; L[2] = a.z; L[3] = b.x; L[4] = b.y; L[5] = b.z; L[6] = c.x; L[7] = c.y; L[8] = c.z;
     MeshBuilder.CreateTube("bowString", {
       path: [this.bowParts.topTip, this.nockLocal, this.bowParts.bottomTip],
       radius: BOWSTRING_RADIUS,
