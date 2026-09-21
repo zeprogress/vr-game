@@ -472,10 +472,10 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
           if (!noGlow) f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
           // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
           f.diffuseColor = tint ?? new Color3(1, 1, 1);
-          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).scale(0.05) : (tint ?? new Color3(1, 1, 1)).scale(0.3);
+          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).scale(0.14) : (tint ?? new Color3(1, 1, 1)).scale(0.3);
         } else {
           f.diffuseColor = tint ?? base;
-          f.emissiveColor = noGlow ? (tint ?? base).scale(0.05) : (tint ?? base).scale(0.28);
+          f.emissiveColor = noGlow ? (tint ?? base).scale(0.14) : (tint ?? base).scale(0.28);
         }
         trackMobMaterial(f); // ?moblight=1 — живая подстройка поверх базовых цветов
         return f;

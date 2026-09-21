@@ -71,6 +71,9 @@ const VR_MAX_UI = 5;
 const MOB_SPAWN_R = 150;
 const MOB_DESPAWN_R = 185;
 const MAT_PER_PASS = 4;
+/** Сколько мобов обходим за кадр при раскиданном ранжировании / материализации. */
+const RANK_SLICE = 14;
+const MAT_SLICE = 14;
 /** Мобов дальше (м) обновляем не каждый кадр, а ~20 раз в секунду. */
 const MOB_FAR_UPDATE_R = 50;
 
@@ -393,27 +396,79 @@ export class NetMobs {
    * MAT_PER_PASS за проход — чтобы не было всплеска) и сносим тех, кто ушёл дальше
    * DESPAWN_R. Дальние мобы живут только данными из состояния сервера.
    */
-  private materialize(room: Room<ZoneState>, pp: Vector3): void {
-    const cand: { id: string; s: MobState; d2: number }[] = [];
-    const drop: string[] = [];
-    room.state.mobs.forEach((s, id) => {
+  private rankJob: { entries: [string, Mob][]; i: number; cnt: number; draw: Set<string> } | null = null;
+  private matJob: { ids: string[]; i: number; cand: { id: string; s: MobState; d2: number }[]; drop: string[] } | null = null;
+  private readonly createQueue: { id: string; s: MobState }[] = [];
+
+  /** Один шаг ранжирования: RANK_SLICE мобов; по окончании — подмена vrDrawSet/vrUiSet. */
+  private stepRank(playerPos: Vector3): void {
+    const job = this.rankJob;
+    if (!job) return;
+    const cap = Math.max(VR_MAX_MOBS, VR_MAX_UI);
+    const topD = this.rankD;
+    const topId = this.rankId;
+    const end = Math.min(job.entries.length, job.i + RANK_SLICE);
+    for (; job.i < end; job.i++) {
+      const [id, m] = job.entries[job.i];
+      const s = m.st;
+      if (!s) continue;
+      if (s.dead) {
+        job.draw.add(id); // проигрывает смерть, сам скроется через 1.5 с
+        continue;
+      }
+      if (s.kind === "boss") job.draw.add(id); // босса рисуем всегда
+      const d = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
+      if (job.cnt === cap && d >= topD[job.cnt - 1]) continue;
+      let i = job.cnt < cap ? job.cnt : job.cnt - 1;
+      while (i > 0 && topD[i - 1] > d) {
+        topD[i] = topD[i - 1];
+        topId[i] = topId[i - 1];
+        i--;
+      }
+      topD[i] = d;
+      topId[i] = id;
+      if (job.cnt < cap) job.cnt++;
+    }
+    if (job.i < job.entries.length) return;
+    this.vrDrawSet.clear();
+    this.vrUiSet.clear();
+    for (const id of job.draw) this.vrDrawSet.add(id);
+    for (let i = 0; i < job.cnt; i++) {
+      if (i < VR_MAX_MOBS) this.vrDrawSet.add(topId[i]);
+      if (i < VR_MAX_UI) this.vrUiSet.add(topId[i]);
+    }
+    this.rankJob = null;
+  }
+
+  /** Один шаг «материализации» (обход схемы мобов кусками): кого создать / снести. */
+  private stepMaterialize(room: Room<ZoneState>, pp: Vector3): void {
+    const job = this.matJob;
+    if (!job) return;
+    const end = Math.min(job.ids.length, job.i + MAT_SLICE);
+    for (; job.i < end; job.i++) {
+      const id = job.ids[job.i];
+      const s = room.state.mobs.get(id);
+      if (!s) continue;
       const d2 = (s.x - pp.x) ** 2 + (s.z - pp.z) ** 2;
       const boss = s.kind === "boss";
       if (this.mobs.has(id)) {
-        if (!boss && d2 > MOB_DESPAWN_R * MOB_DESPAWN_R) drop.push(id);
+        if (!boss && d2 > MOB_DESPAWN_R * MOB_DESPAWN_R) job.drop.push(id);
       } else if (!s.dead && (boss || d2 <= MOB_SPAWN_R * MOB_SPAWN_R)) {
-        cand.push({ id, s, d2 });
+        job.cand.push({ id, s, d2 });
       }
-    });
-    for (const id of drop) {
+    }
+    if (job.i < job.ids.length) return;
+    for (const id of job.drop) {
       const m = this.mobs.get(id);
       if (!m) continue;
       this.mobs.delete(id);
       this.removeTarget(m);
       m.dispose();
     }
-    cand.sort((a, b) => a.d2 - b.d2);
-    for (let i = 0; i < Math.min(MAT_PER_PASS, cand.length); i++) this.createMob(cand[i].id, cand[i].s);
+    job.cand.sort((a, b) => a.d2 - b.d2);
+    this.createQueue.length = 0;
+    for (let i = 0; i < Math.min(MAT_PER_PASS, job.cand.length); i++) this.createQueue.push({ id: job.cand[i].id, s: job.cand[i].s });
+    this.matJob = null;
   }
 
   attach(room: Room<ZoneState>): void {
@@ -462,49 +517,26 @@ export class NetMobs {
     // плашки имён — ещё у меньшего числа. Мобы вне лимита продолжают
     // обновляться логикой, просто невидимы.
     const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
-    // Ранжирование — 4 раза в секунду (сортировка каждый кадр — лишняя стоимость).
+    // Ранжирование — раз в 0.25 с, но РАСКИДАНО по кадрам (по RANK_SLICE мобов за кадр): одним куском оно стоило ~3 мс
+    // и выбивало этот кадр из бюджета. Результат подменяется целиком, когда обход закончен.
     this.rankT -= dt;
-    if (vr && this.rankT <= 0) {
-      this.rankT = 0.25;
-      this.vrDrawSet.clear();
-      this.vrUiSet.clear();
-      // Ближайшие K мобов без полной сортировки: небольшой упорядоченный список со вставкой
-      // (K ≈ 20), обход — по созданным видам (живые ссылки на схему), а не по схеме с геттерами Colyseus.
-      const cap = Math.max(VR_MAX_MOBS, VR_MAX_UI);
-      const topD = this.rankD;
-      const topId = this.rankId;
-      let cnt = 0;
-      this.mobs.forEach((m, id) => {
-        const s = m.st;
-        if (!s) return;
-        if (s.dead) {
-          this.vrDrawSet.add(id); // проигрывает смерть, сам скроется через 1.5 с
-          return;
-        }
-        if (s.kind === "boss") this.vrDrawSet.add(id); // босса рисуем всегда
-        const d = (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2;
-        if (cnt === cap && d >= topD[cnt - 1]) return;
-        let i = cnt < cap ? cnt : cnt - 1;
-        while (i > 0 && topD[i - 1] > d) {
-          topD[i] = topD[i - 1];
-          topId[i] = topId[i - 1];
-          i--;
-        }
-        topD[i] = d;
-        topId[i] = id;
-        if (cnt < cap) cnt++;
-      });
-      for (let i = 0; i < cnt; i++) {
-        if (i < VR_MAX_MOBS) this.vrDrawSet.add(topId[i]);
-        if (i < VR_MAX_UI) this.vrUiSet.add(topId[i]);
+    if (vr) {
+      if (!this.rankJob && this.rankT <= 0) {
+        this.rankT = 0.25;
+        this.rankJob = { entries: [...this.mobs.entries()], i: 0, cnt: 0, draw: new Set<string>() };
       }
+      if (this.rankJob) this.stepRank(playerPos);
     }
     if (this.lazy) {
       this.matT -= dt;
-      if (this.matT <= 0) {
+      if (!this.matJob && this.matT <= 0) {
         this.matT = 0.25;
-        this.materialize(room, playerPos);
+        this.matJob = { ids: [...room.state.mobs.keys()], i: 0, cand: [], drop: [] };
       }
+      if (this.matJob) this.stepMaterialize(room, playerPos);
+      // Создание видов — не больше одного за кадр (каждое: модель, скелет, материалы).
+      const next = this.createQueue.shift();
+      if (next && !this.mobs.has(next.id) && room.state.mobs.get(next.id) === next.s) this.createMob(next.id, next.s);
     }
     // Идём по созданным видам (у каждого своя ссылка на живую схему), а не по всей схеме мобов
     // с геттерами Colyseus: forEach по 60+ схемам каждый кадр стоил ~3% кадра в профиле шлема.
@@ -750,6 +782,9 @@ export class NetMobs {
   }
 
   detach(): void {
+    this.rankJob = null;
+    this.matJob = null;
+    this.createQueue.length = 0;
     for (const m of this.mobs.values()) {
       this.removeTarget(m);
       m.dispose();
