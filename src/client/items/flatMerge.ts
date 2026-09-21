@@ -230,6 +230,8 @@ export function mergeRigSkinned(scene: Scene, rig: { meshes: import("@babylonjs/
   merged.scaling.copyFrom(first.scaling);
   if (first.rotationQuaternion) merged.rotationQuaternion = first.rotationQuaternion.clone();
   else merged.rotation.copyFrom(first.rotation);
+  // Порядок обхода граней — как у исходных частей: glTF-загрузчик ставит свой, у нового меша он другой (видна изнанка — «полупрозрачный» герой).
+  merged.sideOrientation = first.sideOrientation;
   merged.skeleton = skel;
   merged.numBoneInfluencers = first.numBoneInfluencers;
   merged.material = skinnedFlatMaterial(scene);
