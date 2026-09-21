@@ -25,15 +25,17 @@ import { noGrass } from "./grassLayout";
  * Виды: короткая (много), высокая, «метёлки» — три отрисовки, плюс кусты — одна. Края конуса и дальний край плавно
  * «врастают» (масштаб от 0), чтобы появление не выглядело щелчком.
  */
-const CELL = 0.55; // шаг сетки травы, м
+const CELL = 0.5; // шаг сетки травы, м
 const CHUNK = 16; // клеток в куске по стороне (кэш)
-const STRIDE = 11; // valid, x, y, z, yaw, s, hMul, r, g, b, kind
+const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
-const R_GRASS = 25;
-const R_BUSH = 34;
+const R_GRASS = 68; // дальность травы (редкие пучки), м
+const R_BUSH = 46;
 const R_NEAR = 5; // вокруг игрока трава всегда — за спиной не должно быть плешей рядом
 const COS_HALF = Math.cos((62 * Math.PI) / 180);
-const CHUNK_BUDGET_MS = 1.2; // сколько мс на расчёт новых кусков за одну пересборку (остальное — в следующую)
+const FADE = 6; // на этой ширине у дальней границы клетки пучок «врастает» (там он мелкий и далеко)
+const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
+const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
 const REACH = 165; // дальше от центра карты травы нет
 
 function hash(ix: number, iz: number, k: number): number {
@@ -42,6 +44,27 @@ function hash(ix: number, iz: number, k: number): number {
   h ^= h >>> 16;
   return (h >>> 0) / 4294967296;
 }
+
+/** Гладкий шум 0..1 (значения в узлах решётки, сглаженная интерполяция). */
+function vnoise(x: number, z: number, sc: number, seed: number): number {
+  const gx = x / sc;
+  const gz = z / sc;
+  const ix = Math.floor(gx);
+  const iz = Math.floor(gz);
+  let tx = gx - ix;
+  let tz = gz - iz;
+  tx = tx * tx * (3 - 2 * tx);
+  tz = tz * tz * (3 - 2 * tz);
+  const a = hash(ix, iz, seed);
+  const b = hash(ix + 1, iz, seed);
+  const c = hash(ix, iz + 1, seed);
+  const d = hash(ix + 1, iz + 1, seed);
+  return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+}
+const smooth = (e0: number, e1: number, v: number): number => {
+  const t = v <= e0 ? 0 : v >= e1 ? 1 : (v - e0) / (e1 - e0);
+  return t * t * (3 - 2 * t);
+};
 
 interface Kind {
   mesh: Mesh;
@@ -162,25 +185,30 @@ export async function loadGrassField(
         const ix = cx * CHUNK + i;
         const iz = cz * CHUNK + j;
         const o = (j * CHUNK + i) * STRIDE;
-        // плотность: часть клеток пустая (density 0..1) и небольшая случайная «плешивость»
-        if (hash(ix, iz, 0) > density * 0.92) continue;
         const x = (ix + 0.5 + (hash(ix, iz, 1) - 0.5) * 0.9) * CELL;
         const z = (iz + 0.5 + (hash(ix, iz, 2) - 0.5) * 0.9) * CELL;
         if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
-        // низкочастотное «пятно»: где-то гуще, где-то проплешины и поляны
-        const patch = 0.5 + 0.5 * Math.sin(x * 0.11 + Math.sin(z * 0.07) * 2) * Math.cos(z * 0.09 + Math.sin(x * 0.05) * 2);
-        if (hash(ix, iz, 3) > 0.35 + patch * 0.65) continue;
+        // «Хаос»: крупные поляны и проплешины (почти пусто), средние участки и густые заросли.
+        const q = vnoise(x, z, 27, 100) * 0.68 + vnoise(x, z, 9, 101) * 0.32;
+        const keep = 0.015 + 0.985 * smooth(0.36, 0.6, q);
+        if (hash(ix, iz, 0) > keep * density) continue;
+        // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
+        const rd = hash(ix, iz, 30);
+        const dmax = rd < 0.06 ? R_GRASS : rd < 0.26 ? 36 : 15;
+        // Виды: в основном низкая, высокая и метёлки — пятнами.
+        const tallP = 0.03 + 0.4 * smooth(0.6, 0.84, vnoise(x, z, 18, 103));
+        const wispP = 0.015 + 0.16 * smooth(0.68, 0.9, vnoise(x, z, 14, 104));
         const rk = hash(ix, iz, 4);
-        const kind = rk < 0.62 || kTall < 0 ? kShort : rk < 0.86 || kWispy < 0 ? kTall : kWispy;
+        const kind = rk < wispP && kWispy >= 0 ? kWispy : rk < wispP + tallP && kTall >= 0 ? kTall : kShort;
         const b = 0.6 + hash(ix, iz, 5) * 0.9;
         const warm = (hash(ix, iz, 6) - 0.45) * 0.5;
-        a[o] = 1;
+        a[o] = dmax;
         a[o + 1] = x;
         a[o + 2] = terrain.heightAt(x, z) - 0.03;
         a[o + 3] = z;
         a[o + 4] = hash(ix, iz, 7) * Math.PI * 2;
         a[o + 5] = 0.4 + hash(ix, iz, 8) * 0.36;
-        a[o + 6] = 0.9 + hash(ix, iz, 9) * 0.7;
+        a[o + 6] = 0.8 + hash(ix, iz, 9) * 0.9;
         a[o + 7] = b + warm * 0.7;
         a[o + 8] = b + warm * 0.15;
         a[o + 9] = b - warm * 0.5;
@@ -196,7 +224,6 @@ export async function loadGrassField(
   let lastFz = 0;
   let acc = 1;
   let pending = false;
-  let first = true;
   const fwd = new Vector3();
   const write = (k: Kind, x: number, y: number, z: number, yaw: number, sx: number, sy: number, r: number, g: number, b: number): void => {
     let idx = k.n;
@@ -229,11 +256,25 @@ export async function loadGrassField(
     k.n++;
   };
 
+  /** Вклад куска в кадр можно отбросить целиком: он далеко или вне конуса (с запасом на его размер). */
+  const chunkOut = (mx: number, mz: number, cx: number, cz: number, fx: number, fz: number, reach: number): boolean => {
+    const dx = mx - cx;
+    const dz = mz - cz;
+    const d = Math.hypot(dx, dz);
+    const half = CHUNK * CELL * 0.75; // ~радиус куска
+    if (d > reach + half) return true;
+    if (d < R_NEAR + half * 2) return false;
+    const ang = Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d)));
+    return ang - Math.asin(Math.min(1, half / d)) > Math.acos(COS_HALF) + 0.3;
+  };
+
+  let rebuilds = 0;
   const rebuild = (cx: number, cz: number, fx: number, fz: number): void => {
     for (const k of kinds) k.n = 0;
     pending = false;
     const t0 = performance.now();
-    const limit = first ? 14 : CHUNK_BUDGET_MS; // самая первая сборка — с запасом (загрузка), дальше — понемногу
+    const limit = rebuilds < WARM_REBUILDS ? 7 : CHUNK_BUDGET_MS; // сразу после старта — щедрее
+    rebuilds++;
     let built = 0;
     const span = CHUNK * CELL;
     const x0 = Math.floor((cx - R_GRASS) / span);
@@ -242,6 +283,7 @@ export async function loadGrassField(
     const z1 = Math.floor((cz + R_GRASS) / span);
     for (let gx = x0; gx <= x1; gx++) {
       for (let gz = z0; gz <= z1; gz++) {
+        if (chunkOut((gx + 0.5) * span, (gz + 0.5) * span, cx, cz, fx, fz, R_GRASS)) continue;
         const key = chunkKey(gx, gz);
         let a = chunks.get(key);
         if (!a) {
@@ -255,14 +297,15 @@ export async function loadGrassField(
         }
         for (let n = 0; n < ncell; n++) {
           const o = n * STRIDE;
-          if (a[o] === 0) continue;
+          const dmax = a[o];
+          if (dmax === 0) continue;
           const dx = a[o + 1] - cx;
           const dz = a[o + 3] - cz;
           const d2 = dx * dx + dz * dz;
-          if (d2 > R_GRASS * R_GRASS) continue;
+          if (d2 > dmax * dmax) continue;
           const d = Math.sqrt(d2);
-          // Плавное «врастание»: у дальнего края и у краёв конуса масштаб от 0.
-          let f = Math.min(1, (R_GRASS - d) / 7);
+          // Дальний край КЛЕТКИ (не общий радиус): пучок появляется вдали мелким и подрастает по мере приближения.
+          let f = Math.min(1, (dmax - d) / FADE);
           if (d > R_NEAR) {
             const cosA = (dx * fx + dz * fz) / d;
             if (cosA < COS_HALF - 0.12) continue;
@@ -270,12 +313,12 @@ export async function loadGrassField(
           }
           if (f <= 0.02) continue;
           const k = kinds[a[o + 10]];
-          const sx = a[o + 5] * (0.5 + 0.5 * f);
+          const sx = a[o + 5] * (0.55 + 0.45 * f);
           write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6] * f, a[o + 7], a[o + 8], a[o + 9]);
         }
       }
     }
-    // Кусты: крупнее и реже, чуть дальше.
+    // Кусты: крупнее и реже, растут кучками (шум), видны дальше травы.
     if (kBush >= 0) {
       const bk = kinds[kBush];
       const bx0 = Math.floor((cx - R_BUSH) / BUSH_CELL);
@@ -284,28 +327,29 @@ export async function loadGrassField(
       const bz1 = Math.floor((cz + R_BUSH) / BUSH_CELL);
       for (let ix = bx0; ix <= bx1; ix++) {
         for (let iz = bz0; iz <= bz1; iz++) {
-          if (hash(ix, iz, 20) > 0.62 * density) continue;
           const x = (ix + 0.5 + (hash(ix, iz, 21) - 0.5) * 0.85) * BUSH_CELL;
           const z = (iz + 0.5 + (hash(ix, iz, 22) - 0.5) * 0.85) * BUSH_CELL;
-          if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
           const dx = x - cx;
           const dz = z - cz;
           const d2 = dx * dx + dz * dz;
           if (d2 > R_BUSH * R_BUSH) continue;
+          // кучками: где-то рощицы кустов, где-то ни одного
+          const clump = smooth(0.58, 0.82, vnoise(x, z, 23, 105));
+          if (hash(ix, iz, 20) > (0.02 + 0.3 * clump) * density) continue;
+          if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
           const d = Math.sqrt(d2);
-          let f = Math.min(1, (R_BUSH - d) / 8);
+          let f = Math.min(1, (R_BUSH - d) / FADE);
           if (d > R_NEAR) {
             const cosA = (dx * fx + dz * fz) / d;
             if (cosA < COS_HALF - 0.12) continue;
             f = Math.min(f, (cosA - (COS_HALF - 0.12)) / 0.12);
           }
           if (f <= 0.02) continue;
-          const sc = (0.5 + hash(ix, iz, 23) * 0.7) * (0.4 + 0.6 * f);
-          write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.85 + hash(ix, iz, 25) * 0.4), 1, 1, 1);
+          const sc = (0.45 + hash(ix, iz, 23) * 0.75) * (0.5 + 0.5 * f);
+          write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.8 + hash(ix, iz, 25) * 0.5), 1, 1, 1);
         }
       }
     }
-    first = false;
     for (const k of kinds) {
       k.mesh.thinInstanceCount = k.n;
       k.mesh.setEnabled(k.n > 0);
@@ -314,6 +358,29 @@ export async function loadGrassField(
         if (k.col) k.mesh.thinInstanceBufferUpdated("color");
       }
     }
+  };
+
+  /** В простое (голова не двигалась) — по одному куску достраиваем кэш вокруг во всех направлениях: после поворота не будет плешей. */
+  const prefetch = (cx: number, cz: number): void => {
+    const span = CHUNK * CELL;
+    const R = 46;
+    const x0 = Math.floor((cx - R) / span);
+    const x1 = Math.floor((cx + R) / span);
+    const z0 = Math.floor((cz - R) / span);
+    const z1 = Math.floor((cz + R) / span);
+    let best: [number, number] | null = null;
+    let bd = 1e9;
+    for (let gx = x0; gx <= x1; gx++) {
+      for (let gz = z0; gz <= z1; gz++) {
+        if (chunks.has(chunkKey(gx, gz))) continue;
+        const d = Math.hypot((gx + 0.5) * span - cx, (gz + 0.5) * span - cz);
+        if (d < bd && d < R) {
+          bd = d;
+          best = [gx, gz];
+        }
+      }
+    }
+    if (best) chunks.set(chunkKey(best[0], best[1]), build(best[0], best[1]));
   };
 
   let lastK = -1;
@@ -336,7 +403,11 @@ export async function loadGrassField(
     // Пересобираем, только если голова заметно сдвинулась или повернулась.
     const moved = Math.hypot(p.x - lastX, p.z - lastZ);
     const turned = fx * lastFx + fz * lastFz < 0.9986; // ~3°
-    if (moved < 0.35 && !turned && !pending && kinds[0].n > 0) return;
+    if (moved < 0.35 && !turned && !pending && kinds[0].n > 0) {
+      prefetch(p.x, p.z);
+      acc = 0.1; // следующий тик через 0.1 с
+      return;
+    }
     acc = 0;
     lastX = p.x;
     lastZ = p.z;

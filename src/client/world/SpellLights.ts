@@ -61,8 +61,8 @@ export class SpellLights {
   setFire(pos: Vector3 | null, power: number, burn = false): void {
     if (!this.enabled) return;
     if (pos && power > 0.01) {
-      // Горящий моб — глубже оранжевый и с чуть большим радиусом, чем огнешар.
-      if (burn) this.fire.diffuse.set(1, 0.4, 0.07);
+      // Горящий моб — чуть шире радиусом, цвет чуть мягче огнешара.
+      if (burn) this.fire.diffuse.set(1, 0.52, 0.2);
       else this.fire.diffuse.set(1, 0.55, 0.2);
       this.fire.range = burn ? 16 : 13;
       this.fire.position.copyFrom(pos);

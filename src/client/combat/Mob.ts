@@ -903,6 +903,16 @@ export class Mob implements Hittable {
     this.burnGlow = burning
       ? Math.min(1, this.burnGlow + dt * 5)
       : Math.max(0, this.burnGlow - dt * 3);
+    // Свет гаснет плавно за последнюю секунду горения (остаток `burning` — целые секунды, 1 = последняя).
+    if (burning && s.burning <= 1) {
+      this.burnLastSecT = Math.min(1, this.burnLastSecT + dt);
+      this.burnLightFade = 1 - this.burnLastSecT;
+    } else if (burning) {
+      this.burnLastSecT = 0;
+      this.burnLightFade = 1;
+    } else {
+      this.burnLightFade = 0;
+    }
     this.updateBurnFx(dt);
     const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
 
@@ -1191,8 +1201,11 @@ export class Mob implements Hittable {
 
   /** Насколько моб горит 0..1 — от него зависит ночной свет огня (MobSystem.fireLight). */
   get burning(): number {
-    return this.burnGlow;
+    return this.burnGlow * this.burnLightFade;
   }
+  /** Множитель света к концу горения: сервер шлёт остаток в целых секундах — последнюю секунду гасим линейно. */
+  private burnLightFade = 1;
+  private burnLastSecT = 0;
 
   /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
    *  и всплывают. Создаётся при первом горении, дальше просто вкл/выкл.

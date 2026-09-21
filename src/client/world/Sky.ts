@@ -30,9 +30,9 @@ export function createSky(scene: Scene, start: DayState = dayState(12), simple =
   dome.infiniteDistance = true;
   dome.isPickable = false;
   dome.applyFog = false;
-  // НЕ замораживаем матрицу: infiniteDistance ведёт купол за камерой. Замороженный стоял в центре карты, и у края
-  // звёзды (радиус 420 вокруг головы) выходили за его стенку (радиус 450) и скрывались — с той стороны, куда подходишь.
-  dome.alwaysSelectAsActiveMesh = true;
+  // Небо неподвижно: купол и звёзды стоят в центре карты (радиусы 450 и 420 — звёзды всегда внутри купола),
+  // за камерой ничего не ездит и матрицы не пересчитываются.
+  dome.freezeWorldMatrix();
 
   // LINEAR (не EXP2): даёт «радиус» напрямую — ясно до fogStart, полная
   // стена с fogEnd. Границы приходят из DayState (палитра + FOG_TUNE, ?fog=1).
@@ -114,12 +114,6 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
   // карты (bbox не пересчитываем): чем дальше от центра, тем «дальше» звёзды — и их рисовало ПОСЛЕ облаков,
   // чей буфер глубины закрывал небо. Звёзды — самый дальний слой: рисуем первыми среди прозрачных.
   merged.alphaIndex = 0;
-
-  // Меш едет за головой, поэтому звёзды не смещаются, когда игрок идёт.
-  scene.onBeforeRenderObservable.add(() => {
-    const cam = scene.activeCamera;
-    if (cam) merged.position.copyFrom(cam.globalPosition);
-  });
 
   merged.setEnabled(false);
 

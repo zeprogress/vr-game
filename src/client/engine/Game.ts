@@ -652,7 +652,7 @@ export class Game {
    * Повторяется — модели грузятся асинхронно.
    */
   private applyOffFlags(): void {
-    const raw = new URLSearchParams(location.search).get("off");
+    const raw = new URLSearchParams(location.search).get("off") ?? (new URLSearchParams(location.search).has("lights") ? "-" : null);
     if (!raw) return;
     const off = new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
     const rootNames = (m: { parent: unknown; name: string }): string[] => {
@@ -689,6 +689,12 @@ export class Game {
         }
       }
       if (off.has("fireflies")) this.fireflies.setLampBudget(0);
+      // Диагностика света (GPU): ambient / sun — выключить источник; ?lights=N — потолок источников на материал.
+      for (const l of this.scene.lights) {
+        if ((off.has("ambient") && l.name === "ambient") || (off.has("sun") && l.name === "sun")) l.setEnabled(false);
+      }
+      const maxL = Number(new URLSearchParams(location.search).get("lights"));
+      if (maxL > 0) for (const mt of this.scene.materials) if ((mt as { maxSimultaneousLights?: number }).maxSimultaneousLights !== undefined) (mt as { maxSimultaneousLights: number }).maxSimultaneousLights = maxL;
       // Кусты по имени TransformNode (на случай, если у мешей имена не говорящие).
       for (const [flag, node] of [
         ["campfire", "hubFire"],

@@ -105,8 +105,9 @@ export class NetMobs {
   /** Ночная подсветка от огнешара — позиция и сила. Обновляется в update(). */
   private readonly fireLightPos = new Vector3();
   private fireLightPower = 0;
-  private burnHold = 0;
   private burnLightPow = 0;
+  private burnHold = 0;
+  private burnLastBest = 0;
   private readonly burnLightPos = new Vector3();
   /** Свет сейчас от горящего моба (а не от огнешара) — светит оранжевее. */
   fireBurn = false;
@@ -727,15 +728,20 @@ export class NetMobs {
         bestMob = m;
       }
     }
-    if (bestMob && best > 0.05) {
-      this.burnHold = 0.6;
+    // Микро-удержание 0.15 с — только чтобы пережить одиночный сбой поля `burning` (свет мигал раз в секунду).
+    if (bestMob && best > 0.02) this.burnLastBest = best;
+    this.burnHold = bestMob && best > 0.02 ? 0.15 : Math.max(0, this.burnHold - dt);
+    if (bestMob && best > 0.02) {
       const c = bestMob.center?.();
       if (c) this.burnLightPos.copyFrom(c);
       else this.burnLightPos.copyFrom(bestMob.root.position);
-      this.burnLightPos.y += 0.6;
-    } else this.burnHold = Math.max(0, this.burnHold - dt);
-    const want = this.burnHold > 0 ? 4.6 * (0.9 + 0.1 * Math.sin(performance.now() * 0.011)) : 0;
-    this.burnLightPow += (want - this.burnLightPow) * Math.min(1, dt * 8);
+      // Выше центра: у самой земли точечный свет даёт белое пятно под мобом.
+      this.burnLightPos.y += 1.5;
+    }
+    // Нарастает плавно, а гаснет сразу вместе с горением (мигание убрано сглаживанием только на подъёме).
+    const want = this.burnHold > 0 ? 3.6 * this.burnLastBest * (0.92 + 0.08 * Math.sin(performance.now() * 0.011)) : 0;
+    if (want > this.burnLightPow) this.burnLightPow += (want - this.burnLightPow) * Math.min(1, dt * 8);
+    else this.burnLightPow = want;
     this.fireBurn = this.burnLightPow > this.fireLightPower;
     if (this.fireBurn && this.burnLightPow > 0.05) {
       this.fireLightPower = this.burnLightPow;
