@@ -214,10 +214,10 @@ export class Game {
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
-    // Uniform-буферы (UBO) Babylon отключены: на шлеме (ANGLE/Vulkan) их запись и привязка на каждую
-    // отрисовку стоили дороже обычных uniform-вызовов — замер на Quest 3: 35 → 46–58 fps в той же
-    // сцене. `?ubo=1` возвращает их (для сравнения).
-    if (!new URLSearchParams(location.search).has("ubo")) this.engine.disableUniformBuffers = true;
+    // Uniform-буферы (UBO) Babylon ОСТАВЛЕНЫ включёнными. Отключение (`?noubo=1`, только для диагностики)
+    // ломает multiview: матрица правого глаза `viewProjectionR` в режиме без UBO не выставляется, и
+    // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.
+    if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
