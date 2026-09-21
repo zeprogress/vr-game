@@ -817,14 +817,18 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   // ---- день/ночь: горн ярче в темноте; боковая заливка граней; костёр ----
   const forgeBase = new Color3(1, 0.35, 0.1);
   let last = performance.now();
+  let lastDay = -1;
   function tick(daylight: number): void {
     const now = performance.now();
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     const d = Math.min(1, Math.max(0, daylight));
     const night = 1 - d;
-    forgeMat.emissiveColor.copyFrom(forgeBase).scaleInPlace(0.7 + night * 0.4);
     campfire.tick(dt, d);
+    // Свечение поверхностей зависит только от дневного света — пересчитываем при его заметном сдвиге.
+    if (Math.abs(d - lastDay) < 0.004) return;
+    lastDay = d;
+    forgeMat.emissiveColor.copyFrom(forgeBase).scaleInPlace(0.7 + night * 0.4);
     // Обычные поверхности: днём подсвечиваем боковые грани (заливки от движка
     // нет), ночью гасим почти в ноль — лагерь не должен светиться сам.
     const fill = 0.03 + 0.2 * d; // собственное свечение лагеря вдвое слабее

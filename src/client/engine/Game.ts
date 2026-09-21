@@ -41,7 +41,7 @@ import { EventBeacon } from "../world/EventBeacon";
 import { SpellLights } from "../world/SpellLights";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
-import { dayState } from "../world/DayTime";
+import { daylightAt } from "../world/DayTime";
 import { WristMenu, type MenuAction } from "../ui/WristMenu";
 import { VrHud } from "../ui/VrHud";
 import { VrCull } from "../world/VrCull";
@@ -563,7 +563,7 @@ export class Game {
       this.crossFx.update(dt);
       this.healAura.update(dt);
       this.skillFx.update(dt);
-      this.spellLights.setDaylight(dt, dayState(LOADOUT.world.hour).daylight);
+      this.spellLights.setDaylight(dt, daylightAt(LOADOUT.world.hour));
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
         this.combat.crystalColor(),
@@ -586,7 +586,7 @@ export class Game {
       }
       this.botLights.update(
         dt,
-        dayState(LOADOUT.world.hour).daylight,
+        daylightAt(LOADOUT.world.hour),
         this.player.eyePosition,
         this._botPos,
         this._botFwd,

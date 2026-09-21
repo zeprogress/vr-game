@@ -127,6 +127,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   applyDay();
   /** Когда последний раз перерисовывали градиент купола. */
   let paintedAt = hour;
+  let dayAt = Number.NaN;
+  let dayAcc = 0;
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
@@ -222,15 +224,24 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       LOADOUT.world.hour = shown;
 
       let sp = secNow();
-      day = dayState(hour);
-      applyDay();
+      // Палитра дня меняется медленно: пересчитываем при сдвиге часов на ~18 с игрового времени
+      // (0.005 ч) или раз в полсекунды (ручки освещения из панели) — а не каждый кадр.
+      dayAcc += dt;
+      const hq = Math.round(hour * 200) / 200;
+      const dayChanged = hq !== dayAt || dayAcc > 0.5;
+      if (dayChanged) {
+        dayAt = hq;
+        dayAcc = 0;
+        day = dayState(hq);
+        applyDay();
+      }
       secAdd("zone.applyDay", sp);
 
       sp = secNow();
       windTick(dt, day.daylight);
       secAdd("zone.wind", sp);
       sp = secNow();
-      impostorsDaylight(day.daylight);
+      if (dayChanged) impostorsDaylight(day.daylight);
       secAdd("zone.impostors", sp);
       sp = secNow();
       fireflies.update(dt, playerPos, day.daylight);

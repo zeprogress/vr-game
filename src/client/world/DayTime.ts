@@ -205,3 +205,14 @@ export function dayState(hour: number): DayState {
     daylight: clamp01((elev + 0.06) / 0.18),
   };
 }
+
+let daylightHour = Number.NaN;
+let daylightVal = 1;
+/** Дневной свет 0..1 на час — с запоминанием последнего ответа (зовётся каждый кадр, а час меняется медленно). */
+export function daylightAt(hour: number): number {
+  if (hour !== daylightHour) {
+    daylightHour = hour;
+    daylightVal = dayState(hour).daylight;
+  }
+  return daylightVal;
+}
