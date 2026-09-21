@@ -29,8 +29,8 @@ const CELL = 0.5; // шаг сетки травы, м
 const CHUNK = 16; // клеток в куске по стороне (кэш)
 const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
-const R_GRASS = 92; // дальность травы (редкие пучки), м
-const R_BUSH = 60;
+const R_GRASS_BASE = 92; // дальность травы (редкие пучки), м
+const R_BUSH_BASE = 60;
 const COS_HALF = Math.cos((62 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
@@ -84,8 +84,12 @@ export async function loadGrassField(
   terrain: Terrain,
   density: number,
   lite: boolean,
+  /** Множитель дальности (зритель-стрим: 2+, у него запас по GPU и камера свободная). */
+  farK = 1,
 ): Promise<(dt: number, daylight: number) => void> {
   if (density <= 0) return () => {};
+  const R_GRASS = R_GRASS_BASE * farK;
+  const R_BUSH = R_BUSH_BASE * farK;
   await import("@babylonjs/loaders/glTF/2.0");
   const load = (n: string) => LoadAssetContainerAsync(`/models/nature/${n}.gltf`, scene).catch(() => null);
   const [cShort, cTall, cWispy, cBush] = await Promise.all([
@@ -165,7 +169,7 @@ export async function loadGrassField(
       bm.alphaCutOff = 0.28;
     }
     bm.diffuseColor = new Color3(0.72, 0.82, 0.6);
-    bm.emissiveColor = new Color3(0.12, 0.18, 0.09);
+    bm.emissiveColor = new Color3(0, 0, 0); // без собственного свечения — только свет сцены
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
@@ -195,7 +199,7 @@ export async function loadGrassField(
         if (hash(ix, iz, 0) > keep * density) continue;
         // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
         const rd = hash(ix, iz, 30);
-        const dmax = rd < 0.05 ? R_GRASS : rd < 0.22 ? 50 : 24;
+        const dmax = (rd < 0.05 ? R_GRASS_BASE : rd < 0.22 ? 50 : 24) * farK;
         // Виды: в основном низкая, высокая и метёлки — пятнами.
         const tallP = 0.03 + 0.4 * smooth(0.6, 0.84, vnoise(x, z, 18, 103));
         const wispP = 0.015 + 0.16 * smooth(0.68, 0.9, vnoise(x, z, 14, 104));

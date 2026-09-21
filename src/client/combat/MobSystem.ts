@@ -739,7 +739,7 @@ export class NetMobs {
       this.burnLightPos.y += 1.5;
     }
     // Нарастает плавно, а гаснет сразу вместе с горением (мигание убрано сглаживанием только на подъёме).
-    const want = this.burnHold > 0 ? 3.6 * this.burnLastBest * (0.92 + 0.08 * Math.sin(performance.now() * 0.011)) : 0;
+    const want = this.burnHold > 0 ? 1.8 * this.burnLastBest * (0.92 + 0.08 * Math.sin(performance.now() * 0.011)) : 0;
     if (want > this.burnLightPow) this.burnLightPow += (want - this.burnLightPow) * Math.min(1, dt * 8);
     else this.burnLightPow = want;
     this.fireBurn = this.burnLightPow > this.fireLightPower;

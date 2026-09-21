@@ -61,6 +61,8 @@ export interface Zone {
  */
 export interface ZoneQuality {
   grass?: number;
+  /** Множитель дальности травы (зритель — 2.2). */
+  grassFar?: number;
   fireflies?: number;
   /**
    * true — материалы зоны считают максимум 2 источника света (солнце + небо)
@@ -133,7 +135,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
   const trunks = scatterTrees(scene, terrain, quality.minLights, quality.treeFade);
-  const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights);
+  const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights, quality.grassFar ?? 1);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
 
   // Слабый GPU: снимаем с шейдеров материалов лишние источники света.

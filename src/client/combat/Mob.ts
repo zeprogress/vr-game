@@ -52,13 +52,15 @@ function recolorRig(
   kind: MobKind,
   tint: readonly [number, number, number],
   alpha: number,
+  /** Без собственного свечения (осколки големов). */
+  noGlow = false,
 ): void {
   const scene = rig.root.getScene();
   for (const m of rig.meshes) {
     const src = m.material as { name?: string } | null;
     if (!src) continue;
     const name = src.name ?? "";
-    m.material = sharedMobMaterial(scene, `${kind}|${name}|${tint.join(",")}|${alpha}`, () => {
+    m.material = sharedMobMaterial(scene, `${kind}|${name}|${tint.join(",")}|${alpha}|${noGlow ? 1 : 0}`, () => {
       const flat = new StandardMaterial(`${kind}_${name}`, scene);
       // 5 = небо + солнце + два факела ботов + ближайший светлячок.
       flat.maxSimultaneousLights = 5;
@@ -70,7 +72,7 @@ function recolorRig(
       // secondary — светлее (блик/пузики), primary — базовый цвет кинда
       const k = /secondary/i.test(name) ? 1.4 : 1;
       flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
-      flat.emissiveColor = new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
+      flat.emissiveColor = noGlow ? new Color3(0, 0, 0) : new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
       flat.specularColor = new Color3(0.06, 0.06, 0.06);
       // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
       flat.alpha = alpha;
@@ -677,10 +679,11 @@ export class Mob implements Hittable {
     if (this.modelName) {
       const { recolorMonster } = await import("../world/models");
       const def = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName);
-      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined);
+      // Големы (Yeti) — без собственного свечения: только свет сцены.
+      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined, this.modelName === "monYeti");
       if (def?.tint) this.lodTint = def.tint;
     } else {
-      recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
+      recolorRig(rig, this.kind, this.tint, this.bodyAlpha, this.kind === "shard");
       this.lodTint = this.tint;
     }
 
