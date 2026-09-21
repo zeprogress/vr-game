@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { mergeRigSkinned } from "../items/flatMerge";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -780,6 +781,8 @@ export class RemoteAvatar implements Hittable {
         holder.scaling.setAll(BOT_RIG_SCALE);
 
         recolorCharacter(rig.root);
+        // Части тела (кожа, броня, штаны…) — один меш с цветами в вершинах: одна отрисовка на героя вместо 5–9.
+        mergeRigSkinned(this.scene, rig);
         for (const m of rig.meshes) m.isPickable = false;
 
         // Все клипы в покой, кроме idle — его запускаем сразу, чтобы модель не

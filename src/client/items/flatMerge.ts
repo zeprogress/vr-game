@@ -139,3 +139,108 @@ export function mergeToVertexColors(scene: Scene, parts: Mesh[]): Mesh | null {
   m.isPickable = false;
   return m;
 }
+
+const skinnedFlat = new WeakMap<Scene, StandardMaterial>();
+
+/** Общий «плоский» материал персонажей: цвет из вершин, скиннинг включается сам (у меша есть скелет). */
+function skinnedFlatMaterial(scene: Scene): StandardMaterial {
+  let m = skinnedFlat.get(scene);
+  if (m) return m;
+  m = new StandardMaterial("characterFlat", scene);
+  m.diffuseColor = new Color3(1, 1, 1);
+  m.emissiveColor = new Color3(0.12, 0.12, 0.12); // итог умножается на цвет вершины
+  m.specularColor = new Color3(0, 0, 0);
+  m.maxSimultaneousLights = LIGHT_BUDGET;
+  skinnedFlat.set(scene, m);
+  return m;
+}
+
+const SKIN_KINDS = [
+  VertexBuffer.PositionKind,
+  VertexBuffer.NormalKind,
+  VertexBuffer.MatricesIndicesKind,
+  VertexBuffer.MatricesWeightsKind,
+  VertexBuffer.MatricesIndicesExtraKind,
+  VertexBuffer.MatricesWeightsExtraKind,
+] as const;
+
+/**
+ * Скелетные меши одного персонажа (по одному на материал: кожа, броня, штаны…) — в ОДИН меш с цветами в
+ * вершинах: одна отрисовка на героя вместо 5–9. Меши — примитивы одного узла glTF (общий скелет и общий
+ * трансформ), поэтому вершины склеиваются В ЛОКАЛЬНЫХ координатах, без запекания мировой матрицы (иначе
+ * сломалась бы привязка к костям). Если что-то не сходится (разные скелеты/трансформы/наборы данных) —
+ * ничего не меняем. Возвращает true, если склейка выполнена; `meshes` рига обновляется на месте.
+ */
+export function mergeRigSkinned(scene: Scene, rig: { meshes: import("@babylonjs/core/Meshes/abstractMesh").AbstractMesh[] }): boolean {
+  const list = rig.meshes.filter(
+    (m): m is Mesh => m instanceof Mesh && !m.isAnInstance && !!m.skeleton && m.getTotalVertices() > 0,
+  );
+  if (list.length < 2) return false;
+  const first = list[0];
+  const skel = first.skeleton;
+  for (const m of list) {
+    if (m.skeleton !== skel || m.parent !== first.parent) return false;
+    if (!m.position.equalsWithEpsilon(first.position, 1e-6) || !m.scaling.equalsWithEpsilon(first.scaling, 1e-6)) return false;
+    const a = m.rotationQuaternion;
+    const b = first.rotationQuaternion;
+    if (!!a !== !!b || (a && b && !a.equalsWithEpsilon(b, 1e-6))) return false;
+  }
+  // Одинаковый набор данных у всех.
+  const kinds = SKIN_KINDS.filter((k) => !!first.getVerticesData(k));
+  for (const m of list) for (const k of SKIN_KINDS) if (!!m.getVerticesData(k) !== kinds.includes(k)) return false;
+  if (!kinds.includes(VertexBuffer.MatricesIndicesKind) || !kinds.includes(VertexBuffer.MatricesWeightsKind)) return false;
+
+  const data: Record<string, number[]> = {};
+  for (const k of kinds) data[k] = [];
+  const cols: number[] = [];
+  const idx: number[] = [];
+  const used = new Set<Material>();
+  for (const m of list) {
+    const start = (m.getVerticesData(VertexBuffer.PositionKind) as ArrayLike<number>).length / 3;
+    for (const k of kinds) {
+      const d = m.getVerticesData(k) as ArrayLike<number>;
+      for (let i = 0; i < d.length; i++) data[k].push(d[i]);
+    }
+    const mat = m.material as StandardMaterial | null;
+    if (mat) used.add(mat);
+    const c = mat && "diffuseColor" in mat ? mat.diffuseColor : new Color3(0.6, 0.6, 0.62);
+    for (let i = 0; i < start; i++) cols.push(c.r, c.g, c.b, 1);
+  }
+  let off = 0;
+  for (const m of list) {
+    const n = (m.getVerticesData(VertexBuffer.PositionKind) as ArrayLike<number>).length / 3;
+    const ix = m.getIndices() as ArrayLike<number>;
+    for (let i = 0; i < ix.length; i++) idx.push(ix[i] + off);
+    off += n;
+  }
+
+  const vd = new VertexData();
+  vd.positions = data[VertexBuffer.PositionKind];
+  vd.normals = data[VertexBuffer.NormalKind];
+  vd.matricesIndices = data[VertexBuffer.MatricesIndicesKind];
+  vd.matricesWeights = data[VertexBuffer.MatricesWeightsKind];
+  if (kinds.includes(VertexBuffer.MatricesIndicesExtraKind)) vd.matricesIndicesExtra = data[VertexBuffer.MatricesIndicesExtraKind];
+  if (kinds.includes(VertexBuffer.MatricesWeightsExtraKind)) vd.matricesWeightsExtra = data[VertexBuffer.MatricesWeightsExtraKind];
+  vd.colors = cols;
+  vd.indices = idx;
+  const merged = new Mesh(`${first.name}_merged`, scene);
+  vd.applyToMesh(merged, false);
+  merged.parent = first.parent;
+  merged.position.copyFrom(first.position);
+  merged.scaling.copyFrom(first.scaling);
+  if (first.rotationQuaternion) merged.rotationQuaternion = first.rotationQuaternion.clone();
+  else merged.rotation.copyFrom(first.rotation);
+  merged.skeleton = skel;
+  merged.numBoneInfluencers = first.numBoneInfluencers;
+  merged.material = skinnedFlatMaterial(scene);
+  merged.useVertexColors = true;
+  merged.hasVertexAlpha = false;
+  merged.isPickable = false;
+  merged.alwaysSelectAsActiveMesh = first.alwaysSelectAsActiveMesh;
+
+  for (const m of list) m.dispose(false, false);
+  void used;
+  rig.meshes = rig.meshes.filter((m) => !list.includes(m as Mesh));
+  rig.meshes.push(merged);
+  return true;
+}

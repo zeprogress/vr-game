@@ -1041,6 +1041,7 @@ export class Mob implements Hittable {
 
   /** Дальше этого (м) живого моба рисуем сферой вместо модели со скелетом. */
   private static readonly LOD_FAR = 55;
+  private static readonly LOD_FAR_FLYER = 24;
 
   private setFarLod(want: boolean): void {
     const rig = this.rig;
@@ -1081,7 +1082,9 @@ export class Mob implements Hittable {
       this.setFarLod(false);
       return;
     }
-    const lim = this.lodFar ? Mob.LOD_FAR - 6 : Mob.LOD_FAR;
+    // Летающие мелкие мобы (пчёлы) вдали неразличимы — переходят на общий LOD-батч гораздо раньше.
+    const far = this.flyer ? Mob.LOD_FAR_FLYER : Mob.LOD_FAR;
+    const lim = this.lodFar ? far - 4 : far;
     const d2 = (pos.x - cam.x) ** 2 + (pos.z - cam.z) ** 2;
     this.setFarLod(d2 > lim * lim);
   }
