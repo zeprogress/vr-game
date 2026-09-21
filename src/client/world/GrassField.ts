@@ -193,6 +193,7 @@ export async function loadGrassField(
   let lastFx = 0;
   let lastFz = 0;
   let acc = 1;
+  let pending = false;
   const fwd = new Vector3();
   const write = (k: Kind, x: number, y: number, z: number, yaw: number, sx: number, sy: number, r: number, g: number, b: number): void => {
     let idx = k.n;
@@ -227,6 +228,7 @@ export async function loadGrassField(
 
   const rebuild = (cx: number, cz: number, fx: number, fz: number): void => {
     for (const k of kinds) k.n = 0;
+    pending = false;
     let budget = MAX_NEW_CHUNKS;
     const span = CHUNK * CELL;
     const x0 = Math.floor((cx - R_GRASS) / span);
@@ -238,7 +240,10 @@ export async function loadGrassField(
         const key = chunkKey(gx, gz);
         let a = chunks.get(key);
         if (!a) {
-          if (budget-- <= 0) continue;
+          if (budget-- <= 0) {
+            pending = true; // не всё посчитано за раз — пересоберём на следующем тике
+            continue;
+          }
           a = build(gx, gz);
           chunks.set(key, a);
         }
@@ -324,7 +329,7 @@ export async function loadGrassField(
     // Пересобираем, только если голова заметно сдвинулась или повернулась.
     const moved = Math.hypot(p.x - lastX, p.z - lastZ);
     const turned = fx * lastFx + fz * lastFz < 0.9986; // ~3°
-    if (moved < 0.35 && !turned && kinds[0].n > 0) return;
+    if (moved < 0.35 && !turned && !pending && kinds[0].n > 0) return;
     acc = 0;
     lastX = p.x;
     lastZ = p.z;
