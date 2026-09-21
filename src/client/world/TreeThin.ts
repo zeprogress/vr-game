@@ -3,6 +3,7 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { InstancedMesh } from "@babylonjs/core/Meshes/instancedMesh";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 /**
@@ -24,7 +25,9 @@ interface Level {
 interface Group {
   members: AbstractMesh[];
   /** По возрастанию from; [0] — полная модель. Пара мешей на уровень: [прямой, зеркальный (det<0)]. */
-  levels: [Level, Level][];
+  levels: [Level, Level | null][];
+  /** Зеркальный меш уровня создаётся по требованию (обычно нужды нет). */
+  makeMirror: (() => Level)[];
 }
 
 export class TreeThin {
@@ -45,7 +48,7 @@ export class TreeThin {
     if (!src?.geometry || !m.isAnInstance) return false;
     let g = this.groups.get(src);
     if (!g) {
-      g = { members: [], levels: [] };
+      g = { members: [], levels: [], makeMirror: [] };
       const lods = src
         .getLODLevels()
         .filter((l) => l.mesh && l.distanceOrScreenCoverage > 0)
@@ -53,7 +56,8 @@ export class TreeThin {
       const hasColor = !!(m as InstancedMesh).instancedBuffers?.color;
       const mk1 = (from: number, geo: Mesh, tag: string, mirrored: boolean): Level => {
         const tm = new Mesh(`${src.name}_thin${tag}${mirrored ? "m" : ""}`, this.scene);
-        geo.geometry!.applyToMesh(tm);
+        // СВОЯ геометрия (копия): у общей буфер матриц тонких инстансов (world0..3) затирал бы чужой — у исходника и других тонких мешей.
+        VertexData.ExtractFromGeometry(geo.geometry!).applyToMesh(tm);
         tm.material = src.material;
         tm.isPickable = false;
         tm.alwaysSelectAsActiveMesh = true;
@@ -73,7 +77,8 @@ export class TreeThin {
         return { from, mesh: tm, buf, colBuf, n: 0 };
       };
       const mk = (from: number, geo: Mesh, tag: string): void => {
-        g!.levels.push([mk1(from, geo, tag, false), mk1(from, geo, tag, true)]);
+        g!.levels.push([mk1(from, geo, tag, false), null]);
+        g!.makeMirror.push(() => mk1(from, geo, tag, true));
       };
       mk(0, src, "0");
       lods.forEach((l, i) => mk(l.distanceOrScreenCoverage, l.mesh as Mesh, String(i + 1)));
@@ -90,19 +95,23 @@ export class TreeThin {
     this.shown.set(m, on);
   }
 
+  private ensure(lv: Level, need: number): void {
+    if (lv.buf.length >= need * 16) return;
+    lv.buf = new Float32Array(need * 16 * 2);
+    lv.mesh.thinInstanceSetBuffer("matrix", lv.buf, 16, false);
+    if (lv.colBuf) {
+      lv.colBuf = new Float32Array(need * 4 * 2);
+      lv.mesh.thinInstanceSetBuffer("color", lv.colBuf, 4, false);
+    }
+  }
+
   /** Пересобрать буферы: кто виден и каким уровнем LOD. */
   rebuild(cam: Vector3): void {
     for (const g of this.groups.values()) {
       const need = g.members.length;
       for (const lv of g.levels.flat()) {
-        if (lv.buf.length < need * 16) {
-          lv.buf = new Float32Array(need * 16 * 2);
-          lv.mesh.thinInstanceSetBuffer("matrix", lv.buf, 16, false);
-          if (lv.colBuf) {
-            lv.colBuf = new Float32Array(need * 4 * 2);
-            lv.mesh.thinInstanceSetBuffer("color", lv.colBuf, 4, false);
-          }
-        }
+        if (!lv) continue;
+        this.ensure(lv, need);
         lv.n = 0;
       }
       const top = g.levels.length - 1;
@@ -114,7 +123,13 @@ export class TreeThin {
         while (li < top && d >= g.levels[li + 1][0].from) li++;
         const wm = m.getWorldMatrix().m;
         const det = wm[0] * (wm[5] * wm[10] - wm[6] * wm[9]) - wm[1] * (wm[4] * wm[10] - wm[6] * wm[8]) + wm[2] * (wm[4] * wm[9] - wm[5] * wm[8]);
-        const lv = g.levels[li][det < 0 ? 1 : 0];
+        let lv = g.levels[li][0];
+        if (det < 0) {
+          const fresh = g.levels[li][1] === null;
+          lv = g.levels[li][1] ??= g.makeMirror[li]();
+          if (fresh) lv.n = 0;
+        }
+        this.ensure(lv, need);
         const o = lv.n * 16;
         for (let k = 0; k < 16; k++) lv.buf[o + k] = wm[k];
         if (lv.colBuf) {
@@ -128,6 +143,7 @@ export class TreeThin {
         lv.n++;
       }
       for (const lv of g.levels.flat()) {
+        if (!lv) continue;
         lv.mesh.thinInstanceCount = lv.n;
         lv.mesh.setEnabled(lv.n > 0);
         if (lv.n > 0) {
@@ -141,7 +157,7 @@ export class TreeThin {
   /** Вернуть исходные экземпляры в игру, убрать тонкие меши. */
   dispose(): void {
     for (const [m, on] of this.shown) if (!m.isDisposed()) m.setEnabled(on);
-    for (const g of this.groups.values()) for (const lv of g.levels.flat()) lv.mesh.dispose();
+    for (const g of this.groups.values()) for (const lv of g.levels.flat()) lv?.mesh.dispose();
     this.groups.clear();
     this.memberGroup.clear();
     this.shown.clear();
