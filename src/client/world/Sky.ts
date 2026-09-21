@@ -108,6 +108,10 @@ function createStars(scene: Scene): { apply(d: DayState): void } {
   merged.applyFog = false;
   merged.doNotSyncBoundingInfo = true;
   merged.alwaysSelectAsActiveMesh = true;
+  // Прозрачные меши сортируются по расстоянию до центра ограничивающего объёма, а у звёзд он остался в нуле
+  // карты (bbox не пересчитываем): чем дальше от центра, тем «дальше» звёзды — и их рисовало ПОСЛЕ облаков,
+  // чей буфер глубины закрывал небо. Звёзды — самый дальний слой: рисуем первыми среди прозрачных.
+  merged.alphaIndex = 0;
 
   // Меш едет за головой, поэтому звёзды не смещаются, когда игрок идёт.
   scene.onBeforeRenderObservable.add(() => {

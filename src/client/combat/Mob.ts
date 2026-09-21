@@ -27,6 +27,7 @@ import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
 import { trackMobMaterial } from "./mobLightTune";
+import { sharedMobMaterial } from "./mobMaterials";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
@@ -52,29 +53,31 @@ function recolorRig(
   tint: readonly [number, number, number],
   alpha: number,
 ): void {
+  const scene = rig.root.getScene();
   for (const m of rig.meshes) {
     const src = m.material as { name?: string } | null;
     if (!src) continue;
     const name = src.name ?? "";
-    const flat = new StandardMaterial(`${kind}_${name}`, rig.root.getScene());
-    // 5 = небо + солнце + два факела ботов + ближайший светлячок.
-    flat.maxSimultaneousLights = 5;
-    m.material = flat;
-
-    if (/eye/i.test(name)) {
-      flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
-      flat.specularColor = new Color3(0.12, 0.12, 0.12);
-      continue;
-    }
-    // secondary — светлее (блик/пузики), primary — базовый цвет кинда
-    const k = /secondary/i.test(name) ? 1.4 : 1;
-    flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
-    flat.emissiveColor = new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
-    flat.specularColor = new Color3(0.06, 0.06, 0.06);
-    // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
-    flat.alpha = alpha;
-    flat.backFaceCulling = true;
-    trackMobMaterial(flat); // ?moblight=1 — живая подстройка поверх базовых цветов
+    m.material = sharedMobMaterial(scene, `${kind}|${name}|${tint.join(",")}|${alpha}`, () => {
+      const flat = new StandardMaterial(`${kind}_${name}`, scene);
+      // 5 = небо + солнце + два факела ботов + ближайший светлячок.
+      flat.maxSimultaneousLights = 5;
+      if (/eye/i.test(name)) {
+        flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
+        flat.specularColor = new Color3(0.12, 0.12, 0.12);
+        return flat;
+      }
+      // secondary — светлее (блик/пузики), primary — базовый цвет кинда
+      const k = /secondary/i.test(name) ? 1.4 : 1;
+      flat.diffuseColor = new Color3(clamp01(tint[0] * k), clamp01(tint[1] * k), clamp01(tint[2] * k));
+      flat.emissiveColor = new Color3(tint[0] * 0.14, tint[1] * 0.1, tint[2] * 0.16);
+      flat.specularColor = new Color3(0.06, 0.06, 0.06);
+      // Полупрозрачное тело одним слоем: изнанку не рисуем (иначе «слоёный пирог»).
+      flat.alpha = alpha;
+      flat.backFaceCulling = true;
+      trackMobMaterial(flat); // ?moblight=1 — живая подстройка поверх базовых цветов
+      return flat;
+    });
   }
 }
 
@@ -423,6 +426,7 @@ export class Mob implements Hittable {
   /** Материалы модели с исходным свечением — для красно-оранжевого оттенка при горении. */
   private rigTint: { m: StandardMaterial; r: number; g: number; b: number }[] | null = null;
   private rigTintOn = false;
+  private rigBurnMeshes: { mesh: AbstractMesh; shared: StandardMaterial }[] | null = null;
   private burnT = 0;
   private barTimer = 0;
   private hitCd = 0;
@@ -1189,25 +1193,39 @@ export class Mob implements Hittable {
   private updateRigBurnTint(): void {
     if (!this.rig || !this.rigReady) return;
     if (this.burnGlow <= 0.001) {
-      if (this.rigTintOn && this.rigTint) {
-        for (const t of this.rigTint) t.m.emissiveColor.set(t.r, t.g, t.b);
-      }
-      this.rigTintOn = false;
+      if (this.rigTintOn) this.endRigBurn();
       return;
     }
     if (!this.rigTint) {
-      const seen = new Set<StandardMaterial>();
+      // Материалы модели общие на всех мобов вида — на время горения даём мобу личные копии.
+      const priv = new Map<unknown, StandardMaterial>();
       this.rigTint = [];
+      this.rigBurnMeshes = [];
       for (const mesh of this.rig.meshes) {
-        const m = mesh.material as StandardMaterial | null;
-        if (!m || !m.emissiveColor || seen.has(m)) continue;
-        seen.add(m);
-        this.rigTint.push({ m, r: m.emissiveColor.r, g: m.emissiveColor.g, b: m.emissiveColor.b });
+        const shared = mesh.material as StandardMaterial | null;
+        if (!shared || !shared.emissiveColor) continue;
+        let own = priv.get(shared);
+        if (!own) {
+          own = shared.clone(`${shared.name}_burn`);
+          priv.set(shared, own);
+          this.rigTint.push({ m: own, r: shared.emissiveColor.r, g: shared.emissiveColor.g, b: shared.emissiveColor.b });
+        }
+        this.rigBurnMeshes.push({ mesh, shared });
+        mesh.material = own;
       }
     }
     const k = this.burnGlow * (0.65 + 0.2 * Math.sin(performance.now() * 0.009));
     for (const t of this.rigTint) t.m.emissiveColor.set(t.r + 1.15 * k, t.g + 0.38 * k, t.b + 0.04 * k); // сильнее (было 0.75/0.26/0.03)
     this.rigTintOn = true;
+  }
+
+  /** Горение кончилось — вернуть общие материалы, личные копии убрать. */
+  private endRigBurn(): void {
+    for (const b of this.rigBurnMeshes ?? []) if (!b.mesh.isDisposed()) b.mesh.material = b.shared;
+    for (const t of this.rigTint ?? []) t.m.dispose(false, false);
+    this.rigTint = null;
+    this.rigBurnMeshes = null;
+    this.rigTintOn = false;
   }
 
   /** Языки пламени над горящим мобом: несколько аддитивных билбордов, мерцают
@@ -1317,10 +1335,8 @@ export class Mob implements Hittable {
     this.burnMat?.dispose();
     this.burnMesh?.dispose();
     this.mat.dispose();
-    // Свои «плоские» материалы гасим без текстур: атлас общий у всех копий модели.
-    for (const m of this.rig?.meshes ?? []) {
-      if (m.material?.name.endsWith("_flat")) m.material.dispose(false, false);
-    }
+    // Материалы модели общие на вид моба — не трогаем; личные копии горения — убираем.
+    if (this.rigTintOn) this.endRigBurn();
     this.rig?.dispose();
     this.rig = null;
     this.root.dispose(false, false);

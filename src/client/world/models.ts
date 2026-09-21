@@ -10,6 +10,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/loaders/glTF/2.0";
+import { sharedMobMaterial } from "../combat/mobMaterials";
 import { trackMobMaterial } from "../combat/mobLightTune";
 
 /**
@@ -442,6 +443,7 @@ export function recolorCharacter(root: TransformNode): void {
  * дневном свете (ambient=0) вертикальные грани почти чёрные.
  */
 export function recolorMonster(root: TransformNode, tint?: Color3): void {
+  const scene = root.getScene();
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
     const src = mesh.material as
@@ -458,20 +460,26 @@ export function recolorMonster(root: TransformNode, tint?: Color3): void {
         (src as { albedoColor?: Color3 }).albedoColor?.toGammaSpace() ??
         (src as { diffuseColor?: Color3 }).diffuseColor ??
         new Color3(0.7, 0.7, 0.7);
-      flat = new StandardMaterial(`${src.name || "mob"}_flat`, root.getScene());
-      flat.maxSimultaneousLights = 5;
-      flat.specularColor = new Color3(0.05, 0.05, 0.05);
-      if (tex) {
-        flat.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
-        flat.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
-        // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
-        flat.diffuseColor = tint ?? new Color3(1, 1, 1);
-        flat.emissiveColor = (tint ?? new Color3(1, 1, 1)).scale(0.3);
-      } else {
-        flat.diffuseColor = tint ?? base;
-        flat.emissiveColor = (tint ?? base).scale(0.28);
-      }
-      trackMobMaterial(flat); // ?moblight=1 — живая подстройка поверх базовых цветов
+      // Один материал на (исходный материал, текстура, цвет) на всю сцену — общий у всех мобов вида.
+      const texKey = tex ? ((tex as { uid?: string; name?: string }).uid ?? (tex as { name?: string }).name ?? "t") : "-";
+      const colKey = (tint ?? base).toHexString();
+      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}`, () => {
+        const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
+        f.maxSimultaneousLights = 5;
+        f.specularColor = new Color3(0.05, 0.05, 0.05);
+        if (tex) {
+          f.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
+          f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
+          // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
+          f.diffuseColor = tint ?? new Color3(1, 1, 1);
+          f.emissiveColor = (tint ?? new Color3(1, 1, 1)).scale(0.3);
+        } else {
+          f.diffuseColor = tint ?? base;
+          f.emissiveColor = (tint ?? base).scale(0.28);
+        }
+        trackMobMaterial(f); // ?moblight=1 — живая подстройка поверх базовых цветов
+        return f;
+      });
       seen.set(src.id, flat);
     }
     mesh.material = flat;
