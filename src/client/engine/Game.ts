@@ -95,6 +95,13 @@ import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
  * Выбирает источник ввода по устройству и подключает WebXR.
  */
+/** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 0.5. (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
+function ffrLevel(): number {
+  const q = new URLSearchParams(location.search);
+  const want = q.has("fov") ? Number(q.get("fov")) : 0.5;
+  return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.5;
+}
+
 export class Game {
   readonly engine: Engine;
   readonly scene: Scene;
@@ -980,8 +987,7 @@ export class Game {
       // Лёгкая фиксированная фовеация: периферия чуть грубее (глазом почти не
       // видно), центр — как есть. `?fov=` переопределяет (0 — выкл, 1 — макс).
       if (sm.isFixedFoveationSupported) {
-        const want = Number(new URLSearchParams(location.search).get("fov"));
-        sm.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.6;
+        sm.fixedFoveation = ffrLevel();
         console.log(`[xr] фиксированная фовеация = ${sm.fixedFoveation}`);
       }
       // Режим Layers (multiview): baseLayer нет, фовеация задаётся на самом слое
@@ -989,8 +995,7 @@ export class Game {
       else {
         const layer = (sm.session?.renderState as { layers?: { fixedFoveation?: number }[] })?.layers?.[0];
         if (layer && typeof layer.fixedFoveation === "number") {
-          const want = Number(new URLSearchParams(location.search).get("fov"));
-          layer.fixedFoveation = Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.6;
+          layer.fixedFoveation = ffrLevel();
           console.log(`[xr] фовеация слоя = ${layer.fixedFoveation}`);
         }
       }
