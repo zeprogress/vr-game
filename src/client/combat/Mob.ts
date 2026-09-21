@@ -679,11 +679,10 @@ export class Mob implements Hittable {
     if (this.modelName) {
       const { recolorMonster } = await import("../world/models");
       const def = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName);
-      // Големы (Yeti) — без собственного свечения: только свет сцены.
-      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined, this.modelName === "monYeti");
+      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined);
       if (def?.tint) this.lodTint = def.tint;
     } else {
-      recolorRig(rig, this.kind, this.tint, this.bodyAlpha, this.kind === "shard");
+      recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
       this.lodTint = this.tint;
     }
 
