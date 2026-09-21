@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { TreeThin } from "./TreeThin";
 import { impostorsIs3D, impostorsUpdate } from "./TreeImpostors";
 import { COS_CENTER, COS_SIDE, FAR_CENTER, NEAR_3D, SIDE_K } from "./cullSectors";
 
@@ -26,6 +27,8 @@ export class VrCull {
   private rocks: AbstractMesh[] = [];
   private readonly hidden = new Set<AbstractMesh>();
   private readonly roots = new Set<AbstractMesh>();
+  /** VR: деревья и камни — тонкими инстансами (см. TreeThin), а не сотней обычных экземпляров. */
+  private thin: TreeThin | null = null;
   private scanT = 0;
   private cullT = 0;
   private readonly treeR: number;
@@ -56,6 +59,7 @@ export class VrCull {
         this.hidden.delete(m);
         continue;
       }
+      if (n.includes("_thin")) continue; // тонкие меши TreeThin ведёт он сам
       if (n.startsWith("firefly")) small.push({ m, r: 30 });
       else if (n.startsWith("hubSpark") || n.startsWith("hubCoal")) small.push({ m, r: 35 });
       else if (n.startsWith("hubFire") || n.startsWith("hubGlow")) small.push({ m, r: 70 }); else if (m.name.startsWith("CommonTree")) {
@@ -70,6 +74,11 @@ export class VrCull {
         m.isVisible = false;
         this.roots.add(m);
       }
+    }
+    if (this.vr && !this.thin && !new URLSearchParams(location.search).has("nothin")) this.thin = new TreeThin(this.scene);
+    if (this.thin) {
+      for (const m of trees) this.thin.add(m);
+      for (const m of rocks) this.thin.add(m);
     }
     this.trees = trees;
     this.rocks = rocks;
@@ -103,6 +112,7 @@ export class VrCull {
     impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
     this.applyImp(this.trees, this.treeR, cam, fx, fz);
     this.applyImp(this.rocks, this.rockR, cam, fx, fz);
+    this.thin?.rebuild(cam);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
       const p = s.m.getAbsolutePosition();
@@ -110,6 +120,12 @@ export class VrCull {
       // isVisible, а не setEnabled: enabled у светлячков ведёт их собственный день/ночь.
       s.m.isVisible = d2 <= s.r * s.r;
     }
+  }
+
+  /** Показать/спрятать дерево или камень: тонкие инстансы — флагом, обычные — через enabled. */
+  private show(m: AbstractMesh, on: boolean): void {
+    if (this.thin?.has(m)) this.thin.setShown(m, on);
+    else m.setEnabled(on);
   }
 
   private applyImp(list: AbstractMesh[], r: number, cam: Vector3, fx: number, fz: number): void {
@@ -124,10 +140,10 @@ export class VrCull {
       const hide = is3d === false;
       const off = this.hidden.has(m);
       if (hide && !off) {
-        m.setEnabled(false);
+        this.show(m, false);
         this.hidden.add(m);
       } else if (!hide && off) {
-        m.setEnabled(true);
+        this.show(m, true);
         this.hidden.delete(m);
       }
     }
@@ -178,10 +194,10 @@ export class VrCull {
         far = lim <= 0 || d2 > lim * lim;
       }
       if (far && !off) {
-        m.setEnabled(false);
+        this.show(m, false);
         this.hidden.add(m);
       } else if (!far && off) {
-        m.setEnabled(true);
+        this.show(m, true);
         this.hidden.delete(m);
       }
     }
@@ -189,6 +205,8 @@ export class VrCull {
 
   /** Выход из VR: всё вернуть как было. */
   dispose(): void {
+    this.thin?.dispose();
+    this.thin = null;
     for (const m of this.hidden) if (!m.isDisposed()) m.setEnabled(true);
     this.hidden.clear();
     for (const m of this.roots) if (!m.isDisposed()) m.isVisible = true;
