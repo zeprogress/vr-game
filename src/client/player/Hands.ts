@@ -31,6 +31,8 @@ interface Hand {
   mesh: Mesh | null;
   controller: WebXRInputSource;
   curl: number;
+  /** Сгиб, с которым вершины меша залиты в GPU последний раз (-1 — ещё не заливали). */
+  applied: number;
   scratch: Float32Array | null;
   scratchN: Float32Array | null;
 }
@@ -279,7 +281,10 @@ export class Hands {
       // Оружие/щит в руке — кисть сжата в захвате, даже если кнопку хвата не жмут.
       const target = Math.min(1, Math.max(grip * cfg.curl, this.holding[h.side] ? HOLD_CURL : 0)); // «сгиб» — множитель силы
       h.curl += (target - h.curl) * Math.min(1, dt * 18);
+      if (Math.abs(target - h.curl) < 0.002) h.curl = target; // дошли — дальше вершины не трогаем
       const c = h.curl;
+      if (c === h.applied) continue; // поза не изменилась — без цикла по вершинам и заливки в GPU
+      h.applied = c;
 
       if (c < 0.002) {
         h.mesh.updateVerticesData(VertexBuffer.PositionKind, pose.rest, false, false);
@@ -319,6 +324,7 @@ export class Hands {
       mesh: null,
       controller: c,
       curl: 0,
+      applied: -1,
       scratch: null,
       scratchN: null,
     };
