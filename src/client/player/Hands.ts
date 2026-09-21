@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { secNow, secAdd } from "../engine/secProf";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -257,6 +258,12 @@ export class Hands {
 
   /** Каждый кадр: ориентация кисти из LOADOUT + сжатие пальцев по grip. */
   update(dt: number): void {
+    const sp = secNow();
+    this.updateInner(dt);
+    secAdd("hands.update", sp);
+  }
+
+  private updateInner(dt: number): void {
     const g = this.glove;
     for (const h of this.hands) {
       const cfg = LOADOUT.hands[h.side];

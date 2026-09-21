@@ -12,7 +12,6 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 
-const RAIN = new Color3(1, 0.78, 0.28);
 const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
 
 const POOL = 3;
@@ -141,7 +140,6 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
 }
 
 interface Rain {
-  dome: Mesh;
   shafts: Mesh;
   shaftMat: ShaderMaterial;
   age: number;
@@ -171,16 +169,10 @@ export class SkillFx {
 
   constructor(scene: Scene) {
     for (let i = 0; i < POOL; i++) {
-      // Купол вместо плоского круга на земле (как у оглушения), нижний диск убран.
-      const dome = MeshBuilder.CreateSphere(`rainDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
-      dome.material = addMat(scene, `rainDomeMat${i}`, RAIN.scale(0.55));
-      dome.isPickable = false;
-      dome.setEnabled(false);
-
       const shaftMat = makeShaftMaterial(scene, `rainShaftMat${i}`);
       const shafts = makeShaftMesh(scene, `rainShafts${i}`);
       shafts.material = shaftMat;
-      this.rains.push({ dome, shafts, shaftMat, age: 1, life: 1, cast: 1, radius: 1 });
+      this.rains.push({ shafts, shaftMat, age: 1, life: 1, cast: 1, radius: 1 });
     }
 
     for (let i = 0; i < POOL; i++) {
@@ -212,8 +204,6 @@ export class SkillFx {
     r.cast = Math.max(0.3, cast);
     r.life = r.cast + hold;
     r.radius = radius;
-    r.dome.position.set(x, y + 0.02, z);
-    r.dome.setEnabled(true);
     r.shaftMat.setVector3("uCenter", new Vector3(x, y + 0.02, z));
     r.shaftMat.setFloat("uRadius", radius);
     r.shaftMat.setFloat("uSeed", Math.random() * 100);
@@ -228,15 +218,6 @@ export class SkillFx {
       if (r.age >= r.life) continue;
       r.age += dt;
       const done = r.age >= r.life;
-      // Замах: купол пульсирует (той же плотности 0.32, что у купола оглушения); потом держится, пока
-      // сыплются стрелы, и гаснет в последние 0.4 с.
-      const pulse = 1 + Math.sin(r.age * 11) * 0.03;
-      const rr = r.radius * pulse;
-      r.dome.scaling.set(rr, rr * 0.55, rr);
-      const fadeOut = Math.min(1, (r.life - r.age) / 0.4);
-      (r.dome.material as StandardMaterial).alpha = done ? 0 : 0.32 * fadeOut;
-      if (done) r.dome.setEnabled(false);
-
       // Древки целиком на GPU: из JS только время.
       if (done) r.shafts.setEnabled(false);
       else r.shaftMat.setFloat("uT", r.age);
@@ -265,8 +246,6 @@ export class SkillFx {
       st.dome.dispose();
     }
     for (const r of this.rains) {
-      r.dome.material?.dispose();
-      r.dome.dispose();
       r.shaftMat.dispose();
       r.shafts.dispose();
     }

@@ -735,6 +735,11 @@ export class ZoneRoom extends Room<ZoneState> {
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
+  /** Кто участвует в текущем событии: побывал в его зоне или хотя бы раз ударил моба события. */
+  private readonly eventParticipants = new Set<string>();
+  private eventZoneCheckAt = 0;
+  /** Сколько попыток в башне началось за текущее окно события (0 — никто не приходил). */
+  private towerRunsStarted = 0;
   private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
   private readonly ttsLast = new Map<string, number>(); // normNick -> ms последней озвучки
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
@@ -1948,6 +1953,10 @@ export class ZoneRoom extends Room<ZoneState> {
     this.eventForced = false;
     this.eventWave = 0;
     this.eventWaveAt = 0;
+    this.eventParticipants.clear();
+    this.sim.eventDamagers.clear();
+    this.eventZoneCheckAt = 0;
+    this.towerRunsStarted = 0;
     // Тип: форс из !goevent, иначе кумулятивный ролл — башня/охота/нашествие
     // (EVENT.towerChance/huntChance, остаток — нашествие).
     if (this.forcedEventKind !== 0) {
@@ -2053,7 +2062,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const minutes = hunt ? EVENT.eliteHunt.buffMinutes : EVENT.invasion.buffMinutes;
       const until = Date.now() + minutes * 60_000;
       let n = 0;
-      for (const owner of this.sim.eventDamagers) {
+      // Получают только участники: были в зоне события или били его мобов.
+      const recipients = new Set<string>([...this.eventParticipants, ...this.sim.eventDamagers]);
+      for (const owner of recipients) {
         const rt = this.rt.get(owner);
         if (rt && this.state.players.has(owner)) {
           rt.eventBuffUntil = until;
@@ -2072,6 +2083,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.huntNovaFireAt = 0;
     this.huntLobFireAt = 0;
     this.sim.eventDamagers.clear();
+    this.eventParticipants.clear();
     this.sim.clearEventMobs();
     this.eventPhase = "cooldown";
     this.eventPhaseAt = Date.now() + EVENT.cooldown * 1000;
@@ -2180,6 +2192,15 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.eventPhase === "active") {
       const left = this.sim.eventMobsLeft();
       this.state.eventLeft = Math.min(255, left);
+      // Участие: побывал в зоне события (раз в секунду) — засчитывается наравне с ударом по мобу события.
+      if (this.activeEventKind !== 3 && now >= this.eventZoneCheckAt) {
+        this.eventZoneCheckAt = now + 1000;
+        const zr = BOT.zoneRadius;
+        this.state.players.forEach((pl, pid) => {
+          if (pl.dead || this.eventParticipants.has(pid)) return;
+          if (Math.hypot(pl.head.x - this.eventX, pl.head.z - this.eventZ) < zr) this.eventParticipants.add(pid);
+        });
+      }
       if (this.activeEventKind === 2) {
         // Охота: победа = смерть самого владыки (миньоны не в счёт).
         const boss = this.sim.mobs.get(this.huntBossId);
@@ -2215,7 +2236,8 @@ export class ZoneRoom extends Room<ZoneState> {
           const heroId = this.towerQueue.shift();
           if (heroId) this.startTowerRun(heroId);
           else if (now >= this.towerQueueOpenUntil) {
-            this.endEvent(true);
+            // «Башню прошли» — только если в неё хоть кто-то заходил; иначе окно просто закрылось.
+            this.endEvent(this.towerRunsStarted > 0);
             return;
           }
         }
@@ -2293,6 +2315,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Поднять TowerRoom для очередного героя из очереди башни. */
   private startTowerRun(heroId: string): void {
+    this.towerRunsStarted++;
     if (!this.state.players.has(heroId)) return;
     // Камера сперва летит К декоративной башне на поляне (TOWER_PROP_POS) —
     // герой ещё виден в мире, ничего не телепортировано. Сам забег (и его
@@ -3378,12 +3401,22 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rec.botActive !== true && (rec.updatedAt ?? 0) < cutoff) continue;
       const norm = normNick(rec.token.slice(5));
       if (!norm || this.bots.has(norm)) continue;
+      // Таймер ухода считается от последнего сообщения хозяина в чате и переживает рестарты:
+      // раньше каждый рестарт (а деплои идут по несколько раз в день) обновлял его, и герои жили вечно.
+      const lastChat = rec.lastChatAt ?? Date.now(); // старые записи без метки — льготный старт с сейчас
+      if (
+        !STREAM_NICKS.includes(norm) &&
+        Date.now() - lastChat > BOT.ownerAbsentSec * 1000
+      ) {
+        store.put(rec.token, { botActive: false });
+        continue;
+      }
       if (this.bots.size >= BOT.maxBots) {
         console.log(`[bot] восстановление остановлено на потолке ${BOT.maxBots}`);
         break;
       }
       this.spawnBot(rec.nick || norm, norm);
-      this.chatSeen.set(norm, Date.now());
+      this.chatSeen.set(norm, lastChat);
       n++;
     }
     if (n) console.log(`[bot] восстановлено после рестарта: ${n}`);
@@ -3434,6 +3467,8 @@ export class ZoneRoom extends Room<ZoneState> {
       equippedWeaponId: bot.rt.equippedWeaponId,
       viewToken: bot.rt.viewToken,
       botActive: true, // в мире — восстановить после рестарта
+      // Последнее сообщение хозяина — на диск (persistBot идёт раз в 10 с): отсчёт ухода бота переживает рестарт.
+      lastChatAt: this.chatSeen.get(bot.norm),
     });
   }
 

@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { secNow, secAdd } from "../engine/secProf";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -746,7 +747,9 @@ export class CombatSystem {
     this.turnCd = Math.max(0, this.turnCd - dt);
     if (inp.lookYaw !== 0) this.turnCd = 0.15;
 
+    let sp = secNow();
     this.updatePotion(dt);
+    secAdd("combat.potion", sp);
 
     // Q (плоский режим) — снять щит: летит так же, как оружие.
     if (inp.dropItem && this.shieldHand) {
@@ -754,14 +757,20 @@ export class CombatSystem {
       if (sh) this.throwItem(sh, this.flatThrowVelocity(0));
     }
 
+    sp = secNow();
     if (this.player.inVR) this.handleGripsVR();
     else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
+    secAdd("combat.grips", sp);
 
+    sp = secNow();
     this.updateRestPoses(dt);
     this.anchorHeldItems();
     this.updateBackAnchor();
     this.anchorStowedItems();
+    secAdd("combat.anchors", sp);
+    sp = secNow();
     this.shoveWithHeldItems();
+    secAdd("combat.shove", sp);
 
     // Рука-указка меню (лазер): её оружие не реагирует вообще — ни ударов, ни каста.
     const w0 = this.weapon;
@@ -773,8 +782,11 @@ export class CombatSystem {
         w0.hand2 === this.uiLockHand ||
         // Лук: курком свободной руки (натяг) — ею же и жмут в меню лазером, стрелять нельзя.
         (w0.kind === "bow" && this.drawHand() === this.uiLockHand));
+    sp = secNow();
     if (this.player.inVR) this.autoPickupWeapons(dt);
+    secAdd("combat.autoPickup", sp);
 
+    sp = secNow();
     const tpStaff = this.held === "staff" && this.player.thirdPerson;
     const tpBow = this.held === "bow" && this.player.thirdPerson;
     // ПК от первого лица: посох — магический жезл (держишь ЛКМ — копится
@@ -817,14 +829,22 @@ export class CombatSystem {
       this.resetCast();
     }
 
+    secAdd("combat.weaponLogic", sp);
+    sp = secNow();
     if (this.player.inVR) this.updateVrSkills(lockedWeapon);
     else if (this.rainMark?.isEnabled()) this.cancelRainAim();
+    secAdd("combat.vrSkills", sp);
 
+    sp = secNow();
     this.applyWindup();
     this.trackHandMotion(dt);
+    secAdd("combat.windup+motion", sp);
+    sp = secNow();
     this.updateString();
     this.updateFlights(dt);
     this.updateHealPulses(dt);
+    secAdd("combat.string+flights", sp);
+    sp = secNow();
 
     for (let i = this.arrows.length - 1; i >= 0; i--) {
       if (!this.arrows[i].update(dt, this.arrowCtx)) {
@@ -832,6 +852,7 @@ export class CombatSystem {
         this.arrows.splice(i, 1);
       }
     }
+    secAdd("combat.arrows", sp);
   }
 
   // ---- защита ----

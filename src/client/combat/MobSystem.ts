@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { secNow, secAdd } from "../engine/secProf";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -447,6 +448,7 @@ export class NetMobs {
     const room = this.room;
     if (!room) return;
 
+    let sp = secNow();
     // VR: рисуем только ближайших мобов (лимит), остальные отключены целиком;
     // плашки имён — ещё у меньшего числа. Мобы вне лимита продолжают
     // обновляться логикой, просто невидимы.
@@ -483,6 +485,8 @@ export class NetMobs {
     }
     // Идём по созданным видам (у каждого своя ссылка на живую схему), а не по всей схеме мобов
     // с геттерами Colyseus: forEach по 60+ схемам каждый кадр стоил ~3% кадра в профиле шлема.
+    secAdd("mobs.rank", sp);
+    sp = secNow();
     this.mobs.forEach((m, id) => {
       const s = m.st;
       if (!s) return;
@@ -510,11 +514,15 @@ export class NetMobs {
       m.idleAcc = 0;
       m.applyState(s, mdt, playerPos, playerAim, draw, vr ? this.vrUiSet.has(id) : true);
     });
+    secAdd("mobs.viewsUpdate", sp);
+    sp = secNow();
     room.state.dummies.forEach((s, id) => {
       this.dummies.get(id)?.applyState(s, dt);
     });
 
     // Плевки: множество появляется/исчезает — синхронизируем меши.
+    secAdd("mobs.dummies", sp);
+    sp = secNow();
     room.state.balls.forEach((s, id) => {
       let b = this.balls.get(id);
       if (!b) {
@@ -557,6 +565,8 @@ export class NetMobs {
 
     // Огненные снаряды игроков.
     const cam = this.scene.activeCamera;
+    secAdd("mobs.balls", sp);
+    sp = secNow();
     room.state.bolts.forEach((s, id) => {
       let bo = this.bolts.get(id);
       if (!bo) {
@@ -648,7 +658,10 @@ export class NetMobs {
       }
     }
 
+    secAdd("mobs.bolts", sp);
+    sp = secNow();
     this.updateBursts(dt);
+    secAdd("mobs.bursts", sp);
 
     // Ночная подсветка от огнешара: приоритет у свежего взрыва, иначе — снаряд.
     this.fireLightPower = 0;

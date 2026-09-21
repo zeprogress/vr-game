@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -220,13 +221,23 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       shown = Math.round(hour * 100) / 100;
       LOADOUT.world.hour = shown;
 
+      let sp = secNow();
       day = dayState(hour);
       applyDay();
+      secAdd("zone.applyDay", sp);
 
+      sp = secNow();
       windTick(dt, day.daylight);
+      secAdd("zone.wind", sp);
+      sp = secNow();
       impostorsDaylight(day.daylight);
+      secAdd("zone.impostors", sp);
+      sp = secNow();
       fireflies.update(dt, playerPos, day.daylight);
+      secAdd("zone.fireflies", sp);
+      sp = secNow();
       hub.tick(day.daylight);
+      secAdd("zone.hub", sp);
 
       // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
       // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,
@@ -239,7 +250,9 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       const step = quality.simpleSky ? (twilight ? 0.03 : 0.4) : 0.004;
       if (moved > step || moved > 23) {
         paintedAt = hour;
+        const sr = secNow();
         sky.repaint(day);
+        secAdd("zone.skyRepaint", sr);
       }
     },
     swordHome,

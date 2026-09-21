@@ -48,6 +48,7 @@ import { VrCull } from "../world/VrCull";
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { VrPerfHud } from "../ui/VrPerfHud";
 import { FpsCounter } from "../ui/FpsCounter";
+import { secReport } from "./secProf";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
 import { EngineInstrumentation } from "@babylonjs/core/Instrumentation/engineInstrumentation";
 import type { WornWeapon } from "../ui/itemStats";
@@ -170,10 +171,8 @@ export class Game {
   private lastNewEffects: string[] = [];
   private readonly showPerfHud = new URLSearchParams(location.search).has("perf");
   /** ?perf=1 включает тяжёлую диагностику (инструментовка + патчи прототипов);
-   *  ?perf=lite или ?fps=1 — только FPS, без накладных расходов. */
-  private readonly lightPerf =
-    new URLSearchParams(location.search).has("fps") ||
-    new URLSearchParams(location.search).get("perf") === "lite";
+   *  ?perf=lite — только FPS-плашка, без накладных расходов. (?fps=1 — теперь голый счётчик, см. FpsCounter.) */
+  private readonly lightPerf = new URLSearchParams(location.search).get("perf") === "lite";
   loadoutPanel: LoadoutPanel | null = null;
   private xrInput: XRInput | null = null;
   xr: WebXRDefaultExperience | null = null;
@@ -1137,6 +1136,11 @@ export class Game {
       .join(" ");
   }
 
+  /** Подсекции кода (?sec=1 или ?perf=1): в консоли `game.secReport()` — топ по мс на кадр. */
+  secReport(top = 24): string {
+    return secReport(top);
+  }
+
   /** Диагностика производительности VR: `game.vrDiag()` из консоли. */
   vrDiag(): Record<string, unknown> {
     const sm = this.xr?.baseExperience.sessionManager;
@@ -1151,6 +1155,7 @@ export class Game {
         activeMeshes: this.scene.getActiveMeshes().length,
         totalMeshes: this.scene.meshes.length,
         sections: this.sectionsStr(),
+      subSections: secReport(),
       };
     }
     const grass = this.scene.getMeshByName("grassBlade");
@@ -1204,6 +1209,7 @@ export class Game {
       lights: this.scene.lights.filter((l) => l.isEnabled()).length,
       byCategory: bucket,
       sections: this.sectionsStr(),
+      subSections: secReport(),
     };
   }
 
