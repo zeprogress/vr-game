@@ -41,6 +41,7 @@ import { EventBeacon } from "../world/EventBeacon";
 import { SpellLights } from "../world/SpellLights";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { BlobShadow } from "../world/blobShadow";
+import { installActiveMeshCandidates } from "./meshCandidates";
 import { daylightAt } from "../world/DayTime";
 import { WristMenu, type MenuAction } from "../ui/WristMenu";
 import { VrHud } from "../ui/VrHud";
@@ -231,6 +232,7 @@ export class Game {
     // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.
     if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
+    installActiveMeshCandidates(this.scene); // обход только включённых и видимых мешей (см. meshCandidates.ts)
     if (new URLSearchParams(location.search).has("fps")) this.fpsCounter = new FpsCounter();
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
