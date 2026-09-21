@@ -694,7 +694,7 @@ export class Game {
         if ((off.has("ambient") && l.name === "ambient") || (off.has("sun") && l.name === "sun")) l.setEnabled(false);
       }
       const maxL = Number(new URLSearchParams(location.search).get("lights"));
-      if (maxL > 0) for (const mt of this.scene.materials) if ((mt as { maxSimultaneousLights?: number }).maxSimultaneousLights !== undefined) (mt as { maxSimultaneousLights: number }).maxSimultaneousLights = maxL;
+      if (maxL > 0) for (const mt of this.scene.materials) if ((mt as { maxSimultaneousLights?: number }).maxSimultaneousLights !== undefined) (mt as unknown as { maxSimultaneousLights: number }).maxSimultaneousLights = maxL;
       // Кусты по имени TransformNode (на случай, если у мешей имена не говорящие).
       for (const [flag, node] of [
         ["campfire", "hubFire"],
