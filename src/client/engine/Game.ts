@@ -95,11 +95,11 @@ import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
  * Выбирает источник ввода по устройству и подключает WebXR.
  */
-/** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 0.8. (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
+/** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 1 (максимум). (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
 function ffrLevel(): number {
   const q = new URLSearchParams(location.search);
-  const want = q.has("fov") ? Number(q.get("fov")) : 0.8;
-  return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 0.8;
+  const want = q.has("fov") ? Number(q.get("fov")) : 1;
+  return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 1;
 }
 
 export class Game {
