@@ -4,6 +4,7 @@ import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
@@ -32,7 +33,7 @@ const R_GRASS = 25;
 const R_BUSH = 34;
 const R_NEAR = 5; // вокруг игрока трава всегда — за спиной не должно быть плешей рядом
 const COS_HALF = Math.cos((62 * Math.PI) / 180);
-const MAX_NEW_CHUNKS = 4; // сколько новых кусков считать за одну пересборку (остальное — в следующую)
+const CHUNK_BUDGET_MS = 1.2; // сколько мс на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const REACH = 165; // дальше от центра карты травы нет
 
 function hash(ix: number, iz: number, k: number): number {
@@ -133,7 +134,8 @@ export async function loadGrassField(
   let kBush = -1;
   if (cBush) {
     const bm = new StandardMaterial("bushMat", scene);
-    const bt = cBush.textures[0];
+    // Родная текстура куста (TwistedTree) — тёмно-красная; берём зелёный лист обычных деревьев (та же раскладка карточек).
+    const bt = new Texture("/models/nature/Leaves_NormalTree_C.png", scene, false, false);
     if (bt) {
       bt.hasAlpha = true;
       bm.diffuseTexture = bt;
@@ -194,6 +196,7 @@ export async function loadGrassField(
   let lastFz = 0;
   let acc = 1;
   let pending = false;
+  let first = true;
   const fwd = new Vector3();
   const write = (k: Kind, x: number, y: number, z: number, yaw: number, sx: number, sy: number, r: number, g: number, b: number): void => {
     let idx = k.n;
@@ -229,7 +232,9 @@ export async function loadGrassField(
   const rebuild = (cx: number, cz: number, fx: number, fz: number): void => {
     for (const k of kinds) k.n = 0;
     pending = false;
-    let budget = MAX_NEW_CHUNKS;
+    const t0 = performance.now();
+    const limit = first ? 14 : CHUNK_BUDGET_MS; // самая первая сборка — с запасом (загрузка), дальше — понемногу
+    let built = 0;
     const span = CHUNK * CELL;
     const x0 = Math.floor((cx - R_GRASS) / span);
     const x1 = Math.floor((cx + R_GRASS) / span);
@@ -240,12 +245,13 @@ export async function loadGrassField(
         const key = chunkKey(gx, gz);
         let a = chunks.get(key);
         if (!a) {
-          if (budget-- <= 0) {
+          if (built > 0 && performance.now() - t0 > limit) {
             pending = true; // не всё посчитано за раз — пересоберём на следующем тике
             continue;
           }
           a = build(gx, gz);
           chunks.set(key, a);
+          built++;
         }
         for (let n = 0; n < ncell; n++) {
           const o = n * STRIDE;
@@ -299,6 +305,7 @@ export async function loadGrassField(
         }
       }
     }
+    first = false;
     for (const k of kinds) {
       k.mesh.thinInstanceCount = k.n;
       k.mesh.setEnabled(k.n > 0);
