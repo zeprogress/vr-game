@@ -77,13 +77,15 @@ let barkDiffuseBase: Color3 | null = null;
 let barkEmiBase: Color3 | null = null;
 let leafDiffuseBase: Color3 | null = null;
 let leafEmiBase: Color3 | null = null;
-let lastTreeSun = -1;
-let lastTreeGlow = -1;
+let lastTreeSun = NaN;
+let lastTreeGlow = NaN;
 
 /**
  * Ручки админ-панели (?glow) — влияние солнца/собственное свечение стволов и
  * крон. Материалы заморожены (freeze()) ради производительности — снимаем
- * заморозку только на кадр правки (это редко, только при подстройке админом).
+ * заморозку только на кадр правки. Проверка на NaN вместо -1: -1 — валидное
+ * значение множителя (хоть и странное), NaN гарантированно не совпадёт с
+ * первым реальным значением и форсирует первое применение.
  */
 export function treesGlowTick(): void {
   if (!baseBark || !baseLeaf) return;

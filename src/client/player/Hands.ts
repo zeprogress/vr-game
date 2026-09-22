@@ -75,8 +75,6 @@ export class Hands {
   private readonly skin: StandardMaterial;
   private readonly skinDiffuseBase: Color3;
   private readonly skinEmiBase: Color3;
-  private lastGlowSun = -1;
-  private lastGlowEmi = -1;
   private glove: Glove | null = null;
 
   constructor(private readonly scene: Scene) {
@@ -272,14 +270,9 @@ export class Hands {
     const sp = secNow();
     this.updateInner(dt);
     const G = LOADOUT.glow;
-    if (G.handsSun !== this.lastGlowSun) {
-      this.lastGlowSun = G.handsSun;
-      this.skin.diffuseColor.copyFrom(this.skinDiffuseBase).scaleInPlace(G.handsSun);
-    }
-    if (G.handsGlow !== this.lastGlowEmi) {
-      this.lastGlowEmi = G.handsGlow;
-      this.skin.emissiveColor.copyFrom(this.skinEmiBase).scaleInPlace(G.handsGlow);
-    }
+    // Без гейтинга — как трава/земля: пишем каждый кадр, без риска залипания.
+    this.skin.diffuseColor.copyFrom(this.skinDiffuseBase).scaleInPlace(G.handsSun);
+    this.skin.emissiveColor.copyFrom(this.skinEmiBase).scaleInPlace(G.handsGlow);
     secAdd("hands.update", sp);
   }
 
