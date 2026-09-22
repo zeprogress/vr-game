@@ -135,7 +135,11 @@ export async function loadGrassField(
   /** Множитель дальности (зритель-стрим: 2+, у него запас по GPU и камера свободная). */
   farK = 1,
 ): Promise<(dt: number, daylight: number) => void> {
-  if (density <= 0) return () => {};
+  // Диагностика ?off=grass: тик перерисовки сам включает мешь травы, когда
+  // есть инстансы (см. ниже), сводя на нет разовое скрытие из Game.applyOffFlags —
+  // поэтому флаг читаем здесь и просто не грузим траву вовсе.
+  const offGrass = new URLSearchParams(location.search).get("off")?.split(",").includes("grass") ?? false;
+  if (density <= 0 || offGrass) return () => {};
   const R_GRASS = R_GRASS_BASE * farK;
   const R_BUSH = R_BUSH_BASE * farK;
   await import("@babylonjs/loaders/glTF/2.0");
