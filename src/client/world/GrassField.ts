@@ -97,13 +97,13 @@ function sparseMul(x: number, z: number): number {
   if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
   const dt = Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z);
   if (dt < TOWER_PROP_CLEAR + 24) m *= 0.4 + 0.6 * smooth(TOWER_PROP_CLEAR, TOWER_PROP_CLEAR + 24, dt);
-  // Заявка: у декоративной башни (45, 108) в 15 м — совсем ничего.
-  const dTowerSpot = Math.hypot(x - 45, z - 108);
+  // Заявка: у декоративной башни в 15 м — совсем ничего (x/z были перепутаны, теперь верно).
+  const dTowerSpot = Math.hypot(x - 108, z - 45);
   if (dTowerSpot < 15) return 0;
   // Заявка: заметно меньше травы и кустов в двух точках.
-  const d1 = Math.hypot(x - -111, z - -68);
+  const d1 = Math.hypot(x - -68, z - -111);
   if (d1 < 20) m *= 0.12 + 0.5 * smooth(0, 20, d1);
-  const d2 = Math.hypot(x - 110, z - 0);
+  const d2 = Math.hypot(x - 0, z - 110);
   if (d2 < 25) m *= 0.12 + 0.5 * smooth(0, 25, d2);
   // Заявка: значительно реже во всех четырёх углах карты.
   let dCorner = Infinity;

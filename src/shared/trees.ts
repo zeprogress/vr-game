@@ -48,8 +48,8 @@ export function trees(): Tree[] {
     if (Math.abs(x) > reach || Math.abs(z) > reach) return;
     if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) return; // не поверх оружия
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) return; // арена босса — чисто
-    if (Math.hypot(x - 45, z - 108) < 15) return; // у декоративной башни — чисто (заявка)
-    if (Math.hypot(x - -10, z - 137) < 3) return; // конкретное дерево, попросили убрать
+    if (Math.hypot(x - 108, z - 45) < 15) return; // у декоративной башни — чисто (заявка; координаты x/z были перепутаны, теперь верно)
+    if (Math.hypot(x - 137, z - -10) < 3) return; // конкретное дерево, попросили убрать
     const scale = 0.75 + rnd() * 1.0;
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   };

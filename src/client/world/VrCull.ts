@@ -3,7 +3,7 @@ import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { TreeThin } from "./TreeThin";
 import { impostorsIs3D, impostorsUpdate } from "./TreeImpostors";
-import { COS_CENTER, COS_SIDE, COS_TREE_ONLY, FAR_CENTER, NEAR_3D, SIDE_K } from "./cullSectors";
+import { COS_CENTER, COS_SIDE, FAR_CENTER, NEAR_3D, SIDE_K } from "./cullSectors";
 
 /**
  * Отсечение сцены для VR (Quest считает всё дважды — на два глаза).
@@ -111,8 +111,8 @@ export class VrCull {
     // Одно решение на дерево/камень (модель или снимок) принимает TreeImpostors; меши без
     // записи там (снимки ещё не готовы / вид без снимка) — обычная логика радиусов.
     impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
-    this.applyImp(this.trees, this.treeR, cam, fx, fz, true);
-    this.applyImp(this.rocks, this.rockR, cam, fx, fz, false);
+    this.applyImp(this.trees, this.treeR, cam, fx, fz);
+    this.applyImp(this.rocks, this.rockR, cam, fx, fz);
     this.thin?.rebuild(cam);
     for (const s of this.small) {
       if (s.m.isDisposed()) continue;
@@ -129,7 +129,7 @@ export class VrCull {
     else m.setEnabled(on);
   }
 
-  private applyImp(list: AbstractMesh[], r: number, cam: Vector3, fx: number, fz: number, treeOnly = false): void {
+  private applyImp(list: AbstractMesh[], r: number, cam: Vector3, fx: number, fz: number): void {
     const unmapped: AbstractMesh[] = [];
     for (const m of list) {
       if (m.isDisposed()) continue;
@@ -148,7 +148,7 @@ export class VrCull {
         this.hidden.delete(m);
       }
     }
-    if (unmapped.length) this.apply(unmapped, cam, r, fx, fz, treeOnly);
+    if (unmapped.length) this.apply(unmapped, cam, r, fx, fz);
   }
 
   /**
@@ -157,7 +157,7 @@ export class VrCull {
    * рисуется (кроме ближних BEHIND_NEAR м). Поворот щелчками, поэтому границы
    * держим с гистерезисом; на плоском экране (fx=fz=0) — просто круг радиуса r.
    */
-  private apply(list: AbstractMesh[], cam: Vector3, r: number, fx = 0, fz = 0, treeOnly = false): void {
+  private apply(list: AbstractMesh[], cam: Vector3, r: number, fx = 0, fz = 0): void {
     const sector = fx !== 0 || fz !== 0;
     for (const m of list) {
       if (m.isDisposed()) continue;
@@ -189,10 +189,7 @@ export class VrCull {
         }
         const da = off ? -0.03 : 0.03; // ≈ ±3–5° по косинусу
         let lim: number;
-        if (treeOnly) {
-          // Деревья: только узкий конус ±30° перед собой, боковых полос нет.
-          lim = cosA > COS_TREE_ONLY - da ? r + pad : 0;
-        } else if (cosA > COS_CENTER - da) lim = r + pad;
+        if (cosA > COS_CENTER - da) lim = r + pad;
         else if (cosA > COS_SIDE - da) lim = r * SIDE_K + pad;
         else lim = 0;
         far = lim <= 0 || d2 > lim * lim;
