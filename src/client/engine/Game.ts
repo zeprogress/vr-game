@@ -1632,7 +1632,7 @@ export class Game {
     // тоннель не нужен, только блинк).
     const moving = !teleport && Math.hypot(inp.moveX, inp.moveY) > 0.02;
     // Поворот (snap-turn) — держим виньетку секунду после него.
-    if (inp.lookYaw !== 0) this.vignetteTurnT = 1;
+    if (inp.lookYaw !== 0) this.vignetteTurnT = 0.5;
     else this.vignetteTurnT = Math.max(0, this.vignetteTurnT - dt);
     this.comfortVignette.tick(dt, moving || this.vignetteTurnT > 0, allowed);
     if (this.player.consumeTeleportBlink()) this.comfortVignette.blink();
