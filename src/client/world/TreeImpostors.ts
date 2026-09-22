@@ -11,7 +11,7 @@ import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import { Scene as SceneCls } from "@babylonjs/core/scene";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
-import { COS_CENTER, COS_SIDE, SIDE_K } from "./cullSectors";
+import { COS_CENTER, COS_SIDE, COS_TREE_ONLY, SIDE_K } from "./cullSectors";
 
 
 
@@ -396,7 +396,8 @@ export class TreeImpostors {
       if (sector) {
         const cosA = (dx * fx + dz * fz) / Math.max(1e-3, d);
         const da = this.vis3[i] === 1 || this.impVis[i] === 1 ? 0.03 : -0.03;
-        lim = cosA > COS_CENTER - da ? farR : cosA > COS_SIDE - da ? farR * SIDE_K : 0;
+        // Деревья: только узкий конус ±30° перед собой, за его пределами не рисуем вовсе (боковых полос нет).
+        lim = this.tag === "tree" ? (cosA > COS_TREE_ONLY - da ? farR : 0) : cosA > COS_CENTER - da ? farR : cosA > COS_SIDE - da ? farR * SIDE_K : 0;
       }
       const inRange = d <= 14 || d <= lim;
       this.vis3[i] = !isFar && inRange ? 1 : 0;

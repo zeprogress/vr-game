@@ -324,12 +324,12 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   frog: {
     model: "monFrog", name: "Болотная жаба", level: 7, kind: "slime",
-    hp: 95, dmgMul: 1.6, xp: 34, scaleMul: 0.75,
+    hp: 95, dmgMul: 1.6, xp: 34, scaleMul: 1.125, // ×1.5 модели по заявке (было 0.75)
     tint: [0.24, 0.7, 0.26], // перекрас в зелёный
   },
   cactoro: {
     model: "monCactoro", name: "Кактородо", level: 9, kind: "slime",
-    hp: 60, dmgMul: 1.1, xp: 55, scaleMul: 1.6, tint: null,
+    hp: 60, dmgMul: 1.1, xp: 55, scaleMul: 3.2, tint: null, // ×2 модели по заявке (было 1.6)
   },
   // Орк-стрелок: бронированный дальний боец 15 ур. Панцирь режет 65% урона
   // стрел/магии — для лучника это глухая стена, зато его залпы бьют больно и

@@ -32,8 +32,8 @@ const CELL = 0.5; // шаг сетки травы, м
 const CHUNK = 16; // клеток в куске по стороне (кэш)
 const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
-const R_GRASS_BASE = 92; // дальность травы (редкие пучки), м
-const R_BUSH_BASE = 60;
+const R_GRASS_BASE = 130; // дальность травы (редкие пучки), м — увеличена по заявке (конус узкий, так что бюджет тот же)
+const R_BUSH_BASE = 85;
 const COS_HALF = Math.cos((60 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
@@ -67,7 +67,15 @@ const smooth = (e0: number, e1: number, v: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** Множитель густоты (0.3–1): реже в середине поляны, у точек спавна мобов, за лагерем и у декоративной башни. */
+/** Углы карты (реже трава по заявке) — примерно где сходятся края «фартука». */
+const CORNERS: [number, number][] = [
+  [86, 86],
+  [-86, 86],
+  [86, -86],
+  [-86, -86],
+];
+
+/** Множитель густоты: реже в середине поляны, у точек спавна мобов, за лагерем, у декоративной башни, в углах карты и у двух точек по заявке; гуще пятнами у лагеря голема-крушителя. */
 function sparseMul(x: number, z: number): number {
   let m = 1;
   const dc = Math.hypot(x, z);
@@ -75,12 +83,32 @@ function sparseMul(x: number, z: number): number {
   for (const c of MOB_CAMPS) {
     const r = c.spread + 4;
     const d = Math.hypot(x - c.x, z - c.z);
+    if (c.type === "golem") {
+      // Голем-крушитель: не реже, а гуще ХАОТИЧНЫМИ пятнами (не ровным кругом) — свой шум на месте общего множителя.
+      if (d < r + 10) {
+        const patch = 0.5 + 0.5 * vnoise(x, z, 11, 777);
+        m *= 0.85 + 1.3 * smooth(r - 4, r + 6, d < r ? r + 6 - d : 0) * patch; // ближе к центру лагеря — сильнее пятна
+      }
+      continue;
+    }
     if (d < r + 8) m *= 0.3 + 0.7 * smooth(r - 2, r + 8, d);
   }
   const dh = Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z);
   if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
   const dt = Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z);
   if (dt < TOWER_PROP_CLEAR + 24) m *= 0.4 + 0.6 * smooth(TOWER_PROP_CLEAR, TOWER_PROP_CLEAR + 24, dt);
+  // Заявка: у декоративной башни (45, 108) в 15 м — совсем ничего.
+  const dTowerSpot = Math.hypot(x - 45, z - 108);
+  if (dTowerSpot < 15) return 0;
+  // Заявка: заметно меньше травы и кустов в двух точках.
+  const d1 = Math.hypot(x - -111, z - -68);
+  if (d1 < 20) m *= 0.12 + 0.5 * smooth(0, 20, d1);
+  const d2 = Math.hypot(x - 110, z - 0);
+  if (d2 < 25) m *= 0.12 + 0.5 * smooth(0, 25, d2);
+  // Заявка: значительно реже во всех четырёх углах карты.
+  let dCorner = Infinity;
+  for (const [cx, cz] of CORNERS) dCorner = Math.min(dCorner, Math.hypot(x - cx, z - cz));
+  if (dCorner < 40) m *= 0.15 + 0.55 * smooth(0, 40, dCorner);
   return m;
 }
 
@@ -188,10 +216,10 @@ export async function loadGrassField(
       bm.transparencyMode = 1;
       bm.alphaCutOff = 0.28;
     }
-    // Освещение только небом и солнцем (2 источника); влияние солнца ослаблено, чтобы тень не была чёрной, а солнечная сторона — засвеченной,
-    // плюс совсем чуть-чуть собственного свечения.
-    bm.diffuseColor = new Color3(0.34, 0.49, 0.26);
-    bm.emissiveColor = new Color3(0.055, 0.085, 0.04);
+    // Освещение только небом и солнцем (2 источника); влияние солнца ослаблено ещё сильнее (заявка) — в тени не чёрные,
+    // на солнце не засвечены, плюс совсем чуть-чуть собственного свечения.
+    bm.diffuseColor = new Color3(0.2, 0.3, 0.16);
+    bm.emissiveColor = new Color3(0.07, 0.1, 0.05);
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = 2;
@@ -221,7 +249,7 @@ export async function loadGrassField(
         if (hash(ix, iz, 0) > keep * density) continue;
         // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
         const rd = hash(ix, iz, 30);
-        const dmax = (rd < 0.05 ? R_GRASS_BASE : rd < 0.22 ? 50 : 24) * farK;
+        const dmax = (rd < 0.05 ? R_GRASS_BASE : rd < 0.22 ? 68 : 30) * farK;
         // Виды: в основном низкая, высокая и метёлки — пятнами.
         const tallP = 0.03 + 0.4 * smooth(0.6, 0.84, vnoise(x, z, 18, 103));
         const wispP = 0.015 + 0.16 * smooth(0.68, 0.9, vnoise(x, z, 14, 104));

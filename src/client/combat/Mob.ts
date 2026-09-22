@@ -27,6 +27,8 @@ import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { NameTag } from "../ui/NameTag";
 import { trackMobMaterial } from "./mobLightTune";
+import { daylightAt } from "../world/DayTime";
+import { LOADOUT } from "../config/loadout";
 import { sharedMobMaterial } from "./mobMaterials";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
@@ -924,10 +926,12 @@ export class Mob implements Hittable {
     this.updateBurnFx(dt);
     const ember = this.burnGlow > 0 ? this.burnGlow * (0.35 + 0.25 * Math.sin(pos.y * 40 + performance.now() * 0.012)) : 0;
 
+    // Ночью — немного собственного свечения сверх дневного (заявка): слизень/плевун/багровый едва светятся в темноте.
+    const night = (1 - daylightAt(LOADOUT.world.hour)) * 0.16;
     this.mat.emissiveColor.set(
-      this.tint[0] * 0.28 + this.flash * 0.6 + ember,
-      this.tint[1] * 0.2 + this.flash * 0.1 + ember * 0.35,
-      this.tint[2] * 0.32,
+      this.tint[0] * (0.28 + night) + this.flash * 0.6 + ember,
+      this.tint[1] * (0.2 + night) + this.flash * 0.1 + ember * 0.35,
+      this.tint[2] * (0.32 + night),
     );
 
     secAdd("mob.burn+tint", sp);

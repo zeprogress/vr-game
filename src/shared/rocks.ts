@@ -66,6 +66,8 @@ export function rocks(): Rock[] {
     // последовательность остальных камней не сдвигается.
     if (Math.hypot(x - HUB.zones.mainTent.x, z - HUB.zones.mainTent.z) < 7) continue;
     if (clearSpot(x, z)) continue;
+    if (Math.hypot(x - -15, z - 114) < 3) continue; // конкретный камень, попросили убрать
+    if (Math.hypot(x - -111, z - -68) < 20 && r() < 0.65) continue; // заявка: заметно реже
     out.push(rock);
   }
   // За игровой зоной — редкие камни в кольце, тот же приём, что и в
