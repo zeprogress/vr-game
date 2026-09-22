@@ -97,6 +97,12 @@ import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
  * Выбирает источник ввода по устройству и подключает WebXR.
  */
 /** Фиксированная фовеация: `?fov=` (0 — выкл, 1 — макс), по умолчанию 1 (максимум). (Раньше `Number(null)` давал 0 — по умолчанию она была выключена.) */
+/** Ждать промис не дольше ms — иначе резолвиться самостоятельно (не блокировать выход из-за зависшей XR-сессии и т.п.). */
+function raceTimeout<T>(p: Promise<T> | undefined, ms: number): Promise<T | void> {
+  if (!p) return Promise.resolve();
+  return Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
+}
+
 function ffrLevel(): number {
   const q = new URLSearchParams(location.search);
   const want = q.has("fov") ? Number(q.get("fov")) : 1;
@@ -1632,7 +1638,7 @@ export class Game {
     // тоннель не нужен, только блинк).
     const moving = !teleport && Math.hypot(inp.moveX, inp.moveY) > 0.02;
     // Поворот (snap-turn) — держим виньетку секунду после него.
-    if (inp.lookYaw !== 0) this.vignetteTurnT = 0.5;
+    if (inp.lookYaw !== 0) this.vignetteTurnT = 0.25;
     else this.vignetteTurnT = Math.max(0, this.vignetteTurnT - dt);
     this.comfortVignette.tick(dt, moving || this.vignetteTurnT > 0, allowed);
     if (this.player.consumeTeleportBlink()) this.comfortVignette.blink();
@@ -2387,10 +2393,17 @@ export class Game {
    */
   async leaveWorld(): Promise<void> {
     this.saveNow();
+    // Явный уход (consented=true) — иначе сервер видит обрыв связи и держит
+    // игрока в мире/у спектатора ~20с (allowReconnection) на любой платформе.
     try {
-      await this.xr?.baseExperience.exitXRAsync();
+      await this.net?.disconnect();
     } catch {
-      /* уже вне XR */
+      /* всё равно перезагружаемся ниже */
+    }
+    try {
+      await raceTimeout(this.xr?.baseExperience.exitXRAsync(), 2000);
+    } catch {
+      /* уже вне XR или зависла XR-сессия — не блокируем выход */
     }
     window.location.reload();
   }
@@ -2442,7 +2455,7 @@ export class Game {
       this.net.onPvp = null;
       this.net.onConnectionLost = null;
       this.net.onReconnected = null;
-      this.net.disconnect(); // остановить попытки переподключения
+      void this.net.disconnect(); // остановить попытки переподключения
     }
     for (const a of this.avatars.values()) this.dropAvatar(a);
     this.avatars.clear();

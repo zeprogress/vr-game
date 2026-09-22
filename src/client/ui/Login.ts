@@ -88,16 +88,14 @@ export function runLogin(
         finish(false);
         return;
       }
-      // Экран входа в VR.
+      // Экран входа в VR — заявка: только VR, без обхода на плоский режим.
       box.innerHTML = `
         <div class="login-title">ZEP GAME</div>
         <div class="login-tag">VR / PC / Mobile</div>
         <div class="login-sub">Надень шлем и нажми</div>
         <button id="login-vr" disabled>Войти в VR</button>
-        <button id="login-flat" class="ghost">Войти без VR</button>
         <div id="login-status"></div>`;
       const vrBtn = box.querySelector<HTMLButtonElement>("#login-vr")!;
-      const flatBtn = box.querySelector<HTMLButtonElement>("#login-flat")!;
       const vrStatus = box.querySelector<HTMLDivElement>("#login-status")!;
 
       void hooks.whenXrReady().then(() => (vrBtn.disabled = false));
@@ -107,21 +105,13 @@ export function runLogin(
         vrStatus.textContent = "Запуск VR…";
         // Без await до enterVR — иначе теряется «жест пользователя».
         hooks.enterVR().then((entered) => {
-          if (entered) finish(true);
-          else {
-            vrBtn.disabled = false;
-            vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
+          if (entered) {
+            finish(true);
+            return;
           }
+          vrBtn.disabled = false;
+          vrStatus.textContent = "Не удалось войти в VR — попробуй ещё раз";
         });
-        // Подстраховка: если через 20 с всё ещё висим (в шлеме экран не виден) —
-        // впускаем в мир, чтобы не застрять с пустой сценой.
-        setTimeout(() => {
-          if (document.getElementById("login")) finish(false);
-        }, 20000);
-      });
-      flatBtn.addEventListener("click", () => {
-        hooks.requestPointerLock();
-        finish(false);
       });
     };
 

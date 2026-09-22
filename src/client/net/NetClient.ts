@@ -516,11 +516,22 @@ export class NetClient {
     return id ? (this.room?.state.players.get(id) ?? null) : null;
   }
 
-  disconnect(): void {
+  /**
+   * Явный уход (кнопка «Выйти», не разрыв связи): ждём, пока сервер получит
+   * leave-фрейм с consented=true — иначе он может решить, что это обрыв связи,
+   * и держать игрока в мире ~20с (allowReconnection) на всех платформах.
+   */
+  async disconnect(): Promise<void> {
     this.closedByUs = true;
-    void this.room?.leave();
+    const room = this.room;
     this.room = null;
     this.client = null;
+    if (!room) return;
+    try {
+      await withTimeout(room.leave(true), 1500);
+    } catch {
+      /* сервер и так закроет по таймеру, если фрейм не дошёл */
+    }
   }
 }
 
