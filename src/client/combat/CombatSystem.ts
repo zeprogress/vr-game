@@ -76,8 +76,6 @@ export type ItemKind = "sword" | "bow" | "shield" | "staff";
 
 /** Оружие ближнего боя: меч и посох машутся и бьют одинаково (посох слабее). */
 const MELEE_KINDS = new Set<ItemKind>(["sword", "staff"]);
-/** Насколько близко кисть должна быть к точке хвата посоха, чтобы взять её второй рукой. */
-const STAFF_GRAB_RADIUS = 0.14;
 const STAFF_UP = new Vector3(0, 1, 0);
 function isMelee(k: ItemKind): boolean {
   return MELEE_KINDS.has(k);
@@ -945,10 +943,7 @@ export class CombatSystem {
       const item = this.inHand(side);
       if (item) {
         if (pressed) {
-          if (item.kind === "staff" && item.hand2) {
-            // Двуручный хват: повторный грип этой рукой — посох остаётся в другой.
-            this.releaseStaffHand(item, side);
-          } else if (atShoulder && !this.stowedItem(side)) {
+          if (atShoulder && !this.stowedItem(side)) {
             // Повторный грип за плечом и слот свободен -> убрать за спину.
             this.stowItem(item, side);
           } else if (atShoulder && this.stowedItem(side)) {
@@ -967,7 +962,6 @@ export class CombatSystem {
         // Нажал за плечом и там что-то лежит -> достать; иначе взять вторую руку
         // на посох; иначе поднять с земли.
         if (atShoulder && this.stowedItem(side)) this.drawItem(side);
-        else if (this.tryGrabStaffSecondHand(side)) continue;
         else this.tryPickup(side);
       }
     }
@@ -1007,48 +1001,6 @@ export class CombatSystem {
     const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
     const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
     return Vector3.Distance(worldPos, low) <= Vector3.Distance(worldPos, high) ? "low" : "high";
-  }
-
-  /**
-   * Свободная рука прямо на свободном хвате посоха (не «где-то рядом», а в
-   * зоне самого хвата) — берём вторым хватом.
-   */
-  private tryGrabStaffSecondHand(side: Side): boolean {
-    const staff = this.items.find((i) => i.kind === "staff");
-    if (!staff?.hand || staff.hand2 || staff.hand === side) return false;
-    const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
-    if (!node) return false;
-    const hp = node.getAbsolutePosition();
-    const m = staff.mesh.getWorldMatrix();
-    const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
-    const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
-    const primaryGrip = staff.grip?.[staff.hand] ?? "low";
-    // Берём только за СВОБОДНЫЙ хват и только если рука прямо на нём.
-    const freePt = primaryGrip === "low" ? high : low;
-    if (Vector3.Distance(hp, freePt) > STAFF_GRAB_RADIUS) return false;
-    staff.hand2 = side;
-    staff.grip = { ...(staff.grip ?? {}), [side]: primaryGrip === "low" ? "high" : "low" };
-    staff.mesh.rotationQuaternion = null;
-    this.resetHand(side);
-    this.haptic(side, 0.4, 50);
-    this.sfx.bowDraw();
-    return true;
-  }
-
-  /** Отпустил одну руку с двуручного посоха — остаётся в другой. */
-  private releaseStaffHand(item: Item, side: Side): void {
-    if (item.hand2 === side) {
-      item.hand2 = null;
-    } else {
-      item.hand = item.hand2 ?? item.hand;
-      item.hand2 = null;
-    }
-    if (item.grip) delete item.grip[side];
-    item.mesh.parent = null;
-    item.mesh.rotationQuaternion = null;
-    this.resetHand(side);
-    this.haptic(side, 0.35, 45);
-    if (this.castHooked) this.resetCast();
   }
 
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
@@ -2595,23 +2547,24 @@ export class CombatSystem {
    */
   private updateVrSkills(locked: boolean): void {
     const eye = this.player.eyePosition;
-    const sides: Side[] = ["left", "right"];
-    for (const side of sides) {
+    // Меч: только правая рука обрабатывается здесь — левый курок целиком
+    // отвечает за прицел «Града стрел» (ниже), edge-детект на нём ведём один раз.
+    {
+      const side: Side = "right";
       const pad = this.controller(side)?.inputSource.gamepad;
       const trig = !!pad?.buttons[0]?.pressed;
       const edge = trig && !this.skillPrevTrig[side];
       this.skillPrevTrig[side] = trig;
-      if (locked && this.uiLockHand === side) continue;
-      if (side === "left") continue; // левый курок обрабатывается отдельно ниже (град стрел)
-      const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
-      if (!node) continue;
-      const hp = node.getAbsolutePosition();
-      const raised =
-        hp.y > eye.y + 0.1 && Math.hypot(hp.x - eye.x, hp.z - eye.z) < 0.8;
-      if (!edge) continue;
-      if (raised && this.held1("sword", side)) {
-        this.haptic(side, 0.6, 80);
-        this.onVrSkill?.("stunBash");
+      if (!(locked && this.uiLockHand === side)) {
+        const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+        if (node) {
+          const hp = node.getAbsolutePosition();
+          const raised = hp.y > eye.y + 0.1 && Math.hypot(hp.x - eye.x, hp.z - eye.z) < 0.8;
+          if (edge && raised && this.held1("sword", side)) {
+            this.haptic(side, 0.6, 80);
+            this.onVrSkill?.("stunBash");
+          }
+        }
       }
     }
 
