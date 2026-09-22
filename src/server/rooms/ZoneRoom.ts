@@ -1263,6 +1263,27 @@ export class ZoneRoom extends Room<ZoneState> {
       p.rightCls = r.cls;
       p.rightTier = r.tier;
 
+      // Самоисправление rt.equippedWeaponId по факту того, что реально в руке
+      // (l/r выше) — а не только в момент явного подбора/экипировки. Иначе
+      // любой путь оказаться с оружием в руке, который явно не проставляет
+      // equippedWeaponId (смена рук, снятие со спины и т.п.), рассинхронизирует
+      // склад с рукой: предмет в руке продолжает висеть в списке склада как
+      // отдельный "непонятый" (не экипированный) — визуально похоже на дубль.
+      const reconcile = (hand: "left" | "right", cls: string, tier: string): void => {
+        if (!cls || !tier || tier === "base") {
+          rt.equippedWeaponId[hand] = null;
+          return;
+        }
+        const curId = rt.equippedWeaponId[hand];
+        const cur = curId ? rt.weapons.find((w) => w.id === curId) : undefined;
+        if (cur && cur.cls === cls && cur.tier === tier) return; // уже верно
+        const otherId = hand === "left" ? rt.equippedWeaponId.right : rt.equippedWeaponId.left;
+        const match = rt.weapons.find((w) => w.cls === cls && w.tier === tier && w.id !== otherId);
+        rt.equippedWeaponId[hand] = match ? match.id : null;
+      };
+      reconcile("left", l.cls, l.tier);
+      reconcile("right", r.cls, r.tier);
+
       // За спиной — только то, что игрок честно поднял (иначе уровень режем).
       rt.stowed = Array.isArray(msg.stowed)
         ? msg.stowed
