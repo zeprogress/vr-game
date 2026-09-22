@@ -1971,7 +1971,7 @@ export class Game {
     this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
     this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
     this.combat.nearestWorldWeapon = (pos) => this.loot.nearestWeapon(pos);
-    this.combat.onTakeWorldWeapon = (id) => net.sendTakeWeapon(id);
+    this.combat.onTakeWorldWeapon = (id, hand) => net.sendTakeWeapon(id, hand ?? undefined);
     this.combat.makeWeaponMesh = (cls, tier) =>
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
     this.combat.onWeaponLanded = (cls, tier, x, z, hand) =>

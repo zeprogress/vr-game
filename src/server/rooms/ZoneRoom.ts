@@ -1171,7 +1171,15 @@ export class ZoneRoom extends Room<ZoneState> {
 
       this.sim.takeDrop(d.id);
       rt.owned.add(weaponKey(w.cls, w.tier)); // право пользоваться этим уровнем
-      if (d.instance) rt.weapons.push(d.instance); // конкретный раскатанный инстанс — в склад
+      if (d.instance) {
+        rt.weapons.push(d.instance); // конкретный раскатанный инстанс — в склад
+        // В руку (не только на склад) — запоминаем, какой именно инстанс там
+        // лежит: иначе последующий бросок (MSG.dropWeapon) не находит его по
+        // rt.equippedWeaponId и ролит НОВЫЙ случайный лут поверх этого же —
+        // дублирование при цикле "подобрал → бросил".
+        const hand = msg.hand === "left" || msg.hand === "right" ? msg.hand : null;
+        if (hand) rt.equippedWeaponId[hand] = d.instance.id;
+      }
       this.announcePickup(p.nick, w.cls, w.tier, d.instance);
       this.clientOf(client.sessionId)?.send(MSG.picked, { item: d.item, count: 1 });
       // Соседям — анимация подбора на модельке (PickUp).

@@ -1158,7 +1158,7 @@ export class CombatSystem {
     | ((pos: Vector3) => { id: string; cls: ItemKind; tier: WeaponTier; pos: Vector3 } | null)
     | null = null;
   /** Заявка серверу: беру это оружие. */
-  onTakeWorldWeapon: ((id: string) => void) | null = null;
+  onTakeWorldWeapon: ((id: string, hand: Side | null) => void) | null = null;
   /** Строит меш под класс и уровень (Game передаёт свои фабрики). */
   makeWeaponMesh: ((cls: ItemKind, tier: WeaponTier) => Mesh) | null = null;
 
@@ -1275,8 +1275,8 @@ export class CombatSystem {
       if (this.uiLockHand === side || this.inHand(side)) continue;
       if (this.tryPickupWorldWeapon(side)) return;
     }
-    // Руки заняты / не подошло — на склад.
-    this.takeWorldWeapon(ws.id);
+    // Руки заняты / не подошло — на склад (не в руку — рука не задействована).
+    this.takeWorldWeapon(ws.id, null);
     this.haptic("right", 0.3, 50);
   }
 
@@ -1436,9 +1436,9 @@ export class CombatSystem {
   /** Уже отправленные серверу заявки «беру»: пока сервер не убрал предмет с земли, второй раз не берём (иначе двойник в другой руке). */
   private readonly takenDrops = new Map<string, number>();
 
-  private takeWorldWeapon(id: string): void {
+  private takeWorldWeapon(id: string, side: Side | null): void {
     this.takenDrops.set(id, performance.now());
-    this.onTakeWorldWeapon?.(id);
+    this.onTakeWorldWeapon?.(id, side);
   }
 
   private recentlyTaken(id: string): boolean {
@@ -1465,7 +1465,7 @@ export class CombatSystem {
         tintBow(bow.mesh, ws.tier);
         this.nockLocal.copyFrom(this.bowParts.nockRest);
         tintArrows(ws.tier); // золотому луку — золотые стрелы
-        this.takeWorldWeapon(ws.id);
+        this.takeWorldWeapon(ws.id, side);
         this.equip(bow, side);
         return true;
       }
@@ -1476,7 +1476,7 @@ export class CombatSystem {
     const item = this.makeItem(ws.cls, ws.tier, fresh, ws.pos.clone());
     if (this.canPick(item)) {
       this.items.push(item);
-      this.takeWorldWeapon(ws.id);
+      this.takeWorldWeapon(ws.id, side);
       this.equip(item, side);
       return true;
     }

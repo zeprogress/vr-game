@@ -406,8 +406,8 @@ export class NetClient {
   }
 
   /** Заявка взять лежащее в мире оружие. */
-  sendTakeWeapon(id: string): void {
-    const msg: TakeWeaponMsg = { id };
+  sendTakeWeapon(id: string, hand?: "left" | "right"): void {
+    const msg: TakeWeaponMsg = { id, hand };
     this.room?.send(MSG.takeWeapon, msg);
   }
 
