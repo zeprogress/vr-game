@@ -647,28 +647,20 @@ export async function loadGrassField(
     if (best) chunks.set(chunkKey(best[0], best[1]), build(best[0], best[1]));
   };
 
-  let lastK = -1;
   let lastLights = 1;
   const bushEmiDay = bushMat?.emissiveColor.clone() ?? null;
-  let lastBushK = -1;
-  let lastGrassSun = -1;
-  let lastBushSun = -1;
   return (dt: number, daylight: number) => {
     const G = LOADOUT.glow;
     // Собственная яркость травы к ночи (заявка: чуть темнее, чем было) × ручка «свечение».
+    // Без гейтинга по последнему значению — как «Освещение»: пишем каждый кадр,
+    // чтобы правка из админ-панели попадала на экран без задержки.
     const kk = (0.14 + 0.86 * daylight) * G.grassGlow;
-    if (Math.abs(kk - lastK) >= 0.004) {
-      lastK = kk;
-      mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
-    }
-    if (Math.abs(G.grassSun - lastGrassSun) >= 0.004) {
-      lastGrassSun = G.grassSun;
-      mat.diffuseColor.copyFromFloats(
-        grassDiffuseBase.r * G.grassSun,
-        grassDiffuseBase.g * G.grassSun,
-        grassDiffuseBase.b * G.grassSun,
-      );
-    }
+    mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
+    mat.diffuseColor.copyFromFloats(
+      grassDiffuseBase.r * G.grassSun,
+      grassDiffuseBase.g * G.grassSun,
+      grassDiffuseBase.b * G.grassSun,
+    );
     // Заявка: днём хватает одного солнца, ночью — до двух живых огней. Меняем
     // maxSimultaneousLights только на смене (это пересобирает шейдер материала —
     // не делать каждый кадр).
@@ -680,18 +672,12 @@ export async function loadGrassField(
     if (bushMat && bushEmiDay && bushDiffuseBase) {
       // Заявка: ночью чуть меньше собственного свечения, чем днём × ручка «свечение».
       const bkk = (0.72 + 0.28 * daylight) * G.bushGlow;
-      if (Math.abs(bkk - lastBushK) >= 0.01) {
-        lastBushK = bkk;
-        bushMat.emissiveColor.copyFromFloats(bushEmiDay.r * bkk, bushEmiDay.g * bkk, bushEmiDay.b * bkk);
-      }
-      if (Math.abs(G.bushSun - lastBushSun) >= 0.004) {
-        lastBushSun = G.bushSun;
-        bushMat.diffuseColor.copyFromFloats(
-          bushDiffuseBase.r * G.bushSun,
-          bushDiffuseBase.g * G.bushSun,
-          bushDiffuseBase.b * G.bushSun,
-        );
-      }
+      bushMat.emissiveColor.copyFromFloats(bushEmiDay.r * bkk, bushEmiDay.g * bkk, bushEmiDay.b * bkk);
+      bushMat.diffuseColor.copyFromFloats(
+        bushDiffuseBase.r * G.bushSun,
+        bushDiffuseBase.g * G.bushSun,
+        bushDiffuseBase.b * G.bushSun,
+      );
     }
     if (bushFarMat) {
       bushFarMat.setFloat("uLit", 0.2 + 0.8 * daylight);
