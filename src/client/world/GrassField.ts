@@ -2,9 +2,13 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTargetTexture";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
+import { Camera } from "@babylonjs/core/Cameras/camera";
+import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
@@ -127,6 +131,129 @@ function firstGeometry(root: TransformNode): Mesh | null {
   return m;
 }
 
+/**
+ * Снимок-силуэт: рендерит копию source в квадратную RTT-текстуру с альфой (в
+ * ортографии, лицом к камере), один раз, и отдаёт готовую текстуру + реальные
+ * размеры силуэта в метрах — для дешёвых дальних билбордов (куст/дерево),
+ * похожих на настоящую модель, а не на плоскую заглушку. Яркость снимка —
+ * нейтральная (не «как в моменте захвата»): реальная день/ночь модуляция —
+ * через uLit билборд-шейдера при отрисовке (см. BILLBOARD_FRAG), как у
+ * дальних деревьев/камней (TreeImpostors).
+ */
+function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex: Texture; w: number; h: number } {
+  const clone = source.clone("bbCaptureTmp", null, true) as Mesh;
+  clone.setEnabled(true);
+  clone.position.setAll(0);
+  clone.rotationQuaternion = null;
+  clone.rotation.setAll(0);
+  clone.scaling.setAll(1);
+  // Не делить материал с оригиналом (иначе правки ниже испортят настоящие кусты).
+  const srcMat = clone.material as StandardMaterial | null;
+  if (srcMat) {
+    const capMat = srcMat.clone(`${srcMat.name}_capture`) as StandardMaterial;
+    capMat.disableLighting = true;
+    capMat.emissiveTexture = capMat.diffuseTexture;
+    // Нейтральная дневная яркость — как у листвы деревьев в TreeImpostors
+    // (там же тонировка текстуры почти не важна, тон и так задаёт текстура).
+    capMat.emissiveColor = new Color3(0.5, 0.58, 0.42);
+    clone.material = capMat;
+  }
+  clone.computeWorldMatrix(true);
+  clone.refreshBoundingInfo();
+  const bb = clone.getBoundingInfo().boundingBox;
+  const w = bb.maximumWorld.x - bb.minimumWorld.x;
+  const h = bb.maximumWorld.y - bb.minimumWorld.y;
+  const cx = (bb.maximumWorld.x + bb.minimumWorld.x) / 2;
+  const cy = (bb.maximumWorld.y + bb.minimumWorld.y) / 2;
+  const cz = (bb.maximumWorld.z + bb.minimumWorld.z) / 2;
+  const dist = Math.max(w, h, bb.maximumWorld.z - bb.minimumWorld.z) * 2 + 1;
+
+  // Небольшой подъём камеры (не строго в лоб) — читается более объёмным силуэтом,
+  // ближе к тому, как игрок обычно смотрит на куст сверху-вбок, а не в упор сбоку.
+  const elev = dist * 0.22;
+  const cam = new FreeCamera(`bbCam_${source.name}`, new Vector3(cx, cy + elev, cz + dist), scene);
+  cam.setTarget(new Vector3(cx, cy, cz));
+  cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
+  const half = (Math.max(w, h) / 2) * 1.08;
+  cam.orthoLeft = -half;
+  cam.orthoRight = half;
+  cam.orthoTop = half;
+  cam.orthoBottom = -half;
+
+  const rtt = new RenderTargetTexture(`bbRtt_${source.name}`, size, scene, {
+    generateMipMaps: false,
+    type: undefined,
+    samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
+  });
+  rtt.activeCamera = cam;
+  rtt.renderList = [clone];
+  rtt.clearColor = new Color4(0, 0, 0, 0);
+  rtt.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+  rtt.hasAlpha = true;
+  scene.customRenderTargets.push(rtt);
+  const capMatToDispose = clone.material !== source.material ? (clone.material as StandardMaterial) : null;
+  scene.onAfterRenderObservable.addOnce(() => {
+    scene.customRenderTargets = scene.customRenderTargets.filter((t) => t !== rtt);
+    clone.dispose();
+    capMatToDispose?.dispose(false, false); // не трогать текстуры — они общие с оригиналом
+    cam.dispose();
+  });
+  return { tex: rtt, w, h };
+}
+
+/** Билборд-шейдер: цилиндрический разворот к камере вокруг вертикали + затухание в тумане — как у TreeImpostors. */
+const BILLBOARD_VERT = /* glsl */ `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+attribute vec4 world0;
+attribute vec4 world1;
+attribute vec4 world2;
+attribute vec4 world3;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
+uniform mat4 view;
+varying vec2 vUv;
+varying float vDist;
+void main() {
+  vec3 base = world3.xyz;
+  float sx = world0.x;
+  float sy = world1.y;
+  vec3 t = view[3].xyz;
+  vec3 cam = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+  vec3 toCam = cam - base;
+  vec3 d = normalize(vec3(toCam.x, 0.0, toCam.z) + vec3(1e-4, 0.0, 0.0));
+  vec3 right = vec3(-d.z, 0.0, d.x);
+  vec3 p = base + right * (position.x * sx) + vec3(0.0, position.y * sy, 0.0);
+  vDist = length(p - cam);
+  vUv = uv;
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(p, 1.0); } else { gl_Position = viewProjectionR * vec4(p, 1.0); }
+#else
+  gl_Position = viewProjection * vec4(p, 1.0);
+#endif
+}
+`;
+const BILLBOARD_FRAG = /* glsl */ `
+precision highp float;
+varying vec2 vUv;
+varying float vDist;
+uniform sampler2D tex;
+uniform float uLit;
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+void main() {
+  vec4 c = texture2D(tex, vUv);
+  if (c.a < 0.4) discard;
+  vec3 col = c.rgb * uLit * 0.9;
+  float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
+  gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
+}
+`;
+
 export async function loadGrassField(
   scene: Scene,
   terrain: Terrain,
@@ -237,20 +364,46 @@ export async function loadGrassField(
     kBush = addKind(cBush, "grassBush", bm, false);
   }
 
-  // Заявка: кусты дальше 50м — плоский билборд лицом к камере (1 квад, тот же
-  // материал/текстура) вместо полной кустовой геометрии — самый дешёвый вид.
+  // Заявка: кусты дальше 50м — плоский билборд лицом к камере, похожий на
+  // настоящий силуэт (снимок реальной модели в текстуру), самый дешёвый вид:
+  // тот же приём и шейдер, что у дальних деревьев/камней (TreeImpostors) —
+  // цилиндрический билборд к камере прямо в вершинном шейдере (без пересчёта
+  // на CPU) и яркость по daylight (uLit), а не «навсегда как при захвате».
   let kBushFar = -1;
+  let bushFarMat: ShaderMaterial | null = null;
+  let bushFarW = 1;
+  let bushFarH = 1;
   if (kBush >= 0) {
+    const srcMesh = kinds[kBush].mesh;
+    srcMesh.thinInstanceCount = 0;
+    const captured = captureBillboardTexture(scene, srcMesh, 128);
+    bushFarW = captured.w;
+    bushFarH = captured.h;
+    bushFarMat = new ShaderMaterial(
+      "grassBushFarMat",
+      scene,
+      { vertexSource: BILLBOARD_VERT, fragmentSource: BILLBOARD_FRAG },
+      {
+        attributes: ["position", "uv"],
+        uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd"],
+        samplers: ["tex"],
+      },
+    );
+    bushFarMat.setTexture("tex", captured.tex);
+    bushFarMat.setFloat("uLit", 1);
+    bushFarMat.setColor3("uFogColor", scene.fogColor);
+    bushFarMat.setFloat("uFogStart", scene.fogStart);
+    bushFarMat.setFloat("uFogEnd", scene.fogEnd);
+    bushFarMat.backFaceCulling = false;
+
     const farMesh = new Mesh("grassBushFar", scene);
-    const w = 1.1;
-    const h = 1.3;
     const vd = new VertexData();
-    vd.positions = [-w / 2, 0, 0, w / 2, 0, 0, w / 2, h, 0, -w / 2, h, 0];
+    // Юнит-квад: x∈[-0.5,0.5] (масштаб — ширина в world0.x), y∈[0,1] (высота в world1.y) — как у TreeImpostors.
+    vd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
     vd.indices = [0, 1, 2, 0, 2, 3];
     vd.uvs = [0, 0, 1, 0, 1, 1, 0, 1];
-    vd.normals = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
     vd.applyToMesh(farMesh);
-    farMesh.material = kinds[kBush].mesh.material;
+    farMesh.material = bushFarMat;
     farMesh.isPickable = false;
     farMesh.alwaysSelectAsActiveMesh = true;
     farMesh.doNotSyncBoundingInfo = true;
@@ -446,9 +599,9 @@ export async function loadGrassField(
           const sy = sc * (0.8 + hash(ix, iz, 25) * 0.5);
           const y = terrain.heightAt(x, z) - 0.05;
           if (kBushFar >= 0 && d > BUSH_FAR_DIST) {
-            // Билборд лицом к камере: нормаль квада (локальный +Z) смотрит на cx,cz.
-            const yawCam = Math.atan2(-dx, -dz);
-            write(kinds[kBushFar], x, y, z, yawCam, sc, sy, 1, 1, 1);
+            // Разворот к камере — целиком в шейдере (BILLBOARD_VERT), yaw тут не важен.
+            // world0.x/world1.y — реальный размер в метрах (юнит-квад × захваченные w/h × sc).
+            write(kinds[kBushFar], x, y, z, 0, bushFarW * sc, bushFarH * sy, 1, 1, 1);
           } else {
             write(bk, x, y, z, hash(ix, iz, 24) * Math.PI * 2, sc, sy, 1, 1, 1);
           }
@@ -504,6 +657,12 @@ export async function loadGrassField(
     if (wantLights !== lastLights) {
       lastLights = wantLights;
       mat.maxSimultaneousLights = wantLights;
+    }
+    if (bushFarMat) {
+      bushFarMat.setFloat("uLit", 0.2 + 0.8 * daylight);
+      bushFarMat.setColor3("uFogColor", scene.fogColor);
+      bushFarMat.setFloat("uFogStart", scene.fogStart);
+      bushFarMat.setFloat("uFogEnd", scene.fogEnd);
     }
     acc += dt;
     if (acc < 0.2) return;

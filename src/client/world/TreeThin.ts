@@ -105,8 +105,24 @@ export class TreeThin {
     }
   }
 
+  /** Диагностика ?off=trees: rebuild() сам включает мешь уровня, когда есть
+   * видимые экземпляры — разовое скрытие из Game.applyOffFlags иначе стирается
+   * следующей пересборкой (та же причина, что была у ?off=grass). */
+  private readonly offTrees = new URLSearchParams(location.search).get("off")?.split(",").includes("trees") ?? false;
+
   /** Пересобрать буферы: кто виден и каким уровнем LOD. */
   rebuild(cam: Vector3): void {
+    if (this.offTrees) {
+      for (const g of this.groups.values()) {
+        for (const lv of g.levels.flat()) {
+          if (!lv) continue;
+          lv.n = 0;
+          lv.mesh.thinInstanceCount = 0;
+          lv.mesh.setEnabled(false);
+        }
+      }
+      return;
+    }
     for (const g of this.groups.values()) {
       const need = g.members.length;
       for (const lv of g.levels.flat()) {
