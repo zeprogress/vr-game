@@ -15,6 +15,8 @@ export interface Terrain {
   mesh: Mesh;
   /** Высота поверхности в точке (x, z) — аналитическая, совпадает с мешем. */
   heightAt(x: number, z: number): number;
+  /** Днём/ночью переключает maxSimultaneousLights земли (1 / 3) — см. Zone.tick. */
+  tick(daylight: number): void;
 }
 
 /**
@@ -196,7 +198,18 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
   mesh.material = mat;
   mesh.freezeWorldMatrix();
 
-  return { mesh, heightAt: surface };
+  // Заявка: земля — тоже весь экран (см. GrassField) — днём хватает солнца,
+  // ночью до трёх живых огней. Меняем только на смене фазы (пересборка шейдера).
+  let lastLights = 1;
+  const tick = (daylight: number): void => {
+    const want = daylight < 0.5 ? 3 : 1;
+    if (want !== lastLights) {
+      lastLights = want;
+      mat.maxSimultaneousLights = want;
+    }
+  };
+
+  return { mesh, heightAt: surface, tick };
 }
 
 /**
@@ -454,11 +467,11 @@ function grassMaterial(scene: Scene): StandardMaterial {
   }
 
   const mat = new StandardMaterial("terrainMat", scene);
-  // Земля — весь экран, плюс bump-текстура (нормали) — полный LIGHT_BUDGET (12)
+  // Земля — весь экран, плюс bump-текстура (нормали): полный LIGHT_BUDGET (12)
   // на пиксель ночью (когда факелы/светлячки реально включены) заметно роняет
-  // fps (Perfetto: ALU/Fragment 174 против 131 днём). Хватает солнца + 2
-  // ближайших живых огней, дальше — запечённое пятно на земле под стайкой.
-  mat.maxSimultaneousLights = 3;
+  // fps (Perfetto: ALU/Fragment 174 против 131 днём). Заявка: днём — только
+  // солнце (1), ночью — до трёх живых огней; переключение см. tick() ниже.
+  mat.maxSimultaneousLights = 1;
   // Крошечная собственная яркость: днём тонет в солнце, ночью чуть
   // приподнимает землю над чернотой (там, где нет светлячков).
   mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
