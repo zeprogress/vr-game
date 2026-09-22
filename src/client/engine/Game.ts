@@ -2018,6 +2018,14 @@ export class Game {
 
     // Сервер перезапустился / связь оборвалась — переподключаемся на месте.
     net.onConnectionLost = () => this.notifyToast("Связь потеряна — переподключаюсь…");
+    // Зашли этим же ником в другом месте — нас намеренно выгнали, не
+    // переподключаемся; короткая пауза, чтобы игрок успел увидеть тост,
+    // и назад на экран входа (соединение уже закрыто сервером).
+    net.onKicked = () => {
+      this.notifyToast("Вошли под этим ником в другом месте — выход");
+      this.saveNow();
+      setTimeout(() => window.location.reload(), 1500);
+    };
     net.onReconnected = (room) => {
       this.lastSentPlat = 0; // новая сессия на сервере — платформу нужно сообщить заново
       this.attachRoom(room);
@@ -2461,6 +2469,7 @@ export class Game {
       this.net.onPvp = null;
       this.net.onConnectionLost = null;
       this.net.onReconnected = null;
+      this.net.onKicked = null;
       void this.net.disconnect(); // остановить попытки переподключения
     }
     for (const a of this.avatars.values()) this.dropAvatar(a);

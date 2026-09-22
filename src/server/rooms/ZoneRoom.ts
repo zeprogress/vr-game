@@ -15,6 +15,7 @@ import {
 } from "#shared/net/schema";
 import {
   MSG,
+  KICK_SAME_NICK_CODE,
   type HitMobMsg,
   type MoveMsg,
   type SaveMsg,
@@ -717,6 +718,9 @@ const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
 export class ZoneRoom extends Room<ZoneState> {
   private sim!: ZoneSim;
   private readonly rt = new Map<string, Runtime>();
+  /** sessionId, которых мы сами выгнали (kickNick) — onLeave не должен ждать
+   * для них 20с реконнекта, иначе они могут отбить место обратно у новой сессии. */
+  private readonly kickedSessions = new Set<string>();
   /** Секунды с запуска комнаты — по ним считается темп ударов. */
   private elapsed = 0;
   /** Точный час мира. В состояние (state.hour) кладётся раз в syncSeconds. */
@@ -2588,8 +2592,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (id.startsWith("bot:") || rt.token !== want) continue;
       const c = this.clientOf(id);
       if (c) {
+        this.kickedSessions.add(id);
         try {
-          c.leave(4000, "вошли под этим ником в другом месте");
+          c.leave(KICK_SAME_NICK_CODE, "вошли под этим ником в другом месте");
         } catch {
           /* сокет уже мёртв */
         }
@@ -5382,8 +5387,12 @@ export class ZoneRoom extends Room<ZoneState> {
     // Обрыв связи (не осознанный выход) — держим место 20 с. Клиент сам
     // переподключается тем же токеном (NetClient.reconnectLoop), и тогда
     // персонаж не мигает в бота и обратно на каждом сетевом чихе.
+    // Исключение — сами выгнали (kickNick, зашли тем же ником в другом
+    // месте): реконнект тут НЕ нужен и опасен — старая сессия могла бы
+    // отбить место обратно у уже вошедшей новой.
+    const wasKicked = this.kickedSessions.delete(client.sessionId);
     this.persist(client); // на случай падения сервера в это окно
-    if (!consented && p) {
+    if (!consented && p && !wasKicked) {
       try {
         await this.allowReconnection(client, 20);
         console.log(`[zone] ~ ${client.sessionId} вернулся`);

@@ -3,6 +3,10 @@ import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
 import type { PlayerMode } from "./schema";
 
+/** Код закрытия комнаты, когда сервер намеренно выгоняет клиента (зашли тем
+ * же ником в другом месте) — клиент не должен пытаться переподключиться. */
+export const KICK_SAME_NICK_CODE = 4000;
+
 export const MSG = {
   /** клиент -> сервер: транспорт локального игрока (голова + кисти + защита). */
   move: "m",
