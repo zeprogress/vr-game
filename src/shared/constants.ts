@@ -418,11 +418,11 @@ export const MOB_CAMPS: {
   // сильные — дальше. Дистанция от лагеря указана в комментарии.
   { x: -28, z: -28, type: "bee", count: 5, spread: 4 }, // ~39 м от лагеря — слабые, у самого лагеря (центр поляны освобождён)
   { x: -69, z: -13, type: "bee", count: 12, spread: 4 }, // ~44 м, ур.3
-  { x: -74, z: 74, type: "spikyBlob", count: 5, spread: 6 }, // СЗ угол, ур.6
-  { x: 12, z: 70, type: "frog", count: 4, spread: 5 }, // у декоративной башни (~25 м от неё), ур.7
+  { x: -55, z: 65, type: "spikyBlob", count: 5, spread: 6 }, // ближе к центру (заявка), ур.6
+  { x: 12, z: 53, type: "frog", count: 4, spread: 5 }, // ближе к центру (заявка), ур.7
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
-  { x: 80, z: -80, type: "orcGunner", count: 5, spread: 8 }, // ЮВ угол, у самого края, ур.15
-  { x: -35, z: 13, type: "ruinMage", count: 4, spread: 7 }, // ~71 м от лагеря, ур.20
+  { x: 54, z: -63, type: "orcGunner", count: 5, spread: 8 }, // ближе к центру (заявка), ур.15
+  { x: 0, z: 12, type: "ruinMage", count: 4, spread: 7 }, // почти в центре (заявка), ур.20
   { x: -13, z: -80, type: "golem", count: 15, spread: 28 }, // ур.26
 ];
 

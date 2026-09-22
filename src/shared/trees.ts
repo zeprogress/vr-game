@@ -49,9 +49,6 @@ export function trees(): Tree[] {
     if (Math.abs(x) > reach || Math.abs(z) > reach) return;
     if (Math.abs(x + 0) < 5 && Math.abs(z + 12) < 5) return; // не поверх оружия
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) return; // арена босса — чисто
-    // У декоративной башни деревья не растут — та же зона, что и у камней/травы (реальные координаты
-    // башни из tower.ts, а не угаданные по описанию — раньше дважды промахнулся мимо неё).
-    if (Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR + 12) return;
     const scale = 0.75 + rnd() * 1.0;
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   };
@@ -88,13 +85,24 @@ export function trees(): Tree[] {
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue;
-    // Башня стоит как раз в полосе этого кольца (89.7 м от центра карты, кольцо — 84–154 м) — без этой
-    // проверки её не касались ни одно из исключений в add(), кольцевые деревья её не видели вовсе.
-    if (Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR + 12) continue;
     const scale = 0.75 + rnd() * 1.0;
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   }
 
-  cached = out;
-  return out;
+  // Возле декоративной башни деревьев нет (та же зона, что у камней/травы) + конкретные деревья по
+  // заявке (координаты сняты с пронумерованной карты) — фильтруем ГОТОВЫЙ список, а не по ходу
+  // генерации: правка внутри цикла сдвигает ГПСЧ и меняет положение вообще всех остальных деревьев.
+  const removed: readonly [number, number][] = [
+    [130, 81.5],
+    [-85, 105],
+    [28, -138.1],
+    [120.6, -53.2],
+  ];
+  const result = out.filter(
+    (t) =>
+      Math.hypot(t.x - TOWER_PROP_POS.x, t.z - TOWER_PROP_POS.z) >= TOWER_PROP_CLEAR + 12 &&
+      !removed.some(([rx, rz]) => Math.hypot(t.x - rx, t.z - rz) < 1),
+  );
+  cached = result;
+  return result;
 }

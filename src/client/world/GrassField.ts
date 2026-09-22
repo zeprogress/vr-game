@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import type { Terrain } from "./Terrain";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { noGrass } from "./grassLayout";
-import { MOB_CAMPS } from "#shared/constants";
+import { MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
 
@@ -80,6 +80,8 @@ function sparseMul(x: number, z: number): number {
   let m = 1;
   const dc = Math.hypot(x, z);
   if (dc < 24) m *= 0.3 + 0.7 * smooth(8, 24, dc);
+  // Заявка: от границы движения игрока (WORLD.playRadius) до конца карты — трава и кусты сходят на нет.
+  if (dc > WORLD.playRadius) m *= 1 - smooth(WORLD.playRadius, REACH, dc);
   for (const c of MOB_CAMPS) {
     const r = c.spread + 4;
     const d = Math.hypot(x - c.x, z - c.z);

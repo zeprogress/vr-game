@@ -94,6 +94,18 @@ export function rocks(): Rock[] {
     out.push(ring);
   }
 
-  cached = out;
-  return out;
+  // Конкретные камни по заявке (координаты сняты с пронумерованной карты) — фильтруем ГОТОВЫЙ список
+  // (не по ходу генерации: правка внутри цикла сдвигает ГПСЧ и переставляет вообще все остальные камни).
+  const removed: readonly [number, number][] = [
+    [-16.7, 114.3],
+    [10.6, -124],
+    [-147.8, -27.3],
+    [-111.1, -85.2],
+    [-128.1, 65],
+    [122.7, -49.7],
+    [99.2, -70],
+  ];
+  const result = out.filter((rk) => !removed.some(([rx, rz]) => Math.hypot(rk.x - rx, rk.z - rz) < 1));
+  cached = result;
+  return result;
 }
