@@ -1331,13 +1331,18 @@ export class Game {
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
     this.loadoutPanel.onClearWorld = () => this.net?.sendClearWorld();
     // «Сохранить» онлайн: положения/свет — ВСЕМ (общая подгонка на сервере),
-    // голос/сглаживание — по токену этого игрока/устройства.
-    this.loadoutPanel.onSaveServer = this.net?.online
-      ? () => {
-          this.net!.sendSetWorldLoadout(worldLoadoutSnapshot());
-          this.net!.sendLoadout(exportOverrides());
-        }
-      : null;
+    // голос/сглаживание — по токену этого игрока/устройства. buildVrUi()
+    // перевызывается на каждый вход в VR (не только один раз при загрузке
+    // страницы) — раньше здесь стоял тернарник по net.online В МОМЕНТ ЭТОГО
+    // ВЫЗОВА: если он совпадал с окном переподключения, onSaveServer навсегда
+    // становился null до следующего входа в VR, хотя панель всё равно
+    // показывала «сохранено ✓» (эта отметка чисто локальная). Проверяем
+    // net.online внутри самого колбэка — на актуальном состоянии на момент нажатия.
+    this.loadoutPanel.onSaveServer = () => {
+      if (!this.net?.online) return;
+      this.net.sendSetWorldLoadout(worldLoadoutSnapshot());
+      this.net.sendLoadout(exportOverrides());
+    };
   }
 
   private lastWorldLoadout = "";
