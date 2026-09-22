@@ -143,6 +143,8 @@ export class Game {
   private lastSentPlat = 0;
   private vrStars: VrStunStars | null = null;
   private comfortVignette: ComfortVignette | null = null;
+  /** Секунду после поворота (snap-turn) виньетка тоже включена. */
+  private vignetteTurnT = 0;
   private healCrossFx: HealCrossFx | null = null;
   private readonly spellLights: SpellLights;
   private readonly botLights: import("../world/BotLights").BotLights;
@@ -1625,9 +1627,14 @@ export class Game {
     this.player.setTeleportMode(teleport);
 
     const inp = this.player.lastInput;
-    // При телепорте непрерывного движения нет — тоннель не нужен, только блинк.
-    const stick = teleport ? 0 : Math.min(1, Math.hypot(inp.moveX, inp.moveY) / 0.9);
-    this.comfortVignette.tick(dt, stick, allowed);
+    // Заявка: без плавности — любое, даже лёгкое отклонение стика включает
+    // виньетку на полную сразу (при телепорте непрерывного движения нет —
+    // тоннель не нужен, только блинк).
+    const moving = !teleport && Math.hypot(inp.moveX, inp.moveY) > 0.02;
+    // Поворот (snap-turn) — держим виньетку секунду после него.
+    if (inp.lookYaw !== 0) this.vignetteTurnT = 1;
+    else this.vignetteTurnT = Math.max(0, this.vignetteTurnT - dt);
+    this.comfortVignette.tick(dt, moving || this.vignetteTurnT > 0, allowed);
     if (this.player.consumeTeleportBlink()) this.comfortVignette.blink();
   }
 
