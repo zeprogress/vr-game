@@ -18,7 +18,6 @@ import type { Obstacle } from "../props";
 import { WORLD } from "#shared/constants";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
-import { LIGHT_BUDGET } from "../Fireflies";
 import { buildHubCampfire } from "./HubCampfire";
 
 /**
@@ -72,8 +71,8 @@ function flatMat(
   m.diffuseColor = color;
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
-  m.twoSidedLighting = true;
-  m.maxSimultaneousLights = LIGHT_BUDGET; // ловит свет костра ночью
+  m.twoSidedLighting = true; // двусторонний свет уже удваивает стоимость пикселя
+  m.maxSimultaneousLights = 4; // ловит свет костра ночью, но не весь LIGHT_BUDGET
   if (emissive) {
     m.emissiveColor = emissive;
   } else if (dayLit) {
@@ -281,7 +280,9 @@ function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
   mat.bumpTexture = bump;
   mat.bumpTexture.level = 0.45;
   mat.specularColor = new Color3(0, 0, 0);
-  mat.maxSimultaneousLights = LIGHT_BUDGET;
+  // Как у земли поляны: полный LIGHT_BUDGET на bump-материал во весь экран
+  // лагеря дорого ночью (см. Terrain.ts) — солнца + пары ближайших огней хватает.
+  mat.maxSimultaneousLights = 4;
   // Как у земли поляны: крошечный собственный свет, остальное — солнце/небо.
   mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
   m.material = mat;

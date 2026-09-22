@@ -3,7 +3,6 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { LIGHT_BUDGET } from "./Fireflies";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
@@ -455,8 +454,11 @@ function grassMaterial(scene: Scene): StandardMaterial {
   }
 
   const mat = new StandardMaterial("terrainMat", scene);
-  // Земля должна ловить свет светлячков, а не только солнце и небо.
-  mat.maxSimultaneousLights = LIGHT_BUDGET;
+  // Земля — весь экран, плюс bump-текстура (нормали) — полный LIGHT_BUDGET (12)
+  // на пиксель ночью (когда факелы/светлячки реально включены) заметно роняет
+  // fps (Perfetto: ALU/Fragment 174 против 131 днём). Хватает солнца + 2
+  // ближайших живых огней, дальше — запечённое пятно на земле под стайкой.
+  mat.maxSimultaneousLights = 3;
   // Крошечная собственная яркость: днём тонет в солнце, ночью чуть
   // приподнимает землю над чернотой (там, где нет светлячков).
   mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
