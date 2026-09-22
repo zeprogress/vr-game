@@ -73,6 +73,10 @@ export class Hands {
   private addObs: Observer<WebXRInputSource> | null = null;
   private removeObs: Observer<WebXRInputSource> | null = null;
   private readonly skin: StandardMaterial;
+  private readonly skinDiffuseBase: Color3;
+  private readonly skinEmiBase: Color3;
+  private lastGlowSun = -1;
+  private lastGlowEmi = -1;
   private glove: Glove | null = null;
 
   constructor(private readonly scene: Scene) {
@@ -81,8 +85,13 @@ export class Hands {
     // Мало собственной яркости — чтобы форму кисти лепил направленный свет,
     // а не заливал ровный эмиссив (руки казались плоскими).
     this.skin.emissiveColor = new Color3(0.035, 0.024, 0.016);
+    this.skinDiffuseBase = this.skin.diffuseColor.clone();
+    this.skinEmiBase = this.skin.emissiveColor.clone();
     this.skin.specularColor = new Color3(0.08, 0.07, 0.06);
     this.skin.specularPower = 32;
+    // Заявка: 1 источник и днём, и ночью (руки всегда близко к камере — самый
+    // частый фрагмент от первого лица, дефолт Babylon был 4).
+    this.skin.maxSimultaneousLights = 1;
     void this.loadGlove();
   }
 
@@ -262,6 +271,15 @@ export class Hands {
   update(dt: number): void {
     const sp = secNow();
     this.updateInner(dt);
+    const G = LOADOUT.glow;
+    if (G.handsSun !== this.lastGlowSun) {
+      this.lastGlowSun = G.handsSun;
+      this.skin.diffuseColor.copyFrom(this.skinDiffuseBase).scaleInPlace(G.handsSun);
+    }
+    if (G.handsGlow !== this.lastGlowEmi) {
+      this.lastGlowEmi = G.handsGlow;
+      this.skin.emissiveColor.copyFrom(this.skinEmiBase).scaleInPlace(G.handsGlow);
+    }
     secAdd("hands.update", sp);
   }
 

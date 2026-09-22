@@ -7,6 +7,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { WORLD } from "#shared/constants";
+import { LOADOUT } from "../config/loadout";
 import { terrainHeight as surface } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
@@ -201,11 +202,27 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
   // Заявка: земля — тоже весь экран (см. GrassField) — днём хватает солнца,
   // ночью до трёх живых огней. Меняем только на смене фазы (пересборка шейдера).
   let lastLights = 1;
+  const emiDay = mat.emissiveColor.clone();
+  const diffuseBase = mat.diffuseColor.clone();
+  let lastK = -1;
+  let lastSun = -1;
   const tick = (daylight: number): void => {
+    const G = LOADOUT.glow;
     const want = daylight < 0.5 ? 3 : 1;
     if (want !== lastLights) {
       lastLights = want;
       mat.maxSimultaneousLights = want;
+    }
+    // Заявка: ночью земля чуть-чуть светится сама (совсем немного) — иначе
+    // без живых огней рядом полностью тонет в черноте × ручка «свечение».
+    const kk = (1 + (1 - daylight) * 0.6) * G.groundGlow;
+    if (Math.abs(kk - lastK) >= 0.01) {
+      lastK = kk;
+      mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
+    }
+    if (Math.abs(G.groundSun - lastSun) >= 0.004) {
+      lastSun = G.groundSun;
+      mat.diffuseColor.copyFromFloats(diffuseBase.r * G.groundSun, diffuseBase.g * G.groundSun, diffuseBase.b * G.groundSun);
     }
   };
 

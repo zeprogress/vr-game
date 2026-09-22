@@ -36,7 +36,7 @@ interface Target {
   key: TargetKey;
   label: string;
   /** Кисть — только поворот; предмет — позиция, поворот и масштаб; мир — час. */
-  kind: "hand" | "item" | "world" | "light" | "vec3" | "voice" | "gfx" | "comfort" | "action";
+  kind: "hand" | "item" | "world" | "light" | "glow" | "vec3" | "voice" | "gfx" | "comfort" | "action";
 }
 
 const TARGETS: Target[] = [
@@ -56,6 +56,7 @@ const TARGETS: Target[] = [
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },
   { key: "light:day", label: "Освещение", kind: "light" },
+  { key: "glow:day", label: "Солнце/свечение объектов", kind: "glow" },
   { key: "world:clear", label: "Очистить мир от лута (всем)", kind: "action" },
 ];
 
@@ -210,6 +211,7 @@ export class LoadoutPanel {
     if (this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
     if (this.target.kind === "light") return 4; // солнце, тепло, ночь, туман
+    if (this.target.kind === "glow") return 10; // трава/кусты/деревья/земля/руки × (солнце, свечение)
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
     if (this.target.kind === "comfort") return 1;
@@ -273,6 +275,38 @@ export class LoadoutPanel {
         get: () => L[sp.key],
         set: (v) => {
           L[sp.key] = Number.isFinite(v) ? Math.min(sp.hi, Math.max(sp.lo, v)) : 1;
+        },
+        format: (v) => v.toFixed(2),
+      };
+    }
+    if (t.kind === "glow") {
+      const G = LOADOUT.glow;
+      const specs: {
+        label: string;
+        key: keyof typeof G;
+        lo: number;
+        hi: number;
+        steps: number[];
+      }[] = [
+        { label: "трава·солнце", key: "grassSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "трава·свеч.", key: "grassGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·солнце", key: "bushSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·свеч.", key: "bushGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·солнце", key: "treeSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·свеч.", key: "treeGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·солнце", key: "groundSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·свеч.", key: "groundGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·солнце", key: "handsSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·свеч.", key: "handsGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+      ];
+      const sp = specs[i];
+      return {
+        label: sp.label,
+        rot: false,
+        steps: sp.steps,
+        get: () => G[sp.key],
+        set: (v) => {
+          G[sp.key] = Number.isFinite(v) ? Math.min(sp.hi, Math.max(sp.lo, v)) : 1;
         },
         format: (v) => v.toFixed(2),
       };

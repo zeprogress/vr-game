@@ -101,6 +101,23 @@ export interface Loadout {
     /** Плотность тумана: 1 — как в палитре, 0 — тумана нет. */
     fog: number;
   };
+  /**
+   * Множители влияния солнца (диффуз) и собственного свечения (эмиссив) по
+   * категориям объектов — поверх уже подобранных базовых цветов материалов
+   * (1 = как подобрано по умолчанию). Админ-панель, сохраняется всем.
+   */
+  glow: {
+    grassSun: number;
+    grassGlow: number;
+    bushSun: number;
+    bushGlow: number;
+    treeSun: number;
+    treeGlow: number;
+    groundSun: number;
+    groundGlow: number;
+    handsSun: number;
+    handsGlow: number;
+  };
   /** Голосовой чат. */
   voice: {
     /** 1 — микрофон работает, 0 — молчим (слушать продолжаем). */
@@ -179,6 +196,18 @@ export const LOADOUT_DEFAULTS: Loadout = {
     night: 1, // яркость ночи
     fog: 1.5, // плотность тумана — гуще палитры
   },
+  glow: {
+    grassSun: 1,
+    grassGlow: 1,
+    bushSun: 1,
+    bushGlow: 1,
+    treeSun: 1,
+    treeGlow: 1,
+    groundSun: 1,
+    groundGlow: 1,
+    handsSun: 1,
+    handsGlow: 1,
+  },
   voice: {
     mic: 0, // микрофон выключен по умолчанию
     spatial: 0, // всех слышно ровно (не от места игрока)
@@ -208,6 +237,7 @@ export type TargetKey =
   | `item:${ItemKind}:${SlotKey}`
   | "world:time"
   | "light:day"
+  | "glow:day"
   | "belt:potion"
   | "hud:hp"
   | "voice:chat"
@@ -228,6 +258,7 @@ function readTarget(src: Loadout, key: TargetKey): unknown {
   if (key === "world:clear") return {}; // не настройка, а действие
   if (parts[0] === "world") return src.world;
   if (parts[0] === "light") return src.light;
+  if (parts[0] === "glow") return src.glow;
   if (parts[0] === "belt") return src.belt;
   if (parts[0] === "hud") return src.hud;
   if (parts[0] === "voice") return src.voice;
@@ -260,6 +291,20 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     if (n !== null) dst.light.night = n;
     const fg = num(v?.fog, 0, 4);
     if (fg !== null) dst.light.fog = fg;
+    return;
+  }
+  if (parts[0] === "glow") {
+    const v = value as Partial<Loadout["glow"]>;
+    const num = (x: unknown): number | null =>
+      typeof x === "number" && Number.isFinite(x) ? Math.min(2.5, Math.max(0, x)) : null;
+    for (const k of [
+      "grassSun", "grassGlow", "bushSun", "bushGlow",
+      "treeSun", "treeGlow", "groundSun", "groundGlow",
+      "handsSun", "handsGlow",
+    ] as const) {
+      const n = num(v?.[k]);
+      if (n !== null) dst.glow[k] = n;
+    }
     return;
   }
   if (parts[0] === "belt") {
@@ -484,6 +529,7 @@ export interface WorldLoadout {
   belt: Loadout["belt"];
   hud: Loadout["hud"];
   light: Loadout["light"];
+  glow: Loadout["glow"];
 }
 
 /** Снимок текущих общих значений — панель шлёт его серверу по «Сохранить всем». */
@@ -494,6 +540,7 @@ export function worldLoadoutSnapshot(): WorldLoadout {
     belt: LOADOUT.belt,
     hud: LOADOUT.hud,
     light: LOADOUT.light,
+    glow: LOADOUT.glow,
   });
 }
 
@@ -555,6 +602,7 @@ export function applyWorldLoadout(raw: string): void {
     if (pos) LOADOUT.hud.hpPos = pos;
   }
   if (w.light) writeTarget(LOADOUT, "light:day", w.light);
+  if (w.glow) writeTarget(LOADOUT, "glow:day", w.glow);
 }
 
 // ---- применение: сначала файл, поверх — подобранное в игре ----

@@ -12,6 +12,7 @@ import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
+import { LOADOUT } from "../config/loadout";
 import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
@@ -72,6 +73,39 @@ let baseLeaf: StandardMaterial | null = null;
 const fadeBark: StandardMaterial[] = [];
 const fadeLeaf: StandardMaterial[] = [];
 let fadeOn = false;
+let barkDiffuseBase: Color3 | null = null;
+let barkEmiBase: Color3 | null = null;
+let leafDiffuseBase: Color3 | null = null;
+let leafEmiBase: Color3 | null = null;
+let lastTreeSun = -1;
+let lastTreeGlow = -1;
+
+/**
+ * Ручки админ-панели (?glow) — влияние солнца/собственное свечение стволов и
+ * крон. Материалы заморожены (freeze()) ради производительности — снимаем
+ * заморозку только на кадр правки (это редко, только при подстройке админом).
+ */
+export function treesGlowTick(): void {
+  if (!baseBark || !baseLeaf) return;
+  const G = LOADOUT.glow;
+  const sunChanged = G.treeSun !== lastTreeSun;
+  const glowChanged = G.treeGlow !== lastTreeGlow;
+  if (!sunChanged && !glowChanged) return;
+  baseBark.unfreeze();
+  baseLeaf.unfreeze();
+  if (sunChanged) {
+    lastTreeSun = G.treeSun;
+    if (barkDiffuseBase) baseBark.diffuseColor.copyFrom(barkDiffuseBase).scaleInPlace(G.treeSun);
+    if (leafDiffuseBase) baseLeaf.diffuseColor.copyFrom(leafDiffuseBase).scaleInPlace(G.treeSun);
+  }
+  if (glowChanged) {
+    lastTreeGlow = G.treeGlow;
+    if (barkEmiBase) baseBark.emissiveColor.copyFrom(barkEmiBase).scaleInPlace(G.treeGlow);
+    if (leafEmiBase) baseLeaf.emissiveColor.copyFrom(leafEmiBase).scaleInPlace(G.treeGlow);
+  }
+  baseBark.freeze();
+  baseLeaf.freeze();
+}
 
 /**
  * Полупрозрачные копии коры и листвы. Строим ДО freeze() исходников.
@@ -317,6 +351,10 @@ export async function loadTrees(
   }
   baseBark = bark;
   baseLeaf = leaf;
+  barkDiffuseBase = bark.diffuseColor.clone();
+  barkEmiBase = bark.emissiveColor.clone();
+  leafDiffuseBase = leaf.diffuseColor.clone();
+  leafEmiBase = leaf.emissiveColor.clone();
   // Полупрозрачные копии — только там, где они нужны (спектатор), и строго
   // до freeze() исходников.
   if (noInstances) buildFadeMaterials(bark, leaf);

@@ -13,6 +13,7 @@ import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
+import { treesGlowTick } from "./nature";
 import { BotLights } from "./BotLights";
 import { Fireflies, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
@@ -247,6 +248,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
       sp = secNow();
       terrain.tick(day.daylight);
+      treesGlowTick();
       windTick(dt, day.daylight);
       secAdd("zone.wind", sp);
       sp = secNow();

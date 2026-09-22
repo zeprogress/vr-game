@@ -15,6 +15,7 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import type { Terrain } from "./Terrain";
+import { LOADOUT } from "../config/loadout";
 import { noGrass } from "./grassLayout";
 import { BOSS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
@@ -37,7 +38,7 @@ const CHUNK = 16; // клеток в куске по стороне (кэш)
 const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
 const R_GRASS_BASE = 130; // дальность травы (редкие пучки), м — увеличена по заявке (конус узкий, так что бюджет тот же)
-const R_BUSH_BASE = 100; // заявка: билборд после 50м, полностью пропадают только на 100м
+const R_BUSH_BASE = 150; // заявка: билборд после 50м, полностью пропадают только на 150м
 const COS_HALF = Math.cos((60 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
@@ -288,7 +289,8 @@ export async function loadGrassField(
     mat.transparencyMode = 1;
     mat.alphaCutOff = 0.3;
   }
-  mat.diffuseColor = new Color3(0.5, 0.72, 0.38);
+  const grassDiffuseBase = new Color3(0.5, 0.72, 0.38);
+  mat.diffuseColor = grassDiffuseBase.clone();
   const emiDay = new Color3(0.11, 0.2, 0.09);
   mat.emissiveColor = emiDay.clone();
   mat.specularColor = new Color3(0, 0, 0);
@@ -343,8 +345,11 @@ export async function loadGrassField(
 
   // Кусты: свой материал — листва с текстурой куста, без вершинных цветов.
   let kBush = -1;
+  let bushMat: StandardMaterial | null = null;
+  let bushDiffuseBase: Color3 | null = null;
   if (cBush) {
     const bm = new StandardMaterial("bushMat", scene);
+    bushMat = bm;
     // Родная текстура куста (TwistedTree) — тёмно-красная; берём зелёный лист обычных деревьев (та же раскладка карточек).
     const bt = new Texture("/models/nature/Leaves_NormalTree_C.png", scene, false, false);
     if (bt) {
@@ -354,10 +359,11 @@ export async function loadGrassField(
       bm.transparencyMode = 1;
       bm.alphaCutOff = 0.28;
     }
-    // Заявка: чуть больше собственного свечения, влияние солнца ещё слабее —
-    // в тени не чёрные, на солнце не засвечены.
-    bm.diffuseColor = new Color3(0.14, 0.21, 0.11);
-    bm.emissiveColor = new Color3(0.1, 0.14, 0.07);
+    // Заявка: чуть больше влияния солнца днём, чуть меньше собственного
+    // свечения ночью (модуляция — в тике ниже) — в тени не чёрные, на солнце не засвечены.
+    bushDiffuseBase = new Color3(0.18, 0.26, 0.14);
+    bm.diffuseColor = bushDiffuseBase.clone();
+    bm.emissiveColor = new Color3(0.09, 0.12, 0.06);
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = 2;
@@ -643,12 +649,25 @@ export async function loadGrassField(
 
   let lastK = -1;
   let lastLights = 1;
+  const bushEmiDay = bushMat?.emissiveColor.clone() ?? null;
+  let lastBushK = -1;
+  let lastGrassSun = -1;
+  let lastBushSun = -1;
   return (dt: number, daylight: number) => {
-    // Собственная яркость травы к ночи (заявка: чуть темнее, чем было).
-    const kk = 0.14 + 0.86 * daylight;
+    const G = LOADOUT.glow;
+    // Собственная яркость травы к ночи (заявка: чуть темнее, чем было) × ручка «свечение».
+    const kk = (0.14 + 0.86 * daylight) * G.grassGlow;
     if (Math.abs(kk - lastK) >= 0.004) {
       lastK = kk;
       mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
+    }
+    if (Math.abs(G.grassSun - lastGrassSun) >= 0.004) {
+      lastGrassSun = G.grassSun;
+      mat.diffuseColor.copyFromFloats(
+        grassDiffuseBase.r * G.grassSun,
+        grassDiffuseBase.g * G.grassSun,
+        grassDiffuseBase.b * G.grassSun,
+      );
     }
     // Заявка: днём хватает одного солнца, ночью — до двух живых огней. Меняем
     // maxSimultaneousLights только на смене (это пересобирает шейдер материала —
@@ -657,6 +676,22 @@ export async function loadGrassField(
     if (wantLights !== lastLights) {
       lastLights = wantLights;
       mat.maxSimultaneousLights = wantLights;
+    }
+    if (bushMat && bushEmiDay && bushDiffuseBase) {
+      // Заявка: ночью чуть меньше собственного свечения, чем днём × ручка «свечение».
+      const bkk = (0.72 + 0.28 * daylight) * G.bushGlow;
+      if (Math.abs(bkk - lastBushK) >= 0.01) {
+        lastBushK = bkk;
+        bushMat.emissiveColor.copyFromFloats(bushEmiDay.r * bkk, bushEmiDay.g * bkk, bushEmiDay.b * bkk);
+      }
+      if (Math.abs(G.bushSun - lastBushSun) >= 0.004) {
+        lastBushSun = G.bushSun;
+        bushMat.diffuseColor.copyFromFloats(
+          bushDiffuseBase.r * G.bushSun,
+          bushDiffuseBase.g * G.bushSun,
+          bushDiffuseBase.b * G.bushSun,
+        );
+      }
     }
     if (bushFarMat) {
       bushFarMat.setFloat("uLit", 0.2 + 0.8 * daylight);
