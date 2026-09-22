@@ -321,8 +321,9 @@ export class CombatSystem {
    * оно становится предметом мира: видно всем и переживает перезапуск.
    * null (офлайн) — предмет просто остаётся лежать у этого игрока.
    */
-  onWeaponLanded: ((cls: WeaponClass, tier: WeaponTier, x: number, z: number) => void) | null =
-    null;
+  onWeaponLanded:
+    | ((cls: WeaponClass, tier: WeaponTier, x: number, z: number, hand: Side | null) => void)
+    | null = null;
   /**
    * Звуковое событие для соседей по сети: взмах / выстрел / попадание стрелы.
    * `at` — мировая точка звука. null офлайн.
@@ -1646,7 +1647,7 @@ export class CombatSystem {
   private handOverToWorld(item: Item): void {
     if (item.tier === "base" || !this.onWeaponLanded) return;
     const p = item.mesh.position;
-    this.onWeaponLanded(item.kind as WeaponClass, item.tier, p.x, p.z);
+    this.onWeaponLanded(item.kind as WeaponClass, item.tier, p.x, p.z, item.thrownFrom ?? null);
 
     if (item.kind === "bow") {
       // Лук в игре один — не удаляем, а возвращаем к базовому виду и на камень.

@@ -1969,7 +1969,8 @@ export class Game {
     this.combat.onTakeWorldWeapon = (id) => net.sendTakeWeapon(id);
     this.combat.makeWeaponMesh = (cls, tier) =>
       makeWeaponMesh(this.scene, cls as WeaponClass, tier);
-    this.combat.onWeaponLanded = (cls, tier, x, z) => net.sendDropWeapon({ cls, tier, x, z });
+    this.combat.onWeaponLanded = (cls, tier, x, z, hand) =>
+      net.sendDropWeapon({ cls, tier, x, z, hand: hand ?? undefined });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);
     this.combat.onCast = (msg) => net.sendCast(msg);
     this.combat.onLowMana = () => {

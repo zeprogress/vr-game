@@ -1357,10 +1357,11 @@ export class ZoneRoom extends Room<ZoneState> {
       store.flush(); // правят редко — пишем на диск сразу
     });
 
-    // Заработанное оружие упало на землю — кладём его в мир (общее для всех
-    // и переживает перезапуск). Право на уровень (owned) у игрока остаётся:
-    // это кооп, а не PvP-экономика, и терять добытое из-за случайного броска
-    // обиднее, чем иметь лишний меч.
+    // Заработанное оружие упало на землю (бросок в VR) — кладём его в мир
+    // (общее для всех и переживает перезапуск). Снимаем именно тот экипированный
+    // инстанс со склада и кладём НА ЗЕМЛЮ ЕГО ЖЕ (как при "drop" со склада) —
+    // раньше тут ролился НОВЫЙ случайный лут, а старый инстанс оставался в
+    // rt.weapons: один физический бросок давал два предмета (дублирование).
     this.onMessage(MSG.dropWeapon, (client: Client, msg: DropWeaponMsg) => {
       const p = this.state.players.get(client.sessionId);
       const rt = this.rt.get(client.sessionId);
@@ -1374,7 +1375,22 @@ export class ZoneRoom extends Room<ZoneState> {
       const z = clampAbs(num(msg.z, p.head.z), edge);
       // Далеко от игрока предмет оказаться не мог даже после сильного броска.
       if (Math.hypot(x - p.head.x, z - p.head.z) > 60) return;
-      this.sim.dropWeapon(msg.cls, msg.tier, x, z);
+
+      const hand = msg.hand === "left" || msg.hand === "right" ? msg.hand : null;
+      const wid = hand ? rt.equippedWeaponId[hand] : null;
+      const w = wid ? rt.weapons.find((inst) => inst.id === wid && inst.cls === msg.cls && inst.tier === msg.tier) : undefined;
+      if (w) {
+        const idx = rt.weapons.indexOf(w);
+        rt.weapons.splice(idx, 1);
+        if (rt.equippedWeaponId.left === w.id) rt.equippedWeaponId.left = null;
+        if (rt.equippedWeaponId.right === w.id) rt.equippedWeaponId.right = null;
+        this.sim.dropInstance(w, x, z);
+        this.persist(client);
+      } else {
+        // Подстраховка: не нашли конкретный инстанс (старый клиент без hand,
+        // рассинхрон и т.п.) — как раньше, хотя бы не теряем предмет игроку.
+        this.sim.dropWeapon(msg.cls, msg.tier, x, z);
+      }
     });
 
     // Звуковые события: клиентские (взмах, шаг, лук, стрела) пересылаем
