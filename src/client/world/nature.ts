@@ -126,7 +126,7 @@ export function fadeTreesNear(camX: number, camZ: number): void {
 
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
-function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean): StandardMaterial {
+function leafMaterial(scene: Scene, tex: BaseTexture | undefined): StandardMaterial {
   const m = new StandardMaterial("treeLeaf", scene);
   if (tex) {
     tex.hasAlpha = true;
@@ -139,18 +139,21 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined, lite: boolean)
   m.emissiveColor = new Color3(0.12, 0.18, 0.09); // листва вертикальная — ей нужно больше своей яркости
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
-  m.maxSimultaneousLights = lite ? 2 : 5;
+  // Заявка: у листвы крон всегда ровно 1 источник (солнце) — не зависит от
+  // времени суток и от lite-профиля (крон много на экране, самый частый фрагмент).
+  m.maxSimultaneousLights = 1;
   return m;
 }
 
-function barkMaterial(scene: Scene, lite: boolean): StandardMaterial {
+function barkMaterial(scene: Scene): StandardMaterial {
   const m = new StandardMaterial("treeBark", scene);
   m.diffuseColor = new Color3(0.3, 0.2, 0.13);
   // Почти без собственной яркости: верхушки стволов не должны «светиться»
   // ночью. Днём их лепит солнце, ночью пусть уходят в темноту.
   m.emissiveColor = new Color3(0.02, 0.013, 0.008);
   m.specularColor = new Color3(0, 0, 0);
-  m.maxSimultaneousLights = lite ? 2 : 5;
+  // Заявка: у стволов всегда ровно 1 источник (солнце).
+  m.maxSimultaneousLights = 1;
   return m;
 }
 
@@ -214,7 +217,7 @@ function leafCardLod(src: Mesh, every: number, name: string): Mesh | null {
 export async function loadTrees(
   scene: Scene,
   terrain: Terrain,
-  lite: boolean,
+  _lite: boolean,
   noInstances = false,
 ): Promise<void> {
   await import("@babylonjs/loaders/glTF/2.0");
@@ -231,8 +234,8 @@ export async function loadTrees(
   const containers = settled.filter((c): c is NonNullable<typeof c> => c !== null);
   if (containers.length === 0) return;
 
-  const bark = barkMaterial(scene, lite);
-  const leaf = leafMaterial(scene, containers[0].textures[0], lite);
+  const bark = barkMaterial(scene);
+  const leaf = leafMaterial(scene, containers[0].textures[0]);
 
   treeList().forEach((t, i) => {
     const c = containers[i % containers.length];
@@ -292,9 +295,9 @@ export async function loadTrees(
         const near = leafCardLod(srcM, 2, `${srcM.name}_lod1`);
         const far = leafCardLod(srcM, 4, `${srcM.name}_lod2`);
         const far2 = leafCardLod(srcM, 8, `${srcM.name}_lod3`);
-        if (near) srcM.addLODLevel(28, near);
-        if (far) srcM.addLODLevel(50, far);
-        if (far2) srcM.addLODLevel(85, far2);
+        if (near) srcM.addLODLevel(16, near);
+        if (far) srcM.addLODLevel(32, far);
+        if (far2) srcM.addLODLevel(60, far2);
       }
     }
   }

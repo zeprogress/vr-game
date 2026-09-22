@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -7,6 +7,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import type { Terrain } from "./Terrain";
@@ -130,7 +131,7 @@ export async function loadGrassField(
   scene: Scene,
   terrain: Terrain,
   density: number,
-  lite: boolean,
+  _lite: boolean,
   /** Множитель дальности (зритель-стрим: 2+, у него запас по GPU и камера свободная). */
   farK = 1,
 ): Promise<(dt: number, daylight: number) => void> {
@@ -169,9 +170,10 @@ export async function loadGrassField(
   // альфа-cutout квадов): полный LIGHT_BUDGET (12) на пиксель дорого (Perfetto:
   // 77.8% времени GPU — шейдинг фрагментов при ALU/Fragment≈114), а свет не
   // отбирается по дистанции — считаются первые N источников сцены как есть.
-  // Солнца + 2 ближайших живых огня достаточно, дальше подсветку несёт
-  // запечённое пятно на земле (groundGlowRadius) и без «живого» источника.
-  mat.maxSimultaneousLights = lite ? 2 : 3;
+  // Заявка: днём хватает одного солнца, ночью — до двух живых огней (дальше
+  // подсветку несёт запечённое пятно на земле, groundGlowRadius). Переключение
+  // по daylight — см. тик ниже (lite — всегда 1, самый дешёвый профиль).
+  mat.maxSimultaneousLights = 1;
 
   const kinds: Kind[] = [];
   const addKind = (c: typeof cBush, name: string, material: StandardMaterial, withColor: boolean): number => {
@@ -234,6 +236,32 @@ export async function loadGrassField(
     bm.maxSimultaneousLights = 2;
     kBush = addKind(cBush, "grassBush", bm, false);
   }
+
+  // Заявка: кусты дальше 50м — плоский билборд лицом к камере (1 квад, тот же
+  // материал/текстура) вместо полной кустовой геометрии — самый дешёвый вид.
+  let kBushFar = -1;
+  if (kBush >= 0) {
+    const farMesh = new Mesh("grassBushFar", scene);
+    const w = 1.1;
+    const h = 1.3;
+    const vd = new VertexData();
+    vd.positions = [-w / 2, 0, 0, w / 2, 0, 0, w / 2, h, 0, -w / 2, h, 0];
+    vd.indices = [0, 1, 2, 0, 2, 3];
+    vd.uvs = [0, 0, 1, 0, 1, 1, 0, 1];
+    vd.normals = [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1];
+    vd.applyToMesh(farMesh);
+    farMesh.material = kinds[kBush].mesh.material;
+    farMesh.isPickable = false;
+    farMesh.alwaysSelectAsActiveMesh = true;
+    farMesh.doNotSyncBoundingInfo = true;
+    farMesh.setEnabled(false);
+    const cap = 1024;
+    const buf = new Float32Array(16 * cap);
+    farMesh.thinInstanceSetBuffer("matrix", buf, 16, false);
+    kinds.push({ mesh: farMesh, buf, col: null, n: 0 });
+    kBushFar = kinds.length - 1;
+  }
+  const BUSH_FAR_DIST = 50;
 
   // ---- кэш кусков клеток ----
   const chunks = new Map<number, Float32Array>();
@@ -415,7 +443,15 @@ export async function loadGrassField(
           const cosA = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
           if (cosA < COS_HALF) continue;
           const sc = 0.45 + hash(ix, iz, 23) * 0.75;
-          write(bk, x, terrain.heightAt(x, z) - 0.05, z, hash(ix, iz, 24) * Math.PI * 2, sc, sc * (0.8 + hash(ix, iz, 25) * 0.5), 1, 1, 1);
+          const sy = sc * (0.8 + hash(ix, iz, 25) * 0.5);
+          const y = terrain.heightAt(x, z) - 0.05;
+          if (kBushFar >= 0 && d > BUSH_FAR_DIST) {
+            // Билборд лицом к камере: нормаль квада (локальный +Z) смотрит на cx,cz.
+            const yawCam = Math.atan2(-dx, -dz);
+            write(kinds[kBushFar], x, y, z, yawCam, sc, sy, 1, 1, 1);
+          } else {
+            write(bk, x, y, z, hash(ix, iz, 24) * Math.PI * 2, sc, sy, 1, 1, 1);
+          }
         }
       }
     }
@@ -453,12 +489,21 @@ export async function loadGrassField(
   };
 
   let lastK = -1;
+  let lastLights = 1;
   return (dt: number, daylight: number) => {
     // Собственная яркость травы к ночи (остаток чуть больше — трава ночью не должна проваливаться в черноту).
     const kk = 0.2 + 0.8 * daylight;
     if (Math.abs(kk - lastK) >= 0.004) {
       lastK = kk;
       mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
+    }
+    // Заявка: днём хватает одного солнца, ночью — до двух живых огней. Меняем
+    // maxSimultaneousLights только на смене (это пересобирает шейдер материала —
+    // не делать каждый кадр).
+    const wantLights = daylight < 0.5 ? 2 : 1;
+    if (wantLights !== lastLights) {
+      lastLights = wantLights;
+      mat.maxSimultaneousLights = wantLights;
     }
     acc += dt;
     if (acc < 0.2) return;
