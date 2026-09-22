@@ -10,7 +10,6 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 
 import type { Terrain } from "./Terrain";
-import { LIGHT_BUDGET } from "./Fireflies";
 import { noGrass } from "./grassLayout";
 import { BOSS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
@@ -166,7 +165,13 @@ export async function loadGrassField(
   mat.emissiveColor = emiDay.clone();
   mat.specularColor = new Color3(0, 0, 0);
   mat.backFaceCulling = false;
-  mat.maxSimultaneousLights = lite ? 2 : LIGHT_BUDGET;
+  // Трава — самый многочисленный по фрагментам материал в кадре (тысячи тонких
+  // альфа-cutout квадов): полный LIGHT_BUDGET (12) на пиксель дорого (Perfetto:
+  // 77.8% времени GPU — шейдинг фрагментов при ALU/Fragment≈114), а свет не
+  // отбирается по дистанции — считаются первые N источников сцены как есть.
+  // Солнца + 2 ближайших живых огня достаточно, дальше подсветку несёт
+  // запечённое пятно на земле (groundGlowRadius) и без «живого» источника.
+  mat.maxSimultaneousLights = lite ? 2 : 3;
 
   const kinds: Kind[] = [];
   const addKind = (c: typeof cBush, name: string, material: StandardMaterial, withColor: boolean): number => {
