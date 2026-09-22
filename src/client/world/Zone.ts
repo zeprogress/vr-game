@@ -3,7 +3,6 @@ import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 // props.ts больше не тянет DynamicTexture статически — регистрируем расширение
 // движка явно (skyGrad/terrain создают DynamicTexture в buildZone).
@@ -12,7 +11,7 @@ import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
-import { dayState } from "./DayTime";
+import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
 import { BotLights } from "./BotLights";
 import { Fireflies, relightMaterials } from "./Fireflies";
@@ -100,7 +99,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   /** Последняя сверка с сервера — по её смене клиент подстраивает часы. */
   let lastNetHour = Number.NaN;
 
-  const ambient = new HemisphericLight("ambient", new Vector3(0, 1, 0), scene);
   const sun = new DirectionalLight("sun", day.sunDir, scene);
   // Сразу за базовыми: материалы берут первые maxSimultaneousLights из
   // scene.lights по порядку создания. Раньше факелы создавались после зоны,
@@ -118,8 +116,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sun.position = day.sunDir.scale(-60);
     sun.intensity = day.sunIntensity;
     sun.diffuse.copyFrom(day.sunColor);
-    ambient.intensity = day.ambientIntensity;
-    ambient.diffuse.copyFrom(day.ambientColor);
     // Источник НЕ гасим по setEnabled: смена набора источников заставляет
     // пересобирать шейдеры всех материалов (на Quest — заметный стоп-кадр,
     // а замороженные материалы деревьев вообще ломались). Днём заливка = 0,
@@ -127,9 +123,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sky.apply(day);
   };
   applyDay();
-  /** Когда последний раз перерисовывали градиент купола. */
-  let paintedAt = hour;
+  sky.repaint(day);
   let hubTickN = 0;
+  /** Троттлинг обновлений солнца/неба: копится с последнего обновления. */
+  let lightAccum = 0;
+  let lightPhase = dayPhase(hour);
+  /** Днём рывки незаметны — обновляем раз в ~1.2 с вместо каждого кадра. */
+  const DAY_LIGHT_INTERVAL = 1.2;
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
@@ -225,9 +225,24 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       LOADOUT.world.hour = shown;
 
       let sp = secNow();
-      // Палитра дня и свет — каждый кадр, как раньше (одна и та же точность солнца/неба).
-      day = dayState(hour);
-      applyDay();
+      // Заря/закат — каждый кадр (самое заметное движение). Днём — редко
+      // (рывки незаметны на глаз), ночью — вообще не трогаем (свет заморожен).
+      // Смена фазы форсирует немедленное обновление — переход остаётся плавным,
+      // т.к. dayState() непрерывна на границах фаз.
+      const phase = dayPhase(hour);
+      lightAccum += dt;
+      const phaseChanged = phase !== lightPhase;
+      lightPhase = phase;
+      const shouldLight =
+        phase === "dusk" || phaseChanged || (phase === "day" && lightAccum >= DAY_LIGHT_INTERVAL);
+      if (shouldLight) {
+        lightAccum = 0;
+        day = dayState(hour);
+        applyDay();
+        const sr = secNow();
+        sky.repaint(day);
+        secAdd("zone.skyRepaint", sr);
+      }
       secAdd("zone.applyDay", sp);
 
       sp = secNow();
@@ -242,22 +257,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       sp = secNow();
       if ((hubTickN++ & 1) === 0) hub.tick(day.daylight); // костёр и свечение лагеря — через кадр (его dt считается по часам)
       secAdd("zone.hub", sp);
-
-      // Градиент купола — не каждый кадр (это заливка текстуры), но часто:
-      // на пороге 0.05 небо перекрашивалось раз в две с половиной секунды,
-      // и рассвет шёл заметными ступенями.
-      // simpleSky — перерисовка градиента (заливка 4×128 canvas) на слабом GPU
-      // тоже стоит времени, но большой шаг давал ступени на рассвете/закате.
-      // В сумерках (небо быстро меняет цвет) красим часто, днём и ночью — редко.
-      const moved = Math.abs(hour - paintedAt);
-      const twilight = day.daylight > 0.03 && day.daylight < 0.97;
-      const step = quality.simpleSky ? (twilight ? 0.03 : 0.4) : 0.004;
-      if (moved > step || moved > 23) {
-        paintedAt = hour;
-        const sr = secNow();
-        sky.repaint(day);
-        secAdd("zone.skyRepaint", sr);
-      }
     },
     swordHome,
     bowHome,

@@ -336,7 +336,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
   orcGunner: {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
-    hp: 210, dmgMul: 1.7, xp: 130, scaleMul: 1.4, tint: null, rangedArmor: 0.3,
+    hp: 210, dmgMul: 1.7, xp: 130, scaleMul: 2.8, tint: null, rangedArmor: 0.3,
   },
   // Цель события «Охота на элиту»: одиночный именной босс, редкая добыча.
   // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
@@ -416,7 +416,7 @@ export const MOB_CAMPS: {
 }[] = [
   // Расставлены по силе от лагеря (HUB на (-55,-55)): слабые рядом,
   // сильные — дальше. Дистанция от лагеря указана в комментарии.
-  { x: -28, z: -28, type: "bee", count: 5, spread: 4 }, // ~39 м от лагеря — слабые, у самого лагеря (центр поляны освобождён)
+  { x: -45, z: 24, type: "bee", count: 5, spread: 4 }, // у входа в лагерь (заявка)
   { x: -69, z: -13, type: "bee", count: 12, spread: 4 }, // ~44 м, ур.3
   { x: -55, z: 65, type: "spikyBlob", count: 5, spread: 6 }, // ближе к центру (заявка), ур.6
   { x: 12, z: 53, type: "frog", count: 4, spread: 5 }, // ближе к центру (заявка), ур.7

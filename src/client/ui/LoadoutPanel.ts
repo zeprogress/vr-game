@@ -209,7 +209,7 @@ export class LoadoutPanel {
     if (this.target.kind === "hand") return 5; // пов XYZ + масштаб + сгиб
     if (this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
-    if (this.target.kind === "light") return 6; // солнце, заливка, тепло, тень, ночь, туман
+    if (this.target.kind === "light") return 4; // солнце, тепло, ночь, туман
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
     if (this.target.kind === "comfort") return 1;
@@ -261,9 +261,7 @@ export class LoadoutPanel {
         steps: number[];
       }[] = [
         { label: "солнце", key: "sun", lo: 0.2, hi: 3, steps: [0.05, 0.15, 0.4] },
-        { label: "заливка неба", key: "fill", lo: 0, hi: 1.5, steps: [0.03, 0.1, 0.25] },
         { label: "тепло солнца", key: "warm", lo: 0, hi: 2, steps: [0.05, 0.15, 0.35] },
-        { label: "прохлада тени", key: "coolShade", lo: 0, hi: 1, steps: [0.05, 0.15, 0.35] },
         { label: "ночь", key: "night", lo: 0.2, hi: 2.5, steps: [0.05, 0.15, 0.4] },
         { label: "туман", key: "fog", lo: 0, hi: 4, steps: [0.1, 0.3, 0.8] },
       ];

@@ -11,8 +11,6 @@ export interface DayState {
   sunPos: Vector3;
   sunColor: Color3;
   sunIntensity: number;
-  ambientColor: Color3;
-  ambientIntensity: number;
   /** Цвета градиента неба, 0..255. */
   zenith: [number, number, number];
   horizon: [number, number, number];
@@ -123,6 +121,20 @@ function mix3(
  * западе, 0 — полночь. Между днём, закатом и ночью краски смешиваются
  * плавно, чтобы не было щелчка при переходе.
  */
+/**
+ * Дешёвая классификация фазы суток для троттлинга обновлений света: "dusk"
+ * (заря/закат) — самое заметное движение, обновлять каждый кадр; "day" —
+ * можно редко; "night" — можно вообще не обновлять.
+ */
+export function dayPhase(hour: number): "day" | "night" | "dusk" {
+  const h = ((hour % 24) + 24) % 24;
+  const a = ((h - 6) / 12) * Math.PI;
+  const elev = Math.sin(a);
+  if (elev - 0.2 >= 0.3) return "day"; // day weight сатурирует к 1 тут же
+  if (-elev - 0.1 >= 0.2) return "night"; // night weight сатурирует к 1 тут же
+  return "dusk";
+}
+
 export function dayState(hour: number): DayState {
   const h = ((hour % 24) + 24) % 24;
   const a = ((h - 6) / 12) * Math.PI;
@@ -145,24 +157,17 @@ export function dayState(hour: number): DayState {
   const wk = dusk / total;
 
   // Ручки освещения из настроек (глобальные). При значениях по умолчанию
-  // (sun/fill/night/coolShade/warm = 1) палитра выше не меняется.
+  // (sun/night/warm = 1) палитра выше не меняется.
   const L = LOADOUT.light;
   // warm=0 → белый, 1 → DAY.sun как есть, >1 → ещё желтее (экстраполяция).
   const warm = Math.max(0, Math.min(2, L.warm));
-  const cool = clamp01(L.coolShade);
   const daySun: [number, number, number] = [
     Math.max(0, 1 + (DAY.sun[0] - 1) * warm),
     Math.max(0, 1 + (DAY.sun[1] - 1) * warm),
     Math.max(0, 1 + (DAY.sun[2] - 1) * warm),
   ];
-  const dayAmb: [number, number, number] = [
-    1 + (DAY.amb[0] - 1) * cool,
-    1 + (DAY.amb[1] - 1) * cool,
-    1 + (DAY.amb[2] - 1) * cool,
-  ];
 
   const sun = mix3(daySun, NIGHT.sun, DUSK.sun, wd, wn, wk);
-  const amb = mix3(dayAmb, NIGHT.amb, DUSK.amb, wd, wn, wk);
   // Ночной цвет тумана — из FOG_TUNE (панель ?fog=1), а не из NIGHT.fog:
   // синеватый NIGHT.fog при тумане читался дымкой вместо черноты.
   const fog = mix3(DAY.fog, FOG_TUNE.nightColor, DUSK.fog, wd, wn, wk);
@@ -189,12 +194,6 @@ export function dayState(hour: number): DayState {
     sunPos,
     sunColor: new Color3(sun[0], sun[1], sun[2]),
     sunIntensity: (DAY.sunI * wd + NIGHT.sunI * L.night * wn + DUSK.sunI * wk) * L.sun,
-    ambientColor: new Color3(amb[0], amb[1], amb[2]),
-    // Днём DAY.ambI = 0; чтобы ручка `fill` всё же могла вернуть дневную
-    // заливку, при fill > 1 добавляем её напрямую (на долю дня).
-    ambientIntensity:
-      (DAY.ambI * wd + NIGHT.ambI * L.night * wn + DUSK.ambI * wk) * L.fill +
-      Math.max(0, L.fill - 1) * 0.28 * wd,
     zenith: [Math.round(zenith[0]), Math.round(zenith[1]), Math.round(zenith[2])],
     horizon: [Math.round(horizon[0]), Math.round(horizon[1]), Math.round(horizon[2])],
     fog: new Color3(fog[0], fog[1], fog[2]),

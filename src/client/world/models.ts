@@ -442,7 +442,7 @@ export function recolorCharacter(root: TransformNode): void {
  * но переводим PBR → плоский StandardMaterial с эмиссивной заливкой — иначе в
  * дневном свете (ambient=0) вертикальные грани почти чёрные.
  */
-export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = false): void {
+export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = false, emissiveMul?: number): void {
   const scene = root.getScene();
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
@@ -463,7 +463,7 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
       // Один материал на (исходный материал, текстура, цвет) на всю сцену — общий у всех мобов вида.
       const texKey = tex ? ((tex as { uid?: string; name?: string }).uid ?? (tex as { name?: string }).name ?? "t") : "-";
       const colKey = (tint ?? base).toHexString();
-      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}`, () => {
+      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}`, () => {
         const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
         f.maxSimultaneousLights = 5;
         f.specularColor = new Color3(0.05, 0.05, 0.05);
@@ -472,10 +472,10 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
           if (!noGlow) f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
           // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
           f.diffuseColor = tint ?? new Color3(1, 1, 1);
-          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).scale(0.14) : (tint ?? new Color3(1, 1, 1)).scale(0.3);
+          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).scale(0.14) : (tint ?? new Color3(1, 1, 1)).scale(emissiveMul ?? 0.3);
         } else {
           f.diffuseColor = tint ?? base;
-          f.emissiveColor = noGlow ? (tint ?? base).scale(0.14) : (tint ?? base).scale(0.28);
+          f.emissiveColor = noGlow ? (tint ?? base).scale(0.14) : (tint ?? base).scale(emissiveMul ?? 0.28);
         }
         trackMobMaterial(f); // ?moblight=1 — живая подстройка поверх базовых цветов
         return f;

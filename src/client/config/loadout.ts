@@ -88,18 +88,14 @@ export interface Loadout {
   };
   /**
    * Освещение сцены. Множители и оттенки поверх палитры DayTime — единица
-   * (и warm/coolShade = 1) = «как в палитре». Глобальное, сохраняется на
-   * сервере по токену игрока.
+   * (и warm = 1) = «как в палитре». Глобальное, сохраняется на сервере по
+   * токену игрока.
    */
   light: {
     /** Яркость направленного солнца. */
     sun: number;
-    /** Яркость рассеянной заливки неба (её ловит всё, что не под прямым солнцем). */
-    fill: number;
     /** Теплота солнечного света: 0 — белый, 1 — золотой. */
     warm: number;
-    /** Прохлада тени (синева заливки): 0 — нейтральная белая, 1 — как в палитре. */
-    coolShade: number;
     /** Яркость ночи (заливка + луна). */
     night: number;
     /** Плотность тумана: 1 — как в палитре, 0 — тумана нет. */
@@ -179,9 +175,7 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   light: {
     sun: 1, // яркость солнца
-    fill: 1, // яркость заливки неба
     warm: 1, // тёплый (золотой) солнечный свет
-    coolShade: 0, // тень нейтральная (без синевы) — так подогнано в шлеме
     night: 1, // яркость ночи
     fog: 1.5, // плотность тумана — гуще палитры
   },
@@ -260,12 +254,8 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
       typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : null;
     const s = num(v?.sun, 0.2, 3);
     if (s !== null) dst.light.sun = s;
-    const f = num(v?.fill, 0, 1.5);
-    if (f !== null) dst.light.fill = f;
     const w = num(v?.warm, 0, 2);
     if (w !== null) dst.light.warm = w;
-    const c = num(v?.coolShade, 0, 1);
-    if (c !== null) dst.light.coolShade = c;
     const n = num(v?.night, 0.2, 2.5);
     if (n !== null) dst.light.night = n;
     const fg = num(v?.fog, 0, 4);
@@ -480,8 +470,7 @@ export function printLoadout(): void {
   lines.push("},");
   const li = LOADOUT.light;
   lines.push(
-    `light: { sun: ${f(li.sun)}, fill: ${f(li.fill)}, warm: ${f(li.warm)}, ` +
-      `coolShade: ${f(li.coolShade)}, night: ${f(li.night)}, fog: ${f(li.fog)} },`,
+    `light: { sun: ${f(li.sun)}, warm: ${f(li.warm)}, night: ${f(li.night)}, fog: ${f(li.fog)} },`,
   );
   console.log(lines.join("\n"));
 }
