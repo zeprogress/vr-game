@@ -687,9 +687,13 @@ export class Mob implements Hittable {
     if (this.modelName) {
       const { recolorMonster } = await import("../world/models");
       const def = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName);
-      // Пчела и орк-стрелок: чуть меньше эмиссивной заливки — солнце сильнее влияет на их яркость.
-      const sunboundMul = this.modelName === "monBee" || this.modelName === "monOrc" ? 0.2 : undefined;
-      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined, false, sunboundMul);
+      // Пчела и орк-стрелок: меньше эмиссивной заливки — солнце сильнее влияет на их
+      // яркость; diffuseMul>1 не даёт освещённой солнцем стороне выглядеть тускло.
+      const isBee = this.modelName === "monBee";
+      const isOrc = this.modelName === "monOrc";
+      const sunboundMul = isBee ? 0.08 : isOrc ? 0.2 : undefined;
+      const sunDiffuseMul = isBee ? 1.6 : isOrc ? 1.15 : undefined;
+      recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined, false, sunboundMul, sunDiffuseMul);
       if (def?.tint) this.lodTint = def.tint;
     } else {
       recolorRig(rig, this.kind, this.tint, this.bodyAlpha);

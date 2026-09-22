@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import type { Terrain } from "./Terrain";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { noGrass } from "./grassLayout";
-import { MOB_CAMPS, WORLD } from "#shared/constants";
+import { BOSS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
 
@@ -103,6 +103,12 @@ function sparseMul(x: number, z: number): number {
   let dCorner = Infinity;
   for (const [cx, cz] of CORNERS) dCorner = Math.min(dCorner, Math.hypot(x - cx, z - cz));
   if (dCorner < 40) m *= 0.15 + 0.55 * smooth(0, 40, dCorner);
+  // Заявка: точка (-10, 100) — сильно реже трава в радиусе 30 м, растушёвка до края.
+  const dSpot = Math.hypot(x - -10, z - 100);
+  if (dSpot < 30) m *= 0.05 + 0.55 * smooth(0, 30, dSpot);
+  // Заявка: у логова багрового босса — намного реже в радиусе 50 м, растушёвка.
+  const dBoss = Math.hypot(x - BOSS.home[0], z - BOSS.home[1]);
+  if (dBoss < 50) m *= 0.08 + 0.5 * smooth(0, 50, dBoss);
   return m;
 }
 

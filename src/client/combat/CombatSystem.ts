@@ -2575,6 +2575,8 @@ export class CombatSystem {
   /** Game: применить умение (проверка кулдауна, предупреждение и отправка на сервер). */
   onVrSkill: ((kind: "stunBash" | "arrowRain", x?: number, z?: number) => void) | null = null;
   private skillPrevTrig: Record<Side, boolean> = { left: false, right: false };
+  /** Курок/захват правой руки на прошлом кадре — для фронта активации «Града стрел». */
+  private skillPrevFire = false;
   /** Рука лука, которая сейчас целит град стрел (метка на земле), либо null. */
   private rainAimHand: Side | null = null;
   private rainMark: Mesh | null = null;
@@ -2584,8 +2586,12 @@ export class CombatSystem {
 
   /**
    * Умения жестом: меч поднят над головой + курок руки с мечом — «Оглушающий
-   * удар» (как массовый хил посохом). Лук: курок руки с луком (поднимать не нужно) — на
-   * земле появляется метка, куда указывает рука; отпустил курок — град стрел.
+   * удар» (как массовый хил посохом).
+   *
+   * Лук — «Град стрел»: держишь ЛЕВЫЙ курок — целишься (метка на земле следит
+   * за левой рукой), отпустил левый курок — прицел пропадает БЕЗ применения
+   * умения. Пока целишься левым курком, правый курок или кнопка захвата на
+   * правой руке — применяет умение по текущей метке.
    */
   private updateVrSkills(locked: boolean): void {
     const eye = this.player.eyePosition;
@@ -2595,41 +2601,52 @@ export class CombatSystem {
       const trig = !!pad?.buttons[0]?.pressed;
       const edge = trig && !this.skillPrevTrig[side];
       this.skillPrevTrig[side] = trig;
-      if (locked && this.uiLockHand === side) {
-        if (this.rainAimHand === side) this.cancelRainAim();
-        continue;
-      }
+      if (locked && this.uiLockHand === side) continue;
+      if (side === "left") continue; // левый курок обрабатывается отдельно ниже (град стрел)
       const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
       if (!node) continue;
       const hp = node.getAbsolutePosition();
       const raised =
         hp.y > eye.y + 0.1 && Math.hypot(hp.x - eye.x, hp.z - eye.z) < 0.8;
-
-      if (this.rainAimHand === side) {
-        if (!this.held1("bow", side) || this.player.dead) {
-          this.cancelRainAim();
-        } else if (trig) {
-          this.updateRainAim(side);
-        } else {
-          const x = this.rainAt.x;
-          const z = this.rainAt.z;
-          this.cancelRainAim();
-          this.haptic(side, 0.7, 90);
-          this.onVrSkill?.("arrowRain", x, z);
-        }
-        continue;
-      }
-
       if (!edge) continue;
       if (raised && this.held1("sword", side)) {
         this.haptic(side, 0.6, 80);
         this.onVrSkill?.("stunBash");
-      } else if (this.held1("bow", side)) {
-        this.rainAimHand = side;
-        this.haptic(side, 0.35, 45);
-        this.sfx.bowDraw();
-        this.updateRainAim(side);
       }
+    }
+
+    const leftPad = this.controller("left")?.inputSource.gamepad;
+    const leftTrig = !!leftPad?.buttons[0]?.pressed;
+    const leftEdge = leftTrig && !this.skillPrevTrig.left;
+    this.skillPrevTrig.left = leftTrig;
+    const leftLocked = locked && this.uiLockHand === "left";
+
+    if (this.rainAimHand) {
+      if (leftLocked || !leftTrig || this.player.dead || !this.held1("bow")) {
+        this.cancelRainAim();
+        this.skillPrevFire = false;
+        return;
+      }
+      this.updateRainAim("left");
+      const rightPad = this.controller("right")?.inputSource.gamepad;
+      const rightFire = !!(rightPad?.buttons[0]?.pressed || rightPad?.buttons[1]?.pressed);
+      const rightFireEdge = rightFire && !this.skillPrevFire;
+      this.skillPrevFire = rightFire;
+      if (rightFireEdge) {
+        const x = this.rainAt.x;
+        const z = this.rainAt.z;
+        this.cancelRainAim();
+        this.haptic("right", 0.7, 90);
+        this.onVrSkill?.("arrowRain", x, z);
+      }
+      return;
+    }
+    if (!leftLocked && leftEdge && this.held1("bow")) {
+      this.rainAimHand = "left";
+      this.skillPrevFire = false;
+      this.haptic("left", 0.35, 45);
+      this.sfx.bowDraw();
+      this.updateRainAim("left");
     }
   }
 
@@ -2642,38 +2659,54 @@ export class CombatSystem {
     node.getDirectionToRef(Vector3.Forward(), this.rayD);
     const eye = this.player.eyePosition;
     const range = SKILL.arrowRain.range;
-    // Шагаем по лучу до земли; не попали — берём точку по горизонтальному направлению на дальности.
-    let hit = false;
-    let px = this.rayO.x;
-    let pz = this.rayO.z;
-    let lo = 0;
-    let hi = 0;
-    for (let t = 0.5; t <= 60; t += 0.5) {
-      const x = this.rayO.x + this.rayD.x * t;
-      const y = this.rayO.y + this.rayD.y * t;
-      const z = this.rayO.z + this.rayD.z * t;
-      if (y <= this.groundHeight(x, z)) {
-        lo = t - 0.5;
-        hi = t;
-        hit = true;
-        break;
-      }
-    }
-    if (hit) {
-      for (let i = 0; i < 6; i++) {
-        const m = (lo + hi) / 2;
-        const x = this.rayO.x + this.rayD.x * m;
-        const y = this.rayO.y + this.rayD.y * m;
-        const z = this.rayO.z + this.rayD.z * m;
-        if (y <= this.groundHeight(x, z)) hi = m;
-        else lo = m;
-      }
-      px = this.rayO.x + this.rayD.x * hi;
-      pz = this.rayO.z + this.rayD.z * hi;
+    const horizLen = Math.hypot(this.rayD.x, this.rayD.z) || 1;
+    const hx = this.rayD.x / horizLen;
+    const hz = this.rayD.z / horizLen;
+    let px: number;
+    let pz: number;
+    if (this.rayD.y > 0.02) {
+      // Рука выше горизонта: цель сдвигается БЛИЖЕ по мере подъёма (как дуга
+      // навесного броска) — иначе поднятая рука просто упиралась в дальность умения.
+      const minUpDist = Math.min(range, 4);
+      const t0 = Math.min(1, this.rayD.y / 0.85);
+      const t = t0 * t0 * (3 - 2 * t0); // smoothstep
+      const dist = range - (range - minUpDist) * t;
+      px = eye.x + hx * dist;
+      pz = eye.z + hz * dist;
     } else {
-      const hl = Math.hypot(this.rayD.x, this.rayD.z) || 1;
-      px = eye.x + (this.rayD.x / hl) * range;
-      pz = eye.z + (this.rayD.z / hl) * range;
+      // Рука опущена/горизонтальна: пересечение луча с землёй. Вертикальную
+      // составляющую направления приглушаем (меньше чувствительность при
+      // уводе руки вниз — тот же физический наклон двигает метку слабее).
+      const dampedY = this.rayD.y * 0.55;
+      let hit = false;
+      let lo = 0;
+      let hi = 0;
+      for (let t = 0.5; t <= 60; t += 0.5) {
+        const x = this.rayO.x + this.rayD.x * t;
+        const y = this.rayO.y + dampedY * t;
+        const z = this.rayO.z + this.rayD.z * t;
+        if (y <= this.groundHeight(x, z)) {
+          lo = t - 0.5;
+          hi = t;
+          hit = true;
+          break;
+        }
+      }
+      if (hit) {
+        for (let i = 0; i < 6; i++) {
+          const m = (lo + hi) / 2;
+          const x = this.rayO.x + this.rayD.x * m;
+          const y = this.rayO.y + dampedY * m;
+          const z = this.rayO.z + this.rayD.z * m;
+          if (y <= this.groundHeight(x, z)) hi = m;
+          else lo = m;
+        }
+        px = this.rayO.x + this.rayD.x * hi;
+        pz = this.rayO.z + this.rayD.z * hi;
+      } else {
+        px = eye.x + hx * range;
+        pz = eye.z + hz * range;
+      }
     }
     const dx = px - eye.x;
     const dz = pz - eye.z;

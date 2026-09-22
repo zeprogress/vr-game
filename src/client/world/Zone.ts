@@ -128,8 +128,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   /** Троттлинг обновлений солнца/неба: копится с последнего обновления. */
   let lightAccum = 0;
   let lightPhase = dayPhase(hour);
-  /** Днём рывки незаметны — обновляем раз в ~1.2 с вместо каждого кадра. */
-  const DAY_LIGHT_INTERVAL = 1.2;
+  /** Днём рывки незаметны — обновляем раз в ~5 с вместо каждого кадра. */
+  const DAY_LIGHT_INTERVAL = 5;
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
