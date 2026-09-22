@@ -448,6 +448,7 @@ export class Mob implements Hittable {
   st: MobState | null = null;
   /** Мелкий летающий моб (пчела) — увеличенный хитбокс. */
   private readonly flyer: boolean;
+  private readonly heavy: boolean;
   private rigReady = false;
   private lodTint: readonly [number, number, number] = [0.5, 0.8, 0.5];
   /** Труп уже полностью растворился: корень выключен до возрождения. */
@@ -508,6 +509,7 @@ export class Mob implements Hittable {
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
+    this.heavy = !!modelName && Mob.HEAVY.has(modelName);
     this.flyer = !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.flying;
     this.hasNovaFx =
       this.isBoss ||
@@ -1066,6 +1068,9 @@ export class Mob implements Hittable {
   /** Дальше этого (м) живого моба рисуем сферой вместо модели со скелетом. */
   private static readonly LOD_FAR = 55;
   private static readonly LOD_FAR_FLYER = 24;
+  /** Тяжёлые модели (40+ костей и 3–4 тыс. вершин: орк, кактородо, жаба, грибной владыка, шипобрюх) переходят на дальний LOD раньше. */
+  private static readonly LOD_FAR_HEAVY = 30;
+  private static readonly HEAVY = new Set(["monOrc", "monCactoro", "monFrog", "monMushKing", "monSpikyBlob"]);
 
   private setFarLod(want: boolean): void {
     const rig = this.rig;
@@ -1107,7 +1112,7 @@ export class Mob implements Hittable {
       return;
     }
     // Летающие мелкие мобы (пчёлы) вдали неразличимы — переходят на общий LOD-батч гораздо раньше.
-    const far = this.flyer ? Mob.LOD_FAR_FLYER : Mob.LOD_FAR;
+    const far = this.flyer ? Mob.LOD_FAR_FLYER : this.heavy ? Mob.LOD_FAR_HEAVY : Mob.LOD_FAR;
     const lim = this.lodFar ? far - 4 : far;
     const d2 = (pos.x - cam.x) ** 2 + (pos.z - cam.z) ** 2;
     this.setFarLod(d2 > lim * lim);
@@ -1119,13 +1124,15 @@ export class Mob implements Hittable {
   private static readonly VR_CULL_RANGE = Number(new URLSearchParams(location.search).get("mobrange")) || 130; // ?mobrange=<м> — для подбора замером
   /** В VR скелетную анимацию считаем только ближе этого (м). */
   private static readonly VR_ANIM_RANGE = 28;
+  /** Тяжёлому скелету (43 кости) в VR анимацию считаем только вблизи. */
+  private static readonly VR_ANIM_RANGE_HEAVY = 18;
 
   /** Моб в кадре и не слишком далеко — тогда анимацию стоит считать. */
   private animVisible(pos: Vector3, cam: Vector3): boolean {
     const dx = pos.x - cam.x;
     const dz = pos.z - cam.z;
     const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
-    const range = vr ? Mob.VR_ANIM_RANGE : Mob.ANIM_RANGE;
+    const range = vr ? (this.heavy ? Mob.VR_ANIM_RANGE_HEAVY : Mob.VR_ANIM_RANGE) : Mob.ANIM_RANGE;
     if (dx * dx + dz * dz > range * range) return false;
     return this.inFrustum(pos, 2 + 2.5 * this.scale);
   }
