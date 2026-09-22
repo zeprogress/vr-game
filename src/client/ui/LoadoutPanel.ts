@@ -213,7 +213,7 @@ export class LoadoutPanel {
     if (this.target.kind === "vec3") return 3;
     if (this.target.kind === "world") return 2; // час + тумблер автосмены
     if (this.target.kind === "light") return 4; // солнце, тепло, ночь, туман
-    if (this.target.kind === "glow") return 10; // трава/кусты/деревья/земля/руки × (солнце, свечение)
+    if (this.target.kind === "glow") return 20; // трава/кусты/деревья/земля/руки × (солнце,свечение) × (день,ночь)
     if (this.target.kind === "voice") return 2; // микрофон + звук по месту
     if (this.target.kind === "gfx") return 1;
     if (this.target.kind === "comfort") return 1;
@@ -290,16 +290,26 @@ export class LoadoutPanel {
         hi: number;
         steps: number[];
       }[] = [
-        { label: "трава·солнце", key: "grassSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "трава·свеч.", key: "grassGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "кусты·солнце", key: "bushSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "кусты·свеч.", key: "bushGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "деревья·солнце", key: "treeSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "деревья·свеч.", key: "treeGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "земля·солнце", key: "groundSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "земля·свеч.", key: "groundGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "руки·солнце", key: "handsSun", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
-        { label: "руки·свеч.", key: "handsGlow", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "трава·солнце·день", key: "grassSunDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "трава·солнце·ночь", key: "grassSunNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "трава·свеч.·день", key: "grassGlowDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "трава·свеч.·ночь", key: "grassGlowNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·солнце·день", key: "bushSunDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·солнце·ночь", key: "bushSunNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·свеч.·день", key: "bushGlowDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "кусты·свеч.·ночь", key: "bushGlowNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·солнце·день", key: "treeSunDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·солнце·ночь", key: "treeSunNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·свеч.·день", key: "treeGlowDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "деревья·свеч.·ночь", key: "treeGlowNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·солнце·день", key: "groundSunDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·солнце·ночь", key: "groundSunNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·свеч.·день", key: "groundGlowDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "земля·свеч.·ночь", key: "groundGlowNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·солнце·день", key: "handsSunDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·солнце·ночь", key: "handsSunNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·свеч.·день", key: "handsGlowDay", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
+        { label: "руки·свеч.·ночь", key: "handsGlowNight", lo: 0, hi: 2.5, steps: [0.05, 0.15, 0.35] },
       ];
       const sp = specs[i];
       return {
@@ -555,8 +565,18 @@ export class LoadoutPanel {
 
     const top = 84;
     const rowH = 36;
+    // Прокрутка: разделы вроде "glow" (20+ полей) не влезают целиком —
+    // показываем окно строк вокруг выбранной, а не растим текстуру бесконечно.
+    const VISIBLE_ROWS = 12;
+    const totalRows = this.rowCount();
+    const scrollOffset =
+      totalRows <= VISIBLE_ROWS
+        ? 0
+        : Math.max(0, Math.min(totalRows - VISIBLE_ROWS, this.row - Math.floor(VISIBLE_ROWS / 2)));
     const drawRow = (i: number, name: string, value: string, accent?: string) => {
-      const y = top + i * rowH;
+      const slot = i - scrollOffset;
+      if (slot < 0 || slot >= VISIBLE_ROWS) return;
+      const y = top + slot * rowH;
       const active = i === this.row;
       if (active) {
         ctx.fillStyle = "#263048";
@@ -568,6 +588,11 @@ export class LoadoutPanel {
       ctx.fillStyle = accent ?? (active ? "#ffffff" : "#9aa3b8");
       ctx.fillText(value, 300, y);
     };
+    if (totalRows > VISIBLE_ROWS) {
+      ctx.font = "15px system-ui, sans-serif";
+      ctx.fillStyle = "#6b7690";
+      ctx.fillText(`${this.row + 1}/${totalRows}`, TEX_W - 70, 70);
+    }
 
     drawRow(0, "Цель", t.label, this.row === 0 ? "#ffd166" : undefined);
     for (let i = 0; i < this.fieldCount(); i++) {

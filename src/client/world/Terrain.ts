@@ -215,9 +215,11 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
     // живых огней рядом полностью тонет в черноте × ручка «свечение». Без
     // гейтинга по последнему значению — как «Освещение»: каждый кадр, без
     // задержки на правку из админ-панели.
-    const kk = (1 + (1 - daylight) * 0.6) * G.groundGlow;
+    const groundGlow = G.groundGlowNight + (G.groundGlowDay - G.groundGlowNight) * daylight;
+    const groundSun = G.groundSunNight + (G.groundSunDay - G.groundSunNight) * daylight;
+    const kk = (1 + (1 - daylight) * 0.6) * groundGlow;
     mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
-    mat.diffuseColor.copyFromFloats(diffuseBase.r * G.groundSun, diffuseBase.g * G.groundSun, diffuseBase.b * G.groundSun);
+    mat.diffuseColor.copyFromFloats(diffuseBase.r * groundSun, diffuseBase.g * groundSun, diffuseBase.b * groundSun);
   };
 
   return { mesh, heightAt: surface, tick };

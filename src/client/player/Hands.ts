@@ -266,13 +266,15 @@ export class Hands {
   }
 
   /** Каждый кадр: ориентация кисти из LOADOUT + сжатие пальцев по grip. */
-  update(dt: number): void {
+  update(dt: number, daylight = 1): void {
     const sp = secNow();
     this.updateInner(dt);
     const G = LOADOUT.glow;
     // Без гейтинга — как трава/земля: пишем каждый кадр, без риска залипания.
-    this.skin.diffuseColor.copyFrom(this.skinDiffuseBase).scaleInPlace(G.handsSun);
-    this.skin.emissiveColor.copyFrom(this.skinEmiBase).scaleInPlace(G.handsGlow);
+    const handsSun = G.handsSunNight + (G.handsSunDay - G.handsSunNight) * daylight;
+    const handsGlow = G.handsGlowNight + (G.handsGlowDay - G.handsGlowNight) * daylight;
+    this.skin.diffuseColor.copyFrom(this.skinDiffuseBase).scaleInPlace(handsSun);
+    this.skin.emissiveColor.copyFrom(this.skinEmiBase).scaleInPlace(handsGlow);
     secAdd("hands.update", sp);
   }
 

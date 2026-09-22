@@ -82,28 +82,32 @@ let lastTreeGlow = NaN;
 
 /**
  * Ручки админ-панели (?glow) — влияние солнца/собственное свечение стволов и
- * крон. Материалы заморожены (freeze()) ради производительности — снимаем
- * заморозку только на кадр правки. Проверка на NaN вместо -1: -1 — валидное
- * значение множителя (хоть и странное), NaN гарантированно не совпадёт с
- * первым реальным значением и форсирует первое применение.
+ * крон, день/ночь смешиваются по daylight. Материалы заморожены (freeze())
+ * ради производительности — снимаем заморозку только на кадр, где смешанное
+ * значение реально изменилось (daylight и так меняется редко — throttling
+ * солнца, см. Zone.ts). Проверка на NaN вместо -1: -1 — валидное значение
+ * множителя (хоть и странное), NaN гарантированно не совпадёт с первым
+ * реальным значением и форсирует первое применение.
  */
-export function treesGlowTick(): void {
+export function treesGlowTick(daylight: number): void {
   if (!baseBark || !baseLeaf) return;
   const G = LOADOUT.glow;
-  const sunChanged = G.treeSun !== lastTreeSun;
-  const glowChanged = G.treeGlow !== lastTreeGlow;
+  const treeSun = G.treeSunNight + (G.treeSunDay - G.treeSunNight) * daylight;
+  const treeGlow = G.treeGlowNight + (G.treeGlowDay - G.treeGlowNight) * daylight;
+  const sunChanged = Math.abs(treeSun - lastTreeSun) >= 0.002;
+  const glowChanged = Math.abs(treeGlow - lastTreeGlow) >= 0.002;
   if (!sunChanged && !glowChanged) return;
   baseBark.unfreeze();
   baseLeaf.unfreeze();
   if (sunChanged) {
-    lastTreeSun = G.treeSun;
-    if (barkDiffuseBase) baseBark.diffuseColor.copyFrom(barkDiffuseBase).scaleInPlace(G.treeSun);
-    if (leafDiffuseBase) baseLeaf.diffuseColor.copyFrom(leafDiffuseBase).scaleInPlace(G.treeSun);
+    lastTreeSun = treeSun;
+    if (barkDiffuseBase) baseBark.diffuseColor.copyFrom(barkDiffuseBase).scaleInPlace(treeSun);
+    if (leafDiffuseBase) baseLeaf.diffuseColor.copyFrom(leafDiffuseBase).scaleInPlace(treeSun);
   }
   if (glowChanged) {
-    lastTreeGlow = G.treeGlow;
-    if (barkEmiBase) baseBark.emissiveColor.copyFrom(barkEmiBase).scaleInPlace(G.treeGlow);
-    if (leafEmiBase) baseLeaf.emissiveColor.copyFrom(leafEmiBase).scaleInPlace(G.treeGlow);
+    lastTreeGlow = treeGlow;
+    if (barkEmiBase) baseBark.emissiveColor.copyFrom(barkEmiBase).scaleInPlace(treeGlow);
+    if (leafEmiBase) baseLeaf.emissiveColor.copyFrom(leafEmiBase).scaleInPlace(treeGlow);
   }
   baseBark.freeze();
   baseLeaf.freeze();

@@ -562,7 +562,7 @@ export class Game {
       }
       this.hands.holding.left = this.combat.handOccupied("left");
       this.hands.holding.right = this.combat.handOccupied("right");
-      this.hands.update(dt);
+      this.hands.update(dt, daylightAt(LOADOUT.world.hour));
       this.mark("hands");
       this.syncNet(dt);
       this.mark("syncNet");

@@ -104,19 +104,30 @@ export interface Loadout {
   /**
    * Множители влияния солнца (диффуз) и собственного свечения (эмиссив) по
    * категориям объектов — поверх уже подобранных базовых цветов материалов
-   * (1 = как подобрано по умолчанию). Админ-панель, сохраняется всем.
+   * (1 = как подобрано по умолчанию). День/ночь раздельно (смешиваются по
+   * daylight 0..1, как и остальная палитра). Админ-панель, сохраняется всем.
    */
   glow: {
-    grassSun: number;
-    grassGlow: number;
-    bushSun: number;
-    bushGlow: number;
-    treeSun: number;
-    treeGlow: number;
-    groundSun: number;
-    groundGlow: number;
-    handsSun: number;
-    handsGlow: number;
+    grassSunDay: number;
+    grassSunNight: number;
+    grassGlowDay: number;
+    grassGlowNight: number;
+    bushSunDay: number;
+    bushSunNight: number;
+    bushGlowDay: number;
+    bushGlowNight: number;
+    treeSunDay: number;
+    treeSunNight: number;
+    treeGlowDay: number;
+    treeGlowNight: number;
+    groundSunDay: number;
+    groundSunNight: number;
+    groundGlowDay: number;
+    groundGlowNight: number;
+    handsSunDay: number;
+    handsSunNight: number;
+    handsGlowDay: number;
+    handsGlowNight: number;
   };
   /** Голосовой чат. */
   voice: {
@@ -197,16 +208,26 @@ export const LOADOUT_DEFAULTS: Loadout = {
     fog: 1.5, // плотность тумана — гуще палитры
   },
   glow: {
-    grassSun: 1,
-    grassGlow: 1,
-    bushSun: 1,
-    bushGlow: 1,
-    treeSun: 1,
-    treeGlow: 1,
-    groundSun: 1,
-    groundGlow: 1,
-    handsSun: 1,
-    handsGlow: 1,
+    grassSunDay: 1,
+    grassSunNight: 1,
+    grassGlowDay: 1,
+    grassGlowNight: 1,
+    bushSunDay: 1,
+    bushSunNight: 1,
+    bushGlowDay: 1,
+    bushGlowNight: 1,
+    treeSunDay: 1,
+    treeSunNight: 1,
+    treeGlowDay: 1,
+    treeGlowNight: 1,
+    groundSunDay: 1,
+    groundSunNight: 1,
+    groundGlowDay: 1,
+    groundGlowNight: 1,
+    handsSunDay: 1,
+    handsSunNight: 1,
+    handsGlowDay: 1,
+    handsGlowNight: 1,
   },
   voice: {
     mic: 0, // микрофон выключен по умолчанию
@@ -298,9 +319,11 @@ function writeTarget(dst: Loadout, key: TargetKey, value: unknown): void {
     const num = (x: unknown): number | null =>
       typeof x === "number" && Number.isFinite(x) ? Math.min(2.5, Math.max(0, x)) : null;
     for (const k of [
-      "grassSun", "grassGlow", "bushSun", "bushGlow",
-      "treeSun", "treeGlow", "groundSun", "groundGlow",
-      "handsSun", "handsGlow",
+      "grassSunDay", "grassSunNight", "grassGlowDay", "grassGlowNight",
+      "bushSunDay", "bushSunNight", "bushGlowDay", "bushGlowNight",
+      "treeSunDay", "treeSunNight", "treeGlowDay", "treeGlowNight",
+      "groundSunDay", "groundSunNight", "groundGlowDay", "groundGlowNight",
+      "handsSunDay", "handsSunNight", "handsGlowDay", "handsGlowNight",
     ] as const) {
       const n = num(v?.[k]);
       if (n !== null) dst.glow[k] = n;

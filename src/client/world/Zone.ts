@@ -248,7 +248,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
       sp = secNow();
       terrain.tick(day.daylight);
-      treesGlowTick();
+      treesGlowTick(day.daylight);
       windTick(dt, day.daylight);
       secAdd("zone.wind", sp);
       sp = secNow();

@@ -67,6 +67,8 @@ function vnoise(x: number, z: number, sc: number, seed: number): number {
   const d = hash(ix + 1, iz + 1, seed);
   return a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
 }
+/** Смешать дневное/ночное значение ручки по daylight (0 — ночь, 1 — день). */
+const mixDN = (day: number, night: number, daylight: number): number => night + (day - night) * daylight;
 const smooth = (e0: number, e1: number, v: number): number => {
   const t = v <= e0 ? 0 : v >= e1 ? 1 : (v - e0) / (e1 - e0);
   return t * t * (3 - 2 * t);
@@ -654,12 +656,14 @@ export async function loadGrassField(
     // Собственная яркость травы к ночи (заявка: чуть темнее, чем было) × ручка «свечение».
     // Без гейтинга по последнему значению — как «Освещение»: пишем каждый кадр,
     // чтобы правка из админ-панели попадала на экран без задержки.
-    const kk = (0.14 + 0.86 * daylight) * G.grassGlow;
+    const grassGlow = mixDN(G.grassGlowDay, G.grassGlowNight, daylight);
+    const grassSun = mixDN(G.grassSunDay, G.grassSunNight, daylight);
+    const kk = (0.14 + 0.86 * daylight) * grassGlow;
     mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);
     mat.diffuseColor.copyFromFloats(
-      grassDiffuseBase.r * G.grassSun,
-      grassDiffuseBase.g * G.grassSun,
-      grassDiffuseBase.b * G.grassSun,
+      grassDiffuseBase.r * grassSun,
+      grassDiffuseBase.g * grassSun,
+      grassDiffuseBase.b * grassSun,
     );
     // Заявка: днём хватает одного солнца, ночью — до двух живых огней. Меняем
     // maxSimultaneousLights только на смене (это пересобирает шейдер материала —
@@ -671,12 +675,14 @@ export async function loadGrassField(
     }
     if (bushMat && bushEmiDay && bushDiffuseBase) {
       // Заявка: ночью чуть меньше собственного свечения, чем днём × ручка «свечение».
-      const bkk = (0.72 + 0.28 * daylight) * G.bushGlow;
+      const bushGlow = mixDN(G.bushGlowDay, G.bushGlowNight, daylight);
+      const bushSun = mixDN(G.bushSunDay, G.bushSunNight, daylight);
+      const bkk = (0.72 + 0.28 * daylight) * bushGlow;
       bushMat.emissiveColor.copyFromFloats(bushEmiDay.r * bkk, bushEmiDay.g * bkk, bushEmiDay.b * bkk);
       bushMat.diffuseColor.copyFromFloats(
-        bushDiffuseBase.r * G.bushSun,
-        bushDiffuseBase.g * G.bushSun,
-        bushDiffuseBase.b * G.bushSun,
+        bushDiffuseBase.r * bushSun,
+        bushDiffuseBase.g * bushSun,
+        bushDiffuseBase.b * bushSun,
       );
     }
     if (bushFarMat) {
