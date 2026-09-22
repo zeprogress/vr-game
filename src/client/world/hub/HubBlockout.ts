@@ -72,7 +72,7 @@ function flatMat(
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
   m.twoSidedLighting = true; // двусторонний свет уже удваивает стоимость пикселя
-  m.maxSimultaneousLights = 4; // ловит свет костра ночью, но не весь LIGHT_BUDGET
+  m.maxSimultaneousLights = 1; // заявка: лагерь (постройки/реквизит) — 1 источник всегда
   if (emissive) {
     m.emissiveColor = emissive;
   } else if (dayLit) {
@@ -280,9 +280,8 @@ function buildCampGround(scene: Scene, cx: number, cz: number): Mesh {
   mat.bumpTexture = bump;
   mat.bumpTexture.level = 0.45;
   mat.specularColor = new Color3(0, 0, 0);
-  // Как у земли поляны: полный LIGHT_BUDGET на bump-материал во весь экран
-  // лагеря дорого ночью (см. Terrain.ts) — солнца + пары ближайших огней хватает.
-  mat.maxSimultaneousLights = 4;
+  // Заявка: 1 источник днём, 3 ночью — переключение см. tick() в buildHubBlockout.
+  mat.maxSimultaneousLights = 1;
   // Как у земли поляны: крошечный собственный свет, остальное — солнце/небо.
   mat.emissiveColor = new Color3(0.016, 0.02, 0.017);
   m.material = mat;
@@ -364,6 +363,9 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
   //          земли поляны), вытоптанная у костра ---
   const pad = buildCampGround(scene, cx, cz);
   pad.parent = root;
+  // Заявка: земля лагеря — 1 источник днём, 3 ночью (как обычная земля поляны).
+  const padMat = pad.material as StandardMaterial;
+  let lastGroundLights = 1;
 
   // --- 3. Костёр в центре: каменное кольцо + брёвна + эмиссивное ядро ---
   const fire = new TransformNode("hubCampfire", scene);
@@ -826,6 +828,11 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     const d = Math.min(1, Math.max(0, daylight));
     const night = 1 - d;
     campfire.tick(dt, d);
+    const wantGroundLights = d < 0.5 ? 3 : 1;
+    if (wantGroundLights !== lastGroundLights) {
+      lastGroundLights = wantGroundLights;
+      padMat.maxSimultaneousLights = wantGroundLights;
+    }
     // Свечение поверхностей зависит только от дневного света — пересчитываем при его заметном сдвиге.
     if (Math.abs(d - lastDay) < 0.004) return;
     lastDay = d;

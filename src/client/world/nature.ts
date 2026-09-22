@@ -483,7 +483,7 @@ export async function loadRocks(
   mat.diffuseColor = new Color3(BASE, BASE, BASE);
   mat.emissiveColor = new Color3(BASE * 0.12, BASE * 0.12, BASE * 0.12);
   mat.specularColor = new Color3(0, 0, 0);
-  mat.maxSimultaneousLights = 5;
+  mat.maxSimultaneousLights = 1;
   mat.freeze();
 
   // Источники: геометрия камня в системе корня (трансформ узлов модели запечён в вершины).
