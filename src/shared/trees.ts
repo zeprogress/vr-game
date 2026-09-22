@@ -88,6 +88,9 @@ export function trees(): Tree[] {
     const x = Math.cos(a) * rad;
     const z = Math.sin(a) * rad;
     if (Math.hypot(x - BOSS.home[0], z - BOSS.home[1]) < 22) continue;
+    // Башня стоит как раз в полосе этого кольца (89.7 м от центра карты, кольцо — 84–154 м) — без этой
+    // проверки её не касались ни одно из исключений в add(), кольцевые деревья её не видели вовсе.
+    if (Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR + 12) continue;
     const scale = 0.75 + rnd() * 1.0;
     out.push({ x, z, scale, yaw: rnd() * Math.PI * 2, r: 0.19 * scale });
   }
