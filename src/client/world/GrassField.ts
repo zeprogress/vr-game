@@ -37,7 +37,7 @@ const CHUNK = 16; // клеток в куске по стороне (кэш)
 const STRIDE = 11; // dmax, x, y, z, yaw, s, hMul, r, g, b, kind
 const BUSH_CELL = 3.4;
 const R_GRASS_BASE = 130; // дальность травы (редкие пучки), м — увеличена по заявке (конус узкий, так что бюджет тот же)
-const R_BUSH_BASE = 85;
+const R_BUSH_BASE = 100; // заявка: билборд после 50м, полностью пропадают только на 100м
 const COS_HALF = Math.cos((60 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
@@ -354,10 +354,10 @@ export async function loadGrassField(
       bm.transparencyMode = 1;
       bm.alphaCutOff = 0.28;
     }
-    // Освещение только небом и солнцем (2 источника); влияние солнца ослаблено ещё сильнее (заявка) — в тени не чёрные,
-    // на солнце не засвечены, плюс совсем чуть-чуть собственного свечения.
-    bm.diffuseColor = new Color3(0.2, 0.3, 0.16);
-    bm.emissiveColor = new Color3(0.07, 0.1, 0.05);
+    // Заявка: чуть больше собственного свечения, влияние солнца ещё слабее —
+    // в тени не чёрные, на солнце не засвечены.
+    bm.diffuseColor = new Color3(0.14, 0.21, 0.11);
+    bm.emissiveColor = new Color3(0.1, 0.14, 0.07);
     bm.specularColor = new Color3(0, 0, 0);
     bm.backFaceCulling = false;
     bm.maxSimultaneousLights = 2;
@@ -644,8 +644,8 @@ export async function loadGrassField(
   let lastK = -1;
   let lastLights = 1;
   return (dt: number, daylight: number) => {
-    // Собственная яркость травы к ночи (остаток чуть больше — трава ночью не должна проваливаться в черноту).
-    const kk = 0.2 + 0.8 * daylight;
+    // Собственная яркость травы к ночи (заявка: чуть темнее, чем было).
+    const kk = 0.14 + 0.86 * daylight;
     if (Math.abs(kk - lastK) >= 0.004) {
       lastK = kk;
       mat.emissiveColor.copyFromFloats(emiDay.r * kk, emiDay.g * kk, emiDay.b * kk);

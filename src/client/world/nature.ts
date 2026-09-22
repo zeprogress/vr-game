@@ -136,7 +136,7 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined): StandardMater
     m.alphaCutOff = 0.28;
   }
   m.diffuseColor = new Color3(0.72, 0.82, 0.6);
-  m.emissiveColor = new Color3(0.12, 0.18, 0.09); // листва вертикальная — ей нужно больше своей яркости
+  m.emissiveColor = new Color3(0.16, 0.23, 0.12); // листва вертикальная — ей нужно больше своей яркости (заявка: чуть светлее)
   m.specularColor = new Color3(0, 0, 0);
   m.backFaceCulling = false;
   // Заявка: у листвы крон всегда ровно 1 источник (солнце) — не зависит от
@@ -148,9 +148,9 @@ function leafMaterial(scene: Scene, tex: BaseTexture | undefined): StandardMater
 function barkMaterial(scene: Scene): StandardMaterial {
   const m = new StandardMaterial("treeBark", scene);
   m.diffuseColor = new Color3(0.3, 0.2, 0.13);
-  // Почти без собственной яркости: верхушки стволов не должны «светиться»
-  // ночью. Днём их лепит солнце, ночью пусть уходят в темноту.
-  m.emissiveColor = new Color3(0.02, 0.013, 0.008);
+  // Небольшая собственная яркость (заявка: чуть светлее, чем было) — ночью
+  // стволы уже не совсем чёрные, днём их всё равно лепит солнце.
+  m.emissiveColor = new Color3(0.05, 0.035, 0.022);
   m.specularColor = new Color3(0, 0, 0);
   // Заявка: у стволов всегда ровно 1 источник (солнце).
   m.maxSimultaneousLights = 1;

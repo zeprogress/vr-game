@@ -379,8 +379,25 @@ export class TreeImpostors {
    * В VR (fx/fz ≠ 0) — по секторам (cullSectors): центр — farR, боковые — SIDE_K·farR,
    * остальное вокруг не рисуем (кроме ближних 14 м).
    */
+  /** Диагностика ?off=trees: без этого билборды деревьев оставались видны даже
+   * когда TreeThin (настоящие модели) уже скрыт этим же флагом. */
+  private static offTreesFlag: boolean | null = null;
+  private static offTrees(): boolean {
+    if (TreeImpostors.offTreesFlag === null) {
+      TreeImpostors.offTreesFlag = new URLSearchParams(location.search).get("off")?.split(",").includes("trees") ?? false;
+    }
+    return TreeImpostors.offTreesFlag;
+  }
+
   update(cam: Vector3, fx: number, fz: number, farR: number, nearR: number): void {
     if (!this.ready) return;
+    if (this.tag === "tree" && TreeImpostors.offTrees()) {
+      for (const k of this.kinds.values()) {
+        k.mesh.thinInstanceCount = 0;
+        k.mesh.setEnabled(false);
+      }
+      return;
+    }
     farR *= this.rangeK;
     const sector = fx !== 0 || fz !== 0;
     for (let i = 0; i < this.trees.length; i++) {
