@@ -531,9 +531,10 @@ export function createLake(scene: Scene): Lake {
   }
 
   // ---- Гора: голый камень, резкие грани (не трава, не гладкий купол) ----
-  // Вторая дальняя гора убрана по просьбе (не подошло) — одна гора,
-  // поверх настоящего рельефа (тот остаётся травяным под капотом,
-  // коллизии/мобы не трогаем).
+  // По концепт-арту это не одинокий конус, а широкий ХРЕБЕТ из нескольких
+  // вершин разной высоты. Центральная — настоящий рельеф (ходьба/коллизии
+  // как раньше). Боковые — чисто визуальные (не терраformируют мир), но
+  // перекрывают край центральной, чтобы не было разрыва между массами.
   buildJitterRock(
     scene,
     "mountainRock",
@@ -544,6 +545,24 @@ export function createLake(scene: Scene): Lake {
     new Color3(0.42, 0.4, 0.38),
     778899,
   );
+  {
+    const perpX = -nz;
+    const perpZ = nx;
+    const flanks: [number, number, number, number, number][] = [
+      [-1, 0.62, 46, 40, 445566], // запад, ниже и уже
+      [1, 0.7, 50, 45, 662211], // восток, чуть выше
+    ];
+    for (const [side, peakK, R, peak, sd] of flanks) {
+      const cx = MOUNTAIN.x + perpX * 62 * side;
+      const cz = MOUNTAIN.z + perpZ * 62 * side + nz * 8; // чуть смещены к горе, не к озеру
+      const heightAt = (x: number, z: number): number => {
+        const dm = Math.hypot(x - cx, z - cz);
+        const t = Math.max(0, 1 - dm / R);
+        return terrainHeight(x, z) + peak * peakK * t * t;
+      };
+      buildJitterRock(scene, `mountainFlank${side}`, cx, cz, R, heightAt, new Color3(0.4, 0.38, 0.37), sd);
+    }
+  }
 
   // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----
   // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
