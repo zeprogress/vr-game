@@ -198,6 +198,27 @@ export function createLake(scene: Scene): Lake {
   // Потолок поднят (было 16) — гора и обрыв у водопада теперь заметно выше.
   const fallHeight = Math.max(8, Math.min(34, topY - LAKE.waterY));
 
+  // Скальный выступ-козырёк прямо на изломе реки в водопад — по просьбе,
+  // "в моменте перехода должен быть выступ". Настоящий heightmap не даёт
+  // нависающую пустоту под собой, поэтому это отдельный меш, нависающий над
+  // обрывом в сторону озера (навстречу нижней части водопада).
+  {
+    const ledgeMat = new StandardMaterial("waterfallLedgeMat", scene);
+    ledgeMat.diffuseColor = new Color3(0.4, 0.38, 0.36);
+    ledgeMat.specularColor = new Color3(0.03, 0.03, 0.03);
+    ledgeMat.maxSimultaneousLights = 1;
+    const ledge = MeshBuilder.CreateBox("waterfallLedge", { width: 7.5, height: 1.6, depth: 6 }, scene);
+    const ledgeYaw = Math.atan2(-nx, -nz); // развёрнут к озеру
+    // Центр сдвинут К ОЗЕРУ от topX/topZ — козырёк торчит НАД обрывом, не
+    // висит над твёрдой землёй позади себя (иначе не читается как выступ).
+    ledge.position.set(topX - nx * 2.5, topY - 0.6, topZ - nz * 2.5);
+    ledge.rotation.y = ledgeYaw;
+    ledge.material = ledgeMat;
+    ledge.isPickable = false;
+    ledge.checkCollisions = true;
+    ledge.freezeWorldMatrix();
+  }
+
   // Текстура вертикальных потоков — иначе ровный прямоугольник читался как
   // стеклянная панель, а не вода: рваные полупрозрачные полосы разной
   // ширины/яркости, растянутые по всей высоте. UV сдвигаем в tick() —

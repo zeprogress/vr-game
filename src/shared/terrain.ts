@@ -126,11 +126,22 @@ export function terrainHeight(x: number, z: number): number {
     const perpX = -nz;
     const perpZ = nx;
     const lateral = mx * perpX + mz * perpZ; // смещение от осевой линии реки
-    // Шире, чем было (5->8) — по просьбе, «река сверху шире».
     const GROOVE_W = 8;
     const GROOVE_DEPTH = 3;
     const across = Math.max(0, 1 - Math.abs(lateral) / GROOVE_W);
-    h -= GROOVE_DEPTH * across * across * Math.min(1, t / PLATEAU_T);
+    const groovePlateau = Math.min(1, t / PLATEAU_T);
+    h -= GROOVE_DEPTH * across * across * groovePlateau;
+
+    // Каньон-исток — там, где река «берёт начало» (глубже в плато, дальше от
+    // водопада): русло сужается и резко углубляется, чтобы читалось как
+    // настоящий каньон, а не просто ровная канава. Сильнее всего у самого
+    // дальнего края площадки (canyonT->1), у водопада (canyonT->0) не влияет
+    // — там резкий обрыв делает CLIFF_RISE ниже, это разные места одной реки.
+    const CANYON_W = 5.5;
+    const CANYON_DEPTH = 7;
+    const canyonAcross = Math.max(0, 1 - Math.abs(lateral) / CANYON_W);
+    const canyonT = clamp01((t - PLATEAU_T * 0.55) / (PLATEAU_T * 0.45));
+    h -= CANYON_DEPTH * canyonAcross * canyonAcross * canyonT;
   }
 
   // Резкий обрыв ровно у водопада — не пологий склон горы, а вертикальная
