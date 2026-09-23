@@ -24,7 +24,8 @@ export interface OverlayCtx {
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
   watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
-  online: readonly { nick: string; speaking: boolean; bot: boolean }[];
+  /** plat: 0 — не пришло (боты), 1 — ПК, 2 — телефон, 3 — VR (см. PlayerState.plat). */
+  online: readonly { nick: string; speaking: boolean; bot: boolean; plat: number }[];
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: { heroNick: string; floor: number; mobsLeft: number; mobsTotal: number; bossActive: boolean } | null;
 }
@@ -496,7 +497,7 @@ export class Overlay {
     const onlineSig = this.cfg.online
       ? ctx.online
           .slice(0, 7)
-          .map((p) => `${p.nick}${p.speaking ? 1 : 0}${p.bot ? 1 : 0}`)
+          .map((p) => `${p.nick}${p.speaking ? 1 : 0}${p.bot ? 1 : 0}${p.plat}`)
           .join("|") + `${ctx.online.length}`
       : "";
     if (this.cfg.online && ctx.online.length && onlineSig !== this.lastOnlineSig) {
@@ -508,7 +509,8 @@ export class Overlay {
         dot.className = "spk";
         if (!p.speaking) dot.style.visibility = "hidden"; // держит выравнивание
         const nm = document.createElement("span");
-        nm.textContent = (p.bot ? "🤖 " : "") + p.nick;
+        const platIcon = p.bot ? "🤖" : p.plat === 3 ? "🥽" : p.plat === 2 ? "📱" : p.plat === 1 ? "🖥" : "";
+        nm.textContent = (platIcon ? `${platIcon} ` : "") + p.nick;
         row.append(dot, nm);
         this.online.appendChild(row);
       }

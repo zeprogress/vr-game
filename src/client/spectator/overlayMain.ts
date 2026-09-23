@@ -92,10 +92,10 @@ function tick(): void {
   const c = cam && now - camAt < 8000 ? cam : null;
   const speaking = new Set(c?.sp ?? []);
 
-  const online: { nick: string; speaking: boolean; bot: boolean }[] = [];
+  const online: { nick: string; speaking: boolean; bot: boolean; plat: number }[] = [];
   let towerStatus: OverlayCtx["towerStatus"] = null;
   st?.players.forEach((p, id) => {
-    online.push({ nick: p.nick, speaking: speaking.has(id), bot: id.startsWith("bot:") });
+    online.push({ nick: p.nick, speaking: speaking.has(id), bot: id.startsWith("bot:"), plat: p.plat });
     if (p.towerFloor > 0) {
       towerStatus = {
         heroNick: p.nick,

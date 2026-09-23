@@ -1284,9 +1284,14 @@ export class Spectator {
       if (!this.overlay) return;
     }
 
-    const online: { nick: string; speaking: boolean; bot: boolean }[] = [];
+    const online: { nick: string; speaking: boolean; bot: boolean; plat: number }[] = [];
     st?.players.forEach((p, id) =>
-      online.push({ nick: p.nick, speaking: this.speakingIds.has(id), bot: id.startsWith("bot:") }),
+      online.push({
+        nick: p.nick,
+        speaking: this.speakingIds.has(id),
+        bot: id.startsWith("bot:"),
+        plat: p.plat,
+      }),
     );
 
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
