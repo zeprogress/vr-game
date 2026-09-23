@@ -105,8 +105,29 @@ export function terrainHeight(x: number, z: number): number {
   const md = Math.sqrt(mx * mx + mz * mz);
   if (md < MOUNTAIN.radius) {
     const t = 1 - md / MOUNTAIN.radius; // 0 у подножия, 1 в центре пика
-    // Плавный купол (не конус «домиком»): quadratic ease — подножие мягче.
-    h += MOUNTAIN.peakHeight * t * t;
+    // Плоская площадка на самом верху (не острый пик) — выше PLATEAU_T рост
+    // высоты сохраняется на одном уровне (clamp), а не продолжает расти.
+    const PLATEAU_T = 0.7;
+    const tEff = t < PLATEAU_T ? t : PLATEAU_T;
+    h += MOUNTAIN.peakHeight * tEff * tEff;
+
+    // Русло реки — неглубокая канава вдоль линии озеро→гора (та же прямая,
+    // что Lake.ts использует под водопад/реку), прорезанная поперёк склона.
+    // Глубже и полнее на самом верху (на площадке), сходит на нет у подножия
+    // — так река на плоской вершине течёт в настоящей выемке, а не по ровному
+    // месту, и не режет траншею там, где горы ещё почти нет.
+    const dxm = MOUNTAIN.x - LAKE.x;
+    const dzm = MOUNTAIN.z - LAKE.z;
+    const dlm = Math.hypot(dxm, dzm) || 1;
+    const nx = dxm / dlm;
+    const nz = dzm / dlm;
+    const perpX = -nz;
+    const perpZ = nx;
+    const lateral = mx * perpX + mz * perpZ; // смещение от осевой линии реки
+    const GROOVE_W = 5;
+    const GROOVE_DEPTH = 3;
+    const across = Math.max(0, 1 - Math.abs(lateral) / GROOVE_W);
+    h -= GROOVE_DEPTH * across * across * Math.min(1, t / PLATEAU_T);
   }
 
   // Чаша озера — понижаем рельеф под водой, чтобы гладь (LAKE.waterY) не

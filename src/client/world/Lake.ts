@@ -235,16 +235,17 @@ export function createLake(scene: Scene): Lake {
     const upz = nz; // от водопада вверх по склону, к горе
     const perpX = -upz;
     const perpZ = upx; // поперёк русла — для виляния
-    // Общий подъём — метров 25 вверх по склону: голова водопада стоит на
-    // md≈35 от центра горы (см. topX/topZ выше), пик — на md=0, так что 25 м
-    // забирают заметную часть склона, не пересекая сам пик и не ныряя на
-    // другую сторону горы.
-    const N = 5;
-    const CLIMB = 25;
+    // Подъём почти до плоской вершины (см. terrain.ts PLATEAU_T) — река
+    // должна уходить в даль по плато, а не обрываться на середине склона.
+    // Виляние небольшое: terrain.ts режет под руслом прямую канаву шириной
+    // ~5м вдоль этой же линии (nx,nz) — если лента гуляет сильно в сторону,
+    // она всплывает над бортом канавы вместо того, чтобы лежать в ней.
+    const N = 8;
+    const CLIMB = 45;
     const pts: { x: number; y: number; z: number }[] = [{ x: topX, y: topY, z: topZ }];
     for (let i = 1; i <= N; i++) {
       const t = i / N;
-      const wiggle = Math.sin(t * 4.3 + 1.7) * 3.5 * t; // разворот сильнее к вершине
+      const wiggle = Math.sin(t * 4.3 + 1.7) * 1.2 * t; // разворот мягче к вершине
       const px = topX + upx * (CLIMB * t) + perpX * wiggle;
       const pz = topZ + upz * (CLIMB * t) + perpZ * wiggle;
       pts.push({ x: px, y: terrainHeight(px, pz) + 0.12, z: pz });
