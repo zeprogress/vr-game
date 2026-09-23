@@ -1,4 +1,4 @@
-import { AFFIX, BOW, SHIELD } from "./constants";
+import { AFFIX, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
 import { armorFrac, attackSpeedFor, moveSpeedFor } from "./progression";
 import { magicResistFrac } from "./magic";
@@ -69,9 +69,14 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const critChanceBonus = affixNum(affixText, "шанс крита") / 100;
   const critMultBonus = affixNum(affixText, "силу крита");
   const critChance = (cls === "bow" ? BOW.critChance : 0) + critChanceBonus;
+  // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
+  // combat.ts): у лука BOW.critMult, у меча/кулака SWORD_CRIT_MULT, у посоха
+  // STAFF_CRIT_MULT. Раньше тут всегда бралась базовая от лука — мечу и
+  // посоху со случайным роллом крита рисовало завышенную силу.
+  const baseCritMult = cls === "bow" ? BOW.critMult : cls === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT;
   if (critChance > 0) {
     rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
-    rows.push({ label: "Сила крита", value: `×${(BOW.critMult + critMultBonus).toFixed(1)}` });
+    rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus).toFixed(1)}` });
   }
 
   const arm = armorFrac(p.str);
