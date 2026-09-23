@@ -382,8 +382,10 @@ function normNick(n: string): string {
 
 /**
  * Боты зрителей ПЕРЕЖИВАЮТ перезапуск сервера (восстанавливаются из записей),
- * но снимаются, если хозяин-ник не писал в чат канала дольше BOT.ownerAbsentSec
- * (см. tickBots). Фарм самого бота таймер не продлевает.
+ * но снимаются, если хозяин не появлялся дольше BOT.ownerAbsentSec (см.
+ * tickBots) — часы стартуют либо от выхода из игры с "оставить бота", либо от
+ * последнего сообщения в чате, и дальше продлеваются ТОЛЬКО настоящим чатом.
+ * Фарм самого бота таймер не продлевает.
  */
 const RESTORE_BOTS_ON_START = true;
 
@@ -5407,15 +5409,14 @@ export class ZoneRoom extends Room<ZoneState> {
     this.joinedAt.delete(client.sessionId);
     store.flush();
 
-    // Стрим-игрок вышел — персонаж продолжает жить ботом, только если сам
-    // это включил (панель C, по умолчанию — нет) и ник всё ещё допущен.
-    if (
-      streamNorm &&
-      p &&
-      rt?.leaveBot &&
-      this.allowedNick(streamNorm) &&
-      this.bots.size < BOT.maxBots
-    ) {
+    // Игрок вышел из игры (ПК/телефон/VR) с отмеченным "оставить бота" —
+    // персонаж продолжает жить ботом БЕЗ УСЛОВИЯ про чат (allowedNick тут не
+    // нужен — это осознанный выход из самой игры, не вход по ссылке чата).
+    // Часы до снятия (BOT.ownerAbsentSec) стартуют сейчас и дальше продлеваются
+    // только настоящими сообщениями в чате Twitch (onChat) — заявка: "бот
+    // висел N часов, а в чате время добавлялось от последнего сообщения".
+    if (streamNorm && p && rt?.leaveBot && this.bots.size < BOT.maxBots) {
+      this.chatSeen.set(streamNorm, Date.now());
       this.spawnBot(p.nick, streamNorm);
     }
 
