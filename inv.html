@@ -94,6 +94,27 @@
       .section:first-child {
         margin-top: 0;
       }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 12px;
+        background: #2a2e40;
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .stat {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 13px;
+      }
+      .stat-label {
+        opacity: 0.6;
+      }
+      .stat-value {
+        font-weight: 700;
+      }
       .hands {
         display: flex;
         flex-wrap: wrap;

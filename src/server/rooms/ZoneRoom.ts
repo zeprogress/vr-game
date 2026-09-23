@@ -87,6 +87,7 @@ import {
   WORLD,
 } from "#shared/constants";
 import { clampToDisk } from "#shared/geometry";
+import { heroStatLine } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
 import {
@@ -3038,7 +3039,7 @@ export class ZoneRoom extends Room<ZoneState> {
       p.unspent > 0 ? `свободных очков ${p.unspent} → !str !dex !int` : "свободных очков нет";
     this.reply(
       `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)} · ` +
-        `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · ${points}`,
+        `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · ${points} · ${heroStatLine(p)}`,
     );
   }
 

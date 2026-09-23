@@ -2,6 +2,7 @@ import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
 import type { PlayerMode } from "./schema";
+import type { HeroStatRow } from "../heroStats";
 
 /** Код закрытия комнаты, когда сервер намеренно выгоняет клиента (зашли тем
  * же ником в другом месте) — клиент не должен пытаться переподключиться. */
@@ -228,8 +229,8 @@ export interface TowerMobsMsg {
 export interface OvlCam {
   /** Кого смотрим: ник/имя моба или null. */
   w: string | null;
-  /** Краткие характеристики / инвентарь героя (строки под ником). */
-  ws: string | null;
+  /** Характеристики героя (таблица label/value) / инвентарь (строка) под ником. */
+  ws: HeroStatRow[] | null;
   wi: string | null;
   /** Подпись кадра без цели. */
   sl: string;

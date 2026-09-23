@@ -23,9 +23,16 @@ interface InvMisc {
   count: number;
 }
 
+interface InvStatRow {
+  label: string;
+  value: string;
+}
+
 interface InvMsg {
   ok: boolean;
   nick?: string;
+  level?: number;
+  stats?: InvStatRow[];
   hands?: { left: InvHand | null; right: InvHand | null };
   weapons?: InvWeapon[];
   misc?: InvMisc[];
@@ -81,6 +88,18 @@ function renderInv(msg: InvMsg): void {
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
   subEl.textContent = "";
 
+  const statsHtml =
+    msg.stats && msg.stats.length > 0
+      ? `<div class="stats"><div class="stat"><span class="stat-label">Уровень</span><span class="stat-value">${msg.level ?? ""}</span></div>` +
+        msg.stats
+          .map(
+            (s) =>
+              `<div class="stat"><span class="stat-label">${escapeHtml(s.label)}</span><span class="stat-value">${escapeHtml(s.value)}</span></div>`,
+          )
+          .join("") +
+        `</div>`
+      : "";
+
   const hands = msg.hands;
   // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (как в игре).
   const bow = hands ? (hands.left?.cls === "bow" ? hands.left : hands.right?.cls === "bow" ? hands.right : null) : null;
@@ -114,7 +133,7 @@ function renderInv(msg: InvMsg): void {
       : `<h2 class="section">Прочее</h2>` +
         misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
 
-  listEl.innerHTML = `${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  listEl.innerHTML = `${statsHtml}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 /**

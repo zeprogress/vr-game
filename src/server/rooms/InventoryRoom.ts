@@ -12,6 +12,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
+import { heroStatRows } from "#shared/heroStats";
 import { store } from "../store";
 
 interface InventoryJoinOptions {
@@ -85,9 +86,29 @@ export class InventoryRoom extends colyseus.Room {
       const misc = (rec.bag ?? [])
         .filter((s) => s.item && s.count > 0)
         .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
+      const leftInst = rec.equippedWeaponId?.left
+        ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.left)
+        : undefined;
+      const rightInst = rec.equippedWeaponId?.right
+        ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.right)
+        : undefined;
+      const stats = heroStatRows({
+        level: rec.level,
+        str: rec.str,
+        agi: rec.agi,
+        int: rec.int,
+        rightCls: rec.held?.right?.cls ?? "",
+        rightTier: rec.held?.right?.tier ?? "",
+        leftCls: rec.held?.left?.cls ?? "",
+        leftTier: rec.held?.left?.tier ?? "",
+        rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
+        leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
+      });
       client.send("inv", {
         ok: true,
         nick: rec.nick,
+        level: rec.level,
+        stats,
         hands: {
           left: handInfo(
             rec.held?.left?.cls ?? "",

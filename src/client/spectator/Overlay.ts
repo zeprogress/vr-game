@@ -1,4 +1,5 @@
 import type { OverlayPatch, LeaderboardRow, TowerBoardRow, LootItem } from "#shared/net/messages";
+import type { HeroStatRow } from "#shared/heroStats";
 import { TOWER } from "#shared/tower";
 import { ITEMS } from "#shared/items";
 
@@ -18,8 +19,8 @@ export interface OverlayCtx {
   shotLabel: string;
   /** HP цели 0..1 и абсолютные значения — или null, если у кадра нет цели. */
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
-  /** Краткие характеристики игрока под ником в «смотрим» (без атрибутов). */
-  watchStats: string | null;
+  /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
+  watchStats: HeroStatRow[] | null;
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
   watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
@@ -94,8 +95,11 @@ const CSS = `
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
 .ov-watch span { display:block; font-weight:800; font-size:3.2vh; margin-top:.4vh; }
-.ov-watch i { display:block; font-style:normal; font-weight:500; font-size:1.8vh;
-  opacity:.88; margin-top:.4vh; letter-spacing:.02em; }
+.ov-watch table.stats { border-collapse:collapse; margin-top:.6vh; }
+.ov-watch table.stats td { font-size:1.7vh; font-weight:500; padding:.15vh 0;
+  letter-spacing:.02em; opacity:.92; }
+.ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
+.ov-watch table.stats td.vl { font-weight:700; text-align:right; }
 .ov-hp { left:50%; bottom:3vh; transform:translateX(-50%); width:34vw; text-align:center; }
 .ov-hp b { font-weight:700; font-size:1.9vh; letter-spacing:.05em; }
 .ov-hp i { display:block; font-style:normal; font-weight:500; font-size:1.5vh;
@@ -516,9 +520,8 @@ export class Overlay {
       }
     }
 
-    const watchSig = this.cfg.watching
-      ? `${ctx.watching}|${ctx.shotLabel}|${ctx.watchStats ?? ""}`
-      : "";
+    const statsSig = ctx.watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
+    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.shotLabel}|${statsSig}` : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
@@ -528,10 +531,21 @@ export class Overlay {
         const s = document.createElement("span");
         s.textContent = ctx.watching;
         this.watch.append(b, s);
-        if (ctx.watchStats) {
-          const i = document.createElement("i");
-          i.textContent = ctx.watchStats;
-          this.watch.append(i);
+        if (ctx.watchStats && ctx.watchStats.length > 0) {
+          const table = document.createElement("table");
+          table.className = "stats";
+          for (const row of ctx.watchStats) {
+            const tr = document.createElement("tr");
+            const lb = document.createElement("td");
+            lb.className = "lb";
+            lb.textContent = row.label;
+            const vl = document.createElement("td");
+            vl.className = "vl";
+            vl.textContent = row.value;
+            tr.append(lb, vl);
+            table.appendChild(tr);
+          }
+          this.watch.append(table);
         }
       } else {
         this.watch.innerHTML = `<b>${ctx.shotLabel}</b>`;

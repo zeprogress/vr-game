@@ -32,10 +32,8 @@ import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
-import { weaponDamage } from "#shared/combat";
-import { armorFrac, moveSpeedFor, attackSpeedFor } from "#shared/progression";
-import { magicResistFrac, fireboltDamage } from "#shared/magic";
-import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
+import { ITEMS, weaponDef, type ItemId, type WeaponClass } from "#shared/items";
 import {
   SpectatorCamera,
   type DirectorCtx,
@@ -1146,38 +1144,9 @@ export class Spectator {
   }
 
   /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
-  /** Краткие боевые характеристики игрока для панели «смотрим» (без атрибутов). */
-  private static playerStatLine(p: PlayerState): string {
-    const parts: string[] = [`ур. ${p.level}`];
-    const cls = p.rightCls as WeaponClass | "";
-    const tier = (p.rightTier || "base") as WeaponTier;
-    const tierMul = cls && cls !== "shield" ? weaponDef(cls, tier).mult : 1;
-    if (cls === "bow") {
-      parts.push(`лук ×${weaponDamage("arrow", p.level, p.str, tierMul, p.agi).toFixed(1)}`);
-    } else if (cls === "staff") {
-      parts.push(`магия ×${fireboltDamage(p.level, p.int, 1).toFixed(1)}`);
-    } else if (cls === "sword" || cls === "") {
-      parts.push(`меч ×${weaponDamage("sword", p.level, p.str, tierMul, p.agi).toFixed(1)}`);
-    }
-    const arm = armorFrac(p.str);
-    const mres = magicResistFrac(p.int);
-    if (arm >= 0.03) parts.push(`броня ${Math.round(arm * 100)}%`);
-    if (mres >= 0.05) parts.push(`маг.защ ${Math.round(mres * 100)}%`);
-    parts.push(`${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с`);
-    // Ролл "скорость атаки" (см. items.ts affixLabel) — синкается текстом в
-    // leftAffix/rightAffix, тут вытаскиваем число обратно для темпа.
-    const affixText = cls && p.rightCls === cls ? p.rightAffix : p.leftAffix;
-    const bonusMatch = affixText?.match(/\+([\d.]+)% скорость атаки/);
-    const speedBonus = bonusMatch ? Number(bonusMatch[1]) / 100 : 0;
-    if (cls === "staff") {
-      // У посоха темп атаки рукой (от ловкости) магии не касается — каст
-      // на фиксированном кулдауне, ускоряет его только ролл на предмете.
-      if (speedBonus > 0) parts.push(`темп магии ×${(1 + speedBonus).toFixed(2)}`);
-    } else {
-      const spd = attackSpeedFor(p.level, p.agi) * (1 + speedBonus);
-      if (spd >= 1.15) parts.push(`темп ×${spd.toFixed(2)}`);
-    }
-    return parts.join(" · ");
+  /** Таблица понятных характеристик игрока для панели «смотрим» (см. #shared/heroStats). */
+  private static playerStatRows(p: PlayerState): HeroStatRow[] {
+    return [{ label: "Уровень", value: `${p.level}` }, ...heroStatRows(p)];
   }
 
   /** Ярлык оружия/щита в руке для панели «HP цели». */
@@ -1231,7 +1200,7 @@ export class Spectator {
   private updateOverlay(st: ZoneState | null): void {
     const subj = this.cam.subject;
     let watching: string | null = null;
-    let watchStats: string | null = null;
+    let watchStats: HeroStatRow[] | null = null;
     let watchInv: string | null = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
@@ -1240,7 +1209,7 @@ export class Spectator {
         const p = st.players.get(subj.id);
         if (p) {
           watching = p.nick;
-          watchStats = Spectator.playerStatLine(p);
+          watchStats = Spectator.playerStatRows(p);
           watchInv = Spectator.playerInvLine(p);
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
@@ -1259,7 +1228,8 @@ export class Spectator {
       // оверлей, открывшийся позже, быстро получил кадр.
       const now = performance.now();
       const sp = [...this.speakingIds];
-      const sig = `${watching}|${watchStats}|${watchInv}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
+      const statsSig = watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
+      const sig = `${watching}|${statsSig}|${watchInv}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
       if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
         this.lastOvlSig = sig;
         this.lastOvlAt = now;
