@@ -482,6 +482,14 @@ export class RemoteAvatar implements Hittable {
     return this.mode;
   }
 
+  /** Кости кулаков — камере спектатора «из глаз» сажать на них перчатки (EyeGloves). */
+  get fistL(): TransformNode | null {
+    return this.botFistL;
+  }
+  get fistR(): TransformNode | null {
+    return this.botFistR;
+  }
+
   /**
    * Спрятать модель персонажа (камера спектатора «из глаз» этого же
    * игрока — иначе меш головы/тела торчит перед объективом). Только

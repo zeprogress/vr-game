@@ -14,6 +14,7 @@ import { LOADOUT } from "../config/loadout";
 import { buildZone } from "../world/Zone";
 import { PRESETS, type Quality } from "../config/quality";
 import { Overlay, type OverlayCtx } from "./Overlay";
+import { createEyeGloves, type EyeGloves } from "./EyeGloves";
 import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
@@ -77,6 +78,7 @@ export class Spectator {
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
+  private readonly eyeGloves: EyeGloves;
   private readonly towerFx: TowerArenaFx;
   /** Живые позиции мобов текущего забега (мировые координаты) — с сервера. */
   private _towerMobs: TowerLiveMob[] = [];
@@ -257,6 +259,7 @@ export class Spectator {
     // при повороте камеры свет «пропадает» у ботов, что не вошли в двойку ближайших.
     if (preset.botTorches === undefined) this.botLights.setBudget(BOT_TORCHES);
     this.crossFx = new WorldCrossFx(this.scene);
+    this.eyeGloves = createEyeGloves(this.scene);
     this.towerFx = new TowerArenaFx(this.scene, this.sfx);
     // Крючок для панели ?towerlight=1 (TowerLightTuner) — та не привязана к
     // конкретному экрану/классу, читает арену через глобальный указатель.
@@ -1212,7 +1215,12 @@ export class Spectator {
         : null;
     if (wantId === this.eyeHiddenId) return;
     if (this.eyeHiddenId) this.avatars.get(this.eyeHiddenId)?.setModelVisible(true);
-    if (wantId) this.avatars.get(wantId)?.setModelVisible(false);
+    const av = wantId ? this.avatars.get(wantId) : null;
+    if (av) av.setModelVisible(false);
+    // Перчатки — только у VR (в плоском режиме нет честных костей кулака
+    // под сеть, там оружие уже видно на модели, прятать нечего).
+    if (av && av.playerMode === "vr") this.eyeGloves.show(av.fistL, av.fistR);
+    else this.eyeGloves.hide();
     this.eyeHiddenId = wantId;
   }
 

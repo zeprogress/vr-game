@@ -105,11 +105,15 @@ function sparseMul(x: number, z: number): number {
   }
   const dh = Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z);
   if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
-  // Озеро и гора у водопада — совсем без травы/кустов на воде и на голом
-  // склоне (её и не видно под водой, а на скале она смотрелась бы нелепо).
+  // Озеро — без травы на воде и в 5 м суши за кромкой, дальше плавный
+  // переход обратно к обычной густоте (заявка: «радиус 5 м, плавный переход»).
   const dLake = Math.hypot(x - LAKE.x, z - LAKE.z);
-  const lakeClear = LAKE.radius + LAKE.shoreFade + 6;
+  const shoreOuter = LAKE.radius + LAKE.shoreFade;
+  const lakeClear = shoreOuter + 5;
+  const lakeFadeW = 6;
   if (dLake < lakeClear) m = 0;
+  else if (dLake < lakeClear + lakeFadeW) m *= smooth(lakeClear, lakeClear + lakeFadeW, dLake);
+  // Голый склон горы у водопада — трава/кусты ни к чему на скале.
   const dMtn = Math.hypot(x - MOUNTAIN.x, z - MOUNTAIN.z);
   if (dMtn < MOUNTAIN.radius) m *= smooth(MOUNTAIN.radius * 0.5, MOUNTAIN.radius, dMtn);
   const dt = Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z);
