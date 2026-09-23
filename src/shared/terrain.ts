@@ -126,10 +126,41 @@ export function terrainHeight(x: number, z: number): number {
     const perpX = -nz;
     const perpZ = nx;
     const lateral = mx * perpX + mz * perpZ; // смещение от осевой линии реки
-    const GROOVE_W = 5;
+    // Шире, чем было (5->8) — по просьбе, «река сверху шире».
+    const GROOVE_W = 8;
     const GROOVE_DEPTH = 3;
     const across = Math.max(0, 1 - Math.abs(lateral) / GROOVE_W);
     h -= GROOVE_DEPTH * across * across * Math.min(1, t / PLATEAU_T);
+  }
+
+  // Резкий обрыв ровно у водопада — не пологий склон горы, а вертикальная
+  // стена на коротком участке сразу за берегом озера. Настоящий heightmap не
+  // может дать нависающий козырёк, но подъём на CLIFF_RISE м всего за
+  // CLIFF_W м по горизонтали читается как отвесная стена. Действует только
+  // в узком коридоре вдоль той же линии озеро→гора (не по всему подножию).
+  {
+    const dxm = MOUNTAIN.x - LAKE.x;
+    const dzm = MOUNTAIN.z - LAKE.z;
+    const dlm = Math.hypot(dxm, dzm) || 1;
+    const nx = dxm / dlm;
+    const nz = dzm / dlm;
+    const perpX = -nz;
+    const perpZ = nx;
+    const lx = x - LAKE.x;
+    const lz = z - LAKE.z;
+    const alongLake = lx * nx + lz * nz; // расстояние вдоль линии от центра озера
+    const lateralLake = lx * perpX + lz * perpZ;
+    const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
+    const RISE_FADE = 10;
+    const CLIFF_START = shoreOuter + RISE_FADE + 1; // сразу за настоящим берегом
+    const CLIFF_W = 4;
+    const CLIFF_RISE = 16;
+    const CORRIDOR = 10;
+    if (Math.abs(lateralLake) < CORRIDOR && alongLake > CLIFF_START) {
+      const cliffT = clamp01((alongLake - CLIFF_START) / CLIFF_W);
+      const corridorFall = Math.max(0, 1 - Math.abs(lateralLake) / CORRIDOR);
+      h += CLIFF_RISE * cliffT * corridorFall;
+    }
   }
 
   // Чаша озера — понижаем рельеф под водой, чтобы гладь (LAKE.waterY) не
