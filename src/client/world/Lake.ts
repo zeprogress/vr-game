@@ -209,35 +209,38 @@ export function createLake(scene: Scene): Lake {
 
     // Противоположный от горы берег — там, где к озеру ближе всего от центра
     // мира (удобно идти от поляны), направление -(nx,nz) от центра озера.
+    // Причал ставим НА СУШЕ (за пределами вечно-подводной зоны terrain.ts:
+    // там дно ровно floorY на всём shoreOuter, «берег» на shoreOuter-1 — это
+    // всё ещё дно озера под водой) и тянем доски ОТТУДА к воде, а не наоборот.
     const dax = -nx;
     const daz = -nz;
-    const shoreX = LAKE.x + dax * (shoreOuter - 1);
-    const shoreZ = LAKE.z + daz * (shoreOuter - 1);
-    const shoreY = terrainHeight(shoreX, shoreZ);
+    const dockR = shoreOuter + 7; // твёрдая земля — подъём к обычному рельефу кончается на shoreOuter+RISE_FADE(10)
+    const shoreX = LAKE.x + dax * dockR;
+    const shoreZ = LAKE.z + daz * dockR;
     const dockYaw = Math.atan2(dax, daz);
+    // Доска садится на то, что выше — землю или гладь воды: у берега на
+    // рельеф, дальше в озеро — на уровень воды. Так причал естественно
+    // «плывёт» по границе суша/вода, а не проваливается и не висит.
+    const restY = (x: number, z: number): number => Math.max(terrainHeight(x, z), LAKE.waterY) + 0.1;
 
     const planks: Mesh[] = [];
     const PLANK_N = 6;
     for (let i = 0; i < PLANK_N; i++) {
       const t = i / (PLANK_N - 1);
-      const along = -3 + t * 9; // от берега в воду
+      const along = -9 + t * 9; // от воды (-9, к озеру) до берега (0)
+      const px = shoreX + Math.sin(dockYaw) * along;
+      const pz = shoreZ + Math.cos(dockYaw) * along;
       const plank = MeshBuilder.CreateBox(`dockPlank${i}`, { width: 3.4, height: 0.14, depth: 0.85 }, scene);
-      plank.position.set(
-        shoreX + Math.sin(dockYaw) * along,
-        shoreY + 0.42 - Math.max(0, along) * 0.02,
-        shoreZ + Math.cos(dockYaw) * along,
-      );
+      plank.position.set(px, restY(px, pz) + 0.3, pz);
       plank.rotation.y = dockYaw;
       planks.push(plank);
     }
-    // Сваи под причал.
-    for (const along of [0, 4, 7.5]) {
+    // Сваи под причал — там, где он реально над водой (дальние от берега доски).
+    for (const along of [-8, -5, -2]) {
+      const px = shoreX + Math.sin(dockYaw) * along;
+      const pz = shoreZ + Math.cos(dockYaw) * along;
       const pile = MeshBuilder.CreateCylinder("dockPile", { diameter: 0.22, height: 1.4 }, scene);
-      pile.position.set(
-        shoreX + Math.sin(dockYaw) * along,
-        shoreY - 0.3,
-        shoreZ + Math.cos(dockYaw) * along,
-      );
+      pile.position.set(px, restY(px, pz) - 0.4, pz);
       planks.push(pile);
     }
     const dock = Mesh.MergeMeshes(planks, true, true) as Mesh;
@@ -246,9 +249,9 @@ export function createLake(scene: Scene): Lake {
     dock.checkCollisions = true; // по причалу можно ходить
     dock.freezeWorldMatrix();
 
-    // Ящики/бочки у берега, чуть в стороне от досок.
-    const crateSideX = shoreX + Math.cos(dockYaw) * 2.4;
-    const crateSideZ = shoreZ - Math.sin(dockYaw) * 2.4;
+    // Ящики/бочки у берега (твёрдая земля), чуть в стороне от досок.
+    const crateSideX = shoreX + Math.cos(dockYaw) * 2.4 + Math.sin(dockYaw) * 1.5;
+    const crateSideZ = shoreZ - Math.sin(dockYaw) * 2.4 + Math.cos(dockYaw) * 1.5;
     const crateY = terrainHeight(crateSideX, crateSideZ);
     const crates: Mesh[] = [];
     const crate1 = MeshBuilder.CreateBox("dockCrate1", { size: 0.7 }, scene);
@@ -264,15 +267,18 @@ export function createLake(scene: Scene): Lake {
     crates2.checkCollisions = true;
     crates2.freezeWorldMatrix();
 
-    // Флаг на шесте у причала.
+    // Флаг на шесте у причала — на твёрдой земле, чуть в стороне от воды.
+    const poleX = shoreX - Math.sin(dockYaw) * 1.6;
+    const poleZ = shoreZ - Math.cos(dockYaw) * 1.6;
+    const poleBaseY = terrainHeight(poleX, poleZ);
     const poleH = 3.2;
     const pole = MeshBuilder.CreateCylinder("dockPole", { diameter: 0.1, height: poleH }, scene);
-    pole.position.set(shoreX - Math.sin(dockYaw) * 1.6, shoreY + poleH / 2, shoreZ - Math.cos(dockYaw) * 1.6);
+    pole.position.set(poleX, poleBaseY + poleH / 2, poleZ);
     pole.material = woodMat;
     pole.isPickable = false;
     pole.freezeWorldMatrix();
     const flag = MeshBuilder.CreateBox("dockBanner", { width: 0.02, height: 0.85, depth: 0.55 }, scene);
-    flag.position.set(pole.position.x + 0.28, shoreY + poleH - 0.55, pole.position.z);
+    flag.position.set(poleX + 0.28, poleBaseY + poleH - 0.55, poleZ);
     flag.material = bannerMat;
     flag.isPickable = false;
     flag.freezeWorldMatrix();
