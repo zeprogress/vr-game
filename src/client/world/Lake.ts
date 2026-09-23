@@ -19,6 +19,125 @@ export interface Lake {
 }
 
 /**
+ * Гранёный blockout-камень: крупная сетка (джиттер позиции/высоты — грани
+ * читаются, форма неправильная), flat shading с нормалью, принудительно
+ * развёрнутой вверх (не зависит от порядка обхода треугольников — исключает
+ * «чёрную дыру» из-за перевёрнутой нормали одной грани).
+ */
+function buildJitterRock(
+  scene: Scene,
+  name: string,
+  cx: number,
+  cz: number,
+  R: number,
+  heightAt: (x: number, z: number) => number,
+  color: Color3,
+  seedBase: number,
+): Mesh {
+  const mat = new StandardMaterial(`${name}Mat`, scene);
+  mat.diffuseColor = color;
+  mat.specularColor = new Color3(0.03, 0.03, 0.03);
+  mat.maxSimultaneousLights = 1;
+
+  const STEP = 6;
+  const n = Math.floor((2 * R) / STEP);
+  const x0 = cx - (n * STEP) / 2;
+  const z0 = cz - (n * STEP) / 2;
+  let seed = seedBase;
+  const rnd = (): number => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+
+  const grid: { x: number; y: number; z: number }[][] = [];
+  for (let iz = 0; iz <= n; iz++) {
+    const row: { x: number; y: number; z: number }[] = [];
+    for (let ix = 0; ix <= n; ix++) {
+      const gx = x0 + ix * STEP + (rnd() - 0.5) * STEP * 0.35;
+      const gz = z0 + iz * STEP + (rnd() - 0.5) * STEP * 0.35;
+      // Джиттер высоты только ВВЕРХ — иначе часть камня проваливается ниже
+      // настоящей земли и получается дыра/z-fighting.
+      const gy = heightAt(gx, gz) + 0.15 + rnd() * 1.0;
+      row.push({ x: gx, y: gy, z: gz });
+    }
+    grid.push(row);
+  }
+  const idxOf = (ix: number, iz: number): number => iz * (n + 1) + ix;
+  const within = (ix: number, iz: number): boolean => {
+    const p = grid[iz][ix];
+    return Math.hypot(p.x - cx, p.z - cz) <= R;
+  };
+  const rawPos: number[] = [];
+  for (let iz = 0; iz <= n; iz++) {
+    for (let ix = 0; ix <= n; ix++) {
+      const p = grid[iz][ix];
+      rawPos.push(p.x, p.y, p.z);
+    }
+  }
+  const rawIdx: number[] = [];
+  for (let iz = 0; iz < n; iz++) {
+    for (let ix = 0; ix < n; ix++) {
+      if (!within(ix, iz) || !within(ix + 1, iz) || !within(ix, iz + 1) || !within(ix + 1, iz + 1)) continue;
+      const a = idxOf(ix, iz);
+      const b = idxOf(ix + 1, iz);
+      const c = idxOf(ix, iz + 1);
+      const d = idxOf(ix + 1, iz + 1);
+      rawIdx.push(a, b, c, b, d, c);
+    }
+  }
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  for (let t = 0; t < rawIdx.length; t += 3) {
+    const ia = rawIdx[t];
+    const ib = rawIdx[t + 1];
+    const ic = rawIdx[t + 2];
+    const ax = rawPos[ia * 3];
+    const ay = rawPos[ia * 3 + 1];
+    const az = rawPos[ia * 3 + 2];
+    const bx = rawPos[ib * 3];
+    const by = rawPos[ib * 3 + 1];
+    const bz = rawPos[ib * 3 + 2];
+    const cxp = rawPos[ic * 3];
+    const cy = rawPos[ic * 3 + 1];
+    const czp = rawPos[ic * 3 + 2];
+    const e1x = bx - ax;
+    const e1y = by - ay;
+    const e1z = bz - az;
+    const e2x = cxp - ax;
+    const e2y = cy - ay;
+    const e2z = czp - az;
+    let nvx = e1y * e2z - e1z * e2y;
+    let nvy = e1z * e2x - e1x * e2z;
+    let nvz = e1x * e2y - e1y * e2x;
+    const len = Math.hypot(nvx, nvy, nvz) || 1;
+    nvx /= len;
+    nvy /= len;
+    nvz /= len;
+    if (nvy < 0) {
+      nvx = -nvx;
+      nvy = -nvy;
+      nvz = -nvz;
+    }
+    const base = positions.length / 3;
+    positions.push(ax, ay, az, bx, by, bz, cxp, cy, czp);
+    normals.push(nvx, nvy, nvz, nvx, nvy, nvz, nvx, nvy, nvz);
+    indices.push(base, base + 1, base + 2);
+  }
+  const rock = new Mesh(name, scene);
+  const vd = new VertexData();
+  vd.positions = positions;
+  vd.indices = indices;
+  vd.normals = normals;
+  vd.applyToMesh(rock);
+  rock.material = mat;
+  rock.isPickable = false;
+  rock.checkCollisions = false;
+  rock.freezeWorldMatrix();
+  return rock;
+}
+
+/**
  * Озеро + водопад со склона горы (см. план «озеро+горы»). Статичная
  * геометрия — один диск воды, одна лента водопада, по одному материалу на
  * каждый, `maxSimultaneousLights=1` (как весь остальной мир). Никакой
@@ -409,117 +528,35 @@ export function createLake(scene: Scene): Lake {
     shoreRocks.freezeWorldMatrix();
   }
 
-  // ---- Гора: голый камень, резкие грани (по просьбе — не трава, не гладкий
-  // купол). Отдельный меш поверх настоящего рельефа (тот остаётся травяным
-  // под капотом — коллизии/мобы не трогаем), сетка КРУПНАЯ (6м) и с джиттером
-  // позиции/высоты — грани читаются, форма неправильная, не купол. Нормали у
-  // каждой грани СВОИ (flat shading, не усреднённые) и принудительно "вверх"
-  // (первая попытка так уже ловила чёрную дыру — грань с перевёрнутой
-  // нормалью выглядит нелитой; тут это невозможно в принципе).
+  // ---- Гора: голый камень, резкие грани (не трава, не гладкий купол) ----
+  // Основная гора — поверх настоящего рельефа (тот остаётся травяным под
+  // капотом, коллизии/мобы не трогаем). Плюс вторая, более высокая и
+  // дальняя горная масса на горизонте (не часть terrainHeight, чисто
+  // декоративная — своя аналитическая «шапка» без общей ходьбы/коллизий):
+  // по просьбе, плато должно уходить вдаль и там перекрываться ДРУГОЙ,
+  // ещё более высокой горой (а лесом — отдельным шагом пайплайна).
   {
-    const rockMat = new StandardMaterial("mountainRockMat", scene);
-    rockMat.diffuseColor = new Color3(0.42, 0.4, 0.38);
-    rockMat.specularColor = new Color3(0.03, 0.03, 0.03);
-    rockMat.maxSimultaneousLights = 1;
+    buildJitterRock(
+      scene,
+      "mountainRock",
+      MOUNTAIN.x,
+      MOUNTAIN.z,
+      MOUNTAIN.radius * 0.95,
+      terrainHeight,
+      new Color3(0.42, 0.4, 0.38),
+      778899,
+    );
 
-    const STEP = 6;
-    const R = MOUNTAIN.radius * 0.95;
-    const n = Math.floor((2 * R) / STEP);
-    const x0 = MOUNTAIN.x - (n * STEP) / 2;
-    const z0 = MOUNTAIN.z - (n * STEP) / 2;
-    let seed = 778899;
-    const rnd = (): number => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
+    const FAR_X = MOUNTAIN.x;
+    const FAR_Z = MOUNTAIN.z + nz * 55; // дальше вдоль той же линии, за плато
+    const FAR_R = 70;
+    const FAR_PEAK = 85;
+    const farHeightAt = (x: number, z: number): number => {
+      const dm = Math.hypot(x - FAR_X, z - FAR_Z);
+      const t = Math.max(0, 1 - dm / FAR_R);
+      return terrainHeight(FAR_X, FAR_Z) + FAR_PEAK * t * t;
     };
-
-    const grid: { x: number; y: number; z: number }[][] = [];
-    for (let iz = 0; iz <= n; iz++) {
-      const row: { x: number; y: number; z: number }[] = [];
-      for (let ix = 0; ix <= n; ix++) {
-        const gx = x0 + ix * STEP + (rnd() - 0.5) * STEP * 0.35;
-        const gz = z0 + iz * STEP + (rnd() - 0.5) * STEP * 0.35;
-        // Джиттер высоты только ВВЕРХ (0.15..1.15) — иначе часть камня
-        // проваливается ниже настоящей земли и получается дыра/z-fighting.
-        const gy = terrainHeight(gx, gz) + 0.15 + rnd() * 1.0;
-        row.push({ x: gx, y: gy, z: gz });
-      }
-      grid.push(row);
-    }
-    const idxOf = (ix: number, iz: number): number => iz * (n + 1) + ix;
-    const within = (ix: number, iz: number): boolean => {
-      const p = grid[iz][ix];
-      return Math.hypot(p.x - MOUNTAIN.x, p.z - MOUNTAIN.z) <= R;
-    };
-    const rawPos: number[] = [];
-    for (let iz = 0; iz <= n; iz++) {
-      for (let ix = 0; ix <= n; ix++) {
-        const p = grid[iz][ix];
-        rawPos.push(p.x, p.y, p.z);
-      }
-    }
-    const rawIdx: number[] = [];
-    for (let iz = 0; iz < n; iz++) {
-      for (let ix = 0; ix < n; ix++) {
-        if (!within(ix, iz) || !within(ix + 1, iz) || !within(ix, iz + 1) || !within(ix + 1, iz + 1)) continue;
-        const a = idxOf(ix, iz);
-        const b = idxOf(ix + 1, iz);
-        const c = idxOf(ix, iz + 1);
-        const d = idxOf(ix + 1, iz + 1);
-        rawIdx.push(a, b, c, b, d, c);
-      }
-    }
-    // Flat shading: разварка на отдельные вершины по треугольнику + нормаль
-    // из фактических вершин ЭТОЙ грани, принудительно развёрнутая вверх.
-    const positions: number[] = [];
-    const normals: number[] = [];
-    const indices: number[] = [];
-    for (let t = 0; t < rawIdx.length; t += 3) {
-      const ia = rawIdx[t];
-      const ib = rawIdx[t + 1];
-      const ic = rawIdx[t + 2];
-      const ax = rawPos[ia * 3];
-      const ay = rawPos[ia * 3 + 1];
-      const az = rawPos[ia * 3 + 2];
-      const bx = rawPos[ib * 3];
-      const by = rawPos[ib * 3 + 1];
-      const bz = rawPos[ib * 3 + 2];
-      const cx = rawPos[ic * 3];
-      const cy = rawPos[ic * 3 + 1];
-      const cz = rawPos[ic * 3 + 2];
-      const e1x = bx - ax;
-      const e1y = by - ay;
-      const e1z = bz - az;
-      const e2x = cx - ax;
-      const e2y = cy - ay;
-      const e2z = cz - az;
-      let nvx = e1y * e2z - e1z * e2y;
-      let nvy = e1z * e2x - e1x * e2z;
-      let nvz = e1x * e2y - e1y * e2x;
-      const len = Math.hypot(nvx, nvy, nvz) || 1;
-      nvx /= len;
-      nvy /= len;
-      nvz /= len;
-      if (nvy < 0) {
-        nvx = -nvx;
-        nvy = -nvy;
-        nvz = -nvz;
-      }
-      const base = positions.length / 3;
-      positions.push(ax, ay, az, bx, by, bz, cx, cy, cz);
-      normals.push(nvx, nvy, nvz, nvx, nvy, nvz, nvx, nvy, nvz);
-      indices.push(base, base + 1, base + 2);
-    }
-    const rock = new Mesh("mountainRock", scene);
-    const vd2 = new VertexData();
-    vd2.positions = positions;
-    vd2.indices = indices;
-    vd2.normals = normals;
-    vd2.applyToMesh(rock);
-    rock.material = rockMat;
-    rock.isPickable = false;
-    rock.checkCollisions = false;
-    rock.freezeWorldMatrix();
+    buildJitterRock(scene, "mountainFar", FAR_X, FAR_Z, FAR_R, farHeightAt, new Color3(0.37, 0.36, 0.36), 991133);
   }
 
   // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----

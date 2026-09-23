@@ -107,9 +107,9 @@ export function terrainHeight(x: number, z: number): number {
     const t = 1 - md / MOUNTAIN.radius; // 0 у подножия, 1 в центре пика
     // Плоская площадка на самом верху (не острый пик) — выше PLATEAU_T рост
     // высоты сохраняется на одном уровне (clamp), а не продолжает расти.
-    // 0.5 — площадка радиусом ~half MOUNTAIN.radius (было 0.7 — слишком
-    // маленький пятачок, почти не читался как плоский с земли).
-    const PLATEAU_T = 0.5;
+    // 0.35 — площадка ещё шире (было 0.5/0.7, всё ещё мало читалась как
+    // плоское место по просьбе «сверху должно быть больше плоского»).
+    const PLATEAU_T = 0.35;
     const tEff = t < PLATEAU_T ? t : PLATEAU_T;
     h += MOUNTAIN.peakHeight * tEff * tEff;
 
