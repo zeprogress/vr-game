@@ -126,7 +126,8 @@ export function terrainHeight(x: number, z: number): number {
     const perpX = -nz;
     const perpZ = nx;
     const lateral = mx * perpX + mz * perpZ; // смещение от осевой линии реки
-    const GROOVE_W = 8;
+    // Половина ширины разрыва в хребте (по плану — просвет 28м, половина 14).
+    const GROOVE_W = 14;
     const GROOVE_DEPTH = 3;
     const across = Math.max(0, 1 - Math.abs(lateral) / GROOVE_W);
     const groovePlateau = Math.min(1, t / PLATEAU_T);
@@ -137,7 +138,7 @@ export function terrainHeight(x: number, z: number): number {
     // настоящий каньон, а не просто ровная канава. Сильнее всего у самого
     // дальнего края площадки (canyonT->1), у водопада (canyonT->0) не влияет
     // — там резкий обрыв делает CLIFF_RISE ниже, это разные места одной реки.
-    const CANYON_W = 5.5;
+    const CANYON_W = 10;
     const CANYON_DEPTH = 7;
     const canyonAcross = Math.max(0, 1 - Math.abs(lateral) / CANYON_W);
     const canyonT = clamp01((t - PLATEAU_T * 0.55) / (PLATEAU_T * 0.45));
@@ -164,9 +165,11 @@ export function terrainHeight(x: number, z: number): number {
     const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
     const RISE_FADE = 10;
     const CLIFF_START = shoreOuter + RISE_FADE + 1; // сразу за настоящим берегом
-    const CLIFF_W = 4;
-    const CLIFF_RISE = 16;
-    const CORRIDOR = 10;
+    const CLIFF_W = 5;
+    // Перепад водопада по плану — 42м.
+    const CLIFF_RISE = 42;
+    // Половина ширины разрыва в хребте — 14 (просвет 28м по плану).
+    const CORRIDOR = 14;
     if (Math.abs(lateralLake) < CORRIDOR && alongLake > CLIFF_START) {
       const cliffT = clamp01((alongLake - CLIFF_START) / CLIFF_W);
       const corridorFall = Math.max(0, 1 - Math.abs(lateralLake) / CORRIDOR);

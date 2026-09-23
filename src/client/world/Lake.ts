@@ -195,8 +195,8 @@ export function createLake(scene: Scene): Lake {
   const topX = baseX + nx * 18;
   const topZ = baseZ + nz * 18;
   const topY = terrainHeight(topX, topZ) + 1;
-  // Потолок поднят (было 16) — гора и обрыв у водопада теперь заметно выше.
-  const fallHeight = Math.max(8, Math.min(34, topY - LAKE.waterY));
+  // Потолок под цель «перепад 42м» из плана (было 34).
+  const fallHeight = Math.max(8, Math.min(46, topY - LAKE.waterY));
 
   // Выступ-козырёк убран по просьбе (не подошёл визуально).
 
@@ -284,11 +284,12 @@ export function createLake(scene: Scene): Lake {
   // Не одна ровная лента, а несколько неровных полос вразнобой по ширине/
   // сдвигу — читается как рассыпающийся поток, а не гладкая плитка.
   const strips: Mesh[] = [];
-  const STRIP_N = 4;
+  // Ширина водопада по плану — 13м (было ~9м суммарно на 4 узких полосах).
+  const STRIP_N = 5;
   for (let i = 0; i < STRIP_N; i++) {
-    const w = 2.2 + Math.random() * 2.2;
+    const w = 2.6 + Math.random() * 2.4;
     const h = fallHeight * (0.85 + Math.random() * 0.15);
-    const along = (i - (STRIP_N - 1) / 2) * 1.9;
+    const along = (i - (STRIP_N - 1) / 2) * 3.1;
     const forward = (Math.random() - 0.5) * 0.7;
     strips.push(buildStrip(`waterfallStrip${i}`, along, w, h, forward));
   }
@@ -549,12 +550,12 @@ export function createLake(scene: Scene): Lake {
     const perpX = -nz;
     const perpZ = nx;
     const flanks: [number, number, number, number, number][] = [
-      [-1, 0.62, 46, 40, 445566], // запад, ниже и уже
-      [1, 0.7, 50, 45, 662211], // восток, чуть выше
+      [-1, 0.62, 85, 45, 445566], // запад, ниже и уже
+      [1, 0.7, 92, 50, 662211], // восток, чуть выше
     ];
     for (const [side, peakK, R, peak, sd] of flanks) {
-      const cx = MOUNTAIN.x + perpX * 62 * side;
-      const cz = MOUNTAIN.z + perpZ * 62 * side + nz * 8; // чуть смещены к горе, не к озеру
+      const cx = MOUNTAIN.x + perpX * 115 * side;
+      const cz = MOUNTAIN.z + perpZ * 115 * side + nz * 8; // чуть смещены к горе, не к озеру
       const heightAt = (x: number, z: number): number => {
         const dm = Math.hypot(x - cx, z - cz);
         const t = Math.max(0, 1 - dm / R);
@@ -589,7 +590,8 @@ export function createLake(scene: Scene): Lake {
     const campX = LAKE.x + dax * campR;
     const campZ = LAKE.z + daz * campR;
     const campY = terrainHeight(campX, campZ);
-    const platform = MeshBuilder.CreateBox("campPlatformBlock", { width: 12, height: 0.3, depth: 12 }, scene);
+    // Площадка лагеря — 22м по плану (было 12).
+    const platform = MeshBuilder.CreateBox("campPlatformBlock", { width: 22, height: 0.3, depth: 22 }, scene);
     platform.position.set(campX, campY + 0.15, campZ);
     platform.material = campMat;
     platform.isPickable = false;
