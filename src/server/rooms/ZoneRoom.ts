@@ -2673,7 +2673,7 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "!goevent") {
       // Запустить событие может только админ стрима. Необязательный аргумент —
       // тип: hunt/охота, invasion/нашествие, tower/башня (иначе — случайный).
-      if (norm === "zeprogress") {
+      if (isAdminNick(nick)) {
         if (this.eventPhase === "active") {
           this.reply(`@${nick} событие уже идёт.`);
         } else {
