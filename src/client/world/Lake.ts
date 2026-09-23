@@ -214,7 +214,11 @@ export function createLake(scene: Scene): Lake {
     // всё ещё дно озера под водой) и тянем доски ОТТУДА к воде, а не наоборот.
     const dax = -nx;
     const daz = -nz;
-    const dockR = shoreOuter + 7; // твёрдая земля — подъём к обычному рельефу кончается на shoreOuter+RISE_FADE(10)
+    // shoreOuter+RISE_FADE(10) — где подъём к обычному рельефу ТОЛЬКО
+    // заканчивается; берём якорь заметно дальше (+20), чтобы точно попасть
+    // на нетронутую сушу, а не в хвост переходной зоны (там и словили баг —
+    // even shoreOuter+7 всё ещё оказалось внутри неё).
+    const dockR = shoreOuter + 20;
     const shoreX = LAKE.x + dax * dockR;
     const shoreZ = LAKE.z + daz * dockR;
     const dockYaw = Math.atan2(dax, daz);
@@ -224,10 +228,10 @@ export function createLake(scene: Scene): Lake {
     const restY = (x: number, z: number): number => Math.max(terrainHeight(x, z), LAKE.waterY) + 0.1;
 
     const planks: Mesh[] = [];
-    const PLANK_N = 6;
+    const PLANK_N = 7;
     for (let i = 0; i < PLANK_N; i++) {
       const t = i / (PLANK_N - 1);
-      const along = -9 + t * 9; // от воды (-9, к озеру) до берега (0)
+      const along = -22 + t * 22; // от воды (за кромку) до берега (якорь)
       const px = shoreX + Math.sin(dockYaw) * along;
       const pz = shoreZ + Math.cos(dockYaw) * along;
       const plank = MeshBuilder.CreateBox(`dockPlank${i}`, { width: 3.4, height: 0.14, depth: 0.85 }, scene);
@@ -236,7 +240,7 @@ export function createLake(scene: Scene): Lake {
       planks.push(plank);
     }
     // Сваи под причал — там, где он реально над водой (дальние от берега доски).
-    for (const along of [-8, -5, -2]) {
+    for (const along of [-20, -14, -8]) {
       const px = shoreX + Math.sin(dockYaw) * along;
       const pz = shoreZ + Math.cos(dockYaw) * along;
       const pile = MeshBuilder.CreateCylinder("dockPile", { diameter: 0.22, height: 1.4 }, scene);
