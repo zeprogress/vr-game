@@ -105,8 +105,8 @@ function renderInv(msg: InvMsg): void {
   const bow = hands ? (hands.left?.cls === "bow" ? hands.left : hands.right?.cls === "bow" ? hands.right : null) : null;
   const handsHtml = hands
     ? bow
-      ? `<div class="hands"><div class="hand empty-hand">Правая рука: <b>Стрела</b> — лук занимает обе руки</div>${handHtml("Левая рука", bow)}</div>`
-      : `<div class="hands">${handHtml("Правая рука", hands.right)}${handHtml("Левая рука", hands.left)}</div>`
+      ? `<div class="hands">${handHtml("Левая рука", bow)}<div class="hand empty-hand">Правая рука: <b>Стрела</b> — лук занимает обе руки</div></div>`
+      : `<div class="hands">${handHtml("Левая рука", hands.left)}${handHtml("Правая рука", hands.right)}</div>`
     : "";
 
   const weapons = msg.weapons ?? [];
