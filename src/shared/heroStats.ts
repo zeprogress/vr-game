@@ -1,6 +1,6 @@
 import { AFFIX, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
-import { armorFrac, attackSpeedFor, moveSpeedFor } from "./progression";
+import { armorFrac, attackSpeedFor, dodgeChance, moveSpeedFor } from "./progression";
 import { magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
@@ -85,6 +85,12 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   }
 
   rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с` });
+
+  // Уворот (см. ZoneRoom.ts hurtPlayer): свободная левая рука (щит/пусто у
+  // меча) — обычный шанс; лук/посох занимают обе руки — вдвое подвижнее (×5
+  // в формуле dodgeChance).
+  const oneHanded = p.leftCls === "";
+  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p.agi, oneHanded) * 100)}%` });
 
   const critChanceBonus = affixNum2("шанс крита") / 100;
   const critMultBonus = affixNum2("силу крита");
