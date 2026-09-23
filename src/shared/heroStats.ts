@@ -33,28 +33,48 @@ function affixNum(text: string | undefined, label: string): number {
   return m ? Number(m[1]) : 0;
 }
 
+const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff"];
+
 /**
  * Таблица понятных игроку характеристик героя: урон, скорость атаки, скорость
  * бега, шанс/сила крита, физ./маг. защита, блок щитом. Используется в панели
  * спектатора, чате (!stats) и веб-инвентаре (!inv) — единая формулировка
  * везде, чтобы зрителям и игрокам не приходилось гадать, что есть что.
+ *
+ * Роллы щита в другой руке усиливают удар — сервер их суммирует с роллами
+ * оружия (см. `rolledDmgMul`/`rolledAtkSpeedMul`/`rolledCrit` в ZoneRoom.ts),
+ * поэтому здесь то же самое: берём текст роллов и с оружия, и со щита.
  */
 export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const rows: HeroStatRow[] = [];
-  const cls = p.rightCls as WeaponClass | "";
-  const tier = (p.rightTier || "base") as WeaponTier;
-  const tierMul = cls && cls !== "shield" ? weaponDef(cls, tier).mult : 1;
-  const affixText = cls && p.rightCls === cls ? p.rightAffix : p.leftAffix;
+  const rightIsWeapon = WEAPON_CLASSES.includes(p.rightCls as WeaponClass);
+  const leftIsWeapon = WEAPON_CLASSES.includes(p.leftCls as WeaponClass);
+  const cls = (rightIsWeapon ? p.rightCls : leftIsWeapon ? p.leftCls : "") as WeaponClass | "";
+  const tier = (rightIsWeapon ? p.rightTier : leftIsWeapon ? p.leftTier : "base") as WeaponTier;
+  const tierMul = cls ? weaponDef(cls, tier || "base").mult : 1;
+  const weaponAffix = rightIsWeapon ? p.rightAffix : leftIsWeapon ? p.leftAffix : undefined;
+  const shieldAffix = p.rightCls === "shield" ? p.rightAffix : p.leftCls === "shield" ? p.leftAffix : undefined;
+  const affixNum2 = (label: string): number => affixNum(weaponAffix, label) + affixNum(shieldAffix, label);
 
+  // dmgFlat и dmgPct делят один ярлык "урона" — на одном оружии не бывает
+  // роллов сразу из двух (одно семейство даёт только один саб-ролл), поэтому
+  // хватает одного поиска по тексту.
+  const dmgBonus = affixNum2("урона") / 100;
   if (cls === "bow") {
-    rows.push({ label: "Урон", value: weaponDamage("arrow", p.level, p.str, tierMul, p.agi).toFixed(1) });
+    rows.push({
+      label: "Урон",
+      value: (weaponDamage("arrow", p.level, p.str, tierMul, p.agi) * (1 + dmgBonus)).toFixed(1),
+    });
   } else if (cls === "staff") {
-    rows.push({ label: "Урон", value: fireboltDamage(p.level, p.int, 1).toFixed(1) });
-  } else if (cls === "sword" || cls === "") {
-    rows.push({ label: "Урон", value: weaponDamage("sword", p.level, p.str, tierMul, p.agi).toFixed(1) });
+    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p.int, 1) * (1 + dmgBonus)).toFixed(1) });
+  } else {
+    rows.push({
+      label: "Урон",
+      value: (weaponDamage("sword", p.level, p.str, tierMul, p.agi) * (1 + dmgBonus)).toFixed(1),
+    });
   }
 
-  const atkSpeedBonus = affixNum(affixText, "скорость атаки") / 100;
+  const atkSpeedBonus = affixNum2("скорость атаки") / 100;
   if (cls === "staff") {
     if (atkSpeedBonus > 0) {
       rows.push({ label: "Скорость атаки", value: `×${(1 + atkSpeedBonus).toFixed(2)}` });
@@ -66,18 +86,17 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с` });
 
-  const critChanceBonus = affixNum(affixText, "шанс крита") / 100;
-  const critMultBonus = affixNum(affixText, "силу крита");
+  const critChanceBonus = affixNum2("шанс крита") / 100;
+  const critMultBonus = affixNum2("силу крита");
   const critChance = (cls === "bow" ? BOW.critChance : 0) + critChanceBonus;
   // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
   // combat.ts): у лука BOW.critMult, у меча/кулака SWORD_CRIT_MULT, у посоха
-  // STAFF_CRIT_MULT. Раньше тут всегда бралась базовая от лука — мечу и
-  // посоху со случайным роллом крита рисовало завышенную силу.
+  // STAFF_CRIT_MULT.
   const baseCritMult = cls === "bow" ? BOW.critMult : cls === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT;
-  if (critChance > 0) {
-    rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
-    rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus).toFixed(1)}` });
-  }
+  // Показываем всегда (в т.ч. 0% у меча/посоха без ролла) — а не только при
+  // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
+  rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
+  rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus).toFixed(1)}` });
 
   const arm = armorFrac(p.str);
   if (arm >= 0.03) rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
