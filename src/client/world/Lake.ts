@@ -6,6 +6,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/boxBuilder";
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 import { LAKE, MOUNTAIN } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
@@ -142,6 +144,172 @@ export function createLake(scene: Scene): Lake {
   mist.isPickable = false;
   mist.checkCollisions = false;
   mist.freezeWorldMatrix();
+
+  // ---- Река от склона горы до вершины водопада ----
+  // Ломаная вверх по склону от topX/topZ (голова водопада) к пику горы, с
+  // боковым виляньем — не идеально прямая линия. Каждый сегмент — плоская
+  // лента по рельефу (terrainHeight в его середине), один материал.
+  {
+    const riverMat = new StandardMaterial("riverMat", scene);
+    riverMat.diffuseColor = new Color3(0.55, 0.68, 0.76);
+    riverMat.emissiveColor = new Color3(0.4, 0.53, 0.6);
+    riverMat.specularColor = new Color3(0.2, 0.24, 0.26);
+    riverMat.alpha = 0.75;
+    riverMat.maxSimultaneousLights = 1;
+    riverMat.backFaceCulling = false;
+
+    const upx = -nx;
+    const upz = -nz; // от водопада вверх по склону, к горе
+    const perpX = -upz;
+    const perpZ = upx; // поперёк русла — для виляния
+    const N = 5;
+    const pts: { x: number; y: number; z: number }[] = [{ x: topX, y: topY, z: topZ }];
+    for (let i = 1; i <= N; i++) {
+      const t = i / N;
+      const wiggle = Math.sin(t * 4.3 + 1.7) * 3.5 * t; // разворот сильнее к вершине
+      const px = topX + upx * (12 * t) + perpX * wiggle;
+      const pz = topZ + upz * (12 * t) + perpZ * wiggle;
+      pts.push({ x: px, y: terrainHeight(px, pz) + 0.12, z: pz });
+    }
+    const segs: Mesh[] = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const dxs = b.x - a.x;
+      const dzs = b.z - a.z;
+      const len = Math.hypot(dxs, dzs) || 1;
+      const w = 2.6 - i * 0.32; // сужается к вершине
+      const seg = MeshBuilder.CreateBox(`riverSeg${i}`, { width: Math.max(0.9, w), height: 0.08, depth: len * 1.05 }, scene);
+      seg.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      seg.rotation.y = Math.atan2(dxs, dzs);
+      segs.push(seg);
+    }
+    const river = Mesh.MergeMeshes(segs, true, true) as Mesh;
+    river.material = riverMat;
+    river.isPickable = false;
+    river.checkCollisions = false;
+    river.freezeWorldMatrix();
+  }
+
+  // ---- Причал и мини-лагерь на дальнем от горы берегу ----
+  {
+    const woodMat = new StandardMaterial("dockWoodMat", scene);
+    woodMat.diffuseColor = new Color3(0.32, 0.22, 0.14);
+    woodMat.specularColor = new Color3(0.05, 0.05, 0.05);
+    woodMat.maxSimultaneousLights = 1;
+    const crateMat = new StandardMaterial("dockCrateMat", scene);
+    crateMat.diffuseColor = new Color3(0.4, 0.29, 0.18);
+    crateMat.specularColor = new Color3(0.05, 0.05, 0.05);
+    crateMat.maxSimultaneousLights = 1;
+    const bannerMat = new StandardMaterial("dockBannerMat", scene);
+    bannerMat.diffuseColor = new Color3(0.16, 0.28, 0.5);
+    bannerMat.emissiveColor = new Color3(0.05, 0.09, 0.16);
+    bannerMat.specularColor = new Color3(0, 0, 0);
+    bannerMat.maxSimultaneousLights = 1;
+
+    // Противоположный от горы берег — там, где к озеру ближе всего от центра
+    // мира (удобно идти от поляны), направление -(nx,nz) от центра озера.
+    const dax = -nx;
+    const daz = -nz;
+    const shoreX = LAKE.x + dax * (shoreOuter - 1);
+    const shoreZ = LAKE.z + daz * (shoreOuter - 1);
+    const shoreY = terrainHeight(shoreX, shoreZ);
+    const dockYaw = Math.atan2(dax, daz);
+
+    const planks: Mesh[] = [];
+    const PLANK_N = 6;
+    for (let i = 0; i < PLANK_N; i++) {
+      const t = i / (PLANK_N - 1);
+      const along = -3 + t * 9; // от берега в воду
+      const plank = MeshBuilder.CreateBox(`dockPlank${i}`, { width: 3.4, height: 0.14, depth: 0.85 }, scene);
+      plank.position.set(
+        shoreX + Math.sin(dockYaw) * along,
+        shoreY + 0.42 - Math.max(0, along) * 0.02,
+        shoreZ + Math.cos(dockYaw) * along,
+      );
+      plank.rotation.y = dockYaw;
+      planks.push(plank);
+    }
+    // Сваи под причал.
+    for (const along of [0, 4, 7.5]) {
+      const pile = MeshBuilder.CreateCylinder("dockPile", { diameter: 0.22, height: 1.4 }, scene);
+      pile.position.set(
+        shoreX + Math.sin(dockYaw) * along,
+        shoreY - 0.3,
+        shoreZ + Math.cos(dockYaw) * along,
+      );
+      planks.push(pile);
+    }
+    const dock = Mesh.MergeMeshes(planks, true, true) as Mesh;
+    dock.material = woodMat;
+    dock.isPickable = false;
+    dock.checkCollisions = true; // по причалу можно ходить
+    dock.freezeWorldMatrix();
+
+    // Ящики/бочки у берега, чуть в стороне от досок.
+    const crateSideX = shoreX + Math.cos(dockYaw) * 2.4;
+    const crateSideZ = shoreZ - Math.sin(dockYaw) * 2.4;
+    const crateY = terrainHeight(crateSideX, crateSideZ);
+    const crates: Mesh[] = [];
+    const crate1 = MeshBuilder.CreateBox("dockCrate1", { size: 0.7 }, scene);
+    crate1.position.set(crateSideX, crateY + 0.35, crateSideZ);
+    crate1.rotation.y = dockYaw + 0.3;
+    crates.push(crate1);
+    const barrel = MeshBuilder.CreateCylinder("dockBarrel", { diameter: 0.6, height: 0.9 }, scene);
+    barrel.position.set(crateSideX + 1.1, crateY + 0.45, crateSideZ + 0.4);
+    crates.push(barrel);
+    const crates2 = Mesh.MergeMeshes(crates, true, true) as Mesh;
+    crates2.material = crateMat;
+    crates2.isPickable = false;
+    crates2.checkCollisions = true;
+    crates2.freezeWorldMatrix();
+
+    // Флаг на шесте у причала.
+    const poleH = 3.2;
+    const pole = MeshBuilder.CreateCylinder("dockPole", { diameter: 0.1, height: poleH }, scene);
+    pole.position.set(shoreX - Math.sin(dockYaw) * 1.6, shoreY + poleH / 2, shoreZ - Math.cos(dockYaw) * 1.6);
+    pole.material = woodMat;
+    pole.isPickable = false;
+    pole.freezeWorldMatrix();
+    const flag = MeshBuilder.CreateBox("dockBanner", { width: 0.02, height: 0.85, depth: 0.55 }, scene);
+    flag.position.set(pole.position.x + 0.28, shoreY + poleH - 0.55, pole.position.z);
+    flag.material = bannerMat;
+    flag.isPickable = false;
+    flag.freezeWorldMatrix();
+  }
+
+  // ---- Береговая полоса: мелкие камни у кромки воды (переход к траве) ----
+  {
+    const shoreRockMat = new StandardMaterial("shoreRockMat", scene);
+    shoreRockMat.diffuseColor = new Color3(0.36, 0.36, 0.38);
+    shoreRockMat.specularColor = new Color3(0.05, 0.05, 0.05);
+    shoreRockMat.maxSimultaneousLights = 1;
+    const rocks: Mesh[] = [];
+    const ROCK_N = 22;
+    let seed = 1234567;
+    const rnd = (): number => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    for (let i = 0; i < ROCK_N; i++) {
+      const a = rnd() * Math.PI * 2;
+      const r = shoreOuter - 1 + rnd() * 4; // прямо на кромке ± немного суши
+      const x = LAKE.x + Math.cos(a) * r;
+      const z = LAKE.z + Math.sin(a) * r;
+      const y = terrainHeight(x, z);
+      const s = 0.18 + rnd() * 0.35;
+      const rock = MeshBuilder.CreateSphere(`shoreRock${i}`, { diameter: 1, segments: 4 }, scene);
+      rock.scaling.set(s, s * 0.7, s);
+      rock.position.set(x, y + s * 0.25, z);
+      rock.rotation.set(rnd() * 0.5, rnd() * Math.PI, rnd() * 0.5);
+      rocks.push(rock);
+    }
+    const shoreRocks = Mesh.MergeMeshes(rocks, true, true) as Mesh;
+    shoreRocks.material = shoreRockMat;
+    shoreRocks.isPickable = false;
+    shoreRocks.checkCollisions = false;
+    shoreRocks.freezeWorldMatrix();
+  }
 
   let clock = 0;
   return {
