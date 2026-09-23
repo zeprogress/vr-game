@@ -429,8 +429,7 @@ export function recolorCharacter(root: TransformNode): void {
       flat.diffuseColor = base;
       flat.emissiveColor = base.scale(0.1);
       flat.specularColor = new Color3(0.04, 0.04, 0.04);
-      // 5 = небо + солнце + два факела ботов + ближайший светлячок.
-      flat.maxSimultaneousLights = 5;
+      flat.maxSimultaneousLights = 1;
       seen.set(src.id, flat);
     }
     mesh.material = flat;
@@ -471,7 +470,7 @@ export function recolorMonster(
       const colKey = (tint ?? base).toHexString();
       flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}|${diffuseMul ?? -1}`, () => {
         const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
-        f.maxSimultaneousLights = 5;
+        f.maxSimultaneousLights = 1;
         f.specularColor = new Color3(0.05, 0.05, 0.05);
         if (tex) {
           f.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
@@ -515,8 +514,7 @@ export function recolorFlat(root: TransformNode, tint?: Color3): void {
       flat.diffuseColor = base;
       flat.emissiveColor = base.scale(0.12);
       flat.specularColor = new Color3(0, 0, 0);
-      // В зоне всего два источника (hemi + directional); не тянем лишнее на Mali.
-      flat.maxSimultaneousLights = 2;
+      flat.maxSimultaneousLights = 1;
       seen.set(key, flat);
     }
     mesh.material = flat;

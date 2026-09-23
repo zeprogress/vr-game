@@ -10,7 +10,6 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
-import { LIGHT_BUDGET } from "../world/Fireflies";
 import { attachLegendaryGlow } from "./weaponModels";
 import { mergeToVertexColors } from "./flatMerge";
 
@@ -45,14 +44,14 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
     : gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
   wood.emissiveColor = wood.diffuseColor.scale(0.05);
   wood.specularColor = new Color3(0.05, 0.05, 0.05);
-  wood.maxSimultaneousLights = LIGHT_BUDGET;
+  wood.maxSimultaneousLights = 1;
 
   // Обмотки — белая ткань, заподлицо с древком (без утолщения).
   const cloth = new StandardMaterial("staffGrip", scene);
   cloth.diffuseColor = new Color3(0.86, 0.86, 0.82);
   cloth.emissiveColor = new Color3(0.06, 0.06, 0.055);
   cloth.specularColor = new Color3(0, 0, 0);
-  cloth.maxSimultaneousLights = LIGHT_BUDGET;
+  cloth.maxSimultaneousLights = 1;
 
   const metal = new StandardMaterial("staffFerrule", scene);
   metal.diffuseColor = storm
@@ -61,7 +60,7 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   metal.emissiveColor = metal.diffuseColor.scale(0.05);
   metal.specularColor = new Color3(0.75, 0.75, 0.8);
   metal.specularPower = 80;
-  metal.maxSimultaneousLights = LIGHT_BUDGET;
+  metal.maxSimultaneousLights = 1;
 
   const parts: Mesh[] = [];
 
@@ -157,7 +156,7 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false): voi
         mat.emissiveColor = glow;
         mat.specularColor = new Color3(0.7, 0.7, 0.8);
         mat.specularPower = 90;
-        mat.maxSimultaneousLights = LIGHT_BUDGET;
+        mat.maxSimultaneousLights = 1;
       }
       m.isPickable = false;
       m.applyFog = true;

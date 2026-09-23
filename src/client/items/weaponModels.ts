@@ -12,7 +12,6 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { flattenToVertexColors } from "./flatMerge";
-import { LIGHT_BUDGET } from "../world/Fireflies";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { radialGlowTexture } from "../ui/GlowSprite";
 
@@ -210,7 +209,7 @@ export function spawnWeaponModel(
         mat.specularPower = 48;
         // recolorFlat ставит потолок в 2 источника (для статичных пропов).
         // Оружие в руке должно ловить и свет светлячков — поднимаем.
-        mat.maxSimultaneousLights = LIGHT_BUDGET;
+        mat.maxSimultaneousLights = 1;
         done.add(mat);
       }
     }

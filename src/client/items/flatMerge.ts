@@ -8,7 +8,6 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { Material } from "@babylonjs/core/Materials/material";
 
-import { LIGHT_BUDGET } from "../world/Fireflies";
 
 /**
  * Оружие — это десятки отрисовок на кадр (у каждой модели по 4–8 подмешей), а на шлеме
@@ -51,7 +50,7 @@ export function weaponFlatMaterial(scene: Scene): StandardMaterial {
   m.emissiveColor = new Color3(0.05, 0.05, 0.05); // итог считается умноженным на цвет вершины
   m.specularColor = new Color3(0.35, 0.35, 0.35);
   m.specularPower = 48;
-  m.maxSimultaneousLights = LIGHT_BUDGET;
+  m.maxSimultaneousLights = 1;
   shared.set(scene, m);
   return m;
 }
@@ -150,7 +149,7 @@ function skinnedFlatMaterial(scene: Scene): StandardMaterial {
   m.diffuseColor = new Color3(1, 1, 1);
   m.emissiveColor = new Color3(0.12, 0.12, 0.12); // итог умножается на цвет вершины
   m.specularColor = new Color3(0, 0, 0);
-  m.maxSimultaneousLights = LIGHT_BUDGET;
+  m.maxSimultaneousLights = 1;
   skinnedFlat.set(scene, m);
   return m;
 }

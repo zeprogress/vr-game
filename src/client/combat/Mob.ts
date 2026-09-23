@@ -64,8 +64,7 @@ function recolorRig(
     const name = src.name ?? "";
     m.material = sharedMobMaterial(scene, `${kind}|${name}|${tint.join(",")}|${alpha}|${noGlow ? 1 : 0}`, () => {
       const flat = new StandardMaterial(`${kind}_${name}`, scene);
-      // 5 = небо + солнце + два факела ботов + ближайший светлячок.
-      flat.maxSimultaneousLights = 5;
+      flat.maxSimultaneousLights = 1;
       if (/eye/i.test(name)) {
         flat.diffuseColor = new Color3(0.02, 0.02, 0.02);
         flat.specularColor = new Color3(0.12, 0.12, 0.12);

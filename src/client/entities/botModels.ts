@@ -33,7 +33,7 @@ export function makeBotBody(scene: Scene, variant: number, tint: Color3): Transf
     m.diffuseColor = col;
     m.emissiveColor = col.scale(emit);
     m.specularColor = new Color3(0.05, 0.05, 0.05);
-    m.maxSimultaneousLights = 3;
+    m.maxSimultaneousLights = 1;
     return m;
   };
   const bodyMat = mkMat("botBody", bodyCol, 0.16);
