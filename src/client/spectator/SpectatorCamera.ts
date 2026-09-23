@@ -375,13 +375,17 @@ export class SpectatorCamera {
     const invalid = !this.shotValid(this.shot, ctx);
     // Путь идёт до конца своей длительности; остальные кадры — holdTime.
     const timedOut = this.shot.kind !== "path" && this.sinceSwitch >= SPECTATE.holdTime;
+    // Сценический путь (пустой сервер) не должен доигрывать до конца, если
+    // за это время кто-то появился на поляне — переключаем немедленно.
+    const idlePathInterrupted =
+      this.shot.kind === "path" && !this.botsOnly && ctx.players.length > 0;
 
     if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
     } else if (invalid) {
       // Цель кадра пропала — переключаемся даже в ручном режиме.
       this.switchTo(this.auto ? this.nextShot(ctx, fighting) : { kind: "overview" }, ctx);
-    } else if (this.auto && timedOut) {
+    } else if (this.auto && (timedOut || idlePathInterrupted)) {
       this.switchTo(this.nextShot(ctx, fighting), ctx);
     }
 
