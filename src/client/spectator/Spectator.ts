@@ -1037,6 +1037,13 @@ export class Spectator {
       boss,
       groundY: this.groundHeight,
     });
+    // Перчатки/оружие «из глаз» — каждый кадр, без троттлинга оверлея
+    // (иначе живые движения контроллеров читались бы рывками).
+    try {
+      this.updateEyeHandsPose(room?.state ?? null);
+    } catch (e) {
+      console.error("[spectator] updateEyeHandsPose упал:", e);
+    }
     if (towerActive && !this.cam.isManual) {
       // Авто-режиссёр камеры не знает о стенах арены башни (это отдельная,
       // всегда одна и та же геометрия в фиксированной точке карты) — без
@@ -1214,14 +1221,32 @@ export class Spectator {
         ? s.id
         : null;
     if (wantId === this.eyeHiddenId) return;
-    if (this.eyeHiddenId) this.avatars.get(this.eyeHiddenId)?.setModelVisible(true);
+    if (this.eyeHiddenId) {
+      const prev = this.avatars.get(this.eyeHiddenId);
+      prev?.setModelVisible(true);
+      prev?.restoreGearToFist(); // перчатки могли перевесить оружие на себя — вернуть на кость
+    }
     const av = wantId ? this.avatars.get(wantId) : null;
     if (av) av.setModelVisible(false);
     // Перчатки — только у VR (в плоском режиме нет честных костей кулака
     // под сеть, там оружие уже видно на модели, прятать нечего).
-    if (av && av.playerMode === "vr") this.eyeGloves.show(av.fistL, av.fistR);
-    else this.eyeGloves.hide();
+    if (!av || av.playerMode !== "vr") this.eyeGloves.hide();
     this.eyeHiddenId = wantId;
+  }
+
+  /**
+   * Живая поза перчаток «из глаз» — каждый кадр, не троттлится (иначе руки
+   * дёргаются рывками раз в ~200мс вместо плавного следования за реальными
+   * движениями контроллеров игрока).
+   */
+  private updateEyeHandsPose(st: ZoneState | null): void {
+    const av = this.eyeHiddenId ? this.avatars.get(this.eyeHiddenId) : null;
+    if (!av || av.playerMode !== "vr" || !st) {
+      return;
+    }
+    const p = st.players.get(this.eyeHiddenId!);
+    if (!p) return;
+    this.eyeGloves.update(p.handL, p.handR, av.heldGearL, av.heldGearR);
   }
 
   private updateOverlay(st: ZoneState | null): void {

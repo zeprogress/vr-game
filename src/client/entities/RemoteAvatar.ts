@@ -1182,6 +1182,25 @@ export class RemoteAvatar implements Hittable {
     if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, this.wantR[0], this.botFistR);
   }
 
+  /** Оружие в руке — сейчас (для камеры «из глаз» спектатора, см. EyeGloves). */
+  get heldGearL(): Mesh | null {
+    return this.gearL;
+  }
+  get heldGearR(): Mesh | null {
+    return this.gearR;
+  }
+
+  /**
+   * Вернуть оружие обратно на кость кулака — камера «из глаз» на время
+   * показа перевешивала его на свой узел (см. EyeGloves.update), здесь
+   * восстанавливаем родителя И посадку разом.
+   */
+  restoreGearToFist(): void {
+    if (this.gearL && this.botFistL) this.gearL.parent = this.botFistL;
+    if (this.gearR && this.botFistR) this.gearR.parent = this.botFistR;
+    this.reseatBotGear();
+  }
+
   /**
    * Разворот щита на левом предплечье.
    *

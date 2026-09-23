@@ -7,14 +7,13 @@
  */
 export const TOWN_MUSIC = [
   "/music/luminous-swell.mp3",
-  // Остальные треки временно выключены — включим обратно позже.
-  // "/music/castle-hall-1.mp3",
-  // "/music/castle-hall-2.mp3",
-  // "/music/village-waltz-1.mp3",
-  // "/music/village-waltz-2.mp3",
-  // "/music/village-dawn.mp3",
-  // "/music/medieval-dawn.mp3",
-  // "/music/moonlit-meadow-path.mp3",
+  "/music/castle-hall-1.mp3",
+  "/music/castle-hall-2.mp3",
+  "/music/village-waltz-1.mp3",
+  "/music/village-waltz-2.mp3",
+  "/music/village-dawn.mp3",
+  "/music/medieval-dawn.mp3",
+  "/music/moonlit-meadow-path.mp3",
 ];
 
 export const BOSS_MUSIC = "/music/boss.mp3";

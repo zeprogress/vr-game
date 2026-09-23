@@ -1,27 +1,44 @@
 import type { Scene } from "@babylonjs/core/scene";
-import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import type { Node } from "@babylonjs/core/node";
 
+import { LOADOUT } from "../config/loadout";
+
 /** Та же геометрия сжатого кулака, что и `FIST_ARC`/`THUMB_SWING` в player/Hands.ts. */
 const FIST_ARC = 2.5;
 const THUMB_SWING = 1.3;
 
+/** Та же форма, что у Xf в net/schema.ts — сырая поза руки с сервера (мировые координаты). */
+export interface HandXf {
+  x: number;
+  y: number;
+  z: number;
+  qx: number;
+  qy: number;
+  qz: number;
+  qw: number;
+}
+
 /**
  * Перчатки для камеры спектатора «из глаз» у VR-игрока/бота (см.
- * Spectator.ts `updateEyeVisibility`). Своя, урезанная копия загрузки
- * `Hand.glb` из player/Hands.ts: та рассчитана на локальные VR-контроллеры
- * (анимирует сжатие по grip каждый кадр), тут руки чужие и всегда «держат
- * оружие» — хватает ОДНОЙ, один раз запечённой позы кулака, без рантайм-блендинга.
+ * Spectator.ts `updateEyeVisibility`). В отличие от первой версии — НЕ
+ * сидят на костях кулака рига (те двигает только канонная анимация замаха/
+ * ходьбы, реальные движения контроллеров игнорируют), а каждый кадр берут
+ * позу прямо из сети (`PlayerState.handL/handR`, те же мировые Xf, что шлёт
+ * реальный VR-контроллер) — то же самое место, что видит сам игрок у себя.
+ * Оружие в руке (готовый меш от RemoteAvatar.gearL/gearR) на время показа
+ * перевешивается на тот же узел — едет вместе с кистью, а не отдельно.
  */
 export interface EyeGloves {
-  /** Показать перчатки на костях кулаков этого бота (null — рука пуста, не показываем). */
-  show(fistL: TransformNode | null, fistR: TransformNode | null): void;
+  /** Позвать каждый кадр, пока активен режим (null — рука пуста/не VR). */
+  update(handL: HandXf | null, handR: HandXf | null, gearL: Mesh | null, gearR: Mesh | null): void;
   hide(): void;
 }
 
@@ -166,47 +183,82 @@ async function loadTemplates(scene: Scene): Promise<{ left: Mesh; right: Mesh } 
   }
 }
 
+/** Узел-«запястье»: мировая поза = сырой Xf контроллера, как и у реального игрока. */
+function makeAnchor(scene: Scene, side: "left" | "right"): TransformNode {
+  const a = new TransformNode(`eyeHandAnchor_${side}`, scene);
+  a.rotationQuaternion = Quaternion.Identity();
+  return a;
+}
+
+function applyXf(node: TransformNode, xf: HandXf): void {
+  node.position.set(xf.x, xf.y, xf.z);
+  node.rotationQuaternion!.set(xf.qx, xf.qy, xf.qz, xf.qw);
+}
+
 export function createEyeGloves(scene: Scene): EyeGloves {
   if (!cache) cache = loadTemplates(scene);
 
-  let left: Mesh | null = null;
-  let right: Mesh | null = null;
+  const anchorL = makeAnchor(scene, "left");
+  const anchorR = makeAnchor(scene, "right");
+  let gloveL: Mesh | null = null;
+  let gloveR: Mesh | null = null;
+  let curGearL: Mesh | null = null;
+  let curGearR: Mesh | null = null;
+
   void cache.then((t) => {
     if (!t) return;
-    left = t.left.clone("eyeGloveL_inst");
-    right = t.right.clone("eyeGloveR_inst");
-    if (left) {
-      left.isPickable = false;
-      left.setEnabled(false);
-    }
-    if (right) {
-      right.isPickable = false;
-      right.setEnabled(false);
+    gloveL = t.left.clone("eyeGloveL_inst");
+    gloveR = t.right.clone("eyeGloveR_inst");
+    for (const [g, side] of [
+      [gloveL, "left"],
+      [gloveR, "right"],
+    ] as const) {
+      if (!g) continue;
+      g.parent = side === "left" ? anchorL : anchorR;
+      const cfg = LOADOUT.hands[side];
+      g.rotation.set(cfg.rot[0], cfg.rot[1], cfg.rot[2]);
+      g.scaling.setAll(cfg.scale);
+      g.isPickable = false;
+      g.setEnabled(false);
     }
   });
 
-  const seat = (m: Mesh, fist: TransformNode): void => {
-    m.parent = fist;
-    m.position.set(0, 0, 0);
-    m.rotation.set(0, 0, 0);
-    m.scaling.setAll(1);
-    m.setEnabled(true);
+  // Оружие на время показа перевешиваем на тот же узел, что и перчатку —
+  // едет вместе с рукой. Возврат на кость кулака делает
+  // RemoteAvatar.restoreGearToFist() (Spectator зовёт его при выходе из
+  // режима — тут своя половина работы не знает, куда именно возвращать).
+  const setGear = (anchor: TransformNode, next: Mesh | null, cur: Mesh | null): Mesh | null => {
+    if (cur === next) return cur;
+    if (next) {
+      next.parent = anchor;
+      next.position.set(0, 0, 0);
+      next.rotation.set(0, 0, 0);
+    }
+    return next;
   };
 
   return {
-    show(fistL, fistR) {
-      if (left) {
-        if (fistL) seat(left, fistL);
-        else left.setEnabled(false);
+    update(handL, handR, gearL, gearR) {
+      if (gloveL) {
+        if (handL) {
+          applyXf(anchorL, handL);
+          gloveL.setEnabled(true);
+        } else gloveL.setEnabled(false);
       }
-      if (right) {
-        if (fistR) seat(right, fistR);
-        else right.setEnabled(false);
+      if (gloveR) {
+        if (handR) {
+          applyXf(anchorR, handR);
+          gloveR.setEnabled(true);
+        } else gloveR.setEnabled(false);
       }
+      curGearL = setGear(anchorL, handL ? gearL : null, curGearL);
+      curGearR = setGear(anchorR, handR ? gearR : null, curGearR);
     },
     hide() {
-      left?.setEnabled(false);
-      right?.setEnabled(false);
+      gloveL?.setEnabled(false);
+      gloveR?.setEnabled(false);
+      curGearL = null;
+      curGearR = null;
     },
   };
 }
