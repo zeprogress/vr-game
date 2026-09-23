@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -58,47 +59,79 @@ export function createLake(scene: Scene): Lake {
   const nz = dz / dl;
   const baseX = LAKE.x + nx * (shoreOuter - 3);
   const baseZ = LAKE.z + nz * (shoreOuter - 3);
-  const topX = baseX + nx * 9;
-  const topZ = baseZ + nz * 9;
+  // Раньше бралось +9 вдоль склона — попадало ЕЩЁ в переходную зону чаши
+  // озера (terrain.ts гасит подъём горы там же, где сам понижает дно под
+  // воду), и водопад выходил метра 4-6 высотой вместо нормального. +18 —
+  // это уже чисто склон горы, без вмешательства озера (ld от центра озера
+  // там за пределами shoreOuter+RISE_FADE=50).
+  const topX = baseX + nx * 18;
+  const topZ = baseZ + nz * 18;
   const topY = terrainHeight(topX, topZ) + 1;
-  const fallHeight = Math.max(6, topY - LAKE.waterY);
+  const fallHeight = Math.max(8, Math.min(16, topY - LAKE.waterY));
 
+  // Вершинный цвет (у истока, светлее/голубее) и нижний (пена у подножия,
+  // почти белый) — материал с вершинными цветами вместо плоской заливки,
+  // иначе лента издалека читалась просто как светлая карточка, не как вода.
   const waterfallMat = new StandardMaterial("waterfallMat", scene);
-  waterfallMat.diffuseColor = new Color3(0.72, 0.84, 0.9);
-  waterfallMat.emissiveColor = new Color3(0.56, 0.69, 0.76);
+  waterfallMat.diffuseColor = new Color3(1, 1, 1);
   waterfallMat.specularColor = new Color3(0, 0, 0);
-  waterfallMat.alpha = 0.55;
+  waterfallMat.emissiveColor = new Color3(0.5, 0.62, 0.68);
+  waterfallMat.alpha = 0.62;
   waterfallMat.maxSimultaneousLights = 1;
   waterfallMat.backFaceCulling = false;
+  waterfallMat.disableLighting = true;
 
   const faceYaw = Math.atan2(-nx, -nz); // лицом к озеру (см. ниже)
   const midX = (baseX + topX) / 2;
   const midY = (LAKE.waterY + topY) / 2;
   const midZ = (baseZ + topZ) / 2;
-  // Не одна ровная лента, а 3 неровные полосы вразнобой по ширине/сдвигу —
-  // читается как рассыпающийся поток, а не гладкая плитка.
+  const fx = Math.cos(faceYaw); // локальная «вширь» ленты в мировых XZ
+  const fz = -Math.sin(faceYaw);
+  // Каждая полоса — не CreatePlane, а свой квад с вершинными цветами:
+  // верх (у истока) бледно-голубой и прозрачнее, низ (у пены) ярче и
+  // непрозрачнее — глаз читает это как льющуюся воду, а не плитку.
+  const buildStrip = (name: string, along: number, w: number, h: number, forward: number): Mesh => {
+    const cx = midX + fx * along + Math.sin(faceYaw) * forward;
+    const cz = midZ + fz * along + Math.cos(faceYaw) * forward;
+    const hw = w / 2;
+    const positions = [
+      -hw, h / 2, 0, // верх-лево
+      hw, h / 2, 0, // верх-право
+      hw, -h / 2, 0, // низ-право
+      -hw, -h / 2, 0, // низ-лево
+    ];
+    const top: [number, number, number, number] = [0.72, 0.84, 0.92, 0.45];
+    const bottom: [number, number, number, number] = [0.93, 0.97, 1, 0.8];
+    const colors = [...top, ...top, ...bottom, ...bottom];
+    const indices = [0, 1, 2, 0, 2, 3];
+    const normals = [0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1];
+    const m = new Mesh(name, scene);
+    const vd = new VertexData();
+    vd.positions = positions;
+    vd.indices = indices;
+    vd.normals = normals;
+    vd.colors = colors;
+    vd.applyToMesh(m, false);
+    m.useVertexColors = true;
+    m.hasVertexAlpha = true;
+    m.position.set(cx, midY, cz);
+    m.rotation.y = faceYaw + (Math.random() - 0.5) * 0.08;
+    m.material = waterfallMat;
+    m.isPickable = false;
+    m.checkCollisions = false;
+    m.freezeWorldMatrix();
+    return m;
+  };
+  // Не одна ровная лента, а несколько неровных полос вразнобой по ширине/
+  // сдвигу — читается как рассыпающийся поток, а не гладкая плитка.
   const strips: Mesh[] = [];
-  const STRIP_N = 3;
+  const STRIP_N = 4;
   for (let i = 0; i < STRIP_N; i++) {
-    const w = 1.6 + Math.random() * 1.6;
-    const strip = MeshBuilder.CreatePlane(
-      `waterfallStrip${i}`,
-      { width: w, height: fallHeight * (0.88 + Math.random() * 0.12) },
-      scene,
-    );
-    const along = (i - (STRIP_N - 1) / 2) * 1.6; // сдвиг поперёк потока
-    const forward = (Math.random() - 0.5) * 0.6; // лёгкая «глубина» — не в одну плоскость
-    strip.position.set(
-      midX + Math.cos(faceYaw) * along + Math.sin(faceYaw) * forward,
-      midY,
-      midZ - Math.sin(faceYaw) * along + Math.cos(faceYaw) * forward,
-    );
-    strip.rotation.y = faceYaw + (Math.random() - 0.5) * 0.08;
-    strip.material = waterfallMat;
-    strip.isPickable = false;
-    strip.checkCollisions = false;
-    strip.freezeWorldMatrix();
-    strips.push(strip);
+    const w = 2.2 + Math.random() * 2.2;
+    const h = fallHeight * (0.85 + Math.random() * 0.15);
+    const along = (i - (STRIP_N - 1) / 2) * 1.9;
+    const forward = (Math.random() - 0.5) * 0.7;
+    strips.push(buildStrip(`waterfallStrip${i}`, along, w, h, forward));
   }
 
   // Пена у подножия — мягкое светлое пятно на глади озера в месте падения.
