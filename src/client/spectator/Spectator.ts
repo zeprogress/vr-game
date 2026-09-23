@@ -1225,7 +1225,13 @@ export class Spectator {
   }
 
   private updateOverlay(st: ZoneState | null): void {
-    this.updateEyeVisibility();
+    // Подстраховка: баг тут не должен рвать весь оверлей/остаток кадра
+    // (список онлайн ниже и т.д.) — см. историю с зависаниями спектатора.
+    try {
+      this.updateEyeVisibility();
+    } catch (e) {
+      console.error("[spectator] updateEyeVisibility упал:", e);
+    }
     const subj = this.cam.subject;
     let watching: string | null = null;
     let watchStats: HeroStatRow[] | null = null;
