@@ -201,6 +201,9 @@ export class ZoneState extends Schema {
   @type("uint8") specVoice = 0;
   /** Показывать ли у спектатора всплывающие числа урона по мобам. По умолчанию — да. */
   @type("uint8") dmgNumbers = 1;
+  /** Громкость музыки/эффектов на рендерящем спектаторе (пульт, для стрима), 0..100. */
+  @type("uint8") specMusicVol = 100;
+  @type("uint8") specSfxVol = 100;
   /** 1 — сообщения чата озвучиваются на стриме (пульт). */
   @type("uint8") ttsOn = 0;
   /** Голос озвучки чата — Fish Audio reference_id (пульт). */

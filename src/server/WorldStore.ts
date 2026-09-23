@@ -35,6 +35,9 @@ export interface PultSettings {
   mobsOn: boolean;
   /** Токен одноразовой чистки ботов — см. BOT_WIPE_TOKEN в ZoneRoom. */
   botWipe: string;
+  /** Громкость музыки/эффектов на рендерящем спектаторе (стриме), 0..100. */
+  specMusicVol: number;
+  specSfxVol: number;
 }
 
 interface WorldRecord {

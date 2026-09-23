@@ -785,6 +785,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.specRaysVisible = pult.specRaysVisible === false ? 0 : 1;
     this.state.specVoice = pult.specVoice === true ? 1 : 0;
     this.state.dmgNumbers = pult.dmgNumbers === false ? 0 : 1;
+    this.state.specMusicVol = typeof pult.specMusicVol === "number" ? pult.specMusicVol : 100;
+    this.state.specSfxVol = typeof pult.specSfxVol === "number" ? pult.specSfxVol : 100;
     this.state.ttsOn = pult.ttsOn === true ? 1 : 0;
     this.state.ttsVoice = isTtsVoice(pult.ttsVoice ?? "") ? pult.ttsVoice! : TTS_DEFAULT_VOICE;
     this.overlayCfg = { ...(pult.overlay ?? {}) };
@@ -1502,6 +1504,12 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (msg.t === "dmgNumbers") {
         this.state.dmgNumbers = msg.on !== 0 ? 1 : 0;
         world.savePult({ dmgNumbers: msg.on !== 0 });
+      } else if (msg.t === "musicVol") {
+        this.state.specMusicVol = Math.max(0, Math.min(100, Math.round(msg.v)));
+        world.savePult({ specMusicVol: this.state.specMusicVol });
+      } else if (msg.t === "sfxVol") {
+        this.state.specSfxVol = Math.max(0, Math.min(100, Math.round(msg.v)));
+        world.savePult({ specSfxVol: this.state.specSfxVol });
       } else if (msg.t === "tts") {
         this.state.ttsOn = msg.on !== 0 ? 1 : 0;
         world.savePult({ ttsOn: msg.on !== 0 });
@@ -5206,6 +5214,8 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         client.send(MSG.specCmd, { t: "specVoice", on: this.state.specVoice } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "dmgNumbers", on: this.state.dmgNumbers } satisfies SpecCmd);
+        client.send(MSG.specCmd, { t: "musicVol", v: this.state.specMusicVol } satisfies SpecCmd);
+        client.send(MSG.specCmd, { t: "sfxVol", v: this.state.specSfxVol } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "auto", on: this.pultAuto ? 1 : 0 } satisfies SpecCmd);
         client.send(MSG.specCmd, { t: "bots", on: this.pultBotsOnly ? 1 : 0 } satisfies SpecCmd);
       };

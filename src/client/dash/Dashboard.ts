@@ -59,6 +59,10 @@ export class Dashboard {
   private ttsOn: boolean | null = null;
   private ttsBtn!: HTMLButtonElement;
   private ttsSel!: HTMLSelectElement;
+  private musicVolInp!: HTMLInputElement;
+  private musicVolLbl!: HTMLSpanElement;
+  private sfxVolInp!: HTMLInputElement;
+  private sfxVolLbl!: HTMLSpanElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -242,6 +246,24 @@ export class Dashboard {
     this.dmgNumbersBtn = this.bigBtn("Числа урона у мобов: —", () => this.toggleDmgNumbers());
     this.root.appendChild(this.dmgNumbersBtn);
 
+    // Громкость музыки/эффектов — только у рендерящего спектатора (стрим),
+    // на игроков не влияет.
+    const musicRow = this.volSlider("Музыка", 100, (v) => {
+      this.musicVolLbl.textContent = `${v}%`;
+      this.send({ t: "musicVol", v });
+    });
+    this.musicVolInp = musicRow.input;
+    this.musicVolLbl = musicRow.label;
+    this.root.appendChild(musicRow.row);
+
+    const sfxRow = this.volSlider("Звуковые эффекты", 100, (v) => {
+      this.sfxVolLbl.textContent = `${v}%`;
+      this.send({ t: "sfxVol", v });
+    });
+    this.sfxVolInp = sfxRow.input;
+    this.sfxVolLbl = sfxRow.label;
+    this.root.appendChild(sfxRow.row);
+
     this.ttsBtn = this.bigBtn("Озвучка чата: —", () => this.toggleTts());
     this.root.appendChild(this.ttsBtn);
     this.ttsSel = document.createElement("select");
@@ -332,6 +354,14 @@ export class Dashboard {
     }
     if ((st.specVoice !== 0) !== this.specVoice) this.setSpecVoiceUi(st.specVoice !== 0);
     if ((st.dmgNumbers !== 0) !== this.dmgNumbers) this.setDmgNumbersUi(st.dmgNumbers !== 0);
+    if (Number(this.musicVolInp.value) !== st.specMusicVol && document.activeElement !== this.musicVolInp) {
+      this.musicVolInp.value = String(st.specMusicVol);
+      this.musicVolLbl.textContent = `${st.specMusicVol}%`;
+    }
+    if (Number(this.sfxVolInp.value) !== st.specSfxVol && document.activeElement !== this.sfxVolInp) {
+      this.sfxVolInp.value = String(st.specSfxVol);
+      this.sfxVolLbl.textContent = `${st.specSfxVol}%`;
+    }
     if ((st.ttsOn !== 0) !== this.ttsOn) this.setTtsUi(st.ttsOn !== 0);
     if (st.ttsVoice && this.ttsSel.value !== st.ttsVoice) this.ttsSel.value = st.ttsVoice;
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
@@ -547,6 +577,33 @@ export class Dashboard {
       "background:#1d1f2b;color:#e8ecf8;font:600 15px system-ui;cursor:pointer";
     b.addEventListener("click", on);
     return b;
+  }
+
+  /** Слайдер громкости 0..100 с подписью — для музыки/эффектов рендерящего спектатора. */
+  private volSlider(
+    label: string,
+    init: number,
+    onInput: (v: number) => void,
+  ): { row: HTMLDivElement; input: HTMLInputElement; label: HTMLSpanElement } {
+    const row = document.createElement("div");
+    row.style.cssText = "margin:6px 0 10px";
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;justify-content:space-between;font:14px system-ui;margin-bottom:4px";
+    const nameEl = document.createElement("span");
+    nameEl.textContent = label;
+    const valEl = document.createElement("span");
+    valEl.textContent = `${init}%`;
+    valEl.style.color = "#8c96ad";
+    head.append(nameEl, valEl);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = "100";
+    input.value = String(init);
+    input.style.cssText = "width:100%;accent-color:#3a7a4a";
+    input.addEventListener("input", () => onInput(Number(input.value)));
+    row.append(head, input);
+    return { row, input, label: valEl };
   }
 
   private cmdBtn(text: string, cmd: SpecCmd, small = false): HTMLButtonElement {

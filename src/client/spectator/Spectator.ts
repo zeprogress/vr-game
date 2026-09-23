@@ -784,6 +784,8 @@ export class Spectator {
     else if (cmd.t === "card") this.overlay?.showCard(cmd.title, cmd.sub ?? "", cmd.secs ?? 0);
     else if (cmd.t === "overlay") this.overlay?.setConfig(cmd.patch);
     else if (cmd.t === "specVoice") this.setVoice(cmd.on !== 0);
+    else if (cmd.t === "musicVol") this.sfx.setMusicLevel(cmd.v / 100);
+    else if (cmd.t === "sfxVol") this.sfx.setEffectsLevel(cmd.v / 100);
     else if (cmd.t === "ttsPlay") this.playChatTts(cmd.url, cmd.nick);
     // "time"/"dayAuto" применяет сервер; "nowShot" — для дашбордов.
   }
