@@ -4,6 +4,7 @@ import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
@@ -488,14 +489,27 @@ export class RemoteAvatar implements Hittable {
    * обычно (`root` не трогаем), плашка над головой отдельно не гасится —
    * от первого лица её и так не видно смысла скрывать нарочно.
    *
-   * В VR не прячем вообще: там модель — это и есть видимые руки/оружие
-   * игрока (свои Fist-кости + прицепленное к ним снаряжение), реальный VR
-   * и так показывает игроку его руки — скрывать тут было бы неверно.
+   * В VR тело всё равно прячем целиком (это ОДИН смёрженный меш — кожа,
+   * броня, руки и голова разом, см. mergeRigSkinned в loadBotRig — вырезать
+   * из него отдельно только кисти/предплечья, оставив голову/торс, без
+   * переделки всего пайплайна скина нельзя), но оружие в руке — gearL/gearR,
+   * это ОТДЕЛЬНЫЕ меши поверх костей Fist — оставляем видимым: ближе к
+   * настоящему VR, чем полностью пустые руки.
    */
   setModelVisible(v: boolean): void {
-    if (!v && this.mode === "vr") return;
     const vis = v ? 1 : 0;
-    for (const m of this.root.getChildMeshes()) m.visibility = vis;
+    const keep = new Set<AbstractMesh>();
+    if (!v && this.mode === "vr") {
+      for (const g of [this.gearL, this.gearR]) {
+        if (!g) continue;
+        keep.add(g);
+        for (const m of g.getChildMeshes(false)) keep.add(m);
+      }
+    }
+    for (const m of this.root.getChildMeshes()) {
+      if (keep.has(m)) continue;
+      m.visibility = vis;
+    }
   }
 
   /** Огонёк над головой, пока игрок говорит. */
