@@ -10,6 +10,7 @@ import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
+import { createMountainRing } from "./MountainRing";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
@@ -110,6 +111,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   else if (quality.botTorches === false) botLights.setForceOff(true);
 
   const sky = createSky(scene, day, quality.simpleSky);
+  createMountainRing(scene);
 
   /** Свет и солнце — дёшево, можно каждый кадр. */
   const applyDay = (): void => {
