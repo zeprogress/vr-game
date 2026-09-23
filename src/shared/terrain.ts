@@ -145,11 +145,13 @@ export function terrainHeight(x: number, z: number): number {
     h -= CANYON_DEPTH * canyonAcross * canyonAcross * canyonT;
   }
 
-  // Резкий обрыв ровно у водопада — не пологий склон горы, а вертикальная
-  // стена на коротком участке сразу за берегом озера. Настоящий heightmap не
-  // может дать нависающий козырёк, но подъём на CLIFF_RISE м всего за
-  // CLIFF_W м по горизонтали читается как отвесная стена. Действует только
-  // в узком коридоре вдоль той же линии озеро→гора (не по всему подножию).
+  // Каньон-ущелье у водопада (см. референс-фото — отвесные стены по бокам
+  // разрыва, а не ровный склон): ВНЕ узкого разрыва (GAP_HALF) земля резко
+  // встаёт стеной на CLIFF_RISE м (та же техника, что раньше — heightmap не
+  // даёт козырёк, но резкий подъём на коротком участке читается как отвес).
+  // Внутри самого разрыва эту добавку не даём — там ниже (настоящий канал
+  // реки/водопада, наравне с обычным склоном горы), поэтому стены выглядят
+  // ощутимо выше прохода между ними.
   {
     const dxm = MOUNTAIN.x - LAKE.x;
     const dzm = MOUNTAIN.z - LAKE.z;
@@ -166,14 +168,17 @@ export function terrainHeight(x: number, z: number): number {
     const RISE_FADE = 10;
     const CLIFF_START = shoreOuter + RISE_FADE + 1; // сразу за настоящим берегом
     const CLIFF_W = 5;
-    // Перепад водопада по плану — 42м.
-    const CLIFF_RISE = 42;
-    // Половина ширины разрыва в хребте — 14 (просвет 28м по плану).
-    const CORRIDOR = 14;
-    if (Math.abs(lateralLake) < CORRIDOR && alongLake > CLIFF_START) {
+    // Перепад — по плану 42м, стены каньона даже чуть выше плато для вида "сверху вниз".
+    const CLIFF_RISE = 46;
+    // Разрыв (проход воды) — половина ширины 14 (просвет 28м по плану).
+    const GAP_HALF = 14;
+    // Стены каньона — полоса ЗА разрывом, тоже по 14м с каждой стороны.
+    const WALL_HALF = GAP_HALF + 14;
+    const absLat = Math.abs(lateralLake);
+    if (absLat > GAP_HALF && absLat < WALL_HALF && alongLake > CLIFF_START) {
       const cliffT = clamp01((alongLake - CLIFF_START) / CLIFF_W);
-      const corridorFall = Math.max(0, 1 - Math.abs(lateralLake) / CORRIDOR);
-      h += CLIFF_RISE * cliffT * corridorFall;
+      const wallFall = Math.max(0, 1 - (absLat - GAP_HALF) / (WALL_HALF - GAP_HALF));
+      h += CLIFF_RISE * cliffT * wallFall;
     }
   }
 
