@@ -3461,7 +3461,12 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private restoreBots(): void {
     let n = 0;
-    const cutoff = Date.now() - 3 * 3600_000; // не поднимаем давно заброшенных
+    // Раньше тут стояло отдельное хардкодное число (3 часа) — разъехалось с
+    // BOT.ownerAbsentSec, когда тот подняли до 5 часов: бота, которого не
+    // трогали 3-5 часов, сюда даже не пускало восстанавливаться, хотя по
+    // задумке (см. ownerAbsentSec) он должен жить все 5. Теперь один и тот
+    // же порог, никакого рассинхрона.
+    const cutoff = Date.now() - BOT.ownerAbsentSec * 1000; // не поднимаем давно заброшенных
     for (const rec of store.entries()) {
       if (!rec.token?.startsWith("nick:")) continue;
       if (rec.botActive === false) continue; // явно сделал !stop
