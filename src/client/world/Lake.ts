@@ -404,6 +404,87 @@ export function createLake(scene: Scene): Lake {
     shoreRocks.freezeWorldMatrix();
   }
 
+  // ---- Гора: серый blockout-камень + боковые массы (по концепт-арту) ----
+  // Настоящий рельеф (terrainHeight) остаётся травой — это единый общий меш
+  // земли, перекрашивать его точечно рискованно (шейдер на весь мир). Вместо
+  // этого кроем сам склон горы отдельным серым мешем ВПРИТЫК к земле (та же
+  // функция высоты, сдвиг на 8см) — визуально гора голый камень, а не трава,
+  // при этом ходить по ней можно как и раньше (коллизии всё ещё по земле).
+  {
+    const mtnMat = new StandardMaterial("mountainCapMat", scene);
+    mtnMat.diffuseColor = new Color3(0.46, 0.45, 0.44);
+    mtnMat.specularColor = new Color3(0.04, 0.04, 0.04);
+    mtnMat.backFaceCulling = false;
+    mtnMat.maxSimultaneousLights = 1;
+
+    const RINGS = 10;
+    const SEGS = 28;
+    const capR = MOUNTAIN.radius * 0.97;
+    const positions: number[] = [MOUNTAIN.x, terrainHeight(MOUNTAIN.x, MOUNTAIN.z) + 0.08, MOUNTAIN.z];
+    for (let r = 1; r <= RINGS; r++) {
+      const rad = (r / RINGS) * capR;
+      for (let s = 0; s < SEGS; s++) {
+        const a = (s / SEGS) * Math.PI * 2;
+        const x = MOUNTAIN.x + Math.cos(a) * rad;
+        const z = MOUNTAIN.z + Math.sin(a) * rad;
+        positions.push(x, terrainHeight(x, z) + 0.08, z);
+      }
+    }
+    const indices: number[] = [];
+    for (let s = 0; s < SEGS; s++) {
+      indices.push(0, 1 + s, 1 + ((s + 1) % SEGS));
+    }
+    for (let r = 0; r < RINGS - 1; r++) {
+      const ringStart = 1 + r * SEGS;
+      const nextStart = 1 + (r + 1) * SEGS;
+      for (let s = 0; s < SEGS; s++) {
+        const a = ringStart + s;
+        const b = ringStart + ((s + 1) % SEGS);
+        const c = nextStart + s;
+        const d = nextStart + ((s + 1) % SEGS);
+        indices.push(a, b, c, b, d, c);
+      }
+    }
+    const normals: number[] = [];
+    VertexData.ComputeNormals(positions, indices, normals);
+    const cap = new Mesh("mountainCap", scene);
+    const vd = new VertexData();
+    vd.positions = positions;
+    vd.indices = indices;
+    vd.normals = normals;
+    vd.applyToMesh(cap);
+    cap.material = mtnMat;
+    cap.isPickable = false;
+    cap.checkCollisions = false;
+    cap.freezeWorldMatrix();
+
+    // Боковые массы — по концепт-арту гора не одинокий конус, а широкая
+    // "стена" из нескольких налегающих вершин по дальнему краю озера.
+    // Чисто визуальные конусы (не часть terrainHeight — коллизия по ним не
+    // нужна для blockout), встают своим основанием на реальный рельеф.
+    const flankMat = new StandardMaterial("mountainFlankMat", scene);
+    flankMat.diffuseColor = new Color3(0.4, 0.39, 0.38);
+    flankMat.specularColor = new Color3(0.04, 0.04, 0.04);
+    flankMat.maxSimultaneousLights = 1;
+    const flanks: [number, number, number, number][] = [
+      [MOUNTAIN.x - 46, MOUNTAIN.z + 18, 26, 22], // запад
+      [MOUNTAIN.x + 46, MOUNTAIN.z + 18, 26, 22], // восток
+    ];
+    for (let i = 0; i < flanks.length; i++) {
+      const [fx, fz, fr, fh] = flanks[i];
+      const fy = terrainHeight(fx, fz);
+      const flank = MeshBuilder.CreateCylinder(
+        `mountainFlank${i}`,
+        { diameterTop: fr * 0.5, diameterBottom: fr * 2, height: fh, tessellation: 8 },
+        scene,
+      );
+      flank.position.set(fx, fy + fh / 2 - 1, fz);
+      flank.material = flankMat;
+      flank.isPickable = false;
+      flank.freezeWorldMatrix();
+    }
+  }
+
   // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----
   // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
   // лагеря и основные тропы. Плоские однотонные материалы, никакого декора.

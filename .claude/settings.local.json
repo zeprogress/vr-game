@@ -1,5 +1,8 @@
 {
   "permissions": {
-    "allow": ["Bash(ssh vrgame:*)"]
+    "allow": [
+      "Bash(ssh vrgame:*)",
+      "Bash(npx tsc *)"
+    ]
   }
 }
