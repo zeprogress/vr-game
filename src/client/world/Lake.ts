@@ -4,6 +4,7 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
@@ -69,14 +70,37 @@ export function createLake(scene: Scene): Lake {
   const topY = terrainHeight(topX, topZ) + 1;
   const fallHeight = Math.max(8, Math.min(16, topY - LAKE.waterY));
 
-  // Вершинный цвет (у истока, светлее/голубее) и нижний (пена у подножия,
-  // почти белый) — материал с вершинными цветами вместо плоской заливки,
-  // иначе лента издалека читалась просто как светлая карточка, не как вода.
+  // Текстура вертикальных потоков — иначе ровный прямоугольник читался как
+  // стеклянная панель, а не вода: рваные полупрозрачные полосы разной
+  // ширины/яркости, растянутые по всей высоте. UV сдвигаем в tick() —
+  // единственная настоящая UV-анимация в этом файле, но она того стоит:
+  // дешёвая (один текстурный семпл), а «течёт» узнаваемо только так.
+  const streakTex = new DynamicTexture("waterfallStreaks", { width: 64, height: 256 }, scene, false);
+  {
+    const ctx = streakTex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, 64, 256);
+    for (let i = 0; i < 26; i++) {
+      const x = Math.random() * 64;
+      const w = 1.5 + Math.random() * 3.5;
+      const grd = ctx.createLinearGradient(0, 0, 0, 256);
+      const a = 0.25 + Math.random() * 0.55;
+      grd.addColorStop(0, `rgba(230,240,248,${a * 0.5})`);
+      grd.addColorStop(0.6, `rgba(255,255,255,${a})`);
+      grd.addColorStop(1, `rgba(255,255,255,${Math.min(1, a * 1.3)})`);
+      ctx.fillStyle = grd;
+      ctx.fillRect(x, 0, w, 256);
+    }
+    streakTex.update(false);
+  }
+  streakTex.hasAlpha = true;
+  streakTex.wrapV = 1; // WRAP — сдвиг vOffset зацикливается
   const waterfallMat = new StandardMaterial("waterfallMat", scene);
   waterfallMat.diffuseColor = new Color3(1, 1, 1);
   waterfallMat.specularColor = new Color3(0, 0, 0);
-  waterfallMat.emissiveColor = new Color3(0.5, 0.62, 0.68);
-  waterfallMat.alpha = 0.62;
+  waterfallMat.emissiveColor = new Color3(0.6, 0.72, 0.78);
+  waterfallMat.emissiveTexture = streakTex;
+  waterfallMat.opacityTexture = streakTex;
+  waterfallMat.alpha = 0.9;
   waterfallMat.maxSimultaneousLights = 1;
   waterfallMat.backFaceCulling = false;
   waterfallMat.disableLighting = true;
@@ -105,12 +129,17 @@ export function createLake(scene: Scene): Lake {
     const colors = [...top, ...top, ...bottom, ...bottom];
     const indices = [0, 1, 2, 0, 2, 3];
     const normals = [0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1];
+    // Высота полосы в «плитках» текстуры — подлиннее полосы тянут узор не
+    // растягивая (иначе редкие потоки на короткой полосе, частые на длинной).
+    const vTiles = Math.max(1, h / 5);
+    const uvs = [0, 0, 1, 0, 1, vTiles, 0, vTiles];
     const m = new Mesh(name, scene);
     const vd = new VertexData();
     vd.positions = positions;
     vd.indices = indices;
     vd.normals = normals;
     vd.colors = colors;
+    vd.uvs = uvs;
     vd.applyToMesh(m, false);
     m.useVertexColors = true;
     m.hasVertexAlpha = true;
@@ -362,8 +391,11 @@ export function createLake(scene: Scene): Lake {
       // цвет/альфа чуть «дышат», создавая ощущение подвижной воды.
       const shimmer = 0.5 + 0.5 * Math.sin(clock * 0.6);
       waterMat.alpha = 0.82 + shimmer * 0.06;
+      // Течение: текстура потоков едет вниз по UV — простая, но узнаваемая
+      // анимация воды (один сэмпл текстуры, не UV-развёртка каждого квада).
+      streakTex.vOffset = (streakTex.vOffset + dt * 0.9) % 1;
       const flow = 0.5 + 0.5 * Math.sin(clock * 2.2);
-      waterfallMat.alpha = 0.48 + flow * 0.14;
+      waterfallMat.alpha = 0.85 + flow * 0.1;
       const foamPulse = 0.5 + 0.5 * Math.sin(clock * 1.7 + 1.1);
       foamMat.alpha = 0.5 + foamPulse * 0.18;
       const mistPulse = 0.5 + 0.5 * Math.sin(clock * 0.9 + 2.2);
