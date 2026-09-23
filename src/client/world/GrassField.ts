@@ -19,6 +19,7 @@ import { LOADOUT } from "../config/loadout";
 import { noGrass } from "./grassLayout";
 import { BOSS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
+import { relightMaterials } from "./Fireflies";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
 
 /**
@@ -672,6 +673,10 @@ export async function loadGrassField(
     if (wantLights !== lastLights) {
       lastLights = wantLights;
       mat.maxSimultaneousLights = wantLights;
+      // См. Terrain.ts: смена maxSimultaneousLights не пересобирает шейдер
+      // сама по себе — без явного relight факелы/эффекты на траве не видны,
+      // пока это не подхватит что-то постороннее (BotLights и т.п.).
+      relightMaterials(scene, "GrassField.lights");
     }
     if (bushMat && bushEmiDay && bushDiffuseBase) {
       // Заявка: ночью чуть меньше собственного свечения, чем днём × ручка «свечение».

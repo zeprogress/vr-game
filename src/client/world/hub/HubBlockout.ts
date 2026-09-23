@@ -19,6 +19,7 @@ import { WORLD } from "#shared/constants";
 import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { buildHubCampfire } from "./HubCampfire";
+import { relightMaterials } from "../Fireflies";
 
 /**
  * HUB «Боевой лагерь» — BLOCKOUT v1. Только примитивы и простые материалы:
@@ -832,6 +833,9 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     if (wantGroundLights !== lastGroundLights) {
       lastGroundLights = wantGroundLights;
       padMat.maxSimultaneousLights = wantGroundLights;
+      // См. Terrain.ts/GrassField.ts — без явного relight смена бюджета
+      // источников не попадает в уже собранный шейдер земли лагеря.
+      relightMaterials(scene, "HubBlockout.groundLights");
     }
     // Свечение поверхностей зависит только от дневного света — пересчитываем при его заметном сдвиге.
     if (Math.abs(d - lastDay) < 0.004) return;

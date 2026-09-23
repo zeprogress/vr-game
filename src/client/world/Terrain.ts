@@ -11,6 +11,7 @@ import { LOADOUT } from "../config/loadout";
 import { terrainHeight as surface } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
+import { relightMaterials } from "./Fireflies";
 
 export interface Terrain {
   mesh: Mesh;
@@ -210,6 +211,11 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
     if (want !== lastLights) {
       lastLights = want;
       mat.maxSimultaneousLights = want;
+      // Смена maxSimultaneousLights сама по себе шейдер не пересобирает —
+      // без явного markAsDirty новые факелы/лампы в него не попадают, пока
+      // что-то ДРУГОЕ (например BotLights) случайно не пересоберёт материалы
+      // сцены позже. Считаем сразу здесь же, в момент реальной смены.
+      relightMaterials(scene, "Terrain.lights");
     }
     // Заявка: ночью земля чуть-чуть светится сама (совсем немного) — иначе без
     // живых огней рядом полностью тонет в черноте × ручка «свечение». Без
