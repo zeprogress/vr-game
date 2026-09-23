@@ -198,26 +198,7 @@ export function createLake(scene: Scene): Lake {
   // Потолок поднят (было 16) — гора и обрыв у водопада теперь заметно выше.
   const fallHeight = Math.max(8, Math.min(34, topY - LAKE.waterY));
 
-  // Скальный выступ-козырёк прямо на изломе реки в водопад — по просьбе,
-  // "в моменте перехода должен быть выступ". Настоящий heightmap не даёт
-  // нависающую пустоту под собой, поэтому это отдельный меш, нависающий над
-  // обрывом в сторону озера (навстречу нижней части водопада).
-  {
-    const ledgeMat = new StandardMaterial("waterfallLedgeMat", scene);
-    ledgeMat.diffuseColor = new Color3(0.4, 0.38, 0.36);
-    ledgeMat.specularColor = new Color3(0.03, 0.03, 0.03);
-    ledgeMat.maxSimultaneousLights = 1;
-    const ledge = MeshBuilder.CreateBox("waterfallLedge", { width: 7.5, height: 1.6, depth: 6 }, scene);
-    const ledgeYaw = Math.atan2(-nx, -nz); // развёрнут к озеру
-    // Центр сдвинут К ОЗЕРУ от topX/topZ — козырёк торчит НАД обрывом, не
-    // висит над твёрдой землёй позади себя (иначе не читается как выступ).
-    ledge.position.set(topX - nx * 2.5, topY - 0.6, topZ - nz * 2.5);
-    ledge.rotation.y = ledgeYaw;
-    ledge.material = ledgeMat;
-    ledge.isPickable = false;
-    ledge.checkCollisions = true;
-    ledge.freezeWorldMatrix();
-  }
+  // Выступ-козырёк убран по просьбе (не подошёл визуально).
 
   // Текстура вертикальных потоков — иначе ровный прямоугольник читался как
   // стеклянная панель, а не вода: рваные полупрозрачные полосы разной
@@ -550,35 +531,19 @@ export function createLake(scene: Scene): Lake {
   }
 
   // ---- Гора: голый камень, резкие грани (не трава, не гладкий купол) ----
-  // Основная гора — поверх настоящего рельефа (тот остаётся травяным под
-  // капотом, коллизии/мобы не трогаем). Плюс вторая, более высокая и
-  // дальняя горная масса на горизонте (не часть terrainHeight, чисто
-  // декоративная — своя аналитическая «шапка» без общей ходьбы/коллизий):
-  // по просьбе, плато должно уходить вдаль и там перекрываться ДРУГОЙ,
-  // ещё более высокой горой (а лесом — отдельным шагом пайплайна).
-  {
-    buildJitterRock(
-      scene,
-      "mountainRock",
-      MOUNTAIN.x,
-      MOUNTAIN.z,
-      MOUNTAIN.radius * 0.95,
-      terrainHeight,
-      new Color3(0.42, 0.4, 0.38),
-      778899,
-    );
-
-    const FAR_X = MOUNTAIN.x;
-    const FAR_Z = MOUNTAIN.z + nz * 55; // дальше вдоль той же линии, за плато
-    const FAR_R = 70;
-    const FAR_PEAK = 85;
-    const farHeightAt = (x: number, z: number): number => {
-      const dm = Math.hypot(x - FAR_X, z - FAR_Z);
-      const t = Math.max(0, 1 - dm / FAR_R);
-      return terrainHeight(FAR_X, FAR_Z) + FAR_PEAK * t * t;
-    };
-    buildJitterRock(scene, "mountainFar", FAR_X, FAR_Z, FAR_R, farHeightAt, new Color3(0.37, 0.36, 0.36), 991133);
-  }
+  // Вторая дальняя гора убрана по просьбе (не подошло) — одна гора,
+  // поверх настоящего рельефа (тот остаётся травяным под капотом,
+  // коллизии/мобы не трогаем).
+  buildJitterRock(
+    scene,
+    "mountainRock",
+    MOUNTAIN.x,
+    MOUNTAIN.z,
+    MOUNTAIN.radius * 0.95,
+    terrainHeight,
+    new Color3(0.42, 0.4, 0.38),
+    778899,
+  );
 
   // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----
   // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
@@ -641,8 +606,8 @@ export function createLake(scene: Scene): Lake {
     const midPathZ = campZ + (baseZ - campZ) * 0.5;
     layPath(campX, campZ, midPathX, midPathZ);
     layPath(midPathX, midPathZ, baseX, baseZ);
-    // Озеро (у горы) -> вверх по склону вдоль реки -> к водопаду сверху.
-    layPath(baseX, baseZ, topX, topZ);
+    // Тропа вверх по обрыву к вершине убрана (по просьбе — "доска трамплин":
+    // с вертикальной стеной прямая дощатая тропа туда уже не в тему).
     const path = Mesh.MergeMeshes(pathSegs, true, true) as Mesh;
     if (path) {
       path.material = pathMat;
