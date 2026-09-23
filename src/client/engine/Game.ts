@@ -1315,11 +1315,15 @@ export class Game {
       this.progression,
       this.inventory,
     );
-    // Выход из игры: спрашиваем «оставить бота?» — ответ уходит на сервер перед выходом.
+    // Выход из игры: спрашиваем «оставить бота?» — ответ уходит на сервер перед
+    // выходом. Небольшая пауза перед самим leaveWorld() — без неё сообщение
+    // setLeaveBot и последующий разрыв соединения уходят почти одновременно,
+    // и на некоторых сетях/устройствах флаг не успевал долететь до сервера
+    // раньше закрытия сокета (бот не оставался, хотя игрок отметил галочку).
     this.wristPanel.onExit = (keepBot) => {
       this.leaveBotOn = keepBot;
       if (this.net?.online) this.net.sendSetLeaveBot(keepBot);
-      void this.leaveWorld();
+      setTimeout(() => void this.leaveWorld(), 300);
     };
     this.wristPanel.onSkin = (skin) => this.net?.sendSetSkin(skin);
     this.wristPanel.onTogglePvp = () => {
