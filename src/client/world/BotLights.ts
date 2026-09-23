@@ -52,7 +52,8 @@ export class BotLights {
   private readonly lights: PointLight[] = [];
   private night = 0;
   private enabled = false;
-  private relitStrong = false;
+  /** Секунд с последней «страховочной» пересборки материалов зоны (см. update). */
+  private relightAccum = 0;
   /**
    * Сколько факелов из BOT_TORCHES реально зажигать. VR (два глаза, вдвое
    * дороже) гасит все через setForceOff; слабый спектатор (?q=med на
@@ -129,7 +130,7 @@ export class BotLights {
     const on = this.night > 0.02 && bots.length > 0 && this.budget > 0;
     if (on !== this.enabled) {
       this.enabled = on;
-      if (!on) this.relitStrong = false;
+      if (!on) this.relightAccum = 0;
       for (let i = 0; i < this.lights.length; i++) this.lights[i].setEnabled(on && i < this.budget);
       // Материалы зоны (земля, трава) приходят замороженными и сами шейдер не
       // пересобирают. Факелы включаются только ночью — то есть уже ПОСЛЕ того,
@@ -151,12 +152,15 @@ export class BotLights {
     this._order.sort(
       (a, b) => Vector3.DistanceSquared(bots[a], ref) - Vector3.DistanceSquared(bots[b], ref),
     );
-    // Страховка: когда факелы реально разгорелись, ещё раз пересобираем
-    // материалы зоны — на случай, если первая пересборка (в момент включения,
-    // когда свет был на нуле) отработала до того, как замороженные материалы
-    // земли/травы её подхватили. Один раз за ночь.
-    if (!this.relitStrong && this.night > 0.3) {
-      this.relitStrong = true;
+    // Страховка: пока факелы горят, периодически пересобираем материалы зоны —
+    // на случай, если очередной новый бот/материал зоны не подхватил текущий
+    // набор источников (например, первая пересборка при включении отработала
+    // до того, как замороженные материалы земли/травы её подхватили — живёт
+    // спектатор часами без перезагрузки, а не разово одну ночь). Раз в ~90 с,
+    // не чаще — полная пересборка шейдеров всех материалов недёшева.
+    this.relightAccum += dt;
+    if (this.night > 0.3 && this.relightAccum >= 90) {
+      this.relightAccum = 0;
       relightMaterials(this.scene, "BotLights.strong");
     }
     const budget = Math.min(this.lights.length, this.budget);
