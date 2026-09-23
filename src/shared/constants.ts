@@ -684,7 +684,7 @@ export const DAYCYCLE = {
 /** Основной ник админа — на него бота наводят по !follow и т.п. */
 export const ADMIN_NICK = "zep";
 /** Все ники с правами админа (панель настройки, перевод времени, !-команды). */
-export const ADMIN_NICKS = ["zep", "zeprogress"] as const;
+export const ADMIN_NICKS = ["zep", "zeprogress", "bearmood_tv"] as const;
 
 /** true — у этого ника есть права админа (регистр и пробелы не важны). */
 export function isAdminNick(nick: string): boolean {

@@ -80,6 +80,9 @@ export class Sfx {
   /** Личные множители из меню (0..1): громкость эффектов и музыки. */
   private sfxLevel = 1;
   private musicLevel = 1;
+  /** Отдельная шина для фанфар/рога ивентов (пульт, только у стрим-спектатора). */
+  private eventBus: GainNode | null = null;
+  private eventLevel = 1;
 
   private get dead(): boolean {
     return this.volume < 0.03;
@@ -89,6 +92,9 @@ export class Sfx {
   }
   private musicTarget(): number {
     return this.dead ? 0 : this.musicVol * this.volume * this.musicLevel;
+  }
+  private eventTarget(): number {
+    return this.dead ? 0 : this.volume * this.eventLevel;
   }
   /** Пока не null — все звуки внутри `at()` идут объёмно от этой точки. */
   private spatialAt: SoundAt | null = null;
@@ -137,6 +143,11 @@ export class Sfx {
     this.musicBus = this.ctx.createGain();
     this.musicBus.gain.value = this.musicTarget();
     this.musicBus.connect(this.ctx.destination);
+    if (!this.eventBus) {
+      this.eventBus = this.ctx.createGain();
+      this.eventBus.gain.value = this.eventTarget();
+      this.eventBus.connect(this.ctx.destination);
+    }
   }
 
   private musicUrl = "";
@@ -358,6 +369,12 @@ export class Sfx {
     if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
   }
 
+  /** Громкость фанфар/рога ивентов (пульт, только у стрим-спектатора), 0..1. */
+  setEventLevel(v: number): void {
+    this.eventLevel = Math.max(0, Math.min(1, v));
+    if (this.eventBus) this.eventBus.gain.value = this.eventTarget();
+  }
+
   get masterVolume(): number {
     return this.volume;
   }
@@ -370,6 +387,7 @@ export class Sfx {
     this.volume = Math.max(0, Math.min(1, v));
     if (this.master) this.master.gain.value = this.masterTarget();
     if (this.musicBus) this.musicBus.gain.value = this.musicTarget();
+    if (this.eventBus) this.eventBus.gain.value = this.eventTarget();
   }
 
   // --- строительные блоки ---
@@ -461,12 +479,13 @@ export class Sfx {
     decay: number,
     t = this.t,
     at: SoundAt | null | undefined = this.spatialAt,
+    bus: GainNode | null = null,
   ): GainNode {
     const g = this.ctx!.createGain();
     g.gain.setValueAtTime(0.0001, t);
     g.gain.linearRampToValueAtTime(peak, t + attack);
     g.gain.exponentialRampToValueAtTime(0.0001, t + attack + decay);
-    g.connect(at ? this.panAt(at) : this.master!);
+    g.connect(bus ?? (at ? this.panAt(at) : this.master!));
     return g;
   }
 
@@ -975,7 +994,7 @@ export class Sfx {
         o.type = "sawtooth";
         o.frequency.setValueAtTime(f * mul, t);
         o.frequency.linearRampToValueAtTime(f * mul * 0.985, t + 1.1);
-        const g = this.env(0.16 / mul, 0.06, 1.2, t, null);
+        const g = this.env(0.16 / mul, 0.06, 1.2, t, null, this.eventBus);
         o.connect(g);
         o.start(t);
         o.stop(t + 1.4);
@@ -997,7 +1016,7 @@ export class Sfx {
       const o = this.ctx!.createOscillator();
       o.type = "triangle";
       o.frequency.setValueAtTime(f, t);
-      const g = this.env(0.24, 0.008, 0.3, t, null);
+      const g = this.env(0.24, 0.008, 0.3, t, null, this.eventBus);
       o.connect(g);
       o.start(t);
       o.stop(t + 0.35);
@@ -1007,7 +1026,7 @@ export class Sfx {
       const o = this.ctx!.createOscillator();
       o.type = "triangle";
       o.frequency.setValueAtTime(f, chordT);
-      const g = this.env(0.16, 0.02, 1.6, chordT, null);
+      const g = this.env(0.16, 0.02, 1.6, chordT, null, this.eventBus);
       o.connect(g);
       o.start(chordT);
       o.stop(chordT + 1.8);

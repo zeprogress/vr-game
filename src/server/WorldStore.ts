@@ -38,6 +38,7 @@ export interface PultSettings {
   /** Громкость музыки/эффектов на рендерящем спектаторе (стриме), 0..100. */
   specMusicVol: number;
   specSfxVol: number;
+  specEventVol: number;
 }
 
 interface WorldRecord {

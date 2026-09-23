@@ -63,6 +63,8 @@ export class Dashboard {
   private musicVolLbl!: HTMLSpanElement;
   private sfxVolInp!: HTMLInputElement;
   private sfxVolLbl!: HTMLSpanElement;
+  private eventVolInp!: HTMLInputElement;
+  private eventVolLbl!: HTMLSpanElement;
   private dayAutoBtn!: HTMLButtonElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
@@ -264,6 +266,14 @@ export class Dashboard {
     this.sfxVolLbl = sfxRow.label;
     this.root.appendChild(sfxRow.row);
 
+    const eventRow = this.volSlider("Ивенты (рог/фанфары)", 100, (v) => {
+      this.eventVolLbl.textContent = `${v}%`;
+      this.send({ t: "eventVol", v });
+    });
+    this.eventVolInp = eventRow.input;
+    this.eventVolLbl = eventRow.label;
+    this.root.appendChild(eventRow.row);
+
     this.ttsBtn = this.bigBtn("Озвучка чата: —", () => this.toggleTts());
     this.root.appendChild(this.ttsBtn);
     this.ttsSel = document.createElement("select");
@@ -361,6 +371,10 @@ export class Dashboard {
     if (Number(this.sfxVolInp.value) !== st.specSfxVol && document.activeElement !== this.sfxVolInp) {
       this.sfxVolInp.value = String(st.specSfxVol);
       this.sfxVolLbl.textContent = `${st.specSfxVol}%`;
+    }
+    if (Number(this.eventVolInp.value) !== st.specEventVol && document.activeElement !== this.eventVolInp) {
+      this.eventVolInp.value = String(st.specEventVol);
+      this.eventVolLbl.textContent = `${st.specEventVol}%`;
     }
     if ((st.ttsOn !== 0) !== this.ttsOn) this.setTtsUi(st.ttsOn !== 0);
     if (st.ttsVoice && this.ttsSel.value !== st.ttsVoice) this.ttsSel.value = st.ttsVoice;
