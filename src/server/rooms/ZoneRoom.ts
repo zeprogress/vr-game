@@ -4090,11 +4090,23 @@ export class ZoneRoom extends Room<ZoneState> {
         // компенсирует (по просьбе).
         const flyingMul = tgt.flying ? 1.25 : 1;
         const s = botAffix === "storm";
+        // Крит посоха у бота раньше вообще не считался (ни урон, ни эффект) —
+        // в отличие от лука-бота выше и живого игрока-мага (см. MSG.cast).
+        const botStaffCrit = rolledCrit(p, "right", bot.rt);
+        const critM = rollCritMult(
+          "sword",
+          Math.random,
+          false,
+          botStaffCrit.chance,
+          botStaffCrit.mult,
+          STAFF_CRIT_MULT,
+        );
         const bd =
           fireboltDamage(p.level, p.int, 0.7) *
           rolledDmgMul(p, "right", bot.rt) *
           flyingMul *
           (s ? AFFIX.storm.dmgMul : 1) *
+          critM *
           this.buffMult(bot.id, "dmg");
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
@@ -4103,6 +4115,7 @@ export class ZoneRoom extends Room<ZoneState> {
           bot.id, MAGIC.firebolt.life, 0,
           fireboltSplashRadius(0.7) * (s ? AFFIX.storm.splashRadiusMul : 1),
           bd * MAGIC.firebolt.splashFraction * (s ? AFFIX.storm.splashFracMul : 1),
+          critM > 1,
         );
       }
       const relay: ActRelay = {
@@ -4249,6 +4262,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
+    if (swordCrit > 1) this.critFx(sx, sy, sz, bot.id);
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, swordCrit > 1);
     const vamped = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "vamp";
     if (vamped) {
