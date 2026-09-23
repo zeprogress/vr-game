@@ -308,6 +308,13 @@ export class Spectator {
           bots: this._botPos.length,
           botLightsNight: (this.botLights as unknown as { night: number }).night,
         }),
+        // Прямая ручная камера из консоли — визуальная проверка без живого
+        // управления мышью/клавишами (та ненадёжна через автоматизацию
+        // браузера). x,y,z — позиция; lx,ly,lz — куда смотрим.
+        fly: (x: number, y: number, z: number, lx: number, ly: number, lz: number, fov = 0.9) => {
+          this.cam.setManual(new Vector3(x, y, z), new Vector3(lx, ly, lz), fov);
+        },
+        flyOff: () => this.cam.clearManual(),
       };
     }
 
