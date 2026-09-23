@@ -1,4 +1,4 @@
-import { WORLD, BOSS } from "./constants";
+import { WORLD, BOSS, LAKE, MOUNTAIN } from "./constants";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "./tower";
 
 /** Дерево в мире: где стоит, какого размера и как повёрнуто. */
@@ -98,10 +98,13 @@ export function trees(): Tree[] {
     [28, -138.1],
     [120.6, -53.2],
   ];
+  const lakeClear = LAKE.radius + LAKE.shoreFade + 6;
   const result = out.filter(
     (t) =>
       Math.hypot(t.x - TOWER_PROP_POS.x, t.z - TOWER_PROP_POS.z) >= TOWER_PROP_CLEAR + 12 &&
-      !removed.some(([rx, rz]) => Math.hypot(t.x - rx, t.z - rz) < 1),
+      !removed.some(([rx, rz]) => Math.hypot(t.x - rx, t.z - rz) < 1) &&
+      Math.hypot(t.x - LAKE.x, t.z - LAKE.z) >= lakeClear && // озеро — без деревьев на воде
+      Math.hypot(t.x - MOUNTAIN.x, t.z - MOUNTAIN.z) >= MOUNTAIN.radius, // склон горы — голый
   );
   cached = result;
   return result;

@@ -26,49 +26,79 @@ function angDist(a: number, b: number): number {
 /**
  * Дешёвый горный задник по всему горизонту — прячет край карты, но НЕ
  * закрывает восход/закат: в направлениях, где встаёт/садится солнце
- * (см. SUNRISE_AZ/SUNSET_AZ), высота гряды сильно занижена — солнце видно,
- * как оно выходит из-за горизонта и садится за него, а не выныривает из-за
- * гор. Сама гряда — далеко и невысоко (задник, не стена); гора у водопада
- * (MountainRing тут ни при чём) стоит отдельно и близко только у озера.
+ * (см. SUNRISE_AZ/SUNSET_AZ), гряды в этом секторе просто нет — солнце видно,
+ * как оно выходит из-за горизонта и садится за него. Сама гряда — далеко
+ * (но внутри купола неба, Sky.ts — тот радиусом 450) и заметно крупнее
+ * первой версии, чтобы читаться силуэтом издалека; ближняя гора у водопада
+ * (MOUNTAIN, отдельная реальная геометрия в terrain.ts) тут ни при чём.
  *
- * Техника — как небо/звёзды в Sky.ts: один смёрженный низкополигональный
- * меш, `disableLighting` + `freezeWorldMatrix`, без коллизий и без участия в
- * клампе `playRadius` — чистая декорация. Один draw call.
+ * Реалистичности ради — два тона одним мержем (не два разных мира): тёмная
+ * скальная основа + светлее-сизая «дымка» ближе к вершине (атмосферная
+ * перспектива на глаз). По-прежнему один drow-call на тон, `disableLighting`
+ * + `freezeWorldMatrix`, без коллизий и без участия в клампе `playRadius`.
  */
 export function createMountainRing(scene: Scene): Mesh {
-  const R = WORLD.playRadius * 2.1; // далеко на горизонте, не «стена» у края
-  const COUNT = 48;
+  const R = WORLD.playRadius * 1.8; // далеко на горизонте, но внутри купола неба (450 м)
+  const COUNT = 44;
   const GAP = 0.5; // рад (~29°) — полураствор просвета под восход/закат
 
-  const mat = new StandardMaterial("mountainRingMat", scene);
-  mat.diffuseColor = new Color3(0, 0, 0);
-  mat.specularColor = new Color3(0, 0, 0);
-  mat.emissiveColor = new Color3(0.4, 0.44, 0.5); // холодный сизый — сливается с туманом/небом
-  mat.disableLighting = true;
-  mat.backFaceCulling = true;
+  const rockMat = new StandardMaterial("mountainRingRockMat", scene);
+  rockMat.diffuseColor = new Color3(0, 0, 0);
+  rockMat.specularColor = new Color3(0, 0, 0);
+  rockMat.emissiveColor = new Color3(0.3, 0.34, 0.42); // тёмная скальная основа
+  rockMat.disableLighting = true;
+  rockMat.backFaceCulling = true;
 
-  const peaks: Mesh[] = [];
+  const hazeMat = new StandardMaterial("mountainRingHazeMat", scene);
+  hazeMat.diffuseColor = new Color3(0, 0, 0);
+  hazeMat.specularColor = new Color3(0, 0, 0);
+  hazeMat.emissiveColor = new Color3(0.56, 0.6, 0.68); // светлее, сизее — дымка на вершинах
+  hazeMat.disableLighting = true;
+  hazeMat.backFaceCulling = true;
+
+  const rockPeaks: Mesh[] = [];
+  const hazeCaps: Mesh[] = [];
   for (let i = 0; i < COUNT; i++) {
     const a = (i / COUNT) * Math.PI * 2 + (Math.random() - 0.5) * 0.1;
     const gap = Math.min(angDist(a, SUNRISE_AZ), angDist(a, SUNSET_AZ));
     if (gap < GAP) continue; // просвет — солнцу есть где встать/сесть
-    const dist = R + (Math.random() - 0.5) * 40;
-    // Ниже и дальше, чем было: задник на горизонте, не вал перед носом.
-    const h = 18 + Math.random() * 26;
-    const w = 40 + Math.random() * 50;
+    const dist = R + (Math.random() - 0.5) * 60;
+    const h = 42 + Math.random() * 46; // крупнее первой версии — читается издалека
+    const w = 60 + Math.random() * 70;
+    const yaw = Math.random() * Math.PI;
     const cone = MeshBuilder.CreateCylinder(
       `mountainPeak${i}`,
       { diameterTop: 0, diameterBottom: w, height: h, tessellation: 6 },
       scene,
     );
-    cone.position.set(Math.cos(a) * dist, h * 0.5 - 6, Math.sin(a) * dist);
-    cone.rotation.y = Math.random() * Math.PI;
-    peaks.push(cone);
+    cone.position.set(Math.cos(a) * dist, h * 0.5 - 8, Math.sin(a) * dist);
+    cone.rotation.y = yaw;
+    rockPeaks.push(cone);
+
+    // Светлая «шапка» — верхняя четверть того же конуса, отдельным мешем
+    // чуть меньшего радиуса у основания (садится поверх скалы, не протыкает).
+    const capH = h * 0.32;
+    const cap = MeshBuilder.CreateCylinder(
+      `mountainCap${i}`,
+      { diameterTop: 0, diameterBottom: w * 0.42, height: capH, tessellation: 6 },
+      scene,
+    );
+    cap.position.set(
+      Math.cos(a) * dist,
+      h - 8 - capH * 0.5 + capH * 0.15,
+      Math.sin(a) * dist,
+    );
+    cap.rotation.y = yaw;
+    hazeCaps.push(cap);
   }
 
-  const merged = Mesh.MergeMeshes(peaks, true, true) as Mesh;
+  const mergedRock = Mesh.MergeMeshes(rockPeaks, true, true) as Mesh;
+  const mergedCaps = Mesh.MergeMeshes(hazeCaps, true, true) as Mesh;
+  mergedRock.material = rockMat;
+  mergedCaps.material = hazeMat;
+
+  const merged = Mesh.MergeMeshes([mergedRock, mergedCaps], true, true, undefined, false, true) as Mesh;
   merged.name = "mountainRing";
-  merged.material = mat;
   merged.isPickable = false;
   merged.checkCollisions = false;
   merged.applyFog = true; // тонет в тумане на закате/рассвете вместе со всем миром

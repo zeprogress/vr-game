@@ -1,4 +1,4 @@
-import { WORLD, BOSS } from "./constants";
+import { WORLD, BOSS, LAKE } from "./constants";
 import { HUB, HUB_CENTER } from "./hub";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "./tower";
 
@@ -32,6 +32,7 @@ function rng(seed: number): () => number {
 /** Места, где камней быть не должно: весь лагерь (включая большой шатёр) и вокруг декоративной башни. */
 function clearSpot(x: number, z: number): boolean {
   if (Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z) < HUB.campRadius + 2) return true;
+  if (Math.hypot(x - LAKE.x, z - LAKE.z) < LAKE.radius + LAKE.shoreFade + 6) return true; // озеро — камней в воде нет
   return Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z) < TOWER_PROP_CLEAR;
 }
 

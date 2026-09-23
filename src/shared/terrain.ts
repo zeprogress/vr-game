@@ -82,16 +82,22 @@ export function terrainHeight(x: number, z: number): number {
   }
 
   // Чаша озера — понижаем рельеф под водой, чтобы гладь (LAKE.waterY) не
-  // протыкала землю по краям (вода просто лежит поверх готового рельефа,
-  // без честной выемки/heightmap — по решению из плана, тут только мягкое
-  // притягивание высоты ко дну внутри радиуса).
+  // протыкала землю по краям (вода лежит поверх готового рельефа, без
+  // честной выемки/heightmap — по решению из плана). Диск воды в Lake.ts
+  // ровно радиуса shoreOuter — ПОД ВСЕМ этим кругом дно строго ровное
+  // (floorY), без градиента: вода и дно совпадают везде, нет ни провала
+  // («висит в воздухе»), ни протыкания земли сквозь гладь. Настоящий берег
+  // (подъём к обычному рельефу) начинается СРАЗУ ЗА кромкой воды, не раньше.
   const lx = x - LAKE.x;
   const lz = z - LAKE.z;
   const ld = Math.sqrt(lx * lx + lz * lz);
-  const LAKE_FADE = 8;
-  if (ld < LAKE.radius + LAKE_FADE) {
-    const floorY = LAKE.waterY - 2.2; // дно чуть ниже глади
-    const t = clamp01((ld - LAKE.radius) / LAKE_FADE); // 0 в центре, 1 на кромке
+  const shoreOuter = LAKE.radius + LAKE.shoreFade; // = радиус диска воды в Lake.ts
+  const RISE_FADE = 10;
+  const floorY = LAKE.waterY - 2.4; // дно чуть ниже глади
+  if (ld < shoreOuter) {
+    h = floorY;
+  } else if (ld < shoreOuter + RISE_FADE) {
+    const t = clamp01((ld - shoreOuter) / RISE_FADE); // 0 у кромки воды, 1 — обычный берег
     h = floorY + (h - floorY) * t;
   }
 

@@ -17,7 +17,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import type { Terrain } from "./Terrain";
 import { LOADOUT } from "../config/loadout";
 import { noGrass } from "./grassLayout";
-import { BOSS, MOB_CAMPS, WORLD } from "#shared/constants";
+import { BOSS, LAKE, MOB_CAMPS, MOUNTAIN, WORLD } from "#shared/constants";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { relightMaterials } from "./Fireflies";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
@@ -105,6 +105,13 @@ function sparseMul(x: number, z: number): number {
   }
   const dh = Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z);
   if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
+  // Озеро и гора у водопада — совсем без травы/кустов на воде и на голом
+  // склоне (её и не видно под водой, а на скале она смотрелась бы нелепо).
+  const dLake = Math.hypot(x - LAKE.x, z - LAKE.z);
+  const lakeClear = LAKE.radius + LAKE.shoreFade + 6;
+  if (dLake < lakeClear) m = 0;
+  const dMtn = Math.hypot(x - MOUNTAIN.x, z - MOUNTAIN.z);
+  if (dMtn < MOUNTAIN.radius) m *= smooth(MOUNTAIN.radius * 0.5, MOUNTAIN.radius, dMtn);
   const dt = Math.hypot(x - TOWER_PROP_POS.x, z - TOWER_PROP_POS.z);
   if (dt < TOWER_PROP_CLEAR + 24) m *= 0.4 + 0.6 * smooth(TOWER_PROP_CLEAR, TOWER_PROP_CLEAR + 24, dt);
   // Заявка: значительно реже во всех четырёх углах карты.

@@ -29,9 +29,13 @@ export function createLake(scene: Scene): Lake {
   waterMat.maxSimultaneousLights = 1;
   waterMat.backFaceCulling = false;
 
+  // Диск воды кроет ВЕСЬ радиус вместе с прибрежной отмелью (см. terrain.ts:
+  // дно там строго ровное floorY на всём этом круге) — иначе между кромкой
+  // воды и настоящим подъёмом берега виден провал голой земли.
+  const shoreOuter = LAKE.radius + LAKE.shoreFade;
   const water = MeshBuilder.CreateDisc(
     "lakeWater",
-    { radius: LAKE.radius, tessellation: 40 },
+    { radius: shoreOuter, tessellation: 48 },
     scene,
   );
   water.rotation.x = Math.PI / 2;
@@ -48,8 +52,8 @@ export function createLake(scene: Scene): Lake {
   const dl = Math.hypot(dx, dz) || 1;
   const nx = dx / dl;
   const nz = dz / dl;
-  const baseX = LAKE.x + nx * (LAKE.radius - 3);
-  const baseZ = LAKE.z + nz * (LAKE.radius - 3);
+  const baseX = LAKE.x + nx * (shoreOuter - 3);
+  const baseZ = LAKE.z + nz * (shoreOuter - 3);
   const topX = baseX + nx * 9;
   const topZ = baseZ + nz * 9;
   const topY = terrainHeight(topX, topZ) + 1;
