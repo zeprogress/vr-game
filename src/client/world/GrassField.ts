@@ -18,6 +18,7 @@ import type { Terrain } from "./Terrain";
 import { LOADOUT } from "../config/loadout";
 import { noGrass } from "./grassLayout";
 import { BOSS, LAKE, MOB_CAMPS, MOUNTAIN, WORLD } from "#shared/constants";
+import { lakeEllipseDist, LAKE_R_AVG } from "#shared/terrain";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { relightMaterials } from "./Fireflies";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "#shared/tower";
@@ -107,8 +108,8 @@ function sparseMul(x: number, z: number): number {
   if (dh < HUB.campRadius + 24) m *= 0.4 + 0.6 * smooth(HUB.campRadius, HUB.campRadius + 24, dh);
   // Озеро — без травы на воде и в 5 м суши за кромкой, дальше плавный
   // переход обратно к обычной густоте (заявка: «радиус 5 м, плавный переход»).
-  const dLake = Math.hypot(x - LAKE.x, z - LAKE.z);
-  const shoreOuter = LAKE.radius + LAKE.shoreFade;
+  const dLake = lakeEllipseDist(x, z);
+  const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
   const lakeClear = shoreOuter + 5;
   const lakeFadeW = 6;
   if (dLake < lakeClear) m = 0;

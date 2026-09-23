@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 import { LAKE, MOUNTAIN } from "#shared/constants";
-import { terrainHeight } from "#shared/terrain";
+import { terrainHeight, LAKE_R_AVG, lakeShoreDistIn } from "#shared/terrain";
 
 export interface Lake {
   tick(dt: number): void;
@@ -35,16 +35,21 @@ export function createLake(scene: Scene): Lake {
   waterMat.maxSimultaneousLights = 1;
   waterMat.backFaceCulling = false;
 
-  // Диск воды кроет ВЕСЬ радиус вместе с прибрежной отмелью (см. terrain.ts:
-  // дно там строго ровное floorY на всём этом круге) — иначе между кромкой
-  // воды и настоящим подъёмом берега виден провал голой земли.
-  const shoreOuter = LAKE.radius + LAKE.shoreFade;
+  // Диск воды кроет ВЕСЬ эллипс вместе с прибрежной отмелью (см. terrain.ts:
+  // дно там строго ровное floorY по всему lakeEllipseDist<shoreOuter) —
+  // иначе между кромкой воды и настоящим подъёмом берега виден провал голой
+  // земли. Сам меш — обычный круглый диск среднего радиуса, растянутый
+  // масштабом до эллипса LAKE.rx×LAKE.rz (см. lakeEllipseDist — та же самая
+  // мат.модель, чтобы дно и видимая вода совпадали).
+  const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
   const water = MeshBuilder.CreateDisc(
     "lakeWater",
     { radius: shoreOuter, tessellation: 48 },
     scene,
   );
   water.rotation.x = Math.PI / 2;
+  water.scaling.x = LAKE.rx / LAKE_R_AVG;
+  water.scaling.y = LAKE.rz / LAKE_R_AVG; // локальный Y уходит в мировой Z после поворота на X
   water.position.set(LAKE.x, LAKE.waterY, LAKE.z);
   water.material = waterMat;
   water.isPickable = false;
@@ -58,8 +63,11 @@ export function createLake(scene: Scene): Lake {
   const dl = Math.hypot(dx, dz) || 1;
   const nx = dx / dl;
   const nz = dz / dl;
-  const baseX = LAKE.x + nx * (shoreOuter - 3);
-  const baseZ = LAKE.z + nz * (shoreOuter - 3);
+  // Эллипс не круг — «настоящая» кромка в СТОРОНУ горы (nx,nz) не равна
+  // усреднённому shoreOuter (тот только для дна terrain.ts и формы диска).
+  const shoreOuterMtn = lakeShoreDistIn(nx, nz) + LAKE.shoreFade;
+  const baseX = LAKE.x + nx * (shoreOuterMtn - 3);
+  const baseZ = LAKE.z + nz * (shoreOuterMtn - 3);
   // Раньше бралось +9 вдоль склона — попадало ЕЩЁ в переходную зону чаши
   // озера (terrain.ts гасит подъём горы там же, где сам понижает дно под
   // воду), и водопад выходил метра 4-6 высотой вместо нормального. +18 —
@@ -284,11 +292,12 @@ export function createLake(scene: Scene): Lake {
     // всё ещё дно озера под водой) и тянем доски ОТТУДА к воде, а не наоборот.
     const dax = -nx;
     const daz = -nz;
-    // shoreOuter+RISE_FADE(10) — где подъём к обычному рельефу ТОЛЬКО
-    // заканчивается; берём якорь заметно дальше (+20), чтобы точно попасть
-    // на нетронутую сушу, а не в хвост переходной зоны (там и словили баг —
-    // even shoreOuter+7 всё ещё оказалось внутри неё).
-    const dockR = shoreOuter + 20;
+    // Настоящая кромка эллипса в СТОРОНУ ЛАГЕРЯ (не усреднённый shoreOuter —
+    // тот только для дна/формы диска) + отмель + запас на RISE_FADE(10) в
+    // terrain.ts, чтобы точно попасть на нетронутую сушу (см. баг «причал
+    // внутри вечно-подводной зоны» — не отрезать себе те же грабли), + ~12м
+    // сверху — по брифу «лагерь 10-15м от ближайшего берега».
+    const dockR = lakeShoreDistIn(dax, daz) + LAKE.shoreFade + 10 + 12;
     const shoreX = LAKE.x + dax * dockR;
     const shoreZ = LAKE.z + daz * dockR;
     const dockYaw = Math.atan2(dax, daz);
@@ -373,9 +382,13 @@ export function createLake(scene: Scene): Lake {
     };
     for (let i = 0; i < ROCK_N; i++) {
       const a = rnd() * Math.PI * 2;
-      const r = shoreOuter - 1 + rnd() * 4; // прямо на кромке ± немного суши
-      const x = LAKE.x + Math.cos(a) * r;
-      const z = LAKE.z + Math.sin(a) * r;
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      // По эллипсу (не по кругу — та же формула, что и lakeEllipseDist,
+      // только в явном виде по углу): кромка + немного суши.
+      const rimK = 1 + (rnd() * 4) / LAKE_R_AVG;
+      const x = LAKE.x + ca * LAKE.rx * rimK;
+      const z = LAKE.z + sa * LAKE.rz * rimK;
       const y = terrainHeight(x, z);
       const s = 0.18 + rnd() * 0.35;
       const rock = MeshBuilder.CreateSphere(`shoreRock${i}`, { diameter: 1, segments: 4 }, scene);
@@ -389,6 +402,95 @@ export function createLake(scene: Scene): Lake {
     shoreRocks.isPickable = false;
     shoreRocks.checkCollisions = false;
     shoreRocks.freezeWorldMatrix();
+  }
+
+  // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----
+  // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
+  // лагеря и основные тропы. Плоские однотонные материалы, никакого декора.
+  {
+    const forestMat = new StandardMaterial("forestBlockMat", scene);
+    forestMat.diffuseColor = new Color3(0.16, 0.34, 0.14);
+    forestMat.specularColor = new Color3(0, 0, 0);
+    forestMat.maxSimultaneousLights = 1;
+    // Несколько крупных цилиндров по периметру озера, за отмелью — обозначают
+    // будущие лесные массивы, не должны закрывать сам водопад/озеро с VIEW A-D.
+    const forestSpots: [number, number, number, number][] = [
+      [-160, -100, 14, 16], // запад от озера
+      [-75, -130, 12, 14], // восток, ближе к лагерю
+      [-150, -70, 13, 15], // северо-запад, за лагерем
+    ];
+    for (let i = 0; i < forestSpots.length; i++) {
+      const [x, z, r, h] = forestSpots[i];
+      const y = terrainHeight(x, z);
+      const blob = MeshBuilder.CreateCylinder(`forestBlock${i}`, { diameter: r * 2, height: h }, scene);
+      blob.position.set(x, y + h / 2, z);
+      blob.material = forestMat;
+      blob.isPickable = false;
+      blob.freezeWorldMatrix();
+    }
+
+    // Площадка лагеря — отдельная от причала (тот уже есть выше): плоский
+    // box чуть в стороне от берега, костёр — маленький box на ней.
+    const campMat = new StandardMaterial("campBlockMat", scene);
+    campMat.diffuseColor = new Color3(0.36, 0.26, 0.16);
+    campMat.specularColor = new Color3(0, 0, 0);
+    campMat.maxSimultaneousLights = 1;
+    const fireMat = new StandardMaterial("campFireBlockMat", scene);
+    fireMat.diffuseColor = new Color3(0.5, 0.2, 0.08);
+    fireMat.specularColor = new Color3(0, 0, 0);
+    fireMat.maxSimultaneousLights = 1;
+
+    const dax = -nx;
+    const daz = -nz;
+    const campR = lakeShoreDistIn(dax, daz) + LAKE.shoreFade + 10 + 14; // чуть дальше причала вглубь суши
+    const campX = LAKE.x + dax * campR;
+    const campZ = LAKE.z + daz * campR;
+    const campY = terrainHeight(campX, campZ);
+    const platform = MeshBuilder.CreateBox("campPlatformBlock", { width: 12, height: 0.3, depth: 12 }, scene);
+    platform.position.set(campX, campY + 0.15, campZ);
+    platform.material = campMat;
+    platform.isPickable = false;
+    platform.checkCollisions = true;
+    platform.freezeWorldMatrix();
+    const fire = MeshBuilder.CreateBox("campFireBlock", { size: 1.2 }, scene);
+    fire.position.set(campX, campY + 0.6, campZ);
+    fire.material = fireMat;
+    fire.isPickable = false;
+    fire.freezeWorldMatrix();
+
+    // Тропы (бежевые полосы 2.5м) — лагерь→причал (короткая, тот уже ведёт
+    // в воду сам), лагерь→лес→водопад, озеро→(вверх)→река→водопад.
+    const pathMat = new StandardMaterial("pathBlockMat", scene);
+    pathMat.diffuseColor = new Color3(0.72, 0.64, 0.48);
+    pathMat.specularColor = new Color3(0, 0, 0);
+    pathMat.maxSimultaneousLights = 1;
+    const pathSegs: Mesh[] = [];
+    const layPath = (ax: number, az: number, bx: number, bz: number): void => {
+      const dxs = bx - ax;
+      const dzs = bz - az;
+      const len = Math.hypot(dxs, dzs) || 1;
+      const midx = (ax + bx) / 2;
+      const midz = (az + bz) / 2;
+      const midy = (terrainHeight(ax, az) + terrainHeight(bx, bz)) / 2;
+      const seg = MeshBuilder.CreateBox("pathBlockSeg", { width: 2.5, height: 0.06, depth: len }, scene);
+      seg.position.set(midx, midy + 0.1, midz);
+      seg.rotation.y = Math.atan2(dxs, dzs);
+      pathSegs.push(seg);
+    };
+    // Лагерь -> опушка леса -> к водопаду (через промежуточную точку, огибая озеро).
+    const midPathX = LAKE.x + (baseX - LAKE.x) * 0.55 + 20;
+    const midPathZ = campZ + (baseZ - campZ) * 0.5;
+    layPath(campX, campZ, midPathX, midPathZ);
+    layPath(midPathX, midPathZ, baseX, baseZ);
+    // Озеро (у горы) -> вверх по склону вдоль реки -> к водопаду сверху.
+    layPath(baseX, baseZ, topX, topZ);
+    const path = Mesh.MergeMeshes(pathSegs, true, true) as Mesh;
+    if (path) {
+      path.material = pathMat;
+      path.isPickable = false;
+      path.checkCollisions = false;
+      path.freezeWorldMatrix();
+    }
   }
 
   let clock = 0;

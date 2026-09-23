@@ -1,6 +1,34 @@
 import { HUB, HUB_CENTER } from "./hub";
 import { LAKE, MOUNTAIN } from "./constants";
 
+/** Средний радиус эллипса озера — им же меряем «метры» отмели/подъёма берега. */
+export const LAKE_R_AVG = (LAKE.rx + LAKE.rz) / 2;
+
+/**
+ * «Радиус» точки (x,z) относительно эллипса озера (LAKE.rx/rz), в метрах:
+ * 1 на границе эллипса — заменяет старое `Math.hypot(lx,lz)` для круга.
+ * Общая для рельефа (terrain.ts) и видимой геометрии (Lake.ts) — иначе дно
+ * и вода/берег разойдутся (см. LAKE в constants.ts).
+ */
+export function lakeEllipseDist(x: number, z: number): number {
+  const lx = x - LAKE.x;
+  const lz = z - LAKE.z;
+  const en = Math.hypot(lx / LAKE.rx, lz / LAKE.rz); // 1.0 = на границе эллипса
+  return en * LAKE_R_AVG;
+}
+
+/**
+ * Настоящее расстояние (в метрах) от центра озера до кромки эллипса ИМЕННО
+ * в направлении единичного вектора (nx,nz) — нужно тем, кто ставит объект
+ * «у берега в такую-то сторону» (водопад/причал в Lake.ts): усреднённый
+ * `LAKE_R_AVG` годится для формулы дна (она не привязана к направлению), а
+ * для точной посадки объекта на реальную кромку эллипса нужен именно он.
+ */
+export function lakeShoreDistIn(nx: number, nz: number): number {
+  const k = Math.hypot(nx / LAKE.rx, nz / LAKE.rz);
+  return k > 1e-6 ? 1 / k : LAKE_R_AVG;
+}
+
 /** Сырой рельеф-шум (без площадок). */
 function noise(x: number, z: number): number {
   return (
@@ -88,10 +116,8 @@ export function terrainHeight(x: number, z: number): number {
   // (floorY), без градиента: вода и дно совпадают везде, нет ни провала
   // («висит в воздухе»), ни протыкания земли сквозь гладь. Настоящий берег
   // (подъём к обычному рельефу) начинается СРАЗУ ЗА кромкой воды, не раньше.
-  const lx = x - LAKE.x;
-  const lz = z - LAKE.z;
-  const ld = Math.sqrt(lx * lx + lz * lz);
-  const shoreOuter = LAKE.radius + LAKE.shoreFade; // = радиус диска воды в Lake.ts
+  const ld = lakeEllipseDist(x, z);
+  const shoreOuter = LAKE_R_AVG + LAKE.shoreFade; // = радиус диска воды в Lake.ts
   const RISE_FADE = 10;
   const floorY = LAKE.waterY - 2.4; // дно чуть ниже глади
   if (ld < shoreOuter) {
