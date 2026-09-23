@@ -172,13 +172,16 @@ export function terrainHeight(x: number, z: number): number {
     const CLIFF_RISE = 46;
     // Разрыв (проход воды) — половина ширины 14 (просвет 28м по плану).
     const GAP_HALF = 14;
-    // Стены каньона — полоса ЗА разрывом, тоже по 14м с каждой стороны.
-    const WALL_HALF = GAP_HALF + 14;
+    // Стены каньона — ПЛОСКИЕ сверху (не острый гребень): полная высота от
+    // GAP_HALF до WALL_FLAT, дальше — короткий скат до WALL_HALF наружу.
+    const WALL_FLAT = GAP_HALF + 18;
+    const WALL_HALF = WALL_FLAT + 10;
     const absLat = Math.abs(lateralLake);
     if (absLat > GAP_HALF && absLat < WALL_HALF && alongLake > CLIFF_START) {
       const cliffT = clamp01((alongLake - CLIFF_START) / CLIFF_W);
-      const wallFall = Math.max(0, 1 - (absLat - GAP_HALF) / (WALL_HALF - GAP_HALF));
-      h += CLIFF_RISE * cliffT * wallFall;
+      const innerRamp = clamp01((absLat - GAP_HALF) / 3); // короткий скат у самого разрыва
+      const outerFall = absLat <= WALL_FLAT ? 1 : Math.max(0, 1 - (absLat - WALL_FLAT) / (WALL_HALF - WALL_FLAT));
+      h += CLIFF_RISE * cliffT * innerRamp * outerFall;
     }
   }
 
