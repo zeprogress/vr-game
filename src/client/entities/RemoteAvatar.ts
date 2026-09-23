@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { mergeRigSkinned } from "../items/flatMerge";
-import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -221,6 +221,7 @@ export class RemoteAvatar implements Hittable {
   private readonly _qb = new Quaternion();
   private readonly _headQ = new Quaternion();
   private readonly _pitchQ = new Quaternion();
+  private readonly _fwdMat = new Matrix();
   /** Оценка реального интервала между снапшотами (ЕМА) и сырое время предыдущего. */
   private snapDt = 55;
   private lastPushRaw = 0;
@@ -460,10 +461,31 @@ export class RemoteAvatar implements Hittable {
   }
 
   private readonly _fwd = new Vector3();
-  /** Направление взгляда головы в мире — для камеры «из глаз» (этап 17 Ф3). */
+  /**
+   * Направление взгляда головы в мире — для камеры «из глаз» (этап 17 Ф3).
+   * Раньше бралось из `this.head` (якорь, повёрнутый только по курсу тела —
+   * см. applyBodyAndHeadXf: корпус получает чистый yaw, наклон идёт отдельно
+   * в кость `botHead`, которой `this.head` не касается), поэтому камера «из
+   * глаз» игнорировала наклон взгляда вверх/вниз. `_headQ` — тот же самый
+   * кадр, ДО того как его раскидали на yaw (тело) и pitch (кость): полный
+   * курс+наклон, обновляется в applyBodyAndHeadXf каждый кадр.
+   */
   get eyeForward(): Vector3 {
-    this.head.getDirectionToRef(FWD_Z, this._fwd);
+    Matrix.FromQuaternionToRef(this._headQ, this._fwdMat);
+    Vector3.TransformNormalToRef(FWD_Z, this._fwdMat, this._fwd);
     return this._fwd;
+  }
+
+  /**
+   * Спрятать модель персонажа (камера спектатора «из глаз» этого же
+   * игрока — иначе меш головы/тела торчит перед объективом). Только
+   * визуальные меши: позиция/поворот/`eyeForward` продолжают считаться как
+   * обычно (`root` не трогаем), плашка над головой отдельно не гасится —
+   * от первого лица её и так не видно смысла скрывать нарочно.
+   */
+  setModelVisible(v: boolean): void {
+    const vis = v ? 1 : 0;
+    for (const m of this.root.getChildMeshes()) m.visibility = vis;
   }
 
   /** Огонёк над головой, пока игрок говорит. */

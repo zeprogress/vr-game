@@ -1200,7 +1200,24 @@ export class Spectator {
     return items[this.changelogIdx % items.length];
   }
 
+  /** Чья модель сейчас спрятана (камера «из глаз» этого игрока) — чтобы вернуть при смене кадра. */
+  private eyeHiddenId: string | null = null;
+
+  /** Прячет модель игрока, пока камера смотрит его глазами (не для ботов — у них «из глаз» это погоня сзади, модель нужна в кадре). */
+  private updateEyeVisibility(): void {
+    const s = this.cam.subject;
+    const wantId =
+      this.cam.shotKind === "eyePlayer" && s.type === "player" && s.id && !s.id.startsWith("bot:")
+        ? s.id
+        : null;
+    if (wantId === this.eyeHiddenId) return;
+    if (this.eyeHiddenId) this.avatars.get(this.eyeHiddenId)?.setModelVisible(true);
+    if (wantId) this.avatars.get(wantId)?.setModelVisible(false);
+    this.eyeHiddenId = wantId;
+  }
+
   private updateOverlay(st: ZoneState | null): void {
+    this.updateEyeVisibility();
     const subj = this.cam.subject;
     let watching: string | null = null;
     let watchStats: HeroStatRow[] | null = null;

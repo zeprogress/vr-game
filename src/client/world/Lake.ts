@@ -69,8 +69,9 @@ export function createLake(scene: Scene): Lake {
     scene,
   );
   waterfall.position.set((baseX + topX) / 2, (LAKE.waterY + topY) / 2, (baseZ + topZ) / 2);
-  // Разворачиваем плоскость лицом поперёк направления к горе, слегка навстречу камере от воды.
-  waterfall.rotation.y = Math.atan2(nx, nz) + Math.PI / 2;
+  // Лицом к озеру — навстречу (nx,nz) смотрит на гору, значит сама плоскость
+  // разворачивается в обратную сторону, поэтому знак минус.
+  waterfall.rotation.y = Math.atan2(-nx, -nz);
   waterfall.material = waterfallMat;
   waterfall.isPickable = false;
   waterfall.checkCollisions = false;
