@@ -409,26 +409,9 @@ export function createLake(scene: Scene): Lake {
   // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
   // лагеря и основные тропы. Плоские однотонные материалы, никакого декора.
   {
-    const forestMat = new StandardMaterial("forestBlockMat", scene);
-    forestMat.diffuseColor = new Color3(0.16, 0.34, 0.14);
-    forestMat.specularColor = new Color3(0, 0, 0);
-    forestMat.maxSimultaneousLights = 1;
-    // Несколько крупных цилиндров по периметру озера, за отмелью — обозначают
-    // будущие лесные массивы, не должны закрывать сам водопад/озеро с VIEW A-D.
-    const forestSpots: [number, number, number, number][] = [
-      [-160, -100, 14, 16], // запад от озера
-      [-75, -130, 12, 14], // восток, ближе к лагерю
-      [-150, -70, 13, 15], // северо-запад, за лагерем
-    ];
-    for (let i = 0; i < forestSpots.length; i++) {
-      const [x, z, r, h] = forestSpots[i];
-      const y = terrainHeight(x, z);
-      const blob = MeshBuilder.CreateCylinder(`forestBlock${i}`, { diameter: r * 2, height: h }, scene);
-      blob.position.set(x, y + h / 2, z);
-      blob.material = forestMat;
-      blob.isPickable = false;
-      blob.freezeWorldMatrix();
-    }
+    // Лесные цилиндры-заглушки убраны (мешали смотреть композицию горы/реки
+    // во время пересборки) — лес будет отдельным шагом пайплайна, другой
+    // формой (не столбы), см. чат с пользователем.
 
     // Площадка лагеря — отдельная от причала (тот уже есть выше): плоский
     // box чуть в стороне от берега, костёр — маленький box на ней.
