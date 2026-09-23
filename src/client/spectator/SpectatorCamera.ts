@@ -337,6 +337,10 @@ export class SpectatorCamera {
     this.introPending = true;
   }
   private introPending = false;
+  /** Идёт вступительный облёт (startIntro) — его нельзя прерывать idlePathInterrupted
+   *  ниже, даже если боты/игроки уже есть на сервере (обычное дело после рестарта —
+   *  боты переживают его и появляются раньше, чем спектатор успевает подключиться). */
+  private introActive = false;
 
   /**
    * Кого брать в авто-выборе героя: если есть участники события/рейда — только
@@ -366,6 +370,7 @@ export class SpectatorCamera {
       this.introPending = false;
       this.idleRotIdx = 0;
       this.switchTo({ kind: "path", idx: INTRO_PATH }, ctx);
+      this.introActive = true;
     }
     this.orbitClock += dt;
     this.sinceSwitch += dt;
@@ -378,7 +383,7 @@ export class SpectatorCamera {
     // Сценический путь (пустой сервер) не должен доигрывать до конца, если
     // за это время кто-то появился на поляне — переключаем немедленно.
     const idlePathInterrupted =
-      this.shot.kind === "path" && !this.botsOnly && ctx.players.length > 0;
+      this.shot.kind === "path" && !this.botsOnly && !this.introActive && ctx.players.length > 0;
 
     if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
@@ -419,6 +424,11 @@ export class SpectatorCamera {
   private curBlend: number = SPECTATE.blendTime;
 
   private switchTo(shot: Shot, ctx: DirectorCtx): void {
+    // Сбрасываем ДО присвоения this.shot — введение (startIntro) выставляет
+    // флаг обратно в true сразу ПОСЛЕ своего собственного вызова switchTo,
+    // так что любой другой переход (естественный конец пути, invalid,
+    // ручной кадр) корректно снимает флаг, а сам старт интро — нет.
+    this.introActive = false;
     this.fromPos.copyFrom(this.cam.position);
     this.fromTgt.copyFrom(this.curTgt);
     if (shot.kind === "towerApproach") this.towerApproachStart = performance.now();
