@@ -11,6 +11,7 @@ import "@babylonjs/core/Engines/Extensions/engine.dynamicTexture";
 import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { createMountainRing } from "./MountainRing";
+import { createLake } from "./Lake";
 import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
 import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
@@ -136,6 +137,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   const terrain = createTerrain(scene, quality.grass ?? 1);
   terrain.mesh.freezeWorldMatrix(); // рельеф не двигается
+  const lake = createLake(scene);
   const trunks = scatterTrees(scene, terrain, quality.minLights, quality.treeFade);
   const windTick = scatterGrass(scene, terrain, quality.grass ?? 1, quality.minLights, quality.grassFar ?? 1);
   const fireflies = new Fireflies(scene, terrain, quality.fireflies ?? 1);
@@ -259,6 +261,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       sp = secNow();
       fireflies.update(dt, playerPos, day.daylight);
       secAdd("zone.fireflies", sp);
+      lake.tick(dt);
       sp = secNow();
       if ((hubTickN++ & 1) === 0) hub.tick(day.daylight); // костёр и свечение лагеря — через кадр (его dt считается по часам)
       secAdd("zone.hub", sp);

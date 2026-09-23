@@ -1,4 +1,5 @@
 import { HUB, HUB_CENTER } from "./hub";
+import { LAKE, MOUNTAIN } from "./constants";
 
 /** Сырой рельеф-шум (без площадок). */
 function noise(x: number, z: number): number {
@@ -67,6 +68,33 @@ export function terrainHeight(x: number, z: number): number {
     const blend = HUB_RELIEF_KEEP + (1 - HUB_RELIEF_KEEP) * t;
     h = pad + (h - pad) * blend;
   }
+
+  // Гора за озером (см. LAKE/MOUNTAIN в constants.ts) — плавный конус, растёт
+  // от обычного рельефа к пику по мере приближения к центру горы. Не стена:
+  // склон сходит на нет за MOUNTAIN.radius, как у HUB-площадки.
+  const mx = x - MOUNTAIN.x;
+  const mz = z - MOUNTAIN.z;
+  const md = Math.sqrt(mx * mx + mz * mz);
+  if (md < MOUNTAIN.radius) {
+    const t = 1 - md / MOUNTAIN.radius; // 0 у подножия, 1 в центре пика
+    // Плавный купол (не конус «домиком»): quadratic ease — подножие мягче.
+    h += MOUNTAIN.peakHeight * t * t;
+  }
+
+  // Чаша озера — понижаем рельеф под водой, чтобы гладь (LAKE.waterY) не
+  // протыкала землю по краям (вода просто лежит поверх готового рельефа,
+  // без честной выемки/heightmap — по решению из плана, тут только мягкое
+  // притягивание высоты ко дну внутри радиуса).
+  const lx = x - LAKE.x;
+  const lz = z - LAKE.z;
+  const ld = Math.sqrt(lx * lx + lz * lz);
+  const LAKE_FADE = 8;
+  if (ld < LAKE.radius + LAKE_FADE) {
+    const floorY = LAKE.waterY - 2.2; // дно чуть ниже глади
+    const t = clamp01((ld - LAKE.radius) / LAKE_FADE); // 0 в центре, 1 на кромке
+    h = floorY + (h - floorY) * t;
+  }
+
   return h;
 }
 
