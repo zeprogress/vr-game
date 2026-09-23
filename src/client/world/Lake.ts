@@ -220,17 +220,25 @@ export function createLake(scene: Scene): Lake {
     riverMat.maxSimultaneousLights = 1;
     riverMat.backFaceCulling = false;
 
-    const upx = -nx;
-    const upz = -nz; // от водопада вверх по склону, к горе
+    // nx,nz уже смотрит ОТ озера К горе (см. выше) — это и есть «вверх по
+    // склону». Раньше тут стоял минус: река шла в обратную сторону, назад
+    // к озеру, и пропадала в первые же 12 м вместо подъёма к пику.
+    const upx = nx;
+    const upz = nz; // от водопада вверх по склону, к горе
     const perpX = -upz;
     const perpZ = upx; // поперёк русла — для виляния
+    // Общий подъём — метров 25 вверх по склону: голова водопада стоит на
+    // md≈35 от центра горы (см. topX/topZ выше), пик — на md=0, так что 25 м
+    // забирают заметную часть склона, не пересекая сам пик и не ныряя на
+    // другую сторону горы.
     const N = 5;
+    const CLIMB = 25;
     const pts: { x: number; y: number; z: number }[] = [{ x: topX, y: topY, z: topZ }];
     for (let i = 1; i <= N; i++) {
       const t = i / N;
       const wiggle = Math.sin(t * 4.3 + 1.7) * 3.5 * t; // разворот сильнее к вершине
-      const px = topX + upx * (12 * t) + perpX * wiggle;
-      const pz = topZ + upz * (12 * t) + perpZ * wiggle;
+      const px = topX + upx * (CLIMB * t) + perpX * wiggle;
+      const pz = topZ + upz * (CLIMB * t) + perpZ * wiggle;
       pts.push({ x: px, y: terrainHeight(px, pz) + 0.12, z: pz });
     }
     const segs: Mesh[] = [];
