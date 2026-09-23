@@ -194,9 +194,17 @@ export function createLake(scene: Scene): Lake {
   // там за пределами shoreOuter+RISE_FADE=50).
   const topX = baseX + nx * 18;
   const topZ = baseZ + nz * 18;
-  const topY = terrainHeight(topX, topZ) + 1;
-  // Потолок под цель «перепад 42м» из плана (было 34).
-  const fallHeight = Math.max(8, Math.min(46, topY - LAKE.waterY));
+  // Высота водопада — это высота ПЛАТО/стены каньона (см. terrain.ts,
+  // WALL_FLAT), а не самого канала реки в этой точке: русло там нарочно
+  // прорезано НИЖЕ (канава/каньон-исток), иначе вода текла бы по ровному
+  // месту. Берём точку сбоку от канала, внутри плоской полки стены — она
+  // на той же "высоте вдоль склона", просто без выемки под русло.
+  const perpX = -nz;
+  const perpZ = nx;
+  const rimY = terrainHeight(topX + perpX * 22, topZ + perpZ * 22);
+  const topY = rimY + 1;
+  // Потолок под цель «перепад 42м» из плана (было 46 — уже сама стена).
+  const fallHeight = Math.max(8, Math.min(60, topY - LAKE.waterY));
 
   // Выступ-козырёк убран по просьбе (не подошёл визуально).
 
