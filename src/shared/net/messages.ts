@@ -71,6 +71,8 @@ export const MSG = {
   emote: "em",
   /** клиент -> сервер: использовать предмет из ячейки сумки. */
   useItem: "ui",
+  /** клиент -> сервер: рыбалка — заброс/подсечка (сервер решает, поймалось ли). */
+  fish: "fsh",
   /** сервер -> клиент: подобран лут (для тоста и звука). */
   picked: "pk",
   /** клиент -> сервер: взять лежащее в мире оружие. */
@@ -597,6 +599,10 @@ export interface LevelUpMsg {
 export interface UseItemMsg {
   /** Индекс ячейки сумки. */
   slot: number;
+}
+
+export interface FishMsg {
+  act: "cast" | "reel";
 }
 
 export interface PickedMsg {

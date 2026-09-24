@@ -46,6 +46,7 @@ import {
   type VoiceRelay,
   type TakeWeaponMsg,
   type UseItemMsg,
+  type FishMsg,
 } from "#shared/net/messages";
 import type { BlockedBy } from "#shared/combat";
 import type { StatName } from "#shared/progression";
@@ -406,6 +407,12 @@ export class NetClient {
   sendUseItem(slot: number): void {
     const msg: UseItemMsg = { slot };
     this.room?.send(MSG.useItem, msg);
+  }
+
+  /** Рыбалка: заброс или подсечка — сервер решает, поймалось ли. */
+  sendFish(act: "cast" | "reel"): void {
+    const msg: FishMsg = { act };
+    this.room?.send(MSG.fish, msg);
   }
 
   /** Отправить служебный пакет голосового чата другому игроку. */

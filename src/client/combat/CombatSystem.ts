@@ -153,6 +153,8 @@ export class CombatSystem {
   /** В этом удержании ⚔ уже был выстрел кнопкой ➤ — на отпускании ⚔ не стреляем. */
   private tpAltFired = false;
   private justPickedUp = false; // взяли тем же нажатием E — не бросать сразу
+  /** Рыбалка (Fishing.ts) держит E за собой — не подбираем/не роняем оружие. */
+  public fishing = false;
   /**
    * Рука, которой сейчас пользуются как лазерной указкой меню на руке (VR): её
    * оружие и хваты на это время «глухие» — курок и грип не бьют, не кастуют, не
@@ -921,6 +923,7 @@ export class CombatSystem {
    * посоха), как раньше при отпускании. За плечом grip прячет/достаёт.
    */
   private handleGripsVR(): void {
+    if (this.fishing) return;
     for (const side of ["left", "right"] as Side[]) {
       const down = this.gripDown(side);
       const was = this.gripPrev[side];
@@ -1005,6 +1008,7 @@ export class CombatSystem {
   }
 
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
+    if (this.fishing) return;
     if (this.justPickedUp) {
       if (released) this.justPickedUp = false;
       return;

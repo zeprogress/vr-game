@@ -24,6 +24,7 @@ import type { Node } from "@babylonjs/core/node";
 import { buildZone } from "../world/Zone";
 import { PRESETS, type Quality } from "../config/quality";
 import { CombatSystem, STOW } from "../combat/CombatSystem";
+import { createFishing, type Fishing } from "../world/Fishing";
 import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
@@ -123,6 +124,7 @@ export class Game {
   private readonly combat: CombatSystem;
   private readonly netMobs: NetMobs;
   private readonly loot: LootDrops;
+  private fishing: Fishing | null = null;
   private readonly zoneTick: (
     dt: number,
     playerPos: Vector3,
@@ -538,6 +540,7 @@ export class Game {
         this.eventBeacon.update(dt);
       }
       this.loot.update(dt, this.player.position);
+      this.fishing?.update(dt);
       this.combat.update(dt);
       this.mark("combat");
       this.updateSkillAbility(dt);
@@ -1969,6 +1972,8 @@ export class Game {
         this.notifyToast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
       }
     };
+
+    this.fishing = createFishing(this.player, this.combat, net, (text) => this.notifyToast(text));
 
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;

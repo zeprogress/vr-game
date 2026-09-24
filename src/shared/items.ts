@@ -9,7 +9,8 @@ export type ItemId =
   | "leg_bow"
   | "leg_shield"
   | "leg_staff"
-  | "scrap";
+  | "scrap"
+  | "fish";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -175,6 +176,16 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.5, 0.45],
+    icon: "",
+  },
+  fish: {
+    name: "Рыба",
+    short: "Рыба",
+    hint: "поймана на озере — задел под будущую еду/квесты",
+    stack: 99,
+    heal: 0,
+    healFrac: 0,
+    tint: [0.5, 0.65, 0.75],
     icon: "",
   },
 };

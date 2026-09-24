@@ -51,6 +51,7 @@ import {
   type SetPvpMsg,
   type TakeWeaponMsg,
   type UseItemMsg,
+  type FishMsg,
   type Xf7,
   type WorldEventMsg,
   type WeaponsListMsg,
@@ -77,6 +78,7 @@ import {
   PVP,
   ELITE_MOBS,
   EVENT,
+  LAKE,
   MOB_CAMPS,
   RESPAWN,
   SKILL,
@@ -97,7 +99,7 @@ import {
   ttsVoiceMenu,
   ttsVoiceName,
 } from "#shared/tts";
-import { terrainHeight } from "#shared/terrain";
+import { terrainHeight, lakeEllipseDist, LAKE_R_AVG } from "#shared/terrain";
 import {
   isWeaponKind,
   noGuard,
@@ -229,6 +231,8 @@ interface Runtime {
   equippedWeaponId: { left: string | null; right: string | null };
   /** Секрет для "!inv" — генерится лениво при первом запросе, не при каждом join. */
   viewToken: string;
+  /** Рыбалка: секунда (this.elapsed), когда клюнет; null — сейчас не рыбачит. */
+  fishBiteAt: number | null;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -1132,6 +1136,34 @@ export class ZoneRoom extends Room<ZoneState> {
           if (!this.state.players.get(id)) return;
           this.arrowRainAt(tx, tz, id, s.radius, p, hand, rt);
         }, s.castTime * 1000);
+      }
+    });
+
+    // Рыбалка v1 (см. план «озеро+рыбалка»): клиент шлёт заброс/подсечку,
+    // сервер сам решает по своему таймеру, поймалось ли — клиентский таймер
+    // чисто для ощущений, доверять ему нельзя (спам подсечки не должен ловить).
+    this.onMessage(MSG.fish, (client: Client, msg: FishMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || p.dead) return;
+      const rt = this.rt.get(client.sessionId);
+      if (!rt) return;
+      if (msg?.act === "cast") {
+        if (rt.fishBiteAt !== null) return; // уже рыбачит
+        const ld = lakeEllipseDist(p.head.x, p.head.z);
+        const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
+        if (ld < shoreOuter - 8 || ld > shoreOuter + 12) return; // не у берега
+        rt.fishBiteAt = this.elapsed + 2 + Math.random() * 4;
+      } else if (msg?.act === "reel") {
+        const biteAt = rt.fishBiteAt;
+        rt.fishBiteAt = null;
+        if (biteAt === null) return;
+        const late = this.elapsed - biteAt;
+        if (late < 0 || late > 1.5) return; // рано или мимо окна — сорвалась
+        const bag = readBag(p);
+        const left = addToBag(bag, "fish", 1);
+        if (left >= 1) return; // сумка полна
+        writeBag(p, bag);
+        client.send(MSG.picked, { item: "fish", count: 1 });
       }
     });
 
@@ -3385,6 +3417,7 @@ export class ZoneRoom extends Room<ZoneState> {
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
+      fishBiteAt: null,
     };
     this.rt.set(id, rt);
 
@@ -5348,6 +5381,7 @@ export class ZoneRoom extends Room<ZoneState> {
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
+      fishBiteAt: null,
     });
 
     client.send(
