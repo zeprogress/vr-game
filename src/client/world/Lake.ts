@@ -191,28 +191,35 @@ export function createLake(scene: Scene): Lake {
   const dl = Math.hypot(dx, dz) || 1;
   const nx = dx / dl;
   const nz = dz / dl;
-  // Эллипс не круг — «настоящая» кромка в СТОРОНУ горы (nx,nz) не равна
-  // усреднённому shoreOuter (тот только для дна terrain.ts и формы диска).
-  const shoreOuterMtn = lakeShoreDistIn(nx, nz) + LAKE.shoreFade;
-  const baseX = LAKE.x + nx * (shoreOuterMtn - 3);
-  const baseZ = LAKE.z + nz * (shoreOuterMtn - 3);
-  // Раньше бралось +9 вдоль склона — попадало ЕЩЁ в переходную зону чаши
-  // озера (terrain.ts гасит подъём горы там же, где сам понижает дно под
-  // воду), и водопад выходил метра 4-6 высотой вместо нормального. +18 —
-  // это уже чисто склон горы, без вмешательства озера (ld от центра озера
-  // там за пределами shoreOuter+RISE_FADE=50).
-  const topX = baseX + nx * 18;
-  const topZ = baseZ + nz * 18;
-  // Высота водопада — это высота ПЛАТО/стены каньона (см. terrain.ts,
-  // WALL_FLAT), а не самого канала реки в этой точке: русло там нарочно
-  // прорезано НИЖЕ (канава/каньон-исток), иначе вода текла бы по ровному
-  // месту. Берём точку сбоку от канала, внутри плоской полки стены — она
-  // на той же "высоте вдоль склона", просто без выемки под русло.
-  const perpX = -nz;
-  const perpZ = nx;
-  const rimY = terrainHeight(topX + perpX * 22, topZ + perpZ * 22);
-  const topY = rimY + 1;
-  // Потолок под цель «перепад 42м» из плана (было 46 — уже сама стена).
+
+  // База/верх водопада — НЕ аналитическая формула (та подбиралась под старый
+  // гладкий купол и на произвольном слепленном рельефе мажет мимо), а прямое
+  // сканирование вдоль линии озеро->гора: ищем реальный резкий обрыв.
+  let baseX = LAKE.x + nx * 30;
+  let baseZ = LAKE.z + nz * 30;
+  let topX = baseX + nx * 4;
+  let topZ = baseZ + nz * 4;
+  {
+    const SCAN_STEP = 1.5;
+    const SCAN_MAX = 150;
+    const JUMP_ABOVE_WATER = 8; // м — если рельеф внезапно настолько выше воды, это обрыв
+    let prevY = terrainHeight(LAKE.x, LAKE.z);
+    for (let t = SCAN_STEP; t <= SCAN_MAX; t += SCAN_STEP) {
+      const x = LAKE.x + nx * t;
+      const z = LAKE.z + nz * t;
+      const y = terrainHeight(x, z);
+      if (y > LAKE.waterY + JUMP_ABOVE_WATER && prevY <= LAKE.waterY + JUMP_ABOVE_WATER) {
+        baseX = LAKE.x + nx * (t - SCAN_STEP);
+        baseZ = LAKE.z + nz * (t - SCAN_STEP);
+        const topT = t + 3;
+        topX = LAKE.x + nx * topT;
+        topZ = LAKE.z + nz * topT;
+        break;
+      }
+      prevY = y;
+    }
+  }
+  const topY = terrainHeight(topX, topZ) + 1;
   const fallHeight = Math.max(8, Math.min(60, topY - LAKE.waterY));
 
   // Выступ-козырёк убран по просьбе (не подошёл визуально).
@@ -380,8 +387,18 @@ export function createLake(scene: Scene): Lake {
     // Виляние небольшое: terrain.ts режет под руслом прямую канаву шириной
     // ~5м вдоль этой же линии (nx,nz) — если лента гуляет сильно в сторону,
     // она всплывает над бортом канавы вместо того, чтобы лежать в ней.
-    const N = 8;
-    const CLIMB = 45;
+    // Река тянется сплошной полосой во всю длину расщелины — от кончика
+    // водопада до края слепленного рельефа (не на фиксированные 45м, как
+    // раньше), по просьбе «непрерывной полоской в длину каньона от начала
+    // карты до кончика водопада».
+    const CLIMB_MARGIN = 10;
+    let CLIMB = 300;
+    if (upx > 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.x1 - CLIMB_MARGIN - topX) / upx);
+    else if (upx < 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.x0 + CLIMB_MARGIN - topX) / upx);
+    if (upz > 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.z1 - CLIMB_MARGIN - topZ) / upz);
+    else if (upz < 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.z0 + CLIMB_MARGIN - topZ) / upz);
+    CLIMB = Math.max(30, CLIMB);
+    const N = Math.max(8, Math.round(CLIMB / 7));
     const pts: { x: number; y: number; z: number }[] = [{ x: topX, y: topY, z: topZ }];
     for (let i = 1; i <= N; i++) {
       const t = i / N;
@@ -639,13 +656,13 @@ export function createLake(scene: Scene): Lake {
       seg.rotation.y = Math.atan2(dxs, dzs);
       pathSegs.push(seg);
     };
-    // Лагерь -> опушка леса -> к водопаду (через промежуточную точку, огибая озеро).
-    const midPathX = LAKE.x + (baseX - LAKE.x) * 0.55 + 20;
-    const midPathZ = campZ + (baseZ - campZ) * 0.5;
+    // Тропа к водопаду убрана (по просьбе — "жёлтая доска в озере": прямой
+    // отрезок лагерь->водопад теперь пересекал озеро, оно выросло и уже не
+    // огибается прямой линией). Оставлена только короткая тропа от лагеря
+    // в сторону опушки — не пересекает воду.
+    const midPathX = LAKE.x + (campX - LAKE.x) * 0.6;
+    const midPathZ = campZ - 18;
     layPath(campX, campZ, midPathX, midPathZ);
-    layPath(midPathX, midPathZ, baseX, baseZ);
-    // Тропа вверх по обрыву к вершине убрана (по просьбе — "доска трамплин":
-    // с вертикальной стеной прямая дощатая тропа туда уже не в тему).
     const path = Mesh.MergeMeshes(pathSegs, true, true) as Mesh;
     if (path) {
       path.material = pathMat;
