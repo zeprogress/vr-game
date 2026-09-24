@@ -99,7 +99,7 @@ import {
   ttsVoiceMenu,
   ttsVoiceName,
 } from "#shared/tts";
-import { terrainHeight, lakeEllipseDist, LAKE_R_AVG } from "#shared/terrain";
+import { terrainHeight, lakeEllipseDist, lakeShoreDistIn, LAKE_R_AVG } from "#shared/terrain";
 import {
   isWeaponKind,
   noGuard,
@@ -181,6 +181,9 @@ const { Room } = colyseus;
 
 /** Сколько HP доливается за новый уровень (как было на клиенте). */
 const LEVEL_UP_HEAL = 10;
+/** Рыбалка: сколько ждать поклёвку — 2.5-3.5 мин (см. MSG.fish, tickBotFishing). */
+const FISH_WAIT_MIN = 150;
+const FISH_WAIT_SPREAD = 60;
 
 /** Несетевое состояние игрока: защита, темп ударов, таймеры. */
 interface Runtime {
@@ -1156,7 +1159,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const ld = lakeEllipseDist(p.head.x, p.head.z);
         const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
         if (ld < shoreOuter - 8 || ld > shoreOuter + 12) return; // не у берега
-        rt.fishBiteAt = this.elapsed + 2 + Math.random() * 4;
+        rt.fishBiteAt = this.elapsed + FISH_WAIT_MIN + Math.random() * FISH_WAIT_SPREAD;
         p.fishing = 1;
       } else if (msg?.act === "reel") {
         const biteAt = rt.fishBiteAt;
@@ -3638,35 +3641,46 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private tickBotFishing(bot: Bot, dt: number): void {
     const p = bot.state;
-    const ld = lakeEllipseDist(p.head.x, p.head.z);
-    const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
-    const nearShore = ld > shoreOuter - 8 && ld < shoreOuter + 12;
-    if (!nearShore) {
-      const dx = LAKE.x - p.head.x;
-      const dz = LAKE.z - p.head.z;
-      const dist = Math.hypot(dx, dz) || 1e-6;
+    // Точная кромка эллипса В ТОМ НАПРАВЛЕНИИ, откуда бот подходит — усреднённый
+    // shoreOuter (круг) не годится, озеро вытянутое, и бот вставал далеко
+    // от настоящего берега почти на все подходы, кроме одного-двух.
+    const dx0 = p.head.x - LAKE.x;
+    const dz0 = p.head.z - LAKE.z;
+    const distFromCenter = Math.hypot(dx0, dz0) || 1;
+    const dirx = dx0 / distFromCenter;
+    const dirz = dz0 / distFromCenter;
+    const shoreR = lakeShoreDistIn(dirx, dirz) + LAKE.shoreFade;
+    const shoreX = LAKE.x + dirx * shoreR;
+    const shoreZ = LAKE.z + dirz * shoreR;
+    const distToShore = Math.hypot(shoreX - p.head.x, shoreZ - p.head.z);
+    if (distToShore > 2) {
+      const dist = distToShore || 1e-6;
       const speed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
-      const wvx = (dx / dist) * speed;
-      const wvz = (dz / dist) * speed;
+      const wvx = ((shoreX - p.head.x) / dist) * speed;
+      const wvz = ((shoreZ - p.head.z) / dist) * speed;
       const accel = Math.min(1, dt * 6);
       bot.vx += (wvx - bot.vx) * accel;
       bot.vz += (wvz - bot.vz) * accel;
       p.head.x += bot.vx * dt;
       p.head.z += bot.vz * dt;
+      p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight; // не летел/не тонул на подходе
       bot.fishBiteAt = 0;
       return;
     }
-    // У берега — стоим (гасим набежавшую скорость подхода).
+    // У берега — стоим (гасим набежавшую скорость подхода), но высоту всё
+    // равно поддерживаем — рельеф прямо на кромке неровный.
     bot.vx *= 0.8;
     bot.vz *= 0.8;
+    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
     if (bot.fishBiteAt === 0) {
       if (bot.swingIn <= 0 && bot.attackCd <= 0) {
         bot.attackCd = 1.5;
         bot.swingIn = 0.3;
-        bot.swingTarget = null; // заброс — не бой, urона не будет (resolveBotHit тихо выйдет)
+        bot.swingTarget = null; // заброс — не бой, урона не будет (resolveBotHit тихо выйдет)
         const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
         this.broadcast(MSG.act, relay);
-        bot.fishBiteAt = this.elapsed + 2 + Math.random() * 4;
+        // ~3 минуты ожидания поклёвки, небольшой случайный разброс.
+        bot.fishBiteAt = this.elapsed + FISH_WAIT_MIN + Math.random() * FISH_WAIT_SPREAD;
       }
       return;
     }

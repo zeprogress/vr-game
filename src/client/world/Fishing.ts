@@ -53,7 +53,7 @@ export function createFishing(
     if (!rod) {
       rod = MeshBuilder.CreateCylinder(
         "fishRodLocal",
-        { diameterTop: 0.015, diameterBottom: 0.03, height: 1.3, tessellation: 6 },
+        { diameterTop: 0.018, diameterBottom: 0.035, height: 2.3, tessellation: 6 },
         scene,
       );
       const mat = new StandardMaterial("fishRodLocalMat", scene);
@@ -80,8 +80,9 @@ export function createFishing(
         combat.fishing = false;
         if (edge && isNearShore(player.position.x, player.position.z)) {
           phase = "waiting";
-          timer = 2 + Math.random() * 4; // 2-6с до поклёвки
+          timer = 150 + Math.random() * 60; // 2.5-3.5 мин до поклёвки (см. FISH_WAIT_* в ZoneRoom.ts)
           combat.fishing = true;
+          combat.setFishingGearHidden(true);
           showRod();
           // Замах "удара" — переиспользуем как анимацию заброса (звук+клип
           // у остальных клиентов идёт по тому же MSG.act, что и меч).
@@ -98,7 +99,7 @@ export function createFishing(
         timer -= dt;
         if (timer <= 0) {
           phase = "bite";
-          biteWindow = 1.1;
+          biteWindow = 1.4; // сервер принимает подсечку до 1.5с после поклёвки
           onPrompt("Клюёт! Жми E");
         }
         return;
@@ -110,12 +111,14 @@ export function createFishing(
         net.sendFish("reel");
         phase = "idle";
         combat.fishing = false;
+        combat.setFishingGearHidden(false);
         hideRod();
         return;
       }
       if (biteWindow <= 0) {
         phase = "idle";
         combat.fishing = false;
+        combat.setFishingGearHidden(false);
         hideRod();
         onPrompt("Сорвалась…");
       }

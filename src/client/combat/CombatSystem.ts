@@ -155,6 +155,13 @@ export class CombatSystem {
   private justPickedUp = false; // взяли тем же нажатием E — не бросать сразу
   /** Рыбалка (Fishing.ts) держит E за собой — не подбираем/не роняем оружие. */
   public fishing = false;
+
+  /** Прячет/возвращает меч-щит-лук-посох в руках на время рыбалки — видна только удочка. */
+  public setFishingGearHidden(hide: boolean): void {
+    for (const it of this.items) {
+      if (it.hand) it.mesh.setEnabled(!hide);
+    }
+  }
   /**
    * Рука, которой сейчас пользуются как лазерной указкой меню на руке (VR): её
    * оружие и хваты на это время «глухие» — курок и грип не бьют, не кастуют, не

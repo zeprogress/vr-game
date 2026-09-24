@@ -548,6 +548,9 @@ export class RemoteAvatar implements Hittable {
    * систему оружия (fitGear целенаправленно не пускает посторонние классы),
    * отдельный лёгкий меш прямо в кости кулака. */
   private syncFishing(want: boolean): void {
+    // Меч/щит и т.п. прячем на время рыбалки — видно только удочку.
+    this.gearL?.setEnabled(!want);
+    this.gearR?.setEnabled(!want);
     if (!want) {
       this.fishRod?.setEnabled(false);
       return;
@@ -560,7 +563,7 @@ export class RemoteAvatar implements Hittable {
     if (!fist) return; // модель ещё грузится — попробуем на следующий push()
     const rod = MeshBuilder.CreateCylinder(
       `fishRod_${this.root.name}`,
-      { diameterTop: 0.015, diameterBottom: 0.03, height: 1.3, tessellation: 6 },
+      { diameterTop: 0.018, diameterBottom: 0.035, height: 2.3, tessellation: 6 },
       this.scene,
     );
     const mat = new StandardMaterial(`fishRodMat_${this.root.name}`, this.scene);
