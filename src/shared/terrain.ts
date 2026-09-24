@@ -19,11 +19,25 @@ const SCULPT = sculptData as {
   heights: number[];
 };
 
-/** Границы прямоугольника лепки — нужны Lake.ts, чтобы покрыть его целиком гранёным камнем. */
-export const SCULPT_BOUNDS = { x0: SCULPT.x0, x1: SCULPT.x1, z0: SCULPT.z0, z1: SCULPT.z1 };
+/**
+ * Сдвиг всего слепленного участка (гора+озеро+водопад) в мировых координатах
+ * — по просьбе «отодвинуть всю гору с водопадом и озером от лагеря», а не
+ * только сам лагерь. Данные в JSON не трогаем, просто читаем их со сдвигом.
+ */
+const SCULPT_OFFSET = { dx: -35, dz: -25 };
+
+/** Границы прямоугольника лепки (уже со сдвигом) — нужны Lake.ts, чтобы покрыть его целиком гранёным камнем. */
+export const SCULPT_BOUNDS = {
+  x0: SCULPT.x0 + SCULPT_OFFSET.dx,
+  x1: SCULPT.x1 + SCULPT_OFFSET.dx,
+  z0: SCULPT.z0 + SCULPT_OFFSET.dz,
+  z1: SCULPT.z1 + SCULPT_OFFSET.dz,
+};
 
 /** Билинейная выборка слепленного рельефа; клампится к краю прямоугольника. */
-function sampleSculpt(x: number, z: number): number {
+function sampleSculpt(xIn: number, zIn: number): number {
+  const x = xIn - SCULPT_OFFSET.dx;
+  const z = zIn - SCULPT_OFFSET.dz;
   const { x0, x1, z0, z1, cols, rows, heights } = SCULPT;
   let fc = ((x - x0) / (x1 - x0)) * (cols - 1);
   let fr = ((z - z0) / (z1 - z0)) * (rows - 1);
@@ -46,7 +60,7 @@ function sampleSculpt(x: number, z: number): number {
 
 /** 0 за пределами прямоугольника лепки, 1 внутри с запасом FADE от края. */
 function sculptWeight(x: number, z: number): number {
-  const { x0, x1, z0, z1 } = SCULPT;
+  const { x0, x1, z0, z1 } = SCULPT_BOUNDS;
   const FADE = 16;
   const wx = Math.min(x - x0, x1 - x) / FADE;
   const wz = Math.min(z - z0, z1 - z) / FADE;

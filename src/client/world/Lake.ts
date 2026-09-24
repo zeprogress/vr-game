@@ -597,7 +597,7 @@ export function createLake(scene: Scene): Lake {
 
     const dax = -nx;
     const daz = -nz;
-    const campR = lakeShoreDistIn(dax, daz) + LAKE.shoreFade + 10 + 14; // чуть дальше причала вглубь суши
+    const campR = lakeShoreDistIn(dax, daz) + LAKE.shoreFade + 10 + 14;
     const campX = LAKE.x + dax * campR;
     const campZ = LAKE.z + daz * campR;
     // Берём максимум по нескольким точкам площадки (не только центр) — у
