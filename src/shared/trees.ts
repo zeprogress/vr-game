@@ -74,6 +74,36 @@ export function trees(): Tree[] {
     add((rnd() - 0.5) * 2 * reach, (rnd() - 0.5) * 2 * reach);
   }
 
+  // Лес по берегам озера — по БОКАМ (перпендикулярно оси лагерь<->водопад),
+  // чтобы обрамлять композицию, а не перекрывать вид на водопад из лагеря.
+  {
+    const dxm = MOUNTAIN.x - LAKE.x;
+    const dzm = MOUNTAIN.z - LAKE.z;
+    const dl = Math.hypot(dxm, dzm) || 1;
+    const fnx = dxm / dl;
+    const fnz = dzm / dl;
+    const px = -fnz;
+    const pz = fnx;
+    const lakeClearShore = LAKE_R_AVG + LAKE.shoreFade + 6;
+    const ringInner = lakeClearShore + 2;
+    const ringOuterF = lakeClearShore + 45;
+    const shoreClusters = 6;
+    for (let c = 0; c < shoreClusters; c++) {
+      const side = c % 2 === 0 ? 1 : -1;
+      const along = (rnd() - 0.5) * 1.4; // смещение вдоль оси лагерь-водопад
+      const rad0 = ringInner + rnd() * (ringOuterF - ringInner);
+      const cx = LAKE.x + px * side * rad0 + fnx * along * 20;
+      const cz = LAKE.z + pz * side * rad0 + fnz * along * 20;
+      const spread = 10 + rnd() * 20;
+      const n = 6 + Math.round(rnd() * 8);
+      for (let i = 0; i < n; i++) {
+        const a = rnd() * Math.PI * 2;
+        const rad = Math.sqrt(rnd()) * spread;
+        add(cx + Math.cos(a) * rad, cz + Math.sin(a) * rad);
+      }
+    }
+  }
+
   // За игровой зоной — редкое кольцо деревьев, чтобы декоративный "фартук"
   // земли (Terrain.ts, APRON) не выглядел пустым из зоны. Заметно реже
   // самой зоны (тут нет LOD/culling у деревьев — см. nature.ts, поэтому не
