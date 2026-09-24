@@ -19,6 +19,9 @@ const SCULPT = sculptData as {
   heights: number[];
 };
 
+/** Границы прямоугольника лепки — нужны Lake.ts, чтобы покрыть его целиком гранёным камнем. */
+export const SCULPT_BOUNDS = { x0: SCULPT.x0, x1: SCULPT.x1, z0: SCULPT.z0, z1: SCULPT.z1 };
+
 /** Билинейная выборка слепленного рельефа; клампится к краю прямоугольника. */
 function sampleSculpt(x: number, z: number): number {
   const { x0, x1, z0, z1, cols, rows, heights } = SCULPT;

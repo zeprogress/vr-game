@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 
 import { LAKE, MOUNTAIN } from "#shared/constants";
-import { terrainHeight, LAKE_R_AVG, lakeShoreDistIn } from "#shared/terrain";
+import { terrainHeight, LAKE_R_AVG, lakeShoreDistIn, SCULPT_BOUNDS } from "#shared/terrain";
 
 export interface Lake {
   tick(dt: number): void;
@@ -27,10 +27,12 @@ export interface Lake {
 function buildJitterRock(
   scene: Scene,
   name: string,
-  cx: number,
-  cz: number,
-  R: number,
+  x0: number,
+  z0: number,
+  xSpan: number,
+  zSpan: number,
   heightAt: (x: number, z: number) => number,
+  withinFn: (x: number, z: number) => boolean,
   color: Color3,
   seedBase: number,
 ): Mesh {
@@ -40,9 +42,10 @@ function buildJitterRock(
   mat.maxSimultaneousLights = 1;
 
   const STEP = 6;
-  const n = Math.floor((2 * R) / STEP);
-  const x0 = cx - (n * STEP) / 2;
-  const z0 = cz - (n * STEP) / 2;
+  const nx = Math.max(1, Math.round(xSpan / STEP));
+  const nz = Math.max(1, Math.round(zSpan / STEP));
+  const stepX = xSpan / nx;
+  const stepZ = zSpan / nz;
   let seed = seedBase;
   const rnd = (): number => {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -50,11 +53,11 @@ function buildJitterRock(
   };
 
   const grid: { x: number; y: number; z: number }[][] = [];
-  for (let iz = 0; iz <= n; iz++) {
+  for (let iz = 0; iz <= nz; iz++) {
     const row: { x: number; y: number; z: number }[] = [];
-    for (let ix = 0; ix <= n; ix++) {
-      const gx = x0 + ix * STEP + (rnd() - 0.5) * STEP * 0.35;
-      const gz = z0 + iz * STEP + (rnd() - 0.5) * STEP * 0.35;
+    for (let ix = 0; ix <= nx; ix++) {
+      const gx = x0 + ix * stepX + (rnd() - 0.5) * stepX * 0.35;
+      const gz = z0 + iz * stepZ + (rnd() - 0.5) * stepZ * 0.35;
       // Джиттер высоты только ВВЕРХ — иначе часть камня проваливается ниже
       // настоящей земли и получается дыра/z-fighting.
       const gy = heightAt(gx, gz) + 0.15 + rnd() * 1.0;
@@ -62,21 +65,21 @@ function buildJitterRock(
     }
     grid.push(row);
   }
-  const idxOf = (ix: number, iz: number): number => iz * (n + 1) + ix;
+  const idxOf = (ix: number, iz: number): number => iz * (nx + 1) + ix;
   const within = (ix: number, iz: number): boolean => {
     const p = grid[iz][ix];
-    return Math.hypot(p.x - cx, p.z - cz) <= R;
+    return withinFn(p.x, p.z);
   };
   const rawPos: number[] = [];
-  for (let iz = 0; iz <= n; iz++) {
-    for (let ix = 0; ix <= n; ix++) {
+  for (let iz = 0; iz <= nz; iz++) {
+    for (let ix = 0; ix <= nx; ix++) {
       const p = grid[iz][ix];
       rawPos.push(p.x, p.y, p.z);
     }
   }
   const rawIdx: number[] = [];
-  for (let iz = 0; iz < n; iz++) {
-    for (let ix = 0; ix < n; ix++) {
+  for (let iz = 0; iz < nz; iz++) {
+    for (let ix = 0; ix < nx; ix++) {
       if (!within(ix, iz) || !within(ix + 1, iz) || !within(ix, iz + 1) || !within(ix + 1, iz + 1)) continue;
       const a = idxOf(ix, iz);
       const b = idxOf(ix + 1, iz);
@@ -540,20 +543,27 @@ export function createLake(scene: Scene): Lake {
   }
 
   // ---- Гора: голый камень, резкие грани (не трава, не гладкий купол) ----
-  // Боковые "вершины"-конусы убраны — по референс-фото нужен не пик, а
-  // ущелье: отвесные каньонные стены по бокам разрыва (см. terrain.ts,
-  // WALL_HALF/GAP_HALF), и ПЛОСКОЕ плато сверху (герои бегают/бьют мобов),
-  // а не острая гора. Один меш поверх настоящего рельефа.
-  buildJitterRock(
-    scene,
-    "mountainRock",
-    MOUNTAIN.x,
-    MOUNTAIN.z,
-    MOUNTAIN.radius * 0.95,
-    terrainHeight,
-    new Color3(0.42, 0.4, 0.38),
-    778899,
-  );
+  // Раньше это была круглая заплатка вокруг MOUNTAIN.x/z — не годится для
+  // вручную слепленного рельефа (terrainSculpt.json), у которого форма
+  // произвольная. Теперь камень кроет весь прямоугольник лепки, но только
+  // там, где реальная высота выше ROCK_FROM — граница сама повторяет
+  // настоящий контур горы, а не круг, и трава плавно переходит в камень
+  // ровно на этой высоте.
+  {
+    const ROCK_FROM = 2; // м — выше этого трава уступает камню
+    buildJitterRock(
+      scene,
+      "mountainRock",
+      SCULPT_BOUNDS.x0,
+      SCULPT_BOUNDS.z0,
+      SCULPT_BOUNDS.x1 - SCULPT_BOUNDS.x0,
+      SCULPT_BOUNDS.z1 - SCULPT_BOUNDS.z0,
+      terrainHeight,
+      (x, z) => terrainHeight(x, z) > ROCK_FROM,
+      new Color3(0.42, 0.4, 0.38),
+      778899,
+    );
+  }
 
   // ---- Blockout-заглушки по брифу «Mountain Lake Phase 1» ----
   // Лесные массивы (условные объёмы — НЕ отдельные деревья), площадка
