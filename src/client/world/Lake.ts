@@ -665,7 +665,8 @@ export function createLake(scene: Scene): Lake {
       waterMat.alpha = 0.82 + shimmer * 0.06;
       // Течение: текстура потоков едет вниз по UV — простая, но узнаваемая
       // анимация воды (один сэмпл текстуры, не UV-развёртка каждого квада).
-      streakTex.vOffset = (streakTex.vOffset + dt * 0.9) % 1;
+      // Минус — иначе поток визуально бежал вверх, а не вниз.
+      streakTex.vOffset = (streakTex.vOffset - dt * 0.9 + 1) % 1;
       const flow = 0.5 + 0.5 * Math.sin(clock * 2.2);
       waterfallMat.alpha = 0.85 + flow * 0.1;
       const foamPulse = 0.5 + 0.5 * Math.sin(clock * 1.7 + 1.1);
