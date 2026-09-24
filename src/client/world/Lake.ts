@@ -545,12 +545,23 @@ export function createLake(scene: Scene): Lake {
   // ---- Гора: голый камень, резкие грани (не трава, не гладкий купол) ----
   // Раньше это была круглая заплатка вокруг MOUNTAIN.x/z — не годится для
   // вручную слепленного рельефа (terrainSculpt.json), у которого форма
-  // произвольная. Теперь камень кроет весь прямоугольник лепки, но только
-  // там, где реальная высота выше ROCK_FROM — граница сама повторяет
-  // настоящий контур горы, а не круг, и трава плавно переходит в камень
-  // ровно на этой высоте.
+  // произвольная. Камень кроет весь прямоугольник лепки, но только там, где
+  // ВЫШЕ ROCK_FROM И склон крутой — площадка на вершине горы тоже выше
+  // ROCK_FROM, но она плоская (сделана нарочно как поляна), и там должна
+  // остаться трава, а не камень. Тот же критерий, что и у травы в
+  // GrassField.ts (см. её комментарий) — иначе поляна и камень разъедутся.
   {
-    const ROCK_FROM = 2; // м — выше этого трава уступает камню
+    const ROCK_FROM = 2;
+    const SLOPE_LIMIT = 0.3;
+    const isRock = (x: number, z: number): boolean => {
+      const y = terrainHeight(x, z);
+      if (y <= ROCK_FROM) return false;
+      const sd = 3;
+      const dhx = terrainHeight(x + sd, z) - terrainHeight(x - sd, z);
+      const dhz = terrainHeight(x, z + sd) - terrainHeight(x, z - sd);
+      const slope = Math.max(Math.abs(dhx), Math.abs(dhz)) / (2 * sd);
+      return slope > SLOPE_LIMIT;
+    };
     buildJitterRock(
       scene,
       "mountainRock",
@@ -559,7 +570,7 @@ export function createLake(scene: Scene): Lake {
       SCULPT_BOUNDS.x1 - SCULPT_BOUNDS.x0,
       SCULPT_BOUNDS.z1 - SCULPT_BOUNDS.z0,
       terrainHeight,
-      (x, z) => terrainHeight(x, z) > ROCK_FROM,
+      isRock,
       new Color3(0.42, 0.4, 0.38),
       778899,
     );

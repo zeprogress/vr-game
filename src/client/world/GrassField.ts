@@ -452,10 +452,18 @@ export async function loadGrassField(
         const z = (iz + 0.5 + (hash(ix, iz, 2) - 0.5) * 0.9) * CELL;
         if (Math.hypot(x, z) > REACH || noGrass(x, z)) continue;
         const y = terrain.heightAt(x, z);
-        // Выше 1м — склон горы, трава не растёт (там теперь гранёный камень,
-        // см. Lake.ts buildJitterRock; трава сквозь него торчала и было видно
-        // зелень/землю под камнем).
-        if (y > 1) continue;
+        // Выше 2м трава растёт только на ПЛОСКИХ местах (площадка на вершине
+        // горы — там нарочно сделана поляна) — на крутом склоне не растёт
+        // (там гранёный камень, см. Lake.ts buildJitterRock; трава торчала
+        // сквозь него, было видно землю под камнем). Меряем не саму высоту
+        // (плато тоже высокое), а уклон рядом.
+        if (y > 2) {
+          const sd = 3;
+          const dhx = terrain.heightAt(x + sd, z) - terrain.heightAt(x - sd, z);
+          const dhz = terrain.heightAt(x, z + sd) - terrain.heightAt(x, z - sd);
+          const slope = Math.max(Math.abs(dhx), Math.abs(dhz)) / (2 * sd);
+          if (slope > 0.3) continue;
+        }
         // Рельеф: в низинах гуще и выше, на холмах реже и ниже.
         const hill = smooth(-1.4, 1.8, y);
         // «Хаос»: крупные поляны и проплешины (почти пусто), средние участки и густые заросли.
