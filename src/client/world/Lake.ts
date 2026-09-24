@@ -314,7 +314,10 @@ export function createLake(scene: Scene): Lake {
     const w = 2.6 + Math.random() * 2.4;
     const h = fallHeight * (0.85 + Math.random() * 0.15);
     const along = (i - (STRIP_N - 1) / 2) * 3.1;
-    const forward = (Math.random() - 0.5) * 0.7;
+    // Сдвинут вперёд, к озеру (было только случайный дребезг ±0.35) — по
+    // просьбе «водопад воду выдвини вперёд», чтобы поток не прятался
+    // вплотную к скале расщелины.
+    const forward = 3 + (Math.random() - 0.5) * 0.7;
     strips.push(buildStrip(`waterfallStrip${i}`, along, w, h, forward));
   }
 
@@ -362,10 +365,9 @@ export function createLake(scene: Scene): Lake {
   mist.checkCollisions = false;
   mist.freezeWorldMatrix();
 
-  // ---- Река от склона горы до вершины водопада ----
-  // Ломаная вверх по склону от topX/topZ (голова водопада) к пику горы, с
-  // боковым виляньем — не идеально прямая линия. Каждый сегмент — плоская
-  // лента по рельефу (terrainHeight в его середине), один материал.
+  // ---- Река на плато — ОДНА длинная ровная плоскость воды (не связка
+  // кусков-сегментов по рельефу, как раньше) — от кончика водопада до края
+  // слепленного рельефа, чуть приподнятая над самим плато.
   {
     const riverMat = new StandardMaterial("riverMat", scene);
     riverMat.diffuseColor = new Color3(0.55, 0.68, 0.76);
@@ -375,22 +377,9 @@ export function createLake(scene: Scene): Lake {
     riverMat.maxSimultaneousLights = 1;
     riverMat.backFaceCulling = false;
 
-    // nx,nz уже смотрит ОТ озера К горе (см. выше) — это и есть «вверх по
-    // склону». Раньше тут стоял минус: река шла в обратную сторону, назад
-    // к озеру, и пропадала в первые же 12 м вместо подъёма к пику.
+    // nx,nz уже смотрит ОТ озера К горе — вверх по склону, к плато.
     const upx = nx;
-    const upz = nz; // от водопада вверх по склону, к горе
-    const perpX = -upz;
-    const perpZ = upx; // поперёк русла — для виляния
-    // Подъём почти до плоской вершины (см. terrain.ts PLATEAU_T) — река
-    // должна уходить в даль по плато, а не обрываться на середине склона.
-    // Виляние небольшое: terrain.ts режет под руслом прямую канаву шириной
-    // ~5м вдоль этой же линии (nx,nz) — если лента гуляет сильно в сторону,
-    // она всплывает над бортом канавы вместо того, чтобы лежать в ней.
-    // Река тянется сплошной полосой во всю длину расщелины — от кончика
-    // водопада до края слепленного рельефа (не на фиксированные 45м, как
-    // раньше), по просьбе «непрерывной полоской в длину каньона от начала
-    // карты до кончика водопада».
+    const upz = nz;
     const CLIMB_MARGIN = 10;
     let CLIMB = 300;
     if (upx > 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.x1 - CLIMB_MARGIN - topX) / upx);
@@ -398,32 +387,20 @@ export function createLake(scene: Scene): Lake {
     if (upz > 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.z1 - CLIMB_MARGIN - topZ) / upz);
     else if (upz < 0) CLIMB = Math.min(CLIMB, (SCULPT_BOUNDS.z0 + CLIMB_MARGIN - topZ) / upz);
     CLIMB = Math.max(30, CLIMB);
-    const N = Math.max(8, Math.round(CLIMB / 7));
-    const pts: { x: number; y: number; z: number }[] = [{ x: topX, y: topY, z: topZ }];
-    for (let i = 1; i <= N; i++) {
-      const t = i / N;
-      const wiggle = Math.sin(t * 4.3 + 1.7) * 1.2 * t; // разворот мягче к вершине
-      const px = topX + upx * (CLIMB * t) + perpX * wiggle;
-      const pz = topZ + upz * (CLIMB * t) + perpZ * wiggle;
-      pts.push({ x: px, y: terrainHeight(px, pz) + 0.12, z: pz });
-    }
-    const segs: Mesh[] = [];
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i];
-      const b = pts[i + 1];
-      const dxs = b.x - a.x;
-      const dzs = b.z - a.z;
-      const len = Math.hypot(dxs, dzs) || 1;
-      // Шире и без сужения к вершине (было 2.6->0.9 к концу) — по просьбе,
-      // «река сверху шире», резкий переход в водопад делает terrain.ts
-      // (обрыв), не сама лента реки.
-      const w = 6;
-      const seg = MeshBuilder.CreateBox(`riverSeg${i}`, { width: Math.max(0.9, w), height: 0.08, depth: len * 1.05 }, scene);
-      seg.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-      seg.rotation.y = Math.atan2(dxs, dzs);
-      segs.push(seg);
-    }
-    const river = Mesh.MergeMeshes(segs, true, true) as Mesh;
+
+    const farX = topX + upx * CLIMB;
+    const farZ = topZ + upz * CLIMB;
+    const midX = (topX + farX) / 2;
+    const midZ = (topZ + farZ) / 2;
+    // Заметно выше плато (было 0.12 у сегментов) — по просьбе «повыше».
+    const riverY = topY + 2;
+    const river = MeshBuilder.CreateBox(
+      "riverPlane",
+      { width: 8, height: 0.15, depth: CLIMB + 6 },
+      scene,
+    );
+    river.position.set(midX, riverY, midZ);
+    river.rotation.y = Math.atan2(farX - topX, farZ - topZ);
     river.material = riverMat;
     river.isPickable = false;
     river.checkCollisions = false;
@@ -623,16 +600,27 @@ export function createLake(scene: Scene): Lake {
     const campR = lakeShoreDistIn(dax, daz) + LAKE.shoreFade + 10 + 14; // чуть дальше причала вглубь суши
     const campX = LAKE.x + dax * campR;
     const campZ = LAKE.z + daz * campR;
-    const campY = terrainHeight(campX, campZ);
-    // Площадка лагеря — 22м по плану (было 12).
-    const platform = MeshBuilder.CreateBox("campPlatformBlock", { width: 22, height: 0.3, depth: 22 }, scene);
-    platform.position.set(campX, campY + 0.15, campZ);
+    // Берём максимум по нескольким точкам площадки (не только центр) — у
+    // стороны к озеру рельеф уже слегка идёт под уклон, и платформа только
+    // по центру местами проваливалась ниже настоящей земли на своём краю
+    // («часть лагеря опущена»).
+    const campY = Math.max(
+      terrainHeight(campX, campZ),
+      terrainHeight(campX - 10, campZ - 10),
+      terrainHeight(campX + 10, campZ - 10),
+      terrainHeight(campX - 10, campZ + 10),
+      terrainHeight(campX + 10, campZ + 10),
+    );
+    // Площадка лагеря — 22м по плану (было 12), потолще (было 0.3) — с
+    // запасом перекрывает любые мелкие неровности под собой.
+    const platform = MeshBuilder.CreateBox("campPlatformBlock", { width: 22, height: 1, depth: 22 }, scene);
+    platform.position.set(campX, campY + 0.5, campZ);
     platform.material = campMat;
     platform.isPickable = false;
     platform.checkCollisions = true;
     platform.freezeWorldMatrix();
     const fire = MeshBuilder.CreateBox("campFireBlock", { size: 1.2 }, scene);
-    fire.position.set(campX, campY + 0.6, campZ);
+    fire.position.set(campX, campY + 1.6, campZ);
     fire.material = fireMat;
     fire.isPickable = false;
     fire.freezeWorldMatrix();
