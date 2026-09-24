@@ -41,7 +41,12 @@ function buildJitterRock(
   mat.specularColor = new Color3(0.03, 0.03, 0.03);
   mat.maxSimultaneousLights = 1;
 
-  const STEP = 6;
+  // Шаг мельче, чем раньше (6->4) и почти без бокового джиттера (был 0.35
+  // шага — на отвесной стене каньона это боковое смещение утаскивало точку
+  // выборки высоты на метры в сторону, и по факту камень сэмплился НИЖЕ
+  // настоящей стены; земля просвечивала по бокам). Джиттер теперь в основном
+  // в высоте (грани всё равно читаются за счёт flat shading), а не в плане.
+  const STEP = 4;
   const nx = Math.max(1, Math.round(xSpan / STEP));
   const nz = Math.max(1, Math.round(zSpan / STEP));
   const stepX = xSpan / nx;
@@ -56,11 +61,12 @@ function buildJitterRock(
   for (let iz = 0; iz <= nz; iz++) {
     const row: { x: number; y: number; z: number }[] = [];
     for (let ix = 0; ix <= nx; ix++) {
-      const gx = x0 + ix * stepX + (rnd() - 0.5) * stepX * 0.35;
-      const gz = z0 + iz * stepZ + (rnd() - 0.5) * stepZ * 0.35;
-      // Джиттер высоты только ВВЕРХ — иначе часть камня проваливается ниже
-      // настоящей земли и получается дыра/z-fighting.
-      const gy = heightAt(gx, gz) + 0.15 + rnd() * 1.0;
+      const gx = x0 + ix * stepX + (rnd() - 0.5) * stepX * 0.08;
+      const gz = z0 + iz * stepZ + (rnd() - 0.5) * stepZ * 0.08;
+      // Джиттер высоты только ВВЕРХ, с бОльшим запасом (0.4..2.4м) — чтобы
+      // с гарантией перекрывать землю даже там, где сэмплированная точка
+      // чуть промахнулась мимо самой крутой части стены.
+      const gy = heightAt(gx, gz) + 0.4 + rnd() * 2.0;
       row.push({ x: gx, y: gy, z: gz });
     }
     grid.push(row);
