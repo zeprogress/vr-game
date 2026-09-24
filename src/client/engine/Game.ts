@@ -1973,7 +1973,7 @@ export class Game {
       }
     };
 
-    this.fishing = createFishing(this.player, this.combat, net, (text) => this.notifyToast(text));
+    this.fishing = createFishing(this.scene, this.player, this.combat, net, (text) => this.notifyToast(text));
 
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;

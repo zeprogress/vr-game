@@ -302,6 +302,10 @@ interface Bot {
   /** Центр «зоны» бота — куда его высадили по уровню (поляна или лагерь). */
   homeX: number;
   homeZ: number;
+  /** !рыбачить: идёт к озеру и рыбачит вместо обычного боя, пока не отменят. */
+  fishing: boolean;
+  /** 0 — ещё не забросил (у берега); иначе this.elapsed, когда клюнет. */
+  fishBiteAt: number;
 }
 
 /**
@@ -1153,9 +1157,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
         if (ld < shoreOuter - 8 || ld > shoreOuter + 12) return; // не у берега
         rt.fishBiteAt = this.elapsed + 2 + Math.random() * 4;
+        p.fishing = 1;
       } else if (msg?.act === "reel") {
         const biteAt = rt.fishBiteAt;
         rt.fishBiteAt = null;
+        p.fishing = 0;
         if (biteAt === null) return;
         const late = this.elapsed - biteAt;
         if (late < 0 || late > 1.5) return; // рано или мимо окна — сорвалась
@@ -2609,6 +2615,46 @@ export class ZoneRoom extends Room<ZoneState> {
     );
   }
 
+  /** `!рыбачить`/`!fish` — идёт на озеро рыбачить вместо боя. Повтор — отмена. */
+  private setFishing(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    if (bot.fishing) {
+      bot.fishing = false;
+      bot.fishBiteAt = 0;
+      bot.state.fishing = 0;
+      this.reply(`@${nick} герой закончил рыбачить.`);
+      return;
+    }
+    bot.raiding = false;
+    bot.eventing = false;
+    bot.followNorm = null;
+    bot.target = null;
+    bot.fishing = true;
+    bot.fishBiteAt = 0;
+    bot.state.fishing = 1;
+    this.reply(`@${nick} герой пошёл на озеро рыбачить.`);
+  }
+
+  /** `!качаться`/`!train` — снимает рыбалку/рейд/событие/follow, герой снова бьёт мобов в зоне. */
+  private setTraining(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    bot.fishing = false;
+    bot.fishBiteAt = 0;
+    bot.state.fishing = 0;
+    bot.raiding = false;
+    bot.eventing = false;
+    bot.followNorm = null;
+    this.reply(`@${nick} герой пошёл качаться — бьёт мобов в зоне.`);
+  }
+
   /** Ник допущен: в ручном списке или недавно писал в чат. */
   private allowedNick(norm: string): boolean {
     if (STREAM_NICKS.includes(norm)) return true;
@@ -2700,6 +2746,10 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, null);
     } else if (cmd === "!come") {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
+    } else if (cmd === "!fish" || cmd === "!рыбачить" || cmd === "!рыбалка") {
+      this.setFishing(nick, norm);
+    } else if (cmd === "!train" || cmd === "!качаться" || cmd === "!качайся" || cmd === "!grind") {
+      this.setTraining(nick, norm);
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
     } else if (cmd === "!goevent") {
@@ -3467,6 +3517,8 @@ export class ZoneRoom extends Room<ZoneState> {
       hurtByMobAt: 0,
       homeX: home.x,
       homeZ: home.z,
+      fishing: false,
+      fishBiteAt: 0,
     });
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
@@ -3577,6 +3629,58 @@ export class ZoneRoom extends Room<ZoneState> {
     });
   }
 
+  /**
+   * !рыбачить: идти к берегу озера, закинуть удочку (анимация — тот же
+   * "удар", что и меч), подождать поклёвку и подсечь. Сервер — единственный
+   * источник правды по таймеру (как и MSG.fish у живого игрока), но тут бот
+   * сам себе и клиент, и сервер: подсекает мгновенно, как только клюнет,
+   * никаких промахов по реакции — это фоновая массовка, а не соревнование.
+   */
+  private tickBotFishing(bot: Bot, dt: number): void {
+    const p = bot.state;
+    const ld = lakeEllipseDist(p.head.x, p.head.z);
+    const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
+    const nearShore = ld > shoreOuter - 8 && ld < shoreOuter + 12;
+    if (!nearShore) {
+      const dx = LAKE.x - p.head.x;
+      const dz = LAKE.z - p.head.z;
+      const dist = Math.hypot(dx, dz) || 1e-6;
+      const speed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
+      const wvx = (dx / dist) * speed;
+      const wvz = (dz / dist) * speed;
+      const accel = Math.min(1, dt * 6);
+      bot.vx += (wvx - bot.vx) * accel;
+      bot.vz += (wvz - bot.vz) * accel;
+      p.head.x += bot.vx * dt;
+      p.head.z += bot.vz * dt;
+      bot.fishBiteAt = 0;
+      return;
+    }
+    // У берега — стоим (гасим набежавшую скорость подхода).
+    bot.vx *= 0.8;
+    bot.vz *= 0.8;
+    if (bot.fishBiteAt === 0) {
+      if (bot.swingIn <= 0 && bot.attackCd <= 0) {
+        bot.attackCd = 1.5;
+        bot.swingIn = 0.3;
+        bot.swingTarget = null; // заброс — не бой, urона не будет (resolveBotHit тихо выйдет)
+        const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+        this.broadcast(MSG.act, relay);
+        bot.fishBiteAt = this.elapsed + 2 + Math.random() * 4;
+      }
+      return;
+    }
+    if (this.elapsed >= bot.fishBiteAt) {
+      const bag = readBag(p);
+      const left = addToBag(bag, "fish", 1);
+      if (left < 1) {
+        writeBag(p, bag);
+        this.triggerEmote(bot, "cheer");
+      }
+      bot.fishBiteAt = 0;
+    }
+  }
+
   /** ИИ одного бота на кадр. */
   private tickBot(dt: number, bot: Bot): void {
     const p = bot.state;
@@ -3632,6 +3736,13 @@ export class ZoneRoom extends Room<ZoneState> {
     this.botGroupHeal(bot, dt);
     this.botStunBash(bot, dt);
     this.botArrowRain(bot, dt);
+
+    // !рыбачить — идём на озеро и рыбачим вместо обычного боя, отдельная
+    // от всей остальной механики ветка (не трогает мобов/лут/зону).
+    if (bot.fishing) {
+      this.tickBotFishing(bot, dt);
+      return;
+    }
 
     // Зона бота — вокруг его дома (поляна у спавна или лагерь по уровню).
     // Пока бот на событии (!event) — «дом» временно смещаем в эпицентр:

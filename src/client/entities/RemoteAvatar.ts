@@ -10,6 +10,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
@@ -379,6 +380,8 @@ export class RemoteAvatar implements Hittable {
     this.botRig = this.botHolder = null;
     this.botTagH = 0;
     this.botFistR = this.botFistL = this.botHead = null;
+    this.fishRod?.dispose();
+    this.fishRod = null;
     this.builtRigSkin = 0;
     this.smoothInit = false;
     this.animW.clear();
@@ -539,10 +542,44 @@ export class RemoteAvatar implements Hittable {
   }
   private speakDot: Mesh | null = null;
 
+  private fishRod: Mesh | null = null;
+
+  /** Удочка в руке, пока p.fishing===1 (см. !рыбачить/Fishing.ts) — не через
+   * систему оружия (fitGear целенаправленно не пускает посторонние классы),
+   * отдельный лёгкий меш прямо в кости кулака. */
+  private syncFishing(want: boolean): void {
+    if (!want) {
+      this.fishRod?.setEnabled(false);
+      return;
+    }
+    if (this.fishRod) {
+      this.fishRod.setEnabled(true);
+      return;
+    }
+    const fist = this.botFistR ?? this.botFistL;
+    if (!fist) return; // модель ещё грузится — попробуем на следующий push()
+    const rod = MeshBuilder.CreateCylinder(
+      `fishRod_${this.root.name}`,
+      { diameterTop: 0.015, diameterBottom: 0.03, height: 1.3, tessellation: 6 },
+      this.scene,
+    );
+    const mat = new StandardMaterial(`fishRodMat_${this.root.name}`, this.scene);
+    mat.diffuseColor = new Color3(0.35, 0.24, 0.12);
+    mat.specularColor = new Color3(0.05, 0.05, 0.05);
+    mat.maxSimultaneousLights = 1;
+    rod.material = mat;
+    rod.parent = fist;
+    rod.position.set(0, 0.65, 0);
+    rod.rotation.set(0.3, 0, 0);
+    rod.isPickable = false;
+    this.fishRod = rod;
+  }
+
   /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
   push(now: number, p: PlayerState): void {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
+    this.syncFishing(p.fishing === 1);
     this.wantKeyL = keyOf(this.wantL);
     this.wantKeyR = keyOf(this.wantR);
     this.skin = p.skin ?? 0;
@@ -1323,6 +1360,7 @@ export class RemoteAvatar implements Hittable {
     this.offGearTune();
     this.shadow.dispose();
     this.speakDot?.dispose();
+    this.fishRod?.dispose();
     this.gearL?.dispose();
     this.gearR?.dispose();
     this.bubble?.dispose();

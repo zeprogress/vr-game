@@ -1894,6 +1894,11 @@ export class CombatSystem {
     item.mesh.computeWorldMatrix(true);
   }
 
+  /** Публичный доступ к узлу руки — нужен Fishing.ts, чтобы посадить удочку в руку. */
+  public getHandAnchor(hand: Side): Node {
+    return this.handAnchor(hand);
+  }
+
   private handAnchor(hand: Side): Node {
     if (this.player.inVR) {
       const c = this.controller(hand);

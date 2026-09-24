@@ -50,6 +50,8 @@ export class PlayerState extends Schema {
   @type("uint8") stunned = 0;
   /** Приоритет для камеры спектатора: 2 — на событии/рейде, 1 — недавно добавлен, 0 — обычный. */
   @type("uint8") camPrio = 0;
+  /** 1 — сейчас рыбачит (удочка в руке, см. Fishing.ts / !рыбачить). */
+  @type("uint8") fishing = 0;
 
   /** Что в левой руке: класс оружия и уровень ("" — пусто). */
   @type("string") leftCls = "";

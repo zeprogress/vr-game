@@ -1,3 +1,10 @@
+import type { Scene } from "@babylonjs/core/scene";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+
 import type { PlayerController } from "../player/PlayerController";
 import type { CombatSystem } from "../combat/CombatSystem";
 import type { NetClient } from "../net/NetClient";
@@ -19,6 +26,7 @@ export interface Fishing {
 type Phase = "idle" | "waiting" | "bite";
 
 export function createFishing(
+  scene: Scene,
   player: PlayerController,
   combat: CombatSystem,
   net: NetClient,
@@ -28,6 +36,7 @@ export function createFishing(
   let timer = 0;
   let biteWindow = 0;
   let prevInteract = false;
+  let rod: Mesh | null = null;
 
   // Зона заброса — прибрежная полоса вокруг эллипса озера (не посреди воды,
   // не далеко в поле).
@@ -36,6 +45,30 @@ export function createFishing(
     const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
     return ld > shoreOuter - 6 && ld < shoreOuter + 9;
   };
+
+  // Удочка — не настоящее оружие (fitGear/handAnchor целят на sword/bow/
+  // shield/staff), поэтому отдельный лёгкий меш прямо в руке игрока, без
+  // системы держания предметов.
+  const showRod = (): void => {
+    if (!rod) {
+      rod = MeshBuilder.CreateCylinder(
+        "fishRodLocal",
+        { diameterTop: 0.015, diameterBottom: 0.03, height: 1.3, tessellation: 6 },
+        scene,
+      );
+      const mat = new StandardMaterial("fishRodLocalMat", scene);
+      mat.diffuseColor = new Color3(0.35, 0.24, 0.12);
+      mat.specularColor = new Color3(0.05, 0.05, 0.05);
+      mat.maxSimultaneousLights = 1;
+      rod.material = mat;
+      rod.isPickable = false;
+      rod.parent = combat.getHandAnchor("right");
+      rod.position.set(0.05, -0.05, 0.15);
+      rod.rotation.set(0.9, 0, 0);
+    }
+    rod.setEnabled(true);
+  };
+  const hideRod = (): void => rod?.setEnabled(false);
 
   return {
     update(dt: number): void {
@@ -49,6 +82,11 @@ export function createFishing(
           phase = "waiting";
           timer = 2 + Math.random() * 4; // 2-6с до поклёвки
           combat.fishing = true;
+          showRod();
+          // Замах "удара" — переиспользуем как анимацию заброса (звук+клип
+          // у остальных клиентов идёт по тому же MSG.act, что и меч).
+          const pos = player.position;
+          net.sendAct("swing", pos.x, pos.y, pos.z);
           net.sendFish("cast");
           onPrompt("Заброс…");
         }
@@ -72,11 +110,13 @@ export function createFishing(
         net.sendFish("reel");
         phase = "idle";
         combat.fishing = false;
+        hideRod();
         return;
       }
       if (biteWindow <= 0) {
         phase = "idle";
         combat.fishing = false;
+        hideRod();
         onPrompt("Сорвалась…");
       }
     },
