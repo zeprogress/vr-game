@@ -1,5 +1,62 @@
 import { HUB, HUB_CENTER } from "./hub";
 import { LAKE, MOUNTAIN } from "./constants";
+import sculptData from "./data/terrainSculpt.json";
+
+/**
+ * Рельеф озера/горы, слепленный вручную в редакторе (Terrain Sculptor,
+ * artifact) и присланный как JSON — заменяет аналитический купол/канаву/
+ * обрыв ниже ИМЕННО в этой прямоугольной области. Внутри неё пользователь
+ * сам решил, где что стоит; наружу — обычный аналитический рельеф, с плавным
+ * переходом по краю прямоугольника, чтобы не было шва.
+ */
+const SCULPT = sculptData as {
+  x0: number;
+  x1: number;
+  z0: number;
+  z1: number;
+  cols: number;
+  rows: number;
+  heights: number[];
+};
+
+/** Билинейная выборка слепленного рельефа; клампится к краю прямоугольника. */
+function sampleSculpt(x: number, z: number): number {
+  const { x0, x1, z0, z1, cols, rows, heights } = SCULPT;
+  let fc = ((x - x0) / (x1 - x0)) * (cols - 1);
+  let fr = ((z - z0) / (z1 - z0)) * (rows - 1);
+  fc = fc < 0 ? 0 : fc > cols - 1.001 ? cols - 1.001 : fc;
+  fr = fr < 0 ? 0 : fr > rows - 1.001 ? rows - 1.001 : fr;
+  const c0 = Math.floor(fc);
+  const r0 = Math.floor(fr);
+  const c1 = Math.min(cols - 1, c0 + 1);
+  const r1 = Math.min(rows - 1, r0 + 1);
+  const tc = fc - c0;
+  const tr = fr - r0;
+  const h00 = heights[r0 * cols + c0];
+  const h10 = heights[r0 * cols + c1];
+  const h01 = heights[r1 * cols + c0];
+  const h11 = heights[r1 * cols + c1];
+  const h0 = h00 + (h10 - h00) * tc;
+  const h1 = h01 + (h11 - h01) * tc;
+  return h0 + (h1 - h0) * tr;
+}
+
+/** 0 за пределами прямоугольника лепки, 1 внутри с запасом FADE от края. */
+function sculptWeight(x: number, z: number): number {
+  const { x0, x1, z0, z1 } = SCULPT;
+  const FADE = 16;
+  const wx = Math.min(x - x0, x1 - x) / FADE;
+  const wz = Math.min(z - z0, z1 - z) / FADE;
+  return clamp01(Math.min(wx, wz));
+}
+
+/** 0 у центра лагеря (своя флэттенинг-логика ниже), 1 за пределами его влияния. */
+function hubExclude(x: number, z: number): number {
+  const hd = Math.hypot(x - HUB_CENTER.x, z - HUB_CENTER.z);
+  const R = HUB.campRadius + 10;
+  const FADE = 20;
+  return clamp01((hd - R) / FADE);
+}
 
 /** Средний радиус эллипса озера — им же меряем «метры» отмели/подъёма берега. */
 export const LAKE_R_AVG = (LAKE.rx + LAKE.rz) / 2;
@@ -201,6 +258,16 @@ export function terrainHeight(x: number, z: number): number {
   } else if (ld < shoreOuter + RISE_FADE) {
     const t = clamp01((ld - shoreOuter) / RISE_FADE); // 0 у кромки воды, 1 — обычный берег
     h = floorY + (h - floorY) * t;
+  }
+
+  // Слепленный вручную рельеф — берёт верх над всем аналитическим блоком
+  // выше (гора/канава/обрыв/чаша) внутри своего прямоугольника, кроме зоны
+  // вокруг HUB (та в этом прямоугольнике тоже оказалась, но её трогать
+  // нельзя — общий лагерь у спавна, не эта локация).
+  const w = sculptWeight(x, z) * hubExclude(x, z);
+  if (w > 0) {
+    const hs = sampleSculpt(x, z);
+    h = h + (hs - h) * w;
   }
 
   return h;
