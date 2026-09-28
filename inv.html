@@ -143,6 +143,81 @@
         padding: 10px 14px;
         margin-bottom: 6px;
       }
+      .auth {
+        background: #2d2640;
+        border: 1px solid #7a5cff;
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 14px;
+        text-align: center;
+        line-height: 1.5;
+      }
+      .auth .code {
+        font-size: 40px;
+        font-weight: 800;
+        letter-spacing: 0.25em;
+        color: #ffe08a;
+        margin: 6px 0;
+        font-variant-numeric: tabular-nums;
+      }
+      .auth-note {
+        font-size: 12px;
+        opacity: 0.6;
+      }
+      .weapon .winfo {
+        min-width: 0;
+      }
+      .weapon .meta {
+        text-align: left;
+        margin-top: 2px;
+      }
+      .btns {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      button.act {
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        color: #fff;
+        min-width: 96px;
+      }
+      button.act.equip {
+        background: #3f7d4a;
+      }
+      button.act.scrap {
+        background: #5a4a3a;
+      }
+      button.act.scrap.armed {
+        background: #b0452f;
+      }
+      #toast {
+        position: fixed;
+        left: 50%;
+        bottom: 20px;
+        transform: translate(-50%, 40px);
+        opacity: 0;
+        transition: all 0.2s;
+        background: #2f6b3a;
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        max-width: calc(100% - 32px);
+        pointer-events: none;
+      }
+      #toast.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      #toast.bad {
+        background: #8a3a2f;
+      }
       button#mechBtn {
         margin-top: 24px;
         width: 100%;
@@ -226,6 +301,7 @@
       <button id="mechBtn">📖 Механики игры</button>
       <div id="mech"></div>
     </div>
+    <div id="toast"></div>
     <script type="module" src="/src/client/inv/main.ts"></script>
   </body>
 </html>

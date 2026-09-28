@@ -1,5 +1,5 @@
 import colyseus from "colyseus";
-import { randomUUID } from "node:crypto";
+import { invHub } from "../invHub";
 import type { Client } from "colyseus";
 
 import {
@@ -232,7 +232,7 @@ interface Runtime {
   weapons: WeaponInstance[];
   /** Какой именно инстанс сейчас в какой руке (ручной выбор через "!equip"). null — автовыбор лучшего. */
   equippedWeaponId: { left: string | null; right: string | null };
-  /** Секрет для "!inv" — генерится лениво при первом запросе, не при каждом join. */
+  /** Старый секрет ссылки "!inv" (inv.html?t=…) — только чтобы старые ссылки переадресовать на /inv?ник. */
   viewToken: string;
   /** Рыбалка: секунда (this.elapsed), когда клюнет; null — сейчас не рыбачит. */
   fishBiteAt: number | null;
@@ -639,7 +639,55 @@ function tierRank(t: WeaponTier | string): number {
  * пропадёт безвозвратно. Перед любой сменой рук докладываем такой предмет
  * в склад "голым" (без роллов) инстансом, если там ещё нет ни одного.
  */
-function preserveLegacyWeapon(rt: Runtime, cls: string, tier: string): void {
+/** Руки героя — живой PlayerState или то же самое, собранное из сейва офлайн-героя. */
+interface Hands {
+  leftCls: string;
+  leftTier: string;
+  rightCls: string;
+  rightTier: string;
+}
+
+/**
+ * Надеть конкретный инстанс: правила рук (лук на обе, щит слетает с луком,
+ * Эгида остаётся с мечом/посохом). Общее для "!equip" в чате и веб-инвентаря
+ * (в т.ч. для героя не в мире — тогда p/rt собраны из сейва).
+ */
+function applyEquip(
+  p: Hands,
+  rt: { weapons: WeaponInstance[]; equippedWeaponId: { left: string | null; right: string | null }; owned: Set<string> },
+  w: WeaponInstance,
+): void {
+  if (w.cls === "shield") {
+    // Лук занимает ОБЕ руки — если он был в правой, слетает вместе со щитом.
+    if (p.rightCls === "bow") {
+      preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
+      p.rightCls = "sword";
+      p.rightTier = "base";
+      rt.equippedWeaponId.right = null;
+    }
+    preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
+    p.leftCls = "shield";
+    p.leftTier = w.tier;
+    rt.equippedWeaponId.left = w.id;
+  } else {
+    preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
+    // Одеваем лук — он один занимает обе руки, щит (если был) слетает.
+    if (w.cls === "bow" && p.leftCls === "shield") {
+      preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
+      rt.equippedWeaponId.left = null;
+    }
+    const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+    p.rightCls = w.cls;
+    p.rightTier = w.tier;
+    p.leftCls = w.cls === "bow" ? "" : "shield";
+    p.leftTier = w.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+    rt.equippedWeaponId.right = w.id;
+    if (w.cls === "bow") rt.equippedWeaponId.left = null;
+  }
+  rt.owned.add(weaponKey(w.cls, w.tier));
+}
+
+function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
   if (tier === "base" || !isWeaponClass(cls) || !isWeaponTier(tier)) return;
   if (rt.weapons.some((w) => w.cls === cls && w.tier === tier)) return;
   rt.weapons.push(plainWeaponInstance(cls, tier));
@@ -771,6 +819,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    invHub.setZone({
+      sync: (norm) => this.persistNick(norm),
+      act: (norm, act, id) => this.invAct(norm, act, id),
+    });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
     for (const nick of ["flannel_"]) {
@@ -2704,6 +2756,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
     chatLog.append(nick, text);
+    // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
+    if (invHub.tryChatCode(norm, text)) {
+      this.reply(`@${nick} инвентарь открыт — можно надевать и разбирать ✓`);
+      return;
+    }
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase();
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
@@ -2909,21 +2966,93 @@ export class ZoneRoom extends Room<ZoneState> {
     return null;
   }
 
-  /** `!inv` — прислать ссылку на веб-страницу инвентаря (только просмотр). */
+  /**
+   * `!inv` — ссылка на веб-инвентарь `/inv?ник`. Менять там что-то можно
+   * только после кода из чата (см. invHub) — токенов в адресе больше нет.
+   */
   private sayInvLink(nick: string, norm: string): void {
-    const t = this.findWeaponsTarget(norm);
-    if (!t) {
-      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+    if (!this.findWeaponsTarget(norm) && !store.get(`nick:${norm}`)) {
+      if (this.hintOk(norm)) this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
       return;
     }
-    if (!t.rt.viewToken) t.rt.viewToken = randomUUID();
+    this.reply(`@${nick} твой инвентарь: https://zepgame.duckdns.org/inv?${encodeURIComponent(norm)}`);
+  }
+
+  /** Сохранить живого героя этого ника в store (бот или подключённый игрок). */
+  private persistNick(norm: string): void {
     const bot = this.bots.get(norm);
-    if (bot) this.persistBot(bot);
-    else {
-      const client = this.clientOf(t.id);
-      if (client) this.persist(client);
+    if (bot) {
+      this.persistBot(bot);
+      return;
     }
-    this.reply(`@${nick} твой инвентарь: https://zepgame.duckdns.org/inv.html?t=${t.rt.viewToken}`);
+    const t = this.findWeaponsTarget(norm);
+    const client = t ? this.clientOf(t.id) : undefined;
+    if (client) this.persist(client);
+  }
+
+  /**
+   * Действие с веб-страницы инвентаря. Герой в мире — меняем живое состояние
+   * (как "!equip"/"!scrap"), иначе правим сейв напрямую: при следующем !play
+   * герой выйдет уже с этим.
+   */
+  private invAct(norm: string, act: "equip" | "scrap", id: string): { ok: boolean; text: string } {
+    const t = this.findWeaponsTarget(norm);
+    if (t) {
+      const w = t.rt.weapons.find((x) => x.id === id);
+      if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      const name = weaponDef(w.cls, w.tier).name;
+      if (act === "equip") {
+        applyEquip(t.p, t.rt, w);
+        this.persistNick(norm);
+        return { ok: true, text: `Надето: ${name}` };
+      }
+      if (w.id === t.rt.equippedWeaponId.left || w.id === t.rt.equippedWeaponId.right) {
+        return { ok: false, text: "Это сейчас в руках — сначала надень другое." };
+      }
+      const got = this.scrapOne(t, w);
+      const bag = readBag(t.p);
+      addToBag(bag, "scrap", got);
+      writeBag(t.p, bag);
+      this.persistNick(norm);
+      return { ok: true, text: `${name} → лом +${got}` };
+    }
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const weapons = [...(rec.weapons ?? [])];
+    const w = weapons.find((x) => x.id === id);
+    if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
+    const name = weaponDef(w.cls, w.tier).name;
+    const equipped = sanitizeEquipped(rec.equippedWeaponId);
+    if (act === "equip") {
+      const held = sanitizeHeld(rec.held);
+      const right = held.right ?? { cls: "sword", tier: "base" };
+      const hands: Hands = {
+        rightCls: right.cls,
+        rightTier: right.tier,
+        leftCls: held.left?.cls ?? (right.cls === "bow" ? "" : "shield"),
+        leftTier: held.left?.tier ?? (right.cls === "bow" ? "" : "base"),
+      };
+      const owned = new Set(rec.owned ?? []);
+      applyEquip(hands, { weapons, equippedWeaponId: equipped, owned }, w);
+      const carried = (cls: string, tier: string): CarriedWeapon | null =>
+        isWeaponClass(cls) && isWeaponTier(tier) ? { cls, tier } : null;
+      store.put(token, {
+        weapons,
+        equippedWeaponId: equipped,
+        owned: [...owned],
+        held: { left: carried(hands.leftCls, hands.leftTier), right: carried(hands.rightCls, hands.rightTier) },
+      });
+      return { ok: true, text: `Надето: ${name} (герой выйдет с ним при !play)` };
+    }
+    if (w.id === equipped.left || w.id === equipped.right) {
+      return { ok: false, text: "Это сейчас в руках — сначала надень другое." };
+    }
+    const bag = restoreBag(rec.bag);
+    const got = scrapValue(w);
+    addToBag(bag, "scrap", got);
+    store.put(token, { weapons: weapons.filter((x) => x !== w), bag });
+    return { ok: true, text: `${name} → лом +${got}` };
   }
 
   /** `!weapons` — список собранного оружия-инстансов с номерами для "!equip". */
@@ -2988,35 +3117,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} нет такого предмета — список: !weapons.`);
       return;
     }
-    const { p, rt } = t;
-    if (w.cls === "shield") {
-      // Лук занимает ОБЕ руки — если он был в правой, слетает вместе со щитом.
-      if (p.rightCls === "bow") {
-        preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-        p.rightCls = "sword";
-        p.rightTier = "base";
-        rt.equippedWeaponId.right = null;
-      }
-      preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
-      p.leftCls = "shield";
-      p.leftTier = w.tier;
-      rt.equippedWeaponId.left = w.id;
-    } else {
-      preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-      // Одеваем лук — он один занимает обе руки, щит (если был) слетает.
-      if (w.cls === "bow" && p.leftCls === "shield") {
-        preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
-        rt.equippedWeaponId.left = null;
-      }
-      const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
-      p.rightCls = w.cls;
-      p.rightTier = w.tier;
-      p.leftCls = w.cls === "bow" ? "" : "shield";
-      p.leftTier = w.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
-      rt.equippedWeaponId.right = w.id;
-      if (w.cls === "bow") rt.equippedWeaponId.left = null;
-    }
-    rt.owned.add(weaponKey(w.cls, w.tier));
+    applyEquip(t.p, t.rt, w);
     const bot = this.bots.get(norm);
     if (bot) this.persistBot(bot);
     else {
@@ -3267,7 +3368,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Обычная реплика в чате раз в BOT.tipIntervalSec — см. maybeSayTip(). */
   private static readonly TIPS: readonly string[] = [
-    "Совет: !inv — веб-инвентарь, там видно оружие и его случайные характеристики (аффиксы).",
+    "Совет: !inv — веб-инвентарь: оружие с роллами, там же надеть или разобрать на лом (вход — кодом в чат).",
     "Совет: !weapons — что на складе у героя, !equip <номер> — надеть другое оружие оттуда.",
     "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
@@ -3304,7 +3405,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
-        "!inv — ссылка на веб-инвентарь (просмотр) · " +
+        "!inv — веб-инвентарь (надеть/на лом) · " +
         "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
         "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
@@ -3413,19 +3514,28 @@ export class ZoneRoom extends Room<ZoneState> {
     // класс дальше выбирает сам игрок, одевая оружие — сохранённый переживает
     // выход как есть.
     const savedRight = savedHeld.right;
-    const rc =
-      savedRight && savedRight.tier !== "base" ? savedRight.cls : botWeaponFor(p.str, p.agi, p.int);
+    // Закреплённое вручную ("!equip"/веб-инвентарь) — выходит именно оно,
+    // а не лучший когда-либо поднятый тир этого класса.
+    const pins = sanitizeEquipped(rec?.equippedWeaponId);
+    const savedWeapons = Array.isArray(rec?.weapons) ? rec.weapons : [];
+    const pinR = pins.right ? savedWeapons.find((w) => w.id === pins.right) : undefined;
+    const pinL = pins.left ? savedWeapons.find((w) => w.id === pins.left && w.cls === "shield") : undefined;
+    const rc = pinR
+      ? pinR.cls
+      : savedRight && savedRight.tier !== "base"
+        ? savedRight.cls
+        : botWeaponFor(p.str, p.agi, p.int);
     // Лучший тир СВОЕГО класса из всего, что герой когда-либо честно поднял
     // (rt.owned/PlayerRecord.owned — копится на весь аккаунт), а не только
     // то, что осталось в руке или спрятано за спиной в VR на момент !stop:
     // подобрал легендарку, убрал за спину поносить базовым — бот всё равно
     // должен выйти с лучшим.
-    const rightTier = bestOwnedTier(rec?.owned, rc);
+    const rightTier = pinR ? pinR.tier : bestOwnedTier(rec?.owned, rc);
     p.rightCls = rc;
     p.rightTier = rightTier;
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
     // когда-либо честно поднятый тир (та же логика, что и для правой руки).
-    const leftTier = bestOwnedTier(rec?.owned, "shield");
+    const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
     p.leftCls = rc === "bow" ? "" : "shield";
     p.leftTier = rc === "bow" ? "" : leftTier;
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
@@ -5641,6 +5751,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override onDispose(): void {
+    invHub.setZone(null);
     this.twitch?.stop();
     serverPerf.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);

@@ -3,11 +3,14 @@ import { Client } from "colyseus.js";
 interface InvWeapon {
   num: number;
   id: string;
+  cls: string;
   tier: "base" | "gold" | "legendary";
   name: string;
   affixes: string[];
   /** Сумма очков роллов (1..33 за ролл) — показывается в скобках у названия. */
   quality: number;
+  /** Сколько лома даст переработка. */
+  scrap: number;
 }
 
 interface InvHand {
@@ -30,7 +33,11 @@ interface InvStatRow {
 
 interface InvMsg {
   ok: boolean;
+  /** Старая ссылка с токеном — перейти на /inv?ник. */
+  redirect?: string;
   nick?: string;
+  authed?: boolean;
+  code?: string;
   level?: number;
   stats?: InvStatRow[];
   hands?: { left: InvHand | null; right: InvHand | null };
@@ -42,8 +49,30 @@ interface InvMsg {
 const titleEl = document.getElementById("title")!;
 const subEl = document.getElementById("sub")!;
 const listEl = document.getElementById("list")!;
+const toastEl = document.getElementById("toast")!;
 
-const token = new URLSearchParams(location.search).get("t") ?? "";
+const params = new URLSearchParams(location.search);
+const legacyToken = params.get("t") ?? "";
+// /inv?ник — сам ник и есть весь query (без "ключ=").
+const nickArg = params.get("n") ?? (location.search.length > 1 && !location.search.includes("=")
+  ? decodeURIComponent(location.search.slice(1))
+  : "");
+
+const SID_KEY = "zepInvSid";
+function loadSid(): string {
+  try {
+    return localStorage.getItem(SID_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+function saveSid(sid: string): void {
+  try {
+    localStorage.setItem(SID_KEY, sid);
+  } catch {
+    /* приватный режим — сессия проживёт до закрытия вкладки */
+  }
+}
 
 function renderError(text: string): void {
   subEl.textContent = "";
@@ -54,8 +83,7 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-/** Тир по-русски — CSS-класс/ключ ("legendary" и т.п.) остаётся как есть, но
- *  сам текст под карточкой игрок не должен видеть по-английски. */
+/** Тир по-русски — CSS-класс/ключ ("legendary" и т.п.) остаётся как есть. */
 const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
   base: "база",
   gold: "золото",
@@ -76,17 +104,37 @@ function handHtml(label: string, h: InvHand | null): string {
   );
 }
 
+let toastTimer = 0;
+function toast(text: string, ok: boolean): void {
+  toastEl.textContent = text;
+  toastEl.className = ok ? "show" : "show bad";
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => (toastEl.className = ""), 3000);
+}
+
+let room: { send(type: string, msg?: unknown): void; leave(): void } | null = null;
+let last: InvMsg | null = null;
+/** id предмета, по которому нажали «На лом» один раз — второй клик подтверждает. */
+let armedScrap = "";
+
 function renderInv(msg: InvMsg): void {
+  last = msg;
   if (!msg.ok) {
     renderError(
       msg.error
-        ? `Ошибка сервера: ${escapeHtml(msg.error)}`
+        ? escapeHtml(msg.error)
         : "Ссылка недействительна — попроси новую командой !inv в чате.",
     );
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
-  subEl.textContent = "";
+  subEl.textContent = msg.authed ? "✓ вход подтверждён — можно менять снаряжение" : "";
+
+  const authHtml = msg.authed
+    ? ""
+    : `<div class="auth">Чтобы надевать и разбирать предметы, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
+      `<div class="code">${escapeHtml(msg.code ?? "----")}</div>` +
+      `<div class="auth-note">Страница откроется сама. Код действует 10 минут, вход запоминается в этом браузере.</div></div>`;
 
   const statsHtml =
     msg.stats && msg.stats.length > 0
@@ -116,12 +164,17 @@ function renderInv(msg: InvMsg): void {
       : weapons
           .map((w) => {
             const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
+            const btns = msg.authed
+              ? `<div class="btns"><button class="act equip" data-act="equip" data-id="${escapeHtml(w.id)}">Надеть</button>` +
+                `<button class="act scrap${armedScrap === w.id ? " armed" : ""}" data-act="scrap" data-id="${escapeHtml(w.id)}">` +
+                `${armedScrap === w.id ? "Точно?" : "На лом"} +${w.scrap}</button></div>`
+              : "";
             return (
               `<div class="weapon ${w.tier}">` +
-              `<div><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
+              `<div class="winfo"><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              `</div><div class="meta">${TIER_RU[w.tier]}</div>` +
-              `</div>`
+              `<div class="meta">${TIER_RU[w.tier]}</div>` +
+              `</div>${btns}</div>`
             );
           })
           .join("");
@@ -133,41 +186,71 @@ function renderInv(msg: InvMsg): void {
       : `<h2 class="section">Прочее</h2>` +
         misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
 
-  listEl.innerHTML = `${statsHtml}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  listEl.innerHTML = `${authHtml}${statsHtml}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
+listEl.addEventListener("click", (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button.act");
+  if (!b || !room) return;
+  const act = b.dataset.act;
+  const id = b.dataset.id ?? "";
+  if (act === "scrap" && armedScrap !== id) {
+    // Лом — навсегда: первый клик только взводит кнопку.
+    armedScrap = id;
+    if (last) renderInv(last);
+    return;
+  }
+  armedScrap = "";
+  room.send("act", { act, id });
+});
+
 /**
- * WS-соединение на слабом VPS изредка обрывается прямо на джойне (не баг в
- * этой комнате — тот же флаки-обрыв бывает и у основной игры) — вместо того
- * чтобы сразу показывать ошибку, тихо пробуем ещё пару раз с паузой.
+ * WS на слабом VPS изредка обрывается прямо на джойне — тихо пробуем ещё
+ * пару раз. Сокет держим открытым: сервер сам присылает новую версию после
+ * кода в чате и после каждого действия.
  */
 const MAX_ATTEMPTS = 3;
 function connect(attempt = 0): void {
-  let done = false;
+  let joined = false;
   const client = new Client();
   const fail = (): void => {
-    if (done) return;
-    done = true;
+    if (joined) return;
+    joined = true;
     if (attempt + 1 < MAX_ATTEMPTS) setTimeout(() => connect(attempt + 1), 500);
     else renderError("Не получилось связаться с сервером — попробуй перезагрузить страницу.");
   };
+  const opts = legacyToken ? { viewToken: legacyToken } : { nick: nickArg, sid: loadSid() };
   client
-    .joinOrCreate<never>("inventory_room", { viewToken: token })
-    .then((room) => {
-      room.onError(() => fail());
-      room.onMessage("inv", (msg: InvMsg) => {
-        done = true;
+    .joinOrCreate<never>("inventory_room", opts)
+    .then((r) => {
+      joined = true;
+      room = r;
+      r.onMessage("sid", (sid: string) => saveSid(sid));
+      r.onMessage("toast", (m: { ok: boolean; text: string }) => toast(m.text, m.ok));
+      r.onMessage("inv", (msg: InvMsg) => {
+        if (msg.redirect) {
+          location.replace(`/inv?${encodeURIComponent(msg.redirect)}`);
+          return;
+        }
         renderInv(msg);
-        room.leave(); // сервер прислал всё одним сообщением — держать сокет незачем
+      });
+      r.onLeave(() => {
+        room = null;
+        // Рестарт сервера/обрыв — переподключаемся, сессия в localStorage.
+        setTimeout(() => connect(), 3000);
       });
     })
     .catch(fail);
 }
 
-if (!token) {
-  renderError("Нет токена в ссылке — попроси актуальную командой !inv в чате.");
+if (!legacyToken && !nickArg) {
+  renderError("В адресе нет ника — открой ссылку из команды !inv в чате.");
 } else {
   connect();
+  // Лут в игре подбирается без нас — раз в 20 с подтягиваем свежий склад.
+  setInterval(() => {
+    if (room && !armedScrap && document.visibilityState === "visible") room.send("refresh");
+  }, 20_000);
 }
 
 // ---- статичный раздел "Механики игры" ----
@@ -203,7 +286,7 @@ const MECH_HTML = `
 <p>Соло-забег по этажам с растущей сложностью — героя по вашим статам/экипировке ведёт бот. Боссы этажей дают «осколки» и (начиная с малого шанса, растущего к вершине) — оружие вашего класса. Последний этаж — гарантированный дроп.</p>
 
 <h2>Команды в чате</h2>
-<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!str</code>/<code>!dex</code>/<code>!int</code> — атрибуты · <code>!inv</code> — эта страница · <code>!weapons</code> — список склада тут же в чате · <code>!equip &lt;номер&gt;</code> — надеть конкретное · <code>!scrap &lt;номер|all|1,2,3&gt;</code> — на лом · <code>!follow &lt;ник&gt;</code> — герой идёт рядом и защищает · <code>!raid</code> — общий поход на босса · <code>!top</code> — таблица лидеров.</p>
+<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!str</code>/<code>!dex</code>/<code>!int</code> — атрибуты · <code>!inv</code> — эта страница (надеть/на лом — после кода из чата) · <code>!weapons</code> — список склада тут же в чате · <code>!equip &lt;номер&gt;</code> — надеть конкретное · <code>!scrap &lt;номер|all|1,2,3&gt;</code> — на лом · <code>!follow &lt;ник&gt;</code> — герой идёт рядом и защищает · <code>!raid</code> — общий поход на босса · <code>!top</code> — таблица лидеров.</p>
 `;
 
 document.getElementById("mechBtn")!.addEventListener("click", () => {

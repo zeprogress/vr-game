@@ -7,6 +7,7 @@ import {
   isWeaponClass,
   isWeaponTier,
   ITEMS,
+  scrapValue,
   weaponDef,
   weaponQuality,
   type WeaponInstance,
@@ -14,10 +15,18 @@ import {
 } from "#shared/items";
 import { heroStatRows } from "#shared/heroStats";
 import { store } from "../store";
+import { invHub } from "../invHub";
 
 interface InventoryJoinOptions {
+  /** Ник из адреса `/inv?ник`. */
+  nick?: string;
+  /** Сессия этого браузера (localStorage), см. invHub. */
+  sid?: string;
+  /** Старые ссылки `inv.html?t=…` — отвечаем ником, страница перейдёт на /inv?ник. */
   viewToken?: string;
 }
+
+type InvAct = { act?: unknown; id?: unknown };
 
 /** Название+тир+роллы надетого в руке — null, если рука пуста/базовая. */
 function handInfo(
@@ -38,103 +47,134 @@ function handInfo(
 }
 
 /**
- * Комната-однострелка для веб-страницы инвентаря (`!inv` в чате, `inv.html`).
- * Никакого HTTP API нет и не заводим — прод-nginx сейчас не проксирует ничего,
- * кроме /matchmake/ и WS-комнат (см. deploy/nginx-vrgame.conf), а SSH на VPS,
- * чтобы это поправить, недоступен. Зато matchmake/WS УЖЕ проксируются — тот же
- * путь, что и у обычного джойна в игру, только сюда шлём viewToken вместо
- * guestToken и сразу получаем данные ОДНИМ сообщением, без схемы/тика.
+ * Комната веб-страницы инвентаря (`/inv?ник`, inv.html). Данные — через
+ * client.send() без схемы (см. комментарий в onCreate). Сокет живёт, пока
+ * открыта страница: после кода в чате / действия / смены склада в игре
+ * страница перерисовывается сама (invHub.notify).
  */
 export class InventoryRoom extends colyseus.Room {
+  private readonly who = new Map<string, { norm: string; sid: string }>();
+  private unlisten: (() => void) | null = null;
+
   override onCreate(): void {
     this.autoDispose = true;
-    // Сознательно НЕ зовём setState(): пустая Schema ("class X extends Schema {}",
-    // без единого @type-поля) у @colyseus/schema в этой версии ломает рефлексию
-    // на клиенте ("v is not a constructor" при decode) — хуже, чем без неё.
-    // Без setState() комната остаётся на дефолтном NoneSerializer (id "none",
-    // getFullState()===null) — он и на клиенте, и на сервере уже зарегистрирован
-    // из коробки, посылать вообще нечего. Данные — только через client.send().
+    // Сознательно НЕ зовём setState(): пустая Schema у @colyseus/schema в этой
+    // версии ломает рефлексию на клиенте ("v is not a constructor" при decode).
+    // Без setState() комната на дефолтном NoneSerializer — данные только через send().
+    this.unlisten = invHub.listen((norm) => {
+      for (const c of this.clients) if (this.who.get(c.sessionId)?.norm === norm) this.sendInv(c);
+    });
+    this.onMessage("act", (client, m: InvAct) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !invHub.isAuthed(w.sid, w.norm)) {
+        client.send("toast", { ok: false, text: "Сначала подтверди вход кодом в чате." });
+        return;
+      }
+      const act = m?.act === "equip" || m?.act === "scrap" ? m.act : null;
+      const id = typeof m?.id === "string" ? m.id : "";
+      if (!act || !id) return;
+      client.send("toast", invHub.act(w.norm, act, id));
+    });
+    this.onMessage("refresh", (client) => this.sendInv(client));
+  }
+
+  override onDispose(): void {
+    this.unlisten?.();
+  }
+
+  override onLeave(client: Client): void {
+    this.who.delete(client.sessionId);
   }
 
   override onJoin(client: Client, options: InventoryJoinOptions): void {
+    const vt = typeof options?.viewToken === "string" ? options.viewToken : "";
+    if (vt) {
+      const rec = store.entries().find((r) => r.viewToken === vt);
+      client.send("inv", rec ? { ok: true, redirect: rec.token.replace(/^nick:/, "") } : { ok: false });
+      return;
+    }
+    const norm = normNick(typeof options?.nick === "string" ? options.nick : "");
+    const sid = invHub.sid(options?.sid);
+    client.send("sid", sid);
+    this.who.set(client.sessionId, { norm, sid });
+    this.sendInv(client);
+  }
+
+  private sendInv(client: Client): void {
+    const w = this.who.get(client.sessionId);
+    if (!w) return;
     try {
-      const token = typeof options?.viewToken === "string" ? options.viewToken : "";
-      const rec = token ? store.entries().find((r) => r.viewToken === token) : undefined;
-      if (!rec) {
-        client.send("inv", { ok: false });
-        return;
-      }
-      const weaponsList = rec.weapons ?? [];
-      // Надетое показываем отдельно (см. hands ниже), а не в общем списке —
-      // и номер тут даём ПОДРЯД только по видимой (ненадетой) части, ровно
-      // как считает resolveWeaponArg на сервере ("!equip"/"!scrap" в чате).
-      // Раньше номер был честной позицией в rt.weapons: если надетый предмет
-      // сидел в середине склада, у остальных номера съезжали с дырой.
-      const equippedIds = new Set(
-        [rec.equippedWeaponId?.left, rec.equippedWeaponId?.right].filter((id): id is string => !!id),
-      );
-      const weapons = weaponsList
-        .filter((w) => !equippedIds.has(w.id))
-        .map((w, i) => ({
-          num: i + 1,
-          id: w.id,
-          tier: w.tier,
-          name: weaponDef(w.cls, w.tier).name,
-          affixes: w.affixes.map(affixLabel),
-          quality: weaponQuality(w),
-        }));
-      const misc = (rec.bag ?? [])
-        .filter((s) => s.item && s.count > 0)
-        .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
-      const leftInst = rec.equippedWeaponId?.left
-        ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.left)
-        : undefined;
-      const rightInst = rec.equippedWeaponId?.right
-        ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.right)
-        : undefined;
-      const stats = heroStatRows({
-        level: rec.level,
-        str: rec.str,
-        agi: rec.agi,
-        int: rec.int,
-        rightCls: rec.held?.right?.cls ?? "",
-        rightTier: rec.held?.right?.tier ?? "",
-        leftCls: rec.held?.left?.cls ?? "",
-        leftTier: rec.held?.left?.tier ?? "",
-        rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
-        leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
-      });
-      client.send("inv", {
-        ok: true,
-        nick: rec.nick,
-        level: rec.level,
-        stats,
-        hands: {
-          left: handInfo(
-            rec.held?.left?.cls ?? "",
-            rec.held?.left?.tier ?? "",
-            rec.equippedWeaponId?.left,
-            weaponsList,
-          ),
-          right: handInfo(
-            rec.held?.right?.cls ?? "",
-            rec.held?.right?.tier ?? "",
-            rec.equippedWeaponId?.right,
-            weaponsList,
-          ),
-        },
-        weapons,
-        misc,
-      });
+      client.send("inv", buildInv(w.norm, w.sid));
     } catch (e) {
-      // Пока не восстановлен SSH на прод — единственный способ увидеть причину
-      // падения на сервере: прислать её же клиенту, а не гадать по коду закрытия.
-      console.error("[inv] onJoin упал:", e);
+      console.error("[inv] сборка страницы упала:", e);
       try {
         client.send("inv", { ok: false, error: String(e) });
       } catch {
-        /* сокет уже мёртв — ничего не поделать */
+        /* сокет уже мёртв */
       }
     }
   }
+}
+
+function normNick(n: string): string {
+  return decodeURIComponent(n).trim().replace(/^@/, "").toLowerCase().slice(0, 24);
+}
+
+function buildInv(norm: string, sid: string): Record<string, unknown> {
+  if (!norm) return { ok: false, error: "В адресе нет ника — открой ссылку из !inv в чате." };
+  invHub.sync(norm);
+  const rec = store.get(`nick:${norm}`);
+  if (!rec) return { ok: false, error: `У «${norm}» ещё нет героя — напиши !play в чате.` };
+  const authed = invHub.isAuthed(sid, norm);
+  const weaponsList = rec.weapons ?? [];
+  const equippedIds = new Set(
+    [rec.equippedWeaponId?.left, rec.equippedWeaponId?.right].filter((id): id is string => !!id),
+  );
+  const weapons = weaponsList
+    .filter((w) => !equippedIds.has(w.id))
+    .map((w, i) => ({
+      num: i + 1,
+      id: w.id,
+      cls: w.cls,
+      tier: w.tier,
+      name: weaponDef(w.cls, w.tier).name,
+      affixes: w.affixes.map(affixLabel),
+      quality: weaponQuality(w),
+      scrap: scrapValue(w),
+    }));
+  const misc = (rec.bag ?? [])
+    .filter((s) => s.item && s.count > 0)
+    .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
+  const leftInst = rec.equippedWeaponId?.left
+    ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.left)
+    : undefined;
+  const rightInst = rec.equippedWeaponId?.right
+    ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.right)
+    : undefined;
+  const stats = heroStatRows({
+    level: rec.level,
+    str: rec.str,
+    agi: rec.agi,
+    int: rec.int,
+    rightCls: rec.held?.right?.cls ?? "",
+    rightTier: rec.held?.right?.tier ?? "",
+    leftCls: rec.held?.left?.cls ?? "",
+    leftTier: rec.held?.left?.tier ?? "",
+    rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
+    leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
+  });
+  return {
+    ok: true,
+    nick: rec.nick || norm,
+    authed,
+    code: authed ? undefined : invHub.code(sid, norm),
+    level: rec.level,
+    stats,
+    hands: {
+      left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", rec.equippedWeaponId?.left, weaponsList),
+      right: handInfo(rec.held?.right?.cls ?? "", rec.held?.right?.tier ?? "", rec.equippedWeaponId?.right, weaponsList),
+    },
+    weapons,
+    misc,
+  };
 }
