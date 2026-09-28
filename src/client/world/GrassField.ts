@@ -61,26 +61,21 @@ const GRASS_LOD_ON = typeof location === "undefined" || new URLSearchParams(loca
  * геометрии (ширина/высота/дистанция): тик видит его и пересобирает раскладку.
  */
 export const GRASS_FAR_TUNE = {
-  /** Общая яркость (поверх двух частей ниже). */
-  // Подобрано на стенде 2026-09-28 (панель ?grasstune=1).
-  lit: 0.82,
-  /** Солнце днём / ночью — как ручки ближней травы (0 ночью = солнце ночью не светит). */
-  sunDay: 0.87,
-  sunNight: 0,
-  /** Собственное свечение днём / ночью (не зависит от солнца). */
-  glowDay: 0,
-  glowNight: 0.15,
+  // Свет дальней травы — ТЕ ЖЕ ручки, что у ближней (общий StandardMaterial-
+  // рецепт, 2026-09-29): свои у дали только подгонка яркости снимка и форма.
+  /** Подгонка яркости снимка к ближней траве (1 — как есть). */
+  lit: 0.84,
   /** Ширина/высота картинки относительно снимка пучка — шире = «пушистее». */
-  width: 1.75,
-  height: 1.07,
+  width: 2.36,
+  height: 1.1,
   /** С какой дистанции пучок становится картинкой, м. */
-  lod: 30,
+  lod: 25,
   /** Желтизна дальней травы 0..1 (чуть подмешать сухой/солнечный тон). */
-  warm: 0.75,
+  warm: 0,
   v: 0,
 };
 // v2: ключ сменён вместе с новыми дефолтами — старые сохранённые пробы не перебьют их.
-const GRASS_TUNE_KEY = "grassFarTune3";
+const GRASS_TUNE_KEY = "grassFarTune4";
 try {
   const saved = typeof localStorage !== "undefined" ? localStorage.getItem(GRASS_TUNE_KEY) : null;
   if (saved) Object.assign(GRASS_FAR_TUNE, JSON.parse(saved), { v: 0 });
@@ -217,6 +212,8 @@ function captureBillboardTexture(
   source: Mesh,
   size = 160,
   lookDown?: number,
+  /** true — снимаем «голый» цвет (альбедо) под обычный освещаемый материал. */
+  albedo = false,
 ): { tex: Texture; w: number; h: number } {
   // Чистая копия ГЕОМЕТРИИ (не clone()): у источника тонкие инстансы с
   // thinInstanceCount=0 — клон их наследует и не рисует ничего, снимок
@@ -238,7 +235,7 @@ function captureBillboardTexture(
     capMat.emissiveTexture = capMat.diffuseTexture;
     // Нейтральная дневная яркость — как у листвы деревьев в TreeImpostors
     // (там же тонировка текстуры почти не важна, тон и так задаёт текстура).
-    capMat.emissiveColor = new Color3(0.5, 0.58, 0.42);
+    capMat.emissiveColor = albedo ? new Color3(1, 1, 1) : new Color3(0.5, 0.58, 0.42);
     clone.material = capMat;
   }
   clone.computeWorldMatrix(true);
@@ -275,7 +272,9 @@ function captureBillboardTexture(
   });
   rtt.activeCamera = cam;
   rtt.renderList = [clone];
-  rtt.clearColor = new Color4(0, 0, 0, 0);
+  // Альбедо-снимок — фон цвета травы (прозрачный): в мипмапах края травинок
+  // смешиваются с зелёным, а не с чёрным (иначе тёмная обводка).
+  rtt.clearColor = albedo ? new Color4(0.3, 0.42, 0.18, 0) : new Color4(0, 0, 0, 0);
   // Снимаем КАЖДЫЙ кадр, пока материал копии не скомпилирован (шейдеры
   // компилируются параллельно): раньше был REFRESHRATE_RENDER_ONCE — первый
   // кадр рендерился до готовности шейдера, снимок выходил пустым навсегда
@@ -300,71 +299,6 @@ function captureBillboardTexture(
   });
   return { tex: rtt, w, h };
 }
-
-/** Дальняя трава: тот же билборд, плюс оттенок пучка (инстансный color) и свой порог альфы. */
-const GRASS_FAR_VERT = /* glsl */ `
-precision highp float;
-attribute vec3 position;
-attribute vec2 uv;
-attribute vec4 world0;
-attribute vec4 world1;
-attribute vec4 world2;
-attribute vec4 world3;
-attribute vec4 instanceColor;
-uniform mat4 viewProjection;
-#ifdef MULTIVIEW
-uniform mat4 viewProjectionR;
-#endif
-uniform mat4 view;
-varying vec2 vUv;
-varying float vDist;
-varying vec3 vTint;
-void main() {
-  vec3 base = world3.xyz;
-  float sx = world0.x;
-  float sy = world1.y;
-  vec3 t = view[3].xyz;
-  vec3 cam = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
-  vec3 toCam = cam - base;
-  vec3 d = normalize(vec3(toCam.x, 0.0, toCam.z) + vec3(1e-4, 0.0, 0.0));
-  vec3 right = vec3(-d.z, 0.0, d.x);
-  vec3 p = base + right * (position.x * sx) + vec3(0.0, position.y * sy, 0.0);
-  vDist = length(p - cam);
-  vUv = uv;
-  vTint = instanceColor.rgb;
-#ifdef MULTIVIEW
-  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(p, 1.0); } else { gl_Position = viewProjectionR * vec4(p, 1.0); }
-#else
-  gl_Position = viewProjection * vec4(p, 1.0);
-#endif
-}
-`;
-const GRASS_FAR_FRAG = /* glsl */ `
-precision highp float;
-varying vec2 vUv;
-varying float vDist;
-varying vec3 vTint;
-uniform sampler2D tex;
-uniform vec3 uLit;
-uniform vec3 uFogColor;
-uniform float uFogStart;
-uniform float uFogEnd;
-void main() {
-  vec4 c = texture2D(tex, vUv);
-  // Порог ниже, чем у кустов: полупрозрачные края стеблей остаются — пучок
-  // вдали выглядит пушистым, а не частоколом тонких палок. С мипмапами края
-  // вдали мягче (альфа меньше) — порог плавно снижаем с дистанцией, иначе
-  // дальняя трава «лысела».
-  float cut = mix(0.2, 0.07, clamp((vDist - 15.0) / 60.0, 0.0, 1.0));
-  if (c.a < cut) discard;
-  // Снимок снят на прозрачном ЧЁРНОМ фоне — в мипмапах края травинок
-  // смешаны с ним и давали чёрную обводку. Делим на альфу — возвращаем краю
-  // его собственный цвет (фон с альфой 0 в сумму цвета не вносит).
-  vec3 col = (c.rgb / max(c.a, 0.001)) * vTint * uLit;
-  float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
-  gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
-}
-`;
 
 /** Билборд-шейдер: цилиндрический разворот к камере вокруг вертикали + затухание в тумане — как у TreeImpostors. */
 const BILLBOARD_VERT = /* glsl */ `
@@ -588,32 +522,31 @@ export async function loadGrassField(
 
   // LOD травы: для каждого вида — снимок модели в текстуру + билборд-меш с
   // инстансным оттенком. Один материал на вид (текстура своя), 2 треугольника.
-  const grassFarMats: ShaderMaterial[] = [];
+  // Дальняя трава — тот же ТИП материала, что ближняя (StandardMaterial):
+  // солнце, небо, туман, факелы действуют одинаково; цвета/свечение каждый
+  // кадр копируются с ближнего материала (см. тик), т.е. одни ручки на обе.
+  // Картинка — снимок «голого» цвета пучка; к камере разворачивается на
+  // пересборке (раз в ~0.2 с), нормаль — вверх (свет как на ближней траве).
+  const grassFarMats: StandardMaterial[] = [];
   for (const ki of [kShort, kTall, kWispy]) {
     if (ki < 0) continue;
     const src = kinds[ki].mesh;
     src.thinInstanceCount = 0;
-    const cap = captureBillboardTexture(scene, src, 128, 0.55);
-    const fm = new ShaderMaterial(
-      `grassFarMat_${src.name}`,
-      scene,
-      { vertexSource: GRASS_FAR_VERT, fragmentSource: GRASS_FAR_FRAG },
-      {
-        attributes: ["position", "uv", "instanceColor"],
-        uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd"],
-        samplers: ["tex"],
-      },
-    );
-    fm.setTexture("tex", cap.tex);
-    fm.setColor3("uLit", new Color3(1, 1, 1));
-    fm.setColor3("uFogColor", scene.fogColor);
-    fm.setFloat("uFogStart", scene.fogStart);
-    fm.setFloat("uFogEnd", scene.fogEnd);
+    const cap = captureBillboardTexture(scene, src, 128, 0.55, true);
+    const fm = new StandardMaterial(`grassFarMat_${src.name}`, scene);
+    cap.tex.hasAlpha = true;
+    fm.diffuseTexture = cap.tex;
+    fm.useAlphaFromDiffuseTexture = true;
+    fm.transparencyMode = 1; // alpha test, как у ближней
+    fm.alphaCutOff = 0.3;
+    fm.specularColor = new Color3(0, 0, 0);
     fm.backFaceCulling = false;
+    fm.maxSimultaneousLights = mat.maxSimultaneousLights;
     grassFarMats.push(fm);
     const fmesh = new Mesh(`${src.name}Far`, scene);
     const vd = new VertexData();
     vd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
+    vd.normals = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0];
     vd.indices = [0, 1, 2, 0, 2, 3];
     vd.uvs = [0, 0, 1, 0, 1, 1, 0, 1];
     vd.applyToMesh(fmesh);
@@ -626,9 +559,9 @@ export async function loadGrassField(
     const buf = new Float32Array(16 * n);
     fmesh.thinInstanceSetBuffer("matrix", buf, 16, false);
     const col = new Float32Array(4 * n);
-    fmesh.thinInstanceSetBuffer("instanceColor", col, 4, false);
+    fmesh.thinInstanceSetBuffer("color", col, 4, false);
     fmesh.thinInstanceCount = 0;
-    kinds.push({ mesh: fmesh, buf, col, n: 0, colName: "instanceColor" });
+    kinds.push({ mesh: fmesh, buf, col, n: 0 });
     kinds[ki].far = kinds.length - 1;
     kinds[ki].farW = cap.w;
     kinds[ki].farH = cap.h;
@@ -802,7 +735,9 @@ export async function loadGrassField(
           if (GRASS_LOD_ON && d > GRASS_FAR_TUNE.lod && k.far !== undefined) {
             // Дальний пучок — билборд-снимок: реальный размер = снимок × масштаб пучка.
             const T = GRASS_FAR_TUNE;
-            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], 0, (k.farW ?? 1) * sx * T.width, (k.farH ?? 1) * sx * a[o + 6] * T.height, a[o + 7], a[o + 8], a[o + 9]);
+            // Лицом к камере (на момент пересборки): курс от пучка на камеру.
+            const faceYaw = Math.atan2(cx - a[o + 1], cz - a[o + 3]);
+            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], faceYaw, (k.farW ?? 1) * sx * T.width, (k.farH ?? 1) * sx * a[o + 6] * T.height, a[o + 7], a[o + 8], a[o + 9]);
           } else {
             write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
           }
@@ -878,7 +813,6 @@ export async function loadGrassField(
   };
 
   let lastLights = 1;
-  const farLit = new Color3(1, 1, 1);
   let tuneV = GRASS_FAR_TUNE.v;
   const bushEmiDay = bushMat?.emissiveColor.clone() ?? null;
   return (dt: number, daylight: number) => {
@@ -920,32 +854,17 @@ export async function loadGrassField(
       );
     }
     if (grassFarMats.length) {
-      // Яркость дальней травы — тем же рецептом, что у ближней (диффуз под
-      // солнцем + собственное свечение), нормировано на цвет снимка.
-      // НЕЗАВИСИМО от ручек ближней травы (раньше брались уже промодулированные
-      // ими mat.diffuse/emissive — ближние ручки тянули за собой и даль): только
-      // базовый цвет травы, время суток и свои ручки GRASS_FAR_TUNE.
-      // Та же схема, что у ближней травы: солнце и свечение — своими ручками на
-      // день и на ночь, смешиваются по времени суток. Солнце к ночи гаснет само
-      // (как настоящий свет сцены); свечение — нет, его яркость целиком в ручке.
+      // Те же ручки, что у ближней: копируем её диффуз/свечение (уже с
+      // «Солнце/Свечение» день/ночь) + подгонка снимка (lit) и желтизна.
       const T = GRASS_FAR_TUNE;
-      const sunK = mixDN(T.sunDay, T.sunNight, daylight) * (0.25 + 0.75 * daylight);
-      // Свечение нормировано так, чтобы 1 ≈ полная дневная яркость картинки.
-      // Свечение НЕ смешивается по всему закату (заявка): весь вечер —
-      // дневное, ночное включается только в глубоких сумерках (daylight < 0.1).
-      const glowNightW = 1 - smooth(0, 0.1, daylight);
-      const glowK = (T.glowDay + (T.glowNight - T.glowDay) * glowNightW) * 0.5;
-      // Желтизна: чуть поднять красный, едва — зелёный, приглушить синий.
       const w = T.warm;
-      const lr = ((grassDiffuseBase.r * sunK) / 0.5 + glowK) * T.lit * (1 + 0.22 * w);
-      const lg = ((grassDiffuseBase.g * sunK) / 0.58 + glowK) * T.lit * (1 + 0.06 * w);
-      const lb = ((grassDiffuseBase.b * sunK) / 0.42 + glowK) * T.lit * (1 - 0.45 * w);
-      farLit.copyFromFloats(lr, lg, lb);
+      const wr = T.lit * (1 + 0.22 * w);
+      const wg = T.lit * (1 + 0.06 * w);
+      const wb = T.lit * (1 - 0.45 * w);
       for (const fm of grassFarMats) {
-        fm.setColor3("uLit", farLit);
-        fm.setColor3("uFogColor", scene.fogColor);
-        fm.setFloat("uFogStart", scene.fogStart);
-        fm.setFloat("uFogEnd", scene.fogEnd);
+        fm.diffuseColor.copyFromFloats(mat.diffuseColor.r * wr, mat.diffuseColor.g * wg, mat.diffuseColor.b * wb);
+        fm.emissiveColor.copyFromFloats(mat.emissiveColor.r * wr, mat.emissiveColor.g * wg, mat.emissiveColor.b * wb);
+        if (fm.maxSimultaneousLights !== mat.maxSimultaneousLights) fm.maxSimultaneousLights = mat.maxSimultaneousLights;
       }
     }
     if (bushFarMat) {

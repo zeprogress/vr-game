@@ -209,9 +209,9 @@ export const LOADOUT_DEFAULTS: Loadout = {
   },
   glow: {
     // Подобрано на стенде 2026-09-28 (панель ?grasstune=1).
-    grassSunDay: 0.85,
+    grassSunDay: 1,
     grassSunNight: 3,
-    grassGlowDay: 0,
+    grassGlowDay: 1.85,
     grassGlowNight: 3,
     bushSunDay: 1,
     bushSunNight: 1,

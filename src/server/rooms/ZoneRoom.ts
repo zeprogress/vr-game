@@ -908,8 +908,8 @@ export class ZoneRoom extends Room<ZoneState> {
     {
       const lo = world.loadLoadout() as { glow?: Record<string, number> };
       const g = (lo.glow ??= {});
-      if (g._grassTuneV !== 2) {
-        Object.assign(g, { grassSunDay: 0.85, grassGlowDay: 0, grassSunNight: 3, grassGlowNight: 3, _grassTuneV: 2 });
+      if (g._grassTuneV !== 3) {
+        Object.assign(g, { grassSunDay: 1, grassGlowDay: 1.85, grassSunNight: 3, grassGlowNight: 3, _grassTuneV: 3 });
         world.saveLoadout(lo);
         console.log("[world] свет травы обновлён по настройке со стенда");
       }

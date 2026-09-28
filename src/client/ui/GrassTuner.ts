@@ -62,8 +62,7 @@ export function mountGrassTuner(): void {
     const f = GRASS_FAR_TUNE;
     out.value =
       `ближняя: ${NEAR_KEYS.map((k) => `${k} ${g[k].toFixed(2)}`).join(", ")}\n` +
-      `дальняя: lit ${f.lit.toFixed(2)}, sunDay ${f.sunDay.toFixed(2)}, glowDay ${f.glowDay.toFixed(2)}, ` +
-      `sunNight ${f.sunNight.toFixed(2)}, glowNight ${f.glowNight.toFixed(2)}, ` +
+      `дальняя: lit ${f.lit.toFixed(2)}, ` +
       `width ${f.width.toFixed(2)}, height ${f.height.toFixed(2)}, lod ${f.lod}, warm ${f.warm.toFixed(2)}`;
   };
   const saveNear = (): void => {
@@ -126,7 +125,7 @@ export function mountGrassTuner(): void {
   box.appendChild(tNote);
   timeInfo();
 
-  head("БЛИЖНЯЯ ТРАВА (модели)");
+  head("СВЕТ ТРАВЫ (ближней и дальней)");
   const near = (label: string, k: NearKey): void =>
     slider(label, 0, 3, 0.01, () => g[k], (x) => {
       g[k] = x;
@@ -138,18 +137,15 @@ export function mountGrassTuner(): void {
   near("Солнце ночью", "grassSunNight");
   near("Свечение ночью", "grassGlowNight");
 
-  head("ДАЛЬНЯЯ ТРАВА (картинки)");
+  head("ДАЛЬНЯЯ ТРАВА (свет — общий с ближней)");
   const f = GRASS_FAR_TUNE as unknown as Record<string, number>;
   const far = (label: string, k: string, min: number, max: number, step: number): void =>
     slider(label, min, max, step, () => f[k], (x) => {
       f[k] = x;
       saveGrassFarTune();
     });
-  far("Яркость", "lit", 0.1, 2, 0.01);
-  far("Солнце днём", "sunDay", 0, 3, 0.01);
-  far("Свечение днём", "glowDay", 0, 3, 0.01);
-  far("Солнце ночью", "sunNight", 0, 3, 0.01);
-  far("Свечение ночью", "glowNight", 0, 3, 0.01);
+  // Свет у дальней — те же ручки, что у ближней (выше); тут только подгонка снимка и форма.
+  far("Подгонка яркости", "lit", 0.3, 2, 0.01);
   far("Ширина", "width", 0.5, 3, 0.01);
   far("Высота", "height", 0.4, 2, 0.01);
   far("С дистанции, м", "lod", 6, 40, 1);
