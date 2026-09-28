@@ -516,7 +516,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Регенерация ~31 HP/с (и в бою): одиночка с малым уроном его еле
     // пересиливает, группа — не замечает. HP ×2 по просьбе (2600 → 5200);
     // доля регена 1.2% → 0.6%, чтобы в HP/с она осталась прежней.
-    hp: 5200, dmgMul: 10, xp: 480000, scaleMul: 5.4, tint: null,
+    hp: 5200, dmgMul: 7, xp: 480000, scaleMul: 5.4, tint: null,
     physArmor: 0.25, magicVulnMul: 1.3, regen: 0.006,
     legendaryChance: 0.015, // 1.5% (у голема общий 0.2%) — убивать его дольше
     sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
@@ -530,14 +530,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // колоссом и призраком по опыту и дропу.
   skySquid: {
     model: "monSkySquid", name: "Небесный спрут", level: 33, kind: "slime",
-    hp: 3200, dmgMul: 7, xp: 320000, scaleMul: 2.2, tint: null, flying: true,
+    hp: 3200, dmgMul: 5, xp: 320000, scaleMul: 2.2, tint: null, flying: true,
     puller: true, meleeReach: 3, attackCooldown: 1.6, speedMul: 1.1,
     magicVulnMul: 1.2, legendaryChance: 0.01,
   },
   // Опыт ×2 (24000→48000), HP ×2 (820→1640), 2026-09-28.
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 1640, dmgMul: 5, xp: 192000, scaleMul: 1.1, tint: null, flying: true,
+    hp: 1640, dmgMul: 3.5, xp: 192000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
@@ -555,7 +555,7 @@ export const SPORE = {
   /** Сколько живёт облако. */
   duration: 6,
   /** Урон за тик (тик каждые `tick` с) — не блокируется и не уворачивается. */
-  tickDmg: 16,
+  tickDmg: 12, // было 16 — урон мобов 33 ур. снижен ~на 30% (2026-09-29)
   tick: 0.5,
 };
 
@@ -648,7 +648,7 @@ export const MOB_CAMPS: {
   // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
   // боты 30+ выбирают один случайно (или по !camp <моб>).
   { x: 110, z: -110, type: "mushColossus", count: 5, spread: 34, ring: 0.85 }, // ур.33, юго-восток
-  { x: -115, z: 110, type: "boneWraith", count: 12, spread: 26 }, // ур.33, северо-запад
+  { x: -115, z: 110, type: "boneWraith", count: 12, spread: 42 }, // ур.33, северо-запад
   { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
 ];
 

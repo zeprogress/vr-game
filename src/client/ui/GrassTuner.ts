@@ -63,7 +63,7 @@ export function mountGrassTuner(): void {
     out.value =
       `ближняя: ${NEAR_KEYS.map((k) => `${k} ${g[k].toFixed(2)}`).join(", ")}\n` +
       `дальняя: lit ${f.lit.toFixed(2)}, ` +
-      `width ${f.width.toFixed(2)}, height ${f.height.toFixed(2)}, lod ${f.lod}, warm ${f.warm.toFixed(2)}`;
+      `width ${f.width.toFixed(2)}, height ${f.height.toFixed(2)}, lod ${f.lod}, warm ${f.warm.toFixed(2)}, crossWidth ${f.crossWidth.toFixed(2)}, dryWidth ${f.dryWidth.toFixed(2)}, dryHeight ${f.dryHeight.toFixed(2)}`;
   };
   const saveNear = (): void => {
     try {
@@ -150,6 +150,9 @@ export function mountGrassTuner(): void {
   far("Высота", "height", 0.4, 2, 0.01);
   far("С дистанции, м", "lod", 6, 40, 1);
   far("Желтизна", "warm", 0, 1, 0.01);
+  far("Ширина крестов (вблизи)", "crossWidth", 0.5, 4, 0.01);
+  far("Выгоревшая: ширина", "dryWidth", 0.3, 3, 0.01);
+  far("Выгоревшая: высота", "dryHeight", 0.3, 3, 0.01);
 
   const hint = document.createElement("div");
   hint.className = "hint";

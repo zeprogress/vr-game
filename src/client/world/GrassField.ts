@@ -54,6 +54,12 @@ const REACH = 165; // дальше от центра карты травы не�
 /** Дистанция LOD по умолчанию — живое значение в GRASS_FAR_TUNE.lod. */
 /** ?grasslod=0 — без LOD (все пучки полными моделями), для сравнения на стенде. */
 const GRASS_LOD_ON = typeof location === "undefined" || new URLSearchParams(location.search).get("grasslod") !== "0";
+/**
+ * Ближняя трава «крестами» (2 карточки со снимком пучка, 4 треугольника)
+ * вместо 3D-моделей (155–494) — по умолчанию с 2026-09-29 (одобрено на
+ * стенде); ?grasscross=0 — старые модели для сравнения.
+ */
+const GRASS_CROSS = typeof location === "undefined" || new URLSearchParams(location.search).get("grasscross") !== "0";
 /** Подстройка яркости дальней травы под ближнюю (window.__grassFar.lit в консоли). */
 /**
  * Живые ручки дальней (упрощённой) травы — панель `?grasstune=1`
@@ -66,16 +72,21 @@ export const GRASS_FAR_TUNE = {
   /** Подгонка яркости снимка к ближней траве (1 — как есть). */
   lit: 0.84,
   /** Ширина/высота картинки относительно снимка пучка — шире = «пушистее». */
-  width: 2.36,
-  height: 1.1,
+  width: 3,
+  height: 1,
   /** С какой дистанции пучок становится картинкой, м. */
   lod: 25,
+  /** Ширина ближних «крестов» (?grasscross=1) относительно снимка пучка. */
+  crossWidth: 4,
+  /** «Метёлки» (сухая, выгоревшая трава) — свои множители ширины/высоты (вблизи и вдали). */
+  dryWidth: 0.4,
+  dryHeight: 0.9,
   /** Желтизна дальней травы 0..1 (чуть подмешать сухой/солнечный тон). */
-  warm: 0,
+  warm: 1,
   v: 0,
 };
 // v2: ключ сменён вместе с новыми дефолтами — старые сохранённые пробы не перебьют их.
-const GRASS_TUNE_KEY = "grassFarTune4";
+const GRASS_TUNE_KEY = "grassFarTune5";
 try {
   const saved = typeof localStorage !== "undefined" ? localStorage.getItem(GRASS_TUNE_KEY) : null;
   if (saved) Object.assign(GRASS_FAR_TUNE, JSON.parse(saved), { v: 0 });
@@ -186,6 +197,8 @@ interface Kind {
   colName?: string;
   /** Дальний билборд этого вида (LOD) и размер снимка модели, м. */
   far?: number;
+  /** Ближний «крест» этого вида (?grasscross=1). */
+  cross?: number;
   farW?: number;
   farH?: number;
 }
@@ -274,7 +287,8 @@ function captureBillboardTexture(
   rtt.renderList = [clone];
   // Альбедо-снимок — фон цвета травы (прозрачный): в мипмапах края травинок
   // смешиваются с зелёным, а не с чёрным (иначе тёмная обводка).
-  rtt.clearColor = albedo ? new Color4(0.3, 0.42, 0.18, 0) : new Color4(0, 0, 0, 0);
+  // Цвет фона ≈ сам цвет травинок на снимке (было светлее — давало светлую обводку).
+  rtt.clearColor = albedo ? new Color4(0.17, 0.26, 0.1, 0) : new Color4(0, 0, 0, 0);
   // Снимаем КАЖДЫЙ кадр, пока материал копии не скомпилирован (шейдеры
   // компилируются параллельно): раньше был REFRESHRATE_RENDER_ONCE — первый
   // кадр рендерился до готовности шейдера, снимок выходил пустым навсегда
@@ -532,7 +546,10 @@ export async function loadGrassField(
     if (ki < 0) continue;
     const src = kinds[ki].mesh;
     src.thinInstanceCount = 0;
-    const cap = captureBillboardTexture(scene, src, 128, 0.55, true);
+    // 256 (было 128): кресты видны вблизи — меньше «пикселей»; анизотропия —
+    // чётче под углом. Текстур всего три, по памяти копейки.
+    const cap = captureBillboardTexture(scene, src, 256, 0.55, true);
+    cap.tex.anisotropicFilteringLevel = 8;
     const fm = new StandardMaterial(`grassFarMat_${src.name}`, scene);
     cap.tex.hasAlpha = true;
     fm.diffuseTexture = cap.tex;
@@ -565,6 +582,57 @@ export async function loadGrassField(
     kinds[ki].far = kinds.length - 1;
     kinds[ki].farW = cap.w;
     kinds[ki].farH = cap.h;
+    if (GRASS_CROSS) {
+      // Три карточки через 60° вокруг вертикали, та же текстура и материал, что у дали.
+      const cm = new Mesh(`${src.name}Cross`, scene);
+      const cvd = new VertexData();
+      const pos: number[] = [];
+      const uvs: number[] = [];
+      const nor: number[] = [];
+      const idx: number[] = [];
+      for (let q = 0; q < 2; q++) {
+        const th = (q * Math.PI) / 2; // две карточки крест-накрест (90°)
+        const c = Math.cos(th) * 0.5;
+        const sn = Math.sin(th) * 0.5;
+        const b = q * 4;
+        pos.push(-c, 0, -sn, c, 0, sn, c, 1, sn, -c, 1, -sn);
+        uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+        nor.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+        idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+      }
+      cvd.positions = pos;
+      cvd.uvs = uvs;
+      cvd.normals = nor;
+      cvd.indices = idx;
+      cvd.applyToMesh(cm);
+      // Свой снимок для ближних крестов (256, почти сбоку) — кресты
+      // видно вблизи и сбоку, «сверху» (как у дали) пучок выглядел приплюснутым.
+      const capN = captureBillboardTexture(scene, src, 256, 0.12, true);
+      capN.tex.anisotropicFilteringLevel = 8;
+      capN.tex.hasAlpha = true;
+      const nm = new StandardMaterial(`grassCrossMat_${src.name}`, scene);
+      nm.diffuseTexture = capN.tex;
+      nm.useAlphaFromDiffuseTexture = true;
+      nm.transparencyMode = 1;
+      nm.alphaCutOff = 0.3;
+      nm.specularColor = new Color3(0, 0, 0);
+      nm.backFaceCulling = false;
+      nm.maxSimultaneousLights = mat.maxSimultaneousLights;
+      grassFarMats.push(nm); // свет — тот же общий (копируется в тике)
+      cm.material = nm;
+      cm.isPickable = false;
+      cm.alwaysSelectAsActiveMesh = true;
+      cm.doNotSyncBoundingInfo = true;
+      cm.setEnabled(false);
+      const cn = 4096;
+      const cbuf = new Float32Array(16 * cn);
+      cm.thinInstanceSetBuffer("matrix", cbuf, 16, false);
+      const ccol = new Float32Array(4 * cn);
+      cm.thinInstanceSetBuffer("color", ccol, 4, false);
+      cm.thinInstanceCount = 0;
+      kinds.push({ mesh: cm, buf: cbuf, col: ccol, n: 0 });
+      kinds[ki].cross = kinds.length - 1;
+    }
   }
 
   // ---- кэш кусков клеток ----
@@ -737,9 +805,27 @@ export async function loadGrassField(
             const T = GRASS_FAR_TUNE;
             // Лицом к камере (на момент пересборки): курс от пучка на камеру.
             const faceYaw = Math.atan2(cx - a[o + 1], cz - a[o + 3]);
-            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], faceYaw, (k.farW ?? 1) * sx * T.width, (k.farH ?? 1) * sx * a[o + 6] * T.height, a[o + 7], a[o + 8], a[o + 9]);
+            const dry = k === kinds[kWispy];
+            write(
+              kinds[k.far], a[o + 1], a[o + 2], a[o + 3], faceYaw,
+              (k.farW ?? 1) * sx * T.width * (dry ? T.dryWidth : 1),
+              (k.farH ?? 1) * sx * a[o + 6] * T.height * (dry ? T.dryHeight : 1),
+              a[o + 7], a[o + 8], a[o + 9],
+            );
           } else {
-            write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+            if (k.cross !== undefined) {
+              // «Метёлки» (сухая, выгоревшая трава) — свои ширина/высота.
+              const dry = k === kinds[kWispy];
+              const T2 = GRASS_FAR_TUNE;
+              write(
+                kinds[k.cross], a[o + 1], a[o + 2], a[o + 3], a[o + 4],
+                (k.farW ?? 1) * sx * T2.crossWidth * (dry ? T2.dryWidth : 1),
+                (k.farH ?? 1) * sx * a[o + 6] * (dry ? T2.dryHeight : 1),
+                a[o + 7], a[o + 8], a[o + 9],
+              );
+            } else {
+              write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+            }
           }
         }
       }
