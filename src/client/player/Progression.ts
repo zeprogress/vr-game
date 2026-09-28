@@ -167,7 +167,7 @@ export class Progression {
     return attackSpeedFor(this.level, this.stats.agi);
   }
 
-  /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor), потолок ×1.45. */
+  /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor). */
   get meleeSpeed(): number {
     return meleeSpeedFor(this.level, this.stats.agi);
   }

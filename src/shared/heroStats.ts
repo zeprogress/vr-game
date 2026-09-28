@@ -7,8 +7,8 @@ import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
- * что и бой: меч — приглушённый темп ближнего боя (meleeSpeedFor, потолок
- * ×1.45) от паузы BOT.attackCooldown; лук — полный темп (attackSpeedFor) от
+ * что и бой: меч — приглушённый темп ближнего боя (meleeSpeedFor,
+ * без своего потолка) от паузы BOT.attackCooldown; лук — полный темп (attackSpeedFor) от
  * BOT.bowCooldown; посох — это ОГНЕШАРЫ, не удары рукой: полный темп от
  * BOT.staffCooldown. `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
  */
