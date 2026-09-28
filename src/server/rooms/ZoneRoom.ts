@@ -114,6 +114,7 @@ import {
 } from "#shared/combat";
 import {
   addToBag,
+  migrateStaffAffixes,
   affixPoints,
   bagCount,
   takeFromBag,
@@ -873,6 +874,19 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    // Посохи: роллы со старого завышенного диапазона → общий, очки те же
+    // (разово — migrateStaffAffixes метит инстанс). Сейвы и лут на земле.
+    let staffFixed = 0;
+    for (const rec of store.entries()) {
+      let changed = false;
+      for (const w of rec.weapons ?? []) if (migrateStaffAffixes(w)) changed = true;
+      if (changed) {
+        staffFixed++;
+        store.put(rec.token, { weapons: rec.weapons });
+      }
+    }
+    for (const d of world.loadDrops()) if (d.instance) migrateStaffAffixes(d.instance);
+    if (staffFixed) console.log(`[zone] посохи пересчитаны у ${staffFixed} героев`);
     // Чистка сумок во всех сейвах: одна стопка на предмет, зелий не больше 99.
     for (const rec of store.entries()) {
       if (!Array.isArray(rec.bag)) continue;

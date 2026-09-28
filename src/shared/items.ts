@@ -364,6 +364,8 @@ export interface WeaponInstance {
   cls: WeaponClass;
   tier: WeaponTier;
   affixes: RolledAffix[];
+  /** 1 — роллы посоха уже в общем диапазоне (см. migrateStaffAffixes). */
+  sv?: number;
 }
 
 const AFFIX_FAMILIES: Record<AffixKind, AffixSub[]> = {
@@ -381,11 +383,11 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
 };
 
 /**
- * Посох роллит потолок роллов выше, чем меч/лук (по просьбе) — множитель
- * ТОЛЬКО на верхнюю границу диапазона (нижняя не трогается, обычный слабый
- * ролл остаётся обычным слабым). См. rollAffix.
+ * СТАРЫЙ завышенный потолок роллов посоха (до 2026-09-28). Больше нигде не
+ * используется, кроме разовой миграции migrateStaffAffixes — теперь у посоха
+ * тот же диапазон, что у меча/лука.
  */
-const STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
+const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   dmgFlat: 1.4,
   dmgPct: 1.4,
   atkSpeedPct: 1.25,
@@ -416,15 +418,15 @@ function rollAffix(rnd: () => number, cls: WeaponClass): RolledAffix {
   const kind = kinds[Math.floor(rnd() * kinds.length)];
   const subs = AFFIX_FAMILIES[kind];
   const sub = subs[Math.floor(rnd() * subs.length)];
-  const [lo, base] = AFFIX_RANGES[sub];
-  const hi = cls === "staff" ? base * STAFF_RANGE_HI_MUL[sub] : base;
+  void cls; // диапазон теперь общий для всех классов
+  const [lo, hi] = AFFIX_RANGES[sub];
   return { kind, sub, value: lo + rnd() * (hi - lo) };
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
 export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
-  const [lo, base] = AFFIX_RANGES[a.sub];
-  const hi = cls === "staff" ? base * STAFF_RANGE_HI_MUL[a.sub] : base;
+  void cls;
+  const [lo, hi] = AFFIX_RANGES[a.sub];
   const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 1;
   return 1 + 32 * t;
 }
@@ -470,7 +472,7 @@ export function rollWeaponInstance(
     used.add(a.kind);
     affixes.push(a);
   }
-  return { id: shortId(rnd), cls, tier, affixes };
+  return { id: shortId(rnd), cls, tier, affixes, ...(cls === "staff" ? { sv: 1 } : {}) };
 }
 
 /**
@@ -481,7 +483,7 @@ export function rollWeaponInstance(
  * было деться. См. preserveLegacyWeapon в ZoneRoom.ts.
  */
 export function plainWeaponInstance(cls: WeaponClass, tier: WeaponTier): WeaponInstance {
-  return { id: shortId(Math.random), cls, tier, affixes: [] };
+  return { id: shortId(Math.random), cls, tier, affixes: [], ...(cls === "staff" ? { sv: 1 } : {}) };
 }
 
 /** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
@@ -544,8 +546,26 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
 }
 
 function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] {
-  const [lo, base] = AFFIX_RANGES[sub];
-  return [lo, cls === "staff" ? base * STAFF_RANGE_HI_MUL[sub] : base];
+  void cls;
+  return AFFIX_RANGES[sub];
+}
+
+/**
+ * Разовый пересчёт посоха со старого завышенного диапазона в общий с
+ * сохранением очков: t = (v−lo)/(старый_hi−lo), v' = lo + t·(hi−lo).
+ * Пример: сила крита 1.04 из 0.3..1.04 (33 очка) → 0.8 из 0.3..0.8 (33 очка).
+ * Помечает w.sv=1, повторный вызов ничего не делает. true — что-то поменялось.
+ */
+export function migrateStaffAffixes(w: WeaponInstance): boolean {
+  if (w.cls !== "staff" || w.sv === 1) return false;
+  for (const a of w.affixes) {
+    const [lo, hi] = AFFIX_RANGES[a.sub];
+    const oldHi = hi * OLD_STAFF_RANGE_HI_MUL[a.sub];
+    const t = Math.max(0, Math.min(1, (a.value - lo) / (oldHi - lo)));
+    a.value = lo + t * (hi - lo);
+  }
+  w.sv = 1;
+  return true;
 }
 
 /**
