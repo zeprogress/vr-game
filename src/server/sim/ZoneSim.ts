@@ -9,6 +9,7 @@ import {
   MAGE_NOVA,
   SPORE,
   BLINK,
+  SOLO_RESIST,
   MAGE_SPELL,
   MOB,
   FLYER_HIT_BONUS,
@@ -344,6 +345,10 @@ class Mob {
   readonly lifesteal: number;
   readonly meleeReach: number;
   readonly atkCooldown: number;
+  readonly dodge: number;
+  readonly soloResist: boolean;
+  /** Кто и когда (elapsed) бил моба — для soloResist. */
+  readonly hitters = new Map<string, number>();
   private sporeCd = 2;
   private sporeWindupT = 0;
   private sporeX = 0;
@@ -412,6 +417,8 @@ class Mob {
       lifesteal?: number;
       meleeReach?: number;
       attackCooldown?: number;
+      dodge?: number;
+      soloResist?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -460,12 +467,20 @@ class Mob {
     this.lifesteal = opts.lifesteal ?? 0;
     this.meleeReach = opts.meleeReach ?? MOB.attackRange;
     this.atkCooldown = opts.attackCooldown ?? MOB.attackCooldown;
+    this.dodge = opts.dodge ?? 0;
+    this.soloResist = opts.soloResist ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
 
   get aggro(): boolean {
     return this.aggroed;
+  }
+
+  /** Промах тоже злит моба (иначе увернувшийся «не замечал» стрелка). */
+  forceAggroIfIdle(): void {
+    this.aggroed = true;
+    this.outOfRange = 0;
   }
 
   forceAggro(): void {
@@ -1473,6 +1488,8 @@ export class ZoneSim {
           meleeReach: def.meleeReach,
           attackCooldown: def.attackCooldown,
           speedMul: def.speedMul,
+          dodge: def.dodge,
+          soloResist: def.soloResist,
         });
         this.mobs.set(m.id, m);
       }
@@ -1767,6 +1784,8 @@ export class ZoneSim {
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
   readonly dmgHits: { x: number; y: number; z: number; dmg: number }[] = [];
+  /** Моб увернулся от удара героя — ZoneRoom покажет «MISS» над мобом. */
+  readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
 
@@ -1802,6 +1821,20 @@ export class ZoneSim {
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
+    if (!dot && m.dodge > 0 && !m.dead && Math.random() < m.dodge) {
+      m.forceAggroIfIdle();
+      this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
+      return null;
+    }
+    if (m.soloResist && attacker) {
+      m.hitters.set(attacker, this.elapsed);
+      let n = 0;
+      for (const [who, at] of m.hitters) {
+        if (this.elapsed - at > SOLO_RESIST.windowSec) m.hitters.delete(who);
+        else n++;
+      }
+      dmg *= SOLO_RESIST.mult[Math.min(n, SOLO_RESIST.mult.length) - 1];
+    }
     if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;

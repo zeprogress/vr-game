@@ -5171,6 +5171,12 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.critHits.length = 0;
     // Числа урона у спектатора — батчем за тик, только если тумблер включён
     // (не тратим сеть/CPU зря, если никто не смотрит или выключено с пульта).
+    for (const mm of this.sim.mobMisses) {
+      this.broadcast(MSG.act, {
+        k: "dodge", id: mm.attacker, x: mm.x, y: mm.y, z: mm.z, mobId: mm.mobId,
+      } satisfies ActRelay);
+    }
+    this.sim.mobMisses.length = 0;
     if (this.sim.dmgHits.length) {
       if (this.state.dmgNumbers) {
         this.broadcast(MSG.dmgHits, { hits: this.sim.dmgHits } satisfies DmgHitsMsg);

@@ -395,7 +395,17 @@ export interface EliteMobDef {
   attackCooldown?: number;
   /** Множитель скорости движения (1 — обычный). */
   speedMul?: number;
+  /** Шанс 0..1 увернуться от удара героя (меч/стрела/магия) — «MISS» над мобом. */
+  dodge?: number;
+  /**
+   * Сопротивление одиночкам: чем меньше разных героев било моба за последние
+   * `SOLO_RESIST.windowSec`, тем меньше урона проходит (см. SOLO_RESIST.mult).
+   */
+  soloResist?: boolean;
 }
+
+/** Колосс: сколько урона проходит при 1 / 2 / 3+ разных атакующих за окно. */
+export const SOLO_RESIST = { windowSec: 10, mult: [0.45, 0.75, 1] as const };
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
@@ -473,9 +483,12 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // физ. броня толстой шляпки режет меч/стрелы.
   mushColossus: {
     model: "monMushColossus", name: "Грибной колосс", level: 33, kind: "slime",
-    hp: 2600, dmgMul: 10, xp: 60000, scaleMul: 3.6, tint: null,
-    physArmor: 0.25, magicVulnMul: 1.3,
-    sporeCaster: true, meleeReach: 3.2, attackCooldown: 2.2, speedMul: 0.75,
+    // Размер ×1.5 по просьбе (3.6 → 5.4, ≈5 м) — и руки длиннее (3.2 → 4.6).
+    // soloResist: одному герою он почти не по зубам (−55% урона), вдвоём −25%,
+    // втроём и больше — полный урон: зона для групп.
+    hp: 2600, dmgMul: 10, xp: 60000, scaleMul: 5.4, tint: null,
+    physArmor: 0.25, magicVulnMul: 1.3, soloResist: true,
+    sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
   },
   // Костяной призрак: мелкий (≈1 м), быстрый летун. Хрупкий, но телепортируется
   // за спину героя и пьёт жизнь ударом (вампиризм 60%) — если его не добить
@@ -484,7 +497,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
     hp: 820, dmgMul: 5, xp: 24000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
-    critVulnMul: 1.4,
+    critVulnMul: 1.4, dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },
 };
 
