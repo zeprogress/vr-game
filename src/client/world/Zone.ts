@@ -17,7 +17,7 @@ import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
 import { treesGlowTick } from "./nature";
 import { BotLights } from "./BotLights";
-import { Fireflies, relightMaterials } from "./Fireflies";
+import { Fireflies, installLightRefresh, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { HUB } from "#shared/hub";
 import { buildHubBlockout } from "./hub/HubBlockout";
@@ -102,6 +102,7 @@ export interface ZoneQuality {
 }
 
 export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
+  installLightRefresh(scene); // факелы не зависят от того, есть ли трава (см. там)
   // Часы мира идут сами; LOADOUT.world.hour — их текущее показание,
   // и его же можно перевести вручную в панели настройки.
   let hour = LOADOUT.world.hour;

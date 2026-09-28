@@ -75,7 +75,7 @@ export const FIREFLY = {
    * только вблизи игрока — было 5, теперь 3 (LIGHT_BUDGET меньше для ВСЕХ
    * материалов игры, не только спектатора).
    */
-  lamps: 3,
+  lamps: 0, // убраны по просьбе (2026-09-29): светлячки — только светящиеся точки + пятно на земле
   /** Докуда добивает свет одной стайки, м. */
   lightRange: 11,
   lightIntensity: 1.7,
@@ -150,6 +150,37 @@ function rng(seed: number): () => number {
  * Обратно морозить не надо: Babylon делает это сам, сразу после пересбора.
  * Зовётся дважды за сутки, на рассвете и на закате.
  */
+/**
+ * Каждый кадр обновить буферы ПОДВИЖНЫХ точечных огней (факелы ботов,
+ * светлячки, огни заклинаний). Babylon пишет позицию/яркость огня в его
+ * буфер только когда какой-то материал перепривязывает огни в этом кадре;
+ * земля/деревья заморожены и этого не делают — обновляла одна трава. С
+ * `?off=grass` (так стоял спектатор в OBS на Mac) огни навсегда оставались
+ * там, где созданы (под землёй), и факелы «пропадали». Теперь не зависим
+ * от того, какие материалы есть в сцене.
+ */
+export function installLightRefresh(scene: Scene): void {
+  const tmp = new Color3();
+  scene.onBeforeRenderObservable.add(() => {
+    const rid = scene.getRenderId();
+    for (const l of scene.lights) {
+      if (!(l instanceof PointLight) || !l.isEnabled()) continue;
+      const li = l as unknown as {
+        _uniformBuffer?: { useUbo: boolean; updateColor4(n: string, c: Color3, a: number, s: string): void; update(): void };
+        _renderId?: number;
+      };
+      const ub = li._uniformBuffer;
+      if (!ub || !ub.useUbo || li._renderId === rid) continue;
+      l.transferToEffect(null as never, "");
+      l.diffuse.scaleToRef(l.intensity, tmp);
+      ub.updateColor4("vLightDiffuse", tmp, l.range, "");
+      l.specular.scaleToRef(l.intensity, tmp);
+      ub.updateColor4("vLightSpecular", tmp, l.radius, "");
+      ub.update();
+    }
+  });
+}
+
 /** Диагностика: кто и сколько раз звал relightMaterials (читает VrPerfHud). */
 export const RELIGHT_STATS = { count: 0, last: "" };
 
@@ -374,7 +405,7 @@ export class Fireflies {
     // всё равно горели все FIREFLY.lamps штук — самая дорогая часть системы
     // (настоящий PointLight на шейдер земли/травы/деревьев) не облегчалась
     // между "средне" и "максимум". Теперь считаем от той же density.
-    const lampCount = groups === 0 ? 0 : Math.max(1, Math.round(FIREFLY.lamps * density));
+    const lampCount = groups === 0 || FIREFLY.lamps <= 0 ? 0 : Math.max(1, Math.round(FIREFLY.lamps * density));
     for (let i = 0; i < lampCount; i++) {
       const lamp = new PointLight(`fireflyLamp${i}`, Vector3.Zero(), scene);
       lamp.diffuse = new Color3(...FIREFLY.lightColor);

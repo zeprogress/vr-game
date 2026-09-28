@@ -493,10 +493,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp: изначально втрое выше Чародея руин (ruinMage.xp=2100), затем ещё ×2
     // по просьбе — и за целого голема (xp), и за раскол (splitXp); осколки — как были.
-    // Опыт ×2 по просьбе (2026-09-28): 12600→25200, раскол 6000→12000, осколок 1500→3000.
-    hp: 950, dmgMul: 6, xp: 25200, scaleMul: 2.55, tint: null,
+    // Опыт ×2 (2026-09-28): 12600→25200→ещё ×2 (2026-09-29): 50400; раскол 24000, осколок 6000.
+    hp: 950, dmgMul: 6, xp: 50400, scaleMul: 2.55, tint: null,
     splitAt: 0.3, splitCount: 3, splitScaleMul: 0.5, splitHpFrac: 0.45,
-    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 12000, splitChildXp: 3000,
+    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 24000, splitChildXp: 6000,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
     splitReviveSec: 45,
@@ -516,7 +516,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Регенерация ~31 HP/с (и в бою): одиночка с малым уроном его еле
     // пересиливает, группа — не замечает. HP ×2 по просьбе (2600 → 5200);
     // доля регена 1.2% → 0.6%, чтобы в HP/с она осталась прежней.
-    hp: 5200, dmgMul: 10, xp: 120000, scaleMul: 5.4, tint: null,
+    hp: 5200, dmgMul: 10, xp: 480000, scaleMul: 5.4, tint: null,
     physArmor: 0.25, magicVulnMul: 1.3, regen: 0.006,
     legendaryChance: 0.015, // 1.5% (у голема общий 0.2%) — убивать его дольше
     sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
@@ -530,14 +530,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // колоссом и призраком по опыту и дропу.
   skySquid: {
     model: "monSkySquid", name: "Небесный спрут", level: 33, kind: "slime",
-    hp: 3200, dmgMul: 7, xp: 80000, scaleMul: 2.2, tint: null, flying: true,
+    hp: 3200, dmgMul: 7, xp: 320000, scaleMul: 2.2, tint: null, flying: true,
     puller: true, meleeReach: 3, attackCooldown: 1.6, speedMul: 1.1,
     magicVulnMul: 1.2, legendaryChance: 0.01,
   },
   // Опыт ×2 (24000→48000), HP ×2 (820→1640), 2026-09-28.
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 1640, dmgMul: 5, xp: 48000, scaleMul: 1.1, tint: null, flying: true,
+    hp: 1640, dmgMul: 5, xp: 192000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
@@ -649,7 +649,7 @@ export const MOB_CAMPS: {
   // боты 30+ выбирают один случайно (или по !camp <моб>).
   { x: 110, z: -110, type: "mushColossus", count: 5, spread: 34, ring: 0.85 }, // ур.33, юго-восток
   { x: -115, z: 110, type: "boneWraith", count: 12, spread: 26 }, // ур.33, северо-запад
-  { x: 130, z: 40, type: "skySquid", count: 10, spread: 20 }, // ур.33, восток
+  { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
