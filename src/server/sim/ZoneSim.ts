@@ -2215,7 +2215,8 @@ export class ZoneSim {
       const elite = m.eliteName !== "";
       const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
       const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul;
-      const legendaryChance = elite ? DROP_CHANCE.eliteLegendary : 0;
+      const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
+      const legendaryChance = elite ? (own ?? DROP_CHANCE.eliteLegendary) : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"

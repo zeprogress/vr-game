@@ -423,6 +423,8 @@ export interface EliteMobDef {
   dodge?: number;
   /** Регенерация: доля максимального HP в секунду (и в бою тоже). */
   regen?: number;
+  /** Свой шанс уникального оружия за убийство (вместо общего DROP_CHANCE.eliteLegendary). */
+  legendaryChance?: number;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -509,6 +511,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // доля регена 1.2% → 0.6%, чтобы в HP/с она осталась прежней.
     hp: 5200, dmgMul: 10, xp: 120000, scaleMul: 5.4, tint: null,
     physArmor: 0.25, magicVulnMul: 1.3, regen: 0.006,
+    legendaryChance: 0.015, // 1.5% (у голема общий 0.2%) — убивать его дольше
     sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
   },
   // Костяной призрак: мелкий (≈1 м), быстрый летун. Хрупкий, но телепортируется
@@ -519,7 +522,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
     hp: 1640, dmgMul: 5, xp: 48000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
-    critVulnMul: 1.4, dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
+    critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
+    dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },
 };
 
