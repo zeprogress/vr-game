@@ -76,6 +76,7 @@ import {
   PLAYER,
   PLAYER_HP,
   PROGRESSION,
+  RESPEC_FISH,
   PVP,
   ELITE_MOBS,
   EVENT,
@@ -313,6 +314,10 @@ interface Bot {
   /** Центр «зоны» бота — куда его высадили по уровню (поляна или лагерь). */
   homeX: number;
   homeZ: number;
+  /** Лагерь по выбору зрителя (!camp) — ключ ELITE_MOBS; null — автовыбор. */
+  campPref: string | null;
+  /** Закреплённый случайный выбор среди равных по уровню лагерей (0..1). */
+  campRand: number;
   /** !рыбачить: идёт к озеру и рыбачит вместо обычного боя, пока не отменят. */
   fishing: boolean;
   /** 0 — ещё не забросил (у берега); иначе this.elapsed, когда клюнет. */
@@ -369,14 +374,24 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
  * мобов НЕ ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До
  * 5 ур. — обычная поляна у спавна.
  */
-function botHome(level: number): { x: number; z: number } {
+function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
   if (level < 5 || CAMPS_BY_POWER.length === 0) {
     return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
   }
-  let pick = CAMPS_BY_POWER[0];
-  for (const c of CAMPS_BY_POWER) {
-    if (ELITE_MOBS[c.type].level <= level + 3) pick = c;
+  // Лагерь, выбранный зрителем (!camp) — если по уровню уже доступен.
+  if (pref) {
+    const pc = MOB_CAMPS.find((c) => c.type === pref);
+    if (pc && ELITE_MOBS[pc.type].level <= level + 3) return { x: pc.x, z: pc.z };
   }
+  // Иначе — самый сильный доступный уровень лагерей; если таких несколько
+  // (три лагеря ур.33) — свой случайный у каждого бота (rand закреплён за ботом).
+  let top = -1;
+  for (const c of CAMPS_BY_POWER) {
+    const lv = ELITE_MOBS[c.type].level;
+    if (lv <= level + 3) top = Math.max(top, lv);
+  }
+  const cands = CAMPS_BY_POWER.filter((c) => ELITE_MOBS[c.type].level === top);
+  const pick = cands.length ? cands[Math.min(cands.length - 1, Math.floor(rand * cands.length))] : CAMPS_BY_POWER[0];
   return { x: pick.x, z: pick.z };
 }
 
@@ -401,6 +416,17 @@ const INV_COMMANDS = new Set([
   "!инв", "!инвентарь", "!инвент", "!бэг", "!сумка", "!рюкзак", "!оружие", "!склад",
   "!вещи", "!шмот", "!шмотки", "!предметы", "!снаряжение", "!лут",
 ]);
+
+/** Все опции элитного моба из описания ELITE_MOBS — для мобов событий (как у лагерей в ZoneSim). */
+function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<ZoneSim["spawnEventMob"]>[3]> {
+  return {
+    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp,
+    flying: d.flying, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicVulnMul: d.magicVulnMul,
+    critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
+    sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach,
+    attackCooldown: d.attackCooldown, speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller,
+  };
+}
 
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
@@ -2243,19 +2269,19 @@ export class ZoneRoom extends Room<ZoneState> {
       const dmgMul = Math.min(eh.dmgCap, 1 + (heroes - 1) * eh.dmgPerHero);
       this.eventPhaseAt = Date.now() + eh.hardTimeout * 1000;
       this.huntBossId = this.sim.spawnEventMob(e.kind, spot.x, spot.z, {
-        model: e.model, name: e.name, level: e.level,
+        ...eliteMobOpts(e),
         hp: Math.round(e.hp * hpMul),
         dmgMul: e.dmgMul * dmgMul,
-        scaleMul: e.scaleMul, xp: e.xp,
-        rangedArmor: e.rangedArmor,
       });
       this.huntDmgBase = MOB.attackDamage * e.dmgMul * dmgMul;
       const t0 = Date.now();
       this.huntAddAt = t0 + eh.addGap * 1000;
       this.huntNovaAt = t0 + eh.novaGap * 1000;
       this.huntLobAt = t0 + eh.lobGap * 1000;
+      this.huntBreathAt = t0 + eh.breathGap * 1000;
       this.huntNovaFireAt = 0;
       this.huntLobFireAt = 0;
+      this.huntBreathFireAt = 0;
       this.state.eventLeft = 1;
       this.broadcast(MSG.worldEvent, {
         phase: "start", name: "Охота", x: spot.x, z: spot.z,
@@ -2315,7 +2341,7 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (n > 0) {
         this.reply(
-          (hunt ? "Грибной владыка повержен! " : "Нашествие отражено! ") +
+          (hunt ? `${ELITE_MOBS[EVENT.eliteHunt.eliteKey].name} повержен! ` : "Нашествие отражено! ") +
             `${n} героям — благословение на ${minutes} мин: ` +
             `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона.`,
         );
@@ -2338,72 +2364,127 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Уникальные атаки Грибного владыки: «Спорова волна» (АОЕ вокруг него после
-   * телеграф-кольца) и «Спора-залп» (отметка под героем, затем удар по площади).
-   * Урон наносим напрямую через hurtPlayer, визуал — переиспользуем FX ботов.
+   * Умения Огнекрылого дракона (охота на элиту): «Удар крыльями» (волна вокруг
+   * с оглушением и отбросом), «Огненное дыхание» (конус к герою) и «Огненный
+   * дождь» (метки под несколькими героями). Все с телеграфом — от них можно
+   * уйти; в ярости идут чаще (enrageGapMul). Урон — через hurtPlayer.
    */
   private tickHuntAttacks(
     now: number,
-    boss: { x: number; y: number; z: number },
+    boss: { x: number; y: number; z: number; raging: boolean },
     eh: typeof EVENT.eliteHunt,
   ): void {
-    const hurtAround = (cx: number, cz: number, r: number, dmg: number, proj: boolean): void => {
+    const gapK = boss.raging ? eh.enrageGapMul : 1;
+    const hurtAround = (
+      cx: number,
+      cz: number,
+      r: number,
+      dmg: number,
+      proj: boolean,
+      extra: { stunSec?: number; knockback?: number } = {},
+    ): void => {
       this.state.players.forEach((p, id) => {
         if (p.dead) return;
         if (Math.hypot(p.head.x - cx, p.head.z - cz) > r) return;
         this.hurtPlayer({
-          target: id, dmg, fromX: cx, fromZ: cz, projectile: proj, byMob: this.huntBossId,
+          target: id, dmg, fromX: cx, fromZ: cz, projectile: proj, byMob: this.huntBossId, ...extra,
         });
       });
     };
+    const heroesNear = (r: number): { x: number; z: number }[] => {
+      const out: { x: number; z: number }[] = [];
+      this.state.players.forEach((p) => {
+        if (!p.dead && Math.hypot(p.head.x - boss.x, p.head.z - boss.z) < r) out.push({ x: p.head.x, z: p.head.z });
+      });
+      return out;
+    };
+    const gy = terrainHeight(boss.x, boss.z);
 
-    // --- Спорова волна ---
-    if (now >= this.huntNovaAt) {
-      this.huntNovaAt = now + eh.novaGap * 1000;
+    // --- Удар крыльями: купол-телеграф, потом волна с оглушением и отбросом ---
+    if (now >= this.huntNovaAt && this.huntBreathFireAt === 0) {
+      this.huntNovaAt = now + eh.novaGap * gapK * 1000;
       this.huntNovaFireAt = now + eh.novaDelay * 1000;
       this.broadcast(MSG.act, {
-        k: "stunBash", id: this.huntBossId,
-        x: boss.x, y: boss.y, z: boss.z, d: eh.novaDelay,
+        k: "stunBash", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.novaDelay,
       } satisfies ActRelay);
     }
     if (this.huntNovaFireAt > 0 && now >= this.huntNovaFireAt) {
       this.huntNovaFireAt = 0;
-      hurtAround(boss.x, boss.z, eh.novaRadius, this.huntDmgBase * eh.novaDmgMul, false);
+      hurtAround(boss.x, boss.z, eh.novaRadius, this.huntDmgBase * eh.novaDmgMul, false, {
+        stunSec: eh.novaStun,
+        knockback: eh.novaKnock,
+      });
+      this.broadcast(MSG.act, { k: "stunHit", id: this.huntBossId, x: boss.x, y: gy, z: boss.z } satisfies ActRelay);
+    }
+
+    // --- Огненное дыхание: конус к случайному герою рядом ---
+    if (now >= this.huntBreathAt && this.huntNovaFireAt === 0) {
+      const near = heroesNear(eh.breathLen + 4);
+      if (near.length > 0) {
+        const t = near[(Math.random() * near.length) | 0];
+        const dl = Math.hypot(t.x - boss.x, t.z - boss.z) || 1;
+        this.huntBreathDx = (t.x - boss.x) / dl;
+        this.huntBreathDz = (t.z - boss.z) / dl;
+        this.huntBreathAt = now + eh.breathGap * gapK * 1000;
+        this.huntBreathFireAt = now + eh.breathDelay * 1000;
+        this.broadcast(MSG.act, {
+          k: "breathMark", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.breathDelay,
+          x2: boss.x + this.huntBreathDx * eh.breathLen, z2: boss.z + this.huntBreathDz * eh.breathLen,
+        } satisfies ActRelay);
+      } else {
+        this.huntBreathAt = now + 1500;
+      }
+    }
+    if (this.huntBreathFireAt > 0 && now >= this.huntBreathFireAt) {
+      this.huntBreathFireAt = 0;
+      const cosHalf = Math.cos(eh.breathHalf);
+      this.state.players.forEach((p, id) => {
+        if (p.dead) return;
+        const vx = p.head.x - boss.x;
+        const vz = p.head.z - boss.z;
+        const d = Math.hypot(vx, vz);
+        if (d > eh.breathLen || d < 0.01) return;
+        if ((vx * this.huntBreathDx + vz * this.huntBreathDz) / d < cosHalf) return;
+        this.hurtPlayer({
+          target: id, dmg: this.huntDmgBase * eh.breathDmgMul, fromX: boss.x, fromZ: boss.z,
+          projectile: true, byMob: this.huntBossId,
+        });
+      });
       this.broadcast(MSG.act, {
-        k: "stunHit", id: this.huntBossId, x: boss.x, y: boss.y, z: boss.z,
+        k: "breathHit", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: 0.6,
+        x2: boss.x + this.huntBreathDx * eh.breathLen, z2: boss.z + this.huntBreathDz * eh.breathLen,
       } satisfies ActRelay);
     }
 
-    // --- Спора-залп по герою ---
+    // --- Огненный дождь: метки под несколькими героями ---
     if (now >= this.huntLobAt) {
-      // цель — случайный живой герой в разумной близости
-      const near: { x: number; z: number }[] = [];
-      this.state.players.forEach((p) => {
-        if (!p.dead && Math.hypot(p.head.x - boss.x, p.head.z - boss.z) < 26) {
-          near.push({ x: p.head.x, z: p.head.z });
-        }
-      });
+      const near = heroesNear(28);
       if (near.length > 0) {
-        const t = near[(Math.random() * near.length) | 0];
-        this.huntLobX = t.x;
-        this.huntLobZ = t.z;
-        this.huntLobAt = now + eh.lobGap * 1000;
+        for (let i = near.length - 1; i > 0; i--) {
+          const j = (Math.random() * (i + 1)) | 0;
+          [near[i], near[j]] = [near[j], near[i]];
+        }
+        this.huntLobs = near.slice(0, eh.lobTargets);
+        this.huntLobAt = now + eh.lobGap * gapK * 1000;
         this.huntLobFireAt = now + eh.lobDelay * 1000;
-        this.broadcast(MSG.act, {
-          k: "arrowRain", id: this.huntBossId,
-          x: t.x, y: terrainHeight(t.x, t.z) + PLAYER.eyeHeight, z: t.z,
-        } satisfies ActRelay);
+        for (const t of this.huntLobs) {
+          this.broadcast(MSG.act, {
+            k: "arrowRain", id: this.huntBossId,
+            x: t.x, y: terrainHeight(t.x, t.z) + PLAYER.eyeHeight, z: t.z, d: eh.lobDelay,
+          } satisfies ActRelay);
+        }
       } else {
         this.huntLobAt = now + 2000; // некого бить — ждём
       }
     }
     if (this.huntLobFireAt > 0 && now >= this.huntLobFireAt) {
       this.huntLobFireAt = 0;
-      const y = terrainHeight(this.huntLobX, this.huntLobZ) + 0.5;
-      hurtAround(this.huntLobX, this.huntLobZ, eh.lobRadius, this.huntDmgBase * eh.lobDmgMul, true);
-      this.broadcast(MSG.act, {
-        k: "stunHit", id: this.huntBossId, x: this.huntLobX, y, z: this.huntLobZ,
-      } satisfies ActRelay);
+      for (const t of this.huntLobs) {
+        const y = terrainHeight(t.x, t.z) + 0.5;
+        hurtAround(t.x, t.z, eh.lobRadius, this.huntDmgBase * eh.lobDmgMul, true);
+        this.broadcast(MSG.act, { k: "stunHit", id: this.huntBossId, x: t.x, y, z: t.z } satisfies ActRelay);
+      }
+      this.huntLobs = [];
     }
   }
 
@@ -2458,16 +2539,13 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         // Периодический призыв миньонов — «разберись с мелочью».
         if (now >= this.huntAddAt) {
-          this.huntAddAt = now + eh.addGap * 1000;
+          this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
           const adef = ELITE_MOBS[eh.addType];
           for (let i = 0; i < eh.addCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const r = 2 + Math.random() * 3;
-            this.sim.spawnEventMob(adef.kind, boss.x + Math.cos(a) * r, boss.z + Math.sin(a) * r, {
-              model: adef.model, name: adef.name, level: adef.level, hp: adef.hp,
-              dmgMul: adef.dmgMul, scaleMul: adef.scaleMul, xp: adef.xp,
-              flying: adef.flying, rangedArmor: adef.rangedArmor,
-            });
+            // Со ВСЕМИ механиками вида (рывок, вампиризм, уворот…), не голые цифры.
+            this.sim.spawnEventMob(adef.kind, boss.x + Math.cos(a) * r, boss.z + Math.sin(a) * r, eliteMobOpts(adef));
           }
         }
         this.tickHuntAttacks(now, boss, eh);
@@ -2772,6 +2850,50 @@ export class ZoneRoom extends Room<ZoneState> {
     this.broadcastLeaderboard(); // новый результат виден у спектатора сразу, не ждём след. триггера
   }
 
+  /**
+   * `!camp [моб]` — в каком лагере качается герой: по имени моба («колосс»,
+   * «призрак», «спрут», «голем»…), «авто» — снова сам. Без аргумента — список.
+   */
+  private setCamp(nick: string, norm: string, arg: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    const lvl = bot.state.level;
+    const open = [...new Set(CAMPS_BY_POWER.map((c) => c.type))].filter((t) => ELITE_MOBS[t].level <= lvl + 3);
+    const a = arg.trim().toLowerCase();
+    const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name : "авто";
+    if (!a) {
+      const list = open.map((t) => `${ELITE_MOBS[t].name} (${ELITE_MOBS[t].level})`).join(", ");
+      this.reply(`@${nick} сейчас: ${cur}. Доступно: ${list || "пока только поляна"} — !camp <моб> или !camp авто`);
+      return;
+    }
+    const token = bot.rt.token ?? `nick:${norm}`;
+    if (["авто", "auto", "сам", "случайно", "random"].includes(a)) {
+      bot.campPref = null;
+      store.put(token, { campPref: undefined });
+      this.reply(`@${nick} лагерь — на выбор героя.`);
+      return;
+    }
+    const type = (Object.keys(ELITE_MOBS) as string[]).find((t) => {
+      const name = ELITE_MOBS[t].name.toLowerCase();
+      return t.toLowerCase() === a || name.includes(a) || name.split(/\s+/).some((w) => w.startsWith(a));
+    });
+    if (!type || !MOB_CAMPS.some((c) => c.type === type)) {
+      this.reply(`@${nick} не нашёл такой лагерь. Список: !camp`);
+      return;
+    }
+    const def = ELITE_MOBS[type];
+    if (def.level > lvl + 3) {
+      this.reply(`@${nick} ${def.name} (${def.level} ур.) пока не по силам — нужен ${def.level - 3}+ уровень.`);
+      return;
+    }
+    bot.campPref = type;
+    store.put(token, { campPref: type });
+    this.reply(`@${nick} герой идёт качаться: ${def.name}.`);
+  }
+
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
     if (!bot) {
@@ -2932,6 +3054,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, null);
     } else if (cmd === "!come") {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
+    } else if (cmd === "!camp" || cmd === "!кемп" || cmd === "!лагерь" || cmd === "!camps") {
+      this.setCamp(nick, norm, parts.slice(1).join(" "));
     } else if (cmd === "!fish" || cmd === "!рыбачить" || cmd === "!рыбалка") {
       this.setFishing(nick, norm);
     } else if (cmd === "!train" || cmd === "!качаться" || cmd === "!качайся" || cmd === "!grind") {
@@ -3125,6 +3249,10 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "respec") {
+      const r = this.respecNick(norm);
+      return { ok: r.ok, text: r.ok ? "Атрибуты сброшены" : r.text };
+    }
     if (act === "stat") {
       if (!isStatName(id)) return { ok: false, text: "Нет такого атрибута." };
       const name = ZoneRoom.statName(id);
@@ -3487,37 +3615,63 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private respecBot(norm: string): void {
     const bot = this.bots.get(norm);
-    if (!bot) {
-      if (this.hintOk(norm)) this.reply(`@${norm} героя нет в мире — сначала !play.`);
+    if (!bot && !store.get(`nick:${norm}`)) {
+      if (this.hintOk(norm)) this.reply(`@${norm} у тебя ещё нет героя — сначала !play.`);
       return;
     }
-    const p = bot.state;
-    const base = PROGRESSION.startStat;
-    const back = p.str - base + (p.agi - base) + (p.int - base);
-    if (back <= 0) {
+    const nick = bot?.nick ?? norm;
+    // Без кулдауна отказы (нет рыбы/нечего сбрасывать) флудили бы — делим его со !stats.
+    const r = this.respecNick(norm);
+    if (!r.ok && bot) {
       const now = Date.now();
       if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
       bot.statsAt = now;
-      this.reply(`@${bot.nick} очки атрибутов ещё не вложены — сбрасывать нечего.`);
-      return;
     }
-    const prog = readProgress(p);
-    prog.str = prog.agi = prog.int = base;
-    prog.unspent += back;
-    writeProgress(p, prog);
+    this.reply(`@${nick} ${r.text}`);
+  }
 
-    // Потолки HP/маны пересчитываем от новых (базовых) атрибутов.
-    p.maxHp = maxHpFor(p.level, p.str);
-    p.hp = Math.min(p.hp, p.maxHp);
-    p.maxMana = maxManaFor(p.level, p.int);
-    p.mana = Math.min(p.mana, p.maxMana);
-
-    // Оружие в руках теперь НЕ трогаем — раньше сброс атрибутов до нейтральных
-    // автоматически переключал класс оружия (botWeaponFor) и ронял на землю
-    // всё, что было надето не-мечом, включая честно подобранные аффиксы.
-    // Игрок сам решает, что держать в руках — respec это менять не должен.
-    this.persistBot(bot);
-    this.reply(`@${bot.nick} очки атрибутов сброшены · свободных очков ${p.unspent} → !str !dex !int`);
+  /**
+   * Сброс вложенных очков атрибутов за RESPEC_FISH рыбы (чат !respec и кнопка
+   * в веб-инвентаре). Герой в мире — живое состояние; иначе правим сейв.
+   */
+  private respecNick(norm: string): { ok: boolean; text: string } {
+    const base = PROGRESSION.startStat;
+    const t = this.findWeaponsTarget(norm);
+    if (t) {
+      const p = t.p;
+      const back = p.str - base + (p.agi - base) + (p.int - base);
+      if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
+      const bag = readBag(p);
+      const have = bagCount(bag, "fish");
+      if (!takeFromBag(bag, "fish", RESPEC_FISH)) {
+        return { ok: false, text: `сброс атрибутов стоит ${RESPEC_FISH} рыбы, у тебя ${have} — !рыбачить.` };
+      }
+      writeBag(p, bag);
+      const prog = readProgress(p);
+      prog.str = prog.agi = prog.int = base;
+      prog.unspent += back;
+      writeProgress(p, prog);
+      // Потолки HP/маны — от новых (базовых) атрибутов. Оружие не трогаем:
+      // что держать в руках, решает игрок, а не сброс атрибутов.
+      p.maxHp = maxHpFor(p.level, p.str);
+      p.hp = Math.min(p.hp, p.maxHp);
+      p.maxMana = maxManaFor(p.level, p.int);
+      p.mana = Math.min(p.mana, p.maxMana);
+      this.persistNick(norm);
+      return { ok: true, text: `очки атрибутов сброшены за ${RESPEC_FISH} рыбы · свободных очков ${p.unspent} → !str !dex !int` };
+    }
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "героя нет — напиши !play." };
+    const back = rec.str - base + (rec.agi - base) + (rec.int - base);
+    if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
+    const bag = restoreBag(rec.bag);
+    const have = bagCount(bag, "fish");
+    if (!takeFromBag(bag, "fish", RESPEC_FISH)) {
+      return { ok: false, text: `сброс атрибутов стоит ${RESPEC_FISH} рыбы, у тебя ${have}.` };
+    }
+    store.put(token, { bag, str: base, agi: base, int: base, unspent: rec.unspent + back });
+    return { ok: true, text: `очки атрибутов сброшены за ${RESPEC_FISH} рыбы · свободных очков ${rec.unspent + back}` };
   }
 
   /** Обычная реплика в чате раз в BOT.tipIntervalSec — см. maybeSayTip(). */
@@ -3551,7 +3705,7 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
-        "!respec — вернуть все очки атрибутов в запас · " +
+        `!respec — вернуть все очки атрибутов (${RESPEC_FISH} рыбы) · ` +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
@@ -3560,7 +3714,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
-        "!equip <номер> — надеть конкретное · " +
+        "!equip <номер> — надеть конкретное · !camp <моб> — где качаться · " +
         "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
@@ -3648,7 +3802,9 @@ export class ZoneRoom extends Room<ZoneState> {
       p.int = rec.int;
     }
     // Расселение по уровню: слабых — на поляну, прокачанных — к сильным лагерям.
-    const home = botHome(p.level);
+    const campPref = typeof rec?.campPref === "string" && ELITE_MOBS[rec.campPref] ? rec.campPref : null;
+    const campRand = Math.random();
+    const home = botHome(p.level, campPref, campRand);
     const sp = botSpawnAt(home);
     p.head.x = sp.x;
     p.head.z = sp.z;
@@ -3785,6 +3941,8 @@ export class ZoneRoom extends Room<ZoneState> {
       hurtByMobAt: 0,
       homeX: home.x,
       homeZ: home.z,
+      campPref,
+      campRand,
       fishing: false,
       fishBiteAt: 0,
     });
@@ -3985,7 +4143,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // деплоя — у уже прокачанных ботов дом иначе не пересчитать). Дёшево —
     // сверяем каждый тик, двигаем только при реальной смене.
     {
-      const home = botHome(p.level);
+      const home = botHome(p.level, bot.campPref, bot.campRand);
       if (home.x !== bot.homeX || home.z !== bot.homeZ) {
         bot.homeX = home.x;
         bot.homeZ = home.z;
@@ -5192,7 +5350,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (m.fx.length === 0) continue;
       for (const f of m.fx) {
         this.broadcast(MSG.act, {
-          k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d,
+          k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2,
         } satisfies ActRelay);
       }
       m.fx.length = 0;
@@ -5586,7 +5744,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // по уровню, может смениться лагерь — уровень мог вырасти).
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
     if (bot) {
-      const home = botHome(p.level);
+      const home = botHome(p.level, bot.campPref, bot.campRand);
       bot.homeX = home.x;
       bot.homeZ = home.z;
     }
@@ -5642,8 +5800,11 @@ export class ZoneRoom extends Room<ZoneState> {
   private huntNovaFireAt = 0;
   private huntLobAt = 0;
   private huntLobFireAt = 0;
-  private huntLobX = 0;
-  private huntLobZ = 0;
+  private huntLobs: { x: number; z: number }[] = [];
+  private huntBreathAt = 0;
+  private huntBreathFireAt = 0;
+  private huntBreathDx = 0;
+  private huntBreathDz = 1;
   /** Форс типа из `!goevent <тип>`: 0 — случайно, 1 — нашествие, 2 — охота, 3 — башня. */
   private forcedEventKind: 0 | 1 | 2 | 3 = 0;
   /** Башня: очередь id героев (см. `!event` при activeEventKind===3) и её жизненный цикл. */

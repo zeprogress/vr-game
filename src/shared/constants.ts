@@ -425,6 +425,11 @@ export interface EliteMobDef {
   regen?: number;
   /** Свой шанс уникального оружия за убийство (вместо общего DROP_CHANCE.eliteLegendary). */
   legendaryChance?: number;
+  /**
+   * Небесный спрут: хват щупальцами — телеграф-щупальце к герою на дистанции,
+   * потом рывок героя к спруту + оглушение + удар (см. `PULL`).
+   */
+  puller?: boolean;
 }
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
@@ -453,12 +458,14 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monOrc", name: "Орк-стрелок", level: 15, kind: "spitter",
     hp: 210, dmgMul: 1.7, xp: 130, scaleMul: 2.8, tint: null, rangedArmor: 0.3,
   },
-  // Цель события «Охота на элиту»: одиночный именной босс, редкая добыча.
-  // Модель — Грибной владыка (Quaternius Ultimate Monsters, ранее не был в игре).
+  // Цель события «Охота на элиту» (до 2026-09-28 — Грибной владыка 25 ур.,
+  // был нестрашным): Огнекрылый дракон 35 ур., вдвое крупнее владыки (≈4.2 м),
+  // парит. Умения — EVENT.eliteHunt (дыхание конусом, удар крыльями,
+  // огненный дождь по трём героям, призыв призраков, ярость).
   worldElite: {
-    model: "monMushKing", name: "Грибной владыка", level: 25, kind: "slime",
-    hp: 12600, dmgMul: 3.4, xp: 640, scaleMul: 2.2, tint: [0.55, 0.35, 0.75],
-    rangedArmor: 0.4,
+    model: "monFireDragon", name: "Огнекрылый дракон", level: 35, kind: "slime",
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 4.4, tint: null, flying: true,
+    rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику
@@ -517,6 +524,16 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Костяной призрак: мелкий (≈1 м), быстрый летун. Хрупкий, но телепортируется
   // за спину героя и пьёт жизнь ударом (вампиризм 60%) — если его не добить
   // быстро, отхиливается. Лучник его не «закайтит»: дистанция не спасает.
+  // Небесный спрут: средний (≈2 м), парит. Хватает щупальцами тех, кто
+  // держится поодаль (лучник/маг), и подтягивает вплотную с оглушением —
+  // дистанция его не спасает. Средняя живучесть, бьёт ощутимо. Между
+  // колоссом и призраком по опыту и дропу.
+  skySquid: {
+    model: "monSkySquid", name: "Небесный спрут", level: 33, kind: "slime",
+    hp: 3200, dmgMul: 7, xp: 80000, scaleMul: 2.2, tint: null, flying: true,
+    puller: true, meleeReach: 3, attackCooldown: 1.6, speedMul: 1.1,
+    magicVulnMul: 1.2, legendaryChance: 0.01,
+  },
   // Опыт ×2 (24000→48000), HP ×2 (820→1640), 2026-09-28.
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
@@ -540,6 +557,24 @@ export const SPORE = {
   /** Урон за тик (тик каждые `tick` с) — не блокируется и не уворачивается. */
   tickDmg: 16,
   tick: 0.5,
+};
+
+/** Цена сброса очков атрибутов (!respec и кнопка в веб-инвентаре), рыб. */
+export const RESPEC_FISH = 100;
+
+/** Небесный спрут: хват щупальцами (см. EliteMobDef.puller). */
+export const PULL = {
+  /** С какой дистанции тянет (ближе minDist — просто бьёт). */
+  minDist: 5,
+  maxDist: 17,
+  cooldown: 8,
+  /** Телеграф: щупальце тянется к цели, с. */
+  windup: 0.9,
+  /** Куда притягивает — на столько метров от спрута. */
+  landAt: 2.2,
+  /** Удар в конце хвата — во столько раз сильнее обычного. */
+  strikeMul: 1.3,
+  stunSec: 1.0,
 };
 
 /** Костяной призрак: рывок за спину (см. EliteMobDef.blinker). */
@@ -600,9 +635,11 @@ export const MOB_CAMPS: {
   { x: 54, z: -63, type: "orcGunner", count: 5, spread: 8 }, // ближе к центру (заявка), ур.15
   { x: 0, z: 12, type: "ruinMage", count: 4, spread: 7 }, // почти в центре (заявка), ур.20
   { x: -13, z: -80, type: "golem", count: 24, spread: 32 }, // ур.26 (было 15/28 — просили больше)
-  // Топ-зона ур.33 на восточном краю (было пусто; ближайший лагерь — орки, 73 м).
-  { x: 104, z: -118, type: "mushColossus", count: 4, spread: 14 }, // ур.33
-  { x: 124, z: -96, type: "boneWraith", count: 6, spread: 12 }, // ур.33
+  // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
+  // боты 30+ выбирают один случайно (или по !camp <моб>).
+  { x: 110, z: -110, type: "mushColossus", count: 8, spread: 22 }, // ур.33, юго-восток
+  { x: -115, z: 110, type: "boneWraith", count: 12, spread: 26 }, // ур.33, северо-запад
+  { x: 130, z: 40, type: "skySquid", count: 10, spread: 20 }, // ур.33, восток
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
@@ -1236,26 +1273,37 @@ export const EVENT = {
     hpCap: 4,
     dmgPerHero: 0.1,
     dmgCap: 1.6,
-    /** Владыка периодически призывает миньонов (спорами) — фаза-«разберись с мелочью». */
-    addGap: 15,
-    addType: "spikyBlob",
-    addCount: 3,
-    /** Ниже этой доли HP — впадает в ярость: быстрее двигается и бьёт сильнее. */
+    /** Дракон призывает Костяных призраков (со всеми их механиками). */
+    addGap: 20,
+    addType: "boneWraith",
+    addCount: 2,
+    /** Ниже этой доли HP — ярость: умения чаще (enrageGapMul), удары сильнее. */
     enrageAt: 0.45,
-    enrageDmgMul: 1.7,
+    enrageDmgMul: 1.5,
+    enrageGapMul: 0.65,
     /**
-     * Уникальные атаки владыки (урон — доли от `MOB.attackDamage`·dmgMul):
-     * «Спорова волна» — телеграф-кольцо, затем АОЕ вокруг владыки;
-     * «Спора-залп» — отмечает точку под героем, через задержку туда бьёт.
+     * Умения дракона (урон — доли от `MOB.attackDamage`·dmgMul ≈ 72):
+     * «Удар крыльями» — телеграф-купол, волна вокруг + оглушение и отброс;
+     * «Огненное дыхание» — конус к герою (телеграф на земле), потом огонь;
+     * «Огненный дождь» — метки под несколькими героями, через задержку удар.
      */
-    novaGap: 7,
-    novaDelay: 1.05,
-    novaRadius: 6,
-    novaDmgMul: 2.4,
-    lobGap: 4.5,
-    lobDelay: 1.4,
-    lobRadius: 4.2,
-    lobDmgMul: 1.8,
+    novaGap: 9,
+    novaDelay: 1.2,
+    novaRadius: 9,
+    novaDmgMul: 2.6,
+    novaStun: 1.2,
+    novaKnock: 12,
+    breathGap: 6,
+    breathDelay: 1.1,
+    breathLen: 15,
+    /** Полуугол конуса, рад (~26°). */
+    breathHalf: 0.45,
+    breathDmgMul: 3.2,
+    lobGap: 7,
+    lobDelay: 1.5,
+    lobRadius: 4,
+    lobDmgMul: 2.2,
+    lobTargets: 3,
   },
   /**
    * Охотничья башня: пока это событие активно, идёт очередь на попытки — герои

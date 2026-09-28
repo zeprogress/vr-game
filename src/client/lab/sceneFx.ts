@@ -12,5 +12,9 @@ export function build(ctx: LabCtx): void {
   ui.button("💀 Призрак: растворяется", () => fx.wraithPuff(0, 0, 0, BLINK.fade, false));
   ui.button("💀 Призрак: возникает", () => fx.wraithPuff(0, 0, 0, 0.6, true));
   ui.button("🔴 Оглушающий удар", () => fx.stunBash(0, 0, 0, BOT.stunRadius, BOT.stunCastTime));
+  ui.button("🐉 Дыхание дракона: предупреждение", () => fx.breathCone(0, 0, 0, 0, 15, 1.1, false));
+  ui.button("🐉 Дыхание дракона: огонь", () => fx.breathCone(0, 0, 0, 0, 15, 0.6, true));
+  ui.button("🦑 Щупальце спрута: предупреждение", () => fx.tentacle(0, 1.6, 0, 6, 1.1, 8, 0.9, false));
+  ui.button("🦑 Щупальце спрута: хват", () => fx.tentacle(0, 1.6, 0, 6, 1.1, 8, 0.35, true));
   ui.button("🏹 Град стрел", () => fx.arrowRain(0, 0, 0, BOT.rainRadius, BOT.rainCastTime, SKILL.arrowRain.duration));
 }

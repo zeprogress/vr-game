@@ -29,6 +29,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   bestTowerFloor?: number;
   /** Лучшее время ПОЛНОГО прохождения башни, с (меньше — выше в рейтинге). */
   bestTowerTimeSec?: number;
+  /** Лагерь, выбранный зрителем командой !camp (ключ ELITE_MOBS); нет — автовыбор. */
+  campPref?: string;
   /** Когда герой впервые прошёл башню целиком (мс с эпохи) — порядок «каким по счёту». */
   towerClearedAt?: number;
   /** Ресурс с мини-боссов башни (название/применение — TBD). */

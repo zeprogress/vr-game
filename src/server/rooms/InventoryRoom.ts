@@ -18,6 +18,7 @@ import {
 import { heroStatRows } from "#shared/heroStats";
 import { store } from "../store";
 import { invHub } from "../invHub";
+import { RESPEC_FISH } from "#shared/constants";
 
 interface InventoryJoinOptions {
   /** Ник из адреса `/inv?ник`. */
@@ -89,8 +90,10 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" ? m.act : null;
-      const id = typeof m?.id === "string" ? m.id : "";
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec"
+          ? m.act
+          : null;
+      const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
       const idx = typeof m?.idx === "number" && Number.isInteger(m.idx) ? m.idx : 0;
       if (!act || !id) return;
       // Не чаще 4 раз в секунду — заточку не закликать скриптом быстрее анимации.
@@ -204,5 +207,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     misc,
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    fish: bagCount(rec.bag ?? [], "fish"),
+    respecCost: RESPEC_FISH,
   };
 }

@@ -63,6 +63,8 @@ export const MODELS = {
   monYeti: "/models/monsters/Yeti.gltf",
   monMushColossus: "/models/monsters/Mushnub_Evolved.gltf",
   monBoneWraith: "/models/monsters/Ghost_Skull.gltf",
+  monSkySquid: "/models/monsters/Squidle.gltf",
+  monFireDragon: "/models/monsters/Dragon.gltf",
   monBirb: "/models/monsters/Birb.gltf",
   monBlueDemon: "/models/monsters/BlueDemon.gltf",
   monBunny: "/models/monsters/Bunny.gltf",

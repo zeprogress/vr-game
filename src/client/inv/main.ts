@@ -62,6 +62,8 @@ interface InvMsg {
   misc?: InvMisc[];
   scrapHave?: number;
   attrs?: { unspent: number; str: number; agi: number; int: number };
+  fish?: number;
+  respecCost?: number;
   error?: string;
 }
 
@@ -86,11 +88,22 @@ function attrsHtml(msg: InvMsg): string {
       `<div class="ahint">${r.hint}</div></div>${btns}</div>`
     );
   }).join("");
+  // Сброс атрибутов — за рыбу; второе нажатие подтверждает (как «На лом»).
+  const cost = msg.respecCost ?? 100;
+  const fish = msg.fish ?? 0;
+  const invested = a.str + a.agi + a.int - 3 > 0;
+  const armed = armedScrap === "respec";
+  const respec = msg.authed
+    ? `<div class="respec"><button class="act respecbtn${armed ? " armed" : ""}" data-act="respec" data-id="respec" ${
+        fish < cost || !invested ? "disabled" : ""
+      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost} 🐟</button>` +
+      `<span class="fishhave">у тебя ${fish} 🐟${!invested ? " · сбрасывать нечего" : fish < cost ? " · не хватает" : ""}</span></div>`
+    : "";
   const head =
     a.unspent > 0
       ? `Свободных очков: <b class="afree">${a.unspent}</b>${msg.authed ? "" : " — войди кодом, чтобы вложить"}`
       : "Свободных очков нет — их дают за новый уровень";
-  return `<div class="attrs"><div class="ahead">${head}</div>${rows}</div>`;
+  return `<div class="attrs"><div class="ahead">${head}</div>${rows}${respec}</div>`;
 }
 
 const titleEl = document.getElementById("title")!;
@@ -247,6 +260,16 @@ listEl.addEventListener("click", (e) => {
   if (!room) return;
   const act = b.dataset.act;
   const id = b.dataset.id ?? "";
+  if (act === "respec") {
+    if (armedScrap !== "respec") {
+      armedScrap = "respec";
+      if (last) renderInv(last);
+      return;
+    }
+    armedScrap = "";
+    room.send("act", { act: "respec", id: "respec" });
+    return;
+  }
   if (act === "scrap" && armedScrap !== id) {
     // Лом — навсегда: первый клик только взводит кнопку.
     armedScrap = id;

@@ -4,7 +4,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Effect } from "@babylonjs/core/Materials/effect";
@@ -17,6 +17,8 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
 const SPORE_C = new Color3(0.45, 0.95, 0.2); // ядовито-зелёный (Грибной колосс)
 const WRAITH_C = new Color3(0.6, 0.25, 1); // фиолетовая дымка (Костяной призрак)
+const SQUID_C = new Color3(1, 0.75, 0.15); // золотистое щупальце (Небесный спрут)
+const BREATH_C = new Color3(1, 0.35, 0.05); // огонь дракона
 
 const POOL = 3;
 
@@ -172,6 +174,22 @@ interface Puff {
   grow: boolean;
 }
 
+/** Щупальце спрута: линия от спрута к цели; телеграф — пульсирует, хват — вспышка и гаснет. */
+interface Tentacle {
+  rope: Mesh;
+  age: number;
+  life: number;
+  snap: boolean;
+}
+
+/** Конус дыхания дракона: веер на земле (+Z вперёд, длина 1 — тянем scaling). */
+interface Breath {
+  fan: Mesh;
+  age: number;
+  life: number;
+  hit: boolean;
+}
+
 interface Stun {
   dome: Mesh;
   age: number;
@@ -193,8 +211,43 @@ export class SkillFx {
   private readonly puffs: Puff[] = [];
   private nextSpore = 0;
   private nextPuff = 0;
+  private readonly ropes: Tentacle[] = [];
+  private nextRope = 0;
+  private readonly breaths: Breath[] = [];
+  private nextBreath = 0;
 
   constructor(scene: Scene) {
+    for (let i = 0; i < 4; i++) {
+      // Веер-сектор ±0.45 рад (как EVENT.eliteHunt.breathHalf), радиус 1.
+      const pos = [0, 0, 0];
+      const idx: number[] = [];
+      const N = 14;
+      for (let k = 0; k <= N; k++) {
+        const a = -0.45 + (0.9 * k) / N;
+        pos.push(Math.sin(a), 0, Math.cos(a));
+        if (k > 0) idx.push(0, k, k + 1);
+      }
+      const fan = new Mesh(`dragonBreath${i}`, scene);
+      const vd = new VertexData();
+      vd.positions = pos;
+      vd.indices = idx;
+      vd.applyToMesh(fan);
+      fan.material = addMat(scene, `dragonBreathMat${i}`, BREATH_C);
+      fan.isPickable = false;
+      fan.setEnabled(false);
+      this.breaths.push({ fan, age: 1, life: 1, hit: false });
+    }
+    for (let i = 0; i < 6; i++) {
+      // Цилиндр длиной 1 вдоль +Z с основанием в начале координат — тянем scaling.z.
+      const rope = MeshBuilder.CreateCylinder(`squidRope${i}`, { height: 1, diameterTop: 0.12, diameterBottom: 0.3, tessellation: 8 }, scene);
+      rope.bakeTransformIntoVertices(
+        Matrix.RotationX(Math.PI / 2).multiply(Matrix.Translation(0, 0, 0.5)),
+      );
+      rope.material = addMat(scene, `squidRopeMat${i}`, SQUID_C);
+      rope.isPickable = false;
+      rope.setEnabled(false);
+      this.ropes.push({ rope, age: 1, life: 1, snap: false });
+    }
     for (let i = 0; i < 8; i++) {
       const ring = MeshBuilder.CreateTorus(`sporeRing${i}`, { diameter: 2, thickness: 0.08, tessellation: 40 }, scene);
       ring.material = addMat(scene, `sporeRingMat${i}`, SPORE_C);
@@ -296,7 +349,69 @@ export class SkillFx {
     pf.ball.setEnabled(true);
   }
 
+  /** Конус дыхания от (x,z) к (x2,z2): hit=false — телеграф на `life` с, true — вспышка огня. */
+  breathCone(x: number, y: number, z: number, x2: number, z2: number, life: number, hit: boolean): void {
+    const b = this.breaths[this.nextBreath];
+    this.nextBreath = (this.nextBreath + 1) % this.breaths.length;
+    b.age = 0;
+    b.life = Math.max(0.2, life);
+    b.hit = hit;
+    const len = Math.max(1, Math.hypot(x2 - x, z2 - z));
+    b.fan.position.set(x, y + 0.15, z);
+    b.fan.rotation.y = Math.atan2(x2 - x, z2 - z);
+    b.fan.scaling.set(len, 1, len);
+    b.fan.setEnabled(true);
+  }
+
+  /** Щупальце от (fx,fy,fz) к (tx,ty,tz): snap=false — телеграф `life` с, true — хват (вспышка). */
+  tentacle(fx: number, fy: number, fz: number, tx: number, ty: number, tz: number, life: number, snap: boolean): void {
+    const t = this.ropes[this.nextRope];
+    this.nextRope = (this.nextRope + 1) % this.ropes.length;
+    t.age = 0;
+    t.life = Math.max(0.15, life);
+    t.snap = snap;
+    const from = new Vector3(fx, fy, fz);
+    const to = new Vector3(tx, ty, tz);
+    const len = Vector3.Distance(from, to);
+    t.rope.position.copyFrom(from);
+    t.rope.lookAt(to);
+    t.rope.scaling.set(1, 1, Math.max(0.1, len));
+    t.rope.setEnabled(true);
+  }
+
   update(dt: number): void {
+    for (const b of this.breaths) {
+      if (b.age >= b.life) continue;
+      b.age += dt;
+      if (b.age >= b.life) {
+        b.fan.setEnabled(false);
+        continue;
+      }
+      const k = b.age / b.life;
+      const m = b.fan.material as StandardMaterial;
+      // Телеграф: пульсирует и наливается; удар — яркая вспышка и гаснет.
+      m.alpha = b.hit ? 0.95 * (1 - k) : (0.18 + 0.4 * k) * (0.6 + 0.4 * Math.abs(Math.sin(b.age * 16)));
+    }
+    for (const t of this.ropes) {
+      if (t.age >= t.life) continue;
+      t.age += dt;
+      if (t.age >= t.life) {
+        t.rope.setEnabled(false);
+        continue;
+      }
+      const k = t.age / t.life;
+      const m = t.rope.material as StandardMaterial;
+      if (t.snap) {
+        // Хват: толстая вспышка, быстро гаснет.
+        t.rope.scaling.x = t.rope.scaling.y = 1.8 * (1 - k) + 0.4;
+        m.alpha = 0.9 * (1 - k);
+      } else {
+        // Телеграф: щупальце пульсирует и «наливается» к моменту хвата.
+        const pulse = 0.5 + 0.5 * Math.sin(t.age * 22);
+        t.rope.scaling.x = t.rope.scaling.y = 0.6 + 0.6 * k;
+        m.alpha = (0.25 + 0.45 * k) * (0.6 + 0.4 * pulse);
+      }
+    }
     for (const sp of this.spores) {
       if (sp.age >= sp.life) continue;
       sp.age += dt;
@@ -374,6 +489,14 @@ export class SkillFx {
   }
 
   dispose(): void {
+    for (const b of this.breaths) {
+      b.fan.material?.dispose();
+      b.fan.dispose();
+    }
+    for (const t of this.ropes) {
+      t.rope.material?.dispose();
+      t.rope.dispose();
+    }
     for (const sp of this.spores) {
       for (const m of [sp.ring, sp.cloud, sp.puffs]) {
         m.material?.dispose();

@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, SKILL, SPORE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -409,7 +409,7 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id, d, mobId) => this.playRemoteAct(k, x, y, z, id, d, mobId);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2);
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
       const wantVoice = this.voiceOn;
@@ -1391,6 +1391,8 @@ export class Spectator {
     id: string,
     d?: number,
     mobId?: string,
+    x2in?: number,
+    z2in?: number,
   ): void {
     const at = { x, y, z };
     switch (k) {
@@ -1419,6 +1421,20 @@ export class Spectator {
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
         break;
+      case "breathMark":
+      case "breathHit":
+        this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");
+        if (k === "breathHit") this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
+        break;
+      case "pullMark":
+      case "pullHit": {
+        // Спрут парит (~1.6 м над землёй) — щупальце от него к груди героя.
+        const x2 = x2in ?? x;
+        const z2 = z2in ?? z;
+        this.skillFx.tentacle(x2, y + 1.6, z2, x, y + 1.1, z, k === "pullMark" ? (d ?? PULL.windup) : 0.35, k === "pullHit");
+        if (k === "pullHit") this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
+        break;
+      }
       case "sporeMark":
         this.skillFx.sporeZone(x, y, z, SPORE.radius, d ?? SPORE.windup, SPORE.duration);
         setTimeout(() => this.sfx.at({ x, y, z }, () => this.sfx.groundBash()), (d ?? SPORE.windup) * 1000);

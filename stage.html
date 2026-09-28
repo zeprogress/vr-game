@@ -85,7 +85,7 @@
       const textEl = document.getElementById("text");
       document.getElementById("send").onclick = () => { send(textEl.value.trim()); textEl.value = ""; };
       textEl.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("send").click(); });
-      for (const c of ["!play", "!stop", "!stats", "!inv", "!рыбачить", "!качаться", "!raid", "!goevent", "!cheer", "!поджечь"]) {
+      for (const c of ["!play", "!stop", "!stats", "!inv", "!рыбачить", "!качаться", "!raid", "!goevent", "!cheer", "!camp", "!camp спрут", "!поджечь"]) {
         const b = document.createElement("button");
         b.textContent = c;
         b.onclick = () => send(c);

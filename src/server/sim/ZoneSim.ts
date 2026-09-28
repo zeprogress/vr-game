@@ -9,6 +9,7 @@ import {
   MAGE_NOVA,
   SPORE,
   BLINK,
+  PULL,
   BOSS_ADAPT,
   eliteXpAt,
   MAGE_SPELL,
@@ -166,9 +167,12 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit";
   x: number;
   z: number;
+  /** Второй конец (хват щупальцами: от спрута x2/z2 к цели x/z). */
+  x2?: number;
+  z2?: number;
   /** Длительность (телеграф и т.п.), с. */
   d?: number;
 }
@@ -350,6 +354,10 @@ class Mob {
   readonly atkCooldown: number;
   readonly dodge: number;
   readonly regen: number;
+  readonly puller: boolean;
+  private pullCd = 3;
+  private pullWindupT = 0;
+  private pullTarget: string | null = null;
   /** Адаптация Багрового (BOSS_ADAPT): под какой уровень сейчас настроен и множитель его урона. */
   adaptLevel: number = BOSS_ADAPT.baseLevel;
   adaptDmgMul = 1;
@@ -423,6 +431,7 @@ class Mob {
       attackCooldown?: number;
       dodge?: number;
       regen?: number;
+      puller?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -473,6 +482,7 @@ class Mob {
     this.atkCooldown = opts.attackCooldown ?? MOB.attackCooldown;
     this.dodge = opts.dodge ?? 0;
     this.regen = opts.regen ?? 0;
+    this.puller = opts.puller ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -779,8 +789,55 @@ class Mob {
         this.fx.push({ k: "blinkOut", x: this.x, z: this.z, d: BLINK.fade });
       }
     }
-    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает).
-    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0;
+    // Небесный спрут: щупальце тянется к дальнему герою, потом рывок к себе.
+    if (this.puller) {
+      if (this.pullCd > 0) this.pullCd -= dt;
+      if (this.pullWindupT > 0) {
+        this.pullWindupT -= dt;
+        if (this.pullWindupT <= 0) {
+          const t = players.find((p) => p.sessionId === this.pullTarget) ?? null;
+          this.pullTarget = null;
+          if (t) {
+            const d = Math.hypot(t.x - this.x, t.z - this.z);
+            this.attackSeq = (this.attackSeq + 1) & 0xffff;
+            this.fx.push({ k: "pullHit", x: t.x, z: t.z, x2: this.x, z2: this.z });
+            // Отрицательное отбрасывание = притяжение к источнику: у ботов
+            // сервер сдвигает на |k|·0.35 м (см. hurtPlayer), игрок — импульсом.
+            hits.push({
+              target: t.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * PULL.strikeMul,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+              byMob: this.id,
+              stunSec: PULL.stunSec,
+              knockback: -Math.max(0, d - PULL.landAt) / 0.35,
+            });
+            this.attackCd = this.atkCooldown;
+          }
+        }
+      } else if (chasing && np && !busy && this.pullCd <= 0) {
+        // Цель — самый ДАЛЬНИЙ герой в полосе хвата (ближнего и так бьёт).
+        let far: SimPlayer | null = null;
+        let fd = 0;
+        for (const p of players) {
+          const d = Math.hypot(p.x - this.x, p.z - this.z);
+          if (d > PULL.minDist && d < PULL.maxDist && d > fd) {
+            fd = d;
+            far = p;
+          }
+        }
+        if (far) {
+          this.pullWindupT = PULL.windup;
+          this.pullTarget = far.sessionId;
+          this.pullCd = PULL.cooldown * (0.85 + Math.random() * 0.3);
+          this.fx.push({ k: "pullMark", x: far.x, z: far.z, x2: this.x, z2: this.z, d: PULL.windup });
+        }
+      }
+    }
+
+    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет).
+    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1497,6 +1554,7 @@ export class ZoneSim {
           speedMul: def.speedMul,
           dodge: def.dodge,
           regen: def.regen,
+          puller: def.puller,
         });
         this.mobs.set(m.id, m);
       }

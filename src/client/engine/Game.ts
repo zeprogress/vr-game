@@ -88,7 +88,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BLINK, BOSS, BOT, PLAYER, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, BOT, PLAYER, PULL, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -2007,7 +2007,7 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id, d, mobId) => this.playRemoteAct(k, x, y, z, id, d, mobId);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2);
     net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
@@ -2143,6 +2143,8 @@ export class Game {
     id: string,
     d?: number,
     mobId?: string,
+    x2in?: number,
+    z2in?: number,
   ): void {
     const at = { x, y, z };
     switch (k) {
@@ -2173,6 +2175,20 @@ export class Game {
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at(at, () => this.sfx.levelUp());
         break;
+      case "breathMark":
+      case "breathHit":
+        this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");
+        if (k === "breathHit") this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
+        break;
+      case "pullMark":
+      case "pullHit": {
+        // Спрут парит (~1.6 м над землёй) — щупальце от него к груди героя.
+        const x2 = x2in ?? x;
+        const z2 = z2in ?? z;
+        this.skillFx.tentacle(x2, y + 1.6, z2, x, y + 1.1, z, k === "pullMark" ? (d ?? PULL.windup) : 0.35, k === "pullHit");
+        if (k === "pullHit") this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
+        break;
+      }
       case "sporeMark":
         this.skillFx.sporeZone(x, y, z, SPORE.radius, d ?? SPORE.windup, SPORE.duration);
         setTimeout(() => this.sfx.at({ x, y, z }, () => this.sfx.groundBash()), (d ?? SPORE.windup) * 1000);

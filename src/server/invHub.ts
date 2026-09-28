@@ -20,7 +20,7 @@ const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/invSessions
 const CODE_TTL_MS = 10 * 60_000;
 const SESSION_TTL_MS = 60 * 24 * 3600_000;
 
-export type InvActKind = "equip" | "scrap" | "enchant" | "stat";
+export type InvActKind = "equip" | "scrap" | "enchant" | "stat" | "respec";
 
 export interface InvActResult {
   ok: boolean;
