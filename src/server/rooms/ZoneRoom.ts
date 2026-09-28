@@ -127,7 +127,6 @@ import {
   ITEMS,
   plainWeaponInstance,
   scrapValue,
-  BIG_STACK,
   takeOne,
   tierRu,
   weaponAffix,
@@ -727,14 +726,16 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
     if (count <= 0) continue;
     bag[i] = { item: s.item, count: Math.min(count, ITEMS[s.item].stack) };
   }
-  // Лом/рыба раньше делились на кучки по 999/99 — сливаем в первую стопку.
+  // Стопки одного предмета (лом/рыба/зелья) сливаем в первую — одна кучка
+  // на предмет; сверх предела стопки остаток ниже срежет лимит банок.
   for (let i = 0; i < bag.length; i++) {
     const s = bag[i];
-    if (!s.item || ITEMS[s.item].stack < BIG_STACK) continue;
+    if (!s.item || ITEMS[s.item].stack <= 1) continue;
+    const cap = ITEMS[s.item].stack;
     for (let j = i + 1; j < bag.length; j++) {
       const t = bag[j];
       if (t.item !== s.item) continue;
-      const put = Math.min(t.count, BIG_STACK - s.count);
+      const put = Math.min(t.count, cap - s.count);
       s.count += put;
       t.count -= put;
       if (t.count <= 0) bag[j] = { item: null, count: 0 };
@@ -833,6 +834,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    // Чистка сумок во всех сейвах: одна стопка на предмет, зелий не больше 99.
+    for (const rec of store.entries()) {
+      if (!Array.isArray(rec.bag)) continue;
+      const bag = restoreBag(rec.bag);
+      if (JSON.stringify(bag) !== JSON.stringify(rec.bag)) store.put(rec.token, { bag });
+    }
     invHub.setZone({
       sync: (norm) => this.persistNick(norm),
       act: (norm, act, id) => this.invAct(norm, act, id),
