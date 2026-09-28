@@ -1,9 +1,28 @@
-import { AFFIX, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { AFFIX, BOT, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
-import { armorFrac, attackSpeedFor, dodgeChance, moveSpeedFor } from "./progression";
+import { armorFrac, attackSpeedFor, dodgeChance, meleeSpeedFor, moveSpeedFor } from "./progression";
 import { magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
+
+/**
+ * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
+ * что и бой: меч — приглушённый темп ближнего боя (meleeSpeedFor, потолок
+ * ×1.45) от паузы BOT.attackCooldown; лук — полный темп (attackSpeedFor) от
+ * BOT.bowCooldown; посох — это ОГНЕШАРЫ, не удары рукой: полный темп от
+ * BOT.staffCooldown. `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
+ */
+export function attacksPerSec(cls: string, level: number, agi: number, affixBonus = 0): number {
+  const mul = 1 + affixBonus;
+  if (cls === "bow") return (attackSpeedFor(level, agi) * mul) / BOT.bowCooldown;
+  if (cls === "staff") return (attackSpeedFor(level, agi) * mul) / BOT.staffCooldown;
+  return (meleeSpeedFor(level, agi) * mul) / BOT.attackCooldown;
+}
+
+/** Подпись темпа под класс: маг колдует, лучник стреляет, мечник бьёт. */
+export function attackRateLabel(cls: string): string {
+  return cls === "bow" ? "Выстрелов в сек" : cls === "staff" ? "Заклинаний в сек" : "Ударов в сек";
+}
 
 /** Одна строка характеристик в таблице (спектатор / чат / веб-инвентарь). */
 export interface HeroStatRow {
@@ -74,15 +93,14 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     });
   }
 
+  // Раньше тут был множитель «×2.65» по ОБЩЕЙ формуле — мечникам он завышал
+  // темп почти вдвое (в бою у меча приглушённый meleeSpeedFor), а магам
+  // вовсе не показывал рост от уровня. Теперь — реальные атаки в секунду.
   const atkSpeedBonus = affixNum2("скорость атаки") / 100;
-  if (cls === "staff") {
-    if (atkSpeedBonus > 0) {
-      rows.push({ label: "Скорость атаки", value: `×${(1 + atkSpeedBonus).toFixed(2)}` });
-    }
-  } else {
-    const spd = attackSpeedFor(p.level, p.agi) * (1 + atkSpeedBonus);
-    rows.push({ label: "Скорость атаки", value: `×${spd.toFixed(2)}` });
-  }
+  rows.push({
+    label: attackRateLabel(cls),
+    value: attacksPerSec(cls, p.level, p.agi, atkSpeedBonus).toFixed(2),
+  });
 
   rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с` });
 

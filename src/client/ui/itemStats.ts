@@ -1,6 +1,7 @@
 import { weaponDef, type WeaponClass, type WeaponDef, type WeaponTier } from "#shared/items";
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
+import { attacksPerSec } from "#shared/heroStats";
 import { fireboltDamage } from "#shared/magic";
 import { AFFIX, BOW, COMBAT, SHIELD } from "#shared/constants";
 
@@ -41,8 +42,9 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   if (w.cls === "sword") {
     const dmg = weaponDamage("sword", s.level, s.str, d.mult, s.agi);
     out.push(["Урон", n1(dmg)]);
-    out.push(["Темп атаки", `×${n1(spd)}`]);
-    out.push(["Урон в секунду", n1(dmg * spd)]);
+    const aps = attacksPerSec("sword", s.level, s.agi);
+    out.push(["Ударов в сек", aps.toFixed(2)]);
+    out.push(["Урон в секунду", n1(dmg * aps)]);
     out.push([
       "По площади",
       `${COMBAT.swordSplashRadius} м · ${Math.round(COMBAT.swordSplashFraction * 100)}%`,
@@ -53,11 +55,12 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Урон стрелы", n1(dmg)]);
     out.push(["Крит", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
+    out.push(["Выстрелов в сек", attacksPerSec("bow", s.level, s.agi).toFixed(2)]);
     out.push(["Растёт от", "ловкости"]);
   } else if (w.cls === "staff") {
-    out.push(["Магия (полный заряд)", n1(fireboltDamage(s.level, s.int, 1))]);
-    out.push(["Удар посохом", n1(weaponDamage("sword", s.level, s.str, d.mult, s.agi))]);
-    out.push(["Растёт от", "интеллекта (магия), силы+ловкости (удар)"]);
+    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s.int, 1))]);
+    out.push(["Заклинаний в сек", attacksPerSec("staff", s.level, s.agi).toFixed(2)]);
+    out.push(["Растёт от", "интеллекта (сила магии), ловкости (темп)"]);
   } else {
     const blocked = d.affix === "guard" ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage;
     const cone = SHIELD.blockCone + (d.affix === "guard" ? AFFIX.guard.coneBonus : 0);
