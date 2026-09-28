@@ -1,9 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
-import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { buildFishRod } from "../entities/RemoteAvatar";
 
 import type { PlayerController } from "../player/PlayerController";
 import type { CombatSystem } from "../combat/CombatSystem";
@@ -51,20 +48,12 @@ export function createFishing(
   // системы держания предметов.
   const showRod = (): void => {
     if (!rod) {
-      rod = MeshBuilder.CreateCylinder(
-        "fishRodLocal",
-        { diameterTop: 0.018, diameterBottom: 0.035, height: 2.3, tessellation: 6 },
-        scene,
-      );
-      const mat = new StandardMaterial("fishRodLocalMat", scene);
-      mat.diffuseColor = new Color3(0.35, 0.24, 0.12);
-      mat.specularColor = new Color3(0.05, 0.05, 0.05);
-      mat.maxSimultaneousLights = 1;
-      rod.material = mat;
-      rod.isPickable = false;
-      rod.parent = combat.getHandAnchor("right");
-      rod.position.set(0.05, -0.05, 0.15);
-      rod.rotation.set(0.9, 0, 0);
+      // Якорь руки игрока: +Y — вдоль предплечья к пальцам, поэтому
+      // рукоять кладём в ладонь и наклоняем хлыст вперёд-вверх.
+      rod = buildFishRod(scene, "fishRodLocal", combat.getHandAnchor("right"), {
+        pos: [0, 0, 0.02],
+        rot: [-0.6, 0, 0],
+      });
     }
     rod.setEnabled(true);
   };
@@ -80,7 +69,7 @@ export function createFishing(
         combat.fishing = false;
         if (edge && isNearShore(player.position.x, player.position.z)) {
           phase = "waiting";
-          timer = 150 + Math.random() * 60; // 2.5-3.5 мин до поклёвки (см. FISH_WAIT_* в ZoneRoom.ts)
+          timer = 60 + Math.random() * 60; // 1-2 мин до поклёвки (см. FISH_WAIT_* в ZoneRoom.ts)
           combat.fishing = true;
           combat.setFishingGearHidden(true);
           showRod();

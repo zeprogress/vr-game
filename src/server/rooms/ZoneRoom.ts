@@ -182,7 +182,7 @@ const { Room } = colyseus;
 /** Сколько HP доливается за новый уровень (как было на клиенте). */
 const LEVEL_UP_HEAL = 10;
 /** Рыбалка: сколько ждать поклёвку — 2.5-3.5 мин (см. MSG.fish, tickBotFishing). */
-const FISH_WAIT_MIN = 150;
+const FISH_WAIT_MIN = 60;
 const FISH_WAIT_SPREAD = 60;
 
 /** Несетевое состояние игрока: защита, темп ударов, таймеры. */
@@ -1173,6 +1173,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (left >= 1) return; // сумка полна
         writeBag(p, bag);
         client.send(MSG.picked, { item: "fish", count: 1 });
+        this.broadcast(MSG.botSay, { id: client.sessionId, text: "Поймал!" } satisfies BotSayMsg);
       }
     });
 
@@ -3690,6 +3691,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (left < 1) {
         writeBag(p, bag);
         this.triggerEmote(bot, "cheer");
+        this.broadcast(MSG.botSay, { id: bot.id, text: "Поймал!" } satisfies BotSayMsg);
       }
       bot.fishBiteAt = 0;
     }

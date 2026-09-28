@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import type { Node } from "@babylonjs/core/node";
 import { mergeRigSkinned } from "../items/flatMerge";
 import { Vector3, Quaternion, Matrix } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -144,6 +145,67 @@ function colorFor(id: string): Color3 {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) & 0xffff;
   return Color3.FromHSV(h % 360, 0.55, 0.85);
+}
+
+/**
+ * Удочка: пробковая рукоять + катушка + тонкий сужающийся хлыст с тёмным
+ * кончиком. Корень — рукоять (её держит кулак), хлыст растёт вверх по её +Y.
+ * Поза хвата — как у посоха (BOT_GEAR.staff), чтобы кулак обхватывал рукоять,
+ * а удилище смотрело вперёд-вверх, а не торчало из запястья.
+ */
+export function buildFishRod(
+  scene: Scene,
+  name: string,
+  parent: Node,
+  pose: { pos: [number, number, number]; rot: [number, number, number] } = {
+    pos: [0, 0.1, -0.05],
+    rot: [1.426, -0.333, -0.1],
+  },
+): Mesh {
+  const mat = (n: string, c: Color3): StandardMaterial => {
+    const m = new StandardMaterial(`${name}_${n}`, scene);
+    m.diffuseColor = c;
+    m.specularColor = new Color3(0.08, 0.08, 0.08);
+    m.maxSimultaneousLights = 1;
+    return m;
+  };
+  const handle = MeshBuilder.CreateCylinder(
+    name,
+    { diameterTop: 0.034, diameterBottom: 0.042, height: 0.42, tessellation: 8 },
+    scene,
+  );
+  handle.material = mat("cork", new Color3(0.62, 0.47, 0.3));
+  const reel = MeshBuilder.CreateCylinder(
+    `${name}_reel`,
+    { diameter: 0.09, height: 0.05, tessellation: 10 },
+    scene,
+  );
+  reel.material = mat("reel", new Color3(0.18, 0.18, 0.2));
+  reel.parent = handle;
+  reel.position.set(0, 0.12, 0.055); // под рукоятью, ось катушки поперёк
+  reel.rotation.z = Math.PI / 2;
+  const shaftLen = 2.2;
+  const shaft = MeshBuilder.CreateCylinder(
+    `${name}_shaft`,
+    { diameterTop: 0.008, diameterBottom: 0.026, height: shaftLen, tessellation: 6 },
+    scene,
+  );
+  shaft.material = mat("blank", new Color3(0.2, 0.28, 0.22));
+  shaft.parent = handle;
+  shaft.position.y = 0.21 + shaftLen / 2;
+  const tip = MeshBuilder.CreateCylinder(
+    `${name}_tip`,
+    { diameterTop: 0.004, diameterBottom: 0.008, height: 0.25, tessellation: 5 },
+    scene,
+  );
+  tip.material = mat("tip", new Color3(0.85, 0.15, 0.1));
+  tip.parent = shaft;
+  tip.position.y = shaftLen / 2 + 0.125;
+  for (const m of [handle, reel, shaft, tip]) m.isPickable = false;
+  handle.parent = parent;
+  handle.position.set(...pose.pos);
+  handle.rotation.set(...pose.rot);
+  return handle;
 }
 
 /**
@@ -561,21 +623,7 @@ export class RemoteAvatar implements Hittable {
     }
     const fist = this.botFistR ?? this.botFistL;
     if (!fist) return; // модель ещё грузится — попробуем на следующий push()
-    const rod = MeshBuilder.CreateCylinder(
-      `fishRod_${this.root.name}`,
-      { diameterTop: 0.018, diameterBottom: 0.035, height: 2.3, tessellation: 6 },
-      this.scene,
-    );
-    const mat = new StandardMaterial(`fishRodMat_${this.root.name}`, this.scene);
-    mat.diffuseColor = new Color3(0.35, 0.24, 0.12);
-    mat.specularColor = new Color3(0.05, 0.05, 0.05);
-    mat.maxSimultaneousLights = 1;
-    rod.material = mat;
-    rod.parent = fist;
-    rod.position.set(0, 0.65, 0);
-    rod.rotation.set(0.3, 0, 0);
-    rod.isPickable = false;
-    this.fishRod = rod;
+    this.fishRod = buildFishRod(this.scene, `fishRod_${this.root.name}`, fist);
   }
 
   /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
