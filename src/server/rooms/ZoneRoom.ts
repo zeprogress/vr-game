@@ -1,5 +1,5 @@
 import colyseus from "colyseus";
-import { invHub } from "../invHub";
+import { invHub, type InvActKind, type InvActResult } from "../invHub";
 import type { Client } from "colyseus";
 
 import {
@@ -114,6 +114,12 @@ import {
 } from "#shared/combat";
 import {
   addToBag,
+  affixPoints,
+  bagCount,
+  takeFromBag,
+  enchantInfo,
+  enchantApply,
+  ENCHANT,
   HEAL_CARRY_MAX,
   affixLabel,
   weaponQuality,
@@ -687,6 +693,32 @@ function applyEquip(
   rt.owned.add(weaponKey(w.cls, w.tier));
 }
 
+/**
+ * Одна попытка заточки аффикса `idx`: лом списывается в любом случае,
+ * шанс/цена/прирост — enchantInfo/ENCHANT в items.ts. Мутирует w и bag.
+ */
+function enchantTry(w: WeaponInstance, idx: number, bag: Slot[]): InvActResult {
+  const info = enchantInfo(w, idx);
+  if (!info) return { ok: false, text: "Нет такого аффикса." };
+  if (info.max) return { ok: false, text: "Этот аффикс уже на максимуме." };
+  if (!takeFromBag(bag, "scrap", info.cost)) {
+    return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
+  }
+  const up = Math.random() < info.chance;
+  const before = info.points;
+  if (up) {
+    const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
+    enchantApply(w, idx, gain);
+  }
+  const label = affixLabel(w.affixes[idx]);
+  const gained = Math.floor(affixPoints(w.affixes[idx], w.cls) + 1e-6) - before;
+  return {
+    ok: true,
+    text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
+    enchant: { id: w.id, idx, up, gain: gained, cost: info.cost, label },
+  };
+}
+
 function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
   if (tier === "base" || !isWeaponClass(cls) || !isWeaponTier(tier)) return;
   if (rt.weapons.some((w) => w.cls === cls && w.tier === tier)) return;
@@ -842,7 +874,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     invHub.setZone({
       sync: (norm) => this.persistNick(norm),
-      act: (norm, act, id) => this.invAct(norm, act, id),
+      act: (norm, act, id, idx) => this.invAct(norm, act, id, idx),
     });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
@@ -3016,8 +3048,29 @@ export class ZoneRoom extends Room<ZoneState> {
    * (как "!equip"/"!scrap"), иначе правим сейв напрямую: при следующем !play
    * герой выйдет уже с этим.
    */
-  private invAct(norm: string, act: "equip" | "scrap", id: string): { ok: boolean; text: string } {
+  private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "enchant") {
+      if (t) {
+        const w = t.rt.weapons.find((x) => x.id === id);
+        if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
+        const bag = readBag(t.p);
+        const r = enchantTry(w, idx, bag);
+        if (r.enchant) {
+          writeBag(t.p, bag);
+          this.persistNick(norm);
+        }
+        return r;
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      const w = rec?.weapons?.find((x) => x.id === id);
+      if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      const bag = restoreBag(rec.bag);
+      const r = enchantTry(w, idx, bag);
+      if (r.enchant) store.put(token, { weapons: rec.weapons, bag });
+      return r;
+    }
     if (t) {
       const w = t.rt.weapons.find((x) => x.id === id);
       if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };

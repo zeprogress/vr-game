@@ -11,6 +11,21 @@ interface InvWeapon {
   quality: number;
   /** Сколько лома даст переработка. */
   scrap: number;
+  ench: EnchRow[];
+}
+
+interface EnchRow {
+  label: string;
+  points: number;
+  max: boolean;
+  chance: number;
+  cost: number;
+}
+
+interface EnchResult {
+  ok: boolean;
+  text: string;
+  enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
 }
 
 interface InvHand {
@@ -19,6 +34,8 @@ interface InvHand {
   tier: "gold" | "legendary";
   affixes: string[];
   quality: number;
+  id: string;
+  ench: EnchRow[];
 }
 
 interface InvMisc {
@@ -43,6 +60,7 @@ interface InvMsg {
   hands?: { left: InvHand | null; right: InvHand | null };
   weapons?: InvWeapon[];
   misc?: InvMisc[];
+  scrapHave?: number;
   error?: string;
 }
 
@@ -99,7 +117,7 @@ function handHtml(label: string, h: InvHand | null): string {
   if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
   const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
   return (
-    `<div class="hand ${h.tier}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}${qualityTag(h.quality, h.affixes.length)}</span>` +
+    `<div class="hand ${h.tier}${h.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(h.id)}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}${qualityTag(h.quality, h.affixes.length)}</span>` +
     `<div class="affixes">${escapeHtml(affixes)}</div></div>`
   );
 }
@@ -170,10 +188,10 @@ function renderInv(msg: InvMsg): void {
                 `${armedScrap === w.id ? "Точно?" : "На лом"} +${w.scrap}</button></div>`
               : "";
             return (
-              `<div class="weapon ${w.tier}">` +
+              `<div class="weapon ${w.tier}${w.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(w.id)}">` +
               `<div class="winfo"><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              `<div class="meta">${TIER_RU[w.tier]}</div>` +
+              `<div class="meta">${TIER_RU[w.tier]}${w.ench.length ? " · ⚒ нажми, чтобы заточить" : ""}</div>` +
               `</div>${btns}</div>`
             );
           })
@@ -186,12 +204,18 @@ function renderInv(msg: InvMsg): void {
       : `<h2 class="section">Прочее</h2>` +
         misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
 
+  if (modalId && !animating) renderModal();
   listEl.innerHTML = `${authHtml}${statsHtml}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 listEl.addEventListener("click", (e) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button.act");
-  if (!b || !room) return;
+  if (!b) {
+    const card = (e.target as HTMLElement).closest<HTMLElement>(".pickable");
+    if (card?.dataset.ench) openModal(card.dataset.ench);
+    return;
+  }
+  if (!room) return;
   const act = b.dataset.act;
   const id = b.dataset.id ?? "";
   if (act === "scrap" && armedScrap !== id) {
@@ -227,6 +251,7 @@ function connect(attempt = 0): void {
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
       r.onMessage("toast", (m: { ok: boolean; text: string }) => toast(m.text, m.ok));
+      r.onMessage("enchant", (m: EnchResult) => onEnchantResult(m));
       r.onMessage("inv", (msg: InvMsg) => {
         if (msg.redirect) {
           location.replace(`/inv?${encodeURIComponent(msg.redirect)}`);
@@ -249,8 +274,176 @@ if (!legacyToken && !nickArg) {
   connect();
   // Лут в игре подбирается без нас — раз в 20 с подтягиваем свежий склад.
   setInterval(() => {
-    if (room && !armedScrap && document.visibilityState === "visible") room.send("refresh");
+    if (room && !armedScrap && !animating && document.visibilityState === "visible") room.send("refresh");
   }, 20_000);
+}
+
+// ---- окно заточки ----
+
+const modalEl = document.getElementById("ench")!;
+let modalId = "";
+let animating = false;
+/** Идёт анимация наковальни; ответ сервера ждёт её конца. */
+let pendingResult: EnchResult | null = null;
+let hammerDone = false;
+
+type Picked = { name: string; tier: string; ench: EnchRow[] };
+function findItem(id: string): Picked | null {
+  if (!last) return null;
+  const w = (last.weapons ?? []).find((x) => x.id === id);
+  if (w) return w;
+  for (const h of [last.hands?.left, last.hands?.right]) if (h && h.id === id) return h;
+  return null;
+}
+
+function openModal(id: string): void {
+  if (!last?.authed) {
+    toast("Сначала подтверди вход кодом в чате", false);
+    return;
+  }
+  modalId = id;
+  renderModal();
+  modalEl.classList.add("open");
+}
+
+function closeModal(): void {
+  if (animating) return;
+  modalId = "";
+  modalEl.classList.remove("open");
+}
+
+function renderModal(): void {
+  const it = findItem(modalId);
+  if (!it) {
+    closeModal();
+    return;
+  }
+  const have = last?.scrapHave ?? 0;
+  const rows = it.ench
+    .map((a, i) => {
+      const pct = Math.round((a.points / 33) * 100);
+      const right = a.max
+        ? `<span class="maxb">MAX</span>`
+        : `<button class="ebtn" data-idx="${i}" ${have < a.cost ? "disabled" : ""}>⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small></button>`;
+      return (
+        `<div class="erow${a.max ? " ismax" : ""}" data-row="${i}">` +
+        `<div class="elabel">${escapeHtml(a.label)}<span class="epts">${a.points}/33</span></div>` +
+        `<div class="ebar"><div class="efill" style="width:${pct}%"></div></div>` +
+        `<div class="eright">${right}</div></div>`
+      );
+    })
+    .join("");
+  modalEl.innerHTML =
+    `<div class="ebox ${it.tier}"><button class="eclose">✕</button>` +
+    `<div class="etitle">⚒ Заточка — <span class="ename">${escapeHtml(it.name)}</span></div>` +
+    `<div class="ehave">Лом: <b>${have}</b></div>` +
+    `<div class="erows">${rows}</div>` +
+    `<div class="eanvil"><div class="ehammer">🔨</div></div>` +
+    `<div class="ebanner"></div>` +
+    `<div class="enote">Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
+}
+
+modalEl.addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  if (t === modalEl || t.closest(".eclose")) {
+    closeModal();
+    return;
+  }
+  const b = t.closest<HTMLButtonElement>(".ebtn");
+  if (!b || b.disabled || animating || !room) return;
+  const idx = Number(b.dataset.idx);
+  animating = true;
+  hammerDone = false;
+  pendingResult = null;
+  modalEl.querySelectorAll<HTMLButtonElement>(".ebtn").forEach((x) => (x.disabled = true));
+  modalEl.querySelector(".ebox")!.classList.add("forging");
+  modalEl.querySelector(`[data-row="${idx}"]`)?.classList.add("target");
+  room.send("act", { act: "enchant", id: modalId, idx });
+  // Три удара молотом — даём напряжению настояться, потом показываем итог.
+  setTimeout(() => {
+    hammerDone = true;
+    if (pendingResult) reveal(pendingResult);
+  }, 1100);
+});
+
+function onEnchantResult(m: EnchResult): void {
+  if (!animating) {
+    toast(m.text, m.ok);
+    return;
+  }
+  pendingResult = m;
+  if (hammerDone) reveal(m);
+}
+
+function burst(host: HTMLElement, kind: "spark" | "smoke", n: number): void {
+  const r = host.getBoundingClientRect();
+  const box = modalEl.querySelector<HTMLElement>(".ebox")!.getBoundingClientRect();
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement("div");
+    d.className = kind;
+    const a = Math.random() * Math.PI * 2;
+    const dist = kind === "spark" ? 50 + Math.random() * 110 : 20 + Math.random() * 40;
+    d.style.left = `${r.left - box.left + r.width * (0.3 + Math.random() * 0.4)}px`;
+    d.style.top = `${r.top - box.top + r.height / 2}px`;
+    d.style.setProperty("--dx", `${Math.cos(a) * dist}px`);
+    d.style.setProperty("--dy", `${Math.sin(a) * dist - (kind === "smoke" ? 40 : 20)}px`);
+    d.style.animationDelay = `${Math.random() * 120}ms`;
+    modalEl.querySelector(".ebox")!.appendChild(d);
+    setTimeout(() => d.remove(), 1400);
+  }
+}
+
+function reveal(m: EnchResult): void {
+  pendingResult = null;
+  const box = modalEl.querySelector<HTMLElement>(".ebox");
+  box?.classList.remove("forging");
+  const e = m.enchant;
+  const banner = modalEl.querySelector<HTMLElement>(".ebanner");
+  if (!box || !e || !banner) {
+    animating = false;
+    toast(m.text, m.ok);
+    if (last) renderInv(last);
+    return;
+  }
+  const row = modalEl.querySelector<HTMLElement>(`[data-row="${e.idx}"]`);
+  if (e.up) {
+    box.classList.add("win");
+    row?.classList.add("win");
+    if (row) {
+      burst(row, "spark", 26);
+      const it = findItem(e.id);
+      const cur = it?.ench[e.idx];
+      const fill = row.querySelector<HTMLElement>(".efill");
+      // last уже новый (сервер шлёт inv раньше итога заточки).
+      if (cur && fill) fill.style.width = `${Math.round((cur.points / 33) * 100)}%`;
+      const lab = row.querySelector<HTMLElement>(".elabel");
+      if (lab) lab.firstChild!.textContent = e.label;
+      const f = document.createElement("div");
+      f.className = "floaty";
+      f.textContent = `+${e.gain} ${e.gain === 1 ? "очко" : "очка"}`;
+      row.appendChild(f);
+    }
+    banner.innerHTML = `✨ УСПЕХ! ${escapeHtml(e.label)} <small>−${e.cost} лома</small>`;
+    banner.className = "ebanner show good";
+  } else {
+    box.classList.add("lose");
+    row?.classList.add("lose");
+    if (row) burst(row, "smoke", 10);
+    banner.innerHTML = `💨 Не вышло… аффикс не изменился <small>−${e.cost} лома</small>`;
+    banner.className = "ebanner show bad";
+  }
+  setTimeout(() => {
+    box.classList.remove("win", "lose");
+    animating = false;
+    // Свежие данные уже пришли по notify — перерисуем окно под новые цены/шансы,
+    // баннер оставляем видимым ещё немного.
+    const keep = banner.outerHTML;
+    if (last) renderInv(last);
+    renderModal();
+    const nb = modalEl.querySelector(".ebanner");
+    if (nb) nb.outerHTML = keep;
+    setTimeout(() => modalEl.querySelector(".ebanner")?.classList.remove("show"), 1800);
+  }, 1500);
 }
 
 // ---- статичный раздел "Механики игры" ----

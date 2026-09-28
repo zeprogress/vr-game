@@ -512,3 +512,73 @@ export function bestWeaponInstance(
   }
   return best;
 }
+
+// ---- Заточка аффиксов за лом (веб-инвентарь) ----
+
+/** Сколько лома этого вида в сумке. */
+export function bagCount(bag: Slot[], id: ItemId): number {
+  return bag.reduce((n, s) => n + (s.item === id ? s.count : 0), 0);
+}
+
+/** Забрать `count` штук из сумки (с конца); false — не хватило, сумку не трогает. */
+export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
+  if (bagCount(bag, id) < count) return false;
+  let left = count;
+  for (let i = bag.length - 1; i >= 0 && left > 0; i--) {
+    const s = bag[i];
+    if (s.item !== id) continue;
+    const cut = Math.min(left, s.count);
+    s.count -= cut;
+    left -= cut;
+    if (s.count <= 0) bag[i] = { item: null, count: 0 };
+  }
+  return true;
+}
+
+function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] {
+  const [lo, base] = AFFIX_RANGES[sub];
+  return [lo, cls === "staff" ? base * STAFF_RANGE_HI_MUL[sub] : base];
+}
+
+/**
+ * Формулы заточки (прикидка от дохода лома, см. обсуждение 2026-09-28:
+ * топ-фармер ~250 лома/день, средний ~120, лёгкий ~20-60).
+ * t — близость ЭТОГО аффикса к максимуму (0..1), Q — общая оценка предмета
+ * (сумма очков / максимум, 0..1).
+ *  шанс  = max(8%, 85% − 77%·t^1.6)            → 85% внизу, ~12% у самого верха
+ *  цена  = (3 + 40·t^2.5) · (1 + 1.2·Q) · (×1.5 у уникального)
+ *  успех = +1..3 очка (из 33) к аффиксу, неудача — лом всё равно сгорает.
+ * Итог (симуляция): золото с 1 аффиксом от середины до максимума ≈ 1500 лома
+ * (~6 дней топ-фарма), уникальное с 3 аффиксами ≈ 6500 (~4 недели топа).
+ */
+export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 3, costTop: 40, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
+
+export interface EnchantInfo {
+  /** Очки аффикса, 1..33 (целые, для показа). */
+  points: number;
+  max: boolean;
+  chance: number;
+  cost: number;
+}
+
+export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null {
+  const a = w.affixes[idx];
+  if (!a) return null;
+  const pts = affixPoints(a, w.cls);
+  const max = pts >= 33 - 1e-6;
+  const t = (pts - 1) / 32;
+  const q = w.affixes.length ? weaponQuality(w) / (33 * w.affixes.length) : 0;
+  const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
+  const cost = Math.round(
+    (ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * (w.tier === "legendary" ? ENCHANT.legendaryMul : 1),
+  );
+  return { points: Math.floor(pts + 1e-6), max, chance, cost };
+}
+
+/** Удачная заточка: +gain очков к аффиксу (не выше максимума диапазона). */
+export function enchantApply(w: WeaponInstance, idx: number, gain: number): void {
+  const a = w.affixes[idx];
+  if (!a) return;
+  const [lo, hi] = affixRange(a.sub, w.cls);
+  a.value = Math.min(hi, a.value + (gain * (hi - lo)) / 32);
+}

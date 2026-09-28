@@ -8,6 +8,8 @@ import {
   isWeaponTier,
   ITEMS,
   scrapValue,
+  bagCount,
+  enchantInfo,
   weaponDef,
   weaponQuality,
   type WeaponInstance,
@@ -26,15 +28,28 @@ interface InventoryJoinOptions {
   viewToken?: string;
 }
 
-type InvAct = { act?: unknown; id?: unknown };
+type InvAct = { act?: unknown; id?: unknown; idx?: unknown };
 
 /** Название+тир+роллы надетого в руке — null, если рука пуста/базовая. */
+/** Для окна заточки: по каждому аффиксу — очки, max, шанс и цена. */
+function enchDetails(w: WeaponInstance): { label: string; points: number; max: boolean; chance: number; cost: number }[] {
+  return w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! }));
+}
+
 function handInfo(
   cls: string,
   tier: string,
   equippedId: string | null | undefined,
   weapons: WeaponInstance[],
-): { cls: string; name: string; tier: WeaponTier; affixes: string[]; quality: number } | null {
+): {
+  cls: string;
+  name: string;
+  tier: WeaponTier;
+  affixes: string[];
+  quality: number;
+  id: string;
+  ench: ReturnType<typeof enchDetails>;
+} | null {
   if (!isWeaponClass(cls) || !isWeaponTier(tier) || tier === "base") return null;
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
   return {
@@ -43,6 +58,8 @@ function handInfo(
     tier,
     affixes: inst ? inst.affixes.map(affixLabel) : [],
     quality: inst ? weaponQuality(inst) : 0,
+    id: inst?.id ?? "",
+    ench: inst ? enchDetails(inst) : [],
   };
 }
 
@@ -55,6 +72,7 @@ function handInfo(
 export class InventoryRoom extends colyseus.Room {
   private readonly who = new Map<string, { norm: string; sid: string }>();
   private unlisten: (() => void) | null = null;
+  private readonly lastAct = new Map<string, number>();
 
   override onCreate(): void {
     this.autoDispose = true;
@@ -70,10 +88,16 @@ export class InventoryRoom extends colyseus.Room {
         client.send("toast", { ok: false, text: "Сначала подтверди вход кодом в чате." });
         return;
       }
-      const act = m?.act === "equip" || m?.act === "scrap" ? m.act : null;
+      const act = m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" ? m.act : null;
       const id = typeof m?.id === "string" ? m.id : "";
+      const idx = typeof m?.idx === "number" && Number.isInteger(m.idx) ? m.idx : 0;
       if (!act || !id) return;
-      client.send("toast", invHub.act(w.norm, act, id));
+      // Не чаще 4 раз в секунду — заточку не закликать скриптом быстрее анимации.
+      const now = Date.now();
+      if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) return;
+      this.lastAct.set(client.sessionId, now);
+      const r = invHub.act(w.norm, act, id, idx);
+      client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
   }
@@ -141,6 +165,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       affixes: w.affixes.map(affixLabel),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
+      ench: enchDetails(w),
     }));
   const misc = (rec.bag ?? [])
     .filter((s) => s.item && s.count > 0)
@@ -176,5 +201,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     },
     weapons,
     misc,
+    scrapHave: bagCount(rec.bag ?? [], "scrap"),
   };
 }

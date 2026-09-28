@@ -20,11 +20,20 @@ const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/invSessions
 const CODE_TTL_MS = 10 * 60_000;
 const SESSION_TTL_MS = 60 * 24 * 3600_000;
 
+export type InvActKind = "equip" | "scrap" | "enchant";
+
+export interface InvActResult {
+  ok: boolean;
+  text: string;
+  /** Для заточки: чем кончилась попытка (страница играет анимацию). */
+  enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
+}
+
 export interface InvZone {
   /** Записать живого героя (если он в мире) в store — перед чтением страницей. */
   sync(norm: string): void;
   /** Выполнить действие; вернуть текст для страницы (ok=false — отказ). */
-  act(norm: string, act: "equip" | "scrap", id: string): { ok: boolean; text: string };
+  act(norm: string, act: InvActKind, id: string, idx: number): InvActResult;
 }
 
 interface Session {
@@ -124,9 +133,9 @@ export const invHub = {
     zone?.sync(norm);
   },
 
-  act(norm: string, act: "equip" | "scrap", id: string): { ok: boolean; text: string } {
+  act(norm: string, act: InvActKind, id: string, idx = 0): InvActResult {
     if (!zone) return { ok: false, text: "Сервер ещё не готов — попробуй через минуту." };
-    const r = zone.act(norm, act, id);
+    const r = zone.act(norm, act, id, idx);
     this.notify(norm);
     return r;
   },
