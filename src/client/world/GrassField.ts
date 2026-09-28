@@ -374,14 +374,16 @@ export async function loadGrassField(
   _lite: boolean,
   /** Множитель дальности (зритель-стрим: 2+, у него запас по GPU и камера свободная). */
   farK = 1,
+  /** Прибавка радиуса травы, м (зритель: +50). */
+  farAdd = 0,
 ): Promise<(dt: number, daylight: number) => void> {
   // Диагностика ?off=grass: тик перерисовки сам включает мешь травы, когда
   // есть инстансы (см. ниже), сводя на нет разовое скрытие из Game.applyOffFlags —
   // поэтому флаг читаем здесь и просто не грузим траву вовсе.
   const offGrass = new URLSearchParams(location.search).get("off")?.split(",").includes("grass") ?? false;
   if (density <= 0 || offGrass) return () => {};
-  const R_GRASS = R_GRASS_BASE * farK;
-  const R_BUSH = R_BUSH_BASE * farK;
+  const R_GRASS = R_GRASS_BASE * farK + farAdd;
+  const R_BUSH = R_BUSH_BASE * farK + farAdd;
   await import("@babylonjs/loaders/glTF/2.0");
   const load = (n: string) => LoadAssetContainerAsync(`/models/nature/${n}.gltf`, scene).catch(() => null);
   const [cShort, cTall, cWispy, cBush] = await Promise.all([
@@ -670,7 +672,7 @@ export async function loadGrassField(
         if (hash(ix, iz, 0) > keep * density) continue;
         // Дальность, до которой этот пучок виден: большинство — только вблизи, часть — средне, единицы — далеко.
         const rd = hash(ix, iz, 30);
-        const dmax = (rd < 0.05 ? R_GRASS_BASE : rd < 0.22 ? 68 : 30) * farK;
+        const dmax = (rd < 0.05 ? R_GRASS_BASE : rd < 0.22 ? 68 : 30) * farK + farAdd;
         // Виды: в основном низкая, высокая и метёлки — пятнами.
         const tallP = 0.03 + 0.4 * smooth(0.6, 0.84, vnoise(x, z, 18, 103));
         const wispP = 0.015 + 0.16 * smooth(0.68, 0.9, vnoise(x, z, 14, 104));
@@ -918,10 +920,11 @@ export async function loadGrassField(
     // Заявка: днём хватает одного солнца, ночью — до двух живых огней. Меняем
     // maxSimultaneousLights только на смене (это пересобирает шейдер материала —
     // не делать каждый кадр).
-    const wantLights = daylight < 0.5 ? 2 : 1;
+    const wantLights = daylight < 0.5 ? 3 : 1; // как у земли: небо + факелы героев
     if (wantLights !== lastLights) {
       lastLights = wantLights;
       mat.maxSimultaneousLights = wantLights;
+      for (const fm of grassFarMats) fm.maxSimultaneousLights = wantLights;
       // См. Terrain.ts: смена maxSimultaneousLights не пересобирает шейдер
       // сама по себе — без явного relight факелы/эффекты на траве не видны,
       // пока это не подхватит что-то постороннее (BotLights и т.п.).

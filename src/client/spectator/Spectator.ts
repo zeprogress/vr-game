@@ -241,6 +241,7 @@ export class Spectator {
     const zone = buildZone(this.scene, {
       grass: preset.grass,
       grassFar: 2.2, // зритель: трава видна вдвое дальше
+      grassFarAdd: 50, // и ещё +50 м вокруг
       fireflies: preset.fireflies,
       minLights: preset.minLights,
       simpleSky: preset.simpleSky,
