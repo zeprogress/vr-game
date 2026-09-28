@@ -162,50 +162,25 @@ export function buildFishRod(
     rot: [1.426, -0.333, -0.1],
   },
 ): Mesh {
-  const mat = (n: string, c: Color3): StandardMaterial => {
-    const m = new StandardMaterial(`${name}_${n}`, scene);
-    m.diffuseColor = c;
-    m.specularColor = new Color3(0.08, 0.08, 0.08);
-    m.maxSimultaneousLights = 1;
-    return m;
-  };
-  const handle = MeshBuilder.CreateCylinder(
+  // Один сужающийся пруток (по просьбе — без катушки/рукояти/кончика).
+  // Низ прутка — чуть ниже кулака (там его держат), остальное — вверх по +Y.
+  const len = 2.6;
+  const rod = MeshBuilder.CreateCylinder(
     name,
-    { diameterTop: 0.05, diameterBottom: 0.062, height: 0.42, tessellation: 8 },
+    { diameterTop: 0.018, diameterBottom: 0.05, height: len, tessellation: 6 },
     scene,
   );
-  handle.material = mat("cork", new Color3(0.62, 0.47, 0.3));
-  const reel = MeshBuilder.CreateCylinder(
-    `${name}_reel`,
-    { diameter: 0.12, height: 0.06, tessellation: 10 },
-    scene,
-  );
-  reel.material = mat("reel", new Color3(0.18, 0.18, 0.2));
-  reel.parent = handle;
-  reel.position.set(0, 0.12, 0.075); // под рукоятью, ось катушки поперёк
-  reel.rotation.z = Math.PI / 2;
-  const shaftLen = 2.2;
-  const shaft = MeshBuilder.CreateCylinder(
-    `${name}_shaft`,
-    { diameterTop: 0.018, diameterBottom: 0.045, height: shaftLen, tessellation: 6 },
-    scene,
-  );
-  shaft.material = mat("blank", new Color3(0.2, 0.28, 0.22));
-  shaft.parent = handle;
-  shaft.position.y = 0.21 + shaftLen / 2;
-  const tip = MeshBuilder.CreateCylinder(
-    `${name}_tip`,
-    { diameterTop: 0.01, diameterBottom: 0.018, height: 0.25, tessellation: 5 },
-    scene,
-  );
-  tip.material = mat("tip", new Color3(0.85, 0.15, 0.1));
-  tip.parent = shaft;
-  tip.position.y = shaftLen / 2 + 0.125;
-  for (const m of [handle, reel, shaft, tip]) m.isPickable = false;
-  handle.parent = parent;
-  handle.position.set(...pose.pos);
-  handle.rotation.set(...pose.rot);
-  return handle;
+  rod.bakeTransformIntoVertices(Matrix.Translation(0, len / 2 - 0.2, 0));
+  const m = new StandardMaterial(`${name}_mat`, scene);
+  m.diffuseColor = new Color3(0.42, 0.29, 0.15);
+  m.specularColor = new Color3(0.06, 0.06, 0.06);
+  m.maxSimultaneousLights = 1;
+  rod.material = m;
+  rod.isPickable = false;
+  rod.parent = parent;
+  rod.position.set(...pose.pos);
+  rod.rotation.set(...pose.rot);
+  return rod;
 }
 
 /**

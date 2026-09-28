@@ -1519,7 +1519,9 @@ export class ZoneSim {
       const def = ELITE_MOBS[camp.type];
       for (let i = 0; i < camp.count; i++) {
         const a = (i / camp.count) * Math.PI * 2 + camp.x;
-        const r = camp.spread * (0.35 + Math.random() * 0.65);
+        const r = camp.ring !== undefined
+          ? camp.spread * (camp.ring + (Math.random() - 0.5) * 0.1)
+          : camp.spread * (0.35 + Math.random() * 0.65);
         const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
         const m = new Mob(def.kind, x, z, {
           model: def.model,
