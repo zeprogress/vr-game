@@ -76,7 +76,7 @@ import {
   PLAYER,
   PLAYER_HP,
   PROGRESSION,
-  RESPEC_FISH,
+  respecCostFor,
   PVP,
   ELITE_MOBS,
   EVENT,
@@ -3631,11 +3631,17 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Сброс вложенных очков атрибутов за RESPEC_FISH рыбы (чат !respec и кнопка
+   * Сброс вложенных очков атрибутов за рыбу по respecCostFor (чат !respec и кнопка
    * в веб-инвентаре). Герой в мире — живое состояние; иначе правим сейв.
    */
   private respecNick(norm: string): { ok: boolean; text: string } {
     const base = PROGRESSION.startStat;
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    const done = rec?.respecCount ?? 0;
+    const cost = respecCostFor(done);
+    const costTxt = cost === 0 ? "бесплатно (первый раз)" : `за ${cost} рыбы`;
+    const nextTxt = `следующий — ${respecCostFor(done + 1)} рыбы`;
     const t = this.findWeaponsTarget(norm);
     if (t) {
       const p = t.p;
@@ -3643,8 +3649,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
       const bag = readBag(p);
       const have = bagCount(bag, "fish");
-      if (!takeFromBag(bag, "fish", RESPEC_FISH)) {
-        return { ok: false, text: `сброс атрибутов стоит ${RESPEC_FISH} рыбы, у тебя ${have} — !рыбачить.` };
+      if (cost > 0 && !takeFromBag(bag, "fish", cost)) {
+        return { ok: false, text: `сброс атрибутов стоит ${cost} рыбы, у тебя ${have} — !рыбачить.` };
       }
       writeBag(p, bag);
       const prog = readProgress(p);
@@ -3658,21 +3664,21 @@ export class ZoneRoom extends Room<ZoneState> {
       p.maxMana = maxManaFor(p.level, p.int);
       p.mana = Math.min(p.mana, p.maxMana);
       this.persistNick(norm);
-      return { ok: true, text: `очки атрибутов сброшены за ${RESPEC_FISH} рыбы · свободных очков ${p.unspent} → !str !dex !int` };
+      store.put(token, { respecCount: done + 1 });
+      return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int · ${nextTxt}` };
     }
-    const token = `nick:${norm}`;
-    const rec = store.get(token);
     if (!rec) return { ok: false, text: "героя нет — напиши !play." };
     const back = rec.str - base + (rec.agi - base) + (rec.int - base);
     if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
     const bag = restoreBag(rec.bag);
     const have = bagCount(bag, "fish");
-    if (!takeFromBag(bag, "fish", RESPEC_FISH)) {
-      return { ok: false, text: `сброс атрибутов стоит ${RESPEC_FISH} рыбы, у тебя ${have}.` };
+    if (cost > 0 && !takeFromBag(bag, "fish", cost)) {
+      return { ok: false, text: `сброс атрибутов стоит ${cost} рыбы, у тебя ${have}.` };
     }
-    store.put(token, { bag, str: base, agi: base, int: base, unspent: rec.unspent + back });
-    return { ok: true, text: `очки атрибутов сброшены за ${RESPEC_FISH} рыбы · свободных очков ${rec.unspent + back}` };
+    store.put(token, { bag, str: base, agi: base, int: base, unspent: rec.unspent + back, respecCount: done + 1 });
+    return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${rec.unspent + back} · ${nextTxt}` };
   }
+
 
   /** Обычная реплика в чате раз в BOT.tipIntervalSec — см. maybeSayTip(). */
   private static readonly TIPS: readonly string[] = [
@@ -3705,7 +3711,7 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
-        `!respec — вернуть все очки атрибутов (${RESPEC_FISH} рыбы) · ` +
+        "!respec — вернуть все очки атрибутов (1-й раз бесплатно, дальше за рыбу) · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
@@ -4062,6 +4068,17 @@ export class ZoneRoom extends Room<ZoneState> {
    * сам себе и клиент, и сервер: подсекает мгновенно, как только клюнет,
    * никаких промахов по реакции — это фоновая массовка, а не соревнование.
    */
+  /** Повернуть бота на курс yaw (та же конвенция yaw→кватернион, что в tickBot). */
+  private faceBot(bot: Bot, yaw: number): void {
+    const h = bot.state.head;
+    h.qx = 0;
+    h.qy = Math.sin(yaw / 2);
+    h.qz = 0;
+    h.qw = Math.cos(yaw / 2);
+    bot.yaw = yaw; // сглаженный курс tickBot — чтобы после рыбалки не дёрнулся назад
+    bot.rt.yaw = yaw;
+  }
+
   private tickBotFishing(bot: Bot, dt: number): void {
     const p = bot.state;
     // Точная кромка эллипса В ТОМ НАПРАВЛЕНИИ, откуда бот подходит — усреднённый
@@ -4087,9 +4104,13 @@ export class ZoneRoom extends Room<ZoneState> {
       p.head.x += bot.vx * dt;
       p.head.z += bot.vz * dt;
       p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight; // не летел/не тонул на подходе
+      this.faceBot(bot, Math.atan2(wvx, wvz)); // идёт — смотрит по ходу
       bot.fishBiteAt = 0;
       return;
     }
+    // У берега — лицом к ВОДЕ (к центру озера). Раньше поворот тут не задавался
+    // вовсе, и бот мог стоять к озеру спиной — как повернулся до этого.
+    this.faceBot(bot, Math.atan2(LAKE.x - p.head.x, LAKE.z - p.head.z));
     // У берега — стоим (гасим набежавшую скорость подхода), но высоту всё
     // равно поддерживаем — рельеф прямо на кромке неровный.
     bot.vx *= 0.8;

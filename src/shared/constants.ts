@@ -559,8 +559,16 @@ export const SPORE = {
   tick: 0.5,
 };
 
-/** Цена сброса очков атрибутов (!respec и кнопка в веб-инвентаре), рыб. */
-export const RESPEC_FISH = 100;
+/**
+ * Цена сброса очков атрибутов (!respec и кнопка в веб-инвентаре), рыб — по
+ * тому, какой это сброс у героя по счёту (`done` — сколько уже было):
+ * 1-й бесплатно, 2-й — 1, 3-й — 10, дальше каждый раз на 10 больше.
+ */
+export function respecCostFor(done: number): number {
+  if (done <= 0) return 0;
+  if (done === 1) return 1;
+  return (done - 1) * 10;
+}
 
 /** Небесный спрут: хват щупальцами (см. EliteMobDef.puller). */
 export const PULL = {

@@ -171,23 +171,23 @@ export function buildFishRod(
   };
   const handle = MeshBuilder.CreateCylinder(
     name,
-    { diameterTop: 0.034, diameterBottom: 0.042, height: 0.42, tessellation: 8 },
+    { diameterTop: 0.05, diameterBottom: 0.062, height: 0.42, tessellation: 8 },
     scene,
   );
   handle.material = mat("cork", new Color3(0.62, 0.47, 0.3));
   const reel = MeshBuilder.CreateCylinder(
     `${name}_reel`,
-    { diameter: 0.09, height: 0.05, tessellation: 10 },
+    { diameter: 0.12, height: 0.06, tessellation: 10 },
     scene,
   );
   reel.material = mat("reel", new Color3(0.18, 0.18, 0.2));
   reel.parent = handle;
-  reel.position.set(0, 0.12, 0.055); // под рукоятью, ось катушки поперёк
+  reel.position.set(0, 0.12, 0.075); // под рукоятью, ось катушки поперёк
   reel.rotation.z = Math.PI / 2;
   const shaftLen = 2.2;
   const shaft = MeshBuilder.CreateCylinder(
     `${name}_shaft`,
-    { diameterTop: 0.008, diameterBottom: 0.026, height: shaftLen, tessellation: 6 },
+    { diameterTop: 0.018, diameterBottom: 0.045, height: shaftLen, tessellation: 6 },
     scene,
   );
   shaft.material = mat("blank", new Color3(0.2, 0.28, 0.22));
@@ -195,7 +195,7 @@ export function buildFishRod(
   shaft.position.y = 0.21 + shaftLen / 2;
   const tip = MeshBuilder.CreateCylinder(
     `${name}_tip`,
-    { diameterTop: 0.004, diameterBottom: 0.008, height: 0.25, tessellation: 5 },
+    { diameterTop: 0.01, diameterBottom: 0.018, height: 0.25, tessellation: 5 },
     scene,
   );
   tip.material = mat("tip", new Color3(0.85, 0.15, 0.1));

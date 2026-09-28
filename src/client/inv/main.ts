@@ -89,14 +89,14 @@ function attrsHtml(msg: InvMsg): string {
     );
   }).join("");
   // Сброс атрибутов — за рыбу; второе нажатие подтверждает (как «На лом»).
-  const cost = msg.respecCost ?? 100;
+  const cost = msg.respecCost ?? 0;
   const fish = msg.fish ?? 0;
   const invested = a.str + a.agi + a.int - 3 > 0;
   const armed = armedScrap === "respec";
   const respec = msg.authed
     ? `<div class="respec"><button class="act respecbtn${armed ? " armed" : ""}" data-act="respec" data-id="respec" ${
         fish < cost || !invested ? "disabled" : ""
-      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost} 🐟</button>` +
+      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost === 0 ? "бесплатно" : `${cost} 🐟`}</button>` +
       `<span class="fishhave">у тебя ${fish} 🐟${!invested ? " · сбрасывать нечего" : fish < cost ? " · не хватает" : ""}</span></div>`
     : "";
   const head =

@@ -504,6 +504,12 @@ export class Spectator {
     // ?nowatch=1 — без сторожа (отладка в фоновой вкладке: там кадры
     // замирают штатно, и сторож перезагружал бы страницу посреди замера).
     if (new URLSearchParams(location.search).get("nowatch") !== "1") this.watch.start();
+    // Отчёт о свете (GPU, собранные с огнями шейдеры, ошибки) — в журнал сервера.
+    void import("./LightDiag").then(({ startLightDiag }) =>
+      startLightDiag(this.engine, this.scene, () => daylightAt(LOADOUT.world.hour), (text) =>
+        this.net?.sendSpecCmd({ t: "diag", text }),
+      ),
+    );
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
