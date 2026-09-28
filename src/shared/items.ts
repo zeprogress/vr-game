@@ -403,8 +403,11 @@ const AFFIX_LABEL: Record<AffixSub, string> = {
 
 /** Текст ролла для тултипа/чата, напр. "+12% урона" или "+0.5 к силе крита". */
 export function affixLabel(a: RolledAffix): string {
+  // Точность не грубее шага заточки (1 очко ≈ 0.3-0.5% / ≈0.02 силы крита),
+  // иначе 0.96 показывалось как «+1» у посоха (потолок 1.04) и удачная
+  // заточка не меняла подпись. Хвостовые нули срезаем: 12.0% → 12%.
   const pct = a.sub !== "critMult";
-  const v = pct ? Math.round(a.value * 100) : Math.round(a.value * 10) / 10;
+  const v = pct ? Math.round(a.value * 1000) / 10 : Math.round(a.value * 100) / 100;
   return `+${v}${pct ? "%" : ""} ${AFFIX_LABEL[a.sub]}`;
 }
 
