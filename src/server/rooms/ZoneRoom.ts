@@ -2263,9 +2263,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const cls = (["sword", "bow", "shield", "staff"] as const)[Math.floor(Math.random() * 4)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
         if (dropped) winLoot.push({ id: dropped, count: 1 });
-      } else if (Math.random() < EVENT.invasion.rewardGoldChance) {
-        const cls = (["sword", "bow", "staff"] as const)[Math.floor(Math.random() * 3)];
-        const dropped = this.sim.dropWeapon(cls, "gold", this.eventX, this.eventZ);
+      } else if (Math.random() < EVENT.invasion.rewardLegendaryChance) {
+        const cls = (["sword", "bow", "shield", "staff"] as const)[Math.floor(Math.random() * 4)];
+        const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
         if (dropped) winLoot.push({ id: dropped, count: 1 });
       }
 
