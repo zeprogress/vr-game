@@ -9,7 +9,8 @@ import {
   MAGE_NOVA,
   SPORE,
   BLINK,
-  SOLO_RESIST,
+  BOSS_ADAPT,
+  eliteXpAt,
   MAGE_SPELL,
   MOB,
   FLYER_HIT_BONUS,
@@ -22,6 +23,7 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
+import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
@@ -202,7 +204,8 @@ class Mob {
   vy = 0;
   vz = 0;
   hp: number;
-  readonly maxHp: number;
+  /** Не readonly: Багровый слизень меняет его под бойцов (ZoneSim.adaptBoss). */
+  maxHp: number;
   dead = false;
   private deadT = 0;
   private respawnIn = 0;
@@ -346,9 +349,10 @@ class Mob {
   readonly meleeReach: number;
   readonly atkCooldown: number;
   readonly dodge: number;
-  readonly soloResist: boolean;
-  /** Кто и когда (elapsed) бил моба — для soloResist. */
-  readonly hitters = new Map<string, number>();
+  readonly regen: number;
+  /** Адаптация Багрового (BOSS_ADAPT): под какой уровень сейчас настроен и множитель его урона. */
+  adaptLevel: number = BOSS_ADAPT.baseLevel;
+  adaptDmgMul = 1;
   private sporeCd = 2;
   private sporeWindupT = 0;
   private sporeX = 0;
@@ -418,7 +422,7 @@ class Mob {
       meleeReach?: number;
       attackCooldown?: number;
       dodge?: number;
-      soloResist?: boolean;
+      regen?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -468,7 +472,7 @@ class Mob {
     this.meleeReach = opts.meleeReach ?? MOB.attackRange;
     this.atkCooldown = opts.attackCooldown ?? MOB.attackCooldown;
     this.dodge = opts.dodge ?? 0;
-    this.soloResist = opts.soloResist ?? false;
+    this.regen = opts.regen ?? 0;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -618,6 +622,9 @@ class Mob {
       if (this.retreatT < 0) this.retreatT = 0;
     }
 
+    if (this.regen > 0 && !this.dead && this.hp < this.maxHp) {
+      this.hp = Math.min(this.maxHp, this.hp + this.maxHp * this.regen * dt);
+    }
     if (this.dead) {
       this.deadT += dt;
       this.y -= dt * 0.6;
@@ -1489,7 +1496,7 @@ export class ZoneSim {
           attackCooldown: def.attackCooldown,
           speedMul: def.speedMul,
           dodge: def.dodge,
-          soloResist: def.soloResist,
+          regen: def.regen,
         });
         this.mobs.set(m.id, m);
       }
@@ -1826,15 +1833,6 @@ export class ZoneSim {
       this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
       return null;
     }
-    if (m.soloResist && attacker) {
-      m.hitters.set(attacker, this.elapsed);
-      let n = 0;
-      for (const [who, at] of m.hitters) {
-        if (this.elapsed - at > SOLO_RESIST.windowSec) m.hitters.delete(who);
-        else n++;
-      }
-      dmg *= SOLO_RESIST.mult[Math.min(n, SOLO_RESIST.mult.length) - 1];
-    }
     if (rangedHit && m.rangedArmor > 0) dmg *= 1 - m.rangedArmor;
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
@@ -2121,10 +2119,49 @@ export class ZoneSim {
       }
     }
 
+    // Пул выше — только для долей вклада. Сам опыт — каждому по ЕГО уровню:
+    // ~xpElites элитных мобов его уровня × (доля × число бойцов), т.е. в
+    // среднем одинаково на человека при любом составе (HP босса и так растёт
+    // с числом бойцов). Долю зажимаем, чтобы и «хилер» получил своё.
+    const n = elig.length;
     for (const [owner, xp] of award) {
-      if (xp > 0) this.bossXpShare.push({ owner, xp });
+      if (xp <= 0) continue;
+      const share = Math.max(0.4, Math.min(1.8, (xp / pool) * n));
+      const lvl = this.getAttackerLevel(owner);
+      this.bossXpShare.push({ owner, xp: Math.round(BOSS_ADAPT.xpElites * eliteXpAt(lvl) * share) });
     }
     m.contrib.clear();
+  }
+
+  private adaptAt = 0;
+  /**
+   * Подстройка Багрового под бойцов (BOSS_ADAPT): раз в секунду смотрит, кто
+   * бил/получал от него за окно, и меняет макс. HP (доля текущего HP
+   * сохраняется) и множитель урона. Никого — остаётся как был настроен.
+   */
+  adaptBoss(): void {
+    const m = this.boss;
+    if (!m || m.dead || this.elapsed - this.adaptAt < 1) return;
+    this.adaptAt = this.elapsed;
+    let n = 0;
+    let lvlSum = 0;
+    for (const [owner, c] of m.contrib) {
+      if (this.elapsed - c.last > BOSS_ADAPT.windowSec) continue;
+      n++;
+      lvlSum += this.getAttackerLevel(owner);
+    }
+    if (n === 0) return;
+    const L = Math.max(1, Math.round(lvlSum / n));
+    const base = BOSS_ADAPT.baseLevel;
+    const hpMul = weaponDmgFromLevel(L) / weaponDmgFromLevel(base);
+    const target = Math.round(BOSS.hp * hpMul * (1 + BOSS_ADAPT.hpPerExtra * (n - 1)));
+    if (target !== m.maxHp) {
+      const frac = m.hp / m.maxHp;
+      m.maxHp = target;
+      m.hp = Math.max(1, frac * target);
+    }
+    m.adaptLevel = L;
+    m.adaptDmgMul = maxHpFor(L, 1) / maxHpFor(base, 1);
   }
 
   /** Комната зовёт при удачном лечении союзника в бою с боссом. */
@@ -2155,6 +2192,20 @@ export class ZoneSim {
     // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
     // различаем по Mob.eliteName, а не по kind — см. DROP_CHANCE.
     if (m.kind === "boss") {
+      // Лут под уровень бойцов: золото высокоуровневым срезается (как у обычных
+      // мобов, goldDropMulForLevel), часть срезанного становится уникальным.
+      const goldMul = goldDropMulForLevel(m.adaptLevel);
+      for (let i = rolled.length - 1; i >= 0; i--) {
+        const w = ITEMS[rolled[i].id].weapon;
+        if (!w || w.tier !== "gold" || Math.random() < goldMul) continue;
+        if (Math.random() < BOSS_ADAPT.goldToLegendary) {
+          const item = WEAPON_DROP[weaponKey(pick(LEGENDARY_CLASSES), "legendary")];
+          if (item) rolled[i] = { id: item, count: 1 };
+          else rolled.splice(i, 1);
+        } else {
+          rolled.splice(i, 1);
+        }
+      }
       if (Math.random() < DROP_CHANCE.bossLegendary) {
         const cls = pick(LEGENDARY_CLASSES);
         const item = WEAPON_DROP[weaponKey(cls, "legendary")];

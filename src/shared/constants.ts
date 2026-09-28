@@ -293,6 +293,30 @@ export const BOSS = {
   musicOut: 40,
 } as const;
 
+/**
+ * Адаптивный Багровый слизень: без фиксированного уровня — подстраивается
+ * под тех, кто его бьёт (средний уровень и сколько их за последние
+ * `windowSec`). HP растёт как урон героя от уровня (× за каждого сверх
+ * одного), урон — как HP героя от уровня. Опыт — каждому по его уровню,
+ * лут — без золота для высоких уровней (вместо него шанс уникального).
+ */
+export const BOSS_ADAPT = {
+  windowSec: 20,
+  /** Уровень, под который задуманы базовые BOSS.hp / урон. */
+  baseLevel: 6,
+  /** +70% HP за каждого бойца сверх первого. */
+  hpPerExtra: 0.7,
+  /** Опыт одному бойцу ≈ столько «элитных мобов его уровня» (см. eliteXpAt). */
+  xpElites: 8,
+  /** Шанс, что срезанное по уровню золото станет уникальным. */
+  goldToLegendary: 0.3,
+};
+
+/** Примерный опыт элитного моба лагеря на уровне L (аппроксимация таблицы ELITE_MOBS). */
+export function eliteXpAt(level: number): number {
+  return 1.4 * Math.pow(1.42, Math.max(1, level));
+}
+
 export const BOSS_CFG: MobConfig = {
   name: "Багровый слизень",
   level: 6,
@@ -397,15 +421,9 @@ export interface EliteMobDef {
   speedMul?: number;
   /** Шанс 0..1 увернуться от удара героя (меч/стрела/магия) — «MISS» над мобом. */
   dodge?: number;
-  /**
-   * Сопротивление одиночкам: чем меньше разных героев било моба за последние
-   * `SOLO_RESIST.windowSec`, тем меньше урона проходит (см. SOLO_RESIST.mult).
-   */
-  soloResist?: boolean;
+  /** Регенерация: доля максимального HP в секунду (и в бою тоже). */
+  regen?: number;
 }
-
-/** Колосс: сколько урона проходит при 1 / 2 / 3+ разных атакующих за окно. */
-export const SOLO_RESIST = { windowSec: 10, mult: [0.45, 0.75, 1] as const };
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
@@ -466,9 +484,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Модельки голема вдвое крупнее просились — 1.7 → 2.55 (× 1.5).
     // xp: изначально втрое выше Чародея руин (ruinMage.xp=2100), затем ещё ×2
     // по просьбе — и за целого голема (xp), и за раскол (splitXp); осколки — как были.
-    hp: 950, dmgMul: 6, xp: 12600, scaleMul: 2.55, tint: null,
+    // Опыт ×2 по просьбе (2026-09-28): 12600→25200, раскол 6000→12000, осколок 1500→3000.
+    hp: 950, dmgMul: 6, xp: 25200, scaleMul: 2.55, tint: null,
     splitAt: 0.3, splitCount: 3, splitScaleMul: 0.5, splitHpFrac: 0.45,
-    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 6000, splitChildXp: 1500,
+    splitDmgMul: 0.6, splitSpeedMul: 3, splitXp: 12000, splitChildXp: 3000,
     // Целый голем возвращается не сразу и не там, где погиб осколок — а
     // через паузу, на СВОЁМ месте спавна в лагере (см. ZoneSim.splitGolem).
     splitReviveSec: 45,
@@ -481,21 +500,23 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // больно и далеко (длинные руки), а главное — сеет ядовитые облака под
   // ногами героев: стоять на месте = умереть. Уязвим к огню магии,
   // физ. броня толстой шляпки режет меч/стрелы.
+  // Опыт ×2 (60000→120000) вместе с големами, 2026-09-28.
   mushColossus: {
     model: "monMushColossus", name: "Грибной колосс", level: 33, kind: "slime",
     // Размер ×1.5 по просьбе (3.6 → 5.4, ≈5 м) — и руки длиннее (3.2 → 4.6).
-    // soloResist: одному герою он почти не по зубам (−55% урона), вдвоём −25%,
-    // втроём и больше — полный урон: зона для групп.
-    hp: 2600, dmgMul: 10, xp: 60000, scaleMul: 5.4, tint: null,
-    physArmor: 0.25, magicVulnMul: 1.3, soloResist: true,
+    // Регенерация 1.2% HP/с (~31 HP/с, и в бою): одиночка с малым уроном его
+    // еле пересиливает, группа — не замечает.
+    hp: 2600, dmgMul: 10, xp: 120000, scaleMul: 5.4, tint: null,
+    physArmor: 0.25, magicVulnMul: 1.3, regen: 0.012,
     sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
   },
   // Костяной призрак: мелкий (≈1 м), быстрый летун. Хрупкий, но телепортируется
   // за спину героя и пьёт жизнь ударом (вампиризм 60%) — если его не добить
   // быстро, отхиливается. Лучник его не «закайтит»: дистанция не спасает.
+  // Опыт ×2 (24000→48000), 2026-09-28.
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 820, dmgMul: 5, xp: 24000, scaleMul: 1.1, tint: null, flying: true,
+    hp: 820, dmgMul: 5, xp: 48000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },

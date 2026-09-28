@@ -5227,6 +5227,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.bossXpShare.length = 0;
     }
 
+    this.sim.adaptBoss();
     // Босс вступил в бой — баннер «БОСС ПОЯВИЛСЯ» (не чаще раза в минуту).
     {
       const boss = this.bossMob();
@@ -5339,6 +5340,9 @@ export class ZoneRoom extends Room<ZoneState> {
         : resolveBlock(guard, ax, az, h.projectile, aegis);
     // Разъярённый владыка события бьёт сильнее.
     let inDmg = h.dmg;
+    // Багровый бьёт под уровень своих бойцов (BOSS_ADAPT) — и сгустками тоже.
+    const bossM = this.bossMob();
+    if (bossM && h.byMob === bossM.id) inDmg *= bossM.adaptDmgMul;
     if (h.byMob && h.byMob === this.huntBossId && this.sim.mobs.get(this.huntBossId)?.raging) {
       inDmg *= EVENT.eliteHunt.enrageDmgMul;
     }

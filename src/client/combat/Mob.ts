@@ -387,7 +387,7 @@ export class Mob implements Hittable {
   private bar: HealthBar3D | null = null;
   private nameTag: NameTag | null = null;
   private readonly tagName: string;
-  private readonly tagLevel: number;
+  private readonly tagLevel: number | null;
   private readonly tagColor: Color3;
 
   private getBar(): HealthBar3D {
@@ -506,7 +506,8 @@ export class Mob implements Hittable {
             ? SHARD_CFG
             : SLIME_CFG;
     const tagName = mobName || cfg.name;
-    const tagLevel = mobLevel > 0 ? mobLevel : cfg.level;
+    // Багровый — без уровня: подстраивается под бойцов (BOSS_ADAPT).
+    const tagLevel = kind === "boss" ? null : mobLevel > 0 ? mobLevel : cfg.level;
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
