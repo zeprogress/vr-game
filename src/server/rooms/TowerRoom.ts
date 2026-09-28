@@ -26,7 +26,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { AFFIX, BOT } from "#shared/constants";
+import { AFFIX, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -41,6 +41,8 @@ export interface TowerRunResult {
   phase: Exclude<TowerPhase, "running">;
   /** Оружие, выбитое с этажных боссов за весь забег — сразу в склад героя, без физ. дропа. */
   drops: WeaponInstance[];
+  /** Сколько длился забег, с (рейтинг башни — по времени полного прохождения). */
+  timeSec: number;
 }
 
 /**
@@ -63,6 +65,18 @@ export class TowerState extends Schema {
   @type("float32") bossMaxHp = 0;
 }
 
+/** Роллы аффиксов и прочие множители героя — считает ZoneRoom теми же функциями, что на поляне. */
+export interface TowerRolled {
+  dmgMul: number;
+  atkSpeedMul: number;
+  critChance: number;
+  critMult: number;
+  /** «Лук охотника» — повышенный базовый шанс крита. */
+  hunterBow: boolean;
+  /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
+  warriorMul: number;
+}
+
 export interface TowerRoomOptions {
   /** id героя в основной ZoneRoom (session id или "bot:<ник>") — только для колбэка результата. */
   heroId: string;
@@ -78,6 +92,7 @@ export interface TowerRoomOptions {
   leftTier: string;
   rightCls: string;
   rightTier: string;
+  rolled?: TowerRolled;
   onResult?: (r: TowerRunResult) => void;
   /** Вызывается при входе на каждый следующий этаж (кроме первого) — для чата/лога. */
   onFloor?: (floor: number) => void;
@@ -115,6 +130,8 @@ export interface TowerSnapshot {
   heroAtkPulse: boolean;
   /** true ровно на тот тик, когда клинок ДОШЁЛ до цели — звук удара мечом. */
   heroSwordHit: boolean;
+  /** Прошло с начала забега, с (живой таймер у спектатора). */
+  elapsedSec: number;
   /** Меч вампира в руке — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
   heroVampAffix: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
@@ -244,6 +261,11 @@ export class TowerRoom extends Room<TowerState> {
   private drops: WeaponInstance[] = [];
   /** Темп дальнего боя (attackSpeedFor) — у лука/посоха он полный, не приглушённый как у меча. */
   private heroAtkSpeed = 1;
+  private heroCritChance = 0;
+  private heroCritMult = 0;
+  private heroHunterBow = false;
+  /** Снаряды героя в полёте: урон — В МОМЕНТ ПОПАДАНИЯ, как на поляне (было — при выстреле). */
+  private shots: { target: LiveMob; t: number; critM: number }[] = [];
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
   private heroRangedPulse = false;
   /** Локальные координаты цели в момент дальнего выстрела героя (см. heroRangedPulse). */
@@ -316,6 +338,17 @@ export class TowerRoom extends Room<TowerState> {
     if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
     this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
     this.heroMeleeSpeed = meleeSpeedFor(options.level, options.agi);
+    // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
+    // башне аффиксы не работали вовсе, крит был только базовый у лука).
+    const ro = options.rolled;
+    if (ro) {
+      this.heroDmg *= ro.dmgMul * ro.warriorMul;
+      this.heroAtkSpeed *= ro.atkSpeedMul;
+      this.heroMeleeSpeed *= ro.atkSpeedMul;
+      this.heroCritChance = ro.critChance;
+      this.heroCritMult = ro.critMult;
+      this.heroHunterBow = ro.hunterBow;
+    }
     const heroMaxHp = maxHpFor(options.level, options.str);
 
     const state = new TowerState();
@@ -406,19 +439,11 @@ export class TowerRoom extends Room<TowerState> {
             this.heroRangedTargetZ = target.z;
             // Крит — только у лука (см. rollCritMult: kind!=="arrow" => 1), как
             // и в основном мире. У посоха вместо этого — АОЕ (см. heroAttack).
-            let critM = 1;
-            if (this.heroWeaponKind === "bow") {
-              critM = rollCritMult("arrow");
-              if (critM > 1) this.heroSkillFx.push({ k: "crit", x: target.x, z: target.z });
-            }
-            this.heroAttack(target, critM);
-            if ((this.state.phase as TowerPhase) !== "running") {
-              // Тот самый случай "мага с посохом": выстрел добил цель и
-              // закончил этаж/забег — без этого клиент терял снаряд и
-              // вспышку попадания РОВНО на решающем выстреле.
-              this.emitSnapshot();
-              return;
-            }
+            const critM = this.rollHeroCrit();
+            // Снаряд летит (лук — BOT.arrowSpeed, огнешар — BOT.boltSpeed), урон
+            // и «X» крита — при попадании (см. tickShots), как на поляне.
+            const speed = this.heroWeaponKind === "bow" ? BOT.arrowSpeed : BOT.boltSpeed;
+            this.shots.push({ target, t: d / speed, critM });
           } else {
             this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
             this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
@@ -429,6 +454,11 @@ export class TowerRoom extends Room<TowerState> {
       }
     }
 
+    this.tickShots(dt);
+    if ((this.state.phase as TowerPhase) !== "running") {
+      this.emitSnapshot();
+      return;
+    }
     this.tickBurning(dt);
     if ((this.state.phase as TowerPhase) !== "running") {
       this.emitSnapshot();
@@ -561,8 +591,47 @@ export class TowerRoom extends Room<TowerState> {
     this.heroSwingTarget = null;
     if (!target || target.hp <= 0) return;
     if (target !== this.boss && this.mobs.indexOf(target) < 0) return;
-    this.heroAttack(target);
+    const critM = this.rollHeroCrit();
+    if (critM > 1) this.heroSkillFx.push({ k: "crit", x: target.x, z: target.z });
+    this.heroAttack(target, critM);
     this.heroSwordHit = true;
+  }
+
+  /** Крит — как на поляне (rollCritMult + роллы): у лука база есть, у меча/посоха — только от роллов. */
+  private rollHeroCrit(): number {
+    if (this.heroWeaponKind === "bow") {
+      return rollCritMult("arrow", Math.random, this.heroHunterBow, this.heroCritChance, this.heroCritMult);
+    }
+    return rollCritMult(
+      "sword",
+      Math.random,
+      false,
+      this.heroCritChance,
+      this.heroCritMult,
+      this.heroWeaponKind === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT,
+    );
+  }
+
+  /** Снаряды героя долетают — урон при попадании; цель умерла раньше — снаряд пропадает. */
+  private tickShots(dt: number): void {
+    if (this.shots.length === 0) return;
+    const keep: typeof this.shots = [];
+    for (const s of this.shots) {
+      s.t -= dt;
+      if (s.t > 0) {
+        keep.push(s);
+        continue;
+      }
+      const tg = s.target;
+      if (tg.hp <= 0 || (tg !== this.boss && this.mobs.indexOf(tg) < 0)) continue;
+      if (s.critM > 1) this.heroSkillFx.push({ k: "crit", x: tg.x, z: tg.z });
+      this.heroAttack(tg, s.critM);
+      if ((this.state.phase as TowerPhase) !== "running") {
+        this.shots = [];
+        return;
+      }
+    }
+    this.shots = keep;
   }
 
   /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
@@ -860,6 +929,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroSkillFx = [];
     this.heroStunCastT = 0;
     this.heroRainCastT = 0;
+    this.shots = []; // снаряды прошлого этажа не долетают до нового
     this.emitSnapshot();
   }
 
@@ -920,6 +990,7 @@ export class TowerRoom extends Room<TowerState> {
       heroYaw: this.heroYaw,
       heroAtkPulse: this.heroAtkPulse,
       heroSwordHit: this.heroSwordHit,
+      elapsedSec: TOWER.timeLimitSec - this.state.timeLeftSec,
       heroVampAffix: this.heroVampAffix,
       heroRangedPulse: this.heroRangedPulse,
       heroWeaponKind: this.heroWeaponKind,
@@ -952,6 +1023,7 @@ export class TowerRoom extends Room<TowerState> {
       towerShards: this.towerShards,
       phase,
       drops: this.drops,
+      timeSec: TOWER.timeLimitSec - this.state.timeLeftSec,
     });
     // Небольшая пауза — зрители у спектатора успевают увидеть исход, прежде
     // чем комната (и её состояние) исчезнет.

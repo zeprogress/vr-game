@@ -73,6 +73,8 @@ export class PlayerState extends Schema {
   // Позиция героя — те же head.x/y/z (реально бегает по арене).
   @type("uint8") towerFloor = 0;
   @type("uint8") towerMobsLeft = 0;
+  /** Секунд с начала текущего забега башни (живой таймер у спектатора). */
+  @type("uint16") towerTimeSec = 0;
   @type("uint8") towerMobsTotal = 0;
   @type("uint8") towerBossActive = 0;
   @type("float32") towerBossHpFrac = 0;

@@ -87,10 +87,17 @@ uniform float uLit;
 uniform vec3 uFogColor;
 uniform float uFogStart;
 uniform float uFogEnd;
+uniform float uBarkShade;
 void main() {
   vec4 c = texture2D(tex, vUv);
   if (c.a < 0.4) discard;
   vec3 col = c.rgb * uLit * 0.9;
+  // Ствол (коричневый: красного заметно больше зелёного и синего) к кроне
+  // темнеет — тень от листвы; у снимка без этого ствол был ровно-светлым до
+  // самого верха. Только у деревьев (uBarkShade), у камней — 0.
+  float bark = step(c.g * 1.08, c.r) * step(c.b, c.r);
+  float up = smoothstep(0.06, 0.38, vUv.y);
+  col *= mix(1.0, 1.0 - 0.55 * up, bark * uBarkShade);
   float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
   gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
 }
@@ -244,6 +251,19 @@ export class TreeImpostors {
     const cy = (minY + maxY) / 2;
     const halfH = (height / 2) * 1.04;
 
+    // Размер КАК РИСУЕТСЯ: габариты настоящих мешей эталонного дерева. Копия
+    // для снимка выходила в 1.15 (TREE_SCALE) раза крупнее видимой модели
+    // (у настоящих деревьев мировая матрица заморожена до масштаба корня), и
+    // снимок вдали был заметно больше дерева. Картинку подгоняем под модель.
+    let mMinY = Infinity, mMaxY = -Infinity;
+    for (const m of ref.meshes) {
+      const b = m.getBoundingInfo().boundingBox;
+      mMinY = Math.min(mMinY, b.minimumWorld.y);
+      mMaxY = Math.max(mMaxY, b.maximumWorld.y);
+    }
+    const fit = Number.isFinite(mMaxY - mMinY) && height > 0.01 ? (mMaxY - mMinY) / height : 1;
+    const padBelow = minY - (cy - halfH); // поле снимка под деревом, в масштабе копии
+
     const cam = new FreeCamera(`impCam_${kind}`, new Vector3(cx, cy, cz - 30), scene);
     cam.setTarget(new Vector3(cx, cy, cz));
     cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
@@ -261,7 +281,9 @@ export class TreeImpostors {
     rtt.renderList = clones;
     rtt.activeCamera = cam;
     rtt.clearColor = new Color4(0, 0, 0, 0);
-    rtt.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+    // Каждый кадр, пока шейдеры клонов не готовы (компилируются параллельно):
+    // с RENDER_ONCE первый кадр мог уйти в снимок до готовности — пустой навсегда.
+    rtt.refreshRate = 1;
     rtt.wrapU = Constants.TEXTURE_CLAMP_ADDRESSMODE;
     rtt.wrapV = Constants.TEXTURE_CLAMP_ADDRESSMODE;
 
@@ -279,17 +301,24 @@ export class TreeImpostors {
     scene.customRenderTargets.push(rtt);
 
     return new Promise<void>((resolve) => {
-      rtt.onAfterRenderObservable.addOnce(() => {
+      let readyFrames = 0;
+      let frames = 0;
+      const obs = rtt.onAfterRenderObservable.add(() => {
+        frames++;
+        const ready = clones.every((c) => !c.material || c.material.isReady(c));
+        readyFrames = ready ? readyFrames + 1 : 0;
+        if (readyFrames < 3 && frames < 600) return;
+        rtt.onAfterRenderObservable.remove(obs);
         // Снимок готов: строим билборды вида и убираем временное.
         this.buildKind(kind, list, rtt, {
-          w: halfW * 2,
-          h: halfH * 2,
-          yOff: cy - halfH - ref.y, // низ снимка относительно корня дерева
+          w: halfW * 2 * fit,
+          h: halfH * 2 * fit,
+          yOff: mMinY - padBelow * fit - ref.y, // низ снимка относительно корня дерева
           refScale: ref.scale,
         });
         const idx = scene.customRenderTargets.indexOf(rtt);
         if (idx >= 0) scene.customRenderTargets.splice(idx, 1);
-        rtt.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+        rtt.refreshRate = 0;
         setTimeout(() => {
           cam.dispose();
           for (const c of clones) c.dispose();
@@ -321,11 +350,12 @@ export class TreeImpostors {
       { vertexSource: VERT, fragmentSource: FRAG },
       {
         attributes: ["position", "uv"], // world0..3 добавит Babylon для thin-инстансов
-        uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd"],
+        uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd", "uBarkShade"],
         samplers: ["tex"],
       },
     );
     mat.setTexture("tex", rtt);
+    mat.setFloat("uBarkShade", this.tag === "tree" ? 1 : 0);
     mat.setFloat("uLit", 1);
     mat.setColor3("uFogColor", scene.fogColor);
     mat.setFloat("uFogStart", scene.fogStart);

@@ -497,9 +497,13 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
 export function scrapValue(w: WeaponInstance): number {
   // С роллами — от средних очков аффиксов (1..33): середина (17) даёт 15,
   // разброс небольшой — от 11 (всё на минимуме) до 19 (всё на максимуме).
+  // Выше 45 баллов оценки предмета (сумма очков, та, что в скобках) — лом
+  // растёт круто: 45 → 15, 99 (три идеальных ролла) → 99 (заявка 2026-09-28).
   if (w.affixes.length > 0) {
     const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w.cls), 0) / w.affixes.length;
-    return Math.round(15 + (4 * (avg - 17)) / 16);
+    const base = Math.round(15 + (4 * (avg - 17)) / 16);
+    const q = weaponQuality(w);
+    return q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
   }
   return w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
 }

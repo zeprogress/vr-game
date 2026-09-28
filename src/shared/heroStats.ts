@@ -19,9 +19,9 @@ export function attacksPerSec(cls: string, level: number, agi: number, affixBonu
   return (meleeSpeedFor(level, agi) * mul) / BOT.attackCooldown;
 }
 
-/** Подпись темпа под класс: маг колдует, лучник стреляет, мечник бьёт. */
-export function attackRateLabel(cls: string): string {
-  return cls === "bow" ? "Выстрелов в сек" : cls === "staff" ? "Заклинаний в сек" : "Ударов в сек";
+/** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
+export function attackRateLabel(_cls: string): string {
+  return "Скорость атаки";
 }
 
 /** Одна строка характеристик в таблице (спектатор / чат / веб-инвентарь). */
@@ -99,7 +99,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("скорость атаки") / 100;
   rows.push({
     label: attackRateLabel(cls),
-    value: attacksPerSec(cls, p.level, p.agi, atkSpeedBonus).toFixed(2),
+    value: `${attacksPerSec(cls, p.level, p.agi, atkSpeedBonus).toFixed(2)}/с`,
   });
 
   rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с` });

@@ -94,12 +94,23 @@ export function weaponDamageBase(level: number, str: number): number {
 
 /**
  * Множитель темпа атаки (>1 — быстрее): рост от уровня × небольшой множитель
- * от ловкости, общий потолок ×2.6. Действует и на меч, и на лук/посох.
+ * от ловкости, без потолка — рост плавно гаснет. Действует и на меч, и на лук/посох.
  */
+/** Мягкое затухание прироста: вначале ≈g, дальше растёт всё медленнее, но БЕЗ потолка. */
+function softGain(g: number, s: number): number {
+  return g > 0 ? s * Math.log(1 + g / s) : g;
+}
+/** Сила затухания общего темпа (меньше — сильнее гасит на высоких уровнях). */
+const ATK_SOFT = 1.8;
+/** Затухание темпа мечника — сильнее общего: на высоких уровнях не «пропеллер». */
+const MELEE_SOFT = 1.0;
+
 export function attackSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
   const byLevel = 1 + levelGain(level, P.atkSpeed);
   const byAgi = 1 + statScale(agi) * PROGRESSION.agi.atkSpeedMul;
-  return Math.min(P.atkSpeed.max, byLevel * byAgi);
+  // Раньше — жёсткий потолок ×2.6; теперь рост плавно гаснет (ур.30 ≈×2.1,
+  // ур.60 ≈×3.4, ур.100 ≈×4.9 — у лука ~3 выстрела/с на сотом).
+  return 1 + softGain(byLevel * byAgi - 1, ATK_SOFT);
 }
 
 /** Совместимость: темп атаки только от уровня (где ловкость неизвестна, напр. чужой аватар). */
@@ -111,12 +122,13 @@ export function attackSpeedFromLevel(level: number): number {
  * Темп атаки БЛИЖНЕГО боя (меч/кулак) — сильно приглушённый: воины иначе к
  * высоким уровням машут как пропеллер. Ускорение от уровня/ловкости даёт
  * 50% от общего темпа (было 35%; у лука/посоха остаётся полный attackSpeedFor).
- * Свой потолок ×1.45 убран по просьбе (2026-09-28) — растёт до конца, упираясь
- * только в общий потолок attackSpeedFor (×2.6 → меч ×1.8).
+ * Потолков нет (ни своего ×1.45, ни общего) — рост плавно гаснет (softGain).
  */
 export function meleeSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
   const full = attackSpeedFor(level, agi);
-  return 1 + (full - 1) * 0.5;
+  // Половина общего прироста и сверху своё, более сильное затухание: без
+  // потолка, но мечник на ур.100 бьёт ~3 раза/с, а не «пропеллером».
+  return 1 + softGain((full - 1) * 0.5, MELEE_SOFT);
 }
 
 /**

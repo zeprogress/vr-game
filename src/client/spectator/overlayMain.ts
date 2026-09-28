@@ -103,6 +103,7 @@ function tick(): void {
         mobsLeft: p.towerMobsLeft,
         mobsTotal: p.towerMobsTotal,
         bossActive: p.towerBossActive === 1,
+        timeSec: p.towerTimeSec,
       };
     }
   });

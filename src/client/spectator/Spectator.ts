@@ -45,6 +45,8 @@ import {
 const UP = { x: 0, y: 1, z: 0 };
 /** См. Game.ts MISS_FX_DELAY — держим то же значение для спектатора. */
 const MISS_FX_DELAY = 0.35;
+/** Спектатор: настоящая модель дерева/камня — до стольких метров, дальше снимок. */
+const SPEC_TREE_3D = 60;
 const FORWARD_Z = new Vector3(0, 0, 1);
 const TRANSPARENT = new Color4(0, 0, 0, 0);
 
@@ -77,6 +79,7 @@ export class Spectator {
   private readonly eventBeacon: EventBeacon;
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
+  private treeLod: ((scene: Scene, x: number, y: number, z: number, dt: number, nearR: number) => void) | null = null;
   private readonly crossFx: WorldCrossFx;
   private readonly eyeGloves: EyeGloves;
   private readonly towerFx: TowerArenaFx;
@@ -273,6 +276,7 @@ export class Spectator {
     void import("../world/nature").then((m) => {
       m.enableTreeFade();
       this.fadeTrees = m.fadeTreesNear;
+      this.treeLod = m.specTreeLod;
     });
 
     this.cam = new SpectatorCamera(this.scene, override.raw === true);
@@ -497,7 +501,9 @@ export class Spectator {
       (text) => this.net?.sendSpecCmd({ t: "diag", text }),
       (text) => this.setStatus(text),
     );
-    this.watch.start();
+    // ?nowatch=1 — без сторожа (отладка в фоновой вкладке: там кадры
+    // замирают штатно, и сторож перезагружал бы страницу посреди замера).
+    if (new URLSearchParams(location.search).get("nowatch") !== "1") this.watch.start();
 
     // Рендерим в любом случае (небо + статус) — картинка на стриме не должна
     // быть чёрной, даже пока сервер не поднялся.
@@ -946,6 +952,7 @@ export class Spectator {
             mobsLeft: p.towerMobsLeft,
             mobsTotal: p.towerMobsTotal,
             bossActive: towerBossActive,
+            timeSec: p.towerTimeSec,
           };
         }
       });
@@ -974,6 +981,7 @@ export class Spectator {
           mobsLeft: this._towerMobs.length,
           mobsTotal: this._towerMobs.length,
           bossActive: false,
+          timeSec: 83,
         };
       }
 
@@ -1099,6 +1107,8 @@ export class Spectator {
     }
     const cp = this.cam.cam.position;
     this.fadeTrees?.(cp.x, cp.z);
+    // Дальше SPEC_TREE_3D — снимки вместо моделей (было 146 отрисовок деревьев).
+    this.treeLod?.(this.scene, cp.x, cp.y, cp.z, dt, SPEC_TREE_3D);
     if (this.voice) {
       this.voice.update(dt);
       // Игрок мог дать микрофон уже после установки связи — периодически

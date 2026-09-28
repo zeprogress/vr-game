@@ -25,6 +25,11 @@ if (params.get("groundglow") === "1") {
   void import("./ui/GroundGlowTuner").then(({ mountGroundGlowTuner }) => mountGroundGlowTuner());
 }
 
+// ?grasstune=1 — панель живой настройки света/вида травы (ближней и дальней).
+if (params.get("grasstune") === "1") {
+  void import("./ui/GrassTuner").then(({ mountGrassTuner }) => mountGrassTuner());
+}
+
 // ?fog=1 — панель живой настройки ночного тумана.
 if (params.get("fog") === "1") {
   void import("./ui/FogTuner").then(({ mountFogTuner }) => mountFogTuner());

@@ -12,6 +12,13 @@ import { ITEMS } from "#shared/items";
  * включается/выключается с пульта (SpecCmd overlay).
  */
 
+
+/** Время забега башни «0:00». */
+function fmtTime(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export interface OverlayCtx {
   /** Кого показываем: ник игрока / имя моба / null (обзор, путь). */
   watching: string | null;
@@ -27,7 +34,15 @@ export interface OverlayCtx {
   /** plat: 0 — не пришло (боты), 1 — ПК, 2 — телефон, 3 — VR (см. PlayerState.plat). */
   online: readonly { nick: string; speaking: boolean; bot: boolean; plat: number }[];
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
-  towerStatus: { heroNick: string; floor: number; mobsLeft: number; mobsTotal: number; bossActive: boolean } | null;
+  towerStatus: {
+    heroNick: string;
+    floor: number;
+    mobsLeft: number;
+    mobsTotal: number;
+    bossActive: boolean;
+    /** Секунд с начала забега. */
+    timeSec: number;
+  } | null;
 }
 
 interface Config {
@@ -156,7 +171,8 @@ const CSS = `
 .ov-ticker.news { top:7vh; font-size:2.3vh; font-weight:400; letter-spacing:normal;
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
-.ov-towerstatus { left:2.2vw; top:34vh; text-align:left; font-size:1.7vh; }
+/* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
+.ov-towerstatus { left:2.2vw; top:47vh; text-align:left; font-size:1.7vh; }
 .ov-towerstatus b { display:block; font-size:3.9vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
 .ov-towerstatus span { display:block; font-weight:800; font-size:6.6vh; }
@@ -360,7 +376,7 @@ export class Overlay {
       nm.textContent = r.nick;
       const lv = document.createElement("span");
       lv.className = "lv";
-      lv.textContent = r.cleared ? "покорил" : `этаж ${r.floor}`;
+      lv.textContent = r.cleared ? (r.time !== undefined ? fmtTime(r.time) : "покорил") : `этаж ${r.floor}`;
       row.append(rk, nm, lv);
       this.towerTop.appendChild(row);
     });
@@ -578,7 +594,7 @@ export class Overlay {
     // тумблера у неё нет, поэтому вешаем на cfg.top (тот же, что у топов).
     show(this.towerStatus, this.cfg.top && !!ts);
     if (ts) {
-      const sig = `${ts.heroNick}|${ts.floor}|${ts.mobsLeft}|${ts.mobsTotal}|${ts.bossActive ? 1 : 0}`;
+      const sig = `${ts.heroNick}|${ts.floor}|${ts.mobsLeft}|${ts.mobsTotal}|${ts.bossActive ? 1 : 0}|${ts.timeSec}`;
       if (sig !== this.lastTowerStatusSig) {
         this.lastTowerStatusSig = sig;
         this.towerStatus.classList.toggle("boss", ts.bossActive);
@@ -586,7 +602,7 @@ export class Overlay {
         const b = document.createElement("b");
         b.textContent = "Охотничья башня";
         const span = document.createElement("span");
-        span.textContent = `Этаж ${ts.floor}/${TOWER.floors}`;
+        span.textContent = `Этаж ${ts.floor}/${TOWER.floors} · ${fmtTime(ts.timeSec)}`;
         const i = document.createElement("i");
         i.textContent = ts.bossActive ? `${ts.heroNick} · мини-босс` : `${ts.heroNick} · мобов ${ts.mobsLeft}/${ts.mobsTotal}`;
         this.towerStatus.append(b, span, i);

@@ -877,6 +877,17 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    // Разово: свет травы, подобранный на стенде 2026-09-28, — в общую подгонку
+    // (админ-панель хранит её на сервере и перебивает дефолты клиента).
+    {
+      const lo = world.loadLoadout() as { glow?: Record<string, number> };
+      const g = (lo.glow ??= {});
+      if (g._grassTuneV !== 2) {
+        Object.assign(g, { grassSunDay: 0.85, grassGlowDay: 0, grassSunNight: 3, grassGlowNight: 3, _grassTuneV: 2 });
+        world.saveLoadout(lo);
+        console.log("[world] свет травы обновлён по настройке со стенда");
+      }
+    }
     // Посохи: роллы со старого завышенного диапазона → общий, очки те же
     // (разово — migrateStaffAffixes метит инстанс). Сейвы и лут на земле.
     let staffFixed = 0;
@@ -1944,14 +1955,22 @@ export class ZoneRoom extends Room<ZoneState> {
         floor: rec.bestTowerFloor,
         shards: rec.towerShards ?? 0,
         cleared,
+        time: cleared ? rec.bestTowerTimeSec : undefined,
         at: rec.towerClearedAt ?? 0,
       });
     }
-    // Сначала «покорившие» — по порядку прохождения (кто раньше — тот выше), затем остальные по этажу.
+    // Сначала «покорившие» — по ЛУЧШЕМУ ВРЕМЕНИ прохождения (меньше — выше);
+    // покорившие до появления таймера (времени нет) — за ними, по порядку
+    // прохождения; затем остальные по этажу.
     return [...byNorm.values()]
       .sort((a, b) => {
         if (!!a.cleared !== !!b.cleared) return a.cleared ? -1 : 1;
-        if (a.cleared && b.cleared) return a.at - b.at || b.shards - a.shards;
+        if (a.cleared && b.cleared) {
+          const ta = a.time ?? Infinity;
+          const tb = b.time ?? Infinity;
+          if (ta !== tb) return ta - tb;
+          return a.at - b.at || b.shards - a.shards;
+        }
         return b.floor - a.floor || b.shards - a.shards;
       })
       .slice(0, limit)
@@ -2582,6 +2601,17 @@ export class ZoneRoom extends Room<ZoneState> {
     this.towerCamHeroId = heroId;
     this.towerCamEye = true;
     this.towerCamAt = 0; // сработает следующим тиком
+    // Роллы оружия героя — теми же функциями, что считают бой на поляне.
+    const trt = this.rt.get(heroId);
+    const trc = trt ? rolledCrit(p, "right", trt) : { chance: 0, mult: 0 };
+    const towerRolled = {
+      dmgMul: trt ? rolledDmgMul(p, "right", trt) : 1,
+      atkSpeedMul: trt ? rolledAtkSpeedMul(p, "right", trt) : 1,
+      critChance: trc.chance,
+      critMult: trc.mult,
+      hunterBow: weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "crit",
+      warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
+    };
     this.towerRuns
       .start(
         heroId,
@@ -2595,6 +2625,7 @@ export class ZoneRoom extends Room<ZoneState> {
           leftTier: p.leftTier,
           rightCls: p.rightCls,
           rightTier: p.rightTier,
+          rolled: towerRolled,
         },
         (r) => this.onTowerRunDone(heroId, nick, r),
         (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
@@ -2638,6 +2669,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.maxHp = s.heroMaxHp;
     p.towerFloor = s.floor;
     p.towerMobsLeft = s.mobsLeft;
+    p.towerTimeSec = Math.round(s.elapsedSec);
     p.towerMobsTotal = s.mobsTotal;
     p.towerBossActive = s.bossActive ? 1 : 0;
     p.towerBossHpFrac = s.bossHpFrac;
@@ -2726,6 +2758,10 @@ export class ZoneRoom extends Room<ZoneState> {
         towerShards: (prev?.towerShards ?? 0) + r.towerShards,
         // Первое полное прохождение фиксируем временем — по нему строится порядок «каким по счёту».
         towerClearedAt: prev?.towerClearedAt ?? (r.phase === "cleared" ? Date.now() : undefined),
+        bestTowerTimeSec:
+          r.phase === "cleared"
+            ? Math.min(prev?.bestTowerTimeSec ?? Infinity, Math.round(r.timeSec))
+            : prev?.bestTowerTimeSec,
         weapons: rt.weapons,
       });
       for (const w of r.drops) this.announcePickup(nick, w.cls, w.tier, w);
@@ -2936,7 +2972,10 @@ export class ZoneRoom extends Room<ZoneState> {
         for (const norm2 of [...this.bots.keys()]) this.removeBot(norm2);
         this.reply(`@${nick} все боты (${n}) распущены.`);
       }
-    } else if (cmd === "!event" || cmd === "!invasion" || cmd === "!нашествие") {
+    } else if (
+      cmd === "!event" || cmd === "!events" || cmd === "!ивент" || cmd === "!ивенты" || cmd === "!евент" ||
+      cmd === "!событие" || cmd === "!invasion" || cmd === "!нашествие"
+    ) {
       if (this.eventPhase === "active" && this.activeEventKind === 3) {
         this.joinTowerQueue(nick, norm);
       } else {
@@ -4456,7 +4495,10 @@ export class ZoneRoom extends Room<ZoneState> {
     ) {
       const atk = attackSpeedFor(p.level, p.agi);
       const bow = p.rightCls === "bow";
-      bot.attackCd = (bow ? BOT.bowCooldown : BOT.staffCooldown) / atk;
+      // Ролл «скорость атаки» — и у ботов (раньше учитывался только у живых игроков,
+      // хотя в характеристиках показывался).
+      bot.attackCd =
+        (bow ? BOT.bowCooldown : BOT.staffCooldown) / (atk * rolledAtkSpeedMul(p, "right", bot.rt));
       const tgt = chasingMob;
       const ox = p.head.x;
       const oy = p.head.y - 0.25;
@@ -4538,7 +4580,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
       const atk = meleeSpeedFor(p.level, p.agi);
-      bot.attackCd = BOT.attackCooldown / atk;
+      bot.attackCd = BOT.attackCooldown / (atk * rolledAtkSpeedMul(p, "right", bot.rt));
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
       bot.swingDx = dx;

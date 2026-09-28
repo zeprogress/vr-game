@@ -24,6 +24,14 @@ import { buildHubBlockout } from "./hub/HubBlockout";
 import { buildTowerProp } from "./tower/TowerProp";
 import { LOADOUT } from "../config/loadout";
 
+
+/**
+ * Местная подмена времени суток (панель ?grasstune=1): null — обычные часы
+ * (с сервера/свои), число — держим этот час только в этом окне. Настраивать
+ * день — в полдень, ночь — в полночь; закат смешает их сам.
+ */
+export const TIME_OVERRIDE: { hour: number | null } = { hour: null };
+
 export interface Zone {
   /** Ночная подсветка от ботов зрителей (Ф10). Кормит Spectator/Game. */
   botLights: BotLights;
@@ -195,7 +203,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
       // Останавливаемся только по явному нулю auto: если в настройку затесался
       // мусор, часы должны идти, а не замереть навсегда.
       const auto = (net ? net.auto : LOADOUT.world.auto) !== 0;
-      if (net) {
+      if (TIME_OVERRIDE.hour !== null) {
+        // Панель настройки (?grasstune=1) держит свои часы — только у себя, сервер не трогаем.
+        let jump = Math.abs(TIME_OVERRIDE.hour - hour);
+        if (jump > 12) jump = 24 - jump;
+        if (jump > 0.25) relightMaterials(scene, "Zone.timeOverride");
+        hour = TIME_OVERRIDE.hour;
+      } else if (net) {
         // Онлайн: пришла новая сверка с сервера — подхватываем её точно.
         if (net.hour !== lastNetHour) {
           // Стрелки перевели с пульта — часы прыгают, и порог дня/ночи может

@@ -51,12 +51,50 @@ const REACH = 165; // дальше от центра карты травы не�
  * занимают несколько пикселей — полная модель там тратила вершины впустую
  * (замер: спектатор ~1.6 млн треугольников травы, из них ~85% дальше 16 м).
  */
-const GRASS_LOD = 16;
+/** Дистанция LOD по умолчанию — живое значение в GRASS_FAR_TUNE.lod. */
 /** ?grasslod=0 — без LOD (все пучки полными моделями), для сравнения на стенде. */
 const GRASS_LOD_ON = typeof location === "undefined" || new URLSearchParams(location.search).get("grasslod") !== "0";
 /** Подстройка яркости дальней травы под ближнюю (window.__grassFar.lit в консоли). */
-export const GRASS_FAR_TUNE = { lit: 0.55 }; // подобрано на стенде: дальняя = ближней по тону
-if (typeof window !== "undefined") (window as unknown as { __grassFar: unknown }).__grassFar = GRASS_FAR_TUNE;
+/**
+ * Живые ручки дальней (упрощённой) травы — панель `?grasstune=1`
+ * (ui/GrassTuner.ts), сохраняются в localStorage. `v` — счётчик изменений
+ * геометрии (ширина/высота/дистанция): тик видит его и пересобирает раскладку.
+ */
+export const GRASS_FAR_TUNE = {
+  /** Общая яркость (поверх двух частей ниже). */
+  // Подобрано на стенде 2026-09-28 (панель ?grasstune=1).
+  lit: 0.82,
+  /** Солнце днём / ночью — как ручки ближней травы (0 ночью = солнце ночью не светит). */
+  sunDay: 0.87,
+  sunNight: 0,
+  /** Собственное свечение днём / ночью (не зависит от солнца). */
+  glowDay: 0,
+  glowNight: 0.15,
+  /** Ширина/высота картинки относительно снимка пучка — шире = «пушистее». */
+  width: 1.75,
+  height: 1.07,
+  /** С какой дистанции пучок становится картинкой, м. */
+  lod: 30,
+  /** Желтизна дальней травы 0..1 (чуть подмешать сухой/солнечный тон). */
+  warm: 0.75,
+  v: 0,
+};
+// v2: ключ сменён вместе с новыми дефолтами — старые сохранённые пробы не перебьют их.
+const GRASS_TUNE_KEY = "grassFarTune3";
+try {
+  const saved = typeof localStorage !== "undefined" ? localStorage.getItem(GRASS_TUNE_KEY) : null;
+  if (saved) Object.assign(GRASS_FAR_TUNE, JSON.parse(saved), { v: 0 });
+} catch {
+  /* нет хранилища — дефолты */
+}
+export function saveGrassFarTune(): void {
+  GRASS_FAR_TUNE.v++;
+  try {
+    localStorage.setItem(GRASS_TUNE_KEY, JSON.stringify(GRASS_FAR_TUNE));
+  } catch {
+    /* приватный режим */
+  }
+}
 
 function hash(ix: number, iz: number, k: number): number {
   let h = Math.imul(ix, 374761393) ^ Math.imul(iz, 668265263) ^ Math.imul(k + 1, 2147483647);
@@ -174,7 +212,12 @@ function firstGeometry(root: TransformNode): Mesh | null {
  * через uLit билборд-шейдера при отрисовке (см. BILLBOARD_FRAG), как у
  * дальних деревьев/камней (TreeImpostors).
  */
-function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex: Texture; w: number; h: number } {
+function captureBillboardTexture(
+  scene: Scene,
+  source: Mesh,
+  size = 160,
+  lookDown?: number,
+): { tex: Texture; w: number; h: number } {
   // Чистая копия ГЕОМЕТРИИ (не clone()): у источника тонкие инстансы с
   // thinInstanceCount=0 — клон их наследует и не рисует ничего, снимок
   // выходил пустым (дальняя трава/кусты были невидимы).
@@ -210,7 +253,9 @@ function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex:
 
   // Небольшой подъём камеры (не строго в лоб) — читается более объёмным силуэтом,
   // ближе к тому, как игрок обычно смотрит на куст сверху-вбок, а не в упор сбоку.
-  const elev = dist * 0.22;
+  // Чуть сверху (для дальней травы — заметно сверху): пучок читается «шапкой»,
+  // а не частоколом тонких стеблей.
+  const elev = dist * (lookDown ?? 0.22);
   const cam = new FreeCamera(`bbCam_${source.name}`, new Vector3(cx, cy + elev, cz + dist), scene);
   cam.setTarget(new Vector3(cx, cy, cz));
   cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
@@ -220,8 +265,11 @@ function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex:
   cam.orthoTop = half;
   cam.orthoBottom = -half;
 
+  // Мипмапы — дешёвое сглаживание дальних картинок: без них вдали выборка
+  // из крупного снимка давала рябь/мерцание при движении камеры. Считаются
+  // один раз вместе со снимком, в кадре ничего не стоят.
   const rtt = new RenderTargetTexture(`bbRtt_${source.name}`, size, scene, {
-    generateMipMaps: false,
+    generateMipMaps: true,
     type: undefined,
     samplingMode: Texture.TRILINEAR_SAMPLINGMODE,
   });
@@ -303,8 +351,16 @@ uniform float uFogStart;
 uniform float uFogEnd;
 void main() {
   vec4 c = texture2D(tex, vUv);
-  if (c.a < 0.35) discard;
-  vec3 col = c.rgb * vTint * uLit;
+  // Порог ниже, чем у кустов: полупрозрачные края стеблей остаются — пучок
+  // вдали выглядит пушистым, а не частоколом тонких палок. С мипмапами края
+  // вдали мягче (альфа меньше) — порог плавно снижаем с дистанцией, иначе
+  // дальняя трава «лысела».
+  float cut = mix(0.2, 0.07, clamp((vDist - 15.0) / 60.0, 0.0, 1.0));
+  if (c.a < cut) discard;
+  // Снимок снят на прозрачном ЧЁРНОМ фоне — в мипмапах края травинок
+  // смешаны с ним и давали чёрную обводку. Делим на альфу — возвращаем краю
+  // его собственный цвет (фон с альфой 0 в сумму цвета не вносит).
+  vec3 col = (c.rgb / max(c.a, 0.001)) * vTint * uLit;
   float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
   gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
 }
@@ -537,7 +593,7 @@ export async function loadGrassField(
     if (ki < 0) continue;
     const src = kinds[ki].mesh;
     src.thinInstanceCount = 0;
-    const cap = captureBillboardTexture(scene, src, 96);
+    const cap = captureBillboardTexture(scene, src, 128, 0.55);
     const fm = new ShaderMaterial(
       `grassFarMat_${src.name}`,
       scene,
@@ -743,9 +799,10 @@ export async function loadGrassField(
           if (cosA < COS_HALF) continue;
           const k = kinds[a[o + 10]];
           const sx = a[o + 5];
-          if (GRASS_LOD_ON && d > GRASS_LOD && k.far !== undefined) {
+          if (GRASS_LOD_ON && d > GRASS_FAR_TUNE.lod && k.far !== undefined) {
             // Дальний пучок — билборд-снимок: реальный размер = снимок × масштаб пучка.
-            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], 0, (k.farW ?? 1) * sx, (k.farH ?? 1) * sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+            const T = GRASS_FAR_TUNE;
+            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], 0, (k.farW ?? 1) * sx * T.width, (k.farH ?? 1) * sx * a[o + 6] * T.height, a[o + 7], a[o + 8], a[o + 9]);
           } else {
             write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
           }
@@ -821,6 +878,8 @@ export async function loadGrassField(
   };
 
   let lastLights = 1;
+  const farLit = new Color3(1, 1, 1);
+  let tuneV = GRASS_FAR_TUNE.v;
   const bushEmiDay = bushMat?.emissiveColor.clone() ?? null;
   return (dt: number, daylight: number) => {
     const G = LOADOUT.glow;
@@ -863,11 +922,27 @@ export async function loadGrassField(
     if (grassFarMats.length) {
       // Яркость дальней травы — тем же рецептом, что у ближней (диффуз под
       // солнцем + собственное свечение), нормировано на цвет снимка.
-      const lr = (mat.diffuseColor.r * (0.25 + 0.75 * daylight) + mat.emissiveColor.r) / 0.5;
-      const lg = (mat.diffuseColor.g * (0.25 + 0.75 * daylight) + mat.emissiveColor.g) / 0.58;
-      const lb = (mat.diffuseColor.b * (0.25 + 0.75 * daylight) + mat.emissiveColor.b) / 0.42;
+      // НЕЗАВИСИМО от ручек ближней травы (раньше брались уже промодулированные
+      // ими mat.diffuse/emissive — ближние ручки тянули за собой и даль): только
+      // базовый цвет травы, время суток и свои ручки GRASS_FAR_TUNE.
+      // Та же схема, что у ближней травы: солнце и свечение — своими ручками на
+      // день и на ночь, смешиваются по времени суток. Солнце к ночи гаснет само
+      // (как настоящий свет сцены); свечение — нет, его яркость целиком в ручке.
+      const T = GRASS_FAR_TUNE;
+      const sunK = mixDN(T.sunDay, T.sunNight, daylight) * (0.25 + 0.75 * daylight);
+      // Свечение нормировано так, чтобы 1 ≈ полная дневная яркость картинки.
+      // Свечение НЕ смешивается по всему закату (заявка): весь вечер —
+      // дневное, ночное включается только в глубоких сумерках (daylight < 0.1).
+      const glowNightW = 1 - smooth(0, 0.1, daylight);
+      const glowK = (T.glowDay + (T.glowNight - T.glowDay) * glowNightW) * 0.5;
+      // Желтизна: чуть поднять красный, едва — зелёный, приглушить синий.
+      const w = T.warm;
+      const lr = ((grassDiffuseBase.r * sunK) / 0.5 + glowK) * T.lit * (1 + 0.22 * w);
+      const lg = ((grassDiffuseBase.g * sunK) / 0.58 + glowK) * T.lit * (1 + 0.06 * w);
+      const lb = ((grassDiffuseBase.b * sunK) / 0.42 + glowK) * T.lit * (1 - 0.45 * w);
+      farLit.copyFromFloats(lr, lg, lb);
       for (const fm of grassFarMats) {
-        fm.setColor3("uLit", new Color3(lr * GRASS_FAR_TUNE.lit, lg * GRASS_FAR_TUNE.lit, lb * GRASS_FAR_TUNE.lit));
+        fm.setColor3("uLit", farLit);
         fm.setColor3("uFogColor", scene.fogColor);
         fm.setFloat("uFogStart", scene.fogStart);
         fm.setFloat("uFogEnd", scene.fogEnd);
@@ -889,6 +964,11 @@ export async function loadGrassField(
     const fx = fl > 1e-3 ? fwd.x / fl : lastFx;
     const fz = fl > 1e-3 ? fwd.z / fl : lastFz;
     // Пересобираем, только если голова заметно сдвинулась или повернулась.
+    // Панель поменяла ширину/высоту/дистанцию — пересобрать раскладку сразу.
+    if (tuneV !== GRASS_FAR_TUNE.v) {
+      tuneV = GRASS_FAR_TUNE.v;
+      lastX = 1e9;
+    }
     const moved = Math.hypot(p.x - lastX, p.z - lastZ);
     const turned = fx * lastFx + fz * lastFz < 0.9986; // ~3°
     if (moved < 0.35 && !turned && !pending && kinds[0].n > 0) {

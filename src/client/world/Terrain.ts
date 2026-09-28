@@ -8,7 +8,7 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { WORLD } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
-import { terrainHeight as surface } from "#shared/terrain";
+import { terrainHeight as surface, SCULPT_BOUNDS } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
 import { relightMaterials } from "./Fireflies";
@@ -128,17 +128,51 @@ function bakeAo(positions: number[], row: number): number[] {
   return colors;
 }
 
-function buildPatch(
-  scene: Scene,
-  name: string,
-  x0: number,
-  x1: number,
-  z0: number,
-  z1: number,
-  step: number,
-): Mesh {
-  const nx = Math.round((x1 - x0) / step);
-  const nz = Math.round((z1 - z0) / step);
+/**
+ * Узлы сетки по одной оси: мелкий шаг `step` внутри [fineLo, fineHi], дальше к
+ * краям шаг плавно растёт (×2 каждые `grow` м) до `maxStep`. Сетка
+ * «тензорная» (у всех рядов одни и те же x, у всех столбцов — одни z), поэтому
+ * остаётся ОДНИМ цельным мешем без Т-стыков и щелей — в отличие от старого
+ * отдельного «фартука», у которого был видимый шов (см. APRON выше).
+ */
+function axisNodes(lo: number, hi: number, fineLo: number, fineHi: number, step: number, maxStep: number, grow: number): number[] {
+  const a = Math.max(lo, Math.floor(fineLo / step) * step);
+  const b = Math.min(hi, Math.ceil(fineHi / step) * step);
+  const nodes: number[] = [];
+  for (let x = a; x <= b + 1e-6; x += step) nodes.push(x);
+  // Наружу вправо.
+  let x = b;
+  let st = step;
+  let run = 0;
+  while (x < hi - 1e-6) {
+    x = Math.min(hi, x + st);
+    nodes.push(x);
+    run += st;
+    if (run >= grow && st < maxStep) {
+      st = Math.min(maxStep, st * 2);
+      run = 0;
+    }
+  }
+  // Наружу влево.
+  const left: number[] = [];
+  x = a;
+  st = step;
+  run = 0;
+  while (x > lo + 1e-6) {
+    x = Math.max(lo, x - st);
+    left.push(x);
+    run += st;
+    if (run >= grow && st < maxStep) {
+      st = Math.min(maxStep, st * 2);
+      run = 0;
+    }
+  }
+  return [...left.reverse(), ...nodes];
+}
+
+function buildPatch(scene: Scene, name: string, xs: number[], zs: number[]): Mesh {
+  const nx = xs.length - 1;
+  const nz = zs.length - 1;
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
@@ -146,8 +180,8 @@ function buildPatch(
 
   for (let iz = 0; iz <= nz; iz++) {
     for (let ix = 0; ix <= nx; ix++) {
-      const x = x0 + ix * step;
-      const z = z0 + iz * step;
+      const x = xs[ix];
+      const z = zs[iz];
       positions.push(x, surface(x, z), z);
       uvs.push((x + size / 2) / size, (z + size / 2) / size);
     }
@@ -194,7 +228,18 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
   // (раньше фартук был непроходим-невидим — падать было некуда, но и
   // опереться на него было нельзя).
   const far = half * (1 + 2 * APRON);
-  const mesh = buildPatch(scene, "terrain", -far, far, -far, far, step);
+  // Мелкая сетка — там, где ходят (круг playRadius) и где рельеф детальный
+  // (гора/водопад/озеро — слепок SCULPT_BOUNDS на юго-западе, частично за
+  // краем карты). Дальше — всё крупнее: это декоративный край, его видно
+  // только издалека. Было ~314 тыс. треугольников одним шагом, стало ~⅓.
+  const pr = WORLD.playRadius + 6;
+  const fx0 = Math.min(-pr, SCULPT_BOUNDS.x0);
+  const fx1 = Math.max(pr, SCULPT_BOUNDS.x1);
+  const fz0 = Math.min(-pr, SCULPT_BOUNDS.z0);
+  const fz1 = Math.max(pr, SCULPT_BOUNDS.z1);
+  const xs = axisNodes(-far, far, fx0, fx1, step, step * 8, 30);
+  const zs = axisNodes(-far, far, fz0, fz1, step, step * 8, 30);
+  const mesh = buildPatch(scene, "terrain", xs, zs);
   mesh.checkCollisions = true;
   mesh.isPickable = true;
   mesh.material = mat;

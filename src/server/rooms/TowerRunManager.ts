@@ -1,3 +1,4 @@
+import type { TowerRolled } from "./TowerRoom";
 import colyseus from "colyseus";
 
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
@@ -38,6 +39,8 @@ export class TowerRunManager {
       leftTier: string;
       rightCls: string;
       rightTier: string;
+      /** Роллы аффиксов надетого оружия/щита — как в основном мире (rolledDmgMul/…). */
+      rolled?: TowerRolled;
     },
     onDone: (r: TowerRunResult) => void,
     onFloor?: (floor: number) => void,
@@ -60,6 +63,7 @@ export class TowerRunManager {
         leftTier: stats.leftTier,
         rightCls: stats.rightCls,
         rightTier: stats.rightTier,
+        rolled: stats.rolled,
         onFloor,
         onSnapshot,
         onResult: (r: TowerRunResult) => {

@@ -43,7 +43,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     const dmg = weaponDamage("sword", s.level, s.str, d.mult, s.agi);
     out.push(["Урон", n1(dmg)]);
     const aps = attacksPerSec("sword", s.level, s.agi);
-    out.push(["Ударов в сек", aps.toFixed(2)]);
+    out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
     out.push([
       "По площади",
@@ -55,11 +55,11 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Урон стрелы", n1(dmg)]);
     out.push(["Крит", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
-    out.push(["Выстрелов в сек", attacksPerSec("bow", s.level, s.agi).toFixed(2)]);
+    out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s.agi).toFixed(2)}/с`]);
     out.push(["Растёт от", "ловкости"]);
   } else if (w.cls === "staff") {
     out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s.int, 1))]);
-    out.push(["Заклинаний в сек", attacksPerSec("staff", s.level, s.agi).toFixed(2)]);
+    out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s.agi).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (сила магии), ловкости (темп)"]);
   } else {
     const blocked = d.affix === "guard" ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage;

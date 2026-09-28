@@ -208,10 +208,11 @@ export const LOADOUT_DEFAULTS: Loadout = {
     fog: 1.5, // плотность тумана — гуще палитры
   },
   glow: {
-    grassSunDay: 1,
-    grassSunNight: 1,
-    grassGlowDay: 1,
-    grassGlowNight: 1,
+    // Подобрано на стенде 2026-09-28 (панель ?grasstune=1).
+    grassSunDay: 0.85,
+    grassSunNight: 3,
+    grassGlowDay: 0,
+    grassGlowNight: 3,
     bushSunDay: 1,
     bushSunNight: 1,
     bushGlowDay: 1,

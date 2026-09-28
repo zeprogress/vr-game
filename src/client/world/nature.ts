@@ -16,7 +16,7 @@ import { LOADOUT } from "../config/loadout";
 import { trees as treeList } from "#shared/trees";
 import { rocks as rockList } from "#shared/rocks";
 import type { Terrain } from "./Terrain";
-import { TreeImpostors, type ImpostorTree } from "./TreeImpostors";
+import { TreeImpostors, impostorsIs3D, impostorsUpdate, type ImpostorTree } from "./TreeImpostors";
 import { LIGHT_BUDGET } from "./Fireflies";
 import { computeGrassLayout } from "./grassLayout";
 
@@ -133,6 +133,39 @@ function buildFadeMaterials(bark: StandardMaterial, leaf: StandardMaterial): voi
     l.useAlphaFromDiffuseTexture = true;
     l.disableDepthWrite = true;
     fadeLeaf.push(l);
+  }
+}
+
+let lodMeshes: Mesh[] | null = null;
+let lodT = 0;
+let lodScanT = 0;
+/**
+ * Спектатор: модель дерева/камня — до `nearR` м, дальше снимок (TreeImpostors).
+ * Как VrCull у игрока, но БЕЗ его побочек (он ещё прячет светлячков и огни
+ * лагеря по дальности — на общих планах стрима это видно). Звать каждый кадр.
+ */
+export function specTreeLod(scene: Scene, camX: number, camY: number, camZ: number, dt: number, nearR: number): void {
+  lodT -= dt;
+  if (lodT > 0) return;
+  lodT = 0.2;
+  // Список пересобираем раз в 2 с: деревья грузятся ПОСЛЕ камней — список,
+  // собранный один раз, оставался без деревьев, и дальше 60 м рядом с
+  // моделью дерева появлялся его снимок (два дерева на одном месте).
+  lodScanT -= 0.2;
+  if (!lodMeshes || lodScanT <= 0) {
+    lodScanT = 2;
+    lodMeshes = scene.meshes.filter(
+      (m) =>
+        !m.isDisposed() &&
+        !m.name.startsWith("impCap_") &&
+        (m.metadata as { impSys?: number } | null)?.impSys !== undefined,
+    ) as Mesh[];
+  }
+  impostorsUpdate(new Vector3(camX, camY, camZ), 0, 0, 1e5, nearR);
+  for (const m of lodMeshes) {
+    if (m.isDisposed()) continue;
+    const want = impostorsIs3D(m) !== false;
+    if (m.isEnabled(false) !== want) m.setEnabled(want);
   }
 }
 
@@ -256,9 +289,11 @@ function leafCardLod(src: Mesh, every: number, name: string): Mesh | null {
 /** Расставить 26 деревьев из общего списка (позиции — те же, что на сервере). */
 export async function loadTrees(
   scene: Scene,
-  terrain: Terrain,
+  terrain: Pick<Terrain, "heightAt">,
   _lite: boolean,
   noInstances = false,
+  /** Свои позиции вместо общего леса — для лаборатории (lab.html, сцена «Деревья»). */
+  customList?: { x: number; z: number; scale: number; yaw: number }[],
 ): Promise<void> {
   await import("@babylonjs/loaders/glTF/2.0");
   // По одному, с отловом: в шлеме бывает, что один файл не доехал —
@@ -277,7 +312,7 @@ export async function loadTrees(
   const bark = barkMaterial(scene);
   const leaf = leafMaterial(scene, containers[0].textures[0]);
 
-  treeList().forEach((t, i) => {
+  (customList ?? treeList()).forEach((t, i) => {
     const c = containers[i % containers.length];
     // doNotInstantiate — каждое дерево своим мешем: иначе прозрачность одного
     // (mesh.visibility у спектатора) утаскивает в прозрачный проход весь лес.
@@ -341,8 +376,10 @@ export async function loadTrees(
       }
     }
   }
-  // Дальние деревья — снимки-билборды (только у игроков; у спектатора деревья с прозрачностью).
-  if (!noInstances) {
+  // Дальние деревья — снимки-билборды. У игроков модель/снимок переключает
+  // VrCull, у спектатора — specTreeLod ниже (ближние деревья там остаются
+  // моделями с прозрачностью у камеры, дальние — снимки: было 146 отрисовок).
+  {
     new TreeImpostors(
       scene,
       treeInstances.map((t) => ({

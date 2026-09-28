@@ -46,6 +46,7 @@ const SCENES: LabScene[] = [
   { id: "fire", title: "🔥 Огонь: старый vs частицы", load: () => import("./sceneFire") },
   { id: "models", title: "👾 Модели и анимации", load: () => import("./sceneModels") },
   { id: "fx", title: "✨ Эффекты умений", load: () => import("./sceneFx") },
+  { id: "trees", title: "🌳 Деревья: модель vs снимок", load: () => import("./sceneTrees") },
 ];
 
 const params = new URLSearchParams(location.search);
