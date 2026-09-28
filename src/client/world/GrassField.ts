@@ -45,6 +45,18 @@ const COS_HALF = Math.cos((60 * Math.PI) / 180);
 const CHUNK_BUDGET_MS = 1.5; // на расчёт новых кусков за одну пересборку (остальное — в следующую)
 const WARM_REBUILDS = 30; // первые пересборки после старта считаем с большим бюджетом
 const REACH = 165; // дальше от центра карты травы нет
+/**
+ * LOD травы: дальше этого (м) пучок — плоский билборд-снимок настоящей модели
+ * (2 треугольника вместо 150–500). Большинство пучков в кадре далеко и
+ * занимают несколько пикселей — полная модель там тратила вершины впустую
+ * (замер: спектатор ~1.6 млн треугольников травы, из них ~85% дальше 16 м).
+ */
+const GRASS_LOD = 16;
+/** ?grasslod=0 — без LOD (все пучки полными моделями), для сравнения на стенде. */
+const GRASS_LOD_ON = typeof location === "undefined" || new URLSearchParams(location.search).get("grasslod") !== "0";
+/** Подстройка яркости дальней травы под ближнюю (window.__grassFar.lit в консоли). */
+export const GRASS_FAR_TUNE = { lit: 0.55 }; // подобрано на стенде: дальняя = ближней по тону
+if (typeof window !== "undefined") (window as unknown as { __grassFar: unknown }).__grassFar = GRASS_FAR_TUNE;
 
 function hash(ix: number, iz: number, k: number): number {
   let h = Math.imul(ix, 374761393) ^ Math.imul(iz, 668265263) ^ Math.imul(k + 1, 2147483647);
@@ -137,6 +149,12 @@ interface Kind {
   buf: Float32Array;
   col: Float32Array | null;
   n: number;
+  /** Имя инстансного буфера цвета ("color" у моделей, "instanceColor" у билбордов). */
+  colName?: string;
+  /** Дальний билборд этого вида (LOD) и размер снимка модели, м. */
+  far?: number;
+  farW?: number;
+  farH?: number;
 }
 
 function firstGeometry(root: TransformNode): Mesh | null {
@@ -157,7 +175,13 @@ function firstGeometry(root: TransformNode): Mesh | null {
  * дальних деревьев/камней (TreeImpostors).
  */
 function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex: Texture; w: number; h: number } {
-  const clone = source.clone("bbCaptureTmp", null, true) as Mesh;
+  // Чистая копия ГЕОМЕТРИИ (не clone()): у источника тонкие инстансы с
+  // thinInstanceCount=0 — клон их наследует и не рисует ничего, снимок
+  // выходил пустым (дальняя трава/кусты были невидимы).
+  const clone = new Mesh("bbCaptureTmp", scene);
+  VertexData.ExtractFromMesh(source, true, true).applyToMesh(clone);
+  clone.material = source.material;
+  clone.useVertexColors = source.useVertexColors;
   clone.setEnabled(true);
   clone.position.setAll(0);
   clone.rotationQuaternion = null;
@@ -204,11 +228,23 @@ function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex:
   rtt.activeCamera = cam;
   rtt.renderList = [clone];
   rtt.clearColor = new Color4(0, 0, 0, 0);
-  rtt.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+  // Снимаем КАЖДЫЙ кадр, пока материал копии не скомпилирован (шейдеры
+  // компилируются параллельно): раньше был REFRESHRATE_RENDER_ONCE — первый
+  // кадр рендерился до готовности шейдера, снимок выходил пустым навсегда
+  // (дальние кусты годами были невидимы). Готов + ещё 2 кадра — фиксируем.
+  rtt.refreshRate = 1;
   rtt.hasAlpha = true;
   scene.customRenderTargets.push(rtt);
   const capMatToDispose = clone.material !== source.material ? (clone.material as StandardMaterial) : null;
-  scene.onAfterRenderObservable.addOnce(() => {
+  let readyFrames = 0;
+  let frames = 0;
+  const obs = scene.onAfterRenderObservable.add(() => {
+    frames++;
+    const ready = !!clone.material?.isReady(clone) && clone.isReady(true);
+    readyFrames = ready ? readyFrames + 1 : 0;
+    if (readyFrames < 3 && frames < 600) return;
+    scene.onAfterRenderObservable.remove(obs);
+    rtt.refreshRate = 0; // дальше не перерисовываем — снимок готов
     scene.customRenderTargets = scene.customRenderTargets.filter((t) => t !== rtt);
     clone.dispose();
     capMatToDispose?.dispose(false, false); // не трогать текстуры — они общие с оригиналом
@@ -216,6 +252,63 @@ function captureBillboardTexture(scene: Scene, source: Mesh, size = 160): { tex:
   });
   return { tex: rtt, w, h };
 }
+
+/** Дальняя трава: тот же билборд, плюс оттенок пучка (инстансный color) и свой порог альфы. */
+const GRASS_FAR_VERT = /* glsl */ `
+precision highp float;
+attribute vec3 position;
+attribute vec2 uv;
+attribute vec4 world0;
+attribute vec4 world1;
+attribute vec4 world2;
+attribute vec4 world3;
+attribute vec4 instanceColor;
+uniform mat4 viewProjection;
+#ifdef MULTIVIEW
+uniform mat4 viewProjectionR;
+#endif
+uniform mat4 view;
+varying vec2 vUv;
+varying float vDist;
+varying vec3 vTint;
+void main() {
+  vec3 base = world3.xyz;
+  float sx = world0.x;
+  float sy = world1.y;
+  vec3 t = view[3].xyz;
+  vec3 cam = -vec3(dot(view[0].xyz, t), dot(view[1].xyz, t), dot(view[2].xyz, t));
+  vec3 toCam = cam - base;
+  vec3 d = normalize(vec3(toCam.x, 0.0, toCam.z) + vec3(1e-4, 0.0, 0.0));
+  vec3 right = vec3(-d.z, 0.0, d.x);
+  vec3 p = base + right * (position.x * sx) + vec3(0.0, position.y * sy, 0.0);
+  vDist = length(p - cam);
+  vUv = uv;
+  vTint = instanceColor.rgb;
+#ifdef MULTIVIEW
+  if (gl_ViewID_OVR == 0u) { gl_Position = viewProjection * vec4(p, 1.0); } else { gl_Position = viewProjectionR * vec4(p, 1.0); }
+#else
+  gl_Position = viewProjection * vec4(p, 1.0);
+#endif
+}
+`;
+const GRASS_FAR_FRAG = /* glsl */ `
+precision highp float;
+varying vec2 vUv;
+varying float vDist;
+varying vec3 vTint;
+uniform sampler2D tex;
+uniform vec3 uLit;
+uniform vec3 uFogColor;
+uniform float uFogStart;
+uniform float uFogEnd;
+void main() {
+  vec4 c = texture2D(tex, vUv);
+  if (c.a < 0.35) discard;
+  vec3 col = c.rgb * vTint * uLit;
+  float f = clamp((vDist - uFogStart) / max(1.0, uFogEnd - uFogStart), 0.0, 1.0);
+  gl_FragColor = vec4(mix(col, uFogColor, f), 1.0);
+}
+`;
 
 /** Билборд-шейдер: цилиндрический разворот к камере вокруг вертикали + затухание в тумане — как у TreeImpostors. */
 const BILLBOARD_VERT = /* glsl */ `
@@ -437,6 +530,54 @@ export async function loadGrassField(
   }
   const BUSH_FAR_DIST = 50;
 
+  // LOD травы: для каждого вида — снимок модели в текстуру + билборд-меш с
+  // инстансным оттенком. Один материал на вид (текстура своя), 2 треугольника.
+  const grassFarMats: ShaderMaterial[] = [];
+  for (const ki of [kShort, kTall, kWispy]) {
+    if (ki < 0) continue;
+    const src = kinds[ki].mesh;
+    src.thinInstanceCount = 0;
+    const cap = captureBillboardTexture(scene, src, 96);
+    const fm = new ShaderMaterial(
+      `grassFarMat_${src.name}`,
+      scene,
+      { vertexSource: GRASS_FAR_VERT, fragmentSource: GRASS_FAR_FRAG },
+      {
+        attributes: ["position", "uv", "instanceColor"],
+        uniforms: ["viewProjection", "view", "uLit", "uFogColor", "uFogStart", "uFogEnd"],
+        samplers: ["tex"],
+      },
+    );
+    fm.setTexture("tex", cap.tex);
+    fm.setColor3("uLit", new Color3(1, 1, 1));
+    fm.setColor3("uFogColor", scene.fogColor);
+    fm.setFloat("uFogStart", scene.fogStart);
+    fm.setFloat("uFogEnd", scene.fogEnd);
+    fm.backFaceCulling = false;
+    grassFarMats.push(fm);
+    const fmesh = new Mesh(`${src.name}Far`, scene);
+    const vd = new VertexData();
+    vd.positions = [-0.5, 0, 0, 0.5, 0, 0, 0.5, 1, 0, -0.5, 1, 0];
+    vd.indices = [0, 1, 2, 0, 2, 3];
+    vd.uvs = [0, 0, 1, 0, 1, 1, 0, 1];
+    vd.applyToMesh(fmesh);
+    fmesh.material = fm;
+    fmesh.isPickable = false;
+    fmesh.alwaysSelectAsActiveMesh = true;
+    fmesh.doNotSyncBoundingInfo = true;
+    fmesh.setEnabled(false);
+    const n = 8192;
+    const buf = new Float32Array(16 * n);
+    fmesh.thinInstanceSetBuffer("matrix", buf, 16, false);
+    const col = new Float32Array(4 * n);
+    fmesh.thinInstanceSetBuffer("instanceColor", col, 4, false);
+    fmesh.thinInstanceCount = 0;
+    kinds.push({ mesh: fmesh, buf, col, n: 0, colName: "instanceColor" });
+    kinds[ki].far = kinds.length - 1;
+    kinds[ki].farW = cap.w;
+    kinds[ki].farH = cap.h;
+  }
+
   // ---- кэш кусков клеток ----
   const chunks = new Map<number, Float32Array>();
   const chunkKey = (cx: number, cz: number): number => (cx + 4096) * 8192 + (cz + 4096);
@@ -517,7 +658,7 @@ export async function loadGrassField(
         const nc = new Float32Array(k.col.length * 2);
         nc.set(k.col);
         k.col = nc;
-        k.mesh.thinInstanceSetBuffer("color", k.col, 4, false);
+        k.mesh.thinInstanceSetBuffer(k.colName ?? "color", k.col, 4, false);
       }
       idx = k.n;
     }
@@ -602,7 +743,12 @@ export async function loadGrassField(
           if (cosA < COS_HALF) continue;
           const k = kinds[a[o + 10]];
           const sx = a[o + 5];
-          write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+          if (GRASS_LOD_ON && d > GRASS_LOD && k.far !== undefined) {
+            // Дальний пучок — билборд-снимок: реальный размер = снимок × масштаб пучка.
+            write(kinds[k.far], a[o + 1], a[o + 2], a[o + 3], 0, (k.farW ?? 1) * sx, (k.farH ?? 1) * sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+          } else {
+            write(k, a[o + 1], a[o + 2], a[o + 3], a[o + 4], sx, sx * a[o + 6], a[o + 7], a[o + 8], a[o + 9]);
+          }
         }
       }
     }
@@ -646,7 +792,7 @@ export async function loadGrassField(
       k.mesh.setEnabled(k.n > 0);
       if (k.n > 0) {
         k.mesh.thinInstanceBufferUpdated("matrix");
-        if (k.col) k.mesh.thinInstanceBufferUpdated("color");
+        if (k.col) k.mesh.thinInstanceBufferUpdated(k.colName ?? "color");
       }
     }
   };
@@ -713,6 +859,19 @@ export async function loadGrassField(
         bushDiffuseBase.g * bushSun,
         bushDiffuseBase.b * bushSun,
       );
+    }
+    if (grassFarMats.length) {
+      // Яркость дальней травы — тем же рецептом, что у ближней (диффуз под
+      // солнцем + собственное свечение), нормировано на цвет снимка.
+      const lr = (mat.diffuseColor.r * (0.25 + 0.75 * daylight) + mat.emissiveColor.r) / 0.5;
+      const lg = (mat.diffuseColor.g * (0.25 + 0.75 * daylight) + mat.emissiveColor.g) / 0.58;
+      const lb = (mat.diffuseColor.b * (0.25 + 0.75 * daylight) + mat.emissiveColor.b) / 0.42;
+      for (const fm of grassFarMats) {
+        fm.setColor3("uLit", new Color3(lr * GRASS_FAR_TUNE.lit, lg * GRASS_FAR_TUNE.lit, lb * GRASS_FAR_TUNE.lit));
+        fm.setColor3("uFogColor", scene.fogColor);
+        fm.setFloat("uFogStart", scene.fogStart);
+        fm.setFloat("uFogEnd", scene.fogEnd);
+      }
     }
     if (bushFarMat) {
       bushFarMat.setFloat("uLit", 0.2 + 0.8 * daylight);
