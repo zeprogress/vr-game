@@ -514,10 +514,10 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Костяной призрак: мелкий (≈1 м), быстрый летун. Хрупкий, но телепортируется
   // за спину героя и пьёт жизнь ударом (вампиризм 60%) — если его не добить
   // быстро, отхиливается. Лучник его не «закайтит»: дистанция не спасает.
-  // Опыт ×2 (24000→48000), 2026-09-28.
+  // Опыт ×2 (24000→48000), HP ×2 (820→1640), 2026-09-28.
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 820, dmgMul: 5, xp: 48000, scaleMul: 1.1, tint: null, flying: true,
+    hp: 1640, dmgMul: 5, xp: 48000, scaleMul: 1.1, tint: null, flying: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },
