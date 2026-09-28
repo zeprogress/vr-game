@@ -7,6 +7,8 @@ import {
   ELITE_MOBS,
   goldDropMulForLevel,
   MAGE_NOVA,
+  SPORE,
+  BLINK,
   MAGE_SPELL,
   MOB,
   FLYER_HIT_BONUS,
@@ -153,6 +155,19 @@ export interface PlayerHit {
   stunSec?: number;
   /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
   knockback?: number;
+  /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
+  dot?: boolean;
+  /** Доля РЕАЛЬНО нанесённого урона, которую моб-источник (byMob) лечит себе. */
+  lifesteal?: number;
+}
+
+/** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
+export interface MobFx {
+  k: "sporeMark" | "blinkOut" | "blinkIn";
+  x: number;
+  z: number;
+  /** Длительность (телеграф и т.п.), с. */
+  d?: number;
 }
 
 /**
@@ -323,6 +338,23 @@ class Mob {
     }
     return false;
   }
+  /** Спец-механики топ-зоны 33 ур. — см. EliteMobDef.sporeCaster/blinker. */
+  readonly sporeCaster: boolean;
+  readonly blinker: boolean;
+  readonly lifesteal: number;
+  readonly meleeReach: number;
+  readonly atkCooldown: number;
+  private sporeCd = 2;
+  private sporeWindupT = 0;
+  private sporeX = 0;
+  private sporeZ = 0;
+  /** Живые ядовитые облака этого моба (переживают его смерть до истечения). */
+  private readonly sporeZones: { x: number; z: number; t: number; tickT: number }[] = [];
+  private blinkCd = 2;
+  private blinkFadeT = 0;
+  private blinkTarget: string | null = null;
+  /** Очередь визуальных событий — ZoneRoom забирает каждый тик (drainFx). */
+  readonly fx: MobFx[] = [];
   private novaCd = 0;
   private novaWindupT = 0;
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
@@ -375,6 +407,11 @@ class Mob {
       splitReviveSec?: number;
       /** Множитель скорости движения — 1 обычно, у осколков голема выше. */
       speedMul?: number;
+      sporeCaster?: boolean;
+      blinker?: boolean;
+      lifesteal?: number;
+      meleeReach?: number;
+      attackCooldown?: number;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -418,6 +455,11 @@ class Mob {
     this.splitChildXp = opts.splitChildXp ?? 0;
     this.splitReviveSec = opts.splitReviveSec ?? MOB.respawn;
     this.speedMul = opts.speedMul ?? 1;
+    this.sporeCaster = opts.sporeCaster ?? false;
+    this.blinker = opts.blinker ?? false;
+    this.lifesteal = opts.lifesteal ?? 0;
+    this.meleeReach = opts.meleeReach ?? MOB.attackRange;
+    this.atkCooldown = opts.attackCooldown ?? MOB.attackCooldown;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -528,6 +570,28 @@ class Mob {
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     if (this.attackCd > 0) this.attackCd -= dt;
+    // Ядовитые облака живут своей жизнью — и после смерти колосса тоже.
+    for (let i = this.sporeZones.length - 1; i >= 0; i--) {
+      const zn = this.sporeZones[i];
+      zn.t -= dt;
+      zn.tickT -= dt;
+      if (zn.tickT <= 0) {
+        zn.tickT += SPORE.tick;
+        for (const p of players) {
+          if (Math.hypot(p.x - zn.x, p.z - zn.z) > SPORE.radius) continue;
+          hits.push({
+            target: p.sessionId,
+            dmg: SPORE.tickDmg,
+            fromX: zn.x,
+            fromZ: zn.z,
+            projectile: false,
+            byMob: this.id,
+            dot: true,
+          });
+        }
+      }
+      if (zn.t <= 0) this.sporeZones.splice(i, 1);
+    }
     if (this.stunnedT > 0) this.stunnedT = Math.max(0, this.stunnedT - dt);
     // Плевун: отход выдыхается, потом пауза, в которую его можно догнать.
     if (this.restT > 0) {
@@ -633,6 +697,68 @@ class Mob {
         this.novaWindupT = MAGE_NOVA.windup;
       }
     }
+
+    const busy = this.stunnedT > 0 || this.rootedT > 0;
+    // Грибной колосс: метит землю под героем, через телеграф — облако спор.
+    if (this.sporeCaster) {
+      if (this.sporeCd > 0) this.sporeCd -= dt;
+      if (this.sporeWindupT > 0) {
+        this.sporeWindupT -= dt;
+        if (this.sporeWindupT <= 0) {
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.sporeZones.push({ x: this.sporeX, z: this.sporeZ, t: SPORE.duration, tickT: 0 });
+        }
+      } else if (chasing && np && !busy && this.sporeCd <= 0 && dist < SPORE.range) {
+        this.sporeX = np.x;
+        this.sporeZ = np.z;
+        this.sporeWindupT = SPORE.windup;
+        this.sporeCd = SPORE.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "sporeMark", x: np.x, z: np.z, d: SPORE.windup });
+      }
+    }
+    // Костяной призрак: растворяется и возникает за спиной у цели, сразу бьёт.
+    if (this.blinker) {
+      if (this.blinkCd > 0) this.blinkCd -= dt;
+      if (this.blinkFadeT > 0) {
+        this.blinkFadeT -= dt;
+        if (this.blinkFadeT <= 0) {
+          const t = players.find((p) => p.sessionId === this.blinkTarget) ?? null;
+          this.blinkTarget = null;
+          if (t) {
+            let ux = t.x - this.x;
+            let uz = t.z - this.z;
+            const ul = Math.hypot(ux, uz) || 1;
+            ux /= ul;
+            uz /= ul;
+            this.x = t.x + ux * BLINK.behind;
+            this.z = t.z + uz * BLINK.behind;
+            this.vx = 0;
+            this.vz = 0;
+            this.y = terrainHeight(this.x, this.z) + 1.35;
+            this.yaw = Math.atan2(-ux, -uz);
+            this.fx.push({ k: "blinkIn", x: this.x, z: this.z });
+            this.attackCd = this.atkCooldown;
+            this.attackSeq = (this.attackSeq + 1) & 0xffff;
+            hits.push({
+              target: t.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * BLINK.strikeMul,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+              byMob: this.id,
+              lifesteal: this.lifesteal || undefined,
+            });
+          }
+        }
+      } else if (chasing && np && !busy && this.blinkCd <= 0 && dist > BLINK.minDist && dist < BLINK.maxDist) {
+        this.blinkFadeT = BLINK.fade;
+        this.blinkTarget = np.sessionId;
+        this.blinkCd = BLINK.cooldown * (0.8 + Math.random() * 0.4);
+        this.fx.push({ k: "blinkOut", x: this.x, z: this.z, d: BLINK.fade });
+      }
+    }
+    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает).
+    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -797,19 +923,19 @@ class Mob {
       }
     }
 
-    if (this.rootedT > 0 || this.stunnedT > 0) {
+    if (this.rootedT > 0 || this.stunnedT > 0 || holdStill) {
       // Пригвождён (град стрел) или оглушён (удар воина): с места не двигается.
       this.rootedT = Math.max(0, this.rootedT - dt);
       this.vx = 0;
       this.vz = 0;
       // Оглушённый летун застывает в воздухе; пригвождённый — падает как все.
-      if (this.stunnedT > 0 && this.flying) this.vy = 0;
+      if ((this.stunnedT > 0 || holdStill) && this.flying) this.vy = 0;
       else this.vy -= MOB.gravity * dt;
     } else if (this.flying) {
       // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
       let tx = 0;
       let tz = 0;
-      if (chasing && dist > MOB.attackRange * 0.7) {
+      if (chasing && dist > this.meleeReach * 0.7) {
         tx = dx;
         tz = dz;
       } else {
@@ -886,7 +1012,7 @@ class Mob {
             hx = -dz * s;
             hz = dx * s;
           }
-        } else if (dist > MOB.attackRange * 0.7) {
+        } else if (dist > this.meleeReach * 0.7) {
           hx = dx;
           hz = dz;
         }
@@ -1019,15 +1145,15 @@ class Mob {
       this.yaw += dyaw * Math.min(1, dt * 1.5);
     }
 
-    if (chasing && np && !isBoss && this.stunnedT <= 0) {
+    if (chasing && np && !isBoss && this.stunnedT <= 0 && !holdStill) {
       if (this.ranged) {
         if (dist < SPITTER.fireRange && this.attackCd <= 0) {
           this.attackCd = SPITTER.fireCooldown;
           this.attackSeq = (this.attackSeq + 1) & 0xffff;
           spit(this, np);
         }
-      } else if (dist < MOB.attackRange && this.attackCd <= 0) {
-        this.attackCd = MOB.attackCooldown;
+      } else if (dist < this.meleeReach && this.attackCd <= 0) {
+        this.attackCd = this.atkCooldown;
         this.attackSeq = (this.attackSeq + 1) & 0xffff;
         hits.push({
           target: np.sessionId,
@@ -1036,6 +1162,7 @@ class Mob {
           fromZ: this.z,
           projectile: false,
           byMob: this.id,
+          lifesteal: this.lifesteal || undefined,
         });
         this.vx -= dx * 2;
         this.vz -= dz * 2;
@@ -1340,6 +1467,12 @@ export class ZoneSim {
           splitReviveSec: def.splitReviveSec,
           splitXp: def.splitXp,
           splitChildXp: def.splitChildXp,
+          sporeCaster: def.sporeCaster,
+          blinker: def.blinker,
+          lifesteal: def.lifesteal,
+          meleeReach: def.meleeReach,
+          attackCooldown: def.attackCooldown,
+          speedMul: def.speedMul,
         });
         this.mobs.set(m.id, m);
       }

@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BOSS, BOT, MOB, PLAYER, SKILL, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1408,6 +1408,17 @@ export class Spectator {
       case "healAura":
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
+        break;
+      case "sporeMark":
+        this.skillFx.sporeZone(x, y, z, SPORE.radius, d ?? SPORE.windup, SPORE.duration);
+        setTimeout(() => this.sfx.at({ x, y, z }, () => this.sfx.groundBash()), (d ?? SPORE.windup) * 1000);
+        break;
+      case "blinkOut":
+        this.skillFx.wraithPuff(x, y, z, d ?? BLINK.fade, false);
+        break;
+      case "blinkIn":
+        this.skillFx.wraithPuff(x, y, z, 0.6, true);
+        this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);

@@ -5101,6 +5101,16 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.mobs.forEach((_s, id) => {
       if (!this.sim.mobs.has(id)) this.state.mobs.delete(id);
     });
+    // Визуал спец-атак мобов топ-зоны (облако спор, рывок призрака) — всем.
+    for (const m of this.sim.mobs.values()) {
+      if (m.fx.length === 0) continue;
+      for (const f of m.fx) {
+        this.broadcast(MSG.act, {
+          k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d,
+        } satisfies ActRelay);
+      }
+      m.fx.length = 0;
+    }
     for (const d of this.sim.dummies.values()) {
       const s = this.state.dummies.get(d.id);
       if (!s) continue;
@@ -5314,8 +5324,13 @@ export class ZoneRoom extends Room<ZoneState> {
     // Уворот (ловкость): один предмет в руках (лук/посох — обе руки заняты
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
     const oneHanded = p.leftCls === "";
-    const dodged = Math.random() < dodgeChance(p.agi, oneHanded);
-    const block = dodged ? { mult: 0, by: 3 as BlockedBy } : resolveBlock(guard, ax, az, h.projectile, aegis);
+    // Яд (облако спор) — не удар: ни увернуться, ни закрыться щитом.
+    const dodged = !h.dot && Math.random() < dodgeChance(p.agi, oneHanded);
+    const block = h.dot
+      ? { mult: 1, by: 0 as BlockedBy }
+      : dodged
+        ? { mult: 0, by: 3 as BlockedBy }
+        : resolveBlock(guard, ax, az, h.projectile, aegis);
     // Разъярённый владыка события бьёт сильнее.
     let inDmg = h.dmg;
     if (h.byMob && h.byMob === this.huntBossId && this.sim.mobs.get(this.huntBossId)?.raging) {
@@ -5326,6 +5341,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
+    // Вампиризм моба (Костяной призрак) — от реально прошедшего урона.
+    if (h.lifesteal && h.byMob && dmg > 0) {
+      const m = this.sim.mobs.get(h.byMob);
+      if (m && !m.dead) m.hp = Math.min(m.maxHp, m.hp + dmg * h.lifesteal);
+    }
 
     // Увернулся — спец-эффекты атаки (оглушение/отбрасывание) тоже мимо.
     // (Клиент живого игрока применит стан/отбрасывание сам — см. MSG.mobHit ниже.)

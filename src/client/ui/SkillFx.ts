@@ -10,9 +10,13 @@ import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { Effect } from "@babylonjs/core/Materials/effect";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import "@babylonjs/core/Meshes/Builders/torusBuilder";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 
 const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
+const SPORE_C = new Color3(0.45, 0.95, 0.2); // ядовито-зелёный (Грибной колосс)
+const WRAITH_C = new Color3(0.6, 0.25, 1); // фиолетовая дымка (Костяной призрак)
 
 const POOL = 3;
 
@@ -149,6 +153,25 @@ interface Rain {
   radius: number;
 }
 
+/** Облако спор: сначала `cast` с телеграфа (кольцо сжимается к центру), потом `hold` с яда. */
+interface Spore {
+  ring: Mesh;
+  cloud: Mesh;
+  puffs: Mesh;
+  age: number;
+  cast: number;
+  life: number;
+  radius: number;
+}
+
+/** Вспышка призрака: расширяющийся фиолетовый шар (out — схлопывается, in — вспыхивает). */
+interface Puff {
+  ball: Mesh;
+  age: number;
+  life: number;
+  grow: boolean;
+}
+
 interface Stun {
   dome: Mesh;
   age: number;
@@ -166,8 +189,41 @@ export class SkillFx {
   private readonly stuns: Stun[] = [];
   private nextRain = 0;
   private nextStun = 0;
+  private readonly spores: Spore[] = [];
+  private readonly puffs: Puff[] = [];
+  private nextSpore = 0;
+  private nextPuff = 0;
 
   constructor(scene: Scene) {
+    for (let i = 0; i < 8; i++) {
+      const ring = MeshBuilder.CreateTorus(`sporeRing${i}`, { diameter: 2, thickness: 0.08, tessellation: 40 }, scene);
+      ring.material = addMat(scene, `sporeRingMat${i}`, SPORE_C);
+      const cloud = MeshBuilder.CreateSphere(`sporeCloud${i}`, { diameter: 2, segments: 12, slice: 0.5 }, scene);
+      cloud.material = addMat(scene, `sporeCloudMat${i}`, SPORE_C.scale(0.6));
+      // Клубы — несколько шариков одним мешем (одна отрисовка), крутятся и «дышат».
+      const parts: Mesh[] = [];
+      for (let k = 0; k < 7; k++) {
+        const b = MeshBuilder.CreateSphere(`sporePuff${i}_${k}`, { diameter: 0.5 + (k % 3) * 0.25, segments: 6 }, scene);
+        const a = (k / 7) * Math.PI * 2;
+        b.position.set(Math.cos(a) * 0.55, 0.25 + (k % 2) * 0.3, Math.sin(a) * 0.55);
+        parts.push(b);
+      }
+      const puffs = Mesh.MergeMeshes(parts, true) ?? parts[0];
+      puffs.name = `sporePuffs${i}`;
+      puffs.material = addMat(scene, `sporePuffMat${i}`, SPORE_C.scale(0.8));
+      for (const m of [ring, cloud, puffs]) {
+        m.isPickable = false;
+        m.setEnabled(false);
+      }
+      this.spores.push({ ring, cloud, puffs, age: 1, cast: 1, life: 1, radius: 1 });
+    }
+    for (let i = 0; i < 8; i++) {
+      const ball = MeshBuilder.CreateSphere(`wraithPuff${i}`, { diameter: 2, segments: 12 }, scene);
+      ball.material = addMat(scene, `wraithPuffMat${i}`, WRAITH_C);
+      ball.isPickable = false;
+      ball.setEnabled(false);
+      this.puffs.push({ ball, age: 1, life: 1, grow: true });
+    }
     for (let i = 0; i < POOL; i++) {
       const shaftMat = makeShaftMaterial(scene, `rainShaftMat${i}`);
       const shafts = makeShaftMesh(scene, `rainShafts${i}`);
@@ -213,7 +269,84 @@ export class SkillFx {
     r.shafts.setEnabled(true);
   }
 
+  /** Колосс пометил землю: `cast` с кольцо сжимается, дальше `hold` с клубится яд. */
+  sporeZone(x: number, y: number, z: number, radius: number, cast: number, hold: number): void {
+    const sp = this.spores[this.nextSpore];
+    this.nextSpore = (this.nextSpore + 1) % this.spores.length;
+    sp.age = 0;
+    sp.cast = Math.max(0.2, cast);
+    sp.life = sp.cast + hold;
+    sp.radius = radius;
+    sp.ring.position.set(x, y + 0.08, z);
+    sp.cloud.position.set(x, y + 0.02, z);
+    sp.puffs.position.set(x, y, z);
+    sp.ring.setEnabled(true);
+    sp.cloud.setEnabled(false);
+    sp.puffs.setEnabled(false);
+  }
+
+  /** Призрак: `grow=false` — тает на месте (d с), `true` — вспышка появления. */
+  wraithPuff(x: number, y: number, z: number, life: number, grow: boolean): void {
+    const pf = this.puffs[this.nextPuff];
+    this.nextPuff = (this.nextPuff + 1) % this.puffs.length;
+    pf.age = 0;
+    pf.life = Math.max(0.2, life);
+    pf.grow = grow;
+    pf.ball.position.set(x, y + 1.35, z);
+    pf.ball.setEnabled(true);
+  }
+
   update(dt: number): void {
+    for (const sp of this.spores) {
+      if (sp.age >= sp.life) continue;
+      sp.age += dt;
+      if (sp.age >= sp.life) {
+        sp.ring.setEnabled(false);
+        sp.cloud.setEnabled(false);
+        sp.puffs.setEnabled(false);
+        continue;
+      }
+      const R = sp.radius;
+      if (sp.age < sp.cast) {
+        // Телеграф: кольцо на земле пульсирует и сжимается к центру — «беги отсюда».
+        const t = sp.age / sp.cast;
+        const r = R * (1 - 0.35 * t);
+        sp.ring.scaling.set(r, 1, r);
+        (sp.ring.material as StandardMaterial).alpha = 0.5 + 0.5 * Math.abs(Math.sin(sp.age * 14));
+        continue;
+      }
+      // Облако: купол-туман на всю зону + клубы, в конце плавно гаснет.
+      if (!sp.cloud.isEnabled()) {
+        sp.cloud.setEnabled(true);
+        sp.puffs.setEnabled(true);
+      }
+      const hold = sp.age - sp.cast;
+      const rest = sp.life - sp.age;
+      const fade = Math.min(1, hold / 0.3) * Math.min(1, rest / 0.8);
+      sp.ring.scaling.set(R, 1, R);
+      (sp.ring.material as StandardMaterial).alpha = 0.55 * fade;
+      const breathe = 1 + 0.06 * Math.sin(sp.age * 3);
+      sp.cloud.scaling.set(R * breathe, R * 0.45 * breathe, R * breathe);
+      (sp.cloud.material as StandardMaterial).alpha = 0.22 * fade;
+      const pr = R * 0.9;
+      sp.puffs.scaling.set(pr, pr * (0.8 + 0.2 * Math.sin(sp.age * 2.2)), pr);
+      sp.puffs.rotation.y += dt * 0.6;
+      (sp.puffs.material as StandardMaterial).alpha = 0.3 * fade;
+    }
+    for (const pf of this.puffs) {
+      if (pf.age >= pf.life) continue;
+      pf.age += dt;
+      if (pf.age >= pf.life) {
+        pf.ball.setEnabled(false);
+        continue;
+      }
+      const t = pf.age / pf.life;
+      // Исчезновение: тёмный сгусток сжимается в точку; появление — вспышка наружу.
+      const r = pf.grow ? 0.4 + 1.8 * Math.sqrt(t) : 1.4 * (1 - t) + 0.1;
+      pf.ball.scaling.setAll(r);
+      (pf.ball.material as StandardMaterial).alpha = (pf.grow ? 1 - t : 0.4 + 0.5 * t) * 0.7;
+    }
+
     for (const r of this.rains) {
       if (r.age >= r.life) continue;
       r.age += dt;
@@ -241,6 +374,16 @@ export class SkillFx {
   }
 
   dispose(): void {
+    for (const sp of this.spores) {
+      for (const m of [sp.ring, sp.cloud, sp.puffs]) {
+        m.material?.dispose();
+        m.dispose();
+      }
+    }
+    for (const pf of this.puffs) {
+      pf.ball.material?.dispose();
+      pf.ball.dispose();
+    }
     for (const st of this.stuns) {
       st.dome.material?.dispose();
       st.dome.dispose();

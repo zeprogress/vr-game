@@ -88,7 +88,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BOSS, BOT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, BOT, PLAYER, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -2172,6 +2172,17 @@ export class Game {
         // Бот-лекарь начал каст: круг по земле + купол на всё время каста.
         this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
         this.sfx.at(at, () => this.sfx.levelUp());
+        break;
+      case "sporeMark":
+        this.skillFx.sporeZone(x, y, z, SPORE.radius, d ?? SPORE.windup, SPORE.duration);
+        setTimeout(() => this.sfx.at({ x, y, z }, () => this.sfx.groundBash()), (d ?? SPORE.windup) * 1000);
+        break;
+      case "blinkOut":
+        this.skillFx.wraithPuff(x, y, z, d ?? BLINK.fade, false);
+        break;
+      case "blinkIn":
+        this.skillFx.wraithPuff(x, y, z, 0.6, true);
+        this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
