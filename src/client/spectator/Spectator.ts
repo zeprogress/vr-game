@@ -357,7 +357,7 @@ export class Spectator {
       // Закрыли вкладку — сообщаем, пока соединение ещё живо (на всякий случай:
       // сервер и сам увидит обрыв и вернёт спектаторов).
       window.addEventListener("beforeunload", () => {
-        if (this.freeCtl && !this.freeCtl.closed) this.net?.sendSpecCmd({ t: "free", on: 0 });
+        if (this.freeCtl?.live) this.net?.sendSpecCmd({ t: "free", on: 0 });
       });
     }
     if (override.perf) {
@@ -665,7 +665,8 @@ export class Spectator {
       ctl.update(dt);
       const tgt = ctl.target(this._freeTgt);
       this.cam.setManual(ctl.pos, tgt, ctl.fov);
-      if (room && now - this.lastFreeSend > 66) {
+      // Поза уходит на стрим только после «Следить камерой» (раньше — сразу при открытии окна).
+      if (room && ctl.live && now - this.lastFreeSend > 66) {
         this.lastFreeSend = now;
         this.net?.sendSpecCmd({
           t: "free", on: 1,

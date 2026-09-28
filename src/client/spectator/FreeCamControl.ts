@@ -9,7 +9,9 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
  * Space/E вверх, Q/C вниз; Shift быстрее; колесо — скорость.
  * Телефон: один палец — обзор; два пальца: щипок — вперёд/назад по взгляду,
  * сдвиг обоими — вбок и вверх/вниз.
- * На экране только слайдер угла обзора (снизу слева) и кнопка «Закрыть» (справа сверху).
+ * На экране только слайдер угла обзора (снизу слева) и кнопка справа сверху:
+ * «📡 Следить камерой» — начать показывать этот вид на стриме; пока идёт показ —
+ * «Закрыть» (или Esc) — вернуть стрим режиссёру. Окно при этом остаётся рабочим.
  */
 /** Границы угла обзора, рад: самый широкий ~126°, самый узкий 10°. */
 const FOV_MAX = 2.2;
@@ -23,7 +25,9 @@ export class FreeCamControl {
   fov = 0.9;
   speed = 25;
   closed = false;
-  /** Нажали «Закрыть» — Spectator сообщает серверу. */
+  /** Идёт показ этого вида на стриме (включается кнопкой «Следить камерой»). */
+  live = false;
+  /** Нажали «Закрыть» / Esc — показ на стриме прекращён, Spectator сообщает серверу. */
   onClose: (() => void) | null = null;
   /** Сглаживать ли движение камеры у спектаторов (переключатель справа снизу). */
   smooth = true;
@@ -133,6 +137,11 @@ export class FreeCamControl {
     );
     on(window, "keydown", (e: KeyboardEvent) => {
       if ((e.target as HTMLElement | null)?.tagName === "INPUT") return;
+      // Esc — то же, что «Закрыть»: вернуть стрим режиссёру.
+      if (e.code === "Escape") {
+        this.close();
+        return;
+      }
       this.keys.add(e.code);
     });
     on(window, "keyup", (e: KeyboardEvent) => this.keys.delete(e.code));
@@ -158,13 +167,12 @@ export class FreeCamControl {
     document.body.appendChild(this.panel);
 
     this.closeBtn = document.createElement("button");
-    this.closeBtn.textContent = "Закрыть";
     this.closeBtn.style.cssText =
-      "position:fixed;right:12px;top:max(12px,env(safe-area-inset-top));z-index:20;padding:5px 10px;" +
-      "border:0;border-radius:6px;background:rgba(232,67,63,.85);color:#fff;font:600 12px system-ui,sans-serif;" +
-      "cursor:pointer;";
-    this.closeBtn.addEventListener("click", () => this.close());
+      "position:fixed;right:12px;top:max(12px,env(safe-area-inset-top));z-index:20;padding:6px 12px;" +
+      "border:0;border-radius:6px;color:#fff;font:600 13px system-ui,sans-serif;cursor:pointer;";
+    this.closeBtn.addEventListener("click", () => (this.live ? this.close() : this.goLive()));
     document.body.appendChild(this.closeBtn);
+    this.paintLiveBtn();
 
     // Переключатель сглаживания — справа снизу.
     const sm = document.createElement("label");
@@ -274,13 +282,23 @@ export class FreeCamControl {
     }
   }
 
+  /** Кнопка справа сверху: «Следить камерой» (синяя) или «Закрыть» (красная). */
+  private paintLiveBtn(): void {
+    this.closeBtn.textContent = this.live ? "Закрыть (Esc)" : "📡 Следить камерой";
+    this.closeBtn.style.background = this.live ? "rgba(232,67,63,.9)" : "rgba(32,110,230,.9)";
+  }
+
+  /** Начать показ этого вида на стриме. */
+  goLive(): void {
+    this.live = true;
+    this.paintLiveBtn();
+  }
+
+  /** «Закрыть» / Esc: прекратить показ на стриме; окно остаётся рабочим. */
   close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.panel.remove();
-    this.closeBtn.remove();
-    this.unfollowBtn.remove();
-    this.smoothBox?.remove();
+    if (!this.live) return;
+    this.live = false;
+    this.paintLiveBtn();
     this.onClose?.();
   }
 

@@ -14,7 +14,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
  * доли миллисекунды; текстура — мягкое пятно, нарисованное в коде.
  */
 
-const CAPACITY = 700;
+const CAPACITY = 1200; // крупные мобы (колосс) берут много частиц — запас, чтобы мелким хватало
 
 /**
  * Живые параметры огня — лаборатория (lab.html, сцена «огонь») крутит их
@@ -101,7 +101,10 @@ export class BurnParticles {
       const a = Math.random() * Math.PI * 2;
       const rr = Math.sqrt(Math.random()) * s.r * 0.65;
       pos.set(s.x + Math.cos(a) * rr, s.y + h * (0.2 + Math.random() * 0.5), s.z + Math.sin(a) * rr);
-      (p as ScaledParticle).__s = Math.max(0.5, s.r / 0.55);
+      // Частица растёт МЕДЛЕННО (корень) и с потолком: раньше она росла прямо
+      // пропорционально мобу, и на колоссе (×5.4) частицы сливались в один
+      // слепящий шар. Крупному мобу — больше частиц (вес в tick), а не гигантские.
+      (p as ScaledParticle).__s = Math.min(2.2, Math.max(0.6, Math.sqrt(s.r / 0.55)));
     };
     ps.startDirectionFunction = (_m, dir): void => {
       const t = FIRE_TUNE;
