@@ -493,8 +493,13 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
 
 /** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
 export function scrapValue(w: WeaponInstance): number {
-  const base = w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
-  return base + w.affixes.length;
+  // С роллами — от средних очков аффиксов (1..33): середина (17) даёт 15,
+  // разброс небольшой — от 11 (всё на минимуме) до 19 (всё на максимуме).
+  if (w.affixes.length > 0) {
+    const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w.cls), 0) / w.affixes.length;
+    return Math.round(15 + (4 * (avg - 17)) / 16);
+  }
+  return w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
