@@ -244,6 +244,8 @@ export class SpectatorCamera {
   // в нескольких метрах, и доворот модели бьёт по ней с большим плечом.
   private readonly botPos = new Vector3();
   private readonly botFwd = new Vector3(0, 0, 1);
+  /** Курс камеры вокруг бота (рад) — сглаживается углом, см. SPECTATE.botCamMaxTurn. */
+  private botYaw = 0;
   // Дуэльный кадр: сглаженная позиция противника + сглаженные поза/цель камеры,
   // чтобы смена ближайшего моба и рывки его позиции не дёргали картинку.
   private readonly duelFoe = new Vector3();
@@ -442,6 +444,7 @@ export class SpectatorCamera {
       this.eyeFwd.copyFrom(live.forward);
       this.botPos.copyFrom(live.eye);
       this.botFwd.copyFrom(live.forward);
+      this.botYaw = Math.atan2(live.forward.x, live.forward.z);
     }
     if (shot.kind !== "crowd") this.crowdInit = false;
     if (shot.kind !== "duelPlayer") {
@@ -635,7 +638,21 @@ export class SpectatorCamera {
     const kp = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamPosSmooth);
     const kf = this.raw ? 1 : 1 - Math.exp(-dt * SPECTATE.botCamFwdSmooth);
     lerpV(this.botPos, live.eye, kp, this.botPos);
-    lerpV(this.botFwd, live.forward, kf, this.botFwd);
+    if (this.raw) {
+      this.botFwd.copyFrom(live.forward);
+      this.botYaw = Math.atan2(live.forward.x, live.forward.z);
+    } else if (Math.hypot(live.forward.x, live.forward.z) > 1e-3) {
+      let d = Math.atan2(live.forward.x, live.forward.z) - this.botYaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      // Мёртвая зона гасит дрожь от стрейфа; дальше — экспонента, но не
+      // быстрее botCamMaxTurn: разворот бота = плавный облёт, а не скачок.
+      const dz = SPECTATE.botCamDeadzone;
+      const eff = Math.abs(d) <= dz ? 0 : d - Math.sign(d) * dz;
+      const maxStep = SPECTATE.botCamMaxTurn * dt;
+      this.botYaw += Math.max(-maxStep, Math.min(maxStep, eff * kf));
+      this.botFwd.set(Math.sin(this.botYaw), 0, Math.cos(this.botYaw));
+    }
   }
 
   private evalShot(s: Shot, ctx: DirectorCtx, pos: Vector3, tgt: Vector3): void {

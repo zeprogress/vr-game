@@ -312,7 +312,7 @@ export class SkillFx {
         const t = sp.age / sp.cast;
         const r = R * (1 - 0.35 * t);
         sp.ring.scaling.set(r, 1, r);
-        (sp.ring.material as StandardMaterial).alpha = 0.5 + 0.5 * Math.abs(Math.sin(sp.age * 14));
+        (sp.ring.material as StandardMaterial).alpha = 0.25 + 0.3 * Math.abs(Math.sin(sp.age * 14));
         continue;
       }
       // Облако: купол-туман на всю зону + клубы, в конце плавно гаснет.
@@ -324,14 +324,14 @@ export class SkillFx {
       const rest = sp.life - sp.age;
       const fade = Math.min(1, hold / 0.3) * Math.min(1, rest / 0.8);
       sp.ring.scaling.set(R, 1, R);
-      (sp.ring.material as StandardMaterial).alpha = 0.55 * fade;
+      (sp.ring.material as StandardMaterial).alpha = 0.3 * fade;
       const breathe = 1 + 0.06 * Math.sin(sp.age * 3);
       sp.cloud.scaling.set(R * breathe, R * 0.45 * breathe, R * breathe);
-      (sp.cloud.material as StandardMaterial).alpha = 0.22 * fade;
+      (sp.cloud.material as StandardMaterial).alpha = 0.09 * fade; // прозрачнее по просьбе (было 0.22)
       const pr = R * 0.9;
       sp.puffs.scaling.set(pr, pr * (0.8 + 0.2 * Math.sin(sp.age * 2.2)), pr);
       sp.puffs.rotation.y += dt * 0.6;
-      (sp.puffs.material as StandardMaterial).alpha = 0.3 * fade;
+      (sp.puffs.material as StandardMaterial).alpha = 0.12 * fade; // было 0.3
     }
     for (const pf of this.puffs) {
       if (pf.age >= pf.life) continue;

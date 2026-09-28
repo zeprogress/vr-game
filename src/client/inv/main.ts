@@ -61,7 +61,36 @@ interface InvMsg {
   weapons?: InvWeapon[];
   misc?: InvMisc[];
   scrapHave?: number;
+  attrs?: { unspent: number; str: number; agi: number; int: number };
   error?: string;
+}
+
+const ATTRS: { key: "str" | "agi" | "int"; name: string; hint: string }[] = [
+  { key: "str", name: "Сила", hint: "HP, урон ближнего боя, броня" },
+  { key: "agi", name: "Ловкость", hint: "скорость атаки, стрелы, бег, уворот" },
+  { key: "int", name: "Интеллект", hint: "мана, сила магии, защита от снарядов" },
+];
+
+function attrsHtml(msg: InvMsg): string {
+  const a = msg.attrs;
+  if (!a) return "";
+  const can = !!msg.authed && a.unspent > 0;
+  const rows = ATTRS.map((r) => {
+    const btns = can
+      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1">+1</button>` +
+        (a.unspent >= 5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5">+5</button>` : "") +
+        `</div>`
+      : "";
+    return (
+      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${a[r.key]}</b></div>` +
+      `<div class="ahint">${r.hint}</div></div>${btns}</div>`
+    );
+  }).join("");
+  const head =
+    a.unspent > 0
+      ? `Свободных очков: <b class="afree">${a.unspent}</b>${msg.authed ? "" : " — войди кодом, чтобы вложить"}`
+      : "Свободных очков нет — их дают за новый уровень";
+  return `<div class="attrs"><div class="ahead">${head}</div>${rows}</div>`;
 }
 
 const titleEl = document.getElementById("title")!;
@@ -205,7 +234,7 @@ function renderInv(msg: InvMsg): void {
         misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
 
   if (modalId && !animating) renderModal();
-  listEl.innerHTML = `${authHtml}${statsHtml}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  listEl.innerHTML = `${authHtml}${statsHtml}${attrsHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 listEl.addEventListener("click", (e) => {
@@ -225,6 +254,10 @@ listEl.addEventListener("click", (e) => {
     return;
   }
   armedScrap = "";
+  if (act === "stat") {
+    room.send("act", { act, id, idx: Number(b.dataset.n) || 1 });
+    return;
+  }
   room.send("act", { act, id });
 });
 

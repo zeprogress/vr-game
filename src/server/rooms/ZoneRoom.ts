@@ -3069,6 +3069,25 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "stat") {
+      if (!isStatName(id)) return { ok: false, text: "Нет такого атрибута." };
+      const name = ZoneRoom.statName(id);
+      if (t) {
+        const n = this.spendStats(t.p, id, Math.max(1, idx), this.bots.has(norm));
+        if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
+        this.persistNick(norm);
+        return { ok: true, text: `${name} +${n}` };
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+      const prog: Progress = { level: rec.level, xp: rec.xp, unspent: rec.unspent, str: rec.str, agi: rec.agi, int: rec.int };
+      let n = 0;
+      while (n < Math.max(1, idx) && spendPoint(prog, id)) n++;
+      if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
+      store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int });
+      return { ok: true, text: `${name} +${n}` };
+    }
     if (act === "enchant") {
       if (t) {
         const w = t.rt.weapons.find((x) => x.id === id);
@@ -3331,25 +3350,40 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     const want = Math.max(1, Math.min(p.unspent, Math.floor(Number(arg)) || 1));
+    const done = this.spendStats(p, stat, want, true);
+    if (done === 0) return;
+    this.persistBot(bot);
+    const prog = readProgress(p);
+
+    const name = ZoneRoom.statName(stat);
+    this.reply(
+      `@${bot.nick} ${name} ${prog[stat]}` +
+        (done > 1 ? ` (+${done})` : "") +
+        ` · осталось очков ${p.unspent}`,
+    );
+  }
+
+  /**
+   * Вложить `want` очков в `stat` живому герою: потолки HP/маны растут сразу
+   * (как MSG.spend). `autoClass` — бот на базовом оружии меняет класс под
+   * преобладающий атрибут (найденный апгрейд не трогаем). Возвращает, сколько вложено.
+   */
+  private spendStats(p: PlayerState, stat: StatName, want: number, autoClass: boolean): number {
     const prog = readProgress(p);
     let done = 0;
     while (done < want && spendPoint(prog, stat)) done++;
-    if (done === 0) return;
+    if (done === 0) return 0;
     writeProgress(p, prog);
-
-    // Потолки HP/маны растут сразу — как в обработчике MSG.spend.
     const beforeHp = p.maxHp;
     p.maxHp = maxHpFor(p.level, p.str);
     p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp));
     const beforeMana = p.maxMana;
     p.maxMana = maxManaFor(p.level, p.int);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
-
-    // Класс меняем автоматически ТОЛЬКО пока в руке база (нечего терять —
-    // менять есть на что только внутри одного тира). Как только герой нашёл
-    // честный апгрейд (gold/legendary), дальше класс выбирает сам игрок,
-    // одевая оружие — вложенные очки его больше не трогают и не роняют.
-    if (p.rightTier === "base") {
+    // Класс меняем автоматически ТОЛЬКО пока в руке база (нечего терять).
+    // Как только герой нашёл честный апгрейд (gold/legendary), дальше класс
+    // выбирает сам игрок, одевая оружие — вложенные очки его не трогают.
+    if (autoClass && p.rightTier === "base") {
       const w = botWeaponFor(p.str, p.agi, p.int);
       if (w !== p.rightCls) {
         p.rightCls = w;
@@ -3358,14 +3392,7 @@ export class ZoneRoom extends Room<ZoneState> {
         p.leftTier = w === "bow" ? "" : "base";
       }
     }
-    this.persistBot(bot);
-
-    const name = ZoneRoom.statName(stat);
-    this.reply(
-      `@${bot.nick} ${name} ${prog[stat]}` +
-        (done > 1 ? ` (+${done})` : "") +
-        ` · осталось очков ${p.unspent}`,
-    );
+    return done;
   }
 
   /**

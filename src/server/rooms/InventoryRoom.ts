@@ -88,7 +88,8 @@ export class InventoryRoom extends colyseus.Room {
         client.send("toast", { ok: false, text: "Сначала подтверди вход кодом в чате." });
         return;
       }
-      const act = m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" ? m.act : null;
+      const act =
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" ? m.act : null;
       const id = typeof m?.id === "string" ? m.id : "";
       const idx = typeof m?.idx === "number" && Number.isInteger(m.idx) ? m.idx : 0;
       if (!act || !id) return;
@@ -202,5 +203,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     weapons,
     misc,
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
   };
 }
