@@ -594,7 +594,7 @@ export const MOB_CAMPS: {
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
   { x: 54, z: -63, type: "orcGunner", count: 5, spread: 8 }, // ближе к центру (заявка), ур.15
   { x: 0, z: 12, type: "ruinMage", count: 4, spread: 7 }, // почти в центре (заявка), ур.20
-  { x: -13, z: -80, type: "golem", count: 15, spread: 28 }, // ур.26
+  { x: -13, z: -80, type: "golem", count: 24, spread: 32 }, // ур.26 (было 15/28 — просили больше)
   // Топ-зона ур.33 на восточном краю (было пусто; ближайший лагерь — орки, 73 м).
   { x: 104, z: -118, type: "mushColossus", count: 4, spread: 14 }, // ур.33
   { x: 124, z: -96, type: "boneWraith", count: 6, spread: 12 }, // ур.33
