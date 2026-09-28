@@ -393,6 +393,13 @@ function strPhase(s: string): number {
   return (h % 1000) / 1000;
 }
 
+/** Все варианты команды веб-инвентаря (раньше !weapons писал склад в чат). */
+const INV_COMMANDS = new Set([
+  "!inv", "!inventory", "!bag", "!weapons", "!weapon", "!items", "!gear", "!stash",
+  "!инв", "!инвентарь", "!инвент", "!бэг", "!сумка", "!рюкзак", "!оружие", "!склад",
+  "!вещи", "!шмот", "!шмотки", "!предметы", "!снаряжение", "!лут",
+]);
+
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
   return n.trim().toLowerCase().slice(0, 24);
@@ -2840,9 +2847,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.respecBot(norm);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
-    } else if (cmd === "!weapons" || cmd === "!оружие") {
-      this.sayWeapons(nick, norm);
-    } else if (cmd === "!inv" || cmd === "!инвентарь" || cmd === "!бэг") {
+    } else if (INV_COMMANDS.has(cmd)) {
       this.sayInvLink(nick, norm);
     } else if (cmd === "!equip" || cmd === "!надеть") {
       this.equipWeapon(nick, norm, parts[1]);
@@ -3129,28 +3134,6 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: `${name} → лом +${got}` };
   }
 
-  /** `!weapons` — список собранного оружия-инстансов с номерами для "!equip". */
-  private sayWeapons(nick: string, norm: string): void {
-    const t = this.findWeaponsTarget(norm);
-    if (!t) {
-      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
-      return;
-    }
-    const list = this.nonEquippedWeapons(t.rt);
-    if (list.length === 0) {
-      this.reply(`@${nick} в складе (не считая надетого) пусто — золотое и уникальное оружие падает с боёв.`);
-      return;
-    }
-    const lines = list.slice(0, 8).map((w, i) => {
-      const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
-      return `${i + 1}) ${weaponDef(w.cls, w.tier).name}, ${tierRu(w.tier)} — ${affixes}`;
-    });
-    const more = list.length > 8 ? ` …и ещё ${list.length - 8}` : "";
-    this.reply(
-      `@${nick} склад: ${lines.join(" | ")}${more} — !equip/!scrap <номер>.`,
-    );
-  }
-
   /** `!equip <номер|id>` — вручную закрепить конкретный собранный инстанс в руке. */
   /**
    * Оружие в складе, которое НЕ надето прямо сейчас — единственное, что
@@ -3183,12 +3166,12 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (!arg) {
-      this.reply(`@${nick} укажи номер или id: !equip 2 (список — !weapons).`);
+      this.reply(`@${nick} укажи номер или id: !equip 2 (номера — на странице !inv).`);
       return;
     }
     const w = this.resolveWeaponArg(t.rt, arg);
     if (!w) {
-      this.reply(`@${nick} нет такого предмета — список: !weapons.`);
+      this.reply(`@${nick} нет такого предмета — номера — на странице !inv.`);
       return;
     }
     applyEquip(t.p, t.rt, w);
@@ -3237,7 +3220,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     if (!arg) {
       this.reply(
-        `@${nick} укажи номер, список через запятую, "all" или "gold": !scrap 2 (список — !weapons).`,
+        `@${nick} укажи номер, список через запятую, "all" или "gold": !scrap 2 (номера — на странице !inv).`,
       );
       return;
     }
@@ -3266,7 +3249,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(
         skippedEquipped > 0
           ? `@${nick} это сейчас в руках — сначала !equip другое, потом !scrap.`
-          : `@${nick} нечего разбирать — список: !weapons.`,
+          : `@${nick} нечего разбирать — номера — на странице !inv.`,
       );
       return;
     }
@@ -3443,7 +3426,7 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Обычная реплика в чате раз в BOT.tipIntervalSec — см. maybeSayTip(). */
   private static readonly TIPS: readonly string[] = [
     "Совет: !inv — веб-инвентарь: оружие с роллами, там же надеть или разобрать на лом (вход — кодом в чат).",
-    "Совет: !weapons — что на складе у героя, !equip <номер> — надеть другое оружие оттуда.",
+    "Совет: !inv (или !инв, !оружие, !склад) — склад героя на сайте: надеть, разобрать на лом, заточить.",
     "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и уникального оружия бывают случайные роллы — урон, скорость атаки, крит.",
@@ -3480,7 +3463,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
-        "!weapons — что в складе · !equip <номер> — надеть конкретное · " +
+        "!equip <номер> — надеть конкретное · " +
         "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
