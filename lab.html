@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZEP GAME — лаборатория</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #14161f; color: #dfe4f0; font: 13px/1.4 system-ui, sans-serif; }
+      #c { width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+      #side { position: fixed; top: 8px; right: 8px; width: 300px; max-height: calc(100% - 16px); overflow: auto; background: #1b1e2bee; border: 1px solid #3a3f55; border-radius: 10px; padding: 10px 12px; }
+      #side.min #body, #side.min .top2 { display: none; }
+      .top { display: flex; gap: 6px; align-items: center; }
+      .top select { flex: 1; }
+      .top2 { display: flex; gap: 10px; align-items: center; margin: 6px 0 2px; opacity: .85; }
+      h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; opacity: .55; margin: 14px 0 6px; }
+      .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 5px 0; }
+      .row > span { opacity: .8; }
+      .sl { display: flex; align-items: center; gap: 6px; }
+      .sl input { width: 110px; }
+      .sl b { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+      select, button { background: #2a2e40; color: #dfe4f0; border: 1px solid #3a3f55; border-radius: 6px; padding: 5px 8px; font: inherit; }
+      button { cursor: pointer; margin: 3px 3px 0 0; }
+      button:hover { border-color: #7db8ff; }
+      .note { opacity: .6; font-size: 12px; margin: 6px 0; }
+      .grp { display: flex; flex-wrap: wrap; }
+      #stats { position: fixed; left: 8px; top: 8px; font: 12px ui-monospace, monospace; color: #7ee081; background: #0008; padding: 3px 7px; border-radius: 4px; }
+      #badge { position: fixed; left: 8px; bottom: 8px; background: #c0392bcc; color: #fff; font: 700 11px system-ui; padding: 3px 8px; border-radius: 4px; }
+      @media (max-width: 600px) { #side { width: calc(100% - 16px); max-height: 45%; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="stats"></div>
+    <div id="badge">ЛАБОРАТОРИЯ · не прод</div>
+    <div id="side">
+      <div class="top"><select id="pick"></select><button id="hide" title="свернуть">▾</button></div>
+      <div class="top2"><label><input type="checkbox" id="night" /> Ночь</label><a href="/stage.html" style="color:#7db8ff">← стенд</a></div>
+      <div id="body"></div>
+    </div>
+    <script type="module" src="/src/client/lab/main.ts"></script>
+  </body>
+</html>

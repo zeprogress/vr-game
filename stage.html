@@ -57,8 +57,10 @@
       try { nickEl.value = localStorage.getItem("stageNick") || nickEl.value; } catch {}
       const nick = () => nickEl.value.trim() || "zeprogress";
       const links = () => [
+        ["🧪 Лаборатория", "/lab.html", "лёгкая сцена: огонь, модели, эффекты — без игры"],
         ["Игра", "/", "ПК / телефон / Quest — тот же адрес"],
         ["Спектатор", `/?spectator=${SPEC}&debug=1`, "камера стрима + отладка"],
+        ["Спектатор: старый огонь", `/?spectator=${SPEC}&debug=1&fire=0`, "для сравнения (!поджечь в чате)"],
         ["Пульт стрима", `/?dash=${SPEC}`, "управление спектатором"],
         ["Инвентарь", `/inv?${encodeURIComponent(nick())}`, "веб-инвентарь ника выше"],
       ];
@@ -82,7 +84,7 @@
       const textEl = document.getElementById("text");
       document.getElementById("send").onclick = () => { send(textEl.value.trim()); textEl.value = ""; };
       textEl.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("send").click(); });
-      for (const c of ["!play", "!stop", "!stats", "!inv", "!рыбачить", "!качаться", "!raid", "!goevent", "!cheer"]) {
+      for (const c of ["!play", "!stop", "!stats", "!inv", "!рыбачить", "!качаться", "!raid", "!goevent", "!cheer", "!поджечь"]) {
         const b = document.createElement("button");
         b.textContent = c;
         b.onclick = () => send(c);

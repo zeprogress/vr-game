@@ -14,6 +14,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { createBurnFlameMesh, makeBurnFlameMaterial } from "../world/BurnFlameMat";
+import { BurnParticles, FIRE_PARTICLES } from "./BurnParticles";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
@@ -1235,6 +1236,18 @@ export class Mob implements Hittable {
    *  (Пробовали процедурный шейдер огня и текстуру-язык — попросили вернуть
    *  как было: плоские карточки сплошного цвета.) */
   private updateBurnFx(dt: number): void {
+    if (FIRE_PARTICLES) {
+      // ?fire=1 — огонь частицами (одна общая система на сцену, см. BurnParticles).
+      const bp = BurnParticles.for(this.root.getScene());
+      if (this.burnGlow <= 0.001 || this.dead) {
+        bp.remove(this);
+        return;
+      }
+      const p = this.root.getAbsolutePosition();
+      const sy = Math.abs(this.root.scaling.y) || 1;
+      bp.set(this, p.x, p.y + this.burnBaseY * sy, p.z, MOB.bodyRadius * this.scale, this.burnGlow * this.burnLightFade);
+      return;
+    }
     if (this.burnGlow <= 0.001) {
       this.burnFx?.setEnabled(false);
       return;
@@ -1337,6 +1350,7 @@ export class Mob implements Hittable {
     this.stunStarMat?.dispose();
     this.burnMat?.dispose();
     this.burnMesh?.dispose();
+    if (FIRE_PARTICLES) BurnParticles.for(this.root.getScene()).remove(this);
     this.mat.dispose();
     this.rig?.dispose();
     this.rig = null;

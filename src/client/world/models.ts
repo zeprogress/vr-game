@@ -10,6 +10,9 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/loaders/glTF/2.0";
+// Анимации glTF стартуют через scene.beginDirectAnimation — он появляется только
+// с этим модулем. В игре его тянул кто-то ещё, в лёгкой лаборатории — нет.
+import "@babylonjs/core/Animations/animatable";
 import { sharedMobMaterial } from "../combat/mobMaterials";
 import { trackMobMaterial } from "../combat/mobLightTune";
 

@@ -2849,6 +2849,11 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const parts = text.trim().split(/\s+/);
     const cmd = parts[0]?.toLowerCase();
+    // Только стенд: поджечь всех мобов на 20 с (почти без урона) — проверка огня.
+    if (STAGING && (cmd === "!поджечь" || cmd === "!burn")) {
+      for (const m of this.sim.mobs.values()) if (!m.dead) m.ignite(0.01, 20, "");
+      return;
+    }
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
     else if (cmd === "!stop" || cmd === "!leave") {
       if (this.bots.has(norm)) {
