@@ -5,6 +5,16 @@ import { runLogin } from "./ui/Login";
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
 
+// Локальный тестовый стенд (npm run stage) — плашка, чтобы не спутать с продом.
+if (import.meta.env.DEV) {
+  const b = document.createElement("div");
+  b.textContent = "ТЕСТОВЫЙ СТЕНД";
+  b.style.cssText =
+    "position:fixed;right:8px;bottom:8px;z-index:99;padding:3px 8px;border-radius:4px;" +
+    "background:#c0392bcc;color:#fff;font:700 11px system-ui;pointer-events:none";
+  document.body.appendChild(b);
+}
+
 // ?gear=1 — панель живой настройки хвата оружия ботов (работает в любом режиме).
 if (params.get("gear") === "1") {
   void import("./ui/GearTuner").then(({ mountGearTuner }) => mountGearTuner());

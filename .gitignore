@@ -24,3 +24,6 @@ dist/
 art/*.zip
 art/*.png
 art/.DS_Store
+
+# копии локальных данных стенда (npm run stage:sync)
+/src/server/.data.bak-*/

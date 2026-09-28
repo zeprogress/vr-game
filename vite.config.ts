@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from "vite";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import { readFileSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -143,8 +144,43 @@ function loadoutWriter(): Plugin {
   };
 }
 
+/**
+ * Короткий адрес веб-инвентаря /inv?ник — как на проде (там это делает nginx).
+ * Плюс для пульта стенда (stage.html): GET /__stage/changes — что изменено
+ * локально и ещё не ушло на прод (git), чтобы было видно, что проверяем.
+ */
+function shortInvPath(): Plugin {
+  return {
+    name: "short-inv-path",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const [path, q] = (req.url ?? "").split("?");
+        if (path === "/inv") req.url = `/inv.html${q ? `?${q}` : ""}`;
+        if (path === "/__stage/changes") {
+          const git = (a: string): string => {
+            try {
+              return execSync(`git ${a}`, { cwd: root, encoding: "utf8" }).trim();
+            } catch {
+              return "";
+            }
+          };
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(
+            JSON.stringify({
+              commits: git("log --format=%h%x09%s origin/main..HEAD").split("\n").filter(Boolean),
+              files: git("status --short").split("\n").filter(Boolean),
+            }),
+          );
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [loadoutWriter(), ...(vr ? [basicSsl()] : [])],
+  plugins: [loadoutWriter(), shortInvPath(), ...(vr ? [basicSsl()] : [])],
   server: {
     host: true, // доступ по локальной сети
     port: 5173,
@@ -161,6 +197,7 @@ export default defineConfig({
     // HMR Vite сидит на "/" и под шаблон не попадает).
     proxy: {
       "/matchmake": { target: "http://localhost:2567", changeOrigin: true },
+      "/api": { target: "http://localhost:2567", changeOrigin: true },
       "^/[A-Za-z0-9_-]+/[A-Za-z0-9_-]+(\\?.*)?$": {
         target: "ws://localhost:2567",
         ws: true,

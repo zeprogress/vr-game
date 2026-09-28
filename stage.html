@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZEP GAME — тестовый стенд</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #14161f; color: #dfe4f0; font: 15px/1.45 system-ui, sans-serif; padding: 20px 16px 60px; }
+      .wrap { max-width: 720px; margin: 0 auto; }
+      h1 { font-size: 20px; margin: 0 0 2px; }
+      .sub { opacity: .6; font-size: 13px; margin-bottom: 18px; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; opacity: .55; margin: 22px 0 8px; }
+      .card { background: #2a2e40; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+      .links { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+      a.btn { display: block; background: #2a2e40; border-radius: 8px; padding: 12px 14px; color: #dfe4f0; text-decoration: none; }
+      a.btn b { display: block; }
+      a.btn small { opacity: .6; }
+      a.btn:hover { box-shadow: 0 0 0 1px #7db8ff88; }
+      input { background: #151722; color: #dfe4f0; border: 1px solid #3a3f55; border-radius: 6px; padding: 8px 10px; font: inherit; }
+      button { border: none; border-radius: 6px; padding: 8px 12px; font: 600 14px system-ui; color: #fff; background: #3d5a8a; cursor: pointer; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .quick button { background: #333a52; font-weight: 500; }
+      #log { font: 12px/1.5 ui-monospace, monospace; opacity: .8; margin-top: 8px; white-space: pre-wrap; }
+      code { background: #ffffff12; padding: 1px 5px; border-radius: 4px; }
+      .changes div { font: 12px/1.6 ui-monospace, monospace; }
+      .none { opacity: .5; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>🧪 Тестовый стенд</h1>
+      <div class="sub">Локальная копия игры. Прод не трогается: чат Twitch не слушается, боты с прода не поднимаются.</div>
+
+      <h2>Открыть</h2>
+      <div class="links" id="links"></div>
+
+      <h2>Чат (вместо Twitch)</h2>
+      <div class="card">
+        <div class="row">
+          <input id="nick" placeholder="ник зрителя" value="zeprogress" style="width: 160px" />
+          <input id="text" placeholder="сообщение, напр. !play" style="flex: 1; min-width: 160px" />
+          <button id="send">Отправить</button>
+        </div>
+        <div class="row quick" style="margin-top: 8px" id="quick"></div>
+        <div id="log"></div>
+      </div>
+
+      <h2>Что проверяем (ещё не на проде)</h2>
+      <div class="card changes" id="changes"><span class="none">загрузка…</span></div>
+      <div class="sub">Всё проверил — скажи в чате Claude «деплой», изменения уйдут на прод.</div>
+    </div>
+    <script type="module">
+      const SPEC = "zepgame-spec-a19f3c7d5b";
+      const nickEl = document.getElementById("nick");
+      try { nickEl.value = localStorage.getItem("stageNick") || nickEl.value; } catch {}
+      const nick = () => nickEl.value.trim() || "zeprogress";
+      const links = () => [
+        ["Игра", "/", "ПК / телефон / Quest — тот же адрес"],
+        ["Спектатор", `/?spectator=${SPEC}&debug=1`, "камера стрима + отладка"],
+        ["Пульт стрима", `/?dash=${SPEC}`, "управление спектатором"],
+        ["Инвентарь", `/inv?${encodeURIComponent(nick())}`, "веб-инвентарь ника выше"],
+      ];
+      function drawLinks() {
+        document.getElementById("links").innerHTML = links()
+          .map(([t, u, h]) => `<a class="btn" href="${u}" target="_blank"><b>${t}</b><small>${h}</small></a>`)
+          .join("");
+      }
+      drawLinks();
+      nickEl.addEventListener("input", () => {
+        try { localStorage.setItem("stageNick", nickEl.value); } catch {}
+        drawLinks();
+      });
+      const log = document.getElementById("log");
+      async function send(text) {
+        if (!text) return;
+        const r = await fetch(`/api/devchat?nick=${encodeURIComponent(nick())}&text=${encodeURIComponent(text)}`).catch(() => null);
+        const j = r ? await r.json().catch(() => ({})) : { error: "сервер стенда не отвечает" };
+        log.textContent = `${new Date().toLocaleTimeString()}  ${nick()}: ${text}  ${j.ok ? "✓" : "✗ " + (j.error || "")}\n` + log.textContent;
+      }
+      const textEl = document.getElementById("text");
+      document.getElementById("send").onclick = () => { send(textEl.value.trim()); textEl.value = ""; };
+      textEl.addEventListener("keydown", (e) => { if (e.key === "Enter") document.getElementById("send").click(); });
+      for (const c of ["!play", "!stop", "!stats", "!inv", "!рыбачить", "!качаться", "!raid", "!goevent", "!cheer"]) {
+        const b = document.createElement("button");
+        b.textContent = c;
+        b.onclick = () => send(c);
+        document.getElementById("quick").appendChild(b);
+      }
+      fetch("/__stage/changes").then((r) => r.json()).then((j) => {
+        const rows = [
+          ...j.commits.map((c) => `<div>● ${c.replace(/</g, "&lt;")}</div>`),
+          ...j.files.map((f) => `<div>✎ ${f.replace(/</g, "&lt;")}</div>`),
+        ];
+        document.getElementById("changes").innerHTML = rows.length ? rows.join("") : '<span class="none">нет — стенд совпадает с продом</span>';
+      }).catch(() => {});
+    </script>
+  </body>
+</html>

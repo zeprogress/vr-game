@@ -17,6 +17,8 @@
     "build": "npm run typecheck && vite build",
     "build:ci": "vite build",
     "preview": "vite preview --host",
+    "stage": "node scripts/stage.mjs",
+    "stage:sync": "bash scripts/stage-sync.sh",
     "tunnel": "cloudflared tunnel --url http://localhost:5173",
     "tunnel:443": "ssh -n -p 443 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/vrgame_tunnel -o ServerAliveInterval=30 -R0:localhost:5173 a.pinggy.io"
   },

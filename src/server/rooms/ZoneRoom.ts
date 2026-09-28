@@ -1,5 +1,6 @@
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
+import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 
 import {
@@ -823,6 +824,8 @@ interface JoinOpts {
  * Пусто — вход под админ-ником просто запрещён (безопасно по умолчанию).
  */
 const ADMIN_PASS = process.env.ADMIN_PASS || "";
+/** Тестовый стенд (STAGING=1, см. deploy/staging): без Twitch и ботов, мир — только пока есть игроки. */
+const STAGING = process.env.STAGING === "1";
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
@@ -911,6 +914,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // секунду 0 подключений) убивала комнату вместе со всеми ботами, а
     // спектатор возвращался уже в пустой заново созданный мир.
     this.autoDispose = false;
+    // Тестовый стенд (deploy/staging): мир живёт, только пока в нём кто-то
+    // есть — единственное ядро VPS делим с продом, пустой стенд не тикает.
+    if (STAGING) this.autoDispose = true;
     // Настройки пульта — переживают рестарт (Ф10): время суток, видимость
     // метки камеры зрителя и её лучей, оверлей. Мобы/куклы всё равно
     // считаются заново, их сюда не тащим.
@@ -993,14 +999,18 @@ export class ZoneRoom extends Room<ZoneState> {
     });
 
     // Чат Twitch: `!play` — бот под ником зрителя, `!stop` — убрать.
-    this.twitch = new TwitchChat(
-      process.env.TWITCH_CHANNEL || TWITCH_CHANNEL,
-      (nick, text) => this.onChat(nick, text),
-      // Логин и токен бота — только из окружения (deploy/stream.env на VPS).
-      // Не заданы — чат читается как раньше, просто без ответов.
-      { user: process.env.TWITCH_BOT_USER, token: process.env.TWITCH_OAUTH },
-    );
-    this.twitch.start();
+    // На тестовом стенде чат НЕ слушаем: иначе !play из чата канала спавнил бы
+    // ботов и там, а с токеном бот отвечал бы в чат дважды.
+    if (!STAGING) {
+      this.twitch = new TwitchChat(
+        process.env.TWITCH_CHANNEL || TWITCH_CHANNEL,
+        (nick, text) => this.onChat(nick, text),
+        // Логин и токен бота — только из окружения (deploy/stream.env на VPS).
+        // Не заданы — чат читается как раньше, просто без ответов.
+        { user: process.env.TWITCH_BOT_USER, token: process.env.TWITCH_OAUTH },
+      );
+      this.twitch.start();
+    }
 
     // Разовая чистка ботов: при смене BOT_WIPE_TOKEN — один раз всех гасим.
     if (pult.botWipe !== BOT_WIPE_TOKEN) {
@@ -1016,7 +1026,9 @@ export class ZoneRoom extends Room<ZoneState> {
       console.log(`[bot] одноразовая чистка: снято ${w} ботов (токен ${BOT_WIPE_TOKEN})`);
     }
 
-    if (RESTORE_BOTS_ON_START) this.restoreBots();
+    if (RESTORE_BOTS_ON_START && !STAGING) this.restoreBots();
+    // Стенд: «чат» приходит с локальной страницы (devChat), а не из Twitch.
+    if (STAGING) devChat.set((nick, text) => this.onChat(nick, text));
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -5880,6 +5892,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   override onDispose(): void {
     invHub.setZone(null);
+    if (STAGING) devChat.set(null);
     this.twitch?.stop();
     serverPerf.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);

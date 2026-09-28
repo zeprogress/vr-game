@@ -6,6 +6,7 @@ import { ZoneRoom } from "./rooms/ZoneRoom";
 import { TowerRoom } from "./rooms/TowerRoom";
 import { InventoryRoom } from "./rooms/InventoryRoom";
 import { store, chatLog } from "./store";
+import { devChat } from "./devChat";
 
 const { Server } = colyseus;
 const PORT = Number(process.env.GAME_SERVER_PORT ?? 2567);
@@ -28,6 +29,14 @@ const httpServer = http.createServer((req, res) => {
     }
     const body = JSON.stringify(chatLog.readRecent());
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" }).end(body);
+    return;
+  }
+  // Локальный стенд: сообщение «из чата» без Twitch (см. devChat.ts).
+  if (process.env.STAGING === "1" && req.method === "GET" && req.url?.startsWith("/api/devchat")) {
+    const q = new URL(req.url, "http://x").searchParams;
+    const ok = devChat.send((q.get("nick") ?? "").slice(0, 24), (q.get("text") ?? "").slice(0, 300));
+    res.writeHead(ok ? 200 : 409, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(ok ? { ok } : { ok, error: "мир ещё не создан — зайди в игру или открой спектатор" }));
     return;
   }
   // Не наш путь — ничего не делаем и не закрываем ответ: следующий
