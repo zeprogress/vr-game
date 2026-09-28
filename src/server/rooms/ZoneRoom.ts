@@ -127,6 +127,7 @@ import {
   ITEMS,
   plainWeaponInstance,
   scrapValue,
+  BIG_STACK,
   takeOne,
   tierRu,
   weaponAffix,
@@ -725,6 +726,19 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
     const count = Math.floor(num(s.count, 0));
     if (count <= 0) continue;
     bag[i] = { item: s.item, count: Math.min(count, ITEMS[s.item].stack) };
+  }
+  // Лом/рыба раньше делились на кучки по 999/99 — сливаем в первую стопку.
+  for (let i = 0; i < bag.length; i++) {
+    const s = bag[i];
+    if (!s.item || ITEMS[s.item].stack < BIG_STACK) continue;
+    for (let j = i + 1; j < bag.length; j++) {
+      const t = bag[j];
+      if (t.item !== s.item) continue;
+      const put = Math.min(t.count, BIG_STACK - s.count);
+      s.count += put;
+      t.count -= put;
+      if (t.count <= 0) bag[j] = { item: null, count: 0 };
+    }
   }
   // Лимит банок хп (HEAL_CARRY_MAX): лишнее у уже накопивших срезаем при
   // загрузке сейва — с конца сумки, чтобы основные стопки остались целыми.

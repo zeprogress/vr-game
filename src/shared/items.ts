@@ -146,6 +146,9 @@ export interface ItemDef {
   weapon?: { cls: WeaponClass; tier: WeaponTier };
 }
 
+/** Лом/рыба копятся одной стопкой — предел = uint16 SlotState.count. */
+export const BIG_STACK = 65535;
+
 export const ITEMS: Record<ItemId, ItemDef> = {
   potion: {
     name: "Зелье лечения",
@@ -172,7 +175,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     name: "Лом оружия",
     short: "Лом",
     hint: "переработка оружия — задел под будущий крафт",
-    stack: 999,
+    stack: BIG_STACK,
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.5, 0.45],
@@ -182,7 +185,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     name: "Рыба",
     short: "Рыба",
     hint: "поймана на озере — задел под будущую еду/квесты",
-    stack: 99,
+    stack: BIG_STACK,
     heal: 0,
     healFrac: 0,
     tint: [0.5, 0.65, 0.75],
