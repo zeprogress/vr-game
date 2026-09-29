@@ -17,6 +17,8 @@ export interface PcMenuHooks {
   setSpatial: (on: boolean) => void;
   getChat: () => boolean;
   setChat: (on: boolean) => void;
+  getDmg: () => boolean;
+  setDmg: (on: boolean) => void;
   getSkin: () => number;
   setSkin: (skin: number) => void;
   getLeaveBot: () => boolean;
@@ -112,6 +114,7 @@ export class PcMenu {
 
     left.append(el("div", "pcmenu-sec", "Интерфейс"));
     left.append(check("Журнал и чат Twitch (L)", h.getChat(), h.setChat));
+    left.append(check("Цифры урона над мобами", h.getDmg(), h.setDmg));
     const fs = el("button", "pcmenu-btn", "⛶ На весь экран / обратно");
     fs.onclick = () => h.fullscreen();
     left.append(fs);

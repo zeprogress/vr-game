@@ -16,6 +16,8 @@ export interface VrSettings {
   spatial: boolean;
   /** Слышать озвучку чата Twitch (когда её включил стример). */
   tts: boolean;
+  /** Цифры урона над мобами (все платформы; выключатель в меню). */
+  dmgNumbers: boolean;
 }
 
 const KEY = "zepVrSettings";
@@ -23,7 +25,7 @@ const KEY = "zepVrSettings";
 const VER_KEY = "zepVrSettingsVer";
 const VER = 2;
 
-const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: false, spatial: false, tts: true };
+const DEFAULTS: VrSettings = { vignette: true, teleport: false, music: 1, sfx: 1, mic: false, spatial: false, tts: true, dmgNumbers: true };
 
 function load(): VrSettings {
   try {
@@ -43,6 +45,7 @@ function load(): VrSettings {
         mic: typeof v.mic === "boolean" ? v.mic : DEFAULTS.mic,
         spatial: typeof v.spatial === "boolean" ? v.spatial : DEFAULTS.spatial,
         tts: typeof v.tts === "boolean" ? v.tts : DEFAULTS.tts,
+        dmgNumbers: typeof v.dmgNumbers === "boolean" ? v.dmgNumbers : DEFAULTS.dmgNumbers,
       };
     }
     localStorage.setItem(VER_KEY, String(VER));

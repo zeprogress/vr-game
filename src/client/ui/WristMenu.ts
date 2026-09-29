@@ -1433,6 +1433,9 @@ export class WristMenu {
     toggle("set:tts", "Озвучка чата Twitch", "голоса сообщений чата стрима слышны в игре", VR_SETTINGS.tts, () =>
       setVrSettings({ tts: !VR_SETTINGS.tts }),
     );
+    toggle("set:dmg", "Цифры урона", "числа над мобами, когда по ним попадают", VR_SETTINGS.dmgNumbers, () =>
+      setVrSettings({ dmgNumbers: !VR_SETTINGS.dmgNumbers }),
+    );
     // Модель персонажа: нажатие — следующая по кругу.
     {
       const label = BOT_SKIN_LABELS[this.skin - 1] ?? "…";

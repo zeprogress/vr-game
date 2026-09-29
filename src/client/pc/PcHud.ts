@@ -11,7 +11,7 @@ import { LAKE } from "#shared/constants";
  * проходят в игру (pointer-events: none на обёртке).
  */
 
-export type LogKind = "chat" | "loot" | "xp" | "event" | "system" | "kill";
+export type LogKind = "chat" | "loot" | "xp" | "event" | "system" | "kill" | "damage";
 
 const KIND_LABEL: Record<LogKind, string> = {
   chat: "Чат Twitch",
@@ -19,6 +19,7 @@ const KIND_LABEL: Record<LogKind, string> = {
   xp: "Опыт и уровни",
   event: "События мира",
   kill: "Убийства",
+  damage: "Урон (нанесённый и полученный)",
   system: "Системные сообщения",
 };
 
@@ -574,7 +575,7 @@ function label(c: CanvasRenderingContext2D, text: string, x: number, y: number, 
 function loadCfg(): ChatCfg {
   const def: ChatCfg = {
     on: true,
-    kinds: { chat: true, loot: true, xp: true, event: true, kill: false, system: true },
+    kinds: { chat: true, loot: true, xp: true, event: true, kill: false, system: true, damage: true },
   };
   try {
     const raw = localStorage.getItem(CFG_KEY);
@@ -734,7 +735,7 @@ function injectHudStyle(): void {
 .pc-chat-log { flex:1; overflow-y:auto; padding:4px 8px; font:500 12.5px/1.35 system-ui; text-shadow:0 1px 1px #000; }
 .pc-chat-log b { font-weight:700; }
 .pc-log-chat b { color:#b59bff; } .pc-log-loot { color:#f5c542; } .pc-log-xp { color:#c9a0ff; }
-.pc-log-event { color:#ffb070; } .pc-log-kill { color:#ff9a95; } .pc-log-system { color:#cfd6e0; }
+.pc-log-event { color:#ffb070; } .pc-log-damage { color:#e8e2d2; } .pc-log-kill { color:#ff9a95; } .pc-log-system { color:#cfd6e0; }
 .pc-chat-cfg { position:absolute; left:0; bottom:100%; margin-bottom:6px; background:rgba(14,13,19,.95);
   border:none; border-radius:8px; padding:8px 10px; display:flex; flex-direction:column; gap:5px; }
 .pc-chat-cfg label { display:flex; gap:7px; align-items:center; cursor:pointer; }

@@ -155,7 +155,8 @@ export interface SpecCamMsg {
 
 /** Числа урона по мобам за тик — батчем (см. MSG.dmgHits), только для спектатора. */
 export interface DmgHitsMsg {
-  hits: { x: number; y: number; z: number; dmg: number }[];
+  /** by — кто ударил (sessionId), mob — по кому: для журнала урона у ПК-игрока. */
+  hits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string }[];
 }
 
 /** Кто кого убил (этап 17 Ф9). `by` пуст — убил моб/среда. Строки уже готовы к показу. */

@@ -450,6 +450,7 @@ export class Game {
     };
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
+      if (dmg >= 0.5) this.pcHud?.log("damage", `Вы получили ${Math.round(dmg).toLocaleString("ru-RU")} урона`, undefined, "#ff8a7a");
       this.localAvatar?.hurt();
       this.showHp(hp);
       this.hud.setOpacity(1);
@@ -639,6 +640,8 @@ export class Game {
         setSpatial: (on) => setVrSettings({ spatial: on }),
         getChat: () => this.pcHud?.chatOn ?? true,
         setChat: (on) => this.pcHud?.setChatOn(on),
+        getDmg: () => VR_SETTINGS.dmgNumbers,
+        setDmg: (on) => setVrSettings({ dmgNumbers: on }),
         getSkin: () => this.mySkin,
         setSkin: (skin) => this.net?.sendSetSkin(skin),
         getLeaveBot: () => this.leaveBotOn,
@@ -2497,6 +2500,21 @@ export class Game {
       if (victim) this.pcHud?.log("kill", by ? `⚔ ${victim}` : `${victim} пал`, by || undefined);
     };
     net.onChatLine = (m) => this.pcHud?.log("chat", m.text, m.nick);
+    // Цифры урона над мобами — все платформы, выключатель в меню.
+    net.onDmgHits = (msg) => {
+      // Журнал урона (ПК): свои попадания — «Вы нанесли N: <моб>».
+      const self = net.sessionId;
+      if (this.pcHud) {
+        for (const h of msg.hits) {
+          if (h.by !== self || !h.mob) continue;
+          const m = net.room?.state.mobs.get(h.mob);
+          const name = m?.mobName || (m?.kind === "spitter" ? SPITTER_CFG.name : m?.kind === "boss" ? BOSS_CFG.name : m?.kind === "shard" ? SHARD_CFG.name : SLIME_CFG.name);
+          this.pcHud.log("damage", `Вы нанесли ${h.dmg.toLocaleString("ru-RU")} урона: ${name}`, undefined, "#e8e2d2");
+        }
+      }
+      if (!VR_SETTINGS.dmgNumbers) return;
+      for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+    };
     net.onPcInvData = (d) => this.pcInv?.setData(d);
     net.onPcInvResult = (r) => {
       this.pcInv?.onResult(r);
@@ -3082,6 +3100,7 @@ export class Game {
       this.net.onPickupFeed = null;
       this.net.onKillFeed = null;
       this.net.onChatLine = null;
+      this.net.onDmgHits = null;
       this.net.onPcInvData = null;
       this.net.onPcInvResult = null;
       this.net.onWarehouse = null;

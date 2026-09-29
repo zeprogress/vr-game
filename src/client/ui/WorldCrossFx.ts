@@ -34,7 +34,8 @@ const MISS_LIFE = 0.7;
 const DMG_LIFE = 0.9;
 const MAX_DIGITS = 6;
 const DIGIT_W = 20; // px ячейки цифры в атласе
-const DIGIT_M = 0.1125; // ширина цифры в мире, м (1 px = 0.005625 м, как у прежнего текста)
+const DIGIT_M = 0.14; // ширина цифры в мире, м (было 0.1125 — цифры урона чуть крупнее, 2026-09-29)
+const DIGIT_H = 0.448; // высота цифры, м (пропорция прежняя: 0.36 / 0.1125)
 
 const TYPE_FLASH = 0;
 const TYPE_RING = 1;
@@ -120,7 +121,7 @@ void main() {
     float pop = min(1.0, age / 0.1);
     float sc = pop * (1.0 - t * 0.1);
     pos += vec3(world3.x * t, 1.1 * t, world3.y * t);
-    quad = vec2(${DIGIT_M}, 0.36) * sc;
+    quad = vec2(${DIGIT_M}, ${DIGIT_H}) * sc;
     xoff = world1.z * sc;
     alpha = min(1.0, (1.0 - t) * 2.2);
     tint = vec3(1.0, 0.88, 0.47);

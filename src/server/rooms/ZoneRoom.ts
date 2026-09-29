@@ -862,6 +862,8 @@ const ADMIN_PASS = process.env.ADMIN_PASS || "";
 const STAGING = process.env.STAGING === "1";
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
+/** Цифры урона игроку — только в этом квадрате вокруг него, м. */
+const DMG_NUM_R = 60;
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
 /** Ключ страницы диктора voice.html (bearmood_tv) — отдельный от спектаторского. */
 const CASTER_KEY = process.env.CASTER_KEY || "voice-68105a2bfa";
@@ -5551,8 +5553,18 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     this.sim.mobMisses.length = 0;
     if (this.sim.dmgHits.length) {
-      if (this.state.dmgNumbers) {
-        this.broadcast(MSG.dmgHits, { hits: this.sim.dmgHits } satisfies DmgHitsMsg);
+      const hits = this.sim.dmgHits;
+      for (const c of this.clients) {
+        if (this.spectators.has(c.sessionId)) {
+          // Спектаторам — по переключателю пульта «Числа урона».
+          if (this.state.dmgNumbers) c.send(MSG.dmgHits, { hits } satisfies DmgHitsMsg);
+          continue;
+        }
+        // Игрокам — всегда (показ решает каждый в своём меню), но только рядом.
+        const p = this.state.players.get(c.sessionId);
+        if (!p) continue;
+        const near = hits.filter((h) => Math.abs(h.x - p.head.x) < DMG_NUM_R && Math.abs(h.z - p.head.z) < DMG_NUM_R);
+        if (near.length) c.send(MSG.dmgHits, { hits: near } satisfies DmgHitsMsg);
       }
       this.sim.dmgHits.length = 0;
     }

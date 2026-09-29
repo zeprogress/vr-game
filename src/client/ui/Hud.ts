@@ -5,6 +5,7 @@ import { ITEMS, type Inventory } from "../player/Inventory";
 import { InventoryPanel, type Equipped } from "./InventoryPanel";
 import type { WarehouseWeapon } from "#shared/net/messages";
 import { BOT_SKIN_LABELS } from "../world/models";
+import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 
 const STATS: StatName[] = ["str", "agi", "int"];
 
@@ -737,6 +738,22 @@ export class Hud {
       label.htmlFor = "hudLeaveBot";
       label.style.cssText = "font-size:13px;cursor:pointer;";
       label.textContent = "Оставить бота после выхода";
+      row.append(box, label);
+      this.panel.appendChild(row);
+    }
+
+    // Цифры урона над мобами (личная настройка, та же, что в меню ПК и VR).
+    {
+      const row = el("div", "display:flex;align-items:center;gap:8px;margin-top:8px;");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = VR_SETTINGS.dmgNumbers;
+      box.id = "hudDmgNumbers";
+      box.addEventListener("change", () => setVrSettings({ dmgNumbers: box.checked }));
+      const label = document.createElement("label");
+      label.htmlFor = "hudDmgNumbers";
+      label.style.cssText = "font-size:13px;cursor:pointer;";
+      label.textContent = "Цифры урона над мобами";
       row.append(box, label);
       this.panel.appendChild(row);
     }
