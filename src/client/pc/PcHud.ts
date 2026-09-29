@@ -68,6 +68,7 @@ export class PcHud {
   private readonly nameEl: HTMLDivElement;
   private readonly portraitEl: HTMLDivElement;
   private readonly unspentEl: HTMLDivElement;
+  private readonly buffsEl: HTMLDivElement;
   private readonly hpFill: HTMLDivElement;
   private readonly hpText: HTMLDivElement;
   private readonly manaWrap: HTMLDivElement;
@@ -130,7 +131,9 @@ export class PcHud {
     this.xpFill = div("pc-xp-fill");
     this.xpText = div("pc-xp-text");
     xp.append(this.xpFill, this.xpText);
-    col.append(this.nameEl, hp, this.manaWrap, xp);
+    // Баффы — значки с таймером под полосками (событие, костёр в лагере).
+    this.buffsEl = div("pc-buffs");
+    col.append(this.nameEl, hp, this.manaWrap, xp, this.buffsEl);
     unit.append(portraitWrap, col);
     // Клик по своей рамке — окно снаряжения.
     unit.title = "Снаряжение (C)";
@@ -258,6 +261,22 @@ export class PcHud {
     this.nameEl.textContent = `${nick} · ${level} ур.`;
     this.portraitEl.textContent = ICON[weapon];
     this.slotAtk.querySelector(".pc-slot-ico")!.textContent = ICON[weapon];
+  }
+
+  /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */
+  setBuffs(eventSecs: number, campSecs: number): void {
+    const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    const sig = `${eventSecs}|${campSecs}`;
+    if (this.lastSig.buffs === sig) return;
+    this.lastSig.buffs = sig;
+    this.buffsEl.innerHTML = "";
+    const chip = (ico: string, text: string, title: string, cls: string): void => {
+      const c = div(`pc-buff ${cls}`, `${ico} ${text}`);
+      c.title = title;
+      this.buffsEl.append(c);
+    };
+    if (eventSecs > 0) chip("✨", mmss(eventSecs), "Благословение события: ×2 опыт и урон", "ev");
+    if (campSecs > 0) chip("🔥", mmss(campSecs), "Тепло костра: +10% урона", "camp");
   }
 
   /** Свободные очки атрибутов: 0 — значок спрятан. */
@@ -691,6 +710,10 @@ function injectHudStyle(): void {
   background:#2b2733; display:flex; align-items:center; justify-content:center; font-size:22px; }
 .pc-unit-col { flex:1; min-width:0; }
 .pc-portrait-wrap { position:relative; flex:none; }
+.pc-buffs { display:flex; gap:4px; margin-top:4px; }
+.pc-buffs:empty { display:none; }
+.pc-buff { font:600 10.5px/16px system-ui; padding:0 6px; border-radius:8px; background:rgba(40,38,48,.9); color:#eadfc4; }
+.pc-buff.camp { color:#ffc27a; } .pc-buff.ev { color:#9fd0ff; }
 .pc-unspent { position:absolute; right:-6px; top:-6px; min-width:20px; height:20px; padding:0 4px; box-sizing:border-box;
   border-radius:10px; background:#2f9e4f; color:#fff; font:700 11px/20px system-ui; text-align:center;
   box-shadow:0 0 0 2px rgba(14,13,19,.9), 0 0 10px rgba(80,220,120,.8); cursor:pointer; pointer-events:auto;

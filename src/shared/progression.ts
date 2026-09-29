@@ -77,6 +77,17 @@ export function armorFrac(str: number): number {
  * (лук/посох — держится обеими руками) — впятеро подвижнее, чем с занятой
  * второй рукой (щит/второй меч): свободнее корпус, легче уйти с линии удара.
  */
+/**
+ * В руках ОДИН предмет — уворот ×5 (см. dodgeChance). Одна рука пуста, или
+ * обе держат один и тот же лук/посох: лук клиент сообщает сразу в обеих
+ * руках, и старая проверка «левая пуста» лучников без щита не пропускала.
+ * Два меча или оружие со щитом — не один предмет.
+ */
+export function holdsOneItem(leftCls: string, rightCls: string): boolean {
+  if (leftCls === "" || rightCls === "") return true;
+  return leftCls === rightCls && (leftCls === "bow" || leftCls === "staff");
+}
+
 export function dodgeChance(agi: number, oneHanded: boolean): number {
   const base = statScale(agi) * PROGRESSION.agi.dodgeMul;
   return Math.min(PROGRESSION.agi.dodgeCap, base * (oneHanded ? 5 : 1));

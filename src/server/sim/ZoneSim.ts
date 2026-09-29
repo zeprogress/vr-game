@@ -838,8 +838,9 @@ class Mob {
         if (this.pullWindupT <= 0) {
           const t = players.find((p) => p.sessionId === this.pullTarget) ?? null;
           this.pullTarget = null;
-          if (t) {
-            const d = Math.hypot(t.x - this.x, t.z - this.z);
+          const d = t ? Math.hypot(t.x - this.x, t.z - this.z) : 0;
+          // Убежал за дальность хвата, пока щупальце тянулось, — вырвался.
+          if (t && d <= PULL.maxDist + PULL.escape) {
             this.attackSeq = (this.attackSeq + 1) & 0xffff;
             this.fx.push({ k: "pullHit", x: t.x, z: t.z, x2: this.x, z2: this.z });
             // Отрицательное отбрасывание = притяжение к источнику: у ботов
@@ -2606,6 +2607,13 @@ export class ZoneSim {
    * Центр тела цели в мире — сервер меряет по нему досягаемость удара.
    * null — цели нет или она уже мертва.
    */
+  /** Радиус тела цели (м) — дальность удара меряем до поверхности, а не до центра. */
+  targetRadius(target: "mob" | "dummy", id: string): number {
+    if (target === "dummy") return 0;
+    const m = this.mobs.get(id);
+    return m ? MOB.hitRadius * m.scale : 0;
+  }
+
   targetCenter(target: "mob" | "dummy", id: string): { x: number; y: number; z: number } | null {
     if (target === "dummy") {
       const d = this.dummies.get(id);

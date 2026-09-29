@@ -221,6 +221,7 @@ export class Game {
   private desktopInput: DesktopInput | null = null;
   private pcTarget: PcTargeting | null = null;
   private pcHud: PcHud | null = null;
+  private lastCampBuff = 0;
   private pcInv: PcInventory | null = null;
   private pcMenu: PcMenu | null = null;
   private lootMarker: LootMarker | null = null;
@@ -482,7 +483,7 @@ export class Game {
       });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate);
+      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
     } else if (this.pcThirdPerson) {
       // ПК «как в WoW»: орбитальная камера за спиной + видимая модель, бой —
       // автоатакой по выбранной цели (PcTargeting → CombatSystem.pcTarget).
@@ -491,7 +492,7 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate);
+      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
       this.combat.pcAuto = true;
       this.combat.lootToBag = true;
       this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (C)");
@@ -732,6 +733,7 @@ export class Game {
       this.pcTarget?.update(this.combat.pcOutOfRange);
       this.mark("combat");
       this.updateSkillAbility(dt);
+      this.combat.atkSpeedAffix = this.heldAtkSpeedMul();
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
@@ -1889,6 +1891,11 @@ export class Game {
     this.localAvatar?.setStunned(self.stunned === 1);
     this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
     this.hud.setBuff(self.buffSecs ?? 0);
+    // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
+    const camp = self.campBuffSecs ?? 0;
+    if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: +10% урона на 10 минут");
+    this.lastCampBuff = camp;
+    this.pcHud?.setBuffs(self.buffSecs ?? 0, camp);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
@@ -2141,6 +2148,21 @@ export class Game {
   private lastLootClick: { id: string; t: number } | null = null;
 
   /**
+   * Ролл «скорость атаки» с того, что в руках: основное оружие + щит в другой
+   * руке — как rolledAtkSpeedMul на сервере (для темпа удара/выстрела на клиенте).
+   */
+  private heldAtkSpeedMul(): number {
+    const wh = this.net?.warehouse;
+    if (!wh) return 1;
+    const byId = (id: string | null) => (id ? wh.list.find((w) => w.id === id) : undefined);
+    const r = byId(wh.equipped.right);
+    const l = byId(wh.equipped.left);
+    const main = r && r.cls !== "shield" ? r : l && l.cls !== "shield" ? l : undefined;
+    const sh = r?.cls === "shield" ? r : l?.cls === "shield" ? l : undefined;
+    return 1 + (main?.atkSpd ?? 0) + (sh?.atkSpd ?? 0);
+  }
+
+  /**
    * ПК: начал атаку (1, двойной клик, ПКМ, клик по рамке цели) — герой бежит
    * к цели, пока не окажется на дальности атаки своего оружия, и бьёт.
    * Цель отходит — догоняет. Игрок взялся за WASD — погоня прекращается
@@ -2151,6 +2173,12 @@ export class Game {
     if (!this.pcChase || !attacking || !seg || this.player.dead) {
       if (this.pcChaseMoving) this.player.autoMove = null;
       this.pcChase = false;
+      this.pcChaseMoving = false;
+      return;
+    }
+    // Каст массового лечения — стоя: погоню не ведём, пока не дочитан.
+    if (this.combat.massHealCasting) {
+      if (this.pcChaseMoving) this.player.autoMove = null;
       this.pcChaseMoving = false;
       return;
     }

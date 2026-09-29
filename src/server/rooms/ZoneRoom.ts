@@ -77,6 +77,7 @@ import {
   SWORD_CRIT_MULT,
   DAYCYCLE,
   MOB,
+  CAMPFIRE,
   PLAYER,
   PLAYER_HP,
   PROGRESSION,
@@ -158,6 +159,7 @@ import {
   meleeSpeedFor,
   armorFrac,
   dodgeChance,
+  holdsOneItem,
   grantXp,
   isStatName,
   maxHpFor,
@@ -234,6 +236,10 @@ interface Runtime {
   leaveBot: boolean;
   /** ms окончания баффа победы над событием (×2 опыт/урон). 0 — нет баффа. */
   eventBuffUntil: number;
+  /** Бафф «Тепло костра» до этого момента (Date.now()); 0 — нет. */
+  campBuffUntil: number;
+  /** Сколько секунд подряд герой греется у костра (для баффа). */
+  campWarm: number;
   /** Секунда игрового времени (this.elapsed), до которой оглушён (спец-атака моба). */
   stunnedUntil: number;
   /** id моба, по которому только что ударили (для «!follow»-телохранителя — фокус-фаер). */
@@ -862,6 +868,8 @@ const ADMIN_PASS = process.env.ADMIN_PASS || "";
 const STAGING = process.env.STAGING === "1";
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
+/** Запас дальности удара на сетевую задержку (позиции на сервере отстают), м. */
+const HIT_LAG_PAD = 1;
 /** Цифры урона игроку — только в этом квадрате вокруг него, м. */
 const DMG_NUM_R = 60;
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
@@ -1860,8 +1868,12 @@ export class ZoneRoom extends Room<ZoneState> {
 
     const at = this.sim.targetCenter(msg.target, msg.id);
     if (!at) return;
-    const dist = Math.hypot(at.x - p.head.x, at.y - p.head.y, at.z - p.head.z);
-    if (dist > WEAPON_REACH[msg.weapon]) return; // слишком далеко — не верим
+    // До ПОВЕРХНОСТИ тела, а не до центра: у крупных мобов (колосс ×5.4) центр
+    // был дальше досягаемости меча даже вплотную — почти все удары отбрасывались.
+    // Плюс запас на сетевую задержку (позиции героя и моба на сервере отстают).
+    const dist =
+      Math.hypot(at.x - p.head.x, at.y - p.head.y, at.z - p.head.z) - this.sim.targetRadius(msg.target, msg.id);
+    if (dist > WEAPON_REACH[msg.weapon] + HIT_LAG_PAD) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
     const affix = affixIn(p, hand);
@@ -1951,8 +1963,12 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
   private buffMult(ownerId: string, which: "xp" | "dmg"): number {
     const rt = this.rt.get(ownerId);
-    if (!rt || rt.eventBuffUntil <= Date.now()) return 1;
-    return which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult;
+    if (!rt) return 1;
+    const now = Date.now();
+    // «Тепло костра» (лагерь) — +10% урона, складывается с баффом события.
+    const camp = which === "dmg" && rt.campBuffUntil > now ? CAMPFIRE.buffDmg : 1;
+    if (rt.eventBuffUntil <= now) return camp;
+    return camp * (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult);
   }
 
   private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
@@ -4001,6 +4017,8 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
+      campBuffUntil: 0,
+      campWarm: 0,
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
@@ -5110,7 +5128,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const out: { id: string; x: number; z: number }[] = [];
     for (const m of this.sim.mobs.values()) {
       if (m.dead) continue;
-      if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > r) continue;
+      // Круг задевает тело, а не только центр (крупные мобы — ×5 по размеру).
+      if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > r + MOB.hitRadius * m.scale) continue;
       out.push({ id: m.id, x: m.x, z: m.z });
     }
     return out;
@@ -5240,7 +5259,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const pin = (): void => {
       const left = duration - (this.elapsed - t0) + 0.25;
       for (const m of this.sim.mobs.values()) {
-        if (m.dead || Math.hypot(m.x - cx, m.z - cz) > radius) continue;
+        if (m.dead || Math.hypot(m.x - cx, m.z - cz) > radius + MOB.hitRadius * m.scale) continue;
         this.sim.rootMob(m.id, left);
       }
     };
@@ -5715,7 +5734,7 @@ export class ZoneRoom extends Room<ZoneState> {
       (p.rightCls === "shield" && p.rightTier === "legendary");
     // Уворот (ловкость): один предмет в руках (лук/посох — обе руки заняты
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
-    const oneHanded = p.leftCls === "";
+    const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
     // Яд (облако спор) — не удар: ни увернуться, ни закрыться щитом.
     const dodged = !h.dot && Math.random() < dodgeChance(p.agi, oneHanded);
     const block = h.dot
@@ -5826,8 +5845,9 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Склад оружия — клиенту, когда изменился (инвентарь в игре показывает то же, что веб-инвентарь). */
   private syncWarehouse(id: string, rt: Runtime): void {
     if (id.startsWith("bot:")) return;
+    // + оценка: после заточки роллы (и скорость атаки) меняются — список надо переслать.
     const sig =
-      rt.weapons.map((w) => w.id).join(",") +
+      rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}`).join(",") +
       "|" +
       (rt.equippedWeaponId?.left ?? "") +
       "|" +
@@ -5843,6 +5863,7 @@ export class ZoneRoom extends Room<ZoneState> {
         tier: w.tier,
         affixes: w.affixes.map(affixLabel),
         quality: weaponQuality(w),
+        atkSpd: affixSum(w.affixes, "atkSpeedPct"),
       })),
       equipped: {
         left: rt.equippedWeaponId?.left ?? null,
@@ -5868,14 +5889,27 @@ export class ZoneRoom extends Room<ZoneState> {
       if (id.startsWith("bot:") && this.bots.get(id.slice(4))?.inTower) return;
       if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
-      const buffLeft = Math.max(0, rt.eventBuffUntil - Date.now());
+      const now = Date.now();
+      const buffLeft = Math.max(0, rt.eventBuffUntil - now);
       p.buffSecs = Math.min(65535, Math.ceil(buffLeft / 1000));
+      // Костёр в лагере: рядом — быстрый реген сразу; погрелся — бафф.
+      const fire = HUB.campfire.pos;
+      const atFire = Math.hypot(p.head.x - fire.x, p.head.z - fire.z) <= CAMPFIRE.radius;
+      if (atFire) {
+        rt.campWarm += dt;
+        if (rt.campWarm >= CAMPFIRE.warmSec && rt.campBuffUntil - now < (CAMPFIRE.buffSec - 30) * 1000) {
+          rt.campBuffUntil = now + CAMPFIRE.buffSec * 1000;
+        }
+      } else {
+        rt.campWarm = 0;
+      }
+      p.campBuffSecs = Math.min(65535, Math.max(0, Math.ceil((rt.campBuffUntil - now) / 1000)));
       // Воин-бот восстанавливается быстрее и раньше обычного.
       const warrior = id.startsWith("bot:") && isWarriorBot(p);
       const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
       const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
-      if (p.hp > 0 && p.hp < p.maxHp && rt.sinceHurt > regenDelay) {
-        p.hp = Math.min(p.maxHp, p.hp + regenRate * dt);
+      if (p.hp > 0 && p.hp < p.maxHp && (atFire || rt.sinceHurt > regenDelay)) {
+        p.hp = Math.min(p.maxHp, p.hp + regenRate * (atFire ? CAMPFIRE.regenMul : 1) * dt);
       }
     });
   }
@@ -6119,6 +6153,8 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
       eventBuffUntil: 0,
+      campBuffUntil: 0,
+      campWarm: 0,
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,

@@ -14,7 +14,7 @@ import {
   type FloorArchetype,
 } from "#shared/tower";
 import { noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
-import { armorFrac, attackSpeedFor, dodgeChance, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
+import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
 import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
   isWeaponClass,
@@ -330,7 +330,7 @@ export class TowerRoom extends Room<TowerState> {
       (options.leftCls === "shield" && options.leftTier === "legendary") ||
       (options.rightCls === "shield" && options.rightTier === "legendary");
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
-    this.heroOneHanded = options.leftCls === "";
+    this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
     const rightAffix = weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier);
     this.heroVampAffix = rightAffix === "vamp";
     // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам

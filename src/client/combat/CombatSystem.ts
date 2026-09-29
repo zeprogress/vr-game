@@ -141,7 +141,7 @@ const STAND_GLOW = new Color3(1, 0.93, 0.7);
 const PC_AUTO_PICK_R = 1.7;
 
 /** ПК: дальность автоатаки луком, м (стрела летит навесом дальше, но попасть сложнее). */
-const PC_BOW_RANGE = 45;
+const PC_BOW_RANGE = 30; // было 45 — слишком далеко (боты-лучники бьют с 21 м, посох — с 28)
 
 /**
  * Направление выстрела навесом из `from` в `to` со скоростью `v` при
@@ -321,6 +321,11 @@ export class CombatSystem {
   pcOutOfRange = false;
   /** ПК: подобранное с земли оружие — в сумку, а не в руку. */
   lootToBag = false;
+  /**
+   * Множитель темпа от роллов «скорость атаки» на оружии в руках (и щите) —
+   * тот же, что сервер считает в rolledAtkSpeedMul. Game пересчитывает по складу.
+   */
+  atkSpeedAffix = 1;
 
   /** Смартфон: лук/посох — сколько держим кнопку и пауза между выстрелами. */
   private tpRangedHold = 0;
@@ -1069,6 +1074,9 @@ export class CombatSystem {
       this.justPickedUp = true;
       return;
     }
+    // ПК: E — только подобрать. Телефонная логика ✋ ниже (снять щит / сменить
+    // меч↔посох, если рядом нечего взять) на ПК снимала щит сама по себе.
+    if (this.lootToBag) return;
     // Смартфон: меч и посох — взаимоисключающие. Стоишь у второго — ✋ роняет
     // то, что в руке (дальше вторым ✋ поднимешь другой).
     if (this.player.thirdPerson) {
@@ -1078,11 +1086,9 @@ export class CombatSystem {
         return;
       }
     }
-    // Смартфон: щит скидывается кнопкой ✋ и ВСЕГДА первым — раньше оружия.
-    if (this.player.thirdPerson && this.shieldHand) {
-      if (released) this.dropShieldFlat();
-      return;
-    }
+    // Щит кнопкой подбора больше НЕ снимается (раньше ✋/E «рядом ничего нет»
+    // снимали щит — со стороны выглядело, будто он пропал сам). Снять щит —
+    // отдельной кнопкой на телефоне или из инвентаря.
     // Бросок оружия по удержанию E убран (2026-09-29): выбросить — только из меню.
     void held;
     void dt;
@@ -2175,8 +2181,9 @@ export class CombatSystem {
   ): void {
     this.tpMeleeCd = Math.max(0, this.tpMeleeCd - dt);
     if (primaryEdge && this.tpMeleeCd <= 0 && this.turnCd <= 0) {
-      const atk = this.prog.meleeSpeed;
-      this.tpMeleeCd = MELEE.tpSwingCd / atk;
+      // Темп — как в характеристиках и у ботов (BOT.attackCooldown), с роллом «скорость атаки».
+      const atk = this.prog.meleeSpeed * this.atkSpeedAffix;
+      this.tpMeleeCd = BOT.attackCooldown / atk;
       this.onMeleeSwing?.();
       const at = item?.mesh.getAbsolutePosition() ?? this.player.eyePosition;
       this.sfx.swordSwing(at);
@@ -2412,7 +2419,7 @@ export class CombatSystem {
    * Между выстрелами пауза (tpCooldown / скорость атаки) — не поспамить.
    */
   private tpBowShoot(power: number, dir?: Vector3): void {
-    this.tpRangedCd = BOW.tpCooldown / this.prog.attackSpeed;
+    this.tpRangedCd = BOW.tpCooldown / (this.prog.attackSpeed * this.atkSpeedAffix);
     this.nockArrow.setEnabled(false);
     this.nockLocal.copyFrom(this.bowParts.nockRest);
     const d = (dir ?? this.player.eyeForward).clone();
@@ -2521,7 +2528,7 @@ export class CombatSystem {
       return;
     }
     if (this.charge === 0) this.sfx.bowDraw();
-    const rate = this.prog.attackSpeed / Math.max(0.3, BOW.flatCooldown);
+    const rate = (this.prog.attackSpeed * this.atkSpeedAffix) / Math.max(0.3, BOW.flatCooldown);
     this.charge = clamp(this.charge + rate * dt, 0, 1);
     this.nockArrow.setEnabled(true);
     this.placeNockArrow(
@@ -2558,13 +2565,13 @@ export class CombatSystem {
       this.charge = 0;
       this.sfx.bowDraw();
     }
-    const rate = this.prog.attackSpeed / fb.chargeTime;
+    const rate = (this.prog.attackSpeed * this.atkSpeedAffix) / fb.chargeTime;
     this.charge = clamp(this.charge + rate * dt, 0, 1);
     this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
     this.showChargeOrb(staff.mesh);
     if (this.charge >= 1 && this.tpRangedCd <= 0) {
       this.resetCast();
-      this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+      this.tpRangedCd = fb.cooldown / (this.prog.attackSpeed * this.atkSpeedAffix);
       const d = c.subtract(from);
       d.normalize();
       this.emitFirebolt(1, staff.hand ?? "right", d);
