@@ -130,8 +130,8 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
     const aegis = shieldTier === "legendary";
-    const blocked = 1 - (aegis ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage);
-    rows.push({ label: "Блок щитом", value: `-${Math.round(blocked * 100)}% урона` });
+    const chance = aegis ? AFFIX.guard.blockChance : SHIELD.blockChance;
+    rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
   }
 
   return rows;

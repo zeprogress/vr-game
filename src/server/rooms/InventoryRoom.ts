@@ -1,4 +1,5 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
+import { atMaxLevel, xpToNext } from "#shared/progression";
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
 
@@ -198,6 +199,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     authed,
     code: authed ? undefined : invHub.code(sid, norm),
     level: rec.level,
+    // Опыт к следующему уровню: доля 0..1 (на максимальном уровне — 1).
+    xpFrac: atMaxLevel(rec.level) ? 1 : Math.max(0, Math.min(1, (rec.xp ?? 0) / xpToNext(rec.level))),
     stats,
     hands: {
       left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", rec.equippedWeaponId?.left, weaponsList),

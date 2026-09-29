@@ -5632,7 +5632,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Увернулся — спец-эффекты атаки (оглушение/отбрасывание) тоже мимо.
     // (Клиент живого игрока применит стан/отбрасывание сам — см. MSG.mobHit ниже.)
-    if (!dodged) {
+    // Полный блок щитом — тоже мимо.
+    if (!dodged && !(block.by === 1 && block.mult === 0)) {
       if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
       if (h.knockback && h.target.startsWith("bot:")) {
         // Живой игрок отталкивает себя сам (см. MobHitMsg.knockback) — сервер

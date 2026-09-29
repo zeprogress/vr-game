@@ -126,11 +126,11 @@ export function resolveBlock(
 ): BlockResult {
   if (!g) return { mult: 1, by: 0 };
 
+  // Щит (2026-09-29): не «подставь и погаси половину», а шанс ПОЛНОСТЬЮ
+  // заблокировать любой удар с любой стороны — как уворот. Одинаково в VR,
+  // на телефоне и у ботов.
   if (g.sx !== 0 || g.sz !== 0) {
-    const cone = SHIELD.blockCone + (aegis ? AFFIX.guard.coneBonus : 0);
-    if (g.sx * ax + g.sz * az > Math.cos(cone)) {
-      return { mult: aegis ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage, by: 1 };
-    }
+    if (Math.random() < (aegis ? AFFIX.guard.blockChance : SHIELD.blockChance)) return { mult: 0, by: 1 };
   }
 
   if (g.wx !== 0 || g.wz !== 0) {

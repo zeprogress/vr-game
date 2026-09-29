@@ -50,7 +50,10 @@ export function startLightDiag(
 
   /** Со сколькими огнями собран шейдер материала (по #define LIGHTn в его defines). */
   const matLights = (name: string): string => {
-    const m = scene.materials.find((x) => x.name === name);
+    // Имя с "*" на конце — первый материал с таким префиксом (кресты/даль травы по видам).
+    const m = name.endsWith("*")
+      ? scene.materials.find((x) => x.name.startsWith(name.slice(0, -1)))
+      : scene.materials.find((x) => x.name === name);
     if (!m) return `${name}:—`;
     const fx = m.getEffect();
     const defs = (fx as unknown as { defines?: string } | null)?.defines ?? "";
@@ -69,7 +72,7 @@ export function startLightDiag(
     send(
       `light ${why} · day=${daylight().toFixed(2)} · ${gpu()} · ` +
         `pointLights on=${on.length}/${pts.length} (факелы ~${torches}) · ` +
-        `mats ${["terrainMat", "grassMat", "treeLeaf", "treeBark", "hubGroundMat"].map(matLights).join(" ")} · ` +
+        `mats ${["terrainMat", "grassCrossMat_*", "grassFarMat_*", "treeLeaf", "treeBark", "hubGroundMat"].map(matLights).join(" ")} · ` +
         `errors: ${errors.length ? errors.join(" | ") : "нет"}`,
     );
   };

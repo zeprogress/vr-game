@@ -25,7 +25,7 @@ const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 export const AFFIX_TEXT: Record<NonNullable<WeaponDef["affix"]>, string> = {
   vamp: `Вампиризм: ${Math.round(AFFIX.vamp.healFrac * 100)}% урона — в HP`,
   crit: `Крит +${Math.round(AFFIX.crit.chanceBonus * 100)}%`,
-  guard: `Блок ${Math.round((1 - AFFIX.guard.blockedDamage) * 100)}% · шире сектор`,
+  guard: `Шанс блока ${Math.round(AFFIX.guard.blockChance * 100)}%`,
   storm: `АОЕ огнешара ×${AFFIX.storm.splashRadiusMul}`,
 };
 
@@ -62,10 +62,8 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s.agi).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (сила магии), ловкости (темп)"]);
   } else {
-    const blocked = d.affix === "guard" ? AFFIX.guard.blockedDamage : SHIELD.blockedDamage;
-    const cone = SHIELD.blockCone + (d.affix === "guard" ? AFFIX.guard.coneBonus : 0);
-    out.push(["Блок", `гасит ${Math.round((1 - blocked) * 100)}% урона`]);
-    out.push(["Сектор", `±${Math.round((cone * 180) / Math.PI)}°`]);
+    const chance = d.affix === "guard" ? AFFIX.guard.blockChance : SHIELD.blockChance;
+    out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
   }
   if (d.affix) out.push(["Эффект", AFFIX_TEXT[d.affix]]);
   if (w.affix) out.push(["Роллы", w.affix]);

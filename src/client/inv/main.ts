@@ -56,6 +56,8 @@ interface InvMsg {
   authed?: boolean;
   code?: string;
   level?: number;
+  /** Опыт к следующему уровню, 0..1. */
+  xpFrac?: number;
   stats?: InvStatRow[];
   hands?: { left: InvHand | null; right: InvHand | null };
   weapons?: InvWeapon[];
@@ -247,7 +249,13 @@ function renderInv(msg: InvMsg): void {
         misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
 
   if (modalId && !animating) renderModal();
-  listEl.innerHTML = `${authHtml}${statsHtml}${attrsHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  const xpPct = Math.floor((msg.xpFrac ?? 0) * 1000) / 10;
+  const xpHtml =
+    msg.xpFrac !== undefined
+      ? `<div class="xp"><div class="xp-head"><span>Опыт до ${(msg.level ?? 0) + 1} ур.</span><b>${xpPct.toFixed(1)}%</b></div>` +
+        `<div class="xp-bar"><div style="width:${xpPct}%"></div></div></div>`
+      : "";
+  listEl.innerHTML = `${authHtml}${xpHtml}${statsHtml}${attrsHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 listEl.addEventListener("click", (e) => {

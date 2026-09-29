@@ -433,8 +433,8 @@ export interface EliteMobDef {
   charger?: boolean;
   /** 36 ур. Ледяной демон: щит, отражающий часть урона атакующему (см. REFLECT). */
   reflector?: boolean;
-  /** 36 ур. Костяной вождь: боевой клич — лечит и разъяряет соседей (см. WARCRY). */
-  warcrier?: boolean;
+  /** 36 ур. Костяной вождь: костяные шипы из-под героев (см. SPIKES). */
+  spiker?: boolean;
   puller?: boolean;
 }
 
@@ -556,26 +556,27 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Уходи вбок с полосы!
   infernoDemon: {
     model: "monDemon", name: "Адский демон", level: 36, kind: "slime",
-    hp: 7200, dmgMul: 6, xp: 1200000, scaleMul: 3.2, tint: null,
+    hp: 7200, dmgMul: 7, xp: 1200000, scaleMul: 3.2, tint: null,
     physArmor: 0.2, charger: true, meleeReach: 3.4, attackCooldown: 1.9,
     legendaryChance: 0.035,
   },
   // Ледяной демон: время от времени покрывается ледяным щитом — пока он
   // держится, часть урона отражается в атакующего. Под щитом — не бей
-  // (или бей магией издалека, отражение то же — терпи).
+  // (или бей магией издалека, отражение то же — терпи). Рукой бьёт больно.
   frostDemon: {
     model: "monBlueDemon", name: "Ледяной демон", level: 36, kind: "slime",
-    hp: 5600, dmgMul: 5, xp: 960000, scaleMul: 2.8, tint: null,
+    hp: 5600, dmgMul: 9, xp: 960000, scaleMul: 2.8, tint: null,
     reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
+    meleeReach: 3.2, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
   },
-  // Костяной вождь: ходит стаей и боевым кличем лечит соседних вождей и
-  // приводит их в ярость (быстрее и больнее бьют). Убивай по одному,
-  // оттаскивая от стаи, или перебивай всех разом.
+  // Костяной вождь: бьёт по земле — из-под ног героев рядом (до трёх)
+  // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
     model: "monOrcSkull", name: "Костяной вождь", level: 36, kind: "slime",
-    hp: 6200, dmgMul: 5.5, xp: 1080000, scaleMul: 3, tint: null,
-    physArmor: 0.15, rangedArmor: 0.2, warcrier: true, attackCooldown: 1.7,
+    hp: 6200, dmgMul: 7, xp: 1080000, scaleMul: 3, tint: null,
+    physArmor: 0.15, rangedArmor: 0.2, spiker: true, attackCooldown: 1.6,
+    meleeReach: 3.4, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
   },
 };
@@ -587,14 +588,14 @@ export const CHARGE = {
   maxDist: 20,
   /** Длина пробега — до цели и ещё столько за неё. */
   overshoot: 5,
-  cooldown: 10,
+  cooldown: 6, // было 10 — злее
   /** Телеграф: полоса на земле, с. */
-  windup: 1.2,
+  windup: 1.1,
   /** Ширина полосы (полуширина — от оси). */
   halfWidth: 2.2,
   /** Удар тарана — во столько раз сильнее обычного. */
-  strikeMul: 1.8,
-  stunSec: 1.2,
+  strikeMul: 2.6, // было 1.8
+  stunSec: 1.6, // было 1.2
   knockback: 12,
 };
 
@@ -606,14 +607,18 @@ export const REFLECT = {
   frac: 0.45,
 };
 
-/** Костяной вождь: боевой клич (см. EliteMobDef.warcrier). */
-export const WARCRY = {
-  radius: 16,
-  cooldown: 15,
-  /** Лечит себя и соседей-мобов на эту долю их макс. HP. */
-  healFrac: 0.12,
-  /** Столько секунд соседи в ярости (быстрее и больнее, как босс). */
-  rageSec: 6,
+/** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */
+export const SPIKES = {
+  /** Цели — герои в этом радиусе от вождя, не больше maxTargets. */
+  range: 14,
+  maxTargets: 3,
+  cooldown: 8,
+  /** Телеграф: круг под ногами, с. */
+  windup: 1.0,
+  radius: 2.6,
+  /** Удар шипов — во столько раз сильнее обычного. */
+  strikeMul: 1.7,
+  stunSec: 1.4,
 };
 
 /** Грибной колосс: ядовитое облако под героем (см. EliteMobDef.sporeCaster). */
@@ -872,7 +877,8 @@ export const AFFIX = {
   /** Лук: прибавка к шансу крита (поверх BOW.critChance). */
   crit: { chanceBonus: 0.25 },
   /** Щит: сквозь блок проходит меньше урона (Эгида блокирует 60%) + шире сектор (рад). */
-  guard: { blockedDamage: 0.4, coneBonus: 0.25 },
+  /** Уникальный щит: шанс полного блока (у обычного — SHIELD.blockChance). */
+  guard: { blockChance: 0.15 },
   /** Посох: множители радиуса и доли АОЕ огнешара + прямого урона выстрела. */
   storm: { splashRadiusMul: 1.6, splashFracMul: 1.5, dmgMul: 1.2 },
   /** Меч вампира: доля нанесённого удара мечом, возвращаемая владельцу как HP. */
@@ -914,8 +920,8 @@ export function goldDropMulForLevel(level: number): number {
 export const SHIELD = {
   equipReach: 2.6,
   radius: 0.32, // м, радиус диска щита
-  /** Доля урона, проходящая сквозь удачный блок щитом (0.5 — щит гасит половину). */
-  blockedDamage: 0.5,
+  /** Шанс полностью заблокировать удар щитом (любой, с любой стороны). */
+  blockChance: 0.1,
   /** Снаряд, отбитый мечом, гасится полностью. */
   swordProjectileFraction: 0,
   /** Скользящий блок: угол больше этого — защита не сработала (рад). */

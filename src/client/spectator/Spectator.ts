@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, WARCRY, SKILL, SPORE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1464,9 +1464,11 @@ export class Spectator {
         // Ледяной демон: синий щит на всё время отражения.
         this.skillFx.wraithPuff(x, y + 0.6, z, d ?? REFLECT.duration, false);
         break;
-      case "warcry":
-        // Костяной вождь: клич — волна по округе (соседи лечатся и звереют).
-        this.healAura.burst(x, y, z, WARCRY.radius, 1.2);
+      case "spikeMark":
+        // Костяной вождь: красная волна под героем — через d с шипы.
+        this.skillFx.stunBash(x, y, z, SPIKES.radius, d ?? SPIKES.windup);
+        break;
+      case "spikeHit":
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "stunBash":

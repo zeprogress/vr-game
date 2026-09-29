@@ -510,16 +510,19 @@ export class Overlay {
       }
     }
 
+    // Живые игроки (ПК/телефон/VR) сверху, боты — ниже; порядок внутри групп прежний.
+    const ONLINE_ROWS = 10;
+    const onlineSorted = this.cfg.online ? [...ctx.online].sort((x, y) => Number(x.bot) - Number(y.bot)) : [];
     const onlineSig = this.cfg.online
-      ? ctx.online
-          .slice(0, 7)
+      ? onlineSorted
+          .slice(0, ONLINE_ROWS)
           .map((p) => `${p.nick}${p.speaking ? 1 : 0}${p.bot ? 1 : 0}${p.plat}`)
           .join("|") + `${ctx.online.length}`
       : "";
     if (this.cfg.online && ctx.online.length && onlineSig !== this.lastOnlineSig) {
       this.lastOnlineSig = onlineSig;
       this.online.innerHTML = "<b>в игре</b>";
-      for (const p of ctx.online.slice(0, 7)) {
+      for (const p of onlineSorted.slice(0, ONLINE_ROWS)) {
         const row = document.createElement("div");
         const dot = document.createElement("i");
         dot.className = "spk";
@@ -530,9 +533,9 @@ export class Overlay {
         row.append(dot, nm);
         this.online.appendChild(row);
       }
-      if (ctx.online.length > 7) {
+      if (ctx.online.length > ONLINE_ROWS) {
         const more = document.createElement("div");
-        more.textContent = `+${ctx.online.length - 7}`;
+        more.textContent = `+${ctx.online.length - ONLINE_ROWS}`;
         more.style.opacity = ".6";
         this.online.appendChild(more);
       }

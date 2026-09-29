@@ -13,7 +13,7 @@ import {
   CHARGE,
   WORLD,
   REFLECT,
-  WARCRY,
+  SPIKES,
   BOSS_ADAPT,
   eliteXpAt,
   MAGE_SPELL,
@@ -171,7 +171,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "warcry";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit";
   x: number;
   z: number;
   /** Второй конец (хват щупальцами: от спрута x2/z2 к цели x/z). */
@@ -292,7 +292,7 @@ class Mob {
   raging = false;
   get enraged(): boolean {
     if (this.dead) return false;
-    if (this.raging || this.cryRageT > 0) return true;
+    if (this.raging) return true;
     return this.kind === "boss" && this.hp / this.maxHp < BOSS.enrageAt;
   }
   /** Готовность слэма/рывка 0..1 (для телеграфа на клиенте). */
@@ -360,10 +360,10 @@ class Mob {
   readonly regen: number;
   readonly puller: boolean;
   private pullCd = 3;
-  /** 36 ур.: таран / щит отражения / боевой клич (см. CHARGE, REFLECT, WARCRY). */
+  /** 36 ур.: таран / щит отражения / костяные шипы (см. CHARGE, REFLECT, SPIKES). */
   readonly charger: boolean;
   readonly reflector: boolean;
-  readonly warcrier: boolean;
+  readonly spiker: boolean;
   private chargeCd = 3;
   private chargeWindupT = 0;
   private chargeFromX = 0;
@@ -373,11 +373,9 @@ class Mob {
   private reflectCd = 4;
   /** >0 — щит отражения держится (ZoneSim.hitMob отражает урон). */
   reflectT = 0;
-  private cryCd = 5;
-  /** ZoneSim прочтёт и сбросит: вождь издал клич — полечить/разъярить соседей. */
-  cryReq = false;
-  /** >0 — ярость от чужого клича (см. enraged). */
-  cryRageT = 0;
+  private spikeCd = 4;
+  private spikeWindupT = 0;
+  private readonly spikeSpots: { x: number; z: number }[] = [];
   private pullWindupT = 0;
   private pullTarget: string | null = null;
   /** Адаптация Багрового (BOSS_ADAPT): под какой уровень сейчас настроен и множитель его урона. */
@@ -456,7 +454,7 @@ class Mob {
       puller?: boolean;
       charger?: boolean;
       reflector?: boolean;
-      warcrier?: boolean;
+      spiker?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -510,7 +508,7 @@ class Mob {
     this.puller = opts.puller ?? false;
     this.charger = opts.charger ?? false;
     this.reflector = opts.reflector ?? false;
-    this.warcrier = opts.warcrier ?? false;
+    this.spiker = opts.spiker ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -931,15 +929,44 @@ class Mob {
         this.fx.push({ k: "reflectOn", x: this.x, z: this.z, d: REFLECT.duration });
       }
     }
-    // Костяной вождь: боевой клич (соседей лечит/разъяряет ZoneSim — ему видны все мобы).
-    if (this.cryRageT > 0) this.cryRageT = Math.max(0, this.cryRageT - dt);
-    if (this.warcrier) {
-      if (this.cryCd > 0) this.cryCd -= dt;
-      if (chasing && !busy && this.cryCd <= 0) {
-        this.cryCd = WARCRY.cooldown * (0.85 + Math.random() * 0.3);
-        this.cryReq = true;
-        this.attackSeq = (this.attackSeq + 1) & 0xffff;
-        this.fx.push({ k: "warcry", x: this.x, z: this.z, d: WARCRY.rageSec });
+    // Костяной вождь: метит землю под ближними героями — через телеграф шипы.
+    if (this.spiker) {
+      if (this.spikeCd > 0) this.spikeCd -= dt;
+      if (this.spikeWindupT > 0) {
+        this.spikeWindupT -= dt;
+        if (this.spikeWindupT <= 0) {
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          for (const sp of this.spikeSpots) {
+            this.fx.push({ k: "spikeHit", x: sp.x, z: sp.z });
+            for (const p of players) {
+              if (Math.hypot(p.x - sp.x, p.z - sp.z) > SPIKES.radius) continue;
+              hits.push({
+                target: p.sessionId,
+                dmg: MOB.attackDamage * this.dmgMul * SPIKES.strikeMul,
+                fromX: sp.x,
+                fromZ: sp.z,
+                projectile: false,
+                byMob: this.id,
+                stunSec: SPIKES.stunSec,
+              });
+            }
+          }
+          this.spikeSpots.length = 0;
+        }
+      } else if (chasing && np && !busy && this.spikeCd <= 0) {
+        const near = players
+          .map((p) => ({ p, d: Math.hypot(p.x - this.x, p.z - this.z) }))
+          .filter((e) => e.d < SPIKES.range)
+          .sort((u, v) => u.d - v.d)
+          .slice(0, SPIKES.maxTargets);
+        if (near.length) {
+          this.spikeWindupT = SPIKES.windup;
+          this.spikeCd = SPIKES.cooldown * (0.85 + Math.random() * 0.3);
+          for (const { p } of near) {
+            this.spikeSpots.push({ x: p.x, z: p.z });
+            this.fx.push({ k: "spikeMark", x: p.x, z: p.z, d: SPIKES.windup });
+          }
+        }
       }
     }
 
@@ -1669,7 +1696,7 @@ export class ZoneSim {
           puller: def.puller,
           charger: def.charger,
           reflector: def.reflector,
-          warcrier: def.warcrier,
+          spiker: def.spiker,
         });
         this.mobs.set(m.id, m);
       }
@@ -1813,16 +1840,6 @@ export class ZoneSim {
     if (this.reflectHits.length) {
       hits.push(...this.reflectHits);
       this.reflectHits.length = 0;
-    }
-    // Боевой клич Костяного вождя: лечит и разъяряет мобов вокруг (и себя).
-    for (const m of this.mobs.values()) {
-      if (!m.cryReq) continue;
-      m.cryReq = false;
-      for (const o of this.mobs.values()) {
-        if (o.dead || Math.hypot(o.x - m.x, o.z - m.z) > WARCRY.radius) continue;
-        o.hp = Math.min(o.maxHp, o.hp + o.maxHp * WARCRY.healFrac);
-        o.cryRageT = WARCRY.rageSec;
-      }
     }
     this.tickBurning(dt);
     this.separateMobs();
