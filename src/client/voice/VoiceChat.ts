@@ -48,6 +48,8 @@ interface Peer {
   /** Сколько ещё держать «говорит» после последнего звука, с (антидребезг). */
   speakHang: number;
   state: PeerState;
+  /** Диктор: слышен ровно, без «по месту». */
+  flat: boolean;
   // --- запасной путь: голос через сервер ---
   /** true — WebRTC не встал, слушаем через сервер. */
   useRelay: boolean;
@@ -111,6 +113,8 @@ export class VoiceChat {
 
   /** Микрофон включён (иначе молчим, но слушаем). */
   micEnabled = false;
+  /** `?nocaster=1` в адресе — не слушать диктора (страница voice.html). */
+  muteCaster = typeof location !== "undefined" && new URLSearchParams(location.search).get("nocaster") === "1";
   /** Слышать по месту или всех ровно. */
   spatial = true;
   /** Свой голос сейчас идёт в эфир. */
@@ -246,6 +250,7 @@ export class VoiceChat {
       speaking: false,
       speakHang: 0,
       state: "новый",
+      flat: false,
       useRelay: false,
       relayTimer: null,
       decoder: null,
@@ -324,9 +329,14 @@ export class VoiceChat {
     if (!msg?.peer) return;
     // Первым пришёл offer от неизвестного пира (напр. спектатор) — мы
     // отвечающая сторона, свой offer слать не должны.
+    if (msg.c && this.muteCaster) return;
     if (!this.peers.has(msg.peer)) this.addPeer(msg.peer, msg.kind === "offer" ? false : undefined);
     const peer = this.peers.get(msg.peer);
     if (!peer) return;
+    if (msg.c && !peer.flat) {
+      peer.flat = true;
+      this.wire(peer);
+    }
 
     try {
       if (msg.kind === "offer") {
@@ -397,7 +407,7 @@ export class VoiceChat {
     peer.gain.disconnect();
     if (peer.analyser && peer.source && !peer.useRelay) peer.source.connect(peer.analyser);
 
-    if (this.spatial) {
+    if (this.spatial && !peer.flat) {
       input.connect(peer.panner);
       peer.panner.connect(peer.gain);
     } else {

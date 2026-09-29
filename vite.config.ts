@@ -217,6 +217,7 @@ export default defineConfig({
         main: resolve(root, "index.html"),
         inv: resolve(root, "inv.html"),
         overlay: resolve(root, "overlay.html"),
+        voice: resolve(root, "voice.html"),
       },
       output: {
         // Babylon — отдельным вендор-чанком: меньше пик памяти при сборке

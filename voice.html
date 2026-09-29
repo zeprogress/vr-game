@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZEP GAME — Голос в игру</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; min-height: 100vh; background: #14161f; color: #dfe4f0; font-family: system-ui, sans-serif; display: grid; place-items: center; padding: 16px; box-sizing: border-box; }
+      .card { max-width: 420px; width: 100%; background: #1c1f2b; border-radius: 14px; padding: 24px; text-align: center; }
+      h1 { font-size: 20px; margin: 0 0 8px; }
+      p { color: #9aa3b8; margin: 6px 0; font-size: 14px; }
+      button { font: inherit; font-size: 18px; padding: 14px 22px; border: 0; border-radius: 10px; background: #3b6cff; color: #fff; cursor: pointer; margin-top: 14px; }
+      button.off { background: #555c70; }
+      .meter { height: 12px; border-radius: 6px; background: #2a2e3d; overflow: hidden; margin-top: 16px; }
+      .meter > div { height: 100%; width: 0; background: #4ade80; transition: width 0.08s; }
+      #talk { margin-top: 10px; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>🎙 Голос в игру</h1>
+      <p>Всё, что скажешь, слышат игроки в мире.</p>
+      <button id="go">Включить микрофон</button>
+      <div class="meter"><div id="lvl"></div></div>
+      <div id="talk"></div>
+      <p id="status">Не подключено</p>
+    </div>
+    <script type="module" src="/src/client/voice/casterPage.ts"></script>
+  </body>
+</html>

@@ -837,6 +837,8 @@ interface JoinOpts {
   token?: string;
   /** Ключ невидимого спектатора для стрима (этап 17). */
   spectator?: string;
+  /** Страница диктора (voice.html): только голос в игру, свой ключ CASTER_KEY. */
+  caster?: string;
   /** Вход по нику (Ф10): забрать своего бота / персонажа. Без токена. */
   stream?: boolean;
   /** Пароль админ-ника (ADMIN_NICKS) — см. проверку в начале onJoin. */
@@ -858,6 +860,8 @@ const STAGING = process.env.STAGING === "1";
 
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
+/** Ключ страницы диктора voice.html (bearmood_tv) — отдельный от спектаторского. */
+const CASTER_KEY = process.env.CASTER_KEY || "voice-68105a2bfa";
 
 /**
  * Одна зона мира. Сервер авторитетен: мобы, куклы, плевки, здоровье игроков,
@@ -1650,11 +1654,12 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.kind !== "offer" && msg.kind !== "answer" && msg.kind !== "ice") return;
       // Адресат — игрок в комнате или рендерящий спектатор (он слушает голос
       // игроков для стрима, микрофона у него нет).
-      if (!this.state.players.has(msg.peer) && !this.spectators.has(msg.peer)) return;
+      if (!this.state.players.has(msg.peer) && !this.spectators.has(msg.peer) && !this.casters.has(msg.peer)) return;
       this.clientOf(msg.peer)?.send(MSG.rtc, {
         peer: client.sessionId,
         kind: msg.kind,
         data: msg.data,
+        ...(this.casters.has(client.sessionId) ? { c: 1 as const } : {}),
       });
     });
 
@@ -5794,6 +5799,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Спектаторы стрима — sessionId. В `state.players` их нет. */
   private readonly spectators = new Set<string>();
+  /** Страницы диктора (voice.html) → таймер рассылки «кому звонить». */
+  private readonly casters = new Map<string, { clear(): void }>();
   /** sessionId спектатора со свободной камерой (окно `?freecam=1`), "" — нет. */
   private freeCamOwner = "";
   /** Когда живой игрок зашёл (sessionId → Date.now()) — для приоритета камеры. */
@@ -5843,6 +5850,19 @@ export class ZoneRoom extends Room<ZoneState> {
   private towerCamEye = true;
 
   override onJoin(client: Client, options?: JoinOpts): void {
+    // Диктор (voice.html): без героя, только голос. Сам звонит всем игрокам
+    // и спектаторам — список шлём раз в 3 с (новые входят, старые уходят).
+    if (options?.caster !== undefined) {
+      if (options.caster !== CASTER_KEY) throw new Error("диктор: неверный ключ");
+      const push = (): void => {
+        const ids = [...this.state.players.keys()].filter((id) => !id.startsWith("bot:"));
+        client.send(MSG.casterPeers, [...ids, ...this.spectators]);
+      };
+      this.clock.setTimeout(push, 400);
+      this.casters.set(client.sessionId, this.clock.setInterval(push, 3000));
+      console.log(`[zone] + диктор ${client.sessionId}`);
+      return;
+    }
     // Невидимый спектатор (этап 17): без PlayerState, без rt, без сейва.
     // Состояние комнаты Colyseus синхронизирует ему сам.
     if (options?.spectator !== undefined) {
@@ -6048,6 +6068,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   override async onLeave(client: Client, consented?: boolean): Promise<void> {
+    const caster = this.casters.get(client.sessionId);
+    if (caster) {
+      caster.clear();
+      this.casters.delete(client.sessionId);
+      console.log(`[zone] - диктор ${client.sessionId}`);
+      return;
+    }
     if (this.spectators.delete(client.sessionId)) {
       console.log(`[zone] - спектатор ${client.sessionId} — эфирных ${this.spectators.size}`);
       if (this.freeCamOwner === client.sessionId) {
