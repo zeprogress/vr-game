@@ -14,6 +14,8 @@ import {
   WORLD,
   REFLECT,
   SPIKES,
+  CHIEF_HEAL,
+  FREEZE,
   BOSS_ADAPT,
   eliteXpAt,
   MAGE_SPELL,
@@ -171,7 +173,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit";
   x: number;
   z: number;
   /** Второй конец (хват щупальцами: от спрута x2/z2 к цели x/z). */
@@ -364,6 +366,15 @@ class Mob {
   readonly charger: boolean;
   readonly reflector: boolean;
   readonly spiker: boolean;
+  readonly healer: boolean;
+  readonly freezer: boolean;
+  private healCd = 6;
+  /** ZoneSim прочтёт и сбросит: вождь лечит соседей (ему видны все мобы). */
+  healReq = false;
+  private freezeCd = 4;
+  private freezeWindupT = 0;
+  private freezeX = 0;
+  private freezeZ = 0;
   private chargeCd = 3;
   private chargeWindupT = 0;
   private chargeFromX = 0;
@@ -455,6 +466,8 @@ class Mob {
       charger?: boolean;
       reflector?: boolean;
       spiker?: boolean;
+      healer?: boolean;
+      freezer?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -509,6 +522,8 @@ class Mob {
     this.charger = opts.charger ?? false;
     this.reflector = opts.reflector ?? false;
     this.spiker = opts.spiker ?? false;
+    this.healer = opts.healer ?? false;
+    this.freezer = opts.freezer ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -904,12 +919,9 @@ class Mob {
         let tx = np.x + ux * CHARGE.overshoot;
         let tz = np.z + uz * CHARGE.overshoot;
         // Не вылетать за край мира.
-        const lim = WORLD.playRadius - 4;
-        const r = Math.hypot(tx, tz);
-        if (r > lim) {
-          tx *= lim / r;
-          tz *= lim / r;
-        }
+        const lim = WORLD.playHalf - 4;
+        tx = Math.max(-lim, Math.min(lim, tx));
+        tz = Math.max(-lim, Math.min(lim, tz));
         this.chargeFromX = this.x;
         this.chargeFromZ = this.z;
         this.chargeToX = tx;
@@ -970,8 +982,47 @@ class Mob {
       }
     }
 
+    // Костяной вождь: лечение себя и соседей (сам хил — в ZoneSim.tick).
+    if (this.healer) {
+      if (this.healCd > 0) this.healCd -= dt;
+      if (chasing && !busy && this.healCd <= 0) {
+        this.healCd = CHIEF_HEAL.cooldown * (0.85 + Math.random() * 0.3);
+        this.healReq = true;
+        this.fx.push({ k: "chiefHeal", x: this.x, z: this.z });
+      }
+    }
+    // Ледяной демон: круг под героем — через телеграф всех в нём вмораживает.
+    if (this.freezer) {
+      if (this.freezeCd > 0) this.freezeCd -= dt;
+      if (this.freezeWindupT > 0) {
+        this.freezeWindupT -= dt;
+        if (this.freezeWindupT <= 0) {
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.fx.push({ k: "freezeHit", x: this.freezeX, z: this.freezeZ });
+          for (const p of players) {
+            if (Math.hypot(p.x - this.freezeX, p.z - this.freezeZ) > FREEZE.radius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * FREEZE.strikeMul,
+              fromX: this.freezeX,
+              fromZ: this.freezeZ,
+              projectile: false,
+              byMob: this.id,
+              stunSec: FREEZE.stunSec,
+            });
+          }
+        }
+      } else if (chasing && np && !busy && this.freezeCd <= 0 && dist < FREEZE.range) {
+        this.freezeX = np.x;
+        this.freezeZ = np.z;
+        this.freezeWindupT = FREEZE.windup;
+        this.freezeCd = FREEZE.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "freezeMark", x: np.x, z: np.z, d: FREEZE.windup });
+      }
+    }
+
     // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится).
-    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0;
+    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1697,6 +1748,8 @@ export class ZoneSim {
           charger: def.charger,
           reflector: def.reflector,
           spiker: def.spiker,
+          healer: def.healer,
+          freezer: def.freezer,
         });
         this.mobs.set(m.id, m);
       }
@@ -1840,6 +1893,15 @@ export class ZoneSim {
     if (this.reflectHits.length) {
       hits.push(...this.reflectHits);
       this.reflectHits.length = 0;
+    }
+    // Лечение Костяного вождя: себя и мобов вокруг.
+    for (const m of this.mobs.values()) {
+      if (!m.healReq) continue;
+      m.healReq = false;
+      for (const o of this.mobs.values()) {
+        if (o.dead || Math.hypot(o.x - m.x, o.z - m.z) > CHIEF_HEAL.radius) continue;
+        o.hp = Math.min(o.maxHp, o.hp + o.maxHp * CHIEF_HEAL.frac);
+      }
     }
     this.tickBurning(dt);
     this.separateMobs();

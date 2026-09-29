@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, SKILL, SPORE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1463,6 +1463,19 @@ export class Spectator {
       case "reflectOn":
         // Ледяной демон: синий щит на всё время отражения.
         this.skillFx.wraithPuff(x, y + 0.6, z, d ?? REFLECT.duration, false);
+        break;
+      case "chiefHeal":
+        // Костяной вождь лечит себя и соседей — зелёный купол.
+        this.healAura.burst(x, y, z, CHIEF_HEAL.radius, 1.2);
+        this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
+        break;
+      case "freezeMark":
+        // Ледяной демон: волна по кругу под героем — через d с заморозка.
+        this.skillFx.stunBash(x, y, z, FREEZE.radius, d ?? FREEZE.windup);
+        break;
+      case "freezeHit":
+        this.skillFx.wraithPuff(x, y - 0.8, z, 1.2, true);
+        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "spikeMark":
         // Костяной вождь: красная волна под героем — через d с шипы.

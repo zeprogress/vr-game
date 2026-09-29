@@ -28,7 +28,9 @@ export const WORLD = {
   // Ещё раз подняты (озеро отодвинуто дальше от лагеря — в прежних границах
   // не хватало места на приличный зазор до HUB и запас до края одновременно).
   size: 330, // м, сторона зоны
-  playRadius: 220, // м, круглая граница, за которую игрока не пускают (от центра поляны)
+  playRadius: 220, // м, радиус детальной земли/затухания травы (НЕ граница движения — см. playHalf)
+  /** Граница движения игрока (2026-09-29): квадрат по краю поля ±playHalf, углы доступны. */
+  playHalf: 163,
   subdivisions: 132, // плотность сетки террейна
   treeCount: 48,
   grassCount: 2000,
@@ -435,6 +437,10 @@ export interface EliteMobDef {
   reflector?: boolean;
   /** 36 ур. Костяной вождь: костяные шипы из-под героев (см. SPIKES). */
   spiker?: boolean;
+  /** 36 ур. Костяной вождь: лечит себя и соседних мобов (см. CHIEF_HEAL). */
+  healer?: boolean;
+  /** 36 ур. Ледяной демон: заморозка по области под героем (см. FREEZE). */
+  freezer?: boolean;
   puller?: boolean;
 }
 
@@ -556,8 +562,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Уходи вбок с полосы!
   infernoDemon: {
     model: "monDemon", name: "Адский демон", level: 36, kind: "slime",
-    hp: 7200, dmgMul: 7, xp: 1200000, scaleMul: 3.2, tint: null,
-    physArmor: 0.2, charger: true, meleeReach: 3.4, attackCooldown: 1.9,
+    hp: 9500, dmgMul: 10, xp: 1200000, scaleMul: 3.2, tint: null,
+    physArmor: 0.3, charger: true, meleeReach: 3.4, attackCooldown: 1.6,
     legendaryChance: 0.035,
   },
   // Ледяной демон: время от времени покрывается ледяным щитом — пока он
@@ -565,8 +571,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (или бей магией издалека, отражение то же — терпи). Рукой бьёт больно.
   frostDemon: {
     model: "monBlueDemon", name: "Ледяной демон", level: 36, kind: "slime",
-    hp: 5600, dmgMul: 9, xp: 960000, scaleMul: 2.8, tint: null,
-    reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
+    hp: 5600, dmgMul: 13, xp: 960000, scaleMul: 2.8, tint: null,
+    freezer: true, reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
     meleeReach: 3.2, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
   },
@@ -574,9 +580,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
     model: "monOrcSkull", name: "Костяной вождь", level: 36, kind: "slime",
-    hp: 6200, dmgMul: 7, xp: 1080000, scaleMul: 3, tint: null,
-    physArmor: 0.15, rangedArmor: 0.2, spiker: true, attackCooldown: 1.6,
-    meleeReach: 3.4, // без этого крупное тело не дотягивалось до героя
+    hp: 6200, dmgMul: 7, xp: 1080000, scaleMul: 2.2, tint: null, // меньше (было 3), зато их больше
+    physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
+    meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
   },
 };
@@ -594,7 +600,7 @@ export const CHARGE = {
   /** Ширина полосы (полуширина — от оси). */
   halfWidth: 2.2,
   /** Удар тарана — во столько раз сильнее обычного. */
-  strikeMul: 2.6, // было 1.8
+  strikeMul: 3.2, // было 1.8 → 2.6
   stunSec: 1.6, // было 1.2
   knockback: 12,
 };
@@ -605,6 +611,27 @@ export const REFLECT = {
   duration: 3.5,
   /** Доля снятого с демона урона, которая прилетает атакующему. */
   frac: 0.45,
+};
+
+/** Костяной вождь: лечение себя и соседей (см. EliteMobDef.healer). */
+export const CHIEF_HEAL = {
+  radius: 14,
+  cooldown: 14,
+  /** На эту долю макс. HP каждого моба в радиусе (и себя). */
+  frac: 0.1,
+};
+
+/** Ледяной демон: заморозка по области (см. EliteMobDef.freezer). */
+export const FREEZE = {
+  range: 16,
+  cooldown: 9,
+  /** Телеграф: круг на земле под героем, с. */
+  windup: 1.2,
+  radius: 4.5,
+  /** Урон — во столько раз сильнее обычного удара. */
+  strikeMul: 1.2,
+  /** Сколько герой стоит вмёрзшим (оглушение). */
+  stunSec: 2.2,
 };
 
 /** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */
@@ -723,16 +750,16 @@ export const MOB_CAMPS: {
   { x: 55, z: -10, type: "cactoro", count: 3, spread: 6 }, // ~119 м, ур.9
   { x: 54, z: -63, type: "orcGunner", count: 5, spread: 8 }, // ближе к центру (заявка), ур.15
   { x: 0, z: 12, type: "ruinMage", count: 4, spread: 7 }, // почти в центре (заявка), ур.20
-  { x: -13, z: -80, type: "golem", count: 24, spread: 32 }, // ур.26 (было 15/28 — просили больше)
+  { x: -10, z: -105, type: "golem", count: 24, spread: 32 }, // ур.26 — южнее, не налезает на HUB
   // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
   // боты 30+ выбирают один случайно (или по !camp <моб>).
-  { x: 110, z: -110, type: "mushColossus", count: 5, spread: 34, ring: 0.85, jitter: 0.35 }, // ур.33, юго-восток
+  { x: 128, z: -118, type: "mushColossus", count: 5, spread: 34, ring: 0.85, jitter: 0.35 }, // ур.33, юго-восток
   { x: -115, z: 110, type: "boneWraith", count: 12, spread: 42 }, // ур.33, северо-запад
   { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
   // Зона ур.36 — три лагеря по краям карты, подальше от лагерей 33 ур.
-  { x: 20, z: 140, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север
-  { x: -140, z: -10, type: "frostDemon", count: 6, spread: 32 }, // ур.36, запад
-  { x: 40, z: -140, type: "boneChief", count: 6, spread: 22 }, // ур.36, юг
+  { x: 20, z: 132, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север
+  { x: -128, z: -5, type: "frostDemon", count: 6, spread: 32 }, // ур.36, запад
+  { x: 58, z: -132, type: "boneChief", count: 10, spread: 28 }, // ур.36, юг
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

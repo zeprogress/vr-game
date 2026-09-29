@@ -56,6 +56,14 @@ export function closestPointOnSegment(p: Vector3, a: Vector3, b: Vector3): Vecto
 }
 
 /** Прижать точку (x, z) к кругу радиуса r с центром в нуле. Меняет `p` на месте. */
+/** Не выпускать точку за квадрат ±half (граница поля — см. WORLD.playHalf). */
+export function clampToSquare(p: { x: number; z: number }, half: number): void {
+  if (p.x > half) p.x = half;
+  else if (p.x < -half) p.x = -half;
+  if (p.z > half) p.z = half;
+  else if (p.z < -half) p.z = -half;
+}
+
 export function clampToDisk(p: { x: number; z: number }, r: number): void {
   const d2 = p.x * p.x + p.z * p.z;
   if (d2 > r * r) {

@@ -88,7 +88,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -2209,6 +2209,19 @@ export class Game {
       case "reflectOn":
         // Ледяной демон: синий щит на всё время отражения.
         this.skillFx.wraithPuff(x, y + 0.6, z, d ?? REFLECT.duration, false);
+        break;
+      case "chiefHeal":
+        // Костяной вождь лечит себя и соседей — зелёный купол.
+        this.healAura.burst(x, y, z, CHIEF_HEAL.radius, 1.2);
+        this.sfx.at({ x, y, z }, () => this.sfx.levelUp());
+        break;
+      case "freezeMark":
+        // Ледяной демон: волна по кругу под героем — через d с заморозка.
+        this.skillFx.stunBash(x, y, z, FREEZE.radius, d ?? FREEZE.windup);
+        break;
+      case "freezeHit":
+        this.skillFx.wraithPuff(x, y - 0.8, z, 1.2, true);
+        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "spikeMark":
         // Костяной вождь: красная волна под героем — через d с шипы.

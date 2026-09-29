@@ -90,7 +90,7 @@ import {
   TWITCH_CHANNEL,
   WORLD,
 } from "#shared/constants";
-import { clampToDisk } from "#shared/geometry";
+import { clampToSquare } from "#shared/geometry";
 import { heroStatLine } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
@@ -1084,7 +1084,7 @@ export class ZoneRoom extends Room<ZoneState> {
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);
       // За край карты не пускаем даже кривого клиента.
-      clampToDisk(p.head, WORLD.playRadius);
+      clampToSquare(p.head, WORLD.playHalf);
       const g = msg.guard;
       [rt.guard.sx, rt.guard.sz] = unit2(g?.sx, g?.sz);
       [rt.guard.wx, rt.guard.wz] = unit2(g?.wx, g?.wz);
@@ -2258,6 +2258,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.eventPhaseAt = Date.now() + EVENT.tower.hardTimeout * 1000;
       this.towerQueue.length = 0;
       this.towerDone.clear();
+      this.towerApproaching = false;
       this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
       this.state.eventLeft = 0;
       this.broadcast(MSG.worldEvent, {
@@ -2560,7 +2561,7 @@ export class ZoneRoom extends Room<ZoneState> {
       } else if (this.activeEventKind === 3) {
         // Башня: пока не идёт попытка — вынимаем следующего из очереди; если
         // очередь пуста и давно не было новых записей — закрываем окно.
-        if (!this.towerRuns.running) {
+        if (!this.towerRuns.running && !this.towerApproaching) {
           const heroId = this.towerQueue.shift();
           if (heroId) this.startTowerRun(heroId);
           else if (now >= this.towerQueueOpenUntil) {
@@ -2645,6 +2646,10 @@ export class ZoneRoom extends Room<ZoneState> {
   private startTowerRun(heroId: string): void {
     this.towerRunsStarted++;
     if (!this.state.players.has(heroId)) return;
+    // Пока камера летит к башне, забег ещё не начат (towerRuns.running=false) —
+    // без этого флага tickEvents успевал вынуть из очереди следующего героя,
+    // его запуск падал («попытка уже идёт») и он терялся из очереди.
+    this.towerApproaching = true;
     // Камера сперва летит К декоративной башне на поляне (TOWER_PROP_POS) —
     // герой ещё виден в мире, ничего не телепортировано. Сам забег (и его
     // жёсткая привязка камеры к герою) стартует чуть погодя, см. ниже.
@@ -2654,6 +2659,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Собственно начало забега — вызывается после короткого подлёта камеры к башне. */
   private enterTowerRun(heroId: string): void {
+    this.towerApproaching = false;
     const p = this.state.players.get(heroId);
     const bot = heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4)) : undefined;
     if (!p || !bot) {
@@ -2722,6 +2728,10 @@ export class ZoneRoom extends Room<ZoneState> {
         // Иначе провал тихо виснет: очередь уже сдвинута, а герой как будто
         // "зашёл и пропал" — без этого сообщения не отличить от бага.
         bot.inTower = false;
+        // Вернуть тело из-за карты к башне на поляне — иначе герой так и висел спрятанным.
+        p.head.x = TOWER_PROP_POS.x + 6;
+        p.head.z = TOWER_PROP_POS.z + 6;
+        p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
         p.towerFloor = 0;
         p.maxHp = maxHpFor(p.level, p.str);
         p.hp = p.maxHp;
@@ -5842,6 +5852,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Башня: очередь id героев (см. `!event` при activeEventKind===3) и её жизненный цикл. */
   private readonly towerQueue: string[] = [];
   private towerQueueOpenUntil = 0;
+  /** Камера летит к башне для очередного героя — следующего из очереди пока не вынимаем. */
+  private towerApproaching = false;
   private readonly towerRuns = new TowerRunManager();
   /** id героев, уже отстоявших/прошедших башню в ТЕКУЩЕМ окне — второй раз не пускаем. */
   private readonly towerDone = new Set<string>();
