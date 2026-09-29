@@ -369,6 +369,9 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
   (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
 );
 
+/** !camp: явно выбранный лагерь доступен, если его мобы не выше уровня бота + 5. */
+const CAMP_PICK_GAP = 5;
+
 /**
  * Куда высадить/возродить бота: селим у самого сильного лагеря, чей уровень
  * мобов НЕ ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До
@@ -381,7 +384,7 @@ function botHome(level: number, pref: string | null = null, rand = 0): { x: numb
   // Лагерь, выбранный зрителем (!camp) — если по уровню уже доступен.
   if (pref) {
     const pc = MOB_CAMPS.find((c) => c.type === pref);
-    if (pc && ELITE_MOBS[pc.type].level <= level + 3) return { x: pc.x, z: pc.z };
+    if (pc && ELITE_MOBS[pc.type].level <= level + CAMP_PICK_GAP) return { x: pc.x, z: pc.z };
   }
   // Иначе — самый сильный доступный уровень лагерей; если таких несколько
   // (три лагеря ур.33) — свой случайный у каждого бота (rand закреплён за ботом).
@@ -2861,7 +2864,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const lvl = bot.state.level;
-    const open = [...new Set(CAMPS_BY_POWER.map((c) => c.type))].filter((t) => ELITE_MOBS[t].level <= lvl + 3);
+    const open = [...new Set(CAMPS_BY_POWER.map((c) => c.type))].filter((t) => ELITE_MOBS[t].level <= lvl + CAMP_PICK_GAP);
     const a = arg.trim().toLowerCase();
     const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name : "авто";
     if (!a) {
@@ -2885,8 +2888,8 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const def = ELITE_MOBS[type];
-    if (def.level > lvl + 3) {
-      this.reply(`@${nick} ${def.name} (${def.level} ур.) пока не по силам — нужен ${def.level - 3}+ уровень.`);
+    if (def.level > lvl + CAMP_PICK_GAP) {
+      this.reply(`@${nick} ${def.name} (${def.level} ур.) пока не по силам — нужен ${def.level - CAMP_PICK_GAP}+ уровень.`);
       return;
     }
     bot.campPref = type;
@@ -3048,7 +3051,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // !roll и !jump убраны из чата: roll теперь сам иногда играет на
       // бегу, а отдельная команда под него/jump не нужна (см. tickBot).
       this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
-    } else if (cmd === "!follow") {
+    } else if (["!follow", "!folow", "!следовать", "!следуй", "!за", "!фоллоу"].includes(cmd)) {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
       this.setFollow(nick, norm, null);
@@ -3227,7 +3230,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
       return;
     }
-    this.reply(`@${nick} твой инвентарь: https://zepgame.duckdns.org/inv?${encodeURIComponent(norm)}`);
+    this.reply(`@${nick} твой инвентарь: http://zepgame.duckdns.org/inv?${encodeURIComponent(norm)}`);
   }
 
   /** Сохранить живого героя этого ника в store (бот или подключённый игрок). */

@@ -548,7 +548,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
 export const SPORE = {
   /** С какой дистанции до цели колосс сеет облако (ближе — просто бьёт). */
   range: 16,
-  cooldown: 7,
+  cooldown: 12,
   /** Телеграф: сколько секунд земля светится до появления облака. */
   windup: 1.3,
   radius: 3.6,

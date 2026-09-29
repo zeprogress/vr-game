@@ -107,15 +107,18 @@ export function buildTowerProp(scene: Scene): TowerProp {
   const skirt = groundY - minGround + 1.5;
   mat.diffuseTexture = buildStoneTexture(scene, Math.round(circumference / 12.5), (BODY_H + skirt) / 20);
   mat.specularColor = new Color3(0, 0, 0);
+  mat.maxSimultaneousLights = 1; // декор: только солнце/луна
 
   const roofMat = new StandardMaterial("towerPropRoofMat", scene);
   roofMat.diffuseColor = new Color3(0.35, 0.14, 0.16);
   roofMat.specularColor = new Color3(0, 0, 0);
+  roofMat.maxSimultaneousLights = 1;
 
   const winMat = new StandardMaterial("towerPropWinMat", scene);
   winMat.diffuseColor = new Color3(0.05, 0.04, 0.03);
   winMat.emissiveColor = new Color3(0.9, 0.65, 0.25);
   winMat.specularColor = new Color3(0, 0, 0);
+  winMat.disableLighting = true; // окна светятся сами — огни не считаем
 
   // Ствол — один прямой цилиндр (не сужается кверху), вдвое выше прежнего силуэта.
   const body = MeshBuilder.CreateCylinder(
