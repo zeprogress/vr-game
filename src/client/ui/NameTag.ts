@@ -31,7 +31,7 @@ export class NameTag {
   private readonly halfH: number;
 
   private readonly W: number;
-  private readonly accent: Color3;
+  private accent: Color3;
   private curName = "";
   private curLevel: number | null = null;
   private curUnspent = false;
@@ -205,6 +205,14 @@ export class NameTag {
   }
 
   /** Включить полоску здоровья под ником (зелёная, желтеет/краснеет с уроном). */
+  /** Сменить цвет строки уровня (ПК: цвет опасности моба относительно героя). */
+  setAccent(r: number, g: number, b: number): void {
+    const a = this.accent;
+    if (Math.abs(a.r - r) + Math.abs(a.g - g) + Math.abs(a.b - b) < 0.01) return;
+    this.accent = new Color3(r, g, b);
+    this.paint(this.curName, this.curLevel, this.curUnspent);
+  }
+
   showHp(): void {
     if (this.hpOn) return;
     this.hpOn = true;

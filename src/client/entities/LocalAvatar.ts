@@ -21,8 +21,10 @@ import {
  * четырёх лупов (idle/walk/run) + разовые swordslash/recievehit. Логику
  * порогов взяли из RemoteAvatar.stepBotLocomotion, только проще.
  */
-const CLIPS = ["idle", "walk", "run", "swordslash", "recievehit"] as const;
-const ONE_SHOT = new Set<string>(["swordslash", "recievehit"]);
+const CLIPS = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "death"] as const;
+const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump"]);
+/** Подбор играем вдвое быстрее, как у RemoteAvatar (видно спектатору так же). */
+const PICKUP_RATE = 2;
 
 /** Масштаб и посадка модели — как у ботов (см. RemoteAvatar). */
 const RIG_SCALE = 0.52;
@@ -44,6 +46,13 @@ export class LocalAvatar {
   private swingUntil = 0;
   private swingSpeed = 1;
   private hitUntil = 0;
+  private pickupUntil = 0;
+  private jumpUntil = 0;
+  private dead = false;
+  private deadAnim = false;
+  /** Гистерезис порогов шаг/бег — как у RemoteAvatar (иначе клип щёлкает на границе). */
+  private locoRun = false;
+  private locoMove = false;
   private hidden = false;
   private readonly buffAura: BuffAura;
   private buffed = false;
@@ -94,6 +103,33 @@ export class LocalAvatar {
   }
   hurt(): void {
     this.hitUntil = performance.now() + HIT_MS;
+  }
+
+  /** Подобрал предмет — наклон с подбором (как видят другие и спектатор). */
+  pickup(): void {
+    this.pickupUntil = this.playOneShot("pickup", PICKUP_RATE, 600);
+  }
+
+  /** Прыжок — клип прыжка на время полёта. */
+  jump(): void {
+    this.jumpUntil = this.playOneShot("jump", 1.3, 700);
+  }
+
+  /** Смерть: клип смерти один раз и застыть (раньше модель просто пряталась). */
+  setDead(on: boolean): void {
+    this.dead = on;
+  }
+
+  /** Запустить разовый клип сначала; вернуть, до какого момента он «хочется». */
+  private playOneShot(name: string, rate: number, fallbackMs: number): number {
+    const g = this.rig?.anims.get(name);
+    if (!g) return performance.now() + fallbackMs;
+    if (g.isPlaying) g.stop();
+    g.reset();
+    g.start(false, rate, g.from, g.to, false);
+    g.setWeightForAllAnimatables(1);
+    this.animW.set(name, 1);
+    return performance.now() + ((g.to - g.from) / 60 / rate) * 1000;
   }
 
   /** Кость кулака для крепления оружия (как у ботов). null — риг не готов. */
@@ -196,16 +232,49 @@ export class LocalAvatar {
     const rig = this.rig;
     if (!rig || this.hidden) return;
 
+    // Смерть — приоритет: клип один раз и застываем на последнем кадре.
+    if (this.dead) {
+      if (!this.deadAnim) {
+        this.deadAnim = true;
+        for (const n of CLIPS) {
+          if (n === "death") continue;
+          rig.anims.get(n)?.stop();
+          this.animW.set(n, 0);
+        }
+        const d = rig.anims.get("death");
+        if (d) {
+          d.start(false, 1, d.from, d.to, false);
+          d.setWeightForAllAnimatables(1);
+          this.animW.set("death", 1);
+        }
+      }
+      return;
+    }
+    if (this.deadAnim) {
+      this.deadAnim = false;
+      const d = rig.anims.get("death");
+      d?.stop();
+      d?.reset();
+      this.animW.set("death", 0);
+    }
+
     const now = performance.now();
+    const run = this.locoRun ? speed > 1.8 : speed > 2.4;
+    const move = this.locoMove ? speed > 0.25 : speed > 0.45;
+    this.locoRun = run;
+    this.locoMove = move;
     let want: string;
     if (now < this.swingUntil) want = "swordslash";
     else if (now < this.hitUntil) want = "recievehit";
-    else if (speed > 3.2) want = "run";
-    else if (speed > 0.4) want = "walk";
+    else if (now < this.pickupUntil) want = "pickup";
+    else if (now < this.jumpUntil) want = "jump";
+    else if (run) want = "run";
+    else if (move) want = "walk";
     else want = "idle";
 
     const k = Math.min(1, dt * 12);
     for (const n of CLIPS) {
+      if (n === "death") continue;
       const g = rig.anims.get(n);
       if (!g) continue;
       const target = n === want ? 1 : 0;
@@ -219,7 +288,8 @@ export class LocalAvatar {
       } else if (!g.isPlaying && n === want) {
         // Разовый клип (swordslash/recievehit): триггер уже прошёл, но клип
         // мог доиграть — перезапускаем, пока окно не закрылось.
-        g.start(false, n === "swordslash" ? this.swingSpeed : 1, g.from, g.to, false);
+        const rate = n === "swordslash" ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : 1;
+        g.start(false, rate, g.from, g.to, false);
       }
       this.animW.set(n, w);
       g.setWeightForAllAnimatables(w);

@@ -60,6 +60,9 @@ import {
   type TtsPlayMsg,
   type LootItem,
   type PickupFeedMsg,
+  type ChatLineMsg,
+  type PcInvActMsg,
+  type PcInvData,
 } from "#shared/net/messages";
 import {
   ADMIN_NICK,
@@ -92,7 +95,7 @@ import {
   WORLD,
 } from "#shared/constants";
 import { clampToSquare } from "#shared/geometry";
-import { heroStatLine } from "#shared/heroStats";
+import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
 import {
@@ -1514,6 +1517,21 @@ export class ZoneRoom extends Room<ZoneState> {
               side: s.side,
             }))
         : [];
+      // Закреплённый за рукой инстанс, которого больше нет ни в руках, ни за
+      // спиной (убрали в склад из окна снаряжения / при подборе другого), —
+      // снимаем закрепление: иначе он пропадал и из рук, и из сумки.
+      const stillHeld = (id: string | null): boolean => {
+        const w = id ? rt.weapons.find((x) => x.id === id) : undefined;
+        if (!w) return false;
+        const same = (c: string, t: string): boolean => c === w.cls && t === w.tier;
+        return (
+          same(p.leftCls, p.leftTier) ||
+          same(p.rightCls, p.rightTier) ||
+          rt.stowed.some((st) => same(st.cls, st.tier))
+        );
+      };
+      if (rt.equippedWeaponId.left && !stillHeld(rt.equippedWeaponId.left)) rt.equippedWeaponId.left = null;
+      if (rt.equippedWeaponId.right && !stillHeld(rt.equippedWeaponId.right)) rt.equippedWeaponId.right = null;
       // Иначе rec.held в сторе (и веб-инвентарь "!inv") показывал бы то, что
       // было надето на момент последнего MSG.save, а не сейчас — обычная
       // смена оружия в игре персист не триггерила вообще.
@@ -1661,6 +1679,21 @@ export class ZoneRoom extends Room<ZoneState> {
         data: msg.data,
         ...(this.casters.has(client.sessionId) ? { c: 1 as const } : {}),
       });
+    });
+
+    // ПК-окно снаряжения: данные о живом герое и действия (заточка, атрибуты,
+    // сброс) — тем же кодом, что и страница !inv. Надеть/на лом/на землю идут
+    // через MSG.warehouseAct (руки у живого игрока держит клиент).
+    this.onMessage(MSG.pcInvOpen, (client: Client) => this.sendPcInv(client));
+    this.onMessage(MSG.pcInvAct, (client: Client, msg: PcInvActMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p || !msg || typeof msg.id !== "string") return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec") return;
+      const norm = normNick(p.nick);
+      if (!norm) return;
+      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))));
+      client.send(MSG.pcInvResult, r);
+      this.sendPcInv(client);
     });
 
     // Голос через сервер (запасной путь, когда прямое соединение не встало).
@@ -3018,6 +3051,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
     chatLog.append(nick, text);
+    this.sendChatLine({ nick, text: text.slice(0, 300) });
     // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
     if (invHub.tryChatCode(norm, text)) {
       this.reply(`@${nick} инвентарь открыт — можно надевать и разбирать ✓`);
@@ -3193,6 +3227,56 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private reply(text: string): void {
     this.twitch?.say(text);
+    this.sendChatLine({ nick: "ZEP GAME", text, bot: 1 });
+  }
+
+  /** Данные ПК-окна снаряжения — по живому герою этого клиента. */
+  private sendPcInv(client: Client): void {
+    const p = this.state.players.get(client.sessionId);
+    const rt = this.rt.get(client.sessionId);
+    if (!p || !rt) return;
+    const bag = readBag(p);
+    const rec = store.get(`nick:${normNick(p.nick)}`);
+    const affOf = (id: string | null): string => {
+      const w = id ? rt.weapons.find((x) => x.id === id) : undefined;
+      return w ? w.affixes.map(affixLabel).join(", ") : "";
+    };
+    const data: PcInvData = {
+      weapons: rt.weapons.map((w) => ({
+        id: w.id,
+        cls: w.cls,
+        tier: w.tier,
+        name: weaponDef(w.cls, w.tier).name,
+        affixes: w.affixes.map(affixLabel),
+        quality: weaponQuality(w),
+        scrap: scrapValue(w),
+        ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
+      })),
+      equipped: { left: rt.equippedWeaponId.left, right: rt.equippedWeaponId.right },
+      potions: bagCount(bag, "potion"),
+      scrap: bagCount(bag, "scrap"),
+      fish: bagCount(bag, "fish"),
+      attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int },
+      respecCost: respecCostFor(rec?.respecCount ?? 0),
+      stats: heroStatRows({
+        level: p.level,
+        str: p.str,
+        agi: p.agi,
+        int: p.int,
+        rightCls: p.rightCls,
+        rightTier: p.rightTier,
+        leftCls: p.leftCls,
+        leftTier: p.leftTier,
+        rightAffix: affOf(rt.equippedWeaponId.right),
+        leftAffix: affOf(rt.equippedWeaponId.left),
+      }),
+    };
+    client.send(MSG.pcInvData, data);
+  }
+
+  /** Строка чата — в журнал игроков (спектаторам не нужна: у них свой оверлей). */
+  private sendChatLine(m: ChatLineMsg): void {
+    for (const c of this.clients) if (!this.spectators.has(c.sessionId)) c.send(MSG.chatLine, m);
   }
 
   /** Русское имя атрибута для чата. */

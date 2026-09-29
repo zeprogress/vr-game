@@ -28,6 +28,19 @@ import { createFishing, type Fishing } from "../world/Fishing";
 import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
+import { PcTargeting } from "../pc/PcTargeting";
+import { PcHud, type MapData, type WeaponIcon } from "../pc/PcHud";
+import { PcInventory } from "../pc/PcInventory";
+import { PcMenu } from "../pc/PcMenu";
+import { enableTreeFade, fadeTreesOccluding } from "../world/nature";
+import { LootMarker } from "../pc/LootMarker";
+import { AoeAim } from "../pc/AoeAim";
+import { PcHover, type HoverInfo } from "../pc/PcHover";
+import { difficultyCss } from "../pc/difficulty";
+import { Mob } from "../combat/Mob";
+import { BOSS_CFG, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { toggleFullscreen } from "../pc/PcHud";
+import { injectPcStyle } from "../pc/pcStyle";
 import { HealthBar3D } from "../ui/HealthBar3D";
 import { VrWasted } from "../ui/VrWasted";
 import { VrStunStars } from "../ui/VrStunStars";
@@ -87,9 +100,9 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, SaveMsg, Xf7 } from "#shared/
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
-import { MANA_ENABLED } from "#shared/magic";
+import { MAGIC, MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
@@ -203,6 +216,25 @@ export class Game {
   private readonly avatars = new Map<string, RemoteAvatar>();
   /** Своя модель — только на смартфоне (вид от третьего лица). */
   private localAvatar: LocalAvatar | null = null;
+  /** ПК в третьем лице «как в WoW» (по умолчанию; `?fp=1` — старый вид из глаз). */
+  pcThirdPerson = false;
+  private desktopInput: DesktopInput | null = null;
+  private pcTarget: PcTargeting | null = null;
+  private pcHud: PcHud | null = null;
+  private pcInv: PcInventory | null = null;
+  private pcMenu: PcMenu | null = null;
+  private lootMarker: LootMarker | null = null;
+  private aoeAim: AoeAim | null = null;
+  private pcHover: PcHover | null = null;
+  private hoverT = 0;
+  private readonly pcPlates = { level: 1 };
+  /** ПК: герой сам бежит к цели на дальность атаки (пока игрок не взялся за WASD). */
+  private pcChase = false;
+  private pcChaseMoving = false;
+  /** Своя внешность (с сервера) — для меню ПК. */
+  private mySkin = 1;
+  /** Опыт на прошлом кадре — чтобы писать в журнал «+N опыта». */
+  private pcLastXp: { level: number; xp: number } | null = null;
   private readonly aim = new Vector3(0, 0, 1);
   /** Локальный кулдаун активного умения оружия, с (сервер тоже сверяет). */
   private skillCdLeft = 0;
@@ -251,6 +283,7 @@ export class Game {
     // сверху ложится лёгкий профиль, см. applyVrQuality).
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+    this.pcThirdPerson = !this.isTouch && new URLSearchParams(location.search).get("fp") !== "1";
     this.quality = "high";
     const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
@@ -269,7 +302,11 @@ export class Game {
       minLights: preset.minLights,
       simpleSky: preset.simpleSky,
       botTorches: preset.botTorches,
+      // ПК в третьем лице: деревья отдельными мешами — чтобы гасить те, что
+      // закрывают героя от камеры (как у спектатора).
+      treeFade: this.pcThirdPerson,
     });
+    if (this.pcThirdPerson) enableTreeFade();
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.botLights = zone.botLights;
@@ -334,7 +371,9 @@ export class Game {
     };
     this.hands = new Hands(this.scene);
     this.hud.bindProgression(this.progression);
-    this.hud.bindPointerLock(() => this.requestPointerLock());
+    // ПК от третьего лица: курсор свободен, захват мыши — только на время
+    // поворота камеры (его ведёт DesktopInput), панель по снятию захвата не открываем.
+    if (!this.pcThirdPerson) this.hud.bindPointerLock(() => this.requestPointerLock());
     this.hud.bindInventory(this.inventory);
     this.hud.bindWarehouse(() => this.net?.warehouse?.list ?? []);
     // Инвентарь показывает и снаряжение: что в руках и что за спиной.
@@ -404,6 +443,11 @@ export class Game {
       this.net?.sendAct("step", fx, fy, fz);
     };
     this.player.hooks.land = (impact) => this.sfx.land(Math.min(1, impact / 9));
+    this.player.hooks.jump = () => {
+      this.localAvatar?.jump();
+      const p = this.player.position;
+      this.net?.sendAct("jump", p.x, p.y, p.z);
+    };
     this.player.hooks.hurt = (hp, dmg) => {
       this.sfx.playerHurt();
       this.localAvatar?.hurt();
@@ -438,6 +482,101 @@ export class Game {
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
       this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate);
+    } else if (this.pcThirdPerson) {
+      // ПК «как в WoW»: орбитальная камера за спиной + видимая модель, бой —
+      // автоатакой по выбранной цели (PcTargeting → CombatSystem.pcTarget).
+      injectPcStyle();
+      this.player.enableThirdPerson(true);
+      this.localAvatar = new LocalAvatar(this.scene);
+      this.scene.activeCamera = this.player.renderCamera;
+      this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
+      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate);
+      this.combat.pcAuto = true;
+      this.combat.lootToBag = true;
+      this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (C)");
+      this.combat.onLocalPickup = () => {
+        this.localAvatar?.pickup();
+        const p = this.player.position;
+        this.net?.sendAct("pickup", p.x, p.y, p.z);
+      };
+      this.pcTarget = new PcTargeting(this.scene, () => this.net?.room?.state ?? null, this.netMobs);
+      this.hud.setPcMode();
+      const afterGear = (): void => {
+        // Руки меняет клиент сразу, склад/закрепление — сервер чуть позже.
+        window.setTimeout(() => this.pcInv?.refresh(), 250);
+      };
+      this.pcInv = new PcInventory({
+        request: () => this.net?.sendPcInvOpen(),
+        act: (m) => this.net?.sendPcInvAct(m),
+        hands: () => {
+          const h = this.combat.handsSnapshot();
+          return {
+            left: h.left ? { cls: h.left.cls, tier: h.left.tier } : null,
+            right: h.right ? { cls: h.right.cls, tier: h.right.tier } : null,
+          };
+        },
+        equip: (w, side) => {
+          // Рука — по виду предмета, а не по тому, на какой слот бросили:
+          // щит — левая; лук/посох — правая (лук держат обе); меч — правая,
+          // левая — только вторым мечом к мечу в правой. Иначе посох уезжал в
+          // левую (где был лук), и потом щит уже некуда было взять.
+          const h = this.combat.handsSnapshot();
+          let hand: "left" | "right" = w.cls === "shield" ? "left" : "right";
+          if (w.cls === "sword" && side === "left" && h.right?.cls === "sword") hand = "left";
+          this.menuWeaponAction({ act: "whToHand", side: hand, id: w.id, cls: w.cls, tier: w.tier });
+          afterGear();
+        },
+        toBag: (side) => {
+          this.menuWeaponAction({ act: "toWarehouse", src: "hand", side });
+          afterGear();
+        },
+        scrap: (w) => {
+          this.menuWeaponAction({ act: "scrap", id: w.id, cls: w.cls, tier: w.tier });
+          afterGear();
+        },
+        drop: (w) => {
+          this.menuWeaponAction({ act: "drop", id: w.id, cls: w.cls, tier: w.tier });
+          afterGear();
+        },
+      });
+      // Esc: закрыть меню → окно → карту → снять цель → открыть меню.
+      this.hud.escHook = () => {
+        if (this.aoeAim?.active) {
+          this.aoeAim.cancel();
+          return true;
+        }
+        if (this.pcMenu?.close()) return true;
+        if (this.pcInv?.close() || this.pcHud?.closeMap() || this.pcTarget?.clear()) return true;
+        this.pcMenu?.open();
+        return true;
+      };
+      this.pcHud = new PcHud({
+        onCharacter: () => this.pcInv?.toggle("gear"),
+        onBag: () => this.pcInv?.toggle("gear"),
+        onMenu: () => this.pcMenu?.toggle(),
+        onSlot: (key) => this.pcSlot(key),
+        onAttrs: () => this.pcInv?.open("attrs"),
+      });
+      this.lootMarker = new LootMarker();
+      this.aoeAim = new AoeAim(this.scene);
+      this.pcTarget.onAttackStart = () => {
+        this.pcChase = true;
+      };
+      this.pcTarget.selfId = () => this.net?.sessionId;
+      this.pcTarget.playerSeg = (sid) => this.avatars.get(sid)?.hitSegment() ?? null;
+      this.pcTarget.heroLevel = () => this.progression.level;
+      this.pcTarget.onError = (t) => this.notifyToast(t);
+      this.pcTarget.canAttackPlayer = (sid) => {
+        if (!this.net?.pvpOn) return "Включи PvP (клавиша P или в меню), чтобы атаковать игроков";
+        const ps = this.net.room?.state.players.get(sid);
+        if (ps && !ps.pvp) return `У ${ps.nick} PvP выключен — атаковать нельзя`;
+        return null;
+      };
+      this.pcHover = new PcHover(this.canvas, (css) => {
+        this.scene.defaultCursor = css;
+        this.scene.hoverCursor = css || "pointer";
+      });
+      Mob.pcPlates = this.pcPlates;
     }
 
     // Общая громкость (слайдер в меню). Near-0 глушит звук, музыку и голос.
@@ -479,6 +618,42 @@ export class Game {
       },
     );
 
+    if (this.pcThirdPerson) {
+      this.pcMenu = new PcMenu({
+        getVolume: () => this.sfx.masterVolume,
+        setVolume: (v) => {
+          applyVol(v);
+          try {
+            localStorage.setItem("zep.volume", String(v));
+          } catch {
+            /* приватный режим */
+          }
+        },
+        getMusic: () => VR_SETTINGS.music,
+        setMusic: (v) => setVrSettings({ music: v }),
+        getSfx: () => VR_SETTINGS.sfx,
+        setSfx: (v) => setVrSettings({ sfx: v }),
+        getMic: () => VR_SETTINGS.mic,
+        setMic: (on) => setVrSettings({ mic: on }),
+        getSpatial: () => VR_SETTINGS.spatial,
+        setSpatial: (on) => setVrSettings({ spatial: on }),
+        getChat: () => this.pcHud?.chatOn ?? true,
+        setChat: (on) => this.pcHud?.setChatOn(on),
+        getSkin: () => this.mySkin,
+        setSkin: (skin) => this.net?.sendSetSkin(skin),
+        getLeaveBot: () => this.leaveBotOn,
+        setLeaveBot: (on) => {
+          this.leaveBotOn = on;
+          this.hud.setLeaveBot(on);
+          this.net?.sendSetLeaveBot(on);
+        },
+        getPvp: () => this.net?.pvpOn ?? false,
+        setPvp: (on) => this.net?.sendPvp(on),
+        fullscreen: () => toggleFullscreen(),
+        exit: () => void this.leaveWorld(),
+      });
+    }
+
     // Звук просыпается по первому жесту; музыку заводим только при входе в
     // мир (enterWorld) — на экране ввода ника её быть не должно.
     const wake = () => this.sfx.resume();
@@ -493,7 +668,8 @@ export class Game {
       this.notifyToast(LOADOUT.voice.mic ? "Микрофон включён" : "Микрофон выключен");
     };
     window.addEventListener("keydown", (e) => {
-      if (e.code !== "KeyM" || this.player.inVR) return;
+      // ПК в третьем лице: M — карта, микрофон — V.
+      if (e.code !== (this.pcThirdPerson ? "KeyV" : "KeyM") || this.player.inVR) return;
       toggleMic();
     });
     this.micToggle = toggleMic;
@@ -507,7 +683,9 @@ export class Game {
     // Зелье лечения на десктопе — X / 1 / F.
     window.addEventListener("keydown", (e) => {
       if (this.player.inVR || e.repeat) return;
-      if (e.code !== "KeyX" && e.code !== "Digit1" && e.code !== "KeyF") return;
+      // ПК в третьем лице: 1 — автоатака, зелье — 3 (и X/F по-старому).
+      const potionKey = this.pcThirdPerson ? "Digit3" : "Digit1";
+      if (e.code !== "KeyX" && e.code !== potionKey && e.code !== "KeyF") return;
       const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
       if (slot >= 0) this.inventory.use(slot);
     });
@@ -526,11 +704,17 @@ export class Game {
       // Автонаводка удара (только третье лицо на смартфоне) — до update(),
       // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
       // и доворот к мобу воспринимается как «примагничивание взгляда».
-      if (this.localAvatar && this.player.thirdPerson) this.aimAssistTouch(dt);
+      if (this.localAvatar && this.player.thirdPerson && !this.pcTarget) this.aimAssistTouch(dt);
+      this.updatePcTarget(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.mark("player");
       if (this.localAvatar) this.updateLocalAvatar(dt);
+      if (this.pcThirdPerson) {
+        const cp = this.player.renderCamera.position;
+        const pp = this.player.position;
+        fadeTreesOccluding(cp.x, cp.z, pp.x, pp.z);
+      }
       this.mark("localAvatar");
       this.netMobs.update(dt, this.player.position, this.aim);
       this.mark("netMobs");
@@ -542,6 +726,7 @@ export class Game {
       this.loot.update(dt, this.player.position);
       this.fishing?.update(dt);
       this.combat.update(dt);
+      this.pcTarget?.update(this.combat.pcOutOfRange);
       this.mark("combat");
       this.updateSkillAbility(dt);
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
@@ -563,6 +748,7 @@ export class Game {
           MANA_ENABLED && this.combat.holdsStaff,
         );
       }
+      if (this.pcHud) this.updatePcHud(dt);
       this.hands.holding.left = this.combat.handOccupied("left");
       this.hands.holding.right = this.combat.handOccupied("right");
       this.hands.update(dt, daylightAt(LOADOUT.world.hour));
@@ -1028,7 +1214,7 @@ export class Game {
   }
 
   requestPointerLock(): void {
-    if (this.isTouch) return;
+    if (this.isTouch || this.pcThirdPerson) return;
     // В новых браузерах возвращает Promise; в песочнице предпросмотра он
     // отклоняется (WrongDocumentError) — гасим, чтобы не было висящего reject.
     void Promise.resolve(this.canvas.requestPointerLock() as unknown).catch(() => {});
@@ -1524,11 +1710,13 @@ export class Game {
   /** Баннер события: обычный (плоский) HUD + панель в VR, где DOM не виден. */
   private notifyBanner(title: string, sub = "", tone: "warn" | "win" = "warn", loot?: LootItem[]): void {
     this.hud.banner(title, sub, tone, loot);
+    this.pcHud?.log("event", sub ? `${title} — ${sub}` : title);
     this.vrHud?.showBanner(title, sub, tone);
   }
 
   private notifyToast(text: string): void {
     this.hud.toast(text);
+    this.pcHud?.log("system", text);
     this.vrHud?.showToast(text);
   }
 
@@ -1658,6 +1846,7 @@ export class Game {
 
   private showHp(hp: number): void {
     this.hud.setHp(hp, this.player.maxHp);
+    this.pcHud?.setHp(hp, this.player.maxHp);
     this.playerBar3D?.set(hp / this.player.maxHp);
     this.shownHp = hp;
   }
@@ -1675,6 +1864,7 @@ export class Game {
     this.hud.setSkin(self.skin);
     this.wristPanel?.setSkin(self.skin);
     this.localAvatar?.setSkin(self.skin);
+    this.mySkin = self.skin;
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
     // Повышение уровня тоже подливает HP — там крестики оранжевые.
@@ -1800,9 +1990,344 @@ export class Game {
   private micToggle: (() => void) | null = null;
 
   private defaultInput(): InputSource {
-    if (!this.isTouch) return new DesktopInput(this.canvas);
+    if (!this.isTouch) {
+      this.desktopInput = new DesktopInput(this.canvas, this.pcThirdPerson);
+      return this.desktopInput;
+    }
     this.touchInput = new TouchInput();
     return this.touchInput;
+  }
+
+  /** ПК-экран: рамка героя, опыт, панель действий, карты, «+N опыта» в журнал. */
+  private updatePcHud(dt: number): void {
+    const h = this.pcHud!;
+    const prog = this.progression;
+    const kind = this.combat.abilityKind;
+    const icon: WeaponIcon =
+      kind === "stunBash" ? "sword" : kind === "arrowRain" ? "bow" : this.combat.holdsStaff ? "staff" : "fist";
+    h.setIdentity(this.localNick || "Герой", prog.level, icon);
+    this.pcPlates.level = prog.level;
+    h.setUnspent(prog.unspent);
+    h.setMana(this.manaMax > 0 ? this.combat.mana / this.manaMax : 0, MANA_ENABLED && this.combat.holdsStaff);
+    h.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
+    this.pcInv?.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
+    h.setAutoAttack(!!this.pcTarget?.autoAttack);
+    if (this.combat.holdsStaff) {
+      const left = this.combat.massHealCdLeft;
+      h.setSkill("massHeal", "Массовое лечение", left / (MAGIC.heal.massCooldown + 0.4), left);
+    } else {
+      h.setSkill(
+        kind,
+        kind === "stunBash" ? "Оглушающий удар" : kind === "arrowRain" ? "Град стрел" : null,
+        kind && this.skillCdTotal > 0 ? this.skillCdLeft / this.skillCdTotal : 0,
+        kind ? this.skillCdLeft : 0,
+      );
+    }
+    let pots = 0;
+    for (const s of this.inventory.slots) if (s.item === "potion") pots += s.count;
+    h.setPotions(pots);
+
+    // «+N опыта» / «Уровень N» — в журнал по изменению.
+    const lx = this.pcLastXp;
+    if (lx && prog.level === lx.level && prog.xp > lx.xp + 0.5) {
+      h.log("xp", `+${Math.round(prog.xp - lx.xp).toLocaleString("ru-RU")} опыта`);
+    } else if (lx && prog.level > lx.level) {
+      h.log("xp", `Новый уровень: ${prog.level}!`);
+    }
+    this.pcLastXp = { level: prog.level, xp: prog.xp };
+
+    const st = this.net?.room?.state;
+    const p = this.player.position;
+    const d: MapData = {
+      px: p.x,
+      pz: p.z,
+      yaw: this.player.facing,
+      camYaw: this.player.cameraYaw,
+      players: [],
+      mobs: [],
+      event: st && st.eventKind ? { x: st.eventX, z: st.eventZ } : null,
+      targetId: this.pcTarget?.targetId ?? null,
+    };
+    if (st) {
+      const self = this.net?.sessionId;
+      st.players.forEach((ps, id) => {
+        if (id === self) return;
+        d.players.push({ x: ps.head.x, z: ps.head.z, bot: id.startsWith("bot:"), nick: ps.nick });
+      });
+      st.mobs.forEach((m) => {
+        if (m.dead || m.kind === "shard") return;
+        d.mobs.push({ x: m.x, z: m.z, elite: !!m.mobName, boss: m.kind === "boss" });
+      });
+    }
+    const hr = ((LOADOUT.world.hour % 24) + 24) % 24;
+    const clock = `${String(Math.floor(hr)).padStart(2, "0")}:${String(Math.floor((hr % 1) * 60)).padStart(2, "0")}`;
+    h.updateMaps(dt, d, clock);
+  }
+
+  /**
+   * ПК «как в WoW»: клики/Tab/1 → цель и автоатака; при автоатаке герой сам
+   * разворачивается к цели (если игрок не рулит ПКМ).
+   */
+  private updatePcTarget(dt: number): void {
+    const pt = this.pcTarget;
+    const di = this.desktopInput;
+    if (!pt || !di) return;
+    const cam = this.player.renderCamera;
+    const click = di.takeClick();
+    // Прицел града стрел: ЛКМ — применить в круг (если дотягиваемся), ПКМ — отмена.
+    if (this.aoeAim?.active) {
+      this.aoeAim.update(di.mouseX, di.mouseY, cam, this.player.position, SKILL.arrowRain.range);
+      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) this.aoeAim.cancel();
+      else if (click?.button === 2) this.aoeAim.cancel();
+      else if (click?.button === 0) {
+        if (this.aoeAim.inRange) {
+          this.castSkill("arrowRain", this.aoeAim.point.x, this.aoeAim.point.z);
+          this.aoeAim.cancel();
+        } else {
+          this.notifyToast(`Слишком далеко — град стрел бьёт до ${SKILL.arrowRain.range} м`);
+        }
+      }
+    } else if (click) {
+      // Моб под курсором — выбор цели; иначе, может, оружие на земле:
+      // двойной ЛКМ или ПКМ по нему — добежать и подобрать.
+      // Лут мелкий и лежит там, где умирают мобы, — попадание по нему важнее моба рядом.
+      const loot = this.lootAt(click.x, click.y);
+      if (loot) {
+        // Первый клик — выбрать предмет (обводка держится), повторный клик по
+        // выбранному / двойной / ПКМ — добежать и поднять.
+        const now = performance.now();
+        const again = this.lootMarker?.selectedId === loot.id;
+        const dbl = click.button === 0 && this.lastLootClick?.id === loot.id && now - this.lastLootClick.t < 450;
+        this.lastLootClick = { id: loot.id, t: now };
+        const mesh = this.loot.meshOf(loot.id);
+        const go = again || dbl || click.button === 2;
+        if (go) {
+          this.pcChase = false;
+          this.walkToLoot(loot.pos);
+        }
+        if (mesh) this.lootMarker?.show(loot.id, mesh, go, true);
+      } else {
+        // Клик мимо предмета — снять выбор предмета (если к нему не бежим).
+        if (!this.player.autoMove) this.lootMarker?.hide();
+        pt.handleClick(click, cam, this.canvas);
+      }
+    }
+    if (di.takeTab()) pt.tab(cam);
+    if (di.takeAttack()) pt.toggleAttack(cam);
+    if (this.player.dead) pt.autoAttack = false;
+    this.lootMarker?.update(dt, !!this.player.autoMove, (id) => this.loot.hasDrop(id));
+    this.updatePcHover(dt);
+    const seg = pt.segment();
+    this.combat.pcTarget = seg;
+    this.combat.pcAttack = pt.autoAttack && !!seg;
+    this.updatePcChase(seg, pt.autoAttack);
+    // Атакуем — герой всегда лицом к цели (и на бегу, и стоя, и под ПКМ).
+    if (seg && pt.autoAttack && !this.player.dead) {
+      const cx = (seg.a.x + seg.b.x) / 2;
+      const cz = (seg.a.z + seg.b.z) / 2;
+      const p = this.player.position;
+      const lock = this.player.faceLock ?? { x: cx, z: cz };
+      lock.x = cx;
+      lock.z = cz;
+      this.player.faceLock = Math.hypot(cx - p.x, cz - p.z) < 80 ? lock : null;
+    } else {
+      this.player.faceLock = null;
+    }
+  }
+
+  private lastLootClick: { id: string; t: number } | null = null;
+
+  /**
+   * ПК: начал атаку (1, двойной клик, ПКМ, клик по рамке цели) — герой бежит
+   * к цели, пока не окажется на дальности атаки своего оружия, и бьёт.
+   * Цель отходит — догоняет. Игрок взялся за WASD — погоня прекращается
+   * (автоатака остаётся, как в WoW).
+   */
+  private updatePcChase(seg: { a: Vector3; b: Vector3; radius: number } | null, attacking: boolean): void {
+    const p = this.player.position;
+    if (!this.pcChase || !attacking || !seg || this.player.dead) {
+      if (this.pcChaseMoving) this.player.autoMove = null;
+      this.pcChase = false;
+      this.pcChaseMoving = false;
+      return;
+    }
+    const cx = (seg.a.x + seg.b.x) / 2;
+    const cz = (seg.a.z + seg.b.z) / 2;
+    const stop = this.combat.pcAttackRange() + seg.radius;
+    const dist = Math.hypot(cx - p.x, cz - p.z);
+    if (this.pcChaseMoving && !this.player.autoMove && dist > stop + 0.4) {
+      // Бег оборвала клавиша движения — игрок рулит сам.
+      this.pcChase = false;
+      this.pcChaseMoving = false;
+      return;
+    }
+    if (dist > stop) {
+      this.player.autoMove = { x: cx, z: cz, stop, onArrive: () => {} };
+      this.pcChaseMoving = true;
+    } else if (this.pcChaseMoving) {
+      this.player.autoMove = null;
+      this.pcChaseMoving = false;
+    }
+  }
+
+  /** Кнопка умения на ПК (2 / клик по ячейке): меч — оглушение, лук — прицел града, посох — масс-хил. */
+  private pcSkill(): void {
+    if (this.player.dead) return;
+    if (this.combat.holdsStaff) {
+      const err = this.combat.pcMassHeal();
+      if (err) this.notifyToast(err);
+      return;
+    }
+    const kind = this.combat.abilityKind;
+    if (!kind) {
+      this.notifyToast("У этого оружия нет умения");
+      return;
+    }
+    if (kind === "arrowRain") {
+      if (this.aoeAim?.active) {
+        this.aoeAim.cancel();
+        return;
+      }
+      if (this.skillCdLeft > 0) {
+        this.castSkill(kind); // покажет «ещё не готов: N с»
+        return;
+      }
+      this.aoeAim?.start(SKILL.arrowRain.radius);
+      return;
+    }
+    this.castSkill(kind);
+  }
+
+  /** Клик по ячейке панели действий ПК — то же, что клавиша. */
+  private pcSlot(key: string): void {
+    if (key === "1") this.pcTarget?.toggleAttack(this.player.renderCamera);
+    else if (key === "2") {
+      this.pcSkill();
+    } else if (key === "3") {
+      const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
+      if (slot >= 0) this.inventory.use(slot);
+      else this.notifyToast("Зелий нет");
+    } else if (key === "E") {
+      if (!this.combat.pickupNow()) this.notifyToast("Рядом нечего подобрать");
+    }
+  }
+
+  /** Лут под курсором (ПК): оружие, щиты, банки. */
+  private lootAt(x: number, y: number): { id: string; pos: Vector3; weapon: boolean; item: ItemId } | null {
+    const ids: string[] = [];
+    const pts: Vector3[] = [];
+    const wpn: boolean[] = [];
+    const its: ItemId[] = [];
+    this.loot.forEachDrop((id, pos, weapon, item) => {
+      ids.push(id);
+      pts.push(pos.clone());
+      wpn.push(weapon);
+      its.push(item);
+    });
+    if (!pts.length || !this.pcTarget) return null;
+    const i = this.pcTarget.pointAt(x, y, this.player.renderCamera, this.canvas, pts, 40);
+    return i >= 0 ? { id: ids[i], pos: pts[i], weapon: wpn[i], item: its[i] } : null;
+  }
+
+  /** Подсказка и курсор под мышью (ПК): предмет на земле, моб или игрок. */
+  private updatePcHover(dt: number): void {
+    const hv = this.pcHover;
+    const di = this.desktopInput;
+    const pt = this.pcTarget;
+    if (!hv || !di || !pt) return;
+    this.hoverT -= dt;
+    if (this.hoverT > 0) return;
+    this.hoverT = 0.06;
+    const rect = this.canvas.getBoundingClientRect();
+    const sx = rect.left + di.mouseX;
+    const sy = rect.top + di.mouseY;
+    if (this.aoeAim?.active) {
+      hv.set(null, sx, sy, "aim");
+      return;
+    }
+    if (di.busy || !di.overCanvas || document.pointerLockElement) {
+      hv.set(null, sx, sy, "default");
+      return;
+    }
+    const cam = this.player.renderCamera;
+    const loot = this.lootAt(di.mouseX, di.mouseY);
+    if (loot) {
+      const def = ITEMS[loot.item];
+      const w = def.weapon;
+      const color = !w ? "#e6e0d0" : w.tier === "legendary" ? "#c79bff" : w.tier === "gold" ? "#f5c542" : "#dedede";
+      const info: HoverInfo = {
+        title: w ? weaponDef(w.cls, w.tier).name : def.name,
+        titleColor: color,
+        lines: [
+          ...(w ? [{ text: w.tier === "legendary" ? "уникальное" : w.tier === "gold" ? "золотое" : "обычное" }] : []),
+          {
+            text: this.lootMarker?.selectedId === loot.id ? "Клик — добежать и подобрать" : "Клик — выбрать",
+            color: "#8f8a7e",
+          },
+        ],
+        // Рука — только над уже выбранным предметом.
+        cursor: this.lootMarker?.selectedId === loot.id ? "loot" : "default",
+      };
+      hv.set(info, sx, sy);
+      return;
+    }
+    const id = pt.mobAt(di.mouseX, di.mouseY, cam, this.canvas);
+    const st = this.net?.room?.state;
+    if (!id || !st) {
+      hv.set(null, sx, sy, "default");
+      return;
+    }
+    const hero = this.progression.level;
+    if (id.startsWith("@")) {
+      const ps = st.players.get(id.slice(1));
+      if (!ps) return hv.set(null, sx, sy, "default");
+      const bot = id.startsWith("@bot:");
+      const canHit = !!this.net?.pvpOn && ps.pvp === 1 && pt.targetId === id;
+      hv.set(
+        {
+          title: ps.nick,
+          titleColor: ps.pvp ? "#ff9a8e" : "#9fd0ff",
+          lines: [
+            { text: `Уровень ${ps.level} · ${bot ? "бот зрителя" : "игрок"}` },
+            { text: `Здоровье ${Math.ceil(ps.hp)} / ${Math.ceil(ps.maxHp)}` },
+            { text: ps.pvp ? "PvP включён" : "PvP выключен", color: ps.pvp ? "#ff9a8e" : "#8f8a7e" },
+          ],
+          cursor: canHit ? "attack" : "default",
+        },
+        sx,
+        sy,
+      );
+      return;
+    }
+    const m = st.mobs.get(id);
+    if (!m || m.dead) return hv.set(null, sx, sy, "default");
+    const cfg = m.kind === "spitter" ? SPITTER_CFG : m.kind === "boss" ? BOSS_CFG : m.kind === "shard" ? SHARD_CFG : SLIME_CFG;
+    const lvl = m.mobLevel || cfg.level;
+    hv.set(
+      {
+        title: m.mobName || cfg.name,
+        titleColor: m.kind === "boss" ? "#ff5a4a" : difficultyCss(lvl, hero),
+        lines: [
+          { text: m.kind === "boss" ? "Босс" : `Уровень ${lvl}${m.mobName ? " · элита" : ""}` },
+          { text: `Здоровье ${Math.ceil(m.hp).toLocaleString("ru-RU")} / ${Math.ceil(m.maxHp).toLocaleString("ru-RU")}` },
+          { text: pt.targetId === id ? "Клик — атаковать" : "Клик — выбрать · ПКМ — атаковать", color: "#8f8a7e" },
+        ],
+        // Меч — только над уже выбранным мобом.
+        cursor: pt.targetId === id ? "attack" : "default",
+      },
+      sx,
+      sy,
+    );
+  }
+
+  /**
+   * Добежать до предмета на земле (ПК, двойной клик / ПКМ). Оружие и банки
+   * подбираются сами, как только подойдёшь (оружие — pcAutoPickup, банки — сервер),
+   * так что бежим почти вплотную.
+   */
+  private walkToLoot(pos: Vector3): void {
+    this.combat.clearAutoPickupBlock();
+    this.player.autoMove = { x: pos.x, z: pos.z, stop: 0.6, onArrive: () => {} };
   }
 
   /** Смартфон: держать модель у ног игрока и гонять её анимации. */
@@ -1819,8 +2344,10 @@ export class Game {
       p.z,
       this.player.facing,
       this.player.planarSpeed,
-      this.player.dead || this.player.inVR || this.player.aiming,
+      // Смерть — не прячем: модель играет клип смерти, как её видит спектатор.
+      this.player.inVR || this.player.aiming,
     );
+    av.setDead(this.player.dead);
   }
 
   /**
@@ -1869,7 +2396,8 @@ export class Game {
     if (this.skillCdLeft > 0) this.skillCdLeft = Math.max(0, this.skillCdLeft - dt);
     const kind = this.combat.abilityKind;
     const inp = this.player.lastInput;
-    if (inp.ability && kind) this.castSkill(kind);
+    if (inp.ability && this.pcThirdPerson) this.pcSkill();
+    else if (inp.ability && kind) this.castSkill(kind);
     // Индикатор готовности на кнопке умения (телефон) и на запястье (VR).
     const frac = kind ? this.skillCdLeft / this.skillCdTotal : -1;
     this.touchInput?.setSkillCd(frac);
@@ -1941,13 +2469,13 @@ export class Game {
       if (phase === "start") {
         this.notifyBanner(
           hunt ? "Охота на элиту!" : `${name}!`,
-          hunt ? "В мире объявился Грибной владыка — редкая добыча" : "К бою — отбейте волну мобов",
+          hunt ? "В мире объявился Огнекрылый дракон — редкая добыча" : "К бою — отбейте волну мобов",
           "warn",
         );
         this.sfx.bossHorn();
       } else if (phase === "win") {
         this.notifyBanner(
-          hunt ? "Грибной владыка повержен" : `${name} отражено`,
+          hunt ? "Огнекрылый дракон повержен" : `${name} отражено`,
           hunt
             ? "Легендарка в эпицентре · участникам — ×2 опыт и урон"
             : "Награда в эпицентре · участникам — благословение: ×2 опыт и урон на 15 мин",
@@ -1956,18 +2484,40 @@ export class Game {
         );
         this.sfx.bossFanfare();
       } else {
-        this.notifyBanner(hunt ? "Грибной владыка ушёл" : `${name} утихло`, "", "warn");
+        this.notifyBanner(hunt ? "Огнекрылый дракон улетел" : `${name} утихло`, "", "warn");
       }
       void x;
       void z;
     };
+    net.onPickupFeed = (m) => {
+      if (m.nick === this.localNick) return; // своё — уже в «Подобрано»
+      this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, m.tier === "legendary" ? "#c79bff" : "#f5c542");
+    };
+    net.onKillFeed = (by, victim) => {
+      if (victim) this.pcHud?.log("kill", by ? `⚔ ${victim}` : `${victim} пал`, by || undefined);
+    };
+    net.onChatLine = (m) => this.pcHud?.log("chat", m.text, m.nick);
+    net.onPcInvData = (d) => this.pcInv?.setData(d);
+    net.onPcInvResult = (r) => {
+      this.pcInv?.onResult(r);
+      if (!r.enchant) this.notifyToast(r.text);
+    };
+    net.onWarehouse = () => this.pcInv?.refresh();
     net.onPicked = (item, count) => {
       this.sfx.pickup();
+      this.localAvatar?.pickup();
       const w = ITEMS[item].weapon;
       if (w) {
         const d = weaponDef(w.cls, w.tier);
         this.sfx.levelUp();
-        this.notifyToast(w.cls === "shield" ? d.name : `${d.name}: урон ×${d.mult}`);
+        const inHands = this.combat.handsSnapshot();
+        const held = inHands.left?.tier === w.tier && inHands.left.cls === w.cls ? true : inHands.right?.tier === w.tier && inHands.right.cls === w.cls;
+        if (this.pcThirdPerson && !held) {
+          this.notifyToast(`В сумке: ${d.name} (C — надеть)`);
+          this.pcInv?.refresh();
+        } else {
+          this.notifyToast(w.cls === "shield" ? d.name : `${d.name}: урон ×${d.mult}`);
+        }
       } else {
         this.notifyToast(`Подобрано: ${ITEMS[item].name}${count > 1 ? ` ×${count}` : ""}`);
       }
@@ -2295,6 +2845,9 @@ export class Game {
       case "pickup":
         this.avatars.get(id)?.playPickup();
         break;
+      case "jump":
+        this.avatars.get(id)?.playEmote("jump");
+        break;
     }
   }
 
@@ -2526,6 +3079,12 @@ export class Game {
       this.net.onBossEvent = null;
       this.net.onWorldEvent = null;
       this.net.onPicked = null;
+      this.net.onPickupFeed = null;
+      this.net.onKillFeed = null;
+      this.net.onChatLine = null;
+      this.net.onPcInvData = null;
+      this.net.onPcInvResult = null;
+      this.net.onWarehouse = null;
       this.net.onRtc = null;
       this.net.onAct = null;
       this.net.onTtsPlay = null;

@@ -35,6 +35,10 @@ import {
   type SpecCamMsg,
   type KillFeedMsg,
   PickupFeedMsg,
+  ChatLineMsg,
+  PcInvData,
+  PcInvResult,
+  PcInvActMsg,
   type BossEventMsg,
   type WorldEventMsg,
   type LootItem,
@@ -135,6 +139,9 @@ export class NetClient {
   onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   onKillFeed: ((by: string, victim: string) => void) | null = null;
   onPickupFeed: ((m: PickupFeedMsg) => void) | null = null;
+  onChatLine: ((m: ChatLineMsg) => void) | null = null;
+  onPcInvData: ((m: PcInvData) => void) | null = null;
+  onPcInvResult: ((m: PcInvResult) => void) | null = null;
   /** Событие босса: появился / повержен — баннер во весь экран + музыка. */
   onBossEvent:
     | ((kind: "spawn" | "down", by?: string, loot?: string, lootItems?: LootItem[]) => void)
@@ -295,6 +302,9 @@ export class NetClient {
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
     room.onMessage(MSG.pickupFeed, (m: PickupFeedMsg) => this.onPickupFeed?.(m));
+    room.onMessage(MSG.chatLine, (m: ChatLineMsg) => this.onChatLine?.(m));
+    room.onMessage(MSG.pcInvData, (m: PcInvData) => this.onPcInvData?.(m));
+    room.onMessage(MSG.pcInvResult, (m: PcInvResult) => this.onPcInvResult?.(m));
     room.onMessage(MSG.bossEvent, (m: BossEventMsg) =>
       this.onBossEvent?.(m.kind, m.by, m.loot, m.lootItems),
     );
@@ -468,6 +478,15 @@ export class NetClient {
   }
 
   /** Действие с оружием на складе из меню на руке. */
+  /** ПК-окно снаряжения: попросить свежие данные. */
+  sendPcInvOpen(): void {
+    this.room?.send(MSG.pcInvOpen, {});
+  }
+
+  sendPcInvAct(msg: PcInvActMsg): void {
+    this.room?.send(MSG.pcInvAct, msg);
+  }
+
   sendWarehouseAct(msg: WarehouseActMsg): void {
     this.room?.send(MSG.warehouseAct, msg);
   }

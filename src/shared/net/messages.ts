@@ -49,6 +49,13 @@ export const MSG = {
   killFeed: "kf",
   /** Кто подобрал золотое/уникальное оружие или щит — строка в кил-фиде спектатора. */
   pickupFeed: "pf",
+  /** Строка чата Twitch (и ответы бота игры) — в журнал ПК-игрока. */
+  chatLine: "cl",
+  /** ПК-окно снаряжения: запрос данных / данные / действие / итог действия. */
+  pcInvOpen: "pio",
+  pcInvData: "pid",
+  pcInvAct: "pia",
+  pcInvResult: "pir",
   /** сервер -> все: событие босса — появился / повержен (баннер + музыка). */
   bossEvent: "be",
   /** сервер -> все: динамическое событие мира началось/выиграно/утихло (баннер). */
@@ -155,6 +162,51 @@ export interface DmgHitsMsg {
 export interface KillFeedMsg {
   by: string;
   victim: string;
+}
+
+/** Оружие на складе для ПК-окна снаряжения (с ценами заточки и лома). */
+export interface PcInvWeapon {
+  id: string;
+  cls: WeaponClass;
+  tier: WeaponTier;
+  name: string;
+  affixes: string[];
+  /** Сумма очков роллов (1..33 за каждый). */
+  quality: number;
+  /** Сколько лома даст разборка. */
+  scrap: number;
+  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки. */
+  ench: { label: string; points: number; max: boolean; chance: number; cost: number }[];
+}
+
+export interface PcInvData {
+  weapons: PcInvWeapon[];
+  equipped: { left: string | null; right: string | null };
+  potions: number;
+  scrap: number;
+  fish: number;
+  attrs: { unspent: number; str: number; agi: number; int: number };
+  respecCost: number;
+  stats: { label: string; value: string }[];
+}
+
+export interface PcInvActMsg {
+  act: "enchant" | "stat" | "respec";
+  id: string;
+  idx: number;
+}
+
+export interface PcInvResult {
+  ok: boolean;
+  text: string;
+  enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
+}
+
+export interface ChatLineMsg {
+  nick: string;
+  text: string;
+  /** 1 — ответ самой игры (бот-аккаунт), а не зритель. */
+  bot?: 1;
 }
 
 export interface PickupFeedMsg {
@@ -360,6 +412,7 @@ export type ActKind =
   | "healHit" // массовое лечение (бот или игрок) дошло до этого героя — зелёные крестики на нём
   | "rainTick" // очередной залп града стрел по области (звук)
   | "pickup" // поднял оружие или предмет с земли — анимация подбора
+  | "jump" // прыгнул (ПК) — клип прыжка у модели
   | "sporeMark" // Грибной колосс пометил землю — через d с там встанет ядовитое облако
   | "blinkOut" // Костяной призрак растворяется (через d с — рывок)
   | "blinkIn" // Костяной призрак возник за спиной у цели
@@ -385,6 +438,8 @@ const ACT_KINDS: readonly ActKind[] = [
   "hurt",
   "blockShield",
   "blockSword",
+  "jump",
+  "pickup",
 ];
 
 export function isActKind(v: unknown): v is ActKind {

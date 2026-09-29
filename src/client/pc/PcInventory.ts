@@ -1,0 +1,750 @@
+import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
+
+/**
+ * ПК-окно снаряжения (как в WoW, одно окно с вкладками):
+ *  - «Снаряжение»: кукла (руки + будущие слоты брони), характеристики, сумка
+ *    с оружием, расходники, наковальня для лома;
+ *  - «Заточка»: выбранный предмет, по аффиксу — очки/цена/шанс, молот;
+ *  - «Атрибуты»: сила/ловкость/интеллект, свободные очки, сброс за рыбу.
+ *
+ * Перетаскивание: из сумки на руку — надеть; с руки в сумку — снять; на
+ * наковальню — в лом (с подтверждением); за окно — выбросить на землю (с
+ * подтверждением); на вкладку/слот заточки — выбрать для заточки. ПКМ по
+ * предмету — надеть/снять. Действия выполняет Game (руки держит клиент).
+ */
+
+export type Side = "left" | "right";
+export type InvTab = "gear" | "enchant" | "attrs";
+
+export interface HeldInfo {
+  cls: string;
+  tier: string;
+}
+
+export interface PcInventoryHooks {
+  request: () => void;
+  act: (m: PcInvActMsg) => void;
+  /** Что сейчас в руках (включая обычное, которого нет на складе). */
+  hands: () => { left: HeldInfo | null; right: HeldInfo | null };
+  equip: (w: PcInvWeapon, side: Side) => void;
+  toBag: (side: Side) => void;
+  scrap: (w: PcInvWeapon) => void;
+  drop: (w: PcInvWeapon) => void;
+}
+
+const ICON: Record<string, string> = { sword: "⚔", bow: "🏹", staff: "🪄", shield: "🛡" };
+const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
+const ATTRS: { id: "str" | "agi" | "int"; name: string; hint: string }[] = [
+  { id: "str", name: "Сила", hint: "Здоровье, урон мечом, броня" },
+  { id: "agi", name: "Ловкость", hint: "Скорость атаки и бега, урон луком, уворот" },
+  { id: "int", name: "Интеллект", hint: "Мана, сила магии, защита от снарядов" },
+];
+
+type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
+
+export class PcInventory {
+  private readonly root: HTMLDivElement;
+  private readonly win: HTMLDivElement;
+  private readonly body: HTMLDivElement;
+  private readonly tabsEl: HTMLDivElement;
+  private readonly tip: HTMLDivElement;
+  private readonly dropCatcher: HTMLDivElement;
+  private data: PcInvData | null = null;
+  private tab: InvTab = "gear";
+  private enchId: string | null = null;
+  private drag: DragSrc | null = null;
+  private confirmEl: HTMLDivElement | null = null;
+  private forging = false;
+  private pendingResult: PcInvResult | null = null;
+  private hammerDone = false;
+  private lastResult: { text: string; up: boolean } | null = null;
+  private xpFill: HTMLDivElement | null = null;
+  private xpText: HTMLDivElement | null = null;
+  private xpState = { level: 1, pct: 0, maxed: false };
+
+  constructor(private readonly hooks: PcInventoryHooks) {
+    injectInvStyle();
+    this.root = div("pcinv-root");
+    this.dropCatcher = div("pcinv-catch");
+    this.win = div("pcinv-win");
+    const head = div("pcinv-head");
+    this.tabsEl = div("pcinv-tabs");
+    const close = document.createElement("button");
+    close.className = "pcinv-x";
+    close.textContent = "✕";
+    close.title = "Закрыть (Esc)";
+    close.onclick = () => this.close();
+    head.append(this.tabsEl, close);
+    this.body = div("pcinv-body");
+    this.tip = div("pcinv-tip");
+    this.win.append(head, this.body);
+    this.root.append(this.dropCatcher, this.win, this.tip);
+    this.root.style.display = "none";
+    document.body.appendChild(this.root);
+
+    // Окно двигается за шапку.
+    let dragWin: { x: number; y: number; l: number; t: number } | null = null;
+    head.addEventListener("pointerdown", (e) => {
+      // По вкладкам и кнопкам — клик, а не перетаскивание окна (иначе захват
+      // указателя шапкой съедал клик по вкладке).
+      if ((e.target as HTMLElement).closest("button, .pcinv-tab")) return;
+      const r = this.win.getBoundingClientRect();
+      dragWin = { x: e.clientX, y: e.clientY, l: r.left, t: r.top };
+      head.setPointerCapture(e.pointerId);
+    });
+    head.addEventListener("pointermove", (e) => {
+      if (!dragWin) return;
+      this.win.style.left = `${dragWin.l + e.clientX - dragWin.x}px`;
+      this.win.style.top = `${dragWin.t + e.clientY - dragWin.y}px`;
+      this.win.style.transform = "none";
+    });
+    head.addEventListener("pointerup", () => (dragWin = null));
+
+    // Бросили предмет мимо окна — выбросить на землю.
+    this.dropCatcher.addEventListener("dragover", (e) => e.preventDefault());
+    this.dropCatcher.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const w = this.dragWeapon();
+      this.endDrag();
+      if (w) this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w));
+    });
+    this.win.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  get isOpen(): boolean {
+    return this.root.style.display !== "none";
+  }
+
+  open(tab: InvTab = this.tab): void {
+    this.tab = tab;
+    this.root.style.display = "";
+    this.hooks.request();
+    this.render();
+  }
+
+  close(): boolean {
+    if (!this.isOpen) return false;
+    this.root.style.display = "none";
+    this.hideTip();
+    this.confirmEl?.remove();
+    this.confirmEl = null;
+    return true;
+  }
+
+  toggle(tab: InvTab = "gear"): void {
+    if (this.isOpen && this.tab === tab) this.close();
+    else this.open(tab);
+  }
+
+  setData(d: PcInvData): void {
+    this.data = d;
+    if (this.enchId && !d.weapons.some((w) => w.id === this.enchId)) this.enchId = null;
+    if (this.isOpen && !this.forging) this.render();
+  }
+
+  /** Опыт героя (Game шлёт каждый кадр; перерисовка — только при изменении). */
+  setXp(level: number, frac: number, maxed: boolean): void {
+    const pct = maxed ? 100 : Math.floor(Math.max(0, Math.min(1, frac)) * 1000) / 10;
+    const x = this.xpState;
+    if (x.level === level && x.pct === pct && x.maxed === maxed) return;
+    x.level = level;
+    x.pct = pct;
+    x.maxed = maxed;
+    this.paintXp();
+  }
+
+  private paintXp(): void {
+    if (!this.xpFill || !this.xpText) return;
+    const x = this.xpState;
+    this.xpFill.style.width = `${x.pct}%`;
+    this.xpText.textContent = x.maxed ? `${x.level} ур. · опыт максимум` : `${x.level} ур. · опыт ${x.pct.toFixed(1)}%`;
+  }
+
+  /** Склад поменялся (подобрал, разобрал…) — попросить свежие данные. */
+  refresh(): void {
+    if (this.isOpen) this.hooks.request();
+  }
+
+  onResult(r: PcInvResult): void {
+    if (!this.forging) {
+      this.lastResult = { text: r.text, up: r.ok };
+      if (this.isOpen) this.render();
+      return;
+    }
+    this.pendingResult = r;
+    if (this.hammerDone) this.reveal();
+  }
+
+  // ---------------- отрисовка ----------------
+
+  private render(): void {
+    const d = this.data;
+    this.tabsEl.innerHTML = "";
+    const tabs: [InvTab, string][] = [
+      ["gear", "Снаряжение"],
+      ["enchant", "Заточка"],
+      ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
+    ];
+    for (const [id, label] of tabs) {
+      const t = div(`pcinv-tab${this.tab === id ? " on" : ""}${id === "attrs" && d && d.attrs.unspent > 0 ? " glow" : ""}`, label);
+      t.onclick = () => {
+        this.tab = id;
+        this.lastResult = null;
+        this.render();
+      };
+      // Бросили предмет на вкладку «Заточка» — выбрать его для заточки.
+      if (id === "enchant") {
+        t.addEventListener("dragover", (e) => e.preventDefault());
+        t.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const w = this.dragWeapon();
+          this.endDrag();
+          if (w) {
+            this.enchId = w.id;
+            this.tab = "enchant";
+            this.render();
+          }
+        });
+      }
+      this.tabsEl.append(t);
+    }
+    this.body.innerHTML = "";
+    if (!d) {
+      this.body.append(div("pcinv-empty", "Загрузка…"));
+      return;
+    }
+    if (this.tab === "gear") this.renderGear(d);
+    else if (this.tab === "enchant") this.renderEnchant(d);
+    else this.renderAttrs(d);
+  }
+
+  private weaponById(id: string | null): PcInvWeapon | null {
+    return (id && this.data?.weapons.find((w) => w.id === id)) || null;
+  }
+
+  private renderGear(d: PcInvData): void {
+    const wrap = div("pcinv-gear");
+    // --- кукла ---
+    const left = div("pcinv-col");
+    // Слоты брони/колец спрятаны, пока этих предметов нет в игре (вернуть —
+    // ячейки .pcinv-cell.locked в колонки по бокам фигуры).
+    const doll = div("pcinv-doll solo");
+    const figure = div("pcinv-figure", "🧍");
+    doll.append(figure);
+    // Опыт до следующего уровня — как в рамке героя.
+    const xp = div("pcinv-xp");
+    this.xpFill = div("pcinv-xp-fill");
+    this.xpText = div("pcinv-xp-text");
+    xp.append(this.xpFill, this.xpText);
+    this.paintXp();
+    const hands = div("pcinv-hands");
+    hands.append(this.handSlot("left", d), this.handSlot("right", d));
+    const stats = div("pcinv-stats");
+    for (const r of d.stats) {
+      const row = div("pcinv-row");
+      row.append(span(r.label), span(r.value));
+      stats.append(row);
+    }
+    left.append(doll, xp, hands, stats);
+
+    // --- сумка ---
+    const right = div("pcinv-col");
+    const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
+    const bag = d.weapons.filter((w) => !eq.has(w.id));
+    right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}/40`));
+    const grid = div("pcinv-grid");
+    for (let i = 0; i < 40; i++) {
+      const w = bag[i];
+      grid.append(w ? this.itemCell(w) : div("pcinv-cell"));
+    }
+    // С руки в сумку — снять.
+    grid.addEventListener("dragover", (e) => {
+      if (this.drag?.kind === "hand") e.preventDefault();
+    });
+    grid.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const src = this.drag;
+      this.endDrag();
+      if (src?.kind === "hand") this.hooks.toBag(src.side);
+    });
+    right.append(grid);
+    right.append(div("pcinv-sub", "Расходники"));
+    const cons = div("pcinv-cons");
+    cons.append(
+      countCell("🧪", d.potions, "Зелья лечения — клавиша 3"),
+      countCell(SCRAP_SVG, d.scrap, "Лом — для заточки", true),
+      countCell("🐟", d.fish, "Рыба — для сброса атрибутов"),
+    );
+    const anvil = div("pcinv-anvil", "⚒ Перетащи сюда — в лом");
+    anvil.addEventListener("dragover", (e) => {
+      if (this.dragWeapon()) {
+        e.preventDefault();
+        anvil.classList.add("hot");
+      }
+    });
+    anvil.addEventListener("dragleave", () => anvil.classList.remove("hot"));
+    anvil.addEventListener("drop", (e) => {
+      e.preventDefault();
+      anvil.classList.remove("hot");
+      const w = this.dragWeapon();
+      this.endDrag();
+      if (w) this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w));
+    });
+    cons.append(anvil);
+    right.append(cons);
+    right.append(
+      div(
+        "pcinv-hint",
+        "Перетащи на руку — надеть · ПКМ — надеть/снять · на наковальню — в лом · за окно — выбросить · на «Заточку» — заточить",
+      ),
+    );
+    wrap.append(left, right);
+    this.body.append(wrap);
+  }
+
+  private handSlot(side: Side, d: PcInvData): HTMLDivElement {
+    const box = div("pcinv-handbox");
+    const both = this.hooks.hands();
+    // Лук держат обе руки — показываем его в левом слоте, правый — пометкой.
+    const bowBoth = both.left?.cls === "bow" || both.right?.cls === "bow";
+    const held = bowBoth ? (side === "left" ? (both.left?.cls === "bow" ? both.left : both.right) : null) : both[side];
+    if (bowBoth && side === "right") {
+      const c = div("pcinv-cell big locked", "🏹");
+      c.title = "Лук держат обе руки";
+      // И сюда можно бросить оружие из сумки — наденется по своим правилам.
+      c.addEventListener("dragover", (e) => {
+        if (this.drag?.kind === "bag") e.preventDefault();
+      });
+      c.addEventListener("drop", (e) => {
+        e.preventDefault();
+        const src = this.drag;
+        this.endDrag();
+        const bw = src?.kind === "bag" ? this.weaponById(src.id) : null;
+        if (bw) this.hooks.equip(bw, "right");
+      });
+      box.append(c, div("pcinv-small", "Правая рука"));
+      return box;
+    }
+    const w = this.weaponById(d.equipped[side]) ?? (bowBoth ? this.weaponById(d.equipped.left ?? d.equipped.right) : null);
+    const cell = div("pcinv-cell big");
+    if (held && held.cls) {
+      const tier = (w?.tier ?? held.tier) as WeaponTier;
+      cell.classList.add(`t-${tier}`);
+      cell.textContent = ICON[held.cls] ?? "?";
+      cell.draggable = true;
+      cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
+      cell.addEventListener("dragend", () => this.endDrag());
+      cell.addEventListener("mouseenter", () => this.showTip(cell, w, held));
+      cell.addEventListener("mouseleave", () => this.hideTip());
+      cell.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        this.hideTip();
+        this.hooks.toBag(side);
+      });
+    }
+    // Из сумки на руку — надеть.
+    cell.addEventListener("dragover", (e) => {
+      if (this.drag?.kind === "bag") {
+        e.preventDefault();
+        cell.classList.add("hot");
+      }
+    });
+    cell.addEventListener("dragleave", () => cell.classList.remove("hot"));
+    cell.addEventListener("drop", (e) => {
+      e.preventDefault();
+      cell.classList.remove("hot");
+      const src = this.drag;
+      this.endDrag();
+      const bw = src?.kind === "bag" ? this.weaponById(src.id) : null;
+      if (bw) this.hooks.equip(bw, side);
+    });
+    box.append(cell, div("pcinv-small", side === "left" ? "Левая рука" : "Правая рука"));
+    return box;
+  }
+
+  private itemCell(w: PcInvWeapon): HTMLDivElement {
+    const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
+    c.draggable = true;
+    c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
+    c.addEventListener("dragend", () => this.endDrag());
+    c.addEventListener("mouseenter", () => this.showTip(c, w, null));
+    c.addEventListener("mouseleave", () => this.hideTip());
+    c.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      this.hideTip();
+      this.hooks.equip(w, naturalSide(w.cls));
+    });
+    return c;
+  }
+
+  private renderEnchant(d: PcInvData): void {
+    const wrap = div("pcinv-ench");
+    const w =
+      this.weaponById(this.enchId) ??
+      this.weaponById(d.equipped.right) ??
+      this.weaponById(d.equipped.left) ??
+      d.weapons[0] ??
+      null;
+    if (w) this.enchId = w.id;
+    const left = div("pcinv-ench-left");
+    const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`, w ? (ICON[w.cls] ?? "?") : "");
+    slotEl.addEventListener("dragover", (e) => {
+      if (this.dragWeapon()) e.preventDefault();
+    });
+    slotEl.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const dw = this.dragWeapon();
+      this.endDrag();
+      if (dw) {
+        this.enchId = dw.id;
+        this.lastResult = null;
+        this.render();
+      }
+    });
+    left.append(slotEl);
+    left.append(div("pcinv-small", w ? w.name : "Перетащи предмет сюда"));
+    left.append(div("pcinv-have", `Лом: ${d.scrap}`));
+    const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, "🔨");
+    left.append(anvil);
+
+    const right = div("pcinv-ench-right");
+    if (!w) {
+      right.append(div("pcinv-empty", "На складе нет оружия с роллами."));
+    } else if (!w.ench.length) {
+      right.append(div("pcinv-empty", "У этого предмета нет роллов — точить нечего."));
+    } else {
+      right.append(div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_RU[w.tier]} · оценка ${w.quality}`));
+      w.ench.forEach((a, i) => {
+        const row = div("pcinv-erow");
+        const lab = div("pcinv-elabel");
+        lab.append(span(a.label), span(`${a.points}/33`));
+        const bar = div("pcinv-ebar");
+        const fill = div("pcinv-efill");
+        fill.style.width = `${Math.round((a.points / 33) * 100)}%`;
+        bar.append(fill);
+        const b = document.createElement("button");
+        b.className = "pcinv-ebtn";
+        if (a.max) {
+          b.textContent = "MAX";
+          b.disabled = true;
+        } else {
+          b.innerHTML = `⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
+          b.disabled = d.scrap < a.cost || this.forging;
+          b.onclick = () => this.forge(w.id, i);
+        }
+        row.append(lab, bar, b);
+        right.append(row);
+      });
+      if (this.lastResult) {
+        right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+      }
+      right.append(
+        div("pcinv-hint", "Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
+      );
+    }
+    // Выбор предмета — мини-сетка всех предметов с роллами.
+    const pick = div("pcinv-epick");
+    for (const x of d.weapons) {
+      if (!x.ench.length) continue;
+      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}`, ICON[x.cls] ?? "?");
+      c.onclick = () => {
+        this.enchId = x.id;
+        this.lastResult = null;
+        this.render();
+      };
+      c.addEventListener("mouseenter", () => this.showTip(c, x, null));
+      c.addEventListener("mouseleave", () => this.hideTip());
+      pick.append(c);
+    }
+    wrap.append(left, right);
+    this.body.append(wrap, div("pcinv-sub", "Все предметы с роллами"), pick);
+  }
+
+  private forge(id: string, idx: number): void {
+    if (this.forging) return;
+    this.forging = true;
+    this.hammerDone = false;
+    this.pendingResult = null;
+    this.lastResult = null;
+    this.render();
+    this.hooks.act({ act: "enchant", id, idx });
+    // Три удара молотом — пусть напряжение настоится, потом итог.
+    window.setTimeout(() => {
+      this.hammerDone = true;
+      if (this.pendingResult) this.reveal();
+    }, 1100);
+  }
+
+  private reveal(): void {
+    const r = this.pendingResult;
+    this.pendingResult = null;
+    this.forging = false;
+    if (r) {
+      const e = r.enchant;
+      this.lastResult = {
+        up: !!e?.up,
+        text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : `Неудача — ${e.cost} лома сгорело`) : r.text,
+      };
+    }
+    this.render();
+  }
+
+  private renderAttrs(d: PcInvData): void {
+    const a = d.attrs;
+    const wrap = div("pcinv-attrs");
+    wrap.append(
+      div("pcinv-name", a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
+    );
+    for (const at of ATTRS) {
+      const row = div("pcinv-arow");
+      const txt = div("pcinv-atxt");
+      txt.append(div("pcinv-aname", `${at.name}: ${a[at.id]}`), div("pcinv-small", at.hint));
+      const b1 = document.createElement("button");
+      b1.className = "pcinv-abtn";
+      b1.textContent = "+1";
+      b1.disabled = a.unspent < 1;
+      b1.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 1 });
+      const b5 = document.createElement("button");
+      b5.className = "pcinv-abtn";
+      b5.textContent = "+5";
+      b5.disabled = a.unspent < 5;
+      b5.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 5 });
+      row.append(txt, b1, b5);
+      wrap.append(row);
+    }
+    const cost = d.respecCost;
+    const rb = document.createElement("button");
+    rb.className = "pcinv-respec";
+    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно (первый раз)" : `Сбросить атрибуты — ${cost} рыбы (у тебя ${d.fish})`;
+    rb.disabled = cost > d.fish;
+    rb.onclick = () =>
+      this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
+        this.hooks.act({ act: "respec", id: "respec", idx: 0 }),
+      );
+    wrap.append(rb);
+    if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+    this.body.append(wrap);
+  }
+
+  // ---------------- перетаскивание / подсказки / подтверждение ----------------
+
+  private startDrag(e: DragEvent, src: DragSrc): void {
+    this.drag = src;
+    this.hideTip();
+    e.dataTransfer?.setData("text/plain", "pcinv");
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+    // Ловушку «бросили мимо окна» показываем тиком позже: правка DOM прямо в
+    // dragstart иногда отменяет перетаскивание в Chrome.
+    window.setTimeout(() => {
+      if (this.drag) this.dropCatcher.style.display = "block";
+    }, 0);
+  }
+
+  private endDrag(): void {
+    this.drag = null;
+    this.dropCatcher.style.display = "none";
+  }
+
+  /** Перетаскиваемое оружие со склада (обычное с руки на склад не попадает — null). */
+  private dragWeapon(): PcInvWeapon | null {
+    const s = this.drag;
+    if (!s || !this.data) return null;
+    if (s.kind === "bag") return this.weaponById(s.id);
+    const eq = this.data.equipped;
+    const other = this.weaponById(eq[s.side === "left" ? "right" : "left"]);
+    return this.weaponById(eq[s.side]) ?? (other?.cls === "bow" ? other : null);
+  }
+
+  private showTip(anchor: HTMLElement, w: PcInvWeapon | null, held: HeldInfo | null): void {
+    const cls = (w?.cls ?? held?.cls ?? "") as WeaponClass;
+    const tier = (w?.tier ?? held?.tier ?? "base") as WeaponTier;
+    if (!cls) return;
+    const name = w?.name ?? weaponDef(cls, tier).name;
+    this.tip.innerHTML = "";
+    this.tip.append(div(`pcinv-name t-${tier}`, name));
+    this.tip.append(div("pcinv-small", `${TIER_RU[tier] ?? tier}${w ? ` · оценка ${w.quality}` : ""}`));
+    for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
+    if (w) this.tip.append(div("pcinv-small", `В лом: ${w.scrap}`));
+    this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
+    const r = anchor.getBoundingClientRect();
+    this.tip.style.display = "block";
+    const tw = this.tip.offsetWidth;
+    const left = r.right + 8 + tw > window.innerWidth ? r.left - tw - 8 : r.right + 8;
+    this.tip.style.left = `${Math.max(4, left)}px`;
+    this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - this.tip.offsetHeight - 4, r.top))}px`;
+  }
+
+  private hideTip(): void {
+    this.tip.style.display = "none";
+  }
+
+  private askConfirm(text: string, yes: string, fn: () => void): void {
+    this.confirmEl?.remove();
+    const box = div("pcinv-confirm");
+    box.append(div("pcinv-confirm-text", text));
+    const row = div("pcinv-confirm-row");
+    const y = document.createElement("button");
+    y.className = "pcinv-ebtn danger";
+    y.textContent = yes;
+    y.onclick = () => {
+      box.remove();
+      this.confirmEl = null;
+      fn();
+    };
+    const n = document.createElement("button");
+    n.className = "pcinv-ebtn";
+    n.textContent = "Отмена";
+    n.onclick = () => {
+      box.remove();
+      this.confirmEl = null;
+    };
+    row.append(y, n);
+    box.append(row);
+    this.win.append(box);
+    this.confirmEl = box;
+  }
+
+  dispose(): void {
+    this.root.remove();
+  }
+}
+
+function naturalSide(cls: string): Side {
+  return cls === "shield" ? "left" : "right";
+}
+
+function div(cls: string, text = ""): HTMLDivElement {
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  if (text) d.textContent = text;
+  return d;
+}
+
+function span(text: string): HTMLSpanElement {
+  const s = document.createElement("span");
+  s.textContent = text;
+  return s;
+}
+
+/** Лом — кусочки металла (шестерёнка путала). */
+const SCRAP_SVG =
+  `<svg viewBox="0 0 28 28" width="30" height="30" stroke-linejoin="round">` +
+  `<path d="M3 17l7-5 4 3-2 6-7 1z" fill="#8d939c" stroke="#d6dae0" stroke-width="1.1"/>` +
+  `<path d="M12 9l6-4 5 3-1 6-6 1z" fill="#a4957e" stroke="#e2d6c2" stroke-width="1.1"/>` +
+  `<path d="M15 18l6-2 4 4-3 5-6-1z" fill="#6f757e" stroke="#c9ced6" stroke-width="1.1"/>` +
+  `<circle cx="18.5" cy="10" r="1.1" fill="#3a3e45"/><circle cx="8" cy="17.5" r="1" fill="#3a3e45"/>` +
+  `</svg>`;
+
+function countCell(ico: string, n: number, title: string, html = false): HTMLDivElement {
+  const c = div("pcinv-cell t-base");
+  if (html) c.innerHTML = ico;
+  else c.textContent = ico;
+  c.title = title;
+  const k = document.createElement("span");
+  k.className = "pcinv-cnt";
+  k.textContent = String(n);
+  c.append(k);
+  return c;
+}
+
+let styled = false;
+function injectInvStyle(): void {
+  if (styled) return;
+  styled = true;
+  const s = document.createElement("style");
+  s.textContent = `
+.pcinv-root { position:fixed; inset:0; z-index:40; pointer-events:none; font:500 13px/1.35 system-ui,sans-serif; color:#e6e0d0; }
+.pcinv-catch { position:absolute; inset:0; display:none; pointer-events:auto; }
+.pcinv-win { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(760px,96vw);
+  max-height:92vh; overflow:auto; pointer-events:auto; background:rgba(16,15,21,.95); border:none;
+  border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.55); user-select:none; -webkit-user-select:none; }
+.pcinv-head { display:flex; align-items:flex-end; gap:6px; padding:8px 10px 0; cursor:move; border-bottom:1px solid #2c2f38; }
+.pcinv-tabs { display:flex; gap:4px; flex:1; }
+.pcinv-tab { padding:6px 14px; border:1px solid #33363f; border-bottom:none; border-radius:7px 7px 0 0; background:#1b1a21;
+  color:#a9a498; cursor:pointer; }
+.pcinv-tab.on { background:#26252e; color:#f1ead6; border-color:#4a4e5a; }
+.pcinv-tab.glow { color:#9fe39a; }
+.pcinv-x { background:none; border:none; color:#a9a498; font-size:16px; cursor:pointer; padding:4px 6px 8px; }
+.pcinv-body { padding:12px; }
+.pcinv-empty { padding:24px; text-align:center; color:#9a9588; }
+.pcinv-gear { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:14px; }
+.pcinv-col { min-width:0; }
+.pcinv-doll { display:grid; grid-template-columns:48px 1fr 48px; gap:8px; align-items:center; }
+.pcinv-doll.solo { grid-template-columns:1fr; }
+.pcinv-dollcol { display:flex; flex-direction:column; gap:6px; }
+.pcinv-figure { height:160px; border-radius:8px; background:#1c1b22; display:flex; align-items:center; justify-content:center;
+  font-size:74px; opacity:.55; }
+.pcinv-xp { position:relative; height:12px; margin-top:8px; background:#1b1a20; border:1px solid #000; border-radius:3px; overflow:hidden; }
+.pcinv-xp-fill { height:100%; width:0; background:#6b6f7a; }
+.pcinv-xp-text { position:absolute; inset:0; text-align:center; font:600 9.5px/12px system-ui; color:#d9dbe0; text-shadow:0 1px 1px #000; }
+.pcinv-hands { display:flex; justify-content:center; gap:18px; margin:10px 0 8px; }
+.pcinv-handbox { text-align:center; }
+.pcinv-stats { border-top:1px solid #2c2f38; padding-top:6px; }
+.pcinv-row { display:flex; justify-content:space-between; gap:8px; padding:2px 0; border-bottom:1px solid #22242b; font-size:12.5px; }
+.pcinv-row span:last-child { color:#f1ead6; text-align:right; }
+.pcinv-sub { color:#9a9588; font-size:12px; margin:2px 0 5px; }
+.pcinv-grid { display:grid; grid-template-columns:repeat(8,44px); gap:5px; }
+.pcinv-cell { position:relative; width:44px; height:44px; border-radius:6px; background:#0f0e13; border:1px solid #2f323b;
+  display:flex; align-items:center; justify-content:center; font-size:22px; }
+.pcinv-cell[draggable="true"] { cursor:grab; }
+.pcinv-cell.big { width:58px; height:58px; font-size:30px; }
+.pcinv-cell.huge { width:84px; height:84px; font-size:42px; margin:0 auto; }
+.pcinv-cell.small { width:36px; height:36px; font-size:18px; cursor:pointer; }
+.pcinv-cell.sel { outline:2px solid #e6e0d0; }
+.pcinv-cell.locked { opacity:.28; }
+.pcinv-cell.hot { outline:2px dashed #9fe39a; }
+.pcinv-cell.t-base { border-color:#6b6b6b; }
+.pcinv-cell.t-gold { border-color:#d9a21b; box-shadow:inset 0 0 10px rgba(217,162,27,.25); }
+.pcinv-cell.t-legendary { border-color:#9b5cf0; box-shadow:inset 0 0 12px rgba(155,92,240,.35); }
+.pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
+.pcinv-cons { display:flex; gap:5px; align-items:stretch; }
+.pcinv-anvil { flex:1; border:1px dashed #5a5e6a; border-radius:6px; display:flex; align-items:center; justify-content:center;
+  color:#c9c3b3; font-size:12px; min-height:44px; }
+.pcinv-anvil.hot { border-color:#ff7a5a; color:#ffb49a; background:rgba(255,122,90,.08); }
+.pcinv-hint { color:#7f7a6e; font-size:11.5px; margin-top:8px; }
+.pcinv-small { color:#a9a498; font-size:11.5px; }
+.pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
+.pcinv-name { font-weight:700; margin-bottom:6px; }
+.t-gold.pcinv-name, .pcinv-name.t-gold { color:#f5c542; }
+.pcinv-name.t-legendary { color:#c79bff; }
+.pcinv-name.t-base { color:#dedede; }
+.pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
+  padding:8px 10px; pointer-events:none; z-index:41; }
+.pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-ench { display:grid; grid-template-columns:150px minmax(0,1fr); gap:14px; align-items:start; }
+.pcinv-ench-left { text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center; }
+.pcinv-have { font-size:13px; } .pcinv-have::first-letter { }
+.pcinv-hammer { font-size:34px; margin-top:6px; transform-origin:80% 80%; }
+.pcinv-hammer.forging { animation:pcinvHammer .36s ease-in-out 3; }
+@keyframes pcinvHammer { 0%{transform:rotate(0)} 45%{transform:rotate(-45deg)} 70%{transform:rotate(12deg)} 100%{transform:rotate(0)} }
+.pcinv-erow { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:4px 10px; align-items:center; padding:6px 0;
+  border-bottom:1px solid #22242b; }
+.pcinv-elabel { display:flex; justify-content:space-between; gap:8px; }
+.pcinv-ebar { grid-column:1; height:7px; background:#1e1d24; border-radius:4px; overflow:hidden; }
+.pcinv-efill { height:100%; background:linear-gradient(90deg,#6a9bff,#9fe39a); }
+.pcinv-ebtn { grid-column:2; grid-row:1 / span 2; padding:5px 6px; border-radius:6px; border:1px solid #4a4e5a; background:#23222b;
+  color:#e6e0d0; cursor:pointer; font:600 12px/1.2 system-ui; }
+.pcinv-ebtn:disabled { opacity:.45; cursor:default; }
+.pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
+.pcinv-epick { display:flex; flex-wrap:wrap; gap:5px; }
+.pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
+.pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
+.pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }
+.pcinv-attrs { display:flex; flex-direction:column; gap:8px; max-width:520px; }
+.pcinv-arow { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#1b1a21; border-radius:7px; }
+.pcinv-atxt { flex:1; } .pcinv-aname { font-weight:700; }
+.pcinv-abtn { width:42px; padding:6px 0; border-radius:6px; border:1px solid #4a4e5a; background:#23222b; color:#9fe39a;
+  cursor:pointer; font:700 13px system-ui; }
+.pcinv-abtn:disabled { opacity:.35; cursor:default; color:#a9a498; }
+.pcinv-respec { margin-top:6px; padding:9px; border-radius:7px; border:1px solid #6a4a3a; background:#2a1f1c; color:#ffcfae;
+  cursor:pointer; font:600 13px system-ui; }
+.pcinv-respec:disabled { opacity:.45; cursor:default; }
+.pcinv-confirm { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:320px; background:#15141b;
+  border:none; border-radius:9px; padding:14px; box-shadow:0 8px 30px rgba(0,0,0,.6); z-index:2; }
+.pcinv-confirm-text { margin-bottom:12px; }
+.pcinv-confirm-row { display:flex; gap:8px; justify-content:flex-end; }
+.pcinv-confirm-row .pcinv-ebtn { grid-row:auto; padding:7px 14px; }
+`;
+  document.head.appendChild(s);
+}

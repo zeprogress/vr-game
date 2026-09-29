@@ -26,6 +26,7 @@ import { BOSS_CFG, ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, SHARD_CFG, SLIME
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
+import { difficultyRgb } from "../pc/difficulty";
 import { NameTag } from "../ui/NameTag";
 import { trackMobMaterial } from "./mobLightTune";
 import { daylightAt } from "../world/DayTime";
@@ -380,6 +381,9 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
 }
 
 export class Mob implements Hittable {
+  /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
+  static pcPlates: { level: number } | null = null;
+
   readonly root: TransformNode;
   private readonly body: Mesh;
   private readonly head: TransformNode;
@@ -897,7 +901,8 @@ export class Mob implements Hittable {
     if (s.hurtSeq !== this.lastHurtSeq) {
       this.lastHurtSeq = s.hurtSeq;
       this.flash = 1;
-      if (!this.lean) {
+      // ПК: здоровье — в самой плашке над мобом, отдельная полоска не нужна.
+      if (!this.lean && !Mob.pcPlates) {
         this.barTimer = 3;
         const bar = this.getBar();
         bar.set(Math.max(0, s.hp) / s.maxHp);
@@ -1071,7 +1076,18 @@ export class Mob implements Hittable {
       // Издалека плашку не разобрать, поэтому на дальней границе она ×4,
       // а по мере приближения плавно ужимается до ×2. На смартфоне — вдвое.
       const t = Math.min(1, Math.max(0, (md - 6) / (MOB.nameTagRange - 6)));
-      this.getTag().setScale((2 + t * 2) * this.uiScale);
+      const tag = this.getTag();
+      tag.setScale((2 + t * 2) * this.uiScale);
+      // ПК «как в WoW»: полоска здоровья всегда в плашке, уровень — цветом опасности.
+      const pc = Mob.pcPlates;
+      if (pc) {
+        tag.showHp();
+        tag.setHp(s.maxHp > 0 ? Math.max(0, s.hp) / s.maxHp : 0);
+        if (this.tagLevel !== null) {
+          const [r, g, b] = difficultyRgb(this.tagLevel, pc.level);
+          tag.setAccent(r, g, b);
+        }
+      }
     }
     secAdd("mob.nameTag", sp);
   }

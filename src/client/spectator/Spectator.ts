@@ -451,7 +451,7 @@ export class Spectator {
           tower
             ? "герои по очереди штурмуют башню — !event, чтобы встать в очередь"
             : hunt
-              ? "в мире объявился Грибной владыка — редкая добыча"
+              ? "в мире объявился Огнекрылый дракон — редкая добыча"
               : "мобы лезут волнами — герои сбегаются",
           9,
         );
@@ -461,7 +461,7 @@ export class Spectator {
         // забег (см. серверный endEvent/onTowerRunDone), карточка тут не нужна.
         if (tower) return;
         this.overlay?.showCard(
-          hunt ? "Грибной владыка повержен" : `${name} отражено`,
+          hunt ? "Огнекрылый дракон повержен" : `${name} отражено`,
           "участникам — ×2 опыт и урон" + (hunt ? "" : " на 15 мин"),
           10,
           loot,
@@ -469,7 +469,7 @@ export class Spectator {
         this.sfx.bossFanfare();
       } else {
         this.overlay?.showCard(
-          tower ? "Охотничья башня закрылась" : hunt ? "Грибной владыка ушёл" : `${name} утихло`,
+          tower ? "Охотничья башня закрылась" : hunt ? "Огнекрылый дракон улетел" : `${name} утихло`,
           "",
           6,
         );
@@ -1544,6 +1544,9 @@ export class Spectator {
         break;
       case "pickup":
         this.avatars.get(id)?.playPickup();
+        break;
+      case "jump":
+        this.avatars.get(id)?.playEmote("jump");
         break;
     }
   }

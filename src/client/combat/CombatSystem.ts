@@ -3,6 +3,7 @@ import { secNow, secAdd } from "../engine/secProf";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import "@babylonjs/core/Rendering/outlineRenderer"; // renderOverlay — подсветка оружия на стойках
 import type { Node } from "@babylonjs/core/node";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -15,7 +16,7 @@ import { Space } from "@babylonjs/core/Maths/math.axis";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 
-import { BELT, BOT, BOW, COMBAT, HOLSTER, MELEE, PLAYER, SHIELD, SKILL, THROW } from "#shared/constants";
+import { ARROW, BELT, BOT, BOW, COMBAT, HOLSTER, MELEE, PLAYER, SHIELD, SKILL, THROW } from "#shared/constants";
 import { noGuard, type BlockedBy, type GuardState } from "#shared/combat";
 import {
   DUAL_WIELD,
@@ -131,6 +132,31 @@ function newMotion(): HandMotion {
     angVel: new Vector3(),
     init: false,
   };
+}
+
+/** Подсветка обычного оружия на стойках (см. highlightStands). */
+const STAND_GLOW = new Color3(1, 0.93, 0.7);
+
+/** ПК: подошёл к оружию на земле ближе этого (м, по горизонтали) — подбирается само. */
+const PC_AUTO_PICK_R = 1.7;
+
+/** ПК: дальность автоатаки луком, м (стрела летит навесом дальше, но попасть сложнее). */
+const PC_BOW_RANGE = 45;
+
+/**
+ * Направление выстрела навесом из `from` в `to` со скоростью `v` при
+ * гравитации `g` — низкая траектория; если не долетает — под 45°.
+ */
+function lobDir(from: Vector3, to: Vector3, v: number, g: number): Vector3 {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const d = Math.hypot(dx, dz) || 0.001;
+  const dy = to.y - from.y;
+  const v2 = v * v;
+  const disc = v2 * v2 - g * (g * d * d + 2 * dy * v2);
+  const ang = disc < 0 ? Math.PI / 4 : Math.atan((v2 - Math.sqrt(disc)) / (g * d));
+  const c = Math.cos(ang);
+  return new Vector3((dx / d) * c, Math.sin(ang), (dz / d) * c);
 }
 
 export class CombatSystem {
@@ -283,6 +309,18 @@ export class CombatSystem {
   avatarFist: ((side: Side) => Node | null) | null = null;
   /** Ставит Game: дёрнуть клип замаха у LocalAvatar. */
   onMeleeSwing: (() => void) | null = null;
+
+  // ---- ПК, третье лицо «как в WoW»: автоатака выбранной цели ----
+  /** Включает Game на ПК в третьем лице: удары/выстрелы — по pcTarget, не по кнопке. */
+  pcAuto = false;
+  /** Автоатака идёт (клавиша 1 / ПКМ по мобу). */
+  pcAttack = false;
+  /** Выбранная цель — отрезок тела (как у Hittable). null — цели нет. */
+  pcTarget: { a: Vector3; b: Vector3; radius: number } | null = null;
+  /** Цель дальше досягаемости текущего оружия (для подсказки «далеко»). */
+  pcOutOfRange = false;
+  /** ПК: подобранное с земли оружие — в сумку, а не в руку. */
+  lootToBag = false;
 
   /** Смартфон: лук/посох — сколько держим кнопку и пауза между выстрелами. */
   private tpRangedHold = 0;
@@ -525,11 +563,6 @@ export class CombatSystem {
     return Vector3.TransformCoordinates(world, this.headInv);
   }
 
-  /** Локальное направление головы -> в мировое. */
-  private headWorldDir(local: Vector3): Vector3 {
-    return Vector3.TransformNormal(local, this.headMat);
-  }
-
   // ---- прятать за спину ----
 
   /** Оружие за спиной, которое мы скрыли (рука не у плеча). */
@@ -753,17 +786,14 @@ export class CombatSystem {
     // Матрица головы за кадр (для локальных осей) + окно после snap-turn.
     this.computeHead();
     this.turnCd = Math.max(0, this.turnCd - dt);
-    if (inp.lookYaw !== 0) this.turnCd = 0.15;
+    if (inp.lookYaw !== 0 && !this.pcAuto) this.turnCd = 0.15;
 
     let sp = secNow();
     this.updatePotion(dt);
     secAdd("combat.potion", sp);
 
-    // Q (плоский режим) — снять щит: летит так же, как оружие.
-    if (inp.dropItem && this.shieldHand) {
-      const sh = this.held1("shield");
-      if (sh) this.throwItem(sh, this.flatThrowVelocity(0));
-    }
+    // С 2026-09-29 предметы из рук НЕ выбрасываются (Q и т.п.) — выбросить на
+    // землю можно только из меню инвентаря; иначе предмет уходит в склад.
 
     sp = secNow();
     if (this.player.inVR) this.handleGripsVR();
@@ -792,6 +822,8 @@ export class CombatSystem {
         (w0.kind === "bow" && this.drawHand() === this.uiLockHand));
     sp = secNow();
     if (this.player.inVR) this.autoPickupWeapons(dt);
+    else if (this.lootToBag) this.pcAutoPickup(dt);
+    this.highlightStands(dt);
     secAdd("combat.autoPickup", sp);
 
     sp = secNow();
@@ -808,6 +840,15 @@ export class CombatSystem {
         this.nockArrow.setEnabled(false);
         this.nockLocal.copyFrom(this.bowParts.nockRest);
       }
+    } else if (this.pcAuto && !this.player.inVR && (this.held === "bow" || this.held === "staff")) {
+      // ПК, третье лицо: лук/посох сами бьют по выбранной цели.
+      if (this.held === "bow") this.pcBow(dt);
+      else this.pcStaff(dt);
+    } else if (this.pcAuto && !this.player.inVR) {
+      // ПК, третье лицо: меч/кулаки — автоатака, пока цель в досягаемости.
+      const swing = this.pcAttack && this.pcMeleeInReach();
+      if (this.held === "sword") this.updateFlatSwing(dt, swing);
+      else this.updateFlatMelee(dt, swing);
     } else if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
       this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire, altFireReleased);
@@ -833,7 +874,7 @@ export class CombatSystem {
     if (lockedWeapon) {
       /* лазер меню — каст не идёт */
     } else if (this.held === "staff" && this.player.inVR) this.updateStaffCast(dt);
-    else if (!tpStaff && !tpBow && !flatStaff && (this.charge !== 0 || this.castHooked)) {
+    else if (!this.pcAuto && !tpStaff && !tpBow && !flatStaff && (this.charge !== 0 || this.castHooked)) {
       this.resetCast();
     }
 
@@ -962,7 +1003,9 @@ export class CombatSystem {
             // уходит за спину, а то, что было за спиной, оказывается в руке.
             this.swapWithStowed(item, side);
           } else {
-            this.throwItem(item, this.vrThrowVelocity(side));
+            // Раньше — бросок. Теперь: отпустил не у плеча — убрать в склад
+            // (обычное оружие — на свою стойку). Выбросить — только из меню.
+            this.putAway(item, side);
           }
         }
         continue;
@@ -1031,7 +1074,7 @@ export class CombatSystem {
     if (this.player.thirdPerson) {
       const main = this.held1("sword") ?? this.held1("staff");
       if (main && this.nearbyOtherMainWeapon(main.kind)) {
-        if (released) this.throwItem(main, this.flatThrowVelocity(0));
+        if (released) this.putAway(main, main.hand ?? "right");
         return;
       }
     }
@@ -1040,12 +1083,9 @@ export class CombatSystem {
       if (released) this.dropShieldFlat();
       return;
     }
-    const w = this.weapon;
-    if (w) {
-      if (held) this.windup = clamp(this.windup + dt / THROW.flatWindup, 0, 1);
-      if (released) this.throwItem(w, this.flatThrowVelocity(this.windup));
-      return;
-    }
+    // Бросок оружия по удержанию E убран (2026-09-29): выбросить — только из меню.
+    void held;
+    void dt;
   }
 
   /** Рядом валяется меч/посох другого класса, чем `heldKind` (смартфон). */
@@ -1070,6 +1110,7 @@ export class CombatSystem {
   private tryPickupFlat(): boolean {
     const p = this.player.position;
     const ws = this.nearestWorldWeapon?.(p);
+    if (this.lootToBag) return this.pcPickup();
     let cls: ItemKind | null =
       ws && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH ? ws.cls : null;
     if (!cls) {
@@ -1079,6 +1120,11 @@ export class CombatSystem {
         .find(
           (c) =>
             c.d < COMBAT.equipReach &&
+            // Своё (в руках, за спиной, в полёте) — не «лежит рядом».
+            !c.it.hand &&
+            !c.it.hand2 &&
+            !c.it.stow &&
+            !c.it.flight &&
             (this.canPick(c.it) || this.flatConflicts(c.it.kind).length > 0),
         );
       cls = near?.it.kind ?? null;
@@ -1088,7 +1134,7 @@ export class CombatSystem {
     // Мешает то, что уже в руках (щит↔лук, лук↔меч/посох, меч↔посох) — роняем
     // это и берём новое одним действием.
     const drop = this.flatConflicts(cls);
-    for (const it of drop) this.throwItem(it, this.flatThrowVelocity(0));
+    for (const it of drop) this.putAway(it, it.hand ?? "right");
 
     const side: Side =
       cls === "shield" ? "left" : this.inHand("right") ? "left" : "right";
@@ -1113,21 +1159,145 @@ export class CombatSystem {
     const shield = this.held1("shield");
     const out: Item[] = [];
     if (kind === "bow") {
-      for (const it of [sword, staff, shield]) if (it) out.push(it);
+      // Лук один на игрока: уже в руках — уходит в склад, берём новый.
+      for (const it of [sword, staff, shield, bow]) if (it) out.push(it);
     } else if (kind === "shield") {
       if (bow) out.push(bow);
+      if (shield) out.push(shield); // второй щит некуда — прежний в склад
     } else if (kind === "sword" || kind === "staff") {
       if (bow) out.push(bow);
       const other = kind === "sword" ? staff : sword;
       if (other) out.push(other);
+      if (kind === "staff" && staff) out.push(staff);
+      // Меч: обе руки заняты (меч+щит или два меча) — меняем правый.
+      if (kind === "sword") {
+        const r = this.inHand("right");
+        if (r && r.kind === "sword" && this.inHand("left")) out.push(r);
+      }
     }
     return out;
   }
 
-  /** Снять щит (плоский режим): улетает как брошенное оружие. */
+  /**
+   * ПК: в руках при подборе НИЧЕГО не меняется. Подходящая рука свободна (с
+   * учётом вида: щит — левая, лук — обе, меч — любая, меч с посохом нельзя) —
+   * берём в неё; иначе лут с земли уходит в сумку. Обычное со стоек на склад
+   * не попадает — если рук нет, просто не берём.
+   */
+  private pcPickup(): boolean {
+    const p = this.player.position;
+    const ws = this.nearestWorldWeapon?.(p);
+    if (ws && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH && !this.recentlyTaken(ws.id)) {
+      this.pcPickupWorld(ws.cls, ws.id);
+      return true;
+    }
+    const near = this.items
+      .map((it) => ({ it, d: Vector3.Distance(p, it.mesh.getAbsolutePosition()) }))
+      .filter((c) => c.d < COMBAT.equipReach && !c.it.hand && !c.it.hand2 && !c.it.stow && !c.it.flight)
+      .sort((a, b) => a.d - b.d)[0];
+    if (!near) return false;
+    const side = this.freeHandFor(near.it.kind);
+    if (!side || !this.canPick(near.it)) {
+      this.onPickupBlocked?.();
+      return false;
+    }
+    this.equip(near.it, side);
+    this.onLocalPickup?.();
+    return true;
+  }
+
+  private standT = 0;
+  private readonly standLit = new Set<Item>();
+
+  /**
+   * Обычное оружие на стойках в лагере чуть светится — видно, что его можно
+   * взять (все платформы; у спектатора CombatSystem нет). Мягкий тёплый
+   * налёт поверх модели, еле заметно пульсирует.
+   */
+  private highlightStands(dt: number): void {
+    this.standT += dt;
+    const a = 0.16 + 0.07 * Math.sin(this.standT * 2.2);
+    for (const it of this.items) {
+      const onStand = it.tier === "base" && !it.hand && !it.hand2 && !it.stow && !it.flight;
+      const was = this.standLit.has(it);
+      if (onStand !== was) {
+        if (onStand) this.standLit.add(it);
+        else this.standLit.delete(it);
+        for (const m of [it.mesh, ...it.mesh.getChildMeshes(false)]) {
+          m.renderOverlay = onStand;
+          if (onStand) m.overlayColor = STAND_GLOW;
+        }
+      }
+      if (onStand) for (const m of [it.mesh, ...it.mesh.getChildMeshes(false)]) m.overlayAlpha = a;
+    }
+  }
+
+  /** ПК: взял обычное оружие со стойки (без сервера) — анимация подбора. */
+  onLocalPickup: (() => void) | null = null;
+
+  /** Лут с земли: в свободную подходящую руку, иначе — в сумку. */
+  private pcPickupWorld(cls: ItemKind, id: string): void {
+    const side = this.freeHandFor(cls);
+    if (side && this.tryPickupWorldWeapon(side)) return;
+    this.takeWorldWeapon(id, null);
+    this.sfx.bowDraw();
+  }
+
+  /**
+   * ПК: оружие и щиты подбираются сами, стоит подойти (как банки). После
+   * выброса из окна — не сразу, а когда отойдёшь (suppressAutoPickup).
+   */
+  private pcAutoPickup(dt: number): void {
+    this.autoPickupCd = Math.max(0, this.autoPickupCd - dt);
+    if (this.autoPickupCd > 0 || !this.nearestWorldWeapon || this.player.dead) return;
+    const p = this.player.position;
+    if (this.noAutoPickup) {
+      if (Math.hypot(p.x - this.noAutoPickup.x, p.z - this.noAutoPickup.z) < 3.5) return;
+      this.noAutoPickup = null;
+    }
+    const ws = this.nearestWorldWeapon(p);
+    if (!ws || Math.hypot(ws.pos.x - p.x, ws.pos.z - p.z) > PC_AUTO_PICK_R || this.recentlyTaken(ws.id)) return;
+    this.autoPickupCd = 0.4;
+    this.pcPickupWorld(ws.cls, ws.id);
+  }
+
+  /** ПК: в руках не хватает места под обычное оружие со стойки. */
+  onPickupBlocked: (() => void) | null = null;
+
+  /** Свободная рука под предмет вида `kind` без замены того, что в руках; null — некуда. */
+  private freeHandFor(kind: ItemKind): Side | null {
+    if (this.held1("bow")) return null; // лук держат обе руки
+    if (kind === "bow") return !this.inHand("left") && !this.inHand("right") ? "right" : null;
+    if (!DUAL_WIELD[kind] && this.held1(kind)) return null;
+    if ((kind === "sword" && this.held1("staff")) || (kind === "staff" && this.held1("sword"))) return null;
+    if (kind === "shield") return this.inHand("left") ? null : "left";
+    if (!this.inHand("right")) return "right";
+    if (!this.inHand("left") && !this.held1("shield")) return "left";
+    return null;
+  }
+
+  /** ПК: подобрать ближайшее лежащее рядом (после бега к предмету). true — взяли. */
+  pickupNow(): boolean {
+    if (this.player.inVR) return false;
+    return this.tryPickupFlat();
+  }
+
+  /** Снять щит (кнопка на телефоне): убирается в склад, на землю не падает. */
   dropShieldFlat(): void {
     const sh = this.held1("shield");
-    if (sh) this.throwItem(sh, this.flatThrowVelocity(0));
+    if (sh) this.putAway(sh, sh.hand ?? "left");
+  }
+
+  /**
+   * Убрать предмет из руки без броска: золотое/уникальное — в склад,
+   * обычное — на свою стойку (retireItem). Замена бывшим броскам.
+   */
+  private putAway(item: Item, side: Side): void {
+    this.retireItem(item);
+    this.windup = 0;
+    this.justPickedUp = false;
+    this.haptic(side, 0.4, 60);
+    this.sfx.bowDraw();
   }
 
   /** Держит ли игрок щит — для кнопки «убрать щит» в тач-меню. */
@@ -1260,6 +1430,11 @@ export class CombatSystem {
   }
 
   /** Сбросил/выбросил оружие сам — не подбираем автоматически, пока не отойдёт на ~3.5 м. */
+  /** Игрок сам пошёл к предмету (ПК, двойной клик) — снять запрет «не подбирать сразу». */
+  clearAutoPickupBlock(): void {
+    this.noAutoPickup = null;
+  }
+
   suppressAutoPickup(): void {
     const p = this.player.position;
     this.noAutoPickup = { x: p.x, z: p.z };
@@ -1547,64 +1722,10 @@ export class CombatSystem {
     }
   }
 
-  private vrThrowVelocity(side: Side): Vector3 {
-    // motion.vel — в осях головы; переводим в мир и добавляем ход самой головы.
-    return this.headWorldDir(this.motion[side].vel).scale(THROW.velScaleVR);
-  }
 
-  private flatThrowVelocity(windup: number): Vector3 {
-    const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
-    dir.y += 0.12;
-    dir.normalize();
-    return dir.scale(THROW.flatMinSpeed + windup * (THROW.flatMaxSpeed - THROW.flatMinSpeed));
-  }
 
-  /** Общий бросок: работает одинаково для меча, лука и щита. */
-  private throwItem(item: Item, vel: Vector3): void {
-    const hand = item.hand;
-    const mesh = item.mesh;
-    const worldPos = mesh.getAbsolutePosition().clone();
-    const worldRot = mesh.absoluteRotationQuaternion.clone();
 
-    mesh.parent = null;
-    mesh.scaling.setAll(1);
-    mesh.rotationQuaternion = worldRot;
-    mesh.position.copyFrom(worldPos);
 
-    // Вращение — только то, что игрок сам придал рукой (VR). angVel в осях головы.
-    const angVelL = hand && this.player.inVR ? this.motion[hand].angVel : null;
-    const angVel = angVelL ? this.headWorldDir(angVelL) : null;
-    let spinRate = angVel ? angVel.length() : 0;
-    const spinAxis = spinRate > 1e-3 && angVel ? angVel.scale(1 / spinRate) : new Vector3(1, 0, 0);
-    spinRate = Math.min(spinRate, 30);
-
-    item.hand = null;
-    item.hand2 = null;
-    item.grip = undefined;
-    item.thrownFrom = hand ?? undefined;
-    item.flight = {
-      vel: vel.clone(),
-      spinAxis,
-      spinRate,
-      prev: worldPos.clone(),
-      life: 0,
-      hitDone: false,
-    };
-
-    if (hand) this.motion[hand].init = false;
-    this.windup = 0;
-    this.justPickedUp = false;
-    this.suppressAutoPickup(); // бросил сам — не подхватывать обратно на лету
-    this.sfx.swordSwing(worldPos);
-    this.emitSound("swing", worldPos);
-
-    if (item.kind === "bow") {
-      this.nockArrow.setEnabled(false);
-      this.draw = 0;
-      this.vrNocked = false;
-      this.nockLocal.copyFrom(this.bowParts.nockRest);
-    }
-  }
 
   private updateFlights(dt: number): void {
     for (const item of this.items) {
@@ -2290,14 +2411,164 @@ export class CombatSystem {
    * навести перетаскиванием, отпустил — выстрел (тоже макс. скорость).
    * Между выстрелами пауза (tpCooldown / скорость атаки) — не поспамить.
    */
-  private tpBowShoot(power: number): void {
+  private tpBowShoot(power: number, dir?: Vector3): void {
     this.tpRangedCd = BOW.tpCooldown / this.prog.attackSpeed;
     this.nockArrow.setEnabled(false);
     this.nockLocal.copyFrom(this.bowParts.nockRest);
-    const d = this.player.eyeForward.clone();
+    const d = (dir ?? this.player.eyeForward).clone();
     if (d.lengthSquared() < 1e-6) d.set(0, 0, 1);
     d.normalize();
     this.fire(this.chestPos().add(d.scale(0.5)), d, clamp(power, 0, 1));
+  }
+
+  /**
+   * ПК: на каком расстоянии (м, по горизонтали от героя до поверхности тела
+   * цели) текущее оружие уже достаёт — до стольких Game подводит героя.
+   */
+  pcAttackRange(): number {
+    if (this.held === "bow") return PC_BOW_RANGE - 4;
+    if (this.held === "staff") return MAGIC.firebolt.range - 6;
+    return (this.held === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach) * 0.75;
+  }
+
+  /** Сколько секунд до готовности массового лечения (0 — готово). */
+  get massHealCdLeft(): number {
+    return Math.max(0, (this.massReadyAt - performance.now()) / 1000);
+  }
+
+  /** Идёт каст массового лечения (ПК). */
+  get massHealCasting(): boolean {
+    return this.castHooked && this.castMode === "mass";
+  }
+
+  /**
+   * ПК: массовое лечение мага (как в VR — посох над головой): каст
+   * BOT.healCastTime с аурой, сдвинулся — каст сорван; досидел — лечит сервер.
+   * Возвращает текст причины отказа или null.
+   */
+  pcMassHeal(): string | null {
+    const staff = this.held1("staff");
+    if (!staff || this.player.inVR) return "Массовое лечение — с посохом в руках";
+    if (this.massHealCasting) return null;
+    const left = this.massHealCdLeft;
+    if (left > 0) return `Массовое лечение перезаряжается: ${Math.ceil(left)} с`;
+    this.resetCast();
+    this.castHooked = true;
+    this.castMode = "mass";
+    this.massT = 0;
+    this.charge = 0;
+    const c = this.crystalWorldPos() ?? this.player.eyePosition;
+    const eye = this.player.eyePosition;
+    this.onCast?.({ spell: "massHealStart", charge: 0, pull: 0, ox: c.x, oy: c.y, oz: c.z, dx: 0, dy: 1, dz: 0, hand: staff.hand ?? "right" });
+    this.onMassHealStart?.(eye.x, eye.y - PLAYER.eyeHeight, eye.z);
+    this.sfx.bowDraw();
+    return null;
+  }
+
+  /** Тик каста массового лечения на ПК (зовёт pcStaff). */
+  private pcMassTick(dt: number): void {
+    const staff = this.held1("staff");
+    const c = this.crystalWorldPos() ?? this.player.eyePosition;
+    const send = (spell: "massHeal" | "massHealCancel"): void =>
+      this.onCast?.({ spell, charge: 1, pull: 0, ox: c.x, oy: c.y, oz: c.z, dx: 0, dy: 1, dz: 0, hand: staff?.hand ?? "right" });
+    // Каст — стоя: побежал — сорвал (как опустил посох в VR).
+    if (!staff || this.player.planarSpeed > 1.2 || this.player.dead) {
+      send("massHealCancel");
+      this.resetCast();
+      return;
+    }
+    this.massT += dt;
+    this.charge = clamp(this.massT / BOT.healCastTime, 0, 1);
+    this.showChargeOrb(staff.mesh);
+    if (this.massT >= BOT.healCastTime) {
+      send("massHeal");
+      this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
+      this.sfx.at(c.clone(), () => this.sfx.bowRelease(1));
+      this.resetCast();
+    }
+  }
+
+  /** Центр цели (середина отрезка тела). */
+  private pcTargetCenter(): Vector3 | null {
+    const t = this.pcTarget;
+    return t ? t.a.add(t.b).scale(0.5) : null;
+  }
+
+  /** Меч/кулак достаёт цель: горизонтально от глаз до отрезка тела минус его толщина. */
+  private pcMeleeInReach(): boolean {
+    const t = this.pcTarget;
+    if (!t) {
+      this.pcOutOfRange = false;
+      return false;
+    }
+    const eye = this.player.eyePosition;
+    const reach = (this.held === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach) * 0.95;
+    const d = Math.hypot(t.a.x - eye.x, t.a.z - eye.z) - t.radius;
+    this.pcOutOfRange = d > reach;
+    return !this.pcOutOfRange;
+  }
+
+  /** Лук на ПК: пока идёт автоатака и цель в пределах — натягиваем и стреляем в неё навесом. */
+  private pcBow(dt: number): void {
+    this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
+    const c = this.pcTargetCenter();
+    const from = this.chestPos();
+    const dist = c ? Math.hypot(c.x - from.x, c.z - from.z) : 0;
+    this.pcOutOfRange = !!c && dist > PC_BOW_RANGE;
+    if (!this.pcAttack || !c || this.pcOutOfRange) {
+      this.charge = 0;
+      this.nockArrow.setEnabled(false);
+      return;
+    }
+    if (this.charge === 0) this.sfx.bowDraw();
+    const rate = this.prog.attackSpeed / Math.max(0.3, BOW.flatCooldown);
+    this.charge = clamp(this.charge + rate * dt, 0, 1);
+    this.nockArrow.setEnabled(true);
+    this.placeNockArrow(
+      new Vector3(this.bowParts.nockRest.x, this.bowParts.nockRest.y, this.bowParts.nockRest.z + this.charge * BOW.drawPullFlat),
+      new Vector3(0, 0, -1),
+    );
+    if (this.charge >= 1 && this.tpRangedCd <= 0) {
+      const speed = BOW.maxSpeed + this.prog.arrowSpeedBonus;
+      this.tpBowShoot(1, lobDir(from, c, speed, ARROW.gravity));
+      this.charge = 0;
+    }
+  }
+
+  /** Посох на ПК: заряд копится сам, полный — огнешар прямо в цель. */
+  private pcStaff(dt: number): void {
+    const fb = MAGIC.firebolt;
+    this.tpRangedCd = Math.max(0, this.tpRangedCd - dt);
+    if (this.massHealCasting) {
+      this.pcMassTick(dt);
+      return;
+    }
+    const staff = this.held1("staff");
+    const c = this.pcTargetCenter();
+    const from = this.chestPos();
+    const dist = c ? Math.hypot(c.x - from.x, c.z - from.z) : 0;
+    this.pcOutOfRange = !!c && dist > fb.range - 2;
+    if (!this.pcAttack || !c || !staff || this.pcOutOfRange || this.mana < fb.minMana) {
+      if (this.castHooked) this.resetCast();
+      return;
+    }
+    if (!this.castHooked) {
+      this.castHooked = true;
+      this.castMode = "solo";
+      this.charge = 0;
+      this.sfx.bowDraw();
+    }
+    const rate = this.prog.attackSpeed / fb.chargeTime;
+    this.charge = clamp(this.charge + rate * dt, 0, 1);
+    this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
+    this.showChargeOrb(staff.mesh);
+    if (this.charge >= 1 && this.tpRangedCd <= 0) {
+      this.resetCast();
+      this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+      const d = c.subtract(from);
+      d.normalize();
+      this.emitFirebolt(1, staff.hand ?? "right", d);
+    }
   }
 
   private tpBow(
@@ -2370,8 +2641,8 @@ export class CombatSystem {
    * отпускаешь — снаряд летит вперёд по взгляду.
    */
   /** Пустить огнешар вперёд по взгляду с текущим зарядом (смартфон, посох). */
-  private emitFirebolt(charge: number, hand: "left" | "right"): void {
-    const dir = this.player.eyeForward.clone();
+  private emitFirebolt(charge: number, hand: "left" | "right", aim?: Vector3): void {
+    const dir = (aim ?? this.player.eyeForward).clone();
     if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
     dir.normalize();
     const origin = this.chestPos().add(dir.scale(0.5));

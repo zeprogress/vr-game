@@ -197,6 +197,45 @@ export function fadeTreesNear(camX: number, camZ: number): void {
   }
 }
 
+/** ПК, третье лицо: дерево ближе этого (м) к линии камера→герой — гасим. */
+const OCC_R = 3.6;
+
+/**
+ * ПК, третье лицо: гасим деревья, которые стоят между камерой и героем
+ * (крона закрывает героя), и те, что вплотную к камере. Остальные — как были.
+ */
+export function fadeTreesOccluding(camX: number, camZ: number, px: number, pz: number): void {
+  if (!fadeOn || !baseBark || !baseLeaf || fadeBark.length === 0) return;
+  const sx = px - camX;
+  const sz = pz - camZ;
+  const l2 = sx * sx + sz * sz || 1;
+  const last = FADE_STEPS.length - 1;
+  for (const t of treeInstances) {
+    let step = -1;
+    // Проекция дерева на отрезок камера→герой (чуть за камерой и за героем — тоже).
+    const u = ((t.x - camX) * sx + (t.z - camZ) * sz) / l2;
+    if (u > -0.1 && u < 1.08) {
+      const cu = u < 0 ? 0 : u > 1 ? 1 : u;
+      const d = Math.hypot(t.x - (camX + sx * cu), t.z - (camZ + sz * cu));
+      const r = OCC_R * Math.max(0.8, t.scale);
+      if (d < r) step = d < r * 0.55 ? 0 : 1;
+    }
+    const dc = Math.hypot(t.x - camX, t.z - camZ);
+    if (dc < FADE_FAR) {
+      const k = (dc - FADE_NEAR) / (FADE_FAR - FADE_NEAR);
+      const c = k < 0 ? 0 : k > 1 ? 1 : k;
+      const s = Math.min(last, Math.floor(c * FADE_STEPS.length));
+      step = step < 0 ? s : Math.min(step, s);
+    }
+    if (step === t.step) continue;
+    t.step = step;
+    const bm = step < 0 ? baseBark : fadeBark[step];
+    const lm = step < 0 ? baseLeaf : fadeLeaf[step];
+    for (const m of t.bark) m.material = bm;
+    for (const m of t.leaf) m.material = lm;
+  }
+}
+
 const ROCK_KINDS = ["Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3"];
 
 function leafMaterial(scene: Scene, tex: BaseTexture | undefined): StandardMaterial {

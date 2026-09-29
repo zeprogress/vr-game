@@ -392,12 +392,15 @@ export class RemoteAvatar implements Hittable {
    * моделью, что и игроков за ПК (голова наклоняется, все клипы ходьбы/боя работают).
    */
   private usesRig(): boolean {
-    return this.mode === "vr" || (this.mode === "flat" && this.skin > 0);
+    // С 2026-09-29 и ПК в третьем лице — все плоские игроки моделью: без
+    // выбранной внешности — базовый рыцарь, как их LocalAvatar у себя.
+    return this.mode === "vr" || this.mode === "flat";
   }
 
   /** Номер внешности для модели: выбранный игроком, а у VR-игрока без выбора — стабильный по id. */
   private rigSkin(): number {
     if (this.skin > 0) return this.skin;
+    if (this.mode === "flat") return 1; // базовый рыцарь (charKnight) — как LocalAvatar со skin 0
     let h = 0;
     for (let i = 0; i < this.id.length; i++) h = (h * 31 + this.id.charCodeAt(i)) | 0;
     return 1 + (Math.abs(h) % BOT.skins);

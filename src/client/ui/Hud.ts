@@ -133,6 +133,24 @@ export class Hud {
     );
   }
 
+  /** ПК в третьем лице: свой экран (PcHud) — прячем старые полоски HP/маны. */
+  setPcMode(): void {
+    this.pcMode = true;
+    this.bar.style.display = "none";
+    this.manaBar.style.display = "none";
+  }
+
+  /** Открыть/закрыть панель персонажа (кнопки ПК-экрана). */
+  toggleMenu(): void {
+    this.togglePanel();
+  }
+
+  /** ПК в третьем лице: C открывает окно снаряжения (PcInventory), а не эту панель. */
+  private pcMode = false;
+
+  /** ПК: Esc сперва отдаётся сюда (снять цель); true — съели, меню не открываем. */
+  escHook: (() => boolean) | null = null;
+
   /** Пока панель персонажа открыта, мышь свободна — этим вернём её в игру. */
   bindPointerLock(relock: () => void): void {
     this.relock = relock;
@@ -418,8 +436,11 @@ export class Hud {
     prog.onChange(() => this.renderPanel());
     window.addEventListener("keydown", (e) => {
       if (e.repeat) return;
-      if (e.code === "KeyC") this.togglePanel();
+      if (e.code === "KeyC") {
+        if (!this.pcMode) this.togglePanel();
+      }
       else if (e.code === "Escape") {
+        if (!this.panelOpen && this.escHook?.()) return;
         // Открываем без exitPointerLock() (см. openPanelFromEsc) — Esc и так
         // снимает захват мыши сам, наш вызов поверх только мешал.
         if (this.panelOpen) this.closePanel();

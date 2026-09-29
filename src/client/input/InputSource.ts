@@ -24,6 +24,10 @@ export interface InputState {
   dropItem: boolean;
   /** Активное умение оружия (воин — оглушение, лучник — град стрел) — фронт. */
   ability: boolean;
+  /** Прыжок (ПК, третье лицо) — фронт. */
+  jump: boolean;
+  /** ПК, третье лицо: зажата ПКМ — герой разворачивается вслед за камерой. */
+  steer: boolean;
   /**
    * Не null только в VR при зажатой кнопке настройки меча (X на левом): сырые
    * оси стиков для правки положения меча в руке. Локомоция в это время подавлена.
@@ -72,6 +76,8 @@ export function emptyInput(): InputState {
     interact: false,
     dropItem: false,
     ability: false,
+    jump: false,
+    steer: false,
     tune: null,
     panelToggle: false,
     uiNext: false,

@@ -57,6 +57,8 @@ export class PlayerController {
 
   /** Хуки для звука/UI. Назначает Game. */
   readonly hooks: {
+    /** Прыжок начался (ПК) — клип прыжка у своей модели. */
+    jump?: () => void;
     step?: () => void;
     land?: (impact: number) => void;
     hurt?: (hp: number, dmg: number) => void;
@@ -205,8 +207,20 @@ export class PlayerController {
   }
 
   /** Перевести плоский режим в вид от третьего лица (только смартфон). */
-  enableThirdPerson(): void {
+  enableThirdPerson(pc = false): void {
     if (!this.tp) this.tp = new ThirdPersonCam(this.scene);
+    this.pcStyle = pc;
+  }
+
+  /**
+   * ПК, третье лицо «как в WoW»: WASD — относительно того, куда повёрнут
+   * ГЕРОЙ (A/D — шаг вбок, без разворота), ПКМ разворачивает героя вслед за
+   * камерой, камера на бегу сама заезжает за спину. На телефоне (false) —
+   * стик относительно камеры, герой доворачивается в сторону хода.
+   */
+  private pcStyle = false;
+  get pcThirdPerson(): boolean {
+    return this.pcStyle && this.thirdPerson;
   }
 
   /** Сейчас управление идёт от третьего лица. */
@@ -239,6 +253,17 @@ export class PlayerController {
     if (this.xrCamera) return this.xrCamera;
     if (this.tp && !this.aiming) return this.tp.camera;
     return this.camera;
+  }
+
+  /** ПК: во время атаки герой всегда лицом к этой точке (цели). null — как обычно. */
+  faceLock: { x: number; z: number } | null = null;
+
+  /** Бег к точке: дошёл ближе `stop` — onArrive. Любая клавиша движения отменяет. */
+  autoMove: { x: number; z: number; stop: number; onArrive: () => void } | null = null;
+
+  /** Куда смотрит камера третьего лица (иначе — куда повёрнут персонаж). */
+  get cameraYaw(): number {
+    return this.tp && !this.aiming ? this.tp.yaw : this.yaw;
   }
 
   /** Куда повёрнут персонаж (yaw в радианах). */
@@ -462,6 +487,8 @@ export class PlayerController {
       tp.applyLook(inp.lookYaw, inp.lookPitch);
       if (inp.zoom) tp.applyZoom(inp.zoom);
       this.pitch = 0;
+      // ПК: зажатая ПКМ на месте — герой смотрит туда же, куда камера.
+      if (this.pcStyle && inp.steer && inp.moveX === 0 && inp.moveY === 0) this.yaw = tp.yaw;
     } else {
       this.yaw += inp.lookYaw;
       this.pitch = vr ? 0 : clamp(this.pitch + inp.lookPitch, -PLAYER.pitchClamp, PLAYER.pitchClamp);
@@ -494,7 +521,8 @@ export class PlayerController {
       fx = this.fwd.x / l;
       fz = this.fwd.z / l;
     } else if (tp) {
-      // Третье лицо: стик задаёт направление ОТНОСИТЕЛЬНО камеры.
+      // Третье лицо: направление хода — ОТНОСИТЕЛЬНО камеры (и на ПК тоже:
+      // герой бежит туда, куда направляешь, и сам разворачивается).
       fx = Math.sin(tp.yaw);
       fz = Math.cos(tp.yaw);
     } else {
@@ -505,6 +533,25 @@ export class PlayerController {
     // --- Горизонталь по осям (естественное скольжение вдоль стен) ---
     let mx = fz * inp.moveX + fx * inp.moveY;
     let mz = -fx * inp.moveX + fz * inp.moveY;
+    // Бег к точке (ПК: двойной клик по оружию на земле) — пока игрок сам не
+    // взялся за клавиши движения.
+    const am = this.autoMove;
+    if (am) {
+      if (vr || Math.abs(inp.moveX) + Math.abs(inp.moveY) > 0.05 || this.dead) {
+        this.autoMove = null;
+      } else {
+        const dx = am.x - pos.x;
+        const dz = am.z - pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d <= am.stop) {
+          this.autoMove = null;
+          am.onArrive();
+        } else {
+          mx = dx / d;
+          mz = dz / d;
+        }
+      }
+    }
     const len = Math.hypot(mx, mz);
     if (len > 1) {
       mx /= len;
@@ -513,9 +560,13 @@ export class PlayerController {
     const moving = len > 0.05;
     // Доворот камеры за спину — пропорционально боковому отклонению стика
     // (см. tpFollowAmount), одинаково вперёд и назад.
-    const tpFollow = tp ? tpFollowAmount(inp.moveX) : 0;
-    // Третье лицо: персонаж всегда доворачивается лицом туда, куда бежит.
-    if (tp && moving) {
+    const tpFollow = tp && !this.pcStyle ? tpFollowAmount(inp.moveX) : 0;
+    // Третье лицо: персонаж всегда доворачивается лицом туда, куда бежит —
+    // кроме атаки на ПК: тогда он смотрит на цель (бежит боком/спиной).
+    const lf = this.faceLock;
+    if (lf && this.pcStyle && !vr) {
+      this.yaw = lerpAngle(this.yaw, Math.atan2(lf.x - pos.x, lf.z - pos.z), Math.min(1, dt * 14));
+    } else if (tp && moving) {
       this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * TP_CAM_TUNE.turnRate));
     }
     const speed = this.speed * dt;
@@ -548,8 +599,13 @@ export class PlayerController {
     const moved = Math.hypot(pos.x - bx, pos.z - bz) / Math.max(dt, 1e-3);
     this._planarSpeed += (moved - this._planarSpeed) * Math.min(1, dt * 8);
 
-    // --- Земля под ногами (гравитация есть, прыжка нет) ---
+    // --- Земля под ногами (гравитация; прыжок — только ПК, третье лицо) ---
     const groundY = this.rayDown();
+    if (inp.jump && this.pcStyle && this.grounded && !vr && !this.dead) {
+      this.verticalVelocity = PLAYER.jumpSpeed;
+      this.grounded = false;
+      this.hooks.jump?.();
+    }
 
     if (this.grounded && this.verticalVelocity <= 0) {
       if (groundY !== null) pos.y = groundY + PLAYER.eyeHeight;
@@ -594,7 +650,10 @@ export class PlayerController {
         const dragging = Math.abs(inp.lookYaw) > 1e-6 || Math.abs(inp.lookPitch) > 1e-6;
         // Чем дальше стик вбок, тем быстрее доворот — плавно от ×1 к ×2.
         const sideBoost = 1 + clamp((Math.abs(inp.moveX) - 0.3) / 0.7, 0, 1);
-        if (!dragging && moving && tpFollow > 0.01) {
+        if (this.pcStyle) {
+          // ПК: камеру водит мышь — сама за спину не заезжает (ход и так
+          // относительно камеры).
+        } else if (!dragging && moving && tpFollow > 0.01) {
           // rad/кадр — предел поворота камеры за спину в этом кадре.
           const step = dt * TP_CAM_TUNE.followRate * tpFollow * sideBoost;
           tp.followBehind(this.yaw, step);

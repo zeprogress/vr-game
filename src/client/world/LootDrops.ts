@@ -28,6 +28,7 @@ interface DropView {
   phase: number;
   /** Оружие стоит воткнутым в землю, а не качается кубиком. */
   weapon: { cls: WeaponClass; tier: WeaponTier } | null;
+  item: ItemId;
 }
 
 /**
@@ -121,6 +122,7 @@ export class LootDrops {
           base: s.y,
           phase: hash01(id) * Math.PI * 2,
           weapon: ITEMS[s.item].weapon ?? null,
+          item: s.item,
         };
         this.views.set(id, v);
       }
@@ -147,6 +149,20 @@ export class LootDrops {
   }
 
   /** Ближайшее лежащее оружие — его берут рукой, а не подбирают автоматически. */
+  hasDrop(id: string): boolean {
+    return this.views.has(id);
+  }
+
+  /** Меш лежащего предмета (для обводки на ПК). */
+  meshOf(id: string): AbstractMesh | null {
+    return this.views.get(id)?.mesh ?? null;
+  }
+
+  /** Весь видимый лут (для выбора кликом на ПК): weapon — оружие/щит, иначе банки и прочее. */
+  forEachDrop(fn: (id: string, pos: Vector3, weapon: boolean, item: ItemId) => void): void {
+    for (const [id, v] of this.views) if (v.mesh.isEnabled()) fn(id, v.mesh.position, !!v.weapon, v.item);
+  }
+
   nearestWeapon(
     from: Vector3,
   ): { id: string; cls: WeaponClass; tier: WeaponTier; pos: Vector3 } | null {
