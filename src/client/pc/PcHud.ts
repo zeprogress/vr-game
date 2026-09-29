@@ -276,7 +276,7 @@ export class PcHud {
       this.buffsEl.append(c);
     };
     if (eventSecs > 0) chip("✨", mmss(eventSecs), "Благословение события: ×2 опыт и урон", "ev");
-    if (campSecs > 0) chip("🔥", mmss(campSecs), "Тепло костра: +10% урона", "camp");
+    if (campSecs > 0) chip("🔥", mmss(campSecs), "Тепло костра: входящий урон −20%", "camp");
   }
 
   /** Свободные очки атрибутов: 0 — значок спрятан. */

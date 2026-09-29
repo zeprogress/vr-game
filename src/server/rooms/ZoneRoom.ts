@@ -82,6 +82,7 @@ import {
   PLAYER_HP,
   PROGRESSION,
   respecCostFor,
+  RESPEC_ENABLED,
   PVP,
   ELITE_MOBS,
   EVENT,
@@ -1963,12 +1964,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
   private buffMult(ownerId: string, which: "xp" | "dmg"): number {
     const rt = this.rt.get(ownerId);
-    if (!rt) return 1;
-    const now = Date.now();
-    // «Тепло костра» (лагерь) — +10% урона, складывается с баффом события.
-    const camp = which === "dmg" && rt.campBuffUntil > now ? CAMPFIRE.buffDmg : 1;
-    if (rt.eventBuffUntil <= now) return camp;
-    return camp * (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult);
+    if (!rt || rt.eventBuffUntil <= Date.now()) return 1;
+    return which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult;
   }
 
   private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
@@ -3275,7 +3272,7 @@ export class ZoneRoom extends Room<ZoneState> {
       scrap: bagCount(bag, "scrap"),
       fish: bagCount(bag, "fish"),
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int },
-      respecCost: respecCostFor(rec?.respecCount ?? 0),
+      respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       stats: heroStatRows({
         level: p.level,
         str: p.str,
@@ -3761,6 +3758,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * в веб-инвентаре). Герой в мире — живое состояние; иначе правим сейв.
    */
   private respecNick(norm: string): { ok: boolean; text: string } {
+    if (!RESPEC_ENABLED) return { ok: false, text: "сброс атрибутов временно выключен." };
     const base = PROGRESSION.startStat;
     const token = `nick:${norm}`;
     const rec = store.get(token);
@@ -5752,6 +5750,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     let dmg = inDmg * block.mult * (1 - armorFrac(p.str));
+    // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
+    if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
@@ -5909,7 +5909,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
       const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
       if (p.hp > 0 && p.hp < p.maxHp && (atFire || rt.sinceHurt > regenDelay)) {
-        p.hp = Math.min(p.maxHp, p.hp + regenRate * (atFire ? CAMPFIRE.regenMul : 1) * dt);
+        const rate = atFire ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac) : regenRate;
+        p.hp = Math.min(p.maxHp, p.hp + rate * dt);
       }
     });
   }

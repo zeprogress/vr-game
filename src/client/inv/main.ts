@@ -95,7 +95,8 @@ function attrsHtml(msg: InvMsg): string {
   const fish = msg.fish ?? 0;
   const invested = a.str + a.agi + a.int - 3 > 0;
   const armed = armedScrap === "respec";
-  const respec = msg.authed
+  // cost < 0 — сброс выключен на сервере: кнопку не показываем.
+  const respec = msg.authed && cost >= 0
     ? `<div class="respec"><button class="act respecbtn${armed ? " armed" : ""}" data-act="respec" data-id="respec" ${
         fish < cost || !invested ? "disabled" : ""
       }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost === 0 ? "бесплатно" : `${cost} 🐟`}</button>` +

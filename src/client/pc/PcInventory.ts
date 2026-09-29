@@ -514,6 +514,12 @@ export class PcInventory {
       wrap.append(row);
     }
     const cost = d.respecCost;
+    // cost < 0 — сброс атрибутов выключен на сервере.
+    if (cost < 0) {
+      if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+      this.body.append(wrap);
+      return;
+    }
     const rb = document.createElement("button");
     rb.className = "pcinv-respec";
     rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно (первый раз)" : `Сбросить атрибуты — ${cost} рыбы (у тебя ${d.fish})`;

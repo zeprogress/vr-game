@@ -19,7 +19,7 @@ import {
 import { heroStatRows } from "#shared/heroStats";
 import { store } from "../store";
 import { invHub } from "../invHub";
-import { respecCostFor } from "#shared/constants";
+import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
 
 interface InventoryJoinOptions {
   /** Ник из адреса `/inv?ник`. */
@@ -211,6 +211,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
     fish: bagCount(rec.bag ?? [], "fish"),
-    respecCost: respecCostFor(rec.respecCount ?? 0),
+    respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
   };
 }
