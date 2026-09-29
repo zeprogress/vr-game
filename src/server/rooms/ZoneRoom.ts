@@ -3764,8 +3764,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(token);
     const done = rec?.respecCount ?? 0;
     const cost = respecCostFor(done);
-    const costTxt = cost === 0 ? "бесплатно (первый раз)" : `за ${cost} рыбы`;
-    const nextTxt = `следующий — ${respecCostFor(done + 1)} рыбы`;
+    const next = respecCostFor(done + 1);
+    const costTxt = cost === 0 ? "бесплатно" : `за ${cost} рыбы`;
+    const nextTxt = next === 0 ? "сброс пока бесплатный" : `следующий — ${next} рыбы`;
     const t = this.findWeaponsTarget(norm);
     if (t) {
       const p = t.p;

@@ -670,11 +670,13 @@ export const SPORE = {
  * тому, какой это сброс у героя по счёту (`done` — сколько уже было):
  * 1-й бесплатно, 2-й — 1, 3-й — 10, дальше каждый раз на 10 больше.
  */
-/** Сброс атрибутов (!respec, кнопки в !inv и окне снаряжения) — временно выключен (2026-09-30). */
-export const RESPEC_ENABLED = false;
+/** Сброс атрибутов (!respec, кнопки в !inv и окне снаряжения) включён. */
+export const RESPEC_ENABLED = true;
+/** Пока сброс бесплатный всегда (2026-09-30); false — вернуть цену в рыбе ниже. */
+export const RESPEC_FREE = true;
 
 export function respecCostFor(done: number): number {
-  if (done <= 0) return 0;
+  if (RESPEC_FREE || done <= 0) return 0;
   if (done === 1) return 1;
   return (done - 1) * 10;
 }

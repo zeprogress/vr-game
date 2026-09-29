@@ -522,7 +522,7 @@ export class PcInventory {
     }
     const rb = document.createElement("button");
     rb.className = "pcinv-respec";
-    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно (первый раз)" : `Сбросить атрибуты — ${cost} рыбы (у тебя ${d.fish})`;
+    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} рыбы (у тебя ${d.fish})`;
     rb.disabled = cost > d.fish;
     rb.onclick = () =>
       this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
