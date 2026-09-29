@@ -436,6 +436,7 @@ export class Spectator {
     net.onRtc = (msg) => void this.voice?.handle(msg);
     net.onVoice = (id, t, d) => this.voice?.onVoicePacket(id, t, d);
     net.onKillFeed = (by, victim) => this.overlay?.pushKill(by, victim);
+    net.onPickupFeed = (m) => this.overlay?.pushPickup(m.nick, m.item, m.tier);
     net.onBossEvent = (kind, by, loot, lootItems) => {
       this.overlay?.bossBanner(kind, by, loot, lootItems);
       if (kind === "down") this.sfx.bossFanfare();

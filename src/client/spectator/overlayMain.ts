@@ -31,6 +31,7 @@ net.onSpecCmd = (cmd: SpecCmd) => {
   else if (cmd.t === "overlay") ov.setConfig(cmd.patch);
 };
 net.onKillFeed = (by, victim) => ov.pushKill(by, victim);
+net.onPickupFeed = (m) => ov.pushPickup(m.nick, m.item, m.tier);
 net.onBossEvent = (kind, by, loot, lootItems) => ov.bossBanner(kind, by, loot, lootItems);
 net.onLeaderboard = (rows) => ov.setLeaderboard(rows);
 net.onTowerBoard = (rows) => ov.setTowerBoard(rows);

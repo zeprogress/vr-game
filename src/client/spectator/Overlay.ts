@@ -133,6 +133,9 @@ const CSS = `
 .ov-feed b { color:#8fe45a; font-weight:800; }
 .ov-feed s { color:#ff9a95; font-weight:800; text-decoration:none; }
 .ov-feed i { opacity:.7; font-style:normal; margin:0 .5vh; }
+.ov-feed u { text-decoration:none; font-weight:800; }
+.ov-feed u.gold { color:#f5c542; }
+.ov-feed u.legendary { color:#b67cff; text-shadow:0 0 .6vh rgba(182,124,255,.6); }
 @keyframes ovfeed { from{opacity:0;transform:translateX(1vh)} to{opacity:1} }
 .ov-card { left:0; right:0; bottom:16vh; text-align:center; opacity:0;
   transition:opacity .5s ease; }
@@ -325,11 +328,26 @@ export class Overlay {
       row.innerHTML = `<s></s><i>пал</i>`;
       row.querySelector("s")!.textContent = victim;
     }
+    this.addFeedRow(row, 7000);
+  }
+
+  private addFeedRow(row: HTMLElement, lifeMs: number): void {
     this.feed.appendChild(row);
-    this.feedRows.push({ el: row, until: performance.now() + 7000 });
-    while (this.feedRows.length > 5) {
+    this.feedRows.push({ el: row, until: performance.now() + lifeMs });
+    while (this.feedRows.length > 6) {
       this.feedRows.shift()?.el.remove();
     }
+  }
+
+  /** Строка «подобрал» в кил-фиде: золотое/уникальное оружие или щит. */
+  pushPickup(nick: string, item: string, tier: "gold" | "legendary"): void {
+    const row = document.createElement("div");
+    row.innerHTML = `<b></b><i>подобрал</i><u></u>`;
+    row.querySelector("b")!.textContent = nick;
+    const u = row.querySelector("u")!;
+    u.textContent = item;
+    u.className = tier;
+    this.addFeedRow(row, 9000);
   }
 
   /** Топ-5 героев — приходит с сервера раз в 10 с (Ф10). */

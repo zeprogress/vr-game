@@ -34,6 +34,7 @@ import {
   type SpecCmd,
   type SpecCamMsg,
   type KillFeedMsg,
+  PickupFeedMsg,
   type BossEventMsg,
   type WorldEventMsg,
   type LootItem,
@@ -133,6 +134,7 @@ export class NetClient {
   /** Команда стрим-дашборда (этап 17 Ф5) — приходит другим спектаторам. */
   onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   onKillFeed: ((by: string, victim: string) => void) | null = null;
+  onPickupFeed: ((m: PickupFeedMsg) => void) | null = null;
   /** Событие босса: появился / повержен — баннер во весь экран + музыка. */
   onBossEvent:
     | ((kind: "spawn" | "down", by?: string, loot?: string, lootItems?: LootItem[]) => void)
@@ -292,6 +294,7 @@ export class NetClient {
     room.onMessage(MSG.setPvp, (m: SetPvpMsg) => this.onPvp?.(m.on, m.wait));
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
+    room.onMessage(MSG.pickupFeed, (m: PickupFeedMsg) => this.onPickupFeed?.(m));
     room.onMessage(MSG.bossEvent, (m: BossEventMsg) =>
       this.onBossEvent?.(m.kind, m.by, m.loot, m.lootItems),
     );

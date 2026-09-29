@@ -21,7 +21,7 @@ const OVERLAY_TOGGLES: OverlayToggle[] = [
   { key: "online", label: "Список онлайн" },
   { key: "watching", label: "«Смотрим»" },
   { key: "hp", label: "HP цели" },
-  { key: "feed", label: "Кил-фид" },
+  { key: "feed", label: "Кил-фид и находки" },
   { key: "top", label: "Топ героев" },
 ];
 
@@ -38,8 +38,8 @@ export class Dashboard {
   private readonly root: HTMLDivElement;
   private readonly nowEl: HTMLDivElement;
   private readonly listEl: HTMLDivElement;
-  private mobSel!: HTMLSelectElement;
-  private mobEmptyEl!: HTMLDivElement;
+  /** Текущий раздел пульта (сворачиваемый) — туда кладут элементы. */
+  private box!: HTMLElement;
   private auto = true;
   private readonly autoBtn: HTMLButtonElement;
   private botsOnly = false;
@@ -66,6 +66,8 @@ export class Dashboard {
   private eventVolInp!: HTMLInputElement;
   private eventVolLbl!: HTMLSpanElement;
   private dayAutoBtn!: HTMLButtonElement;
+  private hourInp!: HTMLInputElement;
+  private hourLbl!: HTMLSpanElement;
   private dayAuto: number | null = null;
   private lastListSig = "";
 
@@ -86,12 +88,15 @@ export class Dashboard {
   constructor(keyFromUrl: string | null) {
     // index.html ставит html/body {overflow:hidden} под игру (полноэкранный
     // canvas) — пульту это ломает скролл, снимаем на его странице явно.
-    document.documentElement.style.cssText = "overflow-y:auto;height:auto";
+    // И touch-action:none оттуда же — из-за него пульт не листался пальцем на телефоне.
+    document.documentElement.style.cssText =
+      "overflow-y:auto;height:auto;touch-action:pan-y;overscroll-behavior:auto;user-select:auto;-webkit-user-select:auto";
     document.body.innerHTML = "";
     document.body.style.cssText =
       "margin:0;background:#0f1016;color:#e8ecf8;font:15px/1.4 system-ui,sans-serif;" +
       "-webkit-tap-highlight-color:transparent;padding:12px 12px 40px;max-width:560px;" +
-      "margin:0 auto;overflow-y:auto;height:auto;min-height:100vh;box-sizing:border-box";
+      "margin:0 auto;overflow-y:auto;height:auto;min-height:100vh;box-sizing:border-box;" +
+      "touch-action:pan-y;overscroll-behavior:auto;user-select:auto;-webkit-user-select:auto";
 
     this.root = el("div", "");
     document.body.appendChild(this.root);
@@ -115,170 +120,69 @@ export class Dashboard {
     this.nowEl.style.cssText = "font:12px/1.2 ui-monospace,monospace;color:#8c96ad;text-align:right";
     this.root.appendChild(h);
 
-    // --- авто-режиссёр ---
+    // --- режиссёр: две кнопки в ряд ---
+    const dir = el("div", "");
+    dir.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
     this.autoBtn = this.bigBtn("Авто-режиссёр: ВКЛ", () => this.toggleAuto());
     this.autoBtn.style.background = "#1c3a24";
-    this.root.appendChild(this.autoBtn);
-
-    // Режим «только боты»: камера ходит лишь по ботам зрителей, чередуя
-    // из глаз → орбиту → вид напротив.
+    // Режим «только боты»: камера ходит лишь по ботам зрителей.
     this.botsBtn = this.bigBtn("Только боты: ВЫКЛ", () => this.toggleBots());
     this.setBotsUi(false);
-    this.root.appendChild(this.botsBtn);
+    dir.append(this.autoBtn, this.botsBtn);
+    this.root.appendChild(dir);
 
-    // --- фиксированные кадры ---
-    this.section("Кадры");
-    const fixed = el("div", "");
-    fixed.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
-    fixed.append(
-      this.cmdBtn("Обзор зоны", { t: "cam", shot: "overview" }),
-      this.cmdBtn("Орбита босса", { t: "cam", shot: "orbitBoss" }),
-      this.cmdBtn("Группа сверху", { t: "cam", shot: "crowd" }),
-    );
-    this.root.appendChild(fixed);
-
-    // --- кинопути ---
-    this.section("Кинопути");
-    const paths = el("div", "");
-    paths.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
-    CINE_PATHS.forEach((p, i) => paths.appendChild(this.cmdBtn(p.name, { t: "cam", shot: `path:${i}` })));
-    this.root.appendChild(paths);
-
-    // --- живой список игроков ---
-    this.section("Игроки онлайн");
+    // --- живой список игроков (главное — открыт) ---
+    this.section("Игроки онлайн", true);
     this.listEl = el("div", "");
-    this.root.appendChild(this.listEl);
+    this.box.appendChild(this.listEl);
 
-    // --- мобы: выпадающий список (их может быть десяток — в ряд не влезают) ---
-    this.section("Мобы онлайн");
-    const mobRow = el("div", "");
-    mobRow.style.cssText = "display:flex;gap:8px";
-    this.mobSel = document.createElement("select");
-    this.mobSel.style.cssText =
-      "flex:1;padding:10px;border:1px solid #4a5570;border-radius:8px;" +
-      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;min-width:0";
-    const mobGo = document.createElement("button");
-    mobGo.textContent = "из глаз";
-    mobGo.style.cssText =
-      "padding:0 16px;border:1px solid #4a5570;border-radius:8px;background:#1d1f2b;" +
-      "color:#e8ecf8;font:13px system-ui;cursor:pointer";
-    mobGo.addEventListener("click", () => {
-      if (this.mobSel.value) this.send({ t: "cam", shot: `eyeMob:${this.mobSel.value}` });
-    });
-    mobRow.append(this.mobSel, mobGo);
-    this.root.appendChild(mobRow);
-    this.mobEmptyEl = el("div", "мобов сейчас нет");
-    this.mobEmptyEl.style.cssText = "opacity:.6;margin-top:4px";
-    this.root.appendChild(this.mobEmptyEl);
+    // --- кадры и кинопути ---
+    this.section("Кадры и кинопути", false);
+    const fixed = el("div", "");
+    fixed.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+    fixed.append(
+      this.cmdBtn("Обзор зоны", { t: "cam", shot: "overview" }, true),
+      this.cmdBtn("Орбита босса", { t: "cam", shot: "orbitBoss" }, true),
+      this.cmdBtn("Группа сверху", { t: "cam", shot: "crowd" }, true),
+    );
+    CINE_PATHS.forEach((p, i) => fixed.appendChild(this.cmdBtn(p.name, { t: "cam", shot: `path:${i}` }, true)));
+    this.box.appendChild(fixed);
 
-    // --- заставки / нижняя треть ---
-    this.section("Заставка на экран");
-    const cardIn = document.createElement("input");
-    cardIn.placeholder = "Заголовок";
-    cardIn.style.cssText =
-      "width:100%;padding:10px;margin-bottom:6px;border:1px solid #4a5570;border-radius:8px;" +
-      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;box-sizing:border-box";
-    const cardSub = document.createElement("input");
-    cardSub.placeholder = "Подпись (необязательно)";
-    cardSub.style.cssText = cardIn.style.cssText;
-    this.root.append(cardIn, cardSub);
-    const cardRow = el("div", "");
-    cardRow.style.cssText = "display:flex;gap:8px";
-    const showBtn = this.bigBtn("Показать — держать, пока не уберу", () => {
-      const t = cardIn.value.trim();
-      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 0 });
-    });
-    showBtn.style.background = "#1c3a24";
-    const hideBtn = this.bigBtn("Убрать", () => this.send({ t: "card", title: "" }));
-    hideBtn.style.background = "#3a2020";
-    cardRow.append(showBtn, hideBtn);
-    this.root.appendChild(cardRow);
-
-    // --- оверлей: что показывать в эфире ---
-    this.section("Оверлей");
-    const wmRow = el("div", "");
-    wmRow.style.cssText = "display:flex;gap:8px;margin-bottom:8px";
-    const wmIn = document.createElement("input");
-    wmIn.placeholder = "Текст вотермарка";
-    wmIn.value = this.ov.watermark;
-    wmIn.style.cssText =
-      "flex:1;padding:10px;border:1px solid #4a5570;border-radius:8px;" +
-      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;box-sizing:border-box;min-width:0";
-    const wmApply = document.createElement("button");
-    wmApply.textContent = "✓";
-    wmApply.style.cssText =
-      "padding:0 18px;border:1px solid #5a6480;border-radius:8px;background:#1d1f2b;" +
-      "color:#e8ecf8;font:600 16px system-ui;cursor:pointer";
-    wmApply.addEventListener("click", () => {
-      this.ov.watermark = wmIn.value.trim() || "ZEP GAME";
-      this.saveOverlay();
-      this.send({ t: "overlay", patch: { watermark: this.ov.watermark } });
-    });
-    wmRow.append(wmIn, wmApply);
-    this.root.appendChild(wmRow);
-
-    const ovGrid = el("div", "");
-    ovGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
-    for (const t of OVERLAY_TOGGLES) {
-      const b = this.bigBtn("", () => this.toggleOverlay(t.key));
-      b.style.cssText += ";padding:12px";
-      this.ovBtns.set(t.key, b);
-      ovGrid.appendChild(b);
-    }
-    this.root.appendChild(ovGrid);
-    this.refreshOverlayUi();
-
-    // --- время суток ---
-    this.section("Время суток");
-    this.dayAutoBtn = this.bigBtn("Авто-ход суток: —", () => this.toggleDayAuto());
-    this.root.appendChild(this.dayAutoBtn);
-    const time = el("div", "");
-    time.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
-    for (const hh of [6, 9, 12, 15, 18, 21, 0]) {
-      time.appendChild(
-        this.cmdBtn(`${String(hh).padStart(2, "0")}:00`, { t: "time", hour: hh }, true),
-      );
-    }
-    this.root.appendChild(time);
-
-    // --- звук эфира ---
-    this.section("Звук эфира");
-    this.specVoiceBtn = this.bigBtn("Голос игроков в эфире: —", () => this.toggleSpecVoice());
-    this.root.appendChild(this.specVoiceBtn);
-    this.dmgNumbersBtn = this.bigBtn("Числа урона у мобов: —", () => this.toggleDmgNumbers());
-    this.root.appendChild(this.dmgNumbersBtn);
-
-    // Громкость музыки/эффектов — только у рендерящего спектатора (стрим),
-    // на игроков не влияет.
+    // --- звук эфира (часто) ---
+    this.section("Звук эфира", true);
+    const sndGrid = el("div", "");
+    sndGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
+    this.specVoiceBtn = this.bigBtn("Голос игроков: —", () => this.toggleSpecVoice());
+    this.dmgNumbersBtn = this.bigBtn("Числа урона: —", () => this.toggleDmgNumbers());
+    sndGrid.append(this.specVoiceBtn, this.dmgNumbersBtn);
+    this.box.appendChild(sndGrid);
+    // Громкость музыки/эффектов — только у рендерящего спектатора (стрим).
     const musicRow = this.volSlider("Музыка", 100, (v) => {
       this.musicVolLbl.textContent = `${v}%`;
       this.send({ t: "musicVol", v });
     });
     this.musicVolInp = musicRow.input;
     this.musicVolLbl = musicRow.label;
-    this.root.appendChild(musicRow.row);
-
-    const sfxRow = this.volSlider("Звуковые эффекты", 100, (v) => {
+    const sfxRow = this.volSlider("Эффекты", 100, (v) => {
       this.sfxVolLbl.textContent = `${v}%`;
       this.send({ t: "sfxVol", v });
     });
     this.sfxVolInp = sfxRow.input;
     this.sfxVolLbl = sfxRow.label;
-    this.root.appendChild(sfxRow.row);
-
     const eventRow = this.volSlider("Ивенты (рог/фанфары)", 100, (v) => {
       this.eventVolLbl.textContent = `${v}%`;
       this.send({ t: "eventVol", v });
     });
     this.eventVolInp = eventRow.input;
     this.eventVolLbl = eventRow.label;
-    this.root.appendChild(eventRow.row);
-
+    this.box.append(musicRow.row, sfxRow.row, eventRow.row);
+    const ttsRow = el("div", "");
+    ttsRow.style.cssText = "display:flex;gap:8px;align-items:center";
     this.ttsBtn = this.bigBtn("Озвучка чата: —", () => this.toggleTts());
-    this.root.appendChild(this.ttsBtn);
+    this.ttsBtn.style.flex = "1";
     this.ttsSel = document.createElement("select");
     this.ttsSel.style.cssText =
-      "width:100%;padding:10px;margin:2px 0 4px;border:1px solid #4a5570;border-radius:8px;" +
+      "flex:1;min-width:0;padding:12px 8px;border:1px solid #4a5570;border-radius:8px;" +
       "background:#1d1f2b;color:#e8ecf8;font:14px system-ui";
     for (const v of TTS_VOICES) {
       const o = document.createElement("option");
@@ -287,26 +191,84 @@ export class Dashboard {
       this.ttsSel.appendChild(o);
     }
     this.ttsSel.addEventListener("change", () => this.send({ t: "ttsVoice", ref: this.ttsSel.value }));
-    this.root.appendChild(this.ttsSel);
+    ttsRow.append(this.ttsBtn, this.ttsSel);
+    this.box.appendChild(ttsRow);
 
-    // --- админ-панель: редкие и необратимые действия, отдельно от съёмки ---
-    this.section("Админ-панель");
+    // --- время суток: авто + слайдер часа ---
+    this.section("Время суток", false);
+    this.dayAutoBtn = this.bigBtn("Авто-ход суток: —", () => this.toggleDayAuto());
+    this.box.appendChild(this.dayAutoBtn);
+    // Применяется сразу на каждом шаге ползунка (час меняется только при
+    // смене значения — сервер не заваливаем).
+    const hourRow = this.volSlider("Час", 12, (v) => {
+      this.hourLbl.textContent = `${String(v).padStart(2, "0")}:00`;
+      this.send({ t: "time", hour: v });
+    });
+    this.hourInp = hourRow.input;
+    this.hourLbl = hourRow.label;
+    this.hourInp.max = "23";
+    this.hourLbl.textContent = "12:00";
+    this.box.appendChild(hourRow.row);
+
+    // --- заставка: компактно ---
+    this.section("Заставка на экран", false);
+    const cardIn = this.textInput("Заголовок");
+    const cardSub = this.textInput("Подпись (необязательно)");
+    const cardRow = el("div", "");
+    cardRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px";
+    const showBtn = this.cmdLike("Показать", "#1c3a24", () => {
+      const t = cardIn.value.trim();
+      if (t) this.send({ t: "card", title: t, sub: cardSub.value.trim() || undefined, secs: 0 });
+    });
+    const hideBtn = this.cmdLike("Убрать", "#3a2020", () => this.send({ t: "card", title: "" }));
+    const inputs = el("div", "");
+    inputs.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+    inputs.append(cardIn, cardSub);
+    cardRow.append(showBtn, hideBtn);
+    cardRow.style.gridTemplateColumns = "1fr 1fr";
+    this.box.append(inputs, cardRow);
+
+    // --- оверлей: что показывать в эфире ---
+    this.section("Оверлей", false);
+    const wmRow = el("div", "");
+    wmRow.style.cssText = "display:flex;gap:8px;margin-bottom:8px";
+    const wmIn = this.textInput("Текст вотермарка");
+    wmIn.value = this.ov.watermark;
+    wmIn.style.flex = "1";
+    const wmApply = this.cmdLike("✓", "#1d1f2b", () => {
+      this.ov.watermark = wmIn.value.trim() || "ZEP GAME";
+      this.saveOverlay();
+      this.send({ t: "overlay", patch: { watermark: this.ov.watermark } });
+    });
+    wmApply.style.padding = "0 18px";
+    wmRow.append(wmIn, wmApply);
+    this.box.appendChild(wmRow);
+    const ovGrid = el("div", "");
+    ovGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+    for (const t of OVERLAY_TOGGLES) {
+      const b = this.bigBtn("", () => this.toggleOverlay(t.key));
+      b.style.cssText += ";padding:10px;margin:0;font-size:13px";
+      this.ovBtns.set(t.key, b);
+      ovGrid.appendChild(b);
+    }
+    this.box.appendChild(ovGrid);
+    this.refreshOverlayUi();
+
+    // --- админ-панель: редкие и необратимые действия ---
+    this.section("Админ-панель", false);
     const admin = el("div", "");
     admin.style.cssText =
-      "border:1px solid #6a3030;border-radius:10px;padding:10px;background:#241417";
+      "border:1px solid #6a3030;border-radius:10px;padding:8px;background:#241417";
     this.mobsBtn = this.bigBtn("Мобы: —", () => this.toggleMobs());
-    admin.appendChild(this.mobsBtn);
     this.specBtn = this.bigBtn("Камера стрима игрокам: —", () => this.toggleSpecVisible());
-    admin.appendChild(this.specBtn);
     this.specRaysBtn = this.bigBtn("Лучи направления камеры: —", () => this.toggleSpecRays());
-    admin.appendChild(this.specRaysBtn);
     const clearBtn = this.bigBtn("Очистить лут с земли", () => {
       if (!confirm("Убрать весь лежащий лут во всём мире? Действие необратимо.")) return;
       this.send({ t: "clearLoot" });
     });
     clearBtn.style.borderColor = "#8a3a3a";
-    admin.appendChild(clearBtn);
-    this.root.appendChild(admin);
+    admin.append(this.mobsBtn, this.specBtn, this.specRaysBtn, clearBtn);
+    this.box.appendChild(admin);
 
     void this.connect(key);
   }
@@ -379,15 +341,9 @@ export class Dashboard {
     if ((st.ttsOn !== 0) !== this.ttsOn) this.setTtsUi(st.ttsOn !== 0);
     if (st.ttsVoice && this.ttsSel.value !== st.ttsVoice) this.ttsSel.value = st.ttsVoice;
     const players = [...st.players.entries()].map(([id, p]) => ({ id, nick: p.nick }));
-    const mobs: { id: string; label: string }[] = [];
-    st.mobs.forEach((m, id) => {
-      // Босса тоже убрали из выбора — камеры «из глаз босса» больше нет:
-      // выбор бы просто молча ничего не делал (см. SpectatorCamera.resolveToken).
-      if (m.dead || m.kind === "shard" || m.kind === "boss") return;
-      const label = m.kind === "spitter" ? "Плевун" : "Слизень";
-      mobs.push({ id, label });
-    });
-    const sig = players.map((p) => p.id).join() + "|" + mobs.map((m) => m.id).join();
+    // Живые игроки сверху, боты ниже.
+    players.sort((a, b) => Number(a.id.startsWith("bot:")) - Number(b.id.startsWith("bot:")));
+    const sig = players.map((p) => p.id).join();
     if (sig === this.lastListSig) return;
     this.lastListSig = sig;
 
@@ -401,13 +357,13 @@ export class Dashboard {
       // телефоне. Ник отдельной строкой, кнопки — сеткой с переносом.
       const block = el("div", "");
       block.style.cssText =
-        "margin:8px 0 12px;padding:8px;border:1px solid #2a2f40;border-radius:10px";
+        "margin:6px 0;padding:6px 8px;border:1px solid #2a2f40;border-radius:10px";
       const name = el("div", `${bot ? "\u{1F916}" : "\u{1F3AE}"} ${p.nick}`);
       name.style.cssText =
         "font-weight:600;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       const grid = el("div", "");
       grid.style.cssText =
-        "display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px";
+        "display:grid;grid-template-columns:repeat(4,1fr);gap:4px";
       const cams: [string, string][] = [
         ["орбита", "orbitPlayer"],
         ["из глаз", "eyePlayer"],
@@ -424,18 +380,6 @@ export class Dashboard {
       this.listEl.appendChild(block);
     }
 
-    // Выпадающий список мобов — сохраняем выбор, если моб ещё жив.
-    const prev = this.mobSel.value;
-    this.mobSel.innerHTML = "";
-    for (const m of mobs) {
-      const opt = document.createElement("option");
-      opt.value = m.id;
-      opt.textContent = m.label;
-      this.mobSel.appendChild(opt);
-    }
-    if (mobs.some((m) => m.id === prev)) this.mobSel.value = prev;
-    this.mobEmptyEl.style.display = mobs.length ? "none" : "";
-    this.mobSel.parentElement!.style.display = mobs.length ? "" : "none";
   }
 
   // ---- ui-хелперы ----
@@ -556,18 +500,19 @@ export class Dashboard {
     this.ttsOn = on;
     this.ttsBtn.textContent = `Озвучка чата: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.ttsBtn.style.background = on ? "#1c3a24" : "#3a2020";
-    this.ttsSel.style.display = on ? "" : "none";
+    this.ttsSel.disabled = !on;
+    this.ttsSel.style.opacity = on ? "1" : ".5";
   }
 
   private setSpecVoiceUi(on: boolean): void {
     this.specVoice = on;
-    this.specVoiceBtn.textContent = `Голос игроков в эфире: ${on ? "ВКЛ (слышно)" : "ВЫКЛ"}`;
+    this.specVoiceBtn.textContent = `Голос игроков: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.specVoiceBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
   private setDmgNumbersUi(on: boolean): void {
     this.dmgNumbers = on;
-    this.dmgNumbersBtn.textContent = `Числа урона у мобов: ${on ? "ВКЛ" : "ВЫКЛ"}`;
+    this.dmgNumbersBtn.textContent = `Числа урона: ${on ? "ВКЛ" : "ВЫКЛ"}`;
     this.dmgNumbersBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
@@ -577,18 +522,60 @@ export class Dashboard {
     this.autoBtn.style.background = on ? "#1c3a24" : "#3a2020";
   }
 
-  private section(title: string): void {
-    const s = el("div", title);
-    s.style.cssText = "margin:16px 0 8px;font:11px/1 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:#8c96ad";
-    this.root.appendChild(s);
+  /** Сворачиваемый раздел; `open` — развёрнут по умолчанию (запоминается). */
+  private section(title: string, open: boolean): void {
+    const d = document.createElement("details");
+    const lsKey = `zepDashSec:${title}`;
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(lsKey);
+    } catch {
+      /* без стораджа — дефолт */
+    }
+    d.open = saved === null ? open : saved === "1";
+    d.addEventListener("toggle", () => {
+      try {
+        localStorage.setItem(lsKey, d.open ? "1" : "0");
+      } catch {
+        /* приватный режим */
+      }
+    });
+    d.style.cssText = "margin:10px 0;border-top:1px solid #23273a;padding-top:6px";
+    const sum = document.createElement("summary");
+    sum.textContent = title;
+    sum.style.cssText =
+      "cursor:pointer;padding:8px 0;font:600 12px/1 ui-monospace,monospace;letter-spacing:.08em;" +
+      "text-transform:uppercase;color:#aab3c8";
+    d.appendChild(sum);
+    this.root.appendChild(d);
+    this.box = d;
+  }
+
+  private textInput(placeholder: string): HTMLInputElement {
+    const i = document.createElement("input");
+    i.placeholder = placeholder;
+    i.style.cssText =
+      "width:100%;min-width:0;padding:10px;border:1px solid #4a5570;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:14px system-ui;box-sizing:border-box";
+    return i;
+  }
+
+  private cmdLike(text: string, bg: string, on: () => void): HTMLButtonElement {
+    const b = document.createElement("button");
+    b.textContent = text;
+    b.style.cssText =
+      `padding:10px;border:1px solid #4a5570;border-radius:8px;background:${bg};` +
+      "color:#e8ecf8;font:600 14px system-ui;cursor:pointer";
+    b.addEventListener("click", on);
+    return b;
   }
 
   private bigBtn(text: string, on: () => void): HTMLButtonElement {
     const b = document.createElement("button");
     b.textContent = text;
     b.style.cssText =
-      "width:100%;padding:14px;margin:4px 0;border:1px solid #5a6480;border-radius:8px;" +
-      "background:#1d1f2b;color:#e8ecf8;font:600 15px system-ui;cursor:pointer";
+      "width:100%;padding:11px 8px;margin:3px 0;border:1px solid #5a6480;border-radius:8px;" +
+      "background:#1d1f2b;color:#e8ecf8;font:600 14px system-ui;cursor:pointer";
     b.addEventListener("click", on);
     return b;
   }

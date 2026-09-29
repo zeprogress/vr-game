@@ -59,6 +59,7 @@ import {
   type WarehouseActMsg,
   type TtsPlayMsg,
   type LootItem,
+  type PickupFeedMsg,
 } from "#shared/net/messages";
 import {
   ADMIN_NICK,
@@ -137,7 +138,6 @@ import {
   plainWeaponInstance,
   scrapValue,
   takeOne,
-  tierRu,
   weaponAffix,
   weaponDef,
   weaponKey,
@@ -3220,8 +3220,14 @@ export class ZoneRoom extends Room<ZoneState> {
   ): void {
     if (tier === "base") return;
     const name = weaponDef(cls, tier).name;
-    const affixes = instance?.affixes.length ? instance.affixes.map(affixLabel).join(", ") : "без роллов";
-    this.reply(`${nick} подобрал ${name} (${tierRu(tier)}) — ${affixes}`);
+    const affixes = instance?.affixes.length ? instance.affixes.map(affixLabel).join(", ") : "";
+    // Не в чат Twitch (засорял) — строкой в кил-фид спектатора.
+    this.broadcast(MSG.pickupFeed, {
+      nick,
+      item: name,
+      tier: tier === "legendary" ? "legendary" : "gold",
+      aff: affixes,
+    } satisfies PickupFeedMsg);
   }
 
   /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для "!weapons"/"!equip". */
