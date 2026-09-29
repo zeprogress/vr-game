@@ -21,7 +21,7 @@ const OVERLAY_TOGGLES: OverlayToggle[] = [
   { key: "online", label: "Список онлайн" },
   { key: "watching", label: "«Смотрим»" },
   { key: "hp", label: "HP цели" },
-  { key: "feed", label: "Кил-фид и находки" },
+  { key: "feed", label: "Находки оружия" },
   { key: "top", label: "Топ героев" },
 ];
 
