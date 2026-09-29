@@ -10,6 +10,10 @@ import {
   SPORE,
   BLINK,
   PULL,
+  CHARGE,
+  WORLD,
+  REFLECT,
+  WARCRY,
   BOSS_ADAPT,
   eliteXpAt,
   MAGE_SPELL,
@@ -167,7 +171,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "warcry";
   x: number;
   z: number;
   /** Второй конец (хват щупальцами: от спрута x2/z2 к цели x/z). */
@@ -288,7 +292,7 @@ class Mob {
   raging = false;
   get enraged(): boolean {
     if (this.dead) return false;
-    if (this.raging) return true;
+    if (this.raging || this.cryRageT > 0) return true;
     return this.kind === "boss" && this.hp / this.maxHp < BOSS.enrageAt;
   }
   /** Готовность слэма/рывка 0..1 (для телеграфа на клиенте). */
@@ -356,6 +360,24 @@ class Mob {
   readonly regen: number;
   readonly puller: boolean;
   private pullCd = 3;
+  /** 36 ур.: таран / щит отражения / боевой клич (см. CHARGE, REFLECT, WARCRY). */
+  readonly charger: boolean;
+  readonly reflector: boolean;
+  readonly warcrier: boolean;
+  private chargeCd = 3;
+  private chargeWindupT = 0;
+  private chargeFromX = 0;
+  private chargeFromZ = 0;
+  private chargeToX = 0;
+  private chargeToZ = 0;
+  private reflectCd = 4;
+  /** >0 — щит отражения держится (ZoneSim.hitMob отражает урон). */
+  reflectT = 0;
+  private cryCd = 5;
+  /** ZoneSim прочтёт и сбросит: вождь издал клич — полечить/разъярить соседей. */
+  cryReq = false;
+  /** >0 — ярость от чужого клича (см. enraged). */
+  cryRageT = 0;
   private pullWindupT = 0;
   private pullTarget: string | null = null;
   /** Адаптация Багрового (BOSS_ADAPT): под какой уровень сейчас настроен и множитель его урона. */
@@ -432,6 +454,9 @@ class Mob {
       dodge?: number;
       regen?: number;
       puller?: boolean;
+      charger?: boolean;
+      reflector?: boolean;
+      warcrier?: boolean;
     } = {},
   ) {
     this.model = opts.model ?? "";
@@ -483,6 +508,9 @@ class Mob {
     this.dodge = opts.dodge ?? 0;
     this.regen = opts.regen ?? 0;
     this.puller = opts.puller ?? false;
+    this.charger = opts.charger ?? false;
+    this.reflector = opts.reflector ?? false;
+    this.warcrier = opts.warcrier ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
   }
@@ -836,8 +864,87 @@ class Mob {
       }
     }
 
-    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет).
-    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0;
+    // Адский демон: полоса к герою, телеграф — и таран по ней.
+    if (this.charger) {
+      if (this.chargeCd > 0) this.chargeCd -= dt;
+      if (this.chargeWindupT > 0) {
+        this.chargeWindupT -= dt;
+        if (this.chargeWindupT <= 0) {
+          const ax = this.chargeFromX;
+          const az = this.chargeFromZ;
+          const lx = this.chargeToX - ax;
+          const lz = this.chargeToZ - az;
+          const len2 = lx * lx + lz * lz || 1;
+          for (const p of players) {
+            const t = Math.max(0, Math.min(1, ((p.x - ax) * lx + (p.z - az) * lz) / len2));
+            const off = Math.hypot(p.x - (ax + lx * t), p.z - (az + lz * t));
+            if (off > CHARGE.halfWidth) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * CHARGE.strikeMul,
+              fromX: ax + lx * t,
+              fromZ: az + lz * t,
+              projectile: false,
+              byMob: this.id,
+              stunSec: CHARGE.stunSec,
+              knockback: CHARGE.knockback,
+            });
+          }
+          this.x = this.chargeToX;
+          this.z = this.chargeToZ;
+          this.vx = 0;
+          this.vz = 0;
+          this.y = terrainHeight(this.x, this.z);
+          this.yaw = Math.atan2(lx, lz);
+          this.attackCd = this.atkCooldown;
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.fx.push({ k: "chargeHit", x: ax, z: az, x2: this.x, z2: this.z });
+        }
+      } else if (chasing && np && !busy && this.chargeCd <= 0 && dist > CHARGE.minDist && dist < CHARGE.maxDist) {
+        const ux = (np.x - this.x) / dist;
+        const uz = (np.z - this.z) / dist;
+        let tx = np.x + ux * CHARGE.overshoot;
+        let tz = np.z + uz * CHARGE.overshoot;
+        // Не вылетать за край мира.
+        const lim = WORLD.playRadius - 4;
+        const r = Math.hypot(tx, tz);
+        if (r > lim) {
+          tx *= lim / r;
+          tz *= lim / r;
+        }
+        this.chargeFromX = this.x;
+        this.chargeFromZ = this.z;
+        this.chargeToX = tx;
+        this.chargeToZ = tz;
+        this.chargeWindupT = CHARGE.windup;
+        this.chargeCd = CHARGE.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "chargeMark", x: this.x, z: this.z, x2: tx, z2: tz, d: CHARGE.windup });
+      }
+    }
+    // Ледяной демон: щит отражения (сам урон отражает ZoneSim.hitMob).
+    if (this.reflector) {
+      if (this.reflectT > 0) this.reflectT = Math.max(0, this.reflectT - dt);
+      if (this.reflectCd > 0) this.reflectCd -= dt;
+      if (chasing && this.reflectT <= 0 && this.reflectCd <= 0) {
+        this.reflectT = REFLECT.duration;
+        this.reflectCd = REFLECT.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "reflectOn", x: this.x, z: this.z, d: REFLECT.duration });
+      }
+    }
+    // Костяной вождь: боевой клич (соседей лечит/разъяряет ZoneSim — ему видны все мобы).
+    if (this.cryRageT > 0) this.cryRageT = Math.max(0, this.cryRageT - dt);
+    if (this.warcrier) {
+      if (this.cryCd > 0) this.cryCd -= dt;
+      if (chasing && !busy && this.cryCd <= 0) {
+        this.cryCd = WARCRY.cooldown * (0.85 + Math.random() * 0.3);
+        this.cryReq = true;
+        this.attackSeq = (this.attackSeq + 1) & 0xffff;
+        this.fx.push({ k: "warcry", x: this.x, z: this.z, d: WARCRY.rageSec });
+      }
+    }
+
+    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится).
+    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1518,9 +1625,12 @@ export class ZoneSim {
     for (const camp of MOB_CAMPS) {
       const def = ELITE_MOBS[camp.type];
       for (let i = 0; i < camp.count; i++) {
-        const a = (i / camp.count) * Math.PI * 2 + camp.x;
+        // jitter — кольцо «неровное»: сдвиг по углу (доля шага между соседями)
+        // и по радиусу, чтобы мобы не стояли идеальным кругом.
+        const j = camp.jitter ?? 0;
+        const a = ((i + (Math.random() - 0.5) * j) / camp.count) * Math.PI * 2 + camp.x;
         const r = camp.ring !== undefined
-          ? camp.spread * (camp.ring + (Math.random() - 0.5) * 0.1)
+          ? camp.spread * (camp.ring * (1 + (Math.random() - 0.5) * j) + (Math.random() - 0.5) * 0.1)
           : camp.spread * (0.35 + Math.random() * 0.65);
         const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
         const m = new Mob(def.kind, x, z, {
@@ -1557,6 +1667,9 @@ export class ZoneSim {
           dodge: def.dodge,
           regen: def.regen,
           puller: def.puller,
+          charger: def.charger,
+          reflector: def.reflector,
+          warcrier: def.warcrier,
         });
         this.mobs.set(m.id, m);
       }
@@ -1696,6 +1809,21 @@ export class ZoneSim {
       this.mobs.set(revived.id, revived);
     }
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    // Отражённый щитом Ледяного демона урон (накоплен в hitMob).
+    if (this.reflectHits.length) {
+      hits.push(...this.reflectHits);
+      this.reflectHits.length = 0;
+    }
+    // Боевой клич Костяного вождя: лечит и разъяряет мобов вокруг (и себя).
+    for (const m of this.mobs.values()) {
+      if (!m.cryReq) continue;
+      m.cryReq = false;
+      for (const o of this.mobs.values()) {
+        if (o.dead || Math.hypot(o.x - m.x, o.z - m.z) > WARCRY.radius) continue;
+        o.hp = Math.min(o.maxHp, o.hp + o.maxHp * WARCRY.healFrac);
+        o.cryRageT = WARCRY.rageSec;
+      }
+    }
     this.tickBurning(dt);
     this.separateMobs();
     for (const d of this.dummies.values()) d.tick(dt);
@@ -1852,6 +1980,8 @@ export class ZoneSim {
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
   readonly dmgHits: { x: number; y: number; z: number; dmg: number }[] = [];
   /** Моб увернулся от удара героя — ZoneRoom покажет «MISS» над мобом. */
+  /** Отражённый щитом урон — уходит в hits на следующем тике. */
+  private readonly reflectHits: PlayerHit[] = [];
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
@@ -1902,6 +2032,17 @@ export class ZoneSim {
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
+    // Щит Ледяного демона: часть снятого урона летит обратно в атакующего.
+    if (m.reflectT > 0 && attacker && dealt > 0 && !dot) {
+      this.reflectHits.push({
+        target: attacker,
+        dmg: dealt * REFLECT.frac,
+        fromX: m.x,
+        fromZ: m.z,
+        projectile: false,
+        byMob: m.id,
+      });
+    }
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
       if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);

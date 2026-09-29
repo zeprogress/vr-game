@@ -88,7 +88,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BLINK, BOSS, BOT, PLAYER, PULL, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, WARCRY, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -2199,6 +2199,21 @@ export class Game {
       case "blinkIn":
         this.skillFx.wraithPuff(x, y, z, 0.6, true);
         this.sfx.at({ x, y, z }, () => this.sfx.swordHit());
+        break;
+      case "chargeMark":
+      case "chargeHit":
+        // Адский демон: полоса тарана — телеграф, потом вспышка по всей полосе.
+        this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, k === "chargeMark" ? (d ?? CHARGE.windup) : 0.4, k === "chargeHit");
+        if (k === "chargeHit") this.sfx.at({ x: x2in ?? x, y, z: z2in ?? z }, () => this.sfx.groundBash());
+        break;
+      case "reflectOn":
+        // Ледяной демон: синий щит на всё время отражения.
+        this.skillFx.wraithPuff(x, y + 0.6, z, d ?? REFLECT.duration, false);
+        break;
+      case "warcry":
+        // Костяной вождь: клич — волна по округе (соседи лечатся и звереют).
+        this.healAura.burst(x, y, z, WARCRY.radius, 1.2);
+        this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "stunBash":
         this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);

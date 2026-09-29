@@ -429,6 +429,12 @@ export interface EliteMobDef {
    * Небесный спрут: хват щупальцами — телеграф-щупальце к герою на дистанции,
    * потом рывок героя к спруту + оглушение + удар (см. `PULL`).
    */
+  /** 36 ур. Адский демон: огненный таран по линии (см. CHARGE). */
+  charger?: boolean;
+  /** 36 ур. Ледяной демон: щит, отражающий часть урона атакующему (см. REFLECT). */
+  reflector?: boolean;
+  /** 36 ур. Костяной вождь: боевой клич — лечит и разъяряет соседей (см. WARCRY). */
+  warcrier?: boolean;
   puller?: boolean;
 }
 
@@ -542,6 +548,72 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },
+  // ---- Зона 36 ур. — для героев 33+. Опыт ×2.5 от 33 ур., легендарки
+  // в 2–3 раза чаще, чем у колосса. Модели — ещё не бывавшие в открытом мире.
+  //
+  // Адский демон: крупный (≈3 м), бьёт больно. Метит линию к герою и через
+  // телеграф проносится по ней тараном — всех на пути сбивает и оглушает.
+  // Уходи вбок с полосы!
+  infernoDemon: {
+    model: "monDemon", name: "Адский демон", level: 36, kind: "slime",
+    hp: 7200, dmgMul: 6, xp: 1200000, scaleMul: 3.2, tint: null,
+    physArmor: 0.2, charger: true, meleeReach: 3.4, attackCooldown: 1.9,
+    legendaryChance: 0.035,
+  },
+  // Ледяной демон: время от времени покрывается ледяным щитом — пока он
+  // держится, часть урона отражается в атакующего. Под щитом — не бей
+  // (или бей магией издалека, отражение то же — терпи).
+  frostDemon: {
+    model: "monBlueDemon", name: "Ледяной демон", level: 36, kind: "slime",
+    hp: 5600, dmgMul: 5, xp: 960000, scaleMul: 2.8, tint: null,
+    reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
+    legendaryChance: 0.03,
+  },
+  // Костяной вождь: ходит стаей и боевым кличем лечит соседних вождей и
+  // приводит их в ярость (быстрее и больнее бьют). Убивай по одному,
+  // оттаскивая от стаи, или перебивай всех разом.
+  boneChief: {
+    model: "monOrcSkull", name: "Костяной вождь", level: 36, kind: "slime",
+    hp: 6200, dmgMul: 5.5, xp: 1080000, scaleMul: 3, tint: null,
+    physArmor: 0.15, rangedArmor: 0.2, warcrier: true, attackCooldown: 1.7,
+    legendaryChance: 0.03,
+  },
+};
+
+/** Адский демон: огненный таран (см. EliteMobDef.charger). */
+export const CHARGE = {
+  /** С какой дистанции до цели начинает таран. */
+  minDist: 5,
+  maxDist: 20,
+  /** Длина пробега — до цели и ещё столько за неё. */
+  overshoot: 5,
+  cooldown: 10,
+  /** Телеграф: полоса на земле, с. */
+  windup: 1.2,
+  /** Ширина полосы (полуширина — от оси). */
+  halfWidth: 2.2,
+  /** Удар тарана — во столько раз сильнее обычного. */
+  strikeMul: 1.8,
+  stunSec: 1.2,
+  knockback: 12,
+};
+
+/** Ледяной демон: щит отражения (см. EliteMobDef.reflector). */
+export const REFLECT = {
+  cooldown: 13,
+  duration: 3.5,
+  /** Доля снятого с демона урона, которая прилетает атакующему. */
+  frac: 0.45,
+};
+
+/** Костяной вождь: боевой клич (см. EliteMobDef.warcrier). */
+export const WARCRY = {
+  radius: 16,
+  cooldown: 15,
+  /** Лечит себя и соседей-мобов на эту долю их макс. HP. */
+  healFrac: 0.12,
+  /** Столько секунд соседи в ярости (быстрее и больнее, как босс). */
+  rageSec: 6,
 };
 
 /** Грибной колосс: ядовитое облако под героем (см. EliteMobDef.sporeCaster). */
@@ -634,6 +706,8 @@ export const MOB_CAMPS: {
   spread: number;
   /** Задано — мобы стоят по кольцу на этой доле spread (ровно, не кучей), а не в случайных точках круга. */
   ring?: number;
+  /** 0..1 — насколько кольцо неровное (сдвиг по углу и радиусу). */
+  jitter?: number;
 }[] = [
   // Расставлены по силе от лагеря (HUB на (-55,-55)): слабые рядом,
   // сильные — дальше. Дистанция от лагеря указана в комментарии.
@@ -647,9 +721,13 @@ export const MOB_CAMPS: {
   { x: -13, z: -80, type: "golem", count: 24, spread: 32 }, // ур.26 (было 15/28 — просили больше)
   // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
   // боты 30+ выбирают один случайно (или по !camp <моб>).
-  { x: 110, z: -110, type: "mushColossus", count: 5, spread: 34, ring: 0.85 }, // ур.33, юго-восток
+  { x: 110, z: -110, type: "mushColossus", count: 5, spread: 34, ring: 0.85, jitter: 0.35 }, // ур.33, юго-восток
   { x: -115, z: 110, type: "boneWraith", count: 12, spread: 42 }, // ур.33, северо-запад
   { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
+  // Зона ур.36 — три лагеря по краям карты, подальше от лагерей 33 ур.
+  { x: 20, z: 140, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север
+  { x: -140, z: -10, type: "frostDemon", count: 6, spread: 32 }, // ур.36, запад
+  { x: 40, z: -140, type: "boneChief", count: 6, spread: 22 }, // ур.36, юг
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
@@ -809,9 +887,9 @@ export const AFFIX = {
  */
 export const DROP_CHANCE = {
   /** Обычный моб (не элитный, не ивентовый) — золото, легендарки не бывает. */
-  regularGold: 0.0015,
+  regularGold: 0.01, // 1% (2026-09-29, было 0.0015)
   /** Элитный лагерный моб (ELITE_MOBS) — заметно щедрее обычного. */
-  eliteGold: 0.01,
+  eliteGold: 0.02, // ×2 (2026-09-29, было 0.01)
   eliteLegendary: 0.002,
   /** Мировой босс — доп. шанс легендарки ПОВЕРХ золота (см. LOOT.boss в items.ts). */
   bossLegendary: 0.01,
@@ -938,7 +1016,7 @@ export const TWITCH_CHANNEL = "zeprogress";
 export const STREAM_NICKS = ["zeprogress", "zep"];
 export const BOT = {
   /** Радиус от точки спавна зоны, дальше которого бот не заходит и не бьёт. */
-  zoneRadius: 34,
+  zoneRadius: 44, // было 34 — боты слишком мало видели вокруг
   moveSpeed: 3.4, // м/с — базовый (fallback); фактический = moveSpeedFor(level,agi)*speedFactor
   /** Бот чуть медленнее живого игрока тех же статов — так читаемее на стриме. */
   speedFactor: 0.82,
