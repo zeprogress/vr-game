@@ -1,3 +1,4 @@
+import { spawnHubNpc } from "./hub/HubNpc";
 import type { Scene } from "@babylonjs/core/scene";
 import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -187,6 +188,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
 
   // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
   const hub = buildHubBlockout(scene);
+  // Трактирщик у стойки (лавка за жетоны ◈) — лицом к костру.
+  {
+    const t = HUB.zones.tavern;
+    spawnHubNpc(scene, "charViking", t.x, t.z, HUB.campfire.pos.x, HUB.campfire.pos.z, "Трактирщик ◈");
+    const h = HUB.zones.hunter;
+    spawnHubNpc(scene, "charCowboy", h.x, h.z, HUB.campfire.pos.x, HUB.campfire.pos.z, "Охотник");
+  }
   // Охотничья башня — только визуальная веха у угла босса (сам ивент/бой —
   // отдельная комната Colyseus, к этому мешу не привязан).
   const towerProp = buildTowerProp(scene);

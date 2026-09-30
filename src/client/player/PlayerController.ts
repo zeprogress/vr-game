@@ -116,8 +116,10 @@ export class PlayerController {
   get maxHp(): number {
     return this.prog?.maxHp ?? PLAYER_HP.max;
   }
+  /** Множитель бега от баффов (свиток ветра). Ставит Game по состоянию с сервера. */
+  speedMul = 1;
   private get speed(): number {
-    return this.prog?.moveSpeed ?? PLAYER.runSpeed;
+    return (this.prog?.moveSpeed ?? PLAYER.runSpeed) * this.speedMul;
   }
 
   /** Сколько секунд прошло с последнего урона. */

@@ -264,9 +264,9 @@ export class PcHud {
   }
 
   /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */
-  setBuffs(eventSecs: number, campSecs: number): void {
+  setBuffs(eventSecs: number, campSecs: number, xpSecs = 0, windSecs = 0): void {
     const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    const sig = `${eventSecs}|${campSecs}`;
+    const sig = `${eventSecs}|${campSecs}|${xpSecs}|${windSecs}`;
     if (this.lastSig.buffs === sig) return;
     this.lastSig.buffs = sig;
     this.buffsEl.innerHTML = "";
@@ -277,6 +277,8 @@ export class PcHud {
     };
     if (eventSecs > 0) chip("✨", mmss(eventSecs), "Благословение события: ×2 опыт и урон", "ev");
     if (campSecs > 0) chip("🔥", mmss(campSecs), "Тепло костра: входящий урон −20%", "camp");
+    if (xpSecs > 0) chip("📜", mmss(xpSecs), "Свиток мудрости: ×2 опыта", "ev");
+    if (windSecs > 0) chip("🪶", mmss(windSecs), "Свиток ветра: +20% скорости бега", "camp");
   }
 
   /** Свободные очки атрибутов: 0 — значок спрятан. */

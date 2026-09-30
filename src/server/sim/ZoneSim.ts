@@ -1,3 +1,4 @@
+import { QUEST } from "#shared/quests";
 import {
   AFFIX,
   BOSS,
@@ -74,6 +75,8 @@ const OBSTACLES: { x: number; z: number; r: number }[] = [
 
 /** Насколько далеко вперёд моб смотрит, выбирая куда прыгнуть. */
 const TREE_LOOKAHEAD = 3.5;
+/** Вожак лагеря возрождается реже обычных мобов, с. */
+const CHAMP_RESPAWN = 120;
 
 /**
  * Выталкивает точку спавна моба за пределы лагеря (HUB): в безопасной зоне
@@ -418,6 +421,9 @@ class Mob {
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
   readonly eliteName: string;
   readonly eliteLevel: number;
+  readonly campType: string;
+  readonly champ: boolean;
+  private readonly respawnSec: number;
   /** true — моб парит и не прыгает (пчела). */
   readonly flying: boolean;
   /** Подъём хитбокса над корнем, м (см. MobDef.visLift). */
@@ -471,8 +477,16 @@ class Mob {
       spiker?: boolean;
       healer?: boolean;
       freezer?: boolean;
+      /** Ключ ELITE_MOBS лагеря, откуда моб (для заданий доски). */
+      campType?: string;
+      /** Вожак лагеря (задание «Вожак»): сильнее, крупнее, реже возрождается. */
+      champ?: boolean;
+      respawnSec?: number;
     } = {},
   ) {
+    this.campType = opts.campType ?? "";
+    this.champ = opts.champ ?? false;
+    this.respawnSec = opts.respawnSec ?? MOB.respawn;
     this.model = opts.model ?? "";
     this.eliteName = opts.name ?? "";
     this.eliteLevel = opts.level ?? 0;
@@ -630,7 +644,7 @@ class Mob {
       this.burningT = 0;
       this.burnDps = 0;
       this.raging = false;
-      this.respawnIn = this.kind === "boss" ? BOSS.respawn : MOB.respawn;
+      this.respawnIn = this.kind === "boss" ? BOSS.respawn : this.respawnSec;
       return true;
     }
     return false;
@@ -1672,6 +1686,8 @@ export class ZoneSim {
   readonly eventMobs = new Set<string>();
   /** Кто нанёс урон мобам события — участники (для баффа за победу). */
   readonly eventDamagers = new Set<string>();
+  /** Кто больше всех бил убитого дракона охоты — ZoneRoom забирает (титулы). */
+  readonly dragonTop: string[] = [];
   /**
    * Уровень героя по его id (sessionId живого игрока или "bot:<ник>") — Sim
    * сам уровней не хранит (это PlayerState в ZoneRoom), комната подставляет
@@ -1716,14 +1732,19 @@ export class ZoneSim {
           ? camp.spread * (camp.ring * (1 + (Math.random() - 0.5) * j) + (Math.random() - 0.5) * 0.1)
           : camp.spread * (0.35 + Math.random() * 0.65);
         const [x, z] = awayFromHub(camp.x + Math.cos(a) * r, camp.z + Math.sin(a) * r);
+        // Первый моб каждого лагеря — вожак (цель задания «Вожак» с доски).
+        const champ = i === 0 && !camp.noChamp ? QUEST.champ : null;
         const m = new Mob(def.kind, x, z, {
+          campType: camp.type,
+          champ: !!champ,
+          respawnSec: champ ? CHAMP_RESPAWN : undefined,
           model: def.model,
-          name: def.name,
+          name: champ ? `Вожак — ${def.name}` : def.name,
           level: def.level,
-          hp: def.hp,
-          dmgMul: def.dmgMul,
-          scaleMul: def.scaleMul,
-          xp: def.xp,
+          hp: def.hp * (champ?.hpMul ?? 1),
+          dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
+          scaleMul: (def.scaleMul ?? 1) * (champ?.scaleMul ?? 1),
+          xp: def.xp * (champ?.xpMul ?? 1),
           flying: def.flying,
           visLift: def.visLift,
           rangedArmor: def.rangedArmor,
@@ -2069,7 +2090,7 @@ export class ZoneSim {
   private readonly reflectHits: PlayerHit[] = [];
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
-  readonly mobKills: { owner: string; kind: MobKind; name: string }[] = [];
+  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean }[] = [];
 
   /** Урон по мобу. Возвращает kind добитого моба (null — не убит). */
   /** Тик горения (врождённый поджог мага): DoT по всем тлеющим мобам, опыт — поджёгшему. */
@@ -2152,6 +2173,8 @@ export class ZoneSim {
     // иначе при переборе (один удар и ниже порога, и в 0 HP разом) раскол не
     // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
     if (m.checkSplitThreshold(hpBefore)) {
+      // Вожак-голем «побеждён», когда раскололся — задание засчитываем сразу.
+      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true });
       this.splitGolem(m);
       return null;
     }
@@ -2164,7 +2187,7 @@ export class ZoneSim {
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются
       if (kind !== "shard") this.splitMobXp(m);
       if (attacker && kind !== "shard") {
-        this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
+        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });
       }
       return kind;
     } else {
@@ -2182,7 +2205,7 @@ export class ZoneSim {
       this.splitMobXp(m);
     }
     if (attacker) {
-      this.mobKills.push({ owner: attacker, kind, name: m.eliteName });
+      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });
     }
     // Осколок голема сам НЕ возрождается (иначе за игровую сессию все
     // големы лагеря необратимо усыхали бы до вечных мелких копий — баг,
@@ -2274,6 +2297,10 @@ export class ZoneSim {
       total += c.dmg;
     }
     m.contrib.clear();
+    // Дракон охоты на элиту: кто нанёс больше всех урона (титул «Драконоборец»).
+    if (m.eliteName && m.eliteName === ELITE_MOBS.worldElite.name && parts.length) {
+      this.dragonTop.push(parts.reduce((a, b) => (b[1] > a[1] ? b : a))[0]);
+    }
     if (total <= 0 || pool <= 0) return;
     for (const [owner, d] of parts) {
       this.mobXpShare.push({ owner, xp: (pool * d) / total });
@@ -2305,6 +2332,9 @@ export class ZoneSim {
       homeZ: m.homeZ,
       reviveSec: m.splitReviveSec,
       opts: {
+        campType: m.campType,
+        champ: m.champ,
+        respawnSec: m.champ ? CHAMP_RESPAWN : undefined,
         model: m.model,
         name: m.eliteName,
         level: m.eliteLevel,
@@ -2336,6 +2366,7 @@ export class ZoneSim {
       const x = m.x + Math.cos(a) * 1.3;
       const z = m.z + Math.sin(a) * 1.3;
       const child = new Mob(m.kind, x, z, {
+        campType: m.campType,
         model: m.model,
         // Другое имя, не как у родителя — по просьбе (совпадение имён у
         // живого голема и его же осколков подозревали в путанице логики).

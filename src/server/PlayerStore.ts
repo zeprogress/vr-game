@@ -6,6 +6,7 @@ import { PLAYER, RESPAWN } from "#shared/constants";
 import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
+import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 export interface PlayerRecord extends SaveMsg, Progress {
@@ -49,6 +50,24 @@ export interface PlayerRecord extends SaveMsg, Progress {
   equippedWeaponId?: { left: string | null; right: string | null };
   /** Секрет для веб-страницы инвентаря ("!inv") — отдельный от guestToken/nick:, только на чтение своего склада. */
   viewToken?: string;
+  /** Доска заданий дня (квесты) — прогресс и что уже сдано. */
+  quests?: QuestSave;
+  /** Сюжет Охотника и недельный контракт. */
+  story?: StorySave;
+  weekly?: WeeklySave;
+  /** Полученные титулы и выбранный для показа под ником. */
+  titles?: string[];
+  title?: string;
+  /** Счётчики заслуг для титулов. */
+  fishTotal?: number;
+  bossKills?: number;
+  dragonTop?: number;
+  contracts?: number;
+  /** Жетоны заданий ◈ — валюта лавки трактирщика. */
+  tokens?: number;
+  /** Свитки: до какого момента действуют (мс с эпохи) — переживают перезаход. */
+  scrollXpUntil?: number;
+  scrollWindUntil?: number;
   updatedAt: number;
 }
 

@@ -119,6 +119,7 @@ function tick(): void {
     watchInv: c?.wi ?? null,
     watchBuffs: c?.wb ?? null,
     watchLevel: c?.wl ?? null,
+    watchTitle: c?.wt ?? null,
     watchAttrs: c?.wa ?? null,
     shotLabel: c?.sl ?? "",
     targetHp: c?.hp
@@ -126,6 +127,7 @@ function tick(): void {
       : null,
     online,
     towerStatus,
+    chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
   });
 }
 

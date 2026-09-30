@@ -704,6 +704,58 @@ export function buildHubBlockout(scene: Scene): HubBlockout {
     }
   }
 
+  // --- 13б. Доска заданий (квесты дня): столбы, щит с листками ---
+  {
+    const b = HUB.zones.questBoard;
+    const gy0 = groundY(b.x, b.z);
+    // Лицом к костру.
+    const yaw = Math.atan2(HUB.campfire.pos.x - b.x, HUB.campfire.pos.z - b.z);
+    const at = (lx: number, y: number, lz: number, m: Mesh): Mesh => {
+      m.position.set(b.x + lx * Math.cos(yaw) + lz * Math.sin(yaw), gy0 + y, b.z - lx * Math.sin(yaw) + lz * Math.cos(yaw));
+      m.rotation.y = yaw;
+      return m;
+    };
+    const wood: Mesh[] = [];
+    for (const px of [-1, 1]) {
+      wood.push(at(px, 1.2, 0, MeshBuilder.CreateBox("qbPost", { width: 0.14, height: 2.4, depth: 0.14 }, scene)));
+    }
+    wood.push(at(0, 2.45, 0, MeshBuilder.CreateBox("qbRoof", { width: 2.5, height: 0.1, depth: 0.45 }, scene)));
+    merge(wood, "hubQuestBoard", matWood);
+    const panel = [at(0, 1.55, 0, MeshBuilder.CreateBox("qbPanel", { width: 1.9, height: 1.2, depth: 0.06 }, scene))];
+    merge(panel, "hubQuestBoard", matWoodLite);
+    const paperMat = flatMat(scene, "hubQuestPaper", new Color3(0.93, 0.88, 0.74), undefined, dayLit);
+    const notes: Mesh[] = [];
+    const spots: [number, number, number, number][] = [[-0.55, 1.75, 0.42, 0.5], [0.05, 1.65, 0.4, 0.55], [0.6, 1.8, 0.38, 0.46], [-0.3, 1.25, 0.44, 0.34], [0.4, 1.25, 0.4, 0.36]];
+    for (const [lx, y, w, h] of spots) {
+      notes.push(at(lx, y, 0.04, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
+      notes.push(at(lx, y, -0.04, MeshBuilder.CreateBox("qbNote", { width: w, height: h, depth: 0.01 }, scene)));
+    }
+    merge(notes, "hubQuestNotes", paperMat);
+    // «!» над доской — динамический (QuestBang в Game): горит, только когда есть что взять/сдать.
+    obstacles.push({ x: b.x, z: b.z, r: 1.1 });
+  }
+
+  // --- 13в. Трактир: стойка перед трактирщиком и бочки ---
+  {
+    const t = HUB.zones.tavern;
+    const gy0 = groundY(t.x, t.z);
+    const yaw = Math.atan2(HUB.campfire.pos.x - t.x, HUB.campfire.pos.z - t.z);
+    const at = (lx: number, y: number, lz: number, m: Mesh): Mesh => {
+      m.position.set(t.x + lx * Math.cos(yaw) + lz * Math.sin(yaw), gy0 + y, t.z - lx * Math.sin(yaw) + lz * Math.cos(yaw));
+      m.rotation.y = yaw;
+      return m;
+    };
+    const wood: Mesh[] = [
+      at(0, 0.5, 1.1, MeshBuilder.CreateBox("tvCounter", { width: 2.6, height: 1, depth: 0.6 }, scene)),
+    ];
+    for (const [lx, lz] of [[-2.1, 0.6], [2.2, 0.3], [2.1, -0.5]] as const) {
+      wood.push(at(lx, 0.45, lz, MeshBuilder.CreateCylinder("tvBarrel", { height: 0.9, diameter: 0.7, tessellation: 10 }, scene)));
+    }
+    merge(wood, "hubTavern", matWood);
+    merge([at(0, 1.03, 1.1, MeshBuilder.CreateBox("tvTop", { width: 2.7, height: 0.06, depth: 0.7 }, scene))], "hubTavern", matWoodLite);
+    obstacles.push({ x: t.x, z: t.z, r: 1.6 });
+  }
+
   // --- 14. Кузница (декор + свечение горна) ---
   const forgeMat = flatMat(scene, "hubForgeGlow", new Color3(1, 0.45, 0.12), new Color3(1, 0.35, 0.1));
   {

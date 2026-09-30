@@ -30,7 +30,8 @@ export class Inventory {
   /** Ячейка пригодна к использованию (зелье). */
   usable(index: number): boolean {
     const s = this.slots[index];
-    return !!s?.item && ITEMS[s.item].heal > 0;
+    // Банки — пить, свитки — читать (баффы из лавки трактирщика).
+    return !!s?.item && (ITEMS[s.item].heal > 0 || s.item === "scroll_xp" || s.item === "scroll_wind");
   }
 
   use(index: number): boolean {

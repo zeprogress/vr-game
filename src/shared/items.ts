@@ -10,7 +10,9 @@ export type ItemId =
   | "leg_shield"
   | "leg_staff"
   | "scrap"
-  | "fish";
+  | "fish"
+  | "scroll_xp"
+  | "scroll_wind";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -179,6 +181,26 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.5, 0.45],
+    icon: "",
+  },
+  scroll_xp: {
+    name: "Свиток мудрости",
+    short: "Св. мудр.",
+    hint: "×2 опыта на 15 мин — используй, когда удобно",
+    stack: 99,
+    heal: 0,
+    healFrac: 0,
+    tint: [0.55, 0.75, 1],
+    icon: "",
+  },
+  scroll_wind: {
+    name: "Свиток ветра",
+    short: "Св. ветра",
+    hint: "+20% скорости бега на 15 мин",
+    stack: 99,
+    heal: 0,
+    healFrac: 0,
+    tint: [0.6, 1, 0.8],
     icon: "",
   },
   fish: {

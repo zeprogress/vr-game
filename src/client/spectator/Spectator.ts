@@ -1206,6 +1206,12 @@ export class Spectator {
         secs: p.campBuffSecs, color: "#ffc24a",
       });
     }
+    if ((p.scrollXpSecs ?? 0) > 0) {
+      out.push({ icon: "📜", name: "Свиток мудрости", desc: "×2 опыта", secs: p.scrollXpSecs, color: "#7fd0ff" });
+    }
+    if ((p.scrollWindSecs ?? 0) > 0) {
+      out.push({ icon: "🪶", name: "Свиток ветра", desc: "+20% скорости бега", secs: p.scrollWindSecs, color: "#8fe8b0" });
+    }
     return out.length ? out : null;
   }
 
@@ -1310,6 +1316,7 @@ export class Spectator {
     let watchInv: string | null = null;
     let watchBuffs: OverlayCtx["watchBuffs"] = null;
     let watchLevel: number | null = null;
+    let watchTitle: string | null = null;
     let watchAttrs: OverlayCtx["watchAttrs"] = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
@@ -1322,6 +1329,7 @@ export class Spectator {
           watchInv = Spectator.playerInvLine(p);
           watchBuffs = Spectator.playerBuffs(p);
           watchLevel = p.level;
+          watchTitle = p.title || null;
           watchAttrs = [p.str, p.agi, p.int];
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
@@ -1341,7 +1349,7 @@ export class Spectator {
       const now = performance.now();
       const sp = [...this.speakingIds];
       const statsSig = watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
-      const sig = `${watching}|${watchLevel}|${watchAttrs?.join("/")}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
+      const sig = `${watching}|${watchTitle}|${watchLevel}|${watchAttrs?.join("/")}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
       if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
         this.lastOvlSig = sig;
         this.lastOvlAt = now;
@@ -1353,6 +1361,7 @@ export class Spectator {
             wi: watchInv,
             wb: watchBuffs,
             wl: watchLevel,
+            wt: watchTitle,
             wa: watchAttrs,
             sl: Spectator.shotLabel(this.cam.shotKind),
             hp: targetHp
@@ -1392,11 +1401,13 @@ export class Spectator {
       watchInv,
       watchBuffs,
       watchLevel,
+      watchTitle,
       watchAttrs,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,
       towerStatus: this._towerStatus,
+      chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
     });
   }
 

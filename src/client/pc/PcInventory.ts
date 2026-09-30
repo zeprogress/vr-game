@@ -24,6 +24,8 @@ export interface HeldInfo {
 
 export interface PcInventoryHooks {
   request: () => void;
+  /** Использовать предмет сумки (свиток) — по id предмета. */
+  useItem?: (id: "scroll_xp" | "scroll_wind") => void;
   act: (m: PcInvActMsg) => void;
   /** Что сейчас в руках (включая обычное, которого нет на складе). */
   hands: () => { left: HeldInfo | null; right: HeldInfo | null };
@@ -246,7 +248,26 @@ export class PcInventory {
       row.append(span(r.label), span(r.value));
       stats.append(row);
     }
-    left.append(doll, xp, hands, stats);
+    // Титул под ником — выбор из полученных.
+    const titleRow = div("pcinv-row pcinv-title");
+    titleRow.append(span("Титул"));
+    const sel = document.createElement("select");
+    sel.className = "pcinv-select";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = d.titles?.length ? "— без титула —" : "пока нет (за большие заслуги)";
+    sel.append(none);
+    for (const t of d.titles ?? []) {
+      const o = document.createElement("option");
+      o.value = t;
+      o.textContent = `«${t}»`;
+      sel.append(o);
+    }
+    sel.value = d.title ?? "";
+    sel.disabled = !d.titles?.length;
+    sel.onchange = () => this.hooks.act({ act: "title", id: sel.value, idx: 0 });
+    titleRow.append(sel);
+    left.append(doll, xp, hands, titleRow, stats);
 
     // --- сумка ---
     const right = div("pcinv-col");
@@ -276,6 +297,21 @@ export class PcInventory {
       countCell(SCRAP_SVG, d.scrap, "Лом — для заточки", true),
       countCell("🐟", d.fish, "Рыба — для сброса атрибутов"),
     );
+    // Свитки — клик: прочитать (бафф на 15 мин).
+    const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", string, string][] = [
+      [d.scrollXp, "scroll_xp", "📜", "Свиток мудрости: ×2 опыта на 15 мин — клик, чтобы прочитать"],
+      [d.scrollWind, "scroll_wind", "🪶", "Свиток ветра: +20% скорости бега на 15 мин — клик, чтобы прочитать"],
+    ];
+    for (const [n, id, ico, title] of scrolls) {
+      if (!n) continue;
+      const c = countCell(ico, n, title);
+      c.style.cursor = "pointer";
+      c.onclick = () => {
+        this.hooks.useItem?.(id);
+        window.setTimeout(() => this.refresh(), 300);
+      };
+      cons.append(c);
+    }
     const anvil = div("pcinv-anvil", "⚒ Перетащи сюда — в лом");
     anvil.addEventListener("dragover", (e) => {
       if (this.dragWeapon()) {
@@ -332,6 +368,10 @@ export class PcInventory {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
       cell.textContent = ICON[held.cls] ?? "?";
+      if (w?.affixes.length) {
+        cell.style.position = "relative";
+        cell.append(div("pcinv-q", String(w.quality)));
+      }
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
       cell.addEventListener("dragend", () => this.endDrag());
@@ -365,6 +405,10 @@ export class PcInventory {
 
   private itemCell(w: PcInvWeapon): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
+    if (w.affixes.length) {
+      c.style.position = "relative";
+      c.append(div("pcinv-q", String(w.quality)));
+    }
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
     c.addEventListener("dragend", () => this.endDrag());
@@ -380,6 +424,7 @@ export class PcInventory {
 
   private renderEnchant(d: PcInvData): void {
     const wrap = div("pcinv-ench");
+    const inHand = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     const w =
       this.weaponById(this.enchId) ??
       this.weaponById(d.equipped.right) ??
@@ -414,7 +459,12 @@ export class PcInventory {
     } else if (!w.ench.length) {
       right.append(div("pcinv-empty", "У этого предмета нет роллов — точить нечего."));
     } else {
-      right.append(div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_RU[w.tier]} · оценка ${w.quality}`));
+      const hn = div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_RU[w.tier]}`);
+      if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
+      right.append(hn);
+      const sc = div("pcinv-score");
+      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      right.append(sc);
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
         const lab = div("pcinv-elabel");
@@ -447,7 +497,7 @@ export class PcInventory {
     const pick = div("pcinv-epick");
     for (const x of d.weapons) {
       if (!x.ench.length) continue;
-      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}`, ICON[x.cls] ?? "?");
+      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`, ICON[x.cls] ?? "?");
       c.onclick = () => {
         this.enchId = x.id;
         this.lastResult = null;
@@ -569,7 +619,12 @@ export class PcInventory {
     const name = w?.name ?? weaponDef(cls, tier).name;
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
-    this.tip.append(div("pcinv-small", `${TIER_RU[tier] ?? tier}${w ? ` · оценка ${w.quality}` : ""}`));
+    this.tip.append(div("pcinv-small", TIER_RU[tier] ?? tier));
+    if (w && w.affixes.length) {
+      const sc = div("pcinv-score");
+      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      this.tip.append(sc);
+    }
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
     if (w) this.tip.append(div("pcinv-small", `В лом: ${w.scrap}`));
     this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
@@ -718,6 +773,14 @@ function injectInvStyle(): void {
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }
 .pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-title { align-items:center; margin:6px 0; }
+.pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; max-width:170px; }
+.pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:#ffcf5a; }
+.pcinv-score small { font:600 11px system-ui; color:#a9a498; margin-right:4px; }
+.pcinv-cell.inhand { position:relative; box-shadow:inset 0 0 0 2px #6fbf6f; }
+.pcinv-cell.inhand::after { content:"в руке"; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
+  font:700 8.5px system-ui; color:#0e1a10; background:#8fd18f; border-radius:3px; padding:0 3px; white-space:nowrap; }
+.pcinv-inhand-tag { display:inline-block; font:700 11px system-ui; color:#0e1a10; background:#8fd18f; border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
 .pcinv-ench { display:grid; grid-template-columns:150px minmax(0,1fr); gap:14px; align-items:start; }
 .pcinv-ench-left { text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center; }
 .pcinv-have { font-size:13px; } .pcinv-have::first-letter { }
@@ -733,7 +796,8 @@ function injectInvStyle(): void {
   color:#e6e0d0; cursor:pointer; font:600 12px/1.2 system-ui; }
 .pcinv-ebtn:disabled { opacity:.45; cursor:default; }
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
-.pcinv-epick { display:flex; flex-wrap:wrap; gap:5px; }
+.pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
+.pcinv-q { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#ffcf5a; text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }

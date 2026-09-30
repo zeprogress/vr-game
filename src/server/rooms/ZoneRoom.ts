@@ -62,6 +62,11 @@ import {
   type PickupFeedMsg,
   type ChatLineMsg,
   type PcInvActMsg,
+  type QuestActMsg,
+  type ShopBuyMsg,
+  type ShopData,
+  type FishWaitMsg,
+  type QuestData,
   type PcInvData,
 } from "#shared/net/messages";
 import {
@@ -141,6 +146,7 @@ import {
   isWeaponTier,
   ITEMS,
   plainWeaponInstance,
+  rollWeaponInstance,
   scrapValue,
   takeOne,
   weaponAffix,
@@ -184,6 +190,33 @@ import {
   healAmountFor,
 } from "#shared/magic";
 import { HUB, HUB_CENTER, inHubSafeZone, hubSpawnPoint } from "#shared/hub";
+import {
+  QUEST,
+  makeBoard,
+  questDay,
+  secsToNextDay,
+  slotDone,
+  slotReward,
+  slotTitle,
+  questXpFrac,
+  type QuestSave,
+  type QuestSlot,
+  type QuestKind,
+  STORY,
+  STORY_REWARD,
+  STORY_TITLE,
+  WEEKLY,
+  makeWeekly,
+  questWeek,
+  secsToNextWeek,
+  weeklyDone,
+  CHAT_QUEST,
+  TITLES,
+  TITLE_GOALS,
+  type StorySave,
+  type WeeklySave,
+} from "#shared/quests";
+import { CHEST_MIN_QUALITY, HARD_SCROLL_CHANCE, SCROLL, SHOP, TAVERN_REACH } from "#shared/shop";
 import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { ZoneSim, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
@@ -196,9 +229,12 @@ const { Room } = colyseus;
 
 /** Сколько HP доливается за новый уровень (как было на клиенте). */
 const LEVEL_UP_HEAL = 10;
-/** Рыбалка: сколько ждать поклёвку — 2.5-3.5 мин (см. MSG.fish, tickBotFishing). */
-const FISH_WAIT_MIN = 60;
-const FISH_WAIT_SPREAD = 60;
+/** Рыбалка: сколько ждать поклёвку — 40–60 с (см. MSG.fish, tickBotFishing). */
+const FISH_WAIT_MIN = 40;
+const FISH_WAIT_SPREAD = 20;
+/** Игрок: авторыбалка — медленнее (60–80 с на рыбу), вручную — мини-игра, быстрее. */
+const FISH_AUTO = { min: 60, spread: 20 };
+const FISH_MANUAL = { min: 5, spread: 4, window: 9 };
 
 /** Несетевое состояние игрока: защита, темп ударов, таймеры. */
 interface Runtime {
@@ -257,6 +293,8 @@ interface Runtime {
   viewToken: string;
   /** Рыбалка: секунда (this.elapsed), когда клюнет; null — сейчас не рыбачит. */
   fishBiteAt: number | null;
+  /** Авторыбалка: сервер сам вылавливает по таймеру и забрасывает снова. */
+  fishAuto: boolean;
 }
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
@@ -1359,25 +1397,21 @@ export class ZoneRoom extends Room<ZoneState> {
       const rt = this.rt.get(client.sessionId);
       if (!rt) return;
       if (msg?.act === "cast") {
-        if (rt.fishBiteAt !== null) return; // уже рыбачит
-        const ld = lakeEllipseDist(p.head.x, p.head.z);
-        const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
-        if (ld < shoreOuter - 8 || ld > shoreOuter + 12) return; // не у берега
-        rt.fishBiteAt = this.elapsed + FISH_WAIT_MIN + Math.random() * FISH_WAIT_SPREAD;
-        p.fishing = 1;
+        // Повторный заброс (сорвалась в мини-игре) — просто начинаем заново.
+        if (!ZoneRoom.atShore(p)) return;
+        rt.fishAuto = msg.mode === "auto";
+        this.fishCast(client, p, rt);
+      } else if (msg?.act === "stop") {
+        this.fishStop(client, p, rt, false);
       } else if (msg?.act === "reel") {
         const biteAt = rt.fishBiteAt;
+        if (biteAt === null || rt.fishAuto) return;
         rt.fishBiteAt = null;
         p.fishing = 0;
-        if (biteAt === null) return;
         const late = this.elapsed - biteAt;
-        if (late < 0 || late > 1.5) return; // рано или мимо окна — сорвалась
-        const bag = readBag(p);
-        const left = addToBag(bag, "fish", 1);
-        if (left >= 1) return; // сумка полна
-        writeBag(p, bag);
-        client.send(MSG.picked, { item: "fish", count: 1 });
-        this.broadcast(MSG.botSay, { id: client.sessionId, text: "Поймал!" } satisfies BotSayMsg);
+        // Ручной режим: после поклёвки — мини-игра, на неё до FISH_MANUAL.window с.
+        if (late < 0 || late > FISH_MANUAL.window) return;
+        this.fishCatch(client, p);
       }
     });
 
@@ -1389,6 +1423,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
       const bag = readBag(p);
       const held = bag[slot];
+      if (held.item === "scroll_xp" || held.item === "scroll_wind") {
+        this.useScroll(client, p, slot);
+        return;
+      }
       if (!held.item || ITEMS[held.item].heal <= 0) return; // нечего пить
       if (p.hp >= p.maxHp) return; // полное здоровье — не тратим зря
 
@@ -1707,6 +1745,13 @@ export class ZoneRoom extends Room<ZoneState> {
     this.onMessage(MSG.pcInvAct, (client: Client, msg: PcInvActMsg) => {
       const p = this.state.players.get(client.sessionId);
       if (!p || !msg || typeof msg.id !== "string") return;
+      if (msg.act === "title") {
+        const tk = `nick:${normNick(p.nick)}`;
+        const have = store.get(tk)?.titles ?? [];
+        if (msg.id === "" || have.includes(msg.id)) store.put(tk, { title: msg.id });
+        this.sendPcInv(client);
+        return;
+      }
       if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec") return;
       const norm = normNick(p.nick);
       if (!norm) return;
@@ -1714,6 +1759,11 @@ export class ZoneRoom extends Room<ZoneState> {
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
     });
+
+    this.onMessage(MSG.questOpen, (client: Client) => this.sendQuests(client));
+    this.onMessage(MSG.shopOpen, (client: Client) => this.sendShop(client));
+    this.onMessage(MSG.shopBuy, (client: Client, msg: ShopBuyMsg) => this.shopBuy(client, msg));
+    this.onMessage(MSG.questAct, (client: Client, msg: QuestActMsg) => this.questAct(client, msg));
 
     // Голос через сервер (запасной путь, когда прямое соединение не встало).
     this.onMessage(MSG.voice, (client: Client, msg: VoiceMsg) => {
@@ -1972,8 +2022,12 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
   private buffMult(ownerId: string, which: "xp" | "dmg"): number {
     const rt = this.rt.get(ownerId);
-    if (!rt || rt.eventBuffUntil <= Date.now()) return 1;
-    return which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult;
+    if (!rt) return 1;
+    const now = Date.now();
+    let m = rt.eventBuffUntil > now ? (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult) : 1;
+    // Свиток мудрости — бонус складывается с благословением: ×2 и ×2 → ×3.
+    if (which === "xp" && rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > now) m += SCROLL.xpMul - 1;
+    return m;
   }
 
   private awardXp(client: Client | undefined, p: PlayerState, amount: number): void {
@@ -2032,6 +2086,33 @@ export class ZoneRoom extends Room<ZoneState> {
       .slice(0, limit);
   }
 
+  /** Титул «Легенда» — всегда у первого места по уровню; сменился лидер — титул переходит. */
+  private legendCheck(): void {
+    const LEGEND = "Легенда";
+    const rows = new Map<string, { level: number; xp: number }>();
+    for (const rec of store.entries()) {
+      if (rec.token.startsWith("nick:")) rows.set(rec.token, { level: rec.level, xp: rec.xp });
+    }
+    for (const [id, rt] of this.rt) {
+      const p = this.state.players.get(id);
+      if (p && rt.token?.startsWith("nick:")) rows.set(rt.token, { level: p.level, xp: p.xp });
+    }
+    let top = "";
+    let best: { level: number; xp: number } | null = null;
+    for (const [tk, r] of rows) {
+      if (!best || r.level > best.level || (r.level === best.level && r.xp > best.xp)) {
+        best = r;
+        top = tk;
+      }
+    }
+    if (!top || store.get(top)?.titles?.includes(LEGEND)) return;
+    for (const rec of store.entries()) {
+      if (!rec.titles?.includes(LEGEND)) continue;
+      store.put(rec.token, { titles: rec.titles.filter((t) => t !== LEGEND), ...(rec.title === LEGEND ? { title: "" } : {}) });
+    }
+    this.grantTitle(top, LEGEND);
+  }
+
   /** Топ по лучшему этажу «Охотничьей башни» (тот же паттерн, что leaderboard). */
   private towerLeaderboard(limit: number): TowerBoardRow[] {
     const byNorm = new Map<string, TowerBoardRow & { at: number }>();
@@ -2068,6 +2149,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   private broadcastLeaderboard(): void {
+    this.legendCheck();
     if (this.clients.length === 0) return;
     this.broadcast(MSG.leaderboard, this.leaderboard(5));
     this.broadcast(MSG.towerBoard, this.towerLeaderboard(5));
@@ -2916,6 +2998,7 @@ export class ZoneRoom extends Room<ZoneState> {
             : prev?.bestTowerTimeSec,
         weapons: rt.weapons,
       });
+      if (r.phase === "cleared" && r.timeSec <= TITLE_GOALS.towerSec) this.grantTitle(rt.token, "Царь башни");
       for (const w of r.drops) this.announcePickup(nick, w.cls, w.tier, w);
     }
     const t = Math.max(0, Math.round(r.timeSec));
@@ -3165,6 +3248,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
     } else if (["!follow", "!folow", "!следовать", "!следуй", "!за", "!фоллоу"].includes(cmd)) {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
+    } else if (cmd === "!title" || cmd === "!титул" || cmd === "!титулы") {
+      this.titleCmd(nick, norm, parts.slice(1).join(" ").trim());
     } else if (FOCUS_COMMANDS.has(cmd)) {
       this.focusCam(nick, norm, parts[1]);
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
@@ -3179,6 +3264,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setTraining(nick, norm);
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
+    } else if (cmd === "!chatquest" && (isAdminNick(nick) || STAGING)) {
+      if (this.chatQuest) this.reply(`@${nick} квест чата уже идёт.`);
+      else this.startChatQuest(parts[1] === "champ" ? "champs" : "mobs");
     } else if (cmd === "!goevent") {
       // Запустить событие может только админ стрима. Необязательный аргумент —
       // тип: hunt/охота, invasion/нашествие, tower/башня (иначе — случайный).
@@ -3296,6 +3384,557 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Данные ПК-окна снаряжения — по живому герою этого клиента. */
+  // ---- Рыбалка игрока ----
+
+  private static atShore(p: PlayerState): boolean {
+    const ld = lakeEllipseDist(p.head.x, p.head.z);
+    const shoreOuter = LAKE_R_AVG + LAKE.shoreFade;
+    return ld >= shoreOuter - 20 && ld <= shoreOuter + 15; // с запасом к клиентской полосе
+  }
+
+  private fishCast(client: Client, p: PlayerState, rt: Runtime): void {
+    const cfg = rt.fishAuto ? FISH_AUTO : FISH_MANUAL;
+    const wait = cfg.min + Math.random() * cfg.spread;
+    rt.fishBiteAt = this.elapsed + wait;
+    p.fishing = 1;
+    client.send(MSG.fishWait, { wait, auto: rt.fishAuto } satisfies FishWaitMsg);
+  }
+
+  private fishStop(client: Client | undefined, p: PlayerState, rt: Runtime, notify: boolean): void {
+    if (rt.fishBiteAt === null && !p.fishing) return;
+    rt.fishBiteAt = null;
+    rt.fishAuto = false;
+    p.fishing = 0;
+    if (notify) client?.send(MSG.fishWait, { wait: 0, stop: true } satisfies FishWaitMsg);
+  }
+
+  private fishCatch(client: Client, p: PlayerState): boolean {
+    const bag = readBag(p);
+    if (addToBag(bag, "fish", 1) >= 1) return false; // сумка полна
+    writeBag(p, bag);
+    client.send(MSG.picked, { item: "fish", count: 1 });
+    this.questEvent(client.sessionId, { fish: true });
+    this.bumpFeat(client.sessionId, "fishTotal", TITLE_GOALS.fish, "Мастер-рыболов");
+    this.broadcast(MSG.botSay, { id: client.sessionId, text: "Поймал!" } satisfies BotSayMsg);
+    return true;
+  }
+
+  /** Авторыбалка игроков: улов по таймеру; ушёл от берега/умер — удочка сматывается. */
+  private tickPlayerFishing(): void {
+    for (const [id, rt] of this.rt) {
+      if (rt.fishBiteAt === null || id.startsWith("bot:")) continue;
+      const p = this.state.players.get(id);
+      const client = this.clientOf(id);
+      if (!p || !client) continue;
+      if (p.dead || !ZoneRoom.atShore(p)) {
+        this.fishStop(client, p, rt, true);
+        continue;
+      }
+      if (rt.fishAuto && this.elapsed >= rt.fishBiteAt) {
+        if (this.fishCatch(client, p)) this.fishCast(client, p, rt);
+        else this.fishStop(client, p, rt, true);
+      } else if (!rt.fishAuto && this.elapsed > rt.fishBiteAt + FISH_MANUAL.window + 2) {
+        // Ручной: не подсёк — рыба ушла, удочку сматываем (клиент сам покажет).
+        rt.fishBiteAt = null;
+        p.fishing = 0;
+      }
+    }
+  }
+
+  // ---- Титулы ----
+
+  /** Выдать титул (если ещё нет) — объявить в чате; первый сразу надевается. */
+  private grantTitle(token: string, name: string): void {
+    const rec = store.get(token);
+    if (!rec) return;
+    const have = new Set(rec.titles ?? []);
+    if (have.has(name)) return;
+    have.add(name);
+    store.put(token, { titles: [...have], ...(rec.title ? {} : { title: name }) });
+    this.reply(`🏅 ${rec.nick} получает титул «${name}»!`);
+  }
+
+  /** Счётчик заслуги +1 и выдача титула, когда достиг цели. */
+  private bumpFeat(ownerId: string, field: "fishTotal" | "bossKills" | "dragonTop" | "contracts", goal: number, title: string): void {
+    const token = this.rt.get(ownerId)?.token;
+    if (!token) return;
+    const n = (store.get(token)?.[field] ?? 0) + 1;
+    store.put(token, { [field]: n });
+    if (n >= goal) this.grantTitle(token, title);
+  }
+
+  /** !title [название] — список полученных / надеть титул (боты и игроки). */
+  private titleCmd(nick: string, norm: string, arg: string): void {
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    const have = rec?.titles ?? [];
+    if (!arg) {
+      this.reply(
+        have.length
+          ? `@${nick} твои титулы: ${have.join(", ")}. Надеть: !title <название>, снять: !title нет`
+          : `@${nick} титулов пока нет. Их дают за большие заслуги: ${TITLES.map((t) => `${t.name} — ${t.desc}`).join("; ")}`,
+      );
+      return;
+    }
+    if (/^(нет|off|снять)$/i.test(arg)) {
+      store.put(token, { title: "" });
+      this.reply(`@${nick} титул снят.`);
+      return;
+    }
+    const pick = have.find((t) => t.toLowerCase().startsWith(arg.toLowerCase()));
+    if (!pick) {
+      this.reply(`@${nick} такого титула у тебя нет.`);
+      return;
+    }
+    store.put(token, { title: pick });
+    this.reply(`@${nick} теперь носит титул «${pick}».`);
+  }
+
+  // ---- Квест чата (все боты вместе) ----
+
+  private chatQuest: {
+    kind: "mobs" | "champs";
+    need: number;
+    got: number;
+    endsAt: number;
+    /** norm ника → сколько внёс. */
+    who: Map<string, number>;
+  } | null = null;
+  private nextChatQuestAt = Date.now() + CHAT_QUEST.firstMin * 60_000;
+
+  private startChatQuest(kind: "mobs" | "champs"): void {
+    const bots = Math.max(CHAT_QUEST.minBots, this.bots.size);
+    const need = kind === "mobs" ? bots * CHAT_QUEST.mobsPerBot : bots * CHAT_QUEST.champsPerBot;
+    this.chatQuest = { kind, need, got: 0, endsAt: Date.now() + CHAT_QUEST.durSec * 1000, who: new Map() };
+    this.state.cqTitle = kind === "mobs" ? `Квест чата: боты, убейте ${need} мобов` : `Квест чата: боты, победите ${need} вожаков лагерей`;
+    this.state.cqNeed = need;
+    this.state.cqGot = 0;
+    this.reply(
+      `📜 Квест чата! Боты, ${kind === "mobs" ? `убейте ${need} мобов` : `победите ${need} вожаков лагерей`} за ${CHAT_QUEST.durSec / 60} минут. ` +
+        `Награда каждому участнику: опыт, свиток мудрости и ${CHAT_QUEST.tokens} ◈. Нет героя? !play`,
+    );
+  }
+
+  /** Убийство ботом — вклад в квест чата. */
+  private chatQuestKill(owner: string, champ: boolean): void {
+    const q = this.chatQuest;
+    if (!q || !owner.startsWith("bot:")) return;
+    if (q.kind === "champs" && !champ) return;
+    q.got++;
+    const norm = owner.slice(4);
+    q.who.set(norm, (q.who.get(norm) ?? 0) + 1);
+    this.state.cqGot = Math.min(q.got, q.need);
+  }
+
+  private tickChatQuest(): void {
+    const now = Date.now();
+    const q = this.chatQuest;
+    if (!q) {
+      if (now < this.nextChatQuestAt) return;
+      this.nextChatQuestAt = now + CHAT_QUEST.everyMin * 60_000;
+      if (this.bots.size >= CHAT_QUEST.minBots) this.startChatQuest(Math.random() < 0.65 ? "mobs" : "champs");
+      return;
+    }
+    this.state.cqSecs = Math.max(0, Math.ceil((q.endsAt - now) / 1000));
+    if (q.got < q.need && now < q.endsAt) return;
+    const won = q.got >= q.need;
+    this.chatQuest = null;
+    this.state.cqTitle = "";
+    if (!won) {
+      this.reply(`Квест чата не выполнен — боты успели ${q.got} из ${q.need}. Следующий — позже!`);
+      return;
+    }
+    const names: string[] = [];
+    for (const norm of q.who.keys()) {
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      const cur = Math.max(now, rec?.scrollXpUntil ?? 0);
+      store.put(token, {
+        scrollXpUntil: Math.min(now + SCROLL.maxSec * 1000, cur + SCROLL.sec * 1000),
+        tokens: (rec?.tokens ?? 0) + CHAT_QUEST.tokens,
+      });
+      const p = this.state.players.get(`bot:${norm}`);
+      if (p) {
+        const lvlXp = xpToNext(p.level);
+        if (Number.isFinite(lvlXp)) this.awardXp(undefined, p, Math.round(lvlXp * questXpFrac(p.level)));
+        names.push(p.nick);
+      }
+    }
+    this.reply(
+      `🎉 Квест чата выполнен (${q.need})! Награда — опыт, свиток мудрости и ${CHAT_QUEST.tokens} ◈: ` +
+        `${names.slice(0, 12).join(", ")}${names.length > 12 ? ` и ещё ${names.length - 12}` : ""}`,
+    );
+  }
+
+  // ---- Свитки и лавка трактирщика ----
+
+  private useScroll(client: Client, p: PlayerState, slot: number): void {
+    const rt = this.rt.get(client.sessionId);
+    if (!rt?.token) return;
+    const bag = readBag(p);
+    const used = takeOne(bag, slot);
+    if (used !== "scroll_xp" && used !== "scroll_wind") return;
+    writeBag(p, bag);
+    const now = Date.now();
+    const key = used === "scroll_xp" ? "scrollXpUntil" : "scrollWindUntil";
+    const cur = Math.max(now, store.get(rt.token)?.[key] ?? 0);
+    store.put(rt.token, { [key]: Math.min(now + SCROLL.maxSec * 1000, cur + SCROLL.sec * 1000) });
+    this.broadcast(MSG.act, { k: "drink", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay, {
+      except: client,
+    });
+  }
+
+  private tavernNear(p: PlayerState): boolean {
+    const t = HUB.zones.tavern;
+    return Math.hypot(p.head.x - t.x, p.head.z - t.z) <= TAVERN_REACH;
+  }
+
+  private sendShop(client: Client, msg?: string): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p) return;
+    const norm = normNick(p.nick);
+    const data: ShopData = {
+      items: SHOP.map((i) => ({ id: i.id, name: i.name, desc: i.desc, price: i.price })),
+      tokens: store.get(`nick:${norm}`)?.tokens ?? 0,
+      near: this.tavernNear(p),
+      msg,
+    };
+    client.send(MSG.shopData, data);
+  }
+
+  private shopBuy(client: Client, msg: ShopBuyMsg): void {
+    const p = this.state.players.get(client.sessionId);
+    const rt = this.rt.get(client.sessionId);
+    if (!p || !rt || !msg) return;
+    const item = SHOP.find((i) => i.id === msg.id);
+    if (!item) return;
+    const token = `nick:${normNick(p.nick)}`;
+    if (!this.tavernNear(p)) return this.sendShop(client, "Подойди к трактирщику");
+    const tokens = store.get(token)?.tokens ?? 0;
+    if (tokens < item.price) return this.sendShop(client, `Не хватает жетонов: нужно ${item.price} ◈`);
+    let note: string;
+    if (item.item) {
+      const bag = readBag(p);
+      if (addToBag(bag, item.item, item.count ?? 1) > 0) return this.sendShop(client, "Сумка полна");
+      writeBag(p, bag);
+      note = `Куплено: ${item.name}`;
+    } else {
+      const w = this.rollChestWeapon(p);
+      rt.weapons.push(w);
+      store.put(token, { weapons: rt.weapons });
+      this.announcePickup(p.nick, w.cls, w.tier, w);
+      note = `Из сундука: ${weaponDef(w.cls, w.tier).name}, оценка ${weaponQuality(w)}`;
+    }
+    store.put(token, { tokens: tokens - item.price });
+    this.sendShop(client, note);
+    this.sendQuests(client);
+  }
+
+  /** Сундук: уникальное оружие класса героя (по оружию в правой руке), 3 ролла, оценка ≥ CHEST_MIN_QUALITY. */
+  private rollChestWeapon(p: PlayerState): WeaponInstance {
+    const cls: WeaponClass = isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword";
+    let w = rollWeaponInstance(cls, "legendary");
+    for (let i = 0; i < 200 && w.affixes.length < 3; i++) w = rollWeaponInstance(cls, "legendary");
+    for (let i = 0; i < 400 && weaponQuality(w) < CHEST_MIN_QUALITY; i++) {
+      enchantApply(w, Math.floor(Math.random() * w.affixes.length), 2);
+    }
+    return w;
+  }
+
+  /** Свиток в награду (бонус за задания) — случайный из двух. */
+  private giveScroll(client: Client, p: PlayerState): string | null {
+    const id = Math.random() < 0.5 ? "scroll_xp" : "scroll_wind";
+    const bag = readBag(p);
+    if (addToBag(bag, id, 1) > 0) return null;
+    writeBag(p, bag);
+    client.send(MSG.picked, { item: id, count: 1 });
+    return ITEMS[id].name;
+  }
+
+  // ---- Доска заданий (квесты дня) ----
+
+  /** Задания героя на сегодня (новый день — новые под текущий уровень). */
+  private questBoard(p: PlayerState): { token: string; q: QuestSave } | null {
+    const norm = normNick(p.nick);
+    if (!norm) return null;
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    let q = rec?.quests;
+    if (!q || q.v !== 3 || q.day !== questDay()) {
+      q = makeBoard(p.level);
+      store.put(token, { quests: q });
+    }
+    return { token, q };
+  }
+
+  private questNear(p: PlayerState): boolean {
+    const b = HUB.zones.questBoard;
+    return Math.hypot(p.head.x - b.x, p.head.z - b.z) <= QUEST.boardReach;
+  }
+
+  private questView(p: PlayerState, msg?: string): QuestData | null {
+    const b = this.questBoard(p);
+    if (!b) return null;
+    const lvlXp = xpToNext(p.level);
+    const view = (s: QuestSlot) => {
+      const r = slotReward(s);
+      return {
+        kind: s.kind,
+        hard: s.hard,
+        target: s.target,
+        title: slotTitle(s),
+        got: Math.min(s.got, s.need),
+        need: s.need,
+        done: slotDone(s),
+        claimed: s.claimed,
+        reward: { xpPct: Number.isFinite(lvlXp) ? 1 : 0, tokens: r.tokens, scrap: r.scrap },
+      };
+    };
+    return {
+      slots: b.q.slots.map(view),
+      offers: b.q.offers.map(view),
+      picksLeft: b.q.picksLeft,
+      tokens: store.get(b.token)?.tokens ?? 0,
+      nextSecs: secsToNextDay(),
+      near: this.questNear(p),
+      dailyTaken: b.q.accepted,
+      story: this.storyView(b.token, lvlXp),
+      weekly: this.weeklyView(b.token, p, lvlXp),
+      nearHunter: this.hunterNear(p),
+      msg,
+    };
+  }
+
+  private sendQuests(client: Client, msg?: string): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p) return;
+    const v = this.questView(p, msg);
+    if (v) client.send(MSG.questData, v);
+  }
+
+  private hunterNear(p: PlayerState): boolean {
+    const h = HUB.zones.hunter;
+    return Math.hypot(p.head.x - h.x, p.head.z - h.z) <= QUEST.boardReach;
+  }
+
+  private storyOf(token: string): StorySave {
+    return store.get(token)?.story ?? { ch: 0, got: 0 };
+  }
+
+  private storyView(token: string, lvlXp: number): QuestData["story"] {
+    const st = this.storyOf(token);
+    const c = STORY[st.ch];
+    if (!c) return null;
+    return {
+      chapter: st.ch + 1,
+      total: STORY.length,
+      title: c.title,
+      text: c.text,
+      kind: c.kind,
+      target: c.target,
+      got: Math.min(st.got, c.need),
+      need: c.need,
+      done: st.got >= c.need,
+      taken: !!st.taken,
+      reward: {
+        xpPct: Number.isFinite(lvlXp) ? 1 : 0,
+        tokens: STORY_REWARD.tokens,
+        potions: STORY_REWARD.potions,
+        final: st.ch === STORY.length - 1,
+      },
+    };
+  }
+
+  /** Контракт недели (новая неделя — новый, под текущий уровень). */
+  private weeklyOf(token: string, p: PlayerState): WeeklySave {
+    let w = store.get(token)?.weekly;
+    if (!w || w.week !== questWeek()) {
+      w = makeWeekly(p.level);
+      store.put(token, { weekly: w });
+    }
+    return w;
+  }
+
+  private weeklyView(token: string, p: PlayerState, lvlXp: number): QuestData["weekly"] {
+    const w = this.weeklyOf(token, p);
+    const zoneNames = w.zone.map((t) => ELITE_MOBS[t]?.name ?? t).join(", ");
+    return {
+      parts: [
+        { label: `Мобы зоны (${zoneNames})`, got: Math.min(w.hunt, WEEKLY.hunt), need: WEEKLY.hunt },
+        { label: "Вожаки лагерей (любые)", got: Math.min(w.champ, WEEKLY.champ), need: WEEKLY.champ },
+        { label: "Рыба", got: Math.min(w.fish, WEEKLY.fish), need: WEEKLY.fish },
+      ],
+      done: weeklyDone(w),
+      claimed: w.claimed,
+      taken: !!w.taken,
+      secsLeft: secsToNextWeek(),
+      reward: { xpPct: Number.isFinite(lvlXp) ? 1 : 0, tokens: WEEKLY.reward.tokens },
+    };
+  }
+
+  /**
+   * Событие для заданий игрока id (боты заданий не берут): убийство моба
+   * лагеря (campType, вожак?) или пойманная рыба. Двигает дневные задания,
+   * главу сюжета и недельный контракт.
+   */
+  private questEvent(id: string, ev: { fish?: boolean; campType?: string; champ?: boolean }): void {
+    if (id.startsWith("bot:")) return;
+    const p = this.state.players.get(id);
+    if (!p) return;
+    const b = this.questBoard(p);
+    if (!b) return;
+    const hits = (kind: QuestKind, target: string): boolean =>
+      kind === "fish" ? !!ev.fish : !!ev.campType && target === ev.campType && (kind === "hunt" || !!ev.champ);
+    let changed = false;
+    for (const [i, s] of b.q.slots.entries()) {
+      // Три задания дня — только после того, как взяты у доски.
+      if (i < QUEST.auto && !b.q.accepted) continue;
+      if (s.claimed || slotDone(s) || !hits(s.kind, s.target)) continue;
+      s.got++;
+      changed = true;
+    }
+    if (changed) store.put(b.token, { quests: b.q });
+    const st = this.storyOf(b.token);
+    const c = STORY[st.ch];
+    if (c && st.taken && st.got < c.need && hits(c.kind, c.target)) {
+      store.put(b.token, { story: { ch: st.ch, got: st.got + 1, taken: true } });
+      changed = true;
+    }
+    const w = this.weeklyOf(b.token, p);
+    if (w.taken && !w.claimed) {
+      let wc = false;
+      if (ev.fish && w.fish < WEEKLY.fish) (w.fish++, (wc = true));
+      if (ev.campType && w.zone.includes(ev.campType) && w.hunt < WEEKLY.hunt) (w.hunt++, (wc = true));
+      if (ev.champ && w.champ < WEEKLY.champ) (w.champ++, (wc = true));
+      if (wc) {
+        store.put(b.token, { weekly: w });
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    const cl = this.clientOf(id);
+    if (cl) this.sendQuests(cl);
+  }
+
+  /** Опыт за задание — от текущего уровня (questXpFrac), mul — вес задания. Текст для тоста. */
+  private questXp(client: Client, p: PlayerState, mul: number): string {
+    const lvlXp = xpToNext(p.level);
+    if (!Number.isFinite(lvlXp)) return "";
+    const before = p.level;
+    this.awardXp(client, p, Math.round(lvlXp * questXpFrac(p.level) * mul));
+    return p.level > before ? `, опыт (+${p.level - before} ур.)` : ", опыт";
+  }
+
+  /** Сдать главу сюжета / недельный контракт Охотнику. */
+  private hunterClaim(client: Client, p: PlayerState, token: string, act: "storyClaim" | "weeklyClaim"): void {
+    const rt = this.rt.get(client.sessionId);
+    const xp = (mul: number): string => this.questXp(client, p, mul);
+    const tokens = store.get(token)?.tokens ?? 0;
+    let note: string;
+    if (act === "storyClaim") {
+      const st = this.storyOf(token);
+      const c = STORY[st.ch];
+      if (!c || st.got < c.need) return;
+      const bag = readBag(p);
+      addToBag(bag, "potion", STORY_REWARD.potions);
+      writeBag(p, bag);
+      store.put(token, { story: { ch: st.ch + 1, got: 0, taken: false }, tokens: tokens + STORY_REWARD.tokens });
+      note = `Глава «${c.title}» пройдена! ${STORY_REWARD.tokens} ◈, зелья ×${STORY_REWARD.potions}${xp(STORY_REWARD.xpMul)}`;
+      if (st.ch === STORY.length - 1 && rt) {
+        const w = this.rollChestWeapon(p);
+        rt.weapons.push(w);
+        store.put(token, { weapons: rt.weapons });
+        this.grantTitle(token, STORY_TITLE);
+        this.announcePickup(p.nick, w.cls, w.tier, w);
+        note += `. Титул «${STORY_TITLE}» и ${weaponDef(w.cls, w.tier).name} (оценка ${weaponQuality(w)})!`;
+      }
+    } else {
+      const w = this.weeklyOf(token, p);
+      if (w.claimed || !weeklyDone(w) || !rt) return;
+      w.claimed = true;
+      const wpn = this.rollChestWeapon(p);
+      rt.weapons.push(wpn);
+      store.put(token, { weekly: w, weapons: rt.weapons, tokens: tokens + WEEKLY.reward.tokens });
+      this.bumpFeat(client.sessionId, "contracts", TITLE_GOALS.contracts, "Ветеран контрактов");
+      this.announcePickup(p.nick, wpn.cls, wpn.tier, wpn);
+      note = `Контракт недели выполнен! ${WEEKLY.reward.tokens} ◈, ${weaponDef(wpn.cls, wpn.tier).name} (оценка ${weaponQuality(wpn)})${xp(WEEKLY.reward.xpMul)}`;
+    }
+    this.sendQuests(client, note);
+  }
+
+  private questAct(client: Client, msg: QuestActMsg): void {
+    const p = this.state.players.get(client.sessionId);
+    if (!p || !msg) return;
+    const b = this.questBoard(p);
+    if (!b) return;
+    if (msg.act === "storyTake" || msg.act === "weeklyTake") {
+      if (!this.hunterNear(p)) return this.sendQuests(client, "Подойди к Охотнику у выхода из лагеря");
+      if (msg.act === "storyTake") {
+        const st = this.storyOf(b.token);
+        const c = STORY[st.ch];
+        if (!c || st.taken) return;
+        store.put(b.token, { story: { ch: st.ch, got: 0, taken: true } });
+        return this.sendQuests(client, `Взята глава: ${c.title}`);
+      }
+      const w = this.weeklyOf(b.token, p);
+      if (w.taken) return;
+      w.taken = true;
+      store.put(b.token, { weekly: w });
+      return this.sendQuests(client, "Контракт недели взят");
+    }
+    if (msg.act === "storyClaim" || msg.act === "weeklyClaim") {
+      if (!this.hunterNear(p)) return this.sendQuests(client, "Подойди к Охотнику у выхода из лагеря");
+      return this.hunterClaim(client, p, b.token, msg.act);
+    }
+    if (!this.questNear(p)) {
+      this.sendQuests(client, "Подойди к доске заданий у выхода из лагеря");
+      return;
+    }
+    const idx = Math.floor(Number(msg.idx));
+    let note: string | undefined;
+    if (msg.act === "takeDaily") {
+      if (b.q.accepted) return;
+      b.q.accepted = true;
+      note = "Задания дня взяты";
+    } else if (msg.act === "take") {
+      const o = b.q.offers[idx];
+      if (!o || b.q.picksLeft <= 0) return;
+      b.q.offers.splice(idx, 1);
+      b.q.slots.push(o);
+      b.q.picksLeft--;
+      note = `Взято: ${slotTitle(o)}`;
+    } else if (msg.act === "claim") {
+      const s = b.q.slots[idx];
+      if (!s || s.claimed || !slotDone(s)) return;
+      const r = slotReward(s);
+      const bag = readBag(p);
+      if (addToBag(bag, "scrap", r.scrap) > 0) {
+        this.sendQuests(client, "Сумка полна — освободи место для лома");
+        return;
+      }
+      writeBag(p, bag);
+      s.claimed = true;
+      const xpNote = this.questXp(client, p, r.xpMul);
+      store.put(b.token, { tokens: (store.get(b.token)?.tokens ?? 0) + r.tokens });
+      note = `Задание выполнено! ${r.tokens} ◈, лом ×${r.scrap}${xpNote}`;
+      const extras: string[] = [];
+      if (s.hard && Math.random() < HARD_SCROLL_CHANCE) {
+        const sc = this.giveScroll(client, p);
+        if (sc) extras.push(sc);
+      }
+      // Бонус: все автоматические задания дня сданы — свиток.
+      const autoN = Math.min(QUEST.auto, b.q.slots.length);
+      if (!b.q.allBonus && b.q.slots.slice(0, autoN).every((x) => x.claimed)) {
+        b.q.allBonus = true;
+        const sc = this.giveScroll(client, p);
+        if (sc) extras.push(`${sc} (бонус за все задания дня)`);
+      }
+      if (extras.length) note += ` + ${extras.join(", ")}`;
+    } else return;
+    store.put(b.token, { quests: b.q });
+    this.sendQuests(client, note);
+  }
+
   private sendPcInv(client: Client): void {
     const p = this.state.players.get(client.sessionId);
     const rt = this.rt.get(client.sessionId);
@@ -3306,6 +3945,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = id ? rt.weapons.find((x) => x.id === id) : undefined;
       return w ? w.affixes.map(affixLabel).join(", ") : "";
     };
+    const heldR = rolledIn(p, "right", rt)?.id ?? null;
+    let heldL = rolledIn(p, "left", rt)?.id ?? null;
+    if (heldL === heldR) heldL = null; // лук в обеих руках — один экземпляр
     const data: PcInvData = {
       weapons: rt.weapons.map((w) => ({
         id: w.id,
@@ -3317,10 +3959,16 @@ export class ZoneRoom extends Room<ZoneState> {
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
       })),
-      equipped: { left: rt.equippedWeaponId.left, right: rt.equippedWeaponId.right },
+      // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
+      // иначе незакреплённое надетое оружие показывалось ещё и в сумке.
+      equipped: { left: heldL, right: heldR },
       potions: bagCount(bag, "potion"),
       scrap: bagCount(bag, "scrap"),
       fish: bagCount(bag, "fish"),
+      scrollXp: bagCount(bag, "scroll_xp"),
+      scrollWind: bagCount(bag, "scroll_wind"),
+      titles: rec?.titles ?? [],
+      title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int },
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       stats: heroStatRows({
@@ -3332,8 +3980,8 @@ export class ZoneRoom extends Room<ZoneState> {
         rightTier: p.rightTier,
         leftCls: p.leftCls,
         leftTier: p.leftTier,
-        rightAffix: affOf(rt.equippedWeaponId.right),
-        leftAffix: affOf(rt.equippedWeaponId.left),
+        rightAffix: affOf(heldR),
+        leftAffix: affOf(heldL),
       }),
     };
     client.send(MSG.pcInvData, data);
@@ -3890,7 +4538,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !focus — показать своего героя в эфире на 10 с (раз в 10 мин). !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
+      "Ещё: !focus — показать своего героя в эфире на 10 с (раз в 10 мин). !title — титулы. !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
@@ -4076,6 +4724,7 @@ export class ZoneRoom extends Room<ZoneState> {
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
       fishBiteAt: null,
+      fishAuto: false,
     };
     this.rt.set(id, rt);
 
@@ -4313,6 +4962,7 @@ export class ZoneRoom extends Room<ZoneState> {
         writeBag(p, bag);
         this.triggerEmote(bot, "cheer");
         this.broadcast(MSG.botSay, { id: bot.id, text: "Поймал!" } satisfies BotSayMsg);
+        this.bumpFeat(bot.id, "fishTotal", TITLE_GOALS.fish, "Мастер-рыболов");
       }
       bot.fishBiteAt = 0;
     }
@@ -5463,6 +6113,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     this.tickEvents();
+    this.tickChatQuest();
     this.tickRaid();
     const perfB0 = serverPerf.now();
     this.tickBots(dt);
@@ -5643,7 +6294,14 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobKills) {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
-      if (k.kind === "boss") bossKiller = this.state.players.get(k.owner)?.nick ?? "";
+      this.chatQuestKill(k.owner, k.champ);
+      if (k.campType) {
+        this.questEvent(k.owner, { campType: k.campType, champ: k.champ });
+      }
+      if (k.kind === "boss") {
+        bossKiller = this.state.players.get(k.owner)?.nick ?? "";
+        this.bumpFeat(k.owner, "bossKills", TITLE_GOALS.bossKills, "Гроза Багрового");
+      }
       if (k.kind === "shard" || k.kind === "boss") continue;
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
@@ -5651,6 +6309,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.killFeed, { by: kp.nick, victim });
     }
     this.sim.mobKills.length = 0;
+    for (const owner of this.sim.dragonTop) this.bumpFeat(owner, "dragonTop", TITLE_GOALS.dragonTop, "Драконоборец");
+    this.sim.dragonTop.length = 0;
     // Опыт с босса — гибридный делёж (поровну + за вклад, с потолком) считает
     // ZoneSim. Здесь только раздаём и режем «не больше уровня за один бой».
     if (this.sim.bossXpShare.length) {
@@ -5932,6 +6592,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Реген, отсчёт до возрождения. */
   private tickPlayers(dt: number): void {
+    this.tickPlayerFishing();
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       if (!rt) return;
@@ -5959,6 +6620,16 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.campWarm = 0;
       }
       p.campBuffSecs = Math.min(65535, Math.max(0, Math.ceil((rt.campBuffUntil - now) / 1000)));
+      if (rt.token) {
+        const rec = store.get(rt.token);
+        p.title = rec?.title ?? "";
+        // Заслуги до появления титулов — выдаём задним числом.
+        if (rec && !rec.titles?.includes("Царь башни") && (rec.bestTowerTimeSec ?? Infinity) <= TITLE_GOALS.towerSec) {
+          this.grantTitle(rt.token, "Царь башни");
+        }
+        p.scrollXpSecs = Math.max(0, Math.ceil(((rec?.scrollXpUntil ?? 0) - now) / 1000));
+        p.scrollWindSecs = Math.max(0, Math.ceil(((rec?.scrollWindUntil ?? 0) - now) / 1000));
+      }
       // Воин-бот восстанавливается быстрее и раньше обычного.
       const warrior = id.startsWith("bot:") && isWarriorBot(p);
       const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
@@ -6225,6 +6896,7 @@ export class ZoneRoom extends Room<ZoneState> {
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
       fishBiteAt: null,
+      fishAuto: false,
     });
 
     client.send(

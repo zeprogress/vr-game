@@ -37,6 +37,10 @@ import {
   PickupFeedMsg,
   ChatLineMsg,
   PcInvData,
+  QuestActMsg,
+  ShopData,
+  FishWaitMsg,
+  QuestData,
   PcInvResult,
   PcInvActMsg,
   type BossEventMsg,
@@ -141,6 +145,10 @@ export class NetClient {
   onPickupFeed: ((m: PickupFeedMsg) => void) | null = null;
   onChatLine: ((m: ChatLineMsg) => void) | null = null;
   onPcInvData: ((m: PcInvData) => void) | null = null;
+  onQuestData: ((m: QuestData) => void) | null = null;
+  onShopData: ((m: ShopData) => void) | null = null;
+  /** Сервер сказал, через сколько секунд клюнет. */
+  onFishWait: ((m: FishWaitMsg) => void) | null = null;
   onPcInvResult: ((m: PcInvResult) => void) | null = null;
   /** Событие босса: появился / повержен — баннер во весь экран + музыка. */
   onBossEvent:
@@ -304,6 +312,9 @@ export class NetClient {
     room.onMessage(MSG.pickupFeed, (m: PickupFeedMsg) => this.onPickupFeed?.(m));
     room.onMessage(MSG.chatLine, (m: ChatLineMsg) => this.onChatLine?.(m));
     room.onMessage(MSG.pcInvData, (m: PcInvData) => this.onPcInvData?.(m));
+    room.onMessage(MSG.questData, (m: QuestData) => this.onQuestData?.(m));
+    room.onMessage(MSG.shopData, (m: ShopData) => this.onShopData?.(m));
+    room.onMessage(MSG.fishWait, (m: FishWaitMsg) => this.onFishWait?.(m));
     room.onMessage(MSG.pcInvResult, (m: PcInvResult) => this.onPcInvResult?.(m));
     room.onMessage(MSG.bossEvent, (m: BossEventMsg) =>
       this.onBossEvent?.(m.kind, m.by, m.loot, m.lootItems),
@@ -425,8 +436,8 @@ export class NetClient {
   }
 
   /** Рыбалка: заброс или подсечка — сервер решает, поймалось ли. */
-  sendFish(act: "cast" | "reel"): void {
-    const msg: FishMsg = { act };
+  sendFish(act: FishMsg["act"], mode?: FishMsg["mode"]): void {
+    const msg: FishMsg = { act, mode };
     this.room?.send(MSG.fish, msg);
   }
 
@@ -481,6 +492,22 @@ export class NetClient {
   /** ПК-окно снаряжения: попросить свежие данные. */
   sendPcInvOpen(): void {
     this.room?.send(MSG.pcInvOpen, {});
+  }
+
+  sendShopOpen(): void {
+    this.room?.send(MSG.shopOpen, {});
+  }
+
+  sendShopBuy(id: string): void {
+    this.room?.send(MSG.shopBuy, { id });
+  }
+
+  sendQuestOpen(): void {
+    this.room?.send(MSG.questOpen, {});
+  }
+
+  sendQuestAct(msg: QuestActMsg): void {
+    this.room?.send(MSG.questAct, msg);
   }
 
   sendPcInvAct(msg: PcInvActMsg): void {

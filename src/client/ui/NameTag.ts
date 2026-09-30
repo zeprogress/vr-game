@@ -32,6 +32,9 @@ export class NameTag {
 
   private readonly W: number;
   private accent: Color3;
+  /** Цвет самого имени (NPC лагеря — фиолетовый). */
+  private nameColor = "#f2f4fb";
+  private title = "";
   private curName = "";
   private curLevel: number | null = null;
   private curUnspent = false;
@@ -125,6 +128,11 @@ export class NameTag {
     this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
+  setNameColor(css: string): void {
+    this.nameColor = css;
+    this.paint(this.curName, this.curLevel, this.curUnspent);
+  }
+
   private paint(name: string, level: number | null, hasUnspent = false): void {
     this.curName = name;
     this.curLevel = level;
@@ -136,7 +144,7 @@ export class NameTag {
     ctx.textBaseline = "middle";
 
     const nameY = level === null ? H / 2 : H / 2 - 20;
-    ctx.fillStyle = "#f2f4fb";
+    ctx.fillStyle = this.nameColor;
     ctx.font = NAME_FONT;
     // Сам ник — строго по центру плашки. Значок бота цепляем слева от ника,
     // в центровке он не участвует (иначе надпись уезжала вправо).
@@ -172,8 +180,28 @@ export class NameTag {
         ctx.textAlign = "center";
       }
     }
+    if (this.title) {
+      // Титул — мелко, фиолетовым, под уровнем; не влез — ужимаем шрифт.
+      let px = 30;
+      ctx.font = `italic 600 ${px}px system-ui, sans-serif`;
+      const text = `«${this.title}»`;
+      const tw = ctx.measureText(text).width;
+      if (tw > W - 20) {
+        px = Math.max(18, Math.floor((px * (W - 20)) / tw));
+        ctx.font = `italic 600 ${px}px system-ui, sans-serif`;
+      }
+      ctx.fillStyle = "#c79bff";
+      ctx.fillText(text, W / 2, H - 14);
+    }
     this.paintBars(ctx);
     this.tex.update(true);
+  }
+
+  /** Титул героя под уровнем ("" — нет). */
+  setTitle(title: string): void {
+    if (title === this.title) return;
+    this.title = title;
+    this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
   /** Полоски над ником — те же положения и пропорции, что были у отдельных мешей. */

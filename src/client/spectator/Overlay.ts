@@ -35,6 +35,8 @@ export interface OverlayCtx {
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
   /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
   watchStats: HeroStatRow[] | null;
+  /** Титул героя (под ником) или null. */
+  watchTitle?: string | null;
   /** Уровень героя — «N ур.» рядом с ником. */
   watchLevel: number | null;
   /** Атрибуты героя [сил, лов, инт] — отдельная цветная строка. */
@@ -46,6 +48,8 @@ export interface OverlayCtx {
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
   /** plat: 0 — не пришло (боты), 1 — ПК, 2 — телефон, 3 — VR (см. PlayerState.plat). */
   online: readonly { nick: string; speaking: boolean; bot: boolean; plat: number }[];
+  /** Квест чата (все боты вместе) или null. */
+  chatQuest?: { title: string; got: number; need: number; secs: number } | null;
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: {
     heroNick: string;
@@ -129,6 +133,7 @@ const CSS = `
   letter-spacing:.02em; opacity:.92; }
 .ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
 .ov-watch table.stats td.vl { font-weight:700; text-align:right; }
+.ov-watch em.ttl { display:block; font-style:italic; font-weight:700; font-size:1.8vh; color:#c79bff; margin-top:.2vh; }
 .ov-watch span .lvl { font-size:2vh; font-weight:700; opacity:.75; margin-left:.4vh; }
 .ov-watch table.stats i.at { font-style:normal; font-weight:800; opacity:1; }
 .ov-watch .buffs { display:flex; flex-direction:column; gap:.4vh; margin-top:.8vh; }
@@ -200,6 +205,11 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
+.ov-cq { left:50%; top:10vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
+.ov-cq b { display:block; font-weight:800; font-size:2.2vh; color:#d6b8ff; letter-spacing:.02em; }
+.ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
+.ov-cq .bar i { display:block; height:100%; background:linear-gradient(90deg,#9146ff,#c79bff); border-radius:1vh; }
+.ov-cq span { opacity:.85; font-variant-numeric:tabular-nums; }
 .ov-towerstatus { left:2.2vw; top:47vh; text-align:left; font-size:1.7vh; }
 .ov-towerstatus b { display:block; font-size:3.9vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
@@ -253,6 +263,8 @@ export class Overlay {
   private tickerText = "";
   private tickerKind: "event" | "news" = "event";
   private readonly towerStatus: HTMLDivElement;
+  private readonly cq: HTMLDivElement;
+  private lastCqSig = "";
   private lastTowerStatusSig = "";
   private cfg: Config = { ...DEFAULT };
   // Кэш последнего отрисованного состояния — не трогаем DOM, пока данные не
@@ -300,6 +312,7 @@ export class Overlay {
     this.towerTop = div("box ov-towertop");
     this.ticker = div("box ov-ticker");
     this.towerStatus = div("box ov-towerstatus");
+    this.cq = div("box ov-cq");
 
     this.boss = div("box ov-boss");
     this.bossTitle = document.createElement("s");
@@ -320,6 +333,7 @@ export class Overlay {
       this.towerTop,
       this.ticker,
       this.towerStatus,
+      this.cq,
     );
     document.body.appendChild(this.root);
   }
@@ -586,13 +600,11 @@ export class Overlay {
 
     const statsSig = ctx.watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
     const buffSig = ctx.watchBuffs?.map((x) => `${x.name}:${Math.ceil(x.secs / 60)}`).join(",") ?? "";
-    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.watchLevel}|${ctx.watchAttrs?.join("/")}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
+    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.watchTitle}|${ctx.watchLevel}|${ctx.watchAttrs?.join("/")}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
         this.watch.innerHTML = "";
-        const b = document.createElement("b");
-        b.textContent = "смотрим";
         const s = document.createElement("span");
         s.textContent = ctx.watching;
         if (ctx.watchLevel !== null) {
@@ -601,7 +613,13 @@ export class Overlay {
           lv.textContent = `${ctx.watchLevel} ур.`;
           s.append(" ", lv);
         }
-        this.watch.append(b, s);
+        this.watch.append(s);
+        if (ctx.watchTitle) {
+          const t = document.createElement("em");
+          t.className = "ttl";
+          t.textContent = `«${ctx.watchTitle}»`;
+          this.watch.append(t);
+        }
         if (ctx.watchStats && ctx.watchStats.length > 0) {
           const table = document.createElement("table");
           table.className = "stats";
@@ -695,6 +713,26 @@ export class Overlay {
     if (this.cardUntil && now > this.cardUntil) {
       this.card.classList.remove("show");
       this.cardUntil = 0;
+    }
+
+    const cq = ctx.chatQuest;
+    show(this.cq, !!cq);
+    if (cq) {
+      const sig = `${cq.title}|${cq.got}|${Math.ceil(cq.secs / 60)}`;
+      if (sig !== this.lastCqSig) {
+        this.lastCqSig = sig;
+        const pct = Math.min(100, Math.round((cq.got / Math.max(1, cq.need)) * 100));
+        this.cq.innerHTML = "";
+        const b = document.createElement("b");
+        b.textContent = cq.title;
+        const bar = div("bar");
+        const fill = document.createElement("i");
+        fill.style.width = `${pct}%`;
+        bar.append(fill);
+        const sp = document.createElement("span");
+        sp.textContent = `${cq.got} / ${cq.need} · осталось ${Math.ceil(cq.secs / 60)} мин · !play — присоединиться`;
+        this.cq.append(b, bar, sp);
+      }
     }
 
     const ts = ctx.towerStatus;

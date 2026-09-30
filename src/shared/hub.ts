@@ -102,6 +102,12 @@ export const HUB = {
     mainTent: { x: HUB_CENTER.x - 1, z: HUB_CENTER.z - 21 },
     /** Смотровая башня — ориентир у ворот, видна отовсюду. */
     watchTower: { x: HUB_CENTER.x + 10, z: HUB_CENTER.z + 20 },
+    /** Доска заданий (квесты дня) — у выхода из лагеря, справа от ворот (если идти наружу). */
+    questBoard: { x: HUB_CENTER.x + 21.7, z: HUB_CENTER.z + 14.6 },
+    /** Охотник (сюжет новичка и недельный контракт) — у выхода из лагеря, слева от ворот. */
+    hunter: { x: HUB_CENTER.x + 14.6, z: HUB_CENTER.z + 21.7 },
+    /** Трактир: стойка и трактирщик (лавка за жетоны ◈) — у торговых лавок, лицом к площади. */
+    tavern: { x: HUB_CENTER.x - 9, z: HUB_CENTER.z - 11 },
     /** Инструктор — на подходе к тренировочной площадке. */
     instructor: { x: HUB_CENTER.x - 11, z: HUB_CENTER.z + 4 },
   },

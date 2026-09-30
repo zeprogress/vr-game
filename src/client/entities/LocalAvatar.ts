@@ -57,6 +57,9 @@ export class LocalAvatar {
   /** Баффы — кружащие мечи (×2 опыт/урон) и щиты («Тепло костра»). */
   private readonly buffAura: BuffOrbitFx;
   private campWarm = false;
+  /** Свитки: ветер (башмаки) и мудрость (стрелки вверх). */
+  private windBuff = false;
+  private xpBuff = false;
   private buffed = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
@@ -76,6 +79,12 @@ export class LocalAvatar {
   /** «Тепло костра» (бафф лагеря) — оранжевое свечение у ног. */
   setCampWarm(on: boolean): void {
     this.campWarm = on;
+  }
+
+  /** Свитки: ветер и мудрость — значки по кругу. */
+  setScrolls(wind: boolean, xp: boolean): void {
+    this.windBuff = wind;
+    this.xpBuff = xp;
   }
 
   /** Оглушён (напр. волной "Чародея руин") — звёздочки над головой. */
@@ -231,7 +240,13 @@ export class LocalAvatar {
     }
     this.root.position.set(eyeX, eyeY, eyeZ);
     this.root.rotation.y = yaw;
-    this.buffAura.set(this.buffed && !this.hidden, this.campWarm && !this.hidden);
+    const show = !this.hidden;
+    this.buffAura.set({
+      sword: show && this.buffed,
+      shield: show && this.campWarm,
+      boot: show && this.windBuff,
+      arrow: show && this.xpBuff,
+    });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.hidden);
     this.stunStars.update(dt);

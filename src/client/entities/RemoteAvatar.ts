@@ -196,6 +196,9 @@ export class RemoteAvatar implements Hittable {
   /** Баффы — кружащие мечи (×2 опыт/урон) и щиты («Тепло костра»). */
   private readonly buffAura: BuffOrbitFx;
   private campWarm = false;
+  /** Свитки: ветер (башмаки) и мудрость (стрелки вверх). */
+  private windBuff = false;
+  private xpBuff = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
   private buffed = false;
@@ -626,6 +629,7 @@ export class RemoteAvatar implements Hittable {
       this.nick = p.nick;
       this.nameTag.setInfo(p.nick, p.level, unspent);
     }
+    this.nameTag.setTitle(p.title ?? "");
     if (this.isBot) {
       this.nameTag.setXp(atMaxLevel(p.level) ? -1 : p.xp / xpToNext(p.level));
     }
@@ -635,6 +639,8 @@ export class RemoteAvatar implements Hittable {
     const inTower = (p.towerFloor ?? 0) > 0;
     this.buffed = !inTower && (p.buffSecs ?? 0) > 0;
     this.campWarm = !inTower && (p.campBuffSecs ?? 0) > 0;
+    this.windBuff = !inTower && (p.scrollWindSecs ?? 0) > 0;
+    this.xpBuff = !inTower && (p.scrollXpSecs ?? 0) > 0;
     this.stunned = p.stunned === 1;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
@@ -741,7 +747,13 @@ export class RemoteAvatar implements Hittable {
     const dt = this.lastUpdate > 0 ? Math.min(0.1, (now - this.lastUpdate) / 1000) : 0.016;
     this.lastUpdate = now;
     this.bubble?.update(dt);
-    this.buffAura.set(this.buffed && !this.dead, this.campWarm && !this.dead);
+    const show = !this.dead;
+    this.buffAura.set({
+      sword: show && this.buffed,
+      shield: show && this.campWarm,
+      boot: show && this.windBuff,
+      arrow: show && this.xpBuff,
+    });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);
     this.stunStars.update(dt);

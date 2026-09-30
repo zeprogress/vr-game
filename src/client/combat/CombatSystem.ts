@@ -1062,8 +1062,13 @@ export class CombatSystem {
     return Vector3.Distance(worldPos, low) <= Vector3.Distance(worldPos, high) ? "low" : "high";
   }
 
+  /** E/✋: если вернёт true — нажатие забрано (напр. открыта доска заданий). */
+  interactHook: (() => boolean) | null = null;
+
   private handleInteractFlat(held: boolean, edge: boolean, released: boolean, dt: number): void {
     if (this.fishing) return;
+    // Рядом доска заданий (и т.п.) — E/✋ открывает её, а не подбор.
+    if (edge && this.interactHook?.()) return;
     if (this.justPickedUp) {
       if (released) this.justPickedUp = false;
       return;

@@ -56,6 +56,16 @@ export const MSG = {
   pcInvData: "pid",
   pcInvAct: "pia",
   pcInvResult: "pir",
+  /** Доска заданий: запрос / данные (и обновление прогресса) / действие. */
+  questOpen: "qo",
+  questData: "qd",
+  questAct: "qa",
+  /** Лавка трактирщика: запрос / данные / покупка. */
+  shopOpen: "so",
+  shopData: "sd",
+  shopBuy: "sb",
+  /** сервер -> рыбаку: время до поклёвки (FishWaitMsg). */
+  fishWait: "fw",
   /** сервер -> все: событие босса — появился / повержен (баннер + музыка). */
   bossEvent: "be",
   /** сервер -> все: динамическое событие мира началось/выиграно/утихло (баннер). */
@@ -180,19 +190,99 @@ export interface PcInvWeapon {
   ench: { label: string; points: number; max: boolean; chance: number; cost: number }[];
 }
 
+/** Одно задание в окне/трекере. */
+export interface QuestSlotView {
+  kind: "hunt" | "champ" | "fish";
+  hard: boolean;
+  /** Ключ ELITE_MOBS цели ("" — рыбалка) — для компаса. */
+  target: string;
+  title: string;
+  got: number;
+  need: number;
+  done: boolean;
+  claimed: boolean;
+  /** xpPct — % уровня (0 на макс. уровне). */
+  reward: { xpPct: number; tokens: number; scrap: number };
+}
+
+export interface QuestData {
+  /** Активные: 3 автоматических + взятые с доски. */
+  slots: QuestSlotView[];
+  /** Предложения доски. */
+  offers: QuestSlotView[];
+  picksLeft: number;
+  tokens: number;
+  nextSecs: number;
+  /** Герой стоит у доски (сдавать/брать можно только там). */
+  near: boolean;
+  /** Три задания дня взяты у доски. */
+  dailyTaken: boolean;
+  /** Сюжет Охотника: текущая глава (null — цепочка пройдена). */
+  story: {
+    chapter: number;
+    total: number;
+    title: string;
+    text: string;
+    kind: "hunt" | "champ" | "fish";
+    target: string;
+    got: number;
+    need: number;
+    done: boolean;
+    /** Глава взята у Охотника. */
+    taken: boolean;
+    reward: { xpPct: number; tokens: number; potions: number; final: boolean };
+  } | null;
+  /** Недельный контракт Охотника. */
+  weekly: {
+    parts: { label: string; got: number; need: number }[];
+    done: boolean;
+    claimed: boolean;
+    taken: boolean;
+    secsLeft: number;
+    reward: { xpPct: number; tokens: number };
+  };
+  /** Герой у Охотника. */
+  nearHunter: boolean;
+  msg?: string;
+}
+
+export interface ShopData {
+  items: { id: string; name: string; desc: string; price: number }[];
+  tokens: number;
+  near: boolean;
+  msg?: string;
+}
+
+export interface ShopBuyMsg {
+  id: string;
+}
+
+export interface QuestActMsg {
+  /** claim — сдать slots[idx]; take — взять offers[idx]; storyClaim / weeklyClaim — у Охотника. */
+  act: "claim" | "take" | "takeDaily" | "storyTake" | "storyClaim" | "weeklyTake" | "weeklyClaim";
+  idx: number;
+}
+
 export interface PcInvData {
   weapons: PcInvWeapon[];
   equipped: { left: string | null; right: string | null };
   potions: number;
   scrap: number;
   fish: number;
+  /** Свитки из лавки трактирщика. */
+  scrollXp?: number;
+  /** Полученные титулы и надетый. */
+  titles?: string[];
+  title?: string;
+  scrollWind?: number;
   attrs: { unspent: number; str: number; agi: number; int: number };
   respecCost: number;
   stats: { label: string; value: string }[];
 }
 
 export interface PcInvActMsg {
-  act: "enchant" | "stat" | "respec";
+  /** title — надеть титул (id = название, "" — снять). */
+  act: "enchant" | "stat" | "respec" | "title";
   id: string;
   idx: number;
 }
@@ -317,6 +407,8 @@ export interface OvlCam {
   /** Баффы героя в «смотрим» (см. OverlayCtx.watchBuffs). */
   /** Уровень и атрибуты [сил, лов, инт] героя в «смотрим». */
   wl?: number | null;
+  /** Титул героя в «смотрим». */
+  wt?: string | null;
   wa?: [number, number, number] | null;
   wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
@@ -698,7 +790,17 @@ export interface UseItemMsg {
 }
 
 export interface FishMsg {
-  act: "cast" | "reel";
+  /** cast — заброс, reel — подсечка (ручной режим), stop — смотать удочку. */
+  act: "cast" | "reel" | "stop";
+  /** auto — рыбачит сам (медленнее), manual — мини-игра (быстрее). */
+  mode?: "auto" | "manual";
+}
+
+/** сервер -> рыбаку: через сколько секунд клюнет (по серверному таймеру); stop — рыбалка прервана. */
+export interface FishWaitMsg {
+  wait: number;
+  auto?: boolean;
+  stop?: boolean;
 }
 
 export interface PickedMsg {

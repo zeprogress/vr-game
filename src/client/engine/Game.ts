@@ -30,6 +30,12 @@ import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { PcTargeting } from "../pc/PcTargeting";
 import { PcHud, type MapData, type WeaponIcon } from "../pc/PcHud";
+import { QuestBang } from "../world/hub/HubNpc";
+import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow } from "../ui/QuestWindow";
+import { QUEST, questPoint } from "#shared/quests";
+import { HUB } from "#shared/hub";
+import { terrainHeight } from "#shared/terrain";
+import { SCROLL, TAVERN_REACH } from "#shared/shop";
 import { PcInventory } from "../pc/PcInventory";
 import { PcMenu } from "../pc/PcMenu";
 import { enableTreeFade, fadeTreesOccluding } from "../world/nature";
@@ -223,6 +229,17 @@ export class Game {
   private pcHud: PcHud | null = null;
   private lastCampBuff = 0;
   private pcInv: PcInventory | null = null;
+  private questWin: QuestWindow | null = null;
+  private questTracker: QuestTracker | null = null;
+  private nearQuestBoard = false;
+  private questCompass: QuestCompass | null = null;
+  private shopWin: ShopWindow | null = null;
+  private hunterWin: HunterWindow | null = null;
+  private nearHunter = false;
+  /** Жёлтые «!» над доской и Охотником — есть что взять/сдать. */
+  private bangBoard: QuestBang | null = null;
+  private bangHunter: QuestBang | null = null;
+  private nearTavern = false;
   private pcMenu: PcMenu | null = null;
   private lootMarker: LootMarker | null = null;
   private aoeAim: AoeAim | null = null;
@@ -469,6 +486,62 @@ export class Game {
 
     this.player.setInput(this.defaultInput());
 
+    // Доска заданий в лагере (ПК и телефон): окно по E/✋ у доски + трекер.
+    if (this.isTouch || this.pcThirdPerson) {
+      this.questWin = new QuestWindow({
+        request: () => this.net?.sendQuestOpen(),
+        act: (m) => this.net?.sendQuestAct(m),
+      });
+      this.questCompass = new QuestCompass();
+      this.questTracker = new QuestTracker(
+        !this.isTouch,
+        () => this.questWin?.open(),
+        (q) => {
+          if (!q) return this.questCompass?.set(null);
+          // Готово — компас на доску (сдать), иначе — к лагерю цели / озеру.
+          const pp = this.player.position;
+          // Готово — к месту сдачи (доска / Охотник); контракт недели — тоже к Охотнику.
+          const toHunter = q.src !== "daily" && (q.done || q.src === "weekly");
+          const pt = q.done || q.src === "weekly" ? (toHunter ? HUB.zones.hunter : HUB.zones.questBoard) : questPoint(q, pp.x, pp.z);
+          const name = q.done || q.src === "weekly" ? (toHunter ? "Охотник" : "Доска заданий") : q.title;
+          this.questCompass?.set({ x: pt.x, z: pt.z, name });
+        },
+      );
+      {
+        const b = HUB.zones.questBoard;
+        const h = HUB.zones.hunter;
+        this.bangBoard = new QuestBang(this.scene, b.x, b.z, 2.8);
+        this.bangHunter = new QuestBang(this.scene, h.x, h.z, 3.6);
+      }
+      this.hunterWin = new HunterWindow({
+        request: () => this.net?.sendQuestOpen(),
+        act: (m) => this.net?.sendQuestAct(m),
+      });
+      this.shopWin = new ShopWindow({
+        request: () => this.net?.sendShopOpen(),
+        buy: (id) => this.net?.sendShopBuy(id),
+      });
+      this.combat.interactHook = () => {
+        const p = this.player.position;
+        const b = HUB.zones.questBoard;
+        if (Math.hypot(p.x - b.x, p.z - b.z) <= QUEST.boardReach) {
+          this.questWin?.toggle();
+          return true;
+        }
+        const t = HUB.zones.tavern;
+        if (Math.hypot(p.x - t.x, p.z - t.z) <= TAVERN_REACH) {
+          this.shopWin?.toggle();
+          return true;
+        }
+        const h = HUB.zones.hunter;
+        if (Math.hypot(p.x - h.x, p.z - h.z) <= QUEST.boardReach) {
+          this.hunterWin?.toggle();
+          return true;
+        }
+        return false;
+      };
+    }
+
     // Смартфон — вид от третьего лица: орбитальная камера + видимая модель.
     // Десктоп/VR остаются от первого лица.
     if (this.isTouch) {
@@ -509,6 +582,10 @@ export class Game {
       };
       this.pcInv = new PcInventory({
         request: () => this.net?.sendPcInvOpen(),
+        useItem: (id) => {
+          const slot = this.inventory.slots.findIndex((s) => s.item === id && s.count > 0);
+          if (slot >= 0) this.inventory.use(slot);
+        },
         act: (m) => this.net?.sendPcInvAct(m),
         hands: () => {
           const h = this.combat.handsSnapshot();
@@ -548,6 +625,7 @@ export class Game {
           return true;
         }
         if (this.pcMenu?.close()) return true;
+        if (this.questWin?.close() || this.shopWin?.close() || this.hunterWin?.close()) return true;
         if (this.pcInv?.close() || this.pcHud?.closeMap() || this.pcTarget?.clear()) return true;
         this.pcMenu?.open();
         return true;
@@ -562,6 +640,7 @@ export class Game {
       this.lootMarker = new LootMarker();
       this.aoeAim = new AoeAim(this.scene);
       this.pcTarget.onAttackStart = () => {
+        this.fishing?.cancel();
         this.pcChase = true;
       };
       this.pcTarget.selfId = () => this.net?.sessionId;
@@ -754,6 +833,25 @@ export class Game {
         );
       }
       if (this.pcHud) this.updatePcHud(dt);
+      if (this.questWin) {
+        // Подошёл к доске заданий — подсказка; отошёл — окно закрывается.
+        const b = HUB.zones.questBoard;
+        const pp = this.player.position;
+        const near = Math.hypot(pp.x - b.x, pp.z - b.z) <= QUEST.boardReach;
+        if (near && !this.nearQuestBoard) this.notifyToast(this.isTouch ? "Доска заданий — нажми ✋" : "Доска заданий — нажми E");
+        this.nearQuestBoard = near;
+        const tv = HUB.zones.tavern;
+        const nearT = Math.hypot(pp.x - tv.x, pp.z - tv.z) <= TAVERN_REACH;
+        if (nearT && !this.nearTavern) this.notifyToast(this.isTouch ? "Трактирщик — нажми ✋" : "Трактирщик — нажми E");
+        this.nearTavern = nearT;
+        const hu = HUB.zones.hunter;
+        const nearH = Math.hypot(pp.x - hu.x, pp.z - hu.z) <= QUEST.boardReach;
+        if (nearH && !this.nearHunter) this.notifyToast(this.isTouch ? "Охотник — нажми ✋" : "Охотник — нажми E");
+        this.nearHunter = nearH;
+        this.questCompass?.update(pp.x, pp.z, this.player.cameraYaw);
+        this.bangBoard?.update(dt);
+        this.bangHunter?.update(dt);
+      }
       this.hands.holding.left = this.combat.handOccupied("left");
       this.hands.holding.right = this.combat.handOccupied("right");
       this.hands.update(dt, daylightAt(LOADOUT.world.hour));
@@ -1750,6 +1848,9 @@ export class Game {
 
   /** Действия с оружием из меню на руке: склад ↔ рука/спина, обмен рука ↔ плечо, на землю, на лом. */
   private menuWeaponAction(a: MenuAction): void {
+    // Переодевание во время рыбалки — сначала сматываем удочку (иначе она
+    // оставалась в руке, а новое оружие пряталось/показывалось вперемешку).
+    this.fishing?.cancel();
     const toast = (t: string): void => this.notifyToast(t);
     const fail = (err: string | null): boolean => {
       if (err) toast(err);
@@ -1895,9 +1996,11 @@ export class Game {
     // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
     const camp = self.campBuffSecs ?? 0;
     this.localAvatar?.setCampWarm(!inTower && camp > 0);
+    this.localAvatar?.setScrolls(!inTower && (self.scrollWindSecs ?? 0) > 0, !inTower && (self.scrollXpSecs ?? 0) > 0);
+    this.player.speedMul = !inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1;
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
-    this.pcHud?.setBuffs(self.buffSecs ?? 0, camp);
+    this.pcHud?.setBuffs(self.buffSecs ?? 0, camp, self.scrollXpSecs ?? 0, self.scrollWindSecs ?? 0);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
@@ -1910,6 +2013,7 @@ export class Game {
       this.player.dead = dead;
       this.deathCountdown = dead ? RESPAWN.delay : 0;
       if (dead) {
+        this.fishing?.cancel();
         this.hud.flashDamage(40);
         this.vrVignette?.flash(40);
         this.vrVignette?.setDeath(true);
@@ -2104,7 +2208,15 @@ export class Game {
       // двойной ЛКМ или ПКМ по нему — добежать и подобрать.
       // Лут мелкий и лежит там, где умирают мобы, — попадание по нему важнее моба рядом.
       const loot = this.lootAt(click.x, click.y);
-      if (loot) {
+      const npc = loot ? null : this.npcAt(click.x, click.y);
+      if (npc) {
+        // Первый клик — выбрать; повторный / двойной / ПКМ — подбежать и открыть окно.
+        const now = performance.now();
+        const go = this.npcSel === npc || click.button === 2 || now - this.lastNpcClick < 450;
+        this.lastNpcClick = now;
+        this.npcSel = npc;
+        if (go) this.walkToNpc(npc);
+      } else if (loot) {
         // Первый клик — выбрать предмет (обводка держится), повторный клик по
         // выбранному / двойной / ПКМ — добежать и поднять.
         const now = performance.now();
@@ -2121,6 +2233,7 @@ export class Game {
       } else {
         // Клик мимо предмета — снять выбор предмета (если к нему не бежим).
         if (!this.player.autoMove) this.lootMarker?.hide();
+        this.npcSel = null;
         pt.handleClick(click, cam, this.canvas);
       }
     }
@@ -2148,6 +2261,39 @@ export class Game {
   }
 
   private lastLootClick: { id: string; t: number } | null = null;
+  /** ПК: выбранный мышью NPC/объект лагеря (трактирщик, доска заданий). */
+  private npcSel: "tavern" | "board" | "hunter" | null = null;
+  private lastNpcClick = 0;
+
+  /** NPC лагеря под курсором (ПК): трактирщик или доска заданий. */
+  private npcAt(x: number, y: number): "tavern" | "board" | "hunter" | null {
+    if (!this.pcTarget || !this.questWin) return null;
+    const t = HUB.zones.tavern;
+    const b = HUB.zones.questBoard;
+    const h = HUB.zones.hunter;
+    const pts = [
+      new Vector3(t.x, terrainHeight(t.x, t.z) + 1.1, t.z),
+      new Vector3(b.x, terrainHeight(b.x, b.z) + 1.6, b.z),
+      new Vector3(h.x, terrainHeight(h.x, h.z) + 1.1, h.z),
+    ];
+    const i = this.pcTarget.pointAt(x, y, this.player.renderCamera, this.canvas, pts, 60);
+    return i === 0 ? "tavern" : i === 1 ? "board" : i === 2 ? "hunter" : null;
+  }
+
+  /** Добежать до NPC и открыть его окно (лавка / доска заданий). */
+  private walkToNpc(which: "tavern" | "board" | "hunter"): void {
+    const pt = which === "tavern" ? HUB.zones.tavern : which === "hunter" ? HUB.zones.hunter : HUB.zones.questBoard;
+    const reach = which === "tavern" ? TAVERN_REACH : QUEST.boardReach;
+    const open = (): void => {
+      if (which === "tavern") this.shopWin?.open();
+      else if (which === "hunter") this.hunterWin?.open();
+      else this.questWin?.open();
+    };
+    const p = this.player.position;
+    if (Math.hypot(p.x - pt.x, p.z - pt.z) <= reach) return open();
+    this.pcChase = false;
+    this.player.autoMove = { x: pt.x, z: pt.z, stop: reach - 0.8, onArrive: open };
+  }
 
   /**
    * Ролл «скорость атаки» с того, что в руках: основное оружие + щит в другой
@@ -2283,6 +2429,24 @@ export class Game {
       return;
     }
     const cam = this.player.renderCamera;
+    const npc = this.npcAt(di.mouseX, di.mouseY);
+    if (npc) {
+      const sel = this.npcSel === npc;
+      hv.set(
+        {
+          title: npc === "tavern" ? "Трактирщик" : npc === "hunter" ? "Охотник" : "Доска заданий",
+          titleColor: "#e8c26a",
+          lines: [
+            { text: npc === "tavern" ? "лавка за жетоны ◈" : npc === "hunter" ? "история лагеря и контракт недели" : "задания дня" },
+            { text: sel ? "Клик — подойти и открыть" : "Клик — выбрать · ПКМ / двойной — открыть", color: "#8f8a7e" },
+          ],
+          cursor: sel ? "loot" : "default",
+        },
+        sx,
+        sy,
+      );
+      return;
+    }
     const loot = this.lootAt(di.mouseX, di.mouseY);
     if (loot) {
       const def = ITEMS[loot.item];
@@ -2546,6 +2710,18 @@ export class Game {
       for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
     };
     net.onPcInvData = (d) => this.pcInv?.setData(d);
+    net.onShopData = (d) => this.shopWin?.setData(d);
+    net.onQuestData = (d) => {
+      this.questWin?.setData(d);
+      this.hunterWin?.setData(d);
+      this.questTracker?.setData(d);
+      const claimable = d.slots.some((s, i) => s.done && !s.claimed && (i >= 3 || d.dailyTaken));
+      this.bangBoard?.set(!d.dailyTaken || claimable || (d.picksLeft > 0 && d.offers.length > 0));
+      const st = d.story;
+      const w = d.weekly;
+      this.bangHunter?.set(!!st && (!st.taken || st.done) || !w.taken || (w.done && !w.claimed));
+    };
+    if (this.questWin) window.setTimeout(() => net.sendQuestOpen(), 1500);
     net.onPcInvResult = (r) => {
       this.pcInv?.onResult(r);
       if (!r.enchant) this.notifyToast(r.text);
@@ -2571,7 +2747,14 @@ export class Game {
       }
     };
 
-    this.fishing = createFishing(this.scene, this.player, this.combat, net, (text) => this.notifyToast(text));
+    this.fishing = createFishing(
+      this.scene,
+      this.player,
+      this.combat,
+      net,
+      (text) => this.notifyToast(text),
+      () => !this.player.inVR,
+    );
 
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;
@@ -3132,6 +3315,8 @@ export class Game {
       this.net.onChatLine = null;
       this.net.onDmgHits = null;
       this.net.onPcInvData = null;
+      this.net.onQuestData = null;
+      this.net.onShopData = null;
       this.net.onPcInvResult = null;
       this.net.onWarehouse = null;
       this.net.onRtc = null;
