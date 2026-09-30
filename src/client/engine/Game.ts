@@ -32,6 +32,7 @@ import { PcTargeting } from "../pc/PcTargeting";
 import { PcHud, SACK_SVG, type MapData, type WeaponIcon } from "../pc/PcHud";
 import { QuestBang } from "../world/hub/HubNpc";
 import { setGrassVr } from "../world/GrassField";
+import { LightFocus } from "../world/lightFocus";
 import { VrPanel } from "../ui/VrPanel";
 import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop } from "../ui/VrQuestPanels";
 import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trackItems, type TrackItem } from "../ui/QuestWindow";
@@ -349,6 +350,7 @@ export class Game {
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.botLights = zone.botLights;
+    this.lightFocus = new LightFocus(this.scene);
     this.fireflies = zone.fireflies;
 
     this.player = new PlayerController(this.scene, this.progression);
@@ -916,6 +918,8 @@ export class Game {
         this._botPos,
         this._botFwd,
       );
+      // Огни в шейдере земли/травы — ближайшие к своему герою, а не первые по порядку создания в сцене.
+      this.lightFocus?.update(dt, this.player.position);
       this.mark("botLights");
       // Своя тень: игрок стоит «глазами», ноги ниже на eyeHeight.
       const eye = this.player.eyePosition;
@@ -2143,6 +2147,7 @@ export class Game {
     return n && performance.now() - n.at < 5000 ? n.text : null;
   }
   private vrCompass: VrCompass | null = null;
+  private lightFocus: LightFocus | null = null;
 
   /** Компас к заданию (ПК/телефон — HTML, VR — стрелка перед игроком). null — выключить. */
   private setQuestCompass(q: TrackItem | null): void {

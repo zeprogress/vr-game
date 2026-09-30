@@ -1,3 +1,4 @@
+import { LightFocus } from "../world/lightFocus";
 import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
 import { Engine } from "@babylonjs/core/Engines/engine";
@@ -77,6 +78,7 @@ export class Spectator {
   ) => void;
   private readonly groundHeight: (x: number, z: number) => number;
   private readonly botLights: import("../world/BotLights").BotLights;
+  private lightFocus!: LightFocus;
   private readonly healAura: HealAuraFx;
   /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
   private readonly skillFx: SkillFx;
@@ -263,6 +265,7 @@ export class Spectator {
     this.zoneTick = zone.tick;
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
+    this.lightFocus = new LightFocus(this.scene);
     // Стрим и свободная камера: зажигаем все факелы (4), а не 2 как в игре — иначе
     // при повороте камеры свет «пропадает» у ботов, что не вошли в двойку ближайших.
     if (preset.botTorches === undefined) this.botLights.setBudget(BOT_TORCHES);
@@ -1072,6 +1075,8 @@ export class Spectator {
       this._botFwd.push(av.eyeForward);
     }
     this.botLights.update(dt, daylightAt(LOADOUT.world.hour), look, this._botPos, this._botFwd);
+    // Огни в шейдере земли/травы — ближайшие к точке взгляда камеры, а не первые по порядку создания.
+    this.lightFocus.update(dt, look);
 
     this.probe?.mark("avatars");
     this.driveFreeCam(dt, room);
