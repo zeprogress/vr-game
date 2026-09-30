@@ -568,6 +568,12 @@ export class RemoteAvatar implements Hittable {
     }
   }
 
+  /** Далеко от камеры спектатора — не рисуем героя вовсе (весь узел выключен). */
+  setCulled(culled: boolean): void {
+    if (this.root.isEnabled() === !culled) return;
+    this.root.setEnabled(!culled);
+  }
+
   /** Огонёк над головой, пока игрок говорит. */
   setSpeaking(on: boolean): void {
     if (on && !this.speakDot) {

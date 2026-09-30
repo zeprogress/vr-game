@@ -562,7 +562,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защищает интеллект) и больнее (урон 3.5→5), лагерь больше (12→18).
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 1640, dmgMul: 6.5, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true, // урон 5→6.5
+    hp: 2400, dmgMul: 8, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true, // HP 1640→2400, урон 6.5→8
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
@@ -793,7 +793,7 @@ export const MOB_CAMPS: {
   // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
   // боты 30+ выбирают один случайно (или по !camp <моб>).
   { x: 128, z: -118, type: "mushColossus", count: 5, spread: 34, ring: 0.85, jitter: 0.35 }, // ур.33, юго-восток
-  { x: -115, z: 110, type: "boneWraith", count: 18, spread: 46 }, // ур.33, северо-запад
+  { x: -115, z: 110, type: "boneWraith", count: 24, spread: 46 }, // ур.33, северо-запад
   { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
   // Зона ур.36 — три лагеря по краям карты, подальше от лагерей 33 ур.
   { x: 20, z: 132, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север

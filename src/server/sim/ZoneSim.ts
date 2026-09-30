@@ -172,6 +172,8 @@ export interface PlayerHit {
   dot?: boolean;
   /** Доля РЕАЛЬНО нанесённого урона, которую моб-источник (byMob) лечит себе. */
   lifesteal?: number;
+  /** Магический урон: броня от силы не гасит, защищает интеллект. */
+  magic?: boolean;
 }
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
@@ -679,6 +681,7 @@ class Mob {
             projectile: false,
             byMob: this.id,
             dot: true,
+            magic: true, // споры — магия: броня от силы не гасит, режет интеллект
           });
         }
       }

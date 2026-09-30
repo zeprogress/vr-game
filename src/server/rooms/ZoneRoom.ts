@@ -6565,9 +6565,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
-    const magicMob = !h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee;
+    const magicMob = !!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee);
     let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p.int) : 1 - armorFrac(p.str));
-    if (magicMob && dmg > 0) {
+    if (magicMob && dmg > 0 && !h.dot) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.

@@ -60,6 +60,9 @@ export type { Quality };
  * но без локального игрока, HUD, боя, рук и голоса. Камерой рулит
  * автономный режиссёр (SpectatorCamera). Дашборд не нужен.
  */
+/** Спектатор: дальше этого от камеры (м) не рисуем мобов, героев и боевые эффекты. */
+const SPEC_RANGE = 250;
+
 export class Spectator {
   private readonly engine: Engine;
   private readonly scene: Scene;
@@ -287,6 +290,9 @@ export class Spectator {
     // цели пустые, репорт попаданий — заглушка.
     preloadWeaponModels(this.scene);
     this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.leanMobs);
+    // Мобы, снаряды и вспышки дальше SPEC_RANGE от камеры не рисуются.
+    this.netMobs.fxRange = SPEC_RANGE;
+    this.netMobs.drawRange = SPEC_RANGE;
     this.loot = new LootDrops(this.scene);
 
     // Статус связи поверх картинки — на «слепом» боксе иначе не понять, что не так.
@@ -479,7 +485,11 @@ export class Spectator {
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onTowerBoard = (rows) => this.overlay?.setTowerBoard(rows);
     net.onDmgHits = (msg) => {
-      for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+      const cp = this.cam.cam.position;
+      for (const h of msg.hits) {
+        if (Math.hypot(h.x - cp.x, h.z - cp.z) > SPEC_RANGE) continue;
+        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+      }
     };
     net.onTowerMobs = (msg) => {
       this._towerMobs = msg.mobs;
@@ -931,6 +941,9 @@ export class Spectator {
         av.setMyPvp(false);
         av.update(now);
         const head = av.position;
+        // Дальше SPEC_RANGE от камеры героя не рисуем вовсе (экономим видеокарту стрима).
+        const cp = this.cam.cam.position;
+        av.setCulled(Math.hypot(head.x - cp.x, head.z - cp.z) > SPEC_RANGE);
         const i = this._players.length;
         let e = this._playerPool[i];
         if (!e) {
@@ -1427,6 +1440,9 @@ export class Spectator {
     x2in?: number,
     z2in?: number,
   ): void {
+    // Дальше SPEC_RANGE от камеры — ни эффектов, ни звуков.
+    const cp = this.cam.cam.position;
+    if (Math.hypot(x - cp.x, z - cp.z) > SPEC_RANGE) return;
     const at = { x, y, z };
     switch (k) {
       case "swing":

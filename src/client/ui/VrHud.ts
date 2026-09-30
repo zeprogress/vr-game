@@ -25,6 +25,13 @@ export class VrHud {
   private toastT = 0;
   private speakers: string[] = [];
   private buffP: Panel | null = null;
+  /** Где строка баффов: под полоской жизни (Game двигает вслед за её настройкой). */
+  private buffAt: [number, number, number] = [0, 0.34, 0.72];
+
+  placeBuffs(x: number, y: number, z: number): void {
+    this.buffAt = [x, y, z];
+    this.buffP?.mesh.position.set(x, y, z);
+  }
   private buffSig = "";
 
   constructor(
@@ -88,7 +95,7 @@ export class VrHud {
     const sig = list.map((b) => `${b.icon}${Math.ceil(b.secs / 60)}`).join("|");
     if (sig === this.buffSig) return;
     this.buffSig = sig;
-    this.buffP ??= new Panel(this.scene, this.anchor, "vrBuffs", 900, 90, 0.6, -0.34, -0.2, 1.4);
+    this.buffP ??= new Panel(this.scene, this.anchor, "vrBuffs", 900, 90, 0.42, this.buffAt[0], this.buffAt[1], this.buffAt[2]);
     const ctx = this.buffP.ctx;
     ctx.clearRect(0, 0, 900, 90);
     if (!list.length) {
@@ -114,6 +121,13 @@ export class VrHud {
       ctx.fillText(text, x + 18, 46);
       x += w + 10;
       if (x > 880) break;
+    }
+    // По центру под полоской: сдвигаем картинку, чтобы ряд значков был посередине.
+    const used = Math.min(900, x - 10);
+    if (used < 900) {
+      const img = ctx.getImageData(0, 0, used, 90);
+      ctx.clearRect(0, 0, 900, 90);
+      ctx.putImageData(img, Math.round((900 - used) / 2), 0);
     }
     this.buffP.tex.update();
     this.buffP.mesh.setEnabled(true);

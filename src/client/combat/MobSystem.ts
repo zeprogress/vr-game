@@ -100,6 +100,10 @@ export class NetMobs {
   private arrowProto: Mesh | null = null;
   /** Смартфон: снаряды крупнее — на маленьком экране их не видно. */
   boltViewScale = 1;
+  /** Дальше этого от камеры (м) снаряды и их вспышки не рисуем (VR — 150, Game ставит). */
+  fxRange = Infinity;
+  /** Дальше этого от камеры (м) модели мобов не рисуем (спектатор — 250). */
+  drawRange = Infinity;
   private readonly burstFlashProto: Mesh;
   private readonly burstRingProto: Mesh;
   private readonly burstSparkProto: Mesh;
@@ -546,7 +550,9 @@ export class NetMobs {
       const s = m.st;
       if (!s) return;
       secCount("#mobs.iter");
-      const draw = vr ? !!s.dead || this.vrDrawSet.has(id) : true;
+      const inRange =
+        this.drawRange === Infinity || (s.x - playerPos.x) ** 2 + (s.z - playerPos.z) ** 2 <= this.drawRange * this.drawRange;
+      const draw = (vr ? !!s.dead || this.vrDrawSet.has(id) : true) && inRange;
       let mdt = dt;
       if (this.lazy && !s.dead && draw && MOB_FAR_UPDATE_R > 0) {
         // Дальнего видимого моба считаем ~20 раз в секунду (позиция и так сглаживается).
@@ -561,7 +567,7 @@ export class NetMobs {
           return;
         }
       }
-      if (vr && !draw) {
+      if ((vr || !inRange) && !draw) {
         // Невидимого живого моба обновляем 4 раза в секунду (dt копится): он всё
         // равно не рисуется, а обход десятков схем каждый кадр — это и был netMobs.
         m.idleAcc += dt;
@@ -622,6 +628,8 @@ export class NetMobs {
       b.pos.z += (s.z - b.pos.z) * k;
 
       b.mesh.position.copyFrom(b.pos);
+      const cp = this.scene.activeCamera?.globalPosition;
+      b.mesh.setEnabled(!cp || Math.hypot(b.pos.x - cp.x, b.pos.z - cp.z) <= this.fxRange);
     });
     for (const [id, b] of this.balls) {
       if (!room.state.balls.has(id)) {
@@ -672,6 +680,14 @@ export class NetMobs {
       bo.pos.y += (s.y - bo.pos.y) * k;
       bo.pos.z += (s.z - bo.pos.z) * k;
 
+      // VR: далёкие снаряды не рисуем.
+      const near = !cam || Math.hypot(bo.pos.x - cam.globalPosition.x, bo.pos.z - cam.globalPosition.z) <= this.fxRange;
+      if (bo.arrow) bo.arrow.setEnabled(near);
+      else {
+        bo.core.setEnabled(near);
+        bo.glow.setEnabled(near);
+      }
+      if (!near) return;
       if (bo.arrow) {
         bo.arrow.position.copyFrom(bo.pos);
         if (bo.vel.lengthSquared() > 1e-4) {
@@ -709,7 +725,10 @@ export class NetMobs {
             }
           }
         }
-        if (bo.arrow) {
+        const far = !!cam && Math.hypot(bo.pos.x - cam.globalPosition.x, bo.pos.z - cam.globalPosition.z) > this.fxRange;
+        if (far) {
+          /* VR: далеко — ни вспышки, ни звука */
+        } else if (bo.arrow) {
           // Стрела бота: глухой «тук», без огненной вспышки/звука мага.
           this.sfx.at(
             { x: bo.pos.x, y: bo.pos.y, z: bo.pos.z },

@@ -134,6 +134,9 @@ function ffrLevel(): number {
   return Number.isFinite(want) ? Math.min(1, Math.max(0, want)) : 1;
 }
 
+/** VR: дальше этого (м) боевые эффекты не показываются. */
+const VR_FX_RANGE = 150;
+
 export class Game {
   readonly engine: Engine;
   readonly scene: Scene;
@@ -1232,6 +1235,7 @@ export class Game {
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
         setGrassVr(true); // облегчённая трава в шлеме
+        this.netMobs.fxRange = VR_FX_RANGE; // дальние снаряды/вспышки не рисуем
         this.applyVrQuality(); // на случай входа мимо enterVR() (штатная кнопка Babylon)
         this.requestMaxFrameRate();
         this.tuneXrRendering();
@@ -1242,6 +1246,7 @@ export class Game {
         this.buildVrUi();
       } else if (state === WebXRState.NOT_IN_XR) {
         setGrassVr(false);
+        this.netMobs.fxRange = Infinity;
         // Убранное за спину НЕ роняем: в плоском режиме его не достать, но
         // при возврате в VR и при следующем входе оно на месте.
         this.player.exitXR();
@@ -1742,6 +1747,8 @@ export class Game {
     const hp = LOADOUT.hud.hpPos;
     this.playerBar3D?.moveTo(hp[0], hp[1], hp[2]);
     this.manaBar3D?.moveTo(hp[0], hp[1] - 0.075, hp[2]);
+    // Баффы — строкой значков под полосками жизни/маны.
+    this.vrHud?.placeBuffs(hp[0], hp[1] - 0.125, hp[2]);
 
     const inp = this.player.lastInput;
     if (inp.panelToggle) this.wristPanel?.toggle();
@@ -2063,6 +2070,25 @@ export class Game {
       const was = this.fishPrevTrig;
       onPanel = fp.update(ray, inp.rightTrigger) || onPanel;
       void was; // подсечку курком ведёт сама рыбалка (Fishing.update)
+      // Подсечка рывком удочки вверх (правая рука быстро вверх) — как курок.
+      if (fs.phase === "mini") {
+        const right = this.xr?.input.controllers.find((c) => c.inputSource.handedness === "right");
+        const node = right?.grip ?? right?.pointer;
+        const now = performance.now();
+        if (node) {
+          const y = node.getAbsolutePosition().y;
+          const dtS = (now - this.jerkAt) / 1000;
+          if (this.jerkAt > 0 && dtS > 0 && dtS < 0.2) {
+            const vy = (y - this.jerkY) / dtS;
+            if (vy > 1.6 && now - this.jerkHitAt > 350) {
+              this.jerkHitAt = now;
+              this.fishing?.hit();
+            }
+          }
+          this.jerkY = y;
+          this.jerkAt = now;
+        }
+      } else this.jerkAt = 0;
       this.fishPrevTrig = inp.rightTrigger;
     }
     // Заточка.
@@ -2100,6 +2126,10 @@ export class Game {
     if (onPanel) this.combat.uiLockHand = "right";
   }
   private fishPrevTrig = false;
+  /** VR: рывок удочкой — прошлая высота правой руки и время. */
+  private jerkY = 0;
+  private jerkAt = 0;
+  private jerkHitAt = 0;
   private vrPanelErr = false;
   /** VR: итог последнего действия у NPC — показываем в панели ~5 с (нет панели — тост). */
   private vrNote: { text: string; at: number } | null = null;
@@ -3038,7 +3068,12 @@ export class Game {
         }
       }
       if (!VR_SETTINGS.dmgNumbers) return;
-      for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+      const pp = this.player.position;
+      const vr = this.player.inVR;
+      for (const h of msg.hits) {
+        if (vr && Math.hypot(h.x - pp.x, h.z - pp.z) > VR_FX_RANGE) continue;
+        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+      }
     };
     net.onPcInvData = (d) => {
       this.pcInvData = d;
@@ -3297,6 +3332,11 @@ export class Game {
     x2in?: number,
     z2in?: number,
   ): void {
+    // VR: дальше VR_FX_RANGE боевых эффектов (скиллы, лечение, удары, криты, звуки) не рисуем вовсе — бережём шлем.
+    if (this.player.inVR) {
+      const pp = this.player.position;
+      if (Math.hypot(x - pp.x, z - pp.z) > VR_FX_RANGE) return;
+    }
     const at = { x, y, z };
     switch (k) {
       case "swing":

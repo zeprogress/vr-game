@@ -186,7 +186,7 @@ export function drawFishing(
     ui.rect(bx, by, w, 60, VR_UI.barBg, 30);
     ui.rect(bx + (st.zone - st.zoneW / 2) * w, by, st.zoneW * w, 60, "#3f8f4a", 8);
     ui.rect(bx + st.mark * w - 6, by - 10, 12, 80, "#f1ead6", 4);
-    ui.text(`Жми курок или кнопку взаимодействия · ${Math.ceil(st.timeLeft)} с`, PAD, 290, 26, VR_UI.sub);
+    ui.text(`Курок или рывок удочкой вверх · ${Math.ceil(st.timeLeft)} с`, PAD, 290, 26, VR_UI.sub);
     return;
   }
   ui.text(st.mode === "auto" ? "Авторыбалка… герой ловит сам" : "Ждём поклёвку…", PAD, 140, 32, VR_UI.title, 700);
