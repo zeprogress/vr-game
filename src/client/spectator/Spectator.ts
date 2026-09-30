@@ -1050,21 +1050,28 @@ export class Spectator {
       });
     }
 
-    // Ночью ближайший к камере бот светит вокруг себя.
+    // Ночью факелы — героям В КАДРЕ: огней мало, раздаём ближайшим к точке, куда
+    // смотрит камера, и только тем, кто перед камерой и не дальше SPEC_RANGE.
+    // Раньше — ближайшим к самой камере (боты за спиной/сбоку забирали свет).
     this._botPos.length = 0;
     this._botFwd.length = 0;
+    const camP = this.cam.cam.position;
+    const look = this.cam.target;
+    const lx = look.x - camP.x;
+    const lz = look.z - camP.z;
+    const ll = Math.hypot(lx, lz) || 1;
     for (const av of this.avatars.values()) {
-      if (!av.isBot) continue;
-      this._botPos.push(av.position);
+      const p = av.position;
+      const dx = p.x - camP.x;
+      const dz = p.z - camP.z;
+      const d = Math.hypot(dx, dz);
+      if (d > SPEC_RANGE) continue;
+      // Перед камерой (конус ~±70°) или совсем рядом с ней.
+      if (d > 6 && (dx * lx + dz * lz) / (d * ll) < 0.34) continue;
+      this._botPos.push(p);
       this._botFwd.push(av.eyeForward);
     }
-    this.botLights.update(
-      dt,
-      daylightAt(LOADOUT.world.hour),
-      this.cam.cam.position,
-      this._botPos,
-      this._botFwd,
-    );
+    this.botLights.update(dt, daylightAt(LOADOUT.world.hour), look, this._botPos, this._botFwd);
 
     this.probe?.mark("avatars");
     this.driveFreeCam(dt, room);
