@@ -369,7 +369,7 @@ export class Overlay {
     if (!victim) return;
     const row = document.createElement("div");
     if (by) {
-      row.innerHTML = `<b></b><i>⚔</i><s></s>`;
+      row.innerHTML = `<b></b><i>🗡️</i><s></s>`;
       row.querySelector("b")!.textContent = by;
       row.querySelector("s")!.textContent = victim;
     } else {

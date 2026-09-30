@@ -13,6 +13,7 @@ import {
   enchantInfo,
   weaponDef,
   weaponQuality,
+  bestWeaponInstance,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
@@ -157,9 +158,11 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   if (!rec) return { ok: false, error: `У «${norm}» ещё нет героя — напиши !play в чате.` };
   const authed = invHub.isAuthed(sid, norm);
   const weaponsList = rec.weapons ?? [];
-  const equippedIds = new Set(
-    [rec.equippedWeaponId?.left, rec.equippedWeaponId?.right].filter((id): id is string => !!id),
-  );
+  // Что в руках — как в окне снаряжения (живой герой: реально в руке, не только закреплённое).
+  const eqFor = (): { left: string | null; right: string | null } =>
+    invHub.pcInv(norm)?.equipped ?? { left: rec.equippedWeaponId?.left ?? null, right: rec.equippedWeaponId?.right ?? null }; // уточняется ниже (pc)
+  const eq0 = eqFor();
+  const equippedIds = new Set([eq0.left, eq0.right].filter((id): id is string => !!id));
   const weapons = weaponsList
     .filter((w) => !equippedIds.has(w.id))
     .map((w, i) => ({
@@ -176,12 +179,16 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const misc = (rec.bag ?? [])
     .filter((s) => s.item && s.count > 0 && s.item !== "scroll_xp" && s.item !== "scroll_wind") // свитки — в «Жетоны и свитки»
     .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
-  const leftInst = rec.equippedWeaponId?.left
-    ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.left)
-    : undefined;
-  const rightInst = rec.equippedWeaponId?.right
-    ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.right)
-    : undefined;
+  // Экземпляр в руке: закреплённый, иначе лучший того же вида/тира (как считает игра).
+  const instIn = (side: "left" | "right"): WeaponInstance | undefined => {
+    const h = rec.held?.[side];
+    if (!h?.cls) return undefined;
+    const pinned = weaponsList.find((w) => w.id === rec.equippedWeaponId?.[side]);
+    if (pinned && pinned.cls === h.cls && pinned.tier === h.tier) return pinned;
+    return bestWeaponInstance(weaponsList, h.cls as WeaponInstance["cls"], h.tier as WeaponTier) ?? undefined;
+  };
+  const leftInst = instIn("left");
+  const rightInst = instIn("right");
   const stats = heroStatRows({
     level: rec.level,
     str: rec.str,
@@ -206,7 +213,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       scrap: scrapValue(w),
       ench: enchDetails(w),
     })),
-    equipped: { left: rec.equippedWeaponId?.left ?? null, right: rec.equippedWeaponId?.right ?? null },
+    equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },
     potions: bagCount(rec.bag ?? [], "potion"),
     scrap: bagCount(rec.bag ?? [], "scrap"),
     fish: bagCount(rec.bag ?? [], "fish"),
@@ -231,10 +238,11 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     level: rec.level,
     // Опыт к следующему уровню: доля 0..1 (на максимальном уровне — 1).
     xpFrac: atMaxLevel(rec.level) ? 1 : Math.max(0, Math.min(1, (rec.xp ?? 0) / xpToNext(rec.level))),
-    stats,
+    // Старый вид — те же характеристики и руки, что новый (одни данные).
+    stats: pc.stats,
     hands: {
-      left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", rec.equippedWeaponId?.left, weaponsList),
-      right: handInfo(rec.held?.right?.cls ?? "", rec.held?.right?.tier ?? "", rec.equippedWeaponId?.right, weaponsList),
+      left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", pc.equipped.left, weaponsList),
+      right: handInfo(rec.held?.right?.cls ?? "", rec.held?.right?.tier ?? "", pc.equipped.right, weaponsList),
     },
     weapons,
     misc,

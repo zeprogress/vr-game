@@ -25,7 +25,7 @@ export function buffList(p: {
   const out: BuffEntry[] = [];
   if ((p.buffSecs ?? 0) > 0) {
     out.push({
-      icon: "⚔️",
+      icon: "🗡️",
       name: "Благословение победы",
       desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
       secs: p.buffSecs!,

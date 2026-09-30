@@ -96,7 +96,7 @@ export class TouchInput implements InputSource {
     this.knob = el("div", "touch-knob");
     stick.appendChild(this.knob);
 
-    const btnAttack = el("div", "touch-btn touch-attack", "⚔");
+    const btnAttack = el("div", "touch-btn touch-attack", "🗡️");
     const btnInteract = el("div", "touch-btn touch-interact", "✋");
     const btnFire = el("div", "touch-btn touch-fire", "➤");
     btnFire.style.display = "none"; // видна только в прицеле

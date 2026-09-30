@@ -64,7 +64,7 @@ export interface PcHudHooks {
   onAttrs: () => void;
 }
 
-const ICON: Record<WeaponIcon, string> = { sword: "⚔", bow: "🏹", staff: "🔥", fist: "✊" };
+const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊" };
 
 export class PcHud {
   private readonly root: HTMLDivElement;
@@ -110,7 +110,7 @@ export class PcHud {
 
     // --- рамка героя ---
     const unit = div("pc-unit pc-frame");
-    this.portraitEl = div("pc-portrait", "⚔");
+    this.portraitEl = div("pc-portrait", "🗡️");
     // Свободные очки атрибутов — зелёный значок с числом на портрете.
     this.unspentEl = div("pc-unspent");
     this.unspentEl.style.display = "none";
@@ -160,7 +160,7 @@ export class PcHud {
     // --- панель действий ---
     const bar = div("pc-actionbar");
     const slots = div("pc-slots");
-    this.slotAtk = slot("1", "⚔", "Автоатака по цели (1)");
+    this.slotAtk = slot("1", "🗡️", "Автоатака по цели (1)");
     this.slotSkill = slot("2", "✦", "Умение (2)");
     this.skillCd = div("pc-cd");
     this.slotSkill.append(this.skillCd);

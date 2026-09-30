@@ -3022,7 +3022,7 @@ export class Game {
       this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, m.tier === "legendary" ? "#c79bff" : "#f5c542");
     };
     net.onKillFeed = (by, victim) => {
-      if (victim) this.pcHud?.log("kill", by ? `⚔ ${victim}` : `${victim} пал`, by || undefined);
+      if (victim) this.pcHud?.log("kill", by ? `🗡️ ${victim}` : `${victim} пал`, by || undefined);
     };
     net.onChatLine = (m) => this.pcHud?.log("chat", m.text, m.nick);
     // Цифры урона над мобами — все платформы, выключатель в меню.

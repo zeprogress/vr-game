@@ -40,7 +40,7 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-export const ICON: Record<string, string> = { sword: "⚔", bow: "🏹", staff: "🪄", shield: "🛡" };
+export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS: { id: "str" | "agi" | "int"; name: string; hint: string }[] = [
   { id: "str", name: "Сила", hint: "Здоровье, урон мечом, броня" },
@@ -385,13 +385,13 @@ export class PcInventory {
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     const bag = d.weapons.filter((w) => !eq.has(w.id));
     // Склад на сервере без лимита — ячеек минимум 64, дальше растёт рядами по 8 (всегда есть свободный ряд).
-    const row = this.hooks.page ? 9 : this.hooks.touch ? 10 : 8;
-    const slots = Math.max(this.hooks.page ? 63 : this.hooks.touch ? 40 : 64, Math.ceil((bag.length + 1) / row) * row);
+    const row = this.hooks.touch && !this.hooks.page ? 10 : 8;
+    const slots = Math.max(this.hooks.page ? 48 : this.hooks.touch ? 40 : 64, Math.ceil((bag.length + 1) / row) * row);
     right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
     const grid = div("pcinv-grid");
     for (let i = 0; i < slots; i++) {
       const w = bag[i];
-      grid.append(w ? this.itemCell(w) : div("pcinv-cell"));
+      grid.append(w ? this.itemCell(w, i + 1) : div("pcinv-cell"));
     }
     // С руки в сумку — снять.
     grid.addEventListener("dragover", (e) => {
@@ -503,6 +503,10 @@ export class PcInventory {
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
       this.touchSrc.set(cell, { kind: "hand", side });
+      if (this.hooks.page && !this.hooks.touch) {
+        cell.style.cursor = "pointer";
+        cell.addEventListener("click", () => this.openActions(cell, { kind: "hand", side }));
+      }
       cell.addEventListener("dragend", () => this.endDrag());
       cell.addEventListener("mouseenter", () => this.showTip(cell, w, held));
       cell.addEventListener("mouseleave", () => this.hideTip());
@@ -532,12 +536,14 @@ export class PcInventory {
     return box;
   }
 
-  private itemCell(w: PcInvWeapon): HTMLDivElement {
+  private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
-    if (w.affixes.length) {
-      c.style.position = "relative";
-      c.append(div("pcinv-q", String(w.quality)));
-    }
+    c.style.position = "relative";
+    if (w.affixes.length) c.append(div("pcinv-q", String(w.quality)));
+    // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
+    if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
+    // Страница на ПК: клик — меню действий, как тап на телефоне.
+    if (this.hooks.page && !this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
     this.touchSrc.set(c, { kind: "bag", id: w.id });
@@ -927,8 +933,9 @@ function injectInvStyle(): void {
 .pcinv-root.page .pcinv-x, .pcinv-root.page .pcinv-hint, .pcinv-root.page .pcinv-doll { display:none; }
 .pcinv-root.page .pcinv-head { cursor:default; }
 /* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
-.pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(9,minmax(0,1fr)); gap:4px; }
-.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:20px; }
+.pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; }
+.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; }
+.pcinv-num { position:absolute; left:3px; bottom:1px; font:700 10px system-ui; color:#d8d0bb; text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
 /* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
 .pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
