@@ -128,7 +128,7 @@ export class BuffOutlineFx {
     if (!this.on) return;
     this.t += dt;
     const pulse = 0.5 + Math.sin(this.t * 2.6) * 0.5;
-    this.mat.alpha = 0.35 + pulse * 0.35;
+    this.mat.alpha = 0.2 + pulse * 0.2;
     this.plane.scaling.setAll(0.96 + pulse * 0.06);
   }
 
@@ -157,7 +157,7 @@ export class BuffOrbitFx {
   private sword = false;
   private shield = false;
 
-  constructor(scene: Scene, parent: TNode, y: number, radius = 0.85) {
+  constructor(scene: Scene, parent: TNode, y: number, radius = 0.72) {
     this.pivot = new TNode("buff_orbit", scene);
     this.pivot.parent = parent;
     this.pivot.position.y = y;

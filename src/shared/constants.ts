@@ -360,6 +360,8 @@ export interface EliteMobDef {
    * насколько поднять хитбокс и плашку HP — в долях высоты тела (2·bodyRadius·scale).
    */
   visLift?: number;
+  /** Опустить саму модель (клиент) на эту долю высоты тела — «летает ниже». */
+  modelDrop?: number;
   /**
    * Броня против ДАЛЬНЕГО боя: доля 0..1 урона стрел/огнешаров/града, которую
    * съедает панцирь. Ближний бой броню игнорирует — вот и контрплей: лучник
@@ -483,7 +485,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // огненный дождь по трём героям, призыв призраков, ярость).
   worldElite: {
     model: "monFireDragon", name: "Огнекрылый дракон", level: 35, kind: "slime",
-    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 4.4, tint: null, flying: true, visLift: 0.9,
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, flying: true, visLift: 0.3, modelDrop: 0.6,
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и

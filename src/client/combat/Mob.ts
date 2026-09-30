@@ -684,6 +684,8 @@ export class Mob implements Hittable {
     holder.rotationQuaternion = Quaternion.RotationYawPitchRoll(MODEL_YAW, 0, 0);
     rig.root.parent = holder;
     rig.root.position.set(0, 0, 0);
+    const drop = Object.values(ELITE_MOBS).find((d) => d.model === this.modelName)?.modelDrop ?? 0;
+    holder.position.y = -drop * MOB.bodyRadius * 2;
 
     // Высота модели ≈ ~1.75 радиуса тела (модель слизня приземистее сферы;
     // на s.scale для босса домножается через this.root отдельно).
