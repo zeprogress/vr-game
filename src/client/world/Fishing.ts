@@ -1,12 +1,18 @@
 import type { Scene } from "@babylonjs/core/scene";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { buildFishRod } from "../entities/RemoteAvatar";
 
 import type { PlayerController } from "../player/PlayerController";
 import type { CombatSystem } from "../combat/CombatSystem";
 import type { NetClient } from "../net/NetClient";
 import { LAKE } from "#shared/constants";
-import { lakeEllipseDist, LAKE_R_AVG } from "#shared/terrain";
+import { LOADOUT } from "../config/loadout";
+import { lakeEllipseDist, LAKE_R_AVG, terrainHeight } from "#shared/terrain";
 
 /**
  * Рыбалка: у воды E — выбор режима (ПК/телефон):
@@ -22,6 +28,14 @@ export interface Fishing {
   /** Смотать удочку (переодевание, смерть, бой…). */
   cancel(): void;
   readonly active: boolean;
+  /** Для VR-панели (где нет HTML): выбор режима и мини-игра. */
+  /** Телефон: где висит табличка «Рыбачить» (null — нет); тап по ней — openChooser(). */
+  signPos(): Vector3 | null;
+  openChooser(): void;
+  vrState(): { phase: string; mode: string; hits: number; need: number; mark: number; zone: number; zoneW: number; timeLeft: number };
+  choose(mode: "auto" | "manual"): void;
+  /** Подсечка в мини-игре (курок по VR-панели). */
+  hit(): void;
 }
 
 type Phase = "idle" | "choosing" | "waiting" | "mini";
@@ -36,8 +50,8 @@ export function createFishing(
   combat: CombatSystem,
   net: NetClient,
   onPrompt: (text: string) => void,
-  /** Есть экранный интерфейс (ПК/телефон, не в шлеме) — выбор режима и мини-игра. */
-  flatUiNow: () => boolean,
+  /** Где играем сейчас: ПК (E), телефон (выбор всплывает сам у воды), VR (курок, панели в мире). */
+  platform: () => "pc" | "touch" | "vr",
 ): Fishing {
   const flatUi = true; // DOM создаём всегда; в VR он просто не используется
   let phase: Phase = "idle";
@@ -69,6 +83,15 @@ export function createFishing(
       });
     }
     rod.setEnabled(true);
+    applyRodPose();
+  };
+  /** Поза удочки из панели положений (VR — правая рука; правки применяются на лету). */
+  const applyRodPose = (): void => {
+    if (!rod) return;
+    const p = LOADOUT.items.rod[player.inVR ? "vrRight" : "flat"];
+    rod.position.set(...p.pos);
+    rod.rotation.set(...p.rot);
+    rod.scaling.setAll(p.scale);
   };
   const hideRod = (): void => rod?.setEnabled(false);
 
@@ -96,6 +119,50 @@ export function createFishing(
     document.body.appendChild(ui);
   }
   let useUi = true;
+  // Телефон: у воды над берегом висит табличка «🎣 Рыбачить» — тап по ней открывает выбор режима.
+  let rodSign: Mesh | null = null;
+  const rodSignPos = new Vector3();
+  let rodSignOn = false;
+  const setRodBtn = (on: boolean): void => {
+    if (on && !rodSign) {
+      const tex = new DynamicTexture("fishSignTex", { width: 512, height: 160 }, scene, false);
+      tex.hasAlpha = true;
+      const c = tex.getContext() as unknown as CanvasRenderingContext2D;
+      c.fillStyle = "rgba(14,13,19,0.8)";
+      c.beginPath();
+      c.roundRect(8, 8, 496, 144, 40);
+      c.fill();
+      c.font = "700 64px system-ui, sans-serif";
+      c.fillStyle = "#f1ead6";
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText("🎣 Рыбачить", 256, 84);
+      tex.update(true);
+      const mat = new StandardMaterial("fishSignMat", scene);
+      mat.diffuseTexture = tex;
+      mat.emissiveTexture = tex;
+      mat.opacityTexture = tex;
+      mat.disableLighting = true;
+      mat.backFaceCulling = false;
+      rodSign = MeshBuilder.CreatePlane("fishSign", { width: 1.6, height: 0.5 }, scene);
+      rodSign.material = mat;
+      rodSign.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      rodSign.isPickable = false;
+    }
+    rodSignOn = on;
+    if (!rodSign) return;
+    rodSign.setEnabled(on);
+    if (on) {
+      // Между героем и водой, чуть выше головы.
+      const p = player.position;
+      const dx = LAKE.x - p.x;
+      const dz = LAKE.z - p.z;
+      const d = Math.hypot(dx, dz) || 1;
+      rodSignPos.set(p.x + (dx / d) * 2.5, terrainHeight(p.x, p.z) + 2.3, p.z + (dz / d) * 2.5);
+      rodSign.position.copyFrom(rodSignPos);
+    }
+  };
+
   let wasNear = false;
   const hideUi = (): void => {
     if (ui) ui.style.display = "none";
@@ -107,13 +174,14 @@ export function createFishing(
     ui.append("Рыбалка");
     const b1 = document.createElement("button");
     b1.innerHTML = "Авторыбалка<small>~1 мин на рыбу, сам</small>";
-    b1.onclick = () => start("auto");
+    b1.onpointerdown = (e) => (e.preventDefault(), start("auto"));
     const b2 = document.createElement("button");
     b2.innerHTML = "Вручную<small>быстрее, мини-игра</small>";
-    b2.onclick = () => start("manual");
+    b2.onpointerdown = (e) => (e.preventDefault(), start("manual"));
     const b3 = document.createElement("button");
     b3.textContent = "✕";
-    b3.onclick = () => {
+    b3.onpointerdown = (e) => {
+      e.preventDefault();
       phase = "idle";
       hideUi();
     };
@@ -126,10 +194,7 @@ export function createFishing(
     miniT = MINI_TIME;
     markT = Math.random() * 6;
     zoneC = 0.2 + Math.random() * 0.6;
-    if (!ui || !useUi) {
-      onPrompt("Клюёт! Жми E");
-      return;
-    }
+    if (!ui || !useUi) return; // VR: мини-игру рисует VR-панель по vrState()
     ui.innerHTML = "";
     miniLabel = document.createElement("div");
     bar = document.createElement("div");
@@ -152,16 +217,12 @@ export function createFishing(
     zoneEl.style.left = `${(zoneC - ZONE_W / 2) * 100}%`;
     zoneEl.style.width = `${ZONE_W * 100}%`;
     markEl.style.left = `${markPos() * 100}%`;
-    miniLabel.textContent = `Клюёт! Подсекай — E, когда метка в зелёном (${hits}/${HITS_NEED})`;
+    const key = platform() === "touch" ? "⚔ или тап по полоске" : "E";
+    miniLabel.textContent = `Клюёт! Подсекай — ${key}, когда метка в зелёном (${hits}/${HITS_NEED})`;
   };
 
   const tryHit = (): void => {
     if (phase !== "mini") return;
-    if (!ui || !useUi) {
-      // VR: одно нажатие на поклёвку — сразу подсечка.
-      reel();
-      return;
-    }
     if (Math.abs(markPos() - zoneC) <= ZONE_W / 2) {
       hits++;
       zoneC = 0.2 + Math.random() * 0.6; // зона перескакивает
@@ -196,7 +257,17 @@ export function createFishing(
     net.sendFish("cast", m);
     if (ui && useUi) {
       ui.innerHTML = "";
-      ui.textContent = m === "auto" ? "Авторыбалка… (E — смотать)" : "Ждём поклёвку… (E — смотать)";
+      const touch = platform() === "touch";
+      ui.textContent = m === "auto" ? "Авторыбалка…" : "Ждём поклёвку…";
+      if (touch) {
+        const b = document.createElement("button");
+        b.textContent = "Смотать";
+        b.onpointerdown = (e) => {
+          e.preventDefault();
+          stop("Удочка смотана");
+        };
+        ui.append(document.createElement("br"), b);
+      } else ui.append(" (E — смотать)");
       ui.style.display = "block";
     } else {
       onPrompt("Заброс…");
@@ -232,26 +303,58 @@ export function createFishing(
       stop();
     },
 
+    signPos() {
+      return rodSignOn ? rodSignPos : null;
+    },
+
+    openChooser(): void {
+      if (phase !== "idle") return;
+      phase = "choosing";
+      showChooser();
+    },
+
+    vrState() {
+      return { phase, mode, hits, need: HITS_NEED, mark: markPos(), zone: zoneC, zoneW: ZONE_W, timeLeft: miniT };
+    },
+
+    choose(m: Mode): void {
+      if (phase === "choosing") start(m);
+    },
+
+    hit(): void {
+      tryHit();
+    },
+
     update(dt: number): void {
       const inp = player.lastInput;
-      const edge = inp.interact && !prevInteract;
-      prevInteract = inp.interact;
+      const plat = platform();
+      // VR — курок правой руки (грип занят оружием), ПК — E, телефон — кнопок нет вовсе.
+      const press = plat === "vr" ? inp.rightTrigger : inp.interact;
+      const edge = press && !prevInteract;
+      prevInteract = press;
 
+      if (rod?.isEnabled()) applyRodPose();
       if (phase === "idle") {
         combat.fishing = false;
-        // Подошёл к воде — подсказка (один раз на подход).
+        // Подошёл к воде — подсказка (телефон: выбор режима сразу, один раз на подход).
         const near = isNearShore(player.position.x, player.position.z);
-        if (near && !wasNear) onPrompt("Озеро — нажми E (на телефоне ✋), чтобы рыбачить");
+        const arrived = near && !wasNear;
         wasNear = near;
-        if (edge && isNearShore(player.position.x, player.position.z)) {
-          useUi = flatUiNow();
-          if (useUi) {
-            phase = "choosing";
-            showChooser();
-          } else start("manual");
+        useUi = plat !== "vr";
+        setRodBtn(near && plat === "touch");
+        if (arrived && plat === "touch") {
+          phase = "choosing";
+          showChooser();
+          return;
+        }
+        if (arrived) onPrompt(plat === "vr" ? "Озеро — нажми курок, чтобы рыбачить" : "Озеро — нажми E, чтобы рыбачить");
+        if (edge && near) {
+          phase = "choosing";
+          if (useUi) showChooser(); // в VR выбор рисует VR-панель
         }
         return;
       }
+      setRodBtn(false);
       if (phase === "choosing") {
         if (!isNearShore(player.position.x, player.position.z)) {
           phase = "idle";

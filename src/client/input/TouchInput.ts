@@ -31,6 +31,33 @@ export class TouchInput implements InputSource {
   private accYaw = 0;
   private accPitch = 0;
   private accZoom = 0;
+  /** Короткий тап по экрану (не поворот камеры) — выбор цели / NPC / предмета, как клик на ПК. */
+  private tapQueue: { x: number; y: number } | null = null;
+  private tapStart = new Map<number, { x: number; y: number; t: number; moved: number }>();
+
+  /** Забрать тап (экранные координаты), если был. */
+  /** Кнопка атаки не бьёт (ставит Game: рядом NPC, рыбалка). */
+  attackBlocked = false;
+  /** Кнопка умения: true — Game забрал нажатие себе (напр. прицел града стрел). */
+  abilityHook: (() => boolean) | null = null;
+  /** Прицел умения по земле: палец на экране двигает круг, а не камеру. */
+  groundAim = false;
+  /** Где палец (экранные координаты) — для прицела по земле. */
+  aimXY: { x: number; y: number } | null = null;
+
+  /** Нажатие кнопки атаки (фронт) — Game пробует навестись на ближайшего, как на ПК. */
+  private attackTap = false;
+  takeAttackTap(): boolean {
+    const t = this.attackTap;
+    this.attackTap = false;
+    return t;
+  }
+
+  takeTap(): { x: number; y: number } | null {
+    const t = this.tapQueue;
+    this.tapQueue = null;
+    return t;
+  }
   private attack = false;
   private interactBtn = false;
   /** Фронт тапа по кнопке умения — читается один раз в sample(). */
@@ -96,6 +123,8 @@ export class TouchInput implements InputSource {
       return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
     };
     lookZone.addEventListener("pointerdown", (e) => {
+      this.tapStart.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 });
+      if (this.groundAim) this.aimXY = { x: e.clientX, y: e.clientY };
       if (this.lookPts.size >= 2) return;
       this.lookPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
@@ -110,6 +139,15 @@ export class TouchInput implements InputSource {
       if (!pt) return;
       const dx = e.clientX - pt.x;
       const dy = e.clientY - pt.y;
+      const ts = this.tapStart.get(e.pointerId);
+      if (ts) ts.moved += Math.abs(dx) + Math.abs(dy);
+      if (this.groundAim) {
+        // Прицел: палец ведёт круг по земле, камера стоит.
+        this.aimXY = { x: e.clientX, y: e.clientY };
+        pt.x = e.clientX;
+        pt.y = e.clientY;
+        return;
+      }
       pt.x = e.clientX;
       pt.y = e.clientY;
       if (this.lookPts.size >= 2) {
@@ -123,6 +161,13 @@ export class TouchInput implements InputSource {
       }
     });
     const endLook = (e: PointerEvent): void => {
+      const ts = this.tapStart.get(e.pointerId);
+      this.tapStart.delete(e.pointerId);
+      // Тап: палец почти не двигался, недолго и один — это «клик», а не поворот камеры.
+      // В прицеле умения любой отпуск пальца — «применить сюда».
+      if (e.type === "pointerup" && ts && (this.groundAim || (ts.moved < 14 && performance.now() - ts.t < 350)) && this.lookPts.size <= 1) {
+        this.tapQueue = { x: e.clientX, y: e.clientY };
+      }
       if (!this.lookPts.delete(e.pointerId)) return;
       if (this.lookPts.size < 2) this.pinchLen = null;
     };
@@ -155,6 +200,8 @@ export class TouchInput implements InputSource {
     hold(btnFire, (v) => (this.fireBtn = v));
     btnAbility.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      // Град стрел: вместо мгновенного каста — прицел пальцем (Game ставит хук).
+      if (this.abilityHook?.()) return;
       this.abilityTap = true;
     });
 
@@ -162,6 +209,7 @@ export class TouchInput implements InputSource {
     // крутит взгляд, отпускаешь — выстрел.
     btnAttack.addEventListener("pointerdown", (e) => {
       e.preventDefault();
+      this.attackTap = true;
       this.atkPointer = e.pointerId;
       this.atkLast = { x: e.clientX, y: e.clientY };
       this.atkPos = { x: e.clientX, y: e.clientY };
@@ -280,7 +328,8 @@ export class TouchInput implements InputSource {
     s.lookYaw = this.accYaw;
     s.lookPitch = this.accPitch;
     s.zoom = this.accZoom;
-    s.primaryAction = this.attack;
+    // Рядом NPC/доска (или идёт рыбалка) — кнопка атаки не бьёт, а открывает окно / подсекает.
+    s.primaryAction = this.attack && !this.attackBlocked;
     s.altFire = this.fireBtn;
     s.interact = this.interactBtn;
     s.ability = this.abilityTap;
@@ -335,9 +384,9 @@ const STYLE = `<style>
   background: rgba(255,255,255,0.18); border: 2px solid rgba(255,255,255,0.3);
   color: #fff; }
 .touch-attack   { right: 34px; bottom: 28px; width: 96px; height: 96px; font-size: 30px; }
-.touch-interact { bottom: 140px; }
+.touch-interact { display: none !important; } /* ✋ больше не нужна: подбор — тапом/подходом, NPC — тапом */
 /* Кнопка умения — слева от большой кнопки удара. */
-.touch-ability { right: 148px; bottom: 40px; width: 66px; height: 66px; font-size: 26px;
+.touch-ability { right: 150px; bottom: 18px; width: 66px; height: 66px; font-size: 26px;
   background: rgba(120,90,220,0.4); border-color: rgba(190,160,255,0.7); overflow: hidden; }
 .touch-ability-cd { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%;
   background: rgba(20,10,40,0.55); transform-origin: bottom; transform: scaleY(0);

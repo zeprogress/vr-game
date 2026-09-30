@@ -391,6 +391,8 @@ export class CombatSystem {
   /** Сообщить соседям про звук (взмах/выстрел/стрела). */
   private emitSound(kind: "swing" | "bow" | "arrowHit", p: Vector3): void {
     this.onSoundEvent?.(kind, p.x, p.y, p.z);
+    // Выстрел из лука — своей модели (третье лицо) тот же рывок рукой, что видят соседи.
+    if (kind === "bow" && !this.player.inVR) this.onMeleeSwing?.();
   }
   private readonly fistPrevW: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
 
@@ -2654,6 +2656,7 @@ export class CombatSystem {
    */
   /** Пустить огнешар вперёд по взгляду с текущим зарядом (смартфон, посох). */
   private emitFirebolt(charge: number, hand: "left" | "right", aim?: Vector3): void {
+    if (!this.player.inVR) this.onMeleeSwing?.(); // каст огнешара — взмах посохом на своей модели
     const dir = (aim ?? this.player.eyeForward).clone();
     if (dir.lengthSquared() < 1e-6) dir.set(0, 0, 1);
     dir.normalize();

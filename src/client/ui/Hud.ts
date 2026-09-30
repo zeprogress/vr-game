@@ -149,6 +149,22 @@ export class Hud {
   /** ПК в третьем лице: C открывает окно снаряжения (PcInventory), а не эту панель. */
   private pcMode = false;
 
+  /** Телефон: ☰ открывает ПК-меню, мешок — окно снаряжения (ставит Game до enableTouchMenu). */
+  touchMenuHook: (() => void) | null = null;
+  touchBagHook: (() => void) | null = null;
+  touchBagIcon = "🎒";
+  /** Телефон с мини-картой в углу: верхние кнопки сдвинуть левее на столько px. */
+  topBtnShift = 0;
+
+  private shiftBtn(css: string): string {
+    if (!this.topBtnShift) return css;
+    // Компактный ряд: кнопки 34 px с шагом 38 (было 44/56), вплотную к мини-карте.
+    return (
+      css.replace(/right:(\d+)px;/, (_m, n: string) => `right:${this.topBtnShift + Math.round(((Number(n) - 42) / 56) * 38)}px;`) +
+      "top:6px;width:34px;height:34px;font-size:16px;border-radius:8px;"
+    );
+  }
+
   /** ПК: Esc сперва отдаётся сюда (снять цель); true — съели, меню не открываем. */
   escHook: (() => boolean) | null = null;
 
@@ -202,7 +218,8 @@ export class Hud {
       "left:0;width:100%;margin-left:0;text-align:center;font-size:10px;";
 
     const mkBtn = (css: string, label: string, onTap: () => void): HTMLDivElement => {
-      const b = el("div", css);
+      // Компактный сдвиг — только для верхнего ряда (зелье внизу — круглое, на своём месте).
+      const b = el("div", css === POTION_BTN_CSS ? css : this.shiftBtn(css));
       b.textContent = label;
       b.addEventListener("pointerdown", (e) => {
         e.preventDefault();
@@ -214,7 +231,12 @@ export class Hud {
       return b;
     };
 
-    mkBtn(MENU_BTN_CSS, "☰", () => this.togglePanel());
+    // ☰ — меню (на телефоне то же ПК-меню, если Game его подставил), мешок — снаряжение.
+    mkBtn(MENU_BTN_CSS, "☰", () => (this.touchMenuHook ? this.touchMenuHook() : this.togglePanel()));
+    if (this.touchBagHook) {
+      const bag = mkBtn(BAG_BTN_CSS, "", () => this.touchBagHook?.());
+      bag.innerHTML = this.touchBagIcon;
+    }
 
     // Полный экран. На iOS Safari API нет — подсказываем «на экран Домой».
     const el2 = document.documentElement as HTMLElement & {
@@ -259,7 +281,7 @@ export class Hud {
       this.updateMicBtn();
       return;
     }
-    const b = el("div", MIC_BTN_CSS);
+    const b = el("div", this.shiftBtn(MIC_BTN_CSS));
     b.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -912,11 +934,13 @@ const MENU_BTN_CSS = TOP_BTN_BASE + "right:42px;";
 /** Кнопка «на весь экран» — левее меню. */
 const FS_BTN_CSS = TOP_BTN_BASE + "right:98px;";
 /** Кнопка микрофона — левее фуллскрина (появляется, если дан доступ). */
-const MIC_BTN_CSS = TOP_BTN_BASE + "right:154px;";
+const MIC_BTN_CSS = TOP_BTN_BASE + "right:210px;";
+/** Кнопка «снаряжение» (мешок) — между меню и полным экраном. */
+const BAG_BTN_CSS = TOP_BTN_BASE + "right:154px;padding:8px;box-sizing:border-box;";
 
 /** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =
-  "position:fixed;right:148px;bottom:16px;z-index:12;width:66px;height:66px;border-radius:50%;" +
+  "position:fixed;right:228px;bottom:18px;z-index:12;width:66px;height:66px;border-radius:50%;" +
   "display:flex;align-items:center;justify-content:center;" +
   "background:rgba(28,20,22,0.5);border:2px solid rgba(255,150,150,0.45);" +
   "box-shadow:0 3px 10px rgba(0,0,0,0.4);-webkit-user-select:none;user-select:none;touch-action:none;";

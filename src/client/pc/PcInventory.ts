@@ -23,6 +23,8 @@ export interface HeldInfo {
 }
 
 export interface PcInventoryHooks {
+  /** Телефон: тап — меню действий, перетаскивание — пальцем (HTML drag на тач не работает). */
+  touch?: boolean;
   request: () => void;
   /** Использовать предмет сумки (свиток) — по id предмета. */
   useItem?: (id: "scroll_xp" | "scroll_wind") => void;
@@ -112,6 +114,103 @@ export class PcInventory {
       if (w) this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w));
     });
     this.win.addEventListener("contextmenu", (e) => e.preventDefault());
+    if (hooks.touch) {
+      this.root.classList.add("touch");
+      this.bindTouch();
+    }
+  }
+
+  // ---- телефон: тап — меню действий, зажал и повёл — перетаскивание пальцем ----
+
+  private readonly touchSrc = new WeakMap<HTMLElement, DragSrc>();
+
+  private bindTouch(): void {
+    let cand: { el: HTMLElement; src: DragSrc; x: number; y: number; id: number } | null = null;
+    let ghost: HTMLDivElement | null = null;
+    this.root.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse") return;
+      let el = e.target as HTMLElement | null;
+      while (el && el !== this.root && !this.touchSrc.has(el)) el = el.parentElement;
+      if (!el || !this.touchSrc.has(el)) return;
+      cand = { el, src: this.touchSrc.get(el)!, x: e.clientX, y: e.clientY, id: e.pointerId };
+    });
+    this.root.addEventListener("pointermove", (e) => {
+      if (!cand || e.pointerId !== cand.id) return;
+      if (!ghost && Math.hypot(e.clientX - cand.x, e.clientY - cand.y) > 12) {
+        this.drag = cand.src;
+        this.hideTip();
+        this.dropCatcher.style.display = "block";
+        ghost = div("pcinv-ghost", cand.el.textContent?.slice(0, 2) ?? "");
+        document.body.appendChild(ghost);
+      }
+      if (ghost) {
+        e.preventDefault();
+        ghost.style.left = `${e.clientX}px`;
+        ghost.style.top = `${e.clientY}px`;
+      }
+    });
+    const up = (e: PointerEvent): void => {
+      if (!cand || e.pointerId !== cand.id) return;
+      const c = cand;
+      cand = null;
+      if (ghost) {
+        ghost.remove();
+        ghost = null;
+        // Бросок: синтетический drop на то, что под пальцем (те же обработчики, что у мыши).
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        if (under) under.dispatchEvent(new Event("drop", { bubbles: true, cancelable: true }));
+        this.endDrag();
+        return;
+      }
+      this.openActions(c.el, c.src);
+    };
+    this.root.addEventListener("pointerup", up);
+    this.root.addEventListener("pointercancel", () => {
+      ghost?.remove();
+      ghost = null;
+      cand = null;
+      this.endDrag();
+    });
+  }
+
+  /** Тап по предмету (телефон): что можно с ним сделать. */
+  private openActions(anchor: HTMLElement, src: DragSrc): void {
+    this.drag = src;
+    const w = this.dragWeapon();
+    const held = src.kind === "hand" ? this.hooks.hands()[src.side] : null;
+    this.drag = null;
+    this.showTip(anchor, w, held);
+    this.confirmEl?.remove();
+    const box = div("pcinv-confirm pcinv-actions");
+    box.append(div("pcinv-confirm-text", w?.name ?? (held ? "В руке" : "")));
+    const row = div("pcinv-confirm-row col");
+    const btn = (label: string, fn: () => void, danger = false): void => {
+      const b = document.createElement("button");
+      b.className = `pcinv-ebtn${danger ? " danger" : ""}`;
+      b.textContent = label;
+      b.onclick = () => {
+        box.remove();
+        this.confirmEl = null;
+        this.hideTip();
+        fn();
+      };
+      row.append(b);
+    };
+    if (src.kind === "bag" && w) btn("Надеть", () => this.hooks.equip(w, naturalSide(w.cls)));
+    if (src.kind === "hand") btn("Снять в сумку", () => this.hooks.toBag(src.side));
+    if (w?.ench.length) {
+      btn("Заточить", () => {
+        this.enchId = w.id;
+        this.tab = "enchant";
+        this.render();
+      });
+    }
+    if (w) btn(`В лом (+${w.scrap})`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), true);
+    if (w) btn("Выбросить", () => this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w)), true);
+    btn("Отмена", () => {});
+    box.append(row);
+    this.root.append(box);
+    this.confirmEl = box;
   }
 
   get isOpen(): boolean {
@@ -374,6 +473,7 @@ export class PcInventory {
       }
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
+      this.touchSrc.set(cell, { kind: "hand", side });
       cell.addEventListener("dragend", () => this.endDrag());
       cell.addEventListener("mouseenter", () => this.showTip(cell, w, held));
       cell.addEventListener("mouseleave", () => this.hideTip());
@@ -411,6 +511,7 @@ export class PcInventory {
     }
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
+    this.touchSrc.set(c, { kind: "bag", id: w.id });
     c.addEventListener("dragend", () => this.endDrag());
     c.addEventListener("mouseenter", () => this.showTip(c, w, null));
     c.addEventListener("mouseleave", () => this.hideTip());
@@ -773,6 +874,36 @@ function injectInvStyle(): void {
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }
 .pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-ghost { position:fixed; z-index:80; width:48px; height:48px; margin:-24px 0 0 -24px; display:flex; align-items:center;
+  justify-content:center; font-size:28px; background:rgba(30,28,38,.9); border-radius:8px; pointer-events:none; }
+.pcinv-confirm-row.col { flex-direction:column; align-items:stretch; }
+.pcinv-actions .pcinv-ebtn { padding:10px 14px; font-size:15px; }
+.pcinv-root.touch .pcinv-win { width:86vw; max-width:86vw; height:84vh; max-height:84vh; border-radius:12px; left:50%; top:50%; transform:translate(-50%,-50%); }
+.pcinv-root.touch .pcinv-cell { touch-action:none; }
+.pcinv-root.touch .pcinv-hint { display:none; }
+.pcinv-root.touch .pcinv-win { overflow:auto; }
+.pcinv-root.touch .pcinv-confirm { position:fixed; z-index:81; width:min(320px,90vw); pointer-events:auto; }
+.pcinv-root.touch .pcinv-tip { pointer-events:none; }
+/* Телефон: снаряжение без куклы и без прокрутки — всё мельче и плотнее. */
+.pcinv-root.touch .pcinv-doll { display:none; }
+.pcinv-root.touch .pcinv-body { padding:6px 8px; }
+.pcinv-root.touch .pcinv-head { padding:4px 8px 0; }
+.pcinv-root.touch .pcinv-tab { padding:5px 10px; }
+.pcinv-root.touch .pcinv-gear { grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr); gap:10px; }
+.pcinv-root.touch .pcinv-cell { width:34px; height:34px; font-size:18px; }
+.pcinv-root.touch .pcinv-cell.big { width:46px; height:46px; font-size:24px; }
+.pcinv-root.touch .pcinv-grid { grid-template-columns:repeat(10,34px); gap:3px; }
+.pcinv-root.touch .pcinv-hands { margin:4px 0; gap:12px; }
+.pcinv-root.touch .pcinv-xp { margin-top:0; }
+.pcinv-root.touch .pcinv-stats { display:grid; grid-template-columns:1fr 1fr; column-gap:10px; padding-top:3px; }
+.pcinv-root.touch .pcinv-row { font-size:11px; padding:1px 0; }
+.pcinv-root.touch .pcinv-title { margin:3px 0; }
+.pcinv-root.touch .pcinv-sub { margin:1px 0 3px; }
+.pcinv-root.touch .pcinv-anvil { font-size:11px; }
+@media (max-width: 520px) {
+  .pcinv-root.touch .pcinv-gear, .pcinv-root.touch .pcinv-ench { grid-template-columns:minmax(0,1fr); }
+  .pcinv-root.touch .pcinv-grid { grid-template-columns:repeat(auto-fill,44px); }
+}
 .pcinv-title { align-items:center; margin:6px 0; }
 .pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; max-width:170px; }
 .pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:#ffcf5a; }

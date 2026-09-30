@@ -133,7 +133,7 @@ const CSS = `
   letter-spacing:.02em; opacity:.92; }
 .ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
 .ov-watch table.stats td.vl { font-weight:700; text-align:right; }
-.ov-watch em.ttl { display:block; font-style:italic; font-weight:700; font-size:1.8vh; color:#c79bff; margin-top:.2vh; }
+.ov-watch em.ttl { display:block; font-style:normal; font-weight:700; font-size:1.8vh; color:#c79bff; margin-top:.2vh; }
 .ov-watch span .lvl { font-size:2vh; font-weight:700; opacity:.75; margin-left:.4vh; }
 .ov-watch table.stats i.at { font-style:normal; font-weight:800; opacity:1; }
 .ov-watch .buffs { display:flex; flex-direction:column; gap:.4vh; margin-top:.8vh; }
@@ -205,7 +205,7 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
-.ov-cq { left:50%; top:10vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
+.ov-cq { left:50%; bottom:12.5vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
 .ov-cq b { display:block; font-weight:800; font-size:2.2vh; color:#d6b8ff; letter-spacing:.02em; }
 .ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
 .ov-cq .bar i { display:block; height:100%; background:linear-gradient(90deg,#9146ff,#c79bff); border-radius:1vh; }
@@ -617,7 +617,7 @@ export class Overlay {
         if (ctx.watchTitle) {
           const t = document.createElement("em");
           t.className = "ttl";
-          t.textContent = `«${ctx.watchTitle}»`;
+          t.textContent = ctx.watchTitle;
           this.watch.append(t);
         }
         if (ctx.watchStats && ctx.watchStats.length > 0) {
@@ -730,7 +730,7 @@ export class Overlay {
         fill.style.width = `${pct}%`;
         bar.append(fill);
         const sp = document.createElement("span");
-        sp.textContent = `${cq.got} / ${cq.need} · осталось ${Math.ceil(cq.secs / 60)} мин · !play — присоединиться`;
+        sp.textContent = `${cq.got} / ${cq.need} · осталось ${Math.ceil(cq.secs / 60)} мин · !квест — участвовать`;
         this.cq.append(b, bar, sp);
       }
     }

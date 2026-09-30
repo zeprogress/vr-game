@@ -29,9 +29,12 @@ import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { PcTargeting } from "../pc/PcTargeting";
-import { PcHud, type MapData, type WeaponIcon } from "../pc/PcHud";
+import { PcHud, SACK_SVG, type MapData, type WeaponIcon } from "../pc/PcHud";
 import { QuestBang } from "../world/hub/HubNpc";
-import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow } from "../ui/QuestWindow";
+import { VrPanel } from "../ui/VrPanel";
+import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop } from "../ui/VrQuestPanels";
+import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trackItems, type TrackItem } from "../ui/QuestWindow";
+import { VrCompass } from "../ui/VrCompass";
 import { QUEST, questPoint } from "#shared/quests";
 import { HUB } from "#shared/hub";
 import { terrainHeight } from "#shared/terrain";
@@ -91,7 +94,7 @@ import { Inventory } from "../player/Inventory";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { PlayerController } from "../player/PlayerController";
-import { DesktopInput } from "../input/DesktopInput";
+import { DesktopInput, type MouseClick } from "../input/DesktopInput";
 import { TouchInput } from "../input/TouchInput";
 import { XRInput } from "../input/XRInput";
 import type { InputSource } from "../input/InputSource";
@@ -102,7 +105,7 @@ import { VoiceChat } from "../voice/VoiceChat";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
 import { SharpenPostProcess } from "@babylonjs/core/PostProcesses/sharpenPostProcess";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
-import type { ActKind, CharMsg, LootItem, MoveMsg, SaveMsg, Xf7 } from "#shared/net/messages";
+import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, QuestData, SaveMsg, ShopData, Xf7 } from "#shared/net/messages";
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
@@ -234,6 +237,19 @@ export class Game {
   private nearQuestBoard = false;
   private questCompass: QuestCompass | null = null;
   private shopWin: ShopWindow | null = null;
+  /** Последние данные заданий/лавки — для VR-панелей (HTML в шлеме не виден). */
+  private questData: QuestData | null = null;
+  private shopData: ShopData | null = null;
+  /** VR: панель у NPC (доска / Охотник / трактирщик) и панель рыбалки. */
+  private vrNpcPanel: VrPanel | null = null;
+  private vrNpcKind: "board" | "hunter" | "tavern" | null = null;
+  private vrFishPanel: VrPanel | null = null;
+  /** VR: панель заточки (открывается из меню на руке) — что точим, где открыли, последний итог. */
+  private vrEnchPanel: VrPanel | null = null;
+  private vrEnchId: string | null = null;
+  private vrEnchAt: Vector3 | null = null;
+  private vrEnchResult: { up: boolean; text: string } | null = null;
+  private pcInvData: PcInvData | null = null;
   private hunterWin: HunterWindow | null = null;
   private nearHunter = false;
   /** Жёлтые «!» над доской и Охотником — есть что взять/сдать. */
@@ -496,16 +512,7 @@ export class Game {
       this.questTracker = new QuestTracker(
         !this.isTouch,
         () => this.questWin?.open(),
-        (q) => {
-          if (!q) return this.questCompass?.set(null);
-          // Готово — компас на доску (сдать), иначе — к лагерю цели / озеру.
-          const pp = this.player.position;
-          // Готово — к месту сдачи (доска / Охотник); контракт недели — тоже к Охотнику.
-          const toHunter = q.src !== "daily" && (q.done || q.src === "weekly");
-          const pt = q.done || q.src === "weekly" ? (toHunter ? HUB.zones.hunter : HUB.zones.questBoard) : questPoint(q, pp.x, pp.z);
-          const name = q.done || q.src === "weekly" ? (toHunter ? "Охотник" : "Доска заданий") : q.title;
-          this.questCompass?.set({ x: pt.x, z: pt.z, name });
-        },
+        (q) => this.setQuestCompass(q),
       );
       {
         const b = HUB.zones.questBoard;
@@ -549,7 +556,50 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.netMobs.boltViewScale = 2.4; // огнешар крупнее на телефоне
+      // Окна как на ПК: снаряжение (тап-меню / перетаскивание пальцем) и меню.
+      injectPcStyle();
+      this.pcInv = this.makePcInventory(true);
+      this.hud.touchMenuHook = () => this.pcMenu?.toggle();
+      this.hud.touchBagHook = () => this.pcInv?.toggle("gear");
+      this.hud.touchBagIcon = SACK_SVG;
+      this.hud.topBtnShift = 88; // левее квадратной мини-карты в углу
       this.hud.enableTouchMenu();
+      // Тапы по миру как клики на ПК: цель/атака, NPC, предметы (подбор — в сумку, как на ПК).
+      this.pcTarget = new PcTargeting(this.scene, () => this.net?.room?.state ?? null, this.netMobs);
+      this.pcTarget.selfId = () => this.net?.sessionId;
+      this.pcTarget.playerSeg = (sid) => this.avatars.get(sid)?.hitSegment() ?? null;
+      this.pcTarget.heroLevel = () => this.progression.level;
+      this.pcTarget.onError = (t) => this.notifyToast(t);
+      this.pcTarget.onAttackStart = () => {
+        this.fishing?.cancel();
+        this.pcChase = true;
+      };
+      this.pcTarget.canAttackPlayer = (sid) => {
+        if (!this.net?.pvpOn) return "Включи PvP в меню, чтобы атаковать игроков";
+        const ps = this.net.room?.state.players.get(sid);
+        if (ps && !ps.pvp) return `У ${ps.nick} PvP выключен — атаковать нельзя`;
+        return null;
+      };
+      this.lootMarker = new LootMarker();
+      this.aoeAim = new AoeAim(this.scene);
+      this.combat.lootToBag = true;
+      this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (мешок сверху)");
+      this.combat.onLocalPickup = () => {
+        this.localAvatar?.pickup();
+        const p = this.player.position;
+        this.net?.sendAct("pickup", p.x, p.y, p.z);
+      };
+      Mob.pcPlates = this.pcPlates;
+      // Рамка героя и мини-карта — как на ПК (старые полоски HP/маны прячем).
+      this.hud.setPcMode();
+      this.pcHud = new PcHud({
+        touch: true,
+        onCharacter: () => this.pcInv?.toggle("gear"),
+        onBag: () => this.pcInv?.toggle("gear"),
+        onMenu: () => this.pcMenu?.toggle(),
+        onSlot: (key) => this.pcSlot(key),
+        onAttrs: () => this.pcInv?.open("attrs"),
+      });
       this.hud.bindDrinkPotion(() => {
         const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
         if (slot >= 0) this.inventory.use(slot);
@@ -576,48 +626,7 @@ export class Game {
       };
       this.pcTarget = new PcTargeting(this.scene, () => this.net?.room?.state ?? null, this.netMobs);
       this.hud.setPcMode();
-      const afterGear = (): void => {
-        // Руки меняет клиент сразу, склад/закрепление — сервер чуть позже.
-        window.setTimeout(() => this.pcInv?.refresh(), 250);
-      };
-      this.pcInv = new PcInventory({
-        request: () => this.net?.sendPcInvOpen(),
-        useItem: (id) => {
-          const slot = this.inventory.slots.findIndex((s) => s.item === id && s.count > 0);
-          if (slot >= 0) this.inventory.use(slot);
-        },
-        act: (m) => this.net?.sendPcInvAct(m),
-        hands: () => {
-          const h = this.combat.handsSnapshot();
-          return {
-            left: h.left ? { cls: h.left.cls, tier: h.left.tier } : null,
-            right: h.right ? { cls: h.right.cls, tier: h.right.tier } : null,
-          };
-        },
-        equip: (w, side) => {
-          // Рука — по виду предмета, а не по тому, на какой слот бросили:
-          // щит — левая; лук/посох — правая (лук держат обе); меч — правая,
-          // левая — только вторым мечом к мечу в правой. Иначе посох уезжал в
-          // левую (где был лук), и потом щит уже некуда было взять.
-          const h = this.combat.handsSnapshot();
-          let hand: "left" | "right" = w.cls === "shield" ? "left" : "right";
-          if (w.cls === "sword" && side === "left" && h.right?.cls === "sword") hand = "left";
-          this.menuWeaponAction({ act: "whToHand", side: hand, id: w.id, cls: w.cls, tier: w.tier });
-          afterGear();
-        },
-        toBag: (side) => {
-          this.menuWeaponAction({ act: "toWarehouse", src: "hand", side });
-          afterGear();
-        },
-        scrap: (w) => {
-          this.menuWeaponAction({ act: "scrap", id: w.id, cls: w.cls, tier: w.tier });
-          afterGear();
-        },
-        drop: (w) => {
-          this.menuWeaponAction({ act: "drop", id: w.id, cls: w.cls, tier: w.tier });
-          afterGear();
-        },
-      });
+      this.pcInv = this.makePcInventory(false);
       // Esc: закрыть меню → окно → карту → снять цель → открыть меню.
       this.hud.escHook = () => {
         if (this.aoeAim?.active) {
@@ -699,8 +708,9 @@ export class Game {
       },
     );
 
-    if (this.pcThirdPerson) {
+    if (this.pcThirdPerson || this.isTouch) {
       this.pcMenu = new PcMenu({
+        touch: this.isTouch,
         getVolume: () => this.sfx.masterVolume,
         setVolume: (v) => {
           applyVol(v);
@@ -787,8 +797,9 @@ export class Game {
       // Автонаводка удара (только третье лицо на смартфоне) — до update(),
       // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
       // и доворот к мобу воспринимается как «примагничивание взгляда».
-      if (this.localAvatar && this.player.thirdPerson && !this.pcTarget) this.aimAssistTouch(dt);
+      if (this.localAvatar && this.player.thirdPerson && (this.isTouch ? !this.pcTarget?.autoAttack : !this.pcTarget)) this.aimAssistTouch(dt);
       this.updatePcTarget(dt);
+      this.updateTouchTarget(dt);
       this.player.update(dt);
       this.player.eyeForward.normalizeToRef(this.aim);
       this.mark("player");
@@ -838,15 +849,15 @@ export class Game {
         const b = HUB.zones.questBoard;
         const pp = this.player.position;
         const near = Math.hypot(pp.x - b.x, pp.z - b.z) <= QUEST.boardReach;
-        if (near && !this.nearQuestBoard) this.notifyToast(this.isTouch ? "Доска заданий — нажми ✋" : "Доска заданий — нажми E");
+        if (near && !this.nearQuestBoard && !this.player.inVR) this.notifyToast(this.isTouch ? "Доска заданий — тапни по ней" : "Доска заданий — нажми E");
         this.nearQuestBoard = near;
         const tv = HUB.zones.tavern;
         const nearT = Math.hypot(pp.x - tv.x, pp.z - tv.z) <= TAVERN_REACH;
-        if (nearT && !this.nearTavern) this.notifyToast(this.isTouch ? "Трактирщик — нажми ✋" : "Трактирщик — нажми E");
+        if (nearT && !this.nearTavern && !this.player.inVR) this.notifyToast(this.isTouch ? "Трактирщик — тапни по нему" : "Трактирщик — нажми E");
         this.nearTavern = nearT;
         const hu = HUB.zones.hunter;
         const nearH = Math.hypot(pp.x - hu.x, pp.z - hu.z) <= QUEST.boardReach;
-        if (nearH && !this.nearHunter) this.notifyToast(this.isTouch ? "Охотник — нажми ✋" : "Охотник — нажми E");
+        if (nearH && !this.nearHunter && !this.player.inVR) this.notifyToast(this.isTouch ? "Охотник — тапни по нему" : "Охотник — нажми E");
         this.nearHunter = nearH;
         this.questCompass?.update(pp.x, pp.z, this.player.cameraYaw);
         this.bangBoard?.update(dt);
@@ -1622,6 +1633,16 @@ export class Game {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
     this.wristPanel.onAction = (a) => this.menuWeaponAction(a);
+    this.wristPanel.onQuestSelect = (it) => this.setQuestCompass(it);
+    this.wristPanel.onEnchant = (id) => {
+      this.vrEnchId = id;
+      this.vrEnchAt = null; // поставим перед игроком в ближайшем кадре
+      this.vrEnchResult = null;
+      this.wristPanel?.hide();
+      this.net?.sendPcInvOpen();
+    };
+    this.wristPanel.onTitle = (t) => this.net?.sendPcInvAct({ act: "title", id: t, idx: 0 });
+    if (this.questData) this.wristPanel.setQuests(this.questData);
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
     this.loadoutPanel.onWorldTime = (hour, auto) => this.net?.sendSetTime(hour, auto);
@@ -1777,6 +1798,13 @@ export class Game {
         dt,
       });
     }
+    try {
+      this.updateVrPanels(inp);
+    } catch (e) {
+      // Сбой панели не должен рвать кадр; в журнал — один раз.
+      if (!this.vrPanelErr) console.error("[vrPanels]", e);
+      this.vrPanelErr = true;
+    }
     this.perfHud?.update(dt, () => this.vrDiag());
     this.fpsCounter?.update(dt);
 
@@ -1892,7 +1920,214 @@ export class Game {
     }
   }
 
+  /** Окно снаряжения ПК-стиля (ПК и телефон; на телефоне — тап-меню и перетаскивание пальцем). */
+  private makePcInventory(touch: boolean): PcInventory {
+    const afterGear = (): void => {
+      // Руки меняет клиент сразу, склад/закрепление — сервер чуть позже.
+      window.setTimeout(() => this.pcInv?.refresh(), 250);
+    };
+    return new PcInventory({
+      touch,
+      request: () => this.net?.sendPcInvOpen(),
+      useItem: (id) => {
+        const slot = this.inventory.slots.findIndex((s) => s.item === id && s.count > 0);
+        if (slot >= 0) this.inventory.use(slot);
+      },
+      act: (m) => this.net?.sendPcInvAct(m),
+      hands: () => {
+        const h = this.combat.handsSnapshot();
+        return {
+          left: h.left ? { cls: h.left.cls, tier: h.left.tier } : null,
+          right: h.right ? { cls: h.right.cls, tier: h.right.tier } : null,
+        };
+      },
+      equip: (w, side) => {
+        // Рука — по виду предмета, а не по тому, на какой слот бросили:
+        // щит — левая; лук/посох — правая (лук держат обе); меч — правая,
+        // левая — только вторым мечом к мечу в правой. Иначе посох уезжал в
+        // левую (где был лук), и потом щит уже некуда было взять.
+        const h = this.combat.handsSnapshot();
+        let hand: "left" | "right" = w.cls === "shield" ? "left" : "right";
+        if (w.cls === "sword" && side === "left" && h.right?.cls === "sword") hand = "left";
+        this.menuWeaponAction({ act: "whToHand", side: hand, id: w.id, cls: w.cls, tier: w.tier });
+        afterGear();
+      },
+      toBag: (side) => {
+        this.menuWeaponAction({ act: "toWarehouse", src: "hand", side });
+        afterGear();
+      },
+      scrap: (w) => {
+        this.menuWeaponAction({ act: "scrap", id: w.id, cls: w.cls, tier: w.tier });
+        afterGear();
+      },
+      drop: (w) => {
+        this.menuWeaponAction({ act: "drop", id: w.id, cls: w.cls, tier: w.tier });
+        afterGear();
+      },
+    });
+  }
+
   private readonly _menuRay = new Ray(Vector3.Zero(), Vector3.Forward(), 2);
+  private readonly _panelRay = new Ray(Vector3.Zero(), Vector3.Forward(), 6);
+
+  /** Луч правого контроллера (VR) — указка для панелей в мире. */
+  private rightPointerRay(): { origin: Vector3; dir: Vector3 } | null {
+    const right = this.xr?.input.controllers.find((c) => c.inputSource.handedness === "right");
+    if (!right) return null;
+    right.getWorldPointerRayToRef(this._panelRay);
+    return { origin: this._panelRay.origin, dir: this._panelRay.direction };
+  }
+
+  /**
+   * VR: у доски/Охотника/трактирщика перед ними открывается панель (подошёл —
+   * открылась, отошёл — закрылась); рыбалка — панель перед игроком. Всё
+   * нажимается лазером правой руки + курком.
+   */
+  private updateVrPanels(inp: { rightTrigger: boolean }): void {
+    if (!this.player.inVR) {
+      this.vrNpcPanel?.hide();
+      this.vrFishPanel?.hide();
+      this.vrEnchPanel?.hide();
+      this.vrCompass?.update(Vector3.Zero(), 0, false);
+      return;
+    }
+    const scene = this.scene;
+    this.vrNpcPanel ??= new VrPanel(scene, "vrNpcPanel", 1024, 1400, 0.9);
+    this.vrFishPanel ??= new VrPanel(scene, "vrFishPanel", 1024, 400, 0.8);
+    if (!this.vrCompass) {
+      this.vrCompass = new VrCompass(scene);
+      this.vrCompass.set(this.vrCompassT);
+    }
+    {
+      const cam = this.player.renderCamera;
+      const f = cam.getDirection(Vector3.Forward());
+      this.vrCompass.update(cam.globalPosition, Math.atan2(f.x, f.z), true);
+    }
+    const head = this.player.renderCamera.globalPosition;
+    const p = this.player.position;
+    const spots = [
+      // Чуть ближе, чем «рядом» для кнопок: панель не должна всплывать на проходе.
+      { kind: "board" as const, at: HUB.zones.questBoard, reach: QUEST.boardReach - 0.8 },
+      { kind: "hunter" as const, at: HUB.zones.hunter, reach: QUEST.boardReach - 0.8 },
+      { kind: "tavern" as const, at: HUB.zones.tavern, reach: TAVERN_REACH - 0.6 },
+    ];
+    const near = spots.find((sp) => Math.hypot(p.x - sp.at.x, p.z - sp.at.z) <= sp.reach) ?? null;
+    const ray = this.rightPointerRay();
+    let onPanel = false;
+    const npc = this.vrNpcPanel;
+    if (!near) {
+      npc.hide();
+      this.vrNpcKind = null;
+    } else {
+      if (this.vrNpcKind !== near.kind) {
+        this.vrNpcKind = near.kind;
+        if (near.kind === "tavern") this.net?.sendShopOpen();
+        else this.net?.sendQuestOpen();
+        const act = (m: QuestActMsg): void => this.net?.sendQuestAct(m);
+        this.vrNote = null;
+        npc.show((ui) => {
+          if (near.kind === "board") drawBoard(ui, this.questData, act);
+          else if (near.kind === "hunter") drawHunter(ui, this.questData, act);
+          else drawShop(ui, this.shopData, (id) => this.net?.sendShopBuy(id));
+          drawNote(ui, this.vrNoteText());
+        });
+      }
+      // Между NPC и игроком, на уровне глаз, лицом к игроку.
+      const dx = p.x - near.at.x;
+      const dz = p.z - near.at.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const k = Math.min(1.2, d * 0.5) / d;
+      npc.place(new Vector3(near.at.x + dx * k, head.y - 0.05, near.at.z + dz * k), head);
+      onPanel = npc.update(ray, inp.rightTrigger) || onPanel;
+    }
+    // Рыбалка.
+    const fp = this.vrFishPanel;
+    const fs = this.fishing?.vrState();
+    if (!fs || fs.phase === "idle") {
+      if (fp.visible) fp.hide();
+    } else {
+      if (!fp.visible) {
+        fp.show((ui) => {
+          const st = this.fishing?.vrState();
+          if (st) drawFishing(ui, st, (m) => this.fishing?.choose(m), () => this.fishing?.cancel());
+        });
+        const fwd = this.player.renderCamera.getDirection(Vector3.Forward());
+        const fl = Math.hypot(fwd.x, fwd.z) || 1;
+        fp.place(new Vector3(head.x + (fwd.x / fl) * 1.1, head.y - 0.25, head.z + (fwd.z / fl) * 1.1), head);
+      }
+      fp.markDirty(); // мини-игра — живая метка
+      const was = this.fishPrevTrig;
+      onPanel = fp.update(ray, inp.rightTrigger) || onPanel;
+      void was; // подсечку курком ведёт сама рыбалка (Fishing.update)
+      this.fishPrevTrig = inp.rightTrigger;
+    }
+    // Заточка.
+    this.vrEnchPanel ??= new VrPanel(scene, "vrEnchPanel", 1024, 1024, 0.8);
+    const ep = this.vrEnchPanel;
+    if (!this.vrEnchId || (this.vrEnchAt && Vector3.Distance(this.vrEnchAt, p) > 3)) {
+      if (ep.visible) ep.hide();
+      this.vrEnchId = null;
+    } else {
+      if (!this.vrEnchAt) {
+        this.vrEnchAt = p.clone();
+        const fwd = this.player.renderCamera.getDirection(Vector3.Forward());
+        const fl = Math.hypot(fwd.x, fwd.z) || 1;
+        ep.place(new Vector3(head.x + (fwd.x / fl) * 1.0, head.y - 0.1, head.z + (fwd.z / fl) * 1.0), head);
+        ep.show((ui) => {
+          const id = this.vrEnchId ?? "";
+          const wh = this.pcInvData;
+          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id);
+          drawEnchant(
+            ui,
+            wh,
+            id,
+            inHand,
+            this.vrEnchResult,
+            (idx) => {
+              this.vrEnchResult = null;
+              this.net?.sendPcInvAct({ act: "enchant", id, idx });
+            },
+            () => (this.vrEnchId = null),
+          );
+        });
+      }
+      onPanel = ep.update(ray, inp.rightTrigger) || onPanel;
+    }
+    if (onPanel) this.combat.uiLockHand = "right";
+  }
+  private fishPrevTrig = false;
+  private vrPanelErr = false;
+  /** VR: итог последнего действия у NPC — показываем в панели ~5 с (нет панели — тост). */
+  private vrNote: { text: string; at: number } | null = null;
+  private vrNoteSet(text: string): void {
+    this.vrNote = { text, at: performance.now() };
+    if (this.vrNpcPanel?.visible) this.vrNpcPanel.markDirty();
+    else this.vrHud?.showToast(text);
+  }
+  private vrNoteText(): string | null {
+    const n = this.vrNote;
+    return n && performance.now() - n.at < 5000 ? n.text : null;
+  }
+  private vrCompass: VrCompass | null = null;
+
+  /** Компас к заданию (ПК/телефон — HTML, VR — стрелка перед игроком). null — выключить. */
+  private setQuestCompass(q: TrackItem | null): void {
+    if (!q) {
+      this.questCompass?.set(null);
+      this.vrCompass?.set(null);
+      return;
+    }
+    const pp = this.player.position;
+    // Готово — к месту сдачи (доска / Охотник); контракт недели — тоже к Охотнику.
+    const toHunter = q.src !== "daily" && (q.done || q.src === "weekly");
+    const pt = q.done || q.src === "weekly" ? (toHunter ? HUB.zones.hunter : HUB.zones.questBoard) : questPoint(q, pp.x, pp.z);
+    const name = q.done || q.src === "weekly" ? (toHunter ? "Охотник" : "Доска заданий") : q.title;
+    const t = { x: pt.x, z: pt.z, name };
+    this.questCompass?.set(t);
+    this.vrCompass?.set(t);
+    this.vrCompassT = t;
+  }
+  private vrCompassT: { x: number; z: number; name: string } | null = null;
 
   /**
    * Лазер меню: появляется, когда правую руку поднесли к меню на левой руке
@@ -1992,7 +2227,7 @@ export class Game {
     this.localAvatar?.setBuffed(!inTower && (self.buffSecs ?? 0) > 0);
     this.localAvatar?.setStunned(self.stunned === 1);
     this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
-    this.hud.setBuff(self.buffSecs ?? 0);
+    if (!this.pcHud) this.hud.setBuff(self.buffSecs ?? 0); // с рамкой героя баффы — значками в ней
     // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
     const camp = self.campBuffSecs ?? 0;
     this.localAvatar?.setCampWarm(!inTower && camp > 0);
@@ -2111,6 +2346,12 @@ export class Game {
       return this.desktopInput;
     }
     this.touchInput = new TouchInput();
+    // Умение лучника — прицел пальцем, как на ПК; меч/посох — как раньше, сразу.
+    this.touchInput.abilityHook = () => {
+      if (!this.aoeAim || this.combat.abilityKind !== "arrowRain" || this.combat.holdsStaff) return false;
+      this.pcSkill();
+      return true;
+    };
     return this.touchInput;
   }
 
@@ -2204,38 +2445,7 @@ export class Game {
         }
       }
     } else if (click) {
-      // Моб под курсором — выбор цели; иначе, может, оружие на земле:
-      // двойной ЛКМ или ПКМ по нему — добежать и подобрать.
-      // Лут мелкий и лежит там, где умирают мобы, — попадание по нему важнее моба рядом.
-      const loot = this.lootAt(click.x, click.y);
-      const npc = loot ? null : this.npcAt(click.x, click.y);
-      if (npc) {
-        // Первый клик — выбрать; повторный / двойной / ПКМ — подбежать и открыть окно.
-        const now = performance.now();
-        const go = this.npcSel === npc || click.button === 2 || now - this.lastNpcClick < 450;
-        this.lastNpcClick = now;
-        this.npcSel = npc;
-        if (go) this.walkToNpc(npc);
-      } else if (loot) {
-        // Первый клик — выбрать предмет (обводка держится), повторный клик по
-        // выбранному / двойной / ПКМ — добежать и поднять.
-        const now = performance.now();
-        const again = this.lootMarker?.selectedId === loot.id;
-        const dbl = click.button === 0 && this.lastLootClick?.id === loot.id && now - this.lastLootClick.t < 450;
-        this.lastLootClick = { id: loot.id, t: now };
-        const mesh = this.loot.meshOf(loot.id);
-        const go = again || dbl || click.button === 2;
-        if (go) {
-          this.pcChase = false;
-          this.walkToLoot(loot.pos);
-        }
-        if (mesh) this.lootMarker?.show(loot.id, mesh, go, true);
-      } else {
-        // Клик мимо предмета — снять выбор предмета (если к нему не бежим).
-        if (!this.player.autoMove) this.lootMarker?.hide();
-        this.npcSel = null;
-        pt.handleClick(click, cam, this.canvas);
-      }
+      this.worldClick(click, cam);
     }
     if (di.takeTab()) pt.tab(cam);
     if (di.takeAttack()) pt.toggleAttack(cam);
@@ -2246,8 +2456,12 @@ export class Game {
     this.combat.pcTarget = seg;
     this.combat.pcAttack = pt.autoAttack && !!seg;
     this.updatePcChase(seg, pt.autoAttack);
-    // Атакуем — герой всегда лицом к цели (и на бегу, и стоя, и под ПКМ).
-    if (seg && pt.autoAttack && !this.player.dead) {
+    this.faceTarget(seg, pt.autoAttack);
+  }
+
+  /** Атакуем — герой всегда лицом к цели (и на бегу, и стоя, и под ПКМ). */
+  private faceTarget(seg: { a: Vector3; b: Vector3 } | null, attacking: boolean): void {
+    if (seg && attacking && !this.player.dead) {
       const cx = (seg.a.x + seg.b.x) / 2;
       const cz = (seg.a.z + seg.b.z) / 2;
       const p = this.player.position;
@@ -2258,6 +2472,117 @@ export class Game {
     } else {
       this.player.faceLock = null;
     }
+  }
+
+  /**
+   * Клик мышью (ПК) / тап (телефон) по миру: NPC лагеря, предмет на земле или
+   * моб/игрок. Первый клик — выбрать, повторный / двойной / ПКМ — действие.
+   */
+  private worldClick(click: MouseClick, cam: Camera): void {
+    // Табличка «Рыбачить» над берегом (телефон) — выбор режима рыбалки.
+    const sign = this.fishing?.signPos();
+    if (sign && this.pcTarget && this.pcTarget.pointAt(click.x, click.y, cam, this.canvas, [sign], 70) === 0) {
+      this.fishing?.openChooser();
+      return;
+    }
+    // Моб под курсором — выбор цели; иначе, может, оружие на земле:
+    // двойной ЛКМ или ПКМ по нему — добежать и подобрать.
+    // Лут мелкий и лежит там, где умирают мобы, — попадание по нему важнее моба рядом.
+    const loot = this.lootAt(click.x, click.y);
+    const npc = loot ? null : this.npcAt(click.x, click.y);
+    if (npc) {
+      // Первый клик — выбрать; повторный / двойной / ПКМ — подбежать и открыть окно.
+      const now = performance.now();
+      const go = this.npcSel === npc || click.button === 2 || now - this.lastNpcClick < 450;
+      this.lastNpcClick = now;
+      this.npcSel = npc;
+      if (go) this.walkToNpc(npc);
+    } else if (loot) {
+      // Первый клик — выбрать предмет (обводка держится), повторный клик по
+      // выбранному / двойной / ПКМ — добежать и поднять.
+      const now = performance.now();
+      const again = this.lootMarker?.selectedId === loot.id;
+      const dbl = click.button === 0 && this.lastLootClick?.id === loot.id && now - this.lastLootClick.t < 450;
+      this.lastLootClick = { id: loot.id, t: now };
+      const mesh = this.loot.meshOf(loot.id);
+      const go = again || dbl || click.button === 2;
+      if (go) {
+        this.pcChase = false;
+        this.walkToLoot(loot.pos);
+      }
+      if (mesh) this.lootMarker?.show(loot.id, mesh, go, true);
+    } else {
+      // Клик мимо предмета — снять выбор предмета (если к нему не бежим).
+      if (!this.player.autoMove) this.lootMarker?.hide();
+      this.npcSel = null;
+      this.pcTarget?.handleClick(click, cam, this.canvas);
+    }
+  }
+
+  /**
+   * Телефон: тап по мобу — цель (повторный тап — атаковать, герой подбегает и
+   * бьёт сам, как на ПК), по NPC/доске — подбежать и открыть, по предмету —
+   * выбрать / подбежать и поднять. Кнопки атаки при этом работают как раньше.
+   */
+  private updateTouchTarget(dt: number): void {
+    const pt = this.pcTarget;
+    const ti = this.touchInput;
+    if (!pt || !ti || this.player.inVR) return;
+    const cam = this.player.renderCamera;
+    const tap = ti.takeTap();
+    const r = this.canvas.getBoundingClientRect();
+    const aim = this.aoeAim;
+    if (aim?.active) {
+      // Град стрел: круг под пальцем, отпустил — стреляем туда (как клик на ПК).
+      ti.groundAim = true;
+      const at = ti.aimXY;
+      if (at) aim.update(at.x - r.left, at.y - r.top, cam, this.player.position, SKILL.arrowRain.range);
+      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) aim.cancel();
+      else if (tap && at) {
+        if (aim.inRange) {
+          this.castSkill("arrowRain", aim.point.x, aim.point.z);
+          aim.cancel();
+        } else this.notifyToast(`Слишком далеко — град стрел бьёт до ${SKILL.arrowRain.range} м`);
+      }
+      if (!aim.active) {
+        ti.groundAim = false;
+        ti.aimXY = null;
+      }
+    } else if (tap) {
+      ti.groundAim = false;
+      this.worldClick({ x: tap.x - r.left, y: tap.y - r.top, button: 0 } as MouseClick, cam);
+    }
+    // Кнопка атаки: ближайший моб — цель и автоатака (как на ПК); никого рядом — бьём перед собой.
+    // Рядом доска/Охотник/трактирщик или рыбалка — атака кнопкой не бьёт.
+    const pp0 = this.player.position;
+    const nearNpc = [
+      [HUB.zones.questBoard, QUEST.boardReach],
+      [HUB.zones.hunter, QUEST.boardReach],
+      [HUB.zones.tavern, TAVERN_REACH],
+    ].some(([z, r]) => Math.hypot(pp0.x - (z as { x: number }).x, pp0.z - (z as { z: number }).z) <= (r as number));
+    const fishingNow = !!this.fishing?.active;
+    ti.attackBlocked = nearNpc || fishingNow;
+    if (ti.takeAttackTap() && !this.player.dead) {
+      if (fishingNow) {
+        // Мини-игра рыбалки: кнопка атаки — подсечка.
+        if (this.fishing?.vrState().phase === "mini") this.fishing.hit();
+      } else if (nearNpc && this.combat.interactHook?.()) {
+        /* окно открыто */
+      } else if (!pt.autoAttack && !nearNpc) {
+        const p = this.player.position;
+        pt.attackNearest(p.x, p.z, Math.max(12, this.combat.pcAttackRange() + 6));
+      }
+    }
+    if (this.player.dead) pt.autoAttack = false;
+    this.lootMarker?.update(dt, !!this.player.autoMove, (id) => this.loot.hasDrop(id));
+    const seg = pt.segment();
+    const auto = pt.autoAttack && !!seg;
+    this.combat.pcTarget = seg;
+    // Автоатака по цели — только пока она выбрана тапом; иначе обычные кнопки.
+    this.combat.pcAuto = auto;
+    this.combat.pcAttack = auto;
+    this.updatePcChase(seg, pt.autoAttack);
+    this.faceTarget(seg, pt.autoAttack);
   }
 
   private lastLootClick: { id: string; t: number } | null = null;
@@ -2709,9 +3034,32 @@ export class Game {
       if (!VR_SETTINGS.dmgNumbers) return;
       for (const h of msg.hits) this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
     };
-    net.onPcInvData = (d) => this.pcInv?.setData(d);
-    net.onShopData = (d) => this.shopWin?.setData(d);
+    net.onPcInvData = (d) => {
+      this.pcInvData = d;
+      this.pcInv?.setData(d);
+      this.vrEnchPanel?.markDirty();
+    };
+    net.onShopData = (d) => {
+      this.shopData = d;
+      // VR: итог покупки (что потрачено / что получено) — плашкой в самой панели трактирщика.
+      if (d.msg && this.player.inVR) this.vrNoteSet(d.msg);
+      this.shopWin?.setData(d);
+      this.vrNpcPanel?.markDirty();
+    };
     net.onQuestData = (d) => {
+      this.questData = d;
+      if (d.msg && this.player.inVR) this.vrNoteSet(d.msg);
+      this.vrNpcPanel?.markDirty();
+      if (this.wristPanel) {
+        this.wristPanel.setQuests(d);
+        // Компас из VR-меню: задание сдали — выключаем, стало готово — ведём к сдаче.
+        const key = this.wristPanel.compassKey;
+        if (key) {
+          const it = trackItems(d).find((x) => x.key === key);
+          if (!it) this.wristPanel.compassKey = null;
+          this.setQuestCompass(it ?? null);
+        }
+      }
       this.questWin?.setData(d);
       this.hunterWin?.setData(d);
       this.questTracker?.setData(d);
@@ -2724,6 +3072,14 @@ export class Game {
     if (this.questWin) window.setTimeout(() => net.sendQuestOpen(), 1500);
     net.onPcInvResult = (r) => {
       this.pcInv?.onResult(r);
+      if (r.enchant && this.vrEnchId) {
+        const e = r.enchant;
+        this.vrEnchResult = e.up
+          ? { up: true, text: `Успех! ${e.label} (+${e.gain}) · −${e.cost} лома` }
+          : { up: false, text: `Не вышло… −${e.cost} лома` };
+        this.sfx.pickup();
+        this.net?.sendPcInvOpen();
+      }
       if (!r.enchant) this.notifyToast(r.text);
     };
     net.onWarehouse = () => this.pcInv?.refresh();
@@ -2753,7 +3109,7 @@ export class Game {
       this.combat,
       net,
       (text) => this.notifyToast(text),
-      () => !this.player.inVR,
+      () => (this.player.inVR ? "vr" : this.isTouch ? "touch" : "pc"),
     );
 
     // Онлайн здоровьем и прокачкой владеет сервер.

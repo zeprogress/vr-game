@@ -5,6 +5,8 @@ import { BOT_SKIN_LABELS } from "../world/models";
  * Тот же тёмный стиль без цветной окантовки, что у окна снаряжения.
  */
 export interface PcMenuHooks {
+  /** Телефон: без раздела клавиш, окно на весь экран. */
+  touch?: boolean;
   getVolume: () => number;
   setVolume: (v: number) => void;
   getMusic: () => number;
@@ -112,14 +114,16 @@ export class PcMenu {
     left.append(check("Микрофон включён (V)", h.getMic(), h.setMic));
     left.append(check("Голоса «по месту» (дальние тише)", h.getSpatial(), h.setSpatial));
 
-    left.append(el("div", "pcmenu-sec", "Интерфейс"));
-    left.append(check("Журнал и чат Twitch (L)", h.getChat(), h.setChat));
-    left.append(check("Цифры урона над мобами", h.getDmg(), h.setDmg));
+    // Телефон: клавиш нет — интерфейс и персонаж во второй колонке (без прокрутки).
+    const col2 = h.touch ? right : left;
+    col2.append(el("div", "pcmenu-sec", "Интерфейс"));
+    if (!h.touch) col2.append(check("Журнал и чат Twitch (L)", h.getChat(), h.setChat));
+    col2.append(check("Цифры урона над мобами", h.getDmg(), h.setDmg));
     const fs = el("button", "pcmenu-btn", "⛶ На весь экран / обратно");
     fs.onclick = () => h.fullscreen();
-    left.append(fs);
+    col2.append(fs);
 
-    left.append(el("div", "pcmenu-sec", "Персонаж"));
+    col2.append(el("div", "pcmenu-sec", "Персонаж"));
     const skinRow = el("div", "pcmenu-row");
     skinRow.append(el("span", "", "Внешность"));
     const sel = document.createElement("select");
@@ -133,18 +137,20 @@ export class PcMenu {
     sel.value = String(Math.max(1, h.getSkin()));
     sel.onchange = () => h.setSkin(Number(sel.value));
     skinRow.append(sel);
-    left.append(skinRow);
-    left.append(check("Оставить героя ботом после выхода", h.getLeaveBot(), h.setLeaveBot));
-    left.append(check("PvP — можно бить других игроков (P)", h.getPvp(), h.setPvp));
+    col2.append(skinRow);
+    col2.append(check("Оставить героя ботом после выхода", h.getLeaveBot(), h.setLeaveBot));
+    col2.append(check("PvP — можно бить других игроков (P)", h.getPvp(), h.setPvp));
 
-    right.append(el("div", "pcmenu-sec", "Управление"));
-    const keys = el("div", "pcmenu-keys");
-    for (const [k, v] of KEYS) {
-      const r = el("div", "pcmenu-krow");
-      r.append(el("span", "pcmenu-k", k), el("span", "", v));
-      keys.append(r);
+    if (!h.touch) {
+      right.append(el("div", "pcmenu-sec", "Управление"));
+      const keys = el("div", "pcmenu-keys");
+      for (const [k, v] of KEYS) {
+        const r = el("div", "pcmenu-krow");
+        r.append(el("span", "pcmenu-k", k), el("span", "", v));
+        keys.append(r);
+      }
+      right.append(keys);
     }
-    right.append(keys);
 
     cols.append(left, right);
     b.append(cols);
@@ -233,6 +239,17 @@ function injectMenuStyle(): void {
 .pcmenu-krow { display:flex; justify-content:space-between; gap:10px; padding:2px 0; border-bottom:1px solid #22242b; }
 .pcmenu-k { color:#f1ead6; }
 .pcmenu-foot { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+@media (pointer: coarse) {
+  .pcmenu-box { width:86vw; height:84vh; max-height:84vh; border-radius:12px; padding:8px 14px; box-sizing:border-box; font-size:12px; }
+  .pcmenu-title { font-size:15px; }
+  .pcmenu-head { margin-bottom:0; }
+  .pcmenu-sec { margin:6px 0 2px; font-size:10px; }
+  .pcmenu-slider { margin:0 0 2px; }
+  .pcmenu-check { padding:1px 0; }
+  .pcmenu-btn { padding:5px 10px; font-size:12px; margin-top:2px; }
+  .pcmenu-foot { margin-top:6px; }
+  .pcmenu-select { padding:3px 6px; }
+}
 `;
   document.head.appendChild(s);
 }

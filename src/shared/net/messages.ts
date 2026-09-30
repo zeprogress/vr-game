@@ -243,6 +243,9 @@ export interface QuestData {
   };
   /** Герой у Охотника. */
   nearHunter: boolean;
+  /** Полученные титулы и надетый (VR выбирает титул во вкладке «Задания»). */
+  titles: string[];
+  title: string;
   msg?: string;
 }
 

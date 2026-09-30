@@ -26,7 +26,7 @@
  */
 
 export type HandSide = "left" | "right";
-export type ItemKind = "sword" | "bow" | "shield" | "potion" | "staff";
+export type ItemKind = "sword" | "bow" | "shield" | "potion" | "staff" | "rod";
 export type SlotKey = "flat" | "vrLeft" | "vrRight";
 
 export interface Placement {
@@ -179,6 +179,12 @@ export const LOADOUT_DEFAULTS: Loadout = {
       flat: { pos: [0.3, -0.34, 0.92], rot: [-0.12, 0.04, -0.12], scale: 0.6 },
       vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
       vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
+    },
+    // Удочка своего героя (рыбалка): держится правой рукой.
+    rod: {
+      flat: { pos: [0, 0, 0.02], rot: [-0.6, 0, 0], scale: 1 },
+      vrLeft: { pos: [0, 0, 0.02], rot: [-0.6, 0, 0], scale: 1 },
+      vrRight: { pos: [0, 0, 0.02], rot: [-0.6, 0, 0], scale: 1 },
     },
   },
   buttons: {
@@ -528,7 +534,7 @@ export function printLoadout(): void {
     lines.push(`  ${s}: { rot: ${fa(h.rot)}, scale: ${f(h.scale)}, curl: ${f(h.curl)} },`);
   }
   lines.push("},", "items: {");
-  for (const k of ["sword", "bow", "shield", "staff"] as ItemKind[]) {
+  for (const k of ["sword", "bow", "shield", "staff", "rod"] as ItemKind[]) {
     lines.push(`  ${k}: {`);
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const p = LOADOUT.items[k][slot];
@@ -602,7 +608,7 @@ export function applyWorldLoadout(raw: string): void {
     }
   }
   if (w.items) {
-    for (const kind of ["sword", "bow", "shield", "staff", "potion"] as ItemKind[]) {
+    for (const kind of ["sword", "bow", "shield", "staff", "potion", "rod"] as ItemKind[]) {
       const ik = w.items[kind];
       if (!ik) continue;
       for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
@@ -639,9 +645,10 @@ function applyDefaults(next: Loadout): void {
     dst.scale = src.scale;
     dst.curl = src.curl;
   }
-  for (const kind of ["sword", "bow", "shield", "staff"] as ItemKind[]) {
+  for (const kind of ["sword", "bow", "shield", "staff", "rod"] as ItemKind[]) {
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
-      const src = next.items[kind][slot];
+      const src = next.items[kind]?.[slot];
+      if (!src) continue;
       const dst = LOADOUT.items[kind][slot];
       dst.pos = [...src.pos];
       dst.rot = [...src.rot];

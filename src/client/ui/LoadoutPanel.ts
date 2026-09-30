@@ -54,6 +54,7 @@ const TARGETS: Target[] = [
   { key: itemTarget("staff", "vrRight"), label: "Посох · правая", kind: "item" },
   { key: itemTarget("potion", "vrLeft"), label: "Зелье · левая", kind: "item" },
   { key: itemTarget("potion", "vrRight"), label: "Зелье · правая", kind: "item" },
+  { key: itemTarget("rod", "vrRight"), label: "Удочка · правая", kind: "item" },
   { key: "belt:potion", label: "Зелье · на поясе", kind: "vec3" },
   { key: "hud:hp", label: "Полоска жизней", kind: "vec3" },
   { key: "world:time", label: "Время суток", kind: "world" },

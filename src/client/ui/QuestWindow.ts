@@ -158,7 +158,7 @@ export interface TrackItem {
   hard: boolean;
 }
 
-function trackItems(d: QuestData): TrackItem[] {
+export function trackItems(d: QuestData): TrackItem[] {
   const out: TrackItem[] = [];
   if (d.story?.taken) {
     const st = d.story;
@@ -599,11 +599,32 @@ function injectStyle(): void {
 .qw-btn.qw-wide { width:100%; padding:9px; margin:2px 0 6px; font-size:13.5px; }
 .qw-toast { position:fixed; left:50%; top:18%; transform:translateX(-50%); z-index:60; background:rgba(16,15,21,.94);
   color:#f1ead6; padding:8px 14px; border-radius:8px; font:600 14px system-ui; pointer-events:none; }
+@media (pointer: coarse) {
+  .qc-root { top:4px; padding:2px 10px 2px 4px; font-size:11.5px; }
+  .qc-arrow { width:20px; height:20px; font-size:16px; }
+  .qw-box { width:86vw; max-height:84vh; height:84vh; border-radius:12px; padding:8px 12px; box-sizing:border-box;
+    display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:5px 8px; align-content:start; font-size:12px; }
+  .qw-head, .qw-sub, .qw-sec, .qw-wide { grid-column:1 / -1; }
+  .qw-title { font-size:15px; }
+  .qw-sub { margin:0; font-size:11px; }
+  .qw-sec { margin:3px 0 0; font-size:10px; }
+  .qw-card { margin:0; padding:5px 8px; }
+  .qw-name { font-size:12px; }
+  .qw-count, .qw-reward { font-size:11px; }
+  .qw-bar { height:3px; margin:3px 0; }
+  .qw-lore { font-size:11px; margin:2px 0; }
+  .qw-btn { padding:4px 9px; font-size:11.5px; }
+  .qw-btn.qw-wide { padding:6px; margin:0; }
+}
 .qt-root { position:fixed; z-index:28; display:flex; flex-direction:column; gap:4px; color:#e6e0d0;
   font:500 12px/1.3 system-ui,sans-serif; width:210px; text-shadow:0 1px 2px #000; }
 .qt-root.hidden { display:none !important; }
 .qt-root.pc { right:14px; top:236px; }
-.qt-root.phone { right:8px; top:120px; width:170px; font-size:11px; }
+.qt-root.phone { right:4px; top:90px; width:200px; font-size:11px; gap:2px; }
+.qt-root.phone .qt-head { padding:0 2px; font-size:9.5px; }
+.qt-root.phone .qt-card { display:flex; gap:6px; align-items:baseline; padding:2px 6px 3px; border-left-width:2px; }
+.qt-root.phone .qt-name { flex:1; min-width:0; }
+.qt-root.phone .qt-n { font-size:10.5px; white-space:nowrap; }
 .qt-head { align-self:flex-end; font:700 10.5px system-ui; letter-spacing:.08em; text-transform:uppercase; color:#e8c26a;
   cursor:pointer; padding:2px 4px; }
 .qt-card { background:rgba(14,13,19,.72); border-radius:7px; padding:5px 8px 6px; cursor:pointer; border-left:3px solid #6fbf6f; }

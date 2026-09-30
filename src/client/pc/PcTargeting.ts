@@ -133,6 +133,28 @@ export class PcTargeting {
     this.lastSig = "";
   }
 
+  /**
+   * Телефон, кнопка атаки: ближайший живой моб в радиусе — цель и автоатака.
+   * false — рядом никого (кнопка бьёт как обычно, перед собой).
+   */
+  attackNearest(x: number, z: number, range: number): boolean {
+    const st = this.state();
+    if (!st) return false;
+    let best: string | null = null;
+    let bd = range;
+    st.mobs.forEach((m, id) => {
+      if (m.dead || m.kind === "shard") return;
+      const d = Math.hypot(m.x - x, m.z - z);
+      if (d < bd) {
+        bd = d;
+        best = id;
+      }
+    });
+    if (!best) return false;
+    this.select(best);
+    return this.startAttack();
+  }
+
   /** Esc: снять цель. true — было что снимать (Esc не должен открыть меню). */
   clear(): boolean {
     if (!this.targetId) return false;

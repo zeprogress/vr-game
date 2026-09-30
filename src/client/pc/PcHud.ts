@@ -51,6 +51,8 @@ export interface MapData {
 }
 
 export interface PcHudHooks {
+  /** Телефон: только рамка героя (с баффами) и мини-карта; кнопки и управление — свои, экранные. */
+  touch?: boolean;
   onCharacter: () => void;
   onBag: () => void;
   onMenu: () => void;
@@ -102,7 +104,7 @@ export class PcHud {
   constructor(private readonly hooks: PcHudHooks) {
     injectHudStyle();
     this.cfg = loadCfg();
-    this.root = div("pc-hud");
+    this.root = div(hooks.touch ? "pc-hud touch" : "pc-hud");
 
     // --- рамка героя ---
     const unit = div("pc-unit pc-frame");
@@ -443,7 +445,9 @@ export class PcHud {
     c.clearRect(0, 0, W, W);
     c.save();
     c.beginPath();
-    c.arc(R, R, R - 2, 0, Math.PI * 2);
+    // Телефон — квадратная карта в углу экрана, ПК — круглая.
+    if (this.hooks.touch) c.rect(2, 2, W - 4, W - 4);
+    else c.arc(R, R, R - 2, 0, Math.PI * 2);
     c.clip();
     c.fillStyle = "#2f4228";
     c.fillRect(0, 0, W, W);
@@ -665,7 +669,7 @@ const SKILL_SVG: Record<SkillIcon, string> = {
 };
 
 /** Мешок (кнопка снаряжения и сумки). */
-const SACK_SVG =
+export const SACK_SVG =
   `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
   `<path d="M9 3.5h6l-1.6 3.2h-2.8z" fill="#c9b28a" stroke="#e8dcc0" stroke-width="1.2"/>` +
   `<path d="M10.2 6.9c-4.2 1.4-6.7 5.3-6.2 9.3.4 3.1 3 4.8 8 4.8s7.6-1.7 8-4.8c.5-4-2-7.9-6.2-9.3z" fill="#a8855a" stroke="#e8dcc0" stroke-width="1.3"/>` +
@@ -748,6 +752,11 @@ function injectHudStyle(): void {
 .pc-slot-n { position:absolute; right:3px; bottom:1px; font-size:12px; color:#fff; }
 .pc-cd { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:17px; color:#fff; }
 .pc-micro { position:absolute; right:14px; bottom:14px; display:flex; gap:5px; }
+.pc-hud.touch .pc-actionbar, .pc-hud.touch .pc-micro, .pc-hud.touch .pc-chat { display:none !important; }
+.pc-hud.touch .pc-unit { left:6px; top:6px; transform:scale(.82); transform-origin:0 0; background:none; box-shadow:none; }
+.pc-hud.touch .pc-minimap { right:4px; top:4px; transform:scale(.5); transform-origin:100% 0; }
+.pc-hud.touch .pc-minimap canvas { border-radius:6px; }
+.pc-hud.touch .pc-mm-label, .pc-hud.touch .pc-mm-zoom { display:none; }
 .pc-micro-btn { width:38px; height:38px; border-radius:7px; background:rgba(14,13,19,.88); border:1px solid #3a3e48; font-size:18px; padding:0;
   display:flex; align-items:center; justify-content:center; }
 .pc-micro-btn:hover { border-color:var(--pc-edge-hi,#6e7482); background:rgba(40,38,48,.95); }

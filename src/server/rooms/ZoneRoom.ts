@@ -1750,6 +1750,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const have = store.get(tk)?.titles ?? [];
         if (msg.id === "" || have.includes(msg.id)) store.put(tk, { title: msg.id });
         this.sendPcInv(client);
+        this.sendQuests(client);
         return;
       }
       if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec") return;
@@ -3264,6 +3265,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setTraining(nick, norm);
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
+    } else if (cmd === "!квест" || cmd === "!quest" || cmd === "!участвую" || cmd === "!cq") {
+      this.joinChatQuest(nick, norm);
     } else if (cmd === "!chatquest" && (isAdminNick(nick) || STAGING)) {
       if (this.chatQuest) this.reply(`@${nick} квест чата уже идёт.`);
       else this.startChatQuest(parts[1] === "champ" ? "champs" : "mobs");
@@ -3499,20 +3502,55 @@ export class ZoneRoom extends Room<ZoneState> {
     endsAt: number;
     /** norm ника → сколько внёс. */
     who: Map<string, number>;
+    /** Кто записался командой !квест (norm ника) — только их боты двигают прогресс. */
+    joined: Set<string>;
   } | null = null;
   private nextChatQuestAt = Date.now() + CHAT_QUEST.firstMin * 60_000;
 
   private startChatQuest(kind: "mobs" | "champs"): void {
-    const bots = Math.max(CHAT_QUEST.minBots, this.bots.size);
-    const need = kind === "mobs" ? bots * CHAT_QUEST.mobsPerBot : bots * CHAT_QUEST.champsPerBot;
-    this.chatQuest = { kind, need, got: 0, endsAt: Date.now() + CHAT_QUEST.durSec * 1000, who: new Map() };
-    this.state.cqTitle = kind === "mobs" ? `Квест чата: боты, убейте ${need} мобов` : `Квест чата: боты, победите ${need} вожаков лагерей`;
+    const need = this.chatQuestNeed(kind, 0);
+    this.chatQuest = { kind, need, got: 0, endsAt: Date.now() + CHAT_QUEST.durSec * 1000, who: new Map(), joined: new Set() };
     this.state.cqNeed = need;
     this.state.cqGot = 0;
+    this.chatQuestTitle();
     this.reply(
-      `📜 Квест чата! Боты, ${kind === "mobs" ? `убейте ${need} мобов` : `победите ${need} вожаков лагерей`} за ${CHAT_QUEST.durSec / 60} минут. ` +
-        `Награда каждому участнику: опыт, свиток мудрости и ${CHAT_QUEST.tokens} ◈. Нет героя? !play`,
+      `📜 Квест чата! ${kind === "mobs" ? "Убить мобов" : "Победить вожаков лагерей"} за ${CHAT_QUEST.durSec / 60} минут — ` +
+        `участвуют только записавшиеся: пиши !квест. Считаются убийства ботов участников. ` +
+        `Награда каждому: опыт, свиток мудрости и ${CHAT_QUEST.tokens} ◈. Нет героя? !play`,
     );
+  }
+
+  /** Цель — от числа участников (но не меньше, чем на CHAT_QUEST.minBots). */
+  private chatQuestNeed(kind: "mobs" | "champs", participants: number): number {
+    const n = Math.max(CHAT_QUEST.minBots, participants);
+    return kind === "mobs" ? n * CHAT_QUEST.mobsPerBot : n * CHAT_QUEST.champsPerBot;
+  }
+
+  private chatQuestTitle(): void {
+    const q = this.chatQuest;
+    if (!q) return;
+    this.state.cqTitle =
+      (q.kind === "mobs" ? `Квест чата: убить ${q.need} мобов` : `Квест чата: победить ${q.need} вожаков`) +
+      ` · участников ${q.joined.size}`;
+  }
+
+  /** !квест — записаться в квест чата (нужен герой-бот в мире). */
+  private joinChatQuest(nick: string, norm: string): void {
+    const q = this.chatQuest;
+    if (!q) {
+      this.reply(`@${nick} сейчас нет квеста чата — он запускается раз в пару часов.`);
+      return;
+    }
+    if (!this.bots.has(norm)) {
+      this.reply(`@${nick} сначала создай героя — !play, потом !квест.`);
+      return;
+    }
+    if (q.joined.has(norm)) return;
+    q.joined.add(norm);
+    q.need = Math.max(q.need, this.chatQuestNeed(q.kind, q.joined.size));
+    this.state.cqNeed = q.need;
+    this.chatQuestTitle();
+    this.reply(`@${nick} в квесте чата! Твой бот идёт помогать (${q.got}/${q.need}).`);
   }
 
   /** Убийство ботом — вклад в квест чата. */
@@ -3520,8 +3558,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const q = this.chatQuest;
     if (!q || !owner.startsWith("bot:")) return;
     if (q.kind === "champs" && !champ) return;
-    q.got++;
     const norm = owner.slice(4);
+    if (!q.joined.has(norm)) return;
+    q.got++;
     q.who.set(norm, (q.who.get(norm) ?? 0) + 1);
     this.state.cqGot = Math.min(q.got, q.need);
   }
@@ -3541,7 +3580,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.chatQuest = null;
     this.state.cqTitle = "";
     if (!won) {
-      this.reply(`Квест чата не выполнен — боты успели ${q.got} из ${q.need}. Следующий — позже!`);
+      this.reply(`Квест чата не выполнен — участники успели ${q.got} из ${q.need}. Следующий — позже!`);
       return;
     }
     const names: string[] = [];
@@ -3626,6 +3665,8 @@ export class ZoneRoom extends Room<ZoneState> {
       note = `Из сундука: ${weaponDef(w.cls, w.tier).name}, оценка ${weaponQuality(w)}`;
     }
     store.put(token, { tokens: tokens - item.price });
+    // Что потрачено и что осталось — видно и в VR (там тост в шлеме).
+    note += ` · −${item.price} ◈ (осталось ${tokens - item.price} ◈)`;
     this.sendShop(client, note);
     this.sendQuests(client);
   }
@@ -3701,6 +3742,8 @@ export class ZoneRoom extends Room<ZoneState> {
       story: this.storyView(b.token, lvlXp),
       weekly: this.weeklyView(b.token, p, lvlXp),
       nearHunter: this.hunterNear(p),
+      titles: store.get(b.token)?.titles ?? [],
+      title: store.get(b.token)?.title ?? "",
       msg,
     };
   }
@@ -6564,12 +6607,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private syncWarehouse(id: string, rt: Runtime): void {
     if (id.startsWith("bot:")) return;
     // + оценка: после заточки роллы (и скорость атаки) меняются — список надо переслать.
-    const sig =
-      rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}`).join(",") +
-      "|" +
-      (rt.equippedWeaponId?.left ?? "") +
-      "|" +
-      (rt.equippedWeaponId?.right ?? "");
+    // В руке — то, что реально считается в руке (закреплённое или лучший экземпляр того же вида).
+    const p = this.state.players.get(id);
+    const heldR = p ? (rolledIn(p, "right", rt)?.id ?? null) : null;
+    let heldL = p ? (rolledIn(p, "left", rt)?.id ?? null) : null;
+    if (heldL === heldR) heldL = null;
+    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
     if (sig === rt.weaponsSig) return;
     const client = this.clientOf(id);
     if (!client) return;
@@ -6583,10 +6626,7 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
       })),
-      equipped: {
-        left: rt.equippedWeaponId?.left ?? null,
-        right: rt.equippedWeaponId?.right ?? null,
-      },
+      equipped: { left: heldL, right: heldR },
     } satisfies WeaponsListMsg);
   }
 

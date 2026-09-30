@@ -564,9 +564,9 @@ export class PlayerController {
     // (см. tpFollowAmount), одинаково вперёд и назад.
     const tpFollow = tp && !this.pcStyle ? tpFollowAmount(inp.moveX) : 0;
     // Третье лицо: персонаж всегда доворачивается лицом туда, куда бежит —
-    // кроме атаки на ПК: тогда он смотрит на цель (бежит боком/спиной).
+    // кроме атаки по цели (ПК и телефон): тогда он смотрит на цель (бежит боком/спиной).
     const lf = this.faceLock;
-    if (lf && this.pcStyle && !vr) {
+    if (lf && tp && !vr) {
       this.yaw = lerpAngle(this.yaw, Math.atan2(lf.x - pos.x, lf.z - pos.z), Math.min(1, dt * 14));
     } else if (tp && moving) {
       this.yaw = lerpAngle(this.yaw, Math.atan2(mx, mz), Math.min(1, dt * TP_CAM_TUNE.turnRate));

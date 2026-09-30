@@ -19,6 +19,7 @@ export function injectPcStyle(): void {
 .pc-bar { position:relative; height:14px; margin-top:4px; background:#23202a; border:1px solid #000; border-radius:3px; overflow:hidden; }
 .pc-bar-fill { height:100%; width:100%; background:linear-gradient(#e0493f,#a8231c); transition:width .15s linear; }
 .pc-bar-text { position:absolute; inset:0; text-align:center; font:600 10px/14px system-ui,sans-serif; color:#fff; }
+@media (pointer: coarse) { .pc-target { top:34px; width:220px; padding:4px 8px 5px; font-size:12px; } }
 .pc-target-hint { color:#ff8a7a; font-size:11px; min-height:0; margin-top:2px; }
 .pc-target-hint:empty { display:none; }
 /* Тёмные скроллбары в цвет интерфейса (журнал, окна, меню). */
