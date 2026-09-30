@@ -1003,6 +1003,10 @@ export class ZoneRoom extends Room<ZoneState> {
     invHub.setZone({
       sync: (norm) => this.persistNick(norm),
       act: (norm, act, id, idx) => this.invAct(norm, act, id, idx),
+      pcInv: (norm) => {
+        const t = this.findWeaponsTarget(norm);
+        return t ? this.pcInvDataFor(t.p, t.rt) : null;
+      },
     });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
@@ -3640,8 +3644,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!p) return;
     const norm = normNick(p.nick);
     const data: ShopData = {
-      items: SHOP.map((i) => ({ id: i.id, name: i.name, desc: i.desc, price: i.price })),
+      items: SHOP.map((i) => ({ id: i.id, name: i.name, desc: i.desc, price: i.price, fishCost: i.fishCost })),
       tokens: store.get(`nick:${norm}`)?.tokens ?? 0,
+      fish: bagCount(readBag(p), "fish"),
       near: this.tavernNear(p),
       msg,
     };
@@ -3657,6 +3662,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const token = `nick:${normNick(p.nick)}`;
     if (!this.tavernNear(p)) return this.sendShop(client, "Подойди к трактирщику");
     const tokens = store.get(token)?.tokens ?? 0;
+    if (item.fishCost) {
+      // Обмен рыбы на жетон: рыба из сумки → +1 ◈.
+      const bag = readBag(p);
+      const have = bagCount(bag, "fish");
+      if (!takeFromBag(bag, "fish", item.fishCost)) return this.sendShop(client, `Нужно ${item.fishCost} рыб, у тебя ${have}`);
+      writeBag(p, bag);
+      store.put(token, { tokens: tokens + 1 });
+      this.sendShop(client, `Обмен: −${item.fishCost} рыб · +1 ◈ (теперь ${tokens + 1} ◈)`);
+      this.sendQuests(client);
+      return;
+    }
     if (tokens < item.price) return this.sendShop(client, `Не хватает жетонов: нужно ${item.price} ◈`);
     let note: string;
     if (item.item) {
@@ -3993,6 +4009,11 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(client.sessionId);
     const rt = this.rt.get(client.sessionId);
     if (!p || !rt) return;
+    client.send(MSG.pcInvData, this.pcInvDataFor(p, rt));
+  }
+
+  /** Данные окна снаряжения (ПК/телефон и страница !inv) по живому герою. */
+  private pcInvDataFor(p: PlayerState, rt: Runtime): PcInvData {
     const bag = readBag(p);
     const rec = store.get(`nick:${normNick(p.nick)}`);
     const affOf = (id: string | null): string => {
@@ -4037,8 +4058,9 @@ export class ZoneRoom extends Room<ZoneState> {
         rightAffix: affOf(heldR),
         leftAffix: affOf(heldL),
       }),
+      tokens: rec?.tokens ?? 0,
     };
-    client.send(MSG.pcInvData, data);
+    return data;
   }
 
   /** Строка чата — в журнал игроков (спектаторам не нужна: у них свой оверлей). */
@@ -4124,6 +4146,13 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "title") {
+      const token = `nick:${norm}`;
+      const have = store.get(token)?.titles ?? [];
+      if (id !== "-" && !have.includes(id)) return { ok: false, text: "Такого титула нет." };
+      store.put(token, { title: id === "-" ? "" : id });
+      return { ok: true, text: id === "-" ? "Титул снят" : `Титул «${id}»` };
+    }
     if (act === "scroll") {
       if (id !== "scroll_xp" && id !== "scroll_wind") return { ok: false, text: "Нет такого свитка." };
       const token = `nick:${norm}`;
@@ -4524,7 +4553,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Сброс вложенных очков атрибутов за рыбу по respecCostFor (чат !respec и кнопка
+   * Сброс вложенных очков атрибутов за жетон ◈ (respecCostFor) (чат !respec и кнопка
    * в веб-инвентаре). Герой в мире — живое состояние; иначе правим сейв.
    */
   private respecNick(norm: string): { ok: boolean; text: string } {
@@ -4534,44 +4563,40 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(token);
     const done = rec?.respecCount ?? 0;
     const cost = respecCostFor(done);
-    const next = respecCostFor(done + 1);
-    const costTxt = cost === 0 ? "бесплатно" : `за ${cost} рыбы`;
-    const nextTxt = next === 0 ? "сброс пока бесплатный" : `следующий — ${next} рыбы`;
+    const tokens = rec?.tokens ?? 0;
+    const costTxt = cost === 0 ? "бесплатно" : `за ${cost} ◈`;
+    // Жетоны — за задания дня (доска в лагере); платим до изменений.
+    const pay = (): string | null => {
+      if (cost > 0 && tokens < cost) return `сброс атрибутов стоит ${cost} ◈ (жетон заданий), у тебя ${tokens} — жетоны дают за задания на доске в лагере.`;
+      return null;
+    };
     const t = this.findWeaponsTarget(norm);
     if (t) {
       const p = t.p;
       const back = p.str - base + (p.agi - base) + (p.int - base);
       if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
-      const bag = readBag(p);
-      const have = bagCount(bag, "fish");
-      if (cost > 0 && !takeFromBag(bag, "fish", cost)) {
-        return { ok: false, text: `сброс атрибутов стоит ${cost} рыбы, у тебя ${have} — !рыбачить.` };
-      }
-      writeBag(p, bag);
+      const err = pay();
+      if (err) return { ok: false, text: err };
       const prog = readProgress(p);
       prog.str = prog.agi = prog.int = base;
       prog.unspent += back;
       writeProgress(p, prog);
-      // Потолки HP/маны — от новых (базовых) атрибутов. Оружие не трогаем:
-      // что держать в руках, решает игрок, а не сброс атрибутов.
+      // Потолки HP/маны — от новых (базовых) атрибутов. Оружие не трогаем.
       p.maxHp = maxHpFor(p.level, p.str);
       p.hp = Math.min(p.hp, p.maxHp);
       p.maxMana = maxManaFor(p.level, p.int);
       p.mana = Math.min(p.mana, p.maxMana);
       this.persistNick(norm);
-      store.put(token, { respecCount: done + 1 });
-      return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int · ${nextTxt}` };
+      store.put(token, { respecCount: done + 1, tokens: tokens - cost });
+      return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int` };
     }
     if (!rec) return { ok: false, text: "героя нет — напиши !play." };
     const back = rec.str - base + (rec.agi - base) + (rec.int - base);
     if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
-    const bag = restoreBag(rec.bag);
-    const have = bagCount(bag, "fish");
-    if (cost > 0 && !takeFromBag(bag, "fish", cost)) {
-      return { ok: false, text: `сброс атрибутов стоит ${cost} рыбы, у тебя ${have}.` };
-    }
-    store.put(token, { bag, str: base, agi: base, int: base, unspent: rec.unspent + back, respecCount: done + 1 });
-    return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${rec.unspent + back} · ${nextTxt}` };
+    const err = pay();
+    if (err) return { ok: false, text: err };
+    store.put(token, { str: base, agi: base, int: base, unspent: rec.unspent + back, respecCount: done + 1, tokens: tokens - cost });
+    return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${rec.unspent + back}` };
   }
 
 
@@ -4606,7 +4631,7 @@ export class ZoneRoom extends Room<ZoneState> {
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
         `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
-        "!respec — вернуть все очки атрибутов (1-й раз бесплатно, дальше за рыбу) · " +
+        "!respec — вернуть все очки атрибутов (за 1 жетон ◈) · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(

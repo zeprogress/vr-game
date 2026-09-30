@@ -17,6 +17,7 @@ import {
   type WeaponTier,
 } from "#shared/items";
 import { heroStatRows } from "#shared/heroStats";
+import type { PcInvData } from "#shared/net/messages";
 import { store } from "../store";
 import { invHub } from "../invHub";
 import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
@@ -91,7 +92,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll"
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title"
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -193,8 +194,37 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
     leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
   });
+  // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
+  const pc: PcInvData = invHub.pcInv(norm) ?? {
+    weapons: weaponsList.map((w) => ({
+      id: w.id,
+      cls: w.cls,
+      tier: w.tier,
+      name: weaponDef(w.cls, w.tier).name,
+      affixes: w.affixes.map(affixLabel),
+      quality: weaponQuality(w),
+      scrap: scrapValue(w),
+      ench: enchDetails(w),
+    })),
+    equipped: { left: rec.equippedWeaponId?.left ?? null, right: rec.equippedWeaponId?.right ?? null },
+    potions: bagCount(rec.bag ?? [], "potion"),
+    scrap: bagCount(rec.bag ?? [], "scrap"),
+    fish: bagCount(rec.bag ?? [], "fish"),
+    scrollXp: bagCount(rec.bag ?? [], "scroll_xp"),
+    scrollWind: bagCount(rec.bag ?? [], "scroll_wind"),
+    titles: rec.titles ?? [],
+    title: rec.title ?? "",
+    tokens: rec.tokens ?? 0,
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
+    stats,
+  };
+  const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
+    h && h.cls ? { cls: h.cls, tier: h.tier } : null;
   return {
     ok: true,
+    pc,
+    heldHands: { left: heldOf(rec.held?.left), right: heldOf(rec.held?.right) },
     nick: rec.nick || norm,
     authed,
     code: authed ? undefined : invHub.code(sid, norm),

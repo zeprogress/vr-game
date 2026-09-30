@@ -20,7 +20,9 @@ const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/invSessions
 const CODE_TTL_MS = 10 * 60_000;
 const SESSION_TTL_MS = 60 * 24 * 3600_000;
 
-export type InvActKind = "equip" | "scrap" | "enchant" | "stat" | "respec" | "scroll";
+import type { PcInvData } from "#shared/net/messages";
+
+export type InvActKind = "equip" | "scrap" | "enchant" | "stat" | "respec" | "scroll" | "title";
 
 export interface InvActResult {
   ok: boolean;
@@ -34,6 +36,8 @@ export interface InvZone {
   sync(norm: string): void;
   /** Выполнить действие; вернуть текст для страницы (ok=false — отказ). */
   act(norm: string, act: InvActKind, id: string, idx: number): InvActResult;
+  /** Данные окна снаряжения живого героя (в мире); нет в мире — null. */
+  pcInv?(norm: string): PcInvData | null;
 }
 
 interface Session {
@@ -73,6 +77,10 @@ function save(): void {
 export const invHub = {
   setZone(z: InvZone | null): void {
     zone = z;
+  },
+
+  pcInv(norm: string): PcInvData | null {
+    return zone?.pcInv?.(norm) ?? null;
   },
 
   /** sid от клиента, если он похож на наш, иначе новый. */

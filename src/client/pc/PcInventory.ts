@@ -1,3 +1,4 @@
+import { POTION_IMG } from "../ui/potionIcon";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
@@ -6,7 +7,7 @@ import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/n
  *  - «Снаряжение»: кукла (руки + будущие слоты брони), характеристики, сумка
  *    с оружием, расходники, наковальня для лома;
  *  - «Заточка»: выбранный предмет, по аффиксу — очки/цена/шанс, молот;
- *  - «Атрибуты»: сила/ловкость/интеллект, свободные очки, сброс за рыбу.
+ *  - «Атрибуты»: сила/ловкость/интеллект, свободные очки, сброс за жетон ◈.
  *
  * Перетаскивание: из сумки на руку — надеть; с руки в сумку — снять; на
  * наковальню — в лом (с подтверждением); за окно — выбросить на землю (с
@@ -25,6 +26,8 @@ export interface HeldInfo {
 export interface PcInventoryHooks {
   /** Телефон: тап — меню действий, перетаскивание — пальцем (HTML drag на тач не работает). */
   touch?: boolean;
+  /** Страница !inv: окно встроено в страницу — без крестика, перетаскивания и «выбросить за окно». */
+  page?: boolean;
   request: () => void;
   /** Использовать предмет сумки (свиток) — по id предмета. */
   useItem?: (id: "scroll_xp" | "scroll_wind") => void;
@@ -37,7 +40,7 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-const ICON: Record<string, string> = { sword: "⚔", bow: "🏹", staff: "🪄", shield: "🛡" };
+export const ICON: Record<string, string> = { sword: "⚔", bow: "🏹", staff: "🪄", shield: "🛡" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS: { id: "str" | "agi" | "int"; name: string; hint: string }[] = [
   { id: "str", name: "Сила", hint: "Здоровье, урон мечом, броня" },
@@ -90,6 +93,7 @@ export class PcInventory {
     // Окно двигается за шапку.
     let dragWin: { x: number; y: number; l: number; t: number } | null = null;
     head.addEventListener("pointerdown", (e) => {
+      if (hooks.page) return; // на странице окно не двигается
       // По вкладкам и кнопкам — клик, а не перетаскивание окна (иначе захват
       // указателя шапкой съедал клик по вкладке).
       if ((e.target as HTMLElement).closest("button, .pcinv-tab")) return;
@@ -118,6 +122,7 @@ export class PcInventory {
       this.root.classList.add("touch");
       this.bindTouch();
     }
+    if (hooks.page) this.root.classList.add("page");
   }
 
   // ---- телефон: тап — меню действий, зажал и повёл — перетаскивание пальцем ----
@@ -179,7 +184,9 @@ export class PcInventory {
     const w = this.dragWeapon();
     const held = src.kind === "hand" ? this.hooks.hands()[src.side] : null;
     this.drag = null;
+    this.tipAllowed = true;
     this.showTip(anchor, w, held);
+    this.tipAllowed = false;
     this.confirmEl?.remove();
     const box = div("pcinv-confirm pcinv-actions");
     box.append(div("pcinv-confirm-text", w?.name ?? (held ? "В руке" : "")));
@@ -215,6 +222,11 @@ export class PcInventory {
 
   get isOpen(): boolean {
     return this.root.style.display !== "none";
+  }
+
+  /** Корневой элемент (страница !inv встраивает окно в свою разметку). */
+  get element(): HTMLDivElement {
+    return this.root;
   }
 
   open(tab: InvTab = this.tab): void {
@@ -354,7 +366,7 @@ export class PcInventory {
     sel.className = "pcinv-select";
     const none = document.createElement("option");
     none.value = "";
-    none.textContent = d.titles?.length ? "— без титула —" : "пока нет (за большие заслуги)";
+    none.textContent = d.titles?.length ? "— без титула —" : "нет — за большие заслуги";
     sel.append(none);
     for (const t of d.titles ?? []) {
       const o = document.createElement("option");
@@ -372,9 +384,12 @@ export class PcInventory {
     const right = div("pcinv-col");
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     const bag = d.weapons.filter((w) => !eq.has(w.id));
-    right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}/40`));
+    // Склад на сервере без лимита — ячеек минимум 64, дальше растёт рядами по 8 (всегда есть свободный ряд).
+    const row = this.hooks.page ? 9 : this.hooks.touch ? 10 : 8;
+    const slots = Math.max(this.hooks.page ? 63 : this.hooks.touch ? 40 : 64, Math.ceil((bag.length + 1) / row) * row);
+    right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
     const grid = div("pcinv-grid");
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < slots; i++) {
       const w = bag[i];
       grid.append(w ? this.itemCell(w) : div("pcinv-cell"));
     }
@@ -389,23 +404,37 @@ export class PcInventory {
       if (src?.kind === "hand") this.hooks.toBag(src.side);
     });
     right.append(grid);
-    right.append(div("pcinv-sub", "Расходники"));
+    right.append(div("pcinv-sub", "Прочее"));
     const cons = div("pcinv-cons");
+    const info = (c: HTMLDivElement, title: string, body: string): HTMLDivElement => {
+      c.removeAttribute("title");
+      c.addEventListener("mouseenter", () => this.textTip(c, title, body));
+      c.addEventListener("mouseleave", () => this.hideTip());
+      return c;
+    };
     cons.append(
-      countCell("🧪", d.potions, "Зелья лечения — клавиша 3"),
-      countCell(SCRAP_SVG, d.scrap, "Лом — для заточки", true),
-      countCell("🐟", d.fish, "Рыба — для сброса атрибутов"),
+      info(countCell(POTION_IMG, d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу."),
+      info(countCell(SCRAP_SVG, d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»)."),
+      info(countCell("🐟", d.fish, ""), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере."),
     );
+    // Жетоны заданий — подсказка сразу при наведении и по нажатию.
+    {
+      const tip = "Дают за задания дня (доска и Охотник у выхода из лагеря). Тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия.";
+      const c = info(countCell("◈", d.tokens ?? 0, ""), "Жетоны заданий ◈", tip);
+      c.classList.add("tokens");
+      cons.append(c);
+    }
     // Свитки — клик: прочитать (бафф на 15 мин).
-    const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", string, string][] = [
-      [d.scrollXp, "scroll_xp", "📜", "Свиток мудрости: ×2 опыта на 15 мин — клик, чтобы прочитать"],
-      [d.scrollWind, "scroll_wind", "🪶", "Свиток ветра: +20% скорости бега на 15 мин — клик, чтобы прочитать"],
+    const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", string, string, string][] = [
+      [d.scrollXp, "scroll_xp", "📜", "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Клик — прочитать."],
+      [d.scrollWind, "scroll_wind", "🪶", "Свиток ветра", "+20% скорости бега на 15 мин. Клик — прочитать."],
     ];
-    for (const [n, id, ico, title] of scrolls) {
+    for (const [n, id, ico, name, body] of scrolls) {
       if (!n) continue;
-      const c = countCell(ico, n, title);
+      const c = info(countCell(ico, n, ""), name, body);
       c.style.cursor = "pointer";
       c.onclick = () => {
+        this.hideTip();
         this.hooks.useItem?.(id);
         window.setTimeout(() => this.refresh(), 300);
       };
@@ -673,8 +702,8 @@ export class PcInventory {
     }
     const rb = document.createElement("button");
     rb.className = "pcinv-respec";
-    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} рыбы (у тебя ${d.fish})`;
-    rb.disabled = cost > d.fish;
+    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} ◈ (у тебя ${d.tokens ?? 0})`;
+    rb.disabled = cost > (d.tokens ?? 0);
     rb.onclick = () =>
       this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
         this.hooks.act({ act: "respec", id: "respec", idx: 0 }),
@@ -694,7 +723,7 @@ export class PcInventory {
     // Ловушку «бросили мимо окна» показываем тиком позже: правка DOM прямо в
     // dragstart иногда отменяет перетаскивание в Chrome.
     window.setTimeout(() => {
-      if (this.drag) this.dropCatcher.style.display = "block";
+      if (this.drag && !this.hooks.page) this.dropCatcher.style.display = "block";
     }, 0);
   }
 
@@ -713,7 +742,11 @@ export class PcInventory {
     return this.weaponById(eq[s.side]) ?? (other?.cls === "bow" ? other : null);
   }
 
+  /** Телефон: подсказка оружия только из меню действий (иначе тап по ячейке закрывал экран всплывашкой). */
+  private tipAllowed = false;
+
   private showTip(anchor: HTMLElement, w: PcInvWeapon | null, held: HeldInfo | null): void {
+    if (this.hooks.touch && !this.tipAllowed) return;
     const cls = (w?.cls ?? held?.cls ?? "") as WeaponClass;
     const tier = (w?.tier ?? held?.tier ?? "base") as WeaponTier;
     if (!cls) return;
@@ -729,6 +762,18 @@ export class PcInventory {
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
     if (w) this.tip.append(div("pcinv-small", `В лом: ${w.scrap}`));
     this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
+    const r = anchor.getBoundingClientRect();
+    this.tip.style.display = "block";
+    const tw = this.tip.offsetWidth;
+    const left = r.right + 8 + tw > window.innerWidth ? r.left - tw - 8 : r.right + 8;
+    this.tip.style.left = `${Math.max(4, left)}px`;
+    this.tip.style.top = `${Math.max(4, Math.min(window.innerHeight - this.tip.offsetHeight - 4, r.top))}px`;
+  }
+
+  /** Простая подсказка (название + текст) у ячейки — сразу, без задержки браузерного title. */
+  private textTip(anchor: HTMLElement, title: string, body: string): void {
+    this.tip.innerHTML = "";
+    this.tip.append(div("pcinv-name", title), div("pcinv-small", body));
     const r = anchor.getBoundingClientRect();
     this.tip.style.display = "block";
     const tw = this.tip.offsetWidth;
@@ -790,7 +835,7 @@ function span(text: string): HTMLSpanElement {
 }
 
 /** Лом — кусочки металла (шестерёнка путала). */
-const SCRAP_SVG =
+export const SCRAP_SVG =
   `<svg viewBox="0 0 28 28" width="30" height="30" stroke-linejoin="round">` +
   `<path d="M3 17l7-5 4 3-2 6-7 1z" fill="#8d939c" stroke="#d6dae0" stroke-width="1.1"/>` +
   `<path d="M12 9l6-4 5 3-1 6-6 1z" fill="#a4957e" stroke="#e2d6c2" stroke-width="1.1"/>` +
@@ -874,6 +919,21 @@ function injectInvStyle(): void {
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }
 .pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-cell.tokens { color:#e8c26a; font-weight:800; }
+/* Страница !inv: окно — обычный блок страницы. */
+.pcinv-root.page { position:relative; inset:auto; pointer-events:auto; }
+.pcinv-root.page .pcinv-win, .pcinv-root.page.touch .pcinv-win { position:relative; left:auto; top:auto; transform:none;
+  margin:0 auto; width:min(680px,100%); max-width:100%; height:auto; max-height:none; overflow:visible; }
+.pcinv-root.page .pcinv-x, .pcinv-root.page .pcinv-hint, .pcinv-root.page .pcinv-doll { display:none; }
+.pcinv-root.page .pcinv-head { cursor:default; }
+/* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
+.pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(9,minmax(0,1fr)); gap:4px; }
+.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:20px; }
+.pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
+/* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
+.pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
+.pcinv-root.page.touch .pcinv-grid .pcinv-cell[class*="t-"], .pcinv-root.page.touch .pcinv-handbox .pcinv-cell[class*="t-"] { touch-action:none; }
+.pcinv-root.page .pcinv-gear > .pcinv-col { min-width:0; overflow:hidden; }
 .pcinv-ghost { position:fixed; z-index:80; width:48px; height:48px; margin:-24px 0 0 -24px; display:flex; align-items:center;
   justify-content:center; font-size:28px; background:rgba(30,28,38,.9); border-radius:8px; pointer-events:none; }
 .pcinv-confirm-row.col { flex-direction:column; align-items:stretch; }
@@ -905,7 +965,8 @@ function injectInvStyle(): void {
   .pcinv-root.touch .pcinv-grid { grid-template-columns:repeat(auto-fill,44px); }
 }
 .pcinv-title { align-items:center; margin:6px 0; }
-.pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; max-width:170px; }
+.pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; flex:1; min-width:0; }
+.pcinv-title > span:first-child { flex:none; }
 .pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:#ffcf5a; }
 .pcinv-score small { font:600 11px system-ui; color:#a9a498; margin-right:4px; }
 .pcinv-cell.inhand { position:relative; box-shadow:inset 0 0 0 2px #6fbf6f; }

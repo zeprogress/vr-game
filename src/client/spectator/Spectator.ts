@@ -1,3 +1,4 @@
+import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
@@ -5,7 +6,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, EVENT, CAMPFIRE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -20,7 +21,6 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "../ui/WorldCrossFx";
-import { CROSS_PURPLE } from "../ui/HealCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -1191,29 +1191,8 @@ export class Spectator {
 
   /** Баффы на герое — для плашек в «смотрим». */
   private static playerBuffs(p: PlayerState): OverlayCtx["watchBuffs"] {
-    if ((p.towerFloor ?? 0) > 0) return null; // в башне баффы не действуют
-    const out: NonNullable<OverlayCtx["watchBuffs"]> = [];
-    if ((p.buffSecs ?? 0) > 0) {
-      out.push({
-        icon: "⚔️", name: "Благословение победы",
-        desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
-        secs: p.buffSecs, color: "#ff5a5a",
-      });
-    }
-    if ((p.campBuffSecs ?? 0) > 0) {
-      out.push({
-        icon: "🛡️", name: "Тепло костра",
-        desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`,
-        secs: p.campBuffSecs, color: "#ffc24a",
-      });
-    }
-    if ((p.scrollXpSecs ?? 0) > 0) {
-      out.push({ icon: "📜", name: "Свиток мудрости", desc: "×2 опыта", secs: p.scrollXpSecs, color: "#7fd0ff" });
-    }
-    if ((p.scrollWindSecs ?? 0) > 0) {
-      out.push({ icon: "🪶", name: "Свиток ветра", desc: "+20% скорости бега", secs: p.scrollWindSecs, color: "#8fe8b0" });
-    }
-    return out.length ? out : null;
+    const list = buffList(p);
+    return list.length ? list : null;
   }
 
   /** Ярлык оружия/щита в руке для панели «HP цели». */
@@ -1466,10 +1445,10 @@ export class Spectator {
         this.crossFx.burst(x, y, z, 9, CROSS_ORANGE);
         break;
       case "magicHit": {
-        // Магический удар (Костяной призрак): фиолетовые искры на задетом герое.
+        // Магический удар (Костяной призрак): призрачная дымка на задетом герое.
         const av = this.avatars.get(id);
         const p = av ? av.position : { x, y, z };
-        this.crossFx.burst(p.x, p.y - 0.3, p.z, 8, CROSS_PURPLE, 0.9);
+        this.skillFx.wraithPuff(p.x, p.y - 0.9, p.z, 0.55, true);
         break;
       }
       case "healHit": {

@@ -1,3 +1,7 @@
+import { ICON, SCRAP_SVG } from "../pc/PcInventory";
+import { POTION_IMG } from "../ui/potionIcon";
+/** Иконки прочих предметов — как в «Прочем» окна снаряжения. */
+const MISC_ICON: Record<string, string> = { fish: "🐟", scroll_xp: "📜", scroll_wind: "🪶" };
 import type { OverlayPatch, LeaderboardRow, TowerBoardRow, LootItem } from "#shared/net/messages";
 import type { HeroStatRow } from "#shared/heroStats";
 import { TOWER } from "#shared/tower";
@@ -193,6 +197,11 @@ const CSS = `
   background:rgba(0,0,0,.35); border:.15vh solid rgba(255,255,255,.25);
   display:flex; align-items:center; justify-content:center; box-shadow:0 .4vh 1.4vh rgba(0,0,0,.5); }
 .ov-loot .it img { width:72%; height:72%; object-fit:contain; }
+.ov-loot .it { background:#0f0e13; border:.25vh solid #6b6b6b; }
+.ov-loot .it.t-gold { border-color:#d9a21b; box-shadow:inset 0 0 1.4vh rgba(217,162,27,.35), 0 .4vh 1.4vh rgba(0,0,0,.5); }
+.ov-loot .it.t-legendary { border-color:#9b5cf0; box-shadow:inset 0 0 1.6vh rgba(155,92,240,.45), 0 .4vh 1.4vh rgba(0,0,0,.5); }
+.ov-loot .it .ico { font-size:3.8vh; line-height:1; display:flex; align-items:center; justify-content:center; width:70%; height:70%; }
+.ov-loot .it .ico svg { width:100%; height:100%; }
 .ov-loot .it .tint { width:60%; height:60%; border-radius:.6vh; }
 .ov-loot .it .cnt { position:absolute; right:.3vh; bottom:.1vh; font:800 1.6vh system-ui,sans-serif;
   color:#fff; text-shadow:0 .1vh .3vh #000,0 0 .3vh #000; }
@@ -449,20 +458,17 @@ export class Overlay {
     el.style.display = "flex";
     for (const l of loot) {
       const def = ITEMS[l.id];
-      const it = div("it");
+      // Иконки как в окне снаряжения игры: оружие — значок класса в рамке цвета тира.
+      const w = def.weapon;
+      const it = div(`it${w ? ` t-${w.tier}` : ""}`);
       it.title = def.name;
-      if (def.icon) {
-        const img = document.createElement("img");
-        img.src = `/icons/${def.icon}`;
-        img.alt = def.name;
-        img.draggable = false;
-        it.appendChild(img);
-      } else {
-        const tint = div("tint");
-        const c = def.tint.map((v) => Math.round(v * 255)).join(",");
-        tint.style.background = `rgb(${c})`;
-        it.appendChild(tint);
-      }
+      const ico = document.createElement("span");
+      ico.className = "ico";
+      if (w) ico.textContent = ICON[w.cls] ?? "?";
+      else if (l.id === "scrap") ico.innerHTML = SCRAP_SVG;
+      else if (l.id === "potion") ico.innerHTML = POTION_IMG;
+      else ico.textContent = MISC_ICON[l.id] ?? "•";
+      it.appendChild(ico);
       if (l.count > 1) {
         const cnt = document.createElement("span");
         cnt.className = "cnt";

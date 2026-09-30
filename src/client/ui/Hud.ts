@@ -947,12 +947,7 @@ const POTION_BTN_CSS =
 
 /** Рисунок красной круглой бутылочки внутри кнопки + бейдж с числом. */
 const POTION_ICON =
-  `<svg viewBox="0 0 24 24" width="40" height="40" style="pointer-events:none">` +
-  `<rect x="10" y="1.5" width="4" height="3.2" rx="0.6" fill="#cdd5e6"/>` +
-  `<path d="M9.4 4.5h5.2v3.1a8 8 0 1 1-5.2 0z" fill="#e8555b" stroke="#fff" stroke-width="1" stroke-linejoin="round"/>` +
-  `<path d="M6.6 13a6 6 0 0 0 10.8 0 6 6 0 0 1-10.8 0z" fill="#a51f26"/>` +
-  `<ellipse cx="10" cy="12" rx="1.4" ry="2" fill="rgba(255,255,255,0.35)"/>` +
-  `</svg>` +
+  `<img src="/icons/potion.png" alt="" draggable="false" style="width:44px;height:44px;object-fit:contain;pointer-events:none">` +
   `<span class="pot-n" style="position:absolute;right:-2px;top:-2px;min-width:18px;height:18px;` +
   `padding:0 3px;border-radius:9px;background:#a51f26;color:#fff;font:700 12px/18px system-ui;` +
   `text-align:center;border:1px solid #fff"></span>`;

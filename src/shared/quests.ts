@@ -55,7 +55,7 @@ export const QUEST = {
   },
   boardReach: 4,
   /** Вожак лагеря: во сколько раз сильнее обычного моба лагеря. */
-  champ: { hpMul: 3, dmgMul: 1.4, scaleMul: 1.3, xpMul: 4 },
+  champ: { hpMul: 3, dmgMul: 1.4, scaleMul: 1.3, xpMul: 4, dropMul: 3 },
 } as const;
 
 /** Типы мобов из лагерей с вожаками (без дубликатов), по возрастанию уровня. */

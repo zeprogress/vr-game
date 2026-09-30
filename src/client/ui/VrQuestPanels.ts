@@ -155,7 +155,9 @@ export function drawShop(ui: PanelUi, d: ShopData | null, buy: (id: string) => v
     ui.rect(PAD, y, w, 116, VR_UI.card, 14);
     ui.text(it.name, PAD + 20, y + 16, 32, VR_UI.title, 700);
     ui.text(it.desc, PAD + 20, y + 62, 26, VR_UI.sub);
-    ui.button(`buy:${it.id}`, `${it.price} ◈`, PAD + w - 200, y + 30, 180, 56, () => buy(it.id), true, d.tokens >= it.price);
+    const label = it.fishCost ? `${it.fishCost}🐟→1◈` : `${it.price} ◈`;
+    const can = it.fishCost ? (d.fish ?? 0) >= it.fishCost : d.tokens >= it.price;
+    ui.button(`buy:${it.id}`, label, PAD + w - 220, y + 30, 200, 56, () => buy(it.id), true, can);
     y += 130;
   }
 }

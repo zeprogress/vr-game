@@ -36,6 +36,7 @@ import { VrPanel } from "../ui/VrPanel";
 import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop } from "../ui/VrQuestPanels";
 import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trackItems, type TrackItem } from "../ui/QuestWindow";
 import { VrCompass } from "../ui/VrCompass";
+import { buffList } from "../ui/buffList";
 import { QUEST, questPoint } from "#shared/quests";
 import { HUB } from "#shared/hub";
 import { terrainHeight } from "#shared/terrain";
@@ -56,7 +57,7 @@ import { VrWasted } from "../ui/VrWasted";
 import { VrStunStars } from "../ui/VrStunStars";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
-import { HealCrossFx, CROSS_ORANGE, CROSS_PURPLE } from "../ui/HealCrossFx";
+import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -2238,7 +2239,9 @@ export class Game {
     this.player.speedMul = !inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1;
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
-    this.pcHud?.setBuffs(self.buffSecs ?? 0, camp, self.scrollXpSecs ?? 0, self.scrollWindSecs ?? 0);
+    const buffs = buffList(self);
+    this.pcHud?.setBuffs(buffs);
+    this.vrHud?.setBuffs(buffs);
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе
@@ -3312,10 +3315,10 @@ export class Game {
         this.crossFx.burst(x, y, z, 9, W_ORANGE);
         break;
       case "magicHit": {
-        // Магический удар (Костяной призрак): фиолетовые искры на задетом герое.
+        // Магический удар (Костяной призрак): призрачная дымка на задетом герое.
         const av = this.avatars.get(id);
         const p = av ? av.position : { x, y, z };
-        this.crossFx.burst(p.x, p.y - 0.3, p.z, 8, CROSS_PURPLE, 0.9);
+        this.skillFx.wraithPuff(p.x, p.y - 0.9, p.z, 0.55, true);
         break;
       }
       case "healHit": {

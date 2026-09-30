@@ -1,4 +1,8 @@
 import { Client } from "colyseus.js";
+import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
+import { injectPcStyle } from "../pc/pcStyle";
+import type { PcInvData } from "#shared/net/messages";
+import { UPDATES } from "#shared/updates";
 
 interface InvWeapon {
   num: number;
@@ -66,6 +70,9 @@ interface InvMsg {
   attrs?: { unspent: number; str: number; agi: number; int: number };
   fish?: number;
   respecCost?: number;
+  /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
+  pc?: PcInvData;
+  heldHands?: { left: { cls: string; tier: string } | null; right: { cls: string; tier: string } | null };
   /** Жетоны заданий ◈ и свитки (читаются отсюда). */
   tokens?: number;
   scrolls?: { id: string; name: string; hint: string; count: number; activeSecs: number }[];
@@ -118,17 +125,17 @@ function attrsHtml(msg: InvMsg): string {
       `<div class="ahint">${r.hint}</div></div>${btns}</div>`
     );
   }).join("");
-  // Сброс атрибутов — за рыбу; второе нажатие подтверждает (как «На лом»).
+  // Сброс атрибутов — за жетон ◈; второе нажатие подтверждает (как «На лом»).
   const cost = msg.respecCost ?? 0;
-  const fish = msg.fish ?? 0;
+  const fish = msg.tokens ?? 0; // имя осталось от рыбы — это жетоны
   const invested = a.str + a.agi + a.int - 3 > 0;
   const armed = armedScrap === "respec";
   // cost < 0 — сброс выключен на сервере: кнопку не показываем.
   const respec = msg.authed && cost >= 0
     ? `<div class="respec"><button class="act respecbtn${armed ? " armed" : ""}" data-act="respec" data-id="respec" ${
         fish < cost || !invested ? "disabled" : ""
-      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost === 0 ? "бесплатно" : `${cost} 🐟`}</button>` +
-      `<span class="fishhave">у тебя ${fish} 🐟${!invested ? " · сбрасывать нечего" : fish < cost ? " · не хватает" : ""}</span></div>`
+      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost === 0 ? "бесплатно" : `${cost} ◈`}</button>` +
+      `<span class="fishhave">у тебя ${fish} ◈${!invested ? " · сбрасывать нечего" : fish < cost ? " · не хватает" : ""}</span></div>`
     : "";
   const head =
     a.unspent > 0
@@ -208,6 +215,43 @@ let last: InvMsg | null = null;
 /** id предмета, по которому нажали «На лом» один раз — второй клик подтверждает. */
 let armedScrap = "";
 
+let pcInv: PcInventory | null = null;
+let viewMode: "new" | "old" = (() => {
+  try {
+    return localStorage.getItem("zep.invView") === "old" ? "old" : "new";
+  } catch {
+    return "new";
+  }
+})();
+let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
+
+/** Окно снаряжения из игры, встроенное в страницу. Действия идут на сервер как раньше. */
+function pageInv(): PcInventory {
+  if (pcInv) return pcInv;
+  injectPcStyle();
+  const act = (a: string, id: string, idx = 0): void => {
+    if (!last?.authed) {
+      toast("Сначала подтверди вход кодом в чате", false);
+      return;
+    }
+    room?.send("act", { act: a, id, idx });
+  };
+  pcInv = new PcInventory({
+    page: true,
+    touch: matchMedia("(pointer: coarse)").matches,
+    request: () => room?.send("refresh"),
+    act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx),
+    hands: () => heldHands as ReturnType<PcInventoryHooks["hands"]>,
+    equip: (w) => act("equip", w.id),
+    toBag: () => toast("Снять оружие в сумку можно в игре", false),
+    scrap: (w) => act("scrap", w.id),
+    drop: () => toast("Выбросить можно только в игре", false),
+    useItem: (id) => act("scroll", id),
+  });
+  document.getElementById("invMount")!.append(pcInv.element);
+  return pcInv;
+}
+
 function renderInv(msg: InvMsg): void {
   last = msg;
   if (!msg.ok) {
@@ -219,6 +263,7 @@ function renderInv(msg: InvMsg): void {
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
+  if (pcInv && viewMode === "old") pcInv.element.style.display = "none";
   subEl.textContent = msg.authed ? "✓ вход подтверждён — можно менять снаряжение" : "";
 
   const authHtml = msg.authed
@@ -226,6 +271,17 @@ function renderInv(msg: InvMsg): void {
     : `<div class="auth">Чтобы надевать и разбирать предметы, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
       `<div class="code">${escapeHtml(msg.code ?? "----")}</div>` +
       `<div class="auth-note">Страница откроется сама. Код действует 10 минут, вход запоминается в этом браузере.</div></div>`;
+
+  // Окно как в игре (то же PcInventory): снаряжение, атрибуты, заточка — с иконками и подсказками.
+  if (msg.pc && viewMode === "new") {
+    listEl.innerHTML = authHtml;
+    const inv = pageInv();
+    heldHands = msg.heldHands ?? { left: null, right: null };
+    inv.setData(msg.pc);
+    inv.setXp(msg.level ?? 1, msg.xpFrac ?? 0, (msg.xpFrac ?? 0) >= 1);
+    if (!inv.isOpen) inv.open("gear");
+    return;
+  }
 
   const statsHtml =
     msg.stats && msg.stats.length > 0
@@ -344,7 +400,7 @@ function connect(attempt = 0): void {
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
       r.onMessage("toast", (m: { ok: boolean; text: string }) => toast(m.text, m.ok));
-      r.onMessage("enchant", (m: EnchResult) => onEnchantResult(m));
+      r.onMessage("enchant", (m: EnchResult) => (pcInv ? pcInv.onResult(m as never) : onEnchantResult(m)));
       r.onMessage("inv", (msg: InvMsg) => {
         if (msg.redirect) {
           location.replace(`/inv?${encodeURIComponent(msg.redirect)}`);
@@ -543,36 +599,73 @@ function reveal(m: EnchResult): void {
 
 const MECH_HTML = `
 <h2>Атрибуты</h2>
-<p><span class="str">Сила (str)</span> — множитель физического урона, ключевой атрибут <span class="cls-warrior">воина</span>/мечника.</p>
-<p><span class="agi">Ловкость (dex)</span> — множитель урона в ближнем и дальнем бою + скорость атаки, ключевой атрибут <span class="cls-archer">лучника</span> (но и мечнику полезна).</p>
-<p><span class="int">Интеллект (int)</span> — сила магии: урон и радиус огнешара у <span class="cls-mage">мага</span>.</p>
-<p>Всё растёт от уровня, у самих атрибутов есть мягкий потолок — один стат не может стать абсолютно доминирующим.</p>
+<p>Основа — от <b>уровня</b> (здоровье, урон, темп атаки, бег, мана растут сами). Атрибуты — множители поверх. Каждое вложенное очко даёт:</p>
+<p><span class="str">Сила (str)</span></p>
+<ul>
+<li>+5.5% максимального здоровья;</li>
+<li>+5% урона мечом и кулаками (на стрелы сила не влияет);</li>
+<li>броня: −1.4% входящего урона от мобов и игроков (потолок 35%). Магические удары (Костяные призраки) броня не гасит.</li>
+</ul>
+<p><span class="agi">Ловкость (dex)</span></p>
+<ul>
+<li>+1% темпа атаки (у меча прирост вдвое мягче, у лука и посоха — полный);</li>
+<li>+1.5% урона мечом и кулаками;</li>
+<li>+3% урона стрел — у лука урон растёт только от ловкости;</li>
+<li>+1.8% скорости бега;</li>
+<li>+1.2% шанса увернуться от удара, а с одним предметом в руках без щита (лук, посох, один меч) — ×5, потолок 30%.</li>
+</ul>
+<p><span class="int">Интеллект (int)</span></p>
+<ul>
+<li>+6% силы магии: урон огнешара и сила массового лечения;</li>
+<li>+5% запаса маны и +0.5 восстановления маны в секунду (база — 2 в секунду);</li>
+<li>−4.5% урона от снарядов и магии, в том числе магических ударов призраков (потолок 70%);</li>
+<li>+3% к лечению зельями.</li>
+</ul>
+<p><b>Затухание:</b> первые 5 вложенных очков в атрибут дают полную отдачу, каждое следующее — 40% от неё. Поэтому выгоднее не всё в один атрибут.</p>
+<p>Очки дают за каждый уровень. Сброс всех очков — <b>1 жетон ◈</b> (<code>!respec</code> или кнопка на вкладке «Атрибуты»).</p>
 
-<h2>Классы</h2>
-<p><span class="cls-warrior">Воин</span> — танк/мечник, ближний бой, умение «Оглушающий удар».</p>
-<p><span class="cls-archer">Лучник</span> — дальний бой, крит, умение «Град стрел».</p>
-<p><span class="cls-mage">Маг</span> — огнешар с накоплением заряда, зона лечения-баффа для союзников.</p>
-<p>Левая и правая рука — независимые слоты, можно комбинировать разное снаряжение.</p>
+<h2>Классы и руки</h2>
+<p><span class="cls-warrior">Воин</span> — меч (можно два) и щит, умение «Оглушающий удар». Щит — шанс полностью заблокировать удар (10%, у Эгиды 15%).</p>
+<p><span class="cls-archer">Лучник</span> — лук на обе руки, криты, умение «Град стрел» по области. С одним предметом в руках без щита — уворот в 5 раз выше.</p>
+<p><span class="cls-mage">Маг</span> — посох: огнешар с зарядом и массовое лечение союзников.</p>
 
-<h2>Тиры оружия и аффиксы</h2>
-<p><b>Base</b> — стартовое оружие, всегда доступно. <span class="tier-gold">Gold</span> — золотой тир, множитель урона выше. <span class="tier-legendary">Unique</span> — именное оружие с механическим эффектом класса (меч вампира — вампиризм, лук охотника — крит, эгида — усиленный блок, посох бури — сильнее АОЕ).</p>
-<p>Поверх тира на <span class="tier-gold">gold</span>/<span class="tier-legendary">unique</span> дополнительно накатываются 1–3 случайных ролла: <span class="roll">урон</span>, <span class="roll">скорость атаки</span> или <span class="roll">крит</span> — они и делают два меча одного тира разными предметами.</p>
+<h2>Оружие, оценка и заточка</h2>
+<p><b>Обычное</b> — стартовое. <span class="tier-gold">Золотое</span> — урон выше. <span class="tier-legendary">Уникальное</span> — свой эффект: меч вампира, лук охотника (криты), эгида (блок), посох бури.</p>
+<p>На золотом и уникальном 1–3 случайных <span class="roll">ролла</span> (урон, скорость атаки, крит). <b>Оценка</b> — сумма их силы (до 99): чем выше, тем лучше предмет.</p>
+<p>Ненужное — <b>на лом</b> (больше лома за высокую оценку). Лом тратится на <b>заточку</b> роллов: чем ближе ролл к максимуму, тем дороже и тем меньше шанс; при неудаче лом сгорает.</p>
 
-<h2>Лут и дроп</h2>
-<p><span class="tier-gold">Золото</span>/<span class="tier-legendary">уникальные</span> может уронить любой моб (обычные — редко, элитные лагеря на карте — заметно чаще), мировой босс — щедрее всех. Трофей <b>25 секунд</b> принадлежит только тому, кто добил моба.</p>
-<p>Оружие на земле лежит <b>час</b>, если его не забрали, — потом тает.</p>
+<h2>Лут</h2>
+<p>Оружие падает с мобов лагерей; у <b>вожаков лагерей</b> (крупнее, «Вожак — …» над головой) шанс в 3 раза выше. Мировой босс Багровый слизень — щедрее всех. Трофей 25 секунд принадлежит тому, кто добил, на земле лежит час.</p>
+
+<h2>Лагерь</h2>
+<p>Безопасная зона: мобы не нападают. Там быстро восстанавливается здоровье и даётся бафф <b>«Тепло костра»</b> — −20% входящего урона на 10 минут.</p>
+<p>У выхода из лагеря — <b>доска заданий</b> и <b>Охотник</b>, у торговых лавок — <b>трактирщик</b>.</p>
+
+<h2>Задания и жетоны ◈</h2>
+<p><b>Задания дня</b> (обновляются в 00:00 МСК): 3 простых берутся у доски, ещё 2 — на выбор из 5 (есть усложнённые). Охота на мобов своей зоны, вожаки лагерей, рыбалка, рейд на Багрового.</p>
+<p><b>Охотник</b>: история лагеря для новичков (6 глав, в финале — титул и уникальное оружие) и <b>контракт недели</b> с уникальным оружием оценки 80+.</p>
+<p>Награда — опыт (на первых уровнях — сразу несколько уровней), лом и <b>жетоны ◈</b>.</p>
+<p><b>Трактирщик</b> за жетоны: зелья, лом, свитки, сундук с уникальным оружием оценки 80+; обмен 20 рыб на 1 ◈.</p>
+<p><b>Свитки</b> (15 минут): мудрости — ×2 опыта (с благословением ×3), ветра — +20% скорости бега. Пока свиток действует, второй такой же не читается.</p>
+
+<h2>Рыбалка</h2>
+<p>У озера: <b>авторыбалка</b> (герой ловит сам, около минуты на рыбу) или <b>вручную</b> — быстрее, мини-игра: подсекай, когда метка в зелёной зоне. Боты рыбачат по <code>!fish</code>.</p>
+
+<h2>Зоны мобов</h2>
+<p>Слабые — у лагеря, сильнее — дальше. 26 ур. — големы (раскалываются), 33 ур. — Грибной колосс (споры), Небесный спрут (хват щупальцами, можно вырваться), Костяной призрак (телепорт, вампиризм, магические удары), 36 ур. — Адский демон (таран), Ледяной демон (заморозка), Костяной вождь (шипы с оглушением, лечит своих).</p>
 
 <h2>События</h2>
-<p><code>!goevent</code> — админ стрима запускает ивент: «нашествие» (толпа мобов, победа даёт шанс на <span class="tier-legendary">уникальную вещь</span>) или «охота на элиту» (именной элитный босс, победа даёт гарантированную <span class="tier-legendary">уникальную вещь</span>).</p>
+<p>Раз в несколько минут: <b>нашествие</b> (35%), <b>охота на элиту</b> — Огнекрылый дракон (40%), <b>Охотничья башня</b> (25%). Победа даёт «Благословение победы» — ×2 опыта и урона. В башне — соло-забег по этажам с дропом оружия своего класса.</p>
+<p><b>Квест чата</b> — раз в пару часов общая задача для ботов: пиши <code>!квест</code>, чтобы участвовать; награда — опыт, свиток мудрости и жетоны.</p>
+
+<h2>Титулы</h2>
+<p>Только за большие заслуги: Легенда (1-е место по уровню), Царь башни (быстрее 3:00), Драконоборец, Гроза Багрового, Мастер-рыболов, Ветеран контрактов, Защитник лагеря. Виден над героем перед уровнем; выбрать — <code>!title</code> или на вкладке «Снаряжение».</p>
 
 <h2>Бот-режим</h2>
-<p>Пока хозяин не в чате, его герой становится ботом — сам ходит, дерётся, лутается и лечится. Бот переживает рестарт сервера и уходит из мира, если хозяин долго не пишет в чат.</p>
-
-<h2>Башня</h2>
-<p>Соло-забег по этажам с растущей сложностью — героя по вашим статам/экипировке ведёт бот. Боссы этажей дают «осколки» и (начиная с малого шанса, растущего к вершине) — оружие вашего класса. Последний этаж — гарантированный дроп.</p>
+<p>Пока хозяин не в чате, его герой — бот: сам ходит, дерётся, лутается и лечится. Уходит из мира, если хозяин долго не пишет.</p>
 
 <h2>Команды в чате</h2>
-<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!str</code>/<code>!dex</code>/<code>!int</code> — атрибуты · <code>!inv</code> (или <code>!инв</code>, <code>!оружие</code>, <code>!склад</code>, <code>!weapons</code>…) — эта страница (надеть/на лом/заточка — после кода из чата) · <code>!equip &lt;номер&gt;</code> — надеть конкретное · <code>!scrap &lt;номер|all|1,2,3&gt;</code> — на лом · <code>!follow &lt;ник&gt;</code> — герой идёт рядом и защищает · <code>!raid</code> — общий поход на босса · <code>!top</code> — таблица лидеров.</p>
+<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!str</code>/<code>!dex</code>/<code>!int</code> — атрибуты · <code>!respec</code> — сброс за 1 ◈ · <code>!inv</code> — эта страница · <code>!equip &lt;номер&gt;</code> / <code>!scrap &lt;номер|all&gt;</code> · <code>!camp &lt;моб&gt;</code> — где качаться · <code>!fish</code> — рыбалка · <code>!follow &lt;ник&gt;</code> (<code>!следовать</code>) — рядом и защищает · <code>!raid</code> — поход на босса · <code>!event</code> — на ивент · <code>!квест</code> — квест чата · <code>!title</code> — титулы · <code>!focus</code> — показать героя в эфире · <code>!top</code> — лидеры.</p>
 `;
 
 document.getElementById("mechBtn")!.addEventListener("click", () => {
@@ -580,4 +673,35 @@ document.getElementById("mechBtn")!.addEventListener("click", () => {
   const open = el.style.display === "block";
   el.style.display = open ? "none" : "block";
   if (!open) el.innerHTML = MECH_HTML;
+  document.getElementById("upd")!.style.display = "none";
+});
+
+// Обновления игры — дата/время выкладки и что изменилось (src/shared/updates.ts).
+document.getElementById("updBtn")!.addEventListener("click", () => {
+  const el = document.getElementById("upd")!;
+  const open = el.style.display === "block";
+  el.style.display = open ? "none" : "block";
+  document.getElementById("mech")!.style.display = "none";
+  if (!open) {
+    el.innerHTML = UPDATES.map(
+      (u) => `<div class="u"><b>${escapeHtml(u.at)}</b><ul>${u.items.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
+    ).join("");
+  }
+});
+
+// Вид инвентаря: новый (как в игре) / старый (список) — запоминается в браузере.
+const viewBtn = document.getElementById("viewBtn")!;
+const paintViewBtn = (): void => {
+  viewBtn.textContent = viewMode === "new" ? "Старый вид" : "Новый вид";
+};
+paintViewBtn();
+viewBtn.addEventListener("click", () => {
+  viewMode = viewMode === "new" ? "old" : "new";
+  try {
+    localStorage.setItem("zep.invView", viewMode);
+  } catch {
+    /* приватный режим */
+  }
+  paintViewBtn();
+  if (last) renderInv(last);
 });

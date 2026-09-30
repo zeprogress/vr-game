@@ -6,6 +6,7 @@ import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
+import type { BuffEntry } from "./buffList";
 
 /**
  * Надписи поверх мира в VR: плоский DOM-HUD в шлеме не виден, поэтому события
@@ -23,8 +24,13 @@ export class VrHud {
   private bannerT = 0;
   private toastT = 0;
   private speakers: string[] = [];
+  private buffP: Panel | null = null;
+  private buffSig = "";
 
-  constructor(scene: Scene, anchor: Node) {
+  constructor(
+    private readonly scene: Scene,
+    private readonly anchor: Node,
+  ) {
     this.banner = new Panel(scene, anchor, "vrBanner", 1100, 260, 1.2, 0, 0.36, 1.5);
     this.toastP = new Panel(scene, anchor, "vrToast", 1000, 90, 1.0, 0, 0.14, 1.5);
     this.spk = new Panel(scene, anchor, "vrSpeakers", 520, 300, 0.42, 0.62, 0.33, 1.5);
@@ -74,6 +80,45 @@ export class VrHud {
     this.toastP.mesh.visibility = 1;
   }
 
+  /**
+   * Баффы героя — строка значков с таймером слева внизу поля зрения (тот же
+   * список и цвета, что в рамке героя ПК/телефона и у спектатора).
+   */
+  setBuffs(list: BuffEntry[]): void {
+    const sig = list.map((b) => `${b.icon}${Math.ceil(b.secs / 60)}`).join("|");
+    if (sig === this.buffSig) return;
+    this.buffSig = sig;
+    this.buffP ??= new Panel(this.scene, this.anchor, "vrBuffs", 900, 90, 0.6, -0.34, -0.2, 1.4);
+    const ctx = this.buffP.ctx;
+    ctx.clearRect(0, 0, 900, 90);
+    if (!list.length) {
+      this.buffP.tex.update();
+      this.buffP.mesh.setEnabled(false);
+      return;
+    }
+    let x = 6;
+    for (const b of list) {
+      const text = `${b.icon} ${Math.ceil(b.secs / 60)} мин`;
+      ctx.font = "bold 34px system-ui, sans-serif";
+      const w = ctx.measureText(text).width + 36;
+      ctx.fillStyle = "rgba(10,12,18,.72)";
+      roundRect(ctx, x, 12, w, 66, 14);
+      ctx.fill();
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 4;
+      roundRect(ctx, x, 12, w, 66, 14);
+      ctx.stroke();
+      ctx.fillStyle = b.color;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, x + 18, 46);
+      x += w + 10;
+      if (x > 880) break;
+    }
+    this.buffP.tex.update();
+    this.buffP.mesh.setEnabled(true);
+  }
+
   /** Кто сейчас говорит (голос игроков и озвучка чата) — значок и ник, до 5 строк. */
   setSpeakers(names: string[]): void {
     const same = names.length === this.speakers.length && names.every((n, i) => n === this.speakers[i]);
@@ -119,6 +164,7 @@ export class VrHud {
     this.banner.dispose();
     this.toastP.dispose();
     this.spk.dispose();
+    this.buffP?.dispose();
   }
 }
 

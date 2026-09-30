@@ -701,15 +701,41 @@
       .wscroll b { color: #f1ead6; }
       .wscroll small { display: block; color: #a9a498; font-size: 12px; }
       .wscroll .active { color: #8fd18f; font-size: 12px; }
+      /* Шапка/подвал страницы вокруг окна снаряжения. */
+      .card.top { position: relative; margin-bottom: 12px; padding-bottom: 12px; }
+      .card.foot { margin-top: 14px; }
+      #viewBtn { position: absolute; right: 14px; top: 14px; padding: 6px 12px; border-radius: 7px; border: 1px solid #3a3e48;
+        background: #23222b; color: #e6e0d0; font: 600 12.5px system-ui; cursor: pointer; }
+      #viewBtn:hover { border-color: #6e7482; }
+      .footbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .footbtns button, button#mechBtn { margin-top: 0; width: 100%; padding: 11px; border-radius: 8px; border: 1px solid #3a3e48;
+        background: #23222b; color: #f1ead6; font: 700 14px system-ui; cursor: pointer; }
+      .footbtns button:hover { border-color: #6e7482; }
+      #mech, #upd { background: #1d1c25; color: #e6e0d0; }
+      #upd { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 18px; font-size: 14px; line-height: 1.5; }
+      #mech ul { margin: 2px 0 10px; padding-left: 20px; }
+      #mech li { margin: 2px 0; }
+      #upd .u { margin-bottom: 14px; }
+      #upd .u b { display: block; color: #e8c26a; font-size: 13px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+      #upd ul { margin: 0; padding-left: 18px; }
+      #upd li { margin: 2px 0; }
     </style>
   </head>
   <body>
-    <div class="card">
+    <div class="card top">
+      <button id="viewBtn" title="Переключить вид инвентаря">Старый вид</button>
       <h1 id="title">Инвентарь</h1>
       <div class="sub" id="sub">загрузка…</div>
       <div id="list"></div>
-      <button id="mechBtn">📖 Механики игры</button>
+    </div>
+    <div id="invMount"></div>
+    <div class="card foot">
+      <div class="footbtns">
+        <button id="mechBtn">📖 Механики игры</button>
+        <button id="updBtn">🆕 Обновления</button>
+      </div>
       <div id="mech"></div>
+      <div id="upd"></div>
     </div>
     <div id="toast"></div>
     <div id="ench"></div>

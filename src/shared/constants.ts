@@ -562,7 +562,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защищает интеллект) и больнее (урон 3.5→5), лагерь больше (12→18).
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 1640, dmgMul: 5, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
+    hp: 1640, dmgMul: 6.5, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true, // урон 5→6.5
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
@@ -684,12 +684,11 @@ export const SPORE = {
 /** Сброс атрибутов (!respec, кнопки в !inv и окне снаряжения) включён. */
 export const RESPEC_ENABLED = true;
 /** Пока сброс бесплатный всегда (2026-09-30); false — вернуть цену в рыбе ниже. */
-export const RESPEC_FREE = true;
+export const RESPEC_FREE = false;
 
-export function respecCostFor(done: number): number {
-  if (RESPEC_FREE || done <= 0) return 0;
-  if (done === 1) return 1;
-  return (done - 1) * 10;
+/** Сброс атрибутов — 1 жетон заданий ◈ каждый раз (2026-09-30; раньше — рыба). */
+export function respecCostFor(_done: number): number {
+  return RESPEC_FREE ? 0 : 1;
 }
 
 /** Небесный спрут: хват щупальцами (см. EliteMobDef.puller). */

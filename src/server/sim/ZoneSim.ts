@@ -2543,9 +2543,11 @@ export class ZoneSim {
     } else if (m.kind !== "shard") {
       const elite = m.eliteName !== "";
       const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
-      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul;
+      // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
+      const champMul = m.champ ? QUEST.champ.dropMul : 1;
+      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
-      const legendaryChance = elite ? (own ?? DROP_CHANCE.eliteLegendary) : 0;
+      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"

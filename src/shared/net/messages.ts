@@ -250,8 +250,10 @@ export interface QuestData {
 }
 
 export interface ShopData {
-  items: { id: string; name: string; desc: string; price: number }[];
+  items: { id: string; name: string; desc: string; price: number; fishCost?: number }[];
   tokens: number;
+  /** Рыба в сумке — для обмена на жетоны. */
+  fish: number;
   near: boolean;
   msg?: string;
 }
@@ -274,6 +276,8 @@ export interface PcInvData {
   fish: number;
   /** Свитки из лавки трактирщика. */
   scrollXp?: number;
+  /** Жетоны заданий ◈. */
+  tokens?: number;
   /** Полученные титулы и надетый. */
   titles?: string[];
   title?: string;

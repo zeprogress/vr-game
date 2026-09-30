@@ -1,3 +1,5 @@
+import { POTION_IMG } from "../ui/potionIcon";
+import { mmss, type BuffEntry } from "../ui/buffList";
 import { ELITE_MOBS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB_CENTER } from "#shared/hub";
 import { TOWER_PROP_POS } from "#shared/tower";
@@ -162,7 +164,7 @@ export class PcHud {
     this.slotSkill = slot("2", "✦", "Умение (2)");
     this.skillCd = div("pc-cd");
     this.slotSkill.append(this.skillCd);
-    this.slotPotion = slot("3", "🧪", "Зелье лечения (3)");
+    this.slotPotion = slot("3", "", "Зелье лечения (3)", POTION_IMG);
     this.potionCnt = document.createElement("span");
     this.potionCnt.className = "pc-slot-n";
     this.slotPotion.append(this.potionCnt);
@@ -266,21 +268,19 @@ export class PcHud {
   }
 
   /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */
-  setBuffs(eventSecs: number, campSecs: number, xpSecs = 0, windSecs = 0): void {
-    const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-    const sig = `${eventSecs}|${campSecs}|${xpSecs}|${windSecs}`;
+  /** Баффы героя — значками с таймером (тот же список, что у спектатора и в VR). */
+  setBuffs(list: BuffEntry[]): void {
+    const sig = list.map((b) => `${b.icon}${b.secs}`).join("|");
     if (this.lastSig.buffs === sig) return;
     this.lastSig.buffs = sig;
     this.buffsEl.innerHTML = "";
-    const chip = (ico: string, text: string, title: string, cls: string): void => {
-      const c = div(`pc-buff ${cls}`, `${ico} ${text}`);
-      c.title = title;
+    for (const b of list) {
+      const c = div("pc-buff", `${b.icon} ${mmss(b.secs)}`);
+      c.title = `${b.name}: ${b.desc}`;
+      c.style.borderColor = b.color;
+      c.style.color = b.color;
       this.buffsEl.append(c);
-    };
-    if (eventSecs > 0) chip("✨", mmss(eventSecs), "Благословение события: ×2 опыт и урон", "ev");
-    if (campSecs > 0) chip("🔥", mmss(campSecs), "Тепло костра: входящий урон −20%", "camp");
-    if (xpSecs > 0) chip("📜", mmss(xpSecs), "Свиток мудрости: ×2 опыта", "ev");
-    if (windSecs > 0) chip("🪶", mmss(windSecs), "Свиток ветра: +20% скорости бега", "camp");
+    }
   }
 
   /** Свободные очки атрибутов: 0 — значок спрятан. */

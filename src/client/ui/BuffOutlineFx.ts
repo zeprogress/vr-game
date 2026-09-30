@@ -36,13 +36,6 @@ function outlineTexture(scene: Scene, shape: BuffShape): DynamicTexture {
     path.quadraticCurveTo(34, 150, 42, 36);
     path.quadraticCurveTo(86, 40, 128, 22);
     path.closePath();
-    // Внутренний кант.
-    path.moveTo(128, 46);
-    path.quadraticCurveTo(160, 58, 192, 56);
-    path.quadraticCurveTo(196, 144, 128, 206);
-    path.quadraticCurveTo(60, 144, 64, 56);
-    path.quadraticCurveTo(96, 58, 128, 46);
-    path.closePath();
   } else if (shape === "boot") {
     // Башмак: голенище, пятка, носок, подошва и «крылышко» скорости.
     path.moveTo(92, 30);
