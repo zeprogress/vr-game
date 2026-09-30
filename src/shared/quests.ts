@@ -7,9 +7,9 @@
  * героя (±3 ур.), у усложнённых — на 3 ур. выше. Прогресс, награды и
  * сохранение ведёт сервер (ZoneRoom), окно/трекер/компас рисует клиент.
  */
-import { ELITE_MOBS, LAKE, MOB_CAMPS } from "./constants";
+import { BOSS, ELITE_MOBS, LAKE, MOB_CAMPS } from "./constants";
 
-export type QuestKind = "hunt" | "champ" | "fish";
+export type QuestKind = "hunt" | "champ" | "fish" | "boss";
 
 export interface QuestSlot {
   kind: QuestKind;
@@ -45,8 +45,8 @@ export const QUEST = {
   offersEasy: 3,
   offersHard: 2,
   picks: 2,
-  need: { hunt: 15, champ: 1, fish: 5 } as Record<QuestKind, number>,
-  hardNeed: { hunt: 30, champ: 3, fish: 15 } as Record<QuestKind, number>,
+  need: { hunt: 15, champ: 1, fish: 5, boss: 1 } as Record<QuestKind, number>,
+  hardNeed: { hunt: 30, champ: 3, fish: 15, boss: 2 } as Record<QuestKind, number>,
   hardLevelUp: 3,
   zone: 3,
   reward: {
@@ -116,6 +116,7 @@ function candidates(level: number, hard: boolean): QuestSlot[] {
   for (const t of new Set([...hunt, ...huntWide])) out.push(slot("hunt", hard, t));
   for (const t of champs) out.push(slot("champ", hard, t));
   out.push(slot("fish", hard, ""));
+  out.push(slot("boss", hard, "boss"));
   return out;
 }
 
@@ -123,14 +124,26 @@ function candidates(level: number, hard: boolean): QuestSlot[] {
 export function makeBoard(level: number, rnd: () => number = Math.random): QuestSave {
   const easy = shuffle(candidates(level, false), rnd);
   const hard = shuffle(candidates(level, true), rnd);
-  // Автоматические — по возможности разных видов (охота, вожак, рыбалка).
+  // Автоматические — по возможности разных видов (охота, вожак, рыбалка); рейд — только на доске.
   const auto: QuestSlot[] = [];
   for (const kind of ["hunt", "champ", "fish"] as const) {
     const i = easy.findIndex((s) => s.kind === kind);
     if (i >= 0 && auto.length < QUEST.auto) auto.push(...easy.splice(i, 1));
   }
-  while (auto.length < QUEST.auto && easy.length) auto.push(easy.shift()!);
-  const offers = [...easy.slice(0, QUEST.offersEasy), ...hard.slice(0, QUEST.offersHard)];
+  while (auto.length < QUEST.auto && easy.length) {
+    const i = easy.findIndex((s) => s.kind !== "boss");
+    auto.push(...easy.splice(i >= 0 ? i : 0, 1));
+  }
+  // На доске всегда есть рейд на Багрового и рыбалка (простые) — остальное охотой/вожаками.
+  const pick = (list: QuestSlot[], kind: QuestKind): QuestSlot[] => {
+    const i = list.findIndex((s) => s.kind === kind);
+    return i >= 0 ? list.splice(i, 1) : [];
+  };
+  const offersEasy = [...pick(easy, "boss"), ...pick(easy, "fish")];
+  while (offersEasy.length < QUEST.offersEasy && easy.length) offersEasy.push(easy.shift()!);
+  const offersHard = [...pick(hard, "boss")];
+  while (offersHard.length < QUEST.offersHard && hard.length) offersHard.push(hard.shift()!);
+  const offers = [...offersEasy, ...offersHard];
   return { v: 3, accepted: false, day: questDay(), level, slots: auto, offers, picksLeft: QUEST.picks };
 }
 
@@ -155,6 +168,7 @@ export function slotTitle(s: QuestSlot): string {
   const name = ELITE_MOBS[s.target]?.name ?? s.target;
   const n = s.need;
   if (s.kind === "fish") return `Рыбалка: ${n} ${n === 1 ? "рыба" : n < 5 ? "рыбы" : "рыб"}`;
+  if (s.kind === "boss") return `Рейд: Багровый слизень${n > 1 ? ` ×${n}` : ""}`;
   if (s.kind === "champ") return `Вожак: ${name}${n > 1 ? ` ×${n}` : ""}`;
   return `Охота: ${name} ×${n}`;
 }
@@ -162,6 +176,7 @@ export function slotTitle(s: QuestSlot): string {
 /** Куда идти по заданию (для компаса): лагерь цели, ближайший к (x,z), или озеро. */
 export function questPoint(s: Pick<QuestSlot, "kind" | "target">, x: number, z: number): { x: number; z: number } {
   if (s.kind === "fish") return { x: LAKE.x, z: LAKE.z };
+  if (s.kind === "boss") return { x: BOSS.home[0], z: BOSS.home[1] };
   let best: { x: number; z: number } | null = null;
   let bd = Infinity;
   for (const c of MOB_CAMPS) {

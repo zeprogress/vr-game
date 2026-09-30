@@ -20,6 +20,7 @@ import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "../ui/WorldCrossFx";
+import { CROSS_PURPLE } from "../ui/HealCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -1464,6 +1465,13 @@ export class Spectator {
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, CROSS_ORANGE);
         break;
+      case "magicHit": {
+        // Магический удар (Костяной призрак): фиолетовые искры на задетом герое.
+        const av = this.avatars.get(id);
+        const p = av ? av.position : { x, y, z };
+        this.crossFx.burst(p.x, p.y - 0.3, p.z, 8, CROSS_PURPLE, 0.9);
+        break;
+      }
       case "healHit": {
         const av = this.avatars.get(id);
         const p = av ? av.position : { x, y, z };

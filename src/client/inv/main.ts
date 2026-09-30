@@ -66,7 +66,35 @@ interface InvMsg {
   attrs?: { unspent: number; str: number; agi: number; int: number };
   fish?: number;
   respecCost?: number;
+  /** Жетоны заданий ◈ и свитки (читаются отсюда). */
+  tokens?: number;
+  scrolls?: { id: string; name: string; hint: string; count: number; activeSecs: number }[];
   error?: string;
+}
+
+function walletHtml(msg: InvMsg): string {
+  if (msg.tokens === undefined) return "";
+  const rows = (msg.scrolls ?? [])
+    .map((sc) => {
+      const active = sc.activeSecs > 0;
+      const btn =
+        msg.authed && sc.count > 0
+          ? `<button class="act" data-act="scroll" data-id="${escapeHtml(sc.id)}"${active ? " disabled" : ""}>${active ? "Действует" : "Прочитать"}</button>`
+          : "";
+      return (
+        `<div class="wrow wscroll"><div><b>${escapeHtml(sc.name)} ×${sc.count}</b>` +
+        `<small>${escapeHtml(sc.hint)}</small>` +
+        (active ? `<span class="active">действует ещё ${Math.ceil(sc.activeSecs / 60)} мин — второй прочитать нельзя</span>` : "") +
+        `</div>${btn}</div>`
+      );
+    })
+    .join("");
+  return (
+    `<h2 class="section">Жетоны и свитки</h2><div class="wallet">` +
+    `<div class="wrow"><span>Жетоны заданий</span><span class="wtokens" title="Жетоны тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия">◈ ${msg.tokens}</span></div>` +
+    rows +
+    `</div>`
+  );
 }
 
 const ATTRS: { key: "str" | "agi" | "int"; name: string; hint: string }[] = [
@@ -256,7 +284,7 @@ function renderInv(msg: InvMsg): void {
       ? `<div class="xp"><div class="xp-head"><span>Опыт до ${(msg.level ?? 0) + 1} ур.</span><b>${xpPct.toFixed(1)}%</b></div>` +
         `<div class="xp-bar"><div style="width:${xpPct}%"></div></div></div>`
       : "";
-  listEl.innerHTML = `${authHtml}${xpHtml}${statsHtml}${attrsHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  listEl.innerHTML = `${authHtml}${xpHtml}${statsHtml}${attrsHtml(msg)}${walletHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
 }
 
 listEl.addEventListener("click", (e) => {

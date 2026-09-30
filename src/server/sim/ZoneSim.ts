@@ -428,6 +428,8 @@ class Mob {
   readonly flying: boolean;
   /** Подъём хитбокса над корнем, м (см. MobDef.visLift). */
   readonly liftM: number;
+  /** Удар вблизи — магия (EliteMobDef.magicMelee). */
+  readonly magicMelee: boolean;
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
 
@@ -446,6 +448,7 @@ class Mob {
       scaleMul?: number;
       flying?: boolean;
       visLift?: number;
+      magicMelee?: boolean;
       rangedArmor?: number;
       physArmor?: number;
       magicVulnMul?: number;
@@ -491,6 +494,7 @@ class Mob {
     this.eliteName = opts.name ?? "";
     this.eliteLevel = opts.level ?? 0;
     this.flying = opts.flying ?? false;
+    this.magicMelee = opts.magicMelee ?? false;
     this.homeX = hx;
     this.homeZ = hz;
     this.x = hx;
@@ -1747,6 +1751,7 @@ export class ZoneSim {
           xp: def.xp * (champ?.xpMul ?? 1),
           flying: def.flying,
           visLift: def.visLift,
+          magicMelee: def.magicMelee,
           rangedArmor: def.rangedArmor,
           physArmor: def.physArmor,
           magicVulnMul: def.magicVulnMul,

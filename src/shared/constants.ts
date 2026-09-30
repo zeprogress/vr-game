@@ -360,6 +360,8 @@ export interface EliteMobDef {
    * насколько поднять хитбокс и плашку HP — в долях высоты тела (2·bodyRadius·scale).
    */
   visLift?: number;
+  /** Удар вблизи магический: броня от силы не гасит, защищает интеллект; фиолетовая вспышка. */
+  magicMelee?: boolean;
   /** Опустить саму модель (клиент) на эту долю высоты тела — «летает ниже». */
   modelDrop?: number;
   /**
@@ -556,9 +558,11 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     magicVulnMul: 1.2, legendaryChance: 0.01,
   },
   // Опыт ×2 (24000→48000), HP ×2 (820→1640), 2026-09-28.
+  // 2026-09-30: бьют вблизи, но удар магический (броня от силы не гасит,
+  // защищает интеллект) и больнее (урон 3.5→5), лагерь больше (12→18).
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 1640, dmgMul: 3.5, xp: 192000, scaleMul: 1.1, tint: null, flying: true,
+    hp: 1640, dmgMul: 5, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
     blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
@@ -589,7 +593,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
     model: "monOrcSkull", name: "Костяной вождь", level: 36, kind: "slime",
-    hp: 6200, dmgMul: 7, xp: 1080000, scaleMul: 2.2, tint: null, // меньше (было 3), зато их больше
+    hp: 4800, dmgMul: 7, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30); меньше (было 3), зато их больше
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -624,8 +628,8 @@ export const REFLECT = {
 
 /** Костяной вождь: лечение себя и соседей (см. EliteMobDef.healer). */
 export const CHIEF_HEAL = {
-  radius: 14,
-  cooldown: 14,
+  radius: 8, // было 14 — лечит только тех, кто рядом
+  cooldown: 22, // было 14 — реже
   /** На эту долю макс. HP каждого моба в радиусе (и себя). */
   frac: 0.1,
 };
@@ -648,7 +652,7 @@ export const SPIKES = {
   /** Цели — герои в этом радиусе от вождя, не больше maxTargets. */
   range: 14,
   maxTargets: 3,
-  cooldown: 8,
+  cooldown: 13, // было 8 — шипы с оглушением реже
   /** Телеграф: круг под ногами, с. */
   windup: 1.0,
   radius: 2.6,
@@ -790,7 +794,7 @@ export const MOB_CAMPS: {
   // Топ-зона ур.33 — ТРИ лагеря в разных концах карты (не пересекаются),
   // боты 30+ выбирают один случайно (или по !camp <моб>).
   { x: 128, z: -118, type: "mushColossus", count: 5, spread: 34, ring: 0.85, jitter: 0.35 }, // ур.33, юго-восток
-  { x: -115, z: 110, type: "boneWraith", count: 12, spread: 42 }, // ур.33, северо-запад
+  { x: -115, z: 110, type: "boneWraith", count: 18, spread: 46 }, // ур.33, северо-запад
   { x: 128, z: 40, type: "skySquid", count: 5, spread: 30, ring: 0.85 }, // ур.33, восток
   // Зона ур.36 — три лагеря по краям карты, подальше от лагерей 33 ур.
   { x: 20, z: 132, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север

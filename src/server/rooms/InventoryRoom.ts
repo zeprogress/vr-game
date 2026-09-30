@@ -91,7 +91,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec"
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll"
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -173,7 +173,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       ench: enchDetails(w),
     }));
   const misc = (rec.bag ?? [])
-    .filter((s) => s.item && s.count > 0)
+    .filter((s) => s.item && s.count > 0 && s.item !== "scroll_xp" && s.item !== "scroll_wind") // свитки — в «Жетоны и свитки»
     .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
   const leftInst = rec.equippedWeaponId?.left
     ? weaponsList.find((w) => w.id === rec.equippedWeaponId!.left)
@@ -211,6 +211,15 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
     fish: bagCount(rec.bag ?? [], "fish"),
+    // Жетоны заданий и свитки (свиток читается отсюда же; действует — секунд осталось).
+    tokens: rec.tokens ?? 0,
+    scrolls: (["scroll_xp", "scroll_wind"] as const).map((id) => ({
+      id,
+      name: ITEMS[id].name,
+      hint: ITEMS[id].hint,
+      count: bagCount(rec.bag ?? [], id),
+      activeSecs: Math.max(0, Math.ceil((((id === "scroll_xp" ? rec.scrollXpUntil : rec.scrollWindUntil) ?? 0) - Date.now()) / 1000)),
+    })),
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
   };
 }

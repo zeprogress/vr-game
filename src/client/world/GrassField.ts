@@ -65,6 +65,17 @@ const GRASS_CROSS = typeof location === "undefined" || new URLSearchParams(locat
  * (ui/GrassTuner.ts), сохраняются в localStorage. `v` — счётчик изменений
  * геометрии (ширина/высота/дистанция): тик видит его и пересобирает раскладку.
  */
+/**
+ * Облегчённая трава в шлеме (Quest тянет её хуже всего): ближе дальность,
+ * реже пучки, реже пересборка при поворотах головы. Включает Game при входе
+ * в VR (setGrassVr). Цифры — `window.__grassVr` в консоли для подгонки.
+ */
+export const GRASS_VR = { on: false, maxR: 40, keep: 0.5, turnCos: 0.99, moveM: 0.8 };
+if (typeof window !== "undefined") (window as unknown as { __grassVr: typeof GRASS_VR }).__grassVr = GRASS_VR;
+export function setGrassVr(on: boolean): void {
+  GRASS_VR.on = on;
+}
+
 export const GRASS_FAR_TUNE = {
   // Свет дальней травы — ТЕ ЖЕ ручки, что у ближней (общий StandardMaterial-
   // рецепт, 2026-09-29): свои у дали только подгонка яркости снимка и форма.
@@ -758,10 +769,13 @@ export async function loadGrassField(
     rebuilds++;
     let built = 0;
     const span = CHUNK * CELL;
-    const x0 = Math.floor((cx - R_GRASS) / span);
-    const x1 = Math.floor((cx + R_GRASS) / span);
-    const z0 = Math.floor((cz - R_GRASS) / span);
-    const z1 = Math.floor((cz + R_GRASS) / span);
+    const vr = GRASS_VR.on;
+    const RG = vr ? Math.min(R_GRASS, GRASS_VR.maxR) : R_GRASS;
+    const keepVr = Math.round(GRASS_VR.keep * 100);
+    const x0 = Math.floor((cx - RG) / span);
+    const x1 = Math.floor((cx + RG) / span);
+    const z0 = Math.floor((cz - RG) / span);
+    const z1 = Math.floor((cz + RG) / span);
     // Куски идут от ближних к дальним: при ограниченном бюджете расчёта первыми достраиваются те, что у ног
     // (иначе трава вблизи появлялась с задержкой, пока считались дальние).
     order.length = 0;
@@ -769,7 +783,7 @@ export async function loadGrassField(
       for (let gz = z0; gz <= z1; gz++) {
         const mx = (gx + 0.5) * span;
         const mz = (gz + 0.5) * span;
-        if (chunkOut(mx, mz, cx, cz, fx, fz, R_GRASS)) continue;
+        if (chunkOut(mx, mz, cx, cz, fx, fz, RG)) continue;
         order.push({ gx, gz, d: Math.hypot(mx - cx, mz - cz) });
       }
     }
@@ -790,8 +804,13 @@ export async function loadGrassField(
         }
         for (let n = 0; n < ncell; n++) {
           const o = n * STRIDE;
-          const dmax = a[o];
+          let dmax = a[o];
           if (dmax === 0) continue;
+          if (vr) {
+            // Шлем: ближе и реже (детерминированно по клетке — без мерцания при пересборке).
+            if ((n * 7919 + gx * 31 + gz * 17) % 100 >= keepVr) continue;
+            dmax = Math.min(dmax, GRASS_VR.maxR);
+          }
           const dx = a[o + 1] - cx;
           const dz = a[o + 3] - cz;
           const d2 = dx * dx + dz * dz;
@@ -902,6 +921,7 @@ export async function loadGrassField(
 
   let lastLights = 1;
   let tuneV = GRASS_FAR_TUNE.v;
+  let lastVr = GRASS_VR.on;
   const bushEmiDay = bushMat?.emissiveColor.clone() ?? null;
   return (dt: number, daylight: number) => {
     const G = LOADOUT.glow;
@@ -973,13 +993,15 @@ export async function loadGrassField(
     const fz = fl > 1e-3 ? fwd.z / fl : lastFz;
     // Пересобираем, только если голова заметно сдвинулась или повернулась.
     // Панель поменяла ширину/высоту/дистанцию — пересобрать раскладку сразу.
-    if (tuneV !== GRASS_FAR_TUNE.v) {
+    if (tuneV !== GRASS_FAR_TUNE.v || lastVr !== GRASS_VR.on) {
       tuneV = GRASS_FAR_TUNE.v;
+      lastVr = GRASS_VR.on;
       lastX = 1e9;
     }
     const moved = Math.hypot(p.x - lastX, p.z - lastZ);
-    const turned = fx * lastFx + fz * lastFz < 0.9986; // ~3°
-    if (moved < 0.35 && !turned && !pending && kinds[0].n > 0) {
+    // В шлеме голова крутится постоянно — пересобираем реже (~8° / 0.8 м).
+    const turned = fx * lastFx + fz * lastFz < (GRASS_VR.on ? GRASS_VR.turnCos : 0.9986); // ~3°
+    if (moved < (GRASS_VR.on ? GRASS_VR.moveM : 0.35) && !turned && !pending && kinds[0].n > 0) {
       prefetch(p.x, p.z);
       acc = 0.1; // следующий тик через 0.1 с
       return;

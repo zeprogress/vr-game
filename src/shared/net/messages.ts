@@ -192,7 +192,7 @@ export interface PcInvWeapon {
 
 /** Одно задание в окне/трекере. */
 export interface QuestSlotView {
-  kind: "hunt" | "champ" | "fish";
+  kind: "hunt" | "champ" | "fish" | "boss";
   hard: boolean;
   /** Ключ ELITE_MOBS цели ("" — рыбалка) — для компаса. */
   target: string;
@@ -223,7 +223,7 @@ export interface QuestData {
     total: number;
     title: string;
     text: string;
-    kind: "hunt" | "champ" | "fish";
+    kind: "hunt" | "champ" | "fish" | "boss";
     target: string;
     got: number;
     need: number;
@@ -493,6 +493,7 @@ export interface VoiceRelay extends VoiceMsg {
 
 /** Что за звук произошёл у игрока. */
 export type ActKind =
+  | "magicHit" // магический удар моба по герою (фиолетовая вспышка)
   | "swing" // взмах мечом
   | "step" // шаг
   | "drink" // глоток зелья

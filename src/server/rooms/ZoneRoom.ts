@@ -3611,13 +3611,20 @@ export class ZoneRoom extends Room<ZoneState> {
     const rt = this.rt.get(client.sessionId);
     if (!rt?.token) return;
     const bag = readBag(p);
-    const used = takeOne(bag, slot);
-    if (used !== "scroll_xp" && used !== "scroll_wind") return;
-    writeBag(p, bag);
+    const item = bag[slot]?.item;
+    if (item !== "scroll_xp" && item !== "scroll_wind") return;
     const now = Date.now();
-    const key = used === "scroll_xp" ? "scrollXpUntil" : "scrollWindUntil";
-    const cur = Math.max(now, store.get(rt.token)?.[key] ?? 0);
-    store.put(rt.token, { [key]: Math.min(now + SCROLL.maxSec * 1000, cur + SCROLL.sec * 1000) });
+    const key = item === "scroll_xp" ? "scrollXpUntil" : "scrollWindUntil";
+    const left = (store.get(rt.token)?.[key] ?? 0) - now;
+    if (left > 0) {
+      // Такой свиток уже действует — второй не тратим, пока не кончится.
+      // Тост на всех платформах (в VR — в шлеме) идёт через итог действия ПК-окна.
+      client.send(MSG.pcInvResult, { ok: false, text: `${ITEMS[item].name} уже действует — ещё ${Math.ceil(left / 60000)} мин` });
+      return;
+    }
+    takeOne(bag, slot);
+    writeBag(p, bag);
+    store.put(rt.token, { [key]: now + SCROLL.sec * 1000 });
     this.broadcast(MSG.act, { k: "drink", id: client.sessionId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay, {
       except: client,
     });
@@ -3820,14 +3827,18 @@ export class ZoneRoom extends Room<ZoneState> {
    * лагеря (campType, вожак?) или пойманная рыба. Двигает дневные задания,
    * главу сюжета и недельный контракт.
    */
-  private questEvent(id: string, ev: { fish?: boolean; campType?: string; champ?: boolean }): void {
+  private questEvent(id: string, ev: { fish?: boolean; campType?: string; champ?: boolean; boss?: boolean }): void {
     if (id.startsWith("bot:")) return;
     const p = this.state.players.get(id);
     if (!p) return;
     const b = this.questBoard(p);
     if (!b) return;
     const hits = (kind: QuestKind, target: string): boolean =>
-      kind === "fish" ? !!ev.fish : !!ev.campType && target === ev.campType && (kind === "hunt" || !!ev.champ);
+      kind === "fish"
+        ? !!ev.fish
+        : kind === "boss"
+          ? !!ev.boss
+          : !!ev.campType && target === ev.campType && (kind === "hunt" || !!ev.champ);
     let changed = false;
     for (const [i, s] of b.q.slots.entries()) {
       // Три задания дня — только после того, как взяты у доски.
@@ -4113,6 +4124,24 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "scroll") {
+      if (id !== "scroll_xp" && id !== "scroll_wind") return { ok: false, text: "Нет такого свитка." };
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+      const key = id === "scroll_xp" ? "scrollXpUntil" : "scrollWindUntil";
+      const left = (rec[key] ?? 0) - Date.now();
+      if (left > 0) return { ok: false, text: `${ITEMS[id].name} уже действует — ещё ${Math.ceil(left / 60000)} мин` };
+      // Герой в мире — сумка в его состоянии; нет — в сохранении.
+      const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+      const slot = bag.findIndex((s) => s.item === id && s.count > 0);
+      if (slot < 0) return { ok: false, text: "Такого свитка в сумке нет." };
+      takeOne(bag, slot);
+      if (t) writeBag(t.p, bag);
+      store.put(token, { [key]: Date.now() + SCROLL.sec * 1000, ...(t ? {} : { bag }) });
+      if (t) this.persistNick(norm);
+      return { ok: true, text: `${ITEMS[id].name}: действует ${SCROLL.sec / 60} мин` };
+    }
     if (act === "respec") {
       const r = this.respecNick(norm);
       return { ok: r.ok, text: r.ok ? "Атрибуты сброшены" : r.text };
@@ -6360,6 +6389,8 @@ export class ZoneRoom extends Room<ZoneState> {
       let topOwner = "";
       let topXp = -1;
       for (const k of this.sim.bossXpShare) {
+        // Участник победы над Багровым — задание «Рейд».
+        this.questEvent(k.owner, { boss: true });
         const kp = this.state.players.get(k.owner);
         if (kp) {
           const lvlCap = xpToNext(kp.level); // Infinity на максимальном уровне
@@ -6508,7 +6539,12 @@ export class ZoneRoom extends Room<ZoneState> {
       inDmg *= EVENT.eliteHunt.enrageDmgMul;
     }
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
-    let dmg = inDmg * block.mult * (1 - armorFrac(p.str));
+    // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
+    const magicMob = !h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee;
+    let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p.int) : 1 - armorFrac(p.str));
+    if (magicMob && dmg > 0) {
+      this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+    }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
     if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
     if (h.projectile) dmg *= 1 - magicResistFrac(p.int);

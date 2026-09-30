@@ -31,6 +31,7 @@ import { Hud } from "../ui/Hud";
 import { PcTargeting } from "../pc/PcTargeting";
 import { PcHud, SACK_SVG, type MapData, type WeaponIcon } from "../pc/PcHud";
 import { QuestBang } from "../world/hub/HubNpc";
+import { setGrassVr } from "../world/GrassField";
 import { VrPanel } from "../ui/VrPanel";
 import { drawBoard, drawEnchant, drawFishing, drawHunter, drawNote, drawShop } from "../ui/VrQuestPanels";
 import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trackItems, type TrackItem } from "../ui/QuestWindow";
@@ -55,7 +56,7 @@ import { VrWasted } from "../ui/VrWasted";
 import { VrStunStars } from "../ui/VrStunStars";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
-import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
+import { HealCrossFx, CROSS_ORANGE, CROSS_PURPLE } from "../ui/HealCrossFx";
 import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -1229,6 +1230,7 @@ export class Game {
       if (overlay) overlay.style.display = state === WebXRState.NOT_IN_XR ? "" : "none";
       if (state === WebXRState.IN_XR) {
         this.sfx.resume();
+        setGrassVr(true); // облегчённая трава в шлеме
         this.applyVrQuality(); // на случай входа мимо enterVR() (штатная кнопка Babylon)
         this.requestMaxFrameRate();
         this.tuneXrRendering();
@@ -1238,6 +1240,7 @@ export class Game {
         this.hands.attach(this.xr!);
         this.buildVrUi();
       } else if (state === WebXRState.NOT_IN_XR) {
+        setGrassVr(false);
         // Убранное за спину НЕ роняем: в плоском режиме его не достать, но
         // при возврате в VR и при следующем входе оно на месте.
         this.player.exitXR();
@@ -3047,6 +3050,14 @@ export class Game {
       this.vrNpcPanel?.markDirty();
     };
     net.onQuestData = (d) => {
+      // VR: прогресс задания (убил / поймал) — строкой в шлеме, без захода в меню.
+      if (this.player.inVR && this.questData) {
+        const before = new Map(trackItems(this.questData).map((it) => [it.key, it.progress]));
+        for (const it of trackItems(d)) {
+          const was = before.get(it.key);
+          if (was !== undefined && was !== it.progress) this.vrHud?.showToast(`${it.title}: ${it.progress}`);
+        }
+      }
       this.questData = d;
       if (d.msg && this.player.inVR) this.vrNoteSet(d.msg);
       this.vrNpcPanel?.markDirty();
@@ -3300,6 +3311,13 @@ export class Game {
         this.sfx.at(at, () => this.sfx.levelUp());
         this.crossFx.burst(x, y, z, 9, W_ORANGE);
         break;
+      case "magicHit": {
+        // Магический удар (Костяной призрак): фиолетовые искры на задетом герое.
+        const av = this.avatars.get(id);
+        const p = av ? av.position : { x, y, z };
+        this.crossFx.burst(p.x, p.y - 0.3, p.z, 8, CROSS_PURPLE, 0.9);
+        break;
+      }
       case "healHit": {
         // Массовое лечение дошло до героя: зелёные крестики на нём самом.
         const av = this.avatars.get(id);

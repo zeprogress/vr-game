@@ -668,6 +668,39 @@
       #mech .roll {
         color: #7db8ff;
       }
+
+      /* ---- Тема как у ПК-окон игры (тёмное фэнтези: песочный текст, золото, мягкие карточки) ---- */
+      body { background: #100f15; color: #e6e0d0; font-size: 14px; }
+      h1 { color: #f1ead6; }
+      .sub { color: #8f8a7e; opacity: 1; }
+      .card { max-width: 680px; background: rgba(22, 21, 29, 0.96); border-radius: 12px; padding: 16px 18px 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); }
+      .section { color: #8f8a7e; opacity: 1; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
+      .weapon, .hand, .misc, .stats, .attrs, .wallet { background: #1d1c25; border: none; border-radius: 8px; }
+      .weapon.gold .name, .hand.gold .hand-name { color: #f5c542; }
+      .weapon.legendary .name, .hand.legendary .hand-name { color: #c79bff; }
+      .weapon .affixes, .hand .affixes { color: #9fe39a; font-weight: 500; }
+      .quality { color: #ffcf5a; font-weight: 800; font-size: 1.05em; }
+      .stat-label { color: #a9a498; opacity: 1; }
+      .stat-value { color: #f1ead6; }
+      .xp-head { color: #a9a498; }
+      .xp-head b { color: #d9dbe0; }
+      .xp-bar { background: #1b1a20; border: 1px solid #000; height: 11px; border-radius: 3px; }
+      .xp-bar > div { background: #6b6f7a; }
+      button.act { background: #23222b; border: 1px solid #3a3e48; color: #e6e0d0; border-radius: 7px; }
+      button.act:hover:not(:disabled) { border-color: #6e7482; }
+      button.act.equip { background: #243a26; border-color: #3f7a45; color: #e9ffe9; }
+      button.act.scrap { background: #2c1c1c; border-color: #6a3a3a; color: #ffc9c0; }
+      .auth { background: #1e2430; border-color: #3f5580; }
+      #toast { background: rgba(16, 15, 21, 0.95); color: #f1ead6; }
+      .ebox { background: #15141b; }
+      /* Кошелёк: жетоны и свитки. */
+      .wallet { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+      .wrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .wtokens { color: #e8c26a; font-weight: 800; font-size: 16px; cursor: help; }
+      .wscroll b { color: #f1ead6; }
+      .wscroll small { display: block; color: #a9a498; font-size: 12px; }
+      .wscroll .active { color: #8fd18f; font-size: 12px; }
     </style>
   </head>
   <body>
