@@ -5,7 +5,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, EVENT, CAMPFIRE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1188,6 +1188,26 @@ export class Spectator {
     return [{ label: "Уровень", value: `${p.level}` }, ...heroStatRows(p)];
   }
 
+  /** Баффы на герое — для плашек в «смотрим». */
+  private static playerBuffs(p: PlayerState): OverlayCtx["watchBuffs"] {
+    const out: NonNullable<OverlayCtx["watchBuffs"]> = [];
+    if ((p.buffSecs ?? 0) > 0) {
+      out.push({
+        icon: "✨", name: "Благословение победы",
+        desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
+        secs: p.buffSecs, color: "#6fb0ff",
+      });
+    }
+    if ((p.campBuffSecs ?? 0) > 0) {
+      out.push({
+        icon: "🔥", name: "Тепло костра",
+        desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`,
+        secs: p.campBuffSecs, color: "#ffa04a",
+      });
+    }
+    return out.length ? out : null;
+  }
+
   /** Ярлык оружия/щита в руке для панели «HP цели». */
   private static weaponLabel(cls: string, tier: string): string | null {
     if (tier === "legendary") return weaponDef(cls as WeaponClass, "legendary").name.toLowerCase();
@@ -1287,6 +1307,7 @@ export class Spectator {
     let watching: string | null = null;
     let watchStats: HeroStatRow[] | null = null;
     let watchInv: string | null = null;
+    let watchBuffs: OverlayCtx["watchBuffs"] = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
     if (st && subj.id) {
@@ -1296,6 +1317,7 @@ export class Spectator {
           watching = p.nick;
           watchStats = Spectator.playerStatRows(p);
           watchInv = Spectator.playerInvLine(p);
+          watchBuffs = Spectator.playerBuffs(p);
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {
@@ -1314,7 +1336,7 @@ export class Spectator {
       const now = performance.now();
       const sp = [...this.speakingIds];
       const statsSig = watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
-      const sig = `${watching}|${statsSig}|${watchInv}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
+      const sig = `${watching}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
       if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
         this.lastOvlSig = sig;
         this.lastOvlAt = now;
@@ -1324,6 +1346,7 @@ export class Spectator {
             w: watching,
             ws: watchStats,
             wi: watchInv,
+            wb: watchBuffs,
             sl: Spectator.shotLabel(this.cam.shotKind),
             hp: targetHp
               ? { f: targetHp.frac, c: targetHp.cur, m: targetHp.max, n: targetHp.name, b: targetHp.boss }
@@ -1360,6 +1383,7 @@ export class Spectator {
       watching,
       watchStats,
       watchInv,
+      watchBuffs,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,

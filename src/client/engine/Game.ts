@@ -1893,6 +1893,7 @@ export class Game {
     this.hud.setBuff(self.buffSecs ?? 0);
     // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
     const camp = self.campBuffSecs ?? 0;
+    this.localAvatar?.setCampWarm(camp > 0);
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
     this.pcHud?.setBuffs(self.buffSecs ?? 0, camp);

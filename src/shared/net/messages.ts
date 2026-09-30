@@ -314,6 +314,8 @@ export interface OvlCam {
   /** Характеристики героя (таблица label/value) / инвентарь (строка) под ником. */
   ws: HeroStatRow[] | null;
   wi: string | null;
+  /** Баффы героя в «смотрим» (см. OverlayCtx.watchBuffs). */
+  wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
   sl: string;
   /** HP цели: доля, текущее, максимум, имя, босс ли — или null. */

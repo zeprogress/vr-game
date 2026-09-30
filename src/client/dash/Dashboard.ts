@@ -154,7 +154,7 @@ export class Dashboard {
     sndGrid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:8px";
     this.specVoiceBtn = this.bigBtn("Голос игроков: —", () => this.toggleSpecVoice());
     this.dmgNumbersBtn = this.bigBtn("Числа урона: —", () => this.toggleDmgNumbers());
-    sndGrid.append(this.specVoiceBtn, this.dmgNumbersBtn);
+    sndGrid.append(this.specVoiceBtn);
     this.box.appendChild(sndGrid);
     // Громкость музыки/эффектов — только у рендерящего спектатора (стрим).
     const musicRow = this.volSlider("Музыка", 100, (v) => {
@@ -252,6 +252,8 @@ export class Dashboard {
       ovGrid.appendChild(b);
     }
     this.box.appendChild(ovGrid);
+    this.dmgNumbersBtn.style.cssText += ";margin-top:6px";
+    this.box.appendChild(this.dmgNumbersBtn);
     this.refreshOverlayUi();
 
     // --- админ-панель: редкие и необратимые действия ---
@@ -370,7 +372,6 @@ export class Dashboard {
         ["напротив", "frontPlayer"],
         ["сбоку", "sidePlayer"],
         ["дрон", "dronePlayer"],
-        ["снизу", "heroLow"],
         ["дуэль", "duelPlayer"],
       ];
       for (const [label, shot] of cams) {

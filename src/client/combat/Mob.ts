@@ -454,6 +454,8 @@ export class Mob implements Hittable {
   st: MobState | null = null;
   /** Мелкий летающий моб (пчела) — увеличенный хитбокс. */
   private readonly flyer: boolean;
+  /** Подъём хитбокса и плашки над корнем (в единицах тела до масштаба), см. MobDef.visLift. */
+  private readonly lift: number;
   private readonly heavy: boolean;
   private rigReady = false;
   private lodTint: readonly [number, number, number] = [0.5, 0.8, 0.5];
@@ -517,7 +519,9 @@ export class Mob implements Hittable {
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
     this.heavy = !!modelName && Mob.HEAVY.has(modelName);
-    this.flyer = !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.flying;
+    const flyDef = Object.values(ELITE_MOBS).find((d) => d.model === modelName);
+    this.flyer = !!flyDef?.flying;
+    this.lift = (flyDef?.visLift ?? 0) * MOB.bodyRadius * 2;
     this.hasNovaFx =
       this.isBoss ||
       !!Object.values(ELITE_MOBS).find((d) => d.model === modelName)?.novaCaster;
@@ -581,7 +585,7 @@ export class Mob implements Hittable {
 
     this.hitAnchor = new TransformNode("mobHitAnchor", scene);
     this.hitAnchor.parent = this.root;
-    this.hitAnchor.position.y = MOB.bodyRadius;
+    this.hitAnchor.position.y = MOB.bodyRadius + this.lift;
 
     // Полоса и плашка висят на отдельном узле: у босса тело крупное, а надписи
     // должны оставаться обычного размера — этот узел компенсирует масштаб.
@@ -747,8 +751,8 @@ export class Mob implements Hittable {
     const p = this.root.getAbsolutePosition();
     const sc = this.scale;
     return {
-      a: p.add(new Vector3(0, 0.1, 0)),
-      b: p.add(new Vector3(0, MOB.bodyRadius * 2 * sc, 0)),
+      a: p.add(new Vector3(0, 0.1 + this.lift * sc, 0)),
+      b: p.add(new Vector3(0, (MOB.bodyRadius * 2 + this.lift) * sc, 0)),
       radius: MOB.hitRadius * sc + (this.flyer ? FLYER_HIT_BONUS : 0),
     };
   }
@@ -758,7 +762,7 @@ export class Mob implements Hittable {
   }
 
   center(): Vector3 {
-    return this.root.getAbsolutePosition().add(new Vector3(0, MOB.bodyRadius * this.scale, 0));
+    return this.root.getAbsolutePosition().add(new Vector3(0, (MOB.bodyRadius + this.lift) * this.scale, 0));
   }
 
   /** Заявка на удар. Урон считает сервер; локальный кулдаун — 1 заявка на замах. */
@@ -807,7 +811,7 @@ export class Mob implements Hittable {
       this.uiAnchor.scaling.setAll(1 / s.scale);
       // Поднимаем ровно на прибавку высоты от увеличения тела (в мировых
       // единицах это position.y * scale), не больше — иначе плашка улетает.
-      this.uiAnchor.position.y = (MOB.bodyRadius * 2 * (s.scale - 1)) / s.scale;
+      this.uiAnchor.position.y = (MOB.bodyRadius * 2 * (s.scale - 1)) / s.scale + this.lift;
     }
 
     // толчок затухает

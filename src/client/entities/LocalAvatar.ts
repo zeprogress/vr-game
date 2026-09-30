@@ -1,7 +1,8 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
-import { BuffAura } from "../ui/BuffAura";
+import { BuffOutlineFx } from "../ui/BuffOutlineFx";
+import { Color3 as BuffColor } from "@babylonjs/core/Maths/math.color";
 import { StunStarsFx } from "../ui/StunStarsFx";
 
 import {
@@ -54,14 +55,19 @@ export class LocalAvatar {
   private locoRun = false;
   private locoMove = false;
   private hidden = false;
-  private readonly buffAura: BuffAura;
+  /** Благословение победы (×2 опыт/урон) — очертание меча над головой. */
+  private readonly buffAura: BuffOutlineFx;
+  /** «Тепло костра» (защита) — очертание щита перед телом. */
+  private readonly campFx: BuffOutlineFx;
+  private campWarm = false;
   private buffed = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode("localAvatar", scene);
-    this.buffAura = new BuffAura(scene, this.root, 0.95, -0.55);
+    this.buffAura = new BuffOutlineFx(scene, this.root, "sword", new BuffColor(0.35, 0.65, 1), 0.75, 0.75);
+    this.campFx = new BuffOutlineFx(scene, this.root, "shield", new BuffColor(1, 0.6, 0.2), 1.5, -0.6);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
     void this.reload();
   }
@@ -69,6 +75,11 @@ export class LocalAvatar {
   /** Бафф победы над событием — синяя аура. */
   setBuffed(on: boolean): void {
     this.buffed = on;
+  }
+
+  /** «Тепло костра» (бафф лагеря) — оранжевое свечение у ног. */
+  setCampWarm(on: boolean): void {
+    this.campWarm = on;
   }
 
   /** Оглушён (напр. волной "Чародея руин") — звёздочки над головой. */
@@ -226,6 +237,8 @@ export class LocalAvatar {
     this.root.rotation.y = yaw;
     this.buffAura.setActive(this.buffed && !this.hidden);
     this.buffAura.update(dt);
+    this.campFx.setActive(this.campWarm && !this.hidden);
+    this.campFx.update(dt);
     this.stunStars.setActive(this.stunned && !this.hidden);
     this.stunStars.update(dt);
 
@@ -303,6 +316,7 @@ export class LocalAvatar {
   dispose(): void {
     this.disposed = true;
     this.buffAura.dispose();
+    this.campFx.dispose();
     this.stunStars.dispose();
     this.rig?.dispose();
     this.holder?.dispose();

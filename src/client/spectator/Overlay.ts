@@ -28,6 +28,8 @@ export interface OverlayCtx {
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
   /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
   watchStats: HeroStatRow[] | null;
+  /** Баффы на герое в «смотрим»: иконка, название, что даёт, сколько осталось (с) и цвет. */
+  watchBuffs: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
   watchInv: string | null;
   /** Онлайн-игроки: ник и говорит ли сейчас (зелёный огонёк). */
@@ -116,6 +118,17 @@ const CSS = `
   letter-spacing:.02em; opacity:.92; }
 .ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
 .ov-watch table.stats td.vl { font-weight:700; text-align:right; }
+.ov-watch .buffs { display:flex; flex-direction:column; gap:.6vh; margin-top:1vh; }
+.ov-watch .buff { display:flex; align-items:center; gap:1vh; padding:.6vh 1.2vh .6vh .7vh; border-radius:1vh;
+  background:rgba(0,0,0,.35); border-left:.45vh solid var(--bc); box-shadow:0 0 1.6vh -0.4vh var(--bc);
+  animation:ovBuffGlow 2.4s ease-in-out infinite; }
+.ov-watch .buff .ic { font-size:2.6vh; line-height:1; filter:drop-shadow(0 0 .6vh var(--bc)); }
+.ov-watch .buff .tx { display:flex; flex-direction:column; }
+.ov-watch .buff .nm { font-size:1.75vh; font-weight:800; color:var(--bc); }
+.ov-watch .buff .ds { font-size:1.5vh; font-weight:500; opacity:.9; }
+.ov-watch .buff .tm { margin-left:auto; padding-left:1.4vh; font-size:1.6vh; font-weight:700; opacity:.8;
+  font-variant-numeric:tabular-nums; }
+@keyframes ovBuffGlow { 50% { box-shadow:0 0 2.6vh 0 var(--bc); } }
 .ov-hp { left:50%; bottom:3vh; transform:translateX(-50%); width:34vw; text-align:center; }
 .ov-hp b { font-weight:700; font-size:1.9vh; letter-spacing:.05em; }
 .ov-hp i { display:block; font-style:normal; font-weight:500; font-size:1.5vh;
@@ -560,7 +573,8 @@ export class Overlay {
     }
 
     const statsSig = ctx.watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
-    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.shotLabel}|${statsSig}` : "";
+    const buffSig = ctx.watchBuffs?.map((x) => `${x.name}:${Math.ceil(x.secs / 60)}`).join(",") ?? "";
+    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
@@ -585,6 +599,36 @@ export class Overlay {
             table.appendChild(tr);
           }
           this.watch.append(table);
+        }
+        if (ctx.watchBuffs && ctx.watchBuffs.length > 0) {
+          const list = document.createElement("div");
+          list.className = "buffs";
+          for (const bf of ctx.watchBuffs) {
+            const row = document.createElement("div");
+            row.className = "buff";
+            row.style.setProperty("--bc", bf.color);
+            const ic = document.createElement("i");
+            ic.className = "ic";
+            ic.textContent = bf.icon;
+            const tx = document.createElement("div");
+            tx.className = "tx";
+            const nm = document.createElement("em");
+            nm.className = "nm";
+            nm.style.fontStyle = "normal";
+            nm.textContent = bf.name;
+            const ds = document.createElement("em");
+            ds.className = "ds";
+            ds.style.fontStyle = "normal";
+            ds.textContent = bf.desc;
+            tx.append(nm, ds);
+            const tm = document.createElement("em");
+            tm.className = "tm";
+            tm.style.fontStyle = "normal";
+            tm.textContent = `${Math.ceil(bf.secs / 60)} мин`;
+            row.append(ic, tx, tm);
+            list.append(row);
+          }
+          this.watch.append(list);
         }
       } else {
         this.watch.innerHTML = `<b>${ctx.shotLabel}</b>`;

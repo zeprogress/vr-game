@@ -841,6 +841,12 @@ function restoreBag(saved: { item: ItemId | null; count: number }[] | undefined)
 
 /** Сколько мс герой считается «новичком» для камеры спектатора. */
 const FRESH_MS = 180_000;
+/** Сколько после сообщения в чате бот хозяина в приоритете у авто-камеры. */
+const CHAT_CAM_MS = 180_000;
+/** !focus: сколько камера держит героя и кулдаун команды на зрителя. */
+const FOCUS_SHOW_MS = 10_000;
+const FOCUS_COOLDOWN_MS = 10 * 60_000;
+const FOCUS_COMMANDS = new Set(["!focus", "!фокус", "!покажи", "!показать", "!cam", "!камера", "!смотри"]);
 
 interface JoinOpts {
   nick?: string;
@@ -2960,6 +2966,44 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(`@${nick} герой идёт качаться: ${def.name}.`);
   }
 
+  /** Ник → время (мс) последнего !focus: кулдаун на зрителя. */
+  private readonly focusUsedAt = new Map<string, number>();
+  private focusTimer: { clear(): void } | null = null;
+
+  /**
+   * `!focus [ник]` — камера эфира на 10 с переключается на героя (свой бот
+   * по умолчанию), потом возвращается к авто-режиму. Кулдаун 10 мин на зрителя.
+   */
+  private focusCam(nick: string, norm: string, arg?: string): void {
+    const now = Date.now();
+    const last = this.focusUsedAt.get(norm) ?? 0;
+    if (now - last < FOCUS_COOLDOWN_MS && !isAdminNick(norm)) {
+      const min = Math.ceil((FOCUS_COOLDOWN_MS - (now - last)) / 60_000);
+      this.reply(`@${nick} !focus снова можно через ${min} мин.`);
+      return;
+    }
+    const want = normNick(arg ?? "") || norm;
+    let id = "";
+    if (this.bots.has(want)) id = `bot:${want}`;
+    else {
+      for (const [sid, p] of this.state.players) {
+        if (!sid.startsWith("bot:") && normNick(p.nick) === want) id = sid;
+      }
+    }
+    if (!id) {
+      this.reply(arg ? `@${nick} героя ${arg} сейчас нет в мире.` : `@${nick} у тебя нет героя в мире — !play, чтобы создать.`);
+      return;
+    }
+    this.focusUsedAt.set(norm, now);
+    const shot = `orbitPlayer:${id}`;
+    this.broadcast(MSG.specCmd, { t: "cam", shot } satisfies SpecCmd);
+    this.focusTimer?.clear();
+    this.focusTimer = this.clock.setTimeout(() => {
+      this.focusTimer = null;
+      this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
+    }, FOCUS_SHOW_MS);
+  }
+
   private setFollow(nick: string, norm: string, target: string | null): void {
     const bot = this.bots.get(norm);
     if (!bot) {
@@ -3117,6 +3161,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botEmote(nick, norm, cmd.slice(1) as BotEmote);
     } else if (["!follow", "!folow", "!следовать", "!следуй", "!за", "!фоллоу"].includes(cmd)) {
       this.setFollow(nick, norm, normNick(parts[1] ?? ""));
+    } else if (FOCUS_COMMANDS.has(cmd)) {
+      this.focusCam(nick, norm, parts[1]);
     } else if (cmd === "!unfollow" || cmd === "!stay" || cmd === "!stayhere") {
       this.setFollow(nick, norm, null);
     } else if (cmd === "!come") {
@@ -3840,7 +3886,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
+      "Ещё: !focus — показать своего героя в эфире на 10 с (раз в 10 мин). !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
@@ -5587,10 +5633,12 @@ export class ZoneRoom extends Room<ZoneState> {
       this.sim.dmgHits.length = 0;
     }
     // Добивания: счётчик kills добившему + кил-фид (кроме осколков и босса —
-    // босса объявляем отдельно, по крупнейшему вкладу).
+    // босса объявляем отдельно — ником того, кто нанёс последний удар).
+    let bossKiller = "";
     for (const k of this.sim.mobKills) {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
+      if (k.kind === "boss") bossKiller = this.state.players.get(k.owner)?.nick ?? "";
       if (k.kind === "shard" || k.kind === "boss") continue;
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
@@ -5616,6 +5664,8 @@ export class ZoneRoom extends Room<ZoneState> {
           }
         }
       }
+      // Объявляем добившего; нет его (добил DoT/ушёл) — самого полезного по опыту.
+      if (bossKiller) topOwner = bossKiller;
       if (topOwner) this.broadcast(MSG.killFeed, { by: topOwner, victim: "Багровый" });
       const loot = this.sim.bossLoot
         .map((l) => (l.count > 1 ? `${l.count}× ${ITEMS[l.id].short}` : ITEMS[l.id].name))
@@ -5823,13 +5873,15 @@ export class ZoneRoom extends Room<ZoneState> {
   /**
    * Приоритет героя для авто-камеры спектатора: 3 — новичок (заказал !play
    * или зашёл в игру менее 3 минут назад), 2 — участвует в событии или идёт
-   * на босса, 0 — остальные.
+   * на босса или хозяин бота писал в чат за последние 3 мин, 0 — остальные.
    */
   private camPrioOf(id: string, p: PlayerState): number {
     const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
     if (bot) {
       if (bot.spawnedAt > 0 && Date.now() - bot.spawnedAt < FRESH_MS) return 3;
       if (bot.eventing || bot.raiding) return 2;
+      // Хозяин недавно писал в чат Twitch — показываем его бота чаще.
+      if (Date.now() - (this.chatSeen.get(bot.norm) ?? 0) < CHAT_CAM_MS) return 2;
       return 0;
     }
     const joined = this.joinedAt.get(id);

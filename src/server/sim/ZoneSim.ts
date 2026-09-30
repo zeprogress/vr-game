@@ -420,6 +420,8 @@ class Mob {
   readonly eliteLevel: number;
   /** true — моб парит и не прыгает (пчела). */
   readonly flying: boolean;
+  /** Подъём хитбокса над корнем, м (см. MobDef.visLift). */
+  readonly liftM: number;
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
 
@@ -437,6 +439,7 @@ class Mob {
       xp?: number;
       scaleMul?: number;
       flying?: boolean;
+      visLift?: number;
       rangedArmor?: number;
       physArmor?: number;
       magicVulnMul?: number;
@@ -526,6 +529,7 @@ class Mob {
     this.freezer = opts.freezer ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
+    this.liftM = (opts.visLift ?? 0) * MOB.bodyRadius * 2 * this.scale;
   }
 
   get aggro(): boolean {
@@ -1721,6 +1725,7 @@ export class ZoneSim {
           scaleMul: def.scaleMul,
           xp: def.xp,
           flying: def.flying,
+          visLift: def.visLift,
           rangedArmor: def.rangedArmor,
           physArmor: def.physArmor,
           magicVulnMul: def.magicVulnMul,
@@ -2023,7 +2028,7 @@ export class ZoneSim {
     for (const m of this.mobs.values()) {
       if (m.dead) continue;
       const r = b.hitRadius + MOB.bodyRadius * m.scale + (m.flying ? FLYER_HIT_BONUS : 0);
-      const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y, m.z, m.x, m.y + MOB.bodyRadius * m.scale, m.z);
+      const d = segDist(px, py, pz, b.x, b.y, b.z, m.x, m.y + m.liftM, m.z, m.x, m.y + m.liftM + MOB.bodyRadius * m.scale, m.z);
       if (d < r) {
         const vh = Math.hypot(b.vx, b.vz) || 1;
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
@@ -2622,6 +2627,6 @@ export class ZoneSim {
     }
     const m = this.mobs.get(id);
     if (!m || m.dead) return null;
-    return { x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z };
+    return { x: m.x, y: m.y + m.liftM + MOB.bodyRadius * m.scale, z: m.z };
   }
 }

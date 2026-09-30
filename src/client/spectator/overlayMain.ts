@@ -117,6 +117,7 @@ function tick(): void {
     watching: c?.w ?? null,
     watchStats: c?.ws ?? null,
     watchInv: c?.wi ?? null,
+    watchBuffs: c?.wb ?? null,
     shotLabel: c?.sl ?? "",
     targetHp: c?.hp
       ? { frac: c.hp.f, cur: c.hp.c, max: c.hp.m, name: c.hp.n, boss: c.hp.b }

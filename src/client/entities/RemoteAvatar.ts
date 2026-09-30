@@ -20,7 +20,8 @@ import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
-import { BuffAura } from "../ui/BuffAura";
+import { BuffOutlineFx } from "../ui/BuffOutlineFx";
+import { Color3 as BuffColor } from "@babylonjs/core/Maths/math.color";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
@@ -193,7 +194,11 @@ export class RemoteAvatar implements Hittable {
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
   private bubble: SpeechBubble | null = null;
-  private readonly buffAura: BuffAura;
+  /** Благословение победы (×2 опыт/урон) — очертание меча над головой. */
+  private readonly buffAura: BuffOutlineFx;
+  /** «Тепло костра» (защита) — очертание щита перед телом. */
+  private readonly campFx: BuffOutlineFx;
+  private campWarm = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
   private buffed = false;
@@ -297,7 +302,8 @@ export class RemoteAvatar implements Hittable {
     this.nick = nick;
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
-    this.buffAura = new BuffAura(scene, this.root, 0.95, -0.55);
+    this.buffAura = new BuffOutlineFx(scene, this.root, "sword", new BuffColor(0.35, 0.65, 1), 0.75, 0.75);
+    this.campFx = new BuffOutlineFx(scene, this.root, "shield", new BuffColor(1, 0.6, 0.2), 1.5, -0.6);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
@@ -630,6 +636,7 @@ export class RemoteAvatar implements Hittable {
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
     this.buffed = (p.buffSecs ?? 0) > 0;
+    this.campWarm = (p.campBuffSecs ?? 0) > 0;
     this.stunned = p.stunned === 1;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
@@ -738,6 +745,8 @@ export class RemoteAvatar implements Hittable {
     this.bubble?.update(dt);
     this.buffAura.setActive(this.buffed && !this.dead);
     this.buffAura.update(dt);
+    this.campFx.setActive(this.campWarm && !this.dead);
+    this.campFx.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);
     this.stunStars.update(dt);
     this.syncBar();
@@ -1397,6 +1406,7 @@ export class RemoteAvatar implements Hittable {
     this.botHolder?.dispose();
     this.nameTag.dispose();
     this.buffAura.dispose();
+    this.campFx.dispose();
     this.stunStars.dispose();
     this.root.dispose(false, true);
   }

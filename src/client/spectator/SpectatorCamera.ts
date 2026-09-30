@@ -31,11 +31,6 @@ const FRONT_DIST = 15.0; // м перед персонажем — по прос
 const FRONT_UP = 2.0; // подъём камеры над точкой корпуса
 const FRONT_AIM_Y = 0.5; // куда смотрим (грудь/лицо)
 
-/** «Снизу»: камера у самой земли перед героем, смотрит вверх на него. */
-const LOW_DIST = 3.2; // м перед персонажем
-const LOW_Y = 0.35; // высота самой камеры над землёй
-const LOW_AIM_Y = 1.7; // куда смотрим (грудь/лицо, а не под ноги)
-
 /** Чередование кадров в режиме «только боты». */
 const BOT_ROTATION = [
   "eyePlayer",
@@ -119,7 +114,6 @@ type Shot =
   | { kind: "sidePlayer"; id: string }
   | { kind: "dronePlayer"; id: string }
   | { kind: "duelPlayer"; id: string }
-  | { kind: "heroLow"; id: string }
   | { kind: "towerApproach" }
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
@@ -167,7 +161,6 @@ const PLAYER_SHOTS = [
   "sidePlayer",
   "dronePlayer",
   "duelPlayer",
-  "heroLow",
 ] as const;
 type PlayerShotKind = (typeof PLAYER_SHOTS)[number];
 function isPlayerShotKind(k: string): k is PlayerShotKind {
@@ -180,8 +173,7 @@ function usesBotFilter(k: string): boolean {
     k === "frontPlayer" ||
     k === "sidePlayer" ||
     k === "dronePlayer" ||
-    k === "duelPlayer" ||
-    k === "heroLow"
+    k === "duelPlayer"
   );
 }
 
@@ -716,20 +708,6 @@ export class SpectatorCamera {
           this.botPos.z + (fz / fl) * FRONT_DIST,
         );
         tgt.set(this.botPos.x, this.botPos.y + FRONT_AIM_Y, this.botPos.z);
-        return;
-      }
-      case "heroLow": {
-        // Снизу: камера у земли перед героем, смотрит вверх на него —
-        // драматичный низкий ракурс. Направление то же, что и у "напротив".
-        const fx = this.botFwd.x;
-        const fz = this.botFwd.z;
-        const fl = Math.hypot(fx, fz) || 1;
-        pos.set(
-          this.botPos.x + (fx / fl) * LOW_DIST,
-          ctx.groundY(this.botPos.x, this.botPos.z) + LOW_Y,
-          this.botPos.z + (fz / fl) * LOW_DIST,
-        );
-        tgt.set(this.botPos.x, this.botPos.y + LOW_AIM_Y, this.botPos.z);
         return;
       }
       case "sidePlayer": {
