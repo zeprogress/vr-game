@@ -168,36 +168,44 @@ export class NameTag {
       ctx.font = LVL_FONT;
       const lvlY = H / 2 + 42;
       const lvlText = `${level} ур.`;
-      ctx.fillText(lvlText, W / 2, lvlY);
+      let lvlEnd = W / 2 + ctx.measureText(lvlText).width / 2;
+      if (this.title) {
+        // Титул фиолетовым перед уровнем: «Царь башни · 34 ур.»; не влезает — ужимаем шрифт.
+        const head = `${this.title} · `;
+        let px = 36;
+        ctx.font = `600 ${px}px system-ui, sans-serif`;
+        let tw = ctx.measureText(head + lvlText).width;
+        if (tw > W - 24) {
+          px = Math.max(18, Math.floor((px * (W - 24)) / tw));
+          ctx.font = `600 ${px}px system-ui, sans-serif`;
+          tw = ctx.measureText(head + lvlText).width;
+        }
+        const x0 = W / 2 - tw / 2;
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#c79bff";
+        ctx.fillText(head, x0, lvlY);
+        ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
+        ctx.fillText(lvlText, x0 + ctx.measureText(head).width, lvlY);
+        ctx.textAlign = "center";
+        lvlEnd = x0 + tw;
+      } else {
+        ctx.fillText(lvlText, W / 2, lvlY);
+      }
       if (hasUnspent) {
         // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал
         // бы текст уровня туда-сюда каждый раз, когда очки появляются/тратятся).
-        const lvlW = ctx.measureText(lvlText).width;
         ctx.fillStyle = "#ff3b30";
         ctx.font = "bold 40px system-ui, sans-serif";
         ctx.textAlign = "left";
-        ctx.fillText("!", W / 2 + lvlW / 2 + 10, lvlY + 1);
+        ctx.fillText("!", lvlEnd + 10, lvlY + 1);
         ctx.textAlign = "center";
       }
-    }
-    if (this.title) {
-      // Титул — мелко, фиолетовым, под уровнем; не влез — ужимаем шрифт.
-      let px = 30;
-      ctx.font = `italic 600 ${px}px system-ui, sans-serif`;
-      const text = `«${this.title}»`;
-      const tw = ctx.measureText(text).width;
-      if (tw > W - 20) {
-        px = Math.max(18, Math.floor((px * (W - 20)) / tw));
-        ctx.font = `italic 600 ${px}px system-ui, sans-serif`;
-      }
-      ctx.fillStyle = "#c79bff";
-      ctx.fillText(text, W / 2, H - 14);
     }
     this.paintBars(ctx);
     this.tex.update(true);
   }
 
-  /** Титул героя под уровнем ("" — нет). */
+  /** Титул героя — в строке уровня, перед ним ("" — нет). */
   setTitle(title: string): void {
     if (title === this.title) return;
     this.title = title;
