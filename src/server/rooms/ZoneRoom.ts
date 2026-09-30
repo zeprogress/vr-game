@@ -5950,9 +5950,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const atFire = Math.hypot(p.head.x - fire.x, p.head.z - fire.z) <= CAMPFIRE.radius;
       if (atFire) {
         rt.campWarm += dt;
-        if (rt.campWarm >= CAMPFIRE.warmSec && rt.campBuffUntil - now < (CAMPFIRE.buffSec - 30) * 1000) {
-          rt.campBuffUntil = now + CAMPFIRE.buffSec * 1000;
-        }
+        // У огня таймер всегда полный — и если бафф уже висел.
+        if (rt.campWarm >= CAMPFIRE.warmSec) rt.campBuffUntil = now + CAMPFIRE.buffSec * 1000;
       } else {
         rt.campWarm = 0;
       }

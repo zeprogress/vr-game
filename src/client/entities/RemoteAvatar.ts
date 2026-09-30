@@ -20,8 +20,7 @@ import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
-import { BuffOutlineFx } from "../ui/BuffOutlineFx";
-import { Color3 as BuffColor } from "@babylonjs/core/Maths/math.color";
+import { OrbitBladesFx, WarmRimFx } from "../ui/BuffOutlineFx";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
@@ -194,10 +193,10 @@ export class RemoteAvatar implements Hittable {
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
   private bubble: SpeechBubble | null = null;
-  /** Благословение победы (×2 опыт/урон) — очертание меча над головой. */
-  private readonly buffAura: BuffOutlineFx;
-  /** «Тепло костра» (защита) — очертание щита перед телом. */
-  private readonly campFx: BuffOutlineFx;
+  /** Благословение победы (×2 опыт/урон) — кружащие мечи. */
+  private readonly buffAura: OrbitBladesFx;
+  /** «Тепло костра» (защита) — тёплая кайма по контуру + щит у плеча. */
+  private readonly campFx: WarmRimFx;
   private campWarm = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
@@ -302,8 +301,8 @@ export class RemoteAvatar implements Hittable {
     this.nick = nick;
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
-    this.buffAura = new BuffOutlineFx(scene, this.root, "sword", new BuffColor(0.35, 0.65, 1), 0.75, 0.75);
-    this.campFx = new BuffOutlineFx(scene, this.root, "shield", new BuffColor(1, 0.6, 0.2), 1.5, -0.6);
+    this.buffAura = new OrbitBladesFx(scene, this.root, -0.75);
+    this.campFx = new WarmRimFx(scene, this.root, -0.3);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
@@ -635,8 +634,10 @@ export class RemoteAvatar implements Hittable {
     }
     this.hp = p.hp;
     this.maxHp = p.maxHp > 0 ? p.maxHp : 100;
-    this.buffed = (p.buffSecs ?? 0) > 0;
-    this.campWarm = (p.campBuffSecs ?? 0) > 0;
+    // В башне баффы не действуют — и не показываем их.
+    const inTower = (p.towerFloor ?? 0) > 0;
+    this.buffed = !inTower && (p.buffSecs ?? 0) > 0;
+    this.campWarm = !inTower && (p.campBuffSecs ?? 0) > 0;
     this.stunned = p.stunned === 1;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;

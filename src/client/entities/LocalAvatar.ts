@@ -1,8 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
-import { BuffOutlineFx } from "../ui/BuffOutlineFx";
-import { Color3 as BuffColor } from "@babylonjs/core/Maths/math.color";
+import { OrbitBladesFx, WarmRimFx } from "../ui/BuffOutlineFx";
 import { StunStarsFx } from "../ui/StunStarsFx";
 
 import {
@@ -55,10 +54,10 @@ export class LocalAvatar {
   private locoRun = false;
   private locoMove = false;
   private hidden = false;
-  /** Благословение победы (×2 опыт/урон) — очертание меча над головой. */
-  private readonly buffAura: BuffOutlineFx;
-  /** «Тепло костра» (защита) — очертание щита перед телом. */
-  private readonly campFx: BuffOutlineFx;
+  /** Благословение победы (×2 опыт/урон) — кружащие мечи. */
+  private readonly buffAura: OrbitBladesFx;
+  /** «Тепло костра» (защита) — тёплая кайма по контуру + щит у плеча. */
+  private readonly campFx: WarmRimFx;
   private campWarm = false;
   private buffed = false;
   private readonly stunStars: StunStarsFx;
@@ -66,8 +65,8 @@ export class LocalAvatar {
 
   constructor(private readonly scene: Scene) {
     this.root = new TransformNode("localAvatar", scene);
-    this.buffAura = new BuffOutlineFx(scene, this.root, "sword", new BuffColor(0.35, 0.65, 1), 0.75, 0.75);
-    this.campFx = new BuffOutlineFx(scene, this.root, "shield", new BuffColor(1, 0.6, 0.2), 1.5, -0.6);
+    this.buffAura = new OrbitBladesFx(scene, this.root, -0.75);
+    this.campFx = new WarmRimFx(scene, this.root, -0.3);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
     void this.reload();
   }

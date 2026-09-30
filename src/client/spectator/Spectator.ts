@@ -1190,6 +1190,7 @@ export class Spectator {
 
   /** Баффы на герое — для плашек в «смотрим». */
   private static playerBuffs(p: PlayerState): OverlayCtx["watchBuffs"] {
+    if ((p.towerFloor ?? 0) > 0) return null; // в башне баффы не действуют
     const out: NonNullable<OverlayCtx["watchBuffs"]> = [];
     if ((p.buffSecs ?? 0) > 0) {
       out.push({

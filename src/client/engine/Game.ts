@@ -1887,13 +1887,14 @@ export class Game {
     }
     this.serverHp = self.hp;
     this.player.setHp(self.hp);
-    this.localAvatar?.setBuffed((self.buffSecs ?? 0) > 0);
+    const inTower = (self.towerFloor ?? 0) > 0; // в башне баффы не действуют — не показываем
+    this.localAvatar?.setBuffed(!inTower && (self.buffSecs ?? 0) > 0);
     this.localAvatar?.setStunned(self.stunned === 1);
     this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
     this.hud.setBuff(self.buffSecs ?? 0);
     // «Тепло костра» (лагерь): сообщение при получении, значок с таймером на ПК.
     const camp = self.campBuffSecs ?? 0;
-    this.localAvatar?.setCampWarm(camp > 0);
+    this.localAvatar?.setCampWarm(!inTower && camp > 0);
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
     this.pcHud?.setBuffs(self.buffSecs ?? 0, camp);
