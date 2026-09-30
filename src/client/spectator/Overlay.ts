@@ -19,6 +19,13 @@ function fmtTime(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Атрибуты в «смотрим»: подпись и цвет (сила — красный, ловкость — зелёный, интеллект — синий). */
+const ATTR_UI: [string, string][] = [
+  ["сил", "#ff6b5e"],
+  ["лов", "#6fdc6f"],
+  ["инт", "#6fb0ff"],
+];
+
 export interface OverlayCtx {
   /** Кого показываем: ник игрока / имя моба / null (обзор, путь). */
   watching: string | null;
@@ -28,6 +35,10 @@ export interface OverlayCtx {
   targetHp: { frac: number; cur: number; max: number; name: string; boss: boolean } | null;
   /** Таблица характеристик игрока под ником в «смотрим» (см. #shared/heroStats). */
   watchStats: HeroStatRow[] | null;
+  /** Уровень героя — «N ур.» рядом с ником. */
+  watchLevel: number | null;
+  /** Атрибуты героя [сил, лов, инт] — отдельная цветная строка. */
+  watchAttrs: [number, number, number] | null;
   /** Баффы на герое в «смотрим»: иконка, название, что даёт, сколько осталось (с) и цвет. */
   watchBuffs: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
@@ -118,6 +129,8 @@ const CSS = `
   letter-spacing:.02em; opacity:.92; }
 .ov-watch table.stats td.lb { opacity:.68; padding-right:1.2vh; white-space:nowrap; }
 .ov-watch table.stats td.vl { font-weight:700; text-align:right; }
+.ov-watch span .lvl { font-size:2vh; font-weight:700; opacity:.75; margin-left:.4vh; }
+.ov-watch table.stats i.at { font-style:normal; font-weight:800; opacity:1; }
 .ov-watch .buffs { display:flex; flex-direction:column; gap:.6vh; margin-top:1vh; }
 .ov-watch .buff { display:flex; align-items:center; gap:1vh; padding:.6vh 1.2vh .6vh .7vh; border-radius:1vh;
   background:rgba(0,0,0,.35); border-left:.45vh solid var(--bc); box-shadow:0 0 1.6vh -0.4vh var(--bc);
@@ -574,7 +587,7 @@ export class Overlay {
 
     const statsSig = ctx.watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
     const buffSig = ctx.watchBuffs?.map((x) => `${x.name}:${Math.ceil(x.secs / 60)}`).join(",") ?? "";
-    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
+    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.watchLevel}|${ctx.watchAttrs?.join("/")}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
@@ -583,10 +596,42 @@ export class Overlay {
         b.textContent = "смотрим";
         const s = document.createElement("span");
         s.textContent = ctx.watching;
+        if (ctx.watchLevel !== null) {
+          const lv = document.createElement("small");
+          lv.className = "lvl";
+          lv.textContent = `${ctx.watchLevel} ур.`;
+          s.append(" ", lv);
+        }
         this.watch.append(b, s);
         if (ctx.watchStats && ctx.watchStats.length > 0) {
           const table = document.createElement("table");
           table.className = "stats";
+          if (ctx.watchAttrs) {
+            const tr = document.createElement("tr");
+            const lb = document.createElement("td");
+            lb.className = "lb";
+            lb.append("атрибуты ");
+            const vl = document.createElement("td");
+            vl.className = "vl";
+            ATTR_UI.forEach(([name, color], i) => {
+              if (i > 0) {
+                lb.append("/");
+                vl.append(" / ");
+              }
+              const n = document.createElement("i");
+              n.className = "at";
+              n.style.color = color;
+              n.textContent = name;
+              lb.append(n);
+              const v = document.createElement("i");
+              v.className = "at";
+              v.style.color = color;
+              v.textContent = String(ctx.watchAttrs![i]);
+              vl.append(v);
+            });
+            tr.append(lb, vl);
+            table.appendChild(tr);
+          }
           for (const row of ctx.watchStats) {
             const tr = document.createElement("tr");
             const lb = document.createElement("td");

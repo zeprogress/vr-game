@@ -241,6 +241,8 @@ interface Runtime {
   campBuffUntil: number;
   /** Сколько секунд подряд герой греется у костра (для баффа). */
   campWarm: number;
+  /** Когда последний раз показали крестики лечения в лагере (мс). */
+  campHealFxAt: number;
   /** Секунда игрового времени (this.elapsed), до которой оглушён (спец-атака моба). */
   stunnedUntil: number;
   /** id моба, по которому только что ударили (для «!follow»-телохранителя — фокус-фаер). */
@@ -2916,7 +2918,9 @@ export class ZoneRoom extends Room<ZoneState> {
       });
       for (const w of r.drops) this.announcePickup(nick, w.cls, w.tier, w);
     }
-    const verb = r.phase === "cleared" ? "покорил башню целиком!" : `дошёл до этажа ${r.floorReached}.`;
+    const t = Math.max(0, Math.round(r.timeSec));
+    const time = `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
+    const verb = r.phase === "cleared" ? `покорил башню за ${time}!` : `дошёл до этажа ${r.floorReached}.`;
     this.reply(`${nick} ${verb}`);
     this.towerQueueOpenUntil = Date.now() + EVENT.tower.queueIdleClose * 1000;
     this.broadcastLeaderboard(); // новый результат виден у спектатора сразу, не ждём след. триггера
@@ -4064,6 +4068,7 @@ export class ZoneRoom extends Room<ZoneState> {
       eventBuffUntil: 0,
       campBuffUntil: 0,
       campWarm: 0,
+      campHealFxAt: 0,
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
@@ -5945,12 +5950,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const now = Date.now();
       const buffLeft = Math.max(0, rt.eventBuffUntil - now);
       p.buffSecs = Math.min(65535, Math.ceil(buffLeft / 1000));
-      // Костёр в лагере: рядом — быстрый реген сразу; погрелся — бафф.
-      const fire = HUB.campfire.pos;
-      const atFire = Math.hypot(p.head.x - fire.x, p.head.z - fire.z) <= CAMPFIRE.radius;
-      if (atFire) {
+      // Лагерь: по всей площади — бафф «Тепло костра» (таймер всегда полный)
+      // и быстрый реген сразу, без паузы после урона.
+      if (inHubSafeZone(p.head.x, p.head.z)) {
         rt.campWarm += dt;
-        // У огня таймер всегда полный — и если бафф уже висел.
         if (rt.campWarm >= CAMPFIRE.warmSec) rt.campBuffUntil = now + CAMPFIRE.buffSec * 1000;
       } else {
         rt.campWarm = 0;
@@ -5960,9 +5963,15 @@ export class ZoneRoom extends Room<ZoneState> {
       const warrior = id.startsWith("bot:") && isWarriorBot(p);
       const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
       const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
-      if (p.hp > 0 && p.hp < p.maxHp && (atFire || rt.sinceHurt > regenDelay)) {
-        const rate = atFire ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac) : regenRate;
+      const inCamp = inHubSafeZone(p.head.x, p.head.z);
+      if (p.hp > 0 && p.hp < p.maxHp && (inCamp || rt.sinceHurt > regenDelay)) {
+        const rate = inCamp ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac) : regenRate;
         p.hp = Math.min(p.maxHp, p.hp + rate * dt);
+        // Лагерь лечит — зелёные крестики на герое (раз в ~0.8 с, пока идёт реген).
+        if (inCamp && now - rt.campHealFxAt > 800) {
+          rt.campHealFxAt = now;
+          this.broadcast(MSG.act, { k: "healHit", id, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+        }
       }
     });
   }
@@ -6208,6 +6217,7 @@ export class ZoneRoom extends Room<ZoneState> {
       eventBuffUntil: 0,
       campBuffUntil: 0,
       campWarm: 0,
+      campHealFxAt: 0,
       stunnedUntil: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,

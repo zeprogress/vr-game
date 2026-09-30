@@ -315,6 +315,9 @@ export interface OvlCam {
   ws: HeroStatRow[] | null;
   wi: string | null;
   /** Баффы героя в «смотрим» (см. OverlayCtx.watchBuffs). */
+  /** Уровень и атрибуты [сил, лов, инт] героя в «смотрим». */
+  wl?: number | null;
+  wa?: [number, number, number] | null;
   wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
   sl: string;
