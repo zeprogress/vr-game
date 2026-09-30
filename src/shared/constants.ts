@@ -786,7 +786,7 @@ export const MOB_CAMPS: {
   // Зона ур.36 — три лагеря по краям карты, подальше от лагерей 33 ур.
   { x: 20, z: 132, type: "infernoDemon", count: 5, spread: 30, ring: 0.85 }, // ур.36, север
   { x: -128, z: -5, type: "frostDemon", count: 6, spread: 32 }, // ур.36, запад
-  { x: 58, z: -132, type: "boneChief", count: 10, spread: 28 }, // ур.36, юг
+  { x: 35, z: -140, type: "boneChief", count: 10, spread: 22 }, // ур.36, юг — подальше от колоссов
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

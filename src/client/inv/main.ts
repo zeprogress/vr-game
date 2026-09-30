@@ -155,7 +155,7 @@ const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
 
 /** « (N)» — очки роллов; у оружия без роллов ничего не пишем. */
 function qualityTag(q: number, count: number): string {
-  return count > 0 ? ` <span class="quality">(${q})</span>` : "";
+  return count > 0 ? ` <span class="quality">(оценка ${q})</span>` : "";
 }
 
 function handHtml(label: string, h: InvHand | null): string {
