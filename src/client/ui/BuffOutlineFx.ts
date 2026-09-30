@@ -6,9 +6,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
-import "@babylonjs/core/Rendering/outlineRenderer";
 import { TransformNode as TNode } from "@babylonjs/core/Meshes/transformNode";
-import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 
 export type BuffShape = "shield" | "sword";
 
@@ -143,77 +141,21 @@ export class BuffOutlineFx {
   }
 }
 
-/** Толщина тёплой каймы, м (`?rim=0.03` — подбор вживую). */
-const RIM_W = Number(new URLSearchParams(typeof location !== "undefined" ? location.search : "").get("rim")) || 0.025;
-const RIM_COLOR = new Color3(1, 0.62, 0.22);
+/** Цвета баффов: меч (×2 опыт/урон) — красный, щит (костёр) — золотой. */
+const SWORD_COLOR = new Color3(1, 0.25, 0.22);
+const SHIELD_COLOR = new Color3(1, 0.75, 0.25);
 
 /**
- * «Тепло костра» — тёплая светящаяся кайма по контуру героя (outline всех
- * мешей модели) и маленький щит у плеча.
+ * Баффы героя — светящиеся фигурки, кружащие вокруг на уровне пояса:
+ * три меча (благословение победы, ×2 опыт/урон) и три щита («Тепло
+ * костра»). Общий поворот — щиты ровно между мечами, крутятся синхронно.
  */
-export class WarmRimFx {
-  private readonly badge: BuffOutlineFx;
-  private meshes: AbstractMesh[] = [];
-  private on = false;
-  private t = 0;
-  private rescanT = 0;
-
-  constructor(scene: Scene, private readonly parent: TNode, shoulderY: number) {
-    this.badge = new BuffOutlineFx(scene, parent, "shield", new Color3(1, 0.6, 0.2), 0.42, shoulderY, 0.45);
-  }
-
-  setActive(active: boolean): void {
-    if (active === this.on) return;
-    this.on = active;
-    this.badge.setActive(active);
-    if (active) this.rescan();
-    else this.clear();
-  }
-
-  /** Модель грузится асинхронно и меняется (скин, оружие) — периодически пересобираем список. */
-  private rescan(): void {
-    this.clear();
-    for (const m of this.parent.getChildMeshes(false)) {
-      if (m.name.startsWith("buff_") || m.getTotalVertices() === 0 || !m.isEnabled()) continue;
-      m.computeWorldMatrix(true);
-      const k = Math.max(1e-4, Math.abs(m.absoluteScaling.x));
-      m.outlineColor = RIM_COLOR;
-      m.outlineWidth = RIM_W / k;
-      m.renderOutline = true;
-      (m as AbstractMesh & { _rimW?: number })._rimW = m.outlineWidth;
-      this.meshes.push(m);
-    }
-  }
-
-  private clear(): void {
-    for (const m of this.meshes) if (!m.isDisposed()) m.renderOutline = false;
-    this.meshes = [];
-  }
-
-  update(dt: number): void {
-    this.badge.update(dt);
-    if (!this.on) return;
-    this.t += dt;
-    this.rescanT -= dt;
-    if (this.rescanT <= 0) {
-      this.rescanT = 1;
-      this.rescan();
-    }
-    const pulse = 0.75 + Math.sin(this.t * 2.6) * 0.25;
-    for (const m of this.meshes) m.outlineWidth = ((m as AbstractMesh & { _rimW?: number })._rimW ?? 0) * pulse;
-  }
-
-  dispose(): void {
-    this.clear();
-    this.badge.dispose();
-  }
-}
-
-/** Благословение победы (×2 опыт/урон) — три светящихся меча кружат вокруг героя. */
-export class OrbitBladesFx {
+export class BuffOrbitFx {
   private readonly pivot: TNode;
-  private readonly blades: BuffOutlineFx[] = [];
-  private on = false;
+  private readonly swords: BuffOutlineFx[] = [];
+  private readonly shields: BuffOutlineFx[] = [];
+  private sword = false;
+  private shield = false;
 
   constructor(scene: Scene, parent: TNode, y: number, radius = 0.85) {
     this.pivot = new TNode("buff_orbit", scene);
@@ -221,27 +163,32 @@ export class OrbitBladesFx {
     this.pivot.position.y = y;
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2;
-      const b = new BuffOutlineFx(scene, this.pivot, "sword", new Color3(0.35, 0.65, 1), 0.5, 0, Math.cos(a) * radius, Math.sin(a) * radius, Mesh.BILLBOARDMODE_Y);
-      this.blades.push(b);
+      const b = a + Math.PI / 3; // ровно между мечами
+      this.swords.push(new BuffOutlineFx(scene, this.pivot, "sword", SWORD_COLOR, 0.5, 0, Math.cos(a) * radius, Math.sin(a) * radius, Mesh.BILLBOARDMODE_Y));
+      this.shields.push(new BuffOutlineFx(scene, this.pivot, "shield", SHIELD_COLOR, 0.42, 0, Math.cos(b) * radius, Math.sin(b) * radius, Mesh.BILLBOARDMODE_Y));
     }
     this.pivot.setEnabled(false);
   }
 
-  setActive(active: boolean): void {
-    if (active === this.on) return;
-    this.on = active;
-    this.pivot.setEnabled(active);
-    for (const b of this.blades) b.setActive(active);
+  set(sword: boolean, shield: boolean): void {
+    if (sword === this.sword && shield === this.shield) return;
+    this.sword = sword;
+    this.shield = shield;
+    this.pivot.setEnabled(sword || shield);
+    for (const b of this.swords) b.setActive(sword);
+    for (const b of this.shields) b.setActive(shield);
   }
 
   update(dt: number): void {
-    if (!this.on) return;
+    if (!this.sword && !this.shield) return;
     this.pivot.rotation.y += dt * 1.6;
-    for (const b of this.blades) b.update(dt);
+    for (const b of this.swords) b.update(dt);
+    for (const b of this.shields) b.update(dt);
   }
 
   dispose(): void {
-    for (const b of this.blades) b.dispose();
+    for (const b of this.swords) b.dispose();
+    for (const b of this.shields) b.dispose();
     this.pivot.dispose();
   }
 }

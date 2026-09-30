@@ -2774,7 +2774,7 @@ export class ZoneRoom extends Room<ZoneState> {
           rolled: towerRolled,
         },
         (r) => this.onTowerRunDone(heroId, nick, r),
-        (floor) => this.reply(`${nick} поднялся на этаж ${floor} башни!`),
+        () => {}, // этажи в чат Twitch не пишем — они видны на трансляции
         (s) => this.onTowerSnapshot(heroId, s),
       )
       .catch((e) => {

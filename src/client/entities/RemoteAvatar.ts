@@ -20,7 +20,7 @@ import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
 import { SpeechBubble } from "../ui/SpeechBubble";
-import { OrbitBladesFx, WarmRimFx } from "../ui/BuffOutlineFx";
+import { BuffOrbitFx } from "../ui/BuffOutlineFx";
 import { StunStarsFx } from "../ui/StunStarsFx";
 import type { Hittable } from "../combat/Hittable";
 import { makeBotBody } from "./botModels";
@@ -193,10 +193,8 @@ export class RemoteAvatar implements Hittable {
   private readonly mat: StandardMaterial;
   private readonly nameTag: NameTag;
   private bubble: SpeechBubble | null = null;
-  /** Благословение победы (×2 опыт/урон) — кружащие мечи. */
-  private readonly buffAura: OrbitBladesFx;
-  /** «Тепло костра» (защита) — тёплая кайма по контуру + щит у плеча. */
-  private readonly campFx: WarmRimFx;
+  /** Баффы — кружащие мечи (×2 опыт/урон) и щиты («Тепло костра»). */
+  private readonly buffAura: BuffOrbitFx;
   private campWarm = false;
   private readonly stunStars: StunStarsFx;
   private stunned = false;
@@ -301,8 +299,7 @@ export class RemoteAvatar implements Hittable {
     this.nick = nick;
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
-    this.buffAura = new OrbitBladesFx(scene, this.root, -0.75);
-    this.campFx = new WarmRimFx(scene, this.root, -0.3);
+    this.buffAura = new BuffOrbitFx(scene, this.root, -0.75);
     this.stunStars = new StunStarsFx(scene, this.root, 0.4);
 
     this.mat = new StandardMaterial(`avatarMat_${id}`, scene);
@@ -744,10 +741,8 @@ export class RemoteAvatar implements Hittable {
     const dt = this.lastUpdate > 0 ? Math.min(0.1, (now - this.lastUpdate) / 1000) : 0.016;
     this.lastUpdate = now;
     this.bubble?.update(dt);
-    this.buffAura.setActive(this.buffed && !this.dead);
+    this.buffAura.set(this.buffed && !this.dead, this.campWarm && !this.dead);
     this.buffAura.update(dt);
-    this.campFx.setActive(this.campWarm && !this.dead);
-    this.campFx.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);
     this.stunStars.update(dt);
     this.syncBar();
@@ -1407,7 +1402,6 @@ export class RemoteAvatar implements Hittable {
     this.botHolder?.dispose();
     this.nameTag.dispose();
     this.buffAura.dispose();
-    this.campFx.dispose();
     this.stunStars.dispose();
     this.root.dispose(false, true);
   }

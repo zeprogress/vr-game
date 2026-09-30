@@ -1185,7 +1185,13 @@ export class Spectator {
   /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
   /** Таблица понятных характеристик игрока для панели «смотрим» (см. #shared/heroStats). */
   private static playerStatRows(p: PlayerState): HeroStatRow[] {
-    return [{ label: "Уровень", value: `${p.level}` }, ...heroStatRows(p)];
+    return [
+      { label: "Уровень", value: `${p.level}` },
+      { label: "Сила", value: `${p.str}` },
+      { label: "Ловкость", value: `${p.agi}` },
+      { label: "Интеллект", value: `${p.int}` },
+      ...heroStatRows(p),
+    ];
   }
 
   /** Баффы на герое — для плашек в «смотрим». */
@@ -1194,16 +1200,16 @@ export class Spectator {
     const out: NonNullable<OverlayCtx["watchBuffs"]> = [];
     if ((p.buffSecs ?? 0) > 0) {
       out.push({
-        icon: "✨", name: "Благословение победы",
+        icon: "⚔️", name: "Благословение победы",
         desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
-        secs: p.buffSecs, color: "#6fb0ff",
+        secs: p.buffSecs, color: "#ff5a5a",
       });
     }
     if ((p.campBuffSecs ?? 0) > 0) {
       out.push({
-        icon: "🔥", name: "Тепло костра",
+        icon: "🛡️", name: "Тепло костра",
         desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`,
-        secs: p.campBuffSecs, color: "#ffa04a",
+        secs: p.campBuffSecs, color: "#ffc24a",
       });
     }
     return out.length ? out : null;
