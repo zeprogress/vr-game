@@ -459,7 +459,8 @@ export class SkillFx {
       // Исчезновение: тёмный сгусток сжимается в точку; появление — вспышка наружу.
       const r = pf.grow ? 0.4 + 1.8 * Math.sqrt(t) : 1.4 * (1 - t) + 0.1;
       pf.ball.scaling.setAll(r);
-      (pf.ball.material as StandardMaterial).alpha = (pf.grow ? 1 - t : 0.4 + 0.5 * t) * 0.7;
+      // Прозрачнее, чем было (×0.7 → ×0.45) — по просьбе.
+      (pf.ball.material as StandardMaterial).alpha = (pf.grow ? 1 - t : 0.4 + 0.5 * t) * 0.45;
     }
 
     for (const r of this.rains) {
