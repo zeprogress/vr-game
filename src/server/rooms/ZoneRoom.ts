@@ -720,6 +720,9 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
   return h ? weaponDef(h.cls, h.tier).mult : 1;
 }
 
+/** Башня испытаний открыта? Временно закрыта (2026-10-01) — событие не выпадает, очередь не принимает. */
+const TOWER_OPEN = false;
+
 /** Шанс блока щитом героя: тир щита + ролл Блок (0 — щита в руках нет). */
 function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
   const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
@@ -2485,6 +2488,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const r = Math.random();
       this.activeEventKind = r < EVENT.towerChance ? 3 : r < EVENT.towerChance + EVENT.huntChance ? 2 : 1;
     }
+    // Башня временно закрыта (TOWER_OPEN) — вместо неё охота или нашествие.
+    if (this.activeEventKind === 3 && !TOWER_OPEN) {
+      this.activeEventKind = Math.random() < EVENT.huntChance / (1 - EVENT.towerChance) ? 2 : 1;
+    }
     this.forcedEventKind = 0;
     this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
@@ -2867,6 +2874,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** `!event` при активной башне — встать в очередь на попытку (не спатиальный джойн). */
   private joinTowerQueue(nick: string, norm: string): void {
+    if (!TOWER_OPEN) {
+      if (this.hintOk(norm)) this.reply(`@${nick} башня временно закрыта.`);
+      return;
+    }
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
