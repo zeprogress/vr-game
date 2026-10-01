@@ -562,10 +562,11 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // защищает интеллект) и больнее (урон 3.5→5), лагерь больше (12→18).
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", level: 33, kind: "slime",
-    hp: 2400, dmgMul: 8, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true, // HP 1640→2400, урон 6.5→8
-    blinker: true, lifesteal: 0.6, attackCooldown: 1.2, speedMul: 1.35,
+    // 2026-10-02 ослаблен по просьбе: HP 2400→1800, урон 8→6, вампиризм 60→35%, уворот 30→20%.
+    hp: 1800, dmgMul: 6, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
+    blinker: true, lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
-    dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
+    dodge: 0.2, // 20% ударов героев проходят мимо — «MISS»
   },
   // ---- Зона 36 ур. — для героев 33+. Опыт ×2.5 от 33 ур., легендарки
   // в 2–3 раза чаще, чем у колосса. Модели — ещё не бывавшие в открытом мире.
@@ -584,7 +585,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (или бей магией издалека, отражение то же — терпи). Рукой бьёт больно.
   frostDemon: {
     model: "monBlueDemon", name: "Ледяной демон", level: 36, kind: "slime",
-    hp: 5600, dmgMul: 13, xp: 960000, scaleMul: 2.8, tint: null,
+    // 2026-10-02 ослаблен по просьбе: HP 5600→4800, урон 13→10 (+ REFLECT/FREEZE мягче).
+    hp: 4800, dmgMul: 10, xp: 960000, scaleMul: 2.8, tint: null,
     freezer: true, reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
     meleeReach: 3.2, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -623,7 +625,7 @@ export const REFLECT = {
   cooldown: 13,
   duration: 3.5,
   /** Доля снятого с демона урона, которая прилетает атакующему. */
-  frac: 0.45,
+  frac: 0.3, // было 0.45
 };
 
 /** Костяной вождь: лечение себя и соседей (см. EliteMobDef.healer). */
@@ -637,14 +639,14 @@ export const CHIEF_HEAL = {
 /** Ледяной демон: заморозка по области (см. EliteMobDef.freezer). */
 export const FREEZE = {
   range: 16,
-  cooldown: 9,
+  cooldown: 12, // было 9
   /** Телеграф: круг на земле под героем, с. */
   windup: 1.2,
   radius: 4.5,
   /** Урон — во столько раз сильнее обычного удара. */
   strikeMul: 1.2,
   /** Сколько герой стоит вмёрзшим (оглушение). */
-  stunSec: 2.2,
+  stunSec: 1.5, // было 2.2
 };
 
 /** Костяной вождь: костяные шипы из-под героев (см. EliteMobDef.spiker). */
