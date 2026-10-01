@@ -120,7 +120,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { aegisTier, bothHandsCls, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, BOT, EVENT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
@@ -3610,6 +3610,8 @@ export class Game {
       case "breathMark":
       case "breathHit":
         this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");
+        // Удар дыханием — красивое пламя поверх веера-телеграфа.
+        if (k === "breathHit") this.skillVfx.fireBreath(x, y, z, x2in ?? x, z2in ?? z, EVENT.eliteHunt.breathHalf);
         if (k === "breathHit") this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "pullMark":

@@ -11,7 +11,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector";
 import type { Room } from "colyseus.js";
 
-import { BLINK, BOSS, BOT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
+import { BLINK, BOSS, BOT, EVENT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
@@ -1533,6 +1533,8 @@ export class Spectator {
       case "breathMark":
       case "breathHit":
         this.skillFx.breathCone(x, y, z, x2in ?? x, z2in ?? z, d ?? 1, k === "breathHit");
+        // Удар дыханием — красивое пламя поверх веера-телеграфа.
+        if (k === "breathHit") this.skillVfx.fireBreath(x, y, z, x2in ?? x, z2in ?? z, EVENT.eliteHunt.breathHalf);
         if (k === "breathHit") this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "pullMark":

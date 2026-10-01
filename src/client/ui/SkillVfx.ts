@@ -33,6 +33,10 @@ const MV_OUT = (p: string) => `
   gl_Position = viewProjection * vec4(${p}, 1.0);
 #endif`;
 
+const FIRE_CORE = new Color3(1, 0.9, 0.45);
+const FIRE_ORANGE = new Color3(1, 0.5, 0.1);
+const FIRE_RED = new Color3(1, 0.18, 0.06);
+
 // ---------------------------------------------------------------- decal
 
 Effect.ShadersStore["fxDecalVertexShader"] = `
@@ -402,6 +406,32 @@ export class SkillVfx {
     // Ось сектора в шейдере — локальная +x; поворот вокруг Y: (1,0,0) → (cos, 0, −sin).
     d.mesh.rotation.y = Math.atan2(-dz / l, dx / l);
     d.mat.setFloat("uHalf", half);
+  }
+
+  /**
+   * Огненное дыхание (дракон): из пасти на высоте `mouthY` к (x2,z2) конусом
+   * ±half — струя искр (жёлтое ядро → красные края), огненная волна по земле
+   * и всплывающие угли по зоне. Всё из пулов, без новых мешей.
+   */
+  fireBreath(x: number, y: number, z: number, x2: number, z2: number, half: number, mouthY = 3): void {
+    const dx = x2 - x;
+    const dz = z2 - z;
+    const len = Math.max(1, Math.hypot(dx, dz));
+    const ux = dx / len;
+    const uz = dz / len;
+    const my = y + mouthY;
+    // Волна по земле: красный широкий сектор + жёлтое ядро уже.
+    this.cone(x, y, z, len, dx, dz, half, FIRE_RED, 0.75, 1);
+    this.cone(x, y + 0.01, z, len * 0.8, dx, dz, half * 0.5, FIRE_CORE, 0.55, 0.9);
+    // Струя: три снопа разной скорости и ширины (ядро быстрее и уже).
+    const dir: [number, number, number] = [ux, -0.12, uz];
+    this.burst(x + ux, my, z + uz, FIRE_CORE, { count: 28, speed: len * 1.6, life: 0.55, grav: -1, size: 0.55, dir, spread: half * 0.35 });
+    this.burst(x + ux, my, z + uz, FIRE_ORANGE, { count: 28, speed: len * 1.3, life: 0.7, grav: -2, size: 0.7, dir, spread: half * 0.65 });
+    this.burst(x + ux, my, z + uz, FIRE_RED, { count: 24, speed: len * 1.1, life: 0.8, grav: -3, size: 0.8, dir, spread: half });
+    // Угли: всплывают по зоне поражения.
+    for (const f of [0.35, 0.65, 0.95]) {
+      this.burst(x + ux * len * f, y + 0.2, z + uz * len * f, FIRE_ORANGE, { count: 14, speed: 2.2, life: 1.2, grav: -2.5, size: 0.22 });
+    }
   }
 
   /** Сноп искр: dir — направление (null — во все стороны), spread 0..1, grav >0 — падают, <0 — всплывают. */
