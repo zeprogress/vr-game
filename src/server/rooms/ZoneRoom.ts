@@ -727,6 +727,8 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
 
 /** Башня испытаний открыта? Временно закрыта (2026-10-01) — событие не выпадает, очередь не принимает. */
 const TOWER_OPEN = false;
+/** Бот по дороге подбирает всё, что лежит ближе этого (м, по горизонтали). */
+const BOT_GRAB_RADIUS = 5;
 
 /** Щит в руках героя: тир и экземпляр (null — щита нет). */
 function shieldOf(p: PlayerState, rt: Runtime | undefined): { tier: string; inst: WeaponInstance | null } | null {
@@ -5323,6 +5325,67 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /**
+   * Бот поднимает лут `d`: оружие — надевает, если это апгрейд его снаряжения
+   * (иначе в склад), зелье — в сумку, если есть место. true — поднял.
+   */
+  private botTakeDrop(bot: Bot, d: NonNullable<ReturnType<ZoneSim["drops"]["get"]>>): boolean {
+    const p = bot.state;
+    // Апгрейд своего снаряжения — то, что бот реально наденет.
+    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean =>
+      w.cls === "shield"
+        ? p.leftCls === "shield" && tierRank(w.tier) > tierRank(p.leftTier as WeaponTier)
+        : w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
+    let took = false;
+    const lw = ITEMS[d.item].weapon;
+    if (lw) {
+      this.sim.takeDrop(d.id);
+      // Одеваем ТОЛЬКО реальный апгрейд своего снаряжения. Оружие
+      // чужого класса (или тира не выше текущего) просто уходит в
+      // склад — бот его несёт, но не переодевается в него сам.
+      const upgrade = isEquipUpgrade(lw);
+      if (upgrade) {
+        if (lw.cls === "shield") {
+          preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
+          // «Эгида» — в левую руку, правое оружие не трогаем.
+          p.leftCls = "shield";
+          p.leftTier = lw.tier;
+        } else {
+          preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
+          const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+          const keepLeft = lw.cls === "dagger" && p.leftCls === "dagger";
+          const off = offHandFor(lw.cls);
+          p.rightCls = lw.cls;
+          p.rightTier = lw.tier;
+          if (!keepLeft) {
+            p.leftCls = off;
+            p.leftTier = off === "shield" ? (keepAegis ? "legendary" : "base") : off ? "base" : "";
+          }
+        }
+      }
+      bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
+      if (d.instance) bot.rt.weapons.push(d.instance);
+      this.persistBot(bot);
+      this.announcePickup(bot.nick, lw.cls, lw.tier, d.instance);
+      console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}${upgrade ? "" : " (в склад)"}`);
+      took = true;
+    } else {
+      // бутылка зелья — в сумку
+      const bag = readBag(p);
+      const left = addToBag(bag, d.item, d.count);
+      if (d.count - left > 0) {
+        writeBag(p, bag);
+        this.sim.takeDrop(d.id);
+        took = true;
+      }
+    }
+    if (took) {
+      const relay: ActRelay = { k: "pickup", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
+      this.broadcast(MSG.act, relay);
+    }
+    return took;
+  }
+
   /** ИИ одного бота на кадр. */
   private tickBot(dt: number, bot: Bot): void {
     const p = bot.state;
@@ -5963,53 +6026,22 @@ export class ZoneRoom extends Room<ZoneState> {
       const feetY = p.head.y - PLAYER.eyeHeight;
       const d3 = Math.hypot(loot.x - p.head.x, loot.y - feetY, loot.z - p.head.z);
       if (d3 <= WEAPON_TAKE_REACH) {
-        let took = false;
-        const lw = ITEMS[loot.item].weapon;
-        if (lw) {
-          this.sim.takeDrop(loot.id);
-          // Одеваем ТОЛЬКО реальный апгрейд своего снаряжения. Оружие
-          // чужого класса (или тира не выше текущего) просто уходит в
-          // склад — бот его несёт, но не переодевается в него сам.
-          const upgrade = isEquipUpgrade(lw);
-          if (upgrade) {
-            if (lw.cls === "shield") {
-              preserveLegacyWeapon(bot.rt, p.leftCls, p.leftTier);
-              // «Эгида» — в левую руку, правое оружие не трогаем.
-              p.leftCls = "shield";
-              p.leftTier = lw.tier;
-            } else {
-              preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
-              const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
-              const keepLeft = lw.cls === "dagger" && p.leftCls === "dagger";
-              const off = offHandFor(lw.cls);
-              p.rightCls = lw.cls;
-              p.rightTier = lw.tier;
-              if (!keepLeft) {
-                p.leftCls = off;
-                p.leftTier = off === "shield" ? (keepAegis ? "legendary" : "base") : off ? "base" : "";
-              }
-            }
-          }
-          bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
-          if (loot.instance) bot.rt.weapons.push(loot.instance);
-          this.persistBot(bot);
-          this.announcePickup(bot.nick, lw.cls, lw.tier, loot.instance);
-          console.log(`[bot] ${bot.nick} подобрал ${lw.cls}:${lw.tier}${upgrade ? "" : " (в склад)"}`);
-          took = true;
-        } else {
-          // бутылка зелья — в сумку
-          const bag = readBag(p);
-          const left = addToBag(bag, loot.item, loot.count);
-          if (loot.count - left > 0) {
-            writeBag(p, bag);
-            this.sim.takeDrop(loot.id);
-            took = true;
-          }
-        }
+        this.botTakeDrop(bot, loot);
         bot.lootTarget = null;
-        if (took) {
-          const relay: ActRelay = { k: "pickup", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
-          this.broadcast(MSG.act, relay);
+      }
+    }
+    // По дороге куда угодно (событие, рейд, к хозяину) — подбираем всё, что
+    // лежит рядом: оружие любого класса и зелья, пока есть место в сумке.
+    if (!p.dead && p.towerFloor <= 0 && this.sim.drops.size > 0) {
+      for (const d of [...this.sim.drops.values()]) {
+        if (Math.hypot(d.x - p.head.x, d.z - p.head.z) > BOT_GRAB_RADIUS) continue;
+        if (!lootFreeFor(d, bot.id) || bot.lootSkip.has(d.id)) continue;
+        if (this.botTakeDrop(bot, d)) {
+          if (bot.lootTarget === d.id) bot.lootTarget = null;
+        } else {
+          // Сумка полна — не пробуем этот лут каждый кадр.
+          if (bot.lootSkip.size > 40) bot.lootSkip.clear();
+          bot.lootSkip.add(d.id);
         }
       }
     }
