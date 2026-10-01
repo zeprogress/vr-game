@@ -1,5 +1,7 @@
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
+import { prewarmClassClips } from "../world/classPoses";
+import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
@@ -416,6 +418,8 @@ export class Game {
     this.eventBeacon = new EventBeacon(this.scene);
     this.eventBeacon.bindGround(zone.groundHeight);
     this.fxGround = zone.groundHeight;
+    // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
+    setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -2781,7 +2785,9 @@ export class Game {
 
   /** Град: у ассасина «Веер кинжалов» — круг меньше. */
   private rainRadius(): number {
-    return this.heroClass() === "assassin" ? 4.5 : SKILL.arrowRain.radius;
+    const cls = this.heroClass();
+    // Как на сервере: веер — 4.5, ливень копий — 5, остальное — круг града.
+    return cls === "assassin" ? 4.5 : cls === "spearman" ? 5 : SKILL.arrowRain.radius;
   }
 
   /** Кнопка умения (ПК: 2/3 или клик по ячейке; телефон — кнопка ✦). slot 0/1. */
@@ -3043,10 +3049,13 @@ export class Game {
     } else if (id === "mark" || id === "chain") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
       const sel = this.selectedTargetPos() ?? frontTarget(id === "mark" ? 22 : 14);
-      if (sel) {
-        msg.x = sel.x;
-        msg.z = sel.z;
+      // Цели нет — сервер откажет; не тратим откат и подсказываем.
+      if (!sel) {
+        this.notifyToast("Нет цели впереди");
+        return;
       }
+      msg.x = sel.x;
+      msg.z = sel.z;
       this.combat.onMeleeSwing?.();
     } else if (id === "shadowStep") {
       let ex: number;

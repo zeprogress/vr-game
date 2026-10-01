@@ -36,7 +36,7 @@ import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createClassWeapon } from "../items/classWeapons";
-import { DAGGER, WEAPONS2 } from "#shared/classes2";
+import { DAGGER, SKILLS2, WEAPONS2 } from "#shared/classes2";
 import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
@@ -2638,7 +2638,7 @@ export class CombatSystem {
     this.showChargeOrb(staff.mesh);
     if (this.massT >= BOT.healCastTime) {
       send("massHeal");
-      this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
+      this.massReadyAt = performance.now() + (SKILLS2.massHeal.cooldown + 0.4) * 1000;
       this.sfx.at(c.clone(), () => this.sfx.bowRelease(1));
       this.resetCast();
     }
@@ -3323,7 +3323,7 @@ export class CombatSystem {
         if (this.massT >= BOT.healCastTime) {
           // Досидели весь каст — лечение срабатывает на сервере.
           sendMass("massHeal");
-          this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
+          this.massReadyAt = performance.now() + (SKILLS2.massHeal.cooldown + 0.4) * 1000;
           this.haptic(holdHand, 0.9, 160);
           this.sfx.at(this.castCrystalW.clone(), () => this.sfx.bowRelease(1));
           this.resetCast();

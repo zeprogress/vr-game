@@ -5,7 +5,7 @@ import { SineEase, EasingFunction } from "@babylonjs/core/Animations/easing";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
-import type { RigInstance } from "./models";
+import { loadRig, type ModelName, type RigInstance } from "./models";
 import { BOT_GEAR } from "../entities/botGear";
 
 /**
@@ -487,3 +487,26 @@ export function classAnimSet(left: string, right: string): ClassAnimSet | null {
 export const CLASS_CLIP_NAMES: readonly string[] = CLASS_CLIPS.map((c) => c.name);
 /** Разовые (не зацикленные) клипы классов. */
 export const CLASS_ONE_SHOT: ReadonlySet<string> = new Set(CLASS_CLIPS.filter((c) => !c.loop).map((c) => c.name));
+
+/**
+ * Прогреть кэш клипов для моделей заранее (после загрузки мира), по одной
+ * модели с паузой: иначе IK-построение шло в кадр появления первого бота
+ * с этой внешностью — заметный рывок в шлеме.
+ */
+export async function prewarmClassClips(scene: Scene, models: readonly ModelName[]): Promise<void> {
+  for (const model of models) {
+    if (clipCache.has(model)) continue;
+    await new Promise((r) => setTimeout(r, 400));
+    try {
+      const make = await loadRig(scene, model, { smoothNormals: true });
+      if (clipCache.has(model)) continue;
+      const rig = make();
+      for (const m of rig.meshes) m.setEnabled(false);
+      const groups = classClipsFor(scene, rig, model);
+      for (const g of groups) g.dispose();
+      rig.dispose();
+    } catch {
+      /* не вышло — соберётся при первом появлении модели */
+    }
+  }
+}

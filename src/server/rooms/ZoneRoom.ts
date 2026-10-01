@@ -418,6 +418,11 @@ const LEGEND_DROP = ["sword", "bow", "shield", "staff", "dagger", "spear", "hamm
 /** Оружие шести классов (для выбора класса бота). */
 const BOT_CLASS_WEAPONS = ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const;
 
+/** Вторая рука при надевании оружия из склада: меч/посох — щит, лук/копьё/молот/кинжал — пусто. */
+function offHandFor(cls: string): string {
+  return cls === "sword" || cls === "staff" ? "shield" : "";
+}
+
 /** Что бот держит во второй руке при этом оружии: меч/посох — щит, кинжал — второй кинжал, двуручное — ничего. */
 function botOffHand(cls: string): string {
   if (cls === "sword" || cls === "staff") return "shield";
@@ -818,8 +823,8 @@ function applyEquip(
   w: WeaponInstance,
 ): void {
   if (w.cls === "shield") {
-    // Лук занимает ОБЕ руки — если он был в правой, слетает вместе со щитом.
-    if (p.rightCls === "bow") {
+    // Лук/копьё/молот занимают ОБЕ руки — со щитом не держатся: в правую — меч.
+    if (p.rightCls === "bow" || p.rightCls === "spear" || p.rightCls === "hammer") {
       preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
       p.rightCls = "sword";
       p.rightTier = "base";
@@ -831,18 +836,21 @@ function applyEquip(
     rt.equippedWeaponId.left = w.id;
   } else {
     preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-    // Одеваем лук — он один занимает обе руки, щит (если был) слетает.
-    if (w.cls === "bow" && p.leftCls === "shield") {
+    // Вторая рука — по классу оружия (offHandFor): лук/копьё/молот — пусто, щит (если был) слетает.
+    const off = offHandFor(w.cls);
+    if (off !== "shield" && p.leftCls === "shield") {
       preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
       rt.equippedWeaponId.left = null;
     }
     const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
     p.rightCls = w.cls;
     p.rightTier = w.tier;
-    p.leftCls = w.cls === "bow" ? "" : "shield";
-    p.leftTier = w.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+    // Кинжал: второй кинжал остаётся, если он уже был в левой руке.
+    const keepDagger = w.cls === "dagger" && p.leftCls === "dagger";
+    p.leftCls = keepDagger ? "dagger" : off;
+    p.leftTier = keepDagger ? p.leftTier : off === "shield" ? (keepAegis ? "legendary" : "base") : "";
     rt.equippedWeaponId.right = w.id;
-    if (w.cls === "bow") rt.equippedWeaponId.left = null;
+    if (off !== "shield" && !keepDagger) rt.equippedWeaponId.left = null;
   }
   rt.owned.add(weaponKey(w.cls, w.tier));
 }
@@ -4308,11 +4316,11 @@ export class ZoneRoom extends Room<ZoneState> {
       const token = `nick:${norm}`;
       const rec = store.get(token);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
-      const prog: Progress = { level: rec.level, xp: rec.xp, unspent: rec.unspent, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con, luc: rec.luc, wis: rec.wis };
+      const prog: Progress = { level: rec.level, xp: rec.xp, unspent: rec.unspent, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 };
       let n = 0;
       while (n < Math.max(1, idx) && spendPoint(prog, id)) n++;
       if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
-      store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int });
+      store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int, con: prog.con, luc: prog.luc, wis: prog.wis });
       return { ok: true, text: `${name} +${n}` };
     }
     if (act === "enchant") {
@@ -5937,10 +5945,14 @@ export class ZoneRoom extends Room<ZoneState> {
             } else {
               preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
               const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
+              const keepLeft = lw.cls === "dagger" && p.leftCls === "dagger";
+              const off = offHandFor(lw.cls);
               p.rightCls = lw.cls;
               p.rightTier = lw.tier;
-              p.leftCls = lw.cls === "bow" ? "" : "shield";
-              p.leftTier = lw.cls === "bow" ? "" : keepAegis ? "legendary" : "base";
+              if (!keepLeft) {
+                p.leftCls = off;
+                p.leftTier = off === "shield" ? (keepAegis ? "legendary" : "base") : off ? "base" : "";
+              }
             }
           }
           bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
@@ -7754,6 +7766,9 @@ export class ZoneRoom extends Room<ZoneState> {
       p.str = rec.str;
       p.agi = rec.agi;
       p.int = rec.int;
+      p.con = rec.con ?? 1;
+      p.luc = rec.luc ?? 1;
+      p.wis = rec.wis ?? 1;
     } else {
       // Новичок без сейва — в лагерь (иначе первые кадры торчит в (0,0,0)
       // посреди поляны, пока клиент не пришлёт свою позицию).

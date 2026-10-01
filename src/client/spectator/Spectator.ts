@@ -1,5 +1,7 @@
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
+import { prewarmClassClips } from "../world/classPoses";
+import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
 import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
@@ -288,6 +290,8 @@ export class Spectator {
     this.skillVfx = new SkillVfx(this.scene);
     this.classFx.vfx = this.skillVfx;
     this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
+    // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
+    setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
     this.classCtx = {
       fx: this.classFx,
       vfx: this.skillVfx,
