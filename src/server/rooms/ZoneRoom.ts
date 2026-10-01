@@ -1354,7 +1354,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // раньше применялся только к tryHit() (меч/лук), сюда не доходил.
       const staffHand = p.rightCls === "staff" ? "right" : "left";
       // Скорость каста (МДР) укорачивает откат огнешара — вместе с роллом «скорость атаки».
-      const castCooldown = MAGIC.firebolt.cooldown / (rolledAtkSpeedMul(p, staffHand, rt) * castSpeedFor(p.level, p));
+      // Плюс темп от «Боевого клича»/«Благословения» — клиент ускоряется так же (Game: atkSpeedAffix × cry).
+      const castCooldown = MAGIC.firebolt.cooldown / (rolledAtkSpeedMul(p, staffHand, rt) * castSpeedFor(p.level, p) * this.cryTempo(rt));
       if (this.elapsed - rt.lastCast < castCooldown) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
@@ -1943,7 +1944,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const meleeWpn = msg.weapon === "fist" || isBladeKind(msg.weapon);
     const spd =
       (meleeWpn ? meleeSpeedFor(p.level, p) : attackSpeedFor(p.level, p)) *
-      rolledAtkSpeedMul(p, hand, rt);
+      rolledAtkSpeedMul(p, hand, rt) *
+      this.cryTempo(rt);
     const rate = WEAPON_RATE[msg.weapon] / spd;
     if (last !== undefined && this.elapsed - last < rate) return;
 
@@ -2138,6 +2140,12 @@ export class ZoneRoom extends Room<ZoneState> {
   private idOf(p: PlayerState): string | null {
     for (const [id, st] of this.state.players) if (st === p) return id;
     return null;
+  }
+
+  /** Темп от «Боевого клича» (+15%), «Клича сплочения» (+30%) и «Благословения» (+15%) — как на клиенте (Game.atkSpeedAffix). */
+  private cryTempo(rt: Runtime): number {
+    if (rt.cryUntil <= this.elapsed) return 1;
+    return rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1;
   }
 
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
@@ -5928,7 +5936,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Ролл «скорость атаки» — и у ботов (раньше учитывался только у живых игроков,
       // хотя в характеристиках показывался).
       bot.attackCd =
-        (bow ? BOT.bowCooldown : BOT.staffCooldown) / (atk * rolledAtkSpeedMul(p, "right", bot.rt));
+        (bow ? BOT.bowCooldown : BOT.staffCooldown) / (atk * rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
       const tgt = chasingMob;
       const ox = p.head.x;
       const oy = p.head.y - 0.25;
@@ -6011,7 +6019,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
       const atk = meleeSpeedFor(p.level, p);
-      bot.attackCd = (BOT.attackCooldown * botIntervalMul(p.leftCls, p.rightCls)) / (atk * rolledAtkSpeedMul(p, "right", bot.rt));
+      bot.attackCd = (BOT.attackCooldown * botIntervalMul(p.leftCls, p.rightCls)) / (atk * rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
       bot.swingDx = dx;

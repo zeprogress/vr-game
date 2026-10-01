@@ -13,6 +13,7 @@ import {
   arrowSpeedBonusFor,
   atMaxLevel,
   attackSpeedFor,
+  castSpeedFor,
   meleeSpeedFor,
   meleeAnimRate,
   grantXp,
@@ -166,6 +167,11 @@ export class Progression {
   /** Множитель темпа атаки (>1 — быстрее): уровень × ловкость, потолок ×2.6. */
   get attackSpeed(): number {
     return attackSpeedFor(this.level, this.stats);
+  }
+
+  /** Скорость каста посоха (огнешары): уровень × МДР — как на сервере (MSG.cast). */
+  get castSpeed(): number {
+    return castSpeedFor(this.level, this.stats);
   }
 
   /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor). */

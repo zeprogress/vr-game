@@ -2714,13 +2714,13 @@ export class CombatSystem {
       this.charge = 0;
       this.sfx.bowDraw();
     }
-    const rate = (this.prog.attackSpeed * this.atkSpeedAffix) / fb.chargeTime;
+    const rate = (this.prog.castSpeed * this.atkSpeedAffix) / fb.chargeTime;
     this.charge = clamp(this.charge + rate * dt, 0, 1);
     this.mana = Math.max(0, this.mana - fb.manaPerSec * dt);
     this.showChargeOrb(staff.mesh);
     if (this.charge >= 1 && this.tpRangedCd <= 0) {
       this.resetCast();
-      this.tpRangedCd = fb.cooldown / (this.prog.attackSpeed * this.atkSpeedAffix);
+      this.tpRangedCd = fb.cooldown / (this.prog.castSpeed * this.atkSpeedAffix);
       const d = c.subtract(from);
       d.normalize();
       this.emitFirebolt(1, staff.hand ?? "right", d);
@@ -2856,7 +2856,7 @@ export class CombatSystem {
       const charge = Math.max(this.charge, fb.minCharge + 0.02);
       this.resetCast();
       if (this.flatStaffCd <= 0) {
-        this.flatStaffCd = fb.cooldown / this.prog.attackSpeed;
+        this.flatStaffCd = fb.cooldown / (this.prog.castSpeed * this.atkSpeedAffix);
         this.emitFirebolt(charge, staff.hand ?? "right");
       }
     }
@@ -2910,7 +2910,7 @@ export class CombatSystem {
       const charge = Math.max(this.charge, fb.minCharge + 0.02);
       this.resetCast(); // → castHooked снят → Game снова тянет ману с сервера
       if (this.tpRangedCd <= 0) {
-        this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+        this.tpRangedCd = fb.cooldown / (this.prog.castSpeed * this.atkSpeedAffix);
         this.emitFirebolt(charge, staff?.hand ?? "right");
         this.tpAltFired = true;
       }
@@ -2923,7 +2923,7 @@ export class CombatSystem {
       this.resetCast();
       // Отпустил ⚔ и ни разу не стрелял кнопкой ➤ — слабый снаряд, как раньше.
       if (shootQuick && this.tpRangedCd <= 0) {
-        this.tpRangedCd = fb.cooldown / this.prog.attackSpeed;
+        this.tpRangedCd = fb.cooldown / (this.prog.castSpeed * this.atkSpeedAffix);
         this.emitFirebolt(fb.minCharge + 0.02, staff?.hand ?? "right");
       }
     }
