@@ -1,4 +1,4 @@
-import { BOT, BOW, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { BOT, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
 import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
 import { BASE_CRIT } from "./combat";
@@ -6,7 +6,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { critRollMult, isMeleeClass, shieldBlockChance, shieldReflect, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
@@ -170,6 +170,9 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   if (shieldTier) {
     const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "Блок");
     rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
+    const refl = shieldReflect(shieldTier);
+    if (refl > 0) rows.push({ label: "Отражение щитом", value: `${Math.round(refl * 100)}% удара` });
+    if (shieldAffix?.includes("Оплот")) rows.push({ label: "Оплот (Эгида)", value: `блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP` });
   }
 
   return rows;

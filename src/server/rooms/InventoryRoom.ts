@@ -7,6 +7,7 @@ import type { Client } from "colyseus";
 import {
   affixLabel,
   instanceLabels,
+  heldAffixText,
   instanceName,
   isWeaponClass,
   isWeaponTier,
@@ -204,8 +205,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     rightTier: rec.held?.right?.tier ?? "",
     leftCls: rec.held?.left?.cls ?? "",
     leftTier: rec.held?.left?.tier ?? "",
-    rightAffix: rightInst ? instanceLabels(rightInst).join(", ") : "",
-    leftAffix: leftInst ? instanceLabels(leftInst).join(", ") : "",
+    rightAffix: heldAffixText(rightInst),
+    leftAffix: heldAffixText(leftInst),
   });
   // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
   const pc: PcInvData = invHub.pcInv(norm) ?? {

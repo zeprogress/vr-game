@@ -77,6 +77,10 @@ export interface TowerRolled {
   vamp: number;
   /** Шанс блока щитом с учётом тира и роллов (0 — щита нет). */
   blockChance: number;
+  /** Уникальный щит: доля удара, отражённая атакующему (0 — нет). */
+  reflect: number;
+  /** Эгида: доля макс. HP, которую лечит успешный блок (0 — нет). */
+  aegisHeal: number;
   /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
   warriorMul: number;
 }
@@ -255,6 +259,10 @@ export class TowerRoom extends Room<TowerState> {
   private heroGuard: GuardState | null = null;
   /** Шанс блока щитом: тир + роллы (см. shieldBlockChance). */
   private heroBlockChance = 0;
+  private heroReflect = 0;
+  private heroAegisHeal = 0;
+  /** Отражённый щитом урон — применяется после хода мобов (смерть моба посреди перебора ломала бы цикл). */
+  private reflectQueue: { m: LiveMob; dmg: number }[] = [];
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
   /** Вампиризм — доля урона удара, возвращаемая герою как HP (врождённый + ролл). */
@@ -343,6 +351,8 @@ export class TowerRoom extends Room<TowerState> {
     this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
     const shieldTier = options.leftCls === "shield" ? options.leftTier : options.rightCls === "shield" ? options.rightTier : "";
     this.heroBlockChance = options.rolled?.blockChance ?? (shieldTier ? shieldBlockChance(shieldTier) : 0);
+    this.heroReflect = options.rolled?.reflect ?? 0;
+    this.heroAegisHeal = options.rolled?.aegisHeal ?? 0;
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
     this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
@@ -506,7 +516,7 @@ export class TowerRoom extends Room<TowerState> {
         if (m.atkCd <= 0) {
           m.atkCd += this.mobAtkInterval;
           m.atkPulse = true;
-          this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, ranged);
+          this.hurtHero(floorMobDmg(this.state.floor), m.x, m.z, ranged, m);
           if (this.state.phase !== "running") {
             this.emitSnapshot();
             return;
@@ -515,6 +525,7 @@ export class TowerRoom extends Room<TowerState> {
       }
     }
     this.separateMobs();
+    if (this.flushReflect()) return;
 
     if (this.boss) {
       const b = this.boss;
@@ -528,7 +539,7 @@ export class TowerRoom extends Room<TowerState> {
         if (b.atkCd <= 0) {
           b.atkCd += b.atkInterval;
           b.atkPulse = true;
-          this.hurtHero(b.dmg, b.x, b.z, ranged);
+          this.hurtHero(b.dmg, b.x, b.z, ranged, b);
           if (this.state.phase !== "running") {
             this.emitSnapshot();
             return;
@@ -536,6 +547,7 @@ export class TowerRoom extends Room<TowerState> {
         }
       }
     }
+    if (this.flushReflect()) return;
 
     this.emitSnapshot();
   }
@@ -876,7 +888,27 @@ export class TowerRoom extends Room<TowerState> {
    * (`ZoneRoom.hurtPlayer`): герой всегда смотрит на цель, так что щит
    * направлен по `heroYaw`, а не в случайную сторону.
    */
-  private hurtHero(dmg: number, fromX: number, fromZ: number, projectile: boolean): void {
+  /** Применить отражённый щитом урон. true — этаж/забег сменился, тик дальше не идём. */
+  private flushReflect(): boolean {
+    if (this.reflectQueue.length === 0) return false;
+    const q = this.reflectQueue;
+    this.reflectQueue = [];
+    const floor = this.state.floor;
+    for (const { m, dmg } of q) {
+      if (m.hp <= 0 || (m !== this.boss && this.mobs.indexOf(m) < 0)) continue;
+      this.applyDamage(m, dmg);
+      // Забег кончился — снапшот, как после удара по герою; сменился этаж —
+      // снапшот добивающего удара уже ушёл из applyDamage (до advanceFloor).
+      if ((this.state.phase as TowerPhase) !== "running") {
+        this.emitSnapshot();
+        return true;
+      }
+      if (this.state.floor !== floor) return true;
+    }
+    return false;
+  }
+
+  private hurtHero(dmg: number, fromX: number, fromZ: number, projectile: boolean, from?: LiveMob): void {
     let ax = fromX - this.hero.x;
     let az = fromZ - this.hero.z;
     const L = Math.hypot(ax, az);
@@ -897,6 +929,11 @@ export class TowerRoom extends Room<TowerState> {
     let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
     if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
+    // Уникальный щит — отражение (и при блоке), Эгида — блок лечит (как ZoneRoom.hurtPlayer).
+    if (block.by !== 3 && from && this.heroReflect > 0) this.reflectQueue.push({ m: from, dmg: dmg * this.heroReflect });
+    if (block.by === 1 && block.mult === 0 && this.heroAegisHeal > 0 && this.state.heroHp > 0) {
+      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + this.state.heroMaxHp * this.heroAegisHeal);
+    }
     // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):
     // "MISS" при увороте рисуется над ИСТОЧНИКОМ удара, звук блока/удара — над героем.
     const k = block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";

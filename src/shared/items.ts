@@ -258,7 +258,7 @@ function weaponItem(
     short,
     hint:
       cls === "shield"
-        ? `блок ${Math.round((SHIELD.blockByTier[tier] ?? SHIELD.blockChance) * 100)}%${tier === "base" ? "" : " + ролл Блок"}`
+        ? `блок ${Math.round((SHIELD.blockByTier[tier] ?? SHIELD.blockChance) * 100)}%${tier === "base" ? "" : " + ролл Блок"}${tier === "legendary" ? " · отражение" : ""}`
         : tier === "legendary"
           ? "уникальное · 2–3 ролла"
           : tier === "gold"
@@ -729,6 +729,24 @@ export function migrateStaffAffixes(w: WeaponInstance): boolean {
 export function shieldBlockChance(tier: WeaponTier | string, inst?: Pick<WeaponInstance, "affixes"> | null): number {
   const base = SHIELD.blockByTier[tier as WeaponTier] ?? SHIELD.blockChance;
   return inst ? base + affixSum(inst.affixes, "block") : base;
+}
+
+/** Доля удара моба, которую щит отражает атакующему (только уникальный тир). */
+export function shieldReflect(tier: WeaponTier | string): number {
+  return tier === "legendary" ? SHIELD.reflectFrac : 0;
+}
+
+/** Эгида — старый уникальный щит с особым свойством «Оплот». */
+export function isAegis(w: Pick<WeaponInstance, "cls" | "nm"> | null | undefined): boolean {
+  return !!w && w.cls === "shield" && w.nm === LEGACY_LEGENDARY.shield?.name;
+}
+/** Подпись свойства Эгиды (идёт первой в тексте в руке; heroStats/itemStats ищут по слову «Оплот»). */
+export const AEGIS_LABEL = `Оплот: блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP`;
+
+/** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
+export function heldAffixText(w: WeaponInstance | null | undefined): string {
+  if (!w) return "";
+  return [...(isAegis(w) ? [AEGIS_LABEL] : []), ...instanceLabels(w)].join(", ");
 }
 
 /** Доля урона, возвращаемая как HP (ролл Вампиризм). Только ближний бой. */

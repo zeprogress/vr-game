@@ -1,4 +1,4 @@
-import { shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { shieldBlockChance, shieldReflect, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec } from "#shared/heroStats";
@@ -88,7 +88,14 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "Блок");
     out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
     out.push(["Тир щита", `обычный ${pctOf(SHIELD.blockByTier.base)} · золотой ${pctOf(SHIELD.blockByTier.gold)} · уникальный ${pctOf(SHIELD.blockByTier.legendary)}`]);
+    const refl = shieldReflect(w.tier);
+    if (refl > 0) out.push(["Отражение", `${pctOf(refl)} урона удара — обратно атакующему (и при блоке)`]);
   }
-  if (w.affix) out.push(["Роллы", w.affix]);
+  // Свойство Эгиды идёт в тексте первым («Оплот: …») — отдельной строкой, не роллом.
+  const parts = (w.affix ?? "").split(", ").filter(Boolean);
+  const aegis = parts.find((t) => t.startsWith("Оплот"));
+  if (aegis) out.push(["Оплот", aegis.replace(/^Оплот:\s*/, "")]);
+  const rolls = parts.filter((t) => t !== aegis).join(", ");
+  if (rolls) out.push(["Роллы", rolls]);
   return out;
 }

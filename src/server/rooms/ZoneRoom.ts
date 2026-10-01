@@ -75,6 +75,7 @@ import {
   isAdminNick,
   advanceHour,
   BOSS,
+  SHIELD,
   BOW,
   COMBAT,
   BOT,
@@ -145,6 +146,9 @@ import {
   instanceLabels,
   instanceName,
   instanceStars,
+  heldAffixText,
+  isAegis,
+  shieldReflect,
   weaponQuality,
   affixSum,
   BAG,
@@ -722,6 +726,13 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
 
 /** Башня испытаний открыта? Временно закрыта (2026-10-01) — событие не выпадает, очередь не принимает. */
 const TOWER_OPEN = false;
+
+/** Щит в руках героя: тир и экземпляр (null — щита нет). */
+function shieldOf(p: PlayerState, rt: Runtime | undefined): { tier: string; inst: WeaponInstance | null } | null {
+  const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
+  if (!hand) return null;
+  return { tier: hand === "left" ? p.leftTier : p.rightTier, inst: rt ? rolledIn(p, hand, rt) : null };
+}
 
 /** Шанс блока щитом героя: тир щита + ролл Блок (0 — щита в руках нет). */
 function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
@@ -2958,6 +2969,8 @@ export class ZoneRoom extends Room<ZoneState> {
       critMult: trc.mult,
       vamp: trt ? vampFrac(rolledIn(p, "right", trt)) : 0,
       blockChance: blockChanceOf(p, trt),
+      reflect: shieldReflect(shieldOf(p, trt)?.tier ?? ""),
+      aegisHeal: isAegis(shieldOf(p, trt)?.inst) ? SHIELD.aegisHealFrac : 0,
       warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
     };
     this.towerRuns
@@ -4153,7 +4166,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(`nick:${normNick(p.nick)}`);
     const affOf = (id: string | null): string => {
       const w = id ? rt.weapons.find((x) => x.id === id) : undefined;
-      return w ? instanceLabels(w).join(", ") : "";
+      return heldAffixText(w);
     };
     const heldR = rolledIn(p, "right", rt)?.id ?? null;
     let heldL = rolledIn(p, "left", rt)?.id ?? null;
@@ -7071,8 +7084,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt) {
         const lw = rolledIn(p, "left", rt);
         const rw = rolledIn(p, "right", rt);
-        p.leftAffix = lw ? instanceLabels(lw).join(", ") : "";
-        p.rightAffix = rw ? instanceLabels(rw).join(", ") : "";
+        p.leftAffix = heldAffixText(lw);
+        p.rightAffix = heldAffixText(rw);
       }
     });
 
@@ -7417,6 +7430,20 @@ export class ZoneRoom extends Room<ZoneState> {
     if (rt.whirlUntil > this.elapsed) dmg *= rt.whirlKind === 2 ? 0 : rt.whirlKind === 1 ? 1 - WHIRL.warriorDef : 1;
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
+    // Уникальный щит — отражение: часть удара моба (до защиты) уходит
+    // атакующему, и при блоке тоже. Не от яда и не при увороте. dot=true в
+    // hitMob — без вздрагивания/кулдауна удара и без «зеркала» Ледяного демона.
+    const shield = h.dot || dodged ? null : shieldOf(p, rt);
+    const reflect = shield ? shieldReflect(shield.tier) : 0;
+    if (reflect > 0 && h.byMob) {
+      const src = this.sim.mobs.get(h.byMob);
+      if (src && !src.dead) this.sim.hitMob(src.id, inDmg * reflect, -ax, -az, h.target, h.projectile, true);
+    }
+    // Эгида, «Оплот»: успешный блок щитом лечит.
+    if (shield && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * SHIELD.aegisHealFrac);
+      this.broadcast(MSG.act, { k: "healHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+    }
     // Вампиризм моба (Костяной призрак) — от реально прошедшего урона.
     if (h.lifesteal && h.byMob && dmg > 0) {
       const m = this.sim.mobs.get(h.byMob);
