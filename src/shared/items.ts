@@ -436,8 +436,8 @@ export interface WeaponInstance {
 }
 
 const AFFIX_FAMILIES: Record<AffixKind, AffixSub[]> = {
-  // Один ролл урона: 5–15%. dmgPct (8–20%) больше не выпадает — старые
-  // пересчитываются в dmgFlat с теми же очками (migrateDmgPct).
+  // Новые предметы — один ролл урона, 5–15%. dmgPct (8–20%) больше не
+  // выпадает, но у уже выпавших предметов остаётся как был (и точится в своих пределах).
   dmg: ["dmgFlat"],
   atkSpeed: ["atkSpeedPct"],
   crit: ["critChance", "critMult"],
@@ -621,27 +621,6 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
 function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] {
   void cls;
   return AFFIX_RANGES[sub];
-}
-
-/**
- * Разовый пересчёт старого ролла урона «dmgPct» (8–20%) в единый «dmgFlat»
- * (5–15%) с сохранением очков: t = (v−0.08)/0.12, v' = 0.05 + t·0.10.
- * Раньше оба ролла показывались одинаково «+N% урона», но с разным потолком —
- * у одних игроков выпадало до 15%, у других до 20%. Теперь потолок 15%.
- * true — что-то поменялось.
- */
-export function migrateDmgPct(w: WeaponInstance): boolean {
-  let changed = false;
-  for (const a of w.affixes) {
-    if (a.sub !== "dmgPct") continue;
-    const [lo, hi] = AFFIX_RANGES.dmgPct;
-    const [nlo, nhi] = AFFIX_RANGES.dmgFlat;
-    const t = Math.max(0, Math.min(1, (a.value - lo) / (hi - lo)));
-    a.sub = "dmgFlat";
-    a.value = nlo + t * (nhi - nlo);
-    changed = true;
-  }
-  return changed;
 }
 
 /**
