@@ -72,6 +72,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   attrVer?: number;
   /** Класс бота зрителя (оружие класса), выбранный !class. Нет — прежнее/случайное. */
   botClass?: string;
+  /** Хозяин сам распределяет очки атрибутов (вложил вручную или сбросил) — бот больше не раскидывает их сам. */
+  manualAttrs?: boolean;
   /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
   skills?: Record<string, string[]>;
   updatedAt: number;

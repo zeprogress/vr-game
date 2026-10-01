@@ -3386,6 +3386,12 @@ export class ZoneRoom extends Room<ZoneState> {
       cmd === "!сбросочки"
     ) {
       this.respecBot(norm);
+    } else if (cmd === "!autostats" || cmd === "!автоочки") {
+      // Вернуть боту авто-распределение очков атрибутов (снимает ручной режим).
+      if (store.get(`nick:${norm}`)) {
+        store.put(`nick:${norm}`, { manualAttrs: false });
+        this.reply(`@${nick} герой снова сам раскидывает очки атрибутов по своему классу.`);
+      } else if (this.hintOk(norm)) this.reply(`@${nick} у тебя ещё нет героя — сначала !play.`);
     } else if (cmd === "!delete" || cmd === "!reset") {
       this.deleteBot(nick, norm);
     } else if (INV_COMMANDS.has(cmd)) {
@@ -4340,6 +4346,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const n = this.spendStats(t.p, id, Math.max(1, idx), this.bots.has(norm));
         if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
         this.persistNick(norm);
+        store.put(`nick:${norm}`, { manualAttrs: true });
         return { ok: true, text: `${name} +${n}` };
       }
       const token = `nick:${norm}`;
@@ -4349,7 +4356,7 @@ export class ZoneRoom extends Room<ZoneState> {
       let n = 0;
       while (n < Math.max(1, idx) && spendPoint(prog, id)) n++;
       if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
-      store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int, con: prog.con, luc: prog.luc, wis: prog.wis });
+      store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int, con: prog.con, luc: prog.luc, wis: prog.wis, manualAttrs: true });
       return { ok: true, text: `${name} +${n}` };
     }
     if (act === "enchant") {
@@ -4621,6 +4628,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const done = this.spendStats(p, stat, want, true);
     if (done === 0) return;
     this.persistBot(bot);
+    store.put(`nick:${norm}`, { manualAttrs: true });
     const prog = readProgress(p);
 
     const name = ZoneRoom.statName(stat);
@@ -4750,7 +4758,7 @@ export class ZoneRoom extends Room<ZoneState> {
       p.maxMana = maxManaFor(p.level, p);
       p.mana = Math.min(p.mana, p.maxMana);
       this.persistNick(norm);
-      store.put(token, { respecCount: done + 1, tokens: tokens - cost });
+      store.put(token, { respecCount: done + 1, tokens: tokens - cost, manualAttrs: true });
       return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int !con !luc !wis` };
     }
     if (!rec) return { ok: false, text: "героя нет — напиши !play." };
@@ -4760,7 +4768,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (err) return { ok: false, text: err };
     const fresh = { ...rec };
     resetAttrs(fresh);
-    store.put(token, { str: base, agi: base, int: base, con: base, luc: base, wis: base, unspent: fresh.unspent, respecCount: done + 1, tokens: tokens - cost });
+    store.put(token, { str: base, agi: base, int: base, con: base, luc: base, wis: base, unspent: fresh.unspent, respecCount: done + 1, tokens: tokens - cost, manualAttrs: true });
     return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${fresh.unspent}` };
   }
 
@@ -4775,7 +4783,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
     "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
-    "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов, бот раскидывает новые очки сам.",
+    "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
   ];
 
   /** Раз во сколько-то минут — случайная подсказка в чат, если герои в мире есть. */
@@ -5318,8 +5326,9 @@ export class ZoneRoom extends Room<ZoneState> {
   /** ИИ одного бота на кадр. */
   private tickBot(dt: number, bot: Bot): void {
     const p = bot.state;
-    // Боты зрителей сами раскидывают свободные очки по шаблону своего класса.
-    if (p.unspent > 0) this.botAutoSpend(p);
+    // Боты зрителей сами раскидывают свободные очки по шаблону своего класса —
+    // пока хозяин не взялся распределять их сам (!inv / !сила … / сброс).
+    if (p.unspent > 0 && !store.get(`nick:${bot.norm}`)?.manualAttrs) this.botAutoSpend(p);
     if (p.dead) {
       bot.swingIn = 0; // умер на замахе — удара не будет
       bot.swingTarget = null;

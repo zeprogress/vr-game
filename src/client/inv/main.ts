@@ -5,6 +5,7 @@ import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
 import { qualityStars } from "#shared/items";
+import { respecCostFor } from "#shared/constants";
 
 interface InvWeapon {
   num: number;
@@ -631,7 +632,7 @@ const MECH_CLASSES_HTML = (() => {
 <h2>Атрибуты</h2>
 <p>Основа — от <b>уровня</b> (здоровье, урон, темп атаки, бег растут сами). Атрибуты — множители поверх. ${costRule()}. Каждый подъём даёт:</p>
 <ul>${attrs}</ul>
-<p>Уворот с одним оружием в руках (пустая вторая рука, лук, посох, копьё, молот) — в ${ATTR2.luc.dodgeOneItem} раза выше, потолок ${Math.round(ATTR2.luc.dodgeCap * 100)}%. Сброс всех очков — <b>1 жетон ◈</b> (<code>!respec</code> или кнопка на вкладке «Атрибуты»).</p>
+<p>Уворот с одним оружием в руках (пустая вторая рука, лук, посох, копьё, молот) — в ${ATTR2.luc.dodgeOneItem} раза выше, потолок ${Math.round(ATTR2.luc.dodgeCap * 100)}%. Сброс всех очков — ${respecCostFor(0) === 0 ? "<b>бесплатно</b>" : `<b>${respecCostFor(0)} жетон ◈</b>`} (<code>!respec</code> или кнопка на вкладке «Атрибуты»). Бот зрителя раскидывает новые очки сам, пока хозяин не вложит их вручную или не сбросит (<code>!autostats</code> — вернуть авто).</p>
 
 <h2>Классы</h2>
 <p>Класс — это оружие в руках: взял кинжалы — ассасин, копьё — копейщик и т.д. У каждого класса свои умения, любые два можно выбрать на вкладке «Умения» (ПК — клавиши 2 и 3, телефон — кнопки ✦, VR — стики правой и левой руки). Ботам — <code>!class</code> и <code>!skills</code>.</p>
