@@ -236,6 +236,12 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
 };
 
+/** Множитель магии от тира посоха (раньше тир посоха на огнешар не влиял — маг отставал). */
+export function staffMagicTier(tier: string): number {
+  const t = WEAPONS2.staff.tiers;
+  return tier === "legendary" ? t[2] : tier === "gold" ? t[1] : t[0];
+}
+
 export const DAGGER = {
   /** Два кинжала: руки чередуются — темп ×, урон удара ×. */
   dualTempo: 1.35,
@@ -298,7 +304,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
     build: { int: 4, wis: 3, con: 1.8, luc: 0.6 },
   },
   assassin: {
-    name: "Ассасин", icon: "🗡️", role: "Криты, уворот", weapons: "1 или 2 кинжала", main: "dagger",
+    name: "Ассасин", icon: "🔪", role: "Криты, уворот", weapons: "1 или 2 кинжала", main: "dagger",
     skills: ["shadowStep", "stunBash", "arrowRain"], defaultSkills: ["shadowStep", "stunBash"],
     build: { str: 3, luc: 3.5, agi: 2.5, con: 1.3, wis: 0.6 },
   },

@@ -15,7 +15,8 @@ import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/capsuleBuilder";
 
 import type { PlayerMode, PlayerState, Xf } from "#shared/net/schema";
-import type { WeaponClass, WeaponTier } from "#shared/items";
+import { isWeaponClass, type WeaponClass, type WeaponTier } from "#shared/items";
+import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
 import type { WeaponKind } from "#shared/combat";
 import { LOADOUT } from "../config/loadout";
 import { NameTag } from "../ui/NameTag";
@@ -85,7 +86,7 @@ const HOLD_AFTER = 300;
 const BUFFER_MS = 700;
 
 /** Клипы модели бота, которые реально используем (в паке их больше). */
-const BOT_CLIPS = [
+const BOT_CLIPS: readonly string[] = [
   "idle",
   "walk",
   "run",
@@ -97,9 +98,12 @@ const BOT_CLIPS = [
   "recievehit",
   "pickup",
   "death",
-] as const;
+  // Клипы «Классов 2.0» (world/classPoses): стойки и удары копьём/молотом/кинжалами/луком.
+  ...CLASS_CLIP_NAMES,
+];
 /** Клипы, которые не крутятся по кругу сами — их запускает конкретный триггер. */
 const BOT_ONE_SHOT_CLIPS = new Set<string>([
+  ...CLASS_ONE_SHOT,
   "swordslash",
   "victory",
   "roll",
@@ -210,6 +214,14 @@ export class RemoteAvatar implements Hittable {
   private capsule: Mesh | null = null;
   private botBody: TransformNode | null = null;
   private botRig: RigInstance | null = null;
+  /** Клипы классов на этом риге (dispose вместе с ригом). */
+  private classGroups: AnimationGroup[] = [];
+  /** Клипы класса по оружию в руках (стойка/удар); null — обычные. */
+  private animSet: ClassAnimSet | null = null;
+  /** Клип текущего замаха. */
+  private swingClip = "swordslash";
+  /** Два кинжала: следующий удар — левой. */
+  private stabLeft = false;
   private botHolder: TransformNode | null = null;
   /** Высота плашки над ногами модели (для VR: плашка привязана к земле, а не к качающейся голове). */
   private botTagH = 0;
@@ -344,7 +356,19 @@ export class RemoteAvatar implements Hittable {
   /** Быстрый замах — по сети (act:swing). Скорость клипа растёт с уровнем. */
   playSwing(): void {
     this.swingAt = this.now;
-    const g = this.botRig?.anims.get("swordslash");
+    // С кинжалами/копьём/молотом/луком — клип класса (два кинжала — руки по очереди).
+    const set = this.animSet;
+    let name = "swordslash";
+    if (set && this.botRig?.anims.has(set.attack)) {
+      name = set.alt && this.stabLeft ? set.alt : set.attack;
+      this.stabLeft = !!set.alt && !this.stabLeft;
+    }
+    if (name !== this.swingClip) {
+      this.botRig?.anims.get(this.swingClip)?.stop();
+      this.animW.set(this.swingClip, 0);
+      this.swingClip = name;
+    }
+    const g = this.botRig?.anims.get(name);
     if (g) {
       const rate = meleeAnimRate(this.level);
       this.swingRate = rate;
@@ -354,7 +378,7 @@ export class RemoteAvatar implements Hittable {
       g.reset();
       g.start(false, rate, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
-      this.animW.set("swordslash", 1);
+      this.animW.set(name, 1);
       this.swingUntil = this.now + ((g.to - g.from) / 60 / rate) * 1000;
     }
   }
@@ -420,6 +444,8 @@ export class RemoteAvatar implements Hittable {
     this.handR?.dispose();
     this.capsule?.dispose();
     this.botBody?.dispose(false, true);
+    for (const g of this.classGroups) g.dispose();
+    this.classGroups = [];
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.botRig = this.botHolder = null;
@@ -619,6 +645,7 @@ export class RemoteAvatar implements Hittable {
   push(now: number, p: PlayerState): void {
     this.wantL = [p.leftCls, p.leftTier];
     this.wantR = [p.rightCls, p.rightTier];
+    this.animSet = classAnimSet(p.leftCls, p.rightCls);
     this.syncFishing(p.fishing === 1);
     this.wantKeyL = keyOf(this.wantL);
     this.wantKeyR = keyOf(this.wantR);
@@ -910,7 +937,9 @@ export class RemoteAvatar implements Hittable {
         const rig = make();
 
         // Прежняя модель (смена скина) — снять.
-        this.botRig?.dispose();
+        for (const g of this.classGroups) g.dispose();
+    this.classGroups = [];
+    this.botRig?.dispose();
         this.botHolder?.dispose();
         this.botRig = this.botHolder = null;
 
@@ -922,6 +951,11 @@ export class RemoteAvatar implements Hittable {
         rig.root.parent = holder;
         rig.root.position.setAll(0);
         holder.scaling.setAll(BOT_RIG_SCALE);
+        try {
+          this.classGroups = classClipsFor(this.scene, rig, model);
+        } catch (e) {
+          console.warn("[avatar] клипы классов не собрались:", (e as Error).message);
+        }
 
         recolorCharacter(rig.root);
         // Части тела (кожа, броня, штаны…) — один меш с цветами в вершинах: одна отрисовка на героя вместо 5–9.
@@ -1149,13 +1183,13 @@ export class RemoteAvatar implements Hittable {
     this.locoMove = move;
 
     let want: string;
-    if (now < this.swingUntil) want = "swordslash";
+    if (now < this.swingUntil) want = this.swingClip;
     else if (now < this.hitUntil) want = "recievehit";
     else if (now < this.pickupUntil) want = "pickup";
     else if (now < this.emoteUntil && this.emoteClip) want = this.emoteClip;
     else if (run) want = "run";
     else if (move) want = "walk";
-    else want = "idle";
+    else want = this.animSet && rig.anims.has(this.animSet.idle) ? this.animSet.idle : "idle";
 
     const k = Math.min(1, dt * 12);
     for (const n of BOT_CLIPS) {
@@ -1174,7 +1208,7 @@ export class RemoteAvatar implements Hittable {
       } else if (!g.isPlaying && n === want && BOT_ONE_SHOT_CLIPS.has(n)) {
         // Разовый клип ещё «хочется» (окно открыто), но он уже доиграл —
         // перезапускаем, иначе модель зависает на последнем кадре.
-        const rate = n === "swordslash" ? this.swingRate : 1;
+        const rate = n === this.swingClip ? this.swingRate : 1;
         g.start(false, rate, g.from, g.to, false);
       }
       this.animW.set(n, w);
@@ -1207,7 +1241,7 @@ export class RemoteAvatar implements Hittable {
     cur?.dispose();
     markKey();
     const [cls, tier] = want;
-    if (cls !== "sword" && cls !== "bow" && cls !== "shield" && cls !== "staff") return null;
+    if (!isWeaponClass(cls)) return null;
     if (!tier) return null;
 
     const mesh = this.makeWeapon!(cls as WeaponClass, tier as WeaponTier);
@@ -1219,7 +1253,8 @@ export class RemoteAvatar implements Hittable {
     // оружие садится в кость кулака и ездит с рукой во всех клипах, включая
     // SwordSlash. В VR у игрока настоящий трекинг рук — сюда не попадает.
     if (this.usesRig() && this.botRig) {
-      const fist = side === "left" ? this.botFistL : this.botFistR;
+      // Лук — всегда в левом кулаке (клип выстрела: левая держит лук, правая тянет тетиву).
+      const fist = this.fistFor(side, cls);
       if (!fist) {
         mesh.dispose();
         return null;
@@ -1254,10 +1289,9 @@ export class RemoteAvatar implements Hittable {
    */
   private seatBotGear(mesh: Mesh, cls: string, fist: TransformNode): void {
     const g =
-      cls === "shield" ? BOT_GEAR.shield
-      : cls === "bow" ? BOT_GEAR.bow
-      : cls === "staff" ? BOT_GEAR.staff
-      : BOT_GEAR.sword;
+      cls === "shield" || cls === "bow" || cls === "staff" || cls === "dagger" || cls === "spear" || cls === "hammer"
+        ? BOT_GEAR[cls]
+        : BOT_GEAR.sword;
     mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
     if (cls === "shield" && g.auto) mesh.rotation.copyFrom(this.shieldRotFor(fist));
     else mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
@@ -1267,8 +1301,15 @@ export class RemoteAvatar implements Hittable {
   /** Пересадка без пересборки мешей — по правке в панели настройки. */
   private reseatBotGear(): void {
     if (!this.usesRig() || !this.botRig) return;
-    if (this.gearL && this.botFistL) this.seatBotGear(this.gearL, this.wantL[0], this.botFistL);
-    if (this.gearR && this.botFistR) this.seatBotGear(this.gearR, this.wantR[0], this.botFistR);
+    const fl = this.fistFor("left", this.wantL[0]);
+    const fr = this.fistFor("right", this.wantR[0]);
+    if (this.gearL && fl) this.seatBotGear(this.gearL, this.wantL[0], fl);
+    if (this.gearR && fr) this.seatBotGear(this.gearR, this.wantR[0], fr);
+  }
+
+  /** Кость кулака под оружие этой руки (лук — всегда левая). */
+  private fistFor(side: "left" | "right", cls: string): TransformNode | null {
+    return side === "left" || cls === "bow" ? this.botFistL : this.botFistR;
   }
 
   /** Оружие в руке — сейчас (для камеры «из глаз» спектатора, см. EyeGloves). */
@@ -1285,8 +1326,10 @@ export class RemoteAvatar implements Hittable {
    * восстанавливаем родителя И посадку разом.
    */
   restoreGearToFist(): void {
-    if (this.gearL && this.botFistL) this.gearL.parent = this.botFistL;
-    if (this.gearR && this.botFistR) this.gearR.parent = this.botFistR;
+    const fl = this.fistFor("left", this.wantL[0]);
+    const fr = this.fistFor("right", this.wantR[0]);
+    if (this.gearL && fl) this.gearL.parent = fl;
+    if (this.gearR && fr) this.gearR.parent = fr;
     this.reseatBotGear();
   }
 
@@ -1416,6 +1459,8 @@ export class RemoteAvatar implements Hittable {
     this.gearL?.dispose();
     this.gearR?.dispose();
     this.bubble?.dispose();
+    for (const g of this.classGroups) g.dispose();
+    this.classGroups = [];
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.nameTag.dispose();

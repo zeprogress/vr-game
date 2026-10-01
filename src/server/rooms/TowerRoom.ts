@@ -1,4 +1,5 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
+import { DAGGER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
 import colyseus from "colyseus";
 import { Schema, type } from "@colyseus/schema";
 
@@ -311,7 +312,10 @@ export class TowerRoom extends Room<TowerState> {
           ? "bow"
           : options.rightCls === "staff"
             ? "staff"
-            : "fist";
+            : // Кинжал/копьё/молот в башне бьют как меч (ближний бой), урон и темп — свои.
+              options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer"
+              ? "sword"
+              : "fist";
     this.heroWeaponKind = weaponKind;
     this.heroCls = isWeaponClass(options.rightCls) ? options.rightCls : "sword";
     this.heroRanged = weaponKind === "bow" || weaponKind === "staff";
@@ -323,7 +327,9 @@ export class TowerRoom extends Room<TowerState> {
       this.heroDmg = weaponDamage("arrow", options.level, this.heroAttrs, rightW?.mult ?? 1);
     } else if (weaponKind === "staff") {
       // 0.7 — тот же фиксированный заряд, что и у ботов-магов (ZoneRoom.tickBot).
-      this.heroDmg = fireboltDamage(options.level, this.heroAttrs, 0.7);
+      this.heroDmg = fireboltDamage(options.level, this.heroAttrs, 0.7) * staffMagicTier(options.rightTier);
+    } else if (options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer") {
+      this.heroDmg = weaponDamage(options.rightCls, options.level, this.heroAttrs, rightW?.mult ?? 1);
     } else {
       this.heroDmg = weaponDamage(weaponKind, options.level, this.heroAttrs, rightW?.mult ?? 1);
     }
@@ -340,7 +346,11 @@ export class TowerRoom extends Room<TowerState> {
     // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
     if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
-    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs);
+    // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — BOT.attackCooldown).
+    const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
+    const dual = options.rightCls === "dagger" && options.leftCls === "dagger" ? DAGGER.dualTempo : 1;
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (BOT.attackCooldown / prof.interval) * dual : 1);
+    if (options.rightCls === "dagger" && options.leftCls === "dagger") this.heroDmg *= DAGGER.dualDmg;
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
     // башне аффиксы не работали вовсе, крит был только базовый у лука).
     const ro = options.rolled;

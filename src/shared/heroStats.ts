@@ -3,8 +3,8 @@ import { fireboltDamage } from "./magic";
 import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, invested } from "./attrs2";
-import type { AttrsIn } from "./classes2";
-import { magicResistFrac } from "./magic";
+import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
+import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
@@ -15,11 +15,16 @@ import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
  * BOT.bowCooldown; посох — это ОГНЕШАРЫ, не удары рукой: полный темп от
  * BOT.staffCooldown. `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
  */
-export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0): number {
+export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0, dualDaggers = false): number {
   const mul = 1 + affixBonus;
   if (cls === "bow") return (attackSpeedFor(level, a) * mul) / BOT.bowCooldown;
   // Посох — огнешары: темп от скорости каста (МДР), не от ловкости.
   if (cls === "staff") return (castSpeedFor(level, a) * mul) / BOT.staffCooldown;
+  // Кинжал/копьё/молот — своя пауза между ударами (два кинжала — руки по очереди).
+  if (cls === "dagger" || cls === "spear" || cls === "hammer") {
+    const dual = cls === "dagger" && dualDaggers ? DAGGER.dualTempo : 1;
+    return (meleeSpeedFor(level, a) * mul * dual) / WEAPONS2[cls].interval;
+  }
   return (meleeSpeedFor(level, a) * mul) / BOT.attackCooldown;
 }
 
@@ -59,7 +64,7 @@ function affixNum(text: string | undefined, label: string): number {
   return m ? Number(m[1]) : 0;
 }
 
-const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff"];
+const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
 
 /**
  * Таблица понятных игроку характеристик героя: урон, скорость атаки, скорость
@@ -92,7 +97,17 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
       value: (weaponDamage("arrow", p.level, p, tierMul) * (1 + dmgBonus)).toFixed(1),
     });
   } else if (cls === "staff") {
-    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * (1 + dmgBonus)).toFixed(1) });
+    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * staffMagicTier(tier) * (1 + dmgBonus)).toFixed(1) });
+  } else if (cls === "dagger" || cls === "spear" || cls === "hammer") {
+    const dual = cls === "dagger" && p.leftCls === "dagger" && p.rightCls === "dagger";
+    rows.push({
+      label: "Урон",
+      value: (weaponDamage(cls, p.level, p, tierMul) * (dual ? DAGGER.dualDmg : 1) * (1 + dmgBonus)).toFixed(1),
+    });
+    if (cls === "hammer") {
+      rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
+    }
+    if (cls === "spear") rows.push({ label: "Пробивает целей", value: String(WEAPONS2.spear.pierce) });
   } else {
     rows.push({
       label: "Урон",
@@ -106,7 +121,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("скорость атаки") / 100;
   rows.push({
     label: attackRateLabel(cls),
-    value: `${attacksPerSec(cls, p.level, p, atkSpeedBonus).toFixed(2)}/с`,
+    value: `${attacksPerSec(cls, p.level, p, atkSpeedBonus, p.leftCls === "dagger" && p.rightCls === "dagger").toFixed(2)}/с`,
   });
 
   rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p).toFixed(1)} м/с` });
@@ -120,11 +135,18 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const critChanceBonus = affixNum2("шанс крита") / 100;
   const critMultBonus = affixNum2("силу крита");
   const luckN = invested(p.luc);
-  const critChance = Math.min(0.75, (cls === "bow" ? BOW.critChance : BASE_CRIT) + critChanceBonus + luckN * ATTR2.luc.crit);
+  const newW = cls === "dagger" || cls === "spear" || cls === "hammer" ? WEAPONS2[cls] : null;
+  const soloDagger = cls === "dagger" && (p.leftCls === "" || p.rightCls === "");
+  const critChance = Math.min(
+    0.75,
+    (cls === "bow" ? BOW.critChance : newW ? newW.critBase : BASE_CRIT) + (soloDagger ? DAGGER.soloCrit : 0) + critChanceBonus + luckN * ATTR2.luc.crit,
+  );
   // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
   // combat.ts): у лука BOW.critMult, у меча/кулака SWORD_CRIT_MULT, у посоха
   // STAFF_CRIT_MULT.
-  const baseCritMult = cls === "bow" ? BOW.critMult : cls === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT;
+  const baseCritMult =
+    (cls === "bow" ? BOW.critMult : cls === "staff" ? STAFF_CRIT_MULT : newW ? newW.critMult : SWORD_CRIT_MULT) +
+    (soloDagger ? DAGGER.soloCritDmg : 0);
   // Показываем всегда (в т.ч. 0% у меча/посоха без ролла) — а не только при
   // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
   rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });

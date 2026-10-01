@@ -70,6 +70,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   scrollWindUntil?: number;
   /** Версия системы атрибутов: 2 — «Классы 2.0» (6 атрибутов, цена очков растёт). Нет/1 — старая. */
   attrVer?: number;
+  /** Класс бота зрителя (оружие класса), выбранный !class. Нет — прежнее/случайное. */
+  botClass?: string;
   /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
   skills?: Record<string, string[]>;
   updatedAt: number;

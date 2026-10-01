@@ -2,13 +2,21 @@ import { AFFIX, ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
 
 import { arrowDamageFor, weaponDamageBase } from "./progression";
 import { ATTR2, invested } from "./attrs2";
-import type { AttrsIn } from "./classes2";
+import { WEAPONS2, type AttrsIn } from "./classes2";
 
 /** Чем игрок ударил. Урон и досягаемость сервер берёт отсюда, а не с клиента. */
-export type WeaponKind = "sword" | "fist" | "arrow" | "throw";
+export type WeaponKind = "sword" | "fist" | "arrow" | "throw" | "dagger" | "spear" | "hammer";
 
 export function isWeaponKind(v: unknown): v is WeaponKind {
-  return v === "sword" || v === "fist" || v === "arrow" || v === "throw";
+  return (
+    v === "sword" || v === "fist" || v === "arrow" || v === "throw" ||
+    v === "dagger" || v === "spear" || v === "hammer"
+  );
+}
+
+/** Удар оружием ближнего боя «в руке» (не кулак, не стрела, не бросок). */
+export function isBladeKind(k: WeaponKind): k is "sword" | "dagger" | "spear" | "hammer" {
+  return k === "sword" || k === "dagger" || k === "spear" || k === "hammer";
 }
 
 /**
@@ -25,6 +33,10 @@ export const WEAPON_REACH: Record<WeaponKind, number> = {
   arrow: BOW.maxSpeed * ARROW.maxLife * 0.5,
   // брошенное оружие: THROW.flatMaxSpeed с гравитацией летит недалеко
   throw: 45,
+  // «Классы 2.0»: кинжал короче меча, копьё — длинный выпад, молот чуть длиннее меча.
+  dagger: 3.1,
+  spear: 5.8,
+  hammer: 4.0,
 };
 
 /** Минимум секунд между засчитанными ударами одним видом оружия. */
@@ -33,6 +45,10 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
   fist: MELEE.cooldown * 0.6,
   arrow: 0.45, // серверный предел темпа стрельбы (клиент держит паузу сам)
   throw: 0.25,
+  // Два кинжала бьют по очереди — предел мягкий (каждая рука — свой счёт на клиенте).
+  dagger: COMBAT.hitCooldown * 0.5,
+  spear: COMBAT.hitCooldown * 0.85,
+  hammer: COMBAT.hitCooldown * 1.1,
 };
 
 /**
@@ -76,6 +92,10 @@ export function weaponDamage(kind: WeaponKind, level: number, a: AttrsIn, mult =
       return THROW.damage * weaponDamageBase(level, a) * mult;
     case "arrow":
       return arrowDamageFor(level, a) * mult;
+    case "dagger":
+    case "spear":
+    case "hammer":
+      return WEAPONS2[kind].dmg * weaponDamageBase(level, a) * mult;
   }
 }
 

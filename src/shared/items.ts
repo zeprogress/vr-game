@@ -9,6 +9,12 @@ export type ItemId =
   | "leg_bow"
   | "leg_shield"
   | "leg_staff"
+  | "gold_dagger"
+  | "gold_spear"
+  | "gold_hammer"
+  | "leg_dagger"
+  | "leg_spear"
+  | "leg_hammer"
   | "scrap"
   | "fish"
   | "scroll_xp"
@@ -18,7 +24,14 @@ export type ItemId =
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
  * положение настраивается один раз на класс (см. LOADOUT.items).
  */
-export type WeaponClass = "sword" | "bow" | "shield" | "staff";
+export type WeaponClass = "sword" | "bow" | "shield" | "staff" | "dagger" | "spear" | "hammer";
+
+/** Все классы оружия (без щита) — для выпадения, списков и проверок. */
+export const ATTACK_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
+/** Двуручное оружие ближнего боя «Классов 2.0» — держится двумя руками, как посох. */
+export function isTwoHandedMelee(cls: string): boolean {
+  return cls === "spear" || cls === "hammer";
+}
 /**
  * Уровень внутри класса. `base` — обычное оружие из пака, лежит на камнях с
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
@@ -76,6 +89,26 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
     cls: "staff", tier: "legendary", name: "Посох бури", mult: 2.3,
     tint: [0.62, 0.3, 1], affix: "storm",
   },
+
+  // «Классы 2.0»: урон удара задаёт профиль оружия (classes2 WEAPONS2.dmg), mult — только тир.
+  "dagger:base": { cls: "dagger", tier: "base", name: "Кинжал", mult: 1, tint: [0.55, 0.57, 0.62] },
+  "dagger:gold": { cls: "dagger", tier: "gold", name: "Золотой кинжал", mult: 4, tint: [1, 0.84, 0.26] },
+  "dagger:legendary": {
+    cls: "dagger", tier: "legendary", name: "Жало тени", mult: 4.5,
+    tint: [0.62, 0.3, 1], affix: "crit",
+  },
+  "spear:base": { cls: "spear", tier: "base", name: "Копьё", mult: 1, tint: [0.42, 0.28, 0.16] },
+  "spear:gold": { cls: "spear", tier: "gold", name: "Золотое копьё", mult: 4, tint: [1, 0.84, 0.26] },
+  "spear:legendary": {
+    cls: "spear", tier: "legendary", name: "Копьё крови", mult: 4.5,
+    tint: [0.62, 0.3, 1], affix: "vamp",
+  },
+  "hammer:base": { cls: "hammer", tier: "base", name: "Молот", mult: 1, tint: [0.45, 0.47, 0.52] },
+  "hammer:gold": { cls: "hammer", tier: "gold", name: "Золотой молот", mult: 4, tint: [1, 0.84, 0.26] },
+  "hammer:legendary": {
+    cls: "hammer", tier: "legendary", name: "Молот грома", mult: 4.5,
+    tint: [0.62, 0.3, 1], affix: "storm",
+  },
 };
 
 /** Аффикс оружия по классу/тиру — удобно для боевых формул. */
@@ -95,7 +128,7 @@ export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
 }
 
 export function isWeaponClass(v: unknown): v is WeaponClass {
-  return v === "sword" || v === "bow" || v === "shield" || v === "staff";
+  return v === "sword" || v === "bow" || v === "shield" || v === "staff" || v === "dagger" || v === "spear" || v === "hammer";
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
@@ -123,6 +156,9 @@ export const DUAL_WIELD: Record<WeaponClass, boolean> = {
   bow: false, // лук требует обеих рук — второй взять нельзя
   shield: true,
   staff: false, // посох один: его можно взять двумя руками, но не два посоха
+  dagger: true, // ассасин: кинжал в каждой руке
+  spear: false, // копьё — двуручное
+  hammer: false, // молот — двуручный
 };
 
 export interface ItemDef {
@@ -173,6 +209,12 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   leg_bow: weaponItem("bow", "legendary", "Лук охот.", ""),
   leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
   leg_staff: weaponItem("staff", "legendary", "Посох бури", ""),
+  gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал", ""),
+  gold_spear: weaponItem("spear", "gold", "Зол. копьё", ""),
+  gold_hammer: weaponItem("hammer", "gold", "Зол. молот", ""),
+  leg_dagger: weaponItem("dagger", "legendary", "Жало тени", ""),
+  leg_spear: weaponItem("spear", "legendary", "Копьё крови", ""),
+  leg_hammer: weaponItem("hammer", "legendary", "Молот грома", ""),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -283,6 +325,9 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_dagger", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_spear", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_hammer", chance: 0.05, min: 1, max: 1 },
   ],
   shard: [],
 };

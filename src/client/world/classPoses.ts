@@ -6,6 +6,7 @@ import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
 import type { RigInstance } from "./models";
+import { BOT_GEAR } from "../entities/botGear";
 
 /**
  * Клипы новых классов, собранные ПРЯМО НА СКЕЛЕТЕ персонажа: позу задаём не
@@ -145,7 +146,13 @@ const tmpM = new Matrix();
  * Собрать клипы на риг. `seat(side)` — посадка оружия в кулаке этой руки
  * (null — пустая рука). Вернёт группы, уже добавленные в `rig.anims`.
  */
-export function buildClassClips(scene: Scene, rig: RigInstance, seat: (side: "R" | "L") => Seat | null, defs = CLASS_CLIPS): AnimationGroup[] {
+export function buildClassClips(
+  scene: Scene,
+  rig: RigInstance,
+  seat: (side: "R" | "L", clip: string) => Seat | null,
+  defs = CLASS_CLIPS,
+): AnimationGroup[] {
+  let clipName = "";
   const idle = rig.anims.get("idle");
   if (!idle) return [];
   // Кости — ровно те узлы, которые анимирует родной Idle. По имени искать
@@ -255,7 +262,7 @@ export function buildClassClips(scene: Scene, rig: RigInstance, seat: (side: "R"
 
   /** Куда смотрит оружие в кулаке (мир) при текущей позе. */
   const bladeLocal = (side: "R" | "L"): Vector3 | null => {
-    const s = seat(side);
+    const s = seat(side, clipName);
     if (!s) return null;
     const r = Matrix.RotationYawPitchRoll(s.rot[1], s.rot[0], s.rot[2]);
     return Vector3.TransformNormal(Vector3.Up(), r);
@@ -264,7 +271,7 @@ export function buildClassClips(scene: Scene, rig: RigInstance, seat: (side: "R"
   const bladeWorld = (side: "R" | "L", local: Vector3): Vector3 =>
     Vector3.TransformNormal(local, B(`Fist.${side}`).getWorldMatrix()).normalize();
   const gripWorld = (side: "R" | "L"): Vector3 => {
-    const s = seat(side);
+    const s = seat(side, clipName);
     const p = s ? new Vector3(s.pos[0], s.pos[1], s.pos[2]) : Vector3.Zero();
     return Vector3.TransformCoordinates(p, B(`Fist.${side}`).getWorldMatrix());
   };
@@ -358,6 +365,7 @@ export function buildClassClips(scene: Scene, rig: RigInstance, seat: (side: "R"
   const ease = new SineEase();
   ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
   for (const def of defs) {
+    clipName = def.name;
     const g = new AnimationGroup(`${def.name}_${rig.root.uniqueId}`, scene);
     const rotKeys = new Map<TransformNode, { frame: number; value: Quaternion }[]>();
     const posKeys = new Map<TransformNode, { frame: number; value: Vector3 }[]>();
@@ -394,3 +402,88 @@ export function buildClassClips(scene: Scene, rig: RigInstance, seat: (side: "R"
   refresh();
   return out;
 }
+
+// ---------------------------------------------------------------- игра
+
+/** Посадка оружия в кулаке по клипу (как у моделей в игре — BOT_GEAR). */
+export function gearSeat(clip: string, side: "R" | "L"): Seat | null {
+  if (clip.startsWith("bow")) return side === "L" ? BOT_GEAR.bow : null;
+  if (clip.startsWith("spear")) return side === "R" ? BOT_GEAR.spear : null;
+  if (clip.startsWith("hammer")) return side === "R" ? BOT_GEAR.hammer : null;
+  if (clip.startsWith("dagger")) return BOT_GEAR.dagger;
+  return null;
+}
+
+interface CachedClip {
+  name: string;
+  from: number;
+  to: number;
+  tracks: { bone: string; anim: Animation }[];
+}
+/** Посчитанные клипы по модели (скелет у всех персонажей один, но размеры чуть разные). */
+const clipCache = new Map<string, CachedClip[]>();
+
+/**
+ * Клипы классов на риг персонажа в игре: первый риг модели считает позы
+ * (buildClassClips), остальные получают те же Animation (общие ключи) —
+ * без повторного IK. Вернёт добавленные в rig.anims группы (их надо
+ * dispose вместе с ригом).
+ */
+export function classClipsFor(scene: Scene, rig: RigInstance, cacheKey: string): AnimationGroup[] {
+  const cached = clipCache.get(cacheKey);
+  if (!cached) {
+    const groups = buildClassClips(scene, rig, (side, clip) => gearSeat(clip, side));
+    clipCache.set(
+      cacheKey,
+      groups.map((g, i) => ({
+        name: CLASS_CLIPS[i].name,
+        from: g.from,
+        to: g.to,
+        tracks: g.targetedAnimations.map((ta) => ({ bone: (ta.target as TransformNode).name, anim: ta.animation })),
+      })),
+    );
+    return groups;
+  }
+  const idle = rig.anims.get("idle");
+  const bones = new Map<string, TransformNode>();
+  for (const ta of idle?.targetedAnimations ?? []) {
+    const t = ta.target as TransformNode;
+    if (!bones.has(t.name)) bones.set(t.name, t);
+  }
+  const out: AnimationGroup[] = [];
+  for (const c of cached) {
+    const g = new AnimationGroup(`${c.name}_${rig.root.uniqueId}`, scene);
+    for (const tr of c.tracks) {
+      const b = bones.get(tr.bone);
+      if (b) g.addTargetedAnimation(tr.anim, b);
+    }
+    g.normalize(c.from, c.to);
+    rig.anims.get(c.name)?.dispose();
+    rig.anims.set(c.name, g);
+    out.push(g);
+  }
+  return out;
+}
+
+/** Какие клипы играть с этим оружием в руках: стойка и удар (у двух кинжалов — второй рукой alt). */
+export interface ClassAnimSet {
+  idle: string;
+  attack: string;
+  alt?: string;
+}
+export function classAnimSet(left: string, right: string): ClassAnimSet | null {
+  const h = [left, right];
+  if (h.includes("spear")) return { idle: "spearidle", attack: "spearthrust" };
+  if (h.includes("hammer")) return { idle: "hammeridle", attack: "hammerslam" };
+  if (h.includes("dagger")) {
+    const two = left === "dagger" && right === "dagger";
+    return { idle: "daggeridle", attack: "daggerstabr", alt: two ? "daggerstabl" : undefined };
+  }
+  if (h.includes("bow")) return { idle: "bowidle", attack: "bowshoot" };
+  return null;
+}
+
+/** Имена всех клипов классов (для списков весов в аватарах). */
+export const CLASS_CLIP_NAMES: readonly string[] = CLASS_CLIPS.map((c) => c.name);
+/** Разовые (не зацикленные) клипы классов. */
+export const CLASS_ONE_SHOT: ReadonlySet<string> = new Set(CLASS_CLIPS.filter((c) => !c.loop).map((c) => c.name));

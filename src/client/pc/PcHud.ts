@@ -33,7 +33,7 @@ interface ChatCfg {
 const CFG_KEY = "zep.pcChat";
 const LOG_MAX = 80;
 
-export type WeaponIcon = "sword" | "bow" | "staff" | "fist";
+export type WeaponIcon = "sword" | "bow" | "staff" | "fist" | "dagger" | "spear" | "hammer";
 
 export interface MapDot {
   x: number;
@@ -64,7 +64,7 @@ export interface PcHudHooks {
   onAttrs: () => void;
 }
 
-const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊" };
+const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊", dagger: "🔪", spear: "🔱", hammer: "🔨" };
 
 export class PcHud {
   private readonly root: HTMLDivElement;

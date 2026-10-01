@@ -41,7 +41,7 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡" };
+export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡", dagger: "🔪", spear: "🔱", hammer: "🔨" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
 

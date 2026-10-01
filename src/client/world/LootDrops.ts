@@ -1,3 +1,4 @@
+import { createClassWeapon } from "../items/classWeapons";
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -188,6 +189,9 @@ export class LootDrops {
 
 /** Меш под класс и уровень оружия — общий для лута и для рук. */
 export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier): Mesh {
+  if (cls === "dagger" || cls === "spear" || cls === "hammer") {
+    return createClassWeapon(scene, cls, tier === "legendary" ? 2 : tier === "gold" ? 1 : 0);
+  }
   if (cls === "sword") return createSword(scene, tier);
   if (cls === "shield") return createShield(scene, tier);
   if (cls === "staff") return createStaff(scene, tier);

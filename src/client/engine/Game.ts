@@ -372,6 +372,7 @@ export class Game {
       zone.shieldHome,
       zone.staffHome,
       zone.weaponsFaceYaw,
+      zone.classHomes,
     );
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
@@ -612,7 +613,7 @@ export class Game {
       });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
+      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
     } else if (this.pcThirdPerson) {
       // ПК «как в WoW»: орбитальная камера за спиной + видимая модель, бой —
       // автоатакой по выбранной цели (PcTargeting → CombatSystem.pcTarget).
@@ -621,7 +622,7 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
+      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
       this.combat.pcAuto = true;
       this.combat.lootToBag = true;
       this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (C)");
@@ -2401,8 +2402,10 @@ export class Game {
     const h = this.pcHud!;
     const prog = this.progression;
     const kind = this.combat.abilityKind;
+    // Значок рамки героя — по оружию в руках (кинжал/копьё/молот — свои).
+    const hk = this.combat.heldKindOf("right") || this.combat.heldKindOf("left");
     const icon: WeaponIcon =
-      kind === "stunBash" ? "sword" : kind === "arrowRain" ? "bow" : this.combat.holdsStaff ? "staff" : "fist";
+      hk === "sword" || hk === "bow" || hk === "staff" || hk === "dagger" || hk === "spear" || hk === "hammer" ? hk : "fist";
     h.setIdentity(this.localNick || "Герой", prog.level, icon);
     this.pcPlates.level = prog.level;
     h.setUnspent(prog.unspent);
@@ -2899,6 +2902,7 @@ export class Game {
     if (!av) return;
     // Замах дёргает сам CombatSystem через onMeleeSwing — тут только поза.
     // Прицеливание → модель прячем (мы внутри неё).
+    av.setGear(this.combat.heldKindOf("left"), this.combat.heldKindOf("right"));
     const p = this.player.position;
     av.update(
       dt,

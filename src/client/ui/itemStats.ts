@@ -2,7 +2,8 @@ import { weaponDef, type WeaponClass, type WeaponDef, type WeaponTier } from "#s
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec } from "#shared/heroStats";
-import { fireboltDamage } from "#shared/magic";
+import { fireboltDamage, magicPowerFor } from "#shared/magic";
+import { DAGGER, HAMMER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
 import { AFFIX, BOW, COMBAT, SHIELD } from "#shared/constants";
 
 export interface WornWeapon {
@@ -52,18 +53,35 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
       "По площади",
       `${COMBAT.swordSplashRadius} м · ${Math.round(COMBAT.swordSplashFraction * 100)}%`,
     ]);
-    out.push(["Растёт от", "силы + ловкости"]);
+    out.push(["Растёт от", "силы (урон), ловкости (темп), удачи (крит)"]);
+  } else if (w.cls === "dagger" || w.cls === "spear" || w.cls === "hammer") {
+    const prof = WEAPONS2[w.cls];
+    const dmg = weaponDamage(w.cls, s.level, s, d.mult);
+    out.push(["Урон", n1(dmg)]);
+    const aps = attacksPerSec(w.cls, s.level, s);
+    out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
+    out.push(["Урон в секунду", n1(dmg * aps)]);
+    out.push(["Крит (база)", `${Math.round(prof.critBase * 100)}% · ×${prof.critMult}`]);
+    if (w.cls === "dagger") {
+      out.push(["Один кинжал", `+${Math.round(DAGGER.soloCrit * 100)}% крита, +${DAGGER.soloCritDmg} к силе крита, уворот выше`]);
+      out.push(["Два кинжала", `темп ×${DAGGER.dualTempo}, урон удара ×${DAGGER.dualDmg}`]);
+    } else if (w.cls === "spear") {
+      out.push(["Выпад", `до ${prof.reach} м, пробивает ${prof.pierce} целей на линии`]);
+    } else {
+      out.push(["Волна (магия)", `${n1(HAMMER.waveMagic * magicPowerFor(s.level, s) * d.mult)} по кругу ${HAMMER.waveRadius} м`]);
+    }
+    out.push(["Растёт от", w.cls === "hammer" ? "силы (удар), интеллекта (волна), ловкости (темп)" : "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "bow") {
     const dmg = weaponDamage("arrow", s.level, s, d.mult);
     out.push(["Урон стрелы", n1(dmg)]);
-    out.push(["Крит", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
+    out.push(["Крит (база)", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
     out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s).toFixed(2)}/с`]);
-    out.push(["Растёт от", "ловкости"]);
+    out.push(["Растёт от", "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "staff") {
-    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s, 1))]);
+    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s, 1) * staffMagicTier(w.tier))]);
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
-    out.push(["Растёт от", "интеллекта (сила магии), ловкости (темп)"]);
+    out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {
     const chance = d.affix === "guard" ? AFFIX.guard.blockChance : SHIELD.blockChance;
     out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);

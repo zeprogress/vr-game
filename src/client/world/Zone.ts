@@ -58,6 +58,8 @@ export interface Zone {
   bowHome: Vector3;
   shieldHome: Vector3;
   staffHome: Vector3;
+  /** Стойка: места кинжалов, копья и молота. */
+  classHomes: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 };
   /** Куда «лицом» смотрит оружие на стойке (к площади лагеря). */
   weaponsFaceYaw: number;
 }
@@ -182,6 +184,13 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const bowHome = homeAt(-0.6, 0.72);
   const shieldHome = homeAt(0.6, 0.35);
   const staffHome = homeAt(1.8, 0.63);
+  // «Классы 2.0»: кинжалы — левее меча, копьё и молот — правее посоха.
+  const classHomes = {
+    dagger: homeAt(-3.0, 0.12),
+    dagger2: homeAt(-3.4, 0.12),
+    spear: homeAt(3.0, 0.55),
+    hammer: homeAt(4.0, 0.44),
+  };
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
   const rockObstacles = scatterRocks(scene, terrain, []);
@@ -295,6 +304,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     bowHome,
     shieldHome,
     staffHome,
+    classHomes,
     weaponsFaceYaw: wYaw,
   };
 }
