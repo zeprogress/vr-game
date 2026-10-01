@@ -1308,7 +1308,7 @@ export class WristMenu {
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
+      info: [`${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов"],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1382,7 +1382,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: wp.affixes.join(", ") || "без роллов",
+      sub: [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };

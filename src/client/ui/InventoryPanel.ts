@@ -122,7 +122,7 @@ export class InventoryPanel {
         name.appendChild(q);
       }
       const aff = el("div", "font-size:11.5px;color:#7db8ff;margin-top:1px;");
-      aff.textContent = w.affixes.join(", ") || "без роллов";
+      aff.textContent = [...(w.effects ?? []), ...w.affixes].join(", ") || "без роллов";
       row.append(name, aff);
       wrap.appendChild(row);
     }

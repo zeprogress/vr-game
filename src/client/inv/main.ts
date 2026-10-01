@@ -13,6 +13,7 @@ interface InvWeapon {
   tier: "base" | "gold" | "legendary";
   name: string;
   affixes: string[];
+  effects?: string[];
   /** Сумма очков роллов (1..33 за ролл) — показывается в скобках у названия. */
   quality: number;
   /** Сколько лома даст переработка. */
@@ -39,6 +40,7 @@ interface InvHand {
   name: string;
   tier: "gold" | "legendary";
   affixes: string[];
+  effects?: string[];
   quality: number;
   id: string;
   ench: EnchRow[];
@@ -195,11 +197,17 @@ function qualityTag(q: number, count: number): string {
   return s ? ` <span class="quality">${s}</span>` : "";
 }
 
+/** Свойства предмета помимо роллов (щит: блок, отражение, «Оплот»). */
+function effectsHtml(e: string[] | undefined): string {
+  return e?.length ? `<div class="effects">${e.map(escapeHtml).join("<br>")}</div>` : "";
+}
+
 function handHtml(label: string, h: InvHand | null): string {
   if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
   const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
   return (
     `<div class="hand ${h.tier}${h.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(h.id)}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}${qualityTag(h.quality, h.affixes.length)}</span>` +
+    effectsHtml(h.effects) +
     `<div class="affixes">${escapeHtml(affixes)}</div></div>`
   );
 }
@@ -321,6 +329,7 @@ function renderInv(msg: InvMsg): void {
             return (
               `<div class="weapon ${w.tier}${w.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(w.id)}">` +
               `<div class="winfo"><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
+              effectsHtml(w.effects) +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
               `<div class="meta">${TIER_RU[w.tier]}${w.ench.length ? " · ⚒ нажми, чтобы заточить" : ""}</div>` +
               `</div>${btns}</div>`

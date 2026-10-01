@@ -743,6 +743,16 @@ export function isAegis(w: Pick<WeaponInstance, "cls" | "nm"> | null | undefined
 /** Подпись свойства Эгиды (идёт первой в тексте в руке; heroStats/itemStats ищут по слову «Оплот»). */
 export const AEGIS_LABEL = `Оплот: блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP`;
 
+/** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
+export function instanceEffects(w: WeaponInstance): string[] {
+  if (w.cls !== "shield") return [];
+  const out = [`Блок ${Math.round(shieldBlockChance(w.tier, w) * 100)}% — гасит удар целиком`];
+  const refl = shieldReflect(w.tier);
+  if (refl > 0) out.push(`Отражение ${Math.round(refl * 100)}% удара — обратно атакующему`);
+  if (isAegis(w)) out.push(AEGIS_LABEL);
+  return out;
+}
+
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
 export function heldAffixText(w: WeaponInstance | null | undefined): string {
   if (!w) return "";

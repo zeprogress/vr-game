@@ -813,6 +813,7 @@ export class PcInventory {
       sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
       this.tip.append(sc);
     }
+    for (const e of w?.effects ?? []) this.tip.append(div("pcinv-tipeff", e));
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
     if (w) this.tip.append(div("pcinv-small", `В лом: ${w.scrap}`));
     this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
@@ -973,6 +974,7 @@ function injectInvStyle(): void {
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }
 .pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-tipeff { color:#f0d68a; font-size:12.5px; }
 .pcinv-cell.tokens { color:#e8c26a; font-weight:800; }
 /* Страница !inv: окно — обычный блок страницы. */
 .pcinv-root.page { position:relative; inset:auto; pointer-events:auto; }

@@ -8,6 +8,7 @@ import {
   affixLabel,
   instanceLabels,
   heldAffixText,
+  instanceEffects,
   instanceName,
   isWeaponClass,
   isWeaponTier,
@@ -54,6 +55,7 @@ function handInfo(
   name: string;
   tier: WeaponTier;
   affixes: string[];
+  effects: string[];
   quality: number;
   id: string;
   ench: ReturnType<typeof enchDetails>;
@@ -65,6 +67,7 @@ function handInfo(
     name: inst ? instanceName(inst) : weaponDef(cls, tier).name,
     tier,
     affixes: inst ? instanceLabels(inst) : [],
+    effects: inst ? instanceEffects(inst) : [],
     quality: inst ? weaponQuality(inst) : 0,
     id: inst?.id ?? "",
     ench: inst ? enchDetails(inst) : [],
@@ -176,6 +179,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       tier: w.tier,
       name: instanceName(w),
       affixes: instanceLabels(w),
+      effects: instanceEffects(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
@@ -216,6 +220,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       tier: w.tier,
       name: instanceName(w),
       affixes: instanceLabels(w),
+      effects: instanceEffects(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
