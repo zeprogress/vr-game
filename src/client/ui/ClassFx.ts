@@ -468,18 +468,11 @@ export function playClassAct(
       return true;
     case "spearPierce":
       if (x2 !== undefined && z2 !== undefined) {
-        // Конус: три росчерка веером (ось и края сектора ±r) + искры вдоль оси.
-        const half = r ?? 0.6;
+        // Обычный удар копья — малозаметная волна сектором вперёд на длину
+        // и угол удара (сервер шлёт конец оси x2/z2 и полуугол r).
         const ddx = x2 - x;
         const ddz = z2 - z;
-        for (const a of [-half, 0, half]) {
-          const cs = Math.cos(a);
-          const sn = Math.sin(a);
-          const ex = x + ddx * cs - ddz * sn;
-          const ez = z + ddx * sn + ddz * cs;
-          c.fx.streak(x, y - 1.5, z, ex, ez, colorOf(4), a === 0 ? 0.35 : 0.22, 0.3);
-        }
-        vfx.burst(x2, y - 1, z2, colorOf(4), { count: 8, speed: 5, life: 0.3, grav: 8, size: 0.14, dir: [ddx, 0, ddz], spread: half });
+        vfx.cone(x, y - 1.5, z, Math.hypot(ddx, ddz), ddx, ddz, r ?? 0.6, colorOf(4), 0.32, 0.45);
       }
       return true;
     case "shadowStep":

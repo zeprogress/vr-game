@@ -53,7 +53,8 @@ precision highp float;
 varying vec2 vUV;
 uniform vec3 uColor;
 uniform float uT;      // прогресс 0..1 (волна) или время, с (зона/прицел)
-uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел
+uniform float uMode;   // 0 — ударная волна, 1 — зона, 2 — прицел, 3 — волна сектором (ось +x)
+uniform float uHalf;   // полуугол сектора, рад (режим 3)
 uniform float uAlpha;
 uniform float uSeed;
 float hash(float n) { return fract(sin(n * 12.9898 + uSeed) * 43758.5453); }
@@ -81,6 +82,15 @@ void main() {
     float fill = 0.14 * smoothstep(1.0, 0.2, r);
     float pulse = 0.75 + 0.25 * sin(uT * 3.0);
     al = (edge * 1.1 + runes * 0.8 + inner + fill) * pulse;
+  } else if (uMode > 2.5) {
+    // Волна сектором (удар копья): тонкая дуга катится вперёд и гаснет,
+    // края сектора мягкие — малозаметно, без заливки.
+    float ang = abs(a);
+    float side = smoothstep(uHalf, uHalf * 0.7, ang);
+    float front = 0.15 + 0.85 * sqrt(uT);
+    float band = exp(-pow((r - front) / 0.05, 2.0));
+    float trail = step(r, front) * 0.1 * smoothstep(0.15, front, r);
+    al = (band + trail) * side * (1.0 - uT) * smoothstep(0.05, 0.2, r);
   } else {
     // Прицел: кольцо и четыре засечки, крутится.
     float ring = exp(-pow((r - 0.78) / 0.05, 2.0));
@@ -287,7 +297,7 @@ export class SkillVfx {
       const mesh = MeshBuilder.CreatePlane(`vfxDecal${i}`, { size: 2 }, scene);
       mesh.rotation.x = Math.PI / 2;
       mesh.bakeCurrentTransformIntoVertices();
-      const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed"]);
+      const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf"]);
       mesh.material = mat;
       mesh.isPickable = false;
       mesh.alwaysSelectAsActiveMesh = true;
@@ -365,10 +375,11 @@ export class SkillVfx {
   /** Ударная волна по земле (mode 0), зона (1, life — длительность), прицел (2). */
   decal(
     x: number, y: number, z: number, radius: number, color: Color3, life: number,
-    mode: 0 | 1 | 2 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
+    mode: 0 | 1 | 2 | 3 = 0, alpha = 1, follow: { kind: "hero" | "mob"; id: string; dy: number } | null = null,
   ): void {
     const d = this.decals[this.nD];
     this.nD = (this.nD + 1) % this.decals.length;
+    d.mesh.rotation.y = 0;
     d.mesh.position.set(x, y + 0.07 + (mode === 2 ? 0 : (this.nD % 5) * 0.004), z);
     d.mesh.scaling.set(radius, 1, radius);
     d.mat.setColor3("uColor", color);
@@ -376,8 +387,21 @@ export class SkillVfx {
     d.mat.setFloat("uAlpha", alpha);
     d.mat.setFloat("uSeed", Math.random() * 50);
     d.mat.setFloat("uT", 0);
-    Object.assign(d, { age: 0, life, mode, follow, fadeIn: mode === 0 ? 0 : 0.25 });
+    Object.assign(d, { age: 0, life, mode, follow, fadeIn: mode === 0 || mode === 3 ? 0 : 0.25 });
     d.mesh.setEnabled(true);
+  }
+
+  /**
+   * Волна сектором по земле: из (x,z) в сторону (dx,dz) на radius, полуугол
+   * half (рад) — малозаметная дуга, катится вперёд за life с (удар копья).
+   */
+  cone(x: number, y: number, z: number, radius: number, dx: number, dz: number, half: number, color: Color3, life = 0.3, alpha = 0.5): void {
+    const l = Math.hypot(dx, dz) || 1;
+    this.decal(x, y, z, radius, color, life, 3, alpha);
+    const d = this.decals[(this.nD + this.decals.length - 1) % this.decals.length];
+    // Ось сектора в шейдере — локальная +x; поворот вокруг Y: (1,0,0) → (cos, 0, −sin).
+    d.mesh.rotation.y = Math.atan2(-dz / l, dx / l);
+    d.mat.setFloat("uHalf", half);
   }
 
   /** Сноп искр: dir — направление (null — во все стороны), spread 0..1, grav >0 — падают, <0 — всплывают. */
@@ -443,7 +467,7 @@ export class SkillVfx {
         const at = this.follow(d.follow.kind, d.follow.id);
         if (at) d.mesh.position.set(at.x, at.y + d.follow.dy, at.z);
       }
-      if (d.mode === 0) d.mat.setFloat("uT", d.age / d.life);
+      if (d.mode === 0 || d.mode === 3) d.mat.setFloat("uT", d.age / d.life);
       else {
         d.mat.setFloat("uT", d.age);
         const fade = Math.min(1, d.age / d.fadeIn) * Math.min(1, (d.life - d.age) / 0.4);
