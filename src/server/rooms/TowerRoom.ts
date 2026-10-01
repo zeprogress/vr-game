@@ -73,12 +73,8 @@ export interface TowerRolled {
   atkSpeedMul: number;
   critChance: number;
   critMult: number;
-  /** «Лук охотника» (врождённый крит старого уникального) — повышенный базовый шанс крита. */
-  hunterBow: boolean;
   /** Доля урона в HP: врождённый вампиризм + ролл (только ближний бой). */
   vamp: number;
-  /** «Посох бури» (врождённый эффект старого уникального). */
-  storm: boolean;
   /** Шанс блока щитом с учётом тира и роллов (0 — щита нет). */
   blockChance: number;
   /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
@@ -275,7 +271,6 @@ export class TowerRoom extends Room<TowerState> {
   private heroAtkSpeed = 1;
   private heroCritChance = 0;
   private heroCritMult = 0;
-  private heroHunterBow = false;
   /** Снаряды героя в полёте: урон — В МОМЕНТ ПОПАДАНИЯ, как на поляне (было — при выстреле). */
   private shots: { target: LiveMob; t: number; critM: number }[] = [];
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
@@ -350,9 +345,6 @@ export class TowerRoom extends Room<TowerState> {
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
     this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
     this.heroVampAffix = this.heroVamp > 0;
-    // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
-    // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
-    if (weaponKind === "staff" && options.rolled?.storm) this.heroDmg *= AFFIX.storm.dmgMul;
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
     // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — BOT.attackCooldown).
     const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
@@ -368,7 +360,6 @@ export class TowerRoom extends Room<TowerState> {
       this.heroMeleeSpeed *= ro.atkSpeedMul;
       this.heroCritChance = ro.critChance;
       this.heroCritMult = ro.critMult;
-      this.heroHunterBow = ro.hunterBow;
     }
     const heroMaxHp = maxHpFor(options.level, this.heroAttrs);
 
@@ -621,7 +612,7 @@ export class TowerRoom extends Room<TowerState> {
   /** Крит — как на поляне (rollCritMult + роллы): у лука база есть, у меча/посоха — только от роллов. */
   private rollHeroCrit(): number {
     if (this.heroWeaponKind === "bow") {
-      return rollCritMult("arrow", Math.random, this.heroHunterBow, this.heroCritChance, this.heroCritMult);
+      return rollCritMult("arrow", Math.random, false, this.heroCritChance, this.heroCritMult);
     }
     return rollCritMult(
       "sword",
@@ -658,7 +649,7 @@ export class TowerRoom extends Room<TowerState> {
   /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
-    // Меч вампира — часть урона возвращается герою как HP (см. AFFIX.vamp).
+    // Ролл Вампиризм — часть урона возвращается герою как HP.
     if (this.heroVamp > 0) {
       this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * this.heroVamp);
     }

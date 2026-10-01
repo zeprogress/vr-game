@@ -1,6 +1,6 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -497,7 +497,7 @@ export class PcInventory {
       cell.textContent = ICON[held.cls] ?? "?";
       if (w?.affixes.length) {
         cell.style.position = "relative";
-        cell.append(div("pcinv-q", String(w.quality)));
+        cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
@@ -538,7 +538,7 @@ export class PcInventory {
   private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
     c.style.position = "relative";
-    if (w.affixes.length) c.append(div("pcinv-q", String(w.quality)));
+    if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
     if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
     // Страница на ПК: клик — меню действий, как тап на телефоне.
@@ -598,7 +598,7 @@ export class PcInventory {
       if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
       right.append(hn);
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
       right.append(sc);
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
@@ -810,7 +810,7 @@ export class PcInventory {
     this.tip.append(div("pcinv-small", TIER_RU[tier] ?? tier));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
       this.tip.append(sc);
     }
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));

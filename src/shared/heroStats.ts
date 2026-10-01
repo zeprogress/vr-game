@@ -6,7 +6,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { critRollMult, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
@@ -57,14 +57,16 @@ export interface HeroStatInput {
   leftAffix?: string;
 }
 
-/** Достаёт число из "+N% <label>" / "+N <label>" в тексте ролла (см. affixLabel в items.ts). */
-function affixNum(text: string | undefined, label: string): number {
-  if (!text) return 0;
-  // Суммируем ВСЕ вхождения: врождённый эффект старого уникального идёт той
-  // же строкой, что и ролл («+25% шанс крита (врождённый), +8% шанс крита»).
-  let sum = 0;
-  for (const m of text.matchAll(new RegExp(`\\+([\\d.]+)%?\\s*${label}`, "g"))) sum += Number(m[1]);
-  return sum;
+/** Все числа «<Название> +N%» в тексте роллов (см. affixLabel в items.ts), в долях. */
+function affixVals(text: string | undefined, name: string): number[] {
+  if (!text) return [];
+  const out: number[] = [];
+  for (const m of text.matchAll(new RegExp(`${name} \\+([\\d.]+)%`, "g"))) out.push(Number(m[1]) / 100);
+  return out;
+}
+/** Сумма роллов вида `name` (в долях). */
+function affixNum(text: string | undefined, name: string): number {
+  return affixVals(text, name).reduce((a, b) => a + b, 0);
 }
 
 const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
@@ -88,12 +90,12 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const tierMul = cls ? weaponDef(cls, tier || "base").mult : 1;
   const weaponAffix = rightIsWeapon ? p.rightAffix : leftIsWeapon ? p.leftAffix : undefined;
   const shieldAffix = p.rightCls === "shield" ? p.rightAffix : p.leftCls === "shield" ? p.leftAffix : undefined;
-  const affixNum2 = (label: string): number => affixNum(weaponAffix, label) + affixNum(shieldAffix, label);
+  const affixNum2 = (name: string): number => affixNum(weaponAffix, name) + affixNum(shieldAffix, name);
 
   // dmgFlat и dmgPct делят один ярлык "урона" — на одном оружии не бывает
   // роллов сразу из двух (одно семейство даёт только один саб-ролл), поэтому
   // хватает одного поиска по тексту.
-  const dmgBonus = affixNum2("урона") / 100;
+  const dmgBonus = affixNum2("Урон");
   if (cls === "bow") {
     rows.push({
       label: "Урон",
@@ -121,7 +123,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // Раньше тут был множитель «×2.65» по ОБЩЕЙ формуле — мечникам он завышал
   // темп почти вдвое (в бою у меча приглушённый meleeSpeedFor), а магам
   // вовсе не показывал рост от уровня. Теперь — реальные атаки в секунду.
-  const atkSpeedBonus = affixNum2("скорость атаки") / 100;
+  const atkSpeedBonus = affixNum2("Скорость атаки");
   rows.push({
     label: attackRateLabel(cls),
     value: `${attacksPerSec(cls, p.level, p, atkSpeedBonus, p.leftCls === "dagger" && p.rightCls === "dagger").toFixed(2)}/с`,
@@ -135,8 +137,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
   rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded) * 100)}%` });
 
-  const critChanceBonus = affixNum2("шанс крита") / 100;
-  const critMultBonus = affixNum2("силу крита");
+  // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
+  const critVals = [...affixVals(weaponAffix, "Крит"), ...affixVals(shieldAffix, "Крит")];
+  const critChanceBonus = critVals.reduce((a, b) => a + b, 0);
+  const critMultBonus = critVals.reduce((a, v) => a + critRollMult(v), 0);
   const luckN = invested(p.luc);
   const newW = cls === "dagger" || cls === "spear" || cls === "hammer" ? WEAPONS2[cls] : null;
   const soloDagger = cls === "dagger" && (p.leftCls === "" || p.rightCls === "");
@@ -162,7 +166,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
-    const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "к шансу блока") / 100;
+    const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "Блок");
     rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
   }
 

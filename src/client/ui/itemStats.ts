@@ -27,11 +27,11 @@ export interface HeroStats {
 const pctOf = (v: number): string => `${Math.round(v * 100)}%`;
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
-/** Сумма чисел «+N% <ярлык>» в тексте роллов (врождённый эффект старых уникальных идёт той же строкой). */
-function rollPct(text: string | undefined, label: string): number {
+/** Сумма роллов «<Название> +N%» в тексте (см. affixLabel), в долях. */
+function rollPct(text: string | undefined, name: string): number {
   if (!text) return 0;
   let sum = 0;
-  for (const m of text.matchAll(new RegExp(`\\+([\\d.]+)%\\s*${label}`, "g"))) sum += Number(m[1]);
+  for (const m of text.matchAll(new RegExp(`${name} \\+([\\d.]+)%`, "g"))) sum += Number(m[1]);
   return sum / 100;
 }
 
@@ -85,7 +85,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {
-    const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "к шансу блока");
+    const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "Блок");
     out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
     out.push(["Тир щита", `обычный ${pctOf(SHIELD.blockByTier.base)} · золотой ${pctOf(SHIELD.blockByTier.gold)} · уникальный ${pctOf(SHIELD.blockByTier.legendary)}`]);
   }

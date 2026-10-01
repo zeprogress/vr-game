@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -1056,18 +1056,18 @@ export class WristMenu {
   }
 
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
-  private handQuality(w: WornWeapon | null, side: Side): number | undefined {
+  private handQuality(w: WornWeapon | null, side: Side): string | undefined {
     if (!w || w.tier === "base") return undefined;
     // Лук в интерфейсе стоит в левой руке, а закреплён мог быть за любой.
     const id = w.cls === "bow" ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
-    if (byId) return byId.quality;
+    if (byId) return qualityStars(byId.quality, byId.affixes.length) || undefined;
     let best: WarehouseWeapon | undefined;
     for (const x of this.warehouse) {
       if (x.cls !== w.cls || x.tier !== w.tier) continue;
       if (!best || x.quality > best.quality) best = x;
     }
-    return best?.quality;
+    return best ? qualityStars(best.quality, best.affixes.length) || undefined : undefined;
   }
 
   private weaponCard(
@@ -1080,14 +1080,14 @@ export class WristMenu {
     label: string,
     item: WornWeapon | null,
     hero: HeroStats,
-    quality: number | undefined,
+    quality: string | undefined,
     onPick: () => void,
   ): void {
     let info: [string, string] = [label, "пусто"];
     if (item) {
       const stats = weaponStats(item, hero);
       info = [
-        `${this.heldName(item)}${quality ? ` (${quality})` : ""} — нажми: убрать на склад`,
+        `${this.heldName(item)}${quality ? ` ${quality}` : ""} — нажми: убрать на склад`,
         stats.slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ") || (item.affix ?? ""),
       ];
     }
@@ -1116,7 +1116,7 @@ export class WristMenu {
     let ty = y + 54;
     if (quality) {
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${quality})`, x + iconS + 20, ty);
+      ctx.fillText(quality, x + iconS + 20, ty);
       ty += 26;
     }
     if (item.affix && h > 100) {
@@ -1308,7 +1308,7 @@ export class WristMenu {
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${name}${wp.quality ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
+      info: [`${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1324,7 +1324,7 @@ export class WristMenu {
     if (wp.quality) {
       ctx.font = "bold 22px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${wp.quality})`, x + 62, y + 36);
+      ctx.fillText(qualityStars(wp.quality, wp.affixes.length), x + 62, y + 36);
     }
     if (eq) {
       ctx.font = "16px system-ui, sans-serif";
@@ -1381,7 +1381,7 @@ export class WristMenu {
     buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${name}${wp.quality ? ` (${wp.quality})` : ""}`,
+      title: `${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
       sub: wp.affixes.join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
@@ -1438,7 +1438,7 @@ export class WristMenu {
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${this.heldName(w)}${q ? ` (${q})` : ""}`,
+      title: `${this.heldName(w)}${q ? ` ${q}` : ""}`,
       sub: w.affix || stats || (src === "hand" ? "в руке" : "за спиной"),
       color: TIER_COLOR[w.tier],
       buttons,

@@ -34,7 +34,7 @@ export const SHOP: readonly ShopItem[] = [
   { id: "scroll_wind", name: "Свиток ветра", desc: "+20% скорости бега на 15 мин", price: 2, item: "scroll_wind", count: 1 },
   { id: "scroll_xp", name: "Свиток мудрости", desc: "×2 опыта на 15 мин (с благословением ×3)", price: 3, item: "scroll_xp", count: 1 },
   { id: "fish_trade", name: "Обмен рыбы на жетон", desc: "20 рыб → 1 ◈", price: 0, fishCost: 20 },
-  { id: "chest", name: "Сундук оружия", desc: "уникальное оружие твоего класса, оценка не ниже 80", price: 30 },
+  { id: "chest", name: "Сундук оружия", desc: "уникальное оружие твоего класса, ★★★★ и выше", price: 30 },
 ];
 
 /** Минимальная оценка уникального оружия из сундука. */

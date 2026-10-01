@@ -74,7 +74,6 @@ import {
   ADMIN_NICK,
   isAdminNick,
   advanceHour,
-  AFFIX,
   BOSS,
   BOW,
   COMBAT,
@@ -130,7 +129,8 @@ import {
 import {
   addToBag,
   migrateStaffAffixes,
-  migrateLoot3,
+  migrateLoot,
+  critOfAffixes,
   shieldBlockChance,
   vampFrac,
   isMeleeClass,
@@ -144,6 +144,7 @@ import {
   affixLabel,
   instanceLabels,
   instanceName,
+  instanceStars,
   weaponQuality,
   affixSum,
   BAG,
@@ -162,7 +163,6 @@ import {
   WEAPON_TAKE_REACH,
   type ItemId,
   type Slot,
-  type WeaponAffix,
   type WeaponClass,
   type WeaponInstance,
   type WeaponTier,
@@ -720,12 +720,7 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
   return h ? weaponDef(h.cls, h.tier).mult : 1;
 }
 
-/** Врождённый эффект оружия в руке — только у старых уникальных инстансов (Меч вампира и т.п.). */
-function affixIn(p: PlayerState, hand: "left" | "right", rt: Runtime | undefined): WeaponAffix | undefined {
-  return rt ? rolledIn(p, hand, rt)?.innate : undefined;
-}
-
-/** Шанс блока щитом героя: тир щита + его роллы и Эгида (0 — щита в руках нет). */
+/** Шанс блока щитом героя: тир щита + ролл Блок (0 — щита в руках нет). */
 function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
   const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
   if (!hand) return 0;
@@ -791,17 +786,9 @@ function rolledCrit(
 ): { chance: number; mult: number } {
   const w = rolledIn(p, hand, rt);
   const sh = shieldRolledIn(p, hand, rt);
-  let chance = 0;
-  let mult = 0;
-  if (w) {
-    chance += affixSum(w.affixes, "critChance");
-    mult += affixSum(w.affixes, "critMult");
-  }
-  if (sh) {
-    chance += affixSum(sh.affixes, "critChance");
-    mult += affixSum(sh.affixes, "critMult");
-  }
-  return { chance, mult };
+  const a = w ? critOfAffixes(w.affixes) : { chance: 0, mult: 0 };
+  const b = sh ? critOfAffixes(sh.affixes) : { chance: 0, mult: 0 };
+  return { chance: a.chance + b.chance, mult: a.mult + b.mult };
 }
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
@@ -1079,7 +1066,7 @@ export class ZoneRoom extends Room<ZoneState> {
       let changed = false;
       for (const w of rec.weapons ?? []) {
         if (migrateStaffAffixes(w)) changed = true;
-        if (migrateLoot3(w)) changed = true;
+        if (migrateLoot(w)) changed = true;
       }
       if (changed) {
         staffFixed++;
@@ -1089,7 +1076,7 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const d of world.loadDrops()) {
       if (!d.instance) continue;
       migrateStaffAffixes(d.instance);
-      migrateLoot3(d.instance);
+      migrateLoot(d.instance);
     }
     if (staffFixed) console.log(`[zone] оружие пересчитано у ${staffFixed} героев`);
     // Чистка сумок во всех сейвах: одна стопка на предмет, зелий не больше 99.
@@ -1362,9 +1349,6 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastCast = this.elapsed;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
-      // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара, плюс сам
-      // выстрел чуть больнее (AFFIX.storm.dmgMul).
-      const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left", rt) === "storm";
       // Роллы "крит" на посохе раньше тоже никуда не доходили (только tryHit
       // для меча/лука) — посоха нет в WeaponKind, поэтому kind="sword" ниже
       // просто заглушка: у неё и так нулевая база крита, важны только
@@ -1383,11 +1367,10 @@ export class ZoneRoom extends Room<ZoneState> {
         fireboltDamage(p.level, p, charge) *
         staffMagicTier(p[`${staffHand}Tier`]) *
         rolledDmgMul(p, staffHand, rt) *
-        (storm ? AFFIX.storm.dmgMul : 1) *
         critM *
         this.buffMult(client.sessionId, "dmg");
-      const splRad = fireboltSplashRadius(charge) * (storm ? AFFIX.storm.splashRadiusMul : 1);
-      const splFrac = MAGIC.firebolt.splashFraction * (storm ? AFFIX.storm.splashFracMul : 1);
+      const splRad = fireboltSplashRadius(charge);
+      const splFrac = MAGIC.firebolt.splashFraction;
       this.sim.castBolt(
         num(msg.ox, p.head.x),
         num(msg.oy, p.head.y),
@@ -1988,7 +1971,6 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon] + HIT_LAG_PAD) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const affix = affixIn(p, hand, rt);
     // База крита — только у лука («Лук охотника» критует чаще); роллы "крит"
     // на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit)
     // добавляют шанс/силу крита ЛЮБОМУ оружию.
@@ -2002,7 +1984,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const crit = rollCritMult(
       msg.weapon,
       Math.random,
-      affix === "crit",
+      false,
       rc.chance + (newWpn ? WEAPONS2[msg.weapon as "dagger"].critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0) + (myMark ? MARK.assassinCrit : 0),
       rc.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
       newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult,
@@ -2110,18 +2092,15 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /**
    * Молот: каждый удар — магическая волна вокруг цели (урон от ИНТ × тир
-   * молота, по всем мобам в радиусе, включая саму цель). «Молот грома»
-   * (уникальный, аффикс storm) — шире и злее.
+   * молота, по всем мобам в радиусе, включая саму цель).
    */
   private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, y: number, z: number): void {
-    const storm = affixIn(p, hand, rt) === "storm";
-    const radius = HAMMER.waveRadius * (storm ? AFFIX.storm.splashRadiusMul : 1);
+    const radius = HAMMER.waveRadius;
     const dmg =
       HAMMER.waveMagic *
       magicPowerFor(p.level, p) *
       multIn(p, hand) *
       rolledDmgMul(p, hand, rt) *
-      (storm ? AFFIX.storm.dmgMul : 1) *
       this.buffMult(ownerId, "dmg");
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
@@ -2966,9 +2945,7 @@ export class ZoneRoom extends Room<ZoneState> {
       atkSpeedMul: trt ? rolledAtkSpeedMul(p, "right", trt) : 1,
       critChance: trc.chance,
       critMult: trc.mult,
-      hunterBow: affixIn(p, "right", trt) === "crit",
       vamp: trt ? vampFrac(rolledIn(p, "right", trt)) : 0,
-      storm: affixIn(p, "right", trt) === "storm",
       blockChance: blockChanceOf(p, trt),
       warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
     };
@@ -3832,7 +3809,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.weapons.push(w);
       store.put(token, { weapons: rt.weapons });
       this.announcePickup(p.nick, w.cls, w.tier, w);
-      note = `Из сундука: ${instanceName(w)}, оценка ${weaponQuality(w)}`;
+      note = `Из сундука: ${instanceName(w)} ${instanceStars(w)}`;
     }
     store.put(token, { tokens: tokens - item.price });
     // Что потрачено и что осталось — видно и в VR (там тост в шлеме).
@@ -4063,7 +4040,7 @@ export class ZoneRoom extends Room<ZoneState> {
         store.put(token, { weapons: rt.weapons });
         this.grantTitle(token, STORY_TITLE);
         this.announcePickup(p.nick, w.cls, w.tier, w);
-        note += `. Титул «${STORY_TITLE}» и ${instanceName(w)} (оценка ${weaponQuality(w)})!`;
+        note += `. Титул «${STORY_TITLE}» и ${instanceName(w)} ${instanceStars(w)}!`;
       }
     } else {
       const w = this.weeklyOf(token, p);
@@ -4074,7 +4051,7 @@ export class ZoneRoom extends Room<ZoneState> {
       store.put(token, { weekly: w, weapons: rt.weapons, tokens: tokens + WEEKLY.reward.tokens });
       this.bumpFeat(client.sessionId, "contracts", TITLE_GOALS.contracts, "Ветеран контрактов");
       this.announcePickup(p.nick, wpn.cls, wpn.tier, wpn);
-      note = `Контракт недели выполнен! ${WEEKLY.reward.tokens} ◈, ${instanceName(wpn)} (оценка ${weaponQuality(wpn)})${xp(WEEKLY.reward.xpMul)}`;
+      note = `Контракт недели выполнен! ${WEEKLY.reward.tokens} ◈, ${instanceName(wpn)} ${instanceStars(wpn)}${xp(WEEKLY.reward.xpMul)}`;
     }
     this.sendQuests(client, note);
   }
@@ -5867,15 +5844,14 @@ export class ZoneRoom extends Room<ZoneState> {
       // лёгкая компенсация проседания снаряда на дистанцию
       const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
       const mult = multIn(p, "right") * rolledDmgMul(p, "right", bot.rt);
-      const botAffix = affixIn(p, "right", bot.rt);
-      const botRolled = rolledIn(p, "right", bot.rt);
       if (bow) {
+        const botCrit = rolledCrit(p, "right", bot.rt);
         const critM = rollCritMult(
           "arrow",
           Math.random,
-          botAffix === "crit",
-          botRolled ? affixSum(botRolled.affixes, "critChance") : 0,
-          botRolled ? affixSum(botRolled.affixes, "critMult") : 0,
+          false,
+          botCrit.chance,
+          botCrit.mult,
           BOW.critMult,
           p.luc,
         );
@@ -5890,7 +5866,6 @@ export class ZoneRoom extends Room<ZoneState> {
         // По летающим — чуть больнее: их сложнее достать ближнику, магу это
         // компенсирует (по просьбе).
         const flyingMul = tgt.flying ? 1.25 : 1;
-        const s = botAffix === "storm";
         // Крит посоха у бота раньше вообще не считался (ни урон, ни эффект) —
         // в отличие от лука-бота выше и живого игрока-мага (см. MSG.cast).
         const botStaffCrit = rolledCrit(p, "right", bot.rt);
@@ -5908,7 +5883,6 @@ export class ZoneRoom extends Room<ZoneState> {
           staffMagicTier(p.rightTier) *
           rolledDmgMul(p, "right", bot.rt) *
           flyingMul *
-          (s ? AFFIX.storm.dmgMul : 1) *
           critM *
           this.buffMult(bot.id, "dmg");
         this.sim.castBolt(
@@ -5916,8 +5890,8 @@ export class ZoneRoom extends Room<ZoneState> {
           BOT.boltSpeed, fireboltRadius(0.7), fireboltHitRadius(0.7),
           bd,
           bot.id, MAGIC.firebolt.life, 0,
-          fireboltSplashRadius(0.7) * (s ? AFFIX.storm.splashRadiusMul : 1),
-          bd * MAGIC.firebolt.splashFraction * (s ? AFFIX.storm.splashFracMul : 1),
+          fireboltSplashRadius(0.7),
+          bd * MAGIC.firebolt.splashFraction,
           critM > 1,
         );
       }
@@ -6062,7 +6036,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const swordCrit = rollCritMult(
       kind,
       Math.random,
-      affixIn(p, "right", bot.rt) === "crit",
+      false,
       botSwordCrit.chance + (prof ? prof.critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0),
       botSwordCrit.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
       prof ? prof.critMult : SWORD_CRIT_MULT,
@@ -6932,7 +6906,6 @@ export class ZoneRoom extends Room<ZoneState> {
     const step = duration / hits;
     const y = terrainHeight(cx, cz);
     const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
-    const affix = affixIn(p, hand, rt);
     const rc = rolledCrit(p, hand, rt);
     const t0 = this.elapsed;
 
@@ -6958,7 +6931,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const d = Math.hypot(dx, dz);
           if (d > radius) continue;
           // Крит — на каждую стрелу и цель отдельно.
-          const critM = rollCritMult("arrow", Math.random, affix === "crit", rc.chance, rc.mult, BOW.critMult, p.luc);
+          const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, p.luc);
           if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
           this.sim.hitMob(m.id, base * critM, dx / (d || 1), dz / (d || 1), ownerId, true);
         }
