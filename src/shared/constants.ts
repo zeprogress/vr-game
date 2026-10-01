@@ -796,7 +796,7 @@ export const MOB_CAMPS: {
   { x: -8, z: -112, type: "cactoro", count: 3, spread: 6 }, // ~73 м, ур.9
   { x: 50, z: -40, type: "orcGunner", count: 5, spread: 8 }, // ~106 м, ур.15
   { x: -40, z: 82, type: "ruinMage", count: 4, spread: 7 }, // ~138 м, ур.20
-  { x: 85, z: -118, type: "golem", count: 24, spread: 30 }, // ~154 м, ур.26
+  { x: 85, z: -118, type: "golem", count: 12, spread: 30 }, // ~154 м, ур.26 (было 24 — меньше по просьбе, 2026-10-02)
   // Топ-зона 33 ур. — по краям карты; боты 30+ выбирают лагерь случайно (или !camp).
   { x: 128, z: -10, type: "mushColossus", count: 5, spread: 30, ring: 0.85, jitter: 0.35 }, // ~185 м, восток
   { x: -15, z: 125, type: "skySquid", count: 5, spread: 28, ring: 0.85 }, // ~185 м, север
