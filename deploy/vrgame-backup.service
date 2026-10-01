@@ -1,0 +1,6 @@
+[Unit]
+Description=VR GAME — резервная копия сейвов
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vrgame/deploy/backup-data.sh
