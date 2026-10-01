@@ -734,6 +734,16 @@ const SPEAR_CONE = 0.6;
 /** Бот-ближник начинает замах, только довернувшись на цель ближе этого угла, рад (~45°). */
 const BOT_MELEE_FACE = 0.8;
 
+/**
+ * Вампиризм со ВСЕГО оружия ближнего боя в руках: два меча/кинжала —
+ * роллы складываются. Двуручное (одно и то же в обеих руках) — один раз.
+ */
+function heldVamp(p: PlayerState, rt: Runtime): number {
+  const l = rolledIn(p, "left", rt);
+  const r = rolledIn(p, "right", rt);
+  return vampFrac(r) + (l && l.id !== r?.id ? vampFrac(l) : 0);
+}
+
 /** Щит в руках героя: тир и экземпляр (null — щита нет). */
 function shieldOf(p: PlayerState, rt: Runtime | undefined): { tier: string; inst: WeaponInstance | null } | null {
   const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
@@ -2060,7 +2070,7 @@ export class ZoneRoom extends Room<ZoneState> {
     );
     // Вампиризм (врождённый у Меча вампира + ролл на оружии ближнего боя) —
     // часть нанесённого урона возвращается владельцу как HP.
-    const vamp = isMeleeClass(msg.weapon) ? vampFrac(rolledIn(p, hand, rt)) : 0;
+    const vamp = isMeleeClass(msg.weapon) ? heldVamp(p, rt) : 0;
     const vamped = vamp > 0 && !!struck;
     if (vamped) {
       p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);
@@ -2998,7 +3008,7 @@ export class ZoneRoom extends Room<ZoneState> {
       atkSpeedMul: trt ? rolledAtkSpeedMul(p, "right", trt) : 1,
       critChance: trc.chance,
       critMult: trc.mult,
-      vamp: trt ? vampFrac(rolledIn(p, "right", trt)) : 0,
+      vamp: trt ? heldVamp(p, trt) : 0,
       blockChance: blockChanceOf(p, trt),
       reflect: shieldReflect(shieldOf(p, trt)?.tier ?? ""),
       aegisHeal: isAegis(shieldOf(p, trt)?.inst) ? SHIELD.aegisHealFrac : 0,
@@ -6156,7 +6166,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const sz = mob.z;
     if (critHit > 1) this.critFx(sx, sy, sz, bot.id);
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
-    const vamp = vampFrac(rolledIn(p, "right", bot.rt));
+    const vamp = heldVamp(p, bot.rt);
     const vamped = vamp > 0;
     if (vamped) {
       p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);

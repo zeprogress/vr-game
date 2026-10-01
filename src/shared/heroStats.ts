@@ -158,7 +158,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
 
   // Вампиризм — только ролл на оружии ближнего боя (см. vampFrac в items.ts).
-  const vamp = isMeleeClass(cls) ? affixNum(weaponAffix, "Вампиризм") : 0;
+  // С обоих рук: два меча/кинжала — складывается (как heldVamp на сервере).
+  const vamp =
+    (isMeleeClass(p.rightCls) ? affixNum(p.rightAffix, "Вампиризм") : 0) +
+    (isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0);
   if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
 
   const arm = armorFrac(p);
