@@ -2495,8 +2495,8 @@ export class Game {
     const click = di.takeClick();
     // Прицел града стрел: ЛКМ — применить в круг (если дотягиваемся), ПКМ — отмена.
     if (this.aoeAim?.active) {
-      this.aoeAim.update(di.mouseX, di.mouseY, cam, this.player.position, SKILL.arrowRain.range);
-      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) this.aoeAim.cancel();
+      this.aoeAim.update(di.mouseX, di.mouseY, cam, this.player.position, this.rainRange());
+      if (!this.skillIds().includes("arrowRain") || this.player.dead) this.aoeAim.cancel();
       else if (click?.button === 2) this.aoeAim.cancel();
       else if (click?.button === 0) {
         if (this.aoeAim.inRange) {
@@ -2598,8 +2598,8 @@ export class Game {
       // Град стрел: круг под пальцем, отпустил — стреляем туда (как клик на ПК).
       ti.groundAim = true;
       const at = ti.aimXY;
-      if (at) aim.update(at.x - r.left, at.y - r.top, cam, this.player.position, SKILL.arrowRain.range);
-      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) aim.cancel();
+      if (at) aim.update(at.x - r.left, at.y - r.top, cam, this.player.position, this.rainRange());
+      if (!this.skillIds().includes("arrowRain") || this.player.dead) aim.cancel();
       else if (tap && at) {
         if (aim.inRange) {
           this.castSkill("arrowRain", aim.point.x, aim.point.z);
@@ -2760,6 +2760,11 @@ export class Game {
   private skillLeft(id: SkillId): number {
     if (id === "massHeal") return this.combat.massHealCdLeft;
     return Math.max(0, ((this.skillReadyAt.get(id) ?? 0) - performance.now()) / 1000);
+  }
+
+  /** Дальность прицела града: у ассасина «Веер кинжалов» — ближе. */
+  private rainRange(): number {
+    return this.heroClass() === "assassin" ? 8 : SKILL.arrowRain.range;
   }
 
   /** Град: у ассасина «Веер кинжалов» — круг меньше. */
