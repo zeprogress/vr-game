@@ -62,7 +62,7 @@ export const BASE_CRIT = 0.05;
 export function rollCritMult(
   kind: WeaponKind,
   rnd: () => number = Math.random,
-  /** Врождённый «крит» старого уникального (Лук охотника) — повышенный шанс крита. */
+  /** Запасной бонус шанса крита (AFFIX.crit) — сейчас нигде не включается. */
   hunterBow = false,
   extraChance = 0,
   extraMult = 0,

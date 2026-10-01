@@ -14,7 +14,7 @@ import {
   towerWeaponChance,
   type FloorArchetype,
 } from "#shared/tower";
-import { noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
+import { BASE_CRIT, noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
 import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
@@ -28,7 +28,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { AFFIX, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT } from "#shared/constants";
+import { AFFIX, BOT, BOW, STAFF_CRIT_MULT, SWORD_CRIT_MULT } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -139,7 +139,7 @@ export interface TowerSnapshot {
   heroSwordHit: boolean;
   /** Прошло с начала забега, с (живой таймер у спектатора). */
   elapsedSec: number;
-  /** Меч вампира в руке — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
+  /** Ролл Вампиризм на оружии — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
   heroVampAffix: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
   heroRangedPulse: boolean;
@@ -271,6 +271,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroAtkSpeed = 1;
   private heroCritChance = 0;
   private heroCritMult = 0;
+  /** Кинжал в одной руке, вторая пуста — крит чаще и больнее (как на поляне). */
+  private heroSoloDagger = false;
   /** Снаряды героя в полёте: урон — В МОМЕНТ ПОПАДАНИЯ, как на поляне (было — при выстреле). */
   private shots: { target: LiveMob; t: number; critM: number }[] = [];
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
@@ -351,6 +353,7 @@ export class TowerRoom extends Room<TowerState> {
     const dual = options.rightCls === "dagger" && options.leftCls === "dagger" ? DAGGER.dualTempo : 1;
     this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (BOT.attackCooldown / prof.interval) * dual : 1);
     if (options.rightCls === "dagger" && options.leftCls === "dagger") this.heroDmg *= DAGGER.dualDmg;
+    this.heroSoloDagger = options.rightCls === "dagger" && options.leftCls === "";
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
     // башне аффиксы не работали вовсе, крит был только базовый у лука).
     const ro = options.rolled;
@@ -449,8 +452,7 @@ export class TowerRoom extends Room<TowerState> {
             this.heroRangedPulse = true;
             this.heroRangedTargetX = target.x;
             this.heroRangedTargetZ = target.z;
-            // Крит — только у лука (см. rollCritMult: kind!=="arrow" => 1), как
-            // и в основном мире. У посоха вместо этого — АОЕ (см. heroAttack).
+            // Крит — как в основном мире (rollHeroCrit: база оружия + роллы + УДЧ).
             const critM = this.rollHeroCrit();
             // Снаряд летит (лук — BOT.arrowSpeed, огнешар — BOT.boltSpeed), урон
             // и «X» крита — при попадании (см. tickShots), как на поляне.
@@ -609,19 +611,33 @@ export class TowerRoom extends Room<TowerState> {
     this.heroSwordHit = true;
   }
 
-  /** Крит — как на поляне (rollCritMult + роллы): у лука база есть, у меча/посоха — только от роллов. */
+  /**
+   * Крит — как на поляне (ZoneRoom.tryHit/MSG.cast): база оружия (лук, профиль
+   * кинжала/копья/молота, один кинжал), роллы Крит и УДЧ героя.
+   */
   private rollHeroCrit(): number {
+    const luc = this.heroAttrs.luc;
     if (this.heroWeaponKind === "bow") {
-      return rollCritMult("arrow", Math.random, false, this.heroCritChance, this.heroCritMult);
+      return rollCritMult("arrow", Math.random, false, this.heroCritChance, this.heroCritMult, BOW.critMult, luc);
     }
-    return rollCritMult(
-      "sword",
-      Math.random,
-      false,
-      this.heroCritChance,
-      this.heroCritMult,
-      this.heroWeaponKind === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT,
-    );
+    if (this.heroWeaponKind === "staff") {
+      return rollCritMult("sword", Math.random, false, this.heroCritChance, this.heroCritMult, STAFF_CRIT_MULT, luc);
+    }
+    const cls = this.heroCls;
+    if (cls === "dagger" || cls === "spear" || cls === "hammer") {
+      const prof = WEAPONS2[cls];
+      const solo = cls === "dagger" && this.heroSoloDagger;
+      return rollCritMult(
+        cls,
+        Math.random,
+        false,
+        this.heroCritChance + prof.critBase - BASE_CRIT + (solo ? DAGGER.soloCrit : 0),
+        this.heroCritMult + (solo ? DAGGER.soloCritDmg : 0),
+        prof.critMult,
+        luc,
+      );
+    }
+    return rollCritMult("sword", Math.random, false, this.heroCritChance, this.heroCritMult, SWORD_CRIT_MULT, luc);
   }
 
   /** Снаряды героя долетают — урон при попадании; цель умерла раньше — снаряд пропадает. */
@@ -646,7 +662,7 @@ export class TowerRoom extends Room<TowerState> {
     this.shots = keep;
   }
 
-  /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
+  /** `dmgMult` — множитель крита (см. rollHeroCrit). */
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
     // Ролл Вампиризм — часть урона возвращается герою как HP.
@@ -822,7 +838,7 @@ export class TowerRoom extends Room<TowerState> {
       const d = Math.hypot(m.x - this.heroRainX, m.z - this.heroRainZ);
       if (d > BOT.rainRadius) continue;
       // Крит бросаем на каждую цель отдельно — залп, а не один выстрел (см. ZoneRoom.arrowRainAt).
-      const critM = rollCritMult("arrow");
+      const critM = this.rollHeroCrit();
       if (critM > 1) this.heroSkillFx.push({ k: "crit", x: m.x, z: m.z });
       this.applyDamage(m, this.heroDmg * BOT.rainDamageMult * critM);
       if ((this.state.phase as TowerPhase) !== "running") return;

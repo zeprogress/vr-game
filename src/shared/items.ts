@@ -257,9 +257,13 @@ function weaponItem(
     name: d.name,
     short,
     hint:
-      tier === "legendary"
-        ? "уникальное · 2–3 ролла"
-        : cls === "shield" ? "защита · блок" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
+      cls === "shield"
+        ? `блок ${Math.round((SHIELD.blockByTier[tier] ?? SHIELD.blockChance) * 100)}%${tier === "base" ? "" : " + ролл Блок"}`
+        : tier === "legendary"
+          ? "уникальное · 2–3 ролла"
+          : tier === "gold"
+            ? "золотое · 1–2 ролла"
+            : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
     healFrac: 0,

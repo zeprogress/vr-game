@@ -625,7 +625,7 @@ export class PcInventory {
         right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
       }
       right.append(
-        div("pcinv-hint", "Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
+        div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
       );
     }
     // Выбор предмета — мини-сетка всех предметов с роллами.

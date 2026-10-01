@@ -6,7 +6,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { critRollMult, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
@@ -92,9 +92,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const shieldAffix = p.rightCls === "shield" ? p.rightAffix : p.leftCls === "shield" ? p.leftAffix : undefined;
   const affixNum2 = (name: string): number => affixNum(weaponAffix, name) + affixNum(shieldAffix, name);
 
-  // dmgFlat и dmgPct делят один ярлык "урона" — на одном оружии не бывает
-  // роллов сразу из двух (одно семейство даёт только один саб-ролл), поэтому
-  // хватает одного поиска по тексту.
+  // Урон: и новый dmgFlat, и старый dmgPct подписаны «Урон +N%».
   const dmgBonus = affixNum2("Урон");
   if (cls === "bow") {
     rows.push({
@@ -158,6 +156,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
   rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
   rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
+
+  // Вампиризм — только ролл на оружии ближнего боя (см. vampFrac в items.ts).
+  const vamp = isMeleeClass(cls) ? affixNum(weaponAffix, "Вампиризм") : 0;
+  if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
 
   const arm = armorFrac(p);
   rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });

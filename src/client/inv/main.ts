@@ -491,7 +491,7 @@ function renderModal(): void {
     `<div class="erows">${rows}</div>` +
     `<div class="eanvil"><div class="ehammer">🔨</div></div>` +
     `<div class="ebanner"></div>` +
-    `<div class="enote">Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
+    `<div class="enote">Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
 }
 
 modalEl.addEventListener("click", (e) => {
@@ -580,7 +580,7 @@ function reveal(m: EnchResult): void {
     box.classList.add("lose");
     row?.classList.add("lose");
     if (row) burst(row, "smoke", 10);
-    banner.innerHTML = `💨 Не вышло… аффикс не изменился <small>−${e.cost} лома</small>`;
+    banner.innerHTML = `💨 Не вышло… ролл не изменился <small>−${e.cost} лома</small>`;
     banner.className = "ebanner show bad";
   }
   setTimeout(() => {

@@ -9,7 +9,7 @@ import { BOW, COMBAT, SHIELD } from "#shared/constants";
 export interface WornWeapon {
   cls: WeaponClass;
   tier: WeaponTier;
-  /** Текст случайных роллов конкретного подобранного инстанса ("+12% урона, +6% крит"). */
+  /** Текст роллов конкретного экземпляра («Урон +12%, Крит +6%»). */
   affix?: string;
 }
 
