@@ -194,6 +194,9 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     str: rec.str,
     agi: rec.agi,
     int: rec.int,
+    con: rec.con ?? 1,
+    luc: rec.luc ?? 1,
+    wis: rec.wis ?? 1,
     rightCls: rec.held?.right?.cls ?? "",
     rightTier: rec.held?.right?.tier ?? "",
     leftCls: rec.held?.left?.cls ?? "",
@@ -222,7 +225,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     titles: rec.titles ?? [],
     title: rec.title ?? "",
     tokens: rec.tokens ?? 0,
-    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
   };
@@ -247,7 +250,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     weapons,
     misc,
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
-    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     fish: bagCount(rec.bag ?? [], "fish"),
     // Жетоны заданий и свитки (свиток читается отсюда же; действует — секунд осталось).
     tokens: rec.tokens ?? 0,

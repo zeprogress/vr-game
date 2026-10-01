@@ -282,7 +282,7 @@ export interface PcInvData {
   titles?: string[];
   title?: string;
   scrollWind?: number;
-  attrs: { unspent: number; str: number; agi: number; int: number };
+  attrs: { unspent: number; str: number; agi: number; int: number; con: number; luc: number; wis: number };
   respecCost: number;
   stats: { label: string; value: string }[];
 }
@@ -416,7 +416,7 @@ export interface OvlCam {
   wl?: number | null;
   /** Титул героя в «смотрим». */
   wt?: string | null;
-  wa?: [number, number, number] | null;
+  wa?: number[] | null;
   wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
   sl: string;

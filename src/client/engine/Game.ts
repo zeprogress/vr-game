@@ -1,5 +1,6 @@
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
+import { STAT_NAMES } from "#shared/progression";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -441,9 +442,7 @@ export class Game {
         stowed: this.combat.stowedSnapshot(),
         stats: {
           level: this.progression.level,
-          str: this.progression.stats.str,
-          agi: this.progression.stats.agi,
-          int: this.progression.stats.int,
+          ...this.progression.stats,
         },
       };
     });
@@ -2323,9 +2322,7 @@ export class Game {
       p.level !== self.level ||
       p.xp !== self.xp ||
       p.unspent !== self.unspent ||
-      p.stats.str !== self.str ||
-      p.stats.agi !== self.agi ||
-      p.stats.int !== self.int
+      STAT_NAMES.some((k) => p.stats[k] !== self[k])
     ) {
       p.applyRemote({
         level: self.level,
@@ -2334,6 +2331,9 @@ export class Game {
         str: self.str,
         agi: self.agi,
         int: self.int,
+        con: self.con,
+        luc: self.luc,
+        wis: self.wis,
       });
     }
   }

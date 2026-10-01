@@ -28,6 +28,9 @@ const ATTR_UI: [string, string][] = [
   ["сил", "#ff6b5e"],
   ["лов", "#6fdc6f"],
   ["инт", "#6fb0ff"],
+  ["тел", "#e8a35a"],
+  ["удч", "#e8d45a"],
+  ["мдр", "#c79bff"],
 ];
 
 export interface OverlayCtx {
@@ -44,7 +47,7 @@ export interface OverlayCtx {
   /** Уровень героя — «N ур.» рядом с ником. */
   watchLevel: number | null;
   /** Атрибуты героя [сил, лов, инт] — отдельная цветная строка. */
-  watchAttrs: [number, number, number] | null;
+  watchAttrs: number[] | null;
   /** Баффы на герое в «смотрим»: иконка, название, что даёт, сколько осталось (с) и цвет. */
   watchBuffs: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
@@ -629,15 +632,17 @@ export class Overlay {
         if (ctx.watchStats && ctx.watchStats.length > 0) {
           const table = document.createElement("table");
           table.className = "stats";
-          if (ctx.watchAttrs) {
+          // Шесть атрибутов — двумя строками по три.
+          for (let row0 = 0; ctx.watchAttrs && row0 < ATTR_UI.length; row0 += 3) {
             const tr = document.createElement("tr");
             const lb = document.createElement("td");
             lb.className = "lb";
-            lb.append("Атрибуты ");
+            if (row0 === 0) lb.append("Атрибуты ");
             const vl = document.createElement("td");
             vl.className = "vl";
-            ATTR_UI.forEach(([name, color], i) => {
-              if (i > 0) {
+            ATTR_UI.slice(row0, row0 + 3).forEach(([name, color], j) => {
+              const i = row0 + j;
+              if (j > 0) {
                 lb.append("/");
                 vl.append("/");
               }
@@ -649,7 +654,7 @@ export class Overlay {
               const v = document.createElement("i");
               v.className = "at";
               v.style.color = color;
-              v.textContent = String(ctx.watchAttrs![i]);
+              v.textContent = String(ctx.watchAttrs![i] ?? 1);
               vl.append(v);
             });
             tr.append(lb, vl);

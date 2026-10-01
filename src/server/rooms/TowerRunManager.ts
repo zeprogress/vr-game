@@ -35,6 +35,9 @@ export class TowerRunManager {
       str: number;
       agi: number;
       int: number;
+      con: number;
+      luc: number;
+      wis: number;
       leftCls: string;
       leftTier: string;
       rightCls: string;

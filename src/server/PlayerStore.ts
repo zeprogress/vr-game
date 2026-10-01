@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { PLAYER, RESPAWN } from "#shared/constants";
 import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
-import { blankProgress, maxHpFor, type Progress } from "#shared/progression";
+import { blankProgress, maxHpFor, resetAttrs, type Progress } from "#shared/progression";
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 
@@ -68,7 +68,27 @@ export interface PlayerRecord extends SaveMsg, Progress {
   /** Свитки: до какого момента действуют (мс с эпохи) — переживают перезаход. */
   scrollXpUntil?: number;
   scrollWindUntil?: number;
+  /** Версия системы атрибутов: 2 — «Классы 2.0» (6 атрибутов, цена очков растёт). Нет/1 — старая. */
+  attrVer?: number;
+  /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
+  skills?: Record<string, string[]>;
   updatedAt: number;
+}
+
+/** Текущая версия системы атрибутов. */
+export const ATTR_VER = 2;
+
+/**
+ * Переход на «Классы 2.0»: у старых записей три атрибута по 1 очку за
+ * уровень — сбрасываем все шесть к стартовым и отдаём очки уровня по новой
+ * системе (бесплатный сброс). Записи без con/luc/wis тоже лечатся здесь.
+ */
+export function migrateAttrs(r: PlayerRecord): boolean {
+  if (r.attrVer === ATTR_VER) return false;
+  resetAttrs(r);
+  r.attrVer = ATTR_VER;
+  r.respecCount = 0;
+  return true;
 }
 
 const FILE = resolve(dirname(fileURLToPath(import.meta.url)), ".data/players.json");
@@ -83,7 +103,8 @@ function blank(token: string): PlayerRecord {
     z: RESPAWN.spawnZ,
     yaw: 0,
     ...p,
-    hp: maxHpFor(p.level, p.str),
+    hp: maxHpFor(p.level, p),
+    attrVer: ATTR_VER,
     owned: [],
     stowed: [],
     held: { left: null, right: null },
@@ -110,8 +131,14 @@ export class PlayerStore {
     try {
       if (existsSync(FILE)) {
         const raw = JSON.parse(readFileSync(FILE, "utf8")) as PlayerRecord[];
-        for (const r of raw) if (r?.token) this.records.set(r.token, r);
-        console.log(`[store] загружено персонажей: ${this.records.size}`);
+        let migrated = 0;
+        for (const r of raw) {
+          if (!r?.token) continue;
+          if (migrateAttrs(r)) migrated++;
+          this.records.set(r.token, r);
+        }
+        console.log(`[store] загружено персонажей: ${this.records.size}${migrated ? `, переведено на «Классы 2.0»: ${migrated}` : ""}`);
+        if (migrated) this.dirty = true;
       }
     } catch (e) {
       console.warn("[store] players.json не прочитан:", (e as Error).message);

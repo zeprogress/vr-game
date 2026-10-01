@@ -87,6 +87,9 @@ export interface TowerRoomOptions {
   str: number;
   agi: number;
   int: number;
+  con: number;
+  luc: number;
+  wis: number;
   /** Реально надетое оружие/щит героя — как в основном мире (сумка/руки не переносится, только это). */
   leftCls: string;
   leftTier: string;
@@ -242,9 +245,8 @@ export class TowerRoom extends Room<TowerState> {
   /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
   private heroDmg: number = TOWER.hero.dmg;
   private heroMoveSpeed: number = TOWER.hero.moveSpeed;
-  private heroStr = 0;
-  private heroAgi = 0;
-  private heroInt = 0;
+  /** Атрибуты героя (все шесть) — для защиты/уворота. */
+  private heroAttrs = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
   /** Щит в руке — блокирует по направлению взгляда героя (он всегда смотрит на цель). */
   private heroGuard: GuardState | null = null;
   private heroAegis = false;
@@ -293,9 +295,10 @@ export class TowerRoom extends Room<TowerState> {
 
     // Урон/HP/скорость — от РЕАЛЬНЫХ характеристик героя (level/str/agi), как
     // и в основном мире (weaponDamage/maxHpFor/moveSpeedFor), не константы.
-    this.heroStr = options.str;
-    this.heroAgi = options.agi;
-    this.heroInt = options.int;
+    this.heroAttrs = {
+      str: options.str, agi: options.agi, int: options.int,
+      con: options.con ?? 1, luc: options.luc ?? 1, wis: options.wis ?? 1,
+    };
     // Оружие/щит — то, что реально надето (banки нельзя, а меч/щит — можно и нужно).
     const rightW =
       options.rightCls && options.rightTier
@@ -312,17 +315,17 @@ export class TowerRoom extends Room<TowerState> {
     this.heroWeaponKind = weaponKind;
     this.heroCls = isWeaponClass(options.rightCls) ? options.rightCls : "sword";
     this.heroRanged = weaponKind === "bow" || weaponKind === "staff";
-    this.heroAtkSpeed = attackSpeedFor(options.level, options.agi);
+    this.heroAtkSpeed = attackSpeedFor(options.level, this.heroAttrs);
     // Лук/меч тянут тир оружия (мультом); посох — магия считает от level/int
     // напрямую (fireboltDamage), тир посоха на урон не влияет — как и в
     // основном мире (см. ZoneRoom: fireboltDamage без multIn).
     if (weaponKind === "bow") {
-      this.heroDmg = weaponDamage("arrow", options.level, options.str, rightW?.mult ?? 1, options.agi);
+      this.heroDmg = weaponDamage("arrow", options.level, this.heroAttrs, rightW?.mult ?? 1);
     } else if (weaponKind === "staff") {
       // 0.7 — тот же фиксированный заряд, что и у ботов-магов (ZoneRoom.tickBot).
-      this.heroDmg = fireboltDamage(options.level, options.int, 0.7);
+      this.heroDmg = fireboltDamage(options.level, this.heroAttrs, 0.7);
     } else {
-      this.heroDmg = weaponDamage(weaponKind, options.level, options.str, rightW?.mult ?? 1, options.agi);
+      this.heroDmg = weaponDamage(weaponKind, options.level, this.heroAttrs, rightW?.mult ?? 1);
     }
     const holdsShield = options.leftCls === "shield" || options.rightCls === "shield";
     this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
@@ -336,8 +339,8 @@ export class TowerRoom extends Room<TowerState> {
     // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
     // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
     if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
-    this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
-    this.heroMeleeSpeed = meleeSpeedFor(options.level, options.agi);
+    this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs);
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
     // башне аффиксы не работали вовсе, крит был только базовый у лука).
     const ro = options.rolled;
@@ -349,7 +352,7 @@ export class TowerRoom extends Room<TowerState> {
       this.heroCritMult = ro.critMult;
       this.heroHunterBow = ro.hunterBow;
     }
-    const heroMaxHp = maxHpFor(options.level, options.str);
+    const heroMaxHp = maxHpFor(options.level, this.heroAttrs);
 
     const state = new TowerState();
     state.heroNick = options.heroNick;
@@ -862,12 +865,12 @@ export class TowerRoom extends Room<TowerState> {
     const guard: GuardState | undefined = this.heroGuard
       ? { sx: Math.sin(this.heroYaw), sz: Math.cos(this.heroYaw), wx: 0, wz: 0 }
       : undefined;
-    const dodged = Math.random() < dodgeChance(this.heroAgi, this.heroOneHanded);
+    const dodged = Math.random() < dodgeChance(this.heroAttrs, this.heroOneHanded);
     const block = dodged
       ? { mult: 0 as const, by: 3 as const }
       : resolveBlock(guard, ax, az, projectile, this.heroAegis);
-    let real = dmg * block.mult * (1 - armorFrac(this.heroStr));
-    if (projectile) real *= 1 - magicResistFrac(this.heroInt);
+    let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
+    if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
     // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):
     // "MISS" при увороте рисуется над ИСТОЧНИКОМ удара, звук блока/удара — над героем.

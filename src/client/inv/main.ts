@@ -1,3 +1,4 @@
+import { ATTRS as A2, ATTR_INFO, attrEffect, costRule, stepCost } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
@@ -67,7 +68,7 @@ interface InvMsg {
   weapons?: InvWeapon[];
   misc?: InvMisc[];
   scrapHave?: number;
-  attrs?: { unspent: number; str: number; agi: number; int: number };
+  attrs?: { unspent: number; str: number; agi: number; int: number; con?: number; luc?: number; wis?: number };
   fish?: number;
   respecCost?: number;
   /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
@@ -104,31 +105,30 @@ function walletHtml(msg: InvMsg): string {
   );
 }
 
-const ATTRS: { key: "str" | "agi" | "int"; name: string; hint: string }[] = [
-  { key: "str", name: "Сила", hint: "HP, урон ближнего боя, броня" },
-  { key: "agi", name: "Ловкость", hint: "скорость атаки, стрелы, бег, уворот" },
-  { key: "int", name: "Интеллект", hint: "мана, сила магии, защита от снарядов" },
-];
+const ATTRS = A2.map((key) => ({ key, name: `${ATTR_INFO[key].icon} ${ATTR_INFO[key].name}`, hint: attrEffect(key) }));
 
 function attrsHtml(msg: InvMsg): string {
   const a = msg.attrs;
   if (!a) return "";
-  const can = !!msg.authed && a.unspent > 0;
   const rows = ATTRS.map((r) => {
-    const btns = can
-      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1">+1</button>` +
-        (a.unspent >= 5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5">+5</button>` : "") +
+    const v = a[r.key] ?? 1;
+    const cost = stepCost(v);
+    let cost5 = 0;
+    for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
+    const btns = msg.authed && a.unspent >= cost
+      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1" title="${cost} оч.">+1</button>` +
+        (a.unspent >= cost5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5" title="${cost5} оч.">+5</button>` : "") +
         `</div>`
       : "";
     return (
-      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${a[r.key]}</b></div>` +
+      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${v}</b> <small>· подъём ${cost} оч.</small></div>` +
       `<div class="ahint">${r.hint}</div></div>${btns}</div>`
     );
   }).join("");
   // Сброс атрибутов — за жетон ◈; второе нажатие подтверждает (как «На лом»).
   const cost = msg.respecCost ?? 0;
   const fish = msg.tokens ?? 0; // имя осталось от рыбы — это жетоны
-  const invested = a.str + a.agi + a.int - 3 > 0;
+  const invested = A2.some((k) => (a[k] ?? 1) > 1);
   const armed = armedScrap === "respec";
   // cost < 0 — сброс выключен на сервере: кнопку не показываем.
   const respec = msg.authed && cost >= 0
@@ -141,7 +141,7 @@ function attrsHtml(msg: InvMsg): string {
     a.unspent > 0
       ? `Свободных очков: <b class="afree">${a.unspent}</b>${msg.authed ? "" : " — войди кодом, чтобы вложить"}`
       : "Свободных очков нет — их дают за новый уровень";
-  return `<div class="attrs"><div class="ahead">${head}</div>${rows}${respec}</div>`;
+  return `<div class="attrs"><div class="ahead">${head}</div><div class="ahint">${costRule()}</div>${rows}${respec}</div>`;
 }
 
 const titleEl = document.getElementById("title")!;

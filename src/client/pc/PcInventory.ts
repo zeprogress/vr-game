@@ -1,3 +1,4 @@
+import { ATTRS as A2, ATTR_INFO, attrEffect, costRule, stepCost } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
@@ -42,11 +43,7 @@ export interface PcInventoryHooks {
 
 export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
-const ATTRS: { id: "str" | "agi" | "int"; name: string; hint: string }[] = [
-  { id: "str", name: "Сила", hint: "Здоровье, урон мечом, броня" },
-  { id: "agi", name: "Ловкость", hint: "Скорость атаки и бега, урон луком, уворот" },
-  { id: "int", name: "Интеллект", hint: "Мана, сила магии, защита от снарядов" },
-];
+const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
 
@@ -681,20 +678,28 @@ export class PcInventory {
     const wrap = div("pcinv-attrs");
     wrap.append(
       div("pcinv-name", a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
+      div("pcinv-small", costRule()),
     );
     for (const at of ATTRS) {
       const row = div("pcinv-arow");
       const txt = div("pcinv-atxt");
-      txt.append(div("pcinv-aname", `${at.name}: ${a[at.id]}`), div("pcinv-small", at.hint));
+      const v = a[at.id] ?? 1;
+      const cost = stepCost(v);
+      // Сколько стоят следующие 5 подъёмов (цена может вырасти на середине).
+      let cost5 = 0;
+      for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
+      txt.append(div("pcinv-aname", `${at.name}: ${v}`), div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
       const b1 = document.createElement("button");
       b1.className = "pcinv-abtn";
       b1.textContent = "+1";
-      b1.disabled = a.unspent < 1;
+      b1.title = `${cost} оч.`;
+      b1.disabled = a.unspent < cost;
       b1.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 1 });
       const b5 = document.createElement("button");
       b5.className = "pcinv-abtn";
       b5.textContent = "+5";
-      b5.disabled = a.unspent < 5;
+      b5.title = `${cost5} оч.`;
+      b5.disabled = a.unspent < cost5;
       b5.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 5 });
       row.append(txt, b1, b5);
       wrap.append(row);

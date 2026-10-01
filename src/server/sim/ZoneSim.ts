@@ -32,6 +32,9 @@ import {
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
 import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
+
+/** Стартовые атрибуты — эталон «голого» героя для адаптивного урона. */
+const START_ATTRS = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
@@ -2493,7 +2496,7 @@ export class ZoneSim {
       m.hp = Math.max(1, frac * target);
     }
     m.adaptLevel = L;
-    m.adaptDmgMul = maxHpFor(L, 1) / maxHpFor(base, 1);
+    m.adaptDmgMul = maxHpFor(L, START_ATTRS) / maxHpFor(base, START_ATTRS);
   }
 
   /** Комната зовёт при удачном лечении союзника в бою с боссом. */

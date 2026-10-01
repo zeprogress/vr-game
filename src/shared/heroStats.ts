@@ -1,6 +1,9 @@
 import { AFFIX, BOT, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
-import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
+import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
+import { BASE_CRIT } from "./combat";
+import { ATTR2, invested } from "./attrs2";
+import type { AttrsIn } from "./classes2";
 import { magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
@@ -12,11 +15,12 @@ import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
  * BOT.bowCooldown; посох — это ОГНЕШАРЫ, не удары рукой: полный темп от
  * BOT.staffCooldown. `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
  */
-export function attacksPerSec(cls: string, level: number, agi: number, affixBonus = 0): number {
+export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0): number {
   const mul = 1 + affixBonus;
-  if (cls === "bow") return (attackSpeedFor(level, agi) * mul) / BOT.bowCooldown;
-  if (cls === "staff") return (attackSpeedFor(level, agi) * mul) / BOT.staffCooldown;
-  return (meleeSpeedFor(level, agi) * mul) / BOT.attackCooldown;
+  if (cls === "bow") return (attackSpeedFor(level, a) * mul) / BOT.bowCooldown;
+  // Посох — огнешары: темп от скорости каста (МДР), не от ловкости.
+  if (cls === "staff") return (castSpeedFor(level, a) * mul) / BOT.staffCooldown;
+  return (meleeSpeedFor(level, a) * mul) / BOT.attackCooldown;
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
@@ -36,6 +40,9 @@ export interface HeroStatInput {
   str: number;
   agi: number;
   int: number;
+  con: number;
+  luc: number;
+  wis: number;
   rightCls: string;
   rightTier: string;
   leftCls: string;
@@ -82,14 +89,14 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   if (cls === "bow") {
     rows.push({
       label: "Урон",
-      value: (weaponDamage("arrow", p.level, p.str, tierMul, p.agi) * (1 + dmgBonus)).toFixed(1),
+      value: (weaponDamage("arrow", p.level, p, tierMul) * (1 + dmgBonus)).toFixed(1),
     });
   } else if (cls === "staff") {
-    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p.int, 1) * (1 + dmgBonus)).toFixed(1) });
+    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * (1 + dmgBonus)).toFixed(1) });
   } else {
     rows.push({
       label: "Урон",
-      value: (weaponDamage("sword", p.level, p.str, tierMul, p.agi) * (1 + dmgBonus)).toFixed(1),
+      value: (weaponDamage("sword", p.level, p, tierMul) * (1 + dmgBonus)).toFixed(1),
     });
   }
 
@@ -99,20 +106,21 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("скорость атаки") / 100;
   rows.push({
     label: attackRateLabel(cls),
-    value: `${attacksPerSec(cls, p.level, p.agi, atkSpeedBonus).toFixed(2)}/с`,
+    value: `${attacksPerSec(cls, p.level, p, atkSpeedBonus).toFixed(2)}/с`,
   });
 
-  rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p.agi).toFixed(1)} м/с` });
+  rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p).toFixed(1)} м/с` });
 
   // Уворот (см. ZoneRoom.ts hurtPlayer): свободная левая рука (щит/пусто у
   // меча) — обычный шанс; лук/посох занимают обе руки — вдвое подвижнее (×5
   // в формуле dodgeChance).
   const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
-  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p.agi, oneHanded) * 100)}%` });
+  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded) * 100)}%` });
 
   const critChanceBonus = affixNum2("шанс крита") / 100;
   const critMultBonus = affixNum2("силу крита");
-  const critChance = (cls === "bow" ? BOW.critChance : 0) + critChanceBonus;
+  const luckN = invested(p.luc);
+  const critChance = Math.min(0.75, (cls === "bow" ? BOW.critChance : BASE_CRIT) + critChanceBonus + luckN * ATTR2.luc.crit);
   // Базовая сила крита — своя для каждого вида оружия (см. rollCritMult в
   // combat.ts): у лука BOW.critMult, у меча/кулака SWORD_CRIT_MULT, у посоха
   // STAFF_CRIT_MULT.
@@ -120,12 +128,12 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // Показываем всегда (в т.ч. 0% у меча/посоха без ролла) — а не только при
   // ненулевом шансе: игроку/зрителю иначе непонятно, есть ли крит вообще.
   rows.push({ label: "Шанс крита", value: `${Math.round(critChance * 100)}%` });
-  rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus).toFixed(1)}` });
+  rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
 
-  const arm = armorFrac(p.str);
-  if (arm >= 0.03) rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
-  const mres = magicResistFrac(p.int);
-  if (mres >= 0.05) rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
+  const arm = armorFrac(p);
+  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
+  const mres = magicResistFrac(p);
+  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {

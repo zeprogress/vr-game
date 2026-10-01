@@ -85,7 +85,6 @@ import {
   CAMPFIRE,
   PLAYER,
   PLAYER_HP,
-  PROGRESSION,
   respecCostFor,
   RESPEC_ENABLED,
   PVP,
@@ -172,10 +171,15 @@ import {
   maxHpFor,
   moveSpeedFor,
   spendPoint,
+  resetAttrs,
+  statCost,
+  STAT_NAMES,
   xpToNext,
   type Progress,
   type StatName,
 } from "#shared/progression";
+import { ATTR2 } from "#shared/attrs2";
+import { autoSpend, classOf2, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -380,6 +384,21 @@ interface Bot {
  * ТОЛЬКО пока в руке базовый тир (см. вызывающий код) — как только герой
  * нашёл честный апгрейд, класс дальше выбирает сам игрок, одевая оружие.
  */
+/** Русские имена атрибутов (чат). */
+const STAT_RU: Record<StatName, string> = {
+  str: "сила", agi: "ловкость", int: "интеллект", con: "телосложение", luc: "удача", wis: "мудрость",
+};
+
+/** Чат-команды атрибутов → атрибут. */
+const CHAT_STATS: Record<string, StatName> = {
+  "!str": "str", "!сила": "str",
+  "!dex": "agi", "!agi": "agi", "!ловк": "agi", "!ловкость": "agi",
+  "!int": "int", "!инт": "int", "!интеллект": "int",
+  "!con": "con", "!тел": "con", "!телосложение": "con",
+  "!luc": "luc", "!luck": "luc", "!удача": "luc",
+  "!wis": "wis", "!мудр": "wis", "!мудрость": "wis",
+};
+
 function botWeaponFor(str: number, agi: number, int: number): "sword" | "bow" | "staff" {
   if (agi > str && agi > int) return "bow";
   if (int > str && int > agi) return "staff";
@@ -823,7 +842,7 @@ function lootFreeFor(d: { ownerId: string | null; ownerUntil: number }, id: stri
 }
 
 function readProgress(p: PlayerState): Progress {
-  return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int };
+  return { level: p.level, xp: p.xp, unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis };
 }
 
 function writeProgress(p: PlayerState, s: Progress): void {
@@ -833,6 +852,9 @@ function writeProgress(p: PlayerState, s: Progress): void {
   p.str = s.str;
   p.agi = s.agi;
   p.int = s.int;
+  p.con = s.con;
+  p.luc = s.luc;
+  p.wis = s.wis;
 }
 
 /** Сумка из сейва — с проверкой, что предметы всё ещё существуют. */
@@ -1168,10 +1190,10 @@ export class ZoneRoom extends Room<ZoneState> {
       writeProgress(p, prog);
       // Прибавку к потолку HP доливаем сразу — как это делал клиент.
       const before = p.maxHp;
-      p.maxHp = maxHpFor(p.level, p.str);
+      p.maxHp = maxHpFor(p.level, p);
       p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - before));
       const beforeMana = p.maxMana;
-      p.maxMana = maxManaFor(p.level, p.int);
+      p.maxMana = maxManaFor(p.level, p);
       p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
     });
 
@@ -1264,7 +1286,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const beforeHp = target.hp;
         target.hp = Math.min(
           target.maxHp,
-          target.hp + healAmountFor(p.level, p.int, charge) * rolledDmgMul(p, healHand, rt),
+          target.hp + healAmountFor(p.level, p, charge) * rolledDmgMul(p, healHand, rt),
         );
         // Лечение союзника в бою с боссом — вклад в общий опыт (гибридный делёж).
         if (target !== p) this.sim.bossHeal(client.sessionId, target.hp - beforeHp);
@@ -1301,9 +1323,10 @@ export class ZoneRoom extends Room<ZoneState> {
         staffCrit.chance,
         staffCrit.mult,
         STAFF_CRIT_MULT,
+        p.luc,
       );
       const boltDmg =
-        fireboltDamage(p.level, p.int, charge) *
+        fireboltDamage(p.level, p, charge) *
         rolledDmgMul(p, staffHand, rt) *
         (storm ? AFFIX.storm.dmgMul : 1) *
         critM *
@@ -1342,7 +1365,7 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.lastSkillAt = this.elapsed;
         const hand = p.rightCls === "sword" ? "right" : "left";
         const dmg =
-          weaponDamage("sword", p.level, p.str, multIn(p, hand), p.agi) *
+          weaponDamage("sword", p.level, p, multIn(p, hand)) *
           s.dmgMult *
           this.buffMult(id, "dmg");
         const fx: ActRelay = {
@@ -1439,7 +1462,7 @@ export class ZoneRoom extends Room<ZoneState> {
       writeBag(p, bag);
       p.hp = Math.min(
         p.maxHp,
-        p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p.int),
+        p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p),
       );
 
       // Соседям — звук глотка.
@@ -1894,7 +1917,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const last = rt.lastHit[msg.weapon];
     const meleeWpn = msg.weapon === "sword" || msg.weapon === "fist";
     const spd =
-      (meleeWpn ? meleeSpeedFor(p.level, p.agi) : attackSpeedFor(p.level, p.agi)) *
+      (meleeWpn ? meleeSpeedFor(p.level, p) : attackSpeedFor(p.level, p)) *
       rolledAtkSpeedMul(p, hand, rt);
     const rate = WEAPON_RATE[msg.weapon] / spd;
     if (last !== undefined && this.elapsed - last < rate) return;
@@ -1914,9 +1937,9 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpCrit = rollCritMult(msg.weapon);
+      const pvpCrit = rollCritMult(msg.weapon, Math.random, false, 0, 0, msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult, p.luc);
       const pvpDmg =
-        weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand), p.agi) *
+        weaponDamage(msg.weapon, p.level, p, multIn(p, hand)) *
         PVP.damageMult *
         pvpCrit;
       this.hurtPlayer({
@@ -1952,9 +1975,10 @@ export class ZoneRoom extends Room<ZoneState> {
       rc.chance,
       rc.mult,
       msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult,
+      p.luc,
     );
     const dmg =
-      weaponDamage(msg.weapon, p.level, p.str, multIn(p, hand) * rolledDmgMul(p, hand, rt), p.agi) *
+      weaponDamage(msg.weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
       crit *
       this.buffMult(client.sessionId, "dmg");
     const [dx, dz] = unit2(msg.dx, msg.dz);
@@ -2039,11 +2063,11 @@ export class ZoneRoom extends Room<ZoneState> {
     const prog = readProgress(p);
     const levels = grantXp(prog, amount);
     writeProgress(p, prog);
-    p.maxMana = maxManaFor(p.level, p.int);
+    p.maxMana = maxManaFor(p.level, p);
     if (levels <= 0) return;
     // Новый уровень: потолок HP вырос — доливаем разницу плюс бонус.
     const beforeHp = p.maxHp;
-    p.maxHp = maxHpFor(p.level, p.str);
+    p.maxHp = maxHpFor(p.level, p);
     p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp) + LEVEL_UP_HEAL * levels);
     client?.send(MSG.levelUp, { level: p.level });
     // Соседям (и спектатору) — чтобы над телом всплыли оранжевые крестики и
@@ -2856,6 +2880,9 @@ export class ZoneRoom extends Room<ZoneState> {
           str: p.str,
           agi: p.agi,
           int: p.int,
+          con: p.con,
+          luc: p.luc,
+          wis: p.wis,
           leftCls: p.leftCls,
           leftTier: p.leftTier,
           rightCls: p.rightCls,
@@ -2876,7 +2903,7 @@ export class ZoneRoom extends Room<ZoneState> {
         p.head.z = TOWER_PROP_POS.z + 6;
         p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
         p.towerFloor = 0;
-        p.maxHp = maxHpFor(p.level, p.str);
+        p.maxHp = maxHpFor(p.level, p);
         p.hp = p.maxHp;
         this.towerCamHeroId = "";
         this.broadcast(MSG.specCmd, { t: "cam", shot: "auto" } satisfies SpecCmd);
@@ -2981,7 +3008,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.state.towerFloor = 0; // сняли арену — герой вернулся
       // ХП в башне жило в тех же полях, что и обычное (см. onTowerSnapshot) —
       // возвращаем настоящий потолок героя и лечим с дороги.
-      bot.state.maxHp = maxHpFor(bot.state.level, bot.state.str);
+      bot.state.maxHp = maxHpFor(bot.state.level, bot.state);
       bot.state.hp = bot.state.maxHp;
     }
     if (this.towerCamHeroId === heroId) {
@@ -3226,9 +3253,9 @@ export class ZoneRoom extends Room<ZoneState> {
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
-    } else if (cmd === "!str" || cmd === "!dex" || cmd === "!agi" || cmd === "!int") {
-      // В чате ловкость — !dex (запасной алиас !agi на всякий случай), внутри она по-прежнему agi.
-      const stat: StatName = cmd === "!dex" || cmd === "!agi" ? "agi" : (cmd.slice(1) as StatName);
+    } else if (CHAT_STATS[cmd]) {
+      // В чате ловкость — !dex (запасной алиас !agi), есть и русские: !сила !ловк !инт !тел !удача !мудр.
+      const stat: StatName = CHAT_STATS[cmd];
       this.spendBotPoint(norm, stat, parts[1]);
     } else if (
       cmd === "!respec" ||
@@ -4044,13 +4071,16 @@ export class ZoneRoom extends Room<ZoneState> {
       scrollWind: bagCount(bag, "scroll_wind"),
       titles: rec?.titles ?? [],
       title: rec?.title ?? "",
-      attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int },
+      attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       stats: heroStatRows({
         level: p.level,
         str: p.str,
         agi: p.agi,
         int: p.int,
+        con: p.con ?? 1,
+        luc: p.luc ?? 1,
+        wis: p.wis ?? 1,
         rightCls: p.rightCls,
         rightTier: p.rightTier,
         leftCls: p.leftCls,
@@ -4070,7 +4100,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Русское имя атрибута для чата. */
   private static statName(stat: StatName): string {
-    return stat === "str" ? "сила" : stat === "agi" ? "ловкость" : "интеллект";
+    return STAT_RU[stat];
   }
 
   /** Антиспам подсказок для ников без активного бота. */
@@ -4187,7 +4217,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const token = `nick:${norm}`;
       const rec = store.get(token);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
-      const prog: Progress = { level: rec.level, xp: rec.xp, unspent: rec.unspent, str: rec.str, agi: rec.agi, int: rec.int };
+      const prog: Progress = { level: rec.level, xp: rec.xp, unspent: rec.unspent, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con, luc: rec.luc, wis: rec.wis };
       let n = 0;
       while (n < Math.max(1, idx) && spendPoint(prog, id)) n++;
       if (n === 0) return { ok: false, text: "Свободных очков нет — их дают за уровень." };
@@ -4431,10 +4461,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = bot.state;
     const xp = atMaxLevel(p.level) ? "макс" : `${Math.floor(p.xp)}/${xpToNext(p.level)}`;
     const points =
-      p.unspent > 0 ? `свободных очков ${p.unspent} → !str !dex !int` : "свободных очков нет";
+      p.unspent > 0 ? `свободных очков ${p.unspent} → !str !dex !int !con !luc !wis` : "свободных очков нет";
     this.reply(
       `@${bot.nick} ур.${p.level} · опыт ${xp} · HP ${Math.ceil(p.hp)}/${Math.round(p.maxHp)} · ` +
-        `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · ${points} · ${heroStatLine(p)}`,
+        `сила ${p.str} · ловкость ${p.agi} · интеллект ${p.int} · телосложение ${p.con} · удача ${p.luc} · мудрость ${p.wis} · ${points} · ${heroStatLine(p)}`,
     );
   }
 
@@ -4446,16 +4476,20 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const p = bot.state;
-    if (p.unspent <= 0) {
+    if (p.unspent < statCost(p, stat)) {
       // Без кулдауна тут был бы флуд отказами, поэтому делим его со !stats.
       const now = Date.now();
       if (now - bot.statsAt < BOT.statsCooldown * 1000) return;
       bot.statsAt = now;
-      this.reply(`@${bot.nick} свободных очков нет — их дают за новый уровень.`);
+      this.reply(
+        p.unspent > 0
+          ? `@${bot.nick} ${ZoneRoom.statName(stat)} ${p[stat]} → следующее очко стоит ${statCost(p, stat)}, свободно ${p.unspent}.`
+          : `@${bot.nick} свободных очков нет — их дают за новый уровень (${ATTR2.pointsPerLevel} за уровень).`,
+      );
       return;
     }
 
-    const want = Math.max(1, Math.min(p.unspent, Math.floor(Number(arg)) || 1));
+    const want = Math.max(1, Math.min(999, Math.floor(Number(arg)) || 1));
     const done = this.spendStats(p, stat, want, true);
     if (done === 0) return;
     this.persistBot(bot);
@@ -4474,6 +4508,18 @@ export class ZoneRoom extends Room<ZoneState> {
    * (как MSG.spend). `autoClass` — бот на базовом оружии меняет класс под
    * преобладающий атрибут (найденный апгрейд не трогаем). Возвращает, сколько вложено.
    */
+  /** Раскидать свободные очки бота по шаблону класса (класс — по оружию в руках). */
+  private botAutoSpend(p: PlayerState): void {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "warrior";
+    const prog = readProgress(p);
+    if (autoSpend(prog, cls) === 0) return;
+    writeProgress(p, prog);
+    const beforeHp = p.maxHp;
+    p.maxHp = maxHpFor(p.level, p);
+    p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp));
+    p.maxMana = maxManaFor(p.level, p);
+  }
+
   private spendStats(p: PlayerState, stat: StatName, want: number, autoClass: boolean): number {
     const prog = readProgress(p);
     let done = 0;
@@ -4481,10 +4527,10 @@ export class ZoneRoom extends Room<ZoneState> {
     if (done === 0) return 0;
     writeProgress(p, prog);
     const beforeHp = p.maxHp;
-    p.maxHp = maxHpFor(p.level, p.str);
+    p.maxHp = maxHpFor(p.level, p);
     p.hp = Math.min(p.maxHp, p.hp + Math.max(0, p.maxHp - beforeHp));
     const beforeMana = p.maxMana;
-    p.maxMana = maxManaFor(p.level, p.int);
+    p.maxMana = maxManaFor(p.level, p);
     p.mana = Math.min(p.maxMana, p.mana + Math.max(0, p.maxMana - beforeMana));
     // Класс меняем автоматически ТОЛЬКО пока в руке база (нечего терять).
     // Как только герой нашёл честный апгрейд (gold/legendary), дальше класс
@@ -4558,7 +4604,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private respecNick(norm: string): { ok: boolean; text: string } {
     if (!RESPEC_ENABLED) return { ok: false, text: "сброс атрибутов временно выключен." };
-    const base = PROGRESSION.startStat;
+    const base = ATTR2.start;
     const token = `nick:${norm}`;
     const rec = store.get(token);
     const done = rec?.respecCount ?? 0;
@@ -4573,30 +4619,31 @@ export class ZoneRoom extends Room<ZoneState> {
     const t = this.findWeaponsTarget(norm);
     if (t) {
       const p = t.p;
-      const back = p.str - base + (p.agi - base) + (p.int - base);
-      if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
+      const back = STAT_NAMES.some((k) => p[k] > base);
+      if (!back) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
       const err = pay();
       if (err) return { ok: false, text: err };
       const prog = readProgress(p);
-      prog.str = prog.agi = prog.int = base;
-      prog.unspent += back;
+      resetAttrs(prog);
       writeProgress(p, prog);
       // Потолки HP/маны — от новых (базовых) атрибутов. Оружие не трогаем.
-      p.maxHp = maxHpFor(p.level, p.str);
+      p.maxHp = maxHpFor(p.level, p);
       p.hp = Math.min(p.hp, p.maxHp);
-      p.maxMana = maxManaFor(p.level, p.int);
+      p.maxMana = maxManaFor(p.level, p);
       p.mana = Math.min(p.mana, p.maxMana);
       this.persistNick(norm);
       store.put(token, { respecCount: done + 1, tokens: tokens - cost });
-      return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int` };
+      return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${p.unspent} → !str !dex !int !con !luc !wis` };
     }
     if (!rec) return { ok: false, text: "героя нет — напиши !play." };
-    const back = rec.str - base + (rec.agi - base) + (rec.int - base);
-    if (back <= 0) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
+    const back = STAT_NAMES.some((k) => (rec[k] ?? base) > base);
+    if (!back) return { ok: false, text: "очки атрибутов ещё не вложены — сбрасывать нечего." };
     const err = pay();
     if (err) return { ok: false, text: err };
-    store.put(token, { str: base, agi: base, int: base, unspent: rec.unspent + back, respecCount: done + 1, tokens: tokens - cost });
-    return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${rec.unspent + back}` };
+    const fresh = { ...rec };
+    resetAttrs(fresh);
+    store.put(token, { str: base, agi: base, int: base, con: base, luc: base, wis: base, unspent: fresh.unspent, respecCount: done + 1, tokens: tokens - cost });
+    return { ok: true, text: `очки атрибутов сброшены ${costTxt} · свободных очков ${fresh.unspent}` };
   }
 
 
@@ -4726,6 +4773,9 @@ export class ZoneRoom extends Room<ZoneState> {
       p.str = rec.str;
       p.agi = rec.agi;
       p.int = rec.int;
+      p.con = rec.con ?? 1;
+      p.luc = rec.luc ?? 1;
+      p.wis = rec.wis ?? 1;
     }
     // Расселение по уровню: слабых — на поляну, прокачанных — к сильным лагерям.
     const campPref = typeof rec?.campPref === "string" && ELITE_MOBS[rec.campPref] ? rec.campPref : null;
@@ -4735,9 +4785,9 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.x = sp.x;
     p.head.z = sp.z;
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
-    p.maxHp = maxHpFor(p.level, p.str);
+    p.maxHp = maxHpFor(p.level, p);
     p.hp = p.maxHp;
-    p.maxMana = maxManaFor(p.level, p.int);
+    p.maxMana = maxManaFor(p.level, p);
     p.mana = p.maxMana;
     // Оружие сохраняем (золотой меч из лута, ранее выданный лук/посох — не
     // должны сбрасываться на каждом !play).
@@ -5019,7 +5069,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const distToShore = Math.hypot(shoreX - p.head.x, shoreZ - p.head.z);
     if (distToShore > 2) {
       const dist = distToShore || 1e-6;
-      const speed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
+      const speed = moveSpeedFor(p.level, p) * BOT.speedFactor;
       const wvx = ((shoreX - p.head.x) / dist) * speed;
       const wvz = ((shoreZ - p.head.z) / dist) * speed;
       const accel = Math.min(1, dt * 6);
@@ -5068,6 +5118,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** ИИ одного бота на кадр. */
   private tickBot(dt: number, bot: Bot): void {
     const p = bot.state;
+    // Боты зрителей сами раскидывают свободные очки по шаблону своего класса.
+    if (p.unspent > 0) this.botAutoSpend(p);
     if (p.dead) {
       bot.swingIn = 0; // умер на замахе — удара не будет
       bot.swingTarget = null;
@@ -5099,7 +5151,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Воин крепче: держим его максимум HP с множителем BOT.warrior.hpMul (при
     // смене уровня/статов/оружия — доводим и текущее HP на прибавку).
     {
-      const want = maxHpFor(p.level, p.str) * (isWarriorBot(p) ? BOT.warrior.hpMul : 1);
+      const want = maxHpFor(p.level, p) * (isWarriorBot(p) ? BOT.warrior.hpMul : 1);
       if (Math.abs(p.maxHp - want) > 0.5) {
         const gain = Math.max(0, want - p.maxHp);
         p.maxHp = want;
@@ -5488,7 +5540,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const emoting = Date.now() < bot.emoteFreezeUntil;
     // Скорость бега — от характеристик персонажа (как у живого игрока), чуть
     // медленнее ради читаемости на стриме.
-    const botSpeed = moveSpeedFor(p.level, p.agi) * BOT.speedFactor;
+    const botSpeed = moveSpeedFor(p.level, p) * BOT.speedFactor;
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat = ranged && chasingMob && dist < shootKeep - 1;
     const wantSpeed =
@@ -5597,7 +5649,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.attackCd <= 0 &&
       bot.swingIn <= 0
     ) {
-      const atk = attackSpeedFor(p.level, p.agi);
+      const atk = attackSpeedFor(p.level, p);
       const bow = p.rightCls === "bow";
       // Ролл «скорость атаки» — и у ботов (раньше учитывался только у живых игроков,
       // хотя в характеристиках показывался).
@@ -5625,12 +5677,14 @@ export class ZoneRoom extends Room<ZoneState> {
           botAffix === "crit",
           botRolled ? affixSum(botRolled.affixes, "critChance") : 0,
           botRolled ? affixSum(botRolled.affixes, "critMult") : 0,
+          BOW.critMult,
+          p.luc,
         );
         // Красный «X» — не сейчас, а в момент попадания стрелы (sim.critHits).
         this.sim.castBolt(
           ox, oy, oz, adx, ady, adz,
           BOT.arrowSpeed, 0.05, 0.2,
-          weaponDamage("arrow", p.level, p.str, mult, p.agi) * critM * this.buffMult(bot.id, "dmg"),
+          weaponDamage("arrow", p.level, p, mult) * critM * this.buffMult(bot.id, "dmg"),
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
       } else {
@@ -5648,9 +5702,10 @@ export class ZoneRoom extends Room<ZoneState> {
           botStaffCrit.chance,
           botStaffCrit.mult,
           STAFF_CRIT_MULT,
+          p.luc,
         );
         const bd =
-          fireboltDamage(p.level, p.int, 0.7) *
+          fireboltDamage(p.level, p, 0.7) *
           rolledDmgMul(p, "right", bot.rt) *
           flyingMul *
           (s ? AFFIX.storm.dmgMul : 1) *
@@ -5683,7 +5738,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
-      const atk = meleeSpeedFor(p.level, p.agi);
+      const atk = meleeSpeedFor(p.level, p);
       bot.attackCd = BOT.attackCooldown / (atk * rolledAtkSpeedMul(p, "right", bot.rt));
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
@@ -5765,7 +5820,7 @@ export class ZoneRoom extends Room<ZoneState> {
     writeBag(p, bag);
     p.hp = Math.min(
       p.maxHp,
-      p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p.int),
+      p.hp + potionHeal(ITEMS[used], p.hp, p.maxHp) * potionPowerFor(p),
     );
     bot.drinkCd = BOT.drinkCooldown;
     // Соседям — звук глотка, как у игрока.
@@ -5801,9 +5856,10 @@ export class ZoneRoom extends Room<ZoneState> {
       botSwordCrit.chance,
       botSwordCrit.mult,
       SWORD_CRIT_MULT,
+      p.luc,
     );
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt), p.agi) *
+      weaponDamage("sword", p.level, p, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt)) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       swordCrit *
       this.buffMult(bot.id, "dmg");
@@ -5945,7 +6001,7 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     const dmg =
-      weaponDamage("sword", p.level, p.str, multIn(p, "right"), p.agi) *
+      weaponDamage("sword", p.level, p, multIn(p, "right")) *
       BOT.stunDamageMult *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       this.buffMult(bot.id, "dmg");
@@ -6067,7 +6123,7 @@ export class ZoneRoom extends Room<ZoneState> {
         pin();
         this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y, z: cz } satisfies ActRelay);
         const base =
-          weaponDamage("arrow", p.level, p.str, mult, p.agi) * this.buffMult(ownerId, "dmg");
+          weaponDamage("arrow", p.level, p, mult) * this.buffMult(ownerId, "dmg");
         for (const m of [...this.sim.mobs.values()]) {
           if (m.dead) continue;
           const dx = m.x - cx;
@@ -6075,7 +6131,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const d = Math.hypot(dx, dz);
           if (d > radius) continue;
           // Крит — на каждую стрелу и цель отдельно.
-          const critM = rollCritMult("arrow", Math.random, affix === "crit", rc.chance, rc.mult);
+          const critM = rollCritMult("arrow", Math.random, affix === "crit", rc.chance, rc.mult, BOW.critMult, p.luc);
           if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
           this.sim.hitMob(m.id, base * critM, dx / (d || 1), dz / (d || 1), ownerId, true);
         }
@@ -6087,7 +6143,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private playerMassHealLand(casterId: string, p: PlayerState, rt: Runtime): void {
     const hand = p.rightCls === "staff" ? "right" : "left";
     const amount =
-      healAmountFor(p.level, p.int, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, hand, rt);
+      healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, hand, rt);
     this.state.players.forEach((ally) => {
       if (ally.dead || ally.maxHp <= 0 || ally.hp >= ally.maxHp) return;
       if (Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z) > BOT.healRadius) return;
@@ -6125,7 +6181,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const targets = this.woundedNear(p);
     const charge = BOT.healCharge;
     const amount =
-      healAmountFor(p.level, p.int, charge) * BOT.healGroupFraction * rolledDmgMul(p, "right", bot.rt);
+      healAmountFor(p.level, p, charge) * BOT.healGroupFraction * rolledDmgMul(p, "right", bot.rt);
     for (const ally of targets) {
       const before = ally.hp;
       ally.hp = Math.min(ally.maxHp, ally.hp + amount);
@@ -6220,7 +6276,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Мана восстанавливается всегда (от интеллекта).
     this.state.players.forEach((p) => {
       if (p.mana < p.maxMana) {
-        p.mana = Math.min(p.maxMana, p.mana + manaRegenFor(p.int) * dt);
+        p.mana = Math.min(p.maxMana, p.mana + manaRegenFor(p) * dt);
       }
     });
 
@@ -6549,7 +6605,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
     const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
     // Яд (облако спор) — не удар: ни увернуться, ни закрыться щитом.
-    const dodged = !h.dot && Math.random() < dodgeChance(p.agi, oneHanded);
+    const dodged = !h.dot && Math.random() < dodgeChance(p, oneHanded);
     const block = h.dot
       ? { mult: 1, by: 0 as BlockedBy }
       : dodged
@@ -6566,13 +6622,13 @@ export class ZoneRoom extends Room<ZoneState> {
     // Броня от силы гасит любой урон; интеллект добавляет защиту от снарядов/магии.
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
     const magicMob = !!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee);
-    let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p.int) : 1 - armorFrac(p.str));
+    let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p) : 1 - armorFrac(p));
     if (magicMob && dmg > 0 && !h.dot) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
     if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
-    if (h.projectile) dmg *= 1 - magicResistFrac(p.int);
+    if (h.projectile) dmg *= 1 - magicResistFrac(p);
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
     // Вампиризм моба (Костяной призрак) — от реально прошедшего урона.
@@ -6949,8 +7005,8 @@ export class ZoneRoom extends Room<ZoneState> {
       rec?.skin && rec.skin >= 1 && rec.skin <= BOT.skins
         ? rec.skin
         : 1 + Math.floor(Math.random() * BOT.skins);
-    p.maxHp = maxHpFor(p.level, p.str);
-    p.maxMana = maxManaFor(p.level, p.int);
+    p.maxHp = maxHpFor(p.level, p);
+    p.maxMana = maxManaFor(p.level, p);
     p.mana = p.maxMana;
     // Руки заполняем из сейва СРАЗУ: иначе первое же сохранение (оно идёт
     // раз в 10 с) запишет пустые руки, ещё до того как клиент пришлёт свои.

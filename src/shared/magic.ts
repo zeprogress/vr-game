@@ -1,5 +1,6 @@
 import { PROGRESSION } from "./constants";
-import { levelGain, statScale } from "./progression";
+import { levelGain } from "./levelGain";
+import { ATTR2, invested } from "./attrs2";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -82,48 +83,54 @@ export const MAGIC = {
   },
 } as const;
 
+/** Атрибуты, от которых считается магия (подходит PlayerState / сейв / Progress). */
+export interface MagicAttrs {
+  readonly int: number;
+  readonly wis: number;
+}
+
 /**
- * Множитель «силы магии»: базовый рост от УРОВНЯ (ускоряется) × небольшой
- * множитель от интеллекта. Множит урон огнешара и объём лечения.
+ * Множитель «силы магии»: рост от УРОВНЯ (ускоряется) × ИНТ. Множит урон
+ * огнешара, магических умений и объём лечения.
  */
-export function magicPowerFor(level: number, int: number): number {
+export function magicPowerFor(level: number, a: MagicAttrs): number {
   const lvl = 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
-  const intMul = 1 + statScale(int) * PROGRESSION.int.magicMul;
-  return lvl * intMul;
+  return lvl * (1 + invested(a.int) * ATTR2.int.magic);
 }
 
-/** Потолок маны: базовый запас растёт от уровня, интеллект множит. */
-export function maxManaFor(level: number, int: number): number {
+/** Потолок маны (мана пока выключена): уровень × ИНТ. */
+export function maxManaFor(level: number, a: MagicAttrs): number {
   const base = MAGIC.baseMana + levelGain(level, PROGRESSION.perLevel.mana);
-  return base * (1 + statScale(int) * PROGRESSION.int.manaMul);
+  return base * (1 + invested(a.int) * 0.05);
 }
 
-export function manaRegenFor(int: number): number {
-  return MAGIC.regenBase + statScale(int) * MAGIC.regenPerInt;
+export function manaRegenFor(a: MagicAttrs): number {
+  return MAGIC.regenBase + invested(a.int) * MAGIC.regenPerInt;
 }
 
-/** Универсально: доля урона снарядов/магии, поглощаемая от интеллекта. */
-export function magicResistFrac(int: number): number {
-  return Math.min(PROGRESSION.int.resistCap, statScale(int) * PROGRESSION.int.resistMul);
+/** Доля магического урона (и снарядов магов), которую гасит МДР: max·n/(n+K). */
+export function magicResistFrac(a: MagicAttrs): number {
+  const n = invested(a.wis);
+  return (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
 }
 
-/** Универсально: множитель лечения зельями от интеллекта. */
-export function potionPowerFor(int: number): number {
-  return 1 + statScale(int) * PROGRESSION.int.potionMul;
+/** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */
+export function potionPowerFor(a: MagicAttrs): number {
+  return 1 + invested(a.int) * 0.02;
 }
 
 /** Урон огненного снаряда: заряд 0..1, уровень, интеллект. */
-export function fireboltDamage(level: number, int: number, charge: number): number {
+export function fireboltDamage(level: number, a: MagicAttrs, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.firebolt.baseDamage + c * MAGIC.firebolt.damagePerCharge;
-  return base * magicPowerFor(level, int);
+  return base * magicPowerFor(level, a);
 }
 
 /** Сколько HP вернёт лечение: заряд 0..1, уровень, интеллект. */
-export function healAmountFor(level: number, int: number, charge: number): number {
+export function healAmountFor(level: number, a: MagicAttrs, charge: number): number {
   const c = Math.max(0, Math.min(1, charge));
   const base = MAGIC.heal.baseHeal + c * MAGIC.heal.healPerCharge;
-  return base * magicPowerFor(level, int);
+  return base * magicPowerFor(level, a);
 }
 
 export function fireboltSpeed(pull01: number): number {

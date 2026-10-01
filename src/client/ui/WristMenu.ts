@@ -1,3 +1,4 @@
+import { ATTR_INFO, attrEffect } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -21,7 +22,7 @@ import { BOT } from "#shared/constants";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
-const STATS: StatName[] = ["str", "agi", "int"];
+const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 const TEX_W = 1200;
 const TEX_H = 900;
 const PLANE_W = 0.5;
@@ -608,9 +609,7 @@ export class WristMenu {
   private hero(): HeroStats {
     return {
       level: this.prog.level,
-      str: this.prog.stats.str,
-      agi: this.prog.stats.agi,
-      int: this.prog.stats.int,
+      ...this.prog.stats,
     };
   }
 
@@ -861,46 +860,53 @@ export class WristMenu {
     ctx.strokeRect(LX + 8, y, LW - 16, 16);
     y += 28;
 
-    // Характеристики.
-    for (const s of STATS) {
-      const canSpend = p.unspent > 0;
+    // Характеристики: шесть атрибутов сеткой 2×3 (по высоте — как раньше три строки).
+    const cellW = (LW - 8) / 2;
+    STATS.forEach((s, i) => {
+      const cx = LX + (i % 2) * (cellW + 8);
+      const cy = y + Math.floor(i / 2) * 46;
+      const cost = p.costOf(s);
+      const canSpend = p.unspent >= cost;
       const wd = this.add({
-        id: `stat:${s}`, x: LX, y, w: LW, h: 42, kind: "button",
+        id: `stat:${s}`, x: cx, y: cy, w: cellW, h: 42, kind: "button",
         act: () => {
           p.spend(s);
         },
-        info: [`${STAT_LABELS[s]}: ${p.stats[s]}`, canSpend ? "нажми — вложить свободное очко" : this.statHint(s)],
+        info: [
+          `${STAT_LABELS[s]}: ${p.stats[s]} · подъём стоит ${cost} оч.`,
+          `${attrEffect(s)}${canSpend ? " · нажми — вложить" : ""}`,
+        ],
       });
       const st = this.styleFor(wd);
       if (st.fill) {
         ctx.fillStyle = st.fill;
-        ctx.fillRect(wd.x, y, wd.w, wd.h);
+        ctx.fillRect(wd.x, cy, wd.w, wd.h);
       }
       if (st.stroke) {
         ctx.strokeStyle = st.stroke;
         ctx.lineWidth = st.lw;
-        ctx.strokeRect(wd.x, y, wd.w, wd.h);
+        ctx.strokeRect(wd.x, cy, wd.w, wd.h);
       }
       ctx.fillStyle = "#e6e0d0";
-      ctx.font = "26px system-ui, sans-serif";
-      ctx.fillText(STAT_LABELS[s], LX + 12, y + 7);
+      ctx.font = "24px system-ui, sans-serif";
+      ctx.fillText(`${ATTR_INFO[s].icon} ${ATTR_INFO[s].short}`, cx + 10, cy + 8);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText(String(p.stats[s]), LX + 200, y + 7);
-      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillText(String(p.stats[s]), cx + 128, cy + 7);
+      ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#a9a498";
-      ctx.fillText(this.statHint(s), LX + 250, y + 12);
+      ctx.fillText(`за ${cost}`, cx + 178, cy + 13);
       if (canSpend) {
         ctx.fillStyle = "#2f7a3a";
-        ctx.fillRect(LX + LW - 60, y + 4, 50, 34);
+        ctx.fillRect(cx + cellW - 48, cy + 4, 40, 34);
         ctx.fillStyle = "#e9ffe9";
         ctx.font = "bold 28px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("+", LX + LW - 35, y + 5);
+        ctx.fillText("+", cx + cellW - 28, cy + 5);
         ctx.textAlign = "left";
       }
-      y += 46;
-    }
+    });
+    y += Math.ceil(STATS.length / 2) * 46;
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = p.unspent > 0 ? "#7ee081" : "#8f8a7e";
     ctx.fillText(`Свободных очков: ${p.unspent}`, LX + 8, y);
@@ -971,13 +977,6 @@ export class WristMenu {
     ctx.fillStyle = "#f1ead6";
     ctx.fillText(title, x + 8, y + 8);
     return y + 38;
-  }
-
-  private statHint(s: StatName): string {
-    const p = this.prog;
-    if (s === "str") return `HP ${Math.round(p.maxHp)} · урон ×${p.swordDamage.toFixed(2)}`;
-    if (s === "agi") return `бег ${p.moveSpeed.toFixed(2)} м/с`;
-    return `огнешар ${p.fireboltMax.toFixed(1)} · хил ${Math.round(p.healMax)}`;
   }
 
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */

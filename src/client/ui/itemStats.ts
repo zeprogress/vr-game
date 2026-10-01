@@ -18,6 +18,9 @@ export interface HeroStats {
   str: number;
   agi: number;
   int: number;
+  con: number;
+  luc: number;
+  wis: number;
 }
 
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
@@ -36,13 +39,13 @@ export const AFFIX_TEXT: Record<NonNullable<WeaponDef["affix"]>, string> = {
  */
 export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   const d = weaponDef(w.cls, w.tier);
-  const spd = attackSpeedFor(s.level, s.agi);
+  const spd = attackSpeedFor(s.level, s);
   const out: [string, string][] = [];
 
   if (w.cls === "sword") {
-    const dmg = weaponDamage("sword", s.level, s.str, d.mult, s.agi);
+    const dmg = weaponDamage("sword", s.level, s, d.mult);
     out.push(["Урон", n1(dmg)]);
-    const aps = attacksPerSec("sword", s.level, s.agi);
+    const aps = attacksPerSec("sword", s.level, s);
     out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
     out.push([
@@ -51,15 +54,15 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     ]);
     out.push(["Растёт от", "силы + ловкости"]);
   } else if (w.cls === "bow") {
-    const dmg = weaponDamage("arrow", s.level, s.str, d.mult, s.agi);
+    const dmg = weaponDamage("arrow", s.level, s, d.mult);
     out.push(["Урон стрелы", n1(dmg)]);
     out.push(["Крит", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
-    out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s.agi).toFixed(2)}/с`]);
+    out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "ловкости"]);
   } else if (w.cls === "staff") {
-    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s.int, 1))]);
-    out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s.agi).toFixed(2)}/с`]);
+    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s, 1))]);
+    out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (сила магии), ловкости (темп)"]);
   } else {
     const chance = d.affix === "guard" ? AFFIX.guard.blockChance : SHIELD.blockChance;

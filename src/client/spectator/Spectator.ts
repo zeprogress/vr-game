@@ -1335,7 +1335,7 @@ export class Spectator {
           watchBuffs = Spectator.playerBuffs(p);
           watchLevel = p.level;
           watchTitle = p.title || null;
-          watchAttrs = [p.str, p.agi, p.int];
+          watchAttrs = [p.str, p.agi, p.int, p.con, p.luc, p.wis];
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {

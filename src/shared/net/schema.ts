@@ -87,6 +87,13 @@ export class PlayerState extends Schema {
   @type("float32") towerBossHpFrac = 0;
   /** Платформа игрока: 0 — не известна (бот), 1 — компьютер, 2 — смартфон, 3 — VR-шлем. */
   @type("uint8") plat = 0;
+  // ---- «Классы 2.0»: ещё три атрибута и выбранные умения (поля — в конце схемы) ----
+  @type("uint16") con = 1;
+  @type("uint16") luc = 1;
+  @type("uint16") wis = 1;
+  /** Два выбранных умения текущего класса (id из SKILLS2), "" — нет. */
+  @type("string") skill1 = "";
+  @type("string") skill2 = "";
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

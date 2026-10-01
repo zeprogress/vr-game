@@ -1,6 +1,32 @@
-import { PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
+import { PROGRESSION } from "./constants";
+import {
+  ATTR2,
+  castTempo2,
+  dodge2,
+  levelGain,
+  magicResist2,
+  maxHp2,
+  moveSpeed2,
+  physArmor2,
+  physPower2,
+  physTempo2,
+  pointsAt,
+  stepCost,
+  type AttrsIn,
+} from "./classes2";
 
-export type StatName = "str" | "agi" | "int";
+export { levelGain };
+
+/**
+ * Прогресс героя — «Классы 2.0» (формулы в classes2.ts):
+ *   СИЛ — физ. урон любым оружием; ЛОВ — бег и темп физ. атак;
+ *   ИНТ — магия и лечение; ТЕЛ — HP и физ. броня;
+ *   УДЧ — крит и уворот; МДР — магзащита и скорость каста.
+ * Очков — ATTR2.pointsPerLevel за уровень, цена подъёма растёт каждые
+ * ATTR2.costStep вложенных (1, 2, 3… очка за +1).
+ */
+export type StatName = "str" | "agi" | "int" | "con" | "luc" | "wis";
+export const STAT_NAMES: readonly StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 
 /** Прогресс игрока в «плоском» виде — так он летит по сети и лежит в сейве. */
 export interface Progress {
@@ -10,17 +36,20 @@ export interface Progress {
   str: number;
   agi: number;
   int: number;
+  con: number;
+  luc: number;
+  wis: number;
 }
 
 export function blankProgress(): Progress {
-  return {
-    level: 1,
-    xp: 0,
-    unspent: 0,
-    str: PROGRESSION.startStat,
-    agi: PROGRESSION.startStat,
-    int: PROGRESSION.startStat,
-  };
+  const s = ATTR2.start;
+  return { level: 1, xp: 0, unspent: pointsAt(1), str: s, agi: s, int: s, con: s, luc: s, wis: s };
+}
+
+/** Сбросить атрибуты к стартовым и вернуть все очки уровня (сброс/переход на новую систему). */
+export function resetAttrs(p: Progress): void {
+  for (const k of STAT_NAMES) p[k] = ATTR2.start;
+  p.unspent = pointsAt(p.level);
 }
 
 /** Сколько опыта нужно для перехода с `level` на следующий (удваивается). */
@@ -33,80 +62,38 @@ export function atMaxLevel(level: number): boolean {
   return level >= PROGRESSION.maxLevel;
 }
 
-// ---- производные величины ----
-//
-// Схема: базовое значение растёт ОТ УРОВНЯ (ускоряясь), атрибут — небольшой
-// множитель поверх. str → HP и физ. урон, agi → бег, int → мана и магия.
-// Скорость атаки растёт только от уровня.
-
-const P = PROGRESSION.perLevel;
-
-/** Накопленный рост к уровню: perLevel·L + accel·L·(L-1)/2, L = level-1. */
-export function levelGain(level: number, curve: { perLevel: number; accel: number }): number {
-  const L = Math.max(0, Math.floor(level) - 1);
-  return curve.perLevel * L + (curve.accel * L * (L - 1)) / 2;
-}
+// ---- производные величины (тонкие обёртки над classes2) ----
 
 /**
- * «Эффективное» число вложенных очков атрибута с учётом затухания: первые
- * `softCap` — полностью, дальше — с коэффициентом `softRate`. Все множители
- * от атрибутов считаются от этого значения, а не от сырого числа очков.
- */
-export function statScale(value: number): number {
-  const n = Math.max(0, value - PROGRESSION.startStat);
-  const cap = PROGRESSION.softCap;
-  return n <= cap ? n : cap + (n - cap) * PROGRESSION.softRate;
-}
-
-const strDmgMul = (str: number): number => 1 + statScale(str) * PROGRESSION.str.dmgMul;
-const agiRangedMul = (agi: number): number =>
-  1 + statScale(agi) * PROGRESSION.agi.rangedDmgMul;
-
-/** Универсально: множитель урона ЛЮБЫМ оружием от ловкости (меч/кулак/бросок). */
-export function agiDamageMul(agi: number): number {
-  return 1 + statScale(agi) * PROGRESSION.agi.dmgMul;
-}
-
-/** Универсально: доля урона, поглощаемая бронёй от силы (любой источник). */
-export function armorFrac(str: number): number {
-  return Math.min(PROGRESSION.str.armorCap, statScale(str) * PROGRESSION.str.armorMul);
-}
-
-/**
- * Шанс увернуться от ЛЮБОЙ атаки (0..1) от ловкости. Один предмет в руках
- * (лук/посох — держится обеими руками) — впятеро подвижнее, чем с занятой
- * второй рукой (щит/второй меч): свободнее корпус, легче уйти с линии удара.
- */
-/**
- * В руках ОДИН предмет — уворот ×5 (см. dodgeChance). Одна рука пуста, или
- * обе держат один и тот же лук/посох: лук клиент сообщает сразу в обеих
- * руках, и старая проверка «левая пуста» лучников без щита не пропускала.
- * Два меча или оружие со щитом — не один предмет.
+ * В руках ОДИН предмет — уворот выше (см. dodgeChance). Одна рука пуста, или
+ * обе держат один и тот же двуручник (лук/посох/копьё/молот: клиент сообщает
+ * его сразу в обеих руках). Два меча/кинжала или оружие со щитом — не один.
  */
 export function holdsOneItem(leftCls: string, rightCls: string): boolean {
   if (leftCls === "" || rightCls === "") return true;
-  return leftCls === rightCls && (leftCls === "bow" || leftCls === "staff");
+  return leftCls === rightCls && (leftCls === "bow" || leftCls === "staff" || leftCls === "spear" || leftCls === "hammer");
 }
 
-export function dodgeChance(agi: number, oneHanded: boolean): number {
-  const base = statScale(agi) * PROGRESSION.agi.dodgeMul;
-  return Math.min(PROGRESSION.agi.dodgeCap, base * (oneHanded ? 5 : 1));
+/** Доля урона, гасимая физ. бронёй (ТЕЛ). */
+export function armorFrac(a: AttrsIn): number {
+  return physArmor2(a);
+}
+
+/** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше. */
+export function dodgeChance(a: AttrsIn, oneHanded: boolean): number {
+  return dodge2(a, oneHanded);
 }
 
 /** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
 export function weaponDmgFromLevel(level: number): number {
-  return 1 + levelGain(level, P.weaponDmg);
+  return 1 + levelGain(level, PROGRESSION.perLevel.weaponDmg);
 }
 
-/** Итоговый базовый множитель физ. урона: уровень × сила. Тир оружия — отдельно. */
-export function weaponDamageBase(level: number, str: number): number {
-  return weaponDmgFromLevel(level) * strDmgMul(str);
+/** Итоговый базовый множитель физ. урона: уровень × СИЛ. Тир оружия — отдельно. */
+export function weaponDamageBase(level: number, a: AttrsIn): number {
+  return physPower2(level, a);
 }
 
-/**
- * Множитель темпа атаки (>1 — быстрее): рост от уровня × небольшой множитель
- * от ловкости, без потолка — рост плавно гаснет. Действует и на меч, и на лук/посох.
- */
 /** Мягкое затухание прироста: вначале ≈g, дальше растёт всё медленнее, но БЕЗ потолка. */
 function softGain(g: number, s: number): number {
   return g > 0 ? s * Math.log(1 + g / s) : g;
@@ -116,55 +103,48 @@ const ATK_SOFT = 1.8;
 /** Затухание темпа мечника — сильнее общего: на высоких уровнях не «пропеллер». */
 const MELEE_SOFT = 1.0;
 
-export function attackSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
-  const byLevel = 1 + levelGain(level, P.atkSpeed);
-  const byAgi = 1 + statScale(agi) * PROGRESSION.agi.atkSpeedMul;
-  // Раньше — жёсткий потолок ×2.6; теперь рост плавно гаснет (ур.30 ≈×2.1,
-  // ур.60 ≈×3.4, ур.100 ≈×4.9 — у лука ~3 выстрела/с на сотом).
-  return 1 + softGain(byLevel * byAgi - 1, ATK_SOFT);
+const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
+
+/** Темп физ. атак дальнего боя (лук): уровень × ЛОВ. */
+export function attackSpeedFor(level: number, a: AttrsIn = START): number {
+  return physTempo2(level, a, ATK_SOFT);
 }
 
-/** Совместимость: темп атаки только от уровня (где ловкость неизвестна, напр. чужой аватар). */
+/** Совместимость: темп атаки только от уровня (где атрибуты неизвестны, напр. чужой аватар). */
 export function attackSpeedFromLevel(level: number): number {
   return attackSpeedFor(level);
 }
 
 /**
- * Темп атаки БЛИЖНЕГО боя (меч/кулак) — сильно приглушённый: воины иначе к
- * высоким уровням машут как пропеллер. Ускорение от уровня/ловкости даёт
- * 50% от общего темпа (было 35%; у лука/посоха остаётся полный attackSpeedFor).
- * Потолков нет (ни своего ×1.45, ни общего) — рост плавно гаснет (softGain).
+ * Темп атаки БЛИЖНЕГО боя (меч/кинжал/копьё/молот/кулак) — приглушённый:
+ * половина общего прироста и своё, более сильное затухание.
  */
-export function meleeSpeedFor(level: number, agi: number = PROGRESSION.startStat): number {
-  const full = attackSpeedFor(level, agi);
-  // Половина общего прироста и сверху своё, более сильное затухание: без
-  // потолка, но мечник на ур.100 бьёт ~3 раза/с, а не «пропеллером».
+export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
+  const full = attackSpeedFor(level, a);
   return 1 + softGain((full - 1) * 0.5, MELEE_SOFT);
 }
 
-/**
- * Скорость проигрывания клипа замаха (SwordSlash). Клип длиннее реального
- * интервала между ударами, поэтому его гоним быстрее темпа боя — так анимация
- * успевает отыграть к следующему удару и «подстраивается» под скорость атаки
- * героя (и на своём аватаре, и на чужих).
- */
-export function meleeAnimRate(level: number, agi: number = PROGRESSION.startStat): number {
-  return 1.5 * meleeSpeedFor(level, agi);
+/** Скорость каста (посох, откат заклинаний): уровень × МДР. */
+export function castSpeedFor(level: number, a: AttrsIn = START): number {
+  return castTempo2(level, a);
 }
 
-export function maxHpFor(level: number, str: number): number {
-  const base = PLAYER_HP.max + levelGain(level, P.hp);
-  return base * (1 + statScale(str) * PROGRESSION.str.hpMul);
+/** Скорость проигрывания клипа замаха — быстрее темпа боя, чтобы клип успевал. */
+export function meleeAnimRate(level: number, a: AttrsIn = START): number {
+  return 1.5 * meleeSpeedFor(level, a);
 }
 
-/** Урон мечом (базовый удар на 1 ур. при силе 1 = 1). Совместимость имени. */
-export function swordDamageFor(level: number, str: number): number {
-  return weaponDamageBase(level, str);
+export function maxHpFor(level: number, a: AttrsIn): number {
+  return maxHp2(level, a);
 }
 
-export function moveSpeedFor(level: number, agi: number): number {
-  const base = PLAYER.runSpeed + levelGain(level, P.moveSpeed);
-  return base * (1 + statScale(agi) * PROGRESSION.agi.moveMul);
+/** Урон мечом (базовый удар на 1 ур. = 1). Совместимость имени. */
+export function swordDamageFor(level: number, a: AttrsIn): number {
+  return weaponDamageBase(level, a);
+}
+
+export function moveSpeedFor(level: number, a: AttrsIn): number {
+  return moveSpeed2(level, a);
 }
 
 /** Добавка к скорости стрелы, м/с — небольшая, от уровня. */
@@ -172,13 +152,13 @@ export function arrowSpeedBonusFor(level: number): number {
   return Math.max(0, Math.floor(level) - 1) * PROGRESSION.arrowSpeedPerLevel;
 }
 
-/**
- * Урон стрелы: база от уровня × ловкость (НЕ сила). Тир лука домножается
- * отдельно. Множитель 1.75 — поднят по просьбе (было 1.15, 1.3, 1.4, 1.55).
- */
-export function arrowDamageFor(level: number, agi: number): number {
-  return 1.75 * weaponDmgFromLevel(level) * agiRangedMul(agi);
+/** Урон стрелы: 1.75 × физ. урон (СИЛ, как у всего физического оружия). Тир лука — отдельно. */
+export function arrowDamageFor(level: number, a: AttrsIn): number {
+  return 1.75 * physPower2(level, a);
 }
+
+/** Магзащита (МДР) — реэкспорт для удобства. */
+export { magicResist2 as magicResistFor };
 
 // ---- изменения ----
 
@@ -190,21 +170,27 @@ export function grantXp(p: Progress, amount: number): number {
   while (!atMaxLevel(p.level) && p.xp >= xpToNext(p.level)) {
     p.xp -= xpToNext(p.level);
     p.level++;
-    p.unspent += PROGRESSION.statPointsPerLevel;
+    p.unspent += ATTR2.pointsPerLevel;
     gained++;
   }
   if (atMaxLevel(p.level)) p.xp = 0;
   return gained;
 }
 
-/** Потратить очко на характеристику. true — получилось. */
+/** Цена следующего подъёма атрибута. */
+export function statCost(p: Pick<Progress, StatName>, stat: StatName): number {
+  return stepCost(p[stat]);
+}
+
+/** Поднять атрибут на 1 (цена растёт с вложенным). true — получилось. */
 export function spendPoint(p: Progress, stat: StatName): boolean {
-  if (p.unspent <= 0) return false;
-  p.unspent--;
+  const cost = stepCost(p[stat]);
+  if (p.unspent < cost) return false;
+  p.unspent -= cost;
   p[stat]++;
   return true;
 }
 
 export function isStatName(v: unknown): v is StatName {
-  return v === "str" || v === "agi" || v === "int";
+  return v === "str" || v === "agi" || v === "int" || v === "con" || v === "luc" || v === "wis";
 }

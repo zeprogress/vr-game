@@ -1,6 +1,8 @@
 import { AFFIX, ARROW, BOW, COMBAT, MELEE, SHIELD, THROW } from "./constants";
 
-import { agiDamageMul, arrowDamageFor, weaponDamageBase } from "./progression";
+import { arrowDamageFor, weaponDamageBase } from "./progression";
+import { ATTR2, invested } from "./attrs2";
+import type { AttrsIn } from "./classes2";
 
 /** Чем игрок ударил. Урон и досягаемость сервер берёт отсюда, а не с клиента. */
 export type WeaponKind = "sword" | "fist" | "arrow" | "throw";
@@ -34,13 +36,13 @@ export const WEAPON_RATE: Record<WeaponKind, number> = {
 };
 
 /**
- * Крит: у лука есть база (`BOW.critChance`/`BOW.critMult`), у остальных видов
- * оружия своего крита нет — но `extraChance`/`extraMult` (рандомные роллы
- * "крит" на конкретном инстансе оружия, см. items.ts RolledAffix) добавляют
- * шанс и силу крита ЛЮБОМУ оружию, раз аффиксы теперь не привязаны к классу.
- * Бросок делает СЕРВЕР (иначе клиент крутил бы кубик сам).
+ * Крит. База — у оружия (лук BOW.critChance, остальное — BASE_CRIT), сверху
+ * УДЧ героя (+шанс и +сила за каждый подъём) и роллы «крит» конкретного
+ * инстанса (extraChance/extraMult). Бросок делает СЕРВЕР.
  * Возвращает множитель: 1 — обычный удар, иначе — сила крита.
  */
+export const BASE_CRIT = 0.05;
+
 export function rollCritMult(
   kind: WeaponKind,
   rnd: () => number = Math.random,
@@ -48,39 +50,32 @@ export function rollCritMult(
   hunterBow = false,
   extraChance = 0,
   extraMult = 0,
-  /** Базовая кратность крита: у лука/посоха BOW.critMult, у меча — SWORD_CRIT_MULT. */
+  /** Базовая кратность крита: у лука BOW.critMult, у меча — SWORD_CRIT_MULT, у посоха — STAFF_CRIT_MULT. */
   baseMult: number = BOW.critMult,
+  /** Удача героя (УДЧ). */
+  luc: number = ATTR2.start,
 ): number {
-  const baseChance = kind === "arrow" ? BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0) : 0;
-  const chance = baseChance + extraChance;
+  const baseChance = kind === "arrow" ? BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0) : BASE_CRIT;
+  const n = invested(luc);
+  const chance = Math.min(0.75, baseChance + extraChance + n * ATTR2.luc.crit);
   if (chance <= 0) return 1;
-  return rnd() < chance ? baseMult + extraMult : 1;
+  return rnd() < chance ? baseMult + extraMult + n * ATTR2.luc.critDmg : 1;
 }
 
 /**
- * Урон оружия. Физ. урон растёт от УРОВНЯ (ускоряется) и множится на силу;
- * `mult` — множитель тира предмета в руке (бронза, золото).
+ * Урон оружия: физ. урон растёт от УРОВНЯ (ускоряется) и множится на СИЛ
+ * (у всего физического оружия, включая стрелы); `mult` — тир предмета в руке.
  */
-export function weaponDamage(
-  kind: WeaponKind,
-  level: number,
-  str: number,
-  mult = 1,
-  /** Ловкость — нужна только для стрелы (её урон масштабируется от неё, не от силы). */
-  agi = str,
-): number {
+export function weaponDamage(kind: WeaponKind, level: number, a: AttrsIn, mult = 1): number {
   switch (kind) {
     case "sword":
-      // Урон от силы (уровень×сила), плюс универсальная добавка от ловкости.
-      return weaponDamageBase(level, str) * agiDamageMul(agi) * mult;
+      return weaponDamageBase(level, a) * mult;
     case "fist":
-      // Кулак вдвое слабее меча, но так же растёт от уровня/силы/ловкости.
-      return MELEE.damage * weaponDamageBase(level, str) * agiDamageMul(agi);
+      return MELEE.damage * weaponDamageBase(level, a);
     case "throw":
-      return THROW.damage * weaponDamageBase(level, str) * agiDamageMul(agi) * mult;
+      return THROW.damage * weaponDamageBase(level, a) * mult;
     case "arrow":
-      // Стрела масштабируется от ловкости своей формулой — двойного учёта нет.
-      return arrowDamageFor(level, agi) * mult;
+      return arrowDamageFor(level, a) * mult;
   }
 }
 

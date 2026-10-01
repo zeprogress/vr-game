@@ -1,6 +1,9 @@
 import { BOT, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
-import { levelGain } from "./progression";
+import { levelGain } from "./levelGain";
+import { ATTR2, invested } from "./attrs2";
+
+export { levelGain };
 
 /**
  * «Классы 2.0» — шесть атрибутов, шесть классов, общий пул умений.
@@ -34,26 +37,11 @@ export const ATTR_INFO: Record<Attr, { short: string; name: string; icon: string
   wis: { short: "МДР", name: "Мудрость", icon: "📿", desc: "Магическая защита и скорость каста" },
 };
 
-/** Все числа «Классов 2.0» — в одном месте, их крутит лаборатория. */
-export const ATTR2 = {
-  /** Значение каждого атрибута на 1 уровне. */
-  start: 1,
-  /** Очков за уровень (на 100 ур. — 297). */
-  pointsPerLevel: 3,
-  /** Очков сразу на 1 уровне. */
-  startPoints: 0,
-  /** Каждые столько подъёмов атрибута цена очка растёт на 1. */
-  costStep: 10,
-
-  str: { physDmg: 0.024 }, // +2.4% физ. урона за очко
-  agi: { move: 0.008, atkSpeed: 0.012 }, // +0.8% бега, +1.2% темпа физ. атак
-  int: { magic: 0.026 }, // +2.6% урона магией и лечения
-  con: { hp: 0.04, armorMax: 0.6, armorK: 60 }, // +4% HP; броня = max·n/(n+K)
-  luc: { crit: 0.004, critDmg: 0.01, dodge: 0.004, dodgeOneItem: 2, dodgeCap: 0.45 },
-  wis: { resistMax: 0.7, resistK: 45, cast: 0.009 }, // магзащита = max·n/(n+K); +0.9% скорости каста
-} as const;
+export { ATTR2 };
 
 export type Attrs = Record<Attr, number>;
+/** Любой объект с шестью атрибутами (PlayerState, запись сейва, Progress). */
+export type AttrsIn = Readonly<Attrs>;
 
 export function blankAttrs(): Attrs {
   const s = ATTR2.start;
@@ -81,41 +69,69 @@ export function pointsAt(level: number): number {
 }
 
 /** Потрачено на раскладку. */
-export function spentOn(a: Attrs): number {
+export function spentOn(a: AttrsIn): number {
   return ATTRS.reduce((n, k) => n + totalCost(a[k]), 0);
+}
+
+/** Что даёт каждый подъём атрибута — точными цифрами (подсказки во всех окнах). */
+export function attrEffect(k: Attr): string {
+  const A = ATTR2;
+  const pc = (v: number, d = 1): string => `${+(v * 100).toFixed(d)}%`;
+  switch (k) {
+    case "str":
+      return `+${pc(A.str.physDmg)} физ. урона любым оружием (меч, кинжал, копьё, молот, лук)`;
+    case "agi":
+      return `+${pc(A.agi.atkSpeed)} темпа физ. атак, +${pc(A.agi.move)} скорости бега`;
+    case "int":
+      return `+${pc(A.int.magic)} урона магией и силы лечения`;
+    case "con":
+      return `+${pc(A.con.hp)} здоровья, физ. броня растёт (до ${pc(A.con.armorMax, 0)})`;
+    case "luc":
+      return `+${pc(A.luc.crit)} шанса крита, +${pc(A.luc.critDmg, 0)} силы крита, +${pc(A.luc.dodge)} уворота (×${A.luc.dodgeOneItem} с одним оружием)`;
+    case "wis":
+      return `+${pc(A.wis.cast)} скорости каста и отката заклинаний, маг. защита растёт (до ${pc(A.wis.resistMax, 0)})`;
+  }
+}
+
+/** Подсказка о цене очков (одна строка). */
+export function costRule(): string {
+  return `${ATTR2.pointsPerLevel} очка за уровень · первые ${ATTR2.costStep} подъёмов атрибута — по 1 очку, следующие ${ATTR2.costStep} — по 2, дальше по 3…`;
 }
 
 // ---------------------------------------------------------------- производные
 
 const P = PROGRESSION.perLevel;
 
-export function maxHp2(level: number, a: Attrs): number {
+
+export { invested };
+
+export function maxHp2(level: number, a: AttrsIn): number {
   return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(a.con) * ATTR2.con.hp);
 }
 
 /** Доля физ. урона, которую гасит броня (ТЕЛ). */
-export function physArmor2(a: Attrs): number {
+export function physArmor2(a: AttrsIn): number {
   const n = inv(a.con);
   return (ATTR2.con.armorMax * n) / (n + ATTR2.con.armorK);
 }
 
 /** Доля магического урона, которую гасит МДР. */
-export function magicResist2(a: Attrs): number {
+export function magicResist2(a: AttrsIn): number {
   const n = inv(a.wis);
   return (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
 }
 
-export function moveSpeed2(level: number, a: Attrs): number {
+export function moveSpeed2(level: number, a: AttrsIn): number {
   return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(a.agi) * ATTR2.agi.move);
 }
 
 /** Множитель физ. урона: уровень × СИЛ. Тир оружия и профиль — отдельно. */
-export function physPower2(level: number, a: Attrs): number {
+export function physPower2(level: number, a: AttrsIn): number {
   return (1 + levelGain(level, P.weaponDmg)) * (1 + inv(a.str) * ATTR2.str.physDmg);
 }
 
 /** Множитель магии (урон и лечение): уровень × ИНТ. */
-export function magicPower2(level: number, a: Attrs): number {
+export function magicPower2(level: number, a: AttrsIn): number {
   return (1 + levelGain(level, P.magicDmg)) * (1 + inv(a.int) * ATTR2.int.magic);
 }
 
@@ -133,26 +149,26 @@ function levelTempo(level: number): number {
  * Множитель темпа физ. атак (>1 — быстрее): уровень × ЛОВ, рост гаснет.
  * `soft` — сила затухания: у ближнего боя сильнее (иначе «пропеллер»).
  */
-export function physTempo2(level: number, a: Attrs, soft: number): number {
+export function physTempo2(level: number, a: AttrsIn, soft: number): number {
   return 1 + softGain(levelTempo(level) * (1 + inv(a.agi) * ATTR2.agi.atkSpeed) - 1, soft);
 }
 
 /** Множитель скорости каста (посох, откат заклинаний): уровень × МДР. */
-export function castTempo2(level: number, a: Attrs): number {
+export function castTempo2(level: number, a: AttrsIn): number {
   return 1 + softGain(levelTempo(level) * (1 + inv(a.wis) * ATTR2.wis.cast) - 1, 1.8);
 }
 
 /** Шанс уворота: УДЧ; один предмет в руках (пустая вторая / лук / посох / двуручник) — больше. */
-export function dodge2(a: Attrs, oneItem: boolean): number {
+export function dodge2(a: AttrsIn, oneItem: boolean): number {
   const L = ATTR2.luc;
   return Math.min(L.dodgeCap, inv(a.luc) * L.dodge * (oneItem ? L.dodgeOneItem : 1));
 }
 
-export function critChance2(a: Attrs, weaponBase: number): number {
+export function critChance2(a: AttrsIn, weaponBase: number): number {
   return Math.min(0.75, weaponBase + inv(a.luc) * ATTR2.luc.crit);
 }
 
-export function critMult2(a: Attrs, weaponBase: number): number {
+export function critMult2(a: AttrsIn, weaponBase: number): number {
   return weaponBase + inv(a.luc) * ATTR2.luc.critDmg;
 }
 
@@ -408,6 +424,35 @@ export function autoBuild(cls: ClassId, level: number): Attrs {
     a[best]++;
   }
   return a;
+}
+
+/**
+ * Дораскидать свободные очки по шаблону класса (боты зрителей): тот же
+ * выбор, что в autoBuild, но от текущих значений. Мутирует `a`, вернёт,
+ * сколько подъёмов сделано.
+ */
+export function autoSpend(a: Attrs & { unspent: number }, cls: ClassId): number {
+  const w = CLASSES2[cls].build;
+  let n = 0;
+  for (;;) {
+    let best: Attr | null = null;
+    let bestScore = 0;
+    for (const k of ATTRS) {
+      const wk = w[k] ?? 0;
+      if (wk <= 0) continue;
+      const c = stepCost(a[k]);
+      if (c > a.unspent) continue;
+      const score = wk / (c * (1 + inv(a[k]) / 20));
+      if (score > bestScore) {
+        bestScore = score;
+        best = k;
+      }
+    }
+    if (!best) return n;
+    a.unspent -= stepCost(a[best]);
+    a[best]++;
+    n++;
+  }
 }
 
 // ---------------------------------------------------------------- сводка героя

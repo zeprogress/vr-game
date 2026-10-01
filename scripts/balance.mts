@@ -11,16 +11,7 @@
  * Модель упрощённая (стоят и бьются, без беготни/блока щитом/зелий), её
  * задача — сравнивать классы между собой, а не точно предсказывать бой.
  */
-import { BOT, ELITE_MOBS, MOB, SHIELD, SWORD_CRIT_MULT, BOW, STAFF_CRIT_MULT } from "../src/shared/constants.ts";
-import {
-  armorFrac,
-  attackSpeedFor,
-  dodgeChance,
-  maxHpFor,
-  meleeSpeedFor,
-} from "../src/shared/progression.ts";
-import { weaponDamage } from "../src/shared/combat.ts";
-import { fireboltDamage, magicResistFrac } from "../src/shared/magic.ts";
+import { ELITE_MOBS, MOB, SHIELD } from "../src/shared/constants.ts";
 import {
   ATTRS,
   ATTR_INFO,
@@ -47,55 +38,6 @@ const f = (n: number, d = 0): string => (Number.isFinite(n) ? n.toFixed(d) : "�
 const pct = (n: number): string => `${Math.round(n * 100)}%`;
 const pad = (s: string, n: number): string => (s.length >= n ? s : s + " ".repeat(n - s.length));
 const lpad = (s: string, n: number): string => (s.length >= n ? s : " ".repeat(n - s.length) + s);
-
-// ---------------------------------------------------------------- старые классы
-
-interface OldHero {
-  name: string;
-  hp: number;
-  armor: number;
-  resist: number;
-  dodge: number;
-  hit: number;
-  rate: number;
-  ranged: boolean;
-  magic: boolean;
-  splash: number;
-}
-
-/** Нынешняя система: 1 очко за уровень, softCap. Раскладка — как у ботов в среднем. */
-function oldHero(kind: "sword" | "bow" | "staff", lvl: number): OldHero {
-  const pts = lvl - 1;
-  const split = { sword: [0.7, 0.3, 0], bow: [0.2, 0.8, 0], staff: [0.25, 0, 0.75] }[kind];
-  const str = 1 + Math.round(pts * split[0]);
-  const agi = 1 + Math.round(pts * split[1]);
-  const int = 1 + (pts - Math.round(pts * split[0]) - Math.round(pts * split[1]));
-  const tier = tierFor(lvl);
-  if (kind === "sword") {
-    const mult = tier ? 4 : 1;
-    const base = weaponDamage("sword", lvl, str, mult, agi);
-    return {
-      name: "старый воин", hp: maxHpFor(lvl, str), armor: armorFrac(str), resist: magicResistFrac(int),
-      dodge: dodgeChance(agi, false), hit: base * (1 + 0 * (SWORD_CRIT_MULT - 1)),
-      rate: meleeSpeedFor(lvl, agi) / BOT.attackCooldown, ranged: false, magic: false, splash: 0,
-    };
-  }
-  if (kind === "bow") {
-    const mult = tier ? 3 : 1;
-    const base = weaponDamage("arrow", lvl, str, mult, agi);
-    return {
-      name: "старый лучник", hp: maxHpFor(lvl, str), armor: armorFrac(str), resist: magicResistFrac(int),
-      dodge: dodgeChance(agi, true), hit: base * (1 + BOW.critChance * (BOW.critMult - 1)),
-      rate: attackSpeedFor(lvl, agi) / BOT.bowCooldown, ranged: true, magic: false, splash: 0,
-    };
-  }
-  const hit = fireboltDamage(lvl, int, 0.7) * (1 + 0 * (STAFF_CRIT_MULT - 1));
-  return {
-    name: "старый маг", hp: maxHpFor(lvl, str), armor: armorFrac(str), resist: magicResistFrac(int),
-    dodge: dodgeChance(agi, true), hit, rate: attackSpeedFor(lvl, agi) / BOT.staffCooldown,
-    ranged: true, magic: true, splash: hit * 0.25,
-  };
-}
 
 // ---------------------------------------------------------------- умения → DPS
 
@@ -193,22 +135,12 @@ for (const lvl of LEVELS) {
       );
     }
   }
-  for (const k of ["sword", "bow", "staff"] as const) {
-    const o = oldHero(k, lvl);
-    const single = o.rate * (o.hit + o.splash * 0);
-    const aoe = o.rate * (o.hit + o.splash * 3);
-    console.log(
-      pad(o.name, 16) + pad("(сейчас в игре)", 34) +
-        [f(o.hp), pct(o.armor), pct(o.resist), pct(o.dodge), "", f(o.rate, 2), f(o.hit, 1), "",
-          f(single, 1), f(aoe, 1)].map((v) => lpad(v, 7)).join(""),
-    );
-  }
 }
 
 // Против мобов — на уровне самого моба.
 console.log("\n=== Дуэль с мобом своего уровня: TTK (с) / TTD (с) · запас = TTD/TTK ===");
 const mobs = Object.values(ELITE_MOBS).filter((m) => m.hp >= 60 && m.hp < 20000);
-console.log(pad("моб (ур.)", 26) + CLASS_IDS.map((c) => lpad(CLASSES2[c].name.slice(0, 11), 18)).join("") + lpad("стар.воин", 14) + lpad("стар.маг", 14));
+console.log(pad("моб (ур.)", 26) + CLASS_IDS.map((c) => lpad(CLASSES2[c].name.slice(0, 11), 18)).join(""));
 for (const m of mobs) {
   const lvl = m.level;
   let row = pad(`${m.name} (${lvl})${m.magicMelee ? "✦" : ""}`, 26);
@@ -223,13 +155,6 @@ for (const m of mobs) {
     const avoid = c === "warrior" ? 1 - (1 - s.dodge) * (1 - SHIELD.blockChance) : s.dodge;
     const ttd = (s.hp / mobDps(m, s.armor, s.resist, avoid)) * (ranged ? 1.6 : 1);
     row += lpad(`${f(ttk)}/${f(ttd)} ×${f(ttd / ttk, 1)}`, 18);
-  }
-  for (const k of ["sword", "staff"] as const) {
-    const o = oldHero(k, lvl);
-    const prot = o.magic ? (m.magicVulnMul ?? 1) : 1 - (m.physArmor ?? 0);
-    const ttk = m.hp / (o.rate * o.hit * prot * (o.ranged ? 1 - (m.rangedArmor ?? 0) : 1));
-    const ttd = (o.hp / mobDps(m, o.armor, o.resist, o.dodge)) * (o.ranged ? 1.6 : 1);
-    row += lpad(`${f(ttk)}/${f(ttd)} ×${f(ttd / ttk, 1)}`, 14);
   }
   console.log(row);
 }
