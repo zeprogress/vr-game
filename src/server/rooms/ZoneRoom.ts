@@ -841,7 +841,18 @@ function applyEquip(
   p: Hands,
   rt: { weapons: WeaponInstance[]; equippedWeaponId: { left: string | null; right: string | null }; owned: Set<string> },
   w: WeaponInstance,
+  /** Рука, куда просили надеть. Левая учитывается для второго меча/кинжала к такому же в правой. */
+  side: "left" | "right" = "right",
 ): void {
+  // Второй меч/кинжал — в левую руку к такому же в правой (парное оружие).
+  if (side === "left" && (w.cls === "sword" || w.cls === "dagger") && p.rightCls === w.cls) {
+    preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
+    p.leftCls = w.cls;
+    p.leftTier = w.tier;
+    rt.equippedWeaponId.left = w.id;
+    rt.owned.add(weaponKey(w.cls, w.tier));
+    return;
+  }
   if (w.cls === "shield") {
     // Лук/копьё/молот занимают ОБЕ руки — со щитом не держатся: в правую — меч.
     if (p.rightCls === "bow" || p.rightCls === "spear" || p.rightCls === "hammer") {
@@ -4404,7 +4415,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const name = instanceName(w);
       if (act === "equip") {
-        applyEquip(t.p, t.rt, w);
+        applyEquip(t.p, t.rt, w, idx === 1 ? "left" : "right");
         this.persistNick(norm);
         return { ok: true, text: `Надето: ${name}` };
       }
@@ -4436,7 +4447,7 @@ export class ZoneRoom extends Room<ZoneState> {
         leftTier: held.left?.tier ?? (right.cls === "bow" ? "" : "base"),
       };
       const owned = new Set(rec.owned ?? []);
-      applyEquip(hands, { weapons, equippedWeaponId: equipped, owned }, w);
+      applyEquip(hands, { weapons, equippedWeaponId: equipped, owned }, w, idx === 1 ? "left" : "right");
       const carried = (cls: string, tier: string): CarriedWeapon | null =>
         isWeaponClass(cls) && isWeaponTier(tier) ? { cls, tier } : null;
       store.put(token, {

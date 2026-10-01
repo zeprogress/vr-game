@@ -200,7 +200,14 @@ export class PcInventory {
       };
       row.append(b);
     };
-    if (src.kind === "bag" && w) btn("Надеть", () => this.hooks.equip(w, naturalSide(w.cls)));
+    if (src.kind === "bag" && w) {
+      // Меч/кинжал — парное оружие: можно выбрать руку (второй — к такому же в правой).
+      const pair = (w.cls === "sword" || w.cls === "dagger") && this.hooks.hands().right?.cls === w.cls;
+      if (pair) {
+        btn("В правую руку", () => this.hooks.equip(w, "right"));
+        btn("В левую руку", () => this.hooks.equip(w, "left"));
+      } else btn("Надеть", () => this.hooks.equip(w, naturalSide(w.cls)));
+    }
     if (src.kind === "hand") btn("Снять в сумку", () => this.hooks.toBag(src.side));
     if (w?.ench.length) {
       btn("Заточить", () => {
@@ -553,7 +560,7 @@ export class PcInventory {
     c.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       this.hideTip();
-      this.hooks.equip(w, naturalSide(w.cls));
+      this.hooks.equip(w, this.smartSide(w));
     });
     return c;
   }
@@ -795,6 +802,16 @@ export class PcInventory {
     const eq = this.data.equipped;
     const other = this.weaponById(eq[s.side === "left" ? "right" : "left"]);
     return this.weaponById(eq[s.side]) ?? (bothHandsCls(other?.cls) ? other : null);
+  }
+
+  /**
+   * Рука для «надеть одним действием» (ПКМ): второй меч/кинжал — в левую, если
+   * в правой уже такой же, а в левой нет; иначе — естественная рука вида.
+   */
+  private smartSide(w: PcInvWeapon): Side {
+    const h = this.hooks.hands();
+    if ((w.cls === "sword" || w.cls === "dagger") && h.right?.cls === w.cls && h.left?.cls !== w.cls) return "left";
+    return naturalSide(w.cls);
   }
 
   /** Телефон: подсказка оружия только из меню действий (иначе тап по ячейке закрывал экран всплывашкой). */

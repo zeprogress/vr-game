@@ -2002,7 +2002,7 @@ export class Game {
         // левую (где был лук), и потом щит уже некуда было взять.
         const h = this.combat.handsSnapshot();
         let hand: "left" | "right" = w.cls === "shield" ? "left" : "right";
-        if (w.cls === "sword" && side === "left" && h.right?.cls === "sword") hand = "left";
+        if ((w.cls === "sword" || w.cls === "dagger") && side === "left" && h.right?.cls === w.cls) hand = "left";
         this.menuWeaponAction({ act: "whToHand", side: hand, id: w.id, cls: w.cls, tier: w.tier });
         afterGear();
       },

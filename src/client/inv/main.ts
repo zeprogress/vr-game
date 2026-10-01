@@ -253,7 +253,8 @@ function pageInv(): PcInventory {
     request: () => room?.send("refresh"),
     act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx),
     hands: () => heldHands as ReturnType<PcInventoryHooks["hands"]>,
-    equip: (w) => act("equip", w.id),
+    // idx 1 — в левую руку (второй меч/кинжал к такому же в правой).
+    equip: (w, side) => act("equip", w.id, side === "left" ? 1 : 0),
     toBag: () => toast("Снять оружие в сумку можно в игре", false),
     scrap: (w) => act("scrap", w.id),
     drop: () => toast("Выбросить можно только в игре", false),
