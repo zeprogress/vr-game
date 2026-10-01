@@ -158,7 +158,7 @@ export class ClassFx {
       const disc = MeshBuilder.CreateDisc(`cfxSeal${i}`, { radius: 1, tessellation: 40 }, scene);
       disc.rotation.x = Math.PI / 2;
       const mat = addMat(scene, `cfxSealMat${i}`, FX_COLORS.holy);
-      mat.emissiveTexture = this.sealTex;
+      // Знак — только маска прозрачности: цвет даёт emissiveColor (белая текстура его «выбеливала»).
       mat.opacityTexture = this.sealTex;
       disc.material = mat;
       const glow = MeshBuilder.CreateSphere(`cfxSealGlow${i}`, { diameter: 2, segments: 12, slice: 0.5 }, scene);
