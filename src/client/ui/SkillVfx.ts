@@ -466,6 +466,11 @@ export class SkillVfx {
       if (d.follow && this.follow) {
         const at = this.follow(d.follow.kind, d.follow.id);
         if (at) d.mesh.position.set(at.x, at.y + d.follow.dy, at.z);
+        else {
+          // Цель умерла/пропала — не висим на месте до конца (метка — 8 с), а быстро гаснем.
+          d.follow = null;
+          d.life = Math.min(d.life, d.age + 0.3);
+        }
       }
       if (d.mode === 0 || d.mode === 3) d.mat.setFloat("uT", d.age / d.life);
       else {
@@ -500,6 +505,10 @@ export class SkillVfx {
       if (p.follow && this.follow) {
         const at = this.follow(p.follow.kind, p.follow.id);
         if (at) p.mesh.position.set(at.x, at.y + p.mesh.scaling.y / 2, at.z);
+        else {
+          p.follow = null;
+          p.life = Math.min(p.life, p.age + 0.3);
+        }
       }
       p.mat.setFloat("uTime", this.time);
       p.mat.setFloat("uAlpha", Math.min(1, p.age / 0.15) * Math.min(1, (p.life - p.age) / 0.35) * 0.8);
