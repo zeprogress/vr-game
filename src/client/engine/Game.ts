@@ -119,7 +119,7 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, Quest
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { aegisTier, bothHandsCls, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
@@ -451,11 +451,13 @@ export class Game {
       // Текст роллов ("+12% урона" и т.п.) — сервер считает и держит в
       // своём PlayerState (leftAffix/rightAffix), клиент их только читает.
       const self = this.net?.self;
-      // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (везде одинаково).
-      const bow = h.left?.cls === "bow" ? h.left : h.right?.cls === "bow" ? h.right : null;
+      // Лук/копьё/молот занимают обе руки: в интерфейсе — в левой, правая
+      // помечена (у лука — стрела) — везде одинаково.
+      const bow = bothHandsCls(h.left?.cls) ? h.left : bothHandsCls(h.right?.cls) ? h.right : null;
       const bowAffix = self?.rightAffix || self?.leftAffix || undefined;
       return {
-        arrow: !!bow,
+        arrow: bow?.cls === "bow",
+        bothBy: bow?.cls,
         left: bow
           ? ({ ...bow, affix: bowAffix } as WornWeapon)
           : h.left
@@ -1943,10 +1945,15 @@ export class Game {
         fail(this.combat.backToHand(a.side));
         return;
       case "whToBack":
+        this.nextAegis = this.isAegisId(a.id);
         fail(this.combat.placeOnBackFromWarehouse(a.cls, a.tier, a.side));
+        this.nextAegis = false;
         return;
       case "whToHand": {
-        if (fail(this.combat.placeInHandFromWarehouse(a.cls, a.tier, a.side))) return;
+        this.nextAegis = this.isAegisId(a.id);
+        const placed = this.combat.placeInHandFromWarehouse(a.cls, a.tier, a.side);
+        this.nextAegis = false;
+        if (fail(placed)) return;
         // Какой рукой держим — по ней сервер закрепляет именно этот инстанс (с его роллами).
         const h = this.combat.handsSnapshot();
         const hand = h.left?.cls === a.cls && h.left.tier === a.tier ? "left" : "right";
@@ -2699,6 +2706,12 @@ export class Game {
     this.player.autoMove = { x: pt.x, z: pt.z, stop: reach - 0.8, onArrive: open };
   }
 
+  /** Следующий меш щита со склада — Эгида (см. makeWeaponMesh). */
+  private nextAegis = false;
+  private isAegisId(id: string): boolean {
+    return this.net?.warehouse?.list.find((w) => w.id === id)?.name === "Эгида";
+  }
+
   /**
    * Ролл «скорость атаки» с того, что в руках: основное оружие + щит в другой
    * руке — как rolledAtkSpeedMul на сервере (для темпа удара/выстрела на клиенте).
@@ -3353,8 +3366,16 @@ export class Game {
     this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
     this.combat.nearestWorldWeapon = (pos) => this.loot.nearestWeapon(pos);
     this.combat.onTakeWorldWeapon = (id, hand) => net.sendTakeWeapon(id, hand ?? undefined);
-    this.combat.makeWeaponMesh = (cls, tier) =>
-      makeWeaponMesh(this.scene, cls as WeaponClass, tier);
+    // Эгида — свой вид щита: со склада знаем экземпляр (nextAegis), иначе — по
+    // тексту «Оплот» в своём PlayerState (восстановление рук при входе).
+    this.combat.makeWeaponMesh = (cls, tier) => {
+      const self = this.net?.self;
+      const aegis =
+        cls === "shield" &&
+        tier === "legendary" &&
+        (this.nextAegis || aegisTier("shield", tier, self?.leftAffix) === "aegis" || aegisTier("shield", tier, self?.rightAffix) === "aegis");
+      return makeWeaponMesh(this.scene, cls as WeaponClass, aegis ? "aegis" : tier);
+    };
     this.combat.onWeaponLanded = (cls, tier, x, z, hand) =>
       net.sendDropWeapon({ cls, tier, x, z, hand: hand ?? undefined });
     this.combat.onSoundEvent = (kind, x, y, z) => net.sendAct(kind, x, y, z);

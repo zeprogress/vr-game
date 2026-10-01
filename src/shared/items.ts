@@ -1,4 +1,4 @@
-import { SHIELD } from "./constants";
+import { SHIELD, WEAPON_DROP_MUL } from "./constants";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -30,6 +30,15 @@ export type WeaponClass = "sword" | "bow" | "shield" | "staff" | "dagger" | "spe
 
 /** Все классы оружия (без щита) — для выпадения, списков и проверок. */
 export const ATTACK_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
+/** Оружие, занимающее обе руки, — в интерфейсе стоит в левой, правая помечена «занята». */
+export function bothHandsCls(cls: string | undefined): boolean {
+  return cls === "bow" || cls === "spear" || cls === "hammer";
+}
+/** Подпись занятой второй руки. */
+export function bothHandsNote(cls: string | undefined): string {
+  return cls === "bow" ? "лук занимает обе руки" : cls === "hammer" ? "молот держат обе руки" : "копьё держат обе руки";
+}
+
 /** Двуручное оружие ближнего боя «Классов 2.0» — держится двумя руками, как посох. */
 export function isTwoHandedMelee(cls: string): boolean {
   return cls === "spear" || cls === "hammer";
@@ -331,7 +340,8 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
 export function rollLoot(kind: MobKind, rnd: () => number): { id: ItemId; count: number }[] {
   const out: { id: ItemId; count: number }[] = [];
   for (const e of LOOT[kind] ?? []) {
-    if (rnd() > e.chance) continue;
+    // Оружие — с общим множителем дропа (WEAPON_DROP_MUL), зелья — как есть.
+    if (rnd() > (ITEMS[e.id].weapon ? Math.min(1, e.chance * WEAPON_DROP_MUL) : e.chance)) continue;
     const count = e.min + Math.floor(rnd() * (e.max - e.min + 1));
     if (count > 0) out.push({ id: e.id, count });
   }
@@ -751,6 +761,14 @@ export function instanceEffects(w: WeaponInstance): string[] {
   if (refl > 0) out.push(`Отражение ${Math.round(refl * 100)}% удара — обратно атакующему`);
   if (isAegis(w)) out.push(AEGIS_LABEL);
   return out;
+}
+
+/**
+ * Тир для меша оружия в руке: уникальный щит с «Оплотом» в тексте роллов
+ * (сервер пишет его только Эгиде, см. heldAffixText) — псевдо-тир "aegis".
+ */
+export function aegisTier(cls: string, tier: string, affix: string | undefined): string {
+  return cls === "shield" && tier === "legendary" && !!affix?.startsWith("Оплот") ? "aegis" : tier;
 }
 
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */

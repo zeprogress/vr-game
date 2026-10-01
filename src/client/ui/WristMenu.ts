@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -983,16 +983,16 @@ export class WristMenu {
 
     // В руках — отдельная панель.
     y = this.section(ctx, LX, LW, "В РУКАХ", y);
-    // Лук занимает обе руки: он показывается в левой, а в правой — стрела.
+    // Лук/копьё/молот занимают обе руки: показываются в левой, правая помечена (у лука — стрела).
     const bow =
-      this.leftHand?.cls === "bow" ? this.leftHand : this.rightHand?.cls === "bow" ? this.rightHand : null;
+      bothHandsCls(this.leftHand?.cls) ? this.leftHand : bothHandsCls(this.rightHand?.cls) ? this.rightHand : null;
     const hands: [string, WornWeapon | null, Side][] = [
       ["Левая рука", bow ? bow : this.leftHand, "left"],
       ["Правая рука", bow ? null : this.rightHand, "right"],
     ];
     hands.forEach(([label, w, side], i) => {
       if (bow && side === "right") {
-        this.arrowCard(ctx, LX + i * 282, y, 274, 112);
+        this.arrowCard(ctx, LX + i * 282, y, 274, 112, bow.cls);
         return;
       }
       this.weaponCard(ctx, `hand:${side}`, LX + i * 282, y, 274, 112, label, w, hero, this.handQuality(w, side), () => {
@@ -1059,7 +1059,7 @@ export class WristMenu {
   private handQuality(w: WornWeapon | null, side: Side): string | undefined {
     if (!w || w.tier === "base") return undefined;
     // Лук в интерфейсе стоит в левой руке, а закреплён мог быть за любой.
-    const id = w.cls === "bow" ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
+    const id = bothHandsCls(w.cls) ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
     if (byId) return qualityStars(byId.quality, byId.affixes.length) || undefined;
     let best: WarehouseWeapon | undefined;
@@ -1127,10 +1127,10 @@ export class WristMenu {
   }
 
   /** Правая «рука» при луке: значок стрелы — лук занимает обе руки. */
-  private arrowCard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  private arrowCard(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, cls = "bow"): void {
     const wd = this.add({
       id: "hand:right", x, y, w, h, kind: "card",
-      info: ["Стрела", "лук занимает обе руки — правая рука тянет тетиву"],
+      info: cls === "bow" ? ["Стрела", "лук занимает обе руки — правая рука тянет тетиву"] : ["Занята", bothHandsNote(cls)],
     });
     const st = this.styleFor(wd);
     ctx.fillStyle = st.fill || "#161a24";
@@ -1141,6 +1141,17 @@ export class WristMenu {
     ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#7c88a4";
     ctx.fillText("Правая рука", x + 10, y + 6);
+    if (cls !== "bow") {
+      // Копьё/молот: то же оружие иконкой — «правая рука держит его же».
+      this.drawWeaponIcon(ctx, cls as WeaponClass, "base", x + 16, y + 30, 72);
+      ctx.font = "bold 24px system-ui, sans-serif";
+      ctx.fillStyle = "#e6e0d0";
+      ctx.fillText("Занята", x + 112, y + 34);
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillStyle = "#7c88a4";
+      this.wrapText(ctx, bothHandsNote(cls), x + 112, y + 64, w - 122, 19, 2);
+      return;
+    }
     // Стрела: древко, наконечник, оперение.
     ctx.save();
     ctx.translate(x + 16, y + 34);
@@ -1293,7 +1304,7 @@ export class WristMenu {
       out.set(pick.id, label);
     };
     const bow =
-      this.leftHand?.cls === "bow" ? this.leftHand : this.rightHand?.cls === "bow" ? this.rightHand : null;
+      bothHandsCls(this.leftHand?.cls) ? this.leftHand : bothHandsCls(this.rightHand?.cls) ? this.rightHand : null;
     if (bow) claim(bow, "в руках", this.equippedIds.left ?? this.equippedIds.right);
     else {
       claim(this.leftHand, "в левой руке", this.equippedIds.left);
@@ -1352,7 +1363,7 @@ export class WristMenu {
 
   private openWarehousePopup(wp: WarehouseWeapon): void {
     const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
-    const isBow = wp.cls === "bow";
+    const isBow = bothHandsCls(wp.cls);
     const send = (a: MenuAction): void => {
       this.popup = null;
       this.focusId = `wh:${wp.id}`;
@@ -1361,7 +1372,7 @@ export class WristMenu {
     const base = { id: wp.id, cls: wp.cls, tier: wp.tier };
     const buttons: Popup["buttons"] = [];
     if (isBow) {
-      buttons.push({ id: "pop:handL", label: "Взять в руки", hint: "лук занимает обе руки, остальное — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "left", ...base }) });
+      buttons.push({ id: "pop:handL", label: "Взять в руки", hint: `${bothHandsNote(wp.cls)}, остальное — на склад`, color: "#7ee081", act: () => send({ act: "whToHand", side: "left", ...base }) });
     } else {
       buttons.push({ id: "pop:handL", label: "В левую руку", hint: "что в ней — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "left", ...base }) });
       buttons.push({ id: "pop:handR", label: "В правую руку", hint: "что в ней — на склад", color: "#7ee081", act: () => send({ act: "whToHand", side: "right", ...base }) });
@@ -1417,7 +1428,7 @@ export class WristMenu {
         act: () => done({ act: "handToBack", side }),
       });
     } else {
-      const occupied = side === "left" ? !!this.leftHand || this.rightHand?.cls === "bow" : !!this.rightHand || this.leftHand?.cls === "bow";
+      const occupied = side === "left" ? !!this.leftHand || bothHandsCls(this.rightHand?.cls) : !!this.rightHand || bothHandsCls(this.leftHand?.cls);
       buttons.push({
         id: "pop:move",
         label: `В ${this.sideName(side, "hand", true)}`,

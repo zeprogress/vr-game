@@ -28,6 +28,7 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
+import { aegisTier } from "#shared/items";
 import { terrainHeight } from "#shared/terrain";
 import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
@@ -643,8 +644,9 @@ export class RemoteAvatar implements Hittable {
 
   /** Пришло новое состояние от сервера — кладём снапшот с меткой времени. */
   push(now: number, p: PlayerState): void {
-    this.wantL = [p.leftCls, p.leftTier];
-    this.wantR = [p.rightCls, p.rightTier];
+    // Эгида — свой вид щита (псевдо-тир "aegis", см. aegisTier/makeWeaponMesh).
+    this.wantL = [p.leftCls, aegisTier(p.leftCls, p.leftTier, p.leftAffix)];
+    this.wantR = [p.rightCls, aegisTier(p.rightCls, p.rightTier, p.rightAffix)];
     this.animSet = classAnimSet(p.leftCls, p.rightCls);
     this.syncFishing(p.fishing === 1);
     this.wantKeyL = keyOf(this.wantL);

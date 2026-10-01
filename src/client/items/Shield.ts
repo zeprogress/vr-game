@@ -8,7 +8,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 
 import { SHIELD } from "#shared/constants";
-import type { WeaponTier } from "#shared/items";
+import { weaponDef, type WeaponTier } from "#shared/items";
 import { attachLegendaryGlow } from "./weaponModels";
 import { mergeToVertexColors } from "./flatMerge";
 
@@ -27,7 +27,9 @@ const SHIELD_COLORS: Record<WeaponTier, { body: [number, number, number]; metal:
   legendary: { body: [0.42, 0.18, 0.72], metal: [1, 0.84, 0.36], glow: 0.3 },
 };
 
-export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
+export function createShield(scene: Scene, tier: WeaponTier = "base", aegis = false): Mesh {
+  // Эгида (старый уникальный щит) — свой прежний вид: фиолетовый треугольник.
+  if (aegis) return createTriangleShield(scene, "legendary");
   const c = SHIELD_COLORS[tier] ?? SHIELD_COLORS.base;
   const body = c.body;
   const metal = c.metal;
@@ -73,6 +75,69 @@ export function createShield(scene: Scene, tier: WeaponTier = "base"): Mesh {
 
   const shield = mergeToVertexColors(scene, [disc, rim, boss, grip]);
   if (!shield) throw new Error("не удалось собрать щит");
+  shield.name = "shield";
+  if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
+  return shield;
+}
+
+/**
+ * Вытянутый треугольный щит: широкий верх, острый низ.
+ *
+ * Набран полосами убывающей ширины. Рукоять сидит ближе к широкому концу,
+ * и НАЧАЛО КООРДИНАТ переносится в неё же — предмет крепится к руке своим
+ * началом, значит держать щит игрок будет ровно за рукоять.
+ */
+function createTriangleShield(scene: Scene, tier: WeaponTier): Mesh {
+  const tint = weaponDef("shield", tier).tint;
+
+  const face = new StandardMaterial("shieldFace", scene);
+  face.diffuseColor = new Color3(tint[0], tint[1], tint[2]);
+  face.emissiveColor = new Color3(tint[0] * 0.22, tint[1] * 0.2, tint[2] * 0.1);
+  face.specularColor = new Color3(0.85, 0.8, 0.5);
+  face.specularPower = 64;
+  face.maxSimultaneousLights = 1;
+
+  const grim = new StandardMaterial("shieldGrip", scene);
+  grim.diffuseColor = new Color3(tint[0] * 0.45, tint[1] * 0.4, tint[2] * 0.25);
+  grim.specularColor = new Color3(0.3, 0.3, 0.2);
+  grim.maxSimultaneousLights = 1;
+
+  const w = SHIELD.radius * 2; // ширина вверху
+  const h = SHIELD.radius * 3.1; // высота: заметно вытянут
+  /** Где сидит рукоять: ближе к широкому концу, а не по центру. */
+  const gripZ = h * 0.3;
+
+  // Треугольник набираем полосами убывающей ширины — верх широкий, низ острый.
+  const parts: Mesh[] = [];
+  const bands = 7;
+  for (let i = 0; i < bands; i++) {
+    const f = i / bands;
+    const next = (i + 1) / bands;
+    const bw = w * (1 - f) || 0.01;
+    const band = MeshBuilder.CreateBox(
+      `sh_band${i}`,
+      { width: bw, height: 0.03, depth: h * (next - f) },
+      scene,
+    );
+    band.position.z = h * 0.5 - h * (f + (next - f) / 2);
+    band.material = face;
+    parts.push(band);
+  }
+
+  const grip = MeshBuilder.CreateBox("sh_grip", { width: 0.12, height: 0.035, depth: 0.03 }, scene);
+  grip.position.set(0, -0.05, gripZ);
+  grip.material = grim;
+  parts.push(grip);
+
+  const shield = mergeToVertexColors(scene, parts);
+  if (!shield) throw new Error("не удалось собрать треугольный щит");
+
+  // Переносим начало координат в рукоять и разворачиваем — всё вживляем
+  // в вершины, чтобы положение в руке настраивалось независимо от сборки.
+  shield.position.z = -gripZ;
+  shield.bakeCurrentTransformIntoVertices();
+  shield.rotation.y = Math.PI / 2;
+  shield.bakeCurrentTransformIntoVertices();
   shield.name = "shield";
   if (tier === "legendary") attachLegendaryGlow(scene, shield, 0.4, 1 / 1.5);
   return shield;

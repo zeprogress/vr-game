@@ -5,6 +5,7 @@ import {
   BOSS_CFG,
   COMBAT,
   DROP_CHANCE,
+  WEAPON_DROP_MUL,
   ELITE_MOBS,
   goldDropMulForLevel,
   MAGE_NOVA,
@@ -2615,7 +2616,7 @@ export class ZoneSim {
           rolled.splice(i, 1);
         }
       }
-      if (Math.random() < DROP_CHANCE.bossLegendary) {
+      if (Math.random() < DROP_CHANCE.bossLegendary * WEAPON_DROP_MUL) {
         const cls = pick(LEGENDARY_CLASSES);
         const item = WEAPON_DROP[weaponKey(cls, "legendary")];
         if (item) rolled.push({ id: item, count: 1 });
@@ -2625,9 +2626,9 @@ export class ZoneSim {
       const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
-      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul;
+      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
-      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul : 0;
+      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * WEAPON_DROP_MUL : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"

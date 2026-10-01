@@ -4,7 +4,7 @@ import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
-import { qualityStars } from "#shared/items";
+import { bothHandsCls, bothHandsNote, qualityStars } from "#shared/items";
 import { respecCostFor } from "#shared/constants";
 
 interface InvWeapon {
@@ -308,10 +308,10 @@ function renderInv(msg: InvMsg): void {
 
   const hands = msg.hands;
   // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (как в игре).
-  const bow = hands ? (hands.left?.cls === "bow" ? hands.left : hands.right?.cls === "bow" ? hands.right : null) : null;
+  const bow = hands ? (bothHandsCls(hands.left?.cls) ? hands.left : bothHandsCls(hands.right?.cls) ? hands.right : null) : null;
   const handsHtml = hands
     ? bow
-      ? `<div class="hands">${handHtml("Левая рука", bow)}<div class="hand empty-hand">Правая рука: <b>Стрела</b> — лук занимает обе руки</div></div>`
+      ? `<div class="hands">${handHtml("Левая рука", bow)}<div class="hand empty-hand">Правая рука: ${bow.cls === "bow" ? "<b>Стрела</b> — " : "<b>занята</b> — "}${bothHandsNote(bow.cls)}</div></div>`
       : `<div class="hands">${handHtml("Левая рука", hands.left)}${handHtml("Правая рука", hands.right)}</div>`
     : "";
 

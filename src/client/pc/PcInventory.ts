@@ -1,6 +1,6 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
-import { qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { bothHandsCls, bothHandsNote, qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -469,12 +469,13 @@ export class PcInventory {
   private handSlot(side: Side, d: PcInvData): HTMLDivElement {
     const box = div("pcinv-handbox");
     const both = this.hooks.hands();
-    // Лук держат обе руки — показываем его в левом слоте, правый — пометкой.
-    const bowBoth = both.left?.cls === "bow" || both.right?.cls === "bow";
-    const held = bowBoth ? (side === "left" ? (both.left?.cls === "bow" ? both.left : both.right) : null) : both[side];
-    if (bowBoth && side === "right") {
-      const c = div("pcinv-cell big locked", "🏹");
-      c.title = "Лук держат обе руки";
+    // Лук/копьё/молот держат обе руки — показываем в левом слоте, правый — пометкой.
+    const twoH = bothHandsCls(both.left?.cls) ? both.left : bothHandsCls(both.right?.cls) ? both.right : null;
+    const bowBoth = !!twoH;
+    const held = bowBoth ? (side === "left" ? twoH : null) : both[side];
+    if (twoH && side === "right") {
+      const c = div("pcinv-cell big locked", ICON[twoH.cls] ?? "🏹");
+      c.title = bothHandsNote(twoH.cls);
       // И сюда можно бросить оружие из сумки — наденется по своим правилам.
       c.addEventListener("dragover", (e) => {
         if (this.drag?.kind === "bag") e.preventDefault();
@@ -486,7 +487,7 @@ export class PcInventory {
         const bw = src?.kind === "bag" ? this.weaponById(src.id) : null;
         if (bw) this.hooks.equip(bw, "right");
       });
-      box.append(c, div("pcinv-small", "Правая рука"));
+      box.append(c, div("pcinv-small", "Правая рука · занята"));
       return box;
     }
     const w = this.weaponById(d.equipped[side]) ?? (bowBoth ? this.weaponById(d.equipped.left ?? d.equipped.right) : null);
@@ -793,7 +794,7 @@ export class PcInventory {
     if (s.kind === "bag") return this.weaponById(s.id);
     const eq = this.data.equipped;
     const other = this.weaponById(eq[s.side === "left" ? "right" : "left"]);
-    return this.weaponById(eq[s.side]) ?? (other?.cls === "bow" ? other : null);
+    return this.weaponById(eq[s.side]) ?? (bothHandsCls(other?.cls) ? other : null);
   }
 
   /** Телефон: подсказка оружия только из меню действий (иначе тап по ячейке закрывал экран всплывашкой). */

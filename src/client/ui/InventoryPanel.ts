@@ -1,5 +1,5 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
-import { qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
 import type { WarehouseWeapon } from "#shared/net/messages";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
@@ -14,6 +14,8 @@ export interface Equipped {
   stats: HeroStats;
   /** Лук занимает обе руки: он в левой, а в правой показываем стрелу. */
   arrow?: boolean;
+  /** Класс оружия, занявшего обе руки (лук/копьё/молот) — правая рука помечена «занята». */
+  bothBy?: string;
 }
 
 /** Иконка оружия — по классу и тиру (у базового тира картинки нет). */
@@ -177,6 +179,18 @@ export class InventoryPanel {
           '<line x1="14" y1="86" x2="6" y2="70" stroke="#c9d2e6" stroke-width="4" stroke-linecap="round"/>' +
           '<line x1="26" y1="74" x2="16" y2="58" stroke="#c9d2e6" stroke-width="4" stroke-linecap="round"/></svg>';
         ab.title = "Стрела — лук занимает обе руки";
+        grid.appendChild(ab);
+        continue;
+      }
+      if (def.id === "rightHand" && eq.bothBy) {
+        const ab = this.cellBox(cell, true, false);
+        const t = el(
+          "div",
+          `font-size:${this.touch ? 9 : 10}px;opacity:.75;text-align:center;line-height:1.15;padding:2px;pointer-events:none;`,
+        );
+        t.textContent = "занята — двуручное";
+        ab.appendChild(t);
+        ab.title = bothHandsNote(eq.bothBy);
         grid.appendChild(ab);
         continue;
       }

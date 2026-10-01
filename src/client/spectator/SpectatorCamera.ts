@@ -100,6 +100,8 @@ const CROWD_MAX = 34;
 const CROWD_GROUP_RADIUS = 16; // м вокруг самого «окружённого» героя
 /** Меньше этого в кучке — группы нет, кадр невалиден (режиссёр возьмёт другой). */
 const CROWD_MIN_MEMBERS = 2;
+/** Насколько больше героев должно быть в другой кучке, чтобы камера ушла к ней. */
+const CROWD_SWITCH_MARGIN = 2.5;
 /** Вязкость слежения кадра «группа» за центром и размером группы (1/с). */
 const CROWD_CENTER_SMOOTH = 1.1;
 const CROWD_ZOOM_OUT = 1.4; // группа разошлась — отъезжаем быстрее
@@ -587,14 +589,30 @@ export class SpectatorCamera {
   private crowdPlayers(ctx: DirectorCtx): CtxPlayer[] {
     const field = ctx.players.filter((p) => !inHubSafeZone(p.pos.x, p.pos.z));
     if (field.length < CROWD_MIN_MEMBERS) return [];
+    // «Липкость»: пока камера уже снимает группу (crowdInit), предпочитаем
+    // кучку у текущего центра кадра — другая побеждает, только если в ней
+    // заметно больше героев (CROWD_SWITCH_MARGIN). Равные кучки и герои на
+    // краю радиуса раньше перекидывали выбор каждый кадр — камера металась.
+    const sticky = this.crowdInit;
     let best: CtxPlayer[] = [];
+    let bestScore = -Infinity;
     for (const seed of field) {
       const near = field.filter(
         (o) => Math.hypot(o.pos.x - seed.pos.x, o.pos.z - seed.pos.z) <= CROWD_GROUP_RADIUS,
       );
-      if (near.length > best.length) best = near;
+      if (near.length < CROWD_MIN_MEMBERS) continue;
+      const dAnchor = sticky ? Math.hypot(seed.pos.x - this.crowdX, seed.pos.z - this.crowdZ) : 0;
+      const score =
+        near.length +
+        (sticky && dAnchor <= CROWD_GROUP_RADIUS ? CROWD_SWITCH_MARGIN : 0) -
+        // Внутри одной кучки — ядро ближе к текущему центру (без дёрганья между соседями).
+        dAnchor * 0.01;
+      if (score > bestScore) {
+        bestScore = score;
+        best = near;
+      }
     }
-    return best.length >= CROWD_MIN_MEMBERS ? best : [];
+    return best;
   }
 
   private playerNearestBoss(ctx: DirectorCtx): CtxPlayer | null {
