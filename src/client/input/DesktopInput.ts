@@ -36,6 +36,7 @@ export class DesktopInput implements InputSource {
   private mouseDown = false;
   private dropQueued = false;
   private abilityQueued = false;
+  private ability2Queued = false;
   private jumpQueued = false;
 
   // --- режим WoW ---
@@ -99,6 +100,7 @@ export class DesktopInput implements InputSource {
       if (e.code === "Space") this.jumpQueued = true;
       else if (e.code === "Digit1") this.attackQueued = true;
       else if (e.code === "Digit2") this.abilityQueued = true;
+      else if (e.code === "Digit3") this.ability2Queued = true;
       else if (e.code === "Tab") {
         e.preventDefault(); // иначе фокус уходит из игры
         this.tabQueued = true;
@@ -290,6 +292,7 @@ export class DesktopInput implements InputSource {
     s.interact = k.has("KeyE");
     s.dropItem = this.dropQueued;
     s.ability = this.abilityQueued;
+    s.ability2 = this.ability2Queued;
     if (this.wow) {
       // Обе кнопки мыши — бег вперёд, как в WoW.
       if (this.lmb && this.rmb && s.moveY === 0) s.moveY = 1;
@@ -305,6 +308,7 @@ export class DesktopInput implements InputSource {
     this.accZoom = 0;
     this.dropQueued = false;
     this.abilityQueued = false;
+    this.ability2Queued = false;
     this.jumpQueued = false;
     return s;
   }

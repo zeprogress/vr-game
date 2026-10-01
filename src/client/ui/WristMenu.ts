@@ -1,3 +1,4 @@
+import { ATTR_INFO, attrEffect, CLASSES2, SKILLS2, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -10,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -21,7 +22,7 @@ import { BOT } from "#shared/constants";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
-const STATS: StatName[] = ["str", "agi", "int"];
+const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 const TEX_W = 1200;
 const TEX_H = 900;
 const PLANE_W = 0.5;
@@ -49,7 +50,7 @@ const TIER_BG: Record<WeaponTier, string> = {
   legendary: "#251a33",
 };
 
-type Tab = "char" | "quest" | "set";
+type Tab = "char" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -249,6 +250,71 @@ export class WristMenu {
     this.dirty = true;
   }
 
+  /** Умения класса (выставляет Game по состоянию героя). */
+  private skillCls = "";
+  private skillChosen: string[] = [];
+  private skillSig = "";
+  /** Выбрали умения: Game шлёт на сервер. */
+  onSkills: ((ids: string[]) => void) | null = null;
+  setSkills(cls: string, chosen: string[]): void {
+    const sig = `${cls}|${chosen.join(",")}`;
+    if (sig === this.skillSig) return;
+    this.skillSig = sig;
+    this.skillCls = cls;
+    this.skillChosen = chosen;
+    this.dirty = true;
+  }
+
+  /** Вкладка «Умения»: класс и умения кнопками; выбрано — ✓, нажал другое — заменит старое. */
+  private drawSkills(ctx: CanvasRenderingContext2D): void {
+    const X = 12;
+    const W = TEX_W - 24;
+    let y = VIEW_Y + 8;
+    const cls = this.skillCls as ClassId | "";
+    ctx.textAlign = "left";
+    if (!cls) {
+      ctx.font = "28px system-ui, sans-serif";
+      ctx.fillStyle = "#8f8a7e";
+      ctx.fillText("Возьми оружие — умения зависят от класса", X + 8, y);
+      return;
+    }
+    const def = CLASSES2[cls];
+    ctx.font = "bold 32px system-ui, sans-serif";
+    ctx.fillStyle = "#f1ead6";
+    ctx.fillText(`${def.icon} ${def.name} — ${def.role}`, X + 8, y);
+    y += 44;
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText("Любые два умения: стик правой руки — первое, стик левой — второе", X + 8, y);
+    y += 40;
+    for (const id of def.skills) {
+      const sk = SKILLS2[id];
+      const v = sk.variants?.[cls];
+      const on = this.skillChosen.includes(id);
+      const wd = this.add({
+        id: `skill:${id}`, x: X, y, w: W, h: 92, kind: "button",
+        act: () => {
+          if (on) return;
+          this.onSkills?.([...this.skillChosen, id].slice(-2));
+        },
+        info: [`${v?.name ?? sk.name} · откат ${sk.cooldown} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+      });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");
+      ctx.fillRect(wd.x, y, wd.w, wd.h);
+      ctx.strokeStyle = st.stroke || (on ? "#7ee081" : "#3a3e48");
+      ctx.lineWidth = st.stroke ? st.lw : 2;
+      ctx.strokeRect(wd.x, y, wd.w, wd.h);
+      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${v?.name ?? sk.name}`, X + 14, y + 10);
+      ctx.font = "21px system-ui, sans-serif";
+      ctx.fillStyle = "#a9a498";
+      ctx.fillText((v?.desc ?? sk.desc).slice(0, 95), X + 14, y + 52);
+      y += 100;
+    }
+  }
+
   private drawQuests(ctx: CanvasRenderingContext2D): void {
     const d = this.quests;
     const X = 12;
@@ -410,7 +476,9 @@ export class WristMenu {
   update(o: MenuInput): void {
     if (!this.open) return;
 
-    if (o.tabNext && !this.dialog && !this.popup) this.switchTab(this.tab === "char" ? "quest" : this.tab === "quest" ? "set" : "char");
+    if (o.tabNext && !this.dialog && !this.popup) {
+      this.switchTab(this.tab === "char" ? "quest" : this.tab === "quest" ? "skills" : this.tab === "skills" ? "set" : "char");
+    }
 
     // Лазер: луч правой руки → точка на плоскости меню.
     let hit: { u: number; v: number } | null = null;
@@ -608,9 +676,7 @@ export class WristMenu {
   private hero(): HeroStats {
     return {
       level: this.prog.level,
-      str: this.prog.stats.str,
-      agi: this.prog.stats.agi,
-      int: this.prog.stats.int,
+      ...this.prog.stats,
     };
   }
 
@@ -632,6 +698,7 @@ export class WristMenu {
 
     if (this.tab === "char") this.drawCharacter(ctx);
     else if (this.tab === "quest") this.drawQuests(ctx);
+    else if (this.tab === "skills") this.drawSkills(ctx);
     else this.drawSettings(ctx);
     this.drawTabs(ctx);
     this.drawExit(ctx);
@@ -661,9 +728,10 @@ export class WristMenu {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
       ["quest", "Задания"],
+      ["skills", "Умения"],
       ["set", "Настройки"],
     ];
-    const w = 300;
+    const w = 224;
     tabs.forEach(([id, label], i) => {
       const wd = this.add({
         id: `tab:${id}`, x: 12 + i * (w + 8), y: TAB_Y, w, h: TAB_H, kind: "tab",
@@ -861,46 +929,53 @@ export class WristMenu {
     ctx.strokeRect(LX + 8, y, LW - 16, 16);
     y += 28;
 
-    // Характеристики.
-    for (const s of STATS) {
-      const canSpend = p.unspent > 0;
+    // Характеристики: шесть атрибутов сеткой 2×3 (по высоте — как раньше три строки).
+    const cellW = (LW - 8) / 2;
+    STATS.forEach((s, i) => {
+      const cx = LX + (i % 2) * (cellW + 8);
+      const cy = y + Math.floor(i / 2) * 46;
+      const cost = p.costOf(s);
+      const canSpend = p.unspent >= cost;
       const wd = this.add({
-        id: `stat:${s}`, x: LX, y, w: LW, h: 42, kind: "button",
+        id: `stat:${s}`, x: cx, y: cy, w: cellW, h: 42, kind: "button",
         act: () => {
           p.spend(s);
         },
-        info: [`${STAT_LABELS[s]}: ${p.stats[s]}`, canSpend ? "нажми — вложить свободное очко" : this.statHint(s)],
+        info: [
+          `${STAT_LABELS[s]}: ${p.stats[s]} · подъём стоит ${cost} оч.`,
+          `${attrEffect(s)}${canSpend ? " · нажми — вложить" : ""}`,
+        ],
       });
       const st = this.styleFor(wd);
       if (st.fill) {
         ctx.fillStyle = st.fill;
-        ctx.fillRect(wd.x, y, wd.w, wd.h);
+        ctx.fillRect(wd.x, cy, wd.w, wd.h);
       }
       if (st.stroke) {
         ctx.strokeStyle = st.stroke;
         ctx.lineWidth = st.lw;
-        ctx.strokeRect(wd.x, y, wd.w, wd.h);
+        ctx.strokeRect(wd.x, cy, wd.w, wd.h);
       }
       ctx.fillStyle = "#e6e0d0";
-      ctx.font = "26px system-ui, sans-serif";
-      ctx.fillText(STAT_LABELS[s], LX + 12, y + 7);
+      ctx.font = "24px system-ui, sans-serif";
+      ctx.fillText(`${ATTR_INFO[s].icon} ${ATTR_INFO[s].short}`, cx + 10, cy + 8);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText(String(p.stats[s]), LX + 200, y + 7);
-      ctx.font = "18px system-ui, sans-serif";
+      ctx.fillText(String(p.stats[s]), cx + 128, cy + 7);
+      ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#a9a498";
-      ctx.fillText(this.statHint(s), LX + 250, y + 12);
+      ctx.fillText(`за ${cost}`, cx + 178, cy + 13);
       if (canSpend) {
         ctx.fillStyle = "#2f7a3a";
-        ctx.fillRect(LX + LW - 60, y + 4, 50, 34);
+        ctx.fillRect(cx + cellW - 48, cy + 4, 40, 34);
         ctx.fillStyle = "#e9ffe9";
         ctx.font = "bold 28px system-ui, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText("+", LX + LW - 35, y + 5);
+        ctx.fillText("+", cx + cellW - 28, cy + 5);
         ctx.textAlign = "left";
       }
-      y += 46;
-    }
+    });
+    y += Math.ceil(STATS.length / 2) * 46;
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = p.unspent > 0 ? "#7ee081" : "#8f8a7e";
     ctx.fillText(`Свободных очков: ${p.unspent}`, LX + 8, y);
@@ -948,10 +1023,10 @@ export class WristMenu {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
-    ctx.fillText("Умение оружия", LX + 8, y + 4);
+    ctx.fillText("Умения", LX + 8, y + 4);
     ctx.fillStyle = this.skillCd < 0 ? "#8f8a7e" : this.skillCd <= 0.001 ? "#7ee081" : "#ffd166";
     ctx.fillText(
-      this.skillCd < 0 ? "нет (нужен меч или лук)" : this.skillCd <= 0.001 ? "готово — нажми стик" : "перезарядка…",
+      this.skillCd < 0 ? "не выбраны — вкладка «Умения»" : this.skillCd <= 0.001 ? "готово — стик правой / левой руки" : "перезарядка…",
       LX + 200,
       y + 4,
     );
@@ -973,26 +1048,26 @@ export class WristMenu {
     return y + 38;
   }
 
-  private statHint(s: StatName): string {
-    const p = this.prog;
-    if (s === "str") return `HP ${Math.round(p.maxHp)} · урон ×${p.swordDamage.toFixed(2)}`;
-    if (s === "agi") return `бег ${p.moveSpeed.toFixed(2)} м/с`;
-    return `огнешар ${p.fireboltMax.toFixed(1)} · хил ${Math.round(p.healMax)}`;
+  /** Имя предмета в руке/за спиной: у закреплённого инстанса — его собственное (старые уникальные). */
+  private heldName(w: WornWeapon): string {
+    const ids = [this.equippedIds.left, this.equippedIds.right];
+    const inst = this.warehouse.find((x) => ids.includes(x.id) && x.cls === w.cls && x.tier === w.tier);
+    return inst?.name ?? weaponDef(w.cls, w.tier).name;
   }
 
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
-  private handQuality(w: WornWeapon | null, side: Side): number | undefined {
+  private handQuality(w: WornWeapon | null, side: Side): string | undefined {
     if (!w || w.tier === "base") return undefined;
     // Лук в интерфейсе стоит в левой руке, а закреплён мог быть за любой.
     const id = w.cls === "bow" ? this.equippedIds.left ?? this.equippedIds.right : this.equippedIds[side];
     const byId = id ? this.warehouse.find((x) => x.id === id) : undefined;
-    if (byId) return byId.quality;
+    if (byId) return qualityStars(byId.quality, byId.affixes.length) || undefined;
     let best: WarehouseWeapon | undefined;
     for (const x of this.warehouse) {
       if (x.cls !== w.cls || x.tier !== w.tier) continue;
       if (!best || x.quality > best.quality) best = x;
     }
-    return best?.quality;
+    return best ? qualityStars(best.quality, best.affixes.length) || undefined : undefined;
   }
 
   private weaponCard(
@@ -1005,15 +1080,14 @@ export class WristMenu {
     label: string,
     item: WornWeapon | null,
     hero: HeroStats,
-    quality: number | undefined,
+    quality: string | undefined,
     onPick: () => void,
   ): void {
     let info: [string, string] = [label, "пусто"];
     if (item) {
-      const d = weaponDef(item.cls, item.tier);
       const stats = weaponStats(item, hero);
       info = [
-        `${d.name}${quality ? ` (${quality})` : ""} — нажми: убрать на склад`,
+        `${this.heldName(item)}${quality ? ` ${quality}` : ""} — нажми: убрать на склад`,
         stats.slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ") || (item.affix ?? ""),
       ];
     }
@@ -1036,14 +1110,13 @@ export class WristMenu {
     }
     const iconS = h > 100 ? 72 : 56;
     this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS);
-    const d = weaponDef(item.cls, item.tier);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
-    ctx.fillText(d.name, x + iconS + 20, y + 28);
+    ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
     let ty = y + 54;
     if (quality) {
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${quality})`, x + iconS + 20, ty);
+      ctx.fillText(quality, x + iconS + 20, ty);
       ty += 26;
     }
     if (item.affix && h > 100) {
@@ -1231,11 +1304,11 @@ export class WristMenu {
   }
 
   private warehouseCell(ctx: CanvasRenderingContext2D, wp: WarehouseWeapon, x: number, y: number, w: number, h: number): void {
-    const d = weaponDef(wp.cls, wp.tier);
+    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
+      info: [`${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1247,11 +1320,11 @@ export class WristMenu {
     this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
-    ctx.fillText(this.shortName(d.name), x + 62, y + 8);
-    if (wp.affixes.length) {
+    ctx.fillText(this.shortName(name), x + 62, y + 8);
+    if (wp.quality) {
       ctx.font = "bold 22px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(`(${wp.quality})`, x + 62, y + 36);
+      ctx.fillText(qualityStars(wp.quality, wp.affixes.length), x + 62, y + 36);
     }
     if (eq) {
       ctx.font = "16px system-ui, sans-serif";
@@ -1278,7 +1351,7 @@ export class WristMenu {
   }
 
   private openWarehousePopup(wp: WarehouseWeapon): void {
-    const d = weaponDef(wp.cls, wp.tier);
+    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
     const isBow = wp.cls === "bow";
     const send = (a: MenuAction): void => {
       this.popup = null;
@@ -1295,7 +1368,7 @@ export class WristMenu {
     }
     buttons.push({ id: "pop:backL", label: "За левое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "left", ...base }) });
     buttons.push({ id: "pop:backR", label: "За правое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "right", ...base }) });
-    if (wp.affixes.length) {
+    if (wp.quality) {
       buttons.push({
         id: "pop:ench", label: "Заточить", hint: "откроется панель заточки перед тобой", color: "#e8c26a",
         act: () => {
@@ -1308,7 +1381,7 @@ export class WristMenu {
     buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""}`,
+      title: `${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
       sub: wp.affixes.join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
@@ -1318,7 +1391,6 @@ export class WristMenu {
 
   /** Меню над оружием в руке / за спиной: склад, либо перенос на ту же сторону (рука ↔ плечо), с обменом. */
   private openHeldPopup(src: "hand" | "back", side: Side, w: WornWeapon, hero: HeroStats): void {
-    const d = weaponDef(w.cls, w.tier);
     const q = src === "hand" ? this.handQuality(w, side) : undefined;
     const stats = weaponStats(w, hero).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ");
     const done = (a: MenuAction): void => {
@@ -1366,7 +1438,7 @@ export class WristMenu {
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${d.name}${q ? ` (${q})` : ""}`,
+      title: `${this.heldName(w)}${q ? ` ${q}` : ""}`,
       sub: w.affix || stats || (src === "hand" ? "в руке" : "за спиной"),
       color: TIER_COLOR[w.tier],
       buttons,

@@ -26,7 +26,7 @@
  */
 
 export type HandSide = "left" | "right";
-export type ItemKind = "sword" | "bow" | "shield" | "potion" | "staff" | "rod";
+export type ItemKind = "sword" | "bow" | "shield" | "potion" | "staff" | "rod" | "dagger" | "spear" | "hammer";
 export type SlotKey = "flat" | "vrLeft" | "vrRight";
 
 export interface Placement {
@@ -176,6 +176,22 @@ export const LOADOUT_DEFAULTS: Loadout = {
       vrRight: { pos: [-0.03, 0, 0.02], rot: [0.9, 0, 0], scale: 1 },
     },
     staff: {
+      flat: { pos: [0.3, -0.34, 0.92], rot: [-0.12, 0.04, -0.12], scale: 0.6 },
+      vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
+      vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
+    },
+    // «Классы 2.0»: кинжал держится как меч (короче), копьё и молот — как посох.
+    dagger: {
+      flat: { pos: [0.28, -0.3, 0.7], rot: [-0.12, 0.04, -0.12], scale: 0.6 },
+      vrLeft: { pos: [0.005, -0.02, -0.08], rot: [0.26, -1.56, -1.36], scale: 1 },
+      vrRight: { pos: [-0.005, -0.015, -0.06], rot: [0.28, 1.46, 1.44], scale: 1 },
+    },
+    spear: {
+      flat: { pos: [0.3, -0.34, 0.92], rot: [-0.9, 0.04, -0.12], scale: 0.6 },
+      vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
+      vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
+    },
+    hammer: {
       flat: { pos: [0.3, -0.34, 0.92], rot: [-0.12, 0.04, -0.12], scale: 0.6 },
       vrLeft: { pos: [0, 0, 0], rot: [0, -1.58, -1.3], scale: 1 },
       vrRight: { pos: [0, 0, 0], rot: [0.2, 1.5, 1.56], scale: 1 },
@@ -534,7 +550,7 @@ export function printLoadout(): void {
     lines.push(`  ${s}: { rot: ${fa(h.rot)}, scale: ${f(h.scale)}, curl: ${f(h.curl)} },`);
   }
   lines.push("},", "items: {");
-  for (const k of ["sword", "bow", "shield", "staff", "rod"] as ItemKind[]) {
+  for (const k of ["sword", "bow", "shield", "staff", "rod", "dagger", "spear", "hammer"] as ItemKind[]) {
     lines.push(`  ${k}: {`);
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const p = LOADOUT.items[k][slot];
@@ -608,7 +624,7 @@ export function applyWorldLoadout(raw: string): void {
     }
   }
   if (w.items) {
-    for (const kind of ["sword", "bow", "shield", "staff", "potion", "rod"] as ItemKind[]) {
+    for (const kind of ["sword", "bow", "shield", "staff", "potion", "rod", "dagger", "spear", "hammer"] as ItemKind[]) {
       const ik = w.items[kind];
       if (!ik) continue;
       for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
@@ -645,7 +661,7 @@ function applyDefaults(next: Loadout): void {
     dst.scale = src.scale;
     dst.curl = src.curl;
   }
-  for (const kind of ["sword", "bow", "shield", "staff", "rod"] as ItemKind[]) {
+  for (const kind of ["sword", "bow", "shield", "staff", "rod", "dagger", "spear", "hammer"] as ItemKind[]) {
     for (const slot of ["flat", "vrLeft", "vrRight"] as SlotKey[]) {
       const src = next.items[kind]?.[slot];
       if (!src) continue;

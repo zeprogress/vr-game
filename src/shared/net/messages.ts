@@ -1,3 +1,4 @@
+import type { SkillId } from "../classes2";
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
@@ -33,6 +34,8 @@ export const MSG = {
   cast: "cst",
   /** клиент -> сервер: активное умение оружия (воин — оглушение, лучник — град стрел). */
   skill: "skl",
+  /** клиент -> сервер: выбор двух умений текущего класса («Классы 2.0»). */
+  setSkills: "sks",
   /** сервер -> клиент: моб ударил тебя в упор / плевком. */
   mobHit: "mh",
   /** клиент -> сервер: потратить очко характеристики. */
@@ -282,14 +285,16 @@ export interface PcInvData {
   titles?: string[];
   title?: string;
   scrollWind?: number;
-  attrs: { unspent: number; str: number; agi: number; int: number };
+  attrs: { unspent: number; str: number; agi: number; int: number; con: number; luc: number; wis: number };
   respecCost: number;
   stats: { label: string; value: string }[];
+  /** Умения: класс по оружию в руках ("" — без оружия) и выбранные два. */
+  skills?: { cls: string; chosen: string[] };
 }
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять). */
-  act: "enchant" | "stat" | "respec" | "title";
+  act: "enchant" | "stat" | "respec" | "title" | "skills";
   id: string;
   idx: number;
 }
@@ -416,7 +421,7 @@ export interface OvlCam {
   wl?: number | null;
   /** Титул героя в «смотрим». */
   wt?: string | null;
-  wa?: [number, number, number] | null;
+  wa?: number[] | null;
   wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
   sl: string;
@@ -514,7 +519,7 @@ export type ActKind =
   | "stunBash" // бот с мечом бьёт землю — волна оглушения по площади (телеграф)
   | "stunHit" // оглушающий удар воина ДОШЁЛ — звук в момент удара
   | "swordHit" // меч попал по цели — звук удара (сэмпл sword-hit)
-  | "vampHit" // Меч вампира — этот удар подпитал героя ХП, ДОПОЛНИТЕЛЬНО к swordHit, не вместо
+  | "vampHit" // ролл Вампиризм — этот удар подпитал героя ХП, ДОПОЛНИТЕЛЬНО к swordHit, не вместо
   | "healHit" // массовое лечение (бот или игрок) дошло до этого героя — зелёные крестики на нём
   | "rainTick" // очередной залп града стрел по области (звук)
   | "pickup" // поднял оружие или предмет с земли — анимация подбора
@@ -533,7 +538,19 @@ export type ActKind =
   | "spikeHit" // Костяной вождь: шипы вырвались из земли
   | "chiefHeal" // Костяной вождь: лечит себя и соседей
   | "freezeMark" // Ледяной демон: круг под героем (телеграф d с)
-  | "freezeHit"; // Ледяной демон: заморозка по области
+  | "freezeHit" // Ледяной демон: заморозка по области
+  | "hammerWave" // молот боевого мага: магическая волна вокруг цели (d — радиус)
+  | "spearPierce" // копьё прошило линию: от (x,z) до (x2,z2)
+  | "shadowStep" // «Теневой рывок»: из (x,z) в (x2,z2); v — класс (вариант эффекта)
+  | "crushMark" // «Сокрушение»: прыжок в точку (x,z), удар через d с; r — радиус
+  | "crushHit" // «Сокрушение» ударило о землю в (x,z)
+  | "seal" // «Печать» в (x,z) на d с, радиус r; v — класс (поддержка/боевой маг)
+  | "fanKnives" // «Веер кинжалов»: из (x,z) конусом к (x2,z2), d — сколько вееров
+  | "whirl" // «Вихрь» вокруг героя id на d с, радиус r; v — класс
+  | "warcry" // «Боевой клич»/«Благословение» в (x,z), радиус r; v — класс
+  | "markOn" // «Метка» на мобе mobId на d с
+  | "markReset" // цель умерла под меткой — откат «Метки» сброшен (только хозяину)
+  | "chainHit"; // скачок «Цепной молнии»: из (x,y,z) в (x2,z2) на высоте d; r — номер скачка
 
 const ACT_KINDS: readonly ActKind[] = [
   "swing",
@@ -570,6 +587,10 @@ export interface ActRelay extends ActMsg {
   /** Второй конец линии (хват щупальцами спрута: от x2/z2 к x/z). */
   x2?: number;
   z2?: number;
+  /** Вариант эффекта (индекс класса в CLASS_IDS) — умение у разных классов выглядит по-своему. */
+  v?: number;
+  /** Радиус области, м. */
+  r?: number;
 }
 
 /**
@@ -649,7 +670,9 @@ export interface WarehouseWeapon {
   id: string;
   cls: WeaponClass;
   tier: WeaponTier;
-  /** Тексты роллов («+12% урона»). */
+  /** Имя экземпляра (у старых уникальных — историческое: «Меч вампира»). */
+  name?: string;
+  /** Тексты роллов («+12% урона»), первым — врождённый эффект старого уникального. */
   affixes: string[];
   /** Сумма очков роллов (1..33 за каждый) — число в скобках у названия. */
   quality: number;
@@ -741,14 +764,19 @@ export interface CastMsg {
 }
 
 export interface SkillMsg {
-  /** Умение: воин — оглушающий удар, лучник — град стрел. */
-  kind: "stunBash" | "arrowRain";
+  /** Умение из пула «Классов 2.0» (classes2 SKILLS2): должно быть выбрано у героя (skill1/skill2). */
+  kind: SkillId;
   /**
-   * Град стрел: желаемая точка круга (перед игроком). Сервер ограничивает её
-   * дальностью и может подвинуть; для оглушения не нужна.
+   * Точка умения: град — центр круга, сокрушение — куда прыгнуть, рывок —
+   * куда приземлился (клиент двигает себя сам). Сервер ограничивает дальностью.
    */
   x?: number;
   z?: number;
+}
+
+/** Выбор двух умений текущего класса. */
+export interface SetSkillsMsg {
+  skills: string[];
 }
 
 export interface MobHitMsg {

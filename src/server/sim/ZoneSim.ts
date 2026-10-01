@@ -32,6 +32,9 @@ import {
 } from "#shared/constants";
 import { terrainHeight } from "#shared/terrain";
 import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
+
+/** Стартовые атрибуты — эталон «голого» героя для адаптивного урона. */
+const START_ATTRS = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 import { HUB, HUB_CENTER } from "#shared/hub";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
@@ -58,11 +61,17 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "sword:legendary": "leg_sword",
   "bow:legendary": "leg_bow",
   "shield:legendary": "leg_shield",
+  "shield:gold": "gold_shield",
   "staff:legendary": "leg_staff",
+  "dagger:gold": "gold_dagger",
+  "spear:gold": "gold_spear",
+  "hammer:gold": "gold_hammer",
+  "dagger:legendary": "leg_dagger",
+  "spear:legendary": "leg_spear",
+  "hammer:legendary": "leg_hammer",
 };
-/** У щита нет золотого тира — только базовый/легендарный. */
-const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff"];
-const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield"];
+const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
+const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
 const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 /** Препятствия (стволы + крупные камни) — общие с клиентом, один раз. */
@@ -204,7 +213,7 @@ interface GolemSplitGroup {
   opts: ConstructorParameters<typeof Mob>[3];
 }
 
-class Mob {
+export class Mob {
   readonly id = nid();
   /** Это осколок голема из пары — см. GolemSplitGroup. undefined — обычный моб. */
   splitGroup?: GolemSplitGroup;
@@ -593,6 +602,39 @@ class Mob {
     this.stunnedT = Math.max(this.stunnedT, sec);
   }
 
+  /** «Боевой клич»: кого моб обязан атаковать и сколько ещё секунд. */
+  private tauntId = "";
+  private tauntT = 0;
+  taunt(id: string, sec: number): void {
+    if (this.dead) return;
+    this.tauntId = id;
+    this.tauntT = sec;
+    this.aggroed = true;
+  }
+  /** «Метка»: секунд осталось, множитель входящего урона и кто поставил. */
+  markT = 0;
+  markMul = 1;
+  markBy = "";
+  mark(by: string, sec: number, mul: number): void {
+    if (this.dead) return;
+    this.markT = sec;
+    this.markMul = mul;
+    this.markBy = by;
+  }
+
+  /** Замедление («Печать»): секунд осталось и доля скорости/темпа атак (0.6 — на 40% медленнее). */
+  private slowT = 0;
+  private slowMul = 1;
+  slow(sec: number, mul: number): void {
+    if (this.dead) return;
+    this.slowT = Math.max(this.slowT, sec);
+    this.slowMul = Math.min(this.slowT > 0 && this.slowMul < 1 ? this.slowMul : 1, mul);
+  }
+  /** Текущий множитель скорости от замедления (1 — нет). */
+  private get slowK(): number {
+    return this.slowT > 0 ? this.slowMul : 1;
+  }
+
   /** Горение от Пламенного меча: DoT `dps` на `sec` секунд, опыт — тому, кто поджёг. */
   burningT = 0;
   burnDps = 0;
@@ -663,7 +705,17 @@ class Mob {
     spit: (mob: Mob, target: SimPlayer) => void,
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
-    if (this.attackCd > 0) this.attackCd -= dt;
+    if (this.tauntT > 0) this.tauntT -= dt;
+    if (this.markT > 0) {
+      this.markT -= dt;
+      if (this.markT <= 0) this.markMul = 1;
+    }
+    if (this.slowT > 0) {
+      this.slowT -= dt;
+      if (this.slowT <= 0) this.slowMul = 1;
+    }
+    // Замедленный моб и бьёт реже.
+    if (this.attackCd > 0) this.attackCd -= dt * this.slowK;
     // Ядовитые облака живут своей жизнью — и после смерти колосса тоже.
     for (let i = this.sporeZones.length - 1; i >= 0; i--) {
       const zn = this.sporeZones[i];
@@ -728,6 +780,15 @@ class Mob {
       if (d < best) {
         best = d;
         np = p;
+      }
+    }
+    // «Боевой клич»: провокатор рядом — бьём его, кто бы ни был ближе.
+    if (this.tauntT > 0 && this.tauntId) {
+      const tp = players.find((p) => p.sessionId === this.tauntId);
+      if (tp) {
+        np = tp;
+        best = (tp.x - this.x) ** 2 + (tp.z - this.z) ** 2;
+        this.aggroed = true;
       }
     }
     const dist = np ? Math.sqrt(best) : Infinity;
@@ -1078,7 +1139,8 @@ class Mob {
     const hopSpeed =
       (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) *
       rage *
-      this.speedMul;
+      this.speedMul *
+      this.slowK;
     const hopInterval =
       (isBoss ? BOSS.hopInterval : this.kind === "shard" ? SHARD.hopInterval : MOB.hopInterval) /
       rage;
@@ -2141,6 +2203,7 @@ export class ZoneSim {
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
+    if (m.markT > 0) dmg *= m.markMul; // «Метка»: +30% урона от всех
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
@@ -2243,6 +2306,20 @@ export class ZoneSim {
   /** Пригвоздить моба к земле по id (град стрел). */
   rootMob(id: string, sec: number): void {
     this.mobs.get(id)?.root(sec);
+  }
+
+  /** «Боевой клич»: моб `sec` секунд атакует только `by`. */
+  tauntMob(id: string, by: string, sec: number): void {
+    this.mobs.get(id)?.taunt(by, sec);
+  }
+  /** «Метка»: моб `sec` секунд получает урон × `mul`. */
+  markMob(id: string, by: string, sec: number, mul: number): void {
+    this.mobs.get(id)?.mark(by, sec, mul);
+  }
+
+  /** Замедлить моба («Печать»): на `sec` секунд, скорость и темп атак × `mul`. */
+  slowMob(id: string, sec: number, mul: number): void {
+    this.mobs.get(id)?.slow(sec, mul);
   }
 
   /** Оглушить моба по id (оглушающий удар воина). */
@@ -2493,7 +2570,7 @@ export class ZoneSim {
       m.hp = Math.max(1, frac * target);
     }
     m.adaptLevel = L;
-    m.adaptDmgMul = maxHpFor(L, 1) / maxHpFor(base, 1);
+    m.adaptDmgMul = maxHpFor(L, START_ATTRS) / maxHpFor(base, START_ATTRS);
   }
 
   /** Комната зовёт при удачном лечении союзника в бою с боссом. */

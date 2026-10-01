@@ -1,7 +1,9 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { BuffOrbitFx } from "../ui/BuffOutlineFx";
+import { CLASS_CLIP_NAMES, CLASS_ONE_SHOT, classAnimSet, classClipsFor, type ClassAnimSet } from "../world/classPoses";
 import { StunStarsFx } from "../ui/StunStarsFx";
 
 import {
@@ -21,8 +23,8 @@ import {
  * четырёх лупов (idle/walk/run) + разовые swordslash/recievehit. Логику
  * порогов взяли из RemoteAvatar.stepBotLocomotion, только проще.
  */
-const CLIPS = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "death"] as const;
-const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump"]);
+const CLIPS: readonly string[] = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "roll", "death", ...CLASS_CLIP_NAMES];
+const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", "roll", ...CLASS_ONE_SHOT]);
 /** Подбор играем вдвое быстрее, как у RemoteAvatar (видно спектатору так же). */
 const PICKUP_RATE = 2;
 
@@ -45,6 +47,12 @@ export class LocalAvatar {
 
   private swingUntil = 0;
   private swingSpeed = 1;
+  /** Клип текущего замаха (swordslash или клип класса: выпад, удар молотом, укол). */
+  private swingClip = "swordslash";
+  /** Клипы класса по оружию в руках (стойка/удар); null — обычные. */
+  private animSet: ClassAnimSet | null = null;
+  private gearSig = "";
+  private classGroups: AnimationGroup[] = [];
   private hitUntil = 0;
   private pickupUntil = 0;
   private jumpUntil = 0;
@@ -99,10 +107,29 @@ export class LocalAvatar {
     void this.reload();
   }
 
-  /** speed — множитель темпа атаки (>1 быстрее): ускоряет и клип, и окно. */
-  swing(speed = 1): void {
+  /** Что в руках (классы оружия) — выбирает стойку и удар класса. */
+  setGear(left: string, right: string): void {
+    const sig = `${left}|${right}`;
+    if (sig === this.gearSig) return;
+    this.gearSig = sig;
+    this.animSet = classAnimSet(left, right);
+  }
+
+  /**
+   * speed — множитель темпа атаки (>1 быстрее): ускоряет и клип, и окно.
+   * kind/hand — каким оружием и какой рукой (клип класса; левый кинжал — свой клип).
+   */
+  swing(speed = 1, kind?: string, hand?: "left" | "right"): void {
     this.swingSpeed = speed > 0.1 ? speed : 1;
-    const g = this.rig?.anims.get("swordslash");
+    const set = this.animSet;
+    const useClass = !!set && (kind === undefined || kind === "dagger" || kind === "spear" || kind === "hammer" || kind === "bow");
+    const name = useClass && set ? (hand === "left" && set.alt ? set.alt : set.attack) : "swordslash";
+    if (name !== this.swingClip) {
+      this.rig?.anims.get(this.swingClip)?.stop();
+      this.animW.set(this.swingClip, 0);
+      this.swingClip = name;
+    }
+    const g = this.rig?.anims.get(name);
     if (g) {
       // Окно = реальная длина клипа с учётом скорости (как у ботов).
       this.swingUntil =
@@ -112,7 +139,7 @@ export class LocalAvatar {
       g.reset();
       g.start(false, this.swingSpeed, g.from, g.to, false);
       g.setWeightForAllAnimatables(1);
-      this.animW.set("swordslash", 1);
+      this.animW.set(name, 1);
     } else {
       this.swingUntil = performance.now() + 500 / this.swingSpeed;
     }
@@ -124,6 +151,17 @@ export class LocalAvatar {
   /** Подобрал предмет — наклон с подбором (как видят другие и спектатор). */
   pickup(): void {
     this.pickupUntil = this.playOneShot("pickup", PICKUP_RATE, 600);
+  }
+
+  /** Разовый клип умения (кувырок рывка, прыжок «Сокрушения») — поверх всего, кроме замаха. */
+  private extraClip = "";
+  private extraUntil = 0;
+  private extraRate = 1;
+  oneShot(name: string, rate = 1): void {
+    const until = this.playOneShot(name, rate, 600);
+    this.extraClip = name;
+    this.extraRate = rate;
+    this.extraUntil = until;
   }
 
   /** Прыжок — клип прыжка на время полёта. */
@@ -181,6 +219,8 @@ export class LocalAvatar {
         for (const f of [this.fistL, this.fistR]) {
           for (const c of f?.getChildren() ?? []) c.parent = null;
         }
+        for (const g of this.classGroups) g.dispose();
+        this.classGroups = [];
         this.rig?.dispose();
         this.holder?.dispose();
         this.fistL = this.fistR = null;
@@ -197,6 +237,12 @@ export class LocalAvatar {
         recolorCharacter(rig.root);
         for (const m of rig.meshes) m.isPickable = false;
 
+        // Клипы классов (выпад, молот, кинжалы, лук) — на скелете этой модели.
+        try {
+          this.classGroups = classClipsFor(this.scene, rig, this.model());
+        } catch (e) {
+          console.warn("[avatar] клипы классов не собрались:", (e as Error).message);
+        }
         for (const g of rig.anims.values()) g.stop();
         this.animW.clear();
         for (const n of CLIPS) this.animW.set(n, n === "idle" ? 1 : 0);
@@ -286,13 +332,14 @@ export class LocalAvatar {
     this.locoRun = run;
     this.locoMove = move;
     let want: string;
-    if (now < this.swingUntil) want = "swordslash";
+    if (now < this.extraUntil) want = this.extraClip;
+    else if (now < this.swingUntil) want = this.swingClip;
     else if (now < this.hitUntil) want = "recievehit";
     else if (now < this.pickupUntil) want = "pickup";
     else if (now < this.jumpUntil) want = "jump";
     else if (run) want = "run";
     else if (move) want = "walk";
-    else want = "idle";
+    else want = this.animSet && rig.anims.has(this.animSet.idle) ? this.animSet.idle : "idle";
 
     const k = Math.min(1, dt * 12);
     for (const n of CLIPS) {
@@ -310,7 +357,7 @@ export class LocalAvatar {
       } else if (!g.isPlaying && n === want) {
         // Разовый клип (swordslash/recievehit): триггер уже прошёл, но клип
         // мог доиграть — перезапускаем, пока окно не закрылось.
-        const rate = n === "swordslash" ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : 1;
+        const rate = n === this.swingClip ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : n === this.extraClip ? this.extraRate : 1;
         g.start(false, rate, g.from, g.to, false);
       }
       this.animW.set(n, w);
@@ -324,6 +371,7 @@ export class LocalAvatar {
 
   dispose(): void {
     this.disposed = true;
+    for (const g of this.classGroups) g.dispose();
     this.buffAura.dispose();
     this.stunStars.dispose();
     this.rig?.dispose();

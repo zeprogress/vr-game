@@ -33,7 +33,7 @@ interface ChatCfg {
 const CFG_KEY = "zep.pcChat";
 const LOG_MAX = 80;
 
-export type WeaponIcon = "sword" | "bow" | "staff" | "fist";
+export type WeaponIcon = "sword" | "bow" | "staff" | "fist" | "dagger" | "spear" | "hammer";
 
 export interface MapDot {
   x: number;
@@ -64,7 +64,7 @@ export interface PcHudHooks {
   onAttrs: () => void;
 }
 
-const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊" };
+const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊", dagger: "🔪", spear: "🔱", hammer: "🔨" };
 
 export class PcHud {
   private readonly root: HTMLDivElement;
@@ -81,8 +81,9 @@ export class PcHud {
   private readonly xpFill: HTMLDivElement;
   private readonly xpText: HTMLDivElement;
   private readonly slotAtk: HTMLDivElement;
-  private readonly slotSkill: HTMLDivElement;
-  private readonly skillCd: HTMLDivElement;
+  /** Две ячейки умений (2 и 3) — «Классы 2.0»: у класса два выбранных умения. */
+  private readonly slotSkills: HTMLDivElement[] = [];
+  private readonly skillCds: HTMLDivElement[] = [];
   private readonly slotPotion: HTMLDivElement;
   private readonly potionCnt: HTMLSpanElement;
   // журнал
@@ -161,19 +162,22 @@ export class PcHud {
     const bar = div("pc-actionbar");
     const slots = div("pc-slots");
     this.slotAtk = slot("1", "🗡️", "Автоатака по цели (1)");
-    this.slotSkill = slot("2", "✦", "Умение (2)");
-    this.skillCd = div("pc-cd");
-    this.slotSkill.append(this.skillCd);
-    this.slotPotion = slot("3", "", "Зелье лечения (3)", POTION_IMG);
+    for (const k of ["2", "3"]) {
+      const sl = slot(k, "✦", `Умение (${k})`);
+      const cd = div("pc-cd");
+      sl.append(cd);
+      this.slotSkills.push(sl);
+      this.skillCds.push(cd);
+    }
+    this.slotPotion = slot("4", "", "Зелье лечения (4)", POTION_IMG);
     this.potionCnt = document.createElement("span");
     this.potionCnt.className = "pc-slot-n";
     this.slotPotion.append(this.potionCnt);
     slots.append(
       this.slotAtk,
-      this.slotSkill,
+      ...this.slotSkills,
       this.slotPotion,
       slot("E", "", "Подобрать / рыбачить (E)", GRAB_SVG),
-      slot("5", "", ""),
       slot("6", "", ""),
       slot("7", "", ""),
       slot("8", "", ""),
@@ -322,20 +326,29 @@ export class PcHud {
     this.slotAtk.classList.toggle("on", on);
   }
 
-  /** kind — какое умение (null — у оружия умения нет); cdFrac 0..1 — сколько ещё ждать. */
-  setSkill(kind: SkillIcon | null, name: string | null, cdFrac: number, cdLeft: number): void {
+  /**
+   * Ячейка умения `slot` (0 — клавиша 2, 1 — клавиша 3). kind — умение (свои
+   * иконки у старых трёх, у новых — значок), null — пусто; cdFrac 0..1 — сколько ещё ждать.
+   */
+  setSkill(slot: number, kind: string | null, icon: string, name: string | null, cdFrac: number, cdLeft: number): void {
+    const el = this.slotSkills[slot];
+    const cdEl = this.skillCds[slot];
+    if (!el || !cdEl) return;
+    const key = String(slot + 2);
+    const ico = `${kind ?? ""}|${icon}`;
+    if (this.lastSig[`skillKind${slot}`] !== ico) {
+      this.lastSig[`skillKind${slot}`] = ico;
+      const svg = kind && kind in SKILL_SVG ? SKILL_SVG[kind as SkillIcon] : null;
+      el.querySelector(".pc-slot-ico")!.innerHTML = svg ?? `<span style="font-size:26px">${icon || "✦"}</span>`;
+    }
     const sig = `${name}|${Math.ceil(cdLeft)}|${cdFrac > 0 ? 1 : 0}`;
-    if (this.lastSig.skillKind !== (kind ?? "")) {
-      this.lastSig.skillKind = kind ?? "";
-      this.slotSkill.querySelector(".pc-slot-ico")!.innerHTML = kind ? SKILL_SVG[kind] : "✦";
+    if (this.lastSig[`skill${slot}`] !== sig) {
+      this.lastSig[`skill${slot}`] = sig;
+      el.classList.toggle("off", !name);
+      el.title = name ? `${name} (${key})` : "Умение не выбрано — окно снаряжения (C), вкладка «Умения»";
+      cdEl.textContent = cdLeft > 0.05 ? String(Math.ceil(cdLeft)) : "";
     }
-    if (this.lastSig.skill !== sig) {
-      this.lastSig.skill = sig;
-      this.slotSkill.classList.toggle("off", !name);
-      this.slotSkill.title = name ? `${name} (2)` : "У этого оружия нет умения";
-      this.skillCd.textContent = cdLeft > 0.05 ? String(Math.ceil(cdLeft)) : "";
-    }
-    this.skillCd.style.background =
+    cdEl.style.background =
       cdFrac > 0 ? `conic-gradient(rgba(0,0,0,.7) ${cdFrac * 360}deg, transparent 0)` : "none";
   }
 

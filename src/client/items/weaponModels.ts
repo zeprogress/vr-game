@@ -133,6 +133,14 @@ export const WEAPON_MODELS = {
   bow: "/models/weapons/bow.glb",
   bow_gold: "/models/weapons/bow_gold.glb",
   crystal: "/models/weapons/crystal.glb",
+  // Оружие «Классов 2.0» (пока только лаборатория): кинжал и молот — из того
+  // же пака, копьё — собрано в Blender (scripts/blender-class-weapons.py).
+  dagger: "/models/weapons/dagger.glb",
+  dagger_gold: "/models/weapons/dagger_gold.glb",
+  hammer: "/models/weapons/hammer.glb",
+  hammer_gold: "/models/weapons/hammer_gold.glb",
+  spear: "/models/weapons/spear.glb",
+  spear_gold: "/models/weapons/spear_gold.glb",
 } as const;
 
 export type WeaponModel = keyof typeof WEAPON_MODELS;

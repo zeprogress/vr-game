@@ -8,7 +8,6 @@ import {
   potionPowerFor,
 } from "#shared/magic";
 import {
-  agiDamageMul,
   armorFrac,
   arrowDamageFor,
   arrowSpeedBonusFor,
@@ -20,6 +19,8 @@ import {
   maxHpFor,
   moveSpeedFor,
   spendPoint,
+  statCost,
+  STAT_NAMES,
   swordDamageFor,
   xpToNext as xpToNextFor,
   type Progress,
@@ -32,6 +33,9 @@ export const STAT_LABELS: Record<StatName, string> = {
   str: "Сила",
   agi: "Ловкость",
   int: "Интеллект",
+  con: "Телосложение",
+  luc: "Удача",
+  wis: "Мудрость",
 };
 
 const SAVE_KEY = "progression";
@@ -47,11 +51,7 @@ export class Progression {
   /** Накоплено опыта внутри текущего уровня. */
   xp = 0;
   unspent = 0;
-  readonly stats: Record<StatName, number> = {
-    str: PROGRESSION.startStat,
-    agi: PROGRESSION.startStat,
-    int: PROGRESSION.startStat,
-  };
+  readonly stats: Record<StatName, number> = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 
   /** Дёргается при повышении уровня. */
   onLevelUp: ((level: number) => void) | null = null;
@@ -97,7 +97,7 @@ export class Progression {
 
   /** Потратить очко на характеристику. true — заявка принята. */
   spend(stat: StatName): boolean {
-    if (this.unspent <= 0) return false;
+    if (this.unspent < statCost(this.stats, stat)) return false;
     if (this.onSpendRequest) {
       // Онлайн: решает сервер, ответ придёт в applyRemote().
       this.onSpendRequest(stat);
@@ -116,65 +116,66 @@ export class Progression {
       level: this.level,
       xp: this.xp,
       unspent: this.unspent,
-      str: this.stats.str,
-      agi: this.stats.agi,
-      int: this.stats.int,
+      ...this.stats,
     };
+  }
+
+  /** Цена следующего подъёма атрибута (растёт с вложенным). */
+  costOf(stat: StatName): number {
+    return statCost(this.stats, stat);
   }
 
   private fromProgress(p: Progress): void {
     this.level = p.level;
     this.xp = p.xp;
     this.unspent = p.unspent;
-    this.stats.str = p.str;
-    this.stats.agi = p.agi;
-    this.stats.int = p.int;
+    for (const k of STAT_NAMES) this.stats[k] = p[k];
   }
 
   // ---- производные величины ----
   // База растёт от уровня (ускоряясь), атрибут — небольшой множитель поверх.
 
   get maxHp(): number {
-    return maxHpFor(this.level, this.stats.str);
+    return maxHpFor(this.level, this.stats);
   }
 
   /** Базовый множитель урона мечом (уровень×сила×ловкость). Тир оружия — отдельно. */
   get swordDamage(): number {
-    return swordDamageFor(this.level, this.stats.str) * agiDamageMul(this.stats.agi);
+    return swordDamageFor(this.level, this.stats);
   }
 
   /** Броня от силы: доля поглощаемого урона (любой источник), 0..cap. */
   get armor(): number {
-    return armorFrac(this.stats.str);
+    return armorFrac(this.stats);
   }
 
   /** Магзащита от интеллекта: доля поглощаемого урона снарядов/магии, 0..cap. */
   get magicResist(): number {
-    return magicResistFrac(this.stats.int);
+    return magicResistFrac(this.stats);
   }
 
   /** Множитель лечения зельями от интеллекта. */
   get potionPower(): number {
-    return potionPowerFor(this.stats.int);
+    return potionPowerFor(this.stats);
   }
 
   get moveSpeed(): number {
-    return moveSpeedFor(this.level, this.stats.agi);
+    return moveSpeedFor(this.level, this.stats);
   }
 
   /** Множитель темпа атаки (>1 — быстрее): уровень × ловкость, потолок ×2.6. */
   get attackSpeed(): number {
-    return attackSpeedFor(this.level, this.stats.agi);
+    return attackSpeedFor(this.level, this.stats);
   }
 
   /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor). */
   get meleeSpeed(): number {
-    return meleeSpeedFor(this.level, this.stats.agi);
+    return meleeSpeedFor(this.level, this.stats);
   }
 
   /** Скорость клипа замаха — подстроена под темп атаки (см. meleeAnimRate). */
   get meleeAnimRate(): number {
-    return meleeAnimRate(this.level, this.stats.agi);
+    return meleeAnimRate(this.level, this.stats);
   }
 
   /** Добавка к скорости стрелы, м/с (от уровня). */
@@ -184,27 +185,27 @@ export class Progression {
 
   /** Урон стрелы (без тира оружия) — от уровня и ловкости. */
   get arrowDamage(): number {
-    return arrowDamageFor(this.level, this.stats.agi);
+    return arrowDamageFor(this.level, this.stats);
   }
 
   /** Потолок маны (уровень × интеллект). */
   get maxMana(): number {
-    return maxManaFor(this.level, this.stats.int);
+    return maxManaFor(this.level, this.stats);
   }
 
   /** Восстановление маны, ед/с (от интеллекта). */
   get manaRegen(): number {
-    return manaRegenFor(this.stats.int);
+    return manaRegenFor(this.stats);
   }
 
   /** Урон огнешара посоха при полном заряде (уровень × интеллект). */
   get fireboltMax(): number {
-    return fireboltDamage(this.level, this.stats.int, 1);
+    return fireboltDamage(this.level, this.stats, 1);
   }
 
   /** Исцеление посохом при полном заряде (уровень × интеллект). */
   get healMax(): number {
-    return healAmountFor(this.level, this.stats.int, 1);
+    return healAmountFor(this.level, this.stats, 1);
   }
 
   // ---- сохранение ----
@@ -227,9 +228,7 @@ export class Progression {
       this.level = clampInt(d.level, 1, PROGRESSION.maxLevel);
       this.xp = Math.max(0, Number(d.xp) || 0);
       this.unspent = Math.max(0, Number(d.unspent) || 0);
-      for (const k of ["str", "agi", "int"] as StatName[]) {
-        this.stats[k] = clampInt(d.stats?.[k], PROGRESSION.startStat, 999);
-      }
+      for (const k of STAT_NAMES) this.stats[k] = clampInt(d.stats?.[k], 1, 999);
     } catch {
       /* битые данные — играем с нуля */
     }
@@ -239,7 +238,7 @@ export class Progression {
     this.level = 1;
     this.xp = 0;
     this.unspent = 0;
-    this.stats.str = this.stats.agi = this.stats.int = PROGRESSION.startStat;
+    for (const k of STAT_NAMES) this.stats[k] = 1;
     this.save();
     this.emit();
   }
@@ -247,15 +246,8 @@ export class Progression {
   // ---- сеть (этап 5) ----
 
   /** Снимок для отправки серверу. */
-  snapshot(): { level: number; xp: number; unspent: number; str: number; agi: number; int: number } {
-    return {
-      level: this.level,
-      xp: this.xp,
-      unspent: this.unspent,
-      str: this.stats.str,
-      agi: this.stats.agi,
-      int: this.stats.int,
-    };
+  snapshot(): Progress {
+    return this.toProgress();
   }
 
   /** Применить прогресс, пришедший с сервера. Онлайн это единственный источник. */
@@ -266,13 +258,14 @@ export class Progression {
     str: number;
     agi: number;
     int: number;
+    con?: number;
+    luc?: number;
+    wis?: number;
   }): void {
     this.level = clampInt(d.level, 1, PROGRESSION.maxLevel);
     this.xp = Math.max(0, Number(d.xp) || 0);
     this.unspent = Math.max(0, Math.floor(Number(d.unspent) || 0));
-    this.stats.str = clampInt(d.str, PROGRESSION.startStat, 999);
-    this.stats.agi = clampInt(d.agi, PROGRESSION.startStat, 999);
-    this.stats.int = clampInt(d.int, PROGRESSION.startStat, 999);
+    for (const k of STAT_NAMES) this.stats[k] = clampInt(d[k], 1, 999);
     this.save(); // зеркалим в localStorage для офлайна
     this.emit();
   }

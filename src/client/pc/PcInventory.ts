@@ -1,5 +1,6 @@
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -16,7 +17,7 @@ import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/n
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "enchant" | "attrs";
+export type InvTab = "gear" | "enchant" | "attrs" | "skills";
 
 export interface HeldInfo {
   cls: string;
@@ -40,13 +41,9 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡" };
+export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡", dagger: "🔪", spear: "🔱", hammer: "🔨" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
-const ATTRS: { id: "str" | "agi" | "int"; name: string; hint: string }[] = [
-  { id: "str", name: "Сила", hint: "Здоровье, урон мечом, броня" },
-  { id: "agi", name: "Ловкость", hint: "Скорость атаки и бега, урон луком, уворот" },
-  { id: "int", name: "Интеллект", hint: "Мана, сила магии, защита от снарядов" },
-];
+const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
 
@@ -298,6 +295,7 @@ export class PcInventory {
       ["gear", "Снаряжение"],
       ["enchant", "Заточка"],
       ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
+      ["skills", "Умения"],
     ];
     for (const [id, label] of tabs) {
       const t = div(`pcinv-tab${this.tab === id ? " on" : ""}${id === "attrs" && d && d.attrs.unspent > 0 ? " glow" : ""}`, label);
@@ -329,6 +327,7 @@ export class PcInventory {
     }
     if (this.tab === "gear") this.renderGear(d);
     else if (this.tab === "enchant") this.renderEnchant(d);
+    else if (this.tab === "skills") this.renderSkills(d);
     else this.renderAttrs(d);
   }
 
@@ -498,7 +497,7 @@ export class PcInventory {
       cell.textContent = ICON[held.cls] ?? "?";
       if (w?.affixes.length) {
         cell.style.position = "relative";
-        cell.append(div("pcinv-q", String(w.quality)));
+        cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
@@ -539,7 +538,7 @@ export class PcInventory {
   private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
     c.style.position = "relative";
-    if (w.affixes.length) c.append(div("pcinv-q", String(w.quality)));
+    if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
     if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
     // Страница на ПК: клик — меню действий, как тап на телефоне.
@@ -599,7 +598,7 @@ export class PcInventory {
       if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
       right.append(hn);
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
       right.append(sc);
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
@@ -626,7 +625,7 @@ export class PcInventory {
         right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
       }
       right.append(
-        div("pcinv-hint", "Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
+        div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
       );
     }
     // Выбор предмета — мини-сетка всех предметов с роллами.
@@ -676,25 +675,74 @@ export class PcInventory {
     this.render();
   }
 
+  /** Вкладка «Умения»: класс по оружию в руках и выбор любых двух из разрешённых. */
+  private renderSkills(d: PcInvData): void {
+    const wrap = div("pcinv-attrs");
+    const cls = (d.skills?.cls ?? "") as ClassId | "";
+    if (!cls) {
+      wrap.append(div("pcinv-name", "Возьми оружие — умения зависят от класса"));
+      this.body.append(wrap);
+      return;
+    }
+    const def = CLASSES2[cls];
+    wrap.append(
+      div("pcinv-name", `${def.icon} ${def.name} — ${def.role}`),
+      div("pcinv-small", `Оружие: ${def.weapons}. Выбери любые два умения — клавиши 2 и 3 (телефон — кнопки ✦, VR — стики).`),
+    );
+    const chosen = new Set(d.skills?.chosen ?? []);
+    for (const id of def.skills) {
+      const sk = SKILLS2[id];
+      const v = sk.variants?.[cls];
+      const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
+      const txt = div("pcinv-atxt");
+      txt.append(
+        div("pcinv-aname", `${sk.icon} ${v?.name ?? sk.name} · откат ${sk.cooldown} с`),
+        div("pcinv-small", v?.desc ?? sk.desc),
+      );
+      const b = document.createElement("button");
+      b.className = "pcinv-abtn";
+      b.textContent = chosen.has(id) ? "✓" : "+";
+      b.title = chosen.has(id) ? "Выбрано" : "Выбрать (заменит более старое)";
+      b.onclick = () => {
+        if (chosen.has(id)) return;
+        // Новое — вместо первого из выбранных (держим ровно два).
+        const next = [...(d.skills?.chosen ?? []), id].slice(-2);
+        this.hooks.act({ act: "skills", id: next.join(","), idx: 0 });
+      };
+      row.append(txt, b);
+      wrap.append(row);
+    }
+    if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+    this.body.append(wrap);
+  }
+
   private renderAttrs(d: PcInvData): void {
     const a = d.attrs;
     const wrap = div("pcinv-attrs");
     wrap.append(
       div("pcinv-name", a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
+      div("pcinv-small", costRule()),
     );
     for (const at of ATTRS) {
       const row = div("pcinv-arow");
       const txt = div("pcinv-atxt");
-      txt.append(div("pcinv-aname", `${at.name}: ${a[at.id]}`), div("pcinv-small", at.hint));
+      const v = a[at.id] ?? 1;
+      const cost = stepCost(v);
+      // Сколько стоят следующие 5 подъёмов (цена может вырасти на середине).
+      let cost5 = 0;
+      for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
+      txt.append(div("pcinv-aname", `${at.name}: ${v}`), div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
       const b1 = document.createElement("button");
       b1.className = "pcinv-abtn";
       b1.textContent = "+1";
-      b1.disabled = a.unspent < 1;
+      b1.title = `${cost} оч.`;
+      b1.disabled = a.unspent < cost;
       b1.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 1 });
       const b5 = document.createElement("button");
       b5.className = "pcinv-abtn";
       b5.textContent = "+5";
-      b5.disabled = a.unspent < 5;
+      b5.title = `${cost5} оч.`;
+      b5.disabled = a.unspent < cost5;
       b5.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 5 });
       row.append(txt, b1, b5);
       wrap.append(row);
@@ -762,7 +810,7 @@ export class PcInventory {
     this.tip.append(div("pcinv-small", TIER_RU[tier] ?? tier));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>оценка</small>${w.quality}`;
+      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
       this.tip.append(sc);
     }
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
@@ -1001,6 +1049,7 @@ function injectInvStyle(): void {
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; max-width:520px; }
+.pcinv-skill.on { outline:1px solid #7ee081; }
 .pcinv-arow { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#1b1a21; border-radius:7px; }
 .pcinv-atxt { flex:1; } .pcinv-aname { font-weight:700; }
 .pcinv-abtn { width:42px; padding:6px 0; border-radius:6px; border:1px solid #4a4e5a; background:#23222b; color:#9fe39a;

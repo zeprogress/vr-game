@@ -1,5 +1,12 @@
+import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
+import { SkillVfx } from "../ui/SkillVfx";
+import { prewarmClassClips } from "../world/classPoses";
+import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
+import { STAT_NAMES } from "#shared/progression";
+import { ATTR2, invested } from "#shared/attrs2";
+import { classOf2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -89,7 +96,7 @@ import {
   applyWorldLoadout,
   worldLoadoutSnapshot,
 } from "../config/loadout";
-import { HUD, VIGNETTE } from "#shared/constants";
+import { HUD, MOB, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
@@ -114,7 +121,7 @@ import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
-import { MAGIC, MANA_ENABLED } from "#shared/magic";
+import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
@@ -194,6 +201,12 @@ export class Game {
   private readonly healAura: HealAuraFx;
   /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
   private readonly skillFx: SkillFx;
+  /** Эффекты «Классов 2.0»: волна молота, копьё, рывок, сокрушение, печать. */
+  private readonly classFx: ClassFx;
+  private readonly classCtx: ClassActCtx;
+  /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
+  private readonly skillVfx: SkillVfx;
+  private fxGround: (x: number, z: number) => number = () => 0;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
@@ -277,8 +290,8 @@ export class Game {
   private pcLastXp: { level: number; xp: number } | null = null;
   private readonly aim = new Vector3(0, 0, 1);
   /** Локальный кулдаун активного умения оружия, с (сервер тоже сверяет). */
-  private skillCdLeft = 0;
-  private skillCdTotal = 1;
+  /** Когда умение снова готово (performance.now, мс). */
+  private readonly skillReadyAt = new Map<SkillId, number>();
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
   /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
@@ -371,6 +384,7 @@ export class Game {
       zone.shieldHome,
       zone.staffHome,
       zone.weaponsFaceYaw,
+      zone.classHomes,
     );
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
@@ -389,9 +403,23 @@ export class Game {
     this.crossFx = new WorldCrossFx(this.scene);
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
+    this.classFx = new ClassFx(this.scene);
+    this.skillVfx = new SkillVfx(this.scene);
+    this.classFx.vfx = this.skillVfx;
+    this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
+    this.classCtx = {
+      fx: this.classFx,
+      vfx: this.skillVfx,
+      sound: (at, kind) =>
+        this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
+      emote: (id, e) => this.avatars.get(id)?.playEmote(e),
+    };
     this.specMarker = new SpecCamMarker(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);
     this.eventBeacon.bindGround(zone.groundHeight);
+    this.fxGround = zone.groundHeight;
+    // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
+    setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -441,9 +469,7 @@ export class Game {
         stowed: this.combat.stowedSnapshot(),
         stats: {
           level: this.progression.level,
-          str: this.progression.stats.str,
-          agi: this.progression.stats.agi,
-          int: this.progression.stats.int,
+          ...this.progression.stats,
         },
       };
     });
@@ -613,7 +639,7 @@ export class Game {
       });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
+      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
     } else if (this.pcThirdPerson) {
       // ПК «как в WoW»: орбитальная камера за спиной + видимая модель, бой —
       // автоатакой по выбранной цели (PcTargeting → CombatSystem.pcTarget).
@@ -622,7 +648,7 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = () => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix);
+      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
       this.combat.pcAuto = true;
       this.combat.lootToBag = true;
       this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (C)");
@@ -783,8 +809,8 @@ export class Game {
     // Зелье лечения на десктопе — X / 1 / F.
     window.addEventListener("keydown", (e) => {
       if (this.player.inVR || e.repeat) return;
-      // ПК в третьем лице: 1 — автоатака, зелье — 3 (и X/F по-старому).
-      const potionKey = this.pcThirdPerson ? "Digit3" : "Digit1";
+      // ПК в третьем лице: 1 — автоатака, 2/3 — умения, зелье — 4 (и X/F по-старому).
+      const potionKey = this.pcThirdPerson ? "Digit4" : "Digit1";
       if (e.code !== "KeyX" && e.code !== potionKey && e.code !== "KeyF") return;
       const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
       if (slot >= 0) this.inventory.use(slot);
@@ -830,7 +856,10 @@ export class Game {
       this.pcTarget?.update(this.combat.pcOutOfRange);
       this.mark("combat");
       this.updateSkillAbility(dt);
-      this.combat.atkSpeedAffix = this.heldAtkSpeedMul();
+      // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%).
+      const me = this.net?.self;
+      const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 || me.cryKind === 3 ? 1 + WARCRY.tempo : 1) : 1;
+      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry;
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
@@ -890,6 +919,8 @@ export class Game {
       this.crossFx.update(dt);
       this.healAura.update(dt);
       this.skillFx.update(dt);
+      this.classFx.update(dt);
+      this.skillVfx.update(dt);
       this.spellLights.setDaylight(dt, daylightAt(LOADOUT.world.hour));
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
@@ -1655,6 +1686,7 @@ export class Game {
       this.net?.sendPcInvOpen();
     };
     this.wristPanel.onTitle = (t) => this.net?.sendPcInvAct({ act: "title", id: t, idx: 0 });
+    this.wristPanel.onSkills = (ids) => this.net?.sendSetSkills(ids);
     if (this.questData) this.wristPanel.setQuests(this.questData);
     this.loadoutPanel = new LoadoutPanel(this.scene, this.handNode("right", cam));
     // Перевод времени в панели уходит на сервер — часы общие для всей зоны.
@@ -2323,9 +2355,7 @@ export class Game {
       p.level !== self.level ||
       p.xp !== self.xp ||
       p.unspent !== self.unspent ||
-      p.stats.str !== self.str ||
-      p.stats.agi !== self.agi ||
-      p.stats.int !== self.int
+      STAT_NAMES.some((k) => p.stats[k] !== self[k])
     ) {
       p.applyRemote({
         level: self.level,
@@ -2334,6 +2364,9 @@ export class Game {
         str: self.str,
         agi: self.agi,
         int: self.int,
+        con: self.con,
+        luc: self.luc,
+        wis: self.wis,
       });
     }
   }
@@ -2388,11 +2421,14 @@ export class Game {
     }
     this.touchInput = new TouchInput();
     // Умение лучника — прицел пальцем, как на ПК; меч/посох — как раньше, сразу.
-    this.touchInput.abilityHook = () => {
-      if (!this.aoeAim || this.combat.abilityKind !== "arrowRain" || this.combat.holdsStaff) return false;
-      this.pcSkill();
+    // Град — прицел пальцем; остальное — сразу.
+    const hook = (slot: number) => (): boolean => {
+      if (!this.aoeAim || this.skillIds()[slot] !== "arrowRain") return false;
+      this.pcSkill(slot);
       return true;
     };
+    this.touchInput.abilityHook = hook(0);
+    this.touchInput.ability2Hook = hook(1);
     return this.touchInput;
   }
 
@@ -2401,8 +2437,10 @@ export class Game {
     const h = this.pcHud!;
     const prog = this.progression;
     const kind = this.combat.abilityKind;
+    // Значок рамки героя — по оружию в руках (кинжал/копьё/молот — свои).
+    const hk = this.combat.heldKindOf("right") || this.combat.heldKindOf("left");
     const icon: WeaponIcon =
-      kind === "stunBash" ? "sword" : kind === "arrowRain" ? "bow" : this.combat.holdsStaff ? "staff" : "fist";
+      hk === "sword" || hk === "bow" || hk === "staff" || hk === "dagger" || hk === "spear" || hk === "hammer" ? hk : "fist";
     h.setIdentity(this.localNick || "Герой", prog.level, icon);
     this.pcPlates.level = prog.level;
     h.setUnspent(prog.unspent);
@@ -2410,17 +2448,17 @@ export class Game {
     h.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
     this.pcInv?.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
     h.setAutoAttack(!!this.pcTarget?.autoAttack);
-    if (this.combat.holdsStaff) {
-      const left = this.combat.massHealCdLeft;
-      h.setSkill("massHeal", "Массовое лечение", left / (MAGIC.heal.massCooldown + 0.4), left);
-    } else {
-      h.setSkill(
-        kind,
-        kind === "stunBash" ? "Оглушающий удар" : kind === "arrowRain" ? "Град стрел" : null,
-        kind && this.skillCdTotal > 0 ? this.skillCdLeft / this.skillCdTotal : 0,
-        kind ? this.skillCdLeft : 0,
-      );
-    }
+    void kind;
+    const cls = this.heroClass();
+    this.skillIds().forEach((id, i) => {
+      if (!id) {
+        h.setSkill(i, null, "✦", null, 0, 0);
+        return;
+      }
+      const left = this.skillLeft(id);
+      const total = this.skillCooldown(id);
+      h.setSkill(i, id, SKILLS2[id].icon, skillName(id, cls ?? "warrior"), left / Math.max(0.1, total), left);
+    });
     let pots = 0;
     for (const s of this.inventory.slots) if (s.item === "potion") pots += s.count;
     h.setPotions(pots);
@@ -2474,8 +2512,8 @@ export class Game {
     const click = di.takeClick();
     // Прицел града стрел: ЛКМ — применить в круг (если дотягиваемся), ПКМ — отмена.
     if (this.aoeAim?.active) {
-      this.aoeAim.update(di.mouseX, di.mouseY, cam, this.player.position, SKILL.arrowRain.range);
-      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) this.aoeAim.cancel();
+      this.aoeAim.update(di.mouseX, di.mouseY, cam, this.player.position, this.rainRange());
+      if (!this.skillIds().includes("arrowRain") || this.player.dead) this.aoeAim.cancel();
       else if (click?.button === 2) this.aoeAim.cancel();
       else if (click?.button === 0) {
         if (this.aoeAim.inRange) {
@@ -2577,8 +2615,8 @@ export class Game {
       // Град стрел: круг под пальцем, отпустил — стреляем туда (как клик на ПК).
       ti.groundAim = true;
       const at = ti.aimXY;
-      if (at) aim.update(at.x - r.left, at.y - r.top, cam, this.player.position, SKILL.arrowRain.range);
-      if (this.combat.abilityKind !== "arrowRain" || this.player.dead) aim.cancel();
+      if (at) aim.update(at.x - r.left, at.y - r.top, cam, this.player.position, this.rainRange());
+      if (!this.skillIds().includes("arrowRain") || this.player.dead) aim.cancel();
       else if (tap && at) {
         if (aim.inRange) {
           this.castSkill("arrowRain", aim.point.x, aim.point.z);
@@ -2715,40 +2753,74 @@ export class Game {
     }
   }
 
-  /** Кнопка умения на ПК (2 / клик по ячейке): меч — оглушение, лук — прицел града, посох — масс-хил. */
-  private pcSkill(): void {
+  /** Умения героя: [ячейка 2, ячейка 3] — что выбрано на сервере (skill1/skill2). */
+  private skillIds(): [SkillId | "", SkillId | ""] {
+    const me = this.net?.self;
+    const ok = (k: string | undefined): SkillId | "" => (k && k in SKILLS2 ? (k as SkillId) : "");
+    return [ok(me?.skill1), ok(me?.skill2)];
+  }
+
+  /** Класс по оружию в руках. */
+  private heroClass(): ClassId | null {
+    return classOf2(this.combat.heldKindOf("left") as Weapon2 | "", this.combat.heldKindOf("right") as Weapon2 | "");
+  }
+
+  /** Откат умения с учётом МДР (у магов). */
+  private skillCooldown(id: SkillId): number {
+    const cls = this.heroClass();
+    const caster = cls === "support" || cls === "battlemage";
+    const mul = caster ? 1 / (1 + invested(this.progression.stats.wis) * ATTR2.wis.cast) : 1;
+    return SKILLS2[id].cooldown * mul;
+  }
+
+  /** Сколько секунд до готовности умения (0 — готово). */
+  private skillLeft(id: SkillId): number {
+    return Math.max(0, ((this.skillReadyAt.get(id) ?? 0) - performance.now()) / 1000);
+  }
+
+  /** Дальность прицела града: у ассасина «Веер кинжалов» — ближе. */
+  private rainRange(): number {
+    return this.heroClass() === "assassin" ? 8 : SKILL.arrowRain.range;
+  }
+
+  /** Град: у ассасина «Веер кинжалов» — круг меньше. */
+  private rainRadius(): number {
+    const cls = this.heroClass();
+    // Как на сервере: веер — 4.5, ливень копий — 5, остальное — круг града.
+    return cls === "assassin" ? 4.5 : cls === "spearman" ? 5 : SKILL.arrowRain.radius;
+  }
+
+  /** Кнопка умения (ПК: 2/3 или клик по ячейке; телефон — кнопка ✦). slot 0/1. */
+  private pcSkill(slot = 0): void {
     if (this.player.dead) return;
-    if (this.combat.holdsStaff) {
-      const err = this.combat.pcMassHeal();
-      if (err) this.notifyToast(err);
+    const id = this.skillIds()[slot];
+    if (!id) {
+      this.notifyToast("Умение не выбрано — окно снаряжения (C), вкладка «Умения»");
       return;
     }
-    const kind = this.combat.abilityKind;
-    if (!kind) {
-      this.notifyToast("У этого оружия нет умения");
-      return;
-    }
-    if (kind === "arrowRain") {
-      if (this.aoeAim?.active) {
+    if (id === "arrowRain" && this.aoeAim && this.heroClass() !== "assassin") {
+      if (this.aoeAim.active) {
         this.aoeAim.cancel();
         return;
       }
-      if (this.skillCdLeft > 0) {
-        this.castSkill(kind); // покажет «ещё не готов: N с»
+      if (this.skillLeft(id) > 0) {
+        this.castSkill(id); // покажет «ещё не готов: N с»
         return;
       }
-      this.aoeAim?.start(SKILL.arrowRain.radius);
+      this.aoeAim.start(this.rainRadius());
       return;
     }
-    this.castSkill(kind);
+    this.castSkill(id);
   }
 
   /** Клик по ячейке панели действий ПК — то же, что клавиша. */
   private pcSlot(key: string): void {
     if (key === "1") this.pcTarget?.toggleAttack(this.player.renderCamera);
     else if (key === "2") {
-      this.pcSkill();
+      this.pcSkill(0);
     } else if (key === "3") {
+      this.pcSkill(1);
+    } else if (key === "4") {
       const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
       if (slot >= 0) this.inventory.use(slot);
       else this.notifyToast("Зелий нет");
@@ -2899,6 +2971,7 @@ export class Game {
     if (!av) return;
     // Замах дёргает сам CombatSystem через onMeleeSwing — тут только поза.
     // Прицеливание → модель прячем (мы внутри неё).
+    av.setGear(this.combat.heldKindOf("left"), this.combat.heldKindOf("right"));
     const p = this.player.position;
     av.update(
       dt,
@@ -2919,52 +2992,160 @@ export class Game {
    * «глаз», а те смотрят туда же, куда повёрнут персонаж.
    */
   /**
-   * Активное умение оружия — воин «Оглушающий удар», лучник «Град стрел».
-   * Клиент только отсчитывает кулдаун для кнопки; урон/контроль считает сервер,
-   * а телеграф и FX прилетают эхом через playRemoteAct.
+   * Применить умение (проверка отката здесь же; выбор и класс проверяет сервер).
+   * x,z — точка (град — центр круга; иначе считаем сами). Рывок и прыжок
+   * «Сокрушения» двигают героя локально — позицию игрока ведёт клиент.
    */
-  /** Применить умение: проверка готовности (иначе предупреждение) и отправка на сервер. */
-  private castSkill(kind: "stunBash" | "arrowRain", x?: number, z?: number): void {
+  private castSkill(id: SkillId, x?: number, z?: number): void {
     if (this.player.dead || !this.net?.online) return;
-    if (this.skillCdLeft > 0) {
-      const name = kind === "stunBash" ? "Оглушающий удар" : "Град стрел";
+    const name = SKILLS2[id].variants?.[this.heroClass() ?? "warrior"]?.name ?? SKILLS2[id].name;
+    const left = this.skillLeft(id);
+    if (left > 0) {
       const now = performance.now();
       if (now - this.skillWarnAt > 1200) {
         this.skillWarnAt = now;
-        this.notifyToast(`${name} ещё не готов: ${Math.ceil(this.skillCdLeft)} с`);
+        this.notifyToast(`${name} ещё не готов: ${Math.ceil(left)} с`);
       }
       return;
     }
-    const msg: { kind: "stunBash" | "arrowRain"; x?: number; z?: number } = { kind };
-    if (kind === "arrowRain") {
+    const cls = this.heroClass();
+    const p = this.player.position;
+    const fy = this.player.inVR || this.player.thirdPerson ? this.player.facing : this.player.facing;
+    const fx = Math.sin(fy);
+    const fz = Math.cos(fy);
+    const msg: { kind: SkillId; x?: number; z?: number } = { kind: id };
+    // Ближайшая цель впереди (для рывка/прыжка): центр отрезка тела в пределах maxD.
+    const frontTarget = (maxD: number): { x: number; z: number } | null => {
+      let best: { x: number; z: number } | null = null;
+      let bd = maxD;
+      for (const t of this.targets) {
+        if (!t.alive) continue;
+        const sg = t.hitSegment();
+        const cx = (sg.a.x + sg.b.x) / 2;
+        const cz = (sg.a.z + sg.b.z) / 2;
+        const dx = cx - p.x;
+        const dz = cz - p.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.5 || d > bd || (dx * fx + dz * fz) / d < 0.3) continue;
+        bd = d;
+        best = { x: cx, z: cz };
+      }
+      return best;
+    };
+    if (id === "arrowRain" && cls === "assassin") {
+      // Веер кинжалов — конусом по взгляду.
+      msg.x = p.x + fx * 9;
+      msg.z = p.z + fz * 9;
+      this.combat.onMeleeSwing?.();
+    } else if (id === "arrowRain") {
       if (x !== undefined && z !== undefined) {
         msg.x = x;
         msg.z = z;
       } else {
-        const hl = Math.hypot(this.aim.x, this.aim.z) || 1;
-        const p = this.player.position;
-        msg.x = p.x + (this.aim.x / hl) * SKILL.arrowRain.range;
-        msg.z = p.z + (this.aim.z / hl) * SKILL.arrowRain.range;
+        const r = cls === "assassin" ? 5 : SKILL.arrowRain.range;
+        msg.x = p.x + fx * r;
+        msg.z = p.z + fz * r;
       }
+    } else if (id === "mark" || id === "chain") {
+      // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
+      const sel = this.selectedTargetPos() ?? frontTarget(id === "mark" ? 22 : 14);
+      // Цели нет — сервер откажет; не тратим откат и подсказываем.
+      if (!sel) {
+        this.notifyToast("Нет цели впереди");
+        return;
+      }
+      msg.x = sel.x;
+      msg.z = sel.z;
+      this.combat.onMeleeSwing?.();
+    } else if (id === "shadowStep") {
+      let ex: number;
+      let ez: number;
+      if (cls === "archer") {
+        ex = p.x - fx * 7;
+        ez = p.z - fz * 7;
+      } else {
+        const t = frontTarget(11);
+        if (t) {
+          const dx = t.x - p.x;
+          const dz = t.z - p.z;
+          const d = Math.hypot(dx, dz) || 1;
+          const over = Math.min(11, d + 1.4); // за спину цели
+          ex = p.x + (dx / d) * over;
+          ez = p.z + (dz / d) * over;
+        } else {
+          ex = p.x + fx * 8;
+          ez = p.z + fz * 8;
+        }
+      }
+      msg.x = ex;
+      msg.z = ez;
+      this.startDash(ex, ez, 0.2);
+      this.localAvatar?.oneShot("roll", 1.6);
+    } else if (id === "crush") {
+      const t = frontTarget(8);
+      msg.x = t ? t.x : p.x + fx * 3.5;
+      msg.z = t ? t.z : p.z + fz * 3.5;
+      // Прыжок: долетаем к точке за время замаха (сервер бьёт по её окончании).
+      const dx = msg.x - p.x;
+      const dz = msg.z - p.z;
+      const d = Math.hypot(dx, dz);
+      const stop = Math.max(0, d - 1.2);
+      if (d > 0.1) this.startDash(p.x + (dx / d) * stop, p.z + (dz / d) * stop, SKILLS2.crush.castTime);
+      this.localAvatar?.oneShot("jump", 1.1);
+    } else {
+      this.combat.onMeleeSwing?.();
     }
     this.net.sendSkill(msg);
     if (this.player.inVR) this.sfx.bowRelease(1); // отклик жеста, как у массового хила
-    this.skillCdTotal = kind === "stunBash" ? SKILL.stunBash.cooldown : SKILL.arrowRain.cooldown;
-    this.skillCdLeft = this.skillCdTotal;
+    this.skillReadyAt.set(id, performance.now() + this.skillCooldown(id) * 1000);
+  }
+
+  /** Центр выбранной цели (ПК/телефон), если это моб. */
+  private selectedTargetPos(): { x: number; z: number } | null {
+    const id = this.pcTarget?.targetId;
+    if (!id || id.startsWith("@")) return null;
+    const m = this.net?.room?.state.mobs.get(id);
+    return m && !m.dead ? { x: m.x, z: m.z } : null;
+  }
+
+  /** Плавный перенос героя (рывок/прыжок) из текущей точки в (x,z) за dur с. */
+  private startDash(x: number, z: number, dur: number): void {
+    const p = this.player.position;
+    this.dash = { sx: p.x, sz: p.z, ex: x, ez: z, t: 0, dur: Math.max(0.05, dur) };
+  }
+
+  private dash: { sx: number; sz: number; ex: number; ez: number; t: number; dur: number } | null = null;
+
+  private tickDash(dt: number): void {
+    const d = this.dash;
+    if (!d) return;
+    d.t += dt;
+    const k = Math.min(1, d.t / d.dur);
+    const e = k * k * (3 - 2 * k);
+    this.player.teleportTo(d.sx + (d.ex - d.sx) * e, this.player.position.y, d.sz + (d.ez - d.sz) * e);
+    if (k >= 1) this.dash = null;
   }
 
   private skillWarnAt = 0;
 
   private updateSkillAbility(dt: number): void {
-    if (this.skillCdLeft > 0) this.skillCdLeft = Math.max(0, this.skillCdLeft - dt);
-    const kind = this.combat.abilityKind;
+    this.tickDash(dt);
     const inp = this.player.lastInput;
-    if (inp.ability && this.pcThirdPerson) this.pcSkill();
-    else if (inp.ability && kind) this.castSkill(kind);
-    // Индикатор готовности на кнопке умения (телефон) и на запястье (VR).
-    const frac = kind ? this.skillCdLeft / this.skillCdTotal : -1;
-    this.touchInput?.setSkillCd(frac);
-    this.wristPanel?.setSkillCd(frac);
+    const ids = this.skillIds();
+    if (this.pcThirdPerson) {
+      if (inp.ability) this.pcSkill(0);
+      if (inp.ability2) this.pcSkill(1);
+    } else {
+      if (inp.ability && ids[0]) this.castSkill(ids[0]);
+      if (inp.ability2 && ids[1]) this.castSkill(ids[1]);
+    }
+    this.wristPanel?.setSkills(this.heroClass() ?? "", ids.filter((x): x is SkillId => !!x));
+    // Индикатор готовности на кнопках умений (телефон) и на запястье (VR).
+    ids.forEach((id, i) => {
+      const frac = id ? this.skillLeft(id) / Math.max(0.1, this.skillCooldown(id)) : -1;
+      this.touchInput?.setSkillCd(frac, i, id ? SKILLS2[id].icon : undefined);
+      if (i === 0) this.wristPanel?.setSkillCd(frac);
+    });
   }
 
   private aimAssistTouch(dt: number): void {
@@ -3183,7 +3364,8 @@ export class Game {
     };
     this.combat.onVrSkill = (kind, x, z) => this.castSkill(kind, x, z);
     this.combat.onMassHealCooldown = (sec) => this.notifyToast(`Массовый хил перезаряжается: ${Math.ceil(sec)} с`);
-    this.combat.onMassHealStart = (x, y, z) => this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+    // Аура исцеления рисуется по событию сервера (healAura) — ходит за героем.
+    this.combat.onMassHealStart = null;
     this.combat.nearestAlly = (pos) => {
       let best: { id: string; pos: Vector3 } | null = null;
       let bd = 1.2;
@@ -3198,7 +3380,7 @@ export class Game {
     };
 
     // Звук соседа — играем объёмно от его аватара / точки события.
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
     net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
@@ -3326,6 +3508,24 @@ export class Game {
 
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   /** Звук чужого действия — объёмно от точки события (у аватара соседа). */
+  /** Позиция для «следящих» эффектов: герой — у земли под ним, моб — над головой. */
+  private fxFollow(kind: "hero" | "mob", fid: string): { x: number; y: number; z: number } | null {
+    const st = this.net?.room?.state;
+    if (kind === "mob") {
+      const m = st?.mobs.get(fid);
+      if (!m || m.dead) return null;
+      return { x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2, z: m.z };
+    }
+    if (fid === this.net?.sessionId) {
+      const pp = this.player.position;
+      return { x: pp.x, y: this.fxGround(pp.x, pp.z), z: pp.z };
+    }
+    const av = this.avatars.get(fid);
+    if (!av) return null;
+    const pp = av.position;
+    return { x: pp.x, y: this.fxGround(pp.x, pp.z), z: pp.z };
+  }
+
   private playRemoteAct(
     k: ActKind,
     x: number,
@@ -3336,6 +3536,8 @@ export class Game {
     mobId?: string,
     x2in?: number,
     z2in?: number,
+    v?: number,
+    r?: number,
   ): void {
     // VR: дальше VR_FX_RANGE боевых эффектов (скиллы, лечение, удары, криты, звуки) не рисуем вовсе — бережём шлем.
     if (this.player.inVR) {
@@ -3343,6 +3545,12 @@ export class Game {
       if (Math.hypot(x - pp.x, z - pp.z) > VR_FX_RANGE) return;
     }
     const at = { x, y, z };
+    if (k === "markReset") {
+      this.skillReadyAt.delete("mark");
+      this.notifyToast("Цель пала под меткой — метка снова готова");
+      return;
+    }
+    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);
@@ -3434,7 +3642,7 @@ export class Game {
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "stunBash":
-        this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
+        this.skillFx.stunBash(x, y, z, r ?? BOT.stunRadius, d ?? BOT.stunCastTime);
         // Звук — в момент активации умения (а не в конце замаха, как раньше по stunHit).
         this.sfx.at(at, () => this.sfx.groundBash());
         break;
@@ -3458,7 +3666,7 @@ export class Game {
         break;
       }
       case "arrowRain":
-        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
+        this.skillFx.arrowRain(x, y, z, r ?? BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
         this.avatars.get(id)?.playEmote("cheer");
         this.sfx.at(at, () => this.sfx.arrowVolley());
         break;

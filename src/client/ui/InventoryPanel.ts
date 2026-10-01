@@ -1,5 +1,5 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
 import type { WarehouseWeapon } from "#shared/net/messages";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
@@ -115,10 +115,10 @@ export class InventoryPanel {
         `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor[w.tier]};`,
       );
       const name = el("div", `font-size:13px;font-weight:600;color:${tierColor[w.tier]};`);
-      name.textContent = d.name;
-      if (w.affixes.length) {
+      name.textContent = w.name ?? d.name;
+      if (w.quality) {
         const q = el("span", "color:#f2c74b;margin-left:6px;font-weight:600;");
-        q.textContent = `(${w.quality})`;
+        q.textContent = qualityStars(w.quality, w.affixes.length);
         name.appendChild(q);
       }
       const aff = el("div", "font-size:11.5px;color:#7db8ff;margin-top:1px;");

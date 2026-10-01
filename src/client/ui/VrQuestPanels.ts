@@ -1,5 +1,6 @@
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
+import { qualityStars } from "#shared/items";
 
 /**
  * Содержимое VR-панелей у NPC лагеря — те же карточки, что в ПК-окнах
@@ -218,8 +219,8 @@ export function drawEnchant(
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
     ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
-  x = ui.text("оценка ", PAD, 162, 26, VR_UI.sub);
-  ui.text(String(w.quality), PAD + x, 154, 40, "#ffcf5a", 800);
+  x = ui.text("качество ", PAD, 162, 26, VR_UI.sub);
+  ui.text(qualityStars(w.quality, w.ench.length), PAD + x, 154, 40, "#ffcf5a", 800);
   let y = 224;
   const bw = ui.W - PAD * 2;
   w.ench.forEach((a, i) => {
@@ -239,7 +240,7 @@ export function drawEnchant(
     ui.text(lastResult.text, ui.W / 2, y + 24, 28, lastResult.up ? "#9fe39a" : "#ff9a8e", 700, "center");
     y += 90;
   }
-  ui.wrap("Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает.", PAD, y + 10, bw, 22, VR_UI.dim);
+  ui.wrap("Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает.", PAD, y + 10, bw, 22, VR_UI.dim);
 }
 
 /** Итог последнего действия (покупка, сдача) — плашкой внизу панели NPC. */

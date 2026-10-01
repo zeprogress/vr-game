@@ -1,8 +1,10 @@
+import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, SKILLS2, skillName, stepCost, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
+import { qualityStars } from "#shared/items";
 
 interface InvWeapon {
   num: number;
@@ -67,7 +69,7 @@ interface InvMsg {
   weapons?: InvWeapon[];
   misc?: InvMisc[];
   scrapHave?: number;
-  attrs?: { unspent: number; str: number; agi: number; int: number };
+  attrs?: { unspent: number; str: number; agi: number; int: number; con?: number; luc?: number; wis?: number };
   fish?: number;
   respecCost?: number;
   /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
@@ -104,31 +106,30 @@ function walletHtml(msg: InvMsg): string {
   );
 }
 
-const ATTRS: { key: "str" | "agi" | "int"; name: string; hint: string }[] = [
-  { key: "str", name: "Сила", hint: "HP, урон ближнего боя, броня" },
-  { key: "agi", name: "Ловкость", hint: "скорость атаки, стрелы, бег, уворот" },
-  { key: "int", name: "Интеллект", hint: "мана, сила магии, защита от снарядов" },
-];
+const ATTRS = A2.map((key) => ({ key, name: `${ATTR_INFO[key].icon} ${ATTR_INFO[key].name}`, hint: attrEffect(key) }));
 
 function attrsHtml(msg: InvMsg): string {
   const a = msg.attrs;
   if (!a) return "";
-  const can = !!msg.authed && a.unspent > 0;
   const rows = ATTRS.map((r) => {
-    const btns = can
-      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1">+1</button>` +
-        (a.unspent >= 5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5">+5</button>` : "") +
+    const v = a[r.key] ?? 1;
+    const cost = stepCost(v);
+    let cost5 = 0;
+    for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
+    const btns = msg.authed && a.unspent >= cost
+      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1" title="${cost} оч.">+1</button>` +
+        (a.unspent >= cost5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5" title="${cost5} оч.">+5</button>` : "") +
         `</div>`
       : "";
     return (
-      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${a[r.key]}</b></div>` +
+      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${v}</b> <small>· подъём ${cost} оч.</small></div>` +
       `<div class="ahint">${r.hint}</div></div>${btns}</div>`
     );
   }).join("");
   // Сброс атрибутов — за жетон ◈; второе нажатие подтверждает (как «На лом»).
   const cost = msg.respecCost ?? 0;
   const fish = msg.tokens ?? 0; // имя осталось от рыбы — это жетоны
-  const invested = a.str + a.agi + a.int - 3 > 0;
+  const invested = A2.some((k) => (a[k] ?? 1) > 1);
   const armed = armedScrap === "respec";
   // cost < 0 — сброс выключен на сервере: кнопку не показываем.
   const respec = msg.authed && cost >= 0
@@ -141,7 +142,7 @@ function attrsHtml(msg: InvMsg): string {
     a.unspent > 0
       ? `Свободных очков: <b class="afree">${a.unspent}</b>${msg.authed ? "" : " — войди кодом, чтобы вложить"}`
       : "Свободных очков нет — их дают за новый уровень";
-  return `<div class="attrs"><div class="ahead">${head}</div>${rows}${respec}</div>`;
+  return `<div class="attrs"><div class="ahead">${head}</div><div class="ahint">${costRule()}</div>${rows}${respec}</div>`;
 }
 
 const titleEl = document.getElementById("title")!;
@@ -190,7 +191,8 @@ const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
 
 /** « (N)» — очки роллов; у оружия без роллов ничего не пишем. */
 function qualityTag(q: number, count: number): string {
-  return count > 0 ? ` <span class="quality">(оценка ${q})</span>` : "";
+  const s = qualityStars(q, count);
+  return s ? ` <span class="quality">${s}</span>` : "";
 }
 
 function handHtml(label: string, h: InvHand | null): string {
@@ -489,7 +491,7 @@ function renderModal(): void {
     `<div class="erows">${rows}</div>` +
     `<div class="eanvil"><div class="ehammer">🔨</div></div>` +
     `<div class="ebanner"></div>` +
-    `<div class="enote">Чем ближе аффикс к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
+    `<div class="enote">Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
 }
 
 modalEl.addEventListener("click", (e) => {
@@ -578,7 +580,7 @@ function reveal(m: EnchResult): void {
     box.classList.add("lose");
     row?.classList.add("lose");
     if (row) burst(row, "smoke", 10);
-    banner.innerHTML = `💨 Не вышло… аффикс не изменился <small>−${e.cost} лома</small>`;
+    banner.innerHTML = `💨 Не вышло… ролл не изменился <small>−${e.cost} лома</small>`;
     banner.className = "ebanner show bad";
   }
   setTimeout(() => {
@@ -597,42 +599,50 @@ function reveal(m: EnchResult): void {
 
 // ---- статичный раздел "Механики игры" ----
 
-const MECH_HTML = `
+/** Атрибуты, классы и умения — из тех же данных, что считает игра (classes2.ts). */
+const MECH_CLASSES_HTML = (() => {
+  const attrs = A2.map((k) => `<li><b>${ATTR_INFO[k].icon} ${ATTR_INFO[k].name}</b> (!${k === "agi" ? "dex" : k}) — ${attrEffect(k)}.</li>`).join("");
+  const classes = CLASS_IDS.map((c) => {
+    const d = CLASSES2[c];
+    const sk = d.skills.map((id) => skillName(id, c)).join(", ");
+    return `<p><b>${d.icon} ${d.name}</b> — ${d.weapons}. ${d.role}. Умения на выбор: ${sk}.</p>`;
+  }).join("");
+  const skills = CLASS_IDS.map((c) => {
+    const d = CLASSES2[c];
+    const items = d.skills
+      .map((id: SkillId) => {
+        const sk = SKILLS2[id];
+        const v = sk.variants?.[c];
+        return `<li>${sk.icon} <b>${v?.name ?? sk.name}</b> (откат ${sk.cooldown} с) — ${v?.desc ?? sk.desc}.</li>`;
+      })
+      .join("");
+    return `<p><b>${d.icon} ${d.name}</b></p><ul>${items}</ul>`;
+  }).join("");
+  return `
 <h2>Атрибуты</h2>
-<p>Основа — от <b>уровня</b> (здоровье, урон, темп атаки, бег, мана растут сами). Атрибуты — множители поверх. Каждое вложенное очко даёт:</p>
-<p><span class="str">Сила (str)</span></p>
-<ul>
-<li>+5.5% максимального здоровья;</li>
-<li>+5% урона мечом и кулаками (на стрелы сила не влияет);</li>
-<li>броня: −1.4% входящего урона от мобов и игроков (потолок 35%). Магические удары (Костяные призраки) броня не гасит.</li>
-</ul>
-<p><span class="agi">Ловкость (dex)</span></p>
-<ul>
-<li>+1% темпа атаки (у меча прирост вдвое мягче, у лука и посоха — полный);</li>
-<li>+1.5% урона мечом и кулаками;</li>
-<li>+3% урона стрел — у лука урон растёт только от ловкости;</li>
-<li>+1.8% скорости бега;</li>
-<li>+1.2% шанса увернуться от удара, а с одним предметом в руках без щита (лук, посох, один меч) — ×5, потолок 30%.</li>
-</ul>
-<p><span class="int">Интеллект (int)</span></p>
-<ul>
-<li>+6% силы магии: урон огнешара и сила массового лечения;</li>
-<li>+5% запаса маны и +0.5 восстановления маны в секунду (база — 2 в секунду);</li>
-<li>−4.5% урона от снарядов и магии, в том числе магических ударов призраков (потолок 70%);</li>
-<li>+3% к лечению зельями.</li>
-</ul>
-<p><b>Затухание:</b> первые 5 вложенных очков в атрибут дают полную отдачу, каждое следующее — 40% от неё. Поэтому выгоднее не всё в один атрибут.</p>
-<p>Очки дают за каждый уровень. Сброс всех очков — <b>1 жетон ◈</b> (<code>!respec</code> или кнопка на вкладке «Атрибуты»).</p>
+<p>Основа — от <b>уровня</b> (здоровье, урон, темп атаки, бег растут сами). Атрибуты — множители поверх. ${costRule()}. Каждый подъём даёт:</p>
+<ul>${attrs}</ul>
+<p>Уворот с одним оружием в руках (пустая вторая рука, лук, посох, копьё, молот) — в ${ATTR2.luc.dodgeOneItem} раза выше, потолок ${Math.round(ATTR2.luc.dodgeCap * 100)}%. Сброс всех очков — <b>1 жетон ◈</b> (<code>!respec</code> или кнопка на вкладке «Атрибуты»).</p>
 
-<h2>Классы и руки</h2>
-<p><span class="cls-warrior">Воин</span> — меч (можно два) и щит, умение «Оглушающий удар». Щит — шанс полностью заблокировать удар (10%, у Эгиды 15%).</p>
-<p><span class="cls-archer">Лучник</span> — лук на обе руки, криты, умение «Град стрел» по области. С одним предметом в руках без щита — уворот в 5 раз выше.</p>
-<p><span class="cls-mage">Маг</span> — посох: огнешар с зарядом и массовое лечение союзников.</p>
+<h2>Классы</h2>
+<p>Класс — это оружие в руках: взял кинжалы — ассасин, копьё — копейщик и т.д. У каждого класса свои умения, любые два можно выбрать на вкладке «Умения» (ПК — клавиши 2 и 3, телефон — кнопки ✦, VR — стики правой и левой руки). Ботам — <code>!class</code> и <code>!skills</code>.</p>
+${classes}
+<p>Щит у воина — шанс полностью заблокировать удар: обычный 10%, золотой 13%, уникальный 16% (+ ролл Блок). Молот боевого мага каждым ударом пускает магическую волну (урон от интеллекта). Копьё пробивает до 3 целей на линии. Два кинжала бьют по очереди чаще, один кинжал — крит и уворот выше.</p>
 
-<h2>Оружие, оценка и заточка</h2>
-<p><b>Обычное</b> — стартовое. <span class="tier-gold">Золотое</span> — урон выше. <span class="tier-legendary">Уникальное</span> — свой эффект: меч вампира, лук охотника (криты), эгида (блок), посох бури.</p>
-<p>На золотом и уникальном 1–3 случайных <span class="roll">ролла</span> (урон, скорость атаки, крит). <b>Оценка</b> — сумма их силы (до 99): чем выше, тем лучше предмет.</p>
-<p>Ненужное — <b>на лом</b> (больше лома за высокую оценку). Лом тратится на <b>заточку</b> роллов: чем ближе ролл к максимуму, тем дороже и тем меньше шанс; при неудаче лом сгорает.</p>
+<h2>Умения классов</h2>
+${skills}
+<p>У магов (посох, молот) мудрость ускоряет откат умений.</p>`;
+})();
+
+const MECH_HTML = `
+${MECH_CLASSES_HTML}
+
+<h2>Оружие, роллы и заточка</h2>
+<p><b>Обычное</b> — стартовое (всё есть на стойке в лагере). <span class="tier-gold">Золотое</span> — сильнее, 1–2 ролла. <span class="tier-legendary">Уникальное</span> — ещё сильнее, 2–3 ролла.</p>
+<p><span class="roll">Роллы</span> — 5 видов, на предмете не повторяются:</p>
+<ul><li><b>Урон</b> +5–15%</li><li><b>Скорость атаки</b> +5–15%</li><li><b>Крит</b> +5–15% к шансу, и сильнее сам крит (до +1 к множителю)</li><li><b>Вампиризм</b> +2–8% урона в здоровье — только меч, кинжал, копьё, молот</li><li><b>Блок</b> +2–6% — только щит</li></ul>
+<p>Щит блокирует удар целиком: обычный 10%, золотой 13%, уникальный 16%, плюс ролл Блок.</p>
+<p><b>Звёзды</b> ★★★☆☆ — насколько роллы близки к максимуму. Ненужное — <b>на лом</b> (больше за звёзды). Лом тратится на <b>заточку</b> ролла: чем он ближе к максимуму, тем дороже и меньше шанс; при неудаче лом сгорает.</p>
 
 <h2>Лут</h2>
 <p>Оружие падает с мобов лагерей; у <b>вожаков лагерей</b> (крупнее, «Вожак — …» над головой) шанс в 3 раза выше. Мировой босс Багровый слизень — щедрее всех. Трофей 25 секунд принадлежит тому, кто добил, на земле лежит час.</p>
@@ -643,9 +653,9 @@ const MECH_HTML = `
 
 <h2>Задания и жетоны ◈</h2>
 <p><b>Задания дня</b> (обновляются в 00:00 МСК): 3 простых берутся у доски, ещё 2 — на выбор из 5 (есть усложнённые). Охота на мобов своей зоны, вожаки лагерей, рыбалка, рейд на Багрового.</p>
-<p><b>Охотник</b>: история лагеря для новичков (6 глав, в финале — титул и уникальное оружие) и <b>контракт недели</b> с уникальным оружием оценки 80+.</p>
+<p><b>Охотник</b>: история лагеря для новичков (6 глав, в финале — титул и уникальное оружие) и <b>контракт недели</b> с уникальным оружием ★★★★ и выше.</p>
 <p>Награда — опыт (на первых уровнях — сразу несколько уровней), лом и <b>жетоны ◈</b>.</p>
-<p><b>Трактирщик</b> за жетоны: зелья, лом, свитки, сундук с уникальным оружием оценки 80+; обмен 20 рыб на 1 ◈.</p>
+<p><b>Трактирщик</b> за жетоны: зелья, лом, свитки, сундук с уникальным оружием ★★★★ и выше; обмен 20 рыб на 1 ◈.</p>
 <p><b>Свитки</b> (15 минут): мудрости — ×2 опыта (с благословением ×3), ветра — +20% скорости бега. Пока свиток действует, второй такой же не читается.</p>
 
 <h2>Рыбалка</h2>
@@ -665,7 +675,7 @@ const MECH_HTML = `
 <p>Пока хозяин не в чате, его герой — бот: сам ходит, дерётся, лутается и лечится. Уходит из мира, если хозяин долго не пишет.</p>
 
 <h2>Команды в чате</h2>
-<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!str</code>/<code>!dex</code>/<code>!int</code> — атрибуты · <code>!respec</code> — сброс за 1 ◈ · <code>!inv</code> — эта страница · <code>!equip &lt;номер&gt;</code> / <code>!scrap &lt;номер|all&gt;</code> · <code>!camp &lt;моб&gt;</code> — где качаться · <code>!fish</code> — рыбалка · <code>!follow &lt;ник&gt;</code> (<code>!следовать</code>) — рядом и защищает · <code>!raid</code> — поход на босса · <code>!event</code> — на ивент · <code>!квест</code> — квест чата · <code>!title</code> — титулы · <code>!focus</code> — показать героя в эфире · <code>!top</code> — лидеры.</p>
+<p><code>!play</code>/<code>!stop</code> — герой в мир/из мира · <code>!stats</code> — прогресс · <code>!class</code> — класс · <code>!skills</code> — умения · <code>!str</code> <code>!dex</code> <code>!int</code> <code>!con</code> <code>!luc</code> <code>!wis</code> — атрибуты · <code>!respec</code> — сброс за 1 ◈ · <code>!inv</code> — эта страница · <code>!equip &lt;номер&gt;</code> / <code>!scrap &lt;номер|all&gt;</code> · <code>!camp &lt;моб&gt;</code> — где качаться · <code>!fish</code> — рыбалка · <code>!follow &lt;ник&gt;</code> (<code>!следовать</code>) — рядом и защищает · <code>!raid</code> — поход на босса · <code>!event</code> — на ивент · <code>!квест</code> — квест чата · <code>!title</code> — титулы · <code>!focus</code> — показать героя в эфире · <code>!top</code> — лидеры.</p>
 `;
 
 document.getElementById("mechBtn")!.addEventListener("click", () => {

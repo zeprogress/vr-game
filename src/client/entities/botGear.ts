@@ -21,7 +21,7 @@ export type GearTune = {
   auto: boolean;
 };
 
-export const BOT_GEAR: { sword: GearTune; shield: GearTune; bow: GearTune; staff: GearTune } = {
+export const BOT_GEAR: Record<"sword" | "shield" | "bow" | "staff" | "dagger" | "spear" | "hammer", GearTune> = {
   // Подобрано вживую панелью ?gear=1. Разворот щита задан углом: расчёт по
   // положению правой руки (auto) давал верную ось, но не тот наклон ремня.
   sword: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
@@ -29,6 +29,11 @@ export const BOT_GEAR: { sword: GearTune; shield: GearTune; bow: GearTune; staff
   // `auto` тут ничего не значит (он только для щита), но поле есть у всех.
   bow: { pos: [-0.063, 0.251, 0.165], rot: [1.354, -1.688, -1.365], scale: 1.7, auto: false },
   staff: { pos: [0, 0.1, -0.05], rot: [1.426, -0.333, -0.1], scale: 1.7, auto: false },
+  // «Классы 2.0»: хват как у меча (клинок/древко поперёк кулака), клипы классов
+  // (world/classPoses) доворачивают кулак под нужное направление оружия.
+  dagger: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
+  spear: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
+  hammer: { pos: [0.01, 0.105, -0.08], rot: [-0.012, -2.047, -1.052], scale: 1.7, auto: false },
 };
 
 /**

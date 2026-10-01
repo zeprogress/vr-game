@@ -1,3 +1,4 @@
+import { SHIELD } from "./constants";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -8,7 +9,14 @@ export type ItemId =
   | "leg_sword"
   | "leg_bow"
   | "leg_shield"
+  | "gold_shield"
   | "leg_staff"
+  | "gold_dagger"
+  | "gold_spear"
+  | "gold_hammer"
+  | "leg_dagger"
+  | "leg_spear"
+  | "leg_hammer"
   | "scrap"
   | "fish"
   | "scroll_xp"
@@ -18,7 +26,14 @@ export type ItemId =
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
  * положение настраивается один раз на класс (см. LOADOUT.items).
  */
-export type WeaponClass = "sword" | "bow" | "shield" | "staff";
+export type WeaponClass = "sword" | "bow" | "shield" | "staff" | "dagger" | "spear" | "hammer";
+
+/** Все классы оружия (без щита) — для выпадения, списков и проверок. */
+export const ATTACK_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
+/** Двуручное оружие ближнего боя «Классов 2.0» — держится двумя руками, как посох. */
+export function isTwoHandedMelee(cls: string): boolean {
+  return cls === "spear" || cls === "hammer";
+}
 /**
  * Уровень внутри класса. `base` — обычное оружие из пака, лежит на камнях с
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
@@ -26,7 +41,7 @@ export type WeaponClass = "sword" | "bow" | "shield" | "staff";
  */
 export type WeaponTier = "base" | "gold" | "legendary";
 
-/** Механический эффект легендарного оружия. Числа — в constants.ts (AFFIX). */
+/** Эффект СТАРЫХ уникальных типов — теперь только для миграции в обычный ролл (см. migrateLoot). */
 export type WeaponAffix = "vamp" | "crit" | "guard" | "storm";
 
 export interface WeaponDef {
@@ -37,8 +52,6 @@ export interface WeaponDef {
   mult: number;
   /** Цвет клинка / дуги / диска. */
   tint: readonly [number, number, number];
-  /** Аффикс легендарки (только у tier === "legendary"). */
-  affix?: WeaponAffix;
 }
 
 export type WeaponKey = `${WeaponClass}:${WeaponTier}`;
@@ -54,48 +67,56 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.42, 0.28, 0.16] },
   "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
+  "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
   "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
   "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
 
-  // Легендарки — именное оружие с аффиксом. Урон чуть выше золота, плюс эффект.
-  // Все фиолетовые (единый «легендарный» вид).
-  "sword:legendary": {
-    cls: "sword", tier: "legendary", name: "Меч вампира", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "vamp",
-  },
-  "bow:legendary": {
-    cls: "bow", tier: "legendary", name: "Лук охотника", mult: 4.1,
-    tint: [0.62, 0.3, 1], affix: "crit",
-  },
-  "shield:legendary": {
-    cls: "shield", tier: "legendary", name: "Эгида", mult: 1,
-    tint: [0.62, 0.3, 1], affix: "guard",
-  },
-  "staff:legendary": {
-    cls: "staff", tier: "legendary", name: "Посох бури", mult: 2.3,
-    tint: [0.62, 0.3, 1], affix: "storm",
-  },
+  // Уникальные — урон чуть выше золота и 2–3 ролла (эффектов «из коробки» больше нет).
+  // Все фиолетовые (единый «уникальный» вид).
+  "sword:legendary": { cls: "sword", tier: "legendary", name: "Уникальный меч", mult: 4.5, tint: [0.62, 0.3, 1] },
+  "bow:legendary": { cls: "bow", tier: "legendary", name: "Уникальный лук", mult: 4.1, tint: [0.62, 0.3, 1] },
+  "shield:legendary": { cls: "shield", tier: "legendary", name: "Уникальный щит", mult: 1, tint: [0.62, 0.3, 1] },
+  "staff:legendary": { cls: "staff", tier: "legendary", name: "Уникальный посох", mult: 2.3, tint: [0.62, 0.3, 1] },
+
+  // «Классы 2.0»: урон удара задаёт профиль оружия (classes2 WEAPONS2.dmg), mult — только тир.
+  "dagger:base": { cls: "dagger", tier: "base", name: "Кинжал", mult: 1, tint: [0.55, 0.57, 0.62] },
+  "dagger:gold": { cls: "dagger", tier: "gold", name: "Золотой кинжал", mult: 4, tint: [1, 0.84, 0.26] },
+  "dagger:legendary": { cls: "dagger", tier: "legendary", name: "Уникальный кинжал", mult: 4.5, tint: [0.62, 0.3, 1] },
+  "spear:base": { cls: "spear", tier: "base", name: "Копьё", mult: 1, tint: [0.42, 0.28, 0.16] },
+  "spear:gold": { cls: "spear", tier: "gold", name: "Золотое копьё", mult: 4, tint: [1, 0.84, 0.26] },
+  "spear:legendary": { cls: "spear", tier: "legendary", name: "Уникальное копьё", mult: 4.5, tint: [0.62, 0.3, 1] },
+  "hammer:base": { cls: "hammer", tier: "base", name: "Молот", mult: 1, tint: [0.45, 0.47, 0.52] },
+  "hammer:gold": { cls: "hammer", tier: "gold", name: "Золотой молот", mult: 4, tint: [1, 0.84, 0.26] },
+  "hammer:legendary": { cls: "hammer", tier: "legendary", name: "Уникальный молот", mult: 4.5, tint: [0.62, 0.3, 1] },
 };
 
-/** Аффикс оружия по классу/тиру — удобно для боевых формул. */
-export function weaponAffix(cls: WeaponClass, tier: WeaponTier): WeaponAffix | undefined {
-  return tier === "legendary" ? WEAPONS[weaponKey(cls, tier)]?.affix : undefined;
+/**
+ * Имена и эффекты СТАРЫХ уникальных (до упрощения роллов 2026-10-01): эффект
+ * типа превращается в обычный ролл на максимуме, имя остаётся на экземпляре
+ * (WeaponInstance.nm). Используется только разовой миграцией migrateLoot.
+ */
+const LEGACY_LEGENDARY: Partial<Record<WeaponClass, { name: string; affix: WeaponAffix }>> = {
+  sword: { name: "Меч вампира", affix: "vamp" },
+  bow: { name: "Лук охотника", affix: "crit" },
+  shield: { name: "Эгида", affix: "guard" },
+  staff: { name: "Посох бури", affix: "storm" },
+  dagger: { name: "Жало тени", affix: "crit" },
+  spear: { name: "Копьё крови", affix: "vamp" },
+  hammer: { name: "Молот грома", affix: "storm" },
+};
+
+/** Имя конкретного экземпляра: у старых уникальных — их историческое имя. */
+export function instanceName(w: Pick<WeaponInstance, "cls" | "tier" | "nm">): string {
+  return w.nm ?? weaponDef(w.cls, w.tier).name;
 }
-
-const AFFIX_HINT: Record<WeaponAffix, string> = {
-  vamp: "уникальное · вампиризм",
-  crit: "уникальное · крит",
-  guard: "уникальное · усиленный блок",
-  storm: "уникальное · сильнее AoE",
-};
 
 export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
   return WEAPONS[weaponKey(cls, tier)] ?? (WEAPONS[weaponKey(cls, "base")] as WeaponDef);
 }
 
 export function isWeaponClass(v: unknown): v is WeaponClass {
-  return v === "sword" || v === "bow" || v === "shield" || v === "staff";
+  return v === "sword" || v === "bow" || v === "shield" || v === "staff" || v === "dagger" || v === "spear" || v === "hammer";
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
@@ -123,6 +144,9 @@ export const DUAL_WIELD: Record<WeaponClass, boolean> = {
   bow: false, // лук требует обеих рук — второй взять нельзя
   shield: true,
   staff: false, // посох один: его можно взять двумя руками, но не два посоха
+  dagger: true, // ассасин: кинжал в каждой руке
+  spear: false, // копьё — двуручное
+  hammer: false, // молот — двуручный
 };
 
 export interface ItemDef {
@@ -169,10 +193,17 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   // InventoryPanel.iconEl, Overlay), а не картинкой: раньше тут стояли те же
   // PNG, что и у золотого оружия, и баннер дропа с элиты показывал иконку
   // золотого меча, хотя на самом деле выпало уникальное — не отличить на глаз.
-  leg_sword: weaponItem("sword", "legendary", "Вампир", ""),
-  leg_bow: weaponItem("bow", "legendary", "Лук охот.", ""),
-  leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
-  leg_staff: weaponItem("staff", "legendary", "Посох бури", ""),
+  leg_sword: weaponItem("sword", "legendary", "Уник. меч", ""),
+  leg_bow: weaponItem("bow", "legendary", "Уник. лук", ""),
+  leg_shield: weaponItem("shield", "legendary", "Уник. щит", ""),
+  gold_shield: weaponItem("shield", "gold", "Зол. щит", ""),
+  leg_staff: weaponItem("staff", "legendary", "Уник. посох", ""),
+  gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал", ""),
+  gold_spear: weaponItem("spear", "gold", "Зол. копьё", ""),
+  gold_hammer: weaponItem("hammer", "gold", "Зол. молот", ""),
+  leg_dagger: weaponItem("dagger", "legendary", "Уник. кинжал", ""),
+  leg_spear: weaponItem("spear", "legendary", "Уник. копьё", ""),
+  leg_hammer: weaponItem("hammer", "legendary", "Уник. молот", ""),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -225,9 +256,14 @@ function weaponItem(
   return {
     name: d.name,
     short,
-    hint: d.affix
-      ? AFFIX_HINT[d.affix]
-      : cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
+    hint:
+      cls === "shield"
+        ? `блок ${Math.round((SHIELD.blockByTier[tier] ?? SHIELD.blockChance) * 100)}%${tier === "base" ? "" : " + ролл Блок"}`
+        : tier === "legendary"
+          ? "уникальное · 2–3 ролла"
+          : tier === "gold"
+            ? "золотое · 1–2 ролла"
+            : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
     healFrac: 0,
@@ -283,6 +319,10 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_dagger", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_spear", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_hammer", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_shield", chance: 0.05, min: 1, max: 1 },
   ],
   shard: [],
 };
@@ -366,17 +406,21 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
   return id;
 }
 
-// ---- Рандомные аффиксы оружия (PoE-style, поверх tier) ----
+// ---- Роллы оружия: 5 видов — Урон, Скорость атаки, Крит, Вампиризм, Блок ----
 
-/** Семейство рычага — на предмете не бывает двух роллов одного семейства. */
-export type AffixKind = "dmg" | "atkSpeed" | "crit";
-/** Конкретный под-вид ролла внутри семейства. */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block";
+/**
+ * Под-вид ролла. Выпадают: dmgFlat (Урон), atkSpeedPct (Скорость атаки),
+ * critChance (Крит — шанс И сила, см. critRollMult), vamp (Вампиризм, ближний
+ * бой), block (Блок, только щит). dmgPct — старый «Урон 8–20%», остаётся у
+ * уже выпавших. critMult — старый вид, переводится в Крит миграцией.
+ */
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block";
 
 export interface RolledAffix {
   kind: AffixKind;
   sub: AffixSub;
-  /** Величина: для *Pct/*Chance — доля (0.12 = +12%), для critMult — абсолютная добавка к множителю. */
+  /** Величина — доля (0.12 = +12%). У Крита — шанс; сила выводится из него (critRollMult). */
   value: number;
 }
 
@@ -388,12 +432,36 @@ export interface WeaponInstance {
   affixes: RolledAffix[];
   /** 1 — роллы посоха уже в общем диапазоне (см. migrateStaffAffixes). */
   sv?: number;
+  /** Имя старого уникального («Меч вампира») — у новых нет. */
+  nm?: string;
+  /** Версия формата роллов (см. migrateLoot): 4 — 5 видов. */
+  lv?: number;
 }
 
-const AFFIX_FAMILIES: Record<AffixKind, AffixSub[]> = {
-  dmg: ["dmgFlat", "dmgPct"],
-  atkSpeed: ["atkSpeedPct"],
-  crit: ["critChance", "critMult"],
+/** Текущая версия формата роллов (WeaponInstance.lv). */
+const LOOT_VER = 4;
+
+/** Оружие ближнего боя — только на нём выпадает вампиризм. */
+export function isMeleeClass(cls: string): boolean {
+  return cls === "sword" || cls === "dagger" || cls === "spear" || cls === "hammer";
+}
+
+/** Какие роллы могут выпасть на предмете этого класса (вид на предмете не повторяется). */
+function rollableSubs(cls: WeaponClass): AffixSub[] {
+  if (cls === "shield") return ["block"];
+  const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance"];
+  if (isMeleeClass(cls)) out.push("vamp");
+  return out;
+}
+
+const SUB_KIND: Record<AffixSub, AffixKind> = {
+  dmgFlat: "dmg",
+  dmgPct: "dmg",
+  atkSpeedPct: "atkSpeed",
+  critChance: "crit",
+  critMult: "crit",
+  vamp: "vamp",
+  block: "block",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -401,8 +469,42 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   dmgPct: [0.08, 0.2],
   atkSpeedPct: [0.05, 0.15],
   critChance: [0.05, 0.15],
-  critMult: [0.3, 0.8],
+  critMult: [0.3, 1.0],
+  vamp: [0.02, 0.08],
+  block: [0.02, 0.06],
 };
+/** Сила крита у ролла Крит: растёт вместе с шансом, от +0.3 (5%) до +1 (15%). */
+const CRIT_ROLL_MULT = [0.3, 1.0] as const;
+/** Потолок силы крита до 2026-10-01 — для пересчёта уже выпавших роллов. */
+const OLD_CRIT_MULT_HI = 0.8;
+
+/** Доля ролла от минимума к максимуму своего вида (0..1). */
+function rollT(sub: AffixSub, value: number): number {
+  const [lo, hi] = AFFIX_RANGES[sub];
+  return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
+}
+function atT(sub: AffixSub, t: number): number {
+  const [lo, hi] = AFFIX_RANGES[sub];
+  return lo + t * (hi - lo);
+}
+
+/** Прибавка к силе крита от ролла Крит (шанс 5..15% → сила +0.3..+1). */
+export function critRollMult(chance: number): number {
+  return CRIT_ROLL_MULT[0] + rollT("critChance", chance) * (CRIT_ROLL_MULT[1] - CRIT_ROLL_MULT[0]);
+}
+
+/** Шанс и сила крита со всех роллов Крит на предмете. */
+export function critOfAffixes(affixes: RolledAffix[]): { chance: number; mult: number } {
+  let chance = 0;
+  let mult = 0;
+  for (const a of affixes) {
+    if (a.sub === "critChance") {
+      chance += a.value;
+      mult += critRollMult(a.value);
+    } else if (a.sub === "critMult") mult += a.value;
+  }
+  return { chance, mult };
+}
 
 /**
  * СТАРЫЙ завышенный потолок роллов посоха (до 2026-09-28). Больше нигде не
@@ -415,48 +517,51 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   atkSpeedPct: 1.25,
   critChance: 1.25,
   critMult: 1.3,
+  vamp: 1,
+  block: 1,
 };
 
-const AFFIX_LABEL: Record<AffixSub, string> = {
-  dmgFlat: "урона",
-  dmgPct: "урона",
-  atkSpeedPct: "скорость атаки",
-  critChance: "шанс крита",
-  critMult: "силу крита",
+/** Название вида ролла — одно слово-два, как видит игрок. */
+export const AFFIX_NAME: Record<AffixSub, string> = {
+  dmgFlat: "Урон",
+  dmgPct: "Урон",
+  atkSpeedPct: "Скорость атаки",
+  critChance: "Крит",
+  critMult: "Крит",
+  vamp: "Вампиризм",
+  block: "Блок",
 };
 
-/** Текст ролла для тултипа/чата, напр. "+12% урона" или "+0.5 к силе крита". */
+/** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
 export function affixLabel(a: RolledAffix): string {
-  // Точность не грубее шага заточки (1 очко ≈ 0.3-0.5% / ≈0.02 силы крита),
-  // иначе 0.96 показывалось как «+1» у посоха (потолок 1.04) и удачная
-  // заточка не меняла подпись. Хвостовые нули срезаем: 12.0% → 12%.
-  const pct = a.sub !== "critMult";
-  const v = pct ? Math.round(a.value * 1000) / 10 : Math.round(a.value * 100) / 100;
-  return `+${v}${pct ? "%" : ""} ${AFFIX_LABEL[a.sub]}`;
+  // Точность не грубее шага заточки (1 очко ≈ 0.2–0.4%) — иначе удачная
+  // заточка не меняла бы подпись. Хвостовые нули срезаем: 12.0% → 12%.
+  if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
+  return `${AFFIX_NAME[a.sub]} +${Math.round(a.value * 1000) / 10}%`;
 }
 
-function rollAffix(rnd: () => number, cls: WeaponClass): RolledAffix {
-  const kinds = Object.keys(AFFIX_FAMILIES) as AffixKind[];
-  const kind = kinds[Math.floor(rnd() * kinds.length)];
-  const subs = AFFIX_FAMILIES[kind];
+/** Все подписи экземпляра для показа. */
+export function instanceLabels(w: Pick<WeaponInstance, "affixes">): string[] {
+  return w.affixes.map(affixLabel);
+}
+
+function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>): RolledAffix | null {
+  const subs = rollableSubs(cls).filter((s) => !used.has(s));
+  if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
-  void cls; // диапазон теперь общий для всех классов
-  const [lo, hi] = AFFIX_RANGES[sub];
-  return { kind, sub, value: lo + rnd() * (hi - lo) };
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, rnd()) };
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
 export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
   void cls;
-  const [lo, hi] = AFFIX_RANGES[a.sub];
-  const t = hi > lo ? Math.max(0, Math.min(1, (a.value - lo) / (hi - lo))) : 1;
-  return 1 + 32 * t;
+  return 1 + 32 * rollT(a.sub, a.value);
 }
 
 /**
  * Насколько роллы предмета близки к максимуму — сумма очков всех аффиксов
- * (каждый 1..33): все на минимуме и их 2 → 2, 3 → 3; на максимуме по 33 за ролл.
- * Показывается в скобках рядом с названием оружия в инвентаре.
+ * (каждый 1..33). Игроку показывается звёздами (qualityStars), внутри —
+ * для цены заточки и лома.
  */
 export function weaponQuality(w: WeaponInstance): number {
   let sum = 0;
@@ -464,9 +569,29 @@ export function weaponQuality(w: WeaponInstance): number {
   return Math.round(sum);
 }
 
+/** Звёзды качества экземпляра. */
+export function instanceStars(w: WeaponInstance): string {
+  return qualityStars(weaponQuality(w), w.affixes.length);
+}
+
+/** Коротко для маленьких ячеек: «4★». */
+export function qualityStarsShort(quality: number, rolls: number): string {
+  const s = qualityStars(quality, rolls);
+  return s ? `${s.replace(/☆/g, "").length}★` : "";
+}
+
+/** Звёзды качества ★★★☆☆ — по средней силе роллов (1..5). Пусто — роллов нет. */
+export function qualityStars(quality: number, rolls: number): string {
+  if (rolls <= 0 || quality <= 0) return "";
+  const avg = quality / rolls; // 1..33
+  const n = Math.max(1, Math.min(5, Math.round(1 + ((avg - 1) / 32) * 4)));
+  return "★".repeat(n) + "☆".repeat(5 - n);
+}
+
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
-function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
+function rollAffixCount(tier: WeaponTier, rnd: () => number, cls?: WeaponClass): number {
   if (tier === "base") return 0;
+  if (cls === "shield") return 1; // у щита один вид — Блок
   if (tier === "gold") return rnd() < 0.3 ? 2 : 1;
   return rnd() < 0.4 ? 3 : 2; // legendary
 }
@@ -478,23 +603,22 @@ function shortId(rnd: () => number): string {
   return out;
 }
 
-/** Раскатать новый инстанс дропнутого оружия — тир задаёт кол-во роллов, семейства не повторяются. */
+/** Раскатать новый инстанс дропнутого оружия — тир задаёт кол-во роллов, вид ролла не повторяется. */
 export function rollWeaponInstance(
   cls: WeaponClass,
   tier: WeaponTier,
   rnd: () => number = Math.random,
 ): WeaponInstance {
-  const count = rollAffixCount(tier, rnd);
+  const count = rollAffixCount(tier, rnd, cls);
   const affixes: RolledAffix[] = [];
-  const used = new Set<AffixKind>();
-  let guard = 0;
-  while (affixes.length < count && guard++ < 50) {
-    const a = rollAffix(rnd, cls);
-    if (used.has(a.kind)) continue;
-    used.add(a.kind);
+  const used = new Set<AffixSub>();
+  while (affixes.length < count) {
+    const a = rollAffix(rnd, cls, used);
+    if (!a) break;
+    used.add(a.sub);
     affixes.push(a);
   }
-  return { id: shortId(rnd), cls, tier, affixes, ...(cls === "staff" ? { sv: 1 } : {}) };
+  return { id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER, ...(cls === "staff" ? { sv: 1 } : {}) };
 }
 
 /**
@@ -505,7 +629,11 @@ export function rollWeaponInstance(
  * было деться. См. preserveLegacyWeapon в ZoneRoom.ts.
  */
 export function plainWeaponInstance(cls: WeaponClass, tier: WeaponTier): WeaponInstance {
-  return { id: shortId(Math.random), cls, tier, affixes: [], ...(cls === "staff" ? { sv: 1 } : {}) };
+  // Легаси-предмет из тех времён, когда эффект был у типа: без lv —
+  // migrateLoot превратит эффект в ролл и сохранит имя.
+  const w: WeaponInstance = { id: shortId(Math.random), cls, tier, affixes: [], ...(cls === "staff" ? { sv: 1 } : {}) };
+  migrateLoot(w);
+  return w;
 }
 
 /** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
@@ -585,12 +713,89 @@ function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] 
 export function migrateStaffAffixes(w: WeaponInstance): boolean {
   if (w.cls !== "staff" || w.sv === 1) return false;
   for (const a of w.affixes) {
-    const [lo, hi] = AFFIX_RANGES[a.sub];
+    const [lo, newHi] = AFFIX_RANGES[a.sub];
+    // Посох переводится в диапазоны ДО «Лута 3.0» — сила крита дальше
+    // поднимается migrateLoot3, как у всех.
+    const hi = a.sub === "critMult" ? OLD_CRIT_MULT_HI : newHi;
     const oldHi = hi * OLD_STAFF_RANGE_HI_MUL[a.sub];
     const t = Math.max(0, Math.min(1, (a.value - lo) / (oldHi - lo)));
     a.value = lo + t * (hi - lo);
   }
   w.sv = 1;
+  return true;
+}
+
+/** Шанс блока щитом: тир + ролл Блок. */
+export function shieldBlockChance(tier: WeaponTier | string, inst?: Pick<WeaponInstance, "affixes"> | null): number {
+  const base = SHIELD.blockByTier[tier as WeaponTier] ?? SHIELD.blockChance;
+  return inst ? base + affixSum(inst.affixes, "block") : base;
+}
+
+/** Доля урона, возвращаемая как HP (ролл Вампиризм). Только ближний бой. */
+export function vampFrac(inst: Pick<WeaponInstance, "cls" | "affixes"> | null | undefined): number {
+  if (!inst || !isMeleeClass(inst.cls)) return 0;
+  return affixSum(inst.affixes, "vamp");
+}
+
+/** Поставить ролл вида `sub` на максимум (если такой уже есть — поднять до максимума). */
+function maxRoll(w: WeaponInstance, sub: AffixSub): void {
+  const hi = AFFIX_RANGES[sub][1];
+  const had = w.affixes.find((a) => a.sub === sub || (sub === "dmgFlat" && a.sub === "dmgPct"));
+  if (had) had.value = AFFIX_RANGES[had.sub][1];
+  else w.affixes.push({ kind: SUB_KIND[sub], sub, value: hi });
+}
+
+/**
+ * Разовый переход уже выпавших экземпляров на 5 видов роллов (2026-10-01).
+ * Очки (близость к максимуму) везде сохраняются:
+ *  - сила крита (старый потолок 0.8) → Крит с той же долей от максимума;
+ *  - у щита все роллы → один Блок с лучшей долей из бывших;
+ *  - эффект старого уникального типа → ролл на максимуме (Меч вампира —
+ *    Вампиризм, Лук охотника — Крит, Посох бури — Урон, Эгида — Блок),
+ *    имя остаётся («Меч вампира»).
+ * Помечает w.lv, повторный вызов ничего не делает. true — что-то поменялось.
+ */
+export function migrateLoot(w: WeaponInstance): boolean {
+  if ((w.lv ?? 0) >= LOOT_VER) return false;
+  const ver = w.lv ?? 0;
+  // Сила крита → Крит (до версии 3 потолок силы был 0.8).
+  for (const a of w.affixes) {
+    if (a.sub !== "critMult") continue;
+    const [lo, hi] = AFFIX_RANGES.critMult;
+    const t = Math.max(0, Math.min(1, (a.value - lo) / ((ver >= 3 ? hi : OLD_CRIT_MULT_HI) - lo)));
+    a.sub = "critChance";
+    a.kind = "crit";
+    a.value = atT("critChance", t);
+  }
+  // Два ролла Крит (старые шанс + сила) — оставить лучший.
+  const crits = w.affixes.filter((a) => a.sub === "critChance");
+  if (crits.length > 1) {
+    const best = crits.reduce((m, a) => (a.value > m.value ? a : m));
+    w.affixes = w.affixes.filter((a) => a.sub !== "critChance" || a === best);
+  }
+  // Щит: только Блок.
+  if (w.cls === "shield" && w.affixes.some((a) => a.sub !== "block")) {
+    const t = w.affixes.reduce((m, a) => Math.max(m, rollT(a.sub, a.value)), 0);
+    w.affixes = [{ kind: "block", sub: "block", value: atT("block", t) }];
+  }
+  // Эффект старого уникального типа → ролл на максимуме, имя — на экземпляре.
+  if (w.tier === "legendary" && ver < 3) {
+    const legacy = LEGACY_LEGENDARY[w.cls];
+    if (legacy) {
+      w.nm = legacy.name;
+      const sub: AffixSub =
+        legacy.affix === "vamp" ? "vamp" : legacy.affix === "crit" ? "critChance" : legacy.affix === "guard" ? "block" : "dmgFlat";
+      maxRoll(w, sub);
+    }
+  }
+  // Ранние уникальные экземпляры ветки (lv 3) с врождённым эффектом.
+  const inn = (w as { innate?: WeaponAffix }).innate;
+  if (inn) {
+    w.nm = LEGACY_LEGENDARY[w.cls]?.name;
+    maxRoll(w, inn === "vamp" ? "vamp" : inn === "crit" ? "critChance" : inn === "guard" ? "block" : "dmgFlat");
+    delete (w as { innate?: WeaponAffix }).innate;
+  }
+  w.lv = LOOT_VER;
   return true;
 }
 

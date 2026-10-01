@@ -1,3 +1,4 @@
+import { attrEffect } from "#shared/classes2";
 import { PLAYER_HP, BOT } from "#shared/constants";
 import type { LootItem } from "#shared/net/messages";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
@@ -7,7 +8,7 @@ import type { WarehouseWeapon } from "#shared/net/messages";
 import { BOT_SKIN_LABELS } from "../world/models";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 
-const STATS: StatName[] = ["str", "agi", "int"];
+const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 
 /**
  * HUD плоского режима: полоса здоровья, красная вспышка при уроне,
@@ -702,7 +703,7 @@ export class Hud {
       val.textContent = String(p.stats[s]);
       row.append(name, val);
 
-      if (p.unspent > 0) {
+      if (p.unspent >= p.costOf(s)) {
         const btn = document.createElement("button");
         btn.textContent = "+";
         btn.style.cssText =
@@ -838,14 +839,7 @@ function el(tag: string, css: string): HTMLDivElement {
 
 /** Короткое описание — за что отвечает характеристика (у каждой есть польза всем). */
 function statHint(p: Progression, s: StatName): string {
-  const pct = (v: number): string => `${Math.round(v * 100)}%`;
-  // База растёт от уровня; атрибут — небольшой множитель поверх. Затухание
-  // после 5 очков — качать во все понемногу выгоднее, чем всё в один.
-  if (s === "str")
-    return `HP ${Math.round(p.maxHp)} · ближний бой ×${p.swordDamage.toFixed(2)} · броня ${pct(p.armor)}`;
-  if (s === "agi")
-    return `темп атаки ×${p.attackSpeed.toFixed(2)} · урон любым оружием · бег ${p.moveSpeed.toFixed(2)} м/с`;
-  return `магия ×${p.fireboltMax.toFixed(1)} · магзащита ${pct(p.magicResist)} · зелья +${pct(p.potionPower - 1)}`;
+  return `${attrEffect(s)} · подъём стоит ${p.costOf(s)} оч.`;
 }
 
 const HP_BAR_CSS =

@@ -1,10 +1,13 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
+import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
 import { atMaxLevel, xpToNext } from "#shared/progression";
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
 
 import {
   affixLabel,
+  instanceLabels,
+  instanceName,
   isWeaponClass,
   isWeaponTier,
   ITEMS,
@@ -58,9 +61,9 @@ function handInfo(
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
   return {
     cls,
-    name: weaponDef(cls, tier).name,
+    name: inst ? instanceName(inst) : weaponDef(cls, tier).name,
     tier,
-    affixes: inst ? inst.affixes.map(affixLabel) : [],
+    affixes: inst ? instanceLabels(inst) : [],
     quality: inst ? weaponQuality(inst) : 0,
     id: inst?.id ?? "",
     ench: inst ? enchDetails(inst) : [],
@@ -93,7 +96,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title"
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills"
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -170,8 +173,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       id: w.id,
       cls: w.cls,
       tier: w.tier,
-      name: weaponDef(w.cls, w.tier).name,
-      affixes: w.affixes.map(affixLabel),
+      name: instanceName(w),
+      affixes: instanceLabels(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
@@ -194,12 +197,15 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     str: rec.str,
     agi: rec.agi,
     int: rec.int,
+    con: rec.con ?? 1,
+    luc: rec.luc ?? 1,
+    wis: rec.wis ?? 1,
     rightCls: rec.held?.right?.cls ?? "",
     rightTier: rec.held?.right?.tier ?? "",
     leftCls: rec.held?.left?.cls ?? "",
     leftTier: rec.held?.left?.tier ?? "",
-    rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
-    leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
+    rightAffix: rightInst ? instanceLabels(rightInst).join(", ") : "",
+    leftAffix: leftInst ? instanceLabels(leftInst).join(", ") : "",
   });
   // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
   const pc: PcInvData = invHub.pcInv(norm) ?? {
@@ -207,8 +213,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       id: w.id,
       cls: w.cls,
       tier: w.tier,
-      name: weaponDef(w.cls, w.tier).name,
-      affixes: w.affixes.map(affixLabel),
+      name: instanceName(w),
+      affixes: instanceLabels(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
@@ -222,9 +228,10 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     titles: rec.titles ?? [],
     title: rec.title ?? "",
     tokens: rec.tokens ?? 0,
-    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
+    skills: skillsOf(rec),
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
@@ -247,7 +254,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     weapons,
     misc,
     scrapHave: bagCount(rec.bag ?? [], "scrap"),
-    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int },
+    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     fish: bagCount(rec.bag ?? [], "fish"),
     // Жетоны заданий и свитки (свиток читается отсюда же; действует — секунд осталось).
     tokens: rec.tokens ?? 0,
@@ -260,4 +267,13 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     })),
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
   };
+}
+
+/** Умения героя по сохранённому снаряжению: класс и выбранные (или по умолчанию). */
+function skillsOf(rec: { held?: { left?: { cls: string } | null; right?: { cls: string } | null }; skills?: Record<string, string[]> }): { cls: string; chosen: string[] } {
+  const cls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  if (!cls) return { cls: "", chosen: [] };
+  const def = CLASSES2[cls];
+  const saved = (rec.skills?.[cls] ?? []).filter((k: string) => def.skills.includes(k as SkillId));
+  return { cls, chosen: saved.length ? saved : [...def.defaultSkills] };
 }

@@ -1,3 +1,7 @@
+import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
+import { SkillVfx } from "../ui/SkillVfx";
+import { prewarmClassClips } from "../world/classPoses";
+import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
 import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
@@ -82,6 +86,11 @@ export class Spectator {
   private readonly healAura: HealAuraFx;
   /** Визуал массовых скиллов ботов (рассекающий удар, град стрел). */
   private readonly skillFx: SkillFx;
+  /** Эффекты «Классов 2.0»: волна молота, копьё, рывок, сокрушение, печать. */
+  private readonly classFx: ClassFx;
+  private readonly classCtx: ClassActCtx;
+  /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
+  private readonly skillVfx: SkillVfx;
   private readonly eventBeacon: EventBeacon;
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
@@ -277,6 +286,19 @@ export class Spectator {
     (window as unknown as { __towerArenaFx?: unknown }).__towerArenaFx = this.towerFx;
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
+    this.classFx = new ClassFx(this.scene);
+    this.skillVfx = new SkillVfx(this.scene);
+    this.classFx.vfx = this.skillVfx;
+    this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
+    // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
+    setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
+    this.classCtx = {
+      fx: this.classFx,
+      vfx: this.skillVfx,
+      sound: (at, kind) =>
+        this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
+      emote: (id, e) => this.avatars.get(id)?.playEmote(e),
+    };
     this.eventBeacon = new EventBeacon(this.scene);
     this.eventBeacon.bindGround(zone.groundHeight);
     // Камера стрима часто идёт вплотную к стволам — ближние деревья гасим,
@@ -420,7 +442,7 @@ export class Spectator {
   /** Подключиться к миру невидимым наблюдателем и начать рендер. */
   async run(net: NetClient, key: string): Promise<boolean> {
     this.net = net;
-    net.onAct = (k, x, y, z, id, d, mobId, x2, z2) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2);
+    net.onAct = (k, x, y, z, id, d, mobId, x2, z2, v, r) => this.playRemoteAct(k, x, y, z, id, d, mobId, x2, z2, v, r);
     net.onReconnected = (room) => {
       // Пиры голоса привязаны к старой сессии — пересобираем начисто.
       const wantVoice = this.voiceOn;
@@ -1135,6 +1157,8 @@ export class Spectator {
     this.crossFx.update(dt);
     this.healAura.update(dt);
     this.skillFx.update(dt);
+    this.classFx.update(dt);
+    this.skillVfx.update(dt);
     const est = this.net?.room?.state;
     if (est) {
       this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
@@ -1335,7 +1359,7 @@ export class Spectator {
           watchBuffs = Spectator.playerBuffs(p);
           watchLevel = p.level;
           watchTitle = p.title || null;
-          watchAttrs = [p.str, p.agi, p.int];
+          watchAttrs = [p.str, p.agi, p.int, p.con, p.luc, p.wis];
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {
@@ -1441,6 +1465,20 @@ export class Spectator {
   }
 
   /** Звук действия игрока по сети — как в игре, но без своих эффектов. */
+  /** Позиция для «следящих» эффектов: герой — у земли под ним, моб — над головой. */
+  private fxFollow(kind: "hero" | "mob", fid: string): { x: number; y: number; z: number } | null {
+    const st = this.net?.room?.state;
+    if (kind === "mob") {
+      const m = st?.mobs.get(fid);
+      if (!m || m.dead) return null;
+      return { x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2, z: m.z };
+    }
+    const av = this.avatars.get(fid);
+    if (!av) return null;
+    const pp = av.position;
+    return { x: pp.x, y: this.groundHeight(pp.x, pp.z), z: pp.z };
+  }
+
   private playRemoteAct(
     k: ActKind,
     x: number,
@@ -1451,11 +1489,14 @@ export class Spectator {
     mobId?: string,
     x2in?: number,
     z2in?: number,
+    v?: number,
+    r?: number,
   ): void {
     // Дальше SPEC_RANGE от камеры — ни эффектов, ни звуков.
     const cp = this.cam.cam.position;
     if (Math.hypot(x - cp.x, z - cp.z) > SPEC_RANGE) return;
     const at = { x, y, z };
+    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);
@@ -1545,7 +1586,7 @@ export class Spectator {
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash());
         break;
       case "stunBash":
-        this.skillFx.stunBash(x, y, z, BOT.stunRadius, d ?? BOT.stunCastTime);
+        this.skillFx.stunBash(x, y, z, r ?? BOT.stunRadius, d ?? BOT.stunCastTime);
         this.sfx.at({ x, y, z }, () => this.sfx.groundBash()); // звук — в момент активации
         break;
       case "stunHit":
@@ -1561,7 +1602,7 @@ export class Spectator {
         break;
       }
       case "arrowRain":
-        this.skillFx.arrowRain(x, y, z, BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
+        this.skillFx.arrowRain(x, y, z, r ?? BOT.rainRadius, d ?? BOT.rainCastTime, SKILL.arrowRain.duration);
         this.avatars.get(id)?.playEmote("cheer");
         this.sfx.at({ x, y, z }, () => this.sfx.arrowVolley());
         break;

@@ -35,6 +35,8 @@ import type { Progression } from "../player/Progression";
 import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
+import { createClassWeapon } from "../items/classWeapons";
+import { DAGGER, SKILLS2, WEAPONS2 } from "#shared/classes2";
 import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
@@ -54,10 +56,22 @@ type Slot = { pos: [number, number, number]; rot: [number, number, number]; scal
  * Как предмет лежит за спиной. Локальные оси спины: -Z позади игрока, +X вправо.
  * Мутабельно — можно крутить из консоли: `game.stowConfig().sword.left.pos[1] = 0.2`.
  */
-export const STOW: Record<"sword" | "bow" | "shield" | "staff", Record<"left" | "right", Slot>> = {
+export const STOW: Record<ItemKind, Record<"left" | "right", Slot>> = {
   sword: {
     left: { pos: [-0.2, 0.12, -0.13], rot: [0.4, 0, 0.55], scale: 1 },
     right: { pos: [0.2, 0.12, -0.13], rot: [0.4, 0, -0.55], scale: 1 },
+  },
+  dagger: {
+    left: { pos: [-0.16, 0.0, -0.14], rot: [0.4, 0, 0.55], scale: 1 },
+    right: { pos: [0.16, 0.0, -0.14], rot: [0.4, 0, -0.55], scale: 1 },
+  },
+  spear: {
+    left: { pos: [-0.16, 0.05, -0.15], rot: [0.25, 0, 0.45], scale: 1 },
+    right: { pos: [0.16, 0.05, -0.15], rot: [0.25, 0, -0.45], scale: 1 },
+  },
+  hammer: {
+    left: { pos: [-0.18, 0.1, -0.15], rot: [0.35, 0, 0.5], scale: 1 },
+    right: { pos: [0.18, 0.1, -0.15], rot: [0.35, 0, -0.5], scale: 1 },
   },
   staff: {
     left: { pos: [-0.2, 0.12, -0.13], rot: [0.4, 0, 0.55], scale: 1 },
@@ -73,10 +87,52 @@ export const STOW: Record<"sword" | "bow" | "shield" | "staff", Record<"left" | 
   },
 };
 
-export type ItemKind = "sword" | "bow" | "shield" | "staff";
+export type ItemKind = "sword" | "bow" | "shield" | "staff" | "dagger" | "spear" | "hammer";
 
-/** Оружие ближнего боя: меч и посох машутся и бьют одинаково (посох слабее). */
-const MELEE_KINDS = new Set<ItemKind>(["sword", "staff"]);
+/** Оружие ближнего боя: меч, посох, кинжал, копьё, молот машутся и бьют (каждое — своим кончиком/темпом). */
+const MELEE_KINDS = new Set<ItemKind>(["sword", "staff", "dagger", "spear", "hammer"]);
+/** Древковое: можно взять второй рукой за древко (VR), как посох. */
+const POLE_KINDS = new Set<ItemKind>(["staff", "spear", "hammer"]);
+function isPole(k: ItemKind): boolean {
+  return POLE_KINDS.has(k);
+}
+/** Новое оружие «Классов 2.0». */
+type NewKind = "dagger" | "spear" | "hammer";
+function isNewKind(k: ItemKind | ""): k is NewKind {
+  return k === "dagger" || k === "spear" || k === "hammer";
+}
+/** Чем засчитывается удар этим предметом на сервере (посох-дубина — как меч). */
+function hitKindOf(k: ItemKind): "sword" | NewKind {
+  return isNewKind(k) ? k : "sword";
+}
+/** Кончик оружия в локальных осях меша (по нему считаются попадания в VR). */
+const TIP_OF: Record<"sword" | "staff" | NewKind, Vector3> = {
+  sword: new Vector3(...COMBAT.swordTipLocal),
+  staff: new Vector3(...COMBAT.swordTipLocal),
+  dagger: new Vector3(0, 0.33, 0),
+  spear: new Vector3(0, 1.3, 0),
+  hammer: new Vector3(0, 0.85, 0),
+};
+function tipOf(k: ItemKind): Vector3 {
+  return TIP_OF[k as keyof typeof TIP_OF] ?? TIP_OF.sword;
+}
+/** Хваты древка (локальная Y меша): нижний и верхний — для двуручного хвата в VR. */
+const POLE_GRIPS: Record<"staff" | "spear" | "hammer", { low: number; high: number }> = {
+  staff: { low: STAFF_GRIP_LOW, high: STAFF_GRIP_HIGH },
+  spear: { low: 0, high: 0.36 },
+  hammer: { low: -0.3, high: 0.15 },
+};
+function gripsOf(k: ItemKind): { low: number; high: number } {
+  return POLE_GRIPS[k as keyof typeof POLE_GRIPS] ?? POLE_GRIPS.staff;
+}
+/** Досягаемость удара на ПК/телефоне (от глаз), м. */
+function flatReachOf(k: ItemKind | ""): number {
+  if (k === "sword") return MELEE.flatReach + 0.4;
+  if (k === "dagger") return MELEE.flatReach + 0.15;
+  if (k === "spear") return MELEE.flatReach + 2.3;
+  if (k === "hammer") return MELEE.flatReach + 0.7;
+  return MELEE.flatReach;
+}
 const STAFF_UP = new Vector3(0, 1, 0);
 function isMelee(k: ItemKind): boolean {
   return MELEE_KINDS.has(k);
@@ -304,11 +360,28 @@ export class CombatSystem {
    * касания клипа — синхронно с анимацией.
    */
   private tpMeleeCd = 0;
-  private tpPendingHit: { kind: "sword" | "fist"; hand: Side; at: number } | null = null;
+  private tpPendingHit: { kind: "sword" | "fist" | NewKind; hand: Side; at: number } | null = null;
+  /** Два кинжала: какой рукой бить следующий удар (null — первой попавшейся). */
+  private daggerNext: Side | null = null;
+
+  /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два кинжала — по очереди, чаще). */
+  private intervalMul(k: ItemKind): number {
+    if (!isNewKind(k)) return 1;
+    const dual = k === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
+    return WEAPONS2[k].interval / BOT.attackCooldown / (dual ? DAGGER.dualTempo : 1);
+  }
+
+  /** После удара кинжалом — следующий другой рукой (если кинжалов два). */
+  private flipDagger(item: Item): void {
+    if (item.kind !== "dagger" || !item.hand) return;
+    const other: Side = item.hand === "left" ? "right" : "left";
+    this.daggerNext = this.held1("dagger", other) ? other : null;
+  }
   /** Ставит Game: узел кости кулака аватара (или null, если риг не готов). */
   avatarFist: ((side: Side) => Node | null) | null = null;
   /** Ставит Game: дёрнуть клип замаха у LocalAvatar. */
-  onMeleeSwing: (() => void) | null = null;
+  /** Замах (клип своей модели): kind — каким оружием (кинжал/копьё/молот — свои клипы), hand — какой рукой. */
+  onMeleeSwing: ((kind?: ItemKind, hand?: Side) => void) | null = null;
 
   // ---- ПК, третье лицо «как в WoW»: автоатака выбранной цели ----
   /** Включает Game на ПК в третьем лице: удары/выстрелы — по pcTarget, не по кнопке. */
@@ -410,6 +483,8 @@ export class CombatSystem {
     staffHome: Vector3,
     /** Куда «лицом» стоит оружие на стойке лагеря (к площади). */
     weaponsFaceYaw = 0,
+    /** Места на стойке оружия «Классов 2.0». */
+    classHomes?: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 },
   ) {
     this.weaponsFaceYaw = weaponsFaceYaw;
     this.homes = {
@@ -417,6 +492,9 @@ export class CombatSystem {
       bow: bowHome.clone(),
       shield: shieldHome.clone(),
       staff: staffHome.clone(),
+      dagger: (classHomes?.dagger ?? swordHome).clone(),
+      spear: (classHomes?.spear ?? staffHome).clone(),
+      hammer: (classHomes?.hammer ?? staffHome).clone(),
     };
     const sword = createSword(scene);
     const shield = createShield(scene);
@@ -430,6 +508,15 @@ export class CombatSystem {
       this.makeItem("shield", "base", shield, shieldHome),
       this.makeItem("staff", "base", staff, staffHome),
     ];
+    // Оружие «Классов 2.0» на стойке: два кинжала (ассасин берёт оба), копьё, молот.
+    if (classHomes) {
+      this.items.push(
+        this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger),
+        this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger2),
+        this.makeItem("spear", "base", createClassWeapon(scene, "spear", 0), classHomes.spear),
+        this.makeItem("hammer", "base", createClassWeapon(scene, "hammer", 0), classHomes.hammer),
+      );
+    }
     // Базовое оружие СТОИТ на стойке лагеря: вертикально, чуть завалено назад
     // на планку, лицом к площади — не парит и не крутится, легко разглядеть и
     // подойти взять. Позы возвращаются сюда же после того, как оружие бросили.
@@ -519,6 +606,11 @@ export class CombatSystem {
   }
 
   /** Что в этой руке (учитывая двуручный хват посоха). */
+  /** Классы предметов в руках (без аллокаций) — для клипов своей модели. */
+  heldKindOf(hand: Side): string {
+    return this.inHand(hand)?.kind ?? "";
+  }
+
   /** В руке есть оружие или щит (для сжатия кисти в VR). */
   handOccupied(hand: Side): boolean {
     return this.inHand(hand) !== null;
@@ -530,10 +622,13 @@ export class CombatSystem {
 
   /** Оружие (меч / посох / лук) в руках — для плоского режима, где рука одна. */
   private get weapon(): Item | null {
-    return this.held1("sword") ?? this.held1("staff") ?? this.held1("bow");
+    return (
+      this.held1("sword") ?? this.held1("dagger") ?? this.held1("spear") ?? this.held1("hammer") ??
+      this.held1("staff") ?? this.held1("bow")
+    );
   }
-  private get held(): "" | "sword" | "bow" | "staff" {
-    return (this.weapon?.kind as "sword" | "bow" | "staff") ?? "";
+  private get held(): "" | Exclude<ItemKind, "shield"> {
+    return (this.weapon?.kind as Exclude<ItemKind, "shield">) ?? "";
   }
   private get heldHand(): Side {
     return this.weapon?.hand ?? "right";
@@ -713,7 +808,7 @@ export class CombatSystem {
     item.flight = null;
     item.hand = side;
     item.hand2 = null;
-    if (kind === "staff") item.grip = { [side]: "low" };
+    if (isPole(kind)) item.grip = { [side]: "low" };
     item.mesh.rotationQuaternion = null;
     this.resetHand(side);
     if (isMelee(kind)) {
@@ -854,14 +949,14 @@ export class CombatSystem {
     } else if (this.pcAuto && !this.player.inVR) {
       // ПК, третье лицо: меч/кулаки — автоатака, пока цель в досягаемости.
       const swing = this.pcAttack && this.pcMeleeInReach();
-      if (this.held === "sword") this.updateFlatSwing(dt, swing);
+      if (this.held === "sword" || isNewKind(this.held)) this.updateFlatSwing(dt, swing);
       else this.updateFlatMelee(dt, swing);
     } else if (tpStaff) {
       // Смартфон: посох стреляет магией вперёд как лук (держишь — целишься).
       this.tpStaffCast(dt, inp.primaryAction, primaryReleased, inp.altFire, altFireReleased);
     } else if (flatStaff) {
       this.updateFlatStaff(dt, inp.primaryAction, primaryReleased);
-    } else if (this.held === "sword" || this.held === "staff") {
+    } else if (this.held === "sword" || this.held === "staff" || isNewKind(this.held)) {
       if (this.player.inVR) this.updateVRSwing(dt);
       else this.updateFlatSwing(dt, primaryEdge);
     } else if (this.held === "bow") {
@@ -933,11 +1028,11 @@ export class CombatSystem {
       }
     }
 
-    const swordItem = this.held1("sword") ?? this.held1("staff");
+    const swordItem = this.held1("sword") ?? this.held1("spear") ?? this.held1("hammer") ?? this.held1("staff");
     if (swordItem) {
       const m = swordItem.mesh.getWorldMatrix();
       const hilt = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
-      const tip = Vector3.TransformCoordinates(TIP, m);
+      const tip = Vector3.TransformCoordinates(tipOf(swordItem.kind), m);
       const eye = this.player.eyePosition;
       const dx = (hilt.x + tip.x) * 0.5 - eye.x;
       const dz = (hilt.z + tip.z) * 0.5 - eye.z;
@@ -1001,6 +1096,13 @@ export class CombatSystem {
       const atShoulder = this.handAtShoulder(side);
       const item = this.inHand(side);
       if (item) {
+        // Вторая рука на древке копья/молота: повторный грип — отпустить только её.
+        if (pressed && item.hand2 === side) {
+          item.hand2 = null;
+          if (item.grip) delete item.grip[side];
+          this.haptic(side, 0.3, 45);
+          continue;
+        }
         if (pressed) {
           if (atShoulder && !this.stowedItem(side)) {
             // Повторный грип за плечом и слот свободен -> убрать за спину.
@@ -1023,7 +1125,7 @@ export class CombatSystem {
         // Нажал за плечом и там что-то лежит -> достать; иначе взять вторую руку
         // на посох; иначе поднять с земли.
         if (atShoulder && this.stowedItem(side)) this.drawItem(side);
-        else this.tryPickup(side);
+        else if (!this.grabPoleSecond(side)) this.tryPickup(side);
       }
     }
   }
@@ -1059,8 +1161,9 @@ export class CombatSystem {
   /** Ближайший хват посоха к точке (в мире). */
   private nearestStaffGrip(item: Item, worldPos: Vector3): "low" | "high" {
     const m = item.mesh.getWorldMatrix();
-    const low = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_LOW, 0), m);
-    const high = Vector3.TransformCoordinates(new Vector3(0, STAFF_GRIP_HIGH, 0), m);
+    const g = gripsOf(item.kind);
+    const low = Vector3.TransformCoordinates(new Vector3(0, g.low, 0), m);
+    const high = Vector3.TransformCoordinates(new Vector3(0, g.high, 0), m);
     return Vector3.Distance(worldPos, low) <= Vector3.Distance(worldPos, high) ? "low" : "high";
   }
 
@@ -1087,8 +1190,8 @@ export class CombatSystem {
     // Смартфон: меч и посох — взаимоисключающие. Стоишь у второго — ✋ роняет
     // то, что в руке (дальше вторым ✋ поднимешь другой).
     if (this.player.thirdPerson) {
-      const main = this.held1("sword") ?? this.held1("staff");
-      if (main && this.nearbyOtherMainWeapon(main.kind)) {
+      const main = this.weapon;
+      if (main && main.kind !== "bow" && this.nearbyOtherMainWeapon(main.kind)) {
         if (released) this.putAway(main, main.hand ?? "right");
         return;
       }
@@ -1103,13 +1206,14 @@ export class CombatSystem {
 
   /** Рядом валяется меч/посох другого класса, чем `heldKind` (смартфон). */
   private nearbyOtherMainWeapon(heldKind: ItemKind): boolean {
-    const other: ItemKind = heldKind === "sword" ? "staff" : "sword";
+    // Любое другое оружие (не щит, не лук — лук берут пустыми руками).
+    const isOther = (k: ItemKind): boolean => k !== heldKind && k !== "shield" && k !== "bow";
     const p = this.player.position;
     const ws = this.nearestWorldWeapon?.(p);
-    if (ws && ws.cls === other && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH) return true;
+    if (ws && isOther(ws.cls) && Vector3.Distance(p, ws.pos) < WEAPON_TAKE_REACH) return true;
     return this.items.some(
       (it) =>
-        it.kind === other &&
+        isOther(it.kind) &&
         !it.hand &&
         !it.stow &&
         Vector3.Distance(p, it.mesh.getAbsolutePosition()) < COMBAT.equipReach,
@@ -1166,26 +1270,25 @@ export class CombatSystem {
    */
   private flatConflicts(kind: ItemKind): Item[] {
     if (this.player.inVR) return [];
-    const bow = this.held1("bow");
-    const sword = this.held1("sword");
-    const staff = this.held1("staff");
-    const shield = this.held1("shield");
+    const held = this.items.filter((i) => i.hand || i.hand2);
     const out: Item[] = [];
-    if (kind === "bow") {
-      // Лук один на игрока: уже в руках — уходит в склад, берём новый.
-      for (const it of [sword, staff, shield, bow]) if (it) out.push(it);
+    const twoHand = (k: ItemKind): boolean => k === "bow" || k === "spear" || k === "hammer";
+    if (twoHand(kind)) {
+      // Лук/копьё/молот — обе руки: всё, что в руках, уходит в склад.
+      out.push(...held);
     } else if (kind === "shield") {
-      if (bow) out.push(bow);
-      if (shield) out.push(shield); // второй щит некуда — прежний в склад
-    } else if (kind === "sword" || kind === "staff") {
-      if (bow) out.push(bow);
-      const other = kind === "sword" ? staff : sword;
-      if (other) out.push(other);
-      if (kind === "staff" && staff) out.push(staff);
-      // Меч: обе руки заняты (меч+щит или два меча) — меняем правый.
-      if (kind === "sword") {
+      for (const it of held) if (twoHand(it.kind) || it.kind === "shield") out.push(it);
+    } else {
+      // Меч / кинжал / посох — основная рука: не смешиваем разные виды и двуручное.
+      for (const it of held) if (twoHand(it.kind) || (it.kind !== "shield" && it.kind !== kind)) out.push(it);
+      if (kind === "staff") {
+        const st = this.held1("staff");
+        if (st && !out.includes(st)) out.push(st);
+      }
+      // Меч/кинжал: обе руки заняты (оружие+щит или два клинка) — меняем правый.
+      if (kind === "sword" || kind === "dagger") {
         const r = this.inHand("right");
-        if (r && r.kind === "sword" && this.inHand("left")) out.push(r);
+        if (r && r.kind === kind && this.inHand("left") && !out.includes(r)) out.push(r);
       }
     }
     return out;
@@ -1279,10 +1382,12 @@ export class CombatSystem {
 
   /** Свободная рука под предмет вида `kind` без замены того, что в руках; null — некуда. */
   private freeHandFor(kind: ItemKind): Side | null {
-    if (this.held1("bow")) return null; // лук держат обе руки
-    if (kind === "bow") return !this.inHand("left") && !this.inHand("right") ? "right" : null;
+    if (this.held1("bow") || this.held1("spear") || this.held1("hammer")) return null; // двуручное держат обе руки
+    if (kind === "bow" || kind === "spear" || kind === "hammer") return !this.inHand("left") && !this.inHand("right") ? "right" : null;
     if (!DUAL_WIELD[kind] && this.held1(kind)) return null;
-    if ((kind === "sword" && this.held1("staff")) || (kind === "staff" && this.held1("sword"))) return null;
+    // Основная рука: разные виды клинков/посох вместе не носим.
+    const main = this.weapon;
+    if (main && kind !== "shield" && main.kind !== kind) return null;
     if (kind === "shield") return this.inHand("left") ? null : "left";
     if (!this.inHand("right")) return "right";
     if (!this.inHand("left") && !this.held1("shield")) return "left";
@@ -1330,15 +1435,14 @@ export class CombatSystem {
     if (item.kind === "bow") {
       return !this.weapon && !this.shieldHand; // лук берут только пустыми руками
     }
-    if (!DUAL_WIELD[item.kind] && this.held1(item.kind)) return false;
-    // Смартфон: меч и посох одновременно не носим.
-    if (
-      this.player.thirdPerson &&
-      ((item.kind === "sword" && this.held1("staff")) ||
-        (item.kind === "staff" && this.held1("sword")))
-    ) {
-      return false;
+    // Копьё/молот на ПК/телефоне — тоже пустыми руками (в VR их берут как посох).
+    if ((item.kind === "spear" || item.kind === "hammer") && !this.player.inVR) {
+      return !this.weapon && !this.shieldHand;
     }
+    if (!DUAL_WIELD[item.kind] && this.held1(item.kind)) return false;
+    // Смартфон: разные виды основного оружия одновременно не носим.
+    const main = this.weapon;
+    if (this.player.thirdPerson && main && item.kind !== "shield" && main.kind !== item.kind) return false;
     // Щит идёт в левую руку — она должна быть свободна (плоский режим).
     if (item.kind === "shield" && !this.player.inVR) {
       const l = this.inHand("left");
@@ -1683,6 +1787,32 @@ export class CombatSystem {
     return false;
   }
 
+  /**
+   * VR: свободная рука хватается за древко копья/молота в другой руке —
+   * двуручный хват (anchorStaff ведёт древко по линии кисть→кисть).
+   * Посох не берём: его вторая рука тянет магию от кристалла.
+   */
+  private grabPoleSecond(side: Side): boolean {
+    const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
+    if (!node) return false;
+    const hp = node.getAbsolutePosition();
+    for (const it of this.items) {
+      if (!it.hand || it.hand === side || it.hand2 || (it.kind !== "spear" && it.kind !== "hammer")) continue;
+      const m = it.mesh.getWorldMatrix();
+      const g = gripsOf(it.kind);
+      const a = Vector3.TransformCoordinates(new Vector3(0, g.low - 0.25, 0), m);
+      const b = Vector3.TransformCoordinates(new Vector3(0, g.high + 0.25, 0), m);
+      if (Vector3.Distance(hp, closestPointOnSegment(hp, a, b)) > 0.16) continue;
+      it.hand2 = side;
+      it.grip = { ...(it.grip ?? {}), [side]: this.nearestStaffGrip(it, hp) };
+      // Хваты рук должны быть разными: верхний у одной, нижний у другой.
+      if (it.grip[side] === it.grip[it.hand]) it.grip[side] = it.grip[side] === "low" ? "high" : "low";
+      this.haptic(side, 0.5, 60);
+      return true;
+    }
+    return false;
+  }
+
   private tryPickup(side: Side): void {
     const p = this.player.position;
     if (this.inHand(side)) return; // рука занята
@@ -1713,7 +1843,7 @@ export class CombatSystem {
     this.tpRangedCd = 0;
     this.tpAimOn = false;
     item.mesh.rotationQuaternion = null;
-    if (item.kind === "staff") {
+    if (isPole(item.kind)) {
       const node = this.controller(side)?.grip ?? this.controller(side)?.pointer;
       const hp = node?.getAbsolutePosition() ?? this.player.position;
       item.grip = { [side]: this.nearestStaffGrip(item, hp) };
@@ -1914,11 +2044,12 @@ export class CombatSystem {
   private anchorHeldItems(): void {
     for (const item of this.items) {
       if (!item.hand) continue;
-      if (item.kind === "staff" && this.player.inVR) {
+      if (isPole(item.kind) && this.player.inVR) {
         this.anchorStaff(item);
         continue;
       }
-      const anchor = this.handAnchor(item.hand);
+      // Модель от третьего лица: лук — всегда в левом кулаке (клип выстрела: левая держит лук, правая тянет).
+      const anchor = this.handAnchor(item.kind === "bow" && this.player.thirdPerson ? "left" : item.hand);
       if (item.mesh.parent !== anchor) item.mesh.parent = anchor;
       item.mesh.rotationQuaternion = null;
 
@@ -1929,6 +2060,7 @@ export class CombatSystem {
           item.kind === "shield" ? BOT_GEAR.shield
           : item.kind === "bow" ? BOT_GEAR.bow
           : item.kind === "staff" ? BOT_GEAR.staff
+          : isNewKind(item.kind) ? BOT_GEAR[item.kind]
           : BOT_GEAR.sword;
         item.mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
         item.mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
@@ -1958,10 +2090,11 @@ export class CombatSystem {
    */
   private anchorStaff(item: Item): void {
     const primary = item.hand as Side;
-    const t = this.placement("staff", primary);
+    const t = this.placement(item.kind as LoadoutItemKind, primary);
     item.mesh.scaling.setAll(t.scale);
 
-    const gyPrimary = (item.grip?.[primary] ?? "low") === "high" ? STAFF_GRIP_HIGH : STAFF_GRIP_LOW;
+    const grips = gripsOf(item.kind);
+    const gyPrimary = (item.grip?.[primary] ?? "low") === "high" ? grips.high : grips.low;
 
     if (!item.hand2) {
       const anchor = this.handAnchor(primary);
@@ -2025,7 +2158,7 @@ export class CombatSystem {
     Quaternion.FromRotationMatrixToRef(this.staffRotM, item.mesh.rotationQuaternion);
 
     // Середина хватов (local y = (low+high)/2) — в середину между кистями.
-    const gMid = (STAFF_GRIP_LOW + STAFF_GRIP_HIGH) / 2;
+    const gMid = (grips.low + grips.high) / 2;
     this.staffAxisY.scaleToRef(gMid * t.scale, this.staffOtherW);
     item.mesh.position.set(
       (pLow.x + pHigh.x) / 2 - this.staffOtherW.x,
@@ -2102,12 +2235,17 @@ export class CombatSystem {
   // ---- меч ----
 
   private updateFlatSwing(dt: number, primaryEdge: boolean): void {
-    const item = this.held1("sword") ?? this.held1("staff");
+    let item = this.held1("sword") ?? this.held1("dagger") ?? this.held1("spear") ?? this.held1("hammer") ?? this.held1("staff");
     if (!item?.hand) return;
-    const side = item.hand;
+    // Два кинжала — бьют по очереди: следующий удар — другой рукой.
+    if (item.kind === "dagger" && this.daggerNext) {
+      const other = this.held1("dagger", this.daggerNext);
+      if (other) item = other;
+    }
+    const side = item.hand as Side;
 
     if (this.player.thirdPerson) {
-      this.tpMelee(dt, primaryEdge, "sword", side, item);
+      this.tpMelee(dt, primaryEdge, hitKindOf(item.kind), side, item);
       return;
     }
 
@@ -2115,7 +2253,8 @@ export class CombatSystem {
 
     if (primaryEdge && sw.t <= 0) {
       // Скорость атаки от уровня укорачивает замах — и удар, и анимацию.
-      sw.dur = COMBAT.swingDuration / this.prog.meleeSpeed;
+      sw.dur = (COMBAT.swingDuration * this.intervalMul(item.kind)) / this.prog.meleeSpeed;
+      this.flipDagger(item);
       sw.t = sw.dur;
       sw.hitDone = false;
       const p = item.mesh.getAbsolutePosition();
@@ -2128,7 +2267,7 @@ export class CombatSystem {
       // делали — не хватало только этой, самой частой ветки.
       this.emitSound("swing", p);
       // Своя модель (вид от третьего лица / Ф10) — тот же клип замаха.
-      this.onMeleeSwing?.();
+      this.onMeleeSwing?.(item.kind, side);
     }
     if (sw.t > 0) {
       sw.t -= dt;
@@ -2158,14 +2297,15 @@ export class CombatSystem {
     if (f.lengthSquared() < 1e-6) return;
     f.normalize();
     const guard = eye.add(f.scale(0.5));
-    const tip = eye.add(f.scale(2.4));
+    const tip = eye.add(f.scale(isNewKind(item.kind) ? flatReachOf(item.kind) + 0.3 : 2.4));
+    const kind = hitKindOf(item.kind);
     let landed = false;
     for (const t of this.targets) {
       if (!t.alive) continue;
       const s = t.hitSegment();
       if (segmentDistance(guard, tip, s.a, s.b) <= s.radius + COMBAT.hitMargin) {
         const mid = s.a.add(s.b).scale(0.5);
-        if (t.hit(f, "sword", closestPointOnSegment(mid, guard, tip))) {
+        if (t.hit(f, kind, closestPointOnSegment(mid, guard, tip))) {
           landed = true;
           this.haptic(this.heldHand, 0.7, 70);
         }
@@ -2182,7 +2322,7 @@ export class CombatSystem {
   private tpMelee(
     dt: number,
     primaryEdge: boolean,
-    kind: "sword" | "fist",
+    kind: "sword" | "fist" | NewKind,
     hand: Side,
     item: Item | null,
   ): void {
@@ -2190,8 +2330,9 @@ export class CombatSystem {
     if (primaryEdge && this.tpMeleeCd <= 0 && this.turnCd <= 0) {
       // Темп — как в характеристиках и у ботов (BOT.attackCooldown), с роллом «скорость атаки».
       const atk = this.prog.meleeSpeed * this.atkSpeedAffix;
-      this.tpMeleeCd = BOT.attackCooldown / atk;
-      this.onMeleeSwing?.();
+      this.tpMeleeCd = (BOT.attackCooldown * (item ? this.intervalMul(item.kind) : 1)) / atk;
+      if (item) this.flipDagger(item);
+      this.onMeleeSwing?.(kind === "fist" ? undefined : item?.kind, hand);
       const at = item?.mesh.getAbsolutePosition() ?? this.player.eyePosition;
       this.sfx.swordSwing(at);
       this.emitSound("swing", at);
@@ -2208,13 +2349,13 @@ export class CombatSystem {
     }
   }
 
-  private tpStrike(kind: "sword" | "fist", hand: Side): void {
+  private tpStrike(kind: "sword" | "fist" | NewKind, hand: Side): void {
     const eye = this.player.eyePosition;
     const f = this.player.eyeForward.clone();
     f.y = 0;
     if (f.lengthSquared() < 1e-6) return;
     f.normalize();
-    const reach = kind === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach;
+    const reach = kind === "fist" ? MELEE.flatReach : flatReachOf(kind);
     const tip = eye.add(f.scale(reach));
     let landed = false;
     for (const t of this.targets) {
@@ -2227,7 +2368,7 @@ export class CombatSystem {
       }
     }
     if (landed) {
-      if (kind === "sword") this.sfx.swordHit();
+      if (kind !== "fist") this.sfx.swordHit();
       else this.sfx.hitThud(0.55);
     }
   }
@@ -2250,7 +2391,7 @@ export class CombatSystem {
     const m = item.mesh.getWorldMatrix();
     // Кончик и гарда — в осях головы: ходьба/поворот не выглядят как замах.
     const guard = this.headLocal(Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m));
-    const tipWorld = Vector3.TransformCoordinates(TIP, m);
+    const tipWorld = Vector3.TransformCoordinates(tipOf(item.kind), m);
     const tip = this.headLocal(tipWorld);
     const dir = tip.subtract(guard).normalize();
 
@@ -2281,7 +2422,8 @@ export class CombatSystem {
     this.lastHitHand = item.hand ?? "right";
     const m = item.mesh.getWorldMatrix();
     const guard = Vector3.TransformCoordinates(Vector3.ZeroReadOnly, m);
-    const tip = Vector3.TransformCoordinates(TIP, m);
+    const tip = Vector3.TransformCoordinates(tipOf(item.kind), m);
+    const kind = hitKindOf(item.kind);
     const dir = tip.subtract(this.player.eyePosition);
     dir.y = 0;
     if (dir.lengthSquared() > 1e-6) dir.normalize();
@@ -2294,7 +2436,7 @@ export class CombatSystem {
         // не проекция на ось цели — тогда рана встаёт туда, где вошёл клинок.
         const mid = seg.a.add(seg.b).scale(0.5);
         const contact = closestPointOnSegment(mid, guard, tip);
-        if (t.hit(dir, "sword", contact)) {
+        if (t.hit(dir, kind, contact)) {
           this.sfx.swordHit();
           // Вибрирует именно та рука, которая держит меч.
           this.haptic(this.heldHand, 0.7, 70);
@@ -2442,7 +2584,7 @@ export class CombatSystem {
   pcAttackRange(): number {
     if (this.held === "bow") return PC_BOW_RANGE - 4;
     if (this.held === "staff") return MAGIC.firebolt.range - 6;
-    return (this.held === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach) * 0.75;
+    return flatReachOf(this.held) * 0.75;
   }
 
   /** Сколько секунд до готовности массового лечения (0 — готово). */
@@ -2496,7 +2638,7 @@ export class CombatSystem {
     this.showChargeOrb(staff.mesh);
     if (this.massT >= BOT.healCastTime) {
       send("massHeal");
-      this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
+      this.massReadyAt = performance.now() + (SKILLS2.massHeal.cooldown + 0.4) * 1000;
       this.sfx.at(c.clone(), () => this.sfx.bowRelease(1));
       this.resetCast();
     }
@@ -2516,7 +2658,7 @@ export class CombatSystem {
       return false;
     }
     const eye = this.player.eyePosition;
-    const reach = (this.held === "sword" ? MELEE.flatReach + 0.4 : MELEE.flatReach) * 0.95;
+    const reach = flatReachOf(this.held) * 0.95;
     const d = Math.hypot(t.a.x - eye.x, t.a.z - eye.z) - t.radius;
     this.pcOutOfRange = d > reach;
     return !this.pcOutOfRange;
@@ -3181,7 +3323,7 @@ export class CombatSystem {
         if (this.massT >= BOT.healCastTime) {
           // Досидели весь каст — лечение срабатывает на сервере.
           sendMass("massHeal");
-          this.massReadyAt = performance.now() + (MAGIC.heal.massCooldown + 0.4) * 1000;
+          this.massReadyAt = performance.now() + (SKILLS2.massHeal.cooldown + 0.4) * 1000;
           this.haptic(holdHand, 0.9, 160);
           this.sfx.at(this.castCrystalW.clone(), () => this.sfx.bowRelease(1));
           this.resetCast();

@@ -1,4 +1,5 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
+import { DAGGER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
 import colyseus from "colyseus";
 import { Schema, type } from "@colyseus/schema";
 
@@ -13,20 +14,21 @@ import {
   towerWeaponChance,
   type FloorArchetype,
 } from "#shared/tower";
-import { noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
+import { BASE_CRIT, noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
 import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
   isWeaponClass,
   rollWeaponInstance,
   WEAPONS,
-  weaponAffix,
+  shieldBlockChance,
+  isMeleeClass,
   weaponKey,
   type WeaponClass,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { AFFIX, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT } from "#shared/constants";
+import { AFFIX, BOT, BOW, STAFF_CRIT_MULT, SWORD_CRIT_MULT } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -71,8 +73,10 @@ export interface TowerRolled {
   atkSpeedMul: number;
   critChance: number;
   critMult: number;
-  /** «Лук охотника» — повышенный базовый шанс крита. */
-  hunterBow: boolean;
+  /** Доля урона в HP: врождённый вампиризм + ролл (только ближний бой). */
+  vamp: number;
+  /** Шанс блока щитом с учётом тира и роллов (0 — щита нет). */
+  blockChance: number;
   /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
   warriorMul: number;
 }
@@ -87,6 +91,9 @@ export interface TowerRoomOptions {
   str: number;
   agi: number;
   int: number;
+  con: number;
+  luc: number;
+  wis: number;
   /** Реально надетое оружие/щит героя — как в основном мире (сумка/руки не переносится, только это). */
   leftCls: string;
   leftTier: string;
@@ -132,7 +139,7 @@ export interface TowerSnapshot {
   heroSwordHit: boolean;
   /** Прошло с начала забега, с (живой таймер у спектатора). */
   elapsedSec: number;
-  /** Меч вампира в руке — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
+  /** Ролл Вампиризм на оружии — при heroSwordHit клиент рисует вспышку вампиризма ДОПОЛНИТЕЛЬНО. */
   heroVampAffix: boolean;
   /** true ровно на тот тик, когда дальний герой (лук/посох) выстрелил. */
   heroRangedPulse: boolean;
@@ -242,15 +249,16 @@ export class TowerRoom extends Room<TowerState> {
   /** Настоящие характеристики героя (level/str/agi) — не выдумка TOWER.hero.*. */
   private heroDmg: number = TOWER.hero.dmg;
   private heroMoveSpeed: number = TOWER.hero.moveSpeed;
-  private heroStr = 0;
-  private heroAgi = 0;
-  private heroInt = 0;
+  /** Атрибуты героя (все шесть) — для защиты/уворота. */
+  private heroAttrs = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
   /** Щит в руке — блокирует по направлению взгляда героя (он всегда смотрит на цель). */
   private heroGuard: GuardState | null = null;
-  private heroAegis = false;
+  /** Шанс блока щитом: тир + роллы (см. shieldBlockChance). */
+  private heroBlockChance = 0;
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
-  /** Меч вампира — удар героя лечит его самого (см. AFFIX.vamp). */
+  /** Вампиризм — доля урона удара, возвращаемая герою как HP (врождённый + ролл). */
+  private heroVamp = 0;
   private heroVampAffix = false;
   /** Лук/посох — герой стреляет с дистанции (как основной мир), не бежит в упор рукопашной. */
   private heroRanged = false;
@@ -263,7 +271,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroAtkSpeed = 1;
   private heroCritChance = 0;
   private heroCritMult = 0;
-  private heroHunterBow = false;
+  /** Кинжал в одной руке, вторая пуста — крит чаще и больнее (как на поляне). */
+  private heroSoloDagger = false;
   /** Снаряды героя в полёте: урон — В МОМЕНТ ПОПАДАНИЯ, как на поляне (было — при выстреле). */
   private shots: { target: LiveMob; t: number; critM: number }[] = [];
   /** true ровно на тот тик, когда дальний герой выстрелил — рассылка "bow" (звук/анимация) в основной мир. */
@@ -293,9 +302,10 @@ export class TowerRoom extends Room<TowerState> {
 
     // Урон/HP/скорость — от РЕАЛЬНЫХ характеристик героя (level/str/agi), как
     // и в основном мире (weaponDamage/maxHpFor/moveSpeedFor), не константы.
-    this.heroStr = options.str;
-    this.heroAgi = options.agi;
-    this.heroInt = options.int;
+    this.heroAttrs = {
+      str: options.str, agi: options.agi, int: options.int,
+      con: options.con ?? 1, luc: options.luc ?? 1, wis: options.wis ?? 1,
+    };
     // Оружие/щит — то, что реально надето (banки нельзя, а меч/щит — можно и нужно).
     const rightW =
       options.rightCls && options.rightTier
@@ -308,36 +318,42 @@ export class TowerRoom extends Room<TowerState> {
           ? "bow"
           : options.rightCls === "staff"
             ? "staff"
-            : "fist";
+            : // Кинжал/копьё/молот в башне бьют как меч (ближний бой), урон и темп — свои.
+              options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer"
+              ? "sword"
+              : "fist";
     this.heroWeaponKind = weaponKind;
     this.heroCls = isWeaponClass(options.rightCls) ? options.rightCls : "sword";
     this.heroRanged = weaponKind === "bow" || weaponKind === "staff";
-    this.heroAtkSpeed = attackSpeedFor(options.level, options.agi);
+    this.heroAtkSpeed = attackSpeedFor(options.level, this.heroAttrs);
     // Лук/меч тянут тир оружия (мультом); посох — магия считает от level/int
     // напрямую (fireboltDamage), тир посоха на урон не влияет — как и в
     // основном мире (см. ZoneRoom: fireboltDamage без multIn).
     if (weaponKind === "bow") {
-      this.heroDmg = weaponDamage("arrow", options.level, options.str, rightW?.mult ?? 1, options.agi);
+      this.heroDmg = weaponDamage("arrow", options.level, this.heroAttrs, rightW?.mult ?? 1);
     } else if (weaponKind === "staff") {
       // 0.7 — тот же фиксированный заряд, что и у ботов-магов (ZoneRoom.tickBot).
-      this.heroDmg = fireboltDamage(options.level, options.int, 0.7);
+      this.heroDmg = fireboltDamage(options.level, this.heroAttrs, 0.7) * staffMagicTier(options.rightTier);
+    } else if (options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer") {
+      this.heroDmg = weaponDamage(options.rightCls, options.level, this.heroAttrs, rightW?.mult ?? 1);
     } else {
-      this.heroDmg = weaponDamage(weaponKind, options.level, options.str, rightW?.mult ?? 1, options.agi);
+      this.heroDmg = weaponDamage(weaponKind, options.level, this.heroAttrs, rightW?.mult ?? 1);
     }
     const holdsShield = options.leftCls === "shield" || options.rightCls === "shield";
     this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
-    this.heroAegis =
-      (options.leftCls === "shield" && options.leftTier === "legendary") ||
-      (options.rightCls === "shield" && options.rightTier === "legendary");
+    const shieldTier = options.leftCls === "shield" ? options.leftTier : options.rightCls === "shield" ? options.rightTier : "";
+    this.heroBlockChance = options.rolled?.blockChance ?? (shieldTier ? shieldBlockChance(shieldTier) : 0);
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
-    const rightAffix = weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier);
-    this.heroVampAffix = rightAffix === "vamp";
-    // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
-    // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
-    if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
-    this.heroMoveSpeed = moveSpeedFor(options.level, options.agi);
-    this.heroMeleeSpeed = meleeSpeedFor(options.level, options.agi);
+    this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
+    this.heroVampAffix = this.heroVamp > 0;
+    this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
+    // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — BOT.attackCooldown).
+    const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
+    const dual = options.rightCls === "dagger" && options.leftCls === "dagger" ? DAGGER.dualTempo : 1;
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (BOT.attackCooldown / prof.interval) * dual : 1);
+    if (options.rightCls === "dagger" && options.leftCls === "dagger") this.heroDmg *= DAGGER.dualDmg;
+    this.heroSoloDagger = options.rightCls === "dagger" && options.leftCls === "";
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
     // башне аффиксы не работали вовсе, крит был только базовый у лука).
     const ro = options.rolled;
@@ -347,9 +363,8 @@ export class TowerRoom extends Room<TowerState> {
       this.heroMeleeSpeed *= ro.atkSpeedMul;
       this.heroCritChance = ro.critChance;
       this.heroCritMult = ro.critMult;
-      this.heroHunterBow = ro.hunterBow;
     }
-    const heroMaxHp = maxHpFor(options.level, options.str);
+    const heroMaxHp = maxHpFor(options.level, this.heroAttrs);
 
     const state = new TowerState();
     state.heroNick = options.heroNick;
@@ -437,8 +452,7 @@ export class TowerRoom extends Room<TowerState> {
             this.heroRangedPulse = true;
             this.heroRangedTargetX = target.x;
             this.heroRangedTargetZ = target.z;
-            // Крит — только у лука (см. rollCritMult: kind!=="arrow" => 1), как
-            // и в основном мире. У посоха вместо этого — АОЕ (см. heroAttack).
+            // Крит — как в основном мире (rollHeroCrit: база оружия + роллы + УДЧ).
             const critM = this.rollHeroCrit();
             // Снаряд летит (лук — BOT.arrowSpeed, огнешар — BOT.boltSpeed), урон
             // и «X» крита — при попадании (см. tickShots), как на поляне.
@@ -597,19 +611,33 @@ export class TowerRoom extends Room<TowerState> {
     this.heroSwordHit = true;
   }
 
-  /** Крит — как на поляне (rollCritMult + роллы): у лука база есть, у меча/посоха — только от роллов. */
+  /**
+   * Крит — как на поляне (ZoneRoom.tryHit/MSG.cast): база оружия (лук, профиль
+   * кинжала/копья/молота, один кинжал), роллы Крит и УДЧ героя.
+   */
   private rollHeroCrit(): number {
+    const luc = this.heroAttrs.luc;
     if (this.heroWeaponKind === "bow") {
-      return rollCritMult("arrow", Math.random, this.heroHunterBow, this.heroCritChance, this.heroCritMult);
+      return rollCritMult("arrow", Math.random, false, this.heroCritChance, this.heroCritMult, BOW.critMult, luc);
     }
-    return rollCritMult(
-      "sword",
-      Math.random,
-      false,
-      this.heroCritChance,
-      this.heroCritMult,
-      this.heroWeaponKind === "staff" ? STAFF_CRIT_MULT : SWORD_CRIT_MULT,
-    );
+    if (this.heroWeaponKind === "staff") {
+      return rollCritMult("sword", Math.random, false, this.heroCritChance, this.heroCritMult, STAFF_CRIT_MULT, luc);
+    }
+    const cls = this.heroCls;
+    if (cls === "dagger" || cls === "spear" || cls === "hammer") {
+      const prof = WEAPONS2[cls];
+      const solo = cls === "dagger" && this.heroSoloDagger;
+      return rollCritMult(
+        cls,
+        Math.random,
+        false,
+        this.heroCritChance + prof.critBase - BASE_CRIT + (solo ? DAGGER.soloCrit : 0),
+        this.heroCritMult + (solo ? DAGGER.soloCritDmg : 0),
+        prof.critMult,
+        luc,
+      );
+    }
+    return rollCritMult("sword", Math.random, false, this.heroCritChance, this.heroCritMult, SWORD_CRIT_MULT, luc);
   }
 
   /** Снаряды героя долетают — урон при попадании; цель умерла раньше — снаряд пропадает. */
@@ -634,12 +662,12 @@ export class TowerRoom extends Room<TowerState> {
     this.shots = keep;
   }
 
-  /** `dmgMult` — крит лучника (см. rollCritMult); у остальных всегда 1. */
+  /** `dmgMult` — множитель крита (см. rollHeroCrit). */
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
-    // Меч вампира — часть урона возвращается герою как HP (см. AFFIX.vamp).
-    if (this.heroVampAffix) {
-      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * AFFIX.vamp.healFrac);
+    // Ролл Вампиризм — часть урона возвращается герою как HP.
+    if (this.heroVamp > 0) {
+      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * this.heroVamp);
     }
     // Врождённый поджог мага — как в основном мире (ZoneSim.tickBolt): ДпС
     // считается от МАКСИМАЛЬНОГО HP цели, а не от урона удара (см. AFFIX.fire).
@@ -810,7 +838,7 @@ export class TowerRoom extends Room<TowerState> {
       const d = Math.hypot(m.x - this.heroRainX, m.z - this.heroRainZ);
       if (d > BOT.rainRadius) continue;
       // Крит бросаем на каждую цель отдельно — залп, а не один выстрел (см. ZoneRoom.arrowRainAt).
-      const critM = rollCritMult("arrow");
+      const critM = this.rollHeroCrit();
       if (critM > 1) this.heroSkillFx.push({ k: "crit", x: m.x, z: m.z });
       this.applyDamage(m, this.heroDmg * BOT.rainDamageMult * critM);
       if ((this.state.phase as TowerPhase) !== "running") return;
@@ -862,12 +890,12 @@ export class TowerRoom extends Room<TowerState> {
     const guard: GuardState | undefined = this.heroGuard
       ? { sx: Math.sin(this.heroYaw), sz: Math.cos(this.heroYaw), wx: 0, wz: 0 }
       : undefined;
-    const dodged = Math.random() < dodgeChance(this.heroAgi, this.heroOneHanded);
+    const dodged = Math.random() < dodgeChance(this.heroAttrs, this.heroOneHanded);
     const block = dodged
       ? { mult: 0 as const, by: 3 as const }
-      : resolveBlock(guard, ax, az, projectile, this.heroAegis);
-    let real = dmg * block.mult * (1 - armorFrac(this.heroStr));
-    if (projectile) real *= 1 - magicResistFrac(this.heroInt);
+      : resolveBlock(guard, ax, az, projectile, this.heroBlockChance);
+    let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
+    if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
     // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):
     // "MISS" при увороте рисуется над ИСТОЧНИКОМ удара, звук блока/удара — над героем.
