@@ -2713,8 +2713,8 @@ export class Game {
   }
 
   /**
-   * Ролл «скорость атаки» с того, что в руках: основное оружие + щит в другой
-   * руке — как rolledAtkSpeedMul на сервере (для темпа удара/выстрела на клиенте).
+   * Ролл «скорость атаки» с того, что в руках: обе руки (оружие + щит или
+   * второй меч/кинжал) — как rolledAtkSpeedMul на сервере (темп удара/выстрела на клиенте).
    */
   private heldAtkSpeedMul(): number {
     const wh = this.net?.warehouse;
@@ -2722,9 +2722,9 @@ export class Game {
     const byId = (id: string | null) => (id ? wh.list.find((w) => w.id === id) : undefined);
     const r = byId(wh.equipped.right);
     const l = byId(wh.equipped.left);
-    const main = r && r.cls !== "shield" ? r : l && l.cls !== "shield" ? l : undefined;
-    const sh = r?.cls === "shield" ? r : l?.cls === "shield" ? l : undefined;
-    return 1 + (main?.atkSpd ?? 0) + (sh?.atkSpd ?? 0);
+    // Обе руки складываются (щит, второй меч/кинжал), один и тот же экземпляр
+    // (двуручное в обеих руках) — один раз; как rolledAtkSpeedMul на сервере.
+    return 1 + (r?.atkSpd ?? 0) + (l && l.id !== r?.id ? l.atkSpd ?? 0 : 0);
   }
 
   /**

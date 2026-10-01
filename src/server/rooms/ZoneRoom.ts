@@ -777,16 +777,17 @@ function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponIn
 }
 
 /**
- * Щит (Эгида) сам не атакует, но роллы на нём — не бутафория: он всегда во
- * ВТОРОЙ руке от бьющего оружия (пара с луком/посохом невозможна — оба
- * занимают обе руки, см. equipWeapon), поэтому его аффиксы усиливают удар
- * ТОЙ руки, что держит меч. `attackHand` — рука бьющего оружия.
+ * Предмет во ВТОРОЙ руке от бьющего оружия — его роллы складываются с
+ * роллами бьющего: щит (сам не атакует, но роллы не бутафория), второй
+ * меч/кинжал. Двуручное (лук/посох/копьё/молот числится в обеих руках —
+ * это тот же экземпляр) второй раз не считается. `attackHand` — рука бьющего оружия.
  */
 function shieldRolledIn(p: PlayerState, attackHand: "left" | "right", rt: Runtime): WeaponInstance | null {
   const off = attackHand === "left" ? "right" : "left";
-  const h = heldIn(p, off);
-  if (!h || h.cls !== "shield") return null;
-  return rolledIn(p, off, rt);
+  if (!heldIn(p, off)) return null;
+  const other = rolledIn(p, off, rt);
+  const main = rolledIn(p, attackHand, rt);
+  return other && other.id !== main?.id ? other : null;
 }
 
 /** Доп. множитель урона от роллов аффиксов (dmgFlat/dmgPct суммируются как один множитель). */
@@ -809,7 +810,7 @@ function rolledAtkSpeedMul(p: PlayerState, hand: "left" | "right", rt: Runtime):
   return 1 + bonus;
 }
 
-/** Доп. крит от роллов аффиксов на бьющем оружии И на щите в другой руке (см. shieldRolledIn). */
+/** Доп. крит от роллов аффиксов на бьющем оружии И на предмете в другой руке (см. shieldRolledIn). */
 function rolledCrit(
   p: PlayerState,
   hand: "left" | "right",

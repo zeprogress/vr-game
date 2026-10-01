@@ -90,7 +90,11 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const tierMul = cls ? weaponDef(cls, tier || "base").mult : 1;
   const weaponAffix = rightIsWeapon ? p.rightAffix : leftIsWeapon ? p.leftAffix : undefined;
   const shieldAffix = p.rightCls === "shield" ? p.rightAffix : p.leftCls === "shield" ? p.leftAffix : undefined;
-  const affixNum2 = (name: string): number => affixNum(weaponAffix, name) + affixNum(shieldAffix, name);
+  // Вторая рука (щит, второй меч/кинжал) — её роллы складываются с роллами
+  // оружия, как на сервере (rolledDmgMul/rolledCrit). Двуручное в обеих руках — один раз.
+  const twoHand = p.leftCls === p.rightCls && (p.leftCls === "bow" || p.leftCls === "staff" || p.leftCls === "spear" || p.leftCls === "hammer");
+  const otherAffix = twoHand ? undefined : rightIsWeapon ? p.leftAffix : leftIsWeapon ? p.rightAffix : undefined;
+  const affixNum2 = (name: string): number => affixNum(weaponAffix, name) + affixNum(otherAffix, name);
 
   // Урон: и новый dmgFlat, и старый dmgPct подписаны «Урон +N%».
   const dmgBonus = affixNum2("Урон");
@@ -136,7 +140,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded) * 100)}%` });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
-  const critVals = [...affixVals(weaponAffix, "Крит"), ...affixVals(shieldAffix, "Крит")];
+  const critVals = [...affixVals(weaponAffix, "Крит"), ...affixVals(otherAffix, "Крит")];
   const critChanceBonus = critVals.reduce((a, b) => a + b, 0);
   const critMultBonus = critVals.reduce((a, v) => a + critRollMult(v), 0);
   const luckN = invested(p.luc);
