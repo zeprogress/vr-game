@@ -278,6 +278,20 @@ export class ClassFx {
     }
   }
 
+  /** Аура исцеления: каждые 0.5 с — зелёные искры всплывают в случайных точках круга вокруг героя. */
+  healSparkles(id: string, r: number, dur: number): void {
+    const C = new Color3(0.5, 1, 0.6);
+    for (let t = 0; t < dur; t += 0.5) {
+      this.later(t, () => {
+        const at = this.vfx?.follow?.("hero", id);
+        if (!at) return;
+        const a = Math.random() * Math.PI * 2;
+        const rr = Math.random() * r * 0.8;
+        this.vfx?.burst(at.x + Math.cos(a) * rr, at.y + 0.2, at.z + Math.sin(a) * rr, C, { count: 10, speed: 1.2, life: 1.1, grav: -2.2, size: 0.2 });
+      });
+    }
+  }
+
   /** Вихрь: каждые 0.4 с — кольцо искр вокруг героя `id`. */
   spinSparks(id: string, r: number, color: Color3, dur: number): void {
     for (let t = 0; t < dur; t += 0.4) {
@@ -495,7 +509,7 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "warcry": {
-      const cc = v === V_SUPPORT ? HEAL : v === 4 ? colorOf(4) : new Color3(1, 0.35, 0.2);
+      const cc = v === V_SUPPORT ? new Color3(1, 0.88, 0.45) : v === 4 ? colorOf(4) : new Color3(1, 0.35, 0.2);
       vfx.decal(x, y, z, r ?? 12, cc, 0.9, 0, 0.8);
       vfx.pillar(x, y, z, 0.9, 5, cc, 1.1, { kind: "hero", id });
       vfx.burst(x, y + 1, z, cc, { count: 24, speed: 3, life: 1.1, grav: -3, size: 0.24 });
@@ -543,6 +557,15 @@ export function playClassAct(
         vfx.burst(x + Math.cos(a) * rr, y + 0.1, z + Math.sin(a) * rr, new Color3(1, 0.8, 0.45), { count: 8, speed: 4, life: 0.35, grav: 12, size: 0.14 });
       }
       return false;
+    case "healAura": {
+      // Аура исцеления: зона с рунами и столб света ходят за героем, искры всплывают.
+      const dur = d ?? 6;
+      vfx.decal(x, y, z, r ?? 8, HEAL, dur, 1, 0.9, { kind: "hero", id, dy: 0 });
+      vfx.pillar(x, y, z, 0.8, 3.2, HEAL, dur, { kind: "hero", id });
+      c.fx.healSparkles(id, r ?? 8, dur);
+      c.emote(id, "cheer");
+      return true;
+    }
     case "healHit":
       vfx.burst(x, y - 0.8, z, HEAL, { count: 12, speed: 1.6, life: 0.9, grav: -2.5, size: 0.2 });
       return false;

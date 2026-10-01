@@ -119,7 +119,7 @@ import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
-import { MAGIC, MANA_ENABLED } from "#shared/magic";
+import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
 
@@ -854,7 +854,7 @@ export class Game {
       this.updateSkillAbility(dt);
       // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%).
       const me = this.net?.self;
-      const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 ? 1 + WARCRY.tempo : 1) : 1;
+      const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 || me.cryKind === 3 ? 1 + WARCRY.tempo : 1) : 1;
       this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry;
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
@@ -2452,7 +2452,7 @@ export class Game {
         return;
       }
       const left = this.skillLeft(id);
-      const total = id === "massHeal" ? MAGIC.heal.massCooldown + 0.4 : this.skillCooldown(id);
+      const total = this.skillCooldown(id);
       h.setSkill(i, id, SKILLS2[id].icon, skillName(id, cls ?? "warrior"), left / Math.max(0.1, total), left);
     });
     let pots = 0;
@@ -2771,7 +2771,6 @@ export class Game {
 
   /** Сколько секунд до готовности умения (0 — готово). */
   private skillLeft(id: SkillId): number {
-    if (id === "massHeal") return this.combat.massHealCdLeft;
     return Math.max(0, ((this.skillReadyAt.get(id) ?? 0) - performance.now()) / 1000);
   }
 
@@ -2791,11 +2790,6 @@ export class Game {
     const id = this.skillIds()[slot];
     if (!id) {
       this.notifyToast("Умение не выбрано — окно снаряжения (C), вкладка «Умения»");
-      return;
-    }
-    if (id === "massHeal") {
-      const err = this.combat.pcMassHeal();
-      if (err) this.notifyToast(err);
       return;
     }
     if (id === "arrowRain" && this.aoeAim && this.heroClass() !== "assassin") {
@@ -3006,10 +3000,6 @@ export class Game {
         this.skillWarnAt = now;
         this.notifyToast(`${name} ещё не готов: ${Math.ceil(left)} с`);
       }
-      return;
-    }
-    if (id === "massHeal") {
-      if (!this.player.inVR) this.pcSkill(this.skillIds().indexOf(id));
       return;
     }
     const cls = this.heroClass();
@@ -3365,7 +3355,8 @@ export class Game {
     };
     this.combat.onVrSkill = (kind, x, z) => this.castSkill(kind, x, z);
     this.combat.onMassHealCooldown = (sec) => this.notifyToast(`Массовый хил перезаряжается: ${Math.ceil(sec)} с`);
-    this.combat.onMassHealStart = (x, y, z) => this.healAura.burst(x, y, z, BOT.healRadius, BOT.healCastTime);
+    // Аура исцеления рисуется по событию сервера (healAura) — ходит за героем.
+    this.combat.onMassHealStart = null;
     this.combat.nearestAlly = (pos) => {
       let best: { id: string; pos: Vector3 } | null = null;
       let bd = 1.2;

@@ -310,7 +310,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
   support: {
     name: "Маг поддержки", icon: "✨", role: "Лечение, защита", weapons: "посох", main: "staff",
-    skills: ["massHeal", "seal", "chain", "arrowRain"], defaultSkills: ["massHeal", "seal"],
+    skills: ["massHeal", "seal", "warcry", "arrowRain"], defaultSkills: ["massHeal", "warcry"],
     build: { int: 4, wis: 3, con: 1.8, luc: 0.6 },
   },
   assassin: {
@@ -378,8 +378,8 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   massHeal: {
-    name: "Массовое лечение", icon: "💚", desc: "Лечит всех союзников вокруг",
-    cooldown: 10, castTime: 1, radius: 8, dmgMult: 0, hits: 1,
+    name: "Аура исцеления", icon: "💚", desc: "Сразу: аура вокруг героя на 6 с, ходит за ним и понемногу лечит всех союзников в ней",
+    cooldown: 14, castTime: 0, radius: 8, dmgMult: 0, hits: 1,
   },
   shadowStep: {
     name: "Теневой рывок", icon: "🌑", desc: "Рывок сквозь мобов за спину цели; следующий удар — гарантированный крит",
@@ -416,6 +416,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Боевой клич", icon: "📯", desc: "Союзникам в 12 м на 8 с +25% урона и +15% темпа; мобы рядом бросаются на тебя",
     cooldown: 22, castTime: 0.3, radius: 12, dmgMult: 0, hits: 1,
     variants: {
+      support: { name: "Благословение", desc: "Союзникам в 12 м на 10 с: +25% урона, +15% темпа атак и −15% входящего урона" },
     },
   },
   mark: {
@@ -430,7 +431,6 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Цепная молния", icon: "⚡", desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
-      support: { name: "Цепь исцеления", desc: "Светлая цепь лечит до 4 раненых союзников рядом (каждый скачок слабее)" },
       archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2.5 по первой цели, затем 2 слабых скачка" },
     },
   },
@@ -438,11 +438,13 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
 
 /** Числа новых умений. */
 export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3 } as const;
-export const WARCRY = { duration: 8, dmg: 0.25, tempo: 0.15, rallyTempo: 0.3, healFrac: 0.1, aggroSec: 4 } as const;
+export const WARCRY = { duration: 8, blessDuration: 10, blessDef: 0.15, dmg: 0.25, tempo: 0.15, rallyTempo: 0.3, aggroSec: 4 } as const;
 /** Печать стража: союзникам в круге −40% урона. */
 export const GUARD_SEAL = { shield: 0.4 } as const;
 export const MARK = { duration: 8, dmgMul: 1.3, assassinCrit: 0.25, slow: 0.3 } as const;
 export const CHAIN = { jump: 7, falloff: 0.8 } as const;
+/** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
+export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;
 export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7 } as const;
 
 /** Числа «Печати» (лечение — доля макс. HP в секунду; урон — у боевого мага). */

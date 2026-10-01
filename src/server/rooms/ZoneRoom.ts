@@ -183,7 +183,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, classOf2, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -1278,34 +1278,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const pull = Math.max(0, Math.min(1, num(msg.pull, 0)));
 
       // --- массовое лечение: посох над головой + курок (как у ботов, то же время каста) ---
-      if (msg.spell === "massHealStart") {
-        // «Классы 2.0»: массовое лечение — умение, его надо выбрать (одно из двух у мага поддержки).
-        if (p.skill1 !== "massHeal" && p.skill2 !== "massHeal") return;
-        if (this.elapsed - rt.lastMassHeal < MAGIC.heal.massCooldown * this.skillCdMul(p)) return;
-        rt.massHealAt = this.elapsed;
-        // Аура вокруг кастера — тем же актом, что у ботов; сам кастер рисует её локально.
-        this.broadcast(
-          MSG.act,
-          {
-            k: "healAura",
-            id: client.sessionId,
-            x: p.head.x,
-            y: p.head.y - PLAYER.eyeHeight,
-            z: p.head.z,
-          } satisfies ActRelay,
-          { except: client },
-        );
-        return;
-      }
-      if (msg.spell === "massHeal") {
-        const started = rt.massHealAt;
-        rt.massHealAt = -1;
-        if (started < 0) return;
-        const dur = this.elapsed - started;
-        // Не додержал каст (или прислали слишком поздно) — ничего не происходит.
-        if (dur < BOT.healCastTime - 0.4 || dur > BOT.healCastTime + 8) return;
-        rt.lastMassHeal = this.elapsed;
-        this.playerMassHealLand(client.sessionId, p, rt);
+      // Аура исцеления (VR-жест «посох над головой» и ПК/телефон) — сразу, без каста.
+      if (msg.spell === "massHealStart" || msg.spell === "massHeal") {
+        this.castSkill("massHeal", client.sessionId, p, rt, NaN, NaN);
         return;
       }
       if (msg.spell === "massHealCancel") {
@@ -6102,41 +6077,19 @@ export class ZoneRoom extends Room<ZoneState> {
    * (игроков или других ботов) — лечит всех разом вместо огнешара. Одного
    * раненого не трогает: это именно массовый хил.
    */
+  /**
+   * Бот с посохом — аура исцеления: включает, когда рядом ранены союзники
+   * или сам просел по здоровью (откат и выбор умения проверяет castSkill).
+   */
   private botGroupHeal(bot: Bot, dt: number): void {
     const p = bot.state;
-    const h = MAGIC.heal;
-
-    // Каст идёт — стоим и ждём; в конце выброс лечения.
-    if (bot.healCastT > 0) {
-      bot.healCastT = Math.max(0, bot.healCastT - dt);
-      if (bot.healCastT > 0) return;
-      this.botGroupHealLand(bot);
-      return;
-    }
-
-    if (p.rightCls !== "staff" || bot.healCd > 0 || !hasSkill(p, "massHeal")) return;
-    if (p.mana < h.minMana) return;
-    if (this.woundedNear(p).length < BOT.healMinTargets) return;
-    if (Math.random() >= BOT.skillChancePerSec * dt) return;
-
-    // Начало каста: мана списывается сразу, бот радостно "cheer"'ит (клип
-    // ~1.9с — почти ровно длина каста), вокруг горит аура.
-    const cost = Math.min(p.mana, BOT.healCharge * h.chargeTime * h.manaPerSec);
-    p.mana = Math.max(0, p.mana - cost);
-    bot.healCd = BOT.healCooldown;
-    bot.healCastT = BOT.healCastTime;
-    this.triggerEmote(bot, "cheer");
-    const aura: ActRelay = {
-      k: "healAura",
-      id: bot.id,
-      x: p.head.x,
-      y: p.head.y - PLAYER.eyeHeight,
-      z: p.head.z,
-    };
-    this.broadcast(MSG.act, aura);
+    if (p.dead || p.rightCls !== "staff" || !hasSkill(p, "massHeal")) return;
+    const selfLow = p.hp < p.maxHp * 0.5;
+    if (!selfLow && this.woundedNear(p).length < BOT.healMinTargets) return;
+    // Сам при смерти — без рандома, сразу.
+    if (!selfLow && Math.random() >= BOT.skillChancePerSec * dt) return;
+    if (this.castSkill("massHeal", bot.id, p, bot.rt, NaN, NaN)) this.triggerEmote(bot, "cheer");
   }
-
-
 
   /**
    * Бот с мечом — «Оглушающий удар»: бьёт землю, вокруг расходится волна и
@@ -6364,7 +6317,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
     if (p.skill1 !== kind && p.skill2 !== kind) return false;
-    if (kind === "massHeal") return false; // массовое лечение — через каст посоха (MSG.cast)
+
     const sk = SKILLS2[kind];
     const cd = sk.cooldown * this.skillCdMul(p);
     if (this.elapsed - (rt.skillAt[kind] ?? -999) < cd) return false;
@@ -6583,7 +6536,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "warcry": {
         const bless = cls === "support";
         const rally = cls === "spearman";
-        const until = this.elapsed + WARCRY.duration;
+        const until = this.elapsed + (bless ? WARCRY.blessDuration : WARCRY.duration);
         this.state.players.forEach((ally, aid) => {
           if (ally.dead || Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z) > sk.radius) return;
           const art = this.rt.get(aid);
@@ -6591,12 +6544,11 @@ export class ZoneRoom extends Room<ZoneState> {
             art.cryUntil = Math.max(art.cryUntil, until);
             art.cryKind = rally ? 2 : bless ? 3 : 1;
           }
-          if (bless) ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * WARCRY.healFrac);
         });
         if (!bless && !rally) {
           for (const m of around(p.head.x, p.head.z, sk.radius)) this.sim.tauntMob(m.id, ownerId, WARCRY.aggroSec);
         }
-        act({ k: "warcry", x: p.head.x, y: feetY, z: p.head.z, d: WARCRY.duration, r: sk.radius });
+        act({ k: "warcry", x: p.head.x, y: feetY, z: p.head.z, d: bless ? WARCRY.blessDuration : WARCRY.duration, r: sk.radius });
         return true;
       }
       case "mark": {
@@ -6609,6 +6561,15 @@ export class ZoneRoom extends Room<ZoneState> {
         if (cls === "spearman") this.sim.slowMob(m.id, MARK.duration, 1 - MARK.slow);
         this.marks.set(m.id, { owner: ownerId, until: this.elapsed + MARK.duration });
         act({ k: "markOn", x: m.x, y: m.y, z: m.z, mobId: m.id, d: MARK.duration });
+        return true;
+      }
+      case "massHeal": {
+        // Аура исцеления: ходит за героем HEAL_AURA.duration с и каждые 0.5 с
+        // понемногу лечит всех союзников в радиусе (итого — totalMul «полных лечений»).
+        const h = p.rightCls === "staff" ? "right" : "left";
+        const total = healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, h, rt) * HEAL_AURA.totalMul;
+        this.healAuras.push({ owner: ownerId, r: sk.radius, until: this.elapsed + HEAL_AURA.duration, perTick: total / (HEAL_AURA.duration * 2), tickT: 0 });
+        act({ k: "healAura", x: p.head.x, y: feetY, z: p.head.z, d: HEAL_AURA.duration, r: sk.radius });
         return true;
       }
       case "chain": {
@@ -6700,6 +6661,30 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!best) break;
     }
     return true;
+  }
+
+  /** Ауры исцеления: ходят за хозяином и лечат союзников в радиусе. */
+  private readonly healAuras: { owner: string; r: number; until: number; perTick: number; tickT: number }[] = [];
+
+  private tickHealAuras(dt: number): void {
+    for (let i = this.healAuras.length - 1; i >= 0; i--) {
+      const a = this.healAuras[i];
+      const o = this.state.players.get(a.owner);
+      if (!o || o.dead || this.elapsed > a.until) {
+        this.healAuras.splice(i, 1);
+        continue;
+      }
+      a.tickT -= dt;
+      if (a.tickT > 0) continue;
+      a.tickT = 0.5;
+      this.state.players.forEach((ally) => {
+        if (ally.dead || ally.hp >= ally.maxHp) return;
+        if (Math.hypot(ally.head.x - o.head.x, ally.head.z - o.head.z) > a.r) return;
+        const before = ally.hp;
+        ally.hp = Math.min(ally.maxHp, ally.hp + a.perTick);
+        if (ally !== o) this.sim.bossHeal(a.owner, ally.hp - before);
+      });
+    }
   }
 
   /** Метки «Метки»: моб → кто поставил и до какого момента (сброс отката, если умер под меткой). */
@@ -6942,28 +6927,6 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  /** Каст массового хила игрока дочитан: лечим всех раненых вокруг (и себя) — как у ботов. */
-  private playerMassHealLand(casterId: string, p: PlayerState, rt: Runtime): void {
-    const hand = p.rightCls === "staff" ? "right" : "left";
-    const amount =
-      healAmountFor(p.level, p, BOT.healCharge) * BOT.healGroupFraction * rolledDmgMul(p, hand, rt);
-    this.state.players.forEach((ally) => {
-      if (ally.dead || ally.maxHp <= 0 || ally.hp >= ally.maxHp) return;
-      if (Math.hypot(ally.head.x - p.head.x, ally.head.z - p.head.z) > BOT.healRadius) return;
-      const before = ally.hp;
-      ally.hp = Math.min(ally.maxHp, ally.hp + amount);
-      const healed = ally.hp - before;
-      if (healed <= 0) return;
-      this.broadcast(MSG.act, {
-        k: "healHit",
-        id: this.idOf(ally) ?? casterId,
-        x: ally.head.x,
-        y: ally.head.y,
-        z: ally.head.z,
-      } satisfies ActRelay);
-      this.sim.bossHeal(casterId, healed);
-    });
-  }
 
   /** Кто рядом с ботом ранен и достаётся массовым хилом. */
   private woundedNear(p: PlayerState): PlayerState[] {
@@ -6978,31 +6941,6 @@ export class ZoneRoom extends Room<ZoneState> {
     return out;
   }
 
-  /** Каст дочитан — лечим всех раненых, кто к этому моменту рядом. */
-  private botGroupHealLand(bot: Bot): void {
-    const p = bot.state;
-    const targets = this.woundedNear(p);
-    const charge = BOT.healCharge;
-    const amount =
-      healAmountFor(p.level, p, charge) * BOT.healGroupFraction * rolledDmgMul(p, "right", bot.rt);
-    for (const ally of targets) {
-      const before = ally.hp;
-      ally.hp = Math.min(ally.maxHp, ally.hp + amount);
-      const healed = ally.hp - before;
-      if (healed <= 0) continue;
-      // Зелёные крестики над телом — тем же актом, что и глоток зелья.
-      const relay: ActRelay = {
-        k: "healHit",
-        id: this.idOf(ally) ?? bot.id,
-        x: ally.head.x,
-        y: ally.head.y,
-        z: ally.head.z,
-      };
-      this.broadcast(MSG.act, relay);
-      // Лечение союзника в бою с боссом — вклад в общий опыт.
-      this.sim.bossHeal(bot.id, healed);
-    }
-  }
 
   private tickBots(dt: number): void {
     // Наплыв игроков (`!play`): +2 слизня на бота, убираются когда толпа
@@ -7077,6 +7015,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.maybeSayTip(dt);
 
     this.tickSeals(dt);
+    this.tickHealAuras(dt);
     this.tickMarks();
     // «Боевой клич»: секунды для клиента (темп атак) и плашки баффов.
     this.state.players.forEach((p, id) => {
@@ -7451,6 +7390,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (h.projectile) dmg *= 1 - magicResistFrac(p);
     // «Печать»: стоишь в круге союзника (или своём) — входящий урон меньше.
     dmg *= 1 - this.sealShield(p.head.x, p.head.z);
+    // «Благословение» мага поддержки: −15% входящего урона.
+    if (rt.cryUntil > this.elapsed && rt.cryKind === 3) dmg *= 1 - WARCRY.blessDef;
     // «Вихрь» воина — −30% урона, «Танец клинков» ассасина — неуязвимость.
     if (rt.whirlUntil > this.elapsed) dmg *= rt.whirlKind === 2 ? 0 : rt.whirlKind === 1 ? 1 - WHIRL.warriorDef : 1;
     rt.sinceHurt = 0;
