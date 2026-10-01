@@ -94,6 +94,10 @@ export class PlayerState extends Schema {
   /** Два выбранных умения текущего класса (id из SKILLS2), "" — нет. */
   @type("string") skill1 = "";
   @type("string") skill2 = "";
+  /** «Боевой клич»/«Благословение»: секунд осталось (+урон, +темп атак). */
+  @type("uint8") crySecs = 0;
+  /** Вид клича: 1 — боевой клич (+урон, +15% темпа), 2 — «Сбор» (+30% темпа), 3 — «Благословение» (+урон). */
+  @type("uint8") cryKind = 0;
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";
@@ -140,6 +144,8 @@ export class MobState extends Schema {
   @type("uint8") burning = 0;
   /** 1 — моб пригвождён градом стрел: клиент рисует торчащие стрелы. (Поле в конце схемы.) */
   @type("uint8") pinned = 0;
+  /** 1 — на мобе «Метка» (+30% урона от всех): клиент рисует знак над головой. */
+  @type("uint8") marked = 0;
 }
 
 export class DummyState extends Schema {

@@ -1,9 +1,10 @@
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
+import { SkillVfx } from "../ui/SkillVfx";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { classOf2, SKILLS2, skillName, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { classOf2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -93,7 +94,7 @@ import {
   applyWorldLoadout,
   worldLoadoutSnapshot,
 } from "../config/loadout";
-import { HUD, VIGNETTE } from "#shared/constants";
+import { HUD, MOB, VIGNETTE } from "#shared/constants";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
@@ -201,6 +202,9 @@ export class Game {
   /** Эффекты «Классов 2.0»: волна молота, копьё, рывок, сокрушение, печать. */
   private readonly classFx: ClassFx;
   private readonly classCtx: ClassActCtx;
+  /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
+  private readonly skillVfx: SkillVfx;
+  private fxGround: (x: number, z: number) => number = () => 0;
   /** Метка камеры стрима в мире (Ф10) — видна, пока specActive и specVisible. */
   private specMarker: SpecCamMarker | null = null;
   private specMarkerShown = false;
@@ -398,8 +402,12 @@ export class Game {
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
     this.classFx = new ClassFx(this.scene);
+    this.skillVfx = new SkillVfx(this.scene);
+    this.classFx.vfx = this.skillVfx;
+    this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
     this.classCtx = {
       fx: this.classFx,
+      vfx: this.skillVfx,
       sound: (at, kind) =>
         this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
@@ -407,6 +415,7 @@ export class Game {
     this.specMarker = new SpecCamMarker(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);
     this.eventBeacon.bindGround(zone.groundHeight);
+    this.fxGround = zone.groundHeight;
     this.loot = new LootDrops(this.scene);
     this.voice = new VoiceChat(this.sfx.audioContext());
     this.voice.peerPosition = (id) => this.avatars.get(id)?.position ?? null;
@@ -843,7 +852,10 @@ export class Game {
       this.pcTarget?.update(this.combat.pcOutOfRange);
       this.mark("combat");
       this.updateSkillAbility(dt);
-      this.combat.atkSpeedAffix = this.heldAtkSpeedMul();
+      // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%).
+      const me = this.net?.self;
+      const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 ? 1 + WARCRY.tempo : 1) : 1;
+      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry;
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
@@ -904,6 +916,7 @@ export class Game {
       this.healAura.update(dt);
       this.skillFx.update(dt);
       this.classFx.update(dt);
+      this.skillVfx.update(dt);
       this.spellLights.setDaylight(dt, daylightAt(LOADOUT.world.hour));
       this.spellLights.setCrystal(
         this.combat.crystalWorldPos(),
@@ -2785,7 +2798,7 @@ export class Game {
       if (err) this.notifyToast(err);
       return;
     }
-    if (id === "arrowRain" && this.aoeAim) {
+    if (id === "arrowRain" && this.aoeAim && this.heroClass() !== "assassin") {
       if (this.aoeAim.active) {
         this.aoeAim.cancel();
         return;
@@ -3023,7 +3036,12 @@ export class Game {
       }
       return best;
     };
-    if (id === "arrowRain") {
+    if (id === "arrowRain" && cls === "assassin") {
+      // Веер кинжалов — конусом по взгляду.
+      msg.x = p.x + fx * 9;
+      msg.z = p.z + fz * 9;
+      this.combat.onMeleeSwing?.();
+    } else if (id === "arrowRain") {
       if (x !== undefined && z !== undefined) {
         msg.x = x;
         msg.z = z;
@@ -3032,6 +3050,14 @@ export class Game {
         msg.x = p.x + fx * r;
         msg.z = p.z + fz * r;
       }
+    } else if (id === "mark" || id === "chain") {
+      // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
+      const sel = this.selectedTargetPos() ?? frontTarget(id === "mark" ? 22 : 14);
+      if (sel) {
+        msg.x = sel.x;
+        msg.z = sel.z;
+      }
+      this.combat.onMeleeSwing?.();
     } else if (id === "shadowStep") {
       let ex: number;
       let ez: number;
@@ -3073,6 +3099,14 @@ export class Game {
     this.net.sendSkill(msg);
     if (this.player.inVR) this.sfx.bowRelease(1); // отклик жеста, как у массового хила
     this.skillReadyAt.set(id, performance.now() + this.skillCooldown(id) * 1000);
+  }
+
+  /** Центр выбранной цели (ПК/телефон), если это моб. */
+  private selectedTargetPos(): { x: number; z: number } | null {
+    const id = this.pcTarget?.targetId;
+    if (!id || id.startsWith("@")) return null;
+    const m = this.net?.room?.state.mobs.get(id);
+    return m && !m.dead ? { x: m.x, z: m.z } : null;
   }
 
   /** Плавный перенос героя (рывок/прыжок) из текущей точки в (x,z) за dur с. */
@@ -3474,6 +3508,24 @@ export class Game {
 
   /** Где этот токен стоял в прошлый раз. null — первый вход, отдадим своё. */
   /** Звук чужого действия — объёмно от точки события (у аватара соседа). */
+  /** Позиция для «следящих» эффектов: герой — у земли под ним, моб — над головой. */
+  private fxFollow(kind: "hero" | "mob", fid: string): { x: number; y: number; z: number } | null {
+    const st = this.net?.room?.state;
+    if (kind === "mob") {
+      const m = st?.mobs.get(fid);
+      if (!m || m.dead) return null;
+      return { x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2, z: m.z };
+    }
+    if (fid === this.net?.sessionId) {
+      const pp = this.player.position;
+      return { x: pp.x, y: this.fxGround(pp.x, pp.z), z: pp.z };
+    }
+    const av = this.avatars.get(fid);
+    if (!av) return null;
+    const pp = av.position;
+    return { x: pp.x, y: this.fxGround(pp.x, pp.z), z: pp.z };
+  }
+
   private playRemoteAct(
     k: ActKind,
     x: number,
@@ -3493,7 +3545,12 @@ export class Game {
       if (Math.hypot(x - pp.x, z - pp.z) > VR_FX_RANGE) return;
     }
     const at = { x, y, z };
-    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r)) return;
+    if (k === "markReset") {
+      this.skillReadyAt.delete("mark");
+      this.notifyToast("Цель пала под меткой — метка снова готова");
+      return;
+    }
+    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

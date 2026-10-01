@@ -1,4 +1,5 @@
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
+import { SkillVfx } from "../ui/SkillVfx";
 import { LightFocus } from "../world/lightFocus";
 import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
@@ -86,6 +87,8 @@ export class Spectator {
   /** Эффекты «Классов 2.0»: волна молота, копьё, рывок, сокрушение, печать. */
   private readonly classFx: ClassFx;
   private readonly classCtx: ClassActCtx;
+  /** GPU-эффекты умений (волны, искры, молнии, столбы, зоны). */
+  private readonly skillVfx: SkillVfx;
   private readonly eventBeacon: EventBeacon;
   /** Гасилка ближних деревьев — приезжает вместе с модулем леса. */
   private fadeTrees: ((x: number, z: number) => void) | null = null;
@@ -282,8 +285,12 @@ export class Spectator {
     this.healAura = new HealAuraFx(this.scene);
     this.skillFx = new SkillFx(this.scene);
     this.classFx = new ClassFx(this.scene);
+    this.skillVfx = new SkillVfx(this.scene);
+    this.classFx.vfx = this.skillVfx;
+    this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
     this.classCtx = {
       fx: this.classFx,
+      vfx: this.skillVfx,
       sound: (at, kind) =>
         this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
@@ -1147,6 +1154,7 @@ export class Spectator {
     this.healAura.update(dt);
     this.skillFx.update(dt);
     this.classFx.update(dt);
+    this.skillVfx.update(dt);
     const est = this.net?.room?.state;
     if (est) {
       this.eventBeacon.set(est.eventKind, est.eventX, est.eventZ);
@@ -1453,6 +1461,20 @@ export class Spectator {
   }
 
   /** Звук действия игрока по сети — как в игре, но без своих эффектов. */
+  /** Позиция для «следящих» эффектов: герой — у земли под ним, моб — над головой. */
+  private fxFollow(kind: "hero" | "mob", fid: string): { x: number; y: number; z: number } | null {
+    const st = this.net?.room?.state;
+    if (kind === "mob") {
+      const m = st?.mobs.get(fid);
+      if (!m || m.dead) return null;
+      return { x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2, z: m.z };
+    }
+    const av = this.avatars.get(fid);
+    if (!av) return null;
+    const pp = av.position;
+    return { x: pp.x, y: this.groundHeight(pp.x, pp.z), z: pp.z };
+  }
+
   private playRemoteAct(
     k: ActKind,
     x: number,
@@ -1470,7 +1492,7 @@ export class Spectator {
     const cp = this.cam.cam.position;
     if (Math.hypot(x - cp.x, z - cp.z) > SPEC_RANGE) return;
     const at = { x, y, z };
-    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r)) return;
+    if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     switch (k) {
       case "swing":
         this.sfx.swordSwing(at);

@@ -213,7 +213,7 @@ interface GolemSplitGroup {
   opts: ConstructorParameters<typeof Mob>[3];
 }
 
-class Mob {
+export class Mob {
   readonly id = nid();
   /** Это осколок голема из пары — см. GolemSplitGroup. undefined — обычный моб. */
   splitGroup?: GolemSplitGroup;
@@ -602,6 +602,26 @@ class Mob {
     this.stunnedT = Math.max(this.stunnedT, sec);
   }
 
+  /** «Боевой клич»: кого моб обязан атаковать и сколько ещё секунд. */
+  private tauntId = "";
+  private tauntT = 0;
+  taunt(id: string, sec: number): void {
+    if (this.dead) return;
+    this.tauntId = id;
+    this.tauntT = sec;
+    this.aggroed = true;
+  }
+  /** «Метка»: секунд осталось, множитель входящего урона и кто поставил. */
+  markT = 0;
+  markMul = 1;
+  markBy = "";
+  mark(by: string, sec: number, mul: number): void {
+    if (this.dead) return;
+    this.markT = sec;
+    this.markMul = mul;
+    this.markBy = by;
+  }
+
   /** Замедление («Печать»): секунд осталось и доля скорости/темпа атак (0.6 — на 40% медленнее). */
   private slowT = 0;
   private slowMul = 1;
@@ -685,6 +705,11 @@ class Mob {
     spit: (mob: Mob, target: SimPlayer) => void,
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
+    if (this.tauntT > 0) this.tauntT -= dt;
+    if (this.markT > 0) {
+      this.markT -= dt;
+      if (this.markT <= 0) this.markMul = 1;
+    }
     if (this.slowT > 0) {
       this.slowT -= dt;
       if (this.slowT <= 0) this.slowMul = 1;
@@ -755,6 +780,15 @@ class Mob {
       if (d < best) {
         best = d;
         np = p;
+      }
+    }
+    // «Боевой клич»: провокатор рядом — бьём его, кто бы ни был ближе.
+    if (this.tauntT > 0 && this.tauntId) {
+      const tp = players.find((p) => p.sessionId === this.tauntId);
+      if (tp) {
+        np = tp;
+        best = (tp.x - this.x) ** 2 + (tp.z - this.z) ** 2;
+        this.aggroed = true;
       }
     }
     const dist = np ? Math.sqrt(best) : Infinity;
@@ -2169,6 +2203,7 @@ export class ZoneSim {
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
+    if (m.markT > 0) dmg *= m.markMul; // «Метка»: +30% урона от всех
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
     // а овеpкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
@@ -2271,6 +2306,15 @@ export class ZoneSim {
   /** Пригвоздить моба к земле по id (град стрел). */
   rootMob(id: string, sec: number): void {
     this.mobs.get(id)?.root(sec);
+  }
+
+  /** «Боевой клич»: моб `sec` секунд атакует только `by`. */
+  tauntMob(id: string, by: string, sec: number): void {
+    this.mobs.get(id)?.taunt(by, sec);
+  }
+  /** «Метка»: моб `sec` секунд получает урон × `mul`. */
+  markMob(id: string, by: string, sec: number, mul: number): void {
+    this.mobs.get(id)?.mark(by, sec, mul);
   }
 
   /** Замедлить моба («Печать»): на `sec` секунд, скорость и темп атак × `mul`. */

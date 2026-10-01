@@ -1,4 +1,4 @@
-import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, SKILLS2, skillName, stepCost, type ClassId, type SkillId } from "#shared/classes2";
+import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, SKILLS2, skillName, stepCost, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
@@ -605,12 +605,16 @@ const MECH_CLASSES_HTML = (() => {
     const sk = d.skills.map((id) => skillName(id, c)).join(", ");
     return `<p><b>${d.icon} ${d.name}</b> — ${d.weapons}. ${d.role}. Умения на выбор: ${sk}.</p>`;
   }).join("");
-  const skills = (Object.keys(SKILLS2) as SkillId[]).map((id) => {
-    const sk = SKILLS2[id];
-    const vars = Object.entries(sk.variants ?? {})
-      .map(([c, v]) => `<br><small>${CLASSES2[c as ClassId].name}: «${v!.name}» — ${v!.desc}</small>`)
+  const skills = CLASS_IDS.map((c) => {
+    const d = CLASSES2[c];
+    const items = d.skills
+      .map((id: SkillId) => {
+        const sk = SKILLS2[id];
+        const v = sk.variants?.[c];
+        return `<li>${sk.icon} <b>${v?.name ?? sk.name}</b> (откат ${sk.cooldown} с) — ${v?.desc ?? sk.desc}.</li>`;
+      })
       .join("");
-    return `<li><b>${sk.icon} ${sk.name}</b> (откат ${sk.cooldown} с) — ${sk.desc}.${vars}</li>`;
+    return `<p><b>${d.icon} ${d.name}</b></p><ul>${items}</ul>`;
   }).join("");
   return `
 <h2>Атрибуты</h2>
@@ -623,8 +627,8 @@ const MECH_CLASSES_HTML = (() => {
 ${classes}
 <p>Щит у воина — шанс полностью заблокировать удар (10%, у Эгиды 15%). Молот боевого мага каждым ударом пускает магическую волну (урон от интеллекта). Копьё пробивает до 3 целей на линии. Два кинжала бьют по очереди чаще, один кинжал — крит и уворот выше.</p>
 
-<h2>Умения</h2>
-<ul>${skills}</ul>
+<h2>Умения классов</h2>
+${skills}
 <p>У магов (посох, молот) мудрость ускоряет откат умений.</p>`;
 })();
 
