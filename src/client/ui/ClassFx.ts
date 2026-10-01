@@ -24,6 +24,18 @@ import type { SkillVfx } from "./SkillVfx";
  *  - ghost:  тёмные «следы» рывка (обычное смешивание — тёмное видно).
  */
 
+/**
+ * Цвет эффекта умения — по смыслу (2026-10-02): атака — красный, лечение —
+ * зелёный, защитный бафф — синий, атакующий бафф — оранжевый, прочее — жёлтый.
+ */
+export const FX_ROLE = {
+  attack: new Color3(1, 0.22, 0.14),
+  heal: new Color3(0.4, 1, 0.5),
+  defense: new Color3(0.35, 0.6, 1),
+  buff: new Color3(1, 0.55, 0.12),
+  other: new Color3(1, 0.88, 0.3),
+} as const;
+
 export const FX_COLORS = {
   arcane: new Color3(0.72, 0.42, 1), // волна молота, печать пламени (фиолет)
   fire: new Color3(1, 0.42, 0.12), // огонь: печать боевого мага, огненный дождь
@@ -265,7 +277,7 @@ export class ClassFx {
 
   /** Грозовое поле: каждые 0.5 с молния с неба в случайную точку круга. */
   stormZone(x: number, y: number, z: number, r: number, dur: number): void {
-    const C = new Color3(0.6, 0.75, 1);
+    const C = FX_ROLE.attack;
     for (let t = 0.2; t < dur; t += 0.5) {
       this.later(t, () => {
         const a = Math.random() * Math.PI * 2;
@@ -280,7 +292,7 @@ export class ClassFx {
 
   /** Аура исцеления: каждые 0.5 с — зелёные искры всплывают в случайных точках круга вокруг героя. */
   healSparkles(id: string, r: number, dur: number): void {
-    const C = new Color3(0.5, 1, 0.6);
+    const C = FX_ROLE.heal;
     for (let t = 0; t < dur; t += 0.5) {
       this.later(t, () => {
         const at = this.vfx?.follow?.("hero", id);
@@ -412,22 +424,7 @@ export interface ClassActCtx {
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
 }
 
-/** Цвета эффектов по классу (индекс в CLASS_IDS): 0 воин, 1 лучник, 2 поддержка, 3 ассасин, 4 копейщик, 5 боевой маг. */
-const CLS_COLOR: readonly Color3[] = [
-  new Color3(1, 0.62, 0.25), // воин — раскалённая сталь
-  new Color3(1, 0.85, 0.35), // лучник — золото
-  new Color3(0.55, 1, 0.7), // поддержка — свет
-  new Color3(0.6, 0.35, 1), // ассасин — тень
-  new Color3(1, 0.7, 0.3), // копейщик — бронза
-  new Color3(0.55, 0.6, 1), // боевой маг — гроза
-];
-const STORM = new Color3(0.6, 0.75, 1);
-const FIRE = new Color3(1, 0.45, 0.12);
-const HEAL = new Color3(0.5, 1, 0.6);
-const MARK_C = new Color3(1, 0.2, 0.15);
-const colorOf = (v?: number): Color3 => CLS_COLOR[v ?? 0] ?? CLS_COLOR[0];
 const V_SUPPORT = 2;
-const V_ASSASSIN = 3;
 const V_BATTLEMAGE = 5;
 
 /**
@@ -450,21 +447,26 @@ export function playClassAct(
   mobId?: string,
 ): boolean {
   const at = { x, y, z };
-  const col = colorOf(v);
+  // Цвета по смыслу умения (FX_ROLE), не по классу.
+  const ATK = FX_ROLE.attack;
+  const HEALC = FX_ROLE.heal;
+  const DEF = FX_ROLE.defense;
+  const BUFF = FX_ROLE.buff;
+  const OTHER = FX_ROLE.other;
   const vfx = c.vfx;
   switch (k) {
     case "stunBash":
       // Замах: тонкое кольцо сходится к герою — удар вот-вот.
-      vfx.decal(x, y, z, r ?? 5, col, Math.max(0.2, d ?? 0.5), 0, 0.35);
+      vfx.decal(x, y, z, r ?? 5, ATK, Math.max(0.2, d ?? 0.5), 0, 0.35);
       c.sound(at, "bash");
       return true;
     case "stunHit":
-      vfx.decal(x, y, z, r ?? 5, col, 0.55, 0, 1);
-      vfx.burst(x, y + 0.2, z, col, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
+      vfx.decal(x, y, z, r ?? 5, ATK, 0.55, 0, 1);
+      vfx.burst(x, y + 0.2, z, ATK, { count: 24, speed: 7, life: 0.55, grav: 14, size: 0.2 });
       return true;
     case "hammerWave":
-      vfx.decal(x, y - 0.8, z, d ?? 2.5, STORM, 0.4, 0, 0.9);
-      vfx.burst(x, y - 0.4, z, STORM, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
+      vfx.decal(x, y - 0.8, z, d ?? 2.5, ATK, 0.4, 0, 0.9);
+      vfx.burst(x, y - 0.4, z, ATK, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.16 });
       return true;
     case "spearPierce":
       if (x2 !== undefined && z2 !== undefined) {
@@ -472,25 +474,25 @@ export function playClassAct(
         // и угол удара (сервер шлёт конец оси x2/z2 и полуугол r).
         const ddx = x2 - x;
         const ddz = z2 - z;
-        vfx.cone(x, y - 1.5, z, Math.hypot(ddx, ddz), ddx, ddz, r ?? 0.6, colorOf(4), 0.32, 0.45);
+        vfx.cone(x, y - 1.5, z, Math.hypot(ddx, ddz), ddx, ddz, r ?? 0.6, ATK, 0.32, 0.75);
       }
       return true;
     case "shadowStep":
       if (x2 !== undefined && z2 !== undefined) {
         c.fx.shadowTrail(x, y, z, x2, z2);
-        c.fx.streak(x, y, z, x2, z2, FX_COLORS.shadow, 0.6, 0.4);
-        vfx.burst(x, y + 0.9, z, FX_COLORS.shadow, { count: 14, speed: 3, life: 0.5, grav: -2, size: 0.3 });
-        vfx.burst(x2, y + 0.9, z2, colorOf(V_ASSASSIN), { count: 14, speed: 4, life: 0.45, grav: -1, size: 0.25 });
+        c.fx.streak(x, y, z, x2, z2, OTHER, 0.6, 0.4);
+        vfx.burst(x, y + 0.9, z, OTHER, { count: 14, speed: 3, life: 0.5, grav: -2, size: 0.3 });
+        vfx.burst(x2, y + 0.9, z2, OTHER, { count: 14, speed: 4, life: 0.45, grav: -1, size: 0.25 });
       }
       c.emote(id, "roll");
       c.sound(at, "swing");
       return true;
     case "crushMark":
-      vfx.decal(x, y, z, (r ?? 5) * 0.55, v === V_BATTLEMAGE ? STORM : col, d ?? 0.6, 2, 0.9);
+      vfx.decal(x, y, z, (r ?? 5) * 0.55, ATK, d ?? 0.6, 2, 0.9);
       c.emote(id, "jump");
       return true;
     case "crushHit": {
-      const cc = v === V_BATTLEMAGE ? STORM : col;
+      const cc = ATK;
       vfx.decal(x, y, z, r ?? 5, cc, 0.65, 0, 1.2);
       vfx.burst(x, y + 0.2, z, cc, { count: 28, speed: 9, life: 0.7, grav: 16, size: 0.26 });
       vfx.pillar(x, y, z, 1.4, 4, cc, 0.35);
@@ -498,7 +500,8 @@ export function playClassAct(
       return true;
     }
     case "seal": {
-      const cc = v === V_BATTLEMAGE ? STORM : v === 0 ? new Color3(0.45, 0.7, 1) : v === 1 ? new Color3(0.6, 0.6, 0.6) : HEAL;
+      // Грозовое поле — атака, Печать стража (воин) — защита, печать поддержки — лечение.
+      const cc = v === V_BATTLEMAGE ? ATK : v === 0 ? DEF : v === V_SUPPORT ? HEALC : OTHER;
       vfx.decal(x, y, z, r ?? 5, cc, d ?? 6, 1, 1);
       if (v === V_BATTLEMAGE) c.fx.stormZone(x, y, z, r ?? 5, d ?? 6);
       else vfx.pillar(x, y, z, (r ?? 5) * 0.9, 2.5, cc, 0.8);
@@ -507,12 +510,13 @@ export function playClassAct(
       return true;
     }
     case "whirl":
-      vfx.decal(x, y, z, r ?? 3.2, col, d ?? 2, 1, 1, { kind: "hero", id, dy: 0 });
-      c.fx.spinSparks(id, r ?? 3.2, col, d ?? 2);
+      vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 2, 1, 1, { kind: "hero", id, dy: 0 });
+      c.fx.spinSparks(id, r ?? 3.2, ATK, d ?? 2);
       c.sound(at, "swing");
       return true;
     case "warcry": {
-      const cc = v === V_SUPPORT ? new Color3(1, 0.88, 0.45) : v === 4 ? colorOf(4) : new Color3(1, 0.35, 0.2);
+      // Клич / Клич сплочения / Благословение — атакующие баффы.
+      const cc = BUFF;
       vfx.decal(x, y, z, r ?? 12, cc, 0.9, 0, 0.8);
       vfx.pillar(x, y, z, 0.9, 5, cc, 1.1, { kind: "hero", id });
       vfx.burst(x, y + 1, z, cc, { count: 24, speed: 3, life: 1.1, grav: -3, size: 0.24 });
@@ -522,13 +526,13 @@ export function playClassAct(
     }
     case "markOn":
       if (mobId) {
-        vfx.decal(x, y, z, 1.1, MARK_C, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });
-        vfx.pillar(x, y, z, 0.5, 9, MARK_C, 0.5, { kind: "mob", id: mobId });
+        vfx.decal(x, y, z, 1.1, ATK, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });
+        vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
       }
       return true;
     case "chainHit":
       if (x2 !== undefined && z2 !== undefined) {
-        const cc = v === V_SUPPORT ? HEAL : v === 1 ? new Color3(1, 0.9, 0.45) : STORM;
+        const cc = v === V_SUPPORT ? HEALC : ATK;
         const toY = d ?? y;
         const delay = (r ?? 0) * 0.09;
         c.fx.later(delay, () => {
@@ -542,8 +546,8 @@ export function playClassAct(
         const n = d ?? 3;
         for (let i = 0; i < n; i++) {
           c.fx.later(0.1 + i * 0.18, () => {
-            vfx.burst(x, y + 1.1, z, new Color3(0.85, 0.85, 1), { count: 18, speed: 16, life: 0.5, grav: 1, size: 0.14, dir: [x2 - x, 0, z2 - z], spread: 0.32 });
-            c.fx.streak(x, y, z, x2, z2, colorOf(V_ASSASSIN), 2.5, 0.25);
+            vfx.burst(x, y + 1.1, z, ATK, { count: 18, speed: 16, life: 0.5, grav: 1, size: 0.14, dir: [x2 - x, 0, z2 - z], spread: 0.32 });
+            c.fx.streak(x, y, z, x2, z2, ATK, 2.5, 0.25);
           });
         }
         c.sound(at, "swing");
@@ -551,26 +555,26 @@ export function playClassAct(
       return true;
     case "arrowRain":
       // Зона града поверх древков (их рисует SkillFx в старом обработчике).
-      vfx.decal(x, y, z, r ?? 6.5, v === V_SUPPORT ? FIRE : col, (d ?? 0.9) + 3, 1, 0.8);
+      vfx.decal(x, y, z, r ?? 6.5, ATK, (d ?? 0.9) + 3, 1, 0.8);
       return false;
     case "rainTick":
       for (let i = 0; i < 3; i++) {
         const a = Math.random() * Math.PI * 2;
         const rr = Math.random() * 4;
-        vfx.burst(x + Math.cos(a) * rr, y + 0.1, z + Math.sin(a) * rr, new Color3(1, 0.8, 0.45), { count: 8, speed: 4, life: 0.35, grav: 12, size: 0.14 });
+        vfx.burst(x + Math.cos(a) * rr, y + 0.1, z + Math.sin(a) * rr, ATK, { count: 8, speed: 4, life: 0.35, grav: 12, size: 0.14 });
       }
       return false;
     case "healAura": {
       // Аура исцеления: зона с рунами и столб света ходят за героем, искры всплывают.
       const dur = d ?? 6;
-      vfx.decal(x, y, z, r ?? 8, HEAL, dur, 1, 0.9, { kind: "hero", id, dy: 0 });
-      vfx.pillar(x, y, z, 0.8, 3.2, HEAL, dur, { kind: "hero", id });
+      vfx.decal(x, y, z, r ?? 8, HEALC, dur, 1, 0.9, { kind: "hero", id, dy: 0 });
+      vfx.pillar(x, y, z, 0.8, 3.2, HEALC, dur, { kind: "hero", id });
       c.fx.healSparkles(id, r ?? 8, dur);
       c.emote(id, "cheer");
       return true;
     }
     case "healHit":
-      vfx.burst(x, y - 0.8, z, HEAL, { count: 12, speed: 1.6, life: 0.9, grav: -2.5, size: 0.2 });
+      vfx.burst(x, y - 0.8, z, HEALC, { count: 12, speed: 1.6, life: 0.9, grav: -2.5, size: 0.2 });
       return false;
     default:
       return false;

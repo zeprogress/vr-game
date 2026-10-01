@@ -17,7 +17,7 @@ import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
 const SPORE_C = new Color3(0.65, 0.25, 1); // фиолетовые споры (Грибной колосс)
 const WRAITH_C = new Color3(0.2, 0.5, 1); // синяя дымка (Костяной призрак)
-const SQUID_C = new Color3(1, 0.75, 0.15); // золотистое щупальце (Небесный спрут)
+const SQUID_C = new Color3(1, 0.22, 0.14); // красное щупальце (Небесный спрут) — атака, как и все атакующие эффекты
 const BREATH_C = new Color3(1, 0.35, 0.05); // огонь дракона
 
 const POOL = 3;
