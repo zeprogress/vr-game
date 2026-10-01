@@ -33,6 +33,8 @@ const MV_OUT = (p: string) => `
   gl_Position = viewProjection * vec4(${p}, 1.0);
 #endif`;
 
+const LIGHTNING = new Color3(0.3, 0.55, 1);
+const LIGHTNING_CORE = new Color3(0.85, 0.93, 1);
 const FIRE_CORE = new Color3(1, 0.9, 0.45);
 const FIRE_ORANGE = new Color3(1, 0.5, 0.1);
 const FIRE_RED = new Color3(1, 0.18, 0.06);
@@ -349,7 +351,7 @@ export class SkillVfx {
         bi.push(a, a + 1, a + 3, a, a + 3, a + 2);
       }
     }
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 24; i++) {
       const mesh = new Mesh(`vfxBolt${i}`, scene);
       const vd = new VertexData();
       vd.positions = bp;
@@ -470,6 +472,20 @@ export class SkillVfx {
     b.mat.setFloat("uAlpha", 1);
     Object.assign(b, { age: 0, life });
     b.mesh.setEnabled(true);
+  }
+
+  /**
+   * Молния атаки (синяя, заметная): толстый ствол + белое ядро, в точке
+   * удара — вспышка на земле (если известна земля groundY) и сноп искр.
+   */
+  lightning(ax: number, ay: number, az: number, bx: number, by: number, bz: number, groundY: number | null, life = 0.35): void {
+    this.bolt(ax, ay, az, bx, by, bz, LIGHTNING, life, 0.2);
+    this.bolt(ax, ay, az, bx, by, bz, LIGHTNING_CORE, life * 0.8, 0.07);
+    if (groundY !== null) this.decal(bx, groundY, bz, 1.6, LIGHTNING, 0.35, 0, 1.3);
+    // Вспышка-шар в самой точке удара — видно и у летающих целей.
+    this.burst(bx, by, bz, LIGHTNING, { count: 6, speed: 0.6, life: 0.2, grav: 0, size: 0.9 });
+    this.burst(bx, by, bz, LIGHTNING, { count: 20, speed: 6, life: 0.45, grav: 8, size: 0.26 });
+    this.burst(bx, by, bz, LIGHTNING_CORE, { count: 8, speed: 3, life: 0.25, grav: 0, size: 0.4 });
   }
 
   /** Столб света высотой h, радиус r; follow — держится над героем/мобом. */

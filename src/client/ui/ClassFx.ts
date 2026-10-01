@@ -277,15 +277,14 @@ export class ClassFx {
 
   /** Грозовое поле: каждые 0.5 с молния с неба в случайную точку круга. */
   stormZone(x: number, y: number, z: number, r: number, dur: number): void {
-    const C = FX_ROLE.attack;
     for (let t = 0.2; t < dur; t += 0.5) {
       this.later(t, () => {
         const a = Math.random() * Math.PI * 2;
         const rr = Math.sqrt(Math.random()) * r * 0.9;
         const px = x + Math.cos(a) * rr;
         const pz = z + Math.sin(a) * rr;
-        this.vfx?.bolt(px + 0.6, y + 9, pz, px, y, pz, C, 0.22, 0.11);
-        this.vfx?.burst(px, y + 0.15, pz, C, { count: 8, speed: 3.5, life: 0.3, grav: 9, size: 0.16 });
+        // Синяя заметная молния с вспышкой на земле (SkillVfx.lightning).
+        this.vfx?.lightning(px + 0.6, y + 9, pz, px, y + 0.15, pz, y, 0.3);
       });
     }
   }
@@ -539,8 +538,11 @@ export function playClassAct(
         const toY = d ?? y;
         const delay = (r ?? 0) * 0.09;
         c.fx.later(delay, () => {
-          vfx.bolt(x, y, z, x2, toY, z2, cc, 0.32, v === V_SUPPORT ? 0.06 : 0.09);
-          vfx.burst(x2, toY, z2, cc, { count: 10, speed: 4, life: 0.35, grav: v === V_SUPPORT ? -3 : 6, size: 0.18 });
+          if (v === V_SUPPORT) {
+            // Лечащая цепь — тонкая зелёная.
+            vfx.bolt(x, y, z, x2, toY, z2, cc, 0.32, 0.06);
+            vfx.burst(x2, toY, z2, cc, { count: 10, speed: 4, life: 0.35, grav: -3, size: 0.18 });
+          } else vfx.lightning(x, y, z, x2, toY, z2, null, 0.38);
         });
       }
       return true;
