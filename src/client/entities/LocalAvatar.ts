@@ -23,8 +23,8 @@ import {
  * четырёх лупов (idle/walk/run) + разовые swordslash/recievehit. Логику
  * порогов взяли из RemoteAvatar.stepBotLocomotion, только проще.
  */
-const CLIPS: readonly string[] = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "death", ...CLASS_CLIP_NAMES];
-const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", ...CLASS_ONE_SHOT]);
+const CLIPS: readonly string[] = ["idle", "walk", "run", "swordslash", "recievehit", "pickup", "jump", "roll", "death", ...CLASS_CLIP_NAMES];
+const ONE_SHOT = new Set<string>(["swordslash", "recievehit", "pickup", "jump", "roll", ...CLASS_ONE_SHOT]);
 /** Подбор играем вдвое быстрее, как у RemoteAvatar (видно спектатору так же). */
 const PICKUP_RATE = 2;
 
@@ -151,6 +151,17 @@ export class LocalAvatar {
   /** Подобрал предмет — наклон с подбором (как видят другие и спектатор). */
   pickup(): void {
     this.pickupUntil = this.playOneShot("pickup", PICKUP_RATE, 600);
+  }
+
+  /** Разовый клип умения (кувырок рывка, прыжок «Сокрушения») — поверх всего, кроме замаха. */
+  private extraClip = "";
+  private extraUntil = 0;
+  private extraRate = 1;
+  oneShot(name: string, rate = 1): void {
+    const until = this.playOneShot(name, rate, 600);
+    this.extraClip = name;
+    this.extraRate = rate;
+    this.extraUntil = until;
   }
 
   /** Прыжок — клип прыжка на время полёта. */
@@ -321,7 +332,8 @@ export class LocalAvatar {
     this.locoRun = run;
     this.locoMove = move;
     let want: string;
-    if (now < this.swingUntil) want = this.swingClip;
+    if (now < this.extraUntil) want = this.extraClip;
+    else if (now < this.swingUntil) want = this.swingClip;
     else if (now < this.hitUntil) want = "recievehit";
     else if (now < this.pickupUntil) want = "pickup";
     else if (now < this.jumpUntil) want = "jump";
@@ -345,7 +357,7 @@ export class LocalAvatar {
       } else if (!g.isPlaying && n === want) {
         // Разовый клип (swordslash/recievehit): триггер уже прошёл, но клип
         // мог доиграть — перезапускаем, пока окно не закрылось.
-        const rate = n === this.swingClip ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : 1;
+        const rate = n === this.swingClip ? this.swingSpeed : n === "pickup" ? PICKUP_RATE : n === this.extraClip ? this.extraRate : 1;
         g.start(false, rate, g.from, g.to, false);
       }
       this.animW.set(n, w);

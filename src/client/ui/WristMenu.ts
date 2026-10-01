@@ -1,4 +1,4 @@
-import { ATTR_INFO, attrEffect } from "#shared/classes2";
+import { ATTR_INFO, attrEffect, CLASSES2, SKILLS2, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -50,7 +50,7 @@ const TIER_BG: Record<WeaponTier, string> = {
   legendary: "#251a33",
 };
 
-type Tab = "char" | "quest" | "set";
+type Tab = "char" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -250,6 +250,71 @@ export class WristMenu {
     this.dirty = true;
   }
 
+  /** Умения класса (выставляет Game по состоянию героя). */
+  private skillCls = "";
+  private skillChosen: string[] = [];
+  private skillSig = "";
+  /** Выбрали умения: Game шлёт на сервер. */
+  onSkills: ((ids: string[]) => void) | null = null;
+  setSkills(cls: string, chosen: string[]): void {
+    const sig = `${cls}|${chosen.join(",")}`;
+    if (sig === this.skillSig) return;
+    this.skillSig = sig;
+    this.skillCls = cls;
+    this.skillChosen = chosen;
+    this.dirty = true;
+  }
+
+  /** Вкладка «Умения»: класс и умения кнопками; выбрано — ✓, нажал другое — заменит старое. */
+  private drawSkills(ctx: CanvasRenderingContext2D): void {
+    const X = 12;
+    const W = TEX_W - 24;
+    let y = VIEW_Y + 8;
+    const cls = this.skillCls as ClassId | "";
+    ctx.textAlign = "left";
+    if (!cls) {
+      ctx.font = "28px system-ui, sans-serif";
+      ctx.fillStyle = "#8f8a7e";
+      ctx.fillText("Возьми оружие — умения зависят от класса", X + 8, y);
+      return;
+    }
+    const def = CLASSES2[cls];
+    ctx.font = "bold 32px system-ui, sans-serif";
+    ctx.fillStyle = "#f1ead6";
+    ctx.fillText(`${def.icon} ${def.name} — ${def.role}`, X + 8, y);
+    y += 44;
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText("Любые два умения: стик правой руки — первое, стик левой — второе", X + 8, y);
+    y += 40;
+    for (const id of def.skills) {
+      const sk = SKILLS2[id];
+      const v = sk.variants?.[cls];
+      const on = this.skillChosen.includes(id);
+      const wd = this.add({
+        id: `skill:${id}`, x: X, y, w: W, h: 92, kind: "button",
+        act: () => {
+          if (on) return;
+          this.onSkills?.([...this.skillChosen, id].slice(-2));
+        },
+        info: [`${v?.name ?? sk.name} · откат ${sk.cooldown} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+      });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");
+      ctx.fillRect(wd.x, y, wd.w, wd.h);
+      ctx.strokeStyle = st.stroke || (on ? "#7ee081" : "#3a3e48");
+      ctx.lineWidth = st.stroke ? st.lw : 2;
+      ctx.strokeRect(wd.x, y, wd.w, wd.h);
+      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${v?.name ?? sk.name}`, X + 14, y + 10);
+      ctx.font = "21px system-ui, sans-serif";
+      ctx.fillStyle = "#a9a498";
+      ctx.fillText((v?.desc ?? sk.desc).slice(0, 95), X + 14, y + 52);
+      y += 100;
+    }
+  }
+
   private drawQuests(ctx: CanvasRenderingContext2D): void {
     const d = this.quests;
     const X = 12;
@@ -411,7 +476,9 @@ export class WristMenu {
   update(o: MenuInput): void {
     if (!this.open) return;
 
-    if (o.tabNext && !this.dialog && !this.popup) this.switchTab(this.tab === "char" ? "quest" : this.tab === "quest" ? "set" : "char");
+    if (o.tabNext && !this.dialog && !this.popup) {
+      this.switchTab(this.tab === "char" ? "quest" : this.tab === "quest" ? "skills" : this.tab === "skills" ? "set" : "char");
+    }
 
     // Лазер: луч правой руки → точка на плоскости меню.
     let hit: { u: number; v: number } | null = null;
@@ -631,6 +698,7 @@ export class WristMenu {
 
     if (this.tab === "char") this.drawCharacter(ctx);
     else if (this.tab === "quest") this.drawQuests(ctx);
+    else if (this.tab === "skills") this.drawSkills(ctx);
     else this.drawSettings(ctx);
     this.drawTabs(ctx);
     this.drawExit(ctx);
@@ -660,9 +728,10 @@ export class WristMenu {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
       ["quest", "Задания"],
+      ["skills", "Умения"],
       ["set", "Настройки"],
     ];
-    const w = 300;
+    const w = 224;
     tabs.forEach(([id, label], i) => {
       const wd = this.add({
         id: `tab:${id}`, x: 12 + i * (w + 8), y: TAB_Y, w, h: TAB_H, kind: "tab",

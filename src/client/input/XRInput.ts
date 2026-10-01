@@ -106,8 +106,9 @@ export class XRInput implements InputSource {
       s.panelToggle = this.edge("panel", pressed(lp, b.panelToggle));
       s.uiNext = this.edge("uiNext", pressed(lp, b.panelNext));
       s.uiConfirm = this.edge("uiSpend", pressed(rp, b.panelSpend));
-      // Нажатие стика любой рукой — активное умение оружия.
-      s.ability = this.edge("ability", pressed(lp, b.ability) || pressed(rp, b.ability));
+      // Стик правой — первое умение, стик левой — второе («Классы 2.0»).
+      s.ability = this.edge("ability", pressed(rp, b.ability));
+      s.ability2 = this.edge("ability2", pressed(lp, b.ability));
     }
 
     if (lp) {

@@ -24,6 +24,11 @@ export class TouchInput implements InputSource {
   private readonly btnFire: HTMLDivElement;
   private readonly fireFill: HTMLDivElement;
   private readonly btnAbility: HTMLDivElement;
+  private readonly btnAbility2: HTMLDivElement;
+  private readonly ability2Cd: HTMLDivElement;
+  private ability2Tap = false;
+  /** Второе умение: прицел пальцем (град) — хук Game; true — нажатие забрано. */
+  ability2Hook: (() => boolean) | null = null;
   private readonly abilityCd: HTMLDivElement;
 
   private moveX = 0;
@@ -106,6 +111,10 @@ export class TouchInput implements InputSource {
     this.abilityCd = el("div", "touch-ability-cd");
     btnAbility.appendChild(this.abilityCd);
     this.btnAbility = btnAbility;
+    const btnAbility2 = el("div", "touch-btn touch-ability touch-ability2", "✦");
+    this.ability2Cd = el("div", "touch-ability-cd");
+    btnAbility2.appendChild(this.ability2Cd);
+    this.btnAbility2 = btnAbility2;
     this.btnAttack = btnAttack;
     this.btnInteract = btnInteract;
     this.btnFire = btnFire;
@@ -114,7 +123,7 @@ export class TouchInput implements InputSource {
     this.atkKnob.hidden = true;
     btnAttack.appendChild(this.atkKnob);
 
-    this.root.append(lookZone, stick, btnAttack, btnInteract, btnFire, btnAbility);
+    this.root.append(lookZone, stick, btnAttack, btnInteract, btnFire, btnAbility, btnAbility2);
     document.body.appendChild(this.root);
 
     // --- Осмотр / зум: перетаскивание и щипок по правой зоне ---
@@ -204,6 +213,11 @@ export class TouchInput implements InputSource {
       if (this.abilityHook?.()) return;
       this.abilityTap = true;
     });
+    btnAbility2.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (this.ability2Hook?.()) return;
+      this.ability2Tap = true;
+    });
 
     // Кнопка удара: держишь — атака; в режиме прицела её перетаскивание
     // крутит взгляд, отпускаешь — выстрел.
@@ -276,15 +290,21 @@ export class TouchInput implements InputSource {
    * Game: остаток кулдауна умения 0..1 (1 — только применили, 0 — готово).
    * Отрицательное значение — умения нет (нет меча/лука), кнопку прячем.
    */
-  setSkillCd(frac: number): void {
+  setSkillCd(frac: number, slot = 0, icon?: string): void {
+    const btn = slot === 0 ? this.btnAbility : this.btnAbility2;
+    const cd = slot === 0 ? this.abilityCd : this.ability2Cd;
     if (frac < 0) {
-      this.btnAbility.style.display = "none";
+      btn.style.display = "none";
       return;
     }
-    this.btnAbility.style.display = "";
+    btn.style.display = "";
+    if (icon && btn.dataset.icon !== icon) {
+      btn.dataset.icon = icon;
+      btn.firstChild!.textContent = icon;
+    }
     const k = Math.max(0, Math.min(1, frac));
-    this.abilityCd.style.transform = `scaleY(${k})`;
-    this.btnAbility.style.opacity = k > 0.01 ? "0.5" : "1";
+    cd.style.transform = `scaleY(${k})`;
+    btn.style.opacity = k > 0.01 ? "0.5" : "1";
   }
 
   /** Game: уровень накопленного заряда 0..1 — визуально заливает кнопку ➤. */
@@ -334,6 +354,8 @@ export class TouchInput implements InputSource {
     s.interact = this.interactBtn;
     s.ability = this.abilityTap;
     this.abilityTap = false;
+    s.ability2 = this.ability2Tap;
+    this.ability2Tap = false;
 
     this.accYaw = 0;
     this.accPitch = 0;
@@ -388,6 +410,8 @@ const STYLE = `<style>
 /* Кнопка умения — слева от большой кнопки удара. */
 .touch-ability { right: 150px; bottom: 18px; width: 66px; height: 66px; font-size: 26px;
   background: rgba(120,90,220,0.4); border-color: rgba(190,160,255,0.7); overflow: hidden; }
+/* Второе умение — над первым. */
+.touch-ability2 { right: 150px; bottom: 96px; }
 .touch-ability-cd { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%;
   background: rgba(20,10,40,0.55); transform-origin: bottom; transform: scaleY(0);
   pointer-events: none; }

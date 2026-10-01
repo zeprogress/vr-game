@@ -24,6 +24,8 @@ export interface InputState {
   dropItem: boolean;
   /** Активное умение оружия (воин — оглушение, лучник — град стрел) — фронт. */
   ability: boolean;
+  /** Второе умение («Классы 2.0»: у каждого класса два умения) — фронт. */
+  ability2: boolean;
   /** Прыжок (ПК, третье лицо) — фронт. */
   jump: boolean;
   /** ПК, третье лицо: зажата ПКМ — герой разворачивается вслед за камерой. */
@@ -76,6 +78,7 @@ export function emptyInput(): InputState {
     interact: false,
     dropItem: false,
     ability: false,
+    ability2: false,
     jump: false,
     steer: false,
     tune: null,

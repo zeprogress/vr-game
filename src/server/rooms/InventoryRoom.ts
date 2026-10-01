@@ -1,4 +1,5 @@
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
+import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
 import { atMaxLevel, xpToNext } from "#shared/progression";
 import colyseus from "colyseus";
 import type { Client } from "colyseus";
@@ -93,7 +94,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title"
+        m?.act === "equip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills"
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -228,6 +229,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
+    skills: skillsOf(rec),
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
@@ -263,4 +265,13 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     })),
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
   };
+}
+
+/** Умения героя по сохранённому снаряжению: класс и выбранные (или по умолчанию). */
+function skillsOf(rec: { held?: { left?: { cls: string } | null; right?: { cls: string } | null }; skills?: Record<string, string[]> }): { cls: string; chosen: string[] } {
+  const cls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  if (!cls) return { cls: "", chosen: [] };
+  const def = CLASSES2[cls];
+  const saved = (rec.skills?.[cls] ?? []).filter((k: string) => def.skills.includes(k as SkillId));
+  return { cls, chosen: saved.length ? saved : [...def.defaultSkills] };
 }

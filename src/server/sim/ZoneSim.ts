@@ -602,6 +602,19 @@ class Mob {
     this.stunnedT = Math.max(this.stunnedT, sec);
   }
 
+  /** Замедление («Печать»): секунд осталось и доля скорости/темпа атак (0.6 — на 40% медленнее). */
+  private slowT = 0;
+  private slowMul = 1;
+  slow(sec: number, mul: number): void {
+    if (this.dead) return;
+    this.slowT = Math.max(this.slowT, sec);
+    this.slowMul = Math.min(this.slowT > 0 && this.slowMul < 1 ? this.slowMul : 1, mul);
+  }
+  /** Текущий множитель скорости от замедления (1 — нет). */
+  private get slowK(): number {
+    return this.slowT > 0 ? this.slowMul : 1;
+  }
+
   /** Горение от Пламенного меча: DoT `dps` на `sec` секунд, опыт — тому, кто поджёг. */
   burningT = 0;
   burnDps = 0;
@@ -672,7 +685,12 @@ class Mob {
     spit: (mob: Mob, target: SimPlayer) => void,
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
-    if (this.attackCd > 0) this.attackCd -= dt;
+    if (this.slowT > 0) {
+      this.slowT -= dt;
+      if (this.slowT <= 0) this.slowMul = 1;
+    }
+    // Замедленный моб и бьёт реже.
+    if (this.attackCd > 0) this.attackCd -= dt * this.slowK;
     // Ядовитые облака живут своей жизнью — и после смерти колосса тоже.
     for (let i = this.sporeZones.length - 1; i >= 0; i--) {
       const zn = this.sporeZones[i];
@@ -1087,7 +1105,8 @@ class Mob {
     const hopSpeed =
       (isBoss ? BOSS.hopSpeed : this.kind === "shard" ? SHARD.hopSpeed : MOB.hopSpeed) *
       rage *
-      this.speedMul;
+      this.speedMul *
+      this.slowK;
     const hopInterval =
       (isBoss ? BOSS.hopInterval : this.kind === "shard" ? SHARD.hopInterval : MOB.hopInterval) /
       rage;
@@ -2252,6 +2271,11 @@ export class ZoneSim {
   /** Пригвоздить моба к земле по id (град стрел). */
   rootMob(id: string, sec: number): void {
     this.mobs.get(id)?.root(sec);
+  }
+
+  /** Замедлить моба («Печать»): на `sec` секунд, скорость и темп атак × `mul`. */
+  slowMob(id: string, sec: number, mul: number): void {
+    this.mobs.get(id)?.slow(sec, mul);
   }
 
   /** Оглушить моба по id (оглушающий удар воина). */

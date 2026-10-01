@@ -40,6 +40,7 @@ import {
   type RtcMsg,
   type SpendMsg,
   type SetSkinMsg,
+  type SetSkillsMsg,
   type SetLeaveBotMsg,
   type CastMsg,
   type SkillMsg,
@@ -181,8 +182,8 @@ import {
   type Progress,
   type StatName,
 } from "#shared/progression";
-import { ATTR2 } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASSES2, DAGGER, HAMMER, staffMagicTier, WEAPONS2, type Weapon2 } from "#shared/classes2";
+import { ATTR2, invested } from "#shared/attrs2";
+import { autoSpend, classOf2, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -267,6 +268,12 @@ interface Runtime {
   lastMassHeal: number;
   /** Момент последнего активного умения оружия (воин/лучник) — для кулдауна. */
   lastSkillAt: number;
+  /** «Классы 2.0»: когда последний раз применено каждое умение (сек. комнаты). */
+  skillAt: Partial<Record<SkillId, number>>;
+  /** До какого момента следующий удар — гарантированный крит («Теневой рывок»). */
+  forceCritUntil: number;
+  /** Класс, под который сейчас выставлены skill1/skill2 (смена оружия — другой набор). */
+  skillCls: string;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
   yaw: number;
   /** Что игрок честно поднял: ключи вида "sword:gold". База всегда своя. */
@@ -420,6 +427,11 @@ const CLASS_ALIASES: Record<string, (typeof BOT_CLASS_WEAPONS)[number]> = {
   копейщик: "spear", копьё: "spear", копье: "spear", spear: "spear", spearman: "spear",
   боевой: "hammer", "боевой маг": "hammer", молот: "hammer", hammer: "hammer", battlemage: "hammer",
 };
+
+/** Выбрано ли у героя это умение (skill1/skill2). */
+function hasSkill(p: PlayerState, k: string): boolean {
+  return p.skill1 === k || p.skill2 === k;
+}
 
 /** Во сколько раз дальше бьёт бот этим оружием (копьё — длинный выпад). */
 function botReachMul(cls: string): number {
@@ -1260,7 +1272,9 @@ export class ZoneRoom extends Room<ZoneState> {
 
       // --- массовое лечение: посох над головой + курок (как у ботов, то же время каста) ---
       if (msg.spell === "massHealStart") {
-        if (this.elapsed - rt.lastMassHeal < MAGIC.heal.massCooldown) return;
+        // «Классы 2.0»: массовое лечение — умение, его надо выбрать (одно из двух у мага поддержки).
+        if (p.skill1 !== "massHeal" && p.skill2 !== "massHeal") return;
+        if (this.elapsed - rt.lastMassHeal < MAGIC.heal.massCooldown * this.skillCdMul(p)) return;
         rt.massHealAt = this.elapsed;
         // Аура вокруг кастера — тем же актом, что у ботов; сам кастер рисует её локально.
         this.broadcast(
@@ -1384,64 +1398,26 @@ export class ZoneRoom extends Room<ZoneState> {
     this.onMessage(MSG.skill, (client: Client, msg: SkillMsg) => {
       const p = this.state.players.get(client.sessionId);
       const rt = this.rt.get(client.sessionId);
-      if (!p || !rt || p.dead || !msg) return;
-      const holds = (cls: string): boolean => p.rightCls === cls || p.leftCls === cls;
-      const id = client.sessionId;
+      if (!p || !rt || p.dead || !msg || !(msg.kind in SKILLS2)) return;
+      this.castSkill(msg.kind, client.sessionId, p, rt, num(msg.x, NaN), num(msg.z, NaN));
+    });
 
-      if (msg.kind === "stunBash") {
-        if (!holds("sword")) return;
-        const s = SKILL.stunBash;
-        if (this.elapsed - rt.lastSkillAt < s.cooldown) return;
-        rt.lastSkillAt = this.elapsed;
-        const hand = p.rightCls === "sword" ? "right" : "left";
-        const dmg =
-          weaponDamage("sword", p.level, p, multIn(p, hand)) *
-          s.dmgMult *
-          this.buffMult(id, "dmg");
-        const fx: ActRelay = {
-          k: "stunBash",
-          id,
-          x: p.head.x,
-          y: p.head.y - PLAYER.eyeHeight,
-          z: p.head.z,
-          d: s.castTime,
-        };
-        this.broadcast(MSG.act, fx);
-        this.clock.setTimeout(() => {
-          const pp = this.state.players.get(id);
-          if (!pp || pp.dead) return;
-          this.broadcast(MSG.act, {
-            k: "stunHit", id,
-            x: pp.head.x, y: pp.head.y - PLAYER.eyeHeight, z: pp.head.z,
-          } satisfies ActRelay);
-          this.stunBashAt(pp, id, s.radius, s.duration, dmg);
-        }, s.castTime * 1000);
-        return;
-      }
-
-      if (msg.kind === "arrowRain") {
-        if (!holds("bow")) return;
-        const s = SKILL.arrowRain;
-        if (this.elapsed - rt.lastSkillAt < s.cooldown) return;
-        rt.lastSkillAt = this.elapsed;
-        // Точка круга: то, что прислал клиент, но не дальше s.range от игрока.
-        let tx = num(msg.x, p.head.x);
-        let tz = num(msg.z, p.head.z);
-        const ddx = tx - p.head.x;
-        const ddz = tz - p.head.z;
-        const dl = Math.hypot(ddx, ddz);
-        if (dl > s.range) {
-          tx = p.head.x + (ddx / dl) * s.range;
-          tz = p.head.z + (ddz / dl) * s.range;
-        }
-        const hand = p.rightCls === "bow" ? "right" : "left";
-        this.broadcast(MSG.act, {
-          k: "arrowRain", id, x: tx, y: terrainHeight(tx, tz), z: tz, d: s.castTime,
-        } satisfies ActRelay);
-        this.clock.setTimeout(() => {
-          if (!this.state.players.get(id)) return;
-          this.arrowRainAt(tx, tz, id, s.radius, p, hand, rt);
-        }, s.castTime * 1000);
+    // Выбор двух умений текущего класса (окно умений на ПК/телефоне/VR).
+    this.onMessage(MSG.setSkills, (client: Client, msg: SetSkillsMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || !Array.isArray(msg?.skills)) return;
+      const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+      if (!cls) return;
+      const allowed = CLASSES2[cls].skills;
+      const pick: SkillId[] = [...new Set(msg.skills.filter((k: unknown): k is SkillId => allowed.includes(k as SkillId)))].slice(0, 2);
+      if (pick.length === 0) return;
+      p.skill1 = pick[0] ?? "";
+      p.skill2 = pick[1] ?? "";
+      if (rt.token) {
+        const all = { ...(store.get(rt.token)?.skills ?? {}) };
+        all[cls] = pick;
+        store.put(rt.token, { skills: all });
       }
     });
 
@@ -1810,7 +1786,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec") return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills") return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))));
@@ -2018,9 +1994,15 @@ export class ZoneRoom extends Room<ZoneState> {
       newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult,
       p.luc,
     );
+    // «Теневой рывок»: первый удар после рывка — гарантированный крит.
+    let critM = crit;
+    if (critM <= 1 && rt.forceCritUntil > this.elapsed && msg.weapon !== "fist") {
+      critM = newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult;
+    }
+    rt.forceCritUntil = -999;
     const dmg =
       weaponDamage(msg.weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
-      crit *
+      critM *
       this.buffMult(client.sessionId, "dmg");
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
@@ -2039,12 +2021,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const sx = struck?.x ?? 0;
     const sy = struck?.y ?? 0;
     const sz = struck?.z ?? 0;
-    if (crit > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
+    if (critM > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
     // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
     this.sim.hitMob(
       msg.id, dmg, dx || 0, dz || 1, client.sessionId,
-      msg.weapon === "arrow", false, false, crit > 1,
+      msg.weapon === "arrow", false, false, critM > 1,
     );
     // Меч вампира / Копьё крови — часть нанесённого урона возвращается владельцу как HP.
     const vamped = affix === "vamp" && (msg.weapon === "sword" || msg.weapon === "spear") && !!struck;
@@ -4189,6 +4171,10 @@ export class ZoneRoom extends Room<ZoneState> {
       title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
+      skills: {
+        cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
+        chosen: [p.skill1, p.skill2].filter(Boolean),
+      },
       stats: heroStatRows({
         level: p.level,
         str: p.str,
@@ -4292,6 +4278,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
+    if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "title") {
       const token = `nick:${norm}`;
       const have = store.get(token)?.titles ?? [];
@@ -4961,6 +4948,9 @@ export class ZoneRoom extends Room<ZoneState> {
       massHealAt: -1,
       lastMassHeal: -999,
       lastSkillAt: -999,
+      skillAt: {},
+      forceCritUntil: -999,
+      skillCls: "",
       yaw: 0,
       // Раньше начиналось пустым — бот "забывал" всё, что честно поднял
       // раньше (см. bestOwnedTier выше). Тот же паттерн, что и для живого
@@ -5314,6 +5304,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.botGroupHeal(bot, dt);
     this.botStunBash(bot, dt);
     this.botArrowRain(bot, dt);
+    this.botClassSkills(bot, dt);
 
     // !рыбачить — идём на озеро и рыбачим вместо обычного боя, отдельная
     // от всей остальной механики ветка (не трогает мобов/лут/зону).
@@ -6008,17 +5999,21 @@ export class ZoneRoom extends Room<ZoneState> {
       prof ? prof.critMult : SWORD_CRIT_MULT,
       p.luc,
     );
+    // «Теневой рывок»: первый удар после рывка — гарантированный крит.
+    const forced = swordCrit <= 1 && bot.rt.forceCritUntil > this.elapsed;
+    bot.rt.forceCritUntil = -999;
+    const critHit = forced ? (prof ? prof.critMult : SWORD_CRIT_MULT) : swordCrit;
     const dmg =
       weaponDamage(kind, p.level, p, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt)) *
       (dualDagger ? DAGGER.dualDmg : 1) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
-      swordCrit *
+      critHit *
       this.buffMult(bot.id, "dmg");
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
-    if (swordCrit > 1) this.critFx(sx, sy, sz, bot.id);
-    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, swordCrit > 1);
+    if (critHit > 1) this.critFx(sx, sy, sz, bot.id);
+    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
     const vamped = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "vamp";
     if (vamped) {
       p.hp = Math.min(p.maxHp, p.hp + dmg * AFFIX.vamp.healFrac);
@@ -6063,7 +6058,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
 
-    if (p.rightCls !== "staff" || bot.healCd > 0) return;
+    if (p.rightCls !== "staff" || bot.healCd > 0 || !hasSkill(p, "massHeal")) return;
     if (p.mana < h.minMana) return;
     if (this.woundedNear(p).length < BOT.healMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
@@ -6092,6 +6087,51 @@ export class ZoneRoom extends Room<ZoneState> {
    * все мобы в круге оглушены на несколько секунд. Урона почти нет — это
    * контроль. Применяет даже на одного моба (BOT.stunMinTargets = 1).
    */
+  /**
+   * Умения «Классов 2.0» у бота: всё выбранное, что не покрыто старыми
+   * ботовыми умениями (меч — оглушение, лук — град, посох — лечение).
+   * Применяет по обстановке, с тем же шансом в секунду, что и старые.
+   */
+  private botClassSkills(bot: Bot, dt: number): void {
+    const p = bot.state;
+    if (p.dead || bot.fishing) return;
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (!cls) return;
+    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+    const legacy = (k: SkillId): boolean =>
+      (k === "stunBash" && p.rightCls === "sword") || (k === "arrowRain" && p.rightCls === "bow") || k === "massHeal";
+    const near = this.mobsInRadius(p, 11);
+    if (near.length === 0) return;
+    let nearest = near[0];
+    let nd = Infinity;
+    for (const m of near) {
+      const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+      if (d < nd) {
+        nd = d;
+        nearest = m;
+      }
+    }
+    for (const k of [p.skill1, p.skill2] as SkillId[]) {
+      if (!k || legacy(k)) continue;
+      let tx = nearest.x;
+      let tz = nearest.z;
+      if (k === "stunBash" && this.mobsInRadius(p, cls === "assassin" ? 2.6 : SKILLS2.stunBash.radius).length === 0) continue;
+      if (k === "arrowRain") {
+        const spot = this.bestRainSpot(p);
+        if (!spot) continue;
+        tx = spot.x;
+        tz = spot.z;
+      }
+      if (k === "shadowStep" && (cls === "archer" ? nd > 4 : nd < 3)) continue;
+      if (k === "crush" && nd > 8) continue;
+      if (k === "seal" && nd > 6) continue;
+      if (this.castSkill(k, bot.id, p, bot.rt, tx, tz)) {
+        bot.emoteFreezeUntil = Date.now() + 600;
+        return;
+      }
+    }
+  }
+
   private botStunBash(bot: Bot, dt: number): void {
     const p = bot.state;
 
@@ -6111,7 +6151,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botStunBashLand(bot);
       return;
     }
-    if (p.rightCls !== "sword" || bot.stunCd > 0) return;
+    if (p.rightCls !== "sword" || bot.stunCd > 0 || !hasSkill(p, "stunBash")) return;
     if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
 
@@ -6167,18 +6207,300 @@ export class ZoneRoom extends Room<ZoneState> {
    * Оглушающая волна вокруг корпуса `p` — общая для бота и игрока: урон + стан
    * всем мобам в радиусе.
    */
+  // ---------------------------------------------------------------- умения «Классов 2.0»
+
+  /**
+   * Выбор двух умений класса (окно снаряжения/страница !inv). Класс — по
+   * оружию в руках героя в мире, иначе по сохранённому снаряжению.
+   */
+  private chooseSkills(norm: string, p: PlayerState | null, ids: string[]): InvActResult {
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    const left = p ? p.leftCls : rec?.held?.left?.cls ?? "";
+    const right = p ? p.rightCls : rec?.held?.right?.cls ?? "";
+    const cls = classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    if (!cls) return { ok: false, text: "Возьми оружие — умения зависят от класса." };
+    const allowed = CLASSES2[cls].skills;
+    const pick = [...new Set(ids.filter((k): k is SkillId => allowed.includes(k as SkillId)))].slice(0, 2);
+    if (pick.length === 0) return { ok: false, text: "Нужно выбрать умения своего класса." };
+    if (p) {
+      p.skill1 = pick[0] ?? "";
+      p.skill2 = pick[1] ?? "";
+    }
+    const all = { ...(rec?.skills ?? {}) };
+    all[cls] = pick;
+    store.put(token, { skills: all });
+    return { ok: true, text: `Умения: ${pick.map((k) => skillName(k, cls)).join(" и ")}` };
+  }
+
+  /** Печати на земле: лечат/защищают союзников, замедляют (и у боевого мага жгут) врагов. */
+  private readonly seals: { x: number; z: number; r: number; until: number; owner: string; burn: number; tickT: number }[] = [];
+
+  /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
+  private skillCdMul(p: PlayerState): number {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (cls !== "support" && cls !== "battlemage") return 1;
+    return 1 / (1 + invested(p.wis) * ATTR2.wis.cast);
+  }
+
+  /** Выставить skill1/skill2 под класс оружия в руках (сохранённый выбор или по умолчанию). */
+  private syncSkills(p: PlayerState, rt: Runtime): void {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "";
+    if (cls === rt.skillCls) return;
+    rt.skillCls = cls;
+    if (!cls) {
+      p.skill1 = p.skill2 = "";
+      return;
+    }
+    const def = CLASSES2[cls];
+    const saved = rt.token ? store.get(rt.token)?.skills?.[cls] : undefined;
+    const pick = (saved ?? []).filter((k): k is SkillId => def.skills.includes(k as SkillId));
+    const use = pick.length > 0 ? pick : def.defaultSkills;
+    p.skill1 = use[0] ?? "";
+    p.skill2 = use[1] ?? "";
+  }
+
+  /**
+   * «Сила» умения — от оружия класса: у бойцов это удар основным оружием
+   * (тир, роллы, баффы), у магов — магия (ИНТ, тир посоха/молота).
+   */
+  private skillPower(p: PlayerState, cls: ClassId, rt: Runtime, ownerId: string): { dmg: number; magic: boolean } {
+    const buff = this.buffMult(ownerId, "dmg");
+    const handOf = (c: string): "left" | "right" => (p.rightCls === c ? "right" : "left");
+    switch (cls) {
+      case "support": {
+        const h = handOf("staff");
+        return { dmg: fireboltDamage(p.level, p, 0.7) * staffMagicTier(p[`${h}Tier`]) * rolledDmgMul(p, h, rt) * 0.5 * buff, magic: true };
+      }
+      case "battlemage": {
+        const h = handOf("hammer");
+        return { dmg: 1.9 * magicPowerFor(p.level, p) * multIn(p, h) * rolledDmgMul(p, h, rt) * buff, magic: true };
+      }
+      case "archer": {
+        const h = handOf("bow");
+        return { dmg: weaponDamage("arrow", p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
+      }
+      default: {
+        const kind = cls === "assassin" ? "dagger" : cls === "spearman" ? "spear" : "sword";
+        const h = handOf(kind);
+        return { dmg: weaponDamage(kind, p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
+      }
+    }
+  }
+
+  /**
+   * Применить умение из пула (игрок — по MSG.skill, бот — сам). Проверяет класс,
+   * выбор (skill1/skill2) и откат. `tx,tz` — точка умения (NaN — перед героем).
+   * true — применено.
+   */
+  private castSkill(kind: SkillId, ownerId: string, p: PlayerState, rt: Runtime, tx: number, tz: number): boolean {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
+    if (p.skill1 !== kind && p.skill2 !== kind) return false;
+    if (kind === "massHeal") return false; // массовое лечение — через каст посоха (MSG.cast)
+    const sk = SKILLS2[kind];
+    const cd = sk.cooldown * this.skillCdMul(p);
+    if (this.elapsed - (rt.skillAt[kind] ?? -999) < cd) return false;
+    rt.skillAt[kind] = this.elapsed;
+    rt.lastSkillAt = this.elapsed;
+    const v = CLASS_IDS.indexOf(cls);
+    const feetY = p.head.y - PLAYER.eyeHeight;
+    // Направление «вперёд»: к точке умения, иначе по взгляду головы.
+    const fwd = (): [number, number] => {
+      if (Number.isFinite(tx) && Number.isFinite(tz)) {
+        const dx = tx - p.head.x;
+        const dz = tz - p.head.z;
+        const l = Math.hypot(dx, dz);
+        if (l > 0.1) return [dx / l, dz / l];
+      }
+      const yaw = rt.yaw;
+      return [Math.sin(yaw), Math.cos(yaw)];
+    };
+    const clampPoint = (maxR: number, defR: number): [number, number] => {
+      const [fx, fz] = fwd();
+      if (!Number.isFinite(tx) || !Number.isFinite(tz)) return [p.head.x + fx * defR, p.head.z + fz * defR];
+      const dx = tx - p.head.x;
+      const dz = tz - p.head.z;
+      const l = Math.hypot(dx, dz);
+      return l > maxR ? [p.head.x + (dx / l) * maxR, p.head.z + (dz / l) * maxR] : [tx, tz];
+    };
+    const pow = this.skillPower(p, cls, rt, ownerId);
+
+    switch (kind) {
+      case "stunBash": {
+        const single = cls === "assassin";
+        const radius = single ? 2.6 : sk.radius;
+        const dmg = sk.dmgMult * pow.dmg * (single ? 2 : 1);
+        this.broadcast(MSG.act, { k: "stunBash", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: sk.castTime, r: radius, v } satisfies ActRelay);
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (!pp || pp.dead) return;
+          this.broadcast(MSG.act, { k: "stunHit", id: ownerId, x: pp.head.x, y: pp.head.y - PLAYER.eyeHeight, z: pp.head.z } satisfies ActRelay);
+          this.stunBashAt(pp, ownerId, radius, 3, dmg, pow.magic);
+        }, sk.castTime * 1000);
+        return true;
+      }
+      case "arrowRain": {
+        // Ассасин — «Веер кинжалов»: ближе и уже; остальные — круг вдалеке.
+        const fan = cls === "assassin";
+        const radius = fan ? 4.5 : sk.radius;
+        const [cx, cz] = clampPoint(fan ? 8 : SKILL.arrowRain.range, fan ? 5 : 12);
+        this.broadcast(MSG.act, { k: "arrowRain", id: ownerId, x: cx, y: terrainHeight(cx, cz), z: cz, d: sk.castTime, r: radius, v } satisfies ActRelay);
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (!pp) return;
+          if (cls === "archer") {
+            this.arrowRainAt(cx, cz, ownerId, radius, pp, pp.rightCls === "bow" ? "right" : "left", rt);
+          } else {
+            this.skillRainAt(cx, cz, ownerId, radius, sk.dmgMult * pow.dmg, pow.magic);
+          }
+        }, sk.castTime * 1000);
+        return true;
+      }
+      case "shadowStep": {
+        // Клиент сам переносит героя (позиции игроков — его); бот — переносим тут.
+        const archer = cls === "archer";
+        const [fx, fz] = fwd();
+        let ex: number;
+        let ez: number;
+        if (archer) {
+          ex = p.head.x - fx * 7;
+          ez = p.head.z - fz * 7;
+        } else {
+          [ex, ez] = clampPoint(11, 8);
+        }
+        const sx = p.head.x;
+        const sz = p.head.z;
+        rt.forceCritUntil = this.elapsed + 4;
+        if (cls === "spearman") {
+          // «Выпад»: рывок копьём бьёт всех на линии.
+          const dx = ex - sx;
+          const dz = ez - sz;
+          const len = Math.hypot(dx, dz) || 1;
+          for (const m of [...this.sim.mobs.values()]) {
+            if (m.dead) continue;
+            const vx = m.x - sx;
+            const vz = m.z - sz;
+            const along = (vx * dx + vz * dz) / len;
+            if (along < 0 || along > len + 1) continue;
+            const side = Math.abs(vx * dz - vz * dx) / len;
+            if (side > 1.2 + this.sim.targetRadius("mob", m.id)) continue;
+            this.sim.hitMob(m.id, 1.5 * pow.dmg, dx / len, dz / len, ownerId);
+          }
+        }
+        if (this.bots.has(ownerId.replace(/^bot:/, ""))) {
+          p.head.x = ex;
+          p.head.z = ez;
+          p.head.y = terrainHeight(ex, ez) + PLAYER.eyeHeight;
+        }
+        this.broadcast(MSG.act, { k: "shadowStep", id: ownerId, x: sx, y: feetY, z: sz, x2: ex, z2: ez, v } satisfies ActRelay);
+        return true;
+      }
+      case "crush": {
+        const [cx, cz] = clampPoint(8, 3.5);
+        const cy = terrainHeight(cx, cz);
+        this.broadcast(MSG.act, { k: "crushMark", id: ownerId, x: cx, y: cy, z: cz, d: sk.castTime, r: sk.radius, v } satisfies ActRelay);
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (!pp || pp.dead) return;
+          if (this.bots.has(ownerId.replace(/^bot:/, ""))) {
+            pp.head.x = cx;
+            pp.head.z = cz;
+            pp.head.y = cy + PLAYER.eyeHeight;
+          }
+          this.broadcast(MSG.act, { k: "crushHit", id: ownerId, x: cx, y: cy, z: cz, r: sk.radius, v } satisfies ActRelay);
+          for (const m of [...this.sim.mobs.values()]) {
+            if (m.dead) continue;
+            const dx = m.x - cx;
+            const dz = m.z - cz;
+            const d = Math.hypot(dx, dz);
+            if (d - this.sim.targetRadius("mob", m.id) > sk.radius) continue;
+            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx / (d || 1), dz / (d || 1), ownerId, false, false, pow.magic);
+            this.sim.stunMob(m.id, 1);
+          }
+        }, sk.castTime * 1000);
+        return true;
+      }
+      case "seal": {
+        const burn = cls === "battlemage" ? SEAL.burnPerSec * pow.dmg : 0;
+        this.seals.push({ x: p.head.x, z: p.head.z, r: sk.radius, until: this.elapsed + SEAL.duration, owner: ownerId, burn, tickT: 0 });
+        this.broadcast(MSG.act, { k: "seal", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: SEAL.duration, r: sk.radius, v } satisfies ActRelay);
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /** Залпы «дождя» умения (не лук): 5 волн за 3 с по кругу, мобы пригвождены. */
+  private skillRainAt(cx: number, cz: number, ownerId: string, radius: number, dmg: number, magic: boolean): void {
+    const { hits, duration } = SKILL.arrowRain;
+    const step = duration / hits;
+    const y = terrainHeight(cx, cz);
+    for (let i = 0; i < hits; i++) {
+      this.clock.setTimeout(() => {
+        this.broadcast(MSG.act, { k: "rainTick", id: ownerId, x: cx, y, z: cz } satisfies ActRelay);
+        for (const m of [...this.sim.mobs.values()]) {
+          if (m.dead) continue;
+          const dx = m.x - cx;
+          const dz = m.z - cz;
+          const d = Math.hypot(dx, dz);
+          if (d > radius + MOB.hitRadius * m.scale) continue;
+          this.sim.rootMob(m.id, step + 0.3);
+          this.sim.hitMob(m.id, dmg, dx / (d || 1), dz / (d || 1), ownerId, true, false, magic);
+        }
+      }, step * (i + 0.5) * 1000);
+    }
+  }
+
+  /** Стоит ли точка в какой-нибудь печати. */
+  private inSeal(x: number, z: number): boolean {
+    for (const s of this.seals) if (Math.hypot(x - s.x, z - s.z) <= s.r) return true;
+    return false;
+  }
+
+  /** Печати: раз в 0.5 с — лечение союзникам, замедление (и огонь) врагам. */
+  private tickSeals(dt: number): void {
+    for (let i = this.seals.length - 1; i >= 0; i--) {
+      const s = this.seals[i];
+      if (this.elapsed > s.until) {
+        this.seals.splice(i, 1);
+        continue;
+      }
+      s.tickT -= dt;
+      if (s.tickT > 0) continue;
+      s.tickT = 0.5;
+      this.state.players.forEach((ally) => {
+        if (ally.dead || ally.hp >= ally.maxHp) return;
+        if (Math.hypot(ally.head.x - s.x, ally.head.z - s.z) > s.r) return;
+        ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * SEAL.healFracPerSec * 0.5);
+      });
+      for (const m of [...this.sim.mobs.values()]) {
+        if (m.dead) continue;
+        const dx = m.x - s.x;
+        const dz = m.z - s.z;
+        const d = Math.hypot(dx, dz);
+        if (d - this.sim.targetRadius("mob", m.id) > s.r) continue;
+        this.sim.slowMob(m.id, 0.8, 1 - SEAL.slow);
+        if (s.burn > 0) this.sim.hitMob(m.id, s.burn * 0.5, dx / (d || 1), dz / (d || 1), s.owner, false, true, true);
+      }
+    }
+  }
+
   private stunBashAt(
     p: PlayerState,
     ownerId: string,
     radius: number,
     duration: number,
     dmg: number,
+    /** Урон магией (боевой маг — «Громовой удар»). */
+    magic = false,
   ): void {
     for (const t of this.mobsInRadius(p, radius)) {
       const dx = t.x - p.head.x;
       const dz = t.z - p.head.z;
       const l = Math.hypot(dx, dz) || 1;
-      this.sim.hitMob(t.id, dmg, dx / l, dz / l, ownerId);
+      this.sim.hitMob(t.id, dmg, dx / l, dz / l, ownerId, false, false, magic);
       this.sim.stunMob(t.id, duration);
     }
   }
@@ -6196,7 +6518,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.botArrowRainLand(bot);
       return;
     }
-    if (p.rightCls !== "bow" || bot.rainCd > 0) return;
+    if (p.rightCls !== "bow" || bot.rainCd > 0 || !hasSkill(p, "arrowRain")) return;
     const spot = this.bestRainSpot(p);
     if (!spot) return;
     if (Math.random() >= BOT.skillChancePerSec * dt) return;
@@ -6427,6 +6749,13 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickBots(dt);
     serverPerf.section("bots", serverPerf.now() - perfB0);
     this.maybeSayTip(dt);
+
+    this.tickSeals(dt);
+    // Умения «Классов 2.0»: набор под класс по оружию в руках.
+    this.state.players.forEach((p, id) => {
+      const rt = this.rt.get(id);
+      if (rt) this.syncSkills(p, rt);
+    });
 
     // Мана восстанавливается всегда (от интеллекта).
     this.state.players.forEach((p) => {
@@ -6784,6 +7113,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
     if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
     if (h.projectile) dmg *= 1 - magicResistFrac(p);
+    // «Печать»: стоишь в круге союзника (или своём) — входящий урон меньше.
+    if (this.inSeal(p.head.x, p.head.z)) dmg *= 1 - SEAL.shield;
     rt.sinceHurt = 0;
     if (dmg > 0) p.hp = Math.max(0, p.hp - dmg);
     // Вампиризм моба (Костяной призрак) — от реально прошедшего урона.
@@ -7191,6 +7522,9 @@ export class ZoneRoom extends Room<ZoneState> {
       massHealAt: -1,
       lastMassHeal: -999,
       lastSkillAt: -999,
+      skillAt: {},
+      forceCritUntil: -999,
+      skillCls: "",
       yaw: rec?.yaw ?? 0,
       owned: new Set(Array.isArray(rec?.owned) ? rec.owned : []),
       stowed: sanitizeStowed(rec?.stowed),

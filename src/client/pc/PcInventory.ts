@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, costRule, stepCost } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
@@ -17,7 +17,7 @@ import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/n
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "enchant" | "attrs";
+export type InvTab = "gear" | "enchant" | "attrs" | "skills";
 
 export interface HeldInfo {
   cls: string;
@@ -295,6 +295,7 @@ export class PcInventory {
       ["gear", "Снаряжение"],
       ["enchant", "Заточка"],
       ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
+      ["skills", "Умения"],
     ];
     for (const [id, label] of tabs) {
       const t = div(`pcinv-tab${this.tab === id ? " on" : ""}${id === "attrs" && d && d.attrs.unspent > 0 ? " glow" : ""}`, label);
@@ -326,6 +327,7 @@ export class PcInventory {
     }
     if (this.tab === "gear") this.renderGear(d);
     else if (this.tab === "enchant") this.renderEnchant(d);
+    else if (this.tab === "skills") this.renderSkills(d);
     else this.renderAttrs(d);
   }
 
@@ -673,6 +675,47 @@ export class PcInventory {
     this.render();
   }
 
+  /** Вкладка «Умения»: класс по оружию в руках и выбор любых двух из разрешённых. */
+  private renderSkills(d: PcInvData): void {
+    const wrap = div("pcinv-attrs");
+    const cls = (d.skills?.cls ?? "") as ClassId | "";
+    if (!cls) {
+      wrap.append(div("pcinv-name", "Возьми оружие — умения зависят от класса"));
+      this.body.append(wrap);
+      return;
+    }
+    const def = CLASSES2[cls];
+    wrap.append(
+      div("pcinv-name", `${def.icon} ${def.name} — ${def.role}`),
+      div("pcinv-small", `Оружие: ${def.weapons}. Выбери любые два умения — клавиши 2 и 3 (телефон — кнопки ✦, VR — стики).`),
+    );
+    const chosen = new Set(d.skills?.chosen ?? []);
+    for (const id of def.skills) {
+      const sk = SKILLS2[id];
+      const v = sk.variants?.[cls];
+      const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
+      const txt = div("pcinv-atxt");
+      txt.append(
+        div("pcinv-aname", `${sk.icon} ${v?.name ?? sk.name} · откат ${sk.cooldown} с`),
+        div("pcinv-small", v?.desc ?? sk.desc),
+      );
+      const b = document.createElement("button");
+      b.className = "pcinv-abtn";
+      b.textContent = chosen.has(id) ? "✓" : "+";
+      b.title = chosen.has(id) ? "Выбрано" : "Выбрать (заменит более старое)";
+      b.onclick = () => {
+        if (chosen.has(id)) return;
+        // Новое — вместо первого из выбранных (держим ровно два).
+        const next = [...(d.skills?.chosen ?? []), id].slice(-2);
+        this.hooks.act({ act: "skills", id: next.join(","), idx: 0 });
+      };
+      row.append(txt, b);
+      wrap.append(row);
+    }
+    if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+    this.body.append(wrap);
+  }
+
   private renderAttrs(d: PcInvData): void {
     const a = d.attrs;
     const wrap = div("pcinv-attrs");
@@ -1006,6 +1049,7 @@ function injectInvStyle(): void {
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }
 .pcinv-attrs { display:flex; flex-direction:column; gap:8px; max-width:520px; }
+.pcinv-skill.on { outline:1px solid #7ee081; }
 .pcinv-arow { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#1b1a21; border-radius:7px; }
 .pcinv-atxt { flex:1; } .pcinv-aname { font-weight:700; }
 .pcinv-abtn { width:42px; padding:6px 0; border-radius:6px; border:1px solid #4a4e5a; background:#23222b; color:#9fe39a;

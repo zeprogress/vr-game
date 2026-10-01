@@ -1,3 +1,4 @@
+import type { SkillId } from "../classes2";
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
 import type { StatName } from "../progression";
@@ -33,6 +34,8 @@ export const MSG = {
   cast: "cst",
   /** клиент -> сервер: активное умение оружия (воин — оглушение, лучник — град стрел). */
   skill: "skl",
+  /** клиент -> сервер: выбор двух умений текущего класса («Классы 2.0»). */
+  setSkills: "sks",
   /** сервер -> клиент: моб ударил тебя в упор / плевком. */
   mobHit: "mh",
   /** клиент -> сервер: потратить очко характеристики. */
@@ -285,11 +288,13 @@ export interface PcInvData {
   attrs: { unspent: number; str: number; agi: number; int: number; con: number; luc: number; wis: number };
   respecCost: number;
   stats: { label: string; value: string }[];
+  /** Умения: класс по оружию в руках ("" — без оружия) и выбранные два. */
+  skills?: { cls: string; chosen: string[] };
 }
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять). */
-  act: "enchant" | "stat" | "respec" | "title";
+  act: "enchant" | "stat" | "respec" | "title" | "skills";
   id: string;
   idx: number;
 }
@@ -535,7 +540,11 @@ export type ActKind =
   | "freezeMark" // Ледяной демон: круг под героем (телеграф d с)
   | "freezeHit" // Ледяной демон: заморозка по области
   | "hammerWave" // молот боевого мага: магическая волна вокруг цели (d — радиус)
-  | "spearPierce"; // копьё прошило линию: от (x,z) до (x2,z2)
+  | "spearPierce" // копьё прошило линию: от (x,z) до (x2,z2)
+  | "shadowStep" // «Теневой рывок»: из (x,z) в (x2,z2); v — класс (вариант эффекта)
+  | "crushMark" // «Сокрушение»: прыжок в точку (x,z), удар через d с; r — радиус
+  | "crushHit" // «Сокрушение» ударило о землю в (x,z)
+  | "seal"; // «Печать» в (x,z) на d с, радиус r; v — класс (поддержка/боевой маг)
 
 const ACT_KINDS: readonly ActKind[] = [
   "swing",
@@ -572,6 +581,10 @@ export interface ActRelay extends ActMsg {
   /** Второй конец линии (хват щупальцами спрута: от x2/z2 к x/z). */
   x2?: number;
   z2?: number;
+  /** Вариант эффекта (индекс класса в CLASS_IDS) — умение у разных классов выглядит по-своему. */
+  v?: number;
+  /** Радиус области, м. */
+  r?: number;
 }
 
 /**
@@ -743,14 +756,19 @@ export interface CastMsg {
 }
 
 export interface SkillMsg {
-  /** Умение: воин — оглушающий удар, лучник — град стрел. */
-  kind: "stunBash" | "arrowRain";
+  /** Умение из пула «Классов 2.0» (classes2 SKILLS2): должно быть выбрано у героя (skill1/skill2). */
+  kind: SkillId;
   /**
-   * Град стрел: желаемая точка круга (перед игроком). Сервер ограничивает её
-   * дальностью и может подвинуть; для оглушения не нужна.
+   * Точка умения: град — центр круга, сокрушение — куда прыгнуть, рывок —
+   * куда приземлился (клиент двигает себя сам). Сервер ограничивает дальностью.
    */
   x?: number;
   z?: number;
+}
+
+/** Выбор двух умений текущего класса. */
+export interface SetSkillsMsg {
+  skills: string[];
 }
 
 export interface MobHitMsg {
