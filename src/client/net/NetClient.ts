@@ -420,7 +420,7 @@ export class NetClient {
     this.room?.send(MSG.cast, msg);
   }
 
-  /** Активное умение оружия (воин — оглушение, лучник — град стрел). */
+  /** Умение из пула «Классов 2.0» (выбранное у героя). */
   sendSkill(msg: SkillMsg): void {
     this.room?.send(MSG.skill, msg);
   }

@@ -3348,6 +3348,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
     else if (cmd === "!class" || cmd === "!класс") this.setBotClass(nick, norm, parts.slice(1).join(" "));
+    else if (cmd === "!skills" || cmd === "!skill" || cmd === "!умения") this.setBotSkills(nick, norm, parts.slice(1));
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
@@ -4748,6 +4749,9 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и уникального оружия бывают случайные роллы — урон, скорость атаки, крит.",
     "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
+    "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
+    "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
+    "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов, бот раскидывает новые очки сам.",
   ];
 
   /** Раз во сколько-то минут — случайная подсказка в чат, если герои в мире есть. */
@@ -4770,7 +4774,8 @@ export class ZoneRoom extends Room<ZoneState> {
     this.reply(
       "Команды: !play — твой герой выходит в мир и сам дерётся с мобами · " +
         "!stop — убрать его · !skin — сменить внешность (или !skin 3, всего " +
-        `${BOT.skins}) · !stats — его прогресс · !str/!dex/!int — вложить очко атрибута · ` +
+        `${BOT.skins}) · !stats — его прогресс · !class — класс (воин, лучник, маг, ассасин, копейщик, боевой маг) · ` +
+        "!skills — умения класса (два на выбор) · !str !dex !int !con !luc !wis — атрибуты · " +
         "!respec — вернуть все очки атрибутов (за 1 жетон ◈) · " +
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
@@ -5115,6 +5120,41 @@ export class ZoneRoom extends Room<ZoneState> {
       `@${nick} класс: ${def.icon} ${def.name} (${def.weapons}). Новые очки атрибутов герой раскидает под класс сам; ` +
         `вложенные раньше — !respec за 1 ◈.`,
     );
+  }
+
+  /**
+   * `!skills` — умения класса героя: без аргументов — список (выбранные с ✓),
+   * `!skills <умение> <умение>` — выбрать два (по началу названия: «рывок печать»).
+   */
+  private setBotSkills(nick: string, norm: string, args: string[]): void {
+    const t = this.findWeaponsTarget(norm);
+    const rec = store.get(`nick:${norm}`);
+    const left = t ? t.p.leftCls : rec?.held?.left?.cls ?? "";
+    const right = t ? t.p.rightCls : rec?.held?.right?.cls ?? "";
+    const cls = classOf2(left as Weapon2 | "", right as Weapon2 | "");
+    if (!cls) {
+      if (this.hintOk(norm)) this.reply(`@${nick} у героя нет оружия — сначала !play или !class.`);
+      return;
+    }
+    const def = CLASSES2[cls];
+    const chosen = t ? [t.p.skill1, t.p.skill2] : rec?.skills?.[cls] ?? def.defaultSkills;
+    const words = args.map((w) => w.toLowerCase()).filter((w) => w.length >= 3);
+    if (words.length === 0) {
+      if (!this.hintOk(norm)) return;
+      const list = def.skills.map((k) => `${chosen.includes(k) ? "✓" : "·"} ${skillName(k, cls)}`).join(" ");
+      this.reply(`@${nick} ${def.icon} ${def.name}: ${list} — выбрать два: !skills <умение> <умение>`);
+      return;
+    }
+    const pick: SkillId[] = [];
+    for (const w of words) {
+      const hit = def.skills.find((k) => {
+        const names = [skillName(k, cls), SKILLS2[k].name, k].map((n) => n.toLowerCase());
+        return names.some((n) => n.startsWith(w) || n.split(" ").some((part) => part.startsWith(w)));
+      });
+      if (hit && !pick.includes(hit)) pick.push(hit);
+    }
+    const r = this.chooseSkills(norm, t?.p ?? null, pick);
+    this.reply(`@${nick} ${r.text}`);
   }
 
   private persistBot(bot: Bot): void {

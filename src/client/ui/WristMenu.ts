@@ -1023,10 +1023,10 @@ export class WristMenu {
 
     ctx.font = "19px system-ui, sans-serif";
     ctx.fillStyle = "#a9a498";
-    ctx.fillText("Умение оружия", LX + 8, y + 4);
+    ctx.fillText("Умения", LX + 8, y + 4);
     ctx.fillStyle = this.skillCd < 0 ? "#8f8a7e" : this.skillCd <= 0.001 ? "#7ee081" : "#ffd166";
     ctx.fillText(
-      this.skillCd < 0 ? "нет (нужен меч или лук)" : this.skillCd <= 0.001 ? "готово — нажми стик" : "перезарядка…",
+      this.skillCd < 0 ? "не выбраны — вкладка «Умения»" : this.skillCd <= 0.001 ? "готово — стик правой / левой руки" : "перезарядка…",
       LX + 200,
       y + 4,
     );
