@@ -110,7 +110,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     if (cls === "hammer") {
       rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
     }
-    if (cls === "spear") rows.push({ label: "Пробивает целей", value: String(WEAPONS2.spear.pierce) });
+    if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
   } else {
     rows.push({
       label: "Урон",

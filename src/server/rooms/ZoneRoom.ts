@@ -729,6 +729,10 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
 const TOWER_OPEN = false;
 /** Бот по дороге подбирает всё, что лежит ближе этого (м, по горизонтали). */
 const BOT_GRAB_RADIUS = 5;
+/** Полуугол конуса удара копья, рад (~35° в каждую сторону). */
+const SPEAR_CONE = 0.6;
+/** Бот-ближник начинает замах, только довернувшись на цель ближе этого угла, рад (~45°). */
+const BOT_MELEE_FACE = 0.8;
 
 /** Щит в руках героя: тир и экземпляр (null — щита нет). */
 function shieldOf(p: PlayerState, rt: Runtime | undefined): { tier: string; inst: WeaponInstance | null } | null {
@@ -2084,28 +2088,33 @@ export class ZoneRoom extends Room<ZoneState> {
    * получают тот же урон. Всем — полоса выпада.
    */
   private spearPierce(ownerId: string, p: PlayerState, struck: { id: string; x: number; z: number }, dmg: number): void {
+    // Копьё бьёт конусом перед собой (ось — на цель удара): ещё до
+    // WEAPONS2.spear.pierce − 1 мобов в секторе ±SPEAR_CONE на длину выпада, ближние первыми.
     const dx = struck.x - p.head.x;
     const dz = struck.z - p.head.z;
     const len = Math.hypot(dx, dz) || 1;
     const ux = dx / len;
     const uz = dz / len;
-    const maxAlong = WEAPON_REACH.spear + 2;
-    let left = WEAPONS2.spear.pierce - 1;
-    for (const m of [...this.sim.mobs.values()]) {
-      if (left <= 0) break;
+    const maxAlong = WEAPON_REACH.spear + 1;
+    const cands: { id: string; d: number; ax: number; az: number }[] = [];
+    for (const m of this.sim.mobs.values()) {
       if (m.dead || m.id === struck.id) continue;
       const vx = m.x - p.head.x;
       const vz = m.z - p.head.z;
-      const along = vx * ux + vz * uz;
-      if (along <= 0 || along > maxAlong) continue;
-      const side = Math.abs(vx * uz - vz * ux);
-      if (side > 1 + this.sim.targetRadius("mob", m.id)) continue;
-      this.sim.hitMob(m.id, dmg, ux, uz, ownerId);
-      left--;
+      const r = this.sim.targetRadius("mob", m.id);
+      const d = Math.hypot(vx, vz);
+      if (d - r > maxAlong || d < 1e-3) continue;
+      // Крупного моба засчитываем, если в конус попадает хоть край его тела.
+      const cos = (vx * ux + vz * uz) / d;
+      const slack = Math.asin(Math.min(1, r / Math.max(d, r)));
+      if (cos < Math.cos(Math.min(Math.PI / 2, SPEAR_CONE + slack))) continue;
+      cands.push({ id: m.id, d, ax: vx / d, az: vz / d });
     }
+    cands.sort((a, b) => a.d - b.d);
+    for (const c of cands.slice(0, WEAPONS2.spear.pierce - 1)) this.sim.hitMob(c.id, dmg, c.ax, c.az, ownerId);
     this.broadcast(MSG.act, {
       k: "spearPierce", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z,
-      x2: p.head.x + ux * maxAlong, z2: p.head.z + uz * maxAlong,
+      x2: p.head.x + ux * maxAlong, z2: p.head.z + uz * maxAlong, r: SPEAR_CONE,
     } satisfies ActRelay);
   }
 
@@ -5891,9 +5900,12 @@ export class ZoneRoom extends Room<ZoneState> {
     // на бегу (отход от подобравшегося моба). Иначе он «стрелял спиной»:
     // корпус смотрел по ходу движения, а снаряд летел из затылка.
     const wantAim = ranged && !!chasingMob && !emoting && dist < shootRange;
+    // Ближник у цели (или уже на замахе) — тоже смотрит на неё, а не по ходу:
+    // иначе стоя/на шаге в сторону он бил моба боком или спиной.
+    const meleeFace = !ranged && !!chasingMob && !emoting && (dist < attackReach + 1.5 || bot.swingIn > 0);
     const aimYaw = Math.atan2(dx, dz);
-    // Идём — смотрим по ходу; целимся (дальник) — на моба.
-    const facingYaw = wantAim
+    // Идём — смотрим по ходу; целимся (дальник) или бьём вблизи — на моба.
+    const facingYaw = wantAim || meleeFace
       ? aimYaw
       : spd > 0.15
         ? Math.atan2(bot.vx, bot.vz)
@@ -5909,7 +5921,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Насколько корпус ещё не довёрнут на цель — по этому гейтим выстрел.
     let aimErr = Math.PI;
-    if (wantAim) {
+    if (wantAim || meleeFace) {
       let e = aimYaw - bot.yaw;
       while (e > Math.PI) e -= Math.PI * 2;
       while (e < -Math.PI) e += Math.PI * 2;
@@ -6014,7 +6026,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Замах. Урон не здесь: сначала клиенты получают анимацию, а клинок
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
-    if (!ranged && chasingMob && !emoting && dist < attackReach && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    // Замах — только когда уже довернулись на цель (не бить спиной).
+    if (!ranged && chasingMob && !emoting && dist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
       // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).

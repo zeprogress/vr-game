@@ -68,7 +68,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
       out.push(["Один кинжал", `+${Math.round(DAGGER.soloCrit * 100)}% крита, +${DAGGER.soloCritDmg} к силе крита, уворот выше`]);
       out.push(["Два кинжала", `темп ×${DAGGER.dualTempo}, урон удара ×${DAGGER.dualDmg}`]);
     } else if (w.cls === "spear") {
-      out.push(["Выпад", `до ${prof.reach} м, пробивает ${prof.pierce} целей на линии`]);
+      out.push(["Выпад", `до ${prof.reach} м, конусом перед собой — до ${prof.pierce} целей`]);
     } else {
       out.push(["Волна (магия)", `${n1(HAMMER.waveMagic * magicPowerFor(s.level, s) * d.mult)} по кругу ${HAMMER.waveRadius} м`]);
     }

@@ -186,7 +186,7 @@ export interface WeaponProfile {
   tempoSoft: number;
   /** Досягаемость, м (дальний бой — дальность выстрела). */
   reach: number;
-  /** Сколько целей на линии пробивает удар. */
+  /** Сколько целей задевает удар (у копья — конусом перед собой). */
   pierce: number;
   critBase: number;
   critMult: number;
@@ -212,7 +212,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     name: "Кинжал", dmg: 0.86, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
     critBase: 0.12, critMult: 2, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
-  // Копьё: длинный выпад насквозь по линии, обе руки.
+  // Копьё: длинный выпад конусом перед собой, обе руки.
   spear: {
     name: "Копьё", dmg: 1.35, interval: 0.95, tempoSoft: 1, reach: 4.5, pierce: 3,
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
@@ -319,7 +319,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
     build: { str: 3, luc: 3.5, agi: 2.5, con: 1.3, wis: 0.6 },
   },
   spearman: {
-    name: "Копейщик", icon: "🔱", role: "Длинный выпад насквозь", weapons: "копьё (2 руки)", main: "spear",
+    name: "Копейщик", icon: "🔱", role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
     skills: ["stunBash", "whirlwind", "arrowRain", "mark"], defaultSkills: ["whirlwind", "stunBash"],
     build: { str: 4, agi: 2.2, con: 2.2, luc: 1.2, wis: 0.8 },
   },
