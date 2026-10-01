@@ -130,6 +130,7 @@ import {
 import {
   addToBag,
   migrateStaffAffixes,
+  migrateDmgPct,
   affixPoints,
   bagCount,
   takeFromBag,
@@ -1063,14 +1064,21 @@ export class ZoneRoom extends Room<ZoneState> {
     let staffFixed = 0;
     for (const rec of store.entries()) {
       let changed = false;
-      for (const w of rec.weapons ?? []) if (migrateStaffAffixes(w)) changed = true;
+      for (const w of rec.weapons ?? []) {
+        if (migrateStaffAffixes(w)) changed = true;
+        if (migrateDmgPct(w)) changed = true;
+      }
       if (changed) {
         staffFixed++;
         store.put(rec.token, { weapons: rec.weapons });
       }
     }
-    for (const d of world.loadDrops()) if (d.instance) migrateStaffAffixes(d.instance);
-    if (staffFixed) console.log(`[zone] посохи пересчитаны у ${staffFixed} героев`);
+    for (const d of world.loadDrops()) {
+      if (!d.instance) continue;
+      migrateStaffAffixes(d.instance);
+      migrateDmgPct(d.instance);
+    }
+    if (staffFixed) console.log(`[zone] роллы оружия пересчитаны у ${staffFixed} героев`);
     // Чистка сумок во всех сейвах: одна стопка на предмет, зелий не больше 99.
     for (const rec of store.entries()) {
       if (!Array.isArray(rec.bag)) continue;
