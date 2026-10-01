@@ -1,3 +1,4 @@
+import { AFFIX, SHIELD } from "./constants";
 import type { MobKind } from "./net/schema";
 
 export type ItemId =
@@ -8,6 +9,7 @@ export type ItemId =
   | "leg_sword"
   | "leg_bow"
   | "leg_shield"
+  | "gold_shield"
   | "leg_staff"
   | "gold_dagger"
   | "gold_spear"
@@ -39,7 +41,12 @@ export function isTwoHandedMelee(cls: string): boolean {
  */
 export type WeaponTier = "base" | "gold" | "legendary";
 
-/** Механический эффект легендарного оружия. Числа — в constants.ts (AFFIX). */
+/**
+ * Врождённый эффект СТАРЫХ уникальных предметов (Меч вампира, Лук охотника,
+ * Эгида, Посох бури). С «Лутом 3.0» новые уникальные выпадают без него —
+ * эффект живёт на конкретном инстансе (WeaponInstance.innate), не на типе.
+ * Числа — в constants.ts (AFFIX).
+ */
 export type WeaponAffix = "vamp" | "crit" | "guard" | "storm";
 
 export interface WeaponDef {
@@ -50,8 +57,6 @@ export interface WeaponDef {
   mult: number;
   /** Цвет клинка / дуги / диска. */
   tint: readonly [number, number, number];
-  /** Аффикс легендарки (только у tier === "legendary"). */
-  affix?: WeaponAffix;
 }
 
 export type WeaponKey = `${WeaponClass}:${WeaponTier}`;
@@ -67,61 +72,54 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.42, 0.28, 0.16] },
   "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
+  "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
   "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
   "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
 
-  // Легендарки — именное оружие с аффиксом. Урон чуть выше золота, плюс эффект.
-  // Все фиолетовые (единый «легендарный» вид).
-  "sword:legendary": {
-    cls: "sword", tier: "legendary", name: "Меч вампира", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "vamp",
-  },
-  "bow:legendary": {
-    cls: "bow", tier: "legendary", name: "Лук охотника", mult: 4.1,
-    tint: [0.62, 0.3, 1], affix: "crit",
-  },
-  "shield:legendary": {
-    cls: "shield", tier: "legendary", name: "Эгида", mult: 1,
-    tint: [0.62, 0.3, 1], affix: "guard",
-  },
-  "staff:legendary": {
-    cls: "staff", tier: "legendary", name: "Посох бури", mult: 2.3,
-    tint: [0.62, 0.3, 1], affix: "storm",
-  },
+  // Уникальные — урон чуть выше золота и 2–3 ролла (эффектов «из коробки» больше нет).
+  // Все фиолетовые (единый «уникальный» вид).
+  "sword:legendary": { cls: "sword", tier: "legendary", name: "Уникальный меч", mult: 4.5, tint: [0.62, 0.3, 1] },
+  "bow:legendary": { cls: "bow", tier: "legendary", name: "Уникальный лук", mult: 4.1, tint: [0.62, 0.3, 1] },
+  "shield:legendary": { cls: "shield", tier: "legendary", name: "Уникальный щит", mult: 1, tint: [0.62, 0.3, 1] },
+  "staff:legendary": { cls: "staff", tier: "legendary", name: "Уникальный посох", mult: 2.3, tint: [0.62, 0.3, 1] },
 
   // «Классы 2.0»: урон удара задаёт профиль оружия (classes2 WEAPONS2.dmg), mult — только тир.
   "dagger:base": { cls: "dagger", tier: "base", name: "Кинжал", mult: 1, tint: [0.55, 0.57, 0.62] },
   "dagger:gold": { cls: "dagger", tier: "gold", name: "Золотой кинжал", mult: 4, tint: [1, 0.84, 0.26] },
-  "dagger:legendary": {
-    cls: "dagger", tier: "legendary", name: "Жало тени", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "crit",
-  },
+  "dagger:legendary": { cls: "dagger", tier: "legendary", name: "Уникальный кинжал", mult: 4.5, tint: [0.62, 0.3, 1] },
   "spear:base": { cls: "spear", tier: "base", name: "Копьё", mult: 1, tint: [0.42, 0.28, 0.16] },
   "spear:gold": { cls: "spear", tier: "gold", name: "Золотое копьё", mult: 4, tint: [1, 0.84, 0.26] },
-  "spear:legendary": {
-    cls: "spear", tier: "legendary", name: "Копьё крови", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "vamp",
-  },
+  "spear:legendary": { cls: "spear", tier: "legendary", name: "Уникальное копьё", mult: 4.5, tint: [0.62, 0.3, 1] },
   "hammer:base": { cls: "hammer", tier: "base", name: "Молот", mult: 1, tint: [0.45, 0.47, 0.52] },
   "hammer:gold": { cls: "hammer", tier: "gold", name: "Золотой молот", mult: 4, tint: [1, 0.84, 0.26] },
-  "hammer:legendary": {
-    cls: "hammer", tier: "legendary", name: "Молот грома", mult: 4.5,
-    tint: [0.62, 0.3, 1], affix: "storm",
-  },
+  "hammer:legendary": { cls: "hammer", tier: "legendary", name: "Уникальный молот", mult: 4.5, tint: [0.62, 0.3, 1] },
 };
 
-/** Аффикс оружия по классу/тиру — удобно для боевых формул. */
-export function weaponAffix(cls: WeaponClass, tier: WeaponTier): WeaponAffix | undefined {
-  return tier === "legendary" ? WEAPONS[weaponKey(cls, tier)]?.affix : undefined;
+/**
+ * Врождённый эффект и имя СТАРЫХ уникальных — проставляется уже выпавшим
+ * инстансам разовой миграцией (migrateLoot3), новым — никогда.
+ */
+const LEGACY_LEGENDARY: Partial<Record<WeaponClass, { name: string; affix: WeaponAffix }>> = {
+  sword: { name: "Меч вампира", affix: "vamp" },
+  bow: { name: "Лук охотника", affix: "crit" },
+  shield: { name: "Эгида", affix: "guard" },
+  staff: { name: "Посох бури", affix: "storm" },
+  dagger: { name: "Жало тени", affix: "crit" },
+  spear: { name: "Копьё крови", affix: "vamp" },
+  hammer: { name: "Молот грома", affix: "storm" },
+};
+
+/** Врождённый эффект конкретного инстанса (только у старых уникальных). */
+export function innateOf(w: WeaponInstance | null | undefined): WeaponAffix | undefined {
+  return w?.innate;
 }
 
-const AFFIX_HINT: Record<WeaponAffix, string> = {
-  vamp: "уникальное · вампиризм",
-  crit: "уникальное · крит",
-  guard: "уникальное · усиленный блок",
-  storm: "уникальное · сильнее AoE",
-};
+/** Имя конкретного инстанса: у старых уникальных — их историческое имя. */
+export function instanceName(w: Pick<WeaponInstance, "cls" | "tier" | "innate">): string {
+  if (w.innate) return LEGACY_LEGENDARY[w.cls]?.name ?? weaponDef(w.cls, w.tier).name;
+  return weaponDef(w.cls, w.tier).name;
+}
 
 export function weaponDef(cls: WeaponClass, tier: WeaponTier): WeaponDef {
   return WEAPONS[weaponKey(cls, tier)] ?? (WEAPONS[weaponKey(cls, "base")] as WeaponDef);
@@ -205,16 +203,17 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   // InventoryPanel.iconEl, Overlay), а не картинкой: раньше тут стояли те же
   // PNG, что и у золотого оружия, и баннер дропа с элиты показывал иконку
   // золотого меча, хотя на самом деле выпало уникальное — не отличить на глаз.
-  leg_sword: weaponItem("sword", "legendary", "Вампир", ""),
-  leg_bow: weaponItem("bow", "legendary", "Лук охот.", ""),
-  leg_shield: weaponItem("shield", "legendary", "Эгида", ""),
-  leg_staff: weaponItem("staff", "legendary", "Посох бури", ""),
+  leg_sword: weaponItem("sword", "legendary", "Уник. меч", ""),
+  leg_bow: weaponItem("bow", "legendary", "Уник. лук", ""),
+  leg_shield: weaponItem("shield", "legendary", "Уник. щит", ""),
+  gold_shield: weaponItem("shield", "gold", "Зол. щит", ""),
+  leg_staff: weaponItem("staff", "legendary", "Уник. посох", ""),
   gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал", ""),
   gold_spear: weaponItem("spear", "gold", "Зол. копьё", ""),
   gold_hammer: weaponItem("hammer", "gold", "Зол. молот", ""),
-  leg_dagger: weaponItem("dagger", "legendary", "Жало тени", ""),
-  leg_spear: weaponItem("spear", "legendary", "Копьё крови", ""),
-  leg_hammer: weaponItem("hammer", "legendary", "Молот грома", ""),
+  leg_dagger: weaponItem("dagger", "legendary", "Уник. кинжал", ""),
+  leg_spear: weaponItem("spear", "legendary", "Уник. копьё", ""),
+  leg_hammer: weaponItem("hammer", "legendary", "Уник. молот", ""),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -267,9 +266,10 @@ function weaponItem(
   return {
     name: d.name,
     short,
-    hint: d.affix
-      ? AFFIX_HINT[d.affix]
-      : cls === "shield" ? "защита" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
+    hint:
+      tier === "legendary"
+        ? "уникальное · 2–3 ролла"
+        : cls === "shield" ? "защита · блок" : cls === "staff" ? "магия · слабый удар" : `урон x${d.mult}`,
     stack: 1,
     heal: 0,
     healFrac: 0,
@@ -328,6 +328,7 @@ export const LOOT: Record<MobKind, LootEntry[]> = {
     { id: "gold_dagger", chance: 0.05, min: 1, max: 1 },
     { id: "gold_spear", chance: 0.05, min: 1, max: 1 },
     { id: "gold_hammer", chance: 0.05, min: 1, max: 1 },
+    { id: "gold_shield", chance: 0.05, min: 1, max: 1 },
   ],
   shard: [],
 };
@@ -414,14 +415,14 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
 // ---- Рандомные аффиксы оружия (PoE-style, поверх tier) ----
 
 /** Семейство рычага — на предмете не бывает двух роллов одного семейства. */
-export type AffixKind = "dmg" | "atkSpeed" | "crit";
-/** Конкретный под-вид ролла внутри семейства. */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block";
+/** Конкретный под-вид ролла. На одном предмете не бывает двух роллов одного под-вида. */
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block";
 
 export interface RolledAffix {
   kind: AffixKind;
   sub: AffixSub;
-  /** Величина: для *Pct/*Chance — доля (0.12 = +12%), для critMult — абсолютная добавка к множителю. */
+  /** Величина: для *Pct/*Chance/vamp/block — доля (0.12 = +12%), для critMult — абсолютная добавка к множителю. */
   value: number;
 }
 
@@ -433,14 +434,37 @@ export interface WeaponInstance {
   affixes: RolledAffix[];
   /** 1 — роллы посоха уже в общем диапазоне (см. migrateStaffAffixes). */
   sv?: number;
+  /** Врождённый эффект — только у уникальных, выпавших до «Лута 3.0». */
+  innate?: WeaponAffix;
+  /** 3 — инстанс в формате «Лута 3.0» (см. migrateLoot3). */
+  lv?: number;
 }
 
-const AFFIX_FAMILIES: Record<AffixKind, AffixSub[]> = {
-  // Новые предметы — один ролл урона, 5–15%. dmgPct (8–20%) больше не
-  // выпадает, но у уже выпавших предметов остаётся как был (и точится в своих пределах).
-  dmg: ["dmgFlat"],
-  atkSpeed: ["atkSpeedPct"],
-  crit: ["critChance", "critMult"],
+/** Оружие ближнего боя — только на нём выпадает вампиризм. */
+export function isMeleeClass(cls: string): boolean {
+  return cls === "sword" || cls === "dagger" || cls === "spear" || cls === "hammer";
+}
+
+/**
+ * Какие роллы могут выпасть на предмете этого класса — в любой комбинации,
+ * не повторяется только сам вид. dmgPct (8–20%) больше не выпадает, но у уже
+ * выпавших предметов остаётся как был (и точится в своих пределах).
+ */
+function rollableSubs(cls: WeaponClass): AffixSub[] {
+  const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance", "critMult"];
+  if (isMeleeClass(cls)) out.push("vamp");
+  if (cls === "shield") out.push("block");
+  return out;
+}
+
+const SUB_KIND: Record<AffixSub, AffixKind> = {
+  dmgFlat: "dmg",
+  dmgPct: "dmg",
+  atkSpeedPct: "atkSpeed",
+  critChance: "crit",
+  critMult: "crit",
+  vamp: "vamp",
+  block: "block",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -448,8 +472,12 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   dmgPct: [0.08, 0.2],
   atkSpeedPct: [0.05, 0.15],
   critChance: [0.05, 0.15],
-  critMult: [0.3, 0.8],
+  critMult: [0.3, 1.0],
+  vamp: [0.02, 0.08],
+  block: [0.02, 0.06],
 };
+/** Потолок силы крита до «Лута 3.0» — для пересчёта уже выпавших роллов (migrateLoot3). */
+const OLD_CRIT_MULT_HI = 0.8;
 
 /**
  * СТАРЫЙ завышенный потолок роллов посоха (до 2026-09-28). Больше нигде не
@@ -462,6 +490,8 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   atkSpeedPct: 1.25,
   critChance: 1.25,
   critMult: 1.3,
+  vamp: 1,
+  block: 1,
 };
 
 const AFFIX_LABEL: Record<AffixSub, string> = {
@@ -470,6 +500,8 @@ const AFFIX_LABEL: Record<AffixSub, string> = {
   atkSpeedPct: "скорость атаки",
   critChance: "шанс крита",
   critMult: "силу крита",
+  vamp: "вампиризма",
+  block: "к шансу блока",
 };
 
 /** Текст ролла для тултипа/чата, напр. "+12% урона" или "+0.5 к силе крита". */
@@ -482,14 +514,27 @@ export function affixLabel(a: RolledAffix): string {
   return `+${v}${pct ? "%" : ""} ${AFFIX_LABEL[a.sub]}`;
 }
 
-function rollAffix(rnd: () => number, cls: WeaponClass): RolledAffix {
-  const kinds = Object.keys(AFFIX_FAMILIES) as AffixKind[];
-  const kind = kinds[Math.floor(rnd() * kinds.length)];
-  const subs = AFFIX_FAMILIES[kind];
+/** Текст врождённого эффекта старого уникального — в том же формате, что роллы (heroStats парсит числа). */
+export function innateLabel(a: WeaponAffix): string {
+  if (a === "vamp") return `+${Math.round(AFFIX.vamp.healFrac * 100)}% ${AFFIX_LABEL.vamp} (врождённый)`;
+  if (a === "crit") return `+${Math.round(AFFIX.crit.chanceBonus * 100)}% ${AFFIX_LABEL.critChance} (врождённый)`;
+  if (a === "guard") return `+${Math.round(AFFIX.guard.blockBonus * 100)}% ${AFFIX_LABEL.block} (Эгида)`;
+  return `АОЕ огнешара ×${AFFIX.storm.splashRadiusMul} (врождённый)`;
+}
+
+/** Все подписи инстанса для показа: врождённый эффект (если есть) + роллы. */
+export function instanceLabels(w: Pick<WeaponInstance, "affixes" | "innate">): string[] {
+  const out = w.affixes.map(affixLabel);
+  if (w.innate) out.unshift(innateLabel(w.innate));
+  return out;
+}
+
+function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>): RolledAffix | null {
+  const subs = rollableSubs(cls).filter((s) => !used.has(s));
+  if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
-  void cls; // диапазон теперь общий для всех классов
   const [lo, hi] = AFFIX_RANGES[sub];
-  return { kind, sub, value: lo + rnd() * (hi - lo) };
+  return { kind: SUB_KIND[sub], sub, value: lo + rnd() * (hi - lo) };
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
@@ -525,7 +570,7 @@ function shortId(rnd: () => number): string {
   return out;
 }
 
-/** Раскатать новый инстанс дропнутого оружия — тир задаёт кол-во роллов, семейства не повторяются. */
+/** Раскатать новый инстанс дропнутого оружия — тир задаёт кол-во роллов, вид ролла не повторяется. */
 export function rollWeaponInstance(
   cls: WeaponClass,
   tier: WeaponTier,
@@ -533,15 +578,14 @@ export function rollWeaponInstance(
 ): WeaponInstance {
   const count = rollAffixCount(tier, rnd);
   const affixes: RolledAffix[] = [];
-  const used = new Set<AffixKind>();
-  let guard = 0;
-  while (affixes.length < count && guard++ < 50) {
-    const a = rollAffix(rnd, cls);
-    if (used.has(a.kind)) continue;
-    used.add(a.kind);
+  const used = new Set<AffixSub>();
+  while (affixes.length < count) {
+    const a = rollAffix(rnd, cls, used);
+    if (!a) break;
+    used.add(a.sub);
     affixes.push(a);
   }
-  return { id: shortId(rnd), cls, tier, affixes, ...(cls === "staff" ? { sv: 1 } : {}) };
+  return { id: shortId(rnd), cls, tier, affixes, lv: 3, ...(cls === "staff" ? { sv: 1 } : {}) };
 }
 
 /**
@@ -552,7 +596,9 @@ export function rollWeaponInstance(
  * было деться. См. preserveLegacyWeapon в ZoneRoom.ts.
  */
 export function plainWeaponInstance(cls: WeaponClass, tier: WeaponTier): WeaponInstance {
-  return { id: shortId(Math.random), cls, tier, affixes: [], ...(cls === "staff" ? { sv: 1 } : {}) };
+  // Легаси-предмет из тех времён, когда эффект был у типа — сохраняем его.
+  const innate = tier === "legendary" ? LEGACY_LEGENDARY[cls]?.affix : undefined;
+  return { id: shortId(Math.random), cls, tier, affixes: [], lv: 3, ...(innate ? { innate } : {}), ...(cls === "staff" ? { sv: 1 } : {}) };
 }
 
 /** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
@@ -632,12 +678,51 @@ function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] 
 export function migrateStaffAffixes(w: WeaponInstance): boolean {
   if (w.cls !== "staff" || w.sv === 1) return false;
   for (const a of w.affixes) {
-    const [lo, hi] = AFFIX_RANGES[a.sub];
+    const [lo, newHi] = AFFIX_RANGES[a.sub];
+    // Посох переводится в диапазоны ДО «Лута 3.0» — сила крита дальше
+    // поднимается migrateLoot3, как у всех.
+    const hi = a.sub === "critMult" ? OLD_CRIT_MULT_HI : newHi;
     const oldHi = hi * OLD_STAFF_RANGE_HI_MUL[a.sub];
     const t = Math.max(0, Math.min(1, (a.value - lo) / (oldHi - lo)));
     a.value = lo + t * (hi - lo);
   }
   w.sv = 1;
+  return true;
+}
+
+/** Шанс блока щитом: тир + роллы «к шансу блока» + врождённая прибавка Эгиды. */
+export function shieldBlockChance(tier: WeaponTier | string, inst?: Pick<WeaponInstance, "affixes" | "innate"> | null): number {
+  const base = SHIELD.blockByTier[tier as WeaponTier] ?? SHIELD.blockChance;
+  if (!inst) return base;
+  return base + affixSum(inst.affixes, "block") + (inst.innate === "guard" ? AFFIX.guard.blockBonus : 0);
+}
+
+/** Доля урона, возвращаемая как HP: врождённый вампиризм + ролл. Только ближний бой. */
+export function vampFrac(inst: Pick<WeaponInstance, "cls" | "affixes" | "innate"> | null | undefined): number {
+  if (!inst || !isMeleeClass(inst.cls)) return 0;
+  return affixSum(inst.affixes, "vamp") + (inst.innate === "vamp" ? AFFIX.vamp.healFrac : 0);
+}
+
+/**
+ * Разовый переход на «Лут 3.0» (2026-10-01) для уже выпавших инстансов:
+ *  - сила крита: потолок 0.8 → 1.0 с сохранением очков (0.8 → 1.0, 0.55 → 0.65);
+ *  - старые уникальные получают врождённый эффект и имя своего типа
+ *    (Меч вампира и т.п.) — у новых уникальных его нет.
+ * Помечает w.lv=3, повторный вызов ничего не делает. true — что-то поменялось.
+ */
+export function migrateLoot3(w: WeaponInstance): boolean {
+  if (w.lv === 3) return false;
+  const [lo, hi] = AFFIX_RANGES.critMult;
+  for (const a of w.affixes) {
+    if (a.sub !== "critMult") continue;
+    const t = Math.max(0, Math.min(1, (a.value - lo) / (OLD_CRIT_MULT_HI - lo)));
+    a.value = lo + t * (hi - lo);
+  }
+  if (w.tier === "legendary" && !w.innate) {
+    const innate = LEGACY_LEGENDARY[w.cls]?.affix;
+    if (innate) w.innate = innate;
+  }
+  w.lv = 3;
   return true;
 }
 

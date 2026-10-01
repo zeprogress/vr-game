@@ -1048,6 +1048,13 @@ export class WristMenu {
     return y + 38;
   }
 
+  /** Имя предмета в руке/за спиной: у закреплённого инстанса — его собственное (старые уникальные). */
+  private heldName(w: WornWeapon): string {
+    const ids = [this.equippedIds.left, this.equippedIds.right];
+    const inst = this.warehouse.find((x) => ids.includes(x.id) && x.cls === w.cls && x.tier === w.tier);
+    return inst?.name ?? weaponDef(w.cls, w.tier).name;
+  }
+
   /** Очки роллов оружия в руке: по закреплённому инстансу, иначе лучший этого класса/тира. */
   private handQuality(w: WornWeapon | null, side: Side): number | undefined {
     if (!w || w.tier === "base") return undefined;
@@ -1078,10 +1085,9 @@ export class WristMenu {
   ): void {
     let info: [string, string] = [label, "пусто"];
     if (item) {
-      const d = weaponDef(item.cls, item.tier);
       const stats = weaponStats(item, hero);
       info = [
-        `${d.name}${quality ? ` (${quality})` : ""} — нажми: убрать на склад`,
+        `${this.heldName(item)}${quality ? ` (${quality})` : ""} — нажми: убрать на склад`,
         stats.slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ") || (item.affix ?? ""),
       ];
     }
@@ -1104,10 +1110,9 @@ export class WristMenu {
     }
     const iconS = h > 100 ? 72 : 56;
     this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS);
-    const d = weaponDef(item.cls, item.tier);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
-    ctx.fillText(d.name, x + iconS + 20, y + 28);
+    ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
     let ty = y + 54;
     if (quality) {
       ctx.fillStyle = "#f2c74b";
@@ -1299,11 +1304,11 @@ export class WristMenu {
   }
 
   private warehouseCell(ctx: CanvasRenderingContext2D, wp: WarehouseWeapon, x: number, y: number, w: number, h: number): void {
-    const d = weaponDef(wp.cls, wp.tier);
+    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
+      info: [`${name}${wp.quality ? ` (${wp.quality})` : ""} — нажми: действия`, wp.affixes.join(", ") || "без роллов"],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1315,8 +1320,8 @@ export class WristMenu {
     this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
-    ctx.fillText(this.shortName(d.name), x + 62, y + 8);
-    if (wp.affixes.length) {
+    ctx.fillText(this.shortName(name), x + 62, y + 8);
+    if (wp.quality) {
       ctx.font = "bold 22px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
       ctx.fillText(`(${wp.quality})`, x + 62, y + 36);
@@ -1346,7 +1351,7 @@ export class WristMenu {
   }
 
   private openWarehousePopup(wp: WarehouseWeapon): void {
-    const d = weaponDef(wp.cls, wp.tier);
+    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
     const isBow = wp.cls === "bow";
     const send = (a: MenuAction): void => {
       this.popup = null;
@@ -1363,7 +1368,7 @@ export class WristMenu {
     }
     buttons.push({ id: "pop:backL", label: "За левое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "left", ...base }) });
     buttons.push({ id: "pop:backR", label: "За правое плечо", hint: "что там было — на склад", color: "#9fd0ff", act: () => send({ act: "whToBack", side: "right", ...base }) });
-    if (wp.affixes.length) {
+    if (wp.quality) {
       buttons.push({
         id: "pop:ench", label: "Заточить", hint: "откроется панель заточки перед тобой", color: "#e8c26a",
         act: () => {
@@ -1376,7 +1381,7 @@ export class WristMenu {
     buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${d.name}${wp.affixes.length ? ` (${wp.quality})` : ""}`,
+      title: `${name}${wp.quality ? ` (${wp.quality})` : ""}`,
       sub: wp.affixes.join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
@@ -1386,7 +1391,6 @@ export class WristMenu {
 
   /** Меню над оружием в руке / за спиной: склад, либо перенос на ту же сторону (рука ↔ плечо), с обменом. */
   private openHeldPopup(src: "hand" | "back", side: Side, w: WornWeapon, hero: HeroStats): void {
-    const d = weaponDef(w.cls, w.tier);
     const q = src === "hand" ? this.handQuality(w, side) : undefined;
     const stats = weaponStats(w, hero).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(" · ");
     const done = (a: MenuAction): void => {
@@ -1434,7 +1438,7 @@ export class WristMenu {
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${d.name}${q ? ` (${q})` : ""}`,
+      title: `${this.heldName(w)}${q ? ` (${q})` : ""}`,
       sub: w.affix || stats || (src === "hand" ? "в руке" : "за спиной"),
       color: TIER_COLOR[w.tier],
       buttons,

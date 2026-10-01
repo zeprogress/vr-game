@@ -1,4 +1,4 @@
-import { AFFIX, BOT, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { BOT, BOW, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
 import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
 import { BASE_CRIT } from "./combat";
@@ -6,7 +6,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
@@ -60,8 +60,11 @@ export interface HeroStatInput {
 /** Достаёт число из "+N% <label>" / "+N <label>" в тексте ролла (см. affixLabel в items.ts). */
 function affixNum(text: string | undefined, label: string): number {
   if (!text) return 0;
-  const m = text.match(new RegExp(`\\+([\\d.]+)%?\\s*${label}`));
-  return m ? Number(m[1]) : 0;
+  // Суммируем ВСЕ вхождения: врождённый эффект старого уникального идёт той
+  // же строкой, что и ролл («+25% шанс крита (врождённый), +8% шанс крита»).
+  let sum = 0;
+  for (const m of text.matchAll(new RegExp(`\\+([\\d.]+)%?\\s*${label}`, "g"))) sum += Number(m[1]);
+  return sum;
 }
 
 const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
@@ -159,8 +162,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
-    const aegis = shieldTier === "legendary";
-    const chance = aegis ? AFFIX.guard.blockChance : SHIELD.blockChance;
+    const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "к шансу блока") / 100;
     rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
   }
 

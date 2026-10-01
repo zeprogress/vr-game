@@ -61,6 +61,7 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "sword:legendary": "leg_sword",
   "bow:legendary": "leg_bow",
   "shield:legendary": "leg_shield",
+  "shield:gold": "gold_shield",
   "staff:legendary": "leg_staff",
   "dagger:gold": "gold_dagger",
   "spear:gold": "gold_spear",
@@ -69,8 +70,7 @@ const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "spear:legendary": "leg_spear",
   "hammer:legendary": "leg_hammer",
 };
-/** У щита нет золотого тира — только базовый/легендарный. */
-const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger", "spear", "hammer"];
+const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
 const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
 const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 

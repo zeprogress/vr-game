@@ -115,8 +115,8 @@ export class InventoryPanel {
         `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor[w.tier]};`,
       );
       const name = el("div", `font-size:13px;font-weight:600;color:${tierColor[w.tier]};`);
-      name.textContent = d.name;
-      if (w.affixes.length) {
+      name.textContent = w.name ?? d.name;
+      if (w.quality) {
         const q = el("span", "color:#f2c74b;margin-left:6px;font-weight:600;");
         q.textContent = `(${w.quality})`;
         name.appendChild(q);

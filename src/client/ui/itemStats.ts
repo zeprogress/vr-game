@@ -1,10 +1,10 @@
-import { weaponDef, type WeaponClass, type WeaponDef, type WeaponTier } from "#shared/items";
+import { shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec } from "#shared/heroStats";
 import { fireboltDamage, magicPowerFor } from "#shared/magic";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
-import { AFFIX, BOW, COMBAT, SHIELD } from "#shared/constants";
+import { BOW, COMBAT, SHIELD } from "#shared/constants";
 
 export interface WornWeapon {
   cls: WeaponClass;
@@ -24,14 +24,16 @@ export interface HeroStats {
   wis: number;
 }
 
+const pctOf = (v: number): string => `${Math.round(v * 100)}%`;
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
-export const AFFIX_TEXT: Record<NonNullable<WeaponDef["affix"]>, string> = {
-  vamp: `Вампиризм: ${Math.round(AFFIX.vamp.healFrac * 100)}% урона — в HP`,
-  crit: `Крит +${Math.round(AFFIX.crit.chanceBonus * 100)}%`,
-  guard: `Шанс блока ${Math.round(AFFIX.guard.blockChance * 100)}%`,
-  storm: `АОЕ огнешара ×${AFFIX.storm.splashRadiusMul}`,
-};
+/** Сумма чисел «+N% <ярлык>» в тексте роллов (врождённый эффект старых уникальных идёт той же строкой). */
+function rollPct(text: string | undefined, label: string): number {
+  if (!text) return 0;
+  let sum = 0;
+  for (const m of text.matchAll(new RegExp(`\\+([\\d.]+)%\\s*${label}`, "g"))) sum += Number(m[1]);
+  return sum / 100;
+}
 
 /**
  * Характеристики предмета в руке — строками «название: значение».
@@ -83,10 +85,10 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {
-    const chance = d.affix === "guard" ? AFFIX.guard.blockChance : SHIELD.blockChance;
+    const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "к шансу блока");
     out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
+    out.push(["Тир щита", `обычный ${pctOf(SHIELD.blockByTier.base)} · золотой ${pctOf(SHIELD.blockByTier.gold)} · уникальный ${pctOf(SHIELD.blockByTier.legendary)}`]);
   }
-  if (d.affix) out.push(["Эффект", AFFIX_TEXT[d.affix]]);
   if (w.affix) out.push(["Роллы", w.affix]);
   return out;
 }

@@ -62,7 +62,7 @@ export const BASE_CRIT = 0.05;
 export function rollCritMult(
   kind: WeaponKind,
   rnd: () => number = Math.random,
-  /** Стрельба из «Лука охотника» (легендарка) — повышенный шанс крита. */
+  /** Врождённый «крит» старого уникального (Лук охотника) — повышенный шанс крита. */
   hunterBow = false,
   extraChance = 0,
   extraMult = 0,
@@ -71,7 +71,7 @@ export function rollCritMult(
   /** Удача героя (УДЧ). */
   luc: number = ATTR2.start,
 ): number {
-  const baseChance = kind === "arrow" ? BOW.critChance + (hunterBow ? AFFIX.crit.chanceBonus : 0) : BASE_CRIT;
+  const baseChance = (kind === "arrow" ? BOW.critChance : BASE_CRIT) + (hunterBow ? AFFIX.crit.chanceBonus : 0);
   const n = invested(luc);
   const chance = Math.min(0.75, baseChance + extraChance + n * ATTR2.luc.crit);
   if (chance <= 0) return 1;
@@ -136,8 +136,8 @@ export function resolveBlock(
   ax: number,
   az: number,
   projectile: boolean,
-  /** Щит — легендарная «Эгида»: гасит больше и сектор шире. */
-  aegis = false,
+  /** Шанс полного блока щитом — от тира и роллов (см. shieldBlockChance в items.ts). */
+  blockChance: number = SHIELD.blockChance,
 ): BlockResult {
   if (!g) return { mult: 1, by: 0 };
 
@@ -145,7 +145,7 @@ export function resolveBlock(
   // заблокировать любой удар с любой стороны — как уворот. Одинаково в VR,
   // на телефоне и у ботов.
   if (g.sx !== 0 || g.sz !== 0) {
-    if (Math.random() < (aegis ? AFFIX.guard.blockChance : SHIELD.blockChance)) return { mult: 0, by: 1 };
+    if (Math.random() < blockChance) return { mult: 0, by: 1 };
   }
 
   if (g.wx !== 0 || g.wz !== 0) {

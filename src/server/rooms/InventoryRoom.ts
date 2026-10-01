@@ -6,6 +6,8 @@ import type { Client } from "colyseus";
 
 import {
   affixLabel,
+  instanceLabels,
+  instanceName,
   isWeaponClass,
   isWeaponTier,
   ITEMS,
@@ -59,9 +61,9 @@ function handInfo(
   const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
   return {
     cls,
-    name: weaponDef(cls, tier).name,
+    name: inst ? instanceName(inst) : weaponDef(cls, tier).name,
     tier,
-    affixes: inst ? inst.affixes.map(affixLabel) : [],
+    affixes: inst ? instanceLabels(inst) : [],
     quality: inst ? weaponQuality(inst) : 0,
     id: inst?.id ?? "",
     ench: inst ? enchDetails(inst) : [],
@@ -171,8 +173,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       id: w.id,
       cls: w.cls,
       tier: w.tier,
-      name: weaponDef(w.cls, w.tier).name,
-      affixes: w.affixes.map(affixLabel),
+      name: instanceName(w),
+      affixes: instanceLabels(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
@@ -202,8 +204,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     rightTier: rec.held?.right?.tier ?? "",
     leftCls: rec.held?.left?.cls ?? "",
     leftTier: rec.held?.left?.tier ?? "",
-    rightAffix: rightInst ? rightInst.affixes.map(affixLabel).join(", ") : "",
-    leftAffix: leftInst ? leftInst.affixes.map(affixLabel).join(", ") : "",
+    rightAffix: rightInst ? instanceLabels(rightInst).join(", ") : "",
+    leftAffix: leftInst ? instanceLabels(leftInst).join(", ") : "",
   });
   // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
   const pc: PcInvData = invHub.pcInv(norm) ?? {
@@ -211,8 +213,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       id: w.id,
       cls: w.cls,
       tier: w.tier,
-      name: weaponDef(w.cls, w.tier).name,
-      affixes: w.affixes.map(affixLabel),
+      name: instanceName(w),
+      affixes: instanceLabels(w),
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),

@@ -130,6 +130,10 @@ import {
 import {
   addToBag,
   migrateStaffAffixes,
+  migrateLoot3,
+  shieldBlockChance,
+  vampFrac,
+  isMeleeClass,
   affixPoints,
   bagCount,
   takeFromBag,
@@ -138,6 +142,8 @@ import {
   ENCHANT,
   HEAL_CARRY_MAX,
   affixLabel,
+  instanceLabels,
+  instanceName,
   weaponQuality,
   affixSum,
   BAG,
@@ -151,7 +157,6 @@ import {
   rollWeaponInstance,
   scrapValue,
   takeOne,
-  weaponAffix,
   weaponDef,
   weaponKey,
   WEAPON_TAKE_REACH,
@@ -715,10 +720,17 @@ function multIn(p: PlayerState, hand: "left" | "right"): number {
   return h ? weaponDef(h.cls, h.tier).mult : 1;
 }
 
-/** Легендарный аффикс оружия в руке (или где угодно, если рука не важна). */
-function affixIn(p: PlayerState, hand: "left" | "right"): WeaponAffix | undefined {
-  const h = heldIn(p, hand);
-  return h ? weaponAffix(h.cls, h.tier) : undefined;
+/** Врождённый эффект оружия в руке — только у старых уникальных инстансов (Меч вампира и т.п.). */
+function affixIn(p: PlayerState, hand: "left" | "right", rt: Runtime | undefined): WeaponAffix | undefined {
+  return rt ? rolledIn(p, hand, rt)?.innate : undefined;
+}
+
+/** Шанс блока щитом героя: тир щита + его роллы и Эгида (0 — щита в руках нет). */
+function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
+  const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
+  if (!hand) return 0;
+  const tier = hand === "left" ? p.leftTier : p.rightTier;
+  return shieldBlockChance(tier, rt ? rolledIn(p, hand, rt) : null);
 }
 
 /**
@@ -1059,18 +1071,27 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
     // Посохи: роллы со старого завышенного диапазона → общий, очки те же
-    // (разово — migrateStaffAffixes метит инстанс). Сейвы и лут на земле.
+    // (разово — migrateStaffAffixes метит инстанс). «Лут 3.0»: сила крита
+    // 0.8 → 1.0 с теми же очками, старые уникальные получают врождённый
+    // эффект (migrateLoot3, тоже разово). Сейвы и лут на земле.
     let staffFixed = 0;
     for (const rec of store.entries()) {
       let changed = false;
-      for (const w of rec.weapons ?? []) if (migrateStaffAffixes(w)) changed = true;
+      for (const w of rec.weapons ?? []) {
+        if (migrateStaffAffixes(w)) changed = true;
+        if (migrateLoot3(w)) changed = true;
+      }
       if (changed) {
         staffFixed++;
         store.put(rec.token, { weapons: rec.weapons });
       }
     }
-    for (const d of world.loadDrops()) if (d.instance) migrateStaffAffixes(d.instance);
-    if (staffFixed) console.log(`[zone] посохи пересчитаны у ${staffFixed} героев`);
+    for (const d of world.loadDrops()) {
+      if (!d.instance) continue;
+      migrateStaffAffixes(d.instance);
+      migrateLoot3(d.instance);
+    }
+    if (staffFixed) console.log(`[zone] оружие пересчитано у ${staffFixed} героев`);
     // Чистка сумок во всех сейвах: одна стопка на предмет, зелий не больше 99.
     for (const rec of store.entries()) {
       if (!Array.isArray(rec.bag)) continue;
@@ -1343,7 +1364,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
       // «Посох бури» (легендарка) — крупнее и злее АОЕ огнешара, плюс сам
       // выстрел чуть больнее (AFFIX.storm.dmgMul).
-      const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left") === "storm";
+      const storm = affixIn(p, p.rightCls === "staff" ? "right" : "left", rt) === "storm";
       // Роллы "крит" на посохе раньше тоже никуда не доходили (только tryHit
       // для меча/лука) — посоха нет в WeaponKind, поэтому kind="sword" ниже
       // просто заглушка: у неё и так нулевая база крита, важны только
@@ -1967,7 +1988,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon] + HIT_LAG_PAD) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    const affix = affixIn(p, hand);
+    const affix = affixIn(p, hand, rt);
     // База крита — только у лука («Лук охотника» критует чаще); роллы "крит"
     // на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit)
     // добавляют шанс/силу крита ЛЮБОМУ оружию.
@@ -2021,10 +2042,12 @@ export class ZoneRoom extends Room<ZoneState> {
       msg.id, dmg, dx || 0, dz || 1, client.sessionId,
       msg.weapon === "arrow", false, false, critM > 1,
     );
-    // Меч вампира / Копьё крови — часть нанесённого урона возвращается владельцу как HP.
-    const vamped = affix === "vamp" && (msg.weapon === "sword" || msg.weapon === "spear") && !!struck;
+    // Вампиризм (врождённый у Меча вампира + ролл на оружии ближнего боя) —
+    // часть нанесённого урона возвращается владельцу как HP.
+    const vamp = isMeleeClass(msg.weapon) ? vampFrac(rolledIn(p, hand, rt)) : 0;
+    const vamped = vamp > 0 && !!struck;
     if (vamped) {
-      p.hp = Math.min(p.maxHp, p.hp + dmg * AFFIX.vamp.healFrac);
+      p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);
     }
     // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
     // сыграл локальный предсказанный звук, без сетевой задержки) — как и
@@ -2091,7 +2114,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * (уникальный, аффикс storm) — шире и злее.
    */
   private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, y: number, z: number): void {
-    const storm = affixIn(p, hand) === "storm";
+    const storm = affixIn(p, hand, rt) === "storm";
     const radius = HAMMER.waveRadius * (storm ? AFFIX.storm.splashRadiusMul : 1);
     const dmg =
       HAMMER.waveMagic *
@@ -2943,7 +2966,10 @@ export class ZoneRoom extends Room<ZoneState> {
       atkSpeedMul: trt ? rolledAtkSpeedMul(p, "right", trt) : 1,
       critChance: trc.chance,
       critMult: trc.mult,
-      hunterBow: weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "crit",
+      hunterBow: affixIn(p, "right", trt) === "crit",
+      vamp: trt ? vampFrac(rolledIn(p, "right", trt)) : 0,
+      storm: affixIn(p, "right", trt) === "storm",
+      blockChance: blockChanceOf(p, trt),
       warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
     };
     this.towerRuns
@@ -3806,7 +3832,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.weapons.push(w);
       store.put(token, { weapons: rt.weapons });
       this.announcePickup(p.nick, w.cls, w.tier, w);
-      note = `Из сундука: ${weaponDef(w.cls, w.tier).name}, оценка ${weaponQuality(w)}`;
+      note = `Из сундука: ${instanceName(w)}, оценка ${weaponQuality(w)}`;
     }
     store.put(token, { tokens: tokens - item.price });
     // Что потрачено и что осталось — видно и в VR (там тост в шлеме).
@@ -4037,7 +4063,7 @@ export class ZoneRoom extends Room<ZoneState> {
         store.put(token, { weapons: rt.weapons });
         this.grantTitle(token, STORY_TITLE);
         this.announcePickup(p.nick, w.cls, w.tier, w);
-        note += `. Титул «${STORY_TITLE}» и ${weaponDef(w.cls, w.tier).name} (оценка ${weaponQuality(w)})!`;
+        note += `. Титул «${STORY_TITLE}» и ${instanceName(w)} (оценка ${weaponQuality(w)})!`;
       }
     } else {
       const w = this.weeklyOf(token, p);
@@ -4048,7 +4074,7 @@ export class ZoneRoom extends Room<ZoneState> {
       store.put(token, { weekly: w, weapons: rt.weapons, tokens: tokens + WEEKLY.reward.tokens });
       this.bumpFeat(client.sessionId, "contracts", TITLE_GOALS.contracts, "Ветеран контрактов");
       this.announcePickup(p.nick, wpn.cls, wpn.tier, wpn);
-      note = `Контракт недели выполнен! ${WEEKLY.reward.tokens} ◈, ${weaponDef(wpn.cls, wpn.tier).name} (оценка ${weaponQuality(wpn)})${xp(WEEKLY.reward.xpMul)}`;
+      note = `Контракт недели выполнен! ${WEEKLY.reward.tokens} ◈, ${instanceName(wpn)} (оценка ${weaponQuality(wpn)})${xp(WEEKLY.reward.xpMul)}`;
     }
     this.sendQuests(client, note);
   }
@@ -4139,7 +4165,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const rec = store.get(`nick:${normNick(p.nick)}`);
     const affOf = (id: string | null): string => {
       const w = id ? rt.weapons.find((x) => x.id === id) : undefined;
-      return w ? w.affixes.map(affixLabel).join(", ") : "";
+      return w ? instanceLabels(w).join(", ") : "";
     };
     const heldR = rolledIn(p, "right", rt)?.id ?? null;
     let heldL = rolledIn(p, "left", rt)?.id ?? null;
@@ -4149,8 +4175,8 @@ export class ZoneRoom extends Room<ZoneState> {
         id: w.id,
         cls: w.cls,
         tier: w.tier,
-        name: weaponDef(w.cls, w.tier).name,
-        affixes: w.affixes.map(affixLabel),
+        name: instanceName(w),
+        affixes: instanceLabels(w),
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
@@ -4220,8 +4246,8 @@ export class ZoneRoom extends Room<ZoneState> {
     instance?: WeaponInstance,
   ): void {
     if (tier === "base") return;
-    const name = weaponDef(cls, tier).name;
-    const affixes = instance?.affixes.length ? instance.affixes.map(affixLabel).join(", ") : "";
+    const name = instance ? instanceName(instance) : weaponDef(cls, tier).name;
+    const affixes = instance ? instanceLabels(instance).join(", ") : "";
     // Не в чат Twitch (засорял) — строкой в кил-фид спектатора.
     this.broadcast(MSG.pickupFeed, {
       nick,
@@ -4347,7 +4373,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (t) {
       const w = t.rt.weapons.find((x) => x.id === id);
       if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
-      const name = weaponDef(w.cls, w.tier).name;
+      const name = instanceName(w);
       if (act === "equip") {
         applyEquip(t.p, t.rt, w);
         this.persistNick(norm);
@@ -4369,7 +4395,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const weapons = [...(rec.weapons ?? [])];
     const w = weapons.find((x) => x.id === id);
     if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
-    const name = weaponDef(w.cls, w.tier).name;
+    const name = instanceName(w);
     const equipped = sanitizeEquipped(rec.equippedWeaponId);
     if (act === "equip") {
       const held = sanitizeHeld(rec.held);
@@ -4449,8 +4475,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const client = this.clientOf(t.id);
       if (client) this.persist(client);
     }
-    const affixes = w.affixes.map(affixLabel).join(", ") || "без роллов";
-    this.reply(`@${nick} надел ${weaponDef(w.cls, w.tier).name} — ${affixes}`);
+    const affixes = instanceLabels(w).join(", ") || "без роллов";
+    this.reply(`@${nick} надел ${instanceName(w)} — ${affixes}`);
   }
 
   /** `!scrap <номер|id>` — навсегда разобрать инстанс оружия на "Лом" (задел под крафт). */
@@ -4533,7 +4559,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (client) this.persist(client);
     }
     const desc =
-      targets.length === 1 ? weaponDef(targets[0].cls, targets[0].tier).name : `${targets.length} предметов`;
+      targets.length === 1 ? instanceName(targets[0]) : `${targets.length} предметов`;
     const skippedNote = skippedEquipped > 0 ? ` (${skippedEquipped} в руках пропустил)` : "";
     this.reply(`@${nick} разобрал ${desc} — получено лома: ${scrap}${skippedNote}`);
   }
@@ -5841,7 +5867,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // лёгкая компенсация проседания снаряда на дистанцию
       const ady = aimY + (bow ? 0.05 : 0.03) * Math.hypot(adx, adz);
       const mult = multIn(p, "right") * rolledDmgMul(p, "right", bot.rt);
-      const botAffix = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier);
+      const botAffix = affixIn(p, "right", bot.rt);
       const botRolled = rolledIn(p, "right", bot.rt);
       if (bow) {
         const critM = rollCritMult(
@@ -6036,7 +6062,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const swordCrit = rollCritMult(
       kind,
       Math.random,
-      weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "crit",
+      affixIn(p, "right", bot.rt) === "crit",
       botSwordCrit.chance + (prof ? prof.critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0),
       botSwordCrit.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
       prof ? prof.critMult : SWORD_CRIT_MULT,
@@ -6057,9 +6083,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const sz = mob.z;
     if (critHit > 1) this.critFx(sx, sy, sz, bot.id);
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
-    const vamped = weaponAffix(p.rightCls as WeaponClass, p.rightTier as WeaponTier) === "vamp";
+    const vamp = vampFrac(rolledIn(p, "right", bot.rt));
+    const vamped = vamp > 0;
     if (vamped) {
-      p.hp = Math.min(p.maxHp, p.hp + dmg * AFFIX.vamp.healFrac);
+      p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);
     }
     if (kind === "spear") this.spearPierce(bot.id, p, mob, dmg);
     if (kind === "hammer") this.hammerWave(bot.id, p, "right", bot.rt, sx, sy, sz);
@@ -6905,7 +6932,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const step = duration / hits;
     const y = terrainHeight(cx, cz);
     const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);
-    const affix = affixIn(p, hand);
+    const affix = affixIn(p, hand, rt);
     const rc = rolledCrit(p, hand, rt);
     const t0 = this.elapsed;
 
@@ -7060,8 +7087,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt) {
         const lw = rolledIn(p, "left", rt);
         const rw = rolledIn(p, "right", rt);
-        p.leftAffix = lw ? lw.affixes.map(affixLabel).join(", ") : "";
-        p.rightAffix = rw ? rw.affixes.map(affixLabel).join(", ") : "";
+        p.leftAffix = lw ? instanceLabels(lw).join(", ") : "";
+        p.rightAffix = rw ? instanceLabels(rw).join(", ") : "";
       }
     });
 
@@ -7369,9 +7396,7 @@ export class ZoneRoom extends Room<ZoneState> {
       guard = { sx: Math.sin(yaw), sz: Math.cos(yaw), wx: guard.wx, wz: guard.wz };
     }
 
-    const aegis =
-      (p.leftCls === "shield" && p.leftTier === "legendary") ||
-      (p.rightCls === "shield" && p.rightTier === "legendary");
+    const blockChance = blockChanceOf(p, rt);
     // Уворот (ловкость): один предмет в руках (лук/посох — обе руки заняты
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
     const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
@@ -7381,7 +7406,7 @@ export class ZoneRoom extends Room<ZoneState> {
       ? { mult: 1, by: 0 as BlockedBy }
       : dodged
         ? { mult: 0, by: 3 as BlockedBy }
-        : resolveBlock(guard, ax, az, h.projectile, aegis);
+        : resolveBlock(guard, ax, az, h.projectile, blockChance);
     // Разъярённый владыка события бьёт сильнее.
     let inDmg = h.dmg;
     // Багровый бьёт под уровень своих бойцов (BOSS_ADAPT) — и сгустками тоже.
@@ -7516,7 +7541,8 @@ export class ZoneRoom extends Room<ZoneState> {
         id: w.id,
         cls: w.cls,
         tier: w.tier,
-        affixes: w.affixes.map(affixLabel),
+        name: instanceName(w),
+        affixes: instanceLabels(w),
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
       })),

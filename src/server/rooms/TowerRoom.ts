@@ -21,7 +21,8 @@ import {
   isWeaponClass,
   rollWeaponInstance,
   WEAPONS,
-  weaponAffix,
+  shieldBlockChance,
+  isMeleeClass,
   weaponKey,
   type WeaponClass,
   type WeaponInstance,
@@ -72,8 +73,14 @@ export interface TowerRolled {
   atkSpeedMul: number;
   critChance: number;
   critMult: number;
-  /** «Лук охотника» — повышенный базовый шанс крита. */
+  /** «Лук охотника» (врождённый крит старого уникального) — повышенный базовый шанс крита. */
   hunterBow: boolean;
+  /** Доля урона в HP: врождённый вампиризм + ролл (только ближний бой). */
+  vamp: number;
+  /** «Посох бури» (врождённый эффект старого уникального). */
+  storm: boolean;
+  /** Шанс блока щитом с учётом тира и роллов (0 — щита нет). */
+  blockChance: number;
   /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
   warriorMul: number;
 }
@@ -250,10 +257,12 @@ export class TowerRoom extends Room<TowerState> {
   private heroAttrs = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
   /** Щит в руке — блокирует по направлению взгляда героя (он всегда смотрит на цель). */
   private heroGuard: GuardState | null = null;
-  private heroAegis = false;
+  /** Шанс блока щитом: тир + роллы (см. shieldBlockChance). */
+  private heroBlockChance = 0;
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
-  /** Меч вампира — удар героя лечит его самого (см. AFFIX.vamp). */
+  /** Вампиризм — доля урона удара, возвращаемая герою как HP (врождённый + ролл). */
+  private heroVamp = 0;
   private heroVampAffix = false;
   /** Лук/посох — герой стреляет с дистанции (как основной мир), не бежит в упор рукопашной. */
   private heroRanged = false;
@@ -335,16 +344,15 @@ export class TowerRoom extends Room<TowerState> {
     }
     const holdsShield = options.leftCls === "shield" || options.rightCls === "shield";
     this.heroGuard = holdsShield ? noGuard() : null; // направление считаем каждый тик от heroYaw
-    this.heroAegis =
-      (options.leftCls === "shield" && options.leftTier === "legendary") ||
-      (options.rightCls === "shield" && options.rightTier === "legendary");
+    const shieldTier = options.leftCls === "shield" ? options.leftTier : options.rightCls === "shield" ? options.rightTier : "";
+    this.heroBlockChance = options.rolled?.blockChance ?? (shieldTier ? shieldBlockChance(shieldTier) : 0);
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
-    const rightAffix = weaponAffix(options.rightCls as WeaponClass, options.rightTier as WeaponTier);
-    this.heroVampAffix = rightAffix === "vamp";
+    this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
+    this.heroVampAffix = this.heroVamp > 0;
     // «Посох бури» (легендарка) — как и в основном мире (ZoneRoom): сам
     // выстрел чуть больнее, не только АОЕ (см. splashDamage в heroAttack).
-    if (weaponKind === "staff" && rightAffix === "storm") this.heroDmg *= AFFIX.storm.dmgMul;
+    if (weaponKind === "staff" && options.rolled?.storm) this.heroDmg *= AFFIX.storm.dmgMul;
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
     // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — BOT.attackCooldown).
     const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
@@ -651,8 +659,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroAttack(target: LiveMob, dmgMult = 1): void {
     const dmg = this.heroDmg * dmgMult;
     // Меч вампира — часть урона возвращается герою как HP (см. AFFIX.vamp).
-    if (this.heroVampAffix) {
-      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * AFFIX.vamp.healFrac);
+    if (this.heroVamp > 0) {
+      this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * this.heroVamp);
     }
     // Врождённый поджог мага — как в основном мире (ZoneSim.tickBolt): ДпС
     // считается от МАКСИМАЛЬНОГО HP цели, а не от урона удара (см. AFFIX.fire).
@@ -878,7 +886,7 @@ export class TowerRoom extends Room<TowerState> {
     const dodged = Math.random() < dodgeChance(this.heroAttrs, this.heroOneHanded);
     const block = dodged
       ? { mult: 0 as const, by: 3 as const }
-      : resolveBlock(guard, ax, az, projectile, this.heroAegis);
+      : resolveBlock(guard, ax, az, projectile, this.heroBlockChance);
     let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
     if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
