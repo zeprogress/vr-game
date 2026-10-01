@@ -424,6 +424,8 @@ export interface ClassActCtx {
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
 }
 
+/** Теневой рывок — серый дым. */
+const SHADOW_GRAY = new Color3(0.62, 0.62, 0.66);
 const V_SUPPORT = 2;
 const V_BATTLEMAGE = 5;
 
@@ -480,9 +482,10 @@ export function playClassAct(
     case "shadowStep":
       if (x2 !== undefined && z2 !== undefined) {
         c.fx.shadowTrail(x, y, z, x2, z2);
-        c.fx.streak(x, y, z, x2, z2, OTHER, 0.6, 0.4);
-        vfx.burst(x, y + 0.9, z, OTHER, { count: 14, speed: 3, life: 0.5, grav: -2, size: 0.3 });
-        vfx.burst(x2, y + 0.9, z2, OTHER, { count: 14, speed: 4, life: 0.45, grav: -1, size: 0.25 });
+        // Теневой рывок — серый (по просьбе), не по общей схеме.
+        c.fx.streak(x, y, z, x2, z2, SHADOW_GRAY, 0.6, 0.4);
+        vfx.burst(x, y + 0.9, z, SHADOW_GRAY, { count: 14, speed: 3, life: 0.5, grav: -2, size: 0.3 });
+        vfx.burst(x2, y + 0.9, z2, SHADOW_GRAY, { count: 14, speed: 4, life: 0.45, grav: -1, size: 0.25 });
       }
       c.emote(id, "roll");
       c.sound(at, "swing");
