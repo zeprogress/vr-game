@@ -5652,10 +5652,6 @@ export class ZoneRoom extends Room<ZoneState> {
     let raidBoss = bot.raiding ? this.bossMob() : undefined;
     if (raidBoss?.dead) raidBoss = undefined;
     if (bot.raiding && !raidBoss) bot.raiding = false;
-    // Сам босс, пока рейд активен — держим отдельно от `raidBoss` (его ниже
-    // могут обнулить, если бот отвлёкся на осколок): выталкивание из туши
-    // должно работать всегда, а не только пока цель — босс.
-    const raidBossMob = raidBoss;
 
     // !пугало: бот бьёт пугало в лагере (цель — только оно), пока не выйдет время.
     const testing = (bot.testUntil ?? 0) > Date.now();
@@ -6034,28 +6030,8 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.vz += (wvz - bot.vz) * accel;
     this.botStep(p, bot, dt);
 
-    // Жёстко не даём стоять внутри туши босса (соседей расталкивает цикл
-    // выше, а босса там нет — он моб). Работает всё время рейда, даже когда
-    // бот отвлёкся на осколок и цель — не босс.
-    if (raidBossMob && !raidBossMob.dead) {
-      const keepOut = bossR(raidBossMob) + PLAYER.radius + 0.35;
-      const bx = p.head.x - raidBossMob.x;
-      const bz = p.head.z - raidBossMob.z;
-      const bd = Math.hypot(bx, bz);
-      if (bd > 1e-3 && bd < keepOut) {
-        p.head.x = raidBossMob.x + (bx / bd) * keepOut;
-        p.head.z = raidBossMob.z + (bz / bd) * keepOut;
-        const inward = (bot.vx * bx + bot.vz * bz) / bd;
-        if (inward < 0) {
-          bot.vx -= (bx / bd) * inward;
-          bot.vz -= (bz / bd) * inward;
-        }
-      }
-    }
-
-    // И из любого моба: стоит бот внутри тела — симуляция выталкивает МОБА
-    // (боты «толкали» мобов и боссов, когда их били).
-    this.botOutOfMobs(p, bot);
+    // В тушу босса (и любого моба) бот своим шагом не заходит — см. botStep/botBlockedByMobs;
+    // выталкивать его оттуда больше не нужно (это и было «мобы толкают героев»).
 
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
 
@@ -6685,13 +6661,59 @@ export class ZoneRoom extends Room<ZoneState> {
     return [(wx - p.head.x) / l, (wz - p.head.z) / l];
   }
 
-  /** Шаг бота по скорости: на крутой подъём не идёт — скользит вдоль склона (MAX_CLIMB). */
+  /**
+   * Шаг бота по скорости: на крутой подъём не идёт — скользит вдоль склона (MAX_CLIMB);
+   * в тело моба своим шагом не заходит (встаёт на край), но и моб его не выталкивает.
+   */
   private botStep(p: PlayerState, bot: Bot, dt: number): void {
+    const x0 = p.head.x;
+    const z0 = p.head.z;
     const [sx, sz] = climbStep(p.head.x, p.head.z, bot.vx * dt, bot.vz * dt);
     if (sx === 0) bot.vx = 0;
     if (sz === 0) bot.vz = 0;
     p.head.x += sx;
     p.head.z += sz;
+    this.botBlockedByMobs(p, bot, x0, z0);
+  }
+
+  /**
+   * Моб — препятствие для шага бота, но не толкатель: шаг ВНУТРЬ тела отменяем
+   * (встаёт на край), а если моб сам оказался вплотную (прыжок, телепорт за
+   * спину) — бота не выталкиваем, только глубже не пускаем. Раньше бота
+   * выталкивало каждый тик — мобы «толкали» героев.
+   */
+  private botBlockedByMobs(p: PlayerState, bot: Bot, x0: number, z0: number): void {
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead || m.scarecrow) continue;
+      const keep = MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1) + PLAYER.radius + 0.05;
+      const dx = p.head.x - m.x;
+      const dz = p.head.z - m.z;
+      if (Math.abs(dx) > keep || Math.abs(dz) > keep) continue;
+      const d = Math.hypot(dx, dz);
+      if (d >= keep) continue;
+      const d0 = Math.hypot(x0 - m.x, z0 - m.z);
+      if (d0 >= keep) {
+        if (d > 1e-3) {
+          p.head.x = m.x + (dx / d) * keep;
+          p.head.z = m.z + (dz / d) * keep;
+        } else {
+          p.head.x = x0;
+          p.head.z = z0;
+        }
+      } else if (d < d0) {
+        p.head.x = x0;
+        p.head.z = z0;
+      }
+      if (d > 1e-3) {
+        const ux = dx / d;
+        const uz = dz / d;
+        const inward = bot.vx * ux + bot.vz * uz;
+        if (inward < 0) {
+          bot.vx -= ux * inward;
+          bot.vz -= uz * inward;
+        }
+      }
+    }
   }
 
   /** Бот после переноса умением: не внутри моба, высота — по земле. */

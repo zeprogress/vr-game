@@ -768,6 +768,9 @@ export class Mob {
       this.stunnedT = this.rootedT = 0;
       return;
     }
+    // Где моб стоял до своего шага в этом тике — чтобы герой не толкал моба (см. «не проходит сквозь игроков»).
+    const x0 = this.x;
+    const z0 = this.z;
     if (this.tauntT > 0) this.tauntT -= dt;
     if (this.markT > 0) {
       this.markT -= dt;
@@ -1586,18 +1589,33 @@ export class Mob {
       }
     }
 
-    // не проходит сквозь игроков
+    // Герой — препятствие, но не толкатель: моб САМ в героя не заходит (его шаг
+    // внутрь отменяем — встаёт на край), а если герой сам зашёл в моба — моба не
+    // отталкиваем (раньше герои двигали мобов и даже боссов, просто идя на них).
     const bodyR =
       this.kind === "boss" ? MOB.bodyRadius * this.scale * BOSS.bodyMult : MOB.bodyRadius * this.scale;
     for (const p of players) {
+      const clr = PLAYER.radius + bodyR;
       const gx = this.x - p.x;
       const gz = this.z - p.z;
       const gd = Math.hypot(gx, gz);
-      const clr = PLAYER.radius + bodyR;
-      if (gd > 1e-4 && gd < clr) {
-        const push = (clr - gd) / gd;
-        this.x += gx * push;
-        this.z += gz * push;
+      if (gd >= clr) continue;
+      const d0 = Math.hypot(x0 - p.x, z0 - p.z);
+      if (d0 >= clr) {
+        // Сам дошёл до героя — останавливаем на краю.
+        if (gd > 1e-4) {
+          this.x = p.x + (gx / gd) * clr;
+          this.z = p.z + (gz / gd) * clr;
+        } else {
+          this.x = x0;
+          this.z = z0;
+        }
+      } else if (gd < d0) {
+        // Уже вплотную (герой зашёл в моба) — глубже не лезет, но и не отъезжает.
+        this.x = x0;
+        this.z = z0;
+      }
+      if (gd > 1e-4) {
         const inward = (this.vx * gx + this.vz * gz) / gd;
         if (inward < 0) {
           this.vx -= (gx / gd) * inward;
@@ -2263,7 +2281,7 @@ export class ZoneSim {
       }
     }
     this.tickBurning(dt);
-    this.separateMobs();
+    this.separateMobs(players);
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits, this.onBallLand)) this.balls.delete(id);
     this.tickCaltrops(dt, players, hits);
@@ -2285,11 +2303,20 @@ export class ZoneSim {
    * Только позиция (не скорость): скорость крутит логика прыжков, а тут нужен
    * лишь запрет на наложение — иначе стая пчёл слипается в один комок.
    */
-  private separateMobs(): void {
+  private separateMobs(players: SimPlayer[]): void {
     const list: Mob[] = [];
     for (const m of this.mobs.values()) if (!m.dead) list.push(m);
     const bodyR = (m: Mob): number =>
       MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1);
+    // Толпа не вдавливает моба в героя: герой — препятствие (см. Mob.tick), сдвиг глубже в него не делаем.
+    const intoHero = (m: Mob, nx: number, nz: number): boolean => {
+      const r = PLAYER.radius + bodyR(m);
+      for (const p of players) {
+        const dn = Math.hypot(nx - p.x, nz - p.z);
+        if (dn < r && dn < Math.hypot(m.x - p.x, m.z - p.z)) return true;
+      }
+      return false;
+    };
     for (let i = 0; i < list.length; i++) {
       const a = list[i];
       const ar = bodyR(a);
@@ -2321,13 +2348,17 @@ export class ZoneSim {
         // Толпа не выдавливает моба на крутой склон (MAX_CLIMB).
         if (wa > 0) {
           const [sx, sz] = a.flying ? [-dx * over * wa, -dz * over * wa] : climbStep(a.x, a.z, -dx * over * wa, -dz * over * wa);
-          a.x += sx;
-          a.z += sz;
+          if (!intoHero(a, a.x + sx, a.z + sz)) {
+            a.x += sx;
+            a.z += sz;
+          }
         }
         if (wb > 0) {
           const [sx, sz] = b.flying ? [dx * over * wb, dz * over * wb] : climbStep(b.x, b.z, dx * over * wb, dz * over * wb);
-          b.x += sx;
-          b.z += sz;
+          if (!intoHero(b, b.x + sx, b.z + sz)) {
+            b.x += sx;
+            b.z += sz;
+          }
         }
       }
     }
