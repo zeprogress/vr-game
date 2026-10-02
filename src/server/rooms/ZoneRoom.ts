@@ -1589,6 +1589,7 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.equippedWeaponId[hand] = w.id;
         rt.owned.add(weaponKey(w.cls, w.tier));
       } else if (msg.act === "scrap") {
+        if (w.fav) return; // ★ избранное не разбирается
         const scrap = this.scrapOne({ p, rt }, w);
         if (scrap > 0) {
           const bag = readBag(p);
@@ -1839,7 +1840,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills") return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav") return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))));
@@ -4259,6 +4260,7 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
+        fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
       // иначе незакреплённое надетое оружие показывалось ещё и в сумке.
@@ -4461,6 +4463,17 @@ export class ZoneRoom extends Room<ZoneState> {
       store.put(token, { unspent: prog.unspent, str: prog.str, agi: prog.agi, int: prog.int, con: prog.con, luc: prog.luc, wis: prog.wis, manualAttrs: true });
       return { ok: true, text: `${name} +${n}` };
     }
+    if (act === "fav") {
+      // ★ Избранное: звёздочка у экземпляра (герой в мире — живой склад, иначе сейв).
+      const list = t ? t.rt.weapons : store.get(`nick:${norm}`)?.weapons;
+      const w = list?.find((x) => x.id === id);
+      if (!list || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      if (w.fav) delete w.fav;
+      else w.fav = true;
+      if (t) this.persistNick(norm);
+      else store.put(`nick:${norm}`, { weapons: list });
+      return { ok: true, text: w.fav ? `★ В избранном: ${instanceName(w)} — не разбирается` : `Убрано из избранного: ${instanceName(w)}` };
+    }
     if (act === "enchant") {
       if (t) {
         const w = t.rt.weapons.find((x) => x.id === id);
@@ -4494,6 +4507,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (w.id === t.rt.equippedWeaponId.left || w.id === t.rt.equippedWeaponId.right) {
         return { ok: false, text: "Это сейчас в руках — сначала надень другое." };
       }
+      if (w.fav) return { ok: false, text: `«${name}» в избранном — сначала сними звёздочку.` };
       const got = this.scrapOne(t, w);
       const bag = readBag(t.p);
       addToBag(bag, "scrap", got);
@@ -4534,6 +4548,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (w.id === equipped.left || w.id === equipped.right) {
       return { ok: false, text: "Это сейчас в руках — сначала надень другое." };
     }
+    if (w.fav) return { ok: false, text: `«${name}» в избранном — сначала сними звёздочку.` };
     const bag = restoreBag(rec.bag);
     const got = scrapValue(w);
     addToBag(bag, "scrap", got);
@@ -4650,13 +4665,18 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Надетое сломать нельзя, пока не заменишь — сначала !equip другое.
     const equippedIds = new Set([rt.equippedWeaponId.left, rt.equippedWeaponId.right].filter(Boolean));
-    const targets = picked.filter((w) => !equippedIds.has(w.id));
-    const skippedEquipped = picked.length - targets.length;
+    const free = picked.filter((w) => !equippedIds.has(w.id));
+    const skippedEquipped = picked.length - free.length;
+    // ★ Избранное не разбирается — ни списком, ни «all»/«gold».
+    const targets = free.filter((w) => !w.fav);
+    const skippedFav = free.length - targets.length;
     if (targets.length === 0) {
       this.reply(
-        skippedEquipped > 0
-          ? `@${nick} это сейчас в руках — сначала !equip другое, потом !scrap.`
-          : `@${nick} нечего разбирать — номера — на странице !inv.`,
+        skippedFav > 0
+          ? `@${nick} это в избранном (★) — сначала сними звёздочку на странице !inv.`
+          : skippedEquipped > 0
+            ? `@${nick} это сейчас в руках — сначала !equip другое, потом !scrap.`
+            : `@${nick} нечего разбирать — номера — на странице !inv.`,
       );
       return;
     }
@@ -4673,7 +4693,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const desc =
       targets.length === 1 ? instanceName(targets[0]) : `${targets.length} предметов`;
-    const skippedNote = skippedEquipped > 0 ? ` (${skippedEquipped} в руках пропустил)` : "";
+    const skipped = [skippedEquipped > 0 ? `${skippedEquipped} в руках` : "", skippedFav > 0 ? `${skippedFav} в избранном` : ""].filter(Boolean);
+    const skippedNote = skipped.length ? ` (пропустил: ${skipped.join(", ")})` : "";
     this.reply(`@${nick} разобрал ${desc} — получено лома: ${scrap}${skippedNote}`);
   }
 
@@ -7959,7 +7980,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const heldR = p ? (rolledIn(p, "right", rt)?.id ?? null) : null;
     let heldL = p ? (rolledIn(p, "left", rt)?.id ?? null) : null;
     if (heldL === heldR) heldL = null;
-    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
+    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}${w.fav ? "*" : ""}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
     if (sig === rt.weaponsSig) return;
     const client = this.clientOf(id);
     if (!client) return;
@@ -7974,6 +7995,8 @@ export class ZoneRoom extends Room<ZoneState> {
         effects: instanceEffects(w),
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
+        fav: !!w.fav,
+        scrap: scrapValue(w),
       })),
       equipped: { left: heldL, right: heldR },
     } satisfies WeaponsListMsg);

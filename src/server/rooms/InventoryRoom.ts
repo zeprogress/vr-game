@@ -100,7 +100,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills"
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav"
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -183,6 +183,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
+      fav: !!w.fav,
     }));
   const misc = (rec.bag ?? [])
     .filter((s) => s.item && s.count > 0 && s.item !== "scroll_xp" && s.item !== "scroll_wind") // свитки — в «Жетоны и свитки»
@@ -224,6 +225,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
+      fav: !!w.fav,
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },
     potions: bagCount(rec.bag ?? [], "potion"),

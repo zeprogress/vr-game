@@ -193,6 +193,8 @@ export interface PcInvWeapon {
   scrap: number;
   /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки. */
   ench: { label: string; points: number; max: boolean; chance: number; cost: number }[];
+  /** ★ Избранное — не разбирается. */
+  fav?: boolean;
 }
 
 /** Одно задание в окне/трекере. */
@@ -295,8 +297,8 @@ export interface PcInvData {
 }
 
 export interface PcInvActMsg {
-  /** title — надеть титул (id = название, "" — снять). */
-  act: "enchant" | "stat" | "respec" | "title" | "skills";
+  /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id. */
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav";
   id: string;
   idx: number;
 }
@@ -689,6 +691,10 @@ export interface WarehouseWeapon {
   quality: number;
   /** Ролл «скорость атаки» (доля, 0.14 = +14%) — клиент ускоряет им свой темп. */
   atkSpd?: number;
+  /** ★ Избранное — не разбирается. */
+  fav?: boolean;
+  /** Сколько лома даст разборка (scrapValue). */
+  scrap?: number;
 }
 
 /** Озвучка сообщения чата для игрока (VR). */

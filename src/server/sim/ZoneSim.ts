@@ -2964,6 +2964,7 @@ export class ZoneSim {
   /** Положить на землю конкретный инстанс (со всеми роллами) — «скинуть со склада». */
   dropInstance(inst: WeaponInstance, x: number, z: number): ItemId | null {
     if (inst.tier === "base") return null;
+    delete inst.fav; // звёздочка — личная пометка хозяина, на земле её нет
     const item = WEAPON_DROP[weaponKey(inst.cls, inst.tier)];
     if (!item) return null;
     const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z, inst);

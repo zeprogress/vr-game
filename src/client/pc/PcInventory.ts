@@ -220,7 +220,8 @@ export class PcInventory {
         this.render();
       });
     }
-    if (w) btn(`В лом (+${w.scrap})`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), true);
+    if (w) btn(w.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleFav(w));
+    if (w && !w.fav) btn(`В лом (+${w.scrap})`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), true);
     if (w) btn("Выбросить", () => this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w)), true);
     btn("Отмена", () => {});
     box.append(row);
@@ -463,7 +464,8 @@ export class PcInventory {
       anvil.classList.remove("hot");
       const w = this.dragWeapon();
       this.endDrag();
-      if (w) this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w));
+      if (w?.fav) this.textTip(anvil, `${glyph("ui.fav")} В избранном`, "Избранное не разбирается — сначала сними звёздочку.");
+      else if (w) this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w));
     });
     cons.append(anvil);
     right.append(cons);
@@ -512,6 +514,10 @@ export class PcInventory {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
+      if (w?.fav) {
+        cell.style.position = "relative";
+        cell.append(div("pcinv-fav on", glyph("ui.fav")));
+      }
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
       this.touchSrc.set(cell, { kind: "hand", side });
@@ -548,6 +554,29 @@ export class PcInventory {
     return box;
   }
 
+  /** Звёздочка «избранное» в углу ячейки: ★ — в избранном; пустая ☆ — при наведении (ПК), клик — переключить. */
+  private favStar(w: PcInvWeapon): HTMLDivElement {
+    const s = div(`pcinv-fav${w.fav ? " on" : ""}`, glyph(w.fav ? "ui.fav" : "ui.favOff"));
+    s.title = w.fav ? "В избранном (не разбирается) — убрать" : "В избранное";
+    if (this.hooks.touch) {
+      s.style.pointerEvents = "none";
+      return s;
+    }
+    s.addEventListener("click", (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.toggleFav(w);
+    });
+    // Не начинать перетаскивание/меню с самой звёздочки.
+    s.addEventListener("mousedown", (e) => e.stopPropagation());
+    return s;
+  }
+
+  private toggleFav(w: PcInvWeapon): void {
+    this.hideTip();
+    this.hooks.act({ act: "fav", id: w.id, idx: 0 });
+  }
+
   private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`);
     setIcon(c, w.cls, w.name);
@@ -555,6 +584,8 @@ export class PcInventory {
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
     if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
+    // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
+    if (!this.hooks.touch || w.fav) c.append(this.favStar(w));
     // Страница на ПК: клик — меню действий, как тап на телефоне.
     if (this.hooks.page && !this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
     c.draggable = true;
@@ -841,7 +872,7 @@ export class PcInventory {
     }
     for (const e of w?.effects ?? []) this.tip.append(div("pcinv-tipeff", e));
     for (const a of w?.affixes ?? []) this.tip.append(div("pcinv-tipaff", a));
-    if (w) this.tip.append(div("pcinv-small", `В лом: ${w.scrap}`));
+    if (w) this.tip.append(div("pcinv-small", w.fav ? `${glyph("ui.fav")} В избранном — не разбирается` : `В лом: ${w.scrap}`));
     this.tip.append(div("pcinv-small dim", held ? "ПКМ — снять в сумку" : "ПКМ — надеть · перетащи — действия"));
     const r = anchor.getBoundingClientRect();
     this.tip.style.display = "block";
@@ -1066,6 +1097,10 @@ function injectInvStyle(): void {
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
 .pcinv-q { position:absolute; right:2px; bottom:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-fav { position:absolute; right:2px; top:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
+.pcinv-fav.on { opacity:1; }
+.pcinv-cell:hover .pcinv-fav { opacity:1; }
+.pcinv-cell.big .pcinv-fav { pointer-events:none; }
 .pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }

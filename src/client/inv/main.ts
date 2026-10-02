@@ -40,6 +40,8 @@ interface InvWeapon {
   /** Сколько лома даст переработка. */
   scrap: number;
   ench: EnchRow[];
+  /** ★ Избранное — не разбирается. */
+  fav?: boolean;
 }
 
 interface EnchRow {
@@ -343,14 +345,18 @@ function renderInv(msg: InvMsg): void {
       : weapons
           .map((w) => {
             const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
+            const favBtn = `<button class="act fav" data-act="fav" data-id="${escapeHtml(w.id)}" title="${w.fav ? "Убрать из избранного" : "В избранное (не разбирается)"}">${glyph(w.fav ? "ui.fav" : "ui.favOff")}</button>`;
             const btns = msg.authed
               ? `<div class="btns"><button class="act equip" data-act="equip" data-id="${escapeHtml(w.id)}">Надеть</button>` +
-                `<button class="act scrap${armedScrap === w.id ? " armed" : ""}" data-act="scrap" data-id="${escapeHtml(w.id)}">` +
-                `${armedScrap === w.id ? "Точно?" : "На лом"} +${w.scrap}</button></div>`
+                (w.fav
+                  ? ""
+                  : `<button class="act scrap${armedScrap === w.id ? " armed" : ""}" data-act="scrap" data-id="${escapeHtml(w.id)}">` +
+                    `${armedScrap === w.id ? "Точно?" : "На лом"} +${w.scrap}</button>`) +
+                `${favBtn}</div>`
               : "";
             return (
               `<div class="weapon ${w.tier}${w.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(w.id)}">` +
-              `<div class="winfo"><div class="name">${w.num}) ${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
+              `<div class="winfo"><div class="name">${w.num}) ${w.fav ? `<span class="favmark">${glyph("ui.fav")}</span> ` : ""}${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
               effectsHtml(w.effects) +
               `<div class="affixes">${escapeHtml(affixes)}</div>` +
               `<div class="meta">${TIER_RU[w.tier]}${w.ench.length ? " · ⚒ нажми, чтобы заточить" : ""}</div>` +

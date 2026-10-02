@@ -12,7 +12,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { itemIcon, weaponIcon, type IconKey } from "#shared/icons";
+import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
 import { drawIcon } from "./icons";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
@@ -95,7 +95,9 @@ export type MenuAction =
   | { act: "handToBack" | "backToHand"; side: Side }
   /** Со склада в руку / за плечо этой стороны (что там было — на склад). */
   | { act: "whToHand" | "whToBack"; side: Side; id: string; cls: WeaponClass; tier: WeaponTier }
-  | { act: "drop" | "scrap"; id: string; cls: WeaponClass; tier: WeaponTier };
+  | { act: "drop" | "scrap"; id: string; cls: WeaponClass; tier: WeaponTier }
+  /** ★ Избранное: переключить звёздочку (избранное не разбирается). */
+  | { act: "fav"; id: string };
 
 /** Всплывающее меню действий над выбранным оружием. */
 interface Popup {
@@ -208,7 +210,7 @@ export class WristMenu {
   }
 
   setWarehouse(list: WarehouseWeapon[], equipped: { left: string | null; right: string | null }): void {
-    const sig = (l: WarehouseWeapon[]): string => l.map((w) => w.id).join(",");
+    const sig = (l: WarehouseWeapon[]): string => l.map((w) => `${w.id}${w.fav ? "*" : ""}`).join(",");
     if (
       sig(list) === sig(this.warehouse) &&
       equipped.left === this.equippedIds.left &&
@@ -1317,7 +1319,7 @@ export class WristMenu {
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов"],
+      info: [`${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов"],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1340,6 +1342,11 @@ export class WristMenu {
       ctx.fillStyle = "#7ee081";
       ctx.fillText(eq, x + 8, y + h - 24);
     }
+    if (wp.fav) {
+      ctx.font = "bold 24px system-ui, sans-serif";
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(glyph("ui.fav"), x + w - 26, y + 6);
+    }
   }
 
   private shortName(n: string): string {
@@ -1349,7 +1356,7 @@ export class WristMenu {
   // ---- всплывающие меню действий ----
 
   private scrapGain(wp: WarehouseWeapon): number {
-    return (wp.tier === "legendary" ? 10 : wp.tier === "gold" ? 1 : 0) + wp.affixes.length;
+    return wp.scrap ?? 0;
   }
 
   private sideName(side: Side, gen: "hand" | "shoulder", acc: boolean): string {
@@ -1386,11 +1393,18 @@ export class WristMenu {
         },
       });
     }
+    buttons.push({
+      id: "pop:fav",
+      label: wp.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
+      hint: wp.fav ? "снова можно будет разобрать" : "избранное не разбирается",
+      color: "#ffd166",
+      act: () => send({ act: "fav", id: wp.id }),
+    });
     buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
-    buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
+    if (!wp.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
-      title: `${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
+      title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
       sub: [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,

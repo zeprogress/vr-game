@@ -1,6 +1,6 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
 import { aegisTier, bothHandsNote, qualityStars, weaponDef } from "#shared/items";
-import { itemIcon, weaponIcon } from "#shared/icons";
+import { glyph, itemIcon, weaponIcon } from "#shared/icons";
 import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
 import { iconHtml } from "./icons";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
@@ -111,7 +111,7 @@ export class InventoryPanel {
         `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor};`,
       );
       const name = el("div", `font-size:13px;font-weight:600;color:${tierColor};`);
-      name.textContent = w.name ?? d.name;
+      name.textContent = `${w.fav ? `${glyph("ui.fav")} ` : ""}${w.name ?? d.name}`;
       if (w.quality) {
         const q = el("span", `color:${QUALITY_COLOR};margin-left:6px;font-weight:600;`);
         q.textContent = qualityStars(w.quality, w.affixes.length);

@@ -1962,6 +1962,9 @@ export class Game {
         this.net?.sendWarehouseAct({ id: a.id, act: "hand", hand });
         return;
       }
+      case "fav":
+        this.net?.sendPcInvAct({ act: "fav", id: a.id, idx: 0 });
+        return;
       case "drop":
       case "scrap": {
         // Если этот инстанс сейчас в руке — сначала убираем его из руки.
