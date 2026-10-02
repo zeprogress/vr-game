@@ -214,7 +214,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
   spear: {
-    name: "Копьё", dmg: 1.65, interval: 0.85, tempoSoft: 1, reach: 4.5, pierce: 4,
+    name: "Копьё", dmg: 2.1, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
@@ -386,7 +386,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
-      spearman: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий удар — крит" },
+      spearman: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (мобы внутри замедлены на 50% на 3 с), следующий удар — крит" },
     },
   },
   crush: {
@@ -453,7 +453,7 @@ export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
 export const STORM_CRUSH = { selfHeal: 0.3, allyHeal: 0.15 } as const;
 
 /** «Град выпадов» копейщика: серия колющих ударов вперёд. */
-export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6, cone: 0.5, dmg: 0.75 } as const;
+export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6.5, cone: 0.5, dmg: 1 } as const;
 
 /** Числа новых умений. */
 export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3 } as const;

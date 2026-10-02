@@ -6625,7 +6625,11 @@ export class ZoneRoom extends Room<ZoneState> {
           act({ k: "seal", x: sx, y: feetY, z: sz, d: 4, r: 2.5 });
           for (let t = 0; t < 8; t++) {
             this.clock.setTimeout(() => {
-              for (const m of around(sx, sz, 2.5)) this.sim.rootMob(m.id, 3);
+              for (const m of around(sx, sz, 2.5)) {
+                // Ловушка лучника пригвождает, у копейщика — замедляет.
+                if (cls === "spearman") this.sim.slowMob(m.id, 3, 0.5);
+                else this.sim.rootMob(m.id, 3);
+              }
             }, t * 500);
           }
         }

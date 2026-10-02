@@ -35,7 +35,7 @@ export const WEAPON_REACH: Record<WeaponKind, number> = {
   throw: 45,
   // «Классы 2.0»: кинжал короче меча, копьё — длинный выпад, молот чуть длиннее меча.
   dagger: 3.1,
-  spear: 5.8,
+  spear: 6.1,
   hammer: 4.0,
 };
 
