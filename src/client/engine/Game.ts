@@ -2735,9 +2735,10 @@ export class Game {
     const byId = (id: string | null) => (id ? wh.list.find((w) => w.id === id) : undefined);
     const r = byId(wh.equipped.right);
     const l = byId(wh.equipped.left);
-    // Обе руки складываются (щит, второй меч/кинжал), один и тот же экземпляр
-    // (двуручное в обеих руках) — один раз; как rolledAtkSpeedMul на сервере.
-    return 1 + (r?.atkSpd ?? 0) + (l && l.id !== r?.id ? l.atkSpd ?? 0 : 0);
+    // Обе руки (щит, второй меч/кинжал): лучший ролл из двух, не сумма; один и тот же
+    // экземпляр (двуручное в обеих руках) — один раз. Как rolledAtkSpeedMul/handsRoll на
+    // сервере — иначе с двумя клинками клиент махал быстрее, чем сервер засчитывает удары.
+    return 1 + Math.max(r?.atkSpd ?? 0, l && l.id !== r?.id ? (l.atkSpd ?? 0) : 0);
   }
 
   /**
