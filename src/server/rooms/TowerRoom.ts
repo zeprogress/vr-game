@@ -19,6 +19,7 @@ import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSp
 import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
   isWeaponClass,
+  rollAegisInstance,
   rollWeaponInstance,
   WEAPONS,
   shieldBlockChance,
@@ -735,7 +736,7 @@ export class TowerRoom extends Room<TowerState> {
    * тир смещается к легендарке ближе к вершине (towerLegendaryShare).
    * Последний этаж — отдельный гарантированный случай, кульминация забега.
    * Оружие сразу класса героя (в башне класс не сменить, дропать чужой
-   * смысла нет) и сразу в склад — на арене нет "земли с дропом".
+   * смысла нет; исключение — Эгида) и сразу в склад — на арене нет "земли с дропом".
    */
   private rollFloorDrop(floor: number): void {
     const isFinal = floor >= TOWER.floors;
@@ -743,7 +744,10 @@ export class TowerRoom extends Room<TowerState> {
     if (!dropped) return;
     const legendaryChance = isFinal ? 0.6 : towerLegendaryShare(floor);
     const tier: WeaponTier = Math.random() < legendaryChance ? "legendary" : "gold";
-    this.drops.push(rollWeaponInstance(this.heroCls, tier));
+    // Часть уникальных наград — Эгида (щит вместо оружия класса); на последнем этаже — ещё и сверху.
+    if (tier === "legendary" && Math.random() < TOWER.aegisShare) this.drops.push(rollAegisInstance());
+    else this.drops.push(rollWeaponInstance(this.heroCls, tier));
+    if (isFinal && Math.random() < TOWER.aegisFinalChance) this.drops.push(rollAegisInstance());
   }
 
   /** Общий путь урона по мобу/боссу — от удара героя и от тика горения. */
