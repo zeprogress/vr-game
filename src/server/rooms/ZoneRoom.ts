@@ -199,6 +199,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
+import { findPath, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
 import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
@@ -346,6 +347,8 @@ interface Runtime {
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
 interface Bot {
+  /** Маршрут в обход крутых склонов: к какой цели, точки, когда посчитан (this.elapsed). */
+  nav?: { tx: number; tz: number; path: [number, number][]; at: number };
   /** Date.now() появления героя — «новый герой» для приоритета камеры спектатора. */
   spawnedAt: number;
   nick: string; // отображаемый
@@ -1102,6 +1105,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private tipIdx = 0;
 
   override onCreate(): void {
+    // Сетка маршрутов ботов в обход крутых склонов — считается в фоне после старта (sim/nav.ts).
+    warmNav();
     // Разово: свет травы, подобранный на стенде 2026-09-28, — в общую подгонку
     // (админ-панель хранит её на сервере и перебивает дефолты клиента).
     {
@@ -5832,6 +5837,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
     const dx = dxRaw / dist;
     const dz = dzRaw / dist;
+    // Куда шагать: напрямую или по маршруту в обход крутых склонов (sim/nav.ts).
+    // Прицел и дистанции (удар, «стой тут») — по самой цели (dx/dz, dist).
+    const [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
     // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
     // а не от центра — иначе бот лезет внутрь туши и мажет (см. resolveBotHit).
     // Радиус туши шире сферического хитбокса — BOSS.bodyMult (модель слизня).
@@ -5915,10 +5923,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // Убираем составляющую ПРОТИВ хода: сосед впереди иначе тормозил бота,
     // тот отходил, толчок пропадал, он снова разгонялся — это и был рывок.
     // Обойти сбоку можно, пятиться на ровном месте — нет.
-    const against = sepX * dx + sepZ * dz;
+    const against = sepX * mdx + sepZ * mdz;
     if (against < 0) {
-      sepX -= dx * against;
-      sepZ -= dz * against;
+      sepX -= mdx * against;
+      sepZ -= mdz * against;
     }
 
     // Плавно разгоняемся к желаемой скорости и тормозим у цели — без рывков
@@ -5952,8 +5960,8 @@ export class ZoneRoom extends Room<ZoneState> {
       strafeX = -dz * strafeSpeed;
       strafeZ = dx * strafeSpeed;
     }
-    const wvx = dx * wantSpeed + sepX * BOT.separationForce + strafeX;
-    const wvz = dz * wantSpeed + sepZ * BOT.separationForce + strafeZ;
+    const wvx = mdx * wantSpeed + sepX * BOT.separationForce + strafeX;
+    const wvz = mdz * wantSpeed + sepZ * BOT.separationForce + strafeZ;
     const accel = Math.min(1, dt * 6);
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
@@ -6551,6 +6559,28 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
     }
+  }
+
+  /**
+   * Направление шага бота к цели: напрямую, если по прямой (до 40 м) нет крутого
+   * подъёма, иначе — к следующей точке маршрута A* в обход (sim/nav.ts).
+   * Маршрут пересчитывается раз в 2 с или когда цель сместилась больше чем на 5 м.
+   */
+  private botNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
+    if (dist < 3) return [dx, dz];
+    let nav = bot.nav;
+    if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
+      const L = Math.min(dist, 40);
+      const direct = straightOk(p.head.x, p.head.z, p.head.x + dx * L, p.head.z + dz * L);
+      nav = { tx, tz, at: this.elapsed, path: direct ? [] : (findPath(p.head.x, p.head.z, tx, tz) ?? []) };
+      bot.nav = nav;
+    }
+    // Дошли до точки — следующая.
+    while (nav.path.length && Math.hypot(nav.path[0][0] - p.head.x, nav.path[0][1] - p.head.z) < 1.8) nav.path.shift();
+    if (!nav.path.length) return [dx, dz];
+    const [wx, wz] = nav.path[0];
+    const l = Math.hypot(wx - p.head.x, wz - p.head.z) || 1;
+    return [(wx - p.head.x) / l, (wz - p.head.z) / l];
   }
 
   /** Шаг бота по скорости: на крутой подъём не идёт — скользит вдоль склона (MAX_CLIMB). */
