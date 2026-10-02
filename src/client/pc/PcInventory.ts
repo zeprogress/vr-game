@@ -959,7 +959,8 @@ function injectInvStyle(): void {
 .pcinv-xp-fill { height:100%; width:0; background:#6b6f7a; }
 .pcinv-xp-text { position:absolute; inset:0; text-align:center; font:600 9.5px/12px system-ui; color:#d9dbe0; text-shadow:0 1px 1px #000; }
 .pcinv-hands { display:flex; justify-content:center; gap:18px; margin:10px 0 8px; }
-.pcinv-handbox { text-align:center; }
+.pcinv-handbox { display:flex; flex-direction:column; align-items:center; gap:3px; width:124px; text-align:center; }
+/* Обе руки — одинаковой ширины, ячейка по центру над подписью (подписи разной длины). */
 .pcinv-stats { border-top:1px solid #2c2f38; padding-top:6px; }
 .pcinv-row { display:flex; justify-content:space-between; gap:8px; padding:2px 0; border-bottom:1px solid #22242b; font-size:12.5px; }
 .pcinv-row span:last-child { color:#f1ead6; text-align:right; }
