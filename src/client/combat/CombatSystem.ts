@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { canHoldTogether, isTwoHanded } from "#shared/hands";
 import { secNow, secAdd } from "../engine/secProf";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
@@ -363,6 +364,12 @@ export class CombatSystem {
   private tpPendingHit: { kind: "sword" | "fist" | NewKind; hand: Side; at: number } | null = null;
   /** Два кинжала: какой рукой бить следующий удар (null — первой попавшейся). */
   private daggerNext: Side | null = null;
+  /**
+   * Два кинжала (вид от первого лица): общий откат на обе руки. У каждой руки
+   * свой замах, и без общего отката вторая рука била, не дожидаясь первой —
+   * пара кинжалов выходила ~×2.7 к одному вместо задуманных DAGGER.dualTempo.
+   */
+  private dualDaggerCd = 0;
 
   /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два кинжала — по очереди, чаще). */
   private intervalMul(k: ItemKind): number {
@@ -1262,34 +1269,17 @@ export class CombatSystem {
 
   /**
    * Что в руках несовместимо с предметом класса `kind` (плоский режим) — его и
-   * надо уронить, чтобы взять новое. В VR рук две и хват физический — там пусто.
-   *
-   * - лук занимает обе руки: несовместим с мечом, посохом и щитом;
-   * - основная рука одна: меч и посох одновременно не носим;
-   * - щит несовместим только с луком.
+   * надо уронить, чтобы взять новое. Правила рук — общие (shared/hands.ts).
+   * В VR рук две и хват физический — там пусто.
    */
   private flatConflicts(kind: ItemKind): Item[] {
     if (this.player.inVR) return [];
     const held = this.items.filter((i) => i.hand || i.hand2);
-    const out: Item[] = [];
-    const twoHand = (k: ItemKind): boolean => k === "bow" || k === "spear" || k === "hammer";
-    if (twoHand(kind)) {
-      // Лук/копьё/молот — обе руки: всё, что в руках, уходит в склад.
-      out.push(...held);
-    } else if (kind === "shield") {
-      for (const it of held) if (twoHand(it.kind) || it.kind === "shield") out.push(it);
-    } else {
-      // Меч / кинжал / посох — основная рука: не смешиваем разные виды и двуручное.
-      for (const it of held) if (twoHand(it.kind) || (it.kind !== "shield" && it.kind !== kind)) out.push(it);
-      if (kind === "staff") {
-        const st = this.held1("staff");
-        if (st && !out.includes(st)) out.push(st);
-      }
-      // Меч/кинжал: обе руки заняты (оружие+щит или два клинка) — меняем правый.
-      if (kind === "sword" || kind === "dagger") {
-        const r = this.inHand("right");
-        if (r && r.kind === kind && this.inHand("left") && !out.includes(r)) out.push(r);
-      }
+    const out = held.filter((it) => !canHoldTogether(kind, it.kind));
+    // Парный клинок, а обе руки уже заняты (клинок+щит или два клинка) — меняем правый.
+    if (DUAL_WIELD[kind] && kind !== "shield") {
+      const r = this.inHand("right");
+      if (r && r.kind === kind && this.inHand("left") && !out.includes(r)) out.push(r);
     }
     return out;
   }
@@ -1382,12 +1372,9 @@ export class CombatSystem {
 
   /** Свободная рука под предмет вида `kind` без замены того, что в руках; null — некуда. */
   private freeHandFor(kind: ItemKind): Side | null {
-    if (this.held1("bow") || this.held1("spear") || this.held1("hammer")) return null; // двуручное держат обе руки
-    if (kind === "bow" || kind === "spear" || kind === "hammer") return !this.inHand("left") && !this.inHand("right") ? "right" : null;
-    if (!DUAL_WIELD[kind] && this.held1(kind)) return null;
-    // Основная рука: разные виды клинков/посох вместе не носим.
-    const main = this.weapon;
-    if (main && kind !== "shield" && main.kind !== kind) return null;
+    // Правила рук — общие (shared/hands.ts): с чем-то в руках несовместимо — места нет.
+    if (this.items.some((i) => (i.hand || i.hand2) && !canHoldTogether(kind, i.kind))) return null;
+    if (isTwoHanded(kind)) return !this.inHand("left") && !this.inHand("right") ? "right" : null;
     if (kind === "shield") return this.inHand("left") ? null : "left";
     if (!this.inHand("right")) return "right";
     if (!this.inHand("left") && !this.held1("shield")) return "left";
@@ -1431,18 +1418,9 @@ export class CombatSystem {
    */
   private canPick(item: Item): boolean {
     if (item.hand || item.stow) return false; // уже держим / за спиной
-    if (this.held1("bow")) return false; // лук в руках занимает обе
-    if (item.kind === "bow") {
-      return !this.weapon && !this.shieldHand; // лук берут только пустыми руками
-    }
-    // Копьё/молот на ПК/телефоне — тоже пустыми руками (в VR их берут как посох).
-    if ((item.kind === "spear" || item.kind === "hammer") && !this.player.inVR) {
-      return !this.weapon && !this.shieldHand;
-    }
-    if (!DUAL_WIELD[item.kind] && this.held1(item.kind)) return false;
-    // Смартфон: разные виды основного оружия одновременно не носим.
-    const main = this.weapon;
-    if (this.player.thirdPerson && main && item.kind !== "shield" && main.kind !== item.kind) return false;
+    // Правила рук — общие для всех платформ и сервера (shared/hands.ts): двуручное —
+    // только пустыми руками, щит — с одноручным, парные — меч и кинжал.
+    if (this.items.some((i) => i !== item && (i.hand || i.hand2) && !canHoldTogether(item.kind, i.kind))) return false;
     // Щит идёт в левую руку — она должна быть свободна (плоский режим).
     if (item.kind === "shield" && !this.player.inVR) {
       const l = this.inHand("left");
@@ -1706,15 +1684,11 @@ export class CombatSystem {
   placeInHandFromWarehouse(cls: WeaponClass, tier: WeaponTier, side: Side): string | null {
     const item = this.weaponForRestore(cls, tier);
     if (!item) return cls === "bow" ? "лук уже у тебя (в руках или за спиной)" : "не удалось достать";
-    const removed: Item[] = [];
-    if (item.kind === "bow") {
-      for (const o of this.items) if (o !== item && (o.hand || o.hand2)) removed.push(o);
-    } else {
-      const b = this.held1("bow");
-      if (b) removed.push(b);
-      const occ = this.inHand(side);
-      if (occ && !removed.includes(occ)) removed.push(occ);
-    }
+    // Уходит на склад: всё несовместимое с новым (правила рук — shared/hands.ts) и то,
+    // что было в этой руке. Щит сам не добавляется.
+    const removed: Item[] = this.items.filter((o) => o !== item && (o.hand || o.hand2) && !canHoldTogether(item.kind, o.kind));
+    const occ = this.inHand(side);
+    if (occ && occ !== item && !removed.includes(occ)) removed.push(occ);
     if (!this.canHoldWithout(item, removed)) {
       this.retireItem(item);
       return "это оружие сюда не подходит";
@@ -2250,10 +2224,13 @@ export class CombatSystem {
     }
 
     const sw = this.swing[side];
+    const dual = item.kind === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
+    if (this.dualDaggerCd > 0) this.dualDaggerCd -= dt;
 
-    if (primaryEdge && sw.t <= 0) {
+    if (primaryEdge && sw.t <= 0 && (!dual || this.dualDaggerCd <= 0)) {
       // Скорость атаки от уровня укорачивает замах — и удар, и анимацию.
       sw.dur = (COMBAT.swingDuration * this.intervalMul(item.kind)) / this.prog.meleeSpeed;
+      if (dual) this.dualDaggerCd = sw.dur;
       this.flipDagger(item);
       sw.t = sw.dur;
       sw.hitDone = false;

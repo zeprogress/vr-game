@@ -196,6 +196,7 @@ import {
   type Progress,
   type StatName,
 } from "#shared/progression";
+import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { ATTR2, invested } from "#shared/attrs2";
 import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
@@ -435,21 +436,11 @@ const LEGEND_DROP = ["sword", "bow", "shield", "staff", "dagger", "spear", "hamm
 /** Оружие шести классов (для выбора класса бота). */
 const BOT_CLASS_WEAPONS = ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const;
 
-/** Вторая рука при надевании оружия из склада: меч/посох — щит, лук/копьё/молот/кинжал — пусто. */
-function offHandFor(cls: string): string {
-  return cls === "sword" || cls === "staff" ? "shield" : "";
-}
-
-/** Допустима ли такая левая рука при этом оружии в правой (пусто — всегда). */
-function botLeftAllowed(rc: string, lc: string): boolean {
-  if (lc === "") return true;
-  if (rc === "sword") return lc === "shield" || lc === "sword";
-  if (rc === "staff") return lc === "shield";
-  if (rc === "dagger") return lc === "dagger";
-  return false;
-}
-
-/** Что бот держит во второй руке при этом оружии: меч/посох — щит, кинжал — второй кинжал, двуручное — ничего. */
+/**
+ * Стартовая вторая рука класса (только когда класс выбран заново через !class или у
+ * нового героя): меч/посох — щит, кинжал — второй кинжал, двуручное — ничего.
+ * При обычном надевании оружия щит сам не добавляется (см. shared/hands.ts).
+ */
 function botOffHand(cls: string): string {
   if (cls === "sword" || cls === "staff") return "shield";
   if (cls === "dagger") return "dagger";
@@ -860,9 +851,10 @@ interface Hands {
 }
 
 /**
- * Надеть конкретный инстанс: правила рук (лук на обе, щит слетает с луком,
- * Эгида остаётся с мечом/посохом). Общее для "!equip" в чате и веб-инвентаря
- * (в т.ч. для героя не в мире — тогда p/rt собраны из сейва).
+ * Надеть конкретный инстанс по общим правилам рук (shared/hands.ts): щит сам
+ * не надевается, двуручное освобождает обе руки, несовместимое уходит на склад.
+ * Общее для "!equip" в чате и веб-инвентаря (в т.ч. для героя не в мире —
+ * тогда p/rt собраны из сейва).
  */
 function applyEquip(
   p: Hands,
@@ -871,51 +863,43 @@ function applyEquip(
   /** Рука, куда просили надеть. Левая учитывается для второго меча/кинжала к такому же в правой. */
   side: "left" | "right" = "right",
 ): void {
-  // Второй меч/кинжал — в левую руку к такому же в правой (парное оружие).
-  if (side === "left" && (w.cls === "sword" || w.cls === "dagger") && p.rightCls === w.cls) {
-    preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
-    p.leftCls = w.cls;
-    p.leftTier = w.tier;
-    rt.equippedWeaponId.left = w.id;
-    rt.owned.add(weaponKey(w.cls, w.tier));
-    return;
+  const before = { ...p };
+  const removed = equipHands(p, w.cls, w.tier, side);
+  // Щит вместо двуручного — без оружия героя не оставляем: в правую обычный меч.
+  if (!hasAttackWeapon(p)) {
+    p.rightCls = "sword";
+    p.rightTier = "base";
   }
-  if (w.cls === "shield") {
-    // Лук/копьё/молот занимают ОБЕ руки — со щитом не держатся: в правую — меч.
-    if (p.rightCls === "bow" || p.rightCls === "spear" || p.rightCls === "hammer") {
-      preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-      p.rightCls = "sword";
-      p.rightTier = "base";
-      rt.equippedWeaponId.right = null;
-    }
-    preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
-    p.leftCls = "shield";
-    p.leftTier = w.tier;
-    rt.equippedWeaponId.left = w.id;
-  } else if (p.rightCls === w.cls && botLeftAllowed(w.cls, p.leftCls)) {
-    // Смена экземпляра/тира того же класса — левая рука (пусто, щит, второй меч/кинжал) остаётся.
-    preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-    p.rightTier = w.tier;
-    rt.equippedWeaponId.right = w.id;
-  } else {
-    preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
-    // Вторая рука — по классу оружия (offHandFor): лук/копьё/молот — пусто, щит (если был) слетает.
-    const off = offHandFor(w.cls);
-    if (off !== "shield" && p.leftCls === "shield") {
-      preserveLegacyWeapon(rt, p.leftCls, p.leftTier);
-      rt.equippedWeaponId.left = null;
-    }
-    const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
-    p.rightCls = w.cls;
-    p.rightTier = w.tier;
-    // Кинжал: второй кинжал остаётся, если он уже был в левой руке.
-    const keepDagger = w.cls === "dagger" && p.leftCls === "dagger";
-    p.leftCls = keepDagger ? "dagger" : off;
-    p.leftTier = keepDagger ? p.leftTier : off === "shield" ? (keepAegis ? "legendary" : "base") : "";
-    rt.equippedWeaponId.right = w.id;
-    if (off !== "shield" && !keepDagger) rt.equippedWeaponId.left = null;
+  for (const s of removed) {
+    preserveLegacyWeapon(rt, s === "left" ? before.leftCls : before.rightCls, s === "left" ? before.leftTier : before.rightTier);
+    rt.equippedWeaponId[s] = null;
   }
+  // Закрепляем экземпляр за той рукой, где он оказался.
+  const at: "left" | "right" = p.leftCls === w.cls && p.leftTier === w.tier && (w.cls === "shield" || side === "left") ? "left" : "right";
+  rt.equippedWeaponId[at] = w.id;
+  if (!p.leftCls) rt.equippedWeaponId.left = null;
   rt.owned.add(weaponKey(w.cls, w.tier));
+}
+
+/**
+ * Снять предмет с руки на склад (страница !inv, «снять»). Без оружия героя не
+ * оставляем. null — получилось, иначе текст отказа.
+ */
+function applyUnequip(
+  p: Hands,
+  rt: { weapons: WeaponInstance[]; equippedWeaponId: { left: string | null; right: string | null } },
+  side: "left" | "right",
+): string | null {
+  const before = { ...p };
+  const pinned = { ...rt.equippedWeaponId };
+  const err = unequipHand(p, side);
+  if (err) return err;
+  // Снятое — на склад (легаси без экземпляра сохраняем как экземпляр).
+  preserveLegacyWeapon(rt, side === "left" ? before.leftCls : before.rightCls, side === "left" ? before.leftTier : before.rightTier);
+  // Сняли правое — второе оружие из левой переехало в правую вместе с закреплением.
+  if (side === "right") rt.equippedWeaponId.right = pinned.left;
+  rt.equippedWeaponId.left = null;
+  return null;
 }
 
 /**
@@ -1635,12 +1619,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
       const l = put(msg.left);
       const r = put(msg.right);
-      // Меч совместим только со вторым мечом или щитом: лук/посох в паре с
-      // мечом запрещены — вторую руку в этом случае освобождаем.
-      if (
-        (r.cls === "sword" && (l.cls === "bow" || l.cls === "staff")) ||
-        (l.cls === "sword" && (r.cls === "bow" || r.cls === "staff"))
-      ) {
+      // Несовместимое (правила рук — shared/hands.ts) — вторую руку освобождаем.
+      if (!handsValid({ leftCls: l.cls, leftTier: l.tier, rightCls: r.cls, rightTier: r.tier })) {
         l.cls = "";
         l.tier = "";
       }
@@ -2062,8 +2042,11 @@ export class ZoneRoom extends Room<ZoneState> {
       critM = newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult;
     }
     rt.forceCritUntil = -999;
+    // Два кинжала бьют чаще (DAGGER.dualTempo), но каждый удар чуть слабее — как у ботов и в характеристиках.
+    const dualDagger = msg.weapon === "dagger" && p.leftCls === "dagger" && p.rightCls === "dagger";
     const dmg =
       weaponDamage(msg.weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
+      (dualDagger ? DAGGER.dualDmg : 1) *
       critM *
       this.buffMult(client.sessionId, "dmg");
     const [dx, dz] = unit2(msg.dx, msg.dz);
@@ -4376,6 +4359,38 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
     const t = this.findWeaponsTarget(norm);
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
+    if (act === "unequip") {
+      // Снять с руки на склад (idx 1 — левая). Правила рук — shared/hands.ts.
+      const side = idx === 1 ? "left" : "right";
+      if (t) {
+        const err = applyUnequip(t.p, t.rt, side);
+        if (err) return { ok: false, text: err };
+        this.persistNick(norm);
+        return { ok: true, text: "Снято на склад" };
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+      const held = sanitizeHeld(rec.held);
+      const hands: Hands = {
+        rightCls: held.right?.cls ?? "",
+        rightTier: held.right?.tier ?? "",
+        leftCls: held.left?.cls ?? "",
+        leftTier: held.left?.tier ?? "",
+      };
+      const weapons = [...(rec.weapons ?? [])];
+      const equipped = sanitizeEquipped(rec.equippedWeaponId);
+      const err = applyUnequip(hands, { weapons, equippedWeaponId: equipped }, side);
+      if (err) return { ok: false, text: err };
+      const carried = (cls: string, tier: string): CarriedWeapon | null =>
+        isWeaponClass(cls) && isWeaponTier(tier) ? { cls, tier } : null;
+      store.put(token, {
+        weapons,
+        equippedWeaponId: equipped,
+        held: { left: carried(hands.leftCls, hands.leftTier), right: carried(hands.rightCls, hands.rightTier) },
+      });
+      return { ok: true, text: "Снято на склад (герой выйдет так при !play)" };
+    }
     if (act === "title") {
       const token = `nick:${norm}`;
       const have = store.get(token)?.titles ?? [];
@@ -4479,8 +4494,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const hands: Hands = {
         rightCls: right.cls,
         rightTier: right.tier,
-        leftCls: held.left?.cls ?? (right.cls === "bow" ? "" : "shield"),
-        leftTier: held.left?.tier ?? (right.cls === "bow" ? "" : "base"),
+        // Вторая рука — как сохранена (пустая так и остаётся: щит сам не надевается).
+        leftCls: held.left?.cls ?? "",
+        leftTier: held.left?.tier ?? "",
       };
       const owned = new Set(rec.owned ?? []);
       applyEquip(hands, { weapons, equippedWeaponId: equipped, owned }, w, idx === 1 ? "left" : "right");
@@ -5023,7 +5039,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
     // Левая рука: что герой держал в ней при сохранении (пустая, второй меч/кинжал, щит) —
     // не навязываем щит заново. По умолчанию (нового героя/другое оружие) — botOffHand.
-    const keepLeft = savedRight?.cls === rc && botLeftAllowed(rc, savedHeld.left?.cls ?? "");
+    const keepLeft = savedRight?.cls === rc && canHoldTogether(rc, savedHeld.left?.cls ?? "");
     const off = keepLeft ? (savedHeld.left?.cls ?? "") : botOffHand(rc);
     p.leftCls = off;
     p.leftTier =
