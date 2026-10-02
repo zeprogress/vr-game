@@ -803,7 +803,7 @@ export const MOB_CAMPS: {
   { x: -15, z: 125, type: "skySquid", count: 5, spread: 28, ring: 0.85 }, // ~185 м, север
   { x: -118, z: 118, type: "boneWraith", count: 24, spread: 40 }, // ~184 м, северо-запад
   // Зона 36 ур. — самые окраины.
-  { x: 138, z: -80, type: "boneChief", count: 10, spread: 20 }, // ~195 м, юго-восток
+  { x: 140, z: 125, type: "boneChief", count: 10, spread: 20 }, // ~188 м, северо-восток (был юго-восток, вплотную к големам)
   { x: 135, z: 50, type: "infernoDemon", count: 5, spread: 24, ring: 0.85 }, // ~212 м, восток
   { x: 45, z: 140, type: "frostDemon", count: 6, spread: 22 }, // ~220 м, север
 ];
