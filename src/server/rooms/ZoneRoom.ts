@@ -183,8 +183,8 @@ import {
   hpRegenFrac,
   atMaxLevel,
   attackSpeedFor,
-  castSpeedFor,
   meleeSpeedFor,
+  staffCastInterval,
   armorFrac,
   dodgeChance,
   holdsOneItem,
@@ -1400,7 +1400,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const staffHand = p.rightCls === "staff" ? "right" : "left";
       // Скорость каста (МДР) укорачивает откат огнешара — вместе с роллом «скорость атаки».
       // Плюс темп от «Боевого клича»/«Благословения» — клиент ускоряется так же (Game: atkSpeedAffix × cry).
-      const castCooldown = MAGIC.firebolt.cooldown / (rolledAtkSpeedMul(p, staffHand, rt) * castSpeedFor(p.level, p) * this.cryTempo(rt));
+      const castCooldown = staffCastInterval(p.level, p, rolledAtkSpeedMul(p, staffHand, rt) * this.cryTempo(rt));
       if (this.elapsed - rt.lastCast < castCooldown) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
@@ -6068,8 +6068,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const bow = p.rightCls === "bow";
       // Ролл «скорость атаки» — и у ботов (раньше учитывался только у живых игроков,
       // хотя в характеристиках показывался).
-      bot.attackCd =
-        (bow ? BOT.bowCooldown : BOT.staffCooldown) / (atk * rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
+      // Посох — как у игрока (staffCastInterval: скорость каста от МДР), лук — темп от ЛОВ.
+      const spdMul = rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt);
+      bot.attackCd = bow ? BOT.bowCooldown / (atk * spdMul) : staffCastInterval(p.level, p, spdMul);
       const tgt = chasingMob;
       const ox = p.head.x;
       const oy = p.head.y - 0.25;

@@ -1,4 +1,5 @@
 import { PROGRESSION } from "./constants";
+import { MAGIC } from "./magic";
 import { invested } from "./attrs2";
 import {
   agiTempo2,
@@ -136,6 +137,16 @@ export function attackSpeedFromLevel(level: number): number {
 export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
   const lvl = attackSpeedFor(level, START);
   return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE);
+}
+
+/**
+ * Пауза между огнешарами посоха, с: откат огнешара ÷ (скорость каста × `mul` —
+ * ролл «скорость атаки», клич). ОДНА для игрока (клиент и проверка сервера),
+ * бота, героя башни и окна характеристик (2026-10-03: бот кастовал по своей
+ * паузе 2.2 с от ЛОВ — вдвое реже игрока на ПК).
+ */
+export function staffCastInterval(level: number, a: AttrsIn, mul = 1): number {
+  return MAGIC.firebolt.cooldown / (castSpeedFor(level, a) * mul);
 }
 
 /** Скорость каста (посох, откат заклинаний): уровень × МДР. */

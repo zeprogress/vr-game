@@ -244,7 +244,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   staff: {
     name: WEAPON_NOUN.staff.name,
     dmg: MAGIC.firebolt.baseDamage + 0.7 * MAGIC.firebolt.damagePerCharge,
-    interval: BOT.staffCooldown, tempoSoft: 1.8, reach: 17, pierce: 1,
+    interval: MAGIC.firebolt.cooldown, tempoSoft: 1.8, reach: 17, pierce: 1,
     critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [1, 2, 2.4],
   },
 };

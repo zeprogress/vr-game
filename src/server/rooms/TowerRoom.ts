@@ -15,7 +15,7 @@ import {
   type FloorArchetype,
 } from "#shared/tower";
 import { BASE_CRIT, noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
-import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
+import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor, staffCastInterval } from "#shared/progression";
 import { burnHpFracFor, fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
   isWeaponClass,
@@ -286,6 +286,8 @@ export class TowerRoom extends Room<TowerState> {
   private drops: WeaponInstance[] = [];
   /** Темп дальнего боя (attackSpeedFor) — у лука/посоха он полный, не приглушённый как у меча. */
   private heroAtkSpeed = 1;
+  /** Пауза между огнешарами героя с посохом (staffCastInterval — как в основном мире). */
+  private heroStaffInterval: number = MAGIC.firebolt.cooldown;
   private heroCritChance = 0;
   private heroCritMult = 0;
   /** Кинжал в одной руке, вторая пуста — крит чаще и больнее (как на поляне). */
@@ -386,6 +388,7 @@ export class TowerRoom extends Room<TowerState> {
       this.heroCritChance = ro.critChance;
       this.heroCritMult = ro.critMult;
     }
+    this.heroStaffInterval = staffCastInterval(options.level, this.heroAttrs, ro?.atkSpeedMul ?? 1);
     const heroMaxHp = maxHpFor(options.level, this.heroAttrs);
 
     const state = new TowerState();
@@ -470,7 +473,7 @@ export class TowerRoom extends Room<TowerState> {
             // Дальний бой без замаха-виндапа — как боты-стрелки/маги в основном
             // мире (ZoneRoom.tickBot): урон применяется сразу, а не через паузу.
             this.heroAtkCd =
-              (this.heroWeaponKind === "bow" ? BOT.bowCooldown : BOT.staffCooldown) / this.heroAtkSpeed;
+              this.heroWeaponKind === "bow" ? BOT.bowCooldown / this.heroAtkSpeed : this.heroStaffInterval;
             this.heroRangedPulse = true;
             this.heroRangedTargetX = target.x;
             this.heroRangedTargetZ = target.z;

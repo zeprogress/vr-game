@@ -14,6 +14,7 @@ import {
   atMaxLevel,
   attackSpeedFor,
   castSpeedFor,
+  staffCastInterval,
   meleeSpeedFor,
   meleeAnimRate,
   grantXp,
@@ -172,6 +173,11 @@ export class Progression {
   /** Скорость каста посоха (огнешары): уровень × МДР — как на сервере (MSG.cast). */
   get castSpeed(): number {
     return castSpeedFor(this.level, this.stats);
+  }
+
+  /** Пауза между огнешарами (общая формула staffCastInterval — у игрока, бота и в башне одна). */
+  staffInterval(mul: number): number {
+    return staffCastInterval(this.level, this.stats, mul);
   }
 
   /** Темп атаки ближнего боя — приглушённый (см. meleeSpeedFor). */
