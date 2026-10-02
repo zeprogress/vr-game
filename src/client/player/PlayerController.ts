@@ -85,6 +85,16 @@ export class PlayerController {
     this.stunnedSec = Math.max(this.stunnedSec, sec);
   }
 
+  /** Обморожение (Ледяной демон): секунд до конца и доля замедления бега. */
+  private slowSec = 0;
+  private slowFrac = 0;
+
+  /** Замедлить бег на `frac` (0.45 — на 45%) на `sec` секунд; не сбрасывает более сильное/долгое. */
+  applySlow(sec: number, frac: number): void {
+    this.slowFrac = this.slowSec > 0 ? Math.max(this.slowFrac, frac) : frac;
+    this.slowSec = Math.max(this.slowSec, sec);
+  }
+
   /** Толчок от точки (dirX,dirZ уже направление ОТ источника) с силой power, м/с. */
   applyKnockback(dirX: number, dirZ: number, power: number): void {
     const l = Math.hypot(dirX, dirZ) || 1;
@@ -119,7 +129,7 @@ export class PlayerController {
   /** Множитель бега от баффов (свиток ветра). Ставит Game по состоянию с сервера. */
   speedMul = 1;
   private get speed(): number {
-    return (this.prog?.moveSpeed ?? PLAYER.runSpeed) * this.speedMul;
+    return (this.prog?.moveSpeed ?? PLAYER.runSpeed) * this.speedMul * (this.slowSec > 0 ? 1 - this.slowFrac : 1);
   }
 
   /** Сколько секунд прошло с последнего урона. */
@@ -461,6 +471,7 @@ export class PlayerController {
   /** Вызывается каждый кадр из рендер-лупа. dt — секунды. */
   update(dt: number): void {
     if (this.stunnedSec > 0) this.stunnedSec = Math.max(0, this.stunnedSec - dt);
+    if (this.slowSec > 0) this.slowSec = Math.max(0, this.slowSec - dt);
     // Мёртвый/оглушённый не ходит и не бьёт — ввод глушим целиком.
     const inp =
       this.dead || this.stunnedSec > 0 ? emptyInput() : (this.input?.sample() ?? emptyInput());

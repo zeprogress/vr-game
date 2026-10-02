@@ -3199,8 +3199,8 @@ export class Game {
   attachNet(net: NetClient): void {
     this.net = net;
     net.onChar = (data) => this.applyChar(data);
-    net.onMobHit = (dmg, fromX, fromZ, by, stunSec, knockback, byMob) =>
-      this.takeMobHit(dmg, fromX, fromZ, by, stunSec, knockback, byMob);
+    net.onMobHit = (dmg, fromX, fromZ, by, stunSec, knockback, byMob, slowSec, slowFrac) =>
+      this.takeMobHit(dmg, fromX, fromZ, by, stunSec, knockback, byMob, slowSec, slowFrac);
     net.onRespawn = (x, y, z) => {
       this.player.teleportTo(x, y, z);
       this.hud.flashDamage(20);
@@ -3864,6 +3864,8 @@ export class Game {
     stunSec?: number,
     knockback?: number,
     byMob?: string,
+    slowSec?: number,
+    slowFrac?: number,
   ): void {
     const eye = this.player.eyePosition;
     const dir = new Vector3(eye.x - fromX, 0, eye.z - fromZ);
@@ -3878,6 +3880,7 @@ export class Game {
     }
     if (by !== 0) this.combat.playBlock(by);
     if (stunSec) this.player.applyStun(stunSec);
+    if (slowSec) this.player.applySlow(slowSec, slowFrac ?? 0.4);
     if (knockback) this.player.applyKnockback(dir.x, dir.z, knockback);
     if (dmg <= 0) return;
     // Сообщение приходит раньше патча состояния — снимаем HP сразу, чтобы

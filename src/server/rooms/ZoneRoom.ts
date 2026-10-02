@@ -315,6 +315,9 @@ interface Runtime {
   campHealFxAt: number;
   /** Секунда игрового времени (this.elapsed), до которой оглушён (спец-атака моба). */
   stunnedUntil: number;
+  /** Обморожение: до какой секунды (this.elapsed) бег медленнее на slowFrac. */
+  slowUntil: number;
+  slowFrac: number;
   /** id моба, по которому только что ударили (для «!follow»-телохранителя — фокус-фаер). */
   lastHitMobId: string | null;
   /** Секунда игрового времени (this.elapsed) последнего удара по lastHitMobId. */
@@ -5051,6 +5054,8 @@ export class ZoneRoom extends Room<ZoneState> {
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,
+      slowUntil: 0,
+      slowFrac: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
@@ -5857,7 +5862,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const emoting = Date.now() < bot.emoteFreezeUntil;
     // Скорость бега — от характеристик персонажа (как у живого игрока), чуть
     // медленнее ради читаемости на стриме.
-    const botSpeed = moveSpeedFor(p.level, p) * BOT.speedFactor;
+    const botSpeed = moveSpeedFor(p.level, p) * BOT.speedFactor * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat = ranged && chasingMob && dist < shootKeep - 1;
     const wantSpeed =
@@ -7585,6 +7590,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // Полный блок щитом — тоже мимо.
     if (!dodged && !(block.by === 1 && block.mult === 0)) {
       if (h.stunSec) rt.stunnedUntil = this.elapsed + h.stunSec;
+      if (h.slowSec) {
+        rt.slowUntil = this.elapsed + h.slowSec;
+        rt.slowFrac = h.slowFrac ?? 0.4;
+      }
       if (h.knockback && h.target.startsWith("bot:")) {
         // Живой игрок отталкивает себя сам (см. MobHitMsg.knockback) — сервер
         // не двигает его тело; бот — сервер сам, толкаем позицию напрямую.
@@ -7610,6 +7619,8 @@ export class ZoneRoom extends Room<ZoneState> {
       fromZ: h.fromZ,
       by: block.by,
       stunSec: dodged ? undefined : h.stunSec,
+      slowSec: dodged || (block.by === 1 && block.mult === 0) ? undefined : h.slowSec,
+      slowFrac: h.slowFrac,
       knockback: dodged ? undefined : h.knockback,
       byMob: h.byMob,
     });
@@ -8002,6 +8013,8 @@ export class ZoneRoom extends Room<ZoneState> {
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,
+      slowUntil: 0,
+      slowFrac: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],

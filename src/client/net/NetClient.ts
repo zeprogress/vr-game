@@ -111,6 +111,8 @@ export class NetClient {
         stunSec?: number,
         knockback?: number,
         byMob?: string,
+        slowSec?: number,
+        slowFrac?: number,
       ) => void)
     | null = null;
   /** Сервер возродил игрока — встать в эту точку. */
@@ -298,7 +300,7 @@ export class NetClient {
       else this.pendingChar = data;
     });
     room.onMessage(MSG.mobHit, (m: MobHitMsg) =>
-      this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback, m.byMob),
+      this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback, m.byMob, m.slowSec, m.slowFrac),
     );
     room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));

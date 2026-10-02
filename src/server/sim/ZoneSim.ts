@@ -176,6 +176,9 @@ export interface PlayerHit {
   byMob?: string;
   /** Оглушение цели на N секунд (спец-атака моба). Нет — не оглушает. */
   stunSec?: number;
+  /** Замедление цели на N секунд (Ледяной демон) и его доля (0.45 — медленнее на 45%). */
+  slowSec?: number;
+  slowFrac?: number;
   /** Сила отбрасывания ОТ источника удара, м/с (спец-атака моба). */
   knockback?: number;
   /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
@@ -1096,7 +1099,8 @@ export class Mob {
               fromZ: this.freezeZ,
               projectile: false,
               byMob: this.id,
-              stunSec: FREEZE.stunSec,
+              slowSec: FREEZE.slowSec,
+              slowFrac: FREEZE.slowFrac,
             });
           }
         }

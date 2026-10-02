@@ -794,6 +794,9 @@ export interface MobHitMsg {
   by: BlockedBy;
   /** Оглушение (спец-атака моба), с. Нет — не оглушает. */
   stunSec?: number;
+  /** «Обморожение» (Ледяной демон): замедление бега на slowSec с, доля slowFrac. */
+  slowSec?: number;
+  slowFrac?: number;
   /** Сила отбрасывания ОТ источника удара, м/с. Нет — не толкает. */
   knockback?: number;
   /** id моба-источника (для «MISS» уворота — следом за движущейся целью). */
