@@ -5816,6 +5816,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // и отходит, если моб подобрался (как плевун).
     const ranged =
       (p.rightCls === "bow" || p.rightCls === "staff") && !loot && !!chasingMob;
+    // Копейщик кайтит: держится у края досягаемости выпада и пятится, если моб подошёл.
+    const kiter = p.rightCls === "spear" && !loot && !!mob && !raidBoss;
+    const kiteBody = mob ? PLAYER.radius + MOB.bodyRadius * mob.scale + 0.2 : 0;
+    const kiteHold = kiter ? Math.max(attackReach - 0.6, kiteBody) : 0;
+    const kiteRetreatAt = kiteHold - 1.2;
     // Маг бьёт вдвое ближе лучника — и дистанция стрельбы, и «держись подальше».
     const rangeMul = p.rightCls === "staff" ? BOT.staffRangeMul : 1;
     const shootRange = BOT.shootRange * rangeMul;
@@ -5829,7 +5834,9 @@ export class ZoneRoom extends Room<ZoneState> {
         ? WEAPON_TAKE_REACH * 0.85
         : ranged && mob
           ? shootKeep
-          : mob
+          : kiter
+            ? kiteHold
+            : mob
             ? // Не ближе, чем граница тела моба + радиус героя: иначе симуляция
               // выталкивает моб из-под бота, и тот «бульдозерит» его назад,
               // пока бежит в упор (крупные элитные мобы, scale > 1.3).
@@ -5886,7 +5893,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // медленнее ради читаемости на стриме.
     const botSpeed = moveSpeedFor(p.level, p) * BOT.speedFactor * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
-    const retreat = ranged && chasingMob && dist < shootKeep - 1;
+    const retreat =
+      (ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt);
     const wantSpeed =
       bot.swingIn > 0 || emoting
         ? 0
