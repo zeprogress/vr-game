@@ -22,7 +22,8 @@
     "lab": "VR=1 vite --port 5173 --strictPort --open /lab.html",
     "tunnel": "cloudflared tunnel --url http://localhost:5173",
     "tunnel:443": "ssh -n -p 443 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/vrgame_tunnel -o ServerAliveInterval=30 -R0:localhost:5173 a.pinggy.io",
-    "balance": "tsx scripts/balance.mts"
+    "balance": "tsx scripts/balance.mts",
+    "lab:balance": "tsx scripts/lab-balance.mts"
   },
   "dependencies": {
     "@babylonjs/core": "^7.34.0",

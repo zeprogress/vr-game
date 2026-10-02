@@ -508,7 +508,18 @@ export interface MobShot {
  * Сессия бойца кончается, если он не бил idleSec секунд. Бот по !пугало
  * бьёт его botTestSec секунд.
  */
-export const SCARECROW = { hp: 10_000_000, idleSec: 6, botTestSec: 60, scale: 1.25 } as const;
+export const SCARECROW = {
+  hp: 10_000_000,
+  /**
+   * Для эффектов «% от макс. HP цели» (поджог мага — AFFIX.fire) Пугало
+   * считается мобом с таким HP (как элита 36–40 ур.), а не с его 10 млн —
+   * иначе табло показывало бы сотни тысяч DPS у мага.
+   */
+  refHp: 5000,
+  idleSec: 6,
+  botTestSec: 60,
+  scale: 1.25,
+} as const;
 
 /** 40 ур. Скалолом: прыжок на героя (EliteMobDef.leaper). */
 export const LEAP = {

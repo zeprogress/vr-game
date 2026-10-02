@@ -10,6 +10,8 @@ import { canClimb, reachAlong } from "#shared/terrain";
  * путь ведёт к ближайшей достижимой клетке.
  */
 const CELL = 2;
+/** Запас коридора: проход между клетками проверяем ещё и в стольких метрах по бокам. */
+const LANE = 0.5;
 const HALF = WORLD.playHalf - 1;
 const N = Math.floor((2 * HALF) / CELL) + 1;
 const DIRS = [
@@ -37,9 +39,19 @@ function edges(c: number): number {
     if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
     const dx = di * CELL;
     const dz = dj * CELL;
-    // Щупаем подъём по всему шагу (каждые полметра — как reachAlong).
+    // Щупаем подъём по всему шагу (каждые полметра — как reachAlong) — и по двум
+    // параллельным линиям в ±LANE м: бот идёт не точно по линии центров (инерция,
+    // толкотня), и «коридор» шириной в сантиметры у края горы он не проходил —
+    // упирался и топтался (лаборатория, опыт nav).
+    const len = Math.hypot(dx, dz);
+    const ox = (-dz / len) * LANE;
+    const oz = (dx / len) * LANE;
     let ok = true;
-    for (let s = 0; s < 4 && ok; s++) ok = canClimb(x + (dx * s) / 4, z + (dz * s) / 4, dx, dz);
+    for (let s = 0; s < 4 && ok; s++) {
+      const px = x + (dx * s) / 4;
+      const pz = z + (dz * s) / 4;
+      ok = canClimb(px, pz, dx, dz) && canClimb(px + ox, pz + oz, dx, dz) && canClimb(px - ox, pz - oz, dx, dz);
+    }
     if (ok) m |= 1 << k;
   }
   mask[c] = m;
@@ -155,6 +167,11 @@ export function findPath(x0: number, z0: number, x1: number, z1: number, maxExpa
   // Последняя точка — сама цель, если её клетка достигнута (а не центр клетки).
   if (best === goal) path[path.length - 1] = [x1, z1];
   return path;
+}
+
+/** Центр клетки сетки, в которой стоит точка (x,z). */
+export function navCellCenter(x: number, z: number): [number, number] {
+  return [wx(cx(x)), wx(cx(z))];
 }
 
 /** Видно ли по прямой (пройти без крутых подъёмов) из (x0,z0) в (x1,z1). */

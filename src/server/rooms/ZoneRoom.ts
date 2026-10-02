@@ -200,7 +200,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
-import { findPath, straightOk, warmNav } from "../sim/nav";
+import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
 import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
@@ -6614,10 +6614,23 @@ export class ZoneRoom extends Room<ZoneState> {
       const L = Math.min(dist, 40);
       const direct = straightOk(p.head.x, p.head.z, p.head.x + dx * L, p.head.z + dz * L);
       nav = { tx, tz, at: this.elapsed, path: direct ? [] : (findPath(p.head.x, p.head.z, tx, tz) ?? []) };
+      // Бот не в центре своей клетки: если до первой точки по прямой не пройти — сначала в центр клетки
+      // (когда до него самого можно дойти: на границе клеток центр бывает выше по склону).
+      if (nav.path.length && !straightOk(p.head.x, p.head.z, nav.path[0][0], nav.path[0][1])) {
+        const c = navCellCenter(p.head.x, p.head.z);
+        if (straightOk(p.head.x, p.head.z, c[0], c[1])) nav.path.unshift(c);
+      }
       bot.nav = nav;
     }
-    // Дошли до точки — следующая.
-    while (nav.path.length && Math.hypot(nav.path[0][0] - p.head.x, nav.path[0][1] - p.head.z) < 1.8) nav.path.shift();
+    // Дошли до точки — следующая. Угол к следующей срезаем, только если к ней можно
+    // пройти по прямой: путь проверен между центрами клеток, и у края горы бот,
+    // срезав угол, упирался в склон и топтался на месте (лаборатория, опыт nav).
+    while (nav.path.length) {
+      const d = Math.hypot(nav.path[0][0] - p.head.x, nav.path[0][1] - p.head.z);
+      const next = nav.path[1];
+      if (d < 0.6 || (d < 1.8 && next && straightOk(p.head.x, p.head.z, next[0], next[1]))) nav.path.shift();
+      else break;
+    }
     if (!nav.path.length) return [dx, dz];
     const [wx, wz] = nav.path[0];
     const l = Math.hypot(wx - p.head.x, wz - p.head.z) || 1;

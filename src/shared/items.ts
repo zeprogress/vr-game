@@ -762,7 +762,8 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
   return true;
 }
 
-function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">): readonly [number, number] {
+/** Диапазон ролла [мин, макс] на этом предмете (у Эгиды свой) — и для лаборатории баланса. */
+export function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">): readonly [number, number] {
   return rangeFor(sub, isAegis(w));
 }
 

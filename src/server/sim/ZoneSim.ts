@@ -453,6 +453,11 @@ export class Mob {
   /** ++ на каждую посадку заклинания — клиент рисует ударную волну. */
   novaSeq = 0;
 
+  /** База эффектов «% от макс. HP цели» (поджог мага): у Пугала — SCARECROW.refHp, а не его 10 млн. */
+  get pctHpBase(): number {
+    return this.scarecrow ? SCARECROW.refHp : this.maxHp;
+  }
+
   /** Прогресс телеграфа заклинания 0..1 (0 — только начал, 1 — вот-вот ударит). */
   get novaTelegraph(): number {
     if (this.novaWindupT > 0) return 1 - this.novaWindupT / MAGE_NOVA.windup;
@@ -2387,7 +2392,7 @@ export class ZoneSim {
         // Огнешар поджигает врождённо (не аффикс, а база класса мага) —
         // горит и прямая цель, и все задетые АОЕ (ниже). ДпС — от
         // МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
-        if (magic) m.ignite(m.maxHp * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, b.owner);
+        if (magic) m.ignite(m.pctHpBase * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
@@ -2641,7 +2646,7 @@ export class ZoneSim {
       // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
       // кого задело АОЕ, не только на прямую цель. ДпС — от максимального
       // HP каждой конкретной цели (см. AFFIX.fire), не от доли АОЕ-урона.
-      if (magic) m.ignite(m.maxHp * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, owner);
+      if (magic) m.ignite(m.pctHpBase * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, owner);
     }
     return total;
   }
