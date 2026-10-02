@@ -11,7 +11,8 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import type { Room } from "colyseus.js";
 
-import { SPITTER, SPITTER_CFG, BOSS_CFG } from "#shared/constants";
+import { SPITTER, SPITTER_CFG, BOSS_CFG, SHOTS } from "#shared/constants";
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import type { MobState, ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";
 import { Dummy, flushDummies } from "./Dummy";
@@ -28,6 +29,10 @@ interface BallView {
   mesh: Mesh;
   pos: Vector3;
   vel: Vector3;
+  /** Гравитация вида снаряда (плевок — SPITTER.ballGravity, копьё/шип — SHOTS). */
+  grav: number;
+  /** Вытянутый снаряд (копьё, шип) — поворачиваем по направлению полёта. */
+  orient: boolean;
   /** Последняя скорость, пришедшая с сервера — чтобы не сбрасывать свою гравитацию каждый кадр. */
   srvVy: number;
 }
@@ -94,6 +99,8 @@ export class NetMobs {
   private readonly balls = new Map<string, BallView>();
   private readonly ballProto: Mesh; // плевок плевуна
   private readonly ballProtoBoss: Mesh; // плевок босса
+  /** Копьё/шип мобов 40 ур. — по коду вида (BallState.k = SHOTS.*.code). */
+  private readonly shotProtos = new Map<number, { mesh: Mesh; grav: number }>();
   private readonly bolts = new Map<string, BoltView>();
   private readonly boltCoreProto: Mesh;
   private readonly boltGlowProto: Mesh;
@@ -149,6 +156,35 @@ export class NetMobs {
     };
     this.ballProto = spitBall("spitBall", SPITTER_CFG.tint);
     this.ballProtoBoss = spitBall("spitBallBoss", BOSS_CFG.tint);
+
+    // Физические снаряды мобов 40 ур. (SHOTS): ось — вдоль +Z, в полёте поворачиваем по скорости.
+    const solid = (name: string, rgb: readonly [number, number, number]): StandardMaterial => {
+      const mat = new StandardMaterial(name, scene);
+      mat.diffuseColor = new Color3(rgb[0], rgb[1], rgb[2]);
+      mat.emissiveColor = new Color3(rgb[0] * 0.3, rgb[1] * 0.3, rgb[2] * 0.3);
+      mat.specularColor = new Color3(0, 0, 0);
+      return mat;
+    };
+    const alongZ = (mesh: Mesh): Mesh => {
+      mesh.rotation.x = Math.PI / 2;
+      mesh.bakeCurrentTransformIntoVertices();
+      mesh.isPickable = false;
+      return mesh;
+    };
+    // Копьё: древко + наконечник (ребёнок — клонируется вместе с древком).
+    const shaft = alongZ(MeshBuilder.CreateCylinder("shotSpear", { diameter: 0.07, height: 1.6, tessellation: 6 }, scene));
+    shaft.material = solid("shotSpearMat", [0.45, 0.3, 0.15]);
+    const tip = alongZ(MeshBuilder.CreateCylinder("shotSpearTip", { diameterTop: 0, diameterBottom: 0.16, height: 0.32, tessellation: 6 }, scene));
+    tip.position.z = 0.95;
+    tip.material = solid("shotSpearTipMat", [0.78, 0.8, 0.84]);
+    tip.parent = shaft;
+    shaft.setEnabled(false);
+    this.shotProtos.set(SHOTS.spear.code, { mesh: shaft, grav: SHOTS.spear.grav });
+    // Шип: костяной конус.
+    const spike = alongZ(MeshBuilder.CreateCylinder("shotSpike", { diameterTop: 0, diameterBottom: 0.12, height: 0.5, tessellation: 5 }, scene));
+    spike.material = solid("shotSpikeMat", [0.92, 0.88, 0.76]);
+    spike.setEnabled(false);
+    this.shotProtos.set(SHOTS.spike.code, { mesh: spike, grav: SHOTS.spike.grav });
 
     // Огненный снаряд: раскалённое ядро (диаметр 1 — масштабируем под радиус).
     const coreMat = new StandardMaterial("boltCoreMat", scene);
@@ -599,13 +635,16 @@ export class NetMobs {
     room.state.balls.forEach((s, id) => {
       let b = this.balls.get(id);
       if (!b) {
-        const mesh = (s.boss ? this.ballProtoBoss : this.ballProto).clone(`spitBall_${id}`);
+        const shot = this.shotProtos.get(s.k);
+        const mesh = (shot ? shot.mesh : s.boss ? this.ballProtoBoss : this.ballProto).clone(`spitBall_${id}`);
         mesh.setEnabled(true);
         b = {
           mesh,
           pos: new Vector3(s.x, s.y, s.z),
           vel: new Vector3(s.vx, s.vy, s.vz),
           srvVy: s.vy,
+          grav: shot ? shot.grav : SPITTER.ballGravity,
+          orient: !!shot,
         };
         this.balls.set(id, b);
         // Новый плевок = плевун только что выстрелил — звук с той стороны.
@@ -618,7 +657,7 @@ export class NetMobs {
         b.srvVy = s.vy;
       }
       // Между патчами летим сами с той же гравитацией, что на сервере.
-      b.vel.y -= SPITTER.ballGravity * dt;
+      b.vel.y -= b.grav * dt;
       b.pos.addInPlaceFromFloats(b.vel.x * dt, b.vel.y * dt, b.vel.z * dt);
 
       // И мягко сходимся с серверной позицией, чтобы не расходиться.
@@ -628,6 +667,10 @@ export class NetMobs {
       b.pos.z += (s.z - b.pos.z) * k;
 
       b.mesh.position.copyFrom(b.pos);
+      if (b.orient) {
+        b.mesh.rotation.y = Math.atan2(b.vel.x, b.vel.z);
+        b.mesh.rotation.x = -Math.atan2(b.vel.y, Math.hypot(b.vel.x, b.vel.z));
+      }
       const cp = this.scene.activeCamera?.globalPosition;
       b.mesh.setEnabled(!cp || Math.hypot(b.pos.x - cp.x, b.pos.z - cp.z) <= this.fxRange);
     });

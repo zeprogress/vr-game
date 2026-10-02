@@ -504,6 +504,22 @@ export function playClassAct(
       vfx.decal(x, y, z, (r ?? 5) * 0.55, ATK, d ?? 0.6, 2, 0.9);
       c.emote(id, "jump");
       return true;
+    // ---- мобы 40 ур. (в игре и у спектатора — одним кодом) ----
+    case "leapMark":
+      // Скалолом целится: круг-предупреждение под героем до самого приземления.
+      vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 1.6, 2, 0.95);
+      return true;
+    case "leapHit":
+      // Скалолом приземлился: вспышка по кругу, пыль и камни.
+      vfx.decal(x, y, z, r ?? 3.2, ATK, 0.6, 0, 1.1);
+      vfx.burst(x, y + 0.2, z, FXC.gold, { count: 26, speed: 8, life: 0.7, grav: 16, size: 0.26 });
+      c.sound({ x, y, z }, "bash");
+      return true;
+    case "caltrops":
+      // Колючки Шипохвоста на земле: зона на всё время, пока лежат.
+      vfx.decal(x, y, z, r ?? 1.4, ATK, d ?? 6, 1, 0.55);
+      vfx.burst(x, y + 0.1, z, FXC.other, { count: 8, speed: 2, life: 0.4, grav: 8, size: 0.12 });
+      return true;
     case "crushHit": {
       const cc = ATK;
       vfx.decal(x, y, z, r ?? 5, cc, 0.65, 0, 1.2);

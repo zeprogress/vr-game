@@ -203,7 +203,7 @@ export const SPITTER = {
   ballRadius: 0.14, // м
   ballDamage: 10, // чуть больше слизня (у него 8)
   ballMaxLife: 3.5, // с полёта
-  maxBalls: 24,
+  maxBalls: 48, // было 24 — веера шипов 40 ур.
 } as const;
 
 /** Описание типа моба. Числа урона/скорости общие в MOB. */
@@ -453,7 +453,65 @@ export interface EliteMobDef {
   /** 36 ур. Ледяной демон: заморозка по области под героем (см. FREEZE). */
   freezer?: boolean;
   puller?: boolean;
+  /** 40 ур.: дальний ФИЗИЧЕСКИЙ бой — свой снаряд и механика (см. MobShot). */
+  shot?: MobShot;
+  /** 40 ур. Скалолом: прыжок на героя с кругом-предупреждением и удар по площади (см. LEAP). */
+  leaper?: boolean;
+  /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
+  packFrenzy?: boolean;
 }
+
+/**
+ * Снаряды ФИЗИЧЕСКОГО дальнего боя мобов 40 ур. (броня от силы гасит, щит —
+ * Физ. защитой). Вид → код в BallState.k (0/1 — плевки), гравитация, радиус
+ * попадания. Одна таблица для сервера и клиента.
+ */
+export const SHOTS = {
+  spear: { code: 2, grav: 2.5, radius: 0.2 },
+  spike: { code: 3, grav: 3, radius: 0.13 },
+} as const;
+export type ShotKind = keyof typeof SHOTS;
+
+/** Дальний бой моба 40 ур. (EliteMobDef.shot). */
+export interface MobShot {
+  kind: ShotKind;
+  /** С какой дистанции стреляет, м. */
+  range: number;
+  /** Пауза между выстрелами, с. */
+  cooldown: number;
+  /** Скорость снаряда, м/с. */
+  speed: number;
+  /** Урон снаряда — в долях SPITTER.ballDamage·dmgMul. */
+  dmg: number;
+  /** Снарядов за выстрел (веер) и полуугол веера, рад. */
+  count?: number;
+  spread?: number;
+  /** Пробивает: летит дальше сквозь героев (каждого задевает один раз). */
+  pierce?: boolean;
+  /** Кровотечение: секунд и доля урона попадания в секунду. */
+  bleed?: { sec: number; frac: number };
+  /** Упавшие мимо снаряды остаются колючками: секунд, радиус, замедление (с, доля), урон за тик — доля урона снаряда. */
+  caltrops?: { sec: number; radius: number; slowSec: number; slowFrac: number; dmgFrac: number };
+}
+
+/** 40 ур. Скалолом: прыжок на героя (EliteMobDef.leaper). */
+export const LEAP = {
+  minDist: 5,
+  maxDist: 14,
+  /** Круг-предупреждение под героем, с — моб присел и целится. */
+  windup: 1.1,
+  /** Сколько летит, с. */
+  air: 0.55,
+  radius: 3.2,
+  /** Урон — во столько раз сильнее обычного удара. */
+  dmgMul: 1.6,
+  knockback: 9,
+  stunSec: 0.8,
+  cooldown: 7,
+};
+
+/** 40 ур. Скалолом: гибель сородича в радиусе — ярость (быстрее и больнее, как ярость босса) на sec секунд. */
+export const PACK_FRENZY = { radius: 22, sec: 8 };
 
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
@@ -599,6 +657,29 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
+  },
+  // ---- 40 ур. (2026-10-02): дальний ФИЗИЧЕСКИЙ бой и новый ближний, самые окраины ----
+  // Метатель копий: копьё летит прямо и пробивает всех героев на линии, оставляя кровотечение. Ловок — увороты.
+  spearThrower: {
+    model: "monTribal", name: "Метатель копий", level: 40, kind: "spitter",
+    hp: 5600, dmgMul: 9, xp: 1500000, scaleMul: 2.3, tint: null, dodge: 0.15, legendaryChance: 0.035,
+    shot: { kind: "spear", range: 24, cooldown: 2.8, speed: 30, dmg: 1.1, pierce: true, bleed: { sec: 5, frac: 0.12 } },
+  },
+  // Шипохвост: веер из пяти шипов; упавшие мимо остаются колючками и замедляют. Панцирь гасит стрелы и магию издалека.
+  spikeTail: {
+    model: "monDino", name: "Шипохвост", level: 40, kind: "spitter",
+    hp: 4400, dmgMul: 7, xp: 1200000, scaleMul: 2.1, tint: null, rangedArmor: 0.3, legendaryChance: 0.03,
+    shot: {
+      kind: "spike", range: 16, cooldown: 3.2, speed: 18, dmg: 0.9, count: 5, spread: 0.45,
+      caltrops: { sec: 6, radius: 1.4, slowSec: 1.5, slowFrac: 0.4, dmgFrac: 0.15 },
+    },
+  },
+  // Скалолом (ближний бой): прыгает на героя с кругом-предупреждением, удар по площади с отбросом;
+  // гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
+  rockBreaker: {
+    model: "monMonkroose", name: "Скалолом", level: 40, kind: "slime",
+    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 2.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
+    leaper: true, packFrenzy: true, legendaryChance: 0.035,
   },
 };
 
@@ -806,6 +887,16 @@ export const MOB_CAMPS: {
   { x: 140, z: 125, type: "boneChief", count: 10, spread: 20 }, // ~188 м, северо-восток (был юго-восток, вплотную к големам)
   { x: 135, z: 50, type: "infernoDemon", count: 5, spread: 24, ring: 0.85 }, // ~212 м, восток
   { x: 45, z: 140, type: "frostDemon", count: 6, spread: 22 }, // ~220 м, север
+  // Зона 40 ур. — дальше всего от лагеря, мелкими стаями по краям карты (разной численности).
+  { x: 95, z: 150, type: "spearThrower", count: 5, spread: 10 }, // север-северо-восток
+  { x: 148, z: -62, type: "spearThrower", count: 4, spread: 10 }, // восток
+  { x: -62, z: 148, type: "spearThrower", count: 6, spread: 10 }, // север-северо-запад
+  { x: 35, z: -155, type: "spikeTail", count: 7, spread: 9 }, // юг
+  { x: 152, z: -108, type: "spikeTail", count: 6, spread: 9 }, // юго-восток
+  { x: 98, z: 95, type: "spikeTail", count: 8, spread: 9 }, // северо-восток, между демонами
+  { x: 150, z: 88, type: "rockBreaker", count: 3, spread: 8 }, // восток
+  { x: 140, z: -150, type: "rockBreaker", count: 4, spread: 8 }, // юго-восточный угол
+  { x: -152, z: 40, type: "rockBreaker", count: 3, spread: 8 }, // запад
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

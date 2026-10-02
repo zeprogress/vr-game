@@ -18,6 +18,10 @@ import {
   SPIKES,
   CHIEF_HEAL,
   FREEZE,
+  LEAP,
+  PACK_FRENZY,
+  SHOTS,
+  type MobShot,
   BOSS_ADAPT,
   eliteXpAt,
   MAGE_SPELL,
@@ -184,6 +188,11 @@ export interface PlayerHit {
   knockback?: number;
   /** Урон средой (ядовитое облако): щит/меч/уворот не спасают. */
   dot?: boolean;
+  /** Физический снаряд (копьё, шипы): гасит броня и Физ. защита щита, а не маг. защита. */
+  phys?: boolean;
+  /** Кровотечение: секунд и доля урона попадания в секунду (Метатель копий). */
+  bleedSec?: number;
+  bleedFrac?: number;
   /** Доля РЕАЛЬНО нанесённого урона, которую моб-источник (byMob) лечит себе. */
   lifesteal?: number;
   /** Магический урон: броня от силы не гасит, защищает интеллект. */
@@ -192,7 +201,9 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops";
+  /** Радиус области, м (прыжок Скалолома, колючки). */
+  r?: number;
   x: number;
   z: number;
   /** Второй конец (хват щупальцами: от спрута x2/z2 к цели x/z). */
@@ -387,6 +398,18 @@ export class Mob {
   readonly spiker: boolean;
   readonly healer: boolean;
   readonly freezer: boolean;
+  /** 40 ур.: свой физический снаряд (Метатель копий, Шипохвост) — см. ZoneSim.shoot. */
+  readonly shot: MobShot | null;
+  /** 40 ур. Скалолом: прыжок на героя (LEAP) и ярость стаи (PACK_FRENZY). */
+  readonly leaper: boolean;
+  readonly packFrenzy: boolean;
+  private leapCd = 3;
+  private leapWindupT = 0;
+  private leapAirT = 0;
+  private leapX = 0;
+  private leapZ = 0;
+  /** Ярость стаи: секунд осталось (пока > 0 — raging). */
+  private frenzyT = 0;
   private healCd = 6;
   /** ZoneSim прочтёт и сбросит: вождь лечит соседей (ему видны все мобы). */
   healReq = false;
@@ -496,6 +519,9 @@ export class Mob {
       spiker?: boolean;
       healer?: boolean;
       freezer?: boolean;
+      shot?: MobShot;
+      leaper?: boolean;
+      packFrenzy?: boolean;
       /** Ключ ELITE_MOBS лагеря, откуда моб (для заданий доски). */
       campType?: string;
       /** Вожак лагеря (задание «Вожак»): сильнее, крупнее, реже возрождается. */
@@ -561,6 +587,9 @@ export class Mob {
     this.spiker = opts.spiker ?? false;
     this.healer = opts.healer ?? false;
     this.freezer = opts.freezer ?? false;
+    this.shot = opts.shot ?? null;
+    this.leaper = opts.leaper ?? false;
+    this.packFrenzy = opts.packFrenzy ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
     this.liftM = (opts.visLift ?? 0) * MOB.bodyRadius * 2 * this.scale;
@@ -568,6 +597,13 @@ export class Mob {
 
   get aggro(): boolean {
     return this.aggroed;
+  }
+
+  /** Ярость стаи (Скалолом): сородич погиб рядом — быстрее и больнее на `sec` секунд. */
+  frenzy(sec: number): void {
+    if (this.dead || !this.packFrenzy) return;
+    this.frenzyT = Math.max(this.frenzyT, sec);
+    this.raging = true;
   }
 
   /** Промах тоже злит моба (иначе увернувшийся «не замечал» стрелка). */
@@ -1114,8 +1150,57 @@ export class Mob {
       }
     }
 
-    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится).
-    const holdStill = this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0;
+    // 40 ур. Скалолом: прыжок на героя — круг-предупреждение, бросок, удар по площади.
+    if (this.leaper) {
+      if (this.leapCd > 0) this.leapCd -= dt;
+      if (this.leapWindupT > 0) {
+        this.leapWindupT -= dt;
+        if (this.stunnedT > 0 || this.rootedT > 0) this.leapWindupT = 0; // сбили — прыжка нет
+        else if (this.leapWindupT <= 0) {
+          // Бросок: долететь в точку за LEAP.air (баллистика под MOB.gravity).
+          const T = LEAP.air;
+          this.vx = (this.leapX - this.x) / T;
+          this.vz = (this.leapZ - this.z) / T;
+          this.vy = (MOB.gravity * T) / 2 + (terrainHeight(this.leapX, this.leapZ) - this.y) / T;
+          this.grounded = false;
+          this.leapAirT = T;
+        }
+      } else if (this.leapAirT > 0) {
+        this.leapAirT -= dt;
+        if (this.leapAirT <= 0) {
+          this.fx.push({ k: "leapHit", x: this.leapX, z: this.leapZ, r: LEAP.radius });
+          const rageMul = this.enraged ? BOSS.rageDamageMult : 1;
+          for (const p of players) {
+            if (Math.hypot(p.x - this.leapX, p.z - this.leapZ) > LEAP.radius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * LEAP.dmgMul * rageMul,
+              fromX: this.leapX,
+              fromZ: this.leapZ,
+              projectile: false,
+              byMob: this.id,
+              knockback: LEAP.knockback,
+              stunSec: LEAP.stunSec,
+            });
+          }
+        }
+      } else if (chasing && np && !busy && this.leapCd <= 0 && dist > LEAP.minDist && dist < LEAP.maxDist) {
+        this.leapX = np.x;
+        this.leapZ = np.z;
+        this.leapWindupT = LEAP.windup;
+        this.leapCd = LEAP.cooldown * (0.85 + Math.random() * 0.3);
+        this.fx.push({ k: "leapMark", x: np.x, z: np.z, d: LEAP.windup + LEAP.air, r: LEAP.radius });
+      }
+    }
+    // Ярость стаи гаснет сама.
+    if (this.frenzyT > 0) {
+      this.frenzyT -= dt;
+      if (this.frenzyT <= 0) this.raging = false;
+    }
+
+    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится, Скалолом приседает).
+    const holdStill =
+      this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1362,7 +1447,7 @@ export class Mob {
             // Выдохся — только вбок, дистанцию больше не набирает.
             hx = -dz * this.retreatSide;
             hz = dx * this.retreatSide;
-          } else if (dist > SPITTER.fireRange) {
+          } else if (dist > (this.shot?.range ?? SPITTER.fireRange)) {
             hx = dx;
             hz = dz;
           } else {
@@ -1505,8 +1590,8 @@ export class Mob {
 
     if (chasing && np && !isBoss && this.stunnedT <= 0 && !holdStill) {
       if (this.ranged) {
-        if (dist < SPITTER.fireRange && this.attackCd <= 0) {
-          this.attackCd = SPITTER.fireCooldown;
+        if (dist < (this.shot?.range ?? SPITTER.fireRange) && this.attackCd <= 0) {
+          this.attackCd = this.shot?.cooldown ?? SPITTER.fireCooldown;
           this.attackSeq = (this.attackSeq + 1) & 0xffff;
           spit(this, np);
         }
@@ -1556,6 +1641,9 @@ export class Mob {
     this.stunnedT = 0;
     this.rootedT = 0;
     this.raging = false;
+    this.frenzyT = 0;
+    this.leapWindupT = 0;
+    this.leapAirT = 0;
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
     if (this.faceRest) this.yaw = this.restYaw;
@@ -1634,9 +1722,24 @@ class Dummy {
   }
 }
 
+/** Физический снаряд моба 40 ур. (копьё, шип) — поверх обычного плевка. */
+interface BallExtra {
+  /** Код вида для клиента (BallState.k, см. SHOTS). */
+  code: number;
+  grav: number;
+  radius: number;
+  /** Урон — множитель поверх SPITTER.ballDamage·dmgMul. */
+  dmgMul: number;
+  pierce?: boolean;
+  bleed?: { sec: number; frac: number };
+  caltrops?: MobShot["caltrops"];
+}
+
 class Ball {
   readonly id = nid();
   private life = 0;
+  /** Пробивающий снаряд: кого уже задел (каждого — один раз). */
+  private hitIds: Set<string> | null = null;
 
   constructor(
     public x: number,
@@ -1653,40 +1756,59 @@ class Ball {
     /** Чародей руин: заряд взрывается по площади вокруг прямой цели. 0 — обычный плевок. */
     public aoeRadius = 0,
     public aoeFrac = 0,
+    /** Физический снаряд 40 ур.; null — обычный плевок. */
+    public extra: BallExtra | null = null,
   ) {}
 
-  /** true — шарик надо удалить. */
-  tick(dt: number, players: SimPlayer[], hits: PlayerHit[]): boolean {
+  /** Вид для клиента (BallState.k): 0 — плевок, 1 — плевок босса, дальше — SHOTS.code. */
+  get code(): number {
+    return this.extra?.code ?? (this.boss ? 1 : 0);
+  }
+
+  /** true — шарик надо удалить. `onLand` — упал на землю, никого не задев. */
+  tick(dt: number, players: SimPlayer[], hits: PlayerHit[], onLand?: (b: Ball) => void): boolean {
     const px = this.x;
     const py = this.y;
     const pz = this.z;
-    this.vy -= SPITTER.ballGravity * dt;
+    this.vy -= (this.extra?.grav ?? SPITTER.ballGravity) * dt;
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.z += this.vz * dt;
     this.life += dt;
     if (this.life > SPITTER.ballMaxLife) return true;
-    if (this.y <= terrainHeight(this.x, this.z)) return true;
+    if (this.y <= terrainHeight(this.x, this.z)) {
+      onLand?.(this);
+      return true;
+    }
 
+    const ex = this.extra;
     for (const p of players) {
+      if (this.hitIds?.has(p.sessionId)) continue;
       const feetY = p.y - PLAYER.eyeHeight;
       const d = segDist(
         px, py, pz, this.x, this.y, this.z,
         p.x, feetY, p.z, p.x, p.y, p.z,
       );
-      if (d < SPITTER.ballRadius + PLAYER.radius) {
+      if (d < (ex?.radius ?? SPITTER.ballRadius) + PLAYER.radius) {
         // «Откуда» — точка ВВЕРХ по траектории, а не текущая позиция шара:
         // на скорости плевок за тик пролетает мимо игрока, и направление
         // "от игрока к шару" могло указывать вбок/назад — блок щитом мимо.
         const vh = Math.hypot(this.vx, this.vz) || 1;
         hits.push({
           target: p.sessionId,
-          dmg: SPITTER.ballDamage * this.dmgMul,
+          dmg: SPITTER.ballDamage * this.dmgMul * (ex?.dmgMul ?? 1),
           fromX: this.x - (this.vx / vh) * 4,
           fromZ: this.z - (this.vz / vh) * 4,
           projectile: true,
           byMob: this.owner || undefined,
+          ...(ex ? { phys: true } : {}),
+          ...(ex?.bleed ? { bleedSec: ex.bleed.sec, bleedFrac: ex.bleed.frac } : {}),
         });
+        // Копьё пробивает: летит дальше, этого героя больше не задевает.
+        if (ex?.pierce) {
+          (this.hitIds ??= new Set()).add(p.sessionId);
+          continue;
+        }
         // Чародей руин: доля урона — по площади вокруг прямой цели, спадает к краю.
         if (this.aoeRadius > 0 && this.aoeFrac > 0) {
           for (const p2 of players) {
@@ -1853,6 +1975,9 @@ export class ZoneSim {
           spiker: def.spiker,
           healer: def.healer,
           freezer: def.freezer,
+          shot: def.shot,
+          leaper: def.leaper,
+          packFrenzy: def.packFrenzy,
         });
         this.mobs.set(m.id, m);
       }
@@ -1942,9 +2067,87 @@ export class ZoneSim {
     }
   }
 
+  /** Эффекты не от конкретного моба (колючки на земле и т.п.) — ZoneRoom разошлёт и очистит. */
+  readonly fx: MobFx[] = [];
+  /** Колючки Шипохвоста на земле. */
+  private readonly caltrops: { x: number; z: number; t: number; tickT: number; r: number; slowSec: number; slowFrac: number; dmg: number; owner: string }[] = [];
+
+  /**
+   * Выстрел моба 40 ур. своим снарядом (MobShot): копьё — одно и пробивает,
+   * шипы — веером. Прицел — в грудь цели с поправкой на гравитацию вида.
+   */
+  private shoot(mob: Mob, target: SimPlayer): void {
+    const s = mob.shot!;
+    const k = SHOTS[s.kind];
+    const n = Math.max(1, s.count ?? 1);
+    const mx = mob.x;
+    const my = mob.y + MOB.bodyRadius * mob.scale;
+    const mz = mob.z;
+    const L = Math.hypot(target.x - mx, target.z - mz) || 1;
+    const t = L / s.speed;
+    const vy = (target.y - 0.4 + 0.5 * k.grav * t * t - my) / t;
+    const yaw0 = Math.atan2(target.x - mx, target.z - mz);
+    const spread = s.spread ?? 0;
+    for (let i = 0; i < n; i++) {
+      if (this.balls.size >= SPITTER.maxBalls) {
+        const first = this.balls.keys().next().value as string | undefined;
+        if (first) this.balls.delete(first);
+      }
+      const yaw = n > 1 ? yaw0 - spread + (2 * spread * i) / (n - 1) : yaw0;
+      const b = new Ball(mx, my, mz, Math.sin(yaw) * s.speed, vy, Math.cos(yaw) * s.speed, false, mob.id, mob.dmgMul, 0, 0, {
+        code: k.code,
+        grav: k.grav,
+        radius: k.radius,
+        dmgMul: s.dmg,
+        pierce: s.pierce,
+        bleed: s.bleed,
+        caltrops: s.caltrops,
+      });
+      this.balls.set(b.id, b);
+    }
+  }
+
+  /** Снаряд упал мимо: шипы остаются колючками. */
+  private readonly onBallLand = (b: Ball): void => {
+    const c = b.extra?.caltrops;
+    if (!c) return;
+    if (this.caltrops.length >= 60) this.caltrops.shift();
+    this.caltrops.push({
+      x: b.x, z: b.z, t: c.sec, tickT: 0, r: c.radius, slowSec: c.slowSec, slowFrac: c.slowFrac,
+      dmg: SPITTER.ballDamage * b.dmgMul * b.extra!.dmgMul * c.dmgFrac, owner: b.owner,
+    });
+    this.fx.push({ k: "caltrops", x: b.x, z: b.z, d: c.sec, r: c.radius });
+  };
+
+  /** Колючки: каждые полсекунды — укол и замедление тем, кто в них стоит. */
+  private tickCaltrops(dt: number, players: SimPlayer[], hits: PlayerHit[]): void {
+    for (let i = this.caltrops.length - 1; i >= 0; i--) {
+      const c = this.caltrops[i];
+      c.t -= dt;
+      if (c.t <= 0) {
+        this.caltrops.splice(i, 1);
+        continue;
+      }
+      c.tickT -= dt;
+      if (c.tickT > 0) continue;
+      c.tickT = 0.5;
+      for (const p of players) {
+        if (Math.hypot(p.x - c.x, p.z - c.z) > c.r) continue;
+        hits.push({
+          target: p.sessionId, dmg: c.dmg, fromX: c.x, fromZ: c.z, projectile: false, dot: true, phys: true,
+          byMob: c.owner || undefined, slowSec: c.slowSec, slowFrac: c.slowFrac,
+        });
+      }
+    }
+  }
+
   tick(dt: number, players: SimPlayer[]): PlayerHit[] {
     const hits: PlayerHit[] = [];
     const spit = (mob: Mob, target: SimPlayer): void => {
+      if (mob.shot) {
+        this.shoot(mob, target);
+        return;
+      }
       if (this.balls.size >= SPITTER.maxBalls) {
         const first = this.balls.keys().next().value as string | undefined;
         if (first) this.balls.delete(first);
@@ -2009,7 +2212,8 @@ export class ZoneSim {
     this.tickBurning(dt);
     this.separateMobs();
     for (const d of this.dummies.values()) d.tick(dt);
-    for (const [id, b] of this.balls) if (b.tick(dt, players, hits)) this.balls.delete(id);
+    for (const [id, b] of this.balls) if (b.tick(dt, players, hits, this.onBallLand)) this.balls.delete(id);
+    this.tickCaltrops(dt, players, hits);
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
     // Полученный от босса урон — тоже вклад в бой (танк/приманка).
@@ -2215,6 +2419,12 @@ export class ZoneSim {
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
+    // Ярость стаи (Скалолом): гибель сородича злит соседей того же лагеря.
+    if (killed && m.packFrenzy && m.campType) {
+      for (const o of this.mobs.values()) {
+        if (o !== m && !o.dead && o.campType === m.campType && Math.hypot(o.x - m.x, o.z - m.z) < PACK_FRENZY.radius) o.frenzy(PACK_FRENZY.sec);
+      }
+    }
     // Щит Ледяного демона: часть снятого урона летит обратно в атакующего.
     if (m.reflectT > 0 && attacker && dealt > 0 && !dot) {
       this.reflectHits.push({

@@ -321,6 +321,11 @@ interface Runtime {
   /** Обморожение: до какой секунды (this.elapsed) бег медленнее на slowFrac. */
   slowUntil: number;
   slowFrac: number;
+  /** Кровотечение: до какой секунды, урон в секунду, кто нанёс, накопитель тика. */
+  bleedUntil: number;
+  bleedDps: number;
+  bleedBy: string;
+  bleedT: number;
   /** id моба, по которому только что ударили (для «!follow»-телохранителя — фокус-фаер). */
   lastHitMobId: string | null;
   /** Секунда игрового времени (this.elapsed) последнего удара по lastHitMobId. */
@@ -566,6 +571,7 @@ function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<Zo
     critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach,
     attackCooldown: d.attackCooldown, speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller,
+    shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
   };
 }
 
@@ -5100,6 +5106,10 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       slowUntil: 0,
       slowFrac: 0,
+      bleedUntil: 0,
+      bleedDps: 0,
+      bleedBy: "",
+      bleedT: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
@@ -7417,11 +7427,16 @@ export class ZoneRoom extends Room<ZoneState> {
       if (m.fx.length === 0) continue;
       for (const f of m.fx) {
         this.broadcast(MSG.act, {
-          k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2,
+          k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2, r: f.r,
         } satisfies ActRelay);
       }
       m.fx.length = 0;
     }
+    // Эффекты не от конкретного моба (колючки Шипохвоста на земле).
+    for (const f of this.sim.fx) {
+      this.broadcast(MSG.act, { k: f.k, id: "", x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, r: f.r } satisfies ActRelay);
+    }
+    this.sim.fx.length = 0;
     for (const d of this.sim.dummies.values()) {
       const s = this.state.dummies.get(d.id);
       if (!s) continue;
@@ -7435,6 +7450,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!s) {
         s = new BallState();
         s.boss = b.boss ? 1 : 0;
+        s.k = b.code;
         this.state.balls.set(b.id, s);
       }
       s.x = b.x;
@@ -7594,7 +7610,20 @@ export class ZoneRoom extends Room<ZoneState> {
     this.pickupLoot();
 
     for (const h of hits) this.hurtPlayer(h);
+    this.tickBleeds(dt);
     this.tickPlayers(dt);
+  }
+
+  /** Кровотечение героев: каждые полсекунды — урон средой (не блокируется, не уворачивается). */
+  private tickBleeds(dt: number): void {
+    this.state.players.forEach((p, id) => {
+      const rt = this.rt.get(id);
+      if (!rt || rt.bleedUntil <= this.elapsed || p.dead) return;
+      rt.bleedT -= dt;
+      if (rt.bleedT > 0) return;
+      rt.bleedT = 0.5;
+      this.hurtPlayer({ target: id, dmg: rt.bleedDps * 0.5, fromX: p.head.x, fromZ: p.head.z, projectile: false, dot: true, byMob: rt.bleedBy || undefined });
+    });
   }
 
   /** Лут подбирается сам, когда игрок подошёл вплотную. */
@@ -7685,17 +7714,19 @@ export class ZoneRoom extends Room<ZoneState> {
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
     const magicMob = !!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee);
     let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p) : 1 - armorFrac(p));
+    // Физический снаряд (копьё, шипы 40 ур.) — только броня, без маг. защиты.
+    const magicShot = !!h.projectile && !h.phys;
     // Ролл щита: Физ. защита гасит физический удар, Маг. защита (круглый щит) — магию и снаряды.
     const heldShield = h.dot ? null : shieldOf(p, rt);
     if (heldShield?.inst) {
-      dmg *= 1 - (magicMob || h.projectile ? shieldMagDef(heldShield.inst) : shieldPhysDef(heldShield.inst));
+      dmg *= 1 - (magicMob || magicShot ? shieldMagDef(heldShield.inst) : shieldPhysDef(heldShield.inst));
     }
     if (magicMob && dmg > 0 && !h.dot) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
     if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
-    if (h.projectile) dmg *= 1 - magicResistFrac(p);
+    if (magicShot) dmg *= 1 - magicResistFrac(p);
     // «Печать»: стоишь в круге союзника (или своём) — входящий урон меньше.
     dmg *= 1 - this.sealShield(p.head.x, p.head.z);
     // «Благословение» мага поддержки: −15% входящего урона.
@@ -7732,6 +7763,13 @@ export class ZoneRoom extends Room<ZoneState> {
       if (h.slowSec) {
         rt.slowUntil = this.elapsed + h.slowSec;
         rt.slowFrac = h.slowFrac ?? 0.4;
+      }
+      // Кровотечение (Метатель копий): доля прошедшего урона в секунду, тикает в tickBleeds.
+      if (h.bleedSec && dmg > 0) {
+        const still = rt.bleedUntil > this.elapsed ? rt.bleedDps : 0;
+        rt.bleedDps = Math.max(still, dmg * (h.bleedFrac ?? 0.1));
+        rt.bleedUntil = this.elapsed + h.bleedSec;
+        rt.bleedBy = h.byMob ?? "";
       }
       if (h.knockback && h.target.startsWith("bot:")) {
         // Живой игрок отталкивает себя сам (см. MobHitMsg.knockback) — сервер
@@ -8154,6 +8192,10 @@ export class ZoneRoom extends Room<ZoneState> {
       stunnedUntil: 0,
       slowUntil: 0,
       slowFrac: 0,
+      bleedUntil: 0,
+      bleedDps: 0,
+      bleedBy: "",
+      bleedT: 0,
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],

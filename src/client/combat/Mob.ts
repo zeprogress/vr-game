@@ -477,6 +477,9 @@ export class Mob implements Hittable {
   private rig: RigInstance | null = null;
   /** Клип «движение/прыжок» найденной модели (имя зависит от пака). */
   private moveAnim: AnimationGroup | null = null;
+  /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
+  private atkClip: AnimationGroup | null = null;
+  private atkClipT = 0;
   /** Узел, который тянем/сжимаем в прыжке: сфера или корень модели. */
   private squash: TransformNode;
   private curAnim: AnimationGroup | null = null;
@@ -711,6 +714,9 @@ export class Mob implements Hittable {
       this.lodTint = this.tint;
     }
 
+    // Мобы 40 ур. (свой снаряд или прыжок): бросок/удар — клип модели, а не только «замах» телом.
+    const eliteDef = this.modelName ? Object.values(ELITE_MOBS).find((d) => d.model === this.modelName) : undefined;
+    if (eliteDef?.shot || eliteDef?.leaper) this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? null;
     // Клип «движения»: у разных моделей пака он называется по-разному
     // (Hop / Jump / Fast_Flying / Walk / Run). Запомним, что нашли.
     this.moveAnim =
@@ -879,7 +885,16 @@ export class Mob implements Hittable {
     if (s.attackSeq !== this.lastAtkSeq) {
       this.lastAtkSeq = s.attackSeq;
       if (!this.dead) this.atkT = ATTACK_DUR;
+      if (!this.dead && this.atkClip) {
+        // Перезапуск клипа броска с начала (playAnim не перезапускает тот же клип).
+        if (this.curAnim === this.atkClip) {
+          this.atkClip.stop();
+          this.curAnim = null;
+        }
+        this.atkClipT = 0.8;
+      }
     }
+    if (this.atkClipT > 0) this.atkClipT = Math.max(0, this.atkClipT - dt);
     if (this.atkT > 0) this.atkT = Math.max(0, this.atkT - dt);
 
     // оглушение: звёздочки над головой вращаются, пока s.stunned
@@ -1038,7 +1053,8 @@ export class Mob implements Hittable {
       // Скелетная анимация вне кадра/вдали не нужна: у 20+ пчёл она крутилась
       // вечно, даже когда их никто не видит.
       const seen = this.animVisible(pos, playerPos);
-      if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
+      if (seen && this.atkClip && this.atkClipT > 0) this.playAnim(this.atkClip, false);
+      else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
 
