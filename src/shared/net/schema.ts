@@ -164,6 +164,8 @@ export class DropState extends Schema {
   @type("float32") x = 0;
   @type("float32") y = 0;
   @type("float32") z = 0;
+  /** 1 — это Эгида (уникальный щит с особым видом): на земле рисуем треугольной. */
+  @type("uint8") aegis = 0;
 }
 
 export class BallState extends Schema {

@@ -7468,6 +7468,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.x = d.x;
       s.y = d.y;
       s.z = d.z;
+      s.aegis = isAegis(d.instance) ? 1 : 0;
       this.state.drops.set(d.id, s);
     }
     this.state.drops.forEach((_s, id) => {

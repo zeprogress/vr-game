@@ -44,7 +44,10 @@ export class LootDrops {
   private readonly weaponFactory = new Map<ItemId, () => Mesh>();
   private clock = 0;
 
+  private readonly scene: Scene;
+
   constructor(scene: Scene) {
+    this.scene = scene;
     for (const id of Object.keys(ITEMS) as ItemId[]) {
       const def = ITEMS[id];
       let proto: Mesh;
@@ -105,7 +108,10 @@ export class LootDrops {
       if (!v) {
         const factory = this.weaponFactory.get(s.item);
         let mesh: AbstractMesh;
-        if (factory) {
+        if (s.aegis && ITEMS[s.item].weapon?.cls === "shield") {
+          mesh = makeWeaponMesh(this.scene, "shield", "aegis");
+          mesh.name = `drop_${id}`;
+        } else if (factory) {
           mesh = factory();
           mesh.name = `drop_${id}`;
         } else {
