@@ -1235,7 +1235,8 @@ export class Spectator {
   /** Собираем контекст для оверлеев (Ф6) и отдаём его слою. */
   /** Таблица понятных характеристик игрока для панели «смотрим» (см. #shared/heroStats). */
   private static playerStatRows(p: PlayerState): HeroStatRow[] {
-    return heroStatRows(p);
+    // «Удар конусом» (прокол копья) зрителям не нужен — он есть в инвентаре игрока.
+    return heroStatRows(p).filter((r) => r.label !== "Удар конусом");
   }
 
   /** Баффы на герое — для плашек в «смотрим». */

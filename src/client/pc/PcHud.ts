@@ -268,7 +268,12 @@ export class PcHud {
     this.lastSig.id = sig;
     this.nameEl.textContent = `${nick} · ${level} ур.`;
     this.portraitEl.textContent = ICON[weapon];
-    this.slotAtk.querySelector(".pc-slot-ico")!.textContent = ICON[weapon];
+    const slotIco = this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!;
+    slotIco.textContent = ICON[weapon];
+    // Копьё 🦯 нарисовано наклоном не в ту сторону — отражаем по горизонтали.
+    const flip = weapon === "spear" ? "scaleX(-1)" : "";
+    this.portraitEl.style.transform = flip;
+    slotIco.style.transform = flip;
   }
 
   /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */
