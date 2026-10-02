@@ -459,6 +459,9 @@ export interface WeaponInstance {
   fav?: boolean;
 }
 
+/** Сколько предметов можно держать в избранном (ряд «Избранное» в инвентаре). */
+export const FAV_MAX = 8;
+
 /** Текущая версия формата роллов (WeaponInstance.lv). */
 const LOOT_VER = 7;
 

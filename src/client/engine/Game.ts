@@ -121,7 +121,7 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, Quest
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { AEGIS_NAME, aegisTier, bothHandsCls, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, EVENT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
@@ -1962,9 +1962,17 @@ export class Game {
         this.net?.sendWarehouseAct({ id: a.id, act: "hand", hand });
         return;
       }
-      case "fav":
+      case "fav": {
+        const list = this.net?.warehouse?.list ?? [];
+        const w = list.find((x) => x.id === a.id);
+        if (w && !w.fav && list.filter((x) => x.fav).length >= FAV_MAX) {
+          toast(`Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}`);
+          return;
+        }
         this.net?.sendPcInvAct({ act: "fav", id: a.id, idx: 0 });
+        toast(w?.fav ? "Убрано из избранного" : `${glyph("ui.fav")} В избранном — не разбирается`);
         return;
+      }
       case "drop":
       case "scrap": {
         // Если этот инстанс сейчас в руке — сначала убираем его из руки.

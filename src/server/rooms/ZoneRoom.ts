@@ -161,6 +161,7 @@ import {
   affixSum,
   BAG,
   bestWeaponInstance,
+  FAV_MAX,
   emptyBag,
   isItemId,
   isWeaponClass,
@@ -1840,7 +1841,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav") return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll") return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))));
@@ -4469,10 +4470,44 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = list?.find((x) => x.id === id);
       if (!list || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
       if (w.fav) delete w.fav;
+      else if (list.filter((x) => x.fav).length >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
       else w.fav = true;
       if (t) this.persistNick(norm);
       else store.put(`nick:${norm}`, { weapons: list });
       return { ok: true, text: w.fav ? `★ В избранном: ${instanceName(w)} — не разбирается` : `Убрано из избранного: ${instanceName(w)}` };
+    }
+    if (act === "scrapAll") {
+      // Разобрать всё, кроме избранного ★ и того, что в руках (кнопка внизу инвентаря).
+      if (t) {
+        const held = new Set([t.rt.equippedWeaponId.left, t.rt.equippedWeaponId.right, rolledIn(t.p, "left", t.rt)?.id, rolledIn(t.p, "right", t.rt)?.id]);
+        const targets = t.rt.weapons.filter((w) => !w.fav && !held.has(w.id));
+        if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
+        let got = 0;
+        for (const w of targets) got += this.scrapOne(t, w);
+        const bag = readBag(t.p);
+        addToBag(bag, "scrap", got);
+        writeBag(t.p, bag);
+        this.persistNick(norm);
+        return { ok: true, text: `Разобрано ${targets.length} — лом +${got}` };
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+      const weapons = rec.weapons ?? [];
+      const eq = sanitizeEquipped(rec.equippedWeaponId);
+      const heldRec = sanitizeHeld(rec.held);
+      // В руке — закреплённое или лучший экземпляр того же вида (как считает игра).
+      const inHand = (h: CarriedWeapon | null): string | undefined =>
+        h ? bestWeaponInstance(weapons, h.cls, h.tier)?.id : undefined;
+      const held = new Set([eq.left, eq.right, inHand(heldRec.left), inHand(heldRec.right)]);
+      const targets = weapons.filter((w) => !w.fav && !held.has(w.id));
+      if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
+      const bag = restoreBag(rec.bag);
+      let got = 0;
+      for (const w of targets) got += scrapValue(w);
+      addToBag(bag, "scrap", got);
+      store.put(token, { weapons: weapons.filter((w) => !targets.includes(w)), bag });
+      return { ok: true, text: `Разобрано ${targets.length} — лом +${got}` };
     }
     if (act === "enchant") {
       if (t) {

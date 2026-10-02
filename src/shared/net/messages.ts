@@ -297,8 +297,8 @@ export interface PcInvData {
 }
 
 export interface PcInvActMsg {
-  /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav";
+  /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll";
   id: string;
   idx: number;
 }

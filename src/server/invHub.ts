@@ -22,7 +22,7 @@ const SESSION_TTL_MS = 60 * 24 * 3600_000;
 
 import type { PcInvData } from "#shared/net/messages";
 
-export type InvActKind = "equip" | "unequip" | "scrap" | "enchant" | "stat" | "respec" | "scroll" | "title" | "skills" | "fav";
+export type InvActKind = "equip" | "unequip" | "scrap" | "enchant" | "stat" | "respec" | "scroll" | "title" | "skills" | "fav" | "scrapAll";
 
 export interface InvActResult {
   ok: boolean;

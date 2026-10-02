@@ -2,7 +2,7 @@ import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf
 import { glyph, weaponIcon } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -391,28 +391,66 @@ export class PcInventory {
     titleRow.append(sel);
     left.append(doll, xp, hands, titleRow, stats);
 
-    // --- сумка ---
+    // --- избранное и сумка ---
     const right = div("pcinv-col");
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
-    const bag = d.weapons.filter((w) => !eq.has(w.id));
-    // Склад на сервере без лимита — ячеек минимум 64, дальше растёт рядами по 8 (всегда есть свободный ряд).
+    const free = d.weapons.filter((w) => !eq.has(w.id));
+    // Номер — как у сервера (!equip / !scrap <номер>): по порядку всего ненадетого, избранное тоже.
+    const numOf = new Map(free.map((w, i) => [w.id, i + 1]));
+    const favs = free.filter((w) => w.fav);
+    const bag = free.filter((w) => !w.fav);
+    const favTotal = d.weapons.filter((w) => w.fav).length;
+    // Избранное ★: отдельный ряд на FAV_MAX ячеек — бросил сюда, предмет в избранном (не разбирается).
+    right.append(div("pcinv-sub", `${glyph("ui.fav")} Избранное · ${favTotal}/${FAV_MAX} — не разбирается`));
+    const favGrid = div("pcinv-grid pcinv-favgrid");
+    for (let i = 0; i < FAV_MAX; i++) {
+      const w = favs[i];
+      favGrid.append(w ? this.itemCell(w, numOf.get(w.id)) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
+    }
+    favGrid.addEventListener("dragover", (e) => {
+      const w = this.dragWeapon();
+      if (w && !w.fav) {
+        e.preventDefault();
+        favGrid.classList.add("hot");
+      }
+    });
+    favGrid.addEventListener("dragleave", () => favGrid.classList.remove("hot"));
+    favGrid.addEventListener("drop", (e) => {
+      e.preventDefault();
+      favGrid.classList.remove("hot");
+      const src = this.drag;
+      const w = this.dragWeapon();
+      this.endDrag();
+      if (!src || !w || w.fav) return;
+      if (favTotal >= FAV_MAX) {
+        this.textTip(favGrid, `${glyph("ui.fav")} Избранное заполнено`, `Не больше ${FAV_MAX} — сначала вынеси что-нибудь в сумку.`);
+        return;
+      }
+      if (src.kind === "hand") this.hooks.toBag(src.side);
+      this.toggleFav(w);
+    });
+    right.append(favGrid);
+
+    // Склад на сервере без лимита — ячеек минимум 56, дальше растёт рядами по 8 (всегда есть свободный ряд).
     const row = this.hooks.touch && !this.hooks.page ? 10 : 8;
-    const slots = Math.max(this.hooks.page ? 48 : this.hooks.touch ? 40 : 64, Math.ceil((bag.length + 1) / row) * row);
+    const slots = Math.max(this.hooks.page ? 40 : this.hooks.touch ? 30 : 56, Math.ceil((bag.length + 1) / row) * row);
     right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
     const grid = div("pcinv-grid");
     for (let i = 0; i < slots; i++) {
       const w = bag[i];
-      grid.append(w ? this.itemCell(w, i + 1) : div("pcinv-cell"));
+      grid.append(w ? this.itemCell(w, numOf.get(w.id)) : div("pcinv-cell"));
     }
-    // С руки в сумку — снять.
+    // С руки в сумку — снять; из избранного в сумку — убрать звёздочку.
     grid.addEventListener("dragover", (e) => {
-      if (this.drag?.kind === "hand") e.preventDefault();
+      if (this.drag?.kind === "hand" || (this.drag?.kind === "bag" && this.dragWeapon()?.fav)) e.preventDefault();
     });
     grid.addEventListener("drop", (e) => {
       e.preventDefault();
       const src = this.drag;
+      const w = this.dragWeapon();
       this.endDrag();
       if (src?.kind === "hand") this.hooks.toBag(src.side);
+      else if (src?.kind === "bag" && w?.fav) this.toggleFav(w);
     });
     right.append(grid);
     right.append(div("pcinv-sub", "Прочее"));
@@ -472,9 +510,22 @@ export class PcInventory {
     right.append(
       div(
         "pcinv-hint",
-        "Перетащи на руку — надеть · ПКМ — надеть/снять · на наковальню — в лом · за окно — выбросить · на «Заточку» — заточить",
+        "Перетащи на руку — надеть · ПКМ — надеть/снять · в «Избранное» — не разбирается · на наковальню — в лом · за окно — выбросить · на «Заточку» — заточить",
       ),
     );
+    // Разобрать всё, кроме избранного ★ и надетого — с подтверждением.
+    const scrapSum = bag.reduce((n, w) => n + w.scrap, 0);
+    const all = document.createElement("button");
+    all.className = "pcinv-allbtn";
+    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bag.length})`;
+    all.disabled = bag.length === 0;
+    all.onclick = () =>
+      this.askConfirm(
+        `Разобрать ${bag.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")} и то, что в руках, останутся.`,
+        "Разобрать всё",
+        () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
+      );
+    right.append(all);
     wrap.append(left, right);
     this.body.append(wrap);
   }
@@ -1015,6 +1066,12 @@ function injectInvStyle(): void {
   color:#c9c3b3; font-size:12px; min-height:44px; }
 .pcinv-anvil.hot { border-color:#ff7a5a; color:#ffb49a; background:rgba(255,122,90,.08); }
 .pcinv-hint { color:#7f7a6e; font-size:11.5px; margin-top:8px; }
+.pcinv-favgrid { padding:4px; margin:-4px; border-radius:8px; background:rgba(255,209,102,.06); outline:1px dashed rgba(255,209,102,.35); }
+.pcinv-favgrid.hot { background:rgba(255,209,102,.16); outline-color:#ffd166; }
+.pcinv-favslot { display:flex; align-items:center; justify-content:center; color:rgba(255,209,102,.28); font:16px system-ui; }
+.pcinv-allbtn { margin-top:10px; width:100%; padding:7px 10px; border-radius:7px; border:1px solid #a8453a; background:#2a1d1b;
+  color:#ffc2b8; cursor:pointer; font:600 12.5px/1.2 system-ui; }
+.pcinv-allbtn:disabled { opacity:.45; cursor:default; }
 .pcinv-small { color:#a9a498; font-size:11.5px; }
 .pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
 .pcinv-name { font-weight:700; margin-bottom:6px; }
