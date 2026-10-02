@@ -113,7 +113,7 @@ import {
   ttsVoiceMenu,
   ttsVoiceName,
 } from "#shared/tts";
-import { terrainHeight, lakeEllipseDist, lakeShoreDistIn, LAKE_R_AVG } from "#shared/terrain";
+import { climbStep, reachAlong, terrainHeight, lakeEllipseDist, lakeShoreDistIn, LAKE_R_AVG } from "#shared/terrain";
 import {
   isWeaponKind,
   noGuard,
@@ -3217,7 +3217,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name : "авто";
     if (!a) {
       const list = open.map((t) => `${ELITE_MOBS[t].name} (${ELITE_MOBS[t].level})`).join(", ");
-      this.reply(`@${nick} сейчас: ${cur}. Доступно: ${list || "пока только поляна"} — !camp <моб> или !camp авто`);
+      // Ещё закрытые — сгруппированы по уровню, с которого откроются (новые мобы видны заранее).
+      const locked = new Map<number, string[]>();
+      for (const t of new Set(CAMPS_BY_POWER.map((c) => c.type))) {
+        const d = ELITE_MOBS[t];
+        if (d.level <= lvl + CAMP_PICK_GAP) continue;
+        const from = d.level - CAMP_PICK_GAP;
+        locked.set(from, [...(locked.get(from) ?? []), d.name]);
+      }
+      // Две ближайшие ступени — чат Twitch режет длинные сообщения (460 символов).
+      const later = [...locked].sort((x, y) => x[0] - y[0]).slice(0, 2).map(([from, names]) => `${names.join(", ")} — с ${from} ур.`).join("; ");
+      this.reply(`@${nick} сейчас: ${cur}. Доступно: ${list || "пока только поляна"} — !camp <моб> или !camp авто${later ? `. Позже: ${later}` : ""}`);
       return;
     }
     const token = bot.rt.token ?? `nick:${norm}`;
@@ -5389,8 +5399,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const accel = Math.min(1, dt * 6);
       bot.vx += (wvx - bot.vx) * accel;
       bot.vz += (wvz - bot.vz) * accel;
-      p.head.x += bot.vx * dt;
-      p.head.z += bot.vz * dt;
+      this.botStep(p, bot, dt);
       p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight; // не летел/не тонул на подходе
       this.faceBot(bot, Math.atan2(wvx, wvz)); // идёт — смотрит по ходу
       bot.fishBiteAt = 0;
@@ -5948,8 +5957,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const accel = Math.min(1, dt * 6);
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
-    p.head.x += bot.vx * dt;
-    p.head.z += bot.vz * dt;
+    this.botStep(p, bot, dt);
 
     // Жёстко не даём стоять внутри туши босса (соседей расталкивает цикл
     // выше, а босса там нет — он моб). Работает всё время рейда, даже когда
@@ -6545,12 +6553,21 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Шаг бота по скорости: на крутой подъём не идёт — скользит вдоль склона (MAX_CLIMB). */
+  private botStep(p: PlayerState, bot: Bot, dt: number): void {
+    const [sx, sz] = climbStep(p.head.x, p.head.z, bot.vx * dt, bot.vz * dt);
+    if (sx === 0) bot.vx = 0;
+    if (sz === 0) bot.vz = 0;
+    p.head.x += sx;
+    p.head.z += sz;
+  }
+
   /** Бот после переноса умением: не внутри моба, высота — по земле. */
   private placeBotAt(p: PlayerState, x: number, z: number): void {
     const fromX = p.head.x;
     const fromZ = p.head.z;
-    p.head.x = x;
-    p.head.z = z;
+    // Перенос умением — только докуда можно дойти, не забираясь на крутое (MAX_CLIMB).
+    [p.head.x, p.head.z] = reachAlong(fromX, fromZ, x, z);
     this.botOutOfMobs(p, undefined, fromX, fromZ);
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
   }
@@ -7777,8 +7794,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // Живой игрок отталкивает себя сам (см. MobHitMsg.knockback) — сервер
         // не двигает его тело; бот — сервер сам, толкаем позицию напрямую.
         const dist = h.knockback * 0.35;
-        p.head.x -= ax * dist;
-        p.head.z -= az * dist;
+        // На крутой склон отбросом не закинуть (MAX_CLIMB).
+        [p.head.x, p.head.z] = reachAlong(p.head.x, p.head.z, p.head.x - ax * dist, p.head.z - az * dist);
       }
     }
 

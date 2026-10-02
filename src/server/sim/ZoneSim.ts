@@ -35,7 +35,7 @@ import {
   SPITTER,
   SPITTER_CFG,
 } from "#shared/constants";
-import { terrainHeight } from "#shared/terrain";
+import { climbStep, terrainHeight } from "#shared/terrain";
 import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
 
 /** Стартовые атрибуты — эталон «голого» героя для адаптивного урона. */
@@ -1508,9 +1508,13 @@ export class Mob {
     // Летающий уже проинтегрировал x/z и выставил y выше — не трогаем.
     // Но пригвождённый летун падает как обычный моб, поэтому и он сюда идёт.
     if (!this.flying || this.rootedT > 0) {
-      this.x += this.vx * dt;
+      // На крутой подъём (круче MAX_CLIMB) не забраться ни мобу, ни боссу — скользит вдоль склона.
+      const [sx, sz] = climbStep(this.x, this.z, this.vx * dt, this.vz * dt);
+      if (sx === 0) this.vx = 0;
+      if (sz === 0) this.vz = 0;
+      this.x += sx;
       this.y += this.vy * dt;
-      this.z += this.vz * dt;
+      this.z += sz;
     }
 
     // Босс не покидает свой угол: жёсткий поводок к дому (в бою всё равно
@@ -2265,13 +2269,16 @@ export class ZoneSim {
         // Доля коррекции: тяжёлый (босс) стоит, лёгкий уходит на всю глубину.
         const wa = aBoss === bBoss ? 0.5 : aBoss ? 0 : 1;
         const wb = 1 - wa;
+        // Толпа не выдавливает моба на крутой склон (MAX_CLIMB).
         if (wa > 0) {
-          a.x -= dx * over * wa;
-          a.z -= dz * over * wa;
+          const [sx, sz] = a.flying ? [-dx * over * wa, -dz * over * wa] : climbStep(a.x, a.z, -dx * over * wa, -dz * over * wa);
+          a.x += sx;
+          a.z += sz;
         }
         if (wb > 0) {
-          b.x += dx * over * wb;
-          b.z += dz * over * wb;
+          const [sx, sz] = b.flying ? [dx * over * wb, dz * over * wb] : climbStep(b.x, b.z, dx * over * wb, dz * over * wb);
+          b.x += sx;
+          b.z += sz;
         }
       }
     }

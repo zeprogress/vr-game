@@ -7,10 +7,25 @@ import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
 import { bothHandsCls, bothHandsNote, qualityStars } from "#shared/items";
-import { respecCostFor } from "#shared/constants";
+import { ELITE_MOBS, MOB_CAMPS, respecCostFor } from "#shared/constants";
 
 // Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
 ensureIconCss();
+
+/**
+ * «Зоны мобов» для справки — из таблицы лагерей (MOB_CAMPS) и описаний мобов
+ * (ELITE_MOBS.blurb): новые мобы попадают сюда сами, без правки текста.
+ */
+function mobZonesText(): string {
+  const types = [...new Set(MOB_CAMPS.map((c) => c.type))].map((t) => ELITE_MOBS[t]).filter((d) => !!d);
+  const byLevel = new Map<number, string[]>();
+  for (const d of types.sort((a, b) => a.level - b.level)) {
+    const list = byLevel.get(d.level) ?? [];
+    list.push(d.blurb ? `${d.name} (${d.blurb})` : d.name);
+    byLevel.set(d.level, list);
+  }
+  return [...byLevel].map(([lvl, names]) => `${lvl} ур. — ${names.join(", ")}`).join("; ") + ".";
+}
 
 interface InvWeapon {
   num: number;
@@ -679,7 +694,7 @@ ${MECH_CLASSES_HTML}
 <p>У озера: <b>авторыбалка</b> (герой ловит сам, около минуты на рыбу) или <b>вручную</b> — быстрее, мини-игра: подсекай, когда метка в зелёной зоне. Боты рыбачат по <code>!fish</code>.</p>
 
 <h2>Зоны мобов</h2>
-<p>Слабые — у лагеря, сильнее — дальше. 26 ур. — големы (раскалываются), 33 ур. — Грибной колосс (споры), Небесный спрут (хват щупальцами, можно вырваться), Костяной призрак (телепорт, вампиризм, магические удары), 36 ур. — Адский демон (таран), Ледяной демон (заморозка), Костяной вождь (шипы с оглушением, лечит своих).</p>
+<p>Слабые — у лагеря, сильнее — дальше. ${mobZonesText()}</p>
 
 <h2>События</h2>
 <p>Раз в несколько минут: <b>нашествие</b> (35%), <b>охота на элиту</b> — Огнекрылый дракон (40%), <b>Охотничья башня</b> (25%). Победа даёт «Благословение победы» — ×2 опыта и урона. В башне — соло-забег по этажам с дропом оружия своего класса.</p>

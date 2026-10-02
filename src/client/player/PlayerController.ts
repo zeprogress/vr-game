@@ -15,7 +15,7 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
 import { clampToSquare } from "#shared/geometry";
 import { hubSpawnPoint } from "#shared/hub";
-import { terrainHeight } from "#shared/terrain";
+import { canClimb, reachAlong, terrainHeight } from "#shared/terrain";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
 import type { Progression } from "./Progression";
 import { ThirdPersonCam } from "./ThirdPersonCam";
@@ -370,6 +370,11 @@ export class PlayerController {
 
     const gy = terrainHeight(tx, tz);
     let valid = Math.abs(tx) < WORLD.playHalf - 1 && Math.abs(tz) < WORLD.playHalf - 1;
+    // На крутое телепортом тоже не забраться: путь по прямой должен быть проходим (shared/terrain MAX_CLIMB).
+    if (valid) {
+      const [rx, rz] = reachAlong(pos.x, pos.z, tx, tz);
+      if (Math.hypot(rx - tx, rz - tz) > 0.05) valid = false;
+    }
     if (valid) {
       for (const o of this.obstacles) {
         if (Math.hypot(tx - o.x, tz - o.z) < o.r + PLAYER.radius) {
@@ -712,7 +717,8 @@ export class PlayerController {
     const destX = pos.x + dirX * dist;
     const destZ = pos.z + dirZ * dist;
     const stepUp = terrainHeight(destX, destZ) - feetY;
-    const allowed = stepUp > STEP_HEIGHT ? 0 : dist;
+    // Крутой подъём впереди (круче MAX_CLIMB) — не пройти; ось двигаем отдельно, так вдоль склона скользим.
+    const allowed = stepUp > STEP_HEIGHT || !canClimb(pos.x, pos.z, dirX, dirZ) ? 0 : dist;
     pos.x += dirX * allowed;
     pos.z += dirZ * allowed;
   }

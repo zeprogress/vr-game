@@ -49,7 +49,7 @@ import { VrCompass } from "../ui/VrCompass";
 import { buffList } from "../ui/buffList";
 import { QUEST, questPoint } from "#shared/quests";
 import { HUB } from "#shared/hub";
-import { terrainHeight } from "#shared/terrain";
+import { reachAlong, terrainHeight } from "#shared/terrain";
 import { SCROLL, TAVERN_REACH } from "#shared/shop";
 import { PcInventory } from "../pc/PcInventory";
 import { PcMenu } from "../pc/PcMenu";
@@ -3154,8 +3154,13 @@ export class Game {
     d.t += dt;
     const k = Math.min(1, d.t / d.dur);
     const e = k * k * (3 - 2 * k);
-    this.player.teleportTo(d.sx + (d.ex - d.sx) * e, this.player.position.y, d.sz + (d.ez - d.sz) * e);
-    if (k >= 1) this.dash = null;
+    // Рывок/прыжок умения тоже не забирается на крутое: упёрлись — стоп.
+    const p = this.player.position;
+    const nx = d.sx + (d.ex - d.sx) * e;
+    const nz = d.sz + (d.ez - d.sz) * e;
+    const [rx, rz] = reachAlong(p.x, p.z, nx, nz);
+    this.player.teleportTo(rx, p.y, rz);
+    if (k >= 1 || Math.hypot(rx - nx, rz - nz) > 0.05) this.dash = null;
   }
 
   private skillWarnAt = 0;

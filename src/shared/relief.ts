@@ -80,9 +80,11 @@ const SHAPES: Shape[] = (() => {
     if (p) out.push({ kind: "mesa", ...p, r: rad, h: 5 + r() * 6, edge: 3.5 + r() * 2.5 });
   }
   for (let i = 0; i < RELIEF.pits; i++) {
-    const rad = 7 + r() * 8;
+    // Яма — пологая чаша: склон не круче ~35°, чтобы из неё можно было выйти (подъём круче MAX_CLIMB закрыт).
+    const rad = 9 + r() * 8;
+    const h = 2.5 + r() * 2.5;
     const p = place(rad);
-    if (p) out.push({ kind: "pit", ...p, r: rad, h: 3 + r() * 4, edge: 3 + r() * 2 });
+    if (p) out.push({ kind: "pit", ...p, r: rad, h, edge: Math.min(rad, h * 2.2) });
   }
   for (let i = 0; i < RELIEF.ridges; i++) {
     const a = r() * Math.PI;

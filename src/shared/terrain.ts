@@ -294,6 +294,56 @@ export function terrainHeight(x: number, z: number): number {
   return h;
 }
 
+/**
+ * Предельная крутизна подъёма (тангенс угла; 1 = 45°). Круче — не забраться
+ * НИКОМУ: героям, ботам, мобам, боссам (летуны не в счёт). Спускаться можно
+ * всегда — поэтому ямы пологие (см. relief.ts), чтобы из них можно было выйти.
+ */
+export const MAX_CLIMB = 1;
+/** Длина «щупа» вперёд по ходу, м — крутизна меряется на ней, а не на шаге кадра. */
+const CLIMB_PROBE = 0.5;
+
+/** Можно ли идти из (x,z) в направлении (dx,dz): подъём впереди не круче MAX_CLIMB. */
+export function canClimb(x: number, z: number, dx: number, dz: number): boolean {
+  const l = Math.hypot(dx, dz);
+  if (l < 1e-6) return true;
+  const px = x + (dx / l) * CLIMB_PROBE;
+  const pz = z + (dz / l) * CLIMB_PROBE;
+  return terrainHeight(px, pz) - terrainHeight(x, z) <= MAX_CLIMB * CLIMB_PROBE;
+}
+
+/**
+ * Шаг (dx,dz) из (x,z) с учётом крутизны: целиком, иначе вдоль одной оси
+ * (скольжение вдоль склона), иначе стоим. Возвращает разрешённый шаг.
+ */
+export function climbStep(x: number, z: number, dx: number, dz: number): [number, number] {
+  if (canClimb(x, z, dx, dz)) return [dx, dz];
+  const okX = dx !== 0 && canClimb(x, z, dx, 0);
+  const okZ = dz !== 0 && canClimb(x, z, 0, dz);
+  return [okX ? dx : 0, okZ ? dz : 0];
+}
+
+/**
+ * Перенос по прямой (рывок, прыжок, телепорт): докуда можно дойти из
+ * (x0,z0) к (x1,z1), не забираясь на крутое, — шагами по полметра.
+ */
+export function reachAlong(x0: number, z0: number, x1: number, z1: number): [number, number] {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const L = Math.hypot(dx, dz);
+  if (L < 1e-6) return [x1, z1];
+  const n = Math.ceil(L / CLIMB_PROBE);
+  let x = x0;
+  let z = z0;
+  for (let i = 0; i < n; i++) {
+    if (!canClimb(x, z, dx, dz)) return [x, z];
+    const k = Math.min(CLIMB_PROBE, L - i * CLIMB_PROBE);
+    x += (dx / L) * k;
+    z += (dz / L) * k;
+  }
+  return [x1, z1];
+}
+
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
