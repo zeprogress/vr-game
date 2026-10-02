@@ -193,7 +193,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, classOf2, CLASS_CD_MUL, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -6229,7 +6229,8 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.dead || bot.fishing) return;
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls) return;
-    if (Math.random() >= BOT.skillChancePerSec * dt) return;
+    // Чаще, чем у старых ботовых умений: умений из пула два, и условия у них свои — иначе откат простаивал.
+    if (Math.random() >= BOT.skillChancePerSec * 3 * dt) return;
     const legacy = (k: SkillId): boolean =>
       (k === "stunBash" && p.rightCls === "sword") || (k === "arrowRain" && p.rightCls === "bow") || k === "massHeal";
     const near = this.mobsInRadius(p, 11);
@@ -6257,7 +6258,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "shadowStep" && (cls === "archer" ? nd > 4 : nd < 3)) continue;
       if (k === "crush" && nd > 8) continue;
       if (k === "seal" && nd > 6) continue;
-      if (k === "whirlwind" && this.mobsInRadius(p, 3.5).length < 2) continue;
+      if (k === "whirlwind" && this.mobsInRadius(p, cls === "spearman" ? 6 : 3.5).length < 1) continue;
       if (k === "warcry" && this.mobsInRadius(p, 8).length < 2) continue;
       if ((k === "mark" || k === "chain") && nd > 14) continue;
       if (this.castSkill(k, bot.id, p, bot.rt, tx, tz)) {
@@ -6382,8 +6383,9 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-    if (cls !== "support" && cls !== "battlemage") return 1;
-    return 1 / (1 + invested(p.wis) * ATTR2.wis.cast);
+    const own = (cls && CLASS_CD_MUL[cls]) || 1;
+    if (cls !== "support" && cls !== "battlemage") return own;
+    return own / (1 + invested(p.wis) * ATTR2.wis.cast);
   }
 
   /** Выставить skill1/skill2 под класс оружия в руках (сохранённый выбор или по умолчанию). */
@@ -6621,11 +6623,44 @@ export class ZoneRoom extends Room<ZoneState> {
             if (cls === "battlemage") this.sim.slowMob(m.id, 3, 0.55);
             else this.sim.stunMob(m.id, 1);
           }
+          if (cls === "battlemage") {
+            // Отхил бури: сам герой и союзники в круге волны.
+            act({ k: "healAura", x: cx, y: cy, z: cz, d: 1.5, r: sk.radius });
+            this.state.players.forEach((ally, aid) => {
+              if (ally.dead || Math.hypot(ally.head.x - cx, ally.head.z - cz) > sk.radius + 1) return;
+              const frac = aid === ownerId ? STORM_CRUSH.selfHeal : STORM_CRUSH.allyHeal;
+              ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * frac);
+            });
+          }
         }, sk.castTime * 1000);
         return true;
       }
       case "whirlwind": {
-        const spear = cls === "spearman";
+        if (cls === "spearman") {
+          // Град выпадов: серия быстрых колющих ударов конусом вперёд.
+          const F = SPEAR_FLURRY;
+          act({ k: "spearFlurry", x: p.head.x, y: feetY, z: p.head.z, d: F.duration, r: F.range });
+          for (let i = 0; i < F.thrusts; i++) {
+            this.clock.setTimeout(() => {
+              const pp = this.state.players.get(ownerId);
+              if (!pp || pp.dead) return;
+              const [fx, fz] = fwd();
+              const ox = pp.head.x;
+              const oz = pp.head.z;
+              for (const m of around(ox, oz, F.range)) {
+                const vx = m.x - ox;
+                const vz = m.z - oz;
+                const d = Math.hypot(vx, vz) || 1;
+                const slack = Math.asin(Math.min(1, this.sim.targetRadius("mob", m.id) / Math.max(d, 0.1)));
+                if (Math.acos(Math.max(-1, Math.min(1, (vx * fx + vz * fz) / d))) > F.cone + slack) continue;
+                this.sim.hitMob(m.id, F.dmg * pow.dmg, vx / d, vz / d, ownerId, i === F.thrusts - 1);
+              }
+              this.broadcast(MSG.act, { k: "spearPierce", id: ownerId, x: ox, y: pp.head.y, z: oz, x2: ox + fx * F.range, z2: oz + fz * F.range, r: F.cone } satisfies ActRelay);
+            }, ((F.duration / F.thrusts) * (i + 0.5)) * 1000);
+          }
+          return true;
+        }
+        const spear = false;
         const radius = spear ? WHIRL.spearRadius : sk.radius;
         const hits = spear ? WHIRL.spearHits : sk.hits;
         const mult = spear ? WHIRL.spearDmg : sk.dmgMult;

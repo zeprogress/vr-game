@@ -214,12 +214,12 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
   spear: {
-    name: "Копьё", dmg: 1.35, interval: 0.95, tempoSoft: 1, reach: 4.5, pierce: 3,
+    name: "Копьё", dmg: 1.65, interval: 0.85, tempoSoft: 1, reach: 4.5, pierce: 4,
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
   hammer: {
-    name: "Молот", dmg: 1.45, interval: 1.2, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: "Молот", dmg: 1.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
@@ -255,8 +255,8 @@ export const DAGGER = {
 
 export const HAMMER = {
   /** Магическая волна при каждом ударе: доля силы магии, радиус. */
-  waveMagic: 0.45,
-  waveRadius: 2.5,
+  waveMagic: 0.65,
+  waveRadius: 3,
 } as const;
 
 /** Огнешар: доля урона по соседям (сплэш) — как в игре. */
@@ -319,7 +319,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
     build: { str: 3, luc: 3.5, agi: 2.5, con: 1.3, wis: 0.6 },
   },
   spearman: {
-    name: "Копейщик", icon: "🔱", role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
+    name: "Копейщик", icon: "🦯", role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
     skills: ["stunBash", "whirlwind", "arrowRain", "mark"], defaultSkills: ["whirlwind", "stunBash"],
     build: { str: 4, agi: 2.2, con: 2.2, luc: 1.2, wis: 0.8 },
   },
@@ -392,7 +392,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Сокрушение", icon: "💥", desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: "Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с" },
+      battlemage: { name: "Сокрушение бури", desc: "Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с; лечит тебя на 30% здоровья, союзников рядом — на 15%" },
     },
   },
   seal: {
@@ -407,7 +407,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Вихрь", icon: "🌀", desc: "2 с вращаешься с мечом: 5 ударов по всем вокруг, входящий урон −30%",
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.7, hits: 5,
     variants: {
-      spearman: { name: "Вихрь копья", desc: "Копьё по кругу 4 м: 4 тяжёлых удара, каждый отбрасывает мобов" },
+      spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
       battlemage: { name: "Громовой вихрь", desc: "Молот по кругу: 5 магических ударов, каждый ещё бьёт молнией соседа в 7 м" },
       assassin: { name: "Танец клинков", desc: "2 с неуязвимости: 5 ударов по всем вокруг, каждый с шансом крита" },
     },
@@ -435,6 +435,20 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
 };
+
+/** Копейщик и боевой маг — умения откатываются быстрее остальных классов. */
+export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65 };
+
+/** Базовый откат умения у класса (без МДР). */
+export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
+  return SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1);
+}
+
+/** «Сокрушение бури»: лечение героя и союзников рядом (доли максимума HP). */
+export const STORM_CRUSH = { selfHeal: 0.3, allyHeal: 0.15 } as const;
+
+/** «Град выпадов» копейщика: серия колющих ударов вперёд. */
+export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6, cone: 0.5, dmg: 0.75 } as const;
 
 /** Числа новых умений. */
 export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9, warriorDef: 0.3 } as const;

@@ -511,6 +511,11 @@ export function playClassAct(
       c.sound(at, "thud");
       return true;
     }
+    case "spearFlurry":
+      // Само колющее мелькание — спирпирс на каждый выпад; тут только звук и вспышка старта.
+      vfx.burst(x, y + 1.2, z, ATK, { count: 10, speed: 5, life: 0.3, grav: 0, size: 0.14 });
+      c.sound(at, "swing");
+      return true;
     case "whirl":
       vfx.decal(x, y, z, r ?? 3.2, ATK, d ?? 2, 1, 1, { kind: "hero", id, dy: 0 });
       c.fx.spinSparks(id, r ?? 3.2, ATK, d ?? 2);

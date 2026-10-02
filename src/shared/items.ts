@@ -570,7 +570,7 @@ export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
 
 /**
  * Насколько роллы предмета близки к максимуму — сумма очков всех аффиксов
- * (каждый 1..33). Игроку показывается звёздами (qualityStars), внутри —
+ * (каждый 1..33). Игроку показывается баллами (qualityStars), внутри —
  * для цены заточки и лома.
  */
 export function weaponQuality(w: WeaponInstance): number {
@@ -579,23 +579,20 @@ export function weaponQuality(w: WeaponInstance): number {
   return Math.round(sum);
 }
 
-/** Звёзды качества экземпляра. */
+/** Баллы качества экземпляра: «47 б.» (сумма очков роллов, у предмета с 3 роллами — до 99). */
 export function instanceStars(w: WeaponInstance): string {
   return qualityStars(weaponQuality(w), w.affixes.length);
 }
 
-/** Коротко для маленьких ячеек: «4★». */
+/** Коротко для маленьких ячеек: «47». */
 export function qualityStarsShort(quality: number, rolls: number): string {
-  const s = qualityStars(quality, rolls);
-  return s ? `${s.replace(/☆/g, "").length}★` : "";
+  return rolls <= 0 || quality <= 0 ? "" : String(Math.round(quality));
 }
 
-/** Звёзды качества ★★★☆☆ — по средней силе роллов (1..5). Пусто — роллов нет. */
+/** Баллы качества «47 б.» — чем больше, тем ближе роллы к максимуму. Пусто — роллов нет. */
 export function qualityStars(quality: number, rolls: number): string {
   if (rolls <= 0 || quality <= 0) return "";
-  const avg = quality / rolls; // 1..33
-  const n = Math.max(1, Math.min(5, Math.round(1 + ((avg - 1) / 32) * 4)));
-  return "★".repeat(n) + "☆".repeat(5 - n);
+  return `${Math.round(quality)} б.`;
 }
 
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */

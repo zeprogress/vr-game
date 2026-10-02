@@ -6,7 +6,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { classOf2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { classOf2, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -2783,7 +2783,7 @@ export class Game {
     const cls = this.heroClass();
     const caster = cls === "support" || cls === "battlemage";
     const mul = caster ? 1 / (1 + invested(this.progression.stats.wis) * ATTR2.wis.cast) : 1;
-    return SKILLS2[id].cooldown * mul;
+    return skillCooldownOf(id, cls) * mul;
   }
 
   /** Сколько секунд до готовности умения (0 — готово). */

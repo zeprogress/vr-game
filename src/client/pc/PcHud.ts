@@ -64,7 +64,7 @@ export interface PcHudHooks {
   onAttrs: () => void;
 }
 
-const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊", dagger: "🔪", spear: "🔱", hammer: "🔨" };
+const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊", dagger: "🔪", spear: "🦯", hammer: "🔨" };
 
 export class PcHud {
   private readonly root: HTMLDivElement;

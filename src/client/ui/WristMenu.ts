@@ -1,4 +1,4 @@
-import { ATTR_INFO, attrEffect, CLASSES2, SKILLS2, type ClassId } from "#shared/classes2";
+import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownOf, SKILLS2, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -297,7 +297,7 @@ export class WristMenu {
           if (on) return;
           this.onSkills?.([...this.skillChosen, id].slice(-2));
         },
-        info: [`${v?.name ?? sk.name} · откат ${sk.cooldown} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+        info: [`${v?.name ?? sk.name} · откат ${skillCooldownOf(id, cls)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
       });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");

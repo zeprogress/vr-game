@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
 import { bothHandsCls, bothHandsNote, qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
@@ -41,7 +41,7 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡", dagger: "🔪", spear: "🔱", hammer: "🔨" };
+export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "🛡", dagger: "🔪", spear: "🦯", hammer: "🔨" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
 
@@ -704,7 +704,7 @@ export class PcInventory {
       const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
       const txt = div("pcinv-atxt");
       txt.append(
-        div("pcinv-aname", `${sk.icon} ${v?.name ?? sk.name} · откат ${sk.cooldown} с`),
+        div("pcinv-aname", `${sk.icon} ${v?.name ?? sk.name} · откат ${skillCooldownOf(id, cls)} с`),
         div("pcinv-small", v?.desc ?? sk.desc),
       );
       const b = document.createElement("button");
