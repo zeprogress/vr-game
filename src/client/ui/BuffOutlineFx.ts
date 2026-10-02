@@ -8,7 +8,9 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { TransformNode as TNode } from "@babylonjs/core/Meshes/transformNode";
 
-export type BuffShape = "shield" | "sword" | "boot" | "arrow";
+import { BUFFS, type BuffId, type BuffShape } from "#shared/buffs";
+import { FXC } from "./fxColors";
+export type { BuffShape };
 
 /** Текстура очертания — одна на сцену и форму (рисуется один раз, светящимся контуром). */
 const texCache = new WeakMap<Scene, Map<BuffShape, DynamicTexture>>();
@@ -163,19 +165,8 @@ export class BuffOutlineFx {
   }
 }
 
-/** Баффы по кругу: форма, цвет, размер и сдвиг по углу (доля 1/12 оборота). */
-export type OrbitBuff = "sword" | "shield" | "boot" | "arrow";
-const ORBIT: Record<OrbitBuff, { shape: BuffShape; color: Color3; size: number; slot: number }> = {
-  /** Благословение победы (×2 опыт/урон) — красные мечи. */
-  sword: { shape: "sword", color: new Color3(1, 0.25, 0.22), size: 0.5, slot: 0 },
-  /** Свиток ветра — зелёные башмаки. */
-  boot: { shape: "boot", color: new Color3(0.4, 1, 0.65), size: 0.4, slot: 1 },
-  /** «Тепло костра» — золотые щиты. */
-  shield: { shape: "shield", color: new Color3(1, 0.75, 0.25), size: 0.42, slot: 2 },
-  /** Свиток мудрости — голубые стрелки вверх. */
-  arrow: { shape: "arrow", color: new Color3(0.45, 0.8, 1), size: 0.42, slot: 3 },
-};
-
+/** Баффы по кругу — форма, цвет, размер и сдвиг по углу берутся из общей таблицы shared/buffs.ts. */
+export type OrbitBuff = BuffId;
 /**
  * Баффы героя — светящиеся фигурки, по три каждого вида, кружат вокруг на
  * уровне пояса на общей оси (виды чередуются через 30°). Фигурки создаются
@@ -201,18 +192,19 @@ export class BuffOrbitFx {
   private group(k: OrbitBuff): BuffOutlineFx[] {
     let g = this.groups.get(k);
     if (g) return g;
-    const d = ORBIT[k];
+    const d = BUFFS[k];
+    const color = FXC[d.color].clone();
     g = [];
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2 + (d.slot * Math.PI) / 6;
-      g.push(new BuffOutlineFx(this.scene, this.pivot, d.shape, d.color, d.size, 0, Math.cos(a) * this.radius, Math.sin(a) * this.radius, Mesh.BILLBOARDMODE_Y));
+      g.push(new BuffOutlineFx(this.scene, this.pivot, d.shape, color, d.size, 0, Math.cos(a) * this.radius, Math.sin(a) * this.radius, Mesh.BILLBOARDMODE_Y));
     }
     this.groups.set(k, g);
     return g;
   }
 
   set(active: Partial<Record<OrbitBuff, boolean>>): void {
-    for (const k of Object.keys(ORBIT) as OrbitBuff[]) {
+    for (const k of Object.keys(BUFFS) as OrbitBuff[]) {
       const want = !!active[k];
       if (want === this.on.has(k)) continue;
       if (want) this.on.add(k);

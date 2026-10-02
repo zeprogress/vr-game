@@ -784,10 +784,10 @@ export class RemoteAvatar implements Hittable {
     this.bubble?.update(dt);
     const show = !this.dead;
     this.buffAura.set({
-      sword: show && this.buffed,
-      shield: show && this.campWarm,
-      boot: show && this.windBuff,
-      arrow: show && this.xpBuff,
+      victory: show && this.buffed,
+      camp: show && this.campWarm,
+      scrollWind: show && this.windBuff,
+      scrollXp: show && this.xpBuff,
     });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);

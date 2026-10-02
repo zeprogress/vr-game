@@ -36,7 +36,8 @@ export function bothHandsCls(cls: string | undefined): boolean {
 }
 /** Подпись занятой второй руки. */
 export function bothHandsNote(cls: string | undefined): string {
-  return cls === "bow" ? "лук занимает обе руки" : cls === "hammer" ? "молот держат обе руки" : "копьё держат обе руки";
+  const n = WEAPON_NOUN[cls as WeaponClass]?.name.toLowerCase() ?? "оружие";
+  return `${n} держат обе руки`;
 }
 
 /** Двуручное оружие ближнего боя «Классов 2.0» — держится двумя руками, как посох. */
@@ -69,35 +70,65 @@ export function weaponKey(cls: WeaponClass, tier: WeaponTier): WeaponKey {
   return `${cls}:${tier}`;
 }
 
+/**
+ * Названия оружия — ОДНО место: существительное класса и его род. Из них
+ * собираются полные и короткие имена всех тиров («Золотой меч», «Уник. копьё»).
+ */
+export const WEAPON_NOUN: Record<WeaponClass, { name: string; gender: "m" | "n" }> = {
+  sword: { name: "Меч", gender: "m" },
+  bow: { name: "Лук", gender: "m" },
+  shield: { name: "Щит", gender: "m" },
+  staff: { name: "Посох", gender: "m" },
+  dagger: { name: "Кинжал", gender: "m" },
+  spear: { name: "Копьё", gender: "n" },
+  hammer: { name: "Молот", gender: "m" },
+};
+const TIER_ADJ: Record<Exclude<WeaponTier, "base">, { m: string; n: string; short: string }> = {
+  gold: { m: "Золотой", n: "Золотое", short: "Зол." },
+  legendary: { m: "Уникальный", n: "Уникальное", short: "Уник." },
+};
+
+/** Полное имя оружия тира: «Меч», «Золотой меч», «Уникальное копьё». */
+export function weaponName(cls: WeaponClass, tier: WeaponTier): string {
+  const n = WEAPON_NOUN[cls];
+  return tier === "base" ? n.name : `${TIER_ADJ[tier][n.gender]} ${n.name.toLowerCase()}`;
+}
+
+/** Короткое имя для ячеек и баннеров: «Меч», «Зол. меч», «Уник. копьё». */
+export function weaponShort(cls: WeaponClass, tier: WeaponTier): string {
+  const n = WEAPON_NOUN[cls];
+  return tier === "base" ? n.name : `${TIER_ADJ[tier].short} ${n.name.toLowerCase()}`;
+}
+
 export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   // tint — запасной цвет (модели пака несут свой), плюс цвет золотой перекраски.
-  "sword:base": { cls: "sword", tier: "base", name: "Меч", mult: 1, tint: [0.55, 0.57, 0.62] },
-  "sword:gold": { cls: "sword", tier: "gold", name: "Золотой меч", mult: 4, tint: [1, 0.84, 0.26] },
-  "bow:base": { cls: "bow", tier: "base", name: "Лук", mult: 1, tint: [0.42, 0.28, 0.16] },
-  "bow:gold": { cls: "bow", tier: "gold", name: "Золотой лук", mult: 3, tint: [1, 0.84, 0.26] },
-  "shield:base": { cls: "shield", tier: "base", name: "Щит", mult: 1, tint: [0.62, 0.64, 0.7] },
-  "shield:gold": { cls: "shield", tier: "gold", name: "Золотой щит", mult: 1, tint: [1, 0.84, 0.26] },
+  "sword:base": { cls: "sword", tier: "base", name: weaponName("sword", "base"), mult: 1, tint: [0.55, 0.57, 0.62] },
+  "sword:gold": { cls: "sword", tier: "gold", name: weaponName("sword", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
+  "bow:base": { cls: "bow", tier: "base", name: weaponName("bow", "base"), mult: 1, tint: [0.42, 0.28, 0.16] },
+  "bow:gold": { cls: "bow", tier: "gold", name: weaponName("bow", "gold"), mult: 3, tint: [1, 0.84, 0.26] },
+  "shield:base": { cls: "shield", tier: "base", name: weaponName("shield", "base"), mult: 1, tint: [0.62, 0.64, 0.7] },
+  "shield:gold": { cls: "shield", tier: "gold", name: weaponName("shield", "gold"), mult: 1, tint: [1, 0.84, 0.26] },
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
-  "staff:base": { cls: "staff", tier: "base", name: "Посох", mult: 0.5, tint: [0.3, 0.2, 0.12] },
-  "staff:gold": { cls: "staff", tier: "gold", name: "Золотой посох", mult: 2, tint: [1, 0.84, 0.26] },
+  "staff:base": { cls: "staff", tier: "base", name: weaponName("staff", "base"), mult: 0.5, tint: [0.3, 0.2, 0.12] },
+  "staff:gold": { cls: "staff", tier: "gold", name: weaponName("staff", "gold"), mult: 2, tint: [1, 0.84, 0.26] },
 
   // Уникальные — урон чуть выше золота и 2–3 ролла (эффектов «из коробки» больше нет).
   // Все фиолетовые (единый «уникальный» вид).
-  "sword:legendary": { cls: "sword", tier: "legendary", name: "Уникальный меч", mult: 4.5, tint: [0.62, 0.3, 1] },
-  "bow:legendary": { cls: "bow", tier: "legendary", name: "Уникальный лук", mult: 4.1, tint: [0.62, 0.3, 1] },
-  "shield:legendary": { cls: "shield", tier: "legendary", name: "Уникальный щит", mult: 1, tint: [0.62, 0.3, 1] },
-  "staff:legendary": { cls: "staff", tier: "legendary", name: "Уникальный посох", mult: 2.3, tint: [0.62, 0.3, 1] },
+  "sword:legendary": { cls: "sword", tier: "legendary", name: weaponName("sword", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
+  "bow:legendary": { cls: "bow", tier: "legendary", name: weaponName("bow", "legendary"), mult: 4.1, tint: [0.62, 0.3, 1] },
+  "shield:legendary": { cls: "shield", tier: "legendary", name: weaponName("shield", "legendary"), mult: 1, tint: [0.62, 0.3, 1] },
+  "staff:legendary": { cls: "staff", tier: "legendary", name: weaponName("staff", "legendary"), mult: 2.3, tint: [0.62, 0.3, 1] },
 
   // «Классы 2.0»: урон удара задаёт профиль оружия (classes2 WEAPONS2.dmg), mult — только тир.
-  "dagger:base": { cls: "dagger", tier: "base", name: "Кинжал", mult: 1, tint: [0.55, 0.57, 0.62] },
-  "dagger:gold": { cls: "dagger", tier: "gold", name: "Золотой кинжал", mult: 4, tint: [1, 0.84, 0.26] },
-  "dagger:legendary": { cls: "dagger", tier: "legendary", name: "Уникальный кинжал", mult: 4.5, tint: [0.62, 0.3, 1] },
-  "spear:base": { cls: "spear", tier: "base", name: "Копьё", mult: 1, tint: [0.42, 0.28, 0.16] },
-  "spear:gold": { cls: "spear", tier: "gold", name: "Золотое копьё", mult: 4, tint: [1, 0.84, 0.26] },
-  "spear:legendary": { cls: "spear", tier: "legendary", name: "Уникальное копьё", mult: 4.5, tint: [0.62, 0.3, 1] },
-  "hammer:base": { cls: "hammer", tier: "base", name: "Молот", mult: 1, tint: [0.45, 0.47, 0.52] },
-  "hammer:gold": { cls: "hammer", tier: "gold", name: "Золотой молот", mult: 4, tint: [1, 0.84, 0.26] },
-  "hammer:legendary": { cls: "hammer", tier: "legendary", name: "Уникальный молот", mult: 4.5, tint: [0.62, 0.3, 1] },
+  "dagger:base": { cls: "dagger", tier: "base", name: weaponName("dagger", "base"), mult: 1, tint: [0.55, 0.57, 0.62] },
+  "dagger:gold": { cls: "dagger", tier: "gold", name: weaponName("dagger", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
+  "dagger:legendary": { cls: "dagger", tier: "legendary", name: weaponName("dagger", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
+  "spear:base": { cls: "spear", tier: "base", name: weaponName("spear", "base"), mult: 1, tint: [0.42, 0.28, 0.16] },
+  "spear:gold": { cls: "spear", tier: "gold", name: weaponName("spear", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
+  "spear:legendary": { cls: "spear", tier: "legendary", name: weaponName("spear", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
+  "hammer:base": { cls: "hammer", tier: "base", name: weaponName("hammer", "base"), mult: 1, tint: [0.45, 0.47, 0.52] },
+  "hammer:gold": { cls: "hammer", tier: "gold", name: weaponName("hammer", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
+  "hammer:legendary": { cls: "hammer", tier: "legendary", name: weaponName("hammer", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
 };
 
 /**
@@ -135,20 +166,6 @@ export function isWeaponTier(v: unknown): v is WeaponTier {
   return v === "base" || v === "gold" || v === "legendary";
 }
 
-/**
- * Название тира по-русски для чата/инвентаря. `legendary` внутри кода и в
- * ItemId ("leg_sword" и т.п.) остаётся как есть — это просто ключ, менять
- * его означало бы переименовывать пол-игры без всякой пользы; здесь только
- * то, что реально видит игрок (было "легендарное" → стало "уникальное").
- */
-const TIER_RU: Record<WeaponTier, string> = {
-  base: "база",
-  gold: "золото",
-  legendary: "уникальное",
-};
-export function tierRu(tier: WeaponTier): string {
-  return TIER_RU[tier];
-}
 
 /** Можно ли держать два предмета этого класса одновременно (по одному в руке). */
 export const DUAL_WIELD: Record<WeaponClass, boolean> = {
@@ -195,21 +212,21 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     healFrac: 0.5,
     tint: [0.9, 0.2, 0.35],
   },
-  gold_sword: weaponItem("sword", "gold", "Золото"),
-  gold_bow: weaponItem("bow", "gold", "Зол. лук"),
-  gold_staff: weaponItem("staff", "gold", "Зол. посох"),
+  gold_sword: weaponItem("sword", "gold"),
+  gold_bow: weaponItem("bow", "gold"),
+  gold_staff: weaponItem("staff", "gold"),
   // Значки предметов — в shared/icons.ts (itemIcon), цвет тира — shared/look.ts.
-  leg_sword: weaponItem("sword", "legendary", "Уник. меч"),
-  leg_bow: weaponItem("bow", "legendary", "Уник. лук"),
-  leg_shield: weaponItem("shield", "legendary", "Уник. щит"),
-  gold_shield: weaponItem("shield", "gold", "Зол. щит"),
-  leg_staff: weaponItem("staff", "legendary", "Уник. посох"),
-  gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал"),
-  gold_spear: weaponItem("spear", "gold", "Зол. копьё"),
-  gold_hammer: weaponItem("hammer", "gold", "Зол. молот"),
-  leg_dagger: weaponItem("dagger", "legendary", "Уник. кинжал"),
-  leg_spear: weaponItem("spear", "legendary", "Уник. копьё"),
-  leg_hammer: weaponItem("hammer", "legendary", "Уник. молот"),
+  leg_sword: weaponItem("sword", "legendary"),
+  leg_bow: weaponItem("bow", "legendary"),
+  leg_shield: weaponItem("shield", "legendary"),
+  gold_shield: weaponItem("shield", "gold"),
+  leg_staff: weaponItem("staff", "legendary"),
+  gold_dagger: weaponItem("dagger", "gold"),
+  gold_spear: weaponItem("spear", "gold"),
+  gold_hammer: weaponItem("hammer", "gold"),
+  leg_dagger: weaponItem("dagger", "legendary"),
+  leg_spear: weaponItem("spear", "legendary"),
+  leg_hammer: weaponItem("hammer", "legendary"),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -248,15 +265,11 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   },
 };
 
-function weaponItem(
-  cls: WeaponClass,
-  tier: WeaponTier,
-  short: string,
-): ItemDef {
+function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
   const d = weaponDef(cls, tier);
   return {
     name: d.name,
-    short,
+    short: weaponShort(cls, tier),
     hint:
       cls === "shield"
         ? tier === "base"

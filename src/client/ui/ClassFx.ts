@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -28,20 +29,21 @@ import type { SkillVfx } from "./SkillVfx";
  * Цвет эффекта умения — по смыслу (2026-10-02): атака — красный, лечение —
  * зелёный, защитный бафф — синий, атакующий бафф — оранжевый, прочее — жёлтый.
  */
+// Сами цвета — в общей палитре shared/look.ts (FX_RGB); здесь только имена по смыслу.
 export const FX_ROLE = {
-  attack: new Color3(1, 0.22, 0.14),
-  heal: new Color3(0.4, 1, 0.5),
-  defense: new Color3(0.35, 0.6, 1),
-  buff: new Color3(1, 0.55, 0.12),
-  other: new Color3(1, 0.88, 0.3),
+  attack: FXC.attack,
+  heal: FXC.heal,
+  defense: FXC.defense,
+  buff: FXC.buff,
+  other: FXC.other,
 } as const;
 
 export const FX_COLORS = {
-  arcane: new Color3(0.72, 0.42, 1), // волна молота, печать пламени (фиолет)
-  fire: new Color3(1, 0.42, 0.12), // огонь: печать боевого мага, огненный дождь
-  gold: new Color3(1, 0.78, 0.3), // копьё, сокрушение
-  holy: new Color3(0.55, 1, 0.75), // печать поддержки
-  shadow: new Color3(0.35, 0.2, 0.6), // теневой рывок
+  arcane: FXC.arcane, // волна молота, печать пламени (фиолет)
+  fire: FXC.fire, // огонь: печать боевого мага, огненный дождь
+  gold: FXC.gold, // копьё, сокрушение
+  holy: FXC.holy, // печать поддержки
+  shadow: FXC.shadowDark, // теневой рывок (тёмный след)
 } as const;
 
 function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
@@ -424,7 +426,7 @@ export interface ClassActCtx {
 }
 
 /** Теневой рывок — серый дым. */
-const SHADOW_GRAY = new Color3(0.62, 0.62, 0.66);
+const SHADOW_GRAY = FXC.shadow;
 const V_SUPPORT = 2;
 const V_BATTLEMAGE = 5;
 

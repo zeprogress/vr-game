@@ -288,10 +288,10 @@ export class LocalAvatar {
     this.root.rotation.y = yaw;
     const show = !this.hidden;
     this.buffAura.set({
-      sword: show && this.buffed,
-      shield: show && this.campWarm,
-      boot: show && this.windBuff,
-      arrow: show && this.xpBuff,
+      victory: show && this.buffed,
+      camp: show && this.campWarm,
+      scrollWind: show && this.windBuff,
+      scrollXp: show && this.xpBuff,
     });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.hidden);

@@ -3,6 +3,7 @@ import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
 import { glyph } from "./icons";
+import { WEAPON_NOUN } from "./items";
 
 export { levelGain };
 
@@ -200,37 +201,37 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: "Меч", dmg: 1, interval: BOT.attackCooldown, tempoSoft: 1, reach: 2.2, pierce: 1,
+    name: WEAPON_NOUN.sword.name, dmg: 1, interval: BOT.attackCooldown, tempoSoft: 1, reach: 2.2, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
-    name: "Щит", dmg: 0, interval: 1, tempoSoft: 1, reach: 0, pierce: 0,
+    name: WEAPON_NOUN.shield.name, dmg: 0, interval: 1, tempoSoft: 1, reach: 0, pierce: 0,
     critBase: 0, critMult: 1, twoHanded: false, dmgType: "phys", tiers: [1, 1, 1],
   },
   // Кинжал: темп как у меча (быстрее было «пропеллером»), удар чуть слабее; крит выше и больнее. Два кинжала —
   // руки бьют по очереди (DAGGER.dual), один — свободная рука даёт уворот.
   dagger: {
-    name: "Кинжал", dmg: 0.86, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
+    name: WEAPON_NOUN.dagger.name, dmg: 0.86, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
     critBase: 0.12, critMult: 2, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
   spear: {
-    name: "Копьё", dmg: 2.1, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
+    name: WEAPON_NOUN.spear.name, dmg: 2.1, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
   hammer: {
-    name: "Молот", dmg: 1.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
+    name: WEAPON_NOUN.hammer.name, dmg: 1.8, interval: 1.1, tempoSoft: 1, reach: 2.6, pierce: 1,
     critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
-    name: "Лук", dmg: 1.75, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1,
+    name: WEAPON_NOUN.bow.name, dmg: 1.75, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1,
     critBase: 0.15, critMult: 2.5, twoHanded: true, dmgType: "phys", tiers: [1, 3, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
   staff: {
-    name: "Посох",
+    name: WEAPON_NOUN.staff.name,
     dmg: MAGIC.firebolt.baseDamage + 0.7 * MAGIC.firebolt.damagePerCharge,
     interval: BOT.staffCooldown, tempoSoft: 1.8, reach: 17, pierce: 1,
     critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [1, 2, 2.4],

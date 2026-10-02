@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { TransformNode as TransformNodeCtor } from "@babylonjs/core/Meshes/transformNode";
@@ -24,7 +25,7 @@ export class StunStarsFx {
     this.spin.setEnabled(false);
 
     this.mat = new StandardMaterial("stunStarsMat", scene);
-    this.mat.emissiveColor = new Color3(1, 0.92, 0.4);
+    this.mat.emissiveColor = FXC.stunStars.clone();
     this.mat.diffuseColor = new Color3(0, 0, 0);
     this.mat.specularColor = new Color3(0, 0, 0);
     this.mat.disableLighting = true;

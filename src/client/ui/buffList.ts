@@ -1,13 +1,13 @@
-import { CAMPFIRE, EVENT } from "#shared/constants";
+import { BUFFS, BUFF_ORDER, buffHex, type BuffId } from "#shared/buffs";
 import { glyph } from "#shared/icons";
 
 /**
  * Баффы героя — одним списком для всех платформ (рамка героя ПК/телефона,
- * «смотрим» у спектатора, строка в VR). Иконки и цвета — как у фигурок,
- * кружащих вокруг героя (BuffOrbitFx): меч красный, щит золотой, мудрость
- * голубая, ветер зелёный.
+ * «смотрим» у спектатора, строка в VR). Названия, значки и цвета — из общей
+ * таблицы shared/buffs.ts (по ней же кружат фигурки вокруг героя).
  */
 export interface BuffEntry {
+  id: BuffId;
   icon: string;
   name: string;
   desc: string;
@@ -23,26 +23,20 @@ export function buffList(p: {
   towerFloor?: number;
 }): BuffEntry[] {
   if ((p.towerFloor ?? 0) > 0) return []; // в башне баффы не действуют
-  const out: BuffEntry[] = [];
-  if ((p.buffSecs ?? 0) > 0) {
-    out.push({
-      icon: glyph("b.victory"),
-      name: "Благословение победы",
-      desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
-      secs: p.buffSecs!,
-      color: "#ff5a5a",
-    });
-  }
-  if ((p.campBuffSecs ?? 0) > 0) {
-    out.push({ icon: glyph("b.camp"), name: "Тепло костра", desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`, secs: p.campBuffSecs!, color: "#ffc24a" });
-  }
-  if ((p.scrollXpSecs ?? 0) > 0) {
-    out.push({ icon: glyph("b.scrollXp"), name: "Свиток мудрости", desc: "×2 опыта", secs: p.scrollXpSecs!, color: "#7fd0ff" });
-  }
-  if ((p.scrollWindSecs ?? 0) > 0) {
-    out.push({ icon: glyph("b.scrollWind"), name: "Свиток ветра", desc: "+20% скорости бега", secs: p.scrollWindSecs!, color: "#8fe8b0" });
-  }
-  return out;
+  const secs: Record<BuffId, number> = {
+    victory: p.buffSecs ?? 0,
+    camp: p.campBuffSecs ?? 0,
+    scrollXp: p.scrollXpSecs ?? 0,
+    scrollWind: p.scrollWindSecs ?? 0,
+  };
+  return BUFF_ORDER.filter((id) => secs[id] > 0).map((id) => ({
+    id,
+    icon: glyph(BUFFS[id].icon),
+    name: BUFFS[id].name,
+    desc: BUFFS[id].desc,
+    secs: secs[id],
+    color: buffHex(id),
+  }));
 }
 
 export const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;

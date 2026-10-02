@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -14,11 +15,12 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
 
-const STUN = new Color3(1, 0.16, 0.1); // красная волна оглушения
-const SPORE_C = new Color3(0.65, 0.25, 1); // фиолетовые споры (Грибной колосс)
-const WRAITH_C = new Color3(0.6, 0.6, 0.64); // серая дымка (Костяной призрак)
-const SQUID_C = new Color3(1, 0.22, 0.14); // красное щупальце (Небесный спрут) — атака, как и все атакующие эффекты
-const BREATH_C = new Color3(1, 0.35, 0.05); // огонь дракона
+// Цвета — из общей палитры shared/look.ts (FX_RGB).
+const STUN = FXC.stun; // красная волна оглушения
+const SPORE_C = FXC.spore; // фиолетовые споры (Грибной колосс)
+const WRAITH_C = FXC.shadow; // серая дымка (Костяной призрак)
+const SQUID_C = FXC.attack; // красное щупальце (Небесный спрут) — атака, как и все атакующие эффекты
+const BREATH_C = FXC.fire; // огонь дракона
 
 const POOL = 3;
 

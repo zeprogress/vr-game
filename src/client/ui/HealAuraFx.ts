@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -7,7 +8,7 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
-const AURA_COLOR = new Color3(0.35, 1, 0.55);
+const AURA_COLOR = FXC.heal; // общая палитра shared/look.ts
 /** Сколько аур может гореть одновременно (несколько ботов-лекарей). */
 const POOL = 4;
 

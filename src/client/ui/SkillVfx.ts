@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -33,11 +34,12 @@ const MV_OUT = (p: string) => `
   gl_Position = viewProjection * vec4(${p}, 1.0);
 #endif`;
 
-const LIGHTNING = new Color3(0.3, 0.55, 1);
-const LIGHTNING_CORE = new Color3(0.85, 0.93, 1);
-const FIRE_CORE = new Color3(1, 0.9, 0.45);
-const FIRE_ORANGE = new Color3(1, 0.5, 0.1);
-const FIRE_RED = new Color3(1, 0.18, 0.06);
+// Цвета — из общей палитры shared/look.ts (FX_RGB).
+const LIGHTNING = FXC.lightning;
+const LIGHTNING_CORE = FXC.lightningCore;
+const FIRE_CORE = FXC.fireCore;
+const FIRE_ORANGE = FXC.fire;
+const FIRE_RED = FXC.fireRed;
 
 // ---------------------------------------------------------------- decal
 

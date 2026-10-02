@@ -1,3 +1,4 @@
+import { FXC } from "./fxColors";
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -24,10 +25,11 @@ interface Cross {
 
 const WORLD_UP = new Vector3(0, 1, 0);
 
-export const CROSS_GREEN = new Color3(0.3, 1, 0.42); // лечение
-export const CROSS_ORANGE = new Color3(1, 0.62, 0.12); // повышение уровня
-export const CROSS_RED = new Color3(0.82, 0.08, 0.14); // вампиризм (Меч вампира)
-export const CROSS_PURPLE = new Color3(0.72, 0.35, 1); // магический удар моба (Костяной призрак)
+// Цвета — из общей палитры shared/look.ts (FX_RGB).
+export const CROSS_GREEN = FXC.crossHeal; // лечение
+export const CROSS_ORANGE = FXC.crossLevel; // повышение уровня
+export const CROSS_RED = FXC.crossVamp; // вампиризм
+export const CROSS_PURPLE = FXC.crossMagic; // магический удар моба (Костяной призрак)
 
 
 /**
