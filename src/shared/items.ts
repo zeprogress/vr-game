@@ -426,14 +426,14 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
 
 // ---- Роллы оружия: 5 видов — Урон, Скорость атаки, Крит, Вампиризм, Блок ----
 
-export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen";
 /**
  * Под-вид ролла. Выпадают: dmgFlat (Урон), atkSpeedPct (Скорость атаки),
  * critChance (Крит — шанс И сила, см. critRollMult), vamp (Вампиризм, ближний
  * бой), block (Блок, только щит). dmgPct — старый «Урон 8–20%», остаётся у
  * уже выпавших. critMult — старый вид, переводится в Крит миграцией.
  */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef";
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen";
 
 export interface RolledAffix {
   kind: AffixKind;
@@ -466,10 +466,10 @@ export function isMeleeClass(cls: string): boolean {
 
 /**
  * Какие роллы могут выпасть на предмете этого класса (вид на предмете не повторяется).
- * Круглый щит: Блок, Физ. защита, Маг. защита. Эгида: Блок, Физ. защита, Отражение.
+ * Круглый щит: Блок, Физ. защита, Маг. защита, Регенерация. Эгида: Блок, Физ. защита, Отражение, Регенерация.
  */
 function rollableSubs(cls: WeaponClass, aegis = false): AffixSub[] {
-  if (cls === "shield") return aegis ? ["block", "physDef", "reflect"] : ["block", "physDef", "magDef"];
+  if (cls === "shield") return aegis ? ["block", "physDef", "reflect", "regen"] : ["block", "physDef", "magDef", "regen"];
   const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance"];
   if (isMeleeClass(cls)) out.push("vamp");
   return out;
@@ -486,6 +486,7 @@ const SUB_KIND: Record<AffixSub, AffixKind> = {
   reflect: "reflect",
   physDef: "physDef",
   magDef: "magDef",
+  regen: "regen",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -499,6 +500,8 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   reflect: [0.035, 0.1],
   physDef: [0.07, 0.2],
   magDef: [0.07, 0.2],
+  /** Регенерация щита: доля МАКС. HP в секунду (и в бою). */
+  regen: [0.003, 0.01],
 };
 /** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 10%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
@@ -566,6 +569,7 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   reflect: 1,
   physDef: 1,
   magDef: 1,
+  regen: 1,
 };
 
 /** Название вида ролла — одно слово-два, как видит игрок. */
@@ -580,6 +584,7 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
   reflect: "Отражение",
   physDef: "Физ. защита",
   magDef: "Маг. защита",
+  regen: "Регенерация",
 };
 
 /** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
@@ -587,6 +592,8 @@ export function affixLabel(a: RolledAffix): string {
   // Точность не грубее шага заточки (1 очко ≈ 0.2–0.4%) — иначе удачная
   // заточка не меняла бы подпись. Хвостовые нули срезаем: 12.0% → 12%.
   if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
+  // Регенерация — доля макс. здоровья в секунду (точнее: шаг заточки здесь ~0.02%).
+  if (a.sub === "regen") return `Регенерация +${Math.round(a.value * 10000) / 100}% HP/с`;
   return `${AFFIX_NAME[a.sub]} +${Math.round(a.value * 1000) / 10}%`;
 }
 
@@ -794,6 +801,11 @@ export function shieldReflect(inst?: Pick<WeaponInstance, "affixes"> | null): nu
 /** Доля физ. урона, гасимая щитом (ролл Физ. защита). */
 export function shieldPhysDef(inst?: Pick<WeaponInstance, "affixes"> | null): number {
   return inst ? affixSum(inst.affixes, "physDef") : 0;
+}
+
+/** Регенерация от щита — доля макс. HP в секунду (ролл Регенерация). */
+export function shieldRegen(inst?: Pick<WeaponInstance, "affixes"> | null): number {
+  return inst ? affixSum(inst.affixes, "regen") : 0;
 }
 
 /** Доля магического урона, гасимая круглым щитом (ролл Маг. защита). */

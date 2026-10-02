@@ -152,6 +152,7 @@ import {
   instanceEffects,
   isAegis,
   shieldReflect,
+  shieldRegen,
   shieldPhysDef,
   shieldMagDef,
   weaponQuality,
@@ -177,6 +178,7 @@ import {
   type WeaponTier,
 } from "#shared/items";
 import {
+  hpRegenFrac,
   atMaxLevel,
   attackSpeedFor,
   castSpeedFor,
@@ -7925,6 +7927,11 @@ export class ZoneRoom extends Room<ZoneState> {
       const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
       const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
       const inCamp = inHubSafeZone(p.head.x, p.head.z);
+      // Регенерация от ТЕЛ и ролла щита — доля макс. HP в секунду, работает и в бою.
+      if (p.hp > 0 && p.hp < p.maxHp && p.towerFloor === 0) {
+        const frac = hpRegenFrac(p) + shieldRegen(shieldOf(p, rt)?.inst);
+        if (frac > 0) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * frac * dt);
+      }
       if (p.hp > 0 && p.hp < p.maxHp && (inCamp || rt.sinceHurt > regenDelay)) {
         const rate = inCamp ? Math.max(regenRate * CAMPFIRE.regenMul, p.maxHp * CAMPFIRE.regenFrac) : regenRate;
         p.hp = Math.min(p.maxHp, p.hp + rate * dt);

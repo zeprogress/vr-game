@@ -1,4 +1,5 @@
 import { PROGRESSION } from "./constants";
+import { invested } from "./attrs2";
 import {
   ATTR2,
   castTempo2,
@@ -72,6 +73,14 @@ export function atMaxLevel(level: number): boolean {
 export function holdsOneItem(leftCls: string, rightCls: string): boolean {
   if (leftCls === "" || rightCls === "") return true;
   return leftCls === rightCls && (leftCls === "bow" || leftCls === "staff" || leftCls === "spear" || leftCls === "hammer");
+}
+
+/**
+ * Регенерация здоровья от ТЕЛ — доля МАКС. HP в секунду, работает и в бою
+ * (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху.
+ */
+export function hpRegenFrac(a: AttrsIn): number {
+  return invested(a.con) * ATTR2.con.regen;
 }
 
 /** Доля урона, гасимая физ. бронёй (ТЕЛ). */

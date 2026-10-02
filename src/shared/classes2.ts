@@ -87,7 +87,7 @@ export function attrEffect(k: Attr): string {
     case "int":
       return `+${pc(A.int.magic)} урона магией и силы лечения`;
     case "con":
-      return `+${pc(A.con.hp)} здоровья, физ. броня растёт (до ${pc(A.con.armorMax, 0)})`;
+      return `+${pc(A.con.hp)} здоровья, +${pc(A.con.regen, 2)} здоровья в секунду (и в бою), физ. броня растёт (до ${pc(A.con.armorMax, 0)})`;
     case "luc":
       return `+${pc(A.luc.crit)} шанса крита, +${pc(A.luc.critDmg, 0)} силы крита, +${pc(A.luc.dodge)} уворота (×${A.luc.dodgeOneItem} с одним оружием)`;
     case "wis":

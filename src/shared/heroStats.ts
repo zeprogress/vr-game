@@ -1,6 +1,6 @@
-import { BOT, BOW, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { BOT, BOW, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { fireboltDamage } from "./magic";
-import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, meleeSpeedFor, moveSpeedFor } from "./progression";
+import { armorFrac, attackSpeedFor, castSpeedFor, dodgeChance, holdsOneItem, hpRegenFrac, maxHpFor, meleeSpeedFor, moveSpeedFor } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
@@ -173,6 +173,9 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
   const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита"));
   rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
+  // Регенерация: ТЕЛ + ролл щита (доля макс. HP в секунду, и в бою) + базовая вне боя.
+  const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + affixNum(shieldAffix, "Регенерация"));
+  rows.push({ label: "Регенерация", value: `${regen.toFixed(1)} HP/с (+${PLAYER_HP.regen} вне боя)` });
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
