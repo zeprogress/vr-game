@@ -45,9 +45,12 @@ export interface PcInventoryHooks {
 export function iconOf(cls: string, name?: string): string {
   return cls === "shield" && name === "Эгида" ? "🛡" : (ICON[cls] ?? "?");
 }
-/** Положить иконку предмета в элемент: копьё 🦯 отражаем по горизонтали (оно нарисовано наклоном не в ту сторону). */
+/** Иконки, которые отражаем по горизонтали (эмодзи нарисованы наклоном не в ту сторону). */
+export const FLIPPED_ICONS: ReadonlySet<string> = new Set(["sword", "bow", "staff", "spear"]);
+
+/** Положить иконку предмета в элемент (меч, лук, посох и копьё — отражены по горизонтали). */
 export function setIcon(el: HTMLElement, cls: string, name?: string): void {
-  if (cls === "spear") {
+  if (FLIPPED_ICONS.has(cls)) {
     const sp = document.createElement("span");
     sp.style.cssText = "display:inline-block;transform:scaleX(-1)";
     sp.textContent = iconOf(cls, name);

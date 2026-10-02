@@ -270,8 +270,8 @@ export class PcHud {
     this.portraitEl.textContent = ICON[weapon];
     const slotIco = this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!;
     slotIco.textContent = ICON[weapon];
-    // Копьё 🦯 нарисовано наклоном не в ту сторону — отражаем по горизонтали.
-    const flip = weapon === "spear" ? "scaleX(-1)" : "";
+    // Меч, лук, посох и копьё нарисованы наклоном не в ту сторону — отражаем по горизонтали.
+    const flip = weapon === "sword" || weapon === "bow" || weapon === "staff" || weapon === "spear" ? "scaleX(-1)" : "";
     this.portraitEl.style.transform = flip;
     slotIco.style.transform = flip;
   }
