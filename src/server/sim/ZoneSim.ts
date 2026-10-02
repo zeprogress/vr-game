@@ -2620,8 +2620,9 @@ export class ZoneSim {
     rangedHit = false,
     /** true — урон магией: physArmor не действует, magicVulnMul — действует. */
     magic = false,
-  ): void {
-    if (radius <= 0 || dmg <= 0) return;
+  ): number {
+    if (radius <= 0 || dmg <= 0) return 0;
+    let total = 0;
     // Копия списка: hitMob может удалить моба (осколки) прямо в цикле.
     for (const m of [...this.mobs.values()]) {
       if (m.dead || m.id === skipId) continue;
@@ -2636,11 +2637,13 @@ export class ZoneSim {
       if (hit <= 0.01) continue;
       const hl = Math.hypot(dx, dz) || 1;
       this.hitMob(m.id, hit, dx / hl, dz / hl, owner, rangedHit, false, magic);
+      total += hit;
       // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
       // кого задело АОЕ, не только на прямую цель. ДпС — от максимального
       // HP каждой конкретной цели (см. AFFIX.fire), не от доли АОЕ-урона.
       if (magic) m.ignite(m.maxHp * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, owner);
     }
+    return total;
   }
 
   /**

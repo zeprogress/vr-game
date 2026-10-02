@@ -762,6 +762,15 @@ function heldVamp(p: PlayerState, rt: Runtime): number {
   return vampFrac(r) + (l && l.id !== r?.id ? vampFrac(l) : 0);
 }
 
+/**
+ * Вампиризм удара ближнего боя — одно правило для игроков и ботов: от урона
+ * по основной цели — полностью, от остальных целей (сплэш меча, выпад копья,
+ * волна молота) — доля COMBAT.splashVampFrac.
+ */
+function vampHeal(p: PlayerState, vamp: number, mainDmg: number, splashDmg: number): void {
+  p.hp = Math.min(p.maxHp, p.hp + (mainDmg + splashDmg * COMBAT.splashVampFrac) * vamp);
+}
+
 /** Щит в руках героя: тир и экземпляр (null — щита нет). */
 function shieldOf(p: PlayerState, rt: Runtime | undefined): { tier: string; inst: WeaponInstance | null } | null {
   const hand = p.leftCls === "shield" ? "left" : p.rightCls === "shield" ? "right" : null;
@@ -2088,13 +2097,10 @@ export class ZoneRoom extends Room<ZoneState> {
       msg.id, dmg, dx || 0, dz || 1, client.sessionId,
       msg.weapon === "arrow", false, false, critM > 1,
     );
-    // Вампиризм (врождённый у Меча вампира + ролл на оружии ближнего боя) —
-    // часть нанесённого урона возвращается владельцу как HP.
+    // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона
+    // возвращается владельцу как HP; от остальных целей удара — см. vampHeal ниже.
     const vamp = isMeleeClass(msg.weapon) ? heldVamp(p, rt) : 0;
     const vamped = vamp > 0 && !!struck;
-    if (vamped) {
-      p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);
-    }
     // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
     // сыграл локальный предсказанный звук, без сетевой задержки) — как и
     // раньше, безусловно. Вампиризм — отдельная вспышка ДОПОЛНИТЕЛЬНО,
@@ -2109,11 +2115,12 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, { k: "vampHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay);
       }
     }
-    if (struck && msg.weapon === "spear") this.spearPierce(client.sessionId, p, struck, dmg);
-    if (struck && msg.weapon === "hammer") this.hammerWave(client.sessionId, p, hand, rt, sx, sy, sz);
+    let splash = 0;
+    if (struck && msg.weapon === "spear") splash += this.spearPierce(client.sessionId, p, struck, dmg);
+    if (struck && msg.weapon === "hammer") splash += this.hammerWave(client.sessionId, p, hand, rt, sx, sy, sz);
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
     if (struck && msg.weapon === "sword") {
-      this.sim.splashDamage(
+      splash += this.sim.splashDamage(
         sx, sy, sz,
         COMBAT.swordSplashRadius,
         dmg * COMBAT.swordSplashFraction,
@@ -2121,14 +2128,16 @@ export class ZoneRoom extends Room<ZoneState> {
         client.sessionId,
       );
     }
+    if (vamped) vampHeal(p, vamp, dmg, splash);
   }
 
   /**
    * Копьё: выпад прошивает линию — до WEAPONS2.spear.pierce−1 мобов ЗА целью
    * (в коридоре ~1 м от линии герой→цель, в пределах досягаемости + 2 м)
-   * получают тот же урон. Всем — полоса выпада.
+   * получают тот же урон. Всем — полоса выпада. Возвращает урон по этим
+   * остальным целям (для вампиризма от сплэша).
    */
-  private spearPierce(ownerId: string, p: PlayerState, struck: { id: string; x: number; z: number }, dmg: number): void {
+  private spearPierce(ownerId: string, p: PlayerState, struck: { id: string; x: number; z: number }, dmg: number): number {
     // Копьё бьёт конусом перед собой (ось — на цель удара): ещё до
     // WEAPONS2.spear.pierce − 1 мобов в секторе ±SPEAR_CONE на длину выпада, ближние первыми.
     const dx = struck.x - p.head.x;
@@ -2152,18 +2161,21 @@ export class ZoneRoom extends Room<ZoneState> {
       cands.push({ id: m.id, d, ax: vx / d, az: vz / d });
     }
     cands.sort((a, b) => a.d - b.d);
-    for (const c of cands.slice(0, WEAPONS2.spear.pierce - 1)) this.sim.hitMob(c.id, dmg, c.ax, c.az, ownerId);
+    const hits = cands.slice(0, WEAPONS2.spear.pierce - 1);
+    for (const c of hits) this.sim.hitMob(c.id, dmg, c.ax, c.az, ownerId);
     this.broadcast(MSG.act, {
       k: "spearPierce", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z,
       x2: p.head.x + ux * maxAlong, z2: p.head.z + uz * maxAlong, r: SPEAR_CONE,
     } satisfies ActRelay);
+    return dmg * hits.length;
   }
 
   /**
    * Молот: каждый удар — магическая волна вокруг цели (урон от ИНТ × тир
-   * молота, по всем мобам в радиусе, включая саму цель).
+   * молота, по всем мобам в радиусе, включая саму цель). Возвращает весь
+   * урон волны (для вампиризма от сплэша).
    */
-  private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, y: number, z: number): void {
+  private hammerWave(ownerId: string, p: PlayerState, hand: "left" | "right", rt: Runtime, x: number, y: number, z: number): number {
     const radius = HAMMER.waveRadius;
     const dmg =
       HAMMER.waveMagic *
@@ -2171,13 +2183,16 @@ export class ZoneRoom extends Room<ZoneState> {
       multIn(p, hand) *
       rolledDmgMul(p, hand, rt) *
       this.buffMult(ownerId, "dmg");
+    let total = 0;
     for (const m of [...this.sim.mobs.values()]) {
       if (m.dead) continue;
       const d = Math.hypot(m.x - x, m.z - z) - this.sim.targetRadius("mob", m.id);
       if (d > radius) continue;
       this.sim.hitMob(m.id, dmg, m.x - x, m.z - z, ownerId, false, false, true);
+      total += dmg;
     }
     this.broadcast(MSG.act, { k: "hammerWave", id: ownerId, x, y, z, d: radius } satisfies ActRelay);
+    return total;
   }
 
   /** Вспышка критического выстрела в точке попадания — видят все. */
@@ -6262,11 +6277,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
     const vamp = heldVamp(p, bot.rt);
     const vamped = vamp > 0;
-    if (vamped) {
-      p.hp = Math.min(p.maxHp, p.hp + dmg * vamp);
-    }
-    if (kind === "spear") this.spearPierce(bot.id, p, mob, dmg);
-    if (kind === "hammer") this.hammerWave(bot.id, p, "right", bot.rt, sx, sy, sz);
+    let splash = 0;
+    if (kind === "spear") splash += this.spearPierce(bot.id, p, mob, dmg);
+    if (kind === "hammer") splash += this.hammerWave(bot.id, p, "right", bot.rt, sx, sy, sz);
     // Звук удара мечом — как у живого игрока, слышат все вокруг. Вампиризм —
     // отдельная вспышка ДОПОЛНИТЕЛЬНО, не вместо.
     this.broadcast(MSG.act, {
@@ -6276,7 +6289,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.act, { k: "vampHit", id: bot.id, x: sx, y: sy, z: sz } satisfies ActRelay);
     }
     if (kind === "sword") {
-      this.sim.splashDamage(
+      splash += this.sim.splashDamage(
         sx, sy, sz,
         COMBAT.swordSplashRadius,
         dmg * COMBAT.swordSplashFraction,
@@ -6284,6 +6297,7 @@ export class ZoneRoom extends Room<ZoneState> {
         bot.id,
       );
     }
+    if (vamped) vampHeal(p, vamp, dmg, splash);
     // Опыт/kills — через общий делёж (sim.mobXpShare / mobKills).
     if (killed) bot.target = null;
   }
