@@ -122,6 +122,8 @@ export class Spectator {
   /** Кто сейчас говорит — для зелёного огонька в оверлее и над аватаром. */
   private readonly speakingIds = new Set<string>();
   private bossMusicOn = false;
+  /** Квест чата шёл на прошлом кадре оверлея (null — ещё не видели состояние: подключились посреди квеста — без звука). */
+  private cqActive: boolean | null = null;
   private lastRaf = 0;
   private rafMs = 16.7; // сглаженный интервал между кадрами rAF (частота экрана)
   private capStep = 0; // счётчик кадров для равномерного кэпа по vsync
@@ -1439,6 +1441,23 @@ export class Spectator {
       towerStatus: this._towerStatus,
       chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
     });
+    this.chatQuestSound(st);
+  }
+
+  /** Квест чата — те же звуки, что у ивентов: начался — рог, выполнен — фанфара, провален — тихо. */
+  private chatQuestSound(st: ZoneState | null): void {
+    if (!st) {
+      this.cqActive = null; // нет связи — после переподключения сначала просто смотрим
+      return;
+    }
+    const active = !!st.cqTitle;
+    if (this.cqActive === null || active === this.cqActive) {
+      this.cqActive = active;
+      return;
+    }
+    this.cqActive = active;
+    if (active) this.sfx.bossHorn();
+    else if (st.cqNeed > 0 && st.cqGot >= st.cqNeed) this.sfx.bossFanfare();
   }
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же
