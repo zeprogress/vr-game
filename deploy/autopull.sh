@@ -12,7 +12,7 @@ cd "$APPDIR"
 # не голодал. НЕ idle-класс (на busy-боксе сборка могла зависнуть навсегда).
 LOW="nice -n 10"
 # Куча Node для сборки: при 1 ГБ RAM лишнее уйдёт в swap (2 ГБ), а не в OOM.
-export NODE_OPTIONS="--max-old-space-size=1536"
+export NODE_OPTIONS="--max-old-space-size=2048"
 
 # fetch может упасть по авторизации (токен в remote-URL протух / кэш истёк).
 # Явно об этом говорим, а не глотаем в общем "expected flush after ref listing".
@@ -33,7 +33,17 @@ sudo -u vrgame git merge --ff-only origin/main || sudo -u vrgame git reset --har
 sudo -u vrgame $LOW npm ci
 sudo -u vrgame rm -rf dist.new
 
-if sudo -u vrgame $LOW npx vite build --outDir dist.new; then
+# Перед сборкой — сбросить кэш страниц (освободить RAM), и до 3 попыток подряд:
+# пик памяти плавает, повтор в ту же минуту быстрее, чем ждать следующий тик таймера.
+build_ok=0
+for attempt in 1 2 3; do
+  sync; echo 1 > /proc/sys/vm/drop_caches || true
+  sudo -u vrgame rm -rf dist.new
+  if sudo -u vrgame $LOW npx vite build --outDir dist.new; then build_ok=1; break; fi
+  echo "autopull: попытка сборки $attempt не удалась"
+done
+
+if [ "$build_ok" = 1 ]; then
   sudo -u vrgame sh -c "echo $REMOTE > dist.new/.built"
   sudo -u vrgame rm -rf dist.old
   [ -d dist ] && sudo -u vrgame mv dist dist.old

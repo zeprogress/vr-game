@@ -209,7 +209,10 @@ export default defineConfig({
     target: "es2020",
     outDir: "dist",
     chunkSizeWarningLimit: 2000,
+    // Не считаем gzip-размеры всех файлов и ограничиваем параллельные операции — меньше пик памяти на 1 ГБ VPS.
+    reportCompressedSize: false,
     rollupOptions: {
+      maxParallelFileOps: 2,
       // Вторая точка входа — веб-страница инвентаря ("!inv" в чате). Без
       // явного input вторая .html не попадёт в сборку (dev-сервер её и так
       // отдаёт по прямому URL, а prod-билд — только объявленные входы).
