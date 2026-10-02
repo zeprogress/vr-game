@@ -44,6 +44,7 @@ import {
   isItemId,
   ITEMS,
   rollLoot,
+  rollAegisInstance,
   rollWeaponInstance,
   weaponKey,
   type ItemId,
@@ -2601,6 +2602,8 @@ export class ZoneSim {
 
   private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number }[] {
     const rolled = rollLoot(m.kind, Math.random);
+    /** Индексы в rolled, где уникальный щит — Эгида. */
+    const aegisAt = new Set<number>();
     // Оружие — отдельный ролл поверх таблицы LOOT (та знает только про
     // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
     // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
@@ -2618,6 +2621,13 @@ export class ZoneSim {
           else rolled.splice(i, 1);
         } else {
           rolled.splice(i, 1);
+        }
+      }
+      if (Math.random() < DROP_CHANCE.bossAegis * WEAPON_DROP_MUL) {
+        const item = WEAPON_DROP[weaponKey("shield", "legendary")];
+        if (item) {
+          aegisAt.add(rolled.length);
+          rolled.push({ id: item, count: 1 });
         }
       }
       if (Math.random() < DROP_CHANCE.bossLegendary * WEAPON_DROP_MUL) {
@@ -2645,13 +2655,13 @@ export class ZoneSim {
         if (item) rolled.push({ id: item, count: 1 });
       }
     }
-    for (const { id, count } of rolled) {
+    for (const [idx, { id, count }] of rolled.entries()) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
       const z = m.z + Math.sin(a) * r;
       const w = ITEMS[id].weapon;
-      const instance = w ? rollWeaponInstance(w.cls, w.tier) : undefined;
+      const instance = w ? (aegisAt.has(idx) ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
       const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
       // Бронь за добившим — иначе чужой бот-зритель рядом утащит трофей
       // быстрее, чем игрок успеет подойти (раздел 8 плана).
@@ -2666,11 +2676,11 @@ export class ZoneSim {
 
   /** Положить оружие на землю. Базовое не роняем — оно всегда доступно. */
   /** Возвращает id реально упавшего предмета (для баннера с иконкой) или null. */
-  dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number): ItemId | null {
+  dropWeapon(cls: WeaponClass, tier: WeaponTier, x: number, z: number, aegis = false): ItemId | null {
     if (tier === "base") return null;
     const item = WEAPON_DROP[weaponKey(cls, tier)];
     if (!item) return null;
-    const instance = rollWeaponInstance(cls, tier);
+    const instance = aegis ? rollAegisInstance() : rollWeaponInstance(cls, tier);
     const d = new Drop(item, 1, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
     this.drops.set(d.id, d);
     return item;

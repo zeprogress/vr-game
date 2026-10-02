@@ -586,11 +586,11 @@ export function instanceLabels(w: Pick<WeaponInstance, "affixes">): string[] {
   return w.affixes.map(affixLabel);
 }
 
-function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>): RolledAffix | null {
-  const subs = rollableSubs(cls).filter((s) => !used.has(s));
+function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixSub>, aegis = false): RolledAffix | null {
+  const subs = rollableSubs(cls, aegis).filter((s) => !used.has(s));
   if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, rnd()) };
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, rnd(), aegis) };
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
@@ -644,17 +644,28 @@ export function rollWeaponInstance(
   cls: WeaponClass,
   tier: WeaponTier,
   rnd: () => number = Math.random,
+  /** Эгида: уникальный щит с «Оплотом» и своими роллами (Блок, Физ. защита, Отражение). */
+  aegis = false,
 ): WeaponInstance {
   const count = rollAffixCount(tier, rnd);
   const affixes: RolledAffix[] = [];
   const used = new Set<AffixSub>();
   while (affixes.length < count) {
-    const a = rollAffix(rnd, cls, used);
+    const a = rollAffix(rnd, cls, used, aegis);
     if (!a) break;
     used.add(a.sub);
     affixes.push(a);
   }
-  return { id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER, ...(cls === "staff" ? { sv: 1 } : {}) };
+  return {
+    id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER,
+    ...(aegis ? { nm: LEGACY_LEGENDARY.shield?.name } : {}),
+    ...(cls === "staff" ? { sv: 1 } : {}),
+  };
+}
+
+/** Новая Эгида (редкий дроп с боссов): уникальный щит, 2–3 ролла из Блок / Физ. защита / Отражение. */
+export function rollAegisInstance(rnd: () => number = Math.random): WeaponInstance {
+  return rollWeaponInstance("shield", "legendary", rnd, true);
 }
 
 /**

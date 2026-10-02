@@ -964,6 +964,10 @@ export const DROP_CHANCE = {
   eliteLegendary: 0.002,
   /** Мировой босс — доп. шанс легендарки ПОВЕРХ золота (см. LOOT.boss в items.ts). */
   bossLegendary: 0.01,
+  /** Эгида с Багрового босса (поверх прочего; дальше ×WEAPON_DROP_MUL). */
+  bossAegis: 0.05,
+  /** Охота на элиту: доля побед, где гарантированная легендарка — Эгида. */
+  huntAegis: 0.2,
 } as const;
 
 /**

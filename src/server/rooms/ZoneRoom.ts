@@ -84,6 +84,7 @@ import {
   DAYCYCLE,
   MOB,
   CAMPFIRE,
+  DROP_CHANCE,
   PLAYER,
   PLAYER_HP,
   respecCostFor,
@@ -2649,8 +2650,10 @@ export class ZoneRoom extends Room<ZoneState> {
 
       if (hunt) {
         // Охота — гарантированная легендарка случайного класса.
-        const cls = LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
-        const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
+        // С шансом DROP_CHANCE.huntAegis — Эгида вместо случайного класса.
+        const aegis = Math.random() < DROP_CHANCE.huntAegis;
+        const cls = aegis ? "shield" : LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
+        const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ, aegis);
         if (dropped) winLoot.push({ id: dropped, count: 1 });
       } else if (Math.random() < EVENT.invasion.rewardLegendaryChance) {
         const cls = LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
