@@ -267,7 +267,11 @@ function weaponItem(
     short,
     hint:
       cls === "shield"
-        ? `блок ${Math.round((SHIELD.blockByTier[tier] ?? SHIELD.blockChance) * 100)}%${tier === "base" ? "" : " + ролл Блок"}${tier === "legendary" ? " · отражение" : ""}`
+        ? tier === "base"
+          ? "блок и защита — только от роллов"
+          : tier === "gold"
+            ? "золотой щит · 1–2 ролла"
+            : "уникальный щит · 2–3 ролла"
         : tier === "legendary"
           ? "уникальное · 2–3 ролла"
           : tier === "gold"

@@ -4,7 +4,7 @@ import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec } from "#shared/heroStats";
 import { fireboltDamage, magicPowerFor } from "#shared/magic";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
-import { BOW, COMBAT, SHIELD } from "#shared/constants";
+import { BOW, COMBAT } from "#shared/constants";
 
 export interface WornWeapon {
   cls: WeaponClass;
@@ -87,7 +87,6 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   } else {
     const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "Блок");
     out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
-    out.push(["Основа блока", `обычный ${pctOf(SHIELD.blockByTier.base)} · золотой ${pctOf(SHIELD.blockByTier.gold)} · уникальный ${pctOf(SHIELD.blockByTier.legendary)}; ролл Блок — сверху`]);
     const refl = rollPct(w.affix, "Отражение");
     if (refl > 0) out.push(["Отражение", `${pctOf(refl)} урона удара — обратно атакующему (и при блоке)`]);
     const pd = rollPct(w.affix, "Физ. защита");
