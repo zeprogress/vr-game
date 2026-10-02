@@ -1003,7 +1003,7 @@ function injectInvStyle(): void {
 /* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
 .pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; }
 .pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; }
-.pcinv-num { position:absolute; left:3px; bottom:1px; font:700 10px system-ui; color:#d8d0bb; text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-num { position:absolute; left:3px; top:1px; font:700 10px system-ui; color:#d8d0bb; text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
 /* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
 .pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
@@ -1064,7 +1064,7 @@ function injectInvStyle(): void {
 .pcinv-ebtn:disabled { opacity:.45; cursor:default; }
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
-.pcinv-q { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-q { position:absolute; right:2px; bottom:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }

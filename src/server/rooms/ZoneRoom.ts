@@ -2859,8 +2859,8 @@ export class ZoneRoom extends Room<ZoneState> {
         // Периодический призыв миньонов — «разберись с мелочью».
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
-          const adef = ELITE_MOBS[eh.addType];
           for (let i = 0; i < eh.addCount; i++) {
+            const adef = ELITE_MOBS[eh.addTypes[Math.floor(Math.random() * eh.addTypes.length)]];
             const a = Math.random() * Math.PI * 2;
             const r = 2 + Math.random() * 3;
             // Со ВСЕМИ механиками вида (рывок, вампиризм, уворот…), не голые цифры.

@@ -457,7 +457,7 @@ export interface WeaponInstance {
 }
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 6;
+const LOOT_VER = 7;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -497,14 +497,19 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   vamp: [0.02, 0.1],
   block: [0.07, 0.2],
   reflect: [0.035, 0.1],
-  physDef: [0.035, 0.1],
-  magDef: [0.05, 0.15],
+  physDef: [0.07, 0.2],
+  magDef: [0.07, 0.2],
 };
-/** Диапазоны роллов Эгиды (макс.: Блок 10%, Отражение 10%, Физ. защита 15%). */
+/** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 10%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
-  block: [0.035, 0.1],
   physDef: [0.05, 0.15],
 };
+/** Диапазоны до lv 7 (2026-10-02, до повышения максимумов) — для пересчёта выпавших щитов. */
+const V6_RANGES = {
+  physDef: [0.035, 0.1],
+  magDef: [0.05, 0.15],
+  aegisBlock: [0.035, 0.1],
+} as const;
 /** Старый диапазон Блока (до 2026-10-02) — для пересчёта уже выпавших щитов. */
 const OLD_BLOCK_RANGE = [0.02, 0.06] as const;
 
@@ -870,8 +875,10 @@ export function migrateLoot(w: WeaponInstance): boolean {
     const best = crits.reduce((m, a) => (a.value > m.value ? a : m));
     w.affixes = w.affixes.filter((a) => a.sub !== "critChance" || a === best);
   }
-  // Щит: только Блок.
-  if (w.cls === "shield" && w.affixes.some((a) => a.sub !== "block")) {
+  // Щит (lv < 4): только Блок. ВАЖНО: каждый шаг — строго по версии, иначе он
+  // повторяется при каждом следующем подъёме LOOT_VER (так 2026-10-02 lv 6 схлопнул
+  // роллы щитов в один Блок и выкрутил его на максимум).
+  if (ver < 4 && w.cls === "shield" && w.affixes.some((a) => a.sub !== "block")) {
     const t = w.affixes.reduce((m, a) => Math.max(m, rollT(a.sub, a.value)), 0);
     w.affixes = [{ kind: "block", sub: "block", value: OLD_BLOCK_RANGE[0] + t * (OLD_BLOCK_RANGE[1] - OLD_BLOCK_RANGE[0]) }];
   }
@@ -894,7 +901,7 @@ export function migrateLoot(w: WeaponInstance): boolean {
   }
   // Щиты lv 5: Блок пересчитан на новый диапазон с теми же очками; Эгида получает ещё
   // Отражение и Физ. защиту с теми же очками, что у Блока.
-  if (w.cls === "shield") {
+  if (ver < 5 && w.cls === "shield") {
     const aegis = isAegis(w);
     let tBlock = 0;
     for (const a of w.affixes) {
@@ -914,6 +921,17 @@ export function migrateLoot(w: WeaponInstance): boolean {
       if (a.sub !== "vamp") continue;
       const t = Math.max(0, Math.min(1, (a.value - 0.02) / (0.08 - 0.02)));
       a.value = atT("vamp", t);
+    }
+  }
+  // lv 7: максимумы щитов подняты (круглый: Физ./Маг. защита до 20%; Эгида: Блок до 20%) —
+  // роллы, уже бывшие в диапазонах lv 5–6, пересчитываем с теми же очками.
+  if (ver >= 5 && ver < 7 && w.cls === "shield") {
+    const aegis = isAegis(w);
+    for (const a of w.affixes) {
+      const old = aegis ? (a.sub === "block" ? V6_RANGES.aegisBlock : null) : a.sub === "physDef" ? V6_RANGES.physDef : a.sub === "magDef" ? V6_RANGES.magDef : null;
+      if (!old) continue;
+      const t = Math.max(0, Math.min(1, (a.value - old[0]) / (old[1] - old[0])));
+      a.value = atT(a.sub, t, aegis);
     }
   }
   w.lv = LOOT_VER;
