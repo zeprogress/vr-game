@@ -11,7 +11,10 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { itemIcon, weaponIcon, type IconKey } from "#shared/icons";
+import { TIER_LOOK } from "#shared/look";
+import { drawIcon } from "./icons";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -39,16 +42,9 @@ const WH_COLS = 4;
 const WH_ROWS = 6;
 const WH_PER_PAGE = WH_COLS * WH_ROWS;
 
-const TIER_COLOR: Record<WeaponTier, string> = {
-  base: "#e6e0d0",
-  gold: "#ffd166",
-  legendary: "#c77dff",
-};
-const TIER_BG: Record<WeaponTier, string> = {
-  base: "#1d1c25",
-  gold: "#2a2416",
-  legendary: "#251a33",
-};
+/** Цвета тиров — общие для всех платформ (shared/look.ts). */
+const TIER_COLOR: Record<WeaponTier, string> = { base: TIER_LOOK.base.color, gold: TIER_LOOK.gold.color, legendary: TIER_LOOK.legendary.color };
+const TIER_BG: Record<WeaponTier, string> = { base: TIER_LOOK.base.bg, gold: TIER_LOOK.gold.bg, legendary: TIER_LOOK.legendary.bg };
 
 type Tab = "char" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
@@ -148,7 +144,6 @@ export class WristMenu {
   private warehouse: WarehouseWeapon[] = [];
   private equippedIds: { left: string | null; right: string | null } = { left: null, right: null };
   private skillCd = -1;
-  private readonly imgs = new Map<string, HTMLImageElement | null>();
   private readonly unsub: () => void;
 
   constructor(
@@ -1111,8 +1106,8 @@ export class WristMenu {
     const iconS = h > 100 ? 72 : 56;
     const heldAegis =
       item.cls === "shield" &&
-      this.warehouse.some((e) => e.cls === "shield" && e.name === "Эгида" && (e.id === this.equippedIds.left || e.id === this.equippedIds.right));
-    this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS, heldAegis);
+      this.warehouse.some((e) => e.cls === "shield" && e.name === AEGIS_NAME && (e.id === this.equippedIds.left || e.id === this.equippedIds.right));
+    this.drawIconAt(ctx, weaponIcon(item.cls, heldAegis), x + 10, y + 28, iconS, TIER_COLOR[item.tier]);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
     ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
@@ -1146,7 +1141,7 @@ export class WristMenu {
     ctx.fillText("Правая рука", x + 10, y + 6);
     if (cls !== "bow") {
       // Копьё/молот: то же оружие иконкой — «правая рука держит его же».
-      this.drawWeaponIcon(ctx, cls as WeaponClass, "base", x + 16, y + 30, 72);
+      this.drawIconAt(ctx, weaponIcon(cls), x + 16, y + 30, 72, TIER_COLOR.base);
       ctx.font = "bold 24px system-ui, sans-serif";
       ctx.fillStyle = "#e6e0d0";
       ctx.fillText("Занята", x + 112, y + 34);
@@ -1214,7 +1209,7 @@ export class WristMenu {
     ctx.lineWidth = st.stroke ? st.lw : 2;
     ctx.strokeRect(x, y, w, h);
     if (!def) return;
-    this.drawItemIcon(ctx, def.icon, def.tint, x + 6, y + 6, 46);
+    this.drawIconAt(ctx, itemIcon(slot.item!), x + 6, y + 6, 46);
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#ffd166";
     ctx.fillText(`×${slot.count}`, x + 58, y + 8);
@@ -1331,7 +1326,7 @@ export class WristMenu {
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52, wp.name === "Эгида");
+    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME), x + 6, y + 8, 52, TIER_COLOR[wp.tier]);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
     ctx.fillText(this.shortName(name), x + 62, y + 8);
@@ -1492,132 +1487,9 @@ export class WristMenu {
 
   // ---- иконки ----
 
-  private drawItemIcon(ctx: CanvasRenderingContext2D, file: string, tint: readonly number[], x: number, y: number, s: number): void {
-    if (!file) {
-      ctx.fillStyle = `rgb(${tint.map((c) => Math.round(c * 255)).join(",")})`;
-      ctx.fillRect(x + s * 0.2, y + s * 0.2, s * 0.6, s * 0.6);
-      return;
-    }
-    const cached = this.imgs.get(file);
-    if (cached) {
-      ctx.drawImage(cached, x, y, s, s);
-      return;
-    }
-    if (cached === undefined) {
-      this.imgs.set(file, null);
-      const img = new Image();
-      img.onload = () => {
-        this.imgs.set(file, img);
-        this.dirty = true;
-      };
-      img.src = `/icons/${file}`;
-    }
-    ctx.fillStyle = `rgb(${tint.map((c) => Math.round(c * 255)).join(",")})`;
-    ctx.fillRect(x + s * 0.25, y + s * 0.25, s * 0.5, s * 0.5);
-  }
-
-  /** Значок оружия по классу: рисуем сами — у уникального и базового картинок нет. */
-  private drawWeaponIcon(ctx: CanvasRenderingContext2D, cls: WeaponClass, tier: WeaponTier, x: number, y: number, s: number, aegis = false): void {
-    const col = TIER_COLOR[tier];
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.strokeStyle = col;
-    ctx.fillStyle = col;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    const u = s / 100;
-    ctx.lineWidth = 7 * u;
-    if (cls === "sword") {
-      ctx.beginPath();
-      ctx.moveTo(78 * u, 12 * u);
-      ctx.lineTo(30 * u, 60 * u);
-      ctx.stroke();
-      ctx.lineWidth = 8 * u;
-      ctx.beginPath();
-      ctx.moveTo(22 * u, 46 * u);
-      ctx.lineTo(48 * u, 72 * u);
-      ctx.stroke();
-      ctx.lineWidth = 9 * u;
-      ctx.beginPath();
-      ctx.moveTo(30 * u, 60 * u);
-      ctx.lineTo(16 * u, 84 * u);
-      ctx.stroke();
-    } else if (cls === "bow") {
-      ctx.beginPath();
-      ctx.arc(34 * u, 50 * u, 36 * u, -Math.PI / 2.3, Math.PI / 2.3);
-      ctx.stroke();
-      ctx.lineWidth = 3 * u;
-      ctx.beginPath();
-      ctx.moveTo(50 * u, 16 * u);
-      ctx.lineTo(50 * u, 84 * u);
-      ctx.stroke();
-      ctx.lineWidth = 5 * u;
-      ctx.beginPath();
-      ctx.moveTo(18 * u, 50 * u);
-      ctx.lineTo(86 * u, 50 * u);
-      ctx.stroke();
-    } else if (cls === "staff") {
-      ctx.beginPath();
-      ctx.moveTo(30 * u, 90 * u);
-      ctx.lineTo(62 * u, 34 * u);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(68 * u, 24 * u, 13 * u, 0, Math.PI * 2);
-      ctx.fill();
-    } else if (cls === "dagger") {
-      ctx.beginPath();
-      ctx.moveTo(74 * u, 14 * u);
-      ctx.lineTo(38 * u, 56 * u);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(30 * u, 48 * u);
-      ctx.lineTo(52 * u, 66 * u);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(40 * u, 60 * u);
-      ctx.lineTo(26 * u, 84 * u);
-      ctx.stroke();
-    } else if (cls === "spear") {
-      ctx.beginPath();
-      ctx.moveTo(20 * u, 90 * u);
-      ctx.lineTo(70 * u, 30 * u);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(80 * u, 12 * u);
-      ctx.lineTo(60 * u, 28 * u);
-      ctx.lineTo(72 * u, 40 * u);
-      ctx.closePath();
-      ctx.fill();
-    } else if (cls === "hammer") {
-      ctx.beginPath();
-      ctx.moveTo(26 * u, 90 * u);
-      ctx.lineTo(60 * u, 40 * u);
-      ctx.stroke();
-      ctx.fillRect(46 * u, 14 * u, 40 * u, 24 * u);
-    } else if (cls === "shield" && !aegis) {
-      // Круглый щит — одинаковый у всех грейдов (цвет рамки — по тиру).
-      ctx.beginPath();
-      ctx.arc(50 * u, 50 * u, 38 * u, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.lineWidth = 3 * u;
-      ctx.beginPath();
-      ctx.arc(50 * u, 50 * u, 25 * u, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(50 * u, 50 * u, 8 * u, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(50 * u, 10 * u);
-      ctx.lineTo(84 * u, 22 * u);
-      ctx.lineTo(80 * u, 58 * u);
-      ctx.quadraticCurveTo(70 * u, 82 * u, 50 * u, 92 * u);
-      ctx.quadraticCurveTo(30 * u, 82 * u, 20 * u, 58 * u);
-      ctx.lineTo(16 * u, 22 * u);
-      ctx.closePath();
-      ctx.stroke();
-    }
-    ctx.restore();
+  /** Значок предмета/оружия — из общего реестра (shared/icons.ts); догрузится — перерисуем холст. */
+  private drawIconAt(ctx: CanvasRenderingContext2D, k: IconKey, x: number, y: number, s: number, color?: string): void {
+    drawIcon(ctx, k, x, y, s, color, () => (this.dirty = true));
   }
 
   // ---- вкладка «Настройки» ----

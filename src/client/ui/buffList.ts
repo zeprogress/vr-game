@@ -1,4 +1,5 @@
 import { CAMPFIRE, EVENT } from "#shared/constants";
+import { glyph } from "#shared/icons";
 
 /**
  * Баффы героя — одним списком для всех платформ (рамка героя ПК/телефона,
@@ -25,7 +26,7 @@ export function buffList(p: {
   const out: BuffEntry[] = [];
   if ((p.buffSecs ?? 0) > 0) {
     out.push({
-      icon: "🗡️",
+      icon: glyph("b.victory"),
       name: "Благословение победы",
       desc: `×${EVENT.invasion.buffXpMult} опыта и ×${EVENT.invasion.buffDmgMult} урона`,
       secs: p.buffSecs!,
@@ -33,13 +34,13 @@ export function buffList(p: {
     });
   }
   if ((p.campBuffSecs ?? 0) > 0) {
-    out.push({ icon: "🛡️", name: "Тепло костра", desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`, secs: p.campBuffSecs!, color: "#ffc24a" });
+    out.push({ icon: glyph("b.camp"), name: "Тепло костра", desc: `−${Math.round(CAMPFIRE.buffDef * 100)}% входящего урона`, secs: p.campBuffSecs!, color: "#ffc24a" });
   }
   if ((p.scrollXpSecs ?? 0) > 0) {
-    out.push({ icon: "📜", name: "Свиток мудрости", desc: "×2 опыта", secs: p.scrollXpSecs!, color: "#7fd0ff" });
+    out.push({ icon: glyph("b.scrollXp"), name: "Свиток мудрости", desc: "×2 опыта", secs: p.scrollXpSecs!, color: "#7fd0ff" });
   }
   if ((p.scrollWindSecs ?? 0) > 0) {
-    out.push({ icon: "🪶", name: "Свиток ветра", desc: "+20% скорости бега", secs: p.scrollWindSecs!, color: "#8fe8b0" });
+    out.push({ icon: glyph("b.scrollWind"), name: "Свиток ветра", desc: "+20% скорости бега", secs: p.scrollWindSecs!, color: "#8fe8b0" });
   }
   return out;
 }

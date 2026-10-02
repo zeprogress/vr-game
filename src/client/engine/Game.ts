@@ -1,5 +1,7 @@
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
+import { iconHtml } from "../ui/icons";
+import { glyph } from "#shared/icons";
 import { prewarmClassClips } from "../world/classPoses";
 import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
@@ -36,7 +38,7 @@ import { NetMobs } from "../combat/MobSystem";
 import type { Hittable, HitReporter } from "../combat/Hittable";
 import { Hud } from "../ui/Hud";
 import { PcTargeting } from "../pc/PcTargeting";
-import { PcHud, SACK_SVG, type MapData, type WeaponIcon } from "../pc/PcHud";
+import { PcHud, type MapData, type WeaponIcon } from "../pc/PcHud";
 import { QuestBang } from "../world/hub/HubNpc";
 import { setGrassVr } from "../world/GrassField";
 import { LightFocus } from "../world/lightFocus";
@@ -119,7 +121,7 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, Quest
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { aegisTier, bothHandsCls, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, aegisTier, bothHandsCls, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
 import { BLINK, BOSS, BOT, EVENT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
@@ -596,7 +598,7 @@ export class Game {
       this.pcInv = this.makePcInventory(true);
       this.hud.touchMenuHook = () => this.pcMenu?.toggle();
       this.hud.touchBagHook = () => this.pcInv?.toggle("gear");
-      this.hud.touchBagIcon = SACK_SVG;
+      this.hud.touchBagIcon = iconHtml("ui.sack");
       this.hud.topBtnShift = 88; // левее квадратной мини-карты в углу
       this.hud.enableTouchMenu();
       // Тапы по миру как клики на ПК: цель/атака, NPC, предметы (подбор — в сумку, как на ПК).
@@ -2709,7 +2711,7 @@ export class Game {
   /** Следующий меш щита со склада — Эгида (см. makeWeaponMesh). */
   private nextAegis = false;
   private isAegisId(id: string): boolean {
-    return this.net?.warehouse?.list.find((w) => w.id === id)?.name === "Эгида";
+    return this.net?.warehouse?.list.find((w) => w.id === id)?.name === AEGIS_NAME;
   }
 
   /**
@@ -3156,7 +3158,7 @@ export class Game {
     // Индикатор готовности на кнопках умений (телефон) и на запястье (VR).
     ids.forEach((id, i) => {
       const frac = id ? this.skillLeft(id) / Math.max(0.1, this.skillCooldown(id)) : -1;
-      this.touchInput?.setSkillCd(frac, i, id ? SKILLS2[id].icon : undefined);
+      this.touchInput?.setSkillCd(frac, i, id ?? undefined);
       if (i === 0) this.wristPanel?.setSkillCd(frac);
     });
   }
@@ -3251,7 +3253,7 @@ export class Game {
       this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, m.tier === "legendary" ? "#c79bff" : "#f5c542");
     };
     net.onKillFeed = (by, victim) => {
-      if (victim) this.pcHud?.log("kill", by ? `🗡️ ${victim}` : `${victim} пал`, by || undefined);
+      if (victim) this.pcHud?.log("kill", by ? `${glyph("ui.kill")} ${victim}` : `${victim} пал`, by || undefined);
     };
     net.onChatLine = (m) => this.pcHud?.log("chat", m.text, m.nick);
     // Цифры урона над мобами — все платформы, выключатель в меню.

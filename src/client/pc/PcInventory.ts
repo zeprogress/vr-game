@@ -1,6 +1,8 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
-import { POTION_IMG } from "../ui/potionIcon";
-import { bothHandsCls, bothHandsNote, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { glyph, weaponIcon } from "#shared/icons";
+import { TIER_LOOK } from "#shared/look";
+import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -41,24 +43,10 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
-/** Иконка предмета: Эгида сохраняет прежний 🛡, остальные щиты — круглый. */
-export function iconOf(cls: string, name?: string): string {
-  return cls === "shield" && name === "Эгида" ? "🛡" : (ICON[cls] ?? "?");
-}
-/** Иконки, которые отражаем по горизонтали (эмодзи нарисованы наклоном не в ту сторону). */
-export const FLIPPED_ICONS: ReadonlySet<string> = new Set(["sword", "bow", "staff", "spear"]);
-
-/** Положить иконку предмета в элемент (меч, лук, посох и копьё — отражены по горизонтали). */
+/** Положить значок оружия в элемент (из общего реестра shared/icons.ts; Эгида — свой). */
 export function setIcon(el: HTMLElement, cls: string, name?: string): void {
-  if (FLIPPED_ICONS.has(cls)) {
-    const sp = document.createElement("span");
-    sp.style.cssText = "display:inline-block;transform:scaleX(-1)";
-    sp.textContent = iconOf(cls, name);
-    el.replaceChildren(sp);
-  } else el.textContent = iconOf(cls, name);
+  setIconEl(el, weaponIcon(cls, name === AEGIS_NAME));
 }
-export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "◉", dagger: "🔪", spear: "🦯", hammer: "🔨" };
-const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
@@ -435,25 +423,25 @@ export class PcInventory {
       return c;
     };
     cons.append(
-      info(countCell(POTION_IMG, d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу."),
-      info(countCell(SCRAP_SVG, d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»)."),
-      info(countCell("🐟", d.fish, ""), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере."),
+      info(countCell(iconHtml("i.potion"), d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу."),
+      info(countCell(iconHtml("i.scrap"), d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»)."),
+      info(countCell(iconHtml("i.fish"), d.fish, "", true), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере."),
     );
     // Жетоны заданий — подсказка сразу при наведении и по нажатию.
     {
       const tip = "Дают за задания дня (доска и Охотник у выхода из лагеря). Тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия.";
-      const c = info(countCell("◈", d.tokens ?? 0, ""), "Жетоны заданий ◈", tip);
+      const c = info(countCell(iconHtml("i.token"), d.tokens ?? 0, "", true), `Жетоны заданий ${glyph("i.token")}`, tip);
       c.classList.add("tokens");
       cons.append(c);
     }
     // Свитки — клик: прочитать (бафф на 15 мин).
     const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", string, string, string][] = [
-      [d.scrollXp, "scroll_xp", "📜", "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Клик — прочитать."],
-      [d.scrollWind, "scroll_wind", "🪶", "Свиток ветра", "+20% скорости бега на 15 мин. Клик — прочитать."],
+      [d.scrollXp, "scroll_xp", iconHtml("i.scroll_xp"), "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Клик — прочитать."],
+      [d.scrollWind, "scroll_wind", iconHtml("i.scroll_wind"), "Свиток ветра", "+20% скорости бега на 15 мин. Клик — прочитать."],
     ];
     for (const [n, id, ico, name, body] of scrolls) {
       if (!n) continue;
-      const c = info(countCell(ico, n, ""), name, body);
+      const c = info(countCell(ico, n, "", true), name, body);
       c.style.cursor = "pointer";
       c.onclick = () => {
         this.hideTip();
@@ -497,7 +485,8 @@ export class PcInventory {
     const bowBoth = !!twoH;
     const held = bowBoth ? (side === "left" ? twoH : null) : both[side];
     if (twoH && side === "right") {
-      const c = div("pcinv-cell big locked", ICON[twoH.cls] ?? "🏹");
+      const c = div("pcinv-cell big locked");
+      setIcon(c, twoH.cls);
       c.title = bothHandsNote(twoH.cls);
       // И сюда можно бросить оружие из сумки — наденется по своим правилам.
       c.addEventListener("dragover", (e) => {
@@ -611,7 +600,7 @@ export class PcInventory {
     left.append(slotEl);
     left.append(div("pcinv-small", w ? w.name : "Перетащи предмет сюда"));
     left.append(div("pcinv-have", `Лом: ${d.scrap}`));
-    const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, "🔨");
+    const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, glyph("ui.forge"));
     left.append(anvil);
 
     const right = div("pcinv-ench-right");
@@ -620,7 +609,7 @@ export class PcInventory {
     } else if (!w.ench.length) {
       right.append(div("pcinv-empty", "У этого предмета нет роллов — точить нечего."));
     } else {
-      const hn = div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_RU[w.tier]}`);
+      const hn = div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_LOOK[w.tier].name}`);
       if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
       right.append(hn);
       const sc = div("pcinv-score");
@@ -844,7 +833,7 @@ export class PcInventory {
     const name = w?.name ?? weaponDef(cls, tier).name;
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
-    this.tip.append(div("pcinv-small", TIER_RU[tier] ?? tier));
+    this.tip.append(div("pcinv-small", TIER_LOOK[tier]?.name ?? tier));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
@@ -926,15 +915,6 @@ function span(text: string): HTMLSpanElement {
   return s;
 }
 
-/** Лом — кусочки металла (шестерёнка путала). */
-export const SCRAP_SVG =
-  `<svg viewBox="0 0 28 28" width="30" height="30" stroke-linejoin="round">` +
-  `<path d="M3 17l7-5 4 3-2 6-7 1z" fill="#8d939c" stroke="#d6dae0" stroke-width="1.1"/>` +
-  `<path d="M12 9l6-4 5 3-1 6-6 1z" fill="#a4957e" stroke="#e2d6c2" stroke-width="1.1"/>` +
-  `<path d="M15 18l6-2 4 4-3 5-6-1z" fill="#6f757e" stroke="#c9ced6" stroke-width="1.1"/>` +
-  `<circle cx="18.5" cy="10" r="1.1" fill="#3a3e45"/><circle cx="8" cy="17.5" r="1" fill="#3a3e45"/>` +
-  `</svg>`;
-
 function countCell(ico: string, n: number, title: string, html = false): HTMLDivElement {
   const c = div("pcinv-cell t-base");
   if (html) c.innerHTML = ico;
@@ -951,6 +931,7 @@ let styled = false;
 function injectInvStyle(): void {
   if (styled) return;
   styled = true;
+  ensureIconCss();
   const s = document.createElement("style");
   s.textContent = `
 .pcinv-root { position:fixed; inset:0; z-index:40; pointer-events:none; font:500 13px/1.35 system-ui,sans-serif; color:#e6e0d0; }
@@ -993,9 +974,9 @@ function injectInvStyle(): void {
 .pcinv-cell.sel { outline:2px solid #e6e0d0; }
 .pcinv-cell.locked { opacity:.28; }
 .pcinv-cell.hot { outline:2px dashed #9fe39a; }
-.pcinv-cell.t-base { border-color:#6b6b6b; }
-.pcinv-cell.t-gold { border-color:#d9a21b; box-shadow:inset 0 0 10px rgba(217,162,27,.25); }
-.pcinv-cell.t-legendary { border-color:#9b5cf0; box-shadow:inset 0 0 12px rgba(155,92,240,.35); }
+.pcinv-cell.t-base { border-color:var(--tier-base-edge); color:var(--tier-base); }
+.pcinv-cell.t-gold { border-color:var(--tier-gold-edge); box-shadow:inset 0 0 10px var(--tier-gold-glow); color:var(--tier-gold); }
+.pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
 .pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
 .pcinv-cons { display:flex; gap:5px; align-items:stretch; }
 .pcinv-anvil { flex:1; border:1px dashed #5a5e6a; border-radius:6px; display:flex; align-items:center; justify-content:center;
@@ -1005,8 +986,8 @@ function injectInvStyle(): void {
 .pcinv-small { color:#a9a498; font-size:11.5px; }
 .pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
 .pcinv-name { font-weight:700; margin-bottom:6px; }
-.t-gold.pcinv-name, .pcinv-name.t-gold { color:#f5c542; }
-.pcinv-name.t-legendary { color:#c79bff; }
+.t-gold.pcinv-name, .pcinv-name.t-gold { color:var(--tier-gold); }
+.pcinv-name.t-legendary { color:var(--tier-legendary); }
 .pcinv-name.t-base { color:#dedede; }
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }
@@ -1061,7 +1042,7 @@ function injectInvStyle(): void {
 .pcinv-title { align-items:center; margin:6px 0; }
 .pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; flex:1; min-width:0; }
 .pcinv-title > span:first-child { flex:none; }
-.pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:#ffcf5a; }
+.pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:var(--quality); }
 .pcinv-score small { font:600 11px system-ui; color:#a9a498; margin-right:4px; }
 .pcinv-cell.inhand { position:relative; box-shadow:inset 0 0 0 2px #6fbf6f; }
 .pcinv-cell.inhand::after { content:"в руке"; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
@@ -1083,7 +1064,7 @@ function injectInvStyle(): void {
 .pcinv-ebtn:disabled { opacity:.45; cursor:default; }
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
-.pcinv-q { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#ffcf5a; text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-q { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
 .pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
 .pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }

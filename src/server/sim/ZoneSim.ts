@@ -2598,12 +2598,11 @@ export class ZoneSim {
 
   /** Разыграть и разложить добычу вокруг убитого моба. */
   /** Что выпало с последнего убитого босса — комната читает и объявляет. */
-  readonly bossLoot: { id: ItemId; count: number }[] = [];
+  readonly bossLoot: { id: ItemId; count: number; aegis?: boolean }[] = [];
 
-  private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number }[] {
-    const rolled = rollLoot(m.kind, Math.random);
-    /** Индексы в rolled, где уникальный щит — Эгида. */
-    const aegisAt = new Set<number>();
+  private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number; aegis?: boolean }[] {
+    // aegis — уникальный щит из этого списка падает Эгидой.
+    const rolled: { id: ItemId; count: number; aegis?: boolean }[] = rollLoot(m.kind, Math.random);
     // Оружие — отдельный ролл поверх таблицы LOOT (та знает только про
     // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
     // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
@@ -2625,10 +2624,7 @@ export class ZoneSim {
       }
       if (Math.random() < DROP_CHANCE.bossAegis * WEAPON_DROP_MUL) {
         const item = WEAPON_DROP[weaponKey("shield", "legendary")];
-        if (item) {
-          aegisAt.add(rolled.length);
-          rolled.push({ id: item, count: 1 });
-        }
+        if (item) rolled.push({ id: item, count: 1, aegis: true });
       }
       if (Math.random() < DROP_CHANCE.bossLegendary * WEAPON_DROP_MUL) {
         const cls = pick(LEGENDARY_CLASSES);
@@ -2655,13 +2651,13 @@ export class ZoneSim {
         if (item) rolled.push({ id: item, count: 1 });
       }
     }
-    for (const [idx, { id, count }] of rolled.entries()) {
+    for (const { id, count, aegis } of rolled) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
       const z = m.z + Math.sin(a) * r;
       const w = ITEMS[id].weapon;
-      const instance = w ? (aegisAt.has(idx) ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
+      const instance = w ? (aegis ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
       const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
       // Бронь за добившим — иначе чужой бот-зритель рядом утащит трофей
       // быстрее, чем игрок успеет подойти (раздел 8 плана).

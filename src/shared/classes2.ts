@@ -2,6 +2,7 @@ import { BOT, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
+import { glyph } from "./icons";
 
 export { levelGain };
 
@@ -29,12 +30,12 @@ export type Attr = "str" | "agi" | "int" | "con" | "luc" | "wis";
 export const ATTRS: readonly Attr[] = ["str", "agi", "int", "con", "luc", "wis"];
 
 export const ATTR_INFO: Record<Attr, { short: string; name: string; icon: string; desc: string }> = {
-  str: { short: "СИЛ", name: "Сила", icon: "💪", desc: "Физический урон любым оружием: меч, кинжал, копьё, молот, лук" },
-  agi: { short: "ЛОВ", name: "Ловкость", icon: "🏃", desc: "Скорость бега и темп физических атак" },
-  int: { short: "ИНТ", name: "Интеллект", icon: "🔮", desc: "Урон магией и сила лечения" },
-  con: { short: "ТЕЛ", name: "Телосложение", icon: "🛡️", desc: "Здоровье и физическая броня" },
-  luc: { short: "УДЧ", name: "Удача", icon: "🍀", desc: "Шанс и сила крита, уворот" },
-  wis: { short: "МДР", name: "Мудрость", icon: "📿", desc: "Магическая защита и скорость каста" },
+  str: { short: "СИЛ", name: "Сила", icon: glyph("a.str"), desc: "Физический урон любым оружием: меч, кинжал, копьё, молот, лук" },
+  agi: { short: "ЛОВ", name: "Ловкость", icon: glyph("a.agi"), desc: "Скорость бега и темп физических атак" },
+  int: { short: "ИНТ", name: "Интеллект", icon: glyph("a.int"), desc: "Урон магией и сила лечения" },
+  con: { short: "ТЕЛ", name: "Телосложение", icon: glyph("a.con"), desc: "Здоровье и физическая броня" },
+  luc: { short: "УДЧ", name: "Удача", icon: glyph("a.luc"), desc: "Шанс и сила крита, уворот" },
+  wis: { short: "МДР", name: "Мудрость", icon: glyph("a.wis"), desc: "Магическая защита и скорость каста" },
 };
 
 export { ATTR2 };
@@ -299,32 +300,32 @@ export interface ClassDef {
 
 export const CLASSES2: Record<ClassId, ClassDef> = {
   warrior: {
-    name: "Воин", icon: "⚔️", role: "Танк, контроль", weapons: "меч + щит", main: "sword",
+    name: "Воин", icon: glyph("c.warrior"), role: "Танк, контроль", weapons: "меч + щит", main: "sword",
     skills: ["stunBash", "whirlwind", "warcry", "seal"], defaultSkills: ["stunBash", "whirlwind"],
     build: { str: 3, con: 4, agi: 1.5, luc: 1, wis: 1.2 },
   },
   archer: {
-    name: "Лучник", icon: "🏹", role: "Дальний урон", weapons: "лук", main: "bow",
+    name: "Лучник", icon: glyph("c.archer"), role: "Дальний урон", weapons: "лук", main: "bow",
     skills: ["arrowRain", "shadowStep", "mark", "chain"], defaultSkills: ["arrowRain", "mark"],
     build: { str: 4, agi: 2.5, luc: 2.5, con: 1.2, wis: 0.8 },
   },
   support: {
-    name: "Маг поддержки", icon: "✨", role: "Лечение, защита", weapons: "посох", main: "staff",
+    name: "Маг поддержки", icon: glyph("c.support"), role: "Лечение, защита", weapons: "посох", main: "staff",
     skills: ["massHeal", "seal", "warcry", "arrowRain"], defaultSkills: ["massHeal", "warcry"],
     build: { int: 4, wis: 3, con: 1.8, luc: 0.6 },
   },
   assassin: {
-    name: "Ассасин", icon: "🔪", role: "Криты, уворот", weapons: "1 или 2 кинжала", main: "dagger",
+    name: "Ассасин", icon: glyph("c.assassin"), role: "Криты, уворот", weapons: "1 или 2 кинжала", main: "dagger",
     skills: ["shadowStep", "stunBash", "arrowRain", "whirlwind"], defaultSkills: ["shadowStep", "arrowRain"],
     build: { str: 3, luc: 3.5, agi: 2.5, con: 1.3, wis: 0.6 },
   },
   spearman: {
-    name: "Копейщик", icon: "🦯", role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
+    name: "Копейщик", icon: glyph("c.spearman"), role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
     skills: ["stunBash", "whirlwind", "arrowRain", "shadowStep"], defaultSkills: ["whirlwind", "stunBash"],
     build: { str: 4, agi: 2.2, con: 2.2, luc: 1.2, wis: 0.8 },
   },
   battlemage: {
-    name: "Боевой маг", icon: "🔨", role: "Гибрид: молот + магия", weapons: "молот (2 руки)", main: "hammer",
+    name: "Боевой маг", icon: glyph("c.battlemage"), role: "Гибрид: молот + магия", weapons: "молот (2 руки)", main: "hammer",
     skills: ["crush", "seal", "whirlwind", "chain"], defaultSkills: ["crush", "chain"],
     build: { str: 2.6, int: 2.6, con: 2.4, wis: 1.2, luc: 0.5 },
   },
@@ -361,7 +362,7 @@ export interface SkillDef {
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
-    name: "Оглушающий удар", icon: "💫", desc: "Удар по кругу: оглушает всех рядом на 3 с",
+    name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с",
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 0.6, hits: 1,
     variants: {
       assassin: { name: "Подлый удар", desc: "Одна цель рядом: оглушение 3 с и гарантированный крит ×2" },
@@ -369,7 +370,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   arrowRain: {
-    name: "Град стрел", icon: "🌧️", desc: "Круг вдалеке: 5 залпов за 3 с, мобы в нём пригвождены",
+    name: "Град стрел", icon: glyph("s.arrowRain"), desc: "Круг вдалеке: 5 залпов за 3 с, мобы в нём пригвождены",
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
@@ -378,11 +379,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   massHeal: {
-    name: "Аура исцеления", icon: "💚", desc: "Сразу: аура вокруг героя на 6 с, ходит за ним и понемногу лечит всех союзников в ней",
+    name: "Аура исцеления", icon: glyph("s.massHeal"), desc: "Сразу: аура вокруг героя на 6 с, ходит за ним и понемногу лечит всех союзников в ней",
     cooldown: 14, castTime: 0, radius: 8, dmgMult: 0, hits: 1,
   },
   shadowStep: {
-    name: "Теневой рывок", icon: "🌑", desc: "Рывок сквозь мобов за спину цели; следующий удар — гарантированный крит",
+    name: "Теневой рывок", icon: glyph("s.shadowStep"), desc: "Рывок сквозь мобов за спину цели; следующий удар — гарантированный крит",
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
@@ -390,14 +391,14 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   crush: {
-    name: "Сокрушение", icon: "💥", desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
+    name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
       battlemage: { name: "Сокрушение бури", desc: "Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с; лечит тебя на 30% здоровья, союзников рядом — на 15%" },
     },
   },
   seal: {
-    name: "Печать света", icon: "🔯", desc: "Круг на 6 с: союзникам лечение и щит −20% урона, врагам замедление 40%",
+    name: "Печать света", icon: glyph("s.seal"), desc: "Круг на 6 с: союзникам лечение и щит −20% урона, врагам замедление 40%",
     cooldown: 18, castTime: 0.4, radius: 5, dmgMult: 0, hits: 1,
     variants: {
       warrior: { name: "Печать стража", desc: "Круг на 6 с: союзникам −40% урона, мобы в круге бросаются на воина" },
@@ -405,7 +406,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   whirlwind: {
-    name: "Вихрь", icon: "🌀", desc: "2 с вращаешься с мечом: 5 ударов по всем вокруг, входящий урон −30%",
+    name: "Вихрь", icon: glyph("s.whirlwind"), desc: "2 с вращаешься с мечом: 5 ударов по всем вокруг, входящий урон −30%",
     cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.7, hits: 5,
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
@@ -414,21 +415,21 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   warcry: {
-    name: "Боевой клич", icon: "📯", desc: "Союзникам в 12 м на 8 с +25% урона и +15% темпа; мобы рядом бросаются на тебя",
+    name: "Боевой клич", icon: glyph("s.warcry"), desc: "Союзникам в 12 м на 8 с +25% урона и +15% темпа; мобы рядом бросаются на тебя",
     cooldown: 22, castTime: 0.3, radius: 12, dmgMult: 0, hits: 1,
     variants: {
       support: { name: "Благословение", desc: "Союзникам в 12 м на 10 с: +25% урона, +15% темпа атак и −15% входящего урона" },
     },
   },
   mark: {
-    name: "Метка", icon: "🎯", desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен",
+    name: "Метка", icon: glyph("s.mark"), desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Метка охотника", desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен" },
     },
   },
   chain: {
-    name: "Цепная молния", icon: "⚡", desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
+    name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
       archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2.5 по первой цели, затем 2 слабых скачка" },

@@ -1,3 +1,5 @@
+import { skillIcon, type IconKey } from "#shared/icons";
+import { iconHtml } from "../ui/icons";
 import { LOOK } from "#shared/constants";
 import { emptyInput, type InputSource, type InputState } from "./InputSource";
 
@@ -101,17 +103,18 @@ export class TouchInput implements InputSource {
     this.knob = el("div", "touch-knob");
     stick.appendChild(this.knob);
 
-    const btnAttack = el("div", "touch-btn touch-attack", "🗡️");
-    const btnInteract = el("div", "touch-btn touch-interact", "✋");
-    const btnFire = el("div", "touch-btn touch-fire", "➤");
+    // Значки кнопок — из общего реестра (shared/icons.ts).
+    const btnAttack = iconBtn("touch-btn touch-attack", "w.sword");
+    const btnInteract = iconBtn("touch-btn touch-interact", "ui.grab");
+    const btnFire = iconBtn("touch-btn touch-fire", "ui.fire");
     btnFire.style.display = "none"; // видна только в прицеле
     this.fireFill = el("div", "touch-fire-fill");
     btnFire.appendChild(this.fireFill);
-    const btnAbility = el("div", "touch-btn touch-ability", "✦");
+    const btnAbility = iconBtn("touch-btn touch-ability", "ui.noSkill");
     this.abilityCd = el("div", "touch-ability-cd");
     btnAbility.appendChild(this.abilityCd);
     this.btnAbility = btnAbility;
-    const btnAbility2 = el("div", "touch-btn touch-ability touch-ability2", "✦");
+    const btnAbility2 = iconBtn("touch-btn touch-ability touch-ability2", "ui.noSkill");
     this.ability2Cd = el("div", "touch-ability-cd");
     btnAbility2.appendChild(this.ability2Cd);
     this.btnAbility2 = btnAbility2;
@@ -298,9 +301,10 @@ export class TouchInput implements InputSource {
       return;
     }
     btn.style.display = "";
+    // icon — id умения: значок из общего реестра (shared/icons.ts), как на ПК и в VR.
     if (icon && btn.dataset.icon !== icon) {
       btn.dataset.icon = icon;
-      btn.firstChild!.textContent = icon;
+      (btn.firstChild as HTMLElement).innerHTML = iconHtml(skillIcon(icon));
     }
     const k = Math.max(0, Math.min(1, frac));
     cd.style.transform = `scaleY(${k})`;
@@ -366,6 +370,16 @@ export class TouchInput implements InputSource {
   dispose(): void {
     this.root.remove();
   }
+}
+
+/** Кнопка со значком из реестра: первый ребёнок — <span> со значком (его меняет setSkillCd). */
+function iconBtn(className: string, k: IconKey): HTMLDivElement {
+  const d = el("div", className);
+  const ico = document.createElement("span");
+  ico.className = "touch-ico";
+  ico.innerHTML = iconHtml(k);
+  d.appendChild(ico);
+  return d;
 }
 
 function el(tag: string, className: string, text = ""): HTMLDivElement {

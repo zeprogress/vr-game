@@ -1,6 +1,10 @@
 import { attrEffect } from "#shared/classes2";
 import { PLAYER_HP, BOT } from "#shared/constants";
 import type { LootItem } from "#shared/net/messages";
+import { itemIcon } from "#shared/icons";
+import { AEGIS_NAME } from "#shared/items";
+import { TIER_LOOK } from "#shared/look";
+import { iconHtml } from "./icons";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
 import { InventoryPanel, type Equipped } from "./InventoryPanel";
@@ -114,9 +118,8 @@ export class Hud {
       ".hud-banner .bn-loot{margin-top:16px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}" +
       ".hud-banner .bn-loot-item{position:relative;width:clamp(48px,7vw,74px);height:clamp(48px,7vw,74px);" +
       "border-radius:12px;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.25);" +
-      "display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.5)}" +
-      ".hud-banner .bn-loot-item img{width:72%;height:72%;object-fit:contain}" +
-      ".hud-banner .bn-loot-tint{width:60%;height:60%;border-radius:6px}" +
+      "display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,0.5);" +
+      "font-size:clamp(30px,4.4vw,46px);color:#e6e0d0}" +
       ".hud-banner .bn-loot-cnt{position:absolute;right:3px;bottom:1px;font:800 13px system-ui,sans-serif;" +
       "color:#fff;text-shadow:0 1px 3px #000,0 0 3px #000}";
     document.head.appendChild(bst);
@@ -153,7 +156,7 @@ export class Hud {
   /** Телефон: ☰ открывает ПК-меню, мешок — окно снаряжения (ставит Game до enableTouchMenu). */
   touchMenuHook: (() => void) | null = null;
   touchBagHook: (() => void) | null = null;
-  touchBagIcon = "🎒";
+  touchBagIcon = iconHtml("ui.sack");
   /** Телефон с мини-картой в углу: верхние кнопки сдвинуть левее на столько px. */
   topBtnShift = 0;
 
@@ -568,11 +571,11 @@ export class Hud {
     const items = loot
       .map((l) => {
         const def = ITEMS[l.id];
-        const pic = def.icon
-          ? `<img src="/icons/${def.icon}" alt="${def.name}" draggable="false"/>`
-          : `<div class="bn-loot-tint" style="background:rgb(${def.tint.map((v) => Math.round(v * 255)).join(",")})"></div>`;
+        // Значок — из общего реестра (shared/icons.ts), цвет — тир предмета (shared/look.ts).
+        const tier = def.weapon?.tier;
+        const pic = iconHtml(itemIcon(l.id, l.aegis), tier ? TIER_LOOK[tier].color : undefined);
         const cnt = l.count > 1 ? `<span class="bn-loot-cnt">×${l.count}</span>` : "";
-        return `<div class="bn-loot-item" title="${def.name}">${pic}${cnt}</div>`;
+        return `<div class="bn-loot-item" title="${l.aegis ? AEGIS_NAME : def.name}">${pic}${cnt}</div>`;
       })
       .join("");
     return `<div class="bn-loot">${items}</div>`;
@@ -941,7 +944,7 @@ const POTION_BTN_CSS =
 
 /** Рисунок красной круглой бутылочки внутри кнопки + бейдж с числом. */
 const POTION_ICON =
-  `<img src="/icons/potion.png" alt="" draggable="false" style="width:44px;height:44px;object-fit:contain;pointer-events:none">` +
+  `<span style="font-size:37px;line-height:0">${iconHtml("i.potion")}</span>` +
   `<span class="pot-n" style="position:absolute;right:-2px;top:-2px;min-width:18px;height:18px;` +
   `padding:0 3px;border-radius:9px;background:#a51f26;color:#fff;font:700 12px/18px system-ui;` +
   `text-align:center;border:1px solid #fff"></span>`;

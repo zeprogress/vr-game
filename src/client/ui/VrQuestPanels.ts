@@ -1,3 +1,6 @@
+import { glyph } from "#shared/icons";
+import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import type { WeaponTier } from "#shared/items";
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
 import { qualityStars } from "#shared/items";
@@ -156,7 +159,7 @@ export function drawShop(ui: PanelUi, d: ShopData | null, buy: (id: string) => v
     ui.rect(PAD, y, w, 116, VR_UI.card, 14);
     ui.text(it.name, PAD + 20, y + 16, 32, VR_UI.title, 700);
     ui.text(it.desc, PAD + 20, y + 62, 26, VR_UI.sub);
-    const label = it.fishCost ? `${it.fishCost}🐟→1◈` : `${it.price} ◈`;
+    const label = it.fishCost ? `${it.fishCost}${glyph("i.fish")}→1${glyph("i.token")}` : `${it.price} ${glyph("i.token")}`;
     const can = it.fishCost ? (d.fish ?? 0) >= it.fishCost : d.tokens >= it.price;
     ui.button(`buy:${it.id}`, label, PAD + w - 220, y + 30, 200, 56, () => buy(it.id), true, can);
     y += 130;
@@ -213,14 +216,13 @@ export function drawEnchant(
     ui.text(d ? "Предмет не найден на складе" : "Загрузка…", PAD, 120, 30, VR_UI.dim);
     return;
   }
-  const tierColor = w.tier === "legendary" ? VR_UI.purple : w.tier === "gold" ? "#f5c542" : VR_UI.text;
+  const tierColor = TIER_LOOK[w.tier as WeaponTier]?.color ?? VR_UI.text;
   let x = ui.text(w.name, PAD, 110, 36, tierColor, 800);
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
     ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
-  x = ui.text("качество ", PAD, 162, 26, VR_UI.sub);
-  ui.text(qualityStars(w.quality, w.ench.length), PAD + x, 154, 40, "#ffcf5a", 800);
+  ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
   let y = 224;
   const bw = ui.W - PAD * 2;
   w.ench.forEach((a, i) => {

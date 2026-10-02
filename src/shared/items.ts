@@ -105,10 +105,13 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
  * типа превращается в обычный ролл на максимуме, имя остаётся на экземпляре
  * (WeaponInstance.nm). Используется только разовой миграцией migrateLoot.
  */
+/** Имя Эгиды — уникального щита с «Оплотом» (по нему её узнают все платформы). */
+export const AEGIS_NAME = "Эгида";
+
 const LEGACY_LEGENDARY: Partial<Record<WeaponClass, { name: string; affix: WeaponAffix }>> = {
   sword: { name: "Меч вампира", affix: "vamp" },
   bow: { name: "Лук охотника", affix: "crit" },
-  shield: { name: "Эгида", affix: "guard" },
+  shield: { name: AEGIS_NAME, affix: "guard" },
   staff: { name: "Посох бури", affix: "storm" },
   dagger: { name: "Жало тени", affix: "crit" },
   spear: { name: "Копьё крови", affix: "vamp" },
@@ -170,8 +173,6 @@ export interface ItemDef {
   heal: number;
   /** Цвет в мире и в сетке [r,g,b]. */
   tint: readonly [number, number, number];
-  /** Файл иконки в `public/icons/` (без пути). Пусто — рисуем цветной квадрат. */
-  icon: string;
   /**
    * Задан — это оружие, лежащее в мире. Такой предмет НЕ падает в сумку:
    * его берут рукой.
@@ -193,26 +194,22 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 40,
     healFrac: 0.5,
     tint: [0.9, 0.2, 0.35],
-    icon: "potion.png",
   },
-  gold_sword: weaponItem("sword", "gold", "Золото", "gold_sword.png"),
-  gold_bow: weaponItem("bow", "gold", "Зол. лук", "gold_bow.png"),
-  gold_staff: weaponItem("staff", "gold", "Зол. посох", "gold_staff.png"),
-  // Иконка "" — рендерится цветным квадратом тира (см. Hud.lootRowHtml,
-  // InventoryPanel.iconEl, Overlay), а не картинкой: раньше тут стояли те же
-  // PNG, что и у золотого оружия, и баннер дропа с элиты показывал иконку
-  // золотого меча, хотя на самом деле выпало уникальное — не отличить на глаз.
-  leg_sword: weaponItem("sword", "legendary", "Уник. меч", ""),
-  leg_bow: weaponItem("bow", "legendary", "Уник. лук", ""),
-  leg_shield: weaponItem("shield", "legendary", "Уник. щит", ""),
-  gold_shield: weaponItem("shield", "gold", "Зол. щит", ""),
-  leg_staff: weaponItem("staff", "legendary", "Уник. посох", ""),
-  gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал", ""),
-  gold_spear: weaponItem("spear", "gold", "Зол. копьё", ""),
-  gold_hammer: weaponItem("hammer", "gold", "Зол. молот", ""),
-  leg_dagger: weaponItem("dagger", "legendary", "Уник. кинжал", ""),
-  leg_spear: weaponItem("spear", "legendary", "Уник. копьё", ""),
-  leg_hammer: weaponItem("hammer", "legendary", "Уник. молот", ""),
+  gold_sword: weaponItem("sword", "gold", "Золото"),
+  gold_bow: weaponItem("bow", "gold", "Зол. лук"),
+  gold_staff: weaponItem("staff", "gold", "Зол. посох"),
+  // Значки предметов — в shared/icons.ts (itemIcon), цвет тира — shared/look.ts.
+  leg_sword: weaponItem("sword", "legendary", "Уник. меч"),
+  leg_bow: weaponItem("bow", "legendary", "Уник. лук"),
+  leg_shield: weaponItem("shield", "legendary", "Уник. щит"),
+  gold_shield: weaponItem("shield", "gold", "Зол. щит"),
+  leg_staff: weaponItem("staff", "legendary", "Уник. посох"),
+  gold_dagger: weaponItem("dagger", "gold", "Зол. кинжал"),
+  gold_spear: weaponItem("spear", "gold", "Зол. копьё"),
+  gold_hammer: weaponItem("hammer", "gold", "Зол. молот"),
+  leg_dagger: weaponItem("dagger", "legendary", "Уник. кинжал"),
+  leg_spear: weaponItem("spear", "legendary", "Уник. копьё"),
+  leg_hammer: weaponItem("hammer", "legendary", "Уник. молот"),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -221,7 +218,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.5, 0.45],
-    icon: "",
   },
   scroll_xp: {
     name: "Свиток мудрости",
@@ -231,7 +227,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.75, 1],
-    icon: "",
   },
   scroll_wind: {
     name: "Свиток ветра",
@@ -241,7 +236,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.6, 1, 0.8],
-    icon: "",
   },
   fish: {
     name: "Рыба",
@@ -251,7 +245,6 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.5, 0.65, 0.75],
-    icon: "",
   },
 };
 
@@ -259,7 +252,6 @@ function weaponItem(
   cls: WeaponClass,
   tier: WeaponTier,
   short: string,
-  icon: string,
 ): ItemDef {
   const d = weaponDef(cls, tier);
   return {
@@ -281,7 +273,6 @@ function weaponItem(
     heal: 0,
     healFrac: 0,
     tint: d.tint,
-    icon,
     weapon: { cls, tier },
   };
 }

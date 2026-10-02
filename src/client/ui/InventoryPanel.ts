@@ -1,5 +1,8 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
-import { bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { aegisTier, bothHandsNote, qualityStars, weaponDef } from "#shared/items";
+import { itemIcon, weaponIcon } from "#shared/icons";
+import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import { iconHtml } from "./icons";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
 import type { WarehouseWeapon } from "#shared/net/messages";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
@@ -16,15 +19,6 @@ export interface Equipped {
   arrow?: boolean;
   /** Класс оружия, занявшего обе руки (лук/копьё/молот) — правая рука помечена «занята». */
   bothBy?: string;
-}
-
-/** Иконка оружия — по классу и тиру (у базового тира картинки нет). */
-function weaponIcon(cls: WeaponClass, tier: WeaponTier): string {
-  if (tier !== "gold") return "";
-  if (cls === "sword") return "gold_sword.png";
-  if (cls === "bow") return "gold_bow.png";
-  if (cls === "staff") return "gold_staff.png";
-  return "";
 }
 
 function el(tag: string, css: string): HTMLElement {
@@ -109,17 +103,17 @@ export class InventoryPanel {
       wrap.appendChild(e);
       return wrap;
     }
-    const tierColor: Record<WeaponTier, string> = { base: "#c9d2e6", gold: "#ffd166", legendary: "#c77dff" };
     for (const w of this.warehouse) {
+      const tierColor = TIER_LOOK[w.tier].color;
       const d = weaponDef(w.cls, w.tier);
       const row = el(
         "div",
-        `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor[w.tier]};`,
+        `padding:5px 8px;margin-bottom:4px;border-radius:6px;background:#191d29;border-left:3px solid ${tierColor};`,
       );
-      const name = el("div", `font-size:13px;font-weight:600;color:${tierColor[w.tier]};`);
+      const name = el("div", `font-size:13px;font-weight:600;color:${tierColor};`);
       name.textContent = w.name ?? d.name;
       if (w.quality) {
-        const q = el("span", "color:#f2c74b;margin-left:6px;font-weight:600;");
+        const q = el("span", `color:${QUALITY_COLOR};margin-left:6px;font-weight:600;`);
         q.textContent = qualityStars(w.quality, w.affixes.length);
         name.appendChild(q);
       }
@@ -240,26 +234,12 @@ export class InventoryPanel {
     return wrap;
   }
 
+  /** Значок оружия из общего реестра (shared/icons.ts), цвет — тир, размер — по ячейке. */
   private weaponIconEl(w: WornWeapon, size: number): HTMLElement {
-    const icon = weaponIcon(w.cls, w.tier);
-    if (icon) return this.img(icon, size, weaponDef(w.cls, w.tier).name);
-    const d = weaponDef(w.cls, w.tier);
-    const c = d.tint.map((v) => Math.round(v * 255)).join(",");
-    return el(
-      "div",
-      `width:56%;height:56%;border-radius:5px;background:rgb(${c});` +
-        "box-shadow:0 1px 4px #000a;pointer-events:none;",
-    );
-  }
-
-  private img(file: string, size: number, alt: string): HTMLElement {
-    const img = document.createElement("img");
-    img.src = `/icons/${file}`;
-    img.alt = alt;
-    img.draggable = false;
-    const s = Math.round(size * 0.78);
-    img.style.cssText = `width:${s}px;height:${s}px;object-fit:contain;pointer-events:none;`;
-    return img;
+    const aegis = aegisTier(w.cls, w.tier, w.affix) === "aegis";
+    const box = el("span", `font-size:${Math.round(size * 0.5)}px;line-height:0;pointer-events:none;`);
+    box.innerHTML = iconHtml(weaponIcon(w.cls, aegis), TIER_LOOK[w.tier].color);
+    return box;
   }
 
   private cellBox(size: number, filled: boolean, active: boolean, ghost = false): HTMLElement {
@@ -276,12 +256,9 @@ export class InventoryPanel {
   }
 
   private iconEl(item: ItemId, size: number): HTMLElement {
-    const def = ITEMS[item];
-    if (!def.icon) {
-      const c = def.tint.map((v) => Math.round(v * 255)).join(",");
-      return el("div", `width:60%;height:60%;border-radius:5px;background:rgb(${c});`);
-    }
-    return this.img(def.icon, size, def.name);
+    const box = el("span", `font-size:${Math.round(size * 0.55)}px;line-height:0;pointer-events:none;`);
+    box.innerHTML = iconHtml(itemIcon(item));
+    return box;
   }
 
   // ---- подсказка при наведении ----

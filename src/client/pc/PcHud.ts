@@ -1,4 +1,5 @@
-import { POTION_IMG } from "../ui/potionIcon";
+import { glyph, skillIcon, weaponIcon } from "#shared/icons";
+import { iconHtml } from "../ui/icons";
 import { mmss, type BuffEntry } from "../ui/buffList";
 import { ELITE_MOBS, MOB_CAMPS, WORLD } from "#shared/constants";
 import { HUB_CENTER } from "#shared/hub";
@@ -64,7 +65,6 @@ export interface PcHudHooks {
   onAttrs: () => void;
 }
 
-const ICON: Record<WeaponIcon, string> = { sword: "🗡️", bow: "🏹", staff: "🔥", fist: "✊", dagger: "🔪", spear: "🦯", hammer: "🔨" };
 
 export class PcHud {
   private readonly root: HTMLDivElement;
@@ -111,7 +111,8 @@ export class PcHud {
 
     // --- рамка героя ---
     const unit = div("pc-unit pc-frame");
-    this.portraitEl = div("pc-portrait", "🗡️");
+    this.portraitEl = div("pc-portrait");
+    this.portraitEl.innerHTML = iconHtml("w.fist");
     // Свободные очки атрибутов — зелёный значок с числом на портрете.
     this.unspentEl = div("pc-unspent");
     this.unspentEl.style.display = "none";
@@ -161,15 +162,15 @@ export class PcHud {
     // --- панель действий ---
     const bar = div("pc-actionbar");
     const slots = div("pc-slots");
-    this.slotAtk = slot("1", "🗡️", "Автоатака по цели (1)");
+    this.slotAtk = slot("1", "", "Автоатака по цели (1)", iconHtml("w.fist"));
     for (const k of ["2", "3"]) {
-      const sl = slot(k, "✦", `Умение (${k})`);
+      const sl = slot(k, "", `Умение (${k})`, iconHtml("ui.noSkill"));
       const cd = div("pc-cd");
       sl.append(cd);
       this.slotSkills.push(sl);
       this.skillCds.push(cd);
     }
-    this.slotPotion = slot("4", "", "Зелье лечения (4)", POTION_IMG);
+    this.slotPotion = slot("4", "", "Зелье лечения (4)", iconHtml("i.potion"));
     this.potionCnt = document.createElement("span");
     this.potionCnt.className = "pc-slot-n";
     this.slotPotion.append(this.potionCnt);
@@ -177,7 +178,7 @@ export class PcHud {
       this.slotAtk,
       ...this.slotSkills,
       this.slotPotion,
-      slot("E", "", "Подобрать / рыбачить (E)", GRAB_SVG),
+      slot("E", "", "Подобрать / рыбачить (E)", iconHtml("ui.grab")),
       slot("6", "", ""),
       slot("7", "", ""),
       slot("8", "", ""),
@@ -201,11 +202,11 @@ export class PcHud {
       return b;
     };
     const bag = mb("", "Снаряжение и сумка (C / B)", () => this.hooks.onBag());
-    bag.innerHTML = SACK_SVG;
-    mb("🗺", "Карта (M)", () => this.toggleMap());
-    this.chatBtn = mb("💬", "Журнал и чат (L)", () => this.setChatOn(!this.cfg.on));
-    mb("⛶", "На весь экран (F11 / Ctrl+Enter)", () => toggleFullscreen());
-    mb("⚙", "Меню (Esc)", () => this.hooks.onMenu());
+    bag.innerHTML = iconHtml("ui.sack");
+    mb(glyph("ui.map"), "Карта (M)", () => this.toggleMap());
+    this.chatBtn = mb(glyph("ui.chat"), "Журнал и чат (L)", () => this.setChatOn(!this.cfg.on));
+    mb(glyph("ui.fullscreen"), "На весь экран (F11 / Ctrl+Enter)", () => toggleFullscreen());
+    mb(glyph("ui.menu"), "Меню (Esc)", () => this.hooks.onMenu());
 
     // --- журнал ---
     this.chatEl = div("pc-chat pc-frame");
@@ -267,13 +268,9 @@ export class PcHud {
     if (this.lastSig.id === sig) return;
     this.lastSig.id = sig;
     this.nameEl.textContent = `${nick} · ${level} ур.`;
-    this.portraitEl.textContent = ICON[weapon];
-    const slotIco = this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!;
-    slotIco.textContent = ICON[weapon];
-    // Меч, лук, посох и копьё нарисованы наклоном не в ту сторону — отражаем по горизонтали.
-    const flip = weapon === "sword" || weapon === "bow" || weapon === "staff" || weapon === "spear" ? "scaleX(-1)" : "";
-    this.portraitEl.style.transform = flip;
-    slotIco.style.transform = flip;
+    // Значок оружия — из общего реестра (shared/icons.ts).
+    this.portraitEl.innerHTML = iconHtml(weaponIcon(weapon));
+    this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!.innerHTML = iconHtml(weaponIcon(weapon));
   }
 
   /** Баффы: секунд осталось у баффа события (×2 опыт/урон) и «Тепла костра» (+10% урона). */
@@ -343,8 +340,8 @@ export class PcHud {
     const ico = `${kind ?? ""}|${icon}`;
     if (this.lastSig[`skillKind${slot}`] !== ico) {
       this.lastSig[`skillKind${slot}`] = ico;
-      const svg = kind && kind in SKILL_SVG ? SKILL_SVG[kind as SkillIcon] : null;
-      el.querySelector(".pc-slot-ico")!.innerHTML = svg ?? `<span style="font-size:26px">${icon || "✦"}</span>`;
+      void icon;
+      el.querySelector(".pc-slot-ico")!.innerHTML = iconHtml(skillIcon(kind));
     }
     const sig = `${name}|${Math.ceil(cdLeft)}|${cdFrac > 0 ? 1 : 0}`;
     if (this.lastSig[`skill${slot}`] !== sig) {
@@ -656,51 +653,6 @@ function btn(cls: string, text: string, title: string): HTMLButtonElement {
   b.type = "button";
   return b;
 }
-
-export type SkillIcon = "stunBash" | "arrowRain" | "massHeal";
-
-/** Свои иконки умений (кнопка 2). */
-const SKILL_SVG: Record<SkillIcon, string> = {
-  // Меч, вонзённый в землю, и ударная волна — «Оглушающий удар».
-  stunBash:
-    `<svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="M16 3v15" stroke="#e9ecf2" stroke-width="3"/><path d="M11 8h10" stroke="#c9a05a" stroke-width="2.6"/>` +
-    `<path d="M16 18l-2.2 3h4.4z" fill="#e9ecf2" stroke="#e9ecf2" stroke-width="1.2"/>` +
-    `<path d="M6 23c3 3 17 3 20 0" stroke="#ff7a4a" stroke-width="2.2"/><path d="M2.5 26.5c5 4.5 22 4.5 27 0" stroke="#ff4a3a" stroke-width="1.8" opacity=".8"/>` +
-    `<path d="M9 17l-3-2M23 17l3-2M8 21l-4 0M24 21l4 0" stroke="#ffd166" stroke-width="1.6"/>` +
-    `</svg>`,
-  // Три стрелы падают сверху — «Град стрел».
-  arrowRain:
-    `<svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-    `<g stroke="#dfe9f5" stroke-width="2"><path d="M8 3v17"/><path d="M16 1v21"/><path d="M24 4v16"/></g>` +
-    `<g fill="#9fd0ff" stroke="#9fd0ff" stroke-width="1"><path d="M8 24l-2.6-4.5h5.2z"/><path d="M16 26l-2.6-4.5h5.2z"/><path d="M24 24l-2.6-4.5h5.2z"/></g>` +
-    `<g stroke="#b88a54" stroke-width="1.6"><path d="M6 3l2 2 2-2M14 1l2 2 2-2M22 4l2 2 2-2"/></g>` +
-    `<path d="M4 29h24" stroke="#6f8a5a" stroke-width="2"/>` +
-    `</svg>`,
-  // Зелёный крест в сияющем кольце — «Массовое лечение».
-  massHeal:
-    `<svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-    `<circle cx="16" cy="16" r="12.5" stroke="#5fe08a" stroke-width="1.8" opacity=".75"/>` +
-    `<path d="M16 8v16M8 16h16" stroke="#7dff9e" stroke-width="5"/><path d="M16 8v16M8 16h16" stroke="#eafff0" stroke-width="1.6"/>` +
-    `<path d="M5 6l1.5 1.5M26 5l-1.5 1.5M27 26l-1.5-1.5M5 26l1.5-1.5" stroke="#bfffd0" stroke-width="1.6"/>` +
-    `</svg>`,
-};
-
-/** Мешок (кнопка снаряжения и сумки). */
-export const SACK_SVG =
-  `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
-  `<path d="M9 3.5h6l-1.6 3.2h-2.8z" fill="#c9b28a" stroke="#e8dcc0" stroke-width="1.2"/>` +
-  `<path d="M10.2 6.9c-4.2 1.4-6.7 5.3-6.2 9.3.4 3.1 3 4.8 8 4.8s7.6-1.7 8-4.8c.5-4-2-7.9-6.2-9.3z" fill="#a8855a" stroke="#e8dcc0" stroke-width="1.3"/>` +
-  `<path d="M9.6 7.2c1.6.6 3.2.6 4.8 0" stroke="#5a4028" stroke-width="1.6"/>` +
-  `<path d="M8 13.5c1.3 1 2.6 1.4 4 1.4" stroke="#e8dcc0" stroke-width="1" opacity=".6"/>` +
-  `</svg>`;
-
-/** Белая рука, которая что-то поднимает (иконка E). */
-const GRAB_SVG =
-  `<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">` +
-  `<path d="M8 11v-3.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M11 9.5v-3a1.5 1.5 0 0 1 3 0v3.5"/>` +
-  `<path d="M14 7.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M17 11.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1-6 6h-2h.2a6 6 0 0 1-5-2.7l-.2-.3c-.3-.5-1.4-2.4-3.3-5.7a1.5 1.5 0 0 1 .5-2a1.9 1.9 0 0 1 2.3.3l1.5 1.5"/>` +
-  `</svg>`;
 
 function slot(key: string, icon: string, title: string, svg = ""): HTMLDivElement {
   const s = div("pc-slot");

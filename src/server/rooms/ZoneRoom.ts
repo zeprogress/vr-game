@@ -129,6 +129,7 @@ import {
   BASE_CRIT,
 } from "#shared/combat";
 import {
+  AEGIS_NAME,
   addToBag,
   migrateStaffAffixes,
   migrateLoot,
@@ -2654,7 +2655,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const aegis = Math.random() < DROP_CHANCE.huntAegis;
         const cls = aegis ? "shield" : LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ, aegis);
-        if (dropped) winLoot.push({ id: dropped, count: 1 });
+        if (dropped) winLoot.push({ id: dropped, count: 1, ...(aegis ? { aegis: true } : {}) });
       } else if (Math.random() < EVENT.invasion.rewardLegendaryChance) {
         const cls = LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
@@ -7459,9 +7460,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (bossKiller) topOwner = bossKiller;
       if (topOwner) this.broadcast(MSG.killFeed, { by: topOwner, victim: "Багровый" });
       const loot = this.sim.bossLoot
-        .map((l) => (l.count > 1 ? `${l.count}× ${ITEMS[l.id].short}` : ITEMS[l.id].name))
+        .map((l) => (l.aegis ? AEGIS_NAME : l.count > 1 ? `${l.count}× ${ITEMS[l.id].short}` : ITEMS[l.id].name))
         .join(" · ");
-      const lootItems: LootItem[] = this.sim.bossLoot.map((l) => ({ id: l.id, count: l.count }));
+      const lootItems: LootItem[] = this.sim.bossLoot.map((l) => ({ id: l.id, count: l.count, ...(l.aegis ? { aegis: true } : {}) }));
       this.sim.bossLoot.length = 0;
       this.broadcast(MSG.bossEvent, {
         kind: "down", by: topOwner, loot: loot || undefined,

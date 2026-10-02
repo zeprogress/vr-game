@@ -1,3 +1,5 @@
+import { glyph } from "#shared/icons";
+import { ensureIconCss } from "../ui/icons";
 import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, SKILLS2, skillName, stepCost, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
@@ -6,6 +8,9 @@ import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
 import { bothHandsCls, bothHandsNote, qualityStars } from "#shared/items";
 import { respecCostFor } from "#shared/constants";
+
+// Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
+ensureIconCss();
 
 interface InvWeapon {
   num: number;
@@ -500,7 +505,7 @@ function renderModal(): void {
     `<div class="etitle">⚒ Заточка — <span class="ename">${escapeHtml(it.name)}</span></div>` +
     `<div class="ehave">Лом: <b>${have}</b></div>` +
     `<div class="erows">${rows}</div>` +
-    `<div class="eanvil"><div class="ehammer">🔨</div></div>` +
+    `<div class="eanvil"><div class="ehammer">${glyph("ui.forge")}</div></div>` +
     `<div class="ebanner"></div>` +
     `<div class="enote">Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
 }

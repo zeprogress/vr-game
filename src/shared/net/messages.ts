@@ -327,6 +327,8 @@ export interface PickupFeedMsg {
 export interface LootItem {
   id: ItemId;
   count: number;
+  /** Уникальный щит — это Эгида (свой значок). */
+  aegis?: boolean;
 }
 
 /** Динамическое событие мира — для баннера. */

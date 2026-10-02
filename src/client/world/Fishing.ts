@@ -1,3 +1,4 @@
+import { glyph } from "#shared/icons";
 import type { Scene } from "@babylonjs/core/scene";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -217,7 +218,7 @@ export function createFishing(
     zoneEl.style.left = `${(zoneC - ZONE_W / 2) * 100}%`;
     zoneEl.style.width = `${ZONE_W * 100}%`;
     markEl.style.left = `${markPos() * 100}%`;
-    const key = platform() === "touch" ? "🗡️ или тап по полоске" : "E";
+    const key = platform() === "touch" ? `${glyph("w.sword")} или тап по полоске` : "E";
     miniLabel.textContent = `Клюёт! Подсекай — ${key}, когда метка в зелёном (${hits}/${HITS_NEED})`;
   };
 

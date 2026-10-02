@@ -1,3 +1,4 @@
+import { glyph } from "#shared/icons";
 import type { QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 
 /**
@@ -483,7 +484,7 @@ export class ShopWindow {
       const row = el("div", "qw-row");
       const txt = el("div", "");
       txt.append(el("div", "qw-name", it.name), el("div", "qw-reward", it.desc));
-      const bt = el("button", "qw-btn main", it.fishCost ? `${it.fishCost} 🐟 → 1 ◈` : `${it.price} ◈`);
+      const bt = el("button", "qw-btn main", it.fishCost ? `${it.fishCost} ${glyph("i.fish")} → 1 ${glyph("i.token")}` : `${it.price} ${glyph("i.token")}`);
       bt.disabled = !d.near || (it.fishCost ? (d.fish ?? 0) < it.fishCost : d.tokens < it.price);
       bt.onclick = () => this.hooks.buy(it.id);
       row.append(txt, bt);
