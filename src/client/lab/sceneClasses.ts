@@ -566,18 +566,11 @@ export async function build(ctx: LabCtx): Promise<void> {
       case "shadowStep": {
         heroBusy = playHero("roll", false, 1.6);
         forceCrit = true;
-        if (cls === "archer") {
+        if (cls === "archer" || cls === "spearman") {
           hero.position.z -= 7;
           returnT = 1.2;
         } else if (t) {
           const dir = t.node.position.subtract(hpos).normalize();
-          if (cls === "spearman") {
-            for (const m of mobs) {
-              const v = m.node.position.subtract(hpos);
-              const along = Vector3.Dot(v, dir);
-              if (along > 0 && along < 8 && v.subtract(dir.scale(along)).length() < 1.2 + m.radius) deal(m, 1.5 * s.hit, "phys", false, false, "#9fd0ff");
-            }
-          }
           hero.position.copyFrom(t.node.position.add(dir.scale(t.radius + 1.2)));
           hero.position.y = 0;
           returnT = 1.5;

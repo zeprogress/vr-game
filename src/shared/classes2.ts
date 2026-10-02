@@ -320,7 +320,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
   spearman: {
     name: "Копейщик", icon: "🦯", role: "Длинный выпад конусом", weapons: "копьё (2 руки)", main: "spear",
-    skills: ["stunBash", "whirlwind", "arrowRain", "mark"], defaultSkills: ["whirlwind", "stunBash"],
+    skills: ["stunBash", "whirlwind", "arrowRain", "shadowStep"], defaultSkills: ["whirlwind", "stunBash"],
     build: { str: 4, agi: 2.2, con: 2.2, luc: 1.2, wis: 0.8 },
   },
   battlemage: {
@@ -386,6 +386,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
+      spearman: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий удар — крит" },
     },
   },
   crush: {
@@ -424,7 +425,6 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Метка охотника", desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен" },
-      spearman: { name: "Пронзающая метка", desc: "Цель 8 с получает +30% урона и замедлена на 30%; умерла — откат сброшен" },
     },
   },
   chain: {
@@ -435,6 +435,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
 };
+
+/** Классы, у которых «Теневой рывок» — отскок назад с дымовой ловушкой (лучник, копейщик). */
+export function hopsBack(cls: ClassId | null): boolean {
+  return cls === "archer" || cls === "spearman";
+}
 
 /** Копейщик и боевой маг — умения откатываются быстрее остальных классов. */
 export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65 };

@@ -196,7 +196,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASS_CD_MUL, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, classOf2, CLASS_CD_MUL, hopsBack, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -6286,7 +6286,7 @@ export class ZoneRoom extends Room<ZoneState> {
         tx = spot.x;
         tz = spot.z;
       }
-      if (k === "shadowStep" && (cls === "archer" ? nd > 4 : nd < 3)) continue;
+      if (k === "shadowStep" && (hopsBack(cls) ? nd > 4 : nd < 3)) continue;
       if (k === "crush" && nd > 8) continue;
       if (k === "seal" && nd > 6) continue;
       if (k === "whirlwind" && this.mobsInRadius(p, cls === "spearman" ? 6 : 3.5).length < 1) continue;
@@ -6431,7 +6431,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const def = CLASSES2[cls];
     const saved = rt.token ? store.get(rt.token)?.skills?.[cls] : undefined;
     const pick = (saved ?? []).filter((k): k is SkillId => def.skills.includes(k as SkillId));
-    const use = pick.length > 0 ? pick : def.defaultSkills;
+    const use: SkillId[] = pick.length > 0 ? [...pick] : [...def.defaultSkills];
+    // Умение могло уйти из класса (копьё: «Метка» → «Отскок») — добираем недостающее из умолчаний.
+    for (const k of def.defaultSkills) if (use.length < 2 && !use.includes(k)) use.push(k);
     p.skill1 = use[0] ?? "";
     p.skill2 = use[1] ?? "";
   }
@@ -6605,7 +6607,7 @@ export class ZoneRoom extends Room<ZoneState> {
         return true;
       }
       case "shadowStep": {
-        const archer = cls === "archer";
+        const archer = hopsBack(cls);
         const [fx, fz] = fwd();
         let ex: number;
         let ez: number;
