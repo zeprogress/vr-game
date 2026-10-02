@@ -104,8 +104,9 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   // tint — запасной цвет (модели пака несут свой), плюс цвет золотой перекраски.
   "sword:base": { cls: "sword", tier: "base", name: weaponName("sword", "base"), mult: 1, tint: [0.55, 0.57, 0.62] },
   "sword:gold": { cls: "sword", tier: "gold", name: weaponName("sword", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
-  "bow:base": { cls: "bow", tier: "base", name: weaponName("bow", "base"), mult: 1, tint: [0.42, 0.28, 0.16] },
-  "bow:gold": { cls: "bow", tier: "gold", name: weaponName("bow", "gold"), mult: 3, tint: [1, 0.84, 0.26] },
+  // Луки ниже уникального сильнее (2026-10-02: 1 / 3 — уникальный был на +44% выше золотого, у прочих +10–15%).
+  "bow:base": { cls: "bow", tier: "base", name: weaponName("bow", "base"), mult: 1.2, tint: [0.42, 0.28, 0.16] },
+  "bow:gold": { cls: "bow", tier: "gold", name: weaponName("bow", "gold"), mult: 3.6, tint: [1, 0.84, 0.26] },
   "shield:base": { cls: "shield", tier: "base", name: weaponName("shield", "base"), mult: 1, tint: [0.62, 0.64, 0.7] },
   "shield:gold": { cls: "shield", tier: "gold", name: weaponName("shield", "gold"), mult: 1, tint: [1, 0.84, 0.26] },
   // Посох бьёт слабо — это фокус для магии, а не оружие ближнего боя.
@@ -521,7 +522,7 @@ function rangeFor(sub: AffixSub, aegis: boolean): readonly [number, number] {
   return (aegis && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
 }
 /** Сила крита у ролла Крит: растёт вместе с шансом, от +0.3 (5%) до +1 (15%). */
-const CRIT_ROLL_MULT = [0.3, 1.0] as const;
+const CRIT_ROLL_MULT = [0.15, 0.5] as const; // 2026-10-02: было +0.3..+1 — ролл Крит был в 2–3 раза сильнее Урона (лаборатория баланса)
 /** Потолок силы крита до 2026-10-01 — для пересчёта уже выпавших роллов. */
 const OLD_CRIT_MULT_HI = 0.8;
 

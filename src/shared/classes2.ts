@@ -161,9 +161,10 @@ export function castTempo2(level: number, a: AttrsIn): number {
 }
 
 /** Шанс уворота: УДЧ; один предмет в руках (пустая вторая / лук / посох / двуручник) — больше. */
-export function dodge2(a: AttrsIn, oneItem: boolean): number {
+/** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
+export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
-  return Math.min(L.dodgeCap, inv(a.luc) * L.dodge * (oneItem ? L.dodgeOneItem : 1));
+  return Math.min(L.dodgeCap, inv(a.luc) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
@@ -208,15 +209,17 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     name: WEAPON_NOUN.shield.name, dmg: 0, interval: 1, tempoSoft: 1, reach: 0, pierce: 0,
     critBase: 0, critMult: 1, twoHanded: false, dmgType: "phys", tiers: [1, 1, 1],
   },
-  // Кинжал: темп как у меча (быстрее было «пропеллером»), удар чуть слабее; крит выше и больнее. Два кинжала —
+  // Кинжал: темп как у меча (быстрее было «пропеллером»); крит выше и больнее. Два кинжала —
   // руки бьют по очереди (DAGGER.dual), один — свободная рука даёт уворот.
+  // dmg 0.86 → 1.15 (2026-10-02: ассасин был слабейшим и по DPS, и по живучести — лаборатория баланса).
   dagger: {
-    name: WEAPON_NOUN.dagger.name, dmg: 0.86, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
+    name: WEAPON_NOUN.dagger.name, dmg: 1.15, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
     critBase: 0.12, critMult: 2, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
+  // dmg 2.1 → 1.45 (2026-10-02: удары больше не пропадают в «окне» моба — копьё стало вдвое сильнее медианы).
   spear: {
-    name: WEAPON_NOUN.spear.name, dmg: 2.1, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
+    name: WEAPON_NOUN.spear.name, dmg: 1.45, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
@@ -227,7 +230,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
     name: WEAPON_NOUN.bow.name, dmg: 1.75, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1,
-    critBase: 0.15, critMult: 2.5, twoHanded: true, dmgType: "phys", tiers: [1, 3, 4.1],
+    critBase: 0.15, critMult: 2.5, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
   staff: {
@@ -253,6 +256,8 @@ export const DAGGER = {
   /** Один кинжал + пустая рука: прибавка к шансу и силе крита. */
   soloCrit: 0.08,
   soloCritDmg: 0.5,
+  /** Врождённый уворот ассасина: кинжал в руке (один или два) — +10% к шансу уворота (2026-10-02). */
+  dodge: 0.1,
 } as const;
 
 export const HAMMER = {
@@ -631,7 +636,7 @@ export function summarize2(h: Hero2): Summary2 {
     hp: maxHp2(h.level, a),
     armor: physArmor2(a),
     resist: magicResist2(a),
-    dodge: dodge2(a, oneItem),
+    dodge: dodge2(a, oneItem, h.cls === "assassin"),
     move: moveSpeed2(h.level, a),
     hit,
     rate,

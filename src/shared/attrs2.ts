@@ -14,10 +14,10 @@ export const ATTR2 = {
   costStep: 10,
 
   str: { physDmg: 0.024 }, // +2.4% физ. урона за очко
-  agi: { move: 0.008, atkSpeed: 0.012 }, // +0.8% бега, +1.2% темпа физ. атак
+  agi: { move: 0.01, atkSpeed: 0.015 }, // +1% бега, +1.5% темпа физ. атак (2026-10-02: было 0.8% / 1.2%)
   int: { magic: 0.026 }, // +2.6% урона магией и лечения
   con: { hp: 0.04, armorMax: 0.6, armorK: 60, regen: 0.0002 }, // +4% HP; броня = max·n/(n+K); +0.02% макс. HP в секунду (и в бою)
-  luc: { crit: 0.004, critDmg: 0.01, dodge: 0.004, dodgeOneItem: 3, dodgeCap: 0.5 },
+  luc: { crit: 0.005, critDmg: 0.0125, dodge: 0.005, dodgeOneItem: 3, dodgeCap: 0.5 }, // 2026-10-02: было 0.4% / 0.01 / 0.4%
   wis: { resistMax: 0.7, resistK: 45, cast: 0.009 }, // магзащита = max·n/(n+K); +0.9% скорости каста
 } as const;
 

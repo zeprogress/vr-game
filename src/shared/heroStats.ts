@@ -137,7 +137,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   // меча) — обычный шанс; лук/посох занимают обе руки — вдвое подвижнее (×5
   // в формуле dodgeChance).
   const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
-  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded) * 100)}%` });
+  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") * 100)}%` });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
   const critVals = [...affixVals(weaponAffix, "Крит"), ...affixVals(otherAffix, "Крит")];

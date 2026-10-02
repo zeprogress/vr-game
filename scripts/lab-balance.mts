@@ -9,7 +9,7 @@
  *
  *   npm run lab:balance                      — всё (≈ несколько минут)
  *   npm run lab:balance -- --quick           — короче бои, меньше вариантов
- *   npm run lab:balance -- --only dps,camp   — выбрать опыты: dps, skills, attrs, affix, tier, group, camp, def, nav
+ *   npm run lab:balance -- --only dps,camp   — выбрать опыты: dps, skills, attrs, affix, tier, group, camp, def, nav, combo
  *   npm run lab:balance -- --lvl 33          — уровень героя для DPS-опытов (по умолчанию 33)
  *   npm run lab:balance -- --json out.json   — сырые результаты в файл
  *   npm run lab:balance -- --whatif nohurtcd — «что если» без окна 0.2 с у моба после удара
@@ -25,7 +25,9 @@
  *  group  — 1/3/6 героев бьют одну цель (теряются ли удары);
  *  camp   — бой в лагере мобов своего уровня (3 мин): убийства, смерти, урон по герою, лечение;
  *  def    — защита в бою: роллы щита, Эгида, вампиризм, «всё в ТЕЛ/УДЧ/МДР» против физ. и маг. мобов;
- *  nav    — боты из случайных точек карты идут к Пугалу: сколько застряло у склонов.
+ *  nav    — боты из случайных точек карты идут к Пугалу: сколько застряло у склонов;
+ *  combo  — все наборы максимальных роллов оружия (3 ролла) и щита/Эгиды × раскладки атрибутов:
+ *           DPS по Пугалу и живучесть в бою (только по --only combo — это долго).
  * В конце — список аномалий (что выбивается из ряда).
  */
 process.env.STAGING = "1"; // без чата Twitch и восстановления ботов из сейва
@@ -131,6 +133,8 @@ interface Build {
   /** Роллы щита. */
   shieldAffix?: { sub: AffixSub; t?: number }[];
   aegis?: boolean;
+  /** Тир щита (по умолчанию золото; Эгида — всегда уникальная). */
+  shieldTier?: WeaponTier;
   attrs?: Record<Attr, number>;
   skills?: [SkillId, SkillId];
 }
@@ -243,7 +247,6 @@ function makeRoom(keep: (m: any) => boolean): { room: Room; step: () => void; me
     const before = m ? m.hp : 0;
     lastAttacker = attacker;
     if (WHATIF.has("nohurtcd") && m) m.hurtCd = 0;
-    const cd = m ? m.hurtCd : 0;
     const misses = room.sim.mobMisses.length;
     const r = hitMob(id, dmg, dx, dz, attacker, rangedHit, dot, magic, crit);
     if (r === "shard" && attacker) add(meter.kills, attacker, 1); // осколки в mobKills не попадают
@@ -251,7 +254,8 @@ function makeRoom(keep: (m: any) => boolean): { room: Room; step: () => void; me
       const dealt = Math.max(0, before - m.hp + (m.scarecrow && m.hp > before ? m.maxHp : 0));
       add(meter.dealt, attacker, dealt);
       if (!dot) add(meter.hits, attacker, 1);
-      if (!dot && cd > 0 && dmg > 0) add(meter.lost, attacker, 1);
+      // Потерян — удар с уроном, который не снял ни HP (не промах: промахи считаются отдельно).
+      if (!dot && dmg > 0 && dealt <= 0 && room.sim.mobMisses.length === misses && before > 0) add(meter.lost, attacker, 1);
       if (room.sim.mobMisses.length > misses) add(meter.miss, attacker, 1);
       if (dealt > 0) {
         meter.maxHit.set(attacker, Math.max(meter.maxHit.get(attacker) ?? 0, dealt));
@@ -304,7 +308,7 @@ function addBot(room: Room, name: string, b: Build, campPref?: string): { id: st
   const wR = inst(h.rightCls, tier, b.affix);
   const wL = h.leftCls
     ? h.leftCls === "shield"
-      ? inst("shield", b.aegis ? "legendary" : "gold", b.shieldAffix, b.aegis)
+      ? inst("shield", b.aegis ? "legendary" : (b.shieldTier ?? "gold"), b.shieldAffix, b.aegis)
       : inst(h.leftCls, tier, b.affix)
     : null;
   if (wL?.cls === "shield") h.leftTier = wL.tier;
@@ -434,7 +438,7 @@ interface CampResult {
 }
 
 /** Бой в лагере мобов: CAMP_SEC секунд, бот сам выбирает цели; без зелий. */
-function campRun(key: string, b: Build, campType: string): CampResult {
+function campRun(key: string, b: Build, campType: string, sec = CAMP_SEC): CampResult {
   const { room, step, meter, t } = makeRoom((m) => m.campType === campType);
   const camp = room.sim.mobs.size;
   void camp;
@@ -448,7 +452,7 @@ function campRun(key: string, b: Build, campType: string): CampResult {
   let healed = 0;
   let prevHp = p.hp;
   let wasDead = false;
-  while (t() < CAMP_SEC) {
+  while (t() < sec) {
     step();
     if (p.dead && !wasDead) {
       deaths++;
@@ -732,6 +736,110 @@ if (ONLY.has("def")) {
     }
   }
   results.def = rows;
+}
+
+// 10. Все комбинации: максимальные роллы оружия (уникальное, 3 ролла) и щита × раскладки атрибутов
+if (ONLY.has("combo")) {
+  const BUILDS: { name: string; attrs?: (lvl: number) => Record<Attr, number> }[] = [
+    { name: "класс" },
+    ...ATTRS.map((a) => ({ name: `всё ${AN(a)}`, attrs: (lvl: number) => pureBuild(a, lvl) })),
+  ];
+  const choose3 = <T,>(xs: T[]): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) for (let k = j + 1; k < xs.length; k++) out.push([xs[i], xs[j], xs[k]]);
+    return out;
+  };
+  const SUBN: Partial<Record<AffixSub, string>> = {
+    dmgFlat: "Ур", atkSpeedPct: "Ск", critChance: "Кр", vamp: "Вм", block: "Бл", physDef: "Фз", magDef: "Мз", regen: "Рг", reflect: "От",
+  };
+  const comboName = (xs: AffixSub[]): string => xs.map((x) => SUBN[x]).join("+");
+  const melee = (l: Loadout): boolean => ["sword", "dagger", "spear", "hammer"].includes(l.R);
+  const weaponSets = (l: Loadout): AffixSub[][] =>
+    choose3<AffixSub>(melee(l) ? ["dmgFlat", "atkSpeedPct", "critChance", "vamp"] : ["dmgFlat", "atkSpeedPct", "critChance"]);
+  const shieldSets: { name: string; aegis: boolean; subs: AffixSub[] }[] = [
+    ...choose3<AffixSub>(["block", "physDef", "magDef", "regen"]).map((x) => ({ name: `щит ${comboName(x)}`, aegis: false, subs: x })),
+    ...choose3<AffixSub>(["block", "physDef", "reflect", "regen"]).map((x) => ({ name: `Эгида ${comboName(x)}`, aegis: true, subs: x })),
+  ];
+
+  // 10а. Урон: оружие × раскладка (DPS по Пугалу)
+  say(`\n── 10а. DPS по Пугалу, герой ${LVL} ур.: уникальное оружие, 3 ролла на максимуме × раскладка атрибутов ──`);
+  say(pad("набор", 12) + pad("роллы", 10) + BUILDS.map((b) => lp(b.name, 9)).join(""));
+  const off: { load: string; set: string; build: string; dps: number }[] = [];
+  for (const load of LOADOUTS) {
+    for (const set of weaponSets(load)) {
+      let line = pad(load.id, 12) + pad(comboName(set), 10);
+      for (const bd of BUILDS) {
+        const r = dpsRun(`${load.id}:${comboName(set)}:${bd.name}`, {
+          lvl: LVL, load, tier: "legendary", affix: set.map((sub) => ({ sub })), attrs: bd.attrs?.(LVL),
+        });
+        off.push({ load: load.id, set: comboName(set), build: bd.name, dps: r.dps });
+        line += lp(f(r.dps), 9);
+      }
+      say(line);
+    }
+  }
+  // Аномалии урона: лучший вариант набора против медианы лучших; раскладка класса против лучшей раскладки.
+  const bestOf = new Map<string, number>();
+  for (const o of off) bestOf.set(o.load, Math.max(bestOf.get(o.load) ?? 0, o.dps));
+  const medBest = median([...bestOf.values()]);
+  for (const [load, v] of bestOf) {
+    if (v > medBest * 1.4) anomalies.push(`Комбо: ${load} — лучший DPS ${f(v)}, в ${f(v / medBest, 1)} раза выше медианы лучших (${f(medBest)})`);
+    if (v < medBest * 0.7) anomalies.push(`Комбо: ${load} — лучший DPS ${f(v)}, всего ${pct(v / medBest)} медианы лучших (${f(medBest)})`);
+  }
+  for (const load of LOADOUTS) {
+    const rows = off.filter((o) => o.load === load.id);
+    const cls = rows.filter((o) => o.build === "класс").reduce((m, o) => Math.max(m, o.dps), 0);
+    const top = rows.reduce((m, o) => (o.dps > m.dps ? o : m), rows[0]);
+    if (top.build !== "класс" && top.dps > cls * 1.35) anomalies.push(`Комбо: ${load.id} — «${top.build}» (${top.set}) даёт ${f(top.dps)} DPS против ${f(cls)} у раскладки класса (+${pct(top.dps / cls - 1)})`);
+    // Ролл, который ничего не даёт: набор без него не хуже набора с ним.
+    for (const sub of ["dmgFlat", "atkSpeedPct", "critChance"] as AffixSub[]) {
+      const withS = rows.filter((o) => o.build === "класс" && o.set.includes(SUBN[sub]!)).map((o) => o.dps);
+      const without = rows.filter((o) => o.build === "класс" && !o.set.includes(SUBN[sub]!)).map((o) => o.dps);
+      if (withS.length && without.length && Math.max(...withS) < Math.max(...without) * 0.97) {
+        anomalies.push(`Комбо: ${load.id} — набор с роллом «${SUBN[sub]}» слабее лучшего набора без него (${f(Math.max(...withS))} против ${f(Math.max(...without))})`);
+      }
+    }
+  }
+
+  // 10б. Живучесть: щиты (все наборы роллов) и оружие с вампиризмом × раскладка, в бою с физ. и маг. мобами
+  const SEC = QUICK ? 60 : 120;
+  const camps = [
+    { lvl: 40, type: "rockBreaker" },
+    { lvl: 33, type: "boneWraith" },
+  ];
+  const DEF_BUILDS = BUILDS.filter((b) => ["класс", `всё ${AN("con")}`, `всё ${AN("luc")}`, `всё ${AN("wis")}`, `всё ${AN("agi")}`].includes(b.name));
+  const def: { load: string; variant: string; build: string; camp: string; deaths: number; kills: number; mitig: number; taken: number; healed: number }[] = [];
+  for (const c of camps) {
+    const md = ELITE_MOBS[c.type];
+    say(`\n── 10б. Живучесть в лагере «${md.name}» (${md.magicMelee ? "магия" : "физика"}), герой ${c.lvl} ур., ${SEC} с: смертей / убил / срезано / лечение-урон в с ──`);
+    say(pad("набор", 12) + pad("вариант", 16) + DEF_BUILDS.map((b) => lp(b.name, 20)).join(""));
+    for (const load of LOADOUTS) {
+      const wSet: AffixSub[] = melee(load) ? ["dmgFlat", "critChance", "vamp"] : ["dmgFlat", "atkSpeedPct", "critChance"];
+      const variants = load.L === "shield" ? shieldSets : [{ name: comboName(wSet), aegis: false, subs: [] as AffixSub[] }];
+      for (const v of variants) {
+        let line = pad(load.id, 12) + pad(v.name, 16);
+        for (const bd of DEF_BUILDS) {
+          const r = campRun(`${load.id}:${v.name}:${bd.name}@${c.type}`, {
+            lvl: c.lvl, load, tier: "legendary", affix: wSet.map((sub) => ({ sub })),
+            shieldTier: "legendary", aegis: v.aegis, shieldAffix: v.subs.map((sub) => ({ sub })), attrs: bd.attrs?.(c.lvl),
+          }, c.type, SEC);
+          def.push({ load: load.id, variant: v.name, build: bd.name, camp: c.type, deaths: r.deaths, kills: r.kills, mitig: r.mitig, taken: r.dmgTaken / SEC, healed: r.healed / SEC });
+          line += lp(`${r.deaths}/${r.kills}/${pct(r.mitig)}/${f(r.healed / SEC)}-${f(r.dmgTaken / SEC)}`, 20);
+        }
+        say(line);
+      }
+    }
+    const rows = def.filter((d) => d.camp === c.type);
+    const medDeaths = median(rows.map((d) => d.deaths));
+    const medKills = median(rows.map((d) => d.kills));
+    for (const d of rows) {
+      if (d.deaths === 0 && d.healed >= d.taken * 0.95 && d.taken > 5) anomalies.push(`Живучесть (${md.name}): ${d.load} ${d.variant} «${d.build}» — лечится быстрее, чем получает урон (${f(d.healed)} против ${f(d.taken)} в с), 0 смертей`);
+      if (d.deaths >= Math.max(3, medDeaths * 2.5)) anomalies.push(`Живучесть (${md.name}): ${d.load} ${d.variant} «${d.build}» — ${d.deaths} смертей за ${SEC} с (медиана ${medDeaths})`);
+      if (medKills > 0 && d.kills >= medKills * 3) anomalies.push(`Живучесть (${md.name}): ${d.load} ${d.variant} «${d.build}» — ${d.kills} убийств за ${SEC} с (медиана ${medKills})`);
+      if (d.mitig >= 0.75) anomalies.push(`Живучесть (${md.name}): ${d.load} ${d.variant} «${d.build}» — защита срезает ${pct(d.mitig)} урона`);
+    }
+  }
+  results.combo = { off, def };
 }
 
 // 9. Навигация: боты из случайных точек карты идут к Пугалу — сколько дошло (застревание у склонов)

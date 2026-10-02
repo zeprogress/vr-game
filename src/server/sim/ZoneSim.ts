@@ -708,12 +708,12 @@ export class Mob {
 
   applyHit(dmg: number, dx: number, dz: number, dot = false): boolean {
     if (this.dead) return false;
-    // Тик горения (dot) НЕ проходит через кулдаун удара и не ставит его —
-    // иначе постоянный DoT блокировал бы обычные удары («неубиваемый» моб).
-    if (!dot) {
-      if (this.hurtCd > 0) return false;
-      this.hurtCd = 0.2;
-    }
+    // Урон проходит ВСЕГДА. Окно 0.2 с — только для вздрагивания (анимация/звук
+    // на клиенте): раньше удар в это окно пропадал целиком — чужие удары, сплэш,
+    // волна молота, умения (лаборатория баланса: в группе терялось до 80% ударов).
+    // Темп ударов игрока сервер и так ограничивает (WEAPON_RATE в tryHit).
+    const flinch = !dot && this.hurtCd <= 0;
+    if (flinch) this.hurtCd = 0.2;
     const before = this.hp / this.maxHp;
     this.hp -= dmg;
     this.aggroed = true;
@@ -729,7 +729,7 @@ export class Mob {
     // Обычный удар НЕ толкает моба — ни воин, ни кто-либо. Отбрасывание есть
     // только у замах-скиллов через shove(). Направление удара запоминаем для
     // вздрагивания на клиенте. У DoT вздрагивания/звука нет — только урон.
-    if (!dot) {
+    if (flinch) {
       this.hurtSeq = (this.hurtSeq + 1) & 0xffff;
       this.hurtDx = dx;
       this.hurtDz = dz;
@@ -1918,6 +1918,8 @@ export class ZoneSim {
    * после 15 уровня (см. spawnLoot, goldDropMulForLevel).
    */
   getAttackerLevel: (id: string) => number = () => 1;
+  /** Поджог огнешара бойца `id` — доля макс. HP цели в секунду (от его ИНТ, см. burnHpFracFor). */
+  getBurnFrac: (id: string) => number = () => AFFIX.fire.burnHpFrac;
   /** Целые големы, ждущие своей очереди вернуться (см. splitGolem, tick). */
   private readonly pendingRevivals: {
     at: number;
@@ -2392,7 +2394,7 @@ export class ZoneSim {
         // Огнешар поджигает врождённо (не аффикс, а база класса мага) —
         // горит и прямая цель, и все задетые АОЕ (ниже). ДпС — от
         // МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
-        if (magic) m.ignite(m.pctHpBase * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, b.owner);
+        if (magic) m.ignite(m.pctHpBase * this.getBurnFrac(b.owner), AFFIX.fire.burnSec, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
@@ -2468,8 +2470,7 @@ export class ZoneSim {
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
     if (m.markT > 0) dmg *= m.markMul; // «Метка»: +30% урона от всех
-    // Вклад считаем по ФАКТИЧЕСКИ снятому HP: удар мог не пройти (hurtCd),
-    // а овеpкилл сверх остатка не должен раздувать долю.
+    // Вклад считаем по ФАКТИЧЕСКИ снятому HP: оверкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
@@ -2646,7 +2647,7 @@ export class ZoneSim {
       // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
       // кого задело АОЕ, не только на прямую цель. ДпС — от максимального
       // HP каждой конкретной цели (см. AFFIX.fire), не от доли АОЕ-урона.
-      if (magic) m.ignite(m.pctHpBase * AFFIX.fire.burnHpFrac, AFFIX.fire.burnSec, owner);
+      if (magic) m.ignite(m.pctHpBase * this.getBurnFrac(owner), AFFIX.fire.burnSec, owner);
     }
     return total;
   }

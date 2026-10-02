@@ -1,4 +1,4 @@
-import { PROGRESSION } from "./constants";
+import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
 
@@ -87,6 +87,14 @@ export const MAGIC = {
 export interface MagicAttrs {
   readonly int: number;
   readonly wis: number;
+}
+
+/**
+ * Поджог огнешара: доля МАКС. HP цели в секунду — база AFFIX.fire.burnHpFrac,
+ * растёт от ИНТ поджигающего так же, как урон магией.
+ */
+export function burnHpFracFor(a: Pick<MagicAttrs, "int">): number {
+  return AFFIX.fire.burnHpFrac * (1 + invested(a.int) * ATTR2.int.magic);
 }
 
 /**

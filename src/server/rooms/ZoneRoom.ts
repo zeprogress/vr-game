@@ -216,6 +216,7 @@ import {
   fireboltSplashRadius,
   healAmountFor,
   magicPowerFor,
+  burnHpFracFor,
 } from "#shared/magic";
 import { HUB, HUB_CENTER, inHubSafeZone, hubSpawnPoint } from "#shared/hub";
 import {
@@ -1209,6 +1210,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
     // и те, и другие лежат в state.players.
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
+    // Поджог огнешара — от ИНТ поджигающего (общая формула burnHpFracFor).
+    this.sim.getBurnFrac = (id) => burnHpFracFor(this.state.players.get(id) ?? { int: 1 });
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
     for (const m of this.sim.mobs.values()) {
@@ -7803,7 +7806,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
     const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
     // Яд (облако спор) — не удар: ни увернуться, ни закрыться щитом.
-    const dodged = !h.dot && Math.random() < dodgeChance(p, oneHanded);
+    const dodged = !h.dot && Math.random() < dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger");
     const block = h.dot
       ? { mult: 1, by: 0 as BlockedBy }
       : dodged

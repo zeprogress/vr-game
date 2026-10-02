@@ -16,7 +16,7 @@ import {
 } from "#shared/tower";
 import { BASE_CRIT, noGuard, resolveBlock, rollCritMult, weaponDamage, type GuardState } from "#shared/combat";
 import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, maxHpFor, meleeSpeedFor, moveSpeedFor } from "#shared/progression";
-import { fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
+import { burnHpFracFor, fireboltDamage, fireboltSplashRadius, magicResistFrac, MAGIC } from "#shared/magic";
 import {
   isWeaponClass,
   rollAegisInstance,
@@ -272,6 +272,8 @@ export class TowerRoom extends Room<TowerState> {
   private reflectQueue: { m: LiveMob; dmg: number }[] = [];
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
   private heroOneHanded = true;
+  /** Кинжал в руке — врождённый уворот ассасина (DAGGER.dodge). */
+  private heroDagger = false;
   /** Вампиризм — доля урона удара, возвращаемая герою как HP (врождённый + ролл). */
   private heroVamp = 0;
   private heroVampAffix = false;
@@ -364,6 +366,7 @@ export class TowerRoom extends Room<TowerState> {
     this.heroMagDef = options.rolled?.magDef ?? 0;
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
+    this.heroDagger = options.leftCls === "dagger" || options.rightCls === "dagger";
     this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
     this.heroVampAffix = this.heroVamp > 0;
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
@@ -691,10 +694,10 @@ export class TowerRoom extends Room<TowerState> {
       this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + dmg * this.heroVamp);
     }
     // Врождённый поджог мага — как в основном мире (ZoneSim.tickBolt): ДпС
-    // считается от МАКСИМАЛЬНОГО HP цели, а не от урона удара (см. AFFIX.fire).
+    // считается от МАКСИМАЛЬНОГО HP цели и ИНТ героя (burnHpFracFor), а не от урона удара.
     if (this.heroWeaponKind === "staff") {
       target.burnT = Math.max(target.burnT, AFFIX.fire.burnSec);
-      target.burnDps = Math.max(target.burnDps, target.maxHp * AFFIX.fire.burnHpFrac);
+      target.burnDps = Math.max(target.burnDps, target.maxHp * burnHpFracFor(this.heroAttrs));
     }
     this.applyDamage(target, dmg);
     if ((this.state.phase as TowerPhase) !== "running") return;
@@ -725,7 +728,7 @@ export class TowerRoom extends Room<TowerState> {
       this.applyDamage(m, hit);
       if (magic) {
         m.burnT = Math.max(m.burnT, AFFIX.fire.burnSec);
-        m.burnDps = Math.max(m.burnDps, m.maxHp * AFFIX.fire.burnHpFrac);
+        m.burnDps = Math.max(m.burnDps, m.maxHp * burnHpFracFor(this.heroAttrs));
       }
       if ((this.state.phase as TowerPhase) !== "running") return;
     }
@@ -934,7 +937,7 @@ export class TowerRoom extends Room<TowerState> {
     const guard: GuardState | undefined = this.heroGuard
       ? { sx: Math.sin(this.heroYaw), sz: Math.cos(this.heroYaw), wx: 0, wz: 0 }
       : undefined;
-    const dodged = Math.random() < dodgeChance(this.heroAttrs, this.heroOneHanded);
+    const dodged = Math.random() < dodgeChance(this.heroAttrs, this.heroOneHanded, this.heroDagger);
     const block = dodged
       ? { mult: 0 as const, by: 3 as const }
       : resolveBlock(guard, ax, az, projectile, this.heroBlockChance);

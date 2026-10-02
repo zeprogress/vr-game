@@ -88,9 +88,9 @@ export function armorFrac(a: AttrsIn): number {
   return physArmor2(a);
 }
 
-/** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше. */
-export function dodgeChance(a: AttrsIn, oneHanded: boolean): number {
-  return dodge2(a, oneHanded);
+/** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше; кинжал в руке — врождённый уворот ассасина. */
+export function dodgeChance(a: AttrsIn, oneHanded: boolean, dagger = false): number {
+  return dodge2(a, oneHanded, dagger);
 }
 
 /** Базовый множитель физ. урона от уровня (без атрибута и тира оружия). */
