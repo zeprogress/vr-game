@@ -365,7 +365,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с",
     cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 0.6, hits: 1,
     variants: {
-      assassin: { name: "Подлый удар", desc: "Одна цель рядом: оглушение 3 с и гарантированный крит ×2" },
+      assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до 9 м: удар с гарантированным критом ×2 и оглушение 1.5 с" },
       spearman: { name: "Подсечка", desc: "Древком по кругу: сбивает с ног всех рядом (оглушение 2 с) и замедляет на 4 с" },
     },
   },
@@ -374,7 +374,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
-      assassin: { name: "Веер кинжалов", desc: "Три веера ножей конусом перед собой (9 м), каждый нож — кровотечение 5 с" },
+      assassin: { name: "Отскок с веером", desc: "Отскок назад на 5 м и три веера ножей конусом вперёд (9 м), каждый нож — кровотечение 5 с" },
       spearman: { name: "Ливень копий", desc: "Три тяжёлых копья с неба в круг 5 м: каждое бьёт ×1.6 и оглушает на 1 с" },
     },
   },
@@ -447,11 +447,16 @@ export function hopDistance(cls: ClassId | null): number {
   return cls === "spearman" ? 4 : 7;
 }
 
+/** Ассасин: «Смертельный прыжок» на цель (время полёта, урон в силах удара до крита ×2, оглушение). */
+export const ASSASSIN_LEAP = { range: 9, time: 0.35, dmg: 1.2, stun: 1.5 } as const;
+/** Ассасин: «Отскок с веером» — на сколько метров отскакивает назад перед веером ножей. */
+export const ASSASSIN_FAN_HOP = 5;
+
 /** «Отскок» копейщика: ловушка стягивает мобов вокруг в кучку и замедляет. */
 export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5, pullStep: 0.25 } as const;
 
-/** Копейщик и боевой маг — умения откатываются быстрее остальных классов. */
-export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65 };
+/** Копейщик, боевой маг и ассасин — умения откатываются быстрее остальных классов. */
+export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65, assassin: 0.6 };
 
 /** Базовый откат умения у класса (без МДР). */
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {

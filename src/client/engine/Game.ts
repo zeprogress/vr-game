@@ -8,7 +8,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3048,10 +3048,27 @@ export class Game {
       return best;
     };
     if (id === "arrowRain" && cls === "assassin") {
-      // Веер кинжалов — конусом по взгляду.
+      // Отскок с веером: отскок назад, веер ножей — конусом по взгляду.
       msg.x = p.x + fx * 9;
       msg.z = p.z + fz * 9;
+      this.startDash(p.x - fx * ASSASSIN_FAN_HOP, p.z - fz * ASSASSIN_FAN_HOP, 0.25);
+      this.localAvatar?.oneShot("roll", 1.6);
       this.combat.onMeleeSwing?.();
+    } else if (id === "stunBash" && cls === "assassin") {
+      // Смертельный прыжок: на выбранную цель или ближайшую впереди.
+      const t = this.selectedTargetPos() ?? frontTarget(ASSASSIN_LEAP.range);
+      if (!t) {
+        this.notifyToast("Нет цели впереди");
+        return;
+      }
+      msg.x = t.x;
+      msg.z = t.z;
+      const dx = t.x - p.x;
+      const dz = t.z - p.z;
+      const d = Math.hypot(dx, dz);
+      const stop = Math.max(0, d - 1.3);
+      if (d > 0.1) this.startDash(p.x + (dx / d) * stop, p.z + (dz / d) * stop, ASSASSIN_LEAP.time);
+      this.localAvatar?.oneShot("jump", 1.1);
     } else if (id === "arrowRain") {
       if (x !== undefined && z !== undefined) {
         msg.x = x;

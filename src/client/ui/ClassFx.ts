@@ -489,6 +489,15 @@ export function playClassAct(
       c.emote(id, "roll");
       c.sound(at, "swing");
       return true;
+    case "leap":
+      // Смертельный прыжок ассасина: серый след по дуге и всплеск в точке приземления.
+      if (x2 !== undefined && z2 !== undefined) {
+        c.fx.streak(x, y, z, x2, z2, SHADOW_GRAY, 0.5, 0.35);
+        c.fx.later(d ?? 0.35, () => vfx.burst(x2, y + 0.6, z2, ATK, { count: 16, speed: 5, life: 0.4, grav: 8, size: 0.2 }));
+      }
+      c.emote(id, "jump");
+      c.sound(at, "swing");
+      return true;
     case "crushMark":
       vfx.decal(x, y, z, (r ?? 5) * 0.55, ATK, d ?? 0.6, 2, 0.9);
       c.emote(id, "jump");

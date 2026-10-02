@@ -197,7 +197,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -6288,14 +6288,19 @@ export class ZoneRoom extends Room<ZoneState> {
       if (!k || legacy(k)) continue;
       let tx = nearest.x;
       let tz = nearest.z;
-      if (k === "stunBash" && this.mobsInRadius(p, cls === "assassin" ? 2.6 : SKILLS2.stunBash.radius).length === 0) continue;
+      if (k === "stunBash" && (cls === "assassin" ? nd > ASSASSIN_LEAP.range : this.mobsInRadius(p, SKILLS2.stunBash.radius).length === 0)) continue;
       if (k === "arrowRain") {
-        const spot = this.bestRainSpot(p);
-        if (!spot) continue;
-        tx = spot.x;
-        tz = spot.z;
+        if (cls === "assassin") {
+          // Отскок с веером — когда моб подошёл вплотную: отскочить и закидать ножами.
+          if (nd > 4) continue;
+        } else {
+          const spot = this.bestRainSpot(p);
+          if (!spot) continue;
+          tx = spot.x;
+          tz = spot.z;
+        }
       }
-      if (k === "shadowStep" && (hopsBack(cls) ? nd > 4 : nd < 3)) continue;
+      if (k === "shadowStep" && (hopsBack(cls) ? nd > 4 : nd > 11)) continue;
       if (k === "crush" && nd > 8) continue;
       if (k === "seal" && nd > 6) continue;
       if (k === "whirlwind" && this.mobsInRadius(p, cls === "spearman" ? 6 : 3.5).length < 1) continue;
@@ -6524,23 +6529,41 @@ export class ZoneRoom extends Room<ZoneState> {
 
     switch (kind) {
       case "stunBash": {
-        act({ k: "stunBash", x: p.head.x, y: feetY, z: p.head.z, d: sk.castTime, r: cls === "assassin" ? 2.6 : sk.radius });
+        if (cls === "assassin") {
+          // Смертельный прыжок: на цель до ASSASSIN_LEAP.range, удар с гарантированным критом и оглушение.
+          const L = ASSASSIN_LEAP;
+          const m0 = this.skillTarget(p, tx, tz, L.range, fwd());
+          if (!m0) {
+            rt.skillAt[kind] = -999;
+            return false;
+          }
+          const [ax, az] = dirTo(m0, p.head.x, p.head.z);
+          const stop = this.sim.targetRadius("mob", m0.id) + 0.9;
+          const lx = m0.x - ax * stop;
+          const lz = m0.z - az * stop;
+          act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: L.time });
+          this.clock.setTimeout(() => {
+            const pp = this.state.players.get(ownerId);
+            if (!pp || pp.dead) return;
+            if (isBot) {
+              pp.head.x = lx;
+              pp.head.z = lz;
+              pp.head.y = terrainHeight(lx, lz) + PLAYER.eyeHeight;
+            }
+            if (m0.dead) return;
+            this.sim.hitMob(m0.id, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, ownerId, false, false, false, true);
+            this.sim.stunMob(m0.id, L.stun);
+            this.critFx(m0.x, m0.y, m0.z, ownerId);
+          }, L.time * 1000);
+          return true;
+        }
+        act({ k: "stunBash", x: p.head.x, y: feetY, z: p.head.z, d: sk.castTime, r: sk.radius });
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead) return;
           const px = pp.head.x;
           const pz = pp.head.z;
           act({ k: "stunHit", x: px, y: pp.head.y - PLAYER.eyeHeight, z: pz, r: sk.radius });
-          if (cls === "assassin") {
-            // Подлый удар: одна цель впереди, гарантированный крит ×2.
-            const m = this.skillTarget(pp, NaN, NaN, 3, fwd());
-            if (!m) return;
-            const [dx, dz] = dirTo(m, px, pz);
-            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg * 2 * WEAPONS2.dagger.critMult, dx, dz, ownerId, false, false, false, true);
-            this.sim.stunMob(m.id, 3);
-            this.critFx(m.x, m.y, m.z, ownerId);
-            return;
-          }
           for (const m of around(px, pz, sk.radius)) {
             const [dx, dz] = dirTo(m, px, pz);
             this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
@@ -6568,8 +6591,16 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       case "arrowRain": {
         if (cls === "assassin") {
-          // Веер кинжалов: три веера конусом, каждый нож — кровотечение.
+          // Отскок с веером: отскок назад, затем три веера ножей конусом вперёд, каждый нож — кровотечение.
           const [fx, fz] = fwd();
+          const hx = p.head.x - fx * ASSASSIN_FAN_HOP;
+          const hz = p.head.z - fz * ASSASSIN_FAN_HOP;
+          act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: hx, z2: hz });
+          if (isBot) {
+            p.head.x = hx;
+            p.head.z = hz;
+            p.head.y = terrainHeight(hx, hz) + PLAYER.eyeHeight;
+          }
           act({ k: "fanKnives", x: p.head.x, y: feetY, z: p.head.z, x2: p.head.x + fx * FAN.range, z2: p.head.z + fz * FAN.range, d: FAN.volleys });
           for (let i = 0; i < FAN.volleys; i++) {
             this.clock.setTimeout(() => {
