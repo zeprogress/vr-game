@@ -524,7 +524,8 @@ export class PcHud {
     c.fill();
     c.fillStyle = "#8c7a5a";
     c.fillRect(toX(TOWER_PROP_POS.x) - 5, toY(TOWER_PROP_POS.z) - 5, 10, 10);
-    const seen = new Set<string>();
+    // Смешанная стоянка (несколько видов в одной точке) — одна подпись: «Метатель копий, Скалолом · 40».
+    const spots = new Map<string, { x: number; z: number; names: string[]; level: number }>();
     for (const camp of MOB_CAMPS) {
       const def = ELITE_MOBS[camp.type];
       c.strokeStyle = "rgba(224,80,64,0.55)";
@@ -532,11 +533,13 @@ export class PcHud {
       c.beginPath();
       c.arc(toX(camp.x), toY(camp.z), Math.max(5, camp.spread * k * 0.8), 0, Math.PI * 2);
       c.stroke();
-      if (labels && !seen.has(`${camp.type}${camp.x}`)) {
-        seen.add(`${camp.type}${camp.x}`);
-        label(c, `${def.name} · ${def.level}`, toX(camp.x), toY(camp.z) - 6, "#ffc9bf");
-      }
+      const key = `${camp.x},${camp.z}`;
+      const s = spots.get(key) ?? { x: camp.x, z: camp.z, names: [], level: 0 };
+      if (!s.names.includes(def.name)) s.names.push(def.name);
+      s.level = Math.max(s.level, def.level);
+      spots.set(key, s);
     }
+    if (labels) for (const s of spots.values()) label(c, `${s.names.join(", ")} · ${s.level}`, toX(s.x), toY(s.z) - 6, "#ffc9bf");
     if (labels) {
       label(c, "Лагерь", toX(HUB_CENTER.x), toY(HUB_CENTER.z) - 4, "#f3e2b0");
       label(c, "Озеро", toX(LAKE.x), toY(LAKE.z), "#cfe8ff");

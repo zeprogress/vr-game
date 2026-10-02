@@ -725,7 +725,8 @@ document.getElementById("updBtn")!.addEventListener("click", () => {
   el.style.display = open ? "none" : "block";
   document.getElementById("mech")!.style.display = "none";
   if (!open) {
-    el.innerHTML = UPDATES.map(
+    // Свежие сверху — по времени выкладки, а не по месту записи в файле.
+    el.innerHTML = [...UPDATES].sort((a, b) => b.at.localeCompare(a.at)).map(
       (u) => `<div class="u"><b>${escapeHtml(u.at)}</b><ul>${u.items.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
     ).join("");
   }

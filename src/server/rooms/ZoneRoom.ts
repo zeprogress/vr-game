@@ -520,22 +520,19 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
   (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
 );
 
-/** !camp: явно выбранный лагерь доступен, если его мобы не выше уровня бота + 5. */
-const CAMP_PICK_GAP = 5;
-
 /**
- * Куда высадить/возродить бота: селим у самого сильного лагеря, чей уровень
- * мобов НЕ ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До
- * 5 ур. — обычная поляна у спавна.
+ * Куда высадить/возродить бота. Лагерь, выбранный зрителем (!camp), — на любом
+ * уровне героя. Иначе селим у самого сильного лагеря, чей уровень мобов НЕ
+ * ВЫШЕ уровня бота + 3 (челлендж чуть выше бота, а не ниже). До 5 ур. —
+ * обычная поляна у спавна.
  */
 function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
-  if (level < 5 || CAMPS_BY_POWER.length === 0) {
-    return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
-  }
-  // Лагерь, выбранный зрителем (!camp) — если по уровню уже доступен.
   if (pref) {
     const pc = MOB_CAMPS.find((c) => c.type === pref);
-    if (pc && ELITE_MOBS[pc.type].level <= level + CAMP_PICK_GAP) return { x: pc.x, z: pc.z };
+    if (pc) return { x: pc.x, z: pc.z };
+  }
+  if (level < 5 || CAMPS_BY_POWER.length === 0) {
+    return { x: RESPAWN.spawnX, z: RESPAWN.spawnZ };
   }
   // Иначе — самый сильный доступный уровень лагерей; если таких несколько
   // (три лагеря ур.33) — свой случайный у каждого бота (rand закреплён за ботом).
@@ -3221,23 +3218,14 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
       return;
     }
-    const lvl = bot.state.level;
-    const open = [...new Set(CAMPS_BY_POWER.map((c) => c.type))].filter((t) => ELITE_MOBS[t].level <= lvl + CAMP_PICK_GAP);
     const a = arg.trim().toLowerCase();
     const cur = bot.campPref ? ELITE_MOBS[bot.campPref].name : "авто";
     if (!a) {
-      const list = open.map((t) => `${ELITE_MOBS[t].name} (${ELITE_MOBS[t].level})`).join(", ");
-      // Ещё закрытые — сгруппированы по уровню, с которого откроются (новые мобы видны заранее).
-      const locked = new Map<number, string[]>();
-      for (const t of new Set(CAMPS_BY_POWER.map((c) => c.type))) {
-        const d = ELITE_MOBS[t];
-        if (d.level <= lvl + CAMP_PICK_GAP) continue;
-        const from = d.level - CAMP_PICK_GAP;
-        locked.set(from, [...(locked.get(from) ?? []), d.name]);
-      }
-      // Две ближайшие ступени — чат Twitch режет длинные сообщения (460 символов).
-      const later = [...locked].sort((x, y) => x[0] - y[0]).slice(0, 2).map(([from, names]) => `${names.join(", ")} — с ${from} ур.`).join("; ");
-      this.reply(`@${nick} сейчас: ${cur}. Доступно: ${list || "пока только поляна"} — !camp <моб> или !camp авто${later ? `. Позже: ${later}` : ""}`);
+      // Любой лагерь — на любом уровне (длинный ответ TwitchChat.say сам режет на части).
+      const list = [...new Set(CAMPS_BY_POWER.map((c) => c.type))]
+        .map((t) => `${ELITE_MOBS[t].name} (${ELITE_MOBS[t].level})`)
+        .join(", ");
+      this.reply(`@${nick} сейчас: ${cur}. Лагеря: ${list} — !camp <моб> или !camp авто`);
       return;
     }
     const token = bot.rt.token ?? `nick:${norm}`;
@@ -3256,13 +3244,10 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const def = ELITE_MOBS[type];
-    if (def.level > lvl + CAMP_PICK_GAP) {
-      this.reply(`@${nick} ${def.name} (${def.level} ур.) пока не по силам — нужен ${def.level - CAMP_PICK_GAP}+ уровень.`);
-      return;
-    }
     bot.campPref = type;
     store.put(token, { campPref: type });
-    this.reply(`@${nick} герой идёт качаться: ${def.name}.`);
+    const hard = def.level > bot.state.level + 5 ? ` (${def.level} ур. — будет тяжело)` : "";
+    this.reply(`@${nick} герой идёт качаться: ${def.name}${hard}.`);
   }
 
   /** Ник → время (мс) последнего !focus: кулдаун на зрителя. */

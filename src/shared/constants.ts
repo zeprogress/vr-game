@@ -898,16 +898,23 @@ export const MOB_CAMPS: {
   { x: 70, z: 55, type: "boneChief", count: 10, spread: 20 }, // восток-центр, вне погони Багрового (был северо-восток у босса, ещё раньше — юго-восток у големов)
   { x: 135, z: 50, type: "infernoDemon", count: 5, spread: 24, ring: 0.85 }, // ~212 м, восток
   { x: 45, z: 140, type: "frostDemon", count: 6, spread: 22 }, // ~220 м, север
-  // Зона 40 ур. — дальше всего от лагеря, мелкими стаями по краям карты (разной численности).
-  { x: 95, z: 150, type: "spearThrower", count: 5, spread: 10 }, // север-северо-восток
-  { x: 148, z: -62, type: "spearThrower", count: 4, spread: 10 }, // восток
-  { x: -62, z: 148, type: "spearThrower", count: 6, spread: 10 }, // север-северо-запад
-  { x: 35, z: -155, type: "spikeTail", count: 7, spread: 9 }, // юг
-  { x: 152, z: -108, type: "spikeTail", count: 6, spread: 9 }, // юго-восток
-  { x: 98, z: 95, type: "spikeTail", count: 8, spread: 9 }, // северо-восток, между демонами
-  { x: 150, z: 88, type: "rockBreaker", count: 3, spread: 8 }, // восток
-  { x: 140, z: -150, type: "rockBreaker", count: 4, spread: 8 }, // юго-восточный угол
-  { x: -152, z: 40, type: "rockBreaker", count: 3, spread: 8 }, // запад
+  // Зона 40 ур. — дальше всего от лагеря, по краям карты. Каждая стоянка
+  // смешанная (2026-10-02): дальники одного вида — редким неровным кольцом по
+  // краю, Скалоломы (ближний бой) — в середине; по краю карты виды дальников
+  // чередуются, чтобы метатели не стояли рядом с шипохвостами. Численность разная.
+  { x: -154, z: 40, type: "spearThrower", count: 4, spread: 18, ring: 0.9, jitter: 0.5 }, // запад
+  { x: -154, z: 40, type: "rockBreaker", count: 2, spread: 8, noChamp: true },
+  { x: -66, z: 156, type: "spikeTail", count: 4, spread: 16, ring: 0.9, jitter: 0.5 }, // север-северо-запад
+  { x: -66, z: 156, type: "rockBreaker", count: 2, spread: 8, noChamp: true },
+  { x: 95, z: 150, type: "spearThrower", count: 3, spread: 16, ring: 0.9, jitter: 0.5 }, // север-северо-восток
+  { x: 95, z: 150, type: "rockBreaker", count: 1, spread: 6, noChamp: true },
+  { x: 155, z: 95, type: "rockBreaker", count: 3, spread: 12 }, // восток — стоянка одних Скалоломов
+  { x: 155, z: -68, type: "spikeTail", count: 5, spread: 18, ring: 0.9, jitter: 0.5 }, // восток-юго-восток
+  { x: 155, z: -68, type: "rockBreaker", count: 2, spread: 8, noChamp: true },
+  { x: 142, z: -150, type: "spearThrower", count: 5, spread: 20, ring: 0.9, jitter: 0.5 }, // юго-восточный угол
+  { x: 142, z: -150, type: "rockBreaker", count: 2, spread: 8, noChamp: true },
+  { x: 35, z: -154, type: "spikeTail", count: 4, spread: 18, ring: 0.9, jitter: 0.5 }, // юг
+  { x: 35, z: -154, type: "rockBreaker", count: 1, spread: 6, noChamp: true },
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */
