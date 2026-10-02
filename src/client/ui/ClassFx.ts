@@ -607,7 +607,8 @@ export function playClassAct(
       vfx.decal(x, y, z, r ?? 8, HEALC, dur, 1, 0.9, { kind: "hero", id, dy: 0 });
       vfx.pillar(x, y, z, 0.8, 3.2, HEALC, dur, { kind: "hero", id });
       c.fx.healSparkles(id, r ?? 8, dur);
-      c.emote(id, "cheer");
+      // У боевого мага это отхил «Сокрушения бури» (Ауры исцеления у него нет) — без эмоции.
+      if (v !== V_BATTLEMAGE) c.emote(id, "cheer");
       return true;
     }
     case "healHit":
