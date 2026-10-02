@@ -386,7 +386,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
       archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
-      spearman: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (мобы внутри замедлены на 50% на 3 с), следующий удар — крит" },
+      spearman: { name: "Отскок", desc: "Короткий прыжок назад на 4 м; на старом месте — ловушка: все мобы вокруг стягиваются в кучку и замедлены на 50% на 3 с, следующий удар — крит" },
     },
   },
   crush: {
@@ -440,6 +440,14 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
 export function hopsBack(cls: ClassId | null): boolean {
   return cls === "archer" || cls === "spearman";
 }
+
+/** Дальность отскока назад, м: у копейщика короче. */
+export function hopDistance(cls: ClassId | null): number {
+  return cls === "spearman" ? 4 : 7;
+}
+
+/** «Отскок» копейщика: ловушка стягивает мобов вокруг в кучку и замедляет. */
+export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5, pullStep: 0.25 } as const;
 
 /** Копейщик и боевой маг — умения откатываются быстрее остальных классов. */
 export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65 };

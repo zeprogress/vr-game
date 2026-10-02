@@ -567,7 +567,7 @@ export async function build(ctx: LabCtx): Promise<void> {
         heroBusy = playHero("roll", false, 1.6);
         forceCrit = true;
         if (cls === "archer" || cls === "spearman") {
-          hero.position.z -= 7;
+          hero.position.z -= cls === "spearman" ? 4 : 7;
           returnT = 1.2;
         } else if (t) {
           const dir = t.node.position.subtract(hpos).normalize();

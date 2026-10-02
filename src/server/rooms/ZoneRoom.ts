@@ -196,7 +196,7 @@ import {
   type StatName,
 } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, classOf2, CLASS_CD_MUL, hopsBack, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -6620,24 +6620,34 @@ export class ZoneRoom extends Room<ZoneState> {
         let ex: number;
         let ez: number;
         if (archer) {
-          ex = p.head.x - fx * 7;
-          ez = p.head.z - fz * 7;
+          ex = p.head.x - fx * hopDistance(cls);
+          ez = p.head.z - fz * hopDistance(cls);
         } else {
           [ex, ez] = clampPoint(11, 8);
         }
         const sx = p.head.x;
         const sz = p.head.z;
         rt.forceCritUntil = this.elapsed + 4;
-        if (archer) {
+        if (cls === "spearman") {
+          // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку и замедлены.
+          const T = SPEAR_HOP_TRAP;
+          act({ k: "seal", x: sx, y: feetY, z: sz, d: T.seconds, r: T.radius });
+          for (let t = 0; t * T.pullStep < T.seconds; t++) {
+            this.clock.setTimeout(() => {
+              for (const m of around(sx, sz, T.radius)) {
+                const d = Math.hypot(sx - m.x, sz - m.z);
+                this.sim.slowMob(m.id, 1, T.slow);
+                if (d < 1.2) continue;
+                this.sim.shoveMob(m.id, (sx - m.x) / d, (sz - m.z) / d, Math.min(5, Math.max(2, d * 1.1)));
+              }
+            }, t * T.pullStep * 1000);
+          }
+        } else if (archer) {
           // Дымовая ловушка на старом месте: кто войдёт за 4 с — пригвождён на 3 с.
           act({ k: "seal", x: sx, y: feetY, z: sz, d: 4, r: 2.5 });
           for (let t = 0; t < 8; t++) {
             this.clock.setTimeout(() => {
-              for (const m of around(sx, sz, 2.5)) {
-                // Ловушка лучника пригвождает, у копейщика — замедляет.
-                if (cls === "spearman") this.sim.slowMob(m.id, 3, 0.5);
-                else this.sim.rootMob(m.id, 3);
-              }
+              for (const m of around(sx, sz, 2.5)) this.sim.rootMob(m.id, 3);
             }, t * 500);
           }
         }

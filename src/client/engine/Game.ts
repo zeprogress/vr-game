@@ -6,7 +6,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { classOf2, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3074,8 +3074,8 @@ export class Game {
       let ex: number;
       let ez: number;
       if (hopsBack(cls)) {
-        ex = p.x - fx * 7;
-        ez = p.z - fz * 7;
+        ex = p.x - fx * hopDistance(cls);
+        ez = p.z - fz * hopDistance(cls);
       } else {
         const t = frontTarget(11);
         if (t) {
