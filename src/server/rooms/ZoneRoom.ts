@@ -5958,6 +5958,10 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
 
+    // И из любого моба: стоит бот внутри тела — симуляция выталкивает МОБА
+    // (боты «толкали» мобов и боссов, когда их били).
+    this.botOutOfMobs(p, bot);
+
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
 
     // Доворот модели — по фактической скорости (плавнее, чем к цели напрямую).
@@ -6497,6 +6501,49 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
+   * Вытолкнуть бота из тел мобов (мобы не сдвигаются). Симуляция при
+   * перекрытии двигает моба (ZoneSim: «не проходит сквозь игроков») — для
+   * бота, которого ведёт сервер, правильнее подвинуть самого бота.
+   */
+  private botOutOfMobs(p: PlayerState, bot?: Bot, fromX = NaN, fromZ = NaN): void {
+    for (const m of this.sim.mobs.values()) {
+      if (m.dead) continue;
+      const body = MOB.bodyRadius * m.scale * (m.kind === "boss" ? BOSS.bodyMult : 1);
+      const keep = body + PLAYER.radius + 0.05;
+      const dx = p.head.x - m.x;
+      const dz = p.head.z - m.z;
+      if (Math.abs(dx) > keep || Math.abs(dz) > keep) continue;
+      const d = Math.hypot(dx, dz);
+      if (d >= keep) continue;
+      // Ровно в центре — выталкиваем в сторону, откуда пришёл (если известна).
+      const fx = fromX - m.x;
+      const fz = fromZ - m.z;
+      const fl = Math.hypot(fx, fz);
+      const ux = d > 1e-3 ? dx / d : fl > 1e-3 ? fx / fl : 1;
+      const uz = d > 1e-3 ? dz / d : fl > 1e-3 ? fz / fl : 0;
+      p.head.x = m.x + ux * keep;
+      p.head.z = m.z + uz * keep;
+      if (bot) {
+        const inward = bot.vx * ux + bot.vz * uz;
+        if (inward < 0) {
+          bot.vx -= ux * inward;
+          bot.vz -= uz * inward;
+        }
+      }
+    }
+  }
+
+  /** Бот после переноса умением: не внутри моба, высота — по земле. */
+  private placeBotAt(p: PlayerState, x: number, z: number): void {
+    const fromX = p.head.x;
+    const fromZ = p.head.z;
+    p.head.x = x;
+    p.head.z = z;
+    this.botOutOfMobs(p, undefined, fromX, fromZ);
+    p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
+  }
+
+  /**
    * Применить умение из пула (игрок — по MSG.skill, бот — сам). Проверяет класс,
    * выбор (skill1/skill2) и откат. `tx,tz` — точка умения (NaN — перед героем).
    * true — применено.
@@ -6561,11 +6608,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
-            if (isBot) {
-              pp.head.x = lx;
-              pp.head.z = lz;
-              pp.head.y = terrainHeight(lx, lz) + PLAYER.eyeHeight;
-            }
+            if (isBot) this.placeBotAt(pp, lx, lz);
             if (m0.dead) return;
             this.sim.hitMob(m0.id, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, ownerId, false, false, false, true);
             this.sim.stunMob(m0.id, L.stun);
@@ -6612,11 +6655,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const hx = p.head.x - fx * ASSASSIN_FAN_HOP;
           const hz = p.head.z - fz * ASSASSIN_FAN_HOP;
           act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: hx, z2: hz });
-          if (isBot) {
-            p.head.x = hx;
-            p.head.z = hz;
-            p.head.y = terrainHeight(hx, hz) + PLAYER.eyeHeight;
-          }
+          if (isBot) this.placeBotAt(p, hx, hz);
           act({ k: "fanKnives", x: p.head.x, y: feetY, z: p.head.z, x2: p.head.x + fx * FAN.range, z2: p.head.z + fz * FAN.range, d: FAN.volleys });
           for (let i = 0; i < FAN.volleys; i++) {
             this.clock.setTimeout(() => {
@@ -6699,10 +6738,18 @@ export class ZoneRoom extends Room<ZoneState> {
             }, t * 500);
           }
         }
+        if (!archer) {
+          // Рывок — за спину цели (как у игрока на клиенте), а не в её центр.
+          const L = Math.hypot(ex - sx, ez - sz);
+          if (L > 0.1) {
+            ex += ((ex - sx) / L) * 1.4;
+            ez += ((ez - sz) / L) * 1.4;
+          }
+        }
         if (isBot) {
-          p.head.x = ex;
-          p.head.z = ez;
-          p.head.y = terrainHeight(ex, ez) + PLAYER.eyeHeight;
+          this.placeBotAt(p, ex, ez);
+          ex = p.head.x;
+          ez = p.head.z;
         }
         act({ k: "shadowStep", x: sx, y: feetY, z: sz, x2: ex, z2: ez });
         return true;
@@ -6714,11 +6761,8 @@ export class ZoneRoom extends Room<ZoneState> {
         this.clock.setTimeout(() => {
           const pp = this.state.players.get(ownerId);
           if (!pp || pp.dead) return;
-          if (isBot) {
-            pp.head.x = cx;
-            pp.head.z = cz;
-            pp.head.y = cy + PLAYER.eyeHeight;
-          }
+          // Бот приземляется в центр удара, но не внутрь моба — его выталкивает наружу.
+          if (isBot) this.placeBotAt(pp, cx, cz);
           act({ k: "crushHit", x: cx, y: cy, z: cz, r: sk.radius });
           for (const m of around(cx, cz, sk.radius)) {
             const [dx, dz] = dirTo(m, cx, cz);
