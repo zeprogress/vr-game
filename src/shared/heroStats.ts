@@ -6,7 +6,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { critRollMult, isMeleeClass, shieldBlockChance, shieldReflect, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
@@ -168,16 +168,17 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     (isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0);
   if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
 
-  const arm = armorFrac(p);
+  // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
+  const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита"));
   rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
-  const mres = magicResistFrac(p);
+  const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита"));
   rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
 
   const shieldTier = p.rightCls === "shield" ? p.rightTier : p.leftCls === "shield" ? p.leftTier : null;
   if (shieldTier) {
     const chance = shieldBlockChance(shieldTier) + affixNum(shieldAffix, "Блок");
     rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
-    const refl = shieldReflect(shieldTier);
+    const refl = affixNum(shieldAffix, "Отражение");
     if (refl > 0) rows.push({ label: "Отражение щитом", value: `${Math.round(refl * 100)}% удара` });
     if (shieldAffix?.includes("Оплот")) rows.push({ label: "Оплот (Эгида)", value: `блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP` });
   }

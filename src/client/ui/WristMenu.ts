@@ -1109,7 +1109,10 @@ export class WristMenu {
       return;
     }
     const iconS = h > 100 ? 72 : 56;
-    this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS);
+    const heldAegis =
+      item.cls === "shield" &&
+      this.warehouse.some((e) => e.cls === "shield" && e.name === "Эгида" && (e.id === this.equippedIds.left || e.id === this.equippedIds.right));
+    this.drawWeaponIcon(ctx, item.cls, item.tier, x + 10, y + 28, iconS, heldAegis);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
     ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
@@ -1328,7 +1331,7 @@ export class WristMenu {
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52);
+    this.drawWeaponIcon(ctx, wp.cls, wp.tier, x + 6, y + 8, 52, wp.name === "Эгида");
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
     ctx.fillText(this.shortName(name), x + 62, y + 8);
@@ -1514,7 +1517,7 @@ export class WristMenu {
   }
 
   /** Значок оружия по классу: рисуем сами — у уникального и базового картинок нет. */
-  private drawWeaponIcon(ctx: CanvasRenderingContext2D, cls: WeaponClass, tier: WeaponTier, x: number, y: number, s: number): void {
+  private drawWeaponIcon(ctx: CanvasRenderingContext2D, cls: WeaponClass, tier: WeaponTier, x: number, y: number, s: number, aegis = false): void {
     const col = TIER_COLOR[tier];
     ctx.save();
     ctx.translate(x, y);
@@ -1560,6 +1563,48 @@ export class WristMenu {
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(68 * u, 24 * u, 13 * u, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (cls === "dagger") {
+      ctx.beginPath();
+      ctx.moveTo(74 * u, 14 * u);
+      ctx.lineTo(38 * u, 56 * u);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(30 * u, 48 * u);
+      ctx.lineTo(52 * u, 66 * u);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(40 * u, 60 * u);
+      ctx.lineTo(26 * u, 84 * u);
+      ctx.stroke();
+    } else if (cls === "spear") {
+      ctx.beginPath();
+      ctx.moveTo(20 * u, 90 * u);
+      ctx.lineTo(70 * u, 30 * u);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(80 * u, 12 * u);
+      ctx.lineTo(60 * u, 28 * u);
+      ctx.lineTo(72 * u, 40 * u);
+      ctx.closePath();
+      ctx.fill();
+    } else if (cls === "hammer") {
+      ctx.beginPath();
+      ctx.moveTo(26 * u, 90 * u);
+      ctx.lineTo(60 * u, 40 * u);
+      ctx.stroke();
+      ctx.fillRect(46 * u, 14 * u, 40 * u, 24 * u);
+    } else if (cls === "shield" && !aegis) {
+      // Круглый щит — одинаковый у всех грейдов (цвет рамки — по тиру).
+      ctx.beginPath();
+      ctx.arc(50 * u, 50 * u, 38 * u, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 3 * u;
+      ctx.beginPath();
+      ctx.arc(50 * u, 50 * u, 25 * u, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(50 * u, 50 * u, 8 * u, 0, Math.PI * 2);
       ctx.fill();
     } else {
       ctx.beginPath();

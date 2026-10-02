@@ -79,6 +79,10 @@ export interface TowerRolled {
   blockChance: number;
   /** Уникальный щит: доля удара, отражённая атакующему (0 — нет). */
   reflect: number;
+  /** Ролл щита Физ. защита: доля гасимого физ. урона. */
+  physDef?: number;
+  /** Ролл щита Маг. защита: доля гасимого магического урона (магия и снаряды). */
+  magDef?: number;
   /** Эгида: доля макс. HP, которую лечит успешный блок (0 — нет). */
   aegisHeal: number;
   /** Бот-воин бьёт сильнее (BOT.warrior.dmgMul), как на поляне. */
@@ -261,6 +265,8 @@ export class TowerRoom extends Room<TowerState> {
   private heroBlockChance = 0;
   private heroReflect = 0;
   private heroAegisHeal = 0;
+  private heroPhysDef = 0;
+  private heroMagDef = 0;
   /** Отражённый щитом урон — применяется после хода мобов (смерть моба посреди перебора ломала бы цикл). */
   private reflectQueue: { m: LiveMob; dmg: number }[] = [];
   /** Один предмет в руках (лук/посох) — вдвое подвижнее, как и в основном мире. */
@@ -353,6 +359,8 @@ export class TowerRoom extends Room<TowerState> {
     this.heroBlockChance = options.rolled?.blockChance ?? (shieldTier ? shieldBlockChance(shieldTier) : 0);
     this.heroReflect = options.rolled?.reflect ?? 0;
     this.heroAegisHeal = options.rolled?.aegisHeal ?? 0;
+    this.heroPhysDef = options.rolled?.physDef ?? 0;
+    this.heroMagDef = options.rolled?.magDef ?? 0;
     // Одна рука занята луком/посохом (обе руки на нём) — вдвое подвижнее второй свободной руки.
     this.heroOneHanded = holdsOneItem(options.leftCls, options.rightCls);
     this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
@@ -928,6 +936,7 @@ export class TowerRoom extends Room<TowerState> {
       : resolveBlock(guard, ax, az, projectile, this.heroBlockChance);
     let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
     if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
+    real *= 1 - (projectile ? this.heroMagDef : this.heroPhysDef);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
     // Уникальный щит — отражение (и при блоке), Эгида — блок лечит (как ZoneRoom.hurtPlayer).
     if (block.by !== 3 && from && this.heroReflect > 0) this.reflectQueue.push({ m: from, dmg: dmg * this.heroReflect });

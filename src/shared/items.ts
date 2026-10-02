@@ -418,14 +418,14 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
 
 // ---- Роллы оружия: 5 видов — Урон, Скорость атаки, Крит, Вампиризм, Блок ----
 
-export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef";
 /**
  * Под-вид ролла. Выпадают: dmgFlat (Урон), atkSpeedPct (Скорость атаки),
  * critChance (Крит — шанс И сила, см. critRollMult), vamp (Вампиризм, ближний
  * бой), block (Блок, только щит). dmgPct — старый «Урон 8–20%», остаётся у
  * уже выпавших. critMult — старый вид, переводится в Крит миграцией.
  */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block";
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef";
 
 export interface RolledAffix {
   kind: AffixKind;
@@ -444,21 +444,24 @@ export interface WeaponInstance {
   sv?: number;
   /** Имя старого уникального («Меч вампира») — у новых нет. */
   nm?: string;
-  /** Версия формата роллов (см. migrateLoot): 4 — 5 видов. */
+  /** Версия формата роллов (см. migrateLoot): 4 — 5 видов, 5 — роллы щитов (Блок, Физ./Маг. защита, Отражение). */
   lv?: number;
 }
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 4;
+const LOOT_VER = 5;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
   return cls === "sword" || cls === "dagger" || cls === "spear" || cls === "hammer";
 }
 
-/** Какие роллы могут выпасть на предмете этого класса (вид на предмете не повторяется). */
-function rollableSubs(cls: WeaponClass): AffixSub[] {
-  if (cls === "shield") return ["block"];
+/**
+ * Какие роллы могут выпасть на предмете этого класса (вид на предмете не повторяется).
+ * Круглый щит: Блок, Физ. защита, Маг. защита. Эгида: Блок, Физ. защита, Отражение.
+ */
+function rollableSubs(cls: WeaponClass, aegis = false): AffixSub[] {
+  if (cls === "shield") return aegis ? ["block", "physDef", "reflect"] : ["block", "physDef", "magDef"];
   const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance"];
   if (isMeleeClass(cls)) out.push("vamp");
   return out;
@@ -472,6 +475,9 @@ const SUB_KIND: Record<AffixSub, AffixKind> = {
   critMult: "crit",
   vamp: "vamp",
   block: "block",
+  reflect: "reflect",
+  physDef: "physDef",
+  magDef: "magDef",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -481,20 +487,35 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   critChance: [0.05, 0.15],
   critMult: [0.3, 1.0],
   vamp: [0.02, 0.08],
-  block: [0.02, 0.06],
+  block: [0.07, 0.2],
+  reflect: [0.035, 0.1],
+  physDef: [0.035, 0.1],
+  magDef: [0.05, 0.15],
 };
+/** Диапазоны роллов Эгиды (макс.: Блок 10%, Отражение 10%, Физ. защита 15%). */
+const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
+  block: [0.035, 0.1],
+  physDef: [0.05, 0.15],
+};
+/** Старый диапазон Блока (до 2026-10-02) — для пересчёта уже выпавших щитов. */
+const OLD_BLOCK_RANGE = [0.02, 0.06] as const;
+
+/** Диапазон ролла вида `sub` на предмете (у Эгиды свой). */
+function rangeFor(sub: AffixSub, aegis: boolean): readonly [number, number] {
+  return (aegis && AEGIS_RANGES[sub]) || AFFIX_RANGES[sub];
+}
 /** Сила крита у ролла Крит: растёт вместе с шансом, от +0.3 (5%) до +1 (15%). */
 const CRIT_ROLL_MULT = [0.3, 1.0] as const;
 /** Потолок силы крита до 2026-10-01 — для пересчёта уже выпавших роллов. */
 const OLD_CRIT_MULT_HI = 0.8;
 
 /** Доля ролла от минимума к максимуму своего вида (0..1). */
-function rollT(sub: AffixSub, value: number): number {
-  const [lo, hi] = AFFIX_RANGES[sub];
+function rollT(sub: AffixSub, value: number, aegis = false): number {
+  const [lo, hi] = rangeFor(sub, aegis);
   return hi > lo ? Math.max(0, Math.min(1, (value - lo) / (hi - lo))) : 1;
 }
-function atT(sub: AffixSub, t: number): number {
-  const [lo, hi] = AFFIX_RANGES[sub];
+function atT(sub: AffixSub, t: number, aegis = false): number {
+  const [lo, hi] = rangeFor(sub, aegis);
   return lo + t * (hi - lo);
 }
 
@@ -529,6 +550,9 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   critMult: 1.3,
   vamp: 1,
   block: 1,
+  reflect: 1,
+  physDef: 1,
+  magDef: 1,
 };
 
 /** Название вида ролла — одно слово-два, как видит игрок. */
@@ -540,6 +564,9 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
   critMult: "Крит",
   vamp: "Вампиризм",
   block: "Блок",
+  reflect: "Отражение",
+  physDef: "Физ. защита",
+  magDef: "Маг. защита",
 };
 
 /** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
@@ -563,9 +590,8 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
-export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
-  void cls;
-  return 1 + 32 * rollT(a.sub, a.value);
+export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): number {
+  return 1 + 32 * rollT(a.sub, a.value, isAegis(w));
 }
 
 /**
@@ -575,7 +601,7 @@ export function affixPoints(a: RolledAffix, cls: WeaponClass): number {
  */
 export function weaponQuality(w: WeaponInstance): number {
   let sum = 0;
-  for (const a of w.affixes) sum += affixPoints(a, w.cls);
+  for (const a of w.affixes) sum += affixPoints(a, w);
   return Math.round(sum);
 }
 
@@ -596,9 +622,8 @@ export function qualityStars(quality: number, rolls: number): string {
 }
 
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
-function rollAffixCount(tier: WeaponTier, rnd: () => number, cls?: WeaponClass): number {
+function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
   if (tier === "base") return 0;
-  if (cls === "shield") return 1; // у щита один вид — Блок
   if (tier === "gold") return rnd() < 0.3 ? 2 : 1;
   return rnd() < 0.4 ? 3 : 2; // legendary
 }
@@ -616,7 +641,7 @@ export function rollWeaponInstance(
   tier: WeaponTier,
   rnd: () => number = Math.random,
 ): WeaponInstance {
-  const count = rollAffixCount(tier, rnd, cls);
+  const count = rollAffixCount(tier, rnd);
   const affixes: RolledAffix[] = [];
   const used = new Set<AffixSub>();
   while (affixes.length < count) {
@@ -657,7 +682,7 @@ export function scrapValue(w: WeaponInstance): number {
   // Выше 45 баллов оценки предмета (сумма очков, та, что в скобках) — лом
   // растёт круто: 45 → 15, 99 (три идеальных ролла) → 99 (заявка 2026-09-28).
   if (w.affixes.length > 0) {
-    const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w.cls), 0) / w.affixes.length;
+    const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w), 0) / w.affixes.length;
     const base = Math.round(15 + (4 * (avg - 17)) / 16);
     const q = weaponQuality(w);
     return q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
@@ -706,9 +731,8 @@ export function takeFromBag(bag: Slot[], id: ItemId, count: number): boolean {
   return true;
 }
 
-function affixRange(sub: AffixSub, cls: WeaponClass): readonly [number, number] {
-  void cls;
-  return AFFIX_RANGES[sub];
+function affixRange(sub: AffixSub, w: Pick<WeaponInstance, "cls" | "nm">): readonly [number, number] {
+  return rangeFor(sub, isAegis(w));
 }
 
 /**
@@ -738,9 +762,19 @@ export function shieldBlockChance(tier: WeaponTier | string, inst?: Pick<WeaponI
   return inst ? base + affixSum(inst.affixes, "block") : base;
 }
 
-/** Доля удара моба, которую щит отражает атакующему (только уникальный тир). */
-export function shieldReflect(tier: WeaponTier | string): number {
-  return tier === "legendary" ? SHIELD.reflectFrac : 0;
+/** Доля удара моба, которую щит отражает атакующему (ролл Отражение — только Эгида). */
+export function shieldReflect(inst?: Pick<WeaponInstance, "affixes"> | null): number {
+  return inst ? affixSum(inst.affixes, "reflect") : 0;
+}
+
+/** Доля физ. урона, гасимая щитом (ролл Физ. защита). */
+export function shieldPhysDef(inst?: Pick<WeaponInstance, "affixes"> | null): number {
+  return inst ? affixSum(inst.affixes, "physDef") : 0;
+}
+
+/** Доля магического урона, гасимая круглым щитом (ролл Маг. защита). */
+export function shieldMagDef(inst?: Pick<WeaponInstance, "affixes"> | null): number {
+  return inst ? affixSum(inst.affixes, "magDef") : 0;
 }
 
 /** Эгида — старый уникальный щит с особым свойством «Оплот». */
@@ -754,8 +788,6 @@ export const AEGIS_LABEL = `Оплот: блок лечит ${Math.round(SHIELD.
 export function instanceEffects(w: WeaponInstance): string[] {
   if (w.cls !== "shield") return [];
   const out = [`Блок ${Math.round(shieldBlockChance(w.tier, w) * 100)}% — гасит удар целиком`];
-  const refl = shieldReflect(w.tier);
-  if (refl > 0) out.push(`Отражение ${Math.round(refl * 100)}% удара — обратно атакующему`);
   if (isAegis(w)) out.push(AEGIS_LABEL);
   return out;
 }
@@ -782,9 +814,11 @@ export function vampFrac(inst: Pick<WeaponInstance, "cls" | "affixes"> | null | 
 
 /** Поставить ролл вида `sub` на максимум (если такой уже есть — поднять до максимума). */
 function maxRoll(w: WeaponInstance, sub: AffixSub): void {
-  const hi = AFFIX_RANGES[sub][1];
+  // Блок щита здесь — ещё в СТАРОМ диапазоне (до lv 5), его пересчитывает конец migrateLoot.
+  const hiOf = (k: AffixSub): number => (k === "block" ? OLD_BLOCK_RANGE[1] : AFFIX_RANGES[k][1]);
+  const hi = hiOf(sub);
   const had = w.affixes.find((a) => a.sub === sub || (sub === "dmgFlat" && a.sub === "dmgPct"));
-  if (had) had.value = AFFIX_RANGES[had.sub][1];
+  if (had) had.value = hiOf(had.sub);
   else w.affixes.push({ kind: SUB_KIND[sub], sub, value: hi });
 }
 
@@ -819,7 +853,7 @@ export function migrateLoot(w: WeaponInstance): boolean {
   // Щит: только Блок.
   if (w.cls === "shield" && w.affixes.some((a) => a.sub !== "block")) {
     const t = w.affixes.reduce((m, a) => Math.max(m, rollT(a.sub, a.value)), 0);
-    w.affixes = [{ kind: "block", sub: "block", value: atT("block", t) }];
+    w.affixes = [{ kind: "block", sub: "block", value: OLD_BLOCK_RANGE[0] + t * (OLD_BLOCK_RANGE[1] - OLD_BLOCK_RANGE[0]) }];
   }
   // Эффект старого уникального типа → ролл на максимуме, имя — на экземпляре.
   if (w.tier === "legendary" && ver < 3) {
@@ -837,6 +871,22 @@ export function migrateLoot(w: WeaponInstance): boolean {
     w.nm = LEGACY_LEGENDARY[w.cls]?.name;
     maxRoll(w, inn === "vamp" ? "vamp" : inn === "crit" ? "critChance" : inn === "guard" ? "block" : "dmgFlat");
     delete (w as { innate?: WeaponAffix }).innate;
+  }
+  // Щиты lv 5: Блок пересчитан на новый диапазон с теми же очками; Эгида получает ещё
+  // Отражение и Физ. защиту с теми же очками, что у Блока.
+  if (w.cls === "shield") {
+    const aegis = isAegis(w);
+    let tBlock = 0;
+    for (const a of w.affixes) {
+      if (a.sub !== "block") continue;
+      tBlock = Math.max(0, Math.min(1, (a.value - OLD_BLOCK_RANGE[0]) / (OLD_BLOCK_RANGE[1] - OLD_BLOCK_RANGE[0])));
+      a.value = atT("block", tBlock, aegis);
+    }
+    if (aegis) {
+      for (const sub of ["physDef", "reflect"] as const) {
+        if (!w.affixes.some((a) => a.sub === sub)) w.affixes.push({ kind: SUB_KIND[sub], sub, value: atT(sub, tBlock, true) });
+      }
+    }
   }
   w.lv = LOOT_VER;
   return true;
@@ -866,7 +916,7 @@ export interface EnchantInfo {
 export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null {
   const a = w.affixes[idx];
   if (!a) return null;
-  const pts = affixPoints(a, w.cls);
+  const pts = affixPoints(a, w);
   const max = pts >= 33 - 1e-6;
   const t = (pts - 1) / 32;
   const q = w.affixes.length ? weaponQuality(w) / (33 * w.affixes.length) : 0;
@@ -881,6 +931,6 @@ export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null 
 export function enchantApply(w: WeaponInstance, idx: number, gain: number): void {
   const a = w.affixes[idx];
   if (!a) return;
-  const [lo, hi] = affixRange(a.sub, w.cls);
+  const [lo, hi] = affixRange(a.sub, w);
   a.value = Math.min(hi, a.value + (gain * (hi - lo)) / 32);
 }

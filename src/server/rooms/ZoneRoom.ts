@@ -150,6 +150,8 @@ import {
   instanceEffects,
   isAegis,
   shieldReflect,
+  shieldPhysDef,
+  shieldMagDef,
   weaponQuality,
   affixSum,
   BAG,
@@ -915,7 +917,7 @@ function enchantTry(w: WeaponInstance, idx: number, bag: Slot[]): InvActResult {
     enchantApply(w, idx, gain);
   }
   const label = affixLabel(w.affixes[idx]);
-  const gained = Math.floor(affixPoints(w.affixes[idx], w.cls) + 1e-6) - before;
+  const gained = Math.floor(affixPoints(w.affixes[idx], w) + 1e-6) - before;
   return {
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
@@ -3011,7 +3013,9 @@ export class ZoneRoom extends Room<ZoneState> {
       critMult: trc.mult,
       vamp: trt ? heldVamp(p, trt) : 0,
       blockChance: blockChanceOf(p, trt),
-      reflect: shieldReflect(shieldOf(p, trt)?.tier ?? ""),
+      reflect: shieldReflect(shieldOf(p, trt)?.inst),
+      physDef: shieldPhysDef(shieldOf(p, trt)?.inst),
+      magDef: shieldMagDef(shieldOf(p, trt)?.inst),
       aegisHeal: isAegis(shieldOf(p, trt)?.inst) ? SHIELD.aegisHealFrac : 0,
       warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
     };
@@ -7537,6 +7541,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Магический удар вблизи (Костяной призрак) броню от силы проходит, режется интеллектом.
     const magicMob = !!h.magic || (!h.projectile && !!h.byMob && !!this.sim.mobs.get(h.byMob)?.magicMelee);
     let dmg = inDmg * block.mult * (magicMob ? 1 - magicResistFrac(p) : 1 - armorFrac(p));
+    // Ролл щита: Физ. защита гасит физический удар, Маг. защита (круглый щит) — магию и снаряды.
+    const heldShield = h.dot ? null : shieldOf(p, rt);
+    if (heldShield?.inst) {
+      dmg *= 1 - (magicMob || h.projectile ? shieldMagDef(heldShield.inst) : shieldPhysDef(heldShield.inst));
+    }
     if (magicMob && dmg > 0 && !h.dot) {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
@@ -7555,7 +7564,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // атакующему, и при блоке тоже. Не от яда и не при увороте. dot=true в
     // hitMob — без вздрагивания/кулдауна удара и без «зеркала» Ледяного демона.
     const shield = h.dot || dodged ? null : shieldOf(p, rt);
-    const reflect = shield ? shieldReflect(shield.tier) : 0;
+    const reflect = shield ? shieldReflect(shield.inst) : 0;
     if (reflect > 0 && h.byMob) {
       const src = this.sim.mobs.get(h.byMob);
       if (src && !src.dead) this.sim.hitMob(src.id, inDmg * reflect, -ax, -az, h.target, h.projectile, true);
