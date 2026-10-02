@@ -41,6 +41,10 @@ export interface PcInventoryHooks {
   drop: (w: PcInvWeapon) => void;
 }
 
+/** Иконка предмета: Эгида сохраняет прежний 🛡, остальные щиты — круглый. */
+export function iconOf(cls: string, name?: string): string {
+  return cls === "shield" && name === "Эгида" ? "🛡" : (ICON[cls] ?? "?");
+}
 export const ICON: Record<string, string> = { sword: "🗡️", bow: "🏹", staff: "🪄", shield: "◉", dagger: "🔪", spear: "🦯", hammer: "🔨" };
 const TIER_RU: Record<string, string> = { base: "обычное", gold: "золотое", legendary: "уникальное" };
 const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
@@ -502,7 +506,7 @@ export class PcInventory {
     if (held && held.cls) {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
-      cell.textContent = ICON[held.cls] ?? "?";
+      cell.textContent = iconOf(held.cls, w?.name);
       if (w?.affixes.length) {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -544,7 +548,7 @@ export class PcInventory {
   }
 
   private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
-    const c = div(`pcinv-cell t-${w.tier}`, ICON[w.cls] ?? "?");
+    const c = div(`pcinv-cell t-${w.tier}`, iconOf(w.cls, w.name));
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
@@ -576,7 +580,7 @@ export class PcInventory {
       null;
     if (w) this.enchId = w.id;
     const left = div("pcinv-ench-left");
-    const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`, w ? (ICON[w.cls] ?? "?") : "");
+    const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`, w ? iconOf(w.cls, w.name) : "");
     slotEl.addEventListener("dragover", (e) => {
       if (this.dragWeapon()) e.preventDefault();
     });
@@ -640,7 +644,7 @@ export class PcInventory {
     const pick = div("pcinv-epick");
     for (const x of d.weapons) {
       if (!x.ench.length) continue;
-      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`, ICON[x.cls] ?? "?");
+      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`, iconOf(x.cls, x.name));
       c.onclick = () => {
         this.enchId = x.id;
         this.lastResult = null;
