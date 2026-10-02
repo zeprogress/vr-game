@@ -1,4 +1,4 @@
-import { shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
 import { attacksPerSec } from "#shared/heroStats";
@@ -24,16 +24,7 @@ export interface HeroStats {
   wis: number;
 }
 
-const pctOf = (v: number): string => `${Math.round(v * 100)}%`;
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
-
-/** Сумма роллов «<Название> +N%» в тексте (см. affixLabel), в долях. */
-function rollPct(text: string | undefined, name: string): number {
-  if (!text) return 0;
-  let sum = 0;
-  for (const m of text.matchAll(new RegExp(`${name} \\+([\\d.]+)%`, "g"))) sum += Number(m[1]);
-  return sum / 100;
-}
 
 /**
  * Характеристики предмета в руке — строками «название: значение».
@@ -85,14 +76,8 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {
-    const chance = shieldBlockChance(w.tier) + rollPct(w.affix, "Блок");
-    out.push(["Блок", `${Math.round(chance * 100)}% шанс погасить удар целиком`]);
-    const refl = rollPct(w.affix, "Отражение");
-    if (refl > 0) out.push(["Отражение", `${pctOf(refl)} урона удара — обратно атакующему (и при блоке)`]);
-    const pd = rollPct(w.affix, "Физ. защита");
-    if (pd > 0) out.push(["Физ. защита щита", `−${pctOf(pd)} физического урона`]);
-    const md = rollPct(w.affix, "Маг. защита");
-    if (md > 0) out.push(["Маг. защита щита", `−${pctOf(md)} магического урона`]);
+    // Блок, защита и отражение щита — только роллы: они в строке «Роллы» ниже, отдельно не дублируем.
+    out.push(["Щит", "блок, защита и отражение — от роллов"]);
   }
   // Свойство Эгиды идёт в тексте первым («Оплот: …») — отдельной строкой, не роллом.
   const parts = (w.affix ?? "").split(", ").filter(Boolean);

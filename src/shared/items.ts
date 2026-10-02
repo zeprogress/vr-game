@@ -802,9 +802,8 @@ export const AEGIS_LABEL = `Оплот: блок лечит ${Math.round(SHIELD.
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
   if (w.cls !== "shield") return [];
+  // Блок — только ролл (он и так в списке роллов): отдельной строкой не дублируем.
   const out: string[] = [];
-  const block = shieldBlockChance(w.tier, w);
-  if (block > 0) out.push(`Блок ${Math.round(block * 1000) / 10}% — гасит удар целиком`);
   if (isAegis(w)) out.push(AEGIS_LABEL);
   return out;
 }
