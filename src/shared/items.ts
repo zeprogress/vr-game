@@ -725,19 +725,24 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   return s;
 }
 
+/** Множитель лома с переработки (2026-10-02: ×2, обычное оружие — не меньше 1). */
+export const SCRAP_MUL = 2;
+
 /** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
 export function scrapValue(w: WeaponInstance): number {
   // С роллами — от средних очков аффиксов (1..33): середина (17) даёт 15,
   // разброс небольшой — от 11 (всё на минимуме) до 19 (всё на максимуме).
   // Выше 45 баллов оценки предмета (сумма очков, та, что в скобках) — лом
   // растёт круто: 45 → 15, 99 (три идеальных ролла) → 99 (заявка 2026-09-28).
+  // Всё это × SCRAP_MUL.
+  let raw: number;
   if (w.affixes.length > 0) {
     const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w), 0) / w.affixes.length;
     const base = Math.round(15 + (4 * (avg - 17)) / 16);
     const q = weaponQuality(w);
-    return q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
-  }
-  return w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
+    raw = q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
+  } else raw = w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
+  return Math.max(1, Math.round(raw * SCRAP_MUL));
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
@@ -976,12 +981,13 @@ export function migrateLoot(w: WeaponInstance): boolean {
  * t — близость ЭТОГО аффикса к максимуму (0..1), Q — общая оценка предмета
  * (сумма очков / максимум, 0..1).
  *  шанс  = max(8%, 85% − 77%·t^1.6)            → 85% внизу, ~12% у самого верха
- *  цена  = (3 + 40·t^2.5) · (1 + 1.2·Q) · (×1.5 у уникального)
+ *  цена  = (1.5 + 20·t^2.5) · (1 + 1.2·Q) · (×1.5 у уникального)   (2026-10-02: вдвое дешевле — было 3 + 40·t^2.5)
  *  успех = +1..3 очка (из 33) к аффиксу, неудача — лом всё равно сгорает.
- * Итог (симуляция): золото с 1 аффиксом от середины до максимума ≈ 1500 лома
- * (~6 дней топ-фарма), уникальное с 3 аффиксами ≈ 6500 (~4 недели топа).
+ * Итог (симуляция, до 2026-10-02): золото с 1 аффиксом от середины до максимума ≈ 1500 лома
+ * (~6 дней топ-фарма), уникальное с 3 аффиксами ≈ 6500 (~4 недели топа). Теперь
+ * цена вдвое ниже и лома с переработки вдвое больше (SCRAP_MUL) — примерно вчетверо быстрее.
  */
-export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 3, costTop: 40, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
+export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
 
 export interface EnchantInfo {
   /** Очки аффикса, 1..33 (целые, для показа). */
