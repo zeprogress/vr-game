@@ -1,4 +1,4 @@
-import { BOT, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
+import { BOT, BOW, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
@@ -148,11 +148,20 @@ function levelTempo(level: number): number {
 }
 
 /**
- * Множитель темпа физ. атак (>1 — быстрее): уровень × ЛОВ, рост гаснет.
- * `soft` — сила затухания: у ближнего боя сильнее (иначе «пропеллер»).
+ * Множитель темпа физ. атак (>1 — быстрее): уровень (рост гаснет) × ЛОВ.
+ * `soft` — сила затухания роста от уровня: у ближнего боя сильнее (иначе «пропеллер»).
  */
 export function physTempo2(level: number, a: AttrsIn, soft: number): number {
-  return 1 + softGain(levelTempo(level) * (1 + inv(a.agi) * ATTR2.agi.atkSpeed) - 1, soft);
+  return (1 + softGain(levelTempo(level) - 1, soft)) * agiTempo2(a);
+}
+
+/**
+ * Темп от ЛОВ — отдельный множитель, линейный, как урон от СИЛ (2026-10-02:
+ * раньше ЛОВ шла под затухание роста от уровня и почти съедалась —
+ * «всё в ЛОВ» давало ~55% урона «всё в СИЛ»). `share` — доля (ближний бой меньше).
+ */
+export function agiTempo2(a: AttrsIn, share = 1): number {
+  return 1 + inv(a.agi) * ATTR2.agi.atkSpeed * share;
 }
 
 /** Множитель скорости каста (посох, откат заклинаний): уровень × МДР. */
@@ -160,7 +169,6 @@ export function castTempo2(level: number, a: AttrsIn): number {
   return 1 + softGain(levelTempo(level) * (1 + inv(a.wis) * ATTR2.wis.cast) - 1, 1.8);
 }
 
-/** Шанс уворота: УДЧ; один предмет в руках (пустая вторая / лук / посох / двуручник) — больше. */
 /** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
@@ -219,7 +227,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // Копьё: длинный выпад конусом перед собой, обе руки.
   // dmg 2.1 → 1.45 (2026-10-02: удары больше не пропадают в «окне» моба — копьё стало вдвое сильнее медианы).
   spear: {
-    name: WEAPON_NOUN.spear.name, dmg: 1.45, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 5,
+    name: WEAPON_NOUN.spear.name, dmg: 1.45, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 3, // было 5 целей (2026-10-02)
     critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
@@ -230,7 +238,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
     name: WEAPON_NOUN.bow.name, dmg: 1.75, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1,
-    critBase: 0.15, critMult: 2.5, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
+    critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
   staff: {
@@ -256,8 +264,8 @@ export const DAGGER = {
   /** Один кинжал + пустая рука: прибавка к шансу и силе крита. */
   soloCrit: 0.08,
   soloCritDmg: 0.5,
-  /** Врождённый уворот ассасина: кинжал в руке (один или два) — +10% к шансу уворота (2026-10-02). */
-  dodge: 0.1,
+  /** Врождённый уворот ассасина: кинжал в руке (один или два) — +18% к шансу уворота (2026-10-02). */
+  dodge: 0.18,
 } as const;
 
 export const HAMMER = {
@@ -473,6 +481,9 @@ export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
 export const STORM_CRUSH = { selfHeal: 0.3, allyHeal: 0.15 } as const;
 
 /** «Град выпадов» копейщика: серия колющих ударов вперёд. */
+/** Выпад копья: цели ЗА основной (до pierce − 1) получают эту долю урона (2026-10-02: было 100% по пяти целям). */
+export const SPEAR_PIERCE_DMG = 0.7;
+
 export const SPEAR_FLURRY = { thrusts: 8, duration: 1.6, range: 6.5, cone: 0.5, dmg: 1 } as const;
 
 /** Числа новых умений. */

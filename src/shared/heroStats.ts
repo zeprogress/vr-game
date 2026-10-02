@@ -77,9 +77,9 @@ const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger
  * спектатора, чате (!stats) и веб-инвентаре (!inv) — единая формулировка
  * везде, чтобы зрителям и игрокам не приходилось гадать, что есть что.
  *
- * Роллы щита в другой руке усиливают удар — сервер их суммирует с роллами
- * оружия (см. `rolledDmgMul`/`rolledAtkSpeedMul`/`rolledCrit` в ZoneRoom.ts),
- * поэтому здесь то же самое: берём текст роллов и с оружия, и со щита.
+ * Роллы предмета в другой руке (щит, второй клинок) тоже идут в удар — от
+ * каждого вида лучший из двух (см. `rolledDmgMul`/`rolledAtkSpeedMul`/`rolledCrit`
+ * в ZoneRoom.ts), поэтому здесь то же самое: берём текст роллов с обоих.
  */
 export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const rows: HeroStatRow[] = [];
@@ -90,11 +90,11 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const tierMul = cls ? weaponDef(cls, tier || "base").mult : 1;
   const weaponAffix = rightIsWeapon ? p.rightAffix : leftIsWeapon ? p.leftAffix : undefined;
   const shieldAffix = p.rightCls === "shield" ? p.rightAffix : p.leftCls === "shield" ? p.leftAffix : undefined;
-  // Вторая рука (щит, второй меч/кинжал) — её роллы складываются с роллами
-  // оружия, как на сервере (rolledDmgMul/rolledCrit). Двуручное в обеих руках — один раз.
+  // Вторая рука (щит, второй меч/кинжал) — от каждого вида роллов берётся лучший
+  // из двух предметов, как на сервере (handsRoll/handsCrit). Двуручное в обеих руках — один раз.
   const twoHand = p.leftCls === p.rightCls && (p.leftCls === "bow" || p.leftCls === "staff" || p.leftCls === "spear" || p.leftCls === "hammer");
   const otherAffix = twoHand ? undefined : rightIsWeapon ? p.leftAffix : leftIsWeapon ? p.rightAffix : undefined;
-  const affixNum2 = (name: string): number => affixNum(weaponAffix, name) + affixNum(otherAffix, name);
+  const affixNum2 = (name: string): number => Math.max(affixNum(weaponAffix, name), affixNum(otherAffix, name));
 
   // Урон: и новый dmgFlat, и старый dmgPct подписаны «Урон +N%».
   const dmgBonus = affixNum2("Урон");
@@ -140,7 +140,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") * 100)}%` });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
-  const critVals = [...affixVals(weaponAffix, "Крит"), ...affixVals(otherAffix, "Крит")];
+  const critW = affixVals(weaponAffix, "Крит");
+  const critO = affixVals(otherAffix, "Крит");
+  const sumOf = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+  const critVals = sumOf(critW) >= sumOf(critO) ? critW : critO;
   const critChanceBonus = critVals.reduce((a, b) => a + b, 0);
   const critMultBonus = critVals.reduce((a, v) => a + critRollMult(v), 0);
   const luckN = invested(p.luc);
@@ -162,10 +165,11 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   rows.push({ label: "Сила крита", value: `×${(baseCritMult + critMultBonus + luckN * ATTR2.luc.critDmg).toFixed(2)}` });
 
   // Вампиризм — только ролл на оружии ближнего боя (см. vampFrac в items.ts).
-  // С обоих рук: два меча/кинжала — складывается (как heldVamp на сервере).
-  const vamp =
-    (isMeleeClass(p.rightCls) ? affixNum(p.rightAffix, "Вампиризм") : 0) +
-    (isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0);
+  // Два меча/кинжала — лучший из двух (как heldVamp на сервере).
+  const vamp = Math.max(
+    isMeleeClass(p.rightCls) ? affixNum(p.rightAffix, "Вампиризм") : 0,
+    isMeleeClass(p.leftCls) && !(p.leftCls === p.rightCls && (p.leftCls === "spear" || p.leftCls === "hammer")) ? affixNum(p.leftAffix, "Вампиризм") : 0,
+  );
   if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).

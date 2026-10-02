@@ -700,6 +700,24 @@ export function plainWeaponInstance(cls: WeaponClass, tier: WeaponTier): WeaponI
   return w;
 }
 
+/**
+ * Роллы ОБЕИХ рук на удар (оружие + предмет во второй руке: щит, второй меч/кинжал):
+ * от каждого вида берётся ЛУЧШИЙ из двух предметов, а не сумма — два клинка
+ * роллы не складывают, зато можно собрать разные виды на разных клинках
+ * (2026-10-02: сумма давала двум уникальным до 470 DPS против 230–310 у одного оружия).
+ */
+export function handsRoll(main: RolledAffix[] | null | undefined, other: RolledAffix[] | null | undefined, ...subs: AffixSub[]): number {
+  const v = (a: RolledAffix[] | null | undefined): number => (a ? subs.reduce((n, s) => n + affixSum(a, s), 0) : 0);
+  return Math.max(v(main), v(other));
+}
+
+/** Крит обеих рук: лучший ролл Крит из двух предметов (шанс и сила — от него). */
+export function handsCrit(main: RolledAffix[] | null | undefined, other: RolledAffix[] | null | undefined): { chance: number; mult: number } {
+  const a = critOfAffixes(main ?? []);
+  const b = critOfAffixes(other ?? []);
+  return a.chance >= b.chance ? a : b;
+}
+
 /** Сумма всех роллов данного под-вида на предмете (обычно 0 или 1 ролл, но на всякий — сумма). */
 export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   let s = 0;

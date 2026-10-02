@@ -134,9 +134,10 @@ import {
   addToBag,
   migrateStaffAffixes,
   migrateLoot,
-  critOfAffixes,
   shieldBlockChance,
   vampFrac,
+  handsRoll,
+  handsCrit,
   isMeleeClass,
   affixPoints,
   bagCount,
@@ -202,7 +203,7 @@ import {
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -754,13 +755,13 @@ const SPEAR_CONE = 0.6;
 const BOT_MELEE_FACE = 0.8;
 
 /**
- * Вампиризм со ВСЕГО оружия ближнего боя в руках: два меча/кинжала —
- * роллы складываются. Двуручное (одно и то же в обеих руках) — один раз.
+ * Вампиризм оружия ближнего боя в руках: два меча/кинжала — лучший из двух
+ * (как и остальные роллы, см. handsRoll). Двуручное (одно и то же в обеих руках) — один раз.
  */
 function heldVamp(p: PlayerState, rt: Runtime): number {
   const l = rolledIn(p, "left", rt);
   const r = rolledIn(p, "right", rt);
-  return vampFrac(r) + (l && l.id !== r?.id ? vampFrac(l) : 0);
+  return Math.max(vampFrac(r), l && l.id !== r?.id ? vampFrac(l) : 0);
 }
 
 /**
@@ -805,9 +806,9 @@ function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponIn
 }
 
 /**
- * Предмет во ВТОРОЙ руке от бьющего оружия — его роллы складываются с
- * роллами бьющего: щит (сам не атакует, но роллы не бутафория), второй
- * меч/кинжал. Двуручное (лук/посох/копьё/молот числится в обеих руках —
+ * Предмет во ВТОРОЙ руке от бьющего оружия — его роллы идут в удар вместе с
+ * роллами бьющего (от каждого вида — лучший из двух, см. handsRoll): щит,
+ * второй меч/кинжал. Двуручное (лук/посох/копьё/молот числится в обеих руках —
  * это тот же экземпляр) второй раз не считается. `attackHand` — рука бьющего оружия.
  */
 function shieldRolledIn(p: PlayerState, attackHand: "left" | "right", rt: Runtime): WeaponInstance | null {
@@ -818,37 +819,23 @@ function shieldRolledIn(p: PlayerState, attackHand: "left" | "right", rt: Runtim
   return other && other.id !== main?.id ? other : null;
 }
 
-/** Доп. множитель урона от роллов аффиксов (dmgFlat/dmgPct суммируются как один множитель). */
+/** Доп. множитель урона от роллов Урон (dmgFlat/dmgPct — один вид) обеих рук: лучший из двух. */
 function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
-  const w = rolledIn(p, hand, rt);
-  const sh = shieldRolledIn(p, hand, rt);
-  let bonus = 0;
-  if (w) bonus += affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct");
-  if (sh) bonus += affixSum(sh.affixes, "dmgFlat") + affixSum(sh.affixes, "dmgPct");
-  return 1 + bonus;
+  return 1 + handsRoll(rolledIn(p, hand, rt)?.affixes, shieldRolledIn(p, hand, rt)?.affixes, "dmgFlat", "dmgPct");
 }
 
-/** Доп. множитель скорости атаки/каста от ролла atkSpeedPct. */
+/** Доп. множитель скорости атаки/каста от ролла atkSpeedPct обеих рук: лучший из двух. */
 function rolledAtkSpeedMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
-  const w = rolledIn(p, hand, rt);
-  const sh = shieldRolledIn(p, hand, rt);
-  let bonus = 0;
-  if (w) bonus += affixSum(w.affixes, "atkSpeedPct");
-  if (sh) bonus += affixSum(sh.affixes, "atkSpeedPct");
-  return 1 + bonus;
+  return 1 + handsRoll(rolledIn(p, hand, rt)?.affixes, shieldRolledIn(p, hand, rt)?.affixes, "atkSpeedPct");
 }
 
-/** Доп. крит от роллов аффиксов на бьющем оружии И на предмете в другой руке (см. shieldRolledIn). */
+/** Доп. крит от ролла Крит на бьющем оружии и предмете в другой руке (см. shieldRolledIn): лучший из двух. */
 function rolledCrit(
   p: PlayerState,
   hand: "left" | "right",
   rt: Runtime,
 ): { chance: number; mult: number } {
-  const w = rolledIn(p, hand, rt);
-  const sh = shieldRolledIn(p, hand, rt);
-  const a = w ? critOfAffixes(w.affixes) : { chance: 0, mult: 0 };
-  const b = sh ? critOfAffixes(sh.affixes) : { chance: 0, mult: 0 };
-  return { chance: a.chance + b.chance, mult: a.mult + b.mult };
+  return handsCrit(rolledIn(p, hand, rt)?.affixes, shieldRolledIn(p, hand, rt)?.affixes);
 }
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
@@ -2137,7 +2124,7 @@ export class ZoneRoom extends Room<ZoneState> {
   /**
    * Копьё: выпад прошивает линию — до WEAPONS2.spear.pierce−1 мобов ЗА целью
    * (в коридоре ~1 м от линии герой→цель, в пределах досягаемости + 2 м)
-   * получают тот же урон. Всем — полоса выпада. Возвращает урон по этим
+   * получают долю SPEAR_PIERCE_DMG урона. Всем — полоса выпада. Возвращает урон по этим
    * остальным целям (для вампиризма от сплэша).
    */
   private spearPierce(ownerId: string, p: PlayerState, struck: { id: string; x: number; z: number }, dmg: number): number {
@@ -2165,12 +2152,13 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     cands.sort((a, b) => a.d - b.d);
     const hits = cands.slice(0, WEAPONS2.spear.pierce - 1);
-    for (const c of hits) this.sim.hitMob(c.id, dmg, c.ax, c.az, ownerId);
+    const side = dmg * SPEAR_PIERCE_DMG;
+    for (const c of hits) this.sim.hitMob(c.id, side, c.ax, c.az, ownerId);
     this.broadcast(MSG.act, {
       k: "spearPierce", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z,
       x2: p.head.x + ux * maxAlong, z2: p.head.z + uz * maxAlong, r: SPEAR_CONE,
     } satisfies ActRelay);
-    return dmg * hits.length;
+    return side * hits.length;
   }
 
   /**

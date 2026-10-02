@@ -1,6 +1,7 @@
 import { PROGRESSION } from "./constants";
 import { invested } from "./attrs2";
 import {
+  agiTempo2,
   ATTR2,
   castTempo2,
   dodge2,
@@ -111,6 +112,9 @@ function softGain(g: number, s: number): number {
 const ATK_SOFT = 1.8;
 /** Затухание темпа мечника — сильнее общего: на высоких уровнях не «пропеллер». */
 const MELEE_SOFT = 1.0;
+/** Доля прироста темпа ближнего боя: от уровня — половина, от ЛОВ — полностью (2026-10-02: было тоже половина и под затуханием). */
+const MELEE_LEVEL_SHARE = 0.5;
+const MELEE_AGI_SHARE = 1;
 
 const START: AttrsIn = { str: 1, agi: 1, int: 1, con: 1, luc: 1, wis: 1 };
 
@@ -126,11 +130,12 @@ export function attackSpeedFromLevel(level: number): number {
 
 /**
  * Темп атаки БЛИЖНЕГО боя (меч/кинжал/копьё/молот/кулак) — приглушённый:
- * половина общего прироста и своё, более сильное затухание.
+ * от прироста за уровень — MELEE_LEVEL_SHARE со своим, более сильным
+ * затуханием; от ЛОВ — MELEE_AGI_SHARE (линейно, см. agiTempo2).
  */
 export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
-  const full = attackSpeedFor(level, a);
-  return 1 + softGain((full - 1) * 0.5, MELEE_SOFT);
+  const lvl = attackSpeedFor(level, START);
+  return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE);
 }
 
 /** Скорость каста (посох, откат заклинаний): уровень × МДР. */
