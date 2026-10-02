@@ -1,6 +1,6 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { POTION_IMG } from "../ui/potionIcon";
-import { bothHandsCls, bothHandsNote, qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { bothHandsCls, bothHandsNote, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -606,7 +606,7 @@ export class PcInventory {
       if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
       right.append(hn);
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
+      sc.innerHTML = `<small>оценка №</small>${qualityStarsShort(w.quality, w.affixes.length)}`;
       right.append(sc);
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
@@ -828,7 +828,7 @@ export class PcInventory {
     this.tip.append(div("pcinv-small", TIER_RU[tier] ?? tier));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
-      sc.innerHTML = `<small>качество</small>${qualityStars(w.quality, w.affixes.length)}`;
+      sc.innerHTML = `<small>оценка №</small>${qualityStarsShort(w.quality, w.affixes.length)}`;
       this.tip.append(sc);
     }
     for (const e of w?.effects ?? []) this.tip.append(div("pcinv-tipeff", e));

@@ -441,7 +441,7 @@ export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, b
 
 /** Базовый откат умения у класса (без МДР). */
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
-  return SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1);
+  return Math.round(SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1) * 10) / 10;
 }
 
 /** «Сокрушение бури»: лечение героя и союзников рядом (доли максимума HP). */

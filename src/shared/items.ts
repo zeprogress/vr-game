@@ -579,7 +579,7 @@ export function weaponQuality(w: WeaponInstance): number {
   return Math.round(sum);
 }
 
-/** Баллы качества экземпляра: «47 б.» (сумма очков роллов, у предмета с 3 роллами — до 99). */
+/** Оценка экземпляра: «оценка №47» (сумма очков роллов, у предмета с 3 роллами — до 99). */
 export function instanceStars(w: WeaponInstance): string {
   return qualityStars(weaponQuality(w), w.affixes.length);
 }
@@ -589,10 +589,10 @@ export function qualityStarsShort(quality: number, rolls: number): string {
   return rolls <= 0 || quality <= 0 ? "" : String(Math.round(quality));
 }
 
-/** Баллы качества «47 б.» — чем больше, тем ближе роллы к максимуму. Пусто — роллов нет. */
+/** Оценка предмета «оценка №47» — чем больше, тем ближе роллы к максимуму. Пусто — роллов нет. */
 export function qualityStars(quality: number, rolls: number): string {
   if (rolls <= 0 || quality <= 0) return "";
-  return `${Math.round(quality)} б.`;
+  return `оценка №${Math.round(quality)}`;
 }
 
 /** Сколько роллов у нового дропа этого тира — принцип "выше тир — больше роллов". */
