@@ -438,6 +438,15 @@ function offHandFor(cls: string): string {
   return cls === "sword" || cls === "staff" ? "shield" : "";
 }
 
+/** Допустима ли такая левая рука при этом оружии в правой (пусто — всегда). */
+function botLeftAllowed(rc: string, lc: string): boolean {
+  if (lc === "") return true;
+  if (rc === "sword") return lc === "shield" || lc === "sword";
+  if (rc === "staff") return lc === "shield";
+  if (rc === "dagger") return lc === "dagger";
+  return false;
+}
+
 /** Что бот держит во второй руке при этом оружии: меч/посох — щит, кинжал — второй кинжал, двуручное — ничего. */
 function botOffHand(cls: string): string {
   if (cls === "sword" || cls === "staff") return "shield";
@@ -881,6 +890,11 @@ function applyEquip(
     p.leftCls = "shield";
     p.leftTier = w.tier;
     rt.equippedWeaponId.left = w.id;
+  } else if (p.rightCls === w.cls && botLeftAllowed(w.cls, p.leftCls)) {
+    // Смена экземпляра/тира того же класса — левая рука (пусто, щит, второй меч/кинжал) остаётся.
+    preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
+    p.rightTier = w.tier;
+    rt.equippedWeaponId.right = w.id;
   } else {
     preserveLegacyWeapon(rt, p.rightCls, p.rightTier);
     // Вторая рука — по классу оружия (offHandFor): лук/копьё/молот — пусто, щит (если был) слетает.
@@ -5003,9 +5017,19 @@ export class ZoneRoom extends Room<ZoneState> {
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
     // когда-либо честно поднятый тир (та же логика, что и для правой руки).
     const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
-    const off = botOffHand(rc);
+    // Левая рука: что герой держал в ней при сохранении (пустая, второй меч/кинжал, щит) —
+    // не навязываем щит заново. По умолчанию (нового героя/другое оружие) — botOffHand.
+    const keepLeft = savedRight?.cls === rc && botLeftAllowed(rc, savedHeld.left?.cls ?? "");
+    const off = keepLeft ? (savedHeld.left?.cls ?? "") : botOffHand(rc);
     p.leftCls = off;
-    p.leftTier = off === "shield" ? leftTier : off === "dagger" ? bestOwnedTier(rec?.owned, "dagger") : "";
+    p.leftTier =
+      off === "shield"
+        ? leftTier
+        : off === "dagger"
+          ? bestOwnedTier(rec?.owned, "dagger")
+          : off === "sword"
+            ? (savedHeld.left?.tier ?? "base")
+            : "";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от !scrap
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -5400,15 +5424,10 @@ export class ZoneRoom extends Room<ZoneState> {
           p.leftTier = lw.tier;
         } else {
           preserveLegacyWeapon(bot.rt, p.rightCls, p.rightTier);
-          const keepAegis = p.leftCls === "shield" && p.leftTier === "legendary";
-          const keepLeft = lw.cls === "dagger" && p.leftCls === "dagger";
-          const off = offHandFor(lw.cls);
+          // Апгрейд — того же класса, что в правой руке: левую руку (пустую, щит,
+          // второй меч/кинжал) не трогаем.
           p.rightCls = lw.cls;
           p.rightTier = lw.tier;
-          if (!keepLeft) {
-            p.leftCls = off;
-            p.leftTier = off === "shield" ? (keepAegis ? "legendary" : "base") : off ? "base" : "";
-          }
         }
       }
       bot.rt.owned.add(weaponKey(lw.cls, lw.tier));
