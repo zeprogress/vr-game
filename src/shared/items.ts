@@ -449,7 +449,7 @@ export interface WeaponInstance {
 }
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 5;
+const LOOT_VER = 6;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -486,7 +486,7 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   atkSpeedPct: [0.05, 0.15],
   critChance: [0.05, 0.15],
   critMult: [0.3, 1.0],
-  vamp: [0.02, 0.08],
+  vamp: [0.02, 0.1],
   block: [0.07, 0.2],
   reflect: [0.035, 0.1],
   physDef: [0.035, 0.1],
@@ -886,6 +886,14 @@ export function migrateLoot(w: WeaponInstance): boolean {
       for (const sub of ["physDef", "reflect"] as const) {
         if (!w.affixes.some((a) => a.sub === sub)) w.affixes.push({ kind: SUB_KIND[sub], sub, value: atT(sub, tBlock, true) });
       }
+    }
+  }
+  // lv 6: максимум Вампиризма 8% → 10% — выпавшие роллы с теми же очками.
+  if (ver < 6) {
+    for (const a of w.affixes) {
+      if (a.sub !== "vamp") continue;
+      const t = Math.max(0, Math.min(1, (a.value - 0.02) / (0.08 - 0.02)));
+      a.value = atT("vamp", t);
     }
   }
   w.lv = LOOT_VER;
