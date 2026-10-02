@@ -17,7 +17,7 @@ export const ATTR2 = {
   agi: { move: 0.008, atkSpeed: 0.012 }, // +0.8% бега, +1.2% темпа физ. атак
   int: { magic: 0.026 }, // +2.6% урона магией и лечения
   con: { hp: 0.04, armorMax: 0.6, armorK: 60 }, // +4% HP; броня = max·n/(n+K)
-  luc: { crit: 0.004, critDmg: 0.01, dodge: 0.004, dodgeOneItem: 2, dodgeCap: 0.45 },
+  luc: { crit: 0.004, critDmg: 0.01, dodge: 0.004, dodgeOneItem: 3, dodgeCap: 0.5 },
   wis: { resistMax: 0.7, resistK: 45, cast: 0.009 }, // магзащита = max·n/(n+K); +0.9% скорости каста
 } as const;
 
