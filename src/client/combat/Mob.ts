@@ -12,6 +12,9 @@ import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/instancedMesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import "@babylonjs/core/Meshes/Builders/boxBuilder";
+import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { createBurnFlameMesh, makeBurnFlameMaterial } from "../world/BurnFlameMat";
 import { BurnParticles, FIRE_PARTICLES } from "./BurnParticles";
@@ -517,7 +520,7 @@ export class Mob implements Hittable {
             : SLIME_CFG;
     const tagName = mobName || cfg.name;
     // Багровый — без уровня: подстраивается под бойцов (BOSS_ADAPT).
-    const tagLevel = kind === "boss" ? null : mobLevel > 0 ? mobLevel : cfg.level;
+    const tagLevel = kind === "boss" || modelName === "scarecrow" ? null : mobLevel > 0 ? mobLevel : cfg.level;
     this.tint = cfg.tint;
     this.bodyAlpha = cfg.alpha;
     this.isBoss = kind === "boss";
@@ -656,11 +659,96 @@ export class Mob implements Hittable {
     this.stunSpin = spin;
     this.stunStarMat = starMat;
   }
+  /** Пугало лагеря: табло над головой (кто бьёт, DPS, макс. удар) и последний нарисованный текст. */
+  private scareBoard: Mesh | null = null;
+  private scareTex: DynamicTexture | null = null;
+  private scareText = "";
+
+  /** Пугало (SCARECROW): столб, перекладина-руки, мешок-тело, голова и соломенная шляпа. Высота ~1.6 (до масштаба). */
+  private buildScarecrow(): void {
+    this.body.setEnabled(false);
+    this.head.setEnabled(false);
+    const sc = this.scene;
+    const mat = (name: string, r: number, g: number, b: number): StandardMaterial => {
+      const mm = new StandardMaterial(name, sc);
+      mm.diffuseColor = new Color3(r, g, b);
+      mm.emissiveColor = new Color3(r * 0.25, g * 0.25, b * 0.25);
+      mm.specularColor = new Color3(0, 0, 0);
+      return mm;
+    };
+    const wood = mat("scareWood", 0.42, 0.29, 0.16);
+    const sack = mat("scareSack", 0.74, 0.6, 0.38);
+    const straw = mat("scareStraw", 0.92, 0.8, 0.35);
+    const hatM = mat("scareHat", 0.45, 0.33, 0.14);
+    const part = (mesh: Mesh, m2: StandardMaterial, x: number, y: number, z: number): Mesh => {
+      mesh.material = m2;
+      mesh.parent = this.root;
+      mesh.position.set(x, y, z);
+      mesh.isPickable = false;
+      return mesh;
+    };
+    part(MeshBuilder.CreateCylinder("scarePost", { diameter: 0.1, height: 1.5, tessellation: 6 }, sc), wood, 0, 0.75, 0);
+    const arms = part(MeshBuilder.CreateCylinder("scareArms", { diameter: 0.07, height: 1.2, tessellation: 6 }, sc), wood, 0, 1.15, 0);
+    arms.rotation.z = Math.PI / 2;
+    part(MeshBuilder.CreateBox("scareBody", { width: 0.5, height: 0.6, depth: 0.26 }, sc), sack, 0, 1.0, 0);
+    for (const x of [-0.62, 0.62]) {
+      const tuft = part(MeshBuilder.CreateCylinder("scareTuft", { diameterTop: 0.02, diameterBottom: 0.16, height: 0.18, tessellation: 6 }, sc), straw, x, 1.15, 0);
+      tuft.rotation.z = x < 0 ? Math.PI / 2 : -Math.PI / 2;
+    }
+    part(MeshBuilder.CreateSphere("scareHead", { diameter: 0.34, segments: 8 }, sc), sack, 0, 1.45, 0);
+    part(MeshBuilder.CreateCylinder("scareBrim", { diameter: 0.6, height: 0.03, tessellation: 12 }, sc), hatM, 0, 1.58, 0);
+    part(MeshBuilder.CreateCylinder("scareCrown", { diameterTop: 0.08, diameterBottom: 0.3, height: 0.24, tessellation: 10 }, sc), hatM, 0, 1.7, 0);
+    // Табло — над табличкой с именем, всегда лицом к камере.
+    const tex = new DynamicTexture("scareTex", { width: 768, height: 220 }, sc, false);
+    tex.hasAlpha = true;
+    const bm = new StandardMaterial("scareBoardMat", sc);
+    bm.diffuseTexture = tex;
+    bm.emissiveTexture = tex;
+    bm.opacityTexture = tex;
+    bm.disableLighting = true;
+    bm.backFaceCulling = false;
+    const board = MeshBuilder.CreatePlane("scareBoard", { width: 2.6, height: 0.75 }, sc);
+    board.material = bm;
+    board.parent = this.root;
+    board.position.y = 2.55;
+    board.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    board.isPickable = false;
+    this.scareBoard = board;
+    this.scareTex = tex;
+  }
+
+  /** Перерисовать табло пугала (только когда текст сменился). */
+  private paintScareBoard(text: string): void {
+    const tex = this.scareTex;
+    if (!tex || text === this.scareText) return;
+    this.scareText = text;
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    const W = 768;
+    const H = 220;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(10,9,14,0.72)";
+    ctx.fillRect(8, 8, W - 16, H - 16);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const [l1 = "", l2 = ""] = text.split("\n");
+    ctx.fillStyle = "#e6e0d0";
+    ctx.font = "600 52px system-ui, sans-serif";
+    ctx.fillText(l1, W / 2, 66, W - 40);
+    ctx.fillStyle = "#ffcf5a";
+    ctx.font = "800 62px system-ui, sans-serif";
+    ctx.fillText(l2, W / 2, 150, W - 40);
+    tex.update(true);
+  }
+
   /** Пятно-тень под мобом: без неё прыжок читается как парение. */
   private readonly shadow: BlobShadow;
 
   /** Подменить процедурную сферу моделью слизня из пака. */
   private async attachModel(): Promise<void> {
+    if (this.modelName === "scarecrow") {
+      this.buildScarecrow();
+      return;
+    }
     let make: () => RigInstance;
     try {
       const { loadRig } = await import("../world/models");
@@ -1083,6 +1171,11 @@ export class Mob implements Hittable {
     this.grounded = s.grounded === 1;
 
     secAdd("mob.slam+misc", sp);
+    // Пугало: табло урона — и у игроков, и на трансляции (до выхода облегчённого вида ниже).
+    if (this.scareBoard) {
+      this.paintScareBoard(s.info);
+      this.scareBoard.setEnabled(Math.hypot(pos.x - playerPos.x, pos.z - playerPos.z) < MOB.nameTagRange * 1.6);
+    }
     // Облегчённый вид (стрим): без плашки и полоски HP — их рисует оверлей страницы.
     if (this.lean) return;
     sp = secNow();

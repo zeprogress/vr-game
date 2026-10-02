@@ -84,10 +84,23 @@ export class TwitchChat {
       }
       return;
     }
-    const clean = text.replace(/[\r\n]+/g, " ").trim().slice(0, MAX_LEN);
-    if (!clean) return;
-    if (this.queue.length >= QUEUE_MAX) return;
-    this.queue.push(clean);
+    // Длинное — несколькими сообщениями (Twitch режет на ~500): рвём по « · »,
+    // иначе по пробелу. Раньше хвост просто обрезался и терялся.
+    let rest = text.replace(/[\r\n]+/g, " ").trim();
+    if (!rest) return;
+    while (rest) {
+      let cut = rest.length;
+      if (cut > MAX_LEN) {
+        const dot = rest.lastIndexOf(" · ", MAX_LEN);
+        const sp = rest.lastIndexOf(" ", MAX_LEN);
+        cut = dot > MAX_LEN * 0.5 ? dot : sp > MAX_LEN * 0.5 ? sp : MAX_LEN;
+      }
+      const part = rest.slice(0, cut).trim();
+      rest = rest.slice(cut).replace(/^\s*·\s*/, "").trim();
+      if (!part) continue;
+      if (this.queue.length >= QUEUE_MAX) return;
+      this.queue.push(part);
+    }
     if (!this.ready) console.log("[twitch] сокет не готов — реплика в очереди");
     this.drain();
   }

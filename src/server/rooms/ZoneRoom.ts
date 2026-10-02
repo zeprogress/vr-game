@@ -71,6 +71,7 @@ import {
   type PcInvData,
 } from "#shared/net/messages";
 import {
+  SCARECROW,
   ADMIN_NICK,
   isAdminNick,
   advanceHour,
@@ -347,6 +348,8 @@ interface Runtime {
 
 /** Бот зрителя (Ф10): безголовый игрок, которым рулит сервер. */
 interface Bot {
+  /** До какого момента (Date.now) бот бьёт пугало по !пугало. */
+  testUntil?: number;
   /** Маршрут в обход крутых склонов: к какой цели, точки, когда посчитан (this.elapsed). */
   nav?: { tx: number; tz: number; path: [number, number][]; at: number };
   /** Date.now() появления героя — «новый герой» для приоритета камеры спектатора. */
@@ -1087,6 +1090,8 @@ export class ZoneRoom extends Room<ZoneState> {
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
+  /** Боты на тесте у пугала (!пугало) — для них пугало считается целью. */
+  private readonly scareTesters = new WeakSet<PlayerState>();
   /** Кто участвует в текущем событии: побывал в его зоне или хотя бы раз ударил моба события. */
   private readonly eventParticipants = new Set<string>();
   private eventZoneCheckAt = 0;
@@ -3490,6 +3495,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFollow(nick, norm, normNick(ADMIN_NICK));
     } else if (cmd === "!camp" || cmd === "!кемп" || cmd === "!лагерь" || cmd === "!camps") {
       this.setCamp(nick, norm, parts.slice(1).join(" "));
+    } else if (["!пугало", "!тест", "!дпс", "!dps", "!demage", "!damage", "!test", "!урон"].includes(cmd)) {
+      this.botScarecrowTest(nick, norm);
     } else if (cmd === "!fish" || cmd === "!рыбачить" || cmd === "!рыбалка") {
       this.setFishing(nick, norm);
     } else if (cmd === "!train" || cmd === "!качаться" || cmd === "!качайся" || cmd === "!grind") {
@@ -4923,6 +4930,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
         "!equip <номер> — надеть конкретное · !camp <моб> — где качаться · " +
+        "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
         "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
@@ -5602,10 +5610,16 @@ export class ZoneRoom extends Room<ZoneState> {
     // должно работать всегда, а не только пока цель — босс.
     const raidBossMob = raidBoss;
 
-    // Цель: моб (не босс/осколок) в зоне.
+    // !пугало: бот бьёт пугало в лагере (цель — только оно), пока не выйдет время.
+    const testing = (bot.testUntil ?? 0) > Date.now();
+    if (testing) this.scareTesters.add(p);
+    else this.scareTesters.delete(p);
+    const scare = testing ? this.sim.mobs.get(this.sim.scarecrowId) : undefined;
+
+    // Цель: моб (не босс/осколок/пугало) в зоне.
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
-    const okMob = (m: { dead: boolean; kind: string; x: number; z: number }): boolean =>
-      !m.dead && m.kind !== "boss" && m.kind !== "shard" && inZone(m.x, m.z);
+    const okMob = (m: { dead: boolean; kind: string; x: number; z: number; scarecrow?: boolean }): boolean =>
+      !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && inZone(m.x, m.z);
     if (!mob || !okMob(mob)) {
       bot.target = null;
       mob = undefined;
@@ -5783,6 +5797,12 @@ export class ZoneRoom extends Room<ZoneState> {
     // Пока идём за мечом, моба не бьём — но и цель по мобу не бросаем:
     // okMob-выбор выше продолжает работать, просто движение приоритетнее.
     // В рейде цель одна — босс, всё остальное игнорируем.
+    if (scare) {
+      // Тест у пугала: только оно, без лута и посторонних мобов.
+      mob = scare;
+      bot.target = scare.id;
+      loot = undefined;
+    }
     const chasingMob = raidBoss ?? (loot ? undefined : mob);
 
     // «!follow / !come»: бой всё равно важнее — догоняем только если мобов
@@ -6403,13 +6423,35 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Мобы в круге радиуса `r` вокруг точки корпуса игрока/бота. */
   private mobsInRadius(p: PlayerState, r: number): { id: string; x: number; z: number }[] {
     const out: { id: string; x: number; z: number }[] = [];
+    // Пугало считается мобом только для бота на тесте (!пугало) — остальных оно не отвлекает.
+    const withScare = this.scareTesters.has(p);
     for (const m of this.sim.mobs.values()) {
-      if (m.dead) continue;
+      if (m.dead || (m.scarecrow && !withScare)) continue;
       // Круг задевает тело, а не только центр (крупные мобы — ×5 по размеру).
       if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > r + MOB.hitRadius * m.scale) continue;
       out.push({ id: m.id, x: m.x, z: m.z });
     }
     return out;
+  }
+
+  /** Табло пугала: «ник» / «DPS 1234 · макс. удар 567»; никто не бьёт — подсказка. */
+  private scarecrowText(): string {
+    const i = this.sim.scareInfo();
+    if (!i) return "Ударь меня — покажу урон\n!пугало — твой бот проверит билд";
+    const nick = this.state.players.get(i.by)?.nick ?? "?";
+    return `${nick}\nDPS ${Math.round(i.dps)} · макс. удар ${Math.round(i.max)}`;
+  }
+
+  /** `!пугало` / `!dps` — бот минуту бьёт пугало в лагере (над ним — DPS и макс. удар). */
+  private botScarecrowTest(nick: string, norm: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
+      return;
+    }
+    bot.testUntil = Date.now() + SCARECROW.botTestSec * 1000;
+    bot.raiding = false;
+    this.reply(`@${nick} герой идёт к пугалу в лагере и ${SCARECROW.botTestSec} с бьёт его — над пугалом DPS и макс. удар.`);
   }
 
   /** Волна дочитана — оглушаем всех в круге (символический урон). */
@@ -7458,6 +7500,10 @@ export class ZoneRoom extends Room<ZoneState> {
       s.marked = m.markT > 0 ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
+      if (m.scarecrow) {
+        const info = this.scarecrowText();
+        if (s.info !== info) s.info = info;
+      }
       if (m.kind === "boss") {
         s.windup = m.slamTelegraph;
         s.slamSeq = m.slamSeq;

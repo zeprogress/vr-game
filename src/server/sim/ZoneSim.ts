@@ -19,6 +19,7 @@ import {
   CHIEF_HEAL,
   FREEZE,
   LEAP,
+  SCARECROW,
   PACK_FRENZY,
   SHOTS,
   type MobShot,
@@ -410,6 +411,8 @@ export class Mob {
   private leapZ = 0;
   /** Ярость стаи: секунд осталось (пока > 0 — raging). */
   private frenzyT = 0;
+  /** Пугало лагеря (SCARECROW): бессмертное, неподвижное, не бьёт. */
+  readonly scarecrow: boolean;
   private healCd = 6;
   /** ZoneSim прочтёт и сбросит: вождь лечит соседей (ему видны все мобы). */
   healReq = false;
@@ -522,6 +525,7 @@ export class Mob {
       shot?: MobShot;
       leaper?: boolean;
       packFrenzy?: boolean;
+      scarecrow?: boolean;
       /** Ключ ELITE_MOBS лагеря, откуда моб (для заданий доски). */
       campType?: string;
       /** Вожак лагеря (задание «Вожак»): сильнее, крупнее, реже возрождается. */
@@ -590,6 +594,7 @@ export class Mob {
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
     this.packFrenzy = opts.packFrenzy ?? false;
+    this.scarecrow = opts.scarecrow ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
     this.liftM = (opts.visLift ?? 0) * MOB.bodyRadius * 2 * this.scale;
@@ -689,7 +694,7 @@ export class Mob {
 
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
-    if (this.dead || this.kind === "boss") return; // босса с места не сдвинуть
+    if (this.dead || this.kind === "boss" || this.scarecrow) return; // босса и пугало с места не сдвинуть
     this.vx += dx * power;
     this.vz += dz * power;
     this.vy += power * 0.35;
@@ -724,6 +729,7 @@ export class Mob {
       this.hurtDx = dx;
       this.hurtDz = dz;
     }
+    if (this.hp <= 0 && this.scarecrow) this.hp = this.maxHp; // пугало не умирает
     if (this.hp <= 0) {
       this.dead = true;
       this.deadT = 0;
@@ -746,6 +752,17 @@ export class Mob {
     spit: (mob: Mob, target: SimPlayer) => void,
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
+    // Пугало: стоит столбом, не бьёт, здоровье всегда полное (урон считает ZoneSim.scare).
+    if (this.scarecrow) {
+      this.vx = this.vy = this.vz = 0;
+      this.x = this.homeX;
+      this.z = this.homeZ;
+      this.y = terrainHeight(this.x, this.z);
+      this.grounded = true;
+      this.hp = this.maxHp;
+      this.stunnedT = this.rootedT = 0;
+      return;
+    }
     if (this.tauntT > 0) this.tauntT -= dt;
     if (this.markT > 0) {
       this.markT -= dt;
@@ -1993,6 +2010,17 @@ export class ZoneSim {
     this.boss.yaw = this.boss.restYaw;
     this.boss.faceRest = true;
     this.mobs.set(this.boss.id, this.boss);
+    // Пугало — проверка билдов (урон по нему считает scare, см. scareInfo).
+    {
+      const sc = HUB.training.scarecrow;
+      const m = new Mob("slime", sc.x, sc.z, {
+        model: "scarecrow", name: "Пугало", level: 0, hp: SCARECROW.hp, scaleMul: SCARECROW.scale, xp: 0, scarecrow: true,
+      });
+      m.restYaw = Math.atan2(HUB_CENTER.x - sc.x, HUB_CENTER.z - sc.z);
+      m.yaw = m.restYaw;
+      this.scarecrowId = m.id;
+      this.mobs.set(m.id, m);
+    }
     // Чучела — на тренировочной площадке лагеря (HUB).
     for (const t of HUB.training.dummies) {
       const d = new Dummy(t.x, terrainHeight(t.x, t.z), t.z);
@@ -2069,6 +2097,20 @@ export class ZoneSim {
       const d = new Drop("potion", 1, px, terrainHeight(px, pz) + BAG.dropHeight, pz);
       this.drops.set(d.id, d);
     }
+  }
+
+  /** id пугала лагеря (SCARECROW). */
+  scarecrowId = "";
+  /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
+  private scare: { by: string; start: number; last: number; total: number; max: number } | null = null;
+
+  /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
+  scareInfo(): { by: string; dps: number; max: number } | null {
+    const s = this.scare;
+    if (!s || this.elapsed - s.last > SCARECROW.idleSec) return null;
+    // Время — от первого удара до сейчас (минимум 1 с), пока бой идёт.
+    const t = Math.max(1, Math.min(this.elapsed, s.last + 1) - s.start);
+    return { by: s.by, dps: s.total / t, max: s.max };
   }
 
   /** Эффекты не от конкретного моба (колючки на земле и т.п.) — ZoneRoom разошлёт и очистит. */
@@ -2264,8 +2306,8 @@ export class ZoneSim {
           dz /= d;
         }
         const over = clr - d;
-        const aBoss = a.kind === "boss";
-        const bBoss = b.kind === "boss";
+        const aBoss = a.kind === "boss" || a.scarecrow;
+        const bBoss = b.kind === "boss" || b.scarecrow;
         // Доля коррекции: тяжёлый (босс) стоит, лёгкий уходит на всю глубину.
         const wa = aBoss === bBoss ? 0.5 : aBoss ? 0 : 1;
         const wb = 1 - wa;
@@ -2426,6 +2468,17 @@ export class ZoneSim {
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
+    // Пугало: копим сессию урона бойца (новый боец или пауза дольше idleSec — заново).
+    if (m.scarecrow && attacker && dealt > 0) {
+      const s = this.scare;
+      if (!s || s.by !== attacker || this.elapsed - s.last > SCARECROW.idleSec) {
+        this.scare = { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt };
+      } else {
+        s.total += dealt;
+        s.max = Math.max(s.max, dealt);
+        s.last = this.elapsed;
+      }
+    }
     // Ярость стаи (Скалолом): гибель сородича злит соседей того же лагеря.
     if (killed && m.packFrenzy && m.campType) {
       for (const o of this.mobs.values()) {

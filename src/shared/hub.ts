@@ -73,8 +73,9 @@ export const HUB = {
    * общие: сервер спавнит Dummy здесь, клиент рисует площадку вокруг них.
    */
   training: {
+    /** Пугало для проверки билдов: бессмертное, над ним DPS и макс. удар (см. SCARECROW). */
+    scarecrow: { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 1 },
     dummies: [
-      { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 1 },
       { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z + 4.5 },
       { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z - 2.5 },
       { x: HUB_CENTER.x - 23, z: HUB_CENTER.z + 8 },

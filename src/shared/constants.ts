@@ -497,6 +497,14 @@ export interface MobShot {
   caltrops?: { sec: number; radius: number; slowSec: number; slowFrac: number; dmgFrac: number };
 }
 
+/**
+ * Пугало в лагере (HUB.training.scarecrow) — проверка билдов: бессмертное,
+ * неподвижное, не бьёт; над ним — DPS и самый сильный удар текущего бойца.
+ * Сессия бойца кончается, если он не бил idleSec секунд. Бот по !пугало
+ * бьёт его botTestSec секунд.
+ */
+export const SCARECROW = { hp: 10_000_000, idleSec: 6, botTestSec: 60, scale: 1.25 } as const;
+
 /** 40 ур. Скалолом: прыжок на героя (EliteMobDef.leaper). */
 export const LEAP = {
   minDist: 5,
