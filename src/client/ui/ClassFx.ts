@@ -654,6 +654,11 @@ export function playClassAct(
         c.sound(at, "bash");
       }
       return true;
+    case "catDust":
+      // Свита стража рассыпается: тёмный прах вверх и фиолетовые искры.
+      vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 26, speed: 3, life: 1.3, grav: -1.5, size: 0.5 + (r ?? 0.5) * 0.3 });
+      vfx.burst(x, y + 0.6, z, FXC.arcane, { count: 14, speed: 4, life: 0.8, grav: -3, size: 0.2 });
+      return true;
     case "catChest": {
       // Сундук стража: золотой столб и россыпь искр; суперприз — больше и дольше.
       const fin = r === 1;

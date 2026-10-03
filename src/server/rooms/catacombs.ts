@@ -48,6 +48,8 @@ export interface CatHost {
   finalStart(id: string): void;
   finalTick(id: string): void;
   finalStop(): void;
+  /** Пали вместе со стражем: убрать мобов (рассыпаются прахом, без лута). */
+  dismissMobs(ids: string[]): void;
   /** Награды: сундук стадии / суперприз — в склад героя. Возвращает выпавшее (для баннера). */
   chest(id: string, kind: "gold" | "final"): LootItem[];
   /** Сундук на полу (эффект) и зелья россыпью (lootMul — проклятие «Щедрая гробница»). */
@@ -316,7 +318,10 @@ export class CatacombDirector {
       case "boss": {
         this.bossBrain(now, st.hall, plan.boss!, heroes);
         if (this.host.alive(this.bossId)) break;
-        for (const g of this.guardians) this.host.clearMobs([g]);
+        // Страж пал — его свита рассыпается прахом (и ждавшие у ворот не выходят).
+        this.pendingAdds = [];
+        this.host.dismissMobs([...this.mobs].filter((id) => id !== this.bossId));
+        this.mobs.clear();
         this.guardians.clear();
         if (this.finalOn) {
           this.host.finalStop();

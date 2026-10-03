@@ -5459,6 +5459,15 @@ export class ZoneRoom extends Room<ZoneState> {
           }
         }, delay * 1000);
       },
+      dismissMobs: (ids) => {
+        for (const id of ids) {
+          const m = this.sim.mobs.get(id);
+          if (!m) continue;
+          if (!m.dead) this.broadcast(MSG.act, { k: "catDust", id: "", x: m.x, y: m.y, z: m.z, r: MOB.bodyRadius * m.scale } satisfies ActRelay);
+          this.sim.mobs.delete(id);
+          this.sim.catMobs.delete(id);
+        }
+      },
       mobInfo: (id) => {
         const m = this.sim.mobs.get(id);
         return m && !m.dead ? { x: m.x, z: m.z, hp: m.hp, maxHp: m.maxHp } : null;

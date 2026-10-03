@@ -730,17 +730,19 @@ export class SpectatorCamera {
           this.catTopC.z += (cz - this.catTopC.z) * k;
           this.catTopH += (spread - this.catTopH) * k;
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
-          const height = CAT_CEIL - 1.3;
-          // Отъезд назад (к входу, −Z) — чтобы смотреть под углом, а не строго в макушки.
-          const back = Math.min(c.r * 0.8, 3 + this.catTopH * 0.55);
+          // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
+          // бой шире — чуть выше и дальше (но не выше свода).
+          const height = Math.min(CAT_CEIL - 2, 7.5 + this.catTopH * 0.3);
+          const back = Math.min(c.r * 0.9, height * 0.85 + this.catTopH * 0.25);
           let px = this.catTopC.x;
           let pz = this.catTopC.z - back;
-          [px, pz] = catProject(px, pz, c.lo, c.hi, 1.5);
+          // Только внутри зала (не в узком коридоре — там стены вплотную к камере).
+          [px, pz] = catProject(px, pz, c.hi, c.hi, 2);
           pos.set(px, gy + height, pz);
           tgt.set(this.catTopC.x, gy + 0.6, this.catTopC.z);
           // Угол обзора — чтобы влез весь бой (от расстояния до дальнего края).
           const dist = Math.hypot(this.catTopC.x - px, this.catTopC.z - pz, height);
-          this.catFov = Math.max(0.95, Math.min(1.45, 2 * Math.atan((this.catTopH + 3) / dist)));
+          this.catFov = Math.max(0.9, Math.min(1.35, 2 * Math.atan((this.catTopH + 2.5) / dist)));
           return;
         }
         break;
