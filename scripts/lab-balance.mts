@@ -854,6 +854,41 @@ if (ONLY.has("skilltest")) {
     check("Призрак: крит из тени", t.rt.forceCritUntil > t.room.elapsed, `гарантированный крит до ${(t.rt.forceCritUntil - t.room.elapsed).toFixed(1)} с`);
   }
 
+  // 4б. Манёвры и заражение (бот заморожен, умения — вручную).
+  {
+    const t = scene((m) => m.kind === "slime" && !m.campType, ["plague", "soulSteal"]);
+    const mobs = [...t.room.sim.mobs.values()].filter((m: any) => !m.dead).slice(0, 4);
+    const [a, ...rest] = mobs;
+    for (const m of mobs) m.hp = m.maxHp = 1e6;
+    rest.forEach((m: any, i: number) => ((m.x = a.x + 1.5 * Math.cos(i * 2)), (m.z = a.z + 1.5 * Math.sin(i * 2))));
+    for (const m of mobs) m.stunMob?.(99);
+    for (const m of mobs) t.room.sim.stunMob(m.id, 99);
+    put(t.p, a.x + 5, a.z);
+    const d0 = Math.hypot(t.p.head.x - a.x, t.p.head.z - a.z);
+    t.room.castSkill("plague", t.x.id, t.p, t.rt, a.x, a.z);
+    secs(t.step, 0.4);
+    const d1 = Math.hypot(t.p.head.x - a.x, t.p.head.z - a.z);
+    check("Чума: рывок к цели", d1 < d0 - 2, `до цели ${f(d0, 1)} → ${f(d1, 1)} м, стаков на цели ${a.poisonStacks}`);
+    for (let i = 0; i < 3; i++) t.room.afterDaggerHit(t.x.id, t.p, t.rt, a, 50);
+    const infected = rest.filter((m: any) => m.poisonStacks > 0).length;
+    check("Чума: взрыв заражает соседей", infected === rest.length, `заражено соседей ${infected} из ${rest.length}, стаков у цели после взрыва ${a.poisonStacks}`);
+    t.rt.skillAt = {};
+    put(t.p, a.x + 4, a.z);
+    t.room.castSkill("soulSteal", t.x.id, t.p, t.rt, a.x, a.z);
+    const side = (t.p.head.x - a.x) * 1; // был справа (+4), за спиной — слева (<0)
+    check("Кража душ: удар насквозь", side < 0, `герой ${side < 0 ? "за спиной цели" : "остался спереди"} (x−x цели = ${f(side, 1)})`);
+  }
+  {
+    const t = scene((m) => m.kind === "slime" && !m.campType, ["whirlwind", "abyss"]);
+    const x0 = t.p.head.x;
+    const z0 = t.p.head.z;
+    t.rt.yaw = Math.PI / 2;
+    t.room.castSkill("whirlwind", t.x.id, t.p, t.rt, NaN, NaN);
+    secs(t.step, 2.2);
+    const moved = Math.hypot(t.p.head.x - x0, t.p.head.z - z0);
+    check("Танец клинков: вихрь-рывок", moved > 3, `пронёсся на ${f(moved, 1)} м`);
+  }
+
   // 5. Влитые повторы: оглушение рывка, замедление Танца клинков.
   {
     const t = scene((m) => m.kind === "slime" && !m.campType, ["shadowStep", "whirlwind"]);

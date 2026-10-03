@@ -434,7 +434,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
       battlemage: { name: "Громовой вихрь", desc: "Молот по кругу: 5 магических ударов, каждый ещё бьёт молнией соседа в 7 м" },
-      assassin: { name: "Танец клинков", desc: "2 с неуязвимости: 5 ударов по всем вокруг, каждый с шансом крита; задетые замедлены на 30% на 2 с" },
+      assassin: { name: "Танец клинков", desc: "Вихрь-рывок: 2 с неуязвимости, проносишься вперёд на 6 м, 5 ударов по всем вокруг (с шансом крита), задетые замедлены на 30%" },
     },
   },
   warcry: {
@@ -453,8 +453,8 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
-    desc: "8 с клинки отравлены: каждый удар — стак яда (до 5, яд тикает 3 с); на 5 стаках — взрыв яда вокруг цели ×0.8 удара",
-    cooldown: 16, castTime: 0, radius: 3, dmgMult: 0.8, hits: 1,
+    desc: "Рывок к цели (до 6 м) и 8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.4 удара заражает соседей (+2 стака) — яд ползёт по толпе",
+    cooldown: 16, castTime: 0, radius: 3, dmgMult: 0.4, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила яда" },
   },
   smoke: {
@@ -465,13 +465,13 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   soulSteal: {
     name: "Кража душ", icon: glyph("s.soulSteal"), test: true,
-    desc: "Удар ×1.5 по цели: половина урона лечит самого раненого союзника рядом (все целы — тебя)",
+    desc: "Удар насквозь: рывок сквозь цель (до 6 м) за спину, удар ×1.5; половина урона лечит самого раненого союзника рядом (все целы — тебя)",
     cooldown: 10, castTime: 0.2, radius: 12, dmgMult: 1.5, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила лечения" },
   },
   abyss: {
     name: "Призрак бездны", icon: glyph("s.abyss"), test: true,
-    desc: "3 с в тени: мобы теряют тебя из виду; первый удар из тени ×2 и крит, после выхода +30% темпа на 3 с",
+    desc: "3 с в тени: мобы теряют тебя, бег +40%; первый удар из тени — рывок за спину цели, ×2 и крит, затем +30% темпа на 3 с",
     cooldown: 16, castTime: 0, radius: 0, dmgMult: 2, hits: 1,
     attr: { attr: "agi", per: 0.015, what: "удар из тени" },
   },
@@ -503,7 +503,7 @@ export const ASSASSIN_FAN_HOP = 5;
 export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5, pullStep: 0.25 } as const;
 
 /** Копейщик, боевой маг и ассасин — умения откатываются быстрее остальных классов. */
-export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65, assassin: 0.6 };
+export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65, assassin: 0.4 };
 
 /** Базовый откат умения у класса (без МДР). */
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
@@ -553,16 +553,29 @@ export function skillAttrMul(id: SkillId, a: Partial<Record<Attr, number>>): num
 }
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
-export const PLAGUE = { duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.05, burstRadius: 3 } as const;
+export const PLAGUE = {
+  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.03, burstRadius: 3,
+  /** Взрыв на 5 стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
+  burstCd: 3,
+  /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */
+  spread: 2,
+  /** Применение — рывок к цели до dash м, удар сразу вешает openStacks стаков. */
+  dash: 6,
+  openStacks: 2,
+} as const;
 /** «Пелена смерти»: дым — промах мобов, запрет выстрелов, уворот союзникам. */
 export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3 } as const;
 /** «Кража душ»: доля нанесённого урона в лечение; «все целы» — выше этой доли HP. */
-export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 3.5 } as const;
+/** «Кража душ»: удар насквозь — рывок к цели до reach м и дальше за спину на through м. */
+export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6, through: 3, dashTime: 0.22 } as const;
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */
-export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3 } as const;
+/** «Призрак бездны»: сколько в тени, ускорение после выхода, бег в тени; удар из тени — рывок за спину цели (blink м). */
+export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
 /** Ассасин: «Теневой рывок» оглушает цель, «Танец клинков» замедляет задетых. */
 export const ASSASSIN_STEP_STUN = 1;
 export const ASSASSIN_WHIRL_SLOW = { sec: 2, mul: 0.7 } as const;
+/** «Танец клинков» ассасина — вихрь-рывок: за время вращения проносится вперёд на столько метров. */
+export const ASSASSIN_WHIRL_DASH = 6;
 
 // ---------------------------------------------------------------- раскладка
 

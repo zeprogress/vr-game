@@ -697,6 +697,9 @@ export class Mob {
   poisonDps = 0;
   poisonT = 0;
   poisonBy = "";
+  /** Сила взрыва яда (урон, от удара отравителя) и перезарядка взрыва этого моба. */
+  poisonBurst = 0;
+  poisonBurstCd = 0;
   /** Кровотечение (веер ножей): урон в секунду, сколько ещё, чей; накопитель для красного числа. */
   bleedDps = 0;
   bleedT = 0;
@@ -2514,6 +2517,7 @@ export class ZoneSim {
   /** Тик горения (врождённый поджог мага): DoT по всем тлеющим мобам, опыт — поджёгшему. */
   private tickBurning(dt: number): void {
     for (const m of this.mobs.values()) {
+      if (m.poisonBurstCd > 0) m.poisonBurstCd -= dt;
       if (!m.dead && m.poisonStacks > 0) {
         m.poisonT -= dt;
         const hp0 = m.hp;
@@ -2722,17 +2726,37 @@ export class ZoneSim {
    * `dps` — урон в секунду за стак (берётся максимальный). Возвращает число
    * стаков; на maxStacks стаки сброшены — вызывающий взрывает яд.
    */
-  poisonMob(id: string, dps: number, by: string): number {
+  poisonMob(id: string, dps: number, burst: number, by: string, add = 1): number {
     const m = this.mobs.get(id);
     if (!m || m.dead) return 0;
-    m.poisonStacks = Math.min(PLAGUE.maxStacks, m.poisonStacks + 1);
-    m.poisonDps = m.poisonStacks === 1 ? dps : Math.max(m.poisonDps, dps);
+    const fresh = m.poisonStacks === 0;
+    m.poisonStacks = Math.min(PLAGUE.maxStacks, m.poisonStacks + add);
+    m.poisonDps = fresh ? dps : Math.max(m.poisonDps, dps);
+    m.poisonBurst = fresh ? burst : Math.max(m.poisonBurst, burst);
     m.poisonT = PLAGUE.stackSec;
     m.poisonBy = by;
-    const n = m.poisonStacks;
-    if (n >= PLAGUE.maxStacks) m.poisonStacks = 0;
-    return n;
+    this.poisonFx.push({ x: m.x, y: m.y, z: m.z, mobId: m.id, by, stacks: m.poisonStacks, burst: false });
+    if (m.poisonStacks >= PLAGUE.maxStacks && m.poisonBurstCd <= 0) this.poisonBurstAt(m);
+    return m.poisonStacks;
   }
+
+  /** Взрыв яда: урон вокруг и заражение соседей (+PLAGUE.spread стаков, цепочкой). Стаки не сгорают. */
+  private poisonBurstAt(m: Mob): void {
+    m.poisonBurstCd = PLAGUE.burstCd;
+    const by = m.poisonBy;
+    const dmg = m.poisonBurst;
+    this.poisonFx.push({ x: m.x, y: m.y, z: m.z, mobId: m.id, by, stacks: m.poisonStacks, burst: true });
+    const near = [...this.mobs.values()].filter((o) => !o.dead && Math.hypot(o.x - m.x, o.z - m.z) <= PLAGUE.burstRadius + MOB.bodyRadius * o.scale);
+    for (const o of near) {
+      const hp0 = o.hp;
+      this.hitMob(o.id, dmg, 0, 0, by, false, true);
+      const dealt = Math.round(Math.max(0, hp0 - (o.dead ? 0 : o.hp)));
+      if (dealt > 0) this.dmgHits.push({ x: o.x, y: o.y + MOB.bodyRadius * o.scale * 1.6, z: o.z, dmg: dealt, by: by || undefined, mob: o.id, c: "poison" });
+    }
+    for (const o of near) if (o !== m && !o.dead) this.poisonMob(o.id, m.poisonDps, dmg, by, PLAGUE.spread);
+  }
+  /** События яда за тик (стак/взрыв) — комната рассылает act poisonStack / plagueBurst. */
+  readonly poisonFx: { x: number; y: number; z: number; mobId: string; by: string; stacks: number; burst: boolean }[] = [];
 
   /** Кровотечение (веер ножей): `dps` на `sec` с, берётся сильнейшее; не горение — свой эффект и красные цифры. */
   bleedMob(id: string, dps: number, sec: number, by: string): void {

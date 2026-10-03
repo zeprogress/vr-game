@@ -8,7 +8,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, SOUL_STEAL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -648,7 +648,10 @@ export class Game {
       });
       // Оружие — в кости кулака модели, замах — её клипом (как у ботов).
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
+      this.combat.onMeleeSwing = (kind, hand) => {
+        this.abyssBlink();
+        this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
+      };
     } else if (this.pcThirdPerson) {
       // ПК «как в WoW»: орбитальная камера за спиной + видимая модель, бой —
       // автоатакой по выбранной цели (PcTargeting → CombatSystem.pcTarget).
@@ -657,7 +660,10 @@ export class Game {
       this.localAvatar = new LocalAvatar(this.scene);
       this.scene.activeCamera = this.player.renderCamera;
       this.combat.avatarFist = (side) => this.localAvatar?.fistBone(side) ?? null;
-      this.combat.onMeleeSwing = (kind, hand) => this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
+      this.combat.onMeleeSwing = (kind, hand) => {
+        this.abyssBlink();
+        this.localAvatar?.swing(this.progression.meleeAnimRate * this.combat.atkSpeedAffix, kind, hand);
+      };
       this.combat.pcAuto = true;
       this.combat.lootToBag = true;
       this.combat.onPickupBlocked = () => this.notifyToast("Руки заняты — сначала сними оружие (C)");
@@ -2330,7 +2336,8 @@ export class Game {
     const camp = self.campBuffSecs ?? 0;
     this.localAvatar?.setCampWarm(!inTower && camp > 0);
     this.localAvatar?.setScrolls(!inTower && (self.scrollWindSecs ?? 0) > 0, !inTower && (self.scrollXpSecs ?? 0) > 0);
-    this.player.speedMul = !inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1;
+    this.player.speedMul =
+      (!inTower && (self.scrollWindSecs ?? 0) > 0 ? SCROLL.windMul : 1) * (!inTower && self.abyssSecs > 0 ? 1 + ABYSS.move : 1);
     if (camp > this.lastCampBuff + 60) this.notifyToast("🔥 Тепло костра: защита +20% на 10 минут");
     this.lastCampBuff = camp;
     const buffs = buffList(self);
@@ -3054,24 +3061,7 @@ export class Game {
     const fx = Math.sin(fy);
     const fz = Math.cos(fy);
     const msg: { kind: SkillId; x?: number; z?: number } = { kind: id };
-    // Ближайшая цель впереди (для рывка/прыжка): центр отрезка тела в пределах maxD.
-    const frontTarget = (maxD: number): { x: number; z: number } | null => {
-      let best: { x: number; z: number } | null = null;
-      let bd = maxD;
-      for (const t of this.targets) {
-        if (!t.alive) continue;
-        const sg = t.hitSegment();
-        const cx = (sg.a.x + sg.b.x) / 2;
-        const cz = (sg.a.z + sg.b.z) / 2;
-        const dx = cx - p.x;
-        const dz = cz - p.z;
-        const d = Math.hypot(dx, dz);
-        if (d < 0.5 || d > bd || (dx * fx + dz * fz) / d < 0.3) continue;
-        bd = d;
-        best = { x: cx, z: cz };
-      }
-      return best;
-    };
+    const frontTarget = (maxD: number): { x: number; z: number } | null => this.frontTargetPos(maxD);
     if (id === "arrowRain" && cls === "assassin") {
       // Отскок с веером: отскок назад, веер ножей — конусом по взгляду.
       msg.x = p.x + fx * 9;
@@ -3112,6 +3102,22 @@ export class Game {
       }
       msg.x = sel.x;
       msg.z = sel.z;
+      // Удар насквозь — пролетаем сквозь цель за спину.
+      this.dashAt(sel, SOUL_STEAL.dashTime, SOUL_STEAL.through);
+      this.localAvatar?.oneShot("roll", 1.6);
+      this.combat.onMeleeSwing?.();
+    } else if (id === "plague") {
+      // Чумной клинок — рывок к цели (если есть впереди), удар по приземлении вешает 2 стака.
+      const sel = this.selectedTargetPos() ?? frontTarget(PLAGUE.dash);
+      if (sel && Math.hypot(sel.x - p.x, sel.z - p.z) <= PLAGUE.dash + 1) {
+        msg.x = sel.x;
+        msg.z = sel.z;
+        this.dashAt(sel, 0.22);
+        this.localAvatar?.oneShot("jump", 1.1);
+      }
+    } else if (id === "whirlwind" && cls === "assassin") {
+      // Танец клинков — вихрь-рывок вперёд за время вращения.
+      this.startDash(p.x + fx * ASSASSIN_WHIRL_DASH, p.z + fz * ASSASSIN_WHIRL_DASH, WHIRL.duration);
       this.combat.onMeleeSwing?.();
     } else if (id === "mark" || id === "chain") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
@@ -3176,6 +3182,53 @@ export class Game {
   }
 
   /** Плавный перенос героя (рывок/прыжок) из текущей точки в (x,z) за dur с. */
+  /** Ближайшая цель впереди (для рывка/прыжка): центр отрезка тела в пределах maxD. */
+  private frontTargetPos(maxD: number): { x: number; z: number } | null {
+    const p = this.player.position;
+    const fx = Math.sin(this.player.facing);
+    const fz = Math.cos(this.player.facing);
+    let best: { x: number; z: number } | null = null;
+    let bd = maxD;
+    for (const t of this.targets) {
+      if (!t.alive) continue;
+      const sg = t.hitSegment();
+      const cx = (sg.a.x + sg.b.x) / 2;
+      const cz = (sg.a.z + sg.b.z) / 2;
+      const dx = cx - p.x;
+      const dz = cz - p.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 0.5 || d > bd || (dx * fx + dz * fz) / d < 0.3) continue;
+      bd = d;
+      best = { x: cx, z: cz };
+    }
+    return best;
+  }
+
+  /** Рывок к цели с остановкой перед ней (или сквозь неё на `over` м за спину), за `dur` с. */
+  private dashAt(t: { x: number; z: number }, dur: number, over = -1.2): void {
+    const p = this.player.position;
+    const dx = t.x - p.x;
+    const dz = t.z - p.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.1) return;
+    const L = Math.max(0, d + over);
+    this.startDash(p.x + (dx / d) * L, p.z + (dz / d) * L, dur);
+  }
+
+  /**
+   * 🧪 «Призрак бездны»: первый удар из тени — рывок за спину цели (ПК/телефон;
+   * в VR не переносим игрока — укачивает). Сервер сам отменит тень по удару.
+   */
+  private abyssBlink(): void {
+    const me = this.net?.self;
+    if (!me || me.abyssSecs <= 0 || this.player.inVR || this.abyssBlinkDone) return;
+    const t = this.selectedTargetPos() ?? this.frontTargetPos(ABYSS.blink);
+    if (!t || Math.hypot(t.x - this.player.position.x, t.z - this.player.position.z) > ABYSS.blink + 1) return;
+    this.abyssBlinkDone = true;
+    this.dashAt(t, 0.12, 1.3);
+  }
+  private abyssBlinkDone = false;
+
   private startDash(x: number, z: number, dur: number): void {
     const p = this.player.position;
     this.dash = { sx: p.x, sz: p.z, ex: x, ez: z, t: 0, dur: Math.max(0.05, dur) };
@@ -3629,6 +3682,7 @@ export class Game {
       // 🧪 «Призрак бездны»: ускорение темпа (как ZoneRoom.cryTempo); окно с запасом
       // в меньшую сторону — сервер включает его с первого удара из тени.
       this.abyssHasteUntil = performance.now() + ABYSS.hasteSec * 1000;
+      this.abyssBlinkDone = false;
       this.notifyToast("Ты в тени — мобы тебя не видят");
     }
     if (k === "plagueOn" && id === this.net?.sessionId) this.notifyToast("Клинки отравлены — бей, яд копится на цели");

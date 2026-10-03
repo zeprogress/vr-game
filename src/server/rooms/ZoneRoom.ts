@@ -204,7 +204,7 @@ import {
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -2232,22 +2232,11 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** 🧪 После удара кинжалом: яд «Чумного клинка» (стаки, на 5 — взрыв вокруг цели). */
-  private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, dmg: number): void {
+  private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, dmg: number, add = 1): void {
     if (rt.plagueUntil <= this.elapsed || mob.dead) return;
-    const dps = dmg * PLAGUE.tickFrac * skillAttrMul("plague", p);
-    const stacks = this.sim.poisonMob(mob.id, dps, ownerId);
-    // Стак на мобе — зелёная метка, чем больше стаков, тем ярче (видно, что яд копится).
-    this.broadcast(MSG.act, { k: "poisonStack", id: ownerId, x: mob.x, y: mob.y, z: mob.z, mobId: mob.id, r: stacks, d: PLAGUE.stackSec } satisfies ActRelay);
-    if (stacks < PLAGUE.maxStacks) return;
-    // Взрыв яда: SKILLS2.plague.dmgMult удара по всем вокруг цели (и по ней самой).
-    const burst = dmg * SKILLS2.plague.dmgMult * skillAttrMul("plague", p);
-    const hp0 = mob.hp;
-    this.sim.hitMob(mob.id, burst, 0, 0, ownerId, false, true);
-    const dealt = Math.round(Math.max(0, hp0 - (mob.dead ? 0 : mob.hp)));
-    if (dealt > 0) this.sim.dmgHits.push({ x: mob.x, y: mob.y + MOB.bodyRadius * mob.scale * 1.6, z: mob.z, dmg: dealt, by: ownerId, mob: mob.id, c: "poison" });
-    this.sim.splashDamage(mob.x, mob.y, mob.z, PLAGUE.burstRadius, burst, mob.id, ownerId);
-    const y = terrainHeight(mob.x, mob.z);
-    this.broadcast(MSG.act, { k: "plagueBurst", id: ownerId, x: mob.x, y, z: mob.z, r: PLAGUE.burstRadius } satisfies ActRelay);
+    // Стак яда; на 5 стаках сим сам взрывает яд и заражает соседей (ZoneSim.poisonBurstAt).
+    const k = skillAttrMul("plague", p);
+    this.sim.poisonMob(mob.id, dmg * PLAGUE.tickFrac * k, dmg * SKILLS2.plague.dmgMult * k, ownerId, add);
   }
 
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
@@ -6050,7 +6039,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const emoting = Date.now() < bot.emoteFreezeUntil;
     // Скорость бега — от характеристик персонажа (как у живого игрока), чуть
     // медленнее ради читаемости на стриме.
-    const botSpeed = moveSpeedFor(p.level, p) * BOT.speedFactor * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1);
+    const botSpeed =
+      moveSpeedFor(p.level, p) * BOT.speedFactor * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1) *
+      (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed ? 1 + ABYSS.move : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
       (ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt);
@@ -6334,6 +6325,17 @@ export class ZoneRoom extends Room<ZoneState> {
       prof ? prof.critMult : SWORD_CRIT_MULT,
       p.luc,
     );
+    // «Призрак бездны»: удар из тени — бот возникает за спиной цели.
+    if (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed) {
+      const ax = mob.x - p.head.x;
+      const az = mob.z - p.head.z;
+      const al = Math.hypot(ax, az) || 1;
+      const behind = this.sim.targetRadius("mob", mob.id) + 0.8;
+      const bx = mob.x + (ax / al) * behind;
+      const bz = mob.z + (az / al) * behind;
+      this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz } satisfies ActRelay);
+      this.placeBotAt(p, bx, bz);
+    }
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.
     const forced = swordCrit <= 1 && bot.rt.forceCritUntil > this.elapsed;
     bot.rt.forceCritUntil = -999;
@@ -6450,7 +6452,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "warcry" && this.mobsInRadius(p, 8).length < 2) continue;
       if ((k === "mark" || k === "chain") && nd > 14) continue;
       // 🧪 Новые умения ассасина.
-      if (k === "plague" && nd > 3.5) continue;
+      if (k === "plague" && nd > PLAGUE.dash) continue;
       if (k === "soulSteal" && nd > SOUL_STEAL.reach) continue;
       if (k === "smoke" && this.mobsInRadius(p, 4).length < 2 && p.hp > p.maxHp * 0.6) continue;
       if (k === "abyss" && (nd > 3 || (p.hp > p.maxHp * 0.7 && this.mobsInRadius(p, 5).length < 3))) continue;
@@ -7073,10 +7075,16 @@ export class ZoneRoom extends Room<ZoneState> {
         rt.whirlKind = cls === "assassin" ? 2 : cls === "warrior" ? 1 : 0;
         act({ k: "whirl", x: p.head.x, y: feetY, z: p.head.z, d: WHIRL.duration, r: radius });
         const step = WHIRL.duration / hits;
+        // Ассасин — вихрь-рывок: проносится вперёд (бота переносим по шагам; игрок летит сам — Game.castSkill).
+        const [wfx, wfz] = fwd();
         for (let i = 0; i < hits; i++) {
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
+            if (cls === "assassin" && isBot) {
+              const d = ASSASSIN_WHIRL_DASH / hits;
+              this.placeBotAt(pp, pp.head.x + wfx * d, pp.head.z + wfz * d);
+            }
             const near = around(pp.head.x, pp.head.z, radius);
             for (const m of near) {
               const [dx, dz] = dirTo(m, pp.head.x, pp.head.z);
@@ -7193,6 +7201,24 @@ export class ZoneRoom extends Room<ZoneState> {
       case "plague": {
         rt.plagueUntil = this.elapsed + PLAGUE.duration;
         act({ k: "plagueOn", x: p.head.x, y: feetY, z: p.head.z, d: PLAGUE.duration });
+        // Рывок к цели: удар по приземлении сразу вешает PLAGUE.openStacks стаков.
+        const m0 = this.skillTarget(p, tx, tz, PLAGUE.dash, fwd());
+        if (m0) {
+          const [ax, az] = dirTo(m0, p.head.x, p.head.z);
+          const stop = this.sim.targetRadius("mob", m0.id) + 0.9;
+          const lx = m0.x - ax * stop;
+          const lz = m0.z - az * stop;
+          const T = 0.22;
+          act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: T });
+          this.clock.setTimeout(() => {
+            const pp = this.state.players.get(ownerId);
+            if (!pp || pp.dead) return;
+            if (isBot) this.placeBotAt(pp, lx, lz);
+            if (m0.dead) return;
+            this.sim.hitMob(m0.id, pow.dmg, ax, az, ownerId);
+            this.afterDaggerHit(ownerId, pp, rt, m0, pow.dmg, PLAGUE.openStacks);
+          }, T * 1000);
+        }
         return true;
       }
       case "smoke": {
@@ -7209,6 +7235,11 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         const [dx, dz] = dirTo(m, p.head.x, p.head.z);
         const dmg = sk.dmgMult * pow.dmg;
+        // Удар насквозь: проносится сквозь цель за спину (бот — сервер переносит, игрок — сам, см. Game.castSkill).
+        const ex = m.x + dx * SOUL_STEAL.through;
+        const ez = m.z + dz * SOUL_STEAL.through;
+        act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: ex, z2: ez });
+        if (isBot) this.placeBotAt(p, ex, ez);
         this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
         // Самый раненый союзник рядом (доля HP ниже SOUL_STEAL.healthy), иначе — сам.
         let ally: PlayerState = p;
@@ -7823,6 +7854,12 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     this.sim.mobMisses.length = 0;
+    // Яд: стак — зелёное кольцо под мобом, взрыв — зелёная вспышка по кругу.
+    for (const f of this.sim.poisonFx) {
+      if (f.burst) this.broadcast(MSG.act, { k: "plagueBurst", id: f.by, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, r: PLAGUE.burstRadius } satisfies ActRelay);
+      else this.broadcast(MSG.act, { k: "poisonStack", id: f.by, x: f.x, y: f.y, z: f.z, mobId: f.mobId, r: f.stacks, d: PLAGUE.stackSec } satisfies ActRelay);
+    }
+    this.sim.poisonFx.length = 0;
     for (const b of this.sim.bleedTicks) this.broadcast(MSG.act, { k: "bleedTick", id: b.by, x: b.x, y: b.y, z: b.z, mobId: b.mobId } satisfies ActRelay);
     this.sim.bleedTicks.length = 0;
     if (this.sim.dmgHits.length) {
