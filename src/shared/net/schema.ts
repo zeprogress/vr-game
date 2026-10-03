@@ -271,6 +271,8 @@ export class ZoneState extends Schema {
   @type("uint8") catStage = 0;
   /** Идёт бой с финальным боссом (музыка босса, кадры камеры). */
   @type("uint8") catFinal = 0;
+  /** Страж/Владыка текущего зала (id моба), "" — нет (камера зрителя, кадр «страж»). */
+  @type("string") catBoss = "";
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

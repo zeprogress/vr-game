@@ -1,4 +1,6 @@
 import {
+  CAT_CURSES,
+  CAT_HAZARD,
   CAT_HALLS,
   CAT_PHASE,
   CAT_PORTAL,
@@ -7,6 +9,8 @@ import {
   catEntry,
   catGates,
   type CatBoss,
+  type CatCurse,
+  type CatHazardKind,
   type CatWave,
 } from "#shared/catacombs";
 import type { CatacombMsg, LootItem } from "#shared/net/messages";
@@ -21,7 +25,7 @@ export interface CatHost {
   /** Живые герои: id → позиция/уровень/бот ли. */
   heroes(): { id: string; x: number; z: number; level: number; dead: boolean; bot: boolean; nick: string }[];
   /** Состояние для клиентов (поля catPhase…). */
-  setState(s: { phase: number; lo: number; hi: number; left: number; party: number; stage: number; final: boolean }): void;
+  setState(s: { phase: number; lo: number; hi: number; left: number; party: number; stage: number; final: boolean; boss: string }): void;
   /** Титры: всем (игрокам — баннер, зрителям — карточка). */
   announce(m: CatacombMsg): void;
   /** Сообщение в чат Twitch. */
@@ -44,13 +48,27 @@ export interface CatHost {
   finalStop(): void;
   /** Награды: сундук стадии / суперприз — в склад героя. Возвращает выпавшее (для баннера). */
   chest(id: string, kind: "gold" | "final"): LootItem[];
-  /** Сундук на полу (эффект) и зелья россыпью. */
-  chestFx(x: number, z: number, final: boolean): void;
+  /** Сундук на полу (эффект) и зелья россыпью (lootMul — проклятие «Щедрая гробница»). */
+  chestFx(x: number, z: number, final: boolean, lootMul: number): void;
+  /** Опасность зала: телеграф-круги в точках, через CAT_HAZARD.delay — удар (и боты от них уворачиваются). */
+  hazard(kind: CatHazardKind, pts: { x: number; z: number }[]): void;
+  /** Ворота открываются (портал) — через ~1.3 с оттуда полезут мобы. */
+  gateFx(pts: { x: number; z: number }[]): void;
   /** Землетрясение/вспышка перед боссом (эффект в точке). */
   bossFx(x: number, z: number, final: boolean): void;
 }
 
 type Step = "intro" | "waves" | "bossIntro" | "boss" | "move";
+
+/** План зала на этот заход: состав волн, страж, проклятие и опасности — случайные. */
+interface StagePlan {
+  waves: CatWave[][];
+  boss?: CatBoss;
+  curse: CatCurse;
+  hazard: CatHazardKind;
+}
+
+const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
 
 /** Режиссёр катакомб: сбор, забег по залам, награды, возврат. */
 export class CatacombDirector {
@@ -72,6 +90,11 @@ export class CatacombDirector {
   private finalOn = false;
   /** Средний уровень пати — по нему комната подгоняет силу мобов. */
   private partyLevel = 1;
+  /** План каждого зала на этот заход. */
+  private plan: StagePlan[] = [];
+  /** Волна «на подходе»: ворота уже открылись, мобы выйдут в `at`. */
+  private pending: { group: CatWave[]; gates: { x: number; z: number }[]; at: number } | null = null;
+  private nextHazardAt = 0;
   /** Кто уже получил награду в этом забеге (чтобы ушедший и вернувшийся не брал дважды). */
   private readonly rewarded = new Set<string>();
 
@@ -214,35 +237,57 @@ export class CatacombDirector {
     }
     for (const id of [...this.mobs]) if (!this.host.alive(id)) this.mobs.delete(id);
     const st = CATACOMBS.stages[this.stage];
+    const plan = this.plan[this.stage];
+    // Опасности зала: залпы по героям, пока идёт бой (не на переходе и не во вступлении).
+    if ((this.step === "waves" || this.step === "boss") && now >= this.nextHazardAt) this.fireHazard(heroes, plan, now);
     switch (this.step) {
       case "intro":
       case "waves": {
         if (this.step === "intro" && now < this.stepAt) break;
+        if (this.step === "intro") this.nextHazardAt = now + 6000;
         this.step = "waves";
+        // Ворота открылись — мобы выходят.
+        if (this.pending) {
+          if (now >= this.pending.at) {
+            this.spawnGroup(this.pending.group, this.pending.gates);
+            this.pending = null;
+          }
+          break;
+        }
         if (this.mobs.size > 0) break;
-        if (this.wave < st.waves.length) {
+        if (this.wave < plan.waves.length) {
           if (this.waveAt === 0) this.waveAt = now + (this.wave === 0 ? 1500 : CATACOMBS.waveGap * 1000);
           else if (now >= this.waveAt) {
-            this.spawnGroup(st.waves[this.wave], catGates(st.hall));
+            // 2–3 случайных ворот, иногда засада со спины.
+            const all = catGates(st.hall);
+            const front = all.filter((g) => !g.back).sort(() => Math.random() - 0.5);
+            const back = all.filter((g) => g.back).sort(() => Math.random() - 0.5);
+            const gates = front.slice(0, 2 + (Math.random() < 0.4 ? 1 : 0));
+            const ambush = Math.random() < 0.35 && this.wave > 0;
+            if (ambush) gates.push(back[0]);
+            this.host.gateFx(gates);
+            this.pending = { group: plan.waves[this.wave], gates, at: now + 1300 };
             this.wave++;
             this.waveAt = 0;
+            const first = this.wave === 1;
             this.host.announce({
-              kind: "wave", title: `${CAT_HALLS[st.hall].name} · волна ${this.wave}/${st.waves.length}`,
-              sub: this.waveSub(), secs: 4,
+              kind: "wave", title: `${CAT_HALLS[st.hall].name} · волна ${this.wave}/${plan.waves.length}${ambush ? " · засада!" : ""}`,
+              sub: first ? `проклятие: ${plan.curse.name} — ${plan.curse.desc} · ${CAT_HAZARD.names[plan.hazard]}` : this.waveSub(),
+              secs: first ? 6 : 4,
             });
           }
-        } else if (st.boss) {
+        } else if (plan.boss) {
           this.step = "bossIntro";
           this.stepAt = now + CATACOMBS.bossIntroSec * 1000;
           const at = catBossSpot(st.hall);
-          this.host.bossFx(at.x, at.z, !!st.boss.final);
-          this.host.announce({ kind: "boss", title: st.boss.name, sub: st.boss.title, secs: 6 });
+          this.host.bossFx(at.x, at.z, !!plan.boss.final);
+          this.host.announce({ kind: "boss", title: plan.boss.name, sub: plan.boss.title, secs: 6 });
         } else this.stageClear();
         break;
       }
       case "bossIntro": {
-        if (now < this.stepAt || !st.boss) break;
-        this.spawnBoss(st.boss, st.hall);
+        if (now < this.stepAt || !plan.boss) break;
+        this.spawnBoss(plan.boss, st.hall);
         this.step = "boss";
         break;
       }
@@ -273,6 +318,8 @@ export class CatacombDirector {
         this.lo = this.hi;
         this.wave = 0;
         this.waveAt = 0;
+        this.pending = null;
+        this.nextHazardAt = now + 7000;
         this.step = "waves";
         break;
       }
@@ -298,6 +345,8 @@ export class CatacombDirector {
     const heroes = this.host.heroes().filter((h) => this.party.has(h.id));
     const avg = heroes.reduce((s, h) => s + h.level, 0) / Math.max(1, heroes.length);
     this.partyLevel = avg;
+    this.pending = null;
+    this.plan = CATACOMBS.stages.map((st, i) => this.makePlan(st, i === CATACOMBS.stages.length - 1, heroes.length));
     const hall = CAT_HALLS[0];
     heroes.forEach((h, i) => {
       const p = catEntry(0, i);
@@ -307,6 +356,47 @@ export class CatacombDirector {
     this.host.chat(`☠ Отряд спускается в катакомбы: ${names}. Удачи — у вас ${Math.round(CATACOMBS.runSec / 60)} минут.`);
     this.host.announce({ kind: "start", title: "Катакомбы", sub: `${CAT_HALLS[0].name} · ${heroes.length} героев · ${Math.round(CATACOMBS.runSec / 60)} мин`, secs: 7 });
     this.pushState();
+  }
+
+  /** Случайный план зала: волны из пула (по 2 вида), страж из вариантов, проклятие, опасности. */
+  private makePlan(st: (typeof CATACOMBS.stages)[number], last: boolean, n: number): StagePlan {
+    let waves: CatWave[][] = st.waves;
+    if (st.pool && st.waveCount) {
+      waves = [];
+      for (let w = 0; w < st.waveCount; w++) {
+        const pool = [...st.pool].sort(() => Math.random() - 0.5);
+        // Волна от волны крупнее: +15% за номер.
+        const total = Math.max(2, Math.round(((st.waveBase ?? 3) + (st.wavePerHero ?? 1) * (n - 1)) * (1 + 0.15 * w)));
+        const a = Math.max(1, Math.round(total * (0.45 + Math.random() * 0.25)));
+        waves.push([
+          { type: pool[0], count: a, perHero: 0 },
+          { type: pool[1], count: Math.max(1, total - a), perHero: 0 },
+        ]);
+      }
+    }
+    return {
+      waves,
+      boss: st.bosses ? pick(st.bosses) : st.boss,
+      curse: last ? { name: "Трон Бездны", desc: "Владыка ждёт", hpMul: 1, dmgMul: 1, hazardRate: 0.6, lootMul: 1 } : pick(CAT_CURSES),
+      hazard: pick(CAT_HAZARD.kinds),
+    };
+  }
+
+  /** Залп опасности: круги под частью героев (с разбросом) — телеграф, потом удар. */
+  private fireHazard(heroes: ReturnType<CatHost["heroes"]>, plan: StagePlan, now: number): void {
+    const gap = CAT_HAZARD.gapMin + Math.random() * (CAT_HAZARD.gapMax - CAT_HAZARD.gapMin);
+    this.nextHazardAt = now + (gap / Math.max(0.1, plan.curse.hazardRate)) * 1000;
+    const party = heroes.filter((h) => this.party.has(h.id) && !h.dead).sort(() => Math.random() - 0.5);
+    if (!party.length) return;
+    const count = Math.max(1, Math.round(party.length * CAT_HAZARD.perHero + Math.random()));
+    const pts: { x: number; z: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const h = party[i % party.length];
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * 2.5;
+      pts.push({ x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r });
+    }
+    this.host.hazard(plan.hazard, pts);
   }
 
   /** Множители мобов: уровень пати (по уровню моба считает host через partyLevel) и размер пати. */
@@ -351,7 +441,9 @@ export class CatacombDirector {
 
   /** Нарастание угрозы от зала к залу. */
   private threat(what: "hp" | "dmg"): number {
-    return 1 + (what === "hp" ? CATACOMBS.threatHp : CATACOMBS.threatDmg) * this.stage;
+    const curse = this.plan[this.stage]?.curse;
+    const c = curse ? (what === "hp" ? curse.hpMul : curse.dmgMul) : 1;
+    return (1 + (what === "hp" ? CATACOMBS.threatHp : CATACOMBS.threatDmg) * this.stage) * c;
   }
 
   private stageClear(): void {
@@ -359,7 +451,7 @@ export class CatacombDirector {
     const h = CAT_HALLS[st.hall];
     if (st.chest) {
       const final = st.chest === "final";
-      this.host.chestFx(h.x, h.z, final);
+      this.host.chestFx(h.x, h.z, final, this.plan[this.stage]?.curse.lootMul ?? 1);
       const loot: LootItem[] = [];
       for (const id of this.party) {
         const key = `${this.stage}:${id}`;
@@ -429,7 +521,7 @@ export class CatacombDirector {
   private pushState(): void {
     const left = this.phase === CAT_PHASE.none ? 0 : Math.max(0, Math.ceil((this.phaseEnd - this.host.now()) / 1000));
     this.host.setState({
-      phase: this.phase, lo: this.lo, hi: this.hi, left, party: this.party.size, stage: this.stage, final: this.finalOn,
+      phase: this.phase, lo: this.lo, hi: this.hi, left, party: this.party.size, stage: this.stage, final: this.finalOn, boss: this.bossId,
     });
   }
 }

@@ -154,8 +154,13 @@ export function troddenAt(x: number, z: number): number {
  * (симуляция мобов) — мобы должны стоять ровно на той земле, что видит игрок.
  */
 export function terrainHeight(x: number, z: number): number {
-  // Катакомбы (за краем карты) — ровный каменный пол.
+  // Катакомбы (за краем карты, глубоко под землёй) — ровный каменный пол.
   if (z > CAT_REGION_Z && inCatRegion(x, z)) return CAT_FLOOR_Y;
+  return terrainHeightNatural(x, z);
+}
+
+/** Природный рельеф без катакомб — по нему строится меш земли (и фартук за краем карты). */
+export function terrainHeightNatural(x: number, z: number): number {
   return heightCache ? cachedHeight(x, z) : terrainHeightExact(x, z);
 }
 

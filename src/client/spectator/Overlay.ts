@@ -1,4 +1,5 @@
 import { glyph, itemIcon } from "#shared/icons";
+import { CAT_HELP } from "#shared/catacombs";
 import { ensureIconCss, iconHtml } from "../ui/icons";
 import type { OverlayPatch, LeaderboardRow, TowerBoardRow, LootItem } from "#shared/net/messages";
 import type { HeroStatRow } from "#shared/heroStats";
@@ -55,6 +56,8 @@ export interface OverlayCtx {
   online: readonly { nick: string; speaking: boolean; bot: boolean; plat: number }[];
   /** Квест чата (все боты вместе) или null. */
   chatQuest?: { title: string; got: number; need: number; secs: number } | null;
+  /** Катакомбы: сбор/забег — панель с таймером и командами чата. */
+  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean } | null;
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: {
     heroNick: string;
@@ -214,6 +217,12 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
+.ov-cat { right:1.2vw; top:34vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
+.ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
+.ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
+.ov-cat .c { display:flex; gap:.6vw; margin:.25vh 0; }
+.ov-cat .c i { font-style:normal; font-weight:800; color:#ffd66b; min-width:8.2vw; white-space:nowrap; }
+.ov-cat .c span { opacity:.85; }
 .ov-cq { left:50%; bottom:12.5vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
 .ov-cq b { display:block; font-weight:800; font-size:2.2vh; color:#d6b8ff; letter-spacing:.02em; }
 .ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
@@ -273,6 +282,8 @@ export class Overlay {
   private tickerKind: "event" | "news" = "event";
   private readonly towerStatus: HTMLDivElement;
   private readonly cq: HTMLDivElement;
+  private readonly cat: HTMLDivElement = div("box ov-cat");
+  private lastCatSig = "";
   private lastCqSig = "";
   private lastTowerStatusSig = "";
   private cfg: Config = { ...DEFAULT };
@@ -331,6 +342,7 @@ export class Overlay {
     this.boss.append(this.bossTitle, this.bossSub, this.bossLoot);
 
     this.root.append(
+      this.cat,
       this.wm,
       this.clock,
       this.online,
@@ -719,6 +731,34 @@ export class Overlay {
     if (this.cardUntil && now > this.cardUntil) {
       this.card.classList.remove("show");
       this.cardUntil = 0;
+    }
+
+    const ct = ctx.catacombs;
+    show(this.cat, !!ct);
+    if (ct) {
+      const mm = `${Math.floor(ct.left / 60)}:${String(ct.left % 60).padStart(2, "0")}`;
+      const sig = `${ct.gather}|${ct.hall}|${mm}|${ct.party}|${ct.final}`;
+      if (sig !== this.lastCatSig) {
+        this.lastCatSig = sig;
+        this.cat.innerHTML = "";
+        const b = document.createElement("b");
+        b.textContent = "☠ КАТАКОМБЫ";
+        const st = div("st");
+        st.textContent = ct.gather
+          ? `сбор отряда · ${ct.party} героев · спуск через ${mm}`
+          : `${ct.final ? "⚔ Владыка Бездны" : ct.hall} · отряд ${ct.party} · осталось ${mm}`;
+        this.cat.append(b, st);
+        for (const [cmd, what] of CAT_HELP) {
+          if (!ct.gather && cmd === "!катакомбы") continue;
+          const row = div("c");
+          const i = document.createElement("i");
+          i.textContent = cmd;
+          const sp = document.createElement("span");
+          sp.textContent = what;
+          row.append(i, sp);
+          this.cat.append(row);
+        }
+      }
     }
 
     const cq = ctx.chatQuest;

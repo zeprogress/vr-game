@@ -1455,6 +1455,10 @@ export class Spectator {
       online,
       towerStatus: this._towerStatus,
       chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
+      catacombs:
+        st && st.catPhase >= CAT_PHASE.gather
+          ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[Math.min(CAT_HALLS.length - 1, st.catHi)].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1 }
+          : null,
     });
     this.chatQuestSound(st);
   }
@@ -1480,15 +1484,8 @@ export class Spectator {
     if (!st || st.catPhase < CAT_PHASE.run) return null;
     const hallI = Math.min(CAT_HALLS.length - 1, st.catHi);
     const h = CAT_HALLS[hallI];
-    let bossId = "";
-    let big = 1.25;
-    st.mobs.forEach((m, id) => {
-      if (m.dead || !inCatRegion(m.x, m.z) || Math.hypot(m.x - h.x, m.z - h.z) > h.r + 2) return;
-      if (m.scale > big) {
-        big = m.scale;
-        bossId = id;
-      }
-    });
+    const bm = st.catBoss ? st.mobs.get(st.catBoss) : undefined;
+    const bossId = bm && !bm.dead ? st.catBoss : "";
     const heroes: string[] = [];
     st.players.forEach((p, id) => {
       if (!p.dead && inCatRegion(p.head.x, p.head.z)) heroes.push(id);

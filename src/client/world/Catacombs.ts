@@ -8,6 +8,9 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
+import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
+import { Color4 } from "@babylonjs/core/Maths/math.color";
+import "@babylonjs/core/Particles/particleSystemComponent";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
@@ -100,6 +103,9 @@ export class CatacombsFx {
   private crystalMat: StandardMaterial | null = null;
   private beam: Mesh | null = null;
   private time = 0;
+  /** Пылинки и искры в воздухе текущего зала (одна система, переезжает за отрядом). */
+  private motes: ParticleSystem | null = null;
+  private motesHall = -1;
   // портал в лагере
   private portal: TransformNode | null = null;
   private portalMat: StandardMaterial | null = null;
@@ -119,6 +125,10 @@ export class CatacombsFx {
     const active = !!v && v.phase >= CAT_PHASE.run;
     if (!this.built && (inside || active)) this.build();
     if (this.root) this.root.setEnabled(inside || active);
+    if (this.motes && !(inside || active) && this.motesHall >= 0) {
+      this.motes.stop();
+      this.motesHall = -1;
+    }
     if (this.built) {
       const lit = inside;
       for (const l of this.lights) if (l.isEnabled() !== lit) l.setEnabled(lit);
@@ -129,6 +139,21 @@ export class CatacombsFx {
 
   private animate(dt: number, v: CatView | null): void {
     const t = this.time;
+    // Пылинки — в зале, где сейчас отряд.
+    if (this.motes) {
+      const hall = v && v.phase >= CAT_PHASE.run ? Math.min(CAT_HALLS.length - 1, v.hi) : -1;
+      if (hall !== this.motesHall) {
+        this.motesHall = hall;
+        if (hall < 0) this.motes.stop();
+        else {
+          const h = CAT_HALLS[hall];
+          (this.motes.emitter as Vector3).set(h.x, CAT_FLOOR_Y + 3, h.z);
+          this.motes.minEmitBox.set(-h.r * 0.8, -2.5, -h.r * 0.8);
+          this.motes.maxEmitBox.set(h.r * 0.8, 6, h.r * 0.8);
+          this.motes.start();
+        }
+      }
+    }
     for (const m of this.fireMats) m.setFloat("uTime", t);
     // Решётки: открыт путь lo..hi — коридоры с lo по hi−1 подняты.
     const lo = v?.lo ?? 0;
@@ -155,7 +180,7 @@ export class CatacombsFx {
       this.beam.scaling.x = this.beam.scaling.z = 1 + 0.15 * Math.sin(t * 6);
     }
     for (let i = 0; i < this.lights.length; i++) {
-      this.lights[i].intensity = 1.25 + 0.18 * Math.sin(t * 9 + i * 1.7) + 0.08 * Math.sin(t * 23 + i);
+      this.lights[i].intensity = 2.6 + 0.3 * Math.sin(t * 9 + i * 1.7) + 0.12 * Math.sin(t * 23 + i);
     }
   }
 
@@ -164,12 +189,14 @@ export class CatacombsFx {
     const scene = this.scene;
     const root = new TransformNode("catacombs", scene);
     this.root = root;
-    const floorTex = stoneTexture(scene, "catFloorTex", [120, 112, 104], 6);
-    const wallTex = stoneTexture(scene, "catWallTex", [96, 90, 86], 5);
-    const mat = (name: string, tex: DynamicTexture | null, dif: [number, number, number], emi: [number, number, number], u = 1, vv = 1): StandardMaterial => {
+    // Своя текстура на каждый материал: clone() у DynamicTexture так и не становится
+    // «готовой» — меши с ней движок не рисовал (не было пола и стен).
+    const FLOOR: [number, number, number] = [120, 112, 104];
+    const WALL: [number, number, number] = [96, 90, 86];
+    const mat = (name: string, tex: [number, number, number] | null, dif: [number, number, number], emi: [number, number, number], u = 1, vv = 1): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
       if (tex) {
-        const t = tex.clone();
+        const t = stoneTexture(scene, `${name}Tex`, tex, tex === FLOOR ? 6 : 5);
         t.uScale = u;
         t.vScale = vv;
         m.diffuseTexture = t;
@@ -179,10 +206,10 @@ export class CatacombsFx {
       m.specularColor = new Color3(0.04, 0.04, 0.04);
       return m;
     };
-    const floorMat = mat("catFloor", floorTex, [0.75, 0.72, 0.7], [0.05, 0.045, 0.05], 6, 6);
-    const wallMat = mat("catWall", wallTex, [0.6, 0.57, 0.55], [0.04, 0.035, 0.04], 10, 2);
-    const ceilMat = mat("catCeil", wallTex, [0.25, 0.23, 0.24], [0.015, 0.012, 0.018], 6, 6);
-    const pillarMat = mat("catPillar", wallTex, [0.7, 0.66, 0.62], [0.05, 0.04, 0.04], 1, 3);
+    const floorMat = mat("catFloor", FLOOR, [0.9, 0.84, 0.78], [0.2, 0.17, 0.17], 6, 6);
+    const wallMat = mat("catWall", WALL, [0.8, 0.74, 0.7], [0.15, 0.13, 0.14], 10, 2);
+    const ceilMat = mat("catCeil", WALL, [0.3, 0.27, 0.28], [0.03, 0.025, 0.035], 6, 6);
+    const pillarMat = mat("catPillar", WALL, [0.85, 0.8, 0.74], [0.16, 0.13, 0.13], 1, 3);
     const ironMat = mat("catIron", null, [0.12, 0.11, 0.1], [0.02, 0.015, 0.012]);
     const runeMat = new StandardMaterial("catRune", scene);
     runeMat.diffuseColor = new Color3(0, 0, 0);
@@ -282,8 +309,8 @@ export class CatacombsFx {
       const L = new PointLight(`catLight${hi}`, new Vector3(h.x, y0 + H - 2, h.z), scene);
       L.diffuse = new Color3(1, 0.6, 0.32);
       L.specular = new Color3(0.1, 0.06, 0.03);
-      L.range = h.r * 2.2;
-      L.intensity = 1.25;
+      L.range = h.r * 2.6;
+      L.intensity = 2.6;
       L.setEnabled(false);
       this.lights.push(L);
     });
@@ -302,7 +329,9 @@ export class CatacombsFx {
         walls.push(w);
         torchAt(side * (CAT_CORRIDOR_HALF - 0.1), cz, -side, 0);
       }
-      const top = MeshBuilder.CreateBox("catCorTop", { width: CAT_CORRIDOR_HALF * 2 + 2, height: 0.6, depth: len }, scene);
+      // Свод коридора — плоскость лицом вниз: снизу закрывает, сверху (камера зрителя) прозрачна.
+      const top = MeshBuilder.CreatePlane("catCorTop", { width: CAT_CORRIDOR_HALF * 2 + 2, height: len }, scene);
+      top.rotation.x = -Math.PI / 2;
       top.position.set(0, y0 + H * 0.7, cz);
       ceils.push(top);
       // Решётка — на выходе из зала i (поднимается, когда путь открыт).
@@ -373,6 +402,55 @@ export class CatacombsFx {
     merge(ceils, "catCeils", ceilMat);
     merge(pillars, "catPillars", pillarMat);
     merge(irons, "catIrons", ironMat);
+    // Под землёй солнца и неба нет: камень освещают только свет залов и огонь
+    // (факелы ботов тоже) — дневные источники сцены катакомбы не трогают.
+    const stone = root.getChildMeshes();
+    for (const l of scene.lights) {
+      if (l.getClassName() === "PointLight") continue;
+      l.excludedMeshes.push(...stone);
+    }
+    // Столбы света сквозь трещины свода — аддитивные конусы, неподвижные.
+    const shaftMat = new StandardMaterial("catShaft", scene);
+    shaftMat.diffuseColor = new Color3(0, 0, 0);
+    shaftMat.emissiveColor = new Color3(0.55, 0.5, 0.42);
+    shaftMat.disableLighting = true;
+    shaftMat.alpha = 0.11;
+    shaftMat.alphaMode = Constants.ALPHA_ADD;
+    shaftMat.disableDepthWrite = true;
+    shaftMat.backFaceCulling = false;
+    CAT_HALLS.forEach((h, hi) => {
+      for (let i = 0; i < 3; i++) {
+        const a = hi * 1.3 + i * 2.1;
+        const rr = h.r * (0.25 + 0.2 * i);
+        const sh = MeshBuilder.CreateCylinder("catShaftMesh", { height: H, diameterTop: 1.2, diameterBottom: 4.5, tessellation: 12, cap: 0 }, scene);
+        sh.position.set(h.x + Math.cos(a) * rr + 1.5, y0 + H / 2, h.z + Math.sin(a) * rr);
+        sh.rotation.z = 0.18;
+        sh.material = shaftMat;
+        sh.parent = root;
+        sh.isPickable = false;
+      }
+    });
+    // Пылинки: медленно кружат в свете факелов, редкие тлеющие искры.
+    const ps = new ParticleSystem("catMotes", 260, scene);
+    ps.particleTexture = glowTexture(scene);
+    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+    ps.emitter = new Vector3(0, y0 + 3, 0);
+    ps.minEmitBox = new Vector3(-18, -2.5, -18);
+    ps.maxEmitBox = new Vector3(18, 6, 18);
+    ps.color1 = new Color4(1, 0.75, 0.45, 0.55);
+    ps.color2 = new Color4(0.75, 0.55, 1, 0.4);
+    ps.colorDead = new Color4(0, 0, 0, 0);
+    ps.minSize = 0.05;
+    ps.maxSize = 0.16;
+    ps.minLifeTime = 5;
+    ps.maxLifeTime = 9;
+    ps.emitRate = 40;
+    ps.direction1 = new Vector3(-0.15, 0.08, -0.15);
+    ps.direction2 = new Vector3(0.15, 0.25, 0.15);
+    ps.minEmitPower = 0.2;
+    ps.maxEmitPower = 0.5;
+    ps.gravity = new Vector3(0, 0.02, 0);
+    this.motes = ps;
     root.setEnabled(false);
   }
 

@@ -121,6 +121,7 @@ type Shot =
   | { kind: "eyeMob"; id: string }
   | { kind: "crowd" }
   | { kind: "catHall" }
+  | { kind: "catTop" }
   | { kind: "catBoss" }
   | { kind: "path"; idx: number };
 
@@ -388,9 +389,9 @@ export class SpectatorCamera {
     // Катакомбы: эфир — внизу. Появился страж/Владыка — сразу на него.
     const cat = ctx.cat;
     const catShot = (s: Shot): boolean =>
-      s.kind === "catHall" || s.kind === "catBoss" || (isPlayerShotKind(s.kind) && !!cat?.heroes.includes((s as { id: string }).id));
+      s.kind === "catHall" || s.kind === "catTop" || s.kind === "catBoss" || (isPlayerShotKind(s.kind) && !!cat?.heroes.includes((s as { id: string }).id));
     if (this.auto && cat && !catShot(this.shot)) {
-      this.switchTo({ kind: "catHall" }, ctx);
+      this.switchTo({ kind: "catTop" }, ctx);
     } else if (this.auto && cat?.bossId && this.catBossSeen !== cat.bossId) {
       this.catBossSeen = cat.bossId;
       this.switchTo({ kind: "catBoss" }, ctx);
@@ -463,18 +464,20 @@ export class SpectatorCamera {
   }
 
   private catBossSeen = "";
+  private readonly catTopC = new Vector3();
+  private catTopH = 6;
+  private catTopInit = false;
   private catIdx = 0;
 
-  /** Ротация в катакомбах: зал → страж (если есть) → из глаз/сбоку героя отряда. */
+  /** Ротация в катакомбах — в основном сверху на весь отряд; изредка страж снизу и герой крупно. */
   private nextCatShot(ctx: DirectorCtx): Shot {
     const cat = ctx.cat!;
-    const list: Shot[] = [{ kind: "catHall" }];
-    if (cat.bossId) list.push({ kind: "catBoss" });
     const heroes = ctx.players.filter((p) => cat.heroes.includes(p.id));
-    if (heroes.length) {
-      const h = heroes[Math.floor(this.catIdx / 3) % heroes.length];
-      list.push({ kind: "sidePlayer", id: h.id }, { kind: "eyePlayer", id: h.id }, { kind: "orbitPlayer", id: h.id });
-    }
+    const h = heroes.length ? heroes[Math.floor(this.catIdx / 6) % heroes.length] : null;
+    const list: Shot[] = [{ kind: "catTop" }, { kind: "catTop" }];
+    if (cat.bossId) list.push({ kind: "catBoss" }, { kind: "catTop" });
+    if (h) list.push({ kind: "sidePlayer", id: h.id });
+    list.push({ kind: "catTop" }, { kind: "catHall" });
     this.catIdx++;
     return list[this.catIdx % list.length];
   }
@@ -604,7 +607,7 @@ export class SpectatorCamera {
       return ctx.players.some((p) => p.id === (s as { id: string }).id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
-    if (s.kind === "catHall") return !!ctx.cat;
+    if (s.kind === "catHall" || s.kind === "catTop") return !!ctx.cat;
     if (s.kind === "catBoss") return !!ctx.cat?.bossId && ctx.mobs.some((m) => m.id === ctx.cat!.bossId);
     if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
@@ -709,6 +712,50 @@ export class SpectatorCamera {
         }
         break;
       }
+      case "catTop": {
+        // Сверху на весь отряд (и стража): центр — средняя точка, высота — по разбросу, чтобы влезли все.
+        const c = ctx.cat;
+        if (c) {
+          let sx = 0;
+          let sz = 0;
+          let n = 0;
+          const pts: { x: number; z: number }[] = [];
+          for (const p of ctx.players) {
+            if (!c.heroes.includes(p.id)) continue;
+            pts.push({ x: p.pos.x, z: p.pos.z });
+          }
+          const boss = c.bossId ? ctx.mobs.find((m) => m.id === c.bossId) : undefined;
+          if (boss) pts.push({ x: boss.eye.x, z: boss.eye.z });
+          for (const p of pts) {
+            sx += p.x;
+            sz += p.z;
+            n++;
+          }
+          const cx = n ? sx / n : c.x;
+          const cz = n ? sz / n : c.z;
+          let spread = 6;
+          for (const p of pts) spread = Math.max(spread, Math.hypot(p.x - cx, p.z - cz));
+          // Плавно: центр и высота не дёргаются за каждым шагом.
+          const k = 1 - Math.exp(-this.frameDt * 1.2);
+          if (!this.catTopInit) {
+            this.catTopC.set(cx, 0, cz);
+            this.catTopH = spread;
+            this.catTopInit = true;
+          }
+          this.catTopC.x += (cx - this.catTopC.x) * k;
+          this.catTopC.z += (cz - this.catTopC.z) * k;
+          this.catTopH += (spread - this.catTopH) * k;
+          const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
+          const height = Math.min(42, 13 + this.catTopH * 1.35);
+          // Чуть сбоку (не строго в макушку) и медленно вокруг — объём, а не план.
+          const a = this.orbitClock * 0.07;
+          const off = height * 0.42;
+          pos.set(this.catTopC.x + Math.sin(a) * off, gy + height, this.catTopC.z - Math.cos(a) * off);
+          tgt.set(this.catTopC.x, gy + 0.5, this.catTopC.z);
+          return;
+        }
+        break;
+      }
       case "catHall": {
         // Медленный облёт зала с наездом: начинаем широко и высоко, подъезжаем к бою.
         const c = ctx.cat;
@@ -727,8 +774,11 @@ export class SpectatorCamera {
         const m = c ? ctx.mobs.find((mm) => mm.id === c.bossId) : undefined;
         if (m) {
           // Низкий ракурс снизу вверх — страж/Владыка выглядит огромным.
-          this._catFocus.set(m.eye.x, ctx.groundY(m.eye.x, m.eye.z), m.eye.z);
-          this.orbit(this._catFocus, c!.final ? 11 : 8, c!.final ? 2.2 : 1.6, SPECTATE.orbitSpeed * 0.5, pos, tgt);
+          // Дистанция — по высоте «глаз» моба над полом (крупнее страж — дальше камера), чтобы не влезть в модель.
+          const gy = ctx.groundY(m.eye.x, m.eye.z);
+          const tall = Math.max(1.5, m.eye.y - gy);
+          this._catFocus.set(m.eye.x, gy, m.eye.z);
+          this.orbit(this._catFocus, Math.max(c!.final ? 12 : 8, tall * 3.2), c!.final ? 2.2 : 1.6, SPECTATE.orbitSpeed * 0.5, pos, tgt);
           tgt.y += c!.final ? 3.5 : 2.2;
           return;
         }

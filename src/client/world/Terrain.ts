@@ -8,7 +8,7 @@ import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 
 import { WORLD } from "#shared/constants";
 import { LOADOUT } from "../config/loadout";
-import { terrainHeight as surface, SCULPT_BOUNDS } from "#shared/terrain";
+import { terrainHeight, terrainHeightNatural as surface, SCULPT_BOUNDS } from "#shared/terrain";
 import { trees } from "#shared/trees";
 import { rocks } from "#shared/rocks";
 import { relightMaterials } from "./Fireflies";
@@ -273,7 +273,8 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
     mat.diffuseColor.copyFromFloats(diffuseBase.r * groundSun, diffuseBase.g * groundSun, diffuseBase.b * groundSun);
   };
 
-  return { mesh, heightAt: surface, tick };
+  // Высота «под ногами» — игровая (в катакомбах — их пол), меш — по природному рельефу.
+  return { mesh, heightAt: terrainHeight, tick };
 }
 
 /**

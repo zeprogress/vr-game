@@ -252,7 +252,7 @@ import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
-import { CAT_HALLS, CATACOMBS, catEntry, catProject, inCatRegion } from "#shared/catacombs";
+import { CAT_HALLS, CAT_HAZARD, CATACOMBS, catEntry, catProject, inCatRegion } from "#shared/catacombs";
 import type { CatacombMsg } from "#shared/net/messages";
 import { TowerRunManager } from "./TowerRunManager";
 import { serverPerf } from "../perf";
@@ -2818,6 +2818,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (now >= this.huntNovaAt && this.huntBreathFireAt === 0) {
       this.huntNovaAt = now + eh.novaGap * gapK * 1000;
       this.huntNovaFireAt = now + eh.novaDelay * 1000;
+      this.addDanger(boss.x, boss.z, eh.novaRadius + 1, eh.novaDelay + 0.2);
       this.broadcast(MSG.act, {
         k: "stunBash", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.novaDelay,
       } satisfies ActRelay);
@@ -2841,6 +2842,11 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntBreathDz = (t.z - boss.z) / dl;
         this.huntBreathAt = now + eh.breathGap * gapK * 1000;
         this.huntBreathFireAt = now + eh.breathDelay * 1000;
+        // Конус дыхания — цепочкой кругов вдоль оси (бот выбегает вбок).
+        for (const k of [0.25, 0.5, 0.75, 0.95]) {
+          const dd = eh.breathLen * k;
+          this.addDanger(boss.x + this.huntBreathDx * dd, boss.z + this.huntBreathDz * dd, Math.tan(eh.breathHalf) * dd + 1.4, eh.breathDelay + 0.3);
+        }
         this.broadcast(MSG.act, {
           k: "breathMark", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.breathDelay,
           x2: boss.x + this.huntBreathDx * eh.breathLen, z2: boss.z + this.huntBreathDz * eh.breathLen,
@@ -2882,6 +2888,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntLobAt = now + eh.lobGap * gapK * 1000;
         this.huntLobFireAt = now + eh.lobDelay * 1000;
         for (const t of this.huntLobs) {
+          this.addDanger(t.x, t.z, eh.lobRadius + 0.8, eh.lobDelay + 0.2);
           this.broadcast(MSG.act, {
             k: "arrowRain", id: this.huntBossId,
             x: t.x, y: terrainHeight(t.x, t.z) + PLAYER.eyeHeight, z: t.z, d: eh.lobDelay,
@@ -5361,6 +5368,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (st.catStage !== c.stage) st.catStage = c.stage;
         const fin = c.final ? 1 : 0;
         if (st.catFinal !== fin) st.catFinal = fin;
+        if (st.catBoss !== c.boss) st.catBoss = c.boss;
         this.sim.catLo = c.lo;
         this.sim.catHi = c.hi;
       },
@@ -5420,14 +5428,69 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntBossId = "";
       },
       chest: (id, kind) => this.catChest(id, kind),
-      chestFx: (x, z, final) => {
-        this.sim.dropPotions(x, z, final ? 8 : 4, 5);
+      chestFx: (x, z, final, lootMul) => {
+        this.sim.dropPotions(x, z, Math.round((final ? 8 : 4) * lootMul), 5);
         this.broadcast(MSG.act, { k: "catChest", id: "", x, y: terrainHeight(x, z), z, r: final ? 1 : 0 } satisfies ActRelay);
+      },
+      hazard: (kind, pts) => {
+        const H = CAT_HAZARD;
+        const v = H.kinds.indexOf(kind);
+        for (const pt of pts) {
+          this.addDanger(pt.x, pt.z, H.radius + 0.6, H.delay + 0.2);
+          this.broadcast(MSG.act, { k: "catHazard", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: H.delay, r: H.radius, v } satisfies ActRelay);
+        }
+        this.clock.setTimeout(() => {
+          for (const pt of pts) {
+            this.broadcast(MSG.act, { k: "catHazardHit", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, r: H.radius, v } satisfies ActRelay);
+            this.state.players.forEach((pl, pid) => {
+              if (pl.dead || !this.cat.inRun(pid)) return;
+              if (Math.hypot(pl.head.x - pt.x, pl.head.z - pt.z) > H.radius) return;
+              this.hurtPlayer({
+                target: pid, dmg: pl.maxHp * H.dmgFrac, fromX: pt.x, fromZ: pt.z, projectile: true, magic: kind !== "rockfall", phys: kind === "rockfall",
+                ...(kind === "rockfall" ? { stunSec: 0.8 } : kind === "souls" ? { knockback: 6 } : {}),
+              });
+            });
+          }
+        }, H.delay * 1000);
+      },
+      gateFx: (pts) => {
+        for (const pt of pts) this.broadcast(MSG.act, { k: "catGate", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: 1.4 } satisfies ActRelay);
       },
       bossFx: (x, z, final) => {
         this.broadcast(MSG.act, { k: "catBoss", id: "", x, y: terrainHeight(x, z), z, d: CATACOMBS.bossIntroSec, r: final ? 1 : 0 } satisfies ActRelay);
       },
     };
+  }
+
+  /**
+   * Опасные зоны (телеграфы ударов по площади): боты из них выбегают, пока
+   * не ударило. Пишут: опасности катакомб, атаки Владыки (волна, дыхание, дождь).
+   */
+  private readonly dangers: { x: number; z: number; r: number; until: number }[] = [];
+  private addDanger(x: number, z: number, r: number, sec: number): void {
+    this.dangers.push({ x, z, r, until: this.elapsed + sec });
+  }
+  /** Куда выбегать боту из опасной зоны (null — он не в опасности). */
+  private dangerEscape(x: number, z: number): { x: number; z: number } | null {
+    let best: { x: number; z: number } | null = null;
+    let worst = 0;
+    for (let i = this.dangers.length - 1; i >= 0; i--) {
+      const d = this.dangers[i];
+      if (this.elapsed > d.until) {
+        this.dangers.splice(i, 1);
+        continue;
+      }
+      const dist = Math.hypot(x - d.x, z - d.z);
+      if (dist >= d.r) continue;
+      const depth = d.r - dist;
+      if (depth > worst) {
+        worst = depth;
+        const ax = dist > 0.05 ? (x - d.x) / dist : Math.cos(d.x + z);
+        const az = dist > 0.05 ? (z - d.z) / dist : Math.sin(d.z + x);
+        best = { x: d.x + ax * (d.r + 1.2), z: d.z + az * (d.r + 1.2) };
+      }
+    }
+    return best;
   }
 
   /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
@@ -5572,6 +5635,16 @@ export class ZoneRoom extends Room<ZoneState> {
         return { x: (sx / w) * 0.7 + h.x * 0.3, z: (sz / w) * 0.7 + h.z * 0.3, r: h.r * 2 };
       }
     }
+  }
+
+  /** Место бота в строю отряда (кольцо вокруг центра, по порядку в пати) — пока ждём волну. */
+  private catSlot(bot: Bot, cx: number, cz: number): { x: number; z: number } {
+    const ids = [...this.cat.party].filter((id) => id.startsWith("bot:")).sort();
+    const i = Math.max(0, ids.indexOf(bot.id));
+    const n = Math.max(1, ids.length);
+    const a = (i / n) * Math.PI * 2 + Math.PI / 2;
+    const r = 2.5 + n * 0.35;
+    return { x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r };
   }
 
   /** Цель по приказу (!цель): босс, свита, стрелки, слабые, сильные. null — как обычно. */
@@ -6335,9 +6408,16 @@ export class ZoneRoom extends Room<ZoneState> {
       if (follow && !inZone(follow.x, follow.z)) follow = undefined;
     }
 
+    // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
+    const escape = this.dangerEscape(p.head.x, p.head.z);
+    if (escape) mob = undefined;
+
     let tx: number;
     let tz: number;
-    if (raidBoss) {
+    if (escape) {
+      tx = escape.x;
+      tz = escape.z;
+    } else if (raidBoss) {
       tx = raidBoss.x;
       tz = raidBoss.z;
     } else if (loot) {
@@ -6353,6 +6433,11 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (follow) {
       tx = follow.x;
       tz = follow.z;
+    } else if (catAnchor) {
+      // Катакомбы, ждём волну: не бегаем по залу — встаём в строй вокруг центра отряда, каждый на своё место.
+      const slot = this.catSlot(bot, cx, cz);
+      tx = slot.x;
+      tz = slot.z;
     } else {
       bot.wanderCd -= dt;
       if (bot.wanderCd <= 0) {

@@ -585,6 +585,64 @@ export function playClassAct(
       c.sound(at, "thud");
       return true;
     }
+    case "catHazard": {
+      // Опасность зала — телеграф: кольцо сходится к центру за d с (обвал — пыль со свода, пламя — угли, души — фиолет).
+      const col = v === 1 ? FXC.fire : v === 2 ? FXC.arcane : FXC.gold;
+      const life = d ?? 1.7;
+      vfx.decal(x, y, z, r ?? 2.8, col, life, 2, 1);
+      vfx.decal(x, y, z, r ?? 2.8, col, life, 1, 0.35);
+      if (v === 0) {
+        // Сыплется пыль и мелкие камешки сверху.
+        for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 9, z, SHADOW_GRAY, { count: 10, speed: 1, life: 1.2, grav: 9, size: 0.18 }));
+      } else if (v === 1) {
+        for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 0.2, z, FXC.fire, { count: 8, speed: 1.5, life: 0.6, grav: -4, size: 0.18 }));
+      } else {
+        for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 0.2, z, FXC.arcane, { count: 8, speed: 2, life: 0.7, grav: -5, size: 0.2 }));
+      }
+      return true;
+    }
+    case "catHazardHit": {
+      const rr = r ?? 2.8;
+      if (v === 0) {
+        // Обвал: глыбы падают со свода, удар и облако пыли.
+        for (let i = 0; i < 5; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const d2 = Math.random() * rr * 0.8;
+          const rx = x + Math.cos(a) * d2;
+          const rz = z + Math.sin(a) * d2;
+          c.fx.later(i * 0.05, () => vfx.burst(rx, y + 10, rz, SHADOW_GRAY, { count: 3, speed: 0.4, life: 0.5, grav: 40, size: 0.8 }));
+        }
+        c.fx.later(0.3, () => {
+          vfx.decal(x, y, z, rr * 1.2, FXC.gold, 0.7, 0, 1);
+          vfx.burst(x, y + 0.5, z, SHADOW_GRAY, { count: 40, speed: 6, life: 1.4, grav: 2, size: 0.7 });
+          c.sound(at, "bash");
+        });
+      } else if (v === 1) {
+        // Столб пламени из пола.
+        vfx.pillar(x, y, z, rr * 0.7, 7, FXC.fire, 0.9);
+        vfx.burst(x, y + 0.5, z, FXC.fire, { count: 50, speed: 7, life: 0.9, grav: -6, size: 0.45 });
+        vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 25, speed: 4, life: 0.6, grav: -8, size: 0.35 });
+        vfx.decal(x, y, z, rr, FXC.fire, 1.2, 0, 1);
+        c.sound(at, "thud");
+      } else {
+        // Гейзер душ: фиолетовый столб и вой — отбрасывает.
+        vfx.pillar(x, y, z, rr * 0.6, 11, FXC.arcane, 1.1);
+        vfx.burst(x, y + 0.5, z, FXC.arcane, { count: 45, speed: 9, life: 1.1, grav: -10, size: 0.35 });
+        vfx.decal(x, y, z, rr * 1.3, FXC.shadowDark, 1, 0, 1);
+        c.sound(at, "thud");
+      }
+      return true;
+    }
+    case "catGate": {
+      // Ворота: фиолетовый вихрь-портал — сейчас полезут мертвецы.
+      const life = (d ?? 1.4) + 0.6;
+      vfx.decal(x, y, z, 2.2, FXC.arcane, life, 1, 1);
+      vfx.pillar(x, y, z, 1.3, 5, FXC.shadowDark, life);
+      for (let i = 0; i < 5; i++) c.fx.later(i * 0.3, () => vfx.burst(x, y + 1.2, z, FXC.arcane, { count: 16, speed: 3, life: 0.8, grav: -2, size: 0.3 }));
+      c.fx.later(d ?? 1.4, () => vfx.burst(x, y + 1, z, FXC.arcane, { count: 36, speed: 7, life: 0.9, grav: 3, size: 0.32 }));
+      c.sound(at, "thud");
+      return true;
+    }
     case "catChest": {
       // Сундук стража: золотой столб и россыпь искр; суперприз — больше и дольше.
       const fin = r === 1;
