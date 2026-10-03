@@ -6333,7 +6333,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const behind = this.sim.targetRadius("mob", mob.id) + JUMP_BEHIND;
       const bx = mob.x + (ax / al) * behind;
       const bz = mob.z + (az / al) * behind;
-      this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz } satisfies ActRelay);
+      this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz, v: CLASS_IDS.indexOf("assassin") } satisfies ActRelay);
       this.placeBotAt(p, bx, bz);
     }
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.

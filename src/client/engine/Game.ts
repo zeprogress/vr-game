@@ -3067,7 +3067,6 @@ export class Game {
       msg.x = p.x + fx * 9;
       msg.z = p.z + fz * 9;
       this.startDash(p.x - fx * ASSASSIN_FAN_HOP, p.z - fz * ASSASSIN_FAN_HOP, 0.25);
-      this.localAvatar?.oneShot("roll", 1.6);
       this.combat.onMeleeSwing?.();
     } else if (id === "stunBash" && cls === "assassin") {
       // Смертельный прыжок: на выбранную цель или ближайшую впереди.
@@ -3101,7 +3100,6 @@ export class Game {
       msg.z = sel.z;
       // Удар насквозь — пролетаем сквозь цель за спину.
       this.dashAt(sel, SOUL_STEAL.dashTime, sel.r + JUMP_BEHIND);
-      this.localAvatar?.oneShot("roll", 1.6);
       this.combat.onMeleeSwing?.();
     } else if (id === "smoke") {
       // Пелена — на цель (выбранную или ближайшую впереди), иначе под себя.
@@ -3158,7 +3156,8 @@ export class Game {
       msg.x = ex;
       msg.z = ez;
       this.startDash(ex, ez, 0.2);
-      this.localAvatar?.oneShot("roll", 1.6);
+      // Кувырок — только отскоку лучника/копейщика; у кинжала прыжки без кувырков.
+      if (cls !== "assassin") this.localAvatar?.oneShot("roll", 1.6);
     } else if (id === "crush") {
       const t = frontTarget(8);
       msg.x = t ? t.x : p.x + fx * 3.5;

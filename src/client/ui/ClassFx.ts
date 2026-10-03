@@ -428,6 +428,7 @@ export interface ClassActCtx {
 /** Теневой рывок — серый дым. */
 const SHADOW_GRAY = FXC.shadow;
 const V_SUPPORT = 2;
+const V_ASSASSIN = 3;
 const V_BATTLEMAGE = 5;
 
 /**
@@ -488,7 +489,8 @@ export function playClassAct(
         vfx.burst(x, y + 0.9, z, SHADOW_GRAY, { count: 14, speed: 3, life: 0.5, grav: -2, size: 0.3 });
         vfx.burst(x2, y + 0.9, z2, SHADOW_GRAY, { count: 14, speed: 4, life: 0.45, grav: -1, size: 0.25 });
       }
-      c.emote(id, "roll");
+      // Кувырок — отскоку лучника/копейщика; прыжки ассасина (кинжал) — без кувырков.
+      if (v !== V_ASSASSIN) c.emote(id, "roll");
       c.sound(at, "swing");
       return true;
     case "leap":
@@ -595,7 +597,6 @@ export function playClassAct(
         vfx.bolt(x, y, z, x2, toY, z2, FXC.arcane, 0.4, 0.07);
         vfx.burst(x, y, z, FXC.arcane, { count: 12, speed: 4, life: 0.4, grav: -2, size: 0.2 });
       }
-      c.emote(id, "roll");
       c.sound(at, "swing");
       return true;
     case "abyss":
