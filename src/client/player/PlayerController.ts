@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { catProject, inCatRegion } from "#shared/catacombs";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -175,9 +176,19 @@ export class PlayerController {
     }
   }
 
-  /** Не выпускать за край карты — там кончается земля. */
+  /** Катакомбы: открытые залы (RoomState.catLo..catHi), пока идёт забег; null — обычный край карты. */
+  catBounds: { lo: number; hi: number } | null = null;
+
+  /** Не выпускать за край карты — там кончается земля; в катакомбах — стены залов. */
   private clampToWorld(): void {
-    clampToSquare(this.body.position, WORLD.playHalf);
+    const p = this.body.position;
+    if (this.catBounds && inCatRegion(p.x, p.z)) {
+      const [x, z] = catProject(p.x, p.z, this.catBounds.lo, this.catBounds.hi, 0.4);
+      p.x = x;
+      p.z = z;
+      return;
+    }
+    clampToSquare(p, WORLD.playHalf);
   }
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */

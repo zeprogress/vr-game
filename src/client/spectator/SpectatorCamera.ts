@@ -120,6 +120,8 @@ type Shot =
   | { kind: "orbitBoss" }
   | { kind: "eyeMob"; id: string }
   | { kind: "crowd" }
+  | { kind: "catHall" }
+  | { kind: "catBoss" }
   | { kind: "path"; idx: number };
 
 export interface CtxPlayer {
@@ -149,6 +151,8 @@ export interface DirectorCtx {
   mobs: CtxMob[];
   boss: { id: string; pos: Vector3; aggro: boolean } | null;
   groundY: (x: number, z: number) => number;
+  /** Катакомбы идут: текущий зал, страж/Владыка (самый крупный моб зала), герои внизу. */
+  cat?: { x: number; z: number; r: number; bossId: string; final: boolean; heroes: string[] } | null;
 }
 
 const CENTER = new Vector3(0, 0, 0);
@@ -381,7 +385,18 @@ export class SpectatorCamera {
     const idlePathInterrupted =
       this.shot.kind === "path" && !this.botsOnly && !this.introActive && ctx.players.length > 0;
 
-    if (this.auto && fighting && !this.isFightShot(this.shot)) {
+    // Катакомбы: эфир — внизу. Появился страж/Владыка — сразу на него.
+    const cat = ctx.cat;
+    const catShot = (s: Shot): boolean =>
+      s.kind === "catHall" || s.kind === "catBoss" || (isPlayerShotKind(s.kind) && !!cat?.heroes.includes((s as { id: string }).id));
+    if (this.auto && cat && !catShot(this.shot)) {
+      this.switchTo({ kind: "catHall" }, ctx);
+    } else if (this.auto && cat?.bossId && this.catBossSeen !== cat.bossId) {
+      this.catBossSeen = cat.bossId;
+      this.switchTo({ kind: "catBoss" }, ctx);
+    } else if (this.auto && cat && (timedOut || invalid)) {
+      this.switchTo(this.nextCatShot(ctx), ctx);
+    } else if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
     } else if (invalid) {
       // Цель кадра пропала — переключаемся даже в ручном режиме.
@@ -445,6 +460,23 @@ export class SpectatorCamera {
       this.duelFoeId = null;
       this.duelInit = false;
     }
+  }
+
+  private catBossSeen = "";
+  private catIdx = 0;
+
+  /** Ротация в катакомбах: зал → страж (если есть) → из глаз/сбоку героя отряда. */
+  private nextCatShot(ctx: DirectorCtx): Shot {
+    const cat = ctx.cat!;
+    const list: Shot[] = [{ kind: "catHall" }];
+    if (cat.bossId) list.push({ kind: "catBoss" });
+    const heroes = ctx.players.filter((p) => cat.heroes.includes(p.id));
+    if (heroes.length) {
+      const h = heroes[Math.floor(this.catIdx / 3) % heroes.length];
+      list.push({ kind: "sidePlayer", id: h.id }, { kind: "eyePlayer", id: h.id }, { kind: "orbitPlayer", id: h.id });
+    }
+    this.catIdx++;
+    return list[this.catIdx % list.length];
   }
 
   private isFightShot(s: Shot): boolean {
@@ -572,6 +604,8 @@ export class SpectatorCamera {
       return ctx.players.some((p) => p.id === (s as { id: string }).id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
+    if (s.kind === "catHall") return !!ctx.cat;
+    if (s.kind === "catBoss") return !!ctx.cat?.bossId && ctx.mobs.some((m) => m.id === ctx.cat!.bossId);
     if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
     if (s.kind === "path") {
@@ -671,6 +705,31 @@ export class SpectatorCamera {
         const p = ctx.players.find((x) => x.id === s.id);
         if (p) {
           this.orbit(p.pos, SPECTATE.orbitRadius, SPECTATE.orbitHeight, SPECTATE.orbitSpeed, pos, tgt);
+          return;
+        }
+        break;
+      }
+      case "catHall": {
+        // Медленный облёт зала с наездом: начинаем широко и высоко, подъезжаем к бою.
+        const c = ctx.cat;
+        if (c) {
+          const k = Math.min(1, this.sinceSwitch / SPECTATE.holdTime);
+          const rad = c.r * (0.95 - 0.35 * k);
+          const hgt = 8 - 3 * k;
+          this._catFocus.set(c.x, ctx.groundY(c.x, c.z) + 1.2, c.z);
+          this.orbit(this._catFocus, rad, hgt, SPECTATE.orbitSpeed * 0.35, pos, tgt);
+          return;
+        }
+        break;
+      }
+      case "catBoss": {
+        const c = ctx.cat;
+        const m = c ? ctx.mobs.find((mm) => mm.id === c.bossId) : undefined;
+        if (m) {
+          // Низкий ракурс снизу вверх — страж/Владыка выглядит огромным.
+          this._catFocus.set(m.eye.x, ctx.groundY(m.eye.x, m.eye.z), m.eye.z);
+          this.orbit(this._catFocus, c!.final ? 11 : 8, c!.final ? 2.2 : 1.6, SPECTATE.orbitSpeed * 0.5, pos, tgt);
+          tgt.y += c!.final ? 3.5 : 2.2;
           return;
         }
         break;
@@ -970,6 +1029,8 @@ export class SpectatorCamera {
     tgt.copyFrom(CENTER);
     tgt.y = ctx.groundY(0, 0) + 3;
   }
+
+  private readonly _catFocus = new Vector3();
 
   private orbit(
     focus: Vector3,

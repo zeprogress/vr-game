@@ -38,6 +38,7 @@ import {
 } from "#shared/constants";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
+import { catProject } from "#shared/catacombs";
 import type { DmgHitColor } from "#shared/net/messages";
 
 // Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
@@ -65,8 +66,11 @@ import {
 import type { MobKind } from "#shared/net/schema";
 import { segDist } from "./math";
 
+/** Потолок здоровья для эффектов «% от HP цели» (см. Mob.pctHpBase). */
+const PCT_HP_CAP = 10_000;
+
 /** Каким предметом каждое оружие лежит в мире. */
-const WEAPON_DROP: Partial<Record<string, ItemId>> = {
+export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "sword:gold": "gold_sword",
   "bow:gold": "gold_bow",
   "staff:gold": "gold_staff",
@@ -459,8 +463,13 @@ export class Mob {
   novaSeq = 0;
 
   /** База эффектов «% от макс. HP цели» (поджог мага): у Пугала — SCARECROW.refHp, а не его 10 млн. */
+  /**
+   * От какого здоровья считать эффекты «% от HP цели» (поджог мага, кровотечение
+   * веера). С потолком PCT_HP_CAP: иначе стражи и боссы катакомб с сотнями тысяч
+   * HP таяли от процентов быстрее, чем от ударов.
+   */
   get pctHpBase(): number {
-    return this.scarecrow ? SCARECROW.refHp : this.maxHp;
+    return this.scarecrow ? SCARECROW.refHp : Math.min(this.maxHp, PCT_HP_CAP);
   }
 
   /** Прогресс телеграфа заклинания 0..1 (0 — только начал, 1 — вот-вот ударит). */
@@ -1954,6 +1963,11 @@ export class ZoneSim {
   /** Мобы активного динамического события (этап 14): не возрождаются, при
    *  смерти сразу удаляются, считаются для HUD-строки. */
   readonly eventMobs = new Set<string>();
+  /** Мобы катакомб (shared/catacombs.ts): не возрождаются, лут роняют, ходят только по открытым залам. */
+  readonly catMobs = new Set<string>();
+  /** Открытые залы катакомб (как RoomState.catLo/catHi) — для удержания мобов в стенах. */
+  catLo = 0;
+  catHi = 0;
   /** Кто нанёс урон мобам события — участники (для баффа за победу). */
   readonly eventDamagers = new Set<string>();
   /** Кто больше всех бил убитого дракона охоты — ZoneRoom забирает (титулы). */
@@ -2297,6 +2311,14 @@ export class ZoneSim {
       this.mobs.set(revived.id, revived);
     }
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    // Катакомбы: стены — моб не выходит из открытых залов/коридоров.
+    if (this.catMobs.size) {
+      for (const id of this.catMobs) {
+        const m = this.mobs.get(id);
+        if (!m || m.dead) continue;
+        [m.x, m.z] = catProject(m.x, m.z, this.catLo, this.catHi, MOB.bodyRadius * m.scale * 0.8);
+      }
+    }
     // Отражённый щитом Ледяного демона урон (накоплен в hitMob).
     if (this.reflectHits.length) {
       hits.push(...this.reflectHits);
@@ -2634,6 +2656,15 @@ export class ZoneSim {
     if (!killed) return null;
     const kind = m.kind;
 
+    if (this.catMobs.has(m.id)) {
+      // Катакомбы: не возрождается, но лут роняет как обычный (награда по пути).
+      this.catMobs.delete(m.id);
+      this.mobs.delete(m.id);
+      this.spawnLoot(m, attacker);
+      this.splitMobXp(m);
+      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });
+      return kind;
+    }
     if (kind === "shard" || this.eventMobs.has(m.id)) {
       this.eventMobs.delete(m.id);
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются

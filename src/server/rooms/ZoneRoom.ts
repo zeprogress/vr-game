@@ -250,7 +250,10 @@ import {
 import { CHEST_MIN_QUALITY, HARD_SCROLL_CHANCE, SCROLL, SHOP, TAVERN_REACH } from "#shared/shop";
 import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
-import { ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
+import { WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
+import { CatacombDirector, type CatHost } from "./catacombs";
+import { CAT_HALLS, CATACOMBS, catEntry, catProject, inCatRegion } from "#shared/catacombs";
+import type { CatacombMsg } from "#shared/net/messages";
 import { TowerRunManager } from "./TowerRunManager";
 import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
@@ -435,6 +438,12 @@ interface Bot {
   campRand: number;
   /** !рыбачить: идёт к озеру и рыбачит вместо обычного боя, пока не отменят. */
   fishing: boolean;
+  /** Катакомбы: приказы зрителя (живут, пока не сменят — задержка стрима не мешает). */
+  catFocus?: CatFocus;
+  catPos?: CatPos;
+  catMode?: CatMode;
+  /** Отступает к входу зала (режим «осторожно», мало HP). */
+  catRetreat?: boolean;
   /** 0 — ещё не забросил (у берега); иначе this.elapsed, когда клюнет. */
   fishBiteAt: number;
 }
@@ -590,6 +599,36 @@ function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<Zo
     attackCooldown: d.attackCooldown, speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller,
     shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
   };
+}
+
+/** Приказы ботам в катакомбах: кого бить, где стоять, как рисковать. */
+type CatFocus = "auto" | "boss" | "adds" | "ranged" | "weak" | "strong";
+type CatPos = "auto" | "front" | "back" | "flank";
+type CatMode = "auto" | "careful" | "brave";
+const CAT_FOCUS_WORDS: Record<string, CatFocus> = {
+  авто: "auto", auto: "auto", босс: "boss", босса: "boss", boss: "boss", свита: "adds", свиту: "adds", мелочь: "adds", adds: "adds",
+  стрелки: "ranged", стрелков: "ranged", дальних: "ranged", ranged: "ranged", слабых: "weak", слабые: "weak", weak: "weak",
+  сильных: "strong", сильные: "strong", strong: "strong",
+};
+const CAT_POS_WORDS: Record<string, CatPos> = {
+  авто: "auto", auto: "auto", вперёд: "front", вперед: "front", фронт: "front", front: "front", танк: "front",
+  назад: "back", сзади: "back", тыл: "back", back: "back", фланг: "flank", сбоку: "flank", flank: "flank",
+};
+const CAT_MODE_WORDS: Record<string, CatMode> = {
+  авто: "auto", auto: "auto", осторожно: "careful", осторожный: "careful", careful: "careful",
+  агрессивно: "brave", агрессивный: "brave", смело: "brave", brave: "brave",
+};
+const CAT_FOCUS_RU: Record<CatFocus, string> = { auto: "сам выбирает", boss: "босс", adds: "свита", ranged: "стрелки", weak: "слабые", strong: "сильные" };
+const CAT_POS_RU: Record<CatPos, string> = { auto: "сам", front: "впереди", back: "сзади", flank: "с фланга" };
+const CAT_MODE_RU: Record<CatMode, string> = { auto: "обычно", careful: "осторожно", brave: "агрессивно" };
+
+/** Позиция в сейв: за край карты не пишем, из катакомб — в лагерь (после рестарта там пусто). */
+function savePos(x: number, y: number, z: number, edge: number): { x: number; y: number; z: number } {
+  if (inCatRegion(x, z)) {
+    const sp = hubSpawnPoint();
+    return { x: sp.x, y: terrainHeight(sp.x, sp.z) + PLAYER.eyeHeight, z: sp.z };
+  }
+  return { x: clampAbs(x, edge), y, z: clampAbs(z, edge) };
 }
 
 /** Нормализация ника для сравнения/ключей. */
@@ -1304,8 +1343,8 @@ export class ZoneRoom extends Room<ZoneState> {
       applyXf(p.head, msg.head);
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);
-      // За край карты не пускаем даже кривого клиента.
-      clampToSquare(p.head, WORLD.playHalf);
+      // За край карты не пускаем даже кривого клиента; в катакомбах — стены залов.
+      this.clampHero(client.sessionId, p);
       const g = msg.guard;
       [rt.guard.sx, rt.guard.sz] = unit2(g?.sx, g?.sz);
       [rt.guard.wx, rt.guard.wz] = unit2(g?.wx, g?.wz);
@@ -2882,6 +2921,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       // не начинаем событие, пока в мире вообще никого (ни игроков, ни ботов) —
       // кроме ручного запуска (eventForced).
+      // Катакомбы идут (сбор или забег) — мировое событие ждёт.
+      if (this.cat.busy && !this.eventForced) return;
       if (now >= this.eventPhaseAt && (this.eventForced || this.state.players.size > 0)) {
         this.startEvent();
       }
@@ -3466,6 +3507,12 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
+    else if (cmd === "!катакомбы" || cmd === "!кт" || cmd === "!catacombs" || cmd === "!dungeon" || cmd === "!данж") {
+      this.catJoinChat(nick, norm, parts[1]);
+    } else if (cmd === "!цель" || cmd === "!target") this.catTacticChat(nick, norm, "focus", parts[1] ?? "");
+    else if (cmd === "!встать" || cmd === "!pos") this.catTacticChat(nick, norm, "pos", parts[1] ?? "");
+    else if (cmd === "!режим" || cmd === "!mode") this.catTacticChat(nick, norm, "mode", parts[1] ?? "");
+    else if (cmd === "!тактика" || cmd === "!tactic") this.catTacticChat(nick, norm, "show", "");
     else if (cmd === "!stop" || cmd === "!leave") {
       if (this.bots.has(norm)) {
         this.removeBot(norm);
@@ -4976,6 +5023,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
     "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
+    "Катакомбы: !катакомбы — отряд от 2 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
     "Подписывайся на Telegram-канал игры t.me/zepgame — там новости обновлений, анонсы ивентов и первым узнаёшь про новые классы и оружие!",
     "Совет: в Telegram t.me/zepgame — патчи, планы и голосования за новые фичи. Подпишись, чтобы влиять на игру!",
   ];
@@ -5010,6 +5058,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
+        "!катакомбы — в отряд катакомб (от 2 героев, сбор 5 мин; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
         "!equip <номер> — надеть конкретное · !camp <моб> — где качаться · " +
         "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
@@ -5285,6 +5334,366 @@ export class ZoneRoom extends Room<ZoneState> {
     console.log(`[bot] + ${p.nick} ур.${p.level} — ботов ${this.bots.size}`);
   }
 
+  // ---- Катакомбы (shared/catacombs.ts, режиссёр — rooms/catacombs.ts) ----
+
+  /** Средний уровень пати последнего спавна — для миньонов финального босса. */
+  private catLevel = 1;
+
+  /** Что режиссёру катакомб нужно от комнаты — всё через обычные механизмы мира. */
+  private catHost(): CatHost {
+    return {
+      now: () => Date.now(),
+      heroes: () => {
+        const out: ReturnType<CatHost["heroes"]> = [];
+        this.state.players.forEach((p, id) => {
+          if (p.towerFloor > 0) return;
+          out.push({ id, x: p.head.x, z: p.head.z, level: p.level, dead: !!p.dead, bot: id.startsWith("bot:"), nick: p.nick });
+        });
+        return out;
+      },
+      setState: (c) => {
+        const st = this.state;
+        if (st.catPhase !== c.phase) st.catPhase = c.phase;
+        if (st.catLo !== c.lo) st.catLo = c.lo;
+        if (st.catHi !== c.hi) st.catHi = c.hi;
+        if (st.catLeft !== c.left) st.catLeft = c.left;
+        if (st.catParty !== c.party) st.catParty = c.party;
+        if (st.catStage !== c.stage) st.catStage = c.stage;
+        const fin = c.final ? 1 : 0;
+        if (st.catFinal !== fin) st.catFinal = fin;
+        this.sim.catLo = c.lo;
+        this.sim.catHi = c.hi;
+      },
+      announce: (m: CatacombMsg) => this.broadcast(MSG.catacomb, m),
+      chat: (t) => this.reply(t),
+      canOpen: () => this.eventPhase !== "active",
+      warp: (id, x, z, fx, fz) => this.catWarp(id, x, z, fx, fz),
+      sendHome: (id) => {
+        const sp = hubSpawnPoint();
+        this.catWarp(id, sp.x, sp.z);
+      },
+      spawn: (type, x, z, o) => this.catSpawn(type, x, z, o),
+      alive: (id) => {
+        const m = this.sim.mobs.get(id);
+        return !!m && !m.dead;
+      },
+      clearMobs: () => {
+        for (const id of this.sim.catMobs) this.sim.mobs.delete(id);
+        this.sim.catMobs.clear();
+      },
+      finalStart: (id) => {
+        const m = this.sim.mobs.get(id);
+        if (!m) return;
+        const eh = EVENT.eliteHunt;
+        this.huntBossId = id;
+        this.huntDmgBase = MOB.attackDamage * m.dmgMul;
+        const t0 = Date.now();
+        this.huntAddAt = t0 + eh.addGap * 1000;
+        this.huntNovaAt = t0 + eh.novaGap * 1000;
+        this.huntLobAt = t0 + eh.lobGap * 1000;
+        this.huntBreathAt = t0 + eh.breathGap * 1000;
+        this.huntNovaFireAt = 0;
+        this.huntLobFireAt = 0;
+        this.huntBreathFireAt = 0;
+      },
+      finalTick: (id) => {
+        const boss = this.sim.mobs.get(id);
+        if (!boss || boss.dead) return;
+        const eh = EVENT.eliteHunt;
+        const now = Date.now();
+        if (!boss.raging && boss.hp / boss.maxHp < eh.enrageAt) {
+          boss.raging = true;
+          this.broadcast(MSG.catacomb, { kind: "boss", title: `${boss.eliteName} в ярости!`, sub: "держитесь — атаки чаще", secs: 4 } satisfies CatacombMsg);
+        }
+        // Призыв мертвецов из теней — миньоны катакомб (с лутом, без возрождения).
+        if (now >= this.huntAddAt) {
+          this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          for (let i = 0; i < eh.addCount; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 3 + Math.random() * 3;
+            this.catSpawn("boneWraith", boss.x + Math.cos(a) * r, boss.z + Math.sin(a) * r, { hpMul: 0.7, dmgMul: 1, partyLevel: this.catLevel });
+          }
+        }
+        this.tickHuntAttacks(now, boss, eh);
+      },
+      finalStop: () => {
+        this.huntBossId = "";
+      },
+      chest: (id, kind) => this.catChest(id, kind),
+      chestFx: (x, z, final) => {
+        this.sim.dropPotions(x, z, final ? 8 : 4, 5);
+        this.broadcast(MSG.act, { k: "catChest", id: "", x, y: terrainHeight(x, z), z, r: final ? 1 : 0 } satisfies ActRelay);
+      },
+      bossFx: (x, z, final) => {
+        this.broadcast(MSG.act, { k: "catBoss", id: "", x, y: terrainHeight(x, z), z, d: CATACOMBS.bossIntroSec, r: final ? 1 : 0 } satisfies ActRelay);
+      },
+    };
+  }
+
+  /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
+  private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number): void {
+    const p = this.state.players.get(id);
+    const rt = this.rt.get(id);
+    if (!p || !rt) return;
+    const y = terrainHeight(x, z) + PLAYER.eyeHeight;
+    p.head.x = x;
+    p.head.y = y;
+    p.head.z = z;
+    const yaw = faceX !== undefined && faceZ !== undefined ? Math.atan2(faceX - x, faceZ - z) : rt.yaw;
+    rt.yaw = yaw;
+    rt.invuln = Math.max(rt.invuln, 2);
+    const bot = id.startsWith("bot:") ? this.bots.get(id.slice(4)) : undefined;
+    if (bot) {
+      bot.vx = 0;
+      bot.vz = 0;
+      bot.target = null;
+      bot.nav = undefined;
+      bot.eventing = false;
+      bot.raiding = false;
+      bot.followNorm = null;
+      bot.fishing = false;
+      bot.yaw = yaw;
+      p.head.qx = 0;
+      p.head.qy = Math.sin(yaw / 2);
+      p.head.qz = 0;
+      p.head.qw = Math.cos(yaw / 2);
+    } else {
+      this.clientOf(id)?.send(MSG.warp, { x, y, z, yaw });
+    }
+  }
+
+  /** Моб катакомб: сила — под средний уровень пати (CATACOMBS.levelMin..levelMax), не возрождается, лут роняет. */
+  private catSpawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number }): string {
+    this.catLevel = o.partyLevel;
+    const def = ELITE_MOBS[type];
+    let id: string;
+    if (def) {
+      const k = Math.max(CATACOMBS.levelMin, Math.min(CATACOMBS.levelMax, o.partyLevel / def.level));
+      const opts = eliteMobOpts(def);
+      // Сила героя с уровнем растёт быстрее линейной — подгонка мобов тоже нелинейная.
+      opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4);
+      opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2;
+      opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1);
+      opts.level = Math.max(1, Math.round(o.partyLevel));
+      if (o.name) opts.name = o.name;
+      id = this.sim.spawnEventMob(def.kind, x, z, opts);
+    } else {
+      id = this.sim.spawnEventMob(type === "spitter" ? "spitter" : "slime", x, z);
+    }
+    this.sim.eventMobs.delete(id);
+    this.sim.catMobs.add(id);
+    return id;
+  }
+
+  /** Сундук катакомб: золотое оружие класса героя (или суперприз) — сразу в склад. */
+  private catChest(id: string, kind: "gold" | "final"): LootItem[] {
+    const p = this.state.players.get(id);
+    const rt = this.rt.get(id);
+    if (!p || !rt) return [];
+    const pick = (c: string): c is WeaponClass => isWeaponClass(c) && c !== "shield";
+    const cls: WeaponClass = pick(p.rightCls) ? p.rightCls : pick(p.leftCls) ? p.leftCls : "sword";
+    const w = kind === "final" ? this.rollChestWeapon(p) : rollWeaponInstance(cls, "gold");
+    rt.weapons.push(w);
+    const token = rt.token ?? `nick:${normNick(p.nick)}`;
+    store.put(token, { weapons: rt.weapons });
+    this.announcePickup(p.nick, w.cls, w.tier, w);
+    const loot: LootItem[] = [];
+    const wid = WEAPON_DROP[weaponKey(w.cls, w.tier)];
+    if (wid) loot.push({ id: wid, count: 1 });
+    if (kind === "final") {
+      const scroll: ItemId = Math.random() < 0.5 ? "scroll_xp" : "scroll_wind";
+      const bag = readBag(p);
+      if (addToBag(bag, scroll, 1) === 0) {
+        writeBag(p, bag);
+        loot.push({ id: scroll, count: 1 });
+      }
+      store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.finalTokens });
+      rt.eventBuffUntil = Date.now() + CATACOMBS.buffMinutes * 60_000;
+    }
+    if (!id.startsWith("bot:")) this.syncWarehouse(id, rt);
+    return loot;
+  }
+
+  /** Стены: в катакомбах — открытые залы пати, чужой в катакомбах — домой; иначе край карты. */
+  private clampHero(id: string, p: PlayerState): void {
+    if (!inCatRegion(p.head.x, p.head.z)) {
+      clampToSquare(p.head, WORLD.playHalf);
+      return;
+    }
+    if (this.cat.inRun(id)) {
+      [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+    } else {
+      const sp = hubSpawnPoint();
+      this.catWarp(id, sp.x, sp.z);
+    }
+  }
+
+  /** Точка и радиус зоны бота в катакомбах по приказу (!встать) и отходу (осторожный режим). */
+  private catTacticSpot(bot: Bot): { x: number; z: number; r: number } {
+    const hallI = this.cat.anchorHall;
+    const h = CAT_HALLS[hallI];
+    const p = bot.state;
+    // Осторожный: HP ниже 35% — к входу, пока не поднимется до 70%.
+    if (bot.catMode === "careful") {
+      if (p.hp < p.maxHp * 0.35) bot.catRetreat = true;
+      else if (p.hp > p.maxHp * 0.7) bot.catRetreat = false;
+    } else bot.catRetreat = false;
+    if (bot.catRetreat) {
+      const e = catEntry(hallI);
+      return { x: e.x, z: e.z, r: 3 };
+    }
+    switch (bot.catPos ?? "auto") {
+      case "front":
+        return { x: h.x, z: h.z + h.r * 0.45, r: BOT.zoneRadius };
+      case "back":
+        // Держит тыл: бьёт только тех, кто подошёл к нему.
+        return { x: h.x, z: h.z - h.r * 0.55, r: 9 };
+      case "flank": {
+        const side = bot.norm.charCodeAt(0) % 2 ? 1 : -1;
+        return { x: h.x + side * h.r * 0.6, z: h.z + h.r * 0.15, r: 12 };
+      }
+      default: {
+        // Командный ивент: держимся вместе — центр живых героев отряда в этом зале
+        // (живые игроки «тянут» сильнее ботов), не разбегаемся по залу.
+        let sx = 0;
+        let sz = 0;
+        let w = 0;
+        for (const id of this.cat.party) {
+          const o = this.state.players.get(id);
+          if (!o || o.dead || Math.hypot(o.head.x - h.x, o.head.z - h.z) > h.r + 1) continue;
+          const k = id.startsWith("bot:") ? 1 : 3;
+          sx += o.head.x * k;
+          sz += o.head.z * k;
+          w += k;
+        }
+        if (w === 0) return { x: h.x, z: h.z, r: BOT.zoneRadius };
+        // Чуть к центру зала — чтобы отряд не прилипал к стене.
+        // Радиус — весь зал (стрелков у дальней стены тоже достаём), близкие цели и так в приоритете.
+        return { x: (sx / w) * 0.7 + h.x * 0.3, z: (sz / w) * 0.7 + h.z * 0.3, r: h.r * 2 };
+      }
+    }
+  }
+
+  /** Цель по приказу (!цель): босс, свита, стрелки, слабые, сильные. null — как обычно. */
+  private catFocusPick(bot: Bot, ok: (m: Mob) => boolean): Mob | null {
+    const focus = bot.catFocus ?? (bot.catMode === "brave" ? "boss" : "auto");
+    const p = bot.state;
+    if (focus === "auto") return this.catAssistPick(bot, ok);
+    if (focus === "boss") {
+      const b = this.sim.mobs.get(this.cat.bossMob);
+      return b && !b.dead ? b : null;
+    }
+    let best: Mob | null = null;
+    let bv = Infinity;
+    for (const id of this.sim.catMobs) {
+      const m = this.sim.mobs.get(id);
+      if (!m || m.dead || !ok(m)) continue;
+      const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+      let v: number;
+      if (focus === "adds") {
+        if (m.id === this.cat.bossMob) continue;
+        v = d;
+      } else if (focus === "ranged") v = d + (m.kind === "spitter" ? 0 : 1000);
+      else if (focus === "weak") v = m.hp + d * 2;
+      else v = -m.maxHp + d * 2;
+      if (v < bv) {
+        bv = v;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Командная цель по умолчанию: моб, который бьёт союзника (живого игрока —
+   * в первую очередь, затем самого раненого), иначе — тот, кого уже бьёт
+   * больше всего героев отряда (добиваем вместе), иначе ближайший.
+   */
+  private catAssistPick(bot: Bot, ok: (m: Mob) => boolean): Mob | null {
+    const p = bot.state;
+    const focusCount = new Map<string, number>();
+    for (const id of this.cat.party) {
+      if (id === bot.id) continue;
+      const t = id.startsWith("bot:") ? this.bots.get(id.slice(4))?.target : this.rt.get(id)?.lastHitMobId;
+      if (t) focusCount.set(t, (focusCount.get(t) ?? 0) + (id.startsWith("bot:") ? 1 : 2));
+    }
+    let best: Mob | null = null;
+    let bv = Infinity;
+    for (const id of this.sim.catMobs) {
+      const m = this.sim.mobs.get(id);
+      if (!m || m.dead || !ok(m)) continue;
+      let v = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+      const victim = m.targetId ? this.state.players.get(m.targetId) : undefined;
+      if (victim && m.targetId && this.cat.party.has(m.targetId)) {
+        // Бьёт союзника: защищаем — живого игрока сильнее, раненого сильнее.
+        v -= (m.targetId.startsWith("bot:") ? 8 : 16) + (1 - victim.hp / Math.max(1, victim.maxHp)) * 12;
+      }
+      v -= (focusCount.get(m.id) ?? 0) * 5;
+      if (v < bv) {
+        bv = v;
+        best = m;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Приказы боту в катакомбах (работают и заранее, на сборе): !цель босс|свита|стрелки|слабых|сильных|авто,
+   * !встать вперёд|назад|фланг|авто, !режим осторожно|агрессивно|авто, !тактика — что сейчас.
+   * Это установки, а не мгновенные команды: бот держит их, пока не сменят (стрим отстаёт на 20–60 с).
+   */
+  private catTacticChat(nick: string, norm: string, cmd: string, arg: string): void {
+    const bot = this.bots.get(norm);
+    if (!bot) {
+      this.reply(`@${nick} сначала !play или !катакомбы — приказы получает твой герой.`);
+      return;
+    }
+    const w = arg.toLowerCase();
+    let said = "";
+    if (cmd === "focus") {
+      const f = CAT_FOCUS_WORDS[w];
+      if (!f) return this.reply(`@${nick} !цель босс | свита | стрелки | слабых | сильных | авто`);
+      bot.catFocus = f;
+      bot.target = null;
+      said = `Бью: ${CAT_FOCUS_RU[f]}!`;
+    } else if (cmd === "pos") {
+      const v = CAT_POS_WORDS[w];
+      if (!v) return this.reply(`@${nick} !встать вперёд | назад | фланг | авто`);
+      bot.catPos = v;
+      said = `Встаю ${CAT_POS_RU[v]}!`;
+    } else if (cmd === "mode") {
+      const v = CAT_MODE_WORDS[w];
+      if (!v) return this.reply(`@${nick} !режим осторожно | агрессивно | авто`);
+      bot.catMode = v;
+      said = v === "careful" ? "Буду осторожен." : v === "brave" ? "В атаку!" : "Как обычно.";
+    }
+    if (said) this.botSay(norm, said);
+    this.reply(
+      `@${nick} тактика: цель — ${CAT_FOCUS_RU[bot.catFocus ?? "auto"]}, позиция — ${CAT_POS_RU[bot.catPos ?? "auto"]}, ` +
+        `режим — ${CAT_MODE_RU[bot.catMode ?? "auto"]}${this.cat.inRun(bot.id) ? "" : " (сработает в катакомбах)"}`,
+    );
+  }
+
+  /** !катакомбы — записать героя зрителя (нет в мире — поднимаем); админ: open / go / stop. */
+  private catJoinChat(nick: string, norm: string, arg?: string): void {
+    const a = (arg ?? "").toLowerCase();
+    if (isAdminNick(norm) && (a === "open" || a === "go" || a === "stop")) {
+      this.cat.force(a);
+      return;
+    }
+    let id: string | null = null;
+    this.state.players.forEach((p, pid) => {
+      if (!pid.startsWith("bot:") && normNick(p.nick) === norm) id = pid;
+    });
+    if (!id) {
+      if (!this.bots.has(norm)) this.requestBot(nick, norm);
+      if (this.bots.has(norm)) id = `bot:${norm}`;
+    }
+    if (!id) return;
+    const r = this.cat.join(id, nick, true);
+    if (r) this.reply(`@${nick} ${r}`);
+  }
+
   private removeBot(norm: string): void {
     const bot = this.bots.get(norm);
     if (!bot) return;
@@ -5419,9 +5828,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const prev = store.get(token);
     store.put(token, {
       nick: p.nick,
-      x: clampAbs(p.head.x, edge),
-      y: p.head.y,
-      z: clampAbs(p.head.z, edge),
+      ...savePos(p.head.x, p.head.y, p.head.z, edge),
       yaw: bot.rt.yaw,
       hp: p.hp,
       // Золотое оружие бот не "покупал" — нашёл на земле (lootTarget в tickBot),
@@ -5683,8 +6090,19 @@ export class ZoneRoom extends Room<ZoneState> {
         bot.eventDoneAt = 0;
       }
     }
+    // Катакомбы: «дом» — текущий зал, со сдвигом по приказу зрителя (!встать) и отходом (!режим осторожно).
+    let zoneR: number = BOT.zoneRadius;
+    const catAnchor = this.cat.botAnchor(bot.id);
+    if (catAnchor) {
+      bot.eventing = false;
+      bot.raiding = false;
+      const spot = this.catTacticSpot(bot);
+      cx = spot.x;
+      cz = spot.z;
+      zoneR = spot.r;
+    }
     const inZone = (x: number, z: number): boolean =>
-      Math.hypot(x - cx, z - cz) < BOT.zoneRadius;
+      Math.hypot(x - cx, z - cz) < zoneR;
 
     // Рейд (!raid): цель — босс, зона и обычные мобы побоку. Снимается, если
     // босс уже повержен или ещё не заспавнен.
@@ -5737,6 +6155,20 @@ export class ZoneRoom extends Room<ZoneState> {
       ) {
         mob = hm;
         bot.target = hm.id;
+      }
+    }
+
+    // Катакомбы: кого бить — по приказу зрителя (!цель), отступая — никого.
+    if (catAnchor) {
+      if (bot.catRetreat) {
+        mob = undefined;
+        bot.target = null;
+      } else {
+        const pick = this.catFocusPick(bot, (m) => okMob(m) || m.id === this.cat.bossMob);
+        if (pick) {
+          mob = pick;
+          bot.target = pick.id;
+        }
       }
     }
 
@@ -6746,6 +7178,8 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.x += sx;
     p.head.z += sz;
     this.botBlockedByMobs(p, bot, x0, z0);
+    // Катакомбы: стены залов.
+    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
   }
 
   /**
@@ -6796,6 +7230,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Перенос умением — только докуда можно дойти, не забираясь на крутое (MAX_CLIMB).
     [p.head.x, p.head.z] = reachAlong(fromX, fromZ, x, z);
     this.botOutOfMobs(p, undefined, fromX, fromZ);
+    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
     if (face) {
       const bot = [...this.bots.values()].find((b) => b.state === p);
@@ -7674,6 +8109,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickEvents();
     this.tickChatQuest();
     this.tickRaid();
+    this.cat.tick();
     const perfB0 = serverPerf.now();
     this.tickBots(dt);
     serverPerf.section("bots", serverPerf.now() - perfB0);
@@ -7990,6 +8426,14 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const h of hits) this.hurtPlayer(h);
     this.tickBleeds(dt);
     this.tickPlayers(dt);
+    // Катакомбы: что бы ни сдвинуло бота (отброс моба, рывок умения) — за стену не выходит.
+    if (this.cat.busy) {
+      for (const bot of this.bots.values()) {
+        const p = bot.state;
+        if (p.dead || !inCatRegion(p.head.x, p.head.z) || !this.cat.inRun(bot.id)) continue;
+        [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+      }
+    }
   }
 
   /** Кровотечение героев: каждые полсекунды — урон средой (не блокируется, не уворачивается). */
@@ -8336,7 +8780,8 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.homeX = home.x;
       bot.homeZ = home.z;
     }
-    const sp = hubSpawnPoint();
+    // Пати катакомб возрождается у входа в текущий зал.
+    const sp = this.cat.respawnPoint(id) ?? hubSpawnPoint();
     const x = sp.x;
     const z = sp.z;
     const y = terrainHeight(x, z) + PLAYER.eyeHeight;
@@ -8364,6 +8809,9 @@ export class ZoneRoom extends Room<ZoneState> {
   private freeCamOwner = "";
   /** Когда живой игрок зашёл (sessionId → Date.now()) — для приоритета камеры. */
   private readonly joinedAt = new Map<string, number>();
+  /** Катакомбы (shared/catacombs.ts): сбор отряда и забег по залам в этом же мире. */
+  readonly cat = new CatacombDirector(this.catHost());
+
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
   private readonly raidPending = new Set<string>();
   /** ms момента общего выступления (0 — отсчёт не идёт). */
@@ -8630,9 +9078,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const edge = WORLD.size / 2 - 2;
     const patch: Partial<PlayerRecord> = {
       nick: p.nick,
-      x: clampAbs(num(msg?.x, p.head.x), edge),
-      y: num(msg?.y, p.head.y),
-      z: clampAbs(num(msg?.z, p.head.z), edge),
+      ...savePos(num(msg?.x, p.head.x), num(msg?.y, p.head.y), num(msg?.z, p.head.z), edge),
       yaw: num(msg?.yaw, rt.yaw),
       hp: p.hp,
       owned: [...rt.owned],

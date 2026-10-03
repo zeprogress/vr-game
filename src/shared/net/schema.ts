@@ -262,6 +262,15 @@ export class ZoneState extends Schema {
   @type("float32") eventZ = 0;
   /** Сколько врагов события осталось (для HUD-строки). */
   @type("uint8") eventLeft = 0;
+  /** Катакомбы (shared/catacombs.ts): фаза (CAT_PHASE), открытые залы catLo..catHi, секунд до конца фазы, героев в пати, стадия. */
+  @type("uint8") catPhase = 0;
+  @type("uint8") catLo = 0;
+  @type("uint8") catHi = 0;
+  @type("uint16") catLeft = 0;
+  @type("uint8") catParty = 0;
+  @type("uint8") catStage = 0;
+  /** Идёт бой с финальным боссом (музыка босса, кадры камеры). */
+  @type("uint8") catFinal = 0;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

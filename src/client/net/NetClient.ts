@@ -22,6 +22,8 @@ import {
   type MoveMsg,
   type PickedMsg,
   type RespawnMsg,
+  type WarpMsg,
+  type CatacombMsg,
   type RtcMsg,
   type SaveMsg,
   type SpendMsg,
@@ -115,6 +117,10 @@ export class NetClient {
         slowFrac?: number,
       ) => void)
     | null = null;
+  /** Сервер перенёс игрока (катакомбы) — встать в точку, лицом по yaw. */
+  onWarp: ((x: number, y: number, z: number, yaw?: number) => void) | null = null;
+  /** Катакомбы: титры (сбор, волна, босс, сундук, победа). */
+  onCatacomb: ((m: CatacombMsg) => void) | null = null;
   /** Сервер возродил игрока — встать в эту точку. */
   onRespawn: ((x: number, y: number, z: number) => void) | null = null;
   /** Получен новый уровень. */
@@ -303,6 +309,8 @@ export class NetClient {
       this.onMobHit?.(m.dmg, m.fromX, m.fromZ, m.by, m.stunSec, m.knockback, m.byMob, m.slowSec, m.slowFrac),
     );
     room.onMessage(MSG.respawn, (m: RespawnMsg) => this.onRespawn?.(m.x, m.y, m.z));
+    room.onMessage(MSG.warp, (m: WarpMsg) => this.onWarp?.(m.x, m.y, m.z, m.yaw));
+    room.onMessage(MSG.catacomb, (m: CatacombMsg) => this.onCatacomb?.(m));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));

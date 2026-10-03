@@ -18,3 +18,7 @@ export const TOWN_MUSIC = [
 ];
 
 export const BOSS_MUSIC = "/music/boss.mp3";
+
+/** Катакомбы: прохождение и финальный супер-босс. */
+export const CATACOMBS_MUSIC = "/music/catacombs.mp3";
+export const CATACOMBS_BOSS_MUSIC = "/music/catacombs-boss.mp3";

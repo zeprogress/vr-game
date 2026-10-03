@@ -2,6 +2,7 @@ import { HUB, HUB_CENTER } from "./hub";
 import { LAKE, MOUNTAIN, WORLD } from "./constants";
 import sculptData from "./data/terrainSculpt.json";
 import { reliefAt } from "./relief";
+import { CAT_FLOOR_Y, CAT_Z0 as CAT_REGION_Z, inCatRegion } from "./catacombs";
 
 /**
  * Рельеф озера/горы, слепленный вручную в редакторе (Terrain Sculptor,
@@ -153,6 +154,8 @@ export function troddenAt(x: number, z: number): number {
  * (симуляция мобов) — мобы должны стоять ровно на той земле, что видит игрок.
  */
 export function terrainHeight(x: number, z: number): number {
+  // Катакомбы (за краем карты) — ровный каменный пол.
+  if (z > CAT_REGION_Z && inCatRegion(x, z)) return CAT_FLOOR_Y;
   return heightCache ? cachedHeight(x, z) : terrainHeightExact(x, z);
 }
 

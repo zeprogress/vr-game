@@ -67,6 +67,7 @@ const { equipHands } = await import("../src/shared/hands.ts");
 const { affixRange, emptyBag, AEGIS_NAME } = await import("../src/shared/items.ts");
 const AEGIS = AEGIS_NAME;
 const C2 = await import("../src/shared/classes2.ts");
+const CAT = await import("../src/shared/catacombs.ts");
 const { maxHpFor } = await import("../src/shared/progression.ts");
 type ClassId = import("../src/shared/classes2.ts").ClassId;
 type SkillId = import("../src/shared/classes2.ts").SkillId;
@@ -902,6 +903,102 @@ if (ONLY.has("skilltest")) {
     secs(t.step, 0.6);
     check("Танец клинков: замедляет", m.slowT > 0 && m.slowMul < 1, `замедление ${m.slowT.toFixed(1)} с, скорость ×${m.slowMul}`);
   }
+}
+
+// Катакомбы: весь забег отрядом ботов на настоящем коде (--only catacombs; --lvl — уровень, --party N).
+if (ONLY.has("catacombs")) {
+  const lvl = Number(arg("--lvl") ?? 30);
+  const n = Number(arg("--party") ?? 3);
+  say(`\n── ☠ Катакомбы: отряд ${n} ботов ${lvl} ур. ──`);
+  const r = makeRoom(() => false);
+  const room = r.room;
+  const announces: string[] = [];
+  const origBroadcast = room.broadcast;
+  room.broadcast = (type: string, msg: any) => {
+    if (type === "cat") announces.push(`${f(r.t(), 0)}с [${msg.kind}] ${msg.title}${msg.sub ? " — " + msg.sub : ""}${msg.loot ? " · лут " + msg.loot.map((l: any) => l.id + "×" + l.count).join(",") : ""}`);
+    return origBroadcast?.(type, msg);
+  };
+  const chat: string[] = [];
+  room.reply = (t: string) => void chat.push(t);
+  const kits = ["меч+щит", "кинжал×2", "посох", "лук", "копьё", "молот"];
+  // --players <players.json с прода> --roster ник1,ник2,… — отряд из НАСТОЯЩИХ героев зрителей
+  // (уровень, атрибуты, оружие с роллами, умения — как в сейве). Без --players — синтетический отряд.
+  const prodFile = arg("--players");
+  let bots: { id: string; norm: string; bot: any }[];
+  if (prodFile) {
+    const fs = await import("node:fs");
+    const all = JSON.parse(fs.readFileSync(prodFile, "utf8")) as any[];
+    const want = (arg("--roster") ?? "").toLowerCase().split(",").filter(Boolean);
+    const recs = (want.length ? want.map((w) => all.find((r) => String(r.nick).toLowerCase() === w)) : all.filter((r) => r?.level).sort((a, b) => b.level - a.level).slice(0, n)).filter(Boolean);
+    bots = recs.map((rec: any, i: number) => {
+      const norm = `real${i}`;
+      store.put(`nick:${norm}`, { ...rec, token: `nick:${norm}`, nick: rec.nick, botActive: true, lastChatAt: simNow } as never);
+      room.spawnBot(rec.nick, norm);
+      room.chatSeen?.set?.(norm, simNow);
+      const bot = room.bots.get(norm);
+      return { id: bot.id, norm, bot };
+    });
+  } else {
+    bots = Array.from({ length: n }, (_, i) => addBot(room, `cat${i}`, { lvl, load: LOADOUTS.find((l) => l.id === kits[i % kits.length])! }));
+    for (const b of bots) b.bot.state.maxHp = b.bot.state.hp = maxHpFor(lvl, b.bot.state);
+  }
+  for (const b of bots) {
+    const p = b.bot.state;
+    say(`  ${p.nick} ур.${p.level} ${p.rightCls}/${p.leftCls || "—"} умения ${p.skill1 || "?"}+${p.skill2 || "?"} HP ${Math.round(p.maxHp)}`);
+  }
+  for (const b of bots) room.cat.join(b.id, b.norm, true);
+  room.cat.force("go");
+  if (process.env.LAB_DEBUG) {
+    const sp = room.catSpawn.bind(room);
+    room.catSpawn = (type: string, x: number, z: number, o: any) => {
+      const id = sp(type, x, z, o);
+      if (o.name) say(`    спавн ${o.name}: HP ${Math.round(room.sim.mobs.get(id).maxHp)} (×${o.hpMul.toFixed(1)}), урон×${room.sim.mobs.get(id).dmgMul.toFixed(1)}`);
+      return id;
+    };
+    const ht = room.tickHuntAttacks.bind(room);
+    let dragonHits = 0;
+    room.tickHuntAttacks = (...a: any[]) => (dragonHits++, ht(...a));
+    void dragonHits;
+  }
+  let deaths = 0;
+  const wasDead = new Map<string, boolean>();
+  let outOfWalls = 0;
+  let maxSpread = 0;
+  const weapons0 = bots.map((b) => b.bot.rt.weapons.length);
+  let lastStage = -1;
+  let maxMobs = 0;
+  for (let i = 0; i < (CAT.CATACOMBS.runSec + 60) * 20; i++) {
+    r.step();
+    const st = room.state;
+    for (const b of bots) {
+      const p = b.bot.state;
+      if (p.dead && !wasDead.get(b.id)) deaths++;
+      wasDead.set(b.id, !!p.dead);
+      if (st.catPhase >= 2 && !p.dead && CAT.inCatRegion(p.head.x, p.head.z)) {
+        const [x, z] = CAT.catProject(p.head.x, p.head.z, st.catLo, st.catHi, 0);
+        if (Math.hypot(x - p.head.x, z - p.head.z) > 0.3) outOfWalls++;
+      }
+    }
+    if (st.catPhase >= 2) {
+      const alive = bots.filter((b) => !b.bot.state.dead).map((b) => b.bot.state.head);
+      for (const a of alive) for (const c of alive) maxSpread = Math.max(maxSpread, Math.hypot(a.x - c.x, a.z - c.z));
+      maxMobs = Math.max(maxMobs, room.sim.catMobs.size);
+    }
+    if (st.catStage !== lastStage && st.catPhase >= 2) {
+      lastStage = st.catStage;
+      say(`  ${f(r.t(), 0)}с — стадия ${st.catStage} (${CAT.CAT_HALLS[st.catStage].name}), залы ${st.catLo}..${st.catHi}`);
+    }
+    if (st.catPhase === 0 && i > 100) break;
+  }
+  for (const a of announces) say(`    ${a}`);
+  const home = bots.filter((b) => !CAT.inCatRegion(b.bot.state.head.x, b.bot.state.head.z)).length;
+  const got = bots.map((b, i) => b.bot.rt.weapons.length - weapons0[i]);
+  const win = announces.some((a) => a.includes("[win]"));
+  say(`  итог: ${win ? "ПОБЕДА" : "провал"} за ${f(r.t(), 0)} с · смертей ${deaths} · мобов одновременно до ${maxMobs} · разброс отряда до ${f(maxSpread, 1)} м`);
+  say(`  вне стен (тиков): ${outOfWalls} · вернулись в лагерь ${home}/${n} · новое оружие в складах: ${got.join(", ")}`);
+  if (!win) anomalies.push(`катакомбы: отряд ${n}×${lvl} ур. не прошёл`);
+  if (home < n) anomalies.push(`катакомбы: после конца не все вернулись (${home}/${n})`);
+  if (outOfWalls > 0) anomalies.push(`катакомбы: боты вне стен ${outOfWalls} тиков`);
 }
 
 // 8. Защита: роллы щита/вампиризм и защитные атрибуты — в настоящем бою (физ. и маг. мобы)

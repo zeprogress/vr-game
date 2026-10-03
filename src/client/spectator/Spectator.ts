@@ -36,7 +36,9 @@ import { FreeCamControl } from "./FreeCamControl";
 import { BOT_TORCHES } from "../world/Fireflies";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
-import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
+import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
+import { CAT_HALLS, CAT_PHASE, inCatRegion } from "#shared/catacombs";
+import type { CatacombsFx } from "../world/Catacombs";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
 import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
@@ -274,6 +276,7 @@ export class Spectator {
     this.scene.skipPointerMovePicking = true;
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
+    this.catFx = zone.catacombs;
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
     this.lightFocus = new LightFocus(this.scene);
@@ -508,6 +511,11 @@ export class Spectator {
           6,
         );
       }
+    };
+    net.onCatacomb = (m) => {
+      this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
+      else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
     net.onTowerBoard = (rows) => this.overlay?.setTowerBoard(rows);
@@ -942,6 +950,12 @@ export class Spectator {
     // Зона (сутки, ветер, светлячки) — «позицию игрока» даём камеры.
     this.probe?.mark("pre-tick");
     this.zoneTick(dt, this.cam.cam.position, this.net?.worldClock ?? null);
+    const cst = room?.state;
+    this.catFx?.update(
+      dt,
+      cst ? { phase: cst.catPhase, lo: cst.catLo, hi: cst.catHi, left: cst.catLeft, party: cst.catParty, final: cst.catFinal === 1 } : null,
+      this.cam.cam.position,
+    );
     this.probe?.mark("zone");
 
     // Аватары игроков + мобы для режиссёра.
@@ -1110,6 +1124,7 @@ export class Spectator {
       mobs: this._mobs,
       boss,
       groundY: this.groundHeight,
+      cat: this.catCtx(room?.state ?? null),
     });
     // Перчатки/оружие «из глаз» — каждый кадр, без троттлинга оверлея
     // (иначе живые движения контроллеров читались бы рывками).
@@ -1460,9 +1475,48 @@ export class Spectator {
     else if (st.cqNeed > 0 && st.cqGot >= st.cqNeed) this.sfx.bossFanfare();
   }
 
+  /** Катакомбы для режиссёра камеры: текущий зал, самый крупный моб (страж/Владыка), герои внизу. */
+  private catCtx(st: ZoneState | null): DirectorCtx["cat"] {
+    if (!st || st.catPhase < CAT_PHASE.run) return null;
+    const hallI = Math.min(CAT_HALLS.length - 1, st.catHi);
+    const h = CAT_HALLS[hallI];
+    let bossId = "";
+    let big = 1.25;
+    st.mobs.forEach((m, id) => {
+      if (m.dead || !inCatRegion(m.x, m.z) || Math.hypot(m.x - h.x, m.z - h.z) > h.r + 2) return;
+      if (m.scale > big) {
+        big = m.scale;
+        bossId = id;
+      }
+    });
+    const heroes: string[] = [];
+    st.players.forEach((p, id) => {
+      if (!p.dead && inCatRegion(p.head.x, p.head.z)) heroes.push(id);
+    });
+    return { x: h.x, z: h.z, r: h.r, bossId, final: st.catFinal === 1, heroes };
+  }
+  private catFx: CatacombsFx | null = null;
+  private catMusic = "";
+
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же
    *  музыка весь забег (по спеке "фоновая музыка в этом мире как на боссе"). */
   private updateBossMusic(): void {
+    // Камера в катакомбах — их треки (финальный босс — свой).
+    const cs = this.net?.room?.state;
+    const cp = this.cam.cam.position;
+    if (cs && cs.catPhase >= CAT_PHASE.run && inCatRegion(cp.x, cp.z)) {
+      const kind = cs.catFinal === 1 ? "boss" : "run";
+      if (kind !== this.catMusic) {
+        this.catMusic = kind;
+        this.bossMusicOn = false;
+        this.sfx.setMusic(kind === "boss" ? CATACOMBS_BOSS_MUSIC : CATACOMBS_MUSIC, kind === "boss" ? 0.12 : 0.1);
+      }
+      return;
+    }
+    if (this.catMusic) {
+      this.catMusic = "";
+      this.bossMusicOn = !this.bossMusicOn;
+    }
     if (this._towerStatus) {
       if (!this.bossMusicOn) {
         this.bossMusicOn = true;

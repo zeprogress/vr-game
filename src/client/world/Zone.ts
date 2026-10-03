@@ -18,6 +18,7 @@ import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
 import { treesGlowTick } from "./nature";
 import { BotLights } from "./BotLights";
+import { CatacombsFx } from "./Catacombs";
 import { Fireflies, installLightRefresh, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { HUB } from "#shared/hub";
@@ -62,6 +63,8 @@ export interface Zone {
   classHomes: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 };
   /** Куда «лицом» смотрит оружие на стойке (к площади лагеря). */
   weaponsFaceYaw: number;
+  /** Катакомбы: залы за краем карты и портал сбора в лагере (кормят Game/Spectator состоянием). */
+  catacombs: CatacombsFx;
 }
 
 /**
@@ -206,8 +209,10 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   // Охотничья башня — только визуальная веха у угла босса (сам ивент/бой —
   // отдельная комната Colyseus, к этому мешу не привязан).
   const towerProp = buildTowerProp(scene);
+  const catacombs = new CatacombsFx(scene);
 
   return {
+    catacombs,
     botLights,
     fireflies,
     ground: terrain.mesh,

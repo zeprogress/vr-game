@@ -126,7 +126,9 @@ import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, weaponDef, type It
 import { BLINK, BOSS, BOT, EVENT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
-import { TOWN_MUSIC, BOSS_MUSIC } from "../audio/playlist";
+import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
+import { CAT_PHASE, inCatRegion } from "#shared/catacombs";
+import type { CatacombsFx, CatView } from "../world/Catacombs";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -369,6 +371,7 @@ export class Game {
     if (this.pcThirdPerson) enableTreeFade();
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
+    this.catFx = zone.catacombs;
     this.botLights = zone.botLights;
     this.lightFocus = new LightFocus(this.scene);
     this.fireflies = zone.fireflies;
@@ -841,6 +844,7 @@ export class Game {
         else this.restoreFlatQuality();
       }
       this.zoneTick(dt, this.player.position, this.net?.worldClock ?? null);
+      this.tickCatacombs(dt);
       this.mark("zoneTick");
       // Автонаводка удара (только третье лицо на смартфоне) — до update(),
       // чтобы «глаза» взяли yaw. В VR не трогаем: там yaw крутит риг гарнитуры
@@ -2414,8 +2418,34 @@ export class Game {
   /** Полоса здоровья: видна при уроне и пока не полное HP, иначе плавно гаснет. */
   private bossMusicOn = false;
 
-  /** Рядом с живым боссом играет boss.mp3, вдали / после смерти — обычная. */
+  /** Катакомбы: залы/портал по состоянию сервера, стены для игрока. */
+  private tickCatacombs(dt: number): void {
+    const st = this.net?.room?.state;
+    const view: CatView | null = st ? { phase: st.catPhase, lo: st.catLo, hi: st.catHi, left: st.catLeft, party: st.catParty, final: st.catFinal === 1 } : null;
+    this.catFx?.update(dt, view, this.player.position);
+    this.player.catBounds = view && view.phase >= CAT_PHASE.run ? { lo: view.lo, hi: view.hi } : null;
+  }
+  private catFx: CatacombsFx | null = null;
+  /** Какая музыка сейчас: town / boss / cat / catBoss. */
+  private musicKind = "town";
+
+  /** Рядом с живым боссом играет boss.mp3, в катакомбах — свои треки, вдали / после смерти — обычная. */
   private updateBossMusic(): void {
+    const pp = this.player.position;
+    const st = this.net?.room?.state;
+    if (st && inCatRegion(pp.x, pp.z) && st.catPhase >= CAT_PHASE.run) {
+      const kind = st.catFinal === 1 ? "catBoss" : "cat";
+      if (kind !== this.musicKind) {
+        this.musicKind = kind;
+        this.bossMusicOn = false;
+        this.sfx.setMusic(kind === "catBoss" ? CATACOMBS_BOSS_MUSIC : CATACOMBS_MUSIC, kind === "catBoss" ? 0.11 : 0.09);
+      }
+      return;
+    }
+    if (this.musicKind === "cat" || this.musicKind === "catBoss") {
+      this.musicKind = "town";
+      this.bossMusicOn = !this.bossMusicOn; // ниже переключит обратно на нужную
+    }
     let near = false;
     const mobs = this.net?.room?.state.mobs;
     if (mobs) {
@@ -2429,6 +2459,7 @@ export class Game {
     }
     if (near === this.bossMusicOn) return;
     this.bossMusicOn = near;
+    this.musicKind = near ? "boss" : "town";
     this.sfx.setMusic(near ? BOSS_MUSIC : TOWN_MUSIC, near ? 0.095 : 0.065);
   }
 
@@ -3335,6 +3366,16 @@ export class Game {
       // сообщения, следующий тик ловит устаревшее dead:1 и включает экран
       // смерти заново, уже без пары, которая его снова выключит (баг: после
       // возрождения красная виньетка и счётчик оставались на экране).
+    };
+    net.onWarp = (x, y, z, yaw) => {
+      this.dash = null;
+      this.player.teleportTo(x, y, z);
+      if (yaw !== undefined) this.player.faceInstant(x + Math.sin(yaw), z + Math.cos(yaw));
+    };
+    net.onCatacomb = (m) => {
+      this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
+      if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
+      else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLevelUp = (lvl) => this.levelUpFx(lvl);
     net.onBossEvent = (kind, by, _loot, lootItems) => {

@@ -567,6 +567,35 @@ export function playClassAct(
       vfx.burst(x, y + 1, z, FXC.poison, { count: 14, speed: 2, life: 0.6, grav: -2, size: 0.18 });
       c.sound(at, "swing");
       return true;
+    case "catBoss": {
+      // Катакомбы: страж встаёт — круг-телеграф сходится, тёмный столб, земля «дышит»; финал — крупнее.
+      const fin = r === 1;
+      const dur = d ?? 4;
+      vfx.decal(x, y, z, fin ? 7 : 4.5, FXC.arcane, dur, 0, 0.9);
+      vfx.decal(x, y, z, fin ? 9 : 6, FXC.shadowDark, dur + 1, 2, 1);
+      vfx.pillar(x, y, z, fin ? 2.4 : 1.4, fin ? 14 : 9, FXC.shadowDark, dur + 0.6);
+      for (let i = 0; i < Math.ceil(dur * 2); i++) {
+        c.fx.later(i * 0.5, () => vfx.burst(x, y + 0.3, z, FXC.arcane, { count: fin ? 30 : 18, speed: fin ? 7 : 5, life: 0.8, grav: -3, size: 0.3 }));
+      }
+      c.fx.later(dur, () => {
+        vfx.burst(x, y + 1, z, FXC.arcane, { count: fin ? 80 : 45, speed: fin ? 14 : 9, life: 1.1, grav: 4, size: 0.35 });
+        vfx.decal(x, y, z, fin ? 10 : 6, FXC.arcane, 0.8, 0, 1.2);
+        c.sound(at, "bash");
+      });
+      c.sound(at, "thud");
+      return true;
+    }
+    case "catChest": {
+      // Сундук стража: золотой столб и россыпь искр; суперприз — больше и дольше.
+      const fin = r === 1;
+      vfx.pillar(x, y, z, fin ? 2 : 1.2, fin ? 16 : 10, FXC.gold, fin ? 6 : 4);
+      vfx.decal(x, y, z, fin ? 6 : 3.5, FXC.gold, fin ? 6 : 4, 1, 1);
+      for (let i = 0; i < (fin ? 8 : 4); i++) {
+        c.fx.later(i * 0.35, () => vfx.burst(x, y + 1.2, z, FXC.gold, { count: fin ? 40 : 24, speed: 8, life: 1, grav: 10, size: 0.25 }));
+      }
+      c.sound(at, "bash");
+      return true;
+    }
     case "bleedTick":
       // Кровотечение видно языками красного «огня» на самом мобе (Mob.ts, поле bleeding) — тут ничего.
       return true;
