@@ -45,7 +45,7 @@ export function rocks(): Rock[] {
   const r = rng(SEED);
   const reach = WORLD.size / 2 - 4;
   const out: Rock[] = [];
-  for (let i = 0; i < 28; i++) {
+  for (let i = 0; i < 0; i++) { // камни убраны по просьбе (2026-10-03); было 28
     const x = (r() - 0.5) * 2 * reach;
     const z = (r() - 0.5) * 2 * reach;
     if (Math.hypot(x, z) < 10) continue; // не на спавне

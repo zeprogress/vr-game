@@ -13,7 +13,7 @@ import { createTerrain } from "./Terrain";
 import { createSky } from "./Sky";
 import { createMountainRing } from "./MountainRing";
 import { createLake } from "./Lake";
-import { scatterTrees, scatterGrass, scatterRocks, type Obstacle } from "./props";
+import { scatterTrees, scatterGrass, type Obstacle } from "./props";
 import { dayState, dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
 import { treesGlowTick } from "./nature";
@@ -193,7 +193,6 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   };
 
   // Камни из пака: под оружием + по карте. Крупные — препятствия.
-  const rockObstacles = scatterRocks(scene, terrain, []);
 
   // HUB «Боевой лагерь» — блокаут в той же сцене (не отдельный мир).
   const hub = buildHubBlockout(scene);
@@ -213,7 +212,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     fireflies,
     ground: terrain.mesh,
     groundHeight: terrain.heightAt,
-    obstacles: [...trunks, ...rockObstacles, ...hub.obstacles, ...towerProp.obstacles],
+    obstacles: [...trunks, ...hub.obstacles, ...towerProp.obstacles],
     tick: (
       dt: number,
       playerPos: Vector3,

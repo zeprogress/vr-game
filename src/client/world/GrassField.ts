@@ -401,7 +401,7 @@ export async function loadGrassField(
     load("Grass_Common_Short"),
     load("Grass_Common_Tall"),
     load("Grass_Wispy_Short"),
-    load("Bush_Common"),
+    Promise.resolve(null as Awaited<ReturnType<typeof load>>), // кусты убраны по просьбе (2026-10-03)
   ]);
   if (!cShort) return () => {};
 
