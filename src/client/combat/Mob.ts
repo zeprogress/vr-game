@@ -1058,7 +1058,7 @@ export class Mob implements Hittable {
     const night = (1 - daylightAt(LOADOUT.world.hour)) * 0.16;
     this.mat.emissiveColor.set(
       this.tint[0] * (0.28 + night) + this.flash * 0.6 + ember,
-      this.tint[1] * (0.2 + night) + this.flash * 0.1 + ember * 0.35,
+      this.tint[1] * (0.2 + night) + this.flash * 0.1 + (this.flameRed ? 0 : ember * 0.35),
       this.tint[2] * (0.32 + night),
     );
 
@@ -1378,7 +1378,10 @@ export class Mob implements Hittable {
   private updateBurnFx(dt: number): void {
     if (FIRE_PARTICLES) {
       // ?fire=1 — огонь частицами (одна общая система на сцену, см. BurnParticles).
-      const bp = BurnParticles.for(this.root.getScene());
+      // Кровотечение — своя (красная) система частиц; из другой моба убираем.
+      const scene = this.root.getScene();
+      const bp = BurnParticles.for(scene, this.flameRed);
+      BurnParticles.for(scene, !this.flameRed).remove(this);
       if (this.burnGlow <= 0.001 || this.dead) {
         bp.remove(this);
         return;
@@ -1492,7 +1495,10 @@ export class Mob implements Hittable {
     this.stunStarMat?.dispose();
     this.burnMat?.dispose();
     this.burnMesh?.dispose();
-    if (FIRE_PARTICLES) BurnParticles.for(this.root.getScene()).remove(this);
+    if (FIRE_PARTICLES) {
+      BurnParticles.for(this.root.getScene()).remove(this);
+      BurnParticles.for(this.root.getScene(), true).remove(this);
+    }
     this.mat.dispose();
     this.rig?.dispose();
     this.rig = null;

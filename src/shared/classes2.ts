@@ -396,7 +396,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
-      assassin: { name: "Отскок с веером", desc: "Отскок назад на 5 м и три веера ножей конусом вперёд (9 м), каждый нож — кровотечение 5 с" },
+      assassin: { name: "Отскок с веером", desc: "Отскок назад на 5 м и три веера ножей конусом вперёд (9 м), каждый нож — кровотечение 5 с: 2% здоровья цели в секунду" },
       spearman: { name: "Ливень копий", desc: "Три тяжёлых копья с неба в круг 5 м: каждое бьёт ×1.6 и оглушает на 1 с" },
     },
   },
@@ -528,7 +528,8 @@ export const MARK = { duration: 8, dmgMul: 1.3, assassinCrit: 0.25, slow: 0.3 } 
 export const CHAIN = { jump: 7, falloff: 0.8 } as const;
 /** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
 export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;
-export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7 } as const;
+/** Веер ножей: кровотечение — доля МАКС. HP цели в секунду (босс/осколки — в bossDiv раз меньше), bleedSec с. */
+export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7, bleedHpFrac: 0.02, bleedSec: 5, bossDiv: 4 } as const;
 
 /** Числа «Печати» (лечение — доля макс. HP в секунду; урон — у боевого мага). */
 export const SEAL = { duration: 6, healFracPerSec: 0.015, shield: 0.2, slow: 0.4, burnPerSec: 0.35 } as const;

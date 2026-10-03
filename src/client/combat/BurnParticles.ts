@@ -52,17 +52,36 @@ interface Src {
 type ScaledParticle = Particle & { __s?: number };
 
 const PER_SCENE = new WeakMap<Scene, BurnParticles>();
+/** Вторая система — кровотечение: те же языки, красная палитра. */
+const PER_SCENE_BLOOD = new WeakMap<Scene, BurnParticles>();
+/** Цвет за жизнь: [доля жизни, r, g, b, множитель альфы]. */
+type Palette = readonly (readonly [number, number, number, number, number])[];
+const FIRE: Palette = [
+  [0, 1, 0.9, 0.5, 0],
+  [0.1, 1, 0.7, 0.25, 0.55],
+  [0.4, 1, 0.38, 0.06, 0.42],
+  [0.75, 0.55, 0.1, 0.02, 0.2],
+  [1, 0.15, 0.04, 0.02, 0],
+];
+const BLOOD: Palette = [
+  [0, 1, 0.35, 0.3, 0],
+  [0.1, 1, 0.12, 0.08, 0.6],
+  [0.4, 0.85, 0.03, 0.02, 0.48],
+  [0.75, 0.45, 0.01, 0.01, 0.22],
+  [1, 0.12, 0, 0, 0],
+];
 
 /** Частицы — огонь по умолчанию (одобрено на стенде 2026-09-28); ?fire=0 — старые карточки BurnFlameMat. */
 export const FIRE_PARTICLES =
   typeof location === "undefined" || new URLSearchParams(location.search).get("fire") !== "0";
 
 export class BurnParticles {
-  static for(scene: Scene): BurnParticles {
-    let b = PER_SCENE.get(scene);
+  static for(scene: Scene, blood = false): BurnParticles {
+    const map = blood ? PER_SCENE_BLOOD : PER_SCENE;
+    let b = map.get(scene);
     if (!b) {
-      b = new BurnParticles(scene);
-      PER_SCENE.set(scene, b);
+      b = new BurnParticles(scene, blood ? BLOOD : FIRE);
+      map.set(scene, b);
     }
     return b;
   }
@@ -73,7 +92,10 @@ export class BurnParticles {
   private totalW = 0;
   private now = 0;
 
-  private constructor(scene: Scene) {
+  private constructor(
+    scene: Scene,
+    private readonly palette: Palette = FIRE,
+  ) {
     const ps = new ParticleSystem("burnFire", CAPACITY, scene);
     ps.particleTexture = softDot(scene);
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
@@ -148,11 +170,7 @@ export class BurnParticles {
     // Альфа умеренная: при сложении цветов десятки частиц иначе выжигают моба в белое.
     const a = t.alpha;
     for (const g of [...(ps.getColorGradients() ?? [])]) ps.removeColorGradient(g.gradient);
-    ps.addColorGradient(0, new Color4(1, 0.9, 0.5, 0));
-    ps.addColorGradient(0.1, new Color4(1, 0.7, 0.25, 0.55 * a));
-    ps.addColorGradient(0.4, new Color4(1, 0.38, 0.06, 0.42 * a));
-    ps.addColorGradient(0.75, new Color4(0.55, 0.1, 0.02, 0.2 * a));
-    ps.addColorGradient(1, new Color4(0.15, 0.04, 0.02, 0));
+    for (const [at, r, g, b, k] of this.palette) ps.addColorGradient(at, new Color4(r, g, b, k * a));
   }
 
   /** Моб горит: где он и насколько (0..1). Звать каждый кадр, пока горит. */

@@ -6922,7 +6922,9 @@ export class ZoneRoom extends Room<ZoneState> {
                 const d = Math.hypot(dx, dz) || 1;
                 if (Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > FAN.halfAngle) continue;
                 this.sim.hitMob(m.id, FAN.dmgMult * pow.dmg, dx / d, dz / d, ownerId, true);
-                this.sim.bleedMob(m.id, (FAN.dmgMult * pow.dmg) / 5, 5, ownerId);
+                // Кровотечение — доля здоровья цели (как поджог мага), у босса и осколков слабее.
+                const big = m.kind === "boss" || m.kind === "shard";
+                this.sim.bleedMob(m.id, (m.pctHpBase * FAN.bleedHpFrac) / (big ? FAN.bossDiv : 1), FAN.bleedSec, ownerId);
               }
             }, (0.15 + i * 0.18) * 1000);
           }
