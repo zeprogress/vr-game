@@ -460,7 +460,7 @@ export interface WeaponInstance {
 }
 
 /** Сколько предметов можно держать в избранном (ряд «Избранное» в инвентаре). */
-export const FAV_MAX = 8;
+export const FAV_MAX = 16;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
 const LOOT_VER = 7;
@@ -730,8 +730,8 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   return s;
 }
 
-/** Множитель лома с переработки (2026-10-02: ×2, обычное оружие — не меньше 1). */
-export const SCRAP_MUL = 2;
+/** Множитель лома с переработки (2026-10-02: ×2; 2026-10-03: снова ×1 — обычное оружие по-прежнему не меньше 1). */
+export const SCRAP_MUL = 1;
 
 /** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
 export function scrapValue(w: WeaponInstance): number {
@@ -990,7 +990,7 @@ export function migrateLoot(w: WeaponInstance): boolean {
  *  успех = +1..3 очка (из 33) к аффиксу, неудача — лом всё равно сгорает.
  * Итог (симуляция, до 2026-10-02): золото с 1 аффиксом от середины до максимума ≈ 1500 лома
  * (~6 дней топ-фарма), уникальное с 3 аффиксами ≈ 6500 (~4 недели топа). Теперь
- * цена вдвое ниже и лома с переработки вдвое больше (SCRAP_MUL) — примерно вчетверо быстрее.
+ * цена вдвое ниже (лом с переработки — снова как было, SCRAP_MUL 1) — примерно вдвое быстрее.
  */
 export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
 

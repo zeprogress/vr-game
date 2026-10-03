@@ -182,8 +182,11 @@ export class PlayerController {
   /** Не выпускать за край карты — там кончается земля; в катакомбах — стены залов. */
   private clampToWorld(): void {
     const p = this.body.position;
-    if (this.catBounds && inCatRegion(p.x, p.z)) {
-      const [x, z] = catProject(p.x, p.z, this.catBounds.lo, this.catBounds.hi, 0.4);
+    if (inCatRegion(p.x, p.z)) {
+      // Перенос в катакомбы приходит раньше, чем состояние забега (catLo/catHi): до него — все залы,
+      // иначе клиент выталкивал героя к краю карты и тот попадал вниз лишь при переносе отставших.
+      const b = this.catBounds ?? { lo: 0, hi: 3 };
+      const [x, z] = catProject(p.x, p.z, b.lo, b.hi, 0.4);
       p.x = x;
       p.z = z;
       return;

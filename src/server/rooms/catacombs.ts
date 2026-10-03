@@ -1,4 +1,8 @@
 import {
+  CAT_AFFIXES,
+  CAT_SHRINE,
+  CAT_SHRINES,
+  CAT_THEMES,
   CAT_FINAL,
   CAT_CURSES,
   CAT_HAZARD,
@@ -9,7 +13,9 @@ import {
   catBossSpot,
   catEntry,
   catGates,
+  type CatAffix,
   type CatBoss,
+  type CatShrine,
   type CatCurse,
   type CatHazardKind,
   type CatMech,
@@ -39,7 +45,13 @@ export interface CatHost {
   /** Вернуть героя в лагерь. */
   sendHome(id: string): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
-  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number }): string;
+  spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
+  /** Темы залов на заход (для клиентов). */
+  setThemes(s: string): void;
+  /** Святилище в зале (k −1 — убрать). */
+  setShrine(x: number, z: number, k: number): void;
+  /** Благословение святилища — всему отряду. */
+  shrineBless(s: CatShrine, ids: string[]): void;
   /** Жив ли моб. */
   alive(id: string): boolean;
   /** Убрать всех мобов катакомб. */
@@ -48,6 +60,8 @@ export interface CatHost {
   finalStart(id: string): void;
   finalTick(id: string): void;
   finalStop(): void;
+  /** Таблица забега: урон/убийства (из симуляции) — разослать зрителям; reset — обнулить к новому забегу. */
+  stats(rows: { id: string; deaths: number }[], reset?: boolean): void;
   /** Пали вместе со стражем: убрать мобов (рассыпаются прахом, без лута). */
   dismissMobs(ids: string[]): void;
   /** Награды: сундук стадии / суперприз — в склад героя. Возвращает выпавшее (для баннера). */
@@ -75,6 +89,9 @@ type Step = "intro" | "waves" | "bossIntro" | "boss" | "move";
 /** План зала на этот заход: состав волн, страж, проклятие и опасности — случайные. */
 interface StagePlan {
   waves: CatWave[][];
+  /** Аффикс каждой волны (или null). */
+  affixes: (CatAffix | null)[];
+  shrine: CatShrine | null;
   boss?: CatBoss;
   curse: CatCurse;
   hazard: CatHazardKind;
@@ -114,11 +131,32 @@ export class CatacombDirector {
   private ringAt = 0;
   /** Свита «на подходе» (ворота открылись). */
   private pendingAdds: { group: CatWave[]; gates: { x: number; z: number }[]; at: number }[] = [];
+  /** Имя зала с темой захода: «Зал костей · Огненная яма». */
+  private hallTitle(i: number): string {
+    const t = CAT_THEMES[this.themes[i] ?? -1];
+    return t ? `${CAT_HALLS[i].name} · ${t.name}` : CAT_HALLS[i].name;
+  }
+
+  /** «Взрывные» мобы: где были (взрыв на месте гибели). */
+  private readonly explosive = new Map<string, { x: number; z: number }>();
+  private shrineAt: { x: number; z: number } | null = null;
+  private shrineDone = false;
+  /** С какого момента кто-то из отряда стоит в круге святилища (0 — никто). */
+  private shrineHold = 0;
+  /** Аффикс волны, которая сейчас спавнится. */
+  private spawnAffix: CatAffix | null = null;
+  /** Смерти по героям за забег и кто был мёртв в прошлый тик. */
+  private readonly deaths = new Map<string, number>();
+  private readonly wasDead = new Set<string>();
+  private statsAt = 0;
   /** План каждого зала на этот заход. */
   private plan: StagePlan[] = [];
   /** Волна «на подходе»: ворота уже открылись, мобы выйдут в `at`. */
   private pending: { group: CatWave[]; gates: { x: number; z: number }[]; at: number } | null = null;
   private nextHazardAt = 0;
+  private pendingAffix: CatAffix | null = null;
+  /** Темы залов на этот заход (индексы CAT_THEMES). */
+  private themes: number[] = [];
   /** Кто уже получил награду в этом забеге (чтобы ушедший и вернувшийся не брал дважды). */
   private readonly rewarded = new Set<string>();
 
@@ -260,8 +298,53 @@ export class CatacombDirector {
       return;
     }
     for (const id of [...this.mobs]) if (!this.host.alive(id)) this.mobs.delete(id);
+    // Смерти и «пали все».
+    const partyHeroes = heroes.filter((h) => this.party.has(h.id));
+    for (const h of partyHeroes) {
+      if (h.dead && !this.wasDead.has(h.id)) {
+        this.wasDead.add(h.id);
+        this.deaths.set(h.id, (this.deaths.get(h.id) ?? 0) + 1);
+      } else if (!h.dead) this.wasDead.delete(h.id);
+    }
+    if (partyHeroes.length > 0 && partyHeroes.every((h) => h.dead)) {
+      this.finish(false, "Отряд пал в катакомбах");
+      return;
+    }
+    if (now >= this.statsAt) {
+      this.statsAt = now + 2000;
+      this.host.stats([...this.party].map((id) => ({ id, deaths: this.deaths.get(id) ?? 0 })));
+    }
     const st = CATACOMBS.stages[this.stage];
     const plan = this.plan[this.stage];
+    // «Взрывные»: погиб — огненный взрыв на месте (успей отбежать).
+    if (this.explosive.size) {
+      const blasts: { x: number; z: number }[] = [];
+      for (const [id, pos] of this.explosive) {
+        const info = this.host.mobInfo(id);
+        if (info) {
+          pos.x = info.x;
+          pos.z = info.z;
+        } else {
+          blasts.push(pos);
+          this.explosive.delete(id);
+        }
+      }
+      if (blasts.length) this.host.hazard("flames", blasts, { r: 2.8, dmg: 0.18, delay: 0.9 });
+    }
+    // Святилище: кто из отряда подошёл — бафф всем.
+    if (this.shrineAt && plan.shrine) {
+      const near = partyHeroes.some((h) => !h.dead && Math.hypot(h.x - this.shrineAt!.x, h.z - this.shrineAt!.z) < CAT_SHRINE.reach);
+      if (!near) this.shrineHold = 0;
+      else if (!this.shrineHold) this.shrineHold = now;
+      if (near && now - this.shrineHold >= CAT_SHRINE.holdSec * 1000) {
+        this.shrineHold = 0;
+        this.host.shrineBless(plan.shrine, [...this.party]);
+        this.host.announce({ kind: "chest", title: plan.shrine.name, sub: plan.shrine.desc, secs: 5 });
+        this.shrineAt = null;
+        this.shrineDone = true;
+        this.host.setShrine(0, 0, -1);
+      }
+    }
     // Опасности зала: залпы по героям, пока идёт бой (не на переходе и не во вступлении).
     if ((this.step === "waves" || this.step === "boss") && now >= this.nextHazardAt) this.fireHazard(heroes, plan, now);
     switch (this.step) {
@@ -270,10 +353,19 @@ export class CatacombDirector {
         if (this.step === "intro" && now < this.stepAt) break;
         if (this.step === "intro") this.nextHazardAt = now + 6000;
         this.step = "waves";
+        if (!this.shrineAt && !this.shrineDone && plan.shrine) {
+          const h = CAT_HALLS[st.hall];
+          const a = Math.random() * Math.PI * 2;
+          const r = h.r * (0.25 + Math.random() * 0.3);
+          this.shrineAt = { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r };
+          this.host.setShrine(this.shrineAt.x, this.shrineAt.z, CAT_SHRINES.indexOf(plan.shrine));
+        }
         // Ворота открылись — мобы выходят.
         if (this.pending) {
           if (now >= this.pending.at) {
+            this.spawnAffix = this.pendingAffix;
             this.spawnGroup(this.pending.group, this.pending.gates);
+            this.spawnAffix = null;
             this.pending = null;
           }
           break;
@@ -291,11 +383,13 @@ export class CatacombDirector {
             if (ambush) gates.push(back[0]);
             this.host.gateFx(gates);
             this.pending = { group: plan.waves[this.wave], gates, at: now + 1300 };
+            const affix = plan.affixes[this.wave] ?? null;
+            this.pendingAffix = affix;
             this.wave++;
             this.waveAt = 0;
             const first = this.wave === 1;
             this.host.announce({
-              kind: "wave", title: `${CAT_HALLS[st.hall].name} · волна ${this.wave}/${plan.waves.length}${ambush ? " · засада!" : ""}`,
+              kind: "wave", title: `${CAT_HALLS[st.hall].name} · волна ${this.wave}/${plan.waves.length}${ambush ? " · засада!" : ""}${affix ? ` · ${affix.name}` : ""}`,
               sub: first ? `проклятие: ${plan.curse.name} — ${plan.curse.desc} · ${CAT_HAZARD.names[plan.hazard]}` : this.waveSub(),
               secs: first ? 6 : 4,
             });
@@ -349,6 +443,9 @@ export class CatacombDirector {
         this.waveAt = 0;
         this.pending = null;
         this.nextHazardAt = now + 7000;
+        this.shrineAt = null;
+        this.shrineDone = false;
+        this.host.setShrine(0, 0, -1);
         this.step = "waves";
         break;
       }
@@ -375,6 +472,18 @@ export class CatacombDirector {
     const avg = heroes.reduce((s, h) => s + h.level, 0) / Math.max(1, heroes.length);
     this.partyLevel = avg;
     this.pending = null;
+    this.deaths.clear();
+    this.wasDead.clear();
+    this.statsAt = 0;
+    this.host.stats([], true);
+    this.explosive.clear();
+    this.shrineAt = null;
+    this.shrineDone = false;
+    this.host.setShrine(0, 0, -1);
+    // Темы залов на этот заход — каждый зал выглядит иначе, чем в прошлый раз.
+    const themes = CAT_THEMES.map((_, i) => i).sort(() => Math.random() - 0.5);
+    this.themes = CAT_HALLS.map((_, i) => themes[i % themes.length]);
+    this.host.setThemes(this.themes.join(","));
     this.plan = CATACOMBS.stages.map((st, i) => this.makePlan(st, i === CATACOMBS.stages.length - 1, heroes.length));
     const hall = CAT_HALLS[0];
     heroes.forEach((h, i) => {
@@ -383,7 +492,7 @@ export class CatacombDirector {
     });
     const names = heroes.map((h) => h.nick).join(", ");
     this.host.chat(`☠ Отряд спускается в катакомбы: ${names}. Удачи — у вас ${Math.round(CATACOMBS.runSec / 60)} минут.`);
-    this.host.announce({ kind: "start", title: "Катакомбы", sub: `${CAT_HALLS[0].name} · ${heroes.length} героев · ${Math.round(CATACOMBS.runSec / 60)} мин`, secs: 7 });
+    this.host.announce({ kind: "start", title: "Катакомбы", sub: `${this.hallTitle(0)} · ${heroes.length} героев · ${Math.round(CATACOMBS.runSec / 60)} мин`, secs: 7 });
     this.pushState();
   }
 
@@ -403,8 +512,12 @@ export class CatacombDirector {
         ]);
       }
     }
+    // Аффиксы волн: первая волна первого зала — без, дальше ~половина волн с аффиксом.
+    const affixes = waves.map((_, w) => (st.hall === 0 && w === 0) || Math.random() > 0.5 ? null : pick(CAT_AFFIXES));
     return {
       waves,
+      affixes,
+      shrine: !last && Math.random() < CAT_SHRINE.chance ? pick(CAT_SHRINES) : null,
       boss: st.bosses ? pick(st.bosses) : st.boss,
       curse: last ? { name: "Трон Бездны", desc: "Владыка ждёт", hpMul: 1, dmgMul: 1, hazardRate: 0.6, lootMul: 1 } : pick(CAT_CURSES),
       hazard: pick(CAT_HAZARD.kinds),
@@ -442,9 +555,11 @@ export class CatacombDirector {
         const s = spots[k++ % spots.length];
         const a = Math.random() * Math.PI * 2;
         const r = Math.random() * 1.5;
-        this.mobs.add(
-          this.host.spawn(w.type, s.x + Math.cos(a) * r, s.z + Math.sin(a) * r, { hpMul: this.threat("hp"), dmgMul: this.threat("dmg"), scaleMul: scale, partyLevel: this.partyLevel }),
-        );
+        const id = this.host.spawn(w.type, s.x + Math.cos(a) * r, s.z + Math.sin(a) * r, {
+          hpMul: this.threat("hp"), dmgMul: this.threat("dmg"), scaleMul: scale, partyLevel: this.partyLevel, affix: this.spawnAffix,
+        });
+        this.mobs.add(id);
+        if (this.spawnAffix?.explode) this.explosive.set(id, { x: s.x, z: s.z });
       }
     }
   }
@@ -664,7 +779,7 @@ export class CatacombDirector {
     this.hi = this.stage + 1;
     this.step = "move";
     this.stepAt = this.host.now() + CATACOMBS.moveSec * 1000;
-    this.host.announce({ kind: "door", title: "Решётка поднялась", sub: `вперёд — ${CAT_HALLS[this.hi].name}`, secs: 5 });
+    this.host.announce({ kind: "door", title: "Решётка поднялась", sub: `вперёд — ${this.hallTitle(this.hi)}`, secs: 5 });
   }
 
   private waveSub(): string {
@@ -685,6 +800,8 @@ export class CatacombDirector {
       if (!quiet || this.party.size > 0) this.host.chat(`☠ ${why}.`);
       this.host.announce({ kind: "fail", title: why, sub: wasRun ? "отряд вернулся в лагерь" : "", secs: 7 });
     }
+    this.host.setShrine(0, 0, -1);
+    this.explosive.clear();
     this.phase = CAT_PHASE.none;
     this.party.clear();
     this.lo = 0;

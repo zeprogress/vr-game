@@ -955,6 +955,25 @@ if (ONLY.has("catacombs")) {
       if (o.name) say(`    спавн ${o.name}: HP ${Math.round(room.sim.mobs.get(id).maxHp)} (×${o.hpMul.toFixed(1)}), урон×${room.sim.mobs.get(id).dmgMul.toFixed(1)}`);
       return id;
     };
+    // Урон по героям: за каждые 5 с — сумма по источникам (имя моба / среда), чтобы видеть, кто «вайпает».
+    const hp0 = room.hurtPlayer.bind(room);
+    const hurtLog = new Map<string, number>();
+    let hurtWin = -1;
+    room.hurtPlayer = (h: any) => {
+      const p = room.state.players.get(h.target);
+      const before = p?.hp ?? 0;
+      hp0(h);
+      const lost = Math.max(0, before - (p?.hp ?? 0));
+      const w = Math.floor(r.t() / 5);
+      if (w !== hurtWin) {
+        if (hurtLog.size) say(`    урон ${hurtWin * 5}-${hurtWin * 5 + 5}с: ${[...hurtLog].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k} ${Math.round(v)}`).join(", ")}`);
+        hurtLog.clear();
+        hurtWin = w;
+      }
+      const m = h.byMob ? room.sim.mobs.get(h.byMob) : null;
+      const k = m ? (m.eliteName || m.kind) + (h.dot ? "(dot)" : h.projectile ? "(снаряд)" : "") : h.dot ? "среда" : "?";
+      hurtLog.set(k, (hurtLog.get(k) ?? 0) + lost);
+    };
     const ht = room.tickHuntAttacks.bind(room);
     let dragonHits = 0;
     room.tickHuntAttacks = (...a: any[]) => (dragonHits++, ht(...a));
@@ -972,7 +991,10 @@ if (ONLY.has("catacombs")) {
     const st = room.state;
     for (const b of bots) {
       const p = b.bot.state;
-      if (p.dead && !wasDead.get(b.id)) deaths++;
+      if (p.dead && !wasDead.get(b.id)) {
+        deaths++;
+        announces.push(`${f(r.t(), 0)}с [death] ${p.nick}`);
+      }
       wasDead.set(b.id, !!p.dead);
       if (st.catPhase >= 2 && !p.dead && CAT.inCatRegion(p.head.x, p.head.z)) {
         const [x, z] = CAT.catProject(p.head.x, p.head.z, st.catLo, st.catHi, 0);

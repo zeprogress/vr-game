@@ -10,13 +10,9 @@ import {
   heldAffixText,
   instanceEffects,
   instanceName,
-  isWeaponClass,
-  isWeaponTier,
-  ITEMS,
   scrapValue,
   bagCount,
   enchantInfo,
-  weaponDef,
   weaponQuality,
   bestWeaponInstance,
   type WeaponInstance,
@@ -39,39 +35,9 @@ interface InventoryJoinOptions {
 
 type InvAct = { act?: unknown; id?: unknown; idx?: unknown };
 
-/** Название+тир+роллы надетого в руке — null, если рука пуста/базовая. */
 /** Для окна заточки: по каждому аффиксу — очки, max, шанс и цена. */
 function enchDetails(w: WeaponInstance): { label: string; points: number; max: boolean; chance: number; cost: number }[] {
   return w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! }));
-}
-
-function handInfo(
-  cls: string,
-  tier: string,
-  equippedId: string | null | undefined,
-  weapons: WeaponInstance[],
-): {
-  cls: string;
-  name: string;
-  tier: WeaponTier;
-  affixes: string[];
-  effects: string[];
-  quality: number;
-  id: string;
-  ench: ReturnType<typeof enchDetails>;
-} | null {
-  if (!isWeaponClass(cls) || !isWeaponTier(tier) || tier === "base") return null;
-  const inst = equippedId ? weapons.find((w) => w.id === equippedId) : undefined;
-  return {
-    cls,
-    name: inst ? instanceName(inst) : weaponDef(cls, tier).name,
-    tier,
-    affixes: inst ? instanceLabels(inst) : [],
-    effects: inst ? instanceEffects(inst) : [],
-    quality: inst ? weaponQuality(inst) : 0,
-    id: inst?.id ?? "",
-    ench: inst ? enchDetails(inst) : [],
-  };
 }
 
 /**
@@ -165,29 +131,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   if (!rec) return { ok: false, error: `У «${norm}» ещё нет героя — напиши !play в чате.` };
   const authed = invHub.isAuthed(sid, norm);
   const weaponsList = rec.weapons ?? [];
-  // Что в руках — как в окне снаряжения (живой герой: реально в руке, не только закреплённое).
-  const eqFor = (): { left: string | null; right: string | null } =>
-    invHub.pcInv(norm)?.equipped ?? { left: rec.equippedWeaponId?.left ?? null, right: rec.equippedWeaponId?.right ?? null }; // уточняется ниже (pc)
-  const eq0 = eqFor();
-  const equippedIds = new Set([eq0.left, eq0.right].filter((id): id is string => !!id));
-  const weapons = weaponsList
-    .filter((w) => !equippedIds.has(w.id))
-    .map((w, i) => ({
-      num: i + 1,
-      id: w.id,
-      cls: w.cls,
-      tier: w.tier,
-      name: instanceName(w),
-      affixes: instanceLabels(w),
-      effects: instanceEffects(w),
-      quality: weaponQuality(w),
-      scrap: scrapValue(w),
-      ench: enchDetails(w),
-      fav: !!w.fav,
-    }));
-  const misc = (rec.bag ?? [])
-    .filter((s) => s.item && s.count > 0 && s.item !== "scroll_xp" && s.item !== "scroll_wind") // свитки — в «Жетоны и свитки»
-    .map((s) => ({ name: ITEMS[s.item!].name, count: s.count }));
   // Экземпляр в руке: закреплённый, иначе лучший того же вида/тира (как считает игра).
   const instIn = (side: "left" | "right"): WeaponInstance | undefined => {
     const h = rec.held?.[side];
@@ -253,27 +196,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     level: rec.level,
     // Опыт к следующему уровню: доля 0..1 (на максимальном уровне — 1).
     xpFrac: atMaxLevel(rec.level) ? 1 : Math.max(0, Math.min(1, (rec.xp ?? 0) / xpToNext(rec.level))),
-    // Старый вид — те же характеристики и руки, что новый (одни данные).
-    stats: pc.stats,
-    hands: {
-      left: handInfo(rec.held?.left?.cls ?? "", rec.held?.left?.tier ?? "", pc.equipped.left, weaponsList),
-      right: handInfo(rec.held?.right?.cls ?? "", rec.held?.right?.tier ?? "", pc.equipped.right, weaponsList),
-    },
-    weapons,
-    misc,
-    scrapHave: bagCount(rec.bag ?? [], "scrap"),
-    attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
-    fish: bagCount(rec.bag ?? [], "fish"),
-    // Жетоны заданий и свитки (свиток читается отсюда же; действует — секунд осталось).
-    tokens: rec.tokens ?? 0,
-    scrolls: (["scroll_xp", "scroll_wind"] as const).map((id) => ({
-      id,
-      name: ITEMS[id].name,
-      hint: ITEMS[id].hint,
-      count: bagCount(rec.bag ?? [], id),
-      activeSecs: Math.max(0, Math.ceil((((id === "scroll_xp" ? rec.scrollXpUntil : rec.scrollWindUntil) ?? 0) - Date.now()) / 1000)),
-    })),
-    respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
   };
 }
 

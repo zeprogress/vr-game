@@ -13,7 +13,7 @@ import type { Room } from "colyseus.js";
 
 import { BLINK, BOSS, BOT, EVENT, MOB, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SKILL, SPORE, daylightAt } from "#shared/constants";
 import { TOWER, TOWER_HIDE } from "#shared/tower";
-import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
+import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC, TELEGRAM } from "#shared/changelog";
 import type { ZoneState, PlayerState } from "#shared/net/schema";
 import type { ActKind, SpecCmd } from "#shared/net/messages";
 import { LOADOUT } from "../config/loadout";
@@ -38,7 +38,7 @@ import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_HALLS, CAT_PHASE, inCatRegion } from "#shared/catacombs";
-import type { CatacombsFx } from "../world/Catacombs";
+import { type CatacombsFx, catViewOf } from "../world/Catacombs";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
 import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
@@ -512,6 +512,7 @@ export class Spectator {
         );
       }
     };
+    net.onCatStats = (m) => this.overlay?.setCatTop(m.rows);
     net.onCatacomb = (m) => {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
       if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();
@@ -953,7 +954,7 @@ export class Spectator {
     const cst = room?.state;
     this.catFx?.update(
       dt,
-      cst ? { phase: cst.catPhase, lo: cst.catLo, hi: cst.catHi, left: cst.catLeft, party: cst.catParty, final: cst.catFinal === 1 } : null,
+      cst ? catViewOf(cst) : null,
       this.cam.cam.position,
     );
     this.probe?.mark("zone");
@@ -1297,9 +1298,9 @@ export class Spectator {
   private changelogIdx = 0;
   private changelogAt = 0;
 
-  /** Свежие изменения игры — по одной короткой строке, перебором. */
+  /** Свежие изменения игры — по одной короткой строке, перебором; между ними — реклама Telegram-канала. */
   private changelogLine(): string {
-    const items = CHANGELOG.slice(0, CHANGELOG_SHOWN);
+    const items = CHANGELOG.slice(0, CHANGELOG_SHOWN).flatMap((t, i) => (i % 2 === 1 ? [t, TELEGRAM.ticker] : [t]));
     if (items.length === 0) return "";
     const now = performance.now();
     if (this.changelogAt === 0) this.changelogAt = now;
@@ -1432,7 +1433,11 @@ export class Spectator {
     );
 
     // Строка сверху: идёт ивент — крупно; иначе крутим свежие изменения игры.
-    if (st?.eventKind === 1) {
+    if (st && st.catPhase >= CAT_PHASE.run) {
+      this.overlay?.setTicker("Идёт ивент — Катакомбы", "event");
+    } else if (st?.catPhase === CAT_PHASE.gather) {
+      this.overlay?.setTicker("Идёт сбор в Катакомбы (!катакомбы)", "event");
+    } else if (st?.eventKind === 1) {
       this.overlay?.setTicker("Идёт ивент — нашествие мобов (!event)", "event");
     } else if (st?.eventKind === 2) {
       this.overlay?.setTicker("Идёт ивент — охота на элиту (!event)", "event");

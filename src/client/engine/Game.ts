@@ -128,7 +128,7 @@ import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_PHASE, inCatRegion } from "#shared/catacombs";
-import type { CatacombsFx, CatView } from "../world/Catacombs";
+import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -2421,7 +2421,7 @@ export class Game {
   /** Катакомбы: залы/портал по состоянию сервера, стены для игрока. */
   private tickCatacombs(dt: number): void {
     const st = this.net?.room?.state;
-    const view: CatView | null = st ? { phase: st.catPhase, lo: st.catLo, hi: st.catHi, left: st.catLeft, party: st.catParty, final: st.catFinal === 1 } : null;
+    const view: CatView | null = st ? catViewOf(st) : null;
     this.catFx?.update(dt, view, this.player.position);
     this.player.catBounds = view && view.phase >= CAT_PHASE.run ? { lo: view.lo, hi: view.hi } : null;
   }

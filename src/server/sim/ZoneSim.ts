@@ -1967,6 +1967,9 @@ export class ZoneSim {
   readonly eventMobs = new Set<string>();
   /** Мобы катакомб (shared/catacombs.ts): не возрождаются, лут роняют, ходят только по открытым залам. */
   readonly catMobs = new Set<string>();
+  /** Статистика забега катакомб: урон по их мобам и убийства по героям (сбрасывает режиссёр). */
+  readonly catDamage = new Map<string, number>();
+  readonly catKills = new Map<string, number>();
   /** Открытые залы катакомб (как RoomState.catLo/catHi) — для удержания мобов в стенах. */
   catLo = 0;
   catHi = 0;
@@ -2630,6 +2633,7 @@ export class ZoneSim {
         byMob: m.id,
       });
     }
+    if (attacker && dealt > 0 && this.catMobs.has(id)) this.catDamage.set(attacker, (this.catDamage.get(attacker) ?? 0) + dealt);
     if (attacker && dealt > 0) {
       m.bump(attacker, "dmg", dealt, this.elapsed);
       if (this.eventMobs.has(id)) this.eventDamagers.add(attacker);
@@ -2667,6 +2671,7 @@ export class ZoneSim {
       // Катакомбы: не возрождается, но лут роняет как обычный (награда по пути).
       this.catMobs.delete(m.id);
       this.mobs.delete(m.id);
+      if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
       this.splitMobXp(m);
       if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });

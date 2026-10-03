@@ -1,12 +1,10 @@
-import { glyph } from "#shared/icons";
 import { ensureIconCss } from "../ui/icons";
-import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, skillDesc, SKILLS2, skillName, SPEAR_PIERCE_DMG, stepCost, WEAPONS2, type SkillId } from "#shared/classes2";
+import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, skillDesc, SKILLS2, skillName, SPEAR_PIERCE_DMG, WEAPONS2, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
-import { bothHandsCls, bothHandsNote, qualityStars } from "#shared/items";
 import { ELITE_MOBS, MOB_CAMPS, respecCostFor } from "#shared/constants";
 
 // Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
@@ -27,58 +25,6 @@ function mobZonesText(): string {
   return [...byLevel].map(([lvl, names]) => `${lvl} ур. — ${names.join(", ")}`).join("; ") + ".";
 }
 
-interface InvWeapon {
-  num: number;
-  id: string;
-  cls: string;
-  tier: "base" | "gold" | "legendary";
-  name: string;
-  affixes: string[];
-  effects?: string[];
-  /** Сумма очков роллов (1..33 за ролл) — показывается в скобках у названия. */
-  quality: number;
-  /** Сколько лома даст переработка. */
-  scrap: number;
-  ench: EnchRow[];
-  /** ★ Избранное — не разбирается. */
-  fav?: boolean;
-}
-
-interface EnchRow {
-  label: string;
-  points: number;
-  max: boolean;
-  chance: number;
-  cost: number;
-}
-
-interface EnchResult {
-  ok: boolean;
-  text: string;
-  enchant?: { id: string; idx: number; up: boolean; gain: number; cost: number; label: string };
-}
-
-interface InvHand {
-  cls?: string;
-  name: string;
-  tier: "gold" | "legendary";
-  affixes: string[];
-  effects?: string[];
-  quality: number;
-  id: string;
-  ench: EnchRow[];
-}
-
-interface InvMisc {
-  name: string;
-  count: number;
-}
-
-interface InvStatRow {
-  label: string;
-  value: string;
-}
-
 interface InvMsg {
   ok: boolean;
   /** Старая ссылка с токеном — перейти на /inv?ник. */
@@ -89,85 +35,10 @@ interface InvMsg {
   level?: number;
   /** Опыт к следующему уровню, 0..1. */
   xpFrac?: number;
-  stats?: InvStatRow[];
-  hands?: { left: InvHand | null; right: InvHand | null };
-  weapons?: InvWeapon[];
-  misc?: InvMisc[];
-  scrapHave?: number;
-  attrs?: { unspent: number; str: number; agi: number; int: number; con?: number; luc?: number; wis?: number };
-  fish?: number;
-  respecCost?: number;
   /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
   pc?: PcInvData;
   heldHands?: { left: { cls: string; tier: string } | null; right: { cls: string; tier: string } | null };
-  /** Жетоны заданий ◈ и свитки (читаются отсюда). */
-  tokens?: number;
-  scrolls?: { id: string; name: string; hint: string; count: number; activeSecs: number }[];
   error?: string;
-}
-
-function walletHtml(msg: InvMsg): string {
-  if (msg.tokens === undefined) return "";
-  const rows = (msg.scrolls ?? [])
-    .map((sc) => {
-      const active = sc.activeSecs > 0;
-      const btn =
-        msg.authed && sc.count > 0
-          ? `<button class="act" data-act="scroll" data-id="${escapeHtml(sc.id)}"${active ? " disabled" : ""}>${active ? "Действует" : "Прочитать"}</button>`
-          : "";
-      return (
-        `<div class="wrow wscroll"><div><b>${escapeHtml(sc.name)} ×${sc.count}</b>` +
-        `<small>${escapeHtml(sc.hint)}</small>` +
-        (active ? `<span class="active">действует ещё ${Math.ceil(sc.activeSecs / 60)} мин — второй прочитать нельзя</span>` : "") +
-        `</div>${btn}</div>`
-      );
-    })
-    .join("");
-  return (
-    `<h2 class="section">Жетоны и свитки</h2><div class="wallet">` +
-    `<div class="wrow"><span>Жетоны заданий</span><span class="wtokens" title="Жетоны тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия">◈ ${msg.tokens}</span></div>` +
-    rows +
-    `</div>`
-  );
-}
-
-const ATTRS = A2.map((key) => ({ key, name: `${ATTR_INFO[key].icon} ${ATTR_INFO[key].name}`, hint: attrEffect(key) }));
-
-function attrsHtml(msg: InvMsg): string {
-  const a = msg.attrs;
-  if (!a) return "";
-  const rows = ATTRS.map((r) => {
-    const v = a[r.key] ?? 1;
-    const cost = stepCost(v);
-    let cost5 = 0;
-    for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
-    const btns = msg.authed && a.unspent >= cost
-      ? `<div class="abtns"><button class="act attr" data-act="stat" data-id="${r.key}" data-n="1" title="${cost} оч.">+1</button>` +
-        (a.unspent >= cost5 ? `<button class="act attr" data-act="stat" data-id="${r.key}" data-n="5" title="${cost5} оч.">+5</button>` : "") +
-        `</div>`
-      : "";
-    return (
-      `<div class="arow ${r.key}"><div><div class="aname">${r.name} <b>${v}</b> <small>· подъём ${cost} оч.</small></div>` +
-      `<div class="ahint">${r.hint}</div></div>${btns}</div>`
-    );
-  }).join("");
-  // Сброс атрибутов — за жетон ◈; второе нажатие подтверждает (как «На лом»).
-  const cost = msg.respecCost ?? 0;
-  const fish = msg.tokens ?? 0; // имя осталось от рыбы — это жетоны
-  const invested = A2.some((k) => (a[k] ?? 1) > 1);
-  const armed = armedScrap === "respec";
-  // cost < 0 — сброс выключен на сервере: кнопку не показываем.
-  const respec = msg.authed && cost >= 0
-    ? `<div class="respec"><button class="act respecbtn${armed ? " armed" : ""}" data-act="respec" data-id="respec" ${
-        fish < cost || !invested ? "disabled" : ""
-      }>${armed ? "Точно сбросить?" : "↺ Сбросить атрибуты"} — ${cost === 0 ? "бесплатно" : `${cost} ◈`}</button>` +
-      `<span class="fishhave">у тебя ${fish} ◈${!invested ? " · сбрасывать нечего" : fish < cost ? " · не хватает" : ""}</span></div>`
-    : "";
-  const head =
-    a.unspent > 0
-      ? `Свободных очков: <b class="afree">${a.unspent}</b>${msg.authed ? "" : " — войди кодом, чтобы вложить"}`
-      : "Свободных очков нет — их дают за новый уровень";
-  return `<div class="attrs"><div class="ahead">${head}</div><div class="ahint">${costRule()}</div>${rows}${respec}</div>`;
 }
 
 const titleEl = document.getElementById("title")!;
@@ -207,34 +78,6 @@ function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-/** Тир по-русски — CSS-класс/ключ ("legendary" и т.п.) остаётся как есть. */
-const TIER_RU: Record<"base" | "gold" | "legendary", string> = {
-  base: "база",
-  gold: "золото",
-  legendary: "уникальное",
-};
-
-/** « (N)» — очки роллов; у оружия без роллов ничего не пишем. */
-function qualityTag(q: number, count: number): string {
-  const s = qualityStars(q, count);
-  return s ? ` <span class="quality">${s}</span>` : "";
-}
-
-/** Свойства предмета помимо роллов (щит: блок, отражение, «Оплот»). */
-function effectsHtml(e: string[] | undefined): string {
-  return e?.length ? `<div class="effects">${e.map(escapeHtml).join("<br>")}</div>` : "";
-}
-
-function handHtml(label: string, h: InvHand | null): string {
-  if (!h) return `<div class="hand empty-hand">${label}: пусто/базовое</div>`;
-  const affixes = h.affixes.length ? h.affixes.join(", ") : "без роллов";
-  return (
-    `<div class="hand ${h.tier}${h.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(h.id)}"><span class="hand-label">${label}:</span> <span class="hand-name">${escapeHtml(h.name)}${qualityTag(h.quality, h.affixes.length)}</span>` +
-    effectsHtml(h.effects) +
-    `<div class="affixes">${escapeHtml(affixes)}</div></div>`
-  );
-}
-
 let toastTimer = 0;
 function toast(text: string, ok: boolean): void {
   toastEl.textContent = text;
@@ -245,17 +88,8 @@ function toast(text: string, ok: boolean): void {
 
 let room: { send(type: string, msg?: unknown): void; leave(): void } | null = null;
 let last: InvMsg | null = null;
-/** id предмета, по которому нажали «На лом» один раз — второй клик подтверждает. */
-let armedScrap = "";
 
 let pcInv: PcInventory | null = null;
-let viewMode: "new" | "old" = (() => {
-  try {
-    return localStorage.getItem("zep.invView") === "old" ? "old" : "new";
-  } catch {
-    return "new";
-  }
-})();
 let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
 
 /** Окно снаряжения из игры, встроенное в страницу. Действия идут на сервер как раньше. */
@@ -297,124 +131,20 @@ function renderInv(msg: InvMsg): void {
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
-  if (pcInv && viewMode === "old") pcInv.element.style.display = "none";
   subEl.textContent = msg.authed ? "✓ вход подтверждён — можно менять снаряжение" : "";
-
-  const authHtml = msg.authed
+  listEl.innerHTML = msg.authed
     ? ""
     : `<div class="auth">Чтобы надевать и разбирать предметы, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
       `<div class="code">${escapeHtml(msg.code ?? "----")}</div>` +
       `<div class="auth-note">Страница откроется сама. Код действует 10 минут, вход запоминается в этом браузере.</div></div>`;
-
   // Окно как в игре (то же PcInventory): снаряжение, атрибуты, заточка — с иконками и подсказками.
-  if (msg.pc && viewMode === "new") {
-    listEl.innerHTML = authHtml;
-    const inv = pageInv();
-    heldHands = msg.heldHands ?? { left: null, right: null };
-    inv.setData(msg.pc);
-    inv.setXp(msg.level ?? 1, msg.xpFrac ?? 0, (msg.xpFrac ?? 0) >= 1);
-    if (!inv.isOpen) inv.open("gear");
-    return;
-  }
-
-  const statsHtml =
-    msg.stats && msg.stats.length > 0
-      ? `<div class="stats"><div class="stat"><span class="stat-label">Уровень</span><span class="stat-value">${msg.level ?? ""}</span></div>` +
-        msg.stats
-          .map(
-            (s) =>
-              `<div class="stat"><span class="stat-label">${escapeHtml(s.label)}</span><span class="stat-value">${escapeHtml(s.value)}</span></div>`,
-          )
-          .join("") +
-        `</div>`
-      : "";
-
-  const hands = msg.hands;
-  // Лук занимает обе руки: в интерфейсе он в левой, а в правой — стрела (как в игре).
-  const bow = hands ? (bothHandsCls(hands.left?.cls) ? hands.left : bothHandsCls(hands.right?.cls) ? hands.right : null) : null;
-  const handsHtml = hands
-    ? bow
-      ? `<div class="hands">${handHtml("Левая рука", bow)}<div class="hand empty-hand">Правая рука: ${bow.cls === "bow" ? "<b>Стрела</b> — " : "<b>занята</b> — "}${bothHandsNote(bow.cls)}</div></div>`
-      : `<div class="hands">${handHtml("Левая рука", hands.left)}${handHtml("Правая рука", hands.right)}</div>`
-    : "";
-
-  const weapons = msg.weapons ?? [];
-  const weaponsHtml =
-    weapons.length === 0
-      ? '<div class="empty">Склад пуст — золотое и уникальное оружие падает с боёв.</div>'
-      : weapons
-          .map((w) => {
-            const affixes = w.affixes.length ? w.affixes.join(", ") : "без роллов";
-            const favBtn = `<button class="act fav" data-act="fav" data-id="${escapeHtml(w.id)}" title="${w.fav ? "Убрать из избранного" : "В избранное (не разбирается)"}">${glyph(w.fav ? "ui.fav" : "ui.favOff")}</button>`;
-            const btns = msg.authed
-              ? `<div class="btns"><button class="act equip" data-act="equip" data-id="${escapeHtml(w.id)}">Надеть</button>` +
-                (w.fav
-                  ? ""
-                  : `<button class="act scrap${armedScrap === w.id ? " armed" : ""}" data-act="scrap" data-id="${escapeHtml(w.id)}">` +
-                    `${armedScrap === w.id ? "Точно?" : "На лом"} +${w.scrap}</button>`) +
-                `${favBtn}</div>`
-              : "";
-            return (
-              `<div class="weapon ${w.tier}${w.ench.length ? " pickable" : ""}" data-ench="${escapeHtml(w.id)}">` +
-              `<div class="winfo"><div class="name">${w.num}) ${w.fav ? `<span class="favmark">${glyph("ui.fav")}</span> ` : ""}${escapeHtml(w.name)}${qualityTag(w.quality, w.affixes.length)}</div>` +
-              effectsHtml(w.effects) +
-              `<div class="affixes">${escapeHtml(affixes)}</div>` +
-              `<div class="meta">${TIER_RU[w.tier]}${w.ench.length ? " · ⚒ нажми, чтобы заточить" : ""}</div>` +
-              `</div>${btns}</div>`
-            );
-          })
-          .join("");
-
-  const misc = msg.misc ?? [];
-  const miscHtml =
-    misc.length === 0
-      ? ""
-      : `<h2 class="section">Прочее</h2>` +
-        misc.map((m) => `<div class="misc">${escapeHtml(m.name)} × ${m.count}</div>`).join("");
-
-  if (modalId && !animating) renderModal();
-  const xpPct = Math.floor((msg.xpFrac ?? 0) * 1000) / 10;
-  const xpHtml =
-    msg.xpFrac !== undefined
-      ? `<div class="xp"><div class="xp-head"><span>Опыт до ${(msg.level ?? 0) + 1} ур.</span><b>${xpPct.toFixed(1)}%</b></div>` +
-        `<div class="xp-bar"><div style="width:${xpPct}%"></div></div></div>`
-      : "";
-  listEl.innerHTML = `${authHtml}${xpHtml}${statsHtml}${attrsHtml(msg)}${walletHtml(msg)}${handsHtml}<h2 class="section">Склад оружия</h2>${weaponsHtml}${miscHtml}`;
+  if (!msg.pc) return;
+  const inv = pageInv();
+  heldHands = msg.heldHands ?? { left: null, right: null };
+  inv.setData(msg.pc);
+  inv.setXp(msg.level ?? 1, msg.xpFrac ?? 0, (msg.xpFrac ?? 0) >= 1);
+  if (!inv.isOpen) inv.open("gear");
 }
-
-listEl.addEventListener("click", (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button.act");
-  if (!b) {
-    const card = (e.target as HTMLElement).closest<HTMLElement>(".pickable");
-    if (card?.dataset.ench) openModal(card.dataset.ench);
-    return;
-  }
-  if (!room) return;
-  const act = b.dataset.act;
-  const id = b.dataset.id ?? "";
-  if (act === "respec") {
-    if (armedScrap !== "respec") {
-      armedScrap = "respec";
-      if (last) renderInv(last);
-      return;
-    }
-    armedScrap = "";
-    room.send("act", { act: "respec", id: "respec" });
-    return;
-  }
-  if (act === "scrap" && armedScrap !== id) {
-    // Лом — навсегда: первый клик только взводит кнопку.
-    armedScrap = id;
-    if (last) renderInv(last);
-    return;
-  }
-  armedScrap = "";
-  if (act === "stat") {
-    room.send("act", { act, id, idx: Number(b.dataset.n) || 1 });
-    return;
-  }
-  room.send("act", { act, id });
-});
 
 /**
  * WS на слабом VPS изредка обрывается прямо на джойне — тихо пробуем ещё
@@ -439,7 +169,7 @@ function connect(attempt = 0): void {
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
       r.onMessage("toast", (m: { ok: boolean; text: string }) => toast(m.text, m.ok));
-      r.onMessage("enchant", (m: EnchResult) => (pcInv ? pcInv.onResult(m as never) : onEnchantResult(m)));
+      r.onMessage("enchant", (m: unknown) => pcInv?.onResult(m as never));
       r.onMessage("inv", (msg: InvMsg) => {
         if (msg.redirect) {
           location.replace(`/inv?${encodeURIComponent(msg.redirect)}`);
@@ -462,176 +192,8 @@ if (!legacyToken && !nickArg) {
   connect();
   // Лут в игре подбирается без нас — раз в 20 с подтягиваем свежий склад.
   setInterval(() => {
-    if (room && !armedScrap && !animating && document.visibilityState === "visible") room.send("refresh");
+    if (room && document.visibilityState === "visible") room.send("refresh");
   }, 20_000);
-}
-
-// ---- окно заточки ----
-
-const modalEl = document.getElementById("ench")!;
-let modalId = "";
-let animating = false;
-/** Идёт анимация наковальни; ответ сервера ждёт её конца. */
-let pendingResult: EnchResult | null = null;
-let hammerDone = false;
-
-type Picked = { name: string; tier: string; ench: EnchRow[] };
-function findItem(id: string): Picked | null {
-  if (!last) return null;
-  const w = (last.weapons ?? []).find((x) => x.id === id);
-  if (w) return w;
-  for (const h of [last.hands?.left, last.hands?.right]) if (h && h.id === id) return h;
-  return null;
-}
-
-function openModal(id: string): void {
-  if (!last?.authed) {
-    toast("Сначала подтверди вход кодом в чате", false);
-    return;
-  }
-  modalId = id;
-  renderModal();
-  modalEl.classList.add("open");
-}
-
-function closeModal(): void {
-  if (animating) return;
-  modalId = "";
-  modalEl.classList.remove("open");
-}
-
-function renderModal(): void {
-  const it = findItem(modalId);
-  if (!it) {
-    closeModal();
-    return;
-  }
-  const have = last?.scrapHave ?? 0;
-  const rows = it.ench
-    .map((a, i) => {
-      const pct = Math.round((a.points / 33) * 100);
-      const right = a.max
-        ? `<span class="maxb">MAX</span>`
-        : `<button class="ebtn" data-idx="${i}" ${have < a.cost ? "disabled" : ""}>⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small></button>`;
-      return (
-        `<div class="erow${a.max ? " ismax" : ""}" data-row="${i}">` +
-        `<div class="elabel">${escapeHtml(a.label)}<span class="epts">${a.points}/33</span></div>` +
-        `<div class="ebar"><div class="efill" style="width:${pct}%"></div></div>` +
-        `<div class="eright">${right}</div></div>`
-      );
-    })
-    .join("");
-  modalEl.innerHTML =
-    `<div class="ebox ${it.tier}"><button class="eclose">✕</button>` +
-    `<div class="etitle">⚒ Заточка — <span class="ename">${escapeHtml(it.name)}</span></div>` +
-    `<div class="ehave">Лом: <b>${have}</b></div>` +
-    `<div class="erows">${rows}</div>` +
-    `<div class="eanvil"><div class="ehammer">${glyph("ui.forge")}</div></div>` +
-    `<div class="ebanner"></div>` +
-    `<div class="enote">Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и тем меньше шанс. При неудаче лом сгорает.</div></div>`;
-}
-
-modalEl.addEventListener("click", (e) => {
-  const t = e.target as HTMLElement;
-  if (t === modalEl || t.closest(".eclose")) {
-    closeModal();
-    return;
-  }
-  const b = t.closest<HTMLButtonElement>(".ebtn");
-  if (!b || b.disabled || animating || !room) return;
-  const idx = Number(b.dataset.idx);
-  animating = true;
-  hammerDone = false;
-  pendingResult = null;
-  modalEl.querySelectorAll<HTMLButtonElement>(".ebtn").forEach((x) => (x.disabled = true));
-  modalEl.querySelector(".ebox")!.classList.add("forging");
-  modalEl.querySelector(`[data-row="${idx}"]`)?.classList.add("target");
-  room.send("act", { act: "enchant", id: modalId, idx });
-  // Три удара молотом — даём напряжению настояться, потом показываем итог.
-  setTimeout(() => {
-    hammerDone = true;
-    if (pendingResult) reveal(pendingResult);
-  }, 1100);
-});
-
-function onEnchantResult(m: EnchResult): void {
-  if (!animating) {
-    toast(m.text, m.ok);
-    return;
-  }
-  pendingResult = m;
-  if (hammerDone) reveal(m);
-}
-
-function burst(host: HTMLElement, kind: "spark" | "smoke", n: number): void {
-  const r = host.getBoundingClientRect();
-  const box = modalEl.querySelector<HTMLElement>(".ebox")!.getBoundingClientRect();
-  for (let i = 0; i < n; i++) {
-    const d = document.createElement("div");
-    d.className = kind;
-    const a = Math.random() * Math.PI * 2;
-    const dist = kind === "spark" ? 50 + Math.random() * 110 : 20 + Math.random() * 40;
-    d.style.left = `${r.left - box.left + r.width * (0.3 + Math.random() * 0.4)}px`;
-    d.style.top = `${r.top - box.top + r.height / 2}px`;
-    d.style.setProperty("--dx", `${Math.cos(a) * dist}px`);
-    d.style.setProperty("--dy", `${Math.sin(a) * dist - (kind === "smoke" ? 40 : 20)}px`);
-    d.style.animationDelay = `${Math.random() * 120}ms`;
-    modalEl.querySelector(".ebox")!.appendChild(d);
-    setTimeout(() => d.remove(), 1400);
-  }
-}
-
-function reveal(m: EnchResult): void {
-  pendingResult = null;
-  const box = modalEl.querySelector<HTMLElement>(".ebox");
-  box?.classList.remove("forging");
-  const e = m.enchant;
-  const banner = modalEl.querySelector<HTMLElement>(".ebanner");
-  if (!box || !e || !banner) {
-    animating = false;
-    toast(m.text, m.ok);
-    if (last) renderInv(last);
-    return;
-  }
-  const row = modalEl.querySelector<HTMLElement>(`[data-row="${e.idx}"]`);
-  if (e.up) {
-    box.classList.add("win");
-    row?.classList.add("win");
-    if (row) {
-      burst(row, "spark", 26);
-      const it = findItem(e.id);
-      const cur = it?.ench[e.idx];
-      const fill = row.querySelector<HTMLElement>(".efill");
-      // last уже новый (сервер шлёт inv раньше итога заточки).
-      if (cur && fill) fill.style.width = `${Math.round((cur.points / 33) * 100)}%`;
-      const lab = row.querySelector<HTMLElement>(".elabel");
-      if (lab) lab.firstChild!.textContent = e.label;
-      const f = document.createElement("div");
-      f.className = "floaty";
-      f.textContent = `+${e.gain} ${e.gain === 1 ? "очко" : "очка"}`;
-      row.appendChild(f);
-    }
-    banner.innerHTML = `✨ УСПЕХ! ${escapeHtml(e.label)} <small>−${e.cost} лома</small>`;
-    banner.className = "ebanner show good";
-  } else {
-    box.classList.add("lose");
-    row?.classList.add("lose");
-    if (row) burst(row, "smoke", 10);
-    banner.innerHTML = `💨 Не вышло… ролл не изменился <small>−${e.cost} лома</small>`;
-    banner.className = "ebanner show bad";
-  }
-  setTimeout(() => {
-    box.classList.remove("win", "lose");
-    animating = false;
-    // Свежие данные уже пришли по notify — перерисуем окно под новые цены/шансы,
-    // баннер оставляем видимым ещё немного.
-    const keep = banner.outerHTML;
-    if (last) renderInv(last);
-    renderModal();
-    const nb = modalEl.querySelector(".ebanner");
-    if (nb) nb.outerHTML = keep;
-    setTimeout(() => modalEl.querySelector(".ebanner")?.classList.remove("show"), 1800);
-  }, 1500);
 }
 
 // ---- статичный раздел "Механики игры" ----
@@ -735,21 +297,4 @@ document.getElementById("updBtn")!.addEventListener("click", () => {
       (u) => `<div class="u"><b>${escapeHtml(u.at)}</b><ul>${u.items.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
     ).join("");
   }
-});
-
-// Вид инвентаря: новый (как в игре) / старый (список) — запоминается в браузере.
-const viewBtn = document.getElementById("viewBtn")!;
-const paintViewBtn = (): void => {
-  viewBtn.textContent = viewMode === "new" ? "Старый вид" : "Новый вид";
-};
-paintViewBtn();
-viewBtn.addEventListener("click", () => {
-  viewMode = viewMode === "new" ? "old" : "new";
-  try {
-    localStorage.setItem("zep.invView", viewMode);
-  } catch {
-    /* приватный режим */
-  }
-  paintViewBtn();
-  if (last) renderInv(last);
 });

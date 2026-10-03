@@ -28,6 +28,8 @@ import {
   CAT_HALLS,
   CAT_PHASE,
   CAT_PORTAL,
+  CAT_SHRINES,
+  CAT_THEMES,
   catCorridor,
   inCatRegion,
 } from "#shared/catacombs";
@@ -42,7 +44,39 @@ export interface CatView {
   left: number;
   party: number;
   final: boolean;
+  /** Темы залов на заход («0,2,1,3» — индексы CAT_THEMES по залам). */
+  themes: string;
+  /** Святилище: индекс CAT_SHRINES (−1 — нет) и место. */
+  shrine: number;
+  shrineX: number;
+  shrineZ: number;
 }
+
+/** CatView из RoomState — одинаково у игрока и зрителя. */
+export function catViewOf(st: {
+  catPhase: number; catLo: number; catHi: number; catLeft: number; catParty: number; catFinal: number;
+  catThemes: string; catShrine: number; catShrineX: number; catShrineZ: number;
+}): CatView {
+  return {
+    phase: st.catPhase, lo: st.catLo, hi: st.catHi, left: st.catLeft, party: st.catParty, final: st.catFinal === 1,
+    themes: st.catThemes, shrine: st.catShrine, shrineX: st.catShrineX, shrineZ: st.catShrineZ,
+  };
+}
+
+/** Огонь по темам зала: склеп — обычный, костница — болотный зелёный, яма — багровый, лунный — призрачно-синий. */
+const THEME_FIRE: Record<string, [string, string, string]> = {
+  crypt: ["#ffdf9c", "#ff560c", "#5c0a00"],
+  ossuary: ["#f0ffb8", "#7fd41a", "#123d00"],
+  pit: ["#ffd27a", "#ff2a04", "#3d0000"],
+  moon: ["#e6f2ff", "#4f86ff", "#0a1450"],
+};
+/** Пылинки по темам: пыль, споры, угли, лунная пыль. */
+const THEME_MOTES: Record<string, { c1: [number, number, number, number]; c2: [number, number, number, number]; up: number }> = {
+  crypt: { c1: [1, 0.7, 0.4, 0.5], c2: [1, 0.5, 0.2, 0.35], up: 0.25 },
+  ossuary: { c1: [0.6, 1, 0.4, 0.5], c2: [0.4, 0.9, 0.3, 0.3], up: 0.15 },
+  pit: { c1: [1, 0.55, 0.15, 0.85], c2: [1, 0.25, 0.05, 0.6], up: 1.1 },
+  moon: { c1: [0.7, 0.85, 1, 0.55], c2: [0.55, 0.6, 1, 0.35], up: 0.12 },
+};
 
 /** Каменная плитка: тёмные плиты с швами (процедурно, без файлов). */
 function stoneTexture(scene: Scene, name: string, base: [number, number, number], tiles: number): DynamicTexture {
@@ -102,15 +136,6 @@ function warmGlowTexture(scene: Scene, name: string, core: number): DynamicTextu
   tex.hasAlpha = true;
   return tex;
 }
-
-/** Цвета ниш — краски в тёмных стенах (как зелёные/синие акценты у референсов). */
-const NICHE_COLORS = [
-  { key: "green", r: 0.35, g: 1, b: 0.45 },
-  { key: "teal", r: 0.2, g: 0.85, b: 1 },
-  { key: "blue", r: 0.35, g: 0.45, b: 1 },
-  { key: "violet", r: 0.72, g: 0.3, b: 1 },
-  { key: "crimson", r: 1, g: 0.18, b: 0.22 },
-] as const;
 
 /** Мягкое цветное свечение (ниши, отблески): плавный спад без резкого края. */
 function tintGlowTexture(scene: Scene, name: string, r: number, g: number, b: number): DynamicTexture {
@@ -230,6 +255,133 @@ function stainTexture(scene: Scene): DynamicTexture {
   return tex;
 }
 
+/** Стена черепов (костница): ряды ниш, в каждой — череп. */
+function skullWallTexture(scene: Scene): DynamicTexture {
+  const W = 256;
+  const H = 320;
+  const tex = new DynamicTexture("catSkullWallTex", { width: W, height: H }, scene, true);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  g.fillStyle = "rgb(52,46,40)";
+  g.fillRect(0, 0, W, H);
+  let seed = 5;
+  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const cw = W / 5;
+  const ch = H / 6;
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 5; c++) {
+      const x = c * cw + (r % 2 ? cw / 2 : 0);
+      const y = r * ch;
+      g.fillStyle = "rgb(18,15,13)";
+      g.fillRect(x + 3, y + 3, cw - 6, ch - 6);
+      const k = 0.75 + rnd() * 0.25;
+      const bone = `rgb(${Math.round(215 * k)},${Math.round(200 * k)},${Math.round(160 * k)})`;
+      const cx = x + cw / 2;
+      const cy = y + ch * 0.48;
+      g.fillStyle = bone;
+      g.beginPath();
+      g.ellipse(cx, cy, cw * 0.3, ch * 0.32, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillRect(cx - cw * 0.16, cy + ch * 0.12, cw * 0.32, ch * 0.22);
+      g.fillStyle = "rgb(20,16,14)";
+      for (const s of [-1, 1]) {
+        g.beginPath();
+        g.ellipse(cx + s * cw * 0.12, cy - ch * 0.02, cw * 0.08, ch * 0.09, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.fillRect(cx - 2, cy + ch * 0.1, 4, ch * 0.08);
+    }
+  }
+  tex.update();
+  return tex;
+}
+
+/** Трещины с лавой (огненная яма): светящиеся изломанные линии от центра к стенам, середина пустая (печать). */
+function lavaCrackTexture(scene: Scene): DynamicTexture {
+  const S = 512;
+  const tex = new DynamicTexture("catLavaTex", { width: S, height: S }, scene, true);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  g.clearRect(0, 0, S, S);
+  let seed = 17;
+  const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  g.lineCap = "round";
+  g.lineJoin = "round";
+  for (let i = 0; i < 14; i++) {
+    let a = (i / 14) * Math.PI * 2 + rnd() * 0.3;
+    let r = S * (0.14 + rnd() * 0.06);
+    const pts: [number, number][] = [];
+    while (r < S * 0.48) {
+      pts.push([S / 2 + Math.cos(a) * r, S / 2 + Math.sin(a) * r]);
+      r += 10 + rnd() * 18;
+      a += (rnd() - 0.5) * 0.22;
+    }
+    for (const [w, col] of [[9, "rgba(255,70,10,0.35)"], [4, "rgba(255,140,30,0.85)"], [1.5, "rgba(255,230,140,1)"]] as [number, string][]) {
+      g.strokeStyle = col;
+      g.lineWidth = w;
+      g.beginPath();
+      pts.forEach(([x, y], k) => (k ? g.lineTo(x, y) : g.moveTo(x, y)));
+      g.stroke();
+    }
+  }
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
+}
+
+/** Кольцо святилища: светлый обод и руны (цвет — emissiveColor материала). */
+function ringTexture(scene: Scene): DynamicTexture {
+  const S = 256;
+  const tex = new DynamicTexture("catShrineRingTex", { width: S, height: S }, scene, true);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  g.clearRect(0, 0, S, S);
+  const c = S / 2;
+  const grd = g.createRadialGradient(c, c, 0, c, c, c);
+  grd.addColorStop(0, "rgba(255,255,255,0.5)");
+  grd.addColorStop(0.5, "rgba(255,255,255,0.12)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, S, S);
+  g.strokeStyle = "rgba(255,255,255,0.95)";
+  g.lineWidth = 6;
+  g.beginPath();
+  g.arc(c, c, c * 0.86, 0, Math.PI * 2);
+  g.stroke();
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(c, c, c * 0.62, 0, Math.PI * 2);
+  g.stroke();
+  g.fillStyle = "rgba(255,255,255,0.95)";
+  g.font = "bold 22px serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  const runes = "ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃ";
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    g.save();
+    g.translate(c + Math.cos(a) * c * 0.74, c + Math.sin(a) * c * 0.74);
+    g.rotate(a + Math.PI / 2);
+    g.fillText(runes[i], 0, 0);
+    g.restore();
+  }
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
+}
+
+/** Вертикальный градиент столба света (снизу ярко, кверху гаснет). */
+function beamTexture(scene: Scene): DynamicTexture {
+  const tex = new DynamicTexture("catShrineBeamTex", { width: 16, height: 128 }, scene, false);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  const grd = g.createLinearGradient(0, 128, 0, 0);
+  grd.addColorStop(0, "rgba(255,255,255,0.8)");
+  grd.addColorStop(0.4, "rgba(255,255,255,0.3)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 16, 128);
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
+}
+
 /**
  * Катакомбы на клиенте: цепочка подземных залов (пол, стены с проёмами,
  * своды, колонны, факелы, руны, решётки, алтарь) и портал сбора в лагере.
@@ -254,6 +406,24 @@ export class CatacombsFx {
   private readonly poolMats: StandardMaterial[] = [];
   private readonly lightBase = new Map<PointLight, Vector3>();
   private litHalls = "";
+  /** Темы залов (индексы CAT_THEMES): до первого забега — по порядку, дальше — с сервера на каждый заход. */
+  private readonly hallTheme: number[] = CAT_HALLS.map((_, i) => i % CAT_THEMES.length);
+  private themeSig = "";
+  /** Что перекрашивается темой: пол/стены, ниши (2 цвета), ореолы огня, огонь, декор темы. */
+  private readonly hallFloorMats: StandardMaterial[] = [];
+  private readonly hallWallMats: StandardMaterial[] = [];
+  private readonly hallNicheMats: StandardMaterial[][] = [];
+  private readonly hallGlowMats: StandardMaterial[] = [];
+  private readonly fireHall: number[] = [];
+  private readonly themeDecor: Mesh[][][] = [];
+  private lavaMats: StandardMaterial[] = [];
+  private readonly mists: Mesh[] = [];
+  // святилище
+  private shrine: TransformNode | null = null;
+  private shrineMats: StandardMaterial[] = [];
+  private shrineOrb: Mesh | null = null;
+  private shrineRing: Mesh | null = null;
+  private shrineKind = -2;
   // портал в лагере
   private portal: TransformNode | null = null;
   private portalMat: StandardMaterial | null = null;
@@ -289,7 +459,9 @@ export class CatacombsFx {
           for (const l of ls) if (l.isEnabled() !== on) l.setEnabled(on);
         });
       }
+      if (v && v.themes && v.themes !== this.themeSig) this.applyThemes(v.themes);
       if (inside || active) this.animate(dt, v);
+      this.updateShrine(v);
     }
     this.updatePortal(dt, v);
   }
@@ -307,6 +479,7 @@ export class CatacombsFx {
           (this.motes.emitter as Vector3).set(h.x, CAT_FLOOR_Y + 3, h.z);
           this.motes.minEmitBox.set(-h.r * 0.8, -2.5, -h.r * 0.8);
           this.motes.maxEmitBox.set(h.r * 0.8, 7, h.r * 0.8);
+          this.themeMotes(hall);
           this.motes.start();
         }
       }
@@ -337,7 +510,8 @@ export class CatacombsFx {
         if (!l.isEnabled()) continue;
         const f = flick(i * 2.3 + h * 5.1);
         l.intensity = 1.45 + 0.35 * f;
-        l.diffuse.set(1, 0.42 + 0.08 * f, 0.12 + 0.04 * f);
+        const tc = CAT_THEMES[this.hallTheme[h]].light;
+        l.diffuse.set(tc[0], tc[1] * (1 + 0.18 * f), tc[2] * (1 + 0.3 * f));
         let b = this.lightBase.get(l);
         if (!b) {
           b = l.position.clone();
@@ -350,6 +524,9 @@ export class CatacombsFx {
       const f = flick(i * 3.7 + 1.3);
       this.poolMats[i].alpha = 0.62 + 0.16 * f;
     }
+    // Лава в трещинах «дышит», туман лунного склепа медленно плывёт.
+    for (let i = 0; i < this.lavaMats.length; i++) this.lavaMats[i].alpha = 0.7 + 0.25 * Math.sin(t * 1.3 + i * 2);
+    for (let i = 0; i < this.mists.length; i++) this.mists[i].rotation.y = t * (i % 2 ? 0.03 : -0.04) + i;
     for (const g of this.glowSprites) {
       const k = 0.85 + 0.12 * Math.sin(t * 13 + g.phase) + 0.06 * Math.sin(t * 31 + g.phase * 2);
       g.mesh.scaling.setAll(k);
@@ -402,7 +579,7 @@ export class CatacombsFx {
     // Цвет — из самой текстуры (emissiveColor складывается с ней и выбелил бы огонь).
     const warmTex = warmGlowTexture(scene, "catWarmGlow", 1);
     // Пятна от огня — мягкие (без резкого края), тёплые.
-    const poolTex = tintGlowTexture(scene, "catPoolGlow", 1, 0.5, 0.16);
+    const poolTex = tintGlowTexture(scene, "catPoolGlow", 1, 1, 1);
     const glowMat = new StandardMaterial("catTorchGlow", scene);
     glowMat.emissiveTexture = warmTex;
     glowMat.opacityTexture = warmTex;
@@ -412,14 +589,54 @@ export class CatacombsFx {
     glowMat.disableLighting = true;
     glowMat.alphaMode = Constants.ALPHA_ADD;
     glowMat.disableDepthWrite = true;
+    // Своё у каждого зала — тема захода перекрашивает (applyThemes). Текстуры общие (без clone).
+    const nicheTex = tintGlowTexture(scene, "catNicheWhite", 1, 1, 1);
+    const addMat = (name: string, opacity: DynamicTexture, alpha: number): StandardMaterial => {
+      const m = new StandardMaterial(name, scene);
+      m.opacityTexture = opacity;
+      m.emissiveColor = new Color3(1, 0.5, 0.16);
+      m.diffuseColor = new Color3(0, 0, 0);
+      m.disableLighting = true;
+      m.alphaMode = Constants.ALPHA_ADD;
+      m.disableDepthWrite = true;
+      m.backFaceCulling = false;
+      m.alpha = alpha;
+      return m;
+    };
+    const hallStone = (base: StandardMaterial, name: string): StandardMaterial => {
+      const m = new StandardMaterial(name, scene);
+      m.diffuseTexture = base.diffuseTexture;
+      m.diffuseColor = base.diffuseColor.clone();
+      m.emissiveColor = base.emissiveColor.clone();
+      m.specularColor = base.specularColor.clone();
+      m.maxSimultaneousLights = 6;
+      return m;
+    };
+    CAT_HALLS.forEach((_, hi) => {
+      this.hallFloorMats.push(hallStone(floorMat, `catFloorH${hi}`));
+      this.hallWallMats.push(hallStone(wallMat, `catWallH${hi}`));
+      this.hallGlowMats.push(addMat(`catTorchGlowH${hi}`, warmTex, 0.55));
+      this.hallNicheMats.push([addMat(`catNicheA${hi}`, nicheTex, 0.85), addMat(`catNicheB${hi}`, nicheTex, 0.85)]);
+    });
+    // Декор тем: статуи (склеп), стены черепов (костница), обсидиан (яма).
+    const statueMat = mat("catStatue", WALL, [0.8, 0.78, 0.74], [0.05, 0.05, 0.05], 1, 2);
+    const obsidMat = mat("catObsidian", null, [0.08, 0.06, 0.07], [0.03, 0.008, 0.004]);
+    obsidMat.specularColor = new Color3(0.35, 0.25, 0.25);
+    const skullMat = new StandardMaterial("catSkullWall", scene);
+    skullMat.diffuseTexture = skullWallTexture(scene);
+    skullMat.emissiveColor = new Color3(0.05, 0.045, 0.04);
+    skullMat.specularColor = new Color3(0.03, 0.03, 0.02);
+    skullMat.maxSimultaneousLights = 6;
+    skullMat.backFaceCulling = false;
+    const lavaTex = lavaCrackTexture(scene);
 
     // «Запечённый» свет: тёплые пятна на полу и отблески на стенах у каждого огня — видно всегда.
     // Материал пятен — новый на каждый зал (НЕ clone: clone копирует и DynamicTexture, а копия не «готова»).
     const makePoolMat = (name: string): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
-      m.emissiveTexture = poolTex;
+      // Цвет — emissiveColor (тема зала), форма пятна — opacityTexture.
       m.opacityTexture = poolTex;
-      m.emissiveColor = new Color3(0, 0, 0);
+      m.emissiveColor = new Color3(1, 0.5, 0.16);
       m.diffuseColor = new Color3(0, 0, 0);
       m.disableLighting = true;
       m.alphaMode = Constants.ALPHA_ADD;
@@ -437,9 +654,8 @@ export class CatacombsFx {
     candleMat.disableLighting = true;
     candleMat.alphaMode = Constants.ALPHA_ADD;
     candleMat.disableDepthWrite = true;
-    // Цветные ниши: свои мягкие свечения.
-    const nicheGlow: Record<string, Mesh[]> = {};
-    for (const c of NICHE_COLORS) nicheGlow[c.key] = [];
+    // Цветные ниши: свечения по залам, два цвета темы чередуются.
+    const nicheGlow: Mesh[][][] = CAT_HALLS.map(() => [[], []]);
     // Пол: печать, дорожка, пятна (обычное смешивание — не светятся).
     const seals: Mesh[] = [];
     const runners: Mesh[] = [];
@@ -477,13 +693,14 @@ export class CatacombsFx {
         pl.position.y = big ? 0.55 : 0.4;
         const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
         this.fireMats.push(fm);
+        this.fireHall.push(hall);
         pl.material = fm;
         pl.parent = fl;
         pl.isPickable = false;
       }
       const glow = MeshBuilder.CreatePlane("catGlowSprite", { size: big ? 4.2 : 3 }, scene);
       glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      glow.material = glowMat;
+      glow.material = this.hallGlowMats[hall];
       glow.position.set(fx, y0 + base + 0.9, fz);
       glow.parent = root;
       glow.isPickable = false;
@@ -738,7 +955,7 @@ export class CatacombsFx {
         const sx = Math.sin(a);
         const sz = Math.cos(a);
         if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 2.5) continue;
-        const col = NICHE_COLORS[(hi * 2 + k) % NICHE_COLORS.length];
+        const slot = nicheGlow[hi][k % 2];
         const wx = h.x + sx * (h.r - 0.05);
         const wz = h.z + sz * (h.r - 0.05);
         for (const side of [-1, 1]) {
@@ -754,10 +971,10 @@ export class CatacombsFx {
         const back = MeshBuilder.CreatePlane("catNicheGlow", { width: 2.4, height: 4 }, scene);
         back.position.set(wx - sx * 0.05, y0 + 2.1, wz - sz * 0.05);
         back.rotation.y = a + Math.PI;
-        nicheGlow[col.key].push(back);
+        slot.push(back);
         const floorGlow = MeshBuilder.CreateGround("catNichePool", { width: 7, height: 7 }, scene);
         floorGlow.position.set(wx - sx * 2.2, y0 + 0.06, wz - sz * 2.2);
-        nicheGlow[col.key].push(floorGlow);
+        slot.push(floorGlow);
         for (let c = 0; c < 3; c++) {
           const px = wx - sx * 0.5 + Math.cos(a) * (c - 1) * 0.6;
           const pz = wz - sz * 0.5 - Math.sin(a) * (c - 1) * 0.6;
@@ -803,19 +1020,20 @@ export class CatacombsFx {
         }
       }
       // Собираем меши зала по материалам.
-      const merge = (list: Mesh[], name: string, m: StandardMaterial): void => {
-        if (!list.length) return;
+      const merge = (list: Mesh[], name: string, m: StandardMaterial): Mesh | null => {
+        if (!list.length) return null;
         const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
-        if (!mm) return;
+        if (!mm) return null;
         mm.name = `${name}${hi}`;
         mm.material = m;
         mm.parent = root;
         mm.isPickable = false;
         mm.freezeWorldMatrix();
         hallMeshes[hi].push(mm);
+        return mm;
       };
-      merge(L.floor, "catFloor", floorMat);
-      merge(L.wall, "catWalls", wallMat);
+      merge(L.floor, "catFloor", this.hallFloorMats[hi]);
+      merge(L.wall, "catWalls", this.hallWallMats[hi]);
       merge(L.ceil, "catCeil", ceilMat);
       merge(L.pillar, "catPillars", pillarMat);
       merge(L.iron, "catIron", ironMat);
@@ -823,6 +1041,13 @@ export class CatacombsFx {
       bannerLists.forEach((list, bi) => merge(list, `catCloth${BANNERS[bi][0]}`, bannerMats[bi]));
       bannerLists = BANNERS.map(() => []);
       merge(L.urn, "catUrns", urnMat);
+      // Декор тем: строим все варианты, включён тот, что выпал залу на этот заход (applyThemes).
+      const td = this.buildThemeDecor(hi, { statueMat, obsidMat, skullMat, boneMat, ironMat, pillarMat, candleMat, lavaTex, nicheTex }, rnd);
+      this.themeDecor.push(td.groups);
+      for (const [list, name, m] of td.lit) {
+        const mm = merge(list, name, m);
+        if (mm) td.groups[td.owner.get(list)!].push(mm);
+      }
     });
 
     // Коридоры: пол, стены, свод, решётка на выходе из зала — меши к залу-источнику.
@@ -908,19 +1133,7 @@ export class CatacombsFx {
       mm.freezeWorldMatrix();
       return mm;
     };
-    for (const c of NICHE_COLORS) {
-      const t = tintGlowTexture(scene, `catNiche_${c.key}`, c.r, c.g, c.b);
-      const m = new StandardMaterial(`catNicheMat_${c.key}`, scene);
-      m.emissiveTexture = t;
-      m.opacityTexture = t;
-      m.emissiveColor = new Color3(0, 0, 0);
-      m.disableLighting = true;
-      m.alphaMode = Constants.ALPHA_ADD;
-      m.disableDepthWrite = true;
-      m.backFaceCulling = false;
-      m.alpha = 0.85;
-      mergeFlat(nicheGlow[c.key], `catNiche_${c.key}`, m);
-    }
+    nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k])));
     const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.9));
     if (sealMesh) this.sealMat = sealMesh.material as StandardMaterial;
     mergeFlat(runners, "catRunners", flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.05, 0.02, 0.01), false, 0.9));
@@ -945,7 +1158,7 @@ export class CatacombsFx {
       // Свой материал у зала — мерцает в своём ритме (огонь, а не ровная лампа).
       const m = makePoolMat(`catLightPool${hi}`);
       pm.material = m;
-      this.poolMats.push(m);
+      this.poolMats[hi] = m;
       pm.parent = root;
       pm.isPickable = false;
       pm.freezeWorldMatrix();
@@ -988,6 +1201,381 @@ export class CatacombsFx {
     this.motes = ps;
 
     root.setEnabled(false);
+    this.paintThemes();
+  }
+
+  /**
+   * Декор тем зала hi — все 4 варианта (выключены; включает applyThemes):
+   * склеп — статуи стражей с мечами и каменные гробы; костница — стены черепов, груды костей, пирамиды черепов;
+   * огненная яма — лава в трещинах пола, обсидиан, огненные расщелины; лунный склеп — туман, поля свечей, канделябры.
+   * lit — списки под слияние с освещаемыми материалами (свет зала), groups — уже готовые меши по темам.
+   */
+  private buildThemeDecor(
+    hi: number,
+    M: {
+      statueMat: StandardMaterial; obsidMat: StandardMaterial; skullMat: StandardMaterial; boneMat: StandardMaterial;
+      ironMat: StandardMaterial; pillarMat: StandardMaterial; candleMat: StandardMaterial; lavaTex: DynamicTexture; nicheTex: DynamicTexture;
+    },
+    rnd: () => number,
+  ): { groups: Mesh[][]; lit: [Mesh[], string, StandardMaterial][]; owner: Map<Mesh[], number> } {
+    const scene = this.scene;
+    const root = this.root!;
+    const h = CAT_HALLS[hi];
+    const y0 = CAT_FLOOR_Y;
+    const groups: Mesh[][] = CAT_THEMES.map(() => []);
+    const lit: [Mesh[], string, StandardMaterial][] = [];
+    const owner = new Map<Mesh[], number>();
+    const list = (t: number, name: string, m: StandardMaterial): Mesh[] => {
+      const l: Mesh[] = [];
+      lit.push([l, `catTheme${t}${name}`, m]);
+      owner.set(l, t);
+      return l;
+    };
+    const at = (deg: number, rr: number): { x: number; z: number; a: number } => {
+      const a = (deg * Math.PI) / 180;
+      return { x: h.x + Math.sin(a) * rr, z: h.z + Math.cos(a) * rr, a };
+    };
+    const extra = (t: number, m: Mesh): void => {
+      m.parent = root;
+      m.isPickable = false;
+      groups[t].push(m);
+    };
+    const sprite = (t: number, x: number, y: number, z: number, size: number): void => {
+      const g = MeshBuilder.CreatePlane("catCandleGlow", { size }, scene);
+      g.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      g.material = M.candleMat;
+      g.position.set(x, y, z);
+      extra(t, g);
+      this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+    };
+
+    // 0 · Склеп: статуи стражей (меч остриём в пол) и каменные гробы.
+    {
+      const stone = list(0, "Stone", M.pillarMat);
+      const statue = list(0, "Statue", M.statueMat);
+      for (const deg of [36, 108, 252, 324]) {
+        const p = at(deg, h.r - 3.6);
+        const fx = -Math.sin(p.a);
+        const fz = -Math.cos(p.a);
+        const ped = MeshBuilder.CreateBox("catStatuePed", { width: 1.9, height: 1.1, depth: 1.9 }, scene);
+        ped.position.set(p.x, y0 + 0.55, p.z);
+        ped.rotation.y = p.a;
+        stone.push(ped);
+        const b = y0 + 1.1;
+        const robe = MeshBuilder.CreateCylinder("catStatueRobe", { height: 3, diameterTop: 0.85, diameterBottom: 1.35, tessellation: 10 }, scene);
+        robe.position.set(p.x, b + 1.5, p.z);
+        statue.push(robe);
+        const chest = MeshBuilder.CreateBox("catStatueChest", { width: 1.55, height: 0.9, depth: 0.8 }, scene);
+        chest.position.set(p.x, b + 3.25, p.z);
+        chest.rotation.y = p.a;
+        statue.push(chest);
+        const head = MeshBuilder.CreateSphere("catStatueHead", { diameter: 0.72, segments: 8 }, scene);
+        head.position.set(p.x, b + 4, p.z);
+        statue.push(head);
+        const helm = MeshBuilder.CreateCylinder("catStatueHelm", { height: 0.55, diameterTop: 0.15, diameterBottom: 0.86, tessellation: 8 }, scene);
+        helm.position.set(p.x, b + 4.35, p.z);
+        statue.push(helm);
+        const blade = MeshBuilder.CreateBox("catStatueBlade", { width: 0.24, height: 3.1, depth: 0.09 }, scene);
+        blade.position.set(p.x + fx * 0.8, b + 1.6, p.z + fz * 0.8);
+        blade.rotation.y = p.a;
+        statue.push(blade);
+        const guard = MeshBuilder.CreateBox("catStatueGuard", { width: 1.1, height: 0.16, depth: 0.16 }, scene);
+        guard.position.set(p.x + fx * 0.8, b + 3.2, p.z + fz * 0.8);
+        guard.rotation.y = p.a;
+        statue.push(guard);
+      }
+      for (const deg of [72, 288]) {
+        const p = at(deg, h.r - 5);
+        for (const off of [-1.2, 1.2]) {
+          const ox = Math.cos(p.a) * off;
+          const oz = -Math.sin(p.a) * off;
+          const cof = MeshBuilder.CreateBox("catCoffin", { width: 1.2, height: 0.8, depth: 2.7 }, scene);
+          cof.position.set(p.x + ox, y0 + 0.4, p.z + oz);
+          cof.rotation.y = p.a;
+          stone.push(cof);
+          const lid = MeshBuilder.CreateBox("catCoffinLid", { width: 1.35, height: 0.18, depth: 2.9 }, scene);
+          lid.position.set(p.x + ox, y0 + 0.88, p.z + oz);
+          lid.rotation.y = p.a + (rnd() - 0.5) * 0.25;
+          stone.push(lid);
+        }
+      }
+    }
+
+    // 1 · Костница: стены черепов, груды костей, пирамиды черепов.
+    {
+      const skull = list(1, "Skulls", M.skullMat);
+      const bone = list(1, "Bones", M.boneMat);
+      for (const deg of [45, 90, 135, 225, 270, 315]) {
+        const p = at(deg, h.r - 0.3);
+        const pl = MeshBuilder.CreatePlane("catSkullWall", { width: 5, height: 6.4 }, scene);
+        pl.position.set(p.x, y0 + 3.5, p.z);
+        pl.rotation.y = p.a;
+        skull.push(pl);
+      }
+      for (const deg of [30, 150, 210, 330]) {
+        const p = at(deg, h.r - 4);
+        const mound = MeshBuilder.CreateSphere("catBoneMound", { diameter: 3.2, segments: 8 }, scene);
+        mound.scaling.y = 0.32;
+        mound.position.set(p.x, y0 + 0.15, p.z);
+        bone.push(mound);
+        for (let i = 0; i < 10; i++) {
+          const bn = MeshBuilder.CreateCylinder("catBoneBit", { height: 0.6 + rnd() * 0.5, diameter: 0.1, tessellation: 5 }, scene);
+          bn.position.set(p.x + (rnd() - 0.5) * 2.4, y0 + 0.35 + rnd() * 0.3, p.z + (rnd() - 0.5) * 2.4);
+          bn.rotation.set(Math.PI / 2 + (rnd() - 0.5), rnd() * 3, rnd());
+          bone.push(bn);
+        }
+        for (let i = 0; i < 4; i++) {
+          const sk = MeshBuilder.CreateSphere("catSkull", { diameter: 0.42, segments: 6 }, scene);
+          sk.position.set(p.x + (rnd() - 0.5) * 1.8, y0 + 0.5 + rnd() * 0.15, p.z + (rnd() - 0.5) * 1.8);
+          sk.scaling.y = 0.85;
+          bone.push(sk);
+        }
+      }
+      for (const deg of [90, 270]) {
+        const p = at(deg, h.r - 3);
+        const tx = Math.cos(p.a);
+        const tz = -Math.sin(p.a);
+        let y = y0 + 0.22;
+        for (const n of [4, 3, 2, 1]) {
+          for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+              const u = (i - (n - 1) / 2) * 0.44;
+              const w = (j - (n - 1) / 2) * 0.44;
+              const sk = MeshBuilder.CreateSphere("catSkull", { diameter: 0.44, segments: 6 }, scene);
+              sk.position.set(p.x + tx * u + Math.sin(p.a) * w, y, p.z + tz * u + Math.cos(p.a) * w);
+              bone.push(sk);
+            }
+          }
+          y += 0.36;
+        }
+      }
+    }
+
+    // 2 · Огненная яма: лава в трещинах (дышит), обсидиановые шипы, огненные расщелины.
+    {
+      const obs = list(2, "Obsidian", M.obsidMat);
+      const lavaMat = new StandardMaterial(`catLava${hi}`, scene);
+      lavaMat.emissiveTexture = M.lavaTex;
+      lavaMat.opacityTexture = M.lavaTex;
+      lavaMat.emissiveColor = new Color3(0, 0, 0);
+      lavaMat.diffuseColor = new Color3(0, 0, 0);
+      lavaMat.disableLighting = true;
+      lavaMat.alphaMode = Constants.ALPHA_ADD;
+      lavaMat.disableDepthWrite = true;
+      this.lavaMats.push(lavaMat);
+      const lava = MeshBuilder.CreateGround("catLavaCracks", { width: h.r * 2, height: h.r * 2 }, scene);
+      lava.position.set(h.x, y0 + 0.072, h.z);
+      lava.rotation.y = rnd() * 6;
+      lava.material = lavaMat;
+      extra(2, lava);
+      for (const deg of [20, 75, 110, 160, 200, 250, 285, 340]) {
+        const p = at(deg + (rnd() - 0.5) * 10, h.r - 2.2);
+        for (let i = 0; i < 3; i++) {
+          const sp = MeshBuilder.CreateCylinder("catObsidian", { height: 1.4 + rnd() * 2.4, diameterTop: 0, diameterBottom: 0.6 + rnd() * 0.8, tessellation: 5 }, scene);
+          sp.position.set(p.x + (rnd() - 0.5) * 1.6, y0 + 0.6, p.z + (rnd() - 0.5) * 1.6);
+          sp.rotation.set((rnd() - 0.5) * 0.5, rnd() * 3, (rnd() - 0.5) * 0.5);
+          obs.push(sp);
+        }
+      }
+      for (const deg of [60, 300, 120 + rnd() * 120]) {
+        const p = at(deg, h.r * 0.62);
+        const rim = MeshBuilder.CreateTorus("catVentRim", { diameter: 1.6, thickness: 0.45, tessellation: 10 }, scene);
+        rim.position.set(p.x, y0 + 0.1, p.z);
+        rim.scaling.y = 0.5;
+        obs.push(rim);
+        const fl = new TransformNode("catVent", scene);
+        fl.parent = root;
+        fl.position.set(p.x, y0 + 0.75, p.z);
+        for (let i = 0; i < 2; i++) {
+          const pl = MeshBuilder.CreatePlane("catVentFlame", { width: 1.1, height: 1.6 }, scene);
+          pl.rotation.y = i * Math.PI * 0.5;
+          const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
+          this.fireMats.push(fm);
+          this.fireHall.push(hi);
+          pl.material = fm;
+          pl.parent = fl;
+          pl.isPickable = false;
+          groups[2].push(pl);
+        }
+      }
+    }
+
+    // 3 · Лунный склеп: стелющийся туман, поля свечей, высокие канделябры.
+    {
+      const iron = list(3, "Iron", M.ironMat);
+      const wax = list(3, "Wax", M.boneMat);
+      const mistMat = new StandardMaterial(`catMist${hi}`, scene);
+      mistMat.opacityTexture = M.nicheTex;
+      mistMat.emissiveColor = new Color3(0.3, 0.4, 0.7);
+      mistMat.diffuseColor = new Color3(0, 0, 0);
+      mistMat.disableLighting = true;
+      mistMat.alphaMode = Constants.ALPHA_ADD;
+      mistMat.disableDepthWrite = true;
+      mistMat.alpha = 0.32;
+      for (let i = 0; i < 4; i++) {
+        const p = at(i * 90 + 45 + rnd() * 30, h.r * (0.35 + rnd() * 0.2));
+        const mist = MeshBuilder.CreateGround("catMist", { width: h.r * 1.1, height: h.r * 0.8 }, scene);
+        mist.position.set(p.x, y0 + 0.3 + i * 0.12, p.z);
+        mist.material = mistMat;
+        extra(3, mist);
+        this.mists.push(mist);
+      }
+      for (const deg of [50, 130, 230, 310]) {
+        const p = at(deg, h.r - 3);
+        for (let i = 0; i < 7; i++) {
+          const cx = p.x + (rnd() - 0.5) * 2.2;
+          const cz = p.z + (rnd() - 0.5) * 2.2;
+          const ch = 0.2 + rnd() * 0.5;
+          const c = MeshBuilder.CreateCylinder("catCandle", { height: ch, diameter: 0.13, tessellation: 6 }, scene);
+          c.position.set(cx, y0 + ch / 2, cz);
+          wax.push(c);
+          sprite(3, cx, y0 + ch + 0.2, cz, 0.75);
+        }
+      }
+      for (const deg of [90, 270]) {
+        const p = at(deg, h.r - 4.5);
+        const foot = MeshBuilder.CreateCylinder("catCandelabraFoot", { height: 0.2, diameter: 1, tessellation: 8 }, scene);
+        foot.position.set(p.x, y0 + 0.1, p.z);
+        iron.push(foot);
+        const pole = MeshBuilder.CreateCylinder("catCandelabraPole", { height: 3, diameter: 0.16, tessellation: 6 }, scene);
+        pole.position.set(p.x, y0 + 1.6, p.z);
+        iron.push(pole);
+        const tx = Math.cos(p.a);
+        const tz = -Math.sin(p.a);
+        const arm = MeshBuilder.CreateBox("catCandelabraArm", { width: 1.6, height: 0.1, depth: 0.1 }, scene);
+        arm.position.set(p.x, y0 + 3, p.z);
+        arm.rotation.y = p.a;
+        iron.push(arm);
+        for (const o of [-0.75, 0, 0.75]) {
+          const cx = p.x + tx * o;
+          const cz = p.z + tz * o;
+          const top = o === 0 ? 0.25 : 0;
+          const c = MeshBuilder.CreateCylinder("catCandle", { height: 0.4, diameter: 0.14, tessellation: 6 }, scene);
+          c.position.set(cx, y0 + 3.25 + top, cz);
+          wax.push(c);
+          sprite(3, cx, y0 + 3.65 + top, cz, 0.9);
+        }
+      }
+    }
+    for (const g of groups) for (const m of g) m.setEnabled(false);
+    return { groups, lit, owner };
+  }
+
+  /** Темы залов пришли с сервера (новый заход) — перекрашиваем. */
+  private applyThemes(sig: string): void {
+    this.themeSig = sig;
+    const ids = sig.split(",").map(Number);
+    for (let h = 0; h < CAT_HALLS.length; h++) {
+      const t = ids[h];
+      if (Number.isInteger(t) && t >= 0 && t < CAT_THEMES.length) this.hallTheme[h] = t;
+    }
+    this.paintThemes();
+  }
+
+  /** Цвета и декор залов по их темам: свет (в animate), пятна, ореолы, огонь, ниши, пол и стены. */
+  private paintThemes(): void {
+    for (let h = 0; h < CAT_HALLS.length; h++) {
+      const t = this.hallTheme[h];
+      const th = CAT_THEMES[t];
+      const [r, g, b] = th.light;
+      this.hallFloorMats[h]?.diffuseColor.set(th.floor[0], th.floor[1], th.floor[2]);
+      this.hallWallMats[h]?.diffuseColor.set(th.floor[0] * 0.9, th.floor[1] * 0.88, th.floor[2] * 0.9);
+      this.poolMats[h]?.emissiveColor.set(r, g, b);
+      this.hallGlowMats[h]?.emissiveColor.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, g * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12));
+      const nm = this.hallNicheMats[h];
+      if (nm) {
+        nm[0].emissiveColor.set(...th.niches[0]);
+        nm[1].emissiveColor.set(...th.niches[1]);
+      }
+      this.themeDecor[h]?.forEach((list, k) => {
+        for (const m of list) m.setEnabled(k === t);
+      });
+    }
+    this.fireMats.forEach((fm, i) => {
+      const c = THEME_FIRE[CAT_THEMES[this.hallTheme[this.fireHall[i]] ?? 0].key];
+      fm.setColor3("uColorA", Color3.FromHexString(c[0]));
+      fm.setColor3("uColorB", Color3.FromHexString(c[1]));
+      fm.setColor3("uColorC", Color3.FromHexString(c[2]));
+    });
+    if (this.motesHall >= 0) this.themeMotes(this.motesHall);
+  }
+
+  /** Пылинки зала по теме: пыль, споры, угли (летят вверх), лунная пыль. */
+  private themeMotes(hall: number): void {
+    const ps = this.motes;
+    if (!ps) return;
+    const m = THEME_MOTES[CAT_THEMES[this.hallTheme[hall]].key];
+    ps.color1.copyFromFloats(...m.c1);
+    ps.color2.copyFromFloats(...m.c2);
+    ps.direction1.set(-0.15, m.up * 0.3, -0.15);
+    ps.direction2.set(0.15, m.up, 0.15);
+  }
+
+  /** Святилище в зале (из RoomState): алтарь, кольцо рун, столб света и парящая сфера цвета святилища. */
+  private updateShrine(v: CatView | null): void {
+    const k = v && v.phase === CAT_PHASE.run ? v.shrine : -1;
+    if (k < 0 && !this.shrine) return;
+    if (!this.shrine) this.buildShrine();
+    const node = this.shrine!;
+    if (k !== this.shrineKind) {
+      this.shrineKind = k;
+      node.setEnabled(k >= 0);
+      const c = CAT_SHRINES[k]?.color;
+      if (c) for (const m of this.shrineMats) m.emissiveColor.set(c[0], c[1], c[2]);
+    }
+    if (k < 0 || !v) return;
+    node.position.set(v.shrineX, CAT_FLOOR_Y, v.shrineZ);
+    const t = this.time;
+    if (this.shrineOrb) this.shrineOrb.position.y = 2.2 + 0.18 * Math.sin(t * 2.2);
+    if (this.shrineRing) this.shrineRing.rotation.y = t * 0.5;
+  }
+
+  private buildShrine(): void {
+    const scene = this.scene;
+    const node = new TransformNode("catShrine", scene);
+    node.parent = this.root;
+    this.shrine = node;
+    const stone = new StandardMaterial("catShrineStone", scene);
+    stone.diffuseColor = new Color3(0, 0, 0);
+    stone.emissiveColor = new Color3(0.16, 0.15, 0.14);
+    stone.disableLighting = true;
+    const glow = (name: string, tex: DynamicTexture | null, alpha: number): StandardMaterial => {
+      const m = new StandardMaterial(name, scene);
+      if (tex) m.opacityTexture = tex;
+      m.diffuseColor = new Color3(0, 0, 0);
+      m.emissiveColor = new Color3(1, 1, 1);
+      m.disableLighting = true;
+      if (tex) {
+        m.alphaMode = Constants.ALPHA_ADD;
+        m.disableDepthWrite = true;
+        m.backFaceCulling = false;
+        m.alpha = alpha;
+      }
+      this.shrineMats.push(m);
+      return m;
+    };
+    const add = (m: Mesh, mat: StandardMaterial): Mesh => {
+      m.material = mat;
+      m.parent = node;
+      m.isPickable = false;
+      return m;
+    };
+    const base = add(MeshBuilder.CreateCylinder("catShrineAltar", { height: 1.2, diameterTop: 0.9, diameterBottom: 1.4, tessellation: 8 }, scene), stone);
+    base.position.y = 0.6;
+    const slab = add(MeshBuilder.CreateBox("catShrineSlab", { width: 1.5, height: 0.2, depth: 1.5 }, scene), stone);
+    slab.position.y = 1.3;
+    const ring = add(MeshBuilder.CreateGround("catShrineRing", { width: 7, height: 7 }, scene), glow("catShrineRingMat", ringTexture(scene), 0.95));
+    ring.position.y = 0.09;
+    this.shrineRing = ring;
+    const beam = add(
+      MeshBuilder.CreateCylinder("catShrineBeam", { height: 11, diameter: 1.5, tessellation: 16, cap: Mesh.NO_CAP }, scene),
+      glow("catShrineBeamMat", beamTexture(scene), 0.55),
+    );
+    beam.position.y = 5.5 + 1.3;
+    this.shrineOrb = add(MeshBuilder.CreateSphere("catShrineOrb", { diameter: 0.6, segments: 12 }, scene), glow("catShrineOrbMat", null, 1));
+    const halo = add(MeshBuilder.CreatePlane("catShrineHalo", { size: 3 }, scene), glow("catShrineHaloMat", tintGlowTexture(scene, "catShrineHaloTex", 1, 1, 1), 0.9));
+    halo.billboardMode = Mesh.BILLBOARDMODE_ALL;
+    halo.parent = this.shrineOrb;
   }
 
   /** Портал сбора в лагере: светящийся круг, столб и табличка «отряд N · m:ss» — только во время сбора. */

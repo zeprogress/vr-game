@@ -217,6 +217,13 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
+.ov-cattop { left:1.2vw; top:12vh; width:22vw; font-size:1.65vh; border-left:.35vh solid #ff5a3c; }
+.ov-cattop b { display:block; font-weight:800; font-size:1.9vh; color:#ffb199; letter-spacing:.03em; margin-bottom:.5vh; }
+.ov-cattop .hd, .ov-cattop .r { display:grid; grid-template-columns:1fr 5vw 3.6vw 2.4vw; gap:.4vw; font-variant-numeric:tabular-nums; }
+.ov-cattop .hd { opacity:.6; font-size:1.3vh; }
+.ov-cattop .r span:not(.nm) { text-align:right; }
+.ov-cattop .r .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-cattop .r.dead { opacity:.45; }
 .ov-cat { right:1.2vw; bottom:6vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
 .ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
 .ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
@@ -343,6 +350,7 @@ export class Overlay {
 
     this.root.append(
       this.cat,
+      this.catTop,
       this.wm,
       this.clock,
       this.online,
@@ -412,6 +420,14 @@ export class Overlay {
   }
 
   /** Топ-5 героев — приходит с сервера раз в 10 с (Ф10). */
+  /** Таблица забега катакомб: пока идёт забег — вместо топа героев и башни. */
+  private catTopRows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[] = [];
+  private readonly catTop: HTMLDivElement = div("box ov-cattop");
+  private catTopSig = "";
+  setCatTop(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[]): void {
+    this.catTopRows = rows;
+  }
+
   setLeaderboard(rows: LeaderboardRow[]): void {
     this.topRows = rows;
     this.renderTop();
@@ -552,8 +568,38 @@ export class Overlay {
     show(this.watch, this.cfg.watching);
     show(this.online, this.cfg.online && ctx.online.length > 0);
     show(this.feed, this.cfg.feed);
-    show(this.top, this.cfg.top && this.topRows.length > 0);
-    show(this.towerTop, this.cfg.top && this.towerTopRows.length > 0);
+    // Катакомбы идут — вместо топов слева таблица забега (урон, убийства, смерти).
+    // Топ урона — только пока идут катакомбы (и 15 с финала); закончились — снова топ по уровню.
+    if (!ctx.catacombs && this.catTopRows.length) this.catTopRows = [];
+    const catRun = !!ctx.catacombs && !ctx.catacombs.gather && this.catTopRows.length > 0;
+    show(this.top, this.cfg.top && !catRun && this.topRows.length > 0);
+    show(this.towerTop, this.cfg.top && !catRun && this.towerTopRows.length > 0);
+    show(this.catTop, catRun);
+    if (catRun) {
+      const fmt = (n: number): string => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n));
+      const sig = this.catTopRows.map((r) => `${r.nick}${r.dmg}${r.kills}${r.deaths}${r.dead}`).join("|");
+      if (sig !== this.catTopSig) {
+        this.catTopSig = sig;
+        this.catTop.innerHTML = "<b>☠ урон в катакомбах</b>";
+        const hd = div("hd");
+        hd.innerHTML = "<span></span><span>урон</span><span>убито</span><span>☠</span>";
+        this.catTop.appendChild(hd);
+        this.catTopRows.forEach((r, i) => {
+          const row = div(r.dead ? "r dead" : "r");
+          const nm = document.createElement("span");
+          nm.className = "nm";
+          nm.textContent = `${i + 1}. ${r.nick}`;
+          const d = document.createElement("span");
+          d.textContent = fmt(r.dmg);
+          const k = document.createElement("span");
+          k.textContent = String(r.kills);
+          const de = document.createElement("span");
+          de.textContent = String(r.deaths);
+          row.append(nm, d, k, de);
+          this.catTop.appendChild(row);
+        });
+      }
+    }
     const tickOn = this.cfg.ticker && this.tickerText.length > 0;
     show(this.ticker, tickOn);
     if (tickOn) {

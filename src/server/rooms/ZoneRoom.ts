@@ -252,8 +252,9 @@ import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
 import { WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
-import { CAT_HALLS, CAT_HAZARD, CATACOMBS, catEntry, catProject, inCatRegion } from "#shared/catacombs";
-import type { CatacombMsg } from "#shared/net/messages";
+import { TELEGRAM } from "#shared/changelog";
+import { CAT_HALLS, CAT_HAZARD, CAT_SHRINE, CAT_SHRINES, CATACOMBS, type CatAffix, catEntry, catProject, inCatRegion } from "#shared/catacombs";
+import type { CatacombMsg, CatStatsMsg } from "#shared/net/messages";
 import { TowerRunManager } from "./TowerRunManager";
 import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
@@ -5031,8 +5032,6 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
     "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
     "Катакомбы: !катакомбы — отряд от 2 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
-    "Подписывайся на Telegram-канал игры t.me/zepgame — там новости обновлений, анонсы ивентов и первым узнаёшь про новые классы и оружие!",
-    "Совет: в Telegram t.me/zepgame — патчи, планы и голосования за новые фичи. Подпишись, чтобы влиять на игру!",
   ];
 
   /** Раз во сколько-то минут — случайная подсказка в чат, если герои в мире есть. */
@@ -5041,8 +5040,9 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tipClock += dt;
     if (this.tipClock < BOT.tipIntervalSec) return;
     this.tipClock = 0;
-    this.reply(ZoneRoom.TIPS[this.tipIdx]);
-    this.tipIdx = (this.tipIdx + 1) % ZoneRoom.TIPS.length;
+    // Через раз — реклама Telegram-канала (и с неё начинаем: рестарты частые, до конца списка дело не доходило).
+    const n = this.tipIdx++;
+    this.reply(n % 2 === 0 ? TELEGRAM.tips[(n / 2) % TELEGRAM.tips.length] : ZoneRoom.TIPS[((n - 1) / 2) % ZoneRoom.TIPS.length]);
   }
 
   /** `!info` — список команд. Общий на всех, поэтому с глобальным кулдауном. */
@@ -5372,6 +5372,31 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.catLo = c.lo;
         this.sim.catHi = c.hi;
       },
+      setThemes: (t) => {
+        if (this.state.catThemes !== t) this.state.catThemes = t;
+      },
+      setShrine: (x, z, k) => {
+        const st = this.state;
+        st.catShrineX = x;
+        st.catShrineZ = z;
+        if (st.catShrine !== k) st.catShrine = k;
+      },
+      shrineBless: (sh, ids) => {
+        for (const id of ids) {
+          const p = this.state.players.get(id);
+          const rt = this.rt.get(id);
+          if (!p || !rt || p.dead) continue;
+          if (sh.key === "fury" || sh.key === "haste") {
+            rt.cryKind = sh.key === "fury" ? 1 : 2;
+            rt.cryUntil = this.elapsed + (sh.key === "fury" ? CAT_SHRINE.buffSec : CAT_SHRINE.hasteSec);
+          } else if (sh.key === "ward") {
+            rt.campBuffUntil = Math.max(rt.campBuffUntil, Date.now() + CAT_SHRINE.wardSec * 1000);
+          } else {
+            p.hp = p.maxHp;
+          }
+          this.broadcast(MSG.act, { k: "catShrine", id, x: p.head.x, y: p.head.y, z: p.head.z, v: CAT_SHRINES.indexOf(sh) } satisfies ActRelay);
+        }
+      },
       announce: (m: CatacombMsg) => this.broadcast(MSG.catacomb, m),
       chat: (t) => this.reply(t),
       canOpen: () => this.eventPhase !== "active",
@@ -5437,7 +5462,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const v = H.kinds.indexOf(kind);
         const R = o?.r ?? H.radius;
         const delay = o?.delay ?? H.delay;
-        const dmgFrac = o?.dmg ?? H.dmgFrac;
+        const dmgFrac = (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale;
         const stun = o?.stun ?? (kind === "rockfall" ? 0.8 : 0);
         const knock = o?.knock ?? (kind === "souls" ? 6 : 0);
         for (const pt of pts) {
@@ -5458,6 +5483,22 @@ export class ZoneRoom extends Room<ZoneState> {
             });
           }
         }, delay * 1000);
+      },
+      stats: (rows, reset) => {
+        if (reset) {
+          this.sim.catDamage.clear();
+          this.sim.catKills.clear();
+          return;
+        }
+        const msg: CatStatsMsg = {
+          rows: rows
+            .map((r) => {
+              const p = this.state.players.get(r.id);
+              return { nick: p?.nick ?? "?", dmg: Math.round(this.sim.catDamage.get(r.id) ?? 0), kills: this.sim.catKills.get(r.id) ?? 0, deaths: r.deaths, dead: !!p?.dead };
+            })
+            .sort((a, b) => b.dmg - a.dmg),
+        };
+        this.broadcast(MSG.catStats, msg);
       },
       dismissMobs: (ids) => {
         for (const id of ids) {
@@ -5532,6 +5573,15 @@ export class ZoneRoom extends Room<ZoneState> {
     return best;
   }
 
+  /** Есть ли живой герой в отряде катакомб. */
+  private catAnyAlive(): boolean {
+    for (const id of this.cat.party) {
+      const p = this.state.players.get(id);
+      if (p && !p.dead) return true;
+    }
+    return false;
+  }
+
   /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
   private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number): void {
     const p = this.state.players.get(id);
@@ -5565,7 +5615,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Моб катакомб: сила — под средний уровень пати (CATACOMBS.levelMin..levelMax), не возрождается, лут роняет. */
-  private catSpawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number }): string {
+  private catSpawn(
+    type: string,
+    x: number,
+    z: number,
+    o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null },
+  ): string {
+    const af = o.affix;
     this.catLevel = o.partyLevel;
     const def = ELITE_MOBS[type];
     let id: string;
@@ -5573,9 +5629,13 @@ export class ZoneRoom extends Room<ZoneState> {
       const k = Math.max(CATACOMBS.levelMin, Math.min(CATACOMBS.levelMax, o.partyLevel / def.level));
       const opts = eliteMobOpts(def);
       // Сила героя с уровнем растёт быстрее линейной — подгонка мобов тоже нелинейная.
-      opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4);
-      opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2;
-      opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1);
+      opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4 * (af?.hpMul ?? 1));
+      opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2 * CATACOMBS.dmgScale;
+      opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1) * (af?.scaleMul ?? 1);
+      // Аффикс волны: поверх врождённых свойств (берём сильнейшее).
+      if (af?.speedMul) opts.speedMul = Math.max(opts.speedMul ?? 1, af.speedMul);
+      if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
+      if (af?.physArmor) opts.physArmor = Math.max(opts.physArmor ?? 0, af.physArmor);
       opts.level = Math.max(1, Math.round(o.partyLevel));
       if (o.name) opts.name = o.name;
       id = this.sim.spawnEventMob(def.kind, x, z, opts);
@@ -5711,6 +5771,8 @@ export class ZoneRoom extends Room<ZoneState> {
     const ids = [...this.cat.party].filter((id) => id.startsWith("bot:")).sort();
     const i = Math.max(0, ids.indexOf(bot.id));
     const n = Math.max(1, ids.length);
+    // Святилище в зале — пока волн нет, первый бот отряда бежит за благословением для всех.
+    if (i === 0 && this.state.catShrine >= 0) return { x: this.state.catShrineX, z: this.state.catShrineZ };
     const a = (i / n) * Math.PI * 2 + Math.PI / 2;
     // С приказом «встать» — тесно у своей точки, иначе — кольцом вокруг центра отряда.
     const r = bot.catPos && bot.catPos !== "auto" ? 1.2 : 2.5 + n * 0.35;
@@ -8806,7 +8868,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (p.hp <= 0) {
       p.dead = 1;
-      rt.respawnIn = RESPAWN.delay;
+      // Катакомбы: воскрешение только через reviveSec (и только если кто-то из отряда жив).
+      rt.respawnIn = this.cat.inRun(h.target) ? CATACOMBS.reviveSec : RESPAWN.delay;
       this.broadcast(MSG.killFeed, { by: h.byName ?? "", victim: p.nick });
     }
   }
@@ -8877,7 +8940,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.syncWarehouse(id, rt);
       if (p.dead) {
         rt.respawnIn -= dt;
-        if (rt.respawnIn <= 0) this.respawn(id, p, rt);
+        // Катакомбы: пока живых в отряде нет — не воскрешаем (режиссёр засчитает поражение).
+        if (rt.respawnIn <= 0 && !(this.cat.inRun(id) && !this.catAnyAlive())) this.respawn(id, p, rt);
         return;
       }
       // В башне ХП считает и пишет сама TowerRoom (см. onTowerSnapshot) —

@@ -31,8 +31,8 @@ const CAT_HALF_X = 40;
 /** Залы по порядку прохождения. */
 export const CAT_HALLS: readonly CatHall[] = [
   { x: 0, z: CAT_Z0 + 30, r: 22, name: "Преддверие" },
-  { x: 0, z: CAT_Z0 + 92, r: 26, name: "Костница" },
-  { x: 0, z: CAT_Z0 + 158, r: 26, name: "Огненный склеп" },
+  { x: 0, z: CAT_Z0 + 92, r: 26, name: "Галерея мёртвых" },
+  { x: 0, z: CAT_Z0 + 158, r: 26, name: "Нижний ярус" },
   { x: 0, z: CAT_Z0 + 228, r: 30, name: "Трон Бездны" },
 ];
 
@@ -206,6 +206,8 @@ export const CATACOMBS = {
   autoMax: 40 * 60,
   /** Откат: после конца забега новый сбор (и командой) не раньше, с. */
   cooldownSec: 15 * 60,
+  /** Погибший в катакомбах воскресает через столько секунд (если кто-то из отряда жив; пали все — поражение). */
+  reviveSec: 30,
   /** Портал в лагере: встал в круг во время сбора — записан. */
   portalR: 2.2,
   /** Сила мобов по уровню пати: множитель = (средний ур. / ур. моба) в этих пределах. */
@@ -216,6 +218,13 @@ export const CATACOMBS = {
   /** Угроза растёт от зала к залу: HP и урон мобов × (1 + threat × номер стадии). */
   threatHp: 0.12,
   threatDmg: 0.15,
+  /**
+   * Урон всех мобов катакомб: «пали все — поражение», бесконечных возрождений нет —
+   * отряд должен переживать бой, а не брать числом смертей.
+   */
+  dmgScale: 0.6,
+  /** Урон опасностей зала и приёмов стражей (доля HP) — по той же причине. */
+  hazardScale: 0.65,
   /** Финальная награда: жетоны ◈ каждому, бафф (мин). */
   finalTokens: 3,
   buffMinutes: 30,
@@ -229,19 +238,19 @@ export const CATACOMBS = {
       pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus"],
       bosses: [
         {
-          key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Костницы — поднимает мёртвых, костяные шипы",
+          key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Галереи мёртвых — поднимает мёртвых, костяные шипы",
           hpMul: 2.94, dmgMul: 1.6, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
           mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
           adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
         },
         {
-          key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Костницы — споры и грибной град",
+          key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Галереи мёртвых — споры и грибной град",
           hpMul: 1.82, dmgMul: 1.5, scale: 1.4, retinue: [{ type: "spikyBlob", count: 4, perHero: 1 }],
           mech: [{ kind: "barrage", name: "Грибной град", every: 9, fx: 2, dmg: 0.25, r: 2.8 }, { kind: "ring", name: "Споровый взрыв", every: 14, fx: 2, dmg: 0.25, r: 6.5 }],
           adds: { types: ["spikyBlob", "frog"], every: 14, count: 3, perHero: 0.7 },
         },
         {
-          key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Костницы — щупальца и удары с неба",
+          key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Галереи мёртвых — щупальца и удары с неба",
           hpMul: 1.89, dmgMul: 1.5, scale: 1.5, retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
           mech: [{ kind: "slam", name: "Удар щупальца", every: 6, fx: 2, dmg: 0.28, r: 3.4 }, { kind: "barrage", name: "Чернильный ливень", every: 12, fx: 2, dmg: 0.22, r: 2.6 }],
           adds: { types: ["boneWraith", "bee"], every: 15, count: 2, perHero: 0.6 },
@@ -254,21 +263,21 @@ export const CATACOMBS = {
       pool: ["spearThrower", "spikeTail", "rockBreaker", "frostDemon", "boneWraith"],
       bosses: [
         {
-          key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Огненного склепа — таран и огненное кольцо",
+          key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Нижнего яруса — таран и огненное кольцо",
           hpMul: 1.82, dmgMul: 1.6, scale: 1.7,
           retinue: [{ type: "spikyBlob", count: 3, perHero: 1 }, { type: "spearThrower", count: 1, perHero: 0.3 }],
           mech: [{ kind: "ring", name: "Огненное кольцо", every: 9, fx: 1, dmg: 0.3, r: 7.5 }, { kind: "barrage", name: "Дождь углей", every: 11, fx: 1, dmg: 0.24, r: 2.8 }],
           adds: { types: ["spikyBlob", "spearThrower"], every: 16, count: 2, perHero: 0.6 },
         },
         {
-          key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Огненного склепа — лёд, щит отражения, обвалы",
+          key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Нижнего яруса — лёд, щит отражения, обвалы",
           hpMul: 1.82, dmgMul: 1.5, scale: 1.7,
           retinue: [{ type: "boneWraith", count: 2, perHero: 1 }, { type: "spikeTail", count: 1, perHero: 0.3 }],
           mech: [{ kind: "slam", name: "Ледяной молот", every: 7, fx: 0, dmg: 0.32, r: 3.8 }, { kind: "barrage", name: "Обвал свода", every: 12, fx: 0, dmg: 0.25, r: 3 }],
           adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
         },
         {
-          key: "rockBreaker", name: "Громолом", title: "хранитель Огненного склепа — прыжки, обвалы, ярость стаи",
+          key: "rockBreaker", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
           hpMul: 1.54, dmgMul: 1.4, scale: 1.8, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
           mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
           adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
@@ -281,10 +290,10 @@ export const CATACOMBS = {
       waves: [],
       boss: {
         key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
-        hpMul: 0.68, dmgMul: 1.4, scale: 1.25,
+        hpMul: 0.45, dmgMul: 1.1, scale: 1.25,
         retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
         final: true,
-        adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 18, count: 2, perHero: 0.6 },
+        adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
       },
       chest: "final",
     },
@@ -356,6 +365,63 @@ export const CAT_FINAL = {
   ringEvery: 7,
   ringR: 9,
 } as const;
+
+/**
+ * Тема зала — на каждый заход раздаётся залам случайно (RoomState.catThemes): цвет света,
+ * цвета ниш, оттенок пола и свой декор. Один и тот же зал выглядит по-разному от захода к заходу.
+ */
+export interface CatTheme {
+  key: "crypt" | "ossuary" | "pit" | "moon";
+  name: string;
+  /** Цвет огня/света (0..1). */
+  light: [number, number, number];
+  /** Цвета ниш (два чередуются). */
+  niches: [[number, number, number], [number, number, number]];
+  floor: [number, number, number];
+}
+export const CAT_THEMES: readonly CatTheme[] = [
+  { key: "crypt", name: "Склеп", light: [1, 0.45, 0.12], niches: [[0.35, 0.45, 1], [0.2, 0.85, 1]], floor: [0.95, 0.88, 0.8] },
+  { key: "ossuary", name: "Костница", light: [0.9, 0.78, 0.32], niches: [[0.35, 1, 0.45], [0.55, 1, 0.3]], floor: [0.88, 0.9, 0.76] },
+  { key: "pit", name: "Огненная яма", light: [1, 0.28, 0.06], niches: [[1, 0.18, 0.22], [1, 0.45, 0.1]], floor: [0.92, 0.7, 0.6] },
+  { key: "moon", name: "Лунный склеп", light: [0.55, 0.68, 1], niches: [[0.72, 0.3, 1], [0.35, 0.45, 1]], floor: [0.76, 0.82, 0.96] },
+];
+
+/** Аффикс волны (как у элиток в ARPG): меняет мобов волны, объявляется в титре. */
+export interface CatAffix {
+  key: "swift" | "vampire" | "armored" | "explosive" | "giant";
+  name: string;
+  speedMul?: number;
+  lifesteal?: number;
+  physArmor?: number;
+  hpMul?: number;
+  scaleMul?: number;
+  /** При смерти — огненный взрыв (круг-предупреждение, потом удар). */
+  explode?: boolean;
+}
+export const CAT_AFFIXES: readonly CatAffix[] = [
+  { key: "swift", name: "быстрые", speedMul: 1.45 },
+  { key: "vampire", name: "вампиры", lifesteal: 0.35 },
+  { key: "armored", name: "в броне", physArmor: 0.35 },
+  { key: "explosive", name: "взрываются при смерти", explode: true },
+  { key: "giant", name: "исполины", hpMul: 1.6, scaleMul: 1.35 },
+];
+
+/** Святилище в зале (случайно): кто из отряда подошёл — бафф всему отряду. */
+export interface CatShrine {
+  key: "fury" | "heal" | "ward" | "haste";
+  name: string;
+  desc: string;
+  /** Цвет столба (0..1). */
+  color: [number, number, number];
+}
+export const CAT_SHRINES: readonly CatShrine[] = [
+  { key: "fury", name: "Святилище ярости", desc: "отряду +25% урона и +15% темпа на 30 с", color: [1, 0.35, 0.15] },
+  { key: "heal", name: "Святилище жизни", desc: "отряд исцелён полностью", color: [0.35, 1, 0.45] },
+  { key: "ward", name: "Святилище стойкости", desc: "отряду −20% входящего урона на 45 с", color: [0.35, 0.6, 1] },
+  { key: "haste", name: "Святилище ветра", desc: "отряду +30% темпа атак на 25 с", color: [0.85, 0.95, 1] },
+];
+/** holdSec — сколько стоять в круге, чтобы святилище сработало (видно зрителям, не мгновенно). */
+export const CAT_SHRINE = { chance: 0.65, reach: 3.5, holdSec: 2.5, buffSec: 30, wardSec: 45, hasteSec: 25 } as const;
 
 /** Фазы забега (RoomState.catPhase). */
 export const CAT_PHASE = { none: 0, gather: 1, run: 2, outro: 3 } as const;

@@ -11,6 +11,7 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import type { SkillVfx } from "./SkillVfx";
+import { CAT_SHRINES } from "#shared/catacombs";
 
 /**
  * Эффекты «Классов 2.0» — дешёвые для шлема: всё из заранее созданных
@@ -659,6 +660,15 @@ export function playClassAct(
       vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 26, speed: 3, life: 1.3, grav: -1.5, size: 0.5 + (r ?? 0.5) * 0.3 });
       vfx.burst(x, y + 0.6, z, FXC.arcane, { count: 14, speed: 4, life: 0.8, grav: -3, size: 0.2 });
       return true;
+    case "catShrine": {
+      // Святилище благословило героя: столб его цвета на герое, кольцо и искры вверх.
+      const sh = CAT_SHRINES[v ?? 0] ?? CAT_SHRINES[0];
+      const col = new Color3(...sh.color);
+      vfx.pillar(x, y, z, 0.9, 6, col, 1.6, { kind: "hero", id });
+      vfx.decal(x, y, z, 2.4, col, 1.4, 1, 1, { kind: "hero", id, dy: 0.05 });
+      vfx.burst(x, y + 1, z, col, { count: 30, speed: 4, life: 1.1, grav: -4, size: 0.25 });
+      return true;
+    }
     case "catChest": {
       // Сундук стража: золотой столб и россыпь искр; суперприз — больше и дольше.
       const fin = r === 1;

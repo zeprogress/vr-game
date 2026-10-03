@@ -273,6 +273,12 @@ export class ZoneState extends Schema {
   @type("uint8") catFinal = 0;
   /** Страж/Владыка текущего зала (id моба), "" — нет (камера зрителя, кадр «страж»). */
   @type("string") catBoss = "";
+  /** Темы залов на этот заход (индексы CAT_THEMES через запятую, по залам). */
+  @type("string") catThemes = "";
+  /** Святилище в зале: x,z и вид (индекс CAT_SHRINES); kind −1 — нет. */
+  @type("float32") catShrineX = 0;
+  @type("float32") catShrineZ = 0;
+  @type("int8") catShrine = -1;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();
