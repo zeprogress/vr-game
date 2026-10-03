@@ -7466,7 +7466,9 @@ export class ZoneRoom extends Room<ZoneState> {
         this.removeBot(bot.norm);
         continue;
       }
+      const tb = serverPerf.now();
       this.tickBot(dt, bot);
+      serverPerf.worst("бот", `${bot.norm}${bot.nav && bot.nav.at === this.elapsed && bot.nav.path.length ? " (A*)" : ""}`, serverPerf.now() - tb);
     }
   }
 
@@ -7517,6 +7519,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const perfB0 = serverPerf.now();
     this.tickBots(dt);
     serverPerf.section("bots", serverPerf.now() - perfB0);
+    serverPerf.part("боты", serverPerf.now() - perfB0);
     this.maybeSayTip(dt);
 
     this.tickSeals(dt);
