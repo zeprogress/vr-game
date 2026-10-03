@@ -506,5 +506,5 @@ export class WorldCrossFx {
 
 /** Цвет числа урона по его виду (DmgHitsMsg.c): яд — ядовито-зелёный, лечение — зелёный, иначе белый. */
 export function dmgNumberColor(c: DmgHitColor | undefined): Color3 | null {
-  return c === "poison" ? FXC.poison : c === "heal" ? FXC.heal : null;
+  return c === "poison" ? FXC.poison : c === "heal" ? FXC.heal : c === "bleed" ? FXC.blood : null;
 }

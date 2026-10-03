@@ -68,6 +68,7 @@ import { VrStunStars } from "../ui/VrStunStars";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
+import { heroStatRows } from "#shared/heroStats";
 import { WorldCrossFx, dmgNumberColor, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -296,6 +297,8 @@ export class Game {
   private readonly skillReadyAt = new Map<SkillId, number>();
   /** 🧪 «Призрак бездны»: до какого момента (performance.now) темп ускорен на ABYSS.haste. */
   private abyssHasteUntil = 0;
+  /** Когда последний раз пересчитали характеристики для окна ПК (performance.now). */
+  private liveStatsAt = 0;
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
   /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
@@ -2333,6 +2336,12 @@ export class Game {
     const buffs = buffList(self);
     this.pcHud?.setBuffs(buffs);
     this.vrHud?.setBuffs(buffs);
+    // Характеристики в окне ПК — с активными баффами, раз в секунду, пока окно открыто.
+    const nowMs = performance.now();
+    if (this.pcInv?.isOpen && nowMs - this.liveStatsAt > 1000) {
+      this.liveStatsAt = nowMs;
+      this.pcInv.setLiveStats(heroStatRows(self));
+    }
     if (Math.abs(self.hp - this.shownHp) > 0.01) this.showHp(self.hp);
     // Мана: сервер — источник правды. Но пока копится заряд, клиент ведёт
     // свой отсчёт (сервер спишет ману только по факту каста), иначе

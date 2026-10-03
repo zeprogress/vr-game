@@ -6920,7 +6920,7 @@ export class ZoneRoom extends Room<ZoneState> {
                 const d = Math.hypot(dx, dz) || 1;
                 if (Math.acos(Math.max(-1, Math.min(1, (dx * fx + dz * fz) / d))) > FAN.halfAngle) continue;
                 this.sim.hitMob(m.id, FAN.dmgMult * pow.dmg, dx / d, dz / d, ownerId, true);
-                m.ignite((FAN.dmgMult * pow.dmg) / 5, 5, ownerId);
+                this.sim.bleedMob(m.id, (FAN.dmgMult * pow.dmg) / 5, 5, ownerId);
               }
             }, (0.15 + i * 0.18) * 1000);
           }
@@ -7823,6 +7823,8 @@ export class ZoneRoom extends Room<ZoneState> {
       } satisfies ActRelay);
     }
     this.sim.mobMisses.length = 0;
+    for (const b of this.sim.bleedTicks) this.broadcast(MSG.act, { k: "bleedTick", id: b.by, x: b.x, y: b.y, z: b.z, mobId: b.mobId } satisfies ActRelay);
+    this.sim.bleedTicks.length = 0;
     if (this.sim.dmgHits.length) {
       const hits = this.sim.dmgHits;
       for (const c of this.clients) {

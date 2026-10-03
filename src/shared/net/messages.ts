@@ -173,7 +173,7 @@ export interface DmgHitsMsg {
 }
 
 /** Цвет числа урона: яд — зелёный, лечение — светло-зелёный (без поля — обычный белый). */
-export type DmgHitColor = "poison" | "heal";
+export type DmgHitColor = "poison" | "heal" | "bleed";
 /** Кто кого убил (этап 17 Ф9). `by` пуст — убил моб/среда. Строки уже готовы к показу. */
 export interface KillFeedMsg {
   by: string;
@@ -564,6 +564,7 @@ export type ActKind =
   | "markOn" // «Метка» на мобе mobId на d с
   | "markReset" // цель умерла под меткой — откат «Метки» сброшен (только хозяину)
   | "plagueBurst" // 🧪 «Чумной клинок»: взрыв яда в (x,z), радиус r
+  | "bleedTick" // кровотечение на мобе mobId: капли крови (раз в секунду)
   | "poisonStack" // 🧪 яд на мобе mobId: r — стаков (1..5), d — сколько тикает
   | "plagueOn" // 🧪 «Чумной клинок»: клинки героя id отравлены на d с
   | "smoke" // 🧪 «Пелена смерти»: дым в (x,z) на d с, радиус r

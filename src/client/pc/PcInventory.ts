@@ -229,6 +229,29 @@ export class PcInventory {
     this.confirmEl = box;
   }
 
+  /** Блок характеристик и последние «живые» строки (с баффами) — обновляются без полной перерисовки. */
+  private statsBox: HTMLElement | null = null;
+  private liveStats: { label: string; value: string }[] | null = null;
+  private liveSig = "";
+  private fillStats(rows: { label: string; value: string }[]): void {
+    const box = this.statsBox;
+    if (!box) return;
+    box.replaceChildren();
+    for (const r of rows) {
+      const row = div("pcinv-row");
+      row.append(span(r.label), span(r.value));
+      box.append(row);
+    }
+  }
+  /** Характеристики с активными баффами (считает клиент из своего состояния раз в секунду). */
+  setLiveStats(rows: { label: string; value: string }[]): void {
+    const sig = rows.map((r) => r.value).join("|");
+    if (sig === this.liveSig) return;
+    this.liveSig = sig;
+    this.liveStats = rows;
+    if (this.isOpen) this.fillStats(rows);
+  }
+
   get isOpen(): boolean {
     return this.root.style.display !== "none";
   }
@@ -365,11 +388,8 @@ export class PcInventory {
     const hands = div("pcinv-hands");
     hands.append(this.handSlot("left", d), this.handSlot("right", d));
     const stats = div("pcinv-stats");
-    for (const r of d.stats) {
-      const row = div("pcinv-row");
-      row.append(span(r.label), span(r.value));
-      stats.append(row);
-    }
+    this.statsBox = stats;
+    this.fillStats(this.liveStats ?? d.stats);
     // Титул под ником — выбор из полученных.
     const titleRow = div("pcinv-row pcinv-title");
     titleRow.append(span("Титул"));

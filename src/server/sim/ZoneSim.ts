@@ -697,6 +697,12 @@ export class Mob {
   poisonDps = 0;
   poisonT = 0;
   poisonBy = "";
+  /** Кровотечение (веер ножей): урон в секунду, сколько ещё, чей; накопитель для красного числа. */
+  bleedDps = 0;
+  bleedT = 0;
+  bleedBy = "";
+  bleedShown = 0;
+  bleedShowT = 0;
   /** Снятое ядом с последнего показа и таймер показа — зелёное число раз в секунду, а не на каждый тик. */
   poisonShown = 0;
   poisonShowT = 0;
@@ -760,6 +766,7 @@ export class Mob {
       this.burnDps = 0;
       this.poisonStacks = 0;
       this.poisonT = 0;
+      this.bleedT = 0;
       this.raging = false;
       this.respawnIn = this.kind === "boss" ? BOSS.respawn : this.respawnSec;
       return true;
@@ -1701,6 +1708,7 @@ export class Mob {
     this.burnBy = "";
     this.poisonStacks = 0;
     this.poisonT = 0;
+    this.bleedT = 0;
     this.stunnedT = 0;
     this.rootedT = 0;
     this.raging = false;
@@ -2523,6 +2531,23 @@ export class ZoneSim {
         }
       }
     }
+    for (const m of this.mobs.values()) {
+      if (m.dead || m.bleedT <= 0) continue;
+      m.bleedT -= dt;
+      const hp0 = m.hp;
+      const x = m.x;
+      const y = m.y + MOB.bodyRadius * m.scale * 1.4;
+      const z = m.z;
+      this.hitMob(m.id, m.bleedDps * dt, 0, 0, m.bleedBy, false, true);
+      m.bleedShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
+      m.bleedShowT += dt;
+      if (m.bleedShowT >= 1 || m.dead || m.bleedT <= 0) {
+        if (m.bleedShown >= 1) this.dmgHits.push({ x, y, z, dmg: Math.round(m.bleedShown), by: m.bleedBy || undefined, mob: m.id, c: "bleed" });
+        this.bleedTicks.push({ x, y: m.y, z, mobId: m.id, by: m.bleedBy });
+        m.bleedShown = 0;
+        m.bleedShowT = 0;
+      }
+    }
     for (let i = this.smokes.length - 1; i >= 0; i--) if (this.elapsed > this.smokes[i].until) this.smokes.splice(i, 1);
     for (const m of this.mobs.values()) {
       if (m.dead || m.burningT <= 0) continue;
@@ -2708,6 +2733,17 @@ export class ZoneSim {
     if (n >= PLAGUE.maxStacks) m.poisonStacks = 0;
     return n;
   }
+
+  /** Кровотечение (веер ножей): `dps` на `sec` с, берётся сильнейшее; не горение — свой эффект и красные цифры. */
+  bleedMob(id: string, dps: number, sec: number, by: string): void {
+    const m = this.mobs.get(id);
+    if (!m || m.dead) return;
+    m.bleedDps = m.bleedT > 0 ? Math.max(m.bleedDps, dps) : dps;
+    m.bleedT = Math.max(m.bleedT, sec);
+    m.bleedBy = by;
+  }
+  /** Капли крови за тик (раз в секунду на кровоточащего моба) — комната рассылает act "bleedTick". */
+  readonly bleedTicks: { x: number; y: number; z: number; mobId: string; by: string }[] = [];
 
   /** Дым «Пелены смерти»: круги на земле до `until` (сек. симуляции). */
   readonly smokes: { x: number; z: number; r: number; until: number }[] = [];

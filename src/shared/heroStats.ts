@@ -1,9 +1,10 @@
-import { BOT, BOW, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { BOT, BOW, CAMPFIRE, EVENT, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { SCROLL } from "./shop";
 import { fireboltDamage } from "./magic";
 import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, hpRegenFrac, maxHpFor, meleeSpeedFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, invested } from "./attrs2";
-import { DAGGER, HAMMER, staffMagicTier, WEAPONS2, type AttrsIn } from "./classes2";
+import { DAGGER, HAMMER, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
 import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
@@ -55,7 +56,33 @@ export interface HeroStatInput {
   /** Текст ролла на оружии в руке — синкается как affixLabel(...), см. items.ts. */
   rightAffix?: string;
   leftAffix?: string;
+  /**
+   * Активные баффы (секунд осталось) — те же поля, что в PlayerState: таблица
+   * показывает цифры С баффами, как они сейчас работают в бою. Нет полей — без баффов.
+   */
+  buffSecs?: number;
+  crySecs?: number;
+  cryKind?: number;
+  campBuffSecs?: number;
+  scrollWindSecs?: number;
+  smokeSecs?: number;
+  towerFloor?: number;
 }
+
+/** Множители от активных баффов (как в бою на сервере: buffMult, cryTempo, hurtPlayer). */
+function buffMuls(p: HeroStatInput): { dmg: number; tempo: number; move: number; dodge: number; def: number; any: boolean } {
+  const on = (s: number | undefined): boolean => (p.towerFloor ?? 0) <= 0 && (s ?? 0) > 0;
+  const cry = on(p.crySecs) ? p.cryKind ?? 0 : 0;
+  const dmg = (on(p.buffSecs) ? EVENT.invasion.buffDmgMult : 1) * (cry === 1 || cry === 3 ? 1 + WARCRY.dmg : 1);
+  const tempo = cry === 2 ? 1 + WARCRY.rallyTempo : cry === 1 || cry === 3 ? 1 + WARCRY.tempo : 1;
+  const move = on(p.scrollWindSecs) ? SCROLL.windMul : 1;
+  const dodge = on(p.smokeSecs) ? SMOKE.dodge : 0;
+  // Доля урона, которую баффы снимают сверх брони: костёр, «Благословение».
+  const def = 1 - (on(p.campBuffSecs) ? 1 - CAMPFIRE.buffDef : 1) * (cry === 3 ? 1 - WARCRY.blessDef : 1);
+  return { dmg, tempo, move, dodge, def, any: dmg !== 1 || tempo !== 1 || move !== 1 || dodge > 0 || def > 0 };
+}
+/** Пометка у значения, которое сейчас поднято баффом. */
+const UP = " ▲";
 
 /** Все числа «<Название> +N%» в тексте роллов (см. affixLabel в items.ts), в долях. */
 function affixVals(text: string | undefined, name: string): number[] {
@@ -83,6 +110,7 @@ const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger
  */
 export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const rows: HeroStatRow[] = [];
+  const bm = buffMuls(p);
   const rightIsWeapon = WEAPON_CLASSES.includes(p.rightCls as WeaponClass);
   const leftIsWeapon = WEAPON_CLASSES.includes(p.leftCls as WeaponClass);
   const cls = (rightIsWeapon ? p.rightCls : leftIsWeapon ? p.leftCls : "") as WeaponClass | "";
@@ -101,15 +129,15 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   if (cls === "bow") {
     rows.push({
       label: "Урон",
-      value: (weaponDamage("arrow", p.level, p, tierMul) * (1 + dmgBonus)).toFixed(1),
+      value: (weaponDamage("arrow", p.level, p, tierMul) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
     });
   } else if (cls === "staff") {
-    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * staffMagicTier(tier) * (1 + dmgBonus)).toFixed(1) });
+    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * staffMagicTier(tier) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : "") });
   } else if (cls === "dagger" || cls === "spear" || cls === "hammer") {
     const dual = cls === "dagger" && p.leftCls === "dagger" && p.rightCls === "dagger";
     rows.push({
       label: "Урон",
-      value: (weaponDamage(cls, p.level, p, tierMul) * (dual ? DAGGER.dualDmg : 1) * (1 + dmgBonus)).toFixed(1),
+      value: (weaponDamage(cls, p.level, p, tierMul) * (dual ? DAGGER.dualDmg : 1) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
     });
     if (cls === "hammer") {
       rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
@@ -118,7 +146,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   } else {
     rows.push({
       label: "Урон",
-      value: (weaponDamage("sword", p.level, p, tierMul) * (1 + dmgBonus)).toFixed(1),
+      value: (weaponDamage("sword", p.level, p, tierMul) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
     });
   }
 
@@ -128,16 +156,20 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const atkSpeedBonus = affixNum2("Скорость атаки");
   rows.push({
     label: attackRateLabel(cls),
-    value: `${attacksPerSec(cls, p.level, p, atkSpeedBonus, p.leftCls === "dagger" && p.rightCls === "dagger").toFixed(2)}/с`,
+    value: `${(attacksPerSec(cls, p.level, p, atkSpeedBonus, p.leftCls === "dagger" && p.rightCls === "dagger") * bm.tempo).toFixed(2)}/с${bm.tempo > 1 ? UP : ""}`,
   });
 
-  rows.push({ label: "Скорость бега", value: `${moveSpeedFor(p.level, p).toFixed(1)} м/с` });
+  rows.push({ label: "Скорость бега", value: `${(moveSpeedFor(p.level, p) * bm.move).toFixed(1)} м/с${bm.move > 1 ? UP : ""}` });
 
   // Уворот (см. ZoneRoom.ts hurtPlayer): свободная левая рука (щит/пусто у
   // меча) — обычный шанс; лук/посох занимают обе руки — вдвое подвижнее (×5
   // в формуле dodgeChance).
   const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
-  rows.push({ label: "Шанс уворота", value: `${Math.round(dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") * 100)}%` });
+  // «Пелена смерти» прибавляет уворот СВЕРХ потолка (см. hurtPlayer) — показываем так же.
+  rows.push({
+    label: "Шанс уворота",
+    value: `${Math.round((dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") + bm.dodge) * 100)}%${bm.dodge > 0 ? UP : ""}`,
+  });
 
   // Ролл Крит даёт и шанс, и силу (сила растёт вместе с шансом, см. critRollMult).
   const critW = affixVals(weaponAffix, "Крит");
@@ -173,10 +205,10 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   if (vamp > 0) rows.push({ label: "Вампиризм", value: `${Math.round(vamp * 1000) / 10}% урона в HP` });
 
   // Ролл щита гасит урон отдельным множителем сверх брони (см. ZoneRoom.hurtPlayer).
-  const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита"));
-  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%` });
-  const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита"));
-  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%` });
+  const arm = 1 - (1 - armorFrac(p)) * (1 - affixNum(shieldAffix, "Физ. защита")) * (1 - bm.def);
+  rows.push({ label: "Физ. защита", value: `${Math.round(arm * 100)}%${bm.def > 0 ? UP : ""}` });
+  const mres = 1 - (1 - magicResistFrac(p)) * (1 - affixNum(shieldAffix, "Маг. защита")) * (1 - bm.def);
+  rows.push({ label: "Маг. защита", value: `${Math.round(mres * 100)}%${bm.def > 0 ? UP : ""}` });
   // Регенерация: ТЕЛ + ролл щита (доля макс. HP в секунду, и в бою) + базовая вне боя.
   const regen = maxHpFor(p.level, p) * (hpRegenFrac(p) + affixNum(shieldAffix, "Регенерация"));
   rows.push({ label: "Регенерация", value: `${regen.toFixed(1)} HP/с (+${PLAYER_HP.regen} вне боя)` });
