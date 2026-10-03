@@ -692,6 +692,183 @@ if (ONLY.has("skills")) {
   }
 }
 
+// 🧪 Проверка тестовых умений: каждое по отдельности, на настоящем серверном коде (--only skilltest).
+if (ONLY.has("skilltest")) {
+  say(`\n── 🧪 Проверка умений ассасина (настоящий серверный код) ──`);
+  const dag = LOADOUTS.find((l) => l.id === "кинжал")!;
+  const check = (name: string, cond: boolean, detail: string): void => {
+    say(`  ${cond ? "✅" : "❌"} ${pad(name, 34)} ${detail}`);
+    if (!cond) anomalies.push(`🧪 ${name}: ${detail}`);
+  };
+  const secs = (step: () => void, s: number, each?: () => void): void => {
+    for (let i = 0; i < s * (1000 / TICK_MS); i++) {
+      step();
+      each?.();
+    }
+  };
+  /** Комната с ботом-ассасином, бот «заморожен» (не ходит и не бьёт сам) — кроме run=true. */
+  const scene = (keep: (m: any) => boolean, skills: [SkillId, SkillId], run = false) => {
+    const r = makeRoom(keep);
+    const x = addBot(r.room, "t1", { lvl: 33, load: dag, skills });
+    if (!run) r.room.tickBot = () => {};
+    // Пара тиков: сервер выставит skill1/skill2 под класс (до этого castSkill откажет).
+    for (let i = 0; i < 3; i++) r.step();
+    const dh = r.room.sim.dmgHits as { c?: string; dmg: number }[];
+    const nums = { poison: 0, poisonDmg: 0, heal: 0, healAmt: 0 };
+    const push = dh.push.bind(dh);
+    dh.push = (...it: { c?: string; dmg: number }[]) => {
+      for (const h of it) {
+        if (h.c === "poison") (nums.poison++, (nums.poisonDmg += h.dmg));
+        if (h.c === "heal") (nums.heal++, (nums.healAmt += h.dmg));
+      }
+      return push(...it);
+    };
+    return { ...r, x, p: x.bot.state, rt: x.bot.rt, nums };
+  };
+  const nearest = (room: Room, x: number, z: number, f: (m: any) => boolean) =>
+    [...room.sim.mobs.values()].filter((m: any) => !m.dead && f(m)).sort((a: any, b: any) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0];
+  const sc = HUB.training.scarecrow;
+
+  // 1. Чумной клинок — бот сам бьёт Пугало.
+  {
+    const t = scene((m) => !!m.scarecrow, ["plague", "shadowStep"], true);
+    put(t.p, sc.x + 3, sc.z);
+    t.x.bot.testUntil = simNow + 3600_000; // тренировка: бот бьёт Пугало
+    let maxSt = 0;
+    let bursts = 0;
+    let buff = 0;
+    const pm = t.room.sim.poisonMob.bind(t.room.sim);
+    t.room.sim.poisonMob = (...a: unknown[]) => {
+      const n = pm(...a);
+      maxSt = Math.max(maxSt, n);
+      if (n >= C2.PLAGUE.maxStacks) bursts++;
+      return n;
+    };
+    secs(t.step, 30, () => void (t.p.plagueSecs > 0 && buff++));
+    const casts = t.meter.casts.get(t.x.id)?.get("plague") ?? 0;
+    check("Чумной клинок: применяется", casts > 0, `применён ${casts} раз за 30 с`);
+    check("Чумной клинок: стаки до 5", maxSt >= C2.PLAGUE.maxStacks, `максимум стаков ${maxSt}, взрывов ${bursts}`);
+    check("Чумной клинок: зелёные цифры яда", t.nums.poison > 0, `${t.nums.poison} зелёных чисел, всего ${Math.round(t.nums.poisonDmg)} урона ядом`);
+    check("Чумной клинок: плашка баффа", buff > 0, `plagueSecs > 0 в ${Math.round((buff * TICK_MS) / 1000)} с из 30`);
+  }
+
+  // 2. Пелена смерти — удары моба по замороженному герою, без дыма и в дыму.
+  {
+    const melee = (smoke: boolean) => {
+      const t = scene((m) => m.kind === "slime" && !m.campType, ["smoke", "shadowStep"]);
+      const m = nearest(t.room, t.p.head.x, t.p.head.z, () => true);
+      put(t.p, m.x + 1.2, m.z);
+      if (smoke) t.room.castSkill("smoke", t.x.id, t.p, t.rt, NaN, NaN);
+      let hits = 0;
+      let landed = 0;
+      const hurt = t.room.hurtPlayer.bind(t.room);
+      t.room.hurtPlayer = (h: any) => {
+        const hp0 = t.p.hp;
+        hurt(h);
+        if (h.target === t.x.id && !h.dot) (hits++, t.p.hp < hp0 && landed++);
+      };
+      secs(t.step, 40, () => {
+        t.rt.invuln = 0; // без неуязвимости после появления
+        // Дым без перерывов (у умения откат дольше дыма — меряем сам дым, а не откат).
+        if (smoke && t.room.sim.smokeLeft(t.p.head.x, t.p.head.z) <= 0.1) t.room.sim.addSmoke(t.p.head.x, t.p.head.z, C2.SKILLS2.smoke.radius, C2.SMOKE.duration);
+        t.p.hp = t.p.maxHp;
+      });
+      return { hits, landed, buff: t.p.smokeSecs };
+    };
+    const a = melee(false);
+    const b = melee(true);
+    const pa = a.hits ? a.landed / a.hits : 0;
+    const pb = b.hits ? b.landed / b.hits : 0;
+    check("Пелена: мобы промахиваются", b.hits > 3 && pb < pa * 0.6, `доходит ударов: без дыма ${Math.round(pa * 100)}% (${a.hits}), в дыму ${Math.round(pb * 100)}% (${b.hits})`);
+    check("Пелена: плашка баффа в дыму", b.buff > 0, `smokeSecs ${b.buff}`);
+    const shots = (smoke: boolean) => {
+      const ranged = (m: any): boolean => m.kind === "spitter" || !!m.shot;
+      const t = scene(ranged, ["smoke", "shadowStep"]);
+      const m = nearest(t.room, 0, 0, ranged);
+      m.hp = m.maxHp = 1e9;
+      put(t.p, m.x + 6, m.z);
+      // Дым — под героем (как в игре): плевун снаружи не должен видеть цель.
+      t.p.maxHp = t.p.hp = 1e5;
+      if (smoke) t.room.sim.addSmoke(t.p.head.x, t.p.head.z, 3.5, 60);
+      let n = 0;
+      const set = t.room.sim.balls.set.bind(t.room.sim.balls);
+      t.room.sim.balls.set = (k: string, v: unknown) => (n++, set(k, v));
+      const bolts = t.room.sim.bolts.size;
+      secs(t.step, 20, () => {
+        t.p.hp = t.p.maxHp;
+        t.rt.invuln = 0;
+      });
+      if (process.env.LAB_DEBUG) say(`    плевун ${m.kind} в ${f(Math.hypot(m.x - t.p.head.x, m.z - t.p.head.z), 1)} м, цель ${m.targetId ?? "—"}, aggro ${m.aggroed}`);
+      return n + Math.max(0, t.room.sim.bolts.size - bolts);
+    };
+    const s0 = shots(false);
+    const s1 = shots(true);
+    check("Пелена: в героя в дыму не стреляют", s0 > 0 && s1 === 0, `плевков за 20 с: без дыма ${s0}, в дыму ${s1}`);
+  }
+
+  // 3. Кража душ — раненый союзник рядом.
+  {
+    const t = scene((m) => !!m.scarecrow, ["soulSteal", "shadowStep"]);
+    const ally = addBot(t.room, "t2", { lvl: 33, load: LOADOUTS[0] });
+    put(t.p, sc.x + 2, sc.z);
+    put(ally.bot.state, sc.x + 4, sc.z + 2);
+    ally.bot.state.hp = ally.bot.state.maxHp * 0.3;
+    t.room.tickBot = () => {};
+    const hp0 = ally.bot.state.hp;
+    const ok = t.room.castSkill("soulSteal", t.x.id, t.p, t.rt, sc.x, sc.z);
+    check("Кража душ: лечит раненого союзника", ok && ally.bot.state.hp > hp0, `союзник ${Math.round(hp0)} → ${Math.round(ally.bot.state.hp)} HP, число «+${t.nums.healAmt}»`);
+    const me0 = (t.p.hp = t.p.maxHp * 0.5);
+    ally.bot.state.hp = ally.bot.state.maxHp;
+    t.rt.skillAt = {};
+    t.room.castSkill("soulSteal", t.x.id, t.p, t.rt, sc.x, sc.z);
+    check("Кража душ: все целы — лечит себя", t.p.hp > me0, `сам ${Math.round(me0)} → ${Math.round(t.p.hp)} HP`);
+  }
+
+  // 4. Призрак бездны — моб бьёт замороженного героя, затем тень.
+  {
+    const t = scene((m) => m.kind === "slime" && !m.campType, ["abyss", "shadowStep"]);
+    const m = nearest(t.room, t.p.head.x, t.p.head.z, () => true);
+    put(t.p, m.x + 1.2, m.z);
+    t.p.maxHp = t.p.hp = 1e5;
+    let hits = 0;
+    const hurt = t.room.hurtPlayer.bind(t.room);
+    t.room.hurtPlayer = (h: any) => (h.target === t.x.id && hits++, hurt(h));
+    secs(t.step, 3);
+    const before = hits;
+    t.room.castSkill("abyss", t.x.id, t.p, t.rt, NaN, NaN);
+    let buff = 0;
+    secs(t.step, 0.6);
+    hits = 0;
+    let target = 0;
+    secs(t.step, 2.2, () => {
+      if (t.p.abyssSecs > 0) buff++;
+      if (m.targetId === t.x.id) target++;
+    });
+    check("Призрак: мобы теряют героя", before > 0 && hits === 0 && target === 0, `ударов моба: 3 с до тени ${before}, в тени ${hits}; моб целился в героя ${target} тиков`);
+    check("Призрак: плашка баффа", buff > 0, `abyssSecs > 0 ${buff} тиков`);
+    t.room.castSkill("abyss", t.x.id, t.p, t.rt, NaN, NaN);
+    const mul = t.room.abyssStrikeMul(t.p, t.rt);
+    const tempo = t.room.cryTempo(t.rt);
+    const mul2 = t.room.abyssStrikeMul(t.p, t.rt);
+    check("Призрак: удар из тени ×2, потом темп", mul >= 2 && mul2 === 1 && tempo > 1.29, `первый удар ×${mul.toFixed(2)}, второй ×${mul2}, темп после ×${tempo.toFixed(2)}`);
+    check("Призрак: крит из тени", t.rt.forceCritUntil > t.room.elapsed, `гарантированный крит до ${(t.rt.forceCritUntil - t.room.elapsed).toFixed(1)} с`);
+  }
+
+  // 5. Влитые повторы: оглушение рывка, замедление Танца клинков.
+  {
+    const t = scene((m) => m.kind === "slime" && !m.campType, ["shadowStep", "whirlwind"]);
+    const m = nearest(t.room, t.p.head.x, t.p.head.z, () => true);
+    m.hp = m.maxHp = 1e9;
+    put(t.p, m.x + 6, m.z);
+    t.room.castSkill("shadowStep", t.x.id, t.p, t.rt, m.x, m.z);
+    check("Теневой рывок: оглушает", m.stunned, `оглушён: ${m.stunned}`);
+    put(t.p, m.x + 1.2, m.z);
+    t.room.castSkill("whirlwind", t.x.id, t.p, t.rt, m.x, m.z);
+    secs(t.step, 0.6);
+    check("Танец клинков: замедляет", m.slowT > 0 && m.slowMul < 1, `замедление ${m.slowT.toFixed(1)} с, скорость ×${m.slowMul}`);
+  }
+}
+
 // 8. Защита: роллы щита/вампиризм и защитные атрибуты — в настоящем бою (физ. и маг. мобы)
 if (ONLY.has("def")) {
   const camps = [

@@ -10,6 +10,8 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { Constants } from "@babylonjs/core/Engines/constants";
 
 import { CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "./HealCrossFx";
+import { FXC } from "./fxColors";
+import type { DmgHitColor } from "#shared/net/messages";
 
 export { CROSS_GREEN, CROSS_ORANGE, CROSS_RED };
 
@@ -415,12 +417,12 @@ export class WorldCrossFx {
   }
 
   /** Число нанесённого урона всплывает над мобом и гаснет: цифры — инстансы из атласа, без canvas на удар. */
-  damageNumber(x: number, y: number, z: number, dmg: number): void {
+  damageNumber(x: number, y: number, z: number, dmg: number, color: Color3 | null = null): void {
     const s = String(Math.max(0, Math.round(dmg))).slice(0, MAX_DIGITS);
     const dx = (Math.random() - 0.5) * 0.5;
     const dz = (Math.random() - 0.5) * 0.5;
     for (let i = 0; i < s.length; i++) {
-      this.write(TYPE_DIGIT, x, y, z, this.clock, DMG_LIFE, s.charCodeAt(i) - 48, (i - (s.length - 1) / 2) * DIGIT_M, null, 1, dx, dz);
+      this.write(TYPE_DIGIT, x, y, z, this.clock, DMG_LIFE, s.charCodeAt(i) - 48, (i - (s.length - 1) / 2) * DIGIT_M, color, 1, dx, dz);
     }
   }
 
@@ -500,4 +502,9 @@ export class WorldCrossFx {
     this.tex.dispose();
     void this.scene;
   }
+}
+
+/** Цвет числа урона по его виду (DmgHitsMsg.c): яд — ядовито-зелёный, лечение — зелёный, иначе белый. */
+export function dmgNumberColor(c: DmgHitColor | undefined): Color3 | null {
+  return c === "poison" ? FXC.poison : c === "heal" ? FXC.heal : null;
 }

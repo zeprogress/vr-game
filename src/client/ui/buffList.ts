@@ -20,6 +20,9 @@ export function buffList(p: {
   campBuffSecs?: number;
   scrollXpSecs?: number;
   scrollWindSecs?: number;
+  plagueSecs?: number;
+  abyssSecs?: number;
+  smokeSecs?: number;
   towerFloor?: number;
 }): BuffEntry[] {
   if ((p.towerFloor ?? 0) > 0) return []; // в башне баффы не действуют
@@ -28,6 +31,9 @@ export function buffList(p: {
     camp: p.campBuffSecs ?? 0,
     scrollXp: p.scrollXpSecs ?? 0,
     scrollWind: p.scrollWindSecs ?? 0,
+    plague: p.plagueSecs ?? 0,
+    abyss: p.abyssSecs ?? 0,
+    smoke: p.smokeSecs ?? 0,
   };
   return BUFF_ORDER.filter((id) => secs[id] > 0).map((id) => ({
     id,

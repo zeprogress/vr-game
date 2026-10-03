@@ -2235,10 +2235,16 @@ export class ZoneRoom extends Room<ZoneState> {
   private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, dmg: number): void {
     if (rt.plagueUntil <= this.elapsed || mob.dead) return;
     const dps = dmg * PLAGUE.tickFrac * skillAttrMul("plague", p);
-    if (this.sim.poisonMob(mob.id, dps, ownerId) < PLAGUE.maxStacks) return;
+    const stacks = this.sim.poisonMob(mob.id, dps, ownerId);
+    // Стак на мобе — зелёная метка, чем больше стаков, тем ярче (видно, что яд копится).
+    this.broadcast(MSG.act, { k: "poisonStack", id: ownerId, x: mob.x, y: mob.y, z: mob.z, mobId: mob.id, r: stacks, d: PLAGUE.stackSec } satisfies ActRelay);
+    if (stacks < PLAGUE.maxStacks) return;
     // Взрыв яда: SKILLS2.plague.dmgMult удара по всем вокруг цели (и по ней самой).
     const burst = dmg * SKILLS2.plague.dmgMult * skillAttrMul("plague", p);
+    const hp0 = mob.hp;
     this.sim.hitMob(mob.id, burst, 0, 0, ownerId, false, true);
+    const dealt = Math.round(Math.max(0, hp0 - (mob.dead ? 0 : mob.hp)));
+    if (dealt > 0) this.sim.dmgHits.push({ x: mob.x, y: mob.y + MOB.bodyRadius * mob.scale * 1.6, z: mob.z, dmg: dealt, by: ownerId, mob: mob.id, c: "poison" });
     this.sim.splashDamage(mob.x, mob.y, mob.z, PLAGUE.burstRadius, burst, mob.id, ownerId);
     const y = terrainHeight(mob.x, mob.z);
     this.broadcast(MSG.act, { k: "plagueBurst", id: ownerId, x: mob.x, y, z: mob.z, r: PLAGUE.burstRadius } satisfies ActRelay);
@@ -7216,7 +7222,10 @@ export class ZoneRoom extends Room<ZoneState> {
             ally = o;
           }
         });
+        const hp0 = ally.hp;
         ally.hp = Math.min(ally.maxHp, ally.hp + dmg * SOUL_STEAL.transfer * skillAttrMul("soulSteal", p));
+        const healed = Math.round(ally.hp - hp0);
+        if (healed > 0) this.sim.dmgHits.push({ x: ally.head.x, y: ally.head.y + 0.4, z: ally.head.z, dmg: healed, by: ownerId, c: "heal" });
         const allyId = this.idOf(ally) ?? ownerId;
         act({ k: "soulSteal", x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: ally.head.x, z2: ally.head.z, d: ally.head.y - 0.5 });
         this.broadcast(MSG.act, { k: "healHit", id: allyId, x: ally.head.x, y: ally.head.y, z: ally.head.z } satisfies ActRelay);
@@ -7628,6 +7637,13 @@ export class ZoneRoom extends Room<ZoneState> {
       const rt = this.rt.get(id);
       const left = rt ? Math.max(0, Math.ceil(rt.cryUntil - this.elapsed)) : 0;
       if (p.crySecs !== left) p.crySecs = left;
+      const sec = (until: number | undefined): number => Math.max(0, Math.ceil((until ?? 0) - this.elapsed));
+      const plague = sec(rt?.plagueUntil);
+      if (p.plagueSecs !== plague) p.plagueSecs = plague;
+      const abyss = rt?.abyssStrike ? sec(rt.abyssUntil) : 0;
+      if (p.abyssSecs !== abyss) p.abyssSecs = abyss;
+      const smoke = p.dead ? 0 : Math.ceil(this.sim.smokeLeft(p.head.x, p.head.z));
+      if (p.smokeSecs !== smoke) p.smokeSecs = smoke;
       const kind = left > 0 ? (rt?.cryKind ?? 0) : 0;
       if (p.cryKind !== kind) p.cryKind = kind;
     });

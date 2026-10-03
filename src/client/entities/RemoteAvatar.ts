@@ -200,6 +200,8 @@ export class RemoteAvatar implements Hittable {
   private bubble: SpeechBubble | null = null;
   /** Баффы — кружащие мечи (×2 опыт/урон) и щиты («Тепло костра»). */
   private readonly buffAura: BuffOrbitFx;
+  /** 🧪 Умения ассасина в силе — фигурки вокруг героя (яд, тень, дым). */
+  private skillBuffs = { plague: false, abyss: false, smoke: false };
   private campWarm = false;
   /** Свитки: ветер (башмаки) и мудрость (стрелки вверх). */
   private windBuff = false;
@@ -676,6 +678,7 @@ export class RemoteAvatar implements Hittable {
     this.campWarm = !inTower && (p.campBuffSecs ?? 0) > 0;
     this.windBuff = !inTower && (p.scrollWindSecs ?? 0) > 0;
     this.xpBuff = !inTower && (p.scrollXpSecs ?? 0) > 0;
+    this.skillBuffs = { plague: !inTower && (p.plagueSecs ?? 0) > 0, abyss: !inTower && (p.abyssSecs ?? 0) > 0, smoke: !inTower && (p.smokeSecs ?? 0) > 0 };
     this.stunned = p.stunned === 1;
     this.dead = p.dead === 1;
     this.theirPvp = p.pvp === 1;
@@ -788,6 +791,9 @@ export class RemoteAvatar implements Hittable {
       camp: show && this.campWarm,
       scrollWind: show && this.windBuff,
       scrollXp: show && this.xpBuff,
+      plague: show && this.skillBuffs.plague,
+      abyss: show && this.skillBuffs.abyss,
+      smoke: show && this.skillBuffs.smoke,
     });
     this.buffAura.update(dt);
     this.stunStars.setActive(this.stunned && !this.dead);

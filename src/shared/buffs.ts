@@ -2,13 +2,14 @@ import { CAMPFIRE, EVENT } from "./constants";
 import type { IconKey } from "./icons";
 import { FX_RGB, rgbHex, type FxColor } from "./look";
 import { SCROLL } from "./shop";
+import { ABYSS, PLAGUE, SMOKE } from "./classes2";
 
 /**
  * Баффы героя — ОДНА таблица на всё: значок и строка в списке баффов (рамка
  * героя ПК/телефона, «смотрим» у спектатора, строка в VR) и светящиеся
  * фигурки, кружащие вокруг героя (BuffOrbitFx). Цвет — из палитры shared/look.ts.
  */
-export type BuffId = "victory" | "camp" | "scrollXp" | "scrollWind";
+export type BuffId = "victory" | "camp" | "scrollXp" | "scrollWind" | "plague" | "abyss" | "smoke";
 /** Форма фигурки вокруг героя. */
 export type BuffShape = "shield" | "sword" | "boot" | "arrow";
 
@@ -60,10 +61,38 @@ export const BUFFS: Record<BuffId, BuffDef> = {
     size: 0.42,
     slot: 3,
   },
+  // ---- 🧪 умения ассасина: видно, что умение работает ----
+  plague: {
+    name: "Чумной клинок",
+    desc: `удары отравляют (до ${PLAGUE.maxStacks} стаков, на ${PLAGUE.maxStacks} — взрыв яда)`,
+    icon: "s.plague",
+    color: "poison",
+    shape: "sword",
+    size: 0.42,
+    slot: 4,
+  },
+  abyss: {
+    name: "Призрак бездны",
+    desc: `мобы тебя не видят; первый удар ×2 и крит, затем +${Math.round(ABYSS.haste * 100)}% темпа`,
+    icon: "s.abyss",
+    color: "shadowDark",
+    shape: "boot",
+    size: 0.42,
+    slot: 5,
+  },
+  smoke: {
+    name: "Пелена смерти",
+    desc: `в дыму: +${Math.round(SMOKE.dodge * 100)}% уворота, мобы мажут, стрелки не видят`,
+    icon: "s.smoke",
+    color: "shadow",
+    shape: "shield",
+    size: 0.42,
+    slot: 6,
+  },
 };
 
 /** Порядок в списке баффов. */
-export const BUFF_ORDER: readonly BuffId[] = ["victory", "camp", "scrollXp", "scrollWind"];
+export const BUFF_ORDER: readonly BuffId[] = ["abyss", "plague", "smoke", "victory", "camp", "scrollXp", "scrollWind"];
 
 /** Цвет баффа для HTML/CSS. */
 export function buffHex(id: BuffId): string {

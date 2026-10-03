@@ -39,6 +39,7 @@ import {
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { serverPerf } from "../perf";
 import { PLAGUE } from "#shared/classes2";
+import type { DmgHitColor } from "#shared/net/messages";
 
 // Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
 enableTerrainHeightCache();
@@ -696,6 +697,9 @@ export class Mob {
   poisonDps = 0;
   poisonT = 0;
   poisonBy = "";
+  /** Снятое ядом с последнего показа и таймер показа — зелёное число раз в секунду, а не на каждый тик. */
+  poisonShown = 0;
+  poisonShowT = 0;
 
   /** Горение от Пламенного меча: DoT `dps` на `sec` секунд, опыт — тому, кто поджёг. */
   burningT = 0;
@@ -2230,8 +2234,8 @@ export class ZoneSim {
   tick(dt: number, players: SimPlayer[]): PlayerHit[] {
     const hits: PlayerHit[] = [];
     const spit = (mob: Mob, target: SimPlayer): void => {
-      // «Пелена смерти»: из дыма не стреляют и не плюются.
-      if (this.inSmoke(mob.x, mob.z)) return;
+      // «Пелена смерти»: из дыма не стреляют, и в героя, стоящего в дыму, — тоже (не видят цель).
+      if (this.inSmoke(mob.x, mob.z) || this.inSmoke(target.x, target.z)) return;
       if (mob.shot) {
         this.shoot(mob, target);
         return;
@@ -2490,7 +2494,7 @@ export class ZoneSim {
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
-  readonly dmgHits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string }[] = [];
+  readonly dmgHits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor }[] = [];
   /** Моб увернулся от удара героя — ZoneRoom покажет «MISS» над мобом. */
   /** Отражённый щитом урон — уходит в hits на следующем тике. */
   private readonly reflectHits: PlayerHit[] = [];
@@ -2504,8 +2508,19 @@ export class ZoneSim {
     for (const m of this.mobs.values()) {
       if (!m.dead && m.poisonStacks > 0) {
         m.poisonT -= dt;
+        const hp0 = m.hp;
+        const x = m.x;
+        const y = m.y + MOB.bodyRadius * m.scale * 1.4;
+        const z = m.z;
         this.hitMob(m.id, m.poisonDps * m.poisonStacks * dt, 0, 0, m.poisonBy, false, true);
+        m.poisonShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
+        m.poisonShowT += dt;
         if (m.poisonT <= 0) m.poisonStacks = 0;
+        if (m.poisonShown >= 1 && (m.poisonShowT >= 1 || m.dead || m.poisonStacks === 0)) {
+          this.dmgHits.push({ x, y, z, dmg: Math.round(m.poisonShown), by: m.poisonBy || undefined, mob: m.id, c: "poison" });
+          m.poisonShown = 0;
+          m.poisonShowT = 0;
+        }
       }
     }
     for (let i = this.smokes.length - 1; i >= 0; i--) if (this.elapsed > this.smokes[i].until) this.smokes.splice(i, 1);
@@ -2698,6 +2713,12 @@ export class ZoneSim {
   readonly smokes: { x: number; z: number; r: number; until: number }[] = [];
   addSmoke(x: number, z: number, r: number, sec: number): void {
     this.smokes.push({ x, z, r, until: this.elapsed + sec });
+  }
+  /** Сколько секунд ещё держится дым в точке (0 — дыма нет): для плашки баффа. */
+  smokeLeft(x: number, z: number): number {
+    let left = 0;
+    for (const s of this.smokes) if (Math.hypot(x - s.x, z - s.z) <= s.r) left = Math.max(left, s.until - this.elapsed);
+    return left;
   }
   inSmoke(x: number, z: number): boolean {
     for (const s of this.smokes) if (this.elapsed <= s.until && Math.hypot(x - s.x, z - s.z) <= s.r) return true;

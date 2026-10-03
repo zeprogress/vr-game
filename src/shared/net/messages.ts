@@ -169,9 +169,11 @@ export interface SpecCamMsg {
 /** Числа урона по мобам за тик — батчем (см. MSG.dmgHits), только для спектатора. */
 export interface DmgHitsMsg {
   /** by — кто ударил (sessionId), mob — по кому: для журнала урона у ПК-игрока. */
-  hits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string }[];
+  hits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor }[];
 }
 
+/** Цвет числа урона: яд — зелёный, лечение — светло-зелёный (без поля — обычный белый). */
+export type DmgHitColor = "poison" | "heal";
 /** Кто кого убил (этап 17 Ф9). `by` пуст — убил моб/среда. Строки уже готовы к показу. */
 export interface KillFeedMsg {
   by: string;
@@ -562,6 +564,7 @@ export type ActKind =
   | "markOn" // «Метка» на мобе mobId на d с
   | "markReset" // цель умерла под меткой — откат «Метки» сброшен (только хозяину)
   | "plagueBurst" // 🧪 «Чумной клинок»: взрыв яда в (x,z), радиус r
+  | "poisonStack" // 🧪 яд на мобе mobId: r — стаков (1..5), d — сколько тикает
   | "plagueOn" // 🧪 «Чумной клинок»: клинки героя id отравлены на d с
   | "smoke" // 🧪 «Пелена смерти»: дым в (x,z) на d с, радиус r
   | "soulSteal" // 🧪 «Кража душ»: из (x,y,z) моба к союзнику (x2,z2) на высоте d

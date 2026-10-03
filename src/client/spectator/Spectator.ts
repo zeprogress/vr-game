@@ -25,7 +25,7 @@ import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
-import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED } from "../ui/WorldCrossFx";
+import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED, dmgNumberColor } from "../ui/WorldCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -515,7 +515,7 @@ export class Spectator {
       const cp = this.cam.cam.position;
       for (const h of msg.hits) {
         if (Math.hypot(h.x - cp.x, h.z - cp.z) > SPEC_RANGE) continue;
-        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg, dmgNumberColor(h.c));
       }
     };
     net.onTowerMobs = (msg) => {

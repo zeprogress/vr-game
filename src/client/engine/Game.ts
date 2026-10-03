@@ -68,7 +68,7 @@ import { VrStunStars } from "../ui/VrStunStars";
 import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
-import { WorldCrossFx, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
+import { WorldCrossFx, dmgNumberColor, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
@@ -2319,6 +2319,7 @@ export class Game {
     this.player.setHp(self.hp);
     const inTower = (self.towerFloor ?? 0) > 0; // в башне баффы не действуют — не показываем
     this.localAvatar?.setBuffed(!inTower && (self.buffSecs ?? 0) > 0);
+    this.localAvatar?.setSkillBuffs({ plague: !inTower && self.plagueSecs > 0, abyss: !inTower && self.abyssSecs > 0, smoke: !inTower && self.smokeSecs > 0 });
     this.localAvatar?.setStunned(self.stunned === 1);
     this.vrStars?.setStunned(self.stunned === 1 && !self.dead);
     if (!this.pcHud) this.hud.setBuff(self.buffSecs ?? 0); // с рамкой героя баффы — значками в ней
@@ -3320,7 +3321,7 @@ export class Game {
       const vr = this.player.inVR;
       for (const h of msg.hits) {
         if (vr && Math.hypot(h.x - pp.x, h.z - pp.z) > VR_FX_RANGE) continue;
-        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg);
+        this.crossFx.damageNumber(h.x, h.y, h.z, h.dmg, dmgNumberColor(h.c));
       }
     };
     net.onPcInvData = (d) => {
@@ -3621,6 +3622,8 @@ export class Game {
       this.abyssHasteUntil = performance.now() + ABYSS.hasteSec * 1000;
       this.notifyToast("Ты в тени — мобы тебя не видят");
     }
+    if (k === "plagueOn" && id === this.net?.sessionId) this.notifyToast("Клинки отравлены — бей, яд копится на цели");
+    if (k === "smoke" && id === this.net?.sessionId) this.notifyToast("Дым: мобы мажут, стрелки тебя не видят");
     if (k === "markReset") {
       this.skillReadyAt.delete("mark");
       this.notifyToast("Цель пала под меткой — метка снова готова");

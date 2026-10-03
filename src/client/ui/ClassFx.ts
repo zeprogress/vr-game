@@ -565,6 +565,13 @@ export function playClassAct(
       vfx.burst(x, y + 1, z, FXC.poison, { count: 14, speed: 2, life: 0.6, grav: -2, size: 0.18 });
       c.sound(at, "swing");
       return true;
+    case "poisonStack": {
+      // Стак яда на мобе: зелёное кольцо под ним растёт со стаками (1..5), брызги яда.
+      const n = r ?? 1;
+      if (mobId) vfx.decal(x, y, z, 0.6 + n * 0.22, FXC.poison, d ?? 3, 1, 0.45 + n * 0.1, { kind: "mob", id: mobId, dy: 0.1 });
+      vfx.burst(x, y + 0.8, z, FXC.poison, { count: 4 + n * 2, speed: 2.5, life: 0.45, grav: 3, size: 0.14 });
+      return true;
+    }
     case "plagueBurst":
       vfx.decal(x, y, z, r ?? 3, FXC.poison, 0.6, 0, 1.1);
       vfx.burst(x, y + 0.6, z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
@@ -573,8 +580,9 @@ export function playClassAct(
     case "smoke":
       // Дымовая бомба: серый круг на всё время и клубы дыма.
       vfx.decal(x, y, z, r ?? 3.5, SHADOW_GRAY, d ?? 6, 1, 0.9);
-      for (let i = 0; i < Math.ceil(d ?? 6); i++) {
-        c.fx.later(i, () => vfx.burst(x, y + 0.5, z, SHADOW_GRAY, { count: 18, speed: 1.6, life: 1.4, grav: -0.6, size: 0.7 }));
+      vfx.pillar(x, y, z, (r ?? 3.5) * 0.85, 2.2, SHADOW_GRAY, d ?? 6);
+      for (let i = 0; i < Math.ceil((d ?? 6) * 2); i++) {
+        c.fx.later(i * 0.5, () => vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 22, speed: 2.2, life: 1.6, grav: -0.5, size: 0.8 }));
       }
       c.sound(at, "thud");
       return true;
