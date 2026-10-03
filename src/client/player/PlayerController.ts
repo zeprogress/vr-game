@@ -288,6 +288,17 @@ export class PlayerController {
     return this._planarSpeed;
   }
 
+  /**
+   * Сразу развернуть персонажа лицом к точке (прыжок за спину цели). В третьем
+   * лице камера разворачивается следом — цель остаётся в кадре. В VR не трогаем
+   * (поворот там — голова и snap-turn игрока).
+   */
+  faceInstant(x: number, z: number): void {
+    if (this.xrCamera) return;
+    this.yaw = Math.atan2(x - this.body.position.x, z - this.body.position.z);
+    if (this.tp) this.tp.yaw = this.yaw;
+  }
+
   /** Плавно довернуть персонажа лицом к точке (автонаводка удара). */
   faceTowards(x: number, z: number, dt: number): void {
     const t = Math.atan2(x - this.body.position.x, z - this.body.position.z);

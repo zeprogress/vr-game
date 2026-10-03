@@ -6334,7 +6334,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const bx = mob.x + (ax / al) * behind;
       const bz = mob.z + (az / al) * behind;
       this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz, v: CLASS_IDS.indexOf("assassin") } satisfies ActRelay);
-      this.placeBotAt(p, bx, bz);
+      this.placeBotAt(p, bx, bz, mob);
     }
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.
     const forced = swordCrit <= 1 && bot.rt.forceCritUntil > this.elapsed;
@@ -6789,13 +6789,25 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Бот после переноса умением: не внутри моба, высота — по земле. */
-  private placeBotAt(p: PlayerState, x: number, z: number): void {
+  /** `face` — сразу развернуть бота лицом к этой точке (прыжок за спину цели). */
+  private placeBotAt(p: PlayerState, x: number, z: number, face?: { x: number; z: number }): void {
     const fromX = p.head.x;
     const fromZ = p.head.z;
     // Перенос умением — только докуда можно дойти, не забираясь на крутое (MAX_CLIMB).
     [p.head.x, p.head.z] = reachAlong(fromX, fromZ, x, z);
     this.botOutOfMobs(p, undefined, fromX, fromZ);
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
+    if (face) {
+      const bot = [...this.bots.values()].find((b) => b.state === p);
+      if (bot) {
+        bot.yaw = Math.atan2(face.x - p.head.x, face.z - p.head.z);
+        bot.rt.yaw = bot.yaw;
+        p.head.qx = 0;
+        p.head.qy = Math.sin(bot.yaw / 2);
+        p.head.qz = 0;
+        p.head.qw = Math.cos(bot.yaw / 2);
+      }
+    }
   }
 
   /**
@@ -6863,7 +6875,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
-            if (isBot) this.placeBotAt(pp, lx, lz);
+            if (isBot) this.placeBotAt(pp, lx, lz, m0);
             if (m0.dead) return;
             this.sim.hitMob(m0.id, L.dmg * pow.dmg * WEAPONS2.dagger.critMult, ax, az, ownerId, false, false, false, true);
             this.sim.stunMob(m0.id, L.stun);
@@ -7013,7 +7025,7 @@ export class ZoneRoom extends Room<ZoneState> {
           }
         }
         if (isBot) {
-          this.placeBotAt(p, ex, ez);
+          this.placeBotAt(p, ex, ez, stepTarget ?? undefined);
           ex = p.head.x;
           ez = p.head.z;
         }
@@ -7219,7 +7231,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
             if (!pp || pp.dead) return;
-            if (isBot) this.placeBotAt(pp, lx, lz);
+            if (isBot) this.placeBotAt(pp, lx, lz, m0);
             if (m0.dead) return;
             this.sim.hitMob(m0.id, pow.dmg, ax, az, ownerId);
             this.afterDaggerHit(ownerId, pp, rt, m0, pow.dmg, PLAGUE.openStacks);
@@ -7249,7 +7261,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const ex = m.x + dx * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
         const ez = m.z + dz * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
         act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: ex, z2: ez });
-        if (isBot) this.placeBotAt(p, ex, ez);
+        if (isBot) this.placeBotAt(p, ex, ez, m);
         this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
         // Самый раненый союзник рядом (доля HP ниже SOUL_STEAL.healthy), иначе — сам.
         let ally: PlayerState = p;

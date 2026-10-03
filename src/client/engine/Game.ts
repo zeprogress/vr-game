@@ -3135,11 +3135,13 @@ export class Game {
     } else if (id === "shadowStep") {
       let ex: number;
       let ez: number;
+      let stepFace: { x: number; z: number } | null = null;
       if (hopsBack(cls)) {
         ex = p.x - fx * hopDistance(cls);
         ez = p.z - fz * hopDistance(cls);
       } else {
         const t = frontTarget(11);
+        stepFace = t;
         if (t) {
           // За спину цели на дистанцию удара — от размера моба, а не фиксированные +1.4 м.
           const dx = t.x - p.x;
@@ -3155,7 +3157,7 @@ export class Game {
       }
       msg.x = ex;
       msg.z = ez;
-      this.startDash(ex, ez, 0.2);
+      this.startDash(ex, ez, 0.2, cls === "assassin" ? stepFace ?? undefined : undefined);
       // Кувырок — только отскоку лучника/копейщика; у кинжала прыжки без кувырков.
       if (cls !== "assassin") this.localAvatar?.oneShot("roll", 1.6);
     } else if (id === "crush") {
@@ -3219,7 +3221,8 @@ export class Game {
     const d = Math.hypot(dx, dz);
     if (d < 0.1) return;
     const L = Math.max(0, d + over);
-    this.startDash(p.x + (dx / d) * L, p.z + (dz / d) * L, dur);
+    // За спину (over > 0) — по приземлении сразу лицом к цели.
+    this.startDash(p.x + (dx / d) * L, p.z + (dz / d) * L, dur, over > 0 ? t : undefined);
   }
 
   /**
@@ -3236,12 +3239,13 @@ export class Game {
   }
   private abyssBlinkDone = false;
 
-  private startDash(x: number, z: number, dur: number): void {
+  /** `face` — к какой точке развернуться по приземлении (прыжок за спину цели). */
+  private startDash(x: number, z: number, dur: number, face?: { x: number; z: number }): void {
     const p = this.player.position;
-    this.dash = { sx: p.x, sz: p.z, ex: x, ez: z, t: 0, dur: Math.max(0.05, dur) };
+    this.dash = { sx: p.x, sz: p.z, ex: x, ez: z, t: 0, dur: Math.max(0.05, dur), face };
   }
 
-  private dash: { sx: number; sz: number; ex: number; ez: number; t: number; dur: number } | null = null;
+  private dash: { sx: number; sz: number; ex: number; ez: number; t: number; dur: number; face?: { x: number; z: number } } | null = null;
 
   private tickDash(dt: number): void {
     const d = this.dash;
@@ -3255,7 +3259,10 @@ export class Game {
     const nz = d.sz + (d.ez - d.sz) * e;
     const [rx, rz] = reachAlong(p.x, p.z, nx, nz);
     this.player.teleportTo(rx, p.y, rz);
-    if (k >= 1 || Math.hypot(rx - nx, rz - nz) > 0.05) this.dash = null;
+    if (k >= 1 || Math.hypot(rx - nx, rz - nz) > 0.05) {
+      if (d.face) this.player.faceInstant(d.face.x, d.face.z);
+      this.dash = null;
+    }
   }
 
   private skillWarnAt = 0;
