@@ -3152,9 +3152,9 @@ export class Game {
       // Танец клинков — вихрь-рывок вперёд за время вращения.
       this.startDash(p.x + fx * ASSASSIN_WHIRL_DASH, p.z + fz * ASSASSIN_WHIRL_DASH, WHIRL.duration);
       this.combat.onMeleeSwing?.();
-    } else if (id === "mark" || id === "chain") {
+    } else if (id === "mark" || id === "chain" || id === "lifeArrow") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
-      const sel = this.selectedTargetPos() ?? frontTarget(id === "mark" ? 22 : 14);
+      const sel = this.selectedTargetPos() ?? frontTarget(id === "chain" ? 14 : 22);
       // Цели нет — сервер откажет; не тратим откат и подсказываем.
       if (!sel) {
         this.notifyToast("Нет цели впереди");

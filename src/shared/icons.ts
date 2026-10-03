@@ -159,6 +159,7 @@ export const ICONS = {
   "s.smoke": { emoji: "🌫️" },
   "s.soulSteal": { emoji: "👻" },
   "s.abyss": { emoji: "🕳️" },
+  "s.lifeArrow": { emoji: "💚" },
   "ui.test": { emoji: "🧪" },
 
   // ---- баффы ----

@@ -157,6 +157,9 @@ export interface DirectorCtx {
   cat?: { x: number; z: number; r: number; lo: number; hi: number; bossId: string; final: boolean; heroes: string[] } | null;
 }
 
+/** Камера катакомб: высота (м над полом, + за размах боя), относ назад от высоты, «рядом с героями» для мобов. */
+const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9 } as const;
+
 const CENTER = new Vector3(0, 0, 0);
 /** Обычный вертикальный угол обзора камеры спектатора, рад. */
 const DEFAULT_FOV = 0.9;
@@ -712,9 +715,17 @@ export class SpectatorCamera {
             z0 = Math.min(z0, z);
             z1 = Math.max(z1, z);
           };
-          for (const p of ctx.players) if (c.heroes.includes(p.id)) add(p.pos.x, p.pos.z);
+          // Герои — только те, кто уже в текущем зале (отставший в коридоре не тянет кадр в стену);
+          // никого в зале — все, кто внизу.
+          const inHall = (x: number, z: number): boolean => Math.hypot(x - c.x, z - c.z) < c.r + 1;
+          let heroes = ctx.players.filter((p) => c.heroes.includes(p.id) && inHall(p.pos.x, p.pos.z));
+          if (!heroes.length) heroes = ctx.players.filter((p) => c.heroes.includes(p.id));
+          for (const p of heroes) add(p.pos.x, p.pos.z);
+          // Мобы — страж/Владыка всегда, остальные — только рядом с героями (мелочь по краям зала кадр не раздувает).
           for (const m of ctx.mobs) {
-            if (Math.hypot(m.eye.x - c.x, m.eye.z - c.z) < c.r + 3 && inCatRegion(m.eye.x, m.eye.z)) add(m.eye.x, m.eye.z);
+            if (!inHall(m.eye.x, m.eye.z) || !inCatRegion(m.eye.x, m.eye.z)) continue;
+            const near = m.id === c.bossId || heroes.some((p) => Math.hypot(m.eye.x - p.pos.x, m.eye.z - p.pos.z) < CAT_CAM.mobNear);
+            if (near) add(m.eye.x, m.eye.z);
           }
           if (!Number.isFinite(x0)) add(c.x, c.z);
           const cx = (x0 + x1) / 2;
@@ -729,11 +740,13 @@ export class SpectatorCamera {
           this.catTopC.x += (cx - this.catTopC.x) * k;
           this.catTopC.z += (cz - this.catTopC.z) * k;
           this.catTopH += (spread - this.catTopH) * k;
+          // Центр кадра — всегда внутри зала: камера не смотрит в стену и в проём коридора.
+          [this.catTopC.x, this.catTopC.z] = catProject(this.catTopC.x, this.catTopC.z, c.hi, c.hi, 3);
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
           // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
           // бой шире — чуть выше и дальше (но не выше свода).
-          const height = Math.min(CAT_CEIL - 2, 7.5 + this.catTopH * 0.3);
-          const back = Math.min(c.r * 0.9, height * 0.85 + this.catTopH * 0.25);
+          const height = Math.min(CAT_CEIL - 2, CAT_CAM.height + this.catTopH * CAT_CAM.heightPerSpread);
+          const back = Math.min(c.r * 0.9, height * CAT_CAM.backPerHeight + this.catTopH * 0.3);
           // Медленно подкручивается влево-вправо (±35° за ~50 с) — объём и живость, без рывков.
           const sway = Math.sin(this.orbitClock * 0.125) * 0.6;
           let px = this.catTopC.x + Math.sin(sway) * back;

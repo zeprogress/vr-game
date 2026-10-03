@@ -67,6 +67,13 @@ export interface PlayerRecord extends SaveMsg, Progress {
   tokens?: number;
   /** Свитки: до какого момента действуют (мс с эпохи) — переживают перезаход. */
   scrollXpUntil?: number;
+  /** Катакомбы: лучший урон за один забег, забегов и побед (таблица рекордов у спектатора). */
+  catBestDmg?: number;
+  catRuns?: number;
+  catWins?: number;
+  /** Бафф победы над событием (×2 опыт/урон) и «Тепло костра»: до какого момента (мс с эпохи) — переживают перезаход и смену ПК ↔ бот. */
+  eventBuffUntil?: number;
+  campBuffUntil?: number;
   scrollWindUntil?: number;
   /** Версия системы атрибутов: 2 — «Классы 2.0» (6 атрибутов, цена очков растёт). Нет/1 — старая. */
   attrVer?: number;

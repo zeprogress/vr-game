@@ -296,7 +296,8 @@ export type SkillId =
   | "plague"
   | "smoke"
   | "soulSteal"
-  | "abyss";
+  | "abyss"
+  | "lifeArrow";
 
 export interface ClassDef {
   name: string;
@@ -324,7 +325,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
   archer: {
     name: "Лучник", icon: glyph("c.archer"), role: "Дальний урон", weapons: "лук", main: "bow",
-    skills: ["arrowRain", "shadowStep", "mark", "chain"], defaultSkills: ["arrowRain", "mark"],
+    skills: ["arrowRain", "shadowStep", "mark", "chain", "lifeArrow"], defaultSkills: ["arrowRain", "mark"],
     build: { str: 4, agi: 2.5, luc: 2.5, con: 1.2, wis: 0.8 },
   },
   support: {
@@ -475,6 +476,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     cooldown: 16, castTime: 0, radius: 0, dmgMult: 2, hits: 1,
     attr: { attr: "agi", per: 0.015, what: "удар из тени" },
   },
+  lifeArrow: {
+    name: "Стрела жизни", icon: glyph("s.lifeArrow"),
+    desc: "Тяжёлая стрела в цель до 22 м: ×2 урона; лечит тебя на половину нанесённого урона и ещё на 25% здоровья",
+    cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 2, hits: 1,
+  },
   chain: {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
@@ -568,6 +574,8 @@ export const PLAGUE = {
 export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3, range: 12 } as const;
 /** «Кража душ»: доля нанесённого урона в лечение; «все целы» — выше этой доли HP. */
 /** «Кража душ»: удар насквозь — рывок к цели до reach м и дальше за спину на through м. */
+/** Лучник «Стрела жизни»: лечение — доля нанесённого урона + доля своего макс. HP; бот стреляет ею, когда HP ниже botBelow. */
+export const LIFE_ARROW = { healDmg: 0.5, healMax: 0.25, botBelow: 0.85 } as const;
 export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6, through: 3, dashTime: 0.22 } as const;
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */
 /** «Призрак бездны»: сколько в тени, ускорение после выхода, бег в тени; удар из тени — рывок за спину цели (blink м). */

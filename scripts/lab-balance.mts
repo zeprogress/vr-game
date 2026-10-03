@@ -682,6 +682,8 @@ if (ONLY.has("skills")) {
     // Пары подряд по пулу — каждое умение класса (и тестовые 🧪) хотя бы в одной паре.
     const pairs: [SkillId, SkillId][] = [];
     for (let i = 0; i + 1 < pool.length; i += 2) pairs.push([pool[i], pool[i + 1]]);
+    // Нечётный пул (у лучника 5) — последнее умение в паре с третьим, чтобы и оно попало в бой.
+    if (pool.length % 2 === 1) pairs.push([pool[pool.length - 1], pool[Math.min(2, pool.length - 2)]]);
     for (const pair of pairs) {
       const r = campRun(`${load.id}:${pair.join("+")}@camp`, { lvl: 33, load, skills: pair }, "boneWraith");
       say(

@@ -227,6 +227,9 @@ export const CATACOMBS = {
   hazardScale: 0.65,
   /** Финальная награда: жетоны ◈ каждому, бафф (мин). */
   finalTokens: 3,
+  /** Опыт каждому в отряде за стража / Владыку — доля уровня (сверх опыта за удары). */
+  guardXp: 0.2,
+  finalXp: 0.5,
   buffMinutes: 30,
   stages: [
     {
@@ -239,7 +242,8 @@ export const CATACOMBS = {
       bosses: [
         {
           key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Галереи мёртвых — поднимает мёртвых, костяные шипы",
-          hpMul: 2.94, dmgMul: 1.6, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
+          // Вождь на поляне ослаблен (HP 4800→3800, урон 7→5.5) — страж катакомб прежней силы.
+          hpMul: 3.71, dmgMul: 2.04, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
           mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
           adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
         },

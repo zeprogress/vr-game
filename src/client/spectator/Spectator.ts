@@ -519,7 +519,7 @@ export class Spectator {
       else if (m.kind === "win" || m.kind === "chest") this.sfx.bossFanfare();
     };
     net.onLeaderboard = (rows) => this.overlay?.setLeaderboard(rows);
-    net.onTowerBoard = (rows) => this.overlay?.setTowerBoard(rows);
+    net.onCatBoard = (rows) => this.overlay?.setCatBoard(rows);
     net.onDmgHits = (msg) => {
       const cp = this.cam.cam.position;
       for (const h of msg.hits) {

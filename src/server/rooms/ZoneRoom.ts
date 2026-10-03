@@ -30,7 +30,7 @@ import {
   type ActKind,
   type BotSayMsg,
   type LeaderboardRow,
-  type TowerBoardRow,
+  type CatBoardRow,
   type TowerMobsMsg,
   type BotEmote,
   type EmoteMsg,
@@ -204,7 +204,7 @@ import {
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -2375,46 +2375,21 @@ export class ZoneRoom extends Room<ZoneState> {
     this.grantTitle(top, LEGEND);
   }
 
-  /** Топ по лучшему этажу «Охотничьей башни» (тот же паттерн, что leaderboard). */
-  private towerLeaderboard(limit: number): TowerBoardRow[] {
-    const byNorm = new Map<string, TowerBoardRow & { at: number }>();
+  /** Рекорды катакомб: лучший урон героя за один забег (при равенстве — больше побед). */
+  private catLeaderboard(limit: number): CatBoardRow[] {
+    const rows: CatBoardRow[] = [];
     for (const rec of store.entries()) {
-      if (!rec.token.startsWith("nick:") || !rec.bestTowerFloor) continue;
-      // «Покорил» — только если реально убил всё (отметка ставится при фазе cleared). Дошёл до
-      // 20-го этажа и погиб — это просто «этаж 20».
-      const cleared = rec.towerClearedAt !== undefined;
-      byNorm.set(rec.token.slice(5), {
-        nick: rec.nick || rec.token.slice(5),
-        floor: rec.bestTowerFloor,
-        shards: rec.towerShards ?? 0,
-        cleared,
-        time: cleared ? rec.bestTowerTimeSec : undefined,
-        at: rec.towerClearedAt ?? 0,
-      });
+      if (!rec.token.startsWith("nick:") || !rec.catBestDmg) continue;
+      rows.push({ nick: rec.nick || rec.token.slice(5), dmg: rec.catBestDmg, wins: rec.catWins ?? 0, runs: rec.catRuns ?? 0 });
     }
-    // Сначала «покорившие» — по ЛУЧШЕМУ ВРЕМЕНИ прохождения (меньше — выше);
-    // покорившие до появления таймера (времени нет) — за ними, по порядку
-    // прохождения; затем остальные по этажу.
-    return [...byNorm.values()]
-      .sort((a, b) => {
-        if (!!a.cleared !== !!b.cleared) return a.cleared ? -1 : 1;
-        if (a.cleared && b.cleared) {
-          const ta = a.time ?? Infinity;
-          const tb = b.time ?? Infinity;
-          if (ta !== tb) return ta - tb;
-          return a.at - b.at || b.shards - a.shards;
-        }
-        return b.floor - a.floor || b.shards - a.shards;
-      })
-      .slice(0, limit)
-      .map(({ at: _at, ...row }) => row);
+    return rows.sort((a, b) => b.dmg - a.dmg || b.wins - a.wins).slice(0, limit);
   }
 
   private broadcastLeaderboard(): void {
     this.legendCheck();
     if (this.clients.length === 0) return;
     this.broadcast(MSG.leaderboard, this.leaderboard(5));
-    this.broadcast(MSG.towerBoard, this.towerLeaderboard(5));
+    this.broadcast(MSG.catBoard, this.catLeaderboard(5));
   }
 
   /** `!top` — топ-5 текстом в чат канала. */
@@ -2751,6 +2726,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const rt = this.rt.get(owner);
         if (rt && this.state.players.has(owner)) {
           rt.eventBuffUntil = until;
+          if (rt.token) store.put(rt.token, { eventBuffUntil: until });
           n++;
         }
       }
@@ -4452,6 +4428,17 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Сохранить живого героя этого ника в store (бот или подключённый игрок). */
+  /** id героя этого ника в мире: бот или живая сессия ("" — нет). */
+  private heroIdOf(norm: string): string {
+    const bot = this.bots.get(norm);
+    if (bot) return bot.id;
+    let id = "";
+    this.state.players.forEach((p, pid) => {
+      if (!id && !pid.startsWith("bot:") && normNick(p.nick) === norm) id = pid;
+    });
+    return id;
+  }
+
   private persistNick(norm: string): void {
     const bot = this.bots.get(norm);
     if (bot) {
@@ -5266,8 +5253,9 @@ export class ZoneRoom extends Room<ZoneState> {
       overrides: {},
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
-      eventBuffUntil: 0,
-      campBuffUntil: 0,
+      // Баффы событий и костра — из сейва: переход ПК ↔ бот их не сбрасывает.
+      eventBuffUntil: rec?.eventBuffUntil ?? 0,
+      campBuffUntil: rec?.campBuffUntil ?? 0,
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,
@@ -5371,6 +5359,35 @@ export class ZoneRoom extends Room<ZoneState> {
         if (st.catBoss !== c.boss) st.catBoss = c.boss;
         this.sim.catLo = c.lo;
         this.sim.catHi = c.hi;
+      },
+      saveRecords: (ids, win) => {
+        for (const id of ids) {
+          const p = this.state.players.get(id);
+          const token = this.rt.get(id)?.token ?? (p ? `nick:${normNick(p.nick)}` : "");
+          const rec = token ? store.get(token) : undefined;
+          if (!rec) continue;
+          const dmg = Math.round(this.sim.catDamage.get(id) ?? 0);
+          store.put(token, {
+            catBestDmg: Math.max(rec.catBestDmg ?? 0, dmg),
+            catRuns: (rec.catRuns ?? 0) + 1,
+            catWins: (rec.catWins ?? 0) + (win ? 1 : 0),
+          });
+        }
+        if (this.clients.length) this.broadcast(MSG.catBoard, this.catLeaderboard(5));
+      },
+      xpReward: (id, frac) => {
+        const p = this.state.players.get(id);
+        if (!p) return;
+        const need = xpToNext(p.level);
+        if (!Number.isFinite(need)) return;
+        this.awardXp(this.clientOf(id), p, need * frac * this.buffMult(id, "xp"));
+      },
+      rekeyStats: (from, to) => {
+        for (const m of [this.sim.catDamage, this.sim.catKills]) {
+          const v = m.get(from);
+          m.delete(from);
+          if (v !== undefined) m.set(to, (m.get(to) ?? 0) + v);
+        }
       },
       setThemes: (t) => {
         if (this.state.catThemes !== t) this.state.catThemes = t;
@@ -5671,6 +5688,7 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.finalTokens });
       rt.eventBuffUntil = Date.now() + CATACOMBS.buffMinutes * 60_000;
+      store.put(token, { eventBuffUntil: rt.eventBuffUntil });
     }
     if (!id.startsWith("bot:")) this.syncWarehouse(id, rt);
     return loot;
@@ -6067,6 +6085,8 @@ export class ZoneRoom extends Room<ZoneState> {
       kills: bot.rt.kills,
       weapons: bot.rt.weapons,
       equippedWeaponId: bot.rt.equippedWeaponId,
+      eventBuffUntil: bot.rt.eventBuffUntil,
+      campBuffUntil: bot.rt.campBuffUntil,
       viewToken: bot.rt.viewToken,
       botActive: true, // в мире — восстановить после рестарта
       // Последнее сообщение хозяина — на диск (persistBot идёт раз в 10 с): отсчёт ухода бота переживает рестарт.
@@ -7067,6 +7087,13 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.dead || bot.fishing) return;
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls) return;
+    // «Стрела жизни» — спасательная: HP ниже половины — без жребия и раньше второго умения.
+    if ((p.skill1 === "lifeArrow" || p.skill2 === "lifeArrow") && p.hp < p.maxHp * 0.5) {
+      const t = this.mobsInRadius(p, SKILLS2.lifeArrow.radius - 2).sort(
+        (a, b) => Math.hypot(a.x - p.head.x, a.z - p.head.z) - Math.hypot(b.x - p.head.x, b.z - p.head.z),
+      )[0];
+      if (t && this.castSkill("lifeArrow", bot.id, p, bot.rt, t.x, t.z)) return;
+    }
     // Чаще, чем у старых ботовых умений: умений из пула два, и условия у них свои — иначе откат простаивал.
     if (Math.random() >= BOT.skillChancePerSec * 3 * dt) return;
     const legacy = (k: SkillId): boolean =>
@@ -7107,6 +7134,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // 🧪 Новые умения ассасина.
       if (k === "plague" && nd > PLAGUE.dash) continue;
       if (k === "soulSteal" && nd > SOUL_STEAL.reach) continue;
+      if (k === "lifeArrow" && (nd > SKILLS2.lifeArrow.radius - 2 || p.hp > p.maxHp * LIFE_ARROW.botBelow)) continue;
       if (k === "smoke" && this.mobsInRadius(p, 4).length < 2 && p.hp > p.maxHp * 0.6) continue;
       if (k === "abyss" && (nd > 3 || (p.hp > p.maxHp * 0.7 && this.mobsInRadius(p, 5).length < 3))) continue;
       if (this.castSkill(k, bot.id, p, bot.rt, tx, tz)) {
@@ -7903,6 +7931,26 @@ export class ZoneRoom extends Room<ZoneState> {
         const cz = tgt ? tgt.z : p.head.z;
         this.sim.addSmoke(cx, cz, sk.radius, sec);
         act({ k: "smoke", x: cx, y: terrainHeight(cx, cz), z: cz, d: sec, r: sk.radius });
+        return true;
+      }
+      case "lifeArrow": {
+        // Лучник: тяжёлая стрела в цель, лечит стрелка (доля нанесённого урона + доля его макс. HP).
+        const m = this.skillTarget(p, tx, tz, sk.radius, fwd());
+        if (!m) {
+          rt.skillAt[kind] = -999;
+          return false;
+        }
+        const [dx, dz] = dirTo(m, p.head.x, p.head.z);
+        const toY = m.y + MOB.bodyRadius * m.scale;
+        act({ k: "lifeArrow", x: p.head.x, y: p.head.y - 0.3, z: p.head.z, x2: m.x, z2: m.z, d: toY });
+        const hp0 = m.hp;
+        this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, dx, dz, ownerId, true);
+        const dealt = Math.max(0, hp0 - Math.max(0, m.hp));
+        const before = p.hp;
+        p.hp = Math.min(p.maxHp, p.hp + dealt * LIFE_ARROW.healDmg + p.maxHp * LIFE_ARROW.healMax);
+        const healed = Math.round(p.hp - before);
+        if (healed > 0) this.sim.dmgHits.push({ x: p.head.x, y: p.head.y + 0.4, z: p.head.z, dmg: healed, by: ownerId, c: "heal" });
+        this.broadcast(MSG.act, { k: "healHit", id: ownerId, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
         return true;
       }
       case "soulSteal": {
@@ -9111,7 +9159,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const pushInit = (): void => {
         if (!this.spectators.has(client.sessionId)) return;
         client.send(MSG.leaderboard, this.leaderboard(5));
-        client.send(MSG.towerBoard, this.towerLeaderboard(5));
+        client.send(MSG.catBoard, this.catLeaderboard(5));
         if (Object.keys(this.overlayCfg).length) {
           client.send(MSG.specCmd, { t: "overlay", patch: this.overlayCfg } satisfies SpecCmd);
         }
@@ -9139,6 +9187,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
     let token = options?.token?.trim();
 
+    // Катакомбы: этот же герой (бот или другая сессия) в забеге — новое тело займёт его место.
+    let catPrev = "";
     // Вход по нику (Ф10): забрать своего бота / персонажа зрителя.
     if (options?.stream) {
       const norm = normNick(options?.nick ?? "");
@@ -9149,6 +9199,7 @@ export class ZoneRoom extends Room<ZoneState> {
         throw new Error("этим персонажем уже играют");
       }
       token = `nick:${norm}`;
+      catPrev = this.heroIdOf(norm);
       this.removeBot(norm); // если был бот — его прогресс уходит в store под этим токеном
     } else {
       // Обычный вход (не по ссылке ?stream=1): ник — и есть личность, без
@@ -9162,6 +9213,7 @@ export class ZoneRoom extends Room<ZoneState> {
       // (см. Login.ts). Ловить под этим именем чужой прогресс — не то же
       // самое, что «тот же ник — тот же человек»: тут никакого ника и нет.
       if (norm && norm !== "гость") {
+        catPrev = this.heroIdOf(norm);
         if (this.nickIsPlayed(norm)) this.kickNick(norm);
         token = `nick:${norm}`;
         this.removeBot(norm);
@@ -9249,8 +9301,9 @@ export class ZoneRoom extends Room<ZoneState> {
       overrides: sanitizeOverrides(rec?.overrides),
       kills: rec?.kills ?? 0,
       leaveBot: rec?.leaveBot === true,
-      eventBuffUntil: 0,
-      campBuffUntil: 0,
+      // Баффы событий и костра — из сейва: переход ПК ↔ бот их не сбрасывает.
+      eventBuffUntil: rec?.eventBuffUntil ?? 0,
+      campBuffUntil: rec?.campBuffUntil ?? 0,
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,
@@ -9286,6 +9339,11 @@ export class ZoneRoom extends Room<ZoneState> {
         : null,
     );
 
+    if (catPrev) {
+      const at = this.cat.rekey(catPrev, client.sessionId);
+      if (at) this.catWarp(client.sessionId, at.x, at.z);
+    }
+
     console.log(
       `[zone] + ${client.sessionId} «${p.nick}» ур.${p.level}` +
         `${rec ? " (загружен)" : token ? " (новый токен)" : ""} — в комнате ${this.clients.length}`,
@@ -9314,6 +9372,8 @@ export class ZoneRoom extends Room<ZoneState> {
       weapons: rt.weapons,
       equippedWeaponId: rt.equippedWeaponId,
       viewToken: rt.viewToken,
+      eventBuffUntil: rt.eventBuffUntil,
+      campBuffUntil: rt.campBuffUntil,
       // Даже если модель не меняли ни разу: случайная, выданная при входе
       // без сейва, должна закрепиться за ником, а не выпадать заново.
       skin: p.skin,
@@ -9377,6 +9437,10 @@ export class ZoneRoom extends Room<ZoneState> {
     if (streamNorm && p && rt?.leaveBot && this.bots.size < BOT.maxBots) {
       this.chatSeen.set(streamNorm, Date.now());
       this.spawnBot(p.nick, streamNorm);
+      // Был в катакомбах — бот продолжает забег за него (место в отряде, урон, смерти).
+      const bot = this.bots.get(streamNorm);
+      const at = bot ? this.cat.rekey(client.sessionId, bot.id) : null;
+      if (bot && at) this.catWarp(bot.id, at.x, at.z);
     }
 
     console.log(`[zone] - ${client.sessionId} — осталось игроков ${this.state.players.size}`);

@@ -33,7 +33,7 @@ net.onSpecCmd = (cmd: SpecCmd) => {
 net.onPickupFeed = (m) => ov.pushPickup(m.nick, m.item, m.tier);
 net.onBossEvent = (kind, by, loot, lootItems) => ov.bossBanner(kind, by, loot, lootItems);
 net.onLeaderboard = (rows) => ov.setLeaderboard(rows);
-net.onTowerBoard = (rows) => ov.setTowerBoard(rows);
+net.onCatBoard = (rows) => ov.setCatBoard(rows);
 net.onWorldEvent = (phase, name, _x, _z, loot) => {
   const hunt = name === "Охота";
   const tower = name === "Башня";

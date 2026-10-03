@@ -679,8 +679,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Костяной вождь: бьёт по земле — из-под ног героев рядом (до трёх)
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
-    model: "monOrcSkull", name: "Костяной вождь", blurb: "шипы с оглушением, лечит своих", level: 36, kind: "slime",
-    hp: 4800, dmgMul: 7, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30); меньше (было 3), зато их больше
+    model: "monOrcSkull", name: "Костяной вождь", blurb: "шипы с замедлением, лечит своих", level: 36, kind: "slime",
+    hp: 3800, dmgMul: 5.5, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→5.5 (2026-10-04); меньше (было 3), зато их больше
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -739,7 +739,7 @@ export const REFLECT = {
 /** Костяной вождь: лечение себя и соседей (см. EliteMobDef.healer). */
 export const CHIEF_HEAL = {
   radius: 8, // было 14 — лечит только тех, кто рядом
-  cooldown: 22, // было 14 — реже
+  cooldown: 36, // было 14 → 22 → 36 (2026-10-04) — реже
   /** На эту долю макс. HP каждого моба в радиусе (и себя). */
   frac: 0.1,
 };
@@ -768,8 +768,10 @@ export const SPIKES = {
   windup: 1.0,
   radius: 2.6,
   /** Удар шипов — во столько раз сильнее обычного. */
-  strikeMul: 1.7,
-  stunSec: 1.4,
+  strikeMul: 1.4, // было 1.7
+  /** Вместо оглушения (было 1.4 с) — замедление: на slowFrac на slowSec секунд. */
+  slowSec: 3,
+  slowFrac: 0.4,
 };
 
 /** Грибной колосс: ядовитое облако под героем (см. EliteMobDef.sporeCaster). */

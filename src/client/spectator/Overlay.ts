@@ -1,7 +1,7 @@
 import { glyph, itemIcon } from "#shared/icons";
 import { CAT_HELP } from "#shared/catacombs";
 import { ensureIconCss, iconHtml } from "../ui/icons";
-import type { OverlayPatch, LeaderboardRow, TowerBoardRow, LootItem } from "#shared/net/messages";
+import type { OverlayPatch, LeaderboardRow, CatBoardRow, LootItem } from "#shared/net/messages";
 import type { HeroStatRow } from "#shared/heroStats";
 import { TOWER } from "#shared/tower";
 import { AEGIS_NAME, ITEMS } from "#shared/items";
@@ -17,6 +17,11 @@ import { AEGIS_NAME, ITEMS } from "#shared/items";
 
 
 /** Время забега башни «0:00». */
+/** Урон коротко: 9840, 41.7k, 128k. */
+function fmtDmg(n: number): string {
+  return n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n);
+}
+
 function fmtTime(sec: number): string {
   const s = Math.max(0, Math.round(sec));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -123,15 +128,15 @@ const CSS = `
 .ov-top .rk.medal { font-size:2.5vh; opacity:1; }
 .ov-top .nm { font-weight:700; }
 .ov-top .lv { opacity:.75; margin-left:.4vh; }
-.ov-towertop { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
-.ov-towertop b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
+.ov-catboard { left:2.2vw; top:23vh; font-size:1.7vh; line-height:1.6; padding-top:1.2vh; }
+.ov-catboard b { display:block; font-size:1.3vh; letter-spacing:.16em; opacity:.6;
   text-transform:uppercase; margin-bottom:.3vh; font-weight:700; }
-.ov-towertop div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
-.ov-towertop .rk { flex:none; width:3vh; text-align:center; line-height:1; opacity:.7;
+.ov-catboard div { display:flex; gap:.9vh; align-items:center; min-height:2.9vh; }
+.ov-catboard .rk { flex:none; width:3vh; text-align:center; line-height:1; opacity:.7;
   font-size:1.7vh; font-variant-numeric:tabular-nums; }
-.ov-towertop .rk.medal { font-size:2.5vh; opacity:1; }
-.ov-towertop .nm { font-weight:700; }
-.ov-towertop .lv { opacity:.75; margin-left:.4vh; }
+.ov-catboard .rk.medal { font-size:2.5vh; opacity:1; }
+.ov-catboard .nm { font-weight:700; }
+.ov-catboard .lv { opacity:.75; margin-left:.4vh; }
 .ov-watch { left:2.2vw; bottom:3vh; }
 .ov-watch b { font-size:1.4vh; letter-spacing:.2em; opacity:.7; font-weight:700;
   text-transform:uppercase; }
@@ -282,8 +287,8 @@ export class Overlay {
   private readonly top: HTMLDivElement;
   private topRows: LeaderboardRow[] = [];
   /** Топ по «Охотничьей башне» — своя панель под основным топом. */
-  private readonly towerTop: HTMLDivElement;
-  private towerTopRows: TowerBoardRow[] = [];
+  private readonly catBoard: HTMLDivElement;
+  private catBoardRows: CatBoardRow[] = [];
   private readonly ticker: HTMLDivElement;
   private tickerText = "";
   private tickerKind: "event" | "news" = "event";
@@ -337,7 +342,7 @@ export class Overlay {
 
     this.feed = div("box ov-feed");
     this.top = div("box ov-top");
-    this.towerTop = div("box ov-towertop");
+    this.catBoard = div("box ov-catboard");
     this.ticker = div("box ov-ticker");
     this.towerStatus = div("box ov-towerstatus");
     this.cq = div("box ov-cq");
@@ -360,7 +365,7 @@ export class Overlay {
       this.card,
       this.boss,
       this.top,
-      this.towerTop,
+      this.catBoard,
       this.ticker,
       this.towerStatus,
       this.cq,
@@ -452,16 +457,16 @@ export class Overlay {
     });
   }
 
-  /** Топ-5 по «Охотничьей башне» — тот же ритм, что и setLeaderboard. */
-  setTowerBoard(rows: TowerBoardRow[]): void {
-    this.towerTopRows = rows;
-    this.renderTowerTop();
+  /** Рекорды катакомб (вместо башни): лучший урон героя за один забег — тот же ритм, что и setLeaderboard. */
+  setCatBoard(rows: CatBoardRow[]): void {
+    this.catBoardRows = rows;
+    this.renderCatBoard();
   }
 
-  private renderTowerTop(): void {
-    this.towerTop.innerHTML = "<b>башня</b>";
+  private renderCatBoard(): void {
+    this.catBoard.innerHTML = "<b>☠ рекорды катакомб</b>";
     const medal = ["🥇", "🥈", "🥉"];
-    this.towerTopRows.slice(0, 5).forEach((r, i) => {
+    this.catBoardRows.slice(0, 5).forEach((r, i) => {
       const row = document.createElement("div");
       const rk = document.createElement("span");
       rk.className = i < 3 ? "rk medal" : "rk";
@@ -471,9 +476,9 @@ export class Overlay {
       nm.textContent = r.nick;
       const lv = document.createElement("span");
       lv.className = "lv";
-      lv.textContent = r.cleared ? (r.time !== undefined ? fmtTime(r.time) : "покорил") : `этаж ${r.floor}`;
+      lv.textContent = `урон ${fmtDmg(r.dmg)}${r.wins ? ` · ${r.wins}🏆` : ""}`;
       row.append(rk, nm, lv);
-      this.towerTop.appendChild(row);
+      this.catBoard.appendChild(row);
     });
   }
 
@@ -573,10 +578,9 @@ export class Overlay {
     if (!ctx.catacombs && this.catTopRows.length) this.catTopRows = [];
     const catRun = !!ctx.catacombs && !ctx.catacombs.gather && this.catTopRows.length > 0;
     show(this.top, this.cfg.top && !catRun && this.topRows.length > 0);
-    show(this.towerTop, this.cfg.top && !catRun && this.towerTopRows.length > 0);
+    show(this.catBoard, this.cfg.top && !catRun && this.catBoardRows.length > 0);
     show(this.catTop, catRun);
     if (catRun) {
-      const fmt = (n: number): string => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n));
       const sig = this.catTopRows.map((r) => `${r.nick}${r.dmg}${r.kills}${r.deaths}${r.dead}`).join("|");
       if (sig !== this.catTopSig) {
         this.catTopSig = sig;
@@ -590,7 +594,7 @@ export class Overlay {
           nm.className = "nm";
           nm.textContent = `${i + 1}. ${r.nick}`;
           const d = document.createElement("span");
-          d.textContent = fmt(r.dmg);
+          d.textContent = fmtDmg(r.dmg);
           const k = document.createElement("span");
           k.textContent = String(r.kills);
           const de = document.createElement("span");

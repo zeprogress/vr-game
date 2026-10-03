@@ -50,6 +50,12 @@ export interface CatHost {
   setThemes(s: string): void;
   /** Святилище в зале (k −1 — убрать). */
   setShrine(x: number, z: number, k: number): void;
+  /** Конец забега: рекорды урона, забеги и победы — в сейв героев (таблица у спектатора). */
+  saveRecords(ids: string[], win: boolean): void;
+  /** Опыт герою за стража/Владыку: frac — доля его уровня. */
+  xpReward(id: string, frac: number): void;
+  /** Урон/убийства героя переходят на новое id (смена ПК ↔ бот). */
+  rekeyStats(from: string, to: string): void;
   /** Благословение святилища — всему отряду. */
   shrineBless(s: CatShrine, ids: string[]): void;
   /** Жив ли моб. */
@@ -170,6 +176,28 @@ export class CatacombDirector {
   /** Герой в пати текущего забега. */
   inRun(id: string): boolean {
     return this.phase >= CAT_PHASE.run && this.party.has(id);
+  }
+
+  /**
+   * Тот же герой сменил тело (ПК ↔ бот): новое id — в отряд вместо старого, с его
+   * смертями, наградами и строкой урона. Вернёт точку у входа в текущий зал (или null — не в забеге).
+   */
+  rekey(from: string, to: string): { x: number; z: number } | null {
+    if (from === to || !this.party.has(from)) return null;
+    this.party.delete(from);
+    this.party.add(to);
+    const d = this.deaths.get(from);
+    this.deaths.delete(from);
+    if (d !== undefined) this.deaths.set(to, d);
+    this.wasDead.delete(from);
+    for (const k of [...this.rewarded]) {
+      if (!k.endsWith(`:${from}`)) continue;
+      this.rewarded.delete(k);
+      this.rewarded.add(k.slice(0, k.length - from.length) + to);
+    }
+    this.host.rekeyStats(from, to);
+    this.pushState();
+    return this.inRun(to) ? this.respawnPoint(to) : null;
   }
 
   /** Где возрождается герой пати — у входа в текущий зал. */
@@ -750,6 +778,8 @@ export class CatacombDirector {
         const key = `${this.stage}:${id}`;
         if (this.rewarded.has(key)) continue;
         this.rewarded.add(key);
+        // Опыт — до сундука (иначе финальный ×2 бафф из сундука удвоил бы и его).
+        this.host.xpReward(id, final ? CATACOMBS.finalXp : CATACOMBS.guardXp);
         for (const it of this.host.chest(id, st.chest)) {
           const same = loot.find((l) => l.id === it.id && !!l.aegis === !!it.aegis);
           if (same) same.count += it.count;
@@ -757,13 +787,13 @@ export class CatacombDirector {
         }
       }
       if (!final) {
-        this.host.announce({ kind: "chest", title: "Сундук стража", sub: "каждому в отряде — золотое оружие в склад", loot, secs: 7 });
+        this.host.announce({ kind: "chest", title: "Сундук стража", sub: `каждому в отряде — золотое оружие в склад и +${Math.round(CATACOMBS.guardXp * 100)}% уровня опыта`, loot, secs: 7 });
       } else {
         this.phase = CAT_PHASE.outro;
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
         this.host.announce({
           kind: "win", title: "Владыка Бездны повержен!",
-          sub: `каждому — уникальное оружие, свиток и ${CATACOMBS.finalTokens} ◈ · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
+          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈, +${Math.round(CATACOMBS.finalXp * 100)}% уровня опыта · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
           loot, secs: 12,
         });
         this.host.chat(`☠ Катакомбы пройдены! Владыка Бездны повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
@@ -795,7 +825,10 @@ export class CatacombDirector {
     this.host.clearMobs(this.mobs);
     this.mobs.clear();
     this.bossId = "";
-    if (wasRun) for (const id of this.party) this.host.sendHome(id);
+    if (wasRun) {
+      this.host.saveRecords([...this.party], win);
+      for (const id of this.party) this.host.sendHome(id);
+    }
     if (!win && why) {
       if (!quiet || this.party.size > 0) this.host.chat(`☠ ${why}.`);
       this.host.announce({ kind: "fail", title: why, sub: wasRun ? "отряд вернулся в лагерь" : "", secs: 7 });

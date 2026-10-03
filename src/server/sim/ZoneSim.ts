@@ -1149,7 +1149,8 @@ export class Mob {
                 fromZ: sp.z,
                 projectile: false,
                 byMob: this.id,
-                stunSec: SPIKES.stunSec,
+                slowSec: SPIKES.slowSec,
+                slowFrac: SPIKES.slowFrac,
               });
             }
           }

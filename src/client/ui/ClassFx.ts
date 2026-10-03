@@ -725,6 +725,20 @@ export function playClassAct(
         vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
       }
       return true;
+    case "lifeArrow":
+      // Стрела жизни: золотисто-зелёная стрела в цель, обратно к стрелку — зелёная нить жизни и всплеск лечения.
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        vfx.bolt(x, y, z, x2, toY, z2, FXC.gold, 0.25, 0.1);
+        vfx.burst(x2, toY, z2, FXC.gold, { count: 14, speed: 5, life: 0.4, grav: 2, size: 0.2 });
+        c.fx.later(0.15, () => {
+          vfx.bolt(x2, toY, z2, x, y, z, HEALC, 0.45, 0.07);
+          vfx.burst(x, y - 0.6, z, HEALC, { count: 24, speed: 3, life: 0.9, grav: -4, size: 0.22 });
+          vfx.decal(x, y - 1.6, z, 1.6, HEALC, 1, 1, 0.9, { kind: "hero", id, dy: 0.05 });
+        });
+        c.sound(at, "swing");
+      }
+      return true;
     case "chainHit":
       if (x2 !== undefined && z2 !== undefined) {
         const cc = v === V_SUPPORT ? HEALC : ATK;

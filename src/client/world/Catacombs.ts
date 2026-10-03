@@ -1134,7 +1134,7 @@ export class CatacombsFx {
       return mm;
     };
     nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k])));
-    const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.9));
+    const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.5));
     if (sealMesh) this.sealMat = sealMesh.material as StandardMaterial;
     mergeFlat(runners, "catRunners", flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.05, 0.02, 0.01), false, 0.9));
     mergeFlat(stains, "catStains", flatMat("catStainMat", stainTexture(scene), new Color3(0, 0, 0), false, 0.85));

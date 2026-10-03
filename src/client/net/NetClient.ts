@@ -9,7 +9,7 @@ import {
   type WeaponsListMsg,
   type WarehouseActMsg,
   type TtsPlayMsg,
-  type TowerBoardRow,
+  type CatBoardRow,
   type DmgHitsMsg,
   type TowerMobsMsg,
   type EmoteMsg,
@@ -180,7 +180,7 @@ export class NetClient {
   /** Озвучка сообщения чата Twitch (VR-игроку, если включена в меню). */
   onTtsPlay: ((m: TtsPlayMsg) => void) | null = null;
   /** Топ-5 по лучшему этажу Охотничьей башни — та же частота, что и leaderboard. */
-  onTowerBoard: ((rows: TowerBoardRow[]) => void) | null = null;
+  onCatBoard: ((rows: CatBoardRow[]) => void) | null = null;
   onDmgHits: ((msg: DmgHitsMsg) => void) | null = null;
   /** Живые позиции мобов текущего забега башни (мировые координаты). */
   onTowerMobs: ((msg: TowerMobsMsg) => void) | null = null;
@@ -345,7 +345,7 @@ export class NetClient {
       this.warehouse = m;
       this.onWarehouse?.(m);
     });
-    room.onMessage(MSG.towerBoard, (m: TowerBoardRow[]) => this.onTowerBoard?.(m));
+    room.onMessage(MSG.catBoard, (m: CatBoardRow[]) => this.onCatBoard?.(m));
     room.onMessage(MSG.dmgHits, (m: DmgHitsMsg) => this.onDmgHits?.(m));
     room.onMessage(MSG.towerMobs, (m: TowerMobsMsg) => this.onTowerMobs?.(m));
     room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));
