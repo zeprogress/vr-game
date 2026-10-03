@@ -15,6 +15,8 @@ import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
+import "@babylonjs/core/Meshes/Builders/groundBuilder";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/polyhedronBuilder";
@@ -85,6 +87,22 @@ function glowTexture(scene: Scene): DynamicTexture {
   return tex;
 }
 
+/** Тёплое свечение огня (оранжевый радиальный градиент) — для ореолов и пятен света. */
+function warmGlowTexture(scene: Scene, name: string, core: number): DynamicTexture {
+  const tex = new DynamicTexture(name, { width: 128, height: 128 }, scene, false);
+  const g = tex.getContext() as unknown as CanvasRenderingContext2D;
+  const grd = g.createRadialGradient(64, 64, 2, 64, 64, 64);
+  grd.addColorStop(0, `rgba(255,${Math.round(200 * core)},${Math.round(120 * core)},1)`);
+  grd.addColorStop(0.3, "rgba(255,130,40,0.55)");
+  grd.addColorStop(0.65, "rgba(160,50,10,0.18)");
+  grd.addColorStop(1, "rgba(0,0,0,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
+}
+
 /**
  * Катакомбы на клиенте: цепочка подземных залов (пол, стены с проёмами,
  * своды, колонны, факелы, руны, решётки, алтарь) и портал сбора в лагере.
@@ -95,17 +113,20 @@ function glowTexture(scene: Scene): DynamicTexture {
 export class CatacombsFx {
   private built = false;
   private root: TransformNode | null = null;
-  private readonly lights: PointLight[] = [];
+  /** Свет факелов по залам: включён только у зала(ов), где отряд, и только когда камера внизу. */
+  private readonly hallLights: PointLight[][] = [];
   private readonly fireMats: ShaderMaterial[] = [];
+  private readonly glowSprites: { mesh: Mesh; phase: number }[] = [];
   private readonly gates: { mesh: Mesh; i: number; y: number }[] = [];
   private runeMat: StandardMaterial | null = null;
-  private crystal: Mesh | null = null;
-  private crystalMat: StandardMaterial | null = null;
-  private beam: Mesh | null = null;
   private time = 0;
   /** Пылинки и искры в воздухе текущего зала (одна система, переезжает за отрядом). */
   private motes: ParticleSystem | null = null;
   private motesHall = -1;
+  /** Пятна света от огня по залам (свой материал — своё мерцание) и базовые позиции ламп. */
+  private readonly poolMats: StandardMaterial[] = [];
+  private readonly lightBase = new Map<PointLight, Vector3>();
+  private litHalls = "";
   // портал в лагере
   private portal: TransformNode | null = null;
   private portalMat: StandardMaterial | null = null;
@@ -130,9 +151,18 @@ export class CatacombsFx {
       this.motesHall = -1;
     }
     if (this.built) {
-      const lit = inside;
-      for (const l of this.lights) if (l.isEnabled() !== lit) l.setEnabled(lit);
-      if (lit || active) this.animate(dt, v);
+      // Свет — только залов отряда (lo..hi) и только если камера внизу: на поляне ни одного лишнего источника.
+      const lo = v?.lo ?? 0;
+      const hi = v?.hi ?? 0;
+      const sig = inside ? `${lo}-${hi}` : "";
+      if (sig !== this.litHalls) {
+        this.litHalls = sig;
+        this.hallLights.forEach((ls, i) => {
+          const on = inside && i >= lo && i <= hi;
+          for (const l of ls) if (l.isEnabled() !== on) l.setEnabled(on);
+        });
+      }
+      if (inside || active) this.animate(dt, v);
     }
     this.updatePortal(dt, v);
   }
@@ -149,18 +179,18 @@ export class CatacombsFx {
           const h = CAT_HALLS[hall];
           (this.motes.emitter as Vector3).set(h.x, CAT_FLOOR_Y + 3, h.z);
           this.motes.minEmitBox.set(-h.r * 0.8, -2.5, -h.r * 0.8);
-          this.motes.maxEmitBox.set(h.r * 0.8, 6, h.r * 0.8);
+          this.motes.maxEmitBox.set(h.r * 0.8, 7, h.r * 0.8);
           this.motes.start();
         }
       }
     }
     for (const m of this.fireMats) m.setFloat("uTime", t);
-    // Решётки: открыт путь lo..hi — коридоры с lo по hi−1 подняты.
+    // Решётки: открыт путь lo..hi — коридоры с lo по hi−1 подняты (к своду коридора, не в небо).
     const lo = v?.lo ?? 0;
     const hi = v?.hi ?? 0;
     for (const g of this.gates) {
       const open = g.i >= lo && g.i < hi;
-      const want = open ? CAT_CEIL - 0.4 : g.y;
+      const want = open ? g.y + CAT_CEIL * 0.62 : g.y;
       const y = g.mesh.position.y;
       g.mesh.position.y = y + (want - y) * Math.min(1, dt * (open ? 0.9 : 3));
     }
@@ -169,18 +199,32 @@ export class CatacombsFx {
       const fin = v?.final ? 1.6 : 1;
       this.runeMat.emissiveColor.set(0.35 * k * fin, 0.08 * k, 0.6 * k * fin);
     }
-    if (this.crystal && this.crystalMat) {
-      this.crystal.rotation.y += dt * (v?.final ? 2.2 : 0.6);
-      this.crystal.position.y = CAT_FLOOR_Y + 2.6 + Math.sin(t * 1.3) * 0.15;
-      const k = v?.final ? 1 : 0.5 + 0.2 * Math.sin(t * 2);
-      this.crystalMat.emissiveColor.set(0.7 * k, 0.2 * k, 1 * k);
+    // Свет от огня: неровное мерцание (сумма «шумных» синусов), цвет гуляет от оранжевого
+    // к красноватому, источник чуть дрожит — как живое пламя, а не лампа.
+    const flick = (ph: number): number => 0.5 * Math.sin(t * 9.1 + ph) + 0.3 * Math.sin(t * 17.3 + ph * 1.7) + 0.2 * Math.sin(t * 31.7 + ph * 2.9);
+    for (let h = 0; h < this.hallLights.length; h++) {
+      const ls = this.hallLights[h];
+      for (let i = 0; i < ls.length; i++) {
+        const l = ls[i];
+        if (!l.isEnabled()) continue;
+        const f = flick(i * 2.3 + h * 5.1);
+        l.intensity = 1.45 + 0.35 * f;
+        l.diffuse.set(1, 0.42 + 0.08 * f, 0.12 + 0.04 * f);
+        let b = this.lightBase.get(l);
+        if (!b) {
+          b = l.position.clone();
+          this.lightBase.set(l, b);
+        }
+        l.position.set(b.x + 0.12 * Math.sin(t * 7 + i), b.y + 0.15 * flick(i + 9), b.z + 0.12 * Math.cos(t * 6 + i));
+      }
     }
-    if (this.beam) {
-      this.beam.setEnabled(!!v?.final);
-      this.beam.scaling.x = this.beam.scaling.z = 1 + 0.15 * Math.sin(t * 6);
+    for (let i = 0; i < this.poolMats.length; i++) {
+      const f = flick(i * 3.7 + 1.3);
+      this.poolMats[i].alpha = 0.62 + 0.16 * f;
     }
-    for (let i = 0; i < this.lights.length; i++) {
-      this.lights[i].intensity = 2.6 + 0.3 * Math.sin(t * 9 + i * 1.7) + 0.12 * Math.sin(t * 23 + i);
+    for (const g of this.glowSprites) {
+      const k = 0.85 + 0.12 * Math.sin(t * 13 + g.phase) + 0.06 * Math.sin(t * 31 + g.phase * 2);
+      g.mesh.scaling.setAll(k);
     }
   }
 
@@ -203,92 +247,312 @@ export class CatacombsFx {
       }
       m.diffuseColor = new Color3(...dif);
       m.emissiveColor = new Color3(...emi);
-      m.specularColor = new Color3(0.04, 0.04, 0.04);
+      m.specularColor = new Color3(0.05, 0.04, 0.03);
+      // До 6 факелов зала на материал (по умолчанию 4; больше — дорого для Quest).
+      m.maxSimultaneousLights = 6;
       return m;
     };
-    const floorMat = mat("catFloor", FLOOR, [0.9, 0.84, 0.78], [0.2, 0.17, 0.17], 6, 6);
-    const wallMat = mat("catWall", WALL, [0.8, 0.74, 0.7], [0.15, 0.13, 0.14], 10, 2);
-    const ceilMat = mat("catCeil", WALL, [0.3, 0.27, 0.28], [0.03, 0.025, 0.035], 6, 6);
-    const pillarMat = mat("catPillar", WALL, [0.85, 0.8, 0.74], [0.16, 0.13, 0.13], 1, 3);
-    const ironMat = mat("catIron", null, [0.12, 0.11, 0.1], [0.02, 0.015, 0.012]);
+    // Темно: собственного свечения чуть-чуть, остальное — факелы.
+    const floorMat = mat("catFloor", FLOOR, [0.95, 0.88, 0.8], [0.06, 0.05, 0.055], 6, 6);
+    const wallMat = mat("catWall", WALL, [0.85, 0.78, 0.72], [0.045, 0.04, 0.045], 10, 2);
+    const ceilMat = mat("catCeil", WALL, [0.4, 0.36, 0.36], [0.02, 0.018, 0.024], 6, 6);
+    const pillarMat = mat("catPillar", WALL, [0.9, 0.84, 0.78], [0.05, 0.045, 0.045], 1, 3);
+    const ironMat = mat("catIron", null, [0.16, 0.14, 0.12], [0.015, 0.012, 0.01]);
+    const boneMat = mat("catBone", null, [0.85, 0.8, 0.66], [0.04, 0.035, 0.03]);
+    const clothMat = mat("catCloth", null, [0.42, 0.05, 0.06], [0.03, 0.005, 0.005]);
+    clothMat.backFaceCulling = false;
+    const urnMat = mat("catUrn", null, [0.45, 0.3, 0.18], [0.02, 0.015, 0.01]);
     const runeMat = new StandardMaterial("catRune", scene);
     runeMat.diffuseColor = new Color3(0, 0, 0);
     runeMat.emissiveColor = new Color3(0.35, 0.08, 0.6);
     runeMat.disableLighting = true;
     runeMat.alpha = 0.85;
     this.runeMat = runeMat;
+    const glowTex = glowTexture(scene);
+    // Цвет — из самой текстуры (emissiveColor складывается с ней и выбелил бы огонь).
+    const warmTex = warmGlowTexture(scene, "catWarmGlow", 1);
+    const poolTex = warmGlowTexture(scene, "catPoolGlow", 0.6);
+    const glowMat = new StandardMaterial("catTorchGlow", scene);
+    glowMat.emissiveTexture = warmTex;
+    glowMat.opacityTexture = warmTex;
+    glowMat.emissiveColor = new Color3(0, 0, 0);
+    glowMat.alpha = 0.55;
+    glowMat.diffuseColor = new Color3(0, 0, 0);
+    glowMat.disableLighting = true;
+    glowMat.alphaMode = Constants.ALPHA_ADD;
+    glowMat.disableDepthWrite = true;
 
-    const walls: Mesh[] = [];
-    const pillars: Mesh[] = [];
-    const floors: Mesh[] = [];
-    const ceils: Mesh[] = [];
-    const irons: Mesh[] = [];
+    // «Запечённый» свет: тёплые пятна на полу и отблески на стенах у каждого огня — видно всегда.
+    // Материал пятен — новый на каждый зал (НЕ clone: clone копирует и DynamicTexture, а копия не «готова»).
+    const makePoolMat = (name: string): StandardMaterial => {
+      const m = new StandardMaterial(name, scene);
+      m.emissiveTexture = poolTex;
+      m.opacityTexture = poolTex;
+      m.emissiveColor = new Color3(0, 0, 0);
+      m.diffuseColor = new Color3(0, 0, 0);
+      m.disableLighting = true;
+      m.alphaMode = Constants.ALPHA_ADD;
+      m.disableDepthWrite = true;
+      m.alpha = 0.7;
+      return m;
+    };
+    const pools: Mesh[][] = CAT_HALLS.map(() => []);
     const H = CAT_CEIL;
     const y0 = CAT_FLOOR_Y;
+    // Свои меши у каждого зала — чтобы его факелы светили только на него (includedOnlyMeshes).
+    const hallMeshes: Mesh[][] = CAT_HALLS.map(() => []);
+    const lists = (): { floor: Mesh[]; wall: Mesh[]; ceil: Mesh[]; pillar: Mesh[]; iron: Mesh[]; bone: Mesh[]; cloth: Mesh[]; urn: Mesh[] } => ({
+      floor: [], wall: [], ceil: [], pillar: [], iron: [], bone: [], cloth: [], urn: [],
+    });
+    let seed = 11;
+    const rnd = (): number => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
-    const torchAt = (x: number, z: number, faceX: number, faceZ: number): void => {
-      // Кронштейн + чаша.
-      const b = MeshBuilder.CreateBox("catSconce", { width: 0.25, height: 0.5, depth: 0.25 }, scene);
-      b.position.set(x, y0 + 3, z);
-      irons.push(b);
+    /** Факел: кронштейн, огонь, ореол и свет (в зал hall). */
+    const torchAt = (L: ReturnType<typeof lists>, hall: number, x: number, z: number, faceX: number, faceZ: number, big = false): void => {
+      // Жаровня (big) — огонь прямо в чаше на стойке; настенный факел — на кронштейне.
+      const base = big ? 1.1 : 3.2;
+      if (!big) {
+        const b = MeshBuilder.CreateBox("catSconce", { width: 0.28, height: 0.6, depth: 0.28 }, scene);
+        b.position.set(x, y0 + base, z);
+        L.iron.push(b);
+        const cup = MeshBuilder.CreateCylinder("catCup", { height: 0.3, diameterTop: 0.55, diameterBottom: 0.25, tessellation: 8 }, scene);
+        cup.position.set(x + faceX * 0.25, y0 + base + 0.35, z + faceZ * 0.25);
+        L.iron.push(cup);
+      }
+      const fx = x + faceX * 0.25;
+      const fz = z + faceZ * 0.25;
       const fl = new TransformNode("catTorch", scene);
       fl.parent = root;
-      fl.position.set(x + faceX * 0.15, y0 + 3.35, z + faceZ * 0.15);
+      fl.position.set(fx, y0 + base + 0.5, fz);
       for (let i = 0; i < 2; i++) {
-        const pl = MeshBuilder.CreatePlane("catFlame", { width: 0.55, height: 0.9 }, scene);
+        const pl = MeshBuilder.CreatePlane("catFlame", { width: big ? 0.9 : 0.6, height: big ? 1.4 : 1 }, scene);
         pl.rotation.y = i * Math.PI * 0.5;
-        pl.position.y = 0.3;
+        pl.position.y = big ? 0.55 : 0.4;
         const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
         this.fireMats.push(fm);
         pl.material = fm;
         pl.parent = fl;
         pl.isPickable = false;
       }
+      const glow = MeshBuilder.CreatePlane("catGlowSprite", { size: big ? 4.2 : 3 }, scene);
+      glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      glow.material = glowMat;
+      glow.position.set(fx, y0 + base + 0.9, fz);
+      glow.parent = root;
+      glow.isPickable = false;
+      this.glowSprites.push({ mesh: glow, phase: rnd() * 10 });
+      // Пятно света на полу (смещено в зал) и отблеск на стене за огнём.
+      const pool = MeshBuilder.CreateGround("catPool", { width: big ? 13 : 9, height: big ? 13 : 9 }, scene);
+      pool.position.set(fx + faceX * (big ? 0 : 2.2), y0 + 0.06, fz + faceZ * (big ? 0 : 2.2));
+      pools[hall].push(pool);
+      if (!big) {
+        const splash = MeshBuilder.CreatePlane("catSplash", { width: 4.5, height: 5.5 }, scene);
+        splash.position.set(x + faceX * 0.12, y0 + base + 1.4, z + faceZ * 0.12);
+        splash.rotation.y = Math.atan2(-faceX, -faceZ);
+        pools[hall].push(splash);
+      }
+      // Настоящий свет — только у жаровен (меньше источников — дешевле для Quest).
+      if (!big) return;
+      const light = new PointLight(`catTorch${hall}_${this.hallLights[hall].length}`, new Vector3(fx + faceX * 0.6, y0 + base + 1, fz + faceZ * 0.6), scene);
+      light.diffuse = new Color3(1, 0.42, 0.12);
+      light.specular = new Color3(0.15, 0.08, 0.03);
+      light.range = 26;
+      light.intensity = 1.4;
+      light.setEnabled(false);
+      this.hallLights[hall].push(light);
+    };
+
+    /** Декор у стены: урны, груды костей, свечи, обломки, знамёна, цепи — между колоннами. */
+    const decorAt = (L: ReturnType<typeof lists>, x: number, z: number, a: number): void => {
+      const kind = Math.floor(rnd() * 6);
+      const sx = Math.sin(a);
+      const sz = Math.cos(a);
+      if (kind === 0) {
+        for (let i = 0; i < 3; i++) {
+          const u = MeshBuilder.CreateCylinder("catUrn", { height: 0.9 + rnd() * 0.5, diameterTop: 0.35, diameterBottom: 0.45, tessellation: 10 }, scene);
+          u.position.set(x + (rnd() - 0.5) * 1.6, y0 + 0.5, z + (rnd() - 0.5) * 1.6);
+          L.urn.push(u);
+        }
+      } else if (kind === 1) {
+        for (let i = 0; i < 7; i++) {
+          const bn = MeshBuilder.CreateCylinder("catBoneBit", { height: 0.5 + rnd() * 0.5, diameter: 0.09, tessellation: 5 }, scene);
+          bn.position.set(x + (rnd() - 0.5) * 1.4, y0 + 0.15 + rnd() * 0.25, z + (rnd() - 0.5) * 1.4);
+          bn.rotation.set(Math.PI / 2, rnd() * 3, rnd());
+          L.bone.push(bn);
+        }
+        for (let i = 0; i < 2; i++) {
+          const sk = MeshBuilder.CreateSphere("catSkull", { diameter: 0.38, segments: 6 }, scene);
+          sk.position.set(x + (rnd() - 0.5) * 1.2, y0 + 0.2, z + (rnd() - 0.5) * 1.2);
+          sk.scaling.y = 0.85;
+          L.bone.push(sk);
+        }
+      } else if (kind === 2) {
+        // Обломок колонны и щебень.
+        const st = MeshBuilder.CreateCylinder("catStump", { height: 1.3 + rnd() * 1.2, diameter: 1.1, tessellation: 9 }, scene);
+        st.position.set(x, y0 + 0.7, z);
+        st.rotation.z = (rnd() - 0.5) * 0.25;
+        L.pillar.push(st);
+        for (let i = 0; i < 4; i++) {
+          const rb = MeshBuilder.CreatePolyhedron("catRubble", { type: 1, size: 0.2 + rnd() * 0.25 }, scene);
+          rb.position.set(x + (rnd() - 0.5) * 2.2, y0 + 0.15, z + (rnd() - 0.5) * 2.2);
+          rb.rotation.set(rnd() * 3, rnd() * 3, 0);
+          L.pillar.push(rb);
+        }
+      } else if (kind === 3) {
+        // Знамя на стене.
+        const bnr = MeshBuilder.CreatePlane("catBanner", { width: 1.4, height: 3.6 }, scene);
+        bnr.position.set(x + sx * 0.55, y0 + 5.2, z + sz * 0.55);
+        bnr.rotation.y = a + Math.PI;
+        L.cloth.push(bnr);
+        const rod = MeshBuilder.CreateBox("catBannerRod", { width: 1.8, height: 0.1, depth: 0.1 }, scene);
+        rod.position.set(x + sx * 0.5, y0 + 7.05, z + sz * 0.5);
+        rod.rotation.y = a;
+        L.iron.push(rod);
+      } else if (kind === 4) {
+        // Свечи кучкой — огонёчки (без света, только сияние).
+        for (let i = 0; i < 4; i++) {
+          const c = MeshBuilder.CreateCylinder("catCandle", { height: 0.25 + rnd() * 0.35, diameter: 0.12, tessellation: 6 }, scene);
+          const cx = x + (rnd() - 0.5) * 1.1;
+          const cz = z + (rnd() - 0.5) * 1.1;
+          c.position.set(cx, y0 + 0.2, cz);
+          L.bone.push(c);
+          const g = MeshBuilder.CreatePlane("catCandleGlow", { size: 0.7 }, scene);
+          g.billboardMode = Mesh.BILLBOARDMODE_ALL;
+          g.material = glowMat;
+          g.position.set(cx, y0 + 0.55, cz);
+          g.parent = root;
+          g.isPickable = false;
+          this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+        }
+      } else {
+        // Цепи со свода.
+        for (let i = 0; i < 2; i++) {
+          const ch = MeshBuilder.CreateCylinder("catChain", { height: 4 + rnd() * 3, diameter: 0.08, tessellation: 4 }, scene);
+          ch.position.set(x + (rnd() - 0.5) * 1.2, y0 + H - 2.5, z + (rnd() - 0.5) * 1.2);
+          L.iron.push(ch);
+        }
+      }
     };
 
     CAT_HALLS.forEach((h, hi) => {
+      this.hallLights.push([]);
+      const L = lists();
       // Пол и свод.
-      const f = MeshBuilder.CreateDisc("catHallFloor", { radius: h.r + 0.6, tessellation: 56 }, scene);
+      const f = MeshBuilder.CreateDisc("catHallFloor", { radius: h.r + 0.6, tessellation: 64 }, scene);
       f.rotation.x = Math.PI / 2;
       f.position.set(h.x, y0 + 0.02, h.z);
-      floors.push(f);
-      const c = MeshBuilder.CreateDisc("catHallCeil", { radius: h.r + 1, tessellation: 40 }, scene);
+      L.floor.push(f);
+      const c = MeshBuilder.CreateDisc("catHallCeil", { radius: h.r + 1.5, tessellation: 48 }, scene);
       c.rotation.x = -Math.PI / 2;
       c.position.set(h.x, y0 + H, h.z);
-      ceils.push(c);
-      // Стена — кольцо блоков, с проёмами под коридоры (юг — вход, север — выход).
-      const segs = 40;
+      L.ceil.push(c);
+      // Стена — кольцо блоков, с проёмами под коридоры; над проёмом — перемычка до свода (не видно неба).
+      const segs = 48;
       for (let i = 0; i < segs; i++) {
-        const a = (i + 0.5) / segs * Math.PI * 2;
+        const a = ((i + 0.5) / segs) * Math.PI * 2;
         const sx = Math.sin(a);
         const sz = Math.cos(a);
         const wx = h.x + sx * (h.r + 0.6);
         const wz = h.z + sz * (h.r + 0.6);
         const gapN = hi < CAT_HALLS.length - 1 && Math.abs(wx - h.x) < CAT_CORRIDOR_HALF + 0.3 && sz > 0;
         const gapS = hi > 0 && Math.abs(wx - h.x) < CAT_CORRIDOR_HALF + 0.3 && sz < 0;
-        if (gapN || gapS) continue;
-        const w = MeshBuilder.CreateBox("catWallSeg", { width: ((h.r + 0.6) * Math.PI * 2) / segs + 0.3, height: H, depth: 1.2 }, scene);
+        const w0 = ((h.r + 0.6) * Math.PI * 2) / segs + 0.35;
+        if (gapN || gapS) {
+          const lin = MeshBuilder.CreateBox("catLintel", { width: w0, height: H * 0.32, depth: 1.4 }, scene);
+          lin.position.set(wx, y0 + H * 0.84, wz);
+          lin.rotation.y = a;
+          L.wall.push(lin);
+          continue;
+        }
+        const w = MeshBuilder.CreateBox("catWallSeg", { width: w0, height: H, depth: 1.4 }, scene);
         w.position.set(wx, y0 + H / 2, wz);
         w.rotation.y = a;
-        walls.push(w);
+        L.wall.push(w);
       }
-      // Колонны по кругу.
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      // Колонны по кругу, с капителями.
+      const nCol = 10;
+      for (let i = 0; i < nCol; i++) {
+        const a = (i / nCol) * Math.PI * 2 + Math.PI / nCol;
         const pr = h.r - 2.6;
-        const col = MeshBuilder.CreateCylinder("catPillar", { height: H, diameter: 1.2, tessellation: 10 }, scene);
-        col.position.set(h.x + Math.sin(a) * pr, y0 + H / 2, h.z + Math.cos(a) * pr);
-        pillars.push(col);
-        const base = MeshBuilder.CreateBox("catPillarBase", { width: 1.6, height: 0.5, depth: 1.6 }, scene);
-        base.position.set(col.position.x, y0 + 0.25, col.position.z);
-        pillars.push(base);
+        const px = h.x + Math.sin(a) * pr;
+        const pz = h.z + Math.cos(a) * pr;
+        const col = MeshBuilder.CreateCylinder("catPillar", { height: H, diameter: 1.3, tessellation: 12 }, scene);
+        col.position.set(px, y0 + H / 2, pz);
+        L.pillar.push(col);
+        const base = MeshBuilder.CreateBox("catPillarBase", { width: 1.8, height: 0.6, depth: 1.8 }, scene);
+        base.position.set(px, y0 + 0.3, pz);
+        L.pillar.push(base);
+        const cap = MeshBuilder.CreateBox("catPillarCap", { width: 1.8, height: 0.5, depth: 1.8 }, scene);
+        cap.position.set(px, y0 + H - 0.25, pz);
+        L.pillar.push(cap);
       }
-      // Факелы на стенах.
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + 0.52;
+      // Факелы на стенах (их свет — освещение зала) и декор между колоннами.
+      const nT = 8;
+      for (let i = 0; i < nT; i++) {
+        const a = (i / nT) * Math.PI * 2 + Math.PI / nT;
         const sx = Math.sin(a);
         const sz = Math.cos(a);
-        torchAt(h.x + sx * (h.r - 0.1), h.z + sz * (h.r - 0.1), -sx, -sz);
+        if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 1.5) continue; // не в проёме
+        torchAt(L, hi, h.x + sx * (h.r - 0.05), h.z + sz * (h.r - 0.05), -sx, -sz);
+      }
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + 0.11;
+        const sx = Math.sin(a);
+        const sz = Math.cos(a);
+        if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 2) continue;
+        decorAt(L, h.x + sx * (h.r - 1.4), h.z + sz * (h.r - 1.4), a);
+      }
+      // Две большие жаровни у входа — главный тёплый свет зала.
+      for (const side of [-1, 1]) {
+        const bx = h.x + side * h.r * 0.42;
+        const bz = h.z - h.r * 0.45;
+        const stand = MeshBuilder.CreateCylinder("catBrazier", { height: 1.4, diameterTop: 1.6, diameterBottom: 0.6, tessellation: 10 }, scene);
+        stand.position.set(bx, y0 + 0.7, bz);
+        L.iron.push(stand);
+        torchAt(L, hi, bx, bz, 0, 0, true);
+        // огонь жаровни — ниже: факельный «кронштейн» прячем в чаше
+      }
+      // Люстра-жаровня над центром: цепи, чаша с огнём и свет на середину зала.
+      {
+        const cy = y0 + H - 4.5;
+        for (const a of [0, 2.1, 4.2]) {
+          const ch = MeshBuilder.CreateCylinder("catLampChain", { height: 4.5, diameter: 0.07, tessellation: 4 }, scene);
+          ch.position.set(h.x + Math.cos(a) * 0.9, cy + 2.25, h.z + Math.sin(a) * 0.9);
+          L.iron.push(ch);
+        }
+        const bowl = MeshBuilder.CreateCylinder("catLampBowl", { height: 0.6, diameterTop: 2.6, diameterBottom: 1.2, tessellation: 12 }, scene);
+        bowl.position.set(h.x, cy, h.z);
+        L.iron.push(bowl);
+        const fl = new TransformNode("catLampFire", scene);
+        fl.parent = root;
+        fl.position.set(h.x, cy + 0.3, h.z);
+        for (let i = 0; i < 3; i++) {
+          const pl = MeshBuilder.CreatePlane("catFlame", { width: 1.6, height: 2.2 }, scene);
+          pl.rotation.y = i * 1.05;
+          pl.position.y = 0.8;
+          const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
+          this.fireMats.push(fm);
+          pl.material = fm;
+          pl.parent = fl;
+          pl.isPickable = false;
+        }
+        const glow = MeshBuilder.CreatePlane("catGlowSprite", { size: 7 }, scene);
+        glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        glow.material = glowMat;
+        glow.position.set(h.x, cy + 1, h.z);
+        glow.parent = root;
+        glow.isPickable = false;
+        this.glowSprites.push({ mesh: glow, phase: rnd() * 10 });
+        const pool = MeshBuilder.CreateGround("catPool", { width: h.r * 1.5, height: h.r * 1.5 }, scene);
+        pool.position.set(h.x, y0 + 0.05, h.z);
+        pools[hi].push(pool);
+        const lamp = new PointLight(`catTorch${hi}_lamp`, new Vector3(h.x, cy - 0.5, h.z), scene);
+        lamp.diffuse = new Color3(1, 0.45, 0.14);
+        lamp.specular = new Color3(0.12, 0.07, 0.03);
+        lamp.range = h.r * 1.9;
+        lamp.intensity = 1.5;
+        lamp.setEnabled(false);
+        this.hallLights[hi].push(lamp);
       }
       // Кольцо рун на полу.
       const rune = MeshBuilder.CreateTorus("catRune", { diameter: h.r * 1.15, thickness: 0.18, tessellation: 64 }, scene);
@@ -299,149 +563,155 @@ export class CatacombsFx {
       rune.isPickable = false;
       // Саркофаги у северной стены (оттуда встают стражи).
       if (hi > 0 && hi < CAT_HALLS.length - 1) {
-        for (const dx of [-3.2, 3.2]) {
-          const s = MeshBuilder.CreateBox("catSarc", { width: 1.3, height: 0.9, depth: 2.6 }, scene);
-          s.position.set(h.x + dx, y0 + 0.45, h.z + h.r * 0.62);
-          pillars.push(s);
+        for (const dx of [-3.4, 3.4]) {
+          const sarc = MeshBuilder.CreateBox("catSarc", { width: 1.4, height: 1, depth: 2.8 }, scene);
+          sarc.position.set(h.x + dx, y0 + 0.5, h.z + h.r * 0.62);
+          L.pillar.push(sarc);
+          const lid = MeshBuilder.CreateBox("catSarcLid", { width: 1.6, height: 0.2, depth: 3 }, scene);
+          lid.position.set(h.x + dx, y0 + 1.1, h.z + h.r * 0.62);
+          L.pillar.push(lid);
         }
       }
-      // Свет зала.
-      const L = new PointLight(`catLight${hi}`, new Vector3(h.x, y0 + H - 2, h.z), scene);
-      L.diffuse = new Color3(1, 0.6, 0.32);
-      L.specular = new Color3(0.1, 0.06, 0.03);
-      L.range = h.r * 2.6;
-      L.intensity = 2.6;
-      L.setEnabled(false);
-      this.lights.push(L);
+      // Трон Бездны: ступенчатый помост вместо алтаря.
+      if (hi === CAT_HALLS.length - 1) {
+        for (let k = 0; k < 3; k++) {
+          const st = MeshBuilder.CreateCylinder("catDais", { height: 0.35, diameter: 9 - k * 2.4, tessellation: 24 }, scene);
+          st.position.set(h.x, y0 + 0.17 + k * 0.35, h.z + h.r * 0.25);
+          L.pillar.push(st);
+        }
+      }
+      // Собираем меши зала по материалам.
+      const merge = (list: Mesh[], name: string, m: StandardMaterial): void => {
+        if (!list.length) return;
+        const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
+        if (!mm) return;
+        mm.name = `${name}${hi}`;
+        mm.material = m;
+        mm.parent = root;
+        mm.isPickable = false;
+        mm.freezeWorldMatrix();
+        hallMeshes[hi].push(mm);
+      };
+      merge(L.floor, "catFloor", floorMat);
+      merge(L.wall, "catWalls", wallMat);
+      merge(L.ceil, "catCeil", ceilMat);
+      merge(L.pillar, "catPillars", pillarMat);
+      merge(L.iron, "catIron", ironMat);
+      merge(L.bone, "catBones", boneMat);
+      merge(L.cloth, "catCloth", clothMat);
+      merge(L.urn, "catUrns", urnMat);
     });
 
-    // Коридоры: пол, стены, свод, решётка на входе.
+    // Коридоры: пол, стены, свод, решётка на выходе из зала — меши к залу-источнику.
     for (let i = 0; i < CAT_HALLS.length - 1; i++) {
       const c = catCorridor(i);
       const len = c.z1 - c.z0;
       const cz = (c.z0 + c.z1) / 2;
+      const L = lists();
       const f = MeshBuilder.CreateBox("catCorFloor", { width: CAT_CORRIDOR_HALF * 2 + 0.4, height: 0.1, depth: len }, scene);
       f.position.set(0, y0 - 0.03, cz);
-      floors.push(f);
+      L.floor.push(f);
       for (const side of [-1, 1]) {
-        const w = MeshBuilder.CreateBox("catCorWall", { width: 1, height: H * 0.7, depth: len }, scene);
-        w.position.set(side * (CAT_CORRIDOR_HALF + 0.5), y0 + H * 0.35, cz);
-        walls.push(w);
-        torchAt(side * (CAT_CORRIDOR_HALF - 0.1), cz, -side, 0);
+        const w = MeshBuilder.CreateBox("catCorWall", { width: 1.2, height: H, depth: len }, scene);
+        w.position.set(side * (CAT_CORRIDOR_HALF + 0.6), y0 + H / 2, cz);
+        L.wall.push(w);
       }
-      // Свод коридора — плоскость лицом вниз: снизу закрывает, сверху (камера зрителя) прозрачна.
-      const top = MeshBuilder.CreatePlane("catCorTop", { width: CAT_CORRIDOR_HALF * 2 + 2, height: len }, scene);
+      // Свод коридора — на высоте зала (без щели к небу); плоскость лицом вниз.
+      const top = MeshBuilder.CreatePlane("catCorTop", { width: CAT_CORRIDOR_HALF * 2 + 2.4, height: len + 2 }, scene);
       top.rotation.x = -Math.PI / 2;
-      top.position.set(0, y0 + H * 0.7, cz);
-      ceils.push(top);
-      // Решётка — на выходе из зала i (поднимается, когда путь открыт).
+      top.position.set(0, y0 + H * 0.68, cz);
+      L.ceil.push(top);
+      // Стенка над сводом коридора до свода зала — закрывает «окно».
+      const cap = MeshBuilder.CreateBox("catCorCap", { width: CAT_CORRIDOR_HALF * 2 + 2.4, height: H * 0.34, depth: len }, scene);
+      cap.position.set(0, y0 + H * 0.85, cz);
+      L.wall.push(cap);
+      torchAt(L, i, -CAT_CORRIDOR_HALF + 0.05, cz, 1, 0);
+      torchAt(L, i + 1, CAT_CORRIDOR_HALF - 0.05, cz, -1, 0);
       const bars: Mesh[] = [];
-      for (let b = -4; b <= 4; b++) {
-        const bar = MeshBuilder.CreateBox("catBar", { width: 0.14, height: H * 0.7, depth: 0.14 }, scene);
-        bar.position.set(b * (CAT_CORRIDOR_HALF / 4.2), 0, 0);
+      for (let b = -5; b <= 5; b++) {
+        const bar = MeshBuilder.CreateBox("catBar", { width: 0.16, height: H * 0.66, depth: 0.16 }, scene);
+        bar.position.set(b * (CAT_CORRIDOR_HALF / 5.2), 0, 0);
         bars.push(bar);
       }
       for (const hy of [-0.25, 0.1, 0.4]) {
-        const cross = MeshBuilder.CreateBox("catBarX", { width: CAT_CORRIDOR_HALF * 2, height: 0.16, depth: 0.16 }, scene);
-        cross.position.set(0, hy * H * 0.7, 0);
+        const cross = MeshBuilder.CreateBox("catBarX", { width: CAT_CORRIDOR_HALF * 2, height: 0.18, depth: 0.18 }, scene);
+        cross.position.set(0, hy * H * 0.66, 0);
         bars.push(cross);
       }
       const gate = Mesh.MergeMeshes(bars, true, true) as Mesh;
       gate.name = `catGate${i}`;
       gate.material = ironMat;
-      const gy = y0 + H * 0.35;
+      const gy = y0 + H * 0.33;
       gate.position.set(0, gy, c.z0 + 2.2);
       gate.parent = root;
       gate.isPickable = false;
       this.gates.push({ mesh: gate, i, y: gy });
+      for (const [list, m] of [[L.floor, floorMat], [L.wall, wallMat], [L.ceil, ceilMat], [L.iron, ironMat]] as [Mesh[], StandardMaterial][]) {
+        if (!list.length) continue;
+        const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
+        if (!mm) continue;
+        mm.name = `catCor${i}`;
+        mm.material = m;
+        mm.parent = root;
+        mm.isPickable = false;
+        mm.freezeWorldMatrix();
+        hallMeshes[i].push(mm);
+        hallMeshes[i + 1].push(mm);
+      }
+      hallMeshes[i].push(gate);
     }
 
-    // Алтарь в последнем зале: постамент, кристалл, луч во время битвы с Владыкой.
-    const last = CAT_HALLS[CAT_HALLS.length - 1];
-    const ped = MeshBuilder.CreateCylinder("catAltar", { height: 1.2, diameterTop: 2.4, diameterBottom: 3.2, tessellation: 8 }, scene);
-    ped.position.set(last.x, y0 + 0.6, last.z + last.r * 0.25);
-    pillars.push(ped);
-    const cm = new StandardMaterial("catCrystal", scene);
-    cm.diffuseColor = new Color3(0.2, 0.05, 0.3);
-    cm.emissiveColor = new Color3(0.5, 0.15, 0.8);
-    cm.alpha = 0.9;
-    this.crystalMat = cm;
-    const cr = MeshBuilder.CreatePolyhedron("catCrystalMesh", { type: 1, size: 0.7 }, scene);
-    cr.scaling.y = 1.8;
-    cr.position.set(ped.position.x, y0 + 2.6, ped.position.z);
-    cr.material = cm;
-    cr.parent = root;
-    cr.isPickable = false;
-    this.crystal = cr;
-    const bm = new StandardMaterial("catBeam", scene);
-    bm.diffuseColor = new Color3(0, 0, 0);
-    bm.emissiveColor = new Color3(0.6, 0.15, 1);
-    bm.disableLighting = true;
-    bm.alpha = 0.35;
-    bm.alphaMode = Constants.ALPHA_ADD;
-    bm.disableDepthWrite = true;
-    const beam = MeshBuilder.CreateCylinder("catBeamMesh", { height: H, diameter: 1.6, tessellation: 16 }, scene);
-    beam.position.set(ped.position.x, y0 + H / 2, ped.position.z);
-    beam.material = bm;
-    beam.parent = root;
-    beam.isPickable = false;
-    beam.setEnabled(false);
-    this.beam = beam;
-
-    const merge = (list: Mesh[], name: string, m: StandardMaterial): void => {
-      const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
-      if (!mm) return;
-      mm.name = name;
-      mm.material = m;
-      mm.parent = root;
-      mm.isPickable = false;
-      mm.freezeWorldMatrix();
-    };
-    merge(floors, "catFloors", floorMat);
-    merge(walls, "catWalls", wallMat);
-    merge(ceils, "catCeils", ceilMat);
-    merge(pillars, "catPillars", pillarMat);
-    merge(irons, "catIrons", ironMat);
-    // Под землёй солнца и неба нет: камень освещают только свет залов и огонь
-    // (факелы ботов тоже) — дневные источники сцены катакомбы не трогают.
+    // Факелы светят только на свой зал (и его коридоры) — иначе свет лез бы во все материалы сцены.
+    this.hallLights.forEach((ls, i) => {
+      for (const l of ls) l.includedOnlyMeshes = hallMeshes[i];
+    });
+    // Под землёй солнца и неба нет: камень освещают только факелы (и огни ботов).
     const stone = root.getChildMeshes();
     for (const l of scene.lights) {
       if (l.getClassName() === "PointLight") continue;
       l.excludedMeshes.push(...stone);
     }
-    // Столбы света сквозь трещины свода — аддитивные конусы, неподвижные.
-    const shaftMat = new StandardMaterial("catShaft", scene);
-    shaftMat.diffuseColor = new Color3(0, 0, 0);
-    shaftMat.emissiveColor = new Color3(0.55, 0.5, 0.42);
-    shaftMat.disableLighting = true;
-    shaftMat.alpha = 0.11;
-    shaftMat.alphaMode = Constants.ALPHA_ADD;
-    shaftMat.disableDepthWrite = true;
-    shaftMat.backFaceCulling = false;
-    CAT_HALLS.forEach((h, hi) => {
-      for (let i = 0; i < 3; i++) {
-        const a = hi * 1.3 + i * 2.1;
-        const rr = h.r * (0.25 + 0.2 * i);
-        const sh = MeshBuilder.CreateCylinder("catShaftMesh", { height: H, diameterTop: 1.2, diameterBottom: 4.5, tessellation: 12, cap: 0 }, scene);
-        sh.position.set(h.x + Math.cos(a) * rr + 1.5, y0 + H / 2, h.z + Math.sin(a) * rr);
-        sh.rotation.z = 0.18;
-        sh.material = shaftMat;
-        sh.parent = root;
-        sh.isPickable = false;
-      }
+
+    pools.forEach((list, hi) => {
+      if (!list.length) return;
+      const pm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
+      if (!pm) return;
+      pm.name = `catLightPools${hi}`;
+      // Свой материал у зала — мерцает в своём ритме (огонь, а не ровная лампа).
+      const m = makePoolMat(`catLightPool${hi}`);
+      pm.material = m;
+      this.poolMats.push(m);
+      pm.parent = root;
+      pm.isPickable = false;
+      pm.freezeWorldMatrix();
     });
+
+    // Тёмная оболочка вокруг всего подземелья: в любые щели видно тьму, а не небо.
+    const shell = MeshBuilder.CreateBox("catShell", { width: 90, height: 60, depth: CAT_HALLS[CAT_HALLS.length - 1].z + 50 - CAT_HALLS[0].z + 40 }, scene);
+    shell.position.set(0, y0 + 10, (CAT_HALLS[0].z - 40 + CAT_HALLS[CAT_HALLS.length - 1].z + 50) / 2);
+    const shellMat = new StandardMaterial("catShellMat", scene);
+    shellMat.diffuseColor = new Color3(0, 0, 0);
+    shellMat.emissiveColor = new Color3(0.01, 0.008, 0.012);
+    shellMat.disableLighting = true;
+    shellMat.backFaceCulling = false;
+    shellMat.fogEnabled = false;
+    shell.material = shellMat;
+    shell.parent = root;
+    shell.isPickable = false;
+    shell.flipFaces(true);
+
     // Пылинки: медленно кружат в свете факелов, редкие тлеющие искры.
     const ps = new ParticleSystem("catMotes", 260, scene);
-    ps.particleTexture = glowTexture(scene);
+    ps.particleTexture = glowTex;
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
     ps.emitter = new Vector3(0, y0 + 3, 0);
     ps.minEmitBox = new Vector3(-18, -2.5, -18);
-    ps.maxEmitBox = new Vector3(18, 6, 18);
-    ps.color1 = new Color4(1, 0.75, 0.45, 0.55);
-    ps.color2 = new Color4(0.75, 0.55, 1, 0.4);
+    ps.maxEmitBox = new Vector3(18, 7, 18);
+    ps.color1 = new Color4(1, 0.7, 0.4, 0.5);
+    ps.color2 = new Color4(1, 0.5, 0.2, 0.35);
     ps.colorDead = new Color4(0, 0, 0, 0);
-    ps.minSize = 0.05;
-    ps.maxSize = 0.16;
+    ps.minSize = 0.04;
+    ps.maxSize = 0.14;
     ps.minLifeTime = 5;
     ps.maxLifeTime = 9;
     ps.emitRate = 40;
@@ -451,6 +721,7 @@ export class CatacombsFx {
     ps.maxEmitPower = 0.5;
     ps.gravity = new Vector3(0, 0.02, 0);
     this.motes = ps;
+
     root.setEnabled(false);
   }
 
@@ -519,7 +790,15 @@ export class CatacombsFx {
     disc.parent = root;
     const pillar = MeshBuilder.CreateCylinder("catPortalBeam", { height: 7, diameterTop: 0.5, diameterBottom: 3.6, tessellation: 24 }, scene);
     pillar.position.y = 3.5;
-    const pm = glow.clone("catPortalBeamMat");
+    // Не clone (копия DynamicTexture не «готова» — столб не рисовался): свой материал с той же текстурой.
+    const pm = new StandardMaterial("catPortalBeamMat", scene);
+    pm.emissiveTexture = gt;
+    pm.opacityTexture = gt;
+    pm.emissiveColor = new Color3(0.6, 0.2, 1);
+    pm.diffuseColor = new Color3(0, 0, 0);
+    pm.disableLighting = true;
+    pm.alphaMode = Constants.ALPHA_ADD;
+    pm.disableDepthWrite = true;
     pm.alpha = 0.35;
     pillar.material = pm;
     pillar.parent = root;

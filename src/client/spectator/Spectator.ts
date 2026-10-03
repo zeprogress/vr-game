@@ -1490,7 +1490,7 @@ export class Spectator {
     st.players.forEach((p, id) => {
       if (!p.dead && inCatRegion(p.head.x, p.head.z)) heroes.push(id);
     });
-    return { x: h.x, z: h.z, r: h.r, bossId, final: st.catFinal === 1, heroes };
+    return { x: h.x, z: h.z, r: h.r, lo: st.catLo, hi: st.catHi, bossId, final: st.catFinal === 1, heroes };
   }
   private catFx: CatacombsFx | null = null;
   private catMusic = "";

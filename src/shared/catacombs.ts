@@ -41,7 +41,7 @@ export const CAT_CORRIDOR_HALF = 4.5;
 /** Высота пола подземелья (ровный): глубоко под землёй — меш поверхности и фартук за краем карты сюда не достают. */
 export const CAT_FLOOR_Y = -80;
 /** Высота сводов (для клиента: стены и потолок). */
-export const CAT_CEIL = 12;
+export const CAT_CEIL = 16;
 
 /** Коридор i — между залами i и i+1 (прямоугольник вдоль Z, заходит в залы на 2 м). */
 export function catCorridor(i: number): { z0: number; z1: number } {
@@ -141,8 +141,27 @@ export interface CatBoss {
   scale: number;
   /** Свита — встаёт вместе с боссом. */
   retinue: CatWave[];
-  /** Финальный: атаки дыханием/волной/дождём (как у охоты), призыв миньонов. */
+  /** Финальный: атаки дыханием/волной/дождём (как у охоты), призыв миньонов, 3 стадии. */
   final?: boolean;
+  /** Приёмы стража (телеграф → удар): см. CatMech. */
+  mech?: CatMech[];
+  /** Постоянная свита: каждые every с из ворот вылезают count (+perHero за героя). */
+  adds?: { types: string[]; every: number; count: number; perHero: number };
+}
+
+/**
+ * Приём стража: slam — круг под случайным героем (оглушает), ring — кольцо от
+ * стража (отбрасывает, спасение — отбежать), barrage — град из кругов по залу.
+ * `fx` — вид эффекта (как у опасностей зала: 0 камни, 1 огонь, 2 души).
+ */
+export interface CatMech {
+  kind: "slam" | "ring" | "barrage";
+  name: string;
+  every: number;
+  fx: 0 | 1 | 2;
+  /** Урон — доля макс. HP героя. */
+  dmg: number;
+  r: number;
 }
 
 export interface CatStage {
@@ -210,16 +229,22 @@ export const CATACOMBS = {
       pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus"],
       bosses: [
         {
-          key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Костницы",
-          hpMul: 4.2, dmgMul: 1.6, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
+          key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Костницы — поднимает мёртвых, костяные шипы",
+          hpMul: 2.94, dmgMul: 1.6, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
+          mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
+          adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
         },
         {
-          key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Костницы — ядовитые споры",
-          hpMul: 2.6, dmgMul: 1.5, scale: 1.4, retinue: [{ type: "spikyBlob", count: 4, perHero: 1 }],
+          key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Костницы — споры и грибной град",
+          hpMul: 1.82, dmgMul: 1.5, scale: 1.4, retinue: [{ type: "spikyBlob", count: 4, perHero: 1 }],
+          mech: [{ kind: "barrage", name: "Грибной град", every: 9, fx: 2, dmg: 0.25, r: 2.8 }, { kind: "ring", name: "Споровый взрыв", every: 14, fx: 2, dmg: 0.25, r: 6.5 }],
+          adds: { types: ["spikyBlob", "frog"], every: 14, count: 3, perHero: 0.7 },
         },
         {
-          key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Костницы — хватает щупальцами",
-          hpMul: 2.7, dmgMul: 1.5, scale: 1.5, retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
+          key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Костницы — щупальца и удары с неба",
+          hpMul: 1.89, dmgMul: 1.5, scale: 1.5, retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
+          mech: [{ kind: "slam", name: "Удар щупальца", every: 6, fx: 2, dmg: 0.28, r: 3.4 }, { kind: "barrage", name: "Чернильный ливень", every: 12, fx: 2, dmg: 0.22, r: 2.6 }],
+          adds: { types: ["boneWraith", "bee"], every: 15, count: 2, perHero: 0.6 },
         },
       ],
       chest: "gold",
@@ -229,18 +254,24 @@ export const CATACOMBS = {
       pool: ["spearThrower", "spikeTail", "rockBreaker", "frostDemon", "boneWraith"],
       bosses: [
         {
-          key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Огненного склепа — огненный таран",
-          hpMul: 2.6, dmgMul: 1.6, scale: 1.7,
+          key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Огненного склепа — таран и огненное кольцо",
+          hpMul: 1.82, dmgMul: 1.6, scale: 1.7,
           retinue: [{ type: "spikyBlob", count: 3, perHero: 1 }, { type: "spearThrower", count: 1, perHero: 0.3 }],
+          mech: [{ kind: "ring", name: "Огненное кольцо", every: 9, fx: 1, dmg: 0.3, r: 7.5 }, { kind: "barrage", name: "Дождь углей", every: 11, fx: 1, dmg: 0.24, r: 2.8 }],
+          adds: { types: ["spikyBlob", "spearThrower"], every: 16, count: 2, perHero: 0.6 },
         },
         {
-          key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Огненного склепа — лёд и щит отражения",
-          hpMul: 2.6, dmgMul: 1.5, scale: 1.7,
+          key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Огненного склепа — лёд, щит отражения, обвалы",
+          hpMul: 1.82, dmgMul: 1.5, scale: 1.7,
           retinue: [{ type: "boneWraith", count: 2, perHero: 1 }, { type: "spikeTail", count: 1, perHero: 0.3 }],
+          mech: [{ kind: "slam", name: "Ледяной молот", every: 7, fx: 0, dmg: 0.32, r: 3.8 }, { kind: "barrage", name: "Обвал свода", every: 12, fx: 0, dmg: 0.25, r: 3 }],
+          adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
         },
         {
-          key: "rockBreaker", name: "Громолом", title: "хранитель Огненного склепа — прыжки и ярость стаи",
-          hpMul: 2.2, dmgMul: 1.4, scale: 1.8, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
+          key: "rockBreaker", name: "Громолом", title: "хранитель Огненного склепа — прыжки, обвалы, ярость стаи",
+          hpMul: 1.54, dmgMul: 1.4, scale: 1.8, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
+          mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
+          adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
         },
       ],
       chest: "gold",
@@ -250,9 +281,10 @@ export const CATACOMBS = {
       waves: [],
       boss: {
         key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
-        hpMul: 0.9, dmgMul: 1.4, scale: 1.25,
+        hpMul: 0.68, dmgMul: 1.4, scale: 1.25,
         retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
         final: true,
+        adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 18, count: 2, perHero: 0.6 },
       },
       chest: "final",
     },
@@ -305,6 +337,25 @@ export const CAT_HELP: readonly [string, string][] = [
   ["!режим", "осторожно · агрессивно"],
   ["!тактика", "что сейчас приказано"],
 ];
+
+/** Владыка Бездны: три стадии по доле HP. */
+export const CAT_FINAL = {
+  /** Стадия 2 (Печать) с этой доли HP: щит, хранители печати, метеоры. */
+  sealAt: 0.7,
+  /** Стадия 3 (Ярость Бездны) с этой доли HP: огненные кольца, чаще всё. */
+  rageAt: 0.4,
+  /** Хранителей печати (сколько убить, чтобы снять щит) и их тип. */
+  guardians: 3,
+  guardianKey: "boneChief",
+  guardianHp: 0.6,
+  /** Метеоры на стадии 2 — каждые, с. */
+  meteorEvery: 6,
+  /** После снятия щита — оглушён, с. */
+  stunAfterSeal: 5,
+  /** Стадия 3: кольцо пламени от Владыки — каждые, с; радиус. */
+  ringEvery: 7,
+  ringR: 9,
+} as const;
 
 /** Фазы забега (RoomState.catPhase). */
 export const CAT_PHASE = { none: 0, gather: 1, run: 2, outro: 3 } as const;

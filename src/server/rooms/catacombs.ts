@@ -1,4 +1,5 @@
 import {
+  CAT_FINAL,
   CAT_CURSES,
   CAT_HAZARD,
   CAT_HALLS,
@@ -11,6 +12,7 @@ import {
   type CatBoss,
   type CatCurse,
   type CatHazardKind,
+  type CatMech,
   type CatWave,
 } from "#shared/catacombs";
 import type { CatacombMsg, LootItem } from "#shared/net/messages";
@@ -51,7 +53,15 @@ export interface CatHost {
   /** Сундук на полу (эффект) и зелья россыпью (lootMul — проклятие «Щедрая гробница»). */
   chestFx(x: number, z: number, final: boolean, lootMul: number): void;
   /** Опасность зала: телеграф-круги в точках, через CAT_HAZARD.delay — удар (и боты от них уворачиваются). */
-  hazard(kind: CatHazardKind, pts: { x: number; z: number }[]): void;
+  hazard(kind: CatHazardKind, pts: { x: number; z: number }[], o?: { r?: number; dmg?: number; delay?: number; stun?: number; knock?: number }): void;
+  /** Где моб и сколько у него HP (null — нет/мёртв). */
+  mobInfo(id: string): { x: number; z: number; hp: number; maxHp: number } | null;
+  /** Щит стадии: неуязвим (удары — «MISS») + эффект купола. */
+  setImmune(id: string, on: boolean): void;
+  /** Оглушить / перенести моба / разъярить. */
+  stunMob(id: string, sec: number): void;
+  moveMob(id: string, x: number, z: number): void;
+  enrage(id: string): void;
   /** Ворота открываются (портал) — через ~1.3 с оттуда полезут мобы. */
   gateFx(pts: { x: number; z: number }[]): void;
   /** Землетрясение/вспышка перед боссом (эффект в точке). */
@@ -90,6 +100,18 @@ export class CatacombDirector {
   private finalOn = false;
   /** Средний уровень пати — по нему комната подгоняет силу мобов. */
   private partyLevel = 1;
+  /** Мозг стража: когда следующий приём каждого вида, свита, ярость, стадия Владыки. */
+  private mechAt = new Map<string, number>();
+  private addsAt = 0;
+  private bossRage = false;
+  /** Стадия Владыки: 1 Пламя, 2 Печать (щит), 2.5 печать разбита, 3 Ярость Бездны. */
+  private finalPhase: number = 1;
+  private readonly guardians = new Set<string>();
+  private meteorAt = 0;
+  private shieldFxAt = 0;
+  private ringAt = 0;
+  /** Свита «на подходе» (ворота открылись). */
+  private pendingAdds: { group: CatWave[]; gates: { x: number; z: number }[]; at: number }[] = [];
   /** План каждого зала на этот заход. */
   private plan: StagePlan[] = [];
   /** Волна «на подходе»: ворота уже открылись, мобы выйдут в `at`. */
@@ -292,8 +314,10 @@ export class CatacombDirector {
         break;
       }
       case "boss": {
-        if (this.finalOn) this.host.finalTick(this.bossId);
+        this.bossBrain(now, st.hall, plan.boss!, heroes);
         if (this.host.alive(this.bossId)) break;
+        for (const g of this.guardians) this.host.clearMobs([g]);
+        this.guardians.clear();
         if (this.finalOn) {
           this.host.finalStop();
           this.finalOn = false;
@@ -421,6 +445,12 @@ export class CatacombDirector {
   }
 
   private spawnBoss(b: CatBoss, hall: number): void {
+    this.mechAt.clear();
+    this.addsAt = this.host.now() + (b.adds?.every ?? 10) * 1000;
+    this.bossRage = false;
+    this.finalPhase = 1;
+    this.guardians.clear();
+    this.pendingAdds = [];
     const at = catBossSpot(hall);
     const n = this.heroCount();
     this.bossId = this.host.spawn(b.key, at.x, at.z, {
@@ -437,6 +467,149 @@ export class CatacombDirector {
       this.finalOn = true;
       this.host.finalStart(this.bossId);
     }
+  }
+
+  /**
+   * Мозг стража: постоянная свита из ворот, приёмы с телеграфами, ярость ниже 30%;
+   * у Владыки — три стадии (Пламя → Печать со щитом и хранителями → Ярость Бездны).
+   */
+  private bossBrain(now: number, hall: number, b: CatBoss, heroes: ReturnType<CatHost["heroes"]>): void {
+    const info = this.host.mobInfo(this.bossId);
+    if (!info) return;
+    const frac = info.hp / Math.max(1, info.maxHp);
+    // Свита, вышедшая из ворот.
+    for (let i = this.pendingAdds.length - 1; i >= 0; i--) {
+      const pa = this.pendingAdds[i];
+      if (now < pa.at) continue;
+      this.spawnGroup(pa.group, pa.gates);
+      this.pendingAdds.splice(i, 1);
+    }
+    const party = heroes.filter((h) => this.party.has(h.id) && !h.dead);
+    const rage = this.bossRage || (b.final ? this.finalPhase === 3 : false);
+    const k = rage ? 0.65 : 1;
+    // Постоянная свита.
+    if (b.adds && now >= this.addsAt && this.finalPhase !== 2) {
+      this.addsAt = now + b.adds.every * k * 1000;
+      if (this.mobs.size < 4 + this.party.size * 1.5) {
+        const gates = catGates(hall).sort(() => Math.random() - 0.5).slice(0, 2);
+        const n = Math.max(1, Math.round(b.adds.count + b.adds.perHero * (this.party.size - 1)));
+        const group: CatWave[] = [];
+        for (let i = 0; i < n; i++) group.push({ type: pick(b.adds.types), count: 1, perHero: 0 });
+        this.host.gateFx(gates);
+        this.pendingAdds.push({ group, gates, at: now + 1300 });
+      }
+    }
+    // Приёмы стража.
+    for (const m of b.mech ?? []) {
+      const at = this.mechAt.get(m.name) ?? now + 4000;
+      if (!this.mechAt.has(m.name)) this.mechAt.set(m.name, at);
+      if (now < at || this.finalPhase === 2) continue;
+      this.mechAt.set(m.name, now + m.every * k * 1000);
+      this.castMech(m, info, party);
+    }
+    if (!b.final) {
+      if (!this.bossRage && frac < 0.3) {
+        this.bossRage = true;
+        this.host.enrage(this.bossId);
+        this.host.announce({ kind: "boss", title: `${b.name} в ярости!`, sub: "приёмы чаще, свита злее", secs: 4 });
+      }
+      return;
+    }
+    // ---- Владыка Бездны: три стадии ----
+    const F = CAT_FINAL;
+    const H = CAT_HALLS[hall];
+    if (this.finalPhase === 1) {
+      this.host.finalTick(this.bossId);
+      if (frac < F.sealAt) {
+        // Стадия 2 — Печать: на трон под щит, хранители печати, метеоры.
+        this.finalPhase = 2;
+        const dais = catBossSpot(hall);
+        this.host.moveMob(this.bossId, dais.x, dais.z);
+        this.host.setImmune(this.bossId, true);
+        this.host.bossFx(dais.x, dais.z, true);
+        this.guardians.clear();
+        for (let i = 0; i < F.guardians; i++) {
+          const a = (i / F.guardians) * Math.PI * 2 + Math.PI / 2;
+          const gx = H.x + Math.cos(a) * H.r * 0.55;
+          const gz = H.z + Math.sin(a) * H.r * 0.55;
+          const id = this.host.spawn(F.guardianKey, gx, gz, {
+            hpMul: F.guardianHp * (1 + 0.35 * (this.party.size - 1)) * this.threat("hp"), dmgMul: this.threat("dmg"), scaleMul: 1.3,
+            name: "Хранитель печати", partyLevel: this.partyLevel,
+          });
+          this.guardians.add(id);
+          this.mobs.add(id);
+        }
+        this.meteorAt = now + 2500;
+        this.host.announce({ kind: "boss", title: "Печать Бездны", sub: `Владыка под щитом — разбейте ${F.guardians} хранителей печати!`, secs: 6 });
+      }
+    } else if (this.finalPhase === 2) {
+      for (const g of [...this.guardians]) if (!this.host.alive(g)) this.guardians.delete(g);
+      if (now >= this.shieldFxAt && this.guardians.size > 0) {
+        this.shieldFxAt = now + 5000;
+        this.host.setImmune(this.bossId, true); // купол виден непрерывно (эффект живёт ~6 с)
+      }
+      if (now >= this.meteorAt) {
+        this.meteorAt = now + F.meteorEvery * 1000;
+        const pts: { x: number; z: number }[] = [];
+        const n = 3 + this.party.size;
+        for (let i = 0; i < n; i++) {
+          const h = party[i % Math.max(1, party.length)];
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * 4;
+          pts.push(h ? { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r } : { x: H.x + Math.cos(a) * H.r * 0.5, z: H.z + Math.sin(a) * H.r * 0.5 });
+        }
+        this.host.hazard("flames", pts, { r: 3, dmg: 0.22 });
+      }
+      if (this.guardians.size === 0) {
+        this.host.setImmune(this.bossId, false);
+        this.host.stunMob(this.bossId, F.stunAfterSeal);
+        this.finalPhase = 2.5;
+        this.host.announce({ kind: "boss", title: "Печать разбита!", sub: `Владыка оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
+      }
+    } else if (this.finalPhase === 2.5) {
+      this.host.finalTick(this.bossId);
+      if (frac < F.rageAt) this.enterRage(now, hall);
+    } else {
+      // Стадия 3 — Ярость Бездны: кольца пламени от Владыки, всё чаще.
+      this.host.finalTick(this.bossId);
+      if (now >= this.ringAt) {
+        this.ringAt = now + F.ringEvery * 1000;
+        this.host.hazard("flames", [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.3, knock: 7, delay: 1.8 });
+      }
+    }
+    if (this.finalPhase === 1 && frac < F.rageAt) this.enterRage(now, hall);
+  }
+
+  private enterRage(now: number, hall: number): void {
+    this.finalPhase = 3;
+    this.host.enrage(this.bossId);
+    const at = catBossSpot(hall);
+    this.host.bossFx(at.x, at.z, true);
+    this.ringAt = now + 3000;
+    this.addsAt = now + 2000;
+    this.host.announce({ kind: "boss", title: "Ярость Бездны", sub: "Владыка в огне — кольца пламени, отбегайте!", secs: 6 });
+  }
+
+  /** Приём стража: телеграф → удар (через опасности зала, боты уворачиваются). */
+  private castMech(m: CatMech, info: { x: number; z: number }, party: ReturnType<CatHost["heroes"]>): void {
+    const kind = CAT_HAZARD.kinds[m.fx];
+    if (m.kind === "slam" && party.length) {
+      const h = party[Math.floor(Math.random() * party.length)];
+      this.host.hazard(kind, [{ x: h.x, z: h.z }], { r: m.r, dmg: m.dmg, stun: 1.2, delay: 1.5 });
+    } else if (m.kind === "ring") {
+      this.host.hazard(kind, [{ x: info.x, z: info.z }], { r: m.r, dmg: m.dmg, knock: 7, delay: 1.7 });
+    } else if (m.kind === "barrage") {
+      const pts: { x: number; z: number }[] = [];
+      const n = 3 + Math.min(5, this.party.size);
+      for (let i = 0; i < n; i++) {
+        const h = party[i % Math.max(1, party.length)];
+        const a = Math.random() * Math.PI * 2;
+        const r = 1 + Math.random() * 4;
+        pts.push(h ? { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r } : { x: info.x + Math.cos(a) * 6, z: info.z + Math.sin(a) * 6 });
+      }
+      this.host.hazard(kind, pts, { r: m.r, dmg: m.dmg, delay: 1.6 });
+    }
+    this.host.announce({ kind: "boss", title: m.name, sub: "", secs: 2 });
   }
 
   /** Нарастание угрозы от зала к залу. */

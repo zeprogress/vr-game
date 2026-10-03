@@ -643,6 +643,17 @@ export function playClassAct(
       c.sound(at, "thud");
       return true;
     }
+    case "catShield":
+      // Щит Печати на Владыке: фиолетовый купол и кольцо, держатся ~6 с (сервер обновляет); разбит — взрыв осколков.
+      if (d === 1 && mobId) {
+        vfx.pillar(x, y, z, 4.2, 9, FXC.arcane, 6, { kind: "mob", id: mobId });
+        vfx.decal(x, y, z, 5, FXC.arcane, 6, 1, 0.8, { kind: "mob", id: mobId, dy: 0.05 });
+      } else {
+        vfx.burst(x, y + 3, z, FXC.arcane, { count: 90, speed: 14, life: 1.2, grav: 6, size: 0.4 });
+        vfx.decal(x, y, z, 9, FXC.arcane, 0.9, 0, 1.2);
+        c.sound(at, "bash");
+      }
+      return true;
     case "catChest": {
       // Сундук стража: золотой столб и россыпь искр; суперприз — больше и дольше.
       const fin = r === 1;

@@ -217,7 +217,7 @@ const CSS = `
   color:#fff; animation:none;
   text-shadow:0 .15vh .5vh rgba(0,0,0,.85); }
 /* Ниже рейтинга башни (тот — с 23vh, до 5 строк ≈ до 43vh), иначе перекрывал его. */
-.ov-cat { right:1.2vw; top:34vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
+.ov-cat { right:1.2vw; bottom:6vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
 .ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
 .ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
 .ov-cat .c { display:flex; gap:.6vw; margin:.25vh 0; }

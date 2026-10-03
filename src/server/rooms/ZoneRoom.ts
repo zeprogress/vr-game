@@ -5432,26 +5432,56 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sim.dropPotions(x, z, Math.round((final ? 8 : 4) * lootMul), 5);
         this.broadcast(MSG.act, { k: "catChest", id: "", x, y: terrainHeight(x, z), z, r: final ? 1 : 0 } satisfies ActRelay);
       },
-      hazard: (kind, pts) => {
+      hazard: (kind, pts, o) => {
         const H = CAT_HAZARD;
         const v = H.kinds.indexOf(kind);
+        const R = o?.r ?? H.radius;
+        const delay = o?.delay ?? H.delay;
+        const dmgFrac = o?.dmg ?? H.dmgFrac;
+        const stun = o?.stun ?? (kind === "rockfall" ? 0.8 : 0);
+        const knock = o?.knock ?? (kind === "souls" ? 6 : 0);
         for (const pt of pts) {
-          this.addDanger(pt.x, pt.z, H.radius + 0.6, H.delay + 0.2);
-          this.broadcast(MSG.act, { k: "catHazard", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: H.delay, r: H.radius, v } satisfies ActRelay);
+          this.addDanger(pt.x, pt.z, R + 0.6, delay + 0.2);
+          this.broadcast(MSG.act, { k: "catHazard", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: delay, r: R, v } satisfies ActRelay);
         }
         this.clock.setTimeout(() => {
           for (const pt of pts) {
-            this.broadcast(MSG.act, { k: "catHazardHit", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, r: H.radius, v } satisfies ActRelay);
+            this.broadcast(MSG.act, { k: "catHazardHit", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, r: R, v } satisfies ActRelay);
             this.state.players.forEach((pl, pid) => {
               if (pl.dead || !this.cat.inRun(pid)) return;
-              if (Math.hypot(pl.head.x - pt.x, pl.head.z - pt.z) > H.radius) return;
+              if (Math.hypot(pl.head.x - pt.x, pl.head.z - pt.z) > R) return;
               this.hurtPlayer({
-                target: pid, dmg: pl.maxHp * H.dmgFrac, fromX: pt.x, fromZ: pt.z, projectile: true, magic: kind !== "rockfall", phys: kind === "rockfall",
-                ...(kind === "rockfall" ? { stunSec: 0.8 } : kind === "souls" ? { knockback: 6 } : {}),
+                target: pid, dmg: pl.maxHp * dmgFrac, fromX: pt.x, fromZ: pt.z, projectile: true, magic: kind !== "rockfall", phys: kind === "rockfall",
+                ...(stun ? { stunSec: stun } : {}),
+                ...(knock ? { knockback: knock } : {}),
               });
             });
           }
-        }, H.delay * 1000);
+        }, delay * 1000);
+      },
+      mobInfo: (id) => {
+        const m = this.sim.mobs.get(id);
+        return m && !m.dead ? { x: m.x, z: m.z, hp: m.hp, maxHp: m.maxHp } : null;
+      },
+      setImmune: (id, on) => {
+        const m = this.sim.mobs.get(id);
+        if (!m) return;
+        m.immune = on;
+        this.broadcast(MSG.act, { k: "catShield", id: "", x: m.x, y: m.y, z: m.z, mobId: id, d: on ? 1 : 0 } satisfies ActRelay);
+      },
+      stunMob: (id, sec) => this.sim.stunMob(id, sec),
+      moveMob: (id, x, z) => {
+        const m = this.sim.mobs.get(id);
+        if (!m) return;
+        m.x = x;
+        m.z = z;
+      },
+      enrage: (id) => {
+        const m = this.sim.mobs.get(id);
+        if (m && !m.dead) {
+          m.raging = true;
+          m.frenzy(9999);
+        }
       },
       gateFx: (pts) => {
         for (const pt of pts) this.broadcast(MSG.act, { k: "catGate", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: 1.4 } satisfies ActRelay);
@@ -5605,56 +5635,88 @@ export class ZoneRoom extends Room<ZoneState> {
       const e = catEntry(hallI);
       return { x: e.x, z: e.z, r: 3 };
     }
+    // Где отряд и где враг — от этого «вперёд/назад/фланг». Зона — весь зал: бот ДЕРЁТСЯ всегда,
+    // позиция задаёт лишь, где стоять без цели и кого бить первым (ближних к своему месту).
+    let sx = 0;
+    let sz = 0;
+    let w = 0;
+    for (const id of this.cat.party) {
+      const o = this.state.players.get(id);
+      if (!o || o.dead || Math.hypot(o.head.x - h.x, o.head.z - h.z) > h.r + 1) continue;
+      const k = id.startsWith("bot:") ? 1 : 3;
+      sx += o.head.x * k;
+      sz += o.head.z * k;
+      w += k;
+    }
+    const px = w ? (sx / w) * 0.7 + h.x * 0.3 : h.x;
+    const pz = w ? (sz / w) * 0.7 + h.z * 0.3 : h.z;
+    let ex = 0;
+    let ez = 0;
+    let en = 0;
+    const boss = this.sim.mobs.get(this.cat.bossMob);
+    if (boss && !boss.dead) {
+      ex = boss.x;
+      ez = boss.z;
+      en = 1;
+    } else {
+      for (const id of this.sim.catMobs) {
+        const m = this.sim.mobs.get(id);
+        if (!m || m.dead || Math.hypot(m.x - h.x, m.z - h.z) > h.r + 2) continue;
+        ex += m.x;
+        ez += m.z;
+        en++;
+      }
+      if (en) {
+        ex /= en;
+        ez /= en;
+      }
+    }
+    const R = h.r * 2;
     switch (bot.catPos ?? "auto") {
       case "front":
-        return { x: h.x, z: h.z + h.r * 0.45, r: BOT.zoneRadius };
-      case "back":
-        // Держит тыл: бьёт только тех, кто подошёл к нему.
-        return { x: h.x, z: h.z - h.r * 0.55, r: 9 };
+        return en ? { x: ex + (px - ex) * 0.25, z: ez + (pz - ez) * 0.25, r: R } : { x: h.x, z: h.z + h.r * 0.3, r: R };
+      case "back": {
+        // Тыл: позади отряда (от врага), держит подходы.
+        const dx = en ? px - ex : 0;
+        const dz = en ? pz - ez : -1;
+        const l = Math.hypot(dx, dz) || 1;
+        return { x: px + (dx / l) * 6, z: pz + (dz / l) * 6, r: R };
+      }
       case "flank": {
+        // Фланг: сбоку от врага (по направлению отряд→враг), сторона — своя у каждого.
         const side = bot.norm.charCodeAt(0) % 2 ? 1 : -1;
-        return { x: h.x + side * h.r * 0.6, z: h.z + h.r * 0.15, r: 12 };
+        const tx = en ? ex : h.x;
+        const tz = en ? ez : h.z;
+        const dx = tx - px;
+        const dz = tz - pz;
+        const l = Math.hypot(dx, dz) || 1;
+        return { x: tx + (-dz / l) * 6 * side, z: tz + (dx / l) * 6 * side, r: R };
       }
-      default: {
-        // Командный ивент: держимся вместе — центр живых героев отряда в этом зале
-        // (живые игроки «тянут» сильнее ботов), не разбегаемся по залу.
-        let sx = 0;
-        let sz = 0;
-        let w = 0;
-        for (const id of this.cat.party) {
-          const o = this.state.players.get(id);
-          if (!o || o.dead || Math.hypot(o.head.x - h.x, o.head.z - h.z) > h.r + 1) continue;
-          const k = id.startsWith("bot:") ? 1 : 3;
-          sx += o.head.x * k;
-          sz += o.head.z * k;
-          w += k;
-        }
-        if (w === 0) return { x: h.x, z: h.z, r: BOT.zoneRadius };
-        // Чуть к центру зала — чтобы отряд не прилипал к стене.
-        // Радиус — весь зал (стрелков у дальней стены тоже достаём), близкие цели и так в приоритете.
-        return { x: (sx / w) * 0.7 + h.x * 0.3, z: (sz / w) * 0.7 + h.z * 0.3, r: h.r * 2 };
-      }
+      default:
+        return { x: px, z: pz, r: R };
     }
   }
 
-  /** Место бота в строю отряда (кольцо вокруг центра, по порядку в пати) — пока ждём волну. */
+  /** Место бота в строю отряда (кольцо вокруг точки, по порядку в пати) — пока ждём волну. */
   private catSlot(bot: Bot, cx: number, cz: number): { x: number; z: number } {
     const ids = [...this.cat.party].filter((id) => id.startsWith("bot:")).sort();
     const i = Math.max(0, ids.indexOf(bot.id));
     const n = Math.max(1, ids.length);
     const a = (i / n) * Math.PI * 2 + Math.PI / 2;
-    const r = 2.5 + n * 0.35;
+    // С приказом «встать» — тесно у своей точки, иначе — кольцом вокруг центра отряда.
+    const r = bot.catPos && bot.catPos !== "auto" ? 1.2 : 2.5 + n * 0.35;
     return { x: cx + Math.cos(a) * r, z: cz + Math.sin(a) * r };
   }
 
   /** Цель по приказу (!цель): босс, свита, стрелки, слабые, сильные. null — как обычно. */
-  private catFocusPick(bot: Bot, ok: (m: Mob) => boolean): Mob | null {
+  private catFocusPick(bot: Bot, ok: (m: Mob) => boolean, spot?: { x: number; z: number }): Mob | null {
     const focus = bot.catFocus ?? (bot.catMode === "brave" ? "boss" : "auto");
     const p = bot.state;
-    if (focus === "auto") return this.catAssistPick(bot, ok);
+    if (focus === "auto") return this.catAssistPick(bot, ok, spot);
     if (focus === "boss") {
       const b = this.sim.mobs.get(this.cat.bossMob);
-      return b && !b.dead ? b : null;
+      // Под щитом — бьём тех, кто его держит (хранителей и свиту).
+      return b && !b.dead && !b.immune ? b : this.catAssistPick(bot, ok, spot);
     }
     let best: Mob | null = null;
     let bv = Infinity;
@@ -5682,8 +5744,11 @@ export class ZoneRoom extends Room<ZoneState> {
    * в первую очередь, затем самого раненого), иначе — тот, кого уже бьёт
    * больше всего героев отряда (добиваем вместе), иначе ближайший.
    */
-  private catAssistPick(bot: Bot, ok: (m: Mob) => boolean): Mob | null {
+  private catAssistPick(bot: Bot, ok: (m: Mob) => boolean, spot?: { x: number; z: number }): Mob | null {
     const p = bot.state;
+    // С приказом «встать» — ближние к своему месту (держит позицию), иначе — ближние к себе.
+    const fromX = spot && bot.catPos && bot.catPos !== "auto" ? spot.x : p.head.x;
+    const fromZ = spot && bot.catPos && bot.catPos !== "auto" ? spot.z : p.head.z;
     const focusCount = new Map<string, number>();
     for (const id of this.cat.party) {
       if (id === bot.id) continue;
@@ -5694,8 +5759,8 @@ export class ZoneRoom extends Room<ZoneState> {
     let bv = Infinity;
     for (const id of this.sim.catMobs) {
       const m = this.sim.mobs.get(id);
-      if (!m || m.dead || !ok(m)) continue;
-      let v = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+      if (!m || m.dead || m.immune || !ok(m)) continue;
+      let v = Math.hypot(m.x - fromX, m.z - fromZ);
       const victim = m.targetId ? this.state.players.get(m.targetId) : undefined;
       if (victim && m.targetId && this.cat.party.has(m.targetId)) {
         // Бьёт союзника: защищаем — живого игрока сильнее, раненого сильнее.
@@ -6237,7 +6302,7 @@ export class ZoneRoom extends Room<ZoneState> {
         mob = undefined;
         bot.target = null;
       } else {
-        const pick = this.catFocusPick(bot, (m) => okMob(m) || m.id === this.cat.bossMob);
+        const pick = this.catFocusPick(bot, (m) => okMob(m) || m.id === this.cat.bossMob, { x: cx, z: cz });
         if (pick) {
           mob = pick;
           bot.target = pick.id;

@@ -332,6 +332,8 @@ export class Mob {
   }
   /** Принудительная ярость (элита события ниже порога HP) — ставит комната. */
   raging = false;
+  /** Неуязвим (щит стадии босса катакомб) — hitMob не снимает HP. */
+  immune = false;
   get enraged(): boolean {
     if (this.dead) return false;
     if (this.raging) return true;
@@ -2581,6 +2583,11 @@ export class ZoneSim {
   ): MobKind | null {
     const m = this.mobs.get(id);
     if (!m) return null;
+    // Неуязвим (щит Владыки Бездны в катакомбах): удары — «MISS», урона нет.
+    if (m.immune && !m.dead) {
+      if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
+      return null;
+    }
     if (!dot && m.dodge > 0 && !m.dead && Math.random() < m.dodge) {
       m.forceAggroIfIdle();
       this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });

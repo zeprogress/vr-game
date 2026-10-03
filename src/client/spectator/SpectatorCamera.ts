@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { CAT_CEIL, catProject, inCatRegion } from "#shared/catacombs";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -153,7 +154,7 @@ export interface DirectorCtx {
   boss: { id: string; pos: Vector3; aggro: boolean } | null;
   groundY: (x: number, z: number) => number;
   /** Катакомбы идут: текущий зал, страж/Владыка (самый крупный моб зала), герои внизу. */
-  cat?: { x: number; z: number; r: number; bossId: string; final: boolean; heroes: string[] } | null;
+  cat?: { x: number; z: number; r: number; lo: number; hi: number; bossId: string; final: boolean; heroes: string[] } | null;
 }
 
 const CENTER = new Vector3(0, 0, 0);
@@ -388,15 +389,9 @@ export class SpectatorCamera {
 
     // Катакомбы: эфир — внизу. Появился страж/Владыка — сразу на него.
     const cat = ctx.cat;
-    const catShot = (s: Shot): boolean =>
-      s.kind === "catHall" || s.kind === "catTop" || s.kind === "catBoss" || (isPlayerShotKind(s.kind) && !!cat?.heroes.includes((s as { id: string }).id));
-    if (this.auto && cat && !catShot(this.shot)) {
-      this.switchTo({ kind: "catTop" }, ctx);
-    } else if (this.auto && cat?.bossId && this.catBossSeen !== cat.bossId) {
-      this.catBossSeen = cat.bossId;
-      this.switchTo({ kind: "catBoss" }, ctx);
-    } else if (this.auto && cat && (timedOut || invalid)) {
-      this.switchTo(this.nextCatShot(ctx), ctx);
+    // Катакомбы: ОДНА камера на весь бой — сверху под сводом, все герои и монстры в кадре.
+    if (this.auto && cat) {
+      if (this.shot.kind !== "catTop") this.switchTo({ kind: "catTop" }, ctx);
     } else if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
     } else if (invalid) {
@@ -427,7 +422,11 @@ export class SpectatorCamera {
     // Угол обзора: у кинопути может быть свой (fov), иначе обычный. Меняем
     // плавно, чтобы вход/выход из кадра не дёргал перспективу.
     const wantFov =
-      this.shot.kind === "path" ? (CINE_PATHS[this.shot.idx]?.fov ?? DEFAULT_FOV) : DEFAULT_FOV;
+      this.shot.kind === "path"
+        ? (CINE_PATHS[this.shot.idx]?.fov ?? DEFAULT_FOV)
+        : this.shot.kind === "catTop"
+          ? this.catFov
+          : DEFAULT_FOV;
     this.cam.fov += (wantFov - this.cam.fov) * (1 - Math.exp(-dt * 2.5));
   }
 
@@ -463,24 +462,10 @@ export class SpectatorCamera {
     }
   }
 
-  private catBossSeen = "";
+  private catFov = DEFAULT_FOV;
   private readonly catTopC = new Vector3();
   private catTopH = 6;
   private catTopInit = false;
-  private catIdx = 0;
-
-  /** Ротация в катакомбах — в основном сверху на весь отряд; изредка страж снизу и герой крупно. */
-  private nextCatShot(ctx: DirectorCtx): Shot {
-    const cat = ctx.cat!;
-    const heroes = ctx.players.filter((p) => cat.heroes.includes(p.id));
-    const h = heroes.length ? heroes[Math.floor(this.catIdx / 6) % heroes.length] : null;
-    const list: Shot[] = [{ kind: "catTop" }, { kind: "catTop" }];
-    if (cat.bossId) list.push({ kind: "catBoss" }, { kind: "catTop" });
-    if (h) list.push({ kind: "sidePlayer", id: h.id });
-    list.push({ kind: "catTop" }, { kind: "catHall" });
-    this.catIdx++;
-    return list[this.catIdx % list.length];
-  }
 
   private isFightShot(s: Shot): boolean {
     return (
@@ -713,30 +698,29 @@ export class SpectatorCamera {
         break;
       }
       case "catTop": {
-        // Сверху на весь отряд (и стража): центр — средняя точка, высота — по разбросу, чтобы влезли все.
+        // Одна камера на бой в катакомбах: под сводом, со стороны входа, все герои и монстры
+        // открытых залов в кадре. Не выходит за стены (catProject) — не хватает места, шире угол.
         const c = ctx.cat;
         if (c) {
-          let sx = 0;
-          let sz = 0;
-          let n = 0;
-          const pts: { x: number; z: number }[] = [];
-          for (const p of ctx.players) {
-            if (!c.heroes.includes(p.id)) continue;
-            pts.push({ x: p.pos.x, z: p.pos.z });
+          let x0 = Infinity;
+          let x1 = -Infinity;
+          let z0 = Infinity;
+          let z1 = -Infinity;
+          const add = (x: number, z: number): void => {
+            x0 = Math.min(x0, x);
+            x1 = Math.max(x1, x);
+            z0 = Math.min(z0, z);
+            z1 = Math.max(z1, z);
+          };
+          for (const p of ctx.players) if (c.heroes.includes(p.id)) add(p.pos.x, p.pos.z);
+          for (const m of ctx.mobs) {
+            if (Math.hypot(m.eye.x - c.x, m.eye.z - c.z) < c.r + 3 && inCatRegion(m.eye.x, m.eye.z)) add(m.eye.x, m.eye.z);
           }
-          const boss = c.bossId ? ctx.mobs.find((m) => m.id === c.bossId) : undefined;
-          if (boss) pts.push({ x: boss.eye.x, z: boss.eye.z });
-          for (const p of pts) {
-            sx += p.x;
-            sz += p.z;
-            n++;
-          }
-          const cx = n ? sx / n : c.x;
-          const cz = n ? sz / n : c.z;
-          let spread = 6;
-          for (const p of pts) spread = Math.max(spread, Math.hypot(p.x - cx, p.z - cz));
-          // Плавно: центр и высота не дёргаются за каждым шагом.
-          const k = 1 - Math.exp(-this.frameDt * 1.2);
+          if (!Number.isFinite(x0)) add(c.x, c.z);
+          const cx = (x0 + x1) / 2;
+          const cz = (z0 + z1) / 2;
+          const spread = Math.max(6, Math.hypot(x1 - x0, z1 - z0) / 2);
+          const k = 1 - Math.exp(-this.frameDt * 1.1);
           if (!this.catTopInit) {
             this.catTopC.set(cx, 0, cz);
             this.catTopH = spread;
@@ -746,12 +730,17 @@ export class SpectatorCamera {
           this.catTopC.z += (cz - this.catTopC.z) * k;
           this.catTopH += (spread - this.catTopH) * k;
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
-          const height = Math.min(42, 13 + this.catTopH * 1.35);
-          // Чуть сбоку (не строго в макушку) и медленно вокруг — объём, а не план.
-          const a = this.orbitClock * 0.07;
-          const off = height * 0.42;
-          pos.set(this.catTopC.x + Math.sin(a) * off, gy + height, this.catTopC.z - Math.cos(a) * off);
-          tgt.set(this.catTopC.x, gy + 0.5, this.catTopC.z);
+          const height = CAT_CEIL - 1.3;
+          // Отъезд назад (к входу, −Z) — чтобы смотреть под углом, а не строго в макушки.
+          const back = Math.min(c.r * 0.8, 3 + this.catTopH * 0.55);
+          let px = this.catTopC.x;
+          let pz = this.catTopC.z - back;
+          [px, pz] = catProject(px, pz, c.lo, c.hi, 1.5);
+          pos.set(px, gy + height, pz);
+          tgt.set(this.catTopC.x, gy + 0.6, this.catTopC.z);
+          // Угол обзора — чтобы влез весь бой (от расстояния до дальнего края).
+          const dist = Math.hypot(this.catTopC.x - px, this.catTopC.z - pz, height);
+          this.catFov = Math.max(0.95, Math.min(1.45, 2 * Math.atan((this.catTopH + 3) / dist)));
           return;
         }
         break;

@@ -988,10 +988,11 @@ if (ONLY.has("catacombs")) {
       lastStage = st.catStage;
       say(`  ${f(r.t(), 0)}с — стадия ${st.catStage} (${CAT.CAT_HALLS[st.catStage].name}), залы ${st.catLo}..${st.catHi}`);
     }
-    if (st.catPhase >= 2 && room.cat.phase >= 2 && st.catLeft === 1) {
+    if (st.catPhase >= 2 && room.cat.phase >= 2 && st.catLeft === 1 && !(globalThis as any).__catEndShown) {
+      (globalThis as any).__catEndShown = true;
       for (const id of room.sim.catMobs) {
         const m = room.sim.mobs.get(id);
-        if (m && !m.dead && m.scale > 1.2) say(`    к концу: ${m.eliteName} HP ${Math.round((m.hp / m.maxHp) * 100)}% (${Math.round(m.hp)}/${Math.round(m.maxHp)})`);
+        if (m && !m.dead && m.scale > 1.25 && m.eliteName !== "Метатель копий") say(`    к концу: ${m.eliteName} HP ${Math.round((m.hp / m.maxHp) * 100)}% (${Math.round(m.hp)}/${Math.round(m.maxHp)})`);
       }
     }
     if (st.catPhase === 0 && i > 100) break;
