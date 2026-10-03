@@ -240,7 +240,12 @@ export function mergeRigSkinned(scene: Scene, rig: { meshes: import("@babylonjs/
   merged.alwaysSelectAsActiveMesh = first.alwaysSelectAsActiveMesh;
 
   for (const m of list) m.dispose(false, false);
-  void used;
+  // Материалы частей (у героя — свои у каждого экземпляра, recolorCharacter) больше никому не нужны:
+  // раньше висели в сцене — по ~8 на каждое появление героя (утечка у спектатора за часы эфира).
+  // Только перекраски (`…_flat`): материалы кэша модели общие для всех экземпляров — их не трогаем.
+  for (const mat of used) {
+    if (mat.name.endsWith("_flat") && mat !== skinnedFlat.get(scene) && !scene.meshes.some((m) => m.material === mat)) mat.dispose(false, false);
+  }
   rig.meshes = rig.meshes.filter((m) => !list.includes(m as Mesh));
   rig.meshes.push(merged);
   return true;

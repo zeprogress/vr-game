@@ -9,6 +9,7 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
+import type { Material } from "@babylonjs/core/Materials/material";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
@@ -1469,12 +1470,20 @@ export class RemoteAvatar implements Hittable {
     this.bubble?.dispose();
     for (const g of this.classGroups) g.dispose();
     this.classGroups = [];
+    // Свои материалы модели (перекраска recolorCharacter, «…_flat» — у каждого героя свои) и цвет заглушки.
+    // Общий «characterFlat» слитого меша (кэш на сцену) не трогаем.
+    const rigMats = new Set(this.botRig?.meshes.map((m) => m.material).filter((m): m is Material => !!m && m.name.endsWith("_flat")) ?? []);
     this.botRig?.dispose();
     this.botHolder?.dispose();
     this.nameTag.dispose();
     this.buffAura.dispose();
     this.stunStars.dispose();
     this.root.dispose(false, true);
+    rigMats.add(this.mat);
+    const scene = this.scene;
+    for (const mat of rigMats) {
+      if (scene.materials.includes(mat) && !scene.meshes.some((m) => m.material === mat)) mat.dispose(false, false);
+    }
   }
 }
 

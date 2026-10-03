@@ -5,6 +5,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import { LightFocus } from "../world/lightFocus";
 import { buffList } from "../ui/buffList";
 import "../engine/billboardFix";
+import { installActiveMeshCandidates } from "../engine/meshCandidates";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
@@ -241,6 +242,9 @@ export class Spectator {
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
+    // Как у игрока: обходим только включённые и видимые меши, а не все ~2000 (пулы эффектов,
+    // выключенные мобы, залы катакомб) — замер стенда: ~5 мс на кадр уходило на обход (см. meshCandidates.ts).
+    installActiveMeshCandidates(this.scene);
     this.scene.clearColor = this.obs
       ? new Color4(0, 0, 0, 0)
       : new Color4(0.5, 0.7, 0.9, 1);

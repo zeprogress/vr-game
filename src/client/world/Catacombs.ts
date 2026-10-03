@@ -394,6 +394,9 @@ export class CatacombsFx {
   private root: TransformNode | null = null;
   /** Свет факелов по залам: включён только у зала(ов), где отряд, и только когда камера внизу. */
   private readonly hallLights: PointLight[][] = [];
+  /** Узел каждого зала (с его коридором вперёд): включён только зал камеры и соседние. */
+  private readonly hallNodes: TransformNode[] = [];
+  private shownHalls = "";
   private readonly fireMats: ShaderMaterial[] = [];
   private readonly glowSprites: { mesh: Mesh; phase: number }[] = [];
   private readonly gates: { mesh: Mesh; i: number; y: number }[] = [];
@@ -442,7 +445,10 @@ export class CatacombsFx {
     const inside = inCatRegion(cam.x, cam.z);
     const active = !!v && v.phase >= CAT_PHASE.run;
     if (!this.built && (inside || active)) this.build();
-    if (this.root) this.root.setEnabled(inside || active);
+    // Подземелье рисуем, только когда камера внизу (на поляне во время забега его не видно —
+    // а меши «всегда активны», рисовались бы под землёй), и только зал камеры с соседями.
+    if (this.root) this.root.setEnabled(inside);
+    if (this.built && inside) this.showHalls(cam);
     if (this.motes && !(inside || active) && this.motesHall >= 0) {
       this.motes.stop();
       this.motesHall = -1;
@@ -464,6 +470,23 @@ export class CatacombsFx {
       this.updateShrine(v);
     }
     this.updatePortal(dt, v);
+  }
+
+  /** Зал камеры (ближайший по центру) и соседние — включены, остальные выключены. */
+  private showHalls(cam: { x: number; z: number }): void {
+    let best = 0;
+    let bd = Infinity;
+    CAT_HALLS.forEach((h, i) => {
+      const d = Math.hypot(cam.x - h.x, cam.z - h.z) - h.r;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    });
+    const sig = String(best);
+    if (sig === this.shownHalls) return;
+    this.shownHalls = sig;
+    this.hallNodes.forEach((n, i) => n.setEnabled(Math.abs(i - best) <= 1));
   }
 
   private animate(dt: number, v: CatView | null): void {
@@ -538,6 +561,14 @@ export class CatacombsFx {
     const scene = this.scene;
     const root = new TransformNode("catacombs", scene);
     this.root = root;
+    // Почти все меши здесь «всегда активны» (performancePriority) — отсечение по кадру их не прячет.
+    // Поэтому по залам: включаем только зал, где камера, и соседние (см. update).
+    for (let i = 0; i < CAT_HALLS.length; i++) {
+      const n = new TransformNode(`catHall${i}`, scene);
+      n.parent = root;
+      this.hallNodes.push(n);
+    }
+    let curHall = 0;
     // Своя текстура на каждый материал: clone() у DynamicTexture так и не становится
     // «готовой» — меши с ней движок не рисовал (не было пола и стен).
     const FLOOR: [number, number, number] = [120, 112, 104];
@@ -685,7 +716,7 @@ export class CatacombsFx {
       const fx = x + faceX * 0.25;
       const fz = z + faceZ * 0.25;
       const fl = new TransformNode("catTorch", scene);
-      fl.parent = root;
+      fl.parent = this.hallNodes[hall];
       fl.position.set(fx, y0 + base + 0.5, fz);
       for (let i = 0; i < 2; i++) {
         const pl = MeshBuilder.CreatePlane("catFlame", { width: big ? 0.9 : 0.6, height: big ? 1.4 : 1 }, scene);
@@ -702,7 +733,7 @@ export class CatacombsFx {
       glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
       glow.material = this.hallGlowMats[hall];
       glow.position.set(fx, y0 + base + 0.9, fz);
-      glow.parent = root;
+      glow.parent = this.hallNodes[hall];
       glow.isPickable = false;
       this.glowSprites.push({ mesh: glow, phase: rnd() * 10 });
       // Пятно света на полу (смещено в зал) и отблеск на стене за огнём.
@@ -784,7 +815,7 @@ export class CatacombsFx {
           g.billboardMode = Mesh.BILLBOARDMODE_ALL;
           g.material = glowMat;
           g.position.set(cx, y0 + 0.55, cz);
-          g.parent = root;
+          g.parent = this.hallNodes[curHall];
           g.isPickable = false;
           this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
         }
@@ -799,6 +830,7 @@ export class CatacombsFx {
     };
 
     CAT_HALLS.forEach((h, hi) => {
+      curHall = hi;
       this.hallLights.push([]);
       const L = lists();
       // Пол и свод.
@@ -927,7 +959,7 @@ export class CatacombsFx {
           g.billboardMode = Mesh.BILLBOARDMODE_ALL;
           g.material = candleMat;
           g.position.set(px, cy + 0.55, pz);
-          g.parent = root;
+          g.parent = this.hallNodes[hi];
           g.isPickable = false;
           this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
         }
@@ -935,7 +967,7 @@ export class CatacombsFx {
         halo.billboardMode = Mesh.BILLBOARDMODE_ALL;
         halo.material = candleMat;
         halo.position.set(cx, cy + 0.5, cz);
-        halo.parent = root;
+        halo.parent = this.hallNodes[hi];
         halo.isPickable = false;
         this.glowSprites.push({ mesh: halo, phase: rnd() * 10 });
         const pool = MeshBuilder.CreateGround("catPool", { width: 11, height: 11 }, scene);
@@ -985,7 +1017,7 @@ export class CatacombsFx {
           g.billboardMode = Mesh.BILLBOARDMODE_ALL;
           g.material = candleMat;
           g.position.set(px, y0 + 0.55 + c * 0.12, pz);
-          g.parent = root;
+          g.parent = this.hallNodes[hi];
           g.isPickable = false;
           this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
         }
@@ -1026,7 +1058,7 @@ export class CatacombsFx {
         if (!mm) return null;
         mm.name = `${name}${hi}`;
         mm.material = m;
-        mm.parent = root;
+        mm.parent = this.hallNodes[hi];
         mm.isPickable = false;
         mm.freezeWorldMatrix();
         hallMeshes[hi].push(mm);
@@ -1091,7 +1123,7 @@ export class CatacombsFx {
       gate.material = ironMat;
       const gy = y0 + H * 0.33;
       gate.position.set(0, gy, c.z0 + 2.2);
-      gate.parent = root;
+      gate.parent = this.hallNodes[i];
       gate.isPickable = false;
       this.gates.push({ mesh: gate, i, y: gy });
       for (const [list, m] of [[L.floor, floorMat], [L.wall, wallMat], [L.ceil, ceilMat], [L.iron, ironMat]] as [Mesh[], StandardMaterial][]) {
@@ -1100,7 +1132,7 @@ export class CatacombsFx {
         if (!mm) continue;
         mm.name = `catCor${i}`;
         mm.material = m;
-        mm.parent = root;
+        mm.parent = this.hallNodes[i];
         mm.isPickable = false;
         mm.freezeWorldMatrix();
         hallMeshes[i].push(mm);
@@ -1122,18 +1154,18 @@ export class CatacombsFx {
       m.alpha = alpha;
       return m;
     };
-    const mergeFlat = (list: Mesh[], name: string, m: StandardMaterial): Mesh | null => {
+    const mergeFlat = (list: Mesh[], name: string, m: StandardMaterial, parent: TransformNode = root): Mesh | null => {
       if (!list.length) return null;
       const mm = Mesh.MergeMeshes(list, true, true) as Mesh | null;
       if (!mm) return null;
       mm.name = name;
       mm.material = m;
-      mm.parent = root;
+      mm.parent = parent;
       mm.isPickable = false;
       mm.freezeWorldMatrix();
       return mm;
     };
-    nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k])));
+    nicheGlow.forEach((slots, hi) => slots.forEach((list, k) => mergeFlat(list, `catNiche${hi}_${k}`, this.hallNicheMats[hi][k], this.hallNodes[hi])));
     const sealMesh = mergeFlat(seals, "catSeals", flatMat("catSealMat", sealTexture(scene), new Color3(0.16, 0.1, 0.04), false, 0.5));
     if (sealMesh) this.sealMat = sealMesh.material as StandardMaterial;
     mergeFlat(runners, "catRunners", flatMat("catRunnerMat", runnerTexture(scene), new Color3(0.05, 0.02, 0.01), false, 0.9));
@@ -1159,7 +1191,7 @@ export class CatacombsFx {
       const m = makePoolMat(`catLightPool${hi}`);
       pm.material = m;
       this.poolMats[hi] = m;
-      pm.parent = root;
+      pm.parent = this.hallNodes[hi];
       pm.isPickable = false;
       pm.freezeWorldMatrix();
     });
@@ -1219,7 +1251,7 @@ export class CatacombsFx {
     rnd: () => number,
   ): { groups: Mesh[][]; lit: [Mesh[], string, StandardMaterial][]; owner: Map<Mesh[], number> } {
     const scene = this.scene;
-    const root = this.root!;
+    const root = this.hallNodes[hi];
     const h = CAT_HALLS[hi];
     const y0 = CAT_FLOOR_Y;
     const groups: Mesh[][] = CAT_THEMES.map(() => []);
