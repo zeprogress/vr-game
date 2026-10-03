@@ -36,7 +36,10 @@ import {
   SPITTER,
   SPITTER_CFG,
 } from "#shared/constants";
-import { climbStep, terrainHeight } from "#shared/terrain";
+import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
+
+// Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
+enableTerrainHeightCache();
 import { maxHpFor, weaponDmgFromLevel } from "#shared/progression";
 
 /** Стартовые атрибуты — эталон «голого» героя для адаптивного урона. */

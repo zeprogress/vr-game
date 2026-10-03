@@ -259,6 +259,8 @@ import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 const { Room } = colyseus;
 
 /** Сколько HP доливается за новый уровень (как было на клиенте). */
+/** Поисков пути (A*) ботам за один тик сервера — остальные ждут следующего тика. */
+const BOT_NAV_PER_TICK = 2;
 const LEVEL_UP_HEAL = 10;
 /** Рыбалка: сколько ждать поклёвку — 40–60 с (см. MSG.fish, tickBotFishing). */
 const FISH_WAIT_MIN = 40;
@@ -6628,6 +6630,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Сколько ещё поисков пути ботам осталось в этом тике (BOT_NAV_PER_TICK). */
+  private navBudget = 0;
+
   /**
    * Направление шага бота к цели: напрямую, если по прямой (до 40 м) нет крутого
    * подъёма, иначе — к следующей точке маршрута A* в обход (sim/nav.ts).
@@ -6639,6 +6644,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
       const L = Math.min(dist, 40);
       const direct = straightOk(p.head.x, p.head.z, p.head.x + dx * L, p.head.z + dz * L);
+      // Поиск пути дорогой — не больше BOT_NAV_PER_TICK за тик (иначе пики тика
+      // в 100+ мс, когда много ботов перестраивают путь разом). Кто не успел —
+      // идёт по старому пути (или напрямую) и пробует в следующий тик.
+      if (!direct && this.navBudget <= 0) return nav?.path.length ? this.followNav(nav, p, dx, dz) : [dx, dz];
+      if (!direct) this.navBudget--;
       nav = { tx, tz, at: this.elapsed, path: direct ? [] : (findPath(p.head.x, p.head.z, tx, tz) ?? []) };
       // Бот не в центре своей клетки: если до первой точки по прямой не пройти — сначала в центр клетки
       // (когда до него самого можно дойти: на границе клеток центр бывает выше по склону).
@@ -6648,6 +6658,11 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       bot.nav = nav;
     }
+    return this.followNav(nav, p, dx, dz);
+  }
+
+  /** Шаг по построенному пути бота: направление на текущую точку. */
+  private followNav(nav: NonNullable<Bot["nav"]>, p: PlayerState, dx: number, dz: number): [number, number] {
     // Дошли до точки — следующая. Угол к следующей срезаем, только если к ней можно
     // пройти по прямой: путь проверен между центрами клеток, и у края горы бот,
     // срезав угол, упирался в склон и топтался на месте (лаборатория, опыт nav).
@@ -7473,6 +7488,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   private stepInner(dt: number): void {
     this.elapsed += dt;
+    this.navBudget = BOT_NAV_PER_TICK;
     if (this.state.dayAuto !== 0) this.worldHour = advanceHour(this.worldHour, dt);
     // Раз в syncSeconds сверяем клиентов — между сверками они крутят часы сами.
     this.clockSync += dt;
