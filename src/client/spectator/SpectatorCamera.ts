@@ -734,8 +734,10 @@ export class SpectatorCamera {
           // бой шире — чуть выше и дальше (но не выше свода).
           const height = Math.min(CAT_CEIL - 2, 7.5 + this.catTopH * 0.3);
           const back = Math.min(c.r * 0.9, height * 0.85 + this.catTopH * 0.25);
-          let px = this.catTopC.x;
-          let pz = this.catTopC.z - back;
+          // Медленно подкручивается влево-вправо (±35° за ~50 с) — объём и живость, без рывков.
+          const sway = Math.sin(this.orbitClock * 0.125) * 0.6;
+          let px = this.catTopC.x + Math.sin(sway) * back;
+          let pz = this.catTopC.z - Math.cos(sway) * back;
           // Только внутри зала (не в узком коридоре — там стены вплотную к камере).
           [px, pz] = catProject(px, pz, c.hi, c.hi, 2);
           pos.set(px, gy + height, pz);
