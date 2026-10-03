@@ -8,7 +8,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, SOUL_STEAL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -294,6 +294,8 @@ export class Game {
   /** Локальный кулдаун активного умения оружия, с (сервер тоже сверяет). */
   /** Когда умение снова готово (performance.now, мс). */
   private readonly skillReadyAt = new Map<SkillId, number>();
+  /** 🧪 «Призрак бездны»: до какого момента (performance.now) темп ускорен на ABYSS.haste. */
+  private abyssHasteUntil = 0;
   /** Слепок содержимого рук — чтобы не слать серверу одно и то же. */
   private handsKey = "";
   /** Про неудачу голоса говорим один раз, а не на каждого собеседника. */
@@ -863,7 +865,8 @@ export class Game {
       // Роллы «скорость атаки» × «Боевой клич» (+15%) / «Сбор» (+30%).
       const me = this.net?.self;
       const cry = me && me.crySecs > 0 ? (me.cryKind === 2 ? 1 + WARCRY.rallyTempo : me.cryKind === 1 || me.cryKind === 3 ? 1 + WARCRY.tempo : 1) : 1;
-      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry;
+      const haste = performance.now() < this.abyssHasteUntil ? 1 + ABYSS.haste : 1;
+      this.combat.atkSpeedAffix = this.heldAtkSpeedMul() * cry * haste;
       // Прицеливание луком/посохом: камера «в глаза», прицел, кнопка удара
       // управляет наводкой, кнопки зелья/рук прячутся.
       if (this.localAvatar) {
@@ -3090,6 +3093,16 @@ export class Game {
         msg.x = p.x + fx * r;
         msg.z = p.z + fz * r;
       }
+    } else if (id === "soulSteal") {
+      // Кража душ — удар по цели рядом (выбранной или ближайшей впереди).
+      const sel = this.selectedTargetPos() ?? frontTarget(SOUL_STEAL.reach + 1);
+      if (!sel || Math.hypot(sel.x - p.x, sel.z - p.z) > SOUL_STEAL.reach + 1.5) {
+        this.notifyToast("Нет цели рядом");
+        return;
+      }
+      msg.x = sel.x;
+      msg.z = sel.z;
+      this.combat.onMeleeSwing?.();
     } else if (id === "mark" || id === "chain") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.
       const sel = this.selectedTargetPos() ?? frontTarget(id === "mark" ? 22 : 14);
@@ -3602,6 +3615,12 @@ export class Game {
       if (Math.hypot(x - pp.x, z - pp.z) > VR_FX_RANGE) return;
     }
     const at = { x, y, z };
+    if (k === "abyss" && id === this.net?.sessionId) {
+      // 🧪 «Призрак бездны»: ускорение темпа (как ZoneRoom.cryTempo); окно с запасом
+      // в меньшую сторону — сервер включает его с первого удара из тени.
+      this.abyssHasteUntil = performance.now() + ABYSS.hasteSec * 1000;
+      this.notifyToast("Ты в тени — мобы тебя не видят");
+    }
     if (k === "markReset") {
       this.skillReadyAt.delete("mark");
       this.notifyToast("Цель пала под меткой — метка снова готова");

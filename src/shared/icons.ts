@@ -155,6 +155,11 @@ export const ICONS = {
   "s.warcry": { emoji: "📯" },
   "s.mark": { emoji: "🎯" },
   "s.chain": { emoji: "⚡" },
+  "s.plague": { emoji: "🧪" },
+  "s.smoke": { emoji: "🌫️" },
+  "s.soulSteal": { emoji: "👻" },
+  "s.abyss": { emoji: "🕳️" },
+  "ui.test": { emoji: "🧪" },
 
   // ---- баффы ----
   "b.victory": { emoji: "🗡️" },

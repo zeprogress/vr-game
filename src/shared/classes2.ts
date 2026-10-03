@@ -292,7 +292,11 @@ export type SkillId =
   | "whirlwind"
   | "warcry"
   | "mark"
-  | "chain";
+  | "chain"
+  | "plague"
+  | "smoke"
+  | "soulSteal"
+  | "abyss";
 
 export interface ClassDef {
   name: string;
@@ -330,7 +334,7 @@ export const CLASSES2: Record<ClassId, ClassDef> = {
   },
   assassin: {
     name: "Ассасин", icon: glyph("c.assassin"), role: "Криты, уворот", weapons: "1 или 2 кинжала", main: "dagger",
-    skills: ["shadowStep", "stunBash", "arrowRain", "whirlwind"], defaultSkills: ["shadowStep", "arrowRain"],
+    skills: ["shadowStep", "stunBash", "arrowRain", "whirlwind", "plague", "smoke", "soulSteal", "abyss"], defaultSkills: ["shadowStep", "arrowRain"],
     build: { str: 3, luc: 3.5, agi: 2.5, con: 1.3, wis: 0.6 },
   },
   spearman: {
@@ -372,6 +376,10 @@ export interface SkillDef {
   hits: number;
   /** Своё имя/описание у отдельных классов (одно умение — разный вид). */
   variants?: Partial<Record<ClassId, { name: string; desc: string }>>;
+  /** 🧪 Тестовое умение — идёт отбор: имя с пометкой, может уйти на переделку. */
+  test?: boolean;
+  /** Атрибут, усиливающий само умение (сверх общих), и на сколько за вложенное очко. */
+  attr?: { attr: Attr; per: number; what: string };
 }
 
 export const SKILLS2: Record<SkillId, SkillDef> = {
@@ -400,6 +408,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Теневой рывок", icon: glyph("s.shadowStep"), desc: "Рывок сквозь мобов за спину цели; следующий удар — гарантированный крит",
     cooldown: 10, castTime: 0.15, radius: 10, dmgMult: 0, hits: 1,
     variants: {
+      assassin: { name: "Теневой рывок", desc: "Рывок сквозь мобов за спину цели: цель оглушена на 1 с, следующий удар — гарантированный крит" },
       archer: { name: "Отскок", desc: "Прыжок назад на 7 м; на старом месте — дымовая ловушка (пригвождает 3 с), следующий выстрел — крит" },
       spearman: { name: "Отскок", desc: "Короткий прыжок назад на 4 м; на старом месте — ловушка: все мобы вокруг стягиваются в кучку и замедлены на 50% на 3 с, следующий удар — крит" },
     },
@@ -425,7 +434,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
       battlemage: { name: "Громовой вихрь", desc: "Молот по кругу: 5 магических ударов, каждый ещё бьёт молнией соседа в 7 м" },
-      assassin: { name: "Танец клинков", desc: "2 с неуязвимости: 5 ударов по всем вокруг, каждый с шансом крита" },
+      assassin: { name: "Танец клинков", desc: "2 с неуязвимости: 5 ударов по всем вокруг, каждый с шансом крита; задетые замедлены на 30% на 2 с" },
     },
   },
   warcry: {
@@ -441,6 +450,30 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     variants: {
       archer: { name: "Метка охотника", desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен" },
     },
+  },
+  plague: {
+    name: "Чумной клинок", icon: glyph("s.plague"), test: true,
+    desc: "8 с клинки отравлены: каждый удар — стак яда (до 5, яд тикает 3 с); на 5 стаках — взрыв яда вокруг цели ×0.8 удара",
+    cooldown: 16, castTime: 0, radius: 3, dmgMult: 0.8, hits: 1,
+    attr: { attr: "wis", per: 0.02, what: "сила яда" },
+  },
+  smoke: {
+    name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
+    desc: "Дымовая бомба под собой на 6 с: мобы в дыму промахиваются в половине ударов и не стреляют, союзники в дыму +30% уворота",
+    cooldown: 18, castTime: 0.2, radius: 3.5, dmgMult: 0, hits: 1,
+    attr: { attr: "wis", per: 0.01, what: "длительность дыма" },
+  },
+  soulSteal: {
+    name: "Кража душ", icon: glyph("s.soulSteal"), test: true,
+    desc: "Удар ×1.5 по цели: половина урона лечит самого раненого союзника рядом (все целы — тебя)",
+    cooldown: 10, castTime: 0.2, radius: 12, dmgMult: 1.5, hits: 1,
+    attr: { attr: "wis", per: 0.02, what: "сила лечения" },
+  },
+  abyss: {
+    name: "Призрак бездны", icon: glyph("s.abyss"), test: true,
+    desc: "3 с в тени: мобы теряют тебя из виду; первый удар из тени ×2 и крит, после выхода +30% темпа на 3 с",
+    cooldown: 16, castTime: 0, radius: 0, dmgMult: 2, hits: 1,
+    attr: { attr: "agi", per: 0.015, what: "удар из тени" },
   },
   chain: {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
@@ -501,8 +534,35 @@ export const FAN = { range: 9, halfAngle: 0.55, volleys: 3, dmgMult: 0.7 } as co
 export const SEAL = { duration: 6, healFracPerSec: 0.015, shield: 0.2, slow: 0.4, burnPerSec: 0.35 } as const;
 
 export function skillName(id: SkillId, cls: ClassId): string {
-  return SKILLS2[id].variants?.[cls]?.name ?? SKILLS2[id].name;
+  const sk = SKILLS2[id];
+  const name = sk.variants?.[cls]?.name ?? sk.name;
+  return sk.test ? `${glyph("ui.test")} ${name}` : name;
 }
+
+/** Описание умения для класса + строка про свой атрибут (если есть) — единый текст для всех окон. */
+export function skillDesc(id: SkillId, cls: ClassId): string {
+  const sk = SKILLS2[id];
+  const d = sk.variants?.[cls]?.desc ?? sk.desc;
+  return sk.attr ? `${d}. ${ATTR_INFO[sk.attr.attr].name}: +${Math.round(sk.attr.per * 1000) / 10}% (${sk.attr.what}) за очко` : d;
+}
+
+/** Множитель умения от его атрибута (SkillDef.attr): 1 + вложенные очки × per. */
+export function skillAttrMul(id: SkillId, a: Partial<Record<Attr, number>>): number {
+  const at = SKILLS2[id].attr;
+  return at ? 1 + Math.max(0, (a[at.attr] ?? 1) - ATTR2.start) * at.per : 1;
+}
+
+/** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
+export const PLAGUE = { duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.05, burstRadius: 3 } as const;
+/** «Пелена смерти»: дым — промах мобов, запрет выстрелов, уворот союзникам. */
+export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3 } as const;
+/** «Кража душ»: доля нанесённого урона в лечение; «все целы» — выше этой доли HP. */
+export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 3.5 } as const;
+/** «Призрак бездны»: сколько в тени, ускорение после выхода. */
+export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3 } as const;
+/** Ассасин: «Теневой рывок» оглушает цель, «Танец клинков» замедляет задетых. */
+export const ASSASSIN_STEP_STUN = 1;
+export const ASSASSIN_WHIRL_SLOW = { sec: 2, mul: 0.7 } as const;
 
 // ---------------------------------------------------------------- раскладка
 

@@ -1,6 +1,6 @@
 import { glyph } from "#shared/icons";
 import { ensureIconCss } from "../ui/icons";
-import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, SKILLS2, skillName, SPEAR_PIERCE_DMG, stepCost, WEAPONS2, type SkillId } from "#shared/classes2";
+import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, skillDesc, SKILLS2, skillName, SPEAR_PIERCE_DMG, stepCost, WEAPONS2, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
 import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
@@ -649,8 +649,7 @@ const MECH_CLASSES_HTML = (() => {
     const items = d.skills
       .map((id: SkillId) => {
         const sk = SKILLS2[id];
-        const v = sk.variants?.[c];
-        return `<li>${sk.icon} <b>${v?.name ?? sk.name}</b> (откат ${skillCooldownOf(id, c)} с) — ${v?.desc ?? sk.desc}.</li>`;
+        return `<li>${sk.icon} <b>${skillName(id, c)}</b> (откат ${skillCooldownOf(id, c)} с) — ${skillDesc(id, c)}.</li>`;
       })
       .join("");
     return `<p><b>${d.icon} ${d.name}</b></p><ul>${items}</ul>`;

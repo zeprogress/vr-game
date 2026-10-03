@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
@@ -790,12 +790,11 @@ export class PcInventory {
     const chosen = new Set(d.skills?.chosen ?? []);
     for (const id of def.skills) {
       const sk = SKILLS2[id];
-      const v = sk.variants?.[cls];
       const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
       const txt = div("pcinv-atxt");
       txt.append(
-        div("pcinv-aname", `${sk.icon} ${v?.name ?? sk.name} · откат ${skillCooldownOf(id, cls)} с`),
-        div("pcinv-small", v?.desc ?? sk.desc),
+        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownOf(id, cls)} с`),
+        div("pcinv-small", skillDesc(id, cls)),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";

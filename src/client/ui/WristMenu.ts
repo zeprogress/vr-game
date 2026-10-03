@@ -1,4 +1,4 @@
-import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownOf, SKILLS2, type ClassId } from "#shared/classes2";
+import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownOf, skillDesc, skillName, SKILLS2, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -284,17 +284,21 @@ export class WristMenu {
     ctx.fillStyle = "#a9a498";
     ctx.fillText("Любые два умения: стик правой руки — первое, стик левой — второе", X + 8, y);
     y += 40;
+    // Умений больше четырёх (тестовые 🧪) — строки компактнее, иначе не влезут в панель.
+    const compact = def.skills.length > 4;
+    const rowH = compact ? 66 : 92;
     for (const id of def.skills) {
       const sk = SKILLS2[id];
-      const v = sk.variants?.[cls];
+      const name = skillName(id, cls);
+      const desc = skillDesc(id, cls);
       const on = this.skillChosen.includes(id);
       const wd = this.add({
-        id: `skill:${id}`, x: X, y, w: W, h: 92, kind: "button",
+        id: `skill:${id}`, x: X, y, w: W, h: rowH, kind: "button",
         act: () => {
           if (on) return;
           this.onSkills?.([...this.skillChosen, id].slice(-2));
         },
-        info: [`${v?.name ?? sk.name} · откат ${skillCooldownOf(id, cls)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+        info: [`${name} · откат ${skillCooldownOf(id, cls)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
       });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");
@@ -302,13 +306,13 @@ export class WristMenu {
       ctx.strokeStyle = st.stroke || (on ? "#7ee081" : "#3a3e48");
       ctx.lineWidth = st.stroke ? st.lw : 2;
       ctx.strokeRect(wd.x, y, wd.w, wd.h);
-      ctx.font = "bold 28px system-ui, sans-serif";
+      ctx.font = `bold ${compact ? 25 : 28}px system-ui, sans-serif`;
       ctx.fillStyle = "#ffffff";
-      ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${v?.name ?? sk.name}`, X + 14, y + 10);
-      ctx.font = "21px system-ui, sans-serif";
+      ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${name}`, X + 14, y + (compact ? 6 : 10));
+      ctx.font = `${compact ? 18 : 21}px system-ui, sans-serif`;
       ctx.fillStyle = "#a9a498";
-      ctx.fillText((v?.desc ?? sk.desc).slice(0, 95), X + 14, y + 52);
-      y += 100;
+      ctx.fillText(desc.slice(0, compact ? 100 : 95), X + 14, y + (compact ? 38 : 52));
+      y += rowH + 8;
     }
   }
 

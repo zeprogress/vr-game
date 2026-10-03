@@ -204,7 +204,7 @@ import {
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
-import { autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -303,6 +303,13 @@ interface Runtime {
   /** «Вихрь»: до какого момента и вид (1 — воин, −30% урона; 2 — ассасин, неуязвим). */
   whirlUntil: number;
   whirlKind: number;
+  /** 🧪 «Чумной клинок»: до какого момента удары накладывают яд. */
+  plagueUntil: number;
+  /** 🧪 «Призрак бездны»: в тени до этого момента (мобы не видят); strike — первый удар из тени ещё не нанесён. */
+  abyssUntil: number;
+  abyssStrike: boolean;
+  /** Ускорение темпа после выхода из тени — до этого момента. */
+  hasteUntil: number;
   /** Класс, под который сейчас выставлены skill1/skill2 (смена оружия — другой набор). */
   skillCls: string;
   /** Последний присланный поворот — чтобы сохранить его и при выходе. */
@@ -2066,7 +2073,8 @@ export class ZoneRoom extends Room<ZoneState> {
       weaponDamage(msg.weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
       (dualDagger ? DAGGER.dualDmg : 1) *
       critM *
-      this.buffMult(client.sessionId, "dmg");
+      this.buffMult(client.sessionId, "dmg") *
+      (isMeleeClass(msg.weapon) ? this.abyssStrikeMul(p, rt) : 1);
     const [dx, dz] = unit2(msg.dx, msg.dz);
 
     if (msg.target === "dummy") {
@@ -2091,6 +2099,7 @@ export class ZoneRoom extends Room<ZoneState> {
       msg.id, dmg, dx || 0, dz || 1, client.sessionId,
       msg.weapon === "arrow", false, false, critM > 1,
     );
+    if (struck && msg.weapon === "dagger") this.afterDaggerHit(client.sessionId, p, rt, struck, dmg);
     // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона
     // возвращается владельцу как HP; от остальных целей удара — см. vampHeal ниже.
     const vamp = isMeleeClass(msg.weapon) ? heldVamp(p, rt) : 0;
@@ -2204,8 +2213,35 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Темп от «Боевого клича» (+15%), «Клича сплочения» (+30%) и «Благословения» (+15%) — как на клиенте (Game.atkSpeedAffix). */
   private cryTempo(rt: Runtime): number {
-    if (rt.cryUntil <= this.elapsed) return 1;
-    return rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1;
+    // 🧪 «Призрак бездны»: после выхода из тени — +ABYSS.haste темпа (клиент считает так же, см. Game.abyssHasteUntil).
+    const haste = rt.hasteUntil > this.elapsed ? 1 + ABYSS.haste : 1;
+    if (rt.cryUntil <= this.elapsed) return haste;
+    return haste * (rt.cryKind === 2 ? 1 + WARCRY.rallyTempo : rt.cryKind === 1 || rt.cryKind === 3 ? 1 + WARCRY.tempo : 1);
+  }
+
+  /**
+   * 🧪 Удар «из тени»: множитель первого удара после «Призрака бездны» (иначе 1).
+   * Удар выводит из тени — дальше ускорение ABYSS.haste на hasteSec.
+   */
+  private abyssStrikeMul(p: PlayerState, rt: Runtime): number {
+    if (!rt.abyssStrike || rt.abyssUntil <= this.elapsed) return 1;
+    rt.abyssStrike = false;
+    rt.abyssUntil = this.elapsed;
+    rt.hasteUntil = this.elapsed + ABYSS.hasteSec;
+    return SKILLS2.abyss.dmgMult * skillAttrMul("abyss", p);
+  }
+
+  /** 🧪 После удара кинжалом: яд «Чумного клинка» (стаки, на 5 — взрыв вокруг цели). */
+  private afterDaggerHit(ownerId: string, p: PlayerState, rt: Runtime, mob: Mob, dmg: number): void {
+    if (rt.plagueUntil <= this.elapsed || mob.dead) return;
+    const dps = dmg * PLAGUE.tickFrac * skillAttrMul("plague", p);
+    if (this.sim.poisonMob(mob.id, dps, ownerId) < PLAGUE.maxStacks) return;
+    // Взрыв яда: SKILLS2.plague.dmgMult удара по всем вокруг цели (и по ней самой).
+    const burst = dmg * SKILLS2.plague.dmgMult * skillAttrMul("plague", p);
+    this.sim.hitMob(mob.id, burst, 0, 0, ownerId, false, true);
+    this.sim.splashDamage(mob.x, mob.y, mob.z, PLAGUE.burstRadius, burst, mob.id, ownerId);
+    const y = terrainHeight(mob.x, mob.z);
+    this.broadcast(MSG.act, { k: "plagueBurst", id: ownerId, x: mob.x, y, z: mob.z, r: PLAGUE.burstRadius } satisfies ActRelay);
   }
 
   /** Множитель баффа победы над событием (×2 опыт/урон), пока активен. */
@@ -5164,6 +5200,10 @@ export class ZoneRoom extends Room<ZoneState> {
       cryUntil: -999,
       cryKind: 0,
       whirlUntil: -999,
+      plagueUntil: -999,
+      abyssUntil: -999,
+      abyssStrike: false,
+      hasteUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: 0,
@@ -6297,12 +6337,14 @@ export class ZoneRoom extends Room<ZoneState> {
       (dualDagger ? DAGGER.dualDmg : 1) *
       (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       critHit *
-      this.buffMult(bot.id, "dmg");
+      this.buffMult(bot.id, "dmg") *
+      this.abyssStrikeMul(p, bot.rt);
     const sx = mob.x;
     const sy = mob.y;
     const sz = mob.z;
     if (critHit > 1) this.critFx(sx, sy, sz, bot.id);
     const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
+    if (kind === "dagger") this.afterDaggerHit(bot.id, p, bot.rt, mob, dmg);
     const vamp = heldVamp(p, bot.rt);
     const vamped = vamp > 0;
     let splash = 0;
@@ -6401,6 +6443,11 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "whirlwind" && this.mobsInRadius(p, cls === "spearman" ? 6 : 3.5).length < 1) continue;
       if (k === "warcry" && this.mobsInRadius(p, 8).length < 2) continue;
       if ((k === "mark" || k === "chain") && nd > 14) continue;
+      // 🧪 Новые умения ассасина.
+      if (k === "plague" && nd > 3.5) continue;
+      if (k === "soulSteal" && nd > SOUL_STEAL.reach) continue;
+      if (k === "smoke" && this.mobsInRadius(p, 4).length < 2 && p.hp > p.maxHp * 0.6) continue;
+      if (k === "abyss" && (nd > 3 || (p.hp > p.maxHp * 0.7 && this.mobsInRadius(p, 5).length < 3))) continue;
       if (this.castSkill(k, bot.id, p, bot.rt, tx, tz)) {
         bot.emoteFreezeUntil = Date.now() + 600;
         return;
@@ -6915,6 +6962,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const sx = p.head.x;
         const sz = p.head.z;
         rt.forceCritUntil = this.elapsed + 4;
+        if (cls === "assassin") {
+          // Рывок за спину оглушает цель (бывший «Танец теней», влит в рывок).
+          const m0 = this.skillTarget(p, tx, tz, 11, fwd());
+          if (m0) this.sim.stunMob(m0.id, ASSASSIN_STEP_STUN);
+        }
         if (cls === "spearman") {
           // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку и замедлены.
           const T = SPEAR_HOP_TRAP;
@@ -7025,6 +7077,7 @@ export class ZoneRoom extends Room<ZoneState> {
               const critM = cls === "assassin" ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, pp.luc) : 1;
               this.sim.hitMob(m.id, mult * pow.dmg * critM, dx, dz, ownerId, false, false, pow.magic, critM > 1);
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
+              if (cls === "assassin") this.sim.slowMob(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
             }
             if (cls === "battlemage") {
               // Каждый оборот — молния по соседу снаружи круга.
@@ -7129,6 +7182,51 @@ export class ZoneRoom extends Room<ZoneState> {
           heal: cls === "support", shield: guard ? GUARD_SEAL.shield : cls === "support" ? SEAL.shield : 0, taunt: guard,
         });
         act({ k: "seal", x: p.head.x, y: feetY, z: p.head.z, d: SEAL.duration, r: sk.radius });
+        return true;
+      }
+      case "plague": {
+        rt.plagueUntil = this.elapsed + PLAGUE.duration;
+        act({ k: "plagueOn", x: p.head.x, y: feetY, z: p.head.z, d: PLAGUE.duration });
+        return true;
+      }
+      case "smoke": {
+        const sec = SMOKE.duration * skillAttrMul("smoke", p);
+        this.sim.addSmoke(p.head.x, p.head.z, sk.radius, sec);
+        act({ k: "smoke", x: p.head.x, y: feetY, z: p.head.z, d: sec, r: sk.radius });
+        return true;
+      }
+      case "soulSteal": {
+        const m = this.skillTarget(p, tx, tz, SOUL_STEAL.reach, fwd());
+        if (!m) {
+          rt.skillAt[kind] = -999;
+          return false;
+        }
+        const [dx, dz] = dirTo(m, p.head.x, p.head.z);
+        const dmg = sk.dmgMult * pow.dmg;
+        this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
+        // Самый раненый союзник рядом (доля HP ниже SOUL_STEAL.healthy), иначе — сам.
+        let ally: PlayerState = p;
+        let worst: number = SOUL_STEAL.healthy;
+        this.state.players.forEach((o) => {
+          if (o.dead || o.maxHp <= 0 || o.towerFloor > 0) return;
+          if (Math.hypot(o.head.x - p.head.x, o.head.z - p.head.z) > sk.radius) return;
+          const f = o.hp / o.maxHp;
+          if (f < worst) {
+            worst = f;
+            ally = o;
+          }
+        });
+        ally.hp = Math.min(ally.maxHp, ally.hp + dmg * SOUL_STEAL.transfer * skillAttrMul("soulSteal", p));
+        const allyId = this.idOf(ally) ?? ownerId;
+        act({ k: "soulSteal", x: m.x, y: m.y + MOB.bodyRadius * m.scale, z: m.z, x2: ally.head.x, z2: ally.head.z, d: ally.head.y - 0.5 });
+        this.broadcast(MSG.act, { k: "healHit", id: allyId, x: ally.head.x, y: ally.head.y, z: ally.head.z } satisfies ActRelay);
+        return true;
+      }
+      case "abyss": {
+        rt.abyssUntil = this.elapsed + ABYSS.duration;
+        rt.abyssStrike = true;
+        rt.forceCritUntil = this.elapsed + ABYSS.duration;
+        act({ k: "abyss", x: p.head.x, y: feetY, z: p.head.z, d: ABYSS.duration });
         return true;
       }
       default:
@@ -7567,6 +7665,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const players: SimPlayer[] = [];
     this.state.players.forEach((p, id) => {
       if (p.dead || inHubSafeZone(p.head.x, p.head.z)) return;
+      // 🧪 «Призрак бездны»: в тени мобы героя не видят. Тень кончилась без удара — всё равно ускорение.
+      const prt = this.rt.get(id);
+      if (prt?.abyssStrike && prt.abyssUntil <= this.elapsed) {
+        prt.abyssStrike = false;
+        prt.hasteUntil = this.elapsed + ABYSS.hasteSec;
+      }
+      if (prt && prt.abyssUntil > this.elapsed) return;
       players.push({ sessionId: id, x: p.head.x, y: p.head.y, z: p.head.z });
     });
 
@@ -7894,7 +7999,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // им одним) — вдвое подвижнее второй свободной руки (щит/второй меч).
     const oneHanded = holdsOneItem(p.leftCls, p.rightCls);
     // Яд (облако спор) — не удар: ни увернуться, ни закрыться щитом.
-    const dodged = !h.dot && Math.random() < dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger");
+    // 🧪 «Пелена смерти»: моб из дыма промахивается через раз, герою в дыму — +уворот.
+    const srcMob = h.byMob ? this.sim.mobs.get(h.byMob) : undefined;
+    const smokeMiss = !!srcMob && this.sim.inSmoke(srcMob.x, srcMob.z) && Math.random() < SMOKE.miss;
+    const smokeDodge = this.sim.inSmoke(p.head.x, p.head.z) ? SMOKE.dodge : 0;
+    const dodged = !h.dot && (smokeMiss || Math.random() < dodgeChance(p, oneHanded, p.leftCls === "dagger" || p.rightCls === "dagger") + smokeDodge);
     const block = h.dot
       ? { mult: 1, by: 0 as BlockedBy }
       : dodged
@@ -8382,6 +8491,10 @@ export class ZoneRoom extends Room<ZoneState> {
       cryUntil: -999,
       cryKind: 0,
       whirlUntil: -999,
+      plagueUntil: -999,
+      abyssUntil: -999,
+      abyssStrike: false,
+      hasteUntil: -999,
       whirlKind: 0,
       skillCls: "",
       yaw: rec?.yaw ?? 0,

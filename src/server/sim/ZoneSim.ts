@@ -38,6 +38,7 @@ import {
 } from "#shared/constants";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { serverPerf } from "../perf";
+import { PLAGUE } from "#shared/classes2";
 
 // Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
 enableTerrainHeightCache();
@@ -690,6 +691,12 @@ export class Mob {
     return this.slowT > 0 ? this.slowMul : 1;
   }
 
+  /** Яд «Чумного клинка»: стаки (до PLAGUE.maxStacks), урон в секунду за стак, сколько ещё тикает, чей. */
+  poisonStacks = 0;
+  poisonDps = 0;
+  poisonT = 0;
+  poisonBy = "";
+
   /** Горение от Пламенного меча: DoT `dps` на `sec` секунд, опыт — тому, кто поджёг. */
   burningT = 0;
   burnDps = 0;
@@ -747,6 +754,8 @@ export class Mob {
       this.lungeT = 0;
       this.burningT = 0;
       this.burnDps = 0;
+      this.poisonStacks = 0;
+      this.poisonT = 0;
       this.raging = false;
       this.respawnIn = this.kind === "boss" ? BOSS.respawn : this.respawnSec;
       return true;
@@ -1686,6 +1695,8 @@ export class Mob {
     this.burningT = 0;
     this.burnDps = 0;
     this.burnBy = "";
+    this.poisonStacks = 0;
+    this.poisonT = 0;
     this.stunnedT = 0;
     this.rootedT = 0;
     this.raging = false;
@@ -2219,6 +2230,8 @@ export class ZoneSim {
   tick(dt: number, players: SimPlayer[]): PlayerHit[] {
     const hits: PlayerHit[] = [];
     const spit = (mob: Mob, target: SimPlayer): void => {
+      // «Пелена смерти»: из дыма не стреляют и не плюются.
+      if (this.inSmoke(mob.x, mob.z)) return;
       if (mob.shot) {
         this.shoot(mob, target);
         return;
@@ -2489,6 +2502,14 @@ export class ZoneSim {
   /** Тик горения (врождённый поджог мага): DoT по всем тлеющим мобам, опыт — поджёгшему. */
   private tickBurning(dt: number): void {
     for (const m of this.mobs.values()) {
+      if (!m.dead && m.poisonStacks > 0) {
+        m.poisonT -= dt;
+        this.hitMob(m.id, m.poisonDps * m.poisonStacks * dt, 0, 0, m.poisonBy, false, true);
+        if (m.poisonT <= 0) m.poisonStacks = 0;
+      }
+    }
+    for (let i = this.smokes.length - 1; i >= 0; i--) if (this.elapsed > this.smokes[i].until) this.smokes.splice(i, 1);
+    for (const m of this.mobs.values()) {
       if (m.dead || m.burningT <= 0) continue;
       m.burningT = Math.max(0, m.burningT - dt);
       const tick = m.burnDps * dt;
@@ -2654,6 +2675,33 @@ export class ZoneSim {
   /** «Метка»: моб `sec` секунд получает урон × `mul`. */
   markMob(id: string, by: string, sec: number, mul: number): void {
     this.mobs.get(id)?.mark(by, sec, mul);
+  }
+
+  /**
+   * «Чумной клинок»: +1 стак яда (тикает stackSec, обновляется каждым ударом),
+   * `dps` — урон в секунду за стак (берётся максимальный). Возвращает число
+   * стаков; на maxStacks стаки сброшены — вызывающий взрывает яд.
+   */
+  poisonMob(id: string, dps: number, by: string): number {
+    const m = this.mobs.get(id);
+    if (!m || m.dead) return 0;
+    m.poisonStacks = Math.min(PLAGUE.maxStacks, m.poisonStacks + 1);
+    m.poisonDps = m.poisonStacks === 1 ? dps : Math.max(m.poisonDps, dps);
+    m.poisonT = PLAGUE.stackSec;
+    m.poisonBy = by;
+    const n = m.poisonStacks;
+    if (n >= PLAGUE.maxStacks) m.poisonStacks = 0;
+    return n;
+  }
+
+  /** Дым «Пелены смерти»: круги на земле до `until` (сек. симуляции). */
+  readonly smokes: { x: number; z: number; r: number; until: number }[] = [];
+  addSmoke(x: number, z: number, r: number, sec: number): void {
+    this.smokes.push({ x, z, r, until: this.elapsed + sec });
+  }
+  inSmoke(x: number, z: number): boolean {
+    for (const s of this.smokes) if (this.elapsed <= s.until && Math.hypot(x - s.x, z - s.z) <= s.r) return true;
+    return false;
   }
 
   /** Замедлить моба («Печать»): на `sec` секунд, скорость и темп атак × `mul`. */

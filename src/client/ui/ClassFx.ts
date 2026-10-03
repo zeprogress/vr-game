@@ -558,6 +558,42 @@ export function playClassAct(
       c.sound(at, "bash");
       return true;
     }
+    // ---- 🧪 тестовые умения ассасина ----
+    case "plagueOn":
+      // Клинки отравлены: зелёный столб на герое на всё время.
+      vfx.pillar(x, y, z, 0.5, 2.2, FXC.poison, d ?? 8, { kind: "hero", id });
+      vfx.burst(x, y + 1, z, FXC.poison, { count: 14, speed: 2, life: 0.6, grav: -2, size: 0.18 });
+      c.sound(at, "swing");
+      return true;
+    case "plagueBurst":
+      vfx.decal(x, y, z, r ?? 3, FXC.poison, 0.6, 0, 1.1);
+      vfx.burst(x, y + 0.6, z, FXC.poison, { count: 26, speed: 6, life: 0.6, grav: 4, size: 0.24 });
+      c.sound(at, "thud");
+      return true;
+    case "smoke":
+      // Дымовая бомба: серый круг на всё время и клубы дыма.
+      vfx.decal(x, y, z, r ?? 3.5, SHADOW_GRAY, d ?? 6, 1, 0.9);
+      for (let i = 0; i < Math.ceil(d ?? 6); i++) {
+        c.fx.later(i, () => vfx.burst(x, y + 0.5, z, SHADOW_GRAY, { count: 18, speed: 1.6, life: 1.4, grav: -0.6, size: 0.7 }));
+      }
+      c.sound(at, "thud");
+      return true;
+    case "soulSteal":
+      if (x2 !== undefined && z2 !== undefined) {
+        const toY = d ?? y;
+        vfx.bolt(x, y, z, x2, toY, z2, FXC.arcane, 0.4, 0.07);
+        vfx.burst(x, y, z, FXC.arcane, { count: 12, speed: 4, life: 0.4, grav: -2, size: 0.2 });
+      }
+      c.emote(id, "roll");
+      c.sound(at, "swing");
+      return true;
+    case "abyss":
+      // В тени: тёмный круг ходит за героем, клубы серого дыма.
+      vfx.decal(x, y, z, 1.2, FXC.shadowDark, d ?? 3, 1, 1, { kind: "hero", id, dy: 0 });
+      vfx.pillar(x, y, z, 0.7, 2.4, FXC.shadowDark, d ?? 3, { kind: "hero", id });
+      vfx.burst(x, y + 0.9, z, SHADOW_GRAY, { count: 22, speed: 3, life: 0.6, grav: -2, size: 0.35 });
+      c.sound(at, "swing");
+      return true;
     case "markOn":
       if (mobId) {
         vfx.decal(x, y, z, 1.1, ATK, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });

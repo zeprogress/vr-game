@@ -678,9 +678,15 @@ if (ONLY.has("skills")) {
     if (seen.has(cls)) continue;
     seen.add(cls);
     const pool = C2.CLASSES2[cls].skills as SkillId[];
-    for (const pair of [[pool[0], pool[1]], [pool[2], pool[3]]] as [SkillId, SkillId][]) {
+    // Пары подряд по пулу — каждое умение класса (и тестовые 🧪) хотя бы в одной паре.
+    const pairs: [SkillId, SkillId][] = [];
+    for (let i = 0; i + 1 < pool.length; i += 2) pairs.push([pool[i], pool[i + 1]]);
+    for (const pair of pairs) {
       const r = campRun(`${load.id}:${pair.join("+")}@camp`, { lvl: 33, load, skills: pair }, "boneWraith");
-      say(`  ${pad(C2.CLASSES2[cls].name, 15)} ${pad(pair.map((k) => C2.skillName(k, cls)).join(" + "), 40)} ${castStr(r.casts, cls)}`);
+      say(
+        `  ${pad(C2.CLASSES2[cls].name, 15)} ${pad(pair.map((k) => C2.skillName(k, cls)).join(" + "), 40)} ` +
+          `смертей ${r.deaths} · урон/с ${f(r.dealt / CAMP_SEC)} · получено/с ${f(r.dmgTaken / CAMP_SEC, 1)} · ${castStr(r.casts, cls)}`,
+      );
       for (const k of pair) if (!r.casts[k]) anomalies.push(`${C2.CLASSES2[cls].name}: в бою (${CAMP_SEC} с) бот ни разу не применил «${C2.skillName(k, cls)}»`);
     }
   }
