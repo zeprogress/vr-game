@@ -8,7 +8,7 @@ import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3061,7 +3061,7 @@ export class Game {
     const fx = Math.sin(fy);
     const fz = Math.cos(fy);
     const msg: { kind: SkillId; x?: number; z?: number } = { kind: id };
-    const frontTarget = (maxD: number): { x: number; z: number } | null => this.frontTargetPos(maxD);
+    const frontTarget = (maxD: number): { x: number; z: number; r: number } | null => this.frontTargetPos(maxD);
     if (id === "arrowRain" && cls === "assassin") {
       // Отскок с веером: отскок назад, веер ножей — конусом по взгляду.
       msg.x = p.x + fx * 9;
@@ -3078,11 +3078,8 @@ export class Game {
       }
       msg.x = t.x;
       msg.z = t.z;
-      const dx = t.x - p.x;
-      const dz = t.z - p.z;
-      const d = Math.hypot(dx, dz);
-      const stop = Math.max(0, d - 1.3);
-      if (d > 0.1) this.startDash(p.x + (dx / d) * stop, p.z + (dz / d) * stop, ASSASSIN_LEAP.time);
+      // Перепрыгиваем цель и садимся за спину — на дистанции удара (радиус тела + JUMP_BEHIND).
+      this.dashAt(t, ASSASSIN_LEAP.time, t.r + JUMP_BEHIND);
       this.localAvatar?.oneShot("jump", 1.1);
     } else if (id === "arrowRain") {
       if (x !== undefined && z !== undefined) {
@@ -3103,16 +3100,23 @@ export class Game {
       msg.x = sel.x;
       msg.z = sel.z;
       // Удар насквозь — пролетаем сквозь цель за спину.
-      this.dashAt(sel, SOUL_STEAL.dashTime, SOUL_STEAL.through);
+      this.dashAt(sel, SOUL_STEAL.dashTime, sel.r + JUMP_BEHIND);
       this.localAvatar?.oneShot("roll", 1.6);
       this.combat.onMeleeSwing?.();
+    } else if (id === "smoke") {
+      // Пелена — на цель (выбранную или ближайшую впереди), иначе под себя.
+      const sel = this.selectedTargetPos() ?? frontTarget(SMOKE.range);
+      if (sel) {
+        msg.x = sel.x;
+        msg.z = sel.z;
+      }
     } else if (id === "plague") {
       // Чумной клинок — рывок к цели (если есть впереди), удар по приземлении вешает 2 стака.
       const sel = this.selectedTargetPos() ?? frontTarget(PLAGUE.dash);
       if (sel && Math.hypot(sel.x - p.x, sel.z - p.z) <= PLAGUE.dash + 1) {
         msg.x = sel.x;
         msg.z = sel.z;
-        this.dashAt(sel, 0.22);
+        this.dashAt(sel, 0.22, sel.r + JUMP_BEHIND);
         this.localAvatar?.oneShot("jump", 1.1);
       }
     } else if (id === "whirlwind" && cls === "assassin") {
@@ -3139,15 +3143,16 @@ export class Game {
       } else {
         const t = frontTarget(11);
         if (t) {
+          // За спину цели на дистанцию удара — от размера моба, а не фиксированные +1.4 м.
           const dx = t.x - p.x;
           const dz = t.z - p.z;
           const d = Math.hypot(dx, dz) || 1;
-          const over = Math.min(11, d + 1.4); // за спину цели
+          const over = d + t.r + JUMP_BEHIND;
           ex = p.x + (dx / d) * over;
           ez = p.z + (dz / d) * over;
         } else {
-          ex = p.x + fx * 8;
-          ez = p.z + fz * 8;
+          ex = p.x + fx * 5;
+          ez = p.z + fz * 5;
         }
       }
       msg.x = ex;
@@ -3174,20 +3179,23 @@ export class Game {
   }
 
   /** Центр выбранной цели (ПК/телефон), если это моб. */
-  private selectedTargetPos(): { x: number; z: number } | null {
+  private selectedTargetPos(): { x: number; z: number; r: number } | null {
     const id = this.pcTarget?.targetId;
     if (!id || id.startsWith("@")) return null;
     const m = this.net?.room?.state.mobs.get(id);
-    return m && !m.dead ? { x: m.x, z: m.z } : null;
+    if (!m || m.dead) return null;
+    // Радиус тела — для посадки прыжка за спину (Mob.hitSegment), нет модели — обычный слизень.
+    const r = this.netMobs.getMob(id)?.hitSegment().radius ?? MOB.bodyRadius;
+    return { x: m.x, z: m.z, r };
   }
 
   /** Плавный перенос героя (рывок/прыжок) из текущей точки в (x,z) за dur с. */
   /** Ближайшая цель впереди (для рывка/прыжка): центр отрезка тела в пределах maxD. */
-  private frontTargetPos(maxD: number): { x: number; z: number } | null {
+  private frontTargetPos(maxD: number): { x: number; z: number; r: number } | null {
     const p = this.player.position;
     const fx = Math.sin(this.player.facing);
     const fz = Math.cos(this.player.facing);
-    let best: { x: number; z: number } | null = null;
+    let best: { x: number; z: number; r: number } | null = null;
     let bd = maxD;
     for (const t of this.targets) {
       if (!t.alive) continue;
@@ -3199,7 +3207,7 @@ export class Game {
       const d = Math.hypot(dx, dz);
       if (d < 0.5 || d > bd || (dx * fx + dz * fz) / d < 0.3) continue;
       bd = d;
-      best = { x: cx, z: cz };
+      best = { x: cx, z: cz, r: sg.radius };
     }
     return best;
   }
@@ -3225,7 +3233,7 @@ export class Game {
     const t = this.selectedTargetPos() ?? this.frontTargetPos(ABYSS.blink);
     if (!t || Math.hypot(t.x - this.player.position.x, t.z - this.player.position.z) > ABYSS.blink + 1) return;
     this.abyssBlinkDone = true;
-    this.dashAt(t, 0.12, 1.3);
+    this.dashAt(t, 0.12, t.r + JUMP_BEHIND);
   }
   private abyssBlinkDone = false;
 

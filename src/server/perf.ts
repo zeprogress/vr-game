@@ -1,4 +1,4 @@
-import { monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 
 /**
  * Лёгкая диагностика сервера: раз в минуту одна строка `[perf]` в журнал
@@ -12,11 +12,6 @@ import { monitorEventLoopDelay, PerformanceObserver } from "node:perf_hooks";
  */
 
 const REPORT_MS = 60_000;
-/** Тик дольше этого — строка `[spike]` с разбивкой (части тика, худший моб/бот, GC). */
-const SPIKE_MS = 40;
-/** Не чаще одной строки `[spike]` за столько мс — журнал не засорять. */
-const SPIKE_GAP_MS = 5_000;
-const GC_KIND: Record<number, string> = { 1: "minor", 2: "major", 4: "incremental", 8: "weak", 16: "all" };
 const SAMPLES = 1400; // ~70 с тиков по 20 Гц
 
 export interface PerfSnapshot {
@@ -60,12 +55,6 @@ class ServerPerf {
   private sim = newSect();
   private persist = newSect();
   private patch = newSect();
-  /** Части текущего тика (мс) и худший участник каждой — для строки `[spike]`. */
-  private parts = new Map<string, number>();
-  private worstOf = new Map<string, { label: string; ms: number }>();
-  private lastSpike = -Infinity;
-  /** Недавние паузы сборщика мусора: [начало, длительность, вид]. */
-  private gcs: [number, number, string][] = [];
   private over25 = 0;
   private over50 = 0;
   private cpuPrev = process.cpuUsage();
@@ -77,39 +66,8 @@ class ServerPerf {
     return performance.now();
   }
 
-  /** Добавить время к части текущего тика (для `[spike]`). */
-  part(name: string, ms: number): void {
-    if (!this.on) return;
-    this.parts.set(name, (this.parts.get(name) ?? 0) + ms);
-  }
-  /** Запомнить участника части, если он худший в этом тике (моб, бот). */
-  worst(name: string, label: string, ms: number): void {
-    if (!this.on) return;
-    const w = this.worstOf.get(name);
-    if (!w || ms > w.ms) this.worstOf.set(name, { label, ms });
-  }
-
   tick(ms: number): void {
     if (!this.on) return;
-    const end = performance.now();
-    if (ms > SPIKE_MS && end - this.lastSpike > SPIKE_GAP_MS) {
-      this.lastSpike = end;
-      const start = end - ms;
-      let known = 0;
-      for (const v of this.parts.values()) known += v;
-      this.parts.set("прочее", Math.max(0, ms - known));
-      const parts = [...this.parts].sort((a, b) => b[1] - a[1]).filter(([, v]) => v >= 0.5);
-      const worst = [...this.worstOf].map(([k, w]) => `${k}: ${w.label} ${f1(w.ms)}`);
-      const gc = this.gcs.filter(([t, d]) => t + d >= start && t <= end);
-      console.log(
-        `[spike] тик ${f1(ms)} мс | ` +
-          parts.map(([k, v]) => `${k} ${f1(v)}`).join(", ") +
-          (worst.length ? ` | худшие — ${worst.join("; ")}` : "") +
-          ` | GC ${gc.length ? gc.map(([, d, k]) => `${k} ${f1(d)}`).join(", ") : "нет"}`,
-      );
-    }
-    this.parts.clear();
-    this.worstOf.clear();
     add(this.tickTotal, ms);
     this.ticks[this.tickN++ % SAMPLES] = ms;
     if (ms > 25) this.over25++;
@@ -125,17 +83,6 @@ class ServerPerf {
     this.snap = snap;
     this.loop.enable();
     this.timer = setInterval(() => this.report(), REPORT_MS);
-    try {
-      new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) {
-          const kind = (e as unknown as { detail?: { kind?: number } }).detail?.kind ?? 0;
-          this.gcs.push([e.startTime, e.duration, GC_KIND[kind] ?? String(kind)]);
-        }
-        if (this.gcs.length > 64) this.gcs.splice(0, this.gcs.length - 64);
-      }).observe({ entryTypes: ["gc"] });
-    } catch {
-      /* нет gc-наблюдателя — без него */
-    }
     this.timer.unref();
   }
 

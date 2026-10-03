@@ -566,14 +566,12 @@ export function playClassAct(
       c.sound(at, "swing");
       return true;
     case "bleedTick":
-      // Кровотечение: красные капли падают с моба.
-      vfx.burst(x, y + 0.9, z, FXC.blood, { count: 10, speed: 2.2, life: 0.55, grav: 12, size: 0.13 });
-      if (mobId) vfx.decal(x, y, z, 0.7, FXC.blood, 1.1, 0, 0.5, { kind: "mob", id: mobId, dy: 0.05 });
+      // Кровотечение видно языками красного «огня» на самом мобе (Mob.ts, поле bleeding) — тут ничего.
       return true;
     case "poisonStack": {
       // Стак яда на мобе: зелёное кольцо под ним растёт со стаками (1..5), брызги яда.
       const n = r ?? 1;
-      if (mobId) vfx.decal(x, y, z, 0.6 + n * 0.22, FXC.poison, d ?? 3, 1, 0.45 + n * 0.1, { kind: "mob", id: mobId, dy: 0.1 });
+      if (mobId) vfx.decal(x, y, z, 0.3 + n * 0.11, FXC.poison, d ?? 3, 1, 0.45 + n * 0.1, { kind: "mob", id: mobId, dy: 0.1 });
       vfx.burst(x, y + 0.8, z, FXC.poison, { count: 4 + n * 2, speed: 2.5, life: 0.45, grav: 3, size: 0.14 });
       return true;
     }

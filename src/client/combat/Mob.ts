@@ -383,6 +383,10 @@ function lodSphere(scene: Scene, tint: readonly [number, number, number]): Mesh[
   return [src];
 }
 
+/** Цвет языков: огонь и кровотечение (веер ножей). */
+const FLAME_FIRE = new Color3(1, 0.5, 0.12);
+const FLAME_BLOOD = new Color3(0.95, 0.05, 0.05);
+
 export class Mob implements Hittable {
   /** ПК в третьем лице: плашки как в WoW (HP всегда, цвет уровня по опасности). null — как было. */
   static pcPlates: { level: number } | null = null;
@@ -1030,7 +1034,10 @@ export class Mob implements Hittable {
     sp = secNow();
 
     // Горение (поджог мага): языки пламени над мобом + тлеющий пульс тела.
-    const burning = s.burning > 0 && !s.dead;
+    // Кровотечение — те же языки, но красные и без света (огонь светит, кровь — нет).
+    const bleedOnly = s.burning <= 0 && (s.bleeding ?? 0) > 0 && !s.dead;
+    this.flameRed = bleedOnly;
+    const burning = (s.burning > 0 || bleedOnly) && !s.dead;
     this.burnGlow = burning
       ? Math.min(1, this.burnGlow + dt * 5)
       : Math.max(0, this.burnGlow - dt * 3);
@@ -1356,8 +1363,10 @@ export class Mob implements Hittable {
 
   /** Насколько моб горит 0..1 — от него зависит ночной свет огня (MobSystem.fireLight). */
   get burning(): number {
-    return this.burnGlow * this.burnLightFade;
+    return this.flameRed ? 0 : this.burnGlow * this.burnLightFade;
   }
+  /** Языки красные (кровотечение без горения). */
+  private flameRed = false;
   /** Множитель света к концу горения: сервер шлёт остаток в целых секундах — последнюю секунду гасим линейно. */
   private burnLightFade = 1;
   private burnLastSecT = 0;
@@ -1401,6 +1410,8 @@ export class Mob implements Hittable {
       this.burnMat.setFloat("uTime", this.burnT);
       this.burnMat.setFloat("uGlow", this.burnGlow);
       this.burnMat.setFloat("uShift", MOB.bodyRadius * 2 * this.scale);
+      if (this.flameRed) this.burnMat.setColor3("uColor", FLAME_BLOOD);
+      else this.burnMat.setColor3("uColor", FLAME_FIRE);
     }
   }
 

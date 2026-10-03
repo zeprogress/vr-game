@@ -748,7 +748,7 @@ if (ONLY.has("skilltest")) {
     const casts = t.meter.casts.get(t.x.id)?.get("plague") ?? 0;
     check("Чумной клинок: применяется", casts > 0, `применён ${casts} раз за 30 с`);
     check("Чумной клинок: стаки до 5", maxSt >= C2.PLAGUE.maxStacks, `максимум стаков ${maxSt}, взрывов ${bursts}`);
-    check("Чумной клинок: зелёные цифры яда", t.nums.poison > 0, `${t.nums.poison} зелёных чисел, всего ${Math.round(t.nums.poisonDmg)} урона ядом`);
+    check("Чумной клинок: цветные цифры яда", t.nums.poison > 0, `${t.nums.poison} цветных чисел, всего ${Math.round(t.nums.poisonDmg)} урона ядом`);
     check("Чумной клинок: плашка баффа", buff > 0, `plagueSecs > 0 в ${Math.round((buff * TICK_MS) / 1000)} с из 30`);
   }
 

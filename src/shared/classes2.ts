@@ -454,13 +454,13 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
     desc: "Рывок к цели (до 6 м) и 8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.4 удара заражает соседей (+2 стака) — яд ползёт по толпе",
-    cooldown: 16, castTime: 0, radius: 3, dmgMult: 0.4, hits: 1,
+    cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.4, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила яда" },
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
-    desc: "Дымовая бомба под собой на 6 с: мобы в дыму промахиваются в половине ударов, в стоящих в дыму не стреляют, союзникам в дыму +30% уворота",
-    cooldown: 18, castTime: 0.2, radius: 3.5, dmgMult: 0, hits: 1,
+    desc: "Дымовая бомба на цель (до 12 м; нет цели — под собой), дым 5 м на 6 с: мобы в дыму промахиваются в половине ударов, в стоящих в дыму не стреляют, союзникам в дыму +30% уворота",
+    cooldown: 18, castTime: 0.2, radius: 5, dmgMult: 0, hits: 1,
     attr: { attr: "wis", per: 0.01, what: "длительность дыма" },
   },
   soulSteal: {
@@ -554,7 +554,7 @@ export function skillAttrMul(id: SkillId, a: Partial<Record<Attr, number>>): num
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */
 export const PLAGUE = {
-  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.03, burstRadius: 3,
+  duration: 8, stackSec: 3, maxStacks: 5, tickFrac: 0.03, burstRadius: 5,
   /** Взрыв на 5 стаках не сжигает их; следующий взрыв того же моба — не раньше чем через burstCd с. */
   burstCd: 3,
   /** Взрыв заражает соседей в burstRadius: +spread стаков (цепочкой — их взрывы заражают дальше). */
@@ -564,7 +564,7 @@ export const PLAGUE = {
   openStacks: 2,
 } as const;
 /** «Пелена смерти»: дым — промах мобов, запрет выстрелов, уворот союзникам. */
-export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3 } as const;
+export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3, range: 12 } as const;
 /** «Кража душ»: доля нанесённого урона в лечение; «все целы» — выше этой доли HP. */
 /** «Кража душ»: удар насквозь — рывок к цели до reach м и дальше за спину на through м. */
 export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6, through: 3, dashTime: 0.22 } as const;
@@ -573,6 +573,12 @@ export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6, through: 3, 
 export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
 /** Ассасин: «Теневой рывок» оглушает цель, «Танец клинков» замедляет задетых. */
 export const ASSASSIN_STEP_STUN = 1;
+/**
+ * Прыжки ассасина на цель (Смертельный прыжок, Теневой рывок, Чума, Кража душ,
+ * удар из тени) — посадка ЗА спиной цели: радиус тела моба + столько метров,
+ * чтобы перепрыгнуть, но остаться на дистанции удара (и бить в спину).
+ */
+export const JUMP_BEHIND = 0.6;
 export const ASSASSIN_WHIRL_SLOW = { sec: 2, mul: 0.7 } as const;
 /** «Танец клинков» ассасина — вихрь-рывок: за время вращения проносится вперёд на столько метров. */
 export const ASSASSIN_WHIRL_DASH = 6;

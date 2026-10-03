@@ -204,7 +204,7 @@ import {
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -6330,7 +6330,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const ax = mob.x - p.head.x;
       const az = mob.z - p.head.z;
       const al = Math.hypot(ax, az) || 1;
-      const behind = this.sim.targetRadius("mob", mob.id) + 0.8;
+      const behind = this.sim.targetRadius("mob", mob.id) + JUMP_BEHIND;
       const bx = mob.x + (ax / al) * behind;
       const bz = mob.z + (az / al) * behind;
       this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz } satisfies ActRelay);
@@ -6856,9 +6856,9 @@ export class ZoneRoom extends Room<ZoneState> {
             return false;
           }
           const [ax, az] = dirTo(m0, p.head.x, p.head.z);
-          const stop = this.sim.targetRadius("mob", m0.id) + 0.9;
-          const lx = m0.x - ax * stop;
-          const lz = m0.z - az * stop;
+          const behind = this.sim.targetRadius("mob", m0.id) + JUMP_BEHIND;
+          const lx = m0.x + ax * behind;
+          const lz = m0.z + az * behind;
           act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: L.time });
           this.clock.setTimeout(() => {
             const pp = this.state.players.get(ownerId);
@@ -6970,10 +6970,14 @@ export class ZoneRoom extends Room<ZoneState> {
         const sx = p.head.x;
         const sz = p.head.z;
         rt.forceCritUntil = this.elapsed + 4;
-        if (cls === "assassin") {
-          // Рывок за спину оглушает цель (бывший «Танец теней», влит в рывок).
-          const m0 = this.skillTarget(p, tx, tz, 11, fwd());
-          if (m0) this.sim.stunMob(m0.id, ASSASSIN_STEP_STUN);
+        // Ассасин: рывок за спину цели (радиус тела + JUMP_BEHIND) и оглушение (бывший «Танец теней»).
+        const stepTarget = cls === "assassin" ? this.skillTarget(p, tx, tz, 11, fwd()) : null;
+        if (stepTarget) {
+          this.sim.stunMob(stepTarget.id, ASSASSIN_STEP_STUN);
+          const [ax, az] = dirTo(stepTarget, sx, sz);
+          const behind = this.sim.targetRadius("mob", stepTarget.id) + JUMP_BEHIND;
+          ex = stepTarget.x + ax * behind;
+          ez = stepTarget.z + az * behind;
         }
         if (cls === "spearman") {
           // Ловушка копейщика: мобы вокруг стягиваются к старому месту в кучку и замедлены.
@@ -6998,7 +7002,7 @@ export class ZoneRoom extends Room<ZoneState> {
             }, t * 500);
           }
         }
-        if (!archer) {
+        if (!archer && !stepTarget) {
           // Рывок — за спину цели (как у игрока на клиенте), а не в её центр.
           const L = Math.hypot(ex - sx, ez - sz);
           if (L > 0.1) {
@@ -7205,9 +7209,9 @@ export class ZoneRoom extends Room<ZoneState> {
         const m0 = this.skillTarget(p, tx, tz, PLAGUE.dash, fwd());
         if (m0) {
           const [ax, az] = dirTo(m0, p.head.x, p.head.z);
-          const stop = this.sim.targetRadius("mob", m0.id) + 0.9;
-          const lx = m0.x - ax * stop;
-          const lz = m0.z - az * stop;
+          const behind = this.sim.targetRadius("mob", m0.id) + JUMP_BEHIND;
+          const lx = m0.x + ax * behind;
+          const lz = m0.z + az * behind;
           const T = 0.22;
           act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: T });
           this.clock.setTimeout(() => {
@@ -7223,8 +7227,12 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       case "smoke": {
         const sec = SMOKE.duration * skillAttrMul("smoke", p);
-        this.sim.addSmoke(p.head.x, p.head.z, sk.radius, sec);
-        act({ k: "smoke", x: p.head.x, y: feetY, z: p.head.z, d: sec, r: sk.radius });
+        // Бомба — на моба-цель (дым вокруг него), нет цели — под собой.
+        const tgt = this.skillTarget(p, tx, tz, SMOKE.range, fwd());
+        const cx = tgt ? tgt.x : p.head.x;
+        const cz = tgt ? tgt.z : p.head.z;
+        this.sim.addSmoke(cx, cz, sk.radius, sec);
+        act({ k: "smoke", x: cx, y: terrainHeight(cx, cz), z: cz, d: sec, r: sk.radius });
         return true;
       }
       case "soulSteal": {
@@ -7236,8 +7244,8 @@ export class ZoneRoom extends Room<ZoneState> {
         const [dx, dz] = dirTo(m, p.head.x, p.head.z);
         const dmg = sk.dmgMult * pow.dmg;
         // Удар насквозь: проносится сквозь цель за спину (бот — сервер переносит, игрок — сам, см. Game.castSkill).
-        const ex = m.x + dx * SOUL_STEAL.through;
-        const ez = m.z + dz * SOUL_STEAL.through;
+        const ex = m.x + dx * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
+        const ez = m.z + dz * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
         act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: ex, z2: ez });
         if (isBot) this.placeBotAt(p, ex, ez);
         this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
@@ -7604,9 +7612,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.removeBot(bot.norm);
         continue;
       }
-      const tb = serverPerf.now();
       this.tickBot(dt, bot);
-      serverPerf.worst("бот", `${bot.norm}${bot.nav && bot.nav.at === this.elapsed && bot.nav.path.length ? " (A*)" : ""}`, serverPerf.now() - tb);
     }
   }
 
@@ -7657,7 +7663,6 @@ export class ZoneRoom extends Room<ZoneState> {
     const perfB0 = serverPerf.now();
     this.tickBots(dt);
     serverPerf.section("bots", serverPerf.now() - perfB0);
-    serverPerf.part("боты", serverPerf.now() - perfB0);
     this.maybeSayTip(dt);
 
     this.tickSeals(dt);
@@ -7754,6 +7759,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.pinned = m.rooted ? 1 : 0;
       s.marked = m.markT > 0 ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
+      s.bleeding = Math.min(255, Math.ceil(m.bleedT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
       if (m.scarecrow) {
         const info = this.scarecrowText();

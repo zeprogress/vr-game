@@ -68,7 +68,8 @@ void main() {
 Effect.ShadersStore[`${NAME}FragmentShader`] = `
 precision highp float;
 varying float vAlpha;
-void main() { gl_FragColor = vec4(1.0, 0.5, 0.12, vAlpha); }
+uniform vec3 uColor;
+void main() { gl_FragColor = vec4(uColor, vAlpha); }
 `;
 
 /** Общая геометрия (23 квада); у каждого горящего моба — клон, делящий буферы. */
@@ -111,7 +112,7 @@ export function createBurnFlameMesh(scene: Scene, name: string): Mesh {
 export function makeBurnFlameMaterial(scene: Scene): ShaderMaterial {
   const m = new ShaderMaterial("mobBurnMat", scene, NAME, {
     attributes: ["position", "aFlame"],
-    uniforms: ["world", "viewProjection", "view", "uTime", "uGlow", "uShift", "uR"],
+    uniforms: ["world", "viewProjection", "view", "uTime", "uGlow", "uShift", "uR", "uColor"],
     needAlphaBlending: true,
   });
   m.setFloat("uTime", 0);

@@ -111,9 +111,10 @@ void main() {
     tint = world2.rgb;
     rect = vec4(512.0, 0.0, 64.0, 64.0);
   } else if (type < 3.5) {
-    // «MISS».
+    // «MISS» — над моделью (раньше тонул в теле крупного моба): подъём и сдвиг к камере.
     float pop = min(1.0, age / 0.1);
-    pos.y += 0.8 * t;
+    pos.y += 1.3 + 0.8 * t;
+    shiftCam = true;
     quad = vec2(1.1, 0.4125) * pop * (1.0 - t * 0.15);
     alpha = min(1.0, (1.0 - t) * 2.2);
     tint = vec3(0.92);
@@ -126,7 +127,8 @@ void main() {
     quad = vec2(${DIGIT_M}, ${DIGIT_H}) * sc;
     xoff = world1.z * sc;
     alpha = min(1.0, (1.0 - t) * 2.2);
-    tint = vec3(1.0, 0.88, 0.47);
+    tint = world2.rgb; // цвет числа: обычное — золотистое (DMG_GOLD), яд/лечение/кровь — свой
+    shiftCam = true;
     rect = vec4(256.0 + world1.y * ${DIGIT_W}.0, 256.0, ${DIGIT_W}.0, 64.0);
   }
   // Камера из матрицы вида.
@@ -422,7 +424,7 @@ export class WorldCrossFx {
     const dx = (Math.random() - 0.5) * 0.5;
     const dz = (Math.random() - 0.5) * 0.5;
     for (let i = 0; i < s.length; i++) {
-      this.write(TYPE_DIGIT, x, y, z, this.clock, DMG_LIFE, s.charCodeAt(i) - 48, (i - (s.length - 1) / 2) * DIGIT_M, color, 1, dx, dz);
+      this.write(TYPE_DIGIT, x, y, z, this.clock, DMG_LIFE, s.charCodeAt(i) - 48, (i - (s.length - 1) / 2) * DIGIT_M, color ?? DMG_GOLD, 1, dx, dz);
     }
   }
 
@@ -503,6 +505,9 @@ export class WorldCrossFx {
     void this.scene;
   }
 }
+
+/** Обычный цвет числа урона (был зашит в шейдер). */
+const DMG_GOLD = new Color3(1, 0.88, 0.47);
 
 /** Цвет числа урона по его виду (DmgHitsMsg.c): яд — ядовито-зелёный, лечение — зелёный, иначе белый. */
 export function dmgNumberColor(c: DmgHitColor | undefined): Color3 | null {

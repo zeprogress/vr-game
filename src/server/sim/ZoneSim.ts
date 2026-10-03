@@ -37,7 +37,6 @@ import {
   SPITTER_CFG,
 } from "#shared/constants";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
-import { serverPerf } from "../perf";
 import { PLAGUE } from "#shared/classes2";
 import type { DmgHitColor } from "#shared/net/messages";
 
@@ -2297,19 +2296,7 @@ export class ZoneSim {
       const revived = new Mob(r.kind, r.homeX, r.homeZ, r.opts);
       this.mobs.set(revived.id, revived);
     }
-    // Замеры для строки `[spike]` (perf.ts): часть тика и худший моб.
-    const pf = serverPerf;
-    let t0 = pf.now();
-    if (this.mobsEnabled) {
-      for (const m of this.mobs.values()) {
-        const tm = pf.now();
-        m.tick(dt, players, hits, spit);
-        pf.worst("моб", m.eliteName ? `${m.kind}*` : m.kind, pf.now() - tm);
-      }
-    }
-    let t1 = pf.now();
-    pf.part("мобы", t1 - t0);
-    t0 = t1;
+    if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     // Отражённый щитом Ледяного демона урон (накоплен в hitMob).
     if (this.reflectHits.length) {
       hits.push(...this.reflectHits);
@@ -2325,22 +2312,12 @@ export class ZoneSim {
       }
     }
     this.tickBurning(dt);
-    t1 = pf.now();
-    pf.part("лечение+горение", t1 - t0);
-    t0 = t1;
     this.separateMobs(players);
-    t1 = pf.now();
-    pf.part("расталкивание", t1 - t0);
-    t0 = t1;
     for (const d of this.dummies.values()) d.tick(dt);
     for (const [id, b] of this.balls) if (b.tick(dt, players, hits, this.onBallLand)) this.balls.delete(id);
     this.tickCaltrops(dt, players, hits);
     for (const [id, bo] of this.bolts) if (this.tickBolt(bo, dt)) this.bolts.delete(id);
-    t1 = pf.now();
-    pf.part("снаряды", t1 - t0);
-    t0 = t1;
     for (const [id, d] of this.drops) if (d.tick(dt)) this.drops.delete(id);
-    pf.part("лут", pf.now() - t0);
     // Полученный от босса урон — тоже вклад в бой (танк/приманка).
     const boss = this.boss;
     if (boss && !boss.dead) {
