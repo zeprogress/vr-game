@@ -2,7 +2,8 @@
 Превью модели одним листом 512×512 (2×2: спереди, сбоку, сзади, 3/4 сверху) — одна маленькая
 картинка вместо серии скриншотов. С --anim <клип> — вторая строка кадров этого клипа (4 кадра).
 Workbench: цвета материалов/текстур, без света сцены — быстро и наглядно.
-Аргументы: <модель> <out.png> [--anim Run] [--size 512]
+С --anims all | Idle,Walk,… — по строке из 4 кадров на каждый клип (вид сбоку-спереди).
+Аргументы: <модель> <out.png> [--anim Run] [--anims all] [--size 512]
 """
 import math
 import os
@@ -18,6 +19,7 @@ import zep_lib as z  # noqa: E402
 a = z.args()
 src, out = a[0], a[1]
 anim = z.opt(a, "--anim")
+anims = z.opt(a, "--anims")
 size = int(z.opt(a, "--size", "512"))
 tile = size // 2
 z.load(src)
@@ -65,21 +67,31 @@ for i, (_, d) in enumerate(VIEWS):
     shoot(d, p)
     tiles.append(p)
 
-rows = 2
-frames = []
-if anim:
-    act = next((x for x in bpy.data.actions if x.name.lower().startswith(anim.lower())), None)
-    arm = next(iter(z.armatures()), None)
-    if act and arm:
-        arm.animation_data_create()
-        arm.animation_data.action = act
-        f0, f1 = act.frame_range
-        for k in range(4):
-            scene.frame_set(int(f0 + (f1 - f0) * k / 4))
-            p = os.path.join(tmp, f"a{k}.png")
-            shoot(VIEWS[3][1], p)
-            frames.append(p)
-        rows = 3
+frames = []  # [(клип, [пути кадров])]
+arm = next(iter(z.armatures()), None)
+want = []
+if anims and arm:
+    ORDER = ["Idle", "Walk", "Run", "Attack", "HitReact", "Death"]
+    have = [x.name for x in bpy.data.actions]
+    want = sorted(have, key=lambda n: (ORDER.index(n) if n in ORDER else 99, n)) if anims == "all" else anims.split(",")
+elif anim and arm:
+    want = [anim]
+for name in want:
+    act = next((x for x in bpy.data.actions if x.name.lower().startswith(name.lower())), None)
+    if not act:
+        continue
+    arm.animation_data_create()
+    arm.animation_data.action = act
+    if hasattr(arm.animation_data, "action_slot") and act.slots:
+        arm.animation_data.action_slot = act.slots[0]
+    f0, f1 = act.frame_range
+    row = []
+    for k in range(4):
+        scene.frame_set(int(round(f0 + (f1 - f0) * k / 3)))
+        p = os.path.join(tmp, f"{name}{k}.png")
+        shoot((0.85, -0.55, 0.25), p)
+        row.append(p)
+    frames.append((act.name, row))
 
 
 def load_px(p):
@@ -89,7 +101,8 @@ def load_px(p):
     return px
 
 
-H = tile * rows if not frames else tile * 2 + tile // 2
+small = tile // 2
+H = tile * 2 + small * len(frames)
 sheet = np.zeros((H, size, 4), dtype=np.float32)
 sheet[..., 3] = 1
 # Пиксели Blender — снизу вверх: верхний ряд кладём в верх массива (конец по Y).
@@ -98,14 +111,14 @@ for i, p in enumerate(tiles):
     r, c = divmod(i, 2)
     y0 = H - (r + 1) * tile
     sheet[y0:y0 + tile, c * tile:(c + 1) * tile] = px
-if frames:
-    small = tile // 2
-    for k, p in enumerate(frames):
+for ri, (_, row) in enumerate(frames):
+    y0 = H - tile * 2 - (ri + 1) * small
+    for k, p in enumerate(row):
         px = load_px(p)[::2, ::2]
-        sheet[0:small, k * small:(k + 1) * small] = px[:small, :small]
+        sheet[y0:y0 + small, k * small:(k + 1) * small] = px[:small, :small]
 img = bpy.data.images.new("sheet", width=size, height=H)
 img.pixels = sheet.ravel().tolist()
 img.filepath_raw = out
 img.file_format = "PNG"
 img.save()
-z.emit({"preview": out, "views": [v[0] for v in VIEWS], "anim": anim if frames else None, "size": [size, H]})
+z.emit({"preview": out, "views": [v[0] for v in VIEWS], "rows": [f[0] for f in frames], "size": [size, H]})

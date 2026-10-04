@@ -1,0 +1,241 @@
+{
+ "name": "AshWolf",
+ "type": "mob",
+ "rig": "quad",
+ "height": 1.25,
+ "tris": 4000,
+ "mats": {
+  "skin": "#7d736b",
+  "belly": "#a39486",
+  "mouth": "#4a1c1a",
+  "eye": {
+   "c": "#ffb347",
+   "emit": 2
+  },
+  "claw": "#e8dfcc",
+  "mane": "#3a3330"
+ },
+ "body": {
+  "legLen": 0.5,
+  "bodyLen": 0.85,
+  "neck": 0.3,
+  "neckUp": 30,
+  "head": 0.24,
+  "tail": 0.6,
+  "tailSegs": 3,
+  "tailUp": 25,
+  "r": {
+   "hips": [
+    0.15,
+    0.2,
+    0.15
+   ],
+   "belly": [
+    0.15,
+    0.22,
+    0.15
+   ],
+   "chest": [
+    0.19,
+    0.2,
+    0.2
+   ],
+   "neck": [
+    0.11,
+    0.08
+   ],
+   "head": [
+    0.1,
+    0.13,
+    0.1
+   ],
+   "snout": [
+    0.055,
+    0.12,
+    0.055
+   ],
+   "tail": [
+    0.07,
+    0.02
+   ]
+  }
+ },
+ "add": [
+  {
+   "shape": "ellipsoid",
+   "at": "chest",
+   "off": [
+    0,
+    -0.08,
+    0.1
+   ],
+   "r": [
+    0.2,
+    0.18,
+    0.18
+   ],
+   "k": 0.08,
+   "mat": "mane",
+   "noise": [
+    0.03,
+    9,
+    3
+   ]
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "paint",
+   "at": "spine",
+   "off": [
+    0,
+    0,
+    -0.14
+   ],
+   "r": [
+    0.15,
+    0.4,
+    0.06
+   ],
+   "mat": "belly"
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "sub",
+   "at": "snout",
+   "off": [
+    0,
+    0.04,
+    -0.035
+   ],
+   "r": [
+    0.05,
+    0.09,
+    0.012
+   ],
+   "k": 0.01,
+   "mat": "mouth"
+  },
+  {
+   "shape": "cone",
+   "a": [
+    "head",
+    [
+     0.06,
+     0.0,
+     0.07
+    ]
+   ],
+   "b": [
+    "head",
+    [
+     0.09,
+     0.06,
+     0.2
+    ]
+   ],
+   "r": [
+    0.04,
+    0.008
+   ],
+   "k": 0.03,
+   "mirror": true,
+   "bone": "Ear.L"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "snout",
+   "off": [
+    0,
+    0.04,
+    -0.06
+   ],
+   "r": [
+    0.045,
+    0.09,
+    0.025
+   ],
+   "k": 0.02,
+   "bone": "Jaw"
+  }
+ ],
+ "parts": [
+  {
+   "shape": "sphere",
+   "at": "head",
+   "off": [
+    0.06,
+    -0.12,
+    0.05
+   ],
+   "r": 0.022,
+   "mat": "eye",
+   "mirror": true
+  },
+  {
+   "shape": "horn",
+   "at": "snout",
+   "off": [
+    0.03,
+    0.02,
+    -0.03
+   ],
+   "dir": [
+    0,
+    -0.3,
+    -1
+   ],
+   "len": 0.05,
+   "r": 0.012,
+   "mat": "claw",
+   "mirror": true,
+   "seg": 5
+  }
+ ],
+ "anim": {
+  "attack": "bite"
+ },
+ "bones": [
+  {
+   "name": "Jaw",
+   "head": [
+    "head",
+    [
+     0,
+     -0.06,
+     -0.04
+    ]
+   ],
+   "tail": [
+    "snout",
+    [
+     0,
+     0.0,
+     -0.06
+    ]
+   ],
+   "parent": "Head",
+   "role": "jaw"
+  },
+  {
+   "name": "Ear.L",
+   "head": [
+    "head",
+    [
+     0.06,
+     0.0,
+     0.07
+    ]
+   ],
+   "tail": [
+    "head",
+    [
+     0.09,
+     0.06,
+     0.2
+    ]
+   ],
+   "parent": "Head",
+   "mirror": true
+  }
+ ]
+}

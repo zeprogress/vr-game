@@ -1,0 +1,49 @@
+{
+  "name": "BogBrute",
+  "type": "mob",
+  "rig": "biped",
+  "height": 2.3,
+  "tris": 5000,
+  "mats": {
+    "skin": "#6f8a3c",
+    "belly": "#b5b77a",
+    "mouth": "#4a1c1a",
+    "tusk": "#efe6c8",
+    "eye": "#f3e9a0",
+    "pupil": "#1b120c",
+    "cloth": "#5d3b22",
+    "wood": "#7a5530",
+    "metal": {"c": "#8d939a", "metal": 0.6, "rough": 0.5}
+  },
+  "body": {
+    "legLen": 0.62, "torso": 0.62, "neck": 0.06, "head": 0.3, "shoulderW": 0.62, "hipW": 0.3,
+    "armLen": 0.95, "armSpread": 26, "hunch": 22,
+    "r": {
+      "pelvis": [0.24, 0.19, 0.16], "belly": [0.3, 0.27, 0.27], "chest": [0.34, 0.24, 0.24],
+      "neck": 0.13, "head": [0.17, 0.17, 0.17], "shoulder": 0.15,
+      "upperArm": [0.13, 0.1], "forearm": [0.12, 0.09], "hand": [0.1, 0.07, 0.1],
+      "thigh": [0.14, 0.1], "calf": [0.1, 0.075], "foot": [0.09, 0.15, 0.06]
+    },
+    "k": {"torso": 0.12, "limb": 0.07, "head": 0.08, "hand": 0.04, "foot": 0.04}
+  },
+  "add": [
+    {"shape": "ellipsoid", "at": "head", "off": [0, -0.13, 0.1], "r": [0.14, 0.1, 0.09], "k": 0.06, "bone": "Head"},
+    {"shape": "ellipsoid", "at": "head", "off": [0, -0.08, 0.22], "r": [0.15, 0.09, 0.05], "k": 0.05, "bone": "Head"},
+    {"shape": "ellipsoid", "op": "sub", "at": "head", "off": [0, -0.23, 0.06], "r": [0.1, 0.06, 0.025], "k": 0.02, "mat": "mouth"},
+    {"shape": "ellipsoid", "at": "head", "off": [0.17, -0.02, 0.2], "r": [0.08, 0.025, 0.04], "rot": [0, -20, 25], "k": 0.03, "mirror": true, "bone": "Head"},
+    {"shape": "ellipsoid", "op": "paint", "at": "spine", "off": [0, -0.22, 0.05], "r": [0.24, 0.2, 0.3], "mat": "belly"},
+    {"shape": "ellipsoid", "at": "hips", "off": [0, 0, -0.02], "r": [0.27, 0.22, 0.12], "k": 0.03, "mat": "cloth", "bone": "Hips"}
+  ],
+  "parts": [
+    {"shape": "sphere", "at": "head", "off": [0.075, -0.19, 0.2], "r": 0.04, "mat": "eye", "mirror": true},
+    {"shape": "sphere", "at": "head", "off": [0.08, -0.225, 0.2], "r": 0.017, "mat": "pupil", "mirror": true},
+    {"shape": "horn", "at": "head", "off": [0.07, -0.21, 0.03], "dir": [0.25, -0.3, 1], "len": 0.11, "r": 0.025, "bend": [0, -0.02, 0], "mat": "tusk", "mirror": true},
+    {"shape": "horn", "at": "head", "off": [0.11, 0.0, 0.3], "dir": [0.6, 0.3, 0.6], "len": 0.22, "r": 0.045, "bend": [0.04, 0.05, 0.05], "mat": "tusk", "mirror": true, "seg": 7},
+    {"shape": "cyl", "at": "hand.R", "off": [0, -0.02, 0.0], "dir": [0, -1, 0.15], "len": 0.85, "r": 0.04, "mat": "wood", "bone": "Hand.R", "seg": 7},
+    {"shape": "sphere", "at": "hand.R", "off": [0, -0.85, 0.12], "r": [0.11, 0.13, 0.11], "mat": "wood", "bone": "Hand.R", "seg": 9},
+    {"shape": "horn", "at": "hand.R", "off": [0.09, -0.85, 0.15], "dir": [1, 0, 0.3], "len": 0.09, "r": 0.025, "mat": "metal", "bone": "Hand.R", "seg": 5},
+    {"shape": "horn", "at": "hand.R", "off": [-0.09, -0.85, 0.15], "dir": [-1, 0, 0.3], "len": 0.09, "r": 0.025, "mat": "metal", "bone": "Hand.R", "seg": 5},
+    {"shape": "horn", "at": "hand.R", "off": [0, -0.85, 0.26], "dir": [0, 0, 1], "len": 0.09, "r": 0.025, "mat": "metal", "bone": "Hand.R", "seg": 5}
+  ],
+  "anim": {"attack": "swing"}
+}

@@ -54,8 +54,20 @@ def load(path: str) -> None:
     imp(path)
 
 
+def bone_shapes():
+    """Меши-фигуры костей (импортёр glTF создаёт «Icosphere» для отображения костей) — не часть модели."""
+    out = set()
+    for o in bpy.context.scene.objects:
+        if o.type == "ARMATURE" and o.pose:
+            for pb in o.pose.bones:
+                if pb.custom_shape:
+                    out.add(pb.custom_shape.name)
+    return out
+
+
 def meshes():
-    return [o for o in bpy.context.scene.objects if o.type == "MESH"]
+    skip = bone_shapes()
+    return [o for o in bpy.context.scene.objects if o.type == "MESH" and o.name not in skip]
 
 
 def armatures():
