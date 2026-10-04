@@ -12,7 +12,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from . import anim, parts, sdf, spec as S
+from . import anim, paint, parts, sdf, spec as S
 
 BUDGET = {"mob": 5000, "boss": 10000, "hero": 5000, "prop": 2000}
 # Вес кости допускается, если она не дальше стольких шагов по дереву от главной кости вершины:
@@ -238,6 +238,11 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     default_mat = sp.get("mat", "skin")
     for it in items:
         it.setdefault("mat", default_mat)
+    surf = (sp.get("surface") or {}).get("noise")  # бугристость кожи всем формам без своего noise
+    if surf:
+        for it in items:
+            if it.get("op", "add") == "add" and "noise" not in it:
+                it["noise"] = surf
     shapes = S.make_shapes(skel, items, default_mat)
     mats = list(dict.fromkeys(list((sp.get("mats") or {}).keys()) + [s.mat for s in shapes]))
 
@@ -287,6 +292,7 @@ def build(sp, out_glb=None, out_blend=None, live=False):
         if rig_on:
             allW += [[(bone, 1.0)]] * len(pv)
         off += len(pv)
+    n_body_faces = len(F)
     V = np.concatenate(allV)
     F = [f for ff in allF for f in ff]
     M = np.concatenate(allM)
@@ -307,13 +313,23 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     me.polygons.foreach_set("material_index", M.astype(np.int32))
     me.polygons.foreach_set("use_smooth", SM)
     me.update()
-    # мобы и боссы — одна палитра-текстура вместо N материалов (одна отрисовка); герои — как пак (материалы)
-    use_atlas = bool(sp.get("atlas", kind in ("mob", "boss")))
-    if use_atlas:
-        mdefs = sp.get("mats") or {}
-        atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
     ob = bpy.data.objects.new(name, me)
     coll.objects.link(ob)
+    # Мобы и боссы — ОДИН материал (одна отрисовка): по умолчанию процедурная «ручная» текстура
+    # (paint.py: материал по формам, затенение складок, пятнистость, волокна), "texture": 0 —
+    # плоская палитра-атлас. Герои — с материалами, как модели героев пака.
+    mdefs = sp.get("mats") or {}
+    tex_size = int(sp.get("texture", 512 if kind in ("mob", "boss") else 0))
+    use_atlas = bool(sp.get("atlas", kind in ("mob", "boss"))) or tex_size > 0
+    if tex_size > 0:
+        paint.unwrap(ob)
+        part_face = np.arange(len(me.polygons)) >= n_body_faces
+        px, cover = paint.paint(me, shapes, mats, mdefs, part_face, lambda P: P / f + np.array([0, 0, minz]),
+                                size=tex_size, H=float(V[:, 2].max()), size_auth=size)
+        paint.apply(me, name, px)
+        warnings += [] if cover > 0.35 else [f"развёртка занимает {cover:.0%} текстуры — мелко"]
+    elif use_atlas:
+        atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
 
     clips = []
     arm = None
@@ -378,7 +394,7 @@ def build(sp, out_glb=None, out_blend=None, live=False):
         bpy.ops.wm.save_as_mainfile(filepath=out_blend, copy=True)
         res["blend"] = out_blend
     if out_glb:
-        export(coll, out_glb, texcoords=use_atlas)
+        export(coll, out_glb, texcoords=use_atlas, jpeg=tex_size > 0)
         res["glb"] = out_glb
         res["fileKB"] = round(os.path.getsize(out_glb) / 1024)
     return res
@@ -413,7 +429,7 @@ def load_base(sp, coll):
     return arm
 
 
-def export(coll, path, texcoords=False):
+def export(coll, path, texcoords=False, jpeg=False):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     bpy.context.view_layer.update()
     for o in bpy.context.view_layer.objects:
@@ -426,6 +442,8 @@ def export(coll, path, texcoords=False):
         export_animations=True, export_skins=True, export_texcoords=texcoords, export_normals=True,
         export_animation_mode="ACTIONS", export_force_sampling=True, export_optimize_animation_size=True,
     )
+    if jpeg:  # шумная «ручная» текстура в PNG весит в 4–5 раз больше
+        kw.update(export_image_format="JPEG", export_jpeg_quality=88)
     bpy.ops.export_scene.gltf(**kw)
 
 
