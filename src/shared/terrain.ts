@@ -1,7 +1,6 @@
 import { HUB, HUB_CENTER } from "./hub";
 import { LAKE, MOUNTAIN, WORLD } from "./constants";
 import sculptData from "./data/terrainSculpt.json";
-import { reliefAt } from "./relief";
 import { CAT_FLOOR_Y, CAT_Z0 as CAT_REGION_Z, inCatRegion } from "./catacombs";
 
 /**
@@ -105,13 +104,12 @@ export function lakeShoreDistIn(nx: number, nz: number): number {
   return k > 1e-6 ? 1 / k : LAKE_R_AVG;
 }
 
-/** Сырой рельеф-шум (без площадок). 2026-10-02: волны выше + крупные пологие увалы. */
+/** Сырой рельеф-шум (без площадок). 2026-10-04: горы и увалы от 2026-10-02 откатили — поляна снова пологая. */
 function noise(x: number, z: number): number {
   return (
-    2.1 * Math.sin(x * 0.075) * Math.cos(z * 0.068) +
-    1.0 * Math.sin(x * 0.16 + 1.3) * Math.sin(z * 0.12) +
-    0.5 * Math.cos((x + z) * 0.05) +
-    2.4 * Math.sin(x * 0.031 + 0.4) * Math.cos(z * 0.027 - 1.1)
+    1.4 * Math.sin(x * 0.075) * Math.cos(z * 0.068) +
+    0.7 * Math.sin(x * 0.16 + 1.3) * Math.sin(z * 0.12) +
+    0.35 * Math.cos((x + z) * 0.05)
   );
 }
 
@@ -211,8 +209,6 @@ export function terrainHeightExact(x: number, z: number): number {
   // Ближе к центру мира — площе (радиус ~16 м), у поляны ровная площадка.
   const d = Math.sqrt(x * x + z * z);
   h *= clamp01((d - 8) / 14);
-  // Холмы, столовые горы, ямы и гряды (shared/relief.ts) — вне лагеря, центра и озера с горой.
-  h += reliefAt(x, z);
 
   // Площадка под ВЕСЬ HUB: рельеф гасим до уровня лагеря, но не в идеальную
   // плоскость — оставляем мелкие бугры (hubBump). У костра и на тропе к
@@ -351,7 +347,7 @@ export function terrainHeightExact(x: number, z: number): number {
 /**
  * Предельная крутизна подъёма (тангенс угла; 1 = 45°). Круче — не забраться
  * НИКОМУ: героям, ботам, мобам, боссам (летуны не в счёт). Спускаться можно
- * всегда — поэтому ямы пологие (см. relief.ts), чтобы из них можно было выйти.
+ * всегда.
  */
 export const MAX_CLIMB = 1;
 /** Длина «щупа» вперёд по ходу, м — крутизна меряется на ней, а не на шаге кадра. */

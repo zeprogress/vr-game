@@ -11,6 +11,9 @@ import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { ParticleSystem } from "@babylonjs/core/Particles/particleSystem";
 import { Color4 } from "@babylonjs/core/Maths/math.color";
 import "@babylonjs/core/Particles/particleSystemComponent";
+import { SpriteManager } from "@babylonjs/core/Sprites/spriteManager";
+import { Sprite } from "@babylonjs/core/Sprites/sprite";
+import "@babylonjs/core/Sprites/spriteSceneComponent";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
@@ -397,8 +400,17 @@ export class CatacombsFx {
   /** Узел каждого зала (с его коридором вперёд): включён только зал камеры и соседние. */
   private readonly hallNodes: TransformNode[] = [];
   private shownHalls = "";
-  private readonly fireMats: ShaderMaterial[] = [];
+  /** Огонь факелов и жаровен — один материал на зал (пламя зала слито в один меш). */
+  private readonly hallFire: ShaderMaterial[] = [];
   private readonly glowSprites: { mesh: Mesh; phase: number }[] = [];
+  /**
+   * Спектатор: свечения (ореолы факелов, свечи, люстры) — спрайты одного менеджера, одна отрисовка
+   * вместо ~200. У игроков — меши-билборды: шейдер спрайтов Babylon не умеет multiview (VR).
+   */
+  useSpriteGlows = false;
+  private glowMgr: SpriteManager | null = null;
+  private readonly glowSpr: { s: Sprite; base: number; phase: number; hall: number; theme: number; torch: boolean }[] = [];
+  private glowsSig = "";
   private readonly gates: { mesh: Mesh; i: number; y: number }[] = [];
   private sealMat: StandardMaterial | null = null;
   private time = 0;
@@ -417,7 +429,6 @@ export class CatacombsFx {
   private readonly hallWallMats: StandardMaterial[] = [];
   private readonly hallNicheMats: StandardMaterial[][] = [];
   private readonly hallGlowMats: StandardMaterial[] = [];
-  private readonly fireHall: number[] = [];
   private readonly themeDecor: Mesh[][][] = [];
   private lavaMats: StandardMaterial[] = [];
   private readonly mists: Mesh[] = [];
@@ -448,7 +459,8 @@ export class CatacombsFx {
     // Подземелье рисуем, только когда камера внизу (на поляне во время забега его не видно —
     // а меши «всегда активны», рисовались бы под землёй), и только зал камеры с соседями.
     if (this.root) this.root.setEnabled(inside);
-    if (this.built && inside) this.showHalls(cam);
+    const camHall = this.built && inside ? this.showHalls(cam) : -1;
+    if (this.glowMgr) this.refreshGlows(camHall);
     if (this.motes && !(inside || active) && this.motesHall >= 0) {
       this.motes.stop();
       this.motesHall = -1;
@@ -472,8 +484,8 @@ export class CatacombsFx {
     this.updatePortal(dt, v);
   }
 
-  /** Зал камеры (ближайший по центру) и соседние — включены, остальные выключены. */
-  private showHalls(cam: { x: number; z: number }): void {
+  /** Зал камеры (ближайший по центру) и соседние — включены, остальные выключены. Вернёт зал камеры. */
+  private showHalls(cam: { x: number; z: number }): number {
     let best = 0;
     let bd = Infinity;
     CAT_HALLS.forEach((h, i) => {
@@ -484,9 +496,20 @@ export class CatacombsFx {
       }
     });
     const sig = String(best);
-    if (sig === this.shownHalls) return;
+    if (sig === this.shownHalls) return best;
     this.shownHalls = sig;
     this.hallNodes.forEach((n, i) => n.setEnabled(Math.abs(i - best) <= 1));
+    return best;
+  }
+
+  /** Спрайты-свечения: видны только в залах камеры (и соседних) и только своей темы. camHall −1 — камера не внизу. */
+  private refreshGlows(camHall: number): void {
+    const sig = `${camHall}|${this.hallTheme.join(",")}`;
+    if (sig === this.glowsSig) return;
+    this.glowsSig = sig;
+    for (const g of this.glowSpr) {
+      g.s.isVisible = camHall >= 0 && Math.abs(g.hall - camHall) <= 1 && (g.theme < 0 || this.hallTheme[g.hall] === g.theme);
+    }
   }
 
   private animate(dt: number, v: CatView | null): void {
@@ -507,7 +530,7 @@ export class CatacombsFx {
         }
       }
     }
-    for (const m of this.fireMats) m.setFloat("uTime", t);
+    for (const m of this.hallFire) m.setFloat("uTime", t);
     // Решётки: открыт путь lo..hi — коридоры с lo по hi−1 подняты (к своду коридора, не в небо).
     const lo = v?.lo ?? 0;
     const hi = v?.hi ?? 0;
@@ -554,6 +577,10 @@ export class CatacombsFx {
       const k = 0.85 + 0.12 * Math.sin(t * 13 + g.phase) + 0.06 * Math.sin(t * 31 + g.phase * 2);
       g.mesh.scaling.setAll(k);
     }
+    for (const g of this.glowSpr) {
+      if (!g.s.isVisible) continue;
+      g.s.size = g.base * (0.85 + 0.12 * Math.sin(t * 13 + g.phase) + 0.06 * Math.sin(t * 31 + g.phase * 2));
+    }
   }
 
   private build(): void {
@@ -569,6 +596,10 @@ export class CatacombsFx {
       this.hallNodes.push(n);
     }
     let curHall = 0;
+    // Пламя: один материал на зал, плоскости пламени зала потом сливаются в один меш.
+    for (let i = 0; i < CAT_HALLS.length; i++) this.hallFire.push(makeFireMaterial(scene, `catFireH${i}`, false));
+    const flames: Mesh[][] = CAT_HALLS.map(() => []);
+    const flameNodes: TransformNode[] = [];
     // Своя текстура на каждый материал: clone() у DynamicTexture так и не становится
     // «готовой» — меши с ней движок не рисовал (не было пола и стен).
     const FLOOR: [number, number, number] = [120, 112, 104];
@@ -685,6 +716,36 @@ export class CatacombsFx {
     candleMat.disableLighting = true;
     candleMat.alphaMode = Constants.ALPHA_ADD;
     candleMat.disableDepthWrite = true;
+    if (this.useSpriteGlows) {
+      const mgr = new SpriteManager("catGlows", "", 800, 128, scene);
+      mgr.texture = nicheTex; // белое мягкое свечение; цвет — у каждого спрайта
+      mgr.blendMode = Constants.ALPHA_ADD;
+      mgr.disableDepthWrite = true;
+      mgr.isPickable = false;
+      this.glowMgr = mgr;
+    }
+    /** Свечение огня/свечи: спрайт (спектатор) или меш-билборд в узле зала (игрок). Вернёт меш (или null — спрайт). */
+    const addGlow = (hall: number, x: number, y: number, z: number, size: number, kind: "torch" | "warm" | "candle", theme = -1): Mesh | null => {
+      const phase = rnd() * 10;
+      if (this.glowMgr) {
+        const sp = new Sprite("catGlow", this.glowMgr);
+        sp.position.set(x, y, z);
+        sp.size = size;
+        sp.isPickable = false;
+        sp.isVisible = false;
+        sp.color = kind === "candle" ? new Color4(1, 0.82, 0.4, 1) : kind === "warm" ? new Color4(1, 0.6, 0.25, 0.7) : new Color4(1, 0.5, 0.16, 0.75);
+        this.glowSpr.push({ s: sp, base: size, phase, hall, theme, torch: kind === "torch" });
+        return null;
+      }
+      const g = MeshBuilder.CreatePlane(kind === "torch" ? "catGlowSprite" : "catCandleGlow", { size }, scene);
+      g.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      g.material = kind === "torch" ? this.hallGlowMats[hall] : kind === "warm" ? glowMat : candleMat;
+      g.position.set(x, y, z);
+      g.parent = this.hallNodes[hall];
+      g.isPickable = false;
+      this.glowSprites.push({ mesh: g, phase });
+      return g;
+    };
     // Цветные ниши: свечения по залам, два цвета темы чередуются.
     const nicheGlow: Mesh[][][] = CAT_HALLS.map(() => [[], []]);
     // Пол: печать, дорожка, пятна (обычное смешивание — не светятся).
@@ -718,24 +779,15 @@ export class CatacombsFx {
       const fl = new TransformNode("catTorch", scene);
       fl.parent = this.hallNodes[hall];
       fl.position.set(fx, y0 + base + 0.5, fz);
+      flameNodes.push(fl);
       for (let i = 0; i < 2; i++) {
         const pl = MeshBuilder.CreatePlane("catFlame", { width: big ? 0.9 : 0.6, height: big ? 1.4 : 1 }, scene);
         pl.rotation.y = i * Math.PI * 0.5;
         pl.position.y = big ? 0.55 : 0.4;
-        const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
-        this.fireMats.push(fm);
-        this.fireHall.push(hall);
-        pl.material = fm;
         pl.parent = fl;
-        pl.isPickable = false;
+        flames[hall].push(pl);
       }
-      const glow = MeshBuilder.CreatePlane("catGlowSprite", { size: big ? 4.2 : 3 }, scene);
-      glow.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      glow.material = this.hallGlowMats[hall];
-      glow.position.set(fx, y0 + base + 0.9, fz);
-      glow.parent = this.hallNodes[hall];
-      glow.isPickable = false;
-      this.glowSprites.push({ mesh: glow, phase: rnd() * 10 });
+      addGlow(hall, fx, y0 + base + 0.9, fz, big ? 4.2 : 3, "torch");
       // Пятно света на полу (смещено в зал) и отблеск на стене за огнём.
       const pool = MeshBuilder.CreateGround("catPool", { width: big ? 14 : 12, height: big ? 14 : 12 }, scene);
       pool.position.set(fx + faceX * (big ? 0 : 2.2), y0 + 0.06, fz + faceZ * (big ? 0 : 2.2));
@@ -811,13 +863,7 @@ export class CatacombsFx {
           const cz = z + (rnd() - 0.5) * 1.1;
           c.position.set(cx, y0 + 0.2, cz);
           L.bone.push(c);
-          const g = MeshBuilder.CreatePlane("catCandleGlow", { size: 0.7 }, scene);
-          g.billboardMode = Mesh.BILLBOARDMODE_ALL;
-          g.material = glowMat;
-          g.position.set(cx, y0 + 0.55, cz);
-          g.parent = this.hallNodes[curHall];
-          g.isPickable = false;
-          this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+          addGlow(curHall, cx, y0 + 0.55, cz, 0.7, "warm");
         }
       } else {
         // Цепи со свода.
@@ -955,21 +1001,9 @@ export class CatacombsFx {
           const candle = MeshBuilder.CreateCylinder("catChandCandle", { height: 0.35, diameter: 0.12, tessellation: 6 }, scene);
           candle.position.set(px, cy + 0.22, pz);
           L.bone.push(candle);
-          const g = MeshBuilder.CreatePlane("catCandleGlow", { size: 0.8 }, scene);
-          g.billboardMode = Mesh.BILLBOARDMODE_ALL;
-          g.material = candleMat;
-          g.position.set(px, cy + 0.55, pz);
-          g.parent = this.hallNodes[hi];
-          g.isPickable = false;
-          this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+          addGlow(hi, px, cy + 0.55, pz, 0.8, "candle");
         }
-        const halo = MeshBuilder.CreatePlane("catGlowSprite", { size: 4 }, scene);
-        halo.billboardMode = Mesh.BILLBOARDMODE_ALL;
-        halo.material = candleMat;
-        halo.position.set(cx, cy + 0.5, cz);
-        halo.parent = this.hallNodes[hi];
-        halo.isPickable = false;
-        this.glowSprites.push({ mesh: halo, phase: rnd() * 10 });
+        addGlow(hi, cx, cy + 0.5, cz, 4, "candle");
         const pool = MeshBuilder.CreateGround("catPool", { width: 11, height: 11 }, scene);
         pool.position.set(cx, y0 + 0.055, cz);
         pools[hi].push(pool);
@@ -1013,13 +1047,7 @@ export class CatacombsFx {
           const candle = MeshBuilder.CreateCylinder("catCandle", { height: 0.3 + c * 0.12, diameter: 0.12, tessellation: 6 }, scene);
           candle.position.set(px, y0 + 0.2, pz);
           L.bone.push(candle);
-          const g = MeshBuilder.CreatePlane("catCandleGlow", { size: 0.7 }, scene);
-          g.billboardMode = Mesh.BILLBOARDMODE_ALL;
-          g.material = candleMat;
-          g.position.set(px, y0 + 0.55 + c * 0.12, pz);
-          g.parent = this.hallNodes[hi];
-          g.isPickable = false;
-          this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+          addGlow(hi, px, y0 + 0.55 + c * 0.12, pz, 0.7, "candle");
         }
       }
       // Пол: бронзовая печать в центре, дорожка от входа к стражу, пятна крови.
@@ -1074,7 +1102,7 @@ export class CatacombsFx {
       bannerLists = BANNERS.map(() => []);
       merge(L.urn, "catUrns", urnMat);
       // Декор тем: строим все варианты, включён тот, что выпал залу на этот заход (applyThemes).
-      const td = this.buildThemeDecor(hi, { statueMat, obsidMat, skullMat, boneMat, ironMat, pillarMat, candleMat, lavaTex, nicheTex }, rnd);
+      const td = this.buildThemeDecor(hi, { statueMat, obsidMat, skullMat, boneMat, ironMat, pillarMat, lavaTex, nicheTex, glow: addGlow }, rnd);
       this.themeDecor.push(td.groups);
       for (const [list, name, m] of td.lit) {
         const mm = merge(list, name, m);
@@ -1140,6 +1168,18 @@ export class CatacombsFx {
       }
       hallMeshes[i].push(gate);
     }
+
+    // Пламя всех факелов и жаровен зала — один меш с огнём зала (было по 2 меша и свой материал на каждый огонь).
+    flames.forEach((list, h) => {
+      const fm = list.length ? (Mesh.MergeMeshes(list, true, true) as Mesh | null) : null;
+      if (!fm) return;
+      fm.name = `catFlames${h}`;
+      fm.material = this.hallFire[h];
+      fm.parent = this.hallNodes[h];
+      fm.isPickable = false;
+      fm.freezeWorldMatrix();
+    });
+    for (const n of flameNodes) n.dispose();
 
     const flatMat = (name: string, tex: DynamicTexture, emi: Color3, add: boolean, alpha: number): StandardMaterial => {
       const m = new StandardMaterial(name, scene);
@@ -1246,7 +1286,8 @@ export class CatacombsFx {
     hi: number,
     M: {
       statueMat: StandardMaterial; obsidMat: StandardMaterial; skullMat: StandardMaterial; boneMat: StandardMaterial;
-      ironMat: StandardMaterial; pillarMat: StandardMaterial; candleMat: StandardMaterial; lavaTex: DynamicTexture; nicheTex: DynamicTexture;
+      ironMat: StandardMaterial; pillarMat: StandardMaterial; lavaTex: DynamicTexture; nicheTex: DynamicTexture;
+      glow: (hall: number, x: number, y: number, z: number, size: number, kind: "torch" | "warm" | "candle", theme?: number) => Mesh | null;
     },
     rnd: () => number,
   ): { groups: Mesh[][]; lit: [Mesh[], string, StandardMaterial][]; owner: Map<Mesh[], number> } {
@@ -1273,12 +1314,8 @@ export class CatacombsFx {
       groups[t].push(m);
     };
     const sprite = (t: number, x: number, y: number, z: number, size: number): void => {
-      const g = MeshBuilder.CreatePlane("catCandleGlow", { size }, scene);
-      g.billboardMode = Mesh.BILLBOARDMODE_ALL;
-      g.material = M.candleMat;
-      g.position.set(x, y, z);
-      extra(t, g);
-      this.glowSprites.push({ mesh: g, phase: rnd() * 10 });
+      const g = M.glow(hi, x, y, z, size, "candle", t);
+      if (g) extra(t, g);
     };
 
     // 0 · Склеп: статуи стражей (меч остриём в пол) и каменные гробы.
@@ -1409,6 +1446,8 @@ export class CatacombsFx {
           obs.push(sp);
         }
       }
+      const vents: Mesh[] = [];
+      const ventNodes: TransformNode[] = [];
       for (const deg of [60, 300, 120 + rnd() * 120]) {
         const p = at(deg, h.r * 0.62);
         const rim = MeshBuilder.CreateTorus("catVentRim", { diameter: 1.6, thickness: 0.45, tessellation: 10 }, scene);
@@ -1418,18 +1457,24 @@ export class CatacombsFx {
         const fl = new TransformNode("catVent", scene);
         fl.parent = root;
         fl.position.set(p.x, y0 + 0.75, p.z);
+        ventNodes.push(fl);
         for (let i = 0; i < 2; i++) {
           const pl = MeshBuilder.CreatePlane("catVentFlame", { width: 1.1, height: 1.6 }, scene);
           pl.rotation.y = i * Math.PI * 0.5;
-          const fm = makeFireMaterial(scene, `catFire${this.fireMats.length}`, false);
-          this.fireMats.push(fm);
-          this.fireHall.push(hi);
-          pl.material = fm;
           pl.parent = fl;
-          pl.isPickable = false;
-          groups[2].push(pl);
+          vents.push(pl);
         }
       }
+      // Огонь расщелин — одним мешем с огнём зала (тема «яма» красит его в багровый).
+      const vm = Mesh.MergeMeshes(vents, true, true) as Mesh | null;
+      if (vm) {
+        vm.name = `catVentFlames${hi}`;
+        vm.material = this.hallFire[hi];
+        vm.parent = root;
+        vm.isPickable = false;
+        groups[2].push(vm);
+      }
+      for (const n of ventNodes) n.dispose();
     }
 
     // 3 · Лунный склеп: стелющийся туман, поля свечей, высокие канделябры.
@@ -1523,12 +1568,19 @@ export class CatacombsFx {
         for (const m of list) m.setEnabled(k === t);
       });
     }
-    this.fireMats.forEach((fm, i) => {
-      const c = THEME_FIRE[CAT_THEMES[this.hallTheme[this.fireHall[i]] ?? 0].key];
+    this.hallFire.forEach((fm, h) => {
+      const c = THEME_FIRE[CAT_THEMES[this.hallTheme[h] ?? 0].key];
       fm.setColor3("uColorA", Color3.FromHexString(c[0]));
       fm.setColor3("uColorB", Color3.FromHexString(c[1]));
       fm.setColor3("uColorC", Color3.FromHexString(c[2]));
     });
+    // Ореолы факелов-спрайтов — цвета огня зала (как hallGlowMats у мешей).
+    for (const g of this.glowSpr) {
+      if (!g.torch) continue;
+      const [r, gg, b] = CAT_THEMES[this.hallTheme[g.hall]].light;
+      g.s.color.set(Math.min(1, r * 0.85 + 0.2), Math.min(1, gg * 0.85 + 0.18), Math.min(1, b * 0.85 + 0.12), 0.75);
+    }
+    this.glowsSig = "";
     if (this.motesHall >= 0) this.themeMotes(this.motesHall);
   }
 

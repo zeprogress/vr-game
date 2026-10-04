@@ -281,6 +281,8 @@ export class Spectator {
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.catFx = zone.catacombs;
+    // Свечения катакомб — спрайтами (одна отрисовка); у игроков билборды (VR/multiview).
+    this.catFx.useSpriteGlows = true;
     this.groundHeight = zone.groundHeight;
     this.botLights = zone.botLights;
     this.lightFocus = new LightFocus(this.scene);
