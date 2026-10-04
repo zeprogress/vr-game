@@ -54,7 +54,7 @@ export interface CatHost {
   saveRecords(ids: string[], win: boolean): void;
   /** Катакомбы не выключены админом (!ивенты катакомбы выкл) — можно открывать сбор сами и по команде. */
   autoOn(): boolean;
-  /** Опыт герою за стража/Владыку: frac — доля его уровня. */
+  /** Опыт герою за стража/Владыку: frac — доля уровня CATACOMBS.xpRefLevel (одинаковый опыт всем). */
   xpReward(id: string, frac: number): void;
   /** Урон/убийства героя переходят на новое id (смена ПК ↔ бот). */
   rekeyStats(from: string, to: string): void;

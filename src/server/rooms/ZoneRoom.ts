@@ -5424,10 +5424,9 @@ export class ZoneRoom extends Room<ZoneState> {
       xpReward: (id, frac) => {
         const p = this.state.players.get(id);
         if (!p) return;
-        const need = xpToNext(p.level);
-        if (!Number.isFinite(need)) return;
-        // Ровно доля уровня — без баффов (×2 победы, свиток), чтобы заход давал предсказуемые ~10%.
-        this.awardXp(this.clientOf(id), p, need * frac);
+        if (!Number.isFinite(xpToNext(p.level))) return; // максимальный уровень
+        // Одинаковый опыт всем: доля уровня CATACOMBS.xpRefLevel (36 ур. — 10% за полный заход), без баффов.
+        this.awardXp(this.clientOf(id), p, xpToNext(CATACOMBS.xpRefLevel) * frac);
       },
       rekeyStats: (from, to) => {
         for (const m of [this.sim.catDamage, this.sim.catKills]) {
