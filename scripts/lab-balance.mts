@@ -68,7 +68,7 @@ const { affixRange, emptyBag, AEGIS_NAME } = await import("../src/shared/items.t
 const AEGIS = AEGIS_NAME;
 const C2 = await import("../src/shared/classes2.ts");
 const CAT = await import("../src/shared/catacombs.ts");
-const { maxHpFor } = await import("../src/shared/progression.ts");
+const { maxHpFor, xpToNext: xpToNextLab } = await import("../src/shared/progression.ts");
 type ClassId = import("../src/shared/classes2.ts").ClassId;
 type SkillId = import("../src/shared/classes2.ts").SkillId;
 type Attr = import("../src/shared/classes2.ts").Attr;
@@ -948,6 +948,8 @@ if (ONLY.has("catacombs")) {
     const p = b.bot.state;
     say(`  ${p.nick} ур.${p.level} ${p.rightCls}/${p.leftCls || "—"} умения ${p.skill1 || "?"}+${p.skill2 || "?"} HP ${Math.round(p.maxHp)}`);
   }
+  // Опыт за забег: уровень и доля уровня до/после (сколько уровней даёт катакомба).
+  const lvl0 = bots.map((b) => b.bot.state.level + (b.bot.state.xp ?? 0) / Math.max(1, xpToNextLab(b.bot.state.level)));
   for (const b of bots) room.cat.join(b.id, b.norm, true);
   room.cat.force("go");
   if (process.env.LAB_DEBUG) {
@@ -1026,6 +1028,8 @@ if (ONLY.has("catacombs")) {
   const got = bots.map((b, i) => b.bot.rt.weapons.length - weapons0[i]);
   const win = announces.some((a) => a.includes("[win]"));
   say(`  итог: ${win ? "ПОБЕДА" : "провал"} за ${f(r.t(), 0)} с · смертей ${deaths} · мобов одновременно до ${maxMobs} · разброс отряда до ${f(maxSpread, 1)} м`);
+  const lvl1 = bots.map((b) => b.bot.state.level + (b.bot.state.xp ?? 0) / Math.max(1, xpToNextLab(b.bot.state.level)));
+  say(`  опыт за забег: ${bots.map((b, i) => `${b.bot.state.nick} +${f(lvl1[i] - lvl0[i], 2)} ур.`).join(", ")}`);
   say(`  вне стен (тиков): ${outOfWalls} · вернулись в лагерь ${home}/${n} · новое оружие в складах: ${got.join(", ")}`);
   if (!win) anomalies.push(`катакомбы: отряд ${n}×${lvl} ур. не прошёл`);
   if (home < n) anomalies.push(`катакомбы: после конца не все вернулись (${home}/${n})`);

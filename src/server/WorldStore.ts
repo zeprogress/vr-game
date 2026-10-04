@@ -33,6 +33,8 @@ export interface PultSettings {
   botsOnly: boolean;
   /** Включены ли мобы в мире. */
   mobsOn: boolean;
+  /** Выключенные ивенты (админ, !ивенты): invasion | hunt | catacombs | quest. */
+  eventsOff: string[];
   /** Токен одноразовой чистки ботов — см. BOT_WIPE_TOKEN в ZoneRoom. */
   botWipe: string;
   /** Громкость музыки/эффектов на рендерящем спектаторе (стриме), 0..100. */

@@ -2506,7 +2506,7 @@ export class ZoneSim {
    * гибридно, обычные мобы — пропорционально урону). Комната разошлёт.
    */
   readonly bossXpShare: { owner: string; xp: number }[] = [];
-  readonly mobXpShare: { owner: string; xp: number }[] = [];
+  readonly mobXpShare: { owner: string; xp: number; cat?: boolean }[] = [];
   /** Криты снарядов за тик: где показать красный «X». Комната разошлёт и очистит. */
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
@@ -2674,7 +2674,7 @@ export class ZoneSim {
       this.mobs.delete(m.id);
       if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
-      this.splitMobXp(m);
+      this.splitXpPool(m, m.xp, true);
       if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });
       return kind;
     }
@@ -2864,7 +2864,7 @@ export class ZoneSim {
    * общий алгоритм для обычной смерти моба (пул = m.xp) и раскола голема
    * (пул = m.splitXp, см. splitGolem). Уровневый потолок накладывает комната.
    */
-  private splitXpPool(m: Mob, pool: number): void {
+  private splitXpPool(m: Mob, pool: number, cat = false): void {
     const RECENCY = 20; // с
     let total = 0;
     const parts: [string, number][] = [];
@@ -2880,7 +2880,7 @@ export class ZoneSim {
     }
     if (total <= 0 || pool <= 0) return;
     for (const [owner, d] of parts) {
-      this.mobXpShare.push({ owner, xp: (pool * d) / total });
+      this.mobXpShare.push({ owner, xp: (pool * d) / total, ...(cat ? { cat: true } : {}) });
     }
   }
 

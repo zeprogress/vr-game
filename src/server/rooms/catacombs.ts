@@ -52,6 +52,8 @@ export interface CatHost {
   setShrine(x: number, z: number, k: number): void;
   /** Конец забега: рекорды урона, забеги и победы — в сейв героев (таблица у спектатора). */
   saveRecords(ids: string[], win: boolean): void;
+  /** Катакомбы не выключены админом (!ивенты катакомбы выкл) — можно открывать сбор сами и по команде. */
+  autoOn(): boolean;
   /** Опыт герою за стража/Владыку: frac — доля его уровня. */
   xpReward(id: string, frac: number): void;
   /** Урон/убийства героя переходят на новое id (смена ПК ↔ бот). */
@@ -230,6 +232,7 @@ export class CatacombDirector {
     const now = this.host.now();
     if (this.phase === CAT_PHASE.none) {
       if (!open) return "";
+      if (!this.host.autoOn()) return "катакомбы сейчас выключены.";
       const wait = Math.ceil((this.cooldownUntil - now) / 60000);
       if (wait > 0) return `катакомбы ещё запечатаны — откроются через ~${wait} мин.`;
       if (!this.host.canOpen()) return "сейчас идёт другое событие — катакомбы откроются после него.";
@@ -281,7 +284,7 @@ export class CatacombDirector {
     const now = this.host.now();
     if (this.phase === CAT_PHASE.none) {
       if (this.nextAuto === 0) this.nextAuto = now + this.autoGap();
-      if (now >= this.nextAuto && now >= this.cooldownUntil) {
+      if (now >= this.nextAuto && now >= this.cooldownUntil && this.host.autoOn()) {
         this.nextAuto = now + this.autoGap();
         if (this.host.canOpen() && this.host.heroes().length >= CATACOMBS.minParty) this.openGather("");
       }

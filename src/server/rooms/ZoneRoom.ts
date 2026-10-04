@@ -602,6 +602,20 @@ function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<Zo
   };
 }
 
+/** Ивенты, которые админ включает/выключает командой !ивенты. */
+type EventToggle = "invasion" | "hunt" | "catacombs" | "quest";
+const EVENT_TOGGLES: readonly EventToggle[] = ["invasion", "hunt", "catacombs", "quest"];
+const EVENT_TOGGLE_RU: Record<EventToggle, string> = { invasion: "нашествие", hunt: "охота", catacombs: "катакомбы", quest: "квест чата" };
+const EVENT_TOGGLE_WORDS: Record<string, EventToggle> = {
+  нашествие: "invasion", invasion: "invasion", охота: "hunt", hunt: "hunt", дракон: "hunt",
+  катакомбы: "catacombs", catacombs: "catacombs", квест: "quest", quest: "quest",
+};
+const EVENT_ON_WORDS = ["вкл", "on", "включить", "включи"];
+const EVENT_OFF_WORDS = ["выкл", "off", "выключить", "выключи"];
+function isEventToggle(v: string): v is EventToggle {
+  return (EVENT_TOGGLES as readonly string[]).includes(v);
+}
+
 /** Приказы ботам в катакомбах: кого бить, где стоять, как рисковать. */
 type CatFocus = "auto" | "boss" | "adds" | "ranged" | "weak" | "strong";
 type CatPos = "auto" | "front" | "back" | "flank";
@@ -1240,6 +1254,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.pultAuto = pult.auto !== false;
     this.pultBotsOnly = pult.botsOnly === true;
     this.state.mobsOn = pult.mobsOn === false ? 0 : 1;
+    for (const k of pult.eventsOff ?? []) if (isEventToggle(k)) this.eventsOff.add(k);
     this.sim = new ZoneSim();
     this.sim.mobsEnabled = pult.mobsOn !== false;
     // Уровень убийцы (для угасания шанса золотого дропа после 15 ур., см.
@@ -2620,6 +2635,11 @@ export class ZoneRoom extends Room<ZoneState> {
     if (this.activeEventKind === 3 && !TOWER_OPEN) {
       this.activeEventKind = Math.random() < EVENT.huntChance / (1 - EVENT.towerChance) ? 2 : 1;
     }
+    // Выключенный админом вид — заменяем другим (оба выключены — сюда доходит только ручной !goevent).
+    if (this.forcedEventKind === 0) {
+      if (this.activeEventKind === 1 && this.eventsOff.has("invasion")) this.activeEventKind = 2;
+      else if (this.activeEventKind === 2 && this.eventsOff.has("hunt")) this.activeEventKind = 1;
+    }
     this.forcedEventKind = 0;
     this.state.eventKind = this.activeEventKind;
     this.state.eventX = spot.x;
@@ -2907,6 +2927,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // кроме ручного запуска (eventForced).
       // Катакомбы идут (сбор или забег) — мировое событие ждёт.
       if (this.cat.busy && !this.eventForced) return;
+      // Нашествие и охота выключены админом — сами не начинаются (ручной !goevent — можно).
+      if (!this.eventForced && this.eventsOff.has("invasion") && this.eventsOff.has("hunt")) return;
       if (now >= this.eventPhaseAt && (this.eventForced || this.state.players.size > 0)) {
         this.startEvent();
       }
@@ -3565,6 +3587,8 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "!chatquest" && (isAdminNick(nick) || STAGING)) {
       if (this.chatQuest) this.reply(`@${nick} квест чата уже идёт.`);
       else this.startChatQuest(parts[1] === "champ" ? "champs" : "mobs");
+    } else if ((cmd === "!ивенты" || cmd === "!events" || cmd === "!ивент") && isAdminNick(nick)) {
+      this.eventsCmd(nick, parts.slice(1));
     } else if (cmd === "!goevent") {
       // Запустить событие может только админ стрима. Необязательный аргумент —
       // тип: hunt/охота, invasion/нашествие, tower/башня (иначе — случайный).
@@ -3866,7 +3890,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!q) {
       if (now < this.nextChatQuestAt) return;
       this.nextChatQuestAt = now + CHAT_QUEST.everyMin * 60_000;
-      if (this.bots.size >= CHAT_QUEST.minBots) this.startChatQuest(Math.random() < 0.65 ? "mobs" : "champs");
+      if (this.bots.size >= CHAT_QUEST.minBots && !this.eventsOff.has("quest")) this.startChatQuest(Math.random() < 0.65 ? "mobs" : "champs");
       return;
     }
     this.state.cqSecs = Math.max(0, Math.ceil((q.endsAt - now) / 1000));
@@ -5018,7 +5042,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
     "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
-    "Катакомбы: !катакомбы — отряд от 2 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
+    "Катакомбы: !катакомбы — отряд от 3 героев спускается в подземелье: волны мертвецов, два стража и Владыка Бездны, каждому — уникальное оружие. Командуй героем: !цель босс, !встать назад, !режим осторожно.",
   ];
 
   /** Раз во сколько-то минут — случайная подсказка в чат, если герои в мире есть. */
@@ -5052,7 +5076,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
-        "!катакомбы — в отряд катакомб (от 2 героев, сбор 5 мин; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
+        "!катакомбы — в отряд катакомб (от 3 героев, сбор 5 мин; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
         "!equip <номер> — надеть конкретное · !camp <моб> — где качаться · " +
         "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
@@ -5335,6 +5359,28 @@ export class ZoneRoom extends Room<ZoneState> {
   private catLevel = 1;
 
   /** Что режиссёру катакомб нужно от комнаты — всё через обычные механизмы мира. */
+  /** Выключенные админом ивенты (!ивенты …) — переживают перезапуск (пульт, world.json). */
+  private readonly eventsOff = new Set<EventToggle>();
+
+  /** `!ивенты [вкл|выкл] [нашествие|охота|катакомбы|квест]` — только админ. Без аргументов — что включено. */
+  private eventsCmd(nick: string, args: string[]): void {
+    const words = args.map((a) => a.toLowerCase());
+    const on = words.find((w) => EVENT_ON_WORDS.includes(w));
+    const off = words.find((w) => EVENT_OFF_WORDS.includes(w));
+    const kinds = words.map((w) => EVENT_TOGGLE_WORDS[w]).filter((k): k is EventToggle => !!k);
+    if (on || off) {
+      const which = kinds.length ? kinds : EVENT_TOGGLES;
+      for (const k of which) {
+        if (off) this.eventsOff.add(k);
+        else this.eventsOff.delete(k);
+      }
+      world.savePult({ eventsOff: [...this.eventsOff] });
+    }
+    const status = EVENT_TOGGLES.map((k) => `${EVENT_TOGGLE_RU[k]} ${this.eventsOff.has(k) ? "выкл" : "вкл"}`).join(", ");
+    const running = off && (this.eventPhase === "active" || this.cat.busy || this.chatQuest) ? " · то, что уже идёт, доиграет" : "";
+    this.reply(`@${nick} ивенты: ${status}${running}. Команды: !ивенты выкл | вкл [нашествие|охота|катакомбы|квест]`);
+  }
+
   private catHost(): CatHost {
     return {
       now: () => Date.now(),
@@ -5389,6 +5435,7 @@ export class ZoneRoom extends Room<ZoneState> {
           if (v !== undefined) m.set(to, (m.get(to) ?? 0) + v);
         }
       },
+      autoOn: () => !this.eventsOff.has("catacombs"),
       setThemes: (t) => {
         if (this.state.catThemes !== t) this.state.catThemes = t;
       },
@@ -5654,6 +5701,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
       if (af?.physArmor) opts.physArmor = Math.max(opts.physArmor ?? 0, af.physArmor);
       opts.level = Math.max(1, Math.round(o.partyLevel));
+      // Опыт — под уровень отряда (как HP и урон), а не за «настоящего» элитника 36–40 ур.
+      opts.xp = Math.round((def.xp ?? 0) * Math.min(1, k) * CATACOMBS.mobXpMul);
       if (o.name) opts.name = o.name;
       id = this.sim.spawnEventMob(def.kind, x, z, opts);
     } else {
@@ -8562,7 +8611,9 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobXpShare) {
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
-      const lvlCap = xpToNext(kp.level);
+      // Мобы катакомб — не больше CATACOMBS.killXpCap уровня за одного (иначе новичок в отряде
+      // высоких уровней прыгал на десяток уровней за забег).
+      const lvlCap = xpToNext(kp.level) * (k.cat ? CATACOMBS.killXpCap : 1);
       const raw = k.xp * this.buffMult(k.owner, "xp");
       const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);
