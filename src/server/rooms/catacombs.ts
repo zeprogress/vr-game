@@ -54,8 +54,8 @@ export interface CatHost {
   saveRecords(ids: string[], win: boolean): void;
   /** Катакомбы не выключены админом (!ивенты катакомбы выкл) — можно открывать сбор сами и по команде. */
   autoOn(): boolean;
-  /** Опыт герою за стража/Владыку: frac — доля уровня CATACOMBS.xpRefLevel (одинаковый опыт всем). */
-  xpReward(id: string, frac: number): void;
+  /** Опыт герою за стража/Владыку: share — часть награды за заход, level0 — его уровень на старте захода. */
+  xpReward(id: string, share: number, level0: number): void;
   /** Урон/убийства героя переходят на новое id (смена ПК ↔ бот). */
   rekeyStats(from: string, to: string): void;
   /** Благословение святилища — всему отряду. */
@@ -167,6 +167,8 @@ export class CatacombDirector {
   private themes: number[] = [];
   /** Кто уже получил награду в этом забеге (чтобы ушедший и вернувшийся не брал дважды). */
   private readonly rewarded = new Set<string>();
+  /** Уровень героев на старте захода — опыт считается от него (поднялся после стража — награда та же). */
+  private readonly startLevel = new Map<string, number>();
 
   constructor(private readonly host: CatHost) {}
 
@@ -192,6 +194,9 @@ export class CatacombDirector {
     this.deaths.delete(from);
     if (d !== undefined) this.deaths.set(to, d);
     this.wasDead.delete(from);
+    const lv = this.startLevel.get(from);
+    this.startLevel.delete(from);
+    if (lv !== undefined) this.startLevel.set(to, lv);
     for (const k of [...this.rewarded]) {
       if (!k.endsWith(`:${from}`)) continue;
       this.rewarded.delete(k);
@@ -500,6 +505,8 @@ export class CatacombDirector {
     this.step = "intro";
     this.stepAt = now + CATACOMBS.introSec * 1000;
     const heroes = this.host.heroes().filter((h) => this.party.has(h.id));
+    this.startLevel.clear();
+    for (const h of heroes) this.startLevel.set(h.id, h.level);
     const avg = heroes.reduce((s, h) => s + h.level, 0) / Math.max(1, heroes.length);
     this.partyLevel = avg;
     this.pending = null;
@@ -782,7 +789,8 @@ export class CatacombDirector {
         if (this.rewarded.has(key)) continue;
         this.rewarded.add(key);
         // Опыт — до сундука (иначе финальный ×2 бафф из сундука удвоил бы и его).
-        this.host.xpReward(id, final ? CATACOMBS.finalXp : CATACOMBS.guardXp);
+        const lv = this.startLevel.get(id) ?? this.host.heroes().find((h) => h.id === id)?.level ?? 1;
+        this.host.xpReward(id, final ? CATACOMBS.finalShare : CATACOMBS.guardShare, lv);
         for (const it of this.host.chest(id, st.chest)) {
           const same = loot.find((l) => l.id === it.id && !!l.aegis === !!it.aegis);
           if (same) same.count += it.count;
@@ -790,13 +798,13 @@ export class CatacombDirector {
         }
       }
       if (!final) {
-        this.host.announce({ kind: "chest", title: "Сундук стража", sub: `каждому в отряде — золотое оружие в склад и +${+(CATACOMBS.guardXp * 100).toFixed(1)}% уровня опыта`, loot, secs: 7 });
+        this.host.announce({ kind: "chest", title: "Сундук стража", sub: "каждому в отряде — золотое оружие в склад и опыт (чем ниже уровень — тем больше)", loot, secs: 7 });
       } else {
         this.phase = CAT_PHASE.outro;
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
         this.host.announce({
           kind: "win", title: "Владыка Бездны повержен!",
-          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈, +${+(CATACOMBS.finalXp * 100).toFixed(1)}% уровня опыта · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
+          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈ и опыт · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
           loot, secs: 12,
         });
         this.host.chat(`☠ Катакомбы пройдены! Владыка Бездны повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);

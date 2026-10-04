@@ -228,12 +228,14 @@ export const CATACOMBS = {
   /** Финальная награда: жетоны ◈ каждому, бафф (мин). */
   finalTokens: 3,
   /** Опыт каждому в отряде за стража / Владыку — доля уровня (сверх опыта за удары). */
-  // 2026-10-04: опыт за заход — одинаковый всем: столько, сколько у героя xpRefLevel составляет
-  // guardXp/finalXp его уровня (36 ур.: 2.5% + 2.5% + 5% = 10% за полный заход). Кто ниже — тот же опыт,
-  // для него это больше уровня. Мобы катакомб опыта не дают.
-  xpRefLevel: 36,
-  guardXp: 0.025,
-  finalXp: 0.05,
+  /**
+   * Опыт за полный заход — доля уровня героя (на старте захода) по кривой [уровень, доля]:
+   * 1 ур. — 1000%, 36 ур. — 10%, 100 ур. — 1%, между точками плавно (по логарифму). Каждый страж —
+   * guardShare этой награды, Владыка — finalShare. Мобы катакомб опыта не дают. См. catXpFrac.
+   */
+  xpCurve: [[1, 10], [36, 0.1], [100, 0.01]] as readonly (readonly [number, number])[],
+  guardShare: 0.25,
+  finalShare: 0.5,
   buffMinutes: 30,
   stages: [
     {
@@ -430,6 +432,20 @@ export const CAT_SHRINES: readonly CatShrine[] = [
 ];
 /** holdSec — сколько стоять в круге, чтобы святилище сработало (видно зрителям, не мгновенно). */
 export const CAT_SHRINE = { chance: 0.65, reach: 3.5, holdSec: 2.5, buffSec: 30, wardSec: 45, hasteSec: 25 } as const;
+
+/** Доля уровня героя за полный заход по кривой CATACOMBS.xpCurve (лог-линейно между точками). */
+export function catXpFrac(level: number): number {
+  const c = CATACOMBS.xpCurve;
+  if (level <= c[0][0]) return c[0][1];
+  for (let i = 1; i < c.length; i++) {
+    const [l1, f1] = c[i];
+    if (level <= l1) {
+      const [l0, f0] = c[i - 1];
+      return f0 * Math.pow(f1 / f0, (level - l0) / (l1 - l0));
+    }
+  }
+  return c[c.length - 1][1];
+}
 
 /** Фазы забега (RoomState.catPhase). */
 export const CAT_PHASE = { none: 0, gather: 1, run: 2, outro: 3 } as const;

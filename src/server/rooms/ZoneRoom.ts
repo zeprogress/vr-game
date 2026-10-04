@@ -253,7 +253,7 @@ import type { PlayerRecord } from "../PlayerStore";
 import { WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
 import { TELEGRAM } from "#shared/changelog";
-import { CAT_HALLS, CAT_HAZARD, CAT_SHRINE, CAT_SHRINES, CATACOMBS, type CatAffix, catEntry, catProject, inCatRegion } from "#shared/catacombs";
+import { CAT_HALLS, CAT_HAZARD, CAT_SHRINE, CAT_SHRINES, CATACOMBS, type CatAffix, catEntry, catProject, catXpFrac, inCatRegion } from "#shared/catacombs";
 import type { CatacombMsg, CatStatsMsg } from "#shared/net/messages";
 import { TowerRunManager } from "./TowerRunManager";
 import { serverPerf } from "../perf";
@@ -5421,12 +5421,13 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         if (this.clients.length) this.broadcast(MSG.catBoard, this.catLeaderboard(5));
       },
-      xpReward: (id, frac) => {
+      xpReward: (id, share, level0) => {
         const p = this.state.players.get(id);
         if (!p) return;
-        if (!Number.isFinite(xpToNext(p.level))) return; // максимальный уровень
-        // Одинаковый опыт всем: доля уровня CATACOMBS.xpRefLevel (36 ур. — 10% за полный заход), без баффов.
-        this.awardXp(this.clientOf(id), p, xpToNext(CATACOMBS.xpRefLevel) * frac);
+        const need = xpToNext(level0);
+        if (!Number.isFinite(need) || !Number.isFinite(xpToNext(p.level))) return; // максимальный уровень
+        // Доля уровня на старте захода по кривой (catXpFrac: 1 ур. 1000%, 36 ур. 10%, 100 ур. 1%), без баффов.
+        this.awardXp(this.clientOf(id), p, need * catXpFrac(level0) * share);
       },
       rekeyStats: (from, to) => {
         for (const m of [this.sim.catDamage, this.sim.catKills]) {
@@ -5701,7 +5702,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
       if (af?.physArmor) opts.physArmor = Math.max(opts.physArmor ?? 0, af.physArmor);
       opts.level = Math.max(1, Math.round(o.partyLevel));
-      // Опыта мобы катакомб не дают — он только за стражей и Владыку (CATACOMBS.guardXp/finalXp).
+      // Опыта мобы катакомб не дают — он только за стражей и Владыку (CATACOMBS.xpCurve).
       opts.xp = 0;
       if (o.name) opts.name = o.name;
       id = this.sim.spawnEventMob(def.kind, x, z, opts);
