@@ -907,6 +907,29 @@ if (ONLY.has("skilltest")) {
   }
 }
 
+// Обычная охота для сравнения с катакомбами (--only xpfarm --players … --roster …): герои с прода
+// фармят мир как боты --sec секунд (по умолчанию 330 — как средний забег катакомб); сколько уровня набрали.
+if (ONLY.has("xpfarm")) {
+  const sec = Number(arg("--sec") ?? 330);
+  say(`\n── Обычная охота ${sec} с: сколько уровня набирает герой ──`);
+  const r = makeRoom(() => true);
+  const room = r.room;
+  const fs = await import("node:fs");
+  const all = JSON.parse(fs.readFileSync(arg("--players")!, "utf8")) as any[];
+  const want = (arg("--roster") ?? "").toLowerCase().split(",").filter(Boolean);
+  const bots = want.map((w) => all.find((x) => String(x.nick).toLowerCase() === w)).filter(Boolean).map((rec: any, i: number) => {
+    const norm = `farm${i}`;
+    store.put(`nick:${norm}`, { ...rec, token: `nick:${norm}`, nick: rec.nick, botActive: true, lastChatAt: simNow } as never);
+    room.spawnBot(rec.nick, norm);
+    room.chatSeen?.set?.(norm, simNow);
+    return room.bots.get(norm);
+  });
+  const lv = (b: any): number => b.state.level + (b.state.xp ?? 0) / Math.max(1, xpToNextLab(b.state.level));
+  const l0 = bots.map(lv);
+  while (r.t() < sec) r.step();
+  say(`  ${bots.map((b: any, i: number) => `${b.state.nick} ур.${Math.floor(l0[i])}: +${f(lv(b) - l0[i], 3)} ур.`).join(" · ")}`);
+}
+
 // Катакомбы: весь забег отрядом ботов на настоящем коде (--only catacombs; --lvl — уровень, --party N).
 if (ONLY.has("catacombs")) {
   const lvl = Number(arg("--lvl") ?? 30);

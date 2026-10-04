@@ -5426,7 +5426,8 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!p) return;
         const need = xpToNext(p.level);
         if (!Number.isFinite(need)) return;
-        this.awardXp(this.clientOf(id), p, need * frac * this.buffMult(id, "xp"));
+        // Ровно доля уровня — без баффов (×2 победы, свиток), чтобы заход давал предсказуемые ~10%.
+        this.awardXp(this.clientOf(id), p, need * frac);
       },
       rekeyStats: (from, to) => {
         for (const m of [this.sim.catDamage, this.sim.catKills]) {
@@ -5701,12 +5702,12 @@ export class ZoneRoom extends Room<ZoneState> {
       if (af?.lifesteal) opts.lifesteal = Math.max(opts.lifesteal ?? 0, af.lifesteal);
       if (af?.physArmor) opts.physArmor = Math.max(opts.physArmor ?? 0, af.physArmor);
       opts.level = Math.max(1, Math.round(o.partyLevel));
-      // Опыт — под уровень отряда (как HP и урон), а не за «настоящего» элитника 36–40 ур.
-      opts.xp = Math.round((def.xp ?? 0) * Math.min(1, k) * CATACOMBS.mobXpMul);
+      // Опыта мобы катакомб не дают — он только за стражей и Владыку (CATACOMBS.guardXp/finalXp).
+      opts.xp = 0;
       if (o.name) opts.name = o.name;
       id = this.sim.spawnEventMob(def.kind, x, z, opts);
     } else {
-      id = this.sim.spawnEventMob(type === "spitter" ? "spitter" : "slime", x, z);
+      id = this.sim.spawnEventMob(type === "spitter" ? "spitter" : "slime", x, z, { xp: 0 });
     }
     this.sim.eventMobs.delete(id);
     this.sim.catMobs.add(id);
@@ -8611,9 +8612,7 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobXpShare) {
       const kp = this.state.players.get(k.owner);
       if (!kp) continue;
-      // Мобы катакомб — не больше CATACOMBS.killXpCap уровня за одного (иначе новичок в отряде
-      // высоких уровней прыгал на десяток уровней за забег).
-      const lvlCap = xpToNext(kp.level) * (k.cat ? CATACOMBS.killXpCap : 1);
+      const lvlCap = xpToNext(kp.level);
       const raw = k.xp * this.buffMult(k.owner, "xp");
       const xp = Number.isFinite(lvlCap) ? Math.min(raw, lvlCap) : raw;
       this.awardXp(this.clientOf(k.owner), kp, xp);

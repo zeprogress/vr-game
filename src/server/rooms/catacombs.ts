@@ -790,13 +790,13 @@ export class CatacombDirector {
         }
       }
       if (!final) {
-        this.host.announce({ kind: "chest", title: "Сундук стража", sub: `каждому в отряде — золотое оружие в склад и +${Math.round(CATACOMBS.guardXp * 100)}% уровня опыта`, loot, secs: 7 });
+        this.host.announce({ kind: "chest", title: "Сундук стража", sub: `каждому в отряде — золотое оружие в склад и +${+(CATACOMBS.guardXp * 100).toFixed(1)}% уровня опыта`, loot, secs: 7 });
       } else {
         this.phase = CAT_PHASE.outro;
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
         this.host.announce({
           kind: "win", title: "Владыка Бездны повержен!",
-          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈, +${Math.round(CATACOMBS.finalXp * 100)}% уровня опыта · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
+          sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈, +${+(CATACOMBS.finalXp * 100).toFixed(1)}% уровня опыта · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
           loot, secs: 12,
         });
         this.host.chat(`☠ Катакомбы пройдены! Владыка Бездны повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
