@@ -51,6 +51,9 @@ import {
   type CtxMob,
 } from "./SpectatorCamera";
 
+/** Как часто спектатор шлёт сводку производительности в журнал сервера. */
+const PERF_REPORT_MS = 10 * 60_000;
+
 const UP = { x: 0, y: 1, z: 0 };
 /** См. Game.ts MISS_FX_DELAY — держим то же значение для спектатора. */
 const MISS_FX_DELAY = 0.35;
@@ -404,9 +407,15 @@ export class Spectator {
         if (this.freeCtl?.live) this.net?.sendSpecCmd({ t: "free", on: 0 });
       });
     }
-    if (override.perf) {
+    // Замер кадра по этапам — всегда (несколько performance.now() за кадр): раз в 10 минут сводка
+    // в журнал сервера ([spec-diag] [perf10m] …) — видно, как спектатор живёт на настоящем стриме.
+    // Разборы отдельных «плохих» кадров — только с ?perf=1.
+    {
+      const perfSpikes = !!override.perf;
       this.probe = new PerfProbe(
-        (text) => this.net?.sendSpecCmd({ t: "diag", text }),
+        (text) => {
+          if (perfSpikes) this.net?.sendSpecCmd({ t: "diag", text });
+        },
         () =>
           `кадр камеры ${this.cam.shotKind}, мобов ${this.net?.room?.state.mobs.size ?? 0}, ` +
           `игроков ${this.net?.room?.state.players.size ?? 0}, рендер ${this.renderRate.toFixed(0)} fps, ` +
@@ -414,6 +423,8 @@ export class Spectator {
           `текстур ${this.scene.textures.length}, relight ${RELIGHT_STATS.count} (${RELIGHT_STATS.last}), ` +
           this.botLights.debugInfo(),
       );
+      // Окно свободной камеры (пульт) — не стрим: сводку не шлём, чтобы не путать.
+      if (!this.freeCtl) setInterval(() => this.sendPerfReport(), PERF_REPORT_MS);
     }
 
     // Звук стрима: музыка + позиционные эффекты. На боксе жеста нет —
@@ -652,6 +663,49 @@ export class Spectator {
    * бандла лежит в /index.html; сменился — перезагружаем страницу, чтобы на
    * «слепом» боксе не приходилось ничего трогать руками. `?reload=0` — выкл.
    */
+  private rootsScanAt = 0;
+
+  /**
+   * Пустые меши-корни моделей (glTF `__root__`, вершин 0 — их у мобов и героев до сотни) прячем
+   * через isVisible=false: Babylon не тащит их через выбор активных мешей; детей это не трогает
+   * (видимость не наследуется). То же делает VrCull в шлеме.
+   */
+  private hideEmptyRoots(): void {
+    for (const m of this.scene.meshes) {
+      if (m.isVisible && m.name === "__root__" && !m.isAnInstance && m.getTotalVertices() === 0) m.isVisible = false;
+    }
+  }
+
+  private perfDrawsAt = 0;
+  private perfFrameAt = 0;
+  private readonly perfStartAt = performance.now();
+
+  /** Сводка раз в PERF_REPORT_MS: fps и этапы кадра (PerfProbe), отрисовки, сцена, память, видеокарта. */
+  private sendPerfReport(): void {
+    const probe = this.probe;
+    if (!probe || !this.net) return;
+    const sc = this.scene;
+    const eng = this.engine as unknown as { _drawCalls?: { current: number }; getGlInfo?: () => { renderer: string } };
+    const draws = eng._drawCalls?.current ?? 0;
+    const frame = sc.getFrameId();
+    const dFrames = Math.max(1, frame - this.perfFrameAt);
+    const drawsPer = this.perfFrameAt ? Math.round((draws - this.perfDrawsAt) / dFrames) : 0;
+    this.perfDrawsAt = draws;
+    this.perfFrameAt = frame;
+    let paused = 0;
+    for (const a of sc.animatables) if ((a as unknown as { _paused?: boolean })._paused) paused++;
+    const st = this.net.room?.state;
+    const heap = probe.heapMb();
+    const text =
+      `[perf10m] ${probe.takeReport()} · отрисовок/кадр ${drawsPer} · активных мешей ${sc.getActiveMeshes().length} · ` +
+      `мешей ${sc.meshes.length}, материалов ${sc.materials.length}, текстур ${sc.textures.length}, скелетов ${sc.skeletons.length}, ` +
+      `анимаций ${sc.animatables.length} (на паузе ${paused}) · куча ${heap > 0 ? `${heap.toFixed(0)} МБ` : "—"} · ` +
+      `кадр камеры ${this.cam.shotKind}, игроков ${st?.players.size ?? 0}, мобов ${st?.mobs.size ?? 0}, катакомбы ${st?.catPhase ?? 0} · ` +
+      `рендер ${this.engine.getRenderWidth()}×${this.engine.getRenderHeight()} · аптайм ${Math.round((performance.now() - this.perfStartAt) / 60000)} мин · ` +
+      `${eng.getGlInfo?.().renderer ?? ""}`;
+    this.net.sendSpecCmd({ t: "diag", text });
+  }
+
   private async watchForUpdates(): Promise<void> {
     if (this.reloadSec <= 0) return;
     const bundle = async (): Promise<string | null> => {
@@ -953,6 +1007,10 @@ export class Spectator {
     const dt = Math.min(this.engine.getDeltaTime() / 1000, 0.1);
     const now = performance.now();
     const room = this.net?.room;
+    if (now >= this.rootsScanAt) {
+      this.rootsScanAt = now + 2000;
+      this.hideEmptyRoots();
+    }
 
     // Зона (сутки, ветер, светлячки) — «позицию игрока» даём камеры.
     this.probe?.mark("pre-tick");

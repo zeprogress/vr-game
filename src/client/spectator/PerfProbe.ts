@@ -17,6 +17,16 @@ export class PerfProbe {
   private maxGap = 0;
   private lastSpikeAt = 0;
   private prevHeap = 0;
+  /** Длинное окно (для сводки раз в 10 минут, takeReport): суммы этапов, кадры, тяжёлые кадры. */
+  private readonly longSums = new Map<string, number>();
+  private longFrames = 0;
+  private longWork = 0;
+  private longMaxWork = 0;
+  private longMaxGap = 0;
+  private longOver33 = 0;
+  private longOver50 = 0;
+  private longGap100 = 0;
+  private longAt = 0;
   /** Последняя сводка (для плашки ?debug=1). */
   line = "";
 
@@ -45,7 +55,18 @@ export class PerfProbe {
     const work = now - this.frameStartAt;
     const gap = this.prevFrameStart > 0 ? this.frameStartAt - this.prevFrameStart : 0;
     this.frames++;
-    for (const [k, v] of this.cur) this.sums.set(k, (this.sums.get(k) ?? 0) + v);
+    for (const [k, v] of this.cur) {
+      this.sums.set(k, (this.sums.get(k) ?? 0) + v);
+      this.longSums.set(k, (this.longSums.get(k) ?? 0) + v);
+    }
+    if (this.longAt === 0) this.longAt = now;
+    this.longFrames++;
+    this.longWork += work;
+    this.longMaxWork = Math.max(this.longMaxWork, work);
+    this.longMaxGap = Math.max(this.longMaxGap, gap);
+    if (work > 33) this.longOver33++;
+    if (work > 50) this.longOver50++;
+    if (gap > 100) this.longGap100++;
     this.maxWork = Math.max(this.maxWork, work);
     this.maxGap = Math.max(this.maxGap, gap);
 
@@ -82,7 +103,35 @@ export class PerfProbe {
     }
   }
 
-  private heapMb(): number {
+  /**
+   * Сводка за длинное окно (с прошлого вызова) и сброс: fps, средняя работа кадра и по этапам,
+   * сколько кадров тяжелее 33/50 мс и пауз между кадрами >100 мс (рывки на стриме).
+   */
+  takeReport(): string {
+    const now = performance.now();
+    const secs = Math.max(0.001, (now - this.longAt) / 1000);
+    const n = Math.max(1, this.longFrames);
+    const parts = [...this.longSums.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} ${(v / n).toFixed(1)}`)
+      .join(" · ");
+    const out =
+      `fps ${(this.longFrames / secs).toFixed(1)} · работа кадра ${(this.longWork / n).toFixed(1)} мс (макс ${this.longMaxWork.toFixed(0)}) · ` +
+      `этапы мс: ${parts} · кадров >33 мс ${this.longOver33}, >50 мс ${this.longOver50} · пауз >100 мс ${this.longGap100} (макс ${this.longMaxGap.toFixed(0)}) · ` +
+      `за ${Math.round(secs)} с`;
+    this.longSums.clear();
+    this.longFrames = 0;
+    this.longWork = 0;
+    this.longMaxWork = 0;
+    this.longMaxGap = 0;
+    this.longOver33 = 0;
+    this.longOver50 = 0;
+    this.longGap100 = 0;
+    this.longAt = now;
+    return out;
+  }
+
+  heapMb(): number {
     const m = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
     return m ? m.usedJSHeapSize / 1048576 : 0;
   }

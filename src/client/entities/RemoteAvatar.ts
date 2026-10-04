@@ -1073,7 +1073,6 @@ export class RemoteAvatar implements Hittable {
 
   /** Клипы на паузе, потому что бот вне кадра (см. stepBotLocomotion). */
   private animFrozen = false;
-  private readonly pausedClips: AnimationGroup[] = [];
   private static readonly ANIM_RANGE = 100;
   /** В VR анимируем и рисуем ботов только вблизи: далёкие — шум для draw call'ов. */
   private static readonly VR_ANIM_RANGE = 40;
@@ -1166,22 +1165,14 @@ export class RemoteAvatar implements Hittable {
     // мусор для GC), а вернулся в кадр — снимаем паузу. Позицию и скорость
     // копим выше в любом случае.
     if (this.isAnimOffscreen()) {
-      if (!this.animFrozen) {
-        this.animFrozen = true;
-        for (const g of rig.anims.values()) {
-          if (g.isPlaying) {
-            g.pause();
-            this.pausedClips.push(g);
-          }
-        }
-      }
+      // Останавливаем совсем (не пауза): у паузы аниматоры по ~70 на клип остаются в сцене и
+      // перебираются каждый кадр. И держим остановленными: разовые клипы (удар, выстрел), запущенные
+      // за кадром, тоже гасим. Вернулся в кадр — нужные циклы ниже сами запустятся заново.
+      this.animFrozen = true;
+      for (const g of rig.anims.values()) if (g.isPlaying) g.stop();
       return;
     }
-    if (this.animFrozen) {
-      this.animFrozen = false;
-      for (const g of this.pausedClips) g.restart();
-      this.pausedClips.length = 0;
-    }
+    if (this.animFrozen) this.animFrozen = false;
 
     // Пороги с гистерезисом: у бота скорость гуляет около границы (тормозит
     // у моба, толкается с соседями), и на одном пороге клип щёлкал бег↔шаг

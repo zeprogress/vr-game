@@ -17,6 +17,9 @@ const RIG_SCALE = 0.52;
  * и крутит Idle, над головой — плашка с именем. Без логики — взаимодействие
  * (E у NPC) ведёт Game по расстоянию.
  */
+/** Дальше этого от камеры (м) NPC лагеря стоит без анимации. */
+const NPC_ANIM_RANGE = 60;
+
 export function spawnHubNpc(
   scene: Scene,
   model: ModelName,
@@ -50,6 +53,24 @@ export function spawnHubNpc(
       for (const g of rig.anims.values()) g.stop();
       const idle = rig.anims.get("idle");
       idle?.start(true, 1, idle.from, idle.to, false);
+      // Камера далеко (или NPC за спиной в другом конце карты) — Idle не крутим: два NPC — ~140 аниматоров
+      // костей на кадр впустую. Проверка раз в полсекунды, только по расстоянию.
+      if (idle) {
+        let wait = 0;
+        const obs = scene.onBeforeRenderObservable.add(() => {
+          wait -= scene.getEngine().getDeltaTime();
+          if (wait > 0) return;
+          wait = 500;
+          const cam = scene.activeCamera;
+          if (!cam) return;
+          const c = cam.globalPosition;
+          const p = root.position;
+          const near = (p.x - c.x) ** 2 + (p.z - c.z) ** 2 < NPC_ANIM_RANGE * NPC_ANIM_RANGE;
+          if (near && !idle.isPlaying) idle.start(true, 1, idle.from, idle.to, false);
+          else if (!near && idle.isPlaying) idle.stop();
+        });
+        root.onDisposeObservable.add(() => scene.onBeforeRenderObservable.remove(obs));
+      }
     } catch (e) {
       console.warn("[npc] модель не загрузилась:", (e as Error).message);
     }
