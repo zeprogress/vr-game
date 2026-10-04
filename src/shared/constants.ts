@@ -467,6 +467,9 @@ export interface EliteMobDef {
   leaper?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
   packFrenzy?: boolean;
+  /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
+   *  стоит → Idle, идёт → Walk, гонится → Run (иначе модель без Hop «шагает» всегда). */
+  gait?: boolean;
 }
 
 /**
@@ -704,9 +707,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Скалолом (ближний бой): прыгает на героя с кругом-предупреждением, удар по площади с отбросом;
   // гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
   rockBreaker: {
-    model: "monMonkroose", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
+    model: "monBogBrute", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 2.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: true, packFrenzy: true, legendaryChance: 0.035,
+    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
   },
 };
 

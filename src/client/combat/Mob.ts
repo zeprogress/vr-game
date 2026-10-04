@@ -49,6 +49,9 @@ const MODEL_YAW = (() => {
 })();
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+/** EliteMobDef.gait: медленнее — стойка (Idle), быстрее — бег (Run), между — шаг (Walk), м/с. */
+const GAIT_IDLE_SPEED = 0.5;
+const GAIT_RUN_SPEED = 2.2;
 
 /** Длительность процедурного замаха моба, с. */
 const ATTACK_DUR = 0.36;
@@ -487,6 +490,12 @@ export class Mob implements Hittable {
   /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
   private atkClip: AnimationGroup | null = null;
   private atkClipT = 0;
+  /** Модели с EliteMobDef.gait: стойка/бег (шаг — moveAnim) и сглаженная скорость по серверу, м/с. */
+  private gaitIdle: AnimationGroup | null = null;
+  private gaitRun: AnimationGroup | null = null;
+  private moveSpd = 0;
+  private gaitX = NaN;
+  private gaitZ = NaN;
   /** Узел, который тянем/сжимаем в прыжке: сфера или корень модели. */
   private squash: TransformNode;
   private curAnim: AnimationGroup | null = null;
@@ -808,7 +817,12 @@ export class Mob implements Hittable {
 
     // Мобы 40 ур. (свой снаряд или прыжок): бросок/удар — клип модели, а не только «замах» телом.
     const eliteDef = this.modelName ? Object.values(ELITE_MOBS).find((d) => d.model === this.modelName) : undefined;
-    if (eliteDef?.shot || eliteDef?.leaper) this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? null;
+    if (eliteDef?.shot || eliteDef?.leaper)
+      this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? rig.anims.get("attack") ?? null;
+    if (eliteDef?.gait) {
+      this.gaitIdle = rig.anims.get("idle") ?? null;
+      this.gaitRun = rig.anims.get("run") ?? null;
+    }
     // Клип «движения»: у разных моделей пака он называется по-разному
     // (Hop / Jump / Fast_Flying / Walk / Run). Запомним, что нашли.
     this.moveAnim =
@@ -1148,8 +1162,21 @@ export class Mob implements Hittable {
       // Скелетная анимация вне кадра/вдали не нужна: у 20+ пчёл она крутилась
       // вечно, даже когда их никто не видит.
       const seen = this.animVisible(pos, playerPos);
+      if (this.gaitIdle) {
+        // Скорость по серверным координатам, сглаженная ~0.35 с (они приходят тиками, а не каждый кадр).
+        if (Number.isFinite(this.gaitX) && dt > 0) {
+          const raw = Math.min(12, Math.hypot(s.x - this.gaitX, s.z - this.gaitZ) / dt);
+          this.moveSpd += (raw - this.moveSpd) * (1 - Math.exp(-dt / 0.35));
+        }
+        this.gaitX = s.x;
+        this.gaitZ = s.z;
+      }
       if (seen && this.atkClip && this.atkClipT > 0) this.playAnim(this.atkClip, false);
-      else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
+      else if (seen && this.gaitIdle) {
+        const clip =
+          this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;
+        this.playAnim(clip, true);
+      } else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();
     }
 

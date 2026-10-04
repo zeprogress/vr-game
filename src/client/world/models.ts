@@ -77,6 +77,8 @@ export const MODELS = {
   monNinja: "/models/monsters/Ninja.gltf",
   monAlpaking: "/models/monsters/Alpaking.gltf",
   monDragonEvolved: "/models/monsters/Dragon_Evolved.gltf",
+  // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
+  monBogBrute: "/models/gen/BogBrute.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

@@ -51,6 +51,49 @@ def material(name, d):
     return m
 
 
+def _srgb(c):
+    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+
+
+def atlas(me, name, colors, cell=16):
+    """Все материалы → один материал с палитрой-текстурой (клетка cell×cell на цвет, UV — в центр клетки).
+    Одна отрисовка на моба вместо одной на материал; игра (recolorMonster) работает с атласом как с паком."""
+    n = len(colors)
+    cols = min(8, n)
+    rows = (n + cols - 1) // cols
+    W, H = 8 * cell, 1 << max(4, (rows * cell - 1).bit_length())
+    img = bpy.data.images.get(name + "_atlas")
+    if img:
+        bpy.data.images.remove(img)
+    img = bpy.data.images.new(name + "_atlas", width=W, height=H, alpha=False)
+    px = np.ones((H, W, 4), np.float32)
+    for i, rgb in enumerate(colors):
+        r, c = divmod(i, cols)
+        px[r * cell:(r + 1) * cell, c * cell:(c + 1) * cell, :3] = [_srgb(x) for x in rgb]
+    img.pixels.foreach_set(px.ravel())
+    img.pack()
+    uv = me.uv_layers.new(name="UVMap")
+    mi = np.zeros(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    loop_mi = np.repeat(mi, [len(p.vertices) for p in me.polygons])
+    r, c = np.divmod(loop_mi, cols)
+    uvs = np.stack([(c + 0.5) * cell / W, (r + 0.5) * cell / H], -1).astype(np.float32)
+    uv.data.foreach_set("uv", uvs.ravel())
+    m = bpy.data.materials.new(name + "_Atlas")
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = next(nd for nd in nt.nodes if nd.type == "BSDF_PRINCIPLED")
+    bsdf.inputs["Roughness"].default_value = 0.85
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.interpolation = "Closest"  # без размытия на стыках клеток
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    me.materials.clear()
+    me.materials.append(m)
+    me.polygons.foreach_set("material_index", np.zeros(len(me.polygons), np.int32))
+    me.update()
+
+
 # ---------- сетка ----------
 
 def _mesh_from(name, V, F):
@@ -264,6 +307,11 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     me.polygons.foreach_set("material_index", M.astype(np.int32))
     me.polygons.foreach_set("use_smooth", SM)
     me.update()
+    # мобы и боссы — одна палитра-текстура вместо N материалов (одна отрисовка); герои — как пак (материалы)
+    use_atlas = bool(sp.get("atlas", kind in ("mob", "boss")))
+    if use_atlas:
+        mdefs = sp.get("mats") or {}
+        atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
     ob = bpy.data.objects.new(name, me)
     coll.objects.link(ob)
 
@@ -318,7 +366,7 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     if tris > budget * 1.05:
         warnings.append(f"треугольников {tris} > бюджета {budget}")
     mat_cap = {"boss": 12, "prop": 4}.get(kind, 10)
-    if len(mats) > mat_cap:
+    if not use_atlas and len(mats) > mat_cap:
         warnings.append(f"материалов {len(mats)} > {mat_cap} — каждый материал = отрисовка")
     res = {
         "name": name, "tris": tris, "rawTris": raw_tris, "verts": len(me.vertices), "bones": len(skel.bones),
@@ -330,7 +378,7 @@ def build(sp, out_glb=None, out_blend=None, live=False):
         bpy.ops.wm.save_as_mainfile(filepath=out_blend, copy=True)
         res["blend"] = out_blend
     if out_glb:
-        export(coll, out_glb)
+        export(coll, out_glb, texcoords=use_atlas)
         res["glb"] = out_glb
         res["fileKB"] = round(os.path.getsize(out_glb) / 1024)
     return res
@@ -365,7 +413,7 @@ def load_base(sp, coll):
     return arm
 
 
-def export(coll, path):
+def export(coll, path, texcoords=False):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     bpy.context.view_layer.update()
     for o in bpy.context.view_layer.objects:
@@ -375,7 +423,7 @@ def export(coll, path):
         o.select_set(True)
     kw = dict(
         filepath=path, export_format="GLB", use_selection=True, export_yup=True, export_apply=False,
-        export_animations=True, export_skins=True, export_texcoords=False, export_normals=True,
+        export_animations=True, export_skins=True, export_texcoords=texcoords, export_normals=True,
         export_animation_mode="ACTIONS", export_force_sampling=True, export_optimize_animation_size=True,
     )
     bpy.ops.export_scene.gltf(**kw)
