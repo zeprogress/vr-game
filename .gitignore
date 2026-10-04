@@ -27,3 +27,7 @@ art/.DS_Store
 
 # копии локальных данных стенда (npm run stage:sync)
 /src/server/.data.bak-*/
+
+# Пайплайн ассетов: входящие файлы и кэш Python
+tools/inbox/
+__pycache__/
