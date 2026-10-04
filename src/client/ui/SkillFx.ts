@@ -1,4 +1,5 @@
 import { FXC } from "./fxColors";
+import { liftOnGround } from "./groundLift";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -143,7 +144,7 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
   m.backFaceCulling = false;
   // Раньше эффекты сидели в renderingGroupId=1 (там глубина стирается) и просвечивали сквозь землю и
   // предметы; теперь обычная очередь с тестом глубины, а круги на земле подтянуты к камере.
-  m.zOffset = -4;
+  liftOnGround(m);
   return m;
 }
 

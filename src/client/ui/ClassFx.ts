@@ -1,4 +1,5 @@
 import { FXC } from "./fxColors";
+import { liftOnGround } from "./groundLift";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -56,7 +57,7 @@ function addMat(scene: Scene, name: string, color: Color3): StandardMaterial {
   m.disableDepthWrite = true;
   m.alphaMode = Constants.ALPHA_ADD;
   m.backFaceCulling = false;
-  m.zOffset = -4;
+  liftOnGround(m); // круги на земле — подтянуты к камере, бугры их не срезают (groundLift.ts)
   return m;
 }
 
@@ -723,6 +724,14 @@ export function playClassAct(
       if (mobId) {
         vfx.decal(x, y, z, 1.1, ATK, d ?? 8, 2, 1, { kind: "mob", id: mobId, dy: 0.4 });
         vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
+      }
+      return true;
+    case "reflectHit":
+      // Щит отразил удар: серебристая вспышка у героя и искры обратно в моба.
+      vfx.burst(x, y, z, FXC.reflect, { count: 12, speed: 4, life: 0.35, grav: 0, size: 0.18 });
+      if (x2 !== undefined && z2 !== undefined) {
+        vfx.bolt(x, y, z, x2, d ?? y, z2, FXC.reflect, 0.22, 0.05);
+        vfx.burst(x2, d ?? y, z2, FXC.reflect, { count: 8, speed: 3, life: 0.3, grav: 2, size: 0.16 });
       }
       return true;
     case "lifeArrow":

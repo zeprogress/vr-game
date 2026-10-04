@@ -8887,7 +8887,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const reflect = shield ? shieldReflect(shield.inst) : 0;
     if (reflect > 0 && h.byMob) {
       const src = this.sim.mobs.get(h.byMob);
-      if (src && !src.dead) this.sim.hitMob(src.id, inDmg * reflect, -ax, -az, h.target, h.projectile, true);
+      if (src && !src.dead) {
+        const hp0 = src.hp;
+        this.sim.hitMob(src.id, inDmg * reflect, -ax, -az, h.target, h.projectile, true);
+        // Тик (dot) в hitMob цифру не показывает — отражение было незаметным: своя цифра и вспышка.
+        const back = Math.round(Math.max(0, hp0 - Math.max(0, src.hp)));
+        if (back > 0) {
+          const my = src.y + MOB.bodyRadius * src.scale * 1.4;
+          this.sim.dmgHits.push({ x: src.x, y: my, z: src.z, dmg: back, by: h.target, mob: src.id, c: "reflect" });
+          this.broadcast(MSG.act, { k: "reflectHit", id: h.target, x: p.head.x, y: p.head.y - 0.6, z: p.head.z, x2: src.x, z2: src.z, d: my } satisfies ActRelay);
+        }
+      }
     }
     // Эгида, «Оплот»: успешный блок щитом лечит.
     if (shield && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {

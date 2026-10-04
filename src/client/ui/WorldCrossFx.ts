@@ -511,5 +511,5 @@ const DMG_GOLD = new Color3(1, 0.88, 0.47);
 
 /** Цвет числа урона по его виду (DmgHitsMsg.c): яд — ядовито-зелёный, лечение — зелёный, иначе белый. */
 export function dmgNumberColor(c: DmgHitColor | undefined): Color3 | null {
-  return c === "poison" ? FXC.poison : c === "heal" ? FXC.heal : c === "bleed" ? FXC.blood : null;
+  return c === "poison" ? FXC.poison : c === "heal" ? FXC.heal : c === "bleed" ? FXC.blood : c === "reflect" ? FXC.reflect : null;
 }

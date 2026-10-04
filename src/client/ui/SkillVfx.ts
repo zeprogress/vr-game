@@ -1,4 +1,5 @@
 import { FXC } from "./fxColors";
+import { GROUND_LIFT_GLSL } from "./groundLift";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -49,11 +50,14 @@ attribute vec3 position;
 attribute vec2 uv;
 uniform mat4 world;
 uniform mat4 viewProjection;
+uniform vec3 cameraPosition;
 ${MV_HEAD}
 varying vec2 vUV;
 void main() {
   vUV = uv;
   vec4 wp = world * vec4(position, 1.0);
+  // Круг на земле подтянут к камере — неровная земля его не срезает (см. groundLift.ts).
+  ${GROUND_LIFT_GLSL}
   ${MV_OUT("wp.xyz")}
 }`;
 Effect.ShadersStore["fxDecalFragmentShader"] = `
@@ -305,7 +309,7 @@ export class SkillVfx {
       const mesh = MeshBuilder.CreatePlane(`vfxDecal${i}`, { size: 2 }, scene);
       mesh.rotation.x = Math.PI / 2;
       mesh.bakeCurrentTransformIntoVertices();
-      const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf"]);
+      const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf", "cameraPosition"]);
       mesh.material = mat;
       mesh.isPickable = false;
       mesh.alwaysSelectAsActiveMesh = true;
