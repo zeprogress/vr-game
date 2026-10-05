@@ -245,7 +245,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     name: WEAPON_NOUN.staff.name,
     dmg: MAGIC.firebolt.baseDamage + 0.7 * MAGIC.firebolt.damagePerCharge,
     interval: MAGIC.firebolt.cooldown, tempoSoft: 1.8, reach: 17, pierce: 1,
-    critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [1.1, 2.1, 2.55], // 2026-10-05: поджог стал роллом — без него ~170 DPS, с «Поджогом» на максимуме ~середина классов (лаборатория)
+    critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [1.2, 2.3, 2.8], // 2026-10-05: поджог стал роллом — без него ~170 DPS, с «Поджогом» на максимуме ~середина классов (лаборатория)
   },
 };
 
