@@ -2089,96 +2089,92 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon] + HIT_LAG_PAD) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
-    // База крита — только у лука («Лук охотника» критует чаще); роллы "крит"
-    // на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit)
-    // добавляют шанс/силу крита ЛЮБОМУ оружию.
+    if (msg.target === "dummy") {
+      this.sim.hitDummy(msg.id, this.heroHitRoll(client.sessionId, p, rt, hand, msg.weapon).dmg);
+      return;
+    }
+    const struck = msg.target === "mob" ? this.sim.mobs.get(msg.id) : undefined;
+    if (!struck) return;
+    const [dx, dz] = unit2(msg.dx, msg.dz);
+    this.heroStrike(client.sessionId, p, rt, hand, msg.weapon, struck, dx || 0, dz || 1, client);
+  }
+
+  /**
+   * Урон одного удара/выстрела героя — ОДИН расчёт для игрока (любая платформа) и бота:
+   * оружие и тир, роллы руки, крит (база профиля, ролл, кинжал в одной руке, своя метка,
+   * гарантированный после рывка), два кинжала, баффы, удар из тени.
+   */
+  private heroHitRoll(
+    heroId: string, p: PlayerState, rt: Runtime, hand: "left" | "right", weapon: WeaponKind, mob?: Mob,
+  ): { dmg: number; critM: number } {
+    // Роллы "крит" на конкретном инстансе (и на Эгиде в другой руке — см. rolledCrit) — любому оружию.
     const rc = rolledCrit(p, hand, rt);
     // Кинжал в одной руке и пустая вторая — крит чаще и больнее (ассасин).
-    const soloDagger = msg.weapon === "dagger" && (p.leftCls === "" || p.rightCls === "");
+    const soloDagger = weapon === "dagger" && (p.leftCls === "" || p.rightCls === "");
     // «Метка смерти»: удары кинжалом по своей метке критуют чаще.
-    const markedMob = msg.target === "mob" ? this.sim.mobs.get(msg.id) : undefined;
-    const myMark = msg.weapon === "dagger" && !!markedMob && markedMob.markT > 0 && markedMob.markBy === client.sessionId;
-    const newWpn = msg.weapon === "dagger" || msg.weapon === "spear" || msg.weapon === "hammer";
-    const crit = rollCritMult(
-      msg.weapon,
+    const myMark = weapon === "dagger" && !!mob && mob.markT > 0 && mob.markBy === heroId;
+    const newWpn = weapon === "dagger" || weapon === "spear" || weapon === "hammer";
+    const fullCrit = newWpn ? WEAPONS2[weapon as "dagger"].critMult : weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult;
+    let critM = rollCritMult(
+      weapon,
       Math.random,
       false,
-      rc.chance + (newWpn ? WEAPONS2[msg.weapon as "dagger"].critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0) + (myMark ? MARK.assassinCrit : 0),
+      rc.chance + (newWpn ? WEAPONS2[weapon as "dagger"].critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0) + (myMark ? MARK.assassinCrit : 0),
       rc.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
-      newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult,
+      fullCrit,
       p.luc,
     );
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.
-    let critM = crit;
-    if (critM <= 1 && rt.forceCritUntil > this.elapsed && msg.weapon !== "fist") {
-      critM = newWpn ? WEAPONS2[msg.weapon as "dagger"].critMult : msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult;
-    }
+    if (critM <= 1 && rt.forceCritUntil > this.elapsed && weapon !== "fist") critM = fullCrit;
     rt.forceCritUntil = -999;
-    // Два кинжала бьют чаще (DAGGER.dualTempo), но каждый удар чуть слабее — как у ботов и в характеристиках.
-    const dualDagger = msg.weapon === "dagger" && p.leftCls === "dagger" && p.rightCls === "dagger";
+    // Два кинжала бьют чаще (DAGGER.dualTempo), но каждый удар чуть слабее.
+    const dualDagger = weapon === "dagger" && p.leftCls === "dagger" && p.rightCls === "dagger";
     const dmg =
-      weaponDamage(msg.weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
+      weaponDamage(weapon, p.level, p, multIn(p, hand) * rolledDmgMul(p, hand, rt)) *
       (dualDagger ? DAGGER.dualDmg : 1) *
       critM *
-      this.buffMult(client.sessionId, "dmg") *
-      (isMeleeClass(msg.weapon) ? this.abyssStrikeMul(p, rt) : 1);
-    const [dx, dz] = unit2(msg.dx, msg.dz);
+      this.buffMult(heroId, "dmg") *
+      (isMeleeClass(weapon) ? this.abyssStrikeMul(p, rt) : 1);
+    return { dmg, critM };
+  }
 
-    if (msg.target === "dummy") {
-      this.sim.hitDummy(msg.id, dmg);
-      return;
-    }
-    // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем
-    // вокруг того места, куда пришёлся клинок.
-    const struck = msg.target === "mob" ? this.sim.mobs.get(msg.id) : undefined;
-    if (struck) {
-      // Для «!follow»-телохранителя: кого сейчас бьёт цель (фокус-фаер).
-      rt.lastHitMobId = struck.id;
-      rt.lastHitMobAt = this.elapsed;
-    }
-    const sx = struck?.x ?? 0;
-    const sy = struck?.y ?? 0;
-    const sz = struck?.z ?? 0;
-    if (critM > 1 && struck) this.critFx(struck.x, struck.y, struck.z, client.sessionId);
-    // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare /
-    // sim.mobKills), не здесь: моба мог добить один, а бить помогали несколько.
-    this.sim.hitMob(
-      msg.id, dmg, dx || 0, dz || 1, client.sessionId,
-      msg.weapon === "arrow", false, false, critM > 1,
-    );
-    if (struck && msg.weapon === "dagger") this.afterDaggerHit(client.sessionId, p, rt, struck, dmg);
-    // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона
-    // возвращается владельцу как HP; от остальных целей удара — см. vampHeal ниже.
-    const vamp = isMeleeClass(msg.weapon) ? heldVamp(p, rt) : 0;
-    const vamped = vamp > 0 && !!struck;
-    // Звук удара мечом слышат все вокруг (кроме самого бьющего — у него уже
-    // сыграл локальный предсказанный звук, без сетевой задержки) — как и
-    // раньше, безусловно. Вампиризм — отдельная вспышка ДОПОЛНИТЕЛЬНО,
-    // не вместо (см. "vampHit" ниже).
-    if (struck && isBladeKind(msg.weapon)) {
-      this.broadcast(
-        MSG.act,
-        { k: "swordHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay,
-        { except: client },
-      );
-      if (vamped) {
-        this.broadcast(MSG.act, { k: "vampHit", id: client.sessionId, x: sx, y: sy, z: sz } satisfies ActRelay);
-      }
+  /**
+   * Удар героя по мобу — ОДИН путь для игрока и бота: урон (heroHitRoll) и все последствия:
+   * выпад копья, волна молота, сплэш меча, яд/кровь кинжала, вампиризм, звук и вспышки.
+   * `except` — клиент-игрок (у него звук уже сыграл локально). Возвращает «убил».
+   */
+  private heroStrike(
+    heroId: string, p: PlayerState, rt: Runtime, hand: "left" | "right", weapon: WeaponKind,
+    struck: Mob, dx: number, dz: number, except?: Client,
+  ): boolean {
+    const { dmg, critM } = this.heroHitRoll(heroId, p, rt, hand, weapon, struck);
+    // Для «!follow»-телохранителя: кого сейчас бьёт цель (фокус-фаер).
+    rt.lastHitMobId = struck.id;
+    rt.lastHitMobAt = this.elapsed;
+    // Позиция цели ДО удара: моб может умереть и исчезнуть, а сплэш считаем вокруг места удара.
+    const sx = struck.x;
+    const sy = struck.y;
+    const sz = struck.z;
+    if (critM > 1) this.critFx(sx, sy, sz, heroId);
+    // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
+    const killed = !!this.sim.hitMob(struck.id, dmg, dx, dz, heroId, weapon === "arrow", false, false, critM > 1);
+    if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck, dmg);
+    // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона возвращается как HP.
+    const vamp = isMeleeClass(weapon) ? heldVamp(p, rt) : 0;
+    const vamped = vamp > 0;
+    if (isBladeKind(weapon)) {
+      this.broadcast(MSG.act, { k: "swordHit", id: heroId, x: sx, y: sy, z: sz } satisfies ActRelay, except ? { except } : undefined);
+      if (vamped) this.broadcast(MSG.act, { k: "vampHit", id: heroId, x: sx, y: sy, z: sz } satisfies ActRelay);
     }
     let splash = 0;
-    if (struck && msg.weapon === "spear") splash += this.spearPierce(client.sessionId, p, struck, dmg);
-    if (struck && msg.weapon === "hammer") splash += this.hammerWave(client.sessionId, p, hand, rt, sx, sy, sz);
+    if (weapon === "spear") splash += this.spearPierce(heroId, p, struck, dmg);
+    if (weapon === "hammer") splash += this.hammerWave(heroId, p, hand, rt, sx, sy, sz);
     // Меч задевает соседей рядом с целью — небольшой АОЕ.
-    if (struck && msg.weapon === "sword") {
-      splash += this.sim.splashDamage(
-        sx, sy, sz,
-        COMBAT.swordSplashRadius,
-        dmg * COMBAT.swordSplashFraction,
-        msg.id,
-        client.sessionId,
-      );
+    if (weapon === "sword") {
+      splash += this.sim.splashDamage(sx, sy, sz, COMBAT.swordSplashRadius, dmg * COMBAT.swordSplashFraction, struck.id, heroId);
     }
     if (vamped) vampHeal(p, vamp, dmg, splash);
+    return killed;
   }
 
   /**
@@ -3574,7 +3570,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setTraining(nick, norm);
     } else if (cmd === "!raid" || cmd === "!boss") {
       this.setRaid(nick, norm);
-    } else if (cmd === "!квест" || cmd === "!quest" || cmd === "!участвую" || cmd === "!cq") {
+    } else if (cmd === "!квест" || cmd === "!кв" || cmd === "!quest" || cmd === "!участвую" || cmd === "!cq") {
       this.joinChatQuest(nick, norm);
     } else if (cmd === "!chatquest" && (isAdminNick(nick) || STAGING)) {
       if (this.chatQuest) this.reply(`@${nick} квест чата уже идёт.`);
@@ -3826,7 +3822,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.chatQuestTitle();
     this.reply(
       `📜 Квест чата! ${kind === "mobs" ? "Убить мобов" : "Победить вожаков лагерей"} за ${CHAT_QUEST.durSec / 60} минут — ` +
-        `участвуют только записавшиеся: пиши !квест. Считаются убийства ботов участников. ` +
+        `участвуют только записавшиеся: пиши !квест (или !кв). Считаются убийства ботов участников. ` +
         `Награда каждому: опыт, свиток мудрости и ${CHAT_QUEST.tokens} ◈. Нет героя? !play`,
     );
   }
@@ -7019,25 +7015,8 @@ export class ZoneRoom extends Room<ZoneState> {
         ? MOB.bodyRadius * mob.scale * BOSS.bodyMult
         : Math.max(0, MOB.bodyRadius * (mob.scale - 1))); // край крупного тела, не центр
     if (Math.hypot(mob.x - p.head.x, mob.z - p.head.z) > reach) return;
-    // Множитель тира меча — как у живого игрока (multIn). Раньше стояла
-    // единица: бот с золотым мечом бил как базовым, урон «за персонажа» у
-    // игрока выходил выше при том же снаряжении.
-    const botSwordCrit = rolledCrit(p, "right", bot.rt);
-    // Оружие «Классов 2.0» — свой урон, база и сила крита (кинжал в одной руке — крит выше).
     const kind: "sword" | "dagger" | "spear" | "hammer" =
       p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" ? p.rightCls : "sword";
-    const prof = kind === "sword" ? null : WEAPONS2[kind];
-    const soloDagger = kind === "dagger" && p.leftCls !== "dagger";
-    const dualDagger = kind === "dagger" && p.leftCls === "dagger";
-    const swordCrit = rollCritMult(
-      kind,
-      Math.random,
-      false,
-      botSwordCrit.chance + (prof ? prof.critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0),
-      botSwordCrit.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
-      prof ? prof.critMult : SWORD_CRIT_MULT,
-      p.luc,
-    );
     // «Призрак бездны»: удар из тени — бот возникает за спиной цели.
     if (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed) {
       const ax = mob.x - p.head.x;
@@ -7049,46 +7028,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.act, { k: "shadowStep", id: bot.id, x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z, x2: bx, z2: bz, v: CLASS_IDS.indexOf("assassin") } satisfies ActRelay);
       this.placeBotAt(p, bx, bz, mob);
     }
-    // «Теневой рывок»: первый удар после рывка — гарантированный крит.
-    const forced = swordCrit <= 1 && bot.rt.forceCritUntil > this.elapsed;
-    bot.rt.forceCritUntil = -999;
-    const critHit = forced ? (prof ? prof.critMult : SWORD_CRIT_MULT) : swordCrit;
-    const dmg =
-      weaponDamage(kind, p.level, p, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt)) *
-      (dualDagger ? DAGGER.dualDmg : 1) *
-      critHit *
-      this.buffMult(bot.id, "dmg") *
-      this.abyssStrikeMul(p, bot.rt);
-    const sx = mob.x;
-    const sy = mob.y;
-    const sz = mob.z;
-    if (critHit > 1) this.critFx(sx, sy, sz, bot.id);
-    const killed = this.sim.hitMob(mob.id, dmg, bot.swingDx, bot.swingDz, bot.id, false, false, false, critHit > 1);
-    if (kind === "dagger") this.afterDaggerHit(bot.id, p, bot.rt, mob, dmg);
-    const vamp = heldVamp(p, bot.rt);
-    const vamped = vamp > 0;
-    let splash = 0;
-    if (kind === "spear") splash += this.spearPierce(bot.id, p, mob, dmg);
-    if (kind === "hammer") splash += this.hammerWave(bot.id, p, "right", bot.rt, sx, sy, sz);
-    // Звук удара мечом — как у живого игрока, слышат все вокруг. Вампиризм —
-    // отдельная вспышка ДОПОЛНИТЕЛЬНО, не вместо.
-    this.broadcast(MSG.act, {
-      k: "swordHit", id: bot.id, x: sx, y: sy, z: sz,
-    } satisfies ActRelay);
-    if (vamped) {
-      this.broadcast(MSG.act, { k: "vampHit", id: bot.id, x: sx, y: sy, z: sz } satisfies ActRelay);
-    }
-    if (kind === "sword") {
-      splash += this.sim.splashDamage(
-        sx, sy, sz,
-        COMBAT.swordSplashRadius,
-        dmg * COMBAT.swordSplashFraction,
-        mob.id,
-        bot.id,
-      );
-    }
-    if (vamped) vampHeal(p, vamp, dmg, splash);
-    // Опыт/kills — через общий делёж (sim.mobXpShare / mobKills).
+    // Урон и все последствия — тем же путём, что у живого игрока (heroStrike).
+    const killed = this.heroStrike(bot.id, p, bot.rt, "right", kind, mob, bot.swingDx, bot.swingDz);
     if (killed) bot.target = null;
   }
 
