@@ -1573,7 +1573,8 @@ export class Spectator {
     const cs = this.net?.room?.state;
     const cp = this.cam.cam.position;
     if (cs && cs.catPhase >= CAT_PHASE.run && inCatRegion(cp.x, cp.z)) {
-      const kind = cs.catFinal === 1 ? "boss" : "run";
+      // Тема Владыки — уже с подъёма решётки в Трон Бездны (последний зал), не с появления босса.
+      const kind = cs.catFinal === 1 || cs.catHi >= CAT_HALLS.length - 1 ? "boss" : "run";
       if (kind !== this.catMusic) {
         this.catMusic = kind;
         this.bossMusicOn = false;

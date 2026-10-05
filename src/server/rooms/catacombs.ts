@@ -7,6 +7,7 @@ import {
   CAT_CURSES,
   CAT_HAZARD,
   CAT_HALLS,
+  catCorridor,
   CAT_PHASE,
   CAT_PORTAL,
   CATACOMBS,
@@ -161,6 +162,9 @@ export class CatacombDirector {
   private plan: StagePlan[] = [];
   /** Волна «на подходе»: ворота уже открылись, мобы выйдут в `at`. */
   private pending: { group: CatWave[]; gates: { x: number; z: number }[]; at: number } | null = null;
+  /** Переход: когда подтянуть отставших к решётке (CATACOMBS.pullSec после подъёма) и сделано ли. */
+  private gatherAt = 0;
+  private gathered = true;
   private nextHazardAt = 0;
   private pendingAffix: CatAffix | null = null;
   /** Темы залов на этот заход (индексы CAT_THEMES). */
@@ -465,6 +469,19 @@ export class CatacombDirector {
         // Проход открыт: ждём, пока живые дойдут до следующего зала (или время), отставших переносим.
         const next = CAT_HALLS[this.hi];
         const party = heroes.filter((h) => this.party.has(h.id) && !h.dead);
+        // Отставшие (далеко позади решётки) — к воротам, к остальным: отряд проходит вместе (камера снимает проход).
+        if (!this.gathered && now >= this.gatherAt) {
+          this.gathered = true;
+          const gateZ = catCorridor(this.lo).z0 + 2.2;
+          let j = 0;
+          for (const h of party) {
+            if (h.z > gateZ - CATACOMBS.pullBehind) continue;
+            const side = j % 2 === 0 ? 1 : -1;
+            const x = side * (1 + Math.floor(j / 2) * 1.4);
+            j++;
+            this.host.warp(h.id, x, gateZ - 2.5, 0, next.z);
+          }
+        }
         const arrived = party.every((h) => Math.hypot(h.x - next.x, h.z - next.z) < next.r);
         if (!arrived && now < this.stepAt) break;
         let i = 0;
@@ -820,6 +837,8 @@ export class CatacombDirector {
     this.hi = this.stage + 1;
     this.step = "move";
     this.stepAt = this.host.now() + CATACOMBS.moveSec * 1000;
+    this.gatherAt = this.host.now() + CATACOMBS.pullSec * 1000;
+    this.gathered = false;
     this.host.announce({ kind: "door", title: "Решётка поднялась", sub: `вперёд — ${this.hallTitle(this.hi)}`, secs: 5 });
   }
 

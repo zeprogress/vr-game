@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { CAT_CEIL, catProject, inCatRegion } from "#shared/catacombs";
+import { CAT_CEIL, CAT_HALLS, catCorridor, catProject, inCatRegion } from "#shared/catacombs";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -123,6 +123,7 @@ type Shot =
   | { kind: "crowd" }
   | { kind: "catHall" }
   | { kind: "catTop" }
+  | { kind: "catGate" }
   | { kind: "catBoss" }
   | { kind: "path"; idx: number };
 
@@ -158,6 +159,8 @@ export interface DirectorCtx {
 }
 
 /** Камера катакомб: высота (м над полом, + за размах боя), относ назад от высоты, «рядом с героями» для мобов. */
+/** Камера перехода между залами: на столько метров вглубь нового зала, высота, сдвиг вбок, куда смотрим. */
+const CAT_GATE_CAM = { inHall: 6, height: 2.4, side: 2.2, lookY: 1.4 } as const;
 const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9 } as const;
 
 const CENTER = new Vector3(0, 0, 0);
@@ -394,7 +397,9 @@ export class SpectatorCamera {
     const cat = ctx.cat;
     // Катакомбы: ОДНА камера на весь бой — сверху под сводом, все герои и монстры в кадре.
     if (this.auto && cat) {
-      if (this.shot.kind !== "catTop") this.switchTo({ kind: "catTop" }, ctx);
+      // Решётка поднята (lo < hi) — встречаем отряд в новом зале, лицом к проходу.
+      const want = cat.lo < cat.hi ? "catGate" : "catTop";
+      if (this.shot.kind !== want) this.switchTo({ kind: want }, ctx);
     } else if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
     } else if (invalid) {
@@ -595,7 +600,7 @@ export class SpectatorCamera {
       return ctx.players.some((p) => p.id === (s as { id: string }).id);
     }
     if (s.kind === "orbitBoss") return ctx.boss !== null;
-    if (s.kind === "catHall" || s.kind === "catTop") return !!ctx.cat;
+    if (s.kind === "catHall" || s.kind === "catTop" || s.kind === "catGate") return !!ctx.cat;
     if (s.kind === "catBoss") return !!ctx.cat?.bossId && ctx.mobs.some((m) => m.id === ctx.cat!.bossId);
     if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
@@ -758,6 +763,21 @@ export class SpectatorCamera {
           // Угол обзора — чтобы влез весь бой (от расстояния до дальнего края).
           const dist = Math.hypot(this.catTopC.x - px, this.catTopC.z - pz, height);
           this.catFov = Math.max(0.9, Math.min(1.35, 2 * Math.atan((this.catTopH + 2.5) / dist)));
+          return;
+        }
+        break;
+      }
+      case "catGate": {
+        // Переход между залами: камера уже в новом зале у входа, низко, смотрит назад в коридор
+        // на решётку — герои пробегают ей навстречу (снимаем с лица).
+        const c = ctx.cat;
+        if (c && c.lo < c.hi) {
+          const b = CAT_HALLS[c.hi];
+          const gateZ = catCorridor(c.lo).z0 + 2.2;
+          const cz = b.z - b.r + CAT_GATE_CAM.inHall;
+          const gy = ctx.groundY(0, cz);
+          pos.set(CAT_GATE_CAM.side, gy + CAT_GATE_CAM.height, cz);
+          tgt.set(0, gy + CAT_GATE_CAM.lookY, gateZ + 3);
           return;
         }
         break;
