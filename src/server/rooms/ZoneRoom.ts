@@ -149,6 +149,7 @@ import {
   type WeaponClass,
   type WeaponInstance,
   type WeaponTier,
+  type AffixSub,
 } from "#shared/items";
 import {
   hpRegenFrac,
@@ -1217,8 +1218,16 @@ export class ZoneRoom extends Room<ZoneState> {
     // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
     // и те, и другие лежат в state.players.
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
-    // Поджог огнешара — от ИНТ поджигающего (общая формула burnHpFracFor).
-    this.sim.getBurnFrac = (id) => burnHpFracFor(this.state.players.get(id) ?? { int: 1 });
+    // Поджог огнешара — ролл посоха «Поджог» (шанс); горение от ИНТ (burnHpFracFor). Пронзание — ролл лука.
+    // Один источник для игроков и ботов (роллы того, что в руках).
+    this.sim.getIgnite = (id) => {
+      const ch = this.heroRoll(id, "ignite");
+      return ch > 0 && Math.random() < ch ? burnHpFracFor(this.state.players.get(id) ?? { int: 1 }) : 0;
+    };
+    this.sim.rollPierce = (id) => {
+      const ch = this.heroRoll(id, "pierce");
+      return ch > 0 && Math.random() < ch;
+    };
 
     // Схема мобов/кукол создаётся один раз — дальше только обновляем поля.
     for (const m of this.sim.mobs.values()) {
@@ -2063,6 +2072,14 @@ export class ZoneRoom extends Room<ZoneState> {
     this.heroStrike(client.sessionId, p, rt, hand, msg.weapon, struck, dx || 0, dz || 1, client);
   }
 
+  /** Сумма ролла `sub` на том, что у героя в руках (игрок или бот; лучший из двух рук). */
+  private heroRoll(id: string, sub: AffixSub): number {
+    const p = this.state.players.get(id);
+    const rt = this.rt.get(id) ?? (id.startsWith("bot:") ? this.bots.get(id.slice(4))?.rt : undefined);
+    if (!p || !rt) return 0;
+    return handsRoll(rolledIn(p, "right", rt)?.affixes, rolledIn(p, "left", rt)?.affixes, sub);
+  }
+
   /**
    * Урон одного удара/выстрела героя — ОДИН расчёт для игрока (любая платформа) и бота:
    * оружие и тир, роллы руки, крит (база профиля, ролл, кинжал в одной руке, своя метка,
@@ -2123,6 +2140,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Опыт, счётчик убийств и кил-фид — через общий делёж (sim.mobXpShare / sim.mobKills).
     const killed = !!this.sim.hitMob(struck.id, dmg, dx, dz, heroId, weapon === "arrow", false, false, critM > 1);
     if (weapon === "dagger") this.afterDaggerHit(heroId, p, rt, struck, dmg);
+    // Пронзание (ролл лука): стрела насквозь — моб позади цели получает долю урона.
+    if (weapon === "arrow" && this.sim.rollPierce(heroId)) this.sim.pierceBehind(struck.id, sx, sz, dx, dz, dmg * BOW.pierceDmg, heroId);
     // Вампиризм (ролл на оружии ближнего боя) — часть нанесённого урона возвращается как HP.
     const vamp = isMeleeClass(weapon) ? heldVamp(p, rt) : 0;
     const vamped = vamp > 0;

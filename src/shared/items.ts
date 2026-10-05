@@ -427,17 +427,17 @@ export function takeOne(bag: Slot[], index: number): ItemId | null {
 
 // ---- Роллы оружия: 5 видов — Урон, Скорость атаки, Крит, Вампиризм, Блок ----
 
-export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen";
+export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite";
 /**
  * Под-вид ролла. Выпадают: dmgFlat (Урон), atkSpeedPct (Скорость атаки),
  * critChance (Крит — шанс И сила, см. critRollMult), vamp (Вампиризм, ближний
  * бой), block (Блок, только щит). dmgPct — старый «Урон 8–20%», остаётся у
  * уже выпавших. critMult — старый вид, переводится в Крит миграцией.
  */
-export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen";
+export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen" | "pierce" | "ignite";
 
 /** Постоянный порядок роллов на предмете — одинаковый у всего оружия и щитов, чтобы было проще сравнивать. */
-export const AFFIX_ORDER: readonly AffixSub[] = ["dmgFlat", "dmgPct", "atkSpeedPct", "critChance", "critMult", "vamp", "regen", "block", "physDef", "magDef", "reflect"];
+export const AFFIX_ORDER: readonly AffixSub[] = ["dmgFlat", "dmgPct", "atkSpeedPct", "critChance", "critMult", "pierce", "ignite", "vamp", "regen", "block", "physDef", "magDef", "reflect"];
 
 /** Роллы по AFFIX_ORDER (на месте). */
 export function sortAffixes(list: RolledAffix[]): void {
@@ -486,6 +486,8 @@ function rollableSubs(cls: WeaponClass, aegis = false): AffixSub[] {
   if (cls === "shield") return aegis ? ["block", "physDef", "reflect", "regen"] : ["block", "physDef", "magDef", "regen"];
   const out: AffixSub[] = ["dmgFlat", "atkSpeedPct", "critChance"];
   if (isMeleeClass(cls)) out.push("vamp");
+  if (cls === "bow") out.push("pierce"); // Пронзание: стрела насквозь в моба позади (2026-10-05)
+  if (cls === "staff") out.push("ignite"); // Поджог: бывший врождённый поджог посоха — теперь ролл (2026-10-05)
   return out;
 }
 
@@ -501,6 +503,8 @@ const SUB_KIND: Record<AffixSub, AffixKind> = {
   physDef: "physDef",
   magDef: "magDef",
   regen: "regen",
+  pierce: "pierce",
+  ignite: "ignite",
 };
 
 const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
@@ -516,6 +520,10 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   magDef: [0.07, 0.2],
   /** Регенерация щита: доля МАКС. HP в секунду (и в бою). */
   regen: [0.003, 0.01],
+  /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (PIERCE.dmgFrac урона). */
+  pierce: [0.05, 0.15],
+  /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
+  ignite: [0.3, 1],
 };
 /** Диапазоны роллов Эгиды, где они свои (макс.: Блок 20% — как у щита, Отражение 10%, Физ. защита 15%). */
 const AEGIS_RANGES: Partial<Record<AffixSub, readonly [number, number]>> = {
@@ -584,6 +592,8 @@ const OLD_STAFF_RANGE_HI_MUL: Record<AffixSub, number> = {
   physDef: 1,
   magDef: 1,
   regen: 1,
+  pierce: 1,
+  ignite: 1,
 };
 
 /** Название вида ролла — одно слово-два, как видит игрок. */
@@ -599,6 +609,8 @@ export const AFFIX_NAME: Record<AffixSub, string> = {
   physDef: "Физ. защита",
   magDef: "Маг. защита",
   regen: "Регенерация",
+  pierce: "Пронзание",
+  ignite: "Поджог",
 };
 
 /** Текст ролла для тултипа/чата: «Урон +12%», «Крит +9%», «Вампиризм +5%». */
@@ -608,6 +620,8 @@ export function affixLabel(a: RolledAffix): string {
   if (a.sub === "critMult") return `Крит, сила +${Math.round(a.value * 100) / 100}`;
   // Регенерация — доля макс. здоровья в секунду (точнее: шаг заточки здесь ~0.02%).
   if (a.sub === "regen") return `Регенерация +${Math.round(a.value * 10000) / 100}% HP/с`;
+  if (a.sub === "pierce") return `Пронзание ${Math.round(a.value * 1000) / 10}%`;
+  if (a.sub === "ignite") return `Поджог ${Math.round(a.value * 1000) / 10}%`;
   return `${AFFIX_NAME[a.sub]} +${Math.round(a.value * 1000) / 10}%`;
 }
 

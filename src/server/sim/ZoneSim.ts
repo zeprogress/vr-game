@@ -1,5 +1,5 @@
 import { QUEST } from "#shared/quests";
-import { AFFIX, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
+import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
@@ -1954,8 +1954,38 @@ export class ZoneSim {
    * после 15 уровня (см. spawnLoot, goldDropMulForLevel).
    */
   getAttackerLevel: (id: string) => number = () => 1;
-  /** Поджог огнешара бойца `id` — доля макс. HP цели в секунду (от его ИНТ, см. burnHpFracFor). */
-  getBurnFrac: (id: string) => number = () => AFFIX.fire.burnHpFrac;
+  /**
+   * Поджог огнешара бойца `id`: 0 — не поджёг (нет ролла «Поджог» или не выпал шанс), иначе доля
+   * макс. HP цели в секунду (от его ИНТ, burnHpFracFor). Решает комната по роллам посоха.
+   */
+  getIgnite: (id: string) => number = () => 0;
+  /** Пронзание: выпало ли стреле бойца `id` пройти насквозь (ролл лука «Пронзание»). Решает комната. */
+  rollPierce: (id: string) => boolean = () => false;
+
+  /**
+   * Пронзание: ближайший моб ПОЗАДИ цели по направлению выстрела (до BOW.pierceRange м, в коридоре
+   * шириной тела) получает `dmg`. Один путь для стрел игроков (heroStrike) и ботов (tickBolt).
+   */
+  pierceBehind(struckId: string, x: number, z: number, dirX: number, dirZ: number, dmg: number, owner: string): boolean {
+    let best: Mob | null = null;
+    let bt = Infinity;
+    for (const m of this.mobs.values()) {
+      if (m.dead || m.id === struckId) continue;
+      const vx = m.x - x;
+      const vz = m.z - z;
+      const t = vx * dirX + vz * dirZ;
+      if (t <= 0 || t > BOW.pierceRange) continue;
+      const side = Math.abs(vx * dirZ - vz * dirX);
+      if (side > MOB.bodyRadius * m.scale + 0.6) continue;
+      if (t < bt) {
+        bt = t;
+        best = m;
+      }
+    }
+    if (!best) return false;
+    this.hitMob(best.id, dmg, dirX, dirZ, owner, true);
+    return true;
+  }
   /** Целые големы, ждущие своей очереди вернуться (см. splitGolem, tick). */
   private readonly pendingRevivals: {
     at: number;
@@ -2450,10 +2480,14 @@ export class ZoneSim {
         if (b.crit) this.critHits.push({ x: m.x, y: m.y, z: m.z, owner: b.owner });
         const magic = b.kind === 0; // 0 — огнешар (магия), 1 — стрела (физика)
         this.hitMob(m.id, b.dmg, b.vx / vh, b.vz / vh, b.owner, true, false, magic, b.crit);
-        // Огнешар поджигает врождённо (не аффикс, а база класса мага) —
-        // горит и прямая цель, и все задетые АОЕ (ниже). ДпС — от
-        // МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
-        if (magic) m.ignite(m.pctHpBase * this.getBurnFrac(b.owner), AFFIX.fire.burnSec, b.owner);
+        // Поджог — ролл посоха «Поджог» (раньше врождённый): горит и прямая цель, и задетые АОЕ (ниже).
+        // ДпС — от МАКСИМАЛЬНОГО HP цели, не от урона удара (см. AFFIX.fire).
+        if (magic) {
+          const f = this.getIgnite(b.owner);
+          if (f > 0) m.ignite(m.pctHpBase * f, AFFIX.fire.burnSec, b.owner);
+        }
+        // Пронзание (ролл лука): стрела летит дальше — моб позади цели получает долю урона.
+        if (b.kind === 1 && this.rollPierce(b.owner)) this.pierceBehind(m.id, m.x, m.z, b.vx / vh, b.vz / vh, b.dmg * BOW.pierceDmg, b.owner);
         // Соседям — доля урона, спадающая к краю (прямая цель уже получила своё).
         this.splashDamage(b.x, b.y, b.z, b.splashR, b.splashDmg, m.id, b.owner, true, magic);
         return true;
@@ -2823,7 +2857,10 @@ export class ZoneSim {
       // Врождённый поджог мага (см. tickBolt) — распространяется и на всех,
       // кого задело АОЕ, не только на прямую цель. ДпС — от максимального
       // HP каждой конкретной цели (см. AFFIX.fire), не от доли АОЕ-урона.
-      if (magic) m.ignite(m.pctHpBase * this.getBurnFrac(owner), AFFIX.fire.burnSec, owner);
+      if (magic) {
+        const f = this.getIgnite(owner);
+        if (f > 0) m.ignite(m.pctHpBase * f, AFFIX.fire.burnSec, owner);
+      }
     }
     return total;
   }
