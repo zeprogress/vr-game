@@ -1940,9 +1940,8 @@ export class ZoneSim {
   /** Статистика забега катакомб: урон по их мобам и убийства по героям (сбрасывает режиссёр). */
   readonly catDamage = new Map<string, number>();
   readonly catKills = new Map<string, number>();
-  /** Открытые залы катакомб (как RoomState.catLo/catHi) — для удержания мобов в стенах. */
-  catLo = 0;
-  catHi = 0;
+  /** Открытые залы катакомб (шаги catLo..catHi маршрута) — для удержания мобов в стенах. */
+  catOpen: readonly number[] = [0];
   /** Кто нанёс урон мобам события — участники (для баффа за победу). */
   readonly eventDamagers = new Set<string>();
   /** Кто больше всех бил убитого дракона охоты — ZoneRoom забирает (титулы). */
@@ -2321,7 +2320,7 @@ export class ZoneSim {
       for (const id of this.catMobs) {
         const m = this.mobs.get(id);
         if (!m || m.dead) continue;
-        [m.x, m.z] = catProject(m.x, m.z, this.catLo, this.catHi, MOB.bodyRadius * m.scale * 0.8);
+        [m.x, m.z] = catProject(m.x, m.z, this.catOpen, MOB.bodyRadius * m.scale * 0.8);
       }
     }
     // Отражённый щитом Ледяного демона урон (накоплен в hitMob).

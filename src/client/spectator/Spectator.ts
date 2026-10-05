@@ -39,7 +39,7 @@ import { BOT_TORCHES } from "../world/Fireflies";
 import { RELIGHT_STATS } from "../world/Fireflies";
 import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
-import { CAT_HALLS, CAT_PHASE, inCatRegion } from "#shared/catacombs";
+import { CAT_HALLS, CAT_PHASE, CAT_STEPS, catOpen, catParseRoute, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, catViewOf } from "../world/Catacombs";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
@@ -1528,7 +1528,7 @@ export class Spectator {
       chatQuest: st?.cqTitle ? { title: st.cqTitle, got: st.cqGot, need: st.cqNeed, secs: st.cqSecs } : null,
       catacombs:
         st && st.catPhase >= CAT_PHASE.gather
-          ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[Math.min(CAT_HALLS.length - 1, st.catHi)].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1 }
+          ? { gather: st.catPhase === CAT_PHASE.gather, hall: CAT_HALLS[catParseRoute(st.catRoute)[st.catHi] ?? 0].name, left: st.catLeft, party: st.catParty, final: st.catFinal === 1 }
           : null,
     });
     this.chatQuestSound(st);
@@ -1553,15 +1553,17 @@ export class Spectator {
   /** Катакомбы для режиссёра камеры: текущий зал, самый крупный моб (страж/Владыка), герои внизу. */
   private catCtx(st: ZoneState | null): DirectorCtx["cat"] {
     if (!st || st.catPhase < CAT_PHASE.run) return null;
-    const hallI = Math.min(CAT_HALLS.length - 1, st.catHi);
-    const h = CAT_HALLS[hallI];
+    const route = catParseRoute(st.catRoute);
+    const to = route[st.catHi] ?? 0;
+    const from = route[st.catLo] ?? 0;
+    const h = CAT_HALLS[to];
     const bm = st.catBoss ? st.mobs.get(st.catBoss) : undefined;
     const bossId = bm && !bm.dead ? st.catBoss : "";
     const heroes: string[] = [];
     st.players.forEach((p, id) => {
       if (!p.dead && inCatRegion(p.head.x, p.head.z)) heroes.push(id);
     });
-    return { x: h.x, z: h.z, r: h.r, lo: st.catLo, hi: st.catHi, bossId, final: st.catFinal === 1, heroes };
+    return { x: h.x, z: h.z, r: h.r, lo: st.catLo, hi: st.catHi, from, to, open: catOpen(route, st.catLo, st.catHi), bossId, final: st.catFinal === 1, heroes };
   }
   private catFx: CatacombsFx | null = null;
   private catMusic = "";
@@ -1574,7 +1576,7 @@ export class Spectator {
     const cp = this.cam.cam.position;
     if (cs && cs.catPhase >= CAT_PHASE.run && inCatRegion(cp.x, cp.z)) {
       // Тема Владыки — уже с подъёма решётки в Трон Бездны (последний зал), не с появления босса.
-      const kind = cs.catFinal === 1 || cs.catHi >= CAT_HALLS.length - 1 ? "boss" : "run";
+      const kind = cs.catFinal === 1 || cs.catHi >= CAT_STEPS - 1 ? "boss" : "run";
       if (kind !== this.catMusic) {
         this.catMusic = kind;
         this.bossMusicOn = false;

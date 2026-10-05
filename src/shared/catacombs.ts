@@ -10,10 +10,12 @@ import { HUB_CENTER } from "./hub";
  * (сам ZoneRoom, те же мобы/удары/умения/лут) — всё, что меняется в игре,
  * работает и здесь.
  *
- * Геометрия — цепочка круглых залов вдоль оси +Z (x = 0), соединённых
- * прямыми коридорами. Проходы закрыты решётками: открыт только путь от
- * зала `lo` до зала `hi` (состояние catLo/catHi в RoomState). Стоять можно
- * только внутри открытых залов и коридоров — см. catProject.
+ * Геометрия — граф круглых залов с развилками: вход → один из двух → один из
+ * трёх → трон (CAT_HALLS — узлы, CAT_LINKS — коридоры). Каждый заход путь
+ * выбирается случайно при зачистке зала (маршрут catRoute), но всегда
+ * сходится к трону. Проходы закрыты решётками: открыт только путь по
+ * маршруту от шага `lo` до шага `hi` (catLo/catHi в RoomState). Стоять можно
+ * только внутри открытых залов и коридоров между ними — см. catProject.
  */
 
 export interface CatHall {
@@ -24,18 +26,31 @@ export interface CatHall {
   r: number;
   /** Имя для титров. */
   name: string;
+  /** Шаг маршрута (0 — вход, последний — трон). */
+  step: number;
 }
 
 /** Начало участка катакомб по Z: всё, что дальше (и в пределах |x| < CAT_HALF_X), — подземелье. */
 export const CAT_Z0 = WORLD.size / 2 + 60;
-const CAT_HALF_X = 40;
+const CAT_HALF_X = 100;
 
-/** Залы по порядку прохождения. */
+/** Залы-узлы графа. */
 export const CAT_HALLS: readonly CatHall[] = [
-  { x: 0, z: CAT_Z0 + 30, r: 22, name: "Преддверие" },
-  { x: 0, z: CAT_Z0 + 92, r: 26, name: "Галерея мёртвых" },
-  { x: 0, z: CAT_Z0 + 158, r: 26, name: "Нижний ярус" },
-  { x: 0, z: CAT_Z0 + 228, r: 30, name: "Трон Бездны" },
+  { x: 0, z: CAT_Z0 + 30, r: 22, name: "Преддверие", step: 0 },
+  { x: -32, z: CAT_Z0 + 98, r: 25, name: "Галерея мёртвых", step: 1 },
+  { x: 32, z: CAT_Z0 + 98, r: 25, name: "Затопленный склеп", step: 1 },
+  { x: -60, z: CAT_Z0 + 168, r: 24, name: "Нижний ярус", step: 2 },
+  { x: 0, z: CAT_Z0 + 168, r: 24, name: "Костница", step: 2 },
+  { x: 60, z: CAT_Z0 + 168, r: 24, name: "Чертог теней", step: 2 },
+  { x: 0, z: CAT_Z0 + 246, r: 30, name: "Трон Бездны", step: 3 },
+];
+/** Число шагов маршрута (= стадий забега). */
+export const CAT_STEPS = 4;
+/** Коридоры: [зал шага k, зал шага k+1] — без пересечений, любой путь сходится к трону. */
+export const CAT_LINKS: readonly (readonly [number, number])[] = [
+  [0, 1], [0, 2],
+  [1, 3], [1, 4], [2, 4], [2, 5],
+  [3, 6], [4, 6], [5, 6],
 ];
 
 /** Полуширина коридора между залами, м. */
@@ -45,12 +60,76 @@ export const CAT_FLOOR_Y = -80;
 /** Высота сводов (для клиента: стены и потолок). */
 export const CAT_CEIL = 16;
 
-/** Коридор i — между залами i и i+1 (прямоугольник вдоль Z, заходит в залы на 2 м). */
-export function catCorridor(i: number): { z0: number; z1: number } {
-  const a = CAT_HALLS[i];
-  const b = CAT_HALLS[i + 1];
-  return { z0: a.z + a.r - 2, z1: b.z - b.r + 2 };
+export interface CatCorridor {
+  a: number;
+  b: number;
+  /** Ось коридора: из зала a (заходит в него на 2 м) в зал b. */
+  ax: number;
+  az: number;
+  bx: number;
+  bz: number;
+  /** Единичное направление a → b и длина. */
+  dx: number;
+  dz: number;
+  len: number;
 }
+
+const corridors: CatCorridor[] = CAT_LINKS.map(([a, b]) => {
+  const A = CAT_HALLS[a];
+  const B = CAT_HALLS[b];
+  const L = Math.hypot(B.x - A.x, B.z - A.z);
+  const dx = (B.x - A.x) / L;
+  const dz = (B.z - A.z) / L;
+  const s0 = A.r - 2;
+  const s1 = L - B.r + 2;
+  return { a, b, ax: A.x + dx * s0, az: A.z + dz * s0, bx: A.x + dx * s1, bz: A.z + dz * s1, dx, dz, len: s1 - s0 };
+});
+
+/** Коридор i (по CAT_LINKS). */
+export function catCorridor(i: number): CatCorridor {
+  return corridors[i];
+}
+/** Индекс коридора между залами a и b (−1 — не соединены). */
+export function catLinkIndex(a: number, b: number): number {
+  return CAT_LINKS.findIndex(([x, y]) => (x === a && y === b) || (x === b && y === a));
+}
+/** Куда можно пойти из зала (залы следующего шага). */
+export function catNext(hall: number): number[] {
+  return CAT_LINKS.filter(([a]) => a === hall).map(([, b]) => b);
+}
+/** Направления проёмов зала (углы a: x = sin a, z = cos a) — к соседям по графу. */
+export function catDoors(hall: number): number[] {
+  const h = CAT_HALLS[hall];
+  const out: number[] = [];
+  for (const [a, b] of CAT_LINKS) {
+    const o = a === hall ? b : b === hall ? a : -1;
+    if (o < 0) continue;
+    out.push(Math.atan2(CAT_HALLS[o].x - h.x, CAT_HALLS[o].z - h.z));
+  }
+  return out;
+}
+/** Точка стены зала под углом a — в проёме (с запасом margin, м)? */
+export function catNearDoor(hall: number, a: number, margin: number): boolean {
+  const r = CAT_HALLS[hall].r;
+  for (const d of catDoors(hall)) {
+    const da = a - d;
+    if (Math.cos(da) > 0 && Math.abs(Math.sin(da) * r) < CAT_CORRIDOR_HALF + margin) return true;
+  }
+  return false;
+}
+/** Маршрут из строки состояния ("0,2,4"); пустая — только вход. */
+export function catParseRoute(s: string): number[] {
+  const r = s ? s.split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n < CAT_HALLS.length) : [];
+  return r.length ? r : [0];
+}
+/** Открытые залы: шаги lo..hi маршрута. */
+export function catOpen(route: readonly number[], lo: number, hi: number): number[] {
+  const out: number[] = [];
+  for (let i = Math.max(0, lo); i <= hi && i < route.length; i++) out.push(route[i]);
+  return out.length ? out : [route[0] ?? 0];
+}
+/** Все залы (до прихода маршрута с сервера). */
+export const CAT_ALL_HALLS: readonly number[] = CAT_HALLS.map((_, i) => i);
 
 /** Точка в районе катакомб (за краем карты). */
 export function inCatRegion(x: number, z: number): boolean {
@@ -58,11 +137,11 @@ export function inCatRegion(x: number, z: number): boolean {
 }
 
 /**
- * Ближайшая точка, где можно стоять: внутри открытых залов lo..hi и коридоров
+ * Ближайшая точка, где можно стоять: внутри открытых залов `halls` и коридоров
  * между ними (с отступом `pad` от стен). Стоишь внутри — вернётся та же точка;
  * упёрся — скользишь вдоль стены (проекция на ближайшую фигуру).
  */
-export function catProject(x: number, z: number, lo: number, hi: number, pad = 0.5): [number, number] {
+export function catProject(x: number, z: number, halls: readonly number[], pad = 0.5): [number, number] {
   let bx = x;
   let bz = z;
   let bd = Infinity;
@@ -75,33 +154,46 @@ export function catProject(x: number, z: number, lo: number, hi: number, pad = 0
     }
     return d < 1e-9;
   };
-  const a = Math.max(0, Math.min(lo, CAT_HALLS.length - 1));
-  const b = Math.max(a, Math.min(hi, CAT_HALLS.length - 1));
-  for (let i = a; i <= b; i++) {
+  for (const i of halls) {
     const h = CAT_HALLS[i];
+    if (!h) continue;
     const r = h.r - pad;
     const dx = x - h.x;
     const dz = z - h.z;
     const d = Math.hypot(dx, dz);
     if (d <= r) return [x, z];
     take(h.x + (dx / (d || 1)) * r, h.z + (dz / (d || 1)) * r);
-    if (i < b) {
-      const c = catCorridor(i);
-      const w = CAT_CORRIDOR_HALF - pad;
-      const cx = Math.max(-w, Math.min(w, x));
-      const cz = Math.max(c.z0, Math.min(c.z1, z));
-      if (take(cx, cz)) return [x, z];
-    }
+  }
+  const w = CAT_CORRIDOR_HALF - pad;
+  for (const c of corridors) {
+    if (!halls.includes(c.a) || !halls.includes(c.b)) continue;
+    // В осях коридора: s — вдоль, t — поперёк.
+    const rx = x - c.ax;
+    const rz = z - c.az;
+    const s = Math.max(0, Math.min(c.len, rx * c.dx + rz * c.dz));
+    const t = Math.max(-w, Math.min(w, rx * c.dz - rz * c.dx));
+    if (take(c.ax + c.dx * s + c.dz * t, c.az + c.dz * s - c.dx * t)) return [x, z];
   }
   return [bx, bz];
 }
 
-/** Точка входа в зал (у южной стены) — сюда телепорт и возрождение. Разброс по кругу на `i`. */
-export function catEntry(hall: number, i = 0): { x: number; z: number } {
+/** Точка входа в зал (у проёма со стороны прихода) — сюда телепорт и возрождение. Разброс на `i`. */
+export function catEntry(hall: number, i = 0, from = -1): { x: number; z: number } {
   const h = CAT_HALLS[Math.max(0, Math.min(hall, CAT_HALLS.length - 1))];
+  const src = from >= 0 ? CAT_HALLS[from] : null;
+  // Ось «внутрь зала» — от проёма прихода к центру (без источника — с юга).
+  let ux = 0;
+  let uz = 1;
+  if (src) {
+    const L = Math.hypot(h.x - src.x, h.z - src.z) || 1;
+    ux = (h.x - src.x) / L;
+    uz = (h.z - src.z) / L;
+  }
   const a = i * 2.39996;
   const r = Math.min(3, 0.6 * Math.sqrt(i));
-  return { x: h.x + Math.cos(a) * r, z: h.z - h.r + 4 + Math.sin(a) * r * 0.6 };
+  const lat = Math.cos(a) * r;
+  const fwd = -h.r + 4 + Math.sin(a) * r * 0.6;
+  return { x: h.x + ux * fwd + uz * lat, z: h.z + uz * fwd - ux * lat };
 }
 
 /** Ворота, из которых лезут волны: по кругу зала (север — чаще, юг — засада со спины). */

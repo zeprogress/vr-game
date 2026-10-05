@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { catProject, inCatRegion } from "#shared/catacombs";
+import { CAT_ALL_HALLS, catProject, inCatRegion } from "#shared/catacombs";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -176,8 +176,8 @@ export class PlayerController {
     }
   }
 
-  /** Катакомбы: открытые залы (RoomState.catLo..catHi), пока идёт забег; null — обычный край карты. */
-  catBounds: { lo: number; hi: number } | null = null;
+  /** Катакомбы: открытые залы (шаги catLo..catHi маршрута), пока идёт забег; null — обычный край карты. */
+  catBounds: readonly number[] | null = null;
 
   /** Не выпускать за край карты — там кончается земля; в катакомбах — стены залов. */
   private clampToWorld(): void {
@@ -185,8 +185,7 @@ export class PlayerController {
     if (inCatRegion(p.x, p.z)) {
       // Перенос в катакомбы приходит раньше, чем состояние забега (catLo/catHi): до него — все залы,
       // иначе клиент выталкивал героя к краю карты и тот попадал вниз лишь при переносе отставших.
-      const b = this.catBounds ?? { lo: 0, hi: 3 };
-      const [x, z] = catProject(p.x, p.z, b.lo, b.hi, 0.4);
+      const [x, z] = catProject(p.x, p.z, this.catBounds ?? CAT_ALL_HALLS, 0.4);
       p.x = x;
       p.z = z;
       return;

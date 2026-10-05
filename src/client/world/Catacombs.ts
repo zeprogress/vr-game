@@ -33,7 +33,12 @@ import {
   CAT_PORTAL,
   CAT_SHRINES,
   CAT_THEMES,
+  CAT_LINKS,
   catCorridor,
+  catLinkIndex,
+  catNearDoor,
+  catOpen,
+  catParseRoute,
   inCatRegion,
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
@@ -44,6 +49,9 @@ export interface CatView {
   phase: number;
   lo: number;
   hi: number;
+  /** Маршрут захода (залы шагов) и открытые сейчас залы. */
+  route: number[];
+  open: number[];
   left: number;
   party: number;
   final: boolean;
@@ -57,13 +65,19 @@ export interface CatView {
 
 /** CatView из RoomState — одинаково у игрока и зрителя. */
 export function catViewOf(st: {
-  catPhase: number; catLo: number; catHi: number; catLeft: number; catParty: number; catFinal: number;
+  catPhase: number; catLo: number; catHi: number; catRoute: string; catLeft: number; catParty: number; catFinal: number;
   catThemes: string; catShrine: number; catShrineX: number; catShrineZ: number;
 }): CatView {
+  const route = catParseRoute(st.catRoute);
   return {
-    phase: st.catPhase, lo: st.catLo, hi: st.catHi, left: st.catLeft, party: st.catParty, final: st.catFinal === 1,
+    phase: st.catPhase, lo: st.catLo, hi: st.catHi, route, open: catOpen(route, st.catLo, st.catHi), left: st.catLeft, party: st.catParty, final: st.catFinal === 1,
     themes: st.catThemes, shrine: st.catShrine, shrineX: st.catShrineX, shrineZ: st.catShrineZ,
   };
+}
+
+/** Залы рядом по графу (тот же или соединены коридором) — их держим включёнными. */
+function hallsNear(a: number, b: number): boolean {
+  return a === b || catLinkIndex(a, b) >= 0;
 }
 
 /** Огонь по темам зала: склеп — обычный, костница — болотный зелёный, яма — багровый, лунный — призрачно-синий. */
@@ -498,7 +512,7 @@ export class CatacombsFx {
     const sig = String(best);
     if (sig === this.shownHalls) return best;
     this.shownHalls = sig;
-    this.hallNodes.forEach((n, i) => n.setEnabled(Math.abs(i - best) <= 1));
+    this.hallNodes.forEach((n, i) => n.setEnabled(hallsNear(i, best)));
     return best;
   }
 
@@ -508,7 +522,7 @@ export class CatacombsFx {
     if (sig === this.glowsSig) return;
     this.glowsSig = sig;
     for (const g of this.glowSpr) {
-      g.s.isVisible = camHall >= 0 && Math.abs(g.hall - camHall) <= 1 && (g.theme < 0 || this.hallTheme[g.hall] === g.theme);
+      g.s.isVisible = camHall >= 0 && hallsNear(g.hall, camHall) && (g.theme < 0 || this.hallTheme[g.hall] === g.theme);
     }
   }
 
@@ -516,7 +530,7 @@ export class CatacombsFx {
     const t = this.time;
     // Пылинки — в зале, где сейчас отряд.
     if (this.motes) {
-      const hall = v && v.phase >= CAT_PHASE.run ? Math.min(CAT_HALLS.length - 1, v.hi) : -1;
+      const hall = v && v.phase >= CAT_PHASE.run ? (v.route[v.hi] ?? 0) : -1;
       if (hall !== this.motesHall) {
         this.motesHall = hall;
         if (hall < 0) this.motes.stop();
@@ -531,11 +545,11 @@ export class CatacombsFx {
       }
     }
     for (const m of this.hallFire) m.setFloat("uTime", t);
-    // Решётки: открыт путь lo..hi — коридоры с lo по hi−1 подняты (к своду коридора, не в небо).
-    const lo = v?.lo ?? 0;
-    const hi = v?.hi ?? 0;
+    // Решётки: открыт путь по маршруту lo..hi — коридоры между соседними открытыми залами подняты (к своду коридора).
+    const halls = v?.open ?? [];
     for (const g of this.gates) {
-      const open = g.i >= lo && g.i < hi;
+      const c = CAT_LINKS[g.i];
+      const open = halls.includes(c[0]) && halls.includes(c[1]);
       const want = open ? g.y + CAT_CEIL * 0.62 : g.y;
       const y = g.mesh.position.y;
       g.mesh.position.y = y + (want - y) * Math.min(1, dt * (open ? 0.9 : 3));
@@ -896,10 +910,8 @@ export class CatacombsFx {
         const sz = Math.cos(a);
         const wx = h.x + sx * (h.r + 0.6);
         const wz = h.z + sz * (h.r + 0.6);
-        const gapN = hi < CAT_HALLS.length - 1 && Math.abs(wx - h.x) < CAT_CORRIDOR_HALF + 0.3 && sz > 0;
-        const gapS = hi > 0 && Math.abs(wx - h.x) < CAT_CORRIDOR_HALF + 0.3 && sz < 0;
         const w0 = ((h.r + 0.6) * Math.PI * 2) / segs + 0.35;
-        if (gapN || gapS) {
+        if (catNearDoor(hi, a, 0.3)) {
           const lin = MeshBuilder.CreateBox("catLintel", { width: w0, height: H * 0.32, depth: 1.4 }, scene);
           lin.position.set(wx, y0 + H * 0.84, wz);
           lin.rotation.y = a;
@@ -934,20 +946,23 @@ export class CatacombsFx {
         const a = (i / nT) * Math.PI * 2 + Math.PI / nT;
         const sx = Math.sin(a);
         const sz = Math.cos(a);
-        if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 1.5) continue; // не в проёме
+        if (catNearDoor(hi, a, 1.5)) continue; // не в проёме
         torchAt(L, hi, h.x + sx * (h.r - 0.05), h.z + sz * (h.r - 0.05), -sx, -sz);
       }
       for (let i = 0; i < 14; i++) {
         const a = (i / 14) * Math.PI * 2 + 0.11;
         const sx = Math.sin(a);
         const sz = Math.cos(a);
-        if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 2) continue;
+        if (catNearDoor(hi, a, 2)) continue;
         decorAt(L, h.x + sx * (h.r - 1.4), h.z + sz * (h.r - 1.4), a);
       }
       // Две большие жаровни в клетках у входа — главный тёплый свет зала.
       for (const side of [-1, 1]) {
-        const bx = h.x + side * h.r * 0.42;
-        const bz = h.z - h.r * 0.45;
+        // У входа (юг), но не в проёме коридора — иначе сдвигаем по кругу.
+        let ba = Math.atan2(side * 0.42, -0.45);
+        for (let k = 0; k < 14 && catNearDoor(hi, ba, 3); k++) ba += side * 0.09;
+        const bx = h.x + Math.sin(ba) * h.r * 0.62;
+        const bz = h.z + Math.cos(ba) * h.r * 0.62;
         const stand = MeshBuilder.CreateCylinder("catBrazier", { height: 1.4, diameterTop: 1.6, diameterBottom: 0.6, tessellation: 10 }, scene);
         stand.position.set(bx, y0 + 0.7, bz);
         L.iron.push(stand);
@@ -1020,7 +1035,7 @@ export class CatacombsFx {
         const a = (k / 4) * Math.PI * 2 + Math.PI / 4 + 0.35;
         const sx = Math.sin(a);
         const sz = Math.cos(a);
-        if (Math.abs(sx * h.r) < CAT_CORRIDOR_HALF + 2.5) continue;
+        if (catNearDoor(hi, a, 2.5)) continue;
         const slot = nicheGlow[hi][k % 2];
         const wx = h.x + sx * (h.r - 0.05);
         const wz = h.z + sz * (h.r - 0.05);
@@ -1110,31 +1125,45 @@ export class CatacombsFx {
       }
     });
 
-    // Коридоры: пол, стены, свод, решётка на выходе из зала — меши к залу-источнику.
-    for (let i = 0; i < CAT_HALLS.length - 1; i++) {
+    // Коридоры (по графу CAT_LINKS, бывают наискосок): пол, стены, свод, решётка на выходе из зала a — меши к залу a.
+    for (let i = 0; i < CAT_LINKS.length; i++) {
       const c = catCorridor(i);
-      const len = c.z1 - c.z0;
-      const cz = (c.z0 + c.z1) / 2;
+      const ha = c.a;
+      const hb = c.b;
+      const yaw = Math.atan2(c.dx, c.dz);
+      // Точка на оси коридора: s — вдоль (от начала), t — вбок (вправо).
+      const P = (s: number, t: number): [number, number] => [c.ax + c.dx * s + c.dz * t, c.az + c.dz * s - c.dx * t];
+      const len = c.len;
+      const [mx, mz] = P(len / 2, 0);
       const L = lists();
+      const put = (m: Mesh, x: number, y: number, z: number): void => {
+        m.position.set(x, y, z);
+        m.rotation.y = yaw;
+      };
       const f = MeshBuilder.CreateBox("catCorFloor", { width: CAT_CORRIDOR_HALF * 2 + 0.4, height: 0.1, depth: len }, scene);
-      f.position.set(0, y0 - 0.03, cz);
+      put(f, mx, y0 - 0.03, mz);
       L.floor.push(f);
       for (const side of [-1, 1]) {
         const w = MeshBuilder.CreateBox("catCorWall", { width: 1.2, height: H, depth: len }, scene);
-        w.position.set(side * (CAT_CORRIDOR_HALF + 0.6), y0 + H / 2, cz);
+        const [wx, wz] = P(len / 2, side * (CAT_CORRIDOR_HALF + 0.6));
+        put(w, wx, y0 + H / 2, wz);
         L.wall.push(w);
       }
       // Свод коридора — на высоте зала (без щели к небу); плоскость лицом вниз.
       const top = MeshBuilder.CreatePlane("catCorTop", { width: CAT_CORRIDOR_HALF * 2 + 2.4, height: len + 2 }, scene);
-      top.rotation.x = -Math.PI / 2;
-      top.position.set(0, y0 + H * 0.68, cz);
+      top.rotation.set(-Math.PI / 2, yaw, 0);
+      top.position.set(mx, y0 + H * 0.68, mz);
       L.ceil.push(top);
       // Стенка над сводом коридора до свода зала — закрывает «окно».
       const cap = MeshBuilder.CreateBox("catCorCap", { width: CAT_CORRIDOR_HALF * 2 + 2.4, height: H * 0.34, depth: len }, scene);
-      cap.position.set(0, y0 + H * 0.85, cz);
+      put(cap, mx, y0 + H * 0.85, mz);
       L.wall.push(cap);
-      torchAt(L, i, -CAT_CORRIDOR_HALF + 0.05, cz, 1, 0);
-      torchAt(L, i + 1, CAT_CORRIDOR_HALF - 0.05, cz, -1, 0);
+      {
+        const [tx, tz] = P(len / 2, -CAT_CORRIDOR_HALF + 0.05);
+        torchAt(L, ha, tx, tz, c.dz, -c.dx);
+        const [ux, uz] = P(len / 2, CAT_CORRIDOR_HALF - 0.05);
+        torchAt(L, hb, ux, uz, -c.dz, c.dx);
+      }
       const bars: Mesh[] = [];
       for (let b = -5; b <= 5; b++) {
         const bar = MeshBuilder.CreateBox("catBar", { width: 0.16, height: H * 0.66, depth: 0.16 }, scene);
@@ -1150,8 +1179,9 @@ export class CatacombsFx {
       gate.name = `catGate${i}`;
       gate.material = ironMat;
       const gy = y0 + H * 0.33;
-      gate.position.set(0, gy, c.z0 + 2.2);
-      gate.parent = this.hallNodes[i];
+      const [gx, gz] = P(2.2, 0);
+      put(gate, gx, gy, gz);
+      gate.parent = this.hallNodes[ha];
       gate.isPickable = false;
       this.gates.push({ mesh: gate, i, y: gy });
       for (const [list, m] of [[L.floor, floorMat], [L.wall, wallMat], [L.ceil, ceilMat], [L.iron, ironMat]] as [Mesh[], StandardMaterial][]) {
@@ -1160,13 +1190,13 @@ export class CatacombsFx {
         if (!mm) continue;
         mm.name = `catCor${i}`;
         mm.material = m;
-        mm.parent = this.hallNodes[i];
+        mm.parent = this.hallNodes[ha];
         mm.isPickable = false;
         mm.freezeWorldMatrix();
-        hallMeshes[i].push(mm);
-        hallMeshes[i + 1].push(mm);
+        hallMeshes[ha].push(mm);
+        hallMeshes[hb].push(mm);
       }
-      hallMeshes[i].push(gate);
+      hallMeshes[ha].push(gate);
     }
 
     // Пламя всех факелов и жаровен зала — один меш с огнём зала (было по 2 меша и свой материал на каждый огонь).
@@ -1237,8 +1267,18 @@ export class CatacombsFx {
     });
 
     // Тёмная оболочка вокруг всего подземелья: в любые щели видно тьму, а не небо.
-    const shell = MeshBuilder.CreateBox("catShell", { width: 90, height: 60, depth: CAT_HALLS[CAT_HALLS.length - 1].z + 50 - CAT_HALLS[0].z + 40 }, scene);
-    shell.position.set(0, y0 + 10, (CAT_HALLS[0].z - 40 + CAT_HALLS[CAT_HALLS.length - 1].z + 50) / 2);
+    let sx0 = Infinity;
+    let sx1 = -Infinity;
+    let sz0 = Infinity;
+    let sz1 = -Infinity;
+    for (const h of CAT_HALLS) {
+      sx0 = Math.min(sx0, h.x - h.r);
+      sx1 = Math.max(sx1, h.x + h.r);
+      sz0 = Math.min(sz0, h.z - h.r);
+      sz1 = Math.max(sz1, h.z + h.r);
+    }
+    const shell = MeshBuilder.CreateBox("catShell", { width: sx1 - sx0 + 40, height: 60, depth: sz1 - sz0 + 40 }, scene);
+    shell.position.set((sx0 + sx1) / 2, y0 + 10, (sz0 + sz1) / 2);
     const shellMat = new StandardMaterial("catShellMat", scene);
     shellMat.diffuseColor = new Color3(0, 0, 0);
     shellMat.emissiveColor = new Color3(0.01, 0.008, 0.012);
@@ -1305,7 +1345,9 @@ export class CatacombsFx {
       return l;
     };
     const at = (deg: number, rr: number): { x: number; z: number; a: number } => {
-      const a = (deg * Math.PI) / 180;
+      let a = (deg * Math.PI) / 180;
+      // Декор не загораживает проёмы коридоров — сдвигаем вбок по кругу.
+      for (let k = 0; k < 14 && catNearDoor(hi, a, 3); k++) a += 0.09;
       return { x: h.x + Math.sin(a) * rr, z: h.z + Math.cos(a) * rr, a };
     };
     const extra = (t: number, m: Mesh): void => {

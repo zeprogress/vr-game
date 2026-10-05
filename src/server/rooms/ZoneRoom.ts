@@ -5368,14 +5368,14 @@ export class ZoneRoom extends Room<ZoneState> {
         if (st.catPhase !== c.phase) st.catPhase = c.phase;
         if (st.catLo !== c.lo) st.catLo = c.lo;
         if (st.catHi !== c.hi) st.catHi = c.hi;
+        if (st.catRoute !== c.route) st.catRoute = c.route;
         if (st.catLeft !== c.left) st.catLeft = c.left;
         if (st.catParty !== c.party) st.catParty = c.party;
         if (st.catStage !== c.stage) st.catStage = c.stage;
         const fin = c.final ? 1 : 0;
         if (st.catFinal !== fin) st.catFinal = fin;
         if (st.catBoss !== c.boss) st.catBoss = c.boss;
-        this.sim.catLo = c.lo;
-        this.sim.catHi = c.hi;
+        this.sim.catOpen = this.cat.open;
       },
       saveRecords: (ids, win) => {
         for (const id of ids) {
@@ -5722,7 +5722,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (this.cat.inRun(id)) {
-      [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+      [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
     } else {
       const sp = hubSpawnPoint();
       this.catWarp(id, sp.x, sp.z);
@@ -7316,7 +7316,7 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.z += sz;
     this.botBlockedByMobs(p, bot, x0, z0);
     // Катакомбы: стены залов.
-    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
   }
 
   /**
@@ -7367,7 +7367,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Перенос умением — только докуда можно дойти, не забираясь на крутое (MAX_CLIMB).
     [p.head.x, p.head.z] = reachAlong(fromX, fromZ, x, z);
     this.botOutOfMobs(p, undefined, fromX, fromZ);
-    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+    if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
     if (face) {
       const bot = [...this.bots.values()].find((b) => b.state === p);
@@ -8557,7 +8557,7 @@ export class ZoneRoom extends Room<ZoneState> {
       for (const bot of this.bots.values()) {
         const p = bot.state;
         if (p.dead || !inCatRegion(p.head.x, p.head.z) || !this.cat.inRun(bot.id)) continue;
-        [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.lo, this.cat.hi, PLAYER.radius);
+        [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
       }
     }
   }

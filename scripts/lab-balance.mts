@@ -1017,7 +1017,7 @@ if (ONLY.has("catacombs")) {
       }
       wasDead.set(b.id, !!p.dead);
       if (st.catPhase >= 2 && !p.dead && CAT.inCatRegion(p.head.x, p.head.z)) {
-        const [x, z] = CAT.catProject(p.head.x, p.head.z, st.catLo, st.catHi, 0);
+        const [x, z] = CAT.catProject(p.head.x, p.head.z, CAT.catOpen(CAT.catParseRoute(st.catRoute), st.catLo, st.catHi), 0);
         if (Math.hypot(x - p.head.x, z - p.head.z) > 0.3) outOfWalls++;
       }
     }
@@ -1028,7 +1028,7 @@ if (ONLY.has("catacombs")) {
     }
     if (st.catStage !== lastStage && st.catPhase >= 2) {
       lastStage = st.catStage;
-      say(`  ${f(r.t(), 0)}с — стадия ${st.catStage} (${CAT.CAT_HALLS[st.catStage].name}), залы ${st.catLo}..${st.catHi}`);
+      say(`  ${f(r.t(), 0)}с — стадия ${st.catStage} (${CAT.CAT_HALLS[CAT.catParseRoute(st.catRoute)[st.catStage] ?? 0].name}), залы ${st.catLo}..${st.catHi}`);
     }
     if (st.catPhase >= 2 && room.cat.phase >= 2 && st.catLeft === 1 && !(globalThis as any).__catEndShown) {
       (globalThis as any).__catEndShown = true;

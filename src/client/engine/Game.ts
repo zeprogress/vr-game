@@ -2426,7 +2426,7 @@ export class Game {
     const st = this.net?.room?.state;
     const view: CatView | null = st ? catViewOf(st) : null;
     this.catFx?.update(dt, view, this.player.position);
-    this.player.catBounds = view && view.phase >= CAT_PHASE.run ? { lo: view.lo, hi: view.hi } : null;
+    this.player.catBounds = view && view.phase >= CAT_PHASE.run ? view.open : null;
   }
   private catFx: CatacombsFx | null = null;
   /** Какая музыка сейчас: town / boss / cat / catBoss. */

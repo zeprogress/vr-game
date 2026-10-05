@@ -1,5 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
-import { CAT_CEIL, CAT_HALLS, catCorridor, catProject, inCatRegion } from "#shared/catacombs";
+import { CAT_CEIL, CAT_HALLS, catCorridor, catLinkIndex, catProject, inCatRegion } from "#shared/catacombs";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -155,12 +155,13 @@ export interface DirectorCtx {
   boss: { id: string; pos: Vector3; aggro: boolean } | null;
   groundY: (x: number, z: number) => number;
   /** Катакомбы идут: текущий зал, страж/Владыка (самый крупный моб зала), герои внизу. */
-  cat?: { x: number; z: number; r: number; lo: number; hi: number; bossId: string; final: boolean; heroes: string[] } | null;
+  cat?: { x: number; z: number; r: number; lo: number; hi: number; from: number; to: number; open: number[]; bossId: string; final: boolean; heroes: string[] } | null;
 }
 
 /** Камера катакомб: высота (м над полом, + за размах боя), относ назад от высоты, «рядом с героями» для мобов. */
 /** Камера перехода между залами: на столько метров вглубь нового зала, высота, сдвиг вбок, куда смотрим. */
-const CAT_GATE_CAM = { inHall: 6, height: 2.4, side: 2.2, lookY: 1.4 } as const;
+/** Проход в новый зал: камера идёт за отрядом по оси коридора — отстаёт на back м, высота, куда смотрит вперёд. */
+const CAT_GATE_CAM = { back: 7, height: 3.4, ahead: 14, lookY: 1.3, follow: 1.6 } as const;
 const CAT_CAM = { height: 5.2, heightPerSpread: 0.22, backPerHeight: 1.1, mobNear: 9 } as const;
 
 const CENTER = new Vector3(0, 0, 0);
@@ -397,7 +398,7 @@ export class SpectatorCamera {
     const cat = ctx.cat;
     // Катакомбы: ОДНА камера на весь бой — сверху под сводом, все герои и монстры в кадре.
     if (this.auto && cat) {
-      // Решётка поднята (lo < hi) — встречаем отряд в новом зале, лицом к проходу.
+      // Решётка поднята (lo < hi) — камера идёт вместе с отрядом сквозь ворота в новый зал.
       const want = cat.lo < cat.hi ? "catGate" : "catTop";
       if (this.shot.kind !== want) this.switchTo({ kind: want }, ctx);
     } else if (this.auto && fighting && !this.isFightShot(this.shot)) {
@@ -474,6 +475,9 @@ export class SpectatorCamera {
   private readonly catTopC = new Vector3();
   private catTopH = 6;
   private catTopInit = false;
+  /** Проводка через ворота: какой переход и где камера на оси коридора. */
+  private catGateKey = "";
+  private catGateS = 0;
 
   private isFightShot(s: Shot): boolean {
     return (
@@ -746,7 +750,7 @@ export class SpectatorCamera {
           this.catTopC.z += (cz - this.catTopC.z) * k;
           this.catTopH += (spread - this.catTopH) * k;
           // Центр кадра — всегда внутри зала: камера не смотрит в стену и в проём коридора.
-          [this.catTopC.x, this.catTopC.z] = catProject(this.catTopC.x, this.catTopC.z, c.hi, c.hi, 3);
+          [this.catTopC.x, this.catTopC.z] = catProject(this.catTopC.x, this.catTopC.z, [c.to], 3);
           const gy = ctx.groundY(this.catTopC.x, this.catTopC.z);
           // Как в изометрических ARPG: камера на середине высоты зала, под ~50° сверху-сбоку;
           // бой шире — чуть выше и дальше (но не выше свода).
@@ -757,7 +761,7 @@ export class SpectatorCamera {
           let px = this.catTopC.x + Math.sin(sway) * back;
           let pz = this.catTopC.z - Math.cos(sway) * back;
           // Только внутри зала (не в узком коридоре — там стены вплотную к камере).
-          [px, pz] = catProject(px, pz, c.hi, c.hi, 2);
+          [px, pz] = catProject(px, pz, [c.to], 2);
           pos.set(px, gy + height, pz);
           tgt.set(this.catTopC.x, gy + 0.6, this.catTopC.z);
           // Угол обзора — чтобы влез весь бой (от расстояния до дальнего края).
@@ -768,16 +772,37 @@ export class SpectatorCamera {
         break;
       }
       case "catGate": {
-        // Переход между залами: камера уже в новом зале у входа, низко, смотрит назад в коридор
-        // на решётку — герои пробегают ей навстречу (снимаем с лица).
+        // Переход между залами: одна непрерывная проводка — камера за спинами отряда идёт по оси
+        // коридора сквозь поднятую решётку и въезжает с героями в новый зал (без склейки).
         const c = ctx.cat;
-        if (c && c.lo < c.hi) {
-          const b = CAT_HALLS[c.hi];
-          const gateZ = catCorridor(c.lo).z0 + 2.2;
-          const cz = b.z - b.r + CAT_GATE_CAM.inHall;
-          const gy = ctx.groundY(0, cz);
-          pos.set(CAT_GATE_CAM.side, gy + CAT_GATE_CAM.height, cz);
-          tgt.set(0, gy + CAT_GATE_CAM.lookY, gateZ + 3);
+        const li = c && c.lo < c.hi ? catLinkIndex(c.from, c.to) : -1;
+        if (c && li >= 0) {
+          const cor = catCorridor(li);
+          const a = CAT_HALLS[c.from];
+          const b = CAT_HALLS[c.to];
+          // s — вдоль оси коридора от края старого зала; герои — среднее (отставших подтянет сервер).
+          let sum = 0;
+          let n = 0;
+          for (const p of ctx.players) {
+            if (!c.heroes.includes(p.id)) continue;
+            sum += (p.pos.x - cor.ax) * cor.dx + (p.pos.z - cor.az) * cor.dz;
+            n++;
+          }
+          const want = Math.max(-(a.r - 5), Math.min(cor.len + b.r * 0.4, (n ? sum / n : 0) - CAT_GATE_CAM.back));
+          const key = `${c.from}>${c.to}`;
+          if (this.catGateKey !== key) {
+            this.catGateKey = key;
+            this.catGateS = want;
+          }
+          // Только вперёд и плавно — камера не дёргается назад, когда кто-то оглянулся.
+          if (want > this.catGateS) this.catGateS += (want - this.catGateS) * (1 - Math.exp(-this.frameDt * CAT_GATE_CAM.follow));
+          const sc = this.catGateS;
+          const px = cor.ax + cor.dx * sc;
+          const pz = cor.az + cor.dz * sc;
+          const gy = ctx.groundY(px, pz);
+          pos.set(px, gy + CAT_GATE_CAM.height, pz);
+          const ta = sc + CAT_GATE_CAM.ahead;
+          tgt.set(cor.ax + cor.dx * ta, gy + CAT_GATE_CAM.lookY, cor.az + cor.dz * ta);
           return;
         }
         break;

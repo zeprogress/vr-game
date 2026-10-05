@@ -266,6 +266,8 @@ export class ZoneState extends Schema {
   @type("uint8") catPhase = 0;
   @type("uint8") catLo = 0;
   @type("uint8") catHi = 0;
+  /** Маршрут захода по развилкам — залы шагов через запятую ("0,2,4"); см. catParseRoute. */
+  @type("string") catRoute = "";
   @type("uint16") catLeft = 0;
   @type("uint8") catParty = 0;
   @type("uint8") catStage = 0;
