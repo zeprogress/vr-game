@@ -203,8 +203,8 @@ import {
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
-import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, CLASS_CD_MUL, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ATTR2 } from "#shared/attrs2";
+import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import {
   MAGIC,
   maxManaFor,
@@ -7177,6 +7177,7 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (k === "shadowStep" && (hopsBack(cls) ? nd > 4 : nd > 11)) continue;
       if (k === "crush" && nd > 8) continue;
+      if (k === "cleave" && nd > SKILLS2.cleave.radius - 1) continue;
       if (k === "seal" && nd > 6) continue;
       if (k === "whirlwind" && this.mobsInRadius(p, cls === "spearman" ? 6 : 3.5).length < 1) continue;
       if (k === "warcry" && this.mobsInRadius(p, 8).length < 2) continue;
@@ -7330,10 +7331,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
-    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
-    const own = (cls && CLASS_CD_MUL[cls]) || 1;
-    if (cls !== "support" && cls !== "battlemage") return own;
-    return own / (1 + invested(p.wis) * ATTR2.wis.cast);
+    return skillCdMul2(classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | ""), p.wis);
   }
 
   /** Выставить skill1/skill2 под класс оружия в руках (сохранённый выбор или по умолчанию). */
@@ -8038,6 +8036,29 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, { k: "healHit", id: allyId, x: ally.head.x, y: ally.head.y, z: ally.head.z } satisfies ActRelay);
         return true;
       }
+      case "cleave": {
+        // Рассекающий удар (воин): широкий конус перед собой — урон, отброс, замедление.
+        const [fx, fz] = fwd();
+        act({ k: "spearPierce", x: p.head.x, y: p.head.y, z: p.head.z, x2: p.head.x + fx * sk.radius, z2: p.head.z + fz * sk.radius, r: CLEAVE.halfAngle });
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (!pp || pp.dead) return;
+          const ox = pp.head.x;
+          const oz = pp.head.z;
+          act({ k: "stunHit", x: ox + fx * sk.radius * 0.5, y: pp.head.y - PLAYER.eyeHeight, z: oz + fz * sk.radius * 0.5, r: sk.radius * 0.5 });
+          for (const m of around(ox, oz, sk.radius)) {
+            const vx = m.x - ox;
+            const vz = m.z - oz;
+            const d = Math.hypot(vx, vz) || 1;
+            const slack = Math.asin(Math.min(1, this.sim.targetRadius("mob", m.id) / Math.max(d, 0.1)));
+            if (Math.acos(Math.max(-1, Math.min(1, (vx * fx + vz * fz) / d))) > CLEAVE.halfAngle + slack) continue;
+            this.sim.hitMob(m.id, sk.dmgMult * pow.dmg, vx / d, vz / d, ownerId, false, false, pow.magic);
+            this.sim.shoveMob(m.id, vx / d, vz / d, CLEAVE.shove);
+            this.sim.slowMob(m.id, CLEAVE.slowSec, 1 - CLEAVE.slow);
+          }
+        }, sk.castTime * 1000);
+        return true;
+      }
       case "abyss": {
         rt.abyssUntil = this.elapsed + ABYSS.duration;
         rt.abyssStrike = true;
@@ -8280,6 +8301,8 @@ export class ZoneRoom extends Room<ZoneState> {
         if (o.dead) continue;
         if (Math.hypot(o.x - m.x, o.z - m.z) <= BOT.rainRadius) n++;
       }
+      // Пугало — проверка урона: град по нему, даже если оно одно (раньше бот залп по пугалу не кидал).
+      if (m.scarecrow) n = Math.max(n, BOT.rainMinTargets);
       if (n > bestN) {
         bestN = n;
         best = { x: m.x, z: m.z };
@@ -8899,8 +8922,8 @@ export class ZoneRoom extends Room<ZoneState> {
         }
       }
     }
-    // Эгида, «Оплот»: успешный блок щитом лечит.
-    if (shield && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {
+    // Эгида, «Оплот»: успешный блок УДАРА ВБЛИЗИ лечит (снаряды и выстрелы — нет; 2026-10-05).
+    if (shield && !h.projectile && block.by === 1 && block.mult === 0 && isAegis(shield.inst) && p.hp > 0) {
       p.hp = Math.min(p.maxHp, p.hp + p.maxHp * SHIELD.aegisHealFrac);
       this.broadcast(MSG.act, { k: "healHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }

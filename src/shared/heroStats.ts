@@ -219,7 +219,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
     rows.push({ label: "Блок щитом", value: `${Math.round(chance * 100)}% шанс` });
     const refl = affixNum(shieldAffix, "Отражение");
     if (refl > 0) rows.push({ label: "Отражение щитом", value: `${Math.round(refl * 100)}% удара` });
-    if (shieldAffix?.includes("Оплот")) rows.push({ label: "Оплот (Эгида)", value: `блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP` });
+    if (shieldAffix?.includes("Оплот")) rows.push({ label: "Оплот (Эгида)", value: `блок удара вблизи лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP` });
   }
 
   return rows;

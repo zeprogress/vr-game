@@ -7,8 +7,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { ATTR2, invested } from "#shared/attrs2";
-import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCooldownOf, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -423,6 +422,7 @@ export class Game {
       sound: (at, kind) =>
         this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
+      shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
     };
     this.specMarker = new SpecCamMarker(this.scene);
     this.eventBeacon = new EventBeacon(this.scene);
@@ -2843,12 +2843,10 @@ export class Game {
     return classOf2(this.combat.heldKindOf("left") as Weapon2 | "", this.combat.heldKindOf("right") as Weapon2 | "");
   }
 
-  /** Откат умения с учётом МДР (у магов). */
+  /** Откат умения с учётом класса и МДР (все классы) — та же формула, что на сервере. */
   private skillCooldown(id: SkillId): number {
     const cls = this.heroClass();
-    const caster = cls === "support" || cls === "battlemage";
-    const mul = caster ? 1 / (1 + invested(this.progression.stats.wis) * ATTR2.wis.cast) : 1;
-    return skillCooldownOf(id, cls) * mul;
+    return SKILLS2[id].cooldown * skillCdMul2(cls, this.progression.stats.wis);
   }
 
   /** Сколько секунд до готовности умения (0 — готово). */
@@ -3151,6 +3149,9 @@ export class Game {
     } else if (id === "whirlwind" && cls === "assassin") {
       // Танец клинков — вихрь-рывок вперёд за время вращения.
       this.startDash(p.x + fx * ASSASSIN_WHIRL_DASH, p.z + fz * ASSASSIN_WHIRL_DASH, WHIRL.duration);
+      this.combat.onMeleeSwing?.();
+    } else if (id === "cleave") {
+      // Рассекающий удар — замах мечом вперёд, конус считает сервер по взгляду.
       this.combat.onMeleeSwing?.();
     } else if (id === "mark" || id === "chain" || id === "lifeArrow") {
       // По выбранной цели (ПК/телефон), иначе — ближайшая впереди.

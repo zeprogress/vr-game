@@ -36,7 +36,7 @@ export const ATTR_INFO: Record<Attr, { short: string; name: string; icon: string
   int: { short: "ИНТ", name: "Интеллект", icon: glyph("a.int"), desc: "Урон магией и сила лечения" },
   con: { short: "ТЕЛ", name: "Телосложение", icon: glyph("a.con"), desc: "Здоровье и физическая броня" },
   luc: { short: "УДЧ", name: "Удача", icon: glyph("a.luc"), desc: "Шанс и сила крита, уворот" },
-  wis: { short: "МДР", name: "Мудрость", icon: glyph("a.wis"), desc: "Магическая защита и скорость каста" },
+  wis: { short: "МДР", name: "Мудрость", icon: glyph("a.wis"), desc: "Магическая защита, скорость каста и откат умений" },
 };
 
 export { ATTR2 };
@@ -91,7 +91,7 @@ export function attrEffect(k: Attr): string {
     case "luc":
       return `+${pc(A.luc.crit)} шанса крита, +${pc(A.luc.critDmg, 0)} силы крита, +${pc(A.luc.dodge)} уворота (×${A.luc.dodgeOneItem} с одним оружием)`;
     case "wis":
-      return `+${pc(A.wis.cast)} скорости каста и отката заклинаний, маг. защита растёт (до ${pc(A.wis.resistMax, 0)})`;
+      return `+${pc(A.wis.cast)} скорости каста и отката умений (все классы), маг. защита растёт (до ${pc(A.wis.resistMax, 0)})`;
   }
 }
 
@@ -164,9 +164,9 @@ export function agiTempo2(a: AttrsIn, share = 1): number {
   return 1 + inv(a.agi) * ATTR2.agi.atkSpeed * share;
 }
 
-/** Множитель скорости каста (посох, откат заклинаний): уровень × МДР. */
+/** Множитель скорости каста (посох): уровень (рост гаснет) × МДР — линейно, как ЛОВ у физ. темпа. */
 export function castTempo2(level: number, a: AttrsIn): number {
-  return 1 + softGain(levelTempo(level) * (1 + inv(a.wis) * ATTR2.wis.cast) - 1, 1.8);
+  return (1 + softGain(levelTempo(level) - 1, 1.8)) * (1 + inv(a.wis) * ATTR2.wis.cast);
 }
 
 /** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
@@ -210,7 +210,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1, interval: BOT.attackCooldown, tempoSoft: 1, reach: 2.2, pierce: 1,
+    name: WEAPON_NOUN.sword.name, dmg: 1.4, interval: BOT.attackCooldown, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.4 (2026-10-05: воин слабейший)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
@@ -221,7 +221,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // руки бьют по очереди (DAGGER.dual), один — свободная рука даёт уворот.
   // dmg 0.86 → 1.15 (2026-10-02: ассасин был слабейшим и по DPS, и по живучести — лаборатория баланса).
   dagger: {
-    name: WEAPON_NOUN.dagger.name, dmg: 1.15, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1,
+    name: WEAPON_NOUN.dagger.name, dmg: 1.35, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1, // 1.15 → 1.35 (2026-10-05)
     critBase: 0.12, critMult: 2, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
@@ -237,7 +237,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
-    name: WEAPON_NOUN.bow.name, dmg: 1.75, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1,
+    name: WEAPON_NOUN.bow.name, dmg: 2, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
     critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.
@@ -245,7 +245,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
     name: WEAPON_NOUN.staff.name,
     dmg: MAGIC.firebolt.baseDamage + 0.7 * MAGIC.firebolt.damagePerCharge,
     interval: MAGIC.firebolt.cooldown, tempoSoft: 1.8, reach: 17, pierce: 1,
-    critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [1, 2, 2.4],
+    critBase: 0.05, critMult: 2, twoHanded: true, dmgType: "magic", tiers: [0.75, 1.45, 1.75], // −27% (2026-10-05: маг поддержки сильнейший; мудрость теперь сильнее ускоряет каст)
   },
 };
 
@@ -297,7 +297,8 @@ export type SkillId =
   | "smoke"
   | "soulSteal"
   | "abyss"
-  | "lifeArrow";
+  | "lifeArrow"
+  | "cleave";
 
 export interface ClassDef {
   name: string;
@@ -320,7 +321,7 @@ export interface ClassDef {
 export const CLASSES2: Record<ClassId, ClassDef> = {
   warrior: {
     name: "Воин", icon: glyph("c.warrior"), role: "Танк, контроль", weapons: "меч + щит", main: "sword",
-    skills: ["stunBash", "whirlwind", "warcry", "seal"], defaultSkills: ["stunBash", "whirlwind"],
+    skills: ["stunBash", "whirlwind", "cleave", "warcry", "seal"], defaultSkills: ["cleave", "whirlwind"],
     build: { str: 3, con: 4, agi: 1.5, luc: 1, wis: 1.2 },
   },
   archer: {
@@ -386,7 +387,7 @@ export interface SkillDef {
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
     name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с",
-    cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 0.6, hits: 1,
+    cooldown: 12, castTime: 0.5, radius: 5, dmgMult: 1, hits: 1, // 0.6 → 1 (2026-10-05)
     variants: {
       assassin: { name: "Смертельный прыжок", desc: "Прыжок на цель до 9 м: удар с гарантированным критом ×2 и оглушение 1.5 с" },
       spearman: { name: "Подсечка", desc: "Древком по кругу: сбивает с ног всех рядом (оглушение 2 с) и замедляет на 4 с" },
@@ -431,7 +432,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   whirlwind: {
     name: "Вихрь", icon: glyph("s.whirlwind"), desc: "2 с вращаешься с мечом: 5 ударов по всем вокруг, входящий урон −30%",
-    cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.7, hits: 5,
+    cooldown: 14, castTime: 0, radius: 3.2, dmgMult: 0.9, hits: 5, // 0.7 → 0.9 (2026-10-05)
     variants: {
       spearman: { name: "Град выпадов", desc: "Серия из 8 быстрых выпадов копьём вперёд (длинный конус 6 м): каждый колет всех в секторе" },
       battlemage: { name: "Громовой вихрь", desc: "Молот по кругу: 5 магических ударов, каждый ещё бьёт молнией соседа в 7 м" },
@@ -446,10 +447,10 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   mark: {
-    name: "Метка", icon: glyph("s.mark"), desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен",
+    name: "Метка", icon: glyph("s.mark"), desc: "Цель 8 с: все атакующие (и ты сам) наносят ей +25% урона; умерла под меткой — откат сброшен",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
-      archer: { name: "Метка охотника", desc: "Цель 8 с получает +30% урона от всех; умерла под меткой — откат сброшен" },
+      archer: { name: "Метка охотника", desc: "Цель 8 с: все атакующие (и ты сам) наносят ей +25% урона; умерла под меткой — откат сброшен" },
     },
   },
   plague: {
@@ -480,6 +481,11 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Стрела жизни", icon: glyph("s.lifeArrow"),
     desc: "Тяжёлая стрела в цель до 22 м: ×2 урона; лечит тебя на половину нанесённого урона и ещё на 25% здоровья",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 2, hits: 1,
+  },
+  cleave: {
+    name: "Рассекающий удар", icon: glyph("s.cleave"),
+    desc: "Широкий удар мечом перед собой (конус 120°, 6 м): ×2.2 урона всем в секторе, отбрасывает и замедляет на 40% на 3 с",
+    cooldown: 9, castTime: 0.25, radius: 6, dmgMult: 2.2, hits: 1,
   },
   chain: {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
@@ -512,6 +518,11 @@ export const SPEAR_HOP_TRAP = { radius: 6.5, seconds: 3, slow: 0.5, pullStep: 0.
 export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, battlemage: 0.65, assassin: 0.4 };
 
 /** Базовый откат умения у класса (без МДР). */
+/** Множитель отката умений: класс × МДР (у всех классов). ОДИН для сервера, клиента и ботов. */
+export function skillCdMul2(cls: ClassId | null, wis: number): number {
+  return ((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(wis) * ATTR2.wis.cast);
+}
+
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
   return Math.round(SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1) * 10) / 10;
 }
@@ -530,7 +541,9 @@ export const WHIRL = { duration: 2, spearRadius: 4, spearHits: 4, spearDmg: 0.9,
 export const WARCRY = { duration: 8, blessDuration: 10, blessDef: 0.15, dmg: 0.25, tempo: 0.15, rallyTempo: 0.3, aggroSec: 4 } as const;
 /** Печать стража: союзникам в круге −40% урона. */
 export const GUARD_SEAL = { shield: 0.4 } as const;
-export const MARK = { duration: 8, dmgMul: 1.3, assassinCrit: 0.25, slow: 0.3 } as const;
+/** «Рассекающий удар» воина: конус перед собой. */
+export const CLEAVE = { halfAngle: 1.05, shove: 4, slowSec: 3, slow: 0.4 } as const;
+export const MARK = { duration: 8, dmgMul: 1.25, assassinCrit: 0.25, slow: 0.3 } as const;
 export const CHAIN = { jump: 7, falloff: 0.8 } as const;
 /** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
 export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;

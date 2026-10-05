@@ -436,6 +436,14 @@ export type AffixKind = "dmg" | "atkSpeed" | "crit" | "vamp" | "block" | "reflec
  */
 export type AffixSub = "dmgFlat" | "dmgPct" | "atkSpeedPct" | "critChance" | "critMult" | "vamp" | "block" | "reflect" | "physDef" | "magDef" | "regen";
 
+/** Постоянный порядок роллов на предмете — одинаковый у всего оружия и щитов, чтобы было проще сравнивать. */
+export const AFFIX_ORDER: readonly AffixSub[] = ["dmgFlat", "dmgPct", "atkSpeedPct", "critChance", "critMult", "vamp", "regen", "block", "physDef", "magDef", "reflect"];
+
+/** Роллы по AFFIX_ORDER (на месте). */
+export function sortAffixes(list: RolledAffix[]): void {
+  list.sort((a, b) => AFFIX_ORDER.indexOf(a.sub) - AFFIX_ORDER.indexOf(b.sub));
+}
+
 export interface RolledAffix {
   kind: AffixKind;
   sub: AffixSub;
@@ -463,7 +471,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 16;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 7;
+const LOOT_VER = 8;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -678,6 +686,7 @@ export function rollWeaponInstance(
     used.add(a.sub);
     affixes.push(a);
   }
+  sortAffixes(affixes);
   return {
     id: shortId(rnd), cls, tier, affixes, lv: LOOT_VER,
     ...(aegis ? { nm: LEGACY_LEGENDARY.shield?.name } : {}),
@@ -848,7 +857,7 @@ export function isAegis(w: Pick<WeaponInstance, "cls" | "nm"> | null | undefined
   return !!w && w.cls === "shield" && w.nm === LEGACY_LEGENDARY.shield?.name;
 }
 /** Подпись свойства Эгиды (идёт первой в тексте в руке; heroStats/itemStats ищут по слову «Оплот»). */
-export const AEGIS_LABEL = `Оплот: блок лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP`;
+export const AEGIS_LABEL = `Оплот: блок удара вблизи лечит ${Math.round(SHIELD.aegisHealFrac * 100)}% HP`;
 
 /** Свойства предмета помимо роллов — строки для инвентаря (сейчас у щитов: блок, отражение, «Оплот»). */
 export function instanceEffects(w: WeaponInstance): string[] {
@@ -976,6 +985,8 @@ export function migrateLoot(w: WeaponInstance): boolean {
       a.value = atT(a.sub, t, aegis);
     }
   }
+  // lv 8: роллы в постоянном порядке (AFFIX_ORDER) — раньше стояли как выпали.
+  sortAffixes(w.affixes);
   w.lv = LOOT_VER;
   return true;
 }

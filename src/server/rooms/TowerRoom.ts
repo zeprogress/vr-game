@@ -950,7 +950,7 @@ export class TowerRoom extends Room<TowerState> {
     this.state.heroHp = Math.max(0, this.state.heroHp - real);
     // Уникальный щит — отражение (и при блоке), Эгида — блок лечит (как ZoneRoom.hurtPlayer).
     if (block.by !== 3 && from && this.heroReflect > 0) this.reflectQueue.push({ m: from, dmg: dmg * this.heroReflect });
-    if (block.by === 1 && block.mult === 0 && this.heroAegisHeal > 0 && this.state.heroHp > 0) {
+    if (!projectile && block.by === 1 && block.mult === 0 && this.heroAegisHeal > 0 && this.state.heroHp > 0) {
       this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + this.state.heroMaxHp * this.heroAegisHeal);
     }
     // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):

@@ -560,6 +560,15 @@ export class RemoteAvatar implements Hittable {
     return this.mode;
   }
 
+  /** Центр щита в руке (мировые координаты) — отсюда бьёт разряд отражения; щита нет — null. */
+  shieldPoint(): { x: number; y: number; z: number } | null {
+    const g = this.wantL[0] === "shield" ? this.gearL : this.wantR[0] === "shield" ? this.gearR : null;
+    if (!g || g.isDisposed() || !g.isEnabled()) return null;
+    g.computeWorldMatrix(true);
+    const c = g.getBoundingInfo().boundingBox.centerWorld;
+    return { x: c.x, y: c.y, z: c.z };
+  }
+
   /** Кости кулаков — камере спектатора «из глаз» сажать на них перчатки (EyeGloves). */
   get fistL(): TransformNode | null {
     return this.botFistL;

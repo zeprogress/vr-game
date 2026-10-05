@@ -152,6 +152,7 @@ export const ICONS = {
   "s.crush": { emoji: "💥" },
   "s.seal": { emoji: "🔯" },
   "s.whirlwind": { emoji: "🌀" },
+  "s.cleave": { emoji: "⚔️" },
   "s.warcry": { emoji: "📯" },
   "s.mark": { emoji: "🎯" },
   "s.chain": { emoji: "⚡" },

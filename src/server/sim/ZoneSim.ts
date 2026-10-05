@@ -992,8 +992,11 @@ export class Mob {
             const ul = Math.hypot(ux, uz) || 1;
             ux /= ul;
             uz /= ul;
-            this.x = t.x + ux * BLINK.behind;
-            this.z = t.z + uz * BLINK.behind;
+            // За краем тела (+ радиус героя): возникнув ВНУТРИ коллизии, призрак «запирал» ботов —
+            // шаг к мобу им запрещён, и они стояли на месте (2026-10-05).
+            const behind = Math.max(BLINK.behind, MOB.bodyRadius * this.scale + PLAYER.radius + 0.35);
+            this.x = t.x + ux * behind;
+            this.z = t.z + uz * behind;
             this.vx = 0;
             this.vz = 0;
             this.y = terrainHeight(this.x, this.z) + 1.35;
@@ -2601,7 +2604,7 @@ export class ZoneSim {
     if (!magic && m.physArmor > 0) dmg *= 1 - m.physArmor;
     if (magic && m.magicVulnMul !== 1) dmg *= m.magicVulnMul;
     if (crit && m.critVulnMul !== 1) dmg *= m.critVulnMul;
-    if (m.markT > 0) dmg *= m.markMul; // «Метка»: +30% урона от всех
+    if (m.markT > 0) dmg *= m.markMul; // «Метка»: +25% урона от всех атакующих
     // Вклад считаем по ФАКТИЧЕСКИ снятому HP: оверкилл сверх остатка не должен раздувать долю.
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);

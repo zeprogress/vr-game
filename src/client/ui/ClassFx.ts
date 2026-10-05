@@ -425,10 +425,14 @@ export interface ClassActCtx {
   sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud") => void;
   /** Клип/эмоция на модели героя `id` (если она есть). */
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
+  /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
+  shieldPos?: (id: string) => { x: number; y: number; z: number } | null;
 }
 
 /** Теневой рывок — серый дым. */
 const SHADOW_GRAY = FXC.shadow;
+/** Разряд отражения щита — красный (отличается от синих молний умений). */
+const REFLECT_BOLT = new Color3(1, 0.16, 0.1);
 const V_SUPPORT = 2;
 const V_ASSASSIN = 3;
 const V_BATTLEMAGE = 5;
@@ -726,14 +730,16 @@ export function playClassAct(
         vfx.pillar(x, y, z, 0.5, 9, ATK, 0.5, { kind: "mob", id: mobId });
       }
       return true;
-    case "reflectHit":
-      // Щит отразил удар: серебристая вспышка у героя и искры обратно в моба.
-      vfx.burst(x, y, z, FXC.reflect, { count: 12, speed: 4, life: 0.35, grav: 0, size: 0.18 });
+    case "reflectHit": {
+      // Щит отразил удар: вспышка на щите и красный разряд от щита в моба.
+      const sp = (id && c.shieldPos?.(id)) || { x, y, z };
+      vfx.burst(sp.x, sp.y, sp.z, FXC.reflect, { count: 12, speed: 4, life: 0.35, grav: 0, size: 0.18 });
       if (x2 !== undefined && z2 !== undefined) {
-        vfx.bolt(x, y, z, x2, d ?? y, z2, FXC.reflect, 0.22, 0.05);
-        vfx.burst(x2, d ?? y, z2, FXC.reflect, { count: 8, speed: 3, life: 0.3, grav: 2, size: 0.16 });
+        vfx.bolt(sp.x, sp.y, sp.z, x2, d ?? y, z2, REFLECT_BOLT, 0.22, 0.05);
+        vfx.burst(x2, d ?? y, z2, REFLECT_BOLT, { count: 8, speed: 3, life: 0.3, grav: 2, size: 0.16 });
       }
       return true;
+    }
     case "lifeArrow":
       // Стрела жизни: золотисто-зелёная стрела в цель, обратно к стрелку — зелёная нить жизни и всплеск лечения.
       if (x2 !== undefined && z2 !== undefined) {

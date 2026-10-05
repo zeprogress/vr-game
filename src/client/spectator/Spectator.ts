@@ -312,6 +312,7 @@ export class Spectator {
       sound: (at, kind) =>
         this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
+      shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
     };
     this.eventBeacon = new EventBeacon(this.scene);
     this.eventBeacon.bindGround(zone.groundHeight);

@@ -652,7 +652,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monBoneWraith", name: "Костяной призрак", blurb: "телепорт за спину, вампиризм, магические удары", level: 33, kind: "slime",
     // 2026-10-02 ослаблен по просьбе: HP 2400→1800, урон 8→6, вампиризм 60→35%, уворот 30→20%.
     hp: 1800, dmgMul: 6, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
-    blinker: false, lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35,
+    blinker: true, lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35, // телепорт вернули 2026-10-05: возникает за краем тела, боты не застревают
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
     dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },

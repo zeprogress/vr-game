@@ -10,6 +10,7 @@ import {
   magicResist2,
   maxHp2,
   moveSpeed2,
+  WEAPONS2,
   physArmor2,
   physPower2,
   physTempo2,
@@ -179,7 +180,7 @@ export function arrowSpeedBonusFor(level: number): number {
 
 /** Урон стрелы: 1.75 × физ. урон (СИЛ, как у всего физического оружия). Тир лука — отдельно. */
 export function arrowDamageFor(level: number, a: AttrsIn): number {
-  return 1.75 * physPower2(level, a);
+  return WEAPONS2.bow.dmg * physPower2(level, a); // профиль лука — единый источник (было 1.75 вписано тут)
 }
 
 /** Магзащита (МДР) — реэкспорт для удобства. */

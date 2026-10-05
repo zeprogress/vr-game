@@ -85,7 +85,7 @@ export function rollCritMult(
 export function weaponDamage(kind: WeaponKind, level: number, a: AttrsIn, mult = 1): number {
   switch (kind) {
     case "sword":
-      return weaponDamageBase(level, a) * mult;
+      return WEAPONS2.sword.dmg * weaponDamageBase(level, a) * mult;
     case "fist":
       return MELEE.damage * weaponDamageBase(level, a);
     case "throw":
