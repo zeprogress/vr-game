@@ -192,15 +192,15 @@ export const CATACOMBS = {
   /** Жёсткий предел самого забега, с (после — провал и возврат в лагерь). */
   runSec: 10 * 60,
   /** Пауза перед первой волной (пролёт камеры, титры), с. */
-  introSec: 8,
+  introSec: 5,
   /** Пауза между волнами, с. */
-  waveGap: 3,
+  waveGap: 1,
   /** Перед боссом — титры и «трясётся земля», с. */
-  bossIntroSec: 4,
+  bossIntroSec: 3,
   /** Проход в следующий зал открыт столько, потом отставших переносит вперёд, с. */
-  moveSec: 12,
+  moveSec: 5,
   /** После победы — титры и сбор наград, потом все в лагерь, с. */
-  outroSec: 15,
+  outroSec: 10,
   /** Как часто открывать сбор самому (в ротации), с — случайно в диапазоне. */
   autoMin: 25 * 60,
   autoMax: 40 * 60,
@@ -209,7 +209,7 @@ export const CATACOMBS = {
   /** Погибший в катакомбах воскресает через столько секунд (если кто-то из отряда жив; пали все — поражение). */
   reviveSec: 30,
   /** Портал в лагере: встал в круг во время сбора — записан. */
-  portalR: 2.2,
+  portalR: 3.2,
   /** Сила мобов по уровню пати: множитель = (средний ур. / ур. моба) в этих пределах. */
   levelMin: 0.35,
   levelMax: 1.6,
@@ -300,7 +300,7 @@ export const CATACOMBS = {
       waves: [],
       boss: {
         key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
-        hpMul: 0.45, dmgMul: 1.1, scale: 1.25,
+        hpMul: 0.45, dmgMul: 1.1, scale: 1.5,
         retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
         final: true,
         adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
@@ -368,7 +368,7 @@ export const CAT_FINAL = {
   guardianKey: "boneChief",
   guardianHp: 0.6,
   /** Метеоры на стадии 2 — каждые, с. */
-  meteorEvery: 6,
+  meteorEvery: 7,
   /** После снятия щита — оглушён, с. */
   stunAfterSeal: 5,
   /** Стадия 3: кольцо пламени от Владыки — каждые, с; радиус. */
@@ -431,7 +431,7 @@ export const CAT_SHRINES: readonly CatShrine[] = [
   { key: "haste", name: "Святилище ветра", desc: "отряду +30% темпа атак на 25 с", color: [0.85, 0.95, 1] },
 ];
 /** holdSec — сколько стоять в круге, чтобы святилище сработало (видно зрителям, не мгновенно). */
-export const CAT_SHRINE = { chance: 0.65, reach: 3.5, holdSec: 2.5, buffSec: 30, wardSec: 45, hasteSec: 25 } as const;
+export const CAT_SHRINE = { chance: 0.65, reach: 3.5, holdSec: 2.1, buffSec: 30, wardSec: 45, hasteSec: 25 } as const;
 
 /** Доля уровня героя за полный заход по кривой CATACOMBS.xpCurve (лог-линейно между точками). */
 export function catXpFrac(level: number): number {

@@ -3587,7 +3587,7 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (cmd === "!chatquest" && (isAdminNick(nick) || STAGING)) {
       if (this.chatQuest) this.reply(`@${nick} квест чата уже идёт.`);
       else this.startChatQuest(parts[1] === "champ" ? "champs" : "mobs");
-    } else if ((cmd === "!ивенты" || cmd === "!events" || cmd === "!ивент") && isAdminNick(nick)) {
+    } else if ((cmd === "!ивенты" || cmd === "!events") && isAdminNick(nick)) {
       this.eventsCmd(nick, parts.slice(1));
     } else if (cmd === "!goevent") {
       // Запустить событие может только админ стрима. Необязательный аргумент —

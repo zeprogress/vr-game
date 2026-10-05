@@ -652,9 +652,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monBoneWraith", name: "Костяной призрак", blurb: "телепорт за спину, вампиризм, магические удары", level: 33, kind: "slime",
     // 2026-10-02 ослаблен по просьбе: HP 2400→1800, урон 8→6, вампиризм 60→35%, уворот 30→20%.
     hp: 1800, dmgMul: 6, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
-    blinker: true, lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35,
+    blinker: false, lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
-    dodge: 0.2, // 20% ударов героев проходят мимо — «MISS»
+    dodge: 0.3, // 30% ударов героев проходят мимо — «MISS»
   },
   // ---- Зона 36 ур. — для героев 33+. Опыт ×2.5 от 33 ур., легендарки
   // в 2–3 раза чаще, чем у колосса. Модели — ещё не бывавшие в открытом мире.
@@ -673,8 +673,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (или бей магией издалека, отражение то же — терпи). Рукой бьёт больно.
   frostDemon: {
     model: "monBlueDemon", name: "Ледяной демон", blurb: "замораживает — замедляет, щит отражения", level: 36, kind: "slime",
-    // 2026-10-02 ослаблен по просьбе: HP 5600→4800, урон 13→10 (+ REFLECT/FREEZE мягче).
-    hp: 4800, dmgMul: 10, xp: 960000, scaleMul: 2.8, tint: null,
+    // 2026-10-02 ослаблен по просьбе: HP 5600→4800, урон 13→8 (+ REFLECT/FREEZE мягче).
+    hp: 4800, dmgMul: 8, xp: 960000, scaleMul: 2.8, tint: null,
     freezer: true, reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
     meleeReach: 3.2, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -683,7 +683,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
     model: "monOrcSkull", name: "Костяной вождь", blurb: "шипы с замедлением, лечит своих", level: 36, kind: "slime",
-    hp: 3800, dmgMul: 5.5, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→5.5 (2026-10-04); меньше (было 3), зато их больше
+    hp: 4800, dmgMul: 7.5, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→7.5 (2026-10-04); меньше (было 3), зато их больше
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -708,7 +708,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
   rockBreaker: {
     model: "monBogBrute", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
-    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 2.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
+    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
     leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
   },
 };
@@ -916,7 +916,7 @@ export const MOB_CAMPS: {
   { x: -15, z: 125, type: "skySquid", count: 5, spread: 28, ring: 0.85 }, // ~185 м, север
   { x: -118, z: 118, type: "boneWraith", count: 24, spread: 40 }, // ~184 м, северо-запад
   // Зона 36 ур. — самые окраины.
-  { x: 70, z: 55, type: "boneChief", count: 10, spread: 20 }, // восток-центр, вне погони Багрового (был северо-восток у босса, ещё раньше — юго-восток у големов)
+  { x: 70, z: 55, type: "boneChief", count: 7, spread: 40 }, // восток-центр, вне погони Багрового (был северо-восток у босса, ещё раньше — юго-восток у големов)
   { x: 135, z: 50, type: "infernoDemon", count: 5, spread: 24, ring: 0.85 }, // ~212 м, восток
   { x: 45, z: 140, type: "frostDemon", count: 6, spread: 22 }, // ~220 м, север
   // Зона 40 ур. — дальше всего от лагеря, по краям карты. Каждая стоянка
@@ -1276,7 +1276,7 @@ export const BOT = {
   raidMinParty: 2,
   /** …и после набора — эта задержка (с), затем весь отряд выступает разом. */
   raidDelaySec: 5,
-  maxBots: 12, // одновременно
+  maxBots: 33, // одновременно
   playCooldown: 20, // с между `!play` на один ник
   chatWindowSec: 15 * 60, // сколько ник считается «в чате» после сообщения
   idleDespawnSec: 30 * 60, // без чата и без игрока — снять бота
@@ -1368,7 +1368,7 @@ export const BOT = {
   /** Не чаще, чем раз в столько секунд, одна эмоция (!cheer/!roll/!jump). */
   emoteCooldown: 3,
   /** Как близко бот держится к тому, за кем идёт по !follow/!come, м. */
-  followRange: 1.4,
+  followRange: 1.5,
   /**
    * Длина клипов эмоций, с (замер по исходнику пака: Victory 1.875,
    * Roll 0.917, Jump 1.042, Defeat 2.5 — с небольшим запасом). Сервер на
@@ -1540,7 +1540,7 @@ export const EVENT = {
       ],
     ] as { type: string; count: number }[][],
     /** Пауза между волнами после зачистки предыдущей, с. */
-    waveGap: 4,
+    waveGap: 2,
     /** Потолок мобов в одной волне (даже при толпе героев). */
     waveMobCap: 70,
     /** Зелий за победу на одного героя (итого × число героев в мире). Было 4/60 — банок сыпалось слишком много. */
@@ -1548,9 +1548,9 @@ export const EVENT = {
     /** …но не больше этого. */
     rewardPotionCap: 15,
     /** Бафф всем участникам за зачистку: ×множитель опыта и урона на N минут. */
-    buffMinutes: 30,
+    buffMinutes: 20,
     buffXpMult: 2,
-    buffDmgMult: 2,
+    buffDmgMult: 1.5,
     /** Шанс, что вдобавок выпадет УНИКАЛЬНОЕ оружие (было золотое). */
     rewardLegendaryChance: 0.5,
   },
@@ -1575,10 +1575,10 @@ export const EVENT = {
     dmgCap: 1.6,
     /**
      * Дракон призывает подручных (со всеми механиками вида): каждый — случайный
-     * из списка; призраки встречаются чаще (2 из 6), остальные — разные.
+     * из списка; разные.
      */
     addGap: 20,
-    addTypes: ["boneWraith", "boneWraith", "skySquid", "golem", "ruinMage", "infernoDemon"],
+    addTypes: ["skySquid", "golem", "ruinMage", "infernoDemon", "infernoDemon"],
     addCount: 2,
     /** Ниже этой доли HP — ярость: умения чаще (enrageGapMul), удары сильнее. */
     enrageAt: 0.45,
