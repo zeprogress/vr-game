@@ -122,6 +122,7 @@ import {
   rollCritMult,
   weaponDamage,
   WEAPON_RATE,
+  HIT_RATE_SLACK,
   WEAPON_REACH,
   type BlockedBy,
   type GuardState,
@@ -183,7 +184,6 @@ import {
 import {
   hpRegenFrac,
   atMaxLevel,
-  attackSpeedFor,
   meleeSpeedFor,
   staffCastInterval,
   armorFrac,
@@ -193,6 +193,7 @@ import {
   isStatName,
   maxHpFor,
   moveSpeedFor,
+  heroAttackInterval,
   spendPoint,
   resetAttrs,
   statCost,
@@ -500,13 +501,6 @@ function hasSkill(p: PlayerState, k: string): boolean {
 /** Во сколько раз дальше бьёт бот этим оружием (копьё — длинный выпад). */
 function botReachMul(cls: string): number {
   return cls === "spear" ? 2.2 : cls === "hammer" ? 1.2 : 1;
-}
-
-/** Пауза между ударами бота относительно меча (кинжал/копьё/молот — своя; два кинжала — чаще). */
-function botIntervalMul(left: string, right: string): number {
-  if (right !== "dagger" && right !== "spear" && right !== "hammer") return 1;
-  const dual = right === "dagger" && left === "dagger" ? DAGGER.dualTempo : 1;
-  return WEAPONS2[right].interval / BOT.attackCooldown / dual;
 }
 
 const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2 };
@@ -2039,13 +2033,14 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
     // атаки (уровень + ловкость + ролл "скорость атаки" на предмете) укорачивает интервал.
+    // Темп — ОДНА формула для всех платформ и ботов (heroAttackInterval); запас HIT_RATE_SLACK на сетевой лаг.
     const last = rt.lastHit[msg.weapon];
-    const meleeWpn = msg.weapon === "fist" || isBladeKind(msg.weapon);
-    const spd =
-      (meleeWpn ? meleeSpeedFor(p.level, p) : attackSpeedFor(p.level, p)) *
-      rolledAtkSpeedMul(p, hand, rt) *
-      this.cryTempo(rt);
-    const rate = WEAPON_RATE[msg.weapon] / spd;
+    const mul = rolledAtkSpeedMul(p, hand, rt) * this.cryTempo(rt);
+    const dualD = p.leftCls === "dagger" && p.rightCls === "dagger";
+    const rate =
+      msg.weapon === "throw"
+        ? WEAPON_RATE.throw
+        : heroAttackInterval(msg.weapon === "arrow" ? "bow" : msg.weapon, p.level, p, mul, dualD) * HIT_RATE_SLACK;
     if (last !== undefined && this.elapsed - last < rate) return;
 
     // PvP: урон между игроками — только если у ОБОИХ включён флаг.
@@ -6846,13 +6841,12 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.attackCd <= 0 &&
       bot.swingIn <= 0
     ) {
-      const atk = attackSpeedFor(p.level, p);
       const bow = p.rightCls === "bow";
       // Ролл «скорость атаки» — и у ботов (раньше учитывался только у живых игроков,
       // хотя в характеристиках показывался).
       // Посох — как у игрока (staffCastInterval: скорость каста от МДР), лук — темп от ЛОВ.
       const spdMul = rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt);
-      bot.attackCd = bow ? BOT.bowCooldown / (atk * spdMul) : staffCastInterval(p.level, p, spdMul);
+      bot.attackCd = bow ? heroAttackInterval("bow", p.level, p, spdMul) : staffCastInterval(p.level, p, spdMul);
       const tgt = chasingMob;
       const ox = p.head.x;
       const oy = p.head.y - 0.25;
@@ -6885,9 +6879,6 @@ export class ZoneRoom extends Room<ZoneState> {
           bot.id, 2.5, 1, 0, 0, critM > 1,
         );
       } else {
-        // По летающим — чуть больнее: их сложнее достать ближнику, магу это
-        // компенсирует (по просьбе).
-        const flyingMul = tgt.flying ? 1.25 : 1;
         // Крит посоха у бота раньше вообще не считался (ни урон, ни эффект) —
         // в отличие от лука-бота выше и живого игрока-мага (см. MSG.cast).
         const botStaffCrit = rolledCrit(p, "right", bot.rt);
@@ -6904,7 +6895,6 @@ export class ZoneRoom extends Room<ZoneState> {
           fireboltDamage(p.level, p, 0.7) *
           staffMagicTier(p.rightTier) *
           rolledDmgMul(p, "right", bot.rt) *
-          flyingMul *
           critM *
           this.buffMult(bot.id, "dmg");
         this.sim.castBolt(
@@ -6936,7 +6926,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
       const atk = meleeSpeedFor(p.level, p);
-      bot.attackCd = (BOT.attackCooldown * botIntervalMul(p.leftCls, p.rightCls)) / (atk * rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt));
+      const kindB = p.rightCls === "dagger" || p.rightCls === "spear" || p.rightCls === "hammer" ? p.rightCls : "sword";
+      bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt), p.leftCls === "dagger" && p.rightCls === "dagger");
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
       bot.swingDx = dx;

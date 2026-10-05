@@ -1,4 +1,4 @@
-import { BOT, BOW, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
+import { BOW, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
@@ -210,7 +210,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1.4, interval: BOT.attackCooldown, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.4 (2026-10-05: воин слабейший)
+    name: WEAPON_NOUN.sword.name, dmg: 1.4, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.4 (2026-10-05: воин слабейший)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {
@@ -237,7 +237,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   },
   // Лук: стрела 1.75 (как сейчас), но масштаб — от СИЛ, темп — от ЛОВ.
   bow: {
-    name: WEAPON_NOUN.bow.name, dmg: 2, interval: BOT.bowCooldown, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
+    name: WEAPON_NOUN.bow.name, dmg: 2, interval: 1.6, tempoSoft: 1.8, reach: 30, pierce: 1, // 1.75 → 2 (2026-10-05)
     critBase: BOW.critChance, critMult: BOW.critMult, twoHanded: true, dmgType: "phys", tiers: [1.2, 3.6, 4.1],
   },
   // Посох: огнешар (средний заряд 0.7), темп — от МДР. Тир теперь множит и магию.

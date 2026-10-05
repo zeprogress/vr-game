@@ -372,10 +372,10 @@ export class TowerRoom extends Room<TowerState> {
     this.heroVamp = isMeleeClass(options.rightCls) ? (options.rolled?.vamp ?? 0) : 0;
     this.heroVampAffix = this.heroVamp > 0;
     this.heroMoveSpeed = moveSpeedFor(options.level, this.heroAttrs);
-    // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — BOT.attackCooldown).
+    // Темп ближнего боя — от паузы своего оружия (кинжал/копьё/молот — своя, меч — WEAPONS2.sword.interval; та же база, что heroAttackInterval).
     const prof = options.rightCls === "dagger" || options.rightCls === "spear" || options.rightCls === "hammer" ? WEAPONS2[options.rightCls] : null;
     const dual = options.rightCls === "dagger" && options.leftCls === "dagger" ? DAGGER.dualTempo : 1;
-    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (BOT.attackCooldown / prof.interval) * dual : 1);
+    this.heroMeleeSpeed = meleeSpeedFor(options.level, this.heroAttrs) * (prof ? (WEAPONS2.sword.interval / prof.interval) * dual : 1);
     if (options.rightCls === "dagger" && options.leftCls === "dagger") this.heroDmg *= DAGGER.dualDmg;
     this.heroSoloDagger = options.rightCls === "dagger" && options.leftCls === "";
     // Роллы оружия/щита — как на поляне: урон, скорость атаки, крит (раньше в
@@ -473,7 +473,7 @@ export class TowerRoom extends Room<TowerState> {
             // Дальний бой без замаха-виндапа — как боты-стрелки/маги в основном
             // мире (ZoneRoom.tickBot): урон применяется сразу, а не через паузу.
             this.heroAtkCd =
-              this.heroWeaponKind === "bow" ? BOT.bowCooldown / this.heroAtkSpeed : this.heroStaffInterval;
+              this.heroWeaponKind === "bow" ? WEAPONS2.bow.interval / this.heroAtkSpeed : this.heroStaffInterval;
             this.heroRangedPulse = true;
             this.heroRangedTargetX = target.x;
             this.heroRangedTargetZ = target.z;
@@ -484,7 +484,7 @@ export class TowerRoom extends Room<TowerState> {
             const speed = this.heroWeaponKind === "bow" ? BOT.arrowSpeed : BOT.boltSpeed;
             this.shots.push({ target, t: d / speed, critM });
           } else {
-            this.heroAtkCd = BOT.attackCooldown / this.heroMeleeSpeed;
+            this.heroAtkCd = WEAPONS2.sword.interval / this.heroMeleeSpeed;
             this.heroSwingIn = BOT.attackImpact / this.heroMeleeSpeed;
             this.heroSwingTarget = target;
             this.heroAtkPulse = true;

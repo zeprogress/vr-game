@@ -1,4 +1,5 @@
 import type { Scene } from "@babylonjs/core/scene";
+import { heroAttackInterval, type AttackWeapon } from "#shared/progression";
 import { canHoldTogether, isTwoHanded } from "#shared/hands";
 import { secNow, secAdd } from "../engine/secProf";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
@@ -216,6 +217,9 @@ function lobDir(from: Vector3, to: Vector3, v: number, g: number): Vector3 {
   return new Vector3((dx / d) * c, Math.sin(ang), (dz / d) * c);
 }
 
+/** Лук на ПК: доля общей паузы после выстрела (остальное — натяжение), в сумме = heroAttackInterval. */
+const BOW_REST_SHARE = 0.4;
+
 export class CombatSystem {
   private readonly items: Item[];
   private readonly bowParts: BowParts;
@@ -372,10 +376,18 @@ export class CombatSystem {
   private dualDaggerCd = 0;
 
   /** Пауза между ударами оружия относительно меча (кинжал/копьё/молот — своя; два кинжала — по очереди, чаще). */
+  /** Пауза между атаками этим оружием — общая формула (heroAttackInterval): ПК, телефон, VR и боты одинаковы. */
+  private attackInterval(k: ItemKind | "fist"): number {
+    const w = k === "fist" ? "fist" : k === "bow" ? "bow" : isNewKind(k) ? k : "sword";
+    const dual = k === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
+    return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.stats, this.atkSpeedAffix, dual);
+  }
+
+  /** Длительность анимации взмаха (не темп!): короче паузы, чтобы клип успевал. */
   private intervalMul(k: ItemKind): number {
     if (!isNewKind(k)) return 1;
     const dual = k === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
-    return WEAPONS2[k].interval / BOT.attackCooldown / (dual ? DAGGER.dualTempo : 1);
+    return WEAPONS2[k].interval / WEAPONS2.sword.interval / (dual ? DAGGER.dualTempo : 1);
   }
 
   /** После удара кинжалом — следующий другой рукой (если кинжалов два). */
@@ -406,6 +418,8 @@ export class CombatSystem {
    * тот же, что сервер считает в rolledAtkSpeedMul. Game пересчитывает по складу.
    */
   atkSpeedAffix = 1;
+  /** ПК, ближний бой: сколько ещё ждать до следующего взмаха (общая пауза heroAttackInterval). */
+  private flatMeleeCd = 0;
 
   /** Смартфон: лук/посох — сколько держим кнопку и пауза между выстрелами. */
   private tpRangedHold = 0;
@@ -2227,9 +2241,11 @@ export class CombatSystem {
     const dual = item.kind === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
     if (this.dualDaggerCd > 0) this.dualDaggerCd -= dt;
 
-    if (primaryEdge && sw.t <= 0 && (!dual || this.dualDaggerCd <= 0)) {
-      // Скорость атаки от уровня укорачивает замах — и удар, и анимацию.
-      sw.dur = (COMBAT.swingDuration * this.intervalMul(item.kind)) / this.prog.meleeSpeed;
+    if (this.flatMeleeCd > 0) this.flatMeleeCd -= dt;
+    if (primaryEdge && sw.t <= 0 && this.flatMeleeCd <= 0 && (!dual || this.dualDaggerCd <= 0)) {
+      // Темп — общая пауза (как у ботов и на телефоне); замах — лишь анимация внутри неё.
+      this.flatMeleeCd = this.attackInterval(item.kind);
+      sw.dur = Math.min(this.flatMeleeCd, (COMBAT.swingDuration * this.intervalMul(item.kind)) / this.prog.meleeSpeed);
       if (dual) this.dualDaggerCd = sw.dur;
       this.flipDagger(item);
       sw.t = sw.dur;
@@ -2305,9 +2321,8 @@ export class CombatSystem {
   ): void {
     this.tpMeleeCd = Math.max(0, this.tpMeleeCd - dt);
     if (primaryEdge && this.tpMeleeCd <= 0 && this.turnCd <= 0) {
-      // Темп — как в характеристиках и у ботов (BOT.attackCooldown), с роллом «скорость атаки».
-      const atk = this.prog.meleeSpeed * this.atkSpeedAffix;
-      this.tpMeleeCd = (BOT.attackCooldown * (item ? this.intervalMul(item.kind) : 1)) / atk;
+      // Темп — как в характеристиках и у ботов (heroAttackInterval), с роллом «скорость атаки».
+      this.tpMeleeCd = this.attackInterval(item ? item.kind : "fist");
       if (item) this.flipDagger(item);
       this.onMeleeSwing?.(kind === "fist" ? undefined : item?.kind, hand);
       const at = item?.mesh.getAbsolutePosition() ?? this.player.eyePosition;
@@ -2316,7 +2331,7 @@ export class CombatSystem {
       this.tpPendingHit = {
         kind,
         hand,
-        at: performance.now() + (MELEE.tpContact / atk) * 1000,
+        at: performance.now() + (MELEE.tpContact / (this.prog.meleeSpeed * this.atkSpeedAffix)) * 1000,
       };
     }
     const ph = this.tpPendingHit;
@@ -2533,7 +2548,7 @@ export class CombatSystem {
         const dir = this.player.camera.getDirection(new Vector3(0, 0, 1));
         const origin = this.player.camera.globalPosition.add(dir.scale(0.5));
         this.fire(origin, dir, power);
-        this.flatBowCd = BOW.flatCooldown / this.prog.attackSpeed;
+        this.flatBowCd = this.attackInterval("bow") * BOW_REST_SHARE;
       }
     }
   }
@@ -2542,10 +2557,10 @@ export class CombatSystem {
    * Лук на смартфоне: короткий тап — выстрел на максимальной скорости сразу;
    * держишь дольше tpAimHold — включается вид из глаз и прицел (аим), можно
    * навести перетаскиванием, отпустил — выстрел (тоже макс. скорость).
-   * Между выстрелами пауза (tpCooldown / скорость атаки) — не поспамить.
+   * Между выстрелами — общая пауза heroAttackInterval (как у всех).
    */
   private tpBowShoot(power: number, dir?: Vector3): void {
-    this.tpRangedCd = BOW.tpCooldown / (this.prog.attackSpeed * this.atkSpeedAffix);
+    this.tpRangedCd = this.attackInterval("bow");
     this.nockArrow.setEnabled(false);
     this.nockLocal.copyFrom(this.bowParts.nockRest);
     const d = (dir ?? this.player.eyeForward).clone();
@@ -2654,7 +2669,7 @@ export class CombatSystem {
       return;
     }
     if (this.charge === 0) this.sfx.bowDraw();
-    const rate = (this.prog.attackSpeed * this.atkSpeedAffix) / Math.max(0.3, BOW.flatCooldown);
+    const rate = 1 / Math.max(0.05, this.attackInterval("bow") * (1 - BOW_REST_SHARE));
     this.charge = clamp(this.charge + rate * dt, 0, 1);
     this.nockArrow.setEnabled(true);
     this.placeNockArrow(

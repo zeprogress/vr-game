@@ -1,4 +1,4 @@
-import { PROGRESSION } from "./constants";
+import { MELEE, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { invested } from "./attrs2";
 import {
@@ -11,6 +11,7 @@ import {
   maxHp2,
   moveSpeed2,
   WEAPONS2,
+  DAGGER,
   physArmor2,
   physPower2,
   physTempo2,
@@ -138,6 +139,22 @@ export function attackSpeedFromLevel(level: number): number {
 export function meleeSpeedFor(level: number, a: AttrsIn = START): number {
   const lvl = attackSpeedFor(level, START);
   return (1 + softGain((lvl - 1) * MELEE_LEVEL_SHARE, MELEE_SOFT)) * agiTempo2(a, MELEE_AGI_SHARE);
+}
+
+/** Оружие с паузой между атаками (посох — своя формула staffCastInterval). */
+export type AttackWeapon = "sword" | "dagger" | "spear" | "hammer" | "bow" | "fist";
+
+/**
+ * Пауза между атаками героя, с — ОДНА для всех: ПК, телефон, VR (предел сервера) и боты
+ * (2026-10-05: раньше у ПК меч бил в 1.8, лук — в 2.3 раза чаще ботов и телефона).
+ * База — профиль оружия (WEAPONS2.*.interval), темп — уровень и ЛОВ; `mul` — ролл
+ * «скорость атаки» × клич × рывок; два кинжала бьют по очереди — чаще.
+ */
+export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1, dualDagger = false): number {
+  if (weapon === "bow") return WEAPONS2.bow.interval / (attackSpeedFor(level, a) * mul);
+  if (weapon === "fist") return MELEE.cooldown / (meleeSpeedFor(level, a) * mul);
+  const dual = weapon === "dagger" && dualDagger ? DAGGER.dualTempo : 1;
+  return WEAPONS2[weapon].interval / dual / (meleeSpeedFor(level, a) * mul);
 }
 
 /**

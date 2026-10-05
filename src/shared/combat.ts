@@ -40,6 +40,9 @@ export const WEAPON_REACH: Record<WeaponKind, number> = {
 };
 
 /** Минимум секунд между засчитанными ударами одним видом оружия. */
+/** Запас серверного предела темпа на сетевой лаг: удар засчитан, если прошло ≥ 85% паузы heroAttackInterval. */
+export const HIT_RATE_SLACK = 0.85;
+
 export const WEAPON_RATE: Record<WeaponKind, number> = {
   sword: COMBAT.hitCooldown * 0.85, // мягче клиентского, чтобы лаг не съедал удары
   fist: MELEE.cooldown * 0.6,

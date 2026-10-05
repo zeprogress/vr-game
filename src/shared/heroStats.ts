@@ -1,7 +1,7 @@
-import { BOT, BOW, CAMPFIRE, EVENT, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
+import { BOW, CAMPFIRE, EVENT, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { SCROLL } from "./shop";
 import { fireboltDamage } from "./magic";
-import { armorFrac, attackSpeedFor, dodgeChance, holdsOneItem, hpRegenFrac, maxHpFor, meleeSpeedFor, moveSpeedFor, staffCastInterval } from "./progression";
+import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
 import { ATTR2, invested } from "./attrs2";
 import { DAGGER, HAMMER, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
@@ -10,23 +10,15 @@ import { weaponDamage } from "./combat";
 import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
- * Сколько атак в секунду реально делает герой этим оружием — те же формулы,
- * что и бой: меч — приглушённый темп ближнего боя (meleeSpeedFor,
- * без своего потолка) от паузы BOT.attackCooldown; лук — полный темп (attackSpeedFor) от
- * BOT.bowCooldown; посох — это ОГНЕШАРЫ, не удары рукой: staffCastInterval
- * (скорость каста от МДР). `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
+ * Сколько атак в секунду реально делает герой этим оружием — та же пауза, что в бою у всех
+ * (heroAttackInterval: ПК, телефон, VR, боты); посох — огнешары (staffCastInterval, МДР).
+ * `affixBonus` — ролл «скорость атаки» (0.12 = +12%).
  */
 export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus = 0, dualDaggers = false): number {
   const mul = 1 + affixBonus;
-  if (cls === "bow") return (attackSpeedFor(level, a) * mul) / BOT.bowCooldown;
-  // Посох — огнешары: темп от скорости каста (МДР), не от ловкости.
   if (cls === "staff") return 1 / staffCastInterval(level, a, mul);
-  // Кинжал/копьё/молот — своя пауза между ударами (два кинжала — руки по очереди).
-  if (cls === "dagger" || cls === "spear" || cls === "hammer") {
-    const dual = cls === "dagger" && dualDaggers ? DAGGER.dualTempo : 1;
-    return (meleeSpeedFor(level, a) * mul * dual) / WEAPONS2[cls].interval;
-  }
-  return (meleeSpeedFor(level, a) * mul) / BOT.attackCooldown;
+  const w = cls === "bow" || cls === "dagger" || cls === "spear" || cls === "hammer" ? cls : "sword";
+  return 1 / heroAttackInterval(w, level, a, mul, dualDaggers);
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
