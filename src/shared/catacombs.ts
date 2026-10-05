@@ -1,4 +1,6 @@
 import { WORLD } from "./constants";
+import { CAT_GUARDS, CAT_SUPERBOSSES, type CatBoss, type CatWave } from "./mobs";
+export type { CatBoss, CatMech, CatWave, CatSeal, CatChampion } from "./mobs";
 import { HUB_CENTER } from "./hub";
 
 /**
@@ -120,50 +122,6 @@ export function catBossSpot(hall: number): { x: number; z: number } {
 
 // ---------------------------------------------------------------- сценарий
 
-export interface CatWave {
-  /** "slime"/"spitter" — базовые, иначе ключ ELITE_MOBS. */
-  type: string;
-  count: number;
-  /** +столько за каждого героя пати сверх первого. */
-  perHero: number;
-}
-
-export interface CatBoss {
-  /** Ключ ELITE_MOBS — модель и механики. */
-  key: string;
-  /** Имя в титрах и над моделью. */
-  name: string;
-  /** Подзаголовок титров. */
-  title: string;
-  /** Множители к HP и урону (сверх подгонки под уровень и размер пати), размер модели. */
-  hpMul: number;
-  dmgMul: number;
-  scale: number;
-  /** Свита — встаёт вместе с боссом. */
-  retinue: CatWave[];
-  /** Финальный: атаки дыханием/волной/дождём (как у охоты), призыв миньонов, 3 стадии. */
-  final?: boolean;
-  /** Приёмы стража (телеграф → удар): см. CatMech. */
-  mech?: CatMech[];
-  /** Постоянная свита: каждые every с из ворот вылезают count (+perHero за героя). */
-  adds?: { types: string[]; every: number; count: number; perHero: number };
-}
-
-/**
- * Приём стража: slam — круг под случайным героем (оглушает), ring — кольцо от
- * стража (отбрасывает, спасение — отбежать), barrage — град из кругов по залу.
- * `fx` — вид эффекта (как у опасностей зала: 0 камни, 1 огонь, 2 души).
- */
-export interface CatMech {
-  kind: "slam" | "ring" | "barrage";
-  name: string;
-  every: number;
-  fx: 0 | 1 | 2;
-  /** Урон — доля макс. HP героя. */
-  dmg: number;
-  r: number;
-}
-
 export interface CatStage {
   hall: number;
   /** Волны по очереди (следующая — когда зачищена предыдущая) — запасной состав, если пулы не заданы. */
@@ -176,8 +134,10 @@ export interface CatStage {
   wavePerHero?: number;
   /** Босс после волн. */
   boss?: CatBoss;
-  /** Случайный страж из этих (каждый заход — свой). */
-  bosses?: CatBoss[];
+  /** Случайный страж из этих (каждый заход — свой; пулы — mobs.ts). */
+  bosses?: readonly CatBoss[];
+  /** Сколько волн зала приходят с чемпионом (мини-боссом из CAT_CHAMPIONS[hall]). */
+  champions?: number;
   /** Сундук за стадию: "gold" — по золотому оружию каждому, "final" — суперприз. */
   chest?: "gold" | "final";
 }
@@ -190,7 +150,7 @@ export const CATACOMBS = {
   /** Потолок пати. */
   maxParty: 12,
   /** Жёсткий предел самого забега, с (после — провал и возврат в лагерь). */
-  runSec: 10 * 60,
+  runSec: 12 * 60, // 2026-10-05: было 10 — стражи в каждом зале и чемпионы
   /** Пауза перед первой волной (пролёт камеры, титры), с. */
   introSec: 5,
   /** Пауза между волнами, с. */
@@ -218,15 +178,20 @@ export const CATACOMBS = {
   levelMin: 0.35,
   levelMax: 1.6,
   /** Боссы толще с каждым героем: hp × (1 + bossPerHero × (n − 1)). */
-  bossPerHero: 0.7,
+  bossPerHero: 0.55,
+  /** Здоровье стражей и чемпионов × (общая настройка сложности катакомб). */
+  guardHpMul: 0.75,
+  /** Чемпион (мини-босс волны): толще с каждым героем на эту долю, размер модели ×. */
+  champPerHero: 0.4,
+  champScale: 1.45,
   /** Угроза растёт от зала к залу: HP и урон мобов × (1 + threat × номер стадии). */
-  threatHp: 0.12,
-  threatDmg: 0.15,
+  threatHp: 0.1,
+  threatDmg: 0.16,
   /**
    * Урон всех мобов катакомб: «пали все — поражение», бесконечных возрождений нет —
    * отряд должен переживать бой, а не брать числом смертей.
    */
-  dmgScale: 0.6,
+  dmgScale: 0.7, // 2026-10-06: урон выше, здоровье стражей ниже — без лекаря/танка тяжело, бои короче
   /** Урон опасностей зала и приёмов стражей (доля HP) — по той же причине. */
   hazardScale: 0.65,
   /** Финальная награда: жетоны ◈ каждому, бафф (мин). */
@@ -243,72 +208,27 @@ export const CATACOMBS = {
   buffMinutes: 30,
   stages: [
     {
-      hall: 0, waves: [], waveCount: 3, waveBase: 3, wavePerHero: 1.4,
+      hall: 0, waves: [], waveCount: 3, waveBase: 3, wavePerHero: 1.5, champions: 1,
       pool: ["boneWraith", "spikyBlob", "orcGunner", "ruinMage", "frog", "bee"],
+      bosses: CAT_GUARDS[0],
     },
     {
-      hall: 1, waves: [], waveCount: 2, waveBase: 4, wavePerHero: 1.6,
+      hall: 1, waves: [], waveCount: 2, waveBase: 4, wavePerHero: 1.7, champions: 1,
       pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus"],
-      bosses: [
-        {
-          key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Галереи мёртвых — поднимает мёртвых, костяные шипы",
-          // Вождь на поляне ослаблен (HP 4800→3800, урон 7→5.5) — страж катакомб прежней силы.
-          hpMul: 3.71, dmgMul: 2.04, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
-          mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
-          adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
-        },
-        {
-          key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Галереи мёртвых — споры и грибной град",
-          hpMul: 1.82, dmgMul: 1.5, scale: 1.4, retinue: [{ type: "spikyBlob", count: 4, perHero: 1 }],
-          mech: [{ kind: "barrage", name: "Грибной град", every: 9, fx: 2, dmg: 0.25, r: 2.8 }, { kind: "ring", name: "Споровый взрыв", every: 14, fx: 2, dmg: 0.25, r: 6.5 }],
-          adds: { types: ["spikyBlob", "frog"], every: 14, count: 3, perHero: 0.7 },
-        },
-        {
-          key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Галереи мёртвых — щупальца и удары с неба",
-          hpMul: 1.89, dmgMul: 1.5, scale: 1.5, retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
-          mech: [{ kind: "slam", name: "Удар щупальца", every: 6, fx: 2, dmg: 0.28, r: 3.4 }, { kind: "barrage", name: "Чернильный ливень", every: 12, fx: 2, dmg: 0.22, r: 2.6 }],
-          adds: { types: ["boneWraith", "bee"], every: 15, count: 2, perHero: 0.6 },
-        },
-      ],
+      bosses: CAT_GUARDS[1],
       chest: "gold",
     },
     {
-      hall: 2, waves: [], waveCount: 2, waveBase: 3, wavePerHero: 1.3,
+      hall: 2, waves: [], waveCount: 2, waveBase: 3, wavePerHero: 1.4, champions: 2,
       pool: ["spearThrower", "spikeTail", "rockBreaker", "frostDemon", "boneWraith"],
-      bosses: [
-        {
-          key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Нижнего яруса — таран и огненное кольцо",
-          hpMul: 1.82, dmgMul: 1.6, scale: 1.7,
-          retinue: [{ type: "spikyBlob", count: 3, perHero: 1 }, { type: "spearThrower", count: 1, perHero: 0.3 }],
-          mech: [{ kind: "ring", name: "Огненное кольцо", every: 9, fx: 1, dmg: 0.3, r: 7.5 }, { kind: "barrage", name: "Дождь углей", every: 11, fx: 1, dmg: 0.24, r: 2.8 }],
-          adds: { types: ["spikyBlob", "spearThrower"], every: 16, count: 2, perHero: 0.6 },
-        },
-        {
-          key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Нижнего яруса — лёд, щит отражения, обвалы",
-          hpMul: 1.82, dmgMul: 1.5, scale: 1.7,
-          retinue: [{ type: "boneWraith", count: 2, perHero: 1 }, { type: "spikeTail", count: 1, perHero: 0.3 }],
-          mech: [{ kind: "slam", name: "Ледяной молот", every: 7, fx: 0, dmg: 0.32, r: 3.8 }, { kind: "barrage", name: "Обвал свода", every: 12, fx: 0, dmg: 0.25, r: 3 }],
-          adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
-        },
-        {
-          key: "rockBreaker", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
-          hpMul: 1.54, dmgMul: 1.4, scale: 1.8, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
-          mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
-          adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
-        },
-      ],
+      bosses: CAT_GUARDS[2],
       chest: "gold",
     },
     {
       hall: 3,
       waves: [],
-      boss: {
-        key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
-        hpMul: 0.45, dmgMul: 1.1, scale: 1.5,
-        retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
-        final: true,
-        adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
-      },
+      // Супербосс — каждый заход один случайный из трёх (mobs.ts CAT_SUPERBOSSES).
+      bosses: CAT_SUPERBOSSES,
       chest: "final",
     },
   ] as CatStage[],
@@ -369,7 +289,7 @@ export const CAT_FINAL = {
   rageAt: 0.4,
   /** Хранителей печати (сколько убить, чтобы снять щит) и их тип. */
   guardians: 3,
-  guardianKey: "boneChief",
+  /** Здоровье хранителя печати (вид — CatBoss.seal.key у каждого супербосса). */
   guardianHp: 0.6,
   /** Метеоры на стадии 2 — каждые, с. */
   meteorEvery: 7,

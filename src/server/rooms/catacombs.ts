@@ -21,7 +21,9 @@ import {
   type CatHazardKind,
   type CatMech,
   type CatWave,
+  type CatChampion,
 } from "#shared/catacombs";
+import { CAT_CHAMPIONS, CAT_MECH_POOL } from "#shared/mobs";
 import type { CatacombMsg, LootItem } from "#shared/net/messages";
 
 /**
@@ -102,11 +104,22 @@ interface StagePlan {
   affixes: (CatAffix | null)[];
   shrine: CatShrine | null;
   boss?: CatBoss;
+  /** Чемпион (мини-босс) каждой волны или null. */
+  champs: (CatChampion | null)[];
   curse: CatCurse;
   hazard: CatHazardKind;
 }
 
 const pick = <T>(a: readonly T[]): T => a[Math.floor(Math.random() * a.length)];
+
+/** Страж на этот заход: свои приёмы + 1 случайный из общего пула (без повторов по имени) — бой каждый раз другой. */
+function withRandomMechs(b: CatBoss): CatBoss {
+  const own = b.mech ?? [];
+  const extra = CAT_MECH_POOL.filter((m) => !own.some((o) => o.name === m.name) && !own.some((o) => o.kind === m.kind && o.fx === m.fx))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 1);
+  return { ...b, mech: [...own, ...extra] };
+}
 
 /** Режиссёр катакомб: сбор, забег по залам, награды, возврат. */
 export class CatacombDirector {
@@ -161,7 +174,7 @@ export class CatacombDirector {
   /** План каждого зала на этот заход. */
   private plan: StagePlan[] = [];
   /** Волна «на подходе»: ворота уже открылись, мобы выйдут в `at`. */
-  private pending: { group: CatWave[]; gates: { x: number; z: number }[]; at: number } | null = null;
+  private pending: { group: CatWave[]; gates: { x: number; z: number }[]; at: number; champ?: CatChampion | null } | null = null;
   /** Переход: когда подтянуть отставших к решётке (CATACOMBS.pullSec после подъёма) и сделано ли. */
   private gatherAt = 0;
   private gathered = true;
@@ -405,6 +418,7 @@ export class CatacombDirector {
           if (now >= this.pending.at) {
             this.spawnAffix = this.pendingAffix;
             this.spawnGroup(this.pending.group, this.pending.gates);
+            if (this.pending.champ) this.spawnChampion(this.pending.champ, this.pending.gates[0]);
             this.spawnAffix = null;
             this.pending = null;
           }
@@ -422,7 +436,7 @@ export class CatacombDirector {
             const ambush = Math.random() < 0.35 && this.wave > 0;
             if (ambush) gates.push(back[0]);
             this.host.gateFx(gates);
-            this.pending = { group: plan.waves[this.wave], gates, at: now + 1300 };
+            this.pending = { group: plan.waves[this.wave], gates, at: now + 1300, champ: plan.champs[this.wave] ?? null };
             const affix = plan.affixes[this.wave] ?? null;
             this.pendingAffix = affix;
             this.wave++;
@@ -569,11 +583,18 @@ export class CatacombDirector {
     }
     // Аффиксы волн: первая волна первого зала — без, дальше ~половина волн с аффиксом.
     const affixes = waves.map((_, w) => (st.hall === 0 && w === 0) || Math.random() > 0.5 ? null : pick(CAT_AFFIXES));
+    // Чемпионы — на случайных волнах зала (в первой волне первого зала — нет).
+    const champs: (CatChampion | null)[] = waves.map(() => null);
+    const pool = CAT_CHAMPIONS[st.hall] ?? [];
+    const slots = waves.map((_, w) => w).filter((w) => !(st.hall === 0 && w === 0)).sort(() => Math.random() - 0.5);
+    for (let c = 0; c < Math.min(st.champions ?? 0, slots.length) && pool.length; c++) champs[slots[c]] = pick(pool);
+    const base = st.bosses ? pick(st.bosses) : st.boss;
     return {
       waves,
       affixes,
+      champs,
       shrine: !last && Math.random() < CAT_SHRINE.chance ? pick(CAT_SHRINES) : null,
-      boss: st.bosses ? pick(st.bosses) : st.boss,
+      boss: base ? withRandomMechs(base) : undefined,
       curse: last ? { name: "Трон Бездны", desc: "Владыка ждёт", hpMul: 1, dmgMul: 1, hazardRate: 0.6, lootMul: 1 } : pick(CAT_CURSES),
       hazard: pick(CAT_HAZARD.kinds),
     };
@@ -619,6 +640,21 @@ export class CatacombDirector {
     }
   }
 
+  /** Чемпион — мини-босс волны: увеличенный элитный моб со своими механиками, толще с каждым героем. */
+  private spawnChampion(c: CatChampion, at: { x: number; z: number }): void {
+    const n = this.heroCount();
+    const id = this.host.spawn(c.key, at.x, at.z, {
+      hpMul: c.hpMul * CATACOMBS.guardHpMul * (1 + CATACOMBS.champPerHero * (n - 1)) * this.threat("hp"),
+      dmgMul: c.dmgMul * this.threat("dmg"),
+      scaleMul: CATACOMBS.champScale,
+      name: c.name,
+      partyLevel: this.partyLevel,
+      affix: this.spawnAffix,
+    });
+    this.mobs.add(id);
+    this.host.announce({ kind: "boss", title: `Чемпион: ${c.name}`, sub: "мини-босс волны", secs: 3 });
+  }
+
   private spawnBoss(b: CatBoss, hall: number): void {
     this.mechAt.clear();
     this.addsAt = this.host.now() + (b.adds?.every ?? 10) * 1000;
@@ -629,7 +665,7 @@ export class CatacombDirector {
     const at = catBossSpot(hall);
     const n = this.heroCount();
     this.bossId = this.host.spawn(b.key, at.x, at.z, {
-      hpMul: b.hpMul * (1 + CATACOMBS.bossPerHero * (n - 1)) * this.threat("hp"),
+      hpMul: b.hpMul * (b.final ? 1 : CATACOMBS.guardHpMul) * (1 + CATACOMBS.bossPerHero * (n - 1)) * this.threat("hp"),
       dmgMul: b.dmgMul * this.threat("dmg"),
       scaleMul: b.scale,
       name: b.name,
@@ -707,15 +743,15 @@ export class CatacombDirector {
           const a = (i / F.guardians) * Math.PI * 2 + Math.PI / 2;
           const gx = H.x + Math.cos(a) * H.r * 0.55;
           const gz = H.z + Math.sin(a) * H.r * 0.55;
-          const id = this.host.spawn(F.guardianKey, gx, gz, {
+          const id = this.host.spawn(b.seal?.key ?? "boneChief", gx, gz, {
             hpMul: F.guardianHp * (1 + 0.35 * (this.party.size - 1)) * this.threat("hp"), dmgMul: this.threat("dmg"), scaleMul: 1.3,
-            name: "Хранитель печати", partyLevel: this.partyLevel,
+            name: b.seal?.name ?? "Хранитель печати", partyLevel: this.partyLevel,
           });
           this.guardians.add(id);
           this.mobs.add(id);
         }
         this.meteorAt = now + 2500;
-        this.host.announce({ kind: "boss", title: "Печать Бездны", sub: `Владыка под щитом — разбейте ${F.guardians} хранителей печати!`, secs: 6 });
+        this.host.announce({ kind: "boss", title: b.seal?.sealTitle ?? "Печать Бездны", sub: `${b.name} под щитом — разбейте ${F.guardians} хранителей!`, secs: 6 });
       }
     } else if (this.finalPhase === 2) {
       for (const g of [...this.guardians]) if (!this.host.alive(g)) this.guardians.delete(g);
@@ -733,36 +769,36 @@ export class CatacombDirector {
           const r = Math.random() * 4;
           pts.push(h ? { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r } : { x: H.x + Math.cos(a) * H.r * 0.5, z: H.z + Math.sin(a) * H.r * 0.5 });
         }
-        this.host.hazard("flames", pts, { r: 3, dmg: 0.22 });
+        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], pts, { r: 3, dmg: 0.22 });
       }
       if (this.guardians.size === 0) {
         this.host.setImmune(this.bossId, false);
         this.host.stunMob(this.bossId, F.stunAfterSeal);
         this.finalPhase = 2.5;
-        this.host.announce({ kind: "boss", title: "Печать разбита!", sub: `Владыка оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
+        this.host.announce({ kind: "boss", title: "Печать разбита!", sub: `${b.name} оглушён на ${F.stunAfterSeal} с — бейте!`, secs: 5 });
       }
     } else if (this.finalPhase === 2.5) {
       this.host.finalTick(this.bossId);
-      if (frac < F.rageAt) this.enterRage(now, hall);
+      if (frac < F.rageAt) this.enterRage(now, hall, b);
     } else {
       // Стадия 3 — Ярость Бездны: кольца пламени от Владыки, всё чаще.
       this.host.finalTick(this.bossId);
       if (now >= this.ringAt) {
         this.ringAt = now + F.ringEvery * 1000;
-        this.host.hazard("flames", [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.3, knock: 7, delay: 1.8 });
+        this.host.hazard(CAT_HAZARD.kinds[b.seal?.fx ?? 1], [{ x: info.x, z: info.z }], { r: F.ringR, dmg: 0.3, knock: 7, delay: 1.8 });
       }
     }
-    if (this.finalPhase === 1 && frac < F.rageAt) this.enterRage(now, hall);
+    if (this.finalPhase === 1 && frac < F.rageAt) this.enterRage(now, hall, b);
   }
 
-  private enterRage(now: number, hall: number): void {
+  private enterRage(now: number, hall: number, b: CatBoss): void {
     this.finalPhase = 3;
     this.host.enrage(this.bossId);
     const at = catBossSpot(hall);
     this.host.bossFx(at.x, at.z, true);
     this.ringAt = now + 3000;
     this.addsAt = now + 2000;
-    this.host.announce({ kind: "boss", title: "Ярость Бездны", sub: "Владыка в огне — кольца пламени, отбегайте!", secs: 6 });
+    this.host.announce({ kind: "boss", title: b.seal?.rageTitle ?? "Ярость Бездны", sub: b.seal?.rageSub ?? "кольца пламени — отбегайте!", secs: 6 });
   }
 
   /** Приём стража: телеграф → удар (через опасности зала, боты уворачиваются). */
@@ -820,11 +856,11 @@ export class CatacombDirector {
         this.phase = CAT_PHASE.outro;
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
         this.host.announce({
-          kind: "win", title: "Владыка Бездны повержен!",
+          kind: "win", title: `${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен!`,
           sub: `каждому — уникальное оружие, свиток, ${CATACOMBS.finalTokens} ◈ и опыт · ×2 опыт и урон ${CATACOMBS.buffMinutes} мин`,
           loot, secs: 12,
         });
-        this.host.chat(`☠ Катакомбы пройдены! Владыка Бездны повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
+        this.host.chat(`☠ Катакомбы пройдены! ${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
         this.pushState();
         return;
       }

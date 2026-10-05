@@ -936,7 +936,8 @@ if (ONLY.has("catacombs")) {
   };
   const chat: string[] = [];
   room.reply = (t: string) => void chat.push(t);
-  const kits = ["меч+щит", "кинжал×2", "посох", "лук", "копьё", "молот"];
+  // --kits меч+щит,посох,лук — свой состав отряда (сбалансированный/нет); иначе по кругу.
+  const kits = (arg("--kits") ?? "меч+щит,кинжал×2,посох,лук,копьё,молот").split(",");
   // --players <players.json с прода> --roster ник1,ник2,… — отряд из НАСТОЯЩИХ героев зрителей
   // (уровень, атрибуты, оружие с роллами, умения — как в сейве). Без --players — синтетический отряд.
   const prodFile = arg("--players");
@@ -955,7 +956,8 @@ if (ONLY.has("catacombs")) {
       return { id: bot.id, norm, bot };
     });
   } else {
-    bots = Array.from({ length: n }, (_, i) => addBot(room, `cat${i}`, { lvl, load: LOADOUTS.find((l) => l.id === kits[i % kits.length])! }));
+    const nn = arg("--kits") ? kits.length : n;
+    bots = Array.from({ length: nn }, (_, i) => addBot(room, `cat${i}`, { lvl, load: LOADOUTS.find((l) => l.id === kits[i % kits.length])! }));
     for (const b of bots) b.bot.state.maxHp = b.bot.state.hp = maxHpFor(lvl, b.bot.state);
   }
   for (const b of bots) {

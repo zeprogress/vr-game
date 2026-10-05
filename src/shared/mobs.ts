@@ -769,3 +769,196 @@ export const SHARD = {
   hopSpeed: 5.2,
   hopInterval: 0.42,
 } as const;
+
+// ================================================================ катакомбы: стражи, чемпионы, супербоссы
+
+export interface CatWave {
+  /** "slime"/"spitter" — базовые, иначе ключ ELITE_MOBS. */
+  type: string;
+  count: number;
+  /** +столько за каждого героя пати сверх первого. */
+  perHero: number;
+}
+
+/**
+ * Приём стража: slam — круг под случайным героем (оглушает), ring — кольцо от
+ * стража (отбрасывает, спасение — отбежать), barrage — град из кругов по залу.
+ * `fx` — вид эффекта (как у опасностей зала: 0 камни, 1 огонь, 2 души).
+ */
+export interface CatMech {
+  kind: "slam" | "ring" | "barrage";
+  name: string;
+  every: number;
+  fx: 0 | 1 | 2;
+  /** Урон — доля макс. HP героя. */
+  dmg: number;
+  r: number;
+}
+
+/** Супербосс: стадия «Печать» (под щитом, хранители), свой обстрел и ярость. */
+export interface CatSeal {
+  /** Хранители печати: вид моба и имя над ним. */
+  key: string;
+  name: string;
+  /** Обстрел на стадии печати и кольца в ярости: 0 обвалы, 1 пламя, 2 души. */
+  fx: 0 | 1 | 2;
+  sealTitle: string;
+  rageTitle: string;
+  rageSub: string;
+}
+
+export interface CatBoss {
+  /** Ключ ELITE_MOBS — модель и механики. */
+  key: string;
+  /** Имя в титрах и над моделью. */
+  name: string;
+  /** Подзаголовок титров. */
+  title: string;
+  /** Множители к HP и урону (сверх подгонки под уровень и размер пати), размер модели. */
+  hpMul: number;
+  dmgMul: number;
+  scale: number;
+  /** Свита — встаёт вместе с боссом. */
+  retinue: CatWave[];
+  /** Финальный супербосс: атаки дыханием/волной/дождём, призыв миньонов, 3 стадии (см. seal). */
+  final?: boolean;
+  seal?: CatSeal;
+  /** Фирменные приёмы (телеграф → удар); каждый заход к ним добавляются 1–2 случайных из CAT_MECH_POOL. */
+  mech?: CatMech[];
+  /** Постоянная свита: каждые every с из ворот вылезают count (+perHero за героя). */
+  adds?: { types: string[]; every: number; count: number; perHero: number };
+}
+
+/** Общий пул приёмов: каждый заход страж получает 1–2 случайных сверх своих — бои каждый раз разные. */
+export const CAT_MECH_POOL: readonly CatMech[] = [
+  { kind: "slam", name: "Удар из-под земли", every: 8, fx: 0, dmg: 0.28, r: 3.4 },
+  { kind: "slam", name: "Огненный столп", every: 8, fx: 1, dmg: 0.28, r: 3.2 },
+  { kind: "slam", name: "Хватка мертвеца", every: 9, fx: 2, dmg: 0.26, r: 3.6 },
+  { kind: "ring", name: "Ударная волна", every: 13, fx: 0, dmg: 0.26, r: 7 },
+  { kind: "ring", name: "Кольцо пламени", every: 12, fx: 1, dmg: 0.28, r: 7.5 },
+  { kind: "ring", name: "Стон душ", every: 13, fx: 2, dmg: 0.24, r: 7 },
+  { kind: "barrage", name: "Камнепад", every: 11, fx: 0, dmg: 0.24, r: 3 },
+  { kind: "barrage", name: "Дождь углей", every: 11, fx: 1, dmg: 0.24, r: 2.8 },
+  { kind: "barrage", name: "Град черепов", every: 12, fx: 2, dmg: 0.22, r: 2.8 },
+];
+
+/** Стражи залов (случайный каждый заход). Индекс — номер зала 0..2. */
+export const CAT_GUARDS: readonly (readonly CatBoss[])[] = [
+  [
+    {
+      key: "golem", name: "Тарг, Голем-привратник", title: "страж Преддверия — обвалы и осколки",
+      hpMul: 4.5, dmgMul: 1.2, scale: 1.5, retinue: [{ type: "spikyBlob", count: 2, perHero: 1 }],
+      mech: [{ kind: "barrage", name: "Обвал", every: 10, fx: 0, dmg: 0.22, r: 2.8 }],
+      adds: { types: ["spikyBlob", "frog"], every: 16, count: 2, perHero: 0.6 },
+    },
+    {
+      key: "ruinMage", name: "Ксарат, Архимаг руин", title: "страж Преддверия — волны магии и огонь",
+      hpMul: 18, dmgMul: 2.5, scale: 1.8, retinue: [{ type: "orcGunner", count: 2, perHero: 0.6 }],
+      mech: [{ kind: "ring", name: "Магический взрыв", every: 11, fx: 1, dmg: 0.24, r: 6.5 }],
+      adds: { types: ["orcGunner", "ruinMage"], every: 15, count: 2, perHero: 0.6 },
+    },
+    {
+      key: "orcGunner", name: "Гразк, Орк-канонир", title: "страж Преддверия — обстрел и засады",
+      hpMul: 20, dmgMul: 4, scale: 1.9, retinue: [{ type: "orcGunner", count: 2, perHero: 0.8 }],
+      mech: [{ kind: "barrage", name: "Залп картечи", every: 9, fx: 1, dmg: 0.22, r: 2.6 }],
+      adds: { types: ["orcGunner", "frog"], every: 15, count: 2, perHero: 0.6 },
+    },
+  ],
+  [
+    {
+      key: "boneChief", name: "Мор'Каз, Костяной вождь", title: "страж Галереи мёртвых — поднимает мёртвых, костяные шипы",
+      hpMul: 3.71, dmgMul: 2.04, scale: 1.6, retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
+      mech: [{ kind: "slam", name: "Костяные шипы", every: 7, fx: 2, dmg: 0.3, r: 3.6 }, { kind: "ring", name: "Вопль мертвецов", every: 13, fx: 2, dmg: 0.25, r: 7 }],
+      adds: { types: ["boneWraith", "spikyBlob"], every: 15, count: 2, perHero: 0.6 },
+    },
+    {
+      key: "mushColossus", name: "Гнилень, Грибной колосс", title: "страж Галереи мёртвых — споры и грибной град",
+      hpMul: 1.82, dmgMul: 1.5, scale: 1.4, retinue: [{ type: "spikyBlob", count: 4, perHero: 1 }],
+      mech: [{ kind: "barrage", name: "Грибной град", every: 9, fx: 2, dmg: 0.25, r: 2.8 }, { kind: "ring", name: "Споровый взрыв", every: 14, fx: 2, dmg: 0.25, r: 6.5 }],
+      adds: { types: ["spikyBlob", "frog"], every: 14, count: 3, perHero: 0.7 },
+    },
+    {
+      key: "skySquid", name: "Ктаар, Спрут бездны", title: "страж Галереи мёртвых — щупальца и удары с неба",
+      hpMul: 1.89, dmgMul: 1.5, scale: 1.5, retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
+      mech: [{ kind: "slam", name: "Удар щупальца", every: 6, fx: 2, dmg: 0.28, r: 3.4 }, { kind: "barrage", name: "Чернильный ливень", every: 12, fx: 2, dmg: 0.22, r: 2.6 }],
+      adds: { types: ["boneWraith", "bee"], every: 15, count: 2, perHero: 0.6 },
+    },
+  ],
+  [
+    {
+      key: "infernoDemon", name: "Аргал, Адский страж", title: "хранитель Нижнего яруса — таран и огненное кольцо",
+      hpMul: 1.82, dmgMul: 1.6, scale: 1.7,
+      retinue: [{ type: "spikyBlob", count: 3, perHero: 1 }, { type: "spearThrower", count: 1, perHero: 0.3 }],
+      mech: [{ kind: "ring", name: "Огненное кольцо", every: 9, fx: 1, dmg: 0.3, r: 7.5 }, { kind: "barrage", name: "Дождь углей", every: 11, fx: 1, dmg: 0.24, r: 2.8 }],
+      adds: { types: ["spikyBlob", "spearThrower"], every: 16, count: 2, perHero: 0.6 },
+    },
+    {
+      key: "frostDemon", name: "Изгаар, Ледяной страж", title: "хранитель Нижнего яруса — лёд, щит отражения, обвалы",
+      hpMul: 1.82, dmgMul: 1.5, scale: 1.7,
+      retinue: [{ type: "boneWraith", count: 2, perHero: 1 }, { type: "spikeTail", count: 1, perHero: 0.3 }],
+      mech: [{ kind: "slam", name: "Ледяной молот", every: 7, fx: 0, dmg: 0.32, r: 3.8 }, { kind: "barrage", name: "Обвал свода", every: 12, fx: 0, dmg: 0.25, r: 3 }],
+      adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
+    },
+    {
+      key: "rockBreaker", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
+      hpMul: 1.54, dmgMul: 1.4, scale: 0.6, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
+      mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
+      adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
+    },
+  ],
+];
+
+/** Чемпион — мини-босс, приходит с волной: увеличенный элитный моб со своими механиками. По залам 0..2. */
+export interface CatChampion {
+  key: string;
+  name: string;
+  hpMul: number;
+  dmgMul: number;
+}
+export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
+  [
+    { key: "orcGunner", name: "Вожак орков-стрелков", hpMul: 10, dmgMul: 2.5 },
+    { key: "ruinMage", name: "Старший чародей", hpMul: 9, dmgMul: 2 },
+    { key: "frog", name: "Жабий царь", hpMul: 18, dmgMul: 3 },
+    { key: "golem", name: "Голем-громила", hpMul: 2.2, dmgMul: 1 },
+  ],
+  [
+    { key: "boneWraith", name: "Князь призраков", hpMul: 3, dmgMul: 1.3 },
+    { key: "mushColossus", name: "Грибной исполин", hpMul: 1.4, dmgMul: 1.1 },
+    { key: "spikyBlob", name: "Шипастый праотец", hpMul: 30, dmgMul: 4 },
+    { key: "skySquid", name: "Спрут-охотник", hpMul: 1.6, dmgMul: 1.2 },
+  ],
+  [
+    { key: "spearThrower", name: "Вождь копейщиков", hpMul: 1.6, dmgMul: 1.2 },
+    { key: "spikeTail", name: "Шипохвост-патриарх", hpMul: 1.8, dmgMul: 1.2 },
+    { key: "rockBreaker", name: "Скалолом-вожак", hpMul: 1.3, dmgMul: 1.1 },
+    { key: "frostDemon", name: "Морозный князь", hpMul: 1.6, dmgMul: 1.1 },
+  ],
+];
+
+/** Супербоссы Трона Бездны — каждый заход один случайный из трёх. */
+export const CAT_SUPERBOSSES: readonly CatBoss[] = [
+  {
+    key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
+    hpMul: 0.34, dmgMul: 1.1, scale: 1.5, final: true,
+    retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
+    seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },
+    adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
+  },
+  {
+    key: "boneChief", name: "Мор'Гхаш, Костяной Император", title: "владыка склепов — армия мёртвых и гейзеры душ",
+    hpMul: 2.1, dmgMul: 1.3, scale: 2.4, final: true,
+    retinue: [{ type: "boneWraith", count: 3, perHero: 1 }],
+    seal: { key: "boneWraith", name: "Призрачный страж", fx: 2, sealTitle: "Костяной трон", rageTitle: "Гнев Императора", rageSub: "гейзеры душ кольцами — отбегайте!" },
+    mech: [{ kind: "slam", name: "Длань мертвеца", every: 7, fx: 2, dmg: 0.3, r: 3.8 }],
+    adds: { types: ["boneWraith", "boneWraith", "spikyBlob"], every: 20, count: 2, perHero: 0.5 },
+  },
+  {
+    key: "rockBreaker", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
+    hpMul: 1.45, dmgMul: 0.9, scale: 1.15, final: true,
+    retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
+    seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },
+    mech: [{ kind: "barrage", name: "Обвал горы", every: 8, fx: 0, dmg: 0.26, r: 3.2 }],
+    adds: { types: ["spikyBlob", "golem", "rockBreaker"], every: 22, count: 2, perHero: 0.4 },
+  },
+];
