@@ -528,14 +528,6 @@ function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): 
   return best;
 }
 
-/**
- * Воин (он же танк, мечник) — бот с мечом в правой руке. Меч совместим только
- * со вторым мечом или щитом (см. clampHandPair), поэтому проверка по правой
- * руке достаточна. Все воины получают бонусы BOT.warrior.
- */
-function isWarriorBot(p: PlayerState): boolean {
-  return p.rightCls === "sword";
-}
 
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
 const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
@@ -3124,7 +3116,7 @@ export class ZoneRoom extends Room<ZoneState> {
       physDef: shieldPhysDef(shieldOf(p, trt)?.inst),
       magDef: shieldMagDef(shieldOf(p, trt)?.inst),
       aegisHeal: isAegis(shieldOf(p, trt)?.inst) ? SHIELD.aegisHealFrac : 0,
-      warriorMul: heroId.startsWith("bot:") && isWarriorBot(p) ? BOT.warrior.dmgMul : 1,
+      warriorMul: 1,
     };
     this.towerRuns
       .start(
@@ -6178,7 +6170,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const distToShore = Math.hypot(shoreX - p.head.x, shoreZ - p.head.z);
     if (distToShore > 2) {
       const dist = distToShore || 1e-6;
-      const speed = moveSpeedFor(p.level, p) * BOT.speedFactor;
+      const speed = moveSpeedFor(p.level, p) * (p.scrollWindSecs > 0 ? SCROLL.windMul : 1);
       const wvx = ((shoreX - p.head.x) / dist) * speed;
       const wvz = ((shoreZ - p.head.z) / dist) * speed;
       const accel = Math.min(1, dt * 6);
@@ -6313,10 +6305,10 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
 
-    // Воин крепче: держим его максимум HP с множителем BOT.warrior.hpMul (при
-    // смене уровня/статов/оружия — доводим и текущее HP на прибавку).
+    // Максимум HP — как у игрока (раньше воин-бот получал ×1.6; 2026-10-05 — боты и игроки одинаковы).
+    // При смене уровня/статов/оружия доводим и текущее HP на прибавку.
     {
-      const want = maxHpFor(p.level, p) * (isWarriorBot(p) ? BOT.warrior.hpMul : 1);
+      const want = maxHpFor(p.level, p);
       if (Math.abs(p.maxHp - want) > 0.5) {
         const gain = Math.max(0, want - p.maxHp);
         p.maxHp = want;
@@ -6335,8 +6327,6 @@ export class ZoneRoom extends Room<ZoneState> {
     // оранжевыми уровня из-за того, что глоток посчитали по старому HP.
     this.botDrink(bot);
     this.botGroupHeal(bot, dt);
-    this.botStunBash(bot, dt);
-    this.botArrowRain(bot, dt);
     this.botClassSkills(bot, dt);
 
     // !рыбачить — идём на озеро и рыбачим вместо обычного боя, отдельная
@@ -6763,7 +6753,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Скорость бега — от характеристик персонажа (как у живого игрока), чуть
     // медленнее ради читаемости на стриме.
     const botSpeed =
-      moveSpeedFor(p.level, p) * BOT.speedFactor * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1) *
+      moveSpeedFor(p.level, p) * (p.scrollWindSecs > 0 ? SCROLL.windMul : 1) * (bot.rt.slowUntil > this.elapsed ? 1 - bot.rt.slowFrac : 1) *
       (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed ? 1 + ABYSS.move : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
@@ -7066,7 +7056,6 @@ export class ZoneRoom extends Room<ZoneState> {
     const dmg =
       weaponDamage(kind, p.level, p, multIn(p, "right") * rolledDmgMul(p, "right", bot.rt)) *
       (dualDagger ? DAGGER.dualDmg : 1) *
-      (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
       critHit *
       this.buffMult(bot.id, "dmg") *
       this.abyssStrikeMul(p, bot.rt);
@@ -7146,8 +7135,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Чаще, чем у старых ботовых умений: умений из пула два, и условия у них свои — иначе откат простаивал.
     if (Math.random() >= BOT.skillChancePerSec * 3 * dt) return;
-    const legacy = (k: SkillId): boolean =>
-      (k === "stunBash" && p.rightCls === "sword") || (k === "arrowRain" && p.rightCls === "bow") || k === "massHeal";
+    // Лечение — своя ветка (botGroupHeal, по раненым); остальное — как у игрока, через castSkill.
+    const legacy = (k: SkillId): boolean => k === "massHeal";
     const near = this.mobsInRadius(p, 11);
     if (near.length === 0) return;
     let nearest = near[0];
@@ -7195,45 +7184,6 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  private botStunBash(bot: Bot, dt: number): void {
-    const p = bot.state;
-
-    if (bot.stunCastT > 0) {
-      bot.stunCastT = Math.max(0, bot.stunCastT - dt);
-      // Звук — на один тик раньше приземления: компенсируем сетевой релей,
-      // чтобы у зрителя удар «щёлкал» ровно на завершении круга-замаха.
-      if (!bot.stunSoundDone && bot.stunCastT <= dt * 1.05) {
-        bot.stunSoundDone = true;
-        const p = bot.state;
-        this.broadcast(MSG.act, {
-          k: "stunHit", id: bot.id,
-          x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
-        } satisfies ActRelay);
-      }
-      if (bot.stunCastT > 0) return;
-      this.botStunBashLand(bot);
-      return;
-    }
-    if (p.rightCls !== "sword" || bot.stunCd > 0 || !hasSkill(p, "stunBash")) return;
-    if (this.mobsInRadius(p, BOT.stunRadius).length < BOT.stunMinTargets) return;
-    if (Math.random() >= BOT.skillChancePerSec * dt) return;
-
-    const castT = BOT.stunCastTime;
-    bot.stunCd = BOT.stunCooldown;
-    bot.stunCastT = castT;
-    bot.stunSoundDone = false;
-    bot.emoteFreezeUntil = Date.now() + castT * 1000;
-    const fx: ActRelay = {
-      k: "stunBash",
-      id: bot.id,
-      x: p.head.x,
-      y: p.head.y - PLAYER.eyeHeight,
-      z: p.head.z,
-      d: castT, // круг замаха живёт ровно столько, сколько сам замах
-    };
-    this.broadcast(MSG.act, fx);
-  }
-
   /** Мобы в круге радиуса `r` вокруг точки корпуса игрока/бота. */
   private mobsInRadius(p: PlayerState, r: number): { id: string; x: number; z: number }[] {
     const out: { id: string; x: number; z: number }[] = [];
@@ -7266,26 +7216,6 @@ export class ZoneRoom extends Room<ZoneState> {
     bot.testUntil = Date.now() + SCARECROW.botTestSec * 1000;
     bot.raiding = false;
     this.reply(`@${nick} герой идёт к пугалу в лагере и ${SCARECROW.botTestSec} с бьёт его — над пугалом DPS и макс. удар.`);
-  }
-
-  /** Волна дочитана — оглушаем всех в круге (символический урон). */
-  private botStunBashLand(bot: Bot): void {
-    const p = bot.state;
-    // Звук уже ушёл на тик раньше (см. botStunBash) — здесь только на всякий
-    // случай, если очень большой dt проскочил окно упреждения.
-    if (!bot.stunSoundDone) {
-      bot.stunSoundDone = true;
-      this.broadcast(MSG.act, {
-        k: "stunHit", id: bot.id,
-        x: p.head.x, y: p.head.y - PLAYER.eyeHeight, z: p.head.z,
-      } satisfies ActRelay);
-    }
-    const dmg =
-      weaponDamage("sword", p.level, p, multIn(p, "right")) *
-      BOT.stunDamageMult *
-      (isWarriorBot(p) ? BOT.warrior.dmgMul : 1) *
-      this.buffMult(bot.id, "dmg");
-    this.stunBashAt(p, bot.id, BOT.stunRadius, BOT.stunDuration, dmg);
   }
 
   /**
@@ -8238,57 +8168,6 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  private stunBashAt(
-    p: PlayerState,
-    ownerId: string,
-    radius: number,
-    duration: number,
-    dmg: number,
-    /** Урон магией (боевой маг — «Громовой удар»). */
-    magic = false,
-  ): void {
-    for (const t of this.mobsInRadius(p, radius)) {
-      const dx = t.x - p.head.x;
-      const dz = t.z - p.head.z;
-      const l = Math.hypot(dx, dz) || 1;
-      this.sim.hitMob(t.id, dmg, dx / l, dz / l, ownerId, false, false, magic);
-      this.sim.stunMob(t.id, duration);
-    }
-  }
-
-  /**
-   * Бот с луком — «Град стрел»: намечает круг на земле там, где кучнее всего
-   * мобов, и через замах туда падает залп. Мобы успевают разбежаться.
-   */
-  private botArrowRain(bot: Bot, dt: number): void {
-    const p = bot.state;
-
-    if (bot.rainCastT > 0) {
-      bot.rainCastT = Math.max(0, bot.rainCastT - dt);
-      if (bot.rainCastT > 0) return;
-      this.botArrowRainLand(bot);
-      return;
-    }
-    if (p.rightCls !== "bow" || bot.rainCd > 0 || !hasSkill(p, "arrowRain")) return;
-    const spot = this.bestRainSpot(p);
-    if (!spot) return;
-    if (Math.random() >= BOT.skillChancePerSec * dt) return;
-
-    bot.rainCd = BOT.rainCooldown;
-    bot.rainCastT = BOT.rainCastTime;
-    bot.rainX = spot.x;
-    bot.rainZ = spot.z;
-    bot.emoteFreezeUntil = Date.now() + BOT.rainCastTime * 1000;
-    const fx: ActRelay = {
-      k: "arrowRain",
-      id: bot.id,
-      x: spot.x,
-      y: terrainHeight(spot.x, spot.z),
-      z: spot.z,
-    };
-    this.broadcast(MSG.act, fx);
-  }
-
   /** Самый «кучный» моб в радиусе залпа — вокруг него и наметим круг. */
   private bestRainSpot(p: PlayerState): { x: number; z: number } | null {
     let best: { x: number; z: number } | null = null;
@@ -8309,11 +8188,6 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
     return bestN >= BOT.rainMinTargets ? best : null;
-  }
-
-  /** Залп упал — урон всем, кто остался в круге. */
-  private botArrowRainLand(bot: Bot): void {
-    this.arrowRainAt(bot.rainX, bot.rainZ, bot.id, BOT.rainRadius, bot.state, "right", bot.rt);
   }
 
   /**
@@ -9102,10 +8976,8 @@ export class ZoneRoom extends Room<ZoneState> {
         p.scrollXpSecs = Math.max(0, Math.ceil(((rec?.scrollXpUntil ?? 0) - now) / 1000));
         p.scrollWindSecs = Math.max(0, Math.ceil(((rec?.scrollWindUntil ?? 0) - now) / 1000));
       }
-      // Воин-бот восстанавливается быстрее и раньше обычного.
-      const warrior = id.startsWith("bot:") && isWarriorBot(p);
-      const regenDelay = PLAYER_HP.regenDelay * (warrior ? BOT.warrior.regenDelayMul : 1);
-      const regenRate = PLAYER_HP.regen * (warrior ? BOT.warrior.regenMul : 1);
+      const regenDelay = PLAYER_HP.regenDelay;
+      const regenRate = PLAYER_HP.regen;
       const inCamp = inHubSafeZone(p.head.x, p.head.z);
       // Регенерация от ТЕЛ и ролла щита — доля макс. HP в секунду, работает и в бою.
       if (p.hp > 0 && p.hp < p.maxHp && p.towerFloor === 0) {

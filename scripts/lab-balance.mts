@@ -275,16 +275,6 @@ function makeRoom(keep: (m: any) => boolean): { room: Room; step: () => void; me
     }
     return ok;
   };
-  // Старые ботовые умения идут мимо castSkill (оглушение воина, град стрел лучника) — считаем момент удара.
-  for (const [fn, kind] of [["botStunBashLand", "stunBash"], ["botArrowRainLand", "arrowRain"]] as const) {
-    const orig = room[fn].bind(room);
-    room[fn] = (bot: { id: string }) => {
-      const c = meter.casts.get(bot.id) ?? new Map<string, number>();
-      c.set(kind, (c.get(kind) ?? 0) + 1);
-      meter.casts.set(bot.id, c);
-      return orig(bot);
-    };
-  }
   return {
     room,
     meter,
