@@ -1,4 +1,5 @@
-import { WORLD, BOSS, LAKE } from "./constants";
+import { WORLD, LAKE } from "./constants";
+import { BOSS } from "./mobs";
 import { lakeEllipseDist, LAKE_R_AVG } from "./terrain";
 import { HUB, HUB_CENTER } from "./hub";
 import { TOWER_PROP_CLEAR, TOWER_PROP_POS } from "./tower";

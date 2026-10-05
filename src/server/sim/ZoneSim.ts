@@ -1,41 +1,7 @@
 import { QUEST } from "#shared/quests";
-import {
-  AFFIX,
-  BOSS,
-  BOSS_CFG,
-  COMBAT,
-  DROP_CHANCE,
-  WEAPON_DROP_MUL,
-  ELITE_MOBS,
-  goldDropMulForLevel,
-  MAGE_NOVA,
-  SPORE,
-  BLINK,
-  PULL,
-  CHARGE,
-  WORLD,
-  REFLECT,
-  SPIKES,
-  CHIEF_HEAL,
-  FREEZE,
-  LEAP,
-  SCARECROW,
-  PACK_FRENZY,
-  SHOTS,
-  type MobShot,
-  BOSS_ADAPT,
-  eliteXpAt,
-  MAGE_SPELL,
-  MOB,
-  FLYER_HIT_BONUS,
-  MOB_CAMPS,
-  PLAYER,
-  SHARD,
-  SHARD_CFG,
-  SLIME_CFG,
-  SPITTER,
-  SPITTER_CFG,
-} from "#shared/constants";
+import { AFFIX, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
+import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject } from "#shared/catacombs";

@@ -1,6 +1,6 @@
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 
-import { MOB } from "#shared/constants";
+import { MOB } from "#shared/mobs";
 import { MODELS, loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
 import type { LabCtx } from "./main";
 

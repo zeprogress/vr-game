@@ -10,7 +10,8 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
-import { ELITE_MOBS, MOB, SHIELD, type EliteMobDef } from "#shared/constants";
+import { SHIELD } from "#shared/constants";
+import { ELITE_MOBS, MOB, type EliteMobDef } from "#shared/mobs";
 import { MAGIC } from "#shared/magic";
 import {
   ATTR2,

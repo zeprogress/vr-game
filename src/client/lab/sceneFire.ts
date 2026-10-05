@@ -3,7 +3,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { ShaderMaterial } from "@babylonjs/core/Materials/shaderMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 
-import { ELITE_MOBS, MOB } from "#shared/constants";
+import { ELITE_MOBS, MOB } from "#shared/mobs";
 import { loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
 import { createBurnFlameMesh, makeBurnFlameMaterial } from "../world/BurnFlameMat";
 import { BurnParticles, FIRE_TUNE } from "../combat/BurnParticles";

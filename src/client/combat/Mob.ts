@@ -25,7 +25,8 @@ import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
-import { BOSS_CFG, ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
+import { ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, SHARD_CFG } from "#shared/mobs";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";

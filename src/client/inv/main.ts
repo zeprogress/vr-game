@@ -5,7 +5,8 @@ import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
-import { ELITE_MOBS, MOB_CAMPS, respecCostFor } from "#shared/constants";
+import { respecCostFor } from "#shared/constants";
+import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
 
 // Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
 ensureIconCss();

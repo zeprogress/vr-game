@@ -7,7 +7,8 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 
-import { BOSS_CFG, MOB, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
+import { MOB, SHARD_CFG } from "#shared/mobs";
 import type { MobState, PlayerState, ZoneState } from "#shared/net/schema";
 import { difficultyCss } from "./difficulty";
 import type { NetMobs } from "../combat/MobSystem";

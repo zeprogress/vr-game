@@ -70,39 +70,8 @@ import {
   type QuestData,
   type PcInvData,
 } from "#shared/net/messages";
-import {
-  SCARECROW,
-  ADMIN_NICK,
-  isAdminNick,
-  advanceHour,
-  BOSS,
-  SHIELD,
-  BOW,
-  COMBAT,
-  BOT,
-  STAFF_CRIT_MULT,
-  SWORD_CRIT_MULT,
-  DAYCYCLE,
-  MOB,
-  CAMPFIRE,
-  DROP_CHANCE,
-  PLAYER,
-  PLAYER_HP,
-  respecCostFor,
-  RESPEC_ENABLED,
-  PVP,
-  ELITE_MOBS,
-  EVENT,
-  LAKE,
-  MOB_CAMPS,
-  RESPAWN,
-  SKILL,
-  SPITTER,
-  SPECTATOR_KEY,
-  STREAM_NICKS,
-  TWITCH_CHANNEL,
-  WORLD,
-} from "#shared/constants";
+import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
+import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER } from "#shared/mobs";
 import { clampToSquare } from "#shared/geometry";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";

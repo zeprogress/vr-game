@@ -7,7 +7,8 @@
  * героя (±3 ур.), у усложнённых — на 3 ур. выше. Прогресс, награды и
  * сохранение ведёт сервер (ZoneRoom), окно/трекер/компас рисует клиент.
  */
-import { BOSS, ELITE_MOBS, LAKE, MOB_CAMPS } from "./constants";
+import { LAKE } from "./constants";
+import { BOSS, ELITE_MOBS, MOB_CAMPS } from "./mobs";
 
 export type QuestKind = "hunt" | "champ" | "fish" | "boss";
 

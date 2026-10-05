@@ -11,7 +11,8 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Constants } from "@babylonjs/core/Engines/constants";
 import type { Room } from "colyseus.js";
 
-import { SPITTER, SPITTER_CFG, BOSS_CFG, SHOTS } from "#shared/constants";
+import { SPITTER_CFG, BOSS_CFG } from "#shared/mobs";
+import { SPITTER, SHOTS } from "#shared/mobs";
 import "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import type { MobState, ZoneState } from "#shared/net/schema";
 import { Mob } from "./Mob";

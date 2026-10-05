@@ -1,4 +1,5 @@
-import { BLINK, BOT, SKILL, SPORE } from "#shared/constants";
+import { BOT, SKILL } from "#shared/constants";
+import { BLINK, SPORE } from "#shared/mobs";
 import { SkillFx } from "../ui/SkillFx";
 import type { LabCtx } from "./main";
 

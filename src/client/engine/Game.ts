@@ -58,7 +58,8 @@ import { AoeAim } from "../pc/AoeAim";
 import { PcHover, type HoverInfo } from "../pc/PcHover";
 import { difficultyCss } from "../pc/difficulty";
 import { Mob } from "../combat/Mob";
-import { BOSS_CFG, SHARD_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/constants";
+import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
+import { SHARD_CFG } from "#shared/mobs";
 import { toggleFullscreen } from "../pc/PcHud";
 import { injectPcStyle } from "../pc/pcStyle";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -98,7 +99,8 @@ import {
   applyWorldLoadout,
   worldLoadoutSnapshot,
 } from "../config/loadout";
-import { HUD, MOB, VIGNETTE } from "#shared/constants";
+import { HUD, VIGNETTE } from "#shared/constants";
+import { MOB } from "#shared/mobs";
 import { Sfx } from "../audio/Sfx";
 import { Hands } from "../player/Hands";
 import { Progression } from "../player/Progression";
@@ -122,7 +124,8 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BLINK, BOSS, BOT, EVENT, PLAYER, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, RESPAWN, SKILL, SPORE, isAdminNick } from "#shared/constants";
+import { BOT, EVENT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
+import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";

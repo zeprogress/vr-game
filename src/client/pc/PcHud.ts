@@ -1,7 +1,8 @@
 import { glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { iconHtml } from "../ui/icons";
 import { mmss, type BuffEntry } from "../ui/buffList";
-import { ELITE_MOBS, MOB_CAMPS, WORLD } from "#shared/constants";
+import { WORLD } from "#shared/constants";
+import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
 import { HUB_CENTER } from "#shared/hub";
 import { TOWER_PROP_POS } from "#shared/tower";
 import { LAKE } from "#shared/constants";
