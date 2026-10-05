@@ -237,6 +237,18 @@ def build(skel, it):
         r = float(it.get("r", 0.05))
         V, F = tube([a, b], [r, r], seg=seg)
         bone = bone or owner(it["at"], a)
+    elif kind == "rock":  # гранёный валун (выпуклая оболочка случайных точек) — навершия, булыжники
+        c = at_point()
+        r = it.get("r", 0.2)
+        r3 = np.array([r, r, r] if not isinstance(r, list) else r, float)
+        rng = np.random.default_rng(int(it.get("seed", 3)))
+        n = int(it.get("pts", 18))
+        u = rng.normal(size=(n, 3))
+        u /= np.linalg.norm(u, axis=1, keepdims=True)
+        V, F = hull(u * r3 * (0.8 + 0.2 * rng.random((n, 1))))
+        V = place(V, c, R)
+        bone = bone or owner(it["at"], c)
+        smooth = bool(it.get("smooth", False))
     elif kind == "ring":
         c = at_point()
         Rr, r = float(it["R"]), float(it["r"])

@@ -134,6 +134,65 @@ class Noise:
         return s / tot
 
 
+# ---------- ячейки (Ворони): каменные плиты, чешуя, панцирь ----------
+
+def _hash3(c, seed, k):
+    h = (c[:, 0] * 73856093) ^ (c[:, 1] * 19349663) ^ (c[:, 2] * 83492791) ^ (seed * 2654435761 + k * 97531)
+    h = (h ^ (h >> 13)) * 1274126177
+    return ((h ^ (h >> 16)) & 0xFFFF) / 65536.0
+
+
+def voronoi(P, seed=0):
+    """Точки P в «клетках» → F1, F2 (расстояния до двух ближайших центров) и id ближайшей клетки.
+    F2 − F1 ≈ 0 на границе плит — по ней режем трещины и красим швы."""
+    out1 = np.empty(len(P))
+    out2 = np.empty(len(P))
+    oid = np.empty(len(P), np.int64)
+    for i0 in range(0, len(P), 200000):
+        Q = P[i0:i0 + 200000]
+        base = np.floor(Q).astype(np.int64)
+        f1 = np.full(len(Q), 1e9)
+        f2 = np.full(len(Q), 1e9)
+        cid = np.zeros(len(Q), np.int64)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    c = base + np.array([dx, dy, dz])
+                    fp = c + 0.15 + 0.7 * np.stack([_hash3(c, seed, 0), _hash3(c, seed, 1), _hash3(c, seed, 2)], -1)
+                    d = np.linalg.norm(Q - fp, axis=1)
+                    m1 = d < f1
+                    f2 = np.where(m1, f1, np.minimum(f2, d))
+                    cid = np.where(m1, (c[:, 0] * 92837111) ^ (c[:, 1] * 689287499) ^ (c[:, 2] * 283923481), cid)
+                    f1 = np.where(m1, d, f1)
+        out1[i0:i0 + len(Q)], out2[i0:i0 + len(Q)], oid[i0:i0 + len(Q)] = f1, f2, cid
+    return out1, out2, oid
+
+
+class Surface:
+    """Рельеф поверхности ПОСЛЕ слияния форм (один на модель): бугры (fbm) и трещины по плитам."""
+    op = "surface"
+    mat = None
+    bone = None
+    k = 0.0
+
+    def __init__(self, noise=None, cracks=None):
+        self.noise = noise  # [амплитуда, частота, seed]
+        self.cracks = cracks  # [глубина, частота (плит на метр), ширина шва 0–1, seed]
+        self._n = Noise(int(noise[2]) if noise and len(noise) > 2 else 5) if noise else None
+
+    def disp(self, P):
+        d = np.zeros(len(P))
+        if self._n is not None:
+            d += self._n.fbm(P * self.noise[1]) * self.noise[0]
+        if self.cracks:
+            depth, freq, width = self.cracks[:3]
+            f1, f2, _ = voronoi(P * freq, int(self.cracks[3]) if len(self.cracks) > 3 else 1)
+            e = f2 - f1
+            t = np.clip(e / width, 0, 1)
+            d += depth * (1 - t * t * (3 - 2 * t))
+        return d
+
+
 # ---------- сцена форм ----------
 
 class Shape:
@@ -201,7 +260,11 @@ def smax(a, b, k):
 def field(shapes, P):
     """Итоговое поле в точках P (формы применяются по порядку)."""
     d = np.full(len(P), BIG)
+    surf = []
     for s in shapes:
+        if s.op == "surface":
+            surf.append(s)
+            continue
         if s.op == "paint":
             continue
         lo, hi = s.bounds()
@@ -214,6 +277,10 @@ def field(shapes, P):
             d = smin(d, ds, s.k)
         else:
             d = smax(d, -ds, s.k)
+    for s in surf:
+        near = d < 0.25  # рельеф нужен только у поверхности
+        if near.any():
+            d[near] += s.disp(P[near])
     return d
 
 
@@ -221,6 +288,8 @@ def shape_dists(shapes, P):
     """Расстояния до каждой формы (для материалов и весов): (len(shapes), N)."""
     out = np.full((len(shapes), len(P)), BIG)
     for i, s in enumerate(shapes):
+        if s.op == "surface":
+            continue
         lo, hi = s.bounds()
         pad = 0.25 * max(1e-3, float(np.max(hi - lo)))
         m = np.all((P >= lo - pad) & (P <= hi + pad), axis=1)

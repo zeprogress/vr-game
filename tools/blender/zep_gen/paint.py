@@ -87,7 +87,7 @@ def raster(me, size):
         ys, xs = (Y[m] - 0.5).astype(int), (X[m] - 0.5).astype(int)
         owner[ys, xs] = t
         bary[ys, xs] = np.stack([w0[m], w1[m], w2[m]], -1)
-    return owner, bary, tris_v, np.array(tris_poly)
+    return owner, bary, tris_v, np.array(tris_poly), tris_uv
 
 
 def sdf_ao(shapes, P, N, step, strength=1.0):
@@ -104,9 +104,10 @@ def sdf_ao(shapes, P, N, step, strength=1.0):
     return np.clip(1 - strength * occ / wsum, 0, 1)
 
 
-def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_auth=2.0, seed=3):
-    """Возвращает пиксели (size, size, 4) в sRGB для текстуры модели."""
-    owner, bary, tris_v, tris_poly = raster(me, size)
+def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_auth=2.0, seed=3, normal=1.0):
+    """Пиксели цвета (size, size, 4, sRGB) и карты нормалей (касательное пространство, OpenGL) —
+    нормаль детальной формы (трещины, плиты, бугры из поля SDF) переносится на экономную сетку."""
+    owner, bary, tris_v, tris_poly, tris_uv = raster(me, size)
     filled = owner >= 0
     ti = owner[filled]
     bw = bary[filled].astype(np.float64)
@@ -132,7 +133,7 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
     mat_idx = fmat.copy()
     if body.any():
         D = sdf.shape_dists(shapes, Pa[body])
-        solid = np.array([s.op != "paint" for s in shapes])
+        solid = np.array([s.op in ("add", "sub") for s in shapes])
         Ds = np.where(solid[:, None], np.abs(D), sdf.BIG)
         win = np.argmin(Ds, axis=0)
         mb = np.array([mats.index(shapes[i].mat) for i in win])
@@ -170,11 +171,37 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             ns = noise.value(p * float(sf) / max(1e-6, size_auth / 2) + 41.3)
             sm = np.clip((ns - (1 - 2 * frac)) * 6, 0, 1)[:, None]
             c = c * (1 - sm) + _lin(sc) * sm
+        if d.get("plates"):  # каменные плиты: свой тон у каждой, тёмные швы, светлая фаска у края
+            pl = d["plates"]
+            f1, f2, cid = sdf.voronoi(p * float(pl.get("freq", 8)), int(pl.get("seed", 1)))
+            rnd = (((cid * 2654435761) >> 9) & 0xFFFF) / 65535.0
+            if pl.get("tones"):
+                tones = np.array([_lin(x) for x in pl["tones"]])
+                pick = tones[(((cid * 40503) >> 7) & 0xFFFF) % len(tones)]
+                c = c * (pick / np.maximum(base, 1e-4))
+            c = c * (0.84 + 0.32 * rnd)[:, None]
+            w = float(pl.get("width", 0.08))
+            e = f2 - f1
+            crack = np.clip(1 - e / w, 0, 1) ** 1.5
+            bevel = np.clip((e - w) / w, 0, 1) * np.clip(1 - (e - 2 * w) / (2 * w), 0, 1)
+            c = c * (1 + float(pl.get("edge", 0.18)) * bevel[:, None])
+            cc = _lin(pl.get("crack", "#2a2520"))
+            c = c * (1 - crack[:, None]) + cc * crack[:, None]
+        if d.get("moss"):  # мох на обращённом вверх, выше minZ доли роста, пятнами
+            ms = d["moss"]
+            up = np.clip((Nn[m][:, 2] - (ms.get("up", 0.3) - 0.25)) / 0.5, 0, 1)
+            zf = np.clip((P[m][:, 2] / max(1e-6, H) - ms.get("minZ", 0.5) + 0.08) / 0.16, 0, 1)
+            nm = noise.fbm(p * float(ms.get("freq", 4)) / max(1e-6, size_auth / 2) + 7.7, 4) * 0.5 + 0.5
+            val = up * zf * (0.25 + 1.1 * nm + ms.get("cover", 0.5) - 0.5)
+            mk = np.clip((val - 0.32) / 0.16, 0, 1)[:, None]
+            n2 = noise.fbm(p * 22 / max(1e-6, size_auth / 2) + 3.1, 3)[:, None] * 0.5 + 0.5
+            mc = _lin(ms.get("c", "#5d7a2a")) * (1 - n2) + _lin(ms.get("c2", "#9aab3c")) * n2
+            c = c * (1 - mk) + mc * mk
         if not d.get("emit"):
             a = ao[m][:, None]
-            c = c * (0.38 + 0.62 * a ** 1.3)
+            c = c * (0.5 + 0.5 * a ** 1.2)
             z = (P[m][:, 2] / max(1e-6, H))[:, None]
-            c = c * (0.72 + 0.28 * np.clip(z * 1.6, 0, 1))  # к ногам темнее
+            c = c * (0.82 + 0.18 * np.clip(z * 1.6, 0, 1))  # к ногам темнее
             c = c * (0.9 + 0.16 * np.clip(Nn[m][:, 2:3], 0, 1))  # свет сверху
         col[m] = c
     img = np.zeros((size, size, 3))
@@ -194,11 +221,59 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
         have |= grow
     out = np.ones((size, size, 4), np.float32)
     out[..., :3] = _srgb(img)
-    return out, float(filled.mean())
+
+    # ---- карта нормалей ----
+    nrm = np.zeros((size, size, 3))
+    nrm[..., 2] = 1.0
+    if normal > 0:
+        tp = V[tris_v]  # (T,3,3)
+        tuv = tris_uv / size
+        e1, e2 = tp[:, 1] - tp[:, 0], tp[:, 2] - tp[:, 0]
+        d1, d2 = tuv[:, 1] - tuv[:, 0], tuv[:, 2] - tuv[:, 0]
+        r = d1[:, 0] * d2[:, 1] - d2[:, 0] * d1[:, 1]
+        r = np.where(np.abs(r) < 1e-12, 1e-12, r)
+        Tt = (e1 * d2[:, 1:2] - e2 * d1[:, 1:2]) / r[:, None]
+        Bt = (e2 * d1[:, 0:1] - e1 * d2[:, 0:1]) / r[:, None]
+        T = Tt[ti] - Nn * (Tt[ti] * Nn).sum(1, keepdims=True)
+        T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-9)
+        B = np.cross(Nn, T)
+        B *= np.sign((B * Bt[ti]).sum(1, keepdims=True) + 1e-12)
+        Nd = Nn.copy()
+        if body.any():
+            solid_shapes = [sh for sh in shapes if sh.op != "paint"]
+            eps = 0.004 * max(1.0, size_auth / 2)
+            pb = Pa[body]
+            g = np.zeros_like(pb)
+            for i in range(3):
+                dv = np.zeros(3)
+                dv[i] = eps
+                g[:, i] = sdf.field(solid_shapes, pb + dv) - sdf.field(solid_shapes, pb - dv)
+            gl = np.linalg.norm(g, axis=1, keepdims=True)
+            ok = (gl[:, 0] > 1e-9)
+            gn = np.where(ok[:, None], g / np.maximum(gl, 1e-12), Nn[body])
+            # не дальше 60° от нормали сетки (иначе швы развёртки дают артефакты)
+            gn = np.where(((gn * Nn[body]).sum(1) > 0.5)[:, None], gn, Nn[body])
+            Nd[body] = Nn[body] * (1 - normal) + gn * normal
+            Nd /= np.maximum(np.linalg.norm(Nd, axis=1, keepdims=True), 1e-9)
+        ts = np.stack([(Nd * T).sum(1), (Nd * B).sum(1), (Nd * Nn).sum(1)], -1)
+        nrm[filled] = ts
+        have = filled.copy()
+        for _ in range(12):
+            acc = np.zeros_like(nrm)
+            cnt = np.zeros((size, size))
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                acc += np.roll(np.roll(nrm, dy, 0), dx, 1) * np.roll(np.roll(have, dy, 0), dx, 1)[..., None]
+                cnt += np.roll(np.roll(have, dy, 0), dx, 1)
+            grow = (~have) & (cnt > 0)
+            nrm[grow] = acc[grow] / cnt[grow][:, None]
+            have |= grow
+    nout = np.ones((size, size, 4), np.float32)
+    nout[..., :3] = np.clip(nrm * 0.5 + 0.5, 0, 1)
+    return out, float(filled.mean()), nout
 
 
-def apply(me, name, pixels):
-    """Текстура → один материал (картинка в Base Color); прочие материалы убираются."""
+def apply(me, name, pixels, normal_px=None):
+    """Текстура (+ карта нормалей) → один материал; прочие материалы убираются."""
     size = pixels.shape[0]
     img = bpy.data.images.get(name + "_tex")
     if img:
@@ -214,6 +289,19 @@ def apply(me, name, pixels):
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = img
     nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    if normal_px is not None:
+        nimg = bpy.data.images.get(name + "_nrm")
+        if nimg:
+            bpy.data.images.remove(nimg)
+        nimg = bpy.data.images.new(name + "_nrm", width=size, height=size, alpha=False, is_data=True)
+        nimg.colorspace_settings.name = "Non-Color"
+        nimg.pixels.foreach_set(normal_px.ravel())
+        nimg.pack()
+        nt_tex = nt.nodes.new("ShaderNodeTexImage")
+        nt_tex.image = nimg
+        nmap = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(nt_tex.outputs["Color"], nmap.inputs["Color"])
+        nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
     me.materials.clear()
     me.materials.append(m)
     me.polygons.foreach_set("material_index", np.zeros(len(me.polygons), np.int32))

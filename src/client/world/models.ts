@@ -79,6 +79,7 @@ export const MODELS = {
   monDragonEvolved: "/models/monsters/Dragon_Evolved.gltf",
   // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
   monBogBrute: "/models/gen/BogBrute.glb",
+  monStoneTroll: "/models/gen/StoneTroll.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;
@@ -481,6 +482,13 @@ export function recolorMonster(
         const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
         f.maxSimultaneousLights = 1;
         f.specularColor = new Color3(0.05, 0.05, 0.05);
+        // Карта нормалей (модели art/models: трещины, плиты, бугры запечены с детальной формы).
+        const bump = (src as { bumpTexture?: StandardMaterial["bumpTexture"] }).bumpTexture;
+        if (bump) {
+          f.bumpTexture = bump;
+          f.invertNormalMapX = (src as { invertNormalMapX?: boolean }).invertNormalMapX ?? false;
+          f.invertNormalMapY = (src as { invertNormalMapY?: boolean }).invertNormalMapY ?? false;
+        }
         if (tex) {
           f.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
           if (!noGlow) f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];

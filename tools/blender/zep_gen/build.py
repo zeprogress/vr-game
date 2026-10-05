@@ -140,7 +140,7 @@ def face_mats(shapes, V, F, mats):
     """Материал грани: ближайшая форма (add/sub) по центру грани; «краска» (paint) поверх."""
     C = np.array([V[f].mean(0) for f in F])
     D = sdf.shape_dists(shapes, C)
-    solid = np.array([s.op != "paint" for s in shapes])
+    solid = np.array([s.op in ("add", "sub") for s in shapes])
     Ds = np.where(solid[:, None], np.abs(D), sdf.BIG)
     win = np.argmin(Ds, axis=0)
     out = np.array([mats.index(shapes[i].mat) for i in win])
@@ -238,19 +238,18 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     default_mat = sp.get("mat", "skin")
     for it in items:
         it.setdefault("mat", default_mat)
-    surf = (sp.get("surface") or {}).get("noise")  # бугристость кожи всем формам без своего noise
-    if surf:
-        for it in items:
-            if it.get("op", "add") == "add" and "noise" not in it:
-                it["noise"] = surf
     shapes = S.make_shapes(skel, items, default_mat)
-    mats = list(dict.fromkeys(list((sp.get("mats") or {}).keys()) + [s.mat for s in shapes]))
+    surf = sp.get("surface") or {}
+    if surf.get("noise") or surf.get("cracks"):  # бугры и трещины по плитам — поверх всего тела
+        shapes.append(sdf.Surface(surf.get("noise"), surf.get("cracks")))
+    mats = list(dict.fromkeys(list((sp.get("mats") or {}).keys()) + [s.mat for s in shapes if s.mat]))
 
     # сетка из форм
     lo, hi = sdf.bounds_of(shapes, 0)
     size = float(np.max(hi - lo))
     h = float(sp.get("res", size / 110))
-    V, Q = sdf.mesh(shapes, h)
+    # сетка — по гладкой форме; рельеф (бугры, трещины) уходит в карту нормалей и текстуру
+    V, Q = sdf.mesh([sh for sh in shapes if sh.op != "surface"], h)
     raw_tris = len(Q) * 2
     budget = int(sp.get("tris", BUDGET.get(kind, 5000)))
     part_items = S.expand_mirror(sp.get("parts"))
@@ -324,9 +323,10 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     if tex_size > 0:
         paint.unwrap(ob)
         part_face = np.arange(len(me.polygons)) >= n_body_faces
-        px, cover = paint.paint(me, shapes, mats, mdefs, part_face, lambda P: P / f + np.array([0, 0, minz]),
-                                size=tex_size, H=float(V[:, 2].max()), size_auth=size)
-        paint.apply(me, name, px)
+        nstr = float(sp.get("normal", 1.0))
+        px, cover, npx = paint.paint(me, shapes, mats, mdefs, part_face, lambda P: P / f + np.array([0, 0, minz]),
+                                     size=tex_size, H=float(V[:, 2].max()), size_auth=size, normal=nstr)
+        paint.apply(me, name, px, npx if nstr > 0 else None)
         warnings += [] if cover > 0.35 else [f"развёртка занимает {cover:.0%} текстуры — мелко"]
     elif use_atlas:
         atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
@@ -443,7 +443,7 @@ def export(coll, path, texcoords=False, jpeg=False):
         export_animation_mode="ACTIONS", export_force_sampling=True, export_optimize_animation_size=True,
     )
     if jpeg:  # шумная «ручная» текстура в PNG весит в 4–5 раз больше
-        kw.update(export_image_format="JPEG", export_jpeg_quality=88)
+        kw.update(export_image_format="JPEG", export_jpeg_quality=88, export_tangents=True)
     bpy.ops.export_scene.gltf(**kw)
 
 
