@@ -257,7 +257,8 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
         if d.get("moss"):  # мох на обращённом вверх, выше minZ доли роста, пятнами
             ms = d["moss"]
             up = np.clip((Nn[m][:, 2] - (ms.get("up", 0.3) - 0.25)) / 0.5, 0, 1)
-            zf = np.clip((P[m][:, 2] / max(1e-6, H) - ms.get("minZ", 0.5) + 0.08) / 0.16, 0, 1)
+            zr = P[m][:, 2] / max(1e-6, H)
+            zf = np.clip((zr - ms.get("minZ", 0.5) + 0.08) / 0.16, 0, 1) * np.clip((ms.get("maxZ", 2.0) - zr) / 0.03, 0, 1)
             nm = noise.fbm(p * float(ms.get("freq", 4)) / max(1e-6, size_auth / 2) + 7.7, 4) * 0.5 + 0.5
             val = up * zf * (0.25 + 1.1 * nm + ms.get("cover", 0.5) - 0.5)
             mk = np.clip((val - 0.32) / 0.16, 0, 1)[:, None]
