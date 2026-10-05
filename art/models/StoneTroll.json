@@ -4,19 +4,13 @@
  "rig": "biped",
  "height": 2.4,
  "tris": 6000,
- "texture": 512,
+ "texture": 1024,
  "ref": "art/refs/StoneTroll.png",
  "surface": {
   "noise": [
    0.012,
    4,
    3
-  ],
-  "cracks": [
-   0.016,
-   7,
-   0.09,
-   2
   ]
  },
  "mats": {
@@ -26,21 +20,6 @@
    "light": "#c2b7a0",
    "var": 0.2,
    "freq": 5,
-   "plates": {
-    "freq": 7,
-    "seed": 2,
-    "width": 0.09,
-    "tones": [
-     "#868070",
-     "#958b78",
-     "#77736a",
-     "#a08e75",
-     "#837e6e",
-     "#94826a"
-    ],
-    "crack": "#2e2a24",
-    "edge": 0.22
-   },
    "moss": {
     "c": "#3c5223",
     "c2": "#677a2d",
@@ -48,6 +27,12 @@
     "cover": 0.25,
     "freq": 4,
     "minZ": 0.55
+   },
+   "tile": {
+    "path": "art/textures/stone_skin.png",
+    "scale": 0.5,
+    "bump": 1.6,
+    "bright": 1.0
    }
   },
   "rock": {
@@ -56,19 +41,6 @@
    "light": "#c2b7a0",
    "var": 0.2,
    "freq": 5,
-   "plates": {
-    "freq": 9,
-    "seed": 5,
-    "width": 0.09,
-    "tones": [
-     "#868070",
-     "#958b78",
-     "#77736a",
-     "#a08e75"
-    ],
-    "crack": "#25211c",
-    "edge": 0.22
-   },
    "moss": {
     "c": "#3c5223",
     "c2": "#677a2d",
@@ -76,6 +48,12 @@
     "cover": 0.6,
     "freq": 6,
     "minZ": 0.0
+   },
+   "tile": {
+    "path": "art/textures/stone_skin.png",
+    "scale": 0.9,
+    "bump": 1.6,
+    "bright": 1.0
    }
   },
   "mouth": {

@@ -90,6 +90,67 @@ def raster(me, size):
     return owner, bary, tris_v, np.array(tris_poly), tris_uv
 
 
+_TILES = {}
+
+
+def load_tile(path):
+    """Бесшовная текстура (art/textures): цвет (линейный) + градиент высоты по яркости (для нормалей)."""
+    if path in _TILES:
+        return _TILES[path]
+    import os
+    full = path if os.path.isabs(path) else os.path.join(os.path.dirname(__file__), "..", "..", "..", path)
+    img = bpy.data.images.load(full)
+    w, h = img.size
+    px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)[..., :3]
+    bpy.data.images.remove(img)
+    lin = np.where(px <= 0.04045, px / 12.92, ((px + 0.055) / 1.055) ** 2.4)
+    lum = px @ np.array([0.3, 0.59, 0.11], np.float32)
+    # сглаженная высота → градиент (с заворотом — текстура бесшовная)
+    hgt = lum
+    for _ in range(2):
+        hgt = (hgt + np.roll(hgt, 1, 0) + np.roll(hgt, -1, 0) + np.roll(hgt, 1, 1) + np.roll(hgt, -1, 1)) / 5
+    gu = (np.roll(hgt, -1, 1) - np.roll(hgt, 1, 1)) * 0.5 * w / 256
+    gv = (np.roll(hgt, -1, 0) - np.roll(hgt, 1, 0)) * 0.5 * h / 256
+    _TILES[path] = (lin, gu, gv)
+    return _TILES[path]
+
+
+def _sample(arr, u, v):
+    h, w = arr.shape[:2]
+    x = (u % 1.0) * w - 0.5
+    y = (v % 1.0) * h - 0.5
+    x0 = np.floor(x).astype(int)
+    y0 = np.floor(y).astype(int)
+    tx, ty = x - x0, y - y0
+    x0 %= w
+    y0 %= h
+    x1, y1 = (x0 + 1) % w, (y0 + 1) % h
+    if arr.ndim == 3:
+        tx, ty = tx[:, None], ty[:, None]
+    a = arr[y0, x0] * (1 - tx) + arr[y0, x1] * tx
+    b = arr[y1, x0] * (1 - tx) + arr[y1, x1] * tx
+    return a * (1 - ty) + b * ty
+
+
+def triplanar(tile, P, N, scale, bump):
+    """Цвет и наклон нормали из бесшовной текстуры, спроецированной с трёх сторон (без швов развёртки)."""
+    lin, gu, gv = tile
+    w = np.abs(N) ** 4
+    w /= w.sum(1, keepdims=True)
+    q = P * scale
+    planes = ((1, 2, 0), (0, 2, 1), (0, 1, 2))  # (ось u, ось v, ось проекции)
+    col = np.zeros((len(P), 3))
+    dn = np.zeros((len(P), 3))
+    for k, (iu, iv, ip) in enumerate(planes):
+        u, v = q[:, iu], q[:, iv]
+        col += _sample(lin, u, v) * w[:, k:k + 1]
+        g1 = _sample(gu, u, v)
+        g2 = _sample(gv, u, v)
+        dn[:, iu] -= g1 * w[:, k] * bump
+        dn[:, iv] -= g2 * w[:, k] * bump
+    return col, dn
+
+
 def sdf_ao(shapes, P, N, step, strength=1.0):
     """Затенение по полю форм: насколько «тесно» вдоль нормали (классический приём для SDF)."""
     occ = np.zeros(len(P))
@@ -144,6 +205,7 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
 
     noise = sdf.Noise(seed)
     col = np.zeros((len(P), 3))
+    tile_dn = np.zeros((len(P), 3))  # наклон нормали от тайловых текстур
     ao = sdf_ao([s for s in shapes if s.op != "paint"], Pa, Nn, step=0.07 * size_auth)
     for k, mn in enumerate(mats):
         m = mat_idx == k
@@ -171,6 +233,11 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             ns = noise.value(p * float(sf) / max(1e-6, size_auth / 2) + 41.3)
             sm = np.clip((ns - (1 - 2 * frac)) * 6, 0, 1)[:, None]
             c = c * (1 - sm) + _lin(sc) * sm
+        if d.get("tile"):  # настоящая бесшовная текстура материала (триплanar), тон — через tint
+            tl = d["tile"]
+            tc, tdn = triplanar(load_tile(tl["path"]), p, Nn[m], float(tl.get("scale", 1.5)), float(tl.get("bump", 1.2)))
+            c = tc * float(tl.get("bright", 1.0))
+            tile_dn[m] = tdn
         if d.get("plates"):  # каменные плиты: свой тон у каждой, тёмные швы, светлая фаска у края
             pl = d["plates"]
             f1, f2, cid = sdf.voronoi(p * float(pl.get("freq", 8)), int(pl.get("seed", 1)))
@@ -197,6 +264,7 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             n2 = noise.fbm(p * 22 / max(1e-6, size_auth / 2) + 3.1, 3)[:, None] * 0.5 + 0.5
             mc = _lin(ms.get("c", "#5d7a2a")) * (1 - n2) + _lin(ms.get("c2", "#9aab3c")) * n2
             c = c * (1 - mk) + mc * mk
+            tile_dn[m] *= (1 - mk)
         if not d.get("emit"):
             a = ao[m][:, None]
             c = c * (0.5 + 0.5 * a ** 1.2)
@@ -238,7 +306,8 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
         T /= np.maximum(np.linalg.norm(T, axis=1, keepdims=True), 1e-9)
         B = np.cross(Nn, T)
         B *= np.sign((B * Bt[ti]).sum(1, keepdims=True) + 1e-12)
-        Nd = Nn.copy()
+        Nd = Nn + tile_dn
+        Nd /= np.maximum(np.linalg.norm(Nd, axis=1, keepdims=True), 1e-9)
         if body.any():
             solid_shapes = [sh for sh in shapes if sh.op != "paint"]
             eps = 0.004 * max(1.0, size_auth / 2)
@@ -253,7 +322,7 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             gn = np.where(ok[:, None], g / np.maximum(gl, 1e-12), Nn[body])
             # не дальше 60° от нормали сетки (иначе швы развёртки дают артефакты)
             gn = np.where(((gn * Nn[body]).sum(1) > 0.5)[:, None], gn, Nn[body])
-            Nd[body] = Nn[body] * (1 - normal) + gn * normal
+            Nd[body] = Nn[body] * (1 - normal) + gn * normal + tile_dn[body]
             Nd /= np.maximum(np.linalg.norm(Nd, axis=1, keepdims=True), 1e-9)
         ts = np.stack([(Nd * T).sum(1), (Nd * B).sum(1), (Nd * Nn).sum(1)], -1)
         nrm[filled] = ts
