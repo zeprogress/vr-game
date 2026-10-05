@@ -60,7 +60,8 @@ const { serverPerf } = await import("../src/server/perf.ts");
 const { store } = await import("../src/server/store.ts");
 
 const { ZoneRoom } = await import("../src/server/rooms/ZoneRoom.ts");
-const { ELITE_MOBS, BOT, SCARECROW, PLAYER } = await import("../src/shared/constants.ts");
+const { BOT, PLAYER } = await import("../src/shared/constants.ts");
+const { ELITE_MOBS, SCARECROW } = await import("../src/shared/mobs.ts");
 const { terrainHeight } = await import("../src/shared/terrain.ts");
 const { HUB } = await import("../src/shared/hub.ts");
 const { equipHands } = await import("../src/shared/hands.ts");

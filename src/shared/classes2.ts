@@ -210,7 +210,7 @@ export interface WeaponProfile {
 
 export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   sword: {
-    name: WEAPON_NOUN.sword.name, dmg: 1.4, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.4 (2026-10-05: воин слабейший)
+    name: WEAPON_NOUN.sword.name, dmg: 1.8, interval: 0.7, tempoSoft: 1, reach: 2.2, pierce: 1, // 1 → 1.8 (2026-10-05: воин слабейший, темп ПК приведён к общему)
     critBase: 0.05, critMult: 1.5, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   shield: {

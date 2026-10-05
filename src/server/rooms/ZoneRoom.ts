@@ -6265,16 +6265,6 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
 
-    // Максимум HP — как у игрока (раньше воин-бот получал ×1.6; 2026-10-05 — боты и игроки одинаковы).
-    // При смене уровня/статов/оружия доводим и текущее HP на прибавку.
-    {
-      const want = maxHpFor(p.level, p);
-      if (Math.abs(p.maxHp - want) > 0.5) {
-        const gain = Math.max(0, want - p.maxHp);
-        p.maxHp = want;
-        p.hp = Math.min(want, p.hp + gain);
-      }
-    }
 
     // Клинок долетел до цели — вот теперь урон (замах ушёл клиентам раньше).
     if (bot.swingIn > 0) {
@@ -8876,6 +8866,16 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         p.scrollXpSecs = Math.max(0, Math.ceil(((rec?.scrollXpUntil ?? 0) - now) / 1000));
         p.scrollWindSecs = Math.max(0, Math.ceil(((rec?.scrollWindUntil ?? 0) - now) / 1000));
+      }
+      // Максимум HP — одна формула для игроков и ботов (уровень и ТЕЛ):
+      // сменил оружие/уровень/статы — доводим и текущее HP на прибавку.
+      if (p.towerFloor === 0 && !p.dead) {
+        const want = maxHpFor(p.level, p);
+        if (Math.abs(p.maxHp - want) > 0.5) {
+          const gain = Math.max(0, want - p.maxHp);
+          p.maxHp = want;
+          p.hp = Math.min(want, p.hp + gain);
+        }
       }
       const regenDelay = PLAYER_HP.regenDelay;
       const regenRate = PLAYER_HP.regen;

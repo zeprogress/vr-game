@@ -11,7 +11,8 @@
  * Модель упрощённая (стоят и бьются, без беготни/блока щитом/зелий), её
  * задача — сравнивать классы между собой, а не точно предсказывать бой.
  */
-import { ELITE_MOBS, MOB, SHIELD } from "../src/shared/constants.ts";
+import { SHIELD } from "../src/shared/constants.ts";
+import { ELITE_MOBS, MOB } from "../src/shared/mobs.ts";
 import {
   ATTRS,
   ATTR_INFO,
