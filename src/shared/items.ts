@@ -512,7 +512,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 16;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 9;
+const LOOT_VER = 10;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -561,8 +561,8 @@ const AFFIX_RANGES: Record<AffixSub, readonly [number, number]> = {
   magDef: [0.07, 0.2],
   /** Регенерация щита: доля МАКС. HP в секунду (и в бою). */
   regen: [0.003, 0.01],
-  /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (PIERCE.dmgFrac урона). */
-  pierce: [0.05, 0.15],
+  /** Пронзание (лук): шанс, что стрела пройдёт насквозь и ранит моба позади цели (BOW.pierceDmg урона). 2026-10-06: максимум 15% → 25%. */
+  pierce: [0.05, 0.25],
   /** Поджог (посох): шанс поджечь цель огнешаром (горение — от ИНТ, как прежний врождённый поджог). */
   ignite: [0.3, 1],
 };
@@ -1054,6 +1054,14 @@ export function migrateLoot(w: WeaponInstance): boolean {
   sortAffixes(w.affixes);
   // lv 9: роллы на целых очках (32.6 → 33) — «32 очка» больше не показывают значение максимума.
   if (ver < 9) for (const a of w.affixes) snapToPoint(a, isAegis(w));
+  // lv 10: максимум Пронзания 15% → 25% — выпавшие роллы с теми же очками (было 5–15%).
+  if (ver < 10) {
+    for (const a of w.affixes) {
+      if (a.sub !== "pierce") continue;
+      const t = Math.max(0, Math.min(1, (a.value - 0.05) / (0.15 - 0.05)));
+      a.value = atT("pierce", Math.round(t * 32) / 32);
+    }
+  }
   w.lv = LOOT_VER;
   return true;
 }
