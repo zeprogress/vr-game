@@ -1,6 +1,13 @@
 <!doctype html>
 <html lang="ru">
   <head>
+    <script>
+      // Прод открыли по http:// — на https (без защищённого соединения браузер не даёт
+      // crypto.randomUUID, микрофон и VR; телефон падал до экрана входа). Локальные адреса не трогаем.
+      if (location.protocol === "http:" && location.hostname === "zepgame.duckdns.org") {
+        location.replace("https://" + location.host + location.pathname + location.search + location.hash);
+      }
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ZEP GAME — Инвентарь</title>
