@@ -5,6 +5,35 @@ import { runLogin } from "./ui/Login";
 const canvas = document.getElementById("renderCanvas") as HTMLCanvasElement;
 const params = new URLSearchParams(location.search);
 
+/**
+ * Ошибка запуска — на экран, а не молча в консоль: на телефоне консоли не видно, и раньше
+ * падение до экрана входа выглядело как «игра сама стартует героем 1 ур. без входа».
+ */
+let booted = false;
+function showBootError(what: unknown): void {
+  if (booted) return;
+  const msg = what instanceof Error ? `${what.name}: ${what.message}` : String(what);
+  // Экран входа на месте — запуск прошёл (до входа бывают безобидные отказы, например автозвук).
+  // Проверяем чуть позже: вход рисуется после сцены.
+  setTimeout(() => {
+    if (!booted && !document.getElementById("login") && !params.get("spectator") && !params.has("dash")) bootErrorBox(msg);
+  }, 1500);
+}
+function bootErrorBox(msg: string): void {
+  let box = document.getElementById("boot-error");
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "boot-error";
+    box.style.cssText =
+      "position:fixed;left:12px;right:12px;bottom:12px;z-index:20000;padding:12px 14px;border-radius:10px;" +
+      "background:#3a1418;border:1px solid #c0392b;color:#ffd9d9;font:14px/1.4 system-ui;white-space:pre-wrap";
+    document.body.appendChild(box);
+  }
+  box.textContent = `Не удалось запустить игру — пришли скриншот разработчику:\n${msg}`;
+}
+window.addEventListener("error", (e) => showBootError(e.error ?? e.message));
+window.addEventListener("unhandledrejection", (e) => showBootError(e.reason));
+
 // Локальный тестовый стенд (npm run stage) — плашка, чтобы не спутать с продом.
 if (import.meta.env.DEV) {
   const b = document.createElement("div");
@@ -104,21 +133,36 @@ function bootSpectator(specKey: string): void {
   })();
 }
 
+/** Гостевой токен — по нему сервер узнаёт безымянного персонажа между сессиями. Хранилище может быть запрещено (Safari) — тогда на сессию. */
+function guestTokenOf(): string {
+  let t: string | null = null;
+  try {
+    t = localStorage.getItem("guestToken");
+  } catch {
+    /* хранилище запрещено */
+  }
+  if (t) return t;
+  // randomUUID нет в старых iOS — запасной вариант.
+  t = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+  try {
+    localStorage.setItem("guestToken", t);
+  } catch {
+    /* не сохранится — ничего */
+  }
+  return t;
+}
+
 function bootGame(): void {
   // Качество графики выбора больше нет — всегда максимум на всех платформах.
   // В VR сверху ложится лёгкий профиль (см. Game.applyVrQuality).
   const game = new Game(canvas);
   game.start(); // сцена рендерится за экраном входа
-  void game.initXR();
+  void game.initXR().catch((e) => console.warn("[xr] init", e));
 
   const net = new NetClient();
-
-  // Гостевой токен — по нему сервер узнаёт персонажа между сессиями.
-  let guestToken = localStorage.getItem("guestToken");
-  if (!guestToken) {
-    guestToken = crypto.randomUUID();
-    localStorage.setItem("guestToken", guestToken);
-  }
+  const guestToken = guestTokenOf();
 
   // Отладка из консоли.
   (window as unknown as { game: Game; net: NetClient }).game = game;
@@ -138,6 +182,7 @@ function bootGame(): void {
     },
     streamMode,
   ).then(({ nick, vr }) => {
+    booted = true;
     game.setNick(nick);
     game.attachNet(net); // игра только онлайн
     game.enterWorld(); // теперь можно завести фоновую музыку

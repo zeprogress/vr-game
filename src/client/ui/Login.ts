@@ -60,7 +60,11 @@ export function runLogin(
   const playBtn = overlay.querySelector<HTMLButtonElement>("#login-play")!;
   const status = overlay.querySelector<HTMLDivElement>("#login-status")!;
 
-  nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
+  try {
+    nickInput.value = localStorage.getItem(NICK_KEY) ?? "";
+  } catch {
+    /* хранилище запрещено (Safari) — поле пустое */
+  }
   setTimeout(() => nickInput.focus(), 50);
 
   // Поле пароля — только когда ник совпадает с ADMIN_NICKS (см. shared/constants).
@@ -77,7 +81,11 @@ export function runLogin(
 
   return new Promise<LoginResult>((resolve) => {
     const finish = (vr: boolean): void => {
-      localStorage.setItem(NICK_KEY, nick());
+      try {
+        localStorage.setItem(NICK_KEY, nick());
+      } catch {
+        /* не запомним ник — не беда */
+      }
       overlay.remove();
       resolve({ nick: nick(), vr });
     };
