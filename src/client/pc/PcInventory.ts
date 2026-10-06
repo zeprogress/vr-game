@@ -1,7 +1,7 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
-import { attackLabel, attackText } from "#shared/heroStats";
+import { attackLabel, weaponPower } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
@@ -588,9 +588,10 @@ export class PcInventory {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
-      if (w?.atk) {
+      const pow = weaponPower(held.cls, tier);
+      if (pow) {
         cell.style.position = "relative";
-        cell.append(div("pcinv-atk", attackText(w.atk)));
+        cell.append(div("pcinv-atk", String(pow)));
       }
       if (w?.fav) {
         cell.style.position = "relative";
@@ -660,7 +661,8 @@ export class PcInventory {
     setIcon(c, w.cls, w.name);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
-    if (w.atk) c.append(div("pcinv-atk", attackText(w.atk)));
+    const pow = weaponPower(w.cls, w.tier);
+    if (pow) c.append(div("pcinv-atk", String(pow)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
     if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
@@ -729,7 +731,8 @@ export class PcInventory {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
       right.append(sc);
-      if (w.atk) right.append(div("pcinv-tipatk", attackLabel(w.atk)));
+      const atk = attackLabel(w.cls, w.tier);
+      if (atk) right.append(div("pcinv-tipatk", atk));
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
         const lab = div("pcinv-elabel");
@@ -977,7 +980,8 @@ export class PcInventory {
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
     this.tip.append(div("pcinv-small", TIER_LOOK[tier]?.name ?? tier));
-    if (w?.atk) this.tip.append(div("pcinv-tipatk", attackLabel(w.atk)));
+    const atk = attackLabel(cls, tier);
+    if (atk) this.tip.append(div("pcinv-tipatk", atk));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;

@@ -229,7 +229,8 @@ export function drawEnchant(
     ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
   const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
-  if (w.atk) ui.text(attackLabel(w.atk), PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
+  const atk = attackLabel(w.cls, w.tier);
+  if (atk) ui.text(atk, PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
   let y = 224;
   const bw = ui.W - PAD * 2;
   w.ench.forEach((a, i) => {

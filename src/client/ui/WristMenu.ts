@@ -24,7 +24,7 @@ import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { BOT } from "#shared/constants";
 import { BOT_SKIN_LABELS } from "../world/models";
-import { heldAttack, weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
+import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 const TEX_W = 1200;
@@ -1104,7 +1104,7 @@ export class WristMenu {
     ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#7c88a4";
     ctx.fillText(label, x + 10, y + 6);
-    const atk = item ? attackLabel(heldAttack(item, hero)) : "";
+    const atk = item ? attackLabel(item.cls, item.tier) : "";
     if (atk) {
       ctx.font = "bold 18px system-ui, sans-serif";
       ctx.fillStyle = ATTACK_COLOR;
@@ -1334,7 +1334,7 @@ export class WristMenu {
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
       info: [
         `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`,
-        [attackLabel(wp.atk), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+        [attackLabel(wp.cls, wp.tier), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       ],
       act: () => this.openWarehousePopup(wp),
     });
@@ -1358,12 +1358,13 @@ export class WristMenu {
       ctx.fillStyle = "#7ee081";
       ctx.fillText(eq, x + 8, y + h - 24);
     }
-    if (wp.atk) {
+    const atk = attackLabel(wp.cls, wp.tier);
+    if (atk) {
       // Сила атаки — в правом нижнем углу (слева внизу — «в руке»/«за спиной»).
       ctx.font = "bold 18px system-ui, sans-serif";
       ctx.fillStyle = ATTACK_COLOR;
       ctx.textAlign = "right";
-      ctx.fillText(attackLabel(wp.atk), x + w - 8, y + h - 25);
+      ctx.fillText(atk, x + w - 8, y + h - 25);
       ctx.textAlign = "left";
     }
     if (wp.fav) {
@@ -1429,7 +1430,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: [attackLabel(wp.atk), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+      sub: [attackLabel(wp.cls, wp.tier), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };

@@ -25,7 +25,7 @@ export interface HeroStats {
 
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
-/** Сила атаки оружия в руке — та же формула, что «Атака N» в окнах (heroStats.weaponHitDamage) с его роллом «Урон». */
+/** Урон удара оружием в руке у героя — та же формула, что строка «Урон» в характеристиках (heroStats.weaponHitDamage), с роллом «Урон». */
 export function heldAttack(w: WornWeapon, s: HeroStats): number {
   return weaponHitDamage(w.cls, w.tier, s.level, s, dmgRollOfText(w.affix));
 }
@@ -42,7 +42,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
 
   if (w.cls === "sword") {
     const dmg = heldAttack(w, s);
-    out.push(["Атака", n1(dmg)]);
+    out.push(["Урон", n1(dmg)]);
     const aps = attacksPerSec("sword", s.level, s);
     out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
@@ -55,7 +55,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   } else if (w.cls === "dagger" || w.cls === "spear" || w.cls === "hammer") {
     const prof = WEAPONS2[w.cls];
     const dmg = heldAttack(w, s);
-    out.push(["Атака", n1(dmg)]);
+    out.push(["Урон", n1(dmg)]);
     const aps = attacksPerSec(w.cls, s.level, s);
     out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
@@ -70,13 +70,13 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     }
     out.push(["Растёт от", w.cls === "hammer" ? "силы (удар), интеллекта (волна), ловкости (темп)" : "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "bow") {
-    out.push(["Атака (стрела)", n1(heldAttack(w, s))]);
+    out.push(["Урон стрелы", n1(heldAttack(w, s))]);
     out.push(["Крит (база)", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
     out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "staff") {
-    out.push(["Атака (огнешар, полный заряд)", n1(heldAttack(w, s))]);
+    out.push(["Огнешар (полный заряд)", n1(heldAttack(w, s))]);
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {

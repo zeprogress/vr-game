@@ -7,7 +7,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, DUAL, HAMMER, isDualPair, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { affixSum, critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponInstance, type WeaponTier } from "./items";
+import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — та же пауза, что в бою у всех
@@ -44,12 +44,16 @@ export function weaponHitDamage(cls: string, tier: string, level: number, a: Att
   }
 }
 
+const BASE_ATTRS: AttrsIn = { str: ATTR2.start, agi: ATTR2.start, int: ATTR2.start, con: ATTR2.start, luc: ATTR2.start, wis: ATTR2.start };
+
 /**
- * Сила атаки экземпляра оружия у героя — урон удара с его собственным роллом «Урон»
- * (см. weaponHitDamage). Показывается у каждого оружия: ПК, телефон, VR и страница !inv.
+ * Чистая сила атаки оружия — только класс и тир: без роллов, атрибутов и уровня героя.
+ * Удар героем 1 ур. со стартовыми атрибутами в масштабе «обычный меч = 100». Щит не атакует — 0.
+ * Показывается у каждого оружия: ПК, телефон, VR и страница !inv.
  */
-export function weaponAttack(w: Pick<WeaponInstance, "cls" | "tier" | "affixes">, level: number, a: AttrsIn): number {
-  return weaponHitDamage(w.cls, w.tier, level, a, affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct"));
+export function weaponPower(cls: string, tier: string): number {
+  const ref = weaponHitDamage("sword", "base", 1, BASE_ATTRS);
+  return ref > 0 ? Math.round((100 * weaponHitDamage(cls, tier, 1, BASE_ATTRS)) / ref) : 0;
 }
 
 /** Ролл «Урон» (в долях) из текста роллов предмета в руке («Урон +12%, Крит +6%»). */
@@ -57,14 +61,10 @@ export function dmgRollOfText(text: string | undefined): number {
   return affixNum(text, "Урон");
 }
 
-/** Число силы атаки для показа: целое (меньше 100 — с десятыми). */
-export function attackText(atk: number): string {
-  return atk >= 100 ? String(Math.round(atk)) : (Math.round(atk * 10) / 10).toString();
-}
-
-/** Подпись «Атака 123»; щит (и неизвестно) — пусто. */
-export function attackLabel(atk: number | undefined): string {
-  return atk && atk > 0 ? `Атака ${attackText(atk)}` : "";
+/** Подпись «Атака 400» — чистая сила оружия (weaponPower); щит — пусто. */
+export function attackLabel(cls: string, tier: string): string {
+  const p = weaponPower(cls, tier);
+  return p > 0 ? `Атака ${p}` : "";
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
