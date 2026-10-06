@@ -510,7 +510,7 @@ export class CombatSystem {
     /** Куда «лицом» стоит оружие на стойке лагеря (к площади). */
     weaponsFaceYaw = 0,
     /** Места на стойке оружия «Классов 2.0». */
-    classHomes?: { dagger: Vector3; dagger2: Vector3; sword2: Vector3; spear: Vector3; hammer: Vector3 },
+    classHomes?: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 },
   ) {
     this.weaponsFaceYaw = weaponsFaceYaw;
     this.homes = {
@@ -534,10 +534,9 @@ export class CombatSystem {
       this.makeItem("shield", "base", shield, shieldHome),
       this.makeItem("staff", "base", staff, staffHome),
     ];
-    // Оружие «Классов 2.0» на стойке: второй меч (пара мечей), два кинжала (ассасин берёт оба), копьё, молот.
+    // Оружие «Классов 2.0» на стойке: два кинжала (ассасин берёт оба), копьё, молот.
     if (classHomes) {
       this.items.push(
-        this.makeItem("sword", "base", createSword(scene), classHomes.sword2),
         this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger),
         this.makeItem("dagger", "base", createClassWeapon(scene, "dagger", 0), classHomes.dagger2),
         this.makeItem("spear", "base", createClassWeapon(scene, "spear", 0), classHomes.spear),
