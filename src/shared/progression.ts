@@ -11,7 +11,7 @@ import {
   maxHp2,
   moveSpeed2,
   WEAPONS2,
-  DAGGER,
+  DUAL,
   physArmor2,
   physPower2,
   physTempo2,
@@ -150,10 +150,11 @@ export type AttackWeapon = "sword" | "dagger" | "spear" | "hammer" | "bow" | "fi
  * База — профиль оружия (WEAPONS2.*.interval), темп — уровень и ЛОВ; `mul` — ролл
  * «скорость атаки» × клич × рывок; два кинжала бьют по очереди — чаще.
  */
-export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1, dualDagger = false): number {
+export function heroAttackInterval(weapon: AttackWeapon, level: number, a: AttrsIn, mul = 1, dualPair = false): number {
   if (weapon === "bow") return WEAPONS2.bow.interval / (attackSpeedFor(level, a) * mul);
   if (weapon === "fist") return MELEE.cooldown / (meleeSpeedFor(level, a) * mul);
-  const dual = weapon === "dagger" && dualDagger ? DAGGER.dualTempo : 1;
+  // Пара клинков (два кинжала / два меча) — руки чередуются, бьют чаще (DUAL).
+  const dual = dualPair && (weapon === "dagger" || weapon === "sword") ? DUAL.tempo : 1;
   return WEAPONS2[weapon].interval / dual / (meleeSpeedFor(level, a) * mul);
 }
 

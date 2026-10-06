@@ -38,7 +38,7 @@ import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createClassWeapon } from "../items/classWeapons";
-import { DAGGER, SKILLS2, WEAPONS2 } from "#shared/classes2";
+import { DUAL, SKILLS2, WEAPONS2 } from "#shared/classes2";
 import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
 import { createShield } from "../items/Shield";
@@ -372,7 +372,7 @@ export class CombatSystem {
   /**
    * Два кинжала (вид от первого лица): общий откат на обе руки. У каждой руки
    * свой замах, и без общего отката вторая рука била, не дожидаясь первой —
-   * пара кинжалов выходила ~×2.7 к одному вместо задуманных DAGGER.dualTempo.
+   * пара кинжалов выходила ~×2.7 к одному вместо задуманных DUAL.tempo.
    */
   private dualDaggerCd = 0;
 
@@ -380,22 +380,26 @@ export class CombatSystem {
   /** Пауза между атаками этим оружием — общая формула (heroAttackInterval): ПК, телефон, VR и боты одинаковы. */
   private attackInterval(k: ItemKind | "fist"): number {
     const w = k === "fist" ? "fist" : k === "bow" ? "bow" : isNewKind(k) ? k : "sword";
-    const dual = k === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
+    const dual = this.dualPairOf(k);
     return heroAttackInterval(w as AttackWeapon, this.prog.level, this.prog.stats, this.atkSpeedAffix, dual);
   }
 
   /** Длительность анимации взмаха (не темп!): короче паузы, чтобы клип успевал. */
   private intervalMul(k: ItemKind): number {
-    if (!isNewKind(k)) return 1;
-    const dual = k === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
-    return WEAPONS2[k].interval / WEAPONS2.sword.interval / (dual ? DAGGER.dualTempo : 1);
+    const base = isNewKind(k) ? WEAPONS2[k].interval / WEAPONS2.sword.interval : 1;
+    return base / (this.dualPairOf(k) ? DUAL.tempo : 1);
   }
 
-  /** После удара кинжалом — следующий другой рукой (если кинжалов два). */
+  /** В руках пара этого клинка (два кинжала или два меча) — DUAL. */
+  private dualPairOf(k: ItemKind | "fist"): boolean {
+    return (k === "dagger" || k === "sword") && !!this.held1(k, "left") && !!this.held1(k, "right");
+  }
+
+  /** После удара клинком — следующий другой рукой (если клинков пара: кинжалы или мечи). */
   private flipDagger(item: Item): void {
-    if (item.kind !== "dagger" || !item.hand) return;
+    if ((item.kind !== "dagger" && item.kind !== "sword") || !item.hand) return;
     const other: Side = item.hand === "left" ? "right" : "left";
-    this.daggerNext = this.held1("dagger", other) ? other : null;
+    this.daggerNext = this.held1(item.kind, other) ? other : null;
   }
   /** Ставит Game: узел кости кулака аватара (или null, если риг не готов). */
   avatarFist: ((side: Side) => Node | null) | null = null;
@@ -2226,9 +2230,9 @@ export class CombatSystem {
   private updateFlatSwing(dt: number, primaryEdge: boolean): void {
     let item = this.held1("sword") ?? this.held1("dagger") ?? this.held1("spear") ?? this.held1("hammer") ?? this.held1("staff");
     if (!item?.hand) return;
-    // Два кинжала — бьют по очереди: следующий удар — другой рукой.
-    if (item.kind === "dagger" && this.daggerNext) {
-      const other = this.held1("dagger", this.daggerNext);
+    // Пара клинков (кинжалы / мечи) — бьют по очереди: следующий удар — другой рукой.
+    if ((item.kind === "dagger" || item.kind === "sword") && this.daggerNext) {
+      const other = this.held1(item.kind, this.daggerNext);
       if (other) item = other;
     }
     const side = item.hand as Side;
@@ -2239,7 +2243,7 @@ export class CombatSystem {
     }
 
     const sw = this.swing[side];
-    const dual = item.kind === "dagger" && !!this.held1("dagger", "left") && !!this.held1("dagger", "right");
+    const dual = this.dualPairOf(item.kind);
     if (this.dualDaggerCd > 0) this.dualDaggerCd -= dt;
 
     if (this.flatMeleeCd > 0) this.flatMeleeCd -= dt;

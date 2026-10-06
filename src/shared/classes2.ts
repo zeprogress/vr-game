@@ -255,10 +255,17 @@ export function staffMagicTier(tier: string): number {
   return tier === "ruby" ? t[2] * RUBY.powerMul : tier === "legendary" ? t[2] : tier === "gold" ? t[1] : t[0];
 }
 
+/**
+ * Пара одинаковых клинков — два кинжала или (с 2026-10-06) два меча: руки чередуются,
+ * темп × tempo, урон удара × dmg. Роллы двух клинков не складываются (лучший из двух).
+ */
+export const DUAL = { tempo: 1.35, dmg: 0.95 } as const;
+/** В руках пара одинаковых клинков (кинжал+кинжал или меч+меч). */
+export function isDualPair(left: string | null | undefined, right: string | null | undefined): boolean {
+  return !!left && left === right && (left === "dagger" || left === "sword");
+}
+
 export const DAGGER = {
-  /** Два кинжала: руки чередуются — темп ×, урон удара ×. */
-  dualTempo: 1.35,
-  dualDmg: 0.95,
   /** Удар в спину (цель смотрит не на героя). */
   backstab: 1.5,
   /** Один кинжал + пустая рука: прибавка к шансу и силе крита. */
@@ -726,8 +733,8 @@ export function summarize2(h: Hero2): Summary2 {
   }
   if (h.cls === "assassin") {
     if (h.dual) {
-      rate *= DAGGER.dualTempo;
-      perHit *= DAGGER.dualDmg;
+      rate *= DUAL.tempo;
+      perHit *= DUAL.dmg;
     } else {
       oneItem = true;
       critBase += DAGGER.soloCrit;
