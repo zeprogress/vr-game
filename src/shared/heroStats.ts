@@ -7,7 +7,7 @@ import { ATTR2, invested } from "./attrs2";
 import { DAGGER, DUAL, HAMMER, isDualPair, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
-import { critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponTier } from "./items";
+import { affixSum, critRollMult, isMeleeClass, shieldBlockChance, weaponDef, type WeaponClass, type WeaponInstance, type WeaponTier } from "./items";
 
 /**
  * Сколько атак в секунду реально делает герой этим оружием — та же пауза, что в бою у всех
@@ -19,6 +19,52 @@ export function attacksPerSec(cls: string, level: number, a: AttrsIn, affixBonus
   if (cls === "staff") return 1 / staffCastInterval(level, a, mul);
   const w = cls === "bow" || cls === "dagger" || cls === "spear" || cls === "hammer" ? cls : "sword";
   return 1 / heroAttackInterval(w, level, a, mul, dualPair);
+}
+
+/**
+ * Урон одного удара / выстрела / огнешара оружием класса `cls` тира `tier` у героя (уровень и
+ * атрибуты), `dmgBonus` — ролл «Урон» (0.12 = +12%); без баффов и без поправки на пару клинков.
+ * Щит не атакует — 0. Одна формула для строки «Урон» в характеристиках и силы атаки у оружия.
+ */
+export function weaponHitDamage(cls: string, tier: string, level: number, a: AttrsIn, dmgBonus = 0): number {
+  const t = (tier || "base") as WeaponTier;
+  const mul = 1 + dmgBonus;
+  switch (cls) {
+    case "bow":
+      return weaponDamage("arrow", level, a, weaponDef("bow", t).mult) * mul;
+    case "staff":
+      return fireboltDamage(level, a, 1) * staffMagicTier(t) * mul;
+    case "sword":
+    case "dagger":
+    case "spear":
+    case "hammer":
+      return weaponDamage(cls, level, a, weaponDef(cls, t).mult) * mul;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Сила атаки экземпляра оружия у героя — урон удара с его собственным роллом «Урон»
+ * (см. weaponHitDamage). Показывается у каждого оружия: ПК, телефон, VR и страница !inv.
+ */
+export function weaponAttack(w: Pick<WeaponInstance, "cls" | "tier" | "affixes">, level: number, a: AttrsIn): number {
+  return weaponHitDamage(w.cls, w.tier, level, a, affixSum(w.affixes, "dmgFlat") + affixSum(w.affixes, "dmgPct"));
+}
+
+/** Ролл «Урон» (в долях) из текста роллов предмета в руке («Урон +12%, Крит +6%»). */
+export function dmgRollOfText(text: string | undefined): number {
+  return affixNum(text, "Урон");
+}
+
+/** Число силы атаки для показа: целое (меньше 100 — с десятыми). */
+export function attackText(atk: number): string {
+  return atk >= 100 ? String(Math.round(atk)) : (Math.round(atk * 10) / 10).toString();
+}
+
+/** Подпись «Атака 123»; щит (и неизвестно) — пусто. */
+export function attackLabel(atk: number | undefined): string {
+  return atk && atk > 0 ? `Атака ${attackText(atk)}` : "";
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
@@ -118,29 +164,14 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
 
   // Урон: и новый dmgFlat, и старый dmgPct подписаны «Урон +N%».
   const dmgBonus = affixNum2("Урон");
-  if (cls === "bow") {
-    rows.push({
-      label: "Урон",
-      value: (weaponDamage("arrow", p.level, p, tierMul) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
-    });
-  } else if (cls === "staff") {
-    rows.push({ label: "Урон", value: (fireboltDamage(p.level, p, 1) * staffMagicTier(tier) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : "") });
-  } else if (cls === "dagger" || cls === "spear" || cls === "hammer") {
-    const dual = isDualPair(p.leftCls, p.rightCls);
-    rows.push({
-      label: "Урон",
-      value: (weaponDamage(cls, p.level, p, tierMul) * (dual ? DUAL.dmg : 1) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
-    });
-    if (cls === "hammer") {
-      rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
-    }
-    if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
-  } else {
-    rows.push({
-      label: "Урон",
-      value: (weaponDamage("sword", p.level, p, tierMul) * (isDualPair(p.leftCls, p.rightCls) ? DUAL.dmg : 1) * (1 + dmgBonus) * bm.dmg).toFixed(1) + (bm.dmg > 1 ? UP : ""),
-    });
+  // Удар — та же формула, что «Атака» у оружия (weaponHitDamage); без оружия — как меч базового тира.
+  const dual = isDualPair(p.leftCls, p.rightCls) ? DUAL.dmg : 1;
+  const hit = weaponHitDamage(cls || "sword", tier, p.level, p, dmgBonus) * dual * bm.dmg;
+  rows.push({ label: "Урон", value: hit.toFixed(1) + (bm.dmg > 1 ? UP : "") });
+  if (cls === "hammer") {
+    rows.push({ label: "Волна молота (магия)", value: (HAMMER.waveMagic * magicPowerFor(p.level, p) * tierMul).toFixed(1) });
   }
+  if (cls === "spear") rows.push({ label: "Удар конусом", value: `до ${WEAPONS2.spear.pierce} целей` });
 
   // Раньше тут был множитель «×2.65» по ОБЩЕЙ формуле — мечникам он завышал
   // темп почти вдвое (в бою у меча приглушённый meleeSpeedFor), а магам

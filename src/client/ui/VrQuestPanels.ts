@@ -1,5 +1,6 @@
 import { glyph } from "#shared/icons";
-import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import { ATTACK_COLOR, QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import { attackLabel } from "#shared/heroStats";
 import type { WeaponTier } from "#shared/items";
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
@@ -227,7 +228,8 @@ export function drawEnchant(
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
     ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
-  ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
+  const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
+  if (w.atk) ui.text(attackLabel(w.atk), PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
   let y = 224;
   const bw = ui.W - PAD * 2;
   w.ench.forEach((a, i) => {

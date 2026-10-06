@@ -1,7 +1,8 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
 import { aegisTier, bothHandsNote, qualityStars, weaponDef } from "#shared/items";
 import { glyph, itemIcon, weaponIcon } from "#shared/icons";
-import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import { ATTACK_COLOR, QUALITY_COLOR, TIER_LOOK } from "#shared/look";
+import { attackLabel } from "#shared/heroStats";
 import { iconHtml } from "./icons";
 import { EQUIP_SLOTS, type EquipSlot } from "#shared/equipment";
 import type { WarehouseWeapon } from "#shared/net/messages";
@@ -119,6 +120,11 @@ export class InventoryPanel {
       }
       const aff = el("div", "font-size:11.5px;color:#7db8ff;margin-top:1px;");
       aff.textContent = [...(w.effects ?? []), ...w.affixes].join(", ") || "без роллов";
+      if (w.atk) {
+        const a = el("span", `color:${ATTACK_COLOR};margin-left:6px;font-weight:700;`);
+        a.textContent = attackLabel(w.atk);
+        name.appendChild(a);
+      }
       row.append(name, aff);
       wrap.appendChild(row);
     }

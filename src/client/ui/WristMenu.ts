@@ -13,7 +13,8 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
-import { TIER_LOOK } from "#shared/look";
+import { ATTACK_COLOR, TIER_LOOK } from "#shared/look";
+import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { trackItems, type TrackItem } from "./QuestWindow";
@@ -23,7 +24,7 @@ import { BAG, ITEMS, type Inventory } from "../player/Inventory";
 import { VR_SETTINGS, setVrSettings } from "../config/vrSettings";
 import { BOT } from "#shared/constants";
 import { BOT_SKIN_LABELS } from "../world/models";
-import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
+import { heldAttack, weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 const TEX_W = 1200;
@@ -1103,6 +1104,14 @@ export class WristMenu {
     ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#7c88a4";
     ctx.fillText(label, x + 10, y + 6);
+    const atk = item ? attackLabel(heldAttack(item, hero)) : "";
+    if (atk) {
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.fillStyle = ATTACK_COLOR;
+      ctx.textAlign = "right";
+      ctx.fillText(atk, x + w - 10, y + 6);
+      ctx.textAlign = "left";
+    }
     if (!item) {
       ctx.font = "22px system-ui, sans-serif";
       ctx.fillStyle = "#4d566c";
@@ -1323,7 +1332,10 @@ export class WristMenu {
     const eq = this.locs.get(wp.id) ?? "";
     const wd = this.add({
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
-      info: [`${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`, [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов"],
+      info: [
+        `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`,
+        [attackLabel(wp.atk), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+      ],
       act: () => this.openWarehousePopup(wp),
     });
     const st = this.styleFor(wd);
@@ -1345,6 +1357,14 @@ export class WristMenu {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
       ctx.fillText(eq, x + 8, y + h - 24);
+    }
+    if (wp.atk) {
+      // Сила атаки — в правом нижнем углу (слева внизу — «в руке»/«за спиной»).
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.fillStyle = ATTACK_COLOR;
+      ctx.textAlign = "right";
+      ctx.fillText(attackLabel(wp.atk), x + w - 8, y + h - 25);
+      ctx.textAlign = "left";
     }
     if (wp.fav) {
       ctx.font = "bold 24px system-ui, sans-serif";
@@ -1409,7 +1429,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: [...(wp.effects ?? []), ...wp.affixes].join(", ") || "без роллов",
+      sub: [attackLabel(wp.atk), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };

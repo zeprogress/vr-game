@@ -28,10 +28,12 @@ export const TIER_LOOK: Record<WeaponTier, TierLook> = {
 
 /** Цвет оценки предмета («оценка 47»). */
 export const QUALITY_COLOR = "#ffcf5a";
+/** Цвет силы атаки оружия («Атака 123»). */
+export const ATTACK_COLOR = "#ff9f7a";
 
 /** CSS-переменные общего вида — вставляется один раз в каждую страницу (см. client/ui/icons.ts). */
 export function themeCss(): string {
-  const v: string[] = [`--quality:${QUALITY_COLOR}`];
+  const v: string[] = [`--quality:${QUALITY_COLOR}`, `--attack:${ATTACK_COLOR}`];
   for (const [t, l] of Object.entries(TIER_LOOK)) {
     v.push(`--tier-${t}:${l.color}`, `--tier-${t}-edge:${l.edge}`, `--tier-${t}-glow:${l.glow}`, `--tier-${t}-bg:${l.bg}`);
   }

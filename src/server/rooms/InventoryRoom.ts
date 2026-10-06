@@ -19,7 +19,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { heroStatRows } from "#shared/heroStats";
+import { heroStatRows, weaponAttack } from "#shared/heroStats";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { store } from "../store";
 import { invHub } from "../invHub";
@@ -167,6 +167,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       affixes: instanceLabels(w),
       effects: instanceEffects(w),
       quality: weaponQuality(w),
+      atk: weaponAttack(w, rec.level, { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 }),
       scrap: scrapValue(w),
       ench: enchDetails(w),
       fav: !!w.fav,

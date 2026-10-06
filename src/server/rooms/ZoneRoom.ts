@@ -75,7 +75,7 @@ import {
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER } from "#shared/mobs";
 import { clampToSquare } from "#shared/geometry";
-import { heroStatLine, heroStatRows } from "#shared/heroStats";
+import { heroStatLine, heroStatRows, weaponAttack } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
 import {
@@ -4371,6 +4371,7 @@ export class ZoneRoom extends Room<ZoneState> {
         affixes: instanceLabels(w),
         effects: instanceEffects(w),
         quality: weaponQuality(w),
+        atk: weaponAttack(w, p.level, p),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
         fuel: isRubyFuel(w),
@@ -8956,7 +8957,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const heldR = p ? (rolledIn(p, "right", rt)?.id ?? null) : null;
     let heldL = p ? (rolledIn(p, "left", rt)?.id ?? null) : null;
     if (heldL === heldR) heldL = null;
-    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}${w.fav ? "*" : ""}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
+    // Уровень и атрибуты — в подписи: от них сила атаки (atk) у каждого оружия.
+    const sig =
+      rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}${w.fav ? "*" : ""}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "") +
+      (p ? `|${p.level}:${p.str}:${p.agi}:${p.int}:${p.con}:${p.luc}:${p.wis}` : "");
     if (sig === rt.weaponsSig) return;
     const client = this.clientOf(id);
     if (!client) return;
@@ -8970,6 +8974,7 @@ export class ZoneRoom extends Room<ZoneState> {
         affixes: instanceLabels(w),
         effects: instanceEffects(w),
         quality: weaponQuality(w),
+        atk: p ? weaponAttack(w, p.level, p) : undefined,
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
         fav: !!w.fav,
         scrap: scrapValue(w),

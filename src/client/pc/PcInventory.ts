@@ -1,6 +1,7 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
+import { attackLabel, attackText } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
@@ -587,6 +588,10 @@ export class PcInventory {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
+      if (w?.atk) {
+        cell.style.position = "relative";
+        cell.append(div("pcinv-atk", attackText(w.atk)));
+      }
       if (w?.fav) {
         cell.style.position = "relative";
         cell.append(div("pcinv-fav on", glyph("ui.fav")));
@@ -655,6 +660,7 @@ export class PcInventory {
     setIcon(c, w.cls, w.name);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
+    if (w.atk) c.append(div("pcinv-atk", attackText(w.atk)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
     if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
@@ -723,6 +729,7 @@ export class PcInventory {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
       right.append(sc);
+      if (w.atk) right.append(div("pcinv-tipatk", attackLabel(w.atk)));
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
         const lab = div("pcinv-elabel");
@@ -970,6 +977,7 @@ export class PcInventory {
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
     this.tip.append(div("pcinv-small", TIER_LOOK[tier]?.name ?? tier));
+    if (w?.atk) this.tip.append(div("pcinv-tipatk", attackLabel(w.atk)));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
@@ -1210,6 +1218,8 @@ function injectInvStyle(): void {
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
 .pcinv-q { position:absolute; right:2px; bottom:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-atk { position:absolute; left:2px; bottom:1px; font:800 10px system-ui; color:var(--attack); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
 .pcinv-fav { position:absolute; right:2px; top:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
 .pcinv-fav.on { opacity:1; }
 .pcinv-cell:hover .pcinv-fav { opacity:1; }

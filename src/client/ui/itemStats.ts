@@ -1,9 +1,8 @@
 import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { weaponDamage } from "#shared/combat";
 import { attackSpeedFor } from "#shared/progression";
-import { attacksPerSec } from "#shared/heroStats";
-import { fireboltDamage, magicPowerFor } from "#shared/magic";
-import { DAGGER, DUAL, HAMMER, staffMagicTier, WEAPONS2 } from "#shared/classes2";
+import { attacksPerSec, dmgRollOfText, weaponHitDamage } from "#shared/heroStats";
+import { magicPowerFor } from "#shared/magic";
+import { DAGGER, DUAL, HAMMER, WEAPONS2 } from "#shared/classes2";
 import { BOW, COMBAT } from "#shared/constants";
 
 export interface WornWeapon {
@@ -26,6 +25,11 @@ export interface HeroStats {
 
 const n1 = (v: number): string => (Math.round(v * 10) / 10).toFixed(1);
 
+/** Сила атаки оружия в руке — та же формула, что «Атака N» в окнах (heroStats.weaponHitDamage) с его роллом «Урон». */
+export function heldAttack(w: WornWeapon, s: HeroStats): number {
+  return weaponHitDamage(w.cls, w.tier, s.level, s, dmgRollOfText(w.affix));
+}
+
 /**
  * Характеристики предмета в руке — строками «название: значение».
  * Считаем ровно теми же формулами, что и бой, чтобы цифра в подсказке
@@ -37,8 +41,8 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
   const out: [string, string][] = [];
 
   if (w.cls === "sword") {
-    const dmg = weaponDamage("sword", s.level, s, d.mult);
-    out.push(["Урон", n1(dmg)]);
+    const dmg = heldAttack(w, s);
+    out.push(["Атака", n1(dmg)]);
     const aps = attacksPerSec("sword", s.level, s);
     out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
@@ -50,8 +54,8 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Два меча", `темп ×${DUAL.tempo}, урон удара ×${DUAL.dmg} (роллы — лучший из двух)`]);
   } else if (w.cls === "dagger" || w.cls === "spear" || w.cls === "hammer") {
     const prof = WEAPONS2[w.cls];
-    const dmg = weaponDamage(w.cls, s.level, s, d.mult);
-    out.push(["Урон", n1(dmg)]);
+    const dmg = heldAttack(w, s);
+    out.push(["Атака", n1(dmg)]);
     const aps = attacksPerSec(w.cls, s.level, s);
     out.push(["Скорость атаки", `${aps.toFixed(2)}/с`]);
     out.push(["Урон в секунду", n1(dmg * aps)]);
@@ -66,14 +70,13 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     }
     out.push(["Растёт от", w.cls === "hammer" ? "силы (удар), интеллекта (волна), ловкости (темп)" : "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "bow") {
-    const dmg = weaponDamage("arrow", s.level, s, d.mult);
-    out.push(["Урон стрелы", n1(dmg)]);
+    out.push(["Атака (стрела)", n1(heldAttack(w, s))]);
     out.push(["Крит (база)", `${Math.round(BOW.critChance * 100)}% · ×${BOW.critMult}`]);
     out.push(["Натяг", `${n1(BOW.drawTimeFlat / spd)} с`]);
     out.push(["Скорость атаки", `${attacksPerSec("bow", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "силы (урон), ловкости (темп), удачи (крит)"]);
   } else if (w.cls === "staff") {
-    out.push(["Огнешар (полный заряд)", n1(fireboltDamage(s.level, s, 1) * staffMagicTier(w.tier))]);
+    out.push(["Атака (огнешар, полный заряд)", n1(heldAttack(w, s))]);
     out.push(["Скорость атаки", `${attacksPerSec("staff", s.level, s).toFixed(2)}/с`]);
     out.push(["Растёт от", "интеллекта (урон и лечение), мудрости (скорость каста)"]);
   } else {
