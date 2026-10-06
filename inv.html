@@ -71,6 +71,9 @@
         font-weight: 600;
         max-width: calc(100% - 32px);
         pointer-events: none;
+        /* Над окном инвентаря (.pcinv-root — слой 40): раньше сообщения прятались за ним. */
+        z-index: 1000;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
       }
       #toast.show {
         opacity: 1;
