@@ -55,6 +55,8 @@ export class PlayerController {
 
   /** Ввод, снятый в последнем update() — читают другие системы (бой). */
   lastInput: InputState = emptyInput();
+  /** Когда игрок последний раз сам двигал героя (клавиши/стик), performance.now() — для автоатаки «стоя». */
+  manualMoveAt = 0;
 
   /** Хуки для звука/UI. Назначает Game. */
   readonly hooks: {
@@ -505,6 +507,7 @@ export class PlayerController {
     const inp =
       this.dead || this.stunnedSec > 0 ? emptyInput() : (this.input?.sample() ?? emptyInput());
     this.lastInput = inp;
+    if (Math.abs(inp.moveX) + Math.abs(inp.moveY) > 0.05) this.manualMoveAt = performance.now();
     // Отбрасывание — независимо от ввода (даже во время стана), затухает.
     if (Math.abs(this.knockVX) > 0.05 || Math.abs(this.knockVZ) > 0.05) {
       this.moveAxis(this.knockVX * dt, 0);

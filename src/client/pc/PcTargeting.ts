@@ -14,6 +14,11 @@ import { difficultyCss } from "./difficulty";
 import type { NetMobs } from "../combat/MobSystem";
 import type { MouseClick } from "../input/DesktopInput";
 
+/** Автоатака (ПК и телефон): настройка устройства, по умолчанию включена. */
+const AUTO_KEY = "zep.autofight";
+/** После ручной отмены атаки (Esc, клавиша 1) сама не начинается столько, мс. */
+const AUTO_PAUSE_MS = 4000;
+
 /** Два клика ЛКМ по одному мобу чаще этого (мс) — начать атаку. */
 const DOUBLE_CLICK_MS = 450;
 /** Tab выбирает мобов не дальше, м. */
@@ -39,6 +44,21 @@ export interface PcTargetSeg {
 export class PcTargeting {
   targetId: string | null = null;
   autoAttack = false;
+  /**
+   * Автоатака: цель умерла — сам берёт ближайшего моба рядом и бьёт дальше; герой стоит, а моб
+   * подошёл на дальность оружия — бьёт сам. Двигает героя по-прежнему игрок (это не автобой).
+   */
+  autoFight = (() => {
+    try {
+      return localStorage.getItem(AUTO_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  })();
+  /** Цель умерла под атакой — на следующем autoTick возьмём новую. */
+  private lostAttack = false;
+  /** Игрок сам отменил атаку — до этого момента автоатака не начинается. */
+  private autoPauseUntil = 0;
   /** Игрок сам начал атаку (1, двойной клик, ПКМ, клик по рамке цели) — Game ведёт героя к цели. */
   onAttackStart: (() => void) | null = null;
   // --- игроки в цель (id цели = "@" + sessionId) ---
@@ -160,6 +180,7 @@ export class PcTargeting {
   clear(): boolean {
     if (!this.targetId) return false;
     this.select(null);
+    this.autoPauseUntil = performance.now() + AUTO_PAUSE_MS;
     return true;
   }
 
@@ -167,8 +188,35 @@ export class PcTargeting {
   toggleAttack(camera: Camera): void {
     if (!this.alive(this.targetId)) this.tab(camera);
     if (!this.targetId) return;
-    if (this.autoAttack) this.autoAttack = false;
-    else this.startAttack();
+    if (this.autoAttack) {
+      this.autoAttack = false;
+      this.autoPauseUntil = performance.now() + AUTO_PAUSE_MS;
+    } else this.startAttack();
+  }
+
+  /** Включить/выключить автоатаку (меню; запоминается на устройстве). */
+  setAutoFight(on: boolean): void {
+    this.autoFight = on;
+    try {
+      localStorage.setItem(AUTO_KEY, on ? "1" : "0");
+    } catch {
+      /* приватный режим — до перезагрузки */
+    }
+  }
+
+  /**
+   * Каждый кадр (ПК и телефон): автоатака. Цель умерла под атакой — ближайший моб в chainRange;
+   * без цели и герой стоит (idle) — моб в engageRange. blocked — рыбалка, NPC, лагерь, смерть.
+   * true — начали атаку новой цели.
+   */
+  autoTick(x: number, z: number, o: { chainRange: number; engageRange: number; idle: boolean; blocked: boolean }): boolean {
+    const lost = this.lostAttack;
+    this.lostAttack = false;
+    if (!this.autoFight || o.blocked || performance.now() < this.autoPauseUntil) return false;
+    if (this.autoAttack && this.alive(this.targetId)) return false;
+    if (lost) return this.attackNearest(x, z, o.chainRange);
+    if (o.idle && !this.targetId) return this.attackNearest(x, z, o.engageRange);
+    return false;
   }
 
   private lastClickAt = 0;
@@ -328,6 +376,8 @@ export class PcTargeting {
     }
     const m = this.mob(this.targetId);
     if (!m) {
+      // Цель умерла под атакой — автоатака возьмёт следующую (autoTick).
+      if (this.targetId && this.autoAttack && !this.targetId.startsWith("@")) this.lostAttack = true;
       if (this.targetId) this.select(null);
       return null;
     }
@@ -365,6 +415,8 @@ export class PcTargeting {
     }
     const m = this.mob(this.targetId);
     if (!m) {
+      // Цель умерла под атакой — автоатака возьмёт следующую (autoTick).
+      if (this.targetId && this.autoAttack && !this.targetId.startsWith("@")) this.lostAttack = true;
       if (this.targetId) this.select(null);
       this.ring.setEnabled(false);
       if (this.frame.style.display !== "none") this.frame.style.display = "none";

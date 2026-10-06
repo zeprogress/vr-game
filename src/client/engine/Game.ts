@@ -49,7 +49,7 @@ import { QuestWindow, QuestTracker, QuestCompass, ShopWindow, HunterWindow, trac
 import { VrCompass } from "../ui/VrCompass";
 import { buffList } from "../ui/buffList";
 import { QUEST, questPoint } from "#shared/quests";
-import { HUB } from "#shared/hub";
+import { HUB, inHubSafeZone } from "#shared/hub";
 import { reachAlong, terrainHeight } from "#shared/terrain";
 import { SCROLL, TAVERN_REACH } from "#shared/shop";
 import { PcInventory } from "../pc/PcInventory";
@@ -790,6 +790,8 @@ export class Game {
         setChat: (on) => this.pcHud?.setChatOn(on),
         getDmg: () => VR_SETTINGS.dmgNumbers,
         setDmg: (on) => setVrSettings({ dmgNumbers: on }),
+        getAutoFight: () => this.pcTarget?.autoFight ?? true,
+        setAutoFight: (on) => this.pcTarget?.setAutoFight(on),
         getSkin: () => this.mySkin,
         setSkin: (skin) => this.net?.sendSetSkin(skin),
         getLeaveBot: () => this.leaveBotOn,
@@ -2614,6 +2616,7 @@ export class Game {
     if (di.takeTab()) pt.tab(cam);
     if (di.takeAttack()) pt.toggleAttack(cam);
     if (this.player.dead) pt.autoAttack = false;
+    this.autoFightTick(pt, !!this.aoeAim?.active);
     this.lootMarker?.update(dt, !!this.player.autoMove, (id) => this.loot.hasDrop(id));
     this.updatePcHover(dt);
     const seg = pt.segment();
@@ -2738,6 +2741,7 @@ export class Game {
       }
     }
     if (this.player.dead) pt.autoAttack = false;
+    this.autoFightTick(pt, nearNpc || fishingNow || !!aim?.active);
     this.lootMarker?.update(dt, !!this.player.autoMove, (id) => this.loot.hasDrop(id));
     const seg = pt.segment();
     const auto = pt.autoAttack && !!seg;
@@ -2804,6 +2808,24 @@ export class Game {
     // экземпляр (двуручное в обеих руках) — один раз. Как rolledAtkSpeedMul/handsRoll на
     // сервере — иначе с двумя клинками клиент махал быстрее, чем сервер засчитывает удары.
     return 1 + Math.max(r?.atkSpd ?? 0, l && l.id !== r?.id ? (l.atkSpd ?? 0) : 0);
+  }
+
+  /**
+   * Автоатака (ПК и телефон, PcTargeting.autoTick): цель умерла — следующий моб рядом;
+   * герой стоит ≥ 0.6 с (никуда не бежит сам и не по клику) — бьёт моба, подошедшего на дальность оружия.
+   * Не в лагере, не у NPC/на рыбалке, не при прицеле града, не мёртвым.
+   */
+  private autoFightTick(pt: PcTargeting, busy: boolean): void {
+    const p = this.player.position;
+    const reach = this.combat.pcAttackRange();
+    const idle = !this.player.autoMove && performance.now() - this.player.manualMoveAt > 600;
+    pt.autoTick(p.x, p.z, {
+      chainRange: Math.max(12, reach + 6),
+      // Ближний бой — кто подошёл вплотную; стрелок/маг — в пределах ~14 м (не тянуть мобов через полкарты).
+      engageRange: reach < 6 ? reach + 2.5 : Math.min(reach, 14),
+      idle,
+      blocked: busy || this.player.dead || !!this.fishing?.active || inHubSafeZone(p.x, p.z),
+    });
   }
 
   /**

@@ -27,6 +27,9 @@ export interface PcMenuHooks {
   setLeaveBot: (on: boolean) => void;
   getPvp: () => boolean;
   setPvp: (on: boolean) => void;
+  /** Автоатака: после убийства — следующий моб рядом, стоишь — бьёшь подошедших. */
+  getAutoFight: () => boolean;
+  setAutoFight: (on: boolean) => void;
   fullscreen: () => void;
   exit: () => void;
 }
@@ -140,6 +143,7 @@ export class PcMenu {
     col2.append(skinRow);
     col2.append(check("Оставить героя ботом после выхода", h.getLeaveBot(), h.setLeaveBot));
     col2.append(check("PvP — можно бить других игроков (P)", h.getPvp(), h.setPvp));
+    col2.append(check("Автоатака — сам бьёт следующего моба рядом", h.getAutoFight(), h.setAutoFight));
 
     if (!h.touch) {
       right.append(el("div", "pcmenu-sec", "Управление"));
