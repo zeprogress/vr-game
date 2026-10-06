@@ -3931,10 +3931,14 @@ export class Game {
         this.avatars.get(id)?.playHitReact();
         break;
       case "dodge":
-        // mobId — моб увернулся от героя: «MISS» над мобом (следом за ним — мог убежать за задержку).
-        // Без mobId — герой id сам увернулся (hurtPlayer): «MISS» над его головой.
-        if (mobId) this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, this.missFollowMob(mobId));
-        else this.crossFx.missText(x, y - HERO_MISS_DY, z, MISS_FX_DELAY, this.missFollowAvatar(id));
+        // Герой id увернулся — промазал моб: «MISS» над мобом (x,z — источник удара, см. hurtPlayer);
+        // mobId есть — моб мог убежать вперёд за время задержки, следуем за ним.
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, this.missFollowMob(mobId));
+        break;
+      case "miss":
+        // Герой id промахнулся (моб увернулся / неуязвим): «MISS» над героем.
+        if (id === this.net?.sessionId) this.selfMissText();
+        else this.crossFx.missText(x, y - HERO_MISS_DY, z, 0, this.missFollowAvatar(id));
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
@@ -4079,7 +4083,7 @@ export class Game {
     by: BlockedBy,
     stunSec?: number,
     knockback?: number,
-    _byMob?: string,
+    byMob?: string,
     slowSec?: number,
     slowFrac?: number,
   ): void {
@@ -4088,28 +4092,10 @@ export class Game {
     if (dir.lengthSquared() > 1e-6) dir.normalize();
     else dir.set(0, 0, 1);
     if (by === 3) {
-      // Увернулся: ни урона, ни стана/отбрасывания — «MISS» над героем (как его видят другие),
-      // но не раньше, чем замах/выстрел визуально долетит. Третье лицо — над своей головой;
-      // от первого (ПК, VR, прицел) макушки не видно — перед глазами, чуть ниже центра взгляда.
-      if (this.player.thirdPerson && !this.player.aiming) {
-        this.crossFx.missText(eye.x, eye.y - HERO_MISS_DY, eye.z, MISS_FX_DELAY, () => {
-          const e = this.player.eyePosition;
-          return { x: e.x, y: e.y - HERO_MISS_DY, z: e.z };
-        });
-      } else {
-        const f = this.player.eyeForward;
-        let fx = f.x;
-        let fz = f.z;
-        const fl = Math.hypot(fx, fz);
-        if (fl < 0.1) {
-          fx = Math.sin(this.player.facing);
-          fz = Math.cos(this.player.facing);
-        } else {
-          fx /= fl;
-          fz /= fl;
-        }
-        this.crossFx.missText(eye.x + fx * 3.5, eye.y - 1.9, eye.z + fz * 3.5, MISS_FX_DELAY);
-      }
+      // Увернулся: ни урона, ни стана/отбрасывания — промазал моб, «MISS» над ним (над источником
+      // удара), но не раньше, чем замах/выстрел визуально долетит. Моб мог убежать вперёд
+      // за это время — следуем за ним, а не за застывшей точкой.
+      this.crossFx.missText(fromX, eye.y - 1, fromZ, MISS_FX_DELAY, this.missFollowMob(byMob));
       return;
     }
     if (by !== 0) this.combat.playBlock(by);
@@ -4127,6 +4113,33 @@ export class Game {
   private missFollowMob(id?: string): (() => { x: number; y: number; z: number } | null) | null {
     if (!id) return null;
     return () => this.netMobs.getMob(id)?.missPoint() ?? null;
+  }
+
+  /**
+   * Свой промах (моб увернулся): «MISS» над своим героем. Третье лицо — над головой, следом;
+   * от первого (ПК, VR, прицел) макушки не видно — перед глазами, чуть ниже центра взгляда.
+   */
+  private selfMissText(): void {
+    const eye = this.player.eyePosition;
+    if (this.player.thirdPerson && !this.player.aiming) {
+      this.crossFx.missText(eye.x, eye.y - HERO_MISS_DY, eye.z, 0, () => {
+        const e = this.player.eyePosition;
+        return { x: e.x, y: e.y - HERO_MISS_DY, z: e.z };
+      });
+      return;
+    }
+    const f = this.player.eyeForward;
+    let fx = f.x;
+    let fz = f.z;
+    const fl = Math.hypot(fx, fz);
+    if (fl < 0.1) {
+      fx = Math.sin(this.player.facing);
+      fz = Math.cos(this.player.facing);
+    } else {
+      fx /= fl;
+      fz /= fl;
+    }
+    this.crossFx.missText(eye.x + fx * 3.5, eye.y - 1.9, eye.z + fz * 3.5);
   }
 
   /** «MISS» над головой героя (аватар — голова) — следом за ним. */

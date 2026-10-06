@@ -8561,9 +8561,11 @@ export class ZoneRoom extends Room<ZoneState> {
     this.sim.critHits.length = 0;
     // Числа урона у спектатора — батчем за тик, только если тумблер включён
     // (не тратим сеть/CPU зря, если никто не смотрит или выключено с пульта).
+    // Герой промахнулся (моб увернулся / неуязвим) — «MISS» над героем: точка — его голова.
     for (const mm of this.sim.mobMisses) {
+      const ap = this.state.players.get(mm.attacker);
       this.broadcast(MSG.act, {
-        k: "dodge", id: mm.attacker, x: mm.x, y: mm.y, z: mm.z, mobId: mm.mobId,
+        k: "miss", id: mm.attacker, x: ap ? ap.head.x : mm.x, y: ap ? ap.head.y : mm.y, z: ap ? ap.head.z : mm.z, mobId: mm.mobId,
       } satisfies ActRelay);
     }
     this.sim.mobMisses.length = 0;
@@ -8898,9 +8900,18 @@ export class ZoneRoom extends Room<ZoneState> {
     // Соседям — звук/FX: щёлкнул щит, звякнул меч, увернулся или охнул от урона.
     const k: ActKind =
       block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";
-    // Позиция — сам игрок: звук блока/удара и «MISS» уворота над головой увернувшегося
-    // (2026-10-06; раньше «MISS» рисовался над мобом-источником).
-    const relay: ActRelay = { k, id: h.target, x: p.head.x, y: p.head.y, z: p.head.z };
+    // «MISS» — над тем, кто промазал: над мобом (источником удара), а не над увернувшимся;
+    // для звуков блока/удара позиция — сам игрок.
+    const relayX = block.by === 3 ? h.fromX : p.head.x;
+    const relayZ = block.by === 3 ? h.fromZ : p.head.z;
+    const relay: ActRelay = {
+      k,
+      id: h.target,
+      x: relayX,
+      y: p.head.y,
+      z: relayZ,
+      mobId: block.by === 3 ? h.byMob : undefined,
+    };
     this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {

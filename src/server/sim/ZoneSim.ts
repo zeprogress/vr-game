@@ -2675,7 +2675,7 @@ export class ZoneSim {
   readonly critHits: { x: number; y: number; z: number; owner: string }[] = [];
   /** Числа урона у спектатора (?dmgNumbers) — комната сама решает, слать ли (см. state.dmgNumbers). */
   readonly dmgHits: { x: number; y: number; z: number; dmg: number; by?: string; mob?: string; c?: DmgHitColor }[] = [];
-  /** Моб увернулся от удара героя — ZoneRoom покажет «MISS» над мобом. */
+  /** Моб увернулся от удара героя (или неуязвим) — ZoneRoom покажет «MISS» над промахнувшимся героем. */
   /** Отражённый щитом урон — уходит в hits на следующем тике. */
   private readonly reflectHits: PlayerHit[] = [];
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];

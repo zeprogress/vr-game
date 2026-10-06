@@ -1773,20 +1773,20 @@ export class Spectator {
         this.avatars.get(id)?.playHitReact();
         break;
       case "dodge": {
-        // mobId — моб увернулся от героя: «MISS» над мобом; без — герой id увернулся: над героем.
+        // Герой id увернулся — промазал моб: «MISS» над мобом (источником удара), следом за ним.
         const mob = mobId;
-        if (mob) {
-          this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, () => this.netMobs.getMob(mob)?.missPoint() ?? null);
-        } else {
-          this.crossFx.missText(x, y - HERO_MISS_DY, z, MISS_FX_DELAY, () => {
-            const av = this.avatars.get(id);
-            if (!av) return null;
-            const p = av.position;
-            return { x: p.x, y: p.y - HERO_MISS_DY, z: p.z };
-          });
-        }
+        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, mob ? () => this.netMobs.getMob(mob)?.missPoint() ?? null : null);
         break;
       }
+      case "miss":
+        // Герой id промахнулся (моб увернулся / неуязвим): «MISS» над героем, следом за ним.
+        this.crossFx.missText(x, y - HERO_MISS_DY, z, 0, () => {
+          const av = this.avatars.get(id);
+          if (!av) return null;
+          const p = av.position;
+          return { x: p.x, y: p.y - HERO_MISS_DY, z: p.z };
+        });
+        break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
         break;
