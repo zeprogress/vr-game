@@ -294,11 +294,19 @@ export class CatacombDirector {
    * Записаться (чат: !катакомбы; портал в лагере). Сбора нет — откроет его
    * (если откат прошёл). Возвращает ответ для чата.
    */
+  /**
+   * Записаться. `open` — можно открыть сбор, если его нет (только админы: раньше расписания
+   * катакомбы не открывает никто, кроме них); остальным — когда откроются сами.
+   */
   join(id: string, nick: string, open: boolean): string {
     const now = this.host.now();
     if (this.phase === CAT_PHASE.none) {
-      if (!open) return "";
       if (!this.host.autoOn()) return "катакомбы сейчас выключены.";
+      if (!open) {
+        const at = Math.max(this.nextAuto, this.cooldownUntil);
+        const wait = Math.max(1, Math.ceil((at - now) / 60000));
+        return `катакомбы откроются сами примерно через ${wait} мин — тогда пиши !катакомбы или заходи в портал в лагере.`;
+      }
       const wait = Math.ceil((this.cooldownUntil - now) / 60000);
       if (wait > 0) return `катакомбы ещё запечатаны — откроются через ~${wait} мин.`;
       if (!this.host.canOpen()) return "сейчас идёт другое событие — катакомбы откроются после него.";
