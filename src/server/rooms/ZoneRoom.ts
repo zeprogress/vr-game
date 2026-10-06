@@ -31,6 +31,8 @@ import {
   type BotSayMsg,
   type LeaderboardRow,
   type CatBoardRow,
+  type CatReportMsg,
+  type CatReportRow,
   type TowerMobsMsg,
   type BotEmote,
   type EmoteMsg,
@@ -2365,7 +2367,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private catLeaderboard(limit: number): CatBoardRow[] {
     const rows: CatBoardRow[] = [];
     for (const rec of store.entries()) {
-      if (!rec.token.startsWith("nick:") || !rec.catBestDmg) continue;
+      if (!rec.token.startsWith("nick:") || !rec.catBestDmg || (rec.catSeason ?? 1) !== CATACOMBS.season) continue;
       rows.push({ nick: rec.nick || rec.token.slice(5), dmg: rec.catBestDmg, wins: rec.catWins ?? 0, runs: rec.catRuns ?? 0 });
     }
     return rows.sort((a, b) => b.dmg - a.dmg || b.wins - a.wins).slice(0, limit);
@@ -5385,10 +5387,13 @@ export class ZoneRoom extends Room<ZoneState> {
           const rec = token ? store.get(token) : undefined;
           if (!rec) continue;
           const dmg = Math.round(this.sim.catDamage.get(id) ?? 0);
+          // Новый сезон рекордов — старые числа героя не в счёт.
+          const cur = (rec.catSeason ?? 1) === CATACOMBS.season;
           store.put(token, {
-            catBestDmg: Math.max(rec.catBestDmg ?? 0, dmg),
-            catRuns: (rec.catRuns ?? 0) + 1,
-            catWins: (rec.catWins ?? 0) + (win ? 1 : 0),
+            catBestDmg: Math.max(cur ? (rec.catBestDmg ?? 0) : 0, dmg),
+            catRuns: (cur ? (rec.catRuns ?? 0) : 0) + 1,
+            catWins: (cur ? (rec.catWins ?? 0) : 0) + (win ? 1 : 0),
+            catSeason: CATACOMBS.season,
           });
         }
         if (this.clients.length) this.broadcast(MSG.catBoard, this.catLeaderboard(5));
@@ -5441,6 +5446,22 @@ export class ZoneRoom extends Room<ZoneState> {
       sendHome: (id) => {
         const sp = hubSpawnPoint();
         this.catWarp(id, sp.x, sp.z);
+      },
+      report: (r, heroes) => {
+        const rows: CatReportRow[] = heroes.map((h) => {
+          const p = this.state.players.get(h.id);
+          return {
+            nick: p?.nick ?? "?",
+            cls: p ? (classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "") : "",
+            level: p?.level ?? 0,
+            dmg: Math.round(this.sim.catDamage.get(h.id) ?? 0),
+            kills: this.sim.catKills.get(h.id) ?? 0,
+            deaths: h.deaths,
+            loot: h.loot,
+          };
+        });
+        rows.sort((a, b) => b.dmg - a.dmg);
+        this.broadcast(MSG.catReport, { ...r, rows } satisfies CatReportMsg);
       },
       revive: (id) => {
         const p = this.state.players.get(id);

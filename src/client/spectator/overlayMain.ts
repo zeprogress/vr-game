@@ -1,3 +1,4 @@
+import { showCatReport } from "../ui/CatReport";
 import { NetClient } from "../net/NetClient";
 import { Overlay, type OverlayCtx } from "./Overlay";
 import { CHANGELOG, CHANGELOG_SHOWN, CHANGELOG_HOLD_SEC } from "#shared/changelog";
@@ -34,6 +35,7 @@ net.onPickupFeed = (m) => ov.pushPickup(m.nick, m.item, m.tier);
 net.onBossEvent = (kind, by, loot, lootItems) => ov.bossBanner(kind, by, loot, lootItems);
 net.onLeaderboard = (rows) => ov.setLeaderboard(rows);
 net.onCatBoard = (rows) => ov.setCatBoard(rows);
+net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 25 });
 net.onWorldEvent = (phase, name, _x, _z, loot) => {
   const hunt = name === "Охота";
   const tower = name === "Башня";

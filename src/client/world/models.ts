@@ -14,7 +14,7 @@ import "@babylonjs/loaders/glTF/2.0";
 // с этим модулем. В игре его тянул кто-то ещё, в лёгкой лаборатории — нет.
 import "@babylonjs/core/Animations/animatable";
 import { sharedMobMaterial } from "../combat/mobMaterials";
-import { trackMobMaterial } from "../combat/mobLightTune";
+import { MODEL_LIGHT, trackMobMaterial } from "../combat/mobLightTune";
 
 /**
  * Пайплайн внешних ассетов (этап 12).
@@ -451,13 +451,11 @@ export function recolorCharacter(root: TransformNode): void {
  * но переводим PBR → плоский StandardMaterial с эмиссивной заливкой — иначе в
  * дневном свете (ambient=0) вертикальные грани почти чёрные.
  */
-export function recolorMonster(
-  root: TransformNode,
-  tint?: Color3,
-  noGlow = false,
-  emissiveMul?: number,
-  diffuseMul?: number,
-): void {
+export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = false, model?: ModelName): void {
+  // Свет модели — единая таблица MODEL_LIGHT (mobLightTune.ts); без записи — под палитры пака.
+  const ml = model ? MODEL_LIGHT[model] : undefined;
+  const emissiveMul = ml?.emissive;
+  const diffuseMul = ml?.diffuse;
   const scene = root.getScene();
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
@@ -491,6 +489,8 @@ export function recolorMonster(
         }
         if (tex) {
           f.diffuseTexture = tex as StandardMaterial["diffuseTexture"];
+          // Яркость текстуры вида (реалистичные модели темнее палитр пака) — см. MODEL_LIGHT.
+          if (ml && f.diffuseTexture) f.diffuseTexture.level = ml.tex;
           if (!noGlow) f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
           // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
           // diffuseMul>1 — светлее под прямым солнцем (сильнее реагирует на sunI).
@@ -500,7 +500,8 @@ export function recolorMonster(
           f.diffuseColor = (tint ?? base).scale(diffuseMul ?? 1);
           f.emissiveColor = noGlow ? (tint ?? base).scale(0.14) : (tint ?? base).scale(emissiveMul ?? 0.28);
         }
-        trackMobMaterial(f); // ?moblight=1 — живая подстройка поверх базовых цветов
+        // ?moblight=1 — живая подстройка поверх базовых цветов (и света модели, если текстура с подсветкой).
+        trackMobMaterial(f, model, tex && !noGlow ? (tint ?? new Color3(1, 1, 1)) : undefined);
         return f;
       });
       seen.set(src.id, flat);

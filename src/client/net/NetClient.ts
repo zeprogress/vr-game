@@ -25,6 +25,7 @@ import {
   type WarpMsg,
   type CatacombMsg,
   type CatStatsMsg,
+  type CatReportMsg,
   type RtcMsg,
   type SaveMsg,
   type SpendMsg,
@@ -124,6 +125,8 @@ export class NetClient {
   onCatacomb: ((m: CatacombMsg) => void) | null = null;
   /** Катакомбы: таблица забега (зрителю — вместо топов). */
   onCatStats: ((m: CatStatsMsg) => void) | null = null;
+  /** Катакомбы пройдены — итоговая таблица забега. */
+  onCatReport: ((m: CatReportMsg) => void) | null = null;
   /** Сервер возродил игрока — встать в эту точку. */
   onRespawn: ((x: number, y: number, z: number) => void) | null = null;
   /** Получен новый уровень. */
@@ -315,6 +318,7 @@ export class NetClient {
     room.onMessage(MSG.warp, (m: WarpMsg) => this.onWarp?.(m.x, m.y, m.z, m.yaw));
     room.onMessage(MSG.catacomb, (m: CatacombMsg) => this.onCatacomb?.(m));
     room.onMessage(MSG.catStats, (m: CatStatsMsg) => this.onCatStats?.(m));
+    room.onMessage(MSG.catReport, (m: CatReportMsg) => this.onCatReport?.(m));
     room.onMessage(MSG.levelUp, (m: LevelUpMsg) => this.onLevelUp?.(m.level));
     room.onMessage(MSG.picked, (m: PickedMsg) => this.onPicked?.(m.item, m.count));
     room.onMessage(MSG.rtc, (m: RtcMsg) => this.onRtc?.(m));

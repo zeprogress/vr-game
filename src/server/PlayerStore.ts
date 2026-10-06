@@ -71,6 +71,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   catBestDmg?: number;
   catRuns?: number;
   catWins?: number;
+  /** Сезон рекордов катакомб (CATACOMBS.season): у записи старого сезона рекорды не считаются и обнуляются при следующем забеге. */
+  catSeason?: number;
   /** Бафф победы над событием (×2 опыт/урон) и «Тепло костра»: до какого момента (мс с эпохи) — переживают перезаход и смену ПК ↔ бот. */
   eventBuffUntil?: number;
   campBuffUntil?: number;

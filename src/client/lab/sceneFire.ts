@@ -67,7 +67,7 @@ export function build(ctx: LabCtx): void {
           h.parent = node;
           h.scaling.setAll((MOB.bodyRadius * 1.75) / rig.nativeHeight);
           rig.root.parent = h;
-          recolorMonster(rig.root, def.tint ? new Color3(...def.tint) : undefined);
+          recolorMonster(rig.root, def.tint ? new Color3(...def.tint) : undefined, false, def.model as ModelName);
           rig.anims.get("idle")?.start(true);
         }
         const b: Burner = { node, rig, old: null, t: Math.random() * 5 };

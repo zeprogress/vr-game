@@ -1,3 +1,4 @@
+import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
 import { prewarmClassClips } from "../world/classPoses";
@@ -532,6 +533,10 @@ export class Spectator {
       }
     };
     net.onCatStats = (m) => this.overlay?.setCatTop(m.rows);
+    // Итог пройденных катакомб — большая таблица (при overlay=ext её рисует overlay.html).
+    net.onCatReport = (m) => {
+      if (this.overlay) showCatReport(m, { delayMs: 3500, holdSec: 25 });
+    };
     net.onCatacomb = (m) => {
       this.overlay?.showCard(m.title, m.sub, m.secs ?? 7, m.loot);
       if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();

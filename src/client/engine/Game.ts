@@ -1,3 +1,4 @@
+import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
 import { iconHtml } from "../ui/icons";
@@ -3376,6 +3377,8 @@ export class Game {
       this.player.teleportTo(x, y, z);
       if (yaw !== undefined) this.player.faceInstant(x + Math.sin(yaw), z + Math.cos(yaw));
     };
+    // Итог пройденных катакомб — таблица по центру (после баннера победы); клик/Esc — закрыть.
+    net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 30, closable: true });
     net.onCatacomb = (m) => {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);
       if (m.kind === "boss" || m.kind === "start" || m.kind === "gather") this.sfx.bossHorn();

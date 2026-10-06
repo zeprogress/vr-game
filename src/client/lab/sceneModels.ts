@@ -29,7 +29,7 @@ export function build(ctx: LabCtx): void {
     rig = make();
     rig.root.parent = holder;
     holder.scaling.setAll((MOB.bodyRadius * 1.75) / rig.nativeHeight);
-    if (name.startsWith("mon")) recolorMonster(rig.root);
+    if (name.startsWith("mon")) recolorMonster(rig.root, undefined, false, name);
     const first = rig.anims.get("idle") ?? [...rig.anims.values()][0];
     first?.start(true);
     if (animBox) {

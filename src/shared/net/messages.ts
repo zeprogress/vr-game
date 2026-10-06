@@ -52,6 +52,8 @@ export const MSG = {
   catacomb: "cat",
   /** Катакомбы: таблица забега (урон по монстрам, убийства, смерти) — зрителям вместо топов. */
   catStats: "cats",
+  /** Катакомбы пройдены: итоговая таблица забега (урон, добыча каждого) — CatReportMsg. */
+  catReport: "crep",
   /** сервер -> клиент: получен уровень (для тоста и звука). */
   levelUp: "lu",
   /** сервер -> все: кто кого убил — для кил-фида спектатора (этап 17 Ф9). */
@@ -364,6 +366,32 @@ export interface WarpMsg {
 /** Таблица забега катакомб. */
 export interface CatStatsMsg {
   rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[];
+}
+
+/** Строка итоговой таблицы катакомб: герой, его урон за забег и что ему выпало из сундуков. */
+export interface CatReportRow {
+  nick: string;
+  /** Класс героя (ClassId) — значок «c.<класс>»; "" — без класса. */
+  cls: string;
+  level: number;
+  dmg: number;
+  kills: number;
+  deaths: number;
+  loot: LootItem[];
+}
+/** Итог пройденных катакомб — большая таблица по центру экрана у игроков и зрителей. */
+export interface CatReportMsg {
+  /** Кто повержен в финале. */
+  boss: string;
+  /** Время забега, с. */
+  secs: number;
+  /** Пройденные залы по порядку (маршрут развилок). */
+  halls: string[];
+  /** Жизней отряда осталось / было. */
+  lives: number;
+  livesMax: number;
+  /** По урону, сверху — лучший. */
+  rows: CatReportRow[];
 }
 
 /** Катакомбы: титры для игроков (баннер) и зрителей (карточка). */

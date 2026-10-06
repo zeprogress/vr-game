@@ -12,7 +12,7 @@
  * Подобранное лежит в localStorage (переживает F5) и показывается готовым
  * куском кода для вставки в mobLightTune.ts (в дефолт MOB_LIGHT_TUNE).
  */
-import { applyMobLightTune, MOB_LIGHT_TUNE, saveMobLightTune } from "../combat/mobLightTune";
+import { applyMobLightTune, MOB_LIGHT_TUNE, MODEL_LIGHT, modelLight, saveMobLightTune, setModelLight, trackedModels } from "../combat/mobLightTune";
 
 const CSS = `
 #mobLightTuner{position:fixed;top:8px;right:8px;z-index:9999;width:250px;
@@ -111,6 +111,59 @@ export function mountMobLightTuner(): () => void {
   section("источники света");
   slider("maxLights", 0, 8, "1", () => MOB_LIGHT_TUNE.maxLights, (v) => (MOB_LIGHT_TUNE.maxLights = v));
 
+  // Свет одной модели (MODEL_LIGHT): реалистичные модели art/models темнее палитр пака.
+  section("модель (свет вида)");
+  const modelOut = document.createElement("textarea");
+  modelOut.readOnly = true;
+  modelOut.style.height = "40px";
+  const pick = document.createElement("select");
+  pick.style.width = "100%";
+  const models = (): string[] => [...new Set([...Object.keys(MODEL_LIGHT), ...trackedModels()])];
+  for (const m of models()) pick.add(new Option(m, m, m === "monStoneTroll", m === "monStoneTroll"));
+  box.appendChild(pick);
+  const cur = { ...modelLight(pick.value) };
+  const rows = document.createElement("div");
+  box.appendChild(rows);
+  const showModel = (): void => {
+    modelOut.value = `${pick.value}: { emissive: ${fmt(cur.emissive)}, diffuse: ${fmt(cur.diffuse)}, tex: ${fmt(cur.tex)} },`;
+  };
+  const modelSlider = (label: string, key: "emissive" | "diffuse" | "tex", max: number): HTMLInputElement => {
+    const line = document.createElement("div");
+    line.className = "r";
+    const lb = document.createElement("label");
+    lb.textContent = label;
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = "0";
+    input.max = String(max);
+    input.step = "any";
+    const view = document.createElement("span");
+    view.className = "v";
+    const sync = (): void => {
+      input.value = String(cur[key]);
+      view.textContent = fmt(cur[key]);
+    };
+    input.addEventListener("input", () => {
+      cur[key] = Number(input.value);
+      view.textContent = fmt(cur[key]);
+      setModelLight(pick.value, cur);
+      showModel();
+    });
+    (input as HTMLInputElement & { sync?: () => void }).sync = sync;
+    sync();
+    line.append(lb, input, view);
+    rows.appendChild(line);
+    return input;
+  };
+  const ins = [modelSlider("текстура", "tex", 4), modelSlider("diffuse", "diffuse", 3), modelSlider("emissive", "emissive", 1.5)];
+  pick.addEventListener("change", () => {
+    Object.assign(cur, modelLight(pick.value));
+    for (const i of ins) (i as HTMLInputElement & { sync?: () => void }).sync?.();
+    showModel();
+  });
+  box.appendChild(modelOut);
+  showModel();
+
   const btns = document.createElement("div");
   btns.className = "sec";
   const copy = document.createElement("button");
@@ -124,6 +177,7 @@ export function mountMobLightTuner(): () => void {
   reset.textContent = "сброс";
   reset.addEventListener("click", () => {
     localStorage.removeItem("zep.moblight");
+    localStorage.removeItem("zep.moblight.models");
     location.reload();
   });
   btns.append(copy, reset);
@@ -133,7 +187,7 @@ export function mountMobLightTuner(): () => void {
   const hint = document.createElement("div");
   hint.className = "hint";
   hint.textContent =
-    "Действует на мобов поляны (не башню). Переживает F5. Готовое — в mobLightTune.ts (MOB_LIGHT_TUNE).";
+    "Действует на мобов поляны (не башню). Переживает F5. Готовое — в mobLightTune.ts (MOB_LIGHT_TUNE, MODEL_LIGHT).";
   box.appendChild(hint);
 
   apply();

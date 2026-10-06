@@ -365,7 +365,7 @@ export async function build(ctx: LabCtx): Promise<void> {
         rig = make();
         rig.root.parent = holder;
         holder.scaling.setAll(((MOB.bodyRadius * 1.75) / rig.nativeHeight) * def.scaleMul);
-        recolorMonster(rig.root, def.tint ? new Color3(def.tint[0], def.tint[1], def.tint[2]) : undefined);
+        recolorMonster(rig.root, def.tint ? new Color3(def.tint[0], def.tint[1], def.tint[2]) : undefined, false, def.model as ModelName);
         rig.anims.get("idle")?.start(true);
       }
       mobs.push({

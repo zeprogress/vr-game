@@ -27,7 +27,7 @@ import {
   type CatChampion,
 } from "#shared/catacombs";
 import { CAT_CHAMPIONS, CAT_MECH_POOL } from "#shared/mobs";
-import type { CatacombMsg, LootItem } from "#shared/net/messages";
+import type { CatacombMsg, CatReportMsg, LootItem } from "#shared/net/messages";
 
 /**
  * Что режиссёру катакомб нужно от комнаты. Сам забег идёт в ТОМ ЖЕ мире
@@ -52,6 +52,8 @@ export interface CatHost {
   sendHome(id: string): void;
   /** Поднять павшего героя (у входа в текущий зал). */
   revive(id: string): void;
+  /** Итог победы: комната дополнит строки (ник, класс, урон, убийства) и разошлёт таблицу. */
+  report(r: Omit<CatReportMsg, "rows">, heroes: { id: string; deaths: number; loot: LootItem[] }[]): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
   spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
   /** Темы залов на заход (для клиентов). */
@@ -161,7 +163,11 @@ export class CatacombDirector {
   /** Имя зала с темой захода: «Зал костей · Огненная яма». */
   /** Жизни отряда (CATACOMBS.livesPerHero): сколько воскрешений осталось; кончились — объявили ли. */
   private lives = 0;
+  private livesMax = 0;
   private livesOutSaid = false;
+  /** Добыча каждого героя за забег (сундуки стражей и финальный) — для итоговой таблицы. */
+  private readonly lootBy = new Map<string, LootItem[]>();
+  private runStart = 0;
   /**
    * Павший из отряда хочет встать (вышло reviveSec): тратит жизнь отряда. Нет жизней — false,
    * лежит до перехода в следующий зал.
@@ -249,6 +255,9 @@ export class CatacombDirector {
     const lv = this.startLevel.get(from);
     this.startLevel.delete(from);
     if (lv !== undefined) this.startLevel.set(to, lv);
+    const lb = this.lootBy.get(from);
+    this.lootBy.delete(from);
+    if (lb) this.lootBy.set(to, lb);
     for (const k of [...this.rewarded]) {
       if (!k.endsWith(`:${from}`)) continue;
       this.rewarded.delete(k);
@@ -598,7 +607,10 @@ export class CatacombDirector {
     this.host.setThemes(this.themes.join(","));
     this.route = [0];
     this.lives = Math.max(1, Math.round(CATACOMBS.livesPerHero * heroes.length));
+    this.livesMax = this.lives;
     this.livesOutSaid = false;
+    this.lootBy.clear();
+    this.runStart = now;
     this.plan = CATACOMBS.stages.map((st, i) => this.makePlan(st, i === CATACOMBS.stages.length - 1, heroes.length));
     const hall = CAT_HALLS[0];
     heroes.forEach((h, i) => {
@@ -896,10 +908,14 @@ export class CatacombDirector {
         // Опыт — до сундука (иначе финальный ×2 бафф из сундука удвоил бы и его).
         const lv = this.startLevel.get(id) ?? this.host.heroes().find((h) => h.id === id)?.level ?? 1;
         this.host.xpReward(id, final ? CATACOMBS.finalShare : CATACOMBS.guardShare, lv);
+        const mine = this.lootBy.get(id) ?? [];
+        this.lootBy.set(id, mine);
         for (const it of this.host.chest(id, st.chest)) {
-          const same = loot.find((l) => l.id === it.id && !!l.aegis === !!it.aegis);
-          if (same) same.count += it.count;
-          else loot.push({ ...it });
+          for (const list of [loot, mine]) {
+            const same = list.find((l) => l.id === it.id && !!l.aegis === !!it.aegis);
+            if (same) same.count += it.count;
+            else list.push({ ...it });
+          }
         }
       }
       if (!final) {
@@ -913,6 +929,17 @@ export class CatacombDirector {
           loot, secs: 12,
         });
         this.host.chat(`☠ Катакомбы пройдены! ${this.plan[this.stage]?.boss?.name ?? "Владыка Бездны"} повержен. Отряду — уникальное оружие, свитки и жетоны. Слава героям!`);
+        // Итоговая таблица: урон и добыча каждого (клиенты покажут после карточки победы).
+        this.host.report(
+          {
+            boss: this.plan[this.stage]?.boss?.name ?? "Владыка Бездны",
+            secs: Math.round((this.host.now() - this.runStart) / 1000),
+            halls: this.route.map((h, i) => this.hallTitle(h) || String(i)),
+            lives: this.lives,
+            livesMax: this.livesMax,
+          },
+          [...this.party].map((id) => ({ id, deaths: this.deaths.get(id) ?? 0, loot: this.lootBy.get(id) ?? [] })),
+        );
         this.pushState();
         return;
       }
