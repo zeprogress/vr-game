@@ -39,11 +39,12 @@ export interface RaidPhase {
   jerky?: boolean;
   vertical?: number;
 }
+// 2026-10-07: скорости снижены (было арена 5/15/30/45 °/с, орбиты до 24 °/с, снос до 1.5 м/с — у края несло ~13 м/с).
 export const RAID_PHASES: readonly RaidPhase[] = [
-  { from: 1.0, orbits: 1, arenaSpd: 5, orbitRel: [-6], gap: 90, edge: 1.0, drift: 0.35 },
-  { from: 0.75, orbits: 2, arenaSpd: 15, orbitRel: [-10, 12], gap: 45, edge: 0.85, drift: 0.7 },
-  { from: 0.5, orbits: 3, arenaSpd: 30, orbitRel: [-14, 16, -20], gap: 30, edge: 0.7, drift: 1.1, jerky: true, vertical: 2 },
-  { from: 0.25, orbits: 1, arenaSpd: 45, orbitRel: [24], gap: 20, edge: 0.55, drift: 1.5 },
+  { from: 1.0, orbits: 1, arenaSpd: 3, orbitRel: [-5], gap: 90, edge: 1.0, drift: 0.25 },
+  { from: 0.75, orbits: 2, arenaSpd: 6, orbitRel: [-6, 7], gap: 45, edge: 0.85, drift: 0.4 },
+  { from: 0.5, orbits: 3, arenaSpd: 9, orbitRel: [-8, 9, -10], gap: 30, edge: 0.7, drift: 0.6, jerky: true, vertical: 2 },
+  { from: 0.25, orbits: 1, arenaSpd: 12, orbitRel: [12], gap: 20, edge: 0.55, drift: 0.8 },
 ];
 
 /** Номер фазы (0..3) по доле HP босса. */
