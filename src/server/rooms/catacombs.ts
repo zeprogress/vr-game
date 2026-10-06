@@ -590,7 +590,10 @@ export class CatacombDirector {
     const heroes = this.host.heroes().filter((h) => this.party.has(h.id));
     this.startLevel.clear();
     for (const h of heroes) this.startLevel.set(h.id, h.level);
-    const avg = heroes.reduce((s, h) => s + h.level, 0) / Math.max(1, heroes.length);
+    // Уровень отряда для силы мобов — степенное среднее (сила героя растёт ~ как уровень^levelPow):
+    // низкоуровневый «твинк» в отряде больше не ослабляет мобов для всех (было простое среднее).
+    const pw = CATACOMBS.levelPow;
+    const avg = (heroes.reduce((s, h) => s + Math.max(1, h.level) ** pw, 0) / Math.max(1, heroes.length)) ** (1 / pw);
     this.partyLevel = avg;
     this.pending = null;
     this.deaths.clear();
@@ -631,11 +634,16 @@ export class CatacombDirector {
       for (let w = 0; w < st.waveCount; w++) {
         const pool = [...st.pool].sort(() => Math.random() - 0.5);
         // Волна от волны крупнее: +15% за номер.
-        const total = Math.max(2, Math.round(((st.waveBase ?? 3) + (st.wavePerHero ?? 1) * (n - 1)) * (1 + 0.15 * w)));
-        const a = Math.max(1, Math.round(total * (0.45 + Math.random() * 0.25)));
+        const total = Math.max(3, Math.round(((st.waveBase ?? 3) + (st.wavePerHero ?? 1) * (n - 1)) * (1 + 0.15 * w)));
+        // Три вида в волне (случайные доли), каждый хотя бы по одному.
+        const ka = 0.25 + Math.random() * 0.25;
+        const kb = 0.2 + Math.random() * 0.25;
+        const a = Math.max(1, Math.round(total * ka));
+        const b = Math.max(1, Math.round(total * kb));
         waves.push([
           { type: pool[0], count: a, perHero: 0 },
-          { type: pool[1], count: Math.max(1, total - a), perHero: 0 },
+          { type: pool[1], count: b, perHero: 0 },
+          { type: pool[2 % pool.length], count: Math.max(1, total - a - b), perHero: 0 },
         ]);
       }
     }

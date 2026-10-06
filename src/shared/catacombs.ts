@@ -299,9 +299,11 @@ export const CATACOMBS = {
    * Урон всех мобов катакомб: «пали все — поражение», бесконечных возрождений нет —
    * отряд должен переживать бой, а не брать числом смертей.
    */
-  dmgScale: 0.35, // 2026-10-06: при отряде из sizeRef героев; ×sizeDmg от размера — см. ниже. Лаборатория: 0.34 → сбаланс. 81% / несбаланс. 22%, 0.36 → 67% / 19%
+  dmgScale: 0.46, // 2026-10-06: по реальным отрядам с прода (лаборатория --players): 71% побед, ~7 мин; синтетические боты слабее настоящих героев в 2–3 раза
+  /** Здоровье всех мобов катакомб × (общая настройка; подобрано по настоящим героям с прода). */
+  hpScale: 1.3, // 2026-10-06: по настоящим героям с прода — было 1 (реальные отряды 5–12 проходили 100% за ~3 мин)
   /** Урон опасностей зала и приёмов стражей (доля HP) — по той же причине. */
-  hazardScale: 0.28,
+  hazardScale: 0.37,
   /**
    * Урон мобов и опасностей растёт с размером отряда: × (n / sizeRef)^sizeDmgPow (n ≤ sizeMaxN).
    * Большой отряд делит удары босса на всех и лечится лучше — без этого шестеро проходили всегда,
@@ -309,7 +311,7 @@ export const CATACOMBS = {
    */
   sizeRef: 4,
   sizeDmgPow: 1.3,
-  sizeMaxN: 6,
+  sizeMaxN: 8, // 6 → 8: отряды 7–12 проходили легко; без потолка 10–12 героев гибли с одного удара
   /** Финальная награда: жетоны ◈ каждому, бафф (мин). */
   finalTokens: 3,
   /** Опыт каждому в отряде за стража / Владыку — доля уровня (сверх опыта за удары). */
@@ -324,19 +326,20 @@ export const CATACOMBS = {
   buffMinutes: 30,
   stages: [
     {
-      hall: 0, waves: [], waveCount: 3, waveBase: 3, wavePerHero: 1.5, champions: 1,
-      pool: ["boneWraith", "spikyBlob", "orcGunner", "ruinMage", "frog", "bee"],
+      // 2026-10-06: больше мобов и видов — 4 волны по 3 вида из 8 (было 3 волны по 2 вида из 6).
+      hall: 0, waves: [], waveCount: 4, waveBase: 4, wavePerHero: 1.8, champions: 1,
+      pool: ["boneWraith", "spikyBlob", "orcGunner", "ruinMage", "frog", "bee", "cactoro", "golem"],
       bosses: CAT_GUARDS[0],
     },
     {
-      hall: 1, waves: [], waveCount: 2, waveBase: 4, wavePerHero: 1.7, champions: 1,
-      pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus"],
+      hall: 1, waves: [], waveCount: 3, waveBase: 5, wavePerHero: 2, champions: 1,
+      pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus", "skySquid", "golem", "frostDemon"],
       bosses: CAT_GUARDS[1],
       chest: "gold",
     },
     {
-      hall: 2, waves: [], waveCount: 2, waveBase: 3, wavePerHero: 1.4, champions: 2,
-      pool: ["spearThrower", "spikeTail", "rockBreaker", "frostDemon", "boneWraith"],
+      hall: 2, waves: [], waveCount: 3, waveBase: 4, wavePerHero: 1.7, champions: 2,
+      pool: ["spearThrower", "spikeTail", "rockBreaker", "frostDemon", "infernoDemon", "boneWraith", "boneChief", "skySquid"],
       bosses: CAT_GUARDS[2],
       chest: "gold",
     },
