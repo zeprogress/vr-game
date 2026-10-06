@@ -793,7 +793,7 @@ export const MOB_CAMPS: {
   { x: 35, z: -154, type: "spikeTail", count: 4, spread: 18, ring: 0.9, jitter: 0.5 }, // юг
   { x: 35, z: -154, type: "rockBreaker", count: 1, spread: 6, noChamp: true },
   // Зона 45 ур. (2026-10-06) — самые дальние свободные края, 230–245 м от лагеря.
-  { x: -158, z: 163, type: "shadowNinja", count: 5, spread: 12 }, // северо-западный угол
+  { x: -160, z: 160, type: "shadowNinja", count: 5, spread: 15, ring: 0.85, jitter: 0.25 }, // северо-западный угол; кольцом ~15 м друг от друга (были кучей в 5–8 м)
   { x: 15, z: 166, type: "stormSpirit", count: 4, spread: 12, ring: 0.85, jitter: 0.4 }, // север
   { x: 166, z: -117, type: "burrowBeast", count: 4, spread: 12 }, // восток-юго-восток
 ];
