@@ -59,33 +59,39 @@ precision highp float;
 varying vec2 vUV;
 varying float vA;
 uniform sampler2D tex;
+uniform vec3 uCol;
 void main() {
   float a = texture2D(tex, vUV).a * vA;
-  gl_FragColor = vec4(0.6, 0.22, 1.0, a);
+  gl_FragColor = vec4(uCol, a);
 }
 `;
 
-const glowMats = new WeakMap<Scene, Map<number, ShaderMaterial>>();
+const glowMats = new WeakMap<Scene, Map<string, ShaderMaterial>>();
 
-function glowMaterial(scene: Scene, amp: number): ShaderMaterial {
+/** Цвет свечения по тиру: уникальное — фиолетовое, рубиновое — алое. */
+const GLOW_COL = { legendary: new Color3(0.6, 0.22, 1), ruby: new Color3(1, 0.1, 0.22) } as const;
+
+function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendary): ShaderMaterial {
   let byAmp = glowMats.get(scene);
   if (!byAmp) glowMats.set(scene, (byAmp = new Map()));
-  let mat = byAmp.get(amp);
+  const key = `${amp}|${col.toHexString()}`;
+  let mat = byAmp.get(key);
   if (!mat) {
-    mat = new ShaderMaterial(`${GLOW}Mat${amp}`, scene, GLOW, {
+    mat = new ShaderMaterial(`${GLOW}Mat${key}`, scene, GLOW, {
       attributes: ["position", "uv"],
-      uniforms: ["world", "view", "viewProjection", "uT", "uAmp"],
+      uniforms: ["world", "view", "viewProjection", "uT", "uAmp", "uCol"],
       samplers: ["tex"],
       needAlphaBlending: true,
     });
     mat.setTexture("tex", radialGlowTexture(scene));
     mat.setFloat("uAmp", amp);
+    mat.setColor3("uCol", col);
     mat.alphaMode = Constants.ALPHA_ADD;
     mat.backFaceCulling = false;
     mat.disableDepthWrite = true;
     const m = mat;
     mat.onBindObservable.add(() => m.getEffect()?.setFloat("uT", performance.now() / 1000));
-    byAmp.set(amp, mat);
+    byAmp.set(key, mat);
   }
   return mat;
 }
@@ -96,9 +102,11 @@ export function attachLegendaryGlow(
   radius = 0.6,
   /** Множитель яркости — не размера. Оружие ×0.5, Эгида ×(1/1.5) по просьбе. */
   intensity = 1,
+  /** Тир свечения: уникальное — фиолетовое, рубиновое — алое и ярче. */
+  tier: "legendary" | "ruby" = "legendary",
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
-  shell.material = glowMaterial(scene, Math.round(intensity * 1000) / 1000);
+  shell.material = glowMaterial(scene, Math.round(intensity * (tier === "ruby" ? 1.4 : 1) * 1000) / 1000, GLOW_COL[tier]);
   shell.isPickable = false;
   shell.parent = host;
   // Развёрнут шейдером, а рамка у плоскости остаётся «плашмя»: не даём отсечь его по ней.
@@ -110,7 +118,7 @@ export function attachLegendaryGlow(
  * legendary — цвет аффикса (огонь / охота / эгида / буря), из WeaponDef.tint.
  */
 export function tierTint(cls: WeaponClass, tier: WeaponTier): Color3 | undefined {
-  if (tier !== "legendary") return undefined;
+  if (tier !== "legendary" && tier !== "ruby") return undefined;
   const t = weaponDef(cls, tier).tint;
   return new Color3(t[0], t[1], t[2]);
 }

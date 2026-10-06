@@ -2,7 +2,7 @@ import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf
 import { glyph, weaponIcon } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 
 /**
@@ -61,6 +61,8 @@ export class PcInventory {
   private data: PcInvData | null = null;
   private tab: InvTab = "gear";
   private enchId: string | null = null;
+  /** Огранка рубинового: выбранное игроком уникальное с оценкой 99, которое сгорит. */
+  private fuelId: string | null = null;
   private drag: DragSrc | null = null;
   private confirmEl: HTMLDivElement | null = null;
   private forging = false;
@@ -701,7 +703,11 @@ export class PcInventory {
     });
     left.append(slotEl);
     left.append(div("pcinv-small", w ? w.name : "Перетащи предмет сюда"));
-    left.append(div("pcinv-have", `Лом: ${d.scrap}`));
+    // Рубиновое точится огранкой — уникальными с оценкой 99 (не лом).
+    const ruby = w?.tier === "ruby";
+    const fuels = d.weapons.filter((x) => x.fuel && !x.fav && !inHand.has(x.id));
+    if (this.fuelId && !fuels.some((x) => x.id === this.fuelId)) this.fuelId = null;
+    left.append(div("pcinv-have", ruby ? `Уникальных ${RUBY.fuelQuality}: ${fuels.length}` : `Лом: ${d.scrap}`));
     const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, glyph("ui.forge"));
     left.append(anvil);
 
@@ -730,6 +736,11 @@ export class PcInventory {
         if (a.max) {
           b.textContent = "MAX";
           b.disabled = true;
+        } else if (a.ruby) {
+          b.innerHTML = `💎 огранка +${a.gain ?? 1}<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
+          b.disabled = !this.fuelId || this.forging;
+          b.title = this.fuelId ? "" : `Сначала выбери ниже уникальное с оценкой ${RUBY.fuelQuality} — оно сгорит`;
+          b.onclick = () => this.forge(w.id, i);
         } else {
           b.innerHTML = `⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
           b.disabled = d.scrap < a.cost || this.forging;
@@ -741,9 +752,31 @@ export class PcInventory {
       if (this.lastResult) {
         right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
       }
-      right.append(
-        div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
-      );
+      if (ruby) {
+        // Что сжечь в огранке — выбирает игрок (кликом), только уникальные 99 не из избранного и не в руках.
+        right.append(div("pcinv-sub", `Сжечь в огранке (уникальное, оценка ${RUBY.fuelQuality}):`));
+        const fp = div("pcinv-epick");
+        for (const x of fuels) {
+          const c = div(`pcinv-cell small t-${x.tier}${x.id === this.fuelId ? " sel" : ""}`);
+          setIcon(c, x.cls, x.name);
+          c.onclick = () => {
+            this.fuelId = x.id === this.fuelId ? null : x.id;
+            this.render();
+          };
+          c.addEventListener("mouseenter", () => this.showTip(c, x, null));
+          c.addEventListener("mouseleave", () => this.hideTip());
+          fp.append(c);
+        }
+        if (!fuels.length) fp.append(div("pcinv-empty", `Нет уникальных с оценкой ${RUBY.fuelQuality} (избранные ★ и надетые не сжигаются).`));
+        right.append(fp);
+        right.append(
+          div("pcinv-hint", `Огранка: выбранное уникальное сгорает при любом исходе. Внизу шанс ${Math.round(RUBY.chanceLo * 100)}% и +${RUBY.gainLo} очков, у максимума — ${Math.round(RUBY.chanceHi * 100)}% и +${RUBY.gainHi}.`),
+        );
+      } else {
+        right.append(
+          div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
+        );
+      }
     }
     // Выбор предмета — мини-сетка всех предметов с роллами.
     const pick = div("pcinv-epick");
@@ -771,7 +804,9 @@ export class PcInventory {
     this.pendingResult = null;
     this.lastResult = null;
     this.render();
-    this.hooks.act({ act: "enchant", id, idx });
+    const ruby = this.weaponById(id)?.tier === "ruby";
+    this.hooks.act({ act: "enchant", id, idx, ...(ruby && this.fuelId ? { fuel: this.fuelId } : {}) });
+    if (ruby) this.fuelId = null; // сгорело — следующий раз выбрать заново
     // Три удара молотом — пусть напряжение настоится, потом итог.
     window.setTimeout(() => {
       this.hammerDone = true;
@@ -787,7 +822,7 @@ export class PcInventory {
       const e = r.enchant;
       this.lastResult = {
         up: !!e?.up,
-        text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : `Неудача — ${e.cost} лома сгорело`) : r.text,
+        text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : this.weaponById(e.id)?.tier === "ruby" ? r.text : `Неудача — ${e.cost} лома сгорело`) : r.text,
       };
     }
     this.render();
@@ -1078,6 +1113,7 @@ function injectInvStyle(): void {
 .pcinv-cell.hot { outline:2px dashed #9fe39a; }
 .pcinv-cell.t-base { border-color:var(--tier-base-edge); color:var(--tier-base); }
 .pcinv-cell.t-gold { border-color:var(--tier-gold-edge); box-shadow:inset 0 0 10px var(--tier-gold-glow); color:var(--tier-gold); }
+.pcinv-cell.t-ruby { border-color:var(--tier-ruby-edge); box-shadow:inset 0 0 14px var(--tier-ruby-glow); color:var(--tier-ruby); }
 .pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
 .pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
 .pcinv-cons { display:flex; gap:5px; align-items:stretch; }
@@ -1096,6 +1132,7 @@ function injectInvStyle(): void {
 .pcinv-name { font-weight:700; margin-bottom:6px; }
 .t-gold.pcinv-name, .pcinv-name.t-gold { color:var(--tier-gold); }
 .pcinv-name.t-legendary { color:var(--tier-legendary); }
+.pcinv-name.t-ruby { color:var(--tier-ruby); }
 .pcinv-name.t-base { color:#dedede; }
 .pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
   padding:8px 10px; pointer-events:none; z-index:41; }

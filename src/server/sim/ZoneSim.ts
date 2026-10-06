@@ -51,6 +51,12 @@ export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
   "dagger:legendary": "leg_dagger",
   "spear:legendary": "leg_spear",
   "hammer:legendary": "leg_hammer",
+  "sword:ruby": "ruby_sword",
+  "bow:ruby": "ruby_bow",
+  "staff:ruby": "ruby_staff",
+  "dagger:ruby": "ruby_dagger",
+  "spear:ruby": "ruby_spear",
+  "hammer:ruby": "ruby_hammer",
 };
 const GOLD_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];
 const LEGENDARY_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "shield", "dagger", "spear", "hammer"];

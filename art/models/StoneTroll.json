@@ -32,7 +32,8 @@
     "path": "art/textures/stone_skin.png",
     "scale": 0.5,
     "bump": 1.6,
-    "bright": 1.0
+    "bright": 1.0,
+    "sat": 0.45
    }
   },
   "rock": {
@@ -45,7 +46,8 @@
     "path": "art/textures/stone_skin.png",
     "scale": 0.9,
     "bump": 1.6,
-    "bright": 1.0
+    "bright": 1.0,
+    "sat": 0.45
    }
   },
   "mouth": {
@@ -130,7 +132,8 @@
     "path": "art/textures/stone_skin.png",
     "scale": 0.5,
     "bump": 1.6,
-    "bright": 1.0
+    "bright": 1.0,
+    "sat": 0.45
    }
   }
  },

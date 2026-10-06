@@ -201,10 +201,12 @@ export interface PcInvWeapon {
   quality: number;
   /** Сколько лома даст разборка. */
   scrap: number;
-  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки. */
-  ench: { label: string; points: number; max: boolean; chance: number; cost: number }[];
+  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки (у рубинового — огранка: ruby, прирост gain). */
+  ench: { label: string; points: number; max: boolean; chance: number; cost: number; ruby?: boolean; gain?: number }[];
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
+  /** Уникальное с оценкой 99 — годится в огранку рубинового (RUBY.fuelQuality). */
+  fuel?: boolean;
 }
 
 /** Одно задание в окне/трекере. */
@@ -311,6 +313,8 @@ export interface PcInvActMsg {
   act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll";
   id: string;
   idx: number;
+  /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */
+  fuel?: string;
 }
 
 export interface PcInvResult {
@@ -330,7 +334,7 @@ export interface PickupFeedMsg {
   nick: string;
   /** Название предмета. */
   item: string;
-  tier: "gold" | "legendary";
+  tier: "gold" | "legendary" | "ruby";
   /** Роллы коротко («+12% урона, …»), может быть пусто. */
   aff: string;
 }
@@ -484,7 +488,6 @@ export interface OvlCam {
   wl?: number | null;
   /** Титул героя в «смотрим». */
   wt?: string | null;
-  wa?: number[] | null;
   wb?: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Подпись кадра без цели. */
   sl: string;

@@ -3,7 +3,7 @@ import { QUALITY_COLOR, TIER_LOOK } from "#shared/look";
 import type { WeaponTier } from "#shared/items";
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
-import { qualityStars } from "#shared/items";
+import { qualityStars, RUBY } from "#shared/items";
 
 /**
  * Содержимое VR-панелей у NPC лагеря — те же карточки, что в ПК-окнах
@@ -206,12 +206,17 @@ export function drawEnchant(
   lastResult: { up: boolean; text: string } | null,
   enchant: (idx: number) => void,
   close: () => void,
+  /** Огранка рубинового: выбранное уникальное 99 (сгорит) и выбор его кнопкой. */
+  fuelId: string | null = null,
+  pickFuel: (id: string) => void = () => {},
 ): void {
   const w = d?.weapons.find((x) => x.id === id) ?? null;
-  header(ui, "Заточка");
+  const ruby = w?.tier === "ruby";
+  const fuels = d ? d.weapons.filter((x) => x.fuel && !x.fav && x.id !== d.equipped.left && x.id !== d.equipped.right) : [];
+  header(ui, ruby ? "Огранка" : "Заточка");
   ui.button("close", "✕", ui.W - PAD - 70, 30, 70, 56, close);
-  // Лом — левее крестика (раньше рисовался под ним и не читался).
-  if (d) ui.text(`лом ${d.scrap}`, ui.W - PAD - 90, 42, 36, VR_UI.gold, 800, "right");
+  // Лом (или уникальные 99 у рубинового) — левее крестика (раньше рисовался под ним и не читался).
+  if (d) ui.text(ruby ? `уник. ${RUBY.fuelQuality}: ${fuels.length}` : `лом ${d.scrap}`, ui.W - PAD - 90, 42, 36, VR_UI.gold, 800, "right");
   if (!d || !w) {
     ui.text(d ? "Предмет не найден на складе" : "Загрузка…", PAD, 120, 30, VR_UI.dim);
     return;
@@ -231,7 +236,10 @@ export function drawEnchant(
     ui.bar(PAD + 20, y + 62, bw - 300, a.points / 33, VR_UI.gold, 16);
     ui.text(`${a.points}/33`, PAD + 20 + bw - 290, y + 56, 24, VR_UI.sub);
     if (a.max) ui.text("MAX", PAD + bw - 110, y + 36, 32, VR_UI.gold, 800, "center");
-    else {
+    else if (a.ruby) {
+      ui.button(`ench:${i}`, `💎 +${a.gain ?? 1}`, PAD + bw - 200, y + 14, 180, 50, () => enchant(i), true, !!fuelId);
+      ui.text(`шанс ${Math.round(a.chance * 100)}%`, PAD + bw - 110, y + 72, 22, VR_UI.sub, 500, "center");
+    } else {
       ui.button(`ench:${i}`, `⚒ ${a.cost}`, PAD + bw - 200, y + 14, 180, 50, () => enchant(i), true, d.scrap >= a.cost);
       ui.text(`шанс ${Math.round(a.chance * 100)}%`, PAD + bw - 110, y + 72, 22, VR_UI.sub, 500, "center");
     }
@@ -241,6 +249,18 @@ export function drawEnchant(
     ui.rect(PAD, y + 4, bw, 70, lastResult.up ? "#1f3a24" : "#3a1f1f", 12);
     ui.text(lastResult.text, ui.W / 2, y + 24, 28, lastResult.up ? "#9fe39a" : "#ff9a8e", 700, "center");
     y += 90;
+  }
+  if (ruby) {
+    // Что сжечь — выбирает игрок: до 6 уникальных 99 кнопками (выбранное подсвечено).
+    ui.text(`Сжечь в огранке (уникальное, оценка ${RUBY.fuelQuality}):`, PAD, y + 8, 24, VR_UI.sub, 700);
+    const cw = (bw - 20) / 3;
+    fuels.slice(0, 6).forEach((x, k) => {
+      const bx = PAD + (k % 3) * (cw + 10);
+      const by = y + 44 + Math.floor(k / 3) * 62;
+      ui.button(`fuel:${x.id}`, `${x.id === fuelId ? "✔ " : ""}${x.name}`, bx, by, cw, 54, () => pickFuel(x.id), true, true);
+    });
+    if (!fuels.length) ui.text("Нет уникальных с оценкой 99 (избранные и надетые не сжигаются)", PAD, y + 48, 22, VR_UI.dim);
+    return;
   }
   ui.wrap("Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает.", PAD, y + 10, bw, 22, VR_UI.dim);
 }

@@ -35,7 +35,7 @@ export interface InvZone {
   /** Записать живого героя (если он в мире) в store — перед чтением страницей. */
   sync(norm: string): void;
   /** Выполнить действие; вернуть текст для страницы (ok=false — отказ). */
-  act(norm: string, act: InvActKind, id: string, idx: number): InvActResult;
+  act(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult;
   /** Данные окна снаряжения живого героя (в мире); нет в мире — null. */
   pcInv?(norm: string): PcInvData | null;
 }
@@ -141,9 +141,9 @@ export const invHub = {
     zone?.sync(norm);
   },
 
-  act(norm: string, act: InvActKind, id: string, idx = 0): InvActResult {
+  act(norm: string, act: InvActKind, id: string, idx = 0, fuel?: string): InvActResult {
     if (!zone) return { ok: false, text: "Сервер ещё не готов — попробуй через минуту." };
-    const r = zone.act(norm, act, id, idx);
+    const r = zone.act(norm, act, id, idx, fuel);
     this.notify(norm);
     return r;
   },

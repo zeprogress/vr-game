@@ -23,6 +23,7 @@ export const TIER_LOOK: Record<WeaponTier, TierLook> = {
   base: { name: "обычное", color: "#e6e0d0", edge: "#6b6b6b", glow: "rgba(0,0,0,0)", bg: "#1d1c25" },
   gold: { name: "золотое", color: "#ffd166", edge: "#d9a21b", glow: "rgba(217,162,27,.3)", bg: "#2a2416" },
   legendary: { name: "уникальное", color: "#c79bff", edge: "#9b5cf0", glow: "rgba(155,92,240,.4)", bg: "#251a33" },
+  ruby: { name: "рубиновое", color: "#ff5a75", edge: "#e0143c", glow: "rgba(235,30,70,.45)", bg: "#331219" },
 };
 
 /** Цвет оценки предмета («оценка 47»). */

@@ -55,6 +55,7 @@ const CSS = `
 .cat-rep .cr-it{position:relative;width:5.4vh;height:5.4vh;border-radius:1vh;display:flex;align-items:center;justify-content:center;
   background:#0f0e13;border:.22vh solid var(--tier-base-edge);color:var(--tier-base)}
 .cat-rep .cr-it.cr-t-gold{border-color:var(--tier-gold-edge);color:var(--tier-gold);box-shadow:inset 0 0 1.2vh var(--tier-gold-glow)}
+.cat-rep .cr-it.cr-t-ruby{border-color:var(--tier-ruby-edge);color:var(--tier-ruby);box-shadow:inset 0 0 1.6vh var(--tier-ruby-glow)}
 .cat-rep .cr-it.cr-t-legendary{border-color:var(--tier-legendary-edge);color:var(--tier-legendary);box-shadow:inset 0 0 1.4vh var(--tier-legendary-glow)}
 .cat-rep .cr-it .cr-ico{font-size:3vh;line-height:1;display:flex}
 .cat-rep .cr-it .cr-cnt{position:absolute;right:.25vh;bottom:0;font:800 1.4vh system-ui,sans-serif;color:#fff;text-shadow:0 0 .4vh #000,0 0 .4vh #000}

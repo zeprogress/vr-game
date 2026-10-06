@@ -17,6 +17,12 @@ export type ItemId =
   | "leg_dagger"
   | "leg_spear"
   | "leg_hammer"
+  | "ruby_sword"
+  | "ruby_bow"
+  | "ruby_staff"
+  | "ruby_dagger"
+  | "ruby_spear"
+  | "ruby_hammer"
   | "scrap"
   | "fish"
   | "scroll_xp"
@@ -47,9 +53,30 @@ export function isTwoHandedMelee(cls: string): boolean {
 /**
  * Уровень внутри класса. `base` — обычное оружие из пака, лежит на камнях с
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
- * `legendary` — именное оружие с механическим аффиксом (см. `affix`).
+ * `legendary` — именное оружие с механическим аффиксом (см. `affix`);
+ * `ruby` — рубиновое (2026-10-06): выше уникального (RUBY.powerMul), 3–4 ролла, только с
+ * супербоссов катакомб; точится не ломом, а огранкой — уникальным оружием с оценкой 99.
  */
-export type WeaponTier = "base" | "gold" | "legendary";
+export type WeaponTier = "base" | "gold" | "legendary" | "ruby";
+
+/**
+ * Рубиновое оружие. Огранка ролла: тратит ОДНО уникальное оружие с оценкой fuelQuality
+ * (не избранное и не в руках); шанс от chanceLo (ролл внизу) до chanceHi (у максимума),
+ * прирост от gainLo очков (ролл на 3 очках и ниже) до gainHi (у максимума).
+ */
+export const RUBY = {
+  /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */
+  powerMul: 1.15,
+  /** Роллов: 3, с шансом fourChance — 4. */
+  fourChance: 0.5,
+  /** Шанс каждому герою в финальном сундуке катакомб (вместо уникального). */
+  dropChance: 0.05,
+  fuelQuality: 99,
+  chanceLo: 1,
+  chanceHi: 0.5,
+  gainLo: 10,
+  gainHi: 1,
+} as const;
 
 /** Эффект СТАРЫХ уникальных типов — теперь только для миграции в обычный ролл (см. migrateLoot). */
 export type WeaponAffix = "vamp" | "crit" | "guard" | "storm";
@@ -86,6 +113,7 @@ export const WEAPON_NOUN: Record<WeaponClass, { name: string; gender: "m" | "n" 
 const TIER_ADJ: Record<Exclude<WeaponTier, "base">, { m: string; n: string; short: string }> = {
   gold: { m: "Золотой", n: "Золотое", short: "Зол." },
   legendary: { m: "Уникальный", n: "Уникальное", short: "Уник." },
+  ruby: { m: "Рубиновый", n: "Рубиновое", short: "Руб." },
 };
 
 /** Полное имя оружия тира: «Меч», «Золотой меч», «Уникальное копьё». */
@@ -131,6 +159,11 @@ export const WEAPONS: Partial<Record<WeaponKey, WeaponDef>> = {
   "hammer:gold": { cls: "hammer", tier: "gold", name: weaponName("hammer", "gold"), mult: 4, tint: [1, 0.84, 0.26] },
   "hammer:legendary": { cls: "hammer", tier: "legendary", name: weaponName("hammer", "legendary"), mult: 4.5, tint: [0.62, 0.3, 1] },
 };
+// Рубиновые — уникальные × RUBY.powerMul, алые (только атакующие классы, щита нет).
+for (const cls of ["sword", "bow", "staff", "dagger", "spear", "hammer"] as const) {
+  const leg = WEAPONS[`${cls}:legendary`]!;
+  WEAPONS[`${cls}:ruby`] = { cls, tier: "ruby", name: weaponName(cls, "ruby"), mult: Math.round(leg.mult * RUBY.powerMul * 100) / 100, tint: [1, 0.12, 0.25] };
+}
 
 /**
  * Имена и эффекты СТАРЫХ уникальных (до упрощения роллов 2026-10-01): эффект
@@ -164,7 +197,7 @@ export function isWeaponClass(v: unknown): v is WeaponClass {
 }
 
 export function isWeaponTier(v: unknown): v is WeaponTier {
-  return v === "base" || v === "gold" || v === "legendary";
+  return v === "base" || v === "gold" || v === "legendary" || v === "ruby";
 }
 
 
@@ -228,6 +261,12 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   leg_dagger: weaponItem("dagger", "legendary"),
   leg_spear: weaponItem("spear", "legendary"),
   leg_hammer: weaponItem("hammer", "legendary"),
+  ruby_sword: weaponItem("sword", "ruby"),
+  ruby_bow: weaponItem("bow", "ruby"),
+  ruby_staff: weaponItem("staff", "ruby"),
+  ruby_dagger: weaponItem("dagger", "ruby"),
+  ruby_spear: weaponItem("spear", "ruby"),
+  ruby_hammer: weaponItem("hammer", "ruby"),
   scrap: {
     name: "Лом оружия",
     short: "Лом",
@@ -278,7 +317,9 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
           : tier === "gold"
             ? "золотой щит · 1–2 ролла"
             : "уникальный щит · 2–3 ролла"
-        : tier === "legendary"
+        : tier === "ruby"
+          ? "рубиновое · 3–4 ролла · огранка уникальным 99"
+          : tier === "legendary"
           ? "уникальное · 2–3 ролла"
           : tier === "gold"
             ? "золотое · 1–2 ролла"
@@ -471,7 +512,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 16;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 8;
+const LOOT_VER = 9;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -634,12 +675,21 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
   const subs = rollableSubs(cls, aegis).filter((s) => !used.has(s));
   if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, rnd(), aegis) };
+  // Ролл — ровно на целом очке (1..33): иначе 32.6 очка показывались «32», а значение уже как у максимума.
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * 33) / 32, aegis) };
+}
+
+/** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
+function snapToPoint(a: RolledAffix, aegis: boolean): void {
+  const [lo, hi] = rangeFor(a.sub, aegis);
+  if (!(hi > lo) || a.value < lo - 1e-9 || a.value > hi + 1e-9) return;
+  a.value = atT(a.sub, Math.round(((a.value - lo) / (hi - lo)) * 32) / 32, aegis);
 }
 
 /** Очки одного ролла: от 1 (самый низкий) до 33 (самый высокий) линейно по диапазону вида. */
 export function affixPoints(a: RolledAffix, w: Pick<WeaponInstance, "cls" | "nm">): number {
-  return 1 + 32 * rollT(a.sub, a.value, isAegis(w));
+  // Роллы стоят на целых очках (lv 9); округление гасит погрешность чисел с плавающей точкой.
+  return Math.round(1 + 32 * rollT(a.sub, a.value, isAegis(w)));
 }
 
 /**
@@ -673,6 +723,7 @@ export function qualityStars(quality: number, rolls: number): string {
 function rollAffixCount(tier: WeaponTier, rnd: () => number): number {
   if (tier === "base") return 0;
   if (tier === "gold") return rnd() < 0.3 ? 2 : 1;
+  if (tier === "ruby") return rnd() < RUBY.fourChance ? 4 : 3;
   return rnd() < 0.4 ? 3 : 2; // legendary
 }
 
@@ -1001,6 +1052,8 @@ export function migrateLoot(w: WeaponInstance): boolean {
   }
   // lv 8: роллы в постоянном порядке (AFFIX_ORDER) — раньше стояли как выпали.
   sortAffixes(w.affixes);
+  // lv 9: роллы на целых очках (32.6 → 33) — «32 очка» больше не показывают значение максимума.
+  if (ver < 9) for (const a of w.affixes) snapToPoint(a, isAegis(w));
   w.lv = LOOT_VER;
   return true;
 }
@@ -1024,27 +1077,42 @@ export interface EnchantInfo {
   points: number;
   max: boolean;
   chance: number;
+  /** Цена: лом — или, у рубинового (ruby), число уникальных с оценкой 99 (всегда 1). */
   cost: number;
+  /** Рубиновое: огранка уникальным 99 вместо лома, прирост — gain очков. */
+  ruby?: boolean;
+  gain?: number;
+}
+
+/** Годится в огранку рубина: уникальное оружие с оценкой RUBY.fuelQuality (три ролла на максимуме). */
+export function isRubyFuel(w: WeaponInstance): boolean {
+  return w.tier === "legendary" && weaponQuality(w) >= RUBY.fuelQuality;
 }
 
 export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null {
   const a = w.affixes[idx];
   if (!a) return null;
   const pts = affixPoints(a, w);
-  const max = pts >= 33 - 1e-6;
+  const max = pts >= 33;
   const t = (pts - 1) / 32;
+  if (w.tier === "ruby") {
+    // Огранка: шанс 100% → 50% к максимуму, прирост +10 (ролл на 3 очках и ниже) → +1 у максимума.
+    const chance = RUBY.chanceLo + (RUBY.chanceHi - RUBY.chanceLo) * t;
+    const gain = Math.max(RUBY.gainHi, Math.min(RUBY.gainLo, Math.round(RUBY.gainHi + ((RUBY.gainLo - RUBY.gainHi) * (33 - pts)) / 30)));
+    return { points: pts, max, chance, cost: 1, ruby: true, gain: Math.min(gain, 33 - pts) };
+  }
   const q = w.affixes.length ? weaponQuality(w) / (33 * w.affixes.length) : 0;
   const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
   const cost = Math.round(
     (ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * (w.tier === "legendary" ? ENCHANT.legendaryMul : 1),
   );
-  return { points: Math.floor(pts + 1e-6), max, chance, cost };
+  return { points: pts, max, chance, cost };
 }
 
-/** Удачная заточка: +gain очков к аффиксу (не выше максимума диапазона). */
+/** Удачная заточка: +gain очков к аффиксу — ролл встаёт ровно на целое очко, не выше 33. */
 export function enchantApply(w: WeaponInstance, idx: number, gain: number): void {
   const a = w.affixes[idx];
   if (!a) return;
-  const [lo, hi] = affixRange(a.sub, w);
-  a.value = Math.min(hi, a.value + (gain * (hi - lo)) / 32);
+  const pts = Math.min(33, affixPoints(a, w) + gain);
+  a.value = atT(a.sub, (pts - 1) / 32, isAegis(w));
 }

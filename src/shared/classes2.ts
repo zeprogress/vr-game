@@ -3,7 +3,7 @@ import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, invested } from "./attrs2";
 import { glyph } from "./icons";
-import { WEAPON_NOUN } from "./items";
+import { RUBY, WEAPON_NOUN } from "./items";
 
 export { levelGain };
 
@@ -252,7 +252,7 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
 /** Множитель магии от тира посоха (раньше тир посоха на огнешар не влиял — маг отставал). */
 export function staffMagicTier(tier: string): number {
   const t = WEAPONS2.staff.tiers;
-  return tier === "legendary" ? t[2] : tier === "gold" ? t[1] : t[0];
+  return tier === "ruby" ? t[2] * RUBY.powerMul : tier === "legendary" ? t[2] : tier === "gold" ? t[1] : t[0];
 }
 
 export const DAGGER = {

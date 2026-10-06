@@ -13,13 +13,14 @@ import {
   scrapValue,
   bagCount,
   enchantInfo,
+  isRubyFuel,
   weaponQuality,
   bestWeaponInstance,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
 import { heroStatRows } from "#shared/heroStats";
-import type { PcInvData } from "#shared/net/messages";
+import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { store } from "../store";
 import { invHub } from "../invHub";
 import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
@@ -33,10 +34,10 @@ interface InventoryJoinOptions {
   viewToken?: string;
 }
 
-type InvAct = { act?: unknown; id?: unknown; idx?: unknown };
+type InvAct = { act?: unknown; id?: unknown; idx?: unknown; fuel?: unknown };
 
 /** Для окна заточки: по каждому аффиксу — очки, max, шанс и цена. */
-function enchDetails(w: WeaponInstance): { label: string; points: number; max: boolean; chance: number; cost: number }[] {
+function enchDetails(w: WeaponInstance): PcInvWeapon["ench"] {
   return w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! }));
 }
 
@@ -76,7 +77,7 @@ export class InventoryRoom extends colyseus.Room {
       const now = Date.now();
       if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) return;
       this.lastAct.set(client.sessionId, now);
-      const r = invHub.act(w.norm, act, id, idx);
+      const r = invHub.act(w.norm, act, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
       client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
@@ -169,6 +170,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       scrap: scrapValue(w),
       ench: enchDetails(w),
       fav: !!w.fav,
+      fuel: isRubyFuel(w),
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },
     potions: bagCount(rec.bag ?? [], "potion"),

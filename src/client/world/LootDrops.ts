@@ -200,7 +200,7 @@ export class LootDrops {
 export function makeWeaponMesh(scene: Scene, cls: WeaponClass, tier: WeaponTier | "aegis"): Mesh {
   if (tier === "aegis") return cls === "shield" ? createShield(scene, "legendary", true) : makeWeaponMesh(scene, cls, "legendary");
   if (cls === "dagger" || cls === "spear" || cls === "hammer") {
-    return createClassWeapon(scene, cls, tier === "legendary" ? 2 : tier === "gold" ? 1 : 0);
+    return createClassWeapon(scene, cls, tier === "ruby" ? 3 : tier === "legendary" ? 2 : tier === "gold" ? 1 : 0);
   }
   if (cls === "sword") return createSword(scene, tier);
   if (cls === "shield") return createShield(scene, tier);

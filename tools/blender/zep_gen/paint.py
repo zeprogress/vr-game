@@ -233,10 +233,16 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             ns = noise.value(p * float(sf) / max(1e-6, size_auth / 2) + 41.3)
             sm = np.clip((ns - (1 - 2 * frac)) * 6, 0, 1)[:, None]
             c = c * (1 - sm) + _lin(sc) * sm
-        if d.get("tile"):  # настоящая бесшовная текстура материала (триплanar), тон — через tint
+        if d.get("tile"):  # настоящая бесшовная текстура материала (триплanar)
             tl = d["tile"]
             tc, tdn = triplanar(load_tile(tl["path"]), p, Nn[m], float(tl.get("scale", 1.5)), float(tl.get("bump", 1.2)))
             c = tc * float(tl.get("bright", 1.0))
+            # sat — насыщенность (1 как в файле, 0 — серый), tint — тон-множитель (цвет относительно белого).
+            if "sat" in tl:
+                lum = (c @ np.array([0.2126, 0.7152, 0.0722]))[:, None]
+                c = lum + (c - lum) * float(tl["sat"])
+            if tl.get("tint"):
+                c = c * _lin(tl["tint"])
             tile_dn[m] = tdn
         if d.get("plates"):  # каменные плиты: свой тон у каждой, тёмные швы, светлая фаска у края
             pl = d["plates"]

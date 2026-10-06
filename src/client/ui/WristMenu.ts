@@ -43,8 +43,8 @@ const WH_ROWS = 6;
 const WH_PER_PAGE = WH_COLS * WH_ROWS;
 
 /** Цвета тиров — общие для всех платформ (shared/look.ts). */
-const TIER_COLOR: Record<WeaponTier, string> = { base: TIER_LOOK.base.color, gold: TIER_LOOK.gold.color, legendary: TIER_LOOK.legendary.color };
-const TIER_BG: Record<WeaponTier, string> = { base: TIER_LOOK.base.bg, gold: TIER_LOOK.gold.bg, legendary: TIER_LOOK.legendary.bg };
+const TIER_COLOR = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.color])) as Record<WeaponTier, string>;
+const TIER_BG = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.bg])) as Record<WeaponTier, string>;
 
 type Tab = "char" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";

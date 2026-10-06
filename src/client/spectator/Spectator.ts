@@ -1336,7 +1336,7 @@ export class Spectator {
 
   /** Ярлык оружия/щита в руке для панели «HP цели». */
   private static weaponLabel(cls: string, tier: string): string | null {
-    if (tier === "legendary") return weaponDef(cls as WeaponClass, "legendary").name.toLowerCase();
+    if (tier === "legendary" || tier === "ruby") return weaponDef(cls as WeaponClass, tier).name.toLowerCase();
     if (cls === "shield") return "щит";
     const base =
       cls === "sword" ? "меч" : cls === "bow" ? "лук" : cls === "staff" ? "посох" : null;
@@ -1436,7 +1436,6 @@ export class Spectator {
     let watchBuffs: OverlayCtx["watchBuffs"] = null;
     let watchLevel: number | null = null;
     let watchTitle: string | null = null;
-    let watchAttrs: OverlayCtx["watchAttrs"] = null;
     let targetHp: OverlayCtx["targetHp"] = null;
 
     if (st && subj.id) {
@@ -1449,7 +1448,6 @@ export class Spectator {
           watchBuffs = Spectator.playerBuffs(p);
           watchLevel = p.level;
           watchTitle = p.title || null;
-          watchAttrs = [p.str, p.agi, p.int, p.con, p.luc, p.wis];
           targetHp = { frac: p.hp / (p.maxHp || 1), cur: p.hp, max: p.maxHp, name: p.nick, boss: false };
         }
       } else if (subj.type === "mob") {
@@ -1468,7 +1466,7 @@ export class Spectator {
       const now = performance.now();
       const sp = [...this.speakingIds];
       const statsSig = watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
-      const sig = `${watching}|${watchTitle}|${watchLevel}|${watchAttrs?.join("/")}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
+      const sig = `${watching}|${watchTitle}|${watchLevel}|${statsSig}|${watchInv}|${watchBuffs?.map((x) => x.name).join(",") ?? ""}|${this.cam.shotKind}|${targetHp ? Math.round(targetHp.frac * 100) + targetHp.name : ""}|${sp.join(",")}`;
       if ((sig !== this.lastOvlSig && now - this.lastOvlAt > 150) || now - this.lastOvlAt > 2000) {
         this.lastOvlSig = sig;
         this.lastOvlAt = now;
@@ -1481,7 +1479,6 @@ export class Spectator {
             wb: watchBuffs,
             wl: watchLevel,
             wt: watchTitle,
-            wa: watchAttrs,
             sl: Spectator.shotLabel(this.cam.shotKind),
             hp: targetHp
               ? { f: targetHp.frac, c: targetHp.cur, m: targetHp.max, n: targetHp.name, b: targetHp.boss }
@@ -1525,7 +1522,6 @@ export class Spectator {
       watchBuffs,
       watchLevel,
       watchTitle,
-      watchAttrs,
       shotLabel: Spectator.shotLabel(this.cam.shotKind),
       targetHp,
       online,

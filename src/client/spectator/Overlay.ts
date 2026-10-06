@@ -27,16 +27,6 @@ function fmtTime(sec: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/** Атрибуты в «смотрим»: подпись и цвет (сила — красный, ловкость — зелёный, интеллект — синий). */
-const ATTR_UI: [string, string][] = [
-  ["сил", "#ff6b5e"],
-  ["лов", "#6fdc6f"],
-  ["инт", "#6fb0ff"],
-  ["тел", "#e8a35a"],
-  ["удч", "#e8d45a"],
-  ["мдр", "#c79bff"],
-];
-
 export interface OverlayCtx {
   /** Кого показываем: ник игрока / имя моба / null (обзор, путь). */
   watching: string | null;
@@ -50,8 +40,6 @@ export interface OverlayCtx {
   watchTitle?: string | null;
   /** Уровень героя — «N ур.» рядом с ником. */
   watchLevel: number | null;
-  /** Атрибуты героя [сил, лов, инт] — отдельная цветная строка. */
-  watchAttrs: number[] | null;
   /** Баффы на герое в «смотрим»: иконка, название, что даёт, сколько осталось (с) и цвет. */
   watchBuffs: { icon: string; name: string; desc: string; secs: number; color: string }[] | null;
   /** Краткий инвентарь игрока — строка под полосой «HP цели» (только для игрока). */
@@ -148,7 +136,6 @@ const CSS = `
 .ov-watch table.stats td.vl { font-weight:700; text-align:right; }
 .ov-watch em.ttl { display:block; font-style:normal; font-weight:700; font-size:1.8vh; color:#c79bff; margin-top:.2vh; }
 .ov-watch span .lvl { font-size:2vh; font-weight:700; opacity:.75; margin-left:.4vh; }
-.ov-watch table.stats i.at { font-style:normal; font-weight:800; opacity:1; }
 .ov-watch .buffs { display:flex; flex-direction:column; gap:.4vh; margin-top:.8vh; }
 .ov-watch .buff { display:flex; align-items:center; gap:.7vh; padding:.3vh 1vh .3vh .6vh; border-radius:.8vh;
   background:rgba(0,0,0,.35); border-left:.35vh solid var(--bc); box-shadow:0 0 1.2vh -0.4vh var(--bc);
@@ -179,6 +166,7 @@ const CSS = `
 .ov-feed u { text-decoration:none; font-weight:800; }
 .ov-feed u.gold { color:#f5c542; }
 .ov-feed u.legendary { color:#b67cff; text-shadow:0 0 .6vh rgba(182,124,255,.6); }
+.ov-feed u.ruby { color:var(--tier-ruby); text-shadow:0 0 .8vh var(--tier-ruby-glow); }
 @keyframes ovfeed { from{opacity:0;transform:translateX(1vh)} to{opacity:1} }
 .ov-card { left:0; right:0; bottom:16vh; text-align:center; opacity:0;
   transition:opacity .5s ease; }
@@ -208,6 +196,7 @@ const CSS = `
 .ov-loot .it img { width:72%; height:72%; object-fit:contain; }
 .ov-loot .it { background:#0f0e13; border:.25vh solid var(--tier-base-edge); color:var(--tier-base); }
 .ov-loot .it.t-gold { border-color:var(--tier-gold-edge); color:var(--tier-gold); box-shadow:inset 0 0 1.4vh var(--tier-gold-glow), 0 .4vh 1.4vh rgba(0,0,0,.5); }
+.ov-loot .it.t-ruby { border-color:var(--tier-ruby-edge); color:var(--tier-ruby); box-shadow:inset 0 0 1.8vh var(--tier-ruby-glow), 0 .4vh 1.4vh rgba(0,0,0,.5); }
 .ov-loot .it.t-legendary { border-color:var(--tier-legendary-edge); color:var(--tier-legendary); box-shadow:inset 0 0 1.6vh var(--tier-legendary-glow), 0 .4vh 1.4vh rgba(0,0,0,.5); }
 .ov-loot .it .ico { font-size:3.8vh; line-height:1; display:flex; align-items:center; justify-content:center; }
 .ov-loot .it .tint { width:60%; height:60%; border-radius:.6vh; }
@@ -414,7 +403,7 @@ export class Overlay {
   }
 
   /** Строка «подобрал» в кил-фиде: золотое/уникальное оружие или щит. */
-  pushPickup(nick: string, item: string, tier: "gold" | "legendary"): void {
+  pushPickup(nick: string, item: string, tier: "gold" | "legendary" | "ruby"): void {
     const row = document.createElement("div");
     row.innerHTML = `<b></b><i>подобрал</i><u></u>`;
     row.querySelector("b")!.textContent = nick;
@@ -666,7 +655,7 @@ export class Overlay {
 
     const statsSig = ctx.watchStats?.map((r) => `${r.label}:${r.value}`).join(",") ?? "";
     const buffSig = ctx.watchBuffs?.map((x) => `${x.name}:${Math.ceil(x.secs / 60)}`).join(",") ?? "";
-    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.watchTitle}|${ctx.watchLevel}|${ctx.watchAttrs?.join("/")}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
+    const watchSig = this.cfg.watching ? `${ctx.watching}|${ctx.watchTitle}|${ctx.watchLevel}|${ctx.shotLabel}|${statsSig}|${buffSig}` : "";
     if (this.cfg.watching && watchSig !== this.lastWatchSig) {
       this.lastWatchSig = watchSig;
       if (ctx.watching) {
@@ -689,34 +678,6 @@ export class Overlay {
         if (ctx.watchStats && ctx.watchStats.length > 0) {
           const table = document.createElement("table");
           table.className = "stats";
-          // Шесть атрибутов — двумя строками по три.
-          for (let row0 = 0; ctx.watchAttrs && row0 < ATTR_UI.length; row0 += 3) {
-            const tr = document.createElement("tr");
-            const lb = document.createElement("td");
-            lb.className = "lb";
-            if (row0 === 0) lb.append("Атрибуты ");
-            const vl = document.createElement("td");
-            vl.className = "vl";
-            ATTR_UI.slice(row0, row0 + 3).forEach(([name, color], j) => {
-              const i = row0 + j;
-              if (j > 0) {
-                lb.append("/");
-                vl.append("/");
-              }
-              const n = document.createElement("i");
-              n.className = "at";
-              n.style.color = color;
-              n.textContent = name;
-              lb.append(n);
-              const v = document.createElement("i");
-              v.className = "at";
-              v.style.color = color;
-              v.textContent = String(ctx.watchAttrs![i] ?? 1);
-              vl.append(v);
-            });
-            tr.append(lb, vl);
-            table.appendChild(tr);
-          }
           for (const row of ctx.watchStats) {
             const tr = document.createElement("tr");
             const lb = document.createElement("td");

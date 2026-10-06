@@ -116,6 +116,8 @@ import {
   takeFromBag,
   enchantInfo,
   enchantApply,
+  isRubyFuel,
+  RUBY,
   ENCHANT,
   HEAL_CARRY_MAX,
   affixLabel,
@@ -475,7 +477,7 @@ function botReachMul(cls: string): number {
   return cls === "spear" ? 2.2 : cls === "hammer" ? 1.2 : 1;
 }
 
-const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2 };
+const TIER_RANK: Record<WeaponTier, number> = { base: 0, gold: 1, legendary: 2, ruby: 3 };
 
 /**
  * Лучший тир класса `cls`, который герой КОГДА-ЛИБО честно поднимал —
@@ -862,7 +864,7 @@ function rolledCrit(
 
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
 function tierRank(t: WeaponTier | string): number {
-  return t === "legendary" ? 2 : t === "gold" ? 1 : 0;
+  return t === "ruby" ? 3 : t === "legendary" ? 2 : t === "gold" ? 1 : 0;
 }
 
 /**
@@ -936,10 +938,39 @@ function applyUnequip(
  * Одна попытка заточки аффикса `idx`: лом списывается в любом случае,
  * шанс/цена/прирост — enchantInfo/ENCHANT в items.ts. Мутирует w и bag.
  */
-function enchantTry(w: WeaponInstance, idx: number, bag: Slot[]): InvActResult {
+function enchantTry(
+  w: WeaponInstance,
+  idx: number,
+  bag: Slot[],
+  weapons: WeaponInstance[],
+  held: ReadonlySet<string | null | undefined>,
+  /** Огранка рубинового: какое уникальное 99 сжечь (выбирает игрок). */
+  fuelId?: string,
+): InvActResult {
   const info = enchantInfo(w, idx);
   if (!info) return { ok: false, text: "Нет такого ролла." };
   if (info.max) return { ok: false, text: "Этот ролл уже на максимуме." };
+  if (info.ruby) {
+    // Огранка рубина: сгорает выбранное игроком уникальное с оценкой 99 (не избранное и не в руках), при любом исходе.
+    const fi = weapons.findIndex((x) => x.id === fuelId);
+    const cand = weapons[fi];
+    if (!cand) return { ok: false, text: `Выбери уникальное оружие с оценкой ${RUBY.fuelQuality} — его сожжёт огранка.` };
+    if (!isRubyFuel(cand)) return { ok: false, text: `Для огранки годится только уникальное с оценкой ${RUBY.fuelQuality}.` };
+    if (cand.fav) return { ok: false, text: "Это оружие в избранном ★ — сними звёздочку, чтобы сжечь его в огранке." };
+    if (held.has(cand.id)) return { ok: false, text: "Это оружие сейчас в руках — сначала надень другое." };
+    const fuel = weapons[fi];
+    weapons.splice(fi, 1);
+    const up = Math.random() < info.chance;
+    const before = info.points;
+    if (up) enchantApply(w, idx, info.gain ?? 1);
+    const label = affixLabel(w.affixes[idx]);
+    const gained = affixPoints(w.affixes[idx], w) - before;
+    return {
+      ok: true,
+      text: up ? `Огранка удалась (+${gained}): ${label}` : `Не вышло — ${instanceName(fuel)} рассыпалось`,
+      enchant: { id: w.id, idx, up, gain: gained, cost: 1, label },
+    };
+  }
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
@@ -950,12 +981,21 @@ function enchantTry(w: WeaponInstance, idx: number, bag: Slot[]): InvActResult {
     enchantApply(w, idx, gain);
   }
   const label = affixLabel(w.affixes[idx]);
-  const gained = Math.floor(affixPoints(w.affixes[idx], w) + 1e-6) - before;
+  const gained = affixPoints(w.affixes[idx], w) - before;
   return {
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
     enchant: { id: w.id, idx, up, gain: gained, cost: info.cost, label },
   };
+}
+
+/** Что у героя из сейва в руках (закреплённое или лучший экземпляр того же вида — как считает игра). */
+function recHeldIds(rec: { weapons?: WeaponInstance[]; equippedWeaponId?: unknown; held?: unknown }): Set<string | null | undefined> {
+  const weapons = rec.weapons ?? [];
+  const eq = sanitizeEquipped(rec.equippedWeaponId);
+  const heldRec = sanitizeHeld(rec.held);
+  const inHand = (h: CarriedWeapon | null): string | undefined => (h ? bestWeaponInstance(weapons, h.cls, h.tier)?.id : undefined);
+  return new Set([eq.left, eq.right, inHand(heldRec.left), inHand(heldRec.right)]);
 }
 
 function preserveLegacyWeapon(rt: { weapons: WeaponInstance[] }, cls: string, tier: string): void {
@@ -1169,7 +1209,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     invHub.setZone({
       sync: (norm) => this.persistNick(norm),
-      act: (norm, act, id, idx) => this.invAct(norm, act, id, idx),
+      act: (norm, act, id, idx, fuel) => this.invAct(norm, act, id, idx, fuel),
       pcInv: (norm) => {
         const t = this.findWeaponsTarget(norm);
         return t ? this.pcInvDataFor(t.p, t.rt) : null;
@@ -1874,7 +1914,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll") return;
       const norm = normNick(p.nick);
       if (!norm) return;
-      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))));
+      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
     });
@@ -4322,6 +4362,7 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
+        fuel: isRubyFuel(w),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -4395,7 +4436,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.broadcast(MSG.pickupFeed, {
       nick,
       item: name,
-      tier: tier === "legendary" ? "legendary" : "gold",
+      tier: tier === "ruby" || tier === "legendary" ? tier : "gold",
       aff: affixes,
     } satisfies PickupFeedMsg);
   }
@@ -4452,7 +4493,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * (как "!equip"/"!scrap"), иначе правим сейв напрямую: при следующем !play
    * герой выйдет уже с этим.
    */
-  private invAct(norm: string, act: InvActKind, id: string, idx: number): InvActResult {
+  private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     const t = this.findWeaponsTarget(norm);
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "unequip") {
@@ -4551,8 +4592,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (act === "scrapAll") {
       // Разобрать всё, кроме избранного ★ и того, что в руках (кнопка внизу инвентаря).
       if (t) {
-        const held = new Set([t.rt.equippedWeaponId.left, t.rt.equippedWeaponId.right, rolledIn(t.p, "left", t.rt)?.id, rolledIn(t.p, "right", t.rt)?.id]);
-        const targets = t.rt.weapons.filter((w) => !w.fav && !held.has(w.id));
+        const held = this.liveHeldIds(t.p, t.rt);
+        // Рубиновые массовой разборкой не трогаем — только поштучно.
+        const targets = t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id));
         if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
         let got = 0;
         for (const w of targets) got += this.scrapOne(t, w);
@@ -4566,13 +4608,8 @@ export class ZoneRoom extends Room<ZoneState> {
       const rec = store.get(token);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const weapons = rec.weapons ?? [];
-      const eq = sanitizeEquipped(rec.equippedWeaponId);
-      const heldRec = sanitizeHeld(rec.held);
-      // В руке — закреплённое или лучший экземпляр того же вида (как считает игра).
-      const inHand = (h: CarriedWeapon | null): string | undefined =>
-        h ? bestWeaponInstance(weapons, h.cls, h.tier)?.id : undefined;
-      const held = new Set([eq.left, eq.right, inHand(heldRec.left), inHand(heldRec.right)]);
-      const targets = weapons.filter((w) => !w.fav && !held.has(w.id));
+      const held = recHeldIds(rec);
+      const targets = weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id));
       if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
       const bag = restoreBag(rec.bag);
       let got = 0;
@@ -4586,10 +4623,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const w = t.rt.weapons.find((x) => x.id === id);
         if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
         const bag = readBag(t.p);
-        const r = enchantTry(w, idx, bag);
+        const r = enchantTry(w, idx, bag, t.rt.weapons, this.liveHeldIds(t.p, t.rt), fuel);
         if (r.enchant) {
           writeBag(t.p, bag);
           this.persistNick(norm);
+          if (w.tier === "ruby" && !t.id.startsWith("bot:")) this.syncWarehouse(t.id, t.rt);
         }
         return r;
       }
@@ -4598,7 +4636,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = rec?.weapons?.find((x) => x.id === id);
       if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const bag = restoreBag(rec.bag);
-      const r = enchantTry(w, idx, bag);
+      const r = enchantTry(w, idx, bag, rec.weapons!, recHeldIds(rec), fuel);
       if (r.enchant) store.put(token, { weapons: rec.weapons, bag });
       return r;
     }
@@ -4721,6 +4759,11 @@ export class ZoneRoom extends Room<ZoneState> {
    * Не пишет бэг/не персистит — при "!scrap all"/списком это делает вызывающий
    * один раз на весь пакет, а не по разу на предмет.
    */
+  /** Что у живого героя в руках сейчас (закреплённое и реально считающееся в руке). */
+  private liveHeldIds(p: PlayerState, rt: Runtime): Set<string | null | undefined> {
+    return new Set([rt.equippedWeaponId.left, rt.equippedWeaponId.right, rolledIn(p, "left", rt)?.id, rolledIn(p, "right", rt)?.id]);
+  }
+
   private scrapOne(t: { p: PlayerState; rt: Runtime }, w: WeaponInstance): number {
     const { p, rt } = t;
     const idx = rt.weapons.indexOf(w);
@@ -5737,6 +5780,16 @@ export class ZoneRoom extends Room<ZoneState> {
         loot.push({ id: scroll, count: 1 });
       }
       store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.finalTokens });
+      // Редкая награда супербосса — рубиновое оружие класса героя (сверх уникального).
+      if (Math.random() < RUBY.dropChance) {
+        const r = rollWeaponInstance(cls, "ruby");
+        rt.weapons.push(r);
+        store.put(token, { weapons: rt.weapons });
+        this.announcePickup(p.nick, r.cls, r.tier, r);
+        const rid = WEAPON_DROP[weaponKey(r.cls, r.tier)];
+        if (rid) loot.push({ id: rid, count: 1 });
+        this.reply(`💎 ${p.nick} получает рубиновое оружие — ${instanceName(r)}: ${instanceLabels(r).join(", ")}!`);
+      }
       rt.eventBuffUntil = Date.now() + CATACOMBS.buffMinutes * 60_000;
       store.put(token, { eventBuffUntil: rt.eventBuffUntil });
     }
@@ -6115,7 +6168,7 @@ export class ZoneRoom extends Room<ZoneState> {
         ...new Set([
           ...(Array.isArray(prev?.owned) ? prev!.owned : []),
           ...bot.rt.owned,
-          ...(p.rightTier === "gold" || p.rightTier === "legendary"
+          ...(p.rightTier === "gold" || p.rightTier === "legendary" || p.rightTier === "ruby"
             ? [weaponKey(p.rightCls as WeaponClass, p.rightTier as WeaponTier)]
             : []),
           ...(p.leftCls === "shield" && p.leftTier === "legendary"

@@ -46,8 +46,8 @@ export function createBow(scene: Scene, tier: WeaponTier = "base"): BowParts {
   const gold = spawnWeaponModel(scene, "bow_gold", BOW_FIT, dropModelString);
   gold.name = "bow_gold";
   gold.parent = root;
-  // Уникальный лук — золотая модель в цвете аффикса (та же геометрия, своя перекраска).
-  if (tier === "legendary") makeLegendModel(scene, root);
+  // Уникальный/рубиновый лук — золотая модель в цвете тира (та же геометрия, своя перекраска).
+  if (tier === "legendary" || tier === "ruby") makeLegendModel(scene, root, tier);
 
   applyBowTier(root, tier);
 
@@ -80,30 +80,35 @@ function placeString(parts: BowParts, tier: WeaponTier): void {
   parts.nockRest.set(0, 0, a.z);
 }
 
-function makeLegendModel(scene: Scene, root: Mesh): void {
+function makeLegendModel(scene: Scene, root: Mesh, tier: "legendary" | "ruby"): void {
   const legend = spawnWeaponModel(
     scene,
     "bow_gold",
-    { ...BOW_FIT, tint: tierTint("bow", "legendary") },
+    { ...BOW_FIT, tint: tierTint("bow", tier) },
     dropModelString,
   );
-  legend.name = "bow_legend";
+  legend.name = `bow_${tier}`;
   legend.parent = root;
 }
 
 function applyBowTier(root: Mesh, tier: WeaponTier): void {
-  // Лук в руках создаётся обычным, поэтому модель уникального собираем при первой надобности.
-  if (tier === "legendary" && !root.getChildren().some((n) => n.name === "bow_legend")) {
-    makeLegendModel(root.getScene(), root);
+  // Лук в руках создаётся обычным, поэтому модель уникального/рубинового собираем при первой надобности.
+  const glowing = tier === "legendary" || tier === "ruby";
+  if (glowing && !root.getChildren().some((n) => n.name === `bow_${tier}`)) makeLegendModel(root.getScene(), root, tier);
+  // Свечение своего цвета у каждого тира: создаём при первой надобности, у остальных гасим.
+  for (const n of root.getChildren()) {
+    if (n.name.startsWith("legGlow")) n.setEnabled(n.name === `legGlow_${tier}`);
   }
-  // Свечение уникального: создаём при первой надобности, у остальных уровней гасим.
-  const glow = root.getChildren().find((n) => n.name === "legGlow");
-  if (tier === "legendary" && !glow) attachLegendaryGlow(root.getScene(), root, 0.35, 0.5);
-  else glow?.setEnabled(tier === "legendary");
+  if (glowing && !root.getChildren().some((n) => n.name === `legGlow_${tier}`)) {
+    attachLegendaryGlow(root.getScene(), root, 0.35, 0.5, tier);
+    const g = root.getChildren().find((n) => n.name === "legGlow");
+    if (g) g.name = `legGlow_${tier}`;
+  }
   for (const n of root.getChildren()) {
     if (n.name === "bow_wood") n.setEnabled(tier === "base");
     else if (n.name === "bow_gold") n.setEnabled(tier === "gold");
-    else if (n.name === "bow_legend") n.setEnabled(tier === "legendary");
+    else if (n.name === "bow_legendary") n.setEnabled(tier === "legendary");
+    else if (n.name === "bow_ruby") n.setEnabled(tier === "ruby");
   }
 }
 

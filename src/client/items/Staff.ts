@@ -37,9 +37,12 @@ export const STAFF_CRYSTAL_LOCAL: readonly [number, number, number] = [0, 1.05, 
 export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   const gold = tier === "gold";
   const storm = tier === "legendary"; // «Посох бури» — фиолетовый
+  const ruby = tier === "ruby"; // рубиновый — алый
 
   const wood = new StandardMaterial("staffWood", scene);
-  wood.diffuseColor = storm
+  wood.diffuseColor = ruby
+    ? new Color3(0.5, 0.12, 0.16)
+    : storm
     ? new Color3(0.42, 0.32, 0.6)
     : gold ? new Color3(0.62, 0.5, 0.2) : new Color3(0.3, 0.2, 0.12);
   wood.emissiveColor = wood.diffuseColor.scale(0.05);
@@ -54,7 +57,9 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   cloth.maxSimultaneousLights = 1;
 
   const metal = new StandardMaterial("staffFerrule", scene);
-  metal.diffuseColor = storm
+  metal.diffuseColor = ruby
+    ? new Color3(1, 0.78, 0.4)
+    : storm
     ? new Color3(0.6, 0.5, 0.85)
     : gold ? new Color3(0.85, 0.7, 0.3) : new Color3(0.4, 0.42, 0.48);
   metal.emissiveColor = metal.diffuseColor.scale(0.05);
@@ -126,13 +131,13 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   if (!staff) throw new Error("не удалось собрать посох");
   staff.name = "staff";
 
-  attachGem(scene, staff, gold, storm);
-  if (storm) attachLegendaryGlow(scene, staff, 0.375, 0.5);
+  attachGem(scene, staff, gold, storm, ruby);
+  if (storm || ruby) attachLegendaryGlow(scene, staff, 0.375, 0.5, ruby ? "ruby" : "legendary");
   return staff;
 }
 
 /** Кристалл на верхушке — грузится асинхронно и подвешивается на посох. */
-function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false): void {
+function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false, ruby = false): void {
   void containerFor(scene, "/models/weapons/crystal.glb").then((c) => {
     if (staff.isDisposed()) return;
     const inst = c.instantiateModelsToScene((n) => n, false);
@@ -147,7 +152,9 @@ function attachGem(scene: Scene, staff: Mesh, gold: boolean, storm = false): voi
     for (const m of src.getChildMeshes(false)) {
       const mat = m.material as StandardMaterial | null;
       if (mat && "emissiveColor" in mat) {
-        const glow = storm
+        const glow = ruby
+          ? new Color3(1, 0.18, 0.28)
+          : storm
           ? new Color3(0.7, 0.5, 1)
           : gold
             ? new Color3(0.9, 0.78, 0.38)

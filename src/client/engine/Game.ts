@@ -1,3 +1,4 @@
+import { TIER_LOOK } from "#shared/look";
 import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
@@ -276,6 +277,8 @@ export class Game {
   private vrEnchId: string | null = null;
   private vrEnchAt: Vector3 | null = null;
   private vrEnchResult: { up: boolean; text: string } | null = null;
+  /** VR-огранка рубинового: выбранное уникальное 99, которое сгорит. */
+  private vrFuelId: string | null = null;
   private pcInvData: PcInvData | null = null;
   private hunterWin: HunterWindow | null = null;
   private nearHunter = false;
@@ -2191,9 +2194,16 @@ export class Game {
             this.vrEnchResult,
             (idx) => {
               this.vrEnchResult = null;
-              this.net?.sendPcInvAct({ act: "enchant", id, idx });
+              const fuel = this.vrFuelId ?? undefined;
+              this.vrFuelId = null; // сгорит — в следующий раз выбрать заново
+              this.net?.sendPcInvAct({ act: "enchant", id, idx, ...(fuel ? { fuel } : {}) });
             },
             () => (this.vrEnchId = null),
+            this.vrFuelId,
+            (fid) => {
+              this.vrFuelId = this.vrFuelId === fid ? null : fid;
+              ep.markDirty();
+            },
           );
         });
       }
@@ -2969,12 +2979,12 @@ export class Game {
     if (loot) {
       const def = ITEMS[loot.item];
       const w = def.weapon;
-      const color = !w ? "#e6e0d0" : w.tier === "legendary" ? "#c79bff" : w.tier === "gold" ? "#f5c542" : "#dedede";
+      const color = !w ? "#e6e0d0" : TIER_LOOK[w.tier].color;
       const info: HoverInfo = {
         title: w ? weaponDef(w.cls, w.tier).name : def.name,
         titleColor: color,
         lines: [
-          ...(w ? [{ text: w.tier === "legendary" ? "уникальное" : w.tier === "gold" ? "золотое" : "обычное" }] : []),
+          ...(w ? [{ text: TIER_LOOK[w.tier].name }] : []),
           {
             text: this.lootMarker?.selectedId === loot.id ? "Клик — добежать и подобрать" : "Клик — выбрать",
             color: "#8f8a7e",
@@ -3422,7 +3432,7 @@ export class Game {
     };
     net.onPickupFeed = (m) => {
       if (m.nick === this.localNick) return; // своё — уже в «Подобрано»
-      this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, m.tier === "legendary" ? "#c79bff" : "#f5c542");
+      this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, TIER_LOOK[m.tier].color);
     };
     net.onKillFeed = (by, victim) => {
       if (victim) this.pcHud?.log("kill", by ? `${glyph("ui.kill")} ${victim}` : `${victim} пал`, by || undefined);

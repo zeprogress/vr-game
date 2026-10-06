@@ -304,8 +304,7 @@ export class InventoryPanel {
 
   private weaponTipHtml(w: WornWeapon, s: HeroStats): string {
     const d = weaponDef(w.cls, w.tier);
-    const color =
-      w.tier === "legendary" ? "#c77dff" : w.tier === "gold" ? "#ffd24a" : "#dfe4f0";
+    const color = TIER_LOOK[w.tier].color;
     return (
       `<div style="font-weight:700;color:${color};margin-bottom:4px">${d.name}</div>` +
       this.statsHtml(weaponStats(w, s))
