@@ -384,6 +384,12 @@ export interface SkillDef {
   attr?: { attr: Attr; per: number; what: string };
 }
 
+/**
+ * «Сокрушение бури»: лечение героя и союзников рядом (доли максимума HP).
+ * 2026-10-06: было 0.3 / 0.15 — боевой маг был сам себе лекарем и танком (три молота в катакомбах не умирали).
+ */
+export const STORM_CRUSH = { selfHeal: 0.15, allyHeal: 0.08 } as const;
+
 export const SKILLS2: Record<SkillId, SkillDef> = {
   stunBash: {
     name: "Оглушающий удар", icon: glyph("s.stunBash"), desc: "Удар по кругу: оглушает всех рядом на 3 с",
@@ -419,7 +425,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Сокрушение", icon: glyph("s.crush"), desc: "Прыжок и удар о землю: волна по кругу, мобы оглушены на 1 с",
     cooldown: 14, castTime: 0.6, radius: 5, dmgMult: 2.2, hits: 1,
     variants: {
-      battlemage: { name: "Сокрушение бури", desc: "Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с; лечит тебя на 30% здоровья, союзников рядом — на 15%" },
+      battlemage: { name: "Сокрушение бури", desc: `Прыжок и магический удар: волна по кругу, мобы замедлены на 3 с; лечит тебя на ${Math.round(STORM_CRUSH.selfHeal * 100)}% здоровья, союзников рядом — на ${Math.round(STORM_CRUSH.allyHeal * 100)}%` },
     },
   },
   seal: {
@@ -526,9 +532,6 @@ export function skillCdMul2(cls: ClassId | null, wis: number): number {
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
   return Math.round(SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1) * 10) / 10;
 }
-
-/** «Сокрушение бури»: лечение героя и союзников рядом (доли максимума HP). */
-export const STORM_CRUSH = { selfHeal: 0.3, allyHeal: 0.15 } as const;
 
 /** «Град выпадов» копейщика: серия колющих ударов вперёд. */
 /** Выпад копья: цели ЗА основной (до pierce − 1) получают эту долю урона (2026-10-02: было 100% по пяти целям). */
