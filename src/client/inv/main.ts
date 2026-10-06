@@ -98,18 +98,19 @@ let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
 function pageInv(): PcInventory {
   if (pcInv) return pcInv;
   injectPcStyle();
-  const act = (a: string, id: string, idx = 0): void => {
+  /** fuel — огранка рубинового: какое уникальное 99 сжечь (раньше терялось — сервер отвечал «Выбери…»). */
+  const act = (a: string, id: string, idx = 0, fuel?: string): void => {
     if (!last?.authed) {
       toast("Сначала подтверди вход кодом в чате", false);
       return;
     }
-    room?.send("act", { act: a, id, idx });
+    room?.send("act", { act: a, id, idx, ...(fuel ? { fuel } : {}) });
   };
   pcInv = new PcInventory({
     page: true,
     touch: matchMedia("(pointer: coarse)").matches,
     request: () => room?.send("refresh"),
-    act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx),
+    act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx, m.fuel),
     hands: () => heldHands as ReturnType<PcInventoryHooks["hands"]>,
     // idx 1 — в левую руку (второй меч/кинжал к такому же в правой).
     equip: (w, side) => act("equip", w.id, side === "left" ? 1 : 0),
