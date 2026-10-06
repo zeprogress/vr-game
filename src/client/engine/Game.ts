@@ -71,7 +71,7 @@ import { VrVignette } from "../ui/VrVignette";
 import { ComfortVignette } from "../ui/ComfortVignette";
 import { HealCrossFx, CROSS_ORANGE } from "../ui/HealCrossFx";
 import { heroStatRows } from "#shared/heroStats";
-import { WorldCrossFx, dmgNumberColor, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
+import { WorldCrossFx, HERO_MISS_DY, dmgNumberColor, CROSS_GREEN as W_GREEN, CROSS_ORANGE as W_ORANGE, CROSS_RED as W_RED } from "../ui/WorldCrossFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { SpecCamMarker } from "../world/SpecCamMarker";
@@ -3931,9 +3931,10 @@ export class Game {
         this.avatars.get(id)?.playHitReact();
         break;
       case "dodge":
-        // x,y,z — источник удара (моб), не увернувшийся; см. hurtPlayer.
-        // mobId есть — моб мог убежать вперёд за время задержки, следуем за ним.
-        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, this.missFollowMob(mobId));
+        // mobId — моб увернулся от героя: «MISS» над мобом (следом за ним — мог убежать за задержку).
+        // Без mobId — герой id сам увернулся (hurtPlayer): «MISS» над его головой.
+        if (mobId) this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, this.missFollowMob(mobId));
+        else this.crossFx.missText(x, y - HERO_MISS_DY, z, MISS_FX_DELAY, this.missFollowAvatar(id));
         break;
       case "blockShield":
         this.sfx.at(at, () => this.sfx.block(1));
@@ -4078,7 +4079,7 @@ export class Game {
     by: BlockedBy,
     stunSec?: number,
     knockback?: number,
-    byMob?: string,
+    _byMob?: string,
     slowSec?: number,
     slowFrac?: number,
   ): void {
@@ -4087,10 +4088,28 @@ export class Game {
     if (dir.lengthSquared() > 1e-6) dir.normalize();
     else dir.set(0, 0, 1);
     if (by === 3) {
-      // Увернулся: ни урона, ни станa/отбрасывания — «MISS» над источником
-      // удара, но не раньше, чем замах/выстрел визуально долетит. Моб мог
-      // убежать вперёд за это время — следуем за ним, а не за застывшей точкой.
-      this.crossFx.missText(fromX, eye.y - 1, fromZ, MISS_FX_DELAY, this.missFollowMob(byMob));
+      // Увернулся: ни урона, ни стана/отбрасывания — «MISS» над героем (как его видят другие),
+      // но не раньше, чем замах/выстрел визуально долетит. Третье лицо — над своей головой;
+      // от первого (ПК, VR, прицел) макушки не видно — перед глазами, чуть ниже центра взгляда.
+      if (this.player.thirdPerson && !this.player.aiming) {
+        this.crossFx.missText(eye.x, eye.y - HERO_MISS_DY, eye.z, MISS_FX_DELAY, () => {
+          const e = this.player.eyePosition;
+          return { x: e.x, y: e.y - HERO_MISS_DY, z: e.z };
+        });
+      } else {
+        const f = this.player.eyeForward;
+        let fx = f.x;
+        let fz = f.z;
+        const fl = Math.hypot(fx, fz);
+        if (fl < 0.1) {
+          fx = Math.sin(this.player.facing);
+          fz = Math.cos(this.player.facing);
+        } else {
+          fx /= fl;
+          fz /= fl;
+        }
+        this.crossFx.missText(eye.x + fx * 3.5, eye.y - 1.9, eye.z + fz * 3.5, MISS_FX_DELAY);
+      }
       return;
     }
     if (by !== 0) this.combat.playBlock(by);
@@ -4107,11 +4126,16 @@ export class Game {
   /** Резолвер для WorldCrossFx.missText: живая точка над мобом id, или null. */
   private missFollowMob(id?: string): (() => { x: number; y: number; z: number } | null) | null {
     if (!id) return null;
+    return () => this.netMobs.getMob(id)?.missPoint() ?? null;
+  }
+
+  /** «MISS» над головой героя (аватар — голова) — следом за ним. */
+  private missFollowAvatar(id: string): () => { x: number; y: number; z: number } | null {
     return () => {
-      const m = this.netMobs.getMob(id);
-      if (!m) return null;
-      const c = m.center();
-      return { x: c.x, y: c.y - 1, z: c.z };
+      const av = this.avatars.get(id);
+      if (!av) return null;
+      const p = av.position;
+      return { x: p.x, y: p.y - HERO_MISS_DY, z: p.z };
     };
   }
 

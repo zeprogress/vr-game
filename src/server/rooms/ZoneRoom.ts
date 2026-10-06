@@ -8898,18 +8898,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // Соседям — звук/FX: щёлкнул щит, звякнул меч, увернулся или охнул от урона.
     const k: ActKind =
       block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";
-    // «MISS» над мобом (источником удара), а не над увернувшимся; для звуков
-    // блока/удара позиция — сам игрок, как раньше.
-    const relayX = block.by === 3 ? h.fromX : p.head.x;
-    const relayZ = block.by === 3 ? h.fromZ : p.head.z;
-    const relay: ActRelay = {
-      k,
-      id: h.target,
-      x: relayX,
-      y: p.head.y,
-      z: relayZ,
-      mobId: block.by === 3 ? h.byMob : undefined,
-    };
+    // Позиция — сам игрок: звук блока/удара и «MISS» уворота над головой увернувшегося
+    // (2026-10-06; раньше «MISS» рисовался над мобом-источником).
+    const relay: ActRelay = { k, id: h.target, x: p.head.x, y: p.head.y, z: p.head.z };
     this.broadcast(MSG.act, relay, { except: this.clientOf(h.target) });
 
     if (p.hp <= 0) {

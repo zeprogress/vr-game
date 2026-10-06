@@ -954,9 +954,9 @@ export class TowerRoom extends Room<TowerState> {
       this.state.heroHp = Math.min(this.state.heroMaxHp, this.state.heroHp + this.state.heroMaxHp * this.heroAegisHeal);
     }
     // Звук/FX — та же рассылка, что и в основном мире (см. ZoneRoom.hurtPlayer):
-    // "MISS" при увороте рисуется над ИСТОЧНИКОМ удара, звук блока/удара — над героем.
+    // Звук блока/удара и «MISS» уворота — над героем.
     const k = block.by === 1 ? "blockShield" : block.by === 2 ? "blockSword" : block.by === 3 ? "dodge" : "hurt";
-    this.heroHitFx.push({ k, x: block.by === 3 ? fromX : this.hero.x, z: block.by === 3 ? fromZ : this.hero.z });
+    this.heroHitFx.push({ k, x: this.hero.x, z: this.hero.z });
     if (this.state.heroHp <= 0) this.finish("dead");
   }
 

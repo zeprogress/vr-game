@@ -33,6 +33,8 @@ const LIFE = 1.5; // с полёта крестика
 const SPREAD = 0.9; // м разлёта крестиков по горизонтали
 const CRIT_LIFE = 0.5;
 const MISS_LIFE = 0.7;
+/** «MISS» над героем: точка на столько ниже головы — шейдер поднимет на 1.3 м, т. е. ~0.9 м над макушкой (над плашкой). */
+export const HERO_MISS_DY = 0.4;
 const DMG_LIFE = 0.9;
 const MAX_DIGITS = 6;
 const DIGIT_W = 20; // px ячейки цифры в атласе

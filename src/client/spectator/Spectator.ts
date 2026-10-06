@@ -28,7 +28,7 @@ import { NetMobs } from "../combat/MobSystem";
 import { LootDrops, makeWeaponMesh } from "../world/LootDrops";
 import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
-import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED, dmgNumberColor } from "../ui/WorldCrossFx";
+import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED, HERO_MISS_DY, dmgNumberColor } from "../ui/WorldCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
@@ -1773,15 +1773,18 @@ export class Spectator {
         this.avatars.get(id)?.playHitReact();
         break;
       case "dodge": {
+        // mobId — моб увернулся от героя: «MISS» над мобом; без — герой id увернулся: над героем.
         const mob = mobId;
-        this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, mob
-          ? () => {
-              const m = this.netMobs.getMob(mob);
-              if (!m) return null;
-              const c = m.center();
-              return { x: c.x, y: c.y - 1, z: c.z };
-            }
-          : null);
+        if (mob) {
+          this.crossFx.missText(x, y - 1, z, MISS_FX_DELAY, () => this.netMobs.getMob(mob)?.missPoint() ?? null);
+        } else {
+          this.crossFx.missText(x, y - HERO_MISS_DY, z, MISS_FX_DELAY, () => {
+            const av = this.avatars.get(id);
+            if (!av) return null;
+            const p = av.position;
+            return { x: p.x, y: p.y - HERO_MISS_DY, z: p.z };
+          });
+        }
         break;
       }
       case "blockShield":

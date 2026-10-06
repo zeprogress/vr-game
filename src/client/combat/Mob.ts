@@ -875,6 +875,15 @@ export class Mob implements Hittable {
     return this.root.getAbsolutePosition().add(new Vector3(0, (MOB.bodyRadius + this.lift) * this.scale, 0));
   }
 
+  /**
+   * Точка «MISS» над головой — в соглашении WorldCrossFx.missText (шейдер сам поднимет ещё на 1.3 м):
+   * над макушкой и плашкой с именем, как и точка, что шлёт сервер (ZoneSim.mobMisses).
+   */
+  missPoint(): { x: number; y: number; z: number } {
+    const p = this.root.getAbsolutePosition();
+    return { x: p.x, y: p.y + (MOB.bodyRadius * 2 + this.lift) * this.scale + 0.2, z: p.z };
+  }
+
   /** Заявка на удар. Урон считает сервер; локальный кулдаун — 1 заявка на замах. */
   hit(dir: Vector3, weapon: WeaponKind, _contact?: Vector3): boolean {
     if (this.dead || this.hitCd > 0) return false;
