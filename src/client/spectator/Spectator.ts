@@ -1578,16 +1578,16 @@ export class Spectator {
   }
   /** Бой с рейд-боссом для режиссёра: край арены, босс (моб в центре арены), герои на арене. */
   private raidCtx(st: ZoneState | null): DirectorCtx["raid"] {
-    if (!st || st.raidPh === 0) return null;
+    if (!st || st.raid.ph === 0) return null;
     let bossId = "";
     st.mobs.forEach((m, id) => {
       if (!bossId && !m.dead && Math.hypot(m.x - RAID.x, m.z - RAID.z) < 2) bossId = id;
     });
     const heroes: string[] = [];
     st.players.forEach((p, id) => {
-      if (!p.dead && Math.hypot(p.head.x - RAID.x, p.head.z - RAID.z) < st.raidEdge) heroes.push(id);
+      if (!p.dead && Math.hypot(p.head.x - RAID.x, p.head.z - RAID.z) < st.raid.edge) heroes.push(id);
     });
-    return { x: RAID.x, z: RAID.z, edge: st.raidEdge, bossId, heroes };
+    return { x: RAID.x, z: RAID.z, edge: st.raid.edge, bossId, heroes };
   }
   private catFx: CatacombsFx | null = null;
   private raidFx: RaidArenaFx | null = null;
@@ -1612,7 +1612,7 @@ export class Spectator {
       return;
     }
     // Бой с рейд-боссом (Лунный аватар) в кадре — тема супербосса катакомб.
-    if (cs && cs.raidPh > 0 && Math.hypot(cp.x - RAID.x, cp.z - RAID.z) < RAID.r + 60) {
+    if (cs && cs.raid.ph > 0 && Math.hypot(cp.x - RAID.x, cp.z - RAID.z) < RAID.r + 60) {
       if (this.catMusic !== "raid") {
         this.catMusic = "raid";
         this.bossMusicOn = false;

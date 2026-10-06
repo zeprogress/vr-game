@@ -5720,25 +5720,25 @@ export class ZoneRoom extends Room<ZoneState> {
         return out;
       },
       setState: (s) => {
-        const st = this.state;
-        if (st.raidPh !== s.ph) st.raidPh = s.ph;
-        if (s.ph === 0 && st.raidOn === 0) return; // боя нет — углы не шлём каждый тик
-        st.raidAng = s.ang;
-        if (st.raidW !== s.w) st.raidW = s.w;
-        if (st.raidDrift !== s.drift) st.raidDrift = s.drift;
-        if (st.raidEdge !== s.edge) st.raidEdge = s.edge;
-        if (st.raidGap !== s.gap) st.raidGap = s.gap;
-        if (st.raidOn !== s.on) st.raidOn = s.on;
-        st.raidO0 = s.o[0];
-        st.raidO1 = s.o[1];
-        st.raidO2 = s.o[2];
-        if (st.raidVert !== s.vert) st.raidVert = s.vert;
-        if (st.raidTide !== s.tide) st.raidTide = s.tide;
-        if (st.raidTear !== s.tear) st.raidTear = s.tear;
-        if (st.raidPull !== s.pull) st.raidPull = s.pull;
-        if (st.raidBreath !== s.breath) st.raidBreath = s.breath;
-        if (st.raidCracks !== s.cracks) st.raidCracks = s.cracks;
-        if (st.raidCrackOn !== s.crackOn) st.raidCrackOn = s.crackOn;
+        const st = this.state.raid;
+        if (st.ph !== s.ph) st.ph = s.ph;
+        if (s.ph === 0 && st.on === 0) return; // боя нет — углы не шлём каждый тик
+        st.ang = s.ang;
+        if (st.w !== s.w) st.w = s.w;
+        if (st.drift !== s.drift) st.drift = s.drift;
+        if (st.edge !== s.edge) st.edge = s.edge;
+        if (st.gap !== s.gap) st.gap = s.gap;
+        if (st.on !== s.on) st.on = s.on;
+        st.o0 = s.o[0];
+        st.o1 = s.o[1];
+        st.o2 = s.o[2];
+        if (st.vert !== s.vert) st.vert = s.vert;
+        if (st.tide !== s.tide) st.tide = s.tide;
+        if (st.tear !== s.tear) st.tear = s.tear;
+        if (st.pull !== s.pull) st.pull = s.pull;
+        if (st.breath !== s.breath) st.breath = s.breath;
+        if (st.cracks !== s.cracks) st.cracks = s.cracks;
+        if (st.crackOn !== s.crackOn) st.crackOn = s.crackOn;
       },
       kill: (id, why) => {
         const p = this.state.players.get(id);

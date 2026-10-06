@@ -391,8 +391,8 @@ export class Game {
     // что у ботов на сервере — shared/raid raidCarry); за краем — пустота (решает сервер).
     this.player.platform = (x, z, dt) => {
       const st = this.net?.room?.state;
-      if (!st || st.raidPh === 0) return null;
-      return raidCarry(x, z, st.raidW, st.raidDrift, st.raidEdge, dt);
+      if (!st || st.raid.ph === 0) return null;
+      return raidCarry(x, z, st.raid.w, st.raid.drift, st.raid.edge, dt);
     };
     this.player.setObstacles(zone.obstacles);
     this.scene.activeCamera = this.player.camera;
@@ -2479,7 +2479,7 @@ export class Game {
       return;
     }
     // Бой с рейд-боссом (Лунный аватар) рядом — тема супербосса катакомб.
-    if (st && st.raidPh > 0 && Math.hypot(pp.x - RAID.x, pp.z - RAID.z) < RAID.r + 50) {
+    if (st && st.raid.ph > 0 && Math.hypot(pp.x - RAID.x, pp.z - RAID.z) < RAID.r + 50) {
       if (this.musicKind !== "raid") {
         this.musicKind = "raid";
         this.bossMusicOn = false;

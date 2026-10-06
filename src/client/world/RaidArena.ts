@@ -61,21 +61,23 @@ let cracksCache: RaidCrack[] = [];
 
 /** Поля состояния комнаты → RaidView. */
 export function raidViewOf(st: {
-  raidPh: number;
-  raidAng: number;
-  raidEdge: number;
-  raidGap: number;
-  raidOn: number;
-  raidO0: number;
-  raidO1: number;
-  raidO2: number;
-  raidVert: number;
-  raidTide: number;
-  raidTear: number;
-  raidPull: number;
-  raidBreath: number;
-  raidCracks: string;
-  raidCrackOn: number;
+  raid: {
+    ph: number;
+    ang: number;
+    edge: number;
+    gap: number;
+    on: number;
+    o0: number;
+    o1: number;
+    o2: number;
+    vert: number;
+    tide: number;
+    tear: number;
+    pull: number;
+    breath: number;
+    cracks: string;
+    crackOn: number;
+  };
   mobs: { get(id: string): MobLike | undefined; forEach(cb: (m: MobLike, id: string) => void): void };
 }): RaidView {
   // Босс — моб в центре арены (стоит на месте): id запоминаем, чтобы не перебирать мобов каждый кадр.
@@ -90,26 +92,27 @@ export function raidViewOf(st: {
       }
     });
   }
-  if (st.raidCracks !== cracksCacheKey) {
-    cracksCacheKey = st.raidCracks;
-    cracksCache = parseCracks(st.raidCracks);
+  const R = st.raid;
+  if (R.cracks !== cracksCacheKey) {
+    cracksCacheKey = R.cracks;
+    cracksCache = parseCracks(R.cracks);
   }
   return {
-    tear: st.raidTear,
-    pull: st.raidPull === 1,
-    breath: st.raidBreath,
+    tear: R.tear,
+    pull: R.pull === 1,
+    breath: R.breath,
     cracks: cracksCache,
     cracksKey: cracksCacheKey,
-    crackOn: st.raidCrackOn === 1,
+    crackOn: R.crackOn === 1,
     boss: bm ? { id: bossIdCache, x: bm.x, y: bm.y, z: bm.z, yaw: bm.yaw, hp: bm.hp, maxHp: bm.maxHp, scale: bm.scale } : null,
-    ph: st.raidPh,
-    ang: st.raidAng,
-    edge: st.raidEdge || RAID.r,
-    gap: st.raidGap,
-    on: st.raidOn,
-    o: [st.raidO0, st.raidO1, st.raidO2],
-    vert: st.raidVert,
-    tide: st.raidTide,
+    ph: R.ph,
+    ang: R.ang,
+    edge: R.edge || RAID.r,
+    gap: R.gap,
+    on: R.on,
+    o: [R.o0, R.o1, R.o2],
+    vert: R.vert,
+    tide: R.tide,
   };
 }
 
