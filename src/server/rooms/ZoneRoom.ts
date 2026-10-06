@@ -5369,6 +5369,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (st.catLo !== c.lo) st.catLo = c.lo;
         if (st.catHi !== c.hi) st.catHi = c.hi;
         if (st.catRoute !== c.route) st.catRoute = c.route;
+        if (st.catLives !== c.lives) st.catLives = c.lives;
         if (st.catLeft !== c.left) st.catLeft = c.left;
         if (st.catParty !== c.party) st.catParty = c.party;
         if (st.catStage !== c.stage) st.catStage = c.stage;
@@ -5441,6 +5442,11 @@ export class ZoneRoom extends Room<ZoneState> {
         const sp = hubSpawnPoint();
         this.catWarp(id, sp.x, sp.z);
       },
+      revive: (id) => {
+        const p = this.state.players.get(id);
+        const rt = this.rt.get(id);
+        if (p?.dead && rt) this.respawn(id, p, rt);
+      },
       spawn: (type, x, z, o) => this.catSpawn(type, x, z, o),
       alive: (id) => {
         const m = this.sim.mobs.get(id);
@@ -5498,7 +5504,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const v = H.kinds.indexOf(kind);
         const R = o?.r ?? H.radius;
         const delay = o?.delay ?? H.delay;
-        const dmgFrac = (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale;
+        const dmgFrac = (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg;
         const stun = o?.stun ?? (kind === "rockfall" ? 0.8 : 0);
         const knock = o?.knock ?? (kind === "souls" ? 6 : 0);
         for (const pt of pts) {
@@ -5662,11 +5668,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const def = ELITE_MOBS[type];
     let id: string;
     if (def) {
-      const k = Math.max(CATACOMBS.levelMin, Math.min(CATACOMBS.levelMax, o.partyLevel / def.level));
+      // Калибровка вида под отряд опорного уровня (как моб этого вида против героев levelRef)...
+      const k = Math.max(CATACOMBS.levelMin, Math.min(CATACOMBS.levelMax, CATACOMBS.levelRef / def.level));
+      // ...и рост вместе с героями: их HP и урон растут ~ как уровень² (CATACOMBS.levelPow).
+      const lv = Math.max(0.3, Math.min(2.5, o.partyLevel / CATACOMBS.levelRef)) ** CATACOMBS.levelPow;
       const opts = eliteMobOpts(def);
-      // Сила героя с уровнем растёт быстрее линейной — подгонка мобов тоже нелинейная.
-      opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4 * (af?.hpMul ?? 1));
-      opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2 * CATACOMBS.dmgScale;
+      opts.hp = Math.round(def.hp * o.hpMul * k ** 1.4 * lv * (af?.hpMul ?? 1));
+      opts.dmgMul = def.dmgMul * o.dmgMul * k ** 1.2 * lv * CATACOMBS.dmgScale;
       opts.scaleMul = (def.scaleMul ?? 1) * (o.scaleMul ?? 1) * (af?.scaleMul ?? 1);
       // Аффикс волны: поверх врождённых свойств (берём сильнейшее).
       if (af?.speedMul) opts.speedMul = Math.max(opts.speedMul ?? 1, af.speedMul);
@@ -8855,8 +8863,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.syncWarehouse(id, rt);
       if (p.dead) {
         rt.respawnIn -= dt;
-        // Катакомбы: пока живых в отряде нет — не воскрешаем (режиссёр засчитает поражение).
-        if (rt.respawnIn <= 0 && !(this.cat.inRun(id) && !this.catAnyAlive())) this.respawn(id, p, rt);
+        // Катакомбы: пока живых в отряде нет — не воскрешаем (режиссёр засчитает поражение);
+        // встать — значит потратить жизнь отряда (кончились — лежит до следующего зала).
+        if (rt.respawnIn <= 0 && !(this.cat.inRun(id) && (!this.catAnyAlive() || !this.cat.takeLife(id)))) this.respawn(id, p, rt);
         return;
       }
       // В башне ХП считает и пишет сама TowerRoom (см. onTowerSnapshot) —

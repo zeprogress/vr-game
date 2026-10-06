@@ -62,7 +62,7 @@ export interface OverlayCtx {
   /** Квест чата (все боты вместе) или null. */
   chatQuest?: { title: string; got: number; need: number; secs: number } | null;
   /** Катакомбы: сбор/забег — панель с таймером и командами чата. */
-  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean } | null;
+  catacombs?: { gather: boolean; hall: string; left: number; party: number; final: boolean; lives: number } | null;
   /** Текущий забег «Охотничьей башни» — этаж/мобы/босс, или null если башня не активна. */
   towerStatus: {
     heroNick: string;
@@ -787,7 +787,7 @@ export class Overlay {
     show(this.cat, !!ct);
     if (ct) {
       const mm = `${Math.floor(ct.left / 60)}:${String(ct.left % 60).padStart(2, "0")}`;
-      const sig = `${ct.gather}|${ct.hall}|${mm}|${ct.party}|${ct.final}`;
+      const sig = `${ct.gather}|${ct.hall}|${mm}|${ct.party}|${ct.final}|${ct.lives}`;
       if (sig !== this.lastCatSig) {
         this.lastCatSig = sig;
         this.cat.innerHTML = "";
@@ -796,7 +796,7 @@ export class Overlay {
         const st = div("st");
         st.textContent = ct.gather
           ? `сбор отряда · ${ct.party} героев · спуск через ${mm}`
-          : `${ct.final ? "⚔ Владыка Бездны" : ct.hall} · отряд ${ct.party} · осталось ${mm}`;
+          : `${ct.final ? "⚔ " : ""}${ct.hall} · отряд ${ct.party} · жизней ❤${ct.lives} · осталось ${mm}`;
         this.cat.append(b, st);
         for (const [cmd, what] of CAT_HELP) {
           if (!ct.gather && cmd === "!катакомбы") continue;

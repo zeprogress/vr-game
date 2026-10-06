@@ -81,6 +81,12 @@ type WeaponTier = import("../src/shared/items.ts").WeaponTier;
 
 const argv = process.argv.slice(2);
 const arg = (k: string): string | undefined => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : undefined);
+// --set dmgScale=0.6,guardHpMul=0.7 — подменить числа CATACOMBS на прогон (подбор сложности без правки кода).
+for (const kv of (arg("--set") ?? "").split(",").filter(Boolean)) {
+  const [k, v] = kv.split("=");
+  if (!(k in CAT.CATACOMBS)) throw new Error(`--set: нет CATACOMBS.${k}`);
+  (CAT.CATACOMBS as any)[k] = Number(v);
+}
 const QUICK = argv.includes("--quick");
 const LVL = Number(arg("--lvl") ?? 33);
 const ONLY = new Set((arg("--only") ?? "dps,skills,attrs,affix,tier,group,camp,def,nav").split(","));
@@ -960,6 +966,8 @@ if (ONLY.has("catacombs")) {
     bots = Array.from({ length: nn }, (_, i) => addBot(room, `cat${i}`, { lvl, load: LOADOUTS.find((l) => l.id === kits[i % kits.length])! }));
     for (const b of bots) b.bot.state.maxHp = b.bot.state.hp = maxHpFor(lvl, b.bot.state);
   }
+  // Пара тиков: сервер выставит skill1/skill2 под класс (до этого в строке «?»).
+  for (let i = 0; i < 3; i++) r.step();
   for (const b of bots) {
     const p = b.bot.state;
     say(`  ${p.nick} ур.${p.level} ${p.rightCls}/${p.leftCls || "—"} умения ${p.skill1 || "?"}+${p.skill2 || "?"} HP ${Math.round(p.maxHp)}`);
@@ -991,7 +999,7 @@ if (ONLY.has("catacombs")) {
         hurtWin = w;
       }
       const m = h.byMob ? room.sim.mobs.get(h.byMob) : null;
-      const k = m ? (m.eliteName || m.kind) + (h.dot ? "(dot)" : h.projectile ? "(снаряд)" : "") : h.dot ? "среда" : "?";
+      const k = (m ? (m.eliteName || m.kind) + (h.dot ? "(dot)" : h.projectile ? "(снаряд)" : "") : h.dot ? "среда" : "?") + (process.env.LAB_DEBUG === "2" ? `→${p?.nick}` : "");
       hurtLog.set(k, (hurtLog.get(k) ?? 0) + lost);
     };
     const ht = room.tickHuntAttacks.bind(room);

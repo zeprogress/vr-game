@@ -39,7 +39,7 @@ export interface CatHost {
   /** Живые герои: id → позиция/уровень/бот ли. */
   heroes(): { id: string; x: number; z: number; level: number; dead: boolean; bot: boolean; nick: string }[];
   /** Состояние для клиентов (поля catPhase…). */
-  setState(s: { phase: number; lo: number; hi: number; route: string; left: number; party: number; stage: number; final: boolean; boss: string }): void;
+  setState(s: { phase: number; lo: number; hi: number; route: string; lives: number; left: number; party: number; stage: number; final: boolean; boss: string }): void;
   /** Титры: всем (игрокам — баннер, зрителям — карточка). */
   announce(m: CatacombMsg): void;
   /** Сообщение в чат Twitch. */
@@ -50,6 +50,8 @@ export interface CatHost {
   warp(id: string, x: number, z: number, faceX?: number, faceZ?: number): void;
   /** Вернуть героя в лагерь. */
   sendHome(id: string): void;
+  /** Поднять павшего героя (у входа в текущий зал). */
+  revive(id: string): void;
   /** Моб катакомб: тип (ключ ELITE_MOBS или slime/spitter), точка и множители. Возвращает id. */
   spawn(type: string, x: number, z: number, o: { hpMul: number; dmgMul: number; scaleMul?: number; name?: string; partyLevel: number; affix?: CatAffix | null }): string;
   /** Темы залов на заход (для клиентов). */
@@ -157,6 +159,26 @@ export class CatacombDirector {
   /** Свита «на подходе» (ворота открылись). */
   private pendingAdds: { group: CatWave[]; gates: { x: number; z: number }[]; at: number }[] = [];
   /** Имя зала с темой захода: «Зал костей · Огненная яма». */
+  /** Жизни отряда (CATACOMBS.livesPerHero): сколько воскрешений осталось; кончились — объявили ли. */
+  private lives = 0;
+  private livesOutSaid = false;
+  /**
+   * Павший из отряда хочет встать (вышло reviveSec): тратит жизнь отряда. Нет жизней — false,
+   * лежит до перехода в следующий зал.
+   */
+  takeLife(id: string): boolean {
+    if (!this.inRun(id)) return true;
+    if (this.lives <= 0) {
+      if (!this.livesOutSaid) {
+        this.livesOutSaid = true;
+        this.host.announce({ kind: "fail", title: "Жизни отряда кончились", sub: "павшие встанут только в следующем зале — берегите друг друга", secs: 5 });
+      }
+      return false;
+    }
+    this.lives--;
+    this.pushState();
+    return true;
+  }
   /** Маршрут захода: зал на каждом шаге (развилки выбираются при зачистке). */
   route: number[] = [0];
   /** Открытые залы (шаги lo..hi маршрута) — стены для героев и мобов. */
@@ -524,6 +546,9 @@ export class CatacombDirector {
         }
         this.stage++;
         this.lo = this.hi;
+        // Новый зал — павшие встают у входа (и без жизней отряда).
+        if (CATACOMBS.hallRevive) for (const h of heroes) if (this.party.has(h.id) && h.dead) this.host.revive(h.id);
+        this.livesOutSaid = false;
         this.wave = 0;
         this.waveAt = 0;
         this.pending = null;
@@ -572,6 +597,8 @@ export class CatacombDirector {
     this.themes = CAT_HALLS.map((_, i) => themes[i % themes.length]);
     this.host.setThemes(this.themes.join(","));
     this.route = [0];
+    this.lives = Math.max(1, Math.round(CATACOMBS.livesPerHero * heroes.length));
+    this.livesOutSaid = false;
     this.plan = CATACOMBS.stages.map((st, i) => this.makePlan(st, i === CATACOMBS.stages.length - 1, heroes.length));
     const hall = CAT_HALLS[0];
     heroes.forEach((h, i) => {
@@ -846,7 +873,13 @@ export class CatacombDirector {
   private threat(what: "hp" | "dmg"): number {
     const curse = this.plan[this.stage]?.curse;
     const c = curse ? (what === "hp" ? curse.hpMul : curse.dmgMul) : 1;
-    return (1 + (what === "hp" ? CATACOMBS.threatHp : CATACOMBS.threatDmg) * this.stage) * c;
+    return (1 + (what === "hp" ? CATACOMBS.threatHp : CATACOMBS.threatDmg) * this.stage) * c * (what === "dmg" ? this.sizeDmg : 1);
+  }
+
+  /** Урон мобов и опасностей от размера отряда: (n / sizeRef)^sizeDmgPow, n не больше sizeMaxN (см. CATACOMBS). */
+  get sizeDmg(): number {
+    const n = Math.min(CATACOMBS.sizeMaxN, Math.max(1, this.party.size));
+    return (n / CATACOMBS.sizeRef) ** CATACOMBS.sizeDmgPow;
   }
 
   private stageClear(): void {
@@ -939,7 +972,7 @@ export class CatacombDirector {
   private pushState(): void {
     const left = this.phase === CAT_PHASE.none ? 0 : Math.max(0, Math.ceil((this.phaseEnd - this.host.now()) / 1000));
     this.host.setState({
-      phase: this.phase, lo: this.lo, hi: this.hi, route: this.route.join(","), left, party: this.party.size, stage: this.stage, final: this.finalOn, boss: this.bossId,
+      phase: this.phase, lo: this.lo, hi: this.hi, route: this.route.join(","), lives: this.phase >= CAT_PHASE.run ? this.lives : 0, left, party: this.party.size, stage: this.stage, final: this.finalOn, boss: this.bossId,
     });
   }
 }
