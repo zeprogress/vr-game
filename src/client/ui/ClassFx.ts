@@ -523,6 +523,49 @@ export function playClassAct(
       vfx.burst(x, y + 0.2, z, FXC.gold, { count: 26, speed: 8, life: 0.7, grav: 16, size: 0.26 });
       c.sound({ x, y, z }, "bash");
       return true;
+    // ---- мобы 45 ур. ----
+    case "burrowDive":
+      // Землерой ныряет: земля взрывается пылью и комьями.
+      vfx.burst(x, y + 0.3, z, FXC.gold, { count: 22, speed: 6, life: 0.8, grav: 14, size: 0.3 });
+      vfx.decal(x, y, z, 2.4, FXC.gold, 0.8, 0, 0.7);
+      c.sound(at, "bash");
+      return true;
+    case "burrowTrail":
+      // Ползёт под землёй — бугорок пыли по следу.
+      vfx.burst(x, y + 0.1, z, FXC.gold, { count: 5, speed: 2.2, life: 0.55, grav: 7, size: 0.22 });
+      return true;
+    case "burrowMark":
+      // Земля трясётся под героем: круг до самого выныривания — беги из него.
+      vfx.decal(x, y, z, r ?? 3.6, ATK, d ?? 1.1, 2, 0.95);
+      vfx.burst(x, y + 0.1, z, FXC.gold, { count: 12, speed: 3, life: 0.6, grav: 9, size: 0.2 });
+      return true;
+    case "burrowHit":
+      // Вынырнул: вспышка по кругу, камни и пыль вверх.
+      vfx.decal(x, y, z, r ?? 3.6, ATK, 0.6, 0, 1.2);
+      vfx.burst(x, y + 0.3, z, FXC.gold, { count: 34, speed: 10, life: 0.8, grav: 16, size: 0.3 });
+      vfx.pillar(x, y, z, 1.6, 3.5, FXC.gold, 0.4);
+      c.sound(at, "bash");
+      return true;
+    case "stormMark":
+      // Грозовой дух метит героя: синий круг — выйди из него, не стой рядом с другими.
+      vfx.decal(x, y, z, r ?? 2.4, FXC.lightning, d ?? 1.4, 2, 0.95);
+      return true;
+    case "stormHit":
+      // Удар молнии с неба в круг.
+      vfx.lightning(x + 0.5, y + 12, z, x, y + 0.15, z, y, 0.35);
+      vfx.burst(x, y + 0.4, z, FXC.lightningCore, { count: 18, speed: 7, life: 0.4, grav: 6, size: 0.2 });
+      c.sound(at, "bash");
+      return true;
+    case "stormJump":
+      // Молния перескочила на соседа.
+      if (x2 !== undefined && z2 !== undefined) vfx.lightning(x, y + 1.1, z, x2, y + 1.1, z2, null, 0.38);
+      return true;
+    case "smoke":
+      // Теневой ниндзя: облако дыма (исчез / появилась копия).
+      vfx.burst(x, y + 1, z, FXC.shadowDark, { count: 26, speed: 3.5, life: 0.9, grav: -1.5, size: 0.55 });
+      vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 14, speed: 2, life: 0.7, grav: -1, size: 0.4 });
+      c.sound(at, "swing");
+      return true;
     case "caltrops":
       // Колючки Шипохвоста на земле: зона на всё время, пока лежат.
       vfx.decal(x, y, z, r ?? 1.4, ATK, d ?? 6, 1, 0.55);

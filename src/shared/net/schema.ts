@@ -154,6 +154,8 @@ export class MobState extends Schema {
   @type("uint8") pinned = 0;
   /** 1 — на мобе «Метка» (+30% урона от всех): клиент рисует знак над головой. */
   @type("uint8") marked = 0;
+  /** Под землёй (Землерой) — модель не рисуем, видно только пыльный след. */
+  @type("uint8") under = 0;
 }
 
 export class DummyState extends Schema {

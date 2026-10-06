@@ -946,7 +946,8 @@ export class Mob implements Hittable {
     // Моб за спиной камеры / вне кадра: выключаем его узлы целиком (Babylon не
     // обходит их для отсечения/матриц) и не двигаем тень. Запас по радиусу
     // большой — камера успевает довернуть, пока план кадра отстаёт на кадр.
-    const inView = drawAllowed && this.inFrustum(pos, 6 + 4 * this.scale);
+    // Под землёй (Землерой) — модель не рисуем: видно только пыльный след (эффекты burrowTrail).
+    const inView = drawAllowed && s.under !== 1 && this.inFrustum(pos, 6 + 4 * this.scale);
     if (!this.deadHidden && inView === this.viewHidden) {
       this.viewHidden = !inView;
       this.root.setEnabled(inView);

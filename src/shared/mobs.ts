@@ -283,6 +283,12 @@ export interface EliteMobDef {
   leaper?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
   packFrenzy?: boolean;
+  /** 45 ур. Землерой: уходит под землю (неуязвим), ползёт к герою и выныривает под ним (см. BURROW). */
+  burrower?: boolean;
+  /** 45 ур. Грозовой дух: метит героя молнией — удар перескакивает на героев рядом, сильнее с каждым прыжком (см. STORM). */
+  stormCaller?: boolean;
+  /** 45 ур. Теневой ниндзя: на порогах здоровья исчезает в дыму и возвращается с теневыми копиями (см. CLONES). */
+  cloner?: boolean;
   /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
    *  стоит → Idle, идёт → Walk, гонится → Run (иначе модель без Hop «шагает» всегда). */
   gait?: boolean;
@@ -355,6 +361,53 @@ export const LEAP = {
   knockback: 9,
   stunSec: 0.8,
   cooldown: 7,
+};
+
+/**
+ * 45 ур. Землерой: ныряет (dive с), под землёй неуязвим и ползёт к герою со скоростью speed (не дольше
+ * maxTravel с), под героем — круг-предупреждение telegraph с, потом выныривает: урон по кругу radius,
+ * оглушение и отброс. Против — отбежать из круга, пока трясётся земля.
+ */
+export const BURROW = {
+  minDist: 5,
+  maxDist: 22,
+  dive: 0.5,
+  speed: 10,
+  maxTravel: 3,
+  telegraph: 1.1,
+  radius: 3.6,
+  dmgMul: 1.9,
+  stunSec: 1.3,
+  knockback: 6,
+  cooldown: 9,
+};
+
+/**
+ * 45 ур. Грозовой дух: метит героя (круг markR) — через telegraph с удар молнии; кто остался в круге,
+ * получает удар, и молния перескакивает на ближайшего героя в jumpR м от последнего (до jumps прыжков),
+ * каждый прыжок × jumpMul. Магия. Против — не толпиться и выходить из круга.
+ */
+export const STORM = {
+  range: 24,
+  telegraph: 1.4,
+  markR: 2.4,
+  jumpR: 7,
+  jumps: 4,
+  dmgMul: 1.4,
+  jumpMul: 1.25,
+  cooldown: 6.5,
+};
+
+/**
+ * 45 ур. Теневой ниндзя: на долях здоровья `at` исчезает в дыму, переносится на scatter м и выводит count
+ * теневых копий (hpFrac его максимума, урон × dmgMul, без опыта и лута). Погиб настоящий — копии рассеиваются.
+ */
+export const CLONES = {
+  at: [0.7, 0.35] as readonly number[],
+  count: 2,
+  hpFrac: 0.18,
+  dmgMul: 0.5,
+  scatter: 4.5,
 };
 
 /** 40 ур. Скалолом: гибель сородича в радиусе — ярость (быстрее и больнее, как ярость босса) на sec секунд. */
@@ -527,6 +580,25 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monStoneTroll", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
     leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
+  },
+  // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
+  // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
+  burrowBeast: {
+    model: "monMonkroose", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
+    hp: 9800, dmgMul: 13, xp: 3000000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4,
+    burrower: true, legendaryChance: 0.04,
+  },
+  // Грозовой дух: держится на расстоянии, метит героя молнией — удар перескакивает на тех, кто рядом.
+  stormSpirit: {
+    model: "monAlien", name: "Грозовой дух", blurb: "цепная молния — не толпитесь", level: 45, kind: "spitter",
+    hp: 7600, dmgMul: 11, xp: 2800000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1,
+    stormCaller: true, legendaryChance: 0.04,
+  },
+  // Теневой ниндзя: быстрый и вёрткий; на 70% и 35% здоровья уходит в дым и возвращается с двумя тенями.
+  shadowNinja: {
+    model: "monNinja", name: "Теневой ниндзя", blurb: "теневые копии, уворот — найди настоящего", level: 45, kind: "slime",
+    hp: 8400, dmgMul: 12, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1,
+    meleeReach: 2.6, cloner: true, legendaryChance: 0.04,
   },
 };
 
@@ -720,6 +792,10 @@ export const MOB_CAMPS: {
   { x: 142, z: -150, type: "rockBreaker", count: 2, spread: 8, noChamp: true },
   { x: 35, z: -154, type: "spikeTail", count: 4, spread: 18, ring: 0.9, jitter: 0.5 }, // юг
   { x: 35, z: -154, type: "rockBreaker", count: 1, spread: 6, noChamp: true },
+  // Зона 45 ур. (2026-10-06) — самые дальние свободные края, 230–245 м от лагеря.
+  { x: -158, z: 163, type: "shadowNinja", count: 5, spread: 12 }, // северо-западный угол
+  { x: 15, z: 166, type: "stormSpirit", count: 4, spread: 12, ring: 0.85, jitter: 0.4 }, // север
+  { x: 166, z: -117, type: "burrowBeast", count: 4, spread: 12 }, // восток-юго-восток
 ];
 
 /** Осколок босса: мелкий, быстрый, дохлый. */

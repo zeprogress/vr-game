@@ -227,7 +227,7 @@ import {
 import { CHEST_MIN_QUALITY, HARD_SCROLL_CHANCE, SCROLL, SHOP, TAVERN_REACH } from "#shared/shop";
 import { chatLog, store, world } from "../store";
 import type { PlayerRecord } from "../PlayerStore";
-import { WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
+import { eliteOpts, WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
 import { TELEGRAM } from "#shared/changelog";
 import { CAT_HALLS, CAT_HAZARD, CAT_SHRINE, CAT_SHRINES, CATACOMBS, type CatAffix, catEntry, catProject, catXpFrac, inCatRegion } from "#shared/catacombs";
@@ -552,16 +552,9 @@ const INV_COMMANDS = new Set([
   "!вещи", "!шмот", "!шмотки", "!предметы", "!снаряжение", "!лут",
 ]);
 
-/** Все опции элитного моба из описания ELITE_MOBS — для мобов событий (как у лагерей в ZoneSim). */
+/** Все опции элитного моба из описания ELITE_MOBS — те же, что у лагерей (ZoneSim.eliteOpts). */
 function eliteMobOpts(d: (typeof ELITE_MOBS)[string]): NonNullable<Parameters<ZoneSim["spawnEventMob"]>[3]> {
-  return {
-    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp,
-    flying: d.flying, rangedArmor: d.rangedArmor, physArmor: d.physArmor, magicVulnMul: d.magicVulnMul,
-    critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
-    sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach,
-    attackCooldown: d.attackCooldown, speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller,
-    shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
-  };
+  return eliteOpts(d);
 }
 
 /** Ивенты, которые админ включает/выключает командой !ивенты. */
@@ -8468,6 +8461,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.stunned = m.stunned ? 1 : 0;
       s.pinned = m.rooted ? 1 : 0;
       s.marked = m.markT > 0 ? 1 : 0;
+      s.under = m.underground ? 1 : 0;
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.bleeding = Math.min(255, Math.ceil(m.bleedT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
@@ -8495,6 +8489,8 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, {
           k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2, r: f.r,
         } satisfies ActRelay);
+        // Круг-предупреждение полевого моба (прыжок Скалолома, Землерой, молния духа) — боты выбегают.
+        if ((f.k === "leapMark" || f.k === "burrowMark" || f.k === "stormMark") && f.r) this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2);
       }
       m.fx.length = 0;
     }

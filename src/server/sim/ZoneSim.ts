@@ -1,7 +1,7 @@
 import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject } from "#shared/catacombs";
@@ -183,7 +183,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "smoke";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -394,6 +394,30 @@ export class Mob {
   private leapZ = 0;
   /** Ярость стаи: секунд осталось (пока > 0 — raging). */
   private frenzyT = 0;
+  /** 45 ур. — см. EliteMobDef.burrower/stormCaller/cloner. */
+  readonly burrower: boolean;
+  readonly stormCaller: boolean;
+  readonly cloner: boolean;
+  /** Теневая копия ниндзя: id настоящего ("" — не копия). */
+  readonly cloneOf: string;
+  private burrowCd = 4;
+  /** 0 — на земле, 1 — ныряет, 2 — ползёт под землёй, 3 — круг под героем (сейчас вынырнет). */
+  private burrowPhase = 0;
+  private burrowT = 0;
+  private burrowTrailT = 0;
+  private burrowTarget: string | null = null;
+  private burrowX = 0;
+  private burrowZ = 0;
+  private stormCd = 3;
+  private stormT = 0;
+  private stormX = 0;
+  private stormZ = 0;
+  /** Сколько порогов CLONES.at уже пройдено (ZoneSim.hitMob). */
+  cloneStep = 0;
+  /** Под землёй — модель прячется (MobState.under). */
+  get underground(): boolean {
+    return this.burrowPhase >= 2;
+  }
   /** Пугало лагеря (SCARECROW): бессмертное, неподвижное, не бьёт. */
   readonly scarecrow: boolean;
   private healCd = 6;
@@ -518,6 +542,11 @@ export class Mob {
       shot?: MobShot;
       leaper?: boolean;
       packFrenzy?: boolean;
+      burrower?: boolean;
+      stormCaller?: boolean;
+      cloner?: boolean;
+      /** Теневая копия ниндзя: id настоящего (погиб он — копия рассеивается). */
+      cloneOf?: string;
       scarecrow?: boolean;
       /** Ключ ELITE_MOBS лагеря, откуда моб (для заданий доски). */
       campType?: string;
@@ -587,6 +616,10 @@ export class Mob {
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
     this.packFrenzy = opts.packFrenzy ?? false;
+    this.burrower = opts.burrower ?? false;
+    this.stormCaller = opts.stormCaller ?? false;
+    this.cloner = opts.cloner ?? false;
+    this.cloneOf = opts.cloneOf ?? "";
     this.scarecrow = opts.scarecrow ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
@@ -933,6 +966,133 @@ export class Mob {
     }
 
     const busy = this.stunnedT > 0 || this.rootedT > 0;
+    const rage45 = this.enraged ? BOSS.rageDamageMult : 1;
+    // 45 ур. Землерой: ныряет, под землёй неуязвим и ползёт к герою, круг под ним — и выныривает.
+    if (this.burrower) {
+      if (this.burrowCd > 0) this.burrowCd -= dt;
+      if (this.burrowPhase > 0) {
+        this.burrowT -= dt;
+        this.vx = this.vz = 0;
+        if (this.burrowPhase === 1) {
+          if (this.burrowT <= 0) {
+            this.burrowPhase = 2;
+            this.burrowT = BURROW.maxTravel;
+            this.immune = true;
+          }
+        } else if (this.burrowPhase === 2) {
+          const t = players.find((p) => p.sessionId === this.burrowTarget);
+          if (t) {
+            this.burrowX = t.x;
+            this.burrowZ = t.z;
+          }
+          const bdx = this.burrowX - this.x;
+          const bdz = this.burrowZ - this.z;
+          const bd = Math.hypot(bdx, bdz);
+          const stepLen = BURROW.speed * dt;
+          if (bd > stepLen) {
+            this.x += (bdx / bd) * stepLen;
+            this.z += (bdz / bd) * stepLen;
+          } else {
+            this.x = this.burrowX;
+            this.z = this.burrowZ;
+          }
+          this.y = terrainHeight(this.x, this.z);
+          this.burrowTrailT -= dt;
+          if (this.burrowTrailT <= 0) {
+            this.burrowTrailT = 0.25;
+            this.fx.push({ k: "burrowTrail", x: this.x, z: this.z });
+          }
+          if (bd <= 0.6 || this.burrowT <= 0) {
+            this.burrowPhase = 3;
+            this.burrowT = BURROW.telegraph;
+            this.fx.push({ k: "burrowMark", x: this.x, z: this.z, d: BURROW.telegraph, r: BURROW.radius });
+          }
+        } else if (this.burrowT <= 0) {
+          // Выныривает: удар по кругу, оглушение, отброс.
+          this.burrowPhase = 0;
+          this.immune = false;
+          this.burrowCd = BURROW.cooldown * (0.85 + Math.random() * 0.3);
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.attackCd = this.atkCooldown;
+          this.vy = MOB.hopUp * 0.8;
+          this.grounded = false;
+          this.fx.push({ k: "burrowHit", x: this.x, z: this.z, r: BURROW.radius });
+          for (const p of players) {
+            if (Math.hypot(p.x - this.x, p.z - this.z) > BURROW.radius) continue;
+            hits.push({
+              target: p.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * BURROW.dmgMul * rage45,
+              fromX: this.x,
+              fromZ: this.z,
+              projectile: false,
+              byMob: this.id,
+              knockback: BURROW.knockback,
+              stunSec: BURROW.stunSec,
+            });
+          }
+        }
+        if (this.burrowPhase > 0) return; // ныряет / под землёй — ни шагов, ни ударов
+      } else if (chasing && np && !busy && this.burrowCd <= 0 && dist > BURROW.minDist && dist < BURROW.maxDist) {
+        this.burrowPhase = 1;
+        this.burrowT = BURROW.dive;
+        this.burrowTarget = np.sessionId;
+        this.fx.push({ k: "burrowDive", x: this.x, z: this.z, d: BURROW.dive });
+        return;
+      }
+    }
+    // 45 ур. Грозовой дух: круг под героем; кто в нём к удару — молния, и она перескакивает на соседей.
+    if (this.stormCaller) {
+      if (this.stormCd > 0) this.stormCd -= dt;
+      if (this.stormT > 0) {
+        this.stormT -= dt;
+        if (busy) this.stormT = 0; // сбили — молнии нет
+        else if (this.stormT <= 0) {
+          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.stormCd = STORM.cooldown * (0.85 + Math.random() * 0.3);
+          this.fx.push({ k: "stormHit", x: this.stormX, z: this.stormZ, r: STORM.markR });
+          const struck = new Set<string>();
+          let cur: SimPlayer | null = null;
+          let cd = STORM.markR;
+          for (const p of players) {
+            const d = Math.hypot(p.x - this.stormX, p.z - this.stormZ);
+            if (d <= cd) (cd = d), (cur = p);
+          }
+          let fx0 = this.stormX;
+          let fz0 = this.stormZ;
+          let mul = STORM.dmgMul;
+          for (let j = 0; cur && j <= STORM.jumps; j++) {
+            const c: SimPlayer = cur;
+            struck.add(c.sessionId);
+            hits.push({
+              target: c.sessionId,
+              dmg: MOB.attackDamage * this.dmgMul * mul * rage45,
+              fromX: fx0,
+              fromZ: fz0,
+              projectile: false,
+              magic: true,
+              byMob: this.id,
+            });
+            if (j > 0) this.fx.push({ k: "stormJump", x: fx0, z: fz0, x2: c.x, z2: c.z });
+            fx0 = c.x;
+            fz0 = c.z;
+            mul *= STORM.jumpMul;
+            let next: SimPlayer | null = null;
+            let nd = STORM.jumpR;
+            for (const p of players) {
+              if (struck.has(p.sessionId)) continue;
+              const d = Math.hypot(p.x - c.x, p.z - c.z);
+              if (d <= nd) (nd = d), (next = p);
+            }
+            cur = next;
+          }
+        }
+      } else if (chasing && np && !busy && this.stormCd <= 0 && dist < STORM.range) {
+        this.stormT = STORM.telegraph;
+        this.stormX = np.x;
+        this.stormZ = np.z;
+        this.fx.push({ k: "stormMark", x: np.x, z: np.z, d: STORM.telegraph, r: STORM.markR });
+      }
+    }
     // Грибной колосс: метит землю под героем, через телеграф — облако спор.
     if (this.sporeCaster) {
       if (this.sporeCd > 0) this.sporeCd -= dt;
@@ -1238,7 +1398,7 @@ export class Mob {
 
     // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится, Скалолом приседает).
     const holdStill =
-      this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0;
+      this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
 
     // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
     // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
@@ -1704,6 +1864,10 @@ export class Mob {
     this.frenzyT = 0;
     this.leapWindupT = 0;
     this.leapAirT = 0;
+    this.burrowPhase = 0;
+    this.immune = false;
+    this.stormT = 0;
+    this.cloneStep = 0;
     this.vx = this.vy = this.vz = 0;
     this.grounded = false;
     if (this.faceRest) this.yaw = this.restYaw;
@@ -1925,6 +2089,21 @@ class Bolt {
 }
 
 /** Авторитетная симуляция зоны: мобы, куклы, плевки, снаряды игроков. */
+/** Опции моба по описанию ELITE_MOBS — ОДНО место для лагерей, событий и катакомб (раньше два списка расходились). */
+export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
+  return {
+    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp,
+    flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor,
+    magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
+    splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
+    splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
+    sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
+    speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
+    burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner,
+  };
+}
+
 export class ZoneSim {
   /** Админ-панель пульта: false — мобы замирают на месте (не тикают вовсе). */
   mobsEnabled = true;
@@ -2031,52 +2210,15 @@ export class ZoneSim {
         // Первый моб каждого лагеря — вожак (цель задания «Вожак» с доски).
         const champ = i === 0 && !camp.noChamp ? QUEST.champ : null;
         const m = new Mob(def.kind, x, z, {
+          ...eliteOpts(def),
           campType: camp.type,
           champ: !!champ,
           respawnSec: champ ? CHAMP_RESPAWN : undefined,
-          model: def.model,
           name: champ ? `Вожак — ${def.name}` : def.name,
-          level: def.level,
           hp: def.hp * (champ?.hpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
           scaleMul: (def.scaleMul ?? 1) * (champ?.scaleMul ?? 1),
           xp: def.xp * (champ?.xpMul ?? 1),
-          flying: def.flying,
-          visLift: def.visLift,
-          magicMelee: def.magicMelee,
-          rangedArmor: def.rangedArmor,
-          physArmor: def.physArmor,
-          magicVulnMul: def.magicVulnMul,
-          critVulnMul: def.critVulnMul,
-          spellAoe: def.spellAoe,
-          novaCaster: def.novaCaster,
-          enrageAt: def.enrageAt,
-          splitAt: def.splitAt,
-          splitCount: def.splitCount,
-          splitScaleMul: def.splitScaleMul,
-          splitHpFrac: def.splitHpFrac,
-          splitDmgMul: def.splitDmgMul,
-          splitSpeedMul: def.splitSpeedMul,
-          splitReviveSec: def.splitReviveSec,
-          splitXp: def.splitXp,
-          splitChildXp: def.splitChildXp,
-          sporeCaster: def.sporeCaster,
-          blinker: def.blinker,
-          lifesteal: def.lifesteal,
-          meleeReach: def.meleeReach,
-          attackCooldown: def.attackCooldown,
-          speedMul: def.speedMul,
-          dodge: def.dodge,
-          regen: def.regen,
-          puller: def.puller,
-          charger: def.charger,
-          reflector: def.reflector,
-          spiker: def.spiker,
-          healer: def.healer,
-          freezer: def.freezer,
-          shot: def.shot,
-          leaper: def.leaper,
-          packFrenzy: def.packFrenzy,
         });
         this.mobs.set(m.id, m);
       }
@@ -2342,6 +2484,14 @@ export class ZoneSim {
         if (o.dead || Math.hypot(o.x - m.x, o.z - m.z) > CHIEF_HEAL.radius) continue;
         o.hp = Math.min(o.maxHp, o.hp + o.maxHp * CHIEF_HEAL.frac);
       }
+    }
+    // Теневые копии: настоящего ниндзя нет (погиб/исчез) — рассеиваются в дым.
+    for (const [id, m] of this.mobs) {
+      if (!m.cloneOf) continue;
+      const parent = this.mobs.get(m.cloneOf);
+      if (parent && !parent.dead) continue;
+      this.fx.push({ k: "smoke", x: m.x, z: m.z });
+      this.mobs.delete(id);
     }
     this.tickBurning(dt);
     this.separateMobs(players);
@@ -2673,6 +2823,12 @@ export class ZoneSim {
       return null;
     }
 
+    // 45 ур. Теневой ниндзя: на пороге здоровья — дым и теневые копии (сами копии не размножаются).
+    if (!killed && m.cloner && !m.cloneOf && m.cloneStep < CLONES.at.length && m.hp / m.maxHp <= CLONES.at[m.cloneStep]) {
+      m.cloneStep++;
+      this.spawnClones(m);
+    }
+
     if (!killed) return null;
     const kind = m.kind;
 
@@ -2686,7 +2842,7 @@ export class ZoneSim {
       if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ });
       return kind;
     }
-    if (kind === "shard" || this.eventMobs.has(m.id)) {
+    if (kind === "shard" || this.eventMobs.has(m.id) || m.cloneOf) {
       this.eventMobs.delete(m.id);
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются
       if (kind !== "shard") this.splitMobXp(m);
@@ -2907,6 +3063,38 @@ export class ZoneSim {
    * splitXp, а каждый осколок при СВОЕЙ смерти обычным путём даёт
    * m.xp = splitChildXp (уже не долю от родителя, а фиксированное число).
    */
+  /** Ниндзя уходит в дым: сам — на scatter м в сторону, рядом count теневых копий (без опыта и лута). */
+  private spawnClones(m: Mob): void {
+    this.fx.push({ k: "smoke", x: m.x, z: m.z });
+    const a0 = Math.random() * Math.PI * 2;
+    m.x += Math.cos(a0) * CLONES.scatter * 0.6;
+    m.z += Math.sin(a0) * CLONES.scatter * 0.6;
+    m.y = terrainHeight(m.x, m.z);
+    this.fx.push({ k: "smoke", x: m.x, z: m.z });
+    for (let i = 0; i < CLONES.count; i++) {
+      const a = a0 + ((i + 1) / (CLONES.count + 1)) * Math.PI * 2;
+      const x = m.x + Math.cos(a) * CLONES.scatter;
+      const z = m.z + Math.sin(a) * CLONES.scatter;
+      const c = new Mob(m.kind, x, z, {
+        model: m.model,
+        name: m.eliteName,
+        level: m.eliteLevel,
+        hp: Math.max(1, Math.round(m.maxHp * CLONES.hpFrac)),
+        dmgMul: m.dmgMul * CLONES.dmgMul,
+        scaleMul: m.scale,
+        speedMul: m.speedMul,
+        xp: 0,
+        dodge: m.dodge,
+        attackCooldown: m.atkCooldown,
+        meleeReach: m.meleeReach,
+        cloneOf: m.id,
+      });
+      c.forceAggro();
+      this.mobs.set(c.id, c);
+      this.fx.push({ k: "smoke", x: c.x, z: c.z });
+    }
+  }
+
   private splitGolem(m: Mob): void {
     // Полный комплект для возрождения ЦЕЛОГО голема, когда умрут оба
     // осколка (см. GolemSplitGroup, hitMob) — характеристики родителя, ДО
