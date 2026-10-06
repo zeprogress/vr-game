@@ -60,7 +60,7 @@ export interface Zone {
   shieldHome: Vector3;
   staffHome: Vector3;
   /** Стойка: места кинжалов, копья и молота. */
-  classHomes: { dagger: Vector3; dagger2: Vector3; spear: Vector3; hammer: Vector3 };
+  classHomes: { dagger: Vector3; dagger2: Vector3; sword2: Vector3; spear: Vector3; hammer: Vector3 };
   /** Куда «лицом» смотрит оружие на стойке (к площади лагеря). */
   weaponsFaceYaw: number;
   /** Катакомбы: залы за краем карты и портал сбора в лагере (кормят Game/Spectator состоянием). */
@@ -191,6 +191,8 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const classHomes = {
     dagger: homeAt(-3.0, 0.12),
     dagger2: homeAt(-3.4, 0.12),
+    // Второй меч — для пары мечей (как два кинжала), между мечом и кинжалами.
+    sword2: homeAt(-2.4, 0.155),
     spear: homeAt(3.0, 0.55),
     hammer: homeAt(4.0, 0.44),
   };

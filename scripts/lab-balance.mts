@@ -602,8 +602,8 @@ if (ONLY.has("tier")) {
   const rows: Record<string, unknown>[] = [];
   for (const load of LOADOUTS) {
     const v: Record<string, number> = {};
-    for (const tier of ["base", "gold", "legendary"] as WeaponTier[]) v[tier] = dpsRun(`${load.id}:${tier}`, { lvl: LVL, load, tier }).dps;
-    say(`${pad(load.id, 13)} обычное ${lp(f(v.base), 6)} · золото ${lp(f(v.gold), 6)} (${pct(v.gold / v.base)}) · уникальное ${lp(f(v.legendary), 6)} (${pct(v.legendary / v.base)})`);
+    for (const tier of ["base", "gold", "legendary", "ruby"] as WeaponTier[]) v[tier] = dpsRun(`${load.id}:${tier}`, { lvl: LVL, load, tier }).dps;
+    say(`${pad(load.id, 13)} обычное ${lp(f(v.base), 6)} · золото ${lp(f(v.gold), 6)} (${pct(v.gold / v.base)}) · уникальное ${lp(f(v.legendary), 6)} (${pct(v.legendary / v.base)}) · рубиновое ${lp(f(v.ruby), 6)} (${pct(v.ruby / v.base)})`);
     if (v.gold <= v.base * 1.02 || v.legendary <= v.gold * 1.02) anomalies.push(`${load.id}: тир оружия почти не меняет DPS (${f(v.base)} / ${f(v.gold)} / ${f(v.legendary)})`);
     rows.push({ load: load.id, ...v });
   }
