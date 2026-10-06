@@ -5734,6 +5734,11 @@ export class ZoneRoom extends Room<ZoneState> {
         st.raidO2 = s.o[2];
         if (st.raidVert !== s.vert) st.raidVert = s.vert;
         if (st.raidTide !== s.tide) st.raidTide = s.tide;
+        if (st.raidTear !== s.tear) st.raidTear = s.tear;
+        if (st.raidPull !== s.pull) st.raidPull = s.pull;
+        if (st.raidBreath !== s.breath) st.raidBreath = s.breath;
+        if (st.raidCracks !== s.cracks) st.raidCracks = s.cracks;
+        if (st.raidCrackOn !== s.crackOn) st.raidCrackOn = s.crackOn;
       },
       kill: (id, why) => {
         const p = this.state.players.get(id);
@@ -5761,6 +5766,23 @@ export class ZoneRoom extends Room<ZoneState> {
         const m = this.sim.mobs.get(this.sim.raidBossId);
         if (m && !m.dead) m.hp = m.maxHp;
       },
+      hurt: (id, frac, why) => {
+        const p = this.state.players.get(id);
+        if (!p || p.dead) return;
+        this.hurtPlayer({ target: id, dmg: p.maxHp * frac, fromX: RAID.x, fromZ: RAID.z, projectile: false, dot: true, magic: true, byName: why });
+      },
+      phantoms: (pts, o) => this.sim.spawnRaidPhantoms(pts, o),
+      airborne: (id) => {
+        const p = this.state.players.get(id);
+        return !!p && p.head.y - terrainHeight(p.head.x, p.head.z) - PLAYER.eyeHeight > 0.3;
+      },
+      jumpBots: (ids) => {
+        for (const id of ids) {
+          const p = this.state.players.get(id);
+          if (p && !p.dead) this.broadcast(MSG.act, { k: "jump", id, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
+        }
+      },
+      danger: (x, z, r, sec) => this.addDanger(x, z, r, sec),
     };
   }
 

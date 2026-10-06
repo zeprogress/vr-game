@@ -429,6 +429,8 @@ export interface ClassActCtx {
   shieldPos?: (id: string) => { x: number; y: number; z: number } | null;
   /** Волна «Прилива» на арене рейд-босса (RaidArenaFx.tide). */
   raidTide?: () => void;
+  /** Вспышка «Последнего вздоха» по всей арене (RaidArenaFx.flash). */
+  raidFlash?: () => void;
 }
 
 /** Теневой рывок — серый дым. */
@@ -708,6 +710,14 @@ export function playClassAct(
       c.raidTide?.();
       vfx.burst(x, y + 1, z, FXC.moon, { count: 70, speed: 16, life: 1.1, grav: 0, size: 0.5 });
       vfx.pillar(x, y, z, 3, 14, FXC.moon, 1);
+      c.sound(at, "bash");
+      return true;
+    }
+    case "raidBreath": {
+      // «Последний вздох»: вспышка по всей арене и ударная волна.
+      c.raidFlash?.();
+      vfx.burst(x, y + 0.8, z, FXC.fireCore, { count: 80, speed: 20, life: 0.8, grav: 0, size: 0.45 });
+      vfx.decal(x, y, z, 28, FXC.fireCore, 0.6, 0, 1);
       c.sound(at, "bash");
       return true;
     }

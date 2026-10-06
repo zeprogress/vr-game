@@ -3125,6 +3125,31 @@ export class ZoneSim {
     }
   }
 
+  /**
+   * «Зеркальный плач» рейд-босса: фантомы-копии в точках — стоят (anchored), стреляют, без опыта и лута;
+   * погиб босс — рассеиваются (как тени ниндзя, cloneOf). hp/dmg/scale — доли от босса.
+   */
+  spawnRaidPhantoms(pts: readonly { x: number; z: number }[], o: { hp: number; dmg: number; scale: number }): void {
+    const b = this.mobs.get(this.raidBossId);
+    if (!b || b.dead) return;
+    for (const pt of pts) {
+      const c = new Mob(b.kind, pt.x, pt.z, {
+        model: b.model,
+        name: "Фантом аватара",
+        level: b.eliteLevel,
+        hp: Math.max(1, Math.round(b.maxHp * o.hp)),
+        dmgMul: b.dmgMul * o.dmg,
+        scaleMul: b.scale * o.scale,
+        xp: 0,
+        anchored: true,
+        cloneOf: b.id,
+      });
+      c.forceAggro();
+      this.mobs.set(c.id, c);
+      this.fx.push({ k: "ninjaSmoke", x: pt.x, z: pt.z });
+    }
+  }
+
   private splitGolem(m: Mob): void {
     // Полный комплект для возрождения ЦЕЛОГО голема, когда умрут оба
     // осколка (см. GolemSplitGroup, hitMob) — характеристики родителя, ДО

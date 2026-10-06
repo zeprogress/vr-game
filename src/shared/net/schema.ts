@@ -303,6 +303,16 @@ export class ZoneState extends Schema {
   @type("int8") raidVert = -1;
   /** Секунд до «Прилива» (0 — не скоро/нет боя). */
   @type("uint8") raidTide = 0;
+  /** Секунд до «Лунной слезы». */
+  @type("uint8") raidTear = 0;
+  /** «Притяжение» (фаза 3): 1 — тянет к центру, у центра жжёт. */
+  @type("uint8") raidPull = 0;
+  /** Секунд до «Последнего вздоха» (фаза 4: удар по всей арене — спасает прыжок); 0 — нет. */
+  @type("uint8") raidBreath = 0;
+  /** «Раскол диска» (фаза 4): пропасти в осях арены «угол:радиус:размер;…» (крутятся с полом); "" — нет. */
+  @type("string") raidCracks = "";
+  /** Пропасти уже открыты (1) или пока только трещины-предупреждение (0). */
+  @type("uint8") raidCrackOn = 0;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

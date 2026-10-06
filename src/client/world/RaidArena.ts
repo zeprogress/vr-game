@@ -12,7 +12,9 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 import "@babylonjs/core/Meshes/Builders/tubeBuilder";
 import "@babylonjs/core/Meshes/Builders/polyhedronBuilder";
-import { angDiff, RAID, RAID_FIGHT, RAID_ORBITS } from "#shared/raid";
+import "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { angDiff, parseCracks, RAID, RAID_FIGHT, RAID_ORBITS, type RaidCrack } from "#shared/raid";
+import { MOB } from "#shared/mobs";
 import { terrainHeight } from "#shared/terrain";
 import { FX_RGB } from "#shared/look";
 
@@ -28,7 +30,34 @@ export interface RaidView {
   o: readonly number[];
   vert: number;
   tide: number;
+  /** Секунд до «Лунной слезы». */
+  tear: number;
+  /** Идёт «Притяжение». */
+  pull: boolean;
+  /** Секунд до «Последнего вздоха» (0 — не фаза 4). */
+  breath: number;
+  /** Пропасти «Раскола диска» (в осях арены) и открыты ли они. */
+  cracks: RaidCrack[];
+  cracksKey: string;
+  crackOn: boolean;
+  /** Сам босс (моб в центре арены): позиция, поворот, HP, размер; null — нет/повержен. */
+  boss: { id: string; x: number; y: number; z: number; yaw: number; hp: number; maxHp: number; scale: number } | null;
 }
+
+/** Состояние моба из комнаты — то, что нужно арене от босса. */
+interface MobLike {
+  x: number;
+  y: number;
+  z: number;
+  yaw: number;
+  hp: number;
+  maxHp: number;
+  dead: number;
+  scale: number;
+}
+let bossIdCache = "";
+let cracksCacheKey = "";
+let cracksCache: RaidCrack[] = [];
 
 /** Поля состояния комнаты → RaidView. */
 export function raidViewOf(st: {
@@ -42,8 +71,37 @@ export function raidViewOf(st: {
   raidO2: number;
   raidVert: number;
   raidTide: number;
+  raidTear: number;
+  raidPull: number;
+  raidBreath: number;
+  raidCracks: string;
+  raidCrackOn: number;
+  mobs: { get(id: string): MobLike | undefined; forEach(cb: (m: MobLike, id: string) => void): void };
 }): RaidView {
+  // Босс — моб в центре арены (стоит на месте): id запоминаем, чтобы не перебирать мобов каждый кадр.
+  let bm = bossIdCache ? st.mobs.get(bossIdCache) : undefined;
+  if (!bm || bm.dead || Math.hypot(bm.x - RAID.x, bm.z - RAID.z) > 2) {
+    bm = undefined;
+    bossIdCache = "";
+    st.mobs.forEach((m, id) => {
+      if (!bossIdCache && !m.dead && Math.hypot(m.x - RAID.x, m.z - RAID.z) < 2) {
+        bossIdCache = id;
+        bm = m;
+      }
+    });
+  }
+  if (st.raidCracks !== cracksCacheKey) {
+    cracksCacheKey = st.raidCracks;
+    cracksCache = parseCracks(st.raidCracks);
+  }
   return {
+    tear: st.raidTear,
+    pull: st.raidPull === 1,
+    breath: st.raidBreath,
+    cracks: cracksCache,
+    cracksKey: cracksCacheKey,
+    crackOn: st.raidCrackOn === 1,
+    boss: bm ? { id: bossIdCache, x: bm.x, y: bm.y, z: bm.z, yaw: bm.yaw, hp: bm.hp, maxHp: bm.maxHp, scale: bm.scale } : null,
     ph: st.raidPh,
     ang: st.raidAng,
     edge: st.raidEdge || RAID.r,
@@ -94,6 +152,22 @@ export class RaidArenaFx {
   private builtEdge = -1;
   private builtGap = -1;
   private tideT = -1;
+  /** Ядро босса — пульсирует тем чаще, чем ближе атака (визуальный таймер). */
+  private readonly core: Mesh;
+  private readonly coreMat: StandardMaterial;
+  private corePhase = 0;
+  /** Пропасти «Раскола диска»: пустота + светящийся обод; крутятся с полом. */
+  private crackMeshes: Mesh[] = [];
+  private builtCracks = "";
+  private readonly crackVoidMat: StandardMaterial;
+  private readonly crackRimMat: StandardMaterial;
+  /** «Притяжение»: зона жжения у центра и сходящееся кольцо. */
+  private readonly pullZone: Mesh;
+  private readonly pullRing: Mesh;
+  private readonly pullMat: StandardMaterial;
+  private pullT = 0;
+  /** Вспышка «Последнего вздоха». */
+  private flashT = -1;
   private t = 0;
   private idleSpin = 0;
 
@@ -205,7 +279,50 @@ export class RaidArenaFx {
     this.tideRing.isPickable = false;
     this.tideRing.setEnabled(false);
 
+    this.coreMat = new StandardMaterial("raidCoreMat", scene);
+    this.coreMat.disableLighting = true;
+    this.coreMat.emissiveColor = c3("moon");
+    this.core = MeshBuilder.CreateSphere("raidCore", { diameter: 1, segments: 12 }, scene);
+    this.core.material = this.coreMat;
+    this.core.isPickable = false;
+    this.core.setEnabled(false);
+
+    this.crackVoidMat = new StandardMaterial("raidCrackVoidMat", scene);
+    this.crackVoidMat.disableLighting = true;
+    this.crackVoidMat.diffuseColor = new Color3(0, 0, 0);
+    this.crackVoidMat.emissiveColor = new Color3(0.02, 0.01, 0.06);
+    this.crackVoidMat.backFaceCulling = false;
+    this.crackVoidMat.zOffset = -5;
+    this.crackRimMat = new StandardMaterial("raidCrackRimMat", scene);
+    this.crackRimMat.disableLighting = true;
+    this.crackRimMat.emissiveColor = c3("arcane");
+
+    this.pullMat = new StandardMaterial("raidPullMat", scene);
+    this.pullMat.disableLighting = true;
+    this.pullMat.emissiveColor = new Color3(1, 0.25, 0.35);
+    this.pullMat.alpha = 0.3;
+    this.pullMat.backFaceCulling = false;
+    this.pullMat.zOffset = -5;
+    this.pullZone = MeshBuilder.CreateDisc("raidPullZone", { radius: RAID_FIGHT.pull.coreR, tessellation: 64 }, scene);
+    this.pullZone.rotation.x = Math.PI / 2;
+    this.pullZone.parent = this.root;
+    this.pullZone.position.y = 0.14;
+    this.pullZone.material = this.pullMat;
+    this.pullZone.isPickable = false;
+    this.pullZone.setEnabled(false);
+    this.pullRing = MeshBuilder.CreateTorus("raidPullRing", { diameter: 2, thickness: 0.2, tessellation: 64 }, scene);
+    this.pullRing.parent = this.root;
+    this.pullRing.position.y = 0.3;
+    this.pullRing.material = this.crackRimMat;
+    this.pullRing.isPickable = false;
+    this.pullRing.setEnabled(false);
+
     this.rebuild(RAID.r, 0);
+  }
+
+  /** Вспышка «Последнего вздоха» по всей арене. */
+  flash(): void {
+    this.flashT = 0;
   }
 
   /** Волна «Прилива» от центра арены. */
@@ -244,7 +361,27 @@ export class RaidArenaFx {
     // Перед «Приливом» пол и разрывы пульсируют всё чаще.
     const warn = ph > 0 && v && v.tide > 0 && v.tide <= RAID_FIGHT.tide.warn;
     const pulse = warn ? 0.5 + 0.5 * Math.sin(this.t * (10 - v.tide * 1.5)) : 0;
-    this.floorMat.emissiveColor.set(0.55 + pulse * 0.4, 0.58 + pulse * 0.35, 0.68 + pulse * 0.3);
+    // Вспышка «Последнего вздоха» поверх.
+    let flash = 0;
+    if (this.flashT >= 0) {
+      this.flashT += dt;
+      flash = Math.max(0, 1 - this.flashT / 0.6);
+      if (this.flashT > 0.6) this.flashT = -1;
+    }
+    const pullTint = ph > 0 && v?.pull ? 0.25 : 0;
+    this.floorMat.emissiveColor.set(0.55 + pulse * 0.4 + flash + pullTint * 0.6, 0.58 + pulse * 0.35 + flash * 0.9, 0.68 + pulse * 0.3 + flash * 0.8 + pullTint);
+    // Перед «Последним вздохом» край арены краснеет и пульсирует.
+    const bw = ph > 0 && v && v.breath > 0 && v.breath <= RAID_FIGHT.breath.warn;
+    if (bw) {
+      const k = 0.5 + 0.5 * Math.sin(this.t * 14);
+      this.edgeMat.emissiveColor.set(1, 0.25 + 0.3 * k, 0.2 + 0.3 * k);
+    } else {
+      const m = FX_RGB.moon;
+      this.edgeMat.emissiveColor.set(m[0], m[1], m[2]);
+    }
+    this.updateCore(dt, v);
+    this.updateCracks(v);
+    this.updatePull(dt, v);
     this.wedgeMat.alpha = 0.38 + 0.08 * Math.sin(this.t * 2.2) + pulse * 0.4;
     this.curtainMat.alpha = 0.2 + 0.05 * Math.sin(this.t * 2.2) + pulse * 0.35;
     const glow = 1 + pulse * 0.6;
@@ -262,6 +399,75 @@ export class RaidArenaFx {
         this.tideRing.setEnabled(false);
       }
     }
+  }
+
+  /** Ядро в груди босса: пульс чаще, когда до атаки (слеза/прилив/вздох) меньше 3 с; перед приливом — теплее. */
+  private updateCore(dt: number, v: RaidView | null): void {
+    const b = v?.boss;
+    if (!v || v.ph === 0 || !b) {
+      this.core.setEnabled(false);
+      return;
+    }
+    this.core.setEnabled(true);
+    const H = MOB.bodyRadius * 1.75 * b.scale;
+    const fw = 0.1 * H;
+    this.core.position.set(b.x + Math.sin(b.yaw) * fw, b.y + H * 0.56, b.z + Math.cos(b.yaw) * fw);
+    const soon = Math.min(v.tear || 99, v.tide || 99, v.breath || 99);
+    const rate = soon <= 3 ? 5 - soon : 1.1;
+    this.corePhase += dt * rate * Math.PI * 2;
+    const k = 0.5 + 0.5 * Math.sin(this.corePhase);
+    const s = (0.045 + 0.03 * k) * H;
+    this.core.scaling.set(s, s, s);
+    const hot = (v.tide > 0 && v.tide <= 3) || (v.breath > 0 && v.breath <= 3);
+    const m = FX_RGB.moon;
+    if (hot) this.coreMat.emissiveColor.set(1, 0.55 + 0.3 * k, 0.4 + 0.3 * k);
+    else this.coreMat.emissiveColor.set(m[0] * (0.7 + 0.5 * k), m[1] * (0.7 + 0.5 * k), m[2] * (0.8 + 0.4 * k));
+  }
+
+  /** Пропасти «Раскола диска»: пока трещины — пульсирующий обод, открылись — пустота. */
+  private updateCracks(v: RaidView | null): void {
+    const key = v && v.ph > 0 ? v.cracksKey : "";
+    if (key !== this.builtCracks) {
+      this.builtCracks = key;
+      for (const m of this.crackMeshes) m.dispose();
+      this.crackMeshes = [];
+      for (const [i, c] of (v && v.ph > 0 ? v.cracks : []).entries()) {
+        const x = Math.sin(c.a) * c.r;
+        const z = Math.cos(c.a) * c.r;
+        const hole = MeshBuilder.CreateDisc(`raidCrack${i}`, { radius: c.cr, tessellation: 32 }, this.scene);
+        hole.rotation.x = Math.PI / 2;
+        hole.position.set(x, 0.13, z);
+        hole.material = this.crackVoidMat;
+        const rim = MeshBuilder.CreateTorus(`raidCrackRim${i}`, { diameter: c.cr * 2, thickness: 0.18, tessellation: 40 }, this.scene);
+        rim.position.set(x, 0.16, z);
+        rim.material = this.crackRimMat;
+        for (const m of [hole, rim]) {
+          m.parent = this.spin;
+          m.isPickable = false;
+          this.crackMeshes.push(m);
+        }
+      }
+    }
+    const open = !!v?.crackOn;
+    for (let i = 0; i < this.crackMeshes.length; i += 2) this.crackMeshes[i].setEnabled(open);
+    const k = open ? 1 : 0.5 + 0.5 * Math.sin(this.t * 12);
+    const a = FX_RGB.arcane;
+    this.crackRimMat.emissiveColor.set(a[0] * (0.5 + k), a[1] * (0.5 + k), a[2] * (0.5 + k));
+  }
+
+  /** «Притяжение»: красная зона жжения у центра и кольцо, сходящееся к боссу. */
+  private updatePull(dt: number, v: RaidView | null): void {
+    const on = !!v && v.ph > 0 && v.pull;
+    this.pullZone.setEnabled(on);
+    this.pullRing.setEnabled(on);
+    if (!on || !v) {
+      this.pullT = 0;
+      return;
+    }
+    this.pullT = (this.pullT + dt) % 1;
+    const r = v.edge - (v.edge - RAID_FIGHT.pull.coreR) * this.pullT;
+    this.pullRing.scaling.set(r, 1, r);
+    this.pullMat.alpha = 0.22 + 0.12 * Math.sin(this.t * 8);
   }
 
   /** Край арены, пустота за ним, нити орбит и разрывы на полу — под текущие край и ширину разрыва. */

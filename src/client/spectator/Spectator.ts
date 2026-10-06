@@ -43,6 +43,7 @@ import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from ".
 import { CAT_HALLS, CAT_PHASE, CAT_STEPS, catOpen, catParseRoute, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, catViewOf } from "../world/Catacombs";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
+import { RaidHud } from "../ui/RaidHud";
 import { RAID } from "#shared/raid";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
@@ -313,6 +314,7 @@ export class Spectator {
     setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
     this.classCtx = {
       raidTide: () => this.raidFx?.tide(),
+      raidFlash: () => this.raidFx?.flash(),
       fx: this.classFx,
       vfx: this.skillVfx,
       sound: (at, kind) =>
@@ -1032,7 +1034,9 @@ export class Spectator {
       cst ? catViewOf(cst) : null,
       this.cam.cam.position,
     );
-    this.raidFx?.update(dt, cst ? raidViewOf(cst) : null);
+    const rv = cst ? raidViewOf(cst) : null;
+    this.raidFx?.update(dt, rv);
+    this.raidHud.update(rv, null);
     this.probe?.mark("zone");
 
     // Аватары игроков + мобы для режиссёра.
@@ -1587,6 +1591,8 @@ export class Spectator {
   }
   private catFx: CatacombsFx | null = null;
   private raidFx: RaidArenaFx | null = null;
+  /** Панель боя с рейд-боссом в эфире (фаза, HP, таймеры). */
+  private readonly raidHud = new RaidHud(true);
   private catMusic = "";
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же

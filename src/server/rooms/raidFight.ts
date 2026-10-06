@@ -1,4 +1,4 @@
-import { angDiff, inRaidGap, RAID, RAID_FIGHT, RAID_PHASES, raidAngle, raidCarry, raidPhaseOf } from "#shared/raid";
+import { angDiff, inRaidCrack, inRaidGap, packCracks, RAID, RAID_FIGHT, RAID_PHASES, raidAngle, raidCarry, type RaidCrack, raidPhaseOf } from "#shared/raid";
 
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
@@ -21,12 +21,22 @@ export interface RaidHost {
   shiftBot(id: string, dx: number, dz: number): void;
   /** Титры всем (баннер игрокам, карточка зрителям). */
   announce(title: string, sub: string): void;
-  /** Эффект: волна «Прилива» / падение героя в пустоту. */
-  fx(k: "raidTide" | "raidFall", x: number, z: number): void;
+  /** Эффект: волна «Прилива» / падение героя в пустоту / «Последний вздох». */
+  fx(k: "raidTide" | "raidFall" | "raidBreath", x: number, z: number): void;
   /** Сброс боя: босс снова целый. */
   healBoss(): void;
   /** Строка в чат стрима. */
   chat(text: string): void;
+  /** Урон доли макс. HP магией без блока/уворота (жжение у центра, «Последний вздох»). */
+  hurt(id: string, frac: number, why: string): void;
+  /** «Зеркальный плач»: фантомы-копии босса в точках. */
+  phantoms(pts: { x: number; z: number }[], o: { hp: number; dmg: number; scale: number }): void;
+  /** Игрок в воздухе (прыгнул) — по высоте головы над землёй. */
+  airborne(id: string): boolean;
+  /** Боты прыгают (клип у модели). */
+  jumpBots(ids: string[]): void;
+  /** Опасная зона для ботов (пропасть) на sec с — убегают из неё. */
+  danger(x: number, z: number, r: number, sec: number): void;
 }
 
 export interface RaidState {
@@ -40,6 +50,11 @@ export interface RaidState {
   o: readonly [number, number, number];
   vert: number;
   tide: number;
+  tear: number;
+  pull: number;
+  breath: number;
+  cracks: string;
+  crackOn: number;
 }
 
 /**
@@ -64,6 +79,20 @@ export class RaidFight {
   private nextTide = 0;
   private tideWarned = false;
   private bossId = "";
+  // Фаза 3: «Притяжение» и «Зеркальный плач».
+  private nextPull = 0;
+  private pullUntil = 0;
+  private burnAcc = 0;
+  private nextMirror = 0;
+  // Фаза 4: «Раскол диска» и «Последний вздох».
+  private cracks: RaidCrack[] = [];
+  private cracksStr = "";
+  private crackOpenAt = 0;
+  private readonly crackIn = new Map<string, number>();
+  private crackDangerAt = 0;
+  private nextBreath = 0;
+  private breathWarned = false;
+  private breathJumped = false;
 
   constructor(private readonly host: RaidHost) {}
 
@@ -117,9 +146,28 @@ export class RaidFight {
         best = this.orbits[i];
       }
     }
-    const rr = Math.min(r, this.edge - 2.5);
     const a2 = best + slot * this.halfGap * 0.6;
+    // «Притяжение»: у центра жжёт — встаём дальше; пропасть на пути — ближе/дальше на шаг.
+    let rr = Math.min(this.pulling ? Math.max(r, RAID_FIGHT.pull.coreR + 2) : r, this.edge - 2.5);
+    for (const dr of [0, 3.5, -3.5, 6]) {
+      const r2 = Math.max(6.5, Math.min(this.edge - 2.5, rr + dr));
+      const px = RAID.x + Math.sin(a2) * r2;
+      const pz = RAID.z + Math.cos(a2) * r2;
+      if (!this.cracksOpen || !inRaidCrack(px, pz, this.cracks, this.ang)) {
+        rr = r2;
+        break;
+      }
+    }
     return { x: RAID.x + Math.sin(a2) * rr, z: RAID.z + Math.cos(a2) * rr };
+  }
+
+  /** Идёт «Притяжение» (тянет к центру). */
+  get pulling(): boolean {
+    return this.active && this.host.now() < this.pullUntil;
+  }
+
+  private get cracksOpen(): boolean {
+    return this.cracks.length > 0 && this.host.now() >= this.crackOpenAt;
   }
 
   tick(dt: number): void {
@@ -160,7 +208,7 @@ export class RaidFight {
     } else this.emptySince = -1;
 
     const ph = Math.max(this.phase, raidPhaseOf(boss.hp / Math.max(1, boss.maxHp)));
-    if (ph !== this.phase) this.setPhase(ph);
+    if (ph !== this.phase) this.setPhase(ph, now);
     const P = RAID_PHASES[this.phase];
 
     // Вращение арены (с рывками в фазе jerky — средняя скорость та же), орбиты — относительно неё.
@@ -172,7 +220,15 @@ export class RaidFight {
       w = t < RAID_FIGHT.jerkOn ? w / RAID_FIGHT.jerkOn : 0;
     }
     this.w = w;
-    this.drift = casting ? 0 : P.drift;
+    // «Притяжение» (фаза 3): вместо сноса к краю — тяга к центру.
+    const F = RAID_FIGHT;
+    if (this.phase === 2 && !casting && now >= this.nextPull) {
+      this.pullUntil = now + F.pull.sec;
+      this.nextPull = now + F.pull.every;
+      this.host.announce("Притяжение!", "Луна тянет к себе — отходи от центра, у босса жжёт");
+    }
+    const pulling = now < this.pullUntil;
+    this.drift = casting ? 0 : pulling ? -F.pull.pull : P.drift;
     this.ang = wrap(this.ang + w * dt);
     if (!casting) for (let i = 0; i < 3; i++) this.orbits[i] = wrap(this.orbits[i] + (w + (P.orbitRel[i] ?? 0) * DEG) * dt);
 
@@ -192,6 +248,78 @@ export class RaidFight {
       this.onArena.delete(id);
       this.host.fx("raidFall", h.x, h.z);
       this.host.kill(id, "fall");
+    }
+
+    // «Притяжение»: у центра жжёт (раз в полсекунды).
+    if (pulling) {
+      this.burnAcc += dt;
+      if (this.burnAcc >= 0.5) {
+        for (const id of this.onArena) {
+          const h = byId.get(id);
+          if (h && !h.dead && Math.hypot(h.x - RAID.x, h.z - RAID.z) < F.pull.coreR) this.host.hurt(id, F.pull.dps * this.burnAcc, "Притяжение");
+        }
+        this.burnAcc = 0;
+      }
+    } else this.burnAcc = 0;
+    // «Зеркальный плач» (фаза 3): фантомы-копии босса на арене.
+    if (this.phase === 2 && now >= this.nextMirror) {
+      this.nextMirror = now + F.mirror.every;
+      const pts: { x: number; z: number }[] = [];
+      const a0 = Math.random() * TAU;
+      for (let i = 0; i < F.mirror.count; i++) {
+        const a = a0 + (i / F.mirror.count) * TAU;
+        const r = Math.min(curEdge - 3, 12 + Math.random() * 3);
+        pts.push({ x: RAID.x + Math.sin(a) * r, z: RAID.z + Math.cos(a) * r });
+      }
+      this.host.phantoms(pts, { hp: F.mirror.hp, dmg: F.mirror.dmg, scale: F.mirror.scale });
+      this.host.announce("Зеркальный плач", "Фантомы-копии на арене — собейте их");
+    }
+    // «Раскол диска» (фаза 4): в пропасти дольше grace — падение. Ботам — опасные зоны.
+    if (this.cracksOpen) {
+      if (now >= this.crackDangerAt) {
+        this.crackDangerAt = now + 0.4;
+        for (const c of this.cracks) {
+          const a = c.a + this.ang;
+          this.host.danger(RAID.x + Math.sin(a) * c.r, RAID.z + Math.cos(a) * c.r, c.cr + 1.2, 0.6);
+        }
+      }
+      for (const id of [...this.onArena]) {
+        const h = byId.get(id);
+        if (!h || h.dead) continue;
+        if (!inRaidCrack(h.x, h.z, this.cracks, this.ang)) {
+          this.crackIn.delete(id);
+          continue;
+        }
+        const t0 = this.crackIn.get(id) ?? now;
+        this.crackIn.set(id, t0);
+        if (now - t0 < F.cracks.grace) continue;
+        this.crackIn.delete(id);
+        this.onArena.delete(id);
+        this.host.fx("raidFall", h.x, h.z);
+        this.host.kill(id, "fall");
+      }
+    }
+    // «Последний вздох» (фаза 4): удар по всей арене — спасает прыжок (боты прыгают сами).
+    if (this.phase === 3) {
+      if (!this.breathWarned && now >= this.nextBreath - F.breath.warn) {
+        this.breathWarned = true;
+        this.host.announce("Последний вздох!", `Через ${F.breath.warn} с удар по всей арене — прыгай в момент удара!`);
+      }
+      if (!this.breathJumped && now >= this.nextBreath - 0.35) {
+        this.breathJumped = true;
+        this.host.jumpBots([...this.onArena].filter((id) => byId.get(id)?.bot));
+      }
+      if (now >= this.nextBreath) {
+        this.nextBreath = now + F.breath.every;
+        this.breathWarned = false;
+        this.breathJumped = false;
+        this.host.fx("raidBreath", RAID.x, RAID.z);
+        for (const id of this.onArena) {
+          const h = byId.get(id);
+          if (!h || h.dead || h.bot || this.host.airborne(id)) continue;
+          this.host.hurt(id, F.breath.dmg, "Последний вздох");
+        }
+      }
     }
 
     // «Лунная слеза» — осколок на случайного героя арены.
@@ -241,9 +369,38 @@ export class RaidFight {
     this.host.chat("🌙 Бой с Лунным аватаром начался! Бить можно только из разрыва орбиты, за краем арены — пустота. !raid — в бой.");
   }
 
-  private setPhase(ph: number): void {
+  private setPhase(ph: number, now: number): void {
     this.phase = ph;
     const P = RAID_PHASES[ph];
+    const F = RAID_FIGHT;
+    if (ph === 2) {
+      this.nextPull = now + F.pull.first;
+      this.nextMirror = now + F.mirror.first;
+    }
+    if (ph === 3) {
+      // «Раскол диска»: пропасти в осях арены, не друг на друге; сперва трещины-предупреждение.
+      this.pullUntil = 0;
+      const outer = RAID.r * P.edge - 3;
+      const list: RaidCrack[] = [];
+      for (let tries = 0; list.length < F.cracks.count && tries < 200; tries++) {
+        const c = { a: Math.random() * TAU, r: 7 + Math.random() * Math.max(0.5, outer - 7), cr: F.cracks.r };
+        const ok = list.every((o) => {
+          const dx = Math.sin(c.a) * c.r - Math.sin(o.a) * o.r;
+          const dz = Math.cos(c.a) * c.r - Math.cos(o.a) * o.r;
+          return Math.hypot(dx, dz) > c.cr + o.cr + 2;
+        });
+        if (ok) list.push(c);
+      }
+      this.cracks = list;
+      this.cracksStr = packCracks(list);
+      this.crackOpenAt = now + F.cracks.warn;
+      this.crackIn.clear();
+      this.nextBreath = now + F.breath.first;
+      this.breathWarned = false;
+      this.breathJumped = false;
+      this.host.announce(`Фаза 4 — Раскол диска`, `Арена трескается: через ${F.cracks.warn} с пропасти, не стой на трещинах · край ${Math.round(P.edge * 100)}%`);
+      return;
+    }
     const what = [
       "",
       "Две орбиты в разные стороны, разрывы уже",
@@ -258,11 +415,15 @@ export class RaidFight {
     this.phase = 0;
     this.onArena.clear();
     this.w = 0;
+    this.pullUntil = 0;
+    this.cracks = [];
+    this.cracksStr = "";
+    this.crackIn.clear();
     this.pushIdle();
   }
 
   private pushIdle(): void {
-    this.host.setState({ ph: 0, ang: this.ang, w: 0, drift: 0, edge: RAID.r, gap: 0, on: 0, o: this.orbits, vert: -1, tide: 0 });
+    this.host.setState({ ph: 0, ang: this.ang, w: 0, drift: 0, edge: RAID.r, gap: 0, on: 0, o: this.orbits, vert: -1, tide: 0, tear: 0, pull: 0, breath: 0, cracks: "", crackOn: 0 });
   }
 
   private pushState(now: number): void {
@@ -278,6 +439,11 @@ export class RaidFight {
       o: this.orbits,
       vert: P.vertical ?? -1,
       tide: Math.max(0, Math.min(255, Math.ceil(this.nextTide - now))),
+      tear: Math.max(0, Math.min(255, Math.ceil(this.nextTear - now))),
+      pull: now < this.pullUntil ? 1 : 0,
+      breath: this.phase === 3 ? Math.max(1, Math.min(255, Math.ceil(this.nextBreath - now))) : 0,
+      cracks: this.cracksStr,
+      crackOn: this.cracksOpen ? 1 : 0,
     });
   }
 }

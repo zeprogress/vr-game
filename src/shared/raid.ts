@@ -66,6 +66,14 @@ export const RAID_FIGHT = {
    * warn с: разрывы-конусы и арена замирают — все успевают забежать в разрыв (2026-10-07: было 4 с, без остановки).
    */
   tide: { every: 20, warn: 6 },
+  /** «Притяжение» (фаза 3): каждые every с на sec с тянет к центру (pull м/с у края); ближе coreR к центру — жжёт dps доли HP/с. */
+  pull: { first: 6, every: 22, sec: 5, pull: 1.6, coreR: 9, dps: 0.08 },
+  /** «Зеркальный плач» (фаза 3): каждые every с — count фантомов-копий босса (hp доля его макс. HP, урон ×dmg, размер ×scale). */
+  mirror: { first: 10, every: 30, count: 3, hp: 0.03, dmg: 0.45, scale: 0.42 },
+  /** «Раскол диска» (начало фазы 4): count пропастей радиуса r, трещины-предупреждение warn с; в пропасти дольше grace с — падение. */
+  cracks: { count: 4, r: 3.2, warn: 3, grace: 0.4 },
+  /** «Последний вздох» (фаза 4): каждые every с удар по всей арене (dmg доли HP), предупреждение warn с — спасает прыжок. */
+  breath: { first: 8, every: 15, warn: 3, dmg: 0.6 },
   /** Энрейдж: через столько секунд боя прилив бьёт всех без разбора. */
   enrageSec: 15 * 60,
   /** Никого на арене столько секунд — бой сброшен (босс снова целый, фаза 1). */
@@ -95,6 +103,49 @@ export function raidCarry(x: number, z: number, w: number, drift: number, edge: 
   const sa = Math.sin(a);
   const push = drift * (d / edge) * dt;
   return [rx * ca + rz * sa - rx + (rx / d) * push, rz * ca - rx * sa - rz + (rz / d) * push];
+}
+
+/** Угол центра ближайшего разрыва к точке (рад), или null — орбит нет. */
+export function nearestGap(x: number, z: number, gaps: readonly number[], n: number): number | null {
+  if (n <= 0) return null;
+  const a = raidAngle(x, z);
+  let best = gaps[0];
+  let bd = Infinity;
+  for (let i = 0; i < n; i++) {
+    const d = Math.abs(angDiff(a, gaps[i]));
+    if (d < bd) {
+      bd = d;
+      best = gaps[i];
+    }
+  }
+  return best;
+}
+
+/** Пропасть «Раскола диска» в осях арены: угол (рад), радиус (м), размер (м). */
+export interface RaidCrack {
+  a: number;
+  r: number;
+  cr: number;
+}
+export function packCracks(list: readonly RaidCrack[]): string {
+  return list.map((c) => `${c.a.toFixed(3)}:${c.r.toFixed(2)}:${c.cr.toFixed(2)}`).join(";");
+}
+export function parseCracks(s: string): RaidCrack[] {
+  if (!s) return [];
+  return s.split(";").map((p) => {
+    const [a, r, cr] = p.split(":").map(Number);
+    return { a, r, cr };
+  });
+}
+/** Точка в пропасти (пропасти крутятся с ареной на угол ang). */
+export function inRaidCrack(x: number, z: number, cracks: readonly RaidCrack[], ang: number): boolean {
+  for (const c of cracks) {
+    const a = c.a + ang;
+    const cx = RAID.x + Math.sin(a) * c.r;
+    const cz = RAID.z + Math.cos(a) * c.r;
+    if (Math.hypot(x - cx, z - cz) < c.cr) return true;
+  }
+  return false;
 }
 
 /** Разница углов в −π..π. */
