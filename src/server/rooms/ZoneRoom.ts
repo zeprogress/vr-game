@@ -8497,7 +8497,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Эффекты не от конкретного моба (колючки Шипохвоста на земле).
     for (const f of this.sim.fx) {
-      this.broadcast(MSG.act, { k: f.k, id: "", x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, r: f.r } satisfies ActRelay);
+      this.broadcast(MSG.act, { k: f.k, id: "", x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2, r: f.r } satisfies ActRelay);
     }
     this.sim.fx.length = 0;
     for (const d of this.sim.dummies.values()) {

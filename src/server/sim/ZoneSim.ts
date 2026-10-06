@@ -183,7 +183,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "smoke";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "pierceShot";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -2147,27 +2147,33 @@ export class ZoneSim {
   rollPierce: (id: string) => boolean = () => false;
 
   /**
-   * Пронзание: ближайший моб ПОЗАДИ цели по направлению выстрела (до BOW.pierceRange м, в коридоре
-   * шириной тела) получает `dmg`. Один путь для стрел игроков (heroStrike) и ботов (tickBolt).
+   * Пронзание: ближайший моб ПОЗАДИ цели — в конусе ±BOW.pierceHalfAngle от направления выстрела
+   * (край тела в счёт), не дальше BOW.pierceRange м — получает `dmg`; след стрелы — эффект pierceShot.
+   * Один путь для стрел игроков (heroStrike) и ботов (tickBolt).
    */
   pierceBehind(struckId: string, x: number, z: number, dirX: number, dirZ: number, dmg: number, owner: string): boolean {
+    const tan = Math.tan(BOW.pierceHalfAngle);
     let best: Mob | null = null;
-    let bt = Infinity;
+    let bd = Infinity;
     for (const m of this.mobs.values()) {
-      if (m.dead || m.id === struckId) continue;
+      if (m.dead || m.id === struckId || m.scarecrow) continue;
       const vx = m.x - x;
       const vz = m.z - z;
       const t = vx * dirX + vz * dirZ;
-      if (t <= 0 || t > BOW.pierceRange) continue;
+      if (t <= 0) continue;
+      const d = Math.hypot(vx, vz);
+      if (d > BOW.pierceRange + MOB.bodyRadius * m.scale) continue;
       const side = Math.abs(vx * dirZ - vz * dirX);
-      if (side > MOB.bodyRadius * m.scale + 0.6) continue;
-      if (t < bt) {
-        bt = t;
+      if (side > t * tan + MOB.bodyRadius * m.scale) continue;
+      if (d < bd) {
+        bd = d;
         best = m;
       }
     }
     if (!best) return false;
-    this.hitMob(best.id, dmg, dirX, dirZ, owner, true);
+    const len = Math.hypot(best.x - x, best.z - z) || 1;
+    this.fx.push({ k: "pierceShot", x, z, x2: best.x, z2: best.z });
+    this.hitMob(best.id, dmg, (best.x - x) / len, (best.z - z) / len, owner, true);
     return true;
   }
   /** Целые големы, ждущие своей очереди вернуться (см. splitGolem, tick). */
@@ -2490,7 +2496,7 @@ export class ZoneSim {
       if (!m.cloneOf) continue;
       const parent = this.mobs.get(m.cloneOf);
       if (parent && !parent.dead) continue;
-      this.fx.push({ k: "smoke", x: m.x, z: m.z });
+      this.fx.push({ k: "ninjaSmoke", x: m.x, z: m.z });
       this.mobs.delete(id);
     }
     this.tickBurning(dt);
@@ -3065,12 +3071,12 @@ export class ZoneSim {
    */
   /** Ниндзя уходит в дым: сам — на scatter м в сторону, рядом count теневых копий (без опыта и лута). */
   private spawnClones(m: Mob): void {
-    this.fx.push({ k: "smoke", x: m.x, z: m.z });
+    this.fx.push({ k: "ninjaSmoke", x: m.x, z: m.z });
     const a0 = Math.random() * Math.PI * 2;
     m.x += Math.cos(a0) * CLONES.scatter * 0.6;
     m.z += Math.sin(a0) * CLONES.scatter * 0.6;
     m.y = terrainHeight(m.x, m.z);
-    this.fx.push({ k: "smoke", x: m.x, z: m.z });
+    this.fx.push({ k: "ninjaSmoke", x: m.x, z: m.z });
     for (let i = 0; i < CLONES.count; i++) {
       const a = a0 + ((i + 1) / (CLONES.count + 1)) * Math.PI * 2;
       const x = m.x + Math.cos(a) * CLONES.scatter;
@@ -3091,7 +3097,7 @@ export class ZoneSim {
       });
       c.forceAggro();
       this.mobs.set(c.id, c);
-      this.fx.push({ k: "smoke", x: c.x, z: c.z });
+      this.fx.push({ k: "ninjaSmoke", x: c.x, z: c.z });
     }
   }
 

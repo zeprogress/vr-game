@@ -560,7 +560,14 @@ export function playClassAct(
       // Молния перескочила на соседа.
       if (x2 !== undefined && z2 !== undefined) vfx.lightning(x, y + 1.1, z, x2, y + 1.1, z2, null, 0.38);
       return true;
-    case "smoke":
+    case "pierceShot":
+      // Пронзание: стрела прошла насквозь и летит ко второму мобу — светлый след и искры у него.
+      if (x2 !== undefined && z2 !== undefined) {
+        c.fx.streak(x, y + 1.1, z, x2, z2, FXC.gold, 0.25, 0.3);
+        vfx.burst(x2, y + 1.1, z2, FXC.gold, { count: 10, speed: 4, life: 0.35, grav: 6, size: 0.15 });
+      }
+      return true;
+    case "ninjaSmoke":
       // Теневой ниндзя: облако дыма (исчез / появилась копия).
       vfx.burst(x, y + 1, z, FXC.shadowDark, { count: 26, speed: 3.5, life: 0.9, grav: -1.5, size: 0.55 });
       vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 14, speed: 2, life: 0.7, grav: -1, size: 0.4 });
