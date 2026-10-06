@@ -1216,6 +1216,66 @@ if (ONLY.has("combo")) {
   results.combo = { off, def };
 }
 
+// Застревания в лагере (--only stuck [--camp boneWraith] [--sec 240]): боты всех наборов бьются в одном лагере;
+// «застрял» — жив, моб ближе 6 м, а бот 3+ с не сдвигается и не наносит урона. Печатает эпизоды и состояние бота.
+if (ONLY.has("stuck")) {
+  const campType = arg("--camp") ?? "boneWraith";
+  const SEC = Number(arg("--sec") ?? 240);
+  say(`\n── Застревания: лагерь «${ELITE_MOBS[campType]?.name ?? campType}», ${LOADOUTS.length} ботов, ${SEC} с ──`);
+  const { room, step, meter, t } = makeRoom((m) => m.campType === campType);
+  const lvl = ELITE_MOBS[campType]?.level ?? 33;
+  const bots = LOADOUTS.map((load, i) => {
+    const x = addBot(room, `st${i}`, { lvl, load }, campType);
+    put(x.bot.state, x.bot.homeX + 10 + i, x.bot.homeZ + (i % 3) * 2);
+    return { ...x, load: load.id, lastX: 0, lastZ: 0, lastDealt: 0, still: 0, episodes: 0, worst: 0, said: 0 };
+  });
+  for (let i = 0; t() < SEC; i++) {
+    step();
+    if (i % 4) continue; // раз в 0.2 с
+    for (const b of bots) {
+      const p = b.bot.state;
+      const dealt = meter.dealt.get(b.id) ?? 0;
+      let near = Infinity;
+      let nearM: any = null;
+      for (const m of room.sim.mobs.values()) {
+        if (m.dead) continue;
+        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        if (d < near) (near = d), (nearM = m);
+      }
+      const moved = Math.hypot(p.head.x - b.lastX, p.head.z - b.lastZ) > 0.08;
+      const hit = dealt > b.lastDealt + 0.5;
+      b.lastX = p.head.x;
+      b.lastZ = p.head.z;
+      b.lastDealt = dealt;
+      if (p.dead || moved || hit || near > 6) {
+        if (b.still >= 3) {
+          b.episodes++;
+          b.worst = Math.max(b.worst, b.still);
+        }
+        b.still = 0;
+        continue;
+      }
+      b.still += 0.2;
+      if (b.still >= 3 && b.said < 4 && Math.abs(b.still - 3) < 0.11) {
+        b.said++;
+        const bt = b.bot;
+        const tm = bt.target ? room.sim.mobs.get(bt.target) : null;
+        say(
+          `  ${f(t(), 1)}с ✗ ${b.load} стоит ${f(b.still, 1)} с: (${f(p.head.x, 1)},${f(p.head.z, 1)}) цель=${bt.target ?? "—"}` +
+            `${tm ? ` [${tm.kind}/${tm.eliteName || ""} ${f(Math.hypot(tm.x - p.head.x, tm.z - p.head.z), 2)} м, мёртв=${tm.dead}, блинк=${(tm as any).blinkFadeT > 0 ? "да" : "нет"}]` : ""}` +
+            ` ближ.моб ${f(near, 2)} м (${nearM?.eliteName || nearM?.kind}) v=(${f(bt.vx ?? 0, 2)},${f(bt.vz ?? 0, 2)})` +
+            ` стан=${f(p.stunSec ?? 0, 1)} путь=${bt.nav?.path?.length ?? 0}`,
+        );
+      }
+    }
+  }
+  for (const b of bots) {
+    if (b.still >= 3) (b.episodes++, (b.worst = Math.max(b.worst, b.still)));
+    say(`  ${pad(b.load, 12)} застреваний ${b.episodes}, дольше всего ${f(b.worst, 1)} с · урон ${f(meter.dealt.get(b.id) ?? 0)} · убийств ${meter.kills.get(b.id) ?? 0}`);
+    if (b.episodes) anomalies.push(`лагерь ${campType}: ${b.load} застревал ${b.episodes} раз (до ${f(b.worst, 1)} с)`);
+  }
+}
+
 // 9. Навигация: боты из случайных точек карты идут к Пугалу — сколько дошло (застревание у склонов)
 if (ONLY.has("nav")) {
   const N = QUICK ? 24 : 60;

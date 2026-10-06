@@ -6492,6 +6492,28 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
 
+    // Кто вплотную (или только что ударил рядом), а цель дальше — сперва он: иначе бот бежит к
+    // старой цели, упирается в тело моба (костяной призрак возник за спиной) и стоит под ударами.
+    if (!raidBoss && mob && !bot.catRetreat) {
+      const dCur = Math.hypot(mob.x - p.head.x, mob.z - p.head.z);
+      let near: Mob | undefined;
+      let nd = Infinity;
+      const hm = bot.hurtByMob && Date.now() - bot.hurtByMobAt < BOT.closeThreatSec * 1000 ? this.sim.mobs.get(bot.hurtByMob) : undefined;
+      for (const m of this.sim.mobs.values()) {
+        if (m === mob || m.dead || m.kind === "boss" || m.kind === "shard" || m.scarecrow) continue;
+        const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
+        const touching = d < MOB.bodyRadius * m.scale + PLAYER.radius + 0.8;
+        if ((touching || (m === hm && d < BOT.closeThreat)) && d < nd) {
+          nd = d;
+          near = m;
+        }
+      }
+      if (near && dCur > nd + 2) {
+        mob = near;
+        bot.target = near.id;
+      }
+    }
+
     // Рейд, но по боту лупит обычный моб / осколок босса — сперва добиваем
     // его (в радиусе raidAddRange и уже агрнут), потом снова к боссу. Делаем
     // это, подменяя цель на моба и снимая raidBoss на текущий тик: всё
