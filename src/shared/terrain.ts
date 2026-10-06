@@ -2,6 +2,7 @@ import { HUB, HUB_CENTER } from "./hub";
 import { LAKE, MOUNTAIN, WORLD } from "./constants";
 import sculptData from "./data/terrainSculpt.json";
 import { CAT_FLOOR_Y, CAT_Z0 as CAT_REGION_Z, inCatRegion } from "./catacombs";
+import { PLAY_BOUNDS, rampHeight } from "./raid";
 
 /**
  * Рельеф озера/горы, слепленный вручную в редакторе (Terrain Sculptor,
@@ -172,15 +173,18 @@ export function terrainHeightNatural(x: number, z: number): number {
  */
 const HC_STEP = 0.25;
 const HC_HALF = WORLD.size / 2 + 8;
+/** Юг сетки — ниже края карты: плато рейд-босса (shared/raid PLAY_BOUNDS) тоже в кеше. */
+const HC_Z0 = Math.min(-HC_HALF, PLAY_BOUNDS.z0 - 8);
 const HC_N = Math.ceil((HC_HALF * 2) / HC_STEP) + 2;
+const HC_NZ = Math.ceil((HC_HALF - HC_Z0) / HC_STEP) + 2;
 let heightCache: Float32Array | null = null;
 
 /** Включить кеш высот (сервер, один раз при старте). */
 export function enableTerrainHeightCache(): void {
   if (heightCache) return;
-  const g = new Float32Array(HC_N * HC_N);
-  for (let j = 0; j < HC_N; j++) {
-    const z = j * HC_STEP - HC_HALF;
+  const g = new Float32Array(HC_N * HC_NZ);
+  for (let j = 0; j < HC_NZ; j++) {
+    const z = j * HC_STEP + HC_Z0;
     for (let i = 0; i < HC_N; i++) g[j * HC_N + i] = terrainHeightExact(i * HC_STEP - HC_HALF, z);
   }
   heightCache = g;
@@ -188,10 +192,10 @@ export function enableTerrainHeightCache(): void {
 
 function cachedHeight(x: number, z: number): number {
   const fx = (x + HC_HALF) / HC_STEP;
-  const fz = (z + HC_HALF) / HC_STEP;
+  const fz = (z - HC_Z0) / HC_STEP;
   const ix = Math.floor(fx);
   const iz = Math.floor(fz);
-  if (ix < 0 || iz < 0 || ix >= HC_N - 1 || iz >= HC_N - 1) return terrainHeightExact(x, z);
+  if (ix < 0 || iz < 0 || ix >= HC_N - 1 || iz >= HC_NZ - 1) return terrainHeightExact(x, z);
   const u = fx - ix;
   const v = fz - iz;
   const g = heightCache!;
@@ -341,7 +345,8 @@ export function terrainHeightExact(x: number, z: number): number {
     h = h + (hs - h) * w;
   }
 
-  return h;
+  // Пандус на плато рейд-босса (shared/raid.ts) — поверх всего, в своей полосе.
+  return rampHeight(x, z, h);
 }
 
 /**

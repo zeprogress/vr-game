@@ -74,6 +74,8 @@ export interface MobConfig {
 
 /** Босс: большой багровый слизень в дальнем углу карты. */
 export const BOSS = {
+  /** Багровый в мире. 2026-10-07: выключен на время теста рейд-босса «Лунный аватар» (shared/raid.ts). */
+  enabled: false,
   /** Дальний угол (+x, +z). */
   home: [WORLD.size / 2 - 16, WORLD.size / 2 - 16] as const,
   hp: 1500,
@@ -289,6 +291,8 @@ export interface EliteMobDef {
   stormCaller?: boolean;
   /** 45 ур. Теневой ниндзя: на порогах здоровья исчезает в дыму и возвращается с теневыми копиями (см. CLONES). */
   cloner?: boolean;
+  /** Не двигается вовсе (рейд-босс): ни шагов, ни прыжков, ни отбрасывания — только поворот к цели и атаки. */
+  anchored?: boolean;
   /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
    *  стоит → Idle, идёт → Walk, гонится → Run (иначе модель без Hop «шагает» всегда). */
   gait?: boolean;
@@ -595,6 +599,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     stormCaller: true, legendaryChance: 0.04,
   },
   // Теневой ниндзя: быстрый и вёрткий; на 70% и 35% здоровья уходит в дым и возвращается с двумя тенями.
+  // ---- Рейд (тест 2026-10-07): Лунный аватар — на плато горы с водопадом (shared/raid.ts), !raid ведёт ботов ----
+  moonAvatar: {
+    model: "monMoonAvatar", name: "Лунный аватар", blurb: "рейд-босс на горе: стоит на месте, лунные молнии, ледяные круги, веер осколков", level: 45, kind: "spitter",
+    hp: 300000, dmgMul: 18, xp: 60000000, scaleMul: 9, tint: null, anchored: true, gait: true,
+    stormCaller: true, freezer: true, legendaryChance: 0.5,
+    shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.2, count: 5, spread: 0.35 },
+  },
   shadowNinja: {
     model: "monNinja", name: "Теневой ниндзя", blurb: "теневые копии, уворот — найди настоящего", level: 45, kind: "slime",
     hp: 12000, dmgMul: 16, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16

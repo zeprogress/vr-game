@@ -80,6 +80,7 @@ export const MODELS = {
   // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
   monBogBrute: "/models/gen/BogBrute.glb",
   monStoneTroll: "/models/gen/StoneTroll.glb",
+  monMoonAvatar: "/models/gen/MoonAvatar.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

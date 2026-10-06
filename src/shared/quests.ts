@@ -117,7 +117,8 @@ function candidates(level: number, hard: boolean): QuestSlot[] {
   for (const t of new Set([...hunt, ...huntWide])) out.push(slot("hunt", hard, t));
   for (const t of champs) out.push(slot("champ", hard, t));
   out.push(slot("fish", hard, ""));
-  out.push(slot("boss", hard, "boss"));
+  // Рейд на Багрового — только пока он в мире (2026-10-07 выключен на время теста рейд-босса).
+  if (BOSS.enabled) out.push(slot("boss", hard, "boss"));
   return out;
 }
 

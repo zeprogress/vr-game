@@ -13,8 +13,8 @@ import type { WebXRCamera } from "@babylonjs/core/XR/webXRCamera";
 import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
-import { PLAYER, PLAYER_HP, TELEPORT, WORLD } from "#shared/constants";
-import { clampToSquare } from "#shared/geometry";
+import { PLAYER, PLAYER_HP, TELEPORT } from "#shared/constants";
+import { clampToPlay, inPlayArea } from "#shared/raid";
 import { hubSpawnPoint } from "#shared/hub";
 import { canClimb, reachAlong, terrainHeight } from "#shared/terrain";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
@@ -192,7 +192,7 @@ export class PlayerController {
       p.z = z;
       return;
     }
-    clampToSquare(p, WORLD.playHalf);
+    clampToPlay(p); // квадрат карты + плато рейд-босса с пандусом (shared/raid)
   }
 
   /** В VR камера гарнитуры парентится к этому ригу; риг мы двигаем/крутим сами. */
@@ -395,7 +395,7 @@ export class PlayerController {
     const tz = pos.z + dz * reach;
 
     const gy = terrainHeight(tx, tz);
-    let valid = Math.abs(tx) < WORLD.playHalf - 1 && Math.abs(tz) < WORLD.playHalf - 1;
+    let valid = inPlayArea(tx, tz);
     // На крутое телепортом тоже не забраться: путь по прямой должен быть проходим (shared/terrain MAX_CLIMB).
     if (valid) {
       const [rx, rz] = reachAlong(pos.x, pos.z, tx, tz);

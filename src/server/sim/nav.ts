@@ -1,4 +1,4 @@
-import { WORLD } from "#shared/constants";
+import { inPlayArea, PLAY_BOUNDS } from "#shared/raid";
 import { canClimb, reachAlong } from "#shared/terrain";
 
 /**
@@ -12,17 +12,22 @@ import { canClimb, reachAlong } from "#shared/terrain";
 const CELL = 2;
 /** Запас коридора: проход между клетками проверяем ещё и в стольких метрах по бокам. */
 const LANE = 0.5;
-const HALF = WORLD.playHalf - 1;
-const N = Math.floor((2 * HALF) / CELL) + 1;
+/** Сетка — на всю разрешённую зону (квадрат карты + плато рейда к югу), см. shared/raid. */
+const X0 = PLAY_BOUNDS.x0 + 1;
+const Z0 = PLAY_BOUNDS.z0 + 1;
+const N = Math.floor((PLAY_BOUNDS.x1 - 1 - X0) / CELL) + 1;
+const NZ = Math.floor((PLAY_BOUNDS.z1 - 1 - Z0) / CELL) + 1;
 const DIRS = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
   [1, 1], [1, -1], [-1, 1], [-1, -1],
 ] as const;
 /** Бит 0x100 — клетка уже посчитана; биты 0..7 — можно ли уйти в направлении DIRS[k]. */
-const mask = new Uint16Array(N * N);
+const mask = new Uint16Array(N * NZ);
 
-const cx = (x: number): number => Math.max(0, Math.min(N - 1, Math.round((x + HALF) / CELL)));
-const wx = (i: number): number => -HALF + i * CELL;
+const cx = (x: number): number => Math.max(0, Math.min(N - 1, Math.round((x - X0) / CELL)));
+const cz = (z: number): number => Math.max(0, Math.min(NZ - 1, Math.round((z - Z0) / CELL)));
+const wx = (i: number): number => X0 + i * CELL;
+const wz = (j: number): number => Z0 + j * CELL;
 
 function edges(c: number): number {
   let m = mask[c];
@@ -30,13 +35,15 @@ function edges(c: number): number {
   const i = c % N;
   const j = (c / N) | 0;
   const x = wx(i);
-  const z = wx(j);
+  const z = wz(j);
   m = 0x100;
   for (let k = 0; k < 8; k++) {
     const [di, dj] = DIRS[k];
     const ni = i + di;
     const nj = j + dj;
-    if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+    if (ni < 0 || nj < 0 || ni >= N || nj >= NZ) continue;
+    // За разрешённую зону (край карты, обрыв у плато) не ходим.
+    if (!inPlayArea(wx(ni), wz(nj))) continue;
     const dx = di * CELL;
     const dz = dj * CELL;
     // Щупаем подъём по всему шагу (каждые полметра — как reachAlong) — и по двум
@@ -105,9 +112,9 @@ class Heap {
   }
 }
 
-const gScore = new Float32Array(N * N);
-const came = new Int32Array(N * N);
-const stamp = new Uint32Array(N * N);
+const gScore = new Float32Array(N * NZ);
+const came = new Int32Array(N * NZ);
+const stamp = new Uint32Array(N * NZ);
 let curStamp = 0;
 
 /**
@@ -115,8 +122,8 @@ let curStamp = 0;
  * напрямую. null — сдвинуться некуда. Первая точка — первая клетка после старта.
  */
 export function findPath(x0: number, z0: number, x1: number, z1: number, maxExpand = 12000): [number, number][] | null {
-  const start = cx(z0) * N + cx(x0);
-  const goal = cx(z1) * N + cx(x1);
+  const start = cz(z0) * N + cx(x0);
+  const goal = cz(z1) * N + cx(x1);
   if (start === goal) return [];
   curStamp++;
   const gi = goal % N;
@@ -162,7 +169,7 @@ export function findPath(x0: number, z0: number, x1: number, z1: number, maxExpa
   }
   if (best === start) return null;
   const path: [number, number][] = [];
-  for (let c = best; c !== start && c !== -1; c = came[c]) path.push([wx(c % N), wx((c / N) | 0)]);
+  for (let c = best; c !== start && c !== -1; c = came[c]) path.push([wx(c % N), wz((c / N) | 0)]);
   path.reverse();
   // Последняя точка — сама цель, если её клетка достигнута (а не центр клетки).
   if (best === goal) path[path.length - 1] = [x1, z1];
@@ -171,7 +178,7 @@ export function findPath(x0: number, z0: number, x1: number, z1: number, maxExpa
 
 /** Центр клетки сетки, в которой стоит точка (x,z). */
 export function navCellCenter(x: number, z: number): [number, number] {
-  return [wx(cx(x)), wx(cx(z))];
+  return [wx(cx(x)), wz(cz(z))];
 }
 
 /** Видно ли по прямой (пройти без крутых подъёмов) из (x0,z0) в (x1,z1). */
@@ -187,9 +194,9 @@ export function straightOk(x0: number, z0: number, x1: number, z1: number): bool
 export function warmNav(chunk = 1500): void {
   let c = 0;
   const step = (): void => {
-    const end = Math.min(N * N, c + chunk);
+    const end = Math.min(N * NZ, c + chunk);
     for (; c < end; c++) edges(c);
-    if (c < N * N) setTimeout(step, 5);
+    if (c < N * NZ) setTimeout(step, 5);
   };
   setTimeout(step, 2000);
 }

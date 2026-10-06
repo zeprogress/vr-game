@@ -43,6 +43,8 @@ export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBee: { emissive: 0.08, diffuse: 1.6, tex: 1 },
   monOrc: { emissive: 0.2, diffuse: 1.15, tex: 1 },
   monStoneTroll: { emissive: 0.3, diffuse: 1.2, tex: 2 },
+  // Рейд-босс «Лунный аватар»: светится сам — лунный свет, а не освещённый камень.
+  monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },
 };
 export const MODEL_LIGHT_DEFAULT: ModelLight = { emissive: 0.3, diffuse: 1, tex: 1 };

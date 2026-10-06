@@ -1,6 +1,7 @@
 import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
+import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
@@ -398,6 +399,8 @@ export class Mob {
   readonly burrower: boolean;
   readonly stormCaller: boolean;
   readonly cloner: boolean;
+  /** Не двигается вовсе (рейд-босс): только поворот к цели и атаки. */
+  readonly anchored: boolean;
   /** Теневая копия ниндзя: id настоящего ("" — не копия). */
   readonly cloneOf: string;
   private burrowCd = 4;
@@ -545,6 +548,7 @@ export class Mob {
       burrower?: boolean;
       stormCaller?: boolean;
       cloner?: boolean;
+      anchored?: boolean;
       /** Теневая копия ниндзя: id настоящего (погиб он — копия рассеивается). */
       cloneOf?: string;
       scarecrow?: boolean;
@@ -619,6 +623,7 @@ export class Mob {
     this.burrower = opts.burrower ?? false;
     this.stormCaller = opts.stormCaller ?? false;
     this.cloner = opts.cloner ?? false;
+    this.anchored = opts.anchored ?? false;
     this.cloneOf = opts.cloneOf ?? "";
     this.scarecrow = opts.scarecrow ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
@@ -1564,8 +1569,8 @@ export class Mob {
       }
     }
 
-    if (this.rootedT > 0 || this.stunnedT > 0 || holdStill) {
-      // Пригвождён (град стрел) или оглушён (удар воина): с места не двигается.
+    if (this.anchored || this.rootedT > 0 || this.stunnedT > 0 || holdStill) {
+      // Рейд-босс стоит всегда; пригвождён (град стрел) или оглушён (удар воина): с места не двигается.
       this.rootedT = Math.max(0, this.rootedT - dt);
       this.vx = 0;
       this.vz = 0;
@@ -2100,7 +2105,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
     spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
-    burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner,
+    burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, anchored: d.anchored,
   };
 }
 
@@ -2235,7 +2240,17 @@ export class ZoneSim {
     this.boss.restYaw = Math.atan2(-BOSS.home[0], -BOSS.home[1]);
     this.boss.yaw = this.boss.restYaw;
     this.boss.faceRest = true;
-    this.mobs.set(this.boss.id, this.boss);
+    // 2026-10-07: Багровый выключен на время теста рейд-босса (объект есть — его ждут адаптация/лечение, — но в мире его нет).
+    if (BOSS.enabled) this.mobs.set(this.boss.id, this.boss);
+    // Рейд-босс «Лунный аватар» — в центре арены на плато горы (shared/raid.ts), стоит на месте.
+    {
+      const def = ELITE_MOBS[RAID.boss];
+      const m = new Mob(def.kind, RAID.x, RAID.z, { ...eliteOpts(def), respawnSec: RAID.respawnSec });
+      m.restYaw = Math.atan2(-RAID.x, -RAID.z);
+      m.yaw = m.restYaw;
+      this.raidBossId = m.id;
+      this.mobs.set(m.id, m);
+    }
     // Пугало — проверка билдов (урон по нему считает scare, см. scareInfo).
     {
       const sc = HUB.training.scarecrow;
@@ -2327,6 +2342,8 @@ export class ZoneSim {
 
   /** id пугала лагеря (SCARECROW). */
   scarecrowId = "";
+  /** id рейд-босса (Лунный аватар, shared/raid.ts) — цель !raid. */
+  raidBossId = "";
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private scare: { by: string; start: number; last: number; total: number; max: number } | null = null;
 

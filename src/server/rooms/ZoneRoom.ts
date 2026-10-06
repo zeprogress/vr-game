@@ -74,7 +74,7 @@ import {
 } from "#shared/net/messages";
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER } from "#shared/mobs";
-import { clampToSquare } from "#shared/geometry";
+import { clampToPlay, inPlayArea, RAID, raidWaypoint } from "#shared/raid";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
@@ -598,6 +598,7 @@ function savePos(x: number, y: number, z: number, edge: number): { x: number; y:
     const sp = hubSpawnPoint();
     return { x: sp.x, y: terrainHeight(sp.x, sp.z) + PLAYER.eyeHeight, z: sp.z };
   }
+  if (inPlayArea(x, z)) return { x, y, z }; // плато рейд-босса — за краем карты, но своё
   return { x: clampAbs(x, edge), y, z: clampAbs(z, edge) };
 }
 
@@ -2476,14 +2477,24 @@ export class ZoneRoom extends Room<ZoneState> {
    * `!follow <ник>` / `!come` (алиас на стримера) / `!unfollow` — держаться
    * рядом с кем-то между боями. `target` уже нормализован, `null` — снять.
    */
-  /** Босс-моб из симуляции (или undefined, пока не заспавнен). Тип выводится. */
+  /**
+   * Цель рейда (!raid): рейд-босс «Лунный аватар» на горе (shared/raid.ts); без него —
+   * Багровый, если он включён (BOSS.enabled). undefined — нет ни того, ни другого.
+   */
   private bossMob() {
+    const r = this.sim.mobs.get(this.sim.raidBossId);
+    if (r) return r;
     for (const m of this.sim.mobs.values()) if (m.kind === "boss") return m;
     return undefined;
   }
 
+  /** Имя цели рейда для чата. */
+  private raidName(): string {
+    return this.sim.mobs.has(this.sim.raidBossId) ? ELITE_MOBS[RAID.boss].name : "Багровый слизень";
+  }
+
   /**
-   * `!raid` / `!boss` — записать героя в отряд на Багрового. Отряд копится:
+   * `!raid` / `!boss` — записать героя в отряд на рейд-босса (bossMob). Отряд копится:
    * пока не набралось BOT.raidMinParty, все ждут; как набралось — общий
    * отсчёт BOT.raidDelaySec, затем весь отряд выступает разом. Повторный
    * !raid — выйти (из очереди или из рейда).
@@ -2504,7 +2515,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     const boss = this.bossMob();
     if (!boss || boss.dead) {
-      this.reply(`@${nick} Багровый слизень сейчас повержен — вернётся позже.`);
+      this.reply(`@${nick} ${this.raidName()} сейчас повержен — вернётся позже.`);
       return;
     }
     bot.followNorm = null; // рейд важнее !follow
@@ -2513,7 +2524,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Бой уже идёт (кто-то в рейде) — новичок присоединяется сразу.
     if ([...this.bots.values()].some((b) => b.raiding)) {
       bot.raiding = true;
-      this.reply(`@${nick} присоединился к рейду на Багрового!`);
+      this.reply(`@${nick} присоединился к рейду: ${this.raidName()}!`);
       return;
     }
 
@@ -2528,7 +2539,7 @@ export class ZoneRoom extends Room<ZoneState> {
     } else {
       const need = BOT.raidMinParty - k;
       this.reply(
-        `@${nick} записан в отряд на Багрового (${k}/${BOT.raidMinParty}). ` +
+        `@${nick} записан в отряд на рейд: ${this.raidName()} (${k}/${BOT.raidMinParty}). ` +
           `Ещё ${need} — и через ${BOT.raidDelaySec} с идём все разом.`,
       );
     }
@@ -2558,7 +2569,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.raidPending.clear();
     this.raidGoAt = 0;
     if (gone > 0) {
-      this.reply(`Отряд из ${gone} героев пошёл на Багрового слизня! За ним — до победы.`);
+      this.reply(`Отряд из ${gone} героев пошёл в рейд: ${this.raidName()}! За ним — до победы.`);
     }
   }
 
@@ -5065,7 +5076,7 @@ export class ZoneRoom extends Room<ZoneState> {
     "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и уникального оружия бывают роллы — урон, скорость атаки, крит, вампиризм (ближний бой), блок (щит).",
-    "Совет: !raid — вести героя на Багрового слизня толпой, !event — на нашествие, !top — таблица лидеров.",
+    "Совет: !raid — вести героя в рейд на Лунного аватара (гора с водопадом) толпой, !event — на нашествие, !top — таблица лидеров.",
     "Совет: !class ассасин / копейщик / боевой маг / воин / лучник / маг — сменить класс героя (оружие класса — в руки).",
     "Совет: !skills — умения класса; выбрать два: !skills рывок печать (по началу названия).",
     "Совет: шесть атрибутов — !str !dex !int !con !luc !wis; цена очка растёт каждые 10 подъёмов. Бот раскидывает очки сам, пока ты не вложишь их вручную (вернуть — !autostats).",
@@ -5099,7 +5110,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "!delete — стереть героя и начать заново · !top — таблица лидеров.",
     );
     this.reply(
-      "Ещё: !focus — показать своего героя в эфире на 10 с (раз в 10 мин). !title — титулы. !raid — герой идёт на Багрового слизня (ещё !raid — выйти, пишите " +
+      "Ещё: !focus — показать своего героя в эфире на 10 с (раз в 10 мин). !title — титулы. !raid — герой идёт в рейд на Лунного аватара (ещё !raid — выйти, пишите " +
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
@@ -5817,7 +5828,7 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Стены: в катакомбах — открытые залы пати, чужой в катакомбах — домой; иначе край карты. */
   private clampHero(id: string, p: PlayerState): void {
     if (!inCatRegion(p.head.x, p.head.z)) {
-      clampToSquare(p.head, WORLD.playHalf);
+      clampToPlay(p.head);
       return;
     }
     if (this.cat.inRun(id)) {
@@ -7391,6 +7402,14 @@ export class ZoneRoom extends Room<ZoneState> {
    * Маршрут пересчитывается раз в 2 с или когда цель сместилась больше чем на 5 м.
    */
   private botNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
+    // Цель на плато рейд-босса, а бот внизу — сперва к подножию пандуса (shared/raid raidWaypoint).
+    const wp = raidWaypoint(p.head.x, p.head.z, tx, tz);
+    if (wp) {
+      [tx, tz] = wp;
+      dist = Math.hypot(tx - p.head.x, tz - p.head.z) || 1;
+      dx = (tx - p.head.x) / dist;
+      dz = (tz - p.head.z) / dist;
+    }
     if (dist < 3) return [dx, dz];
     let nav = bot.nav;
     if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
