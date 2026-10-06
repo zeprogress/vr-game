@@ -376,10 +376,10 @@ export const BURROW = {
   maxTravel: 3,
   telegraph: 1.1,
   radius: 3.6,
-  dmgMul: 1.9,
+  dmgMul: 2.2,
   stunSec: 1.3,
   knockback: 6,
-  cooldown: 9,
+  cooldown: 7.5, // 2026-10-06: удар 1.9 → 2.2, откат 9 → 7.5
 };
 
 /**
@@ -393,9 +393,9 @@ export const STORM = {
   markR: 2.4,
   jumpR: 7,
   jumps: 4,
-  dmgMul: 1.4,
+  dmgMul: 1.6,
   jumpMul: 1.25,
-  cooldown: 6.5,
+  cooldown: 5.5, // 2026-10-06: удар 1.4 → 1.6, откат 6.5 → 5.5
 };
 
 /**
@@ -405,8 +405,8 @@ export const STORM = {
 export const CLONES = {
   at: [0.7, 0.35] as readonly number[],
   count: 2,
-  hpFrac: 0.18,
-  dmgMul: 0.5,
+  hpFrac: 0.25, // 2026-10-06: 0.18 → 0.25, урон 0.5 → 0.65
+  dmgMul: 0.65,
   scatter: 4.5,
 };
 
@@ -585,19 +585,19 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
   burrowBeast: {
     model: "monMonkroose", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
-    hp: 9800, dmgMul: 13, xp: 3000000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4,
+    hp: 14000, dmgMul: 17, xp: 3000000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4, // 2026-10-06: 9800/13 → 14000/17 (усилить)
     burrower: true, legendaryChance: 0.04,
   },
   // Грозовой дух: держится на расстоянии, метит героя молнией — удар перескакивает на тех, кто рядом.
   stormSpirit: {
     model: "monAlien", name: "Грозовой дух", blurb: "цепная молния — не толпитесь", level: 45, kind: "spitter",
-    hp: 7600, dmgMul: 11, xp: 2800000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1,
+    hp: 11000, dmgMul: 15, xp: 2800000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1, // 7600/11 → 11000/15
     stormCaller: true, legendaryChance: 0.04,
   },
   // Теневой ниндзя: быстрый и вёрткий; на 70% и 35% здоровья уходит в дым и возвращается с двумя тенями.
   shadowNinja: {
     model: "monNinja", name: "Теневой ниндзя", blurb: "теневые копии, уворот — найди настоящего", level: 45, kind: "slime",
-    hp: 8400, dmgMul: 12, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1,
+    hp: 12000, dmgMul: 16, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
     meleeReach: 2.6, cloner: true, legendaryChance: 0.04,
   },
 };
