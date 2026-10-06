@@ -135,6 +135,7 @@ import {
   affixSum,
   BAG,
   bestWeaponInstance,
+  bothHandsCls,
   FAV_MAX,
   emptyBag,
   isItemId,
@@ -821,8 +822,12 @@ function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
 function rolledIn(p: PlayerState, hand: "left" | "right", rt: Runtime): WeaponInstance | null {
   const h = heldIn(p, hand);
   if (!h) return null;
-  const pinnedId = rt.equippedWeaponId[hand];
-  if (pinnedId) {
+  // Закреплённый за этой рукой — или за другой, если она не держит второе оружие того же класса:
+  // двуручное инвентарь закрепляет за любой рукой (лук — за левой), а в руках оно числится справа.
+  const other = hand === "left" ? "right" : "left";
+  const ids = [rt.equippedWeaponId[hand], heldIn(p, other)?.cls === h.cls ? null : rt.equippedWeaponId[other]];
+  for (const pinnedId of ids) {
+    if (!pinnedId) continue;
     const pinned = rt.weapons.find((w) => w.id === pinnedId);
     if (pinned && pinned.cls === h.cls && pinned.tier === h.tier) return pinned;
   }
@@ -865,6 +870,18 @@ function rolledCrit(
 /** Ранг тира для сравнения апгрейдов: base < gold < legendary. */
 function tierRank(t: WeaponTier | string): number {
   return t === "ruby" ? 3 : t === "legendary" ? 2 : t === "gold" ? 1 : 0;
+}
+
+/**
+ * Бот наденет найденное `w` сам: тот же класс (щит — в левую), тир выше — и оружие в этой руке
+ * НЕ выбрано игроком (не закреплено в инвентаре). Выбранное игроком бот не меняет — найденное уходит в склад.
+ */
+function botEquipUpgrade(p: PlayerState, rt: Runtime, w: { cls: WeaponClass; tier: WeaponTier }): boolean {
+  const hand = w.cls === "shield" ? "left" : "right";
+  if (w.cls === "shield" ? p.leftCls !== "shield" : w.cls !== p.rightCls) return false;
+  if (tierRank(w.tier) <= tierRank((hand === "left" ? p.leftTier : p.rightTier) as WeaponTier)) return false;
+  const inst = rolledIn(p, hand, rt);
+  return !(inst && (inst.id === rt.equippedWeaponId.left || inst.id === rt.equippedWeaponId.right));
 }
 
 /**
@@ -5212,22 +5229,25 @@ export class ZoneRoom extends Room<ZoneState> {
     // а не лучший когда-либо поднятый тир этого класса.
     const pins = sanitizeEquipped(rec?.equippedWeaponId);
     const savedWeapons = Array.isArray(rec?.weapons) ? rec.weapons : [];
-    const pinR = pins.right ? savedWeapons.find((w) => w.id === pins.right) : undefined;
-    const pinL = pins.left ? savedWeapons.find((w) => w.id === pins.left && w.cls === "shield") : undefined;
-    // Класс бота: закреплённое оружие → найденный апгрейд → класс из !class →
-    // прежнее оружие → у нового героя — случайный из шести.
+    const pinOf = (id: string | null): WeaponInstance | undefined => (id ? savedWeapons.find((w) => w.id === id) : undefined);
+    const rawR = pinOf(pins.right);
+    const rawL = pinOf(pins.left);
+    // Двуручное (лук, посох, копьё, молот) инвентарь закрепляет за любой рукой — лук за левой;
+    // раньше такое закрепление бот не видел и выходил с «лучшим» экземпляром, а не выбранным.
+    const pinR = rawR && rawR.cls !== "shield" ? rawR : rawL && rawL.cls !== "shield" && bothHandsCls(rawL.cls) ? rawL : undefined;
+    // Левая: щит или второй меч/кинжал, который держится вместе с правым.
+    const pinL = rawL && rawL !== pinR && (rawL.cls === "shield" || (!!pinR && canHoldTogether(pinR.cls, rawL.cls))) ? rawL : undefined;
+    // Класс бота: закреплённое оружие → что было в руках при выходе (это и выбор на ПК, и !class) →
+    // класс из !class → у нового героя — случайный из шести.
     const chosen = rec?.botClass && isWeaponClass(rec.botClass) && rec.botClass !== "shield" ? rec.botClass : null;
-    const rc = pinR
-      ? pinR.cls
-      : savedRight && savedRight.tier !== "base"
-        ? savedRight.cls
-        : chosen ?? savedRight?.cls ?? BOT_CLASS_WEAPONS[Math.floor(Math.random() * BOT_CLASS_WEAPONS.length)];
+    const rc = pinR ? pinR.cls : (savedRight?.cls ?? chosen ?? BOT_CLASS_WEAPONS[Math.floor(Math.random() * BOT_CLASS_WEAPONS.length)]);
     // Лучший тир СВОЕГО класса из всего, что герой когда-либо честно поднял
     // (rt.owned/PlayerRecord.owned — копится на весь аккаунт), а не только
     // то, что осталось в руке или спрятано за спиной в VR на момент !stop:
     // подобрал легендарку, убрал за спину поносить базовым — бот всё равно
     // должен выйти с лучшим.
-    const rightTier = pinR ? pinR.tier : bestOwnedTier(rec?.owned, rc);
+    // Тир: закреплённого — его; в руках был этот класс — тот тир, что держал (выбор игрока); иначе лучший найденный.
+    const rightTier = pinR ? pinR.tier : savedRight?.cls === rc ? savedRight.tier : bestOwnedTier(rec?.owned, rc);
     p.rightCls = rc;
     p.rightTier = rightTier;
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
@@ -5235,17 +5255,19 @@ export class ZoneRoom extends Room<ZoneState> {
     const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
     // Левая рука: что герой держал в ней при сохранении (пустая, второй меч/кинжал, щит) —
     // не навязываем щит заново. По умолчанию (нового героя/другое оружие) — botOffHand.
-    const keepLeft = savedRight?.cls === rc && canHoldTogether(rc, savedHeld.left?.cls ?? "");
-    const off = keepLeft ? (savedHeld.left?.cls ?? "") : botOffHand(rc);
+    const keepLeft = (pinR ? true : savedRight?.cls === rc) && canHoldTogether(rc, pinL?.cls ?? savedHeld.left?.cls ?? "");
+    const off = keepLeft ? (pinL?.cls ?? savedHeld.left?.cls ?? "") : botOffHand(rc);
     p.leftCls = off;
     p.leftTier =
-      off === "shield"
-        ? leftTier
-        : off === "dagger"
-          ? bestOwnedTier(rec?.owned, "dagger")
-          : off === "sword"
-            ? (savedHeld.left?.tier ?? "base")
-            : "";
+      pinL && pinL.cls === off
+        ? pinL.tier
+        : off === "shield"
+          ? leftTier
+          : off === "dagger"
+            ? (savedHeld.left?.cls === "dagger" ? savedHeld.left.tier : bestOwnedTier(rec?.owned, "dagger"))
+            : off === "sword"
+              ? (savedHeld.left?.tier ?? "base")
+              : "";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
     // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от !scrap
     // (и любые другие расходники) стирался при первом же выходе бота в мир
@@ -5308,7 +5330,8 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
-      equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
+      // Закрепления — по рукам как у бота (двуручное — справа), чтобы rolledIn брал выбранный экземпляр.
+      equippedWeaponId: { right: pinR?.id ?? null, left: pinL && p.leftCls === pinL.cls ? pinL.id : null },
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
       fishBiteAt: null,
       fishAuto: false,
@@ -6092,7 +6115,18 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     const token = `nick:${norm}`;
-    store.put(token, { botClass: want });
+    // Новый класс — старые закрепления (оружие прежнего класса) снимаем, иначе при выходе
+    // бот вернулся бы к закреплённому. Героя вне игры — сразу и руки в сейве (их бот берёт при выходе).
+    const rec0 = store.get(token);
+    const off0 = botOffHand(want);
+    store.put(token, {
+      botClass: want,
+      equippedWeaponId: { left: null, right: null },
+      held: {
+        right: { cls: want, tier: bestOwnedTier(rec0?.owned, want) },
+        left: off0 ? { cls: off0 as WeaponClass, tier: bestOwnedTier(rec0?.owned, off0 as WeaponClass) } : null,
+      },
+    });
     const def = CLASSES2[classOf2(botOffHand(want) as Weapon2 | "", want) ?? "warrior"];
     const bot = this.bots.get(norm);
     if (bot) {
@@ -6104,6 +6138,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const off = botOffHand(want);
       p.leftCls = off;
       p.leftTier = off ? bestOwnedTier([...bot.rt.owned], off as WeaponClass) : "";
+      bot.rt.equippedWeaponId = { left: null, right: null };
       this.persistBot(bot);
     }
     this.reply(
@@ -6283,10 +6318,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private botTakeDrop(bot: Bot, d: NonNullable<ReturnType<ZoneSim["drops"]["get"]>>): boolean {
     const p = bot.state;
     // Апгрейд своего снаряжения — то, что бот реально наденет.
-    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean =>
-      w.cls === "shield"
-        ? p.leftCls === "shield" && tierRank(w.tier) > tierRank(p.leftTier as WeaponTier)
-        : w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
+    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean => botEquipUpgrade(p, bot.rt, w);
     let took = false;
     const lw = ITEMS[d.item].weapon;
     if (lw) {
@@ -6600,10 +6632,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const wantPotion = countPotions(p) < BOT.potions + 2;
     // Апгрейд своего снаряжения — то, что бот реально наденет (не путать с
     // "любое оружие берём в склад" ниже, см. okLoot).
-    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean =>
-      w.cls === "shield"
-        ? p.leftCls === "shield" && tierRank(w.tier) > tierRank(p.leftTier as WeaponTier)
-        : w.cls === p.rightCls && tierRank(w.tier) > tierRank(p.rightTier as WeaponTier);
+    const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean => botEquipUpgrade(p, bot.rt, w);
     let loot = bot.lootTarget ? this.sim.drops.get(bot.lootTarget) : undefined;
     const okLoot = (d: typeof loot): boolean => {
       if (!d || !lootFreeFor(d, bot.id)) return false; // чужой трофей — не бежим и не претендуем
