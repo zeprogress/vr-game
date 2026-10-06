@@ -42,6 +42,8 @@ import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_HALLS, CAT_PHASE, CAT_STEPS, catOpen, catParseRoute, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, catViewOf } from "../world/Catacombs";
+import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
+import { RAID } from "#shared/raid";
 import { VoiceChat } from "../voice/VoiceChat";
 import type { NetClient } from "../net/NetClient";
 import { heroStatRows, type HeroStatRow } from "#shared/heroStats";
@@ -286,6 +288,7 @@ export class Spectator {
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.catFx = zone.catacombs;
+    this.raidFx = zone.raidArena;
     // Свечения катакомб — спрайтами (одна отрисовка); у игроков билборды (VR/multiview).
     this.catFx.useSpriteGlows = true;
     this.groundHeight = zone.groundHeight;
@@ -309,6 +312,7 @@ export class Spectator {
     // Клипы классов для всех внешностей — заранее, в фоне (без рывка при появлении ботов).
     setTimeout(() => void prewarmClassClips(this.scene, [...BOT_SKIN_MODELS]), 5000);
     this.classCtx = {
+      raidTide: () => this.raidFx?.tide(),
       fx: this.classFx,
       vfx: this.skillVfx,
       sound: (at, kind) =>
@@ -1028,6 +1032,7 @@ export class Spectator {
       cst ? catViewOf(cst) : null,
       this.cam.cam.position,
     );
+    this.raidFx?.update(dt, cst ? raidViewOf(cst) : null);
     this.probe?.mark("zone");
 
     // Аватары игроков + мобы для режиссёра.
@@ -1197,6 +1202,7 @@ export class Spectator {
       boss,
       groundY: this.groundHeight,
       cat: this.catCtx(room?.state ?? null),
+      raid: this.raidCtx(room?.state ?? null),
     });
     // Перчатки/оружие «из глаз» — каждый кадр, без троттлинга оверлея
     // (иначе живые движения контроллеров читались бы рывками).
@@ -1566,7 +1572,21 @@ export class Spectator {
     });
     return { x: h.x, z: h.z, r: h.r, lo: st.catLo, hi: st.catHi, from, to, open: catOpen(route, st.catLo, st.catHi), bossId, final: st.catFinal === 1, heroes };
   }
+  /** Бой с рейд-боссом для режиссёра: край арены, босс (моб в центре арены), герои на арене. */
+  private raidCtx(st: ZoneState | null): DirectorCtx["raid"] {
+    if (!st || st.raidPh === 0) return null;
+    let bossId = "";
+    st.mobs.forEach((m, id) => {
+      if (!bossId && !m.dead && Math.hypot(m.x - RAID.x, m.z - RAID.z) < 2) bossId = id;
+    });
+    const heroes: string[] = [];
+    st.players.forEach((p, id) => {
+      if (!p.dead && Math.hypot(p.head.x - RAID.x, p.head.z - RAID.z) < st.raidEdge) heroes.push(id);
+    });
+    return { x: RAID.x, z: RAID.z, edge: st.raidEdge, bossId, heroes };
+  }
   private catFx: CatacombsFx | null = null;
+  private raidFx: RaidArenaFx | null = null;
   private catMusic = "";
 
   /** Рядом с живым боссом — boss.mp3, вдали / после смерти — обычная. Башня — та же
@@ -1582,6 +1602,15 @@ export class Spectator {
         this.catMusic = kind;
         this.bossMusicOn = false;
         this.sfx.setMusic(kind === "boss" ? CATACOMBS_BOSS_MUSIC : CATACOMBS_MUSIC, kind === "boss" ? 0.12 : 0.1);
+      }
+      return;
+    }
+    // Бой с рейд-боссом (Лунный аватар) в кадре — тема супербосса катакомб.
+    if (cs && cs.raidPh > 0 && Math.hypot(cp.x - RAID.x, cp.z - RAID.z) < RAID.r + 60) {
+      if (this.catMusic !== "raid") {
+        this.catMusic = "raid";
+        this.bossMusicOn = false;
+        this.sfx.setMusic(CATACOMBS_BOSS_MUSIC, 0.12);
       }
       return;
     }

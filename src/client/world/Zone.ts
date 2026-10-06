@@ -19,6 +19,7 @@ import { impostorsDaylight } from "./TreeImpostors";
 import { treesGlowTick } from "./nature";
 import { BotLights } from "./BotLights";
 import { CatacombsFx } from "./Catacombs";
+import { RaidArenaFx } from "./RaidArena";
 import { Fireflies, installLightRefresh, relightMaterials } from "./Fireflies";
 import { advanceHour } from "#shared/constants";
 import { HUB } from "#shared/hub";
@@ -65,6 +66,8 @@ export interface Zone {
   weaponsFaceYaw: number;
   /** Катакомбы: залы за краем карты и портал сбора в лагере (кормят Game/Spectator состоянием). */
   catacombs: CatacombsFx;
+  /** Арена рейд-босса «Лунный аватар» на плато горы (кормят Game/Spectator состоянием raid*). */
+  raidArena: RaidArenaFx;
 }
 
 /**
@@ -210,9 +213,11 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   // отдельная комната Colyseus, к этому мешу не привязан).
   const towerProp = buildTowerProp(scene);
   const catacombs = new CatacombsFx(scene);
+  const raidArena = new RaidArenaFx(scene);
 
   return {
     catacombs,
+    raidArena,
     botLights,
     fireflies,
     ground: terrain.mesh,

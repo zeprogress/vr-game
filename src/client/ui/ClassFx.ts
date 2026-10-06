@@ -427,6 +427,8 @@ export interface ClassActCtx {
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
   /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
   shieldPos?: (id: string) => { x: number; y: number; z: number } | null;
+  /** Волна «Прилива» на арене рейд-босса (RaidArenaFx.tide). */
+  raidTide?: () => void;
 }
 
 /** Теневой рывок — серый дым. */
@@ -643,7 +645,7 @@ export function playClassAct(
     }
     case "catHazard": {
       // Опасность зала — телеграф: кольцо сходится к центру за d с (обвал — пыль со свода, пламя — угли, души — фиолет).
-      const col = v === 1 ? FXC.fire : v === 2 ? FXC.arcane : FXC.gold;
+      const col = v === 1 ? FXC.fire : v === 2 ? FXC.arcane : v === 3 ? FXC.moon : FXC.gold;
       const life = d ?? 1.7;
       vfx.decal(x, y, z, r ?? 2.8, col, life, 2, 1);
       vfx.decal(x, y, z, r ?? 2.8, col, life, 1, 0.35);
@@ -652,6 +654,9 @@ export function playClassAct(
         for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 9, z, SHADOW_GRAY, { count: 10, speed: 1, life: 1.2, grav: 9, size: 0.18 }));
       } else if (v === 1) {
         for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 0.2, z, FXC.fire, { count: 8, speed: 1.5, life: 0.6, grav: -4, size: 0.18 }));
+      } else if (v === 3) {
+        // «Лунная слеза»: сверху мерцает лунная пыль — туда упадёт осколок.
+        for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 12, z, FXC.moon, { count: 10, speed: 0.8, life: 1.2, grav: 7, size: 0.2 }));
       } else {
         for (let i = 0; i < 3; i++) c.fx.later(i * 0.45, () => vfx.burst(x, y + 0.2, z, FXC.arcane, { count: 8, speed: 2, life: 0.7, grav: -5, size: 0.2 }));
       }
@@ -680,6 +685,15 @@ export function playClassAct(
         vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 25, speed: 4, life: 0.6, grav: -8, size: 0.35 });
         vfx.decal(x, y, z, rr, FXC.fire, 1.2, 0, 1);
         c.sound(at, "thud");
+      } else if (v === 3) {
+        // «Лунная слеза»: кристалл падает с неба, вспышка лунного света и осколки по кругу.
+        vfx.burst(x, y + 14, z, FXC.moon, { count: 6, speed: 0.3, life: 0.35, grav: 60, size: 0.9 });
+        c.fx.later(0.3, () => {
+          vfx.pillar(x, y, z, rr * 0.45, 9, FXC.moon, 0.8);
+          vfx.decal(x, y, z, rr * 1.15, FXC.moon, 0.9, 0, 1);
+          vfx.burst(x, y + 0.6, z, FXC.moon, { count: 45, speed: 8, life: 0.9, grav: 6, size: 0.35 });
+          c.sound(at, "bash");
+        });
       } else {
         // Гейзер душ: фиолетовый столб и вой — отбрасывает.
         vfx.pillar(x, y, z, rr * 0.6, 11, FXC.arcane, 1.1);
@@ -687,6 +701,20 @@ export function playClassAct(
         vfx.decal(x, y, z, rr * 1.3, FXC.shadowDark, 1, 0, 1);
         c.sound(at, "thud");
       }
+      return true;
+    }
+    case "raidTide": {
+      // «Прилив»: волна света от центра арены по всему кругу.
+      c.raidTide?.();
+      vfx.burst(x, y + 1, z, FXC.moon, { count: 70, speed: 16, life: 1.1, grav: 0, size: 0.5 });
+      vfx.pillar(x, y, z, 3, 14, FXC.moon, 1);
+      c.sound(at, "bash");
+      return true;
+    }
+    case "raidFall": {
+      // Герой сорвался с арены в пустоту.
+      vfx.burst(x, y + 0.5, z, FXC.arcane, { count: 30, speed: 3, life: 1, grav: 9, size: 0.4 });
+      c.sound(at, "thud");
       return true;
     }
     case "catGate": {

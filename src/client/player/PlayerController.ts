@@ -98,6 +98,9 @@ export class PlayerController {
     this.slowSec = Math.max(this.slowSec, sec);
   }
 
+  /** Движущаяся платформа под героем: сдвиг за кадр (м) или null — не на ней. Ставит Game (арена рейд-босса). */
+  platform: ((x: number, z: number, dt: number) => [number, number] | null) | null = null;
+
   /** Толчок от точки (dirX,dirZ уже направление ОТ источника) с силой power, м/с. */
   applyKnockback(dirX: number, dirZ: number, power: number): void {
     const l = Math.hypot(dirX, dirZ) || 1;
@@ -518,6 +521,15 @@ export class PlayerController {
     } else {
       this.knockVX = 0;
       this.knockVZ = 0;
+    }
+    // Платформа под ногами (арена рейд-босса вращается и сносит к краю) — тоже независимо от ввода.
+    if (this.platform && !this.dead) {
+      const bp = this.body.position;
+      const mv = this.platform(bp.x, bp.z, dt);
+      if (mv) {
+        this.moveAxis(mv[0], 0);
+        this.moveAxis(0, mv[1]);
+      }
     }
     const pos = this.body.position;
     const vr = this.xrCamera !== null;

@@ -133,6 +133,8 @@ import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSet
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_PHASE, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
+import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
+import { RAID, raidCarry } from "#shared/raid";
 
 /**
  * Каркас движка: один Engine, одна Scene, один рендер-луп.
@@ -378,11 +380,19 @@ export class Game {
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.catFx = zone.catacombs;
+    this.raidFx = zone.raidArena;
     this.botLights = zone.botLights;
     this.lightFocus = new LightFocus(this.scene);
     this.fireflies = zone.fireflies;
 
     this.player = new PlayerController(this.scene, this.progression);
+    // Арена рейд-босса вращается: стоящего героя несёт по кругу и сносит к краю (та же формула,
+    // что у ботов на сервере — shared/raid raidCarry); за краем — пустота (решает сервер).
+    this.player.platform = (x, z, dt) => {
+      const st = this.net?.room?.state;
+      if (!st || st.raidPh === 0) return null;
+      return raidCarry(x, z, st.raidW, st.raidDrift, st.raidEdge, dt);
+    };
     this.player.setObstacles(zone.obstacles);
     this.scene.activeCamera = this.player.camera;
     this.player.placeOnGround();
@@ -424,6 +434,7 @@ export class Game {
     this.classFx.vfx = this.skillVfx;
     this.skillVfx.follow = (kind, fid) => this.fxFollow(kind, fid);
     this.classCtx = {
+      raidTide: () => this.raidFx?.tide(),
       fx: this.classFx,
       vfx: this.skillVfx,
       sound: (at, kind) =>
@@ -2440,9 +2451,11 @@ export class Game {
     const view: CatView | null = st ? catViewOf(st) : null;
     this.catFx?.update(dt, view, this.player.position);
     this.player.catBounds = view && view.phase >= CAT_PHASE.run ? view.open : null;
+    this.raidFx?.update(dt, st ? raidViewOf(st) : null);
   }
   private catFx: CatacombsFx | null = null;
-  /** Какая музыка сейчас: town / boss / cat / catBoss. */
+  private raidFx: RaidArenaFx | null = null;
+  /** Какая музыка сейчас: town / boss / cat / catBoss / raid. */
   private musicKind = "town";
 
   /** Рядом с живым боссом играет boss.mp3, в катакомбах — свои треки, вдали / после смерти — обычная. */
@@ -2458,7 +2471,16 @@ export class Game {
       }
       return;
     }
-    if (this.musicKind === "cat" || this.musicKind === "catBoss") {
+    // Бой с рейд-боссом (Лунный аватар) рядом — тема супербосса катакомб.
+    if (st && st.raidPh > 0 && Math.hypot(pp.x - RAID.x, pp.z - RAID.z) < RAID.r + 50) {
+      if (this.musicKind !== "raid") {
+        this.musicKind = "raid";
+        this.bossMusicOn = false;
+        this.sfx.setMusic(CATACOMBS_BOSS_MUSIC, 0.11);
+      }
+      return;
+    }
+    if (this.musicKind === "cat" || this.musicKind === "catBoss" || this.musicKind === "raid") {
       this.musicKind = "town";
       this.bossMusicOn = !this.bossMusicOn; // ниже переключит обратно на нужную
     }

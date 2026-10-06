@@ -285,6 +285,24 @@ export class ZoneState extends Schema {
   @type("float32") catShrineX = 0;
   @type("float32") catShrineZ = 0;
   @type("int8") catShrine = -1;
+  /** Рейд-босс (shared/raid.ts): 0 — боя нет, 1..4 — фаза. */
+  @type("uint8") raidPh = 0;
+  /** Поворот арены, рад, и её угловая скорость сейчас, рад/с (с рывками) — клиент несёт по ней своего героя. */
+  @type("float32") raidAng = 0;
+  @type("float32") raidW = 0;
+  /** Снос к краю у самого края, м/с; край арены, м; полуширина разрыва, рад. */
+  @type("float32") raidDrift = 0;
+  @type("float32") raidEdge = 0;
+  @type("float32") raidGap = 0;
+  /** Сколько орбит и углы центров их разрывов, рад. */
+  @type("uint8") raidOn = 0;
+  @type("float32") raidO0 = 0;
+  @type("float32") raidO1 = 0;
+  @type("float32") raidO2 = 0;
+  /** Орбита «на ребре» (−1 — нет). */
+  @type("int8") raidVert = -1;
+  /** Секунд до «Прилива» (0 — не скоро/нет боя). */
+  @type("uint8") raidTide = 0;
 
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type({ map: MobState }) mobs = new MapSchema<MobState>();

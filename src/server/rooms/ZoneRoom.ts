@@ -75,6 +75,7 @@ import {
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, raidWaypoint } from "#shared/raid";
+import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
 import { synthChat, ttsAvailable } from "../tts";
@@ -1272,6 +1273,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
     // и те, и другие лежат в state.players.
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
+    // Рейд-босс ранят только с арены из разрыва орбиты (raidFight.canHit).
+    this.sim.raidShield = (id) => {
+      const p = this.state.players.get(id);
+      return !!p && this.raid.canHit(id, p.head.x, p.head.z);
+    };
     // Поджог огнешара — ролл посоха «Поджог» (шанс); горение от ИНТ (burnHpFracFor). Пронзание — ролл лука.
     // Один источник для игроков и ботов (роллы того, что в руках).
     this.sim.getIgnite = (id) => {
@@ -5593,30 +5599,16 @@ export class ZoneRoom extends Room<ZoneState> {
       },
       hazard: (kind, pts, o) => {
         const H = CAT_HAZARD;
-        const v = H.kinds.indexOf(kind);
-        const R = o?.r ?? H.radius;
-        const delay = o?.delay ?? H.delay;
-        const dmgFrac = (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg;
-        const stun = o?.stun ?? (kind === "rockfall" ? 0.8 : 0);
-        const knock = o?.knock ?? (kind === "souls" ? 6 : 0);
-        for (const pt of pts) {
-          this.addDanger(pt.x, pt.z, R + 0.6, delay + 0.2);
-          this.broadcast(MSG.act, { k: "catHazard", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: delay, r: R, v } satisfies ActRelay);
-        }
-        this.clock.setTimeout(() => {
-          for (const pt of pts) {
-            this.broadcast(MSG.act, { k: "catHazardHit", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, r: R, v } satisfies ActRelay);
-            this.state.players.forEach((pl, pid) => {
-              if (pl.dead || !this.cat.inRun(pid)) return;
-              if (Math.hypot(pl.head.x - pt.x, pl.head.z - pt.z) > R) return;
-              this.hurtPlayer({
-                target: pid, dmg: pl.maxHp * dmgFrac, fromX: pt.x, fromZ: pt.z, projectile: true, magic: kind !== "rockfall", phys: kind === "rockfall",
-                ...(stun ? { stunSec: stun } : {}),
-                ...(knock ? { knockback: knock } : {}),
-              });
-            });
-          }
-        }, delay * 1000);
+        this.strikeZone(pts, {
+          v: H.kinds.indexOf(kind),
+          r: o?.r ?? H.radius,
+          delay: o?.delay ?? H.delay,
+          dmgFrac: (o?.dmg ?? H.dmgFrac) * CATACOMBS.hazardScale * this.cat.sizeDmg,
+          stun: o?.stun ?? (kind === "rockfall" ? 0.8 : 0),
+          knock: o?.knock ?? (kind === "souls" ? 6 : 0),
+          phys: kind === "rockfall",
+          who: (pid) => this.cat.inRun(pid),
+        });
       },
       stats: (rows, reset) => {
         if (reset) {
@@ -5681,6 +5673,97 @@ export class ZoneRoom extends Room<ZoneState> {
    * не ударило. Пишут: опасности катакомб, атаки Владыки (волна, дыхание, дождь).
    */
   private readonly dangers: { x: number; z: number; r: number; until: number }[] = [];
+  /**
+   * Удар по площади с предупреждением (опасности катакомб, «Лунная слеза» рейда): круги в точках
+   * (вид v: 0 обвал, 1 пламя, 2 души, 3 лунная слеза), через delay — урон (доля макс. HP) героям
+   * `who` в кругах; боты из кругов убегают (addDanger).
+   */
+  private strikeZone(
+    pts: readonly { x: number; z: number }[],
+    o: { v: number; r: number; delay: number; dmgFrac: number; who: (pid: string) => boolean; stun?: number; knock?: number; phys?: boolean },
+  ): void {
+    const R = o.r;
+    for (const pt of pts) {
+      this.addDanger(pt.x, pt.z, R + 0.6, o.delay + 0.2);
+      this.broadcast(MSG.act, { k: "catHazard", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, d: o.delay, r: R, v: o.v } satisfies ActRelay);
+    }
+    this.clock.setTimeout(() => {
+      for (const pt of pts) {
+        this.broadcast(MSG.act, { k: "catHazardHit", id: "", x: pt.x, y: terrainHeight(pt.x, pt.z), z: pt.z, r: R, v: o.v } satisfies ActRelay);
+        this.state.players.forEach((pl, pid) => {
+          if (pl.dead || !o.who(pid)) return;
+          if (Math.hypot(pl.head.x - pt.x, pl.head.z - pt.z) > R) return;
+          this.hurtPlayer({
+            target: pid, dmg: pl.maxHp * o.dmgFrac, fromX: pt.x, fromZ: pt.z, projectile: true, magic: !o.phys, phys: !!o.phys,
+            ...(o.stun ? { stunSec: o.stun } : {}),
+            ...(o.knock ? { knockback: o.knock } : {}),
+          });
+        });
+      }
+    }, o.delay * 1000);
+  }
+
+  /** Хост боя с рейд-боссом (server/rooms/raidFight.ts). */
+  private raidHost(): RaidHost {
+    return {
+      now: () => this.elapsed,
+      boss: () => {
+        const m = this.sim.mobs.get(this.sim.raidBossId);
+        return m && !m.dead ? { id: m.id, hp: m.hp, maxHp: m.maxHp } : null;
+      },
+      heroes: () => {
+        const out: ReturnType<RaidHost["heroes"]> = [];
+        this.state.players.forEach((p, id) => {
+          if (p.towerFloor > 0) return;
+          out.push({ id, x: p.head.x, z: p.head.z, dead: !!p.dead, bot: id.startsWith("bot:") });
+        });
+        return out;
+      },
+      setState: (s) => {
+        const st = this.state;
+        if (st.raidPh !== s.ph) st.raidPh = s.ph;
+        if (s.ph === 0 && st.raidOn === 0) return; // боя нет — углы не шлём каждый тик
+        st.raidAng = s.ang;
+        if (st.raidW !== s.w) st.raidW = s.w;
+        if (st.raidDrift !== s.drift) st.raidDrift = s.drift;
+        if (st.raidEdge !== s.edge) st.raidEdge = s.edge;
+        if (st.raidGap !== s.gap) st.raidGap = s.gap;
+        if (st.raidOn !== s.on) st.raidOn = s.on;
+        st.raidO0 = s.o[0];
+        st.raidO1 = s.o[1];
+        st.raidO2 = s.o[2];
+        if (st.raidVert !== s.vert) st.raidVert = s.vert;
+        if (st.raidTide !== s.tide) st.raidTide = s.tide;
+      },
+      kill: (id, why) => {
+        const p = this.state.players.get(id);
+        if (!p || p.dead) return;
+        this.hurtPlayer({ target: id, dmg: p.maxHp * 10, fromX: RAID.x, fromZ: RAID.z, projectile: false, dot: true, byName: why === "fall" ? "Пустота" : "Прилив" });
+      },
+      tear: (x, z, r, delay, dmgFrac) => this.strikeZone([{ x, z }], { v: 3, r, delay, dmgFrac, who: (pid) => this.raid.isOn(pid) }),
+      shiftBot: (id, dx, dz) => {
+        const p = this.state.players.get(id);
+        if (!p) return;
+        p.head.x += dx;
+        p.head.z += dz;
+      },
+      announce: (title, sub) => {
+        // Титры — тем, кто у арены, и зрителям эфира (не всей карте: «Прилив» раз в 20 с).
+        const msg: CatacombMsg = { kind: "boss", title, sub, secs: 4 };
+        for (const c of this.clients) {
+          const p = this.state.players.get(c.sessionId);
+          if (this.spectators.has(c.sessionId) || (p && Math.hypot(p.head.x - RAID.x, p.head.z - RAID.z) < RAID.r + 40)) c.send(MSG.catacomb, msg);
+        }
+      },
+      chat: (text) => this.reply(text),
+      fx: (k, x, z) => this.broadcast(MSG.act, { k, id: "", x, y: terrainHeight(x, z), z } satisfies ActRelay),
+      healBoss: () => {
+        const m = this.sim.mobs.get(this.sim.raidBossId);
+        if (m && !m.dead) m.hp = m.maxHp;
+      },
+    };
+  }
+
   private addDanger(x: number, z: number, r: number, sec: number): void {
     this.dangers.push({ x, z, r, until: this.elapsed + sec });
   }
@@ -6762,7 +6845,22 @@ export class ZoneRoom extends Room<ZoneState> {
     const dz = dzRaw / dist;
     // Куда шагать: напрямую или по маршруту в обход крутых склонов (sim/nav.ts).
     // Прицел и дистанции (удар, «стой тут») — по самой цели (dx/dz, dist).
-    const [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
+    let [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
+    // Бой с рейд-боссом: ноги — в центр ближайшего разрыва орбиты (бить можно только оттуда),
+    // прицел и удар — по-прежнему по боссу. Ближний бой — у края туши, дальний — на дистанции стрельбы.
+    let raidGapDist = -1;
+    if (raidBoss && !escape && this.raid.fighting) {
+      const shooter = p.rightCls === "bow" || p.rightCls === "staff";
+      const edgeR = MOB.bodyRadius * raidBoss.scale * BOSS.bodyMult;
+      const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;
+      const gp = this.raid.gapPoint(p.head.x, p.head.z, want);
+      if (gp) {
+        const gx = gp.x - p.head.x;
+        const gz = gp.z - p.head.z;
+        raidGapDist = Math.hypot(gx, gz) || 1e-6;
+        [mdx, mdz] = this.botNavDir(bot, p, gp.x, gp.z, gx / raidGapDist, gz / raidGapDist, raidGapDist);
+      }
+    }
     // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
     // а не от центра — иначе бот лезет внутрь туши и мажет (см. resolveBotHit).
     // Радиус туши шире сферического хитбокса — BOSS.bodyMult (модель слизня).
@@ -6867,19 +6965,24 @@ export class ZoneRoom extends Room<ZoneState> {
     const retreat =
       (ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt);
     const wantSpeed =
-      bot.swingIn > 0 || emoting
-        ? 0
-        : retreat
-          ? -botSpeed * 0.75
-          : dist > stopAt
-            ? botSpeed * Math.min(1, (dist - stopAt) / 1.5)
-            : 0;
+      raidGapDist >= 0
+        ? // Рейд: держимся в разрыве (он плывёт, арена несёт) — бежим и во время замаха.
+          raidGapDist > 0.8
+          ? botSpeed * Math.min(1, (raidGapDist - 0.8) / 1.5)
+          : 0
+        : bot.swingIn > 0 || emoting
+          ? 0
+          : retreat
+            ? -botSpeed * 0.75
+            : dist > stopAt
+              ? botSpeed * Math.min(1, (dist - stopAt) / 1.5)
+              : 0;
     // Лучник/маг на дистанции — не столбом: плавно ходит боком туда-сюда,
     // не сбивая прицел (перпендикуляр к линии на цель). Фаза своя у каждого
     // бота (по id), чтобы группа не дёргалась в такт.
     let strafeX = 0;
     let strafeZ = 0;
-    if (ranged && !retreat && dist <= stopAt && !emoting && bot.swingIn <= 0) {
+    if (ranged && raidGapDist < 0 && !retreat && dist <= stopAt && !emoting && bot.swingIn <= 0) {
       const s = Math.sin((this.elapsed * 0.5 + strPhase(bot.id) * 10) * Math.PI * 2);
       const strafeSpeed = botSpeed * 0.4 * s;
       strafeX = -dz * strafeSpeed;
@@ -8383,6 +8486,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickChatQuest();
     this.tickRaid();
     this.cat.tick();
+    this.raid.tick(dt);
     const perfB0 = serverPerf.now();
     this.tickBots(dt);
     serverPerf.section("bots", serverPerf.now() - perfB0);
@@ -9110,6 +9214,8 @@ export class ZoneRoom extends Room<ZoneState> {
   private readonly joinedAt = new Map<string, number>();
   /** Катакомбы (shared/catacombs.ts): сбор отряда и забег по залам в этом же мире. */
   readonly cat = new CatacombDirector(this.catHost());
+  /** Бой с рейд-боссом «Лунный аватар» (server/rooms/raidFight.ts, shared/raid.ts). */
+  readonly raid = new RaidFight(this.raidHost());
 
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
   private readonly raidPending = new Set<string>();

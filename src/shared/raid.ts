@@ -18,6 +18,96 @@ export const RAID = {
   respawnSec: 300,
 } as const;
 
+/**
+ * Фазы боя по доле HP босса (дизайн рейда). Числа — для подстройки:
+ * - orbits — сколько колец-орбит вокруг босса (у каждого один разрыв);
+ * - arenaSpd — вращение арены, °/с: стоящего героя арена несёт по кругу и сносит к краю (drift);
+ * - orbitRel — скорость каждой орбиты ОТНОСИТЕЛЬНО арены, °/с (знак — направление): столько
+ *   приходится идти, чтобы оставаться в её разрыве;
+ * - gap — ширина разрыва, °; edge — край арены (доля RAID.r): за ним пустота, упал — погиб;
+ * - drift — снос к краю у самого края, м/с (к центру спадает до нуля);
+ * - jerky — арена вращается рывками; vertical — индекс орбиты, стоящей «на ребре» (вид).
+ */
+export interface RaidPhase {
+  from: number;
+  orbits: number;
+  arenaSpd: number;
+  orbitRel: readonly number[];
+  gap: number;
+  edge: number;
+  drift: number;
+  jerky?: boolean;
+  vertical?: number;
+}
+export const RAID_PHASES: readonly RaidPhase[] = [
+  { from: 1.0, orbits: 1, arenaSpd: 5, orbitRel: [-6], gap: 90, edge: 1.0, drift: 0.35 },
+  { from: 0.75, orbits: 2, arenaSpd: 15, orbitRel: [-10, 12], gap: 45, edge: 0.85, drift: 0.7 },
+  { from: 0.5, orbits: 3, arenaSpd: 30, orbitRel: [-14, 16, -20], gap: 30, edge: 0.7, drift: 1.1, jerky: true, vertical: 2 },
+  { from: 0.25, orbits: 1, arenaSpd: 45, orbitRel: [24], gap: 20, edge: 0.55, drift: 1.5 },
+];
+
+/** Номер фазы (0..3) по доле HP босса. */
+export function raidPhaseOf(hpFrac: number): number {
+  let ph = 0;
+  for (let i = 0; i < RAID_PHASES.length; i++) if (hpFrac <= RAID_PHASES[i].from + 1e-9) ph = i;
+  return ph;
+}
+
+/** Радиусы орбит (от центра арены), м; высота колец над полом. */
+export const RAID_ORBITS = { r: [9, 13.5, 18] as readonly number[], y: 3.2 } as const;
+
+/** Способности босса (дизайн рейда). */
+export const RAID_FIGHT = {
+  /** «Лунная слеза»: раз в every с осколок падает на случайного героя арены — круг r, удар через delay. */
+  tear: { every: 8, r: 4, delay: 1.6, dmg: 0.35 },
+  /** «Прилив»: раз в every с волна света — гибнет всякий на арене, кто не в разрыве; предупреждение warn с. */
+  tide: { every: 20, warn: 4 },
+  /** Энрейдж: через столько секунд боя прилив бьёт всех без разбора. */
+  enrageSec: 15 * 60,
+  /** Никого на арене столько секунд — бой сброшен (босс снова целый, фаза 1). */
+  resetSec: 15,
+  /** Рывки арены (фаза с jerky): период, с, и доля периода, когда она крутится. */
+  jerkPeriod: 1.6,
+  jerkOn: 0.35,
+} as const;
+
+/** Угол точки вокруг центра арены, рад (как yaw: atan2(dx, dz)). */
+export function raidAngle(x: number, z: number): number {
+  return Math.atan2(x - RAID.x, z - RAID.z);
+}
+
+/**
+ * Сдвиг героя ареной за dt: поворот вокруг центра на w·dt (рад) и снос к краю (drift м/с у края,
+ * к центру спадает). null — точка не на арене (за краем edge). Общая формула: сервер несёт ботов,
+ * клиент — своего героя (поля состояния raidW/raidDrift/raidEdge).
+ */
+export function raidCarry(x: number, z: number, w: number, drift: number, edge: number, dt: number): [number, number] | null {
+  const rx = x - RAID.x;
+  const rz = z - RAID.z;
+  const d = Math.hypot(rx, rz);
+  if (d < 1e-3 || d > edge + 0.3 || edge <= 0) return null;
+  const a = w * dt;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  const push = drift * (d / edge) * dt;
+  return [rx * ca + rz * sa - rx + (rx / d) * push, rz * ca - rx * sa - rz + (rz / d) * push];
+}
+
+/** Разница углов в −π..π. */
+export function angDiff(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+/** Стоит ли точка в разрыве хоть одной из n орбит (углы центров разрывов `gaps`, полуширина halfGap, рад). */
+export function inRaidGap(x: number, z: number, gaps: readonly number[], n: number, halfGap: number): boolean {
+  const a = raidAngle(x, z);
+  for (let i = 0; i < n; i++) if (Math.abs(angDiff(a, gaps[i])) <= halfGap) return true;
+  return false;
+}
+
 /** Ровное плато горы (прямоугольник): здесь можно ходить, хотя это за краем карты. */
 export const RAID_PLATEAU = { x0: -126, x1: -42, z0: -256, z1: -180 } as const;
 

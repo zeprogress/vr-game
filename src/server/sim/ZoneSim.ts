@@ -2344,6 +2344,8 @@ export class ZoneSim {
   scarecrowId = "";
   /** id рейд-босса (Лунный аватар, shared/raid.ts) — цель !raid. */
   raidBossId = "";
+  /** Может ли атакующий ранить рейд-босса (ставит ZoneRoom по бою raidFight); null — может всегда. */
+  raidShield: ((attacker: string) => boolean) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private scare: { by: string; start: number; last: number; total: number; max: number } | null = null;
 
@@ -2770,6 +2772,11 @@ export class ZoneSim {
     if (!m) return null;
     // Неуязвим (щит Владыки Бездны в катакомбах): удары — «MISS», урона нет.
     if (m.immune && !m.dead) {
+      if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
+      return null;
+    }
+    // Рейд-босс: ранить можно только с арены из разрыва орбиты (server/rooms/raidFight.ts) — иначе «MISS».
+    if (m.id === this.raidBossId && this.raidShield && !m.dead && !this.raidShield(attacker)) {
       if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
       return null;
     }

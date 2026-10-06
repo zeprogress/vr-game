@@ -125,6 +125,10 @@ type Shot =
   | { kind: "catTop" }
   | { kind: "catGate" }
   | { kind: "catBoss" }
+  | { kind: "raidWide" }
+  | { kind: "raidHero"; id: string }
+  | { kind: "raidBoss" }
+  | { kind: "raidTop" }
   | { kind: "path"; idx: number };
 
 export interface CtxPlayer {
@@ -156,7 +160,16 @@ export interface DirectorCtx {
   groundY: (x: number, z: number) => number;
   /** Катакомбы идут: текущий зал, страж/Владыка (самый крупный моб зала), герои внизу. */
   cat?: { x: number; z: number; r: number; lo: number; hi: number; from: number; to: number; open: number[]; bossId: string; final: boolean; heroes: string[] } | null;
+  /** Идёт бой с рейд-боссом (Лунный аватар): центр и край арены, босс, герои на арене. */
+  raid?: { x: number; z: number; edge: number; bossId: string; heroes: string[] } | null;
 }
+
+/**
+ * Динамичная камера рейда: кадры сменяются каждые hold с (облёт арены → из-за плеча рейдера →
+ * снизу на босса → сверху на вращающуюся арену), переезд между ними — плавный blend с.
+ */
+const RAID_CAM = { hold: 6.5, blend: 1.6, wideOut: 14, wideH: 15, topH: 42, heroBack: 7, heroUp: 3.2 } as const;
+const RAID_ORDER = ["raidWide", "raidHero", "raidBoss", "raidTop", "raidHero"] as const;
 
 /** Камера катакомб: высота (м над полом, + за размах боя), относ назад от высоты, «рядом с героями» для мобов. */
 /** Камера перехода между залами: на столько метров вглубь нового зала, высота, сдвиг вбок, куда смотрим. */
@@ -401,6 +414,13 @@ export class SpectatorCamera {
       // Решётка поднята (lo < hi) — камера идёт вместе с отрядом сквозь ворота в новый зал.
       const want = cat.lo < cat.hi ? "catGate" : "catTop";
       if (this.shot.kind !== want) this.switchTo({ kind: want }, ctx);
+    } else if (this.auto && ctx.raid && !this.botsOnly) {
+      // Рейд: свой цикл ракурсов, смена каждые RAID_CAM.hold с (или кадр пропал — герой погиб).
+      const isRaid = this.shot.kind.startsWith("raid");
+      if (!isRaid || invalid || this.sinceSwitch >= RAID_CAM.hold) {
+        this.switchTo(this.nextRaidShot(ctx), ctx);
+        this.curBlend = RAID_CAM.blend;
+      }
     } else if (this.auto && fighting && !this.isFightShot(this.shot)) {
       this.switchTo({ kind: "orbitBoss" }, ctx);
     } else if (invalid) {
@@ -478,6 +498,23 @@ export class SpectatorCamera {
   /** Проводка через ворота: какой переход и где камера на оси коридора. */
   private catGateKey = "";
   private catGateS = 0;
+
+  private raidIdx = 0;
+  /** Следующий ракурс рейда по кругу RAID_ORDER (у кадра героя — случайный рейдер на арене). */
+  private nextRaidShot(ctx: DirectorCtx): Shot {
+    const r = ctx.raid!;
+    for (let i = 0; i < RAID_ORDER.length; i++) {
+      const k = RAID_ORDER[this.raidIdx++ % RAID_ORDER.length];
+      if (k === "raidHero") {
+        const ids = r.heroes.filter((id) => ctx.players.some((p) => p.id === id));
+        if (!ids.length) continue;
+        return { kind: "raidHero", id: ids[Math.floor(Math.random() * ids.length)] };
+      }
+      if (k === "raidBoss" && !(r.bossId && ctx.mobs.some((m) => m.id === r.bossId))) continue;
+      return { kind: k };
+    }
+    return { kind: "raidWide" };
+  }
 
   private isFightShot(s: Shot): boolean {
     return (
@@ -606,6 +643,9 @@ export class SpectatorCamera {
     if (s.kind === "orbitBoss") return ctx.boss !== null;
     if (s.kind === "catHall" || s.kind === "catTop" || s.kind === "catGate") return !!ctx.cat;
     if (s.kind === "catBoss") return !!ctx.cat?.bossId && ctx.mobs.some((m) => m.id === ctx.cat!.bossId);
+    if (s.kind === "raidHero") return !!ctx.raid && ctx.players.some((p) => p.id === s.id);
+    if (s.kind === "raidBoss") return !!ctx.raid?.bossId && ctx.mobs.some((m) => m.id === ctx.raid!.bossId);
+    if (s.kind === "raidWide" || s.kind === "raidTop") return !!ctx.raid;
     if (s.kind === "crowd") return this.crowdPlayers(ctx).length > 0;
     if (s.kind === "eyeMob") return ctx.mobs.some((m) => m.id === s.id);
     if (s.kind === "path") {
@@ -816,6 +856,59 @@ export class SpectatorCamera {
           const hgt = 8 - 3 * k;
           this._catFocus.set(c.x, ctx.groundY(c.x, c.z) + 1.2, c.z);
           this.orbit(this._catFocus, rad, hgt, SPECTATE.orbitSpeed * 0.35, pos, tgt);
+          return;
+        }
+        break;
+      }
+      case "raidWide": {
+        // Широкий облёт арены: видно край, орбиты и разрывы.
+        const r = ctx.raid;
+        if (r) {
+          const gy = ctx.groundY(r.x, r.z);
+          this._catFocus.set(r.x, gy + 2, r.z);
+          this.orbit(this._catFocus, r.edge + RAID_CAM.wideOut, RAID_CAM.wideH, SPECTATE.orbitSpeed * 0.6, pos, tgt);
+          return;
+        }
+        break;
+      }
+      case "raidTop": {
+        // Сверху: арена крутится, разрывы плывут — читается вся механика.
+        const r = ctx.raid;
+        if (r) {
+          const gy = ctx.groundY(r.x, r.z);
+          const a = this.orbitClock * 0.08;
+          pos.set(r.x + Math.cos(a) * 9, gy + RAID_CAM.topH, r.z + Math.sin(a) * 9);
+          tgt.set(r.x, gy, r.z);
+          return;
+        }
+        break;
+      }
+      case "raidHero": {
+        // Из-за плеча рейдера на босса.
+        const r = ctx.raid;
+        const p = ctx.players.find((pp) => pp.id === s.id);
+        if (r && p) {
+          const gy = ctx.groundY(p.pos.x, p.pos.z);
+          let dx = p.pos.x - r.x;
+          let dz = p.pos.z - r.z;
+          const l = Math.hypot(dx, dz) || 1;
+          dx /= l;
+          dz /= l;
+          pos.set(p.pos.x + dx * RAID_CAM.heroBack - dz * 1.6, gy + RAID_CAM.heroUp, p.pos.z + dz * RAID_CAM.heroBack + dx * 1.6);
+          tgt.set(r.x, ctx.groundY(r.x, r.z) + 4.5, r.z);
+          return;
+        }
+        break;
+      }
+      case "raidBoss": {
+        // Снизу вверх на босса — огромный, с орбитами вокруг.
+        const r = ctx.raid;
+        const m = r ? ctx.mobs.find((mm) => mm.id === r.bossId) : undefined;
+        if (r && m) {
+          const gy = ctx.groundY(r.x, r.z);
+          this._catFocus.set(r.x, gy, r.z);
+          this.orbit(this._catFocus, Math.min(r.edge - 2, 15), 1.4, SPECTATE.orbitSpeed * 0.7, pos, tgt);
+          tgt.y += 6;
           return;
         }
         break;
