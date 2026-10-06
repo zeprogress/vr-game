@@ -4034,8 +4034,8 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Сундук: уникальное оружие класса героя (по оружию в правой руке), 3 ролла, оценка ≥ CHEST_MIN_QUALITY. */
-  private rollChestWeapon(p: PlayerState): WeaponInstance {
-    const cls: WeaponClass = isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword";
+  private rollChestWeapon(p: PlayerState, forCls?: WeaponClass): WeaponInstance {
+    const cls: WeaponClass = forCls ?? (isWeaponClass(p.rightCls) && p.rightCls !== "shield" ? p.rightCls : "sword");
     let w = rollWeaponInstance(cls, "legendary");
     for (let i = 0; i < 200 && w.affixes.length < 3; i++) w = rollWeaponInstance(cls, "legendary");
     for (let i = 0; i < 400 && weaponQuality(w) < CHEST_MIN_QUALITY; i++) {
@@ -5779,9 +5779,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(id);
     const rt = this.rt.get(id);
     if (!p || !rt) return [];
-    const pick = (c: string): c is WeaponClass => isWeaponClass(c) && c !== "shield";
-    const cls: WeaponClass = pick(p.rightCls) ? p.rightCls : pick(p.leftCls) ? p.leftCls : "sword";
-    const w = kind === "final" ? this.rollChestWeapon(p) : rollWeaponInstance(cls, "gold");
+    // Оружие из сундуков катакомб — случайного класса (не только своего).
+    const cls: WeaponClass = ATTACK_CLASSES[Math.floor(Math.random() * ATTACK_CLASSES.length)];
+    const w = kind === "final" ? this.rollChestWeapon(p, cls) : rollWeaponInstance(cls, "gold");
     rt.weapons.push(w);
     const token = rt.token ?? `nick:${normNick(p.nick)}`;
     store.put(token, { weapons: rt.weapons });
