@@ -6796,7 +6796,8 @@ export class ZoneRoom extends Room<ZoneState> {
     }
 
     // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
-    const escape = this.dangerEscape(p.head.x, p.head.z);
+    // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
+    const escape = raidBoss && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z);
     if (escape) mob = undefined;
 
     let tx: number;
@@ -6853,7 +6854,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const shooter = p.rightCls === "bow" || p.rightCls === "staff";
       const edgeR = MOB.bodyRadius * raidBoss.scale * BOSS.bodyMult;
       const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;
-      const gp = this.raid.gapPoint(p.head.x, p.head.z, want);
+      const gp = this.raid.gapPoint(p.head.x, p.head.z, want, strPhase(bot.id) * 2 - 1);
       if (gp) {
         const gx = gp.x - p.head.x;
         const gz = gp.z - p.head.z;

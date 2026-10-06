@@ -54,6 +54,8 @@ export class RaidFight {
   private ang = 0;
   private w = 0;
   private readonly orbits: [number, number, number] = [0, 0, 0];
+  /** Снос к краю сейчас, м/с (в каст «Прилива» — 0). */
+  private drift = 0;
   /** Кто стоит на арене (вошёл внутрь края) — его несёт, бьёт прилив, он может ранить босса. */
   private readonly onArena = new Set<string>();
   private startAt = 0;
@@ -67,6 +69,11 @@ export class RaidFight {
 
   get fighting(): boolean {
     return this.active;
+  }
+
+  /** Идёт каст «Прилива»: разрывы и арена замерли — все бегут в разрыв. */
+  get tideCasting(): boolean {
+    return this.active && this.tideWarned;
   }
 
   /** Герой на арене (в бою). */
@@ -93,8 +100,11 @@ export class RaidFight {
     return this.active && this.onArena.has(id) && this.inGap(x, z);
   }
 
-  /** Куда встать боту: центр ближайшего разрыва на радиусе r от босса. null — боя нет. */
-  gapPoint(x: number, z: number, r: number): { x: number; z: number } | null {
+  /**
+   * Куда встать боту: ближайший разрыв на радиусе r от босса. slot −1..1 — место поперёк конуса
+   * (боты встают по всей ширине, а не в одну точку — не выталкивают друг друга). null — боя нет.
+   */
+  gapPoint(x: number, z: number, r: number, slot = 0): { x: number; z: number } | null {
     if (!this.active) return null;
     const a = raidAngle(x, z);
     const n = RAID_PHASES[this.phase].orbits;
@@ -108,7 +118,8 @@ export class RaidFight {
       }
     }
     const rr = Math.min(r, this.edge - 2.5);
-    return { x: RAID.x + Math.sin(best) * rr, z: RAID.z + Math.cos(best) * rr };
+    const a2 = best + slot * this.halfGap * 0.6;
+    return { x: RAID.x + Math.sin(a2) * rr, z: RAID.z + Math.cos(a2) * rr };
   }
 
   tick(dt: number): void {
@@ -153,21 +164,24 @@ export class RaidFight {
     const P = RAID_PHASES[this.phase];
 
     // Вращение арены (с рывками в фазе jerky — средняя скорость та же), орбиты — относительно неё.
-    let w = P.arenaSpd * DEG;
-    if (P.jerky) {
+    // Каст «Прилива»: всё замирает — разрывы стоят, арена не несёт, все успевают забежать.
+    const casting = this.tideWarned;
+    let w = casting ? 0 : P.arenaSpd * DEG;
+    if (P.jerky && !casting) {
       const t = (now % RAID_FIGHT.jerkPeriod) / RAID_FIGHT.jerkPeriod;
       w = t < RAID_FIGHT.jerkOn ? w / RAID_FIGHT.jerkOn : 0;
     }
     this.w = w;
+    this.drift = casting ? 0 : P.drift;
     this.ang = wrap(this.ang + w * dt);
-    for (let i = 0; i < 3; i++) this.orbits[i] = wrap(this.orbits[i] + (w + (P.orbitRel[i] ?? 0) * DEG) * dt);
+    if (!casting) for (let i = 0; i < 3; i++) this.orbits[i] = wrap(this.orbits[i] + (w + (P.orbitRel[i] ?? 0) * DEG) * dt);
 
     // Арена несёт ботов (игроков — их клиенты, по raidW/raidDrift): поворот + снос к краю.
     const curEdge = this.edge;
     for (const id of this.onArena) {
       const h = byId.get(id);
       if (!h || !h.bot) continue;
-      const mv = raidCarry(h.x, h.z, w, P.drift, curEdge, dt);
+      const mv = raidCarry(h.x, h.z, w, this.drift, curEdge, dt);
       if (mv) this.host.shiftBot(id, mv[0], mv[1]);
     }
     // За краем — пустота.
@@ -193,7 +207,7 @@ export class RaidFight {
       this.tideWarned = true;
       this.host.announce(
         enraged ? "Прилив — ярость луны!" : "Прилив!",
-        enraged ? "Время вышло: волна смоет всех на арене" : `Через ${RAID_FIGHT.tide.warn} с — встань в разрыв орбиты, иначе смерть`,
+        enraged ? "Время вышло: волна смоет всех на арене" : `Орбиты замерли — все в разрыв! Через ${RAID_FIGHT.tide.warn} с волна смоет остальных`,
       );
     }
     if (now >= this.nextTide) {
@@ -257,7 +271,7 @@ export class RaidFight {
       ph: this.phase + 1,
       ang: this.ang,
       w: this.w,
-      drift: P.drift,
+      drift: this.drift,
       edge: this.edge,
       gap: this.halfGap,
       on: P.orbits,

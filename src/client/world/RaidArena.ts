@@ -65,7 +65,8 @@ interface Orbit {
   /** Локальный угол каждого осколка (разрыв — у угла 0). */
   angles: number[];
   ring: Mesh | null;
-  wedge: Mesh | null;
+  /** Разрыв на полу: заливка, светящиеся границы и световые «шторки» по краям конуса. */
+  wedge: Mesh[];
   wedgeNode: TransformNode;
 }
 
@@ -83,6 +84,8 @@ export class RaidArenaFx {
   private readonly edgeMat: StandardMaterial;
   private readonly lineMat: StandardMaterial;
   private readonly wedgeMat: StandardMaterial;
+  private readonly borderMat: StandardMaterial;
+  private readonly curtainMat: StandardMaterial;
   private readonly tideMat: StandardMaterial;
   private readonly orbits: Orbit[] = [];
   private edgeRing: Mesh | null = null;
@@ -137,9 +140,19 @@ export class RaidArenaFx {
     this.wedgeMat = new StandardMaterial("raidWedgeMat", scene);
     this.wedgeMat.disableLighting = true;
     this.wedgeMat.emissiveColor = c3("moonGold");
-    this.wedgeMat.alpha = 0.22;
+    this.wedgeMat.alpha = 0.4;
     this.wedgeMat.backFaceCulling = false;
     this.wedgeMat.zOffset = -4;
+    // Границы конуса — яркие золотые нити; «шторки» — полупрозрачные световые стенки над ними.
+    this.borderMat = new StandardMaterial("raidWedgeBorderMat", scene);
+    this.borderMat.disableLighting = true;
+    this.borderMat.emissiveColor = c3("moonGold");
+    this.curtainMat = new StandardMaterial("raidWedgeCurtainMat", scene);
+    this.curtainMat.disableLighting = true;
+    this.curtainMat.emissiveColor = c3("moonGold");
+    this.curtainMat.alpha = 0.22;
+    this.curtainMat.backFaceCulling = false;
+    this.curtainMat.disableDepthWrite = true;
 
     // Осколки орбит — инстансы одного кристалла.
     const crystalMat = new StandardMaterial("raidCrystalMat", scene);
@@ -178,7 +191,7 @@ export class RaidArenaFx {
       }
       const wedgeNode = new TransformNode(`raidWedge${i}`, scene);
       wedgeNode.parent = this.root;
-      this.orbits.push({ node, tilt, shards, angles, ring: null, wedge: null, wedgeNode });
+      this.orbits.push({ node, tilt, shards, angles, ring: null, wedge: [], wedgeNode });
     }
 
     this.tideMat = new StandardMaterial("raidTideMat", scene);
@@ -232,7 +245,11 @@ export class RaidArenaFx {
     const warn = ph > 0 && v && v.tide > 0 && v.tide <= RAID_FIGHT.tide.warn;
     const pulse = warn ? 0.5 + 0.5 * Math.sin(this.t * (10 - v.tide * 1.5)) : 0;
     this.floorMat.emissiveColor.set(0.55 + pulse * 0.4, 0.58 + pulse * 0.35, 0.68 + pulse * 0.3);
-    this.wedgeMat.alpha = 0.18 + 0.1 * Math.sin(this.t * 2.2) + pulse * 0.25;
+    this.wedgeMat.alpha = 0.38 + 0.08 * Math.sin(this.t * 2.2) + pulse * 0.4;
+    this.curtainMat.alpha = 0.2 + 0.05 * Math.sin(this.t * 2.2) + pulse * 0.35;
+    const glow = 1 + pulse * 0.6;
+    const g0 = FX_RGB.moonGold;
+    this.borderMat.emissiveColor.set(g0[0] * glow, g0[1] * glow, g0[2] * glow);
 
     if (this.tideT >= 0) {
       this.tideT += dt;
@@ -283,13 +300,37 @@ export class RaidArenaFx {
       o.ring.isPickable = false;
       for (let k = 0; k < SHARDS; k++) o.shards[k].isVisible = Math.abs(angDiff(o.angles[k], 0)) > gap;
 
-      o.wedge?.dispose();
-      o.wedge = gap > 0 ? wedgeMesh(this.scene, `raidGapFloor${i}`, 5.5, edge, gap) : null;
-      if (o.wedge) {
-        o.wedge.parent = o.wedgeNode;
-        o.wedge.position.y = 0.12;
-        o.wedge.material = this.wedgeMat;
-        o.wedge.isPickable = false;
+      for (const m of o.wedge) m.dispose();
+      o.wedge = [];
+      if (gap > 0) {
+        const r0 = 5.5;
+        const fill = wedgeMesh(this.scene, `raidGapFloor${i}`, r0, edge, gap);
+        fill.position.y = 0.12;
+        fill.material = this.wedgeMat;
+        o.wedge.push(fill);
+        // Границы: два луча по краям конуса и дуга у края арены.
+        for (const sgn of [-1, 1]) {
+          const a = sgn * gap;
+          const path = [new Vector3(Math.sin(a) * r0, 0.16, Math.cos(a) * r0), new Vector3(Math.sin(a) * edge, 0.16, Math.cos(a) * edge)];
+          const line = MeshBuilder.CreateTube(`raidGapEdge${i}${sgn}`, { path, radius: 0.09, tessellation: 5 }, this.scene);
+          line.material = this.borderMat;
+          o.wedge.push(line);
+          const cur = curtainMesh(this.scene, `raidGapCurtain${i}${sgn}`, r0, edge, a, 3.5);
+          cur.material = this.curtainMat;
+          o.wedge.push(cur);
+        }
+        const arc: Vector3[] = [];
+        for (let k = 0; k <= 16; k++) {
+          const a = -gap + (2 * gap * k) / 16;
+          arc.push(new Vector3(Math.sin(a) * edge, 0.16, Math.cos(a) * edge));
+        }
+        const arcLine = MeshBuilder.CreateTube(`raidGapArc${i}`, { path: arc, radius: 0.09, tessellation: 5 }, this.scene);
+        arcLine.material = this.borderMat;
+        o.wedge.push(arcLine);
+        for (const m of o.wedge) {
+          m.parent = o.wedgeNode;
+          m.isPickable = false;
+        }
       }
     }
   }
@@ -369,6 +410,14 @@ function wedgeMesh(scene: Scene, name: string, r0: number, r1: number, h: number
     }
   }
   return fromData(scene, name, pos, idx);
+}
+
+/** Вертикальная световая стенка вдоль луча угла a (r0..r1), высотой h. */
+function curtainMesh(scene: Scene, name: string, r0: number, r1: number, a: number, h: number): Mesh {
+  const sx = Math.sin(a);
+  const cz = Math.cos(a);
+  const pos = [sx * r0, 0, cz * r0, sx * r1, 0, cz * r1, sx * r0, h, cz * r0, sx * r1, h, cz * r1];
+  return fromData(scene, name, pos, [0, 1, 2, 1, 3, 2]);
 }
 
 function fromData(scene: Scene, name: string, pos: number[], idx: number[]): Mesh {
