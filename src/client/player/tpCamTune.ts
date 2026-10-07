@@ -39,7 +39,7 @@ export const TP_CAM_TUNE: TpCamTune = {
   pitchMax: 0.6, // до взгляда снизу вверх
   floorClear: 0.1,
   distMin: 2.5,
-  distMax: 11,
+  distMax: 18, // 2026-10-07: было 11 — дальше отдаление (ПК и телефон)
   turnRate: 12,
   followRate: 0.55, // «потихоньку» — не дерётся с обзором; на боковом стике даёт пологую дугу
   followDead: 0.15, // мёртвая зона у центра стика
@@ -53,9 +53,12 @@ export function loadTpCamTune(): void {
     const raw = localStorage.getItem(KEY);
     if (!raw) return;
     const v = JSON.parse(raw) as Partial<TpCamTune>;
+    const maxDefault = TP_CAM_TUNE.distMax;
     for (const k of Object.keys(TP_CAM_TUNE) as (keyof TpCamTune)[]) {
       if (Number.isFinite(v[k])) TP_CAM_TUNE[k] = v[k] as number;
     }
+    // Предел отдаления из кода не меньше сохранённого: старые устройства помнили 11 м.
+    TP_CAM_TUNE.distMax = Math.max(TP_CAM_TUNE.distMax, maxDefault);
   } catch {
     /* приватный режим / битый JSON — берём дефолты */
   }

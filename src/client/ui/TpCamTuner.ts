@@ -98,7 +98,7 @@ export function mountTpCamTuner(): () => void {
   slider("высота, м", 0.6, 2.6, "pivotUp");
   slider("зазор пол", 0.05, 1.5, "floorClear");
   slider("зум мин", 1.5, 6, "distMin");
-  slider("зум макс", 5, 14, "distMax");
+  slider("зум макс", 5, 24, "distMax");
 
   section("наклон, рад (>0 ниже/вверх, <0 выше/вниз)");
   slider("старт", -1.2, 1.2, "pitchStart");
