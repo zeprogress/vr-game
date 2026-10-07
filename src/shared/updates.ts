@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-07 16:33",
+    items: ["Эфир: пробный режим WebGPU показывает в углу, на чём рисует картинка"],
+  },
+  {
     at: "2026-10-07 15:46",
     items: [
       "Новые команды: !рейд и !рб — то же, что !raid; !ив — то же, что !event",
