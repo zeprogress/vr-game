@@ -667,6 +667,7 @@ export class Game {
         onMenu: () => this.pcMenu?.toggle(),
         onSlot: (key) => this.pcSlot(key),
         onAttrs: () => this.pcInv?.open("attrs"),
+        onChatSend: (t) => this.net?.sendChat(t),
       });
       this.hud.bindDrinkPotion(() => {
         const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
@@ -719,6 +720,7 @@ export class Game {
         onMenu: () => this.pcMenu?.toggle(),
         onSlot: (key) => this.pcSlot(key),
         onAttrs: () => this.pcInv?.open("attrs"),
+        onChatSend: (t) => this.net?.sendChat(t),
       });
       this.lootMarker = new LootMarker();
       this.aoeAim = new AoeAim(this.scene);

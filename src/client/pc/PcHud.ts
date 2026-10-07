@@ -73,6 +73,8 @@ export interface PcHudHooks {
   onSlot: (key: string) => void;
   /** Клик по значку свободных очков — вкладка атрибутов. */
   onAttrs: () => void;
+  /** Сообщение в чат из игры (уходит в Twitch, команды работают). */
+  onChatSend?: (text: string) => void;
 }
 
 
@@ -101,6 +103,7 @@ export class PcHud {
   private readonly logEl: HTMLDivElement;
   private readonly cfgEl: HTMLDivElement;
   private tabChat!: HTMLButtonElement;
+  private chatInput!: HTMLInputElement;
   private tabLog!: HTMLButtonElement;
   private readonly chatBtn: HTMLButtonElement;
   private cfg: ChatCfg;
@@ -244,7 +247,24 @@ export class PcHud {
       this.cfgEl.style.display = this.cfgEl.style.display === "none" ? "" : "none";
     };
     this.renderCfg();
-    this.chatEl.append(head, this.logEl, this.cfgEl);
+    // Поле ввода (вкладка «Чат»): Enter — отправить. Клавиши игры не срабатывают, пока печатаешь.
+    this.chatInput = document.createElement("input");
+    this.chatInput.className = "pc-chat-input";
+    this.chatInput.placeholder = "Написать в чат… (команды тоже: !raid, !event…)";
+    this.chatInput.maxLength = 200;
+    const stop = (e: Event): void => e.stopPropagation();
+    this.chatInput.addEventListener("keyup", stop);
+    this.chatInput.addEventListener("keypress", stop);
+    this.chatInput.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        const t = this.chatInput.value.trim();
+        if (t) this.hooks.onChatSend?.(t);
+        this.chatInput.value = "";
+        this.chatInput.blur();
+      } else if (e.key === "Escape") this.chatInput.blur();
+    });
+    this.chatEl.append(head, this.logEl, this.cfgEl, this.chatInput);
     this.setView(this.cfg.view ?? "chat");
 
     // --- большая карта ---
@@ -281,6 +301,11 @@ export class PcHud {
     else if (e.code === "KeyB") this.hooks.onBag();
     else if (e.code === "KeyC") this.hooks.onCharacter();
     else if (e.code === "Enter" && (e.ctrlKey || e.metaKey)) toggleFullscreen();
+    else if (e.code === "Enter" && !this.hooks.touch) {
+      // Enter — написать в чат.
+      e.preventDefault();
+      this.focusChat();
+    }
   };
 
   // ---- рамка героя ----
@@ -416,11 +441,19 @@ export class PcHud {
     this.cfg.view = view;
     saveCfg(this.cfg);
     this.tabChat.classList.toggle("on", view === "chat");
+    this.chatInput.style.display = view === "chat" ? "" : "none";
     this.tabLog.classList.toggle("on", view === "log");
     for (const r of this.logEl.querySelectorAll<HTMLElement>("[data-kind]")) {
       r.style.display = this.rowVisible(r.dataset.kind as LogKind) ? "" : "none";
     }
     this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+
+  /** Enter в игре (ПК): открыть чат и поставить курсор в поле ввода. */
+  focusChat(): void {
+    if (!this.cfg.on) this.setChatOn(true);
+    if ((this.cfg.view ?? "chat") !== "chat") this.setView("chat");
+    this.chatInput.focus();
   }
 
   get chatOn(): boolean {
@@ -778,6 +811,7 @@ function injectHudStyle(): void {
   pointer-events:auto; background:rgba(14,13,19,.62); }
 .pc-chat-head { display:flex; align-items:center; gap:4px; padding:3px 6px; border-bottom:1px solid rgba(110,116,130,.35); }
 .pc-chat-title { flex:1; display:flex; gap:4px; }
+.pc-chat-input { margin:4px 6px 6px; padding:5px 8px; border-radius:6px; border:1px solid rgba(110,116,130,.5); background:rgba(10,9,14,.85); color:#e8e6f0; font:13px system-ui; pointer-events:auto; }
 .pc-chat-tab { background:none; border:1px solid transparent; border-radius:5px; color:#a9a498; font:600 12px system-ui; padding:1px 8px; cursor:pointer; }
 .pc-chat-tab.on { color:#f3e2b0; border-color:rgba(110,116,130,.5); background:rgba(40,38,48,.6); }
 .pc-chat-gear { background:none; border:none; font-size:13px; padding:0 4px; opacity:.8; }

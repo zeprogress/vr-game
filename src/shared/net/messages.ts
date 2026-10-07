@@ -69,6 +69,8 @@ export const MSG = {
   chatLine: "cl",
   /** ПК-окно снаряжения: запрос данных / данные / действие / итог действия. */
   pcInvOpen: "pio",
+  /** Игрок пишет в чат из игры (панель «Чат»): { text } — уходит в Twitch и работает как команда. */
+  chatSay: "csy",
   pcInvData: "pid",
   pcInvAct: "pia",
   pcInvResult: "pir",

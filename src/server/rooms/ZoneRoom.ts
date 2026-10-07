@@ -257,6 +257,8 @@ const FISH_MANUAL = { min: 5, spread: 4, window: 9 };
 
 /** Несетевое состояние игрока: защита, темп ударов, таймеры. */
 interface Runtime {
+  /** Когда последний раз писал в чат из игры (elapsed) — не чаще раза в 1.5 с. */
+  chatSayAt?: number;
   /** Когда последний раз пил зелье (elapsed) — общий откат POTION_CD. */
   lastDrinkAt?: number;
   token?: string;
@@ -1937,6 +1939,18 @@ export class ZoneRoom extends Room<ZoneState> {
     // сброс) — тем же кодом, что и страница !inv. Надеть/на лом/на землю идут
     // через MSG.warehouseAct (руки у живого игрока держит клиент).
     this.onMessage(MSG.pcInvOpen, (client: Client) => this.sendPcInv(client));
+    // Чат из игры: в Twitch (от аккаунта игры, «🎮 Ник: …») и как обычное сообщение чата — команды работают.
+    this.onMessage(MSG.chatSay, (client: Client, msg: { text?: unknown }) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || typeof msg?.text !== "string") return;
+      const text = msg.text.replace(/[\r\n]+/g, " ").trim().slice(0, 200);
+      if (!text || !p.nick) return;
+      if (this.elapsed - (rt.chatSayAt ?? -99) < 1.5) return; // не чаще раза в 1.5 с
+      rt.chatSayAt = this.elapsed;
+      this.twitch?.say(`🎮 ${p.nick}: ${text}`);
+      this.onChat(p.nick, text, true);
+    });
     this.onMessage(MSG.pcInvAct, (client: Client, msg: PcInvActMsg) => {
       const p = this.state.players.get(client.sessionId);
       if (!p || !msg || typeof msg.id !== "string") return;
@@ -3560,12 +3574,14 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
-  private onChat(nick: string, text: string): void {
+  private onChat(nick: string, text: string, fromGame = false): void {
     const norm = normNick(nick);
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
     chatLog.append(nick, text);
     this.sendChatLine({ nick, text: text.slice(0, 300) });
+    // Из игры ник не подтверждён (не Twitch): коды входа в !inv и команды админов — только из Twitch.
+    if (fromGame && (isAdminNick(nick) || /^\d{4}$/.test(text.trim()))) return;
     // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
     if (invHub.tryChatCode(norm, text)) {
       this.reply(`@${nick} инвентарь открыт — можно надевать и разбирать ✓`);

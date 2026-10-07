@@ -460,6 +460,11 @@ export class NetClient {
     this.room?.send(MSG.spend, msg);
   }
 
+  /** Написать в чат из игры (уходит в Twitch, команды работают). */
+  sendChat(text: string): void {
+    this.room?.send(MSG.chatSay, { text });
+  }
+
   /** Заявка использовать предмет из ячейки сумки. */
   sendUseItem(slot: number): void {
     const msg: UseItemMsg = { slot };
