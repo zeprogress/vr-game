@@ -35,7 +35,12 @@ interface ChatCfg {
 }
 
 /** Цвет ника в чате — по нику (у каждого свой, стабильный). */
+/** Ник системных сообщений игры в чате — тёмно-красный. */
+export const INFO_NICK = "info";
+export const INFO_COLOR = "#c4302b";
+
 function nickColor(nick: string): string {
+  if (nick === INFO_NICK) return INFO_COLOR;
   let h = 0;
   for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
   return `hsl(${h % 360} 75% 70%)`;

@@ -1582,7 +1582,7 @@ export class WristMenu {
       for (let k = 0; k < lines.length; k++) {
         if (k === 0) {
           ctx.font = "bold 24px system-ui, sans-serif";
-          ctx.fillStyle = m.bot ? "#ffd166" : nickColor(m.nick);
+          ctx.fillStyle = m.bot ? "#c4302b" : nickColor(m.nick); // «info» — тёмно-красный, как в панели ПК/телефона
           ctx.fillText(head, x, top);
           ctx.font = "24px system-ui, sans-serif";
           ctx.fillStyle = "#e6e0d0";
