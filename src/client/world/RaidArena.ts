@@ -230,6 +230,7 @@ export class RaidArenaFx {
     crystalMat.diffuseColor = c3("moon");
     crystalMat.emissiveColor = c3("moon").scale(0.55);
     crystalMat.specularColor = new Color3(0.6, 0.6, 0.7);
+    crystalMat.alpha = 0.5; // полупрозрачные (просьба 2026-10-07), как кристаллы на модели босса
     const crystal = MeshBuilder.CreatePolyhedron("raidCrystal", { type: 1, size: 1 }, scene);
     crystal.material = crystalMat;
     crystal.isPickable = false;

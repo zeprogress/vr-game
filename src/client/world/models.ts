@@ -477,9 +477,12 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
       // Один материал на (исходный материал, текстура, цвет) на всю сцену — общий у всех мобов вида.
       const texKey = tex ? ((tex as { uid?: string; name?: string }).uid ?? (tex as { name?: string }).name ?? "t") : "-";
       const colKey = (tint ?? base).toHexString();
-      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}|${diffuseMul ?? -1}`, () => {
+      // Полупрозрачная часть модели (материал с "alpha" в art/models — кристаллы Лунного аватара).
+      const alpha = (src as { alpha?: number }).alpha ?? 1;
+      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}|${diffuseMul ?? -1}|${alpha}`, () => {
         const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
         f.maxSimultaneousLights = 1;
+        if (alpha < 1) f.alpha = alpha; // изнанку не рисуем (backFaceCulling) — один слой, без «слоёного пирога»
         f.specularColor = new Color3(0.05, 0.05, 0.05);
         // Карта нормалей (модели art/models: трещины, плиты, бугры запечены с детальной формы).
         const bump = (src as { bumpTexture?: StandardMaterial["bumpTexture"] }).bumpTexture;

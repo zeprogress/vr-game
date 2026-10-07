@@ -32,8 +32,16 @@ def hex_rgb(h):
     return [_lin(int(h[i:i + 2], 16)) for i in (0, 2, 4)]
 
 
+def _set_alpha(m, a):
+    """Полупрозрачность материала: glTF-экспорт по Alpha < 1 ставит alphaMode BLEND."""
+    bsdf = next((n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf:
+        bsdf.inputs["Alpha"].default_value = a
+    m.surface_render_method = "BLENDED"
+
+
 def material(name, d):
-    """d: "#rrggbb" | {"c": "#..", "rough": 0.8, "metal": 0, "emit": 0}."""
+    """d: "#rrggbb" | {"c": "#..", "rough": 0.8, "metal": 0, "emit": 0, "alpha": 1}."""
     if isinstance(d, str):
         d = {"c": d}
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
@@ -48,6 +56,8 @@ def material(name, d):
         if d.get("emit"):
             bsdf.inputs["Emission Color"].default_value = (*rgb, 1)
             bsdf.inputs["Emission Strength"].default_value = float(d["emit"])
+    if float(d.get("alpha", 1)) < 1:
+        _set_alpha(m, float(d["alpha"]))
     return m
 
 
@@ -330,6 +340,23 @@ def build(sp, out_glb=None, out_blend=None, live=False):
         warnings += [] if cover > 0.35 else [f"развёртка занимает {cover:.0%} текстуры — мелко"]
     elif use_atlas:
         atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
+    if use_atlas:
+        # Полупрозрачные материалы ("alpha" < 1): их грани — копией общего материала с прозрачностью
+        # (в glTF отдельный примитив с alphaMode BLEND, +1 отрисовка на значение alpha); тело — непрозрачное.
+        glass = {i: float(mdefs[mn]["alpha"]) for i, mn in enumerate(mats)
+                 if isinstance(mdefs.get(mn), dict) and float(mdefs[mn].get("alpha", 1)) < 1}
+        if glass:
+            mi = np.zeros(len(me.polygons), np.int32)
+            for a in sorted(set(glass.values())):
+                gm = me.materials[0].copy()
+                gm.name = f"{name}_Glass{round(a * 100)}"
+                _set_alpha(gm, a)
+                me.materials.append(gm)
+                for i, ai in glass.items():
+                    if ai == a:
+                        mi[M == i] = len(me.materials) - 1
+            me.polygons.foreach_set("material_index", mi)
+            me.update()
 
     clips = []
     arm = None
