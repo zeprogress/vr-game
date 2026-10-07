@@ -2915,7 +2915,9 @@ export class Game {
   /** Откат умения с учётом класса и МДР (все классы) — та же формула, что на сервере. */
   private skillCooldown(id: SkillId): number {
     const cls = this.heroClass();
-    return SKILLS2[id].cooldown * skillCdMul2(cls, this.progression.stats.wis);
+    // МДР с камнями колец (PlayerState.gb) — как на сервере.
+    const me = this.net?.room?.state.players.get(this.net.sessionId);
+    return SKILLS2[id].cooldown * skillCdMul2(cls, { wis: this.progression.stats.wis, gb: me?.gb });
   }
 
   /** Сколько секунд до готовности умения (0 — готово). */

@@ -238,6 +238,7 @@ import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
+import { attrOf } from "#shared/attrs2";
 import { giveItems, parseTradeItem, takeItems, takenName, tradeLog, type InvSnap } from "../trade";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
@@ -1523,7 +1524,7 @@ export class ZoneRoom extends Room<ZoneState> {
         staffCrit.chance,
         staffCrit.mult,
         STAFF_CRIT_MULT,
-        p.luc,
+        attrOf(p, "luc"),
       );
       const boltDmg =
         fireboltDamage(p.level, p, charge) *
@@ -2106,7 +2107,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rt.lastHit[msg.weapon] = this.elapsed;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
-      const pvpCrit = rollCritMult(msg.weapon, Math.random, false, 0, 0, msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult, p.luc);
+      const pvpCrit = rollCritMult(msg.weapon, Math.random, false, 0, 0, msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult, attrOf(p, "luc"));
       const pvpDmg =
         weaponDamage(msg.weapon, p.level, p, multIn(p, hand)) *
         PVP.damageMult *
@@ -2173,7 +2174,7 @@ export class ZoneRoom extends Room<ZoneState> {
       rc.chance + (newWpn ? WEAPONS2[weapon as "dagger"].critBase - BASE_CRIT : 0) + (soloDagger ? DAGGER.soloCrit : 0) + (myMark ? MARK.assassinCrit : 0),
       rc.mult + (soloDagger ? DAGGER.soloCritDmg : 0),
       fullCrit,
-      p.luc,
+      attrOf(p, "luc"),
     );
     // «Теневой рывок»: первый удар после рывка — гарантированный крит.
     if (critM <= 1 && rt.forceCritUntil > this.elapsed && weapon !== "fist") critM = fullCrit;
@@ -3210,7 +3211,7 @@ export class ZoneRoom extends Room<ZoneState> {
           agi: p.agi,
           int: p.int,
           con: p.con,
-          luc: p.luc,
+          luc: attrOf(p, "luc"),
           wis: p.wis,
           leftCls: p.leftCls,
           leftTier: p.leftTier,
@@ -7413,7 +7414,7 @@ export class ZoneRoom extends Room<ZoneState> {
           botCrit.chance,
           botCrit.mult,
           BOW.critMult,
-          p.luc,
+          attrOf(p, "luc"),
         );
         // Красный «X» — не сейчас, а в момент попадания стрелы (sim.critHits).
         this.sim.castBolt(
@@ -7433,7 +7434,7 @@ export class ZoneRoom extends Room<ZoneState> {
           botStaffCrit.chance,
           botStaffCrit.mult,
           STAFF_CRIT_MULT,
-          p.luc,
+          attrOf(p, "luc"),
         );
         const bd =
           fireboltDamage(p.level, p, 0.7) *
@@ -7737,7 +7738,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Множитель отката умений: у магов (посох/молот) — МДР ускоряет. */
   private skillCdMul(p: PlayerState): number {
-    return skillCdMul2(classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | ""), p.wis);
+    return skillCdMul2(classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | ""), p);
   }
 
   /** Выставить skill1/skill2 под класс оружия в руках (сохранённый выбор или по умолчанию). */
@@ -8225,7 +8226,10 @@ export class ZoneRoom extends Room<ZoneState> {
                 const d = Math.hypot(vx, vz) || 1;
                 const slack = Math.asin(Math.min(1, this.sim.targetRadius("mob", m.id) / Math.max(d, 0.1)));
                 if (Math.acos(Math.max(-1, Math.min(1, (vx * fx + vz * fz) / d))) > F.cone + slack) continue;
-                this.sim.hitMob(m.id, F.dmg * pow.dmg, vx / d, vz / d, ownerId, i === F.thrusts - 1);
+                // Каждый выпад — со своим критом (база копья, роллы «крит» на копье, удача с камнями).
+                const rc = rolledCrit(pp, "right", rt);
+                const critM = rollCritMult("spear", Math.random, false, rc.chance + WEAPONS2.spear.critBase - BASE_CRIT, rc.mult, WEAPONS2.spear.critMult, attrOf(pp, "luc"));
+                this.sim.hitMob(m.id, F.dmg * pow.dmg * critM, vx / d, vz / d, ownerId, i === F.thrusts - 1, false, false, critM > 1);
               }
               this.broadcast(MSG.act, { k: "spearPierce", id: ownerId, x: ox, y: pp.head.y, z: oz, x2: ox + fx * F.range, z2: oz + fz * F.range, r: F.cone } satisfies ActRelay);
             }, ((F.duration / F.thrusts) * (i + 0.5)) * 1000);
@@ -8253,7 +8257,7 @@ export class ZoneRoom extends Room<ZoneState> {
             const near = around(pp.head.x, pp.head.z, radius);
             for (const m of near) {
               const [dx, dz] = dirTo(m, pp.head.x, pp.head.z);
-              const critM = cls === "assassin" ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, pp.luc) : 1;
+              const critM = cls === "assassin" ? rollCritMult("dagger", Math.random, false, WEAPONS2.dagger.critBase - BASE_CRIT, 0, WEAPONS2.dagger.critMult, attrOf(pp, "luc")) : 1;
               this.sim.hitMob(m.id, mult * pow.dmg * critM, dx, dz, ownerId, false, false, pow.magic, critM > 1);
               if (spear) this.sim.shoveMob(m.id, dx, dz, 4);
               if (cls === "assassin") this.sim.slowMob(m.id, ASSASSIN_WHIRL_SLOW.sec, ASSASSIN_WHIRL_SLOW.mul);
@@ -8719,7 +8723,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const d = Math.hypot(dx, dz);
           if (d > radius) continue;
           // Крит — на каждую стрелу и цель отдельно.
-          const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, p.luc);
+          const critM = rollCritMult("arrow", Math.random, false, rc.chance, rc.mult, BOW.critMult, attrOf(p, "luc"));
           if (critM > 1) this.critFx(m.x, m.y, m.z, ownerId);
           this.sim.hitMob(m.id, base * critM, dx / (d || 1), dz / (d || 1), ownerId, true);
         }

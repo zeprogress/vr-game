@@ -91,7 +91,7 @@ export function attrEffect(k: Attr): string {
     case "luc":
       return `+${pc(A.luc.crit)} шанса крита, +${pc(A.luc.critDmg, 0)} силы крита, +${pc(A.luc.dodge)} уворота (×${A.luc.dodgeOneItem} с одним оружием)`;
     case "wis":
-      return `+${pc(A.wis.cast)} скорости каста и отката умений (все классы), маг. защита растёт (до ${pc(A.wis.resistMax, 0)})`;
+      return `+${pc(A.wis.cast)} скорости каста, +${pc(A.wis.cd)} к скорости отката умений (все классы), маг. защита растёт (до ${pc(A.wis.resistMax, 0)})`;
   }
 }
 
@@ -460,17 +460,17 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   mark: {
-    name: "Метка", icon: glyph("s.mark"), desc: "Цель 8 с: все атакующие (и ты сам) наносят ей +25% урона; умерла под меткой — откат сброшен",
+    name: "Метка", icon: glyph("s.mark"), desc: "Цель 10 с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен",
     cooldown: 12, castTime: 0.2, radius: 22, dmgMult: 0, hits: 1,
     variants: {
-      archer: { name: "Метка охотника", desc: "Цель 8 с: все атакующие (и ты сам) наносят ей +25% урона; умерла под меткой — откат сброшен" },
+      archer: { name: "Метка охотника", desc: "Цель 10 с: все атакующие (и ты сам) наносят ей +40% урона; умерла под меткой — откат сброшен" },
     },
   },
   plague: {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
     desc: "Рывок к цели (до 6 м) и 8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.4 удара заражает соседей (+2 стака) — яд ползёт по толпе",
     cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.4, hits: 1,
-    attr: { attr: "wis", per: 0.02, what: "сила яда" },
+    attr: { attr: "wis", per: 0.045, what: "сила яда" }, // 2026-10-07: было 2%
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
@@ -532,8 +532,9 @@ export const CLASS_CD_MUL: Partial<Record<ClassId, number>> = { spearman: 0.7, b
 
 /** Базовый откат умения у класса (без МДР). */
 /** Множитель отката умений: класс × МДР (у всех классов). ОДИН для сервера, клиента и ботов. */
-export function skillCdMul2(cls: ClassId | null, wis: number): number {
-  return ((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(wis) * ATTR2.wis.cast);
+/** Множитель отката умений: класс × МДР (с камнями) — ATTR2.wis.cd за очко, у всех классов (2026-10-07: было 1.5%). */
+export function skillCdMul2(cls: ClassId | null, a: object): number {
+  return ((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd);
 }
 
 export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
@@ -553,7 +554,8 @@ export const WARCRY = { duration: 8, blessDuration: 10, blessDef: 0.15, dmg: 0.2
 export const GUARD_SEAL = { shield: 0.4 } as const;
 /** «Рассекающий удар» воина: конус перед собой. */
 export const CLEAVE = { halfAngle: 1.05, shove: 4, slowSec: 3, slow: 0.4 } as const;
-export const MARK = { duration: 8, dmgMul: 1.25, assassinCrit: 0.25, slow: 0.3 } as const;
+/** «Метка» (2026-10-07 усилена: было 8 с и +25%). */
+export const MARK = { duration: 10, dmgMul: 1.4, assassinCrit: 0.25, slow: 0.3 } as const;
 export const CHAIN = { jump: 7, falloff: 0.8 } as const;
 /** Аура исцеления: длительность и сколько «полных лечений» отдаёт за всё время. */
 export const HEAL_AURA = { duration: 6, totalMul: 1.6 } as const;
@@ -770,6 +772,6 @@ export function summarize2(h: Hero2): Summary2 {
     dmgType: w.dmgType,
     power: casterSkills ? Math.max(hit, (WEAPONS2.staff.dmg * magicPower2(h.level, a) * tierMul) / 2) : hit,
     // Откат умений ускоряет только МДР (не уровень): иначе к 30+ ур. умения магов шли бы вдвое чаще.
-    cdMul: casterSkills ? 1 / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) : 1,
+    cdMul: 1 / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd),
   };
 }
