@@ -2361,11 +2361,12 @@ export class ZoneSim {
   /** Доля урона атакующего по рейд-боссу (ставит ZoneRoom по бою raidFight): 0 — «MISS»; null — полный всегда. */
   raidDmgMul: ((attacker: string) => number) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
-  private scare: { by: string; start: number; last: number; total: number; max: number } | null = null;
+  private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number }>();
 
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
-  scareInfo(): { by: string; dps: number; max: number } | null {
-    const s = this.scare;
+  /** Табло своего пугала (у каждого — своя сессия: главное и напарники). */
+  scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number } | null {
+    const s = this.scares.get(mobId);
     if (!s || this.elapsed - s.last > SCARECROW.idleSec) return null;
     // Время — от первого удара до сейчас (минимум 1 с), пока бой идёт.
     const t = Math.max(1, Math.min(this.elapsed, s.last + 1) - s.start);
@@ -2822,11 +2823,11 @@ export class ZoneSim {
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
     // Пугало: копим сессию урона бойца (новый боец или пауза дольше idleSec — заново).
-    // Пугала-напарники — в ту же сессию: табло DPS показывает и АОЕ, и Пронзание.
+    // У каждого пугала (главного и напарников) — своё табло DPS.
     if ((m.scarecrow || m.practice) && attacker && dealt > 0) {
-      const s = this.scare;
+      const s = this.scares.get(m.id);
       if (!s || s.by !== attacker || this.elapsed - s.last > SCARECROW.idleSec) {
-        this.scare = { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt };
+        this.scares.set(m.id, { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt });
       } else {
         s.total += dealt;
         s.max = Math.max(s.max, dealt);

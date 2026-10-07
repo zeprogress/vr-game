@@ -7676,8 +7676,8 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Табло пугала: «ник» / «DPS 1234 · макс. удар 567»; никто не бьёт — подсказка. */
-  private scarecrowText(): string {
-    const i = this.sim.scareInfo();
+  private scarecrowText(mobId: string): string {
+    const i = this.sim.scareInfo(mobId);
     if (!i) return "Ударь меня — покажу урон\n!пугало — твой бот проверит билд";
     const nick = this.state.players.get(i.by)?.nick ?? "?";
     return `${nick}\nDPS ${Math.round(i.dps)} · макс. удар ${Math.round(i.max)}`;
@@ -8918,8 +8918,8 @@ export class ZoneRoom extends Room<ZoneState> {
       s.burning = Math.min(255, Math.ceil(m.burningT));
       s.bleeding = Math.min(255, Math.ceil(m.bleedT));
       s.enraged = m.enraged ? 1 : 0; // босс и разъярённый элита события
-      if (m.scarecrow) {
-        const info = this.scarecrowText();
+      if (m.scarecrow || m.practice) {
+        const info = this.scarecrowText(m.id);
         if (s.info !== info) s.info = info;
       }
       if (m.kind === "boss") {
