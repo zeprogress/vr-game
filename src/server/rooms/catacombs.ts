@@ -163,6 +163,10 @@ export class CatacombDirector {
   /** Имя зала с темой захода: «Зал костей · Огненная яма». */
   /** Жизни отряда (CATACOMBS.livesPerHero): сколько воскрешений осталось; кончились — объявили ли. */
   private lives = 0;
+  /** Жизней отряда осталось (воскрешение павших тратит по одной). */
+  get livesLeft(): number {
+    return this.lives;
+  }
   private livesMax = 0;
   private livesOutSaid = false;
   /** Добыча каждого героя за забег (сундуки стражей и финальный) — для итоговой таблицы. */
@@ -426,7 +430,7 @@ export class CatacombDirector {
       return;
     }
     if (now >= this.statsAt) {
-      this.statsAt = now + 2000;
+      this.statsAt = now + 1000;
       this.host.stats([...this.party].map((id) => ({ id, deaths: this.deaths.get(id) ?? 0 })));
     }
     const plan = this.plan[this.stage];
@@ -987,6 +991,11 @@ export class CatacombDirector {
     this.stepAt = this.host.now() + CATACOMBS.moveSec * 1000;
     this.gatherAt = this.host.now() + CATACOMBS.pullSec * 1000;
     this.gathered = false;
+    // Зал пройден — оставшиеся в нём мобы (недобитые, стражи) уходят: дальше их не тащим.
+    const rest = [...this.mobs, ...this.guardians];
+    if (rest.length) this.host.dismissMobs(rest);
+    this.mobs.clear();
+    this.guardians.clear();
     this.host.announce({ kind: "door", title: "Решётка поднялась", sub: `вперёд — ${this.hallTitle(this.node(this.hi))}`, secs: 5 });
   }
 

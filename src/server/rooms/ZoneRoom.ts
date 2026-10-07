@@ -5869,7 +5869,10 @@ export class ZoneRoom extends Room<ZoneState> {
           rows: rows
             .map((r) => {
               const p = this.state.players.get(r.id);
-              return { nick: p?.nick ?? "?", dmg: Math.round(this.sim.catDamage.get(r.id) ?? 0), kills: this.sim.catKills.get(r.id) ?? 0, deaths: r.deaths, dead: !!p?.dead };
+              const rrt = this.rt.get(r.id);
+              // Павший: сколько до воскрешения (жизни отряда кончились — -1, встанет в следующем зале).
+              const rev = p?.dead ? (this.cat.livesLeft > 0 ? Math.max(0, Math.ceil(rrt?.respawnIn ?? 0)) : -1) : undefined;
+              return { nick: p?.nick ?? "?", dmg: Math.round(this.sim.catDamage.get(r.id) ?? 0), kills: this.sim.catKills.get(r.id) ?? 0, deaths: r.deaths, dead: !!p?.dead, ...(rev !== undefined ? { rev } : {}) };
             })
             .sort((a, b) => b.dmg - a.dmg),
         };
@@ -7678,7 +7681,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k === "warcry" && this.mobsInRadius(p, 8).length < 2) continue;
       if ((k === "mark" || k === "chain") && nd > 14) continue;
       // 🧪 Новые умения ассасина.
-      if (k === "plague" && nd > PLAGUE.dash) continue;
+      if (k === "plague" && nd > 3) continue; // рывка нет — травить клинки, когда цель рядом
       if (k === "soulSteal" && nd > SOUL_STEAL.reach) continue;
       if (k === "lifeArrow" && (nd > SKILLS2.lifeArrow.radius - 2 || p.hp > p.maxHp * LIFE_ARROW.botBelow)) continue;
       if (k === "smoke" && this.mobsInRadius(p, 4).length < 2 && p.hp > p.maxHp * 0.6) continue;
@@ -8399,24 +8402,7 @@ export class ZoneRoom extends Room<ZoneState> {
       case "plague": {
         rt.plagueUntil = this.elapsed + PLAGUE.duration;
         act({ k: "plagueOn", x: p.head.x, y: feetY, z: p.head.z, d: PLAGUE.duration });
-        // Рывок к цели: удар по приземлении сразу вешает PLAGUE.openStacks стаков.
-        const m0 = this.skillTarget(p, tx, tz, PLAGUE.dash, fwd());
-        if (m0) {
-          const [ax, az] = dirTo(m0, p.head.x, p.head.z);
-          const behind = this.sim.targetRadius("mob", m0.id) + JUMP_BEHIND;
-          const lx = m0.x + ax * behind;
-          const lz = m0.z + az * behind;
-          const T = 0.22;
-          act({ k: "leap", x: p.head.x, y: feetY, z: p.head.z, x2: lx, z2: lz, d: T });
-          this.clock.setTimeout(() => {
-            const pp = this.state.players.get(ownerId);
-            if (!pp || pp.dead) return;
-            if (isBot) this.placeBotAt(pp, lx, lz, m0);
-            if (m0.dead) return;
-            this.sim.hitMob(m0.id, pow.dmg, ax, az, ownerId);
-            this.afterDaggerHit(ownerId, pp, rt, m0, pow.dmg, PLAGUE.openStacks);
-          }, T * 1000);
-        }
+        // 2026-10-07: рывок к цели убран по просьбе — только отравленные клинки на PLAGUE.duration.
         return true;
       }
       case "smoke": {

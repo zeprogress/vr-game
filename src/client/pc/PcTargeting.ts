@@ -180,6 +180,7 @@ export class PcTargeting {
   clear(): boolean {
     if (!this.targetId) return false;
     this.select(null);
+    this.chaining = false;
     this.autoPauseUntil = performance.now() + AUTO_PAUSE_MS;
     return true;
   }
@@ -190,6 +191,7 @@ export class PcTargeting {
     if (!this.targetId) return;
     if (this.autoAttack) {
       this.autoAttack = false;
+      this.chaining = false;
       this.autoPauseUntil = performance.now() + AUTO_PAUSE_MS;
     } else this.startAttack();
   }
@@ -210,14 +212,26 @@ export class PcTargeting {
    * true — начали атаку новой цели.
    */
   autoTick(x: number, z: number, o: { chainRange: number; engageRange: number; idle: boolean; blocked: boolean }): boolean {
-    const lost = this.lostAttack;
+    // Цель умерла под атакой — «серия»: ищем следующего, пока не найдём (раньше пробовали один кадр,
+    // и если рядом никого не было — автобой молча выключался до ручной атаки).
+    if (this.lostAttack) this.chaining = true;
     this.lostAttack = false;
     if (!this.autoFight || o.blocked || performance.now() < this.autoPauseUntil) return false;
     if (this.autoAttack && this.alive(this.targetId)) return false;
-    if (lost) return this.attackNearest(x, z, o.chainRange);
+    // Мёртвая цель не держит место: иначе «стоишь, а моб подошёл» не срабатывало (targetId не пуст).
+    if (this.targetId && !this.alive(this.targetId)) {
+      this.targetId = null;
+      this.lastSig = "";
+    }
+    if (this.chaining && this.attackNearest(x, z, Math.max(o.chainRange, o.idle ? o.engageRange : 0))) {
+      this.chaining = false;
+      return true;
+    }
     if (o.idle && !this.targetId) return this.attackNearest(x, z, o.engageRange);
     return false;
   }
+  /** Автобой в серии: после убийства ищет следующего, пока игрок сам не отменит атаку. */
+  private chaining = false;
 
   private lastClickAt = 0;
   private lastClickId: string | null = null;

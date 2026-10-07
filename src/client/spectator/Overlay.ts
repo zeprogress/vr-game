@@ -217,7 +217,8 @@ const CSS = `
 .ov-cattop .hd { opacity:.6; font-size:1.3vh; }
 .ov-cattop .r span:not(.nm) { text-align:right; }
 .ov-cattop .r .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ov-cattop .r.dead { opacity:.45; }
+.ov-cattop .r.dead { opacity:.6; }
+.ov-cattop .rev { font-style:normal; color:#ffd166; font-weight:800; }
 .ov-cat { right:1.2vw; bottom:6vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
 .ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
 .ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
@@ -415,10 +416,10 @@ export class Overlay {
 
   /** Топ-5 героев — приходит с сервера раз в 10 с (Ф10). */
   /** Таблица забега катакомб: пока идёт забег — вместо топа героев и башни. */
-  private catTopRows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[] = [];
+  private catTopRows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number }[] = [];
   private readonly catTop: HTMLDivElement = div("box ov-cattop");
   private catTopSig = "";
-  setCatTop(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[]): void {
+  setCatTop(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean; rev?: number }[]): void {
     this.catTopRows = rows;
   }
 
@@ -570,7 +571,7 @@ export class Overlay {
     show(this.catBoard, this.cfg.top && !catRun && this.catBoardRows.length > 0);
     show(this.catTop, catRun);
     if (catRun) {
-      const sig = this.catTopRows.map((r) => `${r.nick}${r.dmg}${r.kills}${r.deaths}${r.dead}`).join("|");
+      const sig = this.catTopRows.map((r) => `${r.nick}${r.dmg}${r.kills}${r.deaths}${r.dead}${r.rev ?? ""}`).join("|");
       if (sig !== this.catTopSig) {
         this.catTopSig = sig;
         this.catTop.innerHTML = "<b>☠ урон в катакомбах</b>";
@@ -582,6 +583,13 @@ export class Overlay {
           const nm = document.createElement("span");
           nm.className = "nm";
           nm.textContent = `${i + 1}. ${r.nick}`;
+          // Павший — сколько до воскрешения.
+          if (r.dead && r.rev !== undefined) {
+            const t = document.createElement("i");
+            t.className = "rev";
+            t.textContent = r.rev < 0 ? " ⏳ в след. зале" : ` ⏳ ${r.rev} с`;
+            nm.append(t);
+          }
           const d = document.createElement("span");
           d.textContent = fmtDmg(r.dmg);
           const k = document.createElement("span");

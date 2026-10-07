@@ -9,7 +9,7 @@ import { BOT_SKIN_MODELS } from "../world/models";
 import "./billboardFix";
 import { vrLights } from "../world/vrLights";
 import { STAT_NAMES } from "#shared/progression";
-import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, PLAGUE, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ABYSS, SMOKE, JUMP_BEHIND, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, ASSASSIN_WHIRL_DASH, SOUL_STEAL, WHIRL, classOf2, hopDistance, hopsBack, skillCdMul2, SKILLS2, skillName, WARCRY, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Scene } from "@babylonjs/core/scene";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
@@ -3232,15 +3232,6 @@ export class Game {
       if (sel) {
         msg.x = sel.x;
         msg.z = sel.z;
-      }
-    } else if (id === "plague") {
-      // Чумной клинок — рывок к цели (если есть впереди), удар по приземлении вешает 2 стака.
-      const sel = this.selectedTargetPos() ?? frontTarget(PLAGUE.dash);
-      if (sel && Math.hypot(sel.x - p.x, sel.z - p.z) <= PLAGUE.dash + 1) {
-        msg.x = sel.x;
-        msg.z = sel.z;
-        this.dashAt(sel, 0.22, sel.r + JUMP_BEHIND);
-        this.localAvatar?.oneShot("jump", 1.1);
       }
     } else if (id === "whirlwind" && cls === "assassin") {
       // Танец клинков — вихрь-рывок вперёд за время вращения.
