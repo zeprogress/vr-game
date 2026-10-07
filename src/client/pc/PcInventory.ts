@@ -5,7 +5,7 @@ import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
-import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
 import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
 
 /**
@@ -903,6 +903,7 @@ export class PcInventory {
       const r = ringOf(j.ringOn[slot]);
       const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : ""}${r && r.id === this.ringSel ? " sel" : ""}`);
       c.innerHTML = r ? ringSvg(r.tier, r.gems) : RING_SLOT_SVG;
+      if (r) this.ringTip(c, r);
       c.append(div("pcinv-rslot-n", `${slot + 1}`));
       c.onclick = () =>
         r
@@ -928,12 +929,16 @@ export class PcInventory {
       const head = div("pcinv-rsel-head");
       const ico = div(`pcinv-cell big pcinv-jw t-${sel.tier}`);
       ico.innerHTML = ringSvg(sel.tier, sel.gems);
+      this.ringTip(ico, sel);
       head.append(ico, div("pcinv-name", ringLabelOf(sel)));
       box.append(head);
       sel.gems.forEach((gk, i) => {
         const row = div("pcinv-sock");
         const gi = div("pcinv-cell pcinv-jw");
-        if (gk) gi.innerHTML = gemSvg(gk);
+        if (gk) {
+          gi.innerHTML = gemSvg(gk);
+          this.gemTip(gi, gk);
+        }
         row.append(gi);
         if (gk) {
           const g = parseGem(gk)!;
@@ -959,7 +964,7 @@ export class PcInventory {
     for (const r of bagRings) {
       const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
       c.innerHTML = ringSvg(r.tier, r.gems);
-      c.title = ringLabelOf(r);
+      this.ringTip(c, r);
       c.onclick = () =>
         this.menu(c, ringLabelOf(r), [
           ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
@@ -990,7 +995,7 @@ export class PcInventory {
       const g = parseGem(gk)!;
       const c = div("pcinv-cell pcinv-jw");
       c.innerHTML = gemSvg(gk);
-      c.title = `${gemName(gk)} · +${g.lv} ${ATTR_SHORT[g.attr]}`;
+      this.gemTip(c, gk, n);
       c.append(div("pcinv-glv", String(g.lv)));
       const cnt = document.createElement("span");
       cnt.className = "pcinv-cnt";
@@ -1009,6 +1014,27 @@ export class PcInventory {
     wrap.append(gg);
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
     return { slots, pouch: wrap };
+  }
+
+  /** Подсказка при наведении на кольцо: тир, гнёзда, что даёт, лом за разбор. */
+  private ringTip(c: HTMLElement, r: { tier: RingTier; gems: (string | null)[]; scrap?: number }): void {
+    const inst = { id: "", tier: r.tier, gems: r.gems };
+    const lines = [...ringBonusText(inst)];
+    lines.push(r.gems.length ? `Гнёзд: ${r.gems.length} (занято ${r.gems.filter(Boolean).length})` : "Без гнёзд");
+    if (r.scrap) lines.push(`В лом: +${r.scrap}`);
+    c.addEventListener("mouseenter", () => this.textTip(c, ringLabelOf(r), lines.join(" · ")));
+    c.addEventListener("mouseleave", () => this.hideTip());
+  }
+
+  /** Подсказка при наведении на камень: что даёт, сколько есть, как соединить. */
+  private gemTip(c: HTMLElement, gk: string, n = 0): void {
+    const g = parseGem(gk);
+    if (!g) return;
+    const lines = [`+${g.lv} ${ATTR_SHORT[g.attr]} — в надетом кольце`];
+    if (n) lines.push(`В мешочке: ${n}`, n >= RING.combine ? `Можно соединить ${RING.combine} → ${g.lv + 1} ур.` : `Соединить: нужно ${RING.combine} одинаковых`);
+    else lines.push(`Вынуть: −${RING.unsocketPerLv * g.lv} лома`);
+    c.addEventListener("mouseenter", () => this.textTip(c, gemName(gk), lines.join(" · ")));
+    c.addEventListener("mouseleave", () => this.hideTip());
   }
 
   private selRing(id: string | null): void {
