@@ -512,7 +512,7 @@ export interface WeaponInstance {
 export const FAV_MAX = 16;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
-const LOOT_VER = 10;
+const LOOT_VER = 11;
 
 /** Оружие ближнего боя — только на нём выпадает вампиризм. */
 export function isMeleeClass(cls: string): boolean {
@@ -1059,6 +1059,14 @@ export function migrateLoot(w: WeaponInstance): boolean {
     for (const a of w.affixes) {
       if (a.sub !== "pierce") continue;
       const t = Math.max(0, Math.min(1, (a.value - 0.05) / (0.15 - 0.05)));
+      a.value = atT("pierce", Math.round(t * 32) / 32);
+    }
+  }
+  // lv 11: максимум Пронзания 25% → 40% (2026-10-07) — выпавшие роллы с теми же очками (было 5–25%).
+  if (ver < 11) {
+    for (const a of w.affixes) {
+      if (a.sub !== "pierce") continue;
+      const t = Math.max(0, Math.min(1, (a.value - 0.05) / (0.25 - 0.05)));
       a.value = atT("pierce", Math.round(t * 32) / 32);
     }
   }
