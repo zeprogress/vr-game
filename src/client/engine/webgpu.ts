@@ -10,8 +10,10 @@ export function webGpuWanted(): boolean {
   const q = new URLSearchParams(location.search).get("gpu");
   if (q === "webgl" || !("gpu" in navigator)) return false;
   if (q === "webgpu") return true;
-  // Шлем (Quest) — WebXR работает только с WebGL.
-  return !/OculusBrowser|Quest|Pico|Vision Pro/i.test(navigator.userAgent);
+  // Шлем (Quest) — WebXR работает только с WebGL. Телефоны/планшеты — тоже WebGL (2026-10-08:
+  // с WebGPU телефон сильно грелся — свет там не выключается, а гаснет до нуля и считается всегда).
+  if (/OculusBrowser|Quest|Pico|Vision Pro|Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) return false;
+  return !(navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)); // iPad «как Mac»
 }
 
 /** Есть ли VR-гарнитура (WebXR immersive-vr) — тогда WebGL: из WebGPU в VR не войти. */
