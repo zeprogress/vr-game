@@ -77,10 +77,6 @@
    "light": "#f0f2ff",
    "var": 0.32,
    "freq": 6
-  },
-  "orbit": {
-   "c": "#ffe3a3",
-   "emit": 1
   }
  },
  "body": {
@@ -500,63 +496,6 @@
    "seg": 48,
    "mat": "moon",
    "bone": "Hips"
-  },
-  {
-   "shape": "ring",
-   "at": "spine",
-   "off": [
-    0,
-    0.05,
-    -0.02
-   ],
-   "R": 1.32,
-   "r": 0.012,
-   "rot": [
-    76,
-    0,
-    18
-   ],
-   "mat": "orbit",
-   "bone": "Hips",
-   "seg": 64
-  },
-  {
-   "shape": "ring",
-   "at": "spine",
-   "off": [
-    0,
-    0.08,
-    0.02
-   ],
-   "R": 1.58,
-   "r": 0.012,
-   "rot": [
-    70,
-    0,
-    -24
-   ],
-   "mat": "orbit",
-   "bone": "Hips",
-   "seg": 72
-  },
-  {
-   "shape": "ring",
-   "at": "spine",
-   "off": [
-    0,
-    0.0,
-    0.0
-   ],
-   "R": 1.12,
-   "r": 0.01,
-   "rot": [
-    84,
-    12,
-    4
-   ],
-   "mat": "orbit",
-   "bone": "Hips",
-   "seg": 56
   },
   {
    "shape": "rock",

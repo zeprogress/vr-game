@@ -125,7 +125,6 @@ interface Orbit {
   shards: InstancedMesh[];
   /** Локальный угол каждого осколка (разрыв — у угла 0). */
   angles: number[];
-  ring: Mesh | null;
   /** Разрыв на полу: заливка, светящиеся границы и световые «шторки» по краям конуса. */
   wedge: Mesh[];
   wedgeNode: TransformNode;
@@ -143,7 +142,6 @@ export class RaidArenaFx {
   private readonly floorMat: StandardMaterial;
   private readonly voidMat: StandardMaterial;
   private readonly edgeMat: StandardMaterial;
-  private readonly lineMat: StandardMaterial;
   private readonly wedgeMat: StandardMaterial;
   private readonly borderMat: StandardMaterial;
   private readonly curtainMat: StandardMaterial;
@@ -210,10 +208,6 @@ export class RaidArenaFx {
     this.edgeMat.disableLighting = true;
     this.edgeMat.emissiveColor = c3("moon");
 
-    this.lineMat = new StandardMaterial("raidOrbitLineMat", scene);
-    this.lineMat.disableLighting = true;
-    this.lineMat.emissiveColor = c3("moonGold");
-
     this.wedgeMat = new StandardMaterial("raidWedgeMat", scene);
     this.wedgeMat.disableLighting = true;
     this.wedgeMat.emissiveColor = c3("moonGold");
@@ -268,7 +262,7 @@ export class RaidArenaFx {
       }
       const wedgeNode = new TransformNode(`raidWedge${i}`, scene);
       wedgeNode.parent = this.root;
-      this.orbits.push({ node, tilt, shards, angles, ring: null, wedge: [], wedgeNode });
+      this.orbits.push({ node, tilt, shards, angles, wedge: [], wedgeNode });
     }
 
     this.tideMat = new StandardMaterial("raidTideMat", scene);
@@ -493,20 +487,6 @@ export class RaidArenaFx {
 
     for (let i = 0; i < 3; i++) {
       const o = this.orbits[i];
-      const R = RAID_ORBITS.r[i];
-      o.ring?.dispose();
-      const path: Vector3[] = [];
-      const steps = 72;
-      const a0 = gap;
-      const a1 = Math.PI * 2 - gap;
-      for (let k = 0; k <= steps; k++) {
-        const a = a0 + ((a1 - a0) * k) / steps;
-        path.push(new Vector3(Math.sin(a) * R, 0, Math.cos(a) * R));
-      }
-      o.ring = MeshBuilder.CreateTube(`raidOrbitLine${i}`, { path, radius: 0.045, tessellation: 5 }, this.scene);
-      o.ring.parent = o.tilt;
-      o.ring.material = this.lineMat;
-      o.ring.isPickable = false;
       for (let k = 0; k < SHARDS; k++) o.shards[k].isVisible = Math.abs(angDiff(o.angles[k], 0)) > gap;
 
       for (const m of o.wedge) m.dispose();
@@ -569,14 +549,7 @@ export class RaidArenaFx {
       g.arc(x, y, r, 0, Math.PI * 2);
       g.fill();
     }
-    // Кольца орбит и лучи — золотые нити.
-    g.strokeStyle = "rgba(255,226,160,0.75)";
-    for (const R of RAID_ORBITS.r) {
-      g.lineWidth = 3;
-      g.beginPath();
-      g.arc(c, c, (R / RAID.r) * c, 0, Math.PI * 2);
-      g.stroke();
-    }
+    // Лучи — золотые нити (колец орбит на полу нет: 2026-10-07 убраны по просьбе — жёлтые кольца).
     g.lineWidth = 2;
     g.strokeStyle = "rgba(255,226,160,0.35)";
     for (let k = 0; k < 24; k++) {
