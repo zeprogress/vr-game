@@ -236,6 +236,13 @@ export class Spectator {
       },
       false,
     );
+    // Тест WebGPU (?gpu=…): пометка в углу — на чём реально рисуем (в OBS консоли не видно).
+    if (new URLSearchParams(location.search).has("gpu")) {
+      const tag = document.createElement("div");
+      tag.textContent = (this.engine as { isWebGPU?: boolean }).isWebGPU ? "WebGPU" : "WebGL";
+      tag.style.cssText = "position:fixed;left:6px;bottom:6px;z-index:50;pointer-events:none;font:700 13px system-ui;color:#fff;background:rgba(0,0,0,.55);padding:2px 7px;border-radius:5px";
+      document.body.appendChild(tag);
+    }
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
