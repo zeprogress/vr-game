@@ -238,6 +238,7 @@ import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
+import { giveItems, parseTradeItem, takeItems, takenName, tradeLog, type InvSnap } from "../trade";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
 const { Room } = colyseus;
@@ -1938,7 +1939,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4623,6 +4624,91 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: r.text };
   }
 
+  // ---------------------------------------------------------------- подарки (server/trade.ts — основа и для обмена)
+
+  /** Живой герой с этой записью (токен): id в state.players, или null — героя нет в мире. */
+  private liveByToken(token: string): { id: string; p: PlayerState; rt: Runtime } | null {
+    for (const [id, rt] of this.rt) {
+      const p = this.state.players.get(id);
+      // У бота токена может не быть — его запись «nick:<ник>».
+      if (p && (rt.token ?? `nick:${normNick(p.nick)}`) === token) return { id, p, rt };
+    }
+    return null;
+  }
+
+  /** Токен записи героя по нику: живой → его запись; иначе запись зрителя «nick:…»; иначе самая свежая с этим ником. */
+  private tokenByNick(nick: string): { token: string; nick: string } | null {
+    const norm = normNick(nick);
+    if (!norm) return null;
+    const t = this.findWeaponsTarget(norm);
+    if (t) return { token: t.rt.token ?? `nick:${norm}`, nick: t.p.nick };
+    const rec = store.get(`nick:${norm}`);
+    if (rec) return { token: rec.token, nick: rec.nick || nick };
+    let best: PlayerRecord | null = null;
+    for (const r of store.entries()) if (normNick(r.nick) === norm && (!best || r.updatedAt > best.updatedAt)) best = r;
+    return best ? { token: best.token, nick: best.nick } : null;
+  }
+
+  /** Снимок инвентаря героя для передачи: живой — из мира (оружие — тот же массив), иначе из сохранения. */
+  private openInv(token: string): InvSnap | null {
+    const live = this.liveByToken(token);
+    const rec = store.get(token);
+    if (live) return { weapons: live.rt.weapons, heldIds: this.liveHeldIds(live.p, live.rt), bag: readBag(live.p), jewels: jewelsOf(rec ?? {}) };
+    if (!rec) return null;
+    return { weapons: [...(rec.weapons ?? [])], heldIds: recHeldIds(rec), bag: restoreBag(rec.bag), jewels: jewelsOf(rec) };
+  }
+
+  /** Записать снимок обратно (живому — в мир и сохранение, иначе — в сохранение). */
+  private commitInv(token: string, snap: InvSnap): void {
+    const j = { rings: snap.jewels.rings, ringOn: snap.jewels.ringOn, gems: snap.jewels.gems };
+    const live = this.liveByToken(token);
+    if (!live) {
+      store.put(token, { weapons: snap.weapons, bag: snap.bag, ...j });
+      return;
+    }
+    writeBag(live.p, snap.bag);
+    store.put(token, j);
+    this.applyJewels(live.id);
+    this.syncWarehouse(live.id, live.rt);
+    const bot = live.id.startsWith("bot:") ? this.bots.get(normNick(live.p.nick)) : undefined;
+    if (bot) this.persistBot(bot);
+    else {
+      const c = this.clientOf(live.id);
+      if (c) this.persist(c);
+    }
+  }
+
+  /**
+   * Подарок: предмет от героя ника `norm` — герою с ником `toNick`, сразу (получатель может быть
+   * не в мире — ляжет в его сохранение). Без налога и ограничений по уровню; каждая передача — в журнал.
+   */
+  private giftAct(norm: string, code: string, count: number, toNick: string): InvActResult {
+    const item = parseTradeItem(code, count);
+    if (!item) return { ok: false, text: "Не понял, что подарить." };
+    const t = this.findWeaponsTarget(norm);
+    const from = { token: t?.rt.token ?? `nick:${norm}`, nick: t?.p.nick ?? store.get(`nick:${norm}`)?.nick ?? norm };
+    const to = this.tokenByNick(toNick.replace(/^@/, "").trim());
+    if (!to) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
+    if (to.token === from.token) return { ok: false, text: "Себе подарить нельзя." };
+    const a = this.openInv(from.token);
+    const b = this.openInv(to.token);
+    if (!a) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    if (!b) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
+    const r = takeItems(a, [item]);
+    if ("error" in r) return { ok: false, text: r.error };
+    giveItems(b, r.taken);
+    this.commitInv(from.token, a);
+    this.commitInv(to.token, b);
+    tradeLog({ kind: "gift", from, to, items: r.taken });
+    const what = r.taken.map(takenName).join(", ");
+    const rc = this.liveByToken(to.token);
+    const client = rc ? this.clientOf(rc.id) : undefined;
+    if (client) client.send(MSG.giftGot, { from: from.nick, text: what });
+    else this.reply(`@${to.nick} тебе подарок от ${from.nick}: ${what}`);
+    console.log(`[trade] подарок ${from.nick} → ${to.nick}: ${what}`);
+    return { ok: true, text: `Подарено ${to.nick}: ${what}` };
+  }
+
   private persistNick(norm: string): void {
     const bot = this.bots.get(norm);
     if (bot) {
@@ -4641,6 +4727,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
+    if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
     const t = this.findWeaponsTarget(norm);
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "unequip") {

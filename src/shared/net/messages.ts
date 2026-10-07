@@ -63,6 +63,8 @@ export const MSG = {
   pickupFeed: "pf",
   /** Кольцо/камень выпали герою (shared/jewels.ts): строка для журнала и всплывашки. */
   jewelGot: "jg",
+  /** Подарок от другого героя пришёл (server/trade.ts): { from, text }. */
+  giftGot: "gg",
   /** Строка чата Twitch (и ответы бота игры) — в журнал ПК-игрока. */
   chatLine: "cl",
   /** ПК-окно снаряжения: запрос данных / данные / действие / итог действия. */
@@ -315,7 +317,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | JewelAct;
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | JewelAct;
   id: string;
   idx: number;
   /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */

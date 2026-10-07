@@ -226,6 +226,7 @@ export class PcInventory {
       });
     }
     if (w) btn(w.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleFav(w));
+    if (w && src.kind === "bag") btn("🎁 Подарить…", () => this.askGift(w.name, `w:${w.id}`, 1));
     if (w && !w.fav) btn(`В лом (+${w.scrap})`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), true);
     if (w) btn("Выбросить", () => this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w)), true);
     btn("Отмена", () => {});
@@ -487,10 +488,18 @@ export class PcInventory {
       c.addEventListener("mouseleave", () => this.hideTip());
       return c;
     };
+    // Нажатие — подарить (сколько — выбираешь в окне).
+    const giftable = (c: HTMLDivElement, name: string, item: string, n: number): HTMLDivElement => {
+      if (n > 0) {
+        c.style.cursor = "pointer";
+        c.addEventListener("click", () => this.askGift(name, `b:${item}`, n));
+      }
+      return c;
+    };
     cons.append(
-      info(countCell(iconHtml("i.potion"), d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу."),
-      info(countCell(iconHtml("i.scrap"), d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»)."),
-      info(countCell(iconHtml("i.fish"), d.fish, "", true), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере."),
+      giftable(info(countCell(iconHtml("i.potion"), d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу. Нажми — подарить."), "Зелья лечения", "potion", d.potions),
+      giftable(info(countCell(iconHtml("i.scrap"), d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»). Нажми — подарить."), "Лом", "scrap", d.scrap),
+      giftable(info(countCell(iconHtml("i.fish"), d.fish, "", true), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере. Нажми — подарить."), "Рыба", "fish", d.fish),
     );
     // Жетоны заданий — подсказка сразу при наведении и по нажатию.
     {
@@ -956,6 +965,7 @@ export class PcInventory {
           ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
           ["Надеть в слот 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 })],
           ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
+          ["🎁 Подарить…", () => this.askGift(ringLabelOf(r), `r:${r.id}`, 1)],
           [
             `В лом (+${r.scrap})`,
             () =>
@@ -989,6 +999,7 @@ export class PcInventory {
       const acts: [string, () => void, boolean?][] = [];
       if (sel && free >= 0) acts.push([`Вставить в ${ringName(sel).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: sel.id, idx: free, fuel: gk })]);
       if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
+      acts.push(["🎁 Подарить…", () => this.askGift(gemName(gk), `g:${gk}`, n)]);
       c.onclick = () =>
         acts.length
           ? this.menu(c, `${gemName(gk)} ×${n}`, acts)
@@ -1178,6 +1189,57 @@ export class PcInventory {
     this.tip.style.display = "none";
   }
 
+  /** Подарок: ник получателя (и сколько — для камней/лома/зелий), предмет уходит сразу. */
+  private askGift(name: string, code: string, max: number): void {
+    this.hideTip();
+    this.confirmEl?.remove();
+    const box = div("pcinv-confirm");
+    box.append(div("pcinv-confirm-text", `🎁 Подарить: ${name}`));
+    const nick = document.createElement("input");
+    nick.className = "pcinv-input";
+    nick.placeholder = "Ник получателя";
+    nick.maxLength = 40;
+    box.append(nick);
+    let cnt: HTMLInputElement | null = null;
+    if (max > 1) {
+      cnt = document.createElement("input");
+      cnt.className = "pcinv-input";
+      cnt.type = "number";
+      cnt.min = "1";
+      cnt.max = String(max);
+      cnt.value = "1";
+      box.append(div("pcinv-small", `Сколько (есть ${max})`), cnt);
+    }
+    box.append(div("pcinv-small", "Предмет сразу уйдёт получателю — даже если его нет в игре. Вернуть нельзя."));
+    const row = div("pcinv-confirm-row");
+    const close = (): void => {
+      box.remove();
+      this.confirmEl = null;
+    };
+    const send = button("Подарить", () => {
+      const to = nick.value.trim();
+      if (!to) {
+        nick.focus();
+        return;
+      }
+      const n = cnt ? Math.max(1, Math.min(max, Math.floor(Number(cnt.value) || 1))) : 1;
+      close();
+      this.hooks.act({ act: "gift", id: code, idx: n, fuel: to });
+    });
+    send.classList.add("danger");
+    row.append(send, button("Отмена", close));
+    box.append(row);
+    // Клавиши игры (WASD и т.п.) не должны срабатывать, пока печатаешь ник.
+    box.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") send.click();
+      if (e.key === "Escape") close();
+    });
+    this.win.append(box);
+    this.confirmEl = box;
+    setTimeout(() => nick.focus(), 0);
+  }
+
   private askConfirm(text: string, yes: string, fn: () => void): void {
     this.confirmEl?.remove();
     const box = div("pcinv-confirm");
@@ -1304,6 +1366,7 @@ function injectInvStyle(): void {
 .pcinv-cell.t-ruby { border-color:var(--tier-ruby-edge); box-shadow:inset 0 0 14px var(--tier-ruby-glow); color:var(--tier-ruby); }
 .pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
 .pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
+.pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }
 .pcinv-glv { position:absolute; left:3px; top:1px; font:800 11px system-ui; color:#fff; text-shadow:0 1px 2px #000; }

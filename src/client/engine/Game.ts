@@ -3491,6 +3491,12 @@ export class Game {
       if (this.pcInv?.isOpen) this.pcInv.refresh();
       else if (this.player.inVR) this.net?.sendPcInvOpen();
     };
+    net.onGiftGot = (from, text) => {
+      this.notifyToast(`🎁 Подарок от ${from}: ${text}`);
+      this.pcHud?.log("loot", `подарок: ${text}`, from);
+      if (this.pcInv?.isOpen) this.pcInv.refresh();
+      else if (this.player.inVR) this.net?.sendPcInvOpen();
+    };
     net.onPickupFeed = (m) => {
       if (m.nick === this.localNick) return; // своё — уже в «Подобрано»
       this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, TIER_LOOK[m.tier].color);
@@ -4262,6 +4268,7 @@ export class Game {
       this.net.onPicked = null;
       this.net.onPickupFeed = null;
       this.net.onJewelGot = null;
+      this.net.onGiftGot = null;
       this.net.onKillFeed = null;
       this.net.onChatLine = null;
       this.net.onDmgHits = null;
