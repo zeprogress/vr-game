@@ -210,6 +210,8 @@ export class Spectator {
       /** Окно свободной камеры (?freecam=1): управляется рукой, поза уходит спектаторам. */
       freecam?: boolean;
     } = {},
+    /** Готовый WebGPU-движок (?gpu=webgpu, engine/webgpu.ts), иначе WebGL. */
+    gpuEngine?: Engine,
   ) {
     const preset = PRESETS[quality];
     // ?obs=1 — режим для OBS Browser Source: пока нет живой связи с сервером
@@ -231,7 +233,7 @@ export class Spectator {
       canvas.height = this.fixedSize.h;
     }
 
-    this.engine = new Engine(
+    this.engine = gpuEngine ?? new Engine(
       canvas,
       true, // MSAA: перенасыщенный цвет в Twitch оказался не из-за него —
       // баг был и раньше, до включения сглаживания (Android HW-энкодер,

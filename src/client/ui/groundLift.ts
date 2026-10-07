@@ -3,6 +3,7 @@ import type { Material } from "@babylonjs/core/Materials/material";
 import type { MaterialDefines } from "@babylonjs/core/Materials/materialDefines";
 import type { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
 import type { Scene } from "@babylonjs/core/scene";
+import { ShaderLanguage } from "@babylonjs/core/Materials/shaderLanguage";
 
 /**
  * Круги эффектов на земле (умения, баффы, метки атак мобов) — «подтянуты» к камере на GROUND_LIFT
@@ -34,10 +35,15 @@ class GroundLiftPlugin extends MaterialPluginBase {
     return "GroundLiftPlugin";
   }
 
-  override getUniforms(): { ubo: { name: string; size: number; type: string }[]; vertex: string } {
+  // WebGL (GLSL) и WebGPU (WGSL, ?gpu=webgpu).
+  override isCompatible(): boolean {
+    return true;
+  }
+
+  override getUniforms(lang = ShaderLanguage.GLSL): { ubo: { name: string; size: number; type: string }[]; vertex: string } {
     return {
       ubo: [{ name: "liftEye", size: 3, type: "vec3" }],
-      vertex: "#ifdef GROUND_LIFT\nuniform vec3 liftEye;\n#endif",
+      vertex: lang === ShaderLanguage.WGSL ? "#ifdef GROUND_LIFT\nuniform liftEye: vec3f;\n#endif" : "#ifdef GROUND_LIFT\nuniform vec3 liftEye;\n#endif",
     };
   }
 
@@ -46,8 +52,18 @@ class GroundLiftPlugin extends MaterialPluginBase {
     if (cam) ubo.updateVector3("liftEye", cam.globalPosition);
   }
 
-  override getCustomCode(shaderType: string): { [point: string]: string } | null {
+  override getCustomCode(shaderType: string, lang = ShaderLanguage.GLSL): { [point: string]: string } | null {
     if (shaderType !== "vertex") return null;
+    if (lang === ShaderLanguage.WGSL)
+      return {
+        CUSTOM_VERTEX_UPDATE_WORLDPOS: `#ifdef GROUND_LIFT
+{
+  let glTo = uniforms.liftEye - worldPos.xyz;
+  let glD = length(glTo);
+  worldPos = vec4f(worldPos.xyz + glTo / max(glD, 0.001) * min(${GROUND_LIFT.toFixed(2)}, glD * 0.4), worldPos.w);
+}
+#endif`,
+      };
     return {
       CUSTOM_VERTEX_UPDATE_WORLDPOS: `#ifdef GROUND_LIFT
 {

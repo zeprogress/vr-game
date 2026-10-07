@@ -1,6 +1,7 @@
 import type { Material } from "@babylonjs/core/Materials/material";
 import { MaterialPluginBase } from "@babylonjs/core/Materials/materialPluginBase";
 import type { UniformBuffer } from "@babylonjs/core/Materials/uniformBuffer";
+import { ShaderLanguage } from "@babylonjs/core/Materials/shaderLanguage";
 
 /** Ветер: сила наклона, скорость волны и её длина. */
 export const WIND = {
@@ -43,10 +44,16 @@ export class GrassWindPlugin extends MaterialPluginBase {
     attributes.push("windPhase");
   }
 
-  override getUniforms(): {
+  // WebGL (GLSL) и WebGPU (WGSL, ?gpu=webgpu).
+  override isCompatible(): boolean {
+    return true;
+  }
+
+  override getUniforms(lang = ShaderLanguage.GLSL): {
     ubo: { name: string; size: number; type: string }[];
     vertex: string;
   } {
+    const wgsl = lang === ShaderLanguage.WGSL;
     return {
       ubo: [
         { name: "windTime", size: 1, type: "float" },
@@ -54,7 +61,14 @@ export class GrassWindPlugin extends MaterialPluginBase {
         { name: "windGust", size: 1, type: "float" },
         { name: "windDir", size: 2, type: "vec2" },
       ],
-      vertex: `
+      vertex: wgsl
+        ? `
+        uniform windTime: f32;
+        uniform windStrength: f32;
+        uniform windGust: f32;
+        uniform windDir: vec2f;
+      `
+        : `
         uniform float windTime;
         uniform float windStrength;
         uniform float windGust;
@@ -70,8 +84,23 @@ export class GrassWindPlugin extends MaterialPluginBase {
     uniformBuffer.updateFloat2("windDir", WIND.dirX, WIND.dirZ);
   }
 
-  override getCustomCode(shaderType: string): Record<string, string> | null {
+  override getCustomCode(shaderType: string, lang = ShaderLanguage.GLSL): Record<string, string> | null {
     if (shaderType !== "vertex") return null;
+    if (lang === ShaderLanguage.WGSL)
+      return {
+        CUSTOM_VERTEX_DEFINITIONS: `
+        attribute windPhase: f32;
+      `,
+        CUSTOM_VERTEX_UPDATE_POSITION: `
+        let bend = max(positionUpdated.y, 0.0);
+        let ph = vertexInputs.windPhase - uniforms.windTime;
+        let wave = sin(ph) * 0.5 + 0.5;
+        let gust = sin(ph * 0.35 - 0.7) * 0.5 + 0.5;
+        let lean = (wave + uniforms.windGust * gust) * bend * uniforms.windStrength;
+        positionUpdated.x += uniforms.windDir.x * lean;
+        positionUpdated.z += uniforms.windDir.y * lean;
+      `,
+      };
     return {
       CUSTOM_VERTEX_DEFINITIONS: `
         attribute float windPhase;

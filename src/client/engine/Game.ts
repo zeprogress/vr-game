@@ -338,8 +338,9 @@ export class Game {
    */
   private leaveBotOn = false;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
-    this.engine = new Engine(canvas, true, { stencil: true, antialias: true });
+  constructor(private readonly canvas: HTMLCanvasElement, engine?: Engine) {
+    // engine — готовый WebGPU-движок (?gpu=webgpu, engine/webgpu.ts), иначе WebGL.
+    this.engine = engine ?? new Engine(canvas, true, { stencil: true, antialias: true });
     // Uniform-буферы (UBO) Babylon ОСТАВЛЕНЫ включёнными. Отключение (`?noubo=1`, только для диагностики)
     // ломает multiview: матрица правого глаза `viewProjectionR` в режиме без UBO не выставляется, и
     // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.

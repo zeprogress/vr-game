@@ -1,3 +1,4 @@
+import { createWebGpuEngine } from "./engine/webgpu";
 import { Game } from "./engine/Game";
 import { NetClient } from "./net/NetClient";
 import { runLogin } from "./ui/Login";
@@ -85,7 +86,7 @@ if (params.has("dash")) {
 } else if (params.get("spectator")) {
   bootSpectator(params.get("spectator") as string);
 } else {
-  bootGame();
+  void bootGame();
 }
 
 /** Пульт стрима (этап 17 Ф5): /?dash=КЛЮЧ (или ?dash=1 после первого раза). */
@@ -110,6 +111,7 @@ function bootSpectator(specKey: string): void {
     : undefined;
   void (async () => {
     const { Spectator } = await import("./spectator/Spectator");
+    const gpu = await createWebGpuEngine(canvas, { antialias: true, stencil: false, premultipliedAlpha: false });
     const spec = new Spectator(canvas, quality, debug, {
       rs: num("rs"),
       fpsCap,
@@ -124,7 +126,7 @@ function bootSpectator(specKey: string): void {
         const v = Number(params.get("reload"));
         return params.has("reload") && Number.isFinite(v) ? v : undefined;
       })(),
-    });
+    }, gpu ?? undefined);
     const net = new NetClient();
     (window as unknown as { spec: unknown; net: NetClient }).spec = spec;
     (window as unknown as { spec: unknown; net: NetClient }).net = net;
@@ -154,10 +156,11 @@ function guestTokenOf(): string {
   return t;
 }
 
-function bootGame(): void {
+async function bootGame(): Promise<void> {
   // Качество графики выбора больше нет — всегда максимум на всех платформах.
   // В VR сверху ложится лёгкий профиль (см. Game.applyVrQuality).
-  const game = new Game(canvas);
+  const gpu = await createWebGpuEngine(canvas, { antialias: true, stencil: true });
+  const game = new Game(canvas, gpu ?? undefined);
   game.start(); // сцена рендерится за экраном входа
   void game.initXR().catch((e) => console.warn("[xr] init", e));
 
