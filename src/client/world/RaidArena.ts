@@ -173,6 +173,8 @@ export class RaidArenaFx {
   private flashT = -1;
   private t = 0;
   private idleSpin = 0;
+  /** «Прилив»: пол вне разрывов (там гибнут) чернеет — 0..1, плавно. */
+  private tideDark = 0;
   /**
    * Купол над ареной: изнутри — тьма вокруг (весь мир снаружи закрыт его стенками, видны только арена,
    * босс и герои внутри), снаружи не виден вовсе — включается лишь для камеры внутри купола.
@@ -228,7 +230,7 @@ export class RaidArenaFx {
     this.curtainMat = new StandardMaterial("raidWedgeCurtainMat", scene);
     this.curtainMat.disableLighting = true;
     this.curtainMat.emissiveColor = c3("moonGold");
-    this.curtainMat.alpha = 0.22;
+    this.curtainMat.alpha = 0.08;
     this.curtainMat.backFaceCulling = false;
     this.curtainMat.disableDepthWrite = true;
 
@@ -392,7 +394,16 @@ export class RaidArenaFx {
       if (this.flashT > 0.6) this.flashT = -1;
     }
     const pullTint = ph > 0 && v?.pull ? 0.25 : 0;
-    this.floorMat.emissiveColor.set(0.55 + pulse * 0.4 + flash + pullTint * 0.6, 0.58 + pulse * 0.35 + flash * 0.9, 0.68 + pulse * 0.3 + flash * 0.8 + pullTint);
+    // «Прилив» (каст и волна): пол чернеет — там гибнут; светятся только разрывы поверх него.
+    const darkTo = warn || this.tideT >= 0 ? 1 : 0;
+    this.tideDark += Math.sign(darkTo - this.tideDark) * Math.min(Math.abs(darkTo - this.tideDark), dt * 2.5);
+    const lit = 1 - this.tideDark;
+    this.floorMat.diffuseColor.set(lit, lit, lit);
+    this.floorMat.emissiveColor.set(
+      (0.55 + flash + pullTint * 0.6) * lit,
+      (0.58 + flash * 0.9) * lit,
+      (0.68 + flash * 0.8 + pullTint) * lit,
+    );
     // Перед «Последним вздохом» край арены краснеет и пульсирует.
     const bw = ph > 0 && v && v.breath > 0 && v.breath <= RAID_FIGHT.breath.warn;
     if (bw) {
@@ -405,8 +416,9 @@ export class RaidArenaFx {
     this.updateCore(dt, v);
     this.updateCracks(v);
     this.updatePull(dt, v);
-    this.wedgeMat.alpha = 0.38 + 0.08 * Math.sin(this.t * 2.2) + pulse * 0.4;
-    this.curtainMat.alpha = 0.2 + 0.05 * Math.sin(this.t * 2.2) + pulse * 0.35;
+    // Разрывы на чёрном поле «Прилива» — ярче и плотнее (там спасение).
+    this.wedgeMat.alpha = 0.38 + 0.08 * Math.sin(this.t * 2.2) + pulse * 0.2 + this.tideDark * 0.35;
+    this.curtainMat.alpha = 0.07 + 0.02 * Math.sin(this.t * 2.2) + pulse * 0.1;
     const glow = 1 + pulse * 0.6;
     const g0 = FX_RGB.moonGold;
     this.borderMat.emissiveColor.set(g0[0] * glow, g0[1] * glow, g0[2] * glow);

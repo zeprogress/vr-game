@@ -602,7 +602,8 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // ---- Рейд (тест 2026-10-07): Лунный аватар — на плато горы с водопадом (shared/raid.ts), !raid ведёт ботов ----
   moonAvatar: {
     model: "monMoonAvatar", name: "Лунный аватар", blurb: "рейд-босс на горе: стоит на месте, лунные молнии, ледяные круги, веер осколков", level: 45, kind: "spitter",
-    hp: 300000, dmgMul: 18, xp: 60000000, scaleMul: 9, tint: null, anchored: true, gait: true,
+    // tint — чуть темнее и синее родной лунной текстуры (2026-10-07).
+    hp: 300000, dmgMul: 18, xp: 60000000, scaleMul: 9, tint: [0.68, 0.78, 1.05], anchored: true, gait: true,
     stormCaller: true, freezer: true, legendaryChance: 0.5,
     shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.2, count: 5, spread: 0.35 },
   },

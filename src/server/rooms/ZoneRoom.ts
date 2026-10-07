@@ -73,8 +73,8 @@ import {
   type PcInvData,
 } from "#shared/net/messages";
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER } from "#shared/mobs";
-import { clampToPlay, inPlayArea, RAID, raidWaypoint } from "#shared/raid";
+import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
+import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
@@ -2560,6 +2560,16 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Отсчёт общего выступления отряда на босса (зовётся из step). */
   private tickRaid(): void {
+    // Рейд-босс снова целый, а до того потерял ≥ raidCancelLost HP — рейд отменён у всех.
+    const rb = this.sim.mobs.get(this.sim.raidBossId);
+    if (rb && !rb.dead) {
+      const f = rb.hp / Math.max(1, rb.maxHp);
+      this.raidBossLow = Math.min(this.raidBossLow, f);
+      if (f >= 1) {
+        if (this.raidBossLow <= 1 - BOT.raidCancelLost) this.cancelRaidAll();
+        this.raidBossLow = 1;
+      }
+    } else this.raidBossLow = 1;
     if (this.raidGoAt === 0) return;
     // Босс исчез/повержен, пока копились — отменяем сбор.
     const boss = this.bossMob();
@@ -2584,6 +2594,19 @@ export class ZoneRoom extends Room<ZoneState> {
     if (gone > 0) {
       this.reply(`Отряд из ${gone} героев пошёл в рейд: ${this.raidName()}! За ним — до победы.`);
     }
+  }
+
+  /** Отмена рейда у всех: отряд и очередь распущены (босс восстановил здоровье). */
+  private cancelRaidAll(): void {
+    let n = this.raidPending.size;
+    for (const bot of this.bots.values()) {
+      if (!bot.raiding) continue;
+      bot.raiding = false;
+      n++;
+    }
+    this.raidPending.clear();
+    this.raidGoAt = 0;
+    if (n > 0) this.reply(`🌙 ${this.raidName()} восстановил силы — рейд отменён. Собирайте отряд заново: !raid (нужно ${BOT.raidMinParty}).`);
   }
 
   /** Сколько героев (живых игроков и ботов) сейчас в мире — масштаб события. */
@@ -5796,9 +5819,20 @@ export class ZoneRoom extends Room<ZoneState> {
   private addDanger(x: number, z: number, r: number, sec: number): void {
     this.dangers.push({ x, z, r, until: this.elapsed + sec });
   }
-  /** Куда выбегать боту из опасной зоны (null — он не в опасности). */
-  private dangerEscape(x: number, z: number): { x: number; z: number } | null {
-    let best: { x: number; z: number } | null = null;
+  /** Точка в действующей опасной зоне (кроме зоны skip). */
+  private inDanger(x: number, z: number, skip?: { x: number; z: number; r: number }): boolean {
+    for (const d of this.dangers) {
+      if (d !== skip && this.elapsed <= d.until && Math.hypot(x - d.x, z - d.z) < d.r) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Куда выбегать боту из опасной зоны (null — он не в опасности): прочь от центра самой глубокой зоны,
+   * а если там другая опасная зона или нельзя (ok: на арене рейда — не за край) — по дуге вбок.
+   */
+  private dangerEscape(x: number, z: number, ok?: (x: number, z: number) => boolean): { x: number; z: number } | null {
+    let worstD: { x: number; z: number; r: number } | null = null;
     let worst = 0;
     for (let i = this.dangers.length - 1; i >= 0; i--) {
       const d = this.dangers[i];
@@ -5806,17 +5840,25 @@ export class ZoneRoom extends Room<ZoneState> {
         this.dangers.splice(i, 1);
         continue;
       }
-      const dist = Math.hypot(x - d.x, z - d.z);
-      if (dist >= d.r) continue;
-      const depth = d.r - dist;
+      const depth = d.r - Math.hypot(x - d.x, z - d.z);
       if (depth > worst) {
         worst = depth;
-        const ax = dist > 0.05 ? (x - d.x) / dist : Math.cos(d.x + z);
-        const az = dist > 0.05 ? (z - d.z) / dist : Math.sin(d.z + x);
-        best = { x: d.x + ax * (d.r + 1.2), z: d.z + az * (d.r + 1.2) };
+        worstD = d;
       }
     }
-    return best;
+    if (!worstD) return null;
+    const d = worstD;
+    const dist = Math.hypot(x - d.x, z - d.z);
+    const base = dist > 0.05 ? Math.atan2(x - d.x, z - d.z) : d.x + z;
+    const R = d.r + 1.2;
+    let first: { x: number; z: number } | null = null;
+    for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, 2.5, -2.5, Math.PI]) {
+      const pt = { x: d.x + Math.sin(base + da) * R, z: d.z + Math.cos(base + da) * R };
+      first ??= pt;
+      if ((ok && !ok(pt.x, pt.z)) || this.inDanger(pt.x, pt.z, d)) continue;
+      return pt;
+    }
+    return first;
   }
 
   /** Есть ли живой герой в отряде катакомб. */
@@ -6832,7 +6874,9 @@ export class ZoneRoom extends Room<ZoneState> {
     const onRaidArena = this.raid.fighting && this.raid.isOn(bot.id);
     // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
     // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
-    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z);
+    // На арене выбегаем только внутрь арены (не за край, в пустоту).
+    const arenaOk = onRaidArena ? (x: number, z: number): boolean => Math.hypot(x - RAID.x, z - RAID.z) < this.raid.edge - 1.5 : undefined;
+    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z, arenaOk);
     if (escape) mob = undefined;
 
     let tx: number;
@@ -6882,23 +6926,35 @@ export class ZoneRoom extends Room<ZoneState> {
     // Куда шагать: напрямую или по маршруту в обход крутых склонов (sim/nav.ts).
     // Прицел и дистанции (удар, «стой тут») — по самой цели (dx/dz, dist).
     let [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
-    // «Прилив»: ноги — в ближайший разрыв орбиты (там не гибнут), прицел и удар — по-прежнему по боссу.
-    // Ближний бой — у края туши, дальний — на дистанции стрельбы.
+    // Ноги — в особую точку, прицел и удар — по-прежнему по боссу:
+    // «Прилив» — в ближайший разрыв орбиты (там не гибнут), мимо кругов «Слезы»; ближний бой — у края
+    //   туши, дальний — на дистанции стрельбы;
+    // «Притяжение» — у центра жжёт: ждём сразу за кругом жжения, а не ныряем к боссу и обратно.
     let raidGapDist = -1;
-    const gapBoss = this.raid.tideCasting ? (raidBoss ?? (onRaidArena ? this.bossMob() : undefined)) : undefined;
-    if (gapBoss && !gapBoss.dead && !escape) {
-      const shooter = p.rightCls === "bow" || p.rightCls === "staff";
-      const edgeR = MOB.bodyRadius * gapBoss.scale * BOSS.bodyMult;
-      const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;
-      const gp = this.raid.gapPoint(p.head.x, p.head.z, want, strPhase(bot.id) * 2 - 1);
-      if (gp) {
-        raidGapDist = Math.hypot(gp.x - p.head.x, gp.z - p.head.z) || 1e-6;
-        // К разрыву — в обход туши босса (по дуге), а не напрямик через неё.
-        const wp = this.raid.approach(p.head.x, p.head.z, gp, edgeR + PLAYER.radius + 1.2);
-        const gx = wp.x - p.head.x;
-        const gz = wp.z - p.head.z;
+    const fightBoss = raidBoss ?? (onRaidArena ? this.bossMob() : undefined);
+    if (fightBoss && !fightBoss.dead && !escape && this.raid.fighting) {
+      const edgeR = MOB.bodyRadius * fightBoss.scale * BOSS.bodyMult;
+      let feet: { x: number; z: number } | null = null;
+      if (this.raid.tideCasting) {
+        const shooter = p.rightCls === "bow" || p.rightCls === "staff";
+        const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;
+        const gp = this.raid.gapPoint(p.head.x, p.head.z, want, strPhase(bot.id) * 2 - 1, (x, z) => this.inDanger(x, z));
+        if (gp) {
+          raidGapDist = Math.hypot(gp.x - p.head.x, gp.z - p.head.z) || 1e-6;
+          // К разрыву — в обход туши босса (по дуге), а не напрямик через неё.
+          feet = this.raid.approach(p.head.x, p.head.z, gp, edgeR + PLAYER.radius + 1.2);
+        }
+      } else if (this.raid.pulling && Math.hypot(p.head.x - RAID.x, p.head.z - RAID.z) < RAID_FIGHT.pull.coreR + 3) {
+        const a = raidAngle(p.head.x, p.head.z);
+        const r = Math.min(this.raid.edge - 2.5, RAID_FIGHT.pull.coreR + 2.5);
+        feet = { x: RAID.x + Math.sin(a) * r, z: RAID.z + Math.cos(a) * r };
+        raidGapDist = Math.hypot(feet.x - p.head.x, feet.z - p.head.z) || 1e-6;
+      }
+      if (feet) {
+        const gx = feet.x - p.head.x;
+        const gz = feet.z - p.head.z;
         const gl = Math.hypot(gx, gz) || 1e-6;
-        [mdx, mdz] = this.botNavDir(bot, p, wp.x, wp.z, gx / gl, gz / gl, gl);
+        [mdx, mdz] = this.botNavDir(bot, p, feet.x, feet.z, gx / gl, gz / gl, gl);
       }
     }
     // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
@@ -8679,6 +8735,8 @@ export class ZoneRoom extends Room<ZoneState> {
         } satisfies ActRelay);
         // Круг-предупреждение полевого моба (прыжок Скалолома, Землерой, молния духа) — боты выбегают.
         if ((f.k === "leapMark" || f.k === "burrowMark" || f.k === "stormMark") && f.r) this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2);
+        // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
+        if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
       }
       m.fx.length = 0;
     }
@@ -9281,6 +9339,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Бой с рейд-боссом «Лунный аватар» (server/rooms/raidFight.ts, shared/raid.ts). */
   readonly raid = new RaidFight(this.raidHost());
 
+  /** Самая низкая доля HP рейд-босса с его последнего полного здоровья (правило отмены рейда). */
+  private raidBossLow = 1;
   /** !raid копит отряд: norm-ключи записавшихся, пока не выступили. */
   private readonly raidPending = new Set<string>();
   /** ms момента общего выступления (0 — отсчёт не идёт). */

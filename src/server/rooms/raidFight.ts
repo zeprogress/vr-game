@@ -134,7 +134,7 @@ export class RaidFight {
    * Куда встать боту: ближайший разрыв на радиусе r от босса. slot −1..1 — место поперёк конуса
    * (боты встают по всей ширине, а не в одну точку — не выталкивают друг друга). null — боя нет.
    */
-  gapPoint(x: number, z: number, r: number, slot = 0): { x: number; z: number } | null {
+  gapPoint(x: number, z: number, r: number, slot = 0, avoid?: (x: number, z: number) => boolean): { x: number; z: number } | null {
     if (!this.active) return null;
     const a = raidAngle(x, z);
     const n = RAID_PHASES[this.phase].orbits;
@@ -147,19 +147,22 @@ export class RaidFight {
         best = this.orbits[i];
       }
     }
-    const a2 = best + slot * this.halfGap * 0.6;
-    // «Притяжение»: у центра жжёт — встаём дальше; пропасть на пути — ближе/дальше на шаг.
-    let rr = Math.min(this.pulling ? Math.max(r, RAID_FIGHT.pull.coreR + 2) : r, this.edge - 2.5);
-    for (const dr of [0, 3.5, -3.5, 6]) {
-      const r2 = Math.max(6.5, Math.min(this.edge - 2.5, rr + dr));
-      const px = RAID.x + Math.sin(a2) * r2;
-      const pz = RAID.z + Math.cos(a2) * r2;
-      if (!this.cracksOpen || !inRaidCrack(px, pz, this.cracks, this.ang)) {
-        rr = r2;
-        break;
+    // «Притяжение»: у центра жжёт — встаём дальше; пропасть/трещина или чужая опасность (avoid: круг
+    // «Слезы») на месте — ближе/дальше на шаг, потом другое место поперёк конуса.
+    const rr = Math.min(this.pulling ? Math.max(r, RAID_FIGHT.pull.coreR + 2) : r, this.edge - 2.5);
+    let first: { x: number; z: number } | null = null;
+    for (const ds of [0, 0.8, -0.8, 1.6, -1.6]) {
+      const a2 = best + Math.max(-1, Math.min(1, slot + ds)) * this.halfGap * 0.6;
+      for (const dr of [0, 3.5, -3.5, 6]) {
+        const r2 = Math.max(6.5, Math.min(this.edge - 2.5, rr + dr));
+        const pt = { x: RAID.x + Math.sin(a2) * r2, z: RAID.z + Math.cos(a2) * r2 };
+        first ??= pt;
+        if (this.cracks.length && inRaidCrack(pt.x, pt.z, this.cracks, this.ang)) continue;
+        if (avoid?.(pt.x, pt.z)) continue;
+        return pt;
       }
     }
-    return { x: RAID.x + Math.sin(a2) * rr, z: RAID.z + Math.cos(a2) * rr };
+    return first;
   }
 
   /**
@@ -288,15 +291,16 @@ export class RaidFight {
       this.host.phantoms(pts, { hp: F.mirror.hp, dmg: F.mirror.dmg, scale: F.mirror.scale });
       this.host.announce("Зеркальный плач", "Фантомы-копии на арене — собейте их");
     }
-    // «Раскол диска» (фаза 4): в пропасти дольше grace — падение. Ботам — опасные зоны.
-    if (this.cracksOpen) {
-      if (now >= this.crackDangerAt) {
-        this.crackDangerAt = now + 0.4;
-        for (const c of this.cracks) {
-          const a = c.a + this.ang;
-          this.host.danger(RAID.x + Math.sin(a) * c.r, RAID.z + Math.cos(a) * c.r, c.cr + 1.2, 0.6);
-        }
+    // «Раскол диска» (фаза 4): в пропасти дольше grace — падение. Ботам — опасные зоны уже с трещин
+    // (предупреждения): иначе бот стоит на трещине до раскола и за grace не успевает уйти.
+    if (this.cracks.length && now >= this.crackDangerAt) {
+      this.crackDangerAt = now + 0.4;
+      for (const c of this.cracks) {
+        const a = c.a + this.ang;
+        this.host.danger(RAID.x + Math.sin(a) * c.r, RAID.z + Math.cos(a) * c.r, c.cr + 1.2, 0.6);
       }
+    }
+    if (this.cracksOpen) {
       for (const id of [...this.onArena]) {
         const h = byId.get(id);
         if (!h || h.dead) continue;
