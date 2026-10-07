@@ -907,7 +907,16 @@ export class PcInventory {
   private jewelParts(d: PcInvData): { slots: HTMLDivElement; pouch: HTMLDivElement } {
     const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
     const wrap = div("pcinv-rings pcinv-pouch");
-    wrap.append(div("pcinv-pouch-h", "💰 Мешочек с драгоценностями"));
+    const ph = div("pcinv-pouch-h", "💰 Мешочек с драгоценностями");
+    if (j.gems.some(([, n]) => n >= RING.combine)) {
+      const all = document.createElement("button");
+      all.className = "pcinv-allbtn pcinv-mergeall";
+      all.textContent = "⬆ Соединить все камни";
+      all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
+      all.onclick = () => this.hooks.act({ act: "gemMergeAll", id: "all", idx: 0 });
+      ph.append(all);
+    }
+    wrap.append(ph);
     const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
     if (this.ringSel && !ringOf(this.ringSel)) this.ringSel = null;
 
@@ -1418,7 +1427,8 @@ function injectInvStyle(): void {
 .pcinv-glv { position:absolute; left:3px; top:1px; font:800 11px system-ui; color:#fff; text-shadow:0 1px 2px #000; }
 .pcinv-rslots { display:flex; gap:8px; align-items:center; margin:8px 0; }
 .pcinv-pouch { margin-top:10px; background:#141319; border:1px solid #3a3426; border-radius:8px; padding:8px; }
-.pcinv-pouch-h { font-weight:800; color:#e8c26a; margin-bottom:6px; }
+.pcinv-pouch-h { font-weight:800; color:#e8c26a; margin-bottom:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.pcinv-pouch-h .pcinv-mergeall { margin:0 0 0 auto; width:auto; color:#7ee081; }
 .pcinv-rslot-n { position:absolute; left:4px; top:2px; font:700 10px system-ui; color:#8a8698; }
 .pcinv-rsum { flex:1; min-width:0; }
 .pcinv-rsel { background:#16151c; border:1px solid #2f323b; border-radius:8px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }

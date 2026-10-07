@@ -182,7 +182,8 @@ export type JewelOp =
   | { op: "ringScrap"; id: string }
   | { op: "gemIn"; id: string; idx: number; gem: GemKey }
   | { op: "gemOut"; id: string; idx: number }
-  | { op: "gemMerge"; gem: GemKey };
+  | { op: "gemMerge"; gem: GemKey }
+  | { op: "gemMergeAll" };
 
 export interface JewelOpResult {
   ok: boolean;
@@ -260,6 +261,28 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       addGem(js, up, 1);
       return { ok: true, text: `${RING.combine} × ${gemName(o.gem)} → ${gemName(up)}` };
     }
+    case "gemMergeAll": {
+      // От младших уровней к старшим — новые камни сразу идут в следующее соединение.
+      const made = new Map<GemKey, number>();
+      for (let more = true; more; ) {
+        more = false;
+        const keys = Object.keys(js.gems).sort((a, b) => (parseGem(a)?.lv ?? 0) - (parseGem(b)?.lv ?? 0));
+        for (const k of keys) {
+          const g = parseGem(k);
+          const n = Math.floor((js.gems[k] ?? 0) / RING.combine);
+          if (!g || n <= 0) continue;
+          const up = gemKey(g.attr, g.lv + 1);
+          addGem(js, k, -n * RING.combine);
+          addGem(js, up, n);
+          made.set(up, (made.get(up) ?? 0) + n);
+          more = true;
+        }
+      }
+      if (!made.size) return { ok: false, text: `Нечего соединять — нужно ${RING.combine} одинаковых камня.` };
+      // Итог — только камни, что остались после всех соединений (промежуточные ушли выше).
+      const res = [...made.keys()].filter((k) => (js.gems[k] ?? 0) > 0).map((k) => `${gemName(k)} ×${js.gems[k]}`);
+      return { ok: true, text: `Камни соединены: ${res.join(", ")}` };
+    }
   }
 }
 
@@ -278,10 +301,12 @@ export function jewelOpFrom(act: string, id: string, idx: number, fuel?: string)
       return { op: "gemOut", id, idx };
     case "gemMerge":
       return { op: "gemMerge", gem: id };
+    case "gemMergeAll":
+      return { op: "gemMergeAll" };
   }
   return null;
 }
-export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "gemIn", "gemOut", "gemMerge"] as const;
+export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "gemIn", "gemOut", "gemMerge", "gemMergeAll"] as const;
 export type JewelAct = (typeof JEWEL_ACTS)[number];
 
 /** Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс). */

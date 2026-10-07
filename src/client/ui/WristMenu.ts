@@ -1732,6 +1732,7 @@ export class WristMenu {
     const g = parseGem(gk)!;
     const buttons: Popup["buttons"] = [];
     if (n >= RING.combine) buttons.push({ id: "pop:merge", label: `Соединить ${RING.combine} → ${g.lv + 1} ур.`, color: "#7ee081", act: () => this.jewelSend({ act: "gemMerge", id: gk, idx: 0 }) });
+    if ((this.jewels?.gems ?? []).some(([, c]) => c >= RING.combine)) buttons.push({ id: "pop:mergeall", label: "Соединить все камни", color: "#7ee081", act: () => this.jewelSend({ act: "gemMergeAll", id: "all", idx: 0 }) });
     buttons.push({ id: "pop:cancel", label: n >= RING.combine ? "Отмена" : "Закрыть", color: "#a9a498", act: () => this.closePopup() });
     this.popup = { title: `${gemName(gk)} ×${n}`, sub: `+${g.lv} ${ATTR_SHORT[g.attr]} · вставить — через кольцо с гнёздами${n < RING.combine ? ` · соединить — нужно ${RING.combine}` : ""}`, color: GEM_LOOK[g.attr].c, buttons };
     this.focusId = buttons[0].id;
