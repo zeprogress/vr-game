@@ -117,6 +117,8 @@ export function raidViewOf(st: {
 }
 
 const SHARDS = 28;
+/** Внешний край пустоты вокруг арены, м; по нему же — купол тьмы. */
+const ARENA_OUTER = RAID.r + 2.5;
 const c3 = (k: keyof typeof FX_RGB): Color3 => new Color3(...FX_RGB[k]);
 
 interface Orbit {
@@ -171,6 +173,11 @@ export class RaidArenaFx {
   private flashT = -1;
   private t = 0;
   private idleSpin = 0;
+  /**
+   * Купол над ареной: изнутри — тьма вокруг (весь мир снаружи закрыт его стенками, видны только арена,
+   * босс и герои внутри), снаружи не виден вовсе — включается лишь для камеры внутри купола.
+   */
+  private readonly dome: Mesh;
 
   constructor(private readonly scene: Scene) {
     const gy = terrainHeight(RAID.x, RAID.z);
@@ -316,6 +323,24 @@ export class RaidArenaFx {
     this.pullRing.setEnabled(false);
 
     this.rebuild(RAID.r, 0);
+
+    const domeMat = new StandardMaterial("raidDomeMat", scene);
+    domeMat.disableLighting = true;
+    domeMat.diffuseColor = new Color3(0, 0, 0);
+    domeMat.specularColor = new Color3(0, 0, 0);
+    domeMat.emissiveColor = new Color3(0.012, 0.014, 0.03);
+    domeMat.fogEnabled = false;
+    // Сфера гранями внутрь, центр — на полу: нижняя половина под полом, стенки и свод закрывают мир.
+    this.dome = MeshBuilder.CreateSphere("raidDome", { diameter: ARENA_OUTER * 2, segments: 24, sideOrientation: Mesh.BACKSIDE }, scene);
+    this.dome.parent = this.root;
+    this.dome.material = domeMat;
+    this.dome.isPickable = false;
+    this.dome.setEnabled(false);
+    // По камере, которую сейчас рисуем (игрок, телефон, VR, эфир) — до отбора видимых мешей кадра.
+    const r2 = ARENA_OUTER * ARENA_OUTER;
+    scene.onBeforeCameraRenderObservable.add((cam) => {
+      this.dome.setEnabled(Vector3.DistanceSquared(cam.globalPosition, this.root.position) < r2);
+    });
   }
 
   /** Вспышка «Последнего вздоха» по всей арене. */
@@ -480,7 +505,7 @@ export class RaidArenaFx {
     this.edgeRing.isPickable = false;
 
     this.voidRing?.dispose();
-    this.voidRing = annulus(this.scene, "raidVoid", edge, RAID.r + 2.5, 96);
+    this.voidRing = annulus(this.scene, "raidVoid", edge, ARENA_OUTER, 96);
     this.voidRing.parent = this.root;
     this.voidRing.position.y = 0.09;
     this.voidRing.material = this.voidMat;
