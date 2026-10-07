@@ -597,6 +597,9 @@ export class CatacombDirector {
   private startRun(): void {
     const now = this.host.now();
     this.phase = CAT_PHASE.run;
+    // Отсчёт до следующих катакомб — с НАЧАЛА забега (2026-10-07: раньше с конца).
+    this.nextAuto = this.host.now() + this.autoGap();
+    this.cooldownUntil = this.host.now() + CATACOMBS.cooldownSec * 1000;
     this.phaseEnd = now + CATACOMBS.runSec * 1000;
     this.stage = 0;
     this.lo = 0;
@@ -1016,9 +1019,11 @@ export class CatacombDirector {
     this.hi = 0;
     this.stage = 0;
     this.route = [0];
-    // Не набрали отряд — короткий откат; был забег — полный.
-    this.cooldownUntil = this.host.now() + (wasRun ? CATACOMBS.cooldownSec : 5 * 60) * 1000;
-    this.nextAuto = this.host.now() + this.autoGap();
+    // Был забег — отсчёт уже идёт с его начала; не набрали отряд — новый отсчёт отсюда и короткий откат.
+    if (!wasRun) {
+      this.cooldownUntil = this.host.now() + 5 * 60 * 1000;
+      this.nextAuto = this.host.now() + this.autoGap();
+    }
     this.pushState();
   }
 
