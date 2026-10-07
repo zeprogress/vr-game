@@ -1879,7 +1879,7 @@ export class Game {
       this.vrCull.dispose();
       this.vrCull = null;
     }
-    if (!this.vrCull) this.vrCull = new VrCull(this.scene, this.player.inVR); // деревья/камни вдали и пустые корни glTF — не считаем
+    if (!this.vrCull) this.vrCull = new VrCull(this.scene, this.player.inVR, this.quality === "high" || this.player.inVR ? undefined : 15); // деревья/камни вдали и пустые корни glTF — не считаем
     this.vrCull.update(dt, this.player.eyePosition, this.player.eyeForward);
     // Надписи в VR: затухание, «кто говорит» (голос игроков + озвучка чата — одним видом).
     if (this.vrHud) {
@@ -3013,7 +3013,7 @@ export class Game {
       const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
       if (slot >= 0) this.inventory.use(slot);
     }
-    const R = 20;
+    const R = 35;
     const t = this.selectedTargetPos();
     const fighting = pt.autoAttack && !!t;
     if (fighting && Math.hypot(t.x - ab.x, t.z - ab.z) > R + 10) {

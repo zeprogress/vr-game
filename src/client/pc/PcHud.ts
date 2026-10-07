@@ -324,7 +324,7 @@ export class PcHud {
     // Автобой — галочка над панелью действий (телефон — под кнопками справа).
     const ab = document.createElement("label");
     ab.className = "pc-autobot";
-    ab.title = "Герой сам бегает рядом (≈20 м от места включения), бьёт мобов и применяет умения. Сдвинулся сам — центр переносится.";
+    ab.title = "Герой сам бегает рядом (≈35 м от места включения), бьёт мобов и применяет умения. Сдвинулся сам — центр переносится.";
     this.autoBotBox = document.createElement("input");
     this.autoBotBox.type = "checkbox";
     this.autoBotBox.onchange = () => hooks.onAutoBot?.(this.autoBotBox.checked);

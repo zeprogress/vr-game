@@ -38,6 +38,8 @@ export class VrCull {
     private readonly scene: Scene,
     /** VR: деревья/камни всегда «активны» (bbox по двум глазам ненадёжен), режем по расстоянию. Плоский экран: ещё и отсечение по кадру. */
     readonly vr = true,
+    /** До скольких м — настоящая модель дерева, дальше снимок (качество «Среднее»/«Низкое» — ближе). */
+    private readonly near3D = NEAR_3D,
   ) {
     const p = new URLSearchParams(location.search);
     const v = p.has("vrcull") ? Number(p.get("vrcull")) : this.vr ? FAR_CENTER : 150;
@@ -110,7 +112,7 @@ export class VrCull {
     // Дальше NEAR_3D настоящая модель дерева не нужна — там снимок-билборд (TreeImpostors).
     // Одно решение на дерево/камень (модель или снимок) принимает TreeImpostors; меши без
     // записи там (снимки ещё не готовы / вид без снимка) — обычная логика радиусов.
-    impostorsUpdate(cam, fx, fz, this.treeR, NEAR_3D);
+    impostorsUpdate(cam, fx, fz, this.treeR, this.near3D);
     this.applyImp(this.trees, this.treeR, cam, fx, fz);
     this.applyImp(this.rocks, this.rockR, cam, fx, fz);
     this.thin?.rebuild(cam);
