@@ -3651,7 +3651,7 @@ export class ZoneRoom extends Room<ZoneState> {
       this.setFishing(nick, norm);
     } else if (cmd === "!train" || cmd === "!качаться" || cmd === "!качайся" || cmd === "!grind") {
       this.setTraining(nick, norm);
-    } else if (cmd === "!raid" || cmd === "!boss") {
+    } else if (cmd === "!raid" || cmd === "!boss" || cmd === "!рейд" || cmd === "!рб") {
       this.setRaid(nick, norm);
     } else if (cmd === "!квест" || cmd === "!кв" || cmd === "!quest" || cmd === "!участвую" || cmd === "!cq") {
       this.joinChatQuest(nick, norm);
@@ -3695,7 +3695,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.reply(`@${nick} все боты (${n}) распущены.`);
       }
     } else if (
-      cmd === "!event" || cmd === "!events" || cmd === "!ивент" || cmd === "!ивенты" || cmd === "!евент" ||
+      cmd === "!event" || cmd === "!events" || cmd === "!ивент" || cmd === "!ив" || cmd === "!ивенты" || cmd === "!евент" ||
       cmd === "!событие" || cmd === "!invasion" || cmd === "!нашествие"
     ) {
       if (this.eventPhase === "active" && this.activeEventKind === 3) {
