@@ -494,6 +494,19 @@ export class PcInventory {
       else if (src?.kind === "bag" && w?.fav) this.toggleFav(w);
     });
     right.append(grid);
+    // Разобрать всё, кроме избранного ★ и надетого — с подтверждением.
+    const scrapSum = bag.reduce((n, w) => n + w.scrap, 0);
+    const all = document.createElement("button");
+    all.className = "pcinv-allbtn";
+    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bag.length})`;
+    all.disabled = bag.length === 0;
+    all.onclick = () =>
+      this.askConfirm(
+        `Разобрать ${bag.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")} и то, что в руках, останутся.`,
+        "Разобрать всё",
+        () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
+      );
+    right.append(all);
     right.append(div("pcinv-sub", "Прочее"));
     const cons = div("pcinv-cons");
     const info = (c: HTMLDivElement, title: string, body: string): HTMLDivElement => {
@@ -563,19 +576,6 @@ export class PcInventory {
         "Перетащи на руку — надеть · ПКМ — надеть/снять · в «Избранное» — не разбирается · на наковальню — в лом · за окно — выбросить · на «Заточку» — заточить",
       ),
     );
-    // Разобрать всё, кроме избранного ★ и надетого — с подтверждением.
-    const scrapSum = bag.reduce((n, w) => n + w.scrap, 0);
-    const all = document.createElement("button");
-    all.className = "pcinv-allbtn";
-    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bag.length})`;
-    all.disabled = bag.length === 0;
-    all.onclick = () =>
-      this.askConfirm(
-        `Разобрать ${bag.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")} и то, что в руках, останутся.`,
-        "Разобрать всё",
-        () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
-      );
-    right.append(all);
     wrap.append(left, right);
     this.body.append(wrap);
   }
@@ -974,7 +974,8 @@ export class PcInventory {
     const bagRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
     wrap.append(div("pcinv-sub", `Кольца в сумке · ${bagRings.length}`));
     const rg = div("pcinv-grid");
-    if (!bagRings.length) rg.append(div("pcinv-empty", "Колец нет — они изредка падают с мобов, чаще с элиты и боссов."));
+    // Пустой текст — не в сетку (там он сжимался в колонку шириной с ячейку).
+    if (!bagRings.length) wrap.append(div("pcinv-small", "Колец нет — они изредка падают с мобов, чаще с элиты и боссов."));
     for (const r of bagRings) {
       const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
       c.innerHTML = ringSvg(r.tier, r.gems);
@@ -1003,7 +1004,7 @@ export class PcInventory {
     // Камни.
     wrap.append(div("pcinv-sub", `Камни · соедини ${RING.combine} одинаковых — получишь уровнем выше`));
     const gg = div("pcinv-grid");
-    if (!j.gems.length) gg.append(div("pcinv-empty", "Камней нет — падают с мобов (1 уровня)."));
+    if (!j.gems.length) wrap.append(div("pcinv-small", "Камней нет — падают с мобов (1 уровня)."));
     const free = sel ? sel.gems.indexOf(null) : -1;
     for (const [gk, n] of j.gems) {
       const g = parseGem(gk)!;
