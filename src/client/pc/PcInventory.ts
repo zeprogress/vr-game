@@ -22,7 +22,7 @@ import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "rings" | "enchant" | "attrs" | "skills";
+export type InvTab = "gear" | "enchant" | "attrs" | "skills";
 
 export interface HeldInfo {
   cls: string;
@@ -333,7 +333,6 @@ export class PcInventory {
     this.tabsEl.innerHTML = "";
     const tabs: [InvTab, string][] = [
       ["gear", "Снаряжение"],
-      ["rings", "Кольца"],
       ["enchant", "Заточка"],
       ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
       ["skills", "Умения"],
@@ -367,7 +366,6 @@ export class PcInventory {
       return;
     }
     if (this.tab === "gear") this.renderGear(d);
-    else if (this.tab === "rings") this.renderRings(d);
     else if (this.tab === "enchant") this.renderEnchant(d);
     else if (this.tab === "skills") this.renderSkills(d);
     else this.renderAttrs(d);
@@ -416,7 +414,8 @@ export class PcInventory {
     sel.disabled = !d.titles?.length;
     sel.onchange = () => this.hooks.act({ act: "title", id: sel.value, idx: 0 });
     titleRow.append(sel);
-    left.append(doll, xp, hands, titleRow, stats);
+    const jw = this.jewelParts(d);
+    left.append(doll, xp, hands, jw.slots, titleRow, stats);
 
     // --- избранное и сумка ---
     const right = div("pcinv-col");
@@ -534,6 +533,7 @@ export class PcInventory {
     });
     cons.append(anvil);
     right.append(cons);
+    right.append(jw.pouch);
     right.append(
       div(
         "pcinv-hint",
@@ -880,9 +880,11 @@ export class PcInventory {
   /** Кольцо, открытое для работы с камнями (гнёзда). */
   private ringSel: string | null = null;
 
-  private renderRings(d: PcInvData): void {
+  /** Кольца на странице «Снаряжение»: слоты (под руками) и «Мешочек с драгоценностями» (кольца и камни). */
+  private jewelParts(d: PcInvData): { slots: HTMLDivElement; pouch: HTMLDivElement } {
     const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
-    const wrap = div("pcinv-rings");
+    const wrap = div("pcinv-rings pcinv-pouch");
+    wrap.append(div("pcinv-pouch-h", "💰 Мешочек с драгоценностями"));
     const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
     if (this.ringSel && !ringOf(this.ringSel)) this.ringSel = null;
 
@@ -909,7 +911,6 @@ export class PcInventory {
     for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
     sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : "Ничего не надето. Кольцо даёт маг. защиту 10%, камни в нём — атрибуты."));
     slots.append(sum);
-    wrap.append(slots);
 
     // Выбранное кольцо: гнёзда.
     const sel = ringOf(this.ringSel);
@@ -995,9 +996,8 @@ export class PcInventory {
       gg.append(c);
     }
     wrap.append(gg);
-    wrap.append(div("pcinv-small", `Лом: ${d.scrap}`));
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    this.body.append(wrap);
+    return { slots, pouch: wrap };
   }
 
   private selRing(id: string | null): void {
@@ -1307,7 +1307,9 @@ function injectInvStyle(): void {
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }
 .pcinv-glv { position:absolute; left:3px; top:1px; font:800 11px system-ui; color:#fff; text-shadow:0 1px 2px #000; }
-.pcinv-rslots { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+.pcinv-rslots { display:flex; gap:8px; align-items:center; margin:8px 0; }
+.pcinv-pouch { margin-top:10px; background:#141319; border:1px solid #3a3426; border-radius:8px; padding:8px; }
+.pcinv-pouch-h { font-weight:800; color:#e8c26a; margin-bottom:6px; }
 .pcinv-rslot-n { position:absolute; left:4px; top:2px; font:700 10px system-ui; color:#8a8698; }
 .pcinv-rsum { flex:1; min-width:0; }
 .pcinv-rsel { background:#16151c; border:1px solid #2f323b; border-radius:8px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }
