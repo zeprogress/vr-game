@@ -60,7 +60,7 @@ const CSS = `
 .cat-rep .cr-it.cr-t-ruby{border-color:var(--tier-ruby-edge);color:var(--tier-ruby);box-shadow:inset 0 0 1.6vh var(--tier-ruby-glow)}
 .cat-rep .cr-it.cr-t-legendary{border-color:var(--tier-legendary-edge);color:var(--tier-legendary);box-shadow:inset 0 0 1.4vh var(--tier-legendary-glow)}
 .cat-rep .cr-it .cr-ico{font-size:3vh;line-height:1;display:flex}
-.cat-rep .cr-it .cr-ico > span{width:1em;height:1em}
+.cat-rep .cr-it .cr-ico.cr-jw{width:1.25em;height:1.25em}
 .cat-rep .cr-it .cr-cnt{position:absolute;right:.25vh;bottom:0;font:800 1.4vh system-ui,sans-serif;color:#fff;text-shadow:0 0 .4vh #000,0 0 .4vh #000}
 .cat-rep .cr-ft{display:flex;justify-content:space-between;align-items:center;font-size:1.8vh;opacity:.75;gap:2vh}
 .cat-rep .cr-ft .cr-x{cursor:pointer;padding:.6vh 1.6vh;border-radius:1vh;background:#2a2230;border:.15vh solid #4a3d55}
@@ -177,7 +177,8 @@ export function showCatReport(m: CatReportMsg, o: { delayMs?: number; holdSec?: 
         const tier = l.jw.startsWith("ring:") ? (l.jw.slice(5) as RingTier) : null;
         const it = el("div", `cr-it${tier ? ` cr-t-${tier}` : ""}`);
         it.title = tier ? ringName({ tier }) : gemName(l.jw);
-        const ico = el("span", "cr-ico");
+        // Значок кольца/камня тянется на весь контейнер — у контейнера должен быть размер.
+        const ico = el("span", "cr-ico cr-jw");
         ico.innerHTML = tier ? ringHtml(tier) : gemHtml(l.jw);
         it.appendChild(ico);
         if (l.count > 1) it.appendChild(el("span", "cr-cnt", `×${l.count}`));
