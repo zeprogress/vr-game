@@ -820,12 +820,19 @@ function injectHudStyle(): void {
 .pc-micro { position:absolute; right:14px; bottom:14px; display:flex; gap:5px; }
 .pc-hud.touch .pc-actionbar, .pc-hud.touch .pc-micro { display:none !important; }
 /* Телефон: чат и журнал — прозрачная полоска сверху посередине; тап — развернуть. */
-.pc-hud.touch .pc-chat { left:50%; top:4px; bottom:auto; transform:translateX(-50%); width:min(38vw,400px); height:76px;
+.pc-hud.touch .pc-chat { left:50%; top:4px; bottom:auto; transform:translateX(-50%); width:min(38vw,400px); height:86px;
   background:rgba(10,9,14,.28); box-shadow:none; border:none; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-head, .pc-hud.touch .pc-chat:not(.open) .pc-chat-input { display:none !important; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { overflow:hidden; font-size:11.5px; padding:2px 6px; }
 .pc-hud.touch .pc-chat.open { top:48px; width:min(80vw,560px); height:min(62vh,420px); background:rgba(10,9,14,.88); z-index:60; }
 .pc-hud.touch .pc-chat.open .pc-chat-input { font-size:16px; padding:8px 10px; }
+/* Телефон: настройки журнала — вниз внутрь панели (вверх уезжали за экран); вкладки и шрифт крупнее. */
+.pc-hud.touch .pc-chat-cfg { top:44px; bottom:auto; left:6px; margin:0; z-index:5; font-size:15px; gap:9px; }
+.pc-hud.touch .pc-chat-cfg input { width:20px; height:20px; }
+.pc-hud.touch .pc-chat-tab { font-size:16px; padding:6px 16px; border-radius:7px; }
+.pc-hud.touch .pc-chat-gear { font-size:20px; padding:4px 10px; }
+.pc-hud.touch .pc-chat.open .pc-chat-log { font-size:15.5px; line-height:1.4; }
+.pc-hud.touch .pc-chat:not(.open) .pc-chat-log { font-size:13.5px; }
 .pc-hud.touch .pc-unit { left:6px; top:6px; transform:scale(.82); transform-origin:0 0; background:none; box-shadow:none; }
 .pc-hud.touch .pc-minimap { right:4px; top:4px; transform:scale(.5); transform-origin:100% 0; }
 .pc-hud.touch .pc-minimap canvas { border-radius:6px; }
