@@ -313,11 +313,13 @@ export interface PcInvData {
   skills?: { cls: string; chosen: string[] };
   /** Кольца и камни (shared/jewels.ts). */
   jewels?: PcInvJewels;
+  /** Непрочитанные подарки: от кого и что. */
+  giftNotes?: { from: string; text: string; at: number }[];
 }
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | JewelAct;
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | JewelAct;
   id: string;
   idx: number;
   /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */

@@ -171,7 +171,7 @@ function connect(attempt = 0): void {
       joined = true;
       room = r;
       r.onMessage("sid", (sid: string) => saveSid(sid));
-      r.onMessage("toast", (m: { ok: boolean; text: string }) => toast(m.text, m.ok));
+      r.onMessage("toast", (m: { ok: boolean; text: string }) => m.text && toast(m.text, m.ok));
       r.onMessage("enchant", (m: unknown) => pcInv?.onResult(m as never));
       r.onMessage("inv", (msg: InvMsg) => {
         if (msg.redirect) {

@@ -318,6 +318,7 @@ export class PcInventory {
   }
 
   onResult(r: PcInvResult): void {
+    if (!r.text) return; // «Понятно» у подарков — без строки итога
     if (!this.forging) {
       this.lastResult = { text: r.text, up: r.ok };
       if (this.isOpen) this.render();
@@ -365,6 +366,19 @@ export class PcInventory {
     if (!d) {
       this.body.append(div("pcinv-empty", "Загрузка…"));
       return;
+    }
+    // Непрочитанные подарки — плашкой над любой вкладкой, пока не нажмут «Понятно».
+    if (d.giftNotes?.length) {
+      const g = div("pcinv-gifts");
+      g.append(div("pcinv-gifts-h", `🎁 Тебе подарили${d.giftNotes.length > 1 ? ` (${d.giftNotes.length})` : ""}`));
+      for (const n of d.giftNotes.slice(-6).reverse()) g.append(div("pcinv-gifts-row", `${n.from}: ${n.text}`));
+      const ok = button("Понятно", () => {
+        if (this.data) this.data = { ...this.data, giftNotes: [] };
+        this.hooks.act({ act: "giftSeen", id: "-", idx: 0 });
+        this.render();
+      });
+      g.append(ok);
+      this.body.append(g);
     }
     if (this.tab === "gear") this.renderGear(d);
     else if (this.tab === "enchant") this.renderEnchant(d);
@@ -1392,6 +1406,10 @@ function injectInvStyle(): void {
 .pcinv-cell.t-ruby { border-color:var(--tier-ruby-edge); box-shadow:inset 0 0 14px var(--tier-ruby-glow); color:var(--tier-ruby); }
 .pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
 .pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
+.pcinv-gifts { background:#1f1a10; border:1px solid #d9a21b; border-radius:8px; padding:8px 10px; margin-bottom:10px; display:flex; flex-direction:column; gap:4px; }
+.pcinv-gifts-h { font-weight:800; color:#ffd166; }
+.pcinv-gifts-row { font-size:13px; }
+.pcinv-gifts .pcinv-ebtn { align-self:flex-start; margin-top:4px; }
 .pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }

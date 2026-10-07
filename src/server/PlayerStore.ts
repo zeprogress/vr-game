@@ -90,6 +90,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   rings?: RingInst[];
   ringOn?: [string | null, string | null];
   gems?: Record<string, number>;
+  /** Непрочитанные подарки (server/trade.ts): показываются в инвентаре, пока не нажмут «Понятно». */
+  giftNotes?: { from: string; text: string; at: number }[];
   updatedAt: number;
 }
 

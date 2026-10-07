@@ -1939,7 +1939,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4443,6 +4443,7 @@ export class ZoneRoom extends Room<ZoneState> {
         chosen: [p.skill1, p.skill2].filter(Boolean),
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
+      giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4704,6 +4705,9 @@ export class ZoneRoom extends Room<ZoneState> {
     this.commitInv(to.token, b);
     tradeLog({ kind: "gift", from, to, items: r.taken });
     const what = r.taken.map(takenName).join(", ");
+    // Непрочитанное — до «Понятно» в инвентаре (последние 20).
+    const notes = [...(store.get(to.token)?.giftNotes ?? []), { from: from.nick, text: what, at: Date.now() }].slice(-20);
+    store.put(to.token, { giftNotes: notes });
     const rc = this.liveByToken(to.token);
     const client = rc ? this.clientOf(rc.id) : undefined;
     if (client) client.send(MSG.giftGot, { from: from.nick, text: what });
@@ -4731,6 +4735,11 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
+    if (act === "giftSeen") {
+      const t = this.findWeaponsTarget(norm);
+      store.put(t?.rt.token ?? `nick:${norm}`, { giftNotes: [] });
+      return { ok: true, text: "" };
+    }
     const t = this.findWeaponsTarget(norm);
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "unequip") {
@@ -9777,6 +9786,14 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     });
     this.applyJewels(client.sessionId);
+    // Подарки, пришедшие без нас, — всплывашкой при входе (подробно — в инвентаре).
+    {
+      const notes = (token ? store.get(token)?.giftNotes : undefined) ?? [];
+      if (notes.length) {
+        const from = [...new Set(notes.map((n) => n.from))].join(", ");
+        this.clock.setTimeout(() => client.send(MSG.giftGot, { from, text: notes.length > 1 ? `${notes.length} подарка — смотри инвентарь` : notes[0].text }), 4000);
+      }
+    }
 
     client.send(
       MSG.char,
