@@ -65,7 +65,6 @@ const MISS_FX_DELAY = 0.35;
 /** Спектатор: настоящая модель дерева/камня — до стольких метров, дальше снимок. */
 const SPEC_TREE_3D = 60;
 const FORWARD_Z = new Vector3(0, 0, 1);
-const TRANSPARENT = new Color4(0, 0, 0, 0);
 
 export type { Quality };
 
@@ -174,11 +173,6 @@ export class Spectator {
     smooth: boolean;
   } | null = null;
   private lastOvlSig = "";
-  /** ?obs=1: прозрачная страница, пока нет живой связи с сервером. */
-  private readonly obs: boolean;
-  private live = false;
-  /** performance.now() момента обрыва — держим картинку ещё пару секунд (сетевой чих). */
-  private lostAt = 0;
   /** Сторож зависаний картинки + сбор диагностики (см. RenderWatch). */
   private watch: RenderWatch | null = null;
 
@@ -205,7 +199,6 @@ export class Spectator {
       raw?: boolean;
       reloadSec?: number;
       overlay?: boolean | "ext";
-      obs?: boolean;
       perf?: boolean;
       /** Окно свободной камеры (?freecam=1): управляется рукой, поза уходит спектаторам. */
       freecam?: boolean;
@@ -214,10 +207,6 @@ export class Spectator {
     gpuEngine?: Engine,
   ) {
     const preset = PRESETS[quality];
-    // ?obs=1 — режим для OBS Browser Source: пока нет живой связи с сервером
-    // (загрузка страницы, рестарт сервера, обрыв) страница прозрачная —
-    // можно подложить в OBS слой-заглушку «сервер перезагружается».
-    this.obs = override.obs === true;
     // Потолок fps: high — 60, остальные пресеты — 30. `?fpscap=` может только
     // урезать дальше (слабый телефон), но не поднять выше потолка пресета.
     const capMax = quality === "high" ? 60 : 30;
@@ -244,8 +233,6 @@ export class Spectator {
         antialias: true,
         powerPreference: "high-performance",
         doNotHandleContextLost: true,
-        alpha: this.obs, // прозрачный бэкбуфер только в OBS-режиме
-        premultipliedAlpha: false,
       },
       false,
     );
@@ -255,14 +242,7 @@ export class Spectator {
     // Как у игрока: обходим только включённые и видимые меши, а не все ~2000 (пулы эффектов,
     // выключенные мобы, залы катакомб) — замер стенда: ~5 мс на кадр уходило на обход (см. meshCandidates.ts).
     installActiveMeshCandidates(this.scene);
-    this.scene.clearColor = this.obs
-      ? new Color4(0, 0, 0, 0)
-      : new Color4(0.5, 0.7, 0.9, 1);
-    if (this.obs) {
-      // OBS композитит по альфе только если сама страница прозрачна.
-      document.documentElement.style.background = "transparent";
-      document.body.style.background = "transparent";
-    }
+    this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
 
     // buildZone красит небо по LOADOUT.world.hour ПРЯМО СЕЙЧАС — а до
     // подключения к серверу (первый кадр рисуем сразу, см. run()) это ещё
@@ -351,9 +331,8 @@ export class Spectator {
       "position:fixed;left:0;right:0;top:44%;text-align:center;color:#fff;" +
       "font:600 30px/1.4 system-ui,sans-serif;text-shadow:0 2px 12px #000;" +
       "pointer-events:none;z-index:10";
-    // OBS-режим: своих плашек не рисуем вовсе — заглушку кладёт стример слоем ниже.
-    this.status.textContent = this.obs ? "" : "ZEP GAME — подключаюсь…";
-    this.status.style.display = this.obs ? "none" : "block";
+    this.status.textContent = "ZEP GAME — подключаюсь…";
+    this.status.style.display = "block";
     document.body.appendChild(this.status);
 
     // ?debug=1 — ещё и сцена наружу: иначе с прода не заглянуть, какие
@@ -488,14 +467,10 @@ export class Spectator {
       this.attach(room);
       this.cam.startIntro(); // после рестарта сервера — снова с общего плана
       this.setStatus("");
-      this.live = true;
-      this.lostAt = 0;
       if (wantVoice) this.setVoice(true);
     };
     net.onConnectionLost = () => {
       this.setStatus("ZEP GAME — связь потеряна, переподключаюсь…");
-      this.live = false;
-      this.lostAt = performance.now();
     };
     net.onSpecCmd = (cmd) => this.applySpecCmd(cmd);
     net.onRtc = (msg) => void this.voice?.handle(msg);
@@ -610,8 +585,6 @@ export class Spectator {
     }
     this.setStatus("");
     if (net.room) this.attach(net.room);
-    this.live = true;
-    this.lostAt = 0;
     void this.watchForUpdates();
     return true;
   }
@@ -652,17 +625,6 @@ export class Spectator {
       this.rateAt = now;
     }
 
-    // OBS-режим: нет живой связи (и прошла пара секунд с обрыва) — не рисуем
-    // мир вовсе, отдаём прозрачный кадр. В OBS снизу видно слой-заглушку.
-    if (this.obs && !this.live && (this.lostAt === 0 || now - this.lostAt > 2500)) {
-      this.overlay?.setShown(false);
-      this.engine.clear(TRANSPARENT, true, true);
-      // Цикл rAF жив — просто ждём связь. Иначе сторож примет паузу без
-      // связи за «цикл рендера встал» и уйдёт в цикл перезагрузок.
-      this.watch?.afterRender(now);
-      return;
-    }
-    if (this.obs) this.overlay?.setShown(true);
     this.probe?.frameStart(now);
     this.scene.render();
     this.probe?.mark("render+gpu");
@@ -751,8 +713,6 @@ export class Spectator {
   }
 
   private setStatus(text: string): void {
-    // В OBS-режиме своих плашек не рисуем — заглушку кладёт сам стример слоем ниже.
-    if (this.obs) return;
     this.status.textContent = text;
     this.status.style.display = text ? "block" : "none";
   }

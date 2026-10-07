@@ -6,7 +6,7 @@ import type { OvlCam, SpecCmd } from "#shared/net/messages";
 
 /**
  * Оверлей стрима отдельной страницей (`/overlay.html?spectator=КЛЮЧ`) — второй
- * Browser Source в OBS поверх основного (`/?spectator=КЛЮЧ&obs=1&overlay=ext`).
+ * Browser Source в OBS поверх основного (`/?spectator=КЛЮЧ&overlay=ext`).
  * Без Babylon: только DOM. Своё соединение с комнатой как спектатор; события
  * (килфид, баннеры, топы) приходят от сервера напрямую, а то, что зависит от
  * камеры (кого смотрим, HP цели, кто говорит), присылает рендерящая страница

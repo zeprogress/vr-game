@@ -3,7 +3,7 @@ import type { Engine } from "@babylonjs/core/Engines/engine";
 /**
  * Пробный WebGPU-режим (`?gpu=webgpu`): без флага, без поддержки в браузере или при ошибке — null,
  * и игра/эфир создают обычный WebGL-движок. В шлеме (WebXR) WebGPU не работает — там всегда WebGL.
- * Прозрачного холста для OBS (?obs=1) в WebGPU-режиме нет. Свои GLSL-шейдеры Babylon переводит сам (glslang/twgsl грузятся с его CDN при первом запуске).
+ * Свои GLSL-шейдеры Babylon переводит сам (glslang/twgsl грузятся с его CDN при первом запуске).
  */
 export function webGpuWanted(): boolean {
   return new URLSearchParams(location.search).get("gpu") === "webgpu" && "gpu" in navigator;

@@ -119,7 +119,6 @@ function bootSpectator(specKey: string): void {
       rh: num("rh"),
       raw: params.get("rawcam") === "1",
       overlay: params.get("overlay") === "ext" ? "ext" : params.get("overlay") !== "0",
-      obs: params.get("obs") === "1",
       perf: params.get("perf") === "1",
       freecam: params.get("freecam") === "1",
       reloadSec: (() => {
