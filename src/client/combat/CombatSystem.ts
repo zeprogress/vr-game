@@ -925,7 +925,11 @@ export class CombatSystem {
 
     sp = secNow();
     if (this.player.inVR) this.handleGripsVR();
-    else this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
+    else {
+      // Телефон: ⚔ с пустыми руками у оружия (стойка, земля) — подобрать, а не бить кулаком.
+      if (this.player.thirdPerson && primaryEdge && !this.weapon) this.tryPickupFlat();
+      this.handleInteractFlat(inp.interact, interactEdge, interactReleased, dt);
+    }
     secAdd("combat.grips", sp);
 
     sp = secNow();
@@ -1401,6 +1405,12 @@ export class CombatSystem {
   }
 
   /** ПК: подобрать ближайшее лежащее рядом (после бега к предмету). true — взяли. */
+  /** Оружие, лежащее в мире не у героя (стойки лагеря и т.п.) — для тапа/клика по нему. */
+  freeItemSpots(): { kind: ItemKind; pos: Vector3 }[] {
+    if (this.player.inVR) return [];
+    return this.items.filter((it) => !it.hand && !it.hand2 && !it.stow && !it.flight && it.mesh.isEnabled()).map((it) => ({ kind: it.kind, pos: it.mesh.getAbsolutePosition().clone() }));
+  }
+
   pickupNow(): boolean {
     if (this.player.inVR) return false;
     return this.tryPickupFlat();

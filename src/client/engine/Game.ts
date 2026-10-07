@@ -2697,6 +2697,18 @@ export class Game {
       this.lastNpcClick = now;
       this.npcSel = npc;
       if (go) this.walkToNpc(npc);
+    } else if (!loot && this.rackAt(click.x, click.y)) {
+      // Оружие на стойке (лагерь): тап/клик — добежать и взять, как лут с земли.
+      const spot = this.rackAt(click.x, click.y)!;
+      this.pcChase = false;
+      this.player.autoMove = {
+        x: spot.x,
+        z: spot.z,
+        stop: 0.9,
+        onArrive: () => {
+          if (!this.combat.pickupNow()) this.notifyToast("Не взять — руки заняты неподходящим");
+        },
+      };
     } else if (loot) {
       // Первый клик — выбрать предмет (обводка держится), повторный клик по
       // выбранному / двойной / ПКМ — добежать и поднять.
@@ -2974,6 +2986,15 @@ export class Game {
     } else if (key === "E") {
       if (!this.combat.pickupNow()) this.notifyToast("Рядом нечего подобрать");
     }
+  }
+
+  /** Оружие со стойки под курсором/пальцем (лежит в мире, не на земле как лут). */
+  private rackAt(x: number, y: number): Vector3 | null {
+    if (!this.pcTarget) return null;
+    const pts = this.combat.freeItemSpots().map((s) => s.pos);
+    if (!pts.length) return null;
+    const i = this.pcTarget.pointAt(x, y, this.player.renderCamera, this.canvas, pts, 40);
+    return i >= 0 ? pts[i] : null;
   }
 
   /** Лут под курсором (ПК): оружие, щиты, банки. */
