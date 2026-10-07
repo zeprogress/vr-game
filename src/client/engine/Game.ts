@@ -126,7 +126,7 @@ import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
 import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
-import { BOT, EVENT, PLAYER, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
+import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
@@ -283,6 +283,8 @@ export class Game {
   /** VR-огранка рубинового: выбранное уникальное 99, которое сгорит. */
   private vrFuelId: string | null = null;
   private pcInvData: PcInvData | null = null;
+  /** Когда последний раз пили зелье (performance.now) — общий откат POTION_CD. */
+  private lastDrinkAt = -1e9;
   private hunterWin: HunterWindow | null = null;
   private nearHunter = false;
   /** Жёлтые «!» над доской и Охотником — есть что взять/сдать. */
@@ -3640,7 +3642,19 @@ export class Game {
     // Онлайн здоровьем и прокачкой владеет сервер.
     this.player.netControlled = true;
     this.progression.onSpendRequest = (stat) => net.sendSpend(stat);
-    this.inventory.onUseRequest = (slot) => net.sendUseItem(slot);
+    this.inventory.onUseRequest = (slot) => {
+      // Зелье: откат один на всех платформах (POTION_CD) — сервер всё равно не даст выпить раньше.
+      const it = this.inventory.slots[slot]?.item;
+      if (it && ITEMS[it].heal > 0) {
+        const left = POTION_CD - (performance.now() - this.lastDrinkAt) / 1000;
+        if (left > 0) {
+          this.notifyToast(`Зелье ещё не готово — ${Math.ceil(left)} с`);
+          return;
+        }
+        if (this.player.hp < this.player.maxHp) this.lastDrinkAt = performance.now();
+      }
+      net.sendUseItem(slot);
+    };
     this.combat.nearestWorldWeapon = (pos) => this.loot.nearestWeapon(pos);
     this.combat.onTakeWorldWeapon = (id, hand) => net.sendTakeWeapon(id, hand ?? undefined);
     // Эгида — свой вид щита: со склада знаем экземпляр (nextAegis), иначе — по

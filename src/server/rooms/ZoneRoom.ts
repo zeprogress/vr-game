@@ -72,7 +72,7 @@ import {
   type QuestData,
   type PcInvData,
 } from "#shared/net/messages";
-import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
+import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -257,6 +257,8 @@ const FISH_MANUAL = { min: 5, spread: 4, window: 9 };
 
 /** Несетевое состояние игрока: защита, темп ударов, таймеры. */
 interface Runtime {
+  /** Когда последний раз пил зелье (elapsed) — общий откат POTION_CD. */
+  lastDrinkAt?: number;
   token?: string;
   guard: GuardState;
   /** Момент последнего засчитанного удара каждым видом оружия (сек. комнаты). */
@@ -1619,6 +1621,12 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (!held.item || ITEMS[held.item].heal <= 0) return; // нечего пить
       if (p.hp >= p.maxHp) return; // полное здоровье — не тратим зря
+      // Откат зелья — один на всех платформах (POTION_CD), как у ботов.
+      const drt = this.rt.get(client.sessionId);
+      if (drt) {
+        if (this.elapsed - (drt.lastDrinkAt ?? -999) < POTION_CD) return;
+        drt.lastDrinkAt = this.elapsed;
+      }
 
       const used = takeOne(bag, slot);
       if (!used) return;
