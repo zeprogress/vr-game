@@ -32,7 +32,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Node } from "@babylonjs/core/node";
 
 import { buildZone } from "../world/Zone";
-import { PRESETS, type Quality } from "../config/quality";
+import { playerQuality, PRESETS, savePlayerQuality, type Quality } from "../config/quality";
 import { CombatSystem, STOW } from "../combat/CombatSystem";
 import { createFishing, type Fishing } from "../world/Fishing";
 import { NetMobs } from "../combat/MobSystem";
@@ -353,12 +353,11 @@ export class Game {
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
     this.scene.collisionsEnabled = true;
 
-    // Выбора качества больше нет — всегда максимум на всех платформах (в VR
-    // сверху ложится лёгкий профиль, см. applyVrQuality).
+    // Качество — выбор игрока в меню (телефон по умолчанию med; в VR сверху лёгкий профиль, applyVrQuality).
     this.isTouch =
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.pcThirdPerson = !this.isTouch && new URLSearchParams(location.search).get("fp") !== "1";
-    this.quality = "high";
+    this.quality = playerQuality(this.isTouch);
     const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
@@ -424,7 +423,7 @@ export class Game {
       this.sfx,
       this.targets,
       report,
-      preset.leanMobs,
+      false, // игроку плашки и полоски HP мобов нужны на любом качестве (облегчённые мобы — для эфира)
       this.isTouch ? 2 : 1, // плашки мобов вдвое крупнее на телефоне
     );
     this.netMobs.lazy = true; // виды мобов — только рядом с игроком (см. NetMobs.materialize)
@@ -790,6 +789,11 @@ export class Game {
     if (this.pcThirdPerson || this.isTouch) {
       this.pcMenu = new PcMenu({
         touch: this.isTouch,
+        getQuality: () => this.quality,
+        setQuality: (q) => {
+          savePlayerQuality(q);
+          location.reload();
+        },
         getVolume: () => this.sfx.masterVolume,
         setVolume: (v) => {
           applyVol(v);

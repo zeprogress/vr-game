@@ -1,3 +1,4 @@
+import { QUALITY_LABEL, type Quality } from "../config/quality";
 import { BOT_SKIN_LABELS } from "../world/models";
 
 /**
@@ -7,6 +8,9 @@ import { BOT_SKIN_LABELS } from "../world/models";
 export interface PcMenuHooks {
   /** Телефон: без раздела клавиш, окно на весь экран. */
   touch?: boolean;
+  getQuality: () => Quality;
+  /** Сменить качество (перезагрузка страницы — пресет ставится при запуске). */
+  setQuality: (q: Quality) => void;
   getVolume: () => number;
   setVolume: (v: number) => void;
   getMusic: () => number;
@@ -122,6 +126,21 @@ export class PcMenu {
     col2.append(el("div", "pcmenu-sec", "Интерфейс"));
     if (!h.touch) col2.append(check("Журнал и чат Twitch (L)", h.getChat(), h.setChat));
     col2.append(check("Цифры урона над мобами", h.getDmg(), h.setDmg));
+    const qRow = el("div", "pcmenu-row");
+    qRow.append(el("span", "", "Графика"));
+    const qSel = document.createElement("select");
+    qSel.className = "pcmenu-select";
+    for (const [k, label] of Object.entries(QUALITY_LABEL)) {
+      const o = document.createElement("option");
+      o.value = k;
+      o.textContent = label;
+      qSel.append(o);
+    }
+    qSel.value = h.getQuality();
+    qSel.title = "Среднее — без травы; низкое — ещё и без светлячков, облаков и подсветки. Игра перезагрузится.";
+    qSel.onchange = () => h.setQuality(qSel.value as Quality);
+    qRow.append(qSel);
+    col2.append(qRow);
     const fs = el("button", "pcmenu-btn", "⛶ На весь экран / обратно");
     fs.onclick = () => h.fullscreen();
     col2.append(fs);
