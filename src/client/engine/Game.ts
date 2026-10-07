@@ -1019,6 +1019,26 @@ export class Game {
   }
 
   start(): void {
+    // Телефон (не шлем): кадры не чаще 30/с — на 60–120 Гц экранах телефон сильно грелся.
+    // Пропускаем целый оборот цикла движка (не только render) — иначе getDeltaTime() мерил бы
+    // каждый rAF, и частицы/небо шли вдвое медленнее. В VR цикл ведёт XR-сессия — не трогаем.
+    // `?fps60=1` — без ограничения.
+    if (this.isTouch && !/OculusBrowser|Quest|Pico/i.test(navigator.userAgent) && !new URLSearchParams(location.search).has("fps60")) {
+      let last = 0;
+      this.engine.customAnimationFrameRequester = {
+        requestAnimationFrame: (cb: FrameRequestCallback) => {
+          const tick = (now: number): void => {
+            if (now - last < 1000 / 30 - 4) {
+              requestAnimationFrame(tick);
+              return;
+            }
+            last = now;
+            cb(now);
+          };
+          return requestAnimationFrame(tick);
+        },
+      };
+    }
     this.engine.runRenderLoop(() => this.scene.render());
     this.applyOffFlags();
     if (new URLSearchParams(location.search).has("xrtest")) this.applyXrTestMode();
