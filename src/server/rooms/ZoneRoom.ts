@@ -1280,10 +1280,10 @@ export class ZoneRoom extends Room<ZoneState> {
     // работает и для живых игроков (sessionId), и для ботов ("bot:<ник>"):
     // и те, и другие лежат в state.players.
     this.sim.getAttackerLevel = (id) => this.state.players.get(id)?.level ?? 1;
-    // Рейд-босс ранят только с арены из разрыва орбиты (raidFight.canHit).
-    this.sim.raidShield = (id) => {
+    // Рейд-босса ранят только с арены; из разрыва орбиты — полный урон, вне — доля (raidFight.hitMul).
+    this.sim.raidDmgMul = (id) => {
       const p = this.state.players.get(id);
-      return !!p && this.raid.canHit(id, p.head.x, p.head.z);
+      return p ? this.raid.hitMul(id, p.head.x, p.head.z) : 0;
     };
     // Поджог огнешара — ролл посоха «Поджог» (шанс); горение от ИНТ (burnHpFracFor). Пронзание — ролл лука.
     // Один источник для игроков и ботов (роллы того, что в руках).
@@ -6668,7 +6668,9 @@ export class ZoneRoom extends Room<ZoneState> {
     // его (в радиусе raidAddRange и уже агрнут), потом снова к боссу. Делаем
     // это, подменяя цель на моба и снимая raidBoss на текущий тик: всё
     // движение/удар ниже уже умеют драться с обычным мобом.
-    if (raidBoss) {
+    // Только у босса: по дороге в рейд мобов не трогаем — иначе бот, писавший !raid посреди
+    // боя, так и бьёт стаю (агрнутые вокруг не кончаются) и к боссу не идёт.
+    if (raidBoss && Math.hypot(raidBoss.x - p.head.x, raidBoss.z - p.head.z) < BOT.raidAddNear) {
       let addId: string | null = null;
       // 1) Кто недавно нанёс урон боту (плевун сзади и т.п.) — приоритет.
       //    Не по inZone (рейд идёт далеко от спавна), а по дистанции до бота:
@@ -6824,8 +6826,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (follow && !inZone(follow.x, follow.z)) follow = undefined;
     }
 
-    // Бот на арене рейд-босса в бою держит разрыв, даже если пришёл не по !raid (за игроком и т.п.):
-    // «Прилив» убивает всех вне разрыва.
+    // Каст «Прилива» на арене рейд-босса — бот бежит в разрыв, даже если пришёл не по !raid (за игроком
+    // и т.п.): прилив убивает всех вне разрыва. В остальное время бьёт босса откуда стоит (вне разрыва —
+    // урон RAID_FIGHT.outGap).
     const onRaidArena = this.raid.fighting && this.raid.isOn(bot.id);
     // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
     // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
@@ -6879,11 +6882,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Куда шагать: напрямую или по маршруту в обход крутых склонов (sim/nav.ts).
     // Прицел и дистанции (удар, «стой тут») — по самой цели (dx/dz, dist).
     let [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
-    // Бой с рейд-боссом: ноги — в центр ближайшего разрыва орбиты (бить можно только оттуда),
-    // прицел и удар — по-прежнему по боссу. Ближний бой — у края туши, дальний — на дистанции стрельбы.
+    // «Прилив»: ноги — в ближайший разрыв орбиты (там не гибнут), прицел и удар — по-прежнему по боссу.
+    // Ближний бой — у края туши, дальний — на дистанции стрельбы.
     let raidGapDist = -1;
-    const gapBoss = raidBoss ?? (onRaidArena ? this.bossMob() : undefined);
-    if (gapBoss && !gapBoss.dead && !escape && this.raid.fighting) {
+    const gapBoss = this.raid.tideCasting ? (raidBoss ?? (onRaidArena ? this.bossMob() : undefined)) : undefined;
+    if (gapBoss && !gapBoss.dead && !escape) {
       const shooter = p.rightCls === "bow" || p.rightCls === "staff";
       const edgeR = MOB.bodyRadius * gapBoss.scale * BOSS.bodyMult;
       const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;

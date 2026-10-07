@@ -85,11 +85,16 @@ export class RaidHud {
       } else if (pullBurn) {
         text = "Притяжение жжёт — отойди от центра!";
         tone = "bad";
+      } else if (onArena && !inGap && v.tide > 0 && v.tide <= RAID_FIGHT.tide.warn) {
+        text = "Прилив — беги в разрыв!";
+        tone = "bad";
       } else if (inGap && onArena) {
-        text = "✓ В РАЗРЫВЕ — бей!";
+        text = "✓ В РАЗРЫВЕ — полный урон";
         tone = "ok";
       } else {
-        text = onArena ? "✗ Вне разрыва — урона нет" : "Зайди на арену и встань в разрыв";
+        text = onArena
+          ? `✗ Вне разрыва — урон ${Math.round(RAID_FIGHT.outGap * 100)}%`
+          : "Зайди на арену и встань в разрыв";
         tone = "warn";
       }
       this.statusText.textContent = text;

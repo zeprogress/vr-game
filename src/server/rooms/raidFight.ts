@@ -124,9 +124,10 @@ export class RaidFight {
     return this.active && inRaidGap(x, z, this.orbits, RAID_PHASES[this.phase].orbits, this.halfGap);
   }
 
-  /** Может ли герой ранить босса: идёт бой, он на арене и стоит в разрыве. */
-  canHit(id: string, x: number, z: number): boolean {
-    return this.active && this.onArena.has(id) && this.inGap(x, z);
+  /** Доля урона героя по боссу: 0 — не ранит («MISS»: боя нет или он не на арене), в разрыве — 1, вне — RAID_FIGHT.outGap. */
+  hitMul(id: string, x: number, z: number): number {
+    if (!this.active || !this.onArena.has(id)) return 0;
+    return this.inGap(x, z) ? 1 : RAID_FIGHT.outGap;
   }
 
   /**
@@ -378,8 +379,8 @@ export class RaidFight {
     this.nextTear = now + 4;
     this.nextTide = now + RAID_FIGHT.tide.every;
     this.tideWarned = false;
-    this.host.announce("Лунный аватар пробудился", "Арена вращается — двигайся, бей только из разрыва орбиты");
-    this.host.chat("🌙 Бой с Лунным аватаром начался! Бить можно только из разрыва орбиты, за краем арены — пустота. !raid — в бой.");
+    this.host.announce("Лунный аватар пробудился", "Арена вращается — двигайся; из разрыва орбиты урон полный");
+    this.host.chat("🌙 Бой с Лунным аватаром начался! Из разрыва орбиты урон полный, вне — вчетверо слабее; в «Прилив» — все в разрыв. За краем арены — пустота. !raid — в бой.");
   }
 
   private setPhase(ph: number, now: number): void {

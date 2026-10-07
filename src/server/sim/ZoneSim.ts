@@ -2344,8 +2344,8 @@ export class ZoneSim {
   scarecrowId = "";
   /** id рейд-босса (Лунный аватар, shared/raid.ts) — цель !raid. */
   raidBossId = "";
-  /** Может ли атакующий ранить рейд-босса (ставит ZoneRoom по бою raidFight); null — может всегда. */
-  raidShield: ((attacker: string) => boolean) | null = null;
+  /** Доля урона атакующего по рейд-боссу (ставит ZoneRoom по бою raidFight): 0 — «MISS»; null — полный всегда. */
+  raidDmgMul: ((attacker: string) => number) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private scare: { by: string; start: number; last: number; total: number; max: number } | null = null;
 
@@ -2775,10 +2775,15 @@ export class ZoneSim {
       if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
       return null;
     }
-    // Рейд-босс: ранить можно только с арены из разрыва орбиты (server/rooms/raidFight.ts) — иначе «MISS».
-    if (m.id === this.raidBossId && this.raidShield && !m.dead && !this.raidShield(attacker)) {
-      if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
-      return null;
+    // Рейд-босс: ранить можно только с арены (иначе «MISS»), из разрыва орбиты — полный урон, вне — доля
+    // (server/rooms/raidFight.ts hitMul).
+    if (m.id === this.raidBossId && this.raidDmgMul && !m.dead) {
+      const mul = this.raidDmgMul(attacker);
+      if (mul <= 0) {
+        if (!dot) this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
+        return null;
+      }
+      dmg *= mul;
     }
     if (!dot && m.dodge > 0 && !m.dead && Math.random() < m.dodge) {
       m.forceAggroIfIdle();
