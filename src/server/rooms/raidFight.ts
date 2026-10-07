@@ -161,6 +161,19 @@ export class RaidFight {
     return { x: RAID.x + Math.sin(a2) * rr, z: RAID.z + Math.cos(a2) * rr };
   }
 
+  /**
+   * Следующая точка пути к разрыву `to` в обход босса: если разрыв далеко по углу — шаг по дуге
+   * (на радиусе не меньше minR), а не напрямик через тушу (бот упирался в босса и не успевал к «Приливу»).
+   */
+  approach(x: number, z: number, to: { x: number; z: number }, minR: number): { x: number; z: number } {
+    const a = raidAngle(x, z);
+    const d = angDiff(raidAngle(to.x, to.z), a);
+    if (Math.abs(d) < 0.5) return to;
+    const r = Math.min(this.edge - 2.5, Math.max(minR, Math.hypot(x - RAID.x, z - RAID.z)));
+    const a2 = a + Math.sign(d) * 0.5;
+    return { x: RAID.x + Math.sin(a2) * r, z: RAID.z + Math.cos(a2) * r };
+  }
+
   /** Идёт «Притяжение» (тянет к центру). */
   get pulling(): boolean {
     return this.active && this.host.now() < this.pullUntil;

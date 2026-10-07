@@ -368,6 +368,13 @@ interface Bot {
    * (одна попытка — один рейд) или повторным !raid.
    */
   raiding: boolean;
+  /** Защита от застревания: когда и где бот был при прошлой проверке; шаг вбок до unstickUntil. */
+  progAt?: number;
+  progX?: number;
+  progZ?: number;
+  unstickUntil?: number;
+  unstickX?: number;
+  unstickZ?: number;
   /** !event: бот-игрока послан на активное событие мира — чистит там мобов,
    *  собирает лут, по окончании события возвращается домой сам. */
   eventing: boolean;
@@ -6817,9 +6824,12 @@ export class ZoneRoom extends Room<ZoneState> {
       if (follow && !inZone(follow.x, follow.z)) follow = undefined;
     }
 
+    // Бот на арене рейд-босса в бою держит разрыв, даже если пришёл не по !raid (за игроком и т.п.):
+    // «Прилив» убивает всех вне разрыва.
+    const onRaidArena = this.raid.fighting && this.raid.isOn(bot.id);
     // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
     // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
-    const escape = raidBoss && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z);
+    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z);
     if (escape) mob = undefined;
 
     let tx: number;
@@ -6872,16 +6882,20 @@ export class ZoneRoom extends Room<ZoneState> {
     // Бой с рейд-боссом: ноги — в центр ближайшего разрыва орбиты (бить можно только оттуда),
     // прицел и удар — по-прежнему по боссу. Ближний бой — у края туши, дальний — на дистанции стрельбы.
     let raidGapDist = -1;
-    if (raidBoss && !escape && this.raid.fighting) {
+    const gapBoss = raidBoss ?? (onRaidArena ? this.bossMob() : undefined);
+    if (gapBoss && !gapBoss.dead && !escape && this.raid.fighting) {
       const shooter = p.rightCls === "bow" || p.rightCls === "staff";
-      const edgeR = MOB.bodyRadius * raidBoss.scale * BOSS.bodyMult;
+      const edgeR = MOB.bodyRadius * gapBoss.scale * BOSS.bodyMult;
       const want = shooter ? edgeR + BOT.shootKeepDist * (p.rightCls === "staff" ? BOT.staffRangeMul : 1) : edgeR + PLAYER.radius + 0.9;
       const gp = this.raid.gapPoint(p.head.x, p.head.z, want, strPhase(bot.id) * 2 - 1);
       if (gp) {
-        const gx = gp.x - p.head.x;
-        const gz = gp.z - p.head.z;
-        raidGapDist = Math.hypot(gx, gz) || 1e-6;
-        [mdx, mdz] = this.botNavDir(bot, p, gp.x, gp.z, gx / raidGapDist, gz / raidGapDist, raidGapDist);
+        raidGapDist = Math.hypot(gp.x - p.head.x, gp.z - p.head.z) || 1e-6;
+        // К разрыву — в обход туши босса (по дуге), а не напрямик через неё.
+        const wp = this.raid.approach(p.head.x, p.head.z, gp, edgeR + PLAYER.radius + 1.2);
+        const gx = wp.x - p.head.x;
+        const gz = wp.z - p.head.z;
+        const gl = Math.hypot(gx, gz) || 1e-6;
+        [mdx, mdz] = this.botNavDir(bot, p, wp.x, wp.z, gx / gl, gz / gl, gl);
       }
     }
     // Босс крупный (scale ~4.25): бить и останавливаться надо от его КРАЯ,
@@ -7011,6 +7025,29 @@ export class ZoneRoom extends Room<ZoneState> {
       strafeX = -dz * strafeSpeed;
       strafeZ = dx * strafeSpeed;
     }
+    // Застрял: хочет идти, а за 3 с почти не сдвинулся (упёрся в склон/стенку пандуса, толкучка) —
+    // путь заново и на секунду шаг вбок-назад.
+    if (bot.unstickUntil && bot.unstickUntil > this.elapsed) {
+      mdx = bot.unstickX ?? mdx;
+      mdz = bot.unstickZ ?? mdz;
+    } else if (wantSpeed > botSpeed * 0.5 && !p.dead) {
+      if (bot.progAt === undefined || this.elapsed - bot.progAt > 3) {
+        const moved = bot.progAt === undefined ? 99 : Math.hypot(p.head.x - (bot.progX ?? 0), p.head.z - (bot.progZ ?? 0));
+        if (moved < 0.8) {
+          bot.nav = undefined;
+          const side = Math.random() < 0.5 ? 1 : -1;
+          const ux = -mdz * side - mdx * 0.5;
+          const uz = mdx * side - mdz * 0.5;
+          const ul = Math.hypot(ux, uz) || 1;
+          bot.unstickX = ux / ul;
+          bot.unstickZ = uz / ul;
+          bot.unstickUntil = this.elapsed + 1;
+        }
+        bot.progAt = this.elapsed;
+        bot.progX = p.head.x;
+        bot.progZ = p.head.z;
+      }
+    } else bot.progAt = undefined;
     const wvx = mdx * wantSpeed + sepX * BOT.separationForce + strafeX;
     const wvz = mdz * wantSpeed + sepZ * BOT.separationForce + strafeZ;
     const accel = Math.min(1, dt * 6);
@@ -7588,8 +7625,9 @@ export class ZoneRoom extends Room<ZoneState> {
     p.head.x += sx;
     p.head.z += sz;
     this.botBlockedByMobs(p, bot, x0, z0);
-    // Катакомбы: стены залов.
+    // Катакомбы: стены залов; иначе — та же граница, что у игроков (карта + пандус + плато рейда).
     if (inCatRegion(p.head.x, p.head.z)) [p.head.x, p.head.z] = catProject(p.head.x, p.head.z, this.cat.open, PLAYER.radius);
+    else clampToPlay(p.head);
   }
 
   /**

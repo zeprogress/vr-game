@@ -172,7 +172,8 @@ export const RAID_PLATEAU = { x0: -126, x1: -42, z0: -256, z1: -180 } as const;
  * shoulder м — плавный переход в природный рельеф (насыпь внизу, выемка в скале вверху).
  * Уклон ~0.69 — меньше MAX_CLIMB (1): проходим и героям, и ботам (sim/nav).
  */
-export const RAID_RAMP = { ax: 8, az: -152, bx: -55, bz: -188, hA: 0, hB: 50, half: 3.5, shoulder: 5 } as const;
+// 2026-10-07: шире (полоса 3.5 → 5.5 м в каждую сторону) и откосы положе (5 → 7 м) — боты толкались и застревали у стенок.
+export const RAID_RAMP = { ax: 8, az: -152, bx: -55, bz: -188, hA: 0, hB: 50, half: 5.5, shoulder: 7 } as const;
 
 const RAMP_DX = RAID_RAMP.bx - RAID_RAMP.ax;
 const RAMP_DZ = RAID_RAMP.bz - RAID_RAMP.az;
