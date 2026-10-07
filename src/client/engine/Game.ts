@@ -630,6 +630,7 @@ export class Game {
       this.hud.touchMenuHook = () => this.pcMenu?.toggle();
       this.hud.touchBagHook = () => this.pcInv?.toggle("gear");
       this.hud.touchBagIcon = iconHtml("ui.sack");
+      this.hud.touchChatHook = () => this.pcHud?.toggleChatOpen();
       this.hud.topBtnShift = 88; // левее квадратной мини-карты в углу
       this.hud.enableTouchMenu();
       // Тапы по миру как клики на ПК: цель/атака, NPC, предметы (подбор — в сумку, как на ПК).
@@ -3398,6 +3399,13 @@ export class Game {
       if (inp.ability2 && ids[1]) this.castSkill(ids[1]);
     }
     this.wristPanel?.setSkills(this.heroClass() ?? "", ids.filter((x): x is SkillId => !!x));
+    // Откат зелья — на кнопке зелья (телефон) и в ячейке 4 (ПК), как у умений.
+    {
+      const left = Math.max(0, POTION_CD - (performance.now() - this.lastDrinkAt) / 1000);
+      const frac = left / POTION_CD;
+      this.pcHud?.setPotionCd(left, frac);
+      this.hud.setPotionCd(left, frac);
+    }
     // Индикатор готовности на кнопках умений (телефон) и на запястье (VR).
     ids.forEach((id, i) => {
       const frac = id ? this.skillLeft(id) / Math.max(0.1, this.skillCooldown(id)) : -1;

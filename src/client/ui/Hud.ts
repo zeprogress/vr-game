@@ -53,6 +53,15 @@ export class Hud {
   private touch = false;
   private readonly touchButtons: HTMLDivElement[] = [];
   private potionBtn: HTMLDivElement | null = null;
+
+  /** Откат зелья на кнопке (как у умений): left — секунд, frac — доля 0..1. */
+  setPotionCd(left: number, frac: number): void {
+    const cd = this.potionBtn?.querySelector<HTMLElement>(".pot-cd");
+    if (!cd) return;
+    const t = left > 0.05 ? String(Math.ceil(left)) : "";
+    if (cd.textContent !== t) cd.textContent = t;
+    cd.style.background = frac > 0 ? `conic-gradient(rgba(0,0,0,.65) ${frac * 360}deg, transparent 0)` : "none";
+  }
   private micBtn: HTMLDivElement | null = null;
   private crosshair: HTMLDivElement | null = null;
   private chargeRing: HTMLDivElement | null = null;
@@ -156,6 +165,8 @@ export class Hud {
   /** Телефон: ☰ открывает ПК-меню, мешок — окно снаряжения (ставит Game до enableTouchMenu). */
   touchMenuHook: (() => void) | null = null;
   touchBagHook: (() => void) | null = null;
+  /** Кнопка 💬 в верхнем ряду (телефон) — развернуть чат. */
+  touchChatHook: (() => void) | null = null;
   touchBagIcon = iconHtml("ui.sack");
   /** Телефон с мини-картой в углу: верхние кнопки сдвинуть левее на столько px. */
   topBtnShift = 0;
@@ -242,6 +253,8 @@ export class Hud {
       bag.innerHTML = this.touchBagIcon;
     }
 
+    if (this.touchChatHook) mkBtn(CHAT_BTN_CSS, "💬", () => this.touchChatHook?.());
+
     // Полный экран. На iOS Safari API нет — подсказываем «на экран Домой».
     const el2 = document.documentElement as HTMLElement & {
       webkitRequestFullscreen?: () => unknown;
@@ -260,7 +273,7 @@ export class Hud {
     });
 
     this.potionBtn = mkBtn(POTION_BTN_CSS, "", () => this.onDrinkPotion?.());
-    this.potionBtn.innerHTML = POTION_ICON + `<span class="pot-n"></span>`;
+    this.potionBtn.innerHTML = POTION_ICON + `<span class="pot-n"></span><span class="pot-cd" style="position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font:800 20px system-ui;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none"></span>`;
     this.updatePotionBtn();
 
     // Прицел по центру — виден только при натяге лука / зарядке посоха.
@@ -931,9 +944,11 @@ const MENU_BTN_CSS = TOP_BTN_BASE + "right:42px;";
 /** Кнопка «на весь экран» — левее меню. */
 const FS_BTN_CSS = TOP_BTN_BASE + "right:98px;";
 /** Кнопка микрофона — левее фуллскрина (появляется, если дан доступ). */
-const MIC_BTN_CSS = TOP_BTN_BASE + "right:210px;";
+const MIC_BTN_CSS = TOP_BTN_BASE + "right:266px;";
 /** Кнопка «снаряжение» (мешок) — между меню и полным экраном. */
 const BAG_BTN_CSS = TOP_BTN_BASE + "right:154px;padding:8px;box-sizing:border-box;";
+/** Кнопка чата (💬) — левее мешка. */
+const CHAT_BTN_CSS = TOP_BTN_BASE + "right:210px;font-size:20px;";
 
 /** Кнопка «выпить зелье» (смартфон) — красная бутылочка, слева от кнопки удара. */
 const POTION_BTN_CSS =

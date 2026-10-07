@@ -103,6 +103,7 @@ export class PcHud {
   private readonly skillCds: HTMLDivElement[] = [];
   private readonly slotPotion: HTMLDivElement;
   private readonly potionCnt: HTMLSpanElement;
+  private readonly potionCd: HTMLDivElement;
   // журнал
   private readonly chatEl: HTMLDivElement;
   private readonly logEl: HTMLDivElement;
@@ -193,7 +194,8 @@ export class PcHud {
     this.slotPotion = slot("4", "", "Зелье лечения (4)", iconHtml("i.potion"));
     this.potionCnt = document.createElement("span");
     this.potionCnt.className = "pc-slot-n";
-    this.slotPotion.append(this.potionCnt);
+    this.potionCd = div("pc-cd");
+    this.slotPotion.append(this.potionCd, this.potionCnt);
     slots.append(
       this.slotAtk,
       ...this.slotSkills,
@@ -279,8 +281,15 @@ export class PcHud {
       // под ней вкладки. Свёрнутая полоска — с кнопкой 💬 (развернуть, даже когда сообщений нет).
       const top = div("pc-chat-toprow");
       top.append(this.chatInput, gear, close);
-      const handle = btn("pc-chat-handle", "💬", "Открыть чат");
-      this.chatEl.append(top, head, this.logEl, this.cfgEl, handle);
+      this.chatEl.append(top, head, this.logEl, this.cfgEl);
+      // Тап мимо развёрнутой панели — свернуть (и закрыть настройки ⚙).
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          if (this.chatEl.classList.contains("open") && !this.chatEl.contains(e.target as Node)) this.setChatOpen(false);
+        },
+        true,
+      );
     } else this.chatEl.append(head, this.logEl, this.cfgEl, this.chatInput);
     this.setView(this.cfg.view ?? "chat");
     if (hooks.touch) {
@@ -426,6 +435,16 @@ export class PcHud {
       cdFrac > 0 ? `conic-gradient(rgba(0,0,0,.7) ${cdFrac * 360}deg, transparent 0)` : "none";
   }
 
+  /** Откат зелья (как у умений): left — секунд осталось, frac — доля 0..1. */
+  setPotionCd(left: number, frac: number): void {
+    const sig = `${Math.ceil(left)}|${frac > 0 ? 1 : 0}`;
+    if (this.lastSig.potCd !== sig) {
+      this.lastSig.potCd = sig;
+      this.potionCd.textContent = left > 0.05 ? String(Math.ceil(left)) : "";
+    }
+    this.potionCd.style.background = frac > 0 ? `conic-gradient(rgba(0,0,0,.7) ${frac * 360}deg, transparent 0)` : "none";
+  }
+
   setPotions(n: number): void {
     const s = String(n);
     if (this.lastSig.pot === s) return;
@@ -477,8 +496,16 @@ export class PcHud {
   }
 
   /** Телефон: развернуть/свернуть панель чата и журнала. */
+  /** Телефон: кнопка 💬 в верхнем ряду — развернуть/свернуть чат. */
+  toggleChatOpen(): void {
+    this.setChatOpen(!this.chatEl.classList.contains("open"));
+  }
+
   private setChatOpen(open: boolean): void {
     this.chatEl.classList.toggle("open", open);
+    // Развёрнутый — поверх всего (рамки выбранного моба и т.п.); настройки ⚙ закрываются вместе с панелью.
+    this.root.classList.toggle("chat-open", open);
+    if (!open) this.cfgEl.style.display = "none";
     if (!open) this.chatInput.blur();
     this.logEl.scrollTop = this.logEl.scrollHeight;
   }
@@ -840,14 +867,11 @@ function injectHudStyle(): void {
 .pc-hud.touch .pc-chat:not(.open) { background:transparent !important; backdrop-filter:none; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { text-shadow:0 1px 2px #000, 0 0 3px #000; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-head, .pc-hud.touch .pc-chat:not(.open) .pc-chat-toprow { display:none !important; }
-.pc-chat-handle { display:none; }
-.pc-hud.touch .pc-chat:not(.open) .pc-chat-handle { display:flex; position:absolute; left:-40px; top:4px; width:34px; height:34px; border-radius:50%;
-  align-items:center; justify-content:center; font-size:17px; background:rgba(10,9,14,.55); border:1px solid rgba(110,116,130,.5); pointer-events:auto; }
-.pc-hud.touch .pc-chat.open .pc-chat-handle { display:none; }
+.pc-hud.touch.chat-open { z-index:200; }
 .pc-chat-toprow { display:flex; gap:4px; align-items:center; padding:4px 4px 0 6px; }
 .pc-chat-toprow .pc-chat-input { flex:1; margin:0; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { overflow:hidden; font-size:11.5px; padding:2px 6px; }
-.pc-hud.touch .pc-chat.open { top:2px; left:6px; transform:none; width:min(70vw,560px); height:min(62vh,420px); background:rgba(10,9,14,.88); z-index:60; }
+.pc-hud.touch .pc-chat.open { top:2px; left:50%; transform:translateX(-50%); width:min(86vw,600px); height:min(66vh,440px); background:rgba(10,9,14,.66) !important; z-index:60; }
 .pc-hud.touch .pc-chat.open .pc-chat-input { font-size:17px; padding:12px 12px; min-height:46px; border-radius:8px; }
 /* Телефон: настройки журнала — вниз внутрь панели (вверх уезжали за экран); вкладки и шрифт крупнее. */
 .pc-hud.touch .pc-chat-cfg { top:50px; bottom:auto; left:6px; margin:0; z-index:5; font-size:15px; gap:9px; }
