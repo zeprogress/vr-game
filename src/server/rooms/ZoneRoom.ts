@@ -4476,8 +4476,13 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Строка чата — в журнал игроков (спектаторам не нужна: у них свой оверлей). */
   private sendChatLine(m: ChatLineMsg): void {
+    this.chatHistory.push(m);
+    if (this.chatHistory.length > 30) this.chatHistory.shift();
     for (const c of this.clients) if (!this.spectators.has(c.sessionId)) c.send(MSG.chatLine, m);
   }
+
+  /** Последние строки чата — новому игроку при входе (панель чата не пустая). */
+  private readonly chatHistory: ChatLineMsg[] = [];
 
   /** Русское имя атрибута для чата. */
   private static statName(stat: StatName): string {
@@ -9798,6 +9803,7 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     });
     this.applyJewels(client.sessionId);
+    for (const m of this.chatHistory) client.send(MSG.chatLine, m);
     // Подарки, пришедшие без нас, — всплывашкой при входе (подробно — в инвентаре).
     {
       const notes = (token ? store.get(token)?.giftNotes : undefined) ?? [];

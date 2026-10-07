@@ -29,6 +29,12 @@ import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
+/** Цвет ника в чате — по нику (тот же расчёт, что у панели чата на ПК/телефоне). */
+function nickColor(nick: string): string {
+  let h = 0;
+  for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 75% 70%)`;
+}
 /** Картинки значков колец/камней по тексту svg (их немного: тир × камни в гнёздах). */
 const svgImgCache = new Map<string, HTMLImageElement>();
 const TEX_W = 1200;
@@ -51,7 +57,7 @@ const WH_PER_PAGE = WH_COLS * WH_ROWS;
 const TIER_COLOR = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.color])) as Record<WeaponTier, string>;
 const TIER_BG = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.bg])) as Record<WeaponTier, string>;
 
-type Tab = "char" | "rings" | "quest" | "skills" | "set";
+type Tab = "char" | "rings" | "chat" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -202,6 +208,14 @@ export class WristMenu {
   }
 
   // ---- данные от Game ----
+
+  /** Строка чата Twitch (вкладка «Чат»). */
+  addChat(nick: string, text: string, bot = false): void {
+    this.chat.push({ nick, text, bot });
+    if (this.chat.length > 40) this.chat.shift();
+    if (this.tab === "chat") this.dirty = true;
+  }
+  private readonly chat: { nick: string; text: string; bot: boolean }[] = [];
 
   /** Кольца и камни героя (из данных окна инвентаря) и лом в сумке. */
   setJewels(j: PcInvJewels | undefined, scrap: number): void {
@@ -717,6 +731,7 @@ export class WristMenu {
 
     if (this.tab === "char") this.drawCharacter(ctx);
     else if (this.tab === "rings") this.drawRings(ctx);
+    else if (this.tab === "chat") this.drawChat(ctx);
     else if (this.tab === "quest") this.drawQuests(ctx);
     else if (this.tab === "skills") this.drawSkills(ctx);
     else this.drawSettings(ctx);
@@ -748,11 +763,12 @@ export class WristMenu {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
       ["rings", "Кольца"],
+      ["chat", "Чат"],
       ["quest", "Задания"],
       ["skills", "Умения"],
       ["set", "Настройки"],
     ];
-    const w = 224;
+    const w = Math.floor((TEX_W - 24 - 8 * (tabs.length - 1)) / tabs.length);
     tabs.forEach(([id, label], i) => {
       const wd = this.add({
         id: `tab:${id}`, x: 12 + i * (w + 8), y: TAB_Y, w, h: TAB_H, kind: "tab",
@@ -766,7 +782,7 @@ export class WristMenu {
       ctx.lineWidth = st.stroke ? st.lw : 2;
       ctx.strokeRect(wd.x, wd.y, wd.w, wd.h);
       ctx.fillStyle = active ? "#ffffff" : "#a9a498";
-      ctx.font = `${active ? "bold " : ""}28px system-ui, sans-serif`;
+      ctx.font = `${active ? "bold " : ""}${tabs.length > 5 ? 24 : 28}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.fillText(label, wd.x + wd.w / 2, wd.y + 9);
       ctx.textAlign = "left";
@@ -1529,6 +1545,63 @@ export class WristMenu {
   // ---- иконки ----
 
   /** Значок предмета/оружия — из общего реестра (shared/icons.ts); догрузится — перерисуем холст. */
+  // ---- вкладка «Чат» (чат Twitch, только чтение) ----
+
+  private drawChat(ctx: CanvasRenderingContext2D): void {
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const x = 24;
+    const maxW = TEX_W - 48;
+    const lh = 32;
+    // Строки снизу вверх: последние — внизу, сколько влезет до вкладок.
+    let y = INFO_Y - 12 - lh;
+    ctx.font = "24px system-ui, sans-serif";
+    for (let i = this.chat.length - 1; i >= 0 && y > VIEW_Y + 6; i--) {
+      const m = this.chat[i];
+      const head = `${m.nick}: `;
+      ctx.font = "bold 24px system-ui, sans-serif";
+      const hw = ctx.measureText(head).width;
+      ctx.font = "24px system-ui, sans-serif";
+      // Перенос текста по словам; первая строка — после ника.
+      const words = m.text.split(" ");
+      const lines: string[] = [];
+      let line = "";
+      let room = maxW - hw;
+      for (const w of words) {
+        const t = line ? `${line} ${w}` : w;
+        if (ctx.measureText(t).width > room && line) {
+          lines.push(line);
+          line = w;
+          room = maxW;
+        } else line = t;
+      }
+      lines.push(line);
+      const top = y - (lines.length - 1) * lh;
+      if (top < VIEW_Y + 6) break;
+      let h = 0;
+      for (let k = 0; k < lines.length; k++) {
+        if (k === 0) {
+          ctx.font = "bold 24px system-ui, sans-serif";
+          ctx.fillStyle = m.bot ? "#ffd166" : nickColor(m.nick);
+          ctx.fillText(head, x, top);
+          ctx.font = "24px system-ui, sans-serif";
+          ctx.fillStyle = "#e6e0d0";
+          ctx.fillText(lines[0], x + hw, top);
+        } else {
+          ctx.fillStyle = "#e6e0d0";
+          ctx.fillText(lines[k], x, top + k * lh);
+        }
+        h += lh;
+      }
+      y = top - lh - 4;
+    }
+    if (!this.chat.length) {
+      ctx.font = "24px system-ui, sans-serif";
+      ctx.fillStyle = "#7c88a4";
+      ctx.fillText("Чат Twitch пока молчит", x, VIEW_Y + 20);
+    }
+  }
+
   // ---- вкладка «Кольца» (shared/jewels.ts) ----
 
   private drawRings(ctx: CanvasRenderingContext2D): void {

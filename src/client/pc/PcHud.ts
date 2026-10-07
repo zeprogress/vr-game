@@ -30,6 +30,15 @@ const KIND_LABEL: Record<LogKind, string> = {
 interface ChatCfg {
   on: boolean;
   kinds: Record<LogKind, boolean>;
+  /** Вкладка панели: «chat» — чат Twitch, «log» — журнал игры (всё, кроме чата). */
+  view?: "chat" | "log";
+}
+
+/** Цвет ника в чате — по нику (у каждого свой, стабильный). */
+function nickColor(nick: string): string {
+  let h = 0;
+  for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
+  return `hsl(${h % 360} 75% 70%)`;
 }
 
 const CFG_KEY = "zep.pcChat";
@@ -91,6 +100,8 @@ export class PcHud {
   private readonly chatEl: HTMLDivElement;
   private readonly logEl: HTMLDivElement;
   private readonly cfgEl: HTMLDivElement;
+  private tabChat!: HTMLButtonElement;
+  private tabLog!: HTMLButtonElement;
   private readonly chatBtn: HTMLButtonElement;
   private cfg: ChatCfg;
   // карты
@@ -212,8 +223,17 @@ export class PcHud {
     // --- журнал ---
     this.chatEl = div("pc-chat pc-frame");
     const head = div("pc-chat-head");
-    const title = div("pc-chat-title", "Журнал");
-    const gear = btn("pc-chat-gear", "⚙", "Что показывать");
+    // Вкладки: чат Twitch отдельно от журнала игры.
+    const title = div("pc-chat-title");
+    const tab = (view: "chat" | "log", label: string): HTMLButtonElement => {
+      const t = btn("pc-chat-tab", label, view === "chat" ? "Чат Twitch" : "Журнал игры");
+      t.onclick = () => this.setView(view);
+      return t;
+    };
+    this.tabChat = tab("chat", "Чат");
+    this.tabLog = tab("log", "Журнал");
+    title.append(this.tabChat, this.tabLog);
+    const gear = btn("pc-chat-gear", "⚙", "Что показывать в журнале");
     const close = btn("pc-chat-gear", "✕", "Скрыть журнал (L)");
     close.onclick = () => this.setChatOn(false);
     head.append(title, gear, close);
@@ -225,6 +245,7 @@ export class PcHud {
     };
     this.renderCfg();
     this.chatEl.append(head, this.logEl, this.cfgEl);
+    this.setView(this.cfg.view ?? "chat");
 
     // --- большая карта ---
     this.bigWrap = div("pc-bigmap");
@@ -372,17 +393,34 @@ export class PcHud {
     if (who) {
       const b = document.createElement("b");
       b.textContent = kind === "chat" ? `${who}: ` : `${who} `;
+      if (kind === "chat") b.style.color = nickColor(who);
       row.append(b);
     }
     const span = document.createElement("span");
     span.textContent = text;
     if (color) span.style.color = color;
     row.append(span);
-    if (!this.cfg.kinds[kind]) row.style.display = "none";
+    if (!this.rowVisible(kind)) row.style.display = "none";
     const atBottom = this.logEl.scrollTop + this.logEl.clientHeight >= this.logEl.scrollHeight - 8;
     this.logEl.append(row);
     while (this.logEl.childElementCount > LOG_MAX) this.logEl.firstElementChild?.remove();
     if (atBottom) this.logEl.scrollTop = this.logEl.scrollHeight;
+  }
+
+  /** Строка видна на текущей вкладке: «Чат» — только чат, «Журнал» — остальное по галочкам. */
+  private rowVisible(kind: LogKind): boolean {
+    return (this.cfg.view ?? "chat") === "chat" ? kind === "chat" : kind !== "chat" && this.cfg.kinds[kind];
+  }
+
+  private setView(view: "chat" | "log"): void {
+    this.cfg.view = view;
+    saveCfg(this.cfg);
+    this.tabChat.classList.toggle("on", view === "chat");
+    this.tabLog.classList.toggle("on", view === "log");
+    for (const r of this.logEl.querySelectorAll<HTMLElement>("[data-kind]")) {
+      r.style.display = this.rowVisible(r.dataset.kind as LogKind) ? "" : "none";
+    }
+    this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
   get chatOn(): boolean {
@@ -412,7 +450,7 @@ export class PcHud {
         this.cfg.kinds[k] = cb.checked;
         saveCfg(this.cfg);
         for (const r of this.logEl.querySelectorAll<HTMLElement>(`[data-kind="${k}"]`)) {
-          r.style.display = cb.checked ? "" : "none";
+          r.style.display = this.rowVisible(k) ? "" : "none";
         }
       };
       lab.append(cb, document.createTextNode(KIND_LABEL[k]));
@@ -627,6 +665,7 @@ function loadCfg(): ChatCfg {
       const v = JSON.parse(raw) as Partial<ChatCfg>;
       if (typeof v.on === "boolean") def.on = v.on;
       if (v.kinds) for (const k of Object.keys(def.kinds) as LogKind[]) if (typeof v.kinds[k] === "boolean") def.kinds[k] = v.kinds[k];
+      if (v.view === "chat" || v.view === "log") def.view = v.view;
     }
   } catch {
     /* приватный режим — дефолты */
@@ -738,7 +777,9 @@ function injectHudStyle(): void {
 .pc-chat { position:absolute; left:14px; bottom:14px; width:380px; height:210px; display:flex; flex-direction:column;
   pointer-events:auto; background:rgba(14,13,19,.62); }
 .pc-chat-head { display:flex; align-items:center; gap:4px; padding:3px 6px; border-bottom:1px solid rgba(110,116,130,.35); }
-.pc-chat-title { flex:1; color:#f3e2b0; font-size:12px; }
+.pc-chat-title { flex:1; display:flex; gap:4px; }
+.pc-chat-tab { background:none; border:1px solid transparent; border-radius:5px; color:#a9a498; font:600 12px system-ui; padding:1px 8px; cursor:pointer; }
+.pc-chat-tab.on { color:#f3e2b0; border-color:rgba(110,116,130,.5); background:rgba(40,38,48,.6); }
 .pc-chat-gear { background:none; border:none; font-size:13px; padding:0 4px; opacity:.8; }
 .pc-chat-log { flex:1; overflow-y:auto; padding:4px 8px; font:500 12.5px/1.35 system-ui; text-shadow:0 1px 1px #000; }
 .pc-chat-log b { font-weight:700; }

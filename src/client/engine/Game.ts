@@ -3529,7 +3529,10 @@ export class Game {
     net.onKillFeed = (by, victim) => {
       if (victim) this.pcHud?.log("kill", by ? `${glyph("ui.kill")} ${victim}` : `${victim} пал`, by || undefined);
     };
-    net.onChatLine = (m) => this.pcHud?.log("chat", m.text, m.nick);
+    net.onChatLine = (m) => {
+      this.pcHud?.log("chat", m.text, m.nick);
+      this.wristPanel?.addChat(m.nick, m.text, !!m.bot);
+    };
     // Цифры урона над мобами — все платформы, выключатель в меню.
     net.onDmgHits = (msg) => {
       // Журнал урона (ПК): свои попадания — «Вы нанесли N: <моб>».
