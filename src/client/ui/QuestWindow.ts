@@ -621,9 +621,10 @@ function injectStyle(): void {
   font:500 12px/1.3 system-ui,sans-serif; width:210px; text-shadow:0 1px 2px #000; }
 .qt-root.hidden { display:none !important; }
 .qt-root.pc { right:14px; top:236px; }
-.qt-root.phone { right:4px; top:90px; width:200px; font-size:11px; gap:2px; }
-.qt-root.phone .qt-head { padding:0 2px; font-size:9.5px; }
-.qt-root.phone .qt-card { display:flex; gap:6px; align-items:baseline; padding:2px 6px 3px; border-left-width:2px; }
+.qt-root.phone { right:4px; top:90px; width:200px; font-size:11px; line-height:1.15; gap:1px; }
+.qt-root.phone .qt-head { padding:0 2px; font-size:9.5px; line-height:1.1; margin:0; }
+.qt-root.phone .qt-card { display:flex; gap:6px; align-items:baseline; padding:1px 6px; border-radius:4px; border-left-width:2px; }
+.qt-root.phone .qt-name, .qt-root.phone .qt-n { line-height:1.15; }
 .qt-root.phone .qt-name { flex:1; min-width:0; }
 .qt-root.phone .qt-n { font-size:10.5px; white-space:nowrap; }
 .qt-head { align-self:flex-end; font:700 10.5px system-ui; letter-spacing:.08em; text-transform:uppercase; color:#e8c26a;

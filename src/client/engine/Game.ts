@@ -3554,6 +3554,7 @@ export class Game {
       if (yaw !== undefined) this.player.faceInstant(x + Math.sin(yaw), z + Math.cos(yaw));
     };
     // Итог пройденных катакомб — таблица по центру (после баннера победы); клик/Esc — закрыть.
+    net.onCatStats = (m) => this.pcHud?.setCatStats(m.rows, net.room?.state.players.get(net.sessionId ?? "")?.nick ?? "");
     net.onCatReport = (m) => showCatReport(m, { delayMs: 3500, holdSec: 30, closable: true });
     net.onCatacomb = (m) => {
       this.notifyBanner(m.title, m.sub, m.kind === "win" || m.kind === "chest" ? "win" : "warn", m.loot);

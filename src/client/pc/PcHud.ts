@@ -445,6 +445,44 @@ export class PcHud {
       cdFrac > 0 ? `conic-gradient(rgba(0,0,0,.7) ${cdFrac * 360}deg, transparent 0)` : "none";
   }
 
+  private catEl: HTMLDivElement | null = null;
+  private catT0 = 0;
+  private catTotal = 0;
+  private catHide = 0;
+  /**
+   * ПК, катакомбы: таблица урона отряда слева (урон, DPS с начала забега, доля). Сервер шлёт раз в
+   * секунду, пока идёт забег; перестал — через 3 с прячем.
+   */
+  setCatStats(rows: { nick: string; dmg: number; kills: number; deaths: number; dead: boolean }[], selfNick: string): void {
+    // Таблицу шлют всем — показываем только участнику забега.
+    if (this.hooks.touch || !rows.some((r) => r.nick === selfNick)) return;
+    if (!this.catEl) {
+      this.catEl = div("pc-catdps");
+      this.root.append(this.catEl);
+    }
+    const now = performance.now();
+    const total = rows.reduce((a, r) => a + r.dmg, 0);
+    // Новый забег (урон обнулился) или первый пакет — отсчёт DPS заново.
+    if (!this.catT0 || total < this.catTotal) this.catT0 = now;
+    this.catTotal = total;
+    const sec = Math.max(1, (now - this.catT0) / 1000);
+    const fmt = (n: number): string => (n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(Math.round(n)));
+    let h = `<div class="pc-catdps-h"><span>Урон отряда</span><span>DPS</span><span>%</span></div>`;
+    for (const r of rows) {
+      const me = r.nick === selfNick ? " me" : "";
+      const nm = r.nick.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+      h += `<div class="pc-catdps-r${me}${r.dead ? " dead" : ""}"><span class="n">${nm}</span><span>${fmt(r.dmg)}</span><span>${fmt(r.dmg / sec)}</span><span>${total ? Math.round((r.dmg / total) * 100) : 0}</span></div>`;
+    }
+    this.catEl.innerHTML = h;
+    this.catEl.style.display = rows.length ? "" : "none";
+    clearTimeout(this.catHide);
+    this.catHide = window.setTimeout(() => {
+      if (this.catEl) this.catEl.style.display = "none";
+      this.catT0 = 0;
+      this.catTotal = 0;
+    }, 3000);
+  }
+
   private autoBotBox!: HTMLInputElement;
   /** Состояние галочки «Автобой» (выключил сам Game — смерть и т.п.). */
   setAutoBot(on: boolean): void {
@@ -861,6 +899,16 @@ function injectHudStyle(): void {
 .pc-mm-label { position:absolute; left:0; right:0; top:166px; text-align:center; font-size:11px; color:#cfc6ae; }
 .pc-actionbar { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); display:flex; flex-direction:column;
   align-items:center; gap:5px; pointer-events:auto; }
+.pc-catdps { position:absolute; left:14px; top:150px; width:270px; padding:6px 8px; border-radius:8px; background:rgba(14,13,19,.78);
+  font:500 12.5px/1.45 system-ui; color:#e6e0d0; pointer-events:none; font-variant-numeric:tabular-nums; }
+.pc-catdps-h, .pc-catdps-r { display:grid; grid-template-columns:1fr 54px 50px 30px; gap:4px; }
+.pc-catdps-h { font-weight:700; color:#e8c26a; font-size:11px; text-transform:uppercase; letter-spacing:.04em; }
+.pc-catdps-h span:first-child { grid-column:1 / 3; }
+.pc-catdps-r span:not(.n) { text-align:right; }
+.pc-catdps-h span:not(:first-child) { text-align:right; }
+.pc-catdps-r .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pc-catdps-r.me { color:#7ee081; font-weight:700; }
+.pc-catdps-r.dead { opacity:.5; }
 .pc-autobot { position:absolute; left:50%; bottom:92px; transform:translateX(-50%); pointer-events:auto; cursor:pointer;
   display:flex; align-items:center; gap:5px; padding:3px 10px; border-radius:6px; background:rgba(14,13,19,.75);
   font:700 13px system-ui; color:#e8dcc0; user-select:none; }
