@@ -3801,7 +3801,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private reply(text: string): void {
     this.twitch?.say(text);
-    this.sendChatLine({ nick: "ZEP GAME", text, bot: 1 });
+    this.sendChatLine({ nick: "info", text, bot: 1 });
   }
 
   /** Данные ПК-окна снаряжения — по живому герою этого клиента. */

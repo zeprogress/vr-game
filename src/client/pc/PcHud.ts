@@ -820,8 +820,11 @@ function injectHudStyle(): void {
 .pc-micro { position:absolute; right:14px; bottom:14px; display:flex; gap:5px; }
 .pc-hud.touch .pc-actionbar, .pc-hud.touch .pc-micro { display:none !important; }
 /* Телефон: чат и журнал — прозрачная полоска сверху посередине; тап — развернуть. */
-.pc-hud.touch .pc-chat { left:50%; top:4px; bottom:auto; transform:translateX(-50%); width:min(38vw,400px); height:86px;
+.pc-hud.touch .pc-chat { left:50%; top:4px; bottom:auto; transform:translateX(-50%); width:min(38vw,400px); height:56px;
   background:rgba(10,9,14,.28); box-shadow:none; border:none; }
+/* Свёрнута — фон совсем прозрачный, видны только сообщения (с тенью для читаемости). */
+.pc-hud.touch .pc-chat:not(.open) { background:transparent !important; backdrop-filter:none; }
+.pc-hud.touch .pc-chat:not(.open) .pc-chat-log { text-shadow:0 1px 2px #000, 0 0 3px #000; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-head, .pc-hud.touch .pc-chat:not(.open) .pc-chat-input { display:none !important; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { overflow:hidden; font-size:11.5px; padding:2px 6px; }
 .pc-hud.touch .pc-chat.open { top:48px; width:min(80vw,560px); height:min(62vh,420px); background:rgba(10,9,14,.88); z-index:60; }
