@@ -6874,9 +6874,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const onRaidArena = this.raid.fighting && this.raid.isOn(bot.id);
     // Опасная зона (телеграф обвала/пламени, атаки Владыки) — бросаем всё и выбегаем.
     // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
-    // На арене выбегаем только внутрь арены (не за край, в пустоту).
-    const arenaOk = onRaidArena ? (x: number, z: number): boolean => Math.hypot(x - RAID.x, z - RAID.z) < this.raid.edge - 1.5 : undefined;
-    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z, arenaOk);
+    // Куда можно выбежать: на арене рейда — внутрь (не за край, в пустоту); в катакомбах — туда, где
+    // можно стоять (не в стену: упёршись в неё, бот так и оставался в круге).
+    const escOk = onRaidArena
+      ? (x: number, z: number): boolean => Math.hypot(x - RAID.x, z - RAID.z) < this.raid.edge - 1.5
+      : inCatRegion(p.head.x, p.head.z)
+        ? (x: number, z: number): boolean => {
+            const [qx, qz] = catProject(x, z, this.cat.open, PLAYER.radius + 0.3);
+            return Math.abs(qx - x) + Math.abs(qz - z) < 0.05;
+          }
+        : undefined;
+    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
     if (escape) mob = undefined;
 
     let tx: number;
@@ -7060,8 +7068,12 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
       (ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt);
-    const wantSpeed =
-      raidGapDist >= 0
+    const wantSpeed = escape
+      ? // Из опасной зоны — со всех ног, даже посреди замаха/эмоции.
+        dist > 0.3
+        ? botSpeed
+        : 0
+      : raidGapDist >= 0
         ? // Рейд: держимся в разрыве (он плывёт, арена несёт) — бежим и во время замаха.
           raidGapDist > 0.8
           ? botSpeed * Math.min(1, (raidGapDist - 0.8) / 1.5)
@@ -7086,7 +7098,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Застрял: хочет идти, а за 3 с почти не сдвинулся (упёрся в склон/стенку пандуса, толкучка) —
     // путь заново и на секунду шаг вбок-назад.
-    if (bot.unstickUntil && bot.unstickUntil > this.elapsed) {
+    if (bot.unstickUntil && bot.unstickUntil > this.elapsed && !escape) {
       mdx = bot.unstickX ?? mdx;
       mdz = bot.unstickZ ?? mdz;
     } else if (wantSpeed > botSpeed * 0.5 && !p.dead) {
@@ -7107,9 +7119,11 @@ export class ZoneRoom extends Room<ZoneState> {
         bot.progZ = p.head.z;
       }
     } else bot.progAt = undefined;
-    const wvx = mdx * wantSpeed + sepX * BOT.separationForce + strafeX;
-    const wvz = mdz * wantSpeed + sepZ * BOT.separationForce + strafeZ;
-    const accel = Math.min(1, dt * 6);
+    // Убегая, соседей почти не расталкиваем (иначе толкают обратно в круг) и разгоняемся вдвое резче.
+    const sepK = BOT.separationForce * (escape ? 0.3 : 1);
+    const wvx = mdx * wantSpeed + sepX * sepK + strafeX;
+    const wvz = mdz * wantSpeed + sepZ * sepK + strafeZ;
+    const accel = Math.min(1, dt * (escape ? 12 : 6));
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
     this.botStep(p, bot, dt);
