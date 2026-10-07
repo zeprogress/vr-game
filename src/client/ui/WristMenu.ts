@@ -13,7 +13,7 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
-import { ATTACK_COLOR, TIER_LOOK } from "#shared/look";
+import { TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
@@ -1104,14 +1104,6 @@ export class WristMenu {
     ctx.font = "17px system-ui, sans-serif";
     ctx.fillStyle = "#7c88a4";
     ctx.fillText(label, x + 10, y + 6);
-    const atk = item ? attackLabel(item.cls, item.tier) : "";
-    if (atk) {
-      ctx.font = "bold 18px system-ui, sans-serif";
-      ctx.fillStyle = ATTACK_COLOR;
-      ctx.textAlign = "right";
-      ctx.fillText(atk, x + w - 10, y + 6);
-      ctx.textAlign = "left";
-    }
     if (!item) {
       ctx.font = "22px system-ui, sans-serif";
       ctx.fillStyle = "#4d566c";
@@ -1357,15 +1349,6 @@ export class WristMenu {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
       ctx.fillText(eq, x + 8, y + h - 24);
-    }
-    const atk = attackLabel(wp.cls, wp.tier);
-    if (atk) {
-      // Сила атаки — в правом нижнем углу (слева внизу — «в руке»/«за спиной»).
-      ctx.font = "bold 18px system-ui, sans-serif";
-      ctx.fillStyle = ATTACK_COLOR;
-      ctx.textAlign = "right";
-      ctx.fillText(atk, x + w - 8, y + h - 25);
-      ctx.textAlign = "left";
     }
     if (wp.fav) {
       ctx.font = "bold 24px system-ui, sans-serif";
