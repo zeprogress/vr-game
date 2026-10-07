@@ -274,7 +274,14 @@ export class PcHud {
         this.chatInput.blur();
       } else if (e.key === "Escape") this.chatInput.blur();
     });
-    this.chatEl.append(head, this.logEl, this.cfgEl, this.chatInput);
+    if (hooks.touch) {
+      // Телефон: строка ввода — в самом верху (клавиатура снизу её не закрывает), ⚙ и ✕ — справа от неё;
+      // под ней вкладки. Свёрнутая полоска — с кнопкой 💬 (развернуть, даже когда сообщений нет).
+      const top = div("pc-chat-toprow");
+      top.append(this.chatInput, gear, close);
+      const handle = btn("pc-chat-handle", "💬", "Открыть чат");
+      this.chatEl.append(top, head, this.logEl, this.cfgEl, handle);
+    } else this.chatEl.append(head, this.logEl, this.cfgEl, this.chatInput);
     this.setView(this.cfg.view ?? "chat");
     if (hooks.touch) {
       // Телефон: свёрнутая прозрачная полоска сверху; тап — развернуть (вкладки, поле ввода).
@@ -446,7 +453,9 @@ export class PcHud {
     if (!this.rowVisible(kind)) row.style.display = "none";
     const atBottom = this.logEl.scrollTop + this.logEl.clientHeight >= this.logEl.scrollHeight - 8;
     this.logEl.append(row);
-    while (this.logEl.childElementCount > LOG_MAX) this.logEl.firstElementChild?.remove();
+    // Лимит отдельно для чата и для журнала: частые строки урона больше не вытесняют историю чата.
+    const same = this.logEl.querySelectorAll<HTMLElement>(kind === "chat" ? '[data-kind="chat"]' : '[data-kind]:not([data-kind="chat"])');
+    for (let i = 0; i < same.length - LOG_MAX; i++) same[i].remove();
     if (atBottom) this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
@@ -830,9 +839,15 @@ function injectHudStyle(): void {
 /* Свёрнута — фон совсем прозрачный, видны только сообщения (с тенью для читаемости). */
 .pc-hud.touch .pc-chat:not(.open) { background:transparent !important; backdrop-filter:none; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { text-shadow:0 1px 2px #000, 0 0 3px #000; }
-.pc-hud.touch .pc-chat:not(.open) .pc-chat-head, .pc-hud.touch .pc-chat:not(.open) .pc-chat-input { display:none !important; }
+.pc-hud.touch .pc-chat:not(.open) .pc-chat-head, .pc-hud.touch .pc-chat:not(.open) .pc-chat-toprow { display:none !important; }
+.pc-chat-handle { display:none; }
+.pc-hud.touch .pc-chat:not(.open) .pc-chat-handle { display:flex; position:absolute; left:-40px; top:4px; width:34px; height:34px; border-radius:50%;
+  align-items:center; justify-content:center; font-size:17px; background:rgba(10,9,14,.55); border:1px solid rgba(110,116,130,.5); pointer-events:auto; }
+.pc-hud.touch .pc-chat.open .pc-chat-handle { display:none; }
+.pc-chat-toprow { display:flex; gap:4px; align-items:center; padding:4px 4px 0 6px; }
+.pc-chat-toprow .pc-chat-input { flex:1; margin:0; }
 .pc-hud.touch .pc-chat:not(.open) .pc-chat-log { overflow:hidden; font-size:11.5px; padding:2px 6px; }
-.pc-hud.touch .pc-chat.open { top:48px; width:min(80vw,560px); height:min(62vh,420px); background:rgba(10,9,14,.88); z-index:60; }
+.pc-hud.touch .pc-chat.open { top:2px; left:6px; transform:none; width:min(70vw,560px); height:min(62vh,420px); background:rgba(10,9,14,.88); z-index:60; }
 .pc-hud.touch .pc-chat.open .pc-chat-input { font-size:17px; padding:12px 12px; min-height:46px; border-radius:8px; }
 /* Телефон: настройки журнала — вниз внутрь панели (вверх уезжали за экран); вкладки и шрифт крупнее. */
 .pc-hud.touch .pc-chat-cfg { top:50px; bottom:auto; left:6px; margin:0; z-index:5; font-size:15px; gap:9px; }
