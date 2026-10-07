@@ -5453,6 +5453,9 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** `fresh` — герой только что заказан командой !play (а не поднят из сейва при рестарте): камера спектатора показывает его чаще. */
   private spawnBot(nick: string, norm: string, fresh = false): void {
+    // Героем уже играют живьём (например, старая сессия закрылась ПОСЛЕ входа с другого устройства) —
+    // бот-двойник не нужен.
+    if (this.nickIsPlayed(norm)) return;
     const id = `bot:${norm}`;
     const token = `nick:${norm}`;
     const rec = store.get(token);
@@ -9937,7 +9940,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Часы до снятия (BOT.ownerAbsentSec) стартуют сейчас и дальше продлеваются
     // только настоящими сообщениями в чате Twitch (onChat) — заявка: "бот
     // висел N часов, а в чате время добавлялось от последнего сообщения".
-    if (streamNorm && p && rt?.leaveBot && this.bots.size < BOT.maxBots) {
+    if (streamNorm && p && rt?.leaveBot && this.bots.size < BOT.maxBots && !this.nickIsPlayed(streamNorm)) {
       this.chatSeen.set(streamNorm, Date.now());
       this.spawnBot(p.nick, streamNorm);
       // Был в катакомбах — бот продолжает забег за него (место в отряде, урон, смерти).
