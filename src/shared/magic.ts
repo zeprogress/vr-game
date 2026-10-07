@@ -1,6 +1,7 @@
 import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
-import { ATTR2, invested } from "./attrs2";
+import { ATTR2, attrOf, invested } from "./attrs2";
+import { ringResist } from "./jewels";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -97,7 +98,7 @@ export interface MagicAttrs {
  * растёт от ИНТ поджигающего так же, как урон магией.
  */
 export function burnHpFracFor(a: Pick<MagicAttrs, "int">): number {
-  return AFFIX.fire.burnHpFrac * (1 + invested(a.int) * ATTR2.int.magic);
+  return AFFIX.fire.burnHpFrac * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic);
 }
 
 /**
@@ -106,28 +107,31 @@ export function burnHpFracFor(a: Pick<MagicAttrs, "int">): number {
  */
 export function magicPowerFor(level: number, a: MagicAttrs): number {
   const lvl = 1 + levelGain(level, PROGRESSION.perLevel.magicDmg);
-  return lvl * (1 + invested(a.int) * ATTR2.int.magic);
+  return lvl * (1 + invested(attrOf(a, "int")) * ATTR2.int.magic);
 }
 
 /** Потолок маны (мана пока выключена): уровень × ИНТ. */
 export function maxManaFor(level: number, a: MagicAttrs): number {
   const base = MAGIC.baseMana + levelGain(level, PROGRESSION.perLevel.mana);
-  return base * (1 + invested(a.int) * 0.05);
+  return base * (1 + invested(attrOf(a, "int")) * 0.05);
 }
 
 export function manaRegenFor(a: MagicAttrs): number {
-  return MAGIC.regenBase + invested(a.int) * MAGIC.regenPerInt;
+  return MAGIC.regenBase + invested(attrOf(a, "int")) * MAGIC.regenPerInt;
 }
 
 /** Доля магического урона (и снарядов магов), которую гасит МДР: max·n/(n+K). */
 export function magicResistFrac(a: MagicAttrs): number {
-  const n = invested(a.wis);
-  return (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
+  const n = invested(attrOf(a, "wis"));
+  const base = (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
+  // Надетые кольца (PlayerState.gb.rings, shared/jewels.ts): по RING.mres каждое, множатся.
+  const rings = (a as { gb?: { rings?: number } }).gb?.rings ?? 0;
+  return rings > 0 ? 1 - (1 - base) * (1 - ringResist(rings)) : base;
 }
 
 /** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */
 export function potionPowerFor(a: MagicAttrs): number {
-  return 1 + invested(a.int) * 0.02;
+  return 1 + invested(attrOf(a, "int")) * 0.02;
 }
 
 /** Урон огненного снаряда: заряд 0..1, уровень, интеллект. */

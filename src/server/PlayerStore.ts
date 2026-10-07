@@ -7,6 +7,7 @@ import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, resetAttrs, type Progress } from "#shared/progression";
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
 import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
+import type { RingInst } from "#shared/jewels";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
 export interface PlayerRecord extends SaveMsg, Progress {
@@ -85,6 +86,10 @@ export interface PlayerRecord extends SaveMsg, Progress {
   manualAttrs?: boolean;
   /** Выбранные умения (2 из пула класса), по классу: { warrior: ["stunBash","crush"], … }. */
   skills?: Record<string, string[]>;
+  /** Кольца и камни (shared/jewels.ts JewelSave): все кольца, надетые в слотах 1/2, камни в сумке. */
+  rings?: RingInst[];
+  ringOn?: [string | null, string | null];
+  gems?: Record<string, number>;
   updatedAt: number;
 }
 

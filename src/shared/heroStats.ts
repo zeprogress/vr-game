@@ -3,7 +3,7 @@ import { SCROLL } from "./shop";
 import { fireboltDamage } from "./magic";
 import { armorFrac, dodgeChance, heroAttackInterval, holdsOneItem, hpRegenFrac, maxHpFor, moveSpeedFor, staffCastInterval } from "./progression";
 import { BASE_CRIT } from "./combat";
-import { ATTR2, invested } from "./attrs2";
+import { ATTR2, attrOf, invested } from "./attrs2";
 import { DAGGER, DUAL, HAMMER, isDualPair, SMOKE, staffMagicTier, WARCRY, WEAPONS2, type AttrsIn } from "./classes2";
 import { magicPowerFor, magicResistFrac } from "./magic";
 import { weaponDamage } from "./combat";
@@ -91,6 +91,8 @@ export interface HeroStatInput {
   rightTier: string;
   leftCls: string;
   leftTier: string;
+  /** Прибавка от колец и камней (PlayerState.gb / jewelBonus) — формулы читают атрибуты через attrOf. */
+  gb?: { str: number; agi: number; int: number; con: number; luc: number; wis: number; rings: number };
   /** Текст ролла на оружии в руке — синкается как affixLabel(...), см. items.ts. */
   rightAffix?: string;
   leftAffix?: string;
@@ -201,7 +203,7 @@ export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
   const critVals = sumOf(critW) >= sumOf(critO) ? critW : critO;
   const critChanceBonus = critVals.reduce((a, b) => a + b, 0);
   const critMultBonus = critVals.reduce((a, v) => a + critRollMult(v), 0);
-  const luckN = invested(p.luc);
+  const luckN = invested(attrOf(p, "luc"));
   const newW = cls === "dagger" || cls === "spear" || cls === "hammer" ? WEAPONS2[cls] : null;
   const soloDagger = cls === "dagger" && (p.leftCls === "" || p.rightCls === "");
   const critChance = Math.min(

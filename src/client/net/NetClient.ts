@@ -159,6 +159,8 @@ export class NetClient {
   onSpecCmd: ((cmd: SpecCmd) => void) | null = null;
   onKillFeed: ((by: string, victim: string) => void) | null = null;
   onPickupFeed: ((m: PickupFeedMsg) => void) | null = null;
+  /** Выпали кольцо/камень своему герою (shared/jewels.ts). */
+  onJewelGot: ((text: string) => void) | null = null;
   onChatLine: ((m: ChatLineMsg) => void) | null = null;
   onPcInvData: ((m: PcInvData) => void) | null = null;
   onQuestData: ((m: QuestData) => void) | null = null;
@@ -330,6 +332,7 @@ export class NetClient {
     room.onMessage(MSG.specCmd, (m: SpecCmd) => this.onSpecCmd?.(m));
     room.onMessage(MSG.killFeed, (m: KillFeedMsg) => this.onKillFeed?.(m.by, m.victim));
     room.onMessage(MSG.pickupFeed, (m: PickupFeedMsg) => this.onPickupFeed?.(m));
+    room.onMessage(MSG.jewelGot, (m: { text?: string }) => this.onJewelGot?.(String(m?.text ?? "")));
     room.onMessage(MSG.chatLine, (m: ChatLineMsg) => this.onChatLine?.(m));
     room.onMessage(MSG.pcInvData, (m: PcInvData) => this.onPcInvData?.(m));
     room.onMessage(MSG.questData, (m: QuestData) => this.onQuestData?.(m));

@@ -1,7 +1,7 @@
 import { BOW, PLAYER, PLAYER_HP, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
-import { ATTR2, invested } from "./attrs2";
+import { ATTR2, attrOf, invested } from "./attrs2";
 import { glyph } from "./icons";
 import { RUBY, WEAPON_NOUN } from "./items";
 
@@ -108,33 +108,33 @@ const P = PROGRESSION.perLevel;
 export { invested };
 
 export function maxHp2(level: number, a: AttrsIn): number {
-  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(a.con) * ATTR2.con.hp);
+  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp);
 }
 
 /** Доля физ. урона, которую гасит броня (ТЕЛ). */
 export function physArmor2(a: AttrsIn): number {
-  const n = inv(a.con);
+  const n = inv(attrOf(a, "con"));
   return (ATTR2.con.armorMax * n) / (n + ATTR2.con.armorK);
 }
 
 /** Доля магического урона, которую гасит МДР. */
 export function magicResist2(a: AttrsIn): number {
-  const n = inv(a.wis);
+  const n = inv(attrOf(a, "wis"));
   return (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
 }
 
 export function moveSpeed2(level: number, a: AttrsIn): number {
-  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(a.agi) * ATTR2.agi.move);
+  return (PLAYER.runSpeed + levelGain(level, P.moveSpeed)) * (1 + inv(attrOf(a, "agi")) * ATTR2.agi.move);
 }
 
 /** Множитель физ. урона: уровень × СИЛ. Тир оружия и профиль — отдельно. */
 export function physPower2(level: number, a: AttrsIn): number {
-  return (1 + levelGain(level, P.weaponDmg)) * (1 + inv(a.str) * ATTR2.str.physDmg);
+  return (1 + levelGain(level, P.weaponDmg)) * (1 + inv(attrOf(a, "str")) * ATTR2.str.physDmg);
 }
 
 /** Множитель магии (урон и лечение): уровень × ИНТ. */
 export function magicPower2(level: number, a: AttrsIn): number {
-  return (1 + levelGain(level, P.magicDmg)) * (1 + inv(a.int) * ATTR2.int.magic);
+  return (1 + levelGain(level, P.magicDmg)) * (1 + inv(attrOf(a, "int")) * ATTR2.int.magic);
 }
 
 /** Мягкое затухание прироста без потолка (как в progression.ts). */
@@ -161,26 +161,26 @@ export function physTempo2(level: number, a: AttrsIn, soft: number): number {
  * «всё в ЛОВ» давало ~55% урона «всё в СИЛ»). `share` — доля (ближний бой меньше).
  */
 export function agiTempo2(a: AttrsIn, share = 1): number {
-  return 1 + inv(a.agi) * ATTR2.agi.atkSpeed * share;
+  return 1 + inv(attrOf(a, "agi")) * ATTR2.agi.atkSpeed * share;
 }
 
 /** Множитель скорости каста (посох): уровень (рост гаснет) × МДР — линейно, как ЛОВ у физ. темпа. */
 export function castTempo2(level: number, a: AttrsIn): number {
-  return (1 + softGain(levelTempo(level) - 1, 1.8)) * (1 + inv(a.wis) * ATTR2.wis.cast);
+  return (1 + softGain(levelTempo(level) - 1, 1.8)) * (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast);
 }
 
 /** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
-  return Math.min(L.dodgeCap, inv(a.luc) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0));
+  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {
-  return Math.min(0.75, weaponBase + inv(a.luc) * ATTR2.luc.crit);
+  return Math.min(0.75, weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.crit);
 }
 
 export function critMult2(a: AttrsIn, weaponBase: number): number {
-  return weaponBase + inv(a.luc) * ATTR2.luc.critDmg;
+  return weaponBase + inv(attrOf(a, "luc")) * ATTR2.luc.critDmg;
 }
 
 // ---------------------------------------------------------------- оружие
@@ -770,6 +770,6 @@ export function summarize2(h: Hero2): Summary2 {
     dmgType: w.dmgType,
     power: casterSkills ? Math.max(hit, (WEAPONS2.staff.dmg * magicPower2(h.level, a) * tierMul) / 2) : hit,
     // Откат умений ускоряет только МДР (не уровень): иначе к 30+ ур. умения магов шли бы вдвое чаще.
-    cdMul: casterSkills ? 1 / (1 + inv(a.wis) * ATTR2.wis.cast) : 1,
+    cdMul: casterSkills ? 1 / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cast) : 1,
   };
 }

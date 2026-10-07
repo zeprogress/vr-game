@@ -1,6 +1,6 @@
 import { MELEE, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
-import { invested } from "./attrs2";
+import { attrOf, invested } from "./attrs2";
 import {
   agiTempo2,
   ATTR2,
@@ -84,7 +84,7 @@ export function holdsOneItem(leftCls: string, rightCls: string): boolean {
  * (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху.
  */
 export function hpRegenFrac(a: AttrsIn): number {
-  return invested(a.con) * ATTR2.con.regen;
+  return invested(attrOf(a, "con")) * ATTR2.con.regen;
 }
 
 /** Доля урона, гасимая физ. бронёй (ТЕЛ). */

@@ -5,6 +5,8 @@ import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
+import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
 
 /**
  * ПК-окно снаряжения (как в WoW, одно окно с вкладками):
@@ -20,7 +22,7 @@ import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/n
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "enchant" | "attrs" | "skills";
+export type InvTab = "gear" | "rings" | "enchant" | "attrs" | "skills";
 
 export interface HeldInfo {
   cls: string;
@@ -331,6 +333,7 @@ export class PcInventory {
     this.tabsEl.innerHTML = "";
     const tabs: [InvTab, string][] = [
       ["gear", "Снаряжение"],
+      ["rings", "Кольца"],
       ["enchant", "Заточка"],
       ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
       ["skills", "Умения"],
@@ -364,6 +367,7 @@ export class PcInventory {
       return;
     }
     if (this.tab === "gear") this.renderGear(d);
+    else if (this.tab === "rings") this.renderRings(d);
     else if (this.tab === "enchant") this.renderEnchant(d);
     else if (this.tab === "skills") this.renderSkills(d);
     else this.renderAttrs(d);
@@ -871,8 +875,171 @@ export class PcInventory {
     this.body.append(wrap);
   }
 
+  // ---------------- кольца и камни (shared/jewels.ts) ----------------
+
+  /** Кольцо, открытое для работы с камнями (гнёзда). */
+  private ringSel: string | null = null;
+
+  private renderRings(d: PcInvData): void {
+    const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
+    const wrap = div("pcinv-rings");
+    const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
+    if (this.ringSel && !ringOf(this.ringSel)) this.ringSel = null;
+
+    // Слоты 1 и 2.
+    const slots = div("pcinv-rslots");
+    for (const slot of [0, 1]) {
+      const r = ringOf(j.ringOn[slot]);
+      const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : ""}${r && r.id === this.ringSel ? " sel" : ""}`);
+      c.innerHTML = r ? ringSvg(r.tier, r.gems) : RING_SLOT_SVG;
+      c.append(div("pcinv-rslot-n", `${slot + 1}`));
+      c.onclick = () =>
+        r
+          ? this.menu(c, ringLabelOf(r), [
+              ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
+              ["Снять", () => this.hooks.act({ act: "ringOff", id: "-", idx: slot })],
+            ])
+          : this.textTipAt(c, `Слот кольца ${slot + 1}`, "Пусто — надень кольцо из сумки ниже.");
+      slots.append(c);
+    }
+    const b = pcJewelBonus(j);
+    const sum = div("pcinv-rsum");
+    sum.append(div("pcinv-name", "Кольца"));
+    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
+    for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
+    sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : "Ничего не надето. Кольцо даёт маг. защиту 10%, камни в нём — атрибуты."));
+    slots.append(sum);
+    wrap.append(slots);
+
+    // Выбранное кольцо: гнёзда.
+    const sel = ringOf(this.ringSel);
+    if (sel) {
+      const box = div("pcinv-rsel");
+      const head = div("pcinv-rsel-head");
+      const ico = div(`pcinv-cell big pcinv-jw t-${sel.tier}`);
+      ico.innerHTML = ringSvg(sel.tier, sel.gems);
+      head.append(ico, div("pcinv-name", ringLabelOf(sel)));
+      box.append(head);
+      sel.gems.forEach((gk, i) => {
+        const row = div("pcinv-sock");
+        const gi = div("pcinv-cell pcinv-jw");
+        if (gk) gi.innerHTML = gemSvg(gk);
+        row.append(gi);
+        if (gk) {
+          const g = parseGem(gk)!;
+          const cost = RING.unsocketPerLv * g.lv;
+          row.append(div("pcinv-sock-t", `${gemName(gk)} · +${g.lv} ${ATTR_SHORT[g.attr]}`));
+          const bt = button(`Вынуть (−${cost} лома)`, () => this.hooks.act({ act: "gemOut", id: sel.id, idx: i }));
+          bt.disabled = d.scrap < cost;
+          row.append(bt);
+        } else {
+          row.append(div("pcinv-sock-t dim", `Гнездо ${i + 1} пусто — выбери камень ниже`));
+        }
+        box.append(row);
+      });
+      box.append(button("Закрыть", () => this.selRing(null)));
+      wrap.append(box);
+    }
+
+    // Кольца в сумке.
+    const bagRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    wrap.append(div("pcinv-sub", `Кольца в сумке · ${bagRings.length}`));
+    const rg = div("pcinv-grid");
+    if (!bagRings.length) rg.append(div("pcinv-empty", "Колец нет — они изредка падают с мобов, чаще с элиты и боссов."));
+    for (const r of bagRings) {
+      const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
+      c.innerHTML = ringSvg(r.tier, r.gems);
+      c.title = ringLabelOf(r);
+      c.onclick = () =>
+        this.menu(c, ringLabelOf(r), [
+          ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
+          ["Надеть в слот 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 })],
+          ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
+          [
+            `В лом (+${r.scrap})`,
+            () =>
+              this.askConfirm(
+                `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
+                "Разобрать",
+                () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
+              ),
+            true,
+          ],
+        ]);
+      rg.append(c);
+    }
+    wrap.append(rg);
+
+    // Камни.
+    wrap.append(div("pcinv-sub", `Камни · соедини ${RING.combine} одинаковых — получишь уровнем выше`));
+    const gg = div("pcinv-grid");
+    if (!j.gems.length) gg.append(div("pcinv-empty", "Камней нет — падают с мобов (1 уровня)."));
+    const free = sel ? sel.gems.indexOf(null) : -1;
+    for (const [gk, n] of j.gems) {
+      const g = parseGem(gk)!;
+      const c = div("pcinv-cell pcinv-jw");
+      c.innerHTML = gemSvg(gk);
+      c.title = `${gemName(gk)} · +${g.lv} ${ATTR_SHORT[g.attr]}`;
+      c.append(div("pcinv-glv", String(g.lv)));
+      const cnt = document.createElement("span");
+      cnt.className = "pcinv-cnt";
+      cnt.textContent = `×${n}`;
+      c.append(cnt);
+      const acts: [string, () => void, boolean?][] = [];
+      if (sel && free >= 0) acts.push([`Вставить в ${ringName(sel).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: sel.id, idx: free, fuel: gk })]);
+      if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
+      c.onclick = () =>
+        acts.length
+          ? this.menu(c, `${gemName(gk)} ×${n}`, acts)
+          : this.textTipAt(c, gemName(gk), `+${g.lv} ${ATTR_SHORT[g.attr]}. Вставить — открой кольцо с гнёздами (кнопка «Камни»). Соединить — нужно ${RING.combine} одинаковых.`);
+      gg.append(c);
+    }
+    wrap.append(gg);
+    wrap.append(div("pcinv-small", `Лом: ${d.scrap}`));
+    if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+    this.body.append(wrap);
+  }
+
+  private selRing(id: string | null): void {
+    this.ringSel = id;
+    this.render();
+  }
+
+  /** Меню действий у ячейки (кольца/камни): заголовок и кнопки; danger — красная. */
+  private menu(anchor: HTMLElement, title: string, items: readonly (readonly [string, () => void, boolean?])[]): void {
+    void anchor;
+    this.hideTip();
+    this.confirmEl?.remove();
+    const box = div("pcinv-confirm pcinv-actions");
+    box.append(div("pcinv-confirm-text", title));
+    const row = div("pcinv-confirm-row col");
+    const close = (): void => {
+      box.remove();
+      this.confirmEl = null;
+    };
+    for (const [label, fn, danger] of items) {
+      const b = button(label, () => {
+        close();
+        fn();
+      });
+      if (danger) b.classList.add("danger");
+      row.append(b);
+    }
+    row.append(button("Отмена", close));
+    box.append(row);
+    this.root.append(box);
+    this.confirmEl = box;
+  }
+
+  private textTipAt(anchor: HTMLElement, title: string, body: string): void {
+    this.tipAllowed = true;
+    this.textTip(anchor, title, body);
+    this.tipAllowed = false;
+  }
+
   private renderAttrs(d: PcInvData): void {
     const a = d.attrs;
+    const gemB = pcJewelBonus(d.jewels);
     const wrap = div("pcinv-attrs");
     wrap.append(
       div("pcinv-name", a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
@@ -886,7 +1053,10 @@ export class PcInventory {
       // Сколько стоят следующие 5 подъёмов (цена может вырасти на середине).
       let cost5 = 0;
       for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
-      txt.append(div("pcinv-aname", `${at.name}: ${v}`), div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
+      const gemAdd = gemB[at.id];
+      const nameEl = div("pcinv-aname", `${at.name}: ${v}`);
+      if (gemAdd > 0) nameEl.append(span(` +${gemAdd}`), div("pcinv-gemadd", "от камней"));
+      txt.append(nameEl, div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
       const b1 = document.createElement("button");
       b1.className = "pcinv-abtn";
       b1.textContent = "+1";
@@ -1050,6 +1220,19 @@ function div(cls: string, text = ""): HTMLDivElement {
   return d;
 }
 
+function button(label: string, fn: () => void): HTMLButtonElement {
+  const b = document.createElement("button");
+  b.className = "pcinv-ebtn";
+  b.textContent = label;
+  b.onclick = fn;
+  return b;
+}
+
+/** Кольцо одной строкой (тир и камни) — для заголовков меню. */
+function ringLabelOf(r: { tier: RingTier; gems: (string | null)[] }): string {
+  return ringLabel({ id: "", tier: r.tier, gems: r.gems });
+}
+
 function span(text: string): HTMLSpanElement {
   const s = document.createElement("span");
   s.textContent = text;
@@ -1121,6 +1304,19 @@ function injectInvStyle(): void {
 .pcinv-cell.t-ruby { border-color:var(--tier-ruby-edge); box-shadow:inset 0 0 14px var(--tier-ruby-glow); color:var(--tier-ruby); }
 .pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
 .pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
+.pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
+.pcinv-jw svg { width:100%; height:100%; display:block; }
+.pcinv-glv { position:absolute; left:3px; top:1px; font:800 11px system-ui; color:#fff; text-shadow:0 1px 2px #000; }
+.pcinv-rslots { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+.pcinv-rslot-n { position:absolute; left:4px; top:2px; font:700 10px system-ui; color:#8a8698; }
+.pcinv-rsum { flex:1; min-width:0; }
+.pcinv-rsel { background:#16151c; border:1px solid #2f323b; border-radius:8px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }
+.pcinv-rsel-head { display:flex; gap:10px; align-items:center; }
+.pcinv-sock { display:flex; gap:8px; align-items:center; }
+.pcinv-sock-t { flex:1; font-size:13px; }
+.pcinv-sock-t.dim { color:#8a8698; }
+.pcinv-gemadd { display:inline; margin-left:6px; font-size:11px; color:#9fe39a; }
+.pcinv-aname span { color:#9fe39a; }
 .pcinv-cons { display:flex; gap:5px; align-items:stretch; }
 .pcinv-anvil { flex:1; border:1px dashed #5a5e6a; border-radius:6px; display:flex; align-items:center; justify-content:center;
   color:#c9c3b3; font-size:12px; min-height:44px; }

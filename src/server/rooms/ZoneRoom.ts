@@ -237,6 +237,8 @@ import { TowerRunManager } from "./TowerRunManager";
 import { serverPerf } from "../perf";
 import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
+import { randomUUID } from "node:crypto";
+import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
 const { Room } = colyseus;
 
@@ -1936,7 +1938,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll") return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4439,7 +4441,9 @@ export class ZoneRoom extends Room<ZoneState> {
         cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
         chosen: [p.skill1, p.skill2].filter(Boolean),
       },
+      jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       stats: heroStatRows({
+        gb: p.gb,
         level: p.level,
         str: p.str,
         agi: p.agi,
@@ -4535,6 +4539,90 @@ export class ZoneRoom extends Room<ZoneState> {
     return id;
   }
 
+  // ---------------------------------------------------------------- кольца и камни (shared/jewels.ts)
+
+  /** Кольца/камни героя по токену записи (живой герой и сейв — одна запись). */
+  private jewelsFor(token: string): JewelSave {
+    return jewelsOf(store.get(token) ?? {});
+  }
+
+  /** Прибавку от надетых колец — в PlayerState.gb; потолки HP/маны пересчитать (доля HP та же). */
+  private applyJewels(id: string): void {
+    const p = this.state.players.get(id);
+    const rt = this.rt.get(id);
+    if (!p || !rt) return;
+    const b = jewelBonus(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`));
+    const g = p.gb;
+    if (g.str === b.str && g.agi === b.agi && g.int === b.int && g.con === b.con && g.luc === b.luc && g.wis === b.wis && g.rings === b.rings) return;
+    g.str = b.str;
+    g.agi = b.agi;
+    g.int = b.int;
+    g.con = b.con;
+    g.luc = b.luc;
+    g.wis = b.wis;
+    g.rings = b.rings;
+    if (p.towerFloor > 0) return; // в башне свой потолок HP — вернётся с арены по maxHpFor
+    const frac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
+    p.maxHp = maxHpFor(p.level, p);
+    if (!p.dead) p.hp = Math.max(1, Math.min(p.maxHp, p.maxHp * frac));
+    p.maxMana = maxManaFor(p.level, p);
+    p.mana = Math.min(p.mana, p.maxMana);
+  }
+
+  /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
+  private jewelDrop(owner: string, mul: number): void {
+    const d = rollJewelDrop(mul);
+    if (!d.gem && !d.ring) return;
+    const p = this.state.players.get(owner);
+    const rt = this.rt.get(owner);
+    if (!p || !rt) return;
+    const token = rt.token ?? `nick:${normNick(p.nick)}`;
+    if (!store.get(token)) return;
+    const js = this.jewelsFor(token);
+    const got: string[] = [];
+    if (d.gem) {
+      js.gems[d.gem] = (js.gems[d.gem] ?? 0) + 1;
+      got.push(gemName(d.gem));
+    }
+    if (d.ring) {
+      js.rings.push({ id: randomUUID().slice(0, 8), tier: d.ring, gems: Array.from({ length: RING_LOOK[d.ring].sockets }, () => null) });
+      got.push(ringName({ tier: d.ring }));
+      // Золотое/уникальное кольцо — строкой в кил-фид всем (как подобранное редкое оружие).
+      if (d.ring !== "base") {
+        this.broadcast(MSG.pickupFeed, { nick: p.nick, item: ringName({ tier: d.ring }), tier: d.ring === "legendary" ? "legendary" : "gold", aff: "" } satisfies PickupFeedMsg);
+      }
+    }
+    store.put(token, { rings: js.rings, ringOn: js.ringOn, gems: js.gems });
+    this.clientOf(owner)?.send(MSG.jewelGot, { text: got.join(", ") });
+  }
+
+  /** Действие с кольцами/камнями (окно инвентаря на всех платформах и страница !inv). */
+  private jewelAct(norm: string, act: JewelAct, id: string, idx: number, fuel?: string): InvActResult {
+    const op = jewelOpFrom(act, id, idx, fuel);
+    if (!op) return { ok: false, text: "Не понял действие." };
+    const t = this.findWeaponsTarget(norm);
+    const token = t?.rt.token ?? `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const js = jewelsOf(rec);
+    const bag = t ? readBag(t.p) : restoreBag(rec.bag);
+    const r = applyJewelOp(js, op, bagCount(bag, "scrap"));
+    if (!r.ok) return { ok: false, text: r.text };
+    const patch: Partial<PlayerRecord> = { rings: js.rings, ringOn: js.ringOn, gems: js.gems };
+    if (r.scrap) {
+      if (r.scrap > 0) addToBag(bag, "scrap", r.scrap);
+      else takeFromBag(bag, "scrap", -r.scrap);
+      if (t) writeBag(t.p, bag);
+      else patch.bag = bag;
+    }
+    store.put(token, patch);
+    if (t) {
+      this.applyJewels(t.id);
+      if (r.scrap) this.persistNick(norm);
+    }
+    return { ok: true, text: r.text };
+  }
+
   private persistNick(norm: string): void {
     const bot = this.bots.get(norm);
     if (bot) {
@@ -4552,6 +4640,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * герой выйдет уже с этим.
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
+    if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     const t = this.findWeaponsTarget(norm);
     if (act === "skills") return this.chooseSkills(norm, t?.p ?? null, id.split(","));
     if (act === "unequip") {
@@ -5378,6 +5467,7 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     };
     this.rt.set(id, rt);
+    this.applyJewels(id);
 
     this.bots.set(norm, {
       spawnedAt: fresh ? Date.now() : 0,
@@ -8860,6 +8950,7 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobKills) {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
+      if (k.jm > 0) this.jewelDrop(k.owner, k.jm);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         this.questEvent(k.owner, { campType: k.campType, champ: k.champ });
@@ -9595,6 +9686,7 @@ export class ZoneRoom extends Room<ZoneState> {
       fishBiteAt: null,
       fishAuto: false,
     });
+    this.applyJewels(client.sessionId);
 
     client.send(
       MSG.char,

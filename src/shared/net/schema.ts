@@ -19,6 +19,17 @@ export class SlotState extends Schema {
   @type("uint16") count = 0;
 }
 
+/** Прибавка от надетых колец (shared/jewels.ts): атрибуты от камней и сколько колец надето (маг. защита). */
+export class GemBonusSync extends Schema {
+  @type("uint16") str = 0;
+  @type("uint16") agi = 0;
+  @type("uint16") int = 0;
+  @type("uint16") con = 0;
+  @type("uint16") luc = 0;
+  @type("uint16") wis = 0;
+  @type("uint8") rings = 0;
+}
+
 export class PlayerState extends Schema {
   @type("string") nick = "";
   @type("string") mode: PlayerMode = "flat";
@@ -102,6 +113,8 @@ export class PlayerState extends Schema {
   @type("uint8") smokeSecs = 0;
   /** Вид клича: 1 — боевой клич (+урон, +15% темпа), 2 — «Сбор» (+30% темпа), 3 — «Благословение» (+урон). */
   @type("uint8") cryKind = 0;
+  /** Кольца и камни: прибавка к атрибутам (формулы читают через attrOf) и число надетых колец. */
+  @type(GemBonusSync) gb = new GemBonusSync();
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

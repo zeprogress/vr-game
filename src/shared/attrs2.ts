@@ -25,3 +25,15 @@ export const ATTR2 = {
 export function invested(v: number): number {
   return Math.max(0, v - ATTR2.start);
 }
+
+/**
+ * Атрибут героя с прибавкой от камней в надетых кольцах (поле `gb` у PlayerState, считает
+ * shared/jewels.ts). Все формулы характеристик читают атрибуты только так — прибавка видна везде.
+ * Очки (цена, сброс, распределение) — по «голым» полям, без неё.
+ */
+export function attrOf(a: object, k: "str" | "agi" | "int" | "con" | "luc" | "wis"): number {
+  const o = a as { [key: string]: unknown; gb?: { [key: string]: unknown } };
+  const base = typeof o[k] === "number" ? (o[k] as number) : ATTR2.start;
+  const add = o.gb && typeof o.gb[k] === "number" ? (o.gb[k] as number) : 0;
+  return base + add;
+}

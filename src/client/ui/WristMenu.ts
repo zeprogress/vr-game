@@ -16,7 +16,9 @@ import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
-import type { QuestData, WarehouseWeapon } from "#shared/net/messages";
+import type { PcInvActMsg, QuestData, WarehouseWeapon } from "#shared/net/messages";
+import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringResist, type PcInvJewels } from "#shared/jewels";
+import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
@@ -27,6 +29,8 @@ import { BOT_SKIN_LABELS } from "../world/models";
 import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
+/** Картинки значков колец/камней по тексту svg (их немного: тир × камни в гнёздах). */
+const svgImgCache = new Map<string, HTMLImageElement>();
 const TEX_W = 1200;
 const TEX_H = 900;
 const PLANE_W = 0.5;
@@ -47,7 +51,7 @@ const WH_PER_PAGE = WH_COLS * WH_ROWS;
 const TIER_COLOR = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.color])) as Record<WeaponTier, string>;
 const TIER_BG = Object.fromEntries(Object.entries(TIER_LOOK).map(([t, l]) => [t, l.bg])) as Record<WeaponTier, string>;
 
-type Tab = "char" | "quest" | "skills" | "set";
+type Tab = "char" | "rings" | "quest" | "skills" | "set";
 type Kind = "tab" | "button" | "cell" | "card" | "toggle" | "slider";
 type Side = "left" | "right";
 
@@ -138,6 +142,11 @@ export class WristMenu {
   onTogglePvp: (() => void) | null = null;
   /** Действие с оружием (в руку / за спину / на землю / разобрать / убрать на склад). Ставит Game. */
   onAction: ((a: MenuAction) => void) | null = null;
+  /** Кольца и камни: действие (то же сообщение, что у окна инвентаря) и запрос данных при открытии вкладки. */
+  onJewelAct: ((m: PcInvActMsg) => void) | null = null;
+  onRingsOpen: (() => void) | null = null;
+  private jewels: PcInvJewels | null = null;
+  private jewelScrap = 0;
 
   private pvpOn = false;
   private leaveBotOn = false;
@@ -193,6 +202,13 @@ export class WristMenu {
   }
 
   // ---- данные от Game ----
+
+  /** Кольца и камни героя (из данных окна инвентаря) и лом в сумке. */
+  setJewels(j: PcInvJewels | undefined, scrap: number): void {
+    this.jewels = j ?? null;
+    this.jewelScrap = scrap;
+    this.dirty = true;
+  }
 
   setHands(right: WornWeapon | null, left: WornWeapon | null): void {
     const same = (a: WornWeapon | null, b: WornWeapon | null): boolean =>
@@ -615,6 +631,7 @@ export class WristMenu {
   private switchTab(t: Tab): void {
     if (this.tab === t) return;
     this.tab = t;
+    if (t === "rings") this.onRingsOpen?.();
     this.focusId = `tab:${t}`;
     this.dirty = true;
     this.lastDraw = 0;
@@ -699,6 +716,7 @@ export class WristMenu {
     ctx.textBaseline = "top";
 
     if (this.tab === "char") this.drawCharacter(ctx);
+    else if (this.tab === "rings") this.drawRings(ctx);
     else if (this.tab === "quest") this.drawQuests(ctx);
     else if (this.tab === "skills") this.drawSkills(ctx);
     else this.drawSettings(ctx);
@@ -729,6 +747,7 @@ export class WristMenu {
   private drawTabs(ctx: CanvasRenderingContext2D): void {
     const tabs: [Tab, string][] = [
       ["char", "Персонаж"],
+      ["rings", "Кольца"],
       ["quest", "Задания"],
       ["skills", "Умения"],
       ["set", "Настройки"],
@@ -1510,6 +1529,152 @@ export class WristMenu {
   // ---- иконки ----
 
   /** Значок предмета/оружия — из общего реестра (shared/icons.ts); догрузится — перерисуем холст. */
+  // ---- вкладка «Кольца» (shared/jewels.ts) ----
+
+  private drawRings(ctx: CanvasRenderingContext2D): void {
+    const j = this.jewels;
+    ctx.textAlign = "left";
+    if (!j) {
+      ctx.font = "26px system-ui, sans-serif";
+      ctx.fillStyle = "#a9a498";
+      ctx.fillText("Загрузка…", 24, VIEW_Y + 20);
+      return;
+    }
+    const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
+    const cell = (id: string, x: number, y: number, s: number, svg: string, edge: string, info: [string, string], act: () => void, badge?: string, count?: string): void => {
+      const wd = this.add({ id, x, y, w: s, h: s, kind: "button", info, act });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || "#15141c";
+      ctx.fillRect(x, y, s, s);
+      ctx.strokeStyle = st.stroke || edge;
+      ctx.lineWidth = st.stroke ? st.lw : 2;
+      ctx.strokeRect(x, y, s, s);
+      this.drawSvgAt(ctx, svg, x + 6, y + 6, s - 12);
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillStyle = "#fff";
+      if (badge) ctx.fillText(badge, x + 6, y + 4);
+      if (count) {
+        ctx.textAlign = "right";
+        ctx.fillText(count, x + s - 6, y + s - 26);
+        ctx.textAlign = "left";
+      }
+    };
+    // Слоты.
+    const b = pcJewelBonus(j);
+    for (const slot of [0, 1]) {
+      const r = ringOf(j.ringOn[slot]);
+      const x = 24 + slot * 150;
+      cell(`rs:${slot}`, x, VIEW_Y + 14, 136, r ? ringSvg(r.tier, r.gems) : RING_SLOT_SVG, r ? TIER_COLOR[r.tier] : "#3a3e48",
+        [`Слот кольца ${slot + 1}`, r ? ringLabel({ id: "", tier: r.tier, gems: r.gems }) : "пусто — выбери кольцо ниже"],
+        () => r && this.openRingPopup(r, slot), String(slot + 1));
+    }
+    ctx.font = "bold 28px system-ui, sans-serif";
+    ctx.fillStyle = "#e6e0d0";
+    ctx.fillText("Кольца", 340, VIEW_Y + 20);
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillStyle = "#9fe39a";
+    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
+    for (const k of STATS) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
+    this.wrapText(ctx, b.rings ? parts.join(" · ") : "Ничего не надето: кольцо даёт маг. защиту 10%, камни — атрибуты", 340, VIEW_Y + 62, 820, 28, 3);
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText(`Лом: ${this.jewelScrap}`, 340, VIEW_Y + 120);
+
+    // Кольца в сумке.
+    const S = 104;
+    const G = 10;
+    const cols = Math.floor((TEX_W - 48 + G) / (S + G));
+    let y = VIEW_Y + 170;
+    const bag = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillStyle = "#e6e0d0";
+    ctx.fillText(`Кольца в сумке · ${bag.length}`, 24, y);
+    y += 36;
+    bag.slice(0, cols * 2).forEach((r, i) => {
+      cell(`rb:${r.id}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, ringSvg(r.tier, r.gems), TIER_COLOR[r.tier],
+        [ringLabel({ id: "", tier: r.tier, gems: r.gems }), "надеть, камни, в лом"], () => this.openRingPopup(r, -1));
+    });
+    if (!bag.length) {
+      ctx.font = "20px system-ui, sans-serif";
+      ctx.fillStyle = "#7c88a4";
+      ctx.fillText("Колец нет — изредка падают с мобов, чаще с элиты и боссов", 24, y + 6);
+    }
+    y += 2 * (S + G) + 10;
+    // Камни.
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillStyle = "#e6e0d0";
+    ctx.fillText(`Камни · ${RING.combine} одинаковых → уровнем выше`, 24, y);
+    y += 36;
+    j.gems.slice(0, cols * 2).forEach(([gk, n], i) => {
+      const g = parseGem(gk)!;
+      cell(`gm:${gk}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, gemSvg(gk), GEM_LOOK[g.attr].d,
+        [`${gemName(gk)} ×${n}`, `+${g.lv} ${ATTR_SHORT[g.attr]}`], () => this.openGemPopup(gk, n), String(g.lv), `×${n}`);
+    });
+    if (!j.gems.length) {
+      ctx.font = "20px system-ui, sans-serif";
+      ctx.fillStyle = "#7c88a4";
+      ctx.fillText("Камней нет — падают с мобов (1 уровня)", 24, y + 6);
+    }
+  }
+
+  private jewelSend(m: PcInvActMsg): void {
+    this.popup = null;
+    this.onJewelAct?.(m);
+  }
+
+  private openRingPopup(r: PcInvJewels["rings"][number], slot: number): void {
+    const buttons: Popup["buttons"] = [];
+    if (slot >= 0) buttons.push({ id: "pop:off", label: "Снять", color: "#9fd0ff", act: () => this.jewelSend({ act: "ringOff", id: "-", idx: slot }) });
+    else {
+      buttons.push({ id: "pop:on0", label: "Надеть в слот 1", color: "#7ee081", act: () => this.jewelSend({ act: "ringOn", id: r.id, idx: 0 }) });
+      buttons.push({ id: "pop:on1", label: "Надеть в слот 2", color: "#7ee081", act: () => this.jewelSend({ act: "ringOn", id: r.id, idx: 1 }) });
+    }
+    r.gems.forEach((gk, i) => {
+      if (gk) {
+        const cost = RING.unsocketPerLv * parseGem(gk)!.lv;
+        buttons.push({ id: `pop:out${i}`, label: `Вынуть: ${gemName(gk)}`, hint: `−${cost} лома (есть ${this.jewelScrap})`, color: "#e8c26a", act: () => this.jewelSend({ act: "gemOut", id: r.id, idx: i }) });
+      } else {
+        buttons.push({ id: `pop:in${i}`, label: `Вставить камень в гнездо ${i + 1}`, color: "#e8c26a", act: () => this.openGemPick(r.id, i) });
+      }
+    });
+    if (slot < 0) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = { title: ringLabel({ id: "", tier: r.tier, gems: r.gems }), sub: ringBonusText({ id: "", tier: r.tier, gems: r.gems }).join(", "), color: TIER_COLOR[r.tier], buttons };
+    this.focusId = buttons[0].id;
+  }
+
+  /** Выбор камня для гнезда: до 6 камней, старшие уровни первыми. */
+  private openGemPick(ringId: string, idx: number): void {
+    const gems = [...(this.jewels?.gems ?? [])].sort((a, b) => parseGem(b[0])!.lv - parseGem(a[0])!.lv).slice(0, 6);
+    const buttons: Popup["buttons"] = gems.map(([gk, n], i) => {
+      const g = parseGem(gk)!;
+      return { id: `pop:g${i}`, label: `${gemName(gk)} ×${n}`, hint: `+${g.lv} ${ATTR_SHORT[g.attr]}`, color: GEM_LOOK[g.attr].c, act: () => this.jewelSend({ act: "gemIn", id: ringId, idx, fuel: gk }) };
+    });
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = { title: "Какой камень вставить?", sub: gems.length ? "" : "Камней нет", color: "#e8c26a", buttons };
+    this.focusId = buttons[0].id;
+  }
+
+  private openGemPopup(gk: string, n: number): void {
+    const g = parseGem(gk)!;
+    const buttons: Popup["buttons"] = [];
+    if (n >= RING.combine) buttons.push({ id: "pop:merge", label: `Соединить ${RING.combine} → ${g.lv + 1} ур.`, color: "#7ee081", act: () => this.jewelSend({ act: "gemMerge", id: gk, idx: 0 }) });
+    buttons.push({ id: "pop:cancel", label: n >= RING.combine ? "Отмена" : "Закрыть", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = { title: `${gemName(gk)} ×${n}`, sub: `+${g.lv} ${ATTR_SHORT[g.attr]} · вставить — через кольцо с гнёздами${n < RING.combine ? ` · соединить — нужно ${RING.combine}` : ""}`, color: GEM_LOOK[g.attr].c, buttons };
+    this.focusId = buttons[0].id;
+  }
+
+  /** Нарисовать готовый <svg> (значки колец/камней) — картинка грузится один раз, потом из кэша. */
+  private drawSvgAt(ctx: CanvasRenderingContext2D, svg: string, x: number, y: number, s: number): void {
+    let img = svgImgCache.get(svg);
+    if (!img) {
+      img = new Image();
+      img.onload = () => (this.dirty = true);
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      svgImgCache.set(svg, img);
+    }
+    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, s, s);
+  }
+
   private drawIconAt(ctx: CanvasRenderingContext2D, k: IconKey, x: number, y: number, s: number, color?: string): void {
     drawIcon(ctx, k, x, y, s, color, () => (this.dirty = true));
   }

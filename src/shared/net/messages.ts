@@ -1,3 +1,4 @@
+import type { JewelAct, PcInvJewels } from "../jewels";
 import type { SkillId } from "../classes2";
 import type { GuardState, WeaponKind, BlockedBy } from "../combat";
 import type { ItemId, WeaponClass, WeaponTier } from "../items";
@@ -60,6 +61,8 @@ export const MSG = {
   killFeed: "kf",
   /** Кто подобрал золотое/уникальное оружие или щит — строка в кил-фиде спектатора. */
   pickupFeed: "pf",
+  /** Кольцо/камень выпали герою (shared/jewels.ts): строка для журнала и всплывашки. */
+  jewelGot: "jg",
   /** Строка чата Twitch (и ответы бота игры) — в журнал ПК-игрока. */
   chatLine: "cl",
   /** ПК-окно снаряжения: запрос данных / данные / действие / итог действия. */
@@ -306,11 +309,13 @@ export interface PcInvData {
   stats: { label: string; value: string }[];
   /** Умения: класс по оружию в руках ("" — без оружия) и выбранные два. */
   skills?: { cls: string; chosen: string[] };
+  /** Кольца и камни (shared/jewels.ts). */
+  jewels?: PcInvJewels;
 }
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll";
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | JewelAct;
   id: string;
   idx: number;
   /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */

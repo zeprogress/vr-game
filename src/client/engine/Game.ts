@@ -1720,6 +1720,9 @@ export class Game {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
     this.wristPanel.onAction = (a) => this.menuWeaponAction(a);
+    // Кольца и камни в VR: те же действия и данные, что у окна инвентаря.
+    this.wristPanel.onJewelAct = (m) => this.net?.sendPcInvAct(m);
+    this.wristPanel.onRingsOpen = () => this.net?.sendPcInvOpen();
     this.wristPanel.onQuestSelect = (it) => this.setQuestCompass(it);
     this.wristPanel.onEnchant = (id) => {
       this.vrEnchId = id;
@@ -3482,6 +3485,12 @@ export class Game {
       void x;
       void z;
     };
+    net.onJewelGot = (text) => {
+      this.notifyToast(`💍 Выпало: ${text}`);
+      this.pcHud?.log("loot", `выпало: ${text}`);
+      if (this.pcInv?.isOpen) this.pcInv.refresh();
+      else if (this.player.inVR) this.net?.sendPcInvOpen();
+    };
     net.onPickupFeed = (m) => {
       if (m.nick === this.localNick) return; // своё — уже в «Подобрано»
       this.pcHud?.log("loot", `подобрал ${m.item}`, m.nick, TIER_LOOK[m.tier].color);
@@ -3513,6 +3522,7 @@ export class Game {
     net.onPcInvData = (d) => {
       this.pcInvData = d;
       this.pcInv?.setData(d);
+      this.wristPanel?.setJewels(d.jewels, d.scrap);
       this.vrEnchPanel?.markDirty();
     };
     net.onShopData = (d) => {
@@ -3556,6 +3566,8 @@ export class Game {
     if (this.questWin) window.setTimeout(() => net.sendQuestOpen(), 1500);
     net.onPcInvResult = (r) => {
       this.pcInv?.onResult(r);
+      // VR: итог действия с кольцами/камнями — всплывашкой (окна инвентаря в шлеме нет).
+      if (this.player.inVR && !r.enchant && r.text) this.notifyToast(r.text);
       if (r.enchant && this.vrEnchId) {
         const e = r.enchant;
         this.vrEnchResult = e.up
@@ -4249,6 +4261,7 @@ export class Game {
       this.net.onWorldEvent = null;
       this.net.onPicked = null;
       this.net.onPickupFeed = null;
+      this.net.onJewelGot = null;
       this.net.onKillFeed = null;
       this.net.onChatLine = null;
       this.net.onDmgHits = null;

@@ -1,3 +1,4 @@
+import { JEWEL_ACTS, jewelBonus, jewelsOf, pcInvJewels } from "#shared/jewels";
 // colyseus 0.15 — CJS-пакет без ESM-exports, поэтому default-импорт (как в index.ts/ZoneRoom.ts).
 import { CLASSES2, classOf2, type SkillId, type Weapon2 } from "#shared/classes2";
 import { atMaxLevel, xpToNext } from "#shared/progression";
@@ -22,7 +23,7 @@ import {
 import { heroStatRows } from "#shared/heroStats";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { store } from "../store";
-import { invHub } from "../invHub";
+import { invHub, type InvActKind } from "../invHub";
 import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
 
 interface InventoryJoinOptions {
@@ -67,7 +68,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll"
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -77,7 +78,7 @@ export class InventoryRoom extends colyseus.Room {
       const now = Date.now();
       if (now - (this.lastAct.get(client.sessionId) ?? 0) < 250) return;
       this.lastAct.set(client.sessionId, now);
-      const r = invHub.act(w.norm, act, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
+      const r = invHub.act(w.norm, act as InvActKind, id, idx, typeof m?.fuel === "string" ? m.fuel : undefined);
       client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
@@ -142,7 +143,9 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   };
   const leftInst = instIn("left");
   const rightInst = instIn("right");
+  const jewels = jewelsOf(rec);
   const stats = heroStatRows({
+    gb: jewelBonus(jewels),
     level: rec.level,
     str: rec.str,
     agi: rec.agi,
@@ -185,6 +188,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
     skills: skillsOf(rec),
+    jewels: pcInvJewels(jewels),
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
