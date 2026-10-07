@@ -6820,8 +6820,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
     // Цель: моб (не босс/осколок/пугало) в зоне.
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
-    const okMob = (m: { dead: boolean; kind: string; x: number; z: number; scarecrow?: boolean }): boolean =>
-      !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && inZone(m.x, m.z);
+    const okMob = (m: { dead: boolean; kind: string; x: number; z: number; scarecrow?: boolean; practice?: boolean }): boolean =>
+      !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && !m.practice && inZone(m.x, m.z);
     if (!mob || !okMob(mob)) {
       bot.target = null;
       mob = undefined;
@@ -6884,7 +6884,7 @@ export class ZoneRoom extends Room<ZoneState> {
       let nd = Infinity;
       const hm = bot.hurtByMob && Date.now() - bot.hurtByMobAt < BOT.closeThreatSec * 1000 ? this.sim.mobs.get(bot.hurtByMob) : undefined;
       for (const m of this.sim.mobs.values()) {
-        if (m === mob || m.dead || m.kind === "boss" || m.kind === "shard" || m.scarecrow) continue;
+        if (m === mob || m.dead || m.kind === "boss" || m.kind === "shard" || m.scarecrow || m.practice) continue;
         const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
         const touching = d < MOB.bodyRadius * m.scale + PLAYER.radius + 0.8;
         if ((touching || (m === hm && d < BOT.closeThreat)) && d < nd) {

@@ -424,6 +424,8 @@ export class Mob {
   }
   /** Пугало лагеря (SCARECROW): бессмертное, неподвижное, не бьёт. */
   readonly scarecrow: boolean;
+  /** Тренировочное пугало-напарник (по бокам от главного): бессмертное, стоит, но, в отличие от главного, попадает под АОЕ и Пронзание. */
+  readonly practice: boolean;
   private healCd = 6;
   /** ZoneSim прочтёт и сбросит: вождь лечит соседей (ему видны все мобы). */
   healReq = false;
@@ -471,7 +473,7 @@ export class Mob {
    * HP таяли от процентов быстрее, чем от ударов.
    */
   get pctHpBase(): number {
-    return this.scarecrow ? SCARECROW.refHp : Math.min(this.maxHp, PCT_HP_CAP);
+    return this.scarecrow || this.practice ? SCARECROW.refHp : Math.min(this.maxHp, PCT_HP_CAP);
   }
 
   /** Прогресс телеграфа заклинания 0..1 (0 — только начал, 1 — вот-вот ударит). */
@@ -553,6 +555,7 @@ export class Mob {
       /** Теневая копия ниндзя: id настоящего (погиб он — копия рассеивается). */
       cloneOf?: string;
       scarecrow?: boolean;
+      practice?: boolean;
       /** Ключ ELITE_MOBS лагеря, откуда моб (для заданий доски). */
       campType?: string;
       /** Вожак лагеря (задание «Вожак»): сильнее, крупнее, реже возрождается. */
@@ -627,6 +630,7 @@ export class Mob {
     this.anchored = opts.anchored ?? false;
     this.cloneOf = opts.cloneOf ?? "";
     this.scarecrow = opts.scarecrow ?? false;
+    this.practice = opts.practice ?? false;
     const base = kind === "boss" ? BOSS.scale : kind === "shard" ? SHARD.scale : 1;
     this.scale = base * (opts.scaleMul ?? 1);
     this.liftM = (opts.visLift ?? 0) * MOB.bodyRadius * 2 * this.scale;
@@ -744,7 +748,7 @@ export class Mob {
 
   /** Отбросить моба: сильный импульс от источника (рассекающий удар и т.п.). */
   shove(dx: number, dz: number, power: number): void {
-    if (this.dead || this.kind === "boss" || this.scarecrow) return; // босса и пугало с места не сдвинуть
+    if (this.dead || this.kind === "boss" || this.scarecrow || this.practice) return; // босса и пугало с места не сдвинуть
     this.vx += dx * power;
     this.vz += dz * power;
     this.vy += power * 0.35;
@@ -779,7 +783,7 @@ export class Mob {
       this.hurtDx = dx;
       this.hurtDz = dz;
     }
-    if (this.hp <= 0 && this.scarecrow) this.hp = this.maxHp; // пугало не умирает
+    if (this.hp <= 0 && (this.scarecrow || this.practice)) this.hp = this.maxHp; // пугало не умирает
     if (this.hp <= 0) {
       this.dead = true;
       this.deadT = 0;
@@ -806,7 +810,7 @@ export class Mob {
   ): void {
     if (this.hurtCd > 0) this.hurtCd -= dt;
     // Пугало: стоит столбом, не бьёт, здоровье всегда полное (урон считает ZoneSim.scare).
-    if (this.scarecrow) {
+    if (this.scarecrow || this.practice) {
       this.vx = this.vy = this.vz = 0;
       this.x = this.homeX;
       this.z = this.homeZ;
@@ -2262,6 +2266,15 @@ export class ZoneSim {
       m.yaw = m.restYaw;
       this.scarecrowId = m.id;
       this.mobs.set(m.id, m);
+      // Два пугала-напарника рядом — проверять умения по площади и Пронзание.
+      for (const off of HUB.training.practice) {
+        const p = new Mob("slime", sc.x + off.dx, sc.z + off.dz, {
+          model: "scarecrow", name: "Пугало", level: 0, hp: SCARECROW.hp, scaleMul: SCARECROW.scale, xp: 0, practice: true,
+        });
+        p.restYaw = m.restYaw;
+        p.yaw = p.restYaw;
+        this.mobs.set(p.id, p);
+      }
     }
     // Чучела — на тренировочной площадке лагеря (HUB).
     for (const t of HUB.training.dummies) {
@@ -2705,7 +2718,7 @@ export class ZoneSim {
 
   /** Множитель шанса колец/камней с моба: фантомы/осколки — 0, боссы — RING.bossMul, элита — RING.eliteMul. */
   private jewelMul(m: Mob): number {
-    if (m.cloneOf || m.kind === "shard" || m.scarecrow) return 0;
+    if (m.cloneOf || m.kind === "shard" || m.scarecrow || m.practice) return 0;
     if (m.kind === "boss" || m.id === this.raidBossId) return RING.bossMul;
     return m.eliteName ? RING.eliteMul : 1;
   }
@@ -2809,7 +2822,8 @@ export class ZoneSim {
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
     // Пугало: копим сессию урона бойца (новый боец или пауза дольше idleSec — заново).
-    if (m.scarecrow && attacker && dealt > 0) {
+    // Пугала-напарники — в ту же сессию: табло DPS показывает и АОЕ, и Пронзание.
+    if ((m.scarecrow || m.practice) && attacker && dealt > 0) {
       const s = this.scare;
       if (!s || s.by !== attacker || this.elapsed - s.last > SCARECROW.idleSec) {
         this.scare = { by: attacker, start: this.elapsed, last: this.elapsed, total: dealt, max: dealt };

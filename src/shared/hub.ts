@@ -75,6 +75,11 @@ export const HUB = {
   training: {
     /** Пугало для проверки билдов: бессмертное, над ним DPS и макс. удар (см. SCARECROW). */
     scarecrow: { x: HUB_CENTER.x - 19, z: HUB_CENTER.z + 1 },
+    /** Пугала-напарники (смещения от главного): под АОЕ и Пронзание, урон — в табло главного. */
+    practice: [
+      { dx: 1.6, dz: 2.4 },
+      { dx: 1.6, dz: -2.4 },
+    ] as const,
     dummies: [
       { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z + 4.5 },
       { x: HUB_CENTER.x - 20.5, z: HUB_CENTER.z - 2.5 },
