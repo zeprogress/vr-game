@@ -5,7 +5,7 @@
  *
  *  - Камень 1–3 ур. — своя картинка; 4+ — картинка 3 ур. и наложение поверх (svg без внешних
  *    ссылок): 4–5 — искры, 6–9 — золотое сияние, 10+ — лучи и корона.
- *  - Кольцо — картинка тира; камни в гнёздах — маленькими значками в нижних углах
+ *  - Кольцо — картинка тира; камни в гнёздах — маленькими значками сверху
  *    (пустое гнездо — тёмный кружок).
  */
 import { GEM_LOOK, parseGem, RING_LOOK, type GemKey, type RingTier } from "./jewels";
@@ -85,10 +85,11 @@ export function gemHtml(k: GemKey): string {
 /** Где на значке кольца рисовать камень гнезда i из n (доли размера: x, y, размер). */
 export function socketSpot(i: number, n: number): { x: number; y: number; s: number } {
   const s = 0.52;
-  return n === 1 ? { x: 1 - s, y: 1 - s, s } : { x: i === 0 ? -0.02 : 1.02 - s, y: 1 - s, s };
+  // Сверху (2026-10-08): одно гнездо — по центру, два — в верхних углах.
+  return n === 1 ? { x: (1 - s) / 2, y: -0.04, s } : { x: i === 0 ? -0.02 : 1.02 - s, y: -0.04, s };
 }
 
-/** HTML-значок кольца с камнями гнёзд в нижних углах. */
+/** HTML-значок кольца с камнями гнёзд сверху. */
 export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []): string {
   const a = ringArt(tier, gems);
   let h = `<span style="position:relative;display:block;width:100%;height:100%"><img src="${a.src}" alt="" draggable="false" style="${LAYER}">`;
