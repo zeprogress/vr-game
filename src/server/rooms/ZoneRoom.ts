@@ -4595,6 +4595,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     store.put(token, { rings: js.rings, ringOn: js.ringOn, gems: js.gems });
     this.clientOf(owner)?.send(MSG.jewelGot, { text: got.join(", ") });
+    // В забеге катакомб — и в итоговую таблицу добычи.
+    if (d.gem) this.cat.noteLoot(owner, { id: "scrap", count: 1, jw: d.gem });
+    if (d.ring) this.cat.noteLoot(owner, { id: "scrap", count: 1, jw: `ring:${d.ring}` });
   }
 
   /** Действие с кольцами/камнями (окно инвентаря на всех платформах и страница !inv). */

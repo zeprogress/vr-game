@@ -352,6 +352,8 @@ export interface LootItem {
   count: number;
   /** Уникальный щит — это Эгида (свой значок). */
   aegis?: boolean;
+  /** Кольцо или камень (shared/jewels.ts): «ring:<тир>» или ключ камня «str:1» — тогда id не смотрим. */
+  jw?: string;
 }
 
 /** Динамическое событие мира — для баннера. */

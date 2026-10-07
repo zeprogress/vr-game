@@ -2,6 +2,8 @@ import type { CatReportMsg } from "#shared/net/messages";
 import { AEGIS_NAME, ITEMS } from "#shared/items";
 import { itemIcon, type IconKey } from "#shared/icons";
 import { CATACOMBS } from "#shared/catacombs";
+import { gemName, ringName, type RingTier } from "#shared/jewels";
+import { gemSvg, ringSvg } from "#shared/jewelIcons";
 import { ensureIconCss, iconHtml } from "./icons";
 
 /**
@@ -169,6 +171,18 @@ export function showCatReport(m: CatReportMsg, o: { delayMs?: number; holdSec?: 
     const lt = el("td");
     const box = el("div", "cr-lt");
     for (const l of r.loot) {
+      // Кольцо/камень с мобов забега — свой значок (shared/jewelIcons.ts).
+      if (l.jw) {
+        const tier = l.jw.startsWith("ring:") ? (l.jw.slice(5) as RingTier) : null;
+        const it = el("div", `cr-it${tier ? ` cr-t-${tier}` : ""}`);
+        it.title = tier ? ringName({ tier }) : gemName(l.jw);
+        const ico = el("span", "cr-ico");
+        ico.innerHTML = tier ? ringSvg(tier) : gemSvg(l.jw);
+        it.appendChild(ico);
+        if (l.count > 1) it.appendChild(el("span", "cr-cnt", `×${l.count}`));
+        box.appendChild(it);
+        continue;
+      }
       const def = ITEMS[l.id];
       if (!def) continue;
       const it = el("div", `cr-it${def.weapon ? ` cr-t-${def.weapon.tier}` : ""}`);

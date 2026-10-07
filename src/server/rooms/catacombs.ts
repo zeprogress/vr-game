@@ -236,6 +236,16 @@ export class CatacombDirector {
   }
 
   /** Герой в пати текущего забега. */
+  /** Добыча забега вне сундуков (кольца/камни с мобов) — в итоговую таблицу героя. */
+  noteLoot(id: string, it: LootItem): void {
+    if (!this.inRun(id)) return;
+    const mine = this.lootBy.get(id) ?? [];
+    this.lootBy.set(id, mine);
+    const same = mine.find((l) => l.jw === it.jw && l.id === it.id && !!l.aegis === !!it.aegis);
+    if (same) same.count += it.count;
+    else mine.push({ ...it });
+  }
+
   inRun(id: string): boolean {
     return this.phase >= CAT_PHASE.run && this.party.has(id);
   }
