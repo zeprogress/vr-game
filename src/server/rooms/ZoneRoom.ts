@@ -6656,7 +6656,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     // Некого выбрать в зоне, но по боту бьёт моб рядом (вышел за радиус зоны —
     // например, погнался за героем от эпицентра события): отбиваемся, а не стоим.
-    if (!mob && !bot.raiding && bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000) {
+    // По дороге на событие (!event) не отбиваемся — иначе стая вокруг не кончается и бот туда не доходит.
+    const toEvent = bot.eventing && Math.hypot(p.head.x - cx, p.head.z - cz) > BOT.zoneRadius * 0.8;
+    if (!mob && !bot.raiding && !toEvent && bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000) {
       const hm = this.sim.mobs.get(bot.hurtByMob);
       if (
         hm &&
