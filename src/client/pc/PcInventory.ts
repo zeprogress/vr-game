@@ -1,12 +1,12 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
-import { TIER_LOOK } from "#shared/look";
+import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
-import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
+import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 
 /**
  * ПК-окно снаряжения (как в WoW, одно окно с вкладками):
@@ -916,7 +916,7 @@ export class PcInventory {
     for (const slot of [0, 1]) {
       const r = ringOf(j.ringOn[slot]);
       const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : ""}${r && r.id === this.ringSel ? " sel" : ""}`);
-      c.innerHTML = r ? ringSvg(r.tier, r.gems) : RING_SLOT_SVG;
+      c.innerHTML = r ? ringHtml(r.tier, r.gems) : RING_SLOT_SVG;
       if (r) this.ringTip(c, r);
       c.append(div("pcinv-rslot-n", `${slot + 1}`));
       c.onclick = () =>
@@ -942,7 +942,7 @@ export class PcInventory {
       const box = div("pcinv-rsel");
       const head = div("pcinv-rsel-head");
       const ico = div(`pcinv-cell big pcinv-jw t-${sel.tier}`);
-      ico.innerHTML = ringSvg(sel.tier, sel.gems);
+      ico.innerHTML = ringHtml(sel.tier, sel.gems);
       this.ringTip(ico, sel);
       head.append(ico, div("pcinv-name", ringLabelOf(sel)));
       box.append(head);
@@ -950,7 +950,7 @@ export class PcInventory {
         const row = div("pcinv-sock");
         const gi = div("pcinv-cell pcinv-jw");
         if (gk) {
-          gi.innerHTML = gemSvg(gk);
+          gi.innerHTML = gemHtml(gk);
           this.gemTip(gi, gk);
         }
         row.append(gi);
@@ -978,7 +978,7 @@ export class PcInventory {
     if (!bagRings.length) wrap.append(div("pcinv-small", "Колец нет — они изредка падают с мобов, чаще с элиты и боссов."));
     for (const r of bagRings) {
       const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
-      c.innerHTML = ringSvg(r.tier, r.gems);
+      c.innerHTML = ringHtml(r.tier, r.gems);
       this.ringTip(c, r);
       c.onclick = () =>
         this.menu(c, ringLabelOf(r), [
@@ -1009,7 +1009,7 @@ export class PcInventory {
     for (const [gk, n] of j.gems) {
       const g = parseGem(gk)!;
       const c = div("pcinv-cell pcinv-jw");
-      c.innerHTML = gemSvg(gk);
+      c.innerHTML = gemHtml(gk);
       this.gemTip(c, gk, n);
       c.append(div("pcinv-glv", String(g.lv)));
       const cnt = document.createElement("span");
@@ -1107,6 +1107,7 @@ export class PcInventory {
       for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
       const gemAdd = gemB[at.id];
       const nameEl = div("pcinv-aname", `${at.name}: ${v}`);
+      nameEl.style.color = ATTR_LOOK[at.id].c; // цвет атрибута — один на всю игру (look.ts)
       if (gemAdd > 0) nameEl.append(span(` +${gemAdd}`), div("pcinv-gemadd", "от камней"));
       txt.append(nameEl, div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
       const b1 = document.createElement("button");

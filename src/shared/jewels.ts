@@ -13,18 +13,19 @@
  * прибавку к атрибутам живому герою кладёт в PlayerState.gb (её читают формулы через attrOf).
  */
 import type { Attr } from "./classes2";
+import { ATTR_LOOK } from "./look";
 
 export type GemAttr = Attr;
 export const GEM_ATTRS: readonly GemAttr[] = ["str", "agi", "int", "wis", "luc", "con"];
 
-/** Цвет камня — по атрибуту: c — основной, d — тень, l — свет. */
+/** Камень: название и цвет — цвет атрибута (look.ts ATTR_LOOK, один на всю игру). */
 export const GEM_LOOK: Record<GemAttr, { name: string; c: string; d: string; l: string }> = {
-  str: { name: "Камень силы", c: "#ff4d5e", d: "#8e1020", l: "#ffc2c8" },
-  agi: { name: "Камень ловкости", c: "#3fdc7a", d: "#0f6a36", l: "#c6ffd9" },
-  int: { name: "Камень интеллекта", c: "#4f8dff", d: "#13317e", l: "#c9dcff" },
-  wis: { name: "Камень мудрости", c: "#33d6d0", d: "#0b6663", l: "#c4fffb" },
-  luc: { name: "Камень удачи", c: "#ffd23f", d: "#8a6400", l: "#fff4bf" },
-  con: { name: "Камень телосложения", c: "#ff9636", d: "#874000", l: "#ffdcb8" },
+  str: { name: "Камень силы", ...ATTR_LOOK.str },
+  agi: { name: "Камень ловкости", ...ATTR_LOOK.agi },
+  int: { name: "Камень интеллекта", ...ATTR_LOOK.int },
+  wis: { name: "Камень мудрости", ...ATTR_LOOK.wis },
+  luc: { name: "Камень удачи", ...ATTR_LOOK.luc },
+  con: { name: "Камень телосложения", ...ATTR_LOOK.con },
 };
 
 export type RingTier = "base" | "gold" | "legendary";

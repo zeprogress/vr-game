@@ -1,3 +1,4 @@
+import { ATTR_LOOK } from "#shared/look";
 import { ensureIconCss } from "../ui/icons";
 import { ATTR2, ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, CLASS_IDS, costRule, skillCooldownOf, skillDesc, SKILLS2, skillName, SPEAR_PIERCE_DMG, WEAPONS2, type SkillId } from "#shared/classes2";
 import { Client } from "colyseus.js";
@@ -203,7 +204,7 @@ if (!legacyToken && !nickArg) {
 
 /** Атрибуты, классы и умения — из тех же данных, что считает игра (classes2.ts). */
 const MECH_CLASSES_HTML = (() => {
-  const attrs = A2.map((k) => `<li><b>${ATTR_INFO[k].icon} ${ATTR_INFO[k].name}</b> (!${k === "agi" ? "dex" : k}) — ${attrEffect(k)}.</li>`).join("");
+  const attrs = A2.map((k) => `<li><b style="color:${ATTR_LOOK[k].c}">${ATTR_INFO[k].icon} ${ATTR_INFO[k].name}</b> (!${k === "agi" ? "dex" : k}) — ${attrEffect(k)}.</li>`).join("");
   const classes = CLASS_IDS.map((c) => {
     const d = CLASSES2[c];
     const sk = d.skills.map((id) => skillName(id, c)).join(", ");

@@ -19,6 +19,19 @@ export interface TierLook {
   bg: string;
 }
 
+/**
+ * Цвет атрибута — во всей игре одинаковый: подписи атрибутов, камни (shared/jewels.ts).
+ * c — основной, d — тень, l — свет. 2026-10-07: мудрость — фиолетовая, телосложение — голубое.
+ */
+export const ATTR_LOOK = {
+  str: { c: "#ff4d5e", d: "#8e1020", l: "#ffc2c8" },
+  agi: { c: "#3fdc7a", d: "#0f6a36", l: "#c6ffd9" },
+  int: { c: "#4f8dff", d: "#13317e", l: "#c9dcff" },
+  wis: { c: "#a764ff", d: "#4a1a96", l: "#e3ccff" },
+  luc: { c: "#ffd23f", d: "#8a6400", l: "#fff4bf" },
+  con: { c: "#3fd8ff", d: "#0b5f7a", l: "#c8f5ff" },
+} as const;
+
 export const TIER_LOOK: Record<WeaponTier, TierLook> = {
   base: { name: "обычное", color: "#e6e0d0", edge: "#6b6b6b", glow: "rgba(0,0,0,0)", bg: "#1d1c25" },
   gold: { name: "золотое", color: "#ffd166", edge: "#d9a21b", glow: "rgba(217,162,27,.3)", bg: "#2a2416" },

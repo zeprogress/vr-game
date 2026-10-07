@@ -13,12 +13,12 @@ import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
-import { TIER_LOOK } from "#shared/look";
+import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { PcInvActMsg, QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringResist, type PcInvJewels } from "#shared/jewels";
-import { gemSvg, RING_SLOT_SVG, ringSvg } from "#shared/jewelIcons";
+import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
@@ -977,8 +977,8 @@ export class WristMenu {
         ctx.lineWidth = st.lw;
         ctx.strokeRect(wd.x, cy, wd.w, wd.h);
       }
-      ctx.fillStyle = "#e6e0d0";
-      ctx.font = "24px system-ui, sans-serif";
+      ctx.fillStyle = ATTR_LOOK[s].c; // цвет атрибута — один на всю игру (look.ts)
+      ctx.font = "bold 24px system-ui, sans-serif";
       ctx.fillText(`${ATTR_INFO[s].icon} ${ATTR_INFO[s].short}`, cx + 10, cy + 8);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 26px system-ui, sans-serif";
@@ -1541,7 +1541,7 @@ export class WristMenu {
       return;
     }
     const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
-    const cell = (id: string, x: number, y: number, s: number, svg: string, edge: string, info: [string, string], act: () => void, badge?: string, count?: string): void => {
+    const cell = (id: string, x: number, y: number, s: number, svg: string | ((x: number, y: number, s: number) => void), edge: string, info: [string, string], act: () => void, badge?: string, count?: string): void => {
       const wd = this.add({ id, x, y, w: s, h: s, kind: "button", info, act });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || "#15141c";
@@ -1549,7 +1549,8 @@ export class WristMenu {
       ctx.strokeStyle = st.stroke || edge;
       ctx.lineWidth = st.stroke ? st.lw : 2;
       ctx.strokeRect(x, y, s, s);
-      this.drawSvgAt(ctx, svg, x + 6, y + 6, s - 12);
+      if (typeof svg === "string") this.drawSvgAt(ctx, svg, x + 6, y + 6, s - 12);
+      else svg(x + 6, y + 6, s - 12);
       ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillStyle = "#fff";
       if (badge) ctx.fillText(badge, x + 6, y + 4);
@@ -1564,7 +1565,7 @@ export class WristMenu {
     for (const slot of [0, 1]) {
       const r = ringOf(j.ringOn[slot]);
       const x = 24 + slot * 150;
-      cell(`rs:${slot}`, x, VIEW_Y + 14, 136, r ? ringSvg(r.tier, r.gems) : RING_SLOT_SVG, r ? TIER_COLOR[r.tier] : "#3a3e48",
+      cell(`rs:${slot}`, x, VIEW_Y + 14, 136, r ? (x2: number, y2: number, s2: number) => this.drawRing(ctx, r.tier, r.gems, x2, y2, s2) : RING_SLOT_SVG, r ? TIER_COLOR[r.tier] : "#3a3e48",
         [`Слот кольца ${slot + 1}`, r ? ringLabel({ id: "", tier: r.tier, gems: r.gems }) : "пусто — выбери кольцо ниже"],
         () => r && this.openRingPopup(r, slot), String(slot + 1));
     }
@@ -1590,7 +1591,7 @@ export class WristMenu {
     ctx.fillText(`Кольца в сумке · ${bag.length}`, 24, y);
     y += 36;
     bag.slice(0, cols * 2).forEach((r, i) => {
-      cell(`rb:${r.id}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, ringSvg(r.tier, r.gems), TIER_COLOR[r.tier],
+      cell(`rb:${r.id}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, (x2: number, y2: number, s2: number) => this.drawRing(ctx, r.tier, r.gems, x2, y2, s2), TIER_COLOR[r.tier],
         [ringLabel({ id: "", tier: r.tier, gems: r.gems }), "надеть, камни, в лом"], () => this.openRingPopup(r, -1));
     });
     if (!bag.length) {
@@ -1606,7 +1607,7 @@ export class WristMenu {
     y += 36;
     j.gems.slice(0, cols * 2).forEach(([gk, n], i) => {
       const g = parseGem(gk)!;
-      cell(`gm:${gk}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, gemSvg(gk), GEM_LOOK[g.attr].d,
+      cell(`gm:${gk}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, (x2: number, y2: number, s2: number) => this.drawGem(ctx, gk, x2, y2, s2), GEM_LOOK[g.attr].d,
         [`${gemName(gk)} ×${n}`, `+${g.lv} ${ATTR_SHORT[g.attr]}`], () => this.openGemPopup(gk, n), String(g.lv), `×${n}`);
     });
     if (!j.gems.length) {
@@ -1664,6 +1665,46 @@ export class WristMenu {
   }
 
   /** Нарисовать готовый <svg> (значки колец/камней) — картинка грузится один раз, потом из кэша. */
+  /** Картинка значка (кольца/камни — public/icons/jewels): грузится один раз, потом из кэша. */
+  private drawImgAt(ctx: CanvasRenderingContext2D, src: string, x: number, y: number, s: number): void {
+    let img = svgImgCache.get(src);
+    if (!img) {
+      img = new Image();
+      img.onload = () => (this.dirty = true);
+      img.src = src;
+      svgImgCache.set(src, img);
+    }
+    if (img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, s, s);
+  }
+
+  private drawGem(ctx: CanvasRenderingContext2D, gk: string, x: number, y: number, s: number): void {
+    const a = gemArt(gk);
+    if (!a) return;
+    if (a.under) this.drawSvgAt(ctx, a.under, x, y, s);
+    const k = a.scale;
+    this.drawImgAt(ctx, a.src, x + (s * (1 - k)) / 2, y + (s * (1 - k)) / 2, s * k);
+    if (a.over) this.drawSvgAt(ctx, a.over, x, y, s);
+  }
+
+  private drawRing(ctx: CanvasRenderingContext2D, tier: PcInvJewels["rings"][number]["tier"], gems: (string | null)[], x: number, y: number, s: number): void {
+    const a = ringArt(tier, gems);
+    this.drawImgAt(ctx, a.src, x, y, s);
+    a.sockets.forEach((k, i) => {
+      const p = socketSpot(i, a.sockets.length);
+      const g = k ? gemArt(k) : null;
+      if (g) this.drawImgAt(ctx, g.src, x + p.x * s, y + p.y * s, p.s * s);
+      else {
+        ctx.fillStyle = "#0d0b12";
+        ctx.strokeStyle = "#5a5468";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(x + (p.x + p.s / 2) * s, y + (p.y + p.s / 2) * s, p.s * s * 0.34, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    });
+  }
+
   private drawSvgAt(ctx: CanvasRenderingContext2D, svg: string, x: number, y: number, s: number): void {
     let img = svgImgCache.get(svg);
     if (!img) {
