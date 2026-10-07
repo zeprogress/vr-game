@@ -1150,6 +1150,9 @@ const CASTER_KEY = process.env.CASTER_KEY || "voice-68105a2bfa";
  * блок щитом/мечом, опыт и уровни. Клиент шлёт только транспорт и заявки
  * на удар — досягаемость, темп и урон проверяются здесь.
  */
+/** Команды записи в катакомбы (чат Twitch и игры). */
+const CAT_CMDS: readonly string[] = ["!катакомбы", "!кт", "!catacombs", "!dungeon", "!данж"];
+
 export class ZoneRoom extends Room<ZoneState> {
   private sim!: ZoneSim;
   private readonly rt = new Map<string, Runtime>();
@@ -3581,7 +3584,14 @@ export class ZoneRoom extends Room<ZoneState> {
     chatLog.append(nick, text);
     this.sendChatLine({ nick, text: text.slice(0, 300) });
     // Из игры ник не подтверждён (не Twitch): коды входа в !inv и команды админов — только из Twitch.
-    if (fromGame && (isAdminNick(nick) || /^\d{4}$/.test(text.trim()))) return;
+    if (fromGame && /^\d{4}$/.test(text.trim())) return;
+    if (fromGame && isAdminNick(nick)) {
+      // Админский ник из игры: без админских прав — только озвучка и запись в катакомбы как у всех.
+      const c0 = text.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+      if (!c0.startsWith("!")) this.voiceChat(nick, norm, text);
+      else if (CAT_CMDS.includes(c0)) this.catJoinChat(nick, norm, undefined, false);
+      return;
+    }
     // Код входа в веб-инвентарь (4 цифры со страницы /inv?ник) — не болтовня бота.
     if (invHub.tryChatCode(norm, text)) {
       this.reply(`@${nick} инвентарь открыт — можно надевать и разбирать ✓`);
@@ -3612,7 +3622,7 @@ export class ZoneRoom extends Room<ZoneState> {
       return;
     }
     if (cmd === "!play" || cmd === "!join") this.requestBot(nick, norm);
-    else if (cmd === "!катакомбы" || cmd === "!кт" || cmd === "!catacombs" || cmd === "!dungeon" || cmd === "!данж") {
+    else if (CAT_CMDS.includes(cmd)) {
       this.catJoinChat(nick, norm, parts[1]);
     } else if (cmd === "!цель" || cmd === "!target") this.catTacticChat(nick, norm, "focus", parts[1] ?? "");
     else if (cmd === "!встать" || cmd === "!pos") this.catTacticChat(nick, norm, "pos", parts[1] ?? "");
@@ -6409,9 +6419,9 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** !катакомбы — записать героя зрителя (нет в мире — поднимаем); админ: open / go / stop. */
-  private catJoinChat(nick: string, norm: string, arg?: string): void {
+  private catJoinChat(nick: string, norm: string, arg?: string, admin = isAdminNick(norm)): void {
     const a = (arg ?? "").toLowerCase();
-    if (isAdminNick(norm) && (a === "open" || a === "go" || a === "stop")) {
+    if (admin && (a === "open" || a === "go" || a === "stop")) {
       this.cat.force(a);
       return;
     }
@@ -6425,7 +6435,7 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     if (!id) return;
     // Открыть сбор раньше расписания — только админ; остальные лишь записываются в открытый.
-    const r = this.cat.join(id, nick, isAdminNick(norm));
+    const r = this.cat.join(id, nick, admin);
     if (r) this.reply(`@${nick} ${r}`);
   }
 

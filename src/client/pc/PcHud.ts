@@ -71,6 +71,8 @@ export interface MapData {
 export interface PcHudHooks {
   /** Телефон: только рамка героя (с баффами) и мини-карта; кнопки и управление — свои, экранные. */
   touch?: boolean;
+  /** Галочка «Автобой» на экране: герой сам бегает рядом, бьёт мобов и жмёт умения. */
+  onAutoBot?: (on: boolean) => void;
   onCharacter: () => void;
   onBag: () => void;
   onMenu: () => void;
@@ -319,7 +321,15 @@ export class PcHud {
       if (e.target === this.bigWrap) this.toggleMap(false);
     };
 
-    this.root.append(unit, mm, bar, micro, this.chatEl, this.bigWrap);
+    // Автобой — галочка над панелью действий (телефон — под кнопками справа).
+    const ab = document.createElement("label");
+    ab.className = "pc-autobot";
+    ab.title = "Герой сам бегает рядом (≈20 м от места включения), бьёт мобов и применяет умения. Сдвинулся сам — центр переносится.";
+    this.autoBotBox = document.createElement("input");
+    this.autoBotBox.type = "checkbox";
+    this.autoBotBox.onchange = () => hooks.onAutoBot?.(this.autoBotBox.checked);
+    ab.append(this.autoBotBox, document.createTextNode(" Автобой"));
+    this.root.append(unit, mm, bar, micro, ab, this.chatEl, this.bigWrap);
     document.body.appendChild(this.root);
     this.applyChatOn();
 
@@ -433,6 +443,12 @@ export class PcHud {
     }
     cdEl.style.background =
       cdFrac > 0 ? `conic-gradient(rgba(0,0,0,.7) ${cdFrac * 360}deg, transparent 0)` : "none";
+  }
+
+  private autoBotBox!: HTMLInputElement;
+  /** Состояние галочки «Автобой» (выключил сам Game — смерть и т.п.). */
+  setAutoBot(on: boolean): void {
+    if (this.autoBotBox.checked !== on) this.autoBotBox.checked = on;
   }
 
   /** Откат зелья (как у умений): left — секунд осталось, frac — доля 0..1. */
@@ -845,6 +861,12 @@ function injectHudStyle(): void {
 .pc-mm-label { position:absolute; left:0; right:0; top:166px; text-align:center; font-size:11px; color:#cfc6ae; }
 .pc-actionbar { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); display:flex; flex-direction:column;
   align-items:center; gap:5px; pointer-events:auto; }
+.pc-autobot { position:absolute; left:50%; bottom:92px; transform:translateX(-50%); pointer-events:auto; cursor:pointer;
+  display:flex; align-items:center; gap:5px; padding:3px 10px; border-radius:6px; background:rgba(14,13,19,.75);
+  font:700 13px system-ui; color:#e8dcc0; user-select:none; }
+.pc-autobot input { width:16px; height:16px; margin:0; accent-color:#7ee081; cursor:pointer; }
+.pc-hud.touch .pc-autobot { left:auto; bottom:auto; right:8px; top:64px; transform:none; font-size:15px; padding:6px 10px; }
+.pc-hud.touch .pc-autobot input { width:20px; height:20px; }
 .pc-xp { position:relative; height:9px; margin-top:4px; background:#1b1a20; border:1px solid #000; border-radius:3px; overflow:hidden; }
 .pc-xp-fill { height:100%; width:0; background:#6b6f7a; }
 .pc-xp-text { position:absolute; inset:0; text-align:center; font:600 8.5px/9px system-ui; color:#d9dbe0; text-shadow:0 1px 1px #000; }

@@ -663,6 +663,7 @@ export class Game {
       this.hud.setPcMode();
       this.pcHud = new PcHud({
         touch: true,
+        onAutoBot: (on) => this.setAutoBot(on),
         onCharacter: () => this.pcInv?.toggle("gear"),
         onBag: () => this.pcInv?.toggle("gear"),
         onMenu: () => this.pcMenu?.toggle(),
@@ -716,6 +717,7 @@ export class Game {
         return true;
       };
       this.pcHud = new PcHud({
+        onAutoBot: (on) => this.setAutoBot(on),
         onCharacter: () => this.pcInv?.toggle("gear"),
         onBag: () => this.pcInv?.toggle("gear"),
         onMenu: () => this.pcMenu?.toggle(),
@@ -2867,6 +2869,7 @@ export class Game {
    */
   private autoFightTick(pt: PcTargeting, busy: boolean): void {
     const p = this.player.position;
+    if (this.autoBot) this.autoBotTick(pt, busy);
     const reach = this.combat.pcAttackRange();
     const idle = !this.player.autoMove && performance.now() - this.player.manualMoveAt > 600;
     pt.autoTick(p.x, p.z, {
@@ -2952,6 +2955,64 @@ export class Game {
     const cls = this.heroClass();
     // Как на сервере: веер — 4.5, ливень копий — 5, остальное — круг града.
     return cls === "assassin" ? 4.5 : cls === "spearman" ? 5 : SKILL.arrowRain.radius;
+  }
+
+  /** Автобой (галочка на экране ПК/телефона): центр — где включили; null — выключен. */
+  private autoBot: { x: number; z: number; skillAt: number; potAt: number; homeAt: number } | null = null;
+
+  private setAutoBot(on: boolean): void {
+    const p = this.player.position;
+    this.autoBot = on ? { x: p.x, z: p.z, skillAt: 0, potAt: 0, homeAt: 0 } : null;
+    if (!on && this.pcChase) this.player.autoMove = null;
+    this.pcHud?.setAutoBot(on);
+  }
+
+  /**
+   * Автобой: моб в ~20 м от центра — бежит и бьёт (та же погоня, что у атаки по клику), умения —
+   * как только готовы и цель рядом, зелье — ниже 40% здоровья. Никого — возвращается в центр.
+   * Игрок сам двигает героя — центр переезжает за ним. Смерть выключает автобой.
+   */
+  private autoBotTick(pt: PcTargeting, busy: boolean): void {
+    const ab = this.autoBot!;
+    const p = this.player.position;
+    const now = performance.now();
+    if (this.player.dead) return this.setAutoBot(false);
+    if (now - this.player.manualMoveAt < 800) {
+      ab.x = p.x;
+      ab.z = p.z;
+      return;
+    }
+    if (busy || this.fishing?.active || inHubSafeZone(p.x, p.z)) return;
+    // Зелье: ниже 40% — пьём (откат проверяет сервер; чаще раза в 1.5 с не жмём).
+    if (this.player.hp < this.player.maxHp * 0.4 && now - ab.potAt > 1500) {
+      ab.potAt = now;
+      const slot = this.inventory.slots.findIndex((s) => s.item === "potion" && s.count > 0);
+      if (slot >= 0) this.inventory.use(slot);
+    }
+    const R = 20;
+    const t = this.selectedTargetPos();
+    const fighting = pt.autoAttack && !!t;
+    if (fighting && Math.hypot(t.x - ab.x, t.z - ab.z) > R + 10) {
+      // Моб утащил далеко от центра — бросаем.
+      pt.select(null);
+    } else if (fighting) {
+      const d = Math.hypot(t.x - p.x, t.z - p.z);
+      if (d < Math.max(6, this.combat.pcAttackRange() + 1.5) && now - ab.skillAt > 700) {
+        for (const id of this.skillIds()) {
+          if (!id || this.skillLeft(id) > 0) continue;
+          ab.skillAt = now;
+          if (id === "arrowRain" && this.heroClass() !== "assassin") this.castSkill(id, t.x, t.z);
+          else this.castSkill(id);
+          break;
+        }
+      }
+      return;
+    }
+    if (pt.attackNearest(ab.x, ab.z, R)) return;
+    if (Math.hypot(p.x - ab.x, p.z - ab.z) > 3 && !this.player.autoMove && now - ab.homeAt > 1000) {
+      ab.homeAt = now;
+      this.player.autoMove = { x: ab.x, z: ab.z, stop: 1, onArrive: () => {} };
+    }
   }
 
   /** Кнопка умения (ПК: 2/3 или клик по ячейке; телефон — кнопка ✦). slot 0/1. */
