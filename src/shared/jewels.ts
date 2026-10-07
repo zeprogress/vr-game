@@ -45,7 +45,7 @@ export const RING = {
   /** Вынуть камень: лом за каждый уровень камня. */
   unsocketPerLv: 3,
   /** Лом за разбор кольца. */
-  scrap: { base: 3, gold: 10, legendary: 30 } as Record<RingTier, number>,
+  scrap: { base: 30, gold: 100, legendary: 300 } as Record<RingTier, number>, // 2026-10-07: ×10
   /** Шанс с обычного моба за убийство; элита/боссы — множитель drop.elite/boss. */
   gemChance: 0.025,
   ringChance: 0.0025,
