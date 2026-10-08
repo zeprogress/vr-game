@@ -995,7 +995,8 @@ export class WristMenu {
       }
       ctx.fillStyle = ATTR_LOOK[s].c; // цвет атрибута — один на всю игру (look.ts)
       ctx.font = "bold 24px system-ui, sans-serif";
-      ctx.fillText(`${ATTR_INFO[s].icon} ${ATTR_INFO[s].short}`, cx + 10, cy + 8);
+      this.drawImgAt(ctx, `/icons/attr/${s}.png`, cx + 8, cy + 6, 30);
+      ctx.fillText(ATTR_INFO[s].short, cx + 42, cy + 8);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 26px system-ui, sans-serif";
       // Как на ПК: база + прибавка от камней в гнёздах (сам атрибут в бою — их сумма).

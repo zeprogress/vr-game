@@ -3,6 +3,7 @@ import { glyph, weaponIcon } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
+import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
@@ -50,7 +51,7 @@ export interface PcInventoryHooks {
 export function setIcon(el: HTMLElement, cls: string, name?: string): void {
   setIconEl(el, weaponIcon(cls, name === AEGIS_NAME));
 }
-const ATTRS = A2.map((id) => ({ id, name: `${ATTR_INFO[id].icon} ${ATTR_INFO[id].name}`, hint: attrEffect(id) }));
+const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(id) }));
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
 
@@ -1115,7 +1116,8 @@ export class PcInventory {
       let cost5 = 0;
       for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
       const gemAdd = gemB[at.id];
-      const nameEl = div("pcinv-aname", `${at.name}: ${v}`);
+      const nameEl = div("pcinv-aname");
+      nameEl.innerHTML = `${iconHtml(`a.${at.id}` as IconKey)} ${at.name}: ${v}`;
       nameEl.style.color = ATTR_LOOK[at.id].c; // цвет атрибута — один на всю игру (look.ts)
       if (gemAdd > 0) nameEl.append(span(` +${gemAdd}`), div("pcinv-gemadd", "от камней"));
       txt.append(nameEl, div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
