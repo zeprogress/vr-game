@@ -520,17 +520,32 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       ringTo(0, r, 0.5, 0.6);
       vfx.decal(x, y + 0.05, z, r, C, 3, 0, 0.18);
       return;
-    case 5: // боевой маг: метеорит падает в центр, взрыв по всему кругу, огонь на земле 10 с
+    case 5: // боевой маг: метеорит падает в центр, взрыв по всему кругу (тяжёлый удар), огонь на земле 10 с
       c.fx.later(0, () => vfx.bolt(x + 2, y + 30, z - 2, x, y + 0.5, z, FXC.fireCore, 0.35, 0.35));
+      c.fx.later(0.2, () => vfx.burst(x + 0.6, y + 2, z - 0.6, FXC.fire, { count: 24, speed: 3, life: 0.5, grav: 0, size: 0.4 }));
       c.fx.later(0.35, () => {
+        // Удар метеорита: ядро в центре, огненный столб, ударная волна по всему кругу, тяжёлый звук.
         vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 80, speed: 11, life: 0.6, grav: 4, size: 0.45 });
+        vfx.pillar(x, y, z, r * 0.12, 6, FXC.fire, 0.9);
         for (let i = 0; i < 30; i++) {
           const [px, pz] = rndInRing();
           vfx.burst(px, y + 0.4, pz, C, { count: 4, speed: 6, life: 0.7, grav: 6, size: 0.3 });
+          vfx.burst(px, y + 0.3, pz, FXC.fire, { count: 3, speed: 3, life: 0.8, grav: -2, size: 0.25 });
         }
         ringTo(0, r, 0.8, 0.9);
+        ringTo(0.2, r * 0.6, 0.6, 0.6);
+        c.sound({ x, y, z }, "thud");
       });
+      // Огонь на земле 10 с: тлеющий круг и периодические языки пламени внутри круга.
       vfx.decal(x, y + 0.05, z, r, FXC.fire, 10, 0, 0.25);
+      for (let t = 0.5; t < 10; t += 0.8) {
+        c.fx.later(0.35 + t, () => {
+          for (let i = 0; i < 3; i++) {
+            const [px, pz] = rndInRing();
+            vfx.burst(px, y + 0.3, pz, FXC.fire, { count: 4, speed: 1.2, life: 0.6, grav: -3, size: 0.22 });
+          }
+        });
+      }
       return;
     default:
       vfx.decal(x, y, z, r, FXC.gold, 0.8, 0, 1);
@@ -541,6 +556,23 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
 function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r: number, d: number): void {
   const vfx = c.vfx;
   const C = ULT_COLOR[v] ?? FXC.gold;
+  if (v === V_BATTLEMAGE) {
+    // Боевой маг: искры сходятся по спирали к точке падения, метка цели сужается, перед ударом — гул огня.
+    const steps = Math.max(1, Math.round(d * 8));
+    for (let i = 0; i < steps; i++) {
+      const t = (i / steps) * d;
+      c.fx.later(t, () => {
+        const rad = 4 * (1 - t / d) + 0.4;
+        const ang = i * 0.9;
+        vfx.burst(x + Math.cos(ang) * rad, y + 0.3 + (t / d) * 2.2, z + Math.sin(ang) * rad, FXC.fire, { count: 3, speed: 1.2, life: 0.45, grav: -2, size: 0.18 });
+      });
+    }
+    for (let t = 0; t < d; t += 0.8) {
+      c.fx.later(t, () => vfx.decal(x, y + 0.05, z, Math.max(1.5, r * (1 - (0.6 * t) / d)), FXC.fire, 0.7, 0, 0.6));
+    }
+    c.fx.later(Math.max(0, d - 1.5), () => c.sound({ x, y, z }, "fire"));
+    return;
+  }
   const rune = Math.max(1, Math.min(r, 3));
   for (let t = 0; t < d; t += 0.6) {
     c.fx.later(t, () => vfx.decal(x, y + 0.05, z, rune + ((t / 0.6) % 2) * 0.6, C, 0.7, 0, 0.8));
