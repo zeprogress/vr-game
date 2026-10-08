@@ -613,9 +613,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   moonAvatar: {
     model: "monMoonAvatar", name: "Лунный аватар", blurb: "рейд-босс на горе: стоит на месте, лунные молнии, ледяные круги, веер осколков", level: 45, kind: "spitter",
     // tint — чуть темнее и синее родной лунной текстуры (2026-10-07).
-    hp: 300000, dmgMul: 18, xp: 60000000, scaleMul: 9, tint: [0.68, 0.78, 1.05], anchored: true, gait: true,
+    hp: 450000, dmgMul: 22, xp: 60000000, scaleMul: 9, tint: [0.68, 0.78, 1.05], anchored: true, gait: true,
     stormCaller: true, freezer: true, legendaryChance: 0.5,
-    shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.2, count: 5, spread: 0.35 },
+    shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.5, count: 5, spread: 0.35 },
   },
   shadowNinja: {
     model: "monNinja", name: "Теневой ниндзя", blurb: "теневая стойка: отбивает удары и бьёт в ответ — переждите", level: 45, kind: "slime",
