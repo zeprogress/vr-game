@@ -4,6 +4,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { BOT_TORCHES, relightMaterials } from "./Fireflies";
+import { LIGHT_TUNE } from "./lightTune";
 
 /**
  * Докуда добивает свет, м. Держим близко к лампе светлячка (FIREFLY.lightRange
@@ -212,7 +213,7 @@ export class BotLights {
       const ox = f ? (f.x / fl) * FORWARD : 0;
       const oz = f ? (f.z / fl) * FORWARD : 0;
       l.position.set(b.x + ox, b.y + UP, b.z + oz);
-      l.intensity = this.night * INTENSITY * this.level[i];
+      l.intensity = this.night * INTENSITY * this.level[i] * LIGHT_TUNE.torchMul;
     }
   }
 

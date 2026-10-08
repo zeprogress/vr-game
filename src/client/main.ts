@@ -60,6 +60,11 @@ if (params.get("grasstune") === "1") {
   void import("./ui/GrassTuner").then(({ mountGrassTuner }) => mountGrassTuner());
 }
 
+// ?light=1 — панель живой настройки освещения (солнце, ночные факелы).
+if (params.get("light") === "1") {
+  void import("./ui/LightTuner").then(({ mountLightTuner }) => mountLightTuner());
+}
+
 // ?fog=1 — панель живой настройки ночного тумана.
 if (params.get("fog") === "1") {
   void import("./ui/FogTuner").then(({ mountFogTuner }) => mountFogTuner());

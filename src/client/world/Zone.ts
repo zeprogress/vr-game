@@ -1,4 +1,5 @@
 import { spawnHubNpc } from "./hub/HubNpc";
+import { LIGHT_TUNE, setLightTuneHook } from "./lightTune";
 import type { Scene } from "@babylonjs/core/scene";
 import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -138,7 +139,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const applyDay = (): void => {
     sun.direction.copyFrom(day.sunDir);
     sun.position = day.sunDir.scale(-60);
-    sun.intensity = day.sunIntensity;
+    sun.intensity = day.sunIntensity * LIGHT_TUNE.sunMul;
     sun.diffuse.copyFrom(day.sunColor);
     // Источник НЕ гасим по setEnabled: смена набора источников заставляет
     // пересобирать шейдеры всех материалов (на Quest — заметный стоп-кадр,
@@ -147,6 +148,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sky.apply(day);
   };
   applyDay();
+  setLightTuneHook(applyDay);
   sky.repaint(day);
   let hubTickN = 0;
   /** Троттлинг обновлений солнца/неба: копится с последнего обновления. */
