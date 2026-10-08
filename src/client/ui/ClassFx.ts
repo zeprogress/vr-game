@@ -513,16 +513,39 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       for (let k = 1; k <= 5; k++) c.fx.later(k, () => vfx.decal(x, y + 0.05, z, r, C, 0.9, 0, 0.35));
       return;
     }
-    case 3: // ассасин: 16 ударов по кругу с шагом 0.15 с — жёлтая линия от героя и вспышка на каждом
-      for (let i = 0; i < 16; i++) {
-        c.fx.later(i * 0.15, () => {
-          const [px, pz] = rndInRing();
+    case 3: {
+      // ассасин: 16 ударов кинжалами с шагом 0.15 с. Удары идут по кругу двумя витками
+      // (видно «вихрь»), каждый — жёлтая линия от героя, белая искра крита и осколки.
+      // Звук: редкие свуши на каждом четвёртом ударе, финальный тууд, когда круг пуст.
+      const HITS = 16;
+      const STEP = 0.15;
+      const CRIT = new Color3(1, 1, 0.85);
+      vfx.burst(x, y + 1, z, C, { count: 20, speed: 5, life: 0.5, grav: 2, size: 0.25 });
+      ringTo(0, r, 0.5, 0.5);
+      for (let i = 0; i < HITS; i++) {
+        c.fx.later(i * STEP, () => {
+          const a = (i / HITS) * Math.PI * 4; // два витка по кругу
+          const d = r * (0.35 + 0.65 * (((i * 7) % HITS) / HITS)); // разброс по радиусу, без случайности
+          const px = x + Math.cos(a) * d;
+          const pz = z + Math.sin(a) * d;
           vfx.bolt(x, y + 1.2, z, px, y + 1, pz, C, 0.12, 0.05);
-          vfx.burst(px, y + 1, pz, C, { count: 8, speed: 6, life: 0.4, grav: 6, size: 0.2 });
+          vfx.burst(px, y + 1, pz, C, { count: 10, speed: 7, life: 0.4, grav: 6, size: 0.22 });
+          vfx.burst(px, y + 1, pz, CRIT, { count: 4, speed: 3, life: 0.25, grav: 0, size: 0.12 });
+          if (i % 4 === 0) c.sound({ x, y, z }, "swing");
         });
       }
-      ringTo(0, r, 0.5, 0.5);
+      // Финал: удары закончились — кольцо до полного радиуса, вспышка вверх, тууд.
+      c.fx.later(HITS * STEP, () => {
+        ringTo(0, r, 0.7, 0.6);
+        for (let i = 0; i < 24; i++) {
+          const [px, pz] = rndInRing();
+          vfx.burst(px, y + 0.5, pz, C, { count: 4, speed: 8, life: 0.7, grav: 4, size: 0.3 });
+        }
+        vfx.burst(x, y + 1.5, z, CRIT, { count: 30, speed: 6, life: 0.6, grav: 1, size: 0.25 });
+        c.sound({ x, y, z }, "thud");
+      });
       return;
+    }
     case 4: // копейщик: втягивание — потоки к центру по всему кругу (6 толчков за 0.6 с), след оглушения на 3 с
       for (let k = 0; k < 6; k++) {
         c.fx.later(0.1 * (k + 1), () => {
@@ -636,6 +659,15 @@ function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r
     }
     c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, LIGHT, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
     return;
+  }
+  if (v === 3) {
+    // Ассасин: 16 меток по кольцу радиуса — загораются одна за другой за время замаха (счёт ударов).
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      c.fx.later((k / 16) * d * 0.9, () =>
+        vfx.burst(x + Math.cos(a) * r, y + 0.3, z + Math.sin(a) * r, C, { count: 6, speed: 2, life: 0.5, grav: -1, size: 0.18 }),
+      );
+    }
   }
   const rune = Math.max(1, Math.min(r, 3));
   for (let t = 0; t < d; t += 0.6) {
