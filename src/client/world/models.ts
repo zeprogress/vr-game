@@ -33,6 +33,8 @@ export const MODELS = {
   // один набор клипов на всех: Idle / Walk / Run / SwordSlash / RecieveHit /
   // PickUp / Victory / Roll / Defeat / Death.
   charKnight: "/models/chars/Knight_Male.glb",
+  // Мужчина в крестьянской одежде без брони: тело Universal Base (CC0) + Peasant (CC0), клипы Mixamo.
+  charPeasant: "/models/gen/HeroPeasant.glb",
   charKnightGold: "/models/chars/Knight_Golden_Male.glb",
   charWizard: "/models/chars/Wizard.glb",
   charNinja: "/models/chars/Ninja_Male.glb",
@@ -97,6 +99,7 @@ export const BOT_SKIN_MODELS: readonly ModelName[] = [
   "charZombie",
   "charSoldier",
   "charCowboy",
+  "charPeasant",
 ];
 
 /** Те же 10, человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
