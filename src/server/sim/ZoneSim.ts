@@ -2165,8 +2165,13 @@ export class ZoneSim {
     const tan = Math.tan(BOW.pierceHalfAngle);
     let best: Mob | null = null;
     let bd = Infinity;
+    // Пугала: стрела в пугало пронзает следующее пугало (главное и напарники — одинаково); стрела в
+    // настоящего моба пугала не задевает.
+    const struck = this.mobs.get(struckId);
+    const intoScare = !!struck && (struck.scarecrow || struck.practice);
     for (const m of this.mobs.values()) {
-      if (m.dead || m.id === struckId || m.scarecrow) continue;
+      if (m.dead || m.id === struckId) continue;
+      if ((m.scarecrow || m.practice) !== intoScare && (m.scarecrow || m.practice)) continue;
       const vx = m.x - x;
       const vz = m.z - z;
       const t = vx * dirX + vz * dirZ;

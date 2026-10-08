@@ -7706,13 +7706,20 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** Это тело бота зрителя (а не живого игрока)? */
+  private isBotState(p: PlayerState): boolean {
+    for (const b of this.bots.values()) if (this.state.players.get(b.id) === p) return true;
+    return false;
+  }
+
   /** Мобы в круге радиуса `r` вокруг точки корпуса игрока/бота. */
   private mobsInRadius(p: PlayerState, r: number): { id: string; x: number; z: number }[] {
     const out: { id: string; x: number; z: number }[] = [];
-    // Пугало считается мобом только для бота на тесте (!пугало) — остальных оно не отвлекает.
-    const withScare = this.scareTesters.has(p);
+    // Пугала (главное и оба напарника — одно правило, иначе табло DPS у них разное): живому игроку
+    // и боту на тесте !пугало — цели; остальных ботов не отвлекают.
+    const withScare = this.scareTesters.has(p) || !this.isBotState(p);
     for (const m of this.sim.mobs.values()) {
-      if (m.dead || (m.scarecrow && !withScare)) continue;
+      if (m.dead || ((m.scarecrow || m.practice) && !withScare)) continue;
       // Круг задевает тело, а не только центр (крупные мобы — ×5 по размеру).
       if (Math.hypot(m.x - p.head.x, m.z - p.head.z) > r + MOB.hitRadius * m.scale) continue;
       out.push({ id: m.id, x: m.x, z: m.z });
