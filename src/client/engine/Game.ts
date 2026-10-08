@@ -452,6 +452,7 @@ export class Game {
           : kind === "volley" ? this.sfx.arrowVolley()
           : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
           : kind === "holy" ? this.sfx.levelUp()
+          : kind === "fanfare" ? this.sfx.bossFanfare()
           : this.sfx.hitThud(0.7),
         ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
