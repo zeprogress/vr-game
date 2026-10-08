@@ -6854,7 +6854,8 @@ export class ZoneRoom extends Room<ZoneState> {
       }
     }
     // Катакомбы: «дом» — текущий зал, со сдвигом по приказу зрителя (!встать) и отходом (!режим осторожно).
-    let zoneR: number = BOT.zoneRadius;
+    // Зона вокруг поляны снята: вне катакомб бот не привязан к радиусу дома (было BOT.zoneRadius).
+    let zoneR: number = Infinity;
     const catAnchor = this.cat.botAnchor(bot.id);
     if (catAnchor) {
       bot.eventing = false;
