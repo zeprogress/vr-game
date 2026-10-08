@@ -588,7 +588,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
   burrowBeast: {
-    model: "monBurrowBeast", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
+    model: "monStoneBurrower", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
     hp: 14000, dmgMul: 17, xp: 3000000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4, // 2026-10-06: 9800/13 → 14000/17 (усилить)
     burrower: true, legendaryChance: 0.04,
   },

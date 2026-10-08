@@ -81,7 +81,7 @@ export const MODELS = {
   monBogBrute: "/models/gen/BogBrute.glb",
   monStoneTroll: "/models/gen/StoneTroll.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
-  monBurrowBeast: "/models/gen/BurrowBeast.glb",
+  monStoneBurrower: "/models/gen/StoneBurrower.glb",
 } as const;
 
 export type ModelName = keyof typeof MODELS;

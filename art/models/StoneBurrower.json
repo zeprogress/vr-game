@@ -1,0 +1,497 @@
+{
+ "name": "StoneBurrower",
+ "type": "mob",
+ "rig": "quad",
+ "height": 1.15,
+ "tris": 6000,
+ "texture": 512,
+ "surface": {
+  "noise": [
+   0.012,
+   6,
+   4
+  ]
+ },
+ "mats": {
+  "skin": {
+   "c": "#6f6a5e",
+   "shade": "#2f2c27",
+   "light": "#a39c88",
+   "var": 0.22,
+   "freq": 5,
+   "moss": {
+    "c": "#3d5a25",
+    "c2": "#6b7f30",
+    "up": 0.55,
+    "cover": 0.14,
+    "freq": 4,
+    "minZ": 0.6
+   },
+   "tile": {
+    "path": "art/textures/stone_skin.png",
+    "scale": 0.5,
+    "bump": 1.4,
+    "bright": 1.0,
+    "sat": 0.4
+   }
+  },
+  "rock": {
+   "c": "#7b776b",
+   "shade": "#383630",
+   "light": "#b3ad9a",
+   "var": 0.2,
+   "freq": 5,
+   "tile": {
+    "path": "art/textures/stone_skin.png",
+    "scale": 0.9,
+    "bump": 1.5,
+    "bright": 1.0,
+    "sat": 0.4
+   }
+  },
+  "belly": {
+   "c": "#8a7a5c",
+   "shade": "#4d4232",
+   "var": 0.15,
+   "freq": 9
+  },
+  "mouth": {
+   "c": "#2a1612",
+   "var": 0.05
+  },
+  "tusk": {
+   "c": "#e7dcbc",
+   "shade": "#a08c66",
+   "var": 0.15,
+   "freq": 12
+  },
+  "claw": {
+   "c": "#d9ceb0",
+   "shade": "#8f8266",
+   "var": 0.1,
+   "freq": 10
+  },
+  "eye": {
+   "c": "#ffb22e",
+   "emit": 2
+  },
+  "vein": {
+   "c": "#ff8a2a",
+   "emit": 2
+  }
+ },
+ "body": {
+  "legLen": 0.3,
+  "bodyLen": 0.8,
+  "neck": 0.2,
+  "neckUp": 18,
+  "head": 0.24,
+  "tail": 0.5,
+  "tailSegs": 3,
+  "tailUp": 20,
+  "hipW": 0.46,
+  "chestW": 0.52,
+  "r": {
+   "hips": [
+    0.24,
+    0.26,
+    0.22
+   ],
+   "belly": [
+    0.24,
+    0.28,
+    0.24
+   ],
+   "chest": [
+    0.3,
+    0.3,
+    0.28
+   ],
+   "neck": [
+    0.15,
+    0.11
+   ],
+   "head": [
+    0.15,
+    0.15,
+    0.15
+   ],
+   "snout": [
+    0.08,
+    0.08,
+    0.12
+   ],
+   "tail": [
+    0.07,
+    0.03
+   ]
+  }
+ },
+ "add": [
+  {
+   "shape": "ellipsoid",
+   "at": "chest",
+   "off": [
+    0,
+    -0.12,
+    0.04
+   ],
+   "r": [
+    0.36,
+    0.26,
+    0.3
+   ],
+   "k": 0.12,
+   "mat": "skin",
+   "noise": [
+    0.035,
+    7,
+    3
+   ]
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "paint",
+   "at": "spine",
+   "off": [
+    0,
+    0,
+    -0.12
+   ],
+   "r": [
+    0.22,
+    0.44,
+    0.1
+   ],
+   "mat": "belly"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    0.02,
+    0.1
+   ],
+   "r": [
+    0.15,
+    0.15,
+    0.16
+   ],
+   "k": 0.1,
+   "mat": "skin"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "snout",
+   "off": [
+    0,
+    0.03,
+    -0.03
+   ],
+   "r": [
+    0.075,
+    0.075,
+    0.05
+   ],
+   "k": 0.03,
+   "mat": "skin"
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "sub",
+   "at": "snout",
+   "off": [
+    0,
+    0.04,
+    -0.06
+   ],
+   "r": [
+    0.05,
+    0.07,
+    0.012
+   ],
+   "k": 0.01,
+   "mat": "mouth"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    -0.1,
+    0.02
+   ],
+   "r": [
+    0.12,
+    0.05,
+    0.13
+   ],
+   "k": 0.05,
+   "mat": "skin"
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "paint",
+   "at": "spine",
+   "off": [
+    0,
+    0.2,
+    0.02
+   ],
+   "r": [
+    0.07,
+    0.42,
+    0.05
+   ],
+   "mat": "vein",
+   "noise": [
+    0.02,
+    12,
+    9
+   ]
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "spine",
+   "off": [
+    0,
+    0.02,
+    0.1
+   ],
+   "r": [
+    0.25,
+    0.11,
+    0.2
+   ],
+   "k": 0.08,
+   "mat": "skin"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "chest",
+   "off": [
+    0,
+    -0.06,
+    0.14
+   ],
+   "r": [
+    0.3,
+    0.12,
+    0.1
+   ],
+   "k": 0.08,
+   "mat": "skin",
+   "noise": [
+    0.03,
+    6,
+    5
+   ]
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "paint",
+   "at": "head",
+   "off": [
+    0.11,
+    -0.04,
+    0.12
+   ],
+   "r": [
+    0.07,
+    0.07,
+    0.05
+   ],
+   "mat": "eye",
+   "mirror": true
+  }
+ ],
+ "parts": [
+  {
+   "shape": "rock",
+   "at": "spine",
+   "off": [
+    0,
+    -0.2,
+    -0.02
+   ],
+   "r": 0.22,
+   "mat": "rock",
+   "seg": 6
+  },
+  {
+   "shape": "rock",
+   "at": "spine",
+   "off": [
+    0.16,
+    -0.18,
+    0.05
+   ],
+   "r": 0.12,
+   "mat": "rock",
+   "mirror": true,
+   "seg": 5
+  },
+  {
+   "shape": "rock",
+   "at": "chest",
+   "off": [
+    0.0,
+    -0.3,
+    0.1
+   ],
+   "r": 0.14,
+   "mat": "rock",
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "head",
+   "off": [
+    0.07,
+    0.02,
+    0.22
+   ],
+   "dir": [
+    0.35,
+    -0.2,
+    1
+   ],
+   "len": 0.22,
+   "r": 0.04,
+   "bend": [
+    0.04,
+    0,
+    0
+   ],
+   "mat": "tusk",
+   "mirror": true,
+   "seg": 7
+  },
+  {
+   "shape": "horn",
+   "at": "head",
+   "off": [
+    0.0,
+    0.0,
+    0.2
+   ],
+   "dir": [
+    0,
+    -0.1,
+    1
+   ],
+   "len": 0.12,
+   "r": 0.03,
+   "mat": "tusk",
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "snout",
+   "off": [
+    0.04,
+    -0.02,
+    -0.03
+   ],
+   "dir": [
+    0.2,
+    -0.3,
+    -1
+   ],
+   "len": 0.11,
+   "r": 0.02,
+   "mat": "tusk",
+   "mirror": true,
+   "seg": 4
+  },
+  {
+   "shape": "sphere",
+   "at": "head",
+   "off": [
+    0.11,
+    -0.05,
+    0.13
+   ],
+   "r": 0.042,
+   "mat": "eye",
+   "mirror": true
+  },
+  {
+   "shape": "horn",
+   "at": "fWrist.L",
+   "off": [
+    0.05,
+    0.02,
+    -0.03
+   ],
+   "dir": [
+    0.2,
+    -0.2,
+    -1
+   ],
+   "len": 0.19,
+   "r": 0.038,
+   "mat": "claw",
+   "mirror": true,
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "fToe.L",
+   "off": [
+    0.03,
+    0.0,
+    -0.03
+   ],
+   "dir": [
+    0.06,
+    -0.15,
+    -1
+   ],
+   "len": 0.14,
+   "r": 0.03,
+   "mat": "claw",
+   "mirror": true,
+   "seg": 4
+  },
+  {
+   "shape": "rock",
+   "at": "tail1",
+   "off": [
+    0,
+    0,
+    0
+   ],
+   "r": 0.07,
+   "mat": "rock",
+   "seg": 4
+  }
+ ],
+ "bones": [
+  {
+   "name": "Jaw",
+   "head": [
+    "head",
+    [
+     0,
+     -0.06,
+     -0.04
+    ]
+   ],
+   "tail": [
+    "snout",
+    [
+     0,
+     0.0,
+     -0.06
+    ]
+   ],
+   "parent": "Head",
+   "role": "jaw"
+  }
+ ],
+ "anim": {
+  "attack": "bite"
+ }
+}
