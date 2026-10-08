@@ -157,7 +157,10 @@ export class Arrow {
       }
     }
 
-    return this.life <= ARROW.maxLife && this.mesh.position.y > -8;
+    // Ниже земли на 8 м — стрела улетела в никуда. Считаем от земли под ней: в катакомбах пол на
+    // CAT_FLOOR_Y (−80 м), и прежнее «y > −8» гасило стрелу в первом же кадре — лук там не попадал.
+    const p = this.mesh.position;
+    return this.life <= ARROW.maxLife && p.y > terrainHeight(p.x, p.z) - 8;
   }
 
   private stopAt(at: Vector3): void {
