@@ -469,15 +469,30 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
     return [x + Math.cos(a) * d, z + Math.sin(a) * d];
   };
   switch (v) {
-    case 0: // воин: удар по земле — кольцо до полного радиуса, осколки, оглушающий след на 5 с
+    case 0: { // воин: удар по земле — кольцо до полного радиуса, трещины, пыль по краю, оглушающий след на 5 с
       vfx.pillar(x, y, z, r * 0.1, 12, C, 1.0);
       for (let k = 1; k <= 4; k++) ringTo(k * 0.12, (r * k) / 4, 0.7, 0.9);
+      // Трещины по земле от центра к краю круга — видно, где именно бьёт.
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + Math.random() * 0.3;
+        vfx.bolt(x, y + 0.1, z, x + Math.cos(a) * r, y + 0.1, z + Math.sin(a) * r, C, 0.9, 0.12);
+      }
+      // Пыль и осколки по всему краю круга, не только в центре.
       for (let i = 0; i < 40; i++) {
         const [px, pz] = rndInRing();
         vfx.burst(px, y + 0.3, pz, C, { count: 6, speed: 9, life: 0.8, grav: 14, size: 0.3 });
       }
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        vfx.burst(x + Math.cos(a) * r, y + 0.4, z + Math.sin(a) * r, FXC.gold, { count: 5, speed: 5, life: 0.9, grav: 9, size: 0.35 });
+      }
+      // Оглушающий след на 5 с: постоянное кольцо, которое виден весь удар.
       vfx.decal(x, y + 0.05, z, r, C, 5, 0, 0.22);
+      vfx.decal(x, y + 0.06, z, r * 0.6, C, 5, 0, 0.12);
+      // Второй толчок через 0.3 с — низкий удар подо всё.
+      c.fx.later(0.3, () => c.sound({ x, y, z }, "thud"));
       return;
+    }
     case 1: // лучник: три волны стрел по всему кругу, пригвождение — якорь-след на 5 с
       for (let w = 0; w < 3; w++) {
         c.fx.later(w * 1.0, () => {
@@ -557,6 +572,25 @@ function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r
     c.fx.later(k * 0.8, () => vfx.decal(x, y + 1.2, z, Math.max(0.8, 2.6 - k * 0.3), C, 0.6, 0, 0.7));
   }
   c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, C, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
+  if (v === 0) {
+    // Воин: красные кольца сходятся от края круга к герою — видно, что удар придёт сюда.
+    const rr = Math.max(2, r);
+    for (let t = 0; t < d - 0.4; t += 0.9) {
+      const k = t / Math.max(0.1, d);
+      c.fx.later(t, () => vfx.decal(x, y + 0.05, z, rr * (1 - k * 0.8), C, 0.9, 0, 0.45));
+    }
+    // Нарастающая тревога: глухие толчки всё чаще к концу замаха (и за 1.2 с до удара).
+    for (const t of [d * 0.25, d * 0.5, d * 0.7, d * 0.85, Math.max(0, d - 1.2)]) {
+      c.fx.later(t, () => c.sound({ x, y, z }, "thud"));
+    }
+    // Искры от земли по кругу, ближе к концу замаха.
+    c.fx.later(Math.max(0, d - 2), () => {
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        vfx.burst(x + Math.cos(a) * rr, y + 0.2, z + Math.sin(a) * rr, FXC.gold, { count: 4, speed: 3, life: 0.6, grav: 2, size: 0.2 });
+      }
+    });
+  }
 }
 
 export function playClassAct(
