@@ -8389,7 +8389,7 @@ export class ZoneRoom extends Room<ZoneState> {
         let fromX = p.head.x;
         let fromY = p.head.y - 0.3;
         let fromZ = p.head.z;
-        let dmg = sk.dmgMult * pow.dmg * (archer ? 2.5 / 1.6 : 1);
+        let dmg = sk.dmgMult * pow.dmg * (archer ? 2 / 1.6 : 1);
         for (let i = 0; i < hits && cur; i++) {
           const m: Mob = cur;
           hitSet.add(m.id);
@@ -8740,7 +8740,7 @@ export class ZoneRoom extends Room<ZoneState> {
     hand: "left" | "right",
     rt: Runtime,
   ): void {
-    const { hits, duration } = SKILL.arrowRain;
+    const { bowHits: hits, duration } = SKILL.arrowRain;
     const step = duration / hits;
     const y = terrainHeight(cx, cz);
     const mult = multIn(p, hand) * rolledDmgMul(p, hand, rt);

@@ -381,7 +381,7 @@ export interface SkillDef {
   radius: number;
   /** Урон в долях «силы удара» класса (физ. удар или огнешар). */
   dmgMult: number;
-  /** Сколько раз бьёт за применение (град — 5 залпов). */
+  /** Сколько раз бьёт за применение (град — 5 залпов, у лука 3). */
   hits: number;
   /** Своё имя/описание у отдельных классов (одно умение — разный вид). */
   variants?: Partial<Record<ClassId, { name: string; desc: string }>>;
@@ -407,7 +407,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     },
   },
   arrowRain: {
-    name: "Град стрел", icon: glyph("s.arrowRain"), desc: "Круг вдалеке: 5 залпов за 3 с, мобы в нём пригвождены",
+    name: "Град стрел", icon: glyph("s.arrowRain"), desc: "Круг вдалеке: 3 залпа за 3 с, мобы в нём пригвождены",
     cooldown: 14, castTime: 0.9, radius: 6.5, dmgMult: 1, hits: 5,
     variants: {
       support: { name: "Огненный дождь", desc: "Круг огня вдалеке: 5 волн магии, каждая поджигает (горение 6 с)" },
@@ -504,7 +504,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Цепная молния", icon: glyph("s.chain"), desc: "Разряд скачет по 4 врагам (каждый скачок слабее на 20%) и оглушает каждого на 0.5 с",
     cooldown: 11, castTime: 0.3, radius: 14, dmgMult: 1.6, hits: 4,
     variants: {
-      archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2.5 по первой цели, затем 2 слабых скачка" },
+      archer: { name: "Грозовая стрела", desc: "Стрела-молния: ×2 по первой цели, затем 2 слабых скачка" },
     },
   },
 };
