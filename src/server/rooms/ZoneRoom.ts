@@ -8097,7 +8097,7 @@ export class ZoneRoom extends Room<ZoneState> {
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
           this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
-          this.sim.stunMob(m.id, 3);
+          this.sim.stunMob(m.id, 5);
         }
         return;
       case "archer":
@@ -8107,7 +8107,7 @@ export class ZoneRoom extends Room<ZoneState> {
             for (const m of inRing()) {
               const [dx, dz] = dirFrom(m);
               this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, true, false, pow.magic);
-              this.sim.rootMob(m.id, 3);
+              this.sim.rootMob(m.id, 5);
             }
           }, w * 1000);
         }
@@ -8123,7 +8123,7 @@ export class ZoneRoom extends Room<ZoneState> {
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
           this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
-          this.sim.slowMob(m.id, 3, 0.5);
+          this.sim.slowMob(m.id, 6, 0.5);
         }
         return;
       case "assassin":
@@ -8142,7 +8142,7 @@ export class ZoneRoom extends Room<ZoneState> {
           const [dx, dz] = dirFrom(m);
           this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
           this.sim.shoveMob(m.id, -dx, -dz, 6);
-          this.sim.stunMob(m.id, 2);
+          this.sim.stunMob(m.id, 3);
         }
         return;
       case "battlemage":
