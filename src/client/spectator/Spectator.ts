@@ -318,6 +318,12 @@ export class Spectator {
           : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
           : kind === "holy" ? this.sfx.levelUp()
           : kind === "fanfare" ? this.sfx.bossFanfare()
+          : kind === "ultW" ? this.sfx.ultWarrior()
+          : kind === "ultA" ? this.sfx.ultArcher()
+          : kind === "ultS" ? this.sfx.ultSupport()
+          : kind === "ultK" ? this.sfx.ultAssassin()
+          : kind === "ultP" ? this.sfx.ultSpear()
+          : kind === "ultB" ? this.sfx.ultBattlemage()
           : this.sfx.hitThud(0.7),
         ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),

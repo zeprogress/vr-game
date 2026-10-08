@@ -422,7 +422,7 @@ export interface ClassActCtx {
   fx: ClassFx;
   vfx: SkillVfx;
   /** Звук в точке мира. */
-  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "fire" | "holy" | "fanfare") => void;
+  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "fire" | "holy" | "fanfare" | "ultW" | "ultA" | "ultS" | "ultK" | "ultP" | "ultB") => void;
   /** Клип/эмоция на модели героя `id` (если она есть). */
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
   /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
@@ -792,7 +792,7 @@ export function playClassAct(
     case "ultHit": {
       // Удар: кольцо, взрыв частиц и звук, свой у каждого класса (порядок CLASS_IDS).
       ultBlast(c, v ?? 0, x, y, z, r ?? 10);
-      const snd = ["bash", "volley", "holy", "swing", "bash", "fire"][v ?? 0] as "bash" | "volley" | "holy" | "swing" | "fire";
+      const snd = ["ultW", "ultA", "ultS", "ultK", "ultP", "ultB"][v ?? 0] as "ultW" | "ultA" | "ultS" | "ultK" | "ultP" | "ultB";
       // Мощный удар у всех в зоне: фанфара поверх звука класса.
       c.sound(at, "fanfare");
       c.sound(at, snd);

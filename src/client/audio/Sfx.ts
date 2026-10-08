@@ -914,6 +914,140 @@ export class Sfx {
    * Воин — «Оглушающий удар»: тяжёлый удар в землю. Короткий замах-свист,
    * затем низкий «бум» с гулом и трещиной по грунту.
    */
+  /** Ульта воина — глубокий обвал: низкий удар, раскат и каменная крошка. */
+  ultWarrior(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const o = this.ctx!.createOscillator();
+    o.type = "sine";
+    o.frequency.setValueAtTime(80, t);
+    o.frequency.exponentialRampToValueAtTime(28, t + 0.7);
+    o.connect(this.env(0.9, 0.002, 0.6, t));
+    o.start(t);
+    o.stop(t + 0.8);
+    const cr = this.noise();
+    const crf = this.filter("lowpass", 900);
+    crf.frequency.setValueAtTime(900, t);
+    crf.frequency.exponentialRampToValueAtTime(200, t + 0.5);
+    cr.connect(crf).connect(this.env(0.6, 0.002, 0.5, t));
+    cr.start(t);
+    cr.stop(t + 0.6);
+  }
+
+  /** Ульта лучника — залп стрел: свисты с неба и короткий хлопок-удар. */
+  ultArcher(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    for (let i = 0; i < 4; i++) {
+      const w = this.ctx!.createOscillator();
+      w.type = "sawtooth";
+      const st = t + i * 0.05;
+      w.frequency.setValueAtTime(2000, st);
+      w.frequency.exponentialRampToValueAtTime(600, st + 0.25);
+      const wf = this.filter("bandpass", 1400, 2);
+      w.connect(wf).connect(this.env(0.12, 0.01, 0.22, st));
+      w.start(st);
+      w.stop(st + 0.3);
+    }
+    const th = this.ctx!.createOscillator();
+    th.type = "sine";
+    th.frequency.setValueAtTime(110, t + 0.22);
+    th.frequency.exponentialRampToValueAtTime(50, t + 0.4);
+    th.connect(this.env(0.55, 0.001, 0.2, t + 0.22));
+    th.start(t + 0.22);
+    th.stop(t + 0.5);
+  }
+
+  /** Ульта мага поддержки — светлый колокольный звон: три гармоники с долгим затуханием. */
+  ultSupport(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    for (const [f, g] of [[880, 0.35], [1320, 0.22], [1760, 0.12]] as const) {
+      const o = this.ctx!.createOscillator();
+      o.type = "sine";
+      o.frequency.setValueAtTime(f * 0.98, t);
+      o.frequency.linearRampToValueAtTime(f, t + 0.06);
+      o.connect(this.env(g, 0.005, 1.4, t));
+      o.start(t);
+      o.stop(t + 1.5);
+    }
+  }
+
+  /** Ульта ассасина — серия быстрых «вжих» и тёмный хлопок в конце. */
+  ultAssassin(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    for (let i = 0; i < 6; i++) {
+      const st = t + i * 0.09;
+      const n = this.noise();
+      const bf = this.filter("bandpass", 2600, 3);
+      bf.frequency.setValueAtTime(3000, st);
+      bf.frequency.exponentialRampToValueAtTime(800, st + 0.07);
+      n.connect(bf).connect(this.env(0.22, 0.002, 0.07, st));
+      n.start(st);
+      n.stop(st + 0.1);
+    }
+    const pop = this.ctx!.createOscillator();
+    pop.type = "sine";
+    pop.frequency.setValueAtTime(60, t + 0.5);
+    pop.frequency.exponentialRampToValueAtTime(30, t + 0.7);
+    pop.connect(this.env(0.45, 0.001, 0.25, t + 0.5));
+    pop.start(t + 0.5);
+    pop.stop(t + 0.8);
+  }
+
+  /** Ульта копейщика — треск земли, затем втягивающий шелест и глухой удар оглушения. */
+  ultSpear(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const cr = this.noise();
+    const hp = this.filter("highpass", 1200);
+    cr.connect(hp).connect(this.env(0.6, 0.001, 0.12, t));
+    cr.start(t);
+    cr.stop(t + 0.2);
+    const sw = this.noise();
+    const swf = this.filter("bandpass", 400, 1.5);
+    swf.frequency.setValueAtTime(400, t + 0.1);
+    swf.frequency.exponentialRampToValueAtTime(1600, t + 0.7);
+    sw.connect(swf).connect(this.env(0.3, 0.05, 0.5, t + 0.1));
+    sw.start(t + 0.1);
+    sw.stop(t + 0.7);
+    const th = this.ctx!.createOscillator();
+    th.type = "sine";
+    th.frequency.setValueAtTime(70, t + 0.7);
+    th.frequency.exponentialRampToValueAtTime(40, t + 1.0);
+    th.connect(this.env(0.7, 0.001, 0.3, t + 0.7));
+    th.start(t + 0.7);
+    th.stop(t + 1.05);
+  }
+
+  /** Ульта боевого мага — свист падения метеорита, взрыв с низким басом и шипение огня. */
+  ultBattlemage(): void {
+    if (!this.ready()) return;
+    const t = this.t;
+    const wh = this.noise();
+    const whf = this.filter("bandpass", 1200, 1.2);
+    whf.frequency.setValueAtTime(2000, t);
+    whf.frequency.exponentialRampToValueAtTime(400, t + 0.35);
+    wh.connect(whf).connect(this.env(0.35, 0.02, 0.2, t));
+    wh.start(t);
+    wh.stop(t + 0.4);
+    const bo = this.ctx!.createOscillator();
+    bo.type = "sine";
+    bo.frequency.setValueAtTime(50, t + 0.35);
+    bo.frequency.exponentialRampToValueAtTime(25, t + 1.1);
+    bo.connect(this.env(0.9, 0.002, 0.7, t + 0.35));
+    bo.start(t + 0.35);
+    bo.stop(t + 1.2);
+    const ex = this.noise();
+    const exf = this.filter("lowpass", 900);
+    exf.frequency.setValueAtTime(900, t + 0.35);
+    exf.frequency.exponentialRampToValueAtTime(80, t + 1.4);
+    ex.connect(exf).connect(this.env(0.55, 0.002, 1.0, t + 0.35));
+    ex.start(t + 0.35);
+    ex.stop(t + 1.45);
+  }
+
   groundBash(): void {
     if (!this.ready()) return;
     // Никакого «замаха» в звуке — телеграф-круг уже отыграл подготовку.
