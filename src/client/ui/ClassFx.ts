@@ -456,80 +456,84 @@ const ULT_COLOR: readonly Color3[] = [
   new Color3(0.7, 0.3, 1), // боевой маг — фиолетовый
 ];
 
-/** Эффекты самого удара ультимейта — свои у каждого класса (порядок CLASS_IDS). */
+/** Эффекты удара ультимейта — каждый показывает ту механику, что на сервере (SKILL → ZoneRoom.applyUlt). */
 function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r: number): void {
   const vfx = c.vfx;
   const C = ULT_COLOR[v] ?? FXC.gold;
-  // Эффекты живут в 1.5 раза дольше, чем задано в ветках ниже.
-  const T = 1.5;
-  const vs = {
-    decal: (x2: number, y2: number, z2: number, rad: number, col: typeof C, life: number, mode: 0 | 1 | 2 | 3, alpha: number) =>
-      vfx.decal(x2, y2, z2, rad, col, life * T, mode, alpha),
-    pillar: (x2: number, y2: number, z2: number, rad: number, h: number, col: typeof C, life: number) =>
-      vfx.pillar(x2, y2, z2, rad, h, col, life * T),
-    burst: (x2: number, y2: number, z2: number, col: typeof C, o: { count?: number; speed?: number; life?: number; size?: number; grav?: number; dir?: [number, number, number] | null; spread?: number }) =>
-      vfx.burst(x2, y2, z2, col, { ...o, life: (o.life ?? 0.5) * T }),
-    cone: (x2: number, y2: number, z2: number, rad: number, dx: number, dz: number, half: number, col: typeof C, life: number, alpha: number) =>
-      vfx.cone(x2, y2, z2, rad, dx, dz, half, col, life * T, alpha),
-    lightning: (ax: number, ay: number, az: number, bx: number, by: number, bz: number, gy: number | null, life: number) =>
-      vfx.lightning(ax, ay, az, bx, by, bz, gy, life * T),
+  // Круг виден на всю механику: от центра до радиуса, а не на полпути.
+  const ringTo = (sec: number, rad: number, life: number, alpha: number): void =>
+    c.fx.later(sec, () => vfx.decal(x, y + 0.05, z, rad, C, life, 0, alpha));
+  const rndInRing = (): [number, number] => {
+    const a = Math.random() * Math.PI * 2;
+    const d = Math.sqrt(Math.random()) * r;
+    return [x + Math.cos(a) * d, z + Math.sin(a) * d];
   };
-  // Вторая волна через секунду — ударная, шире первой.
-  c.fx.later(1.0, () => vs.decal(x, y + 0.05, z, r * 0.9, ULT_COLOR[v] ?? C, 1.0, 0, 0.7));
-  const ring = (sec: number, rad: number, color: typeof C, life: number, a: number): void =>
-    c.fx.later(sec, () => vs.decal(x, y + 0.05, z, rad, color, life, 0, a));
   switch (v) {
-    case 0: // воин: столб света, расходящиеся трещины-кольца, осколки
-      vs.pillar(x, y, z, r * 0.12, 12, C, 1.0);
-      vs.decal(x, y + 0.05, z, r * 0.5, FXC.lightningCore, 0.35, 0, 1);
-      for (let k = 1; k <= 4; k++) ring(k * 0.12, r * (0.3 + 0.2 * k), C, 0.7, 0.9);
-      vs.burst(x, y + 0.3, z, C, { count: 60, speed: 12, life: 0.9, grav: 14, size: 0.3 });
-      vs.burst(x, y + 0.2, z, FXC.lightningCore, { count: 30, speed: 6, life: 0.4, size: 0.2 });
+    case 0: // воин: удар по земле — кольцо до полного радиуса, осколки, оглушающий след на 5 с
+      vfx.pillar(x, y, z, r * 0.1, 12, C, 1.0);
+      for (let k = 1; k <= 4; k++) ringTo(k * 0.12, (r * k) / 4, 0.7, 0.9);
+      for (let i = 0; i < 40; i++) {
+        const [px, pz] = rndInRing();
+        vfx.burst(px, y + 0.3, pz, C, { count: 6, speed: 9, life: 0.8, grav: 14, size: 0.3 });
+      }
+      vfx.decal(x, y + 0.05, z, r, C, 5, 0, 0.22);
       return;
-    case 1: // лучник: стрелы-молнии падают с неба по кругу, волна
-      for (let i = 0; i < 14; i++) {
-        c.fx.later(i * 0.07, () => {
-          const a = Math.random() * Math.PI * 2;
-          const d = Math.sqrt(Math.random()) * r;
-          const px = x + Math.cos(a) * d;
-          const pz = z + Math.sin(a) * d;
-          vs.lightning(px, y + 16, pz, px, y + 0.2, pz, y, 0.22);
-          vs.burst(px, y + 0.2, pz, C, { count: 8, speed: 4, life: 0.5, grav: 6, size: 0.18 });
+    case 1: // лучник: три волны стрел по всему кругу, пригвождение — якорь-след на 5 с
+      for (let w = 0; w < 3; w++) {
+        c.fx.later(w * 1.0, () => {
+          for (let i = 0; i < 16; i++) {
+            const [px, pz] = rndInRing();
+            vfx.bolt(px, y + 18, pz, px, y + 0.2, pz, C, 0.3, 0.1);
+            vfx.burst(px, y + 0.2, pz, C, { count: 6, speed: 4, life: 0.5, grav: 6, size: 0.18 });
+          }
+          ringTo(0, r, 0.6, 0.7);
         });
       }
-      ring(1.0, r, C, 0.8, 0.8);
+      vfx.decal(x, y + 0.05, z, r, C, 5, 0, 0.2);
       return;
-    case 2: // маг поддержки: золотой купол света, колонна и частицы вверх
-      vs.pillar(x, y, z, r, 9, C, 1.4);
-      for (let k = 0; k < 3; k++) ring(k * 0.3, r * (1 - 0.25 * k), C, 1.0, 0.8);
-      vs.burst(x, y + 0.5, z, C, { count: 60, speed: 5, life: 1.3, size: 0.25, dir: [0, 1, 0], spread: 0.5 });
+    case 2: // маг поддержки: колонны света над союзниками (ultHeal), синий круг замедления на 6 с
+      for (let k = 1; k <= 3; k++) ringTo((k - 1) * 0.3, (r * (4 - k)) / 3, 1.0, 0.8);
+      vfx.decal(x, y + 0.05, z, r, C, 6, 0, 0.18);
       return;
-    case 3: // ассасин: двенадцать росчерков по кругу, тёмная вспышка
-      for (let i = 0; i < 12; i++) {
-        c.fx.later(i * 0.05, () => {
-          const a = (i / 12) * Math.PI * 2 + Math.random() * 0.3;
-          const dx = Math.cos(a);
-          const dz = Math.sin(a);
-          vs.cone(x, y + 0.3, z, r, dx, dz, 0.3, C, 0.3, 0.8);
-          vs.burst(x + dx * r * 0.7, y + 1, z + dz * r * 0.7, FXC.blood, { count: 10, speed: 6, life: 0.5, grav: 8, size: 0.2 });
+    case 3: // ассасин: 16 ударов по кругу с шагом 0.15 с — жёлтая линия от героя и вспышка на каждом
+      for (let i = 0; i < 16; i++) {
+        c.fx.later(i * 0.15, () => {
+          const [px, pz] = rndInRing();
+          vfx.bolt(x, y + 1.2, z, px, y + 1, pz, C, 0.12, 0.05);
+          vfx.burst(px, y + 1, pz, C, { count: 8, speed: 6, life: 0.4, grav: 6, size: 0.2 });
         });
       }
-      ring(0.6, r * 0.6, C, 0.8, 0.9);
-      vs.burst(x, y + 0.5, z, C, { count: 40, speed: 5, life: 1.0, size: 0.3 });
+      ringTo(0, r, 0.5, 0.5);
       return;
-    case 4: // копейщик: копьё в землю, волна земли и пыли
-      vs.pillar(x, y, z, 0.5, 10, C, 0.8);
-      for (let k = 0; k < 4; k++) ring(k * 0.15, r * (0.25 + 0.25 * k), C, 0.7, 0.85);
-      vs.burst(x, y + 0.2, z, C, { count: 80, speed: 7, life: 1.0, grav: 10, size: 0.35 });
+    case 4: // копейщик: втягивание — потоки к центру по всему кругу (6 толчков за 0.6 с), след оглушения на 3 с
+      for (let k = 0; k < 6; k++) {
+        c.fx.later(0.1 * (k + 1), () => {
+          for (let i = 0; i < 28; i++) {
+            const [px, pz] = rndInRing();
+            const dx = x - px;
+            const dz = z - pz;
+            const l = Math.hypot(dx, dz) || 1;
+            vfx.burst(px, y + 0.4, pz, C, { count: 3, speed: 8, life: 0.5, grav: 0, size: 0.2, dir: [dx / l, 0.1, dz / l], spread: 0.25 });
+          }
+        });
+      }
+      ringTo(0, r, 0.5, 0.6);
+      vfx.decal(x, y + 0.05, z, r, C, 3, 0, 0.18);
       return;
-    case 5: // боевой маг: метеорит — взрыв огня, ударная волна, угли
-      vs.burst(x, y + 0.5, z, FXC.fireCore, { count: 80, speed: 11, life: 0.6, grav: 4, size: 0.45 });
-      vs.pillar(x, y, z, r * 0.2, 14, C, 1.2);
-      for (let k = 0; k < 3; k++) ring(k * 0.18, r * (0.4 + 0.3 * k), C, 0.8, 0.9);
-      c.fx.later(0.5, () => vs.burst(x, y + 0.5, z, C, { count: 40, speed: 5, life: 1.4, size: 0.3 }));
+    case 5: // боевой маг: метеорит падает в центр, взрыв по всему кругу, огонь на земле 10 с
+      c.fx.later(0, () => vfx.bolt(x + 2, y + 30, z - 2, x, y + 0.5, z, FXC.fireCore, 0.35, 0.35));
+      c.fx.later(0.35, () => {
+        vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 80, speed: 11, life: 0.6, grav: 4, size: 0.45 });
+        for (let i = 0; i < 30; i++) {
+          const [px, pz] = rndInRing();
+          vfx.burst(px, y + 0.4, pz, C, { count: 4, speed: 6, life: 0.7, grav: 6, size: 0.3 });
+        }
+        ringTo(0, r, 0.8, 0.9);
+      });
+      vfx.decal(x, y + 0.05, z, r, FXC.fire, 10, 0, 0.25);
       return;
     default:
-      vs.decal(x, y, z, r, C, 0.8, 0, 1);
+      vfx.decal(x, y, z, r, FXC.gold, 0.8, 0, 1);
   }
 }
 
@@ -585,6 +589,15 @@ export function playClassAct(
       ultCastFx(c, v ?? 0, x, y, z, r ?? 10, Math.max(0.4, d ?? 5));
       vfx.burst(x, y + 0.2, z, ATK, { count: 30, speed: 3, life: Math.max(0.4, d ?? 5), grav: 0, size: 0.2 });
       c.sound(at, "horn");
+      return true;
+    case "ultHeal":
+      // Союзник вылечен ультой: столб света над ним.
+      vfx.pillar(x, y, z, 0.5, 3.5, FXC.heal, 1.2);
+      vfx.burst(x, y + 1, z, FXC.heal, { count: 14, speed: 3, life: 0.8, size: 0.2 });
+      return true;
+    case "ultSlow":
+      // Моб замедлен ультой: синий след под ним.
+      vfx.decal(x, y - 0.5, z, 1.2, new Color3(0.3, 0.6, 1), 6, 0, 0.6);
       return true;
     case "ultHit": {
       // Удар: кольцо, взрыв частиц и звук, свой у каждого класса (порядок CLASS_IDS).

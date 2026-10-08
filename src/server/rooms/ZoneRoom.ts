@@ -8118,11 +8118,13 @@ export class ZoneRoom extends Room<ZoneState> {
           const before = ally.hp;
           ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * ULT_HEAL_FRAC);
           if (ally !== p) this.sim.bossHeal(ownerId, ally.hp - before);
+          act({ k: "ultHeal", x: ally.head.x, y: ally.head.y - PLAYER.eyeHeight, z: ally.head.z });
         });
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
           this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
           this.sim.slowMob(m.id, 6, 0.5);
+          act({ k: "ultSlow", x: m.x, y: m.y, z: m.z });
         }
         return;
       case "assassin":
