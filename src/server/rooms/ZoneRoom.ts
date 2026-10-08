@@ -8038,7 +8038,8 @@ export class ZoneRoom extends Room<ZoneState> {
       this.reply(`@${nick} ульта — сначала возьми оружие класса`);
       return;
     }
-    const left = ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
+    // Админ-ник (zeprogress) — ульта без отката, для проверки.
+    const left = isAdminNick(nick) ? 0 : ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
     if (left > 0) {
       this.reply(`@${nick} ульта через ${Math.ceil(left / 60)} мин`);
       return;
