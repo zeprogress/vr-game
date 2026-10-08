@@ -478,13 +478,17 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       }
       vfx.decal(x, y + 0.05, z, r, C, 5, 0, 0.22);
       return;
-    case 1: // лучник: три волны стрел по всему кругу, пригвождение — якорь-след на 5 с
+    case 1: // лучник: три волны стрел по всему кругу, каждая — свой залп (звук) и вспышка кольца; пригвождение — след на 5 с
       for (let w = 0; w < 3; w++) {
         c.fx.later(w * 1.0, () => {
+          // первый залп звучит вместе с общим ударом (playClassAct), остальные — здесь
+          if (w > 0) c.sound({ x, y, z }, "volley");
           for (let i = 0; i < 16; i++) {
             const [px, pz] = rndInRing();
             vfx.bolt(px, y + 18, pz, px, y + 0.2, pz, C, 0.3, 0.1);
             vfx.burst(px, y + 0.2, pz, C, { count: 6, speed: 4, life: 0.5, grav: 6, size: 0.18 });
+            // стрела «втыкается» в землю: короткий всплеск пыли на месте попадания
+            vfx.burst(px, y + 0.1, pz, FXC.gold, { count: 3, speed: 2, life: 0.3, grav: 8, size: 0.12 });
           }
           ringTo(0, r, 0.6, 0.7);
         });
@@ -557,6 +561,12 @@ function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r
     c.fx.later(k * 0.8, () => vfx.decal(x, y + 1.2, z, Math.max(0.8, 2.6 - k * 0.3), C, 0.6, 0, 0.7));
   }
   c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, C, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
+  if (v === 1) {
+    // лучник: за 3 с до каждой волны — кольцо на полный радиус, чтобы было видно, где ударят стрелы
+    for (let w = 0; w < 3; w++) {
+      c.fx.later(Math.max(0, d - 3 + w), () => vfx.decal(x, y + 0.05, z, r, C, 0.9, 0, 0.3));
+    }
+  }
 }
 
 export function playClassAct(
