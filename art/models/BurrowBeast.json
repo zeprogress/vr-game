@@ -1,0 +1,270 @@
+{
+ "name": "BurrowBeast",
+ "type": "mob",
+ "rig": "quad",
+ "height": 1.0,
+ "tris": 4000,
+ "texture": 512,
+ "surface": {
+  "noise": [
+   0.012,
+   10,
+   7
+  ]
+ },
+ "mats": {
+  "skin": {
+   "c": "#6e5638",
+   "shade": "#3a2b1c",
+   "light": "#9a7d52",
+   "var": 0.28,
+   "freq": 8,
+   "spots": [
+    "#4b3a27",
+    0.12,
+    20
+   ]
+  },
+  "belly": {
+   "c": "#5e4a31",
+   "var": 0.2,
+   "freq": 10
+  },
+  "nose": "#b06a6a",
+  "claw": {
+   "c": "#efe2bf",
+   "emit": 0
+  },
+  "eye": {
+   "c": "#f0c24a",
+   "emit": 1
+  },
+  "dirt": {
+   "c": "#4b3a27",
+   "var": 0.3,
+   "freq": 12
+  }
+ },
+ "body": {
+  "legLen": 0.28,
+  "bodyLen": 0.7,
+  "neck": 0.16,
+  "neckUp": 10,
+  "head": 0.2,
+  "tail": 0.12,
+  "tailSegs": 1,
+  "tailUp": 5,
+  "hipW": 0.42,
+  "chestW": 0.46,
+  "r": {
+   "hips": [
+    0.22,
+    0.24,
+    0.2
+   ],
+   "belly": [
+    0.22,
+    0.26,
+    0.22
+   ],
+   "chest": [
+    0.26,
+    0.26,
+    0.24
+   ],
+   "neck": [
+    0.14,
+    0.1
+   ],
+   "head": [
+    0.13,
+    0.13,
+    0.12
+   ],
+   "snout": [
+    0.07,
+    0.07,
+    0.1
+   ],
+   "tail": [
+    0.05,
+    0.02
+   ]
+  }
+ },
+ "add": [
+  {
+   "shape": "ellipsoid",
+   "at": "chest",
+   "off": [
+    0,
+    -0.1,
+    0.05
+   ],
+   "r": [
+    0.3,
+    0.22,
+    0.26
+   ],
+   "k": 0.1,
+   "mat": "skin",
+   "noise": [
+    0.03,
+    9,
+    3
+   ]
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "paint",
+   "at": "spine",
+   "off": [
+    0,
+    0,
+    -0.1
+   ],
+   "r": [
+    0.2,
+    0.42,
+    0.1
+   ],
+   "mat": "belly"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "snout",
+   "off": [
+    0,
+    0.02,
+    -0.02
+   ],
+   "r": [
+    0.06,
+    0.06,
+    0.04
+   ],
+   "k": 0.02,
+   "mat": "nose"
+  },
+  {
+   "shape": "cone",
+   "a": [
+    "head",
+    [
+     0.1,
+     0.02,
+     0.02
+    ]
+   ],
+   "b": [
+    "head",
+    [
+     0.14,
+     0.05,
+     0.12
+    ]
+   ],
+   "r": [
+    0.035,
+    0.008
+   ],
+   "k": 0.02,
+   "mirror": true,
+   "bone": "Ear.L"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    0.02,
+    0.1
+   ],
+   "r": [
+    0.12,
+    0.12,
+    0.13
+   ],
+   "k": 0.08,
+   "mat": "skin"
+  }
+ ],
+ "parts": [
+  {
+   "shape": "sphere",
+   "at": "head",
+   "off": [
+    0.1,
+    -0.085,
+    0.1
+   ],
+   "r": 0.032,
+   "mat": "eye",
+   "mirror": true
+  },
+  {
+   "shape": "horn",
+   "at": "fWrist.L",
+   "off": [
+    0.04,
+    0.02,
+    -0.03
+   ],
+   "dir": [
+    0.15,
+    -0.2,
+    -1
+   ],
+   "len": 0.18,
+   "r": 0.036,
+   "mat": "claw",
+   "mirror": true,
+   "seg": 4
+  },
+  {
+   "shape": "horn",
+   "at": "fToe.L",
+   "off": [
+    0.03,
+    0.0,
+    -0.03
+   ],
+   "dir": [
+    0.05,
+    -0.15,
+    -1
+   ],
+   "len": 0.14,
+   "r": 0.03,
+   "mat": "claw",
+   "mirror": true,
+   "seg": 3
+  }
+ ],
+ "anim": {
+  "attack": "swing"
+ },
+ "bones": [
+  {
+   "name": "Ear.L",
+   "head": [
+    "head",
+    [
+     0.1,
+     0.02,
+     0.02
+    ]
+   ],
+   "tail": [
+    "head",
+    [
+     0.14,
+     0.05,
+     0.12
+    ]
+   ],
+   "parent": "Head",
+   "mirror": true
+  }
+ ]
+}
