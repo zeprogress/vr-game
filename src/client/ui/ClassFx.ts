@@ -562,6 +562,39 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
 function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r: number, d: number): void {
   const vfx = c.vfx;
   const C = ULT_COLOR[v] ?? FXC.gold;
+  if (v === V_BATTLEMAGE) {
+    // Боевой маг: искры сходятся по спирали к точке падения, метка цели сужается, перед ударом — гул огня.
+    const steps = Math.max(1, Math.round(d * 8));
+    for (let i = 0; i < steps; i++) {
+      const t = (i / steps) * d;
+      c.fx.later(t, () => {
+        const rad = 4 * (1 - t / d) + 0.4;
+        const ang = i * 0.9;
+        vfx.burst(x + Math.cos(ang) * rad, y + 0.3 + (t / d) * 2.2, z + Math.sin(ang) * rad, FXC.fire, { count: 3, speed: 1.2, life: 0.45, grav: -2, size: 0.18 });
+      });
+    }
+    for (let t = 0; t < d; t += 0.8) {
+      c.fx.later(t, () => vfx.decal(x, y + 0.05, z, Math.max(1.5, r * (1 - (0.6 * t) / d)), FXC.fire, 0.7, 0, 0.6));
+    }
+    // Огненный шар над магом копится весь замах, сверху падают искры — метеорит «призывается».
+    // боевой маг: над героем копится огненный шар, сверху падают искры — метеорит «призывается».
+    const dur = Math.max(0.4, d);
+    for (let t = 0; t < dur; t += 0.25) {
+      c.fx.later(t, () => {
+        const grow = t / dur;
+        vfx.burst(x, y + 3.2 + grow * 2, z, FXC.fireCore, { count: 2 + Math.floor(grow * 6), speed: 0.8, life: 0.5, grav: 0, size: 0.2 + grow * 0.25 });
+      });
+    }
+    for (let t = 0.5; t < dur - 0.4; t += 0.5) {
+      c.fx.later(t, () => {
+        const ang = Math.random() * Math.PI * 2;
+        const rr = 2 + Math.random() * 2;
+        vfx.burst(x + Math.cos(ang) * rr, y + 7, z + Math.sin(ang) * rr, FXC.fire, { count: 3, speed: 2, life: 0.6, grav: 0, size: 0.25, dir: [-Math.cos(ang) * 0.2, -1, -Math.sin(ang) * 0.2], spread: 0.2 });
+      });
+    }
+    c.fx.later(Math.max(0, dur - 2), () => c.sound({ x, y, z }, "fire"));
+    return;
+  }
   const rune = Math.max(1, Math.min(r, 3));
   for (let t = 0; t < d; t += 0.6) {
     c.fx.later(t, () => vfx.decal(x, y + 0.05, z, rune + ((t / 0.6) % 2) * 0.6, C, 0.7, 0, 0.8));
@@ -578,25 +611,6 @@ function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r
     c.fx.later(k * 0.8, () => vfx.decal(x, y + 1.2, z, Math.max(0.8, 2.6 - k * 0.3), C, 0.6, 0, 0.7));
   }
   c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, C, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
-  if (v === V_BATTLEMAGE) {
-    // боевой маг: над героем копится огненный шар, сверху падают искры — метеорит «призывается».
-    const at = { x, y, z };
-    const dur = Math.max(0.4, d);
-    for (let t = 0; t < dur; t += 0.25) {
-      c.fx.later(t, () => {
-        const grow = t / dur;
-        vfx.burst(x, y + 3.2 + grow * 2, z, FXC.fireCore, { count: 2 + Math.floor(grow * 6), speed: 0.8, life: 0.5, grav: 0, size: 0.2 + grow * 0.25 });
-      });
-    }
-    for (let t = 0.5; t < dur - 0.4; t += 0.5) {
-      c.fx.later(t, () => {
-        const ang = Math.random() * Math.PI * 2;
-        const rr = 2 + Math.random() * 2;
-        vfx.burst(x + Math.cos(ang) * rr, y + 7, z + Math.sin(ang) * rr, FXC.fire, { count: 3, speed: 2, life: 0.6, grav: 0, size: 0.25, dir: [-Math.cos(ang) * 0.2, -1, -Math.sin(ang) * 0.2], spread: 0.2 });
-      });
-    }
-    c.fx.later(Math.max(0, dur - 2), () => c.sound(at, "fire"));
-  }
 }
 
 export function playClassAct(
