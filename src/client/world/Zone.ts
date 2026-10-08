@@ -1,5 +1,5 @@
 import { spawnHubNpc } from "./hub/HubNpc";
-import { LIGHT_TUNE, setLightTuneHook } from "./lightTune";
+import { setLightTuneHook, tunedDayState } from "./lightTune";
 import type { Scene } from "@babylonjs/core/scene";
 import { secNow, secAdd } from "../engine/secProf";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -15,7 +15,7 @@ import { createSky } from "./Sky";
 import { createMountainRing } from "./MountainRing";
 import { createLake } from "./Lake";
 import { scatterTrees, scatterGrass, type Obstacle } from "./props";
-import { dayState, dayPhase } from "./DayTime";
+import { dayPhase } from "./DayTime";
 import { impostorsDaylight } from "./TreeImpostors";
 import { treesGlowTick } from "./nature";
 import { BotLights } from "./BotLights";
@@ -119,7 +119,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   // и его же можно перевести вручную в панели настройки.
   let hour = LOADOUT.world.hour;
   let shown = hour;
-  let day = dayState(hour);
+  let day = tunedDayState(hour);
   /** Последняя сверка с сервера — по её смене клиент подстраивает часы. */
   let lastNetHour = Number.NaN;
 
@@ -139,7 +139,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
   const applyDay = (): void => {
     sun.direction.copyFrom(day.sunDir);
     sun.position = day.sunDir.scale(-60);
-    sun.intensity = day.sunIntensity * LIGHT_TUNE.sunMul;
+    sun.intensity = day.sunIntensity;
     sun.diffuse.copyFrom(day.sunColor);
     // Источник НЕ гасим по setEnabled: смена набора источников заставляет
     // пересобирать шейдеры всех материалов (на Quest — заметный стоп-кадр,
@@ -287,7 +287,7 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
         phase === "dusk" || phaseChanged || (phase === "day" && lightAccum >= DAY_LIGHT_INTERVAL);
       if (shouldLight) {
         lightAccum = 0;
-        day = dayState(hour);
+        day = tunedDayState(hour);
         applyDay();
         const sr = secNow();
         sky.repaint(day);
