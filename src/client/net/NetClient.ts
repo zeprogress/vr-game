@@ -13,6 +13,7 @@ import {
   type DmgHitsMsg,
   type TowerMobsMsg,
   type EmoteMsg,
+  type AutoGoMsg,
   type BotEmote,
   type HitMobMsg,
   type CastMsg,
@@ -193,6 +194,7 @@ export class NetClient {
   onTowerMobs: ((msg: TowerMobsMsg) => void) | null = null;
   /** Бот сыграл эмоцию по команде из чата (Ф10). */
   onEmote: ((id: string, emote: BotEmote) => void) | null = null;
+  onAutoGo: ((m: AutoGoMsg) => void) | null = null;
   /** Соединение с сервером потеряно (сервер перезапустился и т.п.). */
   onConnectionLost: (() => void) | null = null;
   /** Переподключились — надо заново подписаться на комнату. */
@@ -359,6 +361,7 @@ export class NetClient {
     room.onMessage(MSG.dmgHits, (m: DmgHitsMsg) => this.onDmgHits?.(m));
     room.onMessage(MSG.towerMobs, (m: TowerMobsMsg) => this.onTowerMobs?.(m));
     room.onMessage(MSG.emote, (m: EmoteMsg) => this.onEmote?.(m.id, m.emote));
+    room.onMessage(MSG.autoGo, (m: AutoGoMsg) => this.onAutoGo?.(m));
     this.reconnectToken = room.reconnectionToken;
     room.onLeave((code) => {
       console.log(`[net] соединение закрыто (код ${code})`);

@@ -106,6 +106,8 @@ export const MSG = {
   botSay: "bsay",
   /** сервер -> все: бот сыграл эмоцию по команде из чата (Ф10). */
   emote: "em",
+  /** сервер -> человек-герой: идти на событие/рейд (автобой ведёт сам); kind stop — отмена. */
+  autoGo: "ago",
   /** клиент -> сервер: использовать предмет из ячейки сумки. */
   useItem: "ui",
   /** клиент -> сервер: рыбалка — заброс/подсечка (сервер решает, поймалось ли). */
@@ -446,6 +448,12 @@ export interface BotSayMsg {
  * команды, а не наоборот (никакого "!wave" — жеста взмаха в паке нет).
  */
 export type BotEmote = "cheer" | "roll" | "jump" | "defeat";
+
+export interface AutoGoMsg {
+  kind: "event" | "raid" | "stop";
+  x: number;
+  z: number;
+}
 
 export interface EmoteMsg {
   /** id в state.players, вида `bot:<ник>`. */

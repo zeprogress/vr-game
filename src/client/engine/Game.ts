@@ -3018,6 +3018,24 @@ export class Game {
   /** Автобой (галочка на экране ПК/телефона): центр — где включили; null — выключен. */
   private autoBot: { x: number; z: number; skillAt: number; potAt: number; homeAt: number } | null = null;
 
+  /**
+   * Команда из чата (!event / !raid) для человека-героя: автобой уходит к месту события или рейда,
+   * дальше бьёт мобов там сам. Центр автобоя = точка назначения. Ручное движение отменяет.
+   */
+  private autoGo(m: { kind: "event" | "raid" | "stop"; x: number; z: number }): void {
+    if (m.kind === "stop") {
+      if (this.autoBot) this.setAutoBot(false);
+      return;
+    }
+    if (!this.autoBot) this.setAutoBot(true);
+    const ab = this.autoBot;
+    if (!ab) return;
+    ab.x = m.x;
+    ab.z = m.z;
+    ab.homeAt = 0;
+    this.notifyToast(m.kind === "raid" ? "Автобой: идёт на рейд-босса" : "Автобой: идёт на событие");
+  }
+
   private setAutoBot(on: boolean): void {
     const p = this.player.position;
     this.autoBot = on ? { x: p.x, z: p.z, skillAt: 0, potAt: 0, homeAt: 0 } : null;
@@ -3820,6 +3838,7 @@ export class Game {
     net.onTtsPlay = (m) => this.playChatTts(m.url, m.nick);
     net.onBotSay = (id, text) => this.avatars.get(id)?.say(text);
     net.onEmote = (id, emote) => this.avatars.get(id)?.playEmote(emote);
+    net.onAutoGo = (m) => this.autoGo(m);
 
     // PvP: сервер подтвердил (или отклонил) переключение флага.
     net.onPvp = (on, wait) => {

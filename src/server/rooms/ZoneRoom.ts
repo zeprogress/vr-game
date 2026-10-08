@@ -71,6 +71,7 @@ import {
   type FishWaitMsg,
   type QuestData,
   type PcInvData,
+  type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
@@ -260,6 +261,8 @@ const FISH_MANUAL = { min: 5, spread: 4, window: 9 };
 interface Runtime {
   /** Когда последний раз писал в чат из игры (elapsed) — не чаще раза в 1.5 с. */
   chatSayAt?: number;
+  /** Человек-герой записан на событие или рейд (!event / !raid) — клиент ведёт автобоем. */
+  autoGoKind?: "event" | "raid";
   /** Когда последний раз пил зелье (elapsed) — общий откат POTION_CD. */
   lastDrinkAt?: number;
   token?: string;
@@ -2556,6 +2559,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * !raid — выйти (из очереди или из рейда).
    */
   private setRaid(nick: string, norm: string): void {
+    if (!this.bots.has(norm) && this.humanGo(nick, norm, "raid")) return;
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
@@ -3125,7 +3129,52 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** `!event` — послать бота зрителя на активное событие: чистить, собирать
    *  лут, по окончании события вернуться домой. */
+  /**
+   * `!event` / `!raid` для человека-героя (не бота): сервер не двигает его персонажем, поэтому
+   * шлёт клиенту команду «идти» — автобой ведёт героя к месту и бьёт там мобов. Повтор — отмена.
+   * true — команда обработана (человек найден), false — такого героя в мире нет.
+   */
+  private humanGo(nick: string, norm: string, kind: "event" | "raid"): boolean {
+    let id: string | undefined;
+    for (const [sid, pl] of this.state.players) {
+      if (!sid.startsWith("bot:") && normNick(pl.nick) === norm) id = sid;
+    }
+    if (!id) return false;
+    const client = [...this.clients].find((c) => c.sessionId === id);
+    const rt = this.rt.get(id);
+    if (!client || !rt) return false;
+    if (rt.autoGoKind === kind) {
+      rt.autoGoKind = undefined;
+      client.send(MSG.autoGo, { kind: "stop", x: 0, z: 0 } satisfies AutoGoMsg);
+      this.reply(`@${nick} автобой отменён.`);
+      return true;
+    }
+    let x: number;
+    let z: number;
+    if (kind === "raid") {
+      const boss = this.bossMob();
+      if (!boss || boss.dead) {
+        this.reply(`@${nick} ${this.raidName()} сейчас повержен — вернётся позже.`);
+        return true;
+      }
+      x = RAID.x;
+      z = RAID.z;
+    } else {
+      if (this.eventPhase !== "active") {
+        this.reply(`@${nick} сейчас в мире событий нет.`);
+        return true;
+      }
+      x = this.eventX;
+      z = this.eventZ;
+    }
+    rt.autoGoKind = kind;
+    client.send(MSG.autoGo, { kind, x, z } satisfies AutoGoMsg);
+    this.reply(`@${nick} ${kind === "raid" ? "идёт на рейд" : "идёт на событие"} — автобой поведёт героя сам (повтор команды — отмена).`);
+    return true;
+  }
+
   private sendBotToEvent(nick: string, norm: string): void {
+    if (!this.bots.has(norm) && this.humanGo(nick, norm, "event")) return;
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
