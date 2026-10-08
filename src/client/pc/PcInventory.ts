@@ -942,7 +942,7 @@ export class PcInventory {
     sum.append(div("pcinv-name", "Кольца"));
     const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
     for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
-    sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : "Ничего не надето. Кольцо даёт маг. защиту 10%, камни в нём — атрибуты."));
+    sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`));
     slots.append(sum);
 
     // Выбранное кольцо: гнёзда.

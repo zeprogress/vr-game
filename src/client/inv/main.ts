@@ -8,7 +8,8 @@ import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
 import { respecCostFor } from "#shared/constants";
 import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
-import { RUBY } from "#shared/items";
+import { BAG, RUBY } from "#shared/items";
+import { QUEST } from "#shared/quests";
 
 // Переменные общего вида (цвета тиров, оценки) — до первой отрисовки страницы.
 ensureIconCss();
@@ -249,7 +250,7 @@ ${MECH_CLASSES_HTML}
 <p><b>Огранка рубинового</b> — не за лом: на каждую попытку сгорает одно <span class="tier-legendary">уникальное</span> оружие с оценкой ${RUBY.fuelQuality} (выбираешь сам какое). Внизу шанс ${Math.round(RUBY.chanceLo * 100)}% и +${RUBY.gainLo} очков, у максимума — ${Math.round(RUBY.chanceHi * 100)}% и +${RUBY.gainHi}.</p>
 
 <h2>Лут</h2>
-<p>Оружие падает с мобов лагерей; у <b>вожаков лагерей</b> (крупнее, «Вожак — …» над головой) шанс в 3 раза выше. Мировой босс Багровый слизень — щедрее всех. Трофей 25 секунд принадлежит тому, кто добил, на земле лежит час.</p>
+<p>Оружие падает с мобов лагерей; у <b>вожаков лагерей</b> (крупнее, «Вожак — …» над головой) шанс в ${QUEST.champ.dropMul} раза выше. Мировой босс Багровый слизень — щедрее всех. Трофей ${BAG.lootOwnerSec} секунд принадлежит тому, кто добил, на земле лежит ${Math.round(BAG.weaponDropLife / 60)} минут.</p>
 
 <h2>Лагерь</h2>
 <p>Безопасная зона: мобы не нападают. Там быстро восстанавливается здоровье и даётся бафф <b>«Тепло костра»</b> — −20% входящего урона на 10 минут.</p>

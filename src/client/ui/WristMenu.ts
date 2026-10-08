@@ -979,7 +979,7 @@ export class WristMenu {
           p.spend(s);
         },
         info: [
-          `${STAT_LABELS[s]}: ${p.stats[s]} · подъём стоит ${cost} оч.`,
+          `${STAT_LABELS[s]}: ${p.stats[s]}${pcJewelBonus(this.jewels ?? undefined)[s] > 0 ? ` +${pcJewelBonus(this.jewels ?? undefined)[s]} от камней` : ""} · подъём стоит ${cost} оч.`,
           `${attrEffect(s)}${canSpend ? " · нажми — вложить" : ""}`,
         ],
       });
@@ -998,7 +998,9 @@ export class WristMenu {
       ctx.fillText(`${ATTR_INFO[s].icon} ${ATTR_INFO[s].short}`, cx + 10, cy + 8);
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 26px system-ui, sans-serif";
-      ctx.fillText(String(p.stats[s]), cx + 128, cy + 7);
+      // Как на ПК: база + прибавка от камней в гнёздах (сам атрибут в бою — их сумма).
+      const gemAdd = pcJewelBonus(this.jewels ?? undefined)[s];
+      ctx.fillText(String(p.stats[s]) + (gemAdd > 0 ? ` +${gemAdd}` : ""), cx + 128, cy + 7);
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#a9a498";
       ctx.fillText(`за ${cost}`, cx + 178, cy + 13);
@@ -1649,7 +1651,7 @@ export class WristMenu {
     ctx.fillStyle = "#9fe39a";
     const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
     for (const k of STATS) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
-    this.wrapText(ctx, b.rings ? parts.join(" · ") : "Ничего не надето: кольцо даёт маг. защиту 10%, камни — атрибуты", 340, VIEW_Y + 62, 820, 28, 3);
+    this.wrapText(ctx, b.rings ? parts.join(" · ") : `Ничего не надето: кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни — атрибуты`, 340, VIEW_Y + 62, 820, 28, 3);
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`Лом: ${this.jewelScrap}`, 340, VIEW_Y + 120);
 
