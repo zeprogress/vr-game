@@ -2559,7 +2559,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * !raid — выйти (из очереди или из рейда).
    */
   private setRaid(nick: string, norm: string): void {
-    if (!this.bots.has(norm) && this.humanGo(nick, norm, "raid")) return;
+    if (!this.bots.has(norm) && this.humanRaid(nick, norm)) return;
     const bot = this.bots.get(norm);
     if (!bot) {
       if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
@@ -2634,6 +2634,12 @@ export class ZoneRoom extends Room<ZoneState> {
         bot.raiding = true;
         bot.followNorm = null;
         gone++;
+        continue;
+      }
+      const h = this.humanClient(n);
+      if (h) {
+        this.sendRaidGo(h.client, h.rt);
+        gone++;
       }
     }
     this.raidPending.clear();
@@ -2649,6 +2655,13 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const bot of this.bots.values()) {
       if (!bot.raiding) continue;
       bot.raiding = false;
+      n++;
+    }
+    for (const sid of this.state.players.keys()) {
+      const rt = this.rt.get(sid);
+      if (sid.startsWith("bot:") || !rt || rt.autoGoKind !== "raid") continue;
+      rt.autoGoKind = undefined;
+      this.clients.find((c) => c.sessionId === sid)?.send(MSG.autoGo, { kind: "stop", x: 0, z: 0 } satisfies AutoGoMsg);
       n++;
     }
     this.raidPending.clear();
@@ -3129,6 +3142,70 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** `!event` — послать бота зрителя на активное событие: чистить, собирать
    *  лут, по окончании события вернуться домой. */
+  /** Человек-герой (не бот) по нику: клиент, его рантайм. null — такого героя в мире нет. */
+  private humanClient(norm: string): { client: Client; rt: Runtime; id: string } | null {
+    let id: string | undefined;
+    for (const [sid, pl] of this.state.players) {
+      if (!sid.startsWith("bot:") && normNick(pl.nick) === norm) id = sid;
+    }
+    if (!id) return null;
+    const client = [...this.clients].find((c) => c.sessionId === id);
+    const rt = this.rt.get(id);
+    return client && rt ? { client, rt, id } : null;
+  }
+
+  /** Команда «идти на рейд» человеку: автобой поведёт героя к арене. */
+  private sendRaidGo(client: Client, rt: Runtime): void {
+    rt.autoGoKind = "raid";
+    client.send(MSG.autoGo, { kind: "raid", x: RAID.x, z: RAID.z } satisfies AutoGoMsg);
+  }
+
+  /**
+   * `!raid` для человека-героя: та же очередь отряда, что и у ботов. Набрался отряд —
+   * отсчёт, и всем записанным людям приходит команда идти (см. tickRaid). Если рейд уже
+   * идёт — присоединяется сразу. Повтор — выход из очереди или из рейда.
+   */
+  private humanRaid(nick: string, norm: string): boolean {
+    const h = this.humanClient(norm);
+    if (!h) return false;
+    if (h.rt.autoGoKind === "raid" || this.raidPending.has(norm)) {
+      h.rt.autoGoKind = undefined;
+      h.client.send(MSG.autoGo, { kind: "stop", x: 0, z: 0 } satisfies AutoGoMsg);
+      this.raidPending.delete(norm);
+      if (this.raidPending.size < BOT.raidMinParty) this.raidGoAt = 0;
+      this.reply(`@${nick} герой вышел из рейда.`);
+      return true;
+    }
+    const boss = this.bossMob();
+    if (!boss || boss.dead) {
+      this.reply(`@${nick} ${this.raidName()} сейчас повержен — вернётся позже.`);
+      return true;
+    }
+    h.rt.autoGoKind = undefined;
+    // Бой уже идёт (кто-то в рейде) — присоединяется сразу.
+    if ([...this.bots.values()].some((b) => b.raiding) || [...this.rt.values()].some((r) => r.autoGoKind === "raid")) {
+      this.sendRaidGo(h.client, h.rt);
+      this.reply(`@${nick} присоединился к рейду: ${this.raidName()}!`);
+      return true;
+    }
+    this.raidPending.add(norm);
+    const k = this.raidPending.size;
+    if (k >= BOT.raidMinParty && this.raidGoAt === 0) {
+      this.raidGoAt = Date.now() + BOT.raidDelaySec * 1000;
+    }
+    if (this.raidGoAt > 0) {
+      const secs = Math.max(1, Math.ceil((this.raidGoAt - Date.now()) / 1000));
+      this.reply(`@${nick} в отряде! Героев: ${k}. Выступаем через ~${secs} с — пишите !raid, идём вместе.`);
+    } else {
+      const need = BOT.raidMinParty - k;
+      this.reply(
+        `@${nick} записан в отряд на рейд: ${this.raidName()} (${k}/${BOT.raidMinParty}). ` +
+          `Ещё ${need} — и через ${BOT.raidDelaySec} с идём все разом.`,
+      );
+    }
+    return true;
+  }
+
   /**
    * `!event` / `!raid` для человека-героя (не бота): сервер не двигает его персонажем, поэтому
    * шлёт клиенту команду «идти» — автобой ведёт героя к месту и бьёт там мобов. Повтор — отмена.
