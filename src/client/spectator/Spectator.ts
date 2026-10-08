@@ -1,3 +1,4 @@
+import { capWebGpuLights } from "../engine/webgpu";
 import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
 import { SkillVfx } from "../ui/SkillVfx";
@@ -246,6 +247,8 @@ export class Spectator {
     if (this.fixedSize) this.engine.setSize(this.fixedSize.w, this.fixedSize.h);
     else this.engine.setHardwareScalingLevel(override.rs ?? preset.scaling);
     this.scene = new Scene(this.engine);
+    // WebGPU: не больше 6 источников на материал (предел uniform-буферов) — иначе чёрный кадр.
+    if ((this.engine as { isWebGPU?: boolean }).isWebGPU) capWebGpuLights(this.scene);
     // Как у игрока: обходим только включённые и видимые меши, а не все ~2000 (пулы эффектов,
     // выключенные мобы, залы катакомб) — замер стенда: ~5 мс на кадр уходило на обход (см. meshCandidates.ts).
     installActiveMeshCandidates(this.scene);

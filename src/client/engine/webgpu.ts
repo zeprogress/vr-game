@@ -66,6 +66,26 @@ export async function createWebGpuEngine(
  * там `isEnabled()` у погашенного всегда true. Использовать вместо `l.isEnabled()` в своём коде
  * (иначе `if (l.isEnabled() !== on) l.setEnabled(on)` погашенный свет больше не зажигал).
  */
+/** Источников света на материал в WebGPU: каждый — свой uniform-буфер, а их предел — 12 на этап
+ * шейдера вместе со служебными (сцена, меш, материал…). Больше — шейдер не собирается, а с ним
+ * отбрасывается ВЕСЬ кадр: «чёрный экран» в катакомбах после перехода (факелы залов + факелы ботов). */
+const WEBGPU_MAX_LIGHTS = 6;
+
+/**
+ * WebGPU: держать у всех материалов сцены не больше WEBGPU_MAX_LIGHTS источников. Проверка — каждый
+ * кадр до отрисовки: загрузчик glTF после КАЖДОЙ модели поднимает всем материалам сцены лимит до
+ * числа источников (в катакомбах их ~50 — новые мобы зала подгружаются при переходе).
+ */
+export function capWebGpuLights(scene: import("@babylonjs/core/scene").Scene): void {
+  type M = { maxSimultaneousLights?: number };
+  const cap = (m: M): void => {
+    if (typeof m.maxSimultaneousLights === "number" && m.maxSimultaneousLights > WEBGPU_MAX_LIGHTS) m.maxSimultaneousLights = WEBGPU_MAX_LIGHTS;
+  };
+  scene.onBeforeRenderObservable.add(() => {
+    for (const m of scene.materials) cap(m as M);
+  });
+}
+
 export function lightOn(l: { isEnabled(): boolean }): boolean {
   const w = (l as { _wOn?: boolean })._wOn;
   return w === undefined ? l.isEnabled() : w;

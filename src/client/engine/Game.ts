@@ -1,3 +1,4 @@
+import { capWebGpuLights } from "./webgpu";
 import { TIER_LOOK } from "#shared/look";
 import { showCatReport } from "../ui/CatReport";
 import { ClassFx, playClassAct, type ClassActCtx } from "../ui/ClassFx";
@@ -348,6 +349,8 @@ export class Game {
     // в шлеме рисуется один глаз. Замеры «быстрее без UBO» были сделаны именно на таком, одноглазом рендере.
     if (new URLSearchParams(location.search).has("noubo")) this.engine.disableUniformBuffers = true;
     this.scene = new Scene(this.engine);
+    // WebGPU: не больше 6 источников на материал (предел uniform-буферов) — иначе чёрный кадр.
+    if ((this.engine as { isWebGPU?: boolean }).isWebGPU) capWebGpuLights(this.scene);
     installActiveMeshCandidates(this.scene); // обход только включённых и видимых мешей (см. meshCandidates.ts)
     if (new URLSearchParams(location.search).has("fps")) this.fpsCounter = new FpsCounter();
     this.scene.clearColor = new Color4(0.5, 0.7, 0.9, 1);
