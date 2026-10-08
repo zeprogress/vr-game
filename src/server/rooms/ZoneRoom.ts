@@ -265,6 +265,8 @@ interface Runtime {
   guard: GuardState;
   /** Момент последнего засчитанного удара каждым видом оружия (сек. комнаты). */
   lastHit: Partial<Record<WeaponKind, number>>;
+  /** Темп ударов «счётом»: с какого момента (elapsed) следующий удар этим оружием в норме (см. tryHit). */
+  hitNext?: Partial<Record<WeaponKind, number>>;
   sinceHurt: number;
   respawnIn: number;
   /** Секунды неуязвимости после возрождения. */
@@ -1139,6 +1141,8 @@ const STAGING = process.env.STAGING === "1";
 /** Ключ спектатора: из окружения, иначе — встроенный (см. shared/constants). */
 /** Запас дальности удара на сетевую задержку (позиции на сервере отстают), м. */
 const HIT_LAG_PAD = 1;
+/** На сколько секунд удар может опередить свой срок (тик сервера + разброс сети), см. tryHit. */
+const HIT_BUNCH = 0.15;
 /** Цифры урона игроку — только в этом квадрате вокруг него, м. */
 const DMG_NUM_R = 60;
 const SPEC_KEY = process.env.SPECTATOR_KEY || SPECTATOR_KEY;
@@ -2108,14 +2112,19 @@ export class ZoneRoom extends Room<ZoneState> {
     // Темп: чаще, чем позволяет оружие, удары не засчитываются. Скорость
     // атаки (уровень + ловкость + ролл "скорость атаки" на предмете) укорачивает интервал.
     // Темп — ОДНА формула для всех платформ и ботов (heroAttackInterval); запас HIT_RATE_SLACK на сетевой лаг.
-    const last = rt.lastHit[msg.weapon];
     const mul = rolledAtkSpeedMul(p, hand, rt) * this.cryTempo(rt);
     const dualD = isDualPair(p.leftCls, p.rightCls);
     const rate =
       msg.weapon === "throw"
         ? WEAPON_RATE.throw
         : heroAttackInterval(msg.weapon === "arrow" ? "bow" : msg.weapon, p.level, p, mul, dualD) * HIT_RATE_SLACK;
-    if (last !== undefined && this.elapsed - last < rate) return;
+    // Не «промежуток между двумя ударами» (тик сервера и сеть сбивают удары в кучу — у быстрых атак,
+    // например два меча под «Боевым кличем», пауза 0.19 с, и до трети ударов отбрасывались), а счёт:
+    // удары могут прийти раньше срока на HIT_BUNCH с, но средний темп не выше одного за `rate`.
+    const hitNext = (rt.hitNext ??= {});
+    const due = hitNext[msg.weapon] ?? -Infinity;
+    if (this.elapsed < due - HIT_BUNCH) return;
+    const nextDue = Math.max(due, this.elapsed - HIT_BUNCH) + rate;
 
     // PvP: урон между игроками — только если у ОБОИХ включён флаг.
     if (msg.target === "player") {
@@ -2130,6 +2139,7 @@ export class ZoneRoom extends Room<ZoneState> {
       );
       if (d > WEAPON_REACH[msg.weapon]) return;
       rt.lastHit[msg.weapon] = this.elapsed;
+      hitNext[msg.weapon] = nextDue;
       rt.lastPvpAt = this.elapsed;
       trt.lastPvpAt = this.elapsed;
       const pvpCrit = rollCritMult(msg.weapon, Math.random, false, 0, 0, msg.weapon === "sword" ? SWORD_CRIT_MULT : BOW.critMult, attrOf(p, "luc"));
@@ -2158,6 +2168,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (dist > WEAPON_REACH[msg.weapon] + HIT_LAG_PAD) return; // слишком далеко — не верим
 
     rt.lastHit[msg.weapon] = this.elapsed;
+    hitNext[msg.weapon] = nextDue;
     if (msg.target === "dummy") {
       this.sim.hitDummy(msg.id, this.heroHitRoll(client.sessionId, p, rt, hand, msg.weapon).dmg);
       return;
