@@ -1,3 +1,4 @@
+import { lightOn } from "../engine/webgpu";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Light } from "@babylonjs/core/Lights/light";
@@ -34,7 +35,7 @@ export class LightFocus {
         setPrio(l, 1000); // солнце/небо — всегда первыми
         continue;
       }
-      if (!l.isEnabled()) {
+      if (!lightOn(l)) {
         setPrio(l, 0);
         continue;
       }

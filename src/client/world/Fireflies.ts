@@ -1,3 +1,4 @@
+import { lightOn } from "../engine/webgpu";
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -164,7 +165,7 @@ export function installLightRefresh(scene: Scene): void {
   scene.onBeforeRenderObservable.add(() => {
     const rid = scene.getRenderId();
     for (const l of scene.lights) {
-      if (!(l instanceof PointLight) || !l.isEnabled()) continue;
+      if (!(l instanceof PointLight) || !lightOn(l)) continue;
       const li = l as unknown as {
         _uniformBuffer?: { useUbo: boolean; updateColor4(n: string, c: Color3, a: number, s: string): void; update(): void };
         _renderId?: number;

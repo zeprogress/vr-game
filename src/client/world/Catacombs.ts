@@ -1,3 +1,4 @@
+import { lightOn } from "../engine/webgpu";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -480,15 +481,17 @@ export class CatacombsFx {
       this.motesHall = -1;
     }
     if (this.built) {
-      // Свет — только залов отряда (lo..hi) и только если камера внизу: на поляне ни одного лишнего источника.
-      const lo = v?.lo ?? 0;
-      const hi = v?.hi ?? 0;
-      const sig = inside ? `${lo}-${hi}` : "";
+      // Свет — только залов отряда и только если камера внизу: на поляне ни одного лишнего источника.
+      // Залы отряда — v.open (номера ЗАЛОВ маршрута шагов lo..hi). Раньше свет включался по самим шагам
+      // lo..hi как по номерам залов: на развилке (маршрут 0 → 2 → …) после перехода горел чужой зал,
+      // а зал отряда стоял тёмным — «чёрный экран».
+      const open = v?.open ?? [0];
+      const sig = inside ? open.join(",") : "";
       if (sig !== this.litHalls) {
         this.litHalls = sig;
         this.hallLights.forEach((ls, i) => {
-          const on = inside && i >= lo && i <= hi;
-          for (const l of ls) if (l.isEnabled() !== on) l.setEnabled(on);
+          const on = inside && open.includes(i);
+          for (const l of ls) if (lightOn(l) !== on) l.setEnabled(on);
         });
       }
       if (v && v.themes && v.themes !== this.themeSig) this.applyThemes(v.themes);
@@ -567,7 +570,7 @@ export class CatacombsFx {
       const ls = this.hallLights[h];
       for (let i = 0; i < ls.length; i++) {
         const l = ls[i];
-        if (!l.isEnabled()) continue;
+        if (!lightOn(l)) continue;
         const f = flick(i * 2.3 + h * 5.1);
         l.intensity = 1.45 + 0.35 * f;
         const tc = CAT_THEMES[this.hallTheme[h]].light;

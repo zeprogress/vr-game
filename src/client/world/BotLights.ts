@@ -1,3 +1,4 @@
+import { lightOn } from "../engine/webgpu";
 import type { Scene } from "@babylonjs/core/scene";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -100,7 +101,7 @@ export class BotLights {
       let changed = false;
       for (let i = 0; i < this.lights.length; i++) {
         const want = i < n;
-        if (this.lights[i].isEnabled() !== want) {
+        if (lightOn(this.lights[i]) !== want) {
           this.lights[i].setEnabled(want);
           changed = true;
         }

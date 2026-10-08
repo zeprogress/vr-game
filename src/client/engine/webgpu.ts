@@ -61,6 +61,16 @@ export async function createWebGpuEngine(
  * гаснут постоянно (факелы ботов, светлячки, костёр), поэтому в WebGPU свет НЕ выключаем: он остаётся
  * в сцене с нулевой яркостью (isEnabled() — всегда true: по нему Babylon собирает набор света).
  */
+/**
+ * Горит ли источник — с учётом WebGPU, где свет не выключается, а гаснет до нуля (keepLightsEnabled):
+ * там `isEnabled()` у погашенного всегда true. Использовать вместо `l.isEnabled()` в своём коде
+ * (иначе `if (l.isEnabled() !== on) l.setEnabled(on)` погашенный свет больше не зажигал).
+ */
+export function lightOn(l: { isEnabled(): boolean }): boolean {
+  const w = (l as { _wOn?: boolean })._wOn;
+  return w === undefined ? l.isEnabled() : w;
+}
+
 async function keepLightsEnabled(): Promise<void> {
   const { Light } = await import("@babylonjs/core/Lights/light");
   type L = { _wOn?: boolean; _wI?: number; intensity: number };
