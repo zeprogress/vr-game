@@ -105,12 +105,12 @@ export const ICONS = {
   "c.battlemage": { emoji: "🔨" },
 
   // ---- атрибуты ----
-  "a.str": { emoji: "💪" },
-  "a.agi": { emoji: "🏃" },
-  "a.int": { emoji: "🔮" },
-  "a.con": { emoji: "🛡️" },
-  "a.luc": { emoji: "🍀" },
-  "a.wis": { emoji: "📿" },
+  "a.str": { emoji: "💪", img: "attr/str.png" },
+  "a.agi": { emoji: "🏃", img: "attr/agi.png" },
+  "a.int": { emoji: "🔮", img: "attr/int.png" },
+  "a.con": { emoji: "🛡️", img: "attr/con.png" },
+  "a.luc": { emoji: "🍀", img: "attr/luc.png" },
+  "a.wis": { emoji: "📿", img: "attr/wis.png" },
 
   // ---- умения (svg — где нарисован свой значок; иначе эмодзи) ----
   "s.stunBash": {
