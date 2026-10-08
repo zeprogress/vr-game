@@ -826,6 +826,16 @@ export class Mob {
       this.grounded = true;
       this.hp = this.maxHp;
       this.stunnedT = this.rootedT = 0;
+      // Метка (+урон от всех) и замедление спадают и на пугале — раньше тик выходил раньше их отсчёта,
+      // и метка лучника висела на пугале вечно (его табло показывало на треть больше соседей).
+      if (this.markT > 0) {
+        this.markT -= dt;
+        if (this.markT <= 0) this.markMul = 1;
+      }
+      if (this.slowT > 0) {
+        this.slowT -= dt;
+        if (this.slowT <= 0) this.slowMul = 1;
+      }
       return;
     }
     // Где моб стоял до своего шага в этом тике — чтобы герой не толкал моба (см. «не проходит сквозь игроков»).
@@ -2386,7 +2396,6 @@ export class ZoneSim {
   raidDmgMul: ((attacker: string) => number) | null = null;
   /** Текущая сессия урона по пугалу: кто бьёт, когда начал/последний удар, сумма, самый сильный удар. */
   private readonly scares = new Map<string, { by: string; start: number; last: number; total: number; max: number }>();
-
   /** Табло пугала: кто бьёт, урон в секунду, самый сильный удар (null — давно никто не бил). */
   /** Табло своего пугала (у каждого — своя сессия: главное и напарники). */
   scareInfo(mobId: string = this.scarecrowId): { by: string; dps: number; max: number } | null {
