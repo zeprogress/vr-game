@@ -756,10 +756,10 @@ export class PcInventory {
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
         const lab = div("pcinv-elabel");
-        lab.append(span(a.label), span(`${a.points}/33`));
+        lab.append(span(a.label), span(`${a.points}/${a.of}`));
         const bar = div("pcinv-ebar");
         const fill = div("pcinv-efill");
-        fill.style.width = `${Math.round((a.points / 33) * 100)}%`;
+        fill.style.width = `${Math.round((a.points / a.of) * 100)}%`;
         bar.append(fill);
         const b = document.createElement("button");
         b.className = "pcinv-ebtn";

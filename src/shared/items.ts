@@ -676,7 +676,7 @@ function rollAffix(rnd: () => number, cls: WeaponClass, used: ReadonlySet<AffixS
   if (subs.length === 0) return null;
   const sub = subs[Math.floor(rnd() * subs.length)];
   // Ролл — ровно на целом очке (1..33): иначе 32.6 очка показывались «32», а значение уже как у максимума.
-  return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * 33) / 32, aegis) };
+  return { kind: SUB_KIND[sub], sub, value: atT(sub, Math.floor(rnd() * POINTS_MAX) / 32, aegis) };
 }
 
 /** Привязать ролл к ближайшему целому очку (миграция lv 9 и после заточки). Вне диапазона — не трогаем. */
@@ -1086,11 +1086,16 @@ export function migrateLoot(w: WeaponInstance): boolean {
  * (~6 дней топ-фарма), уникальное с 3 аффиксами ≈ 6500 (~4 недели топа). Теперь
  * цена вдвое ниже (лом с переработки — снова как было, SCRAP_MUL 1) — примерно вдвое быстрее.
  */
+/** Максимум очков ролла (шкала заточки 1..POINTS_MAX). Клиенты берут его из EnchantInfo.of. */
+export const POINTS_MAX = 33;
+
 export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
 
 export interface EnchantInfo {
-  /** Очки аффикса, 1..33 (целые, для показа). */
+  /** Очки аффикса, 1..of (целые, для показа). */
   points: number;
+  /** Максимум очков (POINTS_MAX) — показывать как «points/of». */
+  of: number;
   max: boolean;
   chance: number;
   /** Цена: лом — или, у рубинового (ruby), число уникальных с оценкой 99 (всегда 1). */
@@ -1109,26 +1114,26 @@ export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null 
   const a = w.affixes[idx];
   if (!a) return null;
   const pts = affixPoints(a, w);
-  const max = pts >= 33;
+  const max = pts >= POINTS_MAX;
   const t = (pts - 1) / 32;
   if (w.tier === "ruby") {
     // Огранка: шанс 100% → 50% к максимуму, прирост +10 (ролл на 3 очках и ниже) → +1 у максимума.
     const chance = RUBY.chanceLo + (RUBY.chanceHi - RUBY.chanceLo) * t;
-    const gain = Math.max(RUBY.gainHi, Math.min(RUBY.gainLo, Math.round(RUBY.gainHi + ((RUBY.gainLo - RUBY.gainHi) * (33 - pts)) / 30)));
-    return { points: pts, max, chance, cost: 1, ruby: true, gain: Math.min(gain, 33 - pts) };
+    const gain = Math.max(RUBY.gainHi, Math.min(RUBY.gainLo, Math.round(RUBY.gainHi + ((RUBY.gainLo - RUBY.gainHi) * (POINTS_MAX - pts)) / 30)));
+    return { points: pts, of: POINTS_MAX, max, chance, cost: 1, ruby: true, gain: Math.min(gain, POINTS_MAX - pts) };
   }
-  const q = w.affixes.length ? weaponQuality(w) / (33 * w.affixes.length) : 0;
+  const q = w.affixes.length ? weaponQuality(w) / (POINTS_MAX * w.affixes.length) : 0;
   const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
   const cost = Math.round(
     (ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * (w.tier === "legendary" ? ENCHANT.legendaryMul : 1),
   );
-  return { points: pts, max, chance, cost };
+  return { points: pts, of: POINTS_MAX, max, chance, cost };
 }
 
 /** Удачная заточка: +gain очков к аффиксу — ролл встаёт ровно на целое очко, не выше 33. */
 export function enchantApply(w: WeaponInstance, idx: number, gain: number): void {
   const a = w.affixes[idx];
   if (!a) return;
-  const pts = Math.min(33, affixPoints(a, w) + gain);
+  const pts = Math.min(POINTS_MAX, affixPoints(a, w) + gain);
   a.value = atT(a.sub, (pts - 1) / 32, isAegis(w));
 }

@@ -236,8 +236,8 @@ export function drawEnchant(
   w.ench.forEach((a, i) => {
     ui.rect(PAD, y, bw, 110, VR_UI.card, 14);
     ui.text(a.label, PAD + 20, y + 14, 28, "#9fe39a", 700);
-    ui.bar(PAD + 20, y + 62, bw - 300, a.points / 33, VR_UI.gold, 16);
-    ui.text(`${a.points}/33`, PAD + 20 + bw - 290, y + 56, 24, VR_UI.sub);
+    ui.bar(PAD + 20, y + 62, bw - 300, a.points / a.of, VR_UI.gold, 16);
+    ui.text(`${a.points}/${a.of}`, PAD + 20 + bw - 290, y + 56, 24, VR_UI.sub);
     if (a.max) ui.text("MAX", PAD + bw - 110, y + 36, 32, VR_UI.gold, 800, "center");
     else if (a.ruby) {
       ui.button(`ench:${i}`, `💎 +${a.gain ?? 1}`, PAD + bw - 200, y + 14, 180, 50, () => enchant(i), true, !!fuelId);
