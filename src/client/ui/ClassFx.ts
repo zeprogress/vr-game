@@ -520,18 +520,39 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       ringTo(0, r, 0.5, 0.6);
       vfx.decal(x, y + 0.05, z, r, C, 3, 0, 0.18);
       return;
-    case 5: // боевой маг: метеорит падает в центр, взрыв по всему кругу, огонь на земле 10 с
+    case 5: {
+      // боевой маг: метеорит падает в центр (огненный след), в точке удара вспышка, гул и толчок,
+      // взрыв по всему кругу, огонь на земле 10 с — языки пламени поднимаются по всему кругу.
+      const at = { x, y, z };
       c.fx.later(0, () => vfx.bolt(x + 2, y + 30, z - 2, x, y + 0.5, z, FXC.fireCore, 0.35, 0.35));
+      for (let t = 0.05; t < 0.35; t += 0.1) {
+        c.fx.later(t, () => vfx.burst(x + (2 * (0.35 - t)) / 0.35, y + 30 * ((0.35 - t) / 0.35) + 0.5, z - (2 * (0.35 - t)) / 0.35, FXC.fire, { count: 6, speed: 2, life: 0.5, grav: 0, size: 0.35 }));
+      }
       c.fx.later(0.35, () => {
-        vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 80, speed: 11, life: 0.6, grav: 4, size: 0.45 });
-        for (let i = 0; i < 30; i++) {
+        c.sound(at, "thud");
+        vfx.decal(x, y + 0.05, z, 3, FXC.fireCore, 0.5, 0, 0.9); // белая вспышка в точке падения
+        vfx.burst(x, y + 0.5, z, FXC.fireCore, { count: 90, speed: 11, life: 0.6, grav: 4, size: 0.45 });
+        vfx.burst(x, y + 0.5, z, FXC.fire, { count: 40, speed: 5, life: 1.0, grav: -2, size: 0.6 }); // огненный столп вверх
+        for (let k = 1; k <= 3; k++) ringTo((k - 1) * 0.15, (r * k) / 3, 0.6, 0.85); // ударная волна до полного радиуса
+        for (let i = 0; i < 36; i++) {
           const [px, pz] = rndInRing();
-          vfx.burst(px, y + 0.4, pz, C, { count: 4, speed: 6, life: 0.7, grav: 6, size: 0.3 });
+          vfx.burst(px, y + 0.4, pz, C, { count: 5, speed: 7, life: 0.8, grav: 8, size: 0.32 }); // осколки и искры
+          vfx.burst(px, y + 0.3, pz, FXC.fire, { count: 2, speed: 3, life: 1.2, grav: -1, size: 0.5 }); // дым-пламя
         }
-        ringTo(0, r, 0.8, 0.9);
       });
+      // огонь на земле 10 с: языки пламени снова и снова поднимаются по всему кругу
       vfx.decal(x, y + 0.05, z, r, FXC.fire, 10, 0, 0.25);
+      for (let k = 0; k < 20; k++) {
+        c.fx.later(0.6 + k * 0.5, () => {
+          for (let i = 0; i < 4; i++) {
+            const [px, pz] = rndInRing();
+            vfx.burst(px, y + 0.3, pz, FXC.fire, { count: 4, speed: 2.5, life: 0.7, grav: -1.5, size: 0.4 });
+            vfx.burst(px, y + 0.2, pz, FXC.fireRed, { count: 2, speed: 1.5, life: 0.5, grav: -1, size: 0.25 });
+          }
+        });
+      }
       return;
+    }
     default:
       vfx.decal(x, y, z, r, FXC.gold, 0.8, 0, 1);
   }
@@ -557,6 +578,25 @@ function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r
     c.fx.later(k * 0.8, () => vfx.decal(x, y + 1.2, z, Math.max(0.8, 2.6 - k * 0.3), C, 0.6, 0, 0.7));
   }
   c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, C, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
+  if (v === V_BATTLEMAGE) {
+    // боевой маг: над героем копится огненный шар, сверху падают искры — метеорит «призывается».
+    const at = { x, y, z };
+    const dur = Math.max(0.4, d);
+    for (let t = 0; t < dur; t += 0.25) {
+      c.fx.later(t, () => {
+        const grow = t / dur;
+        vfx.burst(x, y + 3.2 + grow * 2, z, FXC.fireCore, { count: 2 + Math.floor(grow * 6), speed: 0.8, life: 0.5, grav: 0, size: 0.2 + grow * 0.25 });
+      });
+    }
+    for (let t = 0.5; t < dur - 0.4; t += 0.5) {
+      c.fx.later(t, () => {
+        const ang = Math.random() * Math.PI * 2;
+        const rr = 2 + Math.random() * 2;
+        vfx.burst(x + Math.cos(ang) * rr, y + 7, z + Math.sin(ang) * rr, FXC.fire, { count: 3, speed: 2, life: 0.6, grav: 0, size: 0.25, dir: [-Math.cos(ang) * 0.2, -1, -Math.sin(ang) * 0.2], spread: 0.2 });
+      });
+    }
+    c.fx.later(Math.max(0, dur - 2), () => c.sound(at, "fire"));
+  }
 }
 
 export function playClassAct(
