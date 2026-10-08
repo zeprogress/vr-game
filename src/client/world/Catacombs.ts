@@ -76,6 +76,9 @@ export function catViewOf(st: {
   };
 }
 
+/** Непрозрачность стен и потолка зала, когда камера за его контуром (видно сквозь). */
+const CAT_FADE_ALPHA = 0.22;
+
 /** Залы рядом по графу (тот же или соединены коридором) — их держим включёнными. */
 function hallsNear(a: number, b: number): boolean {
   return a === b || catLinkIndex(a, b) >= 0;
@@ -442,6 +445,10 @@ export class CatacombsFx {
   /** Что перекрашивается темой: пол/стены, ниши (2 цвета), ореолы огня, огонь, декор темы. */
   private readonly hallFloorMats: StandardMaterial[] = [];
   private readonly hallWallMats: StandardMaterial[] = [];
+  /** Потолок каждого зала (своя копия материала — прозрачность зала не трогает соседей). */
+  private readonly hallCeilMats: StandardMaterial[] = [];
+  /** Текущая непрозрачность стен и потолка каждого зала (1 — сплошной, CAT_FADE_ALPHA — снаружи). */
+  private hallFade: number[] = [];
   private readonly hallNicheMats: StandardMaterial[][] = [];
   private readonly hallGlowMats: StandardMaterial[] = [];
   private readonly themeDecor: Mesh[][][] = [];
@@ -475,6 +482,7 @@ export class CatacombsFx {
     // а меши «всегда активны», рисовались бы под землёй), и только зал камеры с соседями.
     if (this.root) this.root.setEnabled(inside);
     const camHall = this.built && inside ? this.showHalls(cam) : -1;
+    if (this.built) this.fadeHalls(dt, cam);
     if (this.glowMgr) this.refreshGlows(camHall);
     if (this.motes && !(inside || active) && this.motesHall >= 0) {
       this.motes.stop();
@@ -499,6 +507,27 @@ export class CatacombsFx {
       this.updateShrine(v);
     }
     this.updatePortal(dt, v);
+  }
+
+  /**
+   * Камера за контуром зала (над ним или снаружи) — стены и потолок этого зала становятся
+   * полупрозрачными, чтобы не закрывать вид на то, что внутри. Внутри зала — сплошные.
+   */
+  private fadeHalls(dt: number, cam: { x: number; z: number }): void {
+    if (this.hallFade.length !== CAT_HALLS.length) this.hallFade = CAT_HALLS.map(() => 1);
+    const k = Math.min(1, dt / 0.3);
+    CAT_HALLS.forEach((h, hi) => {
+      const outside = Math.hypot(cam.x - h.x, cam.z - h.z) > h.r + 1;
+      const target = outside ? CAT_FADE_ALPHA : 1;
+      const cur = this.hallFade[hi];
+      const next = cur + (target - cur) * k;
+      if (Math.abs(next - cur) < 1e-4 && cur === target) return;
+      this.hallFade[hi] = next;
+      const wm = this.hallWallMats[hi];
+      const cm = this.hallCeilMats[hi];
+      if (wm) wm.alpha = next;
+      if (cm) cm.alpha = next;
+    });
   }
 
   /** Зал камеры (ближайший по центру) и соседние — включены, остальные выключены. Вернёт зал камеры. */
@@ -693,7 +722,14 @@ export class CatacombsFx {
     };
     CAT_HALLS.forEach((_, hi) => {
       this.hallFloorMats.push(hallStone(floorMat, `catFloorH${hi}`));
-      this.hallWallMats.push(hallStone(wallMat, `catWallH${hi}`));
+      const wallH = hallStone(wallMat, `catWallH${hi}`);
+      wallH.alphaMode = Constants.ALPHA_COMBINE;
+      wallH.needDepthPrePass = true;
+      this.hallWallMats.push(wallH);
+      const ceilH = hallStone(ceilMat, `catCeilH${hi}`);
+      ceilH.alphaMode = Constants.ALPHA_COMBINE;
+      ceilH.needDepthPrePass = true;
+      this.hallCeilMats.push(ceilH);
       this.hallGlowMats.push(addMat(`catTorchGlowH${hi}`, warmTex, 0.55));
       this.hallNicheMats.push([addMat(`catNicheA${hi}`, nicheTex, 0.85), addMat(`catNicheB${hi}`, nicheTex, 0.85)]);
     });
@@ -1112,7 +1148,7 @@ export class CatacombsFx {
       };
       merge(L.floor, "catFloor", this.hallFloorMats[hi]);
       merge(L.wall, "catWalls", this.hallWallMats[hi]);
-      merge(L.ceil, "catCeil", ceilMat);
+      merge(L.ceil, "catCeil", this.hallCeilMats[hi]);
       merge(L.pillar, "catPillars", pillarMat);
       merge(L.iron, "catIron", ironMat);
       merge(L.bone, "catBones", boneMat);
