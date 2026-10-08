@@ -8054,6 +8054,16 @@ export class ZoneRoom extends Room<ZoneState> {
     const v = CLASS_IDS.indexOf(cls);
     const feetY = p.head.y - PLAYER.eyeHeight;
     this.broadcast(MSG.act, { k: "ultWarn", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: U.cast, r: U.radius, v } as ActRelay);
+    // Бот стоит на месте и машет (cheer) весь замах: emoteFreezeUntil не даёт ему ехать.
+    const bot = this.bots.get(normNick(p.nick));
+    if (bot) {
+      for (let t = 0; t < U.cast; t += BOT.emoteDuration.cheer) {
+        this.clock.setTimeout(() => {
+          const pp = this.state.players.get(ownerId);
+          if (pp && !pp.dead) this.triggerEmote(bot, "cheer");
+        }, t * 1000);
+      }
+    }
     this.clock.setTimeout(() => {
       const pp = this.state.players.get(ownerId);
       if (!pp || pp.dead) return;

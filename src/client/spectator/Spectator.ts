@@ -310,7 +310,15 @@ export class Spectator {
       fx: this.classFx,
       vfx: this.skillVfx,
       sound: (at, kind) =>
-        this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
+        this.sfx.at(at, () =>
+          kind === "bash" ? this.sfx.groundBash()
+          : kind === "swing" ? this.sfx.swordSwing()
+          : kind === "horn" ? this.sfx.bossHorn()
+          : kind === "volley" ? this.sfx.arrowVolley()
+          : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
+          : kind === "holy" ? this.sfx.levelUp()
+          : this.sfx.hitThud(0.7),
+        ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
       shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
     };

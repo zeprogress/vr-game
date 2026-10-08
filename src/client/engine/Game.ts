@@ -445,7 +445,15 @@ export class Game {
       fx: this.classFx,
       vfx: this.skillVfx,
       sound: (at, kind) =>
-        this.sfx.at(at, () => (kind === "bash" ? this.sfx.groundBash() : kind === "swing" ? this.sfx.swordSwing() : this.sfx.hitThud(0.7))),
+        this.sfx.at(at, () =>
+          kind === "bash" ? this.sfx.groundBash()
+          : kind === "swing" ? this.sfx.swordSwing()
+          : kind === "horn" ? this.sfx.bossHorn()
+          : kind === "volley" ? this.sfx.arrowVolley()
+          : kind === "fire" ? this.sfx.fireBurst(undefined, 0.6)
+          : kind === "holy" ? this.sfx.levelUp()
+          : this.sfx.hitThud(0.7),
+        ),
       emote: (id, e) => this.avatars.get(id)?.playEmote(e),
       shieldPos: (id) => this.avatars.get(id)?.shieldPoint() ?? null,
     };
@@ -3980,6 +3988,8 @@ export class Game {
       this.notifyToast("Цель пала под меткой — метка снова готова");
       return;
     }
+    // Свой герой (человек) во время замаха ульты стоит на месте.
+    if (k === "ultWarn" && id === this.net?.sessionId) this.player.applyStun(d ?? 0);
     if (playClassAct(this.classCtx, k, x, y, z, id, d, x2in, z2in, v, r, mobId)) return;
     switch (k) {
       case "swing":

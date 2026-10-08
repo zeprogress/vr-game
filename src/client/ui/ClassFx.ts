@@ -422,7 +422,7 @@ export interface ClassActCtx {
   fx: ClassFx;
   vfx: SkillVfx;
   /** Звук в точке мира. */
-  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud") => void;
+  sound: (at: { x: number; y: number; z: number }, kind: "bash" | "swing" | "thud" | "horn" | "volley" | "fire" | "holy") => void;
   /** Клип/эмоция на модели героя `id` (если она есть). */
   emote: (id: string, emote: "roll" | "jump" | "cheer") => void;
   /** Центр щита в руке героя `id` (null — не видно/нет модели): разряд отражения бьёт от щита. */
@@ -470,13 +470,19 @@ export function playClassAct(
   const vfx = c.vfx;
   switch (k) {
     case "ultWarn":
-      // Замах ультимейта: кольцо сходится к герою, видно всем в зоне.
+      // Замах ультимейта: кольцо сходится к герою, искры, рог — видно и слышно всем в зоне.
       vfx.decal(x, y, z, r ?? 10, ATK, Math.max(0.2, d ?? 5), 0, 0.35);
+      vfx.burst(x, y + 0.2, z, ATK, { count: 30, speed: 3, life: Math.max(0.4, d ?? 5), grav: 0, size: 0.2 });
+      c.sound(at, "horn");
       return true;
-    case "ultHit":
+    case "ultHit": {
+      // Удар: кольцо, взрыв частиц и звук, свой у каждого класса (порядок CLASS_IDS).
       vfx.decal(x, y, z, r ?? 10, ATK, 0.8, 0, 1);
       vfx.burst(x, y + 0.3, z, ATK, { count: 40, speed: 9, life: 0.7, grav: 10, size: 0.25 });
+      const snd = ["bash", "volley", "holy", "swing", "bash", "fire"][v ?? 0] as "bash" | "volley" | "holy" | "swing" | "fire";
+      c.sound(at, snd);
       return true;
+    }
     case "stunBash":
       // Замах: тонкое кольцо сходится к герою — удар вот-вот.
       vfx.decal(x, y, z, r ?? 5, ATK, Math.max(0.2, d ?? 0.5), 0, 0.35);
