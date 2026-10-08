@@ -6,14 +6,9 @@ import type { Engine } from "@babylonjs/core/Engines/engine";
  * Свои GLSL-шейдеры Babylon переводит сам (glslang/twgsl грузятся с его CDN при первом запуске).
  */
 export function webGpuWanted(): boolean {
-  // С 2026-10-08 — по умолчанию (?gpu=webgl — старый движок); нет WebGPU в браузере — WebGL.
-  const q = new URLSearchParams(location.search).get("gpu");
-  if (q === "webgl" || !("gpu" in navigator)) return false;
-  if (q === "webgpu") return true;
-  // Шлем (Quest) — WebXR работает только с WebGL. Телефоны/планшеты — тоже WebGL (2026-10-08:
-  // с WebGPU телефон сильно грелся — свет там не выключается, а гаснет до нуля и считается всегда).
-  if (/OculusBrowser|Quest|Pico|Vision Pro|Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) return false;
-  return !(navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)); // iPad «как Mac»
+  // WebGPU отключён: везде WebGL. Включить для проверки можно только явно — ?gpu=webgpu.
+  if (new URLSearchParams(location.search).get("gpu") !== "webgpu") return false;
+  return "gpu" in navigator;
 }
 
 /** Есть ли VR-гарнитура (WebXR immersive-vr) — тогда WebGL: из WebGPU в VR не войти. */
