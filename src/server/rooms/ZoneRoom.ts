@@ -3207,6 +3207,19 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
+   * Осколки големов (`shard`) в катакомбах убираем вместе с мобами зала, когда открывается проход:
+   * они не в catMobs, иначе висели бы дальше. Пыль — как у других мобов катакомб.
+   */
+  private dismissCatShards(): void {
+    for (const [id, m] of this.sim.mobs) {
+      if (m.kind !== "shard" || !inCatRegion(m.x, m.z)) continue;
+      if (!m.dead) this.broadcast(MSG.act, { k: "catDust", id: "", x: m.x, y: m.y, z: m.z, r: MOB.bodyRadius * m.scale } satisfies ActRelay);
+      this.sim.mobs.delete(id);
+      this.sim.catMobs.delete(id);
+    }
+  }
+
+  /**
    * `!event` / `!raid` для человека-героя (не бота): сервер не двигает его персонажем, поэтому
    * шлёт клиенту команду «идти» — автобой ведёт героя к месту и бьёт там мобов. Повтор — отмена.
    * true — команда обработана (человек найден), false — такого героя в мире нет.
@@ -5957,6 +5970,7 @@ export class ZoneRoom extends Room<ZoneState> {
       clearMobs: () => {
         for (const id of this.sim.catMobs) this.sim.mobs.delete(id);
         this.sim.catMobs.clear();
+        this.dismissCatShards();
       },
       finalStart: (id) => {
         const m = this.sim.mobs.get(id);
@@ -6041,6 +6055,7 @@ export class ZoneRoom extends Room<ZoneState> {
           this.sim.mobs.delete(id);
           this.sim.catMobs.delete(id);
         }
+        this.dismissCatShards();
       },
       mobInfo: (id) => {
         const m = this.sim.mobs.get(id);
