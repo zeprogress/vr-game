@@ -148,7 +148,12 @@ export function buildZone(scene: Scene, quality: ZoneQuality = {}): Zone {
     sky.apply(day);
   };
   applyDay();
-  setLightTuneHook(applyDay);
+  // Панель освещения: пересчёт дня с текущими множителями и часом (иначе applyDay берёт старый кадр).
+  setLightTuneHook(() => {
+    day = tunedDayState(hour);
+    applyDay();
+    sky.repaint(day);
+  });
   sky.repaint(day);
   let hubTickN = 0;
   /** Троттлинг обновлений солнца/неба: копится с последнего обновления. */
