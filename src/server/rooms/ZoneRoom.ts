@@ -183,6 +183,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2 } from "#shared/attrs2";
 import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
+import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
 import {
   MAGIC,
   maxManaFor,
@@ -286,6 +287,8 @@ interface Runtime {
   lastSkillAt: number;
   /** «Классы 2.0»: когда последний раз применено каждое умение (сек. комнаты). */
   skillAt: Partial<Record<SkillId, number>>;
+  /** Когда последний раз применена ульта (`!ульта`), сек. комнаты. */
+  ultAt: number;
   /** До какого момента следующий удар — гарантированный крит («Теневой рывок»). */
   forceCritUntil: number;
   /** До какого момента действует «Боевой клич»/«Благословение» (сек. комнаты). */
@@ -3648,6 +3651,7 @@ export class ZoneRoom extends Room<ZoneState> {
     else if (cmd === "!skin" || cmd === "!model" || cmd === "!skins") this.reskinBot(norm, parts[1]);
     else if (cmd === "!class" || cmd === "!класс") this.setBotClass(nick, norm, parts.slice(1).join(" "));
     else if (cmd === "!skills" || cmd === "!skill" || cmd === "!умения") this.setBotSkills(nick, norm, parts.slice(1));
+    else if (cmd === "!ульта" || cmd === "!ult") this.castUltChat(nick, norm);
     else if (cmd === "!info" || cmd === "!help" || cmd === "!commands") this.sayInfo();
     else if (cmd === "!stats" || cmd === "!stat" || cmd === "!hero" || cmd === "!me") {
       this.sayStats(norm);
@@ -5579,6 +5583,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastMassHeal: -999,
       lastSkillAt: -999,
       skillAt: {},
+      ultAt: -1e9,
       forceCritUntil: -999,
       cryUntil: -999,
       cryKind: 0,
@@ -8021,6 +8026,123 @@ export class ZoneRoom extends Room<ZoneState> {
     }
   }
 
+  /** `!ульта` — ультимейт героя ника; откат ULT_COOLDOWN, проверяет сервер. */
+  private castUltChat(nick: string, norm: string): void {
+    const t = this.findWeaponsTarget(norm);
+    if (!t || t.p.dead) {
+      this.reply(`@${nick} ульта — только когда герой в мире и жив`);
+      return;
+    }
+    const cls = classOf2(t.p.leftCls as Weapon2 | "", t.p.rightCls as Weapon2 | "");
+    if (!cls) {
+      this.reply(`@${nick} ульта — сначала возьми оружие класса`);
+      return;
+    }
+    const left = ULT_COOLDOWN - (this.elapsed - t.rt.ultAt);
+    if (left > 0) {
+      this.reply(`@${nick} ульта через ${Math.ceil(left / 60)} мин`);
+      return;
+    }
+    t.rt.ultAt = this.elapsed;
+    this.startUlt(t.id, t.p, t.rt, cls);
+  }
+
+  /** Замах ультимейта: кольцо на земле видно всем в зоне, по окончании — удар. */
+  private startUlt(ownerId: string, p: PlayerState, rt: Runtime, cls: ClassId): void {
+    const U = ULTS[cls];
+    const v = CLASS_IDS.indexOf(cls);
+    const feetY = p.head.y - PLAYER.eyeHeight;
+    this.broadcast(MSG.act, { k: "ultWarn", id: ownerId, x: p.head.x, y: feetY, z: p.head.z, d: U.cast, r: U.radius, v } as ActRelay);
+    this.clock.setTimeout(() => {
+      const pp = this.state.players.get(ownerId);
+      if (!pp || pp.dead) return;
+      this.applyUlt(ownerId, pp, rt, cls);
+    }, U.cast * 1000);
+  }
+
+  /** Удар ультимейта по кругу вокруг героя (центр — где он стоит в конце замаха). */
+  private applyUlt(ownerId: string, p: PlayerState, rt: Runtime, cls: ClassId): void {
+    const U = ULTS[cls];
+    const v = CLASS_IDS.indexOf(cls);
+    const pow = this.skillPower(p, cls, rt, ownerId);
+    const cx = p.head.x;
+    const cz = p.head.z;
+    const feetY = p.head.y - PLAYER.eyeHeight;
+    const act = (r: Omit<ActRelay, "id" | "v">): void => this.broadcast(MSG.act, { ...r, id: ownerId, v } as ActRelay);
+    const inRing = (): Mob[] =>
+      [...this.sim.mobs.values()].filter((m) => !m.dead && Math.hypot(m.x - cx, m.z - cz) - this.sim.targetRadius("mob", m.id) <= U.radius);
+    const dirFrom = (m: Mob): [number, number] => {
+      const d = Math.hypot(m.x - cx, m.z - cz) || 1;
+      return [(m.x - cx) / d, (m.z - cz) / d];
+    };
+    const alive = (): boolean => {
+      const pp = this.state.players.get(ownerId);
+      return !!pp && !pp.dead;
+    };
+    act({ k: "ultHit", x: cx, y: feetY, z: cz, r: U.radius });
+    switch (cls) {
+      case "warrior":
+        for (const m of inRing()) {
+          const [dx, dz] = dirFrom(m);
+          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+          this.sim.stunMob(m.id, 3);
+        }
+        return;
+      case "archer":
+        for (let w = 0; w < ULT_ARCHER_WAVES; w++) {
+          this.clock.setTimeout(() => {
+            if (!alive()) return;
+            for (const m of inRing()) {
+              const [dx, dz] = dirFrom(m);
+              this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, true, false, pow.magic);
+              this.sim.rootMob(m.id, 3);
+            }
+          }, w * 1000);
+        }
+        return;
+      case "support":
+        this.state.players.forEach((ally) => {
+          if (ally.dead || ally.hp >= ally.maxHp) return;
+          if (Math.hypot(ally.head.x - cx, ally.head.z - cz) > U.radius) return;
+          const before = ally.hp;
+          ally.hp = Math.min(ally.maxHp, ally.hp + ally.maxHp * ULT_HEAL_FRAC);
+          if (ally !== p) this.sim.bossHeal(ownerId, ally.hp - before);
+        });
+        for (const m of inRing()) {
+          const [dx, dz] = dirFrom(m);
+          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
+          this.sim.slowMob(m.id, 3, 0.5);
+        }
+        return;
+      case "assassin":
+        for (let i = 0; i < ULT_ASSASSIN_HITS; i++) {
+          this.clock.setTimeout(() => {
+            if (!alive()) return;
+            for (const m of inRing()) {
+              const [dx, dz] = dirFrom(m);
+              this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic, true);
+            }
+          }, i * ULT_ASSASSIN_STEP * 1000);
+        }
+        return;
+      case "spearman":
+        for (const m of inRing()) {
+          const [dx, dz] = dirFrom(m);
+          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
+          this.sim.shoveMob(m.id, -dx, -dz, 6);
+          this.sim.stunMob(m.id, 2);
+        }
+        return;
+      case "battlemage":
+        for (const m of inRing()) {
+          const [dx, dz] = dirFrom(m);
+          this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, true);
+          this.sim.mobs.get(m.id)?.ignite((U.dmgMult * pow.dmg) / 6, ULT_BURN_SEC, ownerId);
+        }
+        return;
+    }
+  }
+
   /**
    * Применить умение из пула (игрок — по MSG.skill, бот — сам). Проверяет класс,
    * выбор (skill1/skill2) и откат. `tx,tz` — точка умения (NaN — перед героем).
@@ -9799,6 +9921,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastMassHeal: -999,
       lastSkillAt: -999,
       skillAt: {},
+      ultAt: -1e9,
       forceCritUntil: -999,
       cryUntil: -999,
       cryKind: 0,

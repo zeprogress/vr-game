@@ -469,6 +469,14 @@ export function playClassAct(
   const OTHER = FX_ROLE.other;
   const vfx = c.vfx;
   switch (k) {
+    case "ultWarn":
+      // Замах ультимейта: кольцо сходится к герою, видно всем в зоне.
+      vfx.decal(x, y, z, r ?? 10, ATK, Math.max(0.2, d ?? 5), 0, 0.35);
+      return true;
+    case "ultHit":
+      vfx.decal(x, y, z, r ?? 10, ATK, 0.8, 0, 1);
+      vfx.burst(x, y + 0.3, z, ATK, { count: 40, speed: 9, life: 0.7, grav: 10, size: 0.25 });
+      return true;
     case "stunBash":
       // Замах: тонкое кольцо сходится к герою — удар вот-вот.
       vfx.decal(x, y, z, r ?? 5, ATK, Math.max(0.2, d ?? 0.5), 0, 0.35);
