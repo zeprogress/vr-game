@@ -216,7 +216,9 @@ const CSS = `
 .ov-cattop .hd, .ov-cattop .r { display:grid; grid-template-columns:1fr 5vw 3.6vw 2.4vw; gap:.4vw; font-variant-numeric:tabular-nums; }
 .ov-cattop .hd { opacity:.6; font-size:1.3vh; }
 .ov-cattop .r span:not(.nm) { text-align:right; }
-.ov-cattop .r .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-cattop .r .nm { display:flex; min-width:0; white-space:nowrap; }
+.ov-cattop .r .nm .nk { overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left; }
+.ov-cattop .r .nm .rev { flex:none; }
 .ov-cattop .r.dead { opacity:.6; }
 .ov-cattop .rev { font-style:normal; color:#ffd166; font-weight:800; }
 .ov-cat { right:1.2vw; bottom:6vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
@@ -582,12 +584,16 @@ export class Overlay {
           const row = div(r.dead ? "r dead" : "r");
           const nm = document.createElement("span");
           nm.className = "nm";
-          nm.textContent = `${i + 1}. ${r.nick}`;
+          // Ник — обрезается многоточием, таймер рядом — нет (раньше «⏳ 30 с» срезалось целиком).
+          const nk = document.createElement("span");
+          nk.className = "nk";
+          nk.textContent = `${i + 1}. ${r.nick}`;
+          nm.append(nk);
           // Павший — сколько до воскрешения.
           if (r.dead && r.rev !== undefined) {
             const t = document.createElement("i");
             t.className = "rev";
-            t.textContent = r.rev < 0 ? " ⏳ в след. зале" : ` ⏳ ${r.rev} с`;
+            t.textContent = r.rev < 0 ? "\u00a0⏳ след. зал" : `\u00a0⏳${r.rev}с`;
             nm.append(t);
           }
           const d = document.createElement("span");

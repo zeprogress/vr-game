@@ -530,7 +530,7 @@ export class Hud {
   }
 
   /** Экран смерти («WASTED» + отсчёт до возрождения); при возрождении всё убирается. */
-  setDead(dead: boolean, secondsLeft = 0): void {
+  setDead(dead: boolean, secondsLeft = 0, note = ""): void {
     if (dead) {
       if (!this.deathOn) {
         this.deathOn = true;
@@ -544,9 +544,11 @@ export class Hud {
         this.deathTitle.style.transform = "scale(1.08)";
       }
       const t = Math.max(0, Math.ceil(secondsLeft));
-      if (t !== this.lastDeathSec) {
-        this.lastDeathSec = t;
-        this.deathSub.textContent = t > 0 ? `Возрождение через ${t}…` : "";
+      // note — вместо отсчёта (катакомбы: «в следующем зале» и т.п.).
+      const key = note ? -2 - note.length : t;
+      if (key !== this.lastDeathSec) {
+        this.lastDeathSec = key;
+        this.deathSub.textContent = note || (t > 0 ? `Возрождение через ${t}…` : "");
       }
     } else if (this.deathOn) {
       this.deathOn = false;

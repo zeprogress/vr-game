@@ -132,7 +132,7 @@ import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE }
 import { MANA_ENABLED } from "#shared/magic";
 import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSettings";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
-import { CAT_PHASE, inCatRegion } from "#shared/catacombs";
+import { CAT_PHASE, CATACOMBS, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
@@ -2430,7 +2430,8 @@ export class Game {
     const dead = self.dead === 1;
     if (dead !== this.player.dead) {
       this.player.dead = dead;
-      this.deathCountdown = dead ? RESPAWN.delay : 0;
+      // В забеге катакомб своё время (CATACOMBS.reviveSec), как у сервера (ZoneRoom: rt.respawnIn).
+      this.deathCountdown = dead ? (this.inCatRun() ? CATACOMBS.reviveSec : RESPAWN.delay) : 0;
       if (dead) {
         this.fishing?.cancel();
         this.hud.flashDamage(40);
@@ -2450,7 +2451,15 @@ export class Game {
     }
     if (dead) {
       this.deathCountdown = Math.max(0, this.deathCountdown - dt);
-      this.hud.setDead(true, this.deathCountdown);
+      // Катакомбы: жизни отряда кончились — встанет у входа в следующий зал; отсчёт вышел, а все
+      // лежат — сервер ждёт, пока кто-то из отряда жив (ZoneRoom: catAnyAlive / takeLife).
+      let note = "";
+      if (this.inCatRun()) {
+        const st = this.net?.room?.state;
+        if (st && st.catLives <= 0) note = "Возрождение — в следующем зале";
+        else if (this.deathCountdown <= 0) note = "Возрождение — когда кто-то из отряда на ногах";
+      }
+      this.hud.setDead(true, this.deathCountdown, note);
     }
 
     // Звук глотка — по подтверждённой сервером убыли, а не по нажатию:
@@ -2965,6 +2974,13 @@ export class Game {
     // МДР с камнями колец (PlayerState.gb) — как на сервере.
     const me = this.net?.room?.state.players.get(this.net.sessionId);
     return SKILLS2[id].cooldown * skillCdMul2(cls, { wis: this.progression.stats.wis, gb: me?.gb });
+  }
+
+  /** Герой внизу, в идущем забеге катакомб. */
+  private inCatRun(): boolean {
+    const st = this.net?.room?.state;
+    const p = this.player.position;
+    return !!st && st.catPhase >= CAT_PHASE.run && inCatRegion(p.x, p.z);
   }
 
   /** Сколько секунд до готовности умения (0 — готово). */
