@@ -505,9 +505,17 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       }
       ringTo(0, r, 0.5, 0.5);
       return;
-    case 4: // копейщик: втягивание — потоки к центру по всему кругу (6 толчков за 0.6 с), след оглушения на 3 с
+    case 4: {
+      // копейщик: земля трескается в центре, затем 6 толчков втягивания (0.1–0.6 с) — потоки к герою по всему кругу;
+      // после последнего толчка — оглушение на 3 с: тлеющий след по краю круга и искры над землёй.
+      const at = { x, y, z };
+      vfx.burst(x, y + 0.2, z, C, { count: 40, speed: 7, life: 0.7, grav: 10, size: 0.35 });
+      ringTo(0, r, 0.5, 0.6);
+      c.sound(at, "thud");
       for (let k = 0; k < 6; k++) {
         c.fx.later(0.1 * (k + 1), () => {
+          // Кольцо-след каждого толчка, сходится к герою.
+          vfx.decal(x, y + 0.05, z, Math.max(0.5, r * (1 - k / 7)), C, 0.35, 0, 0.35);
           for (let i = 0; i < 28; i++) {
             const [px, pz] = rndInRing();
             const dx = x - px;
@@ -515,11 +523,22 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
             const l = Math.hypot(dx, dz) || 1;
             vfx.burst(px, y + 0.4, pz, C, { count: 3, speed: 8, life: 0.5, grav: 0, size: 0.2, dir: [dx / l, 0.1, dz / l], spread: 0.25 });
           }
+          if (k === 2 || k === 4) c.sound(at, "swing");
+          if (k === 5) c.sound(at, "thud");
         });
       }
-      ringTo(0, r, 0.5, 0.6);
-      vfx.decal(x, y + 0.05, z, r, C, 3, 0, 0.18);
+      // Оглушение: след по всему кругу на 3 с и искры, поднимающиеся с края.
+      c.fx.later(0.7, () => {
+        vfx.decal(x, y + 0.05, z, r, C, 3, 0, 0.18);
+        for (let j = 0; j < 10; j++) {
+          c.fx.later(j * 0.3, () => {
+            const [px, pz] = rndInRing();
+            vfx.burst(px, y + 0.3, pz, C, { count: 4, speed: 1.5, life: 0.9, grav: -1.5, size: 0.18 });
+          });
+        }
+      });
       return;
+    }
     case 5: // боевой маг: метеорит падает в центр, взрыв по всему кругу, огонь на земле 10 с
       c.fx.later(0, () => vfx.bolt(x + 2, y + 30, z - 2, x, y + 0.5, z, FXC.fireCore, 0.35, 0.35));
       c.fx.later(0.35, () => {
