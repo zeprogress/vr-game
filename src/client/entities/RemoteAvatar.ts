@@ -231,6 +231,8 @@ export class RemoteAvatar implements Hittable {
   private botTagH = 0;
   /** Кости кулаков рига — в них садится оружие бота. */
   private botFistR: TransformNode | null = null;
+  /** Модель, на которой собран риг бота (charRealMale — оружие вдвое мельче: руки у неё тоньше). */
+  private rigModel: string | null = null;
   private botFistL: TransformNode | null = null;
   /** Кость головы — только наклон (pitch), корпус по ней не крутим. */
   private botHead: TransformNode | null = null;
@@ -934,6 +936,7 @@ export class RemoteAvatar implements Hittable {
       while (!this.disposed && this.botRigWant > 0 && this.builtRigSkin !== this.botRigWant) {
         const want = this.botRigWant;
         const model = BOT_SKIN_MODELS[(want - 1) % BOT_SKIN_MODELS.length];
+        this.rigModel = model;
         let make: () => RigInstance;
         try {
           make = await this.loadRigWithRetry(model);
@@ -1304,7 +1307,9 @@ export class RemoteAvatar implements Hittable {
     mesh.position.set(g.pos[0], g.pos[1], g.pos[2]);
     if (cls === "shield" && g.auto) mesh.rotation.copyFrom(this.shieldRotFor(fist));
     else mesh.rotation.set(g.rot[0], g.rot[1], g.rot[2]);
-    mesh.scaling.setAll(g.scale);
+    // Реалистичная модель: кисть меньше, чем у «пластилиновых» моделей, под которые делали g.scale — оружие вдвое мельче.
+    const k = this.rigModel === "charRealMale" ? 0.5 : 1;
+    mesh.scaling.setAll(g.scale * k);
   }
 
   /** Пересадка без пересборки мешей — по правке в панели настройки. */
