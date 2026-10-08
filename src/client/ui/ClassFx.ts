@@ -491,10 +491,24 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
       }
       vfx.decal(x, y + 0.05, z, r, C, 5, 0, 0.2);
       return;
-    case 2: // маг поддержки: колонны света над союзниками (ultHeal), синий круг замедления на 6 с
-      for (let k = 1; k <= 3; k++) ringTo((k - 1) * 0.3, (r * (4 - k)) / 3, 1.0, 0.8);
+    case 2: {
+      // маг поддержки: белая волна до края круга, световые колонны по краю, светлячки всплывают по зоне;
+      // синий круг замедления на 6 с с пульсом каждую секунду (колонны над союзниками — ultHeal).
+      const LIGHT = new Color3(0.85, 0.95, 1);
+      ringTo(0, r, 0.9, 0.85);
+      for (let j = 0; j < 8; j++) {
+        const a = (j / 8) * Math.PI * 2;
+        vfx.pillar(x + Math.cos(a) * r, y, z + Math.sin(a) * r, 0.35, 4.5, LIGHT, 1.4);
+      }
+      for (let i = 0; i < 30; i++) {
+        const [px, pz] = rndInRing();
+        vfx.burst(px, y + 0.3, pz, LIGHT, { count: 4, speed: 1.2, life: 1.3, grav: -1.4, size: 0.18 });
+      }
+      c.fx.later(0.45, () => c.sound({ x, y, z }, "holy"));
       vfx.decal(x, y + 0.05, z, r, C, 6, 0, 0.18);
+      for (let k = 1; k <= 5; k++) c.fx.later(k, () => vfx.decal(x, y + 0.05, z, r, C, 0.9, 0, 0.35));
       return;
+    }
     case 3: // ассасин: 16 ударов по кругу с шагом 0.15 с — жёлтая линия от героя и вспышка на каждом
       for (let i = 0; i < 16; i++) {
         c.fx.later(i * 0.15, () => {
@@ -541,6 +555,30 @@ function ultBlast(c: ClassActCtx, v: number, x: number, y: number, z: number, r:
 function ultCastFx(c: ClassActCtx, v: number, x: number, y: number, z: number, r: number, d: number): void {
   const vfx = c.vfx;
   const C = ULT_COLOR[v] ?? FXC.gold;
+  if (v === 2) {
+    // маг поддержки: по краю круга растут светлые колонны (показывают радиус лечения), светлячки поднимаются к герою
+    const LIGHT = new Color3(0.85, 0.95, 1);
+    const rune = Math.max(1, Math.min(r, 3));
+    for (let t = 0; t < d; t += 0.8) {
+      c.fx.later(t, () => {
+        const h = 1.5 + (t / d) * 3;
+        for (let j = 0; j < 6; j++) {
+          const a = j * (Math.PI / 3) + t * 0.3;
+          vfx.pillar(x + Math.cos(a) * r, y, z + Math.sin(a) * r, 0.25, h, LIGHT, 0.9);
+        }
+        vfx.decal(x, y + 0.05, z, rune, C, 0.8, 0, 0.7);
+      });
+    }
+    for (let i = 0; i < d * 10; i++) {
+      c.fx.later(i * 0.1, () => {
+        const ang = i * 0.5;
+        const rad = r * 0.5;
+        vfx.burst(x + Math.cos(ang) * rad, y + 0.3 + (i * 0.1 / d) * 3, z + Math.sin(ang) * rad, LIGHT, { count: 3, speed: 0.6, life: 0.6, grav: -0.5, size: 0.14 });
+      });
+    }
+    c.fx.later(Math.max(0, d - 1), () => vfx.burst(x, y + 1, z, LIGHT, { count: 40, speed: 4, life: 0.8, size: 0.25 }));
+    return;
+  }
   const rune = Math.max(1, Math.min(r, 3));
   for (let t = 0; t < d; t += 0.6) {
     c.fx.later(t, () => vfx.decal(x, y + 0.05, z, rune + ((t / 0.6) % 2) * 0.6, C, 0.7, 0, 0.8));
@@ -588,16 +626,19 @@ export function playClassAct(
       vfx.pillar(x, y, z, (r ?? 10) * 0.08, 5, ULT_COLOR[v ?? 0] ?? FXC.gold, Math.max(0.4, d ?? 5));
       ultCastFx(c, v ?? 0, x, y, z, r ?? 10, Math.max(0.4, d ?? 5));
       vfx.burst(x, y + 0.2, z, ATK, { count: 30, speed: 3, life: Math.max(0.4, d ?? 5), grav: 0, size: 0.2 });
-      c.sound(at, "horn");
+      c.sound(at, v === 2 ? "holy" : "horn");
       return true;
     case "ultHeal":
-      // Союзник вылечен ультой: столб света над ним.
-      vfx.pillar(x, y, z, 0.5, 3.5, FXC.heal, 1.2);
-      vfx.burst(x, y + 1, z, FXC.heal, { count: 14, speed: 3, life: 0.8, size: 0.2 });
+      // Союзник вылечен ультой: столб света, светлое кольцо у ног и искры, всплывающие вверх.
+      vfx.pillar(x, y, z, 0.6, 4.5, FXC.heal, 1.4);
+      vfx.decal(x, y + 0.05, z, 1.6, FXC.heal, 1.0, 0, 0.8);
+      vfx.burst(x, y + 0.5, z, FXC.heal, { count: 22, speed: 1.8, life: 1.1, grav: -1.6, size: 0.22 });
+      vfx.burst(x, y + 1, z, new Color3(1, 1, 0.85), { count: 10, speed: 2.5, life: 0.7, grav: -1, size: 0.14 });
       return true;
     case "ultSlow":
-      // Моб замедлен ультой: синий след под ним.
+      // Моб замедлен ультой: синий след под ним и ледяная пыль, медленно всплывающая.
       vfx.decal(x, y - 0.5, z, 1.2, new Color3(0.3, 0.6, 1), 6, 0, 0.6);
+      vfx.burst(x, y + 0.2, z, new Color3(0.55, 0.85, 1), { count: 12, speed: 1.4, life: 1.0, grav: -0.6, size: 0.16 });
       return true;
     case "ultHit": {
       // Удар: кольцо, взрыв частиц и звук, свой у каждого класса (порядок CLASS_IDS).
