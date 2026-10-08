@@ -183,7 +183,7 @@ import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand }
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
 import { ATTR2 } from "#shared/attrs2";
 import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
-import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC } from "#shared/ultimates";
+import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
 import {
   MAGIC,
   maxManaFor,
@@ -8141,9 +8141,20 @@ export class ZoneRoom extends Room<ZoneState> {
         for (const m of inRing()) {
           const [dx, dz] = dirFrom(m);
           this.sim.hitMob(m.id, U.dmgMult * pow.dmg, dx, dz, ownerId, false, false, pow.magic);
-          this.sim.shoveMob(m.id, -dx, -dz, 6);
-          this.sim.stunMob(m.id, 3);
         }
+        // Втягивание: шесть мощных толчков к герою за 0.6 с, потом оглушение.
+        for (let k = 0; k < ULT_PULL_PULSES; k++) {
+          this.clock.setTimeout(() => {
+            if (!alive()) return;
+            for (const m of inRing()) {
+              const [dx, dz] = dirFrom(m);
+              this.sim.shoveMob(m.id, -dx, -dz, ULT_PULL_POWER);
+            }
+          }, (k + 1) * 100);
+        }
+        this.clock.setTimeout(() => {
+          for (const m of inRing()) this.sim.stunMob(m.id, 3);
+        }, (ULT_PULL_PULSES + 1) * 100);
         return;
       case "battlemage":
         for (const m of inRing()) {

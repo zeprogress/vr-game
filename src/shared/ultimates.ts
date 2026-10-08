@@ -34,5 +34,8 @@ export const ULT_HEAL_FRAC = 0.5;
 export const ULT_ARCHER_WAVES = 3;
 export const ULT_ASSASSIN_HITS = 16;
 export const ULT_ASSASSIN_STEP = 0.15;
+/** Втягивание копейщика: число толчков и сила каждого (к герою). */
+export const ULT_PULL_PULSES = 6;
+export const ULT_PULL_POWER = 5;
 /** Горение метеорита, с. */
 export const ULT_BURN_SEC = 10;
