@@ -289,8 +289,10 @@ export interface EliteMobDef {
   burrower?: boolean;
   /** 45 ур. Грозовой дух: метит героя молнией — удар перескакивает на героев рядом, сильнее с каждым прыжком (см. STORM). */
   stormCaller?: boolean;
-  /** 45 ур. Теневой ниндзя: на порогах здоровья исчезает в дыму и возвращается с теневыми копиями (см. CLONES). */
+  /** Теневые копии на порогах здоровья (см. CLONES); сейчас ни у кого — ниндзя с 2026-10-08 на parry. */
   cloner?: boolean;
+  /** 45 ур. Теневой ниндзя: «Теневая стойка» — стоит и отбивает удары, за отбитый — контрудар (см. PARRY). */
+  parry?: boolean;
   /** Не двигается вовсе (рейд-босс): ни шагов, ни прыжков, ни отбрасывания — только поворот к цели и атаки. */
   anchored?: boolean;
   /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
@@ -413,6 +415,14 @@ export const CLONES = {
   dmgMul: 0.65,
   scatter: 4.5,
 };
+
+/**
+ * 45 ур. Теневой ниндзя — «Теневая стойка» (2026-10-08, вместо исчезания с копиями): каждые ~cooldown с
+ * на duration с замирает в стойке (тёмный круг под ним). Удары по нему в стойке — «MISS», а ударившего
+ * (не дальше reach м) настигает контрудар: удар моба × counterMul, не чаще раза в counterGap с на героя.
+ * Переждать стойку — и бить дальше.
+ */
+export const PARRY = { cooldown: 7, duration: 1.6, counterMul: 1.3, counterGap: 0.5, reach: 14 };
 
 /** 40 ур. Скалолом: гибель сородича в радиусе — ярость (быстрее и больнее, как ярость босса) на sec секунд. */
 export const PACK_FRENZY = { radius: 22, sec: 8 };
@@ -598,7 +608,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 11000, dmgMul: 15, xp: 2800000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1, // 7600/11 → 11000/15
     stormCaller: true, legendaryChance: 0.04,
   },
-  // Теневой ниндзя: быстрый и вёрткий; на 70% и 35% здоровья уходит в дым и возвращается с двумя тенями.
+  // Теневой ниндзя: быстрый и вёрткий; «Теневая стойка» — отбивает удары и контратакует (PARRY).
   // ---- Рейд (тест 2026-10-07): Лунный аватар — на плато горы с водопадом (shared/raid.ts), !raid ведёт ботов ----
   moonAvatar: {
     model: "monMoonAvatar", name: "Лунный аватар", blurb: "рейд-босс на горе: стоит на месте, лунные молнии, ледяные круги, веер осколков", level: 45, kind: "spitter",
@@ -608,9 +618,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     shot: { kind: "spike", range: 26, cooldown: 2.4, speed: 24, dmg: 1.2, count: 5, spread: 0.35 },
   },
   shadowNinja: {
-    model: "monNinja", name: "Теневой ниндзя", blurb: "теневые копии, уворот — найди настоящего", level: 45, kind: "slime",
+    model: "monNinja", name: "Теневой ниндзя", blurb: "теневая стойка: отбивает удары и бьёт в ответ — переждите", level: 45, kind: "slime",
     hp: 12000, dmgMul: 16, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
-    meleeReach: 2.6, cloner: true, legendaryChance: 0.04,
+    meleeReach: 2.6, parry: true, legendaryChance: 0.04,
   },
 };
 

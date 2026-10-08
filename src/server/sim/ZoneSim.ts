@@ -3,7 +3,7 @@ import { QUEST } from "#shared/quests";
 import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
-import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject } from "#shared/catacombs";
@@ -185,7 +185,7 @@ export interface PlayerHit {
 
 /** Событие моба для визуала у клиентов (ZoneRoom рассылает как MSG.act). */
 export interface MobFx {
-  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "pierceShot";
+  k: "sporeMark" | "blinkOut" | "blinkIn" | "pullMark" | "pullHit" | "chargeMark" | "chargeHit" | "reflectOn" | "spikeMark" | "spikeHit" | "chiefHeal" | "freezeMark" | "freezeHit" | "leapMark" | "leapHit" | "caltrops" | "burrowDive" | "burrowTrail" | "burrowMark" | "burrowHit" | "stormMark" | "stormHit" | "stormJump" | "ninjaSmoke" | "parryOn" | "parryHit" | "pierceShot";
   /** Радиус области, м (прыжок Скалолома, колючки). */
   r?: number;
   x: number;
@@ -400,6 +400,12 @@ export class Mob {
   readonly burrower: boolean;
   readonly stormCaller: boolean;
   readonly cloner: boolean;
+  /** Теневая стойка (PARRY): >0 — сколько ещё стоять в ней; hitMob отбивает удары. */
+  readonly parrier: boolean;
+  parryT = 0;
+  private parryCd = 3;
+  /** Когда (elapsed) этот герой последний раз получил контрудар — не чаще PARRY.counterGap. */
+  readonly parryHitAt = new Map<string, number>();
   /** Не двигается вовсе (рейд-босс): только поворот к цели и атаки. */
   readonly anchored: boolean;
   /** Теневая копия ниндзя: id настоящего ("" — не копия). */
@@ -551,6 +557,7 @@ export class Mob {
       burrower?: boolean;
       stormCaller?: boolean;
       cloner?: boolean;
+      parry?: boolean;
       anchored?: boolean;
       /** Теневая копия ниндзя: id настоящего (погиб он — копия рассеивается). */
       cloneOf?: string;
@@ -627,6 +634,7 @@ export class Mob {
     this.burrower = opts.burrower ?? false;
     this.stormCaller = opts.stormCaller ?? false;
     this.cloner = opts.cloner ?? false;
+    this.parrier = opts.parry ?? false;
     this.anchored = opts.anchored ?? false;
     this.cloneOf = opts.cloneOf ?? "";
     this.scarecrow = opts.scarecrow ?? false;
@@ -1264,6 +1272,17 @@ export class Mob {
         this.chargeWindupT = CHARGE.windup;
         this.chargeCd = CHARGE.cooldown * (0.85 + Math.random() * 0.3);
         this.fx.push({ k: "chargeMark", x: this.x, z: this.z, x2: tx, z2: tz, d: CHARGE.windup });
+      }
+    }
+    // Теневой ниндзя: стойка — стоит на месте (отбивает и контратакует ZoneSim.hitMob).
+    if (this.parrier) {
+      if (this.parryT > 0) this.parryT = Math.max(0, this.parryT - dt);
+      if (this.parryCd > 0) this.parryCd -= dt;
+      if (chasing && this.parryT <= 0 && this.parryCd <= 0 && dist < PARRY.reach) {
+        this.parryT = PARRY.duration;
+        this.parryCd = PARRY.cooldown * (0.85 + Math.random() * 0.3);
+        this.root(PARRY.duration);
+        this.fx.push({ k: "parryOn", x: this.x, z: this.z, d: PARRY.duration });
       }
     }
     // Ледяной демон: щит отражения (сам урон отражает ZoneSim.hitMob).
@@ -2110,7 +2129,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
     spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
-    burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, anchored: d.anchored,
+    burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }
 
@@ -2812,6 +2831,17 @@ export class ZoneSim {
         return null;
       }
       dmg *= mul;
+    }
+    // Теневой ниндзя в стойке: удар отбит («MISS»), ударившему — контрудар (не чаще counterGap).
+    if (m.parryT > 0 && !dot && !m.dead && attacker) {
+      this.mobMisses.push({ mobId: m.id, attacker, x: m.x, y: m.y + MOB.bodyRadius * m.scale * 2 + 1.2, z: m.z });
+      const last = m.parryHitAt.get(attacker) ?? -99;
+      if (this.elapsed - last >= PARRY.counterGap) {
+        m.parryHitAt.set(attacker, this.elapsed);
+        this.reflectHits.push({ target: attacker, dmg: MOB.attackDamage * m.dmgMul * PARRY.counterMul, fromX: m.x, fromZ: m.z, projectile: false, byMob: m.id });
+        this.fx.push({ k: "parryHit", x: m.x, z: m.z });
+      }
+      return null;
     }
     if (!dot && m.dodge > 0 && !m.dead && Math.random() < m.dodge) {
       m.forceAggroIfIdle();

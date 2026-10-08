@@ -47,7 +47,7 @@ export class PlayerState extends Schema {
   /** 1 — игрок открыт для PvP. Урон между игроками идёт только если у обоих 1. */
   @type("uint8") pvp = 0;
   @type("uint16") level = 1;
-  @type("float32") xp = 0;
+  @type("float64") xp = 0; // float64: на высоких уровнях опыт — миллиарды, float32 терял прибавки (журнал «+N опыта»)
   @type("uint16") unspent = 0;
   @type("uint16") str = 1;
   @type("uint16") agi = 1;

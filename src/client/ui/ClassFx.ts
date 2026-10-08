@@ -577,6 +577,17 @@ export function playClassAct(
       vfx.burst(x, y + 0.6, z, SHADOW_GRAY, { count: 14, speed: 2, life: 0.7, grav: -1, size: 0.4 });
       c.sound(at, "swing");
       return true;
+    case "parryOn":
+      // Теневая стойка: тёмный круг под ниндзя на всё время стойки и тень вокруг — не бей, пережди.
+      vfx.decal(x, y, z, r ?? 2.2, FXC.shadowDark, d ?? 1.6, 1, 0.9);
+      vfx.burst(x, y + 1, z, FXC.shadowDark, { count: 18, speed: 2.5, life: 0.7, grav: -1, size: 0.4 });
+      c.sound(at, "swing");
+      return true;
+    case "parryHit":
+      // Отбил удар: вспышка клинков и контрудар.
+      vfx.burst(x, y + 1.2, z, SHADOW_GRAY, { count: 14, speed: 7, life: 0.35, grav: 4, size: 0.18 });
+      c.sound(at, "bash");
+      return true;
     case "caltrops":
       // Колючки Шипохвоста на земле: зона на всё время, пока лежат.
       vfx.decal(x, y, z, r ?? 1.4, ATK, d ?? 6, 1, 0.55);
