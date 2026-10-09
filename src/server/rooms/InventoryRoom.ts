@@ -18,9 +18,14 @@ import {
   isRubyFuel,
   weaponQuality,
   bestWeaponInstance,
+  handsRoll,
+  isWeaponClass,
+  isWeaponTier,
+  weaponDef,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
+import { skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { store } from "../store";
@@ -145,6 +150,21 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const leftInst = instIn("left");
   const rightInst = instIn("right");
   const jewels = jewelsOf(rec);
+  // Сила удара умений — как у сервера (ZoneRoom.strikeOfLive): рука класса, её тир и роллы урона (лучший из двух рук).
+  let strike: number | undefined;
+  const strikeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  if (strikeCls) {
+    const side: "left" | "right" = rec.held?.right?.cls === strikeKindOf(strikeCls) ? "right" : "left";
+    const other = side === "left" ? "right" : "left";
+    const held = rec.held?.[side];
+    const main = instIn(side);
+    const off = rec.held?.[other] ? instIn(other) : undefined;
+    const shield = off && off.id !== main?.id ? off : undefined;
+    const mult = isWeaponClass(held?.cls) && isWeaponTier(held?.tier) ? weaponDef(held.cls, held.tier).mult : 1;
+    const roll = 1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct");
+    const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
+    strike = Math.round(skillStrike(strikeCls, rec.level, attrs, { mult, tier: held?.tier ?? "", roll }).dmg * 10) / 10;
+  }
   const stats = heroStatRows({
     gb: jewelBonus(jewels),
     level: rec.level,
@@ -187,6 +207,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     title: rec.title ?? "",
     tokens: rec.tokens ?? 0,
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
+    gb: jewelBonus(jewels),
+    strike,
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
     skills: skillsOf(rec),

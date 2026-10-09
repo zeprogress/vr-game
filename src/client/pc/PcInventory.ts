@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -1170,14 +1170,19 @@ export class PcInventory {
       div("pcinv-name", `${def.icon} ${def.name} — ${def.role}`),
       div("pcinv-small", `Оружие: ${def.weapons}. Выбери любые два умения — клавиши 2 и 3 (телефон — кнопки ✦, VR — стики).`),
     );
+    if (d.strike !== undefined) wrap.append(div("pcinv-small", `Сила удара: ${d.strike} — от оружия в руке, статов и роллов урона`));
     const chosen = new Set(d.skills?.chosen ?? []);
+    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
+    const live = { ...d.attrs, gb: d.gb };
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
       const txt = div("pcinv-atxt");
       txt.append(
-        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownOf(id, cls)} с`),
-        div("pcinv-small", skillDesc(id, cls)),
+        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownFor(id, cls, live)} с`),
+        div("pcinv-small", skillDesc(id, cls, live)),
+        // Урон умения — множитель от силы удара героя (её показываем над списком); особые формулы — в описании.
+        ...(sk.dmgMult > 0 ? [div("pcinv-small", `Урон ×${sk.dmgMult} от силы удара${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";

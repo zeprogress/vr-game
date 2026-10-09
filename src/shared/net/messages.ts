@@ -335,6 +335,10 @@ export interface PcInvData {
   title?: string;
   scrollWind?: number;
   attrs: { unspent: number; str: number; agi: number; int: number; con: number; luc: number; wis: number };
+  /** Прибавка к атрибутам от колец и камней (PlayerState.gb): откат умений и бонусы считаются с ней. */
+  gb?: Partial<Record<"str" | "agi" | "int" | "con" | "luc" | "wis", number>>;
+  /** Сила удара героя (до множителя умения) — от оружия в руке, статов и роллов; без класса не задана. */
+  strike?: number;
   respecCost: number;
   stats: { label: string; value: string }[];
   /** Умения: класс по оружию в руках ("" — без оружия) и выбранные два. */

@@ -537,8 +537,12 @@ export function skillCdMul2(cls: ClassId | null, a: object): number {
   return ((cls && CLASS_CD_MUL[cls]) || 1) / (1 + inv(attrOf(a, "wis")) * ATTR2.wis.cd);
 }
 
-export function skillCooldownOf(id: SkillId, cls: ClassId | null): number {
-  return Math.round(SKILLS2[id].cooldown * ((cls && CLASS_CD_MUL[cls]) || 1) * 10) / 10;
+/** Атрибуты героя для умений: база (как в PlayerState) и прибавка от колец и камней (PlayerState.gb). */
+export type SkillAttrs = Partial<Record<Attr, number>> & { gb?: Partial<Record<Attr, number>> };
+
+/** Откат умения героя, сек, до 0.1 — тот же расчёт, что у сервера: база × класс × МДР (с камнями). Без `a` — старт (МДР 1). */
+export function skillCooldownFor(id: SkillId, cls: ClassId | null, a: SkillAttrs = {}): number {
+  return Math.round(SKILLS2[id].cooldown * skillCdMul2(cls, a) * 10) / 10;
 }
 
 /** «Град выпадов» копейщика: серия колющих ударов вперёд. */
@@ -571,17 +575,25 @@ export function skillName(id: SkillId, cls: ClassId): string {
   return sk.test ? `${glyph("ui.test")} ${name}` : name;
 }
 
-/** Описание умения для класса + строка про свой атрибут (если есть) — единый текст для всех окон. */
-export function skillDesc(id: SkillId, cls: ClassId): string {
+/**
+ * Описание умения для класса + строка про свой атрибут (если есть) — единый текст для всех окон.
+ * С `a` (герой) — бонус, который сервер применяет сейчас (атрибут с кольцами и камнями); без `a` — формула.
+ */
+export function skillDesc(id: SkillId, cls: ClassId, a?: SkillAttrs): string {
   const sk = SKILLS2[id];
   const d = sk.variants?.[cls]?.desc ?? sk.desc;
-  return sk.attr ? `${d}. ${ATTR_INFO[sk.attr.attr].name}: +${Math.round(sk.attr.per * 1000) / 10}% (${sk.attr.what}) за очко` : d;
+  if (!sk.attr) return d;
+  const name = ATTR_INFO[sk.attr.attr].name;
+  const per = `+${Math.round(sk.attr.per * 1000) / 10}% за очко`;
+  if (!a) return `${d}. ${name}: ${per} (${sk.attr.what})`;
+  const pct = Math.round((skillAttrMul(id, a) - 1) * 1000) / 10;
+  return `${d}. ${sk.attr.what}: +${pct}% сейчас (${name} ${attrOf(a, sk.attr.attr)}) · ${per}`;
 }
 
-/** Множитель умения от его атрибута (SkillDef.attr): 1 + вложенные очки × per. */
-export function skillAttrMul(id: SkillId, a: Partial<Record<Attr, number>>): number {
+/** Множитель умения от его атрибута (SkillDef.attr): 1 + (атрибут − старт) × per. Атрибут — с кольцами и камнями (attrOf), как на сервере. */
+export function skillAttrMul(id: SkillId, a: SkillAttrs): number {
   const at = SKILLS2[id].attr;
-  return at ? 1 + Math.max(0, (a[at.attr] ?? 1) - ATTR2.start) * at.per : 1;
+  return at ? 1 + Math.max(0, attrOf(a, at.attr) - ATTR2.start) * at.per : 1;
 }
 
 /** «Чумной клинок»: стак яда тикает stackSec, доля удара в секунду за стак; на maxStacks — взрыв. */

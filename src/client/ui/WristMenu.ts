@@ -1,4 +1,4 @@
-import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownOf, skillDesc, skillName, SKILLS2, type ClassId } from "#shared/classes2";
+import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownFor, skillDesc, skillName, SKILLS2, type Attr, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -30,6 +30,31 @@ import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 /** Цвет ника в чате — по нику (тот же расчёт, что у панели чата на ПК/телефоне). */
+/** Перенос текста по словам в ширину maxW — не больше lines строк; последняя строка, если не влезает, — с «…». */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, lines: number): string[] {
+  const out: string[] = [];
+  let rest = text;
+  while (rest && out.length < lines) {
+    if (out.length === lines - 1) {
+      if (ctx.measureText(rest).width <= maxW) {
+        out.push(rest);
+        break;
+      }
+      let t = rest;
+      while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
+      out.push(`${t.trimEnd()}…`);
+      break;
+    }
+    let n = rest.length;
+    while (n > 1 && ctx.measureText(rest.slice(0, n)).width > maxW) n--;
+    const sp = n < rest.length ? rest.lastIndexOf(" ", n) : -1;
+    const cut = sp > 0 ? sp : n;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  return out;
+}
+
 function nickColor(nick: string): string {
   let h = 0;
   for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
@@ -173,6 +198,10 @@ export class WristMenu {
     parent: Node,
     private readonly prog: Progression,
     private readonly inv: Inventory,
+    /** Прибавка к атрибутам от колец и камней (PlayerState.gb) — откат умений считается с ней, как на сервере. */
+    private readonly bonus: () => Partial<Record<Attr, number>> | undefined,
+    /** Сила удара героя с сервера (как в окне инвентаря): от неё урон умений; пока не пришла — строки урона нет. */
+    private readonly strikeOf: () => number | undefined,
   ) {
     this.tex = new DynamicTexture("wristMenuTex", { width: TEX_W, height: TEX_H }, scene, false);
     const mat = new StandardMaterial("wristMenuMat", scene);
@@ -322,10 +351,14 @@ export class WristMenu {
     // Умений больше четырёх (тестовые 🧪) — строки компактнее, иначе не влезут в панель.
     const compact = def.skills.length > 4;
     const rowH = compact ? 66 : 92;
+    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
+    const live = { ...this.prog.stats, gb: this.bonus() };
+    const strike = this.strikeOf();
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const desc = skillDesc(id, cls);
+      const dmg = sk.dmgMult > 0 && strike !== undefined ? `. Урон ×${sk.dmgMult} от силы удара ${strike}` : "";
+      const desc = `${skillDesc(id, cls, live)}${dmg}`;
       const on = this.skillChosen.includes(id);
       const wd = this.add({
         id: `skill:${id}`, x: X, y, w: W, h: rowH, kind: "button",
@@ -333,7 +366,7 @@ export class WristMenu {
           if (on) return;
           this.onSkills?.([...this.skillChosen, id].slice(-2));
         },
-        info: [`${name} · откат ${skillCooldownOf(id, cls)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+        info: [`${name} · откат ${skillCooldownFor(id, cls, live)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
       });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");
@@ -346,7 +379,9 @@ export class WristMenu {
       ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${name}`, X + 14, y + (compact ? 6 : 10));
       ctx.font = `${compact ? 18 : 21}px system-ui, sans-serif`;
       ctx.fillStyle = "#a9a498";
-      ctx.fillText(desc.slice(0, compact ? 100 : 95), X + 14, y + (compact ? 38 : 52));
+      // Описание с живыми цифрами переносим, а не режем: иначе хвост (бонус от атрибута) не виден.
+      const dl = wrapLines(ctx, desc, W - 28, compact ? 1 : 2);
+      dl.forEach((ln, i) => ctx.fillText(ln, X + 14, y + (compact ? 38 : 52) + i * 24));
       y += rowH + 8;
     }
   }

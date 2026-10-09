@@ -77,6 +77,7 @@ import {
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
+import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
@@ -627,6 +628,9 @@ function savePos(x: number, y: number, z: number, edge: number): { x: number; y:
   if (inPlayArea(x, z)) return { x, y, z }; // плато рейд-босса — за краем карты, но своё
   return { x: clampAbs(x, edge), y, z: clampAbs(z, edge) };
 }
+
+/** Окно «писали в чат» для списка обмена — час, по времени сервера (эпоха в мс, без часовых поясов). */
+const CHAT_WINDOW_MS = 60 * 60 * 1000;
 
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
@@ -1213,6 +1217,13 @@ export class ZoneRoom extends Room<ZoneState> {
   override onCreate(): void {
     // Сетка маршрутов ботов в обход крутых склонов — считается в фоне после старта (sim/nav.ts).
     warmNav();
+    // Писавшие за час (список обмена) живут в памяти — после перезапуска (деплой) их нет.
+    // Берём время из лога чата: он на диске и переживает рестарт.
+    const hourAgo = Date.now() - CHAT_WINDOW_MS;
+    for (const e of chatLog.readRecent()) {
+      const norm = normNick(e.nick);
+      if (norm && e.t >= hourAgo) this.chatLast.set(norm, Math.max(this.chatLast.get(norm) ?? 0, e.t));
+    }
     // Разово: свет травы, подобранный на стенде 2026-09-28, — в общую подгонку
     // (админ-панель хранит её на сервере и перебивает дефолты клиента).
     {
@@ -4664,6 +4675,8 @@ export class ZoneRoom extends Room<ZoneState> {
       titles: rec?.titles ?? [],
       title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
+      gb: { str: p.gb.str, agi: p.gb.agi, int: p.gb.int, con: p.gb.con, luc: p.gb.luc, wis: p.gb.wis },
+      strike: this.strikeOfLive(p, rt),
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       skills: {
         cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
@@ -4966,9 +4979,9 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.tradeCancel(me, id);
   }
 
-  /** Кому можно предложить обмен: кто в игре сейчас (сначала) и писавшие в чат за час — свежие первыми. Без ботов и себя; без героя не показываем. */
+  /** Кому можно предложить обмен: кто в игре сейчас (сначала) и писавшие в чат за час — свежие первыми. Себя не показываем; без героя не показываем. Герой на боте тоже в списке: обмен с ним висит, пока не отменят (бот не подтверждает). */
   private exchangePartnerNicks(exceptNorm: string): string[] {
-    const windowMs = 60 * 60 * 1000;
+    const windowMs = CHAT_WINDOW_MS;
     const now = Date.now();
     const live = new Map<string, string>(); // норм. ник → ник, сейчас в мире
     this.state.players.forEach((p, id) => {
@@ -4983,7 +4996,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.chatLast.delete(norm);
         continue;
       }
-      if (norm === exceptNorm || this.bots.has(norm) || this.state.players.has(`bot:${norm}`) || live.has(norm)) continue;
+      if (norm === exceptNorm || live.has(norm)) continue;
       const rec = store.get(`nick:${norm}`);
       if (!rec) continue; // писал, но героя нет — не с кем обмениваться
       chat.push({ nick: rec.nick || norm, at });
@@ -8117,28 +8130,22 @@ export class ZoneRoom extends Room<ZoneState> {
    * «Сила» умения — от оружия класса: у бойцов это удар основным оружием
    * (тир, роллы, баффы), у магов — магия (ИНТ, тир посоха/молота).
    */
+  /** Рука, которой бьёт умение класса, и её множители/роллы — вход для skillStrike (тот же расчёт видит окно инвентаря). */
+  private strikeHandFor(p: PlayerState, cls: ClassId, rt: Runtime): StrikeHand {
+    const h: "left" | "right" = p.rightCls === strikeKindOf(cls) ? "right" : "left";
+    return { mult: multIn(p, h), tier: p[`${h}Tier`], roll: rolledDmgMul(p, h, rt) };
+  }
+
+  /** Сила удара класса, который держит герой, — для окна умений (без класса не показываем). */
+  private strikeOfLive(p: PlayerState, rt: Runtime): number | undefined {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (!cls) return undefined;
+    return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
+  }
+
   private skillPower(p: PlayerState, cls: ClassId, rt: Runtime, ownerId: string): { dmg: number; magic: boolean } {
-    const buff = this.buffMult(ownerId, "dmg");
-    const handOf = (c: string): "left" | "right" => (p.rightCls === c ? "right" : "left");
-    switch (cls) {
-      case "support": {
-        const h = handOf("staff");
-        return { dmg: fireboltDamage(p.level, p, 0.7) * staffMagicTier(p[`${h}Tier`]) * rolledDmgMul(p, h, rt) * 0.5 * buff, magic: true };
-      }
-      case "battlemage": {
-        const h = handOf("hammer");
-        return { dmg: 1.9 * magicPowerFor(p.level, p) * multIn(p, h) * rolledDmgMul(p, h, rt) * buff, magic: true };
-      }
-      case "archer": {
-        const h = handOf("bow");
-        return { dmg: weaponDamage("arrow", p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
-      }
-      default: {
-        const kind = cls === "assassin" ? "dagger" : cls === "spearman" ? "spear" : "sword";
-        const h = handOf(kind);
-        return { dmg: weaponDamage(kind, p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
-      }
-    }
+    const s = skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt));
+    return { dmg: s.dmg * this.buffMult(ownerId, "dmg"), magic: s.magic };
   }
 
   /**
@@ -10264,6 +10271,8 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     });
     this.applyJewels(client.sessionId);
+    // Снимок инвентаря сразу при входе — в меню на руке уже видна сила удара (без открытия окна).
+    this.sendPcInv(client);
     for (const m of this.chatHistory) client.send(MSG.chatLine, m);
     // Подарки, пришедшие без нас, — всплывашкой при входе (подробно — в инвентаре).
     {
