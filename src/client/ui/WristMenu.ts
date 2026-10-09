@@ -1389,9 +1389,10 @@ export class WristMenu {
       ctx.fillText(eq, x + 8, y + h - 24);
     }
     if (wp.fav) {
-      ctx.font = "bold 24px system-ui, sans-serif";
+      // ★ — в левом верхнем углу иконки (как на ПК-инвентаре).
+      ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(glyph("ui.fav"), x + w - 26, y + 6);
+      ctx.fillText(glyph("ui.fav"), x + 8, y + 22);
     }
   }
 

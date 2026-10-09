@@ -438,8 +438,6 @@ export class PcInventory {
     const right = div("pcinv-col");
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     const free = d.weapons.filter((w) => !eq.has(w.id));
-    // Номер — как у сервера (!equip / !scrap <номер>): по порядку всего ненадетого, избранное тоже.
-    const numOf = new Map(free.map((w, i) => [w.id, i + 1]));
     const favs = free.filter((w) => w.fav);
     const bag = free.filter((w) => !w.fav);
     const favTotal = d.weapons.filter((w) => w.fav).length;
@@ -448,7 +446,7 @@ export class PcInventory {
     const favGrid = div("pcinv-grid pcinv-favgrid");
     for (let i = 0; i < FAV_MAX; i++) {
       const w = favs[i];
-      favGrid.append(w ? this.itemCell(w, numOf.get(w.id)) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
+      favGrid.append(w ? this.itemCell(w) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
     }
     favGrid.addEventListener("dragover", (e) => {
       const w = this.dragWeapon();
@@ -481,7 +479,7 @@ export class PcInventory {
     const grid = div("pcinv-grid");
     for (let i = 0; i < slots; i++) {
       const w = bag[i];
-      grid.append(w ? this.itemCell(w, numOf.get(w.id)) : div("pcinv-cell"));
+      grid.append(w ? this.itemCell(w) : div("pcinv-cell"));
     }
     // С руки в сумку — снять; из избранного в сумку — убрать звёздочку.
     grid.addEventListener("dragover", (e) => {
@@ -680,13 +678,11 @@ export class PcInventory {
     this.hooks.act({ act: "fav", id: w.id, idx: 0 });
   }
 
-  private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
+  private itemCell(w: PcInvWeapon): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`);
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
-    // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
-    if (this.hooks.page && num) c.append(div("pcinv-num", String(num)));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
     if (!this.hooks.touch || w.fav) c.append(this.favStar(w));
     // Страница на ПК: клик — меню действий, как тап на телефоне.
@@ -1475,7 +1471,6 @@ function injectInvStyle(): void {
 /* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
 .pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; }
 .pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; }
-.pcinv-num { position:absolute; left:3px; top:1px; font:700 10px system-ui; color:#d8d0bb; text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
 /* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
 .pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
@@ -1538,7 +1533,7 @@ function injectInvStyle(): void {
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
 .pcinv-q { position:absolute; right:2px; bottom:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
-.pcinv-fav { position:absolute; right:2px; top:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
+.pcinv-fav { position:absolute; left:2px; top:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
 .pcinv-fav.on { opacity:1; }
 .pcinv-cell:hover .pcinv-fav { opacity:1; }
 .pcinv-cell.big .pcinv-fav { pointer-events:none; }
