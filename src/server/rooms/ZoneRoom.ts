@@ -1257,6 +1257,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const t = this.findWeaponsTarget(norm);
         return t ? this.pcInvDataFor(t.p, t.rt) : null;
       },
+      online: (exceptNorm) => this.onlineNicks(exceptNorm),
     });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
@@ -4668,6 +4669,7 @@ export class ZoneRoom extends Room<ZoneState> {
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
+      online: this.onlineNicks(normNick(p.nick)),
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4959,6 +4961,18 @@ export class ZoneRoom extends Room<ZoneState> {
     if (act === "tradeRemove") return this.tradeRemoveAt(me, id, idx);
     if (act === "tradeConfirm") return this.tradeConfirm(me, id);
     return this.tradeCancel(me, id);
+  }
+
+  /** Игроки в мире прямо сейчас (без ботов), кроме `exceptNorm`; по алфавиту. */
+  private onlineNicks(exceptNorm: string): string[] {
+    const out = new Set<string>();
+    this.state.players.forEach((p, id) => {
+      if (id.startsWith("bot:")) return;
+      const n = normNick(p.nick);
+      if (!n || n === exceptNorm) return;
+      out.add(p.nick);
+    });
+    return [...out].sort((a, b) => a.localeCompare(b, "ru"));
   }
 
   /** Копия обмена, в котором участвует герой (правки — только через putTrade). */

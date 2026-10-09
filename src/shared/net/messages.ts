@@ -343,6 +343,8 @@ export interface PcInvData {
   jewels?: PcInvJewels;
   /** Непрочитанные подарки: от кого и что. */
   giftNotes?: { from: string; text: string; at: number }[];
+  /** Кто сейчас в игре (живые игроки, без ботов): выбор собеседника в обмене. */
+  online?: string[];
   /** Обмен: окна с другими героями — свои предметы и предметы собеседника, подтверждения. */
   trade?: { sessions: { id: string; with: string; mine: { items: TradeItemView[]; ok: boolean }; theirs: { items: TradeItemView[]; ok: boolean } }[] };
 }

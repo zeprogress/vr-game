@@ -162,7 +162,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     leftAffix: heldAffixText(leftInst),
   });
   // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
-  const pc: PcInvData = invHub.pcInv(norm) ?? {
+  const pcLive = invHub.pcInv(norm);
+  const pc: PcInvData = pcLive ?? {
     weapons: weaponsList.map((w) => ({
       id: w.id,
       cls: w.cls,
@@ -195,6 +196,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
+  pc.online = invHub.online(norm);
   return {
     ok: true,
     pc,
