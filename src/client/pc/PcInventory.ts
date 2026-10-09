@@ -619,12 +619,14 @@ export class PcInventory {
     // Кто сейчас в игре: выбрать из списка (с кем обмен уже открыт — не предлагаем).
     const busy = new Set(sessions.map((x) => x.with));
     const online = (d.online ?? []).filter((n) => !busy.has(n));
-    if (online.length) {
+    {
+      // Список показываем всегда: если в мире никого нет — пусто и заблокировано (чтобы было видно, что он есть).
       const sel = document.createElement("select");
       sel.className = "pcinv-select pcinv-tonline";
+      sel.disabled = online.length === 0;
       const ph = document.createElement("option");
       ph.value = "";
-      ph.textContent = `Онлайн сейчас (${online.length}) — выбрать`;
+      ph.textContent = online.length ? `Онлайн сейчас (${online.length}) — выбрать` : "Онлайн сейчас — никого нет в мире";
       sel.append(ph);
       for (const n of online) {
         const o = document.createElement("option");
