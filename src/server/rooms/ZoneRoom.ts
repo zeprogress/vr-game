@@ -7142,7 +7142,9 @@ export class ZoneRoom extends Room<ZoneState> {
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
     const okMob = (m: { dead: boolean; kind: string; x: number; z: number; scarecrow?: boolean; practice?: boolean }): boolean =>
       !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && !m.practice && inZone(m.x, m.z);
-    if (!mob || !okMob(mob)) {
+    // Идёт событие (нашествие/охота), бот на нём: бьёт мобов ивента, пока они есть в зоне.
+    const eventOnly = bot.eventing && this.state.eventKind !== 0;
+    if (!mob || !okMob(mob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
       bot.target = null;
       mob = undefined;
       // Сколько других ботов уже целятся в каждого моба — предпочитаем «своего».
@@ -7151,24 +7153,28 @@ export class ZoneRoom extends Room<ZoneState> {
         if (other === bot || !other.target) continue;
         claimed.set(other.target, (claimed.get(other.target) ?? 0) + 1);
       }
-      let bd = Infinity;
-      for (const m of this.sim.mobs.values()) {
-        if (!okMob(m)) continue;
-        const d =
-          Math.hypot(m.x - p.head.x, m.z - p.head.z) +
-          (claimed.get(m.id) ?? 0) * BOT.targetSpread;
-        if (d < bd) {
-          bd = d;
-          mob = m;
+      const pickNearest = (onlyEvent: boolean): Mob | undefined => {
+        let best: Mob | undefined;
+        let bd = Infinity;
+        for (const m of this.sim.mobs.values()) {
+          if (!okMob(m) || (onlyEvent && !this.sim.eventMobs.has(m.id))) continue;
+          const d = Math.hypot(m.x - p.head.x, m.z - p.head.z) + (claimed.get(m.id) ?? 0) * BOT.targetSpread;
+          if (d < bd) {
+            bd = d;
+            best = m;
+          }
         }
-      }
+        return best;
+      };
+      // На ивенте мобов ивента нет в зоне — бьём ближайших, чтобы бот не стоял.
+      mob = pickNearest(eventOnly) ?? (eventOnly ? pickNearest(false) : undefined);
       if (mob) bot.target = mob.id;
     }
     // Некого выбрать в зоне, но по боту бьёт моб рядом (вышел за радиус зоны —
     // например, погнался за героем от эпицентра события): отбиваемся, а не стоим.
     // По дороге на событие (!event) не отбиваемся — иначе стая вокруг не кончается и бот туда не доходит.
     const toEvent = bot.eventing && Math.hypot(p.head.x - cx, p.head.z - cz) > BOT.zoneRadius * 0.8;
-    if (!mob && !bot.raiding && !toEvent && bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000) {
+    if (!mob && !bot.raiding && !toEvent && bot.hurtByMob && Date.now() - bot.hurtByMobAt < 5000 && !(eventOnly && !this.sim.eventMobs.has(bot.hurtByMob))) {
       const hm = this.sim.mobs.get(bot.hurtByMob);
       if (
         hm &&
@@ -7205,6 +7211,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const hm = bot.hurtByMob && Date.now() - bot.hurtByMobAt < BOT.closeThreatSec * 1000 ? this.sim.mobs.get(bot.hurtByMob) : undefined;
       for (const m of this.sim.mobs.values()) {
         if (m === mob || m.dead || m.kind === "boss" || m.kind === "shard" || m.scarecrow || m.practice) continue;
+        if (eventOnly && !this.sim.eventMobs.has(m.id)) continue;
         const d = Math.hypot(m.x - p.head.x, m.z - p.head.z);
         const touching = d < MOB.bodyRadius * m.scale + PLAYER.radius + 0.8;
         if ((touching || (m === hm && d < BOT.closeThreat)) && d < nd) {
