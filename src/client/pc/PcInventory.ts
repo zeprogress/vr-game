@@ -54,7 +54,7 @@ export function setIcon(el: HTMLElement, cls: string, name?: string, tier?: stri
 }
 const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(id) }));
 
-type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side };
+type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { kind: "ring"; id: string };
 
 export class PcInventory {
   private readonly root: HTMLDivElement;
@@ -175,6 +175,7 @@ export class PcInventory {
         this.endDrag();
         return;
       }
+      if (c.src.kind === "ring") return; // тап по кольцу — его меню (click)
       this.openActions(c.el, c.src);
     };
     this.root.addEventListener("pointerup", up);
@@ -440,6 +441,7 @@ export class PcInventory {
     const free = d.weapons.filter((w) => !eq.has(w.id));
     const favs = free.filter((w) => w.fav);
     const bag = free.filter((w) => !w.fav);
+    if (this.bagByQuality) bag.sort((a, b) => b.quality - a.quality);
     const favTotal = d.weapons.filter((w) => w.fav).length;
     // Избранное ★: отдельный ряд на FAV_MAX ячеек — бросил сюда, предмет в избранном (не разбирается).
     right.append(div("pcinv-sub", `${glyph("ui.fav")} Избранное · ${favTotal}/${FAV_MAX} — не разбирается`));
@@ -475,7 +477,16 @@ export class PcInventory {
     // Склад на сервере без лимита — ячеек минимум 56, дальше растёт рядами по 8 (всегда есть свободный ряд).
     const row = this.hooks.touch && !this.hooks.page ? 10 : 8;
     const slots = Math.max(this.hooks.page ? 40 : this.hooks.touch ? 30 : 56, Math.ceil((bag.length + 1) / row) * row);
-    right.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
+    const bagHead = div("pcinv-bagh");
+    bagHead.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
+    const sortBt = button("⇅ По оценке", () => {
+      this.bagByQuality = !this.bagByQuality;
+      this.render();
+    });
+    sortBt.className = `pcinv-sortbtn${this.bagByQuality ? " on" : ""}`;
+    sortBt.title = "Сумка по оценке: выше — сверху. Повторный клик — обычный порядок";
+    bagHead.append(sortBt);
+    right.append(bagHead);
     const grid = div("pcinv-grid");
     for (let i = 0; i < slots; i++) {
       const w = bag[i];
@@ -900,21 +911,40 @@ export class PcInventory {
 
   /** Кольцо, открытое для работы с камнями (гнёзда). */
   private ringSel: string | null = null;
+  /** Сумка оружия отсортирована по оценке (сверху выше). */
+  private bagByQuality = false;
 
   /** Кольца на странице «Снаряжение»: слоты (под руками) и «Мешочек с драгоценностями» (кольца и камни). */
   private jewelParts(d: PcInvData): { slots: HTMLDivElement; pouch: HTMLDivElement } {
     const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
     const wrap = div("pcinv-rings pcinv-pouch");
-    const ph = div("pcinv-pouch-h", "💰 Мешочек с драгоценностями");
+    wrap.append(div("pcinv-pouch-h", "💰 Мешочек с драгоценностями"));
+    // Общие действия мешочка — одна строка, две колонки (кнопки не уезжают на следующую строку).
+    const bagRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    const acts = div("pcinv-pouch-acts");
+    if (bagRings.length) {
+      const ringSum = bagRings.reduce((n, r) => n + r.scrap, 0);
+      const rall = document.createElement("button");
+      rall.className = "pcinv-allbtn pcinv-ringall";
+      rall.textContent = `⚒ Разобрать все кольца (${bagRings.length})`;
+      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые останутся, камни вернутся в сумку`;
+      rall.onclick = () =>
+        this.askConfirm(
+          `Разобрать ${bagRings.length} колец на ${ringSum} лома? Надетые кольца останутся. Камни из них вернутся в сумку.`,
+          "Разобрать все",
+          () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
+        );
+      acts.append(rall);
+    }
     if (j.gems.some(([, n]) => n >= RING.combine)) {
       const all = document.createElement("button");
       all.className = "pcinv-allbtn pcinv-mergeall";
       all.textContent = "⬆ Соединить все камни";
       all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
       all.onclick = () => this.hooks.act({ act: "gemMergeAll", id: "all", idx: 0 });
-      ph.append(all);
+      acts.append(all);
     }
-    wrap.append(ph);
+    if (acts.childElementCount) wrap.append(acts);
     const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
     if (this.ringSel && !ringOf(this.ringSel)) this.ringSel = null;
 
@@ -977,8 +1007,7 @@ export class PcInventory {
       wrap.append(box);
     }
 
-    // Кольца в сумке.
-    const bagRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    // Кольца в сумке (надетые не показываем — они в слотах выше).
     wrap.append(div("pcinv-sub", `Кольца в сумке · ${bagRings.length}`));
     const rg = div("pcinv-grid");
     // Пустой текст — не в сетку (там он сжимался в колонку шириной с ячейку).
@@ -987,6 +1016,11 @@ export class PcInventory {
       const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
       c.innerHTML = ringHtml(r.tier, r.gems);
       this.ringTip(c, r);
+      // Кольцо тянем на зону «⚒ Перетащи кольцо сюда — в лом» под кольцами.
+      c.draggable = true;
+      c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "ring", id: r.id }));
+      c.addEventListener("dragend", () => this.endDrag());
+      this.touchSrc.set(c, { kind: "ring", id: r.id });
       c.onclick = () =>
         this.menu(c, ringLabelOf(r), [
           ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
@@ -1007,6 +1041,28 @@ export class PcInventory {
       rg.append(c);
     }
     wrap.append(rg);
+    const ranvil = div("pcinv-anvil pcinv-ranvil", "⚒ Перетащи кольцо сюда — в лом");
+    ranvil.addEventListener("dragover", (e) => {
+      if (this.drag?.kind === "ring") {
+        e.preventDefault();
+        ranvil.classList.add("hot");
+      }
+    });
+    ranvil.addEventListener("dragleave", () => ranvil.classList.remove("hot"));
+    ranvil.addEventListener("drop", (e) => {
+      e.preventDefault();
+      ranvil.classList.remove("hot");
+      const src = this.drag;
+      this.endDrag();
+      const r = src?.kind === "ring" ? j.rings.find((x) => x.id === src.id) : undefined;
+      if (r)
+        this.askConfirm(
+          `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
+          "Разобрать",
+          () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
+        );
+    });
+    wrap.append(ranvil);
 
     // Камни.
     wrap.append(div("pcinv-sub", `Камни · соедини ${RING.combine} одинаковых — получишь уровнем выше`));
@@ -1026,6 +1082,7 @@ export class PcInventory {
       const acts: [string, () => void, boolean?][] = [];
       if (sel && free >= 0) acts.push([`Вставить в ${ringName(sel).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: sel.id, idx: free, fuel: gk })]);
       if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
+      if (g.lv > 1) acts.push([`Разделить → ${RING.combine} × ур. ${g.lv - 1}`, () => this.hooks.act({ act: "gemSplit", id: gk, idx: 0 })]);
       acts.push(["🎁 Подарить…", () => this.askGift(gemName(gk), `g:${gk}`, n)]);
       c.onclick = () =>
         acts.length
@@ -1175,7 +1232,7 @@ export class PcInventory {
   /** Перетаскиваемое оружие со склада (обычное с руки на склад не попадает — null). */
   private dragWeapon(): PcInvWeapon | null {
     const s = this.drag;
-    if (!s || !this.data) return null;
+    if (!s || !this.data || s.kind === "ring") return null;
     if (s.kind === "bag") return this.weaponById(s.id);
     const eq = this.data.equipped;
     const other = this.weaponById(eq[s.side === "left" ? "right" : "left"]);
@@ -1429,7 +1486,6 @@ function injectInvStyle(): void {
 .pcinv-rslots { display:flex; gap:8px; align-items:center; margin:8px 0; }
 .pcinv-pouch { margin-top:10px; background:#141319; border:1px solid #3a3426; border-radius:8px; padding:8px; }
 .pcinv-pouch-h { font-weight:800; color:#e8c26a; margin-bottom:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.pcinv-pouch-h .pcinv-mergeall { margin:0 0 0 auto; width:auto; color:#7ee081; }
 .pcinv-rslot-n { position:absolute; left:4px; top:2px; font:700 10px system-ui; color:#8a8698; }
 .pcinv-rsum { flex:1; min-width:0; }
 .pcinv-rsel { background:#16151c; border:1px solid #2f323b; border-radius:8px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }
@@ -1450,6 +1506,14 @@ function injectInvStyle(): void {
 .pcinv-allbtn { margin-top:10px; width:100%; padding:7px 10px; border-radius:7px; border:1px solid #a8453a; background:#2a1d1b;
   color:#ffc2b8; cursor:pointer; font:600 12.5px/1.2 system-ui; }
 .pcinv-allbtn:disabled { opacity:.45; cursor:default; }
+.pcinv-bagh { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:2px 0 5px; }
+.pcinv-bagh .pcinv-sub { margin:0; }
+.pcinv-sortbtn { padding:4px 9px; border-radius:6px; border:1px solid #4a4638; background:#1d1b16; color:#d8d0bb; font:700 12px system-ui; cursor:pointer; white-space:nowrap; }
+.pcinv-sortbtn.on { border-color:#e8c26a; color:#e8c26a; background:#2a2415; }
+.pcinv-pouch-acts { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:0 0 8px; }
+.pcinv-pouch-acts .pcinv-allbtn { margin:0; width:100%; padding:7px 8px; }
+.pcinv-pouch-acts .pcinv-mergeall { color:#7ee081; border-color:#3f7a48; background:#16261a; }
+.pcinv-ranvil { margin-top:8px; min-height:44px; }
 .pcinv-small { color:#a9a498; font-size:11.5px; }
 .pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
 .pcinv-name { font-weight:700; margin-bottom:6px; }
@@ -1470,7 +1534,8 @@ function injectInvStyle(): void {
 .pcinv-root.page .pcinv-head { cursor:default; }
 /* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
 .pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; }
-.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; }
+.pcinv-root.page .pcinv-favgrid { margin:0; }
+.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; box-sizing:border-box; }
 .pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
 /* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
 .pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
@@ -1490,7 +1555,8 @@ function injectInvStyle(): void {
 .pcinv-root.touch .pcinv-doll { display:none; }
 .pcinv-root.touch .pcinv-body { padding:6px 8px; }
 .pcinv-root.touch .pcinv-head { padding:4px 8px 0; }
-.pcinv-root.touch .pcinv-tab { padding:5px 10px; }
+.pcinv-root.touch .pcinv-tabs { flex-wrap:wrap; gap:3px; }
+.pcinv-root.touch .pcinv-tab { padding:5px 8px; font-size:12px; }
 .pcinv-root.touch .pcinv-gear { grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr); gap:10px; }
 .pcinv-root.touch .pcinv-cell { width:34px; height:34px; font-size:18px; }
 .pcinv-root.touch .pcinv-cell.big { width:46px; height:46px; font-size:24px; }
