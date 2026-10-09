@@ -2793,7 +2793,8 @@ export class ZoneSim {
         const x = m.x;
         const y = m.y + MOB.bodyRadius * m.scale * 1.4;
         const z = m.z;
-        this.hitMob(m.id, m.poisonDps * m.poisonStacks * dt, 0, 0, m.poisonBy, false, true);
+        // Яд — магический урон: физическая броня моба на него не действует, магическая уязвимость — действует.
+        this.hitMob(m.id, m.poisonDps * m.poisonStacks * dt, 0, 0, m.poisonBy, false, true, true);
         m.poisonShown += Math.max(0, hp0 - (m.dead ? 0 : m.hp));
         m.poisonShowT += dt;
         if (m.poisonT <= 0) m.poisonStacks = 0;
@@ -3062,7 +3063,7 @@ export class ZoneSim {
     const near = [...this.mobs.values()].filter((o) => !o.dead && Math.hypot(o.x - m.x, o.z - m.z) <= PLAGUE.burstRadius + MOB.bodyRadius * o.scale);
     for (const o of near) {
       const hp0 = o.hp;
-      this.hitMob(o.id, dmg, 0, 0, by, false, true);
+      this.hitMob(o.id, dmg, 0, 0, by, false, true, true);
       const dealt = Math.round(Math.max(0, hp0 - (o.dead ? 0 : o.hp)));
       if (dealt > 0) this.dmgHits.push({ x: o.x, y: o.y + MOB.bodyRadius * o.scale * 1.6, z: o.z, dmg: dealt, by: by || undefined, mob: o.id, c: "poison" });
     }
