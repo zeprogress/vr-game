@@ -22,51 +22,22 @@ export interface IconDef {
 // ---- маленькие помощники для векторных значков (viewBox 0 0 100 100) ----
 const line = (d: string, w = 7): string =>
   `<path d="${d}" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
-const fill = (d: string): string => `<path d="${d}" fill="currentColor"/>`;
-const dot = (cx: number, cy: number, r: number): string => `<circle cx="${cx}" cy="${cy}" r="${r}" fill="currentColor"/>`;
-const ring = (cx: number, cy: number, r: number, w: number): string =>
-  `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="currentColor" stroke-width="${w}"/>`;
 /** Обёртка для многоцветных значков, перенесённых как есть (свои цвета, без currentColor). */
 const g = (attrs: string, inner: string): string => `<g ${attrs}>${inner}</g>`;
 
 export const ICONS = {
   // ---- оружие: остриё вверх-вправо, рукоять вниз-влево; цвет — тир ----
-  "w.sword": {
-    emoji: "🗡️",
-    svg: fill("M88 10 L83 22 L43.5 61.5 L36.5 54.5 L76 15 Z") + line("M29 47 L51 69", 8) + line("M37 61 L24 74", 7) + dot(19, 79, 6),
-  },
-  "w.dagger": {
-    emoji: "🔪",
-    // Нож, а не маленький меч (2026-10-02: путали с мечом): широкий клинок с прямым
-    // обухом и изогнутым лезвием, толстая рукоять, без крестовины.
-    svg: fill("M38 55 L88 12 Q80 50 51 67 Z") + line("M44 62 L20 86", 13),
-  },
-  "w.spear": {
-    emoji: "🔱",
-    svg: line("M12 88 L66 34", 6) + fill("M90 10 L83 27 L67.4 32.6 L73 17 Z") + line("M60 32 L68 40", 6),
-  },
-  "w.hammer": {
-    emoji: "🔨",
-    svg: line("M14 86 L54 46", 7) + fill("M54 15 L85 46 L70 61 L39 30 Z"),
-  },
-  "w.staff": {
-    emoji: "🪄",
-    svg: line("M18 90 L60 42", 7) + dot(70, 29, 13) + ring(70, 29, 21, 3),
-  },
-  "w.bow": {
-    emoji: "🏹",
-    svg: line("M30 8 Q84 50 30 92", 7) + line("M30 8 L30 92", 2.5) + line("M12 50 L78 50", 4) + fill("M92 50 L76 42 L76 58 Z") + line("M12 50 L5 43 M12 50 L5 57", 3),
-  },
+  // Оружие и щиты — картинки из концепта (public/icons/weapons|shields/); цвет тира накладывается при показе.
+  "w.sword": { emoji: "🗡️", img: "weapons/sword.png" },
+  "w.dagger": { emoji: "🔪", img: "weapons/dagger.png" },
+  "w.spear": { emoji: "🔱", img: "weapons/spear.png" },
+  "w.hammer": { emoji: "🔨", img: "weapons/hammer.png" },
+  "w.staff": { emoji: "🪄", img: "weapons/staff.png" },
+  "w.bow": { emoji: "🏹", img: "weapons/bow.png" },
   /** Круглый щит — у всех грейдов один (цвет — тир). */
-  "w.shield": {
-    emoji: "🛡️",
-    svg: ring(50, 50, 38, 7) + ring(50, 50, 24, 3) + dot(50, 50, 9),
-  },
-  /** Эгида — свой, треугольный щит с крестом. */
-  "w.aegis": {
-    emoji: "🛡️",
-    svg: line("M50 8 L86 20 L82 56 Q72 82 50 94 Q28 82 18 56 L14 20 Z", 7) + line("M50 30 L50 72 M34 46 L66 46", 6),
-  },
+  "w.shield": { emoji: "🛡️", img: "shields/round.png" },
+  /** Эгида — свой щит. */
+  "w.aegis": { emoji: "🛡️", img: "shields/aegis.png" },
   /** Пустые руки. */
   "w.fist": {
     emoji: "✊",
