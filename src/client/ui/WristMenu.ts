@@ -151,6 +151,10 @@ export class WristMenu {
   /** Кольца и камни: действие (то же сообщение, что у окна инвентаря) и запрос данных при открытии вкладки. */
   onJewelAct: ((m: PcInvActMsg) => void) | null = null;
   onRingsOpen: (() => void) | null = null;
+  /** Подарок оружия со склада (то же сообщение, что у окна инвентаря). Ставит Game. */
+  onGift: ((m: PcInvActMsg) => void) | null = null;
+  /** Герои рядом — ники получателей, ближайшие первыми. Ставит Game. */
+  nearbyHeroes: (() => string[]) | null = null;
   private jewels: PcInvJewels | null = null;
   private jewelScrap = 0;
 
@@ -1447,6 +1451,7 @@ export class WristMenu {
       color: "#ffd166",
       act: () => send({ act: "fav", id: wp.id }),
     });
+    buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(wp) });
     buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
     if (!wp.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
@@ -1457,6 +1462,31 @@ export class WristMenu {
       buttons,
     };
     this.focusId = "pop:handL";
+  }
+
+  /** Подарок со склада (VR): текста здесь не набрать — получатель из героев рядом. */
+  private openGiftPopup(wp: WarehouseWeapon): void {
+    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
+    const nicks = this.nearbyHeroes?.() ?? [];
+    const buttons: Popup["buttons"] = nicks.map((nick, i) => ({
+      id: `pop:to${i}`,
+      label: nick,
+      hint: "подарить, предмет уйдёт сразу",
+      color: "#ffd166",
+      act: () => {
+        this.popup = null;
+        this.focusId = `wh:${wp.id}`;
+        this.onGift?.({ act: "gift", id: `w:${wp.id}`, idx: 1, fuel: nick });
+      },
+    }));
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = {
+      title: `🎁 Подарить: ${name}`,
+      sub: nicks.length ? "герой рядом — выбери, кому" : "рядом никого нет: подойди к герою в мире",
+      color: TIER_COLOR[wp.tier],
+      buttons,
+    };
+    this.focusId = nicks.length ? "pop:to0" : "pop:cancel";
   }
 
   /** Меню над оружием в руке / за спиной: склад, либо перенос на ту же сторону (рука ↔ плечо), с обменом. */
