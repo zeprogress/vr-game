@@ -1197,6 +1197,8 @@ export class ZoneRoom extends Room<ZoneState> {
   /** Сколько попыток в башне началось за текущее окно события (0 — никто не приходил). */
   private towerRunsStarted = 0;
   private readonly chatSeen = new Map<string, number>(); // normNick -> ms последнего сообщения
+  /** Только реальные сообщения в чате (для списка «писали за час» в обмене); в отличие от chatSeen не трогается при уходе в бота. */
+  private readonly chatLast = new Map<string, number>(); // normNick -> ms
   private readonly ttsLast = new Map<string, number>(); // normNick -> ms последней озвучки
   private readonly playCd = new Map<string, number>(); // normNick -> ms последнего !play
   private infoAt = 0; // ms последнего ответа на !info (общий кулдаун)
@@ -1257,7 +1259,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const t = this.findWeaponsTarget(norm);
         return t ? this.pcInvDataFor(t.p, t.rt) : null;
       },
-      online: (exceptNorm) => this.onlineNicks(exceptNorm),
+      chatters: (exceptNorm) => this.chatRecentNicks(exceptNorm),
     });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
@@ -3738,6 +3740,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const norm = normNick(nick);
     if (!norm) return;
     this.chatSeen.set(norm, Date.now());
+    this.chatLast.set(norm, Date.now());
     chatLog.append(nick, text);
     this.sendChatLine({ nick, text: text.slice(0, 300) });
     // Из игры ник не подтверждён (не Twitch): коды входа в !inv и команды админов — только из Twitch.
@@ -4669,7 +4672,7 @@ export class ZoneRoom extends Room<ZoneState> {
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
-      online: this.onlineNicks(normNick(p.nick)),
+      chatters: this.chatRecentNicks(normNick(p.nick)),
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4963,16 +4966,22 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.tradeCancel(me, id);
   }
 
-  /** Игроки в мире прямо сейчас (без ботов), кроме `exceptNorm`; по алфавиту. */
-  private onlineNicks(exceptNorm: string): string[] {
-    const out = new Set<string>();
-    this.state.players.forEach((p, id) => {
-      if (id.startsWith("bot:")) return;
-      const n = normNick(p.nick);
-      if (!n || n === exceptNorm) return;
-      out.add(p.nick);
-    });
-    return [...out].sort((a, b) => a.localeCompare(b, "ru"));
+  /** Герои, писавшие в чат за последний час (без ботов и себя), свежие первыми. */
+  private chatRecentNicks(exceptNorm: string): string[] {
+    const windowMs = 60 * 60 * 1000;
+    const now = Date.now();
+    const rows: { nick: string; at: number }[] = [];
+    for (const [norm, at] of this.chatLast) {
+      if (now - at > windowMs) {
+        this.chatLast.delete(norm);
+        continue;
+      }
+      if (norm === exceptNorm || this.bots.has(norm)) continue;
+      const rec = store.get(`nick:${norm}`);
+      if (!rec) continue; // писал, но героя нет — не с кем обмениваться
+      rows.push({ nick: rec.nick || norm, at });
+    }
+    return rows.sort((x, y) => y.at - x.at).map((r) => r.nick);
   }
 
   /** Копия обмена, в котором участвует герой (правки — только через putTrade). */

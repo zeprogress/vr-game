@@ -39,8 +39,8 @@ export interface InvZone {
   act(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult;
   /** Данные окна снаряжения живого героя (в мире); нет в мире — null. */
   pcInv?(norm: string): PcInvData | null;
-  /** Игроки в мире прямо сейчас (без ботов), кроме `exceptNorm`. */
-  online?(exceptNorm: string): string[];
+  /** Герои, писавшие в чат за последний час (без ботов), кроме `exceptNorm`. */
+  chatters?(exceptNorm: string): string[];
 }
 
 interface Session {
@@ -86,8 +86,8 @@ export const invHub = {
     return zone?.pcInv?.(norm) ?? null;
   },
 
-  online(exceptNorm: string): string[] {
-    return zone?.online?.(exceptNorm) ?? [];
+  chatters(exceptNorm: string): string[] {
+    return zone?.chatters?.(exceptNorm) ?? [];
   },
 
   /** sid от клиента, если он похож на наш, иначе новый. */
