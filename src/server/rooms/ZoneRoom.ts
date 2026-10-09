@@ -5591,10 +5591,17 @@ export class ZoneRoom extends Room<ZoneState> {
     // Лук занимает обе руки — без щита; меч/посох — со щитом, лучший
     // когда-либо честно поднятый тир (та же логика, что и для правой руки).
     const leftTier = pinL ? pinL.tier : bestOwnedTier(rec?.owned, "shield");
-    // Левая рука: что герой держал в ней при сохранении (пустая, второй меч/кинжал, щит) —
-    // не навязываем щит заново. По умолчанию (нового героя/другое оружие) — botOffHand.
-    const keepLeft = (pinR ? true : savedRight?.cls === rc) && canHoldTogether(rc, pinL?.cls ?? savedHeld.left?.cls ?? "");
-    const off = keepLeft ? (pinL?.cls ?? savedHeld.left?.cls ?? "") : botOffHand(rc);
+    // Левая рука: что герой держал в ней при сохранении — как есть, и пустая тоже. Класс по умолчанию
+    // (botOffHand: второй кинжал / щит) — только новому герою без сохранённых рук или если правая рука
+    // сменилась. Раньше пустая левая у сохранённого героя с кинжалом в правой заполнялась сама.
+    // Руки уже сохранялись: есть оружие/владения или занятая рука (у новой записи held пустой по умолчанию).
+    const handsSaved = !!rec && ((rec.weapons?.length ?? 0) > 0 || (rec.owned?.length ?? 0) > 0 || !!rec.held?.right || !!rec.held?.left);
+    const leftSaved = savedHeld.left?.cls ?? "";
+    const off = handsSaved
+      ? (canHoldTogether(rc, leftSaved) ? leftSaved : "")
+      : (pinR || savedRight?.cls === rc) && canHoldTogether(rc, pinL?.cls ?? leftSaved)
+        ? (pinL?.cls ?? leftSaved)
+        : botOffHand(rc);
     p.leftCls = off;
     p.leftTier =
       pinL && pinL.cls === off
