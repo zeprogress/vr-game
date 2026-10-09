@@ -13,7 +13,8 @@ export function injectPcStyle(): void {
 .pc-target { position:fixed; left:50%; top:14px; transform:translateX(-50%); width:260px; z-index:30;
   background:var(--pc-bg); border:none; border-radius:8px; padding:6px 10px 7px;
   color:var(--pc-text); font:600 13px/1.25 system-ui,sans-serif; pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
-.pc-target:hover { background:rgba(26,24,33,.9); }
+.pc-target { background:none; }
+.pc-target:hover { background:rgba(26,24,33,.25); }
 .pc-target.attacking { box-shadow:inset 0 0 0 2px rgba(210,59,59,.55); }
 .pc-target-name { color:#ffb3a8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pc-bar { position:relative; height:14px; margin-top:4px; background:#23202a; border:1px solid #000; border-radius:3px; overflow:hidden; }

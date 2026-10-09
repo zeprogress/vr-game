@@ -974,6 +974,9 @@ function injectHudStyle(): void {
 /* ПК: фон чата прозрачнее; у портрета героя убрана подложка (фон круга), сам значок остаётся. */
 .pc-hud:not(.touch) .pc-chat { background:rgba(14,13,19,.3); }
 .pc-hud:not(.touch) .pc-portrait { background:none; }
+/* ПК: рамка HP героя без чёрного фона. */
+.pc-hud:not(.touch) .pc-unit { background:none; }
+.pc-hud:not(.touch) .pc-unit:hover { background:rgba(26,24,33,.25); }
 .pc-chat-head { display:flex; align-items:center; gap:4px; padding:3px 6px; border-bottom:1px solid rgba(110,116,130,.35); }
 .pc-chat-title { flex:1; display:flex; gap:4px; }
 .pc-chat-input { margin:4px 6px 6px; padding:5px 8px; border-radius:6px; border:1px solid rgba(110,116,130,.5); background:rgba(10,9,14,.85); color:#e8e6f0; font:13px system-ui; pointer-events:auto; }

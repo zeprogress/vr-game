@@ -649,6 +649,9 @@ function injectStyle(): void {
 .qt-card.done { border-left-color:#e8c26a; }
 .qt-card.sel { background:rgba(40,52,78,.85); box-shadow:0 0 0 1px #7fa0d8; }
 .qt-card:hover { background:rgba(26,24,33,.85); }
+/* ПК: прогресс квестов справа — карточки прозрачнее. */
+.qt-root.pc .qt-card { background:rgba(14,13,19,.25); }
+.qt-root.pc .qt-card:hover { background:rgba(26,24,33,.4); }
 .qt-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .qt-n { color:#8fd18f; font-variant-numeric:tabular-nums; font-size:11px; }
 .qt-card.done .qt-n { color:#e8c26a; }
