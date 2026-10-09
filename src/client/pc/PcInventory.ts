@@ -5,7 +5,7 @@ import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
 import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon } from "#shared/net/messages";
+import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
 import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 
@@ -334,6 +334,12 @@ export class PcInventory {
   // ---------------- отрисовка ----------------
 
   private render(): void {
+    const top = this.win.scrollTop;
+    this.renderInner();
+    this.win.scrollTop = top;
+  }
+
+  private renderInner(): void {
     const d = this.data;
     this.tabsEl.innerHTML = "";
     const tabs: [InvTab, string][] = [
@@ -402,22 +408,31 @@ export class PcInventory {
   /** Открыт ли выбор предметов для нового обмена. */
   private tradeOpenPick = false;
 
-  /** Что можно отдать в обмене: оружие не в руках и не избранное, кольца в сумке, камни, лом/зелья/рыба. */
-  private tradeable(d: PcInvData): { code: string; label: string; max: number; stack: boolean }[] {
-    const out: { code: string; label: string; max: number; stack: boolean }[] = [];
+  /** Что можно отдать: оружие не в руках и не избранное, кольца в сумке, камни, лом/зелья/рыба — с иконкой. */
+  private tradeable(d: PcInvData): { code: string; label: string; max: number; stack: boolean; view: TradeItemView }[] {
+    const out: { code: string; label: string; max: number; stack: boolean; view: TradeItemView }[] = [];
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     for (const w of d.weapons) {
       if (eq.has(w.id) || w.fav) continue;
-      out.push({ code: `w:${w.id}`, label: `${w.name}${w.quality ? ` · оценка ${Math.round(w.quality)}` : ""}`, max: 1, stack: false });
+      out.push({
+        code: `w:${w.id}`,
+        label: w.name,
+        max: 1,
+        stack: false,
+        view: { k: "weapon", name: w.name, n: 1, cls: w.cls, tier: w.tier },
+      });
     }
     const j = d.jewels;
     if (j) {
-      for (const r of j.rings) if (!j.ringOn.includes(r.id)) out.push({ code: `r:${r.id}`, label: ringName({ tier: r.tier }), max: 1, stack: false });
-      for (const [gk, n] of j.gems) out.push({ code: `g:${gk}`, label: gemName(gk), max: n, stack: true });
+      for (const r of j.rings) {
+        if (j.ringOn.includes(r.id)) continue;
+        out.push({ code: `r:${r.id}`, label: ringName({ tier: r.tier }), max: 1, stack: false, view: { k: "ring", name: ringName({ tier: r.tier }), n: 1, tier: r.tier, gems: r.gems } });
+      }
+      for (const [gk, n] of j.gems) out.push({ code: `g:${gk}`, label: gemName(gk), max: n, stack: true, view: { k: "gem", name: gemName(gk), n, key: gk } });
     }
-    if (d.scrap) out.push({ code: "b:scrap", label: "Лом", max: d.scrap, stack: true });
-    if (d.potions) out.push({ code: "b:potion", label: "Зелья лечения", max: d.potions, stack: true });
-    if (d.fish) out.push({ code: "b:fish", label: "Рыба", max: d.fish, stack: true });
+    if (d.scrap) out.push({ code: "b:scrap", label: "Лом", max: d.scrap, stack: true, view: { k: "bag", name: "Лом", n: d.scrap, item: "scrap" } });
+    if (d.potions) out.push({ code: "b:potion", label: "Зелья лечения", max: d.potions, stack: true, view: { k: "bag", name: "Зелья лечения", n: d.potions, item: "potion" } });
+    if (d.fish) out.push({ code: "b:fish", label: "Рыба", max: d.fish, stack: true, view: { k: "bag", name: "Рыба", n: d.fish, item: "fish" } });
     return out;
   }
 
@@ -427,7 +442,30 @@ export class PcInventory {
     return JSON.stringify([...this.tradePick].filter(([c]) => ok.has(c)).map(([c, n]) => ({ c, n })));
   }
 
-  /** Выбор своих предметов: галочка и количество у стопок. */
+  /** Иконка предмета обмена — из того же реестра значков, что и в инвентаре. */
+  private tradeIcon(it: TradeItemView): HTMLDivElement {
+    const box = div("pcinv-tic");
+    if (it.k === "weapon") setIconEl(box, weaponIcon(it.cls ?? "sword", false, it.tier ?? "base"));
+    else if (it.k === "ring") box.innerHTML = ringHtml((it.tier ?? "base") as RingTier, it.gems ?? []);
+    else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
+    else box.innerHTML = iconHtml(`i.${it.item ?? "scrap"}` as Parameters<typeof iconHtml>[0]);
+    return box;
+  }
+
+  /** Плитка предмета: иконка, название, число (у единичного — ×1), по желанию — кнопка убрать. */
+  private tradeTile(it: TradeItemView, onRemove?: () => void): HTMLDivElement {
+    const t = div("pcinv-ttile");
+    t.append(this.tradeIcon(it), div("pcinv-tname2", it.name), div("pcinv-tcnt", `×${it.n}`));
+    if (onRemove) {
+      const x = button("×", onRemove);
+      x.className = "pcinv-tx";
+      x.title = "Убрать из обмена";
+      t.append(x);
+    }
+    return t;
+  }
+
+  /** Выбор своих предметов: галочка, у стопки — число. */
   private tradePicker(d: PcInvData): HTMLDivElement {
     const box = div("pcinv-tpick");
     const items = this.tradeable(d);
@@ -436,32 +474,36 @@ export class PcInventory {
       const row = div("pcinv-trow");
       const cb = document.createElement("input");
       cb.type = "checkbox";
+      cb.className = "pcinv-tcb";
       cb.checked = this.tradePick.has(it.code);
       cb.onchange = () => {
         if (cb.checked) this.tradePick.set(it.code, 1);
         else this.tradePick.delete(it.code);
         this.render();
       };
-      row.append(cb, div("pcinv-tname", it.stack ? `${it.label} (есть ${it.max})` : it.label));
-      if (it.stack && this.tradePick.has(it.code)) {
+      row.append(cb, this.tradeIcon(it.view), div("pcinv-tname2", it.stack ? `${it.label} · есть ${it.max}` : it.label));
+      if (it.stack) {
         const num = document.createElement("input");
         num.type = "number";
         num.min = "1";
         num.max = String(it.max);
         num.className = "pcinv-tnum";
-        num.value = String(this.tradePick.get(it.code));
+        num.disabled = !this.tradePick.has(it.code);
+        num.value = String(this.tradePick.get(it.code) ?? 1);
         num.onchange = () => {
           this.tradePick.set(it.code, Math.max(1, Math.min(it.max, Math.floor(Number(num.value) || 1))));
           this.render();
         };
         row.append(num);
+      } else {
+        row.append(div("pcinv-tcnt", "×1"));
       }
       box.append(row);
     }
     return box;
   }
 
-  /** Окно обмена: каждый обмен — два столбца (отдаю / получаю), подтверждения, отмена. */
+  /** Окно обмена: карточка на каждый обмен — два столбца (отдаю / получаю), подтверждения зелёным. */
   private renderTrade(d: PcInvData): void {
     const wrap = div("pcinv-trade");
     const sessions = d.trade?.sessions ?? [];
@@ -469,21 +511,22 @@ export class PcInventory {
     if (!sessions.length) wrap.append(div("pcinv-small", "Открытых обменов нет. Открой обмен по нику: предметы будут видны обоим, меняются, когда подтвердят оба."));
     for (const s of sessions) {
       const card = div("pcinv-tsess");
-      card.append(div("pcinv-tname", `Обмен с ${s.with}`));
-      card.append(div("pcinv-small", `${s.mine.ok ? "Ты подтвердил" : "Ты не подтвердил"} · ${s.theirs.ok ? `${s.with} подтвердил` : `${s.with} не подтвердил`}`));
+      const head = div("pcinv-trow");
+      head.append(div("pcinv-tname2 pcinv-thead", `Обмен с ${s.with}`));
+      head.append(
+        div(`pcinv-chip${s.mine.ok ? " ok" : ""}`, s.mine.ok ? "✓ ты подтвердил" : "ты не подтвердил"),
+        div(`pcinv-chip${s.theirs.ok ? " ok" : ""}`, s.theirs.ok ? `✓ ${s.with} подтвердил` : `${s.with} не подтвердил`),
+      );
+      card.append(head);
       const cols = div("pcinv-tcols");
-      const mineCol = div("pcinv-tcol");
-      mineCol.append(div("pcinv-small", "Ты отдаёшь:"));
-      if (!s.mine.items.length) mineCol.append(div("pcinv-small", "пусто"));
-      s.mine.items.forEach((name, i) => {
-        const row = div("pcinv-trow");
-        row.append(div("pcinv-tname", name), button("×", () => this.hooks.act({ act: "tradeRemove", id: s.id, idx: i })));
-        mineCol.append(row);
-      });
-      const theirCol = div("pcinv-tcol");
-      theirCol.append(div("pcinv-small", `${s.with} отдаёт:`));
-      if (!s.theirs.items.length) theirCol.append(div("pcinv-small", "пусто"));
-      for (const name of s.theirs.items) theirCol.append(div("pcinv-tname", name));
+      const mineCol = div(`pcinv-tcol${s.mine.ok ? " ok" : ""}`);
+      mineCol.append(div("pcinv-colh", "Ты отдаёшь"));
+      if (!s.mine.items.length) mineCol.append(div("pcinv-small", "пока пусто"));
+      s.mine.items.forEach((it, i) => mineCol.append(this.tradeTile(it, () => this.hooks.act({ act: "tradeRemove", id: s.id, idx: i }))));
+      const theirCol = div(`pcinv-tcol${s.theirs.ok ? " ok" : ""}`);
+      theirCol.append(div("pcinv-colh", `${s.with} отдаёт`));
+      if (!s.theirs.items.length) theirCol.append(div("pcinv-small", "пока пусто"));
+      for (const it of s.theirs.items) theirCol.append(this.tradeTile(it));
       cols.append(mineCol, theirCol);
       card.append(cols);
       if (this.tradeEditId === s.id) {
@@ -511,7 +554,7 @@ export class PcInventory {
       const acts = div("pcinv-tbtns");
       if (this.tradeEditId !== s.id) {
         acts.append(
-          button("Добавить предметы…", () => {
+          button("＋ Добавить предметы", () => {
             this.tradeEditId = s.id;
             this.tradeOpenPick = false;
             this.tradePick.clear();
@@ -519,7 +562,7 @@ export class PcInventory {
           }),
         );
       }
-      if (!s.mine.ok) acts.append(button("Подтвердить", () => this.hooks.act({ act: "tradeConfirm", id: s.id, idx: 0 })));
+      if (!s.mine.ok) acts.append(button("Подтвердить обмен", () => this.hooks.act({ act: "tradeConfirm", id: s.id, idx: 0 })));
       acts.append(button("Отменить обмен", () => this.askConfirm(`Отменить обмен с ${s.with}? Твои предметы вернутся тебе.`, "Отменить", () => this.hooks.act({ act: "tradeCancel", id: s.id, idx: 0 }))));
       card.append(acts);
       wrap.append(card);
@@ -1662,6 +1705,24 @@ function injectInvStyle(): void {
 .pcinv-tsess { border:1px solid #3a3426; border-radius:8px; padding:8px 10px; background:#141319; display:flex; flex-direction:column; gap:6px; }
 .pcinv-tcols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .pcinv-tcol { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.pcinv-tname2.pcinv-thead { font-weight:800; font-size:14px; flex:0 0 auto; white-space:nowrap; }
+.pcinv-root.touch .pcinv-tcols { grid-template-columns:1fr; }
+.pcinv-chip { font:700 11px system-ui; padding:2px 8px; border-radius:999px; border:1px solid #3a3e48; color:#9a9588; white-space:nowrap; }
+.pcinv-chip.ok { color:#7ee081; border-color:#3f7a48; background:rgba(126,224,129,.08); }
+.pcinv-colh { font:800 12px system-ui; color:#c9c3b3; margin-bottom:2px; }
+.pcinv-tcol.ok .pcinv-colh { color:#7ee081; }
+.pcinv-tcol.ok .pcinv-ttile { border-color:#3f7a48; }
+.pcinv-ttile { display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #2c2f38; border-radius:7px; background:#17161d; min-width:0; }
+.pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:6px; background:#0f0e13; border:1px solid #33363f; overflow:hidden; }
+.pcinv-tic > * { width:34px !important; height:34px !important; }
+.pcinv-tic img, .pcinv-tic svg { width:34px; height:34px; }
+.pcinv-tname2 { flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-tcnt { font:800 12px system-ui; color:#e8c26a; flex:none; min-width:26px; text-align:right; }
+.pcinv-tx { background:none; border:none; color:#c9a0a0; cursor:pointer; font-size:15px; padding:0 4px; line-height:1; }
+.pcinv-tx:hover { color:#ff9a9a; }
+.pcinv-tcb { width:16px; height:16px; flex:none; accent-color:#7ee081; }
+.pcinv-tnum { width:58px; flex:none; }
+.pcinv-tnum:disabled { opacity:.35; }
 .pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }
