@@ -135,22 +135,28 @@ export function takenName(t: Taken): string {
   return `${ITEMS[t.item].name}${t.n > 1 ? ` ×${t.n}` : ""}`;
 }
 
-// ---------------------------------------------------------------- обмен (предложение)
+// ---------------------------------------------------------------- обмен (окно двух героев)
 
 /** Действия обмена из окна инвентаря (страница !inv, ПК, телефон, игра). */
-export const TRADE_ACTS = ["tradeOffer", "tradeAccept", "tradeDecline", "tradeCancel"] as const;
+export const TRADE_ACTS = ["tradeOpen", "tradeAdd", "tradeRemove", "tradeConfirm", "tradeCancel"] as const;
 export type TradeAct = (typeof TRADE_ACTS)[number];
 
+/** Сторона обмена: её предметы уже сняты с инвентаря (лежат в обмене), `ok` — подтвердила. */
+export interface TradeSide {
+  nick: string;
+  token: string;
+  items: Taken[];
+  ok: boolean;
+}
+
 /**
- * Предложение обмена — работает и когда оба не в игре. Предметы отправителя снимаются сразу
- * (эскроу) и лежат в предложении у получателя; «принять» — получатель добавляет свои предметы и
- * всё меняется местами. Отказ или отмена — эскроу возвращается отправителю.
+ * Обмен двух героев. Предметы каждого видны обоим; меняются местами, когда подтвердили оба.
+ * Любое изменение набора сбрасывает подтверждения. Оба не обязаны быть в игре одновременно.
  */
-export interface TradeOffer {
+export interface TradeSession {
   id: string;
-  from: { nick: string; token: string };
-  to: { nick: string; token: string };
-  taken: Taken[];
+  a: TradeSide;
+  b: TradeSide;
   at: number;
 }
 
@@ -175,19 +181,23 @@ export function parseTradeList(raw: string): TradeItem[] | null {
   return out;
 }
 
-/** Что в предложении — строками для окна. */
-export function offerItems(o: TradeOffer): string[] {
-  return o.taken.map(takenName);
+/** Окно обмена для героя `token`: его предметы и предметы собеседника, строками. */
+export interface TradeView {
+  sessions: { id: string; with: string; mine: { items: string[]; ok: boolean }; theirs: { items: string[]; ok: boolean } }[];
 }
 
-/** Окно обмена героя: входящие и отправленные предложения. */
-export function tradeViewOf(rec: { tradeIn?: TradeOffer[]; tradeOut?: TradeOffer[] } | undefined): {
-  incoming: { id: string; from: string; items: string[] }[];
-  outgoing: { id: string; to: string; items: string[] }[];
-} {
+export function tradeViewOf(rec: { trades?: TradeSession[] } | undefined, token: string): TradeView {
   return {
-    incoming: (rec?.tradeIn ?? []).map((o) => ({ id: o.id, from: o.from.nick, items: offerItems(o) })),
-    outgoing: (rec?.tradeOut ?? []).map((o) => ({ id: o.id, to: o.to.nick, items: offerItems(o) })),
+    sessions: (rec?.trades ?? []).map((s) => {
+      const mine = s.a.token === token ? s.a : s.b;
+      const theirs = s.a.token === token ? s.b : s.a;
+      return {
+        id: s.id,
+        with: theirs.nick,
+        mine: { items: mine.items.map(takenName), ok: mine.ok },
+        theirs: { items: theirs.items.map(takenName), ok: theirs.ok },
+      };
+    }),
   };
 }
 

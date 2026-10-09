@@ -10,7 +10,7 @@ import type { QuestSave, StorySave, WeeklySave } from "#shared/quests";
 import type { RingInst } from "#shared/jewels";
 
 /** Позиция + прогресс + здоровье. С этапа 7 всё это считает сервер. */
-import type { TradeOffer } from "./trade";
+import type { TradeSession } from "./trade";
 
 export interface PlayerRecord extends SaveMsg, Progress {
   token: string;
@@ -94,9 +94,8 @@ export interface PlayerRecord extends SaveMsg, Progress {
   gems?: Record<string, number>;
   /** Непрочитанные подарки (server/trade.ts): показываются в инвентаре, пока не нажмут «Понятно». */
   giftNotes?: { from: string; text: string; at: number }[];
-  /** Обмен: предложения, ждущие ответа (входящие) и отправленные; предметы отправителя — в предложении. */
-  tradeIn?: TradeOffer[];
-  tradeOut?: TradeOffer[];
+  /** Обмен: окна с другими героями (общие для обоих); предметы каждого — в окне до подтверждения. */
+  trades?: TradeSession[];
   updatedAt: number;
 }
 

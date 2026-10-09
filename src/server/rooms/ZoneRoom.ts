@@ -243,7 +243,7 @@ import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
-import { giveItems, offerItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeOffer } from "../trade";
+import { giveItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeSession, type TradeSide } from "../trade";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
 const { Room } = colyseus;
@@ -4667,7 +4667,7 @@ export class ZoneRoom extends Room<ZoneState> {
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
-      trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`)),
+      trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4945,88 +4945,183 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: `Подарено ${to.nick}: ${what}` };
   }
 
-  // ---------------------------------------------------------------- обмен между героями (предложение; офлайн тоже)
+  // ---------------------------------------------------------------- обмен между героями (окно двух, подтверждают оба)
 
-  /** Действия обмена: предложить, принять (со своими предметами), отклонить или отменить. */
-  private tradeAct(norm: string, act: TradeAct, id: string, fuel: string): InvActResult {
+  /** Действия обмена: открыть, добавить или убрать свои предметы, подтвердить, отменить. */
+  private tradeAct(norm: string, act: TradeAct, id: string, idx: number, fuel: string): InvActResult {
     const t = this.findWeaponsTarget(norm);
     const me = { token: t?.rt.token ?? `nick:${norm}`, nick: t?.p.nick ?? store.get(`nick:${norm}`)?.nick ?? norm };
-    const items = parseTradeList(fuel);
-    if (!items) return { ok: false, text: "Не понял, какие предметы." };
-    if (act === "tradeOffer") return this.tradeOffer(me, id, items);
-    if (act === "tradeAccept") return this.tradeAccept(me, id, items);
-    return this.tradeClose(me, id);
+    if (act === "tradeOpen" || act === "tradeAdd") {
+      const items = parseTradeList(fuel);
+      if (!items) return { ok: false, text: "Не понял, какие предметы." };
+      return act === "tradeOpen" ? this.tradeOpen(me, id, items) : this.tradeAdd(me, id, items);
+    }
+    if (act === "tradeRemove") return this.tradeRemoveAt(me, id, idx);
+    if (act === "tradeConfirm") return this.tradeConfirm(me, id);
+    return this.tradeCancel(me, id);
   }
 
-  /** Предложить обмен: свои предметы снимаются сразу и ждут у получателя (как эскроу). */
-  private tradeOffer(me: { token: string; nick: string }, toNick: string, items: TradeItem[]): InvActResult {
-    if (!items.length) return { ok: false, text: "Выбери, что предложить." };
+  /** Копия обмена, в котором участвует герой (правки — только через putTrade). */
+  private tradeFor(token: string, id: string): TradeSession | null {
+    const s = (store.get(token)?.trades ?? []).find((x) => x.id === id);
+    return s ? structuredClone(s) : null;
+  }
+
+  /** Записать обмен обоим участникам — каждому своя копия одного состояния. */
+  private putTrade(s: TradeSession): void {
+    for (const tk of [s.a.token, s.b.token]) {
+      const r = store.get(tk);
+      if (r) store.put(tk, { trades: [...(r.trades ?? []).filter((x) => x.id !== s.id), structuredClone(s)] });
+    }
+  }
+
+  /** Убрать обмен у обоих участников. */
+  private dropTrade(s: TradeSession): void {
+    for (const tk of [s.a.token, s.b.token]) {
+      const r = store.get(tk);
+      if (r) store.put(tk, { trades: (r.trades ?? []).filter((x) => x.id !== s.id) });
+    }
+  }
+
+  /** Сторона героя и сторона собеседника. */
+  private tradeSides(s: TradeSession, token: string): { mine: TradeSide; theirs: TradeSide } {
+    return s.a.token === token ? { mine: s.a, theirs: s.b } : { mine: s.b, theirs: s.a };
+  }
+
+  /** Подсказка тому, кто сейчас в игре (его окно обновится само). */
+  private tradeNotify(token: string, text: string): void {
+    const rc = this.liveByToken(token);
+    const client = rc ? this.clientOf(rc.id) : undefined;
+    if (client) client.send(MSG.pcInvResult, { ok: true, text });
+  }
+
+  /** Добавить предмет в сторону: одинаковые стопки складываются. */
+  private addToSide(side: TradeSide, t: Taken): void {
+    if (t.k === "gem") {
+      const e = side.items.find((x): x is Extract<Taken, { k: "gem" }> => x.k === "gem" && x.key === t.key);
+      if (e) {
+        e.n += t.n;
+        return;
+      }
+    }
+    if (t.k === "bag") {
+      const e = side.items.find((x): x is Extract<Taken, { k: "bag" }> => x.k === "bag" && x.item === t.item);
+      if (e) {
+        e.n += t.n;
+        return;
+      }
+    }
+    side.items.push(t);
+  }
+
+  /** Открыть обмен с героем по нику; свои предметы можно сразу или добавить позже. */
+  private tradeOpen(me: { token: string; nick: string }, toNick: string, items: TradeItem[]): InvActResult {
     const to = this.tokenByNick(toNick.replace(/^@/, "").trim());
     if (!to) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
-    if (to.token === me.token) return { ok: false, text: "Себе предложить обмен нельзя." };
+    if (to.token === me.token) return { ok: false, text: "Себе обмен не открыть." };
+    if ((store.get(me.token)?.trades ?? []).some((s) => s.a.token === to.token || s.b.token === to.token)) {
+      return { ok: false, text: `Обмен с ${to.nick} уже открыт — открой его в «Обмен».` };
+    }
+    const snap = this.openInv(me.token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const mine: Taken[] = [];
+    if (items.length) {
+      const r = takeItems(snap, items);
+      if ("error" in r) return { ok: false, text: r.error };
+      mine.push(...r.taken);
+      this.commitInv(me.token, snap);
+    }
+    const s: TradeSession = {
+      id: Math.random().toString(36).slice(2, 10),
+      a: { nick: me.nick, token: me.token, items: mine, ok: false },
+      b: { nick: to.nick, token: to.token, items: [], ok: false },
+      at: Date.now(),
+    };
+    this.putTrade(s);
+    this.tradeNotify(to.token, `${me.nick} открыл с тобой обмен — загляни в «Обмен»`);
+    return { ok: true, text: `Обмен с ${to.nick} открыт${mine.length ? ` · в обмене: ${mine.map(takenName).join(", ")}` : ""}` };
+  }
+
+  /** Добавить свои предметы в обмен: они уходят из инвентаря; подтверждения сбрасываются. */
+  private tradeAdd(me: { token: string; nick: string }, id: string, items: TradeItem[]): InvActResult {
+    const s = this.tradeFor(me.token, id);
+    if (!s) return { ok: false, text: "Обмен уже закрыт." };
     const snap = this.openInv(me.token);
     if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
     const r = takeItems(snap, items);
     if ("error" in r) return { ok: false, text: r.error };
     this.commitInv(me.token, snap);
-    const offer: TradeOffer = { id: Math.random().toString(36).slice(2, 10), from: me, to, taken: r.taken, at: Date.now() };
-    store.put(me.token, { tradeOut: [...(store.get(me.token)?.tradeOut ?? []), offer] });
-    store.put(to.token, { tradeIn: [...(store.get(to.token)?.tradeIn ?? []), offer] });
-    const rc = this.liveByToken(to.token);
-    const client = rc ? this.clientOf(rc.id) : undefined;
-    if (client) client.send(MSG.pcInvResult, { ok: true, text: `${me.nick} предлагает обмен — открой «Обмен» в инвентаре` });
-    return { ok: true, text: `Предложение ${to.nick}: ${offerItems(offer).join(", ")} — ждёт ответа` };
+    const { mine, theirs } = this.tradeSides(s, me.token);
+    for (const t of r.taken) this.addToSide(mine, t);
+    s.a.ok = false;
+    s.b.ok = false;
+    this.putTrade(s);
+    this.tradeNotify(theirs.token, `${me.nick} изменил предложение в обмене — проверь`);
+    return { ok: true, text: `В обмен: ${r.taken.map(takenName).join(", ")}` };
   }
 
-  /** Принять предложение: получатель отдаёт выбранное (может ничего не отдавать), забирает эскроу. */
-  private tradeAccept(me: { token: string; nick: string }, offerId: string, items: TradeItem[]): InvActResult {
-    const offer = (store.get(me.token)?.tradeIn ?? []).find((o) => o.id === offerId);
-    if (!offer) return { ok: false, text: "Предложение уже закрыто." };
-    const snapTo = this.openInv(me.token);
-    if (!snapTo) return { ok: false, text: "Героя нет — напиши !play в чате." };
-    const snapFrom = this.openInv(offer.from.token);
-    if (!snapFrom) return { ok: false, text: `У ${offer.from.nick} нет героя — обмен не вышел.` };
-    let back: Taken[] = [];
-    if (items.length) {
-      const r = takeItems(snapTo, items);
-      if ("error" in r) return { ok: false, text: r.error };
-      back = r.taken;
+  /** Убрать свой предмет из обмена: он возвращается в инвентарь; подтверждения сбрасываются. */
+  private tradeRemoveAt(me: { token: string; nick: string }, id: string, idx: number): InvActResult {
+    const s = this.tradeFor(me.token, id);
+    if (!s) return { ok: false, text: "Обмен уже закрыт." };
+    const { mine, theirs } = this.tradeSides(s, me.token);
+    const t = mine.items[idx];
+    if (!t) return { ok: false, text: "Этого предмета уже нет в обмене." };
+    const snap = this.openInv(me.token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    giveItems(snap, [t]);
+    this.commitInv(me.token, snap);
+    mine.items.splice(idx, 1);
+    s.a.ok = false;
+    s.b.ok = false;
+    this.putTrade(s);
+    this.tradeNotify(theirs.token, `${me.nick} убрал предмет из обмена`);
+    return { ok: true, text: `Убрано из обмена: ${takenName(t)}` };
+  }
+
+  /** Подтвердить. Когда оба подтвердили — предметы меняются местами. */
+  private tradeConfirm(me: { token: string; nick: string }, id: string): InvActResult {
+    const s = this.tradeFor(me.token, id);
+    if (!s) return { ok: false, text: "Обмен уже закрыт." };
+    const { mine, theirs } = this.tradeSides(s, me.token);
+    mine.ok = true;
+    if (!theirs.ok) {
+      this.putTrade(s);
+      this.tradeNotify(theirs.token, `${me.nick} подтвердил обмен — подтверди и ты`);
+      return { ok: true, text: `Ты подтвердил — ждём, пока подтвердит ${theirs.nick}` };
     }
-    giveItems(snapTo, offer.taken);
-    giveItems(snapFrom, back);
-    this.commitInv(me.token, snapTo);
-    this.commitInv(offer.from.token, snapFrom);
-    this.dropOffer(offer.id, me.token, offer.from.token);
-    tradeLog({ kind: "trade", from: offer.from, to: me, items: offer.taken });
-    if (back.length) tradeLog({ kind: "trade", from: me, to: offer.from, items: back });
-    const rf = this.liveByToken(offer.from.token);
-    const cf = rf ? this.clientOf(rf.id) : undefined;
-    if (cf) cf.send(MSG.pcInvResult, { ok: true, text: `Обмен с ${me.nick} выполнен` });
-    return { ok: true, text: `Обмен с ${offer.from.nick}: получено ${offerItems(offer).join(", ") || "ничего"}; отдано ${back.map(takenName).join(", ") || "ничего"}` };
+    // Оба подтвердили: проверяем, что оба героя на месте, и только потом меняем.
+    const snapA = this.openInv(s.a.token);
+    const snapB = this.openInv(s.b.token);
+    if (!snapA || !snapB) return { ok: false, text: `У ${!snapA ? s.a.nick : s.b.nick} нет героя — обмен не прошёл.` };
+    const gave = mine.items.map(takenName);
+    const got = theirs.items.map(takenName);
+    giveItems(snapB, s.a.items);
+    giveItems(snapA, s.b.items);
+    this.commitInv(s.a.token, snapA);
+    this.commitInv(s.b.token, snapB);
+    this.dropTrade(s);
+    tradeLog({ kind: "trade", from: { nick: s.a.nick, token: s.a.token }, to: { nick: s.b.nick, token: s.b.token }, items: s.a.items });
+    if (s.b.items.length) tradeLog({ kind: "trade", from: { nick: s.b.nick, token: s.b.token }, to: { nick: s.a.nick, token: s.a.token }, items: s.b.items });
+    this.tradeNotify(theirs.token, `Обмен с ${me.nick} выполнен`);
+    return { ok: true, text: `Обмен с ${theirs.nick} выполнен: получено ${got.join(", ") || "ничего"}; отдано ${gave.join(", ") || "ничего"}` };
   }
 
-  /** Отклонить (получатель) или отозвать (отправитель): эскроу возвращается отправителю. */
-  private tradeClose(me: { token: string; nick: string }, offerId: string): InvActResult {
-    const rec = store.get(me.token);
-    const offer = [...(rec?.tradeIn ?? []), ...(rec?.tradeOut ?? [])].find((o) => o.id === offerId);
-    if (!offer) return { ok: false, text: "Предложение уже закрыто." };
-    const mine = offer.from.token === me.token;
-    if (!mine && offer.to.token !== me.token) return { ok: false, text: "Это не твоё предложение." };
-    const snap = this.openInv(offer.from.token);
-    if (!snap) return { ok: false, text: `У ${offer.from.nick} нет героя — предложение пока не закрыть.` };
-    giveItems(snap, offer.taken);
-    this.commitInv(offer.from.token, snap);
-    this.dropOffer(offer.id, offer.from.token, offer.to.token);
-    return { ok: true, text: mine ? `Предложение ${offer.to.nick} отозвано — предметы вернулись` : `Предложение от ${offer.from.nick} отклонено — предметы вернулись ему` };
-  }
-
-  /** Убрать предложение у обеих сторон (входящее и отправленное). */
-  private dropOffer(id: string, a: string, b: string): void {
-    for (const tk of [a, b]) {
-      const r = store.get(tk);
-      if (!r) continue;
-      store.put(tk, { tradeIn: (r.tradeIn ?? []).filter((o) => o.id !== id), tradeOut: (r.tradeOut ?? []).filter((o) => o.id !== id) });
-    }
+  /** Отменить обмен: предметы каждого возвращаются ему. */
+  private tradeCancel(me: { token: string; nick: string }, id: string): InvActResult {
+    const s = this.tradeFor(me.token, id);
+    if (!s) return { ok: false, text: "Обмен уже закрыт." };
+    const { theirs } = this.tradeSides(s, me.token);
+    const snapA = this.openInv(s.a.token);
+    const snapB = this.openInv(s.b.token);
+    if (!snapA || !snapB) return { ok: false, text: `У ${!snapA ? s.a.nick : s.b.nick} нет героя — обмен пока не отменить.` };
+    giveItems(snapA, s.a.items);
+    giveItems(snapB, s.b.items);
+    this.commitInv(s.a.token, snapA);
+    this.commitInv(s.b.token, snapB);
+    this.dropTrade(s);
+    this.tradeNotify(theirs.token, `${me.nick} отменил обмен — предметы вернулись`);
+    return { ok: true, text: `Обмен с ${theirs.nick} отменён — предметы вернулись` };
   }
 
   private persistNick(norm: string): void {
@@ -5048,7 +5143,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
-    if ((TRADE_ACTS as readonly string[]).includes(act)) return this.tradeAct(norm, act as TradeAct, id, fuel ?? "");
+    if ((TRADE_ACTS as readonly string[]).includes(act)) return this.tradeAct(norm, act as TradeAct, id, idx, fuel ?? "");
     if (act === "giftSeen") {
       const t = this.findWeaponsTarget(norm);
       store.put(t?.rt.token ?? `nick:${norm}`, { giftNotes: [] });
