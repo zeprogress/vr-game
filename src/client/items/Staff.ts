@@ -2,7 +2,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { type WeaponTier } from "#shared/items";
@@ -132,7 +132,8 @@ export function createStaff(scene: Scene, tier: WeaponTier = "base"): Mesh {
   staff.name = "staff";
 
   attachGem(scene, staff, gold, storm, ruby);
-  if (storm || ruby) attachLegendaryGlow(scene, staff, 0.375, 0.5, ruby ? "ruby" : "legendary");
+  // Свечение — на камне наверху (центр кристалла, см. attachGem).
+  if (storm || ruby) attachLegendaryGlow(scene, staff, 0.375, 0.5, ruby ? "ruby" : "legendary", new Vector3(0, TOP + 0.13, 0));
   return staff;
 }
 

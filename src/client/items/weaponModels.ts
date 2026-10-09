@@ -104,11 +104,14 @@ export function attachLegendaryGlow(
   intensity = 1,
   /** Тир свечения: уникальное — фиолетовое, рубиновое — алое и ярче. */
   tier: "legendary" | "ruby" = "legendary",
+  /** Где светит: точка в системе хоста (у оружия — на клинке, наконечнике, камне; по умолчанию — в руке). */
+  at: Vector3 = Vector3.Zero(),
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
   shell.material = glowMaterial(scene, Math.round(intensity * (tier === "ruby" ? 1.4 : 1) * 1000) / 1000, GLOW_COL[tier]);
   shell.isPickable = false;
   shell.parent = host;
+  shell.position.copyFrom(at);
   // Развёрнут шейдером, а рамка у плоскости остаётся «плашмя»: не даём отсечь его по ней.
   shell.alwaysSelectAsActiveMesh = true;
 }
