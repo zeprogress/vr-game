@@ -3379,8 +3379,6 @@ export class Game {
       }
       msg.x = sel.x;
       msg.z = sel.z;
-      // Удар насквозь — пролетаем сквозь цель за спину.
-      this.dashAt(sel, SOUL_STEAL.dashTime, sel.r + JUMP_BEHIND);
       this.combat.onMeleeSwing?.();
     } else if (id === "smoke") {
       // Пелена — на цель (выбранную или ближайшую впереди), иначе под себя.

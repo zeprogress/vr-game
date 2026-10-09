@@ -875,8 +875,8 @@ if (ONLY.has("skilltest")) {
     t.rt.skillAt = {};
     put(t.p, a.x + 4, a.z);
     t.room.castSkill("soulSteal", t.x.id, t.p, t.rt, a.x, a.z);
-    const side = (t.p.head.x - a.x) * 1; // был справа (+4), за спиной — слева (<0)
-    check("Кража душ: удар насквозь", side < 0, `герой ${side < 0 ? "за спиной цели" : "остался спереди"} (x−x цели = ${f(side, 1)})`);
+    const side = (t.p.head.x - a.x) * 1; // был справа (+4); без рывка остаётся на месте (+4)
+    check("Кража душ: без рывка", Math.abs(side - 4) < 0.5, `герой остался на месте (x−x цели = ${f(side, 1)})`);
   }
   {
     const t = scene((m) => m.kind === "slime" && !m.campType, ["whirlwind", "abyss"]);

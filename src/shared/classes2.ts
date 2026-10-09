@@ -480,7 +480,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
   },
   soulSteal: {
     name: "Кража душ", icon: glyph("s.soulSteal"), test: true,
-    desc: "Удар насквозь: рывок сквозь цель (до 6 м) за спину, удар ×1.5; половина урона лечит самого раненого союзника рядом (все целы — тебя)",
+    desc: "Удар по цели до 6 м, ×1.5; половина урона лечит самого раненого союзника рядом (все целы — тебя)",
     cooldown: 10, castTime: 0.2, radius: 12, dmgMult: 1.5, hits: 1,
     attr: { attr: "wis", per: 0.02, what: "сила лечения" },
   },
@@ -598,7 +598,7 @@ export const SMOKE = { duration: 6, miss: 0.5, dodge: 0.3, range: 12 } as const;
 /** «Кража душ»: удар насквозь — рывок к цели до reach м и дальше за спину на through м. */
 /** Лучник «Стрела жизни»: лечение — доля нанесённого урона + доля своего макс. HP; бот стреляет ею, когда HP ниже botBelow. */
 export const LIFE_ARROW = { healDmg: 0.5, healMax: 0.25, botBelow: 0.85 } as const;
-export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6, through: 3, dashTime: 0.22 } as const;
+export const SOUL_STEAL = { transfer: 0.5, healthy: 0.85, reach: 6 } as const;
 /** «Призрак бездны»: сколько в тени, ускорение после выхода. */
 /** «Призрак бездны»: сколько в тени, ускорение после выхода, бег в тени; удар из тени — рывок за спину цели (blink м). */
 export const ABYSS = { duration: 3, hasteSec: 3, haste: 0.3, move: 0.4, blink: 4 } as const;
