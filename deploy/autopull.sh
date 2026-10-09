@@ -39,7 +39,8 @@ build_ok=0
 for attempt in 1 2 3; do
   sync; echo 1 > /proc/sys/vm/drop_caches || true
   sudo -u vrgame rm -rf dist.new
-  if sudo -u vrgame $LOW npx vite build --outDir dist.new; then build_ok=1; break; fi
+  # sudo сбрасывает окружение (env_reset) — NODE_OPTIONS передаём явно, иначе куча 493 МБ и OOM.
+  if sudo -u vrgame env NODE_OPTIONS="$NODE_OPTIONS" $LOW npx vite build --outDir dist.new; then build_ok=1; break; fi
   echo "autopull: попытка сборки $attempt не удалась"
 done
 
