@@ -348,7 +348,7 @@ interface Runtime {
   lastHitMobAt: number;
   /** Собранные инстансы оружия (весь склад, не только надетое). */
   weapons: WeaponInstance[];
-  /** Какой именно инстанс сейчас в какой руке (ручной выбор через "!equip"). null — автовыбор лучшего. */
+  /** Какой именно инстанс сейчас в какой руке (ручной выбор на странице !inv). null — автовыбор лучшего. */
   equippedWeaponId: { left: string | null; right: string | null };
   /** Старый секрет ссылки "!inv" (inv.html?t=…) — только чтобы старые ссылки переадресовать на /inv?ник. */
   viewToken: string;
@@ -667,7 +667,7 @@ function sanitizeHeld(v: unknown): HeldWeapons {
   return { left: sanitizeCarried(h?.left), right: sanitizeCarried(h?.right) };
 }
 
-/** Закреплённый вручную инстанс на руку ("!equip") — строка-id или null. */
+/** Закреплённый вручную инстанс на руку (закрепляется на странице !inv) — строка-id или null. */
 function sanitizeEquipped(v: unknown): { left: string | null; right: string | null } {
   const e = v as { left?: unknown; right?: unknown } | undefined;
   return {
@@ -836,7 +836,7 @@ function blockChanceOf(p: PlayerState, rt: Runtime | undefined): number {
 
 /**
  * Конкретный раскатанный инстанс оружия в руке. Если игрок закрепил
- * конкретный экземпляр через "!equip" (и тот всё ещё в его складе и
+ * конкретный экземпляр через страницу !inv (и тот всё ещё в его складе и
  * совпадает с надетым классом+тиром) — берём его; иначе автовыбор
  * лучшего инстанса этого класса+тира (см. bestWeaponInstance).
  */
@@ -923,7 +923,7 @@ interface Hands {
 /**
  * Надеть конкретный инстанс по общим правилам рук (shared/hands.ts): щит сам
  * не надевается, двуручное освобождает обе руки, несовместимое уходит на склад.
- * Общее для "!equip" в чате и веб-инвентаря (в т.ч. для героя не в мире —
+ * Общее для веб-инвентаря (в т.ч. для героя не в мире —
  * тогда p/rt собраны из сейва).
  */
 function applyEquip(
@@ -3818,10 +3818,6 @@ export class ZoneRoom extends Room<ZoneState> {
       this.deleteBot(nick, norm);
     } else if (INV_COMMANDS.has(cmd)) {
       this.sayInvLink(nick, norm);
-    } else if (cmd === "!equip" || cmd === "!надеть") {
-      this.equipWeapon(nick, norm, parts[1]);
-    } else if (cmd === "!scrap" || cmd === "!разобрать" || cmd === "!лом") {
-      this.scrapWeapon(nick, norm, parts[1]);
     } else if (cmd === "!top" || cmd === "!leaders" || cmd === "!leaderboard") {
       this.sayTop();
     } else if (cmd === "!cheer" || cmd === "!defeat") {
@@ -4737,7 +4733,7 @@ export class ZoneRoom extends Room<ZoneState> {
     } satisfies PickupFeedMsg);
   }
 
-  /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для "!weapons"/"!equip". */
+  /** Живой персонаж (бот ИЛИ реально подключённый игрок) по нику — для веб-инвентаря. */
   private findWeaponsTarget(norm: string): { id: string; p: PlayerState; rt: Runtime } | null {
     const bot = this.bots.get(norm);
     if (bot) return { id: bot.id, p: bot.state, rt: bot.rt };
@@ -4961,7 +4957,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /**
    * Действие с веб-страницы инвентаря. Герой в мире — меняем живое состояние
-   * (как "!equip"/"!scrap"), иначе правим сейв напрямую: при следующем !play
+   * (как и раньше в чате), иначе правим сейв напрямую: при следующем !play
    * герой выйдет уже с этим.
    */
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
@@ -5179,62 +5175,10 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: `${name} → лом +${got}` };
   }
 
-  /** `!equip <номер|id>` — вручную закрепить конкретный собранный инстанс в руке. */
-  /**
-   * Оружие в складе, которое НЕ надето прямо сейчас — единственное, что
-   * реально имеет смысл выбирать номером (надетое и так видно в "руках",
-   * и его нельзя ни переэкипировать на себя же, ни сломать). Раньше номер
-   * был "честной" позицией в rt.weapons, и если надетый предмет оказывался
-   * в середине склада, у остальных номера съезжали с дырой на его месте —
-   * теперь нумеруем ТОЛЬКО эту, "видимую" часть, подряд без пропусков.
-   */
-  private nonEquippedWeapons(rt: Runtime): WeaponInstance[] {
-    return rt.weapons.filter(
-      (w) => w.id !== rt.equippedWeaponId.left && w.id !== rt.equippedWeaponId.right,
-    );
-  }
-
-  /** Номер (1-based среди НЕнадетого, как в "!weapons") или id → конкретный инстанс. */
-  private resolveWeaponArg(rt: Runtime, arg: string): WeaponInstance | null {
-    const n = Number(arg);
-    if (Number.isInteger(n) && n >= 1) {
-      const list = this.nonEquippedWeapons(rt);
-      if (n <= list.length) return list[n - 1];
-    }
-    return rt.weapons.find((x) => x.id === arg) ?? null;
-  }
-
-  private equipWeapon(nick: string, norm: string, arg: string | undefined): void {
-    const t = this.findWeaponsTarget(norm);
-    if (!t) {
-      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
-      return;
-    }
-    if (!arg) {
-      this.reply(`@${nick} укажи номер или id: !equip 2 (номера — на странице !inv).`);
-      return;
-    }
-    const w = this.resolveWeaponArg(t.rt, arg);
-    if (!w) {
-      this.reply(`@${nick} нет такого предмета — номера — на странице !inv.`);
-      return;
-    }
-    applyEquip(t.p, t.rt, w);
-    const bot = this.bots.get(norm);
-    if (bot) this.persistBot(bot);
-    else {
-      const client = this.clientOf(t.id);
-      if (client) this.persist(client);
-    }
-    const affixes = instanceLabels(w).join(", ") || "без роллов";
-    this.reply(`@${nick} надел ${instanceName(w)} — ${affixes}`);
-  }
-
-  /** `!scrap <номер|id>` — навсегда разобрать инстанс оружия на "Лом" (задел под крафт). */
   /**
    * Убрать один инстанс из склада + снять с руки, если был надет (рука
    * падает на голую базу того же класса, как при обычном подборе апгрейда).
-   * Не пишет бэг/не персистит — при "!scrap all"/списком это делает вызывающий
+   * Не пишет бэг/не персистит — при массовой разборке это делает вызывающий
    * один раз на весь пакет, а не по разу на предмет.
    */
   /** Что у живого героя в руках сейчас (закреплённое и реально считающееся в руке). */
@@ -5256,74 +5200,6 @@ export class ZoneRoom extends Room<ZoneState> {
       p.rightTier = "base";
     }
     return scrapValue(w);
-  }
-
-  /**
-   * `!scrap <номер|id>`, `!scrap 1,3,5` (списком), `!scrap all` (весь склад,
-   * кроме надетого) или `!scrap gold` (только золотое, остальные тиры не трогает).
-   */
-  private scrapWeapon(nick: string, norm: string, arg: string | undefined): void {
-    const t = this.findWeaponsTarget(norm);
-    if (!t) {
-      if (this.hintOk(norm)) this.reply(`@${nick} героя нет в мире — сначала !play.`);
-      return;
-    }
-    if (!arg) {
-      this.reply(
-        `@${nick} укажи номер, список через запятую, "all" или "gold": !scrap 2 (номера — на странице !inv).`,
-      );
-      return;
-    }
-    const { rt } = t;
-    const argLower = arg.toLowerCase();
-    const isAll = ["all", "все", "всё"].includes(argLower);
-    const isGold = ["gold", "золото", "золотое"].includes(argLower);
-    let picked: WeaponInstance[];
-    if (isAll) {
-      picked = [...rt.weapons];
-    } else if (isGold) {
-      picked = rt.weapons.filter((w) => w.tier === "gold");
-    } else {
-      const found = new Set<WeaponInstance>();
-      for (const part of arg.split(",").map((s) => s.trim()).filter(Boolean)) {
-        const w = this.resolveWeaponArg(rt, part);
-        if (w) found.add(w);
-      }
-      picked = [...found];
-    }
-    // Надетое сломать нельзя, пока не заменишь — сначала !equip другое.
-    const equippedIds = new Set([rt.equippedWeaponId.left, rt.equippedWeaponId.right].filter(Boolean));
-    const free = picked.filter((w) => !equippedIds.has(w.id));
-    const skippedEquipped = picked.length - free.length;
-    // ★ Избранное не разбирается — ни списком, ни «all»/«gold».
-    const targets = free.filter((w) => !w.fav);
-    const skippedFav = free.length - targets.length;
-    if (targets.length === 0) {
-      this.reply(
-        skippedFav > 0
-          ? `@${nick} это в избранном (★) — сначала сними звёздочку на странице !inv.`
-          : skippedEquipped > 0
-            ? `@${nick} это сейчас в руках — сначала !equip другое, потом !scrap.`
-            : `@${nick} нечего разбирать — номера — на странице !inv.`,
-      );
-      return;
-    }
-    let scrap = 0;
-    for (const w of targets) scrap += this.scrapOne(t, w);
-    const bag = readBag(t.p);
-    addToBag(bag, "scrap", scrap);
-    writeBag(t.p, bag);
-    const bot = this.bots.get(norm);
-    if (bot) this.persistBot(bot);
-    else {
-      const client = this.clientOf(t.id);
-      if (client) this.persist(client);
-    }
-    const desc =
-      targets.length === 1 ? instanceName(targets[0]) : `${targets.length} предметов`;
-    const skipped = [skippedEquipped > 0 ? `${skippedEquipped} в руках` : "", skippedFav > 0 ? `${skippedFav} в избранном` : ""].filter(Boolean);
-    const skippedNote = skipped.length ? ` (пропустил: ${skipped.join(", ")})` : "";
-    this.reply(`@${nick} разобрал ${desc} — получено лома: ${scrap}${skippedNote}`);
   }
 
   /** `!stats` — прогресс бота, а если его нет — что сделать, чтобы он был. */
@@ -5529,7 +5405,6 @@ export class ZoneRoom extends Room<ZoneState> {
   private static readonly TIPS: readonly string[] = [
     "Совет: !inv — веб-инвентарь: оружие с роллами, там же надеть или разобрать на лом (вход — кодом в чат).",
     "Совет: !inv (или !инв, !оружие, !склад) — склад героя на сайте: надеть, разобрать на лом, заточить.",
-    "Совет: !scrap <номер|1,2,3|all|gold> — разобрать ненужное оружие на лом (задел под крафт).",
     "Совет: !follow <ник> или !come — герой встанет рядом и будет защищать тебя, если на тебя нападут.",
     "Совет: у золотого и уникального оружия бывают роллы — урон, скорость атаки, крит, вампиризм (ближний бой), блок (щит).",
     "Совет: !raid — вести героя в рейд на Лунного аватара (гора с водопадом) толпой, !event — на нашествие, !top — таблица лидеров.",
@@ -5572,9 +5447,8 @@ export class ZoneRoom extends Room<ZoneState> {
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
         "!катакомбы — в отряд катакомб (от 3 героев, сбор 5 мин; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
-        "!equip <номер> — надеть конкретное · !camp <моб> — где качаться · " +
+        "!camp <моб> — где качаться · " +
         "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
-        "!scrap <номер|1,2,3|all|gold> — разобрать на лом (задел под крафт) · " +
         "!voice <номер|имя> — выбрать голос " +
         "озвучки своих сообщений (!voice list — список) · обычное сообщение в чат он " +
         "скажет вслух над головой. Зайти за своего героя самому: ссылка в описании " +
@@ -5689,7 +5563,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // класс дальше выбирает сам игрок, одевая оружие — сохранённый переживает
     // выход как есть.
     const savedRight = savedHeld.right;
-    // Закреплённое вручную ("!equip"/веб-инвентарь) — выходит именно оно,
+    // Закреплённое вручную (веб-инвентарь) — выходит именно оно,
     // а не лучший когда-либо поднятый тир этого класса.
     const pins = sanitizeEquipped(rec?.equippedWeaponId);
     const savedWeapons = Array.isArray(rec?.weapons) ? rec.weapons : [];
@@ -5733,7 +5607,7 @@ export class ZoneRoom extends Room<ZoneState> {
               ? (savedHeld.left?.tier ?? "base")
               : "";
     // Сумку восстанавливаем из сейва (restoreBag — как у живого игрока) —
-    // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от !scrap
+    // раньше тут был emptyBag() с нуля КАЖДЫЙ !play, и весь "Лом" от разборки
     // (и любые другие расходники) стирался при первом же выходе бота в мир
     // после того, как их накопили. Зелья лишь ДОБАВЛЯЕМ до стартового
     // запаса, а не пересоздаём бэг — без него первый бой может не пережить.
@@ -6811,7 +6685,7 @@ export class ZoneRoom extends Room<ZoneState> {
       skin: p.skin,
       ...readProgress(p),
       // Раньше тут всегда было [] — у бота при каждом persistBot() (подбор,
-      // трата очка и т.п.) стирался весь бэг, включая "Лом" от !scrap: ресурс
+      // трата очка и т.п.) стирался весь бэг, включая "Лом" от разборки: ресурс
       // фактически не переживал следующее же случайное событие.
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: bot.rt.kills,
@@ -7237,7 +7111,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (bot.lootSkip.has(d.id)) return false; // уже пробовали и не вышло
       const w = ITEMS[d.item].weapon;
       // Любое оружие берём — своего класса наденем, чужого просто унесём
-      // в склад (!equip потом вручную, если сменит билд, или !scrap на лом).
+      // в склад (потом вручную на !inv, если сменит билд, или разобрать на лом).
       if (w) return inZone(d.x, d.z);
       if (!((wantPotion || bot.eventing) && inZone(d.x, d.z) && ITEMS[d.item].heal > 0)) return false;
       // Сумка полна — поднять не выйдет: бот иначе вечно «подбирал» бы бутылку,
