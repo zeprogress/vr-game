@@ -97,6 +97,20 @@ export class PcInventory {
     this.root.append(this.dropCatcher, this.win, this.tip);
     this.root.style.display = "none";
     document.body.appendChild(this.root);
+    // ПК в игре: клик мимо окна закрывает его. Кнопки HUD не в счёт — иначе кнопка открытия тут же переоткрыла бы окно.
+    if (!hooks.touch && !hooks.page) {
+      document.addEventListener(
+        "pointerdown",
+        (e) => {
+          if (!this.isOpen || this.drag) return;
+          const t = e.target as Node;
+          if (this.win.contains(t) || this.tip.contains(t)) return;
+          if ((t as Element).closest?.(".pc-hud")) return;
+          this.close();
+        },
+        true,
+      );
+    }
 
     // Окно двигается за шапку.
     let dragWin: { x: number; y: number; l: number; t: number } | null = null;
