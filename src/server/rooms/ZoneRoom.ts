@@ -8481,6 +8481,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
     if (p.skill1 !== kind && p.skill2 !== kind) return false;
+    // Призрак не накладывается сам на себя: пока заряжена тень или действует его ускорение, повторный каст
+    // не нужен. Иначе при коротком откате (мудрость) ускорение продлевалось бы без конца, и каждый каст давал
+    // новый удар из тени. Откат при отказе не тратится.
+    if (kind === "abyss" && (rt.abyssStrike && rt.abyssUntil > this.elapsed || rt.hasteUntil > this.elapsed)) return false;
 
     const sk = SKILLS2[kind];
     // skillAt — срок следующего применения (−999 = готово; так же возвращают откат). Счёт, как у ударов:
