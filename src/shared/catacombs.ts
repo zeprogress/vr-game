@@ -328,12 +328,12 @@ export const CATACOMBS = {
     {
       // 2026-10-06: больше мобов и видов — 4 волны по 3 вида из 8 (было 3 волны по 2 вида из 6).
       hall: 0, waves: [], waveCount: 4, waveBase: 4, wavePerHero: 1.8, champions: 1,
-      pool: ["boneWraith", "spikyBlob", "orcGunner", "ruinMage", "frog", "bee", "cactoro", "golem"],
+      pool: ["boneWraith", "spikyBlob", "orcGunner", "ruinMage", "frog", "bee", "cactoro"],
       bosses: CAT_GUARDS[0],
     },
     {
       hall: 1, waves: [], waveCount: 3, waveBase: 5, wavePerHero: 2, champions: 1,
-      pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus", "skySquid", "golem", "frostDemon"],
+      pool: ["boneWraith", "ruinMage", "orcGunner", "spikyBlob", "cactoro", "mushColossus", "skySquid", "frostDemon"],
       bosses: CAT_GUARDS[1],
       chest: "gold",
     },

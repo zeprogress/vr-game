@@ -1018,7 +1018,6 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
     { key: "orcGunner", name: "Вожак орков-стрелков", hpMul: 10, dmgMul: 2.5 },
     { key: "ruinMage", name: "Старший чародей", hpMul: 9, dmgMul: 2 },
     { key: "frog", name: "Жабий царь", hpMul: 18, dmgMul: 3 },
-    { key: "golem", name: "Голем-громила", hpMul: 2.2, dmgMul: 1 },
   ],
   [
     { key: "boneWraith", name: "Князь призраков", hpMul: 3, dmgMul: 1.3 },
@@ -1057,6 +1056,6 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
     retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
     seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },
     mech: [{ kind: "barrage", name: "Обвал горы", every: 8, fx: 0, dmg: 0.26, r: 3.2 }],
-    adds: { types: ["spikyBlob", "golem", "rockBreaker"], every: 22, count: 2, perHero: 0.4 },
+    adds: { types: ["spikyBlob", "rockBreaker"], every: 22, count: 2, perHero: 0.4 },
   },
 ];
