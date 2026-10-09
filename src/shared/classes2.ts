@@ -222,13 +222,13 @@ export const WEAPONS2: Record<Weapon2, WeaponProfile> = {
   // dmg 0.86 → 1.15 (2026-10-02: ассасин был слабейшим и по DPS, и по живучести — лаборатория баланса).
   dagger: {
     name: WEAPON_NOUN.dagger.name, dmg: 1.35, interval: 0.7, tempoSoft: 1, reach: 1.8, pierce: 1, // 1.15 → 1.35 (2026-10-05)
-    critBase: 0.12, critMult: 2, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
+    critBase: 0.12, critMult: 3, twoHanded: false, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Копьё: длинный выпад конусом перед собой, обе руки.
   // dmg 2.1 → 1.45 (2026-10-02: удары больше не пропадают в «окне» моба — копьё стало вдвое сильнее медианы).
   spear: {
     name: WEAPON_NOUN.spear.name, dmg: 1.75, interval: 0.8, tempoSoft: 1, reach: 4.8, pierce: 3, // было 5 целей (2026-10-02)
-    critBase: 0.05, critMult: 1.75, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
+    critBase: 0.05, critMult: 1.5, twoHanded: true, dmgType: "phys", tiers: [1, 4, 4.5],
   },
   // Молот: тяжёлый физический удар + магическая волна вокруг цели (HAMMER).
   hammer: {
