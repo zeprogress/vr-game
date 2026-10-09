@@ -1552,7 +1552,7 @@ function injectInvStyle(): void {
 .pcinv-respec { margin-top:6px; padding:9px; border-radius:7px; border:1px solid #6a4a3a; background:#2a1f1c; color:#ffcfae;
   cursor:pointer; font:600 13px system-ui; }
 .pcinv-respec:disabled { opacity:.45; cursor:default; }
-.pcinv-confirm { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:320px; z-index:81; pointer-events:auto; background:#15141b;
+.pcinv-confirm { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:320px; z-index:81; pointer-events:auto; background:#15141b;
   border:none; border-radius:9px; padding:14px; box-shadow:0 8px 30px rgba(0,0,0,.6); z-index:2; }
 .pcinv-confirm-text { margin-bottom:12px; }
 .pcinv-confirm-row { display:flex; gap:8px; justify-content:flex-end; }
