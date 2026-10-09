@@ -7396,7 +7396,9 @@ export class ZoneRoom extends Room<ZoneState> {
             return Math.abs(qx - x) + Math.abs(qz - z) < 0.05;
           }
         : undefined;
-    const escape = (raidBoss || onRaidArena) && this.raid.tideCasting ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
+    // Катакомбы, режим «агрессивно»: зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
+    const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
+    const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
     if (escape) mob = undefined;
 
     let tx: number;
