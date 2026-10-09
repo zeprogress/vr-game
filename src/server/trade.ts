@@ -135,6 +135,62 @@ export function takenName(t: Taken): string {
   return `${ITEMS[t.item].name}${t.n > 1 ? ` ×${t.n}` : ""}`;
 }
 
+// ---------------------------------------------------------------- обмен (предложение)
+
+/** Действия обмена из окна инвентаря (страница !inv, ПК, телефон, игра). */
+export const TRADE_ACTS = ["tradeOffer", "tradeAccept", "tradeDecline", "tradeCancel"] as const;
+export type TradeAct = (typeof TRADE_ACTS)[number];
+
+/**
+ * Предложение обмена — работает и когда оба не в игре. Предметы отправителя снимаются сразу
+ * (эскроу) и лежат в предложении у получателя; «принять» — получатель добавляет свои предметы и
+ * всё меняется местами. Отказ или отмена — эскроу возвращается отправителю.
+ */
+export interface TradeOffer {
+  id: string;
+  from: { nick: string; token: string };
+  to: { nick: string; token: string };
+  taken: Taken[];
+  at: number;
+}
+
+/** Список предметов из сети: JSON [{"c": «w:<id>» | «r:<id>» | «g:<камень>» | «b:<предмет>», "n": число}]. Кривое — null. */
+export function parseTradeList(raw: string): TradeItem[] | null {
+  let arr: unknown;
+  try {
+    arr = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(arr) || arr.length > 40) return null;
+  const out: TradeItem[] = [];
+  for (const e of arr) {
+    const c = (e as { c?: unknown } | null)?.c;
+    const n = Number((e as { n?: unknown } | null)?.n);
+    if (typeof c !== "string") return null;
+    const it = parseTradeItem(c, n);
+    if (!it) return null;
+    out.push(it);
+  }
+  return out;
+}
+
+/** Что в предложении — строками для окна. */
+export function offerItems(o: TradeOffer): string[] {
+  return o.taken.map(takenName);
+}
+
+/** Окно обмена героя: входящие и отправленные предложения. */
+export function tradeViewOf(rec: { tradeIn?: TradeOffer[]; tradeOut?: TradeOffer[] } | undefined): {
+  incoming: { id: string; from: string; items: string[] }[];
+  outgoing: { id: string; to: string; items: string[] }[];
+} {
+  return {
+    incoming: (rec?.tradeIn ?? []).map((o) => ({ id: o.id, from: o.from.nick, items: offerItems(o) })),
+    outgoing: (rec?.tradeOut ?? []).map((o) => ({ id: o.id, to: o.to.nick, items: offerItems(o) })),
+  };
+}
+
 // ---------------------------------------------------------------- журнал
 
 const LOG = resolve(dirname(fileURLToPath(import.meta.url)), ".data/trades.jsonl");

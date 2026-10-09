@@ -331,11 +331,13 @@ export interface PcInvData {
   jewels?: PcInvJewels;
   /** Непрочитанные подарки: от кого и что. */
   giftNotes?: { from: string; text: string; at: number }[];
+  /** Обмен: входящие и отправленные предложения (предметы — строками). */
+  trade?: { incoming: { id: string; from: string; items: string[] }[]; outgoing: { id: string; to: string; items: string[] }[] };
 }
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | JewelAct;
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOffer" | "tradeAccept" | "tradeDecline" | "tradeCancel" | JewelAct;
   id: string;
   idx: number;
   /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */
