@@ -1411,6 +1411,8 @@ function injectInvStyle(): void {
 .pcinv-cell[draggable="true"] { cursor:grab; }
 .pcinv-cell.big { width:58px; height:58px; font-size:30px; }
 .pcinv-cell.huge { width:84px; height:84px; font-size:42px; margin:0 auto; }
+/* Значок надетого оружия/щита — почти во всю рамку ячейки (раньше 1.2em — с пустыми полями). */
+.pcinv-cell.big > .gico, .pcinv-cell.huge > .gico { width:92%; height:92%; }
 .pcinv-cell.small { width:36px; height:36px; font-size:18px; cursor:pointer; }
 .pcinv-cell.sel { outline:2px solid #e6e0d0; }
 .pcinv-cell.locked { opacity:.28; }
