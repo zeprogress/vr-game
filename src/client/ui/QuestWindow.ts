@@ -491,6 +491,20 @@ export class ShopWindow {
       card.append(row);
       b.append(card);
     }
+    // Обмен рубинового на другой класс: по карточке на оружие, кнопка — класс.
+    for (const sw of d.swaps ?? []) {
+      const card = el("div", "qw-card");
+      card.append(el("div", "qw-name", sw.name), el("div", "qw-reward", "Обмен на класс: та же оценка и роллы, старое уходит"));
+      const row = el("div", "qw-row");
+      for (const t of sw.targets) {
+        const bt = el("button", "qw-btn", t.label);
+        bt.disabled = !d.near;
+        bt.onclick = () => this.hooks.buy(`swap:${sw.wid}:${t.cls}`);
+        row.append(bt);
+      }
+      card.append(row);
+      b.append(card);
+    }
     if (!d.near) b.append(el("div", "qw-sub", "Покупать — у трактирщика в лагере."));
   }
 }

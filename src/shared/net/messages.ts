@@ -277,12 +277,24 @@ export interface QuestData {
   msg?: string;
 }
 
+/** Рубиновое на складе, которое можно обменять на другой класс (по строке на оружие). */
+export interface ShopSwap {
+  /** id оружия на складе. */
+  wid: string;
+  /** «Рубиновый меч · оценка 87». */
+  name: string;
+  /** Куда можно поменять: оружейный класс (sword, bow…) и название класса героя («Лучник»). */
+  targets: { cls: string; label: string }[];
+}
+
 export interface ShopData {
   items: { id: string; name: string; desc: string; price: number; fishCost?: number }[];
   tokens: number;
   /** Рыба в сумке — для обмена на жетоны. */
   fish: number;
   near: boolean;
+  /** Обмен рубинового оружия на другой класс — id покупки «swap:<wid>:<weapon class>». */
+  swaps?: ShopSwap[];
   msg?: string;
 }
 
