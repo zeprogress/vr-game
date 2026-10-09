@@ -95,7 +95,8 @@ export function ringHtml(tier: RingTier, gems: readonly (GemKey | null)[] = []):
   let h = `<span style="position:relative;display:block;width:100%;height:100%"><img src="${a.src}" alt="" draggable="false" style="${LAYER}">`;
   a.sockets.forEach((k, i) => {
     const p = socketSpot(i, a.sockets.length);
-    const box = `position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;height:${p.s * 100}%;pointer-events:none`;
+    // Квадрат по соотношению сторон (aspect-ratio), а не по процентам высоты: иначе гнездо — овал, если контейнер не квадратный.
+    const box = `position:absolute;left:${p.x * 100}%;top:${p.y * 100}%;width:${p.s * 100}%;aspect-ratio:1;pointer-events:none`;
     const g = gemArt(k ?? "");
     h += g
       ? `<span style="${box}"><img src="${g.src}" alt="" draggable="false" style="${LAYER}"></span>`
