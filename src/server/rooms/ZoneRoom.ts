@@ -8684,11 +8684,7 @@ export class ZoneRoom extends Room<ZoneState> {
         }
         const [dx, dz] = dirTo(m, p.head.x, p.head.z);
         const dmg = sk.dmgMult * pow.dmg;
-        // Удар насквозь: проносится сквозь цель за спину (бот — сервер переносит, игрок — сам, см. Game.castSkill).
-        const ex = m.x + dx * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
-        const ez = m.z + dz * (this.sim.targetRadius("mob", m.id) + JUMP_BEHIND);
-        act({ k: "shadowStep", x: p.head.x, y: feetY, z: p.head.z, x2: ex, z2: ez });
-        if (isBot) this.placeBotAt(p, ex, ez, m);
+        // Без рывка: удар на дистанции, герой остаётся на месте.
         this.sim.hitMob(m.id, dmg, dx, dz, ownerId);
         // Самый раненый союзник рядом (доля HP ниже SOUL_STEAL.healthy), иначе — сам.
         let ally: PlayerState = p;
