@@ -297,6 +297,7 @@ export class PcInventory {
     this.hideTip();
     this.confirmEl?.remove();
     this.confirmEl = null;
+    this.syncTradePoll();
     return true;
   }
 
@@ -308,7 +309,26 @@ export class PcInventory {
   setData(d: PcInvData): void {
     this.data = d;
     if (this.enchId && !d.weapons.some((w) => w.id === this.enchId)) this.enchId = null;
-    if (this.isOpen && !this.forging) this.render();
+    // Пока печатают ник или открыт выбор игрока — не перерисовываем (сбросило бы фокус); данные уже в this.data.
+    if (this.isOpen && !this.forging && !this.tradeTyping()) this.render();
+  }
+
+  /** Открыта вкладка «Обмен»: список онлайна обновляем сами (раз в 5 с), пока окно открыто. */
+  private tradePoll: number | null = null;
+
+  private syncTradePoll(): void {
+    const want = this.isOpen && this.tab === "trade";
+    if (want && this.tradePoll === null) this.tradePoll = window.setInterval(() => this.hooks.request(), 5000);
+    else if (!want && this.tradePoll !== null) {
+      window.clearInterval(this.tradePoll);
+      this.tradePoll = null;
+    }
+  }
+
+  /** Фокус в поле вкладки «Обмен» (ник, выбор игрока, галочка) — перерисовку откладываем. */
+  private tradeTyping(): boolean {
+    const a = document.activeElement;
+    return this.tab === "trade" && this.isOpen && this.win.contains(a) && (a instanceof HTMLInputElement || a instanceof HTMLSelectElement);
   }
 
   /** Опыт героя (Game шлёт каждый кадр; перерисовка — только при изменении). */
@@ -348,6 +368,7 @@ export class PcInventory {
   // ---------------- отрисовка ----------------
 
   private render(): void {
+    this.syncTradePoll();
     const top = this.win.scrollTop;
     // Списки выбора прокручиваются сами — их позицию тоже сохраняем (иначе после нажатия сбрасывались наверх).
     const lists = [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].map((e) => e.scrollTop);
