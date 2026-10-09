@@ -515,7 +515,8 @@ export class Hud {
   }
 
   flashDamage(dmg: number): void {
-    const peak = Math.min(0.9, 0.4 + dmg / 40);
+    // Прозрачнее (вдвое к прежнему пику 0.9): вспышка остаётся заметной, но не закрывает экран.
+    const peak = Math.min(0.45, 0.2 + dmg / 80);
     this.vignette.style.transition = "none";
     this.vignette.style.opacity = String(peak);
     void this.vignette.offsetHeight;
