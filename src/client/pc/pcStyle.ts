@@ -14,7 +14,8 @@ export function injectPcStyle(): void {
   background:var(--pc-bg); border:none; border-radius:8px; padding:6px 10px 7px;
   color:var(--pc-text); font:600 13px/1.25 system-ui,sans-serif; pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
 .pc-target { background:none; }
-.pc-target:hover { background:rgba(26,24,33,.25); }
+/* ПК: полупрозрачный фон панели выбора моба сверху. */
+@media (pointer: fine) { .pc-target { background:rgba(14,13,19,.4); } .pc-target:hover { background:rgba(26,24,33,.55); } }
 .pc-target.attacking { box-shadow:inset 0 0 0 3px rgba(255,20,20,.95); }
 .pc-target-name { color:#ffb3a8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pc-bar { position:relative; height:14px; margin-top:4px; background:#23202a; border:1px solid #000; border-radius:3px; overflow:hidden; }
