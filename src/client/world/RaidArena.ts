@@ -17,6 +17,7 @@ import { angDiff, parseCracks, RAID, RAID_FIGHT, RAID_ORBITS, type RaidCrack } f
 import { MOB } from "#shared/mobs";
 import { terrainHeight } from "#shared/terrain";
 import { FX_RGB } from "#shared/look";
+import { groundFxThrough } from "../ui/groundFx";
 
 /** Бой с рейд-боссом для визуала — поля ZoneState raid* (см. server/rooms/raidFight.ts). */
 export interface RaidView {
@@ -284,6 +285,7 @@ export class RaidArenaFx {
     this.tideRing.position.y = 1.2;
     this.tideRing.material = this.tideMat;
     this.tideRing.isPickable = false;
+    groundFxThrough(this.tideRing);
     this.tideRing.setEnabled(false);
 
     this.coreMat = new StandardMaterial("raidCoreMat", scene);
@@ -316,12 +318,14 @@ export class RaidArenaFx {
     this.pullZone.position.y = 0.14;
     this.pullZone.material = this.pullMat;
     this.pullZone.isPickable = false;
+    groundFxThrough(this.pullZone);
     this.pullZone.setEnabled(false);
     this.pullRing = MeshBuilder.CreateTorus("raidPullRing", { diameter: 2, thickness: 0.2, tessellation: 64 }, scene);
     this.pullRing.parent = this.root;
     this.pullRing.position.y = 0.3;
     this.pullRing.material = this.crackRimMat;
     this.pullRing.isPickable = false;
+    groundFxThrough(this.pullRing);
     this.pullRing.setEnabled(false);
 
     this.rebuild(RAID.r, 0);

@@ -44,6 +44,7 @@ import {
 } from "#shared/catacombs";
 import { terrainHeight } from "#shared/terrain";
 import { makeFireMaterial } from "./FireShader";
+import { groundFxThrough } from "../ui/groundFx";
 
 /** Что о катакомбах знает клиент (из RoomState). */
 export interface CatView {
@@ -1731,6 +1732,7 @@ export class CatacombsFx {
     slab.position.y = 1.3;
     const ring = add(MeshBuilder.CreateGround("catShrineRing", { width: 7, height: 7 }, scene), glow("catShrineRingMat", ringTexture(scene), 0.95));
     ring.position.y = 0.09;
+    groundFxThrough(ring);
     this.shrineRing = ring;
     const beam = add(
       MeshBuilder.CreateCylinder("catShrineBeam", { height: 11, diameter: 1.5, tessellation: 16, cap: Mesh.NO_CAP }, scene),
@@ -1792,6 +1794,7 @@ export class CatacombsFx {
     ring.position.y = 0.12;
     ring.material = m;
     ring.parent = root;
+    groundFxThrough(ring);
     const glow = new StandardMaterial("catPortalGlow", scene);
     const gt = glowTexture(scene);
     glow.emissiveTexture = gt;
@@ -1806,6 +1809,7 @@ export class CatacombsFx {
     disc.position.y = 0.06;
     disc.material = glow;
     disc.parent = root;
+    groundFxThrough(disc);
     const pillar = MeshBuilder.CreateCylinder("catPortalBeam", { height: 7, diameterTop: 0.5, diameterBottom: 3.6, tessellation: 24 }, scene);
     pillar.position.y = 3.5;
     // Не clone (копия DynamicTexture не «готова» — столб не рисовался): свой материал с той же текстурой.

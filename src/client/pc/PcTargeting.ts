@@ -12,6 +12,7 @@ import { MOB, SHARD_CFG } from "#shared/mobs";
 import type { MobState, PlayerState, ZoneState } from "#shared/net/schema";
 import { difficultyCss } from "./difficulty";
 import type { NetMobs } from "../combat/MobSystem";
+import { groundFxThrough } from "../ui/groundFx";
 import type { MouseClick } from "../input/DesktopInput";
 
 /** Автоатака (ПК и телефон): настройка устройства, по умолчанию включена. */
@@ -94,6 +95,7 @@ export class PcTargeting {
     this.ring = MeshBuilder.CreateTorus("pcTargetRing", { diameter: 1, thickness: 0.06, tessellation: 40 }, scene);
     this.ring.material = mat;
     this.ring.isPickable = false;
+    groundFxThrough(this.ring);
     this.ring.setEnabled(false);
 
     this.frame = document.createElement("div");

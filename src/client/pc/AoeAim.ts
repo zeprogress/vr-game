@@ -10,6 +10,7 @@ import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/torusBuilder";
 
 import { terrainHeight } from "#shared/terrain";
+import { groundFxThrough } from "../ui/groundFx";
 
 const OK = new Color3(0.35, 0.95, 0.45);
 const FAR = new Color3(1, 0.25, 0.2);
@@ -41,6 +42,7 @@ export class AoeAim {
     this.disc.material = this.discMat;
     this.disc.parent = this.root;
     this.disc.isPickable = false;
+    groundFxThrough(this.disc);
     this.ringMat = new StandardMaterial("aoeAimRingMat", scene);
     this.ringMat.disableLighting = true;
     this.ringMat.backFaceCulling = false;
@@ -48,6 +50,7 @@ export class AoeAim {
     this.ring.material = this.ringMat;
     this.ring.parent = this.root;
     this.ring.isPickable = false;
+    groundFxThrough(this.ring);
     this.root.setEnabled(false);
   }
 

@@ -10,6 +10,7 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import "@babylonjs/core/Meshes/instancedMesh";
+import { groundFxThrough } from "../ui/groundFx";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
@@ -1490,6 +1491,7 @@ export class Mob implements Hittable {
       mat.alpha = this.slamAlpha();
       m.material = mat;
       m.isPickable = false;
+      groundFxThrough(m);
       m.parent = this.root;
       this.slamRing = m;
     }
