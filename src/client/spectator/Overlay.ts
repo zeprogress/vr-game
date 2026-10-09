@@ -221,13 +221,13 @@ const CSS = `
 .ov-cattop .r .nm .rev { flex:none; }
 .ov-cattop .r.dead { opacity:.6; }
 .ov-cattop .rev { font-style:normal; color:#ffd166; font-weight:800; }
-.ov-cat { right:1.2vw; bottom:6vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
+.ov-cat { right:1.2vw; bottom:4.5vh; width:21vw; font-size:1.55vh; line-height:1.35; border-left:.35vh solid #9146ff; }
 .ov-cat b { display:block; font-weight:800; font-size:2vh; color:#d6b8ff; letter-spacing:.03em; }
 .ov-cat .st { margin:.3vh 0 .8vh; opacity:.92; font-variant-numeric:tabular-nums; }
 .ov-cat .c { display:flex; gap:.6vw; margin:.25vh 0; }
 .ov-cat .c i { font-style:normal; font-weight:800; color:#ffd66b; min-width:8.2vw; white-space:nowrap; }
 .ov-cat .c span { opacity:.85; }
-.ov-cq { left:50%; bottom:12.5vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
+.ov-cq { left:50%; bottom:11vh; transform:translateX(-50%); width:32vw; text-align:center; font-size:1.8vh; }
 .ov-cq b { display:block; font-weight:800; font-size:2.2vh; color:#d6b8ff; letter-spacing:.02em; }
 .ov-cq .bar { height:1.1vh; margin:.7vh 0 .4vh; background:rgba(255,255,255,.14); border-radius:1vh; overflow:hidden; }
 .ov-cq .bar i { display:block; height:100%; background:linear-gradient(90deg,#9146ff,#c79bff); border-radius:1vh; }
@@ -775,6 +775,8 @@ export class Overlay {
         this.cat.append(b, st);
         for (const [cmd, what] of CAT_HELP) {
           if (!ct.gather && cmd === "!катакомбы") continue;
+          // Режим осторожно/агрессивно — зрителю не показываем (команда остаётся в игре).
+          if (cmd === "!режим") continue;
           const row = div("c");
           const i = document.createElement("i");
           i.textContent = cmd;
