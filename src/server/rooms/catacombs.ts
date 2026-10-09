@@ -952,7 +952,7 @@ export class CatacombDirector {
         }
       }
       if (!final) {
-        this.host.announce({ kind: "chest", title: "Сундук стража", sub: "каждому в отряде — золотое оружие в склад и опыт (чем ниже уровень — тем больше)", loot, secs: 7 });
+        this.host.announce({ kind: "chest", title: "Сундук стража", sub: "каждому в отряде — жетоны ◈ и опыт (чем ниже уровень — тем больше)", loot, secs: 7 });
       } else {
         this.phase = CAT_PHASE.outro;
         this.phaseEnd = this.host.now() + CATACOMBS.outroSec * 1000;
