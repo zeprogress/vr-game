@@ -775,8 +775,6 @@ export class Overlay {
         this.cat.append(b, st);
         for (const [cmd, what] of CAT_HELP) {
           if (!ct.gather && cmd === "!катакомбы") continue;
-          // Режим осторожно/агрессивно — зрителю не показываем (команда остаётся в игре).
-          if (cmd === "!режим") continue;
           const row = div("c");
           const i = document.createElement("i");
           i.textContent = cmd;
