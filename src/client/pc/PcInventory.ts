@@ -335,8 +335,13 @@ export class PcInventory {
 
   private render(): void {
     const top = this.win.scrollTop;
+    // Списки выбора прокручиваются сами — их позицию тоже сохраняем (иначе после нажатия сбрасывались наверх).
+    const lists = [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].map((e) => e.scrollTop);
     this.renderInner();
     this.win.scrollTop = top;
+    [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].forEach((e, i) => {
+      if (lists[i] !== undefined) e.scrollTop = lists[i];
+    });
   }
 
   private renderInner(): void {
