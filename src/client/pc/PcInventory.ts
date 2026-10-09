@@ -581,6 +581,29 @@ export class PcInventory {
     }
     // Новый обмен: ник и (по желанию) свои предметы сразу.
     wrap.append(div("pcinv-sub", "Открыть обмен"));
+    // Кто сейчас в игре: выбрать из списка (с кем обмен уже открыт — не предлагаем).
+    const busy = new Set(sessions.map((x) => x.with));
+    const online = (d.online ?? []).filter((n) => !busy.has(n));
+    if (online.length) {
+      const sel = document.createElement("select");
+      sel.className = "pcinv-select pcinv-tonline";
+      const ph = document.createElement("option");
+      ph.value = "";
+      ph.textContent = `Онлайн сейчас (${online.length}) — выбрать`;
+      sel.append(ph);
+      for (const n of online) {
+        const o = document.createElement("option");
+        o.value = n;
+        o.textContent = n;
+        sel.append(o);
+      }
+      sel.value = online.includes(this.tradeNick) ? this.tradeNick : "";
+      sel.onchange = () => {
+        this.tradeNick = sel.value;
+        this.render();
+      };
+      wrap.append(sel);
+    }
     const nick = document.createElement("input");
     nick.className = "pcinv-input";
     nick.placeholder = "Ник героя";
@@ -1734,6 +1757,7 @@ function injectInvStyle(): void {
 .pcinv-tx { background:none; border:none; color:#c9a0a0; cursor:pointer; font-size:15px; padding:0 4px; line-height:1; }
 .pcinv-tx:hover { color:#ff9a9a; }
 .pcinv-tcb { width:16px; height:16px; flex:none; accent-color:#7ee081; }
+.pcinv-tonline { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; font:14px system-ui; color:#e8e6f0; background:#0f0e13; border:1px solid #3a3e48; border-radius:6px; }
 .pcinv-tqty { display:flex; align-items:center; gap:4px; flex:none; }
 .pcinv-qbtn { min-width:34px; height:30px; padding:0 8px; border-radius:7px; border:1px solid #4a4e5a; background:#23222b; color:#f1ead6; font:800 16px system-ui; cursor:pointer; }
 .pcinv-qbtn:hover:not(:disabled) { border-color:#e8c26a; }
