@@ -165,6 +165,24 @@ export function drawShop(ui: PanelUi, d: ShopData | null, buy: (id: string) => v
     ui.button(`buy:${it.id}`, label, PAD + w - 220, y + 30, 200, 56, () => buy(it.id), true, can);
     y += 130;
   }
+  // Обмен рубинового на другой класс: по строке на оружие, кнопки классов — по три в ряд.
+  for (const sw of d.swaps ?? []) {
+    const rows = Math.ceil(sw.targets.length / 3);
+    const h = 110 + rows * 62;
+    ui.rect(PAD, y, w, h, VR_UI.card, 14);
+    ui.text(sw.name, PAD + 20, y + 16, 30, VR_UI.title, 700);
+    ui.text("Обмен на класс: та же оценка и роллы, старое уходит", PAD + 20, y + 58, 24, VR_UI.sub);
+    const gap = 12;
+    const bw = (w - 40 - gap * 2) / 3;
+    for (let i = 0; i < sw.targets.length; i++) {
+      const t = sw.targets[i];
+      const bx = PAD + 20 + (i % 3) * (bw + gap);
+      const by = y + 100 + Math.floor(i / 3) * 62;
+      const id = `swap:${sw.wid}:${t.cls}`;
+      ui.button(id, t.label, bx, by, bw, 52, () => buy(id), false, d.near);
+    }
+    y += h + 14;
+  }
 }
 
 /** Рыбалка в VR: выбор режима и мини-игра (метка должна попасть в зелёную зону — жми курок/кнопку). */

@@ -1137,3 +1137,22 @@ export function enchantApply(w: WeaponInstance, idx: number, gain: number): void
   const pts = Math.min(POINTS_MAX, affixPoints(a, w) + gain);
   a.value = atT(a.sub, (pts - 1) / 32, isAegis(w));
 }
+
+/**
+ * Обмен рубинового на другой класс (лавка трактирщика): тот же тир, то же число роллов
+ * и те же очки на каждом ролле — значит та же оценка. Виды роллов — свои у нового класса.
+ */
+export function swapRubyClass(w: WeaponInstance, cls: WeaponClass, rnd: () => number = Math.random): WeaponInstance {
+  const pts = w.affixes.map((a) => affixPoints(a, w));
+  const used = new Set<AffixSub>();
+  const affixes: RolledAffix[] = [];
+  for (const p of pts) {
+    const a = rollAffix(rnd, cls, used);
+    if (!a) break;
+    used.add(a.sub);
+    a.value = atT(a.sub, (p - 1) / 32);
+    affixes.push(a);
+  }
+  sortAffixes(affixes);
+  return { id: shortId(rnd), cls, tier: "ruby", affixes, lv: LOOT_VER, ...(cls === "staff" ? { sv: 1 } : {}) };
+}
