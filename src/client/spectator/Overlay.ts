@@ -1,6 +1,6 @@
 import { glyph, itemIcon } from "#shared/icons";
 import { CAT_HELP } from "#shared/catacombs";
-import { ensureIconCss, iconHtml, itemTint } from "../ui/icons";
+import { ensureIconCss, iconHtml } from "../ui/icons";
 import type { OverlayPatch, LeaderboardRow, CatBoardRow, LootItem } from "#shared/net/messages";
 import type { HeroStatRow } from "#shared/heroStats";
 import { TOWER } from "#shared/tower";
@@ -490,7 +490,7 @@ export class Overlay {
       it.title = l.aegis ? AEGIS_NAME : def.name;
       const ico = document.createElement("span");
       ico.className = "ico";
-      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis), itemTint(l.id));
+      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis));
       it.appendChild(ico);
       if (l.count > 1) {
         const cnt = document.createElement("span");

@@ -26,18 +26,39 @@ const line = (d: string, w = 7): string =>
 const g = (attrs: string, inner: string): string => `<g ${attrs}>${inner}</g>`;
 
 export const ICONS = {
-  // ---- оружие: остриё вверх-вправо, рукоять вниз-влево; цвет — тир ----
-  // Оружие и щиты — картинки из концепта (public/icons/weapons|shields/); цвет тира накладывается при показе.
-  "w.sword": { emoji: "🗡️", img: "weapons/sword.png" },
-  "w.dagger": { emoji: "🔪", img: "weapons/dagger.png" },
-  "w.spear": { emoji: "🔱", img: "weapons/spear.png" },
-  "w.hammer": { emoji: "🔨", img: "weapons/hammer.png" },
-  "w.staff": { emoji: "🪄", img: "weapons/staff.png" },
-  "w.bow": { emoji: "🏹", img: "weapons/bow.png" },
-  /** Круглый щит — у всех грейдов один (цвет — тир). */
-  "w.shield": { emoji: "🛡️", img: "shields/round.png" },
-  /** Эгида — свой щит. */
-  "w.aegis": { emoji: "🛡️", img: "shields/aegis.png" },
+  // ---- оружие и щиты: картинки из концепта по грейду (public/icons/gear/); базовый ключ — обычное (серебро) ----
+  "w.sword": { emoji: "🗡️", img: "gear/sword_base.png" },
+  "w.sword.gold": { emoji: "🗡️", img: "gear/sword_gold.png" },
+  "w.sword.legendary": { emoji: "🗡️", img: "gear/sword_legendary.png" },
+  "w.sword.ruby": { emoji: "🗡️", img: "gear/sword_ruby.png" },
+  "w.dagger": { emoji: "🔪", img: "gear/dagger_base.png" },
+  "w.dagger.gold": { emoji: "🔪", img: "gear/dagger_gold.png" },
+  "w.dagger.legendary": { emoji: "🔪", img: "gear/dagger_legendary.png" },
+  "w.dagger.ruby": { emoji: "🔪", img: "gear/dagger_ruby.png" },
+  "w.spear": { emoji: "🔱", img: "gear/spear_base.png" },
+  "w.spear.gold": { emoji: "🔱", img: "gear/spear_gold.png" },
+  "w.spear.legendary": { emoji: "🔱", img: "gear/spear_legendary.png" },
+  "w.spear.ruby": { emoji: "🔱", img: "gear/spear_ruby.png" },
+  "w.hammer": { emoji: "🔨", img: "gear/hammer_base.png" },
+  "w.hammer.gold": { emoji: "🔨", img: "gear/hammer_gold.png" },
+  "w.hammer.legendary": { emoji: "🔨", img: "gear/hammer_legendary.png" },
+  "w.hammer.ruby": { emoji: "🔨", img: "gear/hammer_ruby.png" },
+  "w.staff": { emoji: "🪄", img: "gear/staff_base.png" },
+  "w.staff.gold": { emoji: "🪄", img: "gear/staff_gold.png" },
+  "w.staff.legendary": { emoji: "🪄", img: "gear/staff_legendary.png" },
+  "w.staff.ruby": { emoji: "🪄", img: "gear/staff_ruby.png" },
+  "w.bow": { emoji: "🏹", img: "gear/bow_base.png" },
+  "w.bow.gold": { emoji: "🏹", img: "gear/bow_gold.png" },
+  "w.bow.legendary": { emoji: "🏹", img: "gear/bow_legendary.png" },
+  "w.bow.ruby": { emoji: "🏹", img: "gear/bow_ruby.png" },
+  "w.shield": { emoji: "🛡️", img: "gear/shield_base.png" },
+  "w.shield.gold": { emoji: "🛡️", img: "gear/shield_gold.png" },
+  "w.shield.legendary": { emoji: "🛡️", img: "gear/shield_legendary.png" },
+  "w.shield.ruby": { emoji: "🛡️", img: "gear/shield_ruby.png" },
+  "w.aegis": { emoji: "🛡️", img: "gear/aegis_base.png" },
+  "w.aegis.gold": { emoji: "🛡️", img: "gear/aegis_gold.png" },
+  "w.aegis.legendary": { emoji: "🛡️", img: "gear/aegis_legendary.png" },
+  "w.aegis.ruby": { emoji: "🛡️", img: "gear/aegis_ruby.png" },
   /** Пустые руки. */
   "w.fist": {
     emoji: "✊",
@@ -187,10 +208,17 @@ export function glyph(key: IconKey): string {
   return ICONS[key].emoji;
 }
 
-/** Значок оружия по классу (пусто/неизвестно — кулак). Эгида — свой. */
-export function weaponIcon(cls: WeaponClass | string | null | undefined, aegis = false): IconKey {
-  if (cls === "shield") return aegis ? "w.aegis" : "w.shield";
-  const k = `w.${cls}`;
+/**
+ * Значок оружия по классу и грейду (tier: base/gold/legendary/ruby — свои картинки; без грейда — обычный).
+ * Пусто/неизвестно — кулак. Эгида — свой щит.
+ */
+export function weaponIcon(cls: WeaponClass | string | null | undefined, aegis = false, tier?: string | null): IconKey {
+  const item = cls === "shield" ? (aegis ? "aegis" : "shield") : cls;
+  if (tier && tier !== "base") {
+    const g = `w.${item}.${tier}`;
+    if (g in ICONS) return g as IconKey;
+  }
+  const k = `w.${item}`;
   return k in ICONS ? (k as IconKey) : "w.fist";
 }
 
@@ -203,7 +231,7 @@ export function skillIcon(id: string | null | undefined): IconKey {
 /** Значок предмета по ItemId (оружие — по классу; `aegis` — это Эгида). */
 export function itemIcon(id: ItemId, aegis = false): IconKey {
   const w = ITEMS[id]?.weapon;
-  if (w) return weaponIcon(w.cls, aegis);
+  if (w) return weaponIcon(w.cls, aegis, w.tier);
   const k = `i.${id}`;
   return k in ICONS ? (k as IconKey) : "i.scrap";
 }
