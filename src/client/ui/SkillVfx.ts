@@ -1,5 +1,6 @@
 import { FXC } from "./fxColors";
 import { GROUND_LIFT_GLSL } from "./groundLift";
+import { groundFxThrough } from "./groundFx";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -311,6 +312,7 @@ export class SkillVfx {
       mesh.bakeCurrentTransformIntoVertices();
       const mat = shader(scene, `vfxDecalMat${i}`, "fxDecal", ["position", "uv"], ["uColor", "uT", "uMode", "uAlpha", "uSeed", "uHalf", "cameraPosition"]);
       mesh.material = mat;
+      groundFxThrough(mesh);
       mesh.isPickable = false;
       mesh.alwaysSelectAsActiveMesh = true;
       mesh.setEnabled(false);

@@ -5,6 +5,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Constants } from "@babylonjs/core/Engines/constants";
+import { groundFxThrough } from "./groundFx";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 import "@babylonjs/core/Meshes/Builders/sphereBuilder";
 
@@ -44,7 +45,7 @@ export class HealAuraFx {
       disc.material = discMat;
       disc.rotation.x = Math.PI / 2;
       disc.isPickable = false;
-      disc.renderingGroupId = 1;
+      groundFxThrough(disc);
       disc.setEnabled(false);
 
       const domeMat = new StandardMaterial(`healAuraDomeMat${i}`, scene);

@@ -1,5 +1,6 @@
 import { FXC } from "./fxColors";
 import { liftOnGround } from "./groundLift";
+import { groundFxThrough } from "./groundFx";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -254,6 +255,7 @@ export class SkillFx {
     for (let i = 0; i < 8; i++) {
       const ring = MeshBuilder.CreateTorus(`sporeRing${i}`, { diameter: 2, thickness: 0.08, tessellation: 40 }, scene);
       ring.material = addMat(scene, `sporeRingMat${i}`, SPORE_C);
+      groundFxThrough(ring);
       const cloud = MeshBuilder.CreateSphere(`sporeCloud${i}`, { diameter: 2, segments: 12, slice: 0.5 }, scene);
       cloud.material = addMat(scene, `sporeCloudMat${i}`, SPORE_C.scale(0.6));
       // Клубы — несколько шариков одним мешем (одна отрисовка), крутятся и «дышат».

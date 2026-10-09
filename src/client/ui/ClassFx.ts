@@ -1,5 +1,6 @@
 import { FXC } from "./fxColors";
 import { liftOnGround } from "./groundLift";
+import { groundFxThrough } from "./groundFx";
 import type { Scene } from "@babylonjs/core/scene";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
@@ -156,6 +157,7 @@ export class ClassFx {
       const mesh = MeshBuilder.CreateTorus(`cfxRing${i}`, { diameter: 2, thickness: 0.05, tessellation: 40 }, scene);
       const mat = addMat(scene, `cfxRingMat${i}`, FX_COLORS.arcane);
       this.rings.push(this.prep({ mesh, mat, age: 1, life: 1, r0: 0, r1: 1, alpha: 1 }));
+      groundFxThrough(mesh);
     }
     for (let i = 0; i < 4; i++) {
       const mesh = MeshBuilder.CreateSphere(`cfxDome${i}`, { diameter: 2, segments: 14, slice: 0.5 }, scene);
@@ -178,6 +180,7 @@ export class ClassFx {
       // Знак — только маска прозрачности: цвет даёт emissiveColor (белая текстура его «выбеливала»).
       mat.opacityTexture = this.sealTex;
       disc.material = mat;
+      groundFxThrough(disc);
       const glow = MeshBuilder.CreateSphere(`cfxSealGlow${i}`, { diameter: 2, segments: 12, slice: 0.5 }, scene);
       const glowMat = addMat(scene, `cfxSealGlowMat${i}`, FX_COLORS.holy);
       glow.material = glowMat;
