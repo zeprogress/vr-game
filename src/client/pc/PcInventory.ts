@@ -48,8 +48,9 @@ export interface PcInventoryHooks {
 }
 
 /** Положить значок оружия в элемент (из общего реестра shared/icons.ts; Эгида — свой). */
-export function setIcon(el: HTMLElement, cls: string, name?: string): void {
-  setIconEl(el, weaponIcon(cls, name === AEGIS_NAME));
+export function setIcon(el: HTMLElement, cls: string, name?: string, tier?: string): void {
+  // Картинка оружия — подкраска под грейд (как рамка): цвет тира из общей палитры.
+  setIconEl(el, weaponIcon(cls, name === AEGIS_NAME), tier ? TIER_LOOK[tier as WeaponTier].color : undefined);
 }
 const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(id) }));
 
@@ -590,7 +591,7 @@ export class PcInventory {
     const held = bowBoth ? (side === "left" ? twoH : null) : both[side];
     if (twoH && side === "right") {
       const c = div("pcinv-cell big locked");
-      setIcon(c, twoH.cls);
+      setIcon(c, twoH.cls, undefined, twoH.tier);
       c.title = bothHandsNote(twoH.cls);
       // И сюда можно бросить оружие из сумки — наденется по своим правилам.
       c.addEventListener("dragover", (e) => {
@@ -611,7 +612,7 @@ export class PcInventory {
     if (held && held.cls) {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
-      setIcon(cell, held.cls, w?.name);
+      setIcon(cell, held.cls, w?.name, tier);
       if (w?.affixes.length) {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
@@ -681,7 +682,7 @@ export class PcInventory {
 
   private itemCell(w: PcInvWeapon, num = 0): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`);
-    setIcon(c, w.cls, w.name);
+    setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Страница !inv: номер предмета (как в старом виде и в !equip / !scrap <номер>).
@@ -716,7 +717,7 @@ export class PcInventory {
     if (w) this.enchId = w.id;
     const left = div("pcinv-ench-left");
     const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`);
-    if (w) setIcon(slotEl, w.cls, w.name);
+    if (w) setIcon(slotEl, w.cls, w.name, w.tier);
     slotEl.addEventListener("dragover", (e) => {
       if (this.dragWeapon()) e.preventDefault();
     });
@@ -789,7 +790,7 @@ export class PcInventory {
         const fp = div("pcinv-epick");
         for (const x of fuels) {
           const c = div(`pcinv-cell small t-${x.tier}${x.id === this.fuelId ? " sel" : ""}`);
-          setIcon(c, x.cls, x.name);
+          setIcon(c, x.cls, x.name, x.tier);
           c.onclick = () => {
             this.fuelId = x.id === this.fuelId ? null : x.id;
             this.render();
@@ -814,7 +815,7 @@ export class PcInventory {
     for (const x of d.weapons) {
       if (!x.ench.length) continue;
       const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`);
-      setIcon(c, x.cls, x.name);
+      setIcon(c, x.cls, x.name, x.tier);
       c.onclick = () => {
         this.enchId = x.id;
         this.lastResult = null;

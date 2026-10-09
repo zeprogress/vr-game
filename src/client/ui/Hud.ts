@@ -3,8 +3,7 @@ import { PLAYER_HP, BOT } from "#shared/constants";
 import type { LootItem } from "#shared/net/messages";
 import { itemIcon } from "#shared/icons";
 import { AEGIS_NAME } from "#shared/items";
-import { TIER_LOOK } from "#shared/look";
-import { iconHtml } from "./icons";
+import { iconHtml, itemTint } from "./icons";
 import { STAT_LABELS, type Progression, type StatName } from "../player/Progression";
 import { ITEMS, type Inventory } from "../player/Inventory";
 import { InventoryPanel, type Equipped } from "./InventoryPanel";
@@ -587,8 +586,7 @@ export class Hud {
       .map((l) => {
         const def = ITEMS[l.id];
         // Значок — из общего реестра (shared/icons.ts), цвет — тир предмета (shared/look.ts).
-        const tier = def.weapon?.tier;
-        const pic = iconHtml(itemIcon(l.id, l.aegis), tier ? TIER_LOOK[tier].color : undefined);
+        const pic = iconHtml(itemIcon(l.id, l.aegis), itemTint(l.id));
         const cnt = l.count > 1 ? `<span class="bn-loot-cnt">×${l.count}</span>` : "";
         return `<div class="bn-loot-item" title="${l.aegis ? AEGIS_NAME : def.name}">${pic}${cnt}</div>`;
       })

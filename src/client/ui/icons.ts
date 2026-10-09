@@ -1,5 +1,6 @@
 import { ICONS, type IconKey } from "#shared/icons";
-import { themeCss } from "#shared/look";
+import { ITEMS, type ItemId } from "#shared/items";
+import { TIER_LOOK, themeCss } from "#shared/look";
 
 /**
  * Отрисовка значков из общего реестра (shared/icons.ts) — для HTML и для
@@ -55,6 +56,12 @@ export function iconHtml(k: IconKey, color?: string): string {
 /** Положить значок в элемент (заменяет содержимое). */
 export function setIconEl(el: HTMLElement, k: IconKey, color?: string): void {
   el.innerHTML = iconHtml(k, color);
+}
+
+/** Цвет грейда для значка предмета: у оружия — цвет тира, у остального — без подкраски. */
+export function itemTint(id: ItemId): string | undefined {
+  const t = ITEMS[id]?.weapon?.tier;
+  return t ? TIER_LOOK[t].color : undefined;
 }
 
 // ---- холсты ----

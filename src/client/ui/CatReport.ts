@@ -4,7 +4,7 @@ import { itemIcon, type IconKey } from "#shared/icons";
 import { CATACOMBS } from "#shared/catacombs";
 import { gemName, ringName, type RingTier } from "#shared/jewels";
 import { gemHtml, ringHtml } from "#shared/jewelIcons";
-import { ensureIconCss, iconHtml } from "./icons";
+import { ensureIconCss, iconHtml, itemTint } from "./icons";
 
 /**
  * Итог пройденных катакомб — большая таблица по центру экрана (почти на весь
@@ -190,7 +190,7 @@ export function showCatReport(m: CatReportMsg, o: { delayMs?: number; holdSec?: 
       const it = el("div", `cr-it${def.weapon ? ` cr-t-${def.weapon.tier}` : ""}`);
       it.title = l.aegis ? AEGIS_NAME : def.name;
       const ico = el("span", "cr-ico");
-      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis));
+      ico.innerHTML = iconHtml(itemIcon(l.id, l.aegis), itemTint(l.id));
       it.appendChild(ico);
       if (l.count > 1) it.appendChild(el("span", "cr-cnt", `×${l.count}`));
       box.appendChild(it);
