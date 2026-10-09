@@ -191,7 +191,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     skills: skillsOf(rec),
     jewels: pcInvJewels(jewels),
     giftNotes: rec.giftNotes ?? [],
-    trade: tradeViewOf(rec),
+    trade: tradeViewOf(rec, rec.token),
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;

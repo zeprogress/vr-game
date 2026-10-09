@@ -341,7 +341,7 @@ export class PcInventory {
       ["enchant", "Заточка"],
       ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
       ["skills", "Умения"],
-      ["trade", d?.trade?.incoming.length ? `Обмен · ${d.trade.incoming.length}` : "Обмен"],
+      ["trade", (() => { const n = d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0; return n ? `Обмен · ${n}` : "Обмен"; })()],
     ];
     for (const [id, label] of tabs) {
       const t = div(`pcinv-tab${this.tab === id ? " on" : ""}${id === "attrs" && d && d.attrs.unspent > 0 ? " glow" : ""}`, label);
@@ -393,12 +393,14 @@ export class PcInventory {
 
   // ---------------- обмен между героями ----------------
 
-  /** Ник для нового предложения (сохраняется между перерисовками). */
+  /** Ник для нового обмена (сохраняется между перерисовками). */
   private tradeNick = "";
   /** Выбранное для обмена: код предмета → сколько (оружие и кольца — 1). */
   private tradePick = new Map<string, number>();
-  /** Входящее предложение, на которое отвечаем (выбираем свои предметы). */
-  private tradeAcceptId: string | null = null;
+  /** Окно, где сейчас выбирают предметы: id обмена, или null. */
+  private tradeEditId: string | null = null;
+  /** Открыт ли выбор предметов для нового обмена. */
+  private tradeOpenPick = false;
 
   /** Что можно отдать в обмене: оружие не в руках и не избранное, кольца в сумке, камни, лом/зелья/рыба. */
   private tradeable(d: PcInvData): { code: string; label: string; max: number; stack: boolean }[] {
@@ -425,7 +427,7 @@ export class PcInventory {
     return JSON.stringify([...this.tradePick].filter(([c]) => ok.has(c)).map(([c, n]) => ({ c, n })));
   }
 
-  /** Выбор своих предметов для обмена: галочка и количество у стопок. */
+  /** Выбор своих предметов: галочка и количество у стопок. */
   private tradePicker(d: PcInvData): HTMLDivElement {
     const box = div("pcinv-tpick");
     const items = this.tradeable(d);
@@ -459,81 +461,102 @@ export class PcInventory {
     return box;
   }
 
-  /** Окно обмена: входящие (ответить), отправленные (отозвать), новое предложение. Офлайн тоже. */
+  /** Окно обмена: каждый обмен — два столбца (отдаю / получаю), подтверждения, отмена. */
   private renderTrade(d: PcInvData): void {
     const wrap = div("pcinv-trade");
-    const tr = d.trade ?? { incoming: [], outgoing: [] };
-    wrap.append(div("pcinv-sub", `Входящие · ${tr.incoming.length}`));
-    if (!tr.incoming.length) wrap.append(div("pcinv-small", "Предложений нет. Они ждут, даже если отправитель не в игре."));
-    for (const o of tr.incoming) {
-      const row = div("pcinv-trow");
-      row.append(div("pcinv-tname", `от ${o.from}: ${o.items.join(", ")}`));
-      if (this.tradeAcceptId !== o.id) {
+    const sessions = d.trade?.sessions ?? [];
+    wrap.append(div("pcinv-sub", `Обмены · ${sessions.length}`));
+    if (!sessions.length) wrap.append(div("pcinv-small", "Открытых обменов нет. Открой обмен по нику: предметы будут видны обоим, меняются, когда подтвердят оба."));
+    for (const s of sessions) {
+      const card = div("pcinv-tsess");
+      card.append(div("pcinv-tname", `Обмен с ${s.with}`));
+      card.append(div("pcinv-small", `${s.mine.ok ? "Ты подтвердил" : "Ты не подтвердил"} · ${s.theirs.ok ? `${s.with} подтвердил` : `${s.with} не подтвердил`}`));
+      const cols = div("pcinv-tcols");
+      const mineCol = div("pcinv-tcol");
+      mineCol.append(div("pcinv-small", "Ты отдаёшь:"));
+      if (!s.mine.items.length) mineCol.append(div("pcinv-small", "пусто"));
+      s.mine.items.forEach((name, i) => {
+        const row = div("pcinv-trow");
+        row.append(div("pcinv-tname", name), button("×", () => this.hooks.act({ act: "tradeRemove", id: s.id, idx: i })));
+        mineCol.append(row);
+      });
+      const theirCol = div("pcinv-tcol");
+      theirCol.append(div("pcinv-small", `${s.with} отдаёт:`));
+      if (!s.theirs.items.length) theirCol.append(div("pcinv-small", "пусто"));
+      for (const name of s.theirs.items) theirCol.append(div("pcinv-tname", name));
+      cols.append(mineCol, theirCol);
+      card.append(cols);
+      if (this.tradeEditId === s.id) {
+        card.append(this.tradePicker(d));
         const bts = div("pcinv-tbtns");
         bts.append(
-          button("Принять…", () => {
-            this.tradeAcceptId = o.id;
+          button("Добавить выбранное", () => {
+            const j = this.pickedJson(d);
+            if (j === "[]") {
+              this.onResult({ ok: false, text: "Выбери, что добавить." });
+              return;
+            }
+            this.hooks.act({ act: "tradeAdd", id: s.id, idx: 0, fuel: j });
+            this.tradePick.clear();
+            this.tradeEditId = null;
+          }),
+          button("Закрыть", () => {
+            this.tradePick.clear();
+            this.tradeEditId = null;
+            this.render();
+          }),
+        );
+        card.append(bts);
+      }
+      const acts = div("pcinv-tbtns");
+      if (this.tradeEditId !== s.id) {
+        acts.append(
+          button("Добавить предметы…", () => {
+            this.tradeEditId = s.id;
+            this.tradeOpenPick = false;
             this.tradePick.clear();
             this.render();
           }),
-          button("Отклонить", () => this.askConfirm(`Отклонить предложение от ${o.from}? Предметы вернутся ему.`, "Отклонить", () => this.hooks.act({ act: "tradeDecline", id: o.id, idx: 0 }))),
         );
-        row.append(bts);
       }
-      wrap.append(row);
-      if (this.tradeAcceptId === o.id) {
-        wrap.append(div("pcinv-small", "Что отдашь взамен (можно ничего):"));
+      if (!s.mine.ok) acts.append(button("Подтвердить", () => this.hooks.act({ act: "tradeConfirm", id: s.id, idx: 0 })));
+      acts.append(button("Отменить обмен", () => this.askConfirm(`Отменить обмен с ${s.with}? Твои предметы вернутся тебе.`, "Отменить", () => this.hooks.act({ act: "tradeCancel", id: s.id, idx: 0 }))));
+      card.append(acts);
+      wrap.append(card);
+    }
+    // Новый обмен: ник и (по желанию) свои предметы сразу.
+    wrap.append(div("pcinv-sub", "Открыть обмен"));
+    const nick = document.createElement("input");
+    nick.className = "pcinv-input";
+    nick.placeholder = "Ник героя";
+    nick.maxLength = 40;
+    nick.value = this.tradeNick;
+    nick.oninput = () => {
+      this.tradeNick = nick.value;
+    };
+    wrap.append(nick);
+    if (this.tradeEditId === null) {
+      if (!this.tradeOpenPick) {
+        wrap.append(
+          button("Выбрать свои предметы…", () => {
+            this.tradeOpenPick = true;
+            this.tradePick.clear();
+            this.render();
+          }),
+        );
+      } else {
         wrap.append(this.tradePicker(d));
-        const go = div("pcinv-tbtns");
-        go.append(
-          button("Обменяться", () => {
-            this.hooks.act({ act: "tradeAccept", id: o.id, idx: 0, fuel: this.pickedJson(d) });
-            this.tradeAcceptId = null;
-            this.tradePick.clear();
-          }),
-          button("Назад", () => {
-            this.tradeAcceptId = null;
-            this.tradePick.clear();
-            this.render();
-          }),
-        );
-        wrap.append(go);
       }
-    }
-    wrap.append(div("pcinv-sub", `Отправленные · ${tr.outgoing.length}`));
-    if (!tr.outgoing.length) wrap.append(div("pcinv-small", "Нет отправленных."));
-    for (const o of tr.outgoing) {
-      const row = div("pcinv-trow");
-      row.append(div("pcinv-tname", `для ${o.to}: ${o.items.join(", ")}`));
-      row.append(button("Отозвать", () => this.askConfirm(`Отозвать предложение для ${o.to}? Предметы вернутся тебе.`, "Отозвать", () => this.hooks.act({ act: "tradeCancel", id: o.id, idx: 0 }))));
-      wrap.append(row);
-    }
-    if (this.tradeAcceptId === null) {
-      wrap.append(div("pcinv-sub", "Новое предложение"));
-      const nick = document.createElement("input");
-      nick.className = "pcinv-input";
-      nick.placeholder = "Ник героя";
-      nick.maxLength = 40;
-      nick.value = this.tradeNick;
-      nick.oninput = () => {
-        this.tradeNick = nick.value;
-      };
-      wrap.append(nick);
-      wrap.append(this.tradePicker(d));
       wrap.append(
-        button("Отправить предложение", () => {
+        button("Открыть обмен", () => {
           const to = this.tradeNick.trim();
           if (!to) {
             nick.focus();
             return;
           }
-          if (!this.pickedJson(d) || this.pickedJson(d) === "[]") {
-            this.onResult({ ok: false, text: "Выбери, что предложить." });
-            return;
-          }
-          this.hooks.act({ act: "tradeOffer", id: to, idx: 0, fuel: this.pickedJson(d) });
+          this.hooks.act({ act: "tradeOpen", id: to, idx: 0, fuel: this.pickedJson(d) });
           this.tradePick.clear();
-          this.render();
+          this.tradeOpenPick = false;
         }),
       );
     }
@@ -1636,6 +1659,9 @@ function injectInvStyle(): void {
 .pcinv-tbtns { display:flex; gap:6px; flex-wrap:wrap; }
 .pcinv-tnum { width:64px; padding:3px 5px; border-radius:5px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:13px system-ui; }
 .pcinv-tpick { display:flex; flex-direction:column; max-height:240px; overflow:auto; border:1px solid #2c2f38; border-radius:6px; padding:4px 8px; }
+.pcinv-tsess { border:1px solid #3a3426; border-radius:8px; padding:8px 10px; background:#141319; display:flex; flex-direction:column; gap:6px; }
+.pcinv-tcols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.pcinv-tcol { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }
