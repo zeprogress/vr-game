@@ -243,7 +243,7 @@ import type { TowerRunResult, TowerSnapshot } from "./TowerRoom";
 import { TOWER, TOWER_HIDE, TOWER_PROP_POS } from "#shared/tower";
 import { randomUUID } from "node:crypto";
 import { attrOf } from "#shared/attrs2";
-import { giveItems, parseTradeItem, takeItems, takenName, tradeLog, type InvSnap } from "../trade";
+import { giveItems, offerItems, parseTradeItem, parseTradeList, takeItems, takenName, tradeLog, tradeViewOf, TRADE_ACTS, type InvSnap, type Taken, type TradeAct, type TradeItem, type TradeOffer } from "../trade";
 import { applyJewelOp, gemName, JEWEL_ACTS, jewelBonus, jewelOpFrom, jewelsOf, pcInvJewels, RING_LOOK, ringName, rollJewelDrop, type JewelAct, type JewelSave } from "#shared/jewels";
 
 const { Room } = colyseus;
@@ -1977,7 +1977,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4667,6 +4667,7 @@ export class ZoneRoom extends Room<ZoneState> {
       },
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
+      trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`)),
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4944,6 +4945,90 @@ export class ZoneRoom extends Room<ZoneState> {
     return { ok: true, text: `Подарено ${to.nick}: ${what}` };
   }
 
+  // ---------------------------------------------------------------- обмен между героями (предложение; офлайн тоже)
+
+  /** Действия обмена: предложить, принять (со своими предметами), отклонить или отменить. */
+  private tradeAct(norm: string, act: TradeAct, id: string, fuel: string): InvActResult {
+    const t = this.findWeaponsTarget(norm);
+    const me = { token: t?.rt.token ?? `nick:${norm}`, nick: t?.p.nick ?? store.get(`nick:${norm}`)?.nick ?? norm };
+    const items = parseTradeList(fuel);
+    if (!items) return { ok: false, text: "Не понял, какие предметы." };
+    if (act === "tradeOffer") return this.tradeOffer(me, id, items);
+    if (act === "tradeAccept") return this.tradeAccept(me, id, items);
+    return this.tradeClose(me, id);
+  }
+
+  /** Предложить обмен: свои предметы снимаются сразу и ждут у получателя (как эскроу). */
+  private tradeOffer(me: { token: string; nick: string }, toNick: string, items: TradeItem[]): InvActResult {
+    if (!items.length) return { ok: false, text: "Выбери, что предложить." };
+    const to = this.tokenByNick(toNick.replace(/^@/, "").trim());
+    if (!to) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
+    if (to.token === me.token) return { ok: false, text: "Себе предложить обмен нельзя." };
+    const snap = this.openInv(me.token);
+    if (!snap) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const r = takeItems(snap, items);
+    if ("error" in r) return { ok: false, text: r.error };
+    this.commitInv(me.token, snap);
+    const offer: TradeOffer = { id: Math.random().toString(36).slice(2, 10), from: me, to, taken: r.taken, at: Date.now() };
+    store.put(me.token, { tradeOut: [...(store.get(me.token)?.tradeOut ?? []), offer] });
+    store.put(to.token, { tradeIn: [...(store.get(to.token)?.tradeIn ?? []), offer] });
+    const rc = this.liveByToken(to.token);
+    const client = rc ? this.clientOf(rc.id) : undefined;
+    if (client) client.send(MSG.pcInvResult, { ok: true, text: `${me.nick} предлагает обмен — открой «Обмен» в инвентаре` });
+    return { ok: true, text: `Предложение ${to.nick}: ${offerItems(offer).join(", ")} — ждёт ответа` };
+  }
+
+  /** Принять предложение: получатель отдаёт выбранное (может ничего не отдавать), забирает эскроу. */
+  private tradeAccept(me: { token: string; nick: string }, offerId: string, items: TradeItem[]): InvActResult {
+    const offer = (store.get(me.token)?.tradeIn ?? []).find((o) => o.id === offerId);
+    if (!offer) return { ok: false, text: "Предложение уже закрыто." };
+    const snapTo = this.openInv(me.token);
+    if (!snapTo) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    const snapFrom = this.openInv(offer.from.token);
+    if (!snapFrom) return { ok: false, text: `У ${offer.from.nick} нет героя — обмен не вышел.` };
+    let back: Taken[] = [];
+    if (items.length) {
+      const r = takeItems(snapTo, items);
+      if ("error" in r) return { ok: false, text: r.error };
+      back = r.taken;
+    }
+    giveItems(snapTo, offer.taken);
+    giveItems(snapFrom, back);
+    this.commitInv(me.token, snapTo);
+    this.commitInv(offer.from.token, snapFrom);
+    this.dropOffer(offer.id, me.token, offer.from.token);
+    tradeLog({ kind: "trade", from: offer.from, to: me, items: offer.taken });
+    if (back.length) tradeLog({ kind: "trade", from: me, to: offer.from, items: back });
+    const rf = this.liveByToken(offer.from.token);
+    const cf = rf ? this.clientOf(rf.id) : undefined;
+    if (cf) cf.send(MSG.pcInvResult, { ok: true, text: `Обмен с ${me.nick} выполнен` });
+    return { ok: true, text: `Обмен с ${offer.from.nick}: получено ${offerItems(offer).join(", ") || "ничего"}; отдано ${back.map(takenName).join(", ") || "ничего"}` };
+  }
+
+  /** Отклонить (получатель) или отозвать (отправитель): эскроу возвращается отправителю. */
+  private tradeClose(me: { token: string; nick: string }, offerId: string): InvActResult {
+    const rec = store.get(me.token);
+    const offer = [...(rec?.tradeIn ?? []), ...(rec?.tradeOut ?? [])].find((o) => o.id === offerId);
+    if (!offer) return { ok: false, text: "Предложение уже закрыто." };
+    const mine = offer.from.token === me.token;
+    if (!mine && offer.to.token !== me.token) return { ok: false, text: "Это не твоё предложение." };
+    const snap = this.openInv(offer.from.token);
+    if (!snap) return { ok: false, text: `У ${offer.from.nick} нет героя — предложение пока не закрыть.` };
+    giveItems(snap, offer.taken);
+    this.commitInv(offer.from.token, snap);
+    this.dropOffer(offer.id, offer.from.token, offer.to.token);
+    return { ok: true, text: mine ? `Предложение ${offer.to.nick} отозвано — предметы вернулись` : `Предложение от ${offer.from.nick} отклонено — предметы вернулись ему` };
+  }
+
+  /** Убрать предложение у обеих сторон (входящее и отправленное). */
+  private dropOffer(id: string, a: string, b: string): void {
+    for (const tk of [a, b]) {
+      const r = store.get(tk);
+      if (!r) continue;
+      store.put(tk, { tradeIn: (r.tradeIn ?? []).filter((o) => o.id !== id), tradeOut: (r.tradeOut ?? []).filter((o) => o.id !== id) });
+    }
+  }
+
   private persistNick(norm: string): void {
     const bot = this.bots.get(norm);
     if (bot) {
@@ -4963,6 +5048,7 @@ export class ZoneRoom extends Room<ZoneState> {
   private invAct(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult {
     if ((JEWEL_ACTS as readonly string[]).includes(act)) return this.jewelAct(norm, act as JewelAct, id, idx, fuel);
     if (act === "gift") return this.giftAct(norm, id, idx, fuel ?? "");
+    if ((TRADE_ACTS as readonly string[]).includes(act)) return this.tradeAct(norm, act as TradeAct, id, fuel ?? "");
     if (act === "giftSeen") {
       const t = this.findWeaponsTarget(norm);
       store.put(t?.rt.token ?? `nick:${norm}`, { giftNotes: [] });
