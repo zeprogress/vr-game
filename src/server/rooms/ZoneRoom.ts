@@ -1259,7 +1259,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const t = this.findWeaponsTarget(norm);
         return t ? this.pcInvDataFor(t.p, t.rt) : null;
       },
-      chatters: (exceptNorm) => this.chatRecentNicks(exceptNorm),
+      partners: (exceptNorm) => this.exchangePartnerNicks(exceptNorm),
     });
     // Разовая ручная отметка: эти герои прошли башню целиком до появления towerClearedAt.
     // Ставится один раз (пока отметки нет), порядок — по времени первого запуска сервера.
@@ -4672,7 +4672,7 @@ export class ZoneRoom extends Room<ZoneState> {
       jewels: pcInvJewels(this.jewelsFor(rt.token ?? `nick:${normNick(p.nick)}`)),
       giftNotes: store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.giftNotes ?? [],
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
-      chatters: this.chatRecentNicks(normNick(p.nick)),
+      partners: this.exchangePartnerNicks(normNick(p.nick)),
       stats: heroStatRows({
         gb: p.gb,
         level: p.level,
@@ -4966,22 +4966,30 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.tradeCancel(me, id);
   }
 
-  /** Герои, писавшие в чат за последний час (без ботов и себя), свежие первыми. */
-  private chatRecentNicks(exceptNorm: string): string[] {
+  /** Кому можно предложить обмен: кто в игре сейчас (сначала) и писавшие в чат за час — свежие первыми. Без ботов и себя; без героя не показываем. */
+  private exchangePartnerNicks(exceptNorm: string): string[] {
     const windowMs = 60 * 60 * 1000;
     const now = Date.now();
-    const rows: { nick: string; at: number }[] = [];
+    const live = new Map<string, string>(); // норм. ник → ник, сейчас в мире
+    this.state.players.forEach((p, id) => {
+      if (id.startsWith("bot:")) return;
+      const norm = normNick(p.nick);
+      if (!norm || norm === exceptNorm) return;
+      live.set(norm, p.nick);
+    });
+    const chat: { nick: string; at: number }[] = [];
     for (const [norm, at] of this.chatLast) {
       if (now - at > windowMs) {
         this.chatLast.delete(norm);
         continue;
       }
-      if (norm === exceptNorm || this.bots.has(norm)) continue;
+      if (norm === exceptNorm || this.bots.has(norm) || this.state.players.has(`bot:${norm}`) || live.has(norm)) continue;
       const rec = store.get(`nick:${norm}`);
       if (!rec) continue; // писал, но героя нет — не с кем обмениваться
-      rows.push({ nick: rec.nick || norm, at });
+      chat.push({ nick: rec.nick || norm, at });
     }
-    return rows.sort((x, y) => y.at - x.at).map((r) => r.nick);
+    const liveNicks = [...live.values()].sort((x, y) => x.localeCompare(y, "ru"));
+    return [...liveNicks, ...chat.sort((x, y) => y.at - x.at).map((r) => r.nick)];
   }
 
   /** Копия обмена, в котором участвует герой (правки — только через putTrade). */

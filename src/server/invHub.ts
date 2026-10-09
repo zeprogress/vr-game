@@ -39,8 +39,8 @@ export interface InvZone {
   act(norm: string, act: InvActKind, id: string, idx: number, fuel?: string): InvActResult;
   /** Данные окна снаряжения живого героя (в мире); нет в мире — null. */
   pcInv?(norm: string): PcInvData | null;
-  /** Герои, писавшие в чат за последний час (без ботов), кроме `exceptNorm`. */
-  chatters?(exceptNorm: string): string[];
+  /** Кому можно предложить обмен: в игре сейчас и писавшие в чат за час (без ботов), кроме `exceptNorm`. */
+  partners?(exceptNorm: string): string[];
 }
 
 interface Session {
@@ -86,8 +86,8 @@ export const invHub = {
     return zone?.pcInv?.(norm) ?? null;
   },
 
-  chatters(exceptNorm: string): string[] {
-    return zone?.chatters?.(exceptNorm) ?? [];
+  partners(exceptNorm: string): string[] {
+    return zone?.partners?.(exceptNorm) ?? [];
   },
 
   /** sid от клиента, если он похож на наш, иначе новый. */
