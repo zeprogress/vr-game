@@ -6,7 +6,7 @@ import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
-import { catProject } from "#shared/catacombs";
+import { catProject, inCatRegion } from "#shared/catacombs";
 import type { DmgHitColor } from "#shared/net/messages";
 
 // Сервер: высоты рельефа — из кеша плиток (точная формула съедала ~⅓ CPU).
@@ -234,6 +234,8 @@ export class Mob {
   private deadT = 0;
   private respawnIn = 0;
   grounded = true;
+  /** Открытые залы катакомб, если моб там (таран не уводит его за стены); иначе null. Выставляет симуляция. */
+  catHalls: readonly number[] | null = null;
   private hopCd = Math.random() * MOB.hopInterval;
   /** Куда лениво бредём вне боя. По приходе выбираем новую точку у дома. */
   private wanderX = 0;
@@ -1275,6 +1277,8 @@ export class Mob {
         const lim = WORLD.playHalf - 4;
         tx = Math.max(-lim, Math.min(lim, tx));
         tz = Math.max(-lim, Math.min(lim, tz));
+        // В катакомбах конец тарана — в открытых залах (за стеной высота уже не пол).
+        if (this.catHalls) [tx, tz] = catProject(tx, tz, this.catHalls, MOB.bodyRadius * this.scale * 0.8);
         this.chargeFromX = this.x;
         this.chargeFromZ = this.z;
         this.chargeToX = tx;
@@ -2161,6 +2165,15 @@ export class ZoneSim {
   readonly eventMobs = new Set<string>();
   /** Мобы катакомб (shared/catacombs.ts): не возрождаются, лут роняют, ходят только по открытым залам. */
   readonly catMobs = new Set<string>();
+  /** Катакомбы: убрать всех мобов катакомб и отложенные возвращения их големов (у решётки и в конце забега). */
+  clearCatMobs(): void {
+    for (const id of this.catMobs) this.mobs.delete(id);
+    this.catMobs.clear();
+    for (let i = this.pendingRevivals.length - 1; i >= 0; i--) {
+      const r = this.pendingRevivals[i];
+      if (inCatRegion(r.homeX, r.homeZ)) this.pendingRevivals.splice(i, 1);
+    }
+  }
   /** Статистика забега катакомб: урон по их мобам и убийства по героям (сбрасывает режиссёр). */
   readonly catDamage = new Map<string, number>();
   readonly catKills = new Map<string, number>();
@@ -2534,7 +2547,11 @@ export class ZoneSim {
       this.pendingRevivals.splice(i, 1);
       const revived = new Mob(r.kind, r.homeX, r.homeZ, r.opts);
       this.mobs.set(revived.id, revived);
+      // Голем из катакомб возвращается в учёт катакомб (стены, уборка у решётки), а не бродит сам.
+      if (inCatRegion(r.homeX, r.homeZ)) this.catMobs.add(revived.id);
     }
+    // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
+    for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
     // Катакомбы: стены — моб не выходит из открытых залов/коридоров.
     if (this.catMobs.size) {
@@ -2542,6 +2559,16 @@ export class ZoneSim {
         const m = this.mobs.get(id);
         if (!m || m.dead) continue;
         [m.x, m.z] = catProject(m.x, m.z, this.catOpen, MOB.bodyRadius * m.scale * 0.8);
+        // Высота — по полу в точке, куда моба вернули. Если за тик он стоял за стеной (или за краем
+        // подземелья), его высота считалась по поверхности: без этого он висел бы у потолка.
+        const want = terrainHeight(m.x, m.z) + (m.flying ? 1.35 : 0);
+        if (Math.abs(m.y - want) > 4) {
+          m.y = want;
+          if (!m.flying) {
+            m.vy = 0;
+            m.grounded = true;
+          }
+        }
       }
     }
     // Отражённый щитом Ледяного демона урон (накоплен в hitMob).
@@ -3264,6 +3291,7 @@ export class ZoneSim {
       },
     };
     this.mobs.delete(m.id);
+    this.catMobs.delete(m.id); // родитель катакомб уходит целиком — иначе висел бы призраком в учёте
     this.splitXpPool(m, m.splitXp);
     for (let i = 0; i < m.splitCount; i++) {
       const a = (i / m.splitCount) * Math.PI * 2 + Math.random() * 0.6;

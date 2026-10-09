@@ -1014,9 +1014,50 @@ if (ONLY.has("catacombs")) {
   const weapons0 = bots.map((b) => b.bot.rt.weapons.length);
   let lastStage = -1;
   let maxMobs = 0;
+  // Проверки мобов катакомб: выше потолка (над полом больше CAT_CEIL) и остатки после открытия решётки.
+  let aboveTicks = 0;
+  let aboveMax = 0;
+  let doors = 0;
+  let doorLeft = 0;
+  let doorStray = 0;
+  let prevStep = "";
   for (let i = 0; i < (CAT.CATACOMBS.runSec + 60) * 20; i++) {
     r.step();
     const st = room.state;
+    {
+      let above = false;
+      for (const id of room.sim.catMobs) {
+        const m = room.sim.mobs.get(id);
+        if (!m || m.dead) continue;
+        const h = m.y - CAT.CAT_FLOOR_Y;
+        if (h > CAT.CAT_CEIL) {
+          above = true;
+          aboveMax = Math.max(aboveMax, h);
+        }
+      }
+      if (above) aboveTicks++;
+      const stepNow = String((room.cat as any).step ?? "");
+      if (stepNow === "move" && prevStep !== "move") {
+        doors++;
+        doorLeft += room.sim.catMobs.size;
+        // Блуждающие: живые мобы в области катакомб, которых нет в учёте катакомб (не осколки).
+        for (const m of room.sim.mobs.values()) {
+          if (!m.dead && CAT.inCatRegion(m.x, m.z) && !room.sim.catMobs.has(m.id)) {
+            doorStray++;
+            if (process.env.LAB_DEBUG) say(`    блуждающий: ${m.eliteName || m.kind} (${m.kind}) в (${f(m.x, 1)}, ${f(m.z, 1)}), y ${f(m.y, 1)}, id ${m.id}, extraSlime ${room.sim.extraSlimes?.has?.(m.id) ?? "?"}, event ${room.sim.eventMobs?.has?.(m.id) ?? "?"}`);
+          }
+        }
+        if (room.sim.catMobs.size > 0) {
+          const dirSet: Set<string> = (room.cat as any).mobs ?? new Set();
+          const rows = [...room.sim.catMobs].map((id) => {
+            const m = room.sim.mobs.get(id);
+            return `${m?.eliteName || m?.kind || "?"}${m?.dead ? "(мёртв)" : ""}${dirSet.has(id) ? "" : "[не в учёте]"}`;
+          });
+          say(`    у решётки остались: ${rows.join(", ")}`);
+        }
+      }
+      prevStep = stepNow;
+    }
     for (const b of bots) {
       const p = b.bot.state;
       if (p.dead && !wasDead.get(b.id)) {
@@ -1058,6 +1099,10 @@ if (ONLY.has("catacombs")) {
   if (!win) anomalies.push(`катакомбы: отряд ${n}×${lvl} ур. не прошёл`);
   if (home < n) anomalies.push(`катакомбы: после конца не все вернулись (${home}/${n})`);
   if (outOfWalls > 0) anomalies.push(`катакомбы: боты вне стен ${outOfWalls} тиков`);
+  say(`  решёток открыто ${doors} · учёт катакомб после открытия ${doorLeft} · блуждающих ${doorStray} · мобы выше потолка: ${aboveTicks} тиков (макс. ${f(aboveMax, 1)} м над полом, своды ${CAT.CAT_CEIL} м)`);
+  if (doorLeft > 0) anomalies.push(`катакомбы: после открытия решётки остались в учёте мобы (${doorLeft})`);
+  if (doorStray > 0) anomalies.push(`катакомбы: после открытия решётки блуждают мобы (${doorStray})`);
+  if (aboveTicks > 0) anomalies.push(`катакомбы: мобы выше потолка ${aboveTicks} тиков`);
 }
 
 // 8. Защита: роллы щита/вампиризм и защитные атрибуты — в настоящем бою (физ. и маг. мобы)

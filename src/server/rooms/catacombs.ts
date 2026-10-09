@@ -994,6 +994,8 @@ export class CatacombDirector {
     // Зал пройден — оставшиеся в нём мобы (недобитые, стражи) уходят: дальше их не тащим.
     const rest = [...this.mobs, ...this.guardians];
     if (rest.length) this.host.dismissMobs(rest);
+    // Страховка: всё, что осталось в учёте катакомб (призыв, возвращения големов) — тоже прочь.
+    this.host.clearMobs([]);
     this.mobs.clear();
     this.guardians.clear();
     this.host.announce({ kind: "door", title: "Решётка поднялась", sub: `вперёд — ${this.hallTitle(this.node(this.hi))}`, secs: 5 });

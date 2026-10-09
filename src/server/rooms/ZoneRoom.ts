@@ -3207,12 +3207,13 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /**
-   * Осколки големов (`shard`) в катакомбах убираем вместе с мобами зала, когда открывается проход:
+   * Осколки големов в катакомбах убираем вместе с мобами зала, когда открывается проход:
    * они не в catMobs, иначе висели бы дальше. Пыль — как у других мобов катакомб.
+   * Осколок — моб с общей группой (`splitGroup`): kind у него не `shard`, а вид голема (slime и т.п.).
    */
   private dismissCatShards(): void {
     for (const [id, m] of this.sim.mobs) {
-      if (m.kind !== "shard" || !inCatRegion(m.x, m.z)) continue;
+      if (!(m.kind === "shard" || m.splitGroup) || !inCatRegion(m.x, m.z)) continue;
       if (!m.dead) this.broadcast(MSG.act, { k: "catDust", id: "", x: m.x, y: m.y, z: m.z, r: MOB.bodyRadius * m.scale } satisfies ActRelay);
       this.sim.mobs.delete(id);
       this.sim.catMobs.delete(id);
@@ -5968,8 +5969,7 @@ export class ZoneRoom extends Room<ZoneState> {
         return !!m && !m.dead;
       },
       clearMobs: () => {
-        for (const id of this.sim.catMobs) this.sim.mobs.delete(id);
-        this.sim.catMobs.clear();
+        this.sim.clearCatMobs();
         this.dismissCatShards();
       },
       finalStart: (id) => {
