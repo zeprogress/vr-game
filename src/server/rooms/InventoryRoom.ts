@@ -196,7 +196,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   };
   const heldOf = (h: { cls: string; tier: string } | null | undefined) =>
     h && h.cls ? { cls: h.cls, tier: h.tier } : null;
-  pc.chatters = invHub.chatters(norm);
+  pc.partners = invHub.partners(norm);
   return {
     ok: true,
     pc,

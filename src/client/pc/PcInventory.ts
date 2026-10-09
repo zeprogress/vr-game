@@ -618,7 +618,7 @@ export class PcInventory {
     wrap.append(div("pcinv-sub", "Открыть обмен"));
     // Кто сейчас в игре: выбрать из списка (с кем обмен уже открыт — не предлагаем).
     const busy = new Set(sessions.map((x) => x.with));
-    const online = (d.chatters ?? []).filter((n) => !busy.has(n));
+    const online = (d.partners ?? []).filter((n) => !busy.has(n));
     {
       // Список показываем всегда: если в мире никого нет — пусто и заблокировано (чтобы было видно, что он есть).
       const sel = document.createElement("select");
@@ -626,7 +626,7 @@ export class PcInventory {
       sel.disabled = online.length === 0;
       const ph = document.createElement("option");
       ph.value = "";
-      ph.textContent = online.length ? `Писали в чат за час (${online.length}) — выбрать` : "В чате за час никто не писал";
+      ph.textContent = online.length ? `Кто в игре или писал за час (${online.length}) — выбрать` : "Никого нет в игре и в чате за час";
       sel.append(ph);
       for (const n of online) {
         const o = document.createElement("option");
