@@ -488,18 +488,25 @@ export class PcInventory {
       };
       row.append(cb, this.tradeIcon(it.view), div("pcinv-tname2", it.stack ? `${it.label} · есть ${it.max}` : it.label));
       if (it.stack) {
-        const num = document.createElement("input");
-        num.type = "number";
-        num.min = "1";
-        num.max = String(it.max);
-        num.className = "pcinv-tnum";
-        num.disabled = !this.tradePick.has(it.code);
-        num.value = String(this.tradePick.get(it.code) ?? 1);
-        num.onchange = () => {
-          this.tradePick.set(it.code, Math.max(1, Math.min(it.max, Math.floor(Number(num.value) || 1))));
+        // Количество: «−», число, «+» и «все» — крупные кнопки, чтобы попадать и пальцем.
+        const on = this.tradePick.has(it.code);
+        const cur = this.tradePick.get(it.code) ?? 1;
+        const set = (n: number): void => {
+          this.tradePick.set(it.code, Math.max(1, Math.min(it.max, n)));
           this.render();
         };
-        row.append(num);
+        const qty = div("pcinv-tqty");
+        const minus = button("−", () => set(cur - 1));
+        const plus = button("+", () => set(cur + 1));
+        const all = button("все", () => set(it.max));
+        minus.className = "pcinv-qbtn";
+        plus.className = "pcinv-qbtn";
+        all.className = "pcinv-qbtn pcinv-qall";
+        minus.disabled = !on || cur <= 1;
+        plus.disabled = !on || cur >= it.max;
+        all.disabled = !on || cur >= it.max;
+        qty.append(minus, div("pcinv-qv", on ? String(cur) : "—"), plus, all);
+        row.append(qty);
       } else {
         row.append(div("pcinv-tcnt", "×1"));
       }
@@ -1727,8 +1734,15 @@ function injectInvStyle(): void {
 .pcinv-tx { background:none; border:none; color:#c9a0a0; cursor:pointer; font-size:15px; padding:0 4px; line-height:1; }
 .pcinv-tx:hover { color:#ff9a9a; }
 .pcinv-tcb { width:16px; height:16px; flex:none; accent-color:#7ee081; }
-.pcinv-tnum { width:58px; flex:none; }
-.pcinv-tnum:disabled { opacity:.35; }
+.pcinv-tqty { display:flex; align-items:center; gap:4px; flex:none; }
+.pcinv-qbtn { min-width:34px; height:30px; padding:0 8px; border-radius:7px; border:1px solid #4a4e5a; background:#23222b; color:#f1ead6; font:800 16px system-ui; cursor:pointer; }
+.pcinv-qbtn:hover:not(:disabled) { border-color:#e8c26a; }
+.pcinv-qbtn:disabled { opacity:.35; cursor:default; }
+.pcinv-qall { font-size:12px; min-width:0; }
+.pcinv-qv { min-width:34px; text-align:center; font:800 15px system-ui; color:#e8c26a; }
+.pcinv-root.touch .pcinv-qbtn { min-width:44px; height:40px; font-size:20px; }
+.pcinv-root.touch .pcinv-qall { font-size:14px; min-width:0; }
+.pcinv-root.touch .pcinv-qv { min-width:40px; font-size:17px; }
 .pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
 .pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
 .pcinv-jw svg { width:100%; height:100%; display:block; }
