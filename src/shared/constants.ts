@@ -172,8 +172,8 @@ export const ARROW = {
  */
 /** Сброс атрибутов (!respec, кнопки в !inv и окне снаряжения) включён. */
 export const RESPEC_ENABLED = true;
-/** Сброс бесплатный (по просьбе, 2026-10-01 — после ввода Классов 2.0); false — вернуть цену 1 ◈. */
-export const RESPEC_FREE = true;
+/** Сброс бесплатный (по просьбе, 2026-10-01 — после ввода Классов 2.0); false — вернуть цену 1 ◈ (2026-10-09 — вернули). */
+export const RESPEC_FREE = false;
 
 /** Сброс атрибутов — 1 жетон заданий ◈ каждый раз (2026-09-30; раньше — рыба). */
 export function respecCostFor(_done: number): number {
