@@ -685,8 +685,8 @@ export class PcInventory {
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
     if (!this.hooks.touch || w.fav) c.append(this.favStar(w));
-    // Страница на ПК: клик — меню действий, как тап на телефоне.
-    if (this.hooks.page && !this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
+    // ПК (страница и игра): клик — меню действий, как тап на телефоне; правый клик в игре — надеть.
+    if (!this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
     this.touchSrc.set(c, { kind: "bag", id: w.id });

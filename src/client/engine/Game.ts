@@ -1771,6 +1771,8 @@ export class Game {
     this.wristPanel.onAction = (a) => this.menuWeaponAction(a);
     // Кольца и камни в VR: те же действия и данные, что у окна инвентаря.
     this.wristPanel.onJewelAct = (m) => this.net?.sendPcInvAct(m);
+    this.wristPanel.onGift = (m) => this.net?.sendPcInvAct(m);
+    this.wristPanel.nearbyHeroes = () => this.nearbyHeroNicks();
     this.wristPanel.onRingsOpen = () => this.net?.sendPcInvOpen();
     this.wristPanel.onQuestSelect = (it) => this.setQuestCompass(it);
     this.wristPanel.onEnchant = (id) => {
@@ -2014,6 +2016,22 @@ export class Game {
       this.ttsLoading = false;
       t.enqueue(url, nick);
     });
+  }
+
+  /** Герои в мире рядом (ближайшие первыми, себя не считаем) — получатели подарка в VR. */
+  private nearbyHeroNicks(limit = 7): string[] {
+    const room = this.net?.room;
+    const sid = this.net?.sessionId;
+    if (!room || !sid) return [];
+    const me = room.state.players.get(sid);
+    const rows: { nick: string; d: number }[] = [];
+    room.state.players.forEach((ps, id) => {
+      if (id === sid || !ps.nick) return;
+      const d = me ? Math.hypot(ps.head.x - me.head.x, ps.head.z - me.head.z) : 0;
+      rows.push({ nick: ps.nick, d });
+    });
+    rows.sort((a, b) => a.d - b.d);
+    return rows.slice(0, limit).map((r) => r.nick);
   }
 
   /** Действия с оружием из меню на руке: склад ↔ рука/спина, обмен рука ↔ плечо, на землю, на лом. */
