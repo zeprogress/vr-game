@@ -1,6 +1,7 @@
 import type { Scene } from "@babylonjs/core/scene";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 
 import { attachLegendaryGlow, spawnWeaponModel } from "./weaponModels";
 
@@ -21,11 +22,19 @@ export const NEW_WEAPON_SCALE: Record<NewWeapon, number> = {
 const LEGEND_TINT = new Color3(0.62, 0.3, 1);
 const RUBY_TINT = new Color3(1, 0.12, 0.25);
 
+/** Точка свечения в системе оружия (у модели из пака, см. замер в корне): кинжал — середина лезвия, копьё — наконечник, молот — набалдажник. */
+const GLOW_AT: Record<NewWeapon, Vector3> = {
+  dagger: new Vector3(0, 0.2, 0),
+  spear: new Vector3(0, 1.2, 0),
+  hammer: new Vector3(0, 0.72, 0),
+};
+
 export function createClassWeapon(scene: Scene, w: NewWeapon, tier: 0 | 1 | 2 | 3 = 0): Mesh {
   const m = spawnWeaponModel(scene, tier === 1 ? `${w}_gold` : w, {
     scale: NEW_WEAPON_SCALE[w],
     tint: tier === 2 ? LEGEND_TINT : tier === 3 ? RUBY_TINT : undefined,
   });
-  if (tier >= 2) attachLegendaryGlow(scene, m, w === "dagger" ? 0.2 : 0.35, 0.5, tier === 3 ? "ruby" : "legendary");
+  // Свечение — там, где у оружия главная часть: клинок кинжала, наконечник копья, набалдажник молота.
+  if (tier >= 2) attachLegendaryGlow(scene, m, w === "dagger" ? 0.2 : 0.35, 0.5, tier === 3 ? "ruby" : "legendary", GLOW_AT[w]);
   return m;
 }
