@@ -470,7 +470,7 @@ export const SKILLS2: Record<SkillId, SkillDef> = {
     name: "Чумной клинок", icon: glyph("s.plague"), test: true,
     desc: "8 с отравленных клинков: удар вешает стак яда (до 5); на 5 стаках взрыв ×0.4 удара заражает соседей (+2 стака) — яд ползёт по толпе",
     cooldown: 16, castTime: 0, radius: 5, dmgMult: 0.4, hits: 1,
-    attr: { attr: "wis", per: 0.08, what: "сила яда" }, // 2026-10-07: было 2% → 4.5% → 8%
+    attr: { attr: "wis", per: 0.14, what: "сила яда" }, // 2026-10-07: было 2% → 4.5% → 8%; 2026-10-09: 14%
   },
   smoke: {
     name: "Пелена смерти", icon: glyph("s.smoke"), test: true,
