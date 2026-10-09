@@ -6336,11 +6336,16 @@ export class ZoneRoom extends Room<ZoneState> {
     const p = this.state.players.get(id);
     const rt = this.rt.get(id);
     if (!p || !rt) return [];
-    // Оружие из сундуков катакомб — случайного класса (не только своего).
-    const cls: WeaponClass = ATTACK_CLASSES[Math.floor(Math.random() * ATTACK_CLASSES.length)];
-    const w = kind === "final" ? this.rollChestWeapon(p, cls) : rollWeaponInstance(cls, "gold");
-    rt.weapons.push(w);
     const token = rt.token ?? `nick:${normNick(p.nick)}`;
+    // Сундук стадии — не оружие, а жетоны ◈ (золотое оружие из катакомб убрано).
+    if (kind === "gold") {
+      store.put(token, { tokens: (store.get(token)?.tokens ?? 0) + CATACOMBS.stageTokens });
+      return [];
+    }
+    // Оружие из сундука Владыки — случайного класса (не только своего).
+    const cls: WeaponClass = ATTACK_CLASSES[Math.floor(Math.random() * ATTACK_CLASSES.length)];
+    const w = this.rollChestWeapon(p, cls);
+    rt.weapons.push(w);
     store.put(token, { weapons: rt.weapons });
     this.announcePickup(p.nick, w.cls, w.tier, w);
     const loot: LootItem[] = [];

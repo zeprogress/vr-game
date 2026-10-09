@@ -3479,7 +3479,8 @@ export class ZoneSim {
       const goldMul = goldDropMulForLevel(this.getAttackerLevel(attacker));
       // Вожак — шанс оружия выше в QUEST.champ.dropMul раз (уникальное — только у вожаков лагерей).
       const champMul = m.champ ? QUEST.champ.dropMul : 1;
-      const goldChance = (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
+      // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
+      const goldChance = inCatRegion(m.x, m.z) ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
       const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * WEAPON_DROP_MUL : 0;
       const tier: WeaponTier | null =
