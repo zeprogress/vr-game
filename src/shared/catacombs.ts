@@ -201,7 +201,8 @@ export function catGates(hall: number): { x: number; z: number; back: boolean }[
   const h = CAT_HALLS[hall];
   const out: { x: number; z: number; back: boolean }[] = [];
   for (const a of [-1.2, -0.6, 0, 0.6, 1.2, Math.PI - 0.9, Math.PI + 0.9, -1.9, 1.9]) {
-    out.push({ x: h.x + Math.sin(a) * (h.r - 3), z: h.z + Math.cos(a) * (h.r - 3), back: Math.cos(a) < -0.3 });
+    // Ворота — ближе к центру зала (половина радиуса): волны выходят ближе к центру, а не у стен.
+    out.push({ x: h.x + Math.sin(a) * h.r * 0.5, z: h.z + Math.cos(a) * h.r * 0.5, back: Math.cos(a) < -0.3 });
   }
   return out;
 }
@@ -209,7 +210,7 @@ export function catGates(hall: number): { x: number; z: number; back: boolean }[
 /** Где встаёт мини-босс (саркофаг) / супер-босс (алтарь) — север от центра зала. */
 export function catBossSpot(hall: number): { x: number; z: number } {
   const h = CAT_HALLS[hall];
-  return { x: h.x, z: h.z + h.r * (hall === CAT_HALLS.length - 1 ? 0.25 : 0.45) };
+  return { x: h.x, z: h.z + h.r * (hall === CAT_HALLS.length - 1 ? 0.1 : 0.2) };
 }
 
 // ---------------------------------------------------------------- сценарий
