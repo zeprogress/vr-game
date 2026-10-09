@@ -15,7 +15,7 @@ export function injectPcStyle(): void {
   color:var(--pc-text); font:600 13px/1.25 system-ui,sans-serif; pointer-events:auto; cursor:pointer; text-shadow:0 1px 2px #000; }
 .pc-target { background:none; }
 .pc-target:hover { background:rgba(26,24,33,.25); }
-.pc-target.attacking { box-shadow:inset 0 0 0 2px rgba(210,59,59,.55); }
+.pc-target.attacking { box-shadow:inset 0 0 0 3px rgba(255,20,20,.95); }
 .pc-target-name { color:#ffb3a8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pc-bar { position:relative; height:14px; margin-top:4px; background:#23202a; border:1px solid #000; border-radius:3px; overflow:hidden; }
 .pc-bar-fill { height:100%; width:100%; background:linear-gradient(#e0493f,#a8231c); transition:width .15s linear; }

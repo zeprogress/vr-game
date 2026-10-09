@@ -372,6 +372,8 @@ export class PcHud {
     this.nameEl.textContent = `${nick} · ${level} ур.`;
     // Значок оружия — из общего реестра (shared/icons.ts).
     this.portraitEl.innerHTML = iconHtml(weaponIcon(weapon));
+    // Класс по значку оружия — цвет фона рамки (CSS ниже).
+    this.portraitEl.dataset.cls = weapon;
     this.slotAtk.querySelector<HTMLElement>(".pc-slot-ico")!.innerHTML = iconHtml(weaponIcon(weapon));
   }
 
@@ -974,6 +976,14 @@ function injectHudStyle(): void {
 /* ПК: фон чата прозрачнее; у портрета героя убрана подложка (фон круга), сам значок остаётся. */
 .pc-hud:not(.touch) .pc-chat { background:rgba(14,13,19,.3); }
 .pc-hud:not(.touch) .pc-portrait { background:none; }
+/* ПК: полупрозрачный фон значка по классу — воин красный, лучник зелёный, маг поддержки синий,
+   копейщик оранжевый, боевой маг фиолетовый, ассасин жёлтый. Без оружия («кулак») — без цвета. */
+.pc-hud:not(.touch) .pc-portrait[data-cls="sword"] { background:rgba(220,50,50,.45); }
+.pc-hud:not(.touch) .pc-portrait[data-cls="bow"] { background:rgba(60,190,90,.45); }
+.pc-hud:not(.touch) .pc-portrait[data-cls="staff"] { background:rgba(60,120,230,.45); }
+.pc-hud:not(.touch) .pc-portrait[data-cls="spear"] { background:rgba(245,140,40,.45); }
+.pc-hud:not(.touch) .pc-portrait[data-cls="hammer"] { background:rgba(160,80,230,.45); }
+.pc-hud:not(.touch) .pc-portrait[data-cls="dagger"] { background:rgba(240,210,50,.45); }
 /* ПК: рамка HP героя без чёрного фона. */
 .pc-hud:not(.touch) .pc-unit { background:none; }
 .pc-hud:not(.touch) .pc-unit:hover { background:rgba(26,24,33,.25); }
