@@ -274,6 +274,10 @@ interface Runtime {
   lastHit: Partial<Record<WeaponKind, number>>;
   /** Темп ударов «счётом»: с какого момента (elapsed) следующий удар этим оружием в норме (см. tryHit). */
   hitNext?: Partial<Record<WeaponKind, number>>;
+  /** То же для огнешаров посоха (см. MSG.cast): с какого момента следующий каст в норме. */
+  castNext?: number;
+  /** То же для лечения посоха (см. MSG.cast, heal). */
+  healNext?: number;
   sinceHurt: number;
   respawnIn: number;
   /** Секунды неуязвимости после возрождения. */
@@ -1503,7 +1507,10 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.spell === "heal") {
         const h = MAGIC.heal;
         const healHand = p.rightCls === "staff" ? "right" : "left";
-        if (this.elapsed - rt.lastCast < h.cooldown / rolledAtkSpeedMul(p, healHand, rt)) return;
+        // Тот же счёт, что у огнешара (см. castNext): лаг сети не должен резать лечение.
+        const healRate = h.cooldown / rolledAtkSpeedMul(p, healHand, rt);
+        const healDue = rt.healNext ?? -Infinity;
+        if (this.elapsed < healDue - HIT_BUNCH) return;
         if (charge < h.minCharge || p.mana < h.minMana) return;
         // Цель: союзник в радиусе, иначе сам.
         let target = p;
@@ -1518,6 +1525,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
+        rt.healNext = Math.max(healDue, this.elapsed - HIT_BUNCH) + healRate;
         const beforeHp = target.hp;
         target.hp = Math.min(
           target.maxHp,
@@ -1533,8 +1541,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const staffHand = p.rightCls === "staff" ? "right" : "left";
       // Скорость каста (МДР) укорачивает откат огнешара — вместе с роллом «скорость атаки».
       // Плюс темп от «Боевого клича»/«Благословения» — клиент ускоряется так же (Game: atkSpeedAffix × cry).
-      const castCooldown = staffCastInterval(p.level, p, rolledAtkSpeedMul(p, staffHand, rt) * this.cryTempo(rt));
-      if (this.elapsed - rt.lastCast < castCooldown) return;
+      // Темп — тот же счёт, что у ударов (tryHit), но откат точный: допуск HIT_BUNCH на сетевой лаг.
+      // Строгая пауза от прихода сообщения резала огнешары при каждом джиттере: клиент отсчитывает откат
+      // от своей отправки, а сервер — от прихода, и гэп между кастами сжимался ниже отката.
+      const castRate = staffCastInterval(p.level, p, rolledAtkSpeedMul(p, staffHand, rt) * this.cryTempo(rt));
+      const castDue = rt.castNext ?? -Infinity;
+      if (this.elapsed < castDue - HIT_BUNCH) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
 
@@ -1543,6 +1555,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const cost = Math.min(p.mana, (charge / 1) * MAGIC.firebolt.chargeTime * MAGIC.firebolt.manaPerSec);
       p.mana = Math.max(0, p.mana - cost);
       rt.lastCast = this.elapsed;
+      rt.castNext = Math.max(castDue, this.elapsed - HIT_BUNCH) + castRate;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
       // Роллы "крит" на посохе раньше тоже никуда не доходили (только tryHit
@@ -8470,9 +8483,12 @@ export class ZoneRoom extends Room<ZoneState> {
     if (p.skill1 !== kind && p.skill2 !== kind) return false;
 
     const sk = SKILLS2[kind];
+    // skillAt — срок следующего применения (−999 = готово; так же возвращают откат). Счёт, как у ударов:
+    // лаг сети не режет умение, а средний откат не меняется.
     const cd = sk.cooldown * this.skillCdMul(p);
-    if (this.elapsed - (rt.skillAt[kind] ?? -999) < cd) return false;
-    rt.skillAt[kind] = this.elapsed;
+    const due = rt.skillAt[kind] ?? -999;
+    if (this.elapsed < due - HIT_BUNCH) return false;
+    rt.skillAt[kind] = Math.max(due, this.elapsed - HIT_BUNCH) + cd;
     rt.lastSkillAt = this.elapsed;
     const v = CLASS_IDS.indexOf(cls);
     const feetY = p.head.y - PLAYER.eyeHeight;
