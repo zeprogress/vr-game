@@ -1716,6 +1716,7 @@ function injectInvStyle(): void {
 .pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:6px; background:#0f0e13; border:1px solid #33363f; overflow:hidden; }
 .pcinv-tic > * { width:34px !important; height:34px !important; }
 .pcinv-tic img, .pcinv-tic svg { width:34px; height:34px; }
+.pcinv-tic > .gico-e { width:auto !important; height:auto !important; font-size:30px; line-height:1; display:flex; align-items:center; justify-content:center; }
 .pcinv-tname2 { flex:1; min-width:0; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .pcinv-tcnt { font:800 12px system-ui; color:#e8c26a; flex:none; min-width:26px; text-align:right; }
 .pcinv-tx { background:none; border:none; color:#c9a0a0; cursor:pointer; font-size:15px; padding:0 4px; line-height:1; }
