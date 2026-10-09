@@ -22,7 +22,9 @@ export function ensureIconCss(): void {
     themeCss() +
     ".gico{display:inline-block;width:1.2em;height:1.2em;vertical-align:-.22em;flex:none;pointer-events:none}" +
     "img.gico{object-fit:contain}" +
-    ".gico-e{width:auto;height:auto;line-height:1;vertical-align:baseline}";
+    ".gico-e{width:auto;height:auto;line-height:1;vertical-align:baseline}" +
+    // Картинки оружия и щитов — на 20% крупнее обычного значка (контур картинки занимает мало места).
+    "img.gico-gear{width:1.45em;height:1.45em;vertical-align:-.35em}";
   document.head.appendChild(s);
 }
 
@@ -39,7 +41,10 @@ export function iconHtml(k: IconKey, color?: string): string {
   const d = ICONS[k] as { emoji: string; svg?: string; img?: string };
   const style = color ? ` style="color:${color}"` : "";
   if (d.svg) return svgMarkup(k, color);
-  if (d.img) return `<img class="gico" src="/icons/${d.img}" alt="" draggable="false">`;
+  if (d.img) {
+    const cls = k.startsWith("w.") ? "gico gico-gear" : "gico";
+    return `<img class="${cls}" src="/icons/${d.img}" alt="" draggable="false">`;
+  }
   return `<span class="gico gico-e"${style}>${d.emoji}</span>`;
 }
 
@@ -93,7 +98,9 @@ export function drawIcon(
   const d = ICONS[k] as { emoji: string; svg?: string; img?: string };
   if (d.svg || d.img) {
     const img = imageFor(k, color, onReady);
-    if (img) ctx.drawImage(img, x, y, s, s);
+    // Картинки оружия и щитов рисуем на 12% крупнее (как значки в HTML), остальные — как есть.
+    const e = d.img && k.startsWith("w.") ? s * 0.12 : 0;
+    if (img) ctx.drawImage(img, x - e, y - e, s + 2 * e, s + 2 * e);
     return;
   }
   ctx.save();
