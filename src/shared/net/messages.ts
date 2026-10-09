@@ -277,6 +277,18 @@ export interface QuestData {
   msg?: string;
 }
 
+/** Предмет в окне обмена: что за предмет (для иконки), сколько (стопка — число, у остального 1). */
+export interface TradeItemView {
+  k: "weapon" | "ring" | "gem" | "bag";
+  name: string;
+  n: number;
+  cls?: string;
+  tier?: string;
+  gems?: (string | null)[];
+  key?: string;
+  item?: string;
+}
+
 /** Рубиновое на складе, которое можно обменять на другой класс (по строке на оружие). */
 export interface ShopSwap {
   /** id оружия на складе. */
@@ -331,8 +343,8 @@ export interface PcInvData {
   jewels?: PcInvJewels;
   /** Непрочитанные подарки: от кого и что. */
   giftNotes?: { from: string; text: string; at: number }[];
-  /** Обмен: окна с другими героями — свои предметы и предметы собеседника (строками), подтверждения. */
-  trade?: { sessions: { id: string; with: string; mine: { items: string[]; ok: boolean }; theirs: { items: string[]; ok: boolean } }[] };
+  /** Обмен: окна с другими героями — свои предметы и предметы собеседника, подтверждения. */
+  trade?: { sessions: { id: string; with: string; mine: { items: TradeItemView[]; ok: boolean }; theirs: { items: TradeItemView[]; ok: boolean } }[] };
 }
 
 export interface PcInvActMsg {

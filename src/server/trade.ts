@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { TradeItemView } from "#shared/net/messages";
 import { addToBag, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
 import { gemName, parseGem, ringName, type JewelSave } from "#shared/jewels";
 
@@ -181,12 +182,18 @@ export function parseTradeList(raw: string): TradeItem[] | null {
   return out;
 }
 
-/** Окно обмена для героя `token`: его предметы и предметы собеседника, строками. */
-export interface TradeView {
-  sessions: { id: string; with: string; mine: { items: string[]; ok: boolean }; theirs: { items: string[]; ok: boolean } }[];
+/** Предмет обмена для окна: название, число и то, что нужно для иконки. */
+export function itemView(t: Taken): TradeItemView {
+  if (t.k === "weapon") return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier };
+  if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
+  if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };
+  return { k: "bag", name: ITEMS[t.item].name, n: t.n, item: t.item };
 }
 
-export function tradeViewOf(rec: { trades?: TradeSession[] } | undefined, token: string): TradeView {
+/** Окно обмена для героя `token`: его предметы и предметы собеседника, подтверждения. */
+export function tradeViewOf(rec: { trades?: TradeSession[] } | undefined, token: string): {
+  sessions: { id: string; with: string; mine: { items: TradeItemView[]; ok: boolean }; theirs: { items: TradeItemView[]; ok: boolean } }[];
+} {
   return {
     sessions: (rec?.trades ?? []).map((s) => {
       const mine = s.a.token === token ? s.a : s.b;
@@ -194,8 +201,8 @@ export function tradeViewOf(rec: { trades?: TradeSession[] } | undefined, token:
       return {
         id: s.id,
         with: theirs.nick,
-        mine: { items: mine.items.map(takenName), ok: mine.ok },
-        theirs: { items: theirs.items.map(takenName), ok: theirs.ok },
+        mine: { items: mine.items.map(itemView), ok: mine.ok },
+        theirs: { items: theirs.items.map(itemView), ok: theirs.ok },
       };
     }),
   };
