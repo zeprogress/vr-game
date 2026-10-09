@@ -1021,6 +1021,16 @@ if (ONLY.has("catacombs")) {
   let doorLeft = 0;
   let doorStray = 0;
   let prevStep = "";
+  // Воскрешения целых големов из осколков (записи в pendingRevivals): сколько за забег.
+  let revivals = 0;
+  {
+    const pend = (room.sim as any).pendingRevivals as unknown[];
+    const push0 = pend.push.bind(pend);
+    pend.push = (...a: unknown[]) => {
+      revivals += a.length;
+      return push0(...a);
+    };
+  }
   for (let i = 0; i < (CAT.CATACOMBS.runSec + 60) * 20; i++) {
     r.step();
     const st = room.state;
@@ -1099,7 +1109,7 @@ if (ONLY.has("catacombs")) {
   if (!win) anomalies.push(`катакомбы: отряд ${n}×${lvl} ур. не прошёл`);
   if (home < n) anomalies.push(`катакомбы: после конца не все вернулись (${home}/${n})`);
   if (outOfWalls > 0) anomalies.push(`катакомбы: боты вне стен ${outOfWalls} тиков`);
-  say(`  решёток открыто ${doors} · учёт катакомб после открытия ${doorLeft} · блуждающих ${doorStray} · мобы выше потолка: ${aboveTicks} тиков (макс. ${f(aboveMax, 1)} м над полом, своды ${CAT.CAT_CEIL} м)`);
+  say(`  решёток открыто ${doors} · учёт катакомб после открытия ${doorLeft} · блуждающих ${doorStray} · воскрешений големов ${revivals} · мобы выше потолка: ${aboveTicks} тиков (макс. ${f(aboveMax, 1)} м над полом, своды ${CAT.CAT_CEIL} м)`);
   if (doorLeft > 0) anomalies.push(`катакомбы: после открытия решётки остались в учёте мобы (${doorLeft})`);
   if (doorStray > 0) anomalies.push(`катакомбы: после открытия решётки блуждают мобы (${doorStray})`);
   if (aboveTicks > 0) anomalies.push(`катакомбы: мобы выше потолка ${aboveTicks} тиков`);

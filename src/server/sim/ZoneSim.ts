@@ -2547,8 +2547,6 @@ export class ZoneSim {
       this.pendingRevivals.splice(i, 1);
       const revived = new Mob(r.kind, r.homeX, r.homeZ, r.opts);
       this.mobs.set(revived.id, revived);
-      // Голем из катакомб возвращается в учёт катакомб (стены, уборка у решётки), а не бродит сам.
-      if (inCatRegion(r.homeX, r.homeZ)) this.catMobs.add(revived.id);
     }
     // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
     for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
@@ -3290,6 +3288,9 @@ export class ZoneSim {
         splitReviveSec: m.splitReviveSec,
       },
     };
+    // Катакомбы: осколки — тоже мобы катакомб (стены, уборка у решётки). Они не возрождают целого голема
+    // (их смерть идёт веткой катакомб, без учёта группы) — иначе голем в зале множился бы без конца.
+    const wasCat = this.catMobs.has(m.id);
     this.mobs.delete(m.id);
     this.catMobs.delete(m.id); // родитель катакомб уходит целиком — иначе висел бы призраком в учёте
     this.splitXpPool(m, m.splitXp);
@@ -3318,6 +3319,7 @@ export class ZoneSim {
       child.splitGroup = group;
       child.forceAggro();
       this.mobs.set(child.id, child);
+      if (wasCat) this.catMobs.add(child.id);
     }
   }
 
