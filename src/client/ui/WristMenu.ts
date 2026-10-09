@@ -1152,7 +1152,7 @@ export class WristMenu {
     const heldAegis =
       item.cls === "shield" &&
       this.warehouse.some((e) => e.cls === "shield" && e.name === AEGIS_NAME && (e.id === this.equippedIds.left || e.id === this.equippedIds.right));
-    this.drawIconAt(ctx, weaponIcon(item.cls, heldAegis), x + 10, y + 28, iconS, TIER_COLOR[item.tier]);
+    this.drawIconAt(ctx, weaponIcon(item.cls, heldAegis, item.tier), x + 10, y + 28, iconS, TIER_COLOR[item.tier]);
     ctx.font = "bold 21px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[item.tier];
     ctx.fillText(this.heldName(item), x + iconS + 20, y + 28);
@@ -1374,7 +1374,7 @@ export class WristMenu {
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME), x + 6, y + 8, 52, TIER_COLOR[wp.tier]);
+    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 8, 52, TIER_COLOR[wp.tier]);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
     ctx.fillText(this.shortName(name), x + 62, y + 8);

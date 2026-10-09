@@ -49,8 +49,8 @@ export interface PcInventoryHooks {
 
 /** Положить значок оружия в элемент (из общего реестра shared/icons.ts; Эгида — свой). */
 export function setIcon(el: HTMLElement, cls: string, name?: string, tier?: string): void {
-  // Картинка оружия — подкраска под грейд (как рамка): цвет тира из общей палитры.
-  setIconEl(el, weaponIcon(cls, name === AEGIS_NAME), tier ? TIER_LOOK[tier as WeaponTier].color : undefined);
+  // Картинка оружия и щита — своя для каждого грейда (тир в картинке уже нарисован).
+  setIconEl(el, weaponIcon(cls, name === AEGIS_NAME, tier));
 }
 const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(id) }));
 

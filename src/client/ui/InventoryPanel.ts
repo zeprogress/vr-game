@@ -245,7 +245,7 @@ export class InventoryPanel {
   private weaponIconEl(w: WornWeapon, size: number): HTMLElement {
     const aegis = aegisTier(w.cls, w.tier, w.affix) === "aegis";
     const box = el("span", `font-size:${Math.round(size * 0.5)}px;line-height:0;pointer-events:none;`);
-    box.innerHTML = iconHtml(weaponIcon(w.cls, aegis), TIER_LOOK[w.tier].color);
+    box.innerHTML = iconHtml(weaponIcon(w.cls, aegis, w.tier));
     return box;
   }
 
