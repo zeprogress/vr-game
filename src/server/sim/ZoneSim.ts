@@ -392,6 +392,10 @@ export class Mob {
   readonly shot: MobShot | null;
   /** 40 ур. Скалолом: прыжок на героя (LEAP) и ярость стаи (PACK_FRENZY). */
   readonly leaper: boolean;
+  /** Ходит по земле без скачков (EliteMobDef.walksOnly): плавный ход, без пачек прыжков. */
+  readonly walksOnly: boolean;
+  /** Блуждающий ходок стоит, пока не выйдет пауза (с), — после дошедшей до точки. */
+  private walkPauseT = 0;
   readonly packFrenzy: boolean;
   private leapCd = 3;
   private leapWindupT = 0;
@@ -508,6 +512,41 @@ export class Mob {
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
 
+  /**
+   * Куда идёт ходок без скачков (walksOnly): к герою до дистанции удара (дальше — стоит и бьёт),
+   * без погони — домой или бродит у дома. [0, 0] — стоять на месте.
+   */
+  private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
+    if (chasing) {
+      if (dist <= this.meleeReach * 0.7) return [0, 0];
+      // Прыгун не подходит в ближний бой раньше своего прыжка: ждёт готовности LEAP на дистанции.
+      if (this.leaper && this.leapCd > 0 && this.leapCd < 1.5 && dist > LEAP.minDist) return [0, 0];
+      return [dx, dz];
+    }
+    const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
+    this.returningHome = homeDist > MOB.wanderRadius;
+    let wdx: number;
+    let wdz: number;
+    if (this.returningHome) {
+      wdx = this.homeX - this.x;
+      wdz = this.homeZ - this.z;
+    } else {
+      wdx = this.wanderX - this.x;
+      wdz = this.wanderZ - this.z;
+      if (Math.hypot(wdx, wdz) < 1.5) {
+        // Дошёл до точки: постоит и выберет новую.
+        this.walkPauseT = 1.5 + Math.random() * 2.5;
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * MOB.wanderRadius;
+        this.wanderX = this.homeX + Math.cos(a) * r;
+        this.wanderZ = this.homeZ + Math.sin(a) * r;
+        return [0, 0];
+      }
+    }
+    const wl = Math.hypot(wdx, wdz) || 1;
+    return [wdx / wl, wdz / wl];
+  }
+
   /** Замах: ++ attackSeq (клиент проигрывает клип) и вид удара; без вида — укус. */
   swing(kind = 0): void {
     this.attackKind = kind;
@@ -563,6 +602,7 @@ export class Mob {
       freezer?: boolean;
       shot?: MobShot;
       leaper?: boolean;
+      walksOnly?: boolean;
       packFrenzy?: boolean;
       burrower?: boolean;
       stormCaller?: boolean;
@@ -640,6 +680,7 @@ export class Mob {
     this.freezer = opts.freezer ?? false;
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
+    this.walksOnly = opts.walksOnly ?? false;
     this.packFrenzy = opts.packFrenzy ?? false;
     this.burrower = opts.burrower ?? false;
     this.stormCaller = opts.stormCaller ?? false;
@@ -1623,6 +1664,24 @@ export class Mob {
       // Оглушённый летун застывает в воздухе; пригвождённый — падает как все.
       if ((this.stunnedT > 0 || holdStill) && this.flying) this.vy = 0;
       else this.vy -= MOB.gravity * dt;
+    } else if (this.walksOnly && this.grounded && this.slamWindupT <= 0 && this.lungeWindupT <= 0 && this.lungeT <= 0) {
+      // Ходок (Скалолом): идёт по земле плавно, без пачек прыжков — ноги всегда на земле.
+      // Блуждание: сначала пауза у точки, потом идёт дальше.
+      let tx = 0;
+      let tz = 0;
+      if (!chasing && this.walkPauseT > 0) this.walkPauseT -= dt;
+      else [tx, tz] = this.walkDir(chasing, dist, dx, dz);
+      // Без погони — неспешный шаг (клип ходьбы), в погоне — бег.
+      const spd = chasing || this.returningHome ? hopSpeed : MOB.idleHopSpeed * 0.5;
+      const [sx, sz] = tx !== 0 || tz !== 0 ? steerAroundTrees(this.x, this.z, tx, tz) : [0, 0];
+      const acc = Math.min(1, dt * 4);
+      this.vx += (sx * spd - this.vx) * acc;
+      this.vz += (sz * spd - this.vz) * acc;
+      this.vy = 0;
+      // Чуть над землёй: иначе общий снап ниже гасит скорость (vx *= 0.25 при касании земли).
+      this.y = terrainHeight(this.x, this.z) + 0.02;
+      this.grounded = true;
+      if (Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
     } else if (this.flying) {
       // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
       let tx = 0;
@@ -2150,7 +2209,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
-    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, packFrenzy: d.packFrenzy,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }

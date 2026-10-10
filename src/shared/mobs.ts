@@ -286,6 +286,8 @@ export interface EliteMobDef {
   shot?: MobShot;
   /** 40 ур. Скалолом: прыжок на героя с кругом-предупреждением и удар по площади (см. LEAP). */
   leaper?: boolean;
+  /** Ходит по земле без пачек скачков (ноги всегда на земле). Прыжок leaper (LEAP) остаётся механикой: ходок прыгает с дистанции, когда прыжок готов. */
+  walksOnly?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
   packFrenzy?: boolean;
   /** 45 ур. Землерой: уходит под землю (неуязвим), ползёт к герою и выныривает под ним (см. BURROW). */
@@ -473,7 +475,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Отдельное описание, чтобы не менять модель огнекрылого дракона события «Охота на элиту».
   catDragon: {
     model: "monDragonBest", name: "Владыка Бездны", level: 35, kind: "slime",
-    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite", noSquash: true,
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite", noSquash: true, walksOnly: true,
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
@@ -607,13 +609,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   rockBreaker: {
     model: "monStoneTroll", name: "Скалолом", blurb: "удар вблизи, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true,
+    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true, walksOnly: true,
   },
   // Прыгающий Скалолом — боссы и вожак (Громолом, Гор'Таал, Скалолом-вожак): прыжок с кругом-предупреждением.
   rockBreakerJump: {
     model: "monStoneTroll", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true,
+    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true, walksOnly: true,
   },
   // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
