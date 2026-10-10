@@ -81,6 +81,7 @@ import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
+import { TwitchRedeem, loadRedeemRules, REDEEM_TOKEN_FILE } from "../TwitchRedeem";
 import { synthChat, ttsAvailable } from "../tts";
 import {
   isTtsVoice,
@@ -1196,6 +1197,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
+  /** Баллы канала: активация награды → команда чата (см. TwitchRedeem). */
+  private redeem: TwitchRedeem | null = null;
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
   /** Боты на тесте у пугала (!пугало) — для них пугало считается целью. */
   private readonly scareTesters = new WeakSet<PlayerState>();
@@ -1404,6 +1407,24 @@ export class ZoneRoom extends Room<ZoneState> {
       this.twitch.start();
     }
 
+    // Баллы канала: награда → команда чата (EventSub). Тест-стенд — только через devChat.
+    const redeemRules = loadRedeemRules();
+    for (const err of redeemRules.errors) console.log(`[redeem] ${err}`);
+    this.redeem = new TwitchRedeem({
+      channel: process.env.TWITCH_CHANNEL || TWITCH_CHANNEL,
+      clientId: process.env.TWITCH_CLIENT_ID ?? "",
+      clientSecret: process.env.TWITCH_CLIENT_SECRET ?? "",
+      seedRefresh: process.env.TWITCH_BROADCASTER_REFRESH ?? "",
+      tokenFile: REDEEM_TOKEN_FILE,
+      rules: redeemRules.rules,
+      onCommand: (login, command, reward) => {
+        this.reply(`🎁 @${login} — «${reward}»`);
+        this.onChat(login, command);
+      },
+      onCooldown: (login, reward, secLeft) => this.reply(`@${login} «${reward}» ещё перезаряжается — ${secLeft} с.`),
+    });
+    if (!STAGING) this.redeem.start();
+
     // Разовая чистка ботов: при смене BOT_WIPE_TOKEN — один раз всех гасим.
     if (pult.botWipe !== BOT_WIPE_TOKEN) {
       let w = 0;
@@ -1420,7 +1441,14 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (RESTORE_BOTS_ON_START && !STAGING) this.restoreBots();
     // Стенд: «чат» приходит с локальной страницы (devChat), а не из Twitch.
-    if (STAGING) devChat.set((nick, text) => this.onChat(nick, text));
+    if (STAGING) {
+      devChat.set((nick, text) => {
+        // Стенд: «!награда <название>» — активация награды без Twitch.
+        const m = text.match(/^!награда\s+(.+)$/i);
+        if (m) this.redeem?.simulate(m[1].trim(), nick);
+        else this.onChat(nick, text);
+      });
+    }
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -10465,6 +10493,7 @@ export class ZoneRoom extends Room<ZoneState> {
     invHub.setZone(null);
     if (STAGING) devChat.set(null);
     this.twitch?.stop();
+    this.redeem?.stop();
     serverPerf.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);
   }

@@ -213,6 +213,19 @@ interface GolemSplitGroup {
   opts: ConstructorParameters<typeof Mob>[3];
 }
 
+/**
+ * Прыжок моба в погоне: полёт, с (по замеру ~11 тиков), и доля горизонтальной скорости, которую раньше
+ * моб терял на земле между прыжками (скольжение). Скорость прыжка домножается на
+ * (полёт + доля·пауза) / (полёт + пауза) — средняя скорость погони не меняется, пауз больше нет.
+ */
+const HOP_FLIGHT_SEC = 0.55;
+const HOP_GLIDE = 0.25;
+/** Кольцо, на котором ходок-прыгун ждёт готовности LEAP (между LEAP.minDist и LEAP.maxDist). */
+const LEAP_WAIT_RING = (LEAP.minDist + LEAP.maxDist) / 2;
+/** Землерой под землёй кружит внутри своей метки: радиус, м, и скорость, м/с. */
+const BURROW_CIRCLE_R = 1;
+const BURROW_CIRCLE_V = 2;
+
 export class Mob {
   readonly id = nid();
   /** Это осколок голема из пары — см. GolemSplitGroup. undefined — обычный моб. */
@@ -236,7 +249,6 @@ export class Mob {
   grounded = true;
   /** Открытые залы катакомб, если моб там (таран не уводит его за стены); иначе null. Выставляет симуляция. */
   catHalls: readonly number[] | null = null;
-  private hopCd = Math.random() * MOB.hopInterval;
   /** Куда лениво бредём вне боя. По приходе выбираем новую точку у дома. */
   private wanderX = 0;
   private wanderZ = 0;
@@ -394,8 +406,6 @@ export class Mob {
   readonly leaper: boolean;
   /** Ходит по земле без скачков (EliteMobDef.walksOnly): плавный ход, без пачек прыжков. */
   readonly walksOnly: boolean;
-  /** Блуждающий ходок стоит, пока не выйдет пауза (с), — после дошедшей до точки. */
-  private walkPauseT = 0;
   readonly packFrenzy: boolean;
   private leapCd = 3;
   private leapWindupT = 0;
@@ -426,6 +436,10 @@ export class Mob {
   private burrowTarget: string | null = null;
   private burrowX = 0;
   private burrowZ = 0;
+  /** Центр метки телеграфа (под землёй моб кружит у него) и угол круга. */
+  private burrowCx = 0;
+  private burrowCz = 0;
+  private burrowAng = 0;
   private stormCd = 3;
   private stormT = 0;
   private stormX = 0;
@@ -512,19 +526,79 @@ export class Mob {
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
 
+  /** Расстояние между центрами моба и героя при касании тел (как в столкновениях tick). */
+  private contactDist(): number {
+    return PLAYER.radius + MOB.bodyRadius * this.scale * (this.kind === "boss" ? BOSS.bodyMult : 1);
+  }
+
   /**
-   * Куда идёт ходок без скачков (walksOnly): к герою до дистанции удара (дальше — стоит и бьёт),
-   * без погони — домой или бродит у дома. [0, 0] — стоять на месте.
+   * Дистанция, с которой моб кружит у героя (непрерывный ход): 0.7 удара, но не ближе контакта тел;
+   * удар (meleeReach) должен достать. Крупное тело (контакт дальше удара) — кольцо у контакта.
    */
-  private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
-    if (chasing) {
-      if (dist <= this.meleeReach * 0.7) return [0, 0];
-      // Прыгун не подходит в ближний бой раньше своего прыжка: ждёт готовности LEAP на дистанции.
-      if (this.leaper && this.leapCd > 0 && this.leapCd < 1.5 && dist > LEAP.minDist) return [0, 0];
-      return [dx, dz];
-    }
+  private combatRing(): number {
+    const contact = this.contactDist();
+    return Math.max(contact + 0.02, Math.min(this.meleeReach * 0.7, this.meleeReach - 0.05));
+  }
+
+  /**
+   * Кольцо для прыжков у героя (len — длина прыжка): чуть дальше контакта, и так, чтобы хорда прыжка
+   * не резала тело героя (столкновение откатывает такой прыжок и моб встаёт). Ближний удар — не дальше meleeReach.
+   */
+  private hopRing(len: number): number {
+    const contact = this.contactDist();
+    const cap = this.kind === "boss" ? Infinity : this.meleeReach - 0.05;
+    const clear = Math.sqrt(contact * contact + (len / 2) * (len / 2)) + 0.05;
+    return Math.max(contact + 0.02, Math.min(Math.max(contact + 0.25, clear), cap));
+  }
+
+  /**
+   * Моб сейчас в телеграфе умения (споры, шаг призрака, щупальце, рывок, заморозка, гроза). Якорные
+   * (рейд-босс и его копии) в это время не бьют вблизи и не стреляют — их поведение сохранено как есть.
+   */
+  private get castingNow(): boolean {
+    return this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
+  }
+
+  /**
+   * Кружить вокруг цели (непрерывный ход: ходок, пчела): тангенс в сторону retreatSide плюс поправка
+   * к дистанции ring (±band). Никогда не ноль — моб в бою не стоит.
+   */
+  private orbitDir(dx: number, dz: number, dist: number, ring: number, band: number): [number, number] {
+    const rad = Math.max(-1, Math.min(1, (dist - ring) / band));
+    const x = dx * rad - dz * this.retreatSide;
+    const z = dz * rad + dx * this.retreatSide;
+    const l = Math.hypot(x, z) || 1;
+    return [x / l, z / l];
+  }
+
+  /** Непрерывный ход в бою: далеко — прямо к цели, у кольца — кружить. */
+  private combatDir(dx: number, dz: number, dist: number, ring: number, band: number): [number, number] {
+    if (dist > ring + 2 * band) return [dx, dz];
+    return this.orbitDir(dx, dz, dist, ring, band);
+  }
+
+  /**
+   * Прыжок по кругу: направление, при котором приземление (длина прыжка len) ложится на кольцо ring
+   * вокруг цели. Далеко — прямо к цели (до касания тел). Вплотную к телу хорда не идёт внутрь,
+   * иначе столкновение откатывает прыжок и моб застревает: тогда прыгает вбок-наружу.
+   */
+  private hopRingDir(dx: number, dz: number, dist: number, ring: number, len: number, contact: number): [number, number] {
+    if (dist < 1e-3 || len < 1e-3) return [dx, dz];
+    const nx = -dx; // от цели к мобу
+    const nz = -dz;
+    let c = Math.max(-1, Math.min(1, (ring * ring - dist * dist - len * len) / (2 * dist * len)));
+    if (c < 0 && dist < contact + 0.5 && dist * Math.sqrt(1 - c * c) < contact) c = 0;
+    const s = Math.sqrt(1 - c * c) * this.retreatSide;
+    return [c * nx - s * nz, c * nz + s * nx];
+  }
+
+  /**
+   * Бродит у дома; если погоня увела далеко — домой. Без пауз: у точки сразу выбирает новую.
+   * Выставляет returningHome.
+   */
+  private wanderDir(wr: number): [number, number] {
     const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
-    this.returningHome = homeDist > MOB.wanderRadius;
+    this.returningHome = homeDist > wr;
     let wdx: number;
     let wdz: number;
     if (this.returningHome) {
@@ -534,17 +608,31 @@ export class Mob {
       wdx = this.wanderX - this.x;
       wdz = this.wanderZ - this.z;
       if (Math.hypot(wdx, wdz) < 1.5) {
-        // Дошёл до точки: постоит и выберет новую.
-        this.walkPauseT = 1.5 + Math.random() * 2.5;
         const a = Math.random() * Math.PI * 2;
-        const r = Math.sqrt(Math.random()) * MOB.wanderRadius;
+        const r = Math.sqrt(Math.random()) * wr;
         this.wanderX = this.homeX + Math.cos(a) * r;
         this.wanderZ = this.homeZ + Math.sin(a) * r;
-        return [0, 0];
+        wdx = this.wanderX - this.x;
+        wdz = this.wanderZ - this.z;
       }
     }
     const wl = Math.hypot(wdx, wdz) || 1;
     return [wdx / wl, wdz / wl];
+  }
+
+  /**
+   * Куда идёт ходок без скачков (walksOnly). В погоне — к герою, у кольца кружит и бьёт на ходу.
+   * Прыгун, ждущий готовности LEAP, кружит на дистанции прыжка. Без погони — бродит без пауз.
+   */
+  private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
+    if (chasing) {
+      // Прыгун перед прыжком уходит на его дистанцию (LEAP.minDist..maxDist) и кружит там — не стоит у героя.
+      if (this.leaper && this.leapCd < 1.5) {
+        return this.combatDir(dx, dz, dist, LEAP_WAIT_RING, 2.5);
+      }
+      return this.combatDir(dx, dz, dist, this.combatRing(), 0.1);
+    }
+    return this.wanderDir(MOB.wanderRadius);
   }
 
   /** Замах: ++ attackSeq (клиент проигрывает клип) и вид удара; без вида — укус. */
@@ -1051,66 +1139,81 @@ export class Mob {
       if (this.burrowCd > 0) this.burrowCd -= dt;
       if (this.burrowPhase > 0) {
         this.burrowT -= dt;
-        this.vx = this.vz = 0;
-        if (this.burrowPhase === 1) {
-          if (this.burrowT <= 0) {
-            this.burrowPhase = 2;
-            this.burrowT = BURROW.maxTravel;
-            this.immune = true;
-          }
-        } else if (this.burrowPhase === 2) {
-          const t = players.find((p) => p.sessionId === this.burrowTarget);
-          if (t) {
-            this.burrowX = t.x;
-            this.burrowZ = t.z;
-          }
-          const bdx = this.burrowX - this.x;
-          const bdz = this.burrowZ - this.z;
-          const bd = Math.hypot(bdx, bdz);
-          const stepLen = BURROW.speed * dt;
-          if (bd > stepLen) {
-            this.x += (bdx / bd) * stepLen;
-            this.z += (bdz / bd) * stepLen;
+        if (this.burrowPhase === 1 && this.burrowT <= 0) {
+          this.burrowPhase = 2;
+          this.burrowT = BURROW.maxTravel;
+          this.immune = true;
+        }
+        // Фаза 1 (ныряет): моб не стоит — идёт по земле дальше (обычное движение ниже); под землёй — ниже.
+        if (this.burrowPhase >= 2) {
+          this.vx = this.vz = 0;
+          if (this.burrowPhase === 2) {
+            const t = players.find((p) => p.sessionId === this.burrowTarget);
+            if (t) {
+              this.burrowX = t.x;
+              this.burrowZ = t.z;
+            }
+            const bdx = this.burrowX - this.x;
+            const bdz = this.burrowZ - this.z;
+            const bd = Math.hypot(bdx, bdz);
+            const stepLen = BURROW.speed * dt;
+            if (bd > stepLen) {
+              this.x += (bdx / bd) * stepLen;
+              this.z += (bdz / bd) * stepLen;
+            } else {
+              this.x = this.burrowX;
+              this.z = this.burrowZ;
+            }
+            this.y = terrainHeight(this.x, this.z);
+            this.burrowTrailT -= dt;
+            if (this.burrowTrailT <= 0) {
+              this.burrowTrailT = 0.25;
+              this.fx.push({ k: "burrowTrail", x: this.x, z: this.z });
+            }
+            if (bd <= 0.6 || this.burrowT <= 0) {
+              // Метка легла здесь: под ней моб кружит невидимый и выныривает в её центре.
+              this.burrowPhase = 3;
+              this.burrowT = BURROW.telegraph;
+              this.burrowCx = this.x;
+              this.burrowCz = this.z;
+              this.burrowAng = 0;
+              this.fx.push({ k: "burrowMark", x: this.x, z: this.z, d: BURROW.telegraph, r: BURROW.radius });
+            }
+          } else if (this.burrowT > 0) {
+            // Фаза 3 (телеграф): под землёй идёт по кругу внутри метки — путь есть, метка на месте.
+            this.burrowAng += (BURROW_CIRCLE_V / BURROW_CIRCLE_R) * dt;
+            this.x = this.burrowCx + Math.cos(this.burrowAng) * BURROW_CIRCLE_R;
+            this.z = this.burrowCz + Math.sin(this.burrowAng) * BURROW_CIRCLE_R;
+            this.y = terrainHeight(this.x, this.z);
           } else {
-            this.x = this.burrowX;
-            this.z = this.burrowZ;
-          }
-          this.y = terrainHeight(this.x, this.z);
-          this.burrowTrailT -= dt;
-          if (this.burrowTrailT <= 0) {
-            this.burrowTrailT = 0.25;
-            this.fx.push({ k: "burrowTrail", x: this.x, z: this.z });
-          }
-          if (bd <= 0.6 || this.burrowT <= 0) {
-            this.burrowPhase = 3;
-            this.burrowT = BURROW.telegraph;
-            this.fx.push({ k: "burrowMark", x: this.x, z: this.z, d: BURROW.telegraph, r: BURROW.radius });
-          }
-        } else if (this.burrowT <= 0) {
-          // Выныривает: удар по кругу, оглушение, отброс.
-          this.burrowPhase = 0;
-          this.immune = false;
-          this.burrowCd = BURROW.cooldown * (0.85 + Math.random() * 0.3);
-          this.swing();
-          this.attackCd = this.atkCooldown;
-          this.vy = MOB.hopUp * 0.8;
-          this.grounded = false;
-          this.fx.push({ k: "burrowHit", x: this.x, z: this.z, r: BURROW.radius });
-          for (const p of players) {
-            if (Math.hypot(p.x - this.x, p.z - this.z) > BURROW.radius) continue;
-            hits.push({
-              target: p.sessionId,
-              dmg: MOB.attackDamage * this.dmgMul * BURROW.dmgMul * rage45,
-              fromX: this.x,
-              fromZ: this.z,
-              projectile: false,
-              byMob: this.id,
-              knockback: BURROW.knockback,
-              stunSec: BURROW.stunSec,
-            });
+            // Выныривает в центре метки: удар по кругу, оглушение, отброс.
+            this.x = this.burrowCx;
+            this.z = this.burrowCz;
+            this.y = terrainHeight(this.x, this.z);
+            this.burrowPhase = 0;
+            this.immune = false;
+            this.burrowCd = BURROW.cooldown * (0.85 + Math.random() * 0.3);
+            this.swing();
+            this.attackCd = this.atkCooldown;
+            this.vy = MOB.hopUp * 0.8;
+            this.grounded = false;
+            this.fx.push({ k: "burrowHit", x: this.x, z: this.z, r: BURROW.radius });
+            for (const p of players) {
+              if (Math.hypot(p.x - this.x, p.z - this.z) > BURROW.radius) continue;
+              hits.push({
+                target: p.sessionId,
+                dmg: MOB.attackDamage * this.dmgMul * BURROW.dmgMul * rage45,
+                fromX: this.x,
+                fromZ: this.z,
+                projectile: false,
+                byMob: this.id,
+                knockback: BURROW.knockback,
+                stunSec: BURROW.stunSec,
+              });
+            }
           }
         }
-        if (this.burrowPhase > 0) return; // ныряет / под землёй — ни шагов, ни ударов
+        if (this.burrowPhase >= 2) return; // под землёй — ни шагов, ни ударов
       } else if (chasing && np && !busy && this.burrowCd <= 0 && dist > BURROW.minDist && dist < BURROW.maxDist) {
         this.burrowPhase = 1;
         this.burrowT = BURROW.dive;
@@ -1344,7 +1447,7 @@ export class Mob {
       if (chasing && this.parryT <= 0 && this.parryCd <= 0 && dist < PARRY.reach) {
         this.parryT = PARRY.duration;
         this.parryCd = PARRY.cooldown * (0.85 + Math.random() * 0.3);
-        this.root(PARRY.duration);
+        // Стойка не пригвождает: ниндзя (как и все) движется, а отбивание — parryT (см. hitMob).
         this.fx.push({ k: "parryOn", x: this.x, z: this.z, d: PARRY.duration });
       }
     }
@@ -1488,13 +1591,11 @@ export class Mob {
       if (this.frenzyT <= 0) this.raging = false;
     }
 
-    // Телеграф спец-атаки — моб стоит на месте (колосс «сеет», призрак тает, спрут тянет, демон целится, Скалолом приседает).
-    const holdStill =
-      this.sporeWindupT > 0 || this.blinkFadeT > 0 || this.pullWindupT > 0 || this.chargeWindupT > 0 || this.freezeWindupT > 0 || this.leapWindupT > 0 || this.stormT > 0;
+    // Телеграфы и замахи движение не останавливают: моб идёт и бьёт на ходу. Точки ударов фиксируются
+    // при старте каста там, где это задано самим умением (круг, линия, метка), а не где моб окажется.
 
-    // Босс, пока стоит на месте у себя в углу и не замахивается, смотрит в
-    // сторону поляны (оттуда приходят герои). Активный бой (движение/замах)
-    // это сам отключает; далёкий аггро одиночного бота картину не ломает.
+    // Босс без погони у своего угла смотрит в сторону поляны (оттуда приходят герои), даже когда
+    // бродит по углу. В погоне и при замахе/рывке это отключено.
     const bossFacingMeadow =
       this.faceRest &&
       this.grounded &&
@@ -1502,7 +1603,7 @@ export class Mob {
       this.lungeWindupT <= 0 &&
       this.lungeT <= 0 &&
       this.shootQueue === 0 &&
-      Math.hypot(this.vx, this.vz) < 0.25 &&
+      !chasing &&
       (this.x - this.homeX) ** 2 + (this.z - this.homeZ) ** 2 < (BOSS.wanderRadius + 4) ** 2;
 
     // Лагерный элитный моб (см. EliteMobDef.enrageAt) сам себе включает ярость
@@ -1531,9 +1632,7 @@ export class Mob {
     if (isBoss) {
       if (this.slamCd > 0) this.slamCd -= dt;
       if (this.slamWindupT > 0) {
-        this.slamWindupT -= dt;
-        this.vx *= 0.02;
-        this.vz *= 0.02;
+        this.slamWindupT -= dt; // замах на ходу: босс идёт, слэм бьёт по месту, где он в этот миг
         if (this.slamWindupT <= 0) {
           this.slamSeq = (this.slamSeq + 1) & 0xffff;
           this.swing();
@@ -1577,9 +1676,7 @@ export class Mob {
       }
       if (this.lungeCd > 0) this.lungeCd -= dt;
       if (this.lungeWindupT > 0) {
-        this.lungeWindupT -= dt;
-        this.vx *= 0.02;
-        this.vz *= 0.02;
+        this.lungeWindupT -= dt; // таран копит на ходу: направление обновляется, моб не стоит
         if (lungeTgt && lungeFar > 1e-3) {
           this.lungeDirX = (lungeTgt.x - this.x) / lungeFar;
           this.lungeDirZ = (lungeTgt.z - this.z) / lungeFar;
@@ -1656,24 +1753,20 @@ export class Mob {
       }
     }
 
-    if (this.anchored || this.rootedT > 0 || this.stunnedT > 0 || holdStill) {
-      // Рейд-босс стоит всегда; пригвождён (град стрел) или оглушён (удар воина): с места не двигается.
+    if (this.anchored || this.rootedT > 0 || this.stunnedT > 0) {
+      // Якорные (рейд-босс и его копии) стоят всегда; пригвождён (град стрел от героев) или оглушён (удар воина): с места не двигается.
       this.rootedT = Math.max(0, this.rootedT - dt);
       this.vx = 0;
       this.vz = 0;
       // Оглушённый летун застывает в воздухе; пригвождённый — падает как все.
-      if ((this.stunnedT > 0 || holdStill) && this.flying) this.vy = 0;
+      if (this.stunnedT > 0 && this.flying) this.vy = 0;
       else this.vy -= MOB.gravity * dt;
-    } else if (this.walksOnly && this.grounded && this.slamWindupT <= 0 && this.lungeWindupT <= 0 && this.lungeT <= 0) {
-      // Ходок (Скалолом): идёт по земле плавно, без пачек прыжков — ноги всегда на земле.
-      // Блуждание: сначала пауза у точки, потом идёт дальше.
-      let tx = 0;
-      let tz = 0;
-      if (!chasing && this.walkPauseT > 0) this.walkPauseT -= dt;
-      else [tx, tz] = this.walkDir(chasing, dist, dx, dz);
-      // Без погони — неспешный шаг (клип ходьбы), в погоне — бег.
+    } else if (this.walksOnly && this.grounded && this.lungeT <= 0) {
+      // Ходок (Скалолом, Владыка Бездны): идёт по земле, ноги всегда на земле — без пачек прыжков
+      // (прыжок leaper — отдельная механика ниже). В погоне — бег, у героя кружит; без погони — неспешный шаг.
+      const [tx, tz] = this.walkDir(chasing, dist, dx, dz);
       const spd = chasing || this.returningHome ? hopSpeed : MOB.idleHopSpeed * 0.5;
-      const [sx, sz] = tx !== 0 || tz !== 0 ? steerAroundTrees(this.x, this.z, tx, tz) : [0, 0];
+      const [sx, sz] = steerAroundTrees(this.x, this.z, tx, tz);
       const acc = Math.min(1, dt * 4);
       this.vx += (sx * spd - this.vx) * acc;
       this.vz += (sz * spd - this.vz) * acc;
@@ -1686,9 +1779,10 @@ export class Mob {
       // Пчела: парит на высоте, не прыгает — плавно рулит к цели / точке блуждания.
       let tx = 0;
       let tz = 0;
-      if (chasing && dist > this.meleeReach * 0.7) {
-        tx = dx;
-        tz = dz;
+      if (chasing) {
+        // В погоне не стоит: кружит у своей дистанции удара (у контакта тел — для крупных) и бьёт/стреляет на ходу.
+        this.returningHome = false;
+        [tx, tz] = this.combatDir(dx, dz, dist, this.combatRing(), 0.4);
       } else {
         // Улетела погоней далеко от дома — сперва летит напрямик домой на
         // боевой скорости, а не лениво дрейфует к случайной точке рядом.
@@ -1727,19 +1821,16 @@ export class Mob {
       this.vy = 0;
       this.grounded = true; // клиент: без прыжков/приземлений
       if (!bossFacingMeadow && Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
-    } else if (
-      this.grounded &&
-      this.slamWindupT <= 0 &&
-      this.lungeWindupT <= 0 &&
-      this.lungeT <= 0
-    ) {
-      this.hopCd -= dt;
-      if (this.hopCd <= 0 && chasing) {
-        this.hopCd = hopInterval;
+    } else if (this.grounded && this.lungeT <= 0) {
+      if (chasing) {
+        // Погоня без пауз: следующий прыжок — сразу после приземления. Горизонтальная скорость прыжка
+        // подобрана так, чтобы средняя скорость погони не изменилась (см. HOP_GLIDE у констант).
+        const hopK = (HOP_FLIGHT_SEC + HOP_GLIDE * hopInterval) / (HOP_FLIGHT_SEC + hopInterval);
+        let spd = hopSpeed * hopK;
         let hx = 0;
         let hz = 0;
-        let retreating = false;
         if (this.ranged) {
+          let retreating = false;
           if (dist < SPITTER.keepDistance && this.restT <= 0) {
             // Отход по диагонали, а не строго назад: так он кружит, а не
             // убегает по прямой от преследователя.
@@ -1763,50 +1854,30 @@ export class Mob {
             hx = -dz * s;
             hz = dx * s;
           }
-        } else if (dist > this.meleeReach * 0.7) {
-          hx = dx;
-          hz = dz;
-        }
-        if (hx !== 0 || hz !== 0) {
-          [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
-          const spd = retreating ? hopSpeed * SPITTER.retreatSpeed : hopSpeed;
-          this.vx = hx * spd;
-          this.vz = hz * spd;
-          this.vy = MOB.hopUp;
-          this.grounded = false;
-        }
-      } else if (this.hopCd <= 0) {
-        // Праздношатание вне боя: лениво скачем к точке в пределах wanderRadius от дома.
-        // Но если погоня увела далеко за этот радиус — сперва скачем НАПРЯМИК
-        // домой на обычной (не ленивой) скорости, а не мелкими случайными шагами.
-        this.hopCd = MOB.idleHopInterval * (0.7 + Math.random() * 0.7);
-        const wr = isBoss ? BOSS.wanderRadius : MOB.wanderRadius;
-        const homeDist = Math.hypot(this.x - this.homeX, this.z - this.homeZ);
-        const returning = !isBoss && homeDist > wr;
-        this.returningHome = returning;
-        let wdx: number, wdz: number;
-        if (returning) {
-          wdx = this.homeX - this.x;
-          wdz = this.homeZ - this.z;
+          if (retreating) spd *= SPITTER.retreatSpeed;
         } else {
-          wdx = this.wanderX - this.x;
-          wdz = this.wanderZ - this.z;
-          if (Math.hypot(wdx, wdz) < 1.5) {
-            const a = Math.random() * Math.PI * 2;
-            const r = Math.sqrt(Math.random()) * wr;
-            this.wanderX = this.homeX + Math.cos(a) * r;
-            this.wanderZ = this.homeZ + Math.sin(a) * r;
-            wdx = this.wanderX - this.x;
-            wdz = this.wanderZ - this.z;
-          }
+          // Ближний бой: прыжок ложится на кольцо у удара — моб кружит у героя и бьёт на ходу.
+          const len = spd * HOP_FLIGHT_SEC;
+          [hx, hz] = this.hopRingDir(dx, dz, dist, this.hopRing(len), len, this.contactDist());
         }
-        const wl = Math.hypot(wdx, wdz) || 1;
-        const [hx, hz] = steerAroundTrees(this.x, this.z, wdx / wl, wdz / wl);
-        const spd = isBoss ? MOB.idleHopSpeed * 0.7 : returning ? MOB.hopSpeed : MOB.idleHopSpeed;
+        [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
         this.vx = hx * spd;
         this.vz = hz * spd;
-        this.vy = MOB.hopUp * 0.7;
+        this.vy = MOB.hopUp;
         this.grounded = false;
+      } else {
+        // Без погони — неспешный шаг по земле, без прыжков: моб не стоит, но и не скачет без нужды.
+        // Далеко от дома — возвращается быстрее, бродит у дома — медленнее.
+        const [wx, wz] = this.wanderDir(isBoss ? BOSS.wanderRadius : MOB.wanderRadius);
+        const [hx, hz] = steerAroundTrees(this.x, this.z, wx, wz);
+        const spd = this.returningHome ? MOB.idleHopSpeed : MOB.idleHopSpeed * 0.3;
+        const acc = Math.min(1, dt * 4);
+        this.vx += (hx * spd - this.vx) * acc;
+        this.vz += (hz * spd - this.vz) * acc;
+        this.vy = 0;
+        // Чуть над землёй: иначе общий снап ниже гасит скорость (vx *= 0.25 при касании земли).
+        this.y = terrainHeight(this.x, this.z) + 0.02;
+        this.grounded = true;
         if (!this.faceRest) this.yaw = Math.atan2(hx, hz);
       }
     } else {
@@ -1915,7 +1986,7 @@ export class Mob {
       this.yaw += dyaw * Math.min(1, dt * 1.5);
     }
 
-    if (chasing && np && !isBoss && this.stunnedT <= 0 && !holdStill) {
+    if (chasing && np && !isBoss && this.stunnedT <= 0 && !(this.anchored && this.castingNow)) {
       if (this.ranged) {
         if (dist < (this.shot?.range ?? SPITTER.fireRange) && this.attackCd <= 0) {
           this.attackCd = this.shot?.cooldown ?? SPITTER.fireCooldown;
