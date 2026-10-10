@@ -70,6 +70,20 @@ for img in bpy.data.images:
     if img.size[0] > tex or img.size[1] > tex:
         img.scale(tex, tex)
 
+# ---- насыщенность базового цвета: тёплая охра у текстуры даёт оранжевый на модели ----
+sat = float(sp.get("saturation", 1.0))
+if sat != 1.0:
+    import numpy as np
+    base_imgs = {link.from_node.image for m in ob.data.materials if m and m.node_tree
+                 for link in m.node_tree.links if link.to_socket.name == "Base Color" and link.from_node.image}
+    for img in base_imgs:
+        px = np.array(img.pixels[:], dtype=np.float32).reshape(-1, 4)
+        lum = px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722
+        for i in range(3):
+            px[:, i] = lum + (px[:, i] - lum) * sat
+        img.pixels.foreach_set(px.ravel())
+        img.update()
+
 # ---- скелет: кости генератора biped ----
 BONES = [
     ("Hips", "hips", "spine", None),

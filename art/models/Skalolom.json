@@ -8,6 +8,11 @@
  "texture": 1024,
  "legLen": 0.83,
  "depth": 0.32,
+ "saturation": 0.4,
+ "anim": {
+  "walk": {"bob": 0.008, "crouch": 0.02},
+  "run": {"bob": 0.0, "lift": 0.13, "crouch": 0.03}
+ },
  "clips": ["Idle", "Walk", "Run", "Attack", "HitReact", "Death"],
  "joints": {
   "hips": [0.075, 0.06, 1.0],

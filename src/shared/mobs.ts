@@ -1034,7 +1034,7 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
   [
     { key: "spearThrower", name: "Вождь копейщиков", hpMul: 1.6, dmgMul: 1.2 },
     { key: "spikeTail", name: "Шипохвост-патриарх", hpMul: 1.8, dmgMul: 1.2 },
-    { key: "rockBreakerJump", name: "Скалолом-вожак", hpMul: 1.3, dmgMul: 1.1 },
+    { key: "rockBreaker", name: "Скалолом-вожак", hpMul: 1.3, dmgMul: 1.1 },
     { key: "frostDemon", name: "Морозный князь", hpMul: 1.6, dmgMul: 1.1 },
   ],
 ];
