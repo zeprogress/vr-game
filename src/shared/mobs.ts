@@ -588,9 +588,15 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
       caltrops: { sec: 6, radius: 1.4, slowSec: 1.5, slowFrac: 0.4, dmgFrac: 0.15 },
     },
   },
-  // Скалолом (ближний бой): прыгает на героя с кругом-предупреждением, удар по площади с отбросом;
-  // гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
+  // Скалолом (ближний бой): удар вблизи; гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
+  // Прыжка нет (leaper: false) — по просьбе пользователя (2026-10-10).
   rockBreaker: {
+    model: "monStoneTroll", name: "Скалолом", blurb: "удар вблизи, ярость стаи", level: 40, kind: "slime",
+    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
+    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true,
+  },
+  // Прыгающий Скалолом — боссы и вожак (Громолом, Гор'Таал, Скалолом-вожак): прыжок с кругом-предупреждением.
+  rockBreakerJump: {
     model: "monStoneTroll", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
     leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
@@ -998,7 +1004,7 @@ export const CAT_GUARDS: readonly (readonly CatBoss[])[] = [
       adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
     },
     {
-      key: "rockBreaker", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
+      key: "rockBreakerJump", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
       hpMul: 1.54, dmgMul: 1.4, scale: 0.6, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
       mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
       adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
@@ -1028,7 +1034,7 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
   [
     { key: "spearThrower", name: "Вождь копейщиков", hpMul: 1.6, dmgMul: 1.2 },
     { key: "spikeTail", name: "Шипохвост-патриарх", hpMul: 1.8, dmgMul: 1.2 },
-    { key: "rockBreaker", name: "Скалолом-вожак", hpMul: 1.3, dmgMul: 1.1 },
+    { key: "rockBreakerJump", name: "Скалолом-вожак", hpMul: 1.3, dmgMul: 1.1 },
     { key: "frostDemon", name: "Морозный князь", hpMul: 1.6, dmgMul: 1.1 },
   ],
 ];
@@ -1051,7 +1057,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
     adds: { types: ["boneWraith", "boneWraith", "spikyBlob"], every: 20, count: 2, perHero: 0.5 },
   },
   {
-    key: "rockBreaker", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
+    key: "rockBreakerJump", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
     hpMul: 1.45, dmgMul: 0.9, scale: 1.15, final: true,
     retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
     seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },

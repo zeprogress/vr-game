@@ -812,9 +812,9 @@ export class Mob implements Hittable {
       this.lodTint = this.tint;
     }
 
-    // Мобы 40 ур. (свой снаряд или прыжок): бросок/удар — клип модели, а не только «замах» телом.
+    // Мобы 40 ур. (свой снаряд, прыжок или сгенерированная модель с клипами): удар — клип модели, а не только «замах» телом.
     const eliteDef = this.modelName ? Object.values(ELITE_MOBS).find((d) => d.model === this.modelName) : undefined;
-    if (eliteDef?.shot || eliteDef?.leaper)
+    if (eliteDef?.shot || eliteDef?.leaper || eliteDef?.gait)
       this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? rig.anims.get("attack") ?? null;
     if (eliteDef?.gait) {
       this.gaitIdle = rig.anims.get("idle") ?? null;

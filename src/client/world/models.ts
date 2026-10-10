@@ -79,7 +79,7 @@ export const MODELS = {
   monDragonEvolved: "/models/monsters/Dragon_Evolved.gltf",
   // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
   monBogBrute: "/models/gen/BogBrute.glb",
-  monStoneTroll: "/models/gen/StoneTroll.glb",
+  monStoneTroll: "/models/gen/Skalolom.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
 } as const;
 
