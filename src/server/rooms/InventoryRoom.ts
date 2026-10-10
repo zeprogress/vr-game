@@ -28,9 +28,10 @@ import {
 import { skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
-import { store } from "../store";
+import { FEEDBACK_COOLDOWN_MS, FEEDBACK_TEXT_MAX, isFeedbackKind, isFeedbackMark, type FeedbackKind } from "#shared/feedback";
+import { feedback, store } from "../store";
 import { invHub, type InvActKind } from "../invHub";
-import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
+import { isAdminNick, respecCostFor, RESPEC_ENABLED } from "#shared/constants";
 
 interface InventoryJoinOptions {
   /** Ник из адреса `/inv?ник`. */
@@ -88,6 +89,38 @@ export class InventoryRoom extends colyseus.Room {
       client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
+    // «Помощь в разработке»: список видят все, писать — только с подтверждённым входом, пометки — только админ.
+    this.onMessage("feedbackList", (client, m: { kind?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !isFeedbackKind(m?.kind)) return;
+      client.send("feedback", feedbackReply(w, m.kind));
+    });
+    this.onMessage("feedbackAdd", (client, m: { kind?: unknown; text?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !isFeedbackKind(m?.kind)) return;
+      if (!invHub.isAuthed(w.sid, w.norm)) return client.send("toast", { ok: false, text: "Писать могут те, кто подтвердил вход кодом в чате." });
+      const text = typeof m.text === "string" ? m.text.trim() : "";
+      if (!text) return client.send("toast", { ok: false, text: "Напиши текст." });
+      if (text.length > FEEDBACK_TEXT_MAX) return client.send("toast", { ok: false, text: `Не больше ${FEEDBACK_TEXT_MAX} символов.` });
+      const now = Date.now();
+      const wait = FEEDBACK_COOLDOWN_MS - (now - (feedbackAt.get(w.norm) ?? 0));
+      if (wait > 0) return client.send("toast", { ok: false, text: `Подожди ${Math.ceil(wait / 1000)} с перед следующей отправкой.` });
+      feedbackAt.set(w.norm, now);
+      feedback.add(m.kind, nickOf(w.norm), text);
+      client.send("toast", { ok: true, text: "Спасибо! Записано — видно всем на этой вкладке." });
+      client.send("feedback", { ...feedbackReply(w, m.kind), added: true });
+    });
+    this.onMessage("feedbackMark", (client, m: { id?: unknown; mark?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !invHub.isAuthed(w.sid, w.norm)) return;
+      if (!isAdminNick(nickOf(w.norm))) return client.send("toast", { ok: false, text: "Пометки ставит только админ." });
+      const mark = m?.mark === null ? null : isFeedbackMark(m?.mark) ? m.mark : undefined;
+      if (mark === undefined || typeof m?.id !== "string") return;
+      const it = feedback.setMark(m.id, mark, nickOf(w.norm));
+      if (!it) return client.send("toast", { ok: false, text: "Такой записи уже нет — обнови список." });
+      client.send("toast", { ok: true, text: mark ? "Пометка поставлена" : "Пометка снята" });
+      client.send("feedback", feedbackReply(w, it.kind));
+    });
   }
 
   override onDispose(): void {
@@ -130,6 +163,19 @@ export class InventoryRoom extends colyseus.Room {
 
 function normNick(n: string): string {
   return decodeURIComponent(n).trim().replace(/^@/, "").toLowerCase().slice(0, 24);
+}
+
+/** Когда последний раз писали в «Помощь» (по нику) — пауза между отправками. */
+const feedbackAt = new Map<string, number>();
+
+/** Ник героя как записан (с заглавными), без записи — логин. */
+function nickOf(norm: string): string {
+  return store.get(`nick:${norm}`)?.nick || norm;
+}
+
+/** Список вида для страницы; admin — можно ставить пометки (только с подтверждённым входом). */
+function feedbackReply(w: { norm: string; sid: string }, kind: FeedbackKind) {
+  return { kind, items: feedback.list(kind), admin: invHub.isAuthed(w.sid, w.norm) && isAdminNick(nickOf(w.norm)) };
 }
 
 function buildInv(norm: string, sid: string): Record<string, unknown> {

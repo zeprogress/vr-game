@@ -7,6 +7,7 @@ import { PcInventory, type PcInventoryHooks } from "../pc/PcInventory";
 import { injectPcStyle } from "../pc/pcStyle";
 import type { PcInvData } from "#shared/net/messages";
 import { UPDATES } from "#shared/updates";
+import { FEEDBACK_KIND_INFO, FEEDBACK_KINDS, FEEDBACK_MARKS, FEEDBACK_MARK_COLOR, FEEDBACK_NO_MARK_COLOR, FEEDBACK_TEXT_MAX, type FeedbackKind, type FeedbackView } from "#shared/feedback";
 import { respecCostFor } from "#shared/constants";
 import { ELITE_MOBS, MOB_CAMPS } from "#shared/mobs";
 import { BAG, RUBY } from "#shared/items";
@@ -128,6 +129,7 @@ function pageInv(): PcInventory {
 
 function renderInv(msg: InvMsg): void {
   last = msg;
+  syncHelpSendable();
   if (!msg.ok) {
     renderError(
       msg.error
@@ -176,6 +178,7 @@ function connect(attempt = 0): void {
       r.onMessage("sid", (sid: string) => saveSid(sid));
       r.onMessage("toast", (m: { ok: boolean; text: string }) => m.text && toast(m.text, m.ok));
       r.onMessage("enchant", (m: unknown) => pcInv?.onResult(m as never));
+      r.onMessage("feedback", (m: FeedbackReply) => onFeedback(m));
       r.onMessage("inv", (msg: InvMsg) => {
         if (msg.redirect) {
           location.replace(`/inv?${encodeURIComponent(msg.redirect)}`);
@@ -290,6 +293,7 @@ document.getElementById("mechBtn")!.addEventListener("click", () => {
   el.style.display = open ? "none" : "block";
   if (!open) el.innerHTML = MECH_HTML;
   document.getElementById("upd")!.style.display = "none";
+  closeHelp();
 });
 
 // Обновления игры — дата/время выкладки и что изменилось (src/shared/updates.ts).
@@ -298,10 +302,162 @@ document.getElementById("updBtn")!.addEventListener("click", () => {
   const open = el.style.display === "block";
   el.style.display = open ? "none" : "block";
   document.getElementById("mech")!.style.display = "none";
+  closeHelp();
   if (!open) {
     // Свежие сверху — по времени выкладки, а не по месту записи в файле.
     el.innerHTML = [...UPDATES].sort((a, b) => b.at.localeCompare(a.at)).map(
       (u) => `<div class="u"><b>${escapeHtml(u.at)}</b><ul>${u.items.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul></div>`,
     ).join("");
   }
+});
+
+// ---- Помощь в разработке: ошибки и предложения игроков (сервер — FeedbackStore, виды — shared/feedback.ts) ----
+
+type FeedbackReply = { kind: FeedbackKind; items: FeedbackView[]; admin: boolean; added?: boolean };
+
+const helpEl = document.getElementById("help")!;
+let helpKind: FeedbackKind = "bug";
+/** Черновик по каждому виду: переживает переключение вкладки и обновление списка. */
+const helpDraft: Record<FeedbackKind, string> = { bug: "", idea: "" };
+/** Что ушло на сервер и ждёт подтверждения — очистим поле, только если в нём всё ещё то же. */
+const helpSent: Partial<Record<FeedbackKind, string>> = {};
+const helpLists: Partial<Record<FeedbackKind, FeedbackReply>> = {};
+let helpTimer = 0;
+
+function fmtWhen(at: number): string {
+  return new Date(at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function askHelp(): void {
+  room?.send("feedbackList", { kind: helpKind });
+}
+
+function closeHelp(): void {
+  helpEl.style.display = "none";
+  clearInterval(helpTimer);
+  helpTimer = 0;
+}
+
+/** Писать можно только с подтверждённым входом — кнопка и поле гаснут, пока код не введён. */
+function syncHelpSendable(): void {
+  if (helpEl.style.display !== "block") return;
+  const sendable = !!last?.authed;
+  const ta = document.getElementById("fText") as HTMLTextAreaElement | null;
+  const btn = document.getElementById("fSend") as HTMLButtonElement | null;
+  const note = document.getElementById("fNote");
+  if (ta) ta.disabled = !sendable;
+  if (btn) btn.disabled = !sendable;
+  if (note) note.hidden = sendable;
+}
+
+function updateCount(): void {
+  const c = document.getElementById("fCount");
+  if (c) c.textContent = `${helpDraft[helpKind].length} / ${FEEDBACK_TEXT_MAX}`;
+}
+
+/** Каркас вкладки: переключатель видов, подсказка, поле и кнопка. Список — отдельно (его перерисовка не трогает поле). */
+function renderHelpShell(): void {
+  const info = FEEDBACK_KIND_INFO[helpKind];
+  const sendable = !!last?.authed;
+  helpEl.innerHTML = `
+    <div class="ftabs">${FEEDBACK_KINDS.map((k) => `<button class="ftab${k === helpKind ? " on" : ""}" data-k="${k}">${FEEDBACK_KIND_INFO[k].tab}</button>`).join("")}</div>
+    <p class="fhint">${escapeHtml(info.hint)}</p>
+    <textarea id="fText" maxlength="${FEEDBACK_TEXT_MAX}" placeholder="${escapeHtml(info.placeholder)}"${sendable ? "" : " disabled"}></textarea>
+    <div class="frow"><span class="fcount" id="fCount"></span><button id="fSend"${sendable ? "" : " disabled"}>Отправить</button></div>
+    <div class="fnote" id="fNote"${sendable ? " hidden" : ""}>Писать могут те, кто подтвердил вход кодом в чате.</div>
+    <div id="fList"></div>`;
+  (document.getElementById("fText") as HTMLTextAreaElement).value = helpDraft[helpKind];
+  updateCount();
+  renderHelpList();
+}
+
+function renderHelpList(): void {
+  const box = document.getElementById("fList");
+  if (!box) return;
+  // Пока админ выбирает пометку, список не перерисовываем — выбор бы сбросился; следующий опрос догонит.
+  if (box.contains(document.activeElement)) return;
+  const r = helpLists[helpKind];
+  if (!r) {
+    box.innerHTML = `<div class="fnote">загрузка…</div>`;
+    return;
+  }
+  if (!r.items.length) {
+    box.innerHTML = `<div class="fnote">Пока пусто — будь первым.</div>`;
+    return;
+  }
+  const marks = FEEDBACK_KIND_INFO[helpKind].marks;
+  const rows = r.items
+    .map((it) => {
+      const color = it.mark ? FEEDBACK_MARK_COLOR[it.mark] : FEEDBACK_NO_MARK_COLOR;
+      const status = r.admin
+        ? `<select class="fsel" data-id="${escapeHtml(it.id)}" style="color:${color};border-color:${color}"><option value="">Без пометки</option>${FEEDBACK_MARKS.map(
+            (k) => `<option value="${k}"${it.mark === k ? " selected" : ""}>${escapeHtml(marks[k])}</option>`,
+          ).join("")}</select>`
+        : `<span class="fbadge" style="color:${color};border-color:${color}">${escapeHtml(it.mark ? marks[it.mark] : "Без пометки")}</span>`;
+      return `<tr><td class="fwho" style="border-left-color:${color}">${escapeHtml(it.nick)}</td><td class="fwhen">${fmtWhen(it.at)}</td><td class="ftxt">${escapeHtml(it.text)}</td><td class="fst">${status}</td></tr>`;
+    })
+    .join("");
+  box.innerHTML = `<div class="ftable-wrap"><table><thead><tr><th>Кто</th><th>Когда</th><th>Описание</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function sendHelp(): void {
+  const text = helpDraft[helpKind].trim();
+  if (!last?.authed) return toast("Сначала подтверди вход кодом в чате", false);
+  if (!text) return toast("Напиши текст", false);
+  if (!room) return toast("Нет связи с сервером — попробуй ещё раз", false);
+  helpSent[helpKind] = text;
+  room.send("feedbackAdd", { kind: helpKind, text });
+}
+
+function onFeedback(m: FeedbackReply): void {
+  helpLists[m.kind] = m;
+  if (m.added) {
+    if (helpDraft[m.kind].trim() === helpSent[m.kind]) helpDraft[m.kind] = "";
+    const ta = document.getElementById("fText") as HTMLTextAreaElement | null;
+    if (helpKind === m.kind && ta) {
+      ta.value = helpDraft[m.kind];
+      updateCount();
+    }
+  }
+  if (helpKind === m.kind) renderHelpList();
+}
+
+helpEl.addEventListener("click", (e) => {
+  const t = e.target as HTMLElement;
+  const tab = t.closest<HTMLElement>(".ftab");
+  if (tab) {
+    const k = tab.dataset.k;
+    if (!FEEDBACK_KINDS.includes(k as FeedbackKind) || k === helpKind) return;
+    helpKind = k as FeedbackKind;
+    renderHelpShell();
+    askHelp();
+    return;
+  }
+  if (t.closest("#fSend")) sendHelp();
+});
+helpEl.addEventListener("input", (e) => {
+  const t = e.target as HTMLTextAreaElement;
+  if (t.id !== "fText") return;
+  helpDraft[helpKind] = t.value;
+  updateCount();
+});
+helpEl.addEventListener("change", (e) => {
+  const t = e.target as HTMLSelectElement;
+  if (!t.classList.contains("fsel")) return;
+  // Снимаем фокус: иначе ответ сервера не перерисует список (перерисовка пропускает выбранный select).
+  t.blur();
+  room?.send("feedbackMark", { id: t.dataset.id, mark: t.value || null });
+});
+
+document.getElementById("helpBtn")!.addEventListener("click", () => {
+  if (helpEl.style.display === "block") return closeHelp();
+  document.getElementById("mech")!.style.display = "none";
+  document.getElementById("upd")!.style.display = "none";
+  helpEl.style.display = "block";
+  renderHelpShell();
+  askHelp();
+  // Пока вкладка открыта — список обновляется сам (как склад на странице).
+  helpTimer = window.setInterval(() => {
+    if (document.visibilityState === "visible") askHelp();
+  }, 20_000);
 });

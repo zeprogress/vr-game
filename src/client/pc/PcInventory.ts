@@ -795,15 +795,16 @@ export class PcInventory {
       else if (src?.kind === "bag" && w?.fav) this.toggleFav(w);
     });
     right.append(grid);
-    // Разобрать всё, кроме избранного ★ и надетого — с подтверждением.
-    const scrapSum = bag.reduce((n, w) => n + w.scrap, 0);
+    // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
+    const bulk = bag.filter((w) => w.tier !== "ruby");
+    const scrapSum = bulk.reduce((n, w) => n + w.scrap, 0);
     const all = document.createElement("button");
     all.className = "pcinv-allbtn";
-    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bag.length})`;
-    all.disabled = bag.length === 0;
+    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bulk.length})`;
+    all.disabled = bulk.length === 0;
     all.onclick = () =>
       this.askConfirm(
-        `Разобрать ${bag.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")} и то, что в руках, останутся.`,
+        `Разобрать ${bulk.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и то, что в руках, останутся.`,
         "Разобрать всё",
         () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
       );

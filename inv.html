@@ -171,11 +171,11 @@
       /* Шапка/подвал страницы вокруг окна снаряжения. */
       .card.top { position: relative; margin-bottom: 12px; padding-bottom: 12px; }
       .card.foot { margin-top: 14px; }
-      .footbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .footbtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
       .footbtns button, button#mechBtn { margin-top: 0; width: 100%; padding: 11px; border-radius: 8px; border: 1px solid #3a3e48;
         background: #23222b; color: #f1ead6; font: 700 14px system-ui; cursor: pointer; }
       .footbtns button:hover { border-color: #6e7482; }
-      #mech, #upd { background: #1d1c25; color: #e6e0d0; }
+      #mech, #upd, #help { background: #1d1c25; color: #e6e0d0; }
       #upd { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 18px; font-size: 14px; line-height: 1.5; }
       #mech ul { margin: 2px 0 10px; padding-left: 20px; }
       #mech li { margin: 2px 0; }
@@ -183,6 +183,30 @@
       #upd .u b { display: block; color: #e8c26a; font-size: 13px; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
       #upd ul { margin: 0; padding-left: 18px; }
       #upd li { margin: 2px 0; }
+      /* Помощь в разработке: вкладки «Ошибки» / «Предложение», поле, таблица записей. */
+      #help { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 16px; font-size: 14px; line-height: 1.5; }
+      #help .ftabs { display: flex; gap: 8px; margin-bottom: 10px; }
+      #help .ftab { flex: 1; padding: 9px; border-radius: 8px; border: 1px solid #3a3e48; background: #23222b; color: #cfc8b6; font: 700 14px system-ui; cursor: pointer; }
+      #help .ftab.on { border-color: #e8c26a; background: #2c2a24; color: #f1ead6; }
+      #help .fhint { margin: 0 0 8px; color: #8f8a7e; font-size: 13px; }
+      #help textarea { width: 100%; min-height: 84px; resize: vertical; background: #15141b; color: #e6e0d0; border: 1px solid #3a3e48; border-radius: 8px; padding: 10px; font: 14px system-ui; }
+      #help textarea:disabled { opacity: 0.5; }
+      #help .frow { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 10px; }
+      #help .fcount { color: #8f8a7e; font-size: 12px; }
+      #help #fSend { padding: 9px 18px; border-radius: 8px; border: 1px solid #3f7a48; background: #16261a; color: #7ee081; font: 700 14px system-ui; cursor: pointer; }
+      #help #fSend:disabled { opacity: 0.4; cursor: default; }
+      #help .fnote { color: #8f8a7e; font-size: 13px; padding: 2px 0 8px; }
+      #help .fnote[hidden] { display: none; }
+      #help .ftable-wrap { overflow-x: auto; margin-top: 8px; }
+      #help table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      #help th { text-align: left; color: #8f8a7e; font-weight: 600; border-bottom: 1px solid #3a3e48; padding: 6px; white-space: nowrap; }
+      #help td { vertical-align: top; padding: 8px 6px; border-bottom: 1px solid #2a2930; }
+      #help td.fwho { white-space: nowrap; font-weight: 700; color: #f1ead6; border-left: 4px solid #8f8a7e; padding-left: 8px; }
+      #help td.fwhen { color: #8f8a7e; white-space: nowrap; font-size: 12px; }
+      #help td.ftxt { white-space: pre-wrap; word-break: break-word; min-width: 180px; }
+      #help td.fst { white-space: nowrap; }
+      #help .fbadge { display: inline-block; padding: 2px 8px; border-radius: 10px; border: 1px solid; font-size: 12px; font-weight: 700; }
+      #help .fsel { background: #15141b; color: #e6e0d0; border: 1px solid #3a3e48; border-radius: 6px; padding: 4px; font: 13px system-ui; max-width: 100%; }
     </style>
   </head>
   <body>
@@ -196,9 +220,11 @@
       <div class="footbtns">
         <button id="mechBtn">📖 Механики игры</button>
         <button id="updBtn">🆕 Обновления</button>
+        <button id="helpBtn">💬 Помощь в разработке</button>
       </div>
       <div id="mech"></div>
       <div id="upd"></div>
+      <div id="help"></div>
     </div>
     <div id="toast"></div>
     <script type="module" src="/src/client/inv/main.ts"></script>

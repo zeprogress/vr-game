@@ -76,6 +76,8 @@ export const RUBY = {
   chanceHi: 0.5,
   gainLo: 10,
   gainHi: 1,
+  /** Лом за переработку: × к обычной формуле scrapValue (2026-10-10: ×50). */
+  scrapMul: 50,
 } as const;
 
 /** Эффект СТАРЫХ уникальных типов — теперь только для миграции в обычный ролл (см. migrateLoot). */
@@ -813,7 +815,7 @@ export function scrapValue(w: WeaponInstance): number {
   // разброс небольшой — от 11 (всё на минимуме) до 19 (всё на максимуме).
   // Выше 45 баллов оценки предмета (сумма очков, та, что в скобках) — лом
   // растёт круто: 45 → 15, 99 (три идеальных ролла) → 99 (заявка 2026-09-28).
-  // Всё это × SCRAP_MUL.
+  // Всё это × SCRAP_MUL; рубиновое — ещё × RUBY.scrapMul (поштучная разборка).
   let raw: number;
   if (w.affixes.length > 0) {
     const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w), 0) / w.affixes.length;
@@ -821,7 +823,8 @@ export function scrapValue(w: WeaponInstance): number {
     const q = weaponQuality(w);
     raw = q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
   } else raw = w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
-  return Math.max(1, Math.round(raw * SCRAP_MUL));
+  const tierMul = w.tier === "ruby" ? RUBY.scrapMul : 1;
+  return Math.max(1, Math.round(raw * SCRAP_MUL * tierMul));
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
