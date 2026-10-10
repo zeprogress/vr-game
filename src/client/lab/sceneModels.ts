@@ -12,7 +12,7 @@ import { CAT_THEMES } from "#shared/catacombs";
 import { MOB } from "#shared/mobs";
 import { MODELS, loadRig, recolorMonster, type ModelName, type RigInstance } from "../world/models";
 import { createSky, type Sky } from "../world/Sky";
-import { tunedDayState } from "../world/lightTune";
+import { dayState } from "../world/DayTime";
 import { modelLight, setModelLight, type ModelLight } from "../combat/mobLightTune";
 import type { LabCtx } from "./main";
 
@@ -50,7 +50,7 @@ export function build(ctx: LabCtx): void {
   function applyField(): void {
     for (const t of torches) t.dispose();
     torches = [];
-    const d = tunedDayState(hour);
+    const d = dayState(hour);
     if (!sky) {
       const before = new Set<AbstractMesh>(scene.meshes);
       sky = createSky(scene, d);
