@@ -389,15 +389,19 @@ function renderHelpList(): void {
   const rows = r.items
     .map((it) => {
       const color = it.mark ? FEEDBACK_MARK_COLOR[it.mark] : FEEDBACK_NO_MARK_COLOR;
+      // Админу — кнопки пометок (все подписи видны и переносятся, без выпадающего списка) и «Удалить».
       const status = r.admin
-        ? `<select class="fsel" data-id="${escapeHtml(it.id)}" style="color:${color};border-color:${color}"><option value="">Без пометки</option>${FEEDBACK_MARKS.map(
-            (k) => `<option value="${k}"${it.mark === k ? " selected" : ""}>${escapeHtml(marks[k])}</option>`,
-          ).join("")}</select>`
+        ? `<div class="fpills">${[null, ...FEEDBACK_MARKS]
+            .map((k) => {
+              const c = k ? FEEDBACK_MARK_COLOR[k] : FEEDBACK_NO_MARK_COLOR;
+              return `<button class="fpill${it.mark === k ? " on" : ""}" data-id="${escapeHtml(it.id)}" data-mark="${k ?? ""}" style="--c:${c}">${escapeHtml(k ? marks[k] : "Без пометки")}</button>`;
+            })
+            .join("")}</div><button class="fdel" data-id="${escapeHtml(it.id)}">Удалить запись</button>`
         : `<span class="fbadge" style="color:${color};border-color:${color}">${escapeHtml(it.mark ? marks[it.mark] : "Без пометки")}</span>`;
-      return `<tr><td class="fwho" style="border-left-color:${color}">${escapeHtml(it.nick)}</td><td class="fwhen">${fmtWhen(it.at)}</td><td class="ftxt">${escapeHtml(it.text)}</td><td class="fst">${status}</td></tr>`;
+      return `<tr><td class="fwho" style="border-left-color:${color}">${escapeHtml(it.nick)}<div class="fwhen">${fmtWhen(it.at)}</div></td><td class="ftxt">${escapeHtml(it.text)}</td><td class="fst">${status}</td></tr>`;
     })
     .join("");
-  box.innerHTML = `<div class="ftable-wrap"><table><thead><tr><th>Кто</th><th>Когда</th><th>Описание</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  box.innerHTML = `<div class="ftable-wrap"><table><thead><tr><th>Кто</th><th>Описание</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function sendHelp(): void {
@@ -433,6 +437,20 @@ helpEl.addEventListener("click", (e) => {
     askHelp();
     return;
   }
+  const pill = t.closest<HTMLElement>(".fpill");
+  if (pill) {
+    // Снимаем фокус: иначе ответ сервера не перерисует список (перерисовка пропускает поле в фокусе).
+    pill.blur();
+    room?.send("feedbackMark", { id: pill.dataset.id, mark: pill.dataset.mark || null });
+    return;
+  }
+  const del = t.closest<HTMLElement>(".fdel");
+  if (del) {
+    del.blur();
+    if (!confirm("Удалить запись навсегда? Её перестанут видеть все.")) return;
+    room?.send("feedbackDelete", { id: del.dataset.id });
+    return;
+  }
   if (t.closest("#fSend")) sendHelp();
 });
 helpEl.addEventListener("input", (e) => {
@@ -440,13 +458,6 @@ helpEl.addEventListener("input", (e) => {
   if (t.id !== "fText") return;
   helpDraft[helpKind] = t.value;
   updateCount();
-});
-helpEl.addEventListener("change", (e) => {
-  const t = e.target as HTMLSelectElement;
-  if (!t.classList.contains("fsel")) return;
-  // Снимаем фокус: иначе ответ сервера не перерисует список (перерисовка пропускает выбранный select).
-  t.blur();
-  room?.send("feedbackMark", { id: t.dataset.id, mark: t.value || null });
 });
 
 document.getElementById("helpBtn")!.addEventListener("click", () => {

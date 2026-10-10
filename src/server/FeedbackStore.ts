@@ -63,6 +63,15 @@ export class FeedbackStore {
     return it;
   }
 
+  /** Удалить запись (насовсем). Возвращает удалённую или null, если такой нет. */
+  remove(id: string): FeedbackItem | null {
+    const i = this.items.findIndex((x) => x.id === id);
+    if (i < 0) return null;
+    const [it] = this.items.splice(i, 1);
+    this.save();
+    return it;
+  }
+
   private save(): void {
     try {
       mkdirSync(dirname(this.file), { recursive: true });

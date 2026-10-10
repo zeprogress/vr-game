@@ -201,12 +201,25 @@
       #help table { width: 100%; border-collapse: collapse; font-size: 13px; }
       #help th { text-align: left; color: #8f8a7e; font-weight: 600; border-bottom: 1px solid #3a3e48; padding: 6px; white-space: nowrap; }
       #help td { vertical-align: top; padding: 8px 6px; border-bottom: 1px solid #2a2930; }
-      #help td.fwho { white-space: nowrap; font-weight: 700; color: #f1ead6; border-left: 4px solid #8f8a7e; padding-left: 8px; }
-      #help td.fwhen { color: #8f8a7e; white-space: nowrap; font-size: 12px; }
-      #help td.ftxt { white-space: pre-wrap; word-break: break-word; min-width: 180px; }
-      #help td.fst { white-space: nowrap; }
-      #help .fbadge { display: inline-block; padding: 2px 8px; border-radius: 10px; border: 1px solid; font-size: 12px; font-weight: 700; }
-      #help .fsel { background: #15141b; color: #e6e0d0; border: 1px solid #3a3e48; border-radius: 6px; padding: 4px; font: 13px system-ui; max-width: 100%; }
+      #help td.fwho { font-weight: 700; color: #f1ead6; border-left: 4px solid #8f8a7e; padding-left: 8px; width: 130px; word-break: break-word; }
+      #help .fwhen { color: #8f8a7e; font-size: 12px; font-weight: 400; margin-top: 2px; }
+      #help td.ftxt { white-space: pre-wrap; word-break: break-word; min-width: 160px; }
+      #help td.fst { width: 230px; }
+      #help .fbadge { display: inline-block; max-width: 100%; padding: 2px 8px; border-radius: 10px; border: 1px solid; font-size: 12px; font-weight: 700; line-height: 1.35; white-space: normal; }
+      /* Кнопки пометок: все подписи видны сразу, переносятся внутри ячейки; выбранная — залита цветом. */
+      #help .fpills { display: flex; flex-wrap: wrap; gap: 4px; }
+      #help .fpill { padding: 3px 8px; border-radius: 10px; border: 1px solid var(--c); background: transparent; color: var(--c); font: 700 12px/1.3 system-ui; text-align: left; cursor: pointer; }
+      #help .fpill.on { background: var(--c); color: #15141b; }
+      #help .fdel { margin-top: 6px; padding: 2px 0; background: none; border: none; color: #e0645a; font: 600 12px system-ui; cursor: pointer; }
+      /* Узкий экран: строка становится карточкой — имя, текст и статус друг под другом, ничего не обрезается. */
+      @media (max-width: 560px) {
+        #help table, #help tbody, #help tr, #help td { display: block; width: 100%; }
+        #help thead { display: none; }
+        #help tr { border-bottom: 1px solid #2a2930; padding: 8px 0; }
+        #help td { border: none; padding: 3px 6px; }
+        #help td.fwho { width: auto; border-left-width: 4px; }
+        #help td.fst { width: auto; }
+      }
     </style>
   </head>
   <body>

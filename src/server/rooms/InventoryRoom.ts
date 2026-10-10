@@ -121,6 +121,16 @@ export class InventoryRoom extends colyseus.Room {
       client.send("toast", { ok: true, text: mark ? "Пометка поставлена" : "Пометка снята" });
       client.send("feedback", feedbackReply(w, it.kind));
     });
+    this.onMessage("feedbackDelete", (client, m: { id?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !invHub.isAuthed(w.sid, w.norm)) return;
+      if (!isAdminNick(nickOf(w.norm))) return client.send("toast", { ok: false, text: "Удалять записи может только админ." });
+      if (typeof m?.id !== "string") return;
+      const it = feedback.remove(m.id);
+      if (!it) return client.send("toast", { ok: false, text: "Такой записи уже нет — обнови список." });
+      client.send("toast", { ok: true, text: "Запись удалена" });
+      client.send("feedback", feedbackReply(w, it.kind));
+    });
   }
 
   override onDispose(): void {
