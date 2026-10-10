@@ -27,7 +27,7 @@ import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import { Quaternion } from "@babylonjs/core/Maths/math.vector";
 
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
-import { ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, SHARD_CFG } from "#shared/mobs";
+import { ELITE_MOBS, FLYER_HIT_BONUS, MAGE_NOVA, MOB, MOB_SWING, SHARD_CFG } from "#shared/mobs";
 import type { MobKind, MobState } from "#shared/net/schema";
 import type { RigInstance, ModelName } from "../world/models";
 import { HealthBar3D } from "../ui/HealthBar3D";
@@ -51,6 +51,14 @@ const MODEL_YAW = (() => {
 })();
 
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+/** Клипы видов замаха босса (MOB_SWING): имя в rig (нижний регистр) и длительность, с. Укус — обычный atkClip. */
+const SWING_ANIM: Record<number, { clip: string; sec: number }> = {
+  [MOB_SWING.claw]: { clip: "attackclaw", sec: 1.4 },
+  [MOB_SWING.tail]: { clip: "attacktail", sec: 2 },
+  [MOB_SWING.breath]: { clip: "attackbreath", sec: 2 },
+  [MOB_SWING.wings]: { clip: "attackwings", sec: 1.8 },
+  [MOB_SWING.magic]: { clip: "magiccharge", sec: 2 },
+};
 /** EliteMobDef.gait: медленнее — стойка (Idle), быстрее — бег (Run), между — шаг (Walk), м/с. */
 const GAIT_IDLE_SPEED = 0.5;
 const GAIT_RUN_SPEED = 2.2;
@@ -491,6 +499,11 @@ export class Mob implements Hittable {
   private moveAnim: AnimationGroup | null = null;
   /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
   private atkClip: AnimationGroup | null = null;
+  /** Клип текущего замаха (вид босса или обычный) и его длительность, с. */
+  private atkNow: AnimationGroup | null = null;
+  private atkNowSec = 0.8;
+  /** Клипы видов замаха этой модели (по MOB_SWING). */
+  private swingAnims: Partial<Record<number, AnimationGroup>> = {};
   private atkClipT = 0;
   /** Модели с EliteMobDef.gait: стойка/бег (шаг — moveAnim) и сглаженная скорость по серверу, м/с. */
   private gaitIdle: AnimationGroup | null = null;
@@ -816,6 +829,14 @@ export class Mob implements Hittable {
     const eliteDef = this.modelName ? Object.values(ELITE_MOBS).find((d) => d.model === this.modelName) : undefined;
     if (eliteDef?.shot || eliteDef?.leaper || eliteDef?.gait)
       this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? rig.anims.get("attack") ?? null;
+    if (eliteDef?.attackClip) this.atkClip = rig.anims.get(eliteDef.attackClip) ?? this.atkClip;
+    // Клипы видов замаха босса (MOB_SWING), если они есть в модели.
+    this.swingAnims = {};
+    for (const [kind, v] of Object.entries(SWING_ANIM)) {
+      const a = rig.anims.get(v.clip);
+      if (a) this.swingAnims[Number(kind)] = a;
+    }
+    if (Object.keys(this.swingAnims).length) this.sfx.preloadDragon();
     if (eliteDef?.gait) {
       this.gaitIdle = rig.anims.get("idle") ?? null;
       this.gaitRun = rig.anims.get("run") ?? null;
@@ -998,14 +1019,21 @@ export class Mob implements Hittable {
     if (s.attackSeq !== this.lastAtkSeq) {
       this.lastAtkSeq = s.attackSeq;
       if (!this.dead) this.atkT = ATTACK_DUR;
-      if (!this.dead && this.atkClip) {
+      // Вид замаха босса: свой клип и его длительность; укус (0) — обычный atkClip.
+      const sw = s.attackKind ? this.swingAnims[s.attackKind] : undefined;
+      this.atkNow = sw ?? this.atkClip;
+      this.atkNowSec = sw ? SWING_ANIM[s.attackKind].sec : 0.8;
+      if (!this.dead && this.atkNow) {
         // Перезапуск клипа броска с начала (playAnim не перезапускает тот же клип).
-        if (this.curAnim === this.atkClip) {
-          this.atkClip.stop();
+        if (this.curAnim === this.atkNow) {
+          this.atkNow.stop();
           this.curAnim = null;
         }
-        this.atkClipT = 0.8;
+        this.atkClipT = this.atkNowSec;
       }
+      // Голос дракона: огонь дыхания и рёв ударной волны (слышно издалека, как у большого босса).
+      if (!this.dead && s.attackKind === MOB_SWING.breath) this.playIfNear(playerPos, () => this.sfx.dragonBreath(pos), 45);
+      else if (!this.dead && s.attackKind === MOB_SWING.wings) this.playIfNear(playerPos, () => this.sfx.dragonRoar(pos), 45);
     }
     if (this.atkClipT > 0) this.atkClipT = Math.max(0, this.atkClipT - dt);
     if (this.atkT > 0) this.atkT = Math.max(0, this.atkT - dt);
@@ -1178,7 +1206,7 @@ export class Mob implements Hittable {
         this.gaitX = s.x;
         this.gaitZ = s.z;
       }
-      if (seen && this.atkClip && this.atkClipT > 0) this.playAnim(this.atkClip, false);
+      if (seen && this.atkNow && this.atkClipT > 0) this.playAnim(this.atkNow, false);
       else if (seen && this.gaitIdle) {
         const clip =
           this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;

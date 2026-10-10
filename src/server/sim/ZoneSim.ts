@@ -255,6 +255,8 @@ export class Mob {
   hurtSeq = 0;
   /** ++ на каждую атаку (укус, плевок, слэм) — клиент играет замах моба. */
   attackSeq = 0;
+  /** Вид последнего замаха (MOB_SWING): укус по умолчанию, у босса — свой клип. */
+  attackKind = 0;
   hurtDx = 0;
   hurtDz = 0;
   /** Точка спавна (не текущая позиция) — публично для ZoneSim.splitGolem. */
@@ -505,6 +507,12 @@ export class Mob {
   readonly magicMelee: boolean;
   /** Фаза покачивания в полёте (жужжание). */
   private flyBob = Math.random() * 6.28;
+
+  /** Замах: ++ attackSeq (клиент проигрывает клип) и вид удара; без вида — укус. */
+  swing(kind = 0): void {
+    this.attackKind = kind;
+    this.attackSeq = (this.attackSeq + 1) & 0xffff;
+  }
 
   constructor(
     readonly kind: MobKind,
@@ -970,7 +978,7 @@ export class Mob {
       if (this.novaWindupT > 0) {
         this.novaWindupT -= dt;
         if (this.novaWindupT <= 0) {
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.novaSeq = (this.novaSeq + 1) & 0xffff;
           this.novaCd = MAGE_NOVA.cooldown;
           for (const p of players) {
@@ -1042,7 +1050,7 @@ export class Mob {
           this.burrowPhase = 0;
           this.immune = false;
           this.burrowCd = BURROW.cooldown * (0.85 + Math.random() * 0.3);
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.attackCd = this.atkCooldown;
           this.vy = MOB.hopUp * 0.8;
           this.grounded = false;
@@ -1077,7 +1085,7 @@ export class Mob {
         this.stormT -= dt;
         if (busy) this.stormT = 0; // сбили — молнии нет
         else if (this.stormT <= 0) {
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.stormCd = STORM.cooldown * (0.85 + Math.random() * 0.3);
           this.fx.push({ k: "stormHit", x: this.stormX, z: this.stormZ, r: STORM.markR });
           const struck = new Set<string>();
@@ -1129,7 +1137,7 @@ export class Mob {
       if (this.sporeWindupT > 0) {
         this.sporeWindupT -= dt;
         if (this.sporeWindupT <= 0) {
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.sporeZones.push({ x: this.sporeX, z: this.sporeZ, t: SPORE.duration, tickT: 0 });
         }
       } else if (chasing && np && !busy && this.sporeCd <= 0 && dist < SPORE.range) {
@@ -1165,7 +1173,7 @@ export class Mob {
             this.yaw = Math.atan2(-ux, -uz);
             this.fx.push({ k: "blinkIn", x: this.x, z: this.z });
             this.attackCd = this.atkCooldown;
-            this.attackSeq = (this.attackSeq + 1) & 0xffff;
+            this.swing();
             hits.push({
               target: t.sessionId,
               dmg: MOB.attackDamage * this.dmgMul * BLINK.strikeMul,
@@ -1195,7 +1203,7 @@ export class Mob {
           const d = t ? Math.hypot(t.x - this.x, t.z - this.z) : 0;
           // Убежал за дальность хвата, пока щупальце тянулось, — вырвался.
           if (t && d <= PULL.maxDist + PULL.escape) {
-            this.attackSeq = (this.attackSeq + 1) & 0xffff;
+            this.swing();
             this.fx.push({ k: "pullHit", x: t.x, z: t.z, x2: this.x, z2: this.z });
             // Отрицательное отбрасывание = притяжение к источнику: у ботов
             // сервер сдвигает на |k|·0.35 м (см. hurtPlayer), игрок — импульсом.
@@ -1265,7 +1273,7 @@ export class Mob {
           this.y = terrainHeight(this.x, this.z);
           this.yaw = Math.atan2(lx, lz);
           this.attackCd = this.atkCooldown;
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.fx.push({ k: "chargeHit", x: ax, z: az, x2: this.x, z2: this.z });
         }
       } else if (chasing && np && !busy && this.chargeCd <= 0 && dist > CHARGE.minDist && dist < CHARGE.maxDist) {
@@ -1315,7 +1323,7 @@ export class Mob {
       if (this.spikeWindupT > 0) {
         this.spikeWindupT -= dt;
         if (this.spikeWindupT <= 0) {
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           for (const sp of this.spikeSpots) {
             this.fx.push({ k: "spikeHit", x: sp.x, z: sp.z });
             for (const p of players) {
@@ -1366,7 +1374,7 @@ export class Mob {
       if (this.freezeWindupT > 0) {
         this.freezeWindupT -= dt;
         if (this.freezeWindupT <= 0) {
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.fx.push({ k: "freezeHit", x: this.freezeX, z: this.freezeZ });
           for (const p of players) {
             if (Math.hypot(p.x - this.freezeX, p.z - this.freezeZ) > FREEZE.radius) continue;
@@ -1487,7 +1495,7 @@ export class Mob {
         this.vz *= 0.02;
         if (this.slamWindupT <= 0) {
           this.slamSeq = (this.slamSeq + 1) & 0xffff;
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           this.slamCd = BOSS.slamCooldown / rageRate;
           this.vy = MOB.hopUp * 0.6;
           this.grounded = false;
@@ -1557,7 +1565,7 @@ export class Mob {
               byMob: this.id,
               projectile: false,
             });
-            this.attackSeq = (this.attackSeq + 1) & 0xffff;
+            this.swing();
             this.lungeHit = true;
           }
         }
@@ -1852,12 +1860,12 @@ export class Mob {
       if (this.ranged) {
         if (dist < (this.shot?.range ?? SPITTER.fireRange) && this.attackCd <= 0) {
           this.attackCd = this.shot?.cooldown ?? SPITTER.fireCooldown;
-          this.attackSeq = (this.attackSeq + 1) & 0xffff;
+          this.swing();
           spit(this, np);
         }
       } else if (dist < this.meleeReach && this.attackCd <= 0) {
         this.attackCd = this.atkCooldown;
-        this.attackSeq = (this.attackSeq + 1) & 0xffff;
+        this.swing();
         hits.push({
           target: np.sessionId,
           dmg: MOB.attackDamage * this.dmgMul * rageDmg,

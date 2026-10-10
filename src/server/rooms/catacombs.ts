@@ -26,7 +26,7 @@ import {
   type CatWave,
   type CatChampion,
 } from "#shared/catacombs";
-import { CAT_CHAMPIONS, CAT_MECH_POOL } from "#shared/mobs";
+import { CAT_CHAMPIONS, CAT_MECH_POOL, MOB_SWING } from "#shared/mobs";
 import type { CatacombMsg, CatReportMsg, LootItem } from "#shared/net/messages";
 
 /**
@@ -96,6 +96,8 @@ export interface CatHost {
   stunMob(id: string, sec: number): void;
   moveMob(id: string, x: number, z: number): void;
   enrage(id: string): void;
+  /** Замах моба: вид удара (MOB_SWING) — клиент играет свой клип (коготь, хвост, дыхание, крылья, магия). */
+  swing(id: string, kind: number): void;
   /** Ворота открываются (портал) — через ~1.3 с оттуда полезут мобы. */
   gateFx(pts: { x: number; z: number }[]): void;
   /** Землетрясение/вспышка перед боссом (эффект в точке). */
@@ -797,6 +799,7 @@ export class CatacombDirector {
         const n = Math.max(1, Math.round(b.adds.count + b.adds.perHero * (this.party.size - 1)));
         const group: CatWave[] = [];
         for (let i = 0; i < n; i++) group.push({ type: pick(b.adds.types), count: 1, perHero: 0 });
+        this.host.swing(this.bossId, MOB_SWING.magic);
         this.host.gateFx(gates);
         this.pendingAdds.push({ group, gates, at: now + 1300 });
       }
@@ -897,8 +900,10 @@ export class CatacombDirector {
     const kind = CAT_HAZARD.kinds[m.fx];
     if (m.kind === "slam" && party.length) {
       const h = party[Math.floor(Math.random() * party.length)];
+      this.host.swing(this.bossId, MOB_SWING.claw);
       this.host.hazard(kind, [{ x: h.x, z: h.z }], { r: m.r, dmg: m.dmg, stun: 1.2, delay: 1.5 });
     } else if (m.kind === "ring") {
+      this.host.swing(this.bossId, MOB_SWING.wings);
       this.host.hazard(kind, [{ x: info.x, z: info.z }], { r: m.r, dmg: m.dmg, knock: 7, delay: 1.7 });
     } else if (m.kind === "barrage") {
       const pts: { x: number; z: number }[] = [];
@@ -909,6 +914,8 @@ export class CatacombDirector {
         const r = 1 + Math.random() * 4;
         pts.push(h ? { x: h.x + Math.cos(a) * r, z: h.z + Math.sin(a) * r } : { x: info.x + Math.cos(a) * 6, z: info.z + Math.sin(a) * 6 });
       }
+      // Дождь углей — огненное дыхание, остальные залпы — размашистый удар хвостом.
+      this.host.swing(this.bossId, m.fx === 1 ? MOB_SWING.breath : MOB_SWING.tail);
       this.host.hazard(kind, pts, { r: m.r, dmg: m.dmg, delay: 1.6 });
     }
     this.host.announce({ kind: "boss", title: m.name, sub: "", secs: 2 });

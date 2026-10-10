@@ -70,6 +70,12 @@ export class Sfx {
   ];
   private readonly fireballHitBufs: AudioBuffer[] = [];
   private fireballHitsLoading = false;
+  /** Сэмплы дракона (ASSETS/SFX): огненное дыхание (8 с) и рёв (3.4 с). Длинные — MP3 годится, старт не важен. */
+  private static readonly DRAGON_BREATH = "/sfx/dragon-breath.mp3";
+  private static readonly DRAGON_ROAR = "/sfx/dragon-roar.mp3";
+  private dragonBreathBuf: AudioBuffer | null = null;
+  private dragonRoarBuf: AudioBuffer | null = null;
+  private dragonLoading = false;
   /** Общая «ручка громкости» музыки → destination. */
   private musicBus: GainNode | null = null;
   /** Множитель громкости 0..1 (слайдер в меню). <0.03 — полная тишина. */
@@ -867,6 +873,41 @@ export class Sfx {
     n.connect(bp).connect(ng);
     n.start(t);
     n.stop(t + 0.35);
+  }
+
+  /** Один раз подгрузить сэмплы дракона (зовёт моб с видами замаха — к первому дыханию уже готово). */
+  preloadDragon(): void {
+    if (this.dragonLoading || !this.ctx) return;
+    this.dragonLoading = true;
+    const load = (url: string, set: (b: AudioBuffer) => void): void => {
+      fetch(url)
+        .then((r) => r.arrayBuffer())
+        .then((a) => new Promise<AudioBuffer>((res, rej) => this.ctx!.decodeAudioData(a, res, rej)))
+        .then(set)
+        .catch(() => {});
+    };
+    load(Sfx.DRAGON_BREATH, (b) => (this.dragonBreathBuf = b));
+    load(Sfx.DRAGON_ROAR, (b) => (this.dragonRoarBuf = b));
+  }
+
+  /** Огненное дыхание дракона. Объёмно от at, если задан. */
+  dragonBreath(at?: SoundAt): void {
+    if (!this.ready()) return;
+    this.preloadDragon();
+    if (!this.dragonBreathBuf) return;
+    const play = () => this.playSample(this.dragonBreathBuf!, 0.8);
+    if (at) this.at(at, play);
+    else play();
+  }
+
+  /** Рёв дракона перед ударной волной. Объёмно от at, если задан. */
+  dragonRoar(at?: SoundAt): void {
+    if (!this.ready()) return;
+    this.preloadDragon();
+    if (!this.dragonRoarBuf) return;
+    const play = () => this.playSample(this.dragonRoarBuf!, 1);
+    if (at) this.at(at, play);
+    else play();
   }
 
   /** Лязг блока. strength: 1 — щит (звонко), <1 — меч (глуше). */

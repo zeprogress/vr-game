@@ -80,6 +80,8 @@ export const MODELS = {
   // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
   monBogBrute: "/models/gen/BogBrute.glb",
   monStoneTroll: "/models/gen/Skalolom.glb",
+  // Супербосс катакомб «Владыка Бездны»: дракон с ригом и атакующими клипами (art/models/DragonBest.json, tools/blender/dragon_clips.py).
+  monDragonBest: "/models/gen/DragonBest.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
 } as const;
 

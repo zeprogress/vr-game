@@ -75,7 +75,7 @@ import {
   type AutoGoMsg,
 } from "#shared/net/messages";
 import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
@@ -2942,7 +2942,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private tickHuntAttacks(
     now: number,
-    boss: { x: number; y: number; z: number; raging: boolean },
+    boss: Mob,
     eh: typeof EVENT.eliteHunt,
   ): void {
     const gapK = boss.raging ? eh.enrageGapMul : 1;
@@ -2975,6 +2975,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (now >= this.huntNovaAt && this.huntBreathFireAt === 0) {
       this.huntNovaAt = now + eh.novaGap * gapK * 1000;
       this.huntNovaFireAt = now + eh.novaDelay * 1000;
+      boss.swing(MOB_SWING.wings);
       this.addDanger(boss.x, boss.z, eh.novaRadius + 1, eh.novaDelay + 0.2);
       this.broadcast(MSG.act, {
         k: "stunBash", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.novaDelay,
@@ -2999,6 +3000,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntBreathDz = (t.z - boss.z) / dl;
         this.huntBreathAt = now + eh.breathGap * gapK * 1000;
         this.huntBreathFireAt = now + eh.breathDelay * 1000;
+        boss.swing(MOB_SWING.breath);
         // Конус дыхания — цепочкой кругов вдоль оси (бот выбегает вбок).
         for (const k of [0.25, 0.5, 0.75, 0.95]) {
           const dd = eh.breathLen * k;
@@ -3044,6 +3046,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntLobs = near.slice(0, eh.lobTargets);
         this.huntLobAt = now + eh.lobGap * gapK * 1000;
         this.huntLobFireAt = now + eh.lobDelay * 1000;
+        boss.swing(MOB_SWING.tail);
         for (const t of this.huntLobs) {
           this.addDanger(t.x, t.z, eh.lobRadius + 0.8, eh.lobDelay + 0.2);
           this.broadcast(MSG.act, {
@@ -3122,6 +3125,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // Периодический призыв миньонов — «разберись с мелочью».
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          boss.swing(MOB_SWING.magic);
           for (let i = 0; i < eh.addCount; i++) {
             const adef = ELITE_MOBS[eh.addTypes[Math.floor(Math.random() * eh.addTypes.length)]];
             const a = Math.random() * Math.PI * 2;
@@ -6155,6 +6159,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // Призыв мертвецов из теней — миньоны катакомб (с лутом, без возрождения).
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          boss.swing(MOB_SWING.magic);
           for (let i = 0; i < eh.addCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const r = 3 + Math.random() * 3;
@@ -6224,6 +6229,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, { k: "catShield", id: "", x: m.x, y: m.y, z: m.z, mobId: id, d: on ? 1 : 0 } satisfies ActRelay);
       },
       stunMob: (id, sec) => this.sim.stunMob(id, sec),
+      swing: (id, kind) => this.sim.mobs.get(id)?.swing(kind),
       moveMob: (id, x, z) => {
         const m = this.sim.mobs.get(id);
         if (!m) return;
@@ -9409,6 +9415,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;
       s.attackSeq = m.attackSeq;
+      s.attackKind = m.attackKind;
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;

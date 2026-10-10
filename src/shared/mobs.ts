@@ -9,6 +9,9 @@ import { WORLD } from "./constants";
 /** Добавка к радиусу попадания для мелких летающих мобов (пчёлы): по ним трудно попасть снарядом/стрелой. */
 export const FLYER_HIT_BONUS = 0.35;
 
+/** Вид замаха моба (MobState.attackKind): укус — по умолчанию, остальное — свой клип босса на клиенте. */
+export const MOB_SWING = { bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5 } as const;
+
 export const MOB = {
   count: 5,
   hp: 4,
@@ -298,6 +301,8 @@ export interface EliteMobDef {
   /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
    *  стоит → Idle, идёт → Walk, гонится → Run (иначе модель без Hop «шагает» всегда). */
   gait?: boolean;
+  /** Клип удара вблизи в rig модели (имя в нижнем регистре, напр. "attackbite"); без него удар — только замах телом. */
+  attackClip?: string;
 }
 
 /**
@@ -460,6 +465,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   worldElite: {
     model: "monFireDragon", name: "Огнекрылый дракон", level: 35, kind: "slime",
     hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, flying: true, visLift: 0.3, modelDrop: 0.6,
+    rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
+  },
+  // Супербосс катакомб «Владыка Бездны»: дракон с риг-моделью DragonBest и своими клипами (ходит по земле).
+  // Отдельное описание, чтобы не менять модель огнекрылого дракона события «Охота на элиту».
+  catDragon: {
+    model: "monDragonBest", name: "Владыка Бездны", level: 35, kind: "slime",
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite",
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
@@ -1042,7 +1054,7 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
 /** Супербоссы Трона Бездны — каждый заход один случайный из трёх. */
 export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
-    key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
+    key: "catDragon", name: "Владыка Бездны", title: "древний дракон катакомб",
     hpMul: 0.34, dmgMul: 1.1, scale: 1.5, final: true,
     retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
     seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },

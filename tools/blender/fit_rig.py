@@ -40,12 +40,17 @@ ob = bpy.context.view_layer.objects.active
 ob.name = name
 bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 
-# ---- масштаб до роста, земля на нуле ----
+# ---- масштаб: по росту ("height") или по длине вдоль Y ("length", для зверей с хвостом) ----
 zs = [v.co.z for v in ob.data.vertices]
-s = float(sp["height"]) / (max(zs) - min(zs))
+if sp.get("length"):
+    ys = [v.co.y for v in ob.data.vertices]
+    s = float(sp["length"]) / (max(ys) - min(ys))
+else:
+    s = float(sp["height"]) / (max(zs) - min(zs))
 ob.scale = (s, s, s)
 bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-ob.location.z -= min(v.co.z for v in ob.data.vertices)
+zmin = min(v.co.z for v in ob.data.vertices)
+ob.location.z -= zmin
 bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
 
 # ---- чистка топологии и упрощение до бюджета ----
@@ -89,26 +94,40 @@ if sat != 1.0 or moss_k != sat:
         img.pixels.foreach_set(px.ravel())
         img.update()
 
-# ---- скелет: кости генератора biped ----
-BONES = [
-    ("Hips", "hips", "spine", None),
-    ("Spine", "spine", "chest", "Hips"),
-    ("Chest", "chest", "neck", "Spine"),
-    ("Neck", "neck", "head", "Chest"),
-    ("Head", "head", "headTop", "Neck"),
-]
-for side in ("L", "R"):
-    BONES += [
-        ("Shoulder." + side, "clav." + side, "shoulder." + side, "Chest"),
-        ("UpperArm." + side, "shoulder." + side, "elbow." + side, "Shoulder." + side),
-        ("LowerArm." + side, "elbow." + side, "wrist." + side, "UpperArm." + side),
-        ("Hand." + side, "wrist." + side, "hand." + side, "LowerArm." + side),
-        ("UpperLeg." + side, "hip." + side, "knee." + side, "Hips"),
-        ("LowerLeg." + side, "knee." + side, "ankle." + side, "UpperLeg." + side),
-        ("Foot." + side, "ankle." + side, "toe." + side, "LowerLeg." + side),
-    ]
-skel = SimpleNamespace(bones=[{"name": n, "head": h, "tail": t, "parent": p} for n, h, t, p in BONES])
+# ---- скелет: из спецификации ("bones") или кости генератора biped ----
 joints = {k: list(v) for k, v in sp["joints"].items()}
+if sp.get("jointsInSource"):
+    # Суставы заданы в единицах исходного файла (до масштаба): переводим туда же, куда и меш.
+    joints = {k: [v[0] * s, v[1] * s, v[2] * s - zmin] for k, v in joints.items()}
+if sp.get("bones"):
+    # Кости из спецификации: {"name", "head", "tail", "parent"} — суставы по именам из "joints".
+    # "mirror": true — каждая кость с ".L" получает зеркальную ".R" (суставы — с X наизнанку, если не заданы).
+    BONES = [(b["name"], b["head"], b["tail"], b.get("parent")) for b in sp["bones"]]
+    if sp.get("mirror"):
+        for k in list(joints):
+            if k.endswith(".L") and k[:-2] + ".R" not in joints:
+                joints[k[:-2] + ".R"] = [-joints[k][0], joints[k][1], joints[k][2]]
+        BONES += [(n.replace(".L", ".R"), h.replace(".L", ".R"), t.replace(".L", ".R"),
+                   (p.replace(".L", ".R") if p else None)) for n, h, t, p in BONES if ".L" in n]
+else:
+    BONES = [
+        ("Hips", "hips", "spine", None),
+        ("Spine", "spine", "chest", "Hips"),
+        ("Chest", "chest", "neck", "Spine"),
+        ("Neck", "neck", "head", "Chest"),
+        ("Head", "head", "headTop", "Neck"),
+    ]
+    for side in ("L", "R"):
+        BONES += [
+            ("Shoulder." + side, "clav." + side, "shoulder." + side, "Chest"),
+            ("UpperArm." + side, "shoulder." + side, "elbow." + side, "Shoulder." + side),
+            ("LowerArm." + side, "elbow." + side, "wrist." + side, "UpperArm." + side),
+            ("Hand." + side, "wrist." + side, "hand." + side, "LowerArm." + side),
+            ("UpperLeg." + side, "hip." + side, "knee." + side, "Hips"),
+            ("LowerLeg." + side, "knee." + side, "ankle." + side, "UpperLeg." + side),
+            ("Foot." + side, "ankle." + side, "toe." + side, "LowerLeg." + side),
+        ]
+skel = SimpleNamespace(bones=[{"name": n, "head": h, "tail": t, "parent": p} for n, h, t, p in BONES])
 missing = sorted({j for _, h, t, _ in BONES for j in (h, t)} - set(joints))
 if missing:
     raise SystemExit(f"нет суставов в спецификации: {missing}")
@@ -136,18 +155,20 @@ bpy.ops.object.vertex_group_limit_total(group_select_mode="ALL", limit=4)
 bpy.ops.object.vertex_group_clean(group_select_mode="ALL", limit=0.01)
 bpy.ops.object.vertex_group_normalize_all(group_select_mode="ALL")
 
-# ---- клипы: роли biped (как у генератора) ----
-leg_len = float(sp.get("legLen", 0.83))
-roles = {
-    "kind": "biped", "pelvis": "Hips", "spine": ["Spine", "Chest"], "neck": "Neck", "head": "Head",
-    "legs": [{"bones": ["UpperLeg.L", "LowerLeg.L", "Foot.L"], "phase": 0.0},
-             {"bones": ["UpperLeg.R", "LowerLeg.R", "Foot.R"], "phase": 0.5}],
-    "arms": [{"bones": ["Shoulder.L", "UpperArm.L", "LowerArm.L", "Hand.L"], "side": 1, "phase": 0.5},
-             {"bones": ["Shoulder.R", "UpperArm.R", "LowerArm.R", "Hand.R"], "side": -1, "phase": 0.0}],
-    "legLen": leg_len,
-}
-rig = anim.Rig(arm, roles, {"anim": sp.get("anim", {}), "depth": float(sp.get("depth", 0.32))})
-clips = anim.bake(rig, sp.get("clips"))
+# ---- клипы: роли biped (как у генератора); "clips": [] — риг без анимаций (кости под будущие клипы) ----
+clips = []
+if sp.get("clips") != []:
+    leg_len = float(sp.get("legLen", 0.83))
+    roles = {
+        "kind": "biped", "pelvis": "Hips", "spine": ["Spine", "Chest"], "neck": "Neck", "head": "Head",
+        "legs": [{"bones": ["UpperLeg.L", "LowerLeg.L", "Foot.L"], "phase": 0.0},
+                 {"bones": ["UpperLeg.R", "LowerLeg.R", "Foot.R"], "phase": 0.5}],
+        "arms": [{"bones": ["Shoulder.L", "UpperArm.L", "LowerArm.L", "Hand.L"], "side": 1, "phase": 0.5},
+                 {"bones": ["Shoulder.R", "UpperArm.R", "LowerArm.R", "Hand.R"], "side": -1, "phase": 0.0}],
+        "legLen": leg_len,
+    }
+    rig = anim.Rig(arm, roles, {"anim": sp.get("anim", {}), "depth": float(sp.get("depth", 0.32))})
+    clips = anim.bake(rig, sp.get("clips"))
 
 # ---- выгрузка ----
 build.export(coll, out, texcoords=True, jpeg=True)
