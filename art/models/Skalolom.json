@@ -12,8 +12,8 @@
  "moss": {"chroma": 1.9},
  "anim": {
   "natural": true,
-  "walk": {"bob": 0.008, "crouch": 0.02},
-  "run": {"bob": 0.0, "lift": 0.13, "crouch": 0.03}
+  "walk": {"bob": 0.008, "crouch": 0.02, "lift": 0},
+  "run": {"bob": 0.0, "lift": 0, "crouch": 0.03, "duty": 0.5}
  },
  "clips": ["Idle", "Walk", "Run", "Attack", "Death"],
  "bones": [
