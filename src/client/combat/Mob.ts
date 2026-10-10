@@ -499,6 +499,8 @@ export class Mob implements Hittable {
   private moveAnim: AnimationGroup | null = null;
   /** Клип броска/удара (мобы 40 ур. с анимацией Weapon/Punch) и сколько ещё его держать, с. */
   private atkClip: AnimationGroup | null = null;
+  /** Без сжатия/растяжения тела (EliteMobDef.noSquash). */
+  private noSquash = false;
   /** Клип текущего замаха (вид босса или обычный) и его длительность, с. */
   private atkNow: AnimationGroup | null = null;
   private atkNowSec = 0.8;
@@ -830,6 +832,7 @@ export class Mob implements Hittable {
     if (eliteDef?.shot || eliteDef?.leaper || eliteDef?.gait)
       this.atkClip = rig.anims.get("weapon") ?? rig.anims.get("punch") ?? rig.anims.get("attack") ?? null;
     if (eliteDef?.attackClip) this.atkClip = rig.anims.get(eliteDef.attackClip) ?? this.atkClip;
+    this.noSquash = !!eliteDef?.noSquash;
     // Клипы видов замаха босса (MOB_SWING), если они есть в модели.
     this.swingAnims = {};
     for (const [kind, v] of Object.entries(SWING_ANIM)) {
@@ -1390,6 +1393,8 @@ export class Mob implements Hittable {
   /** Сжатие/растяжение тела. Для модели домножаем на её базовый масштаб. */
   private setSquash(x: number, y: number, z: number): void {
     const b = this.rig ? this.baseModelScale : 1;
+    // noSquash (Скалолом, Владыка): тело не сжимается — анимации только клипами модели.
+    if (this.noSquash) x = y = z = 1;
     this.squash.scaling.set(x * b, y * b, z * b);
   }
 

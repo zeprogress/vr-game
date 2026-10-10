@@ -303,6 +303,8 @@ export interface EliteMobDef {
   gait?: boolean;
   /** Клип удара вблизи в rig модели (имя в нижнем регистре, напр. "attackbite"); без него удар — только замах телом. */
   attackClip?: string;
+  /** Без сжатия/растяжения тела (прыжок, замах, телеграф): у модели свои клипы. Скалолом, Владыка. */
+  noSquash?: boolean;
 }
 
 /**
@@ -471,7 +473,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Отдельное описание, чтобы не менять модель огнекрылого дракона события «Охота на элиту».
   catDragon: {
     model: "monDragonBest", name: "Владыка Бездны", level: 35, kind: "slime",
-    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite",
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite", noSquash: true,
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
@@ -605,13 +607,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   rockBreaker: {
     model: "monStoneTroll", name: "Скалолом", blurb: "удар вблизи, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true,
+    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true,
   },
   // Прыгающий Скалолом — боссы и вожак (Громолом, Гор'Таал, Скалолом-вожак): прыжок с кругом-предупреждением.
   rockBreakerJump: {
     model: "monStoneTroll", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
+    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true,
   },
   // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
@@ -1055,7 +1057,7 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
 export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
     key: "catDragon", name: "Владыка Бездны", title: "древний дракон катакомб",
-    hpMul: 0.34, dmgMul: 1.1, scale: 1.5, final: true,
+    hpMul: 0.34, dmgMul: 1.1, scale: 3, final: true,
     retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
     seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },
     adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
