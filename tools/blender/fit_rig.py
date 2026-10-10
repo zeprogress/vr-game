@@ -70,17 +70,22 @@ for img in bpy.data.images:
     if img.size[0] > tex or img.size[1] > tex:
         img.scale(tex, tex)
 
-# ---- насыщенность базового цвета: тёплая охра у текстуры даёт оранжевый на модели ----
+# ---- цвет базовой текстуры: камень — насыщенность ниже (тёплая охра давала оранжевый);
+#      зелёный мох (зелень: G сильнее R и B) — своя насыщенность, выше, чем у камня ----
 sat = float(sp.get("saturation", 1.0))
-if sat != 1.0:
+moss_k = float((sp.get("moss") or {}).get("chroma", sat))
+if sat != 1.0 or moss_k != sat:
     import numpy as np
     base_imgs = {link.from_node.image for m in ob.data.materials if m and m.node_tree
                  for link in m.node_tree.links if link.to_socket.name == "Base Color" and link.from_node.image}
     for img in base_imgs:
         px = np.array(img.pixels[:], dtype=np.float32).reshape(-1, 4)
-        lum = px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722
-        for i in range(3):
-            px[:, i] = lum + (px[:, i] - lum) * sat
+        rgb = px[:, :3]
+        lum = rgb @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+        new_rgb = lum[:, None] + (rgb - lum[:, None]) * sat
+        green = (rgb[:, 1] - np.maximum(rgb[:, 0], rgb[:, 2])) > 0.02
+        new_rgb[green] = lum[green, None] + (rgb[green] - lum[green, None]) * moss_k
+        px[:, :3] = np.clip(new_rgb, 0.0, 1.0)
         img.pixels.foreach_set(px.ravel())
         img.update()
 

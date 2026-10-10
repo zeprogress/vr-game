@@ -382,8 +382,12 @@ def clip_death(rig, t):
             pose[th] = rx(D(12) * fall)
             pose[sh] = rx(-D(20) * fall)
         return pose, root, None
-    # двуногий: подкосились колени → падение на спину
-    root = Vector((0, 0.3 * L * fall, -0.12 * L * stagger * (1 - fall) - (L - depth * 0.9) * fall + bounce * L))
+    # двуногий: подкосились колени → падение на спину.
+    # "natural" (anim в спецификации): чистое падение — без подскока таза и отскока от земли.
+    if rig.info.get("anim", {}).get("natural", False):
+        root = Vector((0, 0, -0.12 * L * stagger * (1 - fall) - (L - depth * 0.9) * fall))
+    else:
+        root = Vector((0, 0.3 * L * fall, -0.12 * L * stagger * (1 - fall) - (L - depth * 0.9) * fall + bounce * L))
     pose[rig.roles["pelvis"]] = rx(-D(82) * fall + D(8) * stagger * (1 - fall))
     _spine(rig, pose, pitch=D(12) * stagger * (1 - fall) - D(6) * fall)
     if rig.roles.get("head"):
