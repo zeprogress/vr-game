@@ -17,7 +17,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { PcInvActMsg, QuestData, WarehouseWeapon } from "#shared/net/messages";
-import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringResist, type PcInvJewels } from "#shared/jewels";
+import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, RING_FAV_MAX, ringBonusText, ringLabel, ringResist, type PcInvJewels } from "#shared/jewels";
 import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -1722,12 +1722,32 @@ export class WristMenu {
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`Лом: ${this.jewelScrap}`, 340, VIEW_Y + 120);
 
-    // Кольца в сумке.
+    // ★ Избранное колец: один ряд на RING_FAV_MAX ячеек, не разбирается (как у оружия).
     const S = 104;
     const G = 10;
     const cols = Math.floor((TEX_W - 48 + G) / (S + G));
     let y = VIEW_Y + 170;
-    const bag = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    const favTotal = j.rings.filter((r) => r.fav).length;
+    const favs = j.rings.filter((r) => r.fav && !j.ringOn.includes(r.id));
+    ctx.font = "bold 24px system-ui, sans-serif";
+    ctx.fillStyle = "#ffd166";
+    ctx.fillText(`★ Избранное колец · ${favTotal}/${RING_FAV_MAX} — не разбирается`, 24, y);
+    y += 36;
+    for (let i = 0; i < RING_FAV_MAX; i++) {
+      const r = favs[i];
+      const x = 24 + (i % cols) * (S + G);
+      if (r) {
+        cell(`rf:${r.id}`, x, y, S, (x2: number, y2: number, s2: number) => this.drawRing(ctx, r.tier, r.gems, x2, y2, s2), TIER_COLOR[r.tier],
+          [ringLabel({ id: "", tier: r.tier, gems: r.gems }), "★ избранное: надеть, камни, убрать"], () => this.openRingPopup(r, -1), "★");
+      } else {
+        cell(`rfe:${i}`, x, y, S, (x2: number, y2: number, s2: number) => this.drawIconAt(ctx, "ui.favOff", x2, y2, s2, "#ffd166"), "#3a3e48",
+          ["Свободное место в избранном", "в сумке: кольцо → В избранное"], () => {});
+      }
+    }
+    y += S + G + 10;
+
+    // Кольца в сумке (надетые и ★ — выше).
+    const bag = j.rings.filter((r) => !j.ringOn.includes(r.id) && !r.fav);
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#e6e0d0";
     ctx.fillText(`Кольца в сумке · ${bag.length}`, 24, y);
@@ -1741,13 +1761,16 @@ export class WristMenu {
       ctx.fillStyle = "#7c88a4";
       ctx.fillText("Колец нет — изредка падают с мобов, чаще с элиты и боссов", 24, y + 6);
     }
-    y += 2 * (S + G) + 10;
+    // Ряды сумки: резервируем столько, сколько колец (минимум один ряд — под «Колец нет»).
+    y += Math.max(1, Math.ceil(Math.min(bag.length, cols * 2) / cols)) * (S + G) + 10;
     // Камни.
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#e6e0d0";
     ctx.fillText(`Камни · ${RING.combine} одинаковых → уровнем выше`, 24, y);
     y += 36;
-    j.gems.slice(0, cols * 2).forEach(([gk, n], i) => {
+    // Рядов камней — сколько влезает до низа холста (2 максимум).
+    const gemRows = Math.max(1, Math.min(2, Math.floor((TEX_H - 10 - y + G) / (S + G))));
+    j.gems.slice(0, cols * gemRows).forEach(([gk, n], i) => {
       const g = parseGem(gk)!;
       cell(`gm:${gk}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, (x2: number, y2: number, s2: number) => this.drawGem(ctx, gk, x2, y2, s2), GEM_LOOK[g.attr].d,
         [`${gemName(gk)} ×${n}`, `+${g.lv} ${ATTR_SHORT[g.attr]}`], () => this.openGemPopup(gk, n), String(g.lv), `×${n}`);
@@ -1779,7 +1802,14 @@ export class WristMenu {
         buttons.push({ id: `pop:in${i}`, label: `Вставить камень в гнездо ${i + 1}`, color: "#e8c26a", act: () => this.openGemPick(r.id, i) });
       }
     });
-    if (slot < 0) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
+    buttons.push({
+      id: "pop:fav",
+      label: r.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
+      hint: r.fav ? "снова можно будет разобрать" : `до ${RING_FAV_MAX} колец · не разбирается`,
+      color: "#ffd166",
+      act: () => this.jewelSend({ act: "ringFav", id: r.id, idx: 0 }),
+    });
+    if (slot < 0 && !r.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = { title: ringLabel({ id: "", tier: r.tier, gems: r.gems }), sub: ringBonusText({ id: "", tier: r.tier, gems: r.gems }).join(", "), color: TIER_COLOR[r.tier], buttons };
     this.focusId = buttons[0].id;
