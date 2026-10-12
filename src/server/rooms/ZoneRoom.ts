@@ -9580,7 +9580,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (k.jm > 0) this.jewelDrop(k.owner, k.jm);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
-        this.questEvent(k.owner, { campType: k.campType, champ: k.champ });
+        // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.
+        for (const who of k.kind === "boss" ? [k.owner] : k.quest) this.questEvent(who, { campType: k.campType, champ: k.champ });
       }
       if (k.kind === "boss") {
         bossKiller = this.state.players.get(k.owner)?.nick ?? "";

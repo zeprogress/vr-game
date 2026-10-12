@@ -36,6 +36,8 @@ import { segDist } from "./math";
 
 /** Потолок здоровья для эффектов «% от HP цели» (см. Mob.pctHpBase). */
 const PCT_HP_CAP = 10_000;
+/** Вклад в бой «свежий» (с): по нему делится опыт за обычного моба и засчитываются квесты охоты и вожаков. */
+const CONTRIB_RECENCY = 20;
 
 /** Каким предметом каждое оружие лежит в мире. */
 export const WEAPON_DROP: Partial<Record<string, ItemId>> = {
@@ -2911,7 +2913,7 @@ export class ZoneSim {
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   /** jm — множитель шанса колец/камней (shared/jewels.ts RING): 0 — не роняет (фантомы, осколки). */
-  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number }[] = [];
+  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number; quest: string[] }[] = [];
 
   /** Множитель шанса колец/камней с моба: фантомы/осколки — 0, боссы — RING.bossMul, элита — RING.eliteMul. */
   private jewelMul(m: Mob): number {
@@ -3085,7 +3087,7 @@ export class ZoneSim {
     // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
     if (m.checkSplitThreshold(hpBefore)) {
       // Вожак-голем «побеждён», когда раскололся — задание засчитываем сразу.
-      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m) });
+      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), quest: this.questCredit(m, attacker) });
       this.splitGolem(m);
       return null;
     }
@@ -3098,6 +3100,7 @@ export class ZoneSim {
 
     if (!killed) return null;
     const kind = m.kind;
+    const quest = this.questCredit(m, attacker || null);
 
     if (this.catMobs.has(m.id)) {
       // Катакомбы: не возрождается, но лут роняет как обычный (награда по пути).
@@ -3106,7 +3109,7 @@ export class ZoneSim {
       if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
       this.splitMobXp(m);
-      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m) });
+      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
       return kind;
     }
     if (kind === "shard" || this.eventMobs.has(m.id) || m.cloneOf) {
@@ -3114,7 +3117,7 @@ export class ZoneSim {
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются
       if (kind !== "shard") this.splitMobXp(m);
       if (attacker && kind !== "shard") {
-        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m) });
+        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
       }
       return kind;
     } else {
@@ -3132,7 +3135,7 @@ export class ZoneSim {
       this.splitMobXp(m);
     }
     if (attacker) {
-      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m) });
+      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
     }
     // Осколок голема сам НЕ возрождается (иначе за игровую сессию все
     // големы лагеря необратимо усыхали бы до вечных мелких копий — баг,
@@ -3294,12 +3297,25 @@ export class ZoneSim {
   }
 
   /**
+   * Кому засчитать квест за смерть моба: добившему и всем, кто нанёс ему урон за последние
+   * CONTRIB_RECENCY с (тот же круг, что делит опыт). Вызывать ДО делёжа опыта — он чистит вклад.
+   */
+  private questCredit(m: Mob, killer: string | null): string[] {
+    const out: string[] = killer ? [killer] : [];
+    for (const [owner, c] of m.contrib) {
+      if (owner === killer || c.dmg <= 0 || this.elapsed - c.last > CONTRIB_RECENCY) continue;
+      out.push(owner);
+    }
+    return out;
+  }
+
+  /**
    * Опыт делится между добившими урон пропорционально урону (недавнему) —
    * общий алгоритм для обычной смерти моба (пул = m.xp) и раскола голема
    * (пул = m.splitXp, см. splitGolem). Уровневый потолок накладывает комната.
    */
   private splitXpPool(m: Mob, pool: number): void {
-    const RECENCY = 20; // с
+    const RECENCY = CONTRIB_RECENCY;
     let total = 0;
     const parts: [string, number][] = [];
     for (const [owner, c] of m.contrib) {
