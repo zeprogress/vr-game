@@ -14,6 +14,7 @@
  */
 import type { Attr } from "./classes2";
 import { ATTR_LOOK } from "./look";
+import { FAV_MAX } from "./items";
 
 export type GemAttr = Attr;
 export const GEM_ATTRS: readonly GemAttr[] = ["str", "agi", "int", "wis", "luc", "con"];
@@ -48,7 +49,7 @@ export const RING = {
   scrap: { base: 30, gold: 100, legendary: 300 } as Record<RingTier, number>, // 2026-10-07: ×10
   /** Шанс с обычного моба за убийство; элита/боссы — множитель drop.elite/boss. */
   gemChance: 0.025,
-  ringChance: 0.0025,
+  ringChance: 0.00025, // 2026-10-12: ×0.1 (было 0.0025); мобы, элита и боссы — через chanceMul
   /** Множители шансов: элитный моб лагеря / босс (рейд-босс, Владыка, Багровый). */
   eliteMul: 3,
   bossMul: 40,
@@ -80,6 +81,8 @@ export interface RingInst {
   tier: RingTier;
   /** Камни в гнёздах (длина = гнёзд у тира), null — пусто. */
   gems: (GemKey | null)[];
+  /** ★ избранное — не разбирается; личная пометка, при передаче снимается. */
+  fav?: boolean;
 }
 
 /** Всё о кольцах и камнях героя (поля записи PlayerStore). */
@@ -99,7 +102,8 @@ export function jewelsOf(r: { rings?: unknown; ringOn?: unknown; gems?: unknown 
         .map((x) => {
           const n = RING_LOOK[x.tier].sockets;
           const g = Array.isArray(x.gems) ? x.gems : [];
-          return { id: x.id, tier: x.tier, gems: Array.from({ length: n }, (_, i) => (parseGem(g[i]) ? (g[i] as string) : null)) };
+          const fav = x.fav === true ? { fav: true } : {};
+          return { id: x.id, tier: x.tier, gems: Array.from({ length: n }, (_, i) => (parseGem(g[i]) ? (g[i] as string) : null)), ...fav };
         })
     : [];
   const on = Array.isArray(r.ringOn) ? (r.ringOn as unknown[]) : [];
@@ -180,6 +184,7 @@ export type JewelOp =
   | { op: "ringOn"; id: string; slot: number }
   | { op: "ringOff"; slot: number }
   | { op: "ringScrap"; id: string }
+  | { op: "ringFav"; id: string }
   | { op: "gemIn"; id: string; idx: number; gem: GemKey }
   | { op: "gemOut"; id: string; idx: number }
   | { op: "gemMerge"; gem: GemKey }
@@ -196,9 +201,9 @@ export interface JewelOpResult {
 
 /**
  * Применить операцию. `scrapHave` — лом в сумке (хватит ли на «вынуть»). Списание/начисление лома
- * делает вызывающий по `scrap` в ответе.
+ * делает вызывающий по `scrap` в ответе. `favOther` — сколько ★ у оружия: лимит ★ общий (FAV_MAX).
  */
-export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): JewelOpResult {
+export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number, favOther = 0): JewelOpResult {
   const ring = (id: string): RingInst | undefined => js.rings.find((x) => x.id === id);
   switch (o.op) {
     case "ringOn": {
@@ -216,10 +221,24 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       js.ringOn[slot] = null;
       return { ok: true, text: "Кольцо снято" };
     }
+    case "ringFav": {
+      const r = ring(o.id);
+      if (!r) return { ok: false, text: "Этого кольца уже нет." };
+      if (r.fav) {
+        delete r.fav;
+        return { ok: true, text: `Убрано из избранного: ${ringLabel(r)}` };
+      }
+      if (js.rings.filter((x) => x.fav).length + favOther >= FAV_MAX) {
+        return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
+      }
+      r.fav = true;
+      return { ok: true, text: `★ В избранном: ${ringLabel(r)} — не разбирается` };
+    }
     case "ringScrap": {
       const r = ring(o.id);
       if (!r) return { ok: false, text: "Этого кольца уже нет." };
       if (js.ringOn.includes(r.id)) return { ok: false, text: "Кольцо надето — сначала сними." };
+      if (r.fav) return { ok: false, text: "Кольцо в избранном ★ — сними звёздочку, чтобы разобрать." };
       // Камни из разбираемого кольца возвращаются в сумку бесплатно.
       for (const k of r.gems) if (k) addGem(js, k, 1);
       js.rings = js.rings.filter((x) => x !== r);
@@ -274,15 +293,15 @@ export function applyJewelOp(js: JewelSave, o: JewelOp, scrapHave: number): Jewe
       return { ok: true, text: `${gemName(o.gem)} → ${RING.combine} × ${gemName(down)}` };
     }
     case "ringScrapAll": {
-      // Все кольца из сумки в лом; надетые остаются. Камни из разобранных — в сумку.
-      const bag = js.rings.filter((r) => !js.ringOn.includes(r.id));
-      if (!bag.length) return { ok: false, text: "Колец в сумке нет — надетые не разбираются." };
+      // Все кольца из сумки в лом; надетые и ★ избранные остаются. Камни из разобранных — в сумку.
+      const bag = js.rings.filter((r) => !js.ringOn.includes(r.id) && !r.fav);
+      if (!bag.length) return { ok: false, text: "Колец для разбора нет — надетые и избранные ★ не разбираются." };
       let got = 0;
       for (const r of bag) {
         for (const k of r.gems) if (k) addGem(js, k, 1);
         got += RING.scrap[r.tier];
       }
-      js.rings = js.rings.filter((r) => js.ringOn.includes(r.id));
+      js.rings = js.rings.filter((r) => !bag.includes(r));
       return { ok: true, text: `Колец разобрано: ${bag.length} → лом +${got}`, scrap: got };
     }
     case "gemMergeAll": {
@@ -319,6 +338,8 @@ export function jewelOpFrom(act: string, id: string, idx: number, fuel?: string)
       return { op: "ringOff", slot: idx };
     case "ringScrap":
       return { op: "ringScrap", id };
+    case "ringFav":
+      return { op: "ringFav", id };
     case "gemIn":
       return fuel ? { op: "gemIn", id, idx, gem: fuel } : null;
     case "gemOut":
@@ -334,7 +355,7 @@ export function jewelOpFrom(act: string, id: string, idx: number, fuel?: string)
   }
   return null;
 }
-export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringScrapAll", "gemIn", "gemOut", "gemMerge", "gemMergeAll", "gemSplit"] as const;
+export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringFav", "ringScrapAll", "gemIn", "gemOut", "gemMerge", "gemMergeAll", "gemSplit"] as const;
 export type JewelAct = (typeof JEWEL_ACTS)[number];
 
 /** Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс). */
@@ -357,7 +378,7 @@ export function rollJewelDrop(chanceMul: number, rnd = Math.random): { gem?: Gem
 
 /** Данные колец и камней для окна инвентаря (ПК/телефон, страница !inv, VR). */
 export interface PcInvJewels {
-  rings: { id: string; tier: RingTier; gems: (GemKey | null)[]; scrap: number }[];
+  rings: { id: string; tier: RingTier; gems: (GemKey | null)[]; scrap: number; fav?: boolean }[];
   ringOn: [string | null, string | null];
   /** Камни в сумке: [ключ, сколько], по атрибуту и уровню. */
   gems: [GemKey, number][];
@@ -368,7 +389,7 @@ export function pcInvJewels(js: JewelSave): PcInvJewels {
     const gb = parseGem(b[0])!;
     return GEM_ATTRS.indexOf(ga.attr) - GEM_ATTRS.indexOf(gb.attr) || gb.lv - ga.lv;
   });
-  return { rings: js.rings.map((r) => ({ id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier] })), ringOn: [...js.ringOn], gems };
+  return { rings: js.rings.map((r) => ({ id: r.id, tier: r.tier, gems: [...r.gems], scrap: RING.scrap[r.tier], ...(r.fav ? { fav: true } : {}) })), ringOn: [...js.ringOn], gems };
 }
 
 /** Прибавка по данным окна инвентаря (клиент): то же, что jewelBonus по записи. */

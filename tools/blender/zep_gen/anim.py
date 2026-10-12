@@ -185,9 +185,11 @@ def _gait(rig, t, run):
         if rig.roles.get("head"):
             pose[rig.roles["head"]] = rx(-lean * 0.6 + D(2) * math.cos(4 * math.pi * t))
         amp = D(p.get("armSwing", 40 if run else 22))
+        # armRK — доля маха и сгиба ПРАВОЙ руки (с мечом): клинок не болтается над головой на беге
+        rk = p.get("armRK", 1.0)
         _arms(rig, pose,
-              swing=lambda a: amp * math.cos(2 * math.pi * (t + a["phase"])),
-              elbow=lambda a: D(75 if run else 18) + D(15 if run else 8) * max(0.0, math.cos(2 * math.pi * (t + a["phase"]))))
+              swing=lambda a: amp * math.cos(2 * math.pi * (t + a["phase"])) * (rk if a["side"] < 0 else 1.0),
+              elbow=lambda a: (D(75 if run else 18) + D(15 if run else 8) * max(0.0, math.cos(2 * math.pi * (t + a["phase"])))) * (rk if a["side"] < 0 else 1.0))
     else:
         _spine(rig, pose, pitch=D(2) * math.sin(4 * math.pi * t), yaw=D(4) * math.sin(2 * math.pi * t))
         if rig.roles.get("neck"):
@@ -335,6 +337,28 @@ def clip_attack(rig, t):
     return pose, root, None
 
 
+def clip_attack2(rig, t):
+    """Второй удар мечом: горизонтальный рубящий слева направо — корпус разворачивается,
+    правая рука проходит через грудь. Двуногие; у остальных типов — как обычная атака."""
+    if rig.roles["kind"] != "biped":
+        return clip_attack(rig, t)
+    yaw = keys_lerp([(0, 0), (0.3, D(35)), (0.5, -D(45)), (0.72, -D(45)), (1, 0)], t)
+    out = keys_lerp([(0, 0), (0.3, D(70)), (0.5, -D(20)), (0.72, -D(20)), (1, 0)], t)
+    fwd = keys_lerp([(0, 0), (0.3, D(30)), (0.5, D(15)), (0.72, D(15)), (1, 0)], t)
+    el = keys_lerp([(0, 0), (0.3, D(75)), (0.5, D(20)), (0.72, D(20)), (1, 0)], t)
+    pose = {}
+    _spine(rig, pose, pitch=-D(6) * (fwd / D(30)), yaw=yaw)
+    if rig.roles.get("head"):
+        pose[rig.roles["head"]] = rz(-yaw * 0.4)
+    _arms(rig, pose,
+          swing=lambda a: fwd if a["side"] < 0 else D(20),
+          elbow=lambda a: el if a["side"] < 0 else D(60),
+          out=lambda a: out if a["side"] < 0 else 0.0)
+    root = Vector((0, 0, 0))
+    rig.plant(pose, root)
+    return pose, root, None
+
+
 def clip_hit(rig, t):
     L = rig.L
     kind = rig.roles["kind"]
@@ -382,14 +406,23 @@ def clip_death(rig, t):
             pose[th] = rx(D(12) * fall)
             pose[sh] = rx(-D(20) * fall)
         return pose, root, None
-    # двуногий: подкосились колени → падение на спину
-    root = Vector((0, 0.3 * L * fall, -0.12 * L * stagger * (1 - fall) - (L - depth * 0.9) * fall + bounce * L))
+    # двуногий: подкосились колени → падение на спину.
+    # "natural" (anim в спецификации): чистое падение — без подскока таза и отскока от земли.
+    # anim.death в спецификации (необязательно): drop — на сколько опускается таз к концу (м),
+    # armOut / armSwing / armElbow — углы рук в конце (°). Без них — прежние значения.
+    dp = rig.info.get("anim", {}).get("death", {})
+    drop = dp.get("drop", L - depth * 0.9)
+    if rig.info.get("anim", {}).get("natural", False):
+        root = Vector((0, 0, -0.12 * L * stagger * (1 - fall) - drop * fall))
+    else:
+        root = Vector((0, 0.3 * L * fall, -0.12 * L * stagger * (1 - fall) - drop * fall + bounce * L))
     pose[rig.roles["pelvis"]] = rx(-D(82) * fall + D(8) * stagger * (1 - fall))
     _spine(rig, pose, pitch=D(12) * stagger * (1 - fall) - D(6) * fall)
     if rig.roles.get("head"):
         pose[rig.roles["head"]] = rx(D(15) * stagger * (1 - fall) - D(10) * fall) @ ry(D(25) * smooth((t - 0.6) / 0.3))
-    _arms(rig, pose, swing=lambda a: D(25) * stagger * (1 - fall) - D(55) * fall, elbow=lambda a: D(30) + D(20) * fall,
-          out=lambda a: D(45) * fall)
+    _arms(rig, pose, swing=lambda a: D(25) * stagger * (1 - fall) - D(dp.get("armSwing", 55)) * fall,
+          elbow=lambda a: D(30) + D(dp.get("armElbow", 50) - 30) * fall,
+          out=lambda a: D(dp.get("armOut", 45)) * fall)
     bend = math.sin(math.pi * min(1, t / 0.55))
     for lg in rig.legs:
         th, sh, ft = lg["bones"]
@@ -405,12 +438,30 @@ CLIPS = {
     "Walk": (clip_walk, 32, True),
     "Run": (clip_run, 20, True),
     "Attack": (clip_attack, 26, False),
+    "Attack2": (clip_attack2, 26, False),
     "HitReact": (clip_hit, 16, False),
     "Death": (clip_death, 40, False),
 }
 
 
-def bake(rig, names=None, log=print):
+def _lowest_z(arm):
+    """Самая низкая точка меша (мировая Z) при текущей позе арматуры — для «прижатия к полу»."""
+    import bpy
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    z = None
+    for m in bpy.context.scene.objects:
+        if m.type != "MESH" or not any(md.type == "ARMATURE" and md.object == arm for md in m.modifiers):
+            continue
+        ev = m.evaluated_get(dg)
+        me = ev.to_mesh()
+        mz = min((m.matrix_world @ v.co).z for v in me.vertices)
+        ev.to_mesh_clear()
+        z = mz if z is None else min(z, mz)
+    return 0.0 if z is None else z
+
+
+def bake(rig, names=None, log=print, clips=None):
     """Клипы → действия (Action) арматуры, ключ на каждый кадр для всех костей."""
     import bpy
     arm = rig.obj
@@ -422,7 +473,7 @@ def bake(rig, names=None, log=print):
     pbs = arm.pose.bones
     for pb in pbs:
         pb.rotation_mode = "QUATERNION"
-    for name, (fn, frames, loop) in CLIPS.items():
+    for name, (fn, frames, loop) in (clips or CLIPS).items():
         if names and name not in names:
             continue
         old = bpy.data.actions.get(name)
@@ -433,6 +484,9 @@ def bake(rig, names=None, log=print):
         arm.animation_data.action = act
         prev = {}
         n = frames if loop else frames - 1
+        # anim.death.pin (спецификация): самая низкая точка меша лежит на полу в каждом кадре —
+        # ноги, щит и спина не уходят под пол и не висят над ним в конце
+        pin = name == "Death" and rig.info.get("anim", {}).get("death", {}).get("pin", False)
         for f in range(frames + (1 if loop else 0)):
             t = (f % frames) / frames if loop else f / max(1, n)
             pose, root, scales = fn(rig, t)
@@ -442,11 +496,18 @@ def bake(rig, names=None, log=print):
                 if b in prev and prev[b].dot(q) < 0:
                     q.negate()
                 prev[b] = q
+                pbs[b].rotation_quaternion = q
+                if rig.parent[b] is None:
+                    pbs[b].location = rig.q_rest[b].inverted() @ root
+            if pin:
+                root = root + Vector((0, 0, -_lowest_z(arm)))
+                for b in rig.names:
+                    if rig.parent[b] is None:
+                        pbs[b].location = rig.q_rest[b].inverted() @ root
+            for b in rig.names:
                 pb = pbs[b]
-                pb.rotation_quaternion = q
                 pb.keyframe_insert("rotation_quaternion", frame=f + 1, group=b)
                 if rig.parent[b] is None:
-                    pb.location = rig.q_rest[b].inverted() @ root
                     pb.keyframe_insert("location", frame=f + 1, group=b)
                 if rig.roles["kind"] == "blob":
                     pb.scale = rig.local_scale(b, (scales or {}).get(b, (1, 1, 1)))

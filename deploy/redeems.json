@@ -1,0 +1,14 @@
+{
+  "_about": "Стандартный набор наград. title — точное название награды в Twitch (регистр не важен). command — что выполняется от имени зрителя. cooldownSec — кулдаун у нас (в Twitch кулдаун выключен). Стоимость задаётся в Twitch, здесь её нет.",
+  "rewards": [
+    { "title": "Призвать героя", "command": "!play", "cooldownSec": 60 },
+    { "title": "Записаться в катакомбы", "command": "!катакомбы", "cooldownSec": 60 },
+    { "title": "Ульта", "command": "!ульта", "cooldownSec": 120 },
+    { "title": "Зайти в событие", "command": "!событие", "cooldownSec": 120 },
+    { "title": "Чат-квест", "command": "!квест", "cooldownSec": 60 },
+    { "title": "Таблица лидеров", "command": "!top", "cooldownSec": 30 },
+    { "title": "Моя статистика", "command": "!stats", "cooldownSec": 30 },
+    { "title": "Катакомбы: агрессивно", "command": "!режим агрессивно", "cooldownSec": 60 },
+    { "title": "Катакомбы: осторожно", "command": "!режим осторожно", "cooldownSec": 60 }
+  ]
+}

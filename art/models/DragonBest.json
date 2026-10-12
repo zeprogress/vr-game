@@ -1,0 +1,435 @@
+{
+ "name": "DragonBest",
+ "type": "boss",
+ "rig": "fit",
+ "source": "/Users/zep/ASSETS/3D/DragonBest.glb",
+ "length": 4.0,
+ "tris": 12000,
+ "texture": 2048,
+ "mirror": true,
+ "jointsInSource": false,
+ "clips": [],
+ "bones": [
+  {
+   "name": "Root",
+   "head": "root",
+   "tail": "roottop",
+   "parent": null
+  },
+  {
+   "name": "Pelvis",
+   "head": "pelvis",
+   "tail": "spine",
+   "parent": "Root"
+  },
+  {
+   "name": "Spine1",
+   "head": "spine",
+   "tail": "chest",
+   "parent": "Pelvis"
+  },
+  {
+   "name": "Chest",
+   "head": "chest",
+   "tail": "neckbase",
+   "parent": "Spine1"
+  },
+  {
+   "name": "Neck1",
+   "head": "neckbase",
+   "tail": "neckmid",
+   "parent": "Chest"
+  },
+  {
+   "name": "Neck2",
+   "head": "neckmid",
+   "tail": "head",
+   "parent": "Neck1"
+  },
+  {
+   "name": "Head",
+   "head": "head",
+   "tail": "headtip",
+   "parent": "Neck2"
+  },
+  {
+   "name": "Jaw",
+   "head": "jawbase",
+   "tail": "jawtip",
+   "parent": "Head"
+  },
+  {
+   "name": "Tail1",
+   "head": "t0",
+   "tail": "t1",
+   "parent": "Pelvis"
+  },
+  {
+   "name": "Tail2",
+   "head": "t1",
+   "tail": "t2",
+   "parent": "Tail1"
+  },
+  {
+   "name": "Tail3",
+   "head": "t2",
+   "tail": "t3",
+   "parent": "Tail2"
+  },
+  {
+   "name": "Tail4",
+   "head": "t3",
+   "tail": "t4",
+   "parent": "Tail3"
+  },
+  {
+   "name": "Tail5",
+   "head": "t4",
+   "tail": "t5",
+   "parent": "Tail4"
+  },
+  {
+   "name": "Tail6",
+   "head": "t5",
+   "tail": "t6",
+   "parent": "Tail5"
+  },
+  {
+   "name": "Tail7",
+   "head": "t6",
+   "tail": "t7",
+   "parent": "Tail6"
+  },
+  {
+   "name": "Tail8",
+   "head": "t7",
+   "tail": "t8",
+   "parent": "Tail7"
+  },
+  {
+   "name": "WingArm1.L",
+   "head": "wshoulder.L",
+   "tail": "welbow.L",
+   "parent": "Chest"
+  },
+  {
+   "name": "WingArm2.L",
+   "head": "welbow.L",
+   "tail": "wwrist.L",
+   "parent": "WingArm1.L"
+  },
+  {
+   "name": "WingFinger1.L",
+   "head": "wwrist.L",
+   "tail": "wf1.L",
+   "parent": "WingArm2.L"
+  },
+  {
+   "name": "WingFinger2.L",
+   "head": "wwrist.L",
+   "tail": "wf2.L",
+   "parent": "WingArm2.L"
+  },
+  {
+   "name": "WingFinger3.L",
+   "head": "wwrist.L",
+   "tail": "wf3.L",
+   "parent": "WingArm2.L"
+  },
+  {
+   "name": "WingFinger4.L",
+   "head": "wwrist.L",
+   "tail": "wf4.L",
+   "parent": "WingArm2.L"
+  },
+  {
+   "name": "FrontLeg1.L",
+   "head": "fshoulder.L",
+   "tail": "felbow.L",
+   "parent": "Chest"
+  },
+  {
+   "name": "FrontLeg2.L",
+   "head": "felbow.L",
+   "tail": "fwrist.L",
+   "parent": "FrontLeg1.L"
+  },
+  {
+   "name": "FrontFoot.L",
+   "head": "fwrist.L",
+   "tail": "ftoe.L",
+   "parent": "FrontLeg2.L"
+  },
+  {
+   "name": "HindLeg1.L",
+   "head": "hip.L",
+   "tail": "hknee.L",
+   "parent": "Pelvis"
+  },
+  {
+   "name": "HindLeg2.L",
+   "head": "hknee.L",
+   "tail": "hankle.L",
+   "parent": "HindLeg1.L"
+  },
+  {
+   "name": "HindFoot.L",
+   "head": "hankle.L",
+   "tail": "htoe.L",
+   "parent": "HindLeg2.L"
+  }
+ ],
+ "joints": {
+  "chest": [
+   0.0,
+   -0.16413,
+   0.80748
+  ],
+  "felbow.L": [
+   0.22827,
+   -0.68644,
+   0.36896
+  ],
+  "felbow.R": [
+   -0.22827,
+   -0.68644,
+   0.36896
+  ],
+  "fshoulder.L": [
+   0.17639,
+   -0.47655,
+   0.89494
+  ],
+  "fshoulder.R": [
+   -0.17831,
+   -0.47655,
+   0.89494
+  ],
+  "ftoe.L": [
+   0.27603,
+   -0.94184,
+   0.07665
+  ],
+  "ftoe.R": [
+   -0.28053,
+   -0.94184,
+   0.07873
+  ],
+  "fwrist.L": [
+   0.22827,
+   -0.74848,
+   0.10479
+  ],
+  "fwrist.R": [
+   -0.22827,
+   -0.74848,
+   0.10479
+  ],
+  "hankle.L": [
+   0.24103,
+   0.36157,
+   0.07943
+  ],
+  "hankle.R": [
+   -0.26087,
+   0.36157,
+   0.07943
+  ],
+  "head": [
+   0.0,
+   -0.80868,
+   1.53516
+  ],
+  "headtip": [
+   0.0,
+   -1.12128,
+   1.40866
+  ],
+  "hip.L": [
+   0.27597,
+   0.14694,
+   0.50965
+  ],
+  "hip.R": [
+   -0.26123,
+   0.17362,
+   0.51853
+  ],
+  "hknee.L": [
+   0.20963,
+   0.42827,
+   0.34276
+  ],
+  "hknee.R": [
+   -0.2302,
+   0.42827,
+   0.34276
+  ],
+  "htoe.L": [
+   0.3108,
+   0.15353,
+   0.07847
+  ],
+  "htoe.R": [
+   -0.29353,
+   0.15353,
+   0.07847
+  ],
+  "jawbase": [
+   0.0,
+   -0.97067,
+   1.4069
+  ],
+  "jawtip": [
+   0.0,
+   -1.04433,
+   1.35155
+  ],
+  "neckbase": [
+   0.0,
+   -0.47545,
+   0.89295
+  ],
+  "neckmid": [
+   0.0,
+   -0.68223,
+   1.16239
+  ],
+  "pelvis": [
+   0.0,
+   0.6666,
+   0.49644
+  ],
+  "root": [
+   0.0,
+   -0.12193,
+   0.0
+  ],
+  "roottop": [
+   0.0,
+   -0.12193,
+   0.42827
+  ],
+  "spine": [
+   0.0,
+   0.22462,
+   0.68444
+  ],
+  "t0": [
+   0.0,
+   0.66589,
+   0.49781
+  ],
+  "t1": [
+   0.0,
+   1.16197,
+   0.35725
+  ],
+  "t2": [
+   0.0,
+   1.64146,
+   0.32356
+  ],
+  "t3": [
+   0.0,
+   1.98731,
+   0.3339
+  ],
+  "t4": [
+   0.0,
+   2.2452,
+   0.33945
+  ],
+  "t5": [
+   0.0,
+   2.46256,
+   0.35517
+  ],
+  "t6": [
+   0.0,
+   2.641,
+   0.35689
+  ],
+  "t7": [
+   0.0,
+   2.74807,
+   0.35376
+  ],
+  "t8": [
+   0.0,
+   2.81283,
+   0.34732
+  ],
+  "welbow.L": [
+   0.28271,
+   -0.13761,
+   0.94471
+  ],
+  "welbow.R": [
+   -0.27261,
+   -0.13761,
+   0.96285
+  ],
+  "wf1.L": [
+   0.49771,
+   0.77578,
+   0.23015
+  ],
+  "wf1.R": [
+   -0.49882,
+   0.77578,
+   0.23015
+  ],
+  "wf2.L": [
+   0.54562,
+   0.90815,
+   0.51188
+  ],
+  "wf2.R": [
+   -0.55691,
+   0.90815,
+   0.51188
+  ],
+  "wf3.L": [
+   0.55026,
+   1.0471,
+   0.70508
+  ],
+  "wf3.R": [
+   -0.55348,
+   1.0471,
+   0.70508
+  ],
+  "wf4.L": [
+   0.53836,
+   1.2636,
+   0.83012
+  ],
+  "wf4.R": [
+   -0.54966,
+   1.2636,
+   0.83012
+  ],
+  "wshoulder.L": [
+   0.14027,
+   -0.37288,
+   1.11777
+  ],
+  "wshoulder.R": [
+   -0.13892,
+   -0.37521,
+   1.11777
+  ],
+  "wwrist.L": [
+   0.32956,
+   -0.33531,
+   1.61845
+  ],
+  "wwrist.R": [
+   -0.34172,
+   -0.33531,
+   1.61845
+  ]
+ },
+ "notes": "Внешний дракон (чёрный, перепончатые крылья, длинный хвост). Риг под будущие клипы: хвост — 8 костей, крылья — предплечье и 4 пальца на сторону, лапы — по 3 кости. Клипов пока нет (clips: []). Масштаб — по длине 4 м (≈ огнекрылый дракон игры). Кости перенесены из ручной правки art/build/DragonBest_rigZEP.blend (координаты уже в метрах, масштаб применён)."
+}

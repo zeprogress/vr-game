@@ -74,12 +74,14 @@ import {
   type PcInvData,
   type AutoGoMsg,
 } from "#shared/net/messages";
-import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
-import { SCARECROW, BOSS, MOB, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
+import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
+import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
+import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
 import { RaidFight, type RaidHost } from "./raidFight";
 import { heroStatLine, heroStatRows } from "#shared/heroStats";
 import { TwitchChat } from "../TwitchChat";
+import { TwitchRedeem, loadRedeemRules, REDEEM_TOKEN_FILE } from "../TwitchRedeem";
 import { synthChat, ttsAvailable } from "../tts";
 import {
   isTtsVoice,
@@ -119,7 +121,6 @@ import {
   takeFromBag,
   enchantInfo,
   enchantApply,
-  isRubyFuel,
   RUBY,
   ENCHANT,
   HEAL_CARRY_MAX,
@@ -273,6 +274,10 @@ interface Runtime {
   lastHit: Partial<Record<WeaponKind, number>>;
   /** Темп ударов «счётом»: с какого момента (elapsed) следующий удар этим оружием в норме (см. tryHit). */
   hitNext?: Partial<Record<WeaponKind, number>>;
+  /** То же для огнешаров посоха (см. MSG.cast): с какого момента следующий каст в норме. */
+  castNext?: number;
+  /** То же для лечения посоха (см. MSG.cast, heal). */
+  healNext?: number;
   sinceHurt: number;
   respawnIn: number;
   /** Секунды неуязвимости после возрождения. */
@@ -628,6 +633,9 @@ function savePos(x: number, y: number, z: number, edge: number): { x: number; y:
   return { x: clampAbs(x, edge), y, z: clampAbs(z, edge) };
 }
 
+/** Окно «писали в чат» для списка обмена — час, по времени сервера (эпоха в мс, без часовых поясов). */
+const CHAT_WINDOW_MS = 60 * 60 * 1000;
+
 /** Нормализация ника для сравнения/ключей. */
 function normNick(n: string): string {
   return n.trim().toLowerCase().slice(0, 24);
@@ -980,35 +988,10 @@ function enchantTry(
   w: WeaponInstance,
   idx: number,
   bag: Slot[],
-  weapons: WeaponInstance[],
-  held: ReadonlySet<string | null | undefined>,
-  /** Огранка рубинового: какое уникальное 99 сжечь (выбирает игрок). */
-  fuelId?: string,
 ): InvActResult {
   const info = enchantInfo(w, idx);
   if (!info) return { ok: false, text: "Нет такого ролла." };
   if (info.max) return { ok: false, text: "Этот ролл уже на максимуме." };
-  if (info.ruby) {
-    // Огранка рубина: сгорает выбранное игроком уникальное с оценкой 99 (не избранное и не в руках), при любом исходе.
-    const fi = weapons.findIndex((x) => x.id === fuelId);
-    const cand = weapons[fi];
-    if (!cand) return { ok: false, text: `Выбери уникальное оружие с оценкой ${RUBY.fuelQuality} — его сожжёт огранка.` };
-    if (!isRubyFuel(cand)) return { ok: false, text: `Для огранки годится только уникальное с оценкой ${RUBY.fuelQuality}.` };
-    if (cand.fav) return { ok: false, text: "Это оружие в избранном ★ — сними звёздочку, чтобы сжечь его в огранке." };
-    if (held.has(cand.id)) return { ok: false, text: "Это оружие сейчас в руках — сначала надень другое." };
-    const fuel = weapons[fi];
-    weapons.splice(fi, 1);
-    const up = Math.random() < info.chance;
-    const before = info.points;
-    if (up) enchantApply(w, idx, info.gain ?? 1);
-    const label = affixLabel(w.affixes[idx]);
-    const gained = affixPoints(w.affixes[idx], w) - before;
-    return {
-      ok: true,
-      text: up ? `Огранка удалась (+${gained}): ${label}` : `Не вышло — ${instanceName(fuel)} рассыпалось`,
-      enchant: { id: w.id, idx, up, gain: gained, cost: 1, label },
-    };
-  }
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
@@ -1188,6 +1171,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   // ---- боты зрителей (Ф10) ----
   private twitch: TwitchChat | null = null;
+  /** Баллы канала: активация награды → команда чата (см. TwitchRedeem). */
+  private redeem: TwitchRedeem | null = null;
   private readonly bots = new Map<string, Bot>(); // ключ — normNick
   /** Боты на тесте у пугала (!пугало) — для них пугало считается целью. */
   private readonly scareTesters = new WeakSet<PlayerState>();
@@ -1213,6 +1198,13 @@ export class ZoneRoom extends Room<ZoneState> {
   override onCreate(): void {
     // Сетка маршрутов ботов в обход крутых склонов — считается в фоне после старта (sim/nav.ts).
     warmNav();
+    // Писавшие за час (список обмена) живут в памяти — после перезапуска (деплой) их нет.
+    // Берём время из лога чата: он на диске и переживает рестарт.
+    const hourAgo = Date.now() - CHAT_WINDOW_MS;
+    for (const e of chatLog.readRecent()) {
+      const norm = normNick(e.nick);
+      if (norm && e.t >= hourAgo) this.chatLast.set(norm, Math.max(this.chatLast.get(norm) ?? 0, e.t));
+    }
     // Разово: свет травы, подобранный на стенде 2026-09-28, — в общую подгонку
     // (админ-панель хранит её на сервере и перебивает дефолты клиента).
     {
@@ -1389,6 +1381,24 @@ export class ZoneRoom extends Room<ZoneState> {
       this.twitch.start();
     }
 
+    // Баллы канала: награда → команда чата (EventSub). Тест-стенд — только через devChat.
+    const redeemRules = loadRedeemRules();
+    for (const err of redeemRules.errors) console.log(`[redeem] ${err}`);
+    this.redeem = new TwitchRedeem({
+      channel: process.env.TWITCH_CHANNEL || TWITCH_CHANNEL,
+      clientId: process.env.TWITCH_CLIENT_ID ?? "",
+      clientSecret: process.env.TWITCH_CLIENT_SECRET ?? "",
+      seedRefresh: process.env.TWITCH_BROADCASTER_REFRESH ?? "",
+      tokenFile: REDEEM_TOKEN_FILE,
+      rules: redeemRules.rules,
+      onCommand: (login, command, reward) => {
+        this.reply(`🎁 @${login} — «${reward}»`);
+        this.onChat(login, command);
+      },
+      onCooldown: (login, reward, secLeft) => this.reply(`@${login} «${reward}» ещё перезаряжается — ${secLeft} с.`),
+    });
+    if (!STAGING) this.redeem.start();
+
     // Разовая чистка ботов: при смене BOT_WIPE_TOKEN — один раз всех гасим.
     if (pult.botWipe !== BOT_WIPE_TOKEN) {
       let w = 0;
@@ -1405,7 +1415,14 @@ export class ZoneRoom extends Room<ZoneState> {
 
     if (RESTORE_BOTS_ON_START && !STAGING) this.restoreBots();
     // Стенд: «чат» приходит с локальной страницы (devChat), а не из Twitch.
-    if (STAGING) devChat.set((nick, text) => this.onChat(nick, text));
+    if (STAGING) {
+      devChat.set((nick, text) => {
+        // Стенд: «!награда <название>» — активация награды без Twitch.
+        const m = text.match(/^!награда\s+(.+)$/i);
+        if (m) this.redeem?.simulate(m[1].trim(), nick);
+        else this.onChat(nick, text);
+      });
+    }
 
     this.onMessage(MSG.move, (client: Client, msg: MoveMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -1492,7 +1509,10 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.spell === "heal") {
         const h = MAGIC.heal;
         const healHand = p.rightCls === "staff" ? "right" : "left";
-        if (this.elapsed - rt.lastCast < h.cooldown / rolledAtkSpeedMul(p, healHand, rt)) return;
+        // Тот же счёт, что у огнешара (см. castNext): лаг сети не должен резать лечение.
+        const healRate = h.cooldown / rolledAtkSpeedMul(p, healHand, rt);
+        const healDue = rt.healNext ?? -Infinity;
+        if (this.elapsed < healDue - HIT_BUNCH) return;
         if (charge < h.minCharge || p.mana < h.minMana) return;
         // Цель: союзник в радиусе, иначе сам.
         let target = p;
@@ -1507,6 +1527,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const hcost = Math.min(p.mana, charge * h.chargeTime * h.manaPerSec);
         p.mana = Math.max(0, p.mana - hcost);
         rt.lastCast = this.elapsed;
+        rt.healNext = Math.max(healDue, this.elapsed - HIT_BUNCH) + healRate;
         const beforeHp = target.hp;
         target.hp = Math.min(
           target.maxHp,
@@ -1522,8 +1543,12 @@ export class ZoneRoom extends Room<ZoneState> {
       const staffHand = p.rightCls === "staff" ? "right" : "left";
       // Скорость каста (МДР) укорачивает откат огнешара — вместе с роллом «скорость атаки».
       // Плюс темп от «Боевого клича»/«Благословения» — клиент ускоряется так же (Game: atkSpeedAffix × cry).
-      const castCooldown = staffCastInterval(p.level, p, rolledAtkSpeedMul(p, staffHand, rt) * this.cryTempo(rt));
-      if (this.elapsed - rt.lastCast < castCooldown) return;
+      // Темп — тот же счёт, что у ударов (tryHit), но откат точный: допуск HIT_BUNCH на сетевой лаг.
+      // Строгая пауза от прихода сообщения резала огнешары при каждом джиттере: клиент отсчитывает откат
+      // от своей отправки, а сервер — от прихода, и гэп между кастами сжимался ниже отката.
+      const castRate = staffCastInterval(p.level, p, rolledAtkSpeedMul(p, staffHand, rt) * this.cryTempo(rt));
+      const castDue = rt.castNext ?? -Infinity;
+      if (this.elapsed < castDue - HIT_BUNCH) return;
       // Заряд ниже минимума ИЛИ не хватило маны на минимальный старт — впустую.
       if (charge < MAGIC.firebolt.minCharge || p.mana < MAGIC.firebolt.minMana) return;
 
@@ -1532,6 +1557,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const cost = Math.min(p.mana, (charge / 1) * MAGIC.firebolt.chargeTime * MAGIC.firebolt.manaPerSec);
       p.mana = Math.max(0, p.mana - cost);
       rt.lastCast = this.elapsed;
+      rt.castNext = Math.max(castDue, this.elapsed - HIT_BUNCH) + castRate;
 
       const [dx, dy, dz] = unit3(msg.dx, msg.dy, msg.dz);
       // Роллы "крит" на посохе раньше тоже никуда не доходили (только tryHit
@@ -1983,7 +2009,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
-      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
+      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
     });
@@ -2866,7 +2892,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const cls = aegis ? "shield" : LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ, aegis);
         if (dropped) winLoot.push({ id: dropped, count: 1, ...(aegis ? { aegis: true } : {}) });
-      } else if (Math.random() < EVENT.invasion.rewardLegendaryChance) {
+      } else if (Math.random() < EVENT.invasion.rewardLegendaryChance * UNIQUE_DROP_MUL) {
         const cls = LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
         if (dropped) winLoot.push({ id: dropped, count: 1 });
@@ -2918,7 +2944,7 @@ export class ZoneRoom extends Room<ZoneState> {
    */
   private tickHuntAttacks(
     now: number,
-    boss: { x: number; y: number; z: number; raging: boolean },
+    boss: Mob,
     eh: typeof EVENT.eliteHunt,
   ): void {
     const gapK = boss.raging ? eh.enrageGapMul : 1;
@@ -2951,6 +2977,7 @@ export class ZoneRoom extends Room<ZoneState> {
     if (now >= this.huntNovaAt && this.huntBreathFireAt === 0) {
       this.huntNovaAt = now + eh.novaGap * gapK * 1000;
       this.huntNovaFireAt = now + eh.novaDelay * 1000;
+      boss.swing(MOB_SWING.wings);
       this.addDanger(boss.x, boss.z, eh.novaRadius + 1, eh.novaDelay + 0.2);
       this.broadcast(MSG.act, {
         k: "stunBash", id: this.huntBossId, x: boss.x, y: gy, z: boss.z, d: eh.novaDelay,
@@ -2975,6 +3002,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntBreathDz = (t.z - boss.z) / dl;
         this.huntBreathAt = now + eh.breathGap * gapK * 1000;
         this.huntBreathFireAt = now + eh.breathDelay * 1000;
+        boss.swing(MOB_SWING.breath);
         // Конус дыхания — цепочкой кругов вдоль оси (бот выбегает вбок).
         for (const k of [0.25, 0.5, 0.75, 0.95]) {
           const dd = eh.breathLen * k;
@@ -3020,6 +3048,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.huntLobs = near.slice(0, eh.lobTargets);
         this.huntLobAt = now + eh.lobGap * gapK * 1000;
         this.huntLobFireAt = now + eh.lobDelay * 1000;
+        boss.swing(MOB_SWING.tail);
         for (const t of this.huntLobs) {
           this.addDanger(t.x, t.z, eh.lobRadius + 0.8, eh.lobDelay + 0.2);
           this.broadcast(MSG.act, {
@@ -3098,6 +3127,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // Периодический призыв миньонов — «разберись с мелочью».
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          boss.swing(MOB_SWING.magic);
           for (let i = 0; i < eh.addCount; i++) {
             const adef = ELITE_MOBS[eh.addTypes[Math.floor(Math.random() * eh.addTypes.length)]];
             const a = Math.random() * Math.PI * 2;
@@ -4650,7 +4680,6 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
-        fuel: isRubyFuel(w),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -4664,6 +4693,8 @@ export class ZoneRoom extends Room<ZoneState> {
       titles: rec?.titles ?? [],
       title: rec?.title ?? "",
       attrs: { unspent: p.unspent, str: p.str, agi: p.agi, int: p.int, con: p.con, luc: p.luc, wis: p.wis },
+      gb: { str: p.gb.str, agi: p.gb.agi, int: p.gb.int, con: p.gb.con, luc: p.gb.luc, wis: p.gb.wis },
+      strike: this.strikeOfLive(p, rt),
       respecCost: RESPEC_ENABLED ? respecCostFor(rec?.respecCount ?? 0) : -1,
       skills: {
         cls: classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "") ?? "",
@@ -4845,7 +4876,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
     const js = jewelsOf(rec);
     const bag = t ? readBag(t.p) : restoreBag(rec.bag);
-    const r = applyJewelOp(js, op, bagCount(bag, "scrap"));
+    // ★ лимит общий с оружием: у живого героя оружие в рантайме, у офлайн-героя — в записи.
+    const favWeapons = (t ? t.rt.weapons : rec.weapons ?? []).filter((x) => x.fav).length;
+    const r = applyJewelOp(js, op, bagCount(bag, "scrap"), favWeapons);
     if (!r.ok) return { ok: false, text: r.text };
     const patch: Partial<PlayerRecord> = { rings: js.rings, ringOn: js.ringOn, gems: js.gems };
     if (r.scrap) {
@@ -4932,6 +4965,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const b = this.openInv(to.token);
     if (!a) return { ok: false, text: "Героя нет — напиши !play в чате." };
     if (!b) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
+    // Места у получателя проверяем до того, как забрать у отправителя: остаток сверх сумки иначе пропадёт.
+    if (item.k === "bag") {
+      const room = b.bag.map((s) => ({ ...s }));
+      const left = addToBag(room, item.item, item.n);
+      if (left > 0) return { ok: false, text: `У ${to.nick} не хватает места: поместится ${item.n - left} из ${item.n}.` };
+    }
     const r = takeItems(a, [item]);
     if ("error" in r) return { ok: false, text: r.error };
     giveItems(b, r.taken);
@@ -4966,9 +5005,9 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.tradeCancel(me, id);
   }
 
-  /** Кому можно предложить обмен: кто в игре сейчас (сначала) и писавшие в чат за час — свежие первыми. Без ботов и себя; без героя не показываем. */
+  /** Кому можно предложить обмен: кто в игре сейчас (сначала) и писавшие в чат за час — свежие первыми. Себя не показываем; без героя не показываем. Герой на боте тоже в списке: обмен с ним висит, пока не отменят (бот не подтверждает). */
   private exchangePartnerNicks(exceptNorm: string): string[] {
-    const windowMs = 60 * 60 * 1000;
+    const windowMs = CHAT_WINDOW_MS;
     const now = Date.now();
     const live = new Map<string, string>(); // норм. ник → ник, сейчас в мире
     this.state.players.forEach((p, id) => {
@@ -4983,7 +5022,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.chatLast.delete(norm);
         continue;
       }
-      if (norm === exceptNorm || this.bots.has(norm) || this.state.players.has(`bot:${norm}`) || live.has(norm)) continue;
+      if (norm === exceptNorm || live.has(norm)) continue;
       const rec = store.get(`nick:${norm}`);
       if (!rec) continue; // писал, но героя нет — не с кем обмениваться
       chat.push({ nick: rec.nick || norm, at });
@@ -5268,8 +5307,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const list = t ? t.rt.weapons : store.get(`nick:${norm}`)?.weapons;
       const w = list?.find((x) => x.id === id);
       if (!list || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      // Лимит ★ общий с кольцами: кольца лежат в записи героя (у живого — та же запись, что у сейва).
+      const favRings = (store.get(t?.rt.token ?? `nick:${norm}`)?.rings ?? []).filter((x) => x.fav).length;
       if (w.fav) delete w.fav;
-      else if (list.filter((x) => x.fav).length >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
+      else if (list.filter((x) => x.fav).length + favRings >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
       else w.fav = true;
       if (t) this.persistNick(norm);
       else store.put(`nick:${norm}`, { weapons: list });
@@ -5309,7 +5350,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const w = t.rt.weapons.find((x) => x.id === id);
         if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
         const bag = readBag(t.p);
-        const r = enchantTry(w, idx, bag, t.rt.weapons, this.liveHeldIds(t.p, t.rt), fuel);
+        const r = enchantTry(w, idx, bag);
         if (r.enchant) {
           writeBag(t.p, bag);
           this.persistNick(norm);
@@ -5322,7 +5363,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = rec?.weapons?.find((x) => x.id === id);
       if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const bag = restoreBag(rec.bag);
-      const r = enchantTry(w, idx, bag, rec.weapons!, recHeldIds(rec), fuel);
+      const r = enchantTry(w, idx, bag);
       if (r.enchant) store.put(token, { weapons: rec.weapons, bag });
       return r;
     }
@@ -5657,7 +5698,7 @@ export class ZoneRoom extends Room<ZoneState> {
         "вместе — идём толпой) · !event — во время нашествия герой бежит туда, " +
         "чистит и возвращается · !cheer/!defeat — эмоции · !follow <ник> / !come — " +
         "идти рядом (и защищает, если на тебя напали) — !unfollow — назад к делам · " +
-        "!катакомбы — в отряд катакомб (от 3 героев, сбор 5 мин; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
+        "!катакомбы — записаться заранее или в отряд (от 3 героев, сбор 5 мин; !катакомбы выйти — снять запись; там !цель босс|свита|стрелки|слабых, !встать вперёд|назад|фланг, !режим осторожно|агрессивно) · " +
         "!inv — веб-инвентарь (надеть/на лом) · " +
         "!camp <моб> — где качаться · " +
         "!пугало (!dps) — герой минуту бьёт пугало в лагере: над ним DPS и макс. удар · " +
@@ -6129,6 +6170,7 @@ export class ZoneRoom extends Room<ZoneState> {
         // Призыв мертвецов из теней — миньоны катакомб (с лутом, без возрождения).
         if (now >= this.huntAddAt) {
           this.huntAddAt = now + eh.addGap * (boss.raging ? eh.enrageGapMul : 1) * 1000;
+          boss.swing(MOB_SWING.magic);
           for (let i = 0; i < eh.addCount; i++) {
             const a = Math.random() * Math.PI * 2;
             const r = 3 + Math.random() * 3;
@@ -6198,6 +6240,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.broadcast(MSG.act, { k: "catShield", id: "", x: m.x, y: m.y, z: m.z, mobId: id, d: on ? 1 : 0 } satisfies ActRelay);
       },
       stunMob: (id, sec) => this.sim.stunMob(id, sec),
+      swing: (id, kind) => this.sim.mobs.get(id)?.swing(kind),
       moveMob: (id, x, z) => {
         const m = this.sim.mobs.get(id);
         if (!m) return;
@@ -6724,6 +6767,12 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.players.forEach((p, pid) => {
       if (!pid.startsWith("bot:") && normNick(p.nick) === norm) id = pid;
     });
+    // `!катакомбы выйти` — снять запись; героя в мир не поднимаем ради этого.
+    if (a === "выйти" || a === "out") {
+      if (!id && this.bots.has(norm)) id = `bot:${norm}`;
+      this.reply(`@${nick} ${id ? this.cat.unjoin(id) : "ты не записан на катакомбы."}`);
+      return;
+    }
     if (!id) {
       if (!this.bots.has(norm)) this.requestBot(nick, norm);
       if (this.bots.has(norm)) id = `bot:${norm}`;
@@ -8117,28 +8166,22 @@ export class ZoneRoom extends Room<ZoneState> {
    * «Сила» умения — от оружия класса: у бойцов это удар основным оружием
    * (тир, роллы, баффы), у магов — магия (ИНТ, тир посоха/молота).
    */
+  /** Рука, которой бьёт умение класса, и её множители/роллы — вход для skillStrike (тот же расчёт видит окно инвентаря). */
+  private strikeHandFor(p: PlayerState, cls: ClassId, rt: Runtime): StrikeHand {
+    const h: "left" | "right" = p.rightCls === strikeKindOf(cls) ? "right" : "left";
+    return { mult: multIn(p, h), tier: p[`${h}Tier`], roll: rolledDmgMul(p, h, rt) };
+  }
+
+  /** Сила удара класса, который держит герой, — для окна умений (без класса не показываем). */
+  private strikeOfLive(p: PlayerState, rt: Runtime): number | undefined {
+    const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
+    if (!cls) return undefined;
+    return Math.round(skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt)).dmg * 10) / 10;
+  }
+
   private skillPower(p: PlayerState, cls: ClassId, rt: Runtime, ownerId: string): { dmg: number; magic: boolean } {
-    const buff = this.buffMult(ownerId, "dmg");
-    const handOf = (c: string): "left" | "right" => (p.rightCls === c ? "right" : "left");
-    switch (cls) {
-      case "support": {
-        const h = handOf("staff");
-        return { dmg: fireboltDamage(p.level, p, 0.7) * staffMagicTier(p[`${h}Tier`]) * rolledDmgMul(p, h, rt) * 0.5 * buff, magic: true };
-      }
-      case "battlemage": {
-        const h = handOf("hammer");
-        return { dmg: 1.9 * magicPowerFor(p.level, p) * multIn(p, h) * rolledDmgMul(p, h, rt) * buff, magic: true };
-      }
-      case "archer": {
-        const h = handOf("bow");
-        return { dmg: weaponDamage("arrow", p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
-      }
-      default: {
-        const kind = cls === "assassin" ? "dagger" : cls === "spearman" ? "spear" : "sword";
-        const h = handOf(kind);
-        return { dmg: weaponDamage(kind, p.level, p, multIn(p, h) * rolledDmgMul(p, h, rt)) * buff, magic: false };
-      }
-    }
+    const s = skillStrike(cls, p.level, p, this.strikeHandFor(p, cls, rt));
+    return { dmg: s.dmg * this.buffMult(ownerId, "dmg"), magic: s.magic };
   }
 
   /**
@@ -8461,11 +8504,18 @@ export class ZoneRoom extends Room<ZoneState> {
     const cls = classOf2(p.leftCls as Weapon2 | "", p.rightCls as Weapon2 | "");
     if (!cls || !CLASSES2[cls].skills.includes(kind)) return false;
     if (p.skill1 !== kind && p.skill2 !== kind) return false;
+    // Призрак не накладывается сам на себя: пока заряжена тень или действует его ускорение, повторный каст
+    // не нужен. Иначе при коротком откате (мудрость) ускорение продлевалось бы без конца, и каждый каст давал
+    // новый удар из тени. Откат при отказе не тратится.
+    if (kind === "abyss" && (rt.abyssStrike && rt.abyssUntil > this.elapsed || rt.hasteUntil > this.elapsed)) return false;
 
     const sk = SKILLS2[kind];
+    // skillAt — срок следующего применения (−999 = готово; так же возвращают откат). Счёт, как у ударов:
+    // лаг сети не режет умение, а средний откат не меняется.
     const cd = sk.cooldown * this.skillCdMul(p);
-    if (this.elapsed - (rt.skillAt[kind] ?? -999) < cd) return false;
-    rt.skillAt[kind] = this.elapsed;
+    const due = rt.skillAt[kind] ?? -999;
+    if (this.elapsed < due - HIT_BUNCH) return false;
+    rt.skillAt[kind] = Math.max(due, this.elapsed - HIT_BUNCH) + cd;
     rt.lastSkillAt = this.elapsed;
     const v = CLASS_IDS.indexOf(cls);
     const feetY = p.head.y - PLAYER.eyeHeight;
@@ -9382,6 +9432,7 @@ export class ZoneRoom extends Room<ZoneState> {
       s.grounded = m.grounded ? 1 : 0;
       s.hurtSeq = m.hurtSeq;
       s.attackSeq = m.attackSeq;
+      s.attackKind = m.attackKind;
       s.hurtDx = m.hurtDx;
       s.hurtDz = m.hurtDz;
       s.stunned = m.stunned ? 1 : 0;
@@ -10264,6 +10315,8 @@ export class ZoneRoom extends Room<ZoneState> {
       fishAuto: false,
     });
     this.applyJewels(client.sessionId);
+    // Снимок инвентаря сразу при входе — в меню на руке уже видна сила удара (без открытия окна).
+    this.sendPcInv(client);
     for (const m of this.chatHistory) client.send(MSG.chatLine, m);
     // Подарки, пришедшие без нас, — всплывашкой при входе (подробно — в инвентаре).
     {
@@ -10423,6 +10476,7 @@ export class ZoneRoom extends Room<ZoneState> {
     invHub.setZone(null);
     if (STAGING) devChat.set(null);
     this.twitch?.stop();
+    this.redeem?.stop();
     serverPerf.stop();
     console.log(`[zone] комната ${this.roomId} закрыта`);
   }

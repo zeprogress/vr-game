@@ -98,6 +98,7 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
     } else if (it.k === "ring") {
       const i = snap.jewels.rings.findIndex((x) => x.id === it.id);
       const [r] = snap.jewels.rings.splice(i, 1);
+      delete r.fav; // ★ — личная пометка, как у оружия: не передаётся
       taken.push({ k: "ring", r });
     } else if (it.k === "gem") {
       const left = (snap.jewels.gems[it.key] ?? 0) - it.n;

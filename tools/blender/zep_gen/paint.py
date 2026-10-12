@@ -205,6 +205,7 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
 
     noise = sdf.Noise(seed)
     col = np.zeros((len(P), 3))
+    rough = np.full(len(P), 0.85)  # шероховатость по точке: матовая, с вариацией (не «пластик»)
     tile_dn = np.zeros((len(P), 3))  # наклон нормали от тайловых текстур
     ao = sdf_ao([s for s in shapes if s.op != "paint"], Pa, Nn, step=0.07 * size_auth)
     for k, mn in enumerate(mats):
@@ -224,6 +225,8 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             g /= np.linalg.norm(g)
             q = q + np.outer(q @ g, g) * -0.85
         n = noise.fbm(q, 4)  # −1..1
+        # мелкое зерно: тонкая вариация цвета, шероховатости и бугорков (против гладкого «пластика»)
+        fine = noise.fbm(p * freq * 6, 3)  # −1..1
         var = float(d.get("var", 0.18))
         t = np.clip(0.5 + n * var * 2.5, 0, 1)[:, None]
         c = shade * (1 - t) + base * t
@@ -244,6 +247,14 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             if tl.get("tint"):
                 c = c * _lin(tl["tint"])
             tile_dn[m] = tdn
+        if not d.get("tile") and not d.get("emit"):
+            # бугорки мелкого шума — в карту нормалей (у материалов без своей текстуры): поверхность не гладкая
+            K = freq * 6
+            e = 0.004
+            gf = np.stack([(noise.fbm((p + np.eye(3)[i] * e) * K, 3) - noise.fbm((p - np.eye(3)[i] * e) * K, 3)) / (2 * e) for i in range(3)], 1)
+            gt = gf - Nn[m] * (gf * Nn[m]).sum(1, keepdims=True)  # касательная часть градиента
+            gt /= np.maximum(np.linalg.norm(gt, axis=1, keepdims=True), 1.0)
+            tile_dn[m] = tile_dn[m] + float(d.get("grainBump", 0.12)) * gt
         if d.get("plates"):  # каменные плиты: свой тон у каждой, тёмные швы, светлая фаска у края
             pl = d["plates"]
             f1, f2, cid = sdf.voronoi(p * float(pl.get("freq", 8)), int(pl.get("seed", 1)))
@@ -278,24 +289,37 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             z = (P[m][:, 2] / max(1e-6, H))[:, None]
             c = c * (0.82 + 0.18 * np.clip(z * 1.6, 0, 1))  # к ногам темнее
             c = c * (0.9 + 0.16 * np.clip(Nn[m][:, 2:3], 0, 1))  # свет сверху
+            c = c * (1 + 0.08 * fine[:, None])  # зерно
+        # шероховатость: матовый материал, в ямках и складках грубее, мелкое зерно и пятна — вариация
+        rb = float(d.get("rough", 0.85))
+        rough[m] = rb if d.get("emit") else np.clip(rb + 0.10 * fine + 0.08 * n + 0.16 * (1 - ao[m]), 0.3, 1.0)
         col[m] = c
     img = np.zeros((size, size, 3))
     img[filled] = col
+    rimg = np.zeros((size, size, 3))  # шероховатость — тот же трёхканальный вид, чтобы заливать вместе с цветом
+    rimg[filled] = np.repeat(rough[:, None], 3, axis=1)
     # заливка вокруг островов (иначе на мипах и стыках — тёмные швы)
     have = filled.copy()
     for _ in range(12):
         acc = np.zeros_like(img)
+        racc = np.zeros_like(rimg)
         cnt = np.zeros((size, size))
         for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1)):
-            sh = np.roll(np.roll(img, dy, 0), dx, 1)
             hv = np.roll(np.roll(have, dy, 0), dx, 1)
-            acc += sh * hv[..., None]
+            acc += np.roll(np.roll(img, dy, 0), dx, 1) * hv[..., None]
+            racc += np.roll(np.roll(rimg, dy, 0), dx, 1) * hv[..., None]
             cnt += hv
         grow = (~have) & (cnt > 0)
         img[grow] = acc[grow] / cnt[grow][:, None]
+        rimg[grow] = racc[grow] / cnt[grow][:, None]
         have |= grow
     out = np.ones((size, size, 4), np.float32)
     out[..., :3] = _srgb(img)
+    # шероховатость — в зелёном канале (как в glTF metallicRoughness); металл — 0
+    rout = np.ones((size, size, 4), np.float32)
+    rout[..., 0] = 0.0
+    rout[..., 1] = np.clip(rimg[..., 0], 0, 1)
+    rout[..., 2] = 0.0
 
     # ---- карта нормалей ----
     nrm = np.zeros((size, size, 3))
@@ -345,11 +369,11 @@ def paint(me, shapes, mats, mdefs, part_face, to_auth, size=512, H=2.0, size_aut
             have |= grow
     nout = np.ones((size, size, 4), np.float32)
     nout[..., :3] = np.clip(nrm * 0.5 + 0.5, 0, 1)
-    return out, float(filled.mean()), nout
+    return out, float(filled.mean()), nout, rout, float(np.std(rough))
 
 
-def apply(me, name, pixels, normal_px=None):
-    """Текстура (+ карта нормалей) → один материал; прочие материалы убираются."""
+def apply(me, name, pixels, normal_px=None, rough_px=None):
+    """Текстура (+ карта нормалей, + шероховатость) → один материал; прочие материалы убираются."""
     size = pixels.shape[0]
     img = bpy.data.images.get(name + "_tex")
     if img:
@@ -362,6 +386,8 @@ def apply(me, name, pixels, normal_px=None):
     nt = m.node_tree
     bsdf = next(nd for nd in nt.nodes if nd.type == "BSDF_PRINCIPLED")
     bsdf.inputs["Roughness"].default_value = 0.9
+    if "Specular IOR Level" in bsdf.inputs:  # камень и кожа не блестят как пластик
+        bsdf.inputs["Specular IOR Level"].default_value = 0.3
     tex = nt.nodes.new("ShaderNodeTexImage")
     tex.image = img
     nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
@@ -378,6 +404,19 @@ def apply(me, name, pixels, normal_px=None):
         nmap = nt.nodes.new("ShaderNodeNormalMap")
         nt.links.new(nt_tex.outputs["Color"], nmap.inputs["Color"])
         nt.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+    if rough_px is not None:
+        rimg = bpy.data.images.get(name + "_rough")
+        if rimg:
+            bpy.data.images.remove(rimg)
+        rimg = bpy.data.images.new(name + "_rough", width=size, height=size, alpha=False, is_data=True)
+        rimg.colorspace_settings.name = "Non-Color"
+        rimg.pixels.foreach_set(rough_px.ravel())
+        rimg.pack()
+        rt = nt.nodes.new("ShaderNodeTexImage")
+        rt.image = rimg
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        nt.links.new(rt.outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs["Green"], bsdf.inputs["Roughness"])
     me.materials.clear()
     me.materials.append(m)
     me.polygons.foreach_set("material_index", np.zeros(len(me.polygons), np.int32))

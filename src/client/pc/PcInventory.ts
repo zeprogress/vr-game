@@ -1,12 +1,13 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownOf, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
 import { glyph, weaponIcon } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, RUBY, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
-import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type RingTier } from "#shared/jewels";
+import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
+import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 
 /**
@@ -56,6 +57,9 @@ const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(i
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { kind: "ring"; id: string };
 
+/** Предмет сумки: оружие или кольцо — в одной сетке. */
+type BagEntry = { w: PcInvWeapon } | { r: PcInvJewels["rings"][number] };
+
 export class PcInventory {
   private readonly root: HTMLDivElement;
   private readonly win: HTMLDivElement;
@@ -66,8 +70,6 @@ export class PcInventory {
   private data: PcInvData | null = null;
   private tab: InvTab = "gear";
   private enchId: string | null = null;
-  /** Огранка рубинового: выбранное игроком уникальное с оценкой 99, которое сгорит. */
-  private fuelId: string | null = null;
   private drag: DragSrc | null = null;
   private confirmEl: HTMLDivElement | null = null;
   private forging = false;
@@ -98,13 +100,14 @@ export class PcInventory {
     this.root.style.display = "none";
     document.body.appendChild(this.root);
     // ПК в игре: клик мимо окна закрывает его. Кнопки HUD не в счёт — иначе кнопка открытия тут же переоткрыла бы окно.
+    // Меню кольца/предмета (confirmEl) лежит в корне, а не в окне — его кнопки тоже не «мимо».
     if (!hooks.touch && !hooks.page) {
       document.addEventListener(
         "pointerdown",
         (e) => {
           if (!this.isOpen || this.drag) return;
           const t = e.target as Node;
-          if (this.win.contains(t) || this.tip.contains(t)) return;
+          if (this.win.contains(t) || this.tip.contains(t) || this.confirmEl?.contains(t)) return;
           if ((t as Element).closest?.(".pc-hud")) return;
           this.close();
         },
@@ -465,7 +468,7 @@ export class PcInventory {
     const j = d.jewels;
     if (j) {
       for (const r of j.rings) {
-        if (j.ringOn.includes(r.id)) continue;
+        if (j.ringOn.includes(r.id) || r.fav) continue; // как у оружия: надетое и ★ в обмен не идут
         out.push({ code: `r:${r.id}`, label: ringName({ tier: r.tier }), max: 1, stack: false, view: { k: "ring", name: ringName({ tier: r.tier }), n: 1, tier: r.tier, gems: r.gems } });
       }
       for (const [gk, n] of j.gems) out.push({ code: `g:${gk}`, label: gemName(gk), max: n, stack: true, view: { k: "gem", name: gemName(gk), n, key: gk } });
@@ -724,24 +727,27 @@ export class PcInventory {
     const jw = this.jewelParts(d);
     left.append(doll, xp, hands, jw.slots, titleRow, stats);
 
-    // --- избранное и сумка ---
+    // --- избранное и сумка: оружие и кольца вместе; один ряд ★ на FAV_MAX (лимит общий) ---
     const right = div("pcinv-col");
+    const j = this.jewelsOf(d);
     const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
     const free = d.weapons.filter((w) => !eq.has(w.id));
-    const favs = free.filter((w) => w.fav);
-    const bag = free.filter((w) => !w.fav);
-    if (this.bagByQuality) bag.sort((a, b) => b.quality - a.quality);
-    const favTotal = d.weapons.filter((w) => w.fav).length;
-    // Избранное ★: отдельный ряд на FAV_MAX ячеек — бросил сюда, предмет в избранном (не разбирается).
+    const freeRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    const favs: BagEntry[] = [...free.filter((w) => w.fav).map((w) => ({ w })), ...freeRings.filter((r) => r.fav).map((r) => ({ r }))];
+    const bagEntries: BagEntry[] = [...free.filter((w) => !w.fav).map((w) => ({ w })), ...freeRings.filter((r) => !r.fav).map((r) => ({ r }))];
+    const bag = sortBag(bagEntries, this.bagSort, bagPickItem);
+    const bagW = bag.flatMap((e) => ("w" in e ? [e.w] : []));
+    const bagR = bag.flatMap((e) => ("r" in e ? [e.r] : []));
+    const favTotal = d.weapons.filter((w) => w.fav).length + j.rings.filter((r) => r.fav).length;
+    // Избранное ★: один ряд на FAV_MAX ячеек — бросил сюда оружие или кольцо, оно в избранном (не разбирается).
     right.append(div("pcinv-sub", `${glyph("ui.fav")} Избранное · ${favTotal}/${FAV_MAX} — не разбирается`));
     const favGrid = div("pcinv-grid pcinv-favgrid");
     for (let i = 0; i < FAV_MAX; i++) {
-      const w = favs[i];
-      favGrid.append(w ? this.itemCell(w) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
+      const e = favs[i];
+      favGrid.append(e ? this.entryCell(e) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
     }
     favGrid.addEventListener("dragover", (e) => {
-      const w = this.dragWeapon();
-      if (w && !w.fav) {
+      if (this.canFav()) {
         e.preventDefault();
         favGrid.classList.add("hot");
       }
@@ -752,61 +758,90 @@ export class PcInventory {
       favGrid.classList.remove("hot");
       const src = this.drag;
       const w = this.dragWeapon();
+      const r = this.dragRing();
       this.endDrag();
-      if (!src || !w || w.fav) return;
+      const weaponIn = !!w && !w.fav;
+      const ringIn = !!r && !r.fav;
+      if (!weaponIn && !ringIn) return;
       if (favTotal >= FAV_MAX) {
-        this.textTip(favGrid, `${glyph("ui.fav")} Избранное заполнено`, `Не больше ${FAV_MAX} — сначала вынеси что-нибудь в сумку.`);
+        this.textTip(favGrid, `${glyph("ui.fav")} Избранное заполнено`, `Не больше ${FAV_MAX} — сначала вынеси что-нибудь из избранного в сумку.`);
         return;
       }
-      if (src.kind === "hand") this.hooks.toBag(src.side);
-      this.toggleFav(w);
+      if (w && weaponIn) {
+        if (src?.kind === "hand") this.hooks.toBag(src.side);
+        this.toggleFav(w);
+      } else if (r && ringIn) this.toggleRingFav(r.id);
     });
     right.append(favGrid);
 
+    // Сумка: оружие и кольца в одной сетке; сортировка — кнопками в шапке (повторный клик — выключить).
+    const bagHead = div("pcinv-bagh");
+    bagHead.append(div("pcinv-sub", `Сумка · оружие ${bagW.length} · кольца ${bagR.length}`));
+    const sortRow = div("pcinv-sortrow");
+    for (const s of BAG_SORTS) {
+      const bt = button(s.label, () => {
+        this.bagSort = nextBagSort(this.bagSort, s.mode);
+        this.render();
+      });
+      bt.className = `pcinv-sortbtn${this.bagSort === s.mode ? " on" : ""}`;
+      bt.title = s.title;
+      sortRow.append(bt);
+    }
+    bagHead.append(sortRow);
+    right.append(bagHead);
     // Склад на сервере без лимита — ячеек минимум 56, дальше растёт рядами по 8 (всегда есть свободный ряд).
     const row = this.hooks.touch && !this.hooks.page ? 10 : 8;
     const slots = Math.max(this.hooks.page ? 40 : this.hooks.touch ? 30 : 56, Math.ceil((bag.length + 1) / row) * row);
-    const bagHead = div("pcinv-bagh");
-    bagHead.append(div("pcinv-sub", `Сумка · оружие ${bag.length}`));
-    const sortBt = button("⇅ По оценке", () => {
-      this.bagByQuality = !this.bagByQuality;
-      this.render();
-    });
-    sortBt.className = `pcinv-sortbtn${this.bagByQuality ? " on" : ""}`;
-    sortBt.title = "Сумка по оценке: выше — сверху. Повторный клик — обычный порядок";
-    bagHead.append(sortBt);
-    right.append(bagHead);
     const grid = div("pcinv-grid");
     for (let i = 0; i < slots; i++) {
-      const w = bag[i];
-      grid.append(w ? this.itemCell(w) : div("pcinv-cell"));
+      const e = bag[i];
+      grid.append(e ? this.entryCell(e) : div("pcinv-cell"));
     }
-    // С руки в сумку — снять; из избранного в сумку — убрать звёздочку.
+    // С руки в сумку — снять; из избранного в сумку — убрать звёздочку (оружие или кольцо).
     grid.addEventListener("dragover", (e) => {
-      if (this.drag?.kind === "hand" || (this.drag?.kind === "bag" && this.dragWeapon()?.fav)) e.preventDefault();
+      if (this.drag?.kind === "hand" || this.dragWeapon()?.fav || this.dragRing()?.fav) e.preventDefault();
     });
     grid.addEventListener("drop", (e) => {
       e.preventDefault();
       const src = this.drag;
       const w = this.dragWeapon();
+      const r = this.dragRing();
       this.endDrag();
       if (src?.kind === "hand") this.hooks.toBag(src.side);
-      else if (src?.kind === "bag" && w?.fav) this.toggleFav(w);
+      else if (w?.fav) this.toggleFav(w);
+      else if (r?.fav) this.toggleRingFav(r.id);
     });
     right.append(grid);
-    // Разобрать всё, кроме избранного ★ и надетого — с подтверждением.
-    const scrapSum = bag.reduce((n, w) => n + w.scrap, 0);
+    // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
+    const bulk = bagW.filter((w) => w.tier !== "ruby");
+    const scrapSum = bulk.reduce((n, w) => n + w.scrap, 0);
     const all = document.createElement("button");
     all.className = "pcinv-allbtn";
-    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bag.length})`;
-    all.disabled = bag.length === 0;
+    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bulk.length})`;
+    all.disabled = bulk.length === 0;
     all.onclick = () =>
       this.askConfirm(
-        `Разобрать ${bag.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")} и то, что в руках, останутся.`,
+        `Разобрать ${bulk.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и то, что в руках, останутся.`,
         "Разобрать всё",
         () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
       );
     right.append(all);
+    if (bagR.length) {
+      const ringSum = bagR.reduce((n, r) => n + r.scrap, 0);
+      const rall = document.createElement("button");
+      rall.className = "pcinv-allbtn pcinv-ringall";
+      rall.textContent = `⚒ Разобрать все кольца (${bagR.length})`;
+      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые и ★ избранные останутся, камни вернутся в сумку`;
+      rall.onclick = () =>
+        this.askConfirm(
+          `Разобрать ${bagR.length} колец на ${ringSum} лома? Надетые и ★ избранные останутся. Камни из них вернутся в сумку.`,
+          "Разобрать все",
+          () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
+        );
+      right.append(rall);
+    }
+    // Гнёзда выбранного кольца — сразу под сумкой: кольцо выбирают там же.
+    if (jw.sockets) right.append(jw.sockets);
     right.append(div("pcinv-sub", "Прочее"));
     const cons = div("pcinv-cons");
     const info = (c: HTMLDivElement, title: string, body: string): HTMLDivElement => {
@@ -851,9 +886,10 @@ export class PcInventory {
       };
       cons.append(c);
     }
+    // Наковальня: оружие и кольцо — в лом (с подтверждением); избранное не разбирается.
     const anvil = div("pcinv-anvil", "⚒ Перетащи сюда — в лом");
     anvil.addEventListener("dragover", (e) => {
-      if (this.dragWeapon()) {
+      if (this.dragWeapon() || this.dragRing()) {
         e.preventDefault();
         anvil.classList.add("hot");
       }
@@ -863,9 +899,16 @@ export class PcInventory {
       e.preventDefault();
       anvil.classList.remove("hot");
       const w = this.dragWeapon();
+      const r = this.dragRing();
       this.endDrag();
-      if (w?.fav) this.textTip(anvil, `${glyph("ui.fav")} В избранном`, "Избранное не разбирается — сначала сними звёздочку.");
+      if (w?.fav || r?.fav) this.textTip(anvil, `${glyph("ui.fav")} В избранном`, "Избранное не разбирается — сначала сними звёздочку.");
       else if (w) this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w));
+      else if (r)
+        this.askConfirm(
+          `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
+          "Разобрать",
+          () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
+        );
     });
     cons.append(anvil);
     right.append(cons);
@@ -956,9 +999,9 @@ export class PcInventory {
   }
 
   /** Звёздочка «избранное» в углу ячейки: ★ — в избранном; пустая ☆ — при наведении (ПК), клик — переключить. */
-  private favStar(w: PcInvWeapon): HTMLDivElement {
-    const s = div(`pcinv-fav${w.fav ? " on" : ""}`, glyph(w.fav ? "ui.fav" : "ui.favOff"));
-    s.title = w.fav ? "В избранном (не разбирается) — убрать" : "В избранное";
+  private favStar(fav: boolean, toggle: () => void): HTMLDivElement {
+    const s = div(`pcinv-fav${fav ? " on" : ""}`, glyph(fav ? "ui.fav" : "ui.favOff"));
+    s.title = fav ? "В избранном (не разбирается) — убрать" : "В избранное";
     if (this.hooks.touch) {
       s.style.pointerEvents = "none";
       return s;
@@ -966,7 +1009,7 @@ export class PcInventory {
     s.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
-      this.toggleFav(w);
+      toggle();
     });
     // Не начинать перетаскивание/меню с самой звёздочки.
     s.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -978,13 +1021,24 @@ export class PcInventory {
     this.hooks.act({ act: "fav", id: w.id, idx: 0 });
   }
 
+  /** ★ у кольца: тот же общий лимит, что у оружия (FAV_MAX), не разбирается. */
+  private toggleRingFav(id: string): void {
+    this.hideTip();
+    this.hooks.act({ act: "ringFav", id, idx: 0 });
+  }
+
+  /** Пункт меню «В избранное» / «Убрать из избранного» у кольца. */
+  private favItem(r: { id: string; fav?: boolean }): readonly [string, () => void] {
+    return [r.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleRingFav(r.id)];
+  }
+
   private itemCell(w: PcInvWeapon): HTMLDivElement {
     const c = div(`pcinv-cell t-${w.tier}`);
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
-    if (!this.hooks.touch || w.fav) c.append(this.favStar(w));
+    if (!this.hooks.touch || w.fav) c.append(this.favStar(!!w.fav, () => this.toggleFav(w)));
     // ПК (страница и игра): клик — меню действий, как тап на телефоне; правый клик в игре — надеть.
     if (!this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
     c.draggable = true;
@@ -1029,11 +1083,7 @@ export class PcInventory {
     });
     left.append(slotEl);
     left.append(div("pcinv-small", w ? w.name : "Перетащи предмет сюда"));
-    // Рубиновое точится огранкой — уникальными с оценкой 99 (не лом).
-    const ruby = w?.tier === "ruby";
-    const fuels = d.weapons.filter((x) => x.fuel && !x.fav && !inHand.has(x.id));
-    if (this.fuelId && !fuels.some((x) => x.id === this.fuelId)) this.fuelId = null;
-    left.append(div("pcinv-have", ruby ? `Уникальных ${RUBY.fuelQuality}: ${fuels.length}` : `Лом: ${d.scrap}`));
+    left.append(div("pcinv-have", `Лом: ${d.scrap}`));
     const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, glyph("ui.forge"));
     left.append(anvil);
 
@@ -1064,11 +1114,6 @@ export class PcInventory {
         if (a.max) {
           b.textContent = "MAX";
           b.disabled = true;
-        } else if (a.ruby) {
-          b.innerHTML = `💎 огранка +${a.gain ?? 1}<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
-          b.disabled = !this.fuelId || this.forging;
-          b.title = this.fuelId ? "" : `Сначала выбери ниже уникальное с оценкой ${RUBY.fuelQuality} — оно сгорит`;
-          b.onclick = () => this.forge(w.id, i);
         } else {
           b.innerHTML = `⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
           b.disabled = d.scrap < a.cost || this.forging;
@@ -1080,31 +1125,9 @@ export class PcInventory {
       if (this.lastResult) {
         right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
       }
-      if (ruby) {
-        // Что сжечь в огранке — выбирает игрок (кликом), только уникальные 99 не из избранного и не в руках.
-        right.append(div("pcinv-sub", `Сжечь в огранке (уникальное, оценка ${RUBY.fuelQuality}):`));
-        const fp = div("pcinv-epick");
-        for (const x of fuels) {
-          const c = div(`pcinv-cell small t-${x.tier}${x.id === this.fuelId ? " sel" : ""}`);
-          setIcon(c, x.cls, x.name, x.tier);
-          c.onclick = () => {
-            this.fuelId = x.id === this.fuelId ? null : x.id;
-            this.render();
-          };
-          c.addEventListener("mouseenter", () => this.showTip(c, x, null));
-          c.addEventListener("mouseleave", () => this.hideTip());
-          fp.append(c);
-        }
-        if (!fuels.length) fp.append(div("pcinv-empty", `Нет уникальных с оценкой ${RUBY.fuelQuality} (избранные ★ и надетые не сжигаются).`));
-        right.append(fp);
-        right.append(
-          div("pcinv-hint", `Огранка: выбранное уникальное сгорает при любом исходе. Внизу шанс ${Math.round(RUBY.chanceLo * 100)}% и +${RUBY.gainLo} очков, у максимума — ${Math.round(RUBY.chanceHi * 100)}% и +${RUBY.gainHi}.`),
-        );
-      } else {
-        right.append(
-          div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает."),
-        );
-      }
+      right.append(
+        div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает." + (w.tier === "ruby" ? " Рубиновое — цена в ломе ×100." : "")),
+      );
     }
     // Выбор предмета — мини-сетка всех предметов с роллами.
     const pick = div("pcinv-epick");
@@ -1132,9 +1155,7 @@ export class PcInventory {
     this.pendingResult = null;
     this.lastResult = null;
     this.render();
-    const ruby = this.weaponById(id)?.tier === "ruby";
-    this.hooks.act({ act: "enchant", id, idx, ...(ruby && this.fuelId ? { fuel: this.fuelId } : {}) });
-    if (ruby) this.fuelId = null; // сгорело — следующий раз выбрать заново
+    this.hooks.act({ act: "enchant", id, idx });
     // Три удара молотом — пусть напряжение настоится, потом итог.
     window.setTimeout(() => {
       this.hammerDone = true;
@@ -1150,7 +1171,7 @@ export class PcInventory {
       const e = r.enchant;
       this.lastResult = {
         up: !!e?.up,
-        text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : this.weaponById(e.id)?.tier === "ruby" ? r.text : `Неудача — ${e.cost} лома сгорело`) : r.text,
+        text: e ? (e.up ? `Успех! ${e.label}: +${e.gain} очк.` : `Неудача — ${e.cost} лома сгорело`) : r.text,
       };
     }
     this.render();
@@ -1170,14 +1191,19 @@ export class PcInventory {
       div("pcinv-name", `${def.icon} ${def.name} — ${def.role}`),
       div("pcinv-small", `Оружие: ${def.weapons}. Выбери любые два умения — клавиши 2 и 3 (телефон — кнопки ✦, VR — стики).`),
     );
+    if (d.strike !== undefined) wrap.append(div("pcinv-small", `Сила удара: ${d.strike} — от оружия в руке, статов и роллов урона`));
     const chosen = new Set(d.skills?.chosen ?? []);
+    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
+    const live = { ...d.attrs, gb: d.gb };
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
       const txt = div("pcinv-atxt");
       txt.append(
-        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownOf(id, cls)} с`),
-        div("pcinv-small", skillDesc(id, cls)),
+        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownFor(id, cls, live)} с`),
+        div("pcinv-small", skillDesc(id, cls, live)),
+        // Урон умения — множитель от силы удара героя (её показываем над списком); особые формулы — в описании.
+        ...(sk.dmgMult > 0 ? [div("pcinv-small", `Урон ×${sk.dmgMult} от силы удара${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";
@@ -1200,31 +1226,16 @@ export class PcInventory {
 
   /** Кольцо, открытое для работы с камнями (гнёзда). */
   private ringSel: string | null = null;
-  /** Сумка оружия отсортирована по оценке (сверху выше). */
-  private bagByQuality = false;
+  /** Сортировка сумки (оружие и кольца): none — как пришло. */
+  private bagSort: BagSort = "none";
 
-  /** Кольца на странице «Снаряжение»: слоты (под руками) и «Мешочек с драгоценностями» (кольца и камни). */
-  private jewelParts(d: PcInvData): { slots: HTMLDivElement; pouch: HTMLDivElement } {
+  /** Кольца на странице «Снаряжение»: слоты (под руками), гнёзда выбранного кольца и «Мешочек с драгоценностями» (камни). */
+  private jewelParts(d: PcInvData): { slots: HTMLDivElement; pouch: HTMLDivElement; sockets: HTMLDivElement | null } {
     const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
     const wrap = div("pcinv-rings pcinv-pouch");
     wrap.append(div("pcinv-pouch-h", "💰 Мешочек с драгоценностями"));
-    // Общие действия мешочка — одна строка, две колонки (кнопки не уезжают на следующую строку).
-    const bagRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
+    // Общие действия мешочка — только камни (кольца — в сумке, рядом с оружием).
     const acts = div("pcinv-pouch-acts");
-    if (bagRings.length) {
-      const ringSum = bagRings.reduce((n, r) => n + r.scrap, 0);
-      const rall = document.createElement("button");
-      rall.className = "pcinv-allbtn pcinv-ringall";
-      rall.textContent = `⚒ Разобрать все кольца (${bagRings.length})`;
-      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые останутся, камни вернутся в сумку`;
-      rall.onclick = () =>
-        this.askConfirm(
-          `Разобрать ${bagRings.length} колец на ${ringSum} лома? Надетые кольца останутся. Камни из них вернутся в сумку.`,
-          "Разобрать все",
-          () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
-        );
-      acts.append(rall);
-    }
     if (j.gems.some(([, n]) => n >= RING.combine)) {
       const all = document.createElement("button");
       all.className = "pcinv-allbtn pcinv-mergeall";
@@ -1244,11 +1255,13 @@ export class PcInventory {
       const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : ""}${r && r.id === this.ringSel ? " sel" : ""}`);
       c.innerHTML = r ? ringHtml(r.tier, r.gems) : RING_SLOT_SVG;
       if (r) this.ringTip(c, r);
+      if (r?.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
       c.append(div("pcinv-rslot-n", `${slot + 1}`));
       c.onclick = () =>
         r
           ? this.menu(c, ringLabelOf(r), [
               ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
+              this.favItem(r),
               ["Снять", () => this.hooks.act({ act: "ringOff", id: "-", idx: slot })],
             ])
           : this.textTipAt(c, `Слот кольца ${slot + 1}`, "Пусто — надень кольцо из сумки ниже.");
@@ -1262,8 +1275,9 @@ export class PcInventory {
     sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`));
     slots.append(sum);
 
-    // Выбранное кольцо: гнёзда.
+    // Выбранное кольцо: гнёзда — отдельным блоком, renderGear ставит его под сумку.
     const sel = ringOf(this.ringSel);
+    let sockets: HTMLDivElement | null = null;
     if (sel) {
       const box = div("pcinv-rsel");
       const head = div("pcinv-rsel-head");
@@ -1293,65 +1307,9 @@ export class PcInventory {
         box.append(row);
       });
       box.append(button("Закрыть", () => this.selRing(null)));
-      wrap.append(box);
+      sockets = box;
     }
 
-    // Кольца в сумке (надетые не показываем — они в слотах выше).
-    wrap.append(div("pcinv-sub", `Кольца в сумке · ${bagRings.length}`));
-    const rg = div("pcinv-grid");
-    // Пустой текст — не в сетку (там он сжимался в колонку шириной с ячейку).
-    if (!bagRings.length) wrap.append(div("pcinv-small", "Колец нет — они изредка падают с мобов, чаще с элиты и боссов."));
-    for (const r of bagRings) {
-      const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
-      c.innerHTML = ringHtml(r.tier, r.gems);
-      this.ringTip(c, r);
-      // Кольцо тянем на зону «⚒ Перетащи кольцо сюда — в лом» под кольцами.
-      c.draggable = true;
-      c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "ring", id: r.id }));
-      c.addEventListener("dragend", () => this.endDrag());
-      this.touchSrc.set(c, { kind: "ring", id: r.id });
-      c.onclick = () =>
-        this.menu(c, ringLabelOf(r), [
-          ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
-          ["Надеть в слот 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 })],
-          ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
-          ["🎁 Подарить…", () => this.askGift(ringLabelOf(r), `r:${r.id}`, 1)],
-          [
-            `В лом (+${r.scrap})`,
-            () =>
-              this.askConfirm(
-                `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
-                "Разобрать",
-                () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
-              ),
-            true,
-          ],
-        ]);
-      rg.append(c);
-    }
-    wrap.append(rg);
-    const ranvil = div("pcinv-anvil pcinv-ranvil", "⚒ Перетащи кольцо сюда — в лом");
-    ranvil.addEventListener("dragover", (e) => {
-      if (this.drag?.kind === "ring") {
-        e.preventDefault();
-        ranvil.classList.add("hot");
-      }
-    });
-    ranvil.addEventListener("dragleave", () => ranvil.classList.remove("hot"));
-    ranvil.addEventListener("drop", (e) => {
-      e.preventDefault();
-      ranvil.classList.remove("hot");
-      const src = this.drag;
-      this.endDrag();
-      const r = src?.kind === "ring" ? j.rings.find((x) => x.id === src.id) : undefined;
-      if (r)
-        this.askConfirm(
-          `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
-          "Разобрать",
-          () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
-        );
-    });
-    wrap.append(ranvil);
 
     // Камни.
     wrap.append(div("pcinv-sub", `Камни · соедини ${RING.combine} одинаковых — получишь уровнем выше`));
@@ -1381,17 +1339,54 @@ export class PcInventory {
     }
     wrap.append(gg);
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    return { slots, pouch: wrap };
+    return { slots, pouch: wrap, sockets };
   }
 
   /** Подсказка при наведении на кольцо: тир, гнёзда, что даёт, лом за разбор. */
-  private ringTip(c: HTMLElement, r: { tier: RingTier; gems: (string | null)[]; scrap?: number }): void {
+  private ringTip(c: HTMLElement, r: { tier: RingTier; gems: (string | null)[]; scrap?: number; fav?: boolean }): void {
     const inst = { id: "", tier: r.tier, gems: r.gems };
     const lines = [...ringBonusText(inst)];
     lines.push(r.gems.length ? `Гнёзд: ${r.gems.length} (занято ${r.gems.filter(Boolean).length})` : "Без гнёзд");
-    if (r.scrap) lines.push(`В лом: +${r.scrap}`);
+    if (r.fav) lines.push(`${glyph("ui.fav")} В избранном — не разбирается`);
+    else if (r.scrap) lines.push(`В лом: +${r.scrap}`);
     c.addEventListener("mouseenter", () => this.textTip(c, ringLabelOf(r), lines.join(" · ")));
     c.addEventListener("mouseleave", () => this.hideTip());
+  }
+
+  /** Кольцо в сумке или в ряду ★: меню (тап/клик), тащить — в лом или в избранное, звёздочка переключает. */
+  private bagRingCell(r: PcInvJewels["rings"][number]): HTMLDivElement {
+    const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
+    c.innerHTML = ringHtml(r.tier, r.gems);
+    this.ringTip(c, r);
+    // Как у оружия: телефон — пустую ☆ не показываем (ловила бы тапы), ★ у избранного видна.
+    if (!this.hooks.touch || r.fav) c.append(this.favStar(!!r.fav, () => this.toggleRingFav(r.id)));
+    c.draggable = true;
+    c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "ring", id: r.id }));
+    c.addEventListener("dragend", () => this.endDrag());
+    this.touchSrc.set(c, { kind: "ring", id: r.id });
+    c.onclick = () =>
+      this.menu(c, ringLabelOf(r), [
+        this.favItem(r),
+        ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
+        ["Надеть в слот 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 })],
+        ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
+        ["🎁 Подарить…", () => this.askGift(ringLabelOf(r), `r:${r.id}`, 1)],
+        ...(r.fav
+          ? []
+          : [
+              [
+                `В лом (+${r.scrap})`,
+                () =>
+                  this.askConfirm(
+                    `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
+                    "Разобрать",
+                    () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
+                  ),
+                true,
+              ] as const,
+            ]),
+      ]);
+    return c;
   }
 
   /** Подсказка при наведении на камень: что даёт, сколько есть, как соединить. */
@@ -1518,6 +1513,30 @@ export class PcInventory {
     this.dropCatcher.style.display = "none";
   }
 
+  /** Перетаскиваемое кольцо (из сумки или из ★) — иначе null. */
+  private dragRing(): PcInvJewels["rings"][number] | null {
+    const s = this.drag;
+    if (s?.kind !== "ring") return null;
+    return this.data?.jewels?.rings.find((r) => r.id === s.id) ?? null;
+  }
+
+  /** Кольца и камни из данных окна (без них — пусто). */
+  private jewelsOf(d: PcInvData): PcInvJewels {
+    return d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
+  }
+
+  /** Ячейка предмета сумки: оружие или кольцо. */
+  private entryCell(e: BagEntry): HTMLDivElement {
+    return "w" in e ? this.itemCell(e.w) : this.bagRingCell(e.r);
+  }
+
+  /** Можно ли бросить перетаскиваемое в ★: оружие или кольцо, которого там ещё нет. */
+  private canFav(): boolean {
+    const w = this.dragWeapon();
+    const r = this.dragRing();
+    return !!((w && !w.fav) || (r && !r.fav));
+  }
+
   /** Перетаскиваемое оружие со склада (обычное с руки на склад не попадает — null). */
   private dragWeapon(): PcInvWeapon | null {
     const s = this.drag;
@@ -1631,7 +1650,8 @@ export class PcInventory {
       if (e.key === "Enter") send.click();
       if (e.key === "Escape") close();
     });
-    this.win.append(box);
+    // В корень, как у подтверждения: окно под transform центрировало бы подарок по себе, а не по экрану.
+    this.root.append(box);
     this.confirmEl = box;
     setTimeout(() => nick.focus(), 0);
   }
@@ -1658,7 +1678,8 @@ export class PcInventory {
     };
     row.append(y, n);
     box.append(row);
-    this.win.append(box);
+    // В корень, а не в окно: у .pcinv-win есть transform, и fixed-подтверждение центровалось бы по окну, а не по экрану.
+    this.root.append(box);
     this.confirmEl = box;
   }
 
@@ -1835,10 +1856,10 @@ function injectInvStyle(): void {
 .pcinv-bagh .pcinv-sub { margin:0; }
 .pcinv-sortbtn { padding:4px 9px; border-radius:6px; border:1px solid #4a4638; background:#1d1b16; color:#d8d0bb; font:700 12px system-ui; cursor:pointer; white-space:nowrap; }
 .pcinv-sortbtn.on { border-color:#e8c26a; color:#e8c26a; background:#2a2415; }
-.pcinv-pouch-acts { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin:0 0 8px; }
+.pcinv-sortrow { display:flex; gap:4px; flex-wrap:wrap; }
+.pcinv-pouch-acts { display:grid; grid-template-columns:1fr; gap:6px; margin:0 0 8px; }
 .pcinv-pouch-acts .pcinv-allbtn { margin:0; width:100%; padding:7px 8px; }
 .pcinv-pouch-acts .pcinv-mergeall { color:#7ee081; border-color:#3f7a48; background:#16261a; }
-.pcinv-ranvil { margin-top:8px; min-height:44px; }
 .pcinv-small { color:#a9a498; font-size:11.5px; }
 .pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
 .pcinv-name { font-weight:700; margin-bottom:6px; }

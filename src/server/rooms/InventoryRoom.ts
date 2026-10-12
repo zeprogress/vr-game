@@ -15,17 +15,22 @@ import {
   scrapValue,
   bagCount,
   enchantInfo,
-  isRubyFuel,
   weaponQuality,
   bestWeaponInstance,
+  handsRoll,
+  isWeaponClass,
+  isWeaponTier,
+  weaponDef,
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
+import { skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
-import { store } from "../store";
+import { FEEDBACK_COOLDOWN_MS, FEEDBACK_TEXT_MAX, isFeedbackKind, isFeedbackMark, type FeedbackKind } from "#shared/feedback";
+import { feedback, store } from "../store";
 import { invHub, type InvActKind } from "../invHub";
-import { respecCostFor, RESPEC_ENABLED } from "#shared/constants";
+import { isAdminNick, respecCostFor, RESPEC_ENABLED } from "#shared/constants";
 
 interface InventoryJoinOptions {
   /** Ник из адреса `/inv?ник`. */
@@ -83,6 +88,48 @@ export class InventoryRoom extends colyseus.Room {
       client.send(r.enchant ? "enchant" : "toast", r);
     });
     this.onMessage("refresh", (client) => this.sendInv(client));
+    // «Помощь в разработке»: список видят все, писать — только с подтверждённым входом, пометки — только админ.
+    this.onMessage("feedbackList", (client, m: { kind?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !isFeedbackKind(m?.kind)) return;
+      client.send("feedback", feedbackReply(w, m.kind));
+    });
+    this.onMessage("feedbackAdd", (client, m: { kind?: unknown; text?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !isFeedbackKind(m?.kind)) return;
+      if (!invHub.isAuthed(w.sid, w.norm)) return client.send("toast", { ok: false, text: "Писать могут те, кто подтвердил вход кодом в чате." });
+      const text = typeof m.text === "string" ? m.text.trim() : "";
+      if (!text) return client.send("toast", { ok: false, text: "Напиши текст." });
+      if (text.length > FEEDBACK_TEXT_MAX) return client.send("toast", { ok: false, text: `Не больше ${FEEDBACK_TEXT_MAX} символов.` });
+      const now = Date.now();
+      const wait = FEEDBACK_COOLDOWN_MS - (now - (feedbackAt.get(w.norm) ?? 0));
+      if (wait > 0) return client.send("toast", { ok: false, text: `Подожди ${Math.ceil(wait / 1000)} с перед следующей отправкой.` });
+      feedbackAt.set(w.norm, now);
+      feedback.add(m.kind, nickOf(w.norm), text);
+      client.send("toast", { ok: true, text: "Спасибо! Записано — видно всем на этой вкладке." });
+      client.send("feedback", { ...feedbackReply(w, m.kind), added: true });
+    });
+    this.onMessage("feedbackMark", (client, m: { id?: unknown; mark?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !invHub.isAuthed(w.sid, w.norm)) return;
+      if (!isAdminNick(nickOf(w.norm))) return client.send("toast", { ok: false, text: "Пометки ставит только админ." });
+      const mark = m?.mark === null ? null : isFeedbackMark(m?.mark) ? m.mark : undefined;
+      if (mark === undefined || typeof m?.id !== "string") return;
+      const it = feedback.setMark(m.id, mark, nickOf(w.norm));
+      if (!it) return client.send("toast", { ok: false, text: "Такой записи уже нет — обнови список." });
+      client.send("toast", { ok: true, text: mark ? "Пометка поставлена" : "Пометка снята" });
+      client.send("feedback", feedbackReply(w, it.kind));
+    });
+    this.onMessage("feedbackDelete", (client, m: { id?: unknown }) => {
+      const w = this.who.get(client.sessionId);
+      if (!w || !invHub.isAuthed(w.sid, w.norm)) return;
+      if (!isAdminNick(nickOf(w.norm))) return client.send("toast", { ok: false, text: "Удалять записи может только админ." });
+      if (typeof m?.id !== "string") return;
+      const it = feedback.remove(m.id);
+      if (!it) return client.send("toast", { ok: false, text: "Такой записи уже нет — обнови список." });
+      client.send("toast", { ok: true, text: "Запись удалена" });
+      client.send("feedback", feedbackReply(w, it.kind));
+    });
   }
 
   override onDispose(): void {
@@ -127,6 +174,19 @@ function normNick(n: string): string {
   return decodeURIComponent(n).trim().replace(/^@/, "").toLowerCase().slice(0, 24);
 }
 
+/** Когда последний раз писали в «Помощь» (по нику) — пауза между отправками. */
+const feedbackAt = new Map<string, number>();
+
+/** Ник героя как записан (с заглавными), без записи — логин. */
+function nickOf(norm: string): string {
+  return store.get(`nick:${norm}`)?.nick || norm;
+}
+
+/** Список вида для страницы; admin — можно ставить пометки (только с подтверждённым входом). */
+function feedbackReply(w: { norm: string; sid: string }, kind: FeedbackKind) {
+  return { kind, items: feedback.list(kind), admin: invHub.isAuthed(w.sid, w.norm) && isAdminNick(nickOf(w.norm)) };
+}
+
 function buildInv(norm: string, sid: string): Record<string, unknown> {
   if (!norm) return { ok: false, error: "В адресе нет ника — открой ссылку из !inv в чате." };
   invHub.sync(norm);
@@ -145,6 +205,21 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
   const leftInst = instIn("left");
   const rightInst = instIn("right");
   const jewels = jewelsOf(rec);
+  // Сила удара умений — как у сервера (ZoneRoom.strikeOfLive): рука класса, её тир и роллы урона (лучший из двух рук).
+  let strike: number | undefined;
+  const strikeCls = classOf2((rec.held?.left?.cls ?? "") as Weapon2 | "", (rec.held?.right?.cls ?? "") as Weapon2 | "");
+  if (strikeCls) {
+    const side: "left" | "right" = rec.held?.right?.cls === strikeKindOf(strikeCls) ? "right" : "left";
+    const other = side === "left" ? "right" : "left";
+    const held = rec.held?.[side];
+    const main = instIn(side);
+    const off = rec.held?.[other] ? instIn(other) : undefined;
+    const shield = off && off.id !== main?.id ? off : undefined;
+    const mult = isWeaponClass(held?.cls) && isWeaponTier(held?.tier) ? weaponDef(held.cls, held.tier).mult : 1;
+    const roll = 1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct");
+    const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
+    strike = Math.round(skillStrike(strikeCls, rec.level, attrs, { mult, tier: held?.tier ?? "", roll }).dmg * 10) / 10;
+  }
   const stats = heroStatRows({
     gb: jewelBonus(jewels),
     level: rec.level,
@@ -175,7 +250,6 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       scrap: scrapValue(w),
       ench: enchDetails(w),
       fav: !!w.fav,
-      fuel: isRubyFuel(w),
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },
     potions: bagCount(rec.bag ?? [], "potion"),
@@ -187,6 +261,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     title: rec.title ?? "",
     tokens: rec.tokens ?? 0,
     attrs: { unspent: rec.unspent ?? 0, str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1 },
+    gb: jewelBonus(jewels),
+    strike,
     respecCost: RESPEC_ENABLED ? respecCostFor(rec.respecCount ?? 0) : -1,
     stats,
     skills: skillsOf(rec),

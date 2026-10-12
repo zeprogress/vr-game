@@ -281,8 +281,6 @@ export class Game {
   private vrEnchId: string | null = null;
   private vrEnchAt: Vector3 | null = null;
   private vrEnchResult: { up: boolean; text: string } | null = null;
-  /** VR-огранка рубинового: выбранное уникальное 99, которое сгорит. */
-  private vrFuelId: string | null = null;
   private pcInvData: PcInvData | null = null;
   /** Когда последний раз пили зелье (performance.now) — общий откат POTION_CD. */
   private lastDrinkAt = -1e9;
@@ -1753,6 +1751,8 @@ export class Game {
       this.handNode("left", cam),
       this.progression,
       this.inventory,
+      () => this.net?.room?.state.players.get(this.net.sessionId)?.gb,
+      () => this.pcInvData?.strike,
     );
     // Выход из игры: спрашиваем «оставить бота?» — ответ уходит на сервер перед
     // выходом. Небольшая пауза перед самим leaveWorld() — без неё сообщение
@@ -2074,7 +2074,9 @@ export class Game {
       case "fav": {
         const list = this.net?.warehouse?.list ?? [];
         const w = list.find((x) => x.id === a.id);
-        if (w && !w.fav && list.filter((x) => x.fav).length >= FAV_MAX) {
+        // Лимит ★ общий с кольцами (их данные — в окне инвентаря).
+        const rings = this.pcInvData?.jewels?.rings ?? [];
+        if (w && !w.fav && list.filter((x) => x.fav).length + rings.filter((x) => x.fav).length >= FAV_MAX) {
           toast(`Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}`);
           return;
         }
@@ -2280,16 +2282,9 @@ export class Game {
             this.vrEnchResult,
             (idx) => {
               this.vrEnchResult = null;
-              const fuel = this.vrFuelId ?? undefined;
-              this.vrFuelId = null; // сгорит — в следующий раз выбрать заново
-              this.net?.sendPcInvAct({ act: "enchant", id, idx, ...(fuel ? { fuel } : {}) });
+              this.net?.sendPcInvAct({ act: "enchant", id, idx });
             },
             () => (this.vrEnchId = null),
-            this.vrFuelId,
-            (fid) => {
-              this.vrFuelId = this.vrFuelId === fid ? null : fid;
-              ep.markDirty();
-            },
           );
         });
       }

@@ -350,7 +350,8 @@ export const CATACOMBS = {
       hall: 3,
       waves: [],
       // Супербосс — каждый заход один случайный из трёх (mobs.ts CAT_SUPERBOSSES).
-      bosses: CAT_SUPERBOSSES,
+      // ВРЕМЕННО: в конце катакомб всегда дракон (catDragon). Вернуть случайного из трёх — убрать фильтр.
+      bosses: CAT_SUPERBOSSES.filter((b) => b.key === "catDragon"),
       chest: "final",
     },
   ] as CatStage[],

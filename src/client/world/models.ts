@@ -14,7 +14,7 @@ import "@babylonjs/loaders/glTF/2.0";
 // с этим модулем. В игре его тянул кто-то ещё, в лёгкой лаборатории — нет.
 import "@babylonjs/core/Animations/animatable";
 import { sharedMobMaterial } from "../combat/mobMaterials";
-import { MODEL_LIGHT, trackMobMaterial } from "../combat/mobLightTune";
+import { MODEL_LIGHT, toneColor, trackMobMaterial } from "../combat/mobLightTune";
 
 /**
  * Пайплайн внешних ассетов (этап 12).
@@ -83,7 +83,13 @@ export const MODELS = {
   monDragonEvolved: "/models/monsters/Dragon_Evolved.gltf",
   // Сгенерированы с нуля по спецификациям art/models (npm run asset -- gen, docs/pipelines/models.md).
   monBogBrute: "/models/gen/BogBrute.glb",
-  monStoneTroll: "/models/gen/StoneTroll.glb",
+  monStoneTroll: "/models/gen/Skalolom.glb",
+  // Супербосс катакомб «Владыка Бездны»: дракон с ригом и атакующими клипами (art/models/DragonBest.json, tools/blender/dragon_clips.py).
+  monDragonBest: "/models/gen/DragonBest.glb",
+  // Скелет-воин с мечом и щитом: риг и клипы (art/models/Skeleton.json, tools/blender/zep_gen/anim.py).
+  monSkeleton: "/models/gen/Skeleton.glb",
+  // Паук: риг с 10 ногами и клипами (art/models/Spyder.json, tools/blender/zep_gen/spider.py). Пока только в лаборатории.
+  monSpyder: "/models/gen/Spyder.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
 } as const;
 
@@ -463,6 +469,10 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
   const ml = model ? MODEL_LIGHT[model] : undefined;
   const emissiveMul = ml?.emissive;
   const diffuseMul = ml?.diffuse;
+  // Оттенки модели (MODEL_LIGHT.toneLit — освещённые участки, toneGlow — свечение): множители RGB на текстуру.
+  const litC = toneColor(ml?.toneLit);
+  const glowC = toneColor(ml?.toneGlow);
+  const toneKey = `${ml?.toneLit?.join(",") ?? "-"}/${ml?.toneGlow?.join(",") ?? "-"}`;
   const scene = root.getScene();
   const seen = new Map<string, StandardMaterial>();
   for (const mesh of root.getChildMeshes(false)) {
@@ -485,7 +495,7 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
       const colKey = (tint ?? base).toHexString();
       // Полупрозрачная часть модели (материал с "alpha" в art/models — кристаллы Лунного аватара).
       const alpha = (src as { alpha?: number }).alpha ?? 1;
-      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}|${diffuseMul ?? -1}|${alpha}`, () => {
+      flat = sharedMobMaterial(scene, `monster|${src.name}|${texKey}|${colKey}|${tint ? 1 : 0}|${noGlow ? 1 : 0}|${emissiveMul ?? -1}|${diffuseMul ?? -1}|${alpha}|${toneKey}`, () => {
         const f = new StandardMaterial(`${src.name || "mob"}_flat`, scene);
         f.maxSimultaneousLights = 1;
         if (alpha < 1) f.alpha = alpha; // изнанку не рисуем (backFaceCulling) — один слой, без «слоёного пирога»
@@ -504,8 +514,8 @@ export function recolorMonster(root: TransformNode, tint?: Color3, noGlow = fals
           if (!noGlow) f.emissiveTexture = tex as StandardMaterial["emissiveTexture"];
           // Перекрас: тонируем текстуру цветом (diffuseColor умножается на неё).
           // diffuseMul>1 — светлее под прямым солнцем (сильнее реагирует на sunI).
-          f.diffuseColor = (tint ?? new Color3(1, 1, 1)).scale(diffuseMul ?? 1);
-          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).scale(0.14) : (tint ?? new Color3(1, 1, 1)).scale(emissiveMul ?? 0.3);
+          f.diffuseColor = (tint ?? new Color3(1, 1, 1)).multiply(litC).scale(diffuseMul ?? 1);
+          f.emissiveColor = noGlow ? (tint ?? new Color3(1, 1, 1)).multiply(glowC).scale(0.14) : (tint ?? new Color3(1, 1, 1)).multiply(glowC).scale(emissiveMul ?? 0.3);
         } else {
           f.diffuseColor = (tint ?? base).scale(diffuseMul ?? 1);
           f.emissiveColor = noGlow ? (tint ?? base).scale(0.14) : (tint ?? base).scale(emissiveMul ?? 0.28);

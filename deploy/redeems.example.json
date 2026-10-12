@@ -1,0 +1,8 @@
+{
+  "_about": "Пример. Рабочий файл — deploy/redeems.json (его читает сервер). title — название награды в Twitch (регистр не важен). command — что выполнится от имени зрителя, как если бы он написал это в чат. cooldownSec — кулдаун награды. Команды, которые удаляют героя или меняют атрибуты, за награду не запускаются (см. TwitchRedeem.ts, REDEEM_FORBIDDEN).",
+  "rewards": [
+    { "title": "Катакомбы", "command": "!катакомбы", "cooldownSec": 30 },
+    { "title": "Нашествие", "command": "!нашествие", "cooldownSec": 60 },
+    { "title": "Ульта", "command": "!ульта", "cooldownSec": 30 }
+  ]
+}

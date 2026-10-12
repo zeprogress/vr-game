@@ -1,0 +1,308 @@
+{
+ "name": "Skeleton",
+ "type": "mob",
+ "rig": "fit",
+ "source": "/Users/zep/ASSETS/3D/Sсeleton.glb",
+ "height": 2.0,
+ "tris": 8000,
+ "texture": 1024,
+ "legLen": 0.96,
+ "depth": 0.3,
+ "anim": {
+  "natural": true,
+  "death": {
+   "pin": true,
+   "armOut": 0,
+   "armSwing": 0,
+   "armElbow": -30
+  },
+  "walk": {
+   "bob": 0.008,
+   "crouch": 0.02,
+   "lift": 0,
+   "armRK": 0.35
+  },
+  "run": {
+   "bob": 0.0,
+   "lift": 0,
+   "crouch": 0.03,
+   "duty": 0.5,
+   "armRK": 0.35,
+   "stride": 0.44
+  }
+ },
+ "clips": [
+  "Idle",
+  "Walk",
+  "Run",
+  "Attack",
+  "Attack2",
+  "HitReact",
+  "Death"
+ ],
+ "bones": [
+  {
+   "name": "Hips",
+   "head": "hips",
+   "tail": "spine",
+   "parent": null
+  },
+  {
+   "name": "Spine",
+   "head": "spine",
+   "tail": "chest",
+   "parent": "Hips"
+  },
+  {
+   "name": "Chest",
+   "head": "chest",
+   "tail": "neck",
+   "parent": "Spine"
+  },
+  {
+   "name": "Neck",
+   "head": "neck",
+   "tail": "head",
+   "parent": "Chest"
+  },
+  {
+   "name": "Head",
+   "head": "head",
+   "tail": "headTop",
+   "parent": "Neck"
+  },
+  {
+   "name": "Shoulder.L",
+   "head": "clav.L",
+   "tail": "shoulder.L",
+   "parent": "Chest"
+  },
+  {
+   "name": "UpperArm.L",
+   "head": "shoulder.L",
+   "tail": "elbow.L",
+   "parent": "Shoulder.L"
+  },
+  {
+   "name": "LowerArm.L",
+   "head": "elbow.L",
+   "tail": "wrist.L",
+   "parent": "UpperArm.L"
+  },
+  {
+   "name": "Hand.L",
+   "head": "wrist.L",
+   "tail": "hand.L",
+   "parent": "LowerArm.L"
+  },
+  {
+   "name": "Shoulder.R",
+   "head": "clav.R",
+   "tail": "shoulder.R",
+   "parent": "Chest"
+  },
+  {
+   "name": "UpperArm.R",
+   "head": "shoulder.R",
+   "tail": "elbow.R",
+   "parent": "Shoulder.R"
+  },
+  {
+   "name": "LowerArm.R",
+   "head": "elbow.R",
+   "tail": "wrist.R",
+   "parent": "UpperArm.R"
+  },
+  {
+   "name": "Hand.R",
+   "head": "wrist.R",
+   "tail": "hand.R",
+   "parent": "LowerArm.R"
+  },
+  {
+   "name": "Sword.R",
+   "head": "swordGrip",
+   "tail": "swordTip",
+   "parent": "Hand.R"
+  },
+  {
+   "name": "UpperLeg.L",
+   "head": "hip.L",
+   "tail": "knee.L",
+   "parent": "Hips"
+  },
+  {
+   "name": "LowerLeg.L",
+   "head": "knee.L",
+   "tail": "ankle.L",
+   "parent": "UpperLeg.L"
+  },
+  {
+   "name": "Foot.L",
+   "head": "ankle.L",
+   "tail": "toe.L",
+   "parent": "LowerLeg.L"
+  },
+  {
+   "name": "UpperLeg.R",
+   "head": "hip.R",
+   "tail": "knee.R",
+   "parent": "Hips"
+  },
+  {
+   "name": "LowerLeg.R",
+   "head": "knee.R",
+   "tail": "ankle.R",
+   "parent": "UpperLeg.R"
+  },
+  {
+   "name": "Foot.R",
+   "head": "ankle.R",
+   "tail": "toe.R",
+   "parent": "LowerLeg.R"
+  }
+ ],
+ "rigid": [
+  {
+   "bone": "Sword.R",
+   "capsule": {
+    "a": "swordGrip",
+    "b": "swordTip",
+    "r": 0.08
+   }
+  }
+ ],
+ "joints": {
+  "hips": [
+   -0.008,
+   0,
+   1.081
+  ],
+  "spine": [
+   -0.021,
+   0,
+   1.307
+  ],
+  "chest": [
+   -0.026,
+   0,
+   1.462
+  ],
+  "neck": [
+   -0.023,
+   0,
+   1.651
+  ],
+  "head": [
+   -0.023,
+   -0.02,
+   1.717
+  ],
+  "headTop": [
+   -0.024,
+   -0.03,
+   1.943
+  ],
+  "clav.L": [
+   0.182,
+   0,
+   1.615
+  ],
+  "shoulder.L": [
+   0.28,
+   0.09,
+   1.244
+  ],
+  "elbow.L": [
+   0.323,
+   0.05,
+   0.968
+  ],
+  "wrist.L": [
+   0.32,
+   -0.02,
+   0.871
+  ],
+  "hand.L": [
+   0.473,
+   -0.1,
+   0.968
+  ],
+  "clav.R": [
+   -0.206,
+   0,
+   1.615
+  ],
+  "shoulder.R": [
+   -0.345,
+   0.076,
+   1.238
+  ],
+  "elbow.R": [
+   -0.42,
+   0.05,
+   0.992
+  ],
+  "wrist.R": [
+   -0.414,
+   0.05,
+   0.882
+  ],
+  "hand.R": [
+   -0.413,
+   -0.1,
+   0.78
+  ],
+  "hip.L": [
+   0.14,
+   0,
+   1.051
+  ],
+  "knee.L": [
+   0.172,
+   0,
+   0.545
+  ],
+  "ankle.L": [
+   0.218,
+   0.062,
+   0.087
+  ],
+  "toe.L": [
+   0.275,
+   -0.121,
+   0.016
+  ],
+  "hip.R": [
+   -0.14,
+   0,
+   1.051
+  ],
+  "knee.R": [
+   -0.2,
+   0,
+   0.545
+  ],
+  "ankle.R": [
+   -0.243,
+   0.062,
+   0.087
+  ],
+  "toe.R": [
+   -0.302,
+   -0.121,
+   0.016
+  ],
+  "swordGrip": [
+   -0.412,
+   -0.1,
+   0.786
+  ],
+  "swordTip": [
+   -0.42,
+   -0.544,
+   0.089
+  ]
+ },
+ "notes": "Скелет-воин: статичный меш из Sсeleton.glb (щит — левая рука, меч — правая). Суставы — по проекциям меша (высота 2.0 м, лицо −Y). Меч — жёсткая кость Sword.R (капсула вокруг клинка)."
+}

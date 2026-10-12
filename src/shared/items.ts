@@ -54,28 +54,25 @@ export function isTwoHandedMelee(cls: string): boolean {
  * Уровень внутри класса. `base` — обычное оружие из пака, лежит на камнях с
  * самого начала; `gold` — золотой вариант (редкая добыча с босса, просто ×урон);
  * `legendary` — именное оружие с механическим аффиксом (см. `affix`);
- * `ruby` — рубиновое (2026-10-06): выше уникального (RUBY.powerMul), 3–4 ролла, только с
- * супербоссов катакомб; точится не ломом, а огранкой — уникальным оружием с оценкой 99.
+ * `ruby` — рубиновое (2026-10-06): выше уникального (RUBY.powerMul), 4 ролла, только с
+ * супербоссов катакомб; точится как обычное — за лом, цена ×RUBY.enchantCostMul (2026-10-12).
  */
 export type WeaponTier = "base" | "gold" | "legendary" | "ruby";
 
 /**
- * Рубиновое оружие. Огранка ролла: тратит ОДНО уникальное оружие с оценкой fuelQuality
- * (не избранное и не в руках); шанс от chanceLo (ролл внизу) до chanceHi (у максимума),
- * прирост от gainLo очков (ролл на 3 очках и ниже) до gainHi (у максимума).
+ * Рубиновое оружие. Заточка ролла — та же, что у обычного (шанс и прирост), но цена в ломе ×enchantCostMul.
  */
 export const RUBY = {
   /** Сила: × к уникальному того же класса (+15%, у меча 4.5 → ×5.2). */
   powerMul: 1.15,
-  /** Роллов: 3, с шансом fourChance — 4. */
-  fourChance: 0.5,
+  /** Роллов всегда 4 (2026-10-12: рубиновое только с 4 аффиксами; раньше 3 или 4 по шансу fourChance). */
+  fourChance: 1,
   /** Шанс каждому герою в финальном сундуке катакомб (вместо уникального). */
   dropChance: 0.05,
-  fuelQuality: 99,
-  chanceLo: 1,
-  chanceHi: 0.5,
-  gainLo: 10,
-  gainHi: 1,
+  /** Лом за переработку рубинового: × к оценке предмета (2026-10-12: ×100 — оценка 50 даёт 5000). */
+  scrapMul: 100,
+  /** Заточка рубинового: цена в ломе — как у обычной заточки этого ролла, × это (2026-10-12). */
+  enchantCostMul: 100,
 } as const;
 
 /** Эффект СТАРЫХ уникальных типов — теперь только для миграции в обычный ролл (см. migrateLoot). */
@@ -318,7 +315,7 @@ function weaponItem(cls: WeaponClass, tier: WeaponTier): ItemDef {
             ? "золотой щит · 1–2 ролла"
             : "уникальный щит · 2–3 ролла"
         : tier === "ruby"
-          ? "рубиновое · 3–4 ролла · огранка уникальным 99"
+          ? "рубиновое · 4 ролла · заточка за лом ×100"
           : tier === "legendary"
           ? "уникальное · 2–3 ролла"
           : tier === "gold"
@@ -369,12 +366,12 @@ export interface LootEntry {
 
 export const LOOT: Record<MobKind, LootEntry[]> = {
   // Обычные мобы — только зелья. Золотое оружие ВСЕХ видов падает лишь с босса.
-  slime: [{ id: "potion", chance: 0.14, min: 1, max: 1 }],
-  spitter: [{ id: "potion", chance: 0.24, min: 1, max: 1 }],
-  // Босс — щедрая добыча: зелья горстью и золотое оружие с приличным шансом.
+  slime: [{ id: "potion", chance: 0.014, min: 1, max: 1 }], // 2026-10-12: ×0.1 (было 0.14)
+  spitter: [{ id: "potion", chance: 0.024, min: 1, max: 1 }], // 2026-10-12: ×0.1 (было 0.24)
+  // Босс — щедрая добыча: зелья горстью (2026-10-12: шанс ×0.1, не каждый раз) и золотое оружие с приличным шансом.
   // Легендарки с него больше не падают — только с события «Охота на элиту».
   boss: [
-    { id: "potion", chance: 1, min: 2, max: 3 },
+    { id: "potion", chance: 0.1, min: 2, max: 3 }, // 2026-10-12: ×0.1 (было 1)
     { id: "gold_sword", chance: 0.05, min: 1, max: 1 },
     { id: "gold_bow", chance: 0.05, min: 1, max: 1 },
     { id: "gold_staff", chance: 0.05, min: 1, max: 1 },
@@ -508,8 +505,11 @@ export interface WeaponInstance {
   fav?: boolean;
 }
 
-/** Сколько предметов можно держать в избранном (ряд «Избранное» в инвентаре). */
-export const FAV_MAX = 16;
+/**
+ * Сколько предметов можно держать в избранном — общее для оружия и колец (ряд «Избранное» в инвентаре).
+ * 24 = прежние 16 оружия + 8 колец, чтобы ничьи звёздочки не пропали.
+ */
+export const FAV_MAX = 24;
 
 /** Текущая версия формата роллов (WeaponInstance.lv). */
 const LOOT_VER = 11;
@@ -804,24 +804,13 @@ export function affixSum(affixes: RolledAffix[], sub: AffixSub): number {
   return s;
 }
 
-/** Множитель лома с переработки (2026-10-02: ×2; 2026-10-03: снова ×1 — обычное оружие по-прежнему не меньше 1). */
-export const SCRAP_MUL = 1;
-
-/** Сколько "Лома" даёт переработка этого инстанса — больше за более редкий тир и за каждый ролл. */
+/**
+ * Лом за переработку = оценка предмета (сумма очков роллов): уникальное 99 → 99 лома, оценка 3 → 3.
+ * Рубиновое — × RUBY.scrapMul (×100): оценка 50 → 5000, 132 → 13200.
+ */
 export function scrapValue(w: WeaponInstance): number {
-  // С роллами — от средних очков аффиксов (1..33): середина (17) даёт 15,
-  // разброс небольшой — от 11 (всё на минимуме) до 19 (всё на максимуме).
-  // Выше 45 баллов оценки предмета (сумма очков, та, что в скобках) — лом
-  // растёт круто: 45 → 15, 99 (три идеальных ролла) → 99 (заявка 2026-09-28).
-  // Всё это × SCRAP_MUL.
-  let raw: number;
-  if (w.affixes.length > 0) {
-    const avg = w.affixes.reduce((n, a) => n + affixPoints(a, w), 0) / w.affixes.length;
-    const base = Math.round(15 + (4 * (avg - 17)) / 16);
-    const q = weaponQuality(w);
-    raw = q > 45 ? Math.max(base, Math.round(15 + ((q - 45) * 84) / 54)) : base;
-  } else raw = w.tier === "legendary" ? 10 : w.tier === "gold" ? 1 : 0;
-  return Math.max(1, Math.round(raw * SCRAP_MUL));
+  const tierMul = w.tier === "ruby" ? RUBY.scrapMul : 1;
+  return Math.max(1, Math.round(weaponQuality(w) * tierMul));
 }
 
 /** Среди инстансов игрока этого класса+тира — тот, что раскатан сильнее (по сумме величин роллов). */
@@ -1098,16 +1087,8 @@ export interface EnchantInfo {
   of: number;
   max: boolean;
   chance: number;
-  /** Цена: лом — или, у рубинового (ruby), число уникальных с оценкой 99 (всегда 1). */
+  /** Цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
   cost: number;
-  /** Рубиновое: огранка уникальным 99 вместо лома, прирост — gain очков. */
-  ruby?: boolean;
-  gain?: number;
-}
-
-/** Годится в огранку рубина: уникальное оружие с оценкой RUBY.fuelQuality (три ролла на максимуме). */
-export function isRubyFuel(w: WeaponInstance): boolean {
-  return w.tier === "legendary" && weaponQuality(w) >= RUBY.fuelQuality;
 }
 
 export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null {
@@ -1116,18 +1097,13 @@ export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null 
   const pts = affixPoints(a, w);
   const max = pts >= POINTS_MAX;
   const t = (pts - 1) / 32;
-  if (w.tier === "ruby") {
-    // Огранка: шанс 100% → 50% к максимуму, прирост +10 (ролл на 3 очках и ниже) → +1 у максимума.
-    const chance = RUBY.chanceLo + (RUBY.chanceHi - RUBY.chanceLo) * t;
-    const gain = Math.max(RUBY.gainHi, Math.min(RUBY.gainLo, Math.round(RUBY.gainHi + ((RUBY.gainLo - RUBY.gainHi) * (POINTS_MAX - pts)) / 30)));
-    return { points: pts, of: POINTS_MAX, max, chance, cost: 1, ruby: true, gain: Math.min(gain, POINTS_MAX - pts) };
-  }
   const q = w.affixes.length ? weaponQuality(w) / (POINTS_MAX * w.affixes.length) : 0;
   const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
   const cost = Math.round(
     (ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * (w.tier === "legendary" ? ENCHANT.legendaryMul : 1),
   );
-  return { points: pts, of: POINTS_MAX, max, chance, cost };
+  // Рубиновое — та же заточка за лом, только в RUBY.enchantCostMul раз дороже.
+  return { points: pts, of: POINTS_MAX, max, chance, cost: w.tier === "ruby" ? cost * RUBY.enchantCostMul : cost };
 }
 
 /** Удачная заточка: +gain очков к аффиксу — ролл встаёт ровно на целое очко, не выше 33. */

@@ -1,4 +1,4 @@
-import type { Color3 } from "@babylonjs/core/Maths/math.color";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import type { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 
 /**
@@ -38,14 +38,20 @@ export interface ModelLight {
   emissive: number;
   diffuse: number;
   tex: number;
+  /** Оттенок освещённых участков: множитель R,G,B на текстуру, действует на свет (diffuse). Без записи — белый. */
+  toneLit?: [number, number, number];
+  /** Оттенок свечения: множитель R,G,B на текстуру собственного свечения (emissive) — видно, когда свечение > 0. Без записи — белый. */
+  toneGlow?: [number, number, number];
 }
 export const MODEL_LIGHT: Record<string, ModelLight> = {
   monBee: { emissive: 0.08, diffuse: 1.6, tex: 1 },
   monOrc: { emissive: 0.2, diffuse: 1.15, tex: 1 },
-  monStoneTroll: { emissive: 0.3, diffuse: 1.2, tex: 2 },
+  monStoneTroll: { emissive: 0, diffuse: 1, tex: 2 },
   // Рейд-босс «Лунный аватар»: светится сам — лунный свет, а не освещённый камень.
   monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },
+  monDragonBest: { emissive: 0, diffuse: 1, tex: 1.2 },
+  monSkeleton: { emissive: 0, diffuse: 1, tex: 2, toneLit: [0.8, 1, 1.15] },
 };
 export const MODEL_LIGHT_DEFAULT: ModelLight = { emissive: 0.3, diffuse: 1, tex: 1 };
 
@@ -74,7 +80,12 @@ export function saveMobLightTune(): void {
 load();
 try {
   const raw = localStorage.getItem(MODEL_KEY);
-  if (raw) for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, Partial<ModelLight>>)) MODEL_LIGHT[k] = { ...MODEL_LIGHT_DEFAULT, ...MODEL_LIGHT[k], ...v };
+  if (raw)
+    for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, Partial<ModelLight> & { tone?: [number, number, number] }>)) {
+      // прежнее имя оттенка «tone» (до разделения на свет и свечение) переносим в toneLit
+      const { tone, ...rest } = v;
+      MODEL_LIGHT[k] = { ...MODEL_LIGHT_DEFAULT, ...MODEL_LIGHT[k], ...(tone && !rest.toneLit ? { toneLit: tone } : {}), ...rest };
+    }
 } catch {
   /* приватный режим/битые данные — держим дефолт */
 }
@@ -128,14 +139,22 @@ export function applyMobLightTune(): void {
   for (const t of tracked) applyOne(t);
 }
 
+/** Оттенок из таблицы (RGB-множители) → цвет; без записи — белый. */
+export function toneColor(v?: [number, number, number]): Color3 {
+  return v ? new Color3(v[0], v[1], v[2]) : new Color3(1, 1, 1);
+}
+
 /** Свет модели поменяли в панели — пересчитать её материалы (только с подсветкой текстурой). */
 export function setModelLight(model: string, v: ModelLight): void {
-  MODEL_LIGHT[model] = { ...v };
+  const m: ModelLight = { ...MODEL_LIGHT[model], ...v };
+  MODEL_LIGHT[model] = m;
+  const litC = toneColor(m.toneLit);
+  const glowC = toneColor(m.toneGlow);
   for (const t of tracked) {
     if (t.model !== model || !t.unit) continue;
-    t.baseDiffuse = t.unit.scale(v.diffuse);
-    t.baseEmissive = t.unit.scale(v.emissive);
-    if (t.mat.diffuseTexture) t.mat.diffuseTexture.level = v.tex;
+    t.baseDiffuse = t.unit.multiply(litC).scale(m.diffuse);
+    t.baseEmissive = t.unit.multiply(glowC).scale(m.emissive);
+    if (t.mat.diffuseTexture) t.mat.diffuseTexture.level = m.tex;
     applyOne(t);
   }
   try {

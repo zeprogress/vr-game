@@ -1,4 +1,4 @@
-import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownOf, skillDesc, skillName, SKILLS2, type ClassId } from "#shared/classes2";
+import { ATTR_INFO, attrEffect, CLASSES2, skillCooldownFor, skillDesc, skillName, SKILLS2, type Attr, type ClassId } from "#shared/classes2";
 import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
@@ -11,13 +11,14 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
 import type { PcInvActMsg, QuestData, WarehouseWeapon } from "#shared/net/messages";
-import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringResist, type PcInvJewels } from "#shared/jewels";
+import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels } from "#shared/jewels";
+import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
 import { trackItems, type TrackItem } from "./QuestWindow";
 
@@ -30,6 +31,31 @@ import { weaponStats, type HeroStats, type WornWeapon } from "./itemStats";
 
 const STATS: StatName[] = ["str", "agi", "int", "con", "luc", "wis"];
 /** Цвет ника в чате — по нику (тот же расчёт, что у панели чата на ПК/телефоне). */
+/** Перенос текста по словам в ширину maxW — не больше lines строк; последняя строка, если не влезает, — с «…». */
+function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, lines: number): string[] {
+  const out: string[] = [];
+  let rest = text;
+  while (rest && out.length < lines) {
+    if (out.length === lines - 1) {
+      if (ctx.measureText(rest).width <= maxW) {
+        out.push(rest);
+        break;
+      }
+      let t = rest;
+      while (t.length > 1 && ctx.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
+      out.push(`${t.trimEnd()}…`);
+      break;
+    }
+    let n = rest.length;
+    while (n > 1 && ctx.measureText(rest.slice(0, n)).width > maxW) n--;
+    const sp = n < rest.length ? rest.lastIndexOf(" ", n) : -1;
+    const cut = sp > 0 ? sp : n;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  return out;
+}
+
 function nickColor(nick: string): string {
   let h = 0;
   for (let i = 0; i < nick.length; i++) h = (h * 31 + nick.charCodeAt(i)) >>> 0;
@@ -48,6 +74,9 @@ const VIEW_Y = 66;
 const INFO_Y = 786;
 const EXIT_Y = 846;
 const EXIT_H = 46;
+/** Запись склада: оружие или кольцо — в одной сетке. */
+type WhEntry = { w: WarehouseWeapon } | { r: PcInvJewels["rings"][number] };
+
 /** Склад: ячейки сеткой по страницам. */
 const WH_COLS = 4;
 const WH_ROWS = 6;
@@ -135,6 +164,8 @@ export class WristMenu {
   private hoverId = "";
   private dialog = false;
   private popup: Popup | null = null;
+  /** Склад: порядок (оружие и кольца вместе). */
+  private whSort: BagSort = "none";
   private whPage = 0;
   private locs = new Map<string, string>();
   private dirty = true;
@@ -173,6 +204,10 @@ export class WristMenu {
     parent: Node,
     private readonly prog: Progression,
     private readonly inv: Inventory,
+    /** Прибавка к атрибутам от колец и камней (PlayerState.gb) — откат умений считается с ней, как на сервере. */
+    private readonly bonus: () => Partial<Record<Attr, number>> | undefined,
+    /** Сила удара героя с сервера (как в окне инвентаря): от неё урон умений; пока не пришла — строки урона нет. */
+    private readonly strikeOf: () => number | undefined,
   ) {
     this.tex = new DynamicTexture("wristMenuTex", { width: TEX_W, height: TEX_H }, scene, false);
     const mat = new StandardMaterial("wristMenuMat", scene);
@@ -322,10 +357,14 @@ export class WristMenu {
     // Умений больше четырёх (тестовые 🧪) — строки компактнее, иначе не влезут в панель.
     const compact = def.skills.length > 4;
     const rowH = compact ? 66 : 92;
+    // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
+    const live = { ...this.prog.stats, gb: this.bonus() };
+    const strike = this.strikeOf();
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const desc = skillDesc(id, cls);
+      const dmg = sk.dmgMult > 0 && strike !== undefined ? `. Урон ×${sk.dmgMult} от силы удара ${strike}` : "";
+      const desc = `${skillDesc(id, cls, live)}${dmg}`;
       const on = this.skillChosen.includes(id);
       const wd = this.add({
         id: `skill:${id}`, x: X, y, w: W, h: rowH, kind: "button",
@@ -333,7 +372,7 @@ export class WristMenu {
           if (on) return;
           this.onSkills?.([...this.skillChosen, id].slice(-2));
         },
-        info: [`${name} · откат ${skillCooldownOf(id, cls)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
+        info: [`${name} · откат ${skillCooldownFor(id, cls, live)} с`, on ? "выбрано" : "нажми — выбрать (заменит более старое)"],
       });
       const st = this.styleFor(wd);
       ctx.fillStyle = st.fill || (on ? "#1f2d22" : "#1d1c25");
@@ -346,7 +385,9 @@ export class WristMenu {
       ctx.fillText(`${on ? "✓ " : ""}${sk.icon} ${name}`, X + 14, y + (compact ? 6 : 10));
       ctx.font = `${compact ? 18 : 21}px system-ui, sans-serif`;
       ctx.fillStyle = "#a9a498";
-      ctx.fillText(desc.slice(0, compact ? 100 : 95), X + 14, y + (compact ? 38 : 52));
+      // Описание с живыми цифрами переносим, а не режем: иначе хвост (бонус от атрибута) не виден.
+      const dl = wrapLines(ctx, desc, W - 28, compact ? 1 : 2);
+      dl.forEach((ln, i) => ctx.fillText(ln, X + 14, y + (compact ? 38 : 52) + i * 24));
       y += rowH + 8;
     }
   }
@@ -1269,8 +1310,90 @@ export class WristMenu {
 
   // ---- склад ----
 
+  /** Склад: оружие и кольца вместе, в выбранном порядке (как сумка на ПК). */
+  private whItems(): WhEntry[] {
+    const entries: WhEntry[] = [...this.warehouse.map((w) => ({ w })), ...(this.jewels?.rings ?? []).map((r) => ({ r }))];
+    return sortBag(entries, this.whSort, bagPickItem);
+  }
+
+  /** Три кнопки порядка склада под заголовком; повторный клик — без сортировки. */
+  private drawWhSorts(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
+    const bw = Math.floor((w - 2 * 8) / 3);
+    BAG_SORTS.forEach((s, i) => {
+      const bx = x + i * (bw + 8);
+      const on = this.whSort === s.mode;
+      const wd = this.add({
+        id: `whs:${s.mode}`,
+        x: bx,
+        y,
+        w: bw,
+        h: 32,
+        kind: "button",
+        info: [s.label, s.title],
+        act: () => {
+          this.whSort = nextBagSort(this.whSort, s.mode);
+          this.whPage = 0;
+          this.dirty = true;
+        },
+      });
+      const st = this.styleFor(wd);
+      ctx.fillStyle = st.fill || (on ? "#2a2415" : "#1f2533");
+      ctx.fillRect(bx, y, bw, 32);
+      ctx.strokeStyle = st.stroke || (on ? "#e8c26a" : "#4a5470");
+      ctx.lineWidth = st.lw;
+      ctx.strokeRect(bx, y, bw, 32);
+      ctx.font = "bold 19px system-ui, sans-serif";
+      ctx.fillStyle = on ? "#e8c26a" : "#d8d0bb";
+      ctx.textAlign = "center";
+      ctx.fillText(s.label, bx + bw / 2, y + 6);
+      ctx.textAlign = "left";
+    });
+  }
+
+  /** Кольцо в ячейке склада: значок, тир и камни; надетое — «надето» внизу; ★ — в углу. */
+  private ringWhCell(ctx: CanvasRenderingContext2D, r: PcInvJewels["rings"][number], x: number, y: number, w: number, h: number): void {
+    const slot = this.jewels?.ringOn.indexOf(r.id) ?? -1;
+    const wd = this.add({
+      id: `whr:${r.id}`,
+      x,
+      y,
+      w,
+      h,
+      kind: "cell",
+      info: [
+        `${r.fav ? `${glyph("ui.fav")} ` : ""}${ringName(r)} — нажми: действия`,
+        ringBonusText({ id: r.id, tier: r.tier, gems: r.gems }).join(", "),
+      ],
+      act: () => this.openRingPopup(r, slot),
+    });
+    const st = this.styleFor(wd);
+    ctx.fillStyle = st.fill || TIER_BG[r.tier];
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = st.stroke || TIER_COLOR[r.tier];
+    ctx.lineWidth = st.stroke ? st.lw : 1.5;
+    ctx.strokeRect(x, y, w, h);
+    this.drawRing(ctx, r.tier, r.gems, x + 6, y + 8, 52);
+    ctx.font = "bold 17px system-ui, sans-serif";
+    ctx.fillStyle = TIER_COLOR[r.tier];
+    ctx.fillText(this.shortName(ringName(r)), x + 62, y + 8);
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText(r.gems.length ? `камней ${r.gems.filter(Boolean).length}/${r.gems.length}` : "без гнёзд", x + 62, y + 36);
+    if (slot >= 0) {
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillStyle = "#7ee081";
+      ctx.fillText(`надето: слот ${slot + 1}`, x + 8, y + h - 24);
+    }
+    if (r.fav) {
+      ctx.font = "bold 20px system-ui, sans-serif";
+      ctx.fillStyle = "#ffd166";
+      ctx.fillText(glyph("ui.fav"), x + 8, y + 22);
+    }
+  }
+
   private drawWarehouse(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
-    const pages = Math.max(1, Math.ceil(this.warehouse.length / WH_PER_PAGE));
+    const items = this.whItems();
+    const pages = Math.max(1, Math.ceil(items.length / WH_PER_PAGE));
     if (this.whPage >= pages) this.whPage = pages - 1;
     ctx.strokeStyle = "#2c2b35";
     ctx.lineWidth = 2;
@@ -1280,7 +1403,7 @@ export class WristMenu {
     ctx.stroke();
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = "#f1ead6";
-    ctx.fillText(`СКЛАД ОРУЖИЯ (${this.warehouse.length})`, x, y + 8);
+    ctx.fillText(`СКЛАД · оружие ${this.warehouse.length} · кольца ${this.jewels?.rings.length ?? 0}`, x, y + 8);
 
     // Страницы: ‹ 1/2 ›
     if (pages > 1) {
@@ -1314,22 +1437,24 @@ export class WristMenu {
       nav("wh:next", bx + 154, "›", 1);
     }
 
-    const top = y + 48;
+    this.drawWhSorts(ctx, x, y + 44, w);
+    const top = y + 84;
     const cw = Math.floor((w - (WH_COLS - 1) * 8) / WH_COLS);
     const ch = 98;
-    if (this.warehouse.length === 0) {
+    if (items.length === 0) {
       ctx.font = "21px system-ui, sans-serif";
       ctx.fillStyle = "#8f8a7e";
-      ctx.fillText("пусто — золотое и уникальное", x + 4, top + 6);
-      ctx.fillText("оружие падает с боёв", x + 4, top + 34);
+      ctx.fillText("пусто — золотое и уникальное оружие", x + 4, top + 6);
+      ctx.fillText("и кольца — падают с боёв", x + 4, top + 34);
       return;
     }
     this.locs = this.locations();
-    const slice = this.warehouse.slice(this.whPage * WH_PER_PAGE, (this.whPage + 1) * WH_PER_PAGE);
-    slice.forEach((wp, i) => {
+    const slice = items.slice(this.whPage * WH_PER_PAGE, (this.whPage + 1) * WH_PER_PAGE);
+    slice.forEach((e, i) => {
       const cx = x + (i % WH_COLS) * (cw + 8);
       const cy = top + Math.floor(i / WH_COLS) * (ch + 8);
-      this.warehouseCell(ctx, wp, cx, cy, cw, ch);
+      if ("w" in e) this.warehouseCell(ctx, e.w, cx, cy, cw, ch);
+      else this.ringWhCell(ctx, e.r, cx, cy, cw, ch);
     });
   }
 
@@ -1687,32 +1812,23 @@ export class WristMenu {
     ctx.fillStyle = "#a9a498";
     ctx.fillText(`Лом: ${this.jewelScrap}`, 340, VIEW_Y + 120);
 
-    // Кольца в сумке.
+    // Кольца в сумке и ★ — на складе (вкладка «Персонаж», справа): там же сортировка. Здесь — слоты, сводка и камни.
     const S = 104;
     const G = 10;
     const cols = Math.floor((TEX_W - 48 + G) / (S + G));
     let y = VIEW_Y + 170;
-    const bag = j.rings.filter((r) => !j.ringOn.includes(r.id));
-    ctx.font = "bold 24px system-ui, sans-serif";
-    ctx.fillStyle = "#e6e0d0";
-    ctx.fillText(`Кольца в сумке · ${bag.length}`, 24, y);
-    y += 36;
-    bag.slice(0, cols * 2).forEach((r, i) => {
-      cell(`rb:${r.id}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, (x2: number, y2: number, s2: number) => this.drawRing(ctx, r.tier, r.gems, x2, y2, s2), TIER_COLOR[r.tier],
-        [ringLabel({ id: "", tier: r.tier, gems: r.gems }), "надеть, камни, в лом"], () => this.openRingPopup(r, -1));
-    });
-    if (!bag.length) {
-      ctx.font = "20px system-ui, sans-serif";
-      ctx.fillStyle = "#7c88a4";
-      ctx.fillText("Колец нет — изредка падают с мобов, чаще с элиты и боссов", 24, y + 6);
-    }
-    y += 2 * (S + G) + 10;
+    ctx.font = "22px system-ui, sans-serif";
+    ctx.fillStyle = "#a9a498";
+    ctx.fillText("Кольца в сумке и ★ — на складе, справа на вкладке «Персонаж» (там же сортировка)", 24, y);
+    y += 44;
     // Камни.
     ctx.font = "bold 24px system-ui, sans-serif";
     ctx.fillStyle = "#e6e0d0";
     ctx.fillText(`Камни · ${RING.combine} одинаковых → уровнем выше`, 24, y);
     y += 36;
-    j.gems.slice(0, cols * 2).forEach(([gk, n], i) => {
+    // Рядов камней — сколько влезает до низа холста (2 максимум).
+    const gemRows = Math.max(1, Math.min(2, Math.floor((TEX_H - 10 - y + G) / (S + G))));
+    j.gems.slice(0, cols * gemRows).forEach(([gk, n], i) => {
       const g = parseGem(gk)!;
       cell(`gm:${gk}`, 24 + (i % cols) * (S + G), y + Math.floor(i / cols) * (S + G), S, (x2: number, y2: number, s2: number) => this.drawGem(ctx, gk, x2, y2, s2), GEM_LOOK[g.attr].d,
         [`${gemName(gk)} ×${n}`, `+${g.lv} ${ATTR_SHORT[g.attr]}`], () => this.openGemPopup(gk, n), String(g.lv), `×${n}`);
@@ -1744,7 +1860,14 @@ export class WristMenu {
         buttons.push({ id: `pop:in${i}`, label: `Вставить камень в гнездо ${i + 1}`, color: "#e8c26a", act: () => this.openGemPick(r.id, i) });
       }
     });
-    if (slot < 0) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
+    buttons.push({
+      id: "pop:fav",
+      label: r.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
+      hint: r.fav ? "снова можно будет разобрать" : `общее ★ до ${FAV_MAX} (с оружием) · не разбирается`,
+      color: "#ffd166",
+      act: () => this.jewelSend({ act: "ringFav", id: r.id, idx: 0 }),
+    });
+    if (slot < 0 && !r.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${r.scrap} лома${r.gems.some(Boolean) ? ", камни — в сумку" : ""}`, color: "#ff9a9a", act: () => this.jewelSend({ act: "ringScrap", id: r.id, idx: 0 }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = { title: ringLabel({ id: "", tier: r.tier, gems: r.gems }), sub: ringBonusText({ id: "", tier: r.tier, gems: r.gems }).join(", "), color: TIER_COLOR[r.tier], buttons };
     this.focusId = buttons[0].id;

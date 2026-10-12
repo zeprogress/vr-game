@@ -15,6 +15,8 @@ from mathutils import Matrix, Vector
 from . import anim, paint, parts, sdf, spec as S
 
 BUDGET = {"mob": 5000, "boss": 10000, "hero": 5000, "prop": 2000}
+# Текстура моба/босса — не мельче этого (меньше даёт мыло и гладкий «пластик»; "texture": 0 — плоская палитра).
+TEX_MIN = 1024
 # Вес кости допускается, если она не дальше стольких шагов по дереву от главной кости вершины:
 # живот ↔ плечо (3) — можно, кисть ↔ бедро (7) — нельзя (иначе рука «прилипнет» к ноге).
 WEIGHT_HOPS = 3
@@ -53,6 +55,8 @@ def material(name, d):
         bsdf.inputs["Base Color"].default_value = (*rgb, 1)
         bsdf.inputs["Roughness"].default_value = float(d.get("rough", 0.85))
         bsdf.inputs["Metallic"].default_value = float(d.get("metal", 0.0))
+        if "Specular IOR Level" in bsdf.inputs:  # без глянца: камень, кожа, ткань — матовые
+            bsdf.inputs["Specular IOR Level"].default_value = float(d.get("spec", 0.3))
         if d.get("emit"):
             bsdf.inputs["Emission Color"].default_value = (*rgb, 1)
             bsdf.inputs["Emission Strength"].default_value = float(d["emit"])
@@ -328,16 +332,24 @@ def build(sp, out_glb=None, out_blend=None, live=False):
     # (paint.py: материал по формам, затенение складок, пятнистость, волокна), "texture": 0 —
     # плоская палитра-атлас. Герои — с материалами, как модели героев пака.
     mdefs = sp.get("mats") or {}
-    tex_size = int(sp.get("texture", 512 if kind in ("mob", "boss") else 0))
+    tex_size = int(sp.get("texture", TEX_MIN if kind in ("mob", "boss") else 0))
+    if 0 < tex_size < TEX_MIN:
+        warnings.append(f"текстура {tex_size} поднята до {TEX_MIN}: мельче — мыло и пластик")
+        tex_size = TEX_MIN
     use_atlas = bool(sp.get("atlas", kind in ("mob", "boss"))) or tex_size > 0
     if tex_size > 0:
         paint.unwrap(ob)
         part_face = np.arange(len(me.polygons)) >= n_body_faces
         nstr = float(sp.get("normal", 1.0))
-        px, cover, npx = paint.paint(me, shapes, mats, mdefs, part_face, lambda P: P / f + np.array([0, 0, minz]),
-                                     size=tex_size, H=float(V[:, 2].max()), size_auth=size, normal=nstr)
-        paint.apply(me, name, px, npx if nstr > 0 else None)
+        px, cover, npx, rpx, rstd = paint.paint(me, shapes, mats, mdefs, part_face, lambda P: P / f + np.array([0, 0, minz]),
+                                                size=tex_size, H=float(V[:, 2].max()), size_auth=size, normal=nstr)
+        paint.apply(me, name, px, npx if nstr > 0 else None, rpx)
         warnings += [] if cover > 0.35 else [f"развёртка занимает {cover:.0%} текстуры — мелко"]
+        # проверки «не пластик»: карта нормалей есть, матовость меняется по поверхности
+        if nstr <= 0:
+            warnings.append("без карты нормалей — поверхность гладкая, будет пластик")
+        if rstd < 0.04:
+            warnings.append(f"шероховатость почти одинаковая (разброс {rstd:.3f}) — будет пластик")
     elif use_atlas:
         atlas(me, name, [hex_rgb((mdefs.get(mn, "#b0b0b0") if isinstance(mdefs.get(mn, "#b0b0b0"), str) else mdefs[mn]["c"])) for mn in mats])
     if use_atlas:

@@ -1,0 +1,452 @@
+{
+ "name": "Spyder",
+ "type": "mob",
+ "rig": "fit",
+ "source": "/Users/zep/ASSETS/3D/Spyder.glb",
+ "height": 0.7148,
+ "tris": 12000,
+ "texture": 1024,
+ "legLen": 0.606,
+ "depth": 0.3,
+ "clips": [
+  "Idle",
+  "Walk",
+  "Run",
+  "Attack",
+  "Attack2",
+  "HitReact",
+  "Death"
+ ],
+ "mirror": false,
+ "weightMask": {
+  "axis": ["waist", "abdTip"],
+  "r0": 0.18,
+  "r1": 0.23,
+  "bones": ["UpperLeg.L4", "LowerLeg.L4", "Foot.L4", "UpperLeg.R4", "LowerLeg.R4", "Foot.R4",
+            "UpperLeg.L5", "LowerLeg.L5", "Foot.L5", "UpperLeg.R5", "LowerLeg.R5", "Foot.R5"],
+  "fallback": "Abdomen"
+ },
+ "bones": [
+  {
+   "name": "Body",
+   "head": "bodyC",
+   "tail": "headF",
+   "parent": null
+  },
+  {
+   "name": "Abdomen",
+   "head": "waist",
+   "tail": "abdTip",
+   "parent": "Body"
+  },
+  {
+   "name": "UpperLeg.R1",
+   "head": "hip.R1",
+   "tail": "knee.R1",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.R1",
+   "head": "knee.R1",
+   "tail": "ankle.R1",
+   "parent": "UpperLeg.R1"
+  },
+  {
+   "name": "Foot.R1",
+   "head": "ankle.R1",
+   "tail": "toe.R1",
+   "parent": "LowerLeg.R1"
+  },
+  {
+   "name": "UpperLeg.R2",
+   "head": "hip.R2",
+   "tail": "knee.R2",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.R2",
+   "head": "knee.R2",
+   "tail": "ankle.R2",
+   "parent": "UpperLeg.R2"
+  },
+  {
+   "name": "Foot.R2",
+   "head": "ankle.R2",
+   "tail": "toe.R2",
+   "parent": "LowerLeg.R2"
+  },
+  {
+   "name": "UpperLeg.R3",
+   "head": "hip.R3",
+   "tail": "knee.R3",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.R3",
+   "head": "knee.R3",
+   "tail": "ankle.R3",
+   "parent": "UpperLeg.R3"
+  },
+  {
+   "name": "Foot.R3",
+   "head": "ankle.R3",
+   "tail": "toe.R3",
+   "parent": "LowerLeg.R3"
+  },
+  {
+   "name": "UpperLeg.R4",
+   "head": "hip.R4",
+   "tail": "knee.R4",
+   "parent": "Abdomen"
+  },
+  {
+   "name": "LowerLeg.R4",
+   "head": "knee.R4",
+   "tail": "ankle.R4",
+   "parent": "UpperLeg.R4"
+  },
+  {
+   "name": "Foot.R4",
+   "head": "ankle.R4",
+   "tail": "toe.R4",
+   "parent": "LowerLeg.R4"
+  },
+  {
+   "name": "UpperLeg.R5",
+   "head": "hip.R5",
+   "tail": "knee.R5",
+   "parent": "Abdomen"
+  },
+  {
+   "name": "LowerLeg.R5",
+   "head": "knee.R5",
+   "tail": "ankle.R5",
+   "parent": "UpperLeg.R5"
+  },
+  {
+   "name": "Foot.R5",
+   "head": "ankle.R5",
+   "tail": "toe.R5",
+   "parent": "LowerLeg.R5"
+  },
+  {
+   "name": "UpperLeg.L1",
+   "head": "hip.L1",
+   "tail": "knee.L1",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.L1",
+   "head": "knee.L1",
+   "tail": "ankle.L1",
+   "parent": "UpperLeg.L1"
+  },
+  {
+   "name": "Foot.L1",
+   "head": "ankle.L1",
+   "tail": "toe.L1",
+   "parent": "LowerLeg.L1"
+  },
+  {
+   "name": "UpperLeg.L2",
+   "head": "hip.L2",
+   "tail": "knee.L2",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.L2",
+   "head": "knee.L2",
+   "tail": "ankle.L2",
+   "parent": "UpperLeg.L2"
+  },
+  {
+   "name": "Foot.L2",
+   "head": "ankle.L2",
+   "tail": "toe.L2",
+   "parent": "LowerLeg.L2"
+  },
+  {
+   "name": "UpperLeg.L3",
+   "head": "hip.L3",
+   "tail": "knee.L3",
+   "parent": "Body"
+  },
+  {
+   "name": "LowerLeg.L3",
+   "head": "knee.L3",
+   "tail": "ankle.L3",
+   "parent": "UpperLeg.L3"
+  },
+  {
+   "name": "Foot.L3",
+   "head": "ankle.L3",
+   "tail": "toe.L3",
+   "parent": "LowerLeg.L3"
+  },
+  {
+   "name": "UpperLeg.L4",
+   "head": "hip.L4",
+   "tail": "knee.L4",
+   "parent": "Abdomen"
+  },
+  {
+   "name": "LowerLeg.L4",
+   "head": "knee.L4",
+   "tail": "ankle.L4",
+   "parent": "UpperLeg.L4"
+  },
+  {
+   "name": "Foot.L4",
+   "head": "ankle.L4",
+   "tail": "toe.L4",
+   "parent": "LowerLeg.L4"
+  },
+  {
+   "name": "UpperLeg.L5",
+   "head": "hip.L5",
+   "tail": "knee.L5",
+   "parent": "Abdomen"
+  },
+  {
+   "name": "LowerLeg.L5",
+   "head": "knee.L5",
+   "tail": "ankle.L5",
+   "parent": "UpperLeg.L5"
+  },
+  {
+   "name": "Foot.L5",
+   "head": "ankle.L5",
+   "tail": "toe.L5",
+   "parent": "LowerLeg.L5"
+  }
+ ],
+ "joints": {
+  "bodyC": [
+   0.0,
+   -0.1299,
+   0.4724
+  ],
+  "headF": [
+   0.0,
+   -0.2929,
+   0.36
+  ],
+  "waist": [
+   0.0,
+   -0.0063,
+   0.4539
+  ],
+  "abdTip": [
+   0.0,
+   0.36,
+   0.42
+  ],
+  "hip.R1": [
+   -0.105,
+   -0.0478,
+   0.3426
+  ],
+  "knee.R1": [
+   -0.2101,
+   -0.1727,
+   0.5234
+  ],
+  "ankle.R1": [
+   -0.271,
+   -0.3109,
+   0.2878
+  ],
+  "toe.R1": [
+   -0.2684,
+   -0.3683,
+   0.0137
+  ],
+  "hip.R2": [
+   -0.1274,
+   0.0306,
+   0.3412
+  ],
+  "knee.R2": [
+   -0.2489,
+   -0.0542,
+   0.5874
+  ],
+  "ankle.R2": [
+   -0.4122,
+   -0.1751,
+   0.2993
+  ],
+  "toe.R2": [
+   -0.4218,
+   -0.2406,
+   0.023
+  ],
+  "hip.R3": [
+   -0.1273,
+   0.0301,
+   0.3382
+  ],
+  "knee.R3": [
+   -0.2572,
+   0.0005,
+   0.6001
+  ],
+  "ankle.R3": [
+   -0.44,
+   0.0066,
+   0.2717
+  ],
+  "toe.R3": [
+   -0.476,
+   -0.0879,
+   0.0106
+  ],
+  "hip.R4": [
+   -0.112,
+   0.091,
+   0.3361
+  ],
+  "knee.R4": [
+   -0.2257,
+   0.105,
+   0.6727
+  ],
+  "ankle.R4": [
+   -0.3871,
+   0.2513,
+   0.2848
+  ],
+  "toe.R4": [
+   -0.4083,
+   0.2504,
+   0.0054
+  ],
+  "hip.R5": [
+   -0.1099,
+   0.0905,
+   0.3358
+  ],
+  "knee.R5": [
+   -0.2202,
+   0.185,
+   0.529
+  ],
+  "ankle.R5": [
+   -0.2675,
+   0.2769,
+   0.2751
+  ],
+  "toe.R5": [
+   -0.276,
+   0.2768,
+   0.0178
+  ],
+  "hip.L1": [
+   0.1041,
+   -0.0201,
+   0.3549
+  ],
+  "knee.L1": [
+   0.2027,
+   -0.1495,
+   0.4803
+  ],
+  "ankle.L1": [
+   0.267,
+   -0.2939,
+   0.2664
+  ],
+  "toe.L1": [
+   0.2486,
+   -0.3439,
+   0.0033
+  ],
+  "hip.L2": [
+   0.1761,
+   0.0375,
+   0.4238
+  ],
+  "knee.L2": [
+   0.2445,
+   -0.0466,
+   0.5741
+  ],
+  "ankle.L2": [
+   0.4009,
+   -0.1421,
+   0.2794
+  ],
+  "toe.L2": [
+   0.44,
+   -0.216,
+   0.0476
+  ],
+  "hip.L3": [
+   0.127,
+   0.0392,
+   0.355
+  ],
+  "knee.L3": [
+   0.2653,
+   0.0435,
+   0.5937
+  ],
+  "ankle.L3": [
+   0.44,
+   0.0124,
+   0.2595
+  ],
+  "toe.L3": [
+   0.474,
+   -0.0653,
+   0.0118
+  ],
+  "hip.L4": [
+   0.114,
+   0.0976,
+   0.403
+  ],
+  "knee.L4": [
+   0.2195,
+   0.1005,
+   0.6634
+  ],
+  "ankle.L4": [
+   0.3923,
+   0.232,
+   0.2776
+  ],
+  "toe.L4": [
+   0.414,
+   0.2219,
+   0.0131
+  ],
+  "hip.L5": [
+   0.0999,
+   0.0951,
+   0.3455
+  ],
+  "knee.L5": [
+   0.2433,
+   0.157,
+   0.5304
+  ],
+  "ankle.L5": [
+   0.2999,
+   0.2737,
+   0.2764
+  ],
+  "toe.L5": [
+   0.3126,
+   0.2561,
+   0.0194
+  ]
+ },
+ "notes": "Паук (10 ног: 5 пар, по 5 с каждой стороны; проверено сечениями и видом сверху). Головогрудь — кость Body (лицо −Y), брюшко — Abdomen; ноги UpperLeg/LowerLeg/Foot с номерами 1–5 (1 — самая передняя). Задние пары 4–5 крепятся к брюшку. Суставы — из art/build/Spyder_rigZEP.blend (правки пользователя). Клипы процедурные: zep_gen/spider.py (rigKind spider).",
+ "rigKind": "spider",
+ "anim": {
+  "death": {
+   "pin": true
+  }
+ }
+}

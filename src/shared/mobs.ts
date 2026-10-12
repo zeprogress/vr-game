@@ -9,6 +9,9 @@ import { WORLD } from "./constants";
 /** Добавка к радиусу попадания для мелких летающих мобов (пчёлы): по ним трудно попасть снарядом/стрелой. */
 export const FLYER_HIT_BONUS = 0.35;
 
+/** Вид замаха моба (MobState.attackKind): укус — по умолчанию, остальное — свой клип босса на клиенте. */
+export const MOB_SWING = { bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5 } as const;
+
 export const MOB = {
   count: 5,
   hp: 4,
@@ -283,6 +286,8 @@ export interface EliteMobDef {
   shot?: MobShot;
   /** 40 ур. Скалолом: прыжок на героя с кругом-предупреждением и удар по площади (см. LEAP). */
   leaper?: boolean;
+  /** Ходит по земле без пачек скачков (ноги всегда на земле). Прыжок leaper (LEAP) остаётся механикой: ходок прыгает с дистанции, когда прыжок готов. */
+  walksOnly?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
   packFrenzy?: boolean;
   /** 45 ур. Землерой: уходит под землю (неуязвим), ползёт к герою и выныривает под ним (см. BURROW). */
@@ -298,6 +303,10 @@ export interface EliteMobDef {
   /** У модели свои клипы Idle/Walk/Run (сгенерированные art/models): клип по скорости движения —
    *  стоит → Idle, идёт → Walk, гонится → Run (иначе модель без Hop «шагает» всегда). */
   gait?: boolean;
+  /** Клип удара вблизи в rig модели (имя в нижнем регистре, напр. "attackbite"); без него удар — только замах телом. */
+  attackClip?: string;
+  /** Без сжатия/растяжения тела (прыжок, замах, телеграф): у модели свои клипы. Скалолом, Владыка. */
+  noSquash?: boolean;
 }
 
 /**
@@ -462,6 +471,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, flying: true, visLift: 0.3, modelDrop: 0.6,
     rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
   },
+  // Супербосс катакомб «Владыка Бездны»: дракон с риг-моделью DragonBest и своими клипами (ходит по земле).
+  // Отдельное описание, чтобы не менять модель огнекрылого дракона события «Охота на элиту».
+  catDragon: {
+    model: "monDragonBest", name: "Владыка Бездны", level: 35, kind: "slime",
+    hp: 30000, dmgMul: 9, xp: 150000, scaleMul: 3.6, tint: null, gait: true, attackClip: "attackbite", noSquash: true, walksOnly: true,
+    rangedArmor: 0.3, meleeReach: 4.5, attackCooldown: 1.6,
+  },
   // Чародей руин: тучный дальний боец 20 ур. Панцирь плоти держит меч и
   // стрелы, зато магия и криты рвут его насквозь — контрплей магу и лучнику
   // с «Луком охотника». Новая механика: заряд заклинания взрывается по
@@ -588,12 +604,18 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
       caltrops: { sec: 6, radius: 1.4, slowSec: 1.5, slowFrac: 0.4, dmgFrac: 0.15 },
     },
   },
-  // Скалолом (ближний бой): прыгает на героя с кругом-предупреждением, удар по площади с отбросом;
-  // гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
+  // Скалолом (ближний бой): удар вблизи; гибель сородича рядом — ярость стаи. Крепкий: физ. броня.
+  // Прыжка нет (leaper: false) — по просьбе пользователя (2026-10-10).
   rockBreaker: {
+    model: "monStoneTroll", name: "Скалолом", blurb: "удар вблизи, ярость стаи", level: 40, kind: "slime",
+    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
+    leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true, walksOnly: true,
+  },
+  // Прыгающий Скалолом — боссы и вожак (Громолом, Гор'Таал, Скалолом-вожак): прыжок с кругом-предупреждением.
+  rockBreakerJump: {
     model: "monStoneTroll", name: "Скалолом", blurb: "прыжок с ударом по площади, ярость стаи", level: 40, kind: "slime",
     hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
-    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true,
+    leaper: true, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true, walksOnly: true,
   },
   // ---- 45 ур. (2026-10-06): механики, которых раньше не было; самые дальние углы карты ----
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
@@ -998,7 +1020,7 @@ export const CAT_GUARDS: readonly (readonly CatBoss[])[] = [
       adds: { types: ["boneWraith", "spikeTail"], every: 16, count: 2, perHero: 0.6 },
     },
     {
-      key: "rockBreaker", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
+      key: "rockBreakerJump", name: "Громолом", title: "хранитель Нижнего яруса — прыжки, обвалы, ярость стаи",
       hpMul: 1.54, dmgMul: 1.4, scale: 0.6, retinue: [{ type: "rockBreaker", count: 1, perHero: 0.5 }],
       mech: [{ kind: "barrage", name: "Камнепад", every: 8, fx: 0, dmg: 0.25, r: 3 }, { kind: "ring", name: "Сотрясение", every: 12, fx: 0, dmg: 0.28, r: 7 }],
       adds: { types: ["spikyBlob", "rockBreaker"], every: 17, count: 2, perHero: 0.5 },
@@ -1036,8 +1058,8 @@ export const CAT_CHAMPIONS: readonly (readonly CatChampion[])[] = [
 /** Супербоссы Трона Бездны — каждый заход один случайный из трёх. */
 export const CAT_SUPERBOSSES: readonly CatBoss[] = [
   {
-    key: "worldElite", name: "Владыка Бездны", title: "древний дракон катакомб",
-    hpMul: 0.34, dmgMul: 1.1, scale: 1.5, final: true,
+    key: "catDragon", name: "Владыка Бездны", title: "древний дракон катакомб",
+    hpMul: 0.34, dmgMul: 1.1, scale: 3, final: true,
     retinue: [{ type: "boneWraith", count: 2, perHero: 1 }],
     seal: { key: "boneChief", name: "Хранитель печати", fx: 1, sealTitle: "Печать Бездны", rageTitle: "Ярость Бездны", rageSub: "Владыка в огне — кольца пламени, отбегайте!" },
     adds: { types: ["boneWraith", "spikyBlob", "ruinMage"], every: 24, count: 2, perHero: 0.4 },
@@ -1051,7 +1073,7 @@ export const CAT_SUPERBOSSES: readonly CatBoss[] = [
     adds: { types: ["boneWraith", "boneWraith", "spikyBlob"], every: 20, count: 2, perHero: 0.5 },
   },
   {
-    key: "rockBreaker", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
+    key: "rockBreakerJump", name: "Гор'Таал, Древний Скалолом", title: "сердце горы — прыжки, камнепады, землетрясения",
     hpMul: 1.45, dmgMul: 0.9, scale: 1.15, final: true,
     retinue: [{ type: "rockBreaker", count: 1, perHero: 0.4 }],
     seal: { key: "golem", name: "Каменный страж", fx: 0, sealTitle: "Каменная печать", rageTitle: "Землетрясение", rageSub: "земля рвётся кольцами — отбегайте!" },

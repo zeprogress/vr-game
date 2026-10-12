@@ -133,6 +133,8 @@ export class MobState extends Schema {
   @type("uint16") hurtSeq = 0;
   /** ++ на каждую атаку моба (укус слизня, плевок, слэм) — клиент играет замах. */
   @type("uint16") attackSeq = 0;
+  /** Вид замаха (MOB_SWING в shared/mobs): 0 — укус, остальное — клип босса (коготь, хвост, дыхание, крылья, магия). */
+  @type("uint8") attackKind = 0;
   @type("float32") hurtDx = 0;
   @type("float32") hurtDz = 0;
   /** Размер тела относительно обычного слизня (босс — крупнее, осколок — мельче). */
