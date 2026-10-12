@@ -960,7 +960,7 @@ export class PcInventory {
       }
       if (w && attackPoints(w) > 0) {
         cell.style.position = "relative";
-        cell.append(div("pcinv-sb", `⚒${attackPoints(w)}`));
+        cell.append(div("pcinv-sb", `+${attackPoints(w)}`));
       }
       if (w?.fav) {
         cell.style.position = "relative";
@@ -1041,7 +1041,7 @@ export class PcInventory {
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
-    if (attackPoints(w) > 0) c.append(div("pcinv-sb", `⚒${attackPoints(w)}`));
+    if (attackPoints(w) > 0) c.append(div("pcinv-sb", `+${attackPoints(w)}`));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
     if (!this.hooks.touch || w.fav) c.append(this.favStar(!!w.fav, () => this.toggleFav(w)));
     // ПК (страница и игра): клик — меню действий, как тап на телефоне; правый клик в игре — надеть.
@@ -1073,7 +1073,7 @@ export class PcInventory {
     const left = div("pcinv-ench-left");
     const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`);
     if (w) setIcon(slotEl, w.cls, w.name, w.tier);
-    if (w && attackPoints(w) > 0) slotEl.append(div("pcinv-sb big", `⚒${attackPoints(w)}`));
+    if (w && attackPoints(w) > 0) slotEl.append(div("pcinv-sb big", `+${attackPoints(w)}`));
     slotEl.addEventListener("dragover", (e) => {
       if (this.dragWeapon()) e.preventDefault();
     });
@@ -1142,7 +1142,7 @@ export class PcInventory {
       if (!x.ench.length) continue;
       const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`);
       setIcon(c, x.cls, x.name, x.tier);
-      if (attackPoints(x) > 0) c.append(div("pcinv-sb", `⚒${attackPoints(x)}`));
+      if (attackPoints(x) > 0) c.append(div("pcinv-sb", `+${attackPoints(x)}`));
       c.onclick = () => {
         this.enchId = x.id;
         this.lastResult = null;

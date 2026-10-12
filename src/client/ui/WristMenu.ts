@@ -1515,11 +1515,11 @@ export class WristMenu {
     }
     const pts = attackPoints(wp);
     if (pts > 0) {
-      // Точка атаки за лом — метка «⚒N» в правом верхнем углу (звёздочка — в правом нижнем).
+      // Точка атаки за лом — метка «+N» в правом верхнем углу (звёздочка — в правом нижнем).
       ctx.font = "bold 16px system-ui, sans-serif";
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "right";
-      ctx.fillText(`⚒${pts}`, x + w - 6, y + 18);
+      ctx.fillText(`+${pts}`, x + w - 6, y + 18);
       ctx.textAlign = "left";
     }
     if (eq) {
