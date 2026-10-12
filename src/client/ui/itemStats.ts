@@ -87,7 +87,7 @@ export function weaponStats(w: WornWeapon, s: HeroStats): [string, string][] {
     out.push(["Щит", "блок, защита, отражение и регенерация — от роллов"]);
   }
   // Точка атаки — сразу за ударом: прибавка в процентах и в «Атаке» (та же прибавка, что в подписи на складе).
-  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp)} к атаке`]);
+  if (sharp > 0) out.splice(1, 0, ["Точка атаки", `+${fmtPct(sharp)}% · +${sharpAttackAdd(w.cls, w.tier, sharp).toFixed(1)} к атаке`]);
   // Свойство Эгиды идёт в тексте первым («Оплот: …») — отдельной строкой, не роллом.
   const parts = (w.affix ?? "").split(", ").filter(Boolean);
   const aegis = parts.find((t) => t.startsWith("Оплот"));

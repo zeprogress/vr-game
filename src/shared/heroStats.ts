@@ -46,32 +46,34 @@ export function weaponHitDamage(cls: string, tier: string, level: number, a: Att
 
 const BASE_ATTRS: AttrsIn = { str: ATTR2.start, agi: ATTR2.start, int: ATTR2.start, con: ATTR2.start, luc: ATTR2.start, wis: ATTR2.start };
 
-/**
- * Чистая сила атаки оружия — только класс и тир: без роллов, атрибутов и уровня героя.
- * Удар героем 1 ур. со стартовыми атрибутами в масштабе «обычный меч = 100». Щит не атакует — 0.
- * Показывается у каждого оружия: ПК, телефон, VR и страница !inv.
- */
-export function weaponPower(cls: string, tier: string): number {
-  const ref = weaponHitDamage("sword", "base", 1, BASE_ATTRS);
-  return ref > 0 ? Math.round((100 * weaponHitDamage(cls, tier, 1, BASE_ATTRS)) / ref) : 0;
-}
-
 /** Ролл «Урон» (в долях) из текста роллов предмета в руке («Урон +12%, Крит +6%»). */
 export function dmgRollOfText(text: string | undefined): number {
   return affixNum(text, "Урон");
 }
 
-/** Прибавка «Атаки» от заточки — в тех же единицах, что weaponPower. */
-export function sharpAttackAdd(cls: string, tier: string, sharpPct: number): number {
-  return Math.round((weaponPower(cls, tier) * sharpPct) / 100);
+/**
+ * «Атака» оружия — постоянная, не зависит от героя: базовый урон одного удара этим оружием (класс,
+ * тир, заточка) у героя 1-го уровня со стартовыми атрибутами, без роллов и баффов. В тех же единицах,
+ * что строка «Урон» в характеристиках: урон героя растёт от этой базы с уровнем, атрибутами, роллами
+ * и баффами — поэтому «Атака» никогда не больше «Урона». null — оружие не бьёт (щит).
+ */
+export function attackValue(cls: string, tier: string, sharpPct = 0): { total: number; add: number } | null {
+  const base = weaponHitDamage(cls, tier, 1, BASE_ATTRS);
+  if (base <= 0) return null;
+  const total = base * (1 + sharpPct / 100);
+  return { total, add: total - base };
 }
 
-/** Подпись «Атака 400» — чистая сила оружия (weaponPower); с заточкой — итог и чистый прирост: «Атака 502 (+102 от заточки)». Щит — пусто. */
+/** Прибавка «Атаки» от заточки — в единицах урона (как attackValue). */
+export function sharpAttackAdd(cls: string, tier: string, sharpPct: number): number {
+  return attackValue(cls, tier, sharpPct)?.add ?? 0;
+}
+
+/** Подпись «Атака 9.4»; с заточкой — «Атака 10.3 (+0.9 от заточки)». Щит — пусто. */
 export function attackLabel(cls: string, tier: string, sharpPct = 0): string {
-  const p = weaponPower(cls, tier);
-  if (p <= 0) return "";
-  const add = sharpAttackAdd(cls, tier, sharpPct);
-  return add > 0 ? `Атака ${p + add} (+${add} от заточки)` : `Атака ${p}`;
+  const v = attackValue(cls, tier, sharpPct);
+  if (!v) return "";
+  return v.add >= 0.05 ? `Атака ${v.total.toFixed(1)} (+${v.add.toFixed(1)} от заточки)` : `Атака ${v.total.toFixed(1)}`;
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */
