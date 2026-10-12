@@ -4288,17 +4288,16 @@ export class ZoneRoom extends Room<ZoneState> {
       tokens: store.get(`nick:${norm}`)?.tokens ?? 0,
       fish: bagCount(readBag(p), "fish"),
       near: this.tavernNear(p),
-      swaps: rt ? this.rubySwaps(p, rt) : [],
+      swaps: rt ? this.rubySwaps(rt) : [],
       msg,
     };
     client.send(MSG.shopData, data);
   }
 
-  /** Рубиновое на складе, которое можно обменять: не избранное и не в руках. */
-  private rubySwaps(p: PlayerState, rt: Runtime): ShopSwap[] {
-    const held = this.liveHeldIds(p, rt);
+  /** Рубиновое на складе, которое можно обменять: не избранное. Надетое тоже — при обмене рука освобождается (см. rubySwap). */
+  private rubySwaps(rt: Runtime): ShopSwap[] {
     return rt.weapons
-      .filter((w) => w.tier === "ruby" && !w.fav && !held.has(w.id))
+      .filter((w) => w.tier === "ruby" && !w.fav)
       .map((w) => ({
         wid: w.id,
         name: `${instanceName(w)} · ${instanceStars(w)}`,
@@ -4317,13 +4316,21 @@ export class ZoneRoom extends Room<ZoneState> {
     const w = rt.weapons[idx];
     if (!w || w.tier !== "ruby") return this.sendShop(client, "Этого рубинового уже нет на складе");
     if (w.fav) return this.sendShop(client, "Это оружие в избранном ★ — сними звёздочку, чтобы обменять");
-    if (this.liveHeldIds(p, rt).has(w.id)) return this.sendShop(client, "Это оружие сейчас в руках — сначала надень другое");
     if (!isWeaponClass(cls) || cls === "shield" || cls === w.cls) return this.sendShop(client, "Такой обмен не выйдет");
+    // Надето — рука освобождается, как при разборе: остаётся базовое оружие своего класса; новое уходит на склад.
+    let freed = false;
+    for (const side of ["left", "right"] as const) {
+      if (rt.equippedWeaponId[side] !== w.id && rolledIn(p, side, rt)?.id !== w.id) continue;
+      rt.equippedWeaponId[side] = null;
+      if (side === "left") p.leftTier = "base";
+      else p.rightTier = "base";
+      freed = true;
+    }
     const nw = swapRubyClass(w, cls);
     rt.weapons[idx] = nw;
     this.persistNick(normNick(p.nick));
     this.syncWarehouse(client.sessionId, rt);
-    this.sendShop(client, `Обмен: ${instanceName(w)} → ${instanceName(nw)} · ${instanceStars(nw)}`);
+    this.sendShop(client, `Обмен: ${instanceName(w)} → ${instanceName(nw)} · ${instanceStars(nw)}${freed ? " · рука освобождена" : ""}`);
   }
 
   private shopBuy(client: Client, msg: ShopBuyMsg): void {

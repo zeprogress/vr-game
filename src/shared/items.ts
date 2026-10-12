@@ -1240,6 +1240,7 @@ export function enchantApply(w: WeaponInstance, idx: number, gain: number): void
 /**
  * Обмен рубинового на другой класс (лавка трактирщика): тот же тир, то же число роллов
  * и те же очки на каждом ролле — значит та же оценка. Виды роллов — свои у нового класса.
+ * Удачные точки атаки переходят на новое оружие как есть (1:1).
  */
 export function swapRubyClass(w: WeaponInstance, cls: WeaponClass, rnd: () => number = Math.random): WeaponInstance {
   const pts = w.affixes.map((a) => affixPoints(a, w));
@@ -1253,5 +1254,5 @@ export function swapRubyClass(w: WeaponInstance, cls: WeaponClass, rnd: () => nu
     affixes.push(a);
   }
   sortAffixes(affixes);
-  return { id: shortId(rnd), cls, tier: "ruby", affixes, lv: LOOT_VER, ...(cls === "staff" ? { sv: 1 } : {}) };
+  return { id: shortId(rnd), cls, tier: "ruby", affixes, lv: LOOT_VER, ...(cls === "staff" ? { sv: 1 } : {}), ...(w.sharp ? { sharp: w.sharp } : {}) };
 }
