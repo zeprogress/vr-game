@@ -120,6 +120,11 @@ import {
   bagCount,
   takeFromBag,
   enchantInfo,
+  attackPointBest,
+  attackPointBonus,
+  attackPoints,
+  attackPointTry,
+  fmtPct,
   enchantApply,
   RUBY,
   ENCHANT,
@@ -879,7 +884,10 @@ function shieldRolledIn(p: PlayerState, attackHand: "left" | "right", rt: Runtim
 
 /** Доп. множитель урона от роллов Урон (dmgFlat/dmgPct — один вид) обеих рук: лучший из двух. */
 function rolledDmgMul(p: PlayerState, hand: "left" | "right", rt: Runtime): number {
-  return 1 + handsRoll(rolledIn(p, hand, rt)?.affixes, shieldRolledIn(p, hand, rt)?.affixes, "dmgFlat", "dmgPct");
+  const main = rolledIn(p, hand, rt);
+  const other = shieldRolledIn(p, hand, rt);
+  // Точка атаки за лом — тоже лучшая из двух рук (как роллы «Урон»).
+  return (1 + handsRoll(main?.affixes, other?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, other);
 }
 
 /** Доп. множитель скорости атаки/каста от ролла atkSpeedPct обеих рук: лучший из двух. */
@@ -1007,6 +1015,26 @@ function enchantTry(
     ok: true,
     text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
     enchant: { id: w.id, idx, up, gain: gained, cost: info.cost, label },
+  };
+}
+
+/**
+ * Точка атаки за лом (attackPointTry в items.ts): лом списывается и при неудаче. Мутирует w и bag.
+ */
+function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boolean } {
+  const have = bagCount(bag, "scrap");
+  const r = attackPointTry(w, have);
+  if (!r.ok) {
+    if (r.reason === "not-eligible") return { ok: false, text: "Точка атаки — только у уникального и рубинового оружия (не щит).", spent: false };
+    return { ok: false, text: `Не хватает лома: нужно ${r.need}, есть ${have}.`, spent: false };
+  }
+  takeFromBag(bag, "scrap", r.cost);
+  return {
+    ok: true,
+    spent: true,
+    text: r.up
+      ? `Точка атаки +${fmtPct(r.gain * 100, 2)}% · всего +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
+      : `Не вышло — лом сгорел (−${r.cost})`,
   };
 }
 
@@ -2006,7 +2034,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4680,6 +4708,7 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
+        sharp: attackPoints(w),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -5344,6 +5373,28 @@ export class ZoneRoom extends Room<ZoneState> {
       addToBag(bag, "scrap", got);
       store.put(token, { weapons: weapons.filter((w) => !targets.includes(w)), bag });
       return { ok: true, text: `Разобрано ${targets.length} — лом +${got}` };
+    }
+    if (act === "sharpen") {
+      if (t) {
+        const w = t.rt.weapons.find((x) => x.id === id);
+        if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
+        const bag = readBag(t.p);
+        const r = sharpenTry(w, bag);
+        if (r.spent) {
+          writeBag(t.p, bag);
+          this.persistNick(norm);
+          this.syncWarehouse(t.id, t.rt);
+        }
+        return { ok: r.ok, text: r.text };
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      const w = rec?.weapons?.find((x) => x.id === id);
+      if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      const bag = restoreBag(rec.bag);
+      const r = sharpenTry(w, bag);
+      if (r.spent) store.put(token, { weapons: rec.weapons, bag });
+      return { ok: r.ok, text: r.text };
     }
     if (act === "enchant") {
       if (t) {
@@ -9936,7 +9987,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const heldR = p ? (rolledIn(p, "right", rt)?.id ?? null) : null;
     let heldL = p ? (rolledIn(p, "left", rt)?.id ?? null) : null;
     if (heldL === heldR) heldL = null;
-    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}${w.fav ? "*" : ""}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
+    const sig = rt.weapons.map((w) => `${w.id}:${weaponQuality(w)}:${attackPoints(w)}${w.fav ? "*" : ""}`).join(",") + "|" + (heldL ?? "") + "|" + (heldR ?? "");
     if (sig === rt.weaponsSig) return;
     const client = this.clientOf(id);
     if (!client) return;
@@ -9951,6 +10002,7 @@ export class ZoneRoom extends Room<ZoneState> {
         effects: instanceEffects(w),
         quality: weaponQuality(w),
         atkSpd: affixSum(w.affixes, "atkSpeedPct"),
+        sharp: attackPoints(w),
         fav: !!w.fav,
         scrap: scrapValue(w),
       })),

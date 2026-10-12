@@ -503,6 +503,8 @@ export interface WeaponInstance {
   lv?: number;
   /** ★ Избранное (звёздочка в инвентаре): не разбирается на лом; на земле — снимается. */
   fav?: boolean;
+  /** Удачных точек атаки за лом (уникальное и рубиновое; см. ATTACK_POINT). */
+  sharp?: number;
 }
 
 /**
@@ -933,7 +935,8 @@ export function aegisTier(cls: string, tier: string, affix: string | undefined):
 /** Текст «в руке» (PlayerState.left/rightAffix, таблица характеристик): свойство Эгиды + роллы. */
 export function heldAffixText(w: WeaponInstance | null | undefined): string {
   if (!w) return "";
-  return [...(isAegis(w) ? [AEGIS_LABEL] : []), ...instanceLabels(w)].join(", ");
+  const sharp = attackPointEligible(w) ? attackPoints(w) : 0;
+  return [...(isAegis(w) ? [AEGIS_LABEL] : []), ...instanceLabels(w), ...(sharp > 0 ? [`Точка атаки +${(attackPointBonus(sharp) * 100).toFixed(1)}%`] : [])].join(", ");
 }
 
 /** Доля урона, возвращаемая как HP (ролл Вампиризм). Только ближний бой. */
@@ -1079,6 +1082,102 @@ export function migrateLoot(w: WeaponInstance): boolean {
 export const POINTS_MAX = 33;
 
 export const ENCHANT = { chanceHi: 0.85, chanceDrop: 0.77, chanceMin: 0.08, costBase: 1.5, costTop: 20, qualityMul: 1.2, legendaryMul: 1.5, gainMin: 1, gainMax: 3 } as const;
+
+/**
+ * Точка атаки за лом — уникальное и рубиновое оружие (щит не атакует). Каждая удачная точка добавляет к урону.
+ * Точить можно бесконечно: прибавка сходится к пределу, цена попытки растёт, шанс падает (без пола).
+ */
+export const ATTACK_POINT = {
+  /** Прибавка к урону первой точки (доля: 0,03 = +3%). */
+  gain0: 0.03,
+  /** Каждая следующая прибавка — в столько раз меньше предыдущей. */
+  gainDecay: 0.9625,
+  /** Шанс первой попытки и множитель на каждую следующую точку. */
+  chance0: 0.9,
+  chanceDecay: 0.8,
+  /** Цена первой попытки в ломе (уникальное) и множитель на каждую следующую точку. */
+  cost0: 100,
+  costGrowth: 1.2,
+  /** Рубиновое — цена попытки × это. */
+  rubyCostMul: 10,
+} as const;
+
+/** Предел суммарной прибавки к урону от точек (доля): gain0 / (1 − gainDecay) = +80%. */
+export const ATTACK_POINT_CAP = ATTACK_POINT.gain0 / (1 - ATTACK_POINT.gainDecay);
+
+/** Точить можно уникальное и рубиновое оружие; щит не атакует — нет. */
+export function attackPointEligible(w: { cls: string; tier: string }): boolean {
+  return w.cls !== "shield" && (w.tier === "legendary" || w.tier === "ruby");
+}
+
+/** Сколько удачных точек у экземпляра. */
+export function attackPoints(w: { sharp?: number }): number {
+  return Math.max(0, Math.floor(w.sharp ?? 0));
+}
+
+/** Суммарная прибавка к урону от n точек (доля). */
+export function attackPointBonus(n: number): number {
+  return ATTACK_POINT_CAP * (1 - ATTACK_POINT.gainDecay ** n);
+}
+
+/** Множитель урона от точек одного оружия (1 — точек нет или оружие не точится). */
+export function attackPointMul(w: { cls: string; tier: string; sharp?: number } | null | undefined): number {
+  return w && attackPointEligible(w) ? 1 + attackPointBonus(attackPoints(w)) : 1;
+}
+
+/** Лучший из двух рук — как роллы «Урон» (см. handsRoll). */
+export function attackPointBest(
+  a: { cls: string; tier: string; sharp?: number } | null | undefined,
+  b: { cls: string; tier: string; sharp?: number } | null | undefined,
+): number {
+  return Math.max(attackPointMul(a), attackPointMul(b));
+}
+
+export interface AttackPointNext {
+  /** Прибавка следующей точки (доля). */
+  gain: number;
+  /** Шанс следующей попытки (доля). */
+  chance: number;
+  /** Цена попытки в ломе. */
+  cost: number;
+  /** Сколько точек уже есть. */
+  points: number;
+}
+
+/** Что даст следующая попытка; null — оружие не точится. */
+export function attackPointNext(w: { cls: string; tier: string; sharp?: number }): AttackPointNext | null {
+  if (!attackPointEligible(w)) return null;
+  const n = attackPoints(w);
+  return {
+    gain: ATTACK_POINT.gain0 * ATTACK_POINT.gainDecay ** n,
+    chance: ATTACK_POINT.chance0 * ATTACK_POINT.chanceDecay ** n,
+    cost: Math.round(ATTACK_POINT.cost0 * ATTACK_POINT.costGrowth ** n * (w.tier === "ruby" ? ATTACK_POINT.rubyCostMul : 1)),
+    points: n,
+  };
+}
+
+export type AttackPointTry =
+  | { ok: false; reason: "not-eligible" }
+  | { ok: false; reason: "no-scrap"; need: number }
+  | { ok: true; cost: number; up: boolean; gain: number; points: number };
+
+/**
+ * Одна попытка точки атаки: проверка лома, бросок шанса, +1 точка при удаче. Лом списывает вызывающий —
+ * и при неудаче тоже (лом сгорает, как у заточки). `rnd` — для проверок.
+ */
+export function attackPointTry(w: WeaponInstance, scrapHave: number, rnd: () => number = Math.random): AttackPointTry {
+  const info = attackPointNext(w);
+  if (!info) return { ok: false, reason: "not-eligible" };
+  if (scrapHave < info.cost) return { ok: false, reason: "no-scrap", need: info.cost };
+  const up = rnd() < info.chance;
+  if (up) w.sharp = info.points + 1;
+  return { ok: true, cost: info.cost, up, gain: info.gain, points: info.points + (up ? 1 : 0) };
+}
+
+/** Проценты для подписей: 2,13% (с запятой, как в остальном тексте). */
+export function fmtPct(x: number, digits = 1): string {
+  return x.toFixed(digits).replace(".", ",");
+}
 
 export interface EnchantInfo {
   /** Очки аффикса, 1..of (целые, для показа). */

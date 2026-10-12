@@ -212,6 +212,8 @@ export interface PcInvWeapon {
   scrap: number;
   /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
   ench: { label: string; points: number; of: number; max: boolean; chance: number; cost: number }[];
+  /** Удачных точек атаки за лом (уникальное и рубиновое). */
+  sharp?: number;
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
 }
@@ -353,7 +355,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | JewelAct;
+  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов. */
@@ -843,6 +845,8 @@ export interface WarehouseWeapon {
   fav?: boolean;
   /** Сколько лома даст разборка (scrapValue). */
   scrap?: number;
+  /** Удачных точек атаки за лом (уникальное и рубиновое). */
+  sharp?: number;
 }
 
 /** Озвучка сообщения чата для игрока (VR). */

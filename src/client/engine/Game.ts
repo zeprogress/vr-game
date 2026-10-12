@@ -2284,6 +2284,10 @@ export class Game {
               this.vrEnchResult = null;
               this.net?.sendPcInvAct({ act: "enchant", id, idx });
             },
+            () => {
+              this.vrEnchResult = null;
+              this.net?.sendPcInvAct({ act: "sharpen", id, idx: 0 });
+            },
             () => (this.vrEnchId = null),
           );
         });

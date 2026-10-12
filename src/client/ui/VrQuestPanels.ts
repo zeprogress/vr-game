@@ -4,7 +4,7 @@ import { attackLabel } from "#shared/heroStats";
 import type { WeaponTier } from "#shared/items";
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
-import { qualityStars } from "#shared/items";
+import { attackPointBonus, attackPointEligible, attackPointNext, attackPoints, fmtPct, qualityStars } from "#shared/items";
 
 /**
  * Содержимое VR-панелей у NPC лагеря — те же карточки, что в ПК-окнах
@@ -224,6 +224,7 @@ export function drawEnchant(
   inHand: boolean,
   lastResult: { up: boolean; text: string } | null,
   enchant: (idx: number) => void,
+  sharpen: () => void,
   close: () => void,
 ): void {
   const w = d?.weapons.find((x) => x.id === id) ?? null;
@@ -258,6 +259,19 @@ export function drawEnchant(
     }
     y += 124;
   });
+  // Точка атаки за лом (уникальное и рубиновое): сколько уже даёт и что будет дальше.
+  if (attackPointEligible(w)) {
+    const next = attackPointNext(w);
+    const n = attackPoints(w);
+    ui.rect(PAD, y, bw, 124, VR_UI.card, 14);
+    ui.text("Точка атаки", PAD + 20, y + 14, 28, "#9fe39a", 700);
+    ui.text(`+${fmtPct(attackPointBonus(n) * 100)}% к урону · точек ${n}`, PAD + 20, y + 52, 24, VR_UI.sub);
+    if (next) {
+      ui.text(`следующая +${fmtPct(next.gain * 100, 2)}% · шанс ${fmtPct(next.chance * 100)}%`, PAD + 20, y + 84, 22, VR_UI.sub);
+      ui.button("sharp", `⚒ ${next.cost}`, PAD + bw - 200, y + 14, 180, 50, sharpen, true, d.scrap >= next.cost);
+    }
+    y += 140;
+  }
   if (lastResult) {
     ui.rect(PAD, y + 4, bw, 70, lastResult.up ? "#1f3a24" : "#3a1f1f", 12);
     ui.text(lastResult.text, ui.W / 2, y + 24, 28, lastResult.up ? "#9fe39a" : "#ff9a8e", 700, "center");

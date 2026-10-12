@@ -15,6 +15,8 @@ import {
   scrapValue,
   bagCount,
   enchantInfo,
+  attackPointBest,
+  attackPoints,
   weaponQuality,
   bestWeaponInstance,
   handsRoll,
@@ -74,7 +76,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -216,7 +218,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     const off = rec.held?.[other] ? instIn(other) : undefined;
     const shield = off && off.id !== main?.id ? off : undefined;
     const mult = isWeaponClass(held?.cls) && isWeaponTier(held?.tier) ? weaponDef(held.cls, held.tier).mult : 1;
-    const roll = 1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct");
+    const roll = (1 + handsRoll(main?.affixes, shield?.affixes, "dmgFlat", "dmgPct")) * attackPointBest(main, shield);
     const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
     strike = Math.round(skillStrike(strikeCls, rec.level, attrs, { mult, tier: held?.tier ?? "", roll }).dmg * 10) / 10;
   }
@@ -249,6 +251,7 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
       quality: weaponQuality(w),
       scrap: scrapValue(w),
       ench: enchDetails(w),
+      sharp: attackPoints(w),
       fav: !!w.fav,
     })),
     equipped: { left: leftInst && leftInst !== rightInst ? leftInst.id : null, right: rightInst?.id ?? null },

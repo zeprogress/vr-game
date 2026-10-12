@@ -4,7 +4,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
@@ -1125,6 +1125,7 @@ export class PcInventory {
       if (this.lastResult) {
         right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
       }
+      if (attackPointEligible(w)) right.append(this.sharpBlock(w, d));
       right.append(
         div("pcinv-hint", "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает." + (w.tier === "ruby" ? " Рубиновое — цена в ломе ×100." : "")),
       );
@@ -1146,6 +1147,26 @@ export class PcInventory {
     }
     wrap.append(left, right);
     this.body.append(wrap, div("pcinv-sub", "Все предметы с роллами"), pick);
+  }
+
+  /** Точка атаки за лом (уникальное и рубиновое): сколько уже даёт и что будет дальше. */
+  private sharpBlock(w: PcInvWeapon, d: PcInvData): HTMLDivElement {
+    const box = div("pcinv-sharp");
+    const n = attackPoints(w);
+    const next = attackPointNext(w);
+    box.append(div("pcinv-name", "Точка атаки"));
+    box.append(div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% к урону · точек ${n}`));
+    if (next) {
+      box.append(div("pcinv-small", `Следующая: +${fmtPct(next.gain * 100, 2)}% · шанс ${fmtPct(next.chance * 100)}% · цена ${next.cost} лома`));
+      const bt = button(`⚒ Точить за ${next.cost} лома`, () => {
+        this.hooks.act({ act: "sharpen", id: w.id, idx: 0 });
+        window.setTimeout(() => this.refresh(), 300);
+      });
+      bt.className = "pcinv-ebtn";
+      bt.disabled = d.scrap < next.cost;
+      box.append(bt);
+    }
+    return box;
   }
 
   private forge(id: string, idx: number): void {
@@ -1857,6 +1878,7 @@ function injectInvStyle(): void {
 .pcinv-sortbtn { padding:4px 9px; border-radius:6px; border:1px solid #4a4638; background:#1d1b16; color:#d8d0bb; font:700 12px system-ui; cursor:pointer; white-space:nowrap; }
 .pcinv-sortbtn.on { border-color:#e8c26a; color:#e8c26a; background:#2a2415; }
 .pcinv-sortrow { display:flex; gap:4px; flex-wrap:wrap; }
+.pcinv-sharp { margin:8px 0; padding:8px; border:1px solid #3a3426; border-radius:8px; background:#141319; display:flex; flex-direction:column; gap:4px; }
 .pcinv-pouch-acts { display:grid; grid-template-columns:1fr; gap:6px; margin:0 0 8px; }
 .pcinv-pouch-acts .pcinv-allbtn { margin:0; width:100%; padding:7px 8px; }
 .pcinv-pouch-acts .pcinv-mergeall { color:#7ee081; border-color:#3f7a48; background:#16261a; }
