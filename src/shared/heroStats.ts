@@ -61,10 +61,17 @@ export function dmgRollOfText(text: string | undefined): number {
   return affixNum(text, "Урон");
 }
 
-/** Подпись «Атака 400» — чистая сила оружия (weaponPower); щит — пусто. */
-export function attackLabel(cls: string, tier: string): string {
+/** Прибавка «Атаки» от заточки — в тех же единицах, что weaponPower. */
+export function sharpAttackAdd(cls: string, tier: string, sharpPct: number): number {
+  return Math.round((weaponPower(cls, tier) * sharpPct) / 100);
+}
+
+/** Подпись «Атака 400» — чистая сила оружия (weaponPower); с заточкой — итог и чистый прирост: «Атака 502 (+102 от заточки)». Щит — пусто. */
+export function attackLabel(cls: string, tier: string, sharpPct = 0): string {
   const p = weaponPower(cls, tier);
-  return p > 0 ? `Атака ${p}` : "";
+  if (p <= 0) return "";
+  const add = sharpAttackAdd(cls, tier, sharpPct);
+  return add > 0 ? `Атака ${p + add} (+${add} от заточки)` : `Атака ${p}`;
 }
 
 /** Подпись темпа — одна для всех классов (по заявке), значение — атак в секунду. */

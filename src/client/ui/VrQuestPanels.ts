@@ -4,7 +4,7 @@ import { attackLabel } from "#shared/heroStats";
 import type { WeaponTier } from "#shared/items";
 import type { PcInvData, QuestActMsg, QuestData, QuestSlotView, ShopData } from "#shared/net/messages";
 import { VR_UI, type PanelUi } from "./VrPanel";
-import { attackPointBonus, attackPointEligible, attackPointNext, attackPoints, fmtPct, qualityStars } from "#shared/items";
+import { attackPointBonus, attackPointEligible, attackPointNext, attackPoints, fmtPct, qualityStars, sharpPctOf } from "#shared/items";
 
 /**
  * Содержимое VR-панелей у NPC лагеря — те же карточки, что в ПК-окнах
@@ -243,7 +243,7 @@ export function drawEnchant(
     ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
   const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
-  const atk = attackLabel(w.cls, w.tier);
+  const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
   if (atk) ui.text(atk, PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
   let y = 224;
   const bw = ui.W - PAD * 2;

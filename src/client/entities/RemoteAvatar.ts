@@ -29,7 +29,9 @@ import { makeBotBody } from "./botModels";
 import { loadRig, recolorCharacter, BOT_SKIN_MODELS, type RigInstance, type ModelName } from "../world/models";
 import { BlobShadow } from "../world/blobShadow";
 import { PLAYER, BOT } from "#shared/constants";
-import { aegisTier } from "#shared/items";
+import { aegisTier, sharpPctOfText } from "#shared/items";
+import { isTwoHanded } from "#shared/hands";
+import { applySharpGlow } from "../items/weaponModels";
 import { terrainHeight } from "#shared/terrain";
 import { meleeAnimRate, atMaxLevel, xpToNext } from "#shared/progression";
 import type { BotEmote } from "#shared/net/messages";
@@ -273,6 +275,9 @@ export class RemoteAvatar implements Hittable {
   private wantKeyL = ":";
   private wantKeyR = ":";
   private wantR: readonly [string, string] = ["", ""];
+  /** Прибавка точки атаки (в %) у оружия в руках — из строк роллов с сервера, для свечения. */
+  private sharpL = 0;
+  private sharpR = 0;
 
   private readonly buf: Snap[] = [];
   /** Отработавшие снапшоты возвращаем сюда — не мусорим каждый тик. */
@@ -659,6 +664,8 @@ export class RemoteAvatar implements Hittable {
     // Эгида — свой вид щита (псевдо-тир "aegis", см. aegisTier/makeWeaponMesh).
     this.wantL = [p.leftCls, aegisTier(p.leftCls, p.leftTier, p.leftAffix)];
     this.wantR = [p.rightCls, aegisTier(p.rightCls, p.rightTier, p.rightAffix)];
+    this.sharpL = sharpPctOfText(p.leftAffix);
+    this.sharpR = sharpPctOfText(p.rightAffix);
     this.animSet = classAnimSet(p.leftCls, p.rightCls);
     this.syncFishing(p.fishing === 1);
     this.wantKeyL = keyOf(this.wantL);
@@ -1236,6 +1243,10 @@ export class RemoteAvatar implements Hittable {
     // Ключи считаются один раз при приходе состояния (push), а не строкой каждый кадр (мусор для GC).
     if (this.wantKeyL !== this.gearKeyL) this.gearL = this.fitGear("left", this.wantL, this.gearL, () => (this.gearKeyL = this.wantKeyL), this.gearKeyL, this.wantKeyL);
     if (this.wantKeyR !== this.gearKeyR) this.gearR = this.fitGear("right", this.wantR, this.gearR, () => (this.gearKeyR = this.wantKeyR), this.gearKeyR, this.wantKeyR);
+    // Свечение в руках — по точкам атаки; щит своё не меняет. Двуручное (лук, посох) может держать строку роллов в любой руке.
+    const both = Math.max(this.sharpL, this.sharpR);
+    if (this.gearL && this.wantL[0] !== "shield") applySharpGlow(this.gearL, isTwoHanded(this.wantL[0]) ? both : this.sharpL);
+    if (this.gearR && this.wantR[0] !== "shield") applySharpGlow(this.gearR, isTwoHanded(this.wantR[0]) ? both : this.sharpR);
   }
 
   private fitGear(

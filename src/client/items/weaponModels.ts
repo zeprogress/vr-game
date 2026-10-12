@@ -12,8 +12,9 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
 import { containerFor, recolorFlat } from "../world/models";
 import { flattenToVertexColors } from "./flatMerge";
-import { weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { sharpGlowMul, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { radialGlowTexture } from "../ui/GlowSprite";
+import { sharpGlowTune, sharpGlowVersion } from "./sharpGlowTune";
 
 /**
  * Фиолетовое пульсирующее свечение уникального оружия — плоский спрайт, который
@@ -96,6 +97,11 @@ function glowMaterial(scene: Scene, amp: number, col: Color3 = GLOW_COL.legendar
   return mat;
 }
 
+/** Базовое свечение шелла, как его создали: сила и цвет — чтобы менять по точкам без пересборки. */
+const glowBase = new WeakMap<Mesh, { amp: number; col: Color3 }>();
+/** Последняя применённая прибавка по корню оружия (и номер настройки): пересчёт только при смене. */
+const sharpApplied = new WeakMap<TransformNode, { pct: number; ver: number }>();
+
 export function attachLegendaryGlow(
   scene: Scene,
   host: Mesh,
@@ -108,12 +114,42 @@ export function attachLegendaryGlow(
   at: Vector3 = Vector3.Zero(),
 ): void {
   const shell = MeshBuilder.CreatePlane("legGlow", { size: radius * 2 }, scene);
-  shell.material = glowMaterial(scene, Math.round(intensity * (tier === "ruby" ? 1.4 : 1) * 1000) / 1000, GLOW_COL[tier]);
+  const amp = Math.round(intensity * (tier === "ruby" ? 1.4 : 1) * 1000) / 1000;
+  shell.material = glowMaterial(scene, amp, GLOW_COL[tier]);
+  glowBase.set(shell, { amp, col: GLOW_COL[tier] });
   shell.isPickable = false;
   shell.parent = host;
   shell.position.copyFrom(at);
   // Развёрнут шейдером, а рамка у плоскости остаётся «плашмя»: не даём отсечь его по ней.
   shell.alwaysSelectAsActiveMesh = true;
+}
+
+/** Забыть применённую прибавку: у корня появилось новое свечение (лук стал уникальным) — пересчитаем в ближайший кадр. */
+export function forgetSharpGlow(root: TransformNode): void {
+  sharpApplied.delete(root);
+}
+
+/**
+ * Свечение оружия в руке по точкам атаки: без прибавки не горит, с каждой точкой светит
+ * сильнее (сила) и шире (радиус); на +10 точках — как было (sharpGlowMul). Зовётся каждый
+ * кадр, но пересчитывает только при смене прибавки или настройки (sharpGlowTune). Щит сюда
+ * не передаём; лут на земле свечение не меняет — ему эту функцию не зовут.
+ */
+export function applySharpGlow(root: TransformNode, pct: number): void {
+  const ver = sharpGlowVersion();
+  const done = sharpApplied.get(root);
+  if (done && done.pct === pct && done.ver === ver) return;
+  sharpApplied.set(root, { pct, ver });
+  const strength = sharpGlowMul(pct, sharpGlowTune.strength);
+  const radius = sharpGlowMul(pct, sharpGlowTune.radius);
+  for (const c of root.getChildMeshes(false, (n) => glowBase.has(n as Mesh))) {
+    const g = c as Mesh;
+    const base = glowBase.get(g)!;
+    g.isVisible = pct > 0;
+    if (pct <= 0) continue;
+    g.scaling.setAll(radius);
+    g.material = glowMaterial(g.getScene(), Math.round(base.amp * strength * 1000) / 1000, base.col);
+  }
 }
 
 /**

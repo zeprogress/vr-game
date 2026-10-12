@@ -55,6 +55,11 @@ if (params.get("groundglow") === "1") {
   void import("./ui/GroundGlowTuner").then(({ mountGroundGlowTuner }) => mountGroundGlowTuner());
 }
 
+// ?sharpglow=1 — панель живой настройки свечения оружия по точкам атаки (сила и радиус).
+if (params.get("sharpglow") === "1") {
+  void import("./ui/SharpGlowTuner").then(({ mountSharpGlowTuner }) => mountSharpGlowTuner());
+}
+
 // ?grasstune=1 — панель живой настройки света/вида травы (ближней и дальней).
 if (params.get("grasstune") === "1") {
   void import("./ui/GrassTuner").then(({ mountGrassTuner }) => mountGrassTuner());

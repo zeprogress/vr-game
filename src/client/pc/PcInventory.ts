@@ -4,7 +4,7 @@ import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, FAV_MAX, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, FAV_MAX, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import type { PcInvActMsg, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
@@ -958,6 +958,10 @@ export class PcInventory {
         cell.style.position = "relative";
         cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
       }
+      if (w && attackPoints(w) > 0) {
+        cell.style.position = "relative";
+        cell.append(div("pcinv-sb", `⚒${attackPoints(w)}`));
+      }
       if (w?.fav) {
         cell.style.position = "relative";
         cell.append(div("pcinv-fav on", glyph("ui.fav")));
@@ -1037,6 +1041,7 @@ export class PcInventory {
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
+    if (attackPoints(w) > 0) c.append(div("pcinv-sb", `⚒${attackPoints(w)}`));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
     if (!this.hooks.touch || w.fav) c.append(this.favStar(!!w.fav, () => this.toggleFav(w)));
     // ПК (страница и игра): клик — меню действий, как тап на телефоне; правый клик в игре — надеть.
@@ -1099,7 +1104,7 @@ export class PcInventory {
       const sc = div("pcinv-score");
       sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
       right.append(sc);
-      const atk = attackLabel(w.cls, w.tier);
+      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
       if (atk) right.append(div("pcinv-tipatk", atk));
       w.ench.forEach((a, i) => {
         const row = div("pcinv-erow");
@@ -1590,7 +1595,7 @@ export class PcInventory {
     this.tip.innerHTML = "";
     this.tip.append(div(`pcinv-name t-${tier}`, name));
     this.tip.append(div("pcinv-small", TIER_LOOK[tier]?.name ?? tier));
-    const atk = attackLabel(cls, tier);
+    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0);
     if (atk) this.tip.append(div("pcinv-tipatk", atk));
     if (w && w.affixes.length) {
       const sc = div("pcinv-score");
@@ -1966,6 +1971,7 @@ function injectInvStyle(): void {
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
 .pcinv-q { position:absolute; left:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-sb { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#9fe39a; text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
 .pcinv-fav { position:absolute; right:2px; bottom:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
 .pcinv-fav.on { opacity:1; }

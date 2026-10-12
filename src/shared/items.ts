@@ -1120,6 +1120,30 @@ export function attackPointBonus(n: number): number {
   return ATTACK_POINT_CAP * (1 - ATTACK_POINT.gainDecay ** n);
 }
 
+/** Прибавка от n точек в процентах (как в строке роллов и в подписях). */
+export function sharpPctOfPoints(n: number): number {
+  return attackPointBonus(n) * 100;
+}
+
+/** Прибавка в процентах у экземпляра: 0 — щит, не точёное или не уникальное/рубиновое. */
+export function sharpPctOf(w: { cls: string; tier: string; sharp?: number }): number {
+  return attackPointEligible(w) ? sharpPctOfPoints(attackPoints(w)) : 0;
+}
+
+/** Прибавка в процентах из строки роллов в руке («… Точка атаки +25.4%»); строки нет — 0. */
+export function sharpPctOfText(text: string | undefined): number {
+  const m = text?.match(/Точка атаки \+([\d.]+)%/);
+  return m ? Number(m[1]) : 0;
+}
+
+/** Точка отсчёта свечения: +10 удачных точек (≈25,4%) — свечение как раньше. */
+export const SHARP_GLOW_REF_PCT = sharpPctOfPoints(10);
+
+/** Множитель свечения от прибавки: доля от точки отсчёта в степени k (k=1 — пропорционально). Без прибавки — 0. */
+export function sharpGlowMul(pct: number, k: number): number {
+  return pct > 0 ? (pct / SHARP_GLOW_REF_PCT) ** k : 0;
+}
+
 /** Множитель урона от точек одного оружия (1 — точек нет или оружие не точится). */
 export function attackPointMul(w: { cls: string; tier: string; sharp?: number } | null | undefined): number {
   return w && attackPointEligible(w) ? 1 + attackPointBonus(attackPoints(w)) : 1;

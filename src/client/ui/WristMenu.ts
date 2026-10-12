@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -1493,7 +1493,7 @@ export class WristMenu {
       id: `wh:${wp.id}`, x, y, w, h, kind: "cell",
       info: [
         `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""} — нажми: действия`,
-        [attackLabel(wp.cls, wp.tier), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+        [attackLabel(wp.cls, wp.tier, sharpPctOf(wp)), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       ],
       act: () => this.openWarehousePopup(wp),
     });
@@ -1512,6 +1512,15 @@ export class WristMenu {
       ctx.font = "bold 18px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
       ctx.fillText(qualityStarsShort(wp.quality, wp.affixes.length), x + 8, y + 18);
+    }
+    const pts = attackPoints(wp);
+    if (pts > 0) {
+      // Точка атаки за лом — метка «⚒N» в правом верхнем углу (звёздочка — в правом нижнем).
+      ctx.font = "bold 16px system-ui, sans-serif";
+      ctx.fillStyle = "#9fe39a";
+      ctx.textAlign = "right";
+      ctx.fillText(`⚒${pts}`, x + w - 6, y + 18);
+      ctx.textAlign = "left";
     }
     if (eq) {
       ctx.font = "16px system-ui, sans-serif";
@@ -1583,7 +1592,7 @@ export class WristMenu {
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `${wp.fav ? `${glyph("ui.fav")} ` : ""}${name}${wp.quality ? ` ${qualityStars(wp.quality, wp.affixes.length)}` : ""}`,
-      sub: [attackLabel(wp.cls, wp.tier), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
+      sub: [attackLabel(wp.cls, wp.tier, sharpPctOf(wp)), ...(wp.effects ?? []), ...wp.affixes].filter(Boolean).join(", ") || "без роллов",
       color: TIER_COLOR[wp.tier],
       buttons,
     };

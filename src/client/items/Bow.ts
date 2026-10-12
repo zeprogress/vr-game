@@ -3,7 +3,7 @@ import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { type WeaponTier } from "#shared/items";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { attachLegendaryGlow, spawnWeaponModel, tierTint } from "./weaponModels";
+import { attachLegendaryGlow, forgetSharpGlow, spawnWeaponModel, tierTint } from "./weaponModels";
 
 export interface BowParts {
   mesh: Mesh;
@@ -118,6 +118,7 @@ function applyBowTier(root: Mesh, tier: WeaponTier): void {
  */
 export function tintBow(mesh: Mesh, tier: WeaponTier): void {
   applyBowTier(mesh, tier);
+  forgetSharpGlow(mesh); // мог появиться новый слой свечения — прибавку переложим в ближайший кадр
   const parts = partsByRoot.get(mesh);
   if (parts) placeString(parts, tier); // точки тетивы — по плечам этой модели (векторы общие с CombatSystem)
 }

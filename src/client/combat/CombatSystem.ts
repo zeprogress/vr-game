@@ -38,6 +38,7 @@ import type { Side } from "../player/Hands";
 import type { Sfx } from "../audio/Sfx";
 import { createSword } from "../items/Sword";
 import { createClassWeapon } from "../items/classWeapons";
+import { applySharpGlow } from "../items/weaponModels";
 import { DUAL, SKILLS2, WEAPONS2 } from "#shared/classes2";
 import { createStaff } from "../items/Staff";
 import { createPotion, type PotionBottle } from "../items/Potion";
@@ -896,6 +897,13 @@ export class CombatSystem {
   // ---- главный цикл ----
 
   update(dt: number): void {
+    // Свечение оружия в руках — по точкам атаки. Щит своё не меняет; что не в руке — не трогаем.
+    if (this.sharpOf) {
+      for (const it of this.items) {
+        if (it.kind === "shield" || !it.hand) continue;
+        applySharpGlow(it.mesh, Math.max(this.sharpOf(it.hand), it.hand2 ? this.sharpOf(it.hand2) : 0));
+      }
+    }
     const inp = this.player.lastInput;
     const interactEdge = inp.interact && !this.prevInteract;
     const interactReleased = !inp.interact && this.prevInteract;
@@ -1466,6 +1474,8 @@ export class CombatSystem {
   onTakeWorldWeapon: ((id: string, hand: Side | null) => void) | null = null;
   /** Строит меш под класс и уровень (Game передаёт свои фабрики). */
   makeWeaponMesh: ((cls: ItemKind, tier: WeaponTier) => Mesh) | null = null;
+  /** Прибавка точки атаки (в %) у оружия в руке — Game берёт её из строки роллов с сервера (свечение). */
+  sharpOf: ((hand: Side) => number) | null = null;
 
   /** Рука, нанёсшая последний удар. Game берёт её для сообщения серверу. */
   lastHitHand: Side = "right";

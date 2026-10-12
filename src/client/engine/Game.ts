@@ -126,7 +126,8 @@ import type { ActKind, CharMsg, LootItem, MoveMsg, PcInvData, QuestActMsg, Quest
 import type { PlayerState, ZoneState } from "#shared/net/schema";
 import type { Room } from "colyseus.js";
 import { noGuard, type BlockedBy } from "#shared/combat";
-import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, aegisTier, bothHandsCls, FAV_MAX, ITEMS, sharpPctOfText, weaponDef, type ItemId, type WeaponClass, type WeaponTier } from "#shared/items";
+import { sharpGlowTune } from "../items/sharpGlowTune";
 import { BOT, EVENT, PLAYER, POTION_CD, RESPAWN, SKILL, isAdminNick } from "#shared/constants";
 import { BLINK, BOSS, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, SPORE } from "#shared/mobs";
 import { MANA_ENABLED } from "#shared/magic";
@@ -322,6 +323,19 @@ export class Game {
   private sharpen: SharpenPostProcess | null = null;
   private sharpenCam: Camera | null = null;
   private sharpenAmount = 0;
+  /** Прибавка точки атаки у оружия в руках: кэш по строке роллов (пересчёт, когда строка сменилась). */
+  private sharpText: Record<"left" | "right", string> = { left: "", right: "" };
+  private sharpPct: Record<"left" | "right", number> = { left: 0, right: 0 };
+  /** Прибавка точки атаки (в %) для свечения в руке. Панель ?sharpglow=1 может подменить её для проверки. */
+  private heldSharpPct(hand: "left" | "right"): number {
+    if (sharpGlowTune.testPct !== null) return sharpGlowTune.testPct;
+    const text = hand === "left" ? this.net?.self?.leftAffix : this.net?.self?.rightAffix;
+    if ((text ?? "") !== this.sharpText[hand]) {
+      this.sharpText[hand] = text ?? "";
+      this.sharpPct[hand] = sharpPctOfText(text);
+    }
+    return this.sharpPct[hand];
+  }
   private readonly moveMsg: MoveMsg = {
     mode: "flat",
     head: zeros7(),
@@ -416,6 +430,7 @@ export class Game {
       zone.weaponsFaceYaw,
       zone.classHomes,
     );
+    this.combat.sharpOf = (hand) => this.heldSharpPct(hand);
     const report: HitReporter = (id, target, weapon, dx, dz) =>
       this.net?.sendHitMob({ id, target, weapon, hand: this.combat.lastHitHand, dx, dz });
     this.report = report;

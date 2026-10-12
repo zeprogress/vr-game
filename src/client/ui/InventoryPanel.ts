@@ -1,5 +1,5 @@
 import { BAG, ITEMS, type Inventory, type ItemId } from "../player/Inventory";
-import { aegisTier, bothHandsNote, qualityStars, weaponDef } from "#shared/items";
+import { aegisTier, bothHandsNote, qualityStars, sharpPctOf, weaponDef } from "#shared/items";
 import { glyph, itemIcon, weaponIcon } from "#shared/icons";
 import { ATTACK_COLOR, QUALITY_COLOR, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -120,7 +120,7 @@ export class InventoryPanel {
       }
       const aff = el("div", "font-size:11.5px;color:#7db8ff;margin-top:1px;");
       aff.textContent = [...(w.effects ?? []), ...w.affixes].join(", ") || "без роллов";
-      const atk = attackLabel(w.cls, w.tier);
+      const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
       if (atk) {
         const a = el("span", `color:${ATTACK_COLOR};margin-left:6px;font-weight:700;`);
         a.textContent = atk;
