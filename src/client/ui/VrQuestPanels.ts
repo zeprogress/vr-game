@@ -264,7 +264,7 @@ export function drawEnchant(
     const next = attackPointNext(w);
     const n = attackPoints(w);
     ui.rect(PAD, y, bw, 124, VR_UI.card, 14);
-    ui.text("Точка атаки", PAD + 20, y + 14, 28, "#9fe39a", 700);
+    ui.text("Точка атаки", PAD + 20, y + 14, 28, "#ffffff", 700);
     ui.text(`+${fmtPct(attackPointBonus(n) * 100)}% к урону · точек ${n}`, PAD + 20, y + 52, 24, VR_UI.sub);
     if (next) {
       ui.text(`следующая +${fmtPct(next.gain * 100, 2)}% · шанс ${fmtPct(next.chance * 100)}%`, PAD + 20, y + 84, 22, VR_UI.sub);

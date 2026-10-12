@@ -1073,6 +1073,7 @@ export class PcInventory {
     const left = div("pcinv-ench-left");
     const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : ""}`);
     if (w) setIcon(slotEl, w.cls, w.name, w.tier);
+    if (w && attackPoints(w) > 0) slotEl.append(div("pcinv-sb big", `⚒${attackPoints(w)}`));
     slotEl.addEventListener("dragover", (e) => {
       if (this.dragWeapon()) e.preventDefault();
     });
@@ -1141,6 +1142,7 @@ export class PcInventory {
       if (!x.ench.length) continue;
       const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`);
       setIcon(c, x.cls, x.name, x.tier);
+      if (attackPoints(x) > 0) c.append(div("pcinv-sb", `⚒${attackPoints(x)}`));
       c.onclick = () => {
         this.enchId = x.id;
         this.lastResult = null;
@@ -1971,7 +1973,8 @@ function injectInvStyle(): void {
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
 .pcinv-q { position:absolute; left:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
-.pcinv-sb { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#9fe39a; text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-sb { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#ffffff; text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-sb.big { font-size:14px; }
 .pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
 .pcinv-fav { position:absolute; right:2px; bottom:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
 .pcinv-fav.on { opacity:1; }
