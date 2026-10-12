@@ -4876,7 +4876,9 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
     const js = jewelsOf(rec);
     const bag = t ? readBag(t.p) : restoreBag(rec.bag);
-    const r = applyJewelOp(js, op, bagCount(bag, "scrap"));
+    // ★ лимит общий с оружием: у живого героя оружие в рантайме, у офлайн-героя — в записи.
+    const favWeapons = (t ? t.rt.weapons : rec.weapons ?? []).filter((x) => x.fav).length;
+    const r = applyJewelOp(js, op, bagCount(bag, "scrap"), favWeapons);
     if (!r.ok) return { ok: false, text: r.text };
     const patch: Partial<PlayerRecord> = { rings: js.rings, ringOn: js.ringOn, gems: js.gems };
     if (r.scrap) {
@@ -5305,8 +5307,10 @@ export class ZoneRoom extends Room<ZoneState> {
       const list = t ? t.rt.weapons : store.get(`nick:${norm}`)?.weapons;
       const w = list?.find((x) => x.id === id);
       if (!list || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
+      // Лимит ★ общий с кольцами: кольца лежат в записи героя (у живого — та же запись, что у сейва).
+      const favRings = (store.get(t?.rt.token ?? `nick:${norm}`)?.rings ?? []).filter((x) => x.fav).length;
       if (w.fav) delete w.fav;
-      else if (list.filter((x) => x.fav).length >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
+      else if (list.filter((x) => x.fav).length + favRings >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
       else w.fav = true;
       if (t) this.persistNick(norm);
       else store.put(`nick:${norm}`, { weapons: list });

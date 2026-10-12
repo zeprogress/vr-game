@@ -3,7 +3,7 @@ import { MAGIC } from "./magic";
 import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested } from "./attrs2";
 import { glyph } from "./icons";
-import { RUBY, WEAPON_NOUN } from "./items";
+import { RUBY, WEAPON_NOUN, type WeaponClass } from "./items";
 
 export { levelGain };
 
@@ -369,6 +369,17 @@ export function classOf2(left: Weapon2 | "", right: Weapon2 | ""): ClassId | nul
   if (h.includes("sword")) return "warrior";
   return null;
 }
+
+/** Класс, которому принадлежит вид оружия (как classOf2): щит — к воину (меч + щит). Для сортировки «По классу». */
+export const CLASS_OF_WEAPON: Record<WeaponClass, ClassId> = {
+  sword: "warrior",
+  shield: "warrior",
+  dagger: "assassin",
+  spear: "spearman",
+  hammer: "battlemage",
+  bow: "archer",
+  staff: "support",
+};
 
 // ---------------------------------------------------------------- умения
 

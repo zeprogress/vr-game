@@ -2074,7 +2074,9 @@ export class Game {
       case "fav": {
         const list = this.net?.warehouse?.list ?? [];
         const w = list.find((x) => x.id === a.id);
-        if (w && !w.fav && list.filter((x) => x.fav).length >= FAV_MAX) {
+        // Лимит ★ общий с кольцами (их данные — в окне инвентаря).
+        const rings = this.pcInvData?.jewels?.rings ?? [];
+        if (w && !w.fav && list.filter((x) => x.fav).length + rings.filter((x) => x.fav).length >= FAV_MAX) {
           toast(`Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}`);
           return;
         }
