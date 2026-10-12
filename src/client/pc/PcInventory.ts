@@ -1943,9 +1943,9 @@ function injectInvStyle(): void {
 .pcinv-ebtn:disabled { opacity:.45; cursor:default; }
 .pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
 .pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
-.pcinv-q { position:absolute; right:2px; bottom:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
+.pcinv-q { position:absolute; left:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
 .pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
-.pcinv-fav { position:absolute; left:2px; top:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
+.pcinv-fav { position:absolute; right:2px; bottom:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
 .pcinv-fav.on { opacity:1; }
 .pcinv-cell:hover .pcinv-fav { opacity:1; }
 .pcinv-cell.big .pcinv-fav { pointer-events:none; }

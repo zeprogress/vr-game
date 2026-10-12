@@ -11,7 +11,7 @@ import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTextur
 import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
-import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { AEGIS_NAME, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
 import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
@@ -1372,7 +1372,7 @@ export class WristMenu {
     ctx.strokeStyle = st.stroke || TIER_COLOR[r.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawRing(ctx, r.tier, r.gems, x + 6, y + 8, 52);
+    this.drawRing(ctx, r.tier, r.gems, x + 6, y + 22, 52);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[r.tier];
     ctx.fillText(this.shortName(ringName(r)), x + 62, y + 8);
@@ -1382,12 +1382,12 @@ export class WristMenu {
     if (slot >= 0) {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
-      ctx.fillText(`надето: слот ${slot + 1}`, x + 8, y + h - 24);
+      ctx.fillText(`надето: слот ${slot + 1}`, x + 8, y + h - 6);
     }
     if (r.fav) {
       ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(glyph("ui.fav"), x + 8, y + 22);
+      ctx.fillText(glyph("ui.fav"), x + w - 18, y + h - 6);
     }
   }
 
@@ -1503,25 +1503,26 @@ export class WristMenu {
     ctx.strokeStyle = st.stroke || TIER_COLOR[wp.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 8, 52, TIER_COLOR[wp.tier]);
+    this.drawIconAt(ctx, weaponIcon(wp.cls, wp.name === AEGIS_NAME, wp.tier), x + 6, y + 22, 52, TIER_COLOR[wp.tier]);
     ctx.font = "bold 17px system-ui, sans-serif";
     ctx.fillStyle = TIER_COLOR[wp.tier];
     ctx.fillText(this.shortName(name), x + 62, y + 8);
     if (wp.quality) {
-      ctx.font = "bold 22px system-ui, sans-serif";
+      // Оценка — в левом верхнем углу, числом (как на ПК); полная «оценка N» — в подсказке.
+      ctx.font = "bold 18px system-ui, sans-serif";
       ctx.fillStyle = "#f2c74b";
-      ctx.fillText(qualityStars(wp.quality, wp.affixes.length), x + 62, y + 36);
+      ctx.fillText(qualityStarsShort(wp.quality, wp.affixes.length), x + 8, y + 18);
     }
     if (eq) {
       ctx.font = "16px system-ui, sans-serif";
       ctx.fillStyle = "#7ee081";
-      ctx.fillText(eq, x + 8, y + h - 24);
+      ctx.fillText(eq, x + 8, y + h - 6);
     }
     if (wp.fav) {
-      // ★ — в левом верхнем углу иконки (как на ПК-инвентаре).
+      // ★ — в правом нижнем углу (как на ПК-инвентаре).
       ctx.font = "bold 20px system-ui, sans-serif";
       ctx.fillStyle = "#ffd166";
-      ctx.fillText(glyph("ui.fav"), x + 8, y + 22);
+      ctx.fillText(glyph("ui.fav"), x + w - 18, y + h - 6);
     }
   }
 
