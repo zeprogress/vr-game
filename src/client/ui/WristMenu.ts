@@ -1911,7 +1911,6 @@ export class WristMenu {
   private drawGem(ctx: CanvasRenderingContext2D, gk: string, x: number, y: number, s: number): void {
     const a = gemArt(gk);
     if (!a) return;
-    if (a.under) this.drawSvgAt(ctx, a.under, x, y, s);
     const k = a.scale;
     this.drawImgAt(ctx, a.src, x + (s * (1 - k)) / 2, y + (s * (1 - k)) / 2, s * k);
     if (a.over) this.drawSvgAt(ctx, a.over, x, y, s);

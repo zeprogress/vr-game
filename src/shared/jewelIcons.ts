@@ -8,14 +8,13 @@
  *  - Кольцо — картинка тира; камни в гнёздах — маленькими значками сверху
  *    (пустое гнездо — тёмный кружок).
  */
-import { GEM_LOOK, parseGem, RING_LOOK, type GemKey, type RingTier } from "./jewels";
+import { parseGem, RING_LOOK, type GemKey, type RingTier } from "./jewels";
 
 const BASE = "/icons/jewels/";
 
-/** Камень: картинка и наложения под/над ней (svg, viewBox 0 0 100 100; "" — нет). */
+/** Камень: картинка и наложение над ней (svg, viewBox 0 0 100 100; "" — нет). Свечения под картинкой нет (убрано 2026-10-12). */
 export interface GemArt {
   src: string;
-  under: string;
   over: string;
   /** Размер камня в ячейке (доля): 1 ур. — поменьше, к 10 — во всю ячейку. */
   scale: number;
@@ -36,27 +35,11 @@ export function gemArt(k: GemKey): GemArt | null {
   const g = parseGem(k);
   if (!g) return null;
   const src = `${BASE}${g.attr}${Math.min(3, g.lv)}.webp`;
-  const c = GEM_LOOK[g.attr];
-  let under = "";
+  // Свечение под камнем убрано (2026-10-12, по просьбе): уровень видно по размеру, искрам и короне.
   let over = "";
-  // Сияние цвета камня — ярче и шире с каждым уровнем (заметная разница уровень к уровню).
-  const glow = Math.min(0.95, 0.12 + g.lv * 0.09);
-  under += `<defs><radialGradient id="gg"><stop offset="0" stop-color="${c.c}" stop-opacity="${glow.toFixed(2)}"/><stop offset=".6" stop-color="${c.c}" stop-opacity="${(glow * 0.45).toFixed(2)}"/><stop offset="1" stop-color="${c.c}" stop-opacity="0"/></radialGradient></defs><circle cx="50" cy="50" r="${Math.min(50, 26 + g.lv * 3)}" fill="url(#gg)"/>`;
-  // Без ободков (2026-10-07: убраны по просьбе) — уровень видно по размеру, сиянию, искрам и короне.
-  if (g.lv >= 6) {
-    under += `<defs><radialGradient id="ga"><stop offset=".55" stop-color="#ffd166" stop-opacity="0"/><stop offset=".75" stop-color="#ffd166" stop-opacity=".45"/><stop offset="1" stop-color="#ffd166" stop-opacity="0"/></radialGradient></defs><circle cx="50" cy="50" r="50" fill="url(#ga)"/>`;
-    if (g.lv >= 10) {
-      for (let i = 0; i < 12; i++) {
-        const a = (i / 12) * Math.PI * 2 + 0.13;
-        const r1 = i % 2 ? 46 : 50;
-        const p = (r: number, d: number): string => `${(50 + Math.sin(a + d) * r).toFixed(1)},${(50 - Math.cos(a + d) * r).toFixed(1)}`;
-        under += `<polygon points="${p(30, -0.07)} ${p(r1, 0)} ${p(30, 0.07)}" fill="${c.l}" opacity=".85"/>`;
-      }
-      over += `<path d="M38 12 L41 3 L45.5 9 L50 1 L54.5 9 L59 3 L62 12 Z" fill="#ffd166" stroke="#7a4a08" stroke-width="1.2"/>`;
-    }
-  }
+  if (g.lv >= 10) over += `<path d="M38 12 L41 3 L45.5 9 L50 1 L54.5 9 L59 3 L62 12 Z" fill="#ffd166" stroke="#7a4a08" stroke-width="1.2"/>`;
   if (g.lv >= 4) over += sparkle(82, 18, 8) + (g.lv >= 5 ? sparkle(18, 82, 6) : "") + (g.lv >= 8 ? sparkle(84, 78, 5) : "");
-  return { src, under: svg(under), over: svg(over), scale: gemScale(g.lv) };
+  return { src, over: svg(over), scale: gemScale(g.lv) };
 }
 
 /** Кольцо: картинка тира и камни в гнёздах (null — пустое гнездо). */
@@ -79,7 +62,7 @@ export function gemHtml(k: GemKey): string {
   const sv = (s: string): string => (s ? s.replace("<svg ", `<svg style="${LAYER}" `) : "");
   const pad = (((1 - a.scale) / 2) * 100).toFixed(1);
   const img = `position:absolute;left:${pad}%;top:${pad}%;width:${(a.scale * 100).toFixed(1)}%;height:${(a.scale * 100).toFixed(1)}%;object-fit:contain;pointer-events:none`;
-  return `<span style="position:relative;display:block;width:100%;height:100%">${sv(a.under)}<img src="${a.src}" alt="" draggable="false" style="${img}">${sv(a.over)}</span>`;
+  return `<span style="position:relative;display:block;width:100%;height:100%"><img src="${a.src}" alt="" draggable="false" style="${img}">${sv(a.over)}</span>`;
 }
 
 /** Где на значке кольца рисовать камень гнезда i из n (доли размера: x, y, размер). */
