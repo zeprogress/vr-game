@@ -210,7 +210,7 @@ export interface PcInvWeapon {
   quality: number;
   /** Сколько лома даст разборка. */
   scrap: number;
-  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — ×100). */
+  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
   ench: { label: string; points: number; of: number; max: boolean; chance: number; cost: number }[];
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
