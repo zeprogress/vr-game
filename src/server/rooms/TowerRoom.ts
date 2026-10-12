@@ -29,7 +29,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
-import { AFFIX, BOT, BOW, STAFF_CRIT_MULT, SWORD_CRIT_MULT, WEAPON_DROP_MUL } from "#shared/constants";
+import { AFFIX, BOT, BOW, STAFF_CRIT_MULT, SWORD_CRIT_MULT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
 const SHOOT_RANGE = 8;
@@ -748,7 +748,7 @@ export class TowerRoom extends Room<TowerState> {
     const isFinal = floor >= TOWER.floors;
     const dropped = isFinal || Math.random() < Math.min(1, towerWeaponChance(floor) * WEAPON_DROP_MUL);
     if (!dropped) return;
-    const legendaryChance = isFinal ? 0.6 : towerLegendaryShare(floor);
+    const legendaryChance = (isFinal ? 0.6 : towerLegendaryShare(floor)) * UNIQUE_DROP_MUL;
     const tier: WeaponTier = Math.random() < legendaryChance ? "legendary" : "gold";
     // Часть уникальных наград — Эгида (щит вместо оружия класса); на последнем этаже — ещё и сверху.
     if (tier === "legendary" && Math.random() < TOWER.aegisShare) this.drops.push(rollAegisInstance());

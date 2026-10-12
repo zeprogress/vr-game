@@ -74,7 +74,7 @@ import {
   type PcInvData,
   type AutoGoMsg,
 } from "#shared/net/messages";
-import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD } from "#shared/constants";
+import { ADMIN_NICK, isAdminNick, advanceHour, SHIELD, BOW, COMBAT, BOT, STAFF_CRIT_MULT, SWORD_CRIT_MULT, DAYCYCLE, CAMPFIRE, DROP_CHANCE, PLAYER, PLAYER_HP, POTION_CD, respecCostFor, RESPEC_ENABLED, PVP, EVENT, LAKE, RESPAWN, SKILL, SPECTATOR_KEY, STREAM_NICKS, TWITCH_CHANNEL, WORLD, UNIQUE_DROP_MUL } from "#shared/constants";
 import { SCARECROW, BOSS, MOB, MOB_SWING, ELITE_MOBS, MOB_CAMPS, SPITTER, FREEZE } from "#shared/mobs";
 import { clampToPlay, inPlayArea, RAID, RAID_FIGHT, raidAngle, raidWaypoint } from "#shared/raid";
 import { skillStrike, strikeKindOf, type StrikeHand } from "#shared/strike";
@@ -121,7 +121,6 @@ import {
   takeFromBag,
   enchantInfo,
   enchantApply,
-  isRubyFuel,
   RUBY,
   ENCHANT,
   HEAL_CARRY_MAX,
@@ -989,35 +988,10 @@ function enchantTry(
   w: WeaponInstance,
   idx: number,
   bag: Slot[],
-  weapons: WeaponInstance[],
-  held: ReadonlySet<string | null | undefined>,
-  /** Огранка рубинового: какое уникальное 99 сжечь (выбирает игрок). */
-  fuelId?: string,
 ): InvActResult {
   const info = enchantInfo(w, idx);
   if (!info) return { ok: false, text: "Нет такого ролла." };
   if (info.max) return { ok: false, text: "Этот ролл уже на максимуме." };
-  if (info.ruby) {
-    // Огранка рубина: сгорает выбранное игроком уникальное с оценкой 99 (не избранное и не в руках), при любом исходе.
-    const fi = weapons.findIndex((x) => x.id === fuelId);
-    const cand = weapons[fi];
-    if (!cand) return { ok: false, text: `Выбери уникальное оружие с оценкой ${RUBY.fuelQuality} — его сожжёт огранка.` };
-    if (!isRubyFuel(cand)) return { ok: false, text: `Для огранки годится только уникальное с оценкой ${RUBY.fuelQuality}.` };
-    if (cand.fav) return { ok: false, text: "Это оружие в избранном ★ — сними звёздочку, чтобы сжечь его в огранке." };
-    if (held.has(cand.id)) return { ok: false, text: "Это оружие сейчас в руках — сначала надень другое." };
-    const fuel = weapons[fi];
-    weapons.splice(fi, 1);
-    const up = Math.random() < info.chance;
-    const before = info.points;
-    if (up) enchantApply(w, idx, info.gain ?? 1);
-    const label = affixLabel(w.affixes[idx]);
-    const gained = affixPoints(w.affixes[idx], w) - before;
-    return {
-      ok: true,
-      text: up ? `Огранка удалась (+${gained}): ${label}` : `Не вышло — ${instanceName(fuel)} рассыпалось`,
-      enchant: { id: w.id, idx, up, gain: gained, cost: 1, label },
-    };
-  }
   if (!takeFromBag(bag, "scrap", info.cost)) {
     return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
   }
@@ -2035,7 +2009,7 @@ export class ZoneRoom extends Room<ZoneState> {
       if (msg.act !== "enchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
-      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
+      const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
       client.send(MSG.pcInvResult, r);
       this.sendPcInv(client);
     });
@@ -2918,7 +2892,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const cls = aegis ? "shield" : LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ, aegis);
         if (dropped) winLoot.push({ id: dropped, count: 1, ...(aegis ? { aegis: true } : {}) });
-      } else if (Math.random() < EVENT.invasion.rewardLegendaryChance) {
+      } else if (Math.random() < EVENT.invasion.rewardLegendaryChance * UNIQUE_DROP_MUL) {
         const cls = LEGEND_DROP[Math.floor(Math.random() * LEGEND_DROP.length)];
         const dropped = this.sim.dropWeapon(cls, "legendary", this.eventX, this.eventZ);
         if (dropped) winLoot.push({ id: dropped, count: 1 });
@@ -4706,7 +4680,6 @@ export class ZoneRoom extends Room<ZoneState> {
         quality: weaponQuality(w),
         scrap: scrapValue(w),
         ench: w.affixes.map((a, i) => ({ label: affixLabel(a), ...enchantInfo(w, i)! })),
-        fuel: isRubyFuel(w),
         fav: !!w.fav,
       })),
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
@@ -4990,6 +4963,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const b = this.openInv(to.token);
     if (!a) return { ok: false, text: "Героя нет — напиши !play в чате." };
     if (!b) return { ok: false, text: `Героя «${toNick}» нет — проверь ник.` };
+    // Места у получателя проверяем до того, как забрать у отправителя: остаток сверх сумки иначе пропадёт.
+    if (item.k === "bag") {
+      const room = b.bag.map((s) => ({ ...s }));
+      const left = addToBag(room, item.item, item.n);
+      if (left > 0) return { ok: false, text: `У ${to.nick} не хватает места: поместится ${item.n - left} из ${item.n}.` };
+    }
     const r = takeItems(a, [item]);
     if ("error" in r) return { ok: false, text: r.error };
     giveItems(b, r.taken);
@@ -5367,7 +5346,7 @@ export class ZoneRoom extends Room<ZoneState> {
         const w = t.rt.weapons.find((x) => x.id === id);
         if (!w) return { ok: false, text: "Этого предмета уже нет на складе." };
         const bag = readBag(t.p);
-        const r = enchantTry(w, idx, bag, t.rt.weapons, this.liveHeldIds(t.p, t.rt), fuel);
+        const r = enchantTry(w, idx, bag);
         if (r.enchant) {
           writeBag(t.p, bag);
           this.persistNick(norm);
@@ -5380,7 +5359,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const w = rec?.weapons?.find((x) => x.id === id);
       if (!rec || !w) return { ok: false, text: "Этого предмета уже нет на складе." };
       const bag = restoreBag(rec.bag);
-      const r = enchantTry(w, idx, bag, rec.weapons!, recHeldIds(rec), fuel);
+      const r = enchantTry(w, idx, bag);
       if (r.enchant) store.put(token, { weapons: rec.weapons, bag });
       return r;
     }

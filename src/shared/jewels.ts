@@ -48,7 +48,7 @@ export const RING = {
   scrap: { base: 30, gold: 100, legendary: 300 } as Record<RingTier, number>, // 2026-10-07: ×10
   /** Шанс с обычного моба за убийство; элита/боссы — множитель drop.elite/boss. */
   gemChance: 0.025,
-  ringChance: 0.0025,
+  ringChance: 0.00025, // 2026-10-12: ×0.1 (было 0.0025); мобы, элита и боссы — через chanceMul
   /** Множители шансов: элитный моб лагеря / босс (рейд-босс, Владыка, Багровый). */
   eliteMul: 3,
   bossMul: 40,

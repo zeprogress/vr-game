@@ -210,12 +210,10 @@ export interface PcInvWeapon {
   quality: number;
   /** Сколько лома даст разборка. */
   scrap: number;
-  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки (у рубинового — огранка: ruby, прирост gain). */
-  ench: { label: string; points: number; of: number; max: boolean; chance: number; cost: number; ruby?: boolean; gain?: number }[];
+  /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — ×100). */
+  ench: { label: string; points: number; of: number; max: boolean; chance: number; cost: number }[];
   /** ★ Избранное — не разбирается. */
   fav?: boolean;
-  /** Уникальное с оценкой 99 — годится в огранку рубинового (RUBY.fuelQuality). */
-  fuel?: boolean;
 }
 
 /** Одно задание в окне/трекере. */
@@ -358,7 +356,7 @@ export interface PcInvActMsg {
   act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | JewelAct;
   id: string;
   idx: number;
-  /** Огранка рубинового: id уникального с оценкой 99, которое сгорит (выбирает игрок). */
+  /** Подарок — ник получателя; обмен — список предметов. */
   fuel?: string;
 }
 

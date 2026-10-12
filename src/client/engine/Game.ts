@@ -281,8 +281,6 @@ export class Game {
   private vrEnchId: string | null = null;
   private vrEnchAt: Vector3 | null = null;
   private vrEnchResult: { up: boolean; text: string } | null = null;
-  /** VR-огранка рубинового: выбранное уникальное 99, которое сгорит. */
-  private vrFuelId: string | null = null;
   private pcInvData: PcInvData | null = null;
   /** Когда последний раз пили зелье (performance.now) — общий откат POTION_CD. */
   private lastDrinkAt = -1e9;
@@ -2282,16 +2280,9 @@ export class Game {
             this.vrEnchResult,
             (idx) => {
               this.vrEnchResult = null;
-              const fuel = this.vrFuelId ?? undefined;
-              this.vrFuelId = null; // сгорит — в следующий раз выбрать заново
-              this.net?.sendPcInvAct({ act: "enchant", id, idx, ...(fuel ? { fuel } : {}) });
+              this.net?.sendPcInvAct({ act: "enchant", id, idx });
             },
             () => (this.vrEnchId = null),
-            this.vrFuelId,
-            (fid) => {
-              this.vrFuelId = this.vrFuelId === fid ? null : fid;
-              ep.markDirty();
-            },
           );
         });
       }

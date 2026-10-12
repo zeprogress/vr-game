@@ -1,6 +1,6 @@
 import { RING } from "#shared/jewels";
 import { QUEST } from "#shared/quests";
-import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
+import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, goldDropMulForLevel, WORLD, PLAYER } from "#shared/constants";
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
@@ -3596,7 +3596,7 @@ export class ZoneSim {
       for (let i = rolled.length - 1; i >= 0; i--) {
         const w = ITEMS[rolled[i].id].weapon;
         if (!w || w.tier !== "gold" || Math.random() < goldMul) continue;
-        if (Math.random() < BOSS_ADAPT.goldToLegendary) {
+        if (Math.random() < BOSS_ADAPT.goldToLegendary * UNIQUE_DROP_MUL) {
           const item = WEAPON_DROP[weaponKey(pick(LEGENDARY_CLASSES), "legendary")];
           if (item) rolled[i] = { id: item, count: 1 };
           else rolled.splice(i, 1);
@@ -3604,11 +3604,11 @@ export class ZoneSim {
           rolled.splice(i, 1);
         }
       }
-      if (Math.random() < DROP_CHANCE.bossAegis * WEAPON_DROP_MUL) {
+      if (Math.random() < DROP_CHANCE.bossAegis * UNIQUE_DROP_MUL) {
         const item = WEAPON_DROP[weaponKey("shield", "legendary")];
         if (item) rolled.push({ id: item, count: 1, aegis: true });
       }
-      if (Math.random() < DROP_CHANCE.bossLegendary * WEAPON_DROP_MUL) {
+      if (Math.random() < DROP_CHANCE.bossLegendary * UNIQUE_DROP_MUL) {
         const cls = pick(LEGENDARY_CLASSES);
         const item = WEAPON_DROP[weaponKey(cls, "legendary")];
         if (item) rolled.push({ id: item, count: 1 });
@@ -3621,7 +3621,7 @@ export class ZoneSim {
       // В катакомбах золотого оружия из мобов нет (только легендарное у элитных).
       const goldChance = inCatRegion(m.x, m.z) ? 0 : (elite ? DROP_CHANCE.eliteGold : DROP_CHANCE.regularGold) * goldMul * champMul * WEAPON_DROP_MUL;
       const own = Object.values(ELITE_MOBS).find((d) => d.model === m.model)?.legendaryChance;
-      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * WEAPON_DROP_MUL : 0;
+      const legendaryChance = elite && m.model ? (own ?? DROP_CHANCE.eliteLegendary) * champMul * UNIQUE_DROP_MUL : 0;
       const tier: WeaponTier | null =
         legendaryChance > 0 && Math.random() < legendaryChance
           ? "legendary"
