@@ -14,7 +14,7 @@ import "@babylonjs/core/Meshes/Builders/boxBuilder";
 import "@babylonjs/core/Meshes/Builders/discBuilder";
 
 import { PLAYER, PLAYER_HP, TELEPORT } from "#shared/constants";
-import { clampToPlay, inPlayArea } from "#shared/raid";
+import { clampToPlay, dunWallFor, inPlayArea } from "#shared/raid";
 import { hubSpawnPoint } from "#shared/hub";
 import { canClimb, reachAlong, terrainHeight } from "#shared/terrain";
 import { emptyInput, type InputSource, type InputState } from "../input/InputSource";
@@ -398,7 +398,8 @@ export class PlayerController {
     const tz = pos.z + dz * reach;
 
     const gy = terrainHeight(tx, tz);
-    let valid = inPlayArea(tx, tz);
+    // С поверхности в участок подземелья телепортом не прыгнуть (стена у края), из подземелья — можно.
+    let valid = inPlayArea(tx, tz) && !dunWallFor(tx, tz, pos.y);
     // На крутое телепортом тоже не забраться: путь по прямой должен быть проходим (shared/terrain MAX_CLIMB).
     if (valid) {
       const [rx, rz] = reachAlong(pos.x, pos.z, tx, tz);

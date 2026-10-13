@@ -549,6 +549,24 @@ export function inDunRegion(x: number, z: number): boolean {
   return Math.abs(x - DUN_X) < DUN_HALF + 20 && Math.abs(z - DUN_Z) < DUN_HALF + 20;
 }
 
+/**
+ * Ближайшая точка у края участка подземелья, но уже снаружи: стена для того, кто стоит на поверхности
+ * (пол подземелья глубоко внизу — падать туда нельзя).
+ */
+export function dunPushOut(x: number, z: number): [number, number] {
+  const R = DUN_HALF + 20; // как в inDunRegion
+  const e = 0.05;
+  const opts: [number, number, number][] = [
+    [DUN_X + R + e, z, Math.abs(DUN_X + R - x)],
+    [DUN_X - R - e, z, Math.abs(x - (DUN_X - R))],
+    [x, DUN_Z + R + e, Math.abs(DUN_Z + R - z)],
+    [x, DUN_Z - R - e, Math.abs(z - (DUN_Z - R))],
+  ];
+  let best = opts[0];
+  for (const o of opts) if (o[2] < best[2]) best = o;
+  return [best[0], best[1]];
+}
+
 /** Мировая высота пола; вне проходимого — дно пропасти. */
 export function dunHeight(x: number, z: number): number {
   const h = dunFloorLocal(x - DUN_X, z - DUN_Z);

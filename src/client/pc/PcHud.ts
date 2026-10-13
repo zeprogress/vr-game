@@ -696,11 +696,6 @@ export class PcHud {
     c.fillRect(0, 0, W, W);
     const toX = (x: number): number => (x + half) * k;
     const toY = (z: number): number => (half - z) * k;
-    // граница хода
-    c.strokeStyle = "rgba(234,223,196,0.35)";
-    c.lineWidth = 2;
-    const e = WORLD.playHalf;
-    c.strokeRect(toX(-e), toY(e), e * 2 * k, e * 2 * k);
     this.drawStatic(c, toX, toY, k, true);
     this.drawDynamic(c, d, toX, toY, 1.6);
     arrow(c, toX(d.px), toY(d.pz), d.yaw, 16);

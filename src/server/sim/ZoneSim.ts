@@ -408,6 +408,8 @@ export class Mob {
   readonly shot: MobShot | null;
   /** 40 ур. Скалолом: прыжок на героя (LEAP) и ярость стаи (PACK_FRENZY). */
   readonly leaper: boolean;
+  /** Перезарядка прыжка (EliteMobDef.leapCooldown; без него — LEAP.cooldown). */
+  private readonly leapCooldown: number;
   /** Ходит по земле без скачков (EliteMobDef.walksOnly): плавный ход, без пачек прыжков. */
   readonly walksOnly: boolean;
   readonly packFrenzy: boolean;
@@ -697,6 +699,7 @@ export class Mob {
       freezer?: boolean;
       shot?: MobShot;
       leaper?: boolean;
+      leapCooldown?: number;
       walksOnly?: boolean;
       packFrenzy?: boolean;
       burrower?: boolean;
@@ -775,6 +778,7 @@ export class Mob {
     this.freezer = opts.freezer ?? false;
     this.shot = opts.shot ?? null;
     this.leaper = opts.leaper ?? false;
+    this.leapCooldown = opts.leapCooldown ?? LEAP.cooldown;
     this.walksOnly = opts.walksOnly ?? false;
     this.packFrenzy = opts.packFrenzy ?? false;
     this.burrower = opts.burrower ?? false;
@@ -1588,7 +1592,7 @@ export class Mob {
         this.leapX = np.x;
         this.leapZ = np.z;
         this.leapWindupT = LEAP.windup;
-        this.leapCd = LEAP.cooldown * (0.85 + Math.random() * 0.3);
+        this.leapCd = this.leapCooldown * (0.85 + Math.random() * 0.3);
         this.fx.push({ k: "leapMark", x: np.x, z: np.z, d: LEAP.windup + LEAP.air, r: LEAP.radius });
       }
     }
@@ -2299,7 +2303,7 @@ export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typ
     splitSpeedMul: d.splitSpeedMul, splitReviveSec: d.splitReviveSec, splitXp: d.splitXp, splitChildXp: d.splitChildXp,
     sporeCaster: d.sporeCaster, blinker: d.blinker, lifesteal: d.lifesteal, meleeReach: d.meleeReach, attackCooldown: d.attackCooldown,
     speedMul: d.speedMul, dodge: d.dodge, regen: d.regen, puller: d.puller, charger: d.charger, reflector: d.reflector,
-    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
+    spiker: d.spiker, healer: d.healer, freezer: d.freezer, shot: d.shot, leaper: d.leaper, leapCooldown: d.leapCooldown, walksOnly: d.walksOnly, packFrenzy: d.packFrenzy,
     burrower: d.burrower, stormCaller: d.stormCaller, cloner: d.cloner, parry: d.parry, anchored: d.anchored,
   };
 }

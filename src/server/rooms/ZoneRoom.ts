@@ -669,7 +669,7 @@ const CAT_FOCUS_RU: Record<CatFocus, string> = { auto: "сам выбирает"
 const CAT_POS_RU: Record<CatPos, string> = { auto: "сам", front: "впереди", back: "сзади", flank: "с фланга" };
 const CAT_MODE_RU: Record<CatMode, string> = { auto: "обычно", careful: "осторожно", brave: "агрессивно" };
 
-/** Позиция в сейв: за край карты не пишем, из катакомб — в лагерь (после рестарта там пусто). */
+/** Позиция в сейв: из катакомб — в лагерь (после рестарта там пусто), вне пола подземелья — к его краю. */
 function savePos(x: number, y: number, z: number, edge: number): { x: number; y: number; z: number } {
   if (inCatRegion(x, z)) {
     const sp = hubSpawnPoint();
@@ -1540,7 +1540,7 @@ export class ZoneRoom extends Room<ZoneState> {
       applyXf(p.head, msg.head);
       applyXf(p.handL, msg.handL);
       applyXf(p.handR, msg.handR);
-      // За край карты не пускаем даже кривого клиента; в катакомбах — стены залов.
+      // На поляне границы нет; у подземелья — стена у края, в катакомбах — стены залов.
       this.clampHero(client.sessionId, p);
       const g = msg.guard;
       [rt.guard.sx, rt.guard.sz] = unit2(g?.sx, g?.sz);
@@ -6581,7 +6581,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * Опасные зоны (телеграфы ударов по площади): боты из них выбегают, пока
    * не ударило. Пишут: опасности катакомб, атаки Владыки (волна, дыхание, дождь).
    */
-  private readonly dangers: { x: number; z: number; r: number; until: number }[] = [];
+  private readonly dangers: { x: number; z: number; r: number; until: number; soft?: boolean }[] = [];
   /**
    * Удар по площади с предупреждением (опасности катакомб, «Лунная слеза» рейда): круги в точках
    * (вид v: 0 обвал, 1 пламя, 2 души, 3 лунная слеза), через delay — урон (доля макс. HP) героям
@@ -6695,8 +6695,9 @@ export class ZoneRoom extends Room<ZoneState> {
     };
   }
 
-  private addDanger(x: number, z: number, r: number, sec: number): void {
-    this.dangers.push({ x, z, r, until: this.elapsed + sec });
+  /** soft — метка выпада: бот уходит из круга, но не бросает бой (см. dangerEscape). */
+  private addDanger(x: number, z: number, r: number, sec: number, soft = false): void {
+    this.dangers.push({ x, z, r, until: this.elapsed + sec, soft });
   }
   /** Точка в действующей опасной зоне (кроме зоны skip). */
   private inDanger(x: number, z: number, skip?: { x: number; z: number; r: number }): boolean {
@@ -6710,8 +6711,8 @@ export class ZoneRoom extends Room<ZoneState> {
    * Куда выбегать боту из опасной зоны (null — он не в опасности): прочь от центра самой глубокой зоны,
    * а если там другая опасная зона или нельзя (ok: на арене рейда — не за край) — по дуге вбок.
    */
-  private dangerEscape(x: number, z: number, ok?: (x: number, z: number) => boolean): { x: number; z: number } | null {
-    let worstD: { x: number; z: number; r: number } | null = null;
+  private dangerEscape(x: number, z: number, ok?: (x: number, z: number) => boolean): { x: number; z: number; soft: boolean } | null {
+    let worstD: { x: number; z: number; r: number; soft?: boolean } | null = null;
     let worst = 0;
     for (let i = this.dangers.length - 1; i >= 0; i--) {
       const d = this.dangers[i];
@@ -6727,6 +6728,9 @@ export class ZoneRoom extends Room<ZoneState> {
     }
     if (!worstD) return null;
     const d = worstD;
+    // Мягко — только если под ботом нет жёсткой опасности (огонь, прилив, пламя): от них бежит без боя.
+    const hard = this.dangers.some((o) => !o.soft && this.elapsed <= o.until && Math.hypot(x - o.x, z - o.z) < o.r);
+    const soft = !!d.soft && !hard;
     const dist = Math.hypot(x - d.x, z - d.z);
     const base = dist > 0.05 ? Math.atan2(x - d.x, z - d.z) : d.x + z;
     const R = d.r + 1.2;
@@ -6735,9 +6739,9 @@ export class ZoneRoom extends Room<ZoneState> {
       const pt = { x: d.x + Math.sin(base + da) * R, z: d.z + Math.cos(base + da) * R };
       first ??= pt;
       if ((ok && !ok(pt.x, pt.z)) || this.inDanger(pt.x, pt.z, d)) continue;
-      return pt;
+      return { ...pt, soft };
     }
-    return first;
+    return first ? { ...first, soft } : null;
   }
 
   /** Есть ли живой герой в отряде катакомб. */
@@ -7847,7 +7851,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Катакомбы, режим «агрессивно»: зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
     const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
     const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
-    if (escape) mob = undefined;
+    // Мягкая метка выпада (подземелье) — цель остаётся: бот выходит из круга и продолжает бить.
+    if (escape && !escape.soft) mob = undefined;
     // Подземелье: дом бота внутри (или он там, а дом снаружи) — сперва переход через портал.
     const dunBlocked = !!(escape || catAnchor || bot.eventing || bot.raiding || raidBoss);
     if (dunBlocked) bot.dunTravel = null;
@@ -7912,6 +7917,13 @@ export class ZoneRoom extends Room<ZoneState> {
     const dist = Math.hypot(dxRaw, dzRaw) || 1e-6;
     const dx = dxRaw / dist;
     const dz = dzRaw / dist;
+    // Уворот от мягкой метки: ходим из круга, а прицел и удар — по мобу. Считаем их от моба, не от точки ухода.
+    const aimMob = escape?.soft && chasingMob ? chasingMob : null;
+    const aimDxRaw = aimMob ? aimMob.x - p.head.x : dxRaw;
+    const aimDzRaw = aimMob ? aimMob.z - p.head.z : dzRaw;
+    const aimDist = aimMob ? Math.hypot(aimDxRaw, aimDzRaw) || 1e-6 : dist;
+    const aimDx = aimMob ? aimDxRaw / aimDist : dx;
+    const aimDz = aimMob ? aimDzRaw / aimDist : dz;
     // Куда шагать: напрямую или по маршруту в обход крутых склонов (sim/nav.ts).
     // Прицел и дистанции (удар, «стой тут») — по самой цели (dx/dz, dist).
     let [mdx, mdz] = this.botNavDir(bot, p, tx, tz, dx, dz, dist);
@@ -8048,7 +8060,7 @@ export class ZoneRoom extends Room<ZoneState> {
       (bot.rt.abyssStrike && bot.rt.abyssUntil > this.elapsed ? 1 + ABYSS.move : 1);
     // Дальник отходит, если моб подобрался ближе shootKeepDist.
     const retreat =
-      (ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt);
+      !escape && ((ranged && chasingMob && dist < shootKeep - 1) || (kiter && kiteRetreatAt > kiteBody && dist < kiteRetreatAt));
     const wantSpeed = escape
       ? // Из опасной зоны — со всех ног, даже посреди замаха/эмоции.
         dist > 0.3
@@ -8071,7 +8083,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // бота (по id), чтобы группа не дёргалась в такт.
     let strafeX = 0;
     let strafeZ = 0;
-    if (ranged && raidGapDist < 0 && !retreat && dist <= stopAt && !emoting && bot.swingIn <= 0) {
+    if (ranged && raidGapDist < 0 && !retreat && !escape && dist <= stopAt && !emoting && bot.swingIn <= 0) {
       const s = Math.sin((this.elapsed * 0.5 + strPhase(bot.id) * 10) * Math.PI * 2);
       const strafeSpeed = botSpeed * 0.4 * s;
       strafeX = -dz * strafeSpeed;
@@ -8137,11 +8149,11 @@ export class ZoneRoom extends Room<ZoneState> {
     // Дальник, у которого цель в зоне выстрела, разворачивается на неё — даже
     // на бегу (отход от подобравшегося моба). Иначе он «стрелял спиной»:
     // корпус смотрел по ходу движения, а снаряд летел из затылка.
-    const wantAim = ranged && !!chasingMob && !emoting && dist < shootRange;
+    const wantAim = ranged && !!chasingMob && !emoting && aimDist < shootRange;
     // Ближник у цели (или уже на замахе) — тоже смотрит на неё, а не по ходу:
     // иначе стоя/на шаге в сторону он бил моба боком или спиной.
-    const meleeFace = !ranged && !!chasingMob && !emoting && (dist < attackReach + 1.5 || bot.swingIn > 0);
-    const aimYaw = Math.atan2(dx, dz);
+    const meleeFace = !ranged && !!chasingMob && !emoting && (aimDist < attackReach + 1.5 || bot.swingIn > 0);
+    const aimYaw = Math.atan2(aimDx, aimDz);
     // Идём — смотрим по ходу; целимся (дальник) или бьём вблизи — на моба.
     const facingYaw = wantAim || meleeFace
       ? aimYaw
@@ -8261,7 +8273,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // касается моба через BOT.attackImpact — см. resolveBotHit(). За мечом
     // на земле идём молча — chasingMob пуст, пока loot не подобран.
     // Замах — только когда уже довернулись на цель (не бить спиной).
-    if (!ranged && chasingMob && !emoting && dist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
+    if (!ranged && chasingMob && !emoting && aimDist < attackReach && aimErr < BOT_MELEE_FACE && bot.attackCd <= 0 && bot.swingIn <= 0) {
       // Темп ближнего боя приглушён (meleeSpeedFor) — воины иначе к высоким
       // уровням машут как пропеллер. Анимация на клиенте гонится под тот же
       // множитель (RemoteAvatar тоже зовёт meleeSpeedFor).
@@ -8270,8 +8282,8 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.attackCd = heroAttackInterval(kindB, p.level, p, rolledAtkSpeedMul(p, "right", bot.rt) * this.cryTempo(bot.rt), isDualPair(p.leftCls, p.rightCls));
       bot.swingIn = BOT.attackImpact / atk;
       bot.swingTarget = chasingMob.id;
-      bot.swingDx = dx;
-      bot.swingDz = dz;
+      bot.swingDx = aimDx;
+      bot.swingDz = aimDz;
       // Замах видят все — анимация на модельке бота + звук.
       const relay: ActRelay = { k: "swing", id: bot.id, x: p.head.x, y: p.head.y, z: p.head.z };
       this.broadcast(MSG.act, relay);
@@ -9925,7 +9937,9 @@ export class ZoneRoom extends Room<ZoneState> {
           k: f.k, id: m.id, x: f.x, y: terrainHeight(f.x, f.z), z: f.z, d: f.d, x2: f.x2, z2: f.z2, r: f.r,
         } satisfies ActRelay);
         // Круг-предупреждение полевого моба (прыжок Скалолома, Землерой, молния духа) — боты выбегают.
-        if ((f.k === "leapMark" || f.k === "burrowMark" || f.k === "stormMark") && f.r) this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2);
+        // Выпад скелета в подземелье — мягкий: бот выходит из круга и продолжает бой (см. dangerEscape).
+        if ((f.k === "leapMark" || f.k === "burrowMark" || f.k === "stormMark") && f.r)
+          this.addDanger(f.x, f.z, f.r + 0.6, (f.d ?? 1) + 0.2, f.k === "leapMark" && inDunRegion(f.x, f.z));
         // Ледяной круг (ледяной демон, Лунный аватар) — тоже выбегают.
         if (f.k === "freezeMark") this.addDanger(f.x, f.z, FREEZE.radius + 0.6, (f.d ?? 1) + 0.2);
       }

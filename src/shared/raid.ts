@@ -1,10 +1,10 @@
 import { PLAYER, WORLD } from "./constants";
-import { DUN_X, DUN_Z, dunFloorLocal, dunProject, inDunRegion } from "./dungeon";
+import { DUN_X, DUN_Z, dunFloorLocal, dunProject, dunPushOut, inDunRegion } from "./dungeon";
 
 /**
  * Рейд-босс «Лунный аватар» (тест, 2026-10-07): на плато горы с водопадом — восточнее
- * русла (слева, если смотреть с озера на водопад). Плато за южным краем карты (playHalf),
- * поэтому движение разрешено ещё на нём и на пандусе к нему (см. inPlayArea / clampToPlay).
+ * русла (слева, если смотреть с озера на водопад). Плато за южным краем карты;
+ * движение по поляне не ограничено (см. inPlayArea), на плато и пандус тоже можно.
  * Арена — круг в центре плато, босс в её центре. Механики фаз — по дизайну рейда (этапами).
  */
 export const RAID = {
@@ -216,48 +216,34 @@ export function rampHeight(x: number, z: number, h: number): number {
 
 const HALF = WORLD.playHalf;
 
-/** Можно ли здесь стоять: квадрат карты, плато рейда или пандус к нему. */
+/** Можно ли здесь стоять: на поляне везде (границы нет), в подземелье — только на его полу. */
 export function inPlayArea(x: number, z: number): boolean {
-  if (Math.abs(x) <= HALF && Math.abs(z) <= HALF) return true;
   // Подземелье (shared/dungeon) — далеко за западным краем: стоять можно только на его полу.
   if (inDunRegion(x, z)) return dunFloorLocal(x - DUN_X, z - DUN_Z, 0.3) !== null;
-  const P = RAID_PLATEAU;
-  if (x >= P.x0 && x <= P.x1 && z >= P.z0 && z <= P.z1) return true;
-  const { s, t } = rampLocal(x, z);
-  return s >= 0 && s <= 1 && Math.abs(t) <= RAID_RAMP.half;
+  return true;
+}
+
+/** Ноги выше этого уровня — на поверхности (пол подземелья глубже −440). */
+const SURFACE_FEET_Y = -300;
+
+/** Участок подземелья закрыт для того, кто стоит на поверхности (ноги на уровне feetY): стена у края. */
+export function dunWallFor(x: number, z: number, feetY: number): boolean {
+  return inDunRegion(x, z) && feetY > SURFACE_FEET_Y;
 }
 
 /**
- * Не выпускать точку из разрешённой зоны (inPlayArea): ближайшая точка квадрата карты,
- * плато или полосы пандуса. Единый ограничитель для клиента (движение, телепорт),
- * сервера (боты, сейв) и навигации ботов.
+ * Не выпускать точку из разрешённой зоны: у поляны границы нет. Край подземелья — ограда:
+ * с поверхности туда не войти (стена у края участка), с пола подземелья — только по мостам и уступам.
+ * Единый ограничитель для клиента (движение, телепорт) и сервера (боты, сейв).
  */
 export function clampToPlay(p: { x: number; z: number; y?: number }): void {
-  if (inDunRegion(p.x, p.z)) {
-    // Края мостов и уступов — невидимая ограда; с высоты y (глаза) — только на пол, куда можно шагнуть.
-    [p.x, p.z] = dunProject(p.x, p.z, 0.4, p.y !== undefined ? p.y - PLAYER.eyeHeight : undefined);
+  if (!inDunRegion(p.x, p.z)) return;
+  const feet = p.y !== undefined ? p.y - PLAYER.eyeHeight : undefined;
+  if (feet === undefined || dunWallFor(p.x, p.z, feet)) {
+    [p.x, p.z] = dunPushOut(p.x, p.z);
     return;
   }
-  if (inPlayArea(p.x, p.z)) return;
-  const cands: [number, number][] = [];
-  cands.push([Math.max(-HALF, Math.min(HALF, p.x)), Math.max(-HALF, Math.min(HALF, p.z))]);
-  const P = RAID_PLATEAU;
-  cands.push([Math.max(P.x0, Math.min(P.x1, p.x)), Math.max(P.z0, Math.min(P.z1, p.z))]);
-  const { s, t } = rampLocal(p.x, p.z);
-  const sc = Math.max(0, Math.min(1, s)) * RAMP_LEN;
-  const tc = Math.max(-RAID_RAMP.half, Math.min(RAID_RAMP.half, t));
-  cands.push([RAID_RAMP.ax + RUX * sc + RUZ * tc, RAID_RAMP.az + RUZ * sc - RUX * tc]);
-  let best = cands[0];
-  let bd = Infinity;
-  for (const c of cands) {
-    const d = (c[0] - p.x) ** 2 + (c[1] - p.z) ** 2;
-    if (d < bd) {
-      bd = d;
-      best = c;
-    }
-  }
-  p.x = best[0];
-  p.z = best[1];
+  [p.x, p.z] = dunProject(p.x, p.z, 0.4, feet);
 }
 
 /** На плато рейд-босса. */

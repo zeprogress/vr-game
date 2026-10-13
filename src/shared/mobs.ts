@@ -286,6 +286,8 @@ export interface EliteMobDef {
   shot?: MobShot;
   /** 40 ур. Скалолом: прыжок на героя с кругом-предупреждением и удар по площади (см. LEAP). */
   leaper?: boolean;
+  /** Перезарядка прыжка, с (по умолчанию LEAP.cooldown): больше — реже метки на героя. */
+  leapCooldown?: number;
   /** Ходит по земле без пачек скачков (ноги всегда на земле). Прыжок leaper (LEAP) остаётся механикой: ходок прыгает с дистанции, когда прыжок готов. */
   walksOnly?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
@@ -656,7 +658,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 53, kind: "slime",
     hp: 16000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null,
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
-    leaper: true, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
+    leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
   },
 };
 
