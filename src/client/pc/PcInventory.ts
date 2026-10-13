@@ -803,8 +803,16 @@ export class PcInventory {
     }
     this.body.append(wrap);
     if (cardEl?.classList.contains("float")) {
+      // Затемнение закрывает карточку только по своему нажатию: клик после тапа по вещи
+      // (на телефоне он попадает уже на появившееся затемнение) не должен её сразу закрывать.
       const dim = div("pcinv-dim");
-      dim.onclick = () => this.closeCard();
+      let downOnDim = false;
+      dim.addEventListener("pointerdown", () => (downOnDim = true));
+      dim.addEventListener("pointerup", () => {
+        if (downOnDim) this.closeCard();
+        downOnDim = false;
+      });
+      dim.addEventListener("pointercancel", () => (downOnDim = false));
       this.root.append(dim, cardEl);
     }
   }
@@ -2513,7 +2521,9 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-root.touch .pcinv-curs { gap:12px; padding:0 6px; }
 .pcinv-root.touch .pcinv-cur { font-size:12px; }
 .pcinv-root.touch .pcinv-body { padding:8px; }
-.pcinv-root.touch .pcinv-cell { touch-action:none; }
+/* Телефон: палец на вещи или в сетке сумки — прокручивает сумку (pan-y). Тап открывает карточку; перетаскивание вертикально отключено, надеть — кнопкой в карточке. */
+.pcinv-root.touch .pcinv-cell, .pcinv-root.touch .pcinv-bagrid, .pcinv-root.touch .pcinv-center, .pcinv-root.touch .pcinv-card-body { touch-action:pan-y; }
+.pcinv-bagrid, .pcinv-card-body, .pcinv-center { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
 .pcinv-root.touch .pcinv-tabpnl { padding:14px 14px 16px; }
 .pcinv-root.touch .pcinv-tabh { font-size:19px; margin-bottom:8px; padding-bottom:6px; }
 .pcinv-root.touch .pcinv-arow { gap:8px; padding:8px 10px; }

@@ -6432,7 +6432,11 @@ export class ZoneRoom extends Room<ZoneState> {
           this.broadcast(MSG.act, { k: "catShrine", id, x: p.head.x, y: p.head.y, z: p.head.z, v: CAT_SHRINES.indexOf(sh) } satisfies ActRelay);
         }
       },
-      announce: (m: CatacombMsg) => this.broadcast(MSG.catacomb, m),
+      // Титры катакомб — записавшимся в отряд и зрителям эфира; приглашение на сбор («gather») — всем.
+      announce: (m: CatacombMsg) => {
+        if (m.kind === "gather") return this.broadcast(MSG.catacomb, m);
+        for (const c of this.clients) if (this.spectators.has(c.sessionId) || this.cat.party.has(c.sessionId)) c.send(MSG.catacomb, m);
+      },
       chat: (t) => this.reply(t),
       canOpen: () => this.eventPhase !== "active",
       warp: (id, x, z, fx, fz) => this.catWarp(id, x, z, fx, fz),
@@ -7853,6 +7857,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Каст «Прилива» на рейде важнее: слеза ранит, а прилив убивает — бежим в разрыв.
     // Куда можно выбежать: на арене рейда — внутрь (не за край, в пустоту); в катакомбах — туда, где
     // можно стоять (не в стену: упёршись в неё, бот так и оставался в круге).
+    // Подземелье: та же беда, что в катакомбах — выбегать в стену (не в пол) нельзя, бот там застревал.
     const escOk = onRaidArena
       ? (x: number, z: number): boolean => Math.hypot(x - RAID.x, z - RAID.z) < this.raid.edge - 1.5
       : inCatRegion(p.head.x, p.head.z)
@@ -7860,7 +7865,9 @@ export class ZoneRoom extends Room<ZoneState> {
             const [qx, qz] = catProject(x, z, this.cat.open, PLAYER.radius + 0.3);
             return Math.abs(qx - x) + Math.abs(qz - z) < 0.05;
           }
-        : undefined;
+        : inDunRegion(p.head.x, p.head.z)
+          ? (x: number, z: number): boolean => inDunRegion(x, z) && dunFloorLocal(x - DUN_X, z - DUN_Z, 0.3) !== null
+          : undefined;
     // Катакомбы, режим «агрессивно»: зон умений мобов не обходит — стоит и бьёт (урон получает как обычно).
     const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
     const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
