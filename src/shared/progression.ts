@@ -1,6 +1,7 @@
 import { MELEE, PROGRESSION } from "./constants";
 import { MAGIC } from "./magic";
 import { attrOf, invested } from "./attrs2";
+import { armorBonus } from "./armor";
 import {
   agiTempo2,
   ATTR2,
@@ -84,12 +85,14 @@ export function holdsOneItem(leftCls: string, rightCls: string): boolean {
  * (вдобавок к PLAYER_HP.regen вне боя). Ролл щита «Регенерация» — сверху.
  */
 export function hpRegenFrac(a: AttrsIn): number {
-  return invested(attrOf(a, "con")) * ATTR2.con.regen;
+  // Регенерация от брони — складывается с телосложением (доля макс. HP в секунду).
+  return invested(attrOf(a, "con")) * ATTR2.con.regen + armorBonus(a, "regen");
 }
 
 /** Доля урона, гасимая физ. бронёй (ТЕЛ). */
 export function armorFrac(a: AttrsIn): number {
-  return physArmor2(a);
+  // Физ. защита брони (shared/armor.ts) множится с бронёй от телосложения.
+  return 1 - (1 - physArmor2(a)) * (1 - armorBonus(a, "physDef"));
 }
 
 /** Шанс увернуться от любой атаки (УДЧ); один предмет в руках — выше; кинжал в руке — врождённый уворот ассасина. */

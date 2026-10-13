@@ -2,6 +2,7 @@ import { AFFIX, PROGRESSION } from "./constants";
 import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested } from "./attrs2";
 import { ringResist } from "./jewels";
+import { armorBonus } from "./armor";
 
 /**
  * Магия (этап 14). Всё считает сервер: ману, кулдаун, урон, снаряд.
@@ -126,7 +127,9 @@ export function magicResistFrac(a: MagicAttrs): number {
   const base = (ATTR2.wis.resistMax * n) / (n + ATTR2.wis.resistK);
   // Надетые кольца (PlayerState.gb.rings, shared/jewels.ts): по RING.mres каждое, множатся.
   const rings = (a as { gb?: { rings?: number } }).gb?.rings ?? 0;
-  return rings > 0 ? 1 - (1 - base) * (1 - ringResist(rings)) : base;
+  const withRings = rings > 0 ? 1 - (1 - base) * (1 - ringResist(rings)) : base;
+  // Маг. защита брони (shared/armor.ts) — множится с остальным.
+  return 1 - (1 - withRings) * (1 - armorBonus(a, "magDef"));
 }
 
 /** Множитель лечения зельями: +2% за каждый подъём ИНТ (сила лечения — от интеллекта). */

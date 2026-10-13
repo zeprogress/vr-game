@@ -1,3 +1,4 @@
+import type { ArmorStat } from "./armor";
 import { BOW, CAMPFIRE, EVENT, PLAYER_HP, SHIELD, SWORD_CRIT_MULT, STAFF_CRIT_MULT } from "./constants";
 import { SCROLL } from "./shop";
 import { fireboltDamage } from "./magic";
@@ -89,6 +90,8 @@ export interface HeroStatRow {
 
 /** Минимальный набор полей, нужный для расчёта — общий для PlayerState и записи в PlayerStore. */
 export interface HeroStatInput {
+  /** Бонусы надетой брони (PlayerState.ab, shared/armor.ts): здоровье, защиты, регенерация, уворот. */
+  ab?: Partial<Record<ArmorStat, number>>;
   level: number;
   str: number;
   agi: number;

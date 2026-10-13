@@ -98,6 +98,8 @@ export const MSG = {
   ttsPlay: "ttsp",
   /** клиент -> сервер: действие со складом оружия из меню (в руку / скинуть на землю / разобрать). */
   warehouseAct: "wact",
+  /** клиент -> сервер: надеть / снять / разобрать / выбросить броню из сумки (shared/armor.ts). */
+  armorAct: "aa",
   /** сервер -> все: топ-5 по лучшему этажу Охотничьей башни — для оверлея. */
   catBoard: "ctop",
   /** сервер -> все: живые позиции мобов текущего забега башни (мировые коорд.), для визуала. */
@@ -198,6 +200,38 @@ export interface KillFeedMsg {
 }
 
 /** Оружие на складе для ПК-окна снаряжения (с ценами заточки и лома). */
+/** Действие с бронёй: надеть / снять (часть в слоте), разобрать на лом, выбросить на землю. */
+export interface ArmorActMsg {
+  id: string;
+  act: "wear" | "unwear" | "scrap" | "drop" | "fav";
+}
+
+/** Строка заточки (одна на ролл у оружия, одна на часть брони): очки, максимум, шанс и цена попытки в ломе. */
+export interface PcEnchRow {
+  label: string;
+  points: number;
+  of: number;
+  max: boolean;
+  chance: number;
+  cost: number;
+}
+
+/** Часть брони в сумке: что за часть, какой стат и подпись для показа. */
+export interface PcInvArmor {
+  id: string;
+  part: "helm" | "chest" | "gloves" | "legs" | "boots";
+  stat: "hp" | "physDef" | "magDef" | "regen" | "dodge";
+  pts: number;
+  /** Лом за разбор. */
+  scrap: number;
+  /** Подпись, например «Шлем · Здоровье +2.3%». */
+  label: string;
+  /** Заточка: одна строка — свой стат (как у оружия по роллам). */
+  ench: PcEnchRow[];
+  /** ★ Избранное. */
+  fav?: boolean;
+}
+
 export interface PcInvWeapon {
   id: string;
   cls: WeaponClass;
@@ -211,7 +245,7 @@ export interface PcInvWeapon {
   /** Сколько лома даст разборка. */
   scrap: number;
   /** По каждому аффиксу: очки, максимум ли, шанс и цена заточки в ломе (у рубинового — × RUBY.enchantCostMul). */
-  ench: { label: string; points: number; of: number; max: boolean; chance: number; cost: number }[];
+  ench: PcEnchRow[];
   /** Удачных точек атаки за лом (уникальное и рубиновое). */
   sharp?: number;
   /** ★ Избранное — не разбирается. */
@@ -279,7 +313,7 @@ export interface QuestData {
 
 /** Предмет в окне обмена: что за предмет (для иконки), сколько (стопка — число, у остального 1). */
 export interface TradeItemView {
-  k: "weapon" | "ring" | "gem" | "bag";
+  k: "weapon" | "ring" | "gem" | "bag" | "armor";
   name: string;
   n: number;
   cls?: string;
@@ -287,6 +321,8 @@ export interface TradeItemView {
   gems?: (string | null)[];
   key?: string;
   item?: string;
+  /** Для брони — часть (иконка). */
+  part?: "helm" | "chest" | "gloves" | "legs" | "boots";
 }
 
 /** Рубиновое на складе, которое можно обменять на другой класс (по строке на оружие). */
@@ -323,6 +359,9 @@ export interface QuestActMsg {
 export interface PcInvData {
   weapons: PcInvWeapon[];
   equipped: { left: string | null; right: string | null };
+  /** Броня в сумке (все части, и надетые тоже) и что надето в каждом слоте (id части). */
+  armor?: PcInvArmor[];
+  armorWorn?: Partial<Record<"helm" | "chest" | "gloves" | "legs" | "boots", string>>;
   potions: number;
   scrap: number;
   fish: number;
@@ -355,7 +394,7 @@ export interface PcInvData {
 
 export interface PcInvActMsg {
   /** title — надеть титул (id = название, "" — снять); fav — звёздочка «избранное» у оружия id; scrapAll — разобрать всё, кроме избранного и надетого. */
-  act: "enchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
+  act: "enchant" | "armorEnchant" | "stat" | "respec" | "title" | "skills" | "fav" | "scrapAll" | "gift" | "giftSeen" | "tradeOpen" | "tradeAdd" | "tradeRemove" | "tradeConfirm" | "tradeCancel" | "sharpen" | JewelAct;
   id: string;
   idx: number;
   /** Подарок — ник получателя; обмен — список предметов. */

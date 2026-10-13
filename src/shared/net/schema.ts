@@ -30,6 +30,15 @@ export class GemBonusSync extends Schema {
   @type("uint8") rings = 0;
 }
 
+/** Суммы бонусов надетой брони по статам (доли; регенерация — доля макс. HP в секунду). */
+export class ArmorBonusSync extends Schema {
+  @type("float32") hp = 0;
+  @type("float32") physDef = 0;
+  @type("float32") magDef = 0;
+  @type("float32") regen = 0;
+  @type("float32") dodge = 0;
+}
+
 export class PlayerState extends Schema {
   @type("string") nick = "";
   @type("string") mode: PlayerMode = "flat";
@@ -115,6 +124,8 @@ export class PlayerState extends Schema {
   @type("uint8") cryKind = 0;
   /** Кольца и камни: прибавка к атрибутам (формулы читают через attrOf) и число надетых колец. */
   @type(GemBonusSync) gb = new GemBonusSync();
+  /** Бонусы надетой брони (shared/armor.ts): синхронизируются, чтобы считать здоровье и защиту. */
+  @type(ArmorBonusSync) ab = new ArmorBonusSync();
 }
 
 export type MobKind = "slime" | "spitter" | "boss" | "shard";

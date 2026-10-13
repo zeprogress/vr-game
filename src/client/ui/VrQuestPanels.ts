@@ -228,26 +228,31 @@ export function drawEnchant(
   close: () => void,
 ): void {
   const w = d?.weapons.find((x) => x.id === id) ?? null;
+  // Броня — одна строка: свой стат, шкала и цена как у оружия.
+  const arm = w ? undefined : d?.armor?.find((x) => x.id === id);
   header(ui, "Заточка");
   ui.button("close", "✕", ui.W - PAD - 70, 30, 70, 56, close);
   // Лом (или уникальные 99 у рубинового) — левее крестика (раньше рисовался под ним и не читался).
   if (d) ui.text(`лом ${d.scrap}`, ui.W - PAD - 90, 42, 36, VR_UI.gold, 800, "right");
-  if (!d || !w) {
+  if (!d || (!w && !arm)) {
     ui.text(d ? "Предмет не найден на складе" : "Загрузка…", PAD, 120, 30, VR_UI.dim);
     return;
   }
-  const tierColor = TIER_LOOK[w.tier as WeaponTier]?.color ?? VR_UI.text;
-  let x = ui.text(w.name, PAD, 110, 36, tierColor, 800);
+  const rows = w ? w.ench : (arm?.ench ?? []);
+  const tierColor = TIER_LOOK[(w?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
+  let x = ui.text(w ? w.name : (arm?.label ?? ""), PAD, 110, 36, tierColor, 800);
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);
-    ui.text("в руке", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
+    ui.text(w ? "в руке" : "надета", PAD + x + 71, 117, 24, "#0e1a10", 800, "center");
   }
-  const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
-  const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
-  if (atk) ui.text(atk, PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
+  if (w) {
+    const qx = ui.text(qualityStars(w.quality, w.ench.length), PAD, 154, 40, QUALITY_COLOR, 800);
+    const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
+    if (atk) ui.text(atk, PAD + qx + 30, 160, 32, ATTACK_COLOR, 800);
+  }
   let y = 224;
   const bw = ui.W - PAD * 2;
-  w.ench.forEach((a, i) => {
+  rows.forEach((a, i) => {
     ui.rect(PAD, y, bw, 110, VR_UI.card, 14);
     ui.text(a.label, PAD + 20, y + 14, 28, "#9fe39a", 700);
     ui.bar(PAD + 20, y + 62, bw - 300, a.points / a.of, VR_UI.gold, 16);
@@ -260,7 +265,7 @@ export function drawEnchant(
     y += 124;
   });
   // Точка атаки за лом (уникальное и рубиновое): сколько уже даёт и что будет дальше.
-  if (attackPointEligible(w)) {
+  if (w && attackPointEligible(w)) {
     const next = attackPointNext(w);
     const n = attackPoints(w);
     ui.rect(PAD, y, bw, 124, VR_UI.card, 14);

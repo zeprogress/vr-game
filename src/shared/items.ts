@@ -26,7 +26,8 @@ export type ItemId =
   | "scrap"
   | "fish"
   | "scroll_xp"
-  | "scroll_wind";
+  | "scroll_wind"
+  | "armor";
 
 /**
  * Класс оружия. Внутри класса все уровни держатся в руках одинаково —
@@ -281,6 +282,16 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     heal: 0,
     healFrac: 0,
     tint: [0.55, 0.75, 1],
+  },
+  // Броня: на земле (shared/armor.ts). В сумку не кладётся — свой склад, как у оружия.
+  armor: {
+    name: "Броня",
+    short: "Броня",
+    hint: "доспех: надеть в слот в сумке",
+    stack: 1,
+    heal: 0,
+    healFrac: 0,
+    tint: [0.72, 0.74, 0.8],
   },
   scroll_wind: {
     name: "Свиток ветра",
@@ -1214,17 +1225,21 @@ export interface EnchantInfo {
   cost: number;
 }
 
+/** Шанс и цена одной попытки по очкам (1..33), «качеству» q (0..1) и множителю тира. Общая для оружия и брони. */
+export function enchantCurve(pts: number, q: number, tierMul = 1): { chance: number; cost: number } {
+  const t = (pts - 1) / 32;
+  const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
+  const cost = Math.round((ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * tierMul);
+  return { chance, cost };
+}
+
 export function enchantInfo(w: WeaponInstance, idx: number): EnchantInfo | null {
   const a = w.affixes[idx];
   if (!a) return null;
   const pts = affixPoints(a, w);
   const max = pts >= POINTS_MAX;
-  const t = (pts - 1) / 32;
   const q = w.affixes.length ? weaponQuality(w) / (POINTS_MAX * w.affixes.length) : 0;
-  const chance = Math.max(ENCHANT.chanceMin, ENCHANT.chanceHi - ENCHANT.chanceDrop * t ** 1.6);
-  const cost = Math.round(
-    (ENCHANT.costBase + ENCHANT.costTop * t ** 2.5) * (1 + ENCHANT.qualityMul * q) * (w.tier === "legendary" ? ENCHANT.legendaryMul : 1),
-  );
+  const { chance, cost } = enchantCurve(pts, q, w.tier === "legendary" ? ENCHANT.legendaryMul : 1);
   // Рубиновое — та же заточка за лом, только в RUBY.enchantCostMul раз дороже.
   return { points: pts, of: POINTS_MAX, max, chance, cost: w.tier === "ruby" ? cost * RUBY.enchantCostMul : cost };
 }

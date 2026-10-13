@@ -4,6 +4,7 @@ import { levelGain } from "./levelGain";
 import { ATTR2, attrOf, invested } from "./attrs2";
 import { glyph } from "./icons";
 import { RUBY, WEAPON_NOUN, type WeaponClass } from "./items";
+import { armorBonus } from "./armor";
 
 export { levelGain };
 
@@ -108,7 +109,7 @@ const P = PROGRESSION.perLevel;
 export { invested };
 
 export function maxHp2(level: number, a: AttrsIn): number {
-  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp);
+  return (PLAYER_HP.max + levelGain(level, P.hp)) * (1 + inv(attrOf(a, "con")) * ATTR2.con.hp + armorBonus(a, "hp"));
 }
 
 /** Доля физ. урона, которую гасит броня (ТЕЛ). */
@@ -172,7 +173,7 @@ export function castTempo2(level: number, a: AttrsIn): number {
 /** Уворот: УДЧ (один предмет в руках — ×dodgeOneItem) + врождённый уворот ассасина с кинжалом (DAGGER.dodge). */
 export function dodge2(a: AttrsIn, oneItem: boolean, dagger = false): number {
   const L = ATTR2.luc;
-  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0));
+  return Math.min(L.dodgeCap, inv(attrOf(a, "luc")) * L.dodge * (oneItem ? L.dodgeOneItem : 1) + (dagger ? DAGGER.dodge : 0) + armorBonus(a, "dodge"));
 }
 
 export function critChance2(a: AttrsIn, weaponBase: number): number {

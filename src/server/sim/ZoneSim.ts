@@ -5,6 +5,7 @@ import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
 import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
+import { ARMOR_DROP, ARMOR_PARTS, rollArmor, type ArmorInstance } from "#shared/armor";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -2087,12 +2088,14 @@ class Drop {
     readonly z: number,
     /** Для оружия — конкретный раскатанный инстанс (аффиксы). У расходников — undefined. */
     readonly instance?: WeaponInstance,
+    /** Для брони (shared/armor.ts) — лежащая часть. */
+    readonly armor?: ArmorInstance,
   ) {}
 
-  /** true — пора убрать. Оружие лежит дольше обычного лута (BAG.weaponDropLife, 15 минут против 5). */
+  /** true — пора убрать. Оружие и броня лежат дольше обычного лута (BAG.weaponDropLife, 15 минут против 5). */
   tick(dt: number): boolean {
     this.life += dt;
-    return this.life > (ITEMS[this.item].weapon ? BAG.weaponDropLife : BAG.dropLife);
+    return this.life > (ITEMS[this.item].weapon || this.armor ? BAG.weaponDropLife : BAG.dropLife);
   }
 }
 
@@ -2105,6 +2108,7 @@ export interface DropSave {
   z: number;
   life: number;
   instance?: WeaponInstance;
+  armor?: ArmorInstance;
 }
 
 class Dummy {
@@ -3637,11 +3641,11 @@ export class ZoneSim {
 
   /** Разыграть и разложить добычу вокруг убитого моба. */
   /** Что выпало с последнего убитого босса — комната читает и объявляет. */
-  readonly bossLoot: { id: ItemId; count: number; aegis?: boolean }[] = [];
+  readonly bossLoot: { id: ItemId; count: number; aegis?: boolean; armor?: ArmorInstance }[] = [];
 
-  private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number; aegis?: boolean }[] {
+  private spawnLoot(m: Mob, attacker = ""): { id: ItemId; count: number; aegis?: boolean; armor?: ArmorInstance }[] {
     // aegis — уникальный щит из этого списка падает Эгидой.
-    const rolled: { id: ItemId; count: number; aegis?: boolean }[] = rollLoot(m.kind, Math.random);
+    const rolled: { id: ItemId; count: number; aegis?: boolean; armor?: ArmorInstance }[] = rollLoot(m.kind, Math.random);
     // Оружие — отдельный ролл поверх таблицы LOOT (та знает только про
     // зелья + фиксированные 40%/класс у босса). Элитные лагерные мобы
     // делят MobKind с обычными (slime/spitter), поэтому щедрость дропа
@@ -3691,14 +3695,23 @@ export class ZoneSim {
         if (item) rolled.push({ id: item, count: 1 });
       }
     }
-    for (const { id, count, aegis } of rolled) {
+    // Броня (обычный тир): одна случайная часть. Шанс не угасает с уровнем героя и не зависит от катакомб.
+    if (m.kind !== "shard") {
+      const base = m.kind === "boss" ? ARMOR_DROP.boss : m.eliteName !== "" ? ARMOR_DROP.elite : ARMOR_DROP.regular;
+      const champMul = m.kind !== "boss" && m.champ ? QUEST.champ.dropMul : 1;
+      if (Math.random() < base * champMul) {
+        const part = ARMOR_PARTS[Math.floor(Math.random() * ARMOR_PARTS.length)];
+        rolled.push({ id: "armor", count: 1, armor: rollArmor(part, nid()) });
+      }
+    }
+    for (const { id, count, aegis, armor } of rolled) {
       const a = Math.random() * Math.PI * 2;
       const r = Math.random() * BAG.dropSpread;
       const x = m.x + Math.cos(a) * r;
       const z = m.z + Math.sin(a) * r;
       const w = ITEMS[id].weapon;
       const instance = w ? (aegis ? rollAegisInstance() : rollWeaponInstance(w.cls, w.tier)) : undefined;
-      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance);
+      const d = new Drop(id, count, x, terrainHeight(x, z) + BAG.dropHeight, z, instance, armor);
       // Бронь за добившим — иначе чужой бот-зритель рядом утащит трофей
       // быстрее, чем игрок успеет подойти (раздел 8 плана).
       if (attacker) {
@@ -3723,6 +3736,12 @@ export class ZoneSim {
   }
 
   /** Положить на землю конкретный инстанс (со всеми роллами) — «скинуть со склада». */
+  /** Броня с игрока на землю (надетую сначала снимают). */
+  dropArmor(inst: ArmorInstance, x: number, z: number): void {
+    const d = new Drop("armor", 1, x, terrainHeight(x, z) + BAG.dropHeight, z, undefined, inst);
+    this.drops.set(d.id, d);
+  }
+
   dropInstance(inst: WeaponInstance, x: number, z: number): ItemId | null {
     if (inst.tier === "base") return null;
     delete inst.fav; // звёздочка — личная пометка хозяина, на земле её нет
@@ -3743,6 +3762,7 @@ export class ZoneSim {
       z: d.z,
       life: d.life,
       instance: d.instance,
+      armor: d.armor,
     }));
   }
 
@@ -3752,7 +3772,7 @@ export class ZoneSim {
       if (!s || !isItemId(s.item)) continue;
       const count = Math.floor(Number(s.count));
       if (!Number.isFinite(count) || count <= 0) continue;
-      const d = new Drop(s.item, count, Number(s.x), Number(s.y), Number(s.z), s.instance);
+      const d = new Drop(s.item, count, Number(s.x), Number(s.y), Number(s.z), s.instance, s.armor);
       if (!Number.isFinite(d.x) || !Number.isFinite(d.y) || !Number.isFinite(d.z)) continue;
       d.life = Number.isFinite(s.life) ? Number(s.life) : 0;
       this.drops.set(d.id, d);

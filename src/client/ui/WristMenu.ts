@@ -12,11 +12,12 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import { glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
+import { armorIconKey, glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
+import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { drawIcon } from "./icons";
-import type { PcInvActMsg, QuestData, WarehouseWeapon } from "#shared/net/messages";
+import type { PcInvActMsg, PcInvArmor, QuestData, WarehouseWeapon } from "#shared/net/messages";
 import { ATTR_SHORT, GEM_LOOK, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels } from "#shared/jewels";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemArt, RING_SLOT_SVG, ringArt, socketSpot } from "#shared/jewelIcons";
@@ -75,7 +76,7 @@ const INFO_Y = 786;
 const EXIT_Y = 846;
 const EXIT_H = 46;
 /** Запись склада: оружие или кольцо — в одной сетке. */
-type WhEntry = { w: WarehouseWeapon } | { r: PcInvJewels["rings"][number] };
+type WhEntry = { w: WarehouseWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor };
 
 /** Склад: ячейки сеткой по страницам. */
 const WH_COLS = 4;
@@ -179,6 +180,8 @@ export class WristMenu {
   onTogglePvp: (() => void) | null = null;
   /** Действие с оружием (в руку / за спину / на землю / разобрать / убрать на склад). Ставит Game. */
   onAction: ((a: MenuAction) => void) | null = null;
+  /** Броня в сумке: надеть / снять / разобрать / выбросить. */
+  onArmorAct: ((id: string, act: "wear" | "unwear" | "scrap" | "drop" | "fav") => void) | null = null;
   /** Кольца и камни: действие (то же сообщение, что у окна инвентаря) и запрос данных при открытии вкладки. */
   onJewelAct: ((m: PcInvActMsg) => void) | null = null;
   onRingsOpen: (() => void) | null = null;
@@ -195,6 +198,9 @@ export class WristMenu {
   private leftHand: WornWeapon | null = null;
   private stowed: (WornWeapon & { side: Side })[] = [];
   private warehouse: WarehouseWeapon[] = [];
+  /** Броня в сумке (все части) и что надето — id части по слоту. */
+  private armor: PcInvArmor[] = [];
+  private armorWorn: Partial<Record<ArmorPart, string>> = {};
   private equippedIds: { left: string | null; right: string | null } = { left: null, right: null };
   private skillCd = -1;
   private readonly unsub: () => void;
@@ -291,6 +297,22 @@ export class WristMenu {
     this.warehouse = list;
     this.equippedIds = equipped;
     this.dirty = true;
+  }
+
+  /** Броня из снимка сумки: части и что надето. Перерисовка — только при изменении. */
+  setArmor(list: PcInvArmor[], worn: Partial<Record<ArmorPart, string>>): void {
+    // Очки входят в подпись: после заточки подпись и значение в шлеме обновятся.
+    const sig = (l: PcInvArmor[], w: Partial<Record<ArmorPart, string>>): string =>
+      `${l.map((a) => `${a.id}:${a.pts}`).join(",")}|${ARMOR_PARTS.map((p) => w[p] ?? "").join(",")}`;
+    if (sig(list, worn) === sig(this.armor, this.armorWorn)) return;
+    this.armor = list;
+    this.armorWorn = worn;
+    this.dirty = true;
+  }
+
+  /** Броня в сумке — те части, что не надеты (надетые видны в слотах куклы на ПК). */
+  private armorBag(): WhEntry[] {
+    return this.armor.filter((a) => this.armorWorn[a.part] !== a.id).map((a) => ({ a }));
   }
 
   setSkillCd(frac: number): void {
@@ -1312,7 +1334,7 @@ export class WristMenu {
 
   /** Склад: оружие и кольца вместе, в выбранном порядке (как сумка на ПК). */
   private whItems(): WhEntry[] {
-    const entries: WhEntry[] = [...this.warehouse.map((w) => ({ w })), ...(this.jewels?.rings ?? []).map((r) => ({ r }))];
+    const entries: WhEntry[] = [...this.warehouse.map((w) => ({ w })), ...(this.jewels?.rings ?? []).map((r) => ({ r })), ...this.armorBag()];
     return sortBag(entries, this.whSort, bagPickItem);
   }
 
@@ -1403,7 +1425,8 @@ export class WristMenu {
     ctx.stroke();
     ctx.font = "bold 22px system-ui, sans-serif";
     ctx.fillStyle = "#f1ead6";
-    ctx.fillText(`СКЛАД · оружие ${this.warehouse.length} · кольца ${this.jewels?.rings.length ?? 0}`, x, y + 8);
+    const armorCount = this.armorBag().length;
+    ctx.fillText(`СКЛАД · оружие ${this.warehouse.length} · кольца ${this.jewels?.rings.length ?? 0}${armorCount ? ` · броня ${armorCount}` : ""}`, x, y + 8);
 
     // Страницы: ‹ 1/2 ›
     if (pages > 1) {
@@ -1454,6 +1477,7 @@ export class WristMenu {
       const cx = x + (i % WH_COLS) * (cw + 8);
       const cy = top + Math.floor(i / WH_COLS) * (ch + 8);
       if ("w" in e) this.warehouseCell(ctx, e.w, cx, cy, cw, ch);
+      else if ("a" in e) this.armorWhCell(ctx, e.a, cx, cy, cw, ch);
       else this.ringWhCell(ctx, e.r, cx, cy, cw, ch);
     });
   }
@@ -1535,6 +1559,72 @@ export class WristMenu {
     }
   }
 
+  /** Броня в сумке (VR): значок части и значение стата. Нажми — действия. */
+  private armorWhCell(ctx: CanvasRenderingContext2D, a: PcInvArmor, x: number, y: number, w: number, h: number): void {
+    const wd = this.add({
+      id: `arm:${a.id}`, x, y, w, h, kind: "cell",
+      info: [a.label, `Надевается в слот: ${ARMOR_PART_NAME[a.part]} — нажми: действия`],
+      act: () => this.openArmorPopup(a),
+    });
+    const st = this.styleFor(wd);
+    ctx.fillStyle = st.fill || TIER_BG.base;
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = st.stroke || TIER_COLOR.base;
+    ctx.lineWidth = st.stroke ? st.lw : 1.5;
+    ctx.strokeRect(x, y, w, h);
+    this.drawIconAt(ctx, armorIconKey(a.part), x + 6, y + 22, 52, TIER_COLOR.base);
+    ctx.font = "bold 17px system-ui, sans-serif";
+    ctx.fillStyle = TIER_COLOR.base;
+    ctx.fillText(this.shortName(ARMOR_PART_NAME[a.part]), x + 62, y + 8);
+    // Оценка — в левом верхнем углу, как у оружия (числом).
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.fillStyle = "#f2c74b";
+    ctx.fillText(qualityStarsShort(a.pts, 1), x + 8, y + 18);
+    if (this.armorWorn[a.part] === a.id) {
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillStyle = "#7ee081";
+      ctx.fillText("надета", x + 8, y + h - 6);
+    }
+  }
+
+  /** Меню брони в сумке (VR): надеть / снять, разобрать на лом, выбросить. */
+  private openArmorPopup(a: PcInvArmor): void {
+    const worn = this.armorWorn[a.part] === a.id;
+    const send = (act: "wear" | "unwear" | "scrap" | "drop" | "fav"): void => {
+      this.popup = null;
+      this.focusId = `arm:${a.id}`;
+      this.onArmorAct?.(a.id, act);
+    };
+    const buttons: Popup["buttons"] = [];
+    if (worn) buttons.push({ id: "pop:unwear", label: "Снять", hint: "часть уйдёт в сумку", color: "#7ee081", act: () => send("unwear") });
+    else buttons.push({ id: "pop:wear", label: "Надеть", hint: `в слот: ${ARMOR_PART_NAME[a.part]}`, color: "#7ee081", act: () => send("wear") });
+    buttons.push({
+      id: "pop:ench",
+      label: "Заточить",
+      hint: "откроется панель заточки перед тобой",
+      color: "#e8c26a",
+      act: () => {
+        this.popup = null;
+        this.onEnchant?.(a.id);
+      },
+    });
+    buttons.push({
+      id: "pop:fav",
+      label: a.fav ? "Убрать из избранного" : "В избранное",
+      hint: "избранное не разбирается и не передаётся",
+      color: "#ffd166",
+      act: () => send("fav"),
+    });
+    if (!worn) {
+      buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(a.label, TIER_COLOR.base, `a:${a.id}`, `arm:${a.id}`) });
+      buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") });
+      if (!a.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${a.scrap} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") });
+    }
+    buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
+    this.popup = { title: a.label, sub: `Часть: ${ARMOR_PART_NAME[a.part]}`, color: TIER_COLOR.base, buttons };
+    this.focusId = worn ? "pop:unwear" : "pop:wear";
+  }
+
   private shortName(n: string): string {
     return n.length > 12 ? `${n.slice(0, 11)}…` : n;
   }
@@ -1586,7 +1676,7 @@ export class WristMenu {
       color: "#ffd166",
       act: () => send({ act: "fav", id: wp.id }),
     });
-    buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(wp) });
+    buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(name, TIER_COLOR[wp.tier], `w:${wp.id}`, `wh:${wp.id}`) });
     buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
     if (!wp.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
@@ -1599,9 +1689,8 @@ export class WristMenu {
     this.focusId = "pop:handL";
   }
 
-  /** Подарок со склада (VR): текста здесь не набрать — получатель из героев рядом. */
-  private openGiftPopup(wp: WarehouseWeapon): void {
-    const name = wp.name ?? weaponDef(wp.cls, wp.tier).name;
+  /** Подарок (VR): текста здесь не набрать — получатель из героев рядом. code — «w:<id>» (оружие) или «a:<id>» (броня). */
+  private openGiftPopup(name: string, color: string, code: string, focusId: string): void {
     const nicks = this.nearbyHeroes?.() ?? [];
     const buttons: Popup["buttons"] = nicks.map((nick, i) => ({
       id: `pop:to${i}`,
@@ -1610,15 +1699,15 @@ export class WristMenu {
       color: "#ffd166",
       act: () => {
         this.popup = null;
-        this.focusId = `wh:${wp.id}`;
-        this.onGift?.({ act: "gift", id: `w:${wp.id}`, idx: 1, fuel: nick });
+        this.focusId = focusId;
+        this.onGift?.({ act: "gift", id: code, idx: 1, fuel: nick });
       },
     }));
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {
       title: `🎁 Подарить: ${name}`,
       sub: nicks.length ? "герой рядом — выбери, кому" : "рядом никого нет: подойди к герою в мире",
-      color: TIER_COLOR[wp.tier],
+      color,
       buttons,
     };
     this.focusId = nicks.length ? "pop:to0" : "pop:cancel";
@@ -1861,6 +1950,14 @@ export class WristMenu {
     else {
       buttons.push({ id: "pop:on0", label: "Надеть в слот 1", color: "#7ee081", act: () => this.jewelSend({ act: "ringOn", id: r.id, idx: 0 }) });
       buttons.push({ id: "pop:on1", label: "Надеть в слот 2", color: "#7ee081", act: () => this.jewelSend({ act: "ringOn", id: r.id, idx: 1 }) });
+      // Как на ПК и в !inv: ненадетое кольцо можно подарить герою рядом.
+      buttons.push({
+        id: "pop:gift",
+        label: "🎁 Подарить…",
+        hint: "герою рядом, предмет уйдёт сразу",
+        color: "#ffd166",
+        act: () => this.openGiftPopup(ringLabel({ id: "", tier: r.tier, gems: r.gems }), TIER_COLOR[r.tier], `r:${r.id}`, `ring:${r.id}`),
+      });
     }
     r.gems.forEach((gk, i) => {
       if (gk) {

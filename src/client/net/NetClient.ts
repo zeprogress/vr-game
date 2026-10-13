@@ -61,6 +61,7 @@ import {
   type TakeWeaponMsg,
   type UseItemMsg,
   type FishMsg,
+  type ArmorActMsg,
 } from "#shared/net/messages";
 import type { BlockedBy } from "#shared/combat";
 import type { StatName } from "#shared/progression";
@@ -551,6 +552,12 @@ export class NetClient {
 
   sendPcInvAct(msg: PcInvActMsg): void {
     this.room?.send(MSG.pcInvAct, msg);
+  }
+
+  /** Броня в сумке: надеть / снять / разобрать / выбросить. */
+  sendArmorAct(id: string, act: ArmorActMsg["act"]): void {
+    const msg: ArmorActMsg = { id, act };
+    this.room?.send(MSG.armorAct, msg);
   }
 
   sendWarehouseAct(msg: WarehouseActMsg): void {

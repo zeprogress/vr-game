@@ -1,4 +1,5 @@
 import { ITEMS, type ItemId, type WeaponClass } from "./items";
+import type { ArmorPart } from "./armor";
 
 /**
  * ВСЕ значки игры — здесь, в одном месте. Поменял значок тут — он меняется
@@ -70,6 +71,13 @@ export const ICONS = {
 
   // ---- предметы ----
   "i.potion": { emoji: "🧪", img: "potion.png" },
+  "i.armor": { emoji: "🛡️", img: "armor/chest_base.png" },
+  // ---- броня: обычный тир — верхний ряд атласа (public/icons/armor) ----
+  "a.helm": { emoji: "⛑️", img: "armor/helm_base.png" },
+  "a.chest": { emoji: "🦺", img: "armor/chest_base.png" },
+  "a.gloves": { emoji: "🧤", img: "armor/gloves_base.png" },
+  "a.legs": { emoji: "👖", img: "armor/legs_base.png" },
+  "a.boots": { emoji: "🥾", img: "armor/boots_base.png" },
   /** Лом — кусочки металла (шестерёнка путала). */
   "i.scrap": {
     emoji: "🔩",
@@ -220,6 +228,11 @@ export function weaponIcon(cls: WeaponClass | string | null | undefined, aegis =
   }
   const k = `w.${item}`;
   return k in ICONS ? (k as IconKey) : "w.fist";
+}
+
+/** Значок части брони (обычный тир — верхний ряд атласа; ключи a.helm, a.chest, …). */
+export function armorIconKey(part: ArmorPart): IconKey {
+  return `a.${part}` as IconKey;
 }
 
 /** Значок умения по id (нет такого — «✦»). */

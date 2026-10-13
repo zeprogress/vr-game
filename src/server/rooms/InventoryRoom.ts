@@ -28,6 +28,7 @@ import {
 } from "#shared/items";
 import { skillStrike, strikeKindOf } from "#shared/strike";
 import { heroStatRows } from "#shared/heroStats";
+import { armorBonusOf, armorPcView, sanitizeArmorList, wornArmorOf, type ArmorPart } from "#shared/armor";
 import type { PcInvData, PcInvWeapon } from "#shared/net/messages";
 import { FEEDBACK_COOLDOWN_MS, FEEDBACK_TEXT_MAX, isFeedbackKind, isFeedbackMark, type FeedbackKind } from "#shared/feedback";
 import { feedback, store } from "../store";
@@ -76,7 +77,7 @@ export class InventoryRoom extends colyseus.Room {
         return;
       }
       const act =
-        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
+        m?.act === "equip" || m?.act === "unequip" || m?.act === "scrap" || m?.act === "enchant" || m?.act === "sharpen" || m?.act === "stat" || m?.act === "respec" || m?.act === "scroll" || m?.act === "title" || m?.act === "skills" || m?.act === "fav" || m?.act === "scrapAll" || m?.act === "gift" || m?.act === "giftSeen" || m?.act === "armorWear" || m?.act === "armorUnwear" || m?.act === "armorScrap" || m?.act === "armorFav" || m?.act === "armorEnchant" || (JEWEL_ACTS as readonly unknown[]).includes(m?.act) || (TRADE_ACTS as readonly unknown[]).includes(m?.act)
           ? m.act
           : null;
       const id = typeof m?.id === "string" ? m.id : act === "respec" ? "-" : "";
@@ -222,7 +223,9 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     const attrs = { str: rec.str, agi: rec.agi, int: rec.int, con: rec.con ?? 1, luc: rec.luc ?? 1, wis: rec.wis ?? 1, gb: jewelBonus(jewels) };
     strike = Math.round(skillStrike(strikeCls, rec.level, attrs, { mult, tier: held?.tier ?? "", roll }).dmg * 10) / 10;
   }
+  const armorList = sanitizeArmorList(rec.armor);
   const stats = heroStatRows({
+    ab: armorBonusOf(wornArmorOf(armorList, rec.armorWorn ?? {})),
     gb: jewelBonus(jewels),
     level: rec.level,
     str: rec.str,
@@ -238,9 +241,14 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     rightAffix: heldAffixText(rightInst),
     leftAffix: heldAffixText(leftInst),
   });
+  // Надетая броня по слотам (как в игре): пустые слоты страница тоже покажет.
+  const armorWorn: Partial<Record<ArmorPart, string>> = {};
+  for (const a of wornArmorOf(armorList, rec.armorWorn ?? {})) armorWorn[a.part] = a.id;
   // Окно как в игре (PcInventory): живой герой — из мира, иначе — из сохранения.
   const pcLive = invHub.pcInv(norm);
   const pc: PcInvData = pcLive ?? {
+    armor: armorList.map(armorPcView),
+    armorWorn,
     weapons: weaponsList.map((w) => ({
       id: w.id,
       cls: w.cls,

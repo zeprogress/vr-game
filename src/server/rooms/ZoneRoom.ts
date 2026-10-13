@@ -1,5 +1,6 @@
 import colyseus from "colyseus";
 import { invHub, type InvActKind, type InvActResult } from "../invHub";
+import { armorBonusOf, armorEnchantRow, armorLabel, armorPcView, armorScrap, sanitizeArmorList, wornArmorOf, ARMOR_PARTS, ARMOR_POINTS_MAX, type ArmorInstance, type ArmorPart } from "#shared/armor";
 import { devChat } from "../devChat";
 import type { Client } from "colyseus";
 
@@ -59,6 +60,7 @@ import {
   type Xf7,
   type WorldEventMsg,
   type WeaponsListMsg,
+  type ArmorActMsg,
   type WarehouseActMsg,
   type TtsPlayMsg,
   type LootItem,
@@ -372,6 +374,9 @@ interface Runtime {
   lastHitMobAt: number;
   /** Собранные инстансы оружия (весь склад, не только надетое). */
   weapons: WeaponInstance[];
+  /** Броня (shared/armor.ts): все части в сумке и что надето — id части по слотам. */
+  armor: ArmorInstance[];
+  armorWorn: Partial<Record<ArmorPart, string>>;
   /** Какой именно инстанс сейчас в какой руке (ручной выбор на странице !inv). null — автовыбор лучшего. */
   equippedWeaponId: { left: string | null; right: string | null };
   /** Старый секрет ссылки "!inv" (inv.html?t=…) — только чтобы старые ссылки переадресовать на /inv?ник. */
@@ -1071,6 +1076,44 @@ function sharpenTry(w: WeaponInstance, bag: Slot[]): InvActResult & { spent: boo
       ? `Точка атаки +${fmtPct(r.gain * 100, 2)}% · всего +${fmtPct(attackPointBonus(r.points) * 100)}% к урону`
       : `Не вышло — лом сгорел (−${r.cost})`,
   };
+}
+
+/**
+ * Одна попытка заточки брони: лом списывается в любом случае, как у оружия (шанс и цена — armorEnchantRow).
+ * Удача — +1..3 очка к стату, не выше максимума. Мутирует a и bag.
+ */
+function armorEnchantTry(a: ArmorInstance, bag: Slot[]): InvActResult {
+  const info = armorEnchantRow(a);
+  if (info.max) return { ok: false, text: "Эта броня уже на максимуме." };
+  if (!takeFromBag(bag, "scrap", info.cost)) {
+    return { ok: false, text: `Не хватает лома: нужно ${info.cost}, есть ${bagCount(bag, "scrap")}.` };
+  }
+  const up = Math.random() < info.chance;
+  const before = a.pts;
+  if (up) {
+    const gain = ENCHANT.gainMin + Math.floor(Math.random() * (ENCHANT.gainMax - ENCHANT.gainMin + 1));
+    a.pts = Math.min(ARMOR_POINTS_MAX, a.pts + gain);
+  }
+  const label = armorLabel(a);
+  return {
+    ok: true,
+    text: up ? `Заточка удалась: ${label}` : `Не вышло — лом сгорел (−${info.cost})`,
+    enchant: { id: a.id, idx: 0, up, gain: a.pts - before, cost: info.cost, label },
+  };
+}
+
+/** Броня из сейва: части сумки и надетые (только те, что есть в сумке). */
+function armorFromRec(rec: { armor?: unknown; armorWorn?: unknown } | undefined): { armor: ArmorInstance[]; armorWorn: Partial<Record<ArmorPart, string>> } {
+  const armor = sanitizeArmorList(rec?.armor);
+  const armorWorn: Partial<Record<ArmorPart, string>> = {};
+  const w = rec?.armorWorn;
+  if (w && typeof w === "object") {
+    for (const part of ARMOR_PARTS) {
+      const id = (w as Record<string, unknown>)[part];
+      if (typeof id === "string" && armor.some((a) => a.id === id && a.part === part)) armorWorn[part] = id;
+    }
+  }
+  return { armor, armorWorn };
 }
 
 /** Что у героя из сейва в руках (закреплённое или лучший экземпляр того же вида — как считает игра). */
@@ -1829,6 +1872,17 @@ export class ZoneRoom extends Room<ZoneState> {
       this.persist(client);
     });
 
+    // Броня в сумке: надеть / снять / разобрать на лом / выбросить. Надетую разобрать или выбросить нельзя.
+    // Броня в сумке: ПК-окно и VR шлют MSG.armorAct; страница !inv — через invAct (то же самое, см. armorActLive).
+    this.onMessage(MSG.armorAct, (client: Client, msg: ArmorActMsg) => {
+      const p = this.state.players.get(client.sessionId);
+      const rt = this.rt.get(client.sessionId);
+      if (!p || !rt || p.dead || !msg || typeof msg.id !== "string") return;
+      if (!this.armorActLive(client.sessionId, p, rt, msg.act, msg.id).ok) return;
+      this.persist(client);
+      this.sendPcInv(client);
+    });
+
     // Что в руках. Уровень принимаем только если игрок его действительно поднял.
     this.onMessage(MSG.hands, (client: Client, msg: HandsMsg) => {
       const p = this.state.players.get(client.sessionId);
@@ -2069,7 +2123,7 @@ export class ZoneRoom extends Room<ZoneState> {
         this.sendQuests(client);
         return;
       }
-      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
+      if (msg.act !== "enchant" && msg.act !== "sharpen" && msg.act !== "armorEnchant" && msg.act !== "stat" && msg.act !== "respec" && msg.act !== "skills" && msg.act !== "fav" && msg.act !== "scrapAll" && msg.act !== "gift" && msg.act !== "giftSeen" && !(JEWEL_ACTS as readonly string[]).includes(msg.act) && !(TRADE_ACTS as readonly string[]).includes(msg.act)) return;
       const norm = normNick(p.nick);
       if (!norm) return;
       const r = this.invAct(norm, msg.act, msg.id, Math.max(0, Math.min(msg.act === "gift" ? 99999 : 99, Math.floor(Number(msg.idx) || 0))), typeof msg.fuel === "string" ? msg.fuel : undefined);
@@ -4756,6 +4810,8 @@ export class ZoneRoom extends Room<ZoneState> {
       // Что реально считается в руке (закреплённое или лучший экземпляр того же вида) —
       // иначе незакреплённое надетое оружие показывалось ещё и в сумке.
       equipped: { left: heldL, right: heldR },
+      armor: rt.armor.map(armorPcView),
+      armorWorn: { ...rt.armorWorn },
       potions: bagCount(bag, "potion"),
       scrap: bagCount(bag, "scrap"),
       fish: bagCount(bag, "fish"),
@@ -4776,6 +4832,7 @@ export class ZoneRoom extends Room<ZoneState> {
       trade: tradeViewOf(store.get(rt.token ?? `nick:${normNick(p.nick)}`), rt.token ?? `nick:${normNick(p.nick)}`),
       partners: this.exchangePartnerNicks(normNick(p.nick)),
       stats: heroStatRows({
+        ab: { hp: p.ab.hp, physDef: p.ab.physDef, magDef: p.ab.magDef, regen: p.ab.regen, dodge: p.ab.dodge },
         gb: p.gb,
         level: p.level,
         str: p.str,
@@ -4885,6 +4942,124 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Прибавку от надетых колец — в PlayerState.gb; потолки HP/маны пересчитать (доля HP та же). */
+  /**
+   * Бот сам надевает броню в пустые слоты: из сумки берётся часть этой же части с наибольшими очками.
+   * Надетое (игроком или раньше ботом) не трогает. Вызывать перед applyArmor — он пересчитает бонусы.
+   */
+  private botDressArmor(rt: Runtime): void {
+    for (const part of ARMOR_PARTS) {
+      const cur = rt.armorWorn[part];
+      if (cur && rt.armor.some((x) => x.id === cur && x.part === part)) continue;
+      let best: ArmorInstance | undefined;
+      for (const a of rt.armor) if (a.part === part && (!best || a.pts > best.pts)) best = a;
+      if (best) rt.armorWorn[part] = best.id;
+    }
+  }
+
+  /**
+   * Действие с бронёй у героя в мире (или бота): надеть, снять, разобрать, выбросить, ★.
+   * Одно правило для ПК-окна, VR и страницы !inv. ok=false — текст причины (для страницы).
+   */
+  private armorActLive(sid: string, p: PlayerState, rt: Runtime, act: ArmorActMsg["act"], id: string): { ok: boolean; text: string } {
+    const a = rt.armor.find((x) => x.id === id);
+    if (!a) return { ok: false, text: "Этой брони уже нет в сумке." };
+    const wornNow = rt.armorWorn[a.part] === a.id;
+    if (act === "wear") {
+      // Прежняя часть этого слота сама уходит обратно в сумку (остаётся в списке, не надета).
+      rt.armorWorn[a.part] = a.id;
+    } else if (act === "unwear") {
+      if (!wornNow) return { ok: false, text: "Эта часть и так не надета." };
+      delete rt.armorWorn[a.part];
+    } else if (act === "scrap") {
+      if (wornNow) return { ok: false, text: "Надетое не разбирается — сначала сними." };
+      if (a.fav) return { ok: false, text: "В избранном не разбирается — сначала сними ★." };
+      rt.armor = rt.armor.filter((x) => x.id !== a.id);
+      const bag = readBag(p);
+      addToBag(bag, "scrap", armorScrap(a));
+      writeBag(p, bag);
+    } else if (act === "drop") {
+      if (wornNow) return { ok: false, text: "Надетое не выбрасывается — сначала сними." };
+      rt.armor = rt.armor.filter((x) => x.id !== a.id);
+      const edge = WORLD.size / 2 - 2;
+      const x = clampAbs(p.head.x + Math.sin(rt.yaw) * 1.1, edge);
+      const z = clampAbs(p.head.z + Math.cos(rt.yaw) * 1.1, edge);
+      delete a.fav; // ★ — на земле её нет (как у оружия)
+      this.sim.dropArmor(a, x, z);
+    } else if (act === "fav") {
+      if (a.fav) delete a.fav;
+      else {
+        // ★ — общий лимит с оружием и кольцами (FAV_MAX); снять можно всегда.
+        const favRings = (store.get(rt.token ?? `nick:${normNick(p.nick)}`)?.rings ?? []).filter((x) => x.fav).length;
+        const favNow = rt.weapons.filter((w) => w.fav).length + favRings + rt.armor.filter((x) => x.fav).length;
+        if (favNow >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
+        a.fav = true;
+      }
+    } else {
+      return { ok: false, text: "Не понял действие." };
+    }
+    this.applyArmor(sid);
+    return { ok: true, text: "" };
+  }
+
+  /**
+   * То же для героя из сохранения (не в мире): меняется запись ника. Лом — в сумку записи.
+   * Выбросить на землю можно только в игре (как у оружия на !inv).
+   */
+  private armorActStored(norm: string, act: ArmorActMsg["act"], id: string): InvActResult {
+    const token = `nick:${norm}`;
+    const rec = store.get(token);
+    if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
+    if (act === "drop") return { ok: false, text: "Выбросить можно только в игре." };
+    const { armor, armorWorn } = armorFromRec(rec);
+    const a = armor.find((x) => x.id === id);
+    if (!a) return { ok: false, text: "Этой брони уже нет в сумке." };
+    const wornNow = armorWorn[a.part] === a.id;
+    const put: { armor: ArmorInstance[]; armorWorn: Partial<Record<ArmorPart, string>>; bag?: Slot[] } = { armor, armorWorn };
+    if (act === "wear") {
+      armorWorn[a.part] = a.id;
+    } else if (act === "unwear") {
+      if (!wornNow) return { ok: false, text: "Эта часть и так не надета." };
+      delete armorWorn[a.part];
+    } else if (act === "scrap") {
+      if (wornNow) return { ok: false, text: "Надетое не разбирается — сначала сними." };
+      if (a.fav) return { ok: false, text: "В избранном не разбирается — сначала сними ★." };
+      const bag = restoreBag(rec.bag);
+      addToBag(bag, "scrap", armorScrap(a));
+      put.bag = bag;
+      armor.splice(armor.indexOf(a), 1);
+    } else if (act === "fav") {
+      if (a.fav) delete a.fav;
+      else {
+        const favNow = (rec.weapons ?? []).filter((w) => w.fav).length + (rec.rings ?? []).filter((x) => x.fav).length + armor.filter((x) => x.fav).length;
+        if (favNow >= FAV_MAX) return { ok: false, text: `Избранное заполнено — ${FAV_MAX} из ${FAV_MAX}. Сначала убери что-нибудь оттуда.` };
+        a.fav = true;
+      }
+    } else {
+      return { ok: false, text: "Не понял действие." };
+    }
+    store.put(token, put);
+    return { ok: true, text: "" };
+  }
+
+  /** Броня героя: суммы надетых частей — в p.ab (здоровье, защиты, регенерация, уворот). */
+  private applyArmor(id: string): void {
+    const p = this.state.players.get(id);
+    const rt = this.rt.get(id);
+    if (!p || !rt) return;
+    const b = armorBonusOf(wornArmorOf(rt.armor, rt.armorWorn));
+    const ab = p.ab;
+    if (ab.hp === b.hp && ab.physDef === b.physDef && ab.magDef === b.magDef && ab.regen === b.regen && ab.dodge === b.dodge) return;
+    ab.hp = b.hp;
+    ab.physDef = b.physDef;
+    ab.magDef = b.magDef;
+    ab.regen = b.regen;
+    ab.dodge = b.dodge;
+    if (p.towerFloor > 0) return; // в башне свой потолок HP — вернётся с арены по maxHpFor
+    const frac = p.maxHp > 0 ? p.hp / p.maxHp : 1;
+    p.maxHp = maxHpFor(p.level, p);
+    if (!p.dead) p.hp = Math.max(1, Math.min(p.maxHp, p.maxHp * frac));
+  }
+
   private applyJewels(id: string): void {
     const p = this.state.players.get(id);
     const rt = this.rt.get(id);
@@ -4961,6 +5136,7 @@ export class ZoneRoom extends Room<ZoneState> {
     store.put(token, patch);
     if (t) {
       this.applyJewels(t.id);
+      this.applyArmor(t.id);
       if (r.scrap) this.persistNick(norm);
     }
     return { ok: true, text: r.text };
@@ -4991,13 +5167,14 @@ export class ZoneRoom extends Room<ZoneState> {
     return best ? { token: best.token, nick: best.nick } : null;
   }
 
-  /** Снимок инвентаря героя для передачи: живой — из мира (оружие — тот же массив), иначе из сохранения. */
+  /** Снимок инвентаря героя для передачи: живой — из мира (оружие и броня — те же массивы), иначе из сохранения. */
   private openInv(token: string): InvSnap | null {
     const live = this.liveByToken(token);
     const rec = store.get(token);
-    if (live) return { weapons: live.rt.weapons, heldIds: this.liveHeldIds(live.p, live.rt), bag: readBag(live.p), jewels: jewelsOf(rec ?? {}) };
+    if (live) return { weapons: live.rt.weapons, heldIds: this.liveHeldIds(live.p, live.rt), bag: readBag(live.p), jewels: jewelsOf(rec ?? {}), armor: live.rt.armor, armorWorn: { ...live.rt.armorWorn } };
     if (!rec) return null;
-    return { weapons: [...(rec.weapons ?? [])], heldIds: recHeldIds(rec), bag: restoreBag(rec.bag), jewels: jewelsOf(rec) };
+    const arm = armorFromRec(rec);
+    return { weapons: [...(rec.weapons ?? [])], heldIds: recHeldIds(rec), bag: restoreBag(rec.bag), jewels: jewelsOf(rec), armor: arm.armor, armorWorn: arm.armorWorn };
   }
 
   /** Записать снимок обратно (живому — в мир и сохранение, иначе — в сохранение). */
@@ -5005,12 +5182,17 @@ export class ZoneRoom extends Room<ZoneState> {
     const j = { rings: snap.jewels.rings, ringOn: snap.jewels.ringOn, gems: snap.jewels.gems };
     const live = this.liveByToken(token);
     if (!live) {
-      store.put(token, { weapons: snap.weapons, bag: snap.bag, ...j });
+      store.put(token, { weapons: snap.weapons, bag: snap.bag, ...j, armor: snap.armor, armorWorn: snap.armorWorn });
       return;
     }
     writeBag(live.p, snap.bag);
+    live.rt.armor = snap.armor;
+    live.rt.armorWorn = snap.armorWorn;
     store.put(token, j);
     this.applyJewels(live.id);
+    // Бот (хозяин оффлайн): подарок или обмен пришёл — пустой слот наденет сам.
+    if (live.id.startsWith("bot:")) this.botDressArmor(live.rt);
+    this.applyArmor(live.id);
     this.syncWarehouse(live.id, live.rt);
     const bot = live.id.startsWith("bot:") ? this.bots.get(normNick(live.p.nick)) : undefined;
     if (bot) this.persistBot(bot);
@@ -5437,6 +5619,41 @@ export class ZoneRoom extends Room<ZoneState> {
       const r = sharpenTry(w, bag);
       if (r.spent) store.put(token, { weapons: rec.weapons, bag });
       return { ok: r.ok, text: r.text };
+    }
+    // Выброс на землю со страницы не делаем — как у оружия на !inv (подсказка «только в игре»).
+    if (act === "armorDrop") return { ok: false, text: "Выбросить можно только в игре." };
+    if (act === "armorWear" || act === "armorUnwear" || act === "armorScrap" || act === "armorFav") {
+      // Страница !inv: то же, что ПК-окно и VR (armorActLive) — для героя в мире и из сохранения.
+      const kind = act === "armorWear" ? "wear" : act === "armorUnwear" ? "unwear" : act === "armorScrap" ? "scrap" : "fav";
+      if (t) {
+        const r = this.armorActLive(t.id, t.p, t.rt, kind, id);
+        if (r.ok) this.persistNick(norm);
+        return r;
+      }
+      return this.armorActStored(norm, kind, id);
+    }
+    if (act === "armorEnchant") {
+      if (t) {
+        const a = t.rt.armor.find((x) => x.id === id);
+        if (!a) return { ok: false, text: "Этой брони уже нет в сумке." };
+        const bag = readBag(t.p);
+        const r = armorEnchantTry(a, bag);
+        if (r.enchant) {
+          writeBag(t.p, bag);
+          this.applyArmor(t.id); // надетая часть — новый стат сразу в бонусах
+          this.persistNick(norm);
+        }
+        return r;
+      }
+      const token = `nick:${norm}`;
+      const rec = store.get(token);
+      const armor = sanitizeArmorList(rec?.armor);
+      const a = armor.find((x) => x.id === id);
+      if (!rec || !a) return { ok: false, text: "Этой брони уже нет в сумке." };
+      const bag = restoreBag(rec.bag);
+      const r = armorEnchantTry(a, bag);
+      if (r.enchant) store.put(token, { armor, bag });
+      return r;
     }
     if (act === "enchant") {
       if (t) {
@@ -6022,6 +6239,7 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
+      ...armorFromRec(rec),
       // Закрепления — по рукам как у бота (двуручное — справа), чтобы rolledIn брал выбранный экземпляр.
       equippedWeaponId: { right: pinR?.id ?? null, left: pinL && p.leftCls === pinL.cls ? pinL.id : null },
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
@@ -6030,6 +6248,8 @@ export class ZoneRoom extends Room<ZoneState> {
     };
     this.rt.set(id, rt);
     this.applyJewels(id);
+    this.botDressArmor(rt);
+    this.applyArmor(id);
 
     this.bots.set(norm, {
       spawnedAt: fresh ? Date.now() : 0,
@@ -7090,6 +7310,8 @@ export class ZoneRoom extends Room<ZoneState> {
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: bot.rt.kills,
       weapons: bot.rt.weapons,
+      armor: bot.rt.armor,
+      armorWorn: bot.rt.armorWorn,
       equippedWeaponId: bot.rt.equippedWeaponId,
       eventBuffUntil: bot.rt.eventBuffUntil,
       campBuffUntil: bot.rt.campBuffUntil,
@@ -7189,7 +7411,15 @@ export class ZoneRoom extends Room<ZoneState> {
     const isEquipUpgrade = (w: { cls: WeaponClass; tier: WeaponTier }): boolean => botEquipUpgrade(p, bot.rt, w);
     let took = false;
     const lw = ITEMS[d.item].weapon;
-    if (lw) {
+    if (d.armor) {
+      // Броня — в склад бота; пустой слот наденет сразу (botDressArmor). Склад брони без лимита.
+      if (!this.sim.takeDrop(d.id)) return false; // уже забрал кто-то — не дублируем
+      bot.rt.armor.push(d.armor);
+      this.botDressArmor(bot.rt);
+      this.applyArmor(bot.id);
+      this.persistBot(bot);
+      took = true;
+    } else if (lw) {
       this.sim.takeDrop(d.id);
       // Одеваем ТОЛЬКО реальный апгрейд своего снаряжения. Оружие
       // чужого класса (или тира не выше текущего) просто уходит в
@@ -7518,6 +7748,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const okLoot = (d: typeof loot): boolean => {
       if (!d || !lootFreeFor(d, bot.id)) return false; // чужой трофей — не бежим и не претендуем
       if (bot.lootSkip.has(d.id)) return false; // уже пробовали и не вышло
+      if (d.armor) return inZone(d.x, d.z); // броня — бот идёт и подбирает (botTakeDrop)
       const w = ITEMS[d.item].weapon;
       // Любое оружие берём — своего класса наденем, чужого просто унесём
       // в склад (потом вручную на !inv, если сменит билд, или разобрать на лом).
@@ -9921,6 +10152,19 @@ export class ZoneRoom extends Room<ZoneState> {
         const dist = Math.hypot(d.x - p.head.x, dy, d.z - p.head.z);
         if (dist > BAG.pickupRadius) continue;
 
+        if (d.armor) {
+          // Броня — в склад брони (общая сумка с оружием и кольцами). Ботам не отдаём: броню они не носят.
+          const rtA = this.rt.get(id);
+          if (!rtA || id.startsWith("bot:")) continue;
+          rtA.armor.push(d.armor);
+          this.sim.takeDrop(d.id);
+          const clientA = this.clientOf(id);
+          clientA?.send(MSG.picked, { item: "armor", count: 1 });
+          const relayA: ActRelay = { k: "pickup", id, x: p.head.x, y: p.head.y, z: p.head.z };
+          this.broadcast(MSG.act, relayA, clientA ? { except: clientA } : undefined);
+          continue;
+        }
+
         const bag = readBag(p);
         const left = addToBag(bag, d.item, d.count);
         const taken = d.count - left;
@@ -10531,12 +10775,14 @@ export class ZoneRoom extends Room<ZoneState> {
       lastHitMobId: null,
       lastHitMobAt: 0,
       weapons: Array.isArray(rec?.weapons) ? rec.weapons : [],
+      ...armorFromRec(rec),
       equippedWeaponId: sanitizeEquipped(rec?.equippedWeaponId),
       viewToken: typeof rec?.viewToken === "string" ? rec.viewToken : "",
       fishBiteAt: null,
       fishAuto: false,
     });
     this.applyJewels(client.sessionId);
+    this.applyArmor(client.sessionId);
     // Снимок инвентаря сразу при входе — в меню на руке уже видна сила удара (без открытия окна).
     this.sendPcInv(client);
     for (const m of this.chatHistory) client.send(MSG.chatLine, m);
@@ -10597,6 +10843,8 @@ export class ZoneRoom extends Room<ZoneState> {
       bag: readBag(p).map((s) => ({ item: s.item, count: s.count })),
       kills: rt.kills,
       weapons: rt.weapons,
+      armor: rt.armor,
+      armorWorn: rt.armorWorn,
       equippedWeaponId: rt.equippedWeaponId,
       viewToken: rt.viewToken,
       eventBuffUntil: rt.eventBuffUntil,

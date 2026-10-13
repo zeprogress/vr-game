@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import type { TradeItemView } from "#shared/net/messages";
 import { addToBag, bagCount, instanceName, ITEMS, takeFromBag, type ItemId, type Slot, type WeaponInstance } from "#shared/items";
 import { gemName, parseGem, ringName, type JewelSave } from "#shared/jewels";
+import { armorLabel, type ArmorInstance, type ArmorPart } from "#shared/armor";
 
 /**
- * Передача предметов между героями — основа подарков (сейчас) и обмена (потом).
+ * Передача предметов между героями — подарки и обмен окном двух героев.
  *
  * Работает с «снимком» инвентаря героя (InvSnap): ZoneRoom собирает его из живого героя или из
  * сохранения и потом записывает обратно — одна логика для обоих случаев. Перенос атомарный:
@@ -18,6 +19,7 @@ import { gemName, parseGem, ringName, type JewelSave } from "#shared/jewels";
 export type TradeItem =
   | { k: "weapon"; id: string }
   | { k: "ring"; id: string }
+  | { k: "armor"; id: string }
   | { k: "gem"; key: string; n: number }
   | { k: "bag"; item: ItemId; n: number };
 
@@ -31,9 +33,12 @@ export interface InvSnap {
   heldIds: Set<string | null | undefined>;
   bag: Slot[];
   jewels: JewelSave;
+  /** Броня: части в сумке и что надето (надетую не отдать — сначала снять). */
+  armor: ArmorInstance[];
+  armorWorn: Partial<Record<ArmorPart, string>>;
 }
 
-/** Разбор предмета из сети: «w:<id>», «r:<id>», «g:<камень>», «b:<предмет>» + количество. */
+/** Разбор предмета из сети: «w:<id>», «r:<id>», «a:<id>» (броня), «g:<камень>», «b:<предмет>» + количество. */
 export function parseTradeItem(code: string, n: number): TradeItem | null {
   const i = code.indexOf(":");
   if (i < 1) return null;
@@ -42,6 +47,7 @@ export function parseTradeItem(code: string, n: number): TradeItem | null {
   const cnt = Math.max(1, Math.min(99999, Math.floor(n) || 1));
   if (k === "w" && v) return { k: "weapon", id: v };
   if (k === "r" && v) return { k: "ring", id: v };
+  if (k === "a" && v) return { k: "armor", id: v };
   if (k === "g" && parseGem(v)) return { k: "gem", key: v, n: cnt };
   if (k === "b" && (TRADE_BAG_ITEMS as readonly string[]).includes(v)) return { k: "bag", item: v as ItemId, n: cnt };
   return null;
@@ -58,6 +64,10 @@ export function tradeItemName(it: TradeItem, snap?: InvSnap): string {
       const r = snap?.jewels.rings.find((x) => x.id === it.id);
       return r ? ringName(r) : "кольцо";
     }
+    case "armor": {
+      const a = snap?.armor.find((x) => x.id === it.id);
+      return a ? armorLabel(a) : "броня";
+    }
     case "gem":
       return `${gemName(it.key)}${it.n > 1 ? ` ×${it.n}` : ""}`;
     case "bag":
@@ -70,7 +80,13 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
   // Проверка.
   const gemNeed = new Map<string, number>();
   const bagNeed = new Map<ItemId, number>();
+  const seen = new Set<string>();
   for (const it of items) {
+    if (it.k === "weapon" || it.k === "ring" || it.k === "armor") {
+      // Один и тот же экземпляр дважды — отказ: иначе второе изъятие тронет чужой предмет (splice(-1)).
+      if (seen.has(`${it.k}:${it.id}`)) return { error: "Один и тот же предмет указан дважды." };
+      seen.add(`${it.k}:${it.id}`);
+    }
     if (it.k === "weapon") {
       const w = snap.weapons.find((x) => x.id === it.id);
       if (!w) return { error: "Этого оружия уже нет в инвентаре." };
@@ -79,6 +95,10 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
       const r = snap.jewels.rings.find((x) => x.id === it.id);
       if (!r) return { error: "Этого кольца уже нет." };
       if (snap.jewels.ringOn.includes(r.id)) return { error: "Кольцо надето — сначала сними." };
+    } else if (it.k === "armor") {
+      const a = snap.armor.find((x) => x.id === it.id);
+      if (!a) return { error: "Этой брони уже нет в инвентаре." };
+      if (snap.armorWorn[a.part] === a.id) return { error: `«${armorLabel(a)}» надета — сначала сними.` };
     } else if (it.k === "gem") {
       gemNeed.set(it.key, (gemNeed.get(it.key) ?? 0) + it.n);
     } else {
@@ -105,6 +125,11 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
       if (left > 0) snap.jewels.gems[it.key] = left;
       else delete snap.jewels.gems[it.key];
       taken.push({ k: "gem", key: it.key, n: it.n });
+    } else if (it.k === "armor") {
+      const i = snap.armor.findIndex((x) => x.id === it.id);
+      const [a] = snap.armor.splice(i, 1);
+      delete a.fav; // ★ — личная пометка, как у оружия: не передаётся
+      taken.push({ k: "armor", a });
     } else {
       takeFromBag(snap.bag, it.item, it.n);
       taken.push({ k: "bag", item: it.item, n: it.n });
@@ -117,6 +142,7 @@ export function takeItems(snap: InvSnap, items: readonly TradeItem[]): { taken: 
 export type Taken =
   | { k: "weapon"; w: WeaponInstance }
   | { k: "ring"; r: JewelSave["rings"][number] }
+  | { k: "armor"; a: ArmorInstance }
   | { k: "gem"; key: string; n: number }
   | { k: "bag"; item: ItemId; n: number };
 
@@ -125,6 +151,7 @@ export function giveItems(snap: InvSnap, taken: readonly Taken[]): void {
   for (const t of taken) {
     if (t.k === "weapon") snap.weapons.push(t.w);
     else if (t.k === "ring") snap.jewels.rings.push(t.r);
+    else if (t.k === "armor") snap.armor.push(t.a);
     else if (t.k === "gem") snap.jewels.gems[t.key] = (snap.jewels.gems[t.key] ?? 0) + t.n;
     else addToBag(snap.bag, t.item, t.n);
   }
@@ -133,6 +160,7 @@ export function giveItems(snap: InvSnap, taken: readonly Taken[]): void {
 export function takenName(t: Taken): string {
   if (t.k === "weapon") return instanceName(t.w);
   if (t.k === "ring") return ringName(t.r);
+  if (t.k === "armor") return armorLabel(t.a);
   if (t.k === "gem") return `${gemName(t.key)}${t.n > 1 ? ` ×${t.n}` : ""}`;
   return `${ITEMS[t.item].name}${t.n > 1 ? ` ×${t.n}` : ""}`;
 }
@@ -162,7 +190,7 @@ export interface TradeSession {
   at: number;
 }
 
-/** Список предметов из сети: JSON [{"c": «w:<id>» | «r:<id>» | «g:<камень>» | «b:<предмет>», "n": число}]. Кривое — null. */
+/** Список предметов из сети: JSON [{"c": «w:<id>» | «r:<id>» | «a:<id>» | «g:<камень>» | «b:<предмет>», "n": число}]. Кривое — null. */
 export function parseTradeList(raw: string): TradeItem[] | null {
   let arr: unknown;
   try {
@@ -187,6 +215,7 @@ export function parseTradeList(raw: string): TradeItem[] | null {
 export function itemView(t: Taken): TradeItemView {
   if (t.k === "weapon") return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier };
   if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
+  if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part };
   if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };
   return { k: "bag", name: ITEMS[t.item].name, n: t.n, item: t.item };
 }
@@ -222,9 +251,11 @@ export function tradeLog(e: { kind: "gift" | "trade"; from: { nick: string; toke
         ? { k: t.k, id: t.w.id, cls: t.w.cls, tier: t.w.tier, name: instanceName(t.w) }
         : t.k === "ring"
           ? { k: t.k, id: t.r.id, tier: t.r.tier, gems: t.r.gems }
-          : t.k === "gem"
-            ? { k: t.k, key: t.key, n: t.n }
-            : { k: t.k, item: t.item, n: t.n },
+          : t.k === "armor"
+            ? { k: t.k, id: t.a.id, part: t.a.part, stat: t.a.stat, pts: t.a.pts }
+            : t.k === "gem"
+              ? { k: t.k, key: t.key, n: t.n }
+              : { k: t.k, item: t.item, n: t.n },
     );
     appendFileSync(LOG, JSON.stringify({ at: new Date().toISOString(), kind: e.kind, from: e.from, to: e.to, items }) + "\n");
   } catch (err) {

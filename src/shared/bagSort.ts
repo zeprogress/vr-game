@@ -1,5 +1,6 @@
 /**
- * Сортировка сумки — оружие и кольца вместе. Одна на ПК, телефон и VR-склад, чтобы порядок везде совпадал.
+ * Сортировка сумки — оружие, кольца и броня вместе. Одна на ПК, телефон и VR-склад, чтобы порядок везде совпадал.
+ * Броня (shared/armor.ts) — в самом конце, после колец.
  *
  *  - «По оценке»: оружие — по оценке (выше сверху); кольца — после оружия, по тиру, внутри по лому.
  *  - «По типу»: по виду оружия (TYPE_ORDER); кольца — в конце. Внутри вида — как «По оценке».
@@ -33,35 +34,51 @@ export const CLASS_ORDER: readonly ClassId[] = ["warrior", "assassin", "spearman
 /** Что сортировке нужно знать о предмете. Нет weapon — кольцо. */
 export interface BagSortItem {
   weapon?: WeaponClass;
+  /** Броня: сортируется по лому, после колец. */
+  armor?: true;
   tier: WeaponTier | RingTier;
   quality: number;
   scrap: number;
 }
 
-/** Предмет сумки или склада: оружие (w) или кольцо (r). Поля — те же, что у записей окна инвентаря. */
-export type BagPick = { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number } } | { r: { tier: RingTier; scrap: number } };
+/** Предмет сумки или склада: оружие (w), кольцо (r) или броня (a). Поля — те же, что у записей окна инвентаря. */
+export type BagPick =
+  | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number } }
+  | { r: { tier: RingTier; scrap: number } }
+  | { a: { pts: number; scrap: number } };
 
-/** Что сортировке знать о предмете: из полей оружия или кольца. */
+/** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {
-  return "w" in e ? { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0 } : { tier: e.r.tier, quality: 0, scrap: e.r.scrap };
+  if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0 };
+  if ("a" in e) return { armor: true, tier: "base", quality: e.a.pts, scrap: e.a.scrap };
+  return { tier: e.r.tier, quality: 0, scrap: e.r.scrap };
 }
 
-/** Группа по виду: кольца и неизвестное — в конце. */
+/** Группа по виду: кольца и неизвестное — перед бронёй, броня — в самом конце. */
 function typeGroup(x: BagSortItem): number {
+  if (x.armor) return TYPE_ORDER.length + 1;
   const i = x.weapon ? TYPE_ORDER.indexOf(x.weapon) : -1;
   return i < 0 ? TYPE_ORDER.length : i;
 }
 
-/** Группа по классу: кольца («без класса») — в конце. */
+/** Группа по классу: кольца («без класса») — перед бронёй, броня — в самом конце. */
 function classGroup(x: BagSortItem): number {
+  if (x.armor) return CLASS_ORDER.length + 1;
   const i = x.weapon ? CLASS_ORDER.indexOf(CLASS_OF_WEAPON[x.weapon]) : -1;
   return i < 0 ? CLASS_ORDER.length : i;
 }
 
-/** Внутри группы: оружие — перед кольцами, оружие — по оценке, кольца — по тиру, потом по лому. */
+/** Порядок видов внутри «как пришло»: оружие, кольца, броня. */
+function kindRank(x: BagSortItem): number {
+  return x.weapon ? 0 : x.armor ? 2 : 1;
+}
+
+/** Внутри группы: оружие — перед кольцами и бронёй, оружие — по оценке, кольца — по тиру, броня — по лому; потом по лому. */
 function byQuality(a: BagSortItem, b: BagSortItem): number {
-  if (!!a.weapon !== !!b.weapon) return a.weapon ? -1 : 1;
+  const r = kindRank(a) - kindRank(b);
+  if (r) return r;
   if (a.weapon) return b.quality - a.quality;
+  if (a.armor) return b.scrap - a.scrap;
   return RING_TIERS.indexOf(b.tier as RingTier) - RING_TIERS.indexOf(a.tier as RingTier) || b.scrap - a.scrap;
 }
 

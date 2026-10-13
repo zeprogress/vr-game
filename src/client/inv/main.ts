@@ -121,6 +121,11 @@ function pageInv(): PcInventory {
     toBag: (side) => act("unequip", "-", side === "left" ? 1 : 0),
     scrap: (w) => act("scrap", w.id),
     drop: () => toast("Выбросить можно только в игре", false),
+    // Броня — те же действия, что в ПК-окне и VR (меню по клику, ПКМ надеть/снять, ★). Выброс — только в игре.
+    armorAct: (id, a) => {
+      if (a === "drop") toast("Выбросить можно только в игре", false);
+      else act(`armor${a[0].toUpperCase()}${a.slice(1)}`, id);
+    },
     useItem: (id) => act("scroll", id),
   });
   document.getElementById("invMount")!.append(pcInv.element);

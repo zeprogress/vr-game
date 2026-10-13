@@ -1786,6 +1786,7 @@ export class Game {
       if (this.net?.online) this.net.sendPvp(!this.net.pvpOn);
     };
     this.wristPanel.onAction = (a) => this.menuWeaponAction(a);
+    this.wristPanel.onArmorAct = (id, act) => this.net?.sendArmorAct(id, act);
     // Кольца и камни в VR: те же действия и данные, что у окна инвентаря.
     this.wristPanel.onJewelAct = (m) => this.net?.sendPcInvAct(m);
     this.wristPanel.onGift = (m) => this.net?.sendPcInvAct(m);
@@ -2129,6 +2130,7 @@ export class Game {
         if (slot >= 0) this.inventory.use(slot);
       },
       act: (m) => this.net?.sendPcInvAct(m),
+      armorAct: (id, act) => this.net?.sendArmorAct(id, act),
       hands: () => {
         const h = this.combat.handsSnapshot();
         return {
@@ -2290,7 +2292,9 @@ export class Game {
         ep.show((ui) => {
           const id = this.vrEnchId ?? "";
           const wh = this.pcInvData;
-          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id);
+          // В руке (оружие) или надета (броня) — метка на панели.
+          const inHand = !!wh && (wh.equipped.left === id || wh.equipped.right === id || Object.values(wh.armorWorn ?? {}).includes(id));
+          const isArmor = !!wh?.armor?.some((x) => x.id === id);
           drawEnchant(
             ui,
             wh,
@@ -2299,7 +2303,7 @@ export class Game {
             this.vrEnchResult,
             (idx) => {
               this.vrEnchResult = null;
-              this.net?.sendPcInvAct({ act: "enchant", id, idx });
+              this.net?.sendPcInvAct(isArmor ? { act: "armorEnchant", id, idx: 0 } : { act: "enchant", id, idx });
             },
             () => {
               this.vrEnchResult = null;
@@ -3730,6 +3734,7 @@ export class Game {
       this.pcInvData = d;
       this.pcInv?.setData(d);
       this.wristPanel?.setJewels(d.jewels, d.scrap);
+      this.wristPanel?.setArmor(d.armor ?? [], d.armorWorn ?? {});
       this.vrEnchPanel?.markDirty();
     };
     net.onShopData = (d) => {

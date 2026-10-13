@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { PLAYER, RESPAWN } from "#shared/constants";
+import type { ArmorInstance, ArmorPart } from "#shared/armor";
 import type { HeldWeapons, SaveMsg, StowedWeapon } from "#shared/net/messages";
 import { blankProgress, maxHpFor, resetAttrs, type Progress } from "#shared/progression";
 import { emptyBag, type Slot, type WeaponInstance } from "#shared/items";
@@ -49,6 +50,9 @@ export interface PlayerRecord extends SaveMsg, Progress {
   lastChatAt?: number;
   /** Собранное оружие-инстансы (каждое со своими роллами аффиксов) — весь склад персонажа. */
   weapons?: WeaponInstance[];
+  /** Броня (shared/armor.ts): все части в сумке и что надето в каждом слоте (id части). */
+  armor?: ArmorInstance[];
+  armorWorn?: Partial<Record<ArmorPart, string>>;
   /** Какой инстанс закреплён в какой руке ("!equip") — null/отсутствует — автовыбор лучшего. */
   equippedWeaponId?: { left: string | null; right: string | null };
   /** Секрет для веб-страницы инвентаря ("!inv") — отдельный от guestToken/nick:, только на чтение своего склада. */
