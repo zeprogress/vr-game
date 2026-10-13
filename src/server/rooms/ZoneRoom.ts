@@ -856,7 +856,7 @@ const TOWER_OPEN = false;
 /** Бот по дороге подбирает всё, что лежит ближе этого (м, по горизонтали). */
 const BOT_GRAB_RADIUS = 5;
 /** Полуугол конуса удара копья, рад (~35° в каждую сторону). */
-const SPEAR_CONE = 0.6;
+const SPEAR_CONE = 0.35; // полуугол конуса копья, рад (было 0.6 — ~34°, стало ~20°; клиент рисует тот же угол)
 /** Бот-ближник начинает замах, только довернувшись на цель ближе этого угла, рад (~45°). */
 const BOT_MELEE_FACE = 0.8;
 
@@ -2431,7 +2431,7 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /**
    * Копьё: выпад прошивает линию — до WEAPONS2.spear.pierce−1 мобов ЗА целью
-   * (в коридоре ~1 м от линии герой→цель, в пределах досягаемости + 2 м)
+   * (в коридоре ~1 м от линии герой→цель, в пределах досягаемости копья)
    * получают долю SPEAR_PIERCE_DMG урона. Всем — полоса выпада. Возвращает урон по этим
    * остальным целям (для вампиризма от сплэша).
    */
@@ -2443,7 +2443,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const len = Math.hypot(dx, dz) || 1;
     const ux = dx / len;
     const uz = dz / len;
-    const maxAlong = WEAPON_REACH.spear + 1;
+    const maxAlong = WEAPON_REACH.spear; // длина выпада = дальность копья (5 м)
     const cands: { id: string; d: number; ax: number; az: number }[] = [];
     for (const m of this.sim.mobs.values()) {
       if (m.dead || m.id === struck.id) continue;

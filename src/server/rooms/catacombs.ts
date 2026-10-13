@@ -325,6 +325,8 @@ export class CatacombDirector {
       if (!this.host.autoOn()) return "катакомбы сейчас выключены.";
       if (!open) {
         const at = Math.max(this.nextAuto, this.cooldownUntil);
+        // Плановое время прошло (ждём отряд) — без отсчёта, чтобы не обещать время, которое уже не работает.
+        if (at <= now) return this.reserve(id, "катакомбы откроются, как только в мире наберётся отряд — в отряд попадёшь без повторной записи");
         const wait = Math.max(1, Math.ceil((at - now) / 60000));
         return this.reserve(id, `катакомбы откроются сами примерно через ${wait} мин — в отряд попадёшь без повторной записи`);
       }
@@ -405,9 +407,13 @@ export class CatacombDirector {
     const now = this.host.now();
     if (this.phase === CAT_PHASE.none) {
       if (this.nextAuto === 0) this.nextAuto = now + this.autoGap();
+      // Плановое время не перебрасываем, если отряд не набрался: катакомбы откроются, как только наберётся
+      // минимум героев (раньше каждая неудачная проверка заново разыгрывала 15–25 мин — таймер в чате скакал).
       if (now >= this.nextAuto && now >= this.cooldownUntil && this.host.autoOn()) {
-        this.nextAuto = now + this.autoGap();
-        if (this.host.canOpen() && this.host.heroes().length >= CATACOMBS.minParty) this.openGather("");
+        if (this.host.canOpen() && this.host.heroes().length >= CATACOMBS.minParty) {
+          this.nextAuto = now + this.autoGap();
+          this.openGather("");
+        }
       }
       return;
     }

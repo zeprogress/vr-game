@@ -257,6 +257,10 @@ export class Mob {
   private wanderX = 0;
   private wanderZ = 0;
   private attackCd = 0;
+  /** Ближний удар в замахе: до удара, с; цель и урон — что ударить (см. MOB.strikeDelay). */
+  private strikeT = 0;
+  private strikeTo: string | null = null;
+  private strikeDmg = 0;
   /** Плевун: сколько уже пятится и сколько ещё нельзя пятиться. */
   private retreatT = 0;
   private restT = 0;
@@ -2010,6 +2014,26 @@ export class Mob {
       this.yaw += dyaw * Math.min(1, dt * 1.5);
     }
 
+    // Удар из замаха: урон — в момент удара, если цель всё ещё рядом (иначе промах).
+    if (this.strikeT > 0) {
+      this.strikeT -= dt;
+      if (this.strikeT <= 0) {
+        this.strikeT = 0;
+        const tp = this.strikeTo ? players.find((q) => q.sessionId === this.strikeTo) : undefined;
+        this.strikeTo = null;
+        if (tp && !this.dead && Math.hypot(tp.x - this.x, tp.z - this.z) < this.hitReach() + 0.6) {
+          hits.push({
+            target: tp.sessionId,
+            dmg: this.strikeDmg,
+            fromX: this.x,
+            fromZ: this.z,
+            projectile: false,
+            byMob: this.id,
+            lifesteal: this.lifesteal || undefined,
+          });
+        }
+      }
+    }
     if (chasing && np && !isBoss && this.stunnedT <= 0 && !(this.anchored && this.castingNow)) {
       if (this.ranged) {
         if (dist < (this.shot?.range ?? SPITTER.fireRange) && this.attackCd <= 0) {
@@ -2020,15 +2044,10 @@ export class Mob {
       } else if (dist < this.hitReach() && this.attackCd <= 0) {
         this.attackCd = this.atkCooldown;
         this.swing();
-        hits.push({
-          target: np.sessionId,
-          dmg: MOB.attackDamage * this.dmgMul * rageDmg,
-          fromX: this.x,
-          fromZ: this.z,
-          projectile: false,
-          byMob: this.id,
-          lifesteal: this.lifesteal || undefined,
-        });
+        // Урон — не сейчас, а в момент удара на экране (после замаха); см. MOB.strikeDelay.
+        this.strikeT = MOB.strikeDelay;
+        this.strikeTo = np.sessionId;
+        this.strikeDmg = MOB.attackDamage * this.dmgMul * rageDmg;
         this.vx -= dx * 2;
         this.vz -= dz * 2;
       }
