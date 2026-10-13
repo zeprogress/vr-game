@@ -24,17 +24,18 @@ export interface ShopItem {
   /** Что кладём в сумку (нет — особая выдача, напр. сундук). */
   item?: ItemId;
   count?: number;
-  /** Обмен: платим рыбой (столько штук), а не жетонами — и получаем 1 ◈. */
+  /** Обмен: платим рыбой (столько штук), а не жетонами — и получаем tokensGet ◈ (по умолчанию 1). */
   fishCost?: number;
+  tokensGet?: number;
 }
 
 export const SHOP: readonly ShopItem[] = [
   { id: "potions", name: "Зелья лечения ×3", desc: "в сумку", price: 1, item: "potion", count: 3 },
-  { id: "scrap", name: "Лом ×50", desc: "на заточку роллов", price: 2, item: "scrap", count: 50 },
+  { id: "scrap", name: "Лом ×300", desc: "на заточку роллов", price: 2, item: "scrap", count: 300 },
   { id: "scroll_wind", name: "Свиток ветра", desc: "+20% скорости бега на 15 мин", price: 2, item: "scroll_wind", count: 1 },
   { id: "scroll_xp", name: "Свиток мудрости", desc: "×2 опыта на 15 мин (с благословением ×3)", price: 3, item: "scroll_xp", count: 1 },
-  { id: "fish_trade", name: "Обмен рыбы на жетон", desc: "20 рыб → 1 ◈", price: 0, fishCost: 20 },
-  { id: "chest", name: "Сундук оружия", desc: "уникальное оружие твоего класса, оценка 80+", price: 30 },
+  { id: "fish_trade", name: "Обмен рыбы на жетоны", desc: "25 рыб → 5 ◈", price: 0, fishCost: 25, tokensGet: 5 },
+  { id: "chest", name: "Сундук оружия", desc: "уникальное оружие твоего класса, оценка 80+", price: 10 },
 ];
 
 /** Минимальная оценка уникального оружия из сундука. */

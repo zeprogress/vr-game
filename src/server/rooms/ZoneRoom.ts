@@ -4435,13 +4435,14 @@ export class ZoneRoom extends Room<ZoneState> {
     if (!this.tavernNear(p)) return this.sendShop(client, "Подойди к трактирщику");
     const tokens = store.get(token)?.tokens ?? 0;
     if (item.fishCost) {
-      // Обмен рыбы на жетон: рыба из сумки → +1 ◈.
+      // Обмен рыбы на жетоны: рыба из сумки → tokensGet ◈.
+      const gain = item.tokensGet ?? 1;
       const bag = readBag(p);
       const have = bagCount(bag, "fish");
       if (!takeFromBag(bag, "fish", item.fishCost)) return this.sendShop(client, `Нужно ${item.fishCost} рыб, у тебя ${have}`);
       writeBag(p, bag);
-      store.put(token, { tokens: tokens + 1 });
-      this.sendShop(client, `Обмен: −${item.fishCost} рыб · +1 ◈ (теперь ${tokens + 1} ◈)`);
+      store.put(token, { tokens: tokens + gain });
+      this.sendShop(client, `Обмен: −${item.fishCost} рыб · +${gain} ◈ (теперь ${tokens + gain} ◈)`);
       this.sendQuests(client);
       return;
     }
