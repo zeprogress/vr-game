@@ -4,7 +4,7 @@ import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, gold
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
-import { DUN_MOB_CAMPS, dunWorld } from "#shared/dungeon";
+import { DUN_MOB_CAMPS, dunProject, dunWorld, inDunRegion } from "#shared/dungeon";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -2696,6 +2696,30 @@ export class ZoneSim {
     // Катакомбы: моб знает открытые залы (таран и рывок не уводят его за стены).
     for (const m of this.mobs.values()) m.catHalls = this.catMobs.has(m.id) ? this.catOpen : null;
     if (this.mobsEnabled) for (const m of this.mobs.values()) m.tick(dt, players, hits, spit);
+    // Подземелье: мобы не уходят за ограду (край моста, уступа, стена провала) — та же граница, что у героев.
+    for (const m of this.mobs.values()) {
+      if (m.dead || !inDunRegion(m.x, m.z)) continue;
+      const ox = m.x;
+      const oz = m.z;
+      [m.x, m.z] = dunProject(m.x, m.z, MOB.bodyRadius * m.scale, m.y);
+      if (m.x === ox && m.z === oz) continue;
+      // Скорость наружу за ограду гасим, иначе моб упирался бы в край и дрожал.
+      const nx = ox - m.x;
+      const nz = oz - m.z;
+      const nl = Math.hypot(nx, nz) || 1;
+      const out = (m.vx * nx + m.vz * nz) / nl;
+      if (out > 0) {
+        m.vx -= (nx / nl) * out;
+        m.vz -= (nz / nl) * out;
+      }
+      // Высота — по полу в точке, куда моба вернули (как у катакомб).
+      const want = terrainHeight(m.x, m.z);
+      if (Math.abs(m.y - want) > 4) {
+        m.y = want;
+        m.vy = 0;
+        m.grounded = true;
+      }
+    }
     // Катакомбы: стены — моб не выходит из открытых залов/коридоров.
     if (this.catMobs.size) {
       for (const id of this.catMobs) {

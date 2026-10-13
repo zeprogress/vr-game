@@ -7338,7 +7338,8 @@ export class ZoneRoom extends Room<ZoneState> {
     // Цель: моб (не босс/осколок/пугало) в зоне.
     let mob = bot.target ? this.sim.mobs.get(bot.target) : undefined;
     const okMob = (m: { dead: boolean; kind: string; x: number; z: number; scarecrow?: boolean; practice?: boolean }): boolean =>
-      !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && !m.practice && inZone(m.x, m.z);
+      !m.dead && m.kind !== "boss" && m.kind !== "shard" && !m.scarecrow && !m.practice && inZone(m.x, m.z) &&
+      inDunRegion(m.x, m.z) === inDunRegion(p.head.x, p.head.z);
     // Идёт событие (нашествие/охота), бот на нём: бьёт мобов ивента, пока они есть в зоне.
     const eventOnly = bot.eventing && this.state.eventKind !== 0;
     if (!mob || !okMob(mob) || (eventOnly && !this.sim.eventMobs.has(mob.id))) {
@@ -7565,6 +7566,12 @@ export class ZoneRoom extends Room<ZoneState> {
       mob = scare;
       bot.target = scare.id;
       loot = undefined;
+    }
+    // Бот идёт через портал подземелья: мобов по ту сторону не выбирает и не бьёт. Иначе дальник
+    // останавливался на дистанции выстрела от портала и стрелял в скелетов за стеной, портал не проходил.
+    if (!catAnchor && !bot.eventing && !bot.raiding && !raidBoss && this.botDunWants(bot, p)) {
+      mob = undefined;
+      bot.target = null;
     }
     const chasingMob = raidBoss ?? (loot ? undefined : mob);
 
@@ -8419,15 +8426,18 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.followNav(nav, p, dx, dz, dunClear);
   }
 
+  /** Дом бота и сам бот — по разные стороны портала подземелья: нужен переход. */
+  private botDunWants(bot: Bot, p: PlayerState): boolean {
+    return inDunRegion(bot.homeX, bot.homeZ) !== inDunRegion(p.head.x, p.head.z);
+  }
+
   /** Бот к порталу подземелья или из него: цель перехода (portal в tickDungeonPortals переносит). null — ничего не делать. */
   private botDunGoal(bot: Bot, p: PlayerState): { x: number; z: number } | null {
-    const wantIn = inDunRegion(bot.homeX, bot.homeZ);
-    const inside = inDunRegion(p.head.x, p.head.z);
-    if (wantIn === inside) {
+    if (!this.botDunWants(bot, p)) {
       bot.dunTravel = null;
       return null;
     }
-    if (wantIn) {
+    if (inDunRegion(bot.homeX, bot.homeZ)) {
       bot.dunTravel = "in";
       return { x: DUN_PORTAL.x, z: DUN_PORTAL.z };
     }
