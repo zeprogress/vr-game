@@ -5573,33 +5573,44 @@ export class ZoneRoom extends Room<ZoneState> {
       return { ok: true, text: w.fav ? `★ В избранном: ${instanceName(w)} — не разбирается` : `Убрано из избранного: ${instanceName(w)}` };
     }
     if (act === "scrapAll") {
-      // Разобрать всё, кроме избранного ★ и того, что в руках (кнопка внизу инвентаря).
+      // Разобрать всё, кроме избранного ★, надетого и рубинового (кнопка внизу сумки).
+      // id — вкладка сумки: "weapon" — только оружие, "armor" — только броня, иначе — оружие и броня.
+      const kinds = id === "weapon" ? { w: true, a: false } : id === "armor" ? { w: false, a: true } : { w: true, a: true };
+      const none = { ok: false, text: "Разбирать нечего — всё в избранном или надето." };
       if (t) {
         const held = this.liveHeldIds(t.p, t.rt);
         // Рубиновые массовой разборкой не трогаем — только поштучно.
-        const targets = t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id));
-        if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
+        const ws = kinds.w ? t.rt.weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id)) : [];
+        const worn = new Set(Object.values(t.rt.armorWorn));
+        const as = kinds.a ? t.rt.armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
+        if (!ws.length && !as.length) return none;
         let got = 0;
-        for (const w of targets) got += this.scrapOne(t, w);
+        for (const w of ws) got += this.scrapOne(t, w);
+        for (const x of as) got += armorScrap(x);
+        if (as.length) t.rt.armor = t.rt.armor.filter((x) => !as.includes(x));
         const bag = readBag(t.p);
         addToBag(bag, "scrap", got);
         writeBag(t.p, bag);
         this.persistNick(norm);
-        return { ok: true, text: `Разобрано ${targets.length} — лом +${got}` };
+        return { ok: true, text: `Разобрано ${ws.length + as.length} — лом +${got}` };
       }
       const token = `nick:${norm}`;
       const rec = store.get(token);
       if (!rec) return { ok: false, text: "Героя нет — напиши !play в чате." };
       const weapons = rec.weapons ?? [];
       const held = recHeldIds(rec);
-      const targets = weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id));
-      if (!targets.length) return { ok: false, text: "Разбирать нечего — всё в избранном или в руках." };
+      const ws = kinds.w ? weapons.filter((w) => !w.fav && w.tier !== "ruby" && !held.has(w.id)) : [];
+      const { armor, armorWorn } = armorFromRec(rec);
+      const worn = new Set(Object.values(armorWorn));
+      const as = kinds.a ? armor.filter((x) => !x.fav && !worn.has(x.id)) : [];
+      if (!ws.length && !as.length) return none;
       const bag = restoreBag(rec.bag);
       let got = 0;
-      for (const w of targets) got += scrapValue(w);
+      for (const w of ws) got += scrapValue(w);
+      for (const x of as) got += armorScrap(x);
       addToBag(bag, "scrap", got);
-      store.put(token, { weapons: weapons.filter((w) => !targets.includes(w)), bag });
-      return { ok: true, text: `Разобрано ${targets.length} — лом +${got}` };
+      store.put(token, { weapons: weapons.filter((w) => !ws.includes(w)), armor: armor.filter((x) => !as.includes(x)), armorWorn, bag });
+      return { ok: true, text: `Разобрано ${ws.length + as.length} — лом +${got}` };
     }
     if (act === "sharpen") {
       if (t) {

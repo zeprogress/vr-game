@@ -1013,20 +1013,29 @@ export class PcInventory {
       all.disabled = !j.gems.some(([, n]) => n >= RING.combine);
       all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
       foot.append(all);
-    } else {
+    } else if (f === "all" || f === "weapon" || f === "armor") {
       // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
-      const bulk = bagW.filter((w) => w.tier !== "ruby");
-      const scrapSum = bulk.reduce((n, w) => n + w.scrap, 0);
-      const all = button(`Разобрать всё, кроме ${glyph("ui.fav")}`, () =>
+      // Вкладка «Оружие» — только оружие, «Броня» — только броня, «Все» — и то и другое.
+      const ws = f === "armor" ? [] : bagW.filter((w) => w.tier !== "ruby");
+      const as = f === "weapon" || !this.hooks.armorAct ? [] : bag.flatMap((e) => ("a" in e && !e.a.fav ? [e.a] : []));
+      const n = ws.length + as.length;
+      const scrapSum = ws.reduce((k, w) => k + w.scrap, 0) + as.reduce((k, x) => k + x.scrap, 0);
+      const what = f === "weapon" ? "оружие" : f === "armor" ? "броню" : "оружие и броню";
+      const all = button(f === "all" ? `Разобрать всё, кроме ${glyph("ui.fav")}` : `Разобрать ${what}, кроме ${glyph("ui.fav")}`, () =>
         this.askConfirm(
-          `Разобрать ${bulk.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и то, что в руках, останутся.`,
-          "Разобрать всё",
-          () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
+          `Разобрать ${what} — ${n} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и надетое останутся.`,
+          "Разобрать",
+          () => this.hooks.act({ act: "scrapAll", id: f, idx: 0 }),
         ),
       );
       all.className = "pcinv-btn";
-      all.disabled = bulk.length === 0;
-      all.title = `Оружие из сумки в лом (${bulk.length} шт., +${scrapSum}). Избранное, рубиновое и надетое останутся`;
+      all.disabled = n === 0;
+      all.title = `${what[0].toUpperCase()}${what.slice(1)} из сумки в лом (${n} шт., +${scrapSum}). Избранное, рубиновое и надетое останутся`;
+      foot.append(all);
+    } else if (f === "fav") {
+      const all = button(`${glyph("ui.fav")} Избранное не разбирается`, () => {});
+      all.className = "pcinv-btn";
+      all.disabled = true;
       foot.append(all);
     }
     p.append(foot);
@@ -2531,7 +2540,8 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-root.page .pcinv-gear { align-items:stretch; }
 .pcinv-root.page .pcinv-bagpnl { contain:none; align-self:stretch; }
 .pcinv-root.page .pcinv-bagf { margin-top:auto; padding-top:12px; }
-.pcinv-root.page .pcinv-bagrid { flex:none; max-height:none; overflow:visible; }
+/* Страница: много вещей — сетка прокручивается внутри сумки (видно 7 рядов). */
+.pcinv-root.page .pcinv-bagrid { flex:none; max-height:calc(var(--cw) * 7 + 42px); overflow-y:auto; padding-right:4px; }
 .pcinv-root.page .pcinv-charpnl .pcinv-ci-nick { font-size:30px; }
 .pcinv-root.page .pcinv-charpnl .pcinv-at6 { grid-template-columns:repeat(6,minmax(0,1fr)); }
 .pcinv-root.page .pcinv-charpnl .pcinv-atc { flex-direction:column; justify-content:center; height:52px; gap:2px; padding:0; }
