@@ -415,8 +415,9 @@ export const DUN_SPOTS = {
  */
 export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number }[] = [
   // Зал руин (B): западная и восточная половины, по обе стороны центрального провала.
-  { u: -20, v: -134, type: "skeletonReaver", count: 8, spread: 3 },
-  { u: 22, v: -132, type: "skeletonReaver", count: 8, spread: 3 },
+  // Отодвинуты к дальней стене зала (2026-10-14): от входа-телепорта ~74 м (было ~62), чтобы жнецы не появлялись у портала.
+  { u: -16, v: -120, type: "skeletonReaver", count: 8, spread: 3 },
+  { u: 18, v: -120, type: "skeletonReaver", count: 8, spread: 3 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -815,18 +816,18 @@ export function dunPath(x0: number, z0: number, x1: number, z1: number): { x: nu
   const v1 = z1 - DUN_Z;
   if (dunSegmentClear(u0, v0, u1, v1)) return [{ x: x1, z: z1 }];
   buildNav();
-  const s = nearestNode(u0, v0);
   const t = nearestNode(u1, v1);
-  if (s < 0 || t < 0) return [];
+  if (t < 0) return [];
   const n = nodes.length;
+  // Дерево кратчайших путей от узла цели (граф неориентированный): prev[i] — следующий узел к цели.
   const dist = new Array<number>(n).fill(Infinity);
   const prev = new Array<number>(n).fill(-1);
   const done = new Array<boolean>(n).fill(false);
-  dist[s] = 0;
+  dist[t] = 0;
   for (;;) {
     let c = -1;
     for (let i = 0; i < n; i++) if (!done[i] && dist[i] < Infinity && (c < 0 || dist[i] < dist[c])) c = i;
-    if (c < 0 || c === t) break;
+    if (c < 0) break;
     done[c] = true;
     for (const j of navAdj[c]) {
       const d = dist[c] + Math.hypot(nodes[j].u - nodes[c].u, nodes[j].v - nodes[c].v);
@@ -836,9 +837,25 @@ export function dunPath(x0: number, z0: number, x1: number, z1: number): { x: nu
       }
     }
   }
-  if (dist[t] === Infinity) return [];
+  // Старт — не ближайший узел (он может оказаться позади: бот разворачивался у угла), а видимый узел
+  // с наименьшей полной длиной «до узла + по графу до цели». Так маршрут не меняется от точки к точке.
+  const cand = nodes
+    .map((nd, i) => [(nd.u - u0) ** 2 + (nd.v - v0) ** 2, i] as const)
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, 40);
+  let s = -1;
+  let best = Infinity;
+  for (const [, i] of cand) {
+    if (dist[i] === Infinity || !dunSegmentClear(u0, v0, nodes[i].u, nodes[i].v)) continue;
+    const L = Math.hypot(nodes[i].u - u0, nodes[i].v - v0) + dist[i];
+    if (L < best) {
+      best = L;
+      s = i;
+    }
+  }
+  if (s < 0) return [];
   const chain: number[] = [];
-  for (let c = t; c >= 0; c = prev[c]) chain.unshift(c);
+  for (let c = s; c >= 0; c = prev[c]) chain.push(c);
   const out = chain.map((i) => dunWorld(nodes[i].u, nodes[i].v));
   out.push({ x: x1, z: z1 });
   return out;
