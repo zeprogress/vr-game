@@ -355,6 +355,12 @@ interface Runtime {
   eventBuffUntil: number;
   /** Бафф «Тепло костра» до этого момента (Date.now()); 0 — нет. */
   campBuffUntil: number;
+  /** Святилище стойкости в катакомбах (−20% урона) до этого момента (Date.now()); не сохраняется. */
+  wardUntil: number;
+  /** Когда в последний раз считали баффы игрока (для паузы в катакомбах). */
+  buffTickAt: number;
+  /** Сколько мс свиток мудрости «стоял» в катакомбах — ещё не записано в сейв. */
+  scrollPaused: number;
   /** Сколько секунд подряд герой греется у костра (для баффа). */
   campWarm: number;
   /** Когда последний раз показали крестики лечения в лагере (мс). */
@@ -2533,11 +2539,14 @@ export class ZoneRoom extends Room<ZoneState> {
     const rt = this.rt.get(ownerId);
     if (!rt) return 1;
     const now = Date.now();
-    let m = rt.eventBuffUntil > now ? (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult) : 1;
+    // В катакомбах баффы события и свитка не действуют (сами таймеры идут); работают только баффы алтарей.
+    const pl = this.state.players.get(ownerId);
+    const inCat = !!pl && inCatRegion(pl.head.x, pl.head.z);
+    let m = !inCat && rt.eventBuffUntil > now ? (which === "xp" ? EVENT.invasion.buffXpMult : EVENT.invasion.buffDmgMult) : 1;
     // «Боевой клич»/«Благословение» — +25% урона.
     if (which === "dmg" && rt.cryUntil > this.elapsed && rt.cryKind !== 2) m *= 1 + WARCRY.dmg;
     // Свиток мудрости — бонус складывается с благословением: ×2 и ×2 → ×3.
-    if (which === "xp" && rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > now) m += SCROLL.xpMul - 1;
+    if (which === "xp" && !inCat && rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > now) m += SCROLL.xpMul - 1;
     return m;
   }
 
@@ -6242,6 +6251,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // Баффы событий и костра — из сейва: переход ПК ↔ бот их не сбрасывает.
       eventBuffUntil: rec?.eventBuffUntil ?? 0,
       campBuffUntil: rec?.campBuffUntil ?? 0,
+      wardUntil: 0,
+      buffTickAt: 0,
+      scrollPaused: 0,
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,
@@ -6426,7 +6438,7 @@ export class ZoneRoom extends Room<ZoneState> {
             rt.cryKind = sh.key === "fury" ? 1 : 2;
             rt.cryUntil = this.elapsed + (sh.key === "fury" ? CAT_SHRINE.buffSec : CAT_SHRINE.hasteSec);
           } else if (sh.key === "ward") {
-            rt.campBuffUntil = Math.max(rt.campBuffUntil, Date.now() + CAT_SHRINE.wardSec * 1000);
+            rt.wardUntil = Math.max(rt.wardUntil, Date.now() + CAT_SHRINE.wardSec * 1000);
           } else {
             p.hp = p.maxHp;
           }
@@ -6793,9 +6805,9 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!bot?.dunTravel) return;
         if (bot.dunTravel === "in" && Math.hypot(x - DUN_PORTAL.x, z - DUN_PORTAL.z) <= DUN_PORTAL.r) {
           const e = dunEntry(this.dunEntryN++);
-          this.catWarp(id, e.x, e.z, e.x, e.z + 10, true);
+          this.catWarp(id, e.x, e.z, e.x, e.z + 10, true, true);
         } else if (bot.dunTravel === "out" && inDunRegion(x, z) && back.some((b) => Math.hypot(x - b.x, z - b.z) <= DUN_PORTAL.r)) {
-          this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z, true);
+          this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z, true, true);
         }
         return;
       }
@@ -6809,7 +6821,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
-  private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number, keepFollow = false): void {
+  private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number, keepFollow = false, keepEvent = false): void {
     const p = this.state.players.get(id);
     const rt = this.rt.get(id);
     if (!p || !rt) return;
@@ -6827,7 +6839,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.target = null;
       bot.nav = undefined;
       bot.dunTravel = null;
-      bot.eventing = false;
+      if (!keepEvent) bot.eventing = false;
       bot.raiding = false;
       // Переход через портал подземелья не отменяет !follow: бот идёт за героем туда и обратно.
       if (!keepFollow) bot.followNorm = null;
@@ -7875,7 +7887,7 @@ export class ZoneRoom extends Room<ZoneState> {
     // Мягкая метка выпада (подземелье) — цель остаётся: бот выходит из круга и продолжает бить.
     if (escape && !escape.soft) mob = undefined;
     // Подземелье: дом бота внутри (или он там, а дом снаружи) — сперва переход через портал.
-    const dunBlocked = !!(escape || catAnchor || bot.eventing || bot.raiding || raidBoss);
+    const dunBlocked = !!(escape || catAnchor || bot.raiding || raidBoss);
     if (dunBlocked) bot.dunTravel = null;
     const dunGoal = dunBlocked ? null : this.botDunGoal(bot, p);
 
@@ -8714,6 +8726,8 @@ export class ZoneRoom extends Room<ZoneState> {
 
   /** Бот должен быть в подземелье: за ним идёт (!follow) герой — там, где герой; иначе — там, где дом. */
   private botWantsDungeon(bot: Bot): boolean {
+    // На событии нужна та область, где событие (эпицентр), а не дом: из подземелья выходят через портал.
+    if (bot.eventing) return inDunRegion(this.state.eventX, this.state.eventZ);
     const f = this.followedHead(bot);
     if (f) return inDunRegion(f.x, f.z);
     return inDunRegion(bot.homeX, bot.homeZ);
@@ -10298,7 +10312,9 @@ export class ZoneRoom extends Room<ZoneState> {
       this.broadcast(MSG.act, { k: "magicHit", id: h.target, x: p.head.x, y: p.head.y, z: p.head.z } satisfies ActRelay);
     }
     // «Тепло костра» (лагерь): входящий урон меньше на CAMPFIRE.buffDef.
-    if (rt.campBuffUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
+    // В катакомбах костёр не греет; святилище стойкости (алтарь) — работает всегда.
+    if (rt.campBuffUntil > Date.now() && !inCatRegion(p.head.x, p.head.z)) dmg *= 1 - CAMPFIRE.buffDef;
+    if (rt.wardUntil > Date.now()) dmg *= 1 - CAMPFIRE.buffDef;
     if (magicShot) dmg *= 1 - magicResistFrac(p);
     // «Печать»: стоишь в круге союзника (или своём) — входящий урон меньше.
     dmg *= 1 - this.sealShield(p.head.x, p.head.z);
@@ -10473,6 +10489,24 @@ export class ZoneRoom extends Room<ZoneState> {
     this.state.players.forEach((p, id) => {
       const rt = this.rt.get(id);
       if (!rt) return;
+      // Катакомбы: таймеры баффов стоят. Пока герой внутри, концы баффов сдвигаем на прошедшее время
+      // (событие, костёр, свиток мудрости); алтарь стойкости идёт своим временем.
+      {
+        const tnow = Date.now();
+        const dtB = rt.buffTickAt && tnow - rt.buffTickAt < 2000 ? tnow - rt.buffTickAt : 0;
+        rt.buffTickAt = tnow;
+        const inCatNow = inCatRegion(p.head.x, p.head.z);
+        if (dtB > 0 && inCatNow) {
+          if (rt.eventBuffUntil > tnow - dtB) rt.eventBuffUntil += dtB;
+          if (rt.campBuffUntil > tnow - dtB) rt.campBuffUntil += dtB;
+          if (rt.token && (store.get(rt.token)?.scrollXpUntil ?? 0) > tnow - dtB) rt.scrollPaused += dtB;
+        }
+        // Свиток: в сейв — раз в секунду внутри и сразу при выходе.
+        if (rt.scrollPaused > 0 && (rt.scrollPaused >= 1000 || !inCatNow)) {
+          if (rt.token) store.put(rt.token, { scrollXpUntil: (store.get(rt.token)?.scrollXpUntil ?? 0) + rt.scrollPaused });
+          rt.scrollPaused = 0;
+        }
+      }
       p.camPrio = this.camPrioOf(id, p);
       this.syncWarehouse(id, rt);
       if (p.dead) {
@@ -10488,8 +10522,9 @@ export class ZoneRoom extends Room<ZoneState> {
       if (rt.invuln > 0) rt.invuln -= dt;
       rt.sinceHurt += dt;
       const now = Date.now();
+      // В катакомбах бафф победы не действует — и не показывается (аура, значок, таймер).
       const buffLeft = Math.max(0, rt.eventBuffUntil - now);
-      p.buffSecs = Math.min(65535, Math.ceil(buffLeft / 1000));
+      p.buffSecs = inCatRegion(p.head.x, p.head.z) ? 0 : Math.min(65535, Math.ceil(buffLeft / 1000));
       // Лагерь: по всей площади — бафф «Тепло костра» (таймер всегда полный)
       // и быстрый реген сразу, без паузы после урона.
       if (inHubSafeZone(p.head.x, p.head.z)) {
@@ -10498,7 +10533,10 @@ export class ZoneRoom extends Room<ZoneState> {
       } else {
         rt.campWarm = 0;
       }
-      p.campBuffSecs = Math.min(65535, Math.max(0, Math.ceil((rt.campBuffUntil - now) / 1000)));
+      const inCatNow = inCatRegion(p.head.x, p.head.z);
+      const fireSec = inCatNow ? 0 : Math.ceil((rt.campBuffUntil - now) / 1000);
+      const wardSec = Math.ceil((rt.wardUntil - now) / 1000);
+      p.campBuffSecs = Math.min(65535, Math.max(0, fireSec, wardSec));
       if (rt.token) {
         const rec = store.get(rt.token);
         p.title = rec?.title ?? "";
@@ -10506,7 +10544,7 @@ export class ZoneRoom extends Room<ZoneState> {
         if (rec && !rec.titles?.includes("Царь башни") && (rec.bestTowerTimeSec ?? Infinity) <= TITLE_GOALS.towerSec) {
           this.grantTitle(rt.token, "Царь башни");
         }
-        p.scrollXpSecs = Math.max(0, Math.ceil(((rec?.scrollXpUntil ?? 0) - now) / 1000));
+        p.scrollXpSecs = inCatNow ? 0 : Math.max(0, Math.ceil(((rec?.scrollXpUntil ?? 0) - now) / 1000));
         p.scrollWindSecs = Math.max(0, Math.ceil(((rec?.scrollWindUntil ?? 0) - now) / 1000));
       }
       // Максимум HP — одна формула для игроков и ботов (уровень и ТЕЛ):
@@ -10807,6 +10845,9 @@ export class ZoneRoom extends Room<ZoneState> {
       // Баффы событий и костра — из сейва: переход ПК ↔ бот их не сбрасывает.
       eventBuffUntil: rec?.eventBuffUntil ?? 0,
       campBuffUntil: rec?.campBuffUntil ?? 0,
+      wardUntil: 0,
+      buffTickAt: 0,
+      scrollPaused: 0,
       campWarm: 0,
       campHealFxAt: 0,
       stunnedUntil: 0,

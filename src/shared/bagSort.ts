@@ -10,6 +10,7 @@
 import type { WeaponClass, WeaponTier } from "./items";
 import { CLASS_OF_WEAPON, type ClassId } from "./classes2";
 import { RING_TIERS, type RingTier } from "./jewels";
+import { ARMOR_PARTS, type ArmorPart } from "./armor";
 
 /** Включённая сортировка; none — как пришло. */
 export type BagSort = "none" | "quality" | "type" | "class" | "fav";
@@ -30,8 +31,9 @@ export const CLASS_ORDER: readonly ClassId[] = ["warrior", "assassin", "spearman
 /** Что сортировке нужно знать о предмете. Нет weapon — кольцо. */
 export interface BagSortItem {
   weapon?: WeaponClass;
-  /** Броня: сортируется по лому, после колец. */
+  /** Броня: сортируется по лому, после колец; в «По типу» — по части (шлем, нагрудник, …). */
   armor?: true;
+  armorPart?: ArmorPart;
   tier: WeaponTier | RingTier;
   quality: number;
   scrap: number;
@@ -43,18 +45,19 @@ export interface BagSortItem {
 export type BagPick =
   | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number; fav?: boolean } }
   | { r: { tier: RingTier; scrap: number; fav?: boolean } }
-  | { a: { pts: number; scrap: number; fav?: boolean } };
+  | { a: { part: ArmorPart; pts: number; scrap: number; fav?: boolean } };
 
 /** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {
   if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0, fav: !!e.w.fav };
-  if ("a" in e) return { armor: true, tier: "base", quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
+  if ("a" in e) return { armor: true, armorPart: e.a.part, tier: "base", quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
   return { tier: e.r.tier, quality: 0, scrap: e.r.scrap, fav: !!e.r.fav };
 }
 
 /** Группа по виду: кольца и неизвестное — перед бронёй, броня — в самом конце. */
 function typeGroup(x: BagSortItem): number {
-  if (x.armor) return TYPE_ORDER.length + 1;
+  // Оружие — по виду; кольца — после него; броня — в самом конце, по части (шлем, нагрудник, перчатки, поножи, сапоги).
+  if (x.armor) return TYPE_ORDER.length + 1 + Math.max(0, ARMOR_PARTS.indexOf(x.armorPart ?? "helm"));
   const i = x.weapon ? TYPE_ORDER.indexOf(x.weapon) : -1;
   return i < 0 ? TYPE_ORDER.length : i;
 }
