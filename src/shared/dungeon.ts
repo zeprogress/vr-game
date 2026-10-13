@@ -562,11 +562,11 @@ export function dunWorld(u: number, v: number): { x: number; z: number } {
 
 /**
  * Точка в объёме комнат подземелья: над полом фигуры (не в стене и не в пустоте) и ниже свода зоны.
- * Вне участка подземелья — всегда да: ограничитель нужен только внутри.
+ * Вне участка подземелья — нет: камера туда не уходит (иначе чёрный экран за пределом карты).
  */
 export function dunInRooms(x: number, y: number, z: number): boolean {
-  if (!inDunRegion(x, z)) return true;
-  const h = dunFloorLocal(x - DUN_X, z - DUN_Z, 0.2);
+  if (!inDunRegion(x, z)) return false;
+  const h = dunFloorLocal(x - DUN_X, z - DUN_Z, 0);
   if (h === null) return false;
   const floorW = DUN_Y0 + h;
   return y >= floorW + 0.2 && y <= floorW + dunZoneAt(x, z).ceil - 0.3;
@@ -574,10 +574,11 @@ export function dunInRooms(x: number, y: number, z: number): boolean {
 
 /**
  * Длина луча от точки (tx,ty,tz) по единичному направлению (dx,dy,dz), пока камера в комнатах: стены,
- * свод и пустота её не пускают. Не больше len. Вне подземелья — len.
+ * свод и пустота её не пускают. Не больше len. Вне подземелья, или если сама точка не в комнатах
+ * (цель в стене) — len: не ломаем камеру из-за неудачной точки.
  */
 export function dunRayClear(tx: number, ty: number, tz: number, dx: number, dy: number, dz: number, len: number): number {
-  if (!inDunRegion(tx, tz)) return len;
+  if (!inDunRegion(tx, tz) || !dunInRooms(tx, ty, tz)) return len;
   const STEP = 0.2;
   for (let s = STEP; s < len + STEP / 2; s += STEP) {
     const k = Math.min(s, len);

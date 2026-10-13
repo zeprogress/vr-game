@@ -119,8 +119,9 @@ export class ThirdPersonCam {
     }
 
     // 1б. Подземелье: стены, свод и пустота — окклюзия выше видит только рельеф, камера пролетала бы насквозь.
+    // Места позади нет (герой у стены) — камера встаёт на самого героя, а не за стену: там был бы чёрный экран.
     const roomLen = dunRayClear(this.pivot.x, this.pivot.y, this.pivot.z, -dx, -dy, -dz, dist);
-    if (roomLen < dist) dist = Math.max(0.2, roomLen - 0.15);
+    if (roomLen < dist) dist = roomLen >= 0.3 ? roomLen - 0.15 : 0;
 
     this.pos.set(
       this.pivot.x - dx * dist,
