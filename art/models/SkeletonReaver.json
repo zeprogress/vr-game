@@ -1,0 +1,1544 @@
+{
+ "name": "SkeletonReaver",
+ "type": "mob",
+ "rig": "biped",
+ "height": 2.1,
+ "tris": 5000,
+ "texture": 1024,
+ "res": 0.011,
+ "surface": {
+  "noise": [
+   0.004,
+   14,
+   7
+  ]
+ },
+ "mats": {
+  "skin": {
+   "c": "#d6ccae",
+   "shade": "#6b604c",
+   "light": "#f0e8d2",
+   "var": 0.24,
+   "freq": 11,
+   "spots": [
+    "#8c7d5e",
+    0.14,
+    28
+   ]
+  },
+  "teeth": {
+   "c": "#e8dfc4",
+   "shade": "#9a8c6c",
+   "var": 0.15,
+   "freq": 14
+  },
+  "dark": {
+   "c": "#120a08",
+   "var": 0.04
+  },
+  "eye": {
+   "c": "#ff3d22",
+   "emit": 1
+  },
+  "metal": {
+   "c": "#77746c",
+   "shade": "#2a2926",
+   "light": "#c4c0b4",
+   "var": 0.2,
+   "freq": 14,
+   "spots": [
+    "#6e3f22",
+    0.22,
+    22
+   ]
+  },
+  "leather": {
+   "c": "#3e2a1d",
+   "shade": "#1c120b",
+   "light": "#5c4330",
+   "var": 0.24,
+   "freq": 12
+  },
+  "cloth": {
+   "c": "#231c1a",
+   "shade": "#0e0a09",
+   "light": "#3a302c",
+   "var": 0.3,
+   "freq": 18,
+   "grain": [
+    0,
+    0,
+    1
+   ]
+  }
+ },
+ "body": {
+  "legLen": 0.95,
+  "torso": 0.6,
+  "neck": 0.12,
+  "head": 0.26,
+  "shoulderW": 0.46,
+  "hipW": 0.22,
+  "armLen": 0.86,
+  "armSpread": 24,
+  "hunch": 12,
+  "footLen": 0.22,
+  "kneeBend": 0.05,
+  "r": {
+   "pelvis": [
+    0.12,
+    0.07,
+    0.06
+   ],
+   "belly": 0,
+   "chest": 0,
+   "neck": 0.03,
+   "head": [
+    0.1,
+    0.118,
+    0.118
+   ],
+   "shoulder": 0.05,
+   "upperArm": [
+    0.034,
+    0.026
+   ],
+   "forearm": [
+    0.029,
+    0.022
+   ],
+   "hand": [
+    0.035,
+    0.024,
+    0.055
+   ],
+   "thigh": [
+    0.04,
+    0.03
+   ],
+   "calf": [
+    0.034,
+    0.024
+   ],
+   "foot": [
+    0.038,
+    0.095,
+    0.026
+   ]
+  },
+  "k": {
+   "torso": 0.03,
+   "limb": 0.02,
+   "head": 0.025,
+   "hand": 0.012,
+   "foot": 0.012
+  }
+ },
+ "add": [
+  {
+   "shape": "cone",
+   "a": [
+    "hips",
+    [
+     0,
+     0.03,
+     0.04
+    ]
+   ],
+   "b": [
+    "spine",
+    [
+     0,
+     0.04,
+     0
+    ]
+   ],
+   "r": [
+    0.032,
+    0.03
+   ],
+   "k": 0.015,
+   "bone": "Spine"
+  },
+  {
+   "shape": "cone",
+   "a": [
+    "spine",
+    [
+     0,
+     0.04,
+     0
+    ]
+   ],
+   "b": [
+    "chest",
+    [
+     0,
+     0.05,
+     0
+    ]
+   ],
+   "r": [
+    0.03,
+    0.03
+   ],
+   "k": 0.015,
+   "bone": "Spine"
+  },
+  {
+   "shape": "cone",
+   "a": [
+    "chest",
+    [
+     0,
+     0.05,
+     0
+    ]
+   ],
+   "b": [
+    "neck",
+    [
+     0,
+     0.03,
+     0
+    ]
+   ],
+   "r": [
+    0.03,
+    0.028
+   ],
+   "k": 0.015,
+   "bone": "Chest"
+  },
+  {
+   "shape": "sphere",
+   "at": "spine",
+   "off": [
+    0,
+    0.075,
+    0.0
+   ],
+   "r": 0.022,
+   "k": 0.008,
+   "bone": "Spine"
+  },
+  {
+   "shape": "sphere",
+   "at": "spine",
+   "off": [
+    0,
+    0.075,
+    0.07
+   ],
+   "r": 0.022,
+   "k": 0.008,
+   "bone": "Spine"
+  },
+  {
+   "shape": "sphere",
+   "at": "spine",
+   "off": [
+    0,
+    0.07,
+    -0.07
+   ],
+   "r": 0.022,
+   "k": 0.008,
+   "bone": "Spine"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "hips",
+   "off": [
+    0.085,
+    0.0,
+    0.06
+   ],
+   "r": [
+    0.07,
+    0.03,
+    0.065
+   ],
+   "rot": [
+    0,
+    -25,
+    0
+   ],
+   "k": 0.02,
+   "mirror": true,
+   "bone": "Hips"
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "sub",
+   "at": "hips",
+   "off": [
+    0,
+    -0.06,
+    0.02
+   ],
+   "r": [
+    0.06,
+    0.04,
+    0.05
+   ],
+   "k": 0.01,
+   "mat": "dark",
+   "bone": "Hips"
+  },
+  {
+   "shape": "cone",
+   "a": [
+    "neck",
+    [
+     0.03,
+     -0.02,
+     -0.04
+    ]
+   ],
+   "b": [
+    "shoulder.L",
+    [
+     -0.02,
+     -0.01,
+     0.02
+    ]
+   ],
+   "r": [
+    0.02,
+    0.018
+   ],
+   "k": 0.01,
+   "mirror": true,
+   "bone": "Chest"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "shoulder.L",
+   "off": [
+    -0.04,
+    0.06,
+    -0.06
+   ],
+   "r": [
+    0.06,
+    0.02,
+    0.08
+   ],
+   "rot": [
+    0,
+    20,
+    0
+   ],
+   "k": 0.015,
+   "mirror": true,
+   "bone": "Chest"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    -0.085,
+    0.022
+   ],
+   "r": [
+    0.07,
+    0.06,
+    0.04
+   ],
+   "k": 0.02,
+   "bone": "Head"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    -0.115,
+    0.075
+   ],
+   "r": [
+    0.06,
+    0.035,
+    0.04
+   ],
+   "k": 0.02,
+   "bone": "Head"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0.068,
+    -0.07,
+    0.095
+   ],
+   "r": [
+    0.03,
+    0.04,
+    0.025
+   ],
+   "k": 0.015,
+   "mirror": true,
+   "bone": "Head"
+  },
+  {
+   "shape": "ellipsoid",
+   "at": "head",
+   "off": [
+    0,
+    -0.1,
+    0.16
+   ],
+   "r": [
+    0.09,
+    0.035,
+    0.022
+   ],
+   "k": 0.02,
+   "bone": "Head"
+  },
+  {
+   "shape": "sphere",
+   "op": "sub",
+   "at": "head",
+   "off": [
+    0.044,
+    -0.13,
+    0.128
+   ],
+   "r": 0.038,
+   "k": 0.01,
+   "mat": "dark",
+   "mirror": true
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "sub",
+   "at": "head",
+   "off": [
+    0,
+    -0.135,
+    0.075
+   ],
+   "r": [
+    0.016,
+    0.03,
+    0.022
+   ],
+   "k": 0.008,
+   "mat": "dark"
+  },
+  {
+   "shape": "ellipsoid",
+   "op": "sub",
+   "at": "head",
+   "off": [
+    0,
+    -0.11,
+    0.047
+   ],
+   "r": [
+    0.05,
+    0.04,
+    0.008
+   ],
+   "k": 0.006,
+   "mat": "dark"
+  },
+  {
+   "shape": "sphere",
+   "at": "elbow.L",
+   "r": 0.036,
+   "k": 0.012,
+   "mirror": true,
+   "bone": "UpperArm.L"
+  },
+  {
+   "shape": "sphere",
+   "at": "knee.L",
+   "off": [
+    0,
+    -0.015,
+    0
+   ],
+   "r": 0.045,
+   "k": 0.012,
+   "mirror": true,
+   "bone": "LowerLeg.L"
+  },
+  {
+   "shape": "sphere",
+   "at": "ankle.L",
+   "r": 0.03,
+   "k": 0.01,
+   "mirror": true,
+   "bone": "LowerLeg.L"
+  },
+  {
+   "shape": "sphere",
+   "at": "hip.L",
+   "r": 0.04,
+   "k": 0.012,
+   "mirror": true,
+   "bone": "UpperLeg.L"
+  }
+ ],
+ "parts": [
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0.02,
+      0.05,
+      0.13
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.086,
+      0.045,
+      0.12
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.121,
+      -0.03,
+      0.09
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.098,
+      -0.11,
+      0.06
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.035,
+      -0.14,
+      0.045
+     ]
+    ]
+   ],
+   "r": [
+    0.017,
+    0.012
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0.02,
+      0.05,
+      0.075
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.101,
+      0.045,
+      0.065
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.143,
+      -0.03,
+      0.035
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.115,
+      -0.11,
+      0.005
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.035,
+      -0.14,
+      -0.01
+     ]
+    ]
+   ],
+   "r": [
+    0.017,
+    0.012
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0.02,
+      0.05,
+      0.02
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.11,
+      0.045,
+      0.01
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.155,
+      -0.03,
+      -0.02
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.125,
+      -0.11,
+      -0.05
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.035,
+      -0.14,
+      -0.065
+     ]
+    ]
+   ],
+   "r": [
+    0.017,
+    0.012
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0.02,
+      0.05,
+      -0.035
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.108,
+      0.045,
+      -0.045
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.152,
+      -0.03,
+      -0.075
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.122,
+      -0.11,
+      -0.105
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.035,
+      -0.14,
+      -0.12
+     ]
+    ]
+   ],
+   "r": [
+    0.017,
+    0.012
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0.02,
+      0.05,
+      -0.09
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.097,
+      0.045,
+      -0.1
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.136,
+      -0.03,
+      -0.13
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.11,
+      -0.11,
+      -0.16
+     ]
+    ],
+    [
+     "chest",
+     [
+      0.035,
+      -0.14,
+      -0.175
+     ]
+    ]
+   ],
+   "r": [
+    0.017,
+    0.012
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "tube",
+   "path": [
+    [
+     "chest",
+     [
+      0,
+      -0.142,
+      0.06
+     ]
+    ],
+    [
+     "chest",
+     [
+      0,
+      -0.152,
+      -0.06
+     ]
+    ],
+    [
+     "chest",
+     [
+      0,
+      -0.142,
+      -0.17
+     ]
+    ]
+   ],
+   "r": [
+    0.022,
+    0.016
+   ],
+   "mat": "skin",
+   "bone": "Chest",
+   "seg": 6
+  },
+  {
+   "shape": "sphere",
+   "at": "head",
+   "off": [
+    0.044,
+    -0.118,
+    0.126
+   ],
+   "r": 0.018,
+   "mat": "eye",
+   "mirror": true,
+   "seg": 8
+  },
+  {
+   "shape": "box",
+   "at": "head",
+   "off": [
+    0,
+    -0.112,
+    0.06
+   ],
+   "h": [
+    0.042,
+    0.008,
+    0.01
+   ],
+   "bevel": 0.003,
+   "mat": "teeth"
+  },
+  {
+   "shape": "box",
+   "at": "head",
+   "off": [
+    0,
+    -0.11,
+    0.034
+   ],
+   "h": [
+    0.04,
+    0.008,
+    0.01
+   ],
+   "bevel": 0.003,
+   "mat": "teeth"
+  },
+  {
+   "shape": "horn",
+   "at": "head",
+   "off": [
+    0.055,
+    0.02,
+    0.21
+   ],
+   "dir": [
+    0.35,
+    0.6,
+    0.7
+   ],
+   "len": 0.13,
+   "r": 0.02,
+   "bend": [
+    0,
+    0.02,
+    0.02
+   ],
+   "mat": "skin",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "horn",
+   "at": "head",
+   "off": [
+    0,
+    0.04,
+    0.23
+   ],
+   "dir": [
+    0,
+    0.8,
+    0.6
+   ],
+   "len": 0.11,
+   "r": 0.018,
+   "mat": "skin",
+   "seg": 6
+  },
+  {
+   "shape": "ring",
+   "at": "hips",
+   "off": [
+    0,
+    0,
+    0.07
+   ],
+   "R": 0.13,
+   "r": 0.016,
+   "mat": "leather",
+   "seg": 14
+  },
+  {
+   "shape": "box",
+   "at": "hips",
+   "off": [
+    0,
+    -0.13,
+    -0.08
+   ],
+   "h": [
+    0.07,
+    0.01,
+    0.14
+   ],
+   "rot": [
+    -8,
+    0,
+    0
+   ],
+   "mat": "cloth",
+   "bone": "Hips"
+  },
+  {
+   "shape": "box",
+   "at": "hips",
+   "off": [
+    0.06,
+    0.12,
+    -0.11
+   ],
+   "h": [
+    0.05,
+    0.01,
+    0.17
+   ],
+   "rot": [
+    10,
+    0,
+    6
+   ],
+   "mat": "cloth",
+   "bone": "Hips"
+  },
+  {
+   "shape": "box",
+   "at": "hips",
+   "off": [
+    -0.06,
+    0.12,
+    -0.06
+   ],
+   "h": [
+    0.045,
+    0.01,
+    0.12
+   ],
+   "rot": [
+    10,
+    0,
+    -5
+   ],
+   "mat": "cloth",
+   "bone": "Hips"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    0.17,
+    0.11,
+    -0.16
+   ],
+   "h": [
+    0.035,
+    0.008,
+    0.17
+   ],
+   "rot": [
+    10,
+    0,
+    8
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    0.1,
+    0.13,
+    -0.26
+   ],
+   "h": [
+    0.04,
+    0.008,
+    0.27
+   ],
+   "rot": [
+    12,
+    0,
+    4
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    0.03,
+    0.14,
+    -0.2
+   ],
+   "h": [
+    0.035,
+    0.008,
+    0.21
+   ],
+   "rot": [
+    13,
+    0,
+    1
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    -0.04,
+    0.14,
+    -0.31
+   ],
+   "h": [
+    0.04,
+    0.008,
+    0.32
+   ],
+   "rot": [
+    14,
+    0,
+    -2
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    -0.11,
+    0.13,
+    -0.18
+   ],
+   "h": [
+    0.035,
+    0.008,
+    0.19
+   ],
+   "rot": [
+    12,
+    0,
+    -5
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    -0.18,
+    0.11,
+    -0.24
+   ],
+   "h": [
+    0.035,
+    0.008,
+    0.25
+   ],
+   "rot": [
+    10,
+    0,
+    -9
+   ],
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "box",
+   "at": "neck",
+   "off": [
+    0,
+    0.1,
+    -0.02
+   ],
+   "h": [
+    0.21,
+    0.012,
+    0.04
+   ],
+   "rot": [
+    8,
+    0,
+    0
+   ],
+   "bevel": 0.006,
+   "mat": "cloth",
+   "bone": "Chest"
+  },
+  {
+   "shape": "sphere",
+   "at": "shoulder.L",
+   "off": [
+    0.03,
+    0.0,
+    0.035
+   ],
+   "r": [
+    0.1,
+    0.085,
+    0.055
+   ],
+   "mat": "metal",
+   "bone": "UpperArm.L",
+   "seg": 10
+  },
+  {
+   "shape": "horn",
+   "at": "shoulder.L",
+   "off": [
+    0.06,
+    0.0,
+    0.08
+   ],
+   "dir": [
+    0.5,
+    0.1,
+    1
+   ],
+   "len": 0.12,
+   "r": 0.022,
+   "mat": "metal",
+   "bone": "UpperArm.L",
+   "seg": 6
+  },
+  {
+   "shape": "horn",
+   "at": "shoulder.L",
+   "off": [
+    0.1,
+    0.04,
+    0.05
+   ],
+   "dir": [
+    1,
+    0.2,
+    0.6
+   ],
+   "len": 0.09,
+   "r": 0.02,
+   "mat": "metal",
+   "bone": "UpperArm.L",
+   "seg": 6
+  },
+  {
+   "shape": "cyl",
+   "at": "hand.L",
+   "off": [
+    0,
+    0.042,
+    0.056
+   ],
+   "dir": [
+    0,
+    -0.6,
+    -0.8
+   ],
+   "len": 0.15,
+   "r": 0.016,
+   "mat": "leather",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 6
+  },
+  {
+   "shape": "box",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.054,
+    -0.072
+   ],
+   "h": [
+    0.022,
+    0.014,
+    0.075
+   ],
+   "rot": [
+    53,
+    0,
+    0
+   ],
+   "bevel": 0.004,
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true
+  },
+  {
+   "shape": "box",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.256,
+    -0.321
+   ],
+   "h": [
+    0.008,
+    0.31,
+    0.04
+   ],
+   "rot": [
+    53,
+    0,
+    0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.442,
+    -0.569
+   ],
+   "dir": [
+    0,
+    -0.72,
+    -0.71
+   ],
+   "len": 0.12,
+   "r": [
+    0.035,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.134,
+    -0.099
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.194,
+    -0.179
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.254,
+    -0.259
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.314,
+    -0.339
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.374,
+    -0.419
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0,
+    -0.434,
+    -0.499
+   ],
+   "dir": [
+    0,
+    -0.59,
+    0.88
+   ],
+   "len": 0.055,
+   "r": [
+    0.016,
+    0.0
+   ],
+   "mat": "metal",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 4,
+   "smooth": false
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    -0.02,
+    -0.04,
+    -0.02
+   ],
+   "dir": [
+    -0.02,
+    -0.6,
+    -1
+   ],
+   "len": 0.05,
+   "r": [
+    0.012,
+    0.0
+   ],
+   "mat": "skin",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0.0,
+    -0.04,
+    -0.02
+   ],
+   "dir": [
+    0.0,
+    -0.6,
+    -1
+   ],
+   "len": 0.05,
+   "r": [
+    0.012,
+    0.0
+   ],
+   "mat": "skin",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "hand.L",
+   "off": [
+    0.02,
+    -0.04,
+    -0.02
+   ],
+   "dir": [
+    0.02,
+    -0.6,
+    -1
+   ],
+   "len": 0.05,
+   "r": [
+    0.012,
+    0.0
+   ],
+   "mat": "skin",
+   "bone": "Hand.L",
+   "mirror": true,
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "toe.L",
+   "off": [
+    -0.025,
+    -0.03,
+    0.02
+   ],
+   "dir": [
+    -0.1,
+    -1,
+    -0.15
+   ],
+   "len": 0.06,
+   "r": [
+    0.014,
+    0.0
+   ],
+   "mat": "skin",
+   "mirror": true,
+   "bone": "Foot.L",
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "toe.L",
+   "off": [
+    0.0,
+    -0.03,
+    0.02
+   ],
+   "dir": [
+    0.0,
+    -1,
+    -0.15
+   ],
+   "len": 0.06,
+   "r": [
+    0.014,
+    0.0
+   ],
+   "mat": "skin",
+   "mirror": true,
+   "bone": "Foot.L",
+   "seg": 5
+  },
+  {
+   "shape": "horn",
+   "at": "toe.L",
+   "off": [
+    0.025,
+    -0.03,
+    0.02
+   ],
+   "dir": [
+    0.1,
+    -1,
+    -0.15
+   ],
+   "len": 0.06,
+   "r": [
+    0.014,
+    0.0
+   ],
+   "mat": "skin",
+   "mirror": true,
+   "bone": "Foot.L",
+   "seg": 5
+  }
+ ],
+ "anim": {
+  "attack": "swing",
+  "run": {
+   "lean": 16,
+   "stride": 1.3
+  }
+ },
+ "clips": [
+  "Idle",
+  "Walk",
+  "Run",
+  "Attack",
+  "HitReact",
+  "Death"
+ ]
+}
