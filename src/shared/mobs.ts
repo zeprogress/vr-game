@@ -436,31 +436,34 @@ export const PARRY = { cooldown: 7, duration: 1.6, counterMul: 1.3, counterGap: 
 /** 40 ур. Скалолом: гибель сородича в радиусе — ярость (быстрее и больнее, как ярость босса) на sec секунд. */
 export const PACK_FRENZY = { radius: 22, sec: 8 };
 
+// Опыт элитных мобов — по кривой от здоровья: xp ≈ (HP / 4)^1.943 (слизень 4 HP → 1,
+// костяной жнец 16000 HP → 10 000 000), значения округлены до трёх значащих цифр.
+// Боссы, голем и чародей руин — отдельно, их опыт не из кривой.
 export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Пчёлы: мелкие, летают и жужжат, бьют вблизи, слабые поодиночке (числом).
   bee: {
     model: "monBee", name: "Пчела", blurb: "летает роем", level: 3, kind: "slime",
-    hp: 10, dmgMul: 0.55, xp: 4, scaleMul: 0.5, tint: null, flying: true,
+    hp: 10, dmgMul: 0.55, xp: 6, scaleMul: 0.5, tint: null, flying: true,
   },
   spikyBlob: {
     model: "monSpikyBlob", name: "Шипобрюх", blurb: "больно колется", level: 6, kind: "slime",
-    hp: 60, dmgMul: 1.7, xp: 26, scaleMul: 1.15, tint: null,
+    hp: 60, dmgMul: 1.7, xp: 193, scaleMul: 1.15, tint: null,
   },
   frog: {
     model: "monFrog", name: "Болотная жаба", blurb: "прыгучая", level: 7, kind: "slime",
-    hp: 95, dmgMul: 1.6, xp: 34, scaleMul: 1.125, // ×1.5 модели по заявке (было 0.75)
+    hp: 95, dmgMul: 1.6, xp: 471, scaleMul: 1.125, // ×1.5 модели по заявке (было 0.75)
     tint: [0.24, 0.7, 0.26], // перекрас в зелёный
   },
   cactoro: {
     model: "monCactoro", name: "Кактородо", blurb: "крупный, но слабый", level: 9, kind: "slime",
-    hp: 60, dmgMul: 1.1, xp: 55, scaleMul: 3.2, tint: null, // ×2 модели по заявке (было 1.6)
+    hp: 60, dmgMul: 1.1, xp: 193, scaleMul: 3.2, tint: null, // ×2 модели по заявке (было 1.6)
   },
   // Орк-стрелок: бронированный дальний боец 15 ур. Панцирь режет 65% урона
   // стрел/магии — для лучника это глухая стена, зато его залпы бьют больно и
   // далеко. Мечнику броня не мешает: подошёл вплотную — и рубит.
   orcGunner: {
     model: "monOrc", name: "Орк-стрелок", blurb: "стреляет издалека, панцирь от стрел", level: 15, kind: "spitter",
-    hp: 210, dmgMul: 1.7, xp: 130, scaleMul: 2.8, tint: null, rangedArmor: 0.3,
+    hp: 210, dmgMul: 1.7, xp: 2200, scaleMul: 2.8, tint: null, rangedArmor: 0.3,
   },
   // Цель события «Охота на элиту» (до 2026-09-28 — Грибной владыка 25 ур.,
   // был нестрашным): Огнекрылый дракон 35 ур., вдвое крупнее владыки (≈4.2 м),
@@ -527,7 +530,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     // Регенерация ~31 HP/с (и в бою): одиночка с малым уроном его еле
     // пересиливает, группа — не замечает. HP ×2 по просьбе (2600 → 5200);
     // доля регена 1.2% → 0.6%, чтобы в HP/с она осталась прежней.
-    hp: 5200, dmgMul: 7, xp: 480000, scaleMul: 5.4, tint: null,
+    hp: 5200, dmgMul: 7, xp: 1130000, scaleMul: 5.4, tint: null,
     physArmor: 0.25, magicVulnMul: 1.3, regen: 0.006,
     legendaryChance: 0.015, // 1.5% (у голема общий 0.2%) — убивать его дольше
     sporeCaster: true, meleeReach: 4.6, attackCooldown: 2.2, speedMul: 0.75,
@@ -540,7 +543,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // колоссом и призраком по опыту и дропу.
   skySquid: {
     model: "monSkySquid", name: "Небесный спрут", blurb: "хват щупальцами, можно вырваться", level: 33, kind: "slime",
-    hp: 3200, dmgMul: 5, xp: 320000, scaleMul: 2.2, tint: null, flying: true,
+    hp: 3200, dmgMul: 5, xp: 438000, scaleMul: 2.2, tint: null, flying: true,
     puller: true, meleeReach: 3, attackCooldown: 1.6, speedMul: 1.1,
     magicVulnMul: 1.2, legendaryChance: 0.01,
   },
@@ -550,7 +553,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   boneWraith: {
     model: "monBoneWraith", name: "Костяной призрак", blurb: "вампиризм, магические удары, уворот", level: 33, kind: "slime",
     // 2026-10-02 ослаблен по просьбе: HP 2400→1800, урон 8→6, вампиризм 60→35%, уворот 30→20%.
-    hp: 1800, dmgMul: 6, xp: 192000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
+    hp: 1800, dmgMul: 6, xp: 143000, scaleMul: 1.1, tint: null, flying: true, magicMelee: true,
     // 2026-10-07 телепорт за спину (blinker) убран по просьбе.
     lifesteal: 0.35, attackCooldown: 1.2, speedMul: 1.35,
     critVulnMul: 1.4, legendaryChance: 0.006, // 0.6% (у голема 0.2%)
@@ -564,7 +567,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Уходи вбок с полосы!
   infernoDemon: {
     model: "monDemon", name: "Адский демон", blurb: "огненный таран", level: 36, kind: "slime",
-    hp: 9500, dmgMul: 10, xp: 1200000, scaleMul: 3.2, tint: null,
+    hp: 9500, dmgMul: 10, xp: 3630000, scaleMul: 3.2, tint: null,
     physArmor: 0.3, charger: true, meleeReach: 3.4, attackCooldown: 1.6,
     legendaryChance: 0.035,
   },
@@ -574,7 +577,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   frostDemon: {
     model: "monBlueDemon", name: "Ледяной демон", blurb: "замораживает — замедляет, щит отражения", level: 36, kind: "slime",
     // 2026-10-02 ослаблен по просьбе: HP 5600→4800, урон 13→8 (+ REFLECT/FREEZE мягче).
-    hp: 4800, dmgMul: 8, xp: 960000, scaleMul: 2.8, tint: null,
+    hp: 4800, dmgMul: 8, xp: 964000, scaleMul: 2.8, tint: null,
     freezer: true, reflector: true, magicVulnMul: 0.8, critVulnMul: 1.3, attackCooldown: 1.5,
     meleeReach: 3.2, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -583,7 +586,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // вырываются костяные шипы: больно и оглушает. Круг под ногами — беги.
   boneChief: {
     model: "monOrcSkull", name: "Костяной вождь", blurb: "шипы с замедлением, лечит своих", level: 36, kind: "slime",
-    hp: 4800, dmgMul: 7.5, xp: 1080000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→7.5 (2026-10-04); меньше (было 3), зато их больше
+    hp: 4800, dmgMul: 7.5, xp: 964000, scaleMul: 2.2, tint: null, // HP 6200→4800 (2026-09-30)→3800, урон 7→7.5 (2026-10-04); меньше (было 3), зато их больше
     physArmor: 0.15, rangedArmor: 0.2, spiker: true, healer: true, attackCooldown: 1.6,
     meleeReach: 2.6, // без этого крупное тело не дотягивалось до героя
     legendaryChance: 0.03,
@@ -592,13 +595,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Метатель копий: копьё летит прямо и пробивает всех героев на линии, оставляя кровотечение. Ловок — увороты.
   spearThrower: {
     model: "monTribal", name: "Метатель копий", blurb: "копьё пробивает всех на линии, кровотечение", level: 40, kind: "spitter",
-    hp: 5600, dmgMul: 9, xp: 1500000, scaleMul: 2.3, tint: null, dodge: 0.15, legendaryChance: 0.035,
+    hp: 5600, dmgMul: 9, xp: 1300000, scaleMul: 2.3, tint: null, dodge: 0.15, legendaryChance: 0.035,
     shot: { kind: "spear", range: 24, cooldown: 2.8, speed: 30, dmg: 1.1, pierce: true, bleed: { sec: 5, frac: 0.12 } },
   },
   // Шипохвост: веер из пяти шипов; упавшие мимо остаются колючками и замедляют. Панцирь гасит стрелы и магию издалека.
   spikeTail: {
     model: "monDino", name: "Шипохвост", blurb: "веер шипов, колючки на земле замедляют", level: 40, kind: "spitter",
-    hp: 4400, dmgMul: 7, xp: 1200000, scaleMul: 2.1, tint: null, rangedArmor: 0.3, legendaryChance: 0.03,
+    hp: 4400, dmgMul: 7, xp: 814000, scaleMul: 2.1, tint: null, rangedArmor: 0.3, legendaryChance: 0.03,
     shot: {
       kind: "spike", range: 16, cooldown: 3.2, speed: 18, dmg: 0.9, count: 5, spread: 0.45,
       caltrops: { sec: 6, radius: 1.4, slowSec: 1.5, slowFrac: 0.4, dmgFrac: 0.15 },
@@ -608,7 +611,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Прыжка нет (leaper: false) — по просьбе пользователя (2026-10-10).
   rockBreaker: {
     model: "monStoneTroll", name: "Скалолом", blurb: "удар вблизи, ярость стаи", level: 40, kind: "slime",
-    hp: 7200, dmgMul: 11, xp: 1700000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
+    hp: 7200, dmgMul: 11, xp: 2120000, scaleMul: 4.6, tint: null, physArmor: 0.2, attackCooldown: 1.4, meleeReach: 3,
     leaper: false, packFrenzy: true, legendaryChance: 0.035, gait: true, noSquash: true, walksOnly: true,
   },
   // Прыгающий Скалолом — боссы и вожак (Громолом, Гор'Таал, Скалолом-вожак): прыжок с кругом-предупреждением.
@@ -621,13 +624,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // Землерой: зарывается — неуязвим, к герою ползёт пыльный след; выныривает под ним с ударом по кругу.
   burrowBeast: {
     model: "monMonkroose", name: "Землерой", blurb: "уходит под землю и выныривает под героем", level: 45, kind: "slime",
-    hp: 14000, dmgMul: 17, xp: 3000000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4, // 2026-10-06: 9800/13 → 14000/17 (усилить)
+    hp: 14000, dmgMul: 17, xp: 7710000, scaleMul: 3, tint: null, physArmor: 0.25, meleeReach: 3, attackCooldown: 1.4, // 2026-10-06: 9800/13 → 14000/17 (усилить)
     burrower: true, legendaryChance: 0.04,
   },
   // Грозовой дух: держится на расстоянии, метит героя молнией — удар перескакивает на тех, кто рядом.
   stormSpirit: {
     model: "monAlien", name: "Грозовой дух", blurb: "цепная молния — не толпитесь", level: 45, kind: "spitter",
-    hp: 11000, dmgMul: 15, xp: 2800000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1, // 7600/11 → 11000/15
+    hp: 11000, dmgMul: 15, xp: 4830000, scaleMul: 2.4, tint: null, flying: true, rangedArmor: 0.2, dodge: 0.1, // 7600/11 → 11000/15
     stormCaller: true, legendaryChance: 0.04,
   },
   // Теневой ниндзя: быстрый и вёрткий; «Теневая стойка» — отбивает удары и контратакует (PARRY).
@@ -641,17 +644,17 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   shadowNinja: {
     model: "monNinja", name: "Теневой ниндзя", blurb: "теневая стойка: отбивает удары и бьёт в ответ — переждите", level: 45, kind: "slime",
-    hp: 12000, dmgMul: 16, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
+    hp: 12000, dmgMul: 16, xp: 5720000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
     meleeReach: 2.6, parry: true, legendaryChance: 0.04,
   },
-  // ---- 55 ур. (2026-10-13): подземелье «Глубинный храм» (shared/dungeon.ts; расстановка — отдельно) ----
+  // ---- 53 ур. (2026-10-13): подземелье «Глубинный храм» (shared/dungeon.ts; расстановка — отдельно) ----
   // Костяной жнец: скелет в броне со щитом и мечом, БЕЗ магии — «стеклянная пушка». Быстрее обычных мобов
   // (погоня ~6.8 м/с), бьёт часто и больно, с дистанции — прыжок-выпад (LEAP: круг-предупреждение, удар по
   // площади с оглушением). Модель: art/build/Skeleton_rig.blend → public/models/gen/SkeletonShield.glb
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
   skeletonReaver: {
-    model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 55, kind: "slime",
-    hp: 16000, dmgMul: 26, xp: 8000000, scaleMul: 2.2, tint: null,
+    model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 53, kind: "slime",
+    hp: 16000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null,
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
     leaper: true, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
   },

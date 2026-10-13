@@ -83,7 +83,7 @@ export const MODELS = {
   // Супербосс катакомб «Владыка Бездны»: дракон с ригом и атакующими клипами (art/models/DragonBest.json, tools/blender/dragon_clips.py).
   monDragonBest: "/models/gen/DragonBest.glb",
   monMoonAvatar: "/models/gen/MoonAvatar.glb",
-  // Костяной жнец 55 ур. (подземелье): скелет в броне со щитом и мечом, art/build/Skeleton_rig.blend → SkeletonShield.glb.
+  // Костяной жнец 53 ур. (подземелье): скелет в броне со щитом и мечом, art/build/Skeleton_rig.blend → SkeletonShield.glb.
   monSkeletonReaver: "/models/gen/SkeletonShield.glb",
 } as const;
 
