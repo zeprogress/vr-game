@@ -1,5 +1,5 @@
 import { terrainHeight } from "#shared/terrain";
-import { dunRayClear } from "#shared/dungeon";
+import { dunCamPos } from "#shared/dungeon";
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -119,15 +119,10 @@ export class ThirdPersonCam {
     }
 
     // 1б. Подземелье: стены, свод и пустота — окклюзия выше видит только рельеф, камера пролетала бы насквозь.
-    // Места позади нет (герой у стены) — камера встаёт на самого героя, а не за стену: там был бы чёрный экран.
-    const roomLen = dunRayClear(this.pivot.x, this.pivot.y, this.pivot.z, -dx, -dy, -dz, dist);
-    if (roomLen < dist) dist = roomLen >= 0.3 ? roomLen - 0.15 : 0;
-
-    this.pos.set(
-      this.pivot.x - dx * dist,
-      this.pivot.y - dy * dist,
-      this.pivot.z - dz * dist,
-    );
+    // Мало места позади (герой у стены) — камера уходит вбок или вперёд, но не ближе DUN_CAM_MIN к герою:
+    // на нуле вид вырождается (чёрный экран), а вплотную голова героя заслоняет кадр.
+    const [cx, cy, cz] = dunCamPos(this.pivot.x, this.pivot.y, this.pivot.z, -dx, -dy, -dz, dist);
+    this.pos.set(cx, cy, cz);
 
     // 2. Пол: не пускаем камеру под землю (и не даём «клюнуть» в неё).
     const floorY = terrainHeight(this.pos.x, this.pos.z);

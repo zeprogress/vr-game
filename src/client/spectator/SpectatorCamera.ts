@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { CAT_CEIL, CAT_HALLS, catCorridor, catLinkIndex, catProject, inCatRegion } from "#shared/catacombs";
-import { dunRayClear, inDunRegion } from "#shared/dungeon";
+import { dunCamPos, inDunRegion } from "#shared/dungeon";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -471,11 +471,9 @@ export class SpectatorCamera {
     const vz = this._p.z - this._t.z;
     const vl = Math.hypot(vx, vy, vz);
     if (vl > 1e-3) {
-      const ok = dunRayClear(this._t.x, this._t.y, this._t.z, vx / vl, vy / vl, vz / vl, vl);
-      if (ok < vl) {
-        const f = Math.max(0, ok - 0.15) / vl;
-        this._p.set(this._t.x + vx * f, this._t.y + vy * f, this._t.z + vz * f);
-      }
+      const [px, py, pz] = dunCamPos(this._t.x, this._t.y, this._t.z, vx / vl, vy / vl, vz / vl, vl);
+      this._p.set(px, py, pz);
+      if (this._p.y < minY) this._p.y = minY;
     }
     this.cam.position.copyFrom(this._p);
     this.curTgt.copyFrom(this._t);

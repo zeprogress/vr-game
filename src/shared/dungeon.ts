@@ -587,6 +587,41 @@ export function dunRayClear(tx: number, ty: number, tz: number, dx: number, dy: 
   return len;
 }
 
+/** Ближе камера к цели в подземелье не встаёт: вплотную голова героя заслоняет кадр, а на нуле вид вырождается (чёрный экран). */
+export const DUN_CAM_MIN = 1.0;
+
+/**
+ * Позиция камеры: цель (tx,ty,tz), от неё — направление (ux,uy,uz) к камере на длину dist. В подземелье стены и
+ * свод укорачивают луч, но не ближе DUN_CAM_MIN. Сзади мало места — камера уходит туда, где его больше: напротив
+ * или вбок. Вне участка подземелья — ровно цель + направление · dist (как было).
+ */
+export function dunCamPos(tx: number, ty: number, tz: number, ux: number, uy: number, uz: number, dist: number, minDist = DUN_CAM_MIN): [number, number, number] {
+  const ul = Math.hypot(ux, uy, uz) || 1;
+  const x = ux / ul;
+  const y = uy / ul;
+  const z = uz / ul;
+  const at = (dx: number, dy: number, dz: number, d: number): [number, number, number] => [tx + dx * d, ty + dy * d, tz + dz * d];
+  if (!inDunRegion(tx, tz)) return at(x, y, z, dist);
+  const d0 = Math.max(dist, minDist);
+  const back = dunRayClear(tx, ty, tz, x, y, z, d0);
+  if (back >= d0) return at(x, y, z, d0);
+  if (back >= minDist) return at(x, y, z, Math.max(minDist, back - 0.15));
+  const hl = Math.hypot(x, z) || 1;
+  const px = -z / hl;
+  const pz = x / hl;
+  let best: [number, number, number] = [-x, -y, -z];
+  let bestLen = dunRayClear(tx, ty, tz, best[0], best[1], best[2], d0);
+  for (const c of [[px, 0, pz], [-px, 0, -pz]] as const) {
+    const len = dunRayClear(tx, ty, tz, c[0], c[1], c[2], d0);
+    if (len > bestLen) {
+      best = [c[0], c[1], c[2]];
+      bestLen = len;
+    }
+  }
+  if (bestLen >= minDist) return at(best[0], best[1], best[2], Math.max(minDist, Math.min(d0, bestLen - 0.15)));
+  return at(x, y, z, minDist);
+}
+
 /**
  * Ближайшая точка, где можно стоять (мир). Внутри проходимого — та же точка. Снаружи — на ближайшую
  * фигуру на той же высоте, что и fromY (±ступень): нельзя ни «перескочить» щель на верхний уступ, ни
