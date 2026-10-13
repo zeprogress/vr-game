@@ -15,6 +15,7 @@ import "@babylonjs/loaders/glTF/2.0";
 import "@babylonjs/core/Animations/animatable";
 import { sharedMobMaterial } from "../combat/mobMaterials";
 import { MODEL_LIGHT, trackMobMaterial } from "../combat/mobLightTune";
+import { SKIN_LABELS, SKIN_MODELS } from "#shared/skins";
 
 /**
  * Пайплайн внешних ассетов (этап 12).
@@ -89,33 +90,11 @@ export const MODELS = {
 
 export type ModelName = keyof typeof MODELS;
 
-/** skin 1..BOT.skins → модель бота. skin 0 — обычный аватар игрока. */
-export const BOT_SKIN_MODELS: readonly ModelName[] = [
-  "charKnight",
-  "charKnightGold",
-  "charWizard",
-  "charNinja",
-  "charGoblin",
-  "charPirate",
-  "charViking",
-  "charZombie",
-  "charSoldier",
-  "charCowboy",
-];
+/** skin 1..BOT.skins → модель бота. skin 0 — обычный аватар игрока. Список — shared/skins.ts (его же берёт страница !inv). */
+export const BOT_SKIN_MODELS: readonly ModelName[] = SKIN_MODELS;
 
 /** Те же 10, человеческим именем — для панели выбора модели (C, вкладка «Внешность»). */
-export const BOT_SKIN_LABELS: readonly string[] = [
-  "Рыцарь",
-  "Золотой рыцарь",
-  "Маг",
-  "Ниндзя",
-  "Гоблин",
-  "Пират",
-  "Викинг",
-  "Зомби",
-  "Солдат",
-  "Ковбой",
-];
+export const BOT_SKIN_LABELS: readonly string[] = SKIN_LABELS;
 
 const cache = new WeakMap<Scene, Map<string, Promise<AssetContainer>>>();
 

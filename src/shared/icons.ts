@@ -112,6 +112,21 @@ export const ICONS = {
   "a.luc": { emoji: "🍀", img: "attr/luc.png" },
   "a.wis": { emoji: "📿", img: "attr/wis.png" },
 
+  // ---- характеристики героя (строки в окне снаряжения; одноцветные, цвет — по месту) ----
+  "st.hp": { emoji: "❤", box: "0 0 20 20", svg: `<path d="M10 17s-6-3.6-6-8.2A3.4 3.4 0 0 1 10 6.4a3.4 3.4 0 0 1 6 2.4C16 13.4 10 17 10 17z" fill="currentColor"/>` },
+  "st.dmg": { emoji: "⚔", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`, `<path d="M15.5 2.5l2 2-9 9-2-2zM5.5 11.5l3 3M4 13l3 3M3 17l2-2"/>`) },
+  "st.aspd": { emoji: "⚡", box: "0 0 20 20", svg: `<path d="M11 2L5 11h4.5L8.5 18 15 8.5h-4.5z" fill="currentColor"/>` },
+  "st.move": { emoji: "👟", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"`, `<path d="M3 13h8M5 9.5h9M7 6h7M14 13a3 3 0 1 0 0-6"/>`) },
+  "st.dodge": { emoji: "🍃", box: "0 0 20 20", svg: `<path d="M16 3.5C9.5 4 5 8.5 4 16.5c4.5-4 8.5-6 12-13z" fill="currentColor"/>` },
+  "st.crit": { emoji: "🎯", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"`, `<circle cx="10" cy="10" r="6.5"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/><path d="M10 1.5v3M10 15.5v3M1.5 10h3M15.5 10h3"/>`) },
+  "st.critx": { emoji: "✴", box: "0 0 20 20", svg: `<path d="M10 2l2 5 5.3.4-4 3.4 1.3 5.2L10 13.2 5.4 16l1.3-5.2-4-3.4L8 7z" fill="currentColor"/>` },
+  "st.pdef": { emoji: "🛡", box: "0 0 20 20", svg: `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z" fill="currentColor"/>` },
+  "st.mdef": { emoji: "🔰", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"`, `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z"/><path d="M10 6.5v7M6.8 10h6.4"/>`) },
+  "st.regen": { emoji: "💧", box: "0 0 20 20", svg: `<path d="M10 2.5c3.2 4.2 5.2 6.6 5.2 9.1a5.2 5.2 0 0 1-10.4 0c0-2.5 2-4.9 5.2-9.1z" fill="currentColor"/>` },
+  "st.vamp": { emoji: "🩸", box: "0 0 20 20", svg: g(`fill="currentColor"`, `<path d="M6 3h8l-1.2 5.5L10 17l-2.8-8.5z"/>`) },
+  "st.block": { emoji: "🛡", box: "0 0 20 20", svg: g(`fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"`, `<path d="M10 2l6.5 2.5v4.8c0 4.2-2.8 7.2-6.5 8.7-3.7-1.5-6.5-4.5-6.5-8.7V4.5z"/><path d="M6.5 10.5l2.5 2.5 4.5-5" stroke-linecap="round"/>`) },
+  "st.magic": { emoji: "✨", box: "0 0 20 20", svg: `<path d="M10 2l1.6 5.4L17 9l-5.4 1.6L10 16l-1.6-5.4L3 9l5.4-1.6z" fill="currentColor"/>` },
+
   // ---- умения (svg — где нарисован свой значок; иначе эмодзи) ----
   "s.stunBash": {
     emoji: "💫",
@@ -181,6 +196,12 @@ export const ICONS = {
         `<path d="M9.6 7.2c1.6.6 3.2.6 4.8 0" stroke="#5a4028" stroke-width="1.6"/>` +
         `<path d="M8 13.5c1.3 1 2.6 1.4 4 1.4" stroke="#e8dcc0" stroke-width="1" opacity=".6"/>`,
     ),
+  },
+  /** Герой (голова и плечи) — рядом с ником. */
+  "ui.hero": {
+    emoji: "👤",
+    box: "0 0 24 24",
+    svg: `<circle cx="12" cy="8.2" r="4.2" fill="currentColor"/><path d="M3.8 21c.6-4.4 4-7 8.2-7s7.6 2.6 8.2 7z" fill="currentColor"/>`,
   },
   "ui.map": { emoji: "🗺" },
   "ui.chat": { emoji: "💬" },

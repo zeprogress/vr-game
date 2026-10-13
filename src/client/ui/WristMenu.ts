@@ -1338,9 +1338,10 @@ export class WristMenu {
     return sortBag(entries, this.whSort, bagPickItem);
   }
 
-  /** Три кнопки порядка склада под заголовком; повторный клик — без сортировки. */
+  /** Кнопки порядка склада под заголовком (BAG_SORTS); повторный клик — без сортировки. */
   private drawWhSorts(ctx: CanvasRenderingContext2D, x: number, y: number, w: number): void {
-    const bw = Math.floor((w - 2 * 8) / 3);
+    const n = BAG_SORTS.length;
+    const bw = Math.floor((w - (n - 1) * 8) / n);
     BAG_SORTS.forEach((s, i) => {
       const bx = x + i * (bw + 8);
       const on = this.whSort === s.mode;
@@ -1364,7 +1365,7 @@ export class WristMenu {
       ctx.strokeStyle = st.stroke || (on ? "#e8c26a" : "#4a5470");
       ctx.lineWidth = st.lw;
       ctx.strokeRect(bx, y, bw, 32);
-      ctx.font = "bold 19px system-ui, sans-serif";
+      ctx.font = "bold 17px system-ui, sans-serif";
       ctx.fillStyle = on ? "#e8c26a" : "#d8d0bb";
       ctx.textAlign = "center";
       ctx.fillText(s.label, bx + bw / 2, y + 6);
@@ -1611,13 +1612,13 @@ export class WristMenu {
     buttons.push({
       id: "pop:fav",
       label: a.fav ? "Убрать из избранного" : "В избранное",
-      hint: "избранное не разбирается и не передаётся",
+      hint: "избранное не разбирается, не выбрасывается и не передаётся",
       color: "#ffd166",
       act: () => send("fav"),
     });
     if (!worn) {
       buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(a.label, TIER_COLOR.base, `a:${a.id}`, `arm:${a.id}`) });
-      buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") });
+      if (!a.fav) buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") });
       if (!a.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${a.scrap} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") });
     }
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
@@ -1672,12 +1673,12 @@ export class WristMenu {
     buttons.push({
       id: "pop:fav",
       label: wp.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`,
-      hint: wp.fav ? "снова можно будет разобрать" : "избранное не разбирается",
+      hint: wp.fav ? "снова можно будет разобрать и выбросить" : "избранное не разбирается и не выбрасывается",
       color: "#ffd166",
       act: () => send({ act: "fav", id: wp.id }),
     });
     buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(name, TIER_COLOR[wp.tier], `w:${wp.id}`, `wh:${wp.id}`) });
-    buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
+    if (!wp.fav) buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send({ act: "drop", ...base }) });
     if (!wp.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${this.scrapGain(wp)} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send({ act: "scrap", ...base }) });
     buttons.push({ id: "pop:cancel", label: "Отмена", color: "#a9a498", act: () => this.closePopup() });
     this.popup = {

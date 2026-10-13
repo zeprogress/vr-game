@@ -39,6 +39,8 @@ interface InvMsg {
   authed?: boolean;
   code?: string;
   level?: number;
+  /** Облик героя (0 — обычный рыцарь): картинка героя на камне. */
+  skin?: number;
   /** Опыт к следующему уровню, 0..1. */
   xpFrac?: number;
   /** Данные окна снаряжения (как в игре) и что в руках (вид/тир). */
@@ -49,6 +51,7 @@ interface InvMsg {
 
 const titleEl = document.getElementById("title")!;
 const subEl = document.getElementById("sub")!;
+const topEl = document.querySelector<HTMLElement>(".card.top")!;
 const listEl = document.getElementById("list")!;
 const toastEl = document.getElementById("toast")!;
 
@@ -77,6 +80,7 @@ function saveSid(sid: string): void {
 
 function renderError(text: string): void {
   subEl.textContent = "";
+  topEl.hidden = false;
   listEl.innerHTML = `<div class="error">${text}</div>`;
 }
 
@@ -98,6 +102,34 @@ let last: InvMsg | null = null;
 let pcInv: PcInventory | null = null;
 let heldHands: NonNullable<InvMsg["heldHands"]> = { left: null, right: null };
 
+/**
+ * Фон страницы (public/inv/bg.webp): горы и камень. Середину верха камня (доли картинки) ставим
+ * под ноги героя на вкладке «Снаряжение»; картинка не меньше ширины страницы, ниже — плавно в тёмное.
+ */
+const BG = { w: 1248, h: 832, fx: 650 / 1248, fy: 690 / 832 };
+const bgEl = document.getElementById("invBg");
+function placeBg(): void {
+  if (!bgEl) return;
+  const W = document.documentElement.clientWidth;
+  const st = document.querySelector<HTMLElement>(".pcinv-stage");
+  let fx = W / 2;
+  let fy = Math.min(window.innerHeight * 0.8, 720);
+  if (st && st.offsetParent) {
+    const r = st.getBoundingClientRect();
+    const feet = parseFloat(getComputedStyle(st).getPropertyValue("--feet")) || 4;
+    fx = r.left + r.width / 2 + window.scrollX;
+    fy = r.top + r.height * (1 - feet / 100) + window.scrollY;
+  }
+  const k = Math.max(W / BG.w, fx / (BG.fx * BG.w), (W - fx) / ((1 - BG.fx) * BG.w), fy / (BG.fy * BG.h));
+  const iw = BG.w * k;
+  const ih = BG.h * k;
+  const top = fy - BG.fy * ih;
+  bgEl.style.backgroundSize = `${iw.toFixed(1)}px ${ih.toFixed(1)}px`;
+  bgEl.style.backgroundPosition = `${(fx - BG.fx * iw).toFixed(1)}px ${top.toFixed(1)}px`;
+  bgEl.style.height = `${Math.ceil(top + ih)}px`;
+}
+window.addEventListener("resize", placeBg);
+
 /** Окно снаряжения из игры, встроенное в страницу. Действия идут на сервер как раньше. */
 function pageInv(): PcInventory {
   if (pcInv) return pcInv;
@@ -112,6 +144,7 @@ function pageInv(): PcInventory {
   };
   pcInv = new PcInventory({
     page: true,
+    afterRender: placeBg,
     touch: matchMedia("(pointer: coarse)").matches,
     request: () => room?.send("refresh"),
     act: (m) => act(m.act, m.id || (m.act === "title" ? "-" : m.id), m.idx, m.fuel),
@@ -144,7 +177,9 @@ function renderInv(msg: InvMsg): void {
     return;
   }
   titleEl.textContent = `Инвентарь — ${msg.nick ?? "?"}`;
-  subEl.textContent = msg.authed ? "✓ вход подтверждён — можно менять снаряжение" : "";
+  subEl.textContent = "";
+  // Вход подтверждён — шапка не нужна (ник — в строке вкладок, рядом с ломом); нет — шапка с кодом для чата.
+  topEl.hidden = !!msg.authed && !!msg.pc;
   listEl.innerHTML = msg.authed
     ? ""
     : `<div class="auth">Чтобы надевать и разбирать предметы, напиши в чат Twitch с ника <b>${escapeHtml(msg.nick ?? "")}</b> код:` +
@@ -154,6 +189,7 @@ function renderInv(msg: InvMsg): void {
   if (!msg.pc) return;
   const inv = pageInv();
   heldHands = msg.heldHands ?? { left: null, right: null };
+  inv.setHero(msg.nick ?? "", msg.skin ?? 0);
   inv.setData(msg.pc);
   inv.setXp(msg.level ?? 1, msg.xpFrac ?? 0, (msg.xpFrac ?? 0) >= 1);
   if (!inv.isOpen) inv.open("gear");

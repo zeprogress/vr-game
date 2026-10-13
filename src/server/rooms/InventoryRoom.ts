@@ -289,6 +289,8 @@ function buildInv(norm: string, sid: string): Record<string, unknown> {
     pc,
     heldHands: { left: heldOf(rec.held?.left), right: heldOf(rec.held?.right) },
     nick: rec.nick || norm,
+    // Облик героя (0 — обычный рыцарь, 1..BOT.skins — модель из панели «Внешность»): картинка героя на странице.
+    skin: rec.skin ?? 0,
     authed,
     code: authed ? undefined : invHub.code(sid, norm),
     level: rec.level,

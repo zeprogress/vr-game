@@ -1858,6 +1858,7 @@ export class ZoneRoom extends Room<ZoneState> {
           writeBag(p, bag);
         }
       } else if (msg.act === "drop") {
+        if (w.fav) return; // ★ избранное не выбрасывается (и не разбирается)
         const idx = rt.weapons.indexOf(w);
         if (idx < 0) return;
         rt.weapons.splice(idx, 1);
@@ -4980,6 +4981,7 @@ export class ZoneRoom extends Room<ZoneState> {
       writeBag(p, bag);
     } else if (act === "drop") {
       if (wornNow) return { ok: false, text: "Надетое не выбрасывается — сначала сними." };
+      if (a.fav) return { ok: false, text: "В избранном не выбрасывается — сначала сними ★." };
       rt.armor = rt.armor.filter((x) => x.id !== a.id);
       const edge = WORLD.size / 2 - 2;
       const x = clampAbs(p.head.x + Math.sin(rt.yaw) * 1.1, edge);

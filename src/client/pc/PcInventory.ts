@@ -1,31 +1,33 @@
 import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
-import { armorIconKey, glyph, weaponIcon } from "#shared/icons";
-import { ARMOR_PART_NAME, type ArmorPart } from "#shared/armor";
+import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
+import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
 import { attackLabel } from "#shared/heroStats";
 import { ensureIconCss, iconHtml, setIconEl } from "../ui/icons";
 import type { IconKey } from "#shared/icons";
-import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, FAV_MAX, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
-import type { PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
+import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, attackPoints, bothHandsCls, bothHandsNote, fmtPct, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
+import { skinPicture } from "#shared/skins";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 
 /**
- * ПК-окно снаряжения (как в WoW, одно окно с вкладками):
- *  - «Снаряжение»: кукла (руки + будущие слоты брони), характеристики, сумка
- *    с оружием, расходники, наковальня для лома;
- *  - «Заточка»: выбранный предмет, по аффиксу — очки/цена/шанс, молот;
- *  - «Атрибуты»: сила/ловкость/интеллект, свободные очки, сброс за жетон ◈.
+ * Окно снаряжения (как в WoW, одно окно с вкладками) — ПК в игре, телефон и страница !inv:
+ *  - «Снаряжение»: слева броня, справа руки и кольца; между ними — сведения о герое
+ *    (в игре) или сам герой на камне (страница !inv: картинка облика и фон с горами);
+ *    под слотами — ряд ★ избранного, справа — сумка с фильтрами;
+ *  - клик/тап по предмету — карточка: всё о предмете, заточка роллов и точки атаки
+ *    прямо в ней, действия (надеть/снять, ★, подарить, в лом, выбросить);
+ *  - «Атрибуты», «Умения», «Обмен».
  *
- * Перетаскивание: из сумки на руку — надеть; с руки в сумку — снять; на
+ * Перетаскивание: из сумки на слот — надеть; со слота в сумку — снять; на
  * наковальню — в лом (с подтверждением); за окно — выбросить на землю (с
- * подтверждением); на вкладку/слот заточки — выбрать для заточки. ПКМ по
- * предмету — надеть/снять. Действия выполняет Game (руки держит клиент).
+ * подтверждением). ПКМ по предмету — надеть/снять. Действия выполняет Game (руки держит клиент).
  */
 
 export type Side = "left" | "right";
-export type InvTab = "gear" | "enchant" | "attrs" | "skills" | "trade";
+export type InvTab = "gear" | "attrs" | "skills" | "trade";
 
 export interface HeldInfo {
   cls: string;
@@ -35,8 +37,10 @@ export interface HeldInfo {
 export interface PcInventoryHooks {
   /** Телефон: тап — меню действий, перетаскивание — пальцем (HTML drag на тач не работает). */
   touch?: boolean;
-  /** Страница !inv: окно встроено в страницу — без крестика, перетаскивания и «выбросить за окно». */
+  /** Страница !inv: окно встроено в страницу — без крестика, перетаскивания и «выбросить за окно»; герой на камне. */
   page?: boolean;
+  /** После каждой перерисовки (страница !inv подгоняет фон под героя). */
+  afterRender?: () => void;
   request: () => void;
   /** Использовать предмет сумки (свиток) — по id предмета. */
   useItem?: (id: "scroll_xp" | "scroll_wind") => void;
@@ -60,8 +64,39 @@ const ATTRS = A2.map((id) => ({ id, name: ATTR_INFO[id].name, hint: attrEffect(i
 
 type DragSrc = { kind: "bag"; id: string } | { kind: "hand"; side: Side } | { kind: "ring"; id: string } | { kind: "armor"; id: string };
 
-/** Предмет сумки: оружие или кольцо — в одной сетке. */
+/** Предмет сумки: оружие, кольцо или броня — в одной сетке. */
 type BagEntry = { w: PcInvWeapon } | { r: PcInvJewels["rings"][number] } | { a: PcInvArmor };
+
+/** Фильтры сумки (вкладки над сеткой). */
+type BagFilter = "all" | "fav" | "weapon" | "armor" | "ring" | "gem" | "misc";
+const BAG_FILTERS: readonly [BagFilter, string][] = [
+  ["all", "Все"],
+  ["fav", "★ Избранное"],
+  ["weapon", "Оружие"],
+  ["armor", "Броня"],
+  ["ring", "Кольца"],
+  ["gem", "Камни"],
+  ["misc", "Прочее"],
+];
+
+/** Значок строки характеристик (подписи — shared/heroStats.ts). */
+const STAT_ICON: Record<string, IconKey> = {
+  Здоровье: "st.hp",
+  Урон: "st.dmg",
+  "Волна молота (магия)": "st.magic",
+  "Удар конусом": "st.dmg",
+  "Скорость атаки": "st.aspd",
+  "Скорость бега": "st.move",
+  "Шанс уворота": "st.dodge",
+  "Шанс крита": "st.crit",
+  "Сила крита": "st.critx",
+  Вампиризм: "st.vamp",
+  "Физ. защита": "st.pdef",
+  "Маг. защита": "st.mdef",
+  Регенерация: "st.regen",
+  "Блок щитом": "st.block",
+  "Отражение щитом": "st.block",
+};
 
 export class PcInventory {
   private readonly root: HTMLDivElement;
@@ -70,9 +105,14 @@ export class PcInventory {
   private readonly tabsEl: HTMLDivElement;
   private readonly tip: HTMLDivElement;
   private readonly dropCatcher: HTMLDivElement;
+  private readonly cursEl: HTMLDivElement;
   private data: PcInvData | null = null;
   private tab: InvTab = "gear";
-  private enchId: string | null = null;
+  /** Открытая карточка предмета (тот же адрес, что у перетаскивания); null — закрыта. */
+  private card: DragSrc | null = null;
+  private bagFilter: BagFilter = "all";
+  /** Ник и облик героя (страница !inv — картинка героя; в игре — ник в сведениях). */
+  private hero = { nick: "", skin: 0 };
   private drag: DragSrc | null = null;
   private confirmEl: HTMLDivElement | null = null;
   private forging = false;
@@ -81,6 +121,7 @@ export class PcInventory {
   private lastResult: { text: string; up: boolean } | null = null;
   private xpFill: HTMLDivElement | null = null;
   private xpText: HTMLDivElement | null = null;
+  private xpLv: HTMLDivElement | null = null;
   private xpState = { level: 1, pct: 0, maxed: false };
 
   constructor(private readonly hooks: PcInventoryHooks) {
@@ -90,12 +131,13 @@ export class PcInventory {
     this.win = div("pcinv-win");
     const head = div("pcinv-head");
     this.tabsEl = div("pcinv-tabs");
+    this.cursEl = div("pcinv-curs");
     const close = document.createElement("button");
     close.className = "pcinv-x";
     close.textContent = "✕";
     close.title = "Закрыть (Esc)";
-    close.onclick = () => this.close();
-    head.append(this.tabsEl, close);
+    close.onclick = () => this.closeWindow();
+    head.append(this.tabsEl, this.cursEl, close);
     this.body = div("pcinv-body");
     this.tip = div("pcinv-tip");
     this.win.append(head, this.body);
@@ -112,7 +154,7 @@ export class PcInventory {
           const t = e.target as Node;
           if (this.win.contains(t) || this.tip.contains(t) || this.confirmEl?.contains(t)) return;
           if ((t as Element).closest?.(".pc-hud")) return;
-          this.close();
+          this.closeWindow();
         },
         true,
       );
@@ -121,10 +163,10 @@ export class PcInventory {
     // Окно двигается за шапку.
     let dragWin: { x: number; y: number; l: number; t: number } | null = null;
     head.addEventListener("pointerdown", (e) => {
-      if (hooks.page) return; // на странице окно не двигается
+      if (hooks.page || hooks.touch) return; // на странице и на телефоне (на весь экран) окно не двигается
       // По вкладкам и кнопкам — клик, а не перетаскивание окна (иначе захват
       // указателя шапкой съедал клик по вкладке).
-      if ((e.target as HTMLElement).closest("button, .pcinv-tab")) return;
+      if ((e.target as HTMLElement).closest("button, .pcinv-tab, .pcinv-cur")) return;
       const r = this.win.getBoundingClientRect();
       dragWin = { x: e.clientX, y: e.clientY, l: r.left, t: r.top };
       head.setPointerCapture(e.pointerId);
@@ -143,14 +185,24 @@ export class PcInventory {
       e.preventDefault();
       const w = this.dragWeapon();
       this.endDrag();
-      if (w) this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w));
+      if (w?.fav) this.textTipAt(this.win, `${glyph("ui.fav")} В избранном`, "Избранное не выбрасывается — сначала сними звёздочку.");
+      else if (w) this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w));
     });
     this.win.addEventListener("contextmenu", (e) => e.preventDefault());
     if (hooks.touch) {
       this.root.classList.add("touch");
       this.bindTouch();
     }
-    if (hooks.page) this.root.classList.add("page");
+    if (hooks.page) {
+      this.root.classList.add("page");
+      // Узкая страница — карточка поверх экрана, широкая — между колонками слотов: перестроить при смене.
+      let floats = this.cardFloats();
+      window.addEventListener("resize", () => {
+        if (this.cardFloats() === floats) return;
+        floats = this.cardFloats();
+        if (this.card && this.isOpen) this.render();
+      });
+    }
   }
 
   // ---- телефон: тап — меню действий, зажал и повёл — перетаскивание пальцем ----
@@ -173,7 +225,9 @@ export class PcInventory {
         this.drag = cand.src;
         this.hideTip();
         this.dropCatcher.style.display = "block";
-        ghost = div("pcinv-ghost", cand.el.textContent?.slice(0, 2) ?? "");
+        ghost = div("pcinv-ghost");
+        const ic = cand.el.querySelector("img, svg");
+        if (ic) ghost.append(ic.cloneNode(true));
         document.body.appendChild(ghost);
       }
       if (ghost) {
@@ -195,8 +249,7 @@ export class PcInventory {
         this.endDrag();
         return;
       }
-      if (c.src.kind === "ring") return; // тап по кольцу — его меню (click)
-      this.openActions(c.el, c.src);
+      this.openCard(c.src);
     };
     this.root.addEventListener("pointerup", up);
     this.root.addEventListener("pointercancel", () => {
@@ -207,71 +260,21 @@ export class PcInventory {
     });
   }
 
-  /** Тап по предмету (телефон): что можно с ним сделать. */
-  private openActions(anchor: HTMLElement, src: DragSrc): void {
-    this.drag = src;
-    const w = this.dragWeapon();
-    const held = src.kind === "hand" ? this.hooks.hands()[src.side] : null;
-    const arm = src.kind === "armor" ? (this.data?.armor ?? []).find((x) => x.id === src.id) ?? null : null;
-    this.drag = null;
-    this.tipAllowed = true;
-    if (!arm) this.showTip(anchor, w, held);
-    this.tipAllowed = false;
+  /** Клик/тап по предмету — его карточка (повторно по тому же — закрыть). */
+  private openCard(src: DragSrc): void {
+    this.hideTip();
     this.confirmEl?.remove();
-    const box = div("pcinv-confirm pcinv-actions");
-    box.append(div("pcinv-confirm-text", w?.name ?? arm?.label ?? (held ? "В руке" : "")));
-    const row = div("pcinv-confirm-row col");
-    const btn = (label: string, fn: () => void, danger = false): void => {
-      const b = document.createElement("button");
-      b.className = `pcinv-ebtn${danger ? " danger" : ""}`;
-      b.textContent = label;
-      b.onclick = () => {
-        box.remove();
-        this.confirmEl = null;
-        this.hideTip();
-        fn();
-      };
-      row.append(b);
-    };
-    if (src.kind === "bag" && w) {
-      // Меч/кинжал — парное оружие: можно выбрать руку (второй — к такому же в правой).
-      const pair = (w.cls === "sword" || w.cls === "dagger") && this.hooks.hands().right?.cls === w.cls;
-      if (pair) {
-        btn("В правую руку", () => this.hooks.equip(w, "right"));
-        btn("В левую руку", () => this.hooks.equip(w, "left"));
-      } else btn("Надеть", () => this.hooks.equip(w, naturalSide(w.cls)));
-    }
-    if (src.kind === "hand") btn("Снять в сумку", () => this.hooks.toBag(src.side));
-    if (w?.ench.length) {
-      btn("Заточить", () => {
-        this.enchId = w.id;
-        this.tab = "enchant";
-        this.render();
-      });
-    }
-    if (w) btn(w.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleFav(w));
-    if (w && src.kind === "bag") btn("🎁 Подарить…", () => this.askGift(w.name, `w:${w.id}`, 1));
-    if (w && !w.fav) btn(`В лом (+${w.scrap})`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), true);
-    if (w) btn("Выбросить", () => this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w)), true);
-    if (arm) {
-      btn("Заточить", () => {
-        this.enchId = arm.id;
-        this.tab = "enchant";
-        this.render();
-      });
-      btn(arm.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleArmorFav(arm.id));
-      if (this.data?.armorWorn?.[arm.part] === arm.id) btn("Снять", () => this.hooks.armorAct?.(arm.id, "unwear"));
-      else {
-        btn("Надеть", () => this.hooks.armorAct?.(arm.id, "wear"));
-        btn("🎁 Подарить…", () => this.askGift(arm.label, `a:${arm.id}`, 1));
-        if (!arm.fav) btn(`В лом (+${arm.scrap})`, () => this.askConfirm(`Разобрать «${arm.label}» на ${arm.scrap} лома?`, "Разобрать", () => this.hooks.armorAct?.(arm.id, "scrap")), true);
-        btn("Выбросить", () => this.askConfirm(`Выбросить «${arm.label}» на землю?`, "Выбросить", () => this.hooks.armorAct?.(arm.id, "drop")), true);
-      }
-    }
-    btn("Отмена", () => {});
-    box.append(row);
-    this.root.append(box);
-    this.confirmEl = box;
+    this.confirmEl = null;
+    const same = this.card && sameSrc(this.card, src);
+    if (!same) this.lastResult = null;
+    this.card = same ? null : src;
+    this.render();
+  }
+
+  private closeCard(): void {
+    this.card = null;
+    this.lastResult = null;
+    this.render();
   }
 
   /** Блок характеристик и последние «живые» строки (с баффами) — обновляются без полной перерисовки. */
@@ -284,7 +287,10 @@ export class PcInventory {
     box.replaceChildren();
     for (const r of rows) {
       const row = div("pcinv-row");
-      row.append(span(r.label), span(r.value));
+      const ic = div("pcinv-row-ic");
+      const k = STAT_ICON[r.label];
+      if (k) ic.innerHTML = iconHtml(k);
+      row.append(ic, span(r.label), span(r.value));
       box.append(row);
     }
   }
@@ -313,9 +319,22 @@ export class PcInventory {
     this.render();
   }
 
+  /** Esc: сначала закрывается карточка предмета, потом окно. */
   close(): boolean {
     if (!this.isOpen) return false;
+    if (this.card) {
+      this.closeCard();
+      return true;
+    }
+    return this.closeWindow();
+  }
+
+  /** Закрыть окно целиком (крестик, клик мимо окна). */
+  closeWindow(): boolean {
+    if (!this.isOpen) return false;
     this.root.style.display = "none";
+    this.card = null;
+    for (const e of this.root.querySelectorAll(":scope > .pcinv-dim, :scope > .pcinv-card")) e.remove();
     this.hideTip();
     this.confirmEl?.remove();
     this.confirmEl = null;
@@ -324,16 +343,34 @@ export class PcInventory {
   }
 
   toggle(tab: InvTab = "gear"): void {
-    if (this.isOpen && this.tab === tab) this.close();
+    if (this.isOpen && this.tab === tab) this.closeWindow();
     else this.open(tab);
+  }
+
+  /** Ник и облик героя (облик — картинка героя на странице !inv). */
+  setHero(nick: string, skin: number): void {
+    if (this.hero.nick === nick && this.hero.skin === skin) return;
+    this.hero = { nick, skin };
+    if (this.isOpen && !this.forging && !this.tradeTyping()) this.render();
   }
 
   setData(d: PcInvData): void {
     this.data = d;
-    // Выбор заточки — оружие или броня; пропадает только если предмета уже нет ни там, ни там.
-    if (this.enchId && !d.weapons.some((w) => w.id === this.enchId) && !(d.armor ?? []).some((a) => a.id === this.enchId)) this.enchId = null;
+    // Предмета открытой карточки больше нет (разобран, подарен, ушёл в обмен) — карточку закрываем.
+    if (this.card && !this.srcExists(d, this.card)) {
+      this.card = null;
+      this.lastResult = null;
+    }
     // Пока печатают ник или открыт выбор игрока — не перерисовываем (сбросило бы фокус); данные уже в this.data.
     if (this.isOpen && !this.forging && !this.tradeTyping()) this.render();
+  }
+
+  /** Есть ли ещё предмет, на который указывает адрес (руки есть всегда). */
+  private srcExists(d: PcInvData, s: DragSrc): boolean {
+    if (s.kind === "hand") return true;
+    if (s.kind === "bag") return d.weapons.some((w) => w.id === s.id);
+    if (s.kind === "armor") return (d.armor ?? []).some((a) => a.id === s.id);
+    return (d.jewels?.rings ?? []).some((r) => r.id === s.id);
   }
 
   /** Открыта вкладка «Обмен»: список онлайна обновляем сами (раз в 5 с), пока окно открыто. */
@@ -369,7 +406,8 @@ export class PcInventory {
     if (!this.xpFill || !this.xpText) return;
     const x = this.xpState;
     this.xpFill.style.width = `${x.pct}%`;
-    this.xpText.textContent = x.maxed ? `${x.level} ур. · опыт максимум` : `${x.level} ур. · опыт ${x.pct.toFixed(1)}%`;
+    this.xpText.textContent = x.maxed ? "максимум" : `${x.pct.toFixed(1)}% до ${x.level + 1}`;
+    if (this.xpLv) this.xpLv.textContent = `Уровень ${x.level}`;
   }
 
   /** Склад поменялся (подобрал, разобрал…) — попросить свежие данные. */
@@ -395,46 +433,66 @@ export class PcInventory {
     const top = this.win.scrollTop;
     // Списки выбора прокручиваются сами — их позицию тоже сохраняем (иначе после нажатия сбрасывались наверх).
     const lists = [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].map((e) => e.scrollTop);
+    // Сумка, ряд ★ и карточка прокручиваются сами — после перерисовки остаются на месте.
+    const keep = new Map([...this.root.querySelectorAll<HTMLElement>("[data-keep]")].map((e) => [e.dataset.keep ?? "", [e.scrollLeft, e.scrollTop]] as const));
     this.renderInner();
+    this.root.classList.toggle("tab-gear", this.tab === "gear");
     this.win.scrollTop = top;
     [...this.win.querySelectorAll<HTMLElement>(".pcinv-tpick")].forEach((e, i) => {
       if (lists[i] !== undefined) e.scrollTop = lists[i];
     });
+    for (const e of this.root.querySelectorAll<HTMLElement>("[data-keep]")) {
+      const v = keep.get(e.dataset.keep ?? "");
+      if (v) [e.scrollLeft, e.scrollTop] = v;
+    }
+    this.hooks.afterRender?.();
+  }
+
+  /** Валюты в шапке: лом, жетоны ◈, зелья — видно всегда, с любой вкладки. */
+  private renderCurs(d: PcInvData | null): void {
+    this.cursEl.innerHTML = "";
+    // Страница !inv: ник героя — здесь, вместо шапки страницы.
+    if (this.hooks.page && this.hero.nick) {
+      const n = div("pcinv-curnick");
+      n.innerHTML = iconHtml("ui.hero");
+      n.append(span(this.hero.nick));
+      this.cursEl.append(n);
+    }
+    if (!d) return;
+    const cur = (ico: string, n: number, title: string): void => {
+      const c = div("pcinv-cur");
+      c.innerHTML = `${ico}<b>${n.toLocaleString("ru-RU")}</b>`;
+      c.title = title;
+      this.cursEl.append(c);
+    };
+    cur(iconHtml("i.scrap"), d.scrap, "Лом — на заточку (в карточке предмета)");
+    cur(iconHtml("i.token"), d.tokens ?? 0, "Жетоны заданий — у трактирщика в лагере");
+    cur(iconHtml("i.potion"), d.potions, "Зелья лечения");
   }
 
   private renderInner(): void {
     const d = this.data;
+    for (const e of this.root.querySelectorAll(":scope > .pcinv-dim, :scope > .pcinv-card")) e.remove();
     this.tabsEl.innerHTML = "";
-    const tabs: [InvTab, string][] = [
-      ["gear", "Снаряжение"],
-      ["enchant", "Заточка"],
-      ["attrs", d && d.attrs.unspent > 0 ? `Атрибуты · ${d.attrs.unspent}` : "Атрибуты"],
-      ["skills", "Умения"],
-      ["trade", (() => { const n = d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0; return n ? `Обмен · ${n}` : "Обмен"; })()],
+    const tabs: [InvTab, string, number][] = [
+      ["gear", "Снаряжение", 0],
+      ["attrs", "Атрибуты", d?.attrs.unspent ?? 0],
+      ["skills", "Умения", 0],
+      ["trade", "Обмен", d?.trade?.sessions.filter((x) => x.theirs.ok && !x.mine.ok).length ?? 0],
     ];
-    for (const [id, label] of tabs) {
-      const t = div(`pcinv-tab${this.tab === id ? " on" : ""}${id === "attrs" && d && d.attrs.unspent > 0 ? " glow" : ""}`, label);
+    for (const [id, label, n] of tabs) {
+      const t = div(`pcinv-tab${this.tab === id ? " on" : ""}`, label);
+      // Число на вкладке — свободные очки атрибутов / обмены, ждущие моего подтверждения.
+      if (n > 0) t.append(div("pcinv-badge", String(n)));
       t.onclick = () => {
         this.tab = id;
         this.lastResult = null;
+        this.card = null;
         this.render();
       };
-      // Бросили предмет на вкладку «Заточка» — выбрать его для заточки.
-      if (id === "enchant") {
-        t.addEventListener("dragover", (e) => e.preventDefault());
-        t.addEventListener("drop", (e) => {
-          e.preventDefault();
-          const w = this.dragWeapon();
-          this.endDrag();
-          if (w) {
-            this.enchId = w.id;
-            this.tab = "enchant";
-            this.render();
-          }
-        });
-      }
       this.tabsEl.append(t);
     }
+    this.renderCurs(d);
     this.body.innerHTML = "";
     if (!d) {
       this.body.append(div("pcinv-empty", "Загрузка…"));
@@ -454,7 +512,6 @@ export class PcInventory {
       this.body.append(g);
     }
     if (this.tab === "gear") this.renderGear(d);
-    else if (this.tab === "enchant") this.renderEnchant(d);
     else if (this.tab === "skills") this.renderSkills(d);
     else if (this.tab === "trade") this.renderTrade(d);
     else this.renderAttrs(d);
@@ -703,7 +760,7 @@ export class PcInventory {
         }),
       );
     }
-    this.body.append(wrap);
+    this.body.append(tabPanel("Обмен", wrap));
   }
 
   private weaponById(id: string | null): PcInvWeapon | null {
@@ -711,26 +768,74 @@ export class PcInventory {
   }
 
   private renderGear(d: PcInvData): void {
+    const page = !!this.hooks.page;
     const wrap = div("pcinv-gear");
-    // --- слоты без фигуры: кольца и шлем сверху, руки и тело посередине, в один ряд внизу перчатки, поножи, сапоги ---
-    const left = div("pcinv-col");
-    // Опыт до следующего уровня — как в рамке героя.
-    const xp = div("pcinv-xp");
-    this.xpFill = div("pcinv-xp-fill");
-    this.xpText = div("pcinv-xp-text");
-    xp.append(this.xpFill, this.xpText);
-    this.paintXp();
-    const stats = div("pcinv-stats");
-    this.statsBox = stats;
-    this.fillStats(this.liveStats ?? d.stats);
+    const byId = new Map((d.armor ?? []).map((a) => [a.id, a] as const));
+    const j = this.jewelsOf(d);
+
+    // --- герой: слева броня, справа руки и кольца; между ними — сведения (игра) или сам герой на камне (страница) ---
+    const heroP = panel("pcinv-heropnl");
+    const colL = div("pcinv-scol");
+    for (const part of ARMOR_PARTS) colL.append(this.armorSlot(part, d, byId));
+    const colR = div("pcinv-scol");
+    colR.append(this.handSlot("right", d), this.handSlot("left", d), div("pcinv-slot gap"), this.ringSlot(0, d), this.ringSlot(1, d));
+    const center = div("pcinv-center");
+    center.append(page ? this.stage() : this.charInfo(d));
+    heroP.append(colL, center, colR);
+    const cardEl = this.card ? this.renderCard(d) : null;
+    if (cardEl && !cardEl.classList.contains("float")) heroP.append(cardEl);
+    wrap.append(heroP);
+
+    // --- сумка: оружие, кольца и броня вместе; ★ избранное — там же, со звёздочкой (вкладка «Избранное», сортировка «★ сначала») ---
+    const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
+    // Броня: надетые — в слотах, остальные — в сумке. Без armorAct (нет хука) — не показываем.
+    const bagEntries: BagEntry[] = [
+      ...d.weapons.filter((w) => !eq.has(w.id)).map((w) => ({ w })),
+      ...j.rings.filter((r) => !j.ringOn.includes(r.id)).map((r) => ({ r })),
+      ...(!this.hooks.armorAct ? [] : (d.armor ?? []).filter((a) => d.armorWorn?.[a.part] !== a.id)).map((a) => ({ a })),
+    ];
+    wrap.append(this.bagPanel(d, sortBag(bagEntries, this.bagSort, bagPickItem)));
+    // Страница: сведения о герое — своей панелью (в центре стоит сам герой).
+    if (page) {
+      const cp = panel("pcinv-charpnl");
+      cp.append(this.charInfo(d));
+      wrap.append(cp);
+    }
+    this.body.append(wrap);
+    if (cardEl?.classList.contains("float")) {
+      const dim = div("pcinv-dim");
+      dim.onclick = () => this.closeCard();
+      this.root.append(dim, cardEl);
+    }
+  }
+
+  /** Карточка поверх экрана (телефон, узкая страница), а не между колонками слотов. */
+  private cardFloats(): boolean {
+    return !!this.hooks.touch || (!!this.hooks.page && window.innerWidth < 980);
+  }
+
+  /** Страница !inv: герой в полный рост (картинка облика) — стоит на камне фона. */
+  private stage(): HTMLDivElement {
+    const st = div("pcinv-stage");
+    const img = document.createElement("img");
+    img.className = "pcinv-heroimg";
+    img.src = skinPicture(this.hero.skin);
+    img.alt = "";
+    img.draggable = false;
+    st.append(div("pcinv-heroshadow"), img);
+    return st;
+  }
+
+  /** Сведения о герое: ник, титул, уровень, атрибуты, характеристики, кольца. */
+  private charInfo(d: PcInvData): HTMLDivElement {
+    const box = div("pcinv-ci");
+    if (this.hero.nick) box.append(div("pcinv-ci-nick", this.hero.nick));
     // Титул под ником — выбор из полученных.
-    const titleRow = div("pcinv-row pcinv-title");
-    titleRow.append(span("Титул"));
     const sel = document.createElement("select");
-    sel.className = "pcinv-select";
+    sel.className = "pcinv-select pcinv-ci-title";
     const none = document.createElement("option");
     none.value = "";
-    none.textContent = d.titles?.length ? "— без титула —" : "нет — за большие заслуги";
+    none.textContent = d.titles?.length ? "— без титула —" : "Титул — за большие заслуги";
     sel.append(none);
     for (const t of d.titles ?? []) {
       const o = document.createElement("option");
@@ -741,203 +846,133 @@ export class PcInventory {
     sel.value = d.title ?? "";
     sel.disabled = !d.titles?.length;
     sel.onchange = () => this.hooks.act({ act: "title", id: sel.value, idx: 0 });
-    titleRow.append(sel);
-    const jw = this.jewelParts(d);
-    // Схема в 3 колонки; клетки ставим явно (колонка, строка). Пустые слоты видны всегда — и на ПК, и на странице !inv.
-    const byId = new Map((d.armor ?? []).map((a) => [a.id, a] as const));
-    const place = (el: HTMLElement, col: number, row: number): HTMLElement => {
-      el.style.gridColumn = String(col);
-      el.style.gridRow = String(row);
-      return el;
-    };
-    const slotGrid = div("pcinv-slotgrid");
-    slotGrid.append(
-      place(jw.rings[0], 1, 1),
-      place(this.armorSlot("helm", d, byId), 2, 1),
-      place(jw.rings[1], 3, 1),
-      place(this.handSlot("left", d), 1, 2),
-      place(this.armorSlot("chest", d, byId), 2, 2),
-      place(this.handSlot("right", d), 3, 2),
-      place(this.armorSlot("gloves", d, byId), 1, 3),
-      place(this.armorSlot("legs", d, byId), 2, 3),
-      place(this.armorSlot("boots", d, byId), 3, 3),
-    );
-    left.append(xp, slotGrid, jw.sum, titleRow, stats);
-
-    // --- избранное и сумка: оружие и кольца вместе; один ряд ★ на FAV_MAX (лимит общий) ---
-    const right = div("pcinv-col");
-    const j = this.jewelsOf(d);
-    const eq = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
-    const free = d.weapons.filter((w) => !eq.has(w.id));
-    const freeRings = j.rings.filter((r) => !j.ringOn.includes(r.id));
-    // Броня: надетые — в слотах куклы, остальные — в той же сумке; ★ — в ряду избранного. Без armorAct (нет хука) — не показываем.
-    const armorFree: PcInvArmor[] = !this.hooks.armorAct ? [] : (d.armor ?? []).filter((a) => d.armorWorn?.[a.part] !== a.id);
-    const favs: BagEntry[] = [
-      ...free.filter((w) => w.fav).map((w) => ({ w })),
-      ...freeRings.filter((r) => r.fav).map((r) => ({ r })),
-      ...armorFree.filter((a) => a.fav).map((a) => ({ a })),
-    ];
-    const armorBag: BagEntry[] = armorFree.filter((a) => !a.fav).map((a) => ({ a }));
-    const bagEntries: BagEntry[] = [...free.filter((w) => !w.fav).map((w) => ({ w })), ...freeRings.filter((r) => !r.fav).map((r) => ({ r })), ...armorBag];
-    const bag = sortBag(bagEntries, this.bagSort, bagPickItem);
-    const bagW = bag.flatMap((e) => ("w" in e ? [e.w] : []));
-    const bagR = bag.flatMap((e) => ("r" in e ? [e.r] : []));
-    const favTotal = d.weapons.filter((w) => w.fav).length + j.rings.filter((r) => r.fav).length + (d.armor ?? []).filter((a) => a.fav).length;
-    // Избранное ★: один ряд на FAV_MAX ячеек — бросил сюда оружие или кольцо, оно в избранном (не разбирается).
-    right.append(div("pcinv-sub", `${glyph("ui.fav")} Избранное · ${favTotal}/${FAV_MAX} — не разбирается`));
-    const favGrid = div("pcinv-grid pcinv-favgrid");
-    for (let i = 0; i < FAV_MAX; i++) {
-      const e = favs[i];
-      favGrid.append(e ? this.entryCell(e) : div("pcinv-cell pcinv-favslot", glyph("ui.favOff")));
+    box.append(sel);
+    // Уровень и опыт до следующего.
+    this.xpLv = div("pcinv-ci-lv");
+    const xpRow = div("pcinv-xprow");
+    const xp = div("pcinv-xp");
+    this.xpFill = div("pcinv-xp-fill");
+    xp.append(this.xpFill);
+    this.xpText = div("pcinv-xp-pill");
+    xpRow.append(xp, this.xpText);
+    box.append(this.xpLv, xpRow);
+    this.paintXp();
+    // Атрибуты (с прибавкой от колец и камней): клик — вкладка «Атрибуты».
+    const gemB = pcJewelBonus(d.jewels);
+    const at = div("pcinv-at6");
+    for (const id of A2) {
+      const v = d.attrs[id] ?? 1;
+      const c = div("pcinv-atc");
+      c.innerHTML = `${iconHtml(`a.${id}` as IconKey)}<b>${v + gemB[id]}</b><span>${ATTR_INFO[id].short}</span>`;
+      c.title = `${ATTR_INFO[id].name}: ${v}${gemB[id] ? ` +${gemB[id]} от камней` : ""} — ${attrEffect(id)}`;
+      c.onclick = () => {
+        this.tab = "attrs";
+        this.card = null;
+        this.render();
+      };
+      at.append(c);
     }
-    favGrid.addEventListener("dragover", (e) => {
-      if (this.canFav()) {
-        e.preventDefault();
-        favGrid.classList.add("hot");
-      }
-    });
-    favGrid.addEventListener("dragleave", () => favGrid.classList.remove("hot"));
-    favGrid.addEventListener("drop", (e) => {
-      e.preventDefault();
-      favGrid.classList.remove("hot");
-      const src = this.drag;
-      const w = this.dragWeapon();
-      const r = this.dragRing();
-      const ar = this.dragArmor();
-      this.endDrag();
-      const weaponIn = !!w && !w.fav;
-      const ringIn = !!r && !r.fav;
-      const armorIn = !!ar && !ar.fav && this.data?.armorWorn?.[ar.part] !== ar.id;
-      if (!weaponIn && !ringIn && !armorIn) return;
-      if (favTotal >= FAV_MAX) {
-        this.textTip(favGrid, `${glyph("ui.fav")} Избранное заполнено`, `Не больше ${FAV_MAX} — сначала вынеси что-нибудь из избранного в сумку.`);
-        return;
-      }
-      if (w && weaponIn) {
-        if (src?.kind === "hand") this.hooks.toBag(src.side);
-        this.toggleFav(w);
-      } else if (r && ringIn) this.toggleRingFav(r.id);
-      else if (ar && armorIn) this.toggleArmorFav(ar.id);
-    });
-    right.append(favGrid);
-
-    // Сумка: оружие и кольца в одной сетке; сортировка — кнопками в шапке (повторный клик — выключить).
-    const bagHead = div("pcinv-bagh");
-    const bagA = bag.flatMap((e) => ("a" in e ? [e.a] : []));
-    bagHead.append(div("pcinv-sub", `Сумка · оружие ${bagW.length} · кольца ${bagR.length}${bagA.length ? ` · броня ${bagA.length}` : ""}`));
-    const sortRow = div("pcinv-sortrow");
-    for (const s of BAG_SORTS) {
-      const bt = button(s.label, () => {
-        this.bagSort = nextBagSort(this.bagSort, s.mode);
+    box.append(at);
+    if (d.attrs.unspent > 0) {
+      const up = button(`＋ Свободных очков: ${d.attrs.unspent}`, () => {
+        this.tab = "attrs";
+        this.card = null;
         this.render();
       });
-      bt.className = `pcinv-sortbtn${this.bagSort === s.mode ? " on" : ""}`;
-      bt.title = s.title;
-      sortRow.append(bt);
+      up.className = "pcinv-btn sm green pcinv-ci-up";
+      box.append(up);
     }
-    bagHead.append(sortRow);
-    right.append(bagHead);
-    // Склад на сервере без лимита — ячеек минимум 56, дальше растёт рядами по 8 (всегда есть свободный ряд).
-    const row = this.hooks.touch && !this.hooks.page ? 10 : 8;
-    const slots = Math.max(this.hooks.page ? 40 : this.hooks.touch ? 30 : 56, Math.ceil((bag.length + 1) / row) * row);
-    const grid = div("pcinv-grid");
-    for (let i = 0; i < slots; i++) {
-      const e = bag[i];
-      grid.append(e ? this.entryCell(e) : div("pcinv-cell"));
+    box.append(div("pcinv-hh", "Характеристики"));
+    const stats = div("pcinv-stats");
+    this.statsBox = stats;
+    this.fillStats(this.liveStats ?? d.stats);
+    box.append(stats);
+    // Кольца: что дают надетые.
+    const b = pcJewelBonus(d.jewels);
+    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
+    for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_INFO[k].short}`);
+    box.append(
+      div("pcinv-hh", "Кольца"),
+      div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`),
+    );
+    return box;
+  }
+
+  /** Сумка: фильтры, сортировка, сетка (оружие, кольца, броня, камни, расходники), наковальня и «разобрать всё». */
+  private bagPanel(d: PcInvData, bag: BagEntry[]): HTMLDivElement {
+    const p = panel("pcinv-bagpnl");
+    const j = this.jewelsOf(d);
+    // Для «разобрать всё»: избранное ★ не разбирается — не считаем.
+    const bagW = bag.flatMap((e) => ("w" in e && !e.w.fav ? [e.w] : []));
+    const bagR = bag.flatMap((e) => ("r" in e && !e.r.fav ? [e.r] : []));
+    const filters = BAG_FILTERS.filter(([f]) => f !== "armor" || !!this.hooks.armorAct);
+    if (!filters.some(([f]) => f === this.bagFilter)) this.bagFilter = "all";
+    const f = this.bagFilter;
+    const gemCount = j.gems.reduce((n, [, k]) => n + k, 0);
+    const hd = div("pcinv-bagh");
+    hd.append(div("pcinv-bagt", "Сумка"));
+    const tabs = div("pcinv-ftabs");
+    for (const [id, label] of filters) {
+      // Телефон в игре: «★ Избранное» — просто «★», чтобы вкладки влезли в строку.
+      const t = div(`pcinv-ftab${id === f ? " on" : ""}`, id === "fav" && this.hooks.touch && !this.hooks.page ? glyph("ui.fav") : label);
+      t.onclick = () => {
+        this.bagFilter = id;
+        this.render();
+      };
+      tabs.append(t);
     }
-    // С руки в сумку — снять; из избранного в сумку — убрать звёздочку (оружие или кольцо).
+    p.append(hd, tabs);
+    // Сортировка — для предметов (оружие, кольца, броня); повторный клик — выключить.
+    if (f !== "gem" && f !== "misc") {
+      const sortRow = div("pcinv-sortrow");
+      sortRow.append(div("pcinv-small", "Сортировка"));
+      for (const so of BAG_SORTS) {
+        const bt = button(so.label, () => {
+          this.bagSort = nextBagSort(this.bagSort, so.mode);
+          this.render();
+        });
+        bt.className = `pcinv-sortbtn${this.bagSort === so.mode ? " on" : ""}`;
+        bt.title = so.title;
+        sortRow.append(bt);
+      }
+      p.append(sortRow);
+    }
+    const cells: HTMLElement[] = [];
+    const favOf = (e: BagEntry): boolean => !!("w" in e ? e.w.fav : "r" in e ? e.r.fav : e.a.fav);
+    const shown = bag.filter((e) => f === "all" || (f === "fav" && favOf(e)) || (f === "weapon" && "w" in e) || (f === "ring" && "r" in e) || (f === "armor" && "a" in e));
+    if (f !== "gem" && f !== "misc") for (const e of shown) cells.push(this.entryCell(e));
+    if (f === "all" || f === "gem") for (const [gk, n] of j.gems) cells.push(this.gemCell(gk, n, d));
+    if (f === "all" || f === "misc") cells.push(...this.consCells(d));
+    // Пустые ячейки — до полной сетки (минимум несколько рядов, всегда есть свободный ряд).
+    const cols = this.hooks.page ? 6 : this.hooks.touch ? 8 : 7;
+    const total = Math.max(cols * (this.hooks.page ? 5 : 4), Math.ceil((cells.length + 1) / cols) * cols);
+    const grid = div("pcinv-grid pcinv-bagrid");
+    grid.dataset.keep = "bag";
+    grid.append(...cells);
+    for (let i = cells.length; i < total; i++) grid.append(div("pcinv-cell empty"));
+    if (!cells.length) {
+      const msg = f === "gem" ? "Камней нет — падают с мобов (1 уровня)." : f === "fav" ? "Избранного нет — отметь предмет ★ в его карточке." : f === "misc" ? "Пусто." : "Пусто — лут падает с мобов.";
+      grid.prepend(div("pcinv-bagempty", msg));
+    }
+    // С руки в сумку — снять.
     grid.addEventListener("dragover", (e) => {
-      if (this.drag?.kind === "hand" || this.dragWeapon()?.fav || this.dragRing()?.fav) e.preventDefault();
+      if (this.drag?.kind === "hand") e.preventDefault();
     });
     grid.addEventListener("drop", (e) => {
       e.preventDefault();
       const src = this.drag;
-      const w = this.dragWeapon();
-      const r = this.dragRing();
       this.endDrag();
-      if (src?.kind === "hand") this.hooks.toBag(src.side);
-      else if (w?.fav) this.toggleFav(w);
-      else if (r?.fav) this.toggleRingFav(r.id);
+      if (src?.kind === "hand") this.hooks.toBag(this.realSide(src.side));
     });
-    right.append(grid);
-    // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
-    const bulk = bagW.filter((w) => w.tier !== "ruby");
-    const scrapSum = bulk.reduce((n, w) => n + w.scrap, 0);
-    const all = document.createElement("button");
-    all.className = "pcinv-allbtn";
-    all.textContent = `${glyph("ui.forge")} Разобрать всё, кроме избранного (${bulk.length})`;
-    all.disabled = bulk.length === 0;
-    all.onclick = () =>
-      this.askConfirm(
-        `Разобрать ${bulk.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и то, что в руках, останутся.`,
-        "Разобрать всё",
-        () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
-      );
-    right.append(all);
-    if (bagR.length) {
-      const ringSum = bagR.reduce((n, r) => n + r.scrap, 0);
-      const rall = document.createElement("button");
-      rall.className = "pcinv-allbtn pcinv-ringall";
-      rall.textContent = `⚒ Разобрать все кольца (${bagR.length})`;
-      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые и ★ избранные останутся, камни вернутся в сумку`;
-      rall.onclick = () =>
-        this.askConfirm(
-          `Разобрать ${bagR.length} колец на ${ringSum} лома? Надетые и ★ избранные останутся. Камни из них вернутся в сумку.`,
-          "Разобрать все",
-          () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
-        );
-      right.append(rall);
-    }
-    // Гнёзда выбранного кольца — сразу под сумкой: кольцо выбирают там же.
-    if (jw.sockets) right.append(jw.sockets);
-    right.append(div("pcinv-sub", "Прочее"));
-    const cons = div("pcinv-cons");
-    const info = (c: HTMLDivElement, title: string, body: string): HTMLDivElement => {
-      c.removeAttribute("title");
-      c.addEventListener("mouseenter", () => this.textTip(c, title, body));
-      c.addEventListener("mouseleave", () => this.hideTip());
-      return c;
-    };
-    // Нажатие — подарить (сколько — выбираешь в окне).
-    const giftable = (c: HTMLDivElement, name: string, item: string, n: number): HTMLDivElement => {
-      if (n > 0) {
-        c.style.cursor = "pointer";
-        c.addEventListener("click", () => this.askGift(name, `b:${item}`, n));
-      }
-      return c;
-    };
-    cons.append(
-      giftable(info(countCell(iconHtml("i.potion"), d.potions, "", true), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу. Нажми — подарить."), "Зелья лечения", "potion", d.potions),
-      giftable(info(countCell(iconHtml("i.scrap"), d.scrap, "", true), "Лом", "Для заточки роллов оружия (вкладка «Заточка»). Нажми — подарить."), "Лом", "scrap", d.scrap),
-      giftable(info(countCell(iconHtml("i.fish"), d.fish, "", true), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере. Нажми — подарить."), "Рыба", "fish", d.fish),
-    );
-    // Жетоны заданий — подсказка сразу при наведении и по нажатию.
-    {
-      const tip = "Дают за задания дня (доска и Охотник у выхода из лагеря). Тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия.";
-      const c = info(countCell(iconHtml("i.token"), d.tokens ?? 0, "", true), `Жетоны заданий ${glyph("i.token")}`, tip);
-      c.classList.add("tokens");
-      cons.append(c);
-    }
-    // Свитки — клик: прочитать (бафф на 15 мин).
-    const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", string, string, string][] = [
-      [d.scrollXp, "scroll_xp", iconHtml("i.scroll_xp"), "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Клик — прочитать."],
-      [d.scrollWind, "scroll_wind", iconHtml("i.scroll_wind"), "Свиток ветра", "+20% скорости бега на 15 мин. Клик — прочитать."],
-    ];
-    for (const [n, id, ico, name, body] of scrolls) {
-      if (!n) continue;
-      const c = info(countCell(ico, n, "", true), name, body);
-      c.style.cursor = "pointer";
-      c.onclick = () => {
-        this.hideTip();
-        this.hooks.useItem?.(id);
-        window.setTimeout(() => this.refresh(), 300);
-      };
-      cons.append(c);
-    }
-    // Наковальня: оружие и кольцо — в лом (с подтверждением); избранное не разбирается.
-    const anvil = div("pcinv-anvil", "⚒ Перетащи сюда — в лом");
+    p.append(grid);
+    if (!this.card && this.lastResult) p.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+
+    // Низ: наковальня (перетащи — в лом) и общие кнопки по фильтру.
+    const foot = div("pcinv-bagf");
+    const anvil = div("pcinv-anvil");
+    anvil.innerHTML = `${iconHtml("i.scrap")}<span>${this.hooks.touch && !this.hooks.page ? "В лом" : "Сюда — в лом"}</span>`;
     anvil.addEventListener("dragover", (e) => {
-      if (this.dragWeapon() || this.dragRing()) {
+      if (this.dragWeapon() || this.dragRing() || this.dragArmor()) {
         e.preventDefault();
         anvil.classList.add("hot");
       }
@@ -948,40 +983,176 @@ export class PcInventory {
       anvil.classList.remove("hot");
       const w = this.dragWeapon();
       const r = this.dragRing();
+      const ar = this.dragArmor();
       this.endDrag();
-      if (w?.fav || r?.fav) this.textTip(anvil, `${glyph("ui.fav")} В избранном`, "Избранное не разбирается — сначала сними звёздочку.");
+      if (w?.fav || r?.fav || ar?.fav) this.textTip(anvil, `${glyph("ui.fav")} В избранном`, "Избранное не разбирается и не выбрасывается — сначала сними звёздочку.");
       else if (w) this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w));
-      else if (r)
-        this.askConfirm(
-          `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
-          "Разобрать",
-          () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
-        );
+      else if (r) this.askRingScrap(r);
+      else if (ar) {
+        if (this.data?.armorWorn?.[ar.part] === ar.id) this.textTip(anvil, "Надето", "Надетое не разбирается — сначала сними.");
+        else this.askConfirm(`Разобрать «${ar.label}» на ${ar.scrap} лома?`, "Разобрать", () => this.hooks.armorAct?.(ar.id, "scrap"));
+      }
     });
-    cons.append(anvil);
-    right.append(cons);
-    right.append(jw.pouch);
-    right.append(
-      div(
-        "pcinv-hint",
-        "Перетащи на руку — надеть · ПКМ — надеть/снять · в «Избранное» — не разбирается · на наковальню — в лом · за окно — выбросить · на «Заточку» — заточить",
-      ),
+    foot.append(anvil);
+    if (f === "ring") {
+      const ringSum = bagR.reduce((n, r) => n + r.scrap, 0);
+      const rall = button(`Разобрать все кольца (${bagR.length})`, () =>
+        this.askConfirm(
+          `Разобрать ${bagR.length} колец на ${ringSum} лома? Надетые и ★ избранные останутся. Камни из них вернутся в сумку.`,
+          "Разобрать все",
+          () => this.hooks.act({ act: "ringScrapAll", id: "all", idx: 0 }),
+        ),
+      );
+      rall.className = "pcinv-btn danger";
+      rall.disabled = !bagR.length;
+      rall.title = `Все кольца из сумки в лом: +${ringSum}. Надетые и ★ избранные останутся, камни вернутся в сумку`;
+      foot.append(rall);
+    } else if (f === "gem") {
+      const all = button("⬆ Соединить все камни", () => this.hooks.act({ act: "gemMergeAll", id: "all", idx: 0 }));
+      all.className = "pcinv-btn green";
+      all.disabled = !j.gems.some(([, n]) => n >= RING.combine);
+      all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
+      foot.append(all);
+    } else {
+      // Разобрать всё, кроме избранного ★, рубиновых и надетого — с подтверждением (рубиновые — только поштучно, как на сервере).
+      const bulk = bagW.filter((w) => w.tier !== "ruby");
+      const scrapSum = bulk.reduce((n, w) => n + w.scrap, 0);
+      const all = button(`Разобрать всё, кроме ${glyph("ui.fav")}`, () =>
+        this.askConfirm(
+          `Разобрать ${bulk.length} шт. на ${scrapSum} лома? Избранное ${glyph("ui.fav")}, рубиновое и то, что в руках, останутся.`,
+          "Разобрать всё",
+          () => this.hooks.act({ act: "scrapAll", id: "all", idx: 0 }),
+        ),
+      );
+      all.className = "pcinv-btn";
+      all.disabled = bulk.length === 0;
+      all.title = `Оружие из сумки в лом (${bulk.length} шт., +${scrapSum}). Избранное, рубиновое и надетое останутся`;
+      foot.append(all);
+    }
+    p.append(foot);
+    if (!this.hooks.touch && !this.hooks.page) {
+      p.append(div("pcinv-hint", "Клик — карточка · ПКМ — надеть/снять · ★ — в избранное (не разбирается и не выбрасывается) · перетащи на слот — надеть, на наковальню — в лом, за окно — выбросить"));
+    }
+    if (gemCount && f === "gem") p.append(div("pcinv-hint", `Соедини ${RING.combine} одинаковых — получишь камень уровнем выше. Вставить — в карточке кольца.`));
+    return p;
+  }
+
+  /** Разобрать кольцо (с подтверждением; камни возвращаются в сумку). */
+  private askRingScrap(r: PcInvJewels["rings"][number]): void {
+    this.askConfirm(
+      `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
+      "Разобрать",
+      () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
     );
-    wrap.append(left, right);
-    this.body.append(wrap);
+  }
+
+  /** Расходники в сумке: зелья, лом, рыба, жетоны, свитки. Нажатие — подарить (или прочитать свиток). */
+  private consCells(d: PcInvData): HTMLDivElement[] {
+    const out: HTMLDivElement[] = [];
+    const info = (c: HTMLDivElement, title: string, body: string): HTMLDivElement => {
+      c.addEventListener("mouseenter", () => this.textTip(c, title, body));
+      c.addEventListener("mouseleave", () => this.hideTip());
+      return c;
+    };
+    const gift = (c: HTMLDivElement, name: string, item: string, n: number): HTMLDivElement => {
+      c.classList.add("click");
+      c.addEventListener("click", () => this.askGift(name, `b:${item}`, n));
+      return c;
+    };
+    if (d.potions) out.push(gift(info(countCell(iconHtml("i.potion"), d.potions), "Зелья лечения", "Пить — клавиша 3 / кнопка зелья. Лечат сразу. Нажми — подарить."), "Зелья лечения", "potion", d.potions));
+    if (d.scrap) out.push(gift(info(countCell(iconHtml("i.scrap"), d.scrap), "Лом", "На заточку — в карточке предмета. Нажми — подарить."), "Лом", "scrap", d.scrap));
+    if (d.fish) out.push(gift(info(countCell(iconHtml("i.fish"), d.fish), "Рыба", "Ловится на озере. Задания на рыбалку — на доске в лагере. Нажми — подарить."), "Рыба", "fish", d.fish));
+    if (d.tokens) {
+      const tip = "Дают за задания дня (доска и Охотник у выхода из лагеря). Тратятся у трактирщика в лагере: зелья, лом, свитки, сундук оружия.";
+      const c = countCell(iconHtml("i.token"), d.tokens);
+      c.classList.add("tokens", "click");
+      info(c, `Жетоны заданий ${glyph("i.token")}`, tip);
+      c.addEventListener("click", () => this.textTipAt(c, `Жетоны заданий ${glyph("i.token")}`, tip));
+      out.push(c);
+    }
+    // Свитки — клик: прочитать (бафф на 15 мин).
+    const scrolls: [number | undefined, "scroll_xp" | "scroll_wind", IconKey, string, string][] = [
+      [d.scrollXp, "scroll_xp", "i.scroll_xp", "Свиток мудрости", "×2 опыта на 15 мин (с благословением ×3). Нажми — прочитать."],
+      [d.scrollWind, "scroll_wind", "i.scroll_wind", "Свиток ветра", "+20% скорости бега на 15 мин. Нажми — прочитать."],
+    ];
+    for (const [n, id, ico, name, body] of scrolls) {
+      if (!n) continue;
+      const c = info(countCell(iconHtml(ico), n), name, body);
+      c.classList.add("click");
+      c.onclick = () => {
+        this.hideTip();
+        this.hooks.useItem?.(id);
+        window.setTimeout(() => this.refresh(), 300);
+      };
+      out.push(c);
+    }
+    return out;
+  }
+
+  /** Камень в сумке: уровень и сколько; нажатие — меню (вставить в открытое кольцо, соединить, разделить, подарить). */
+  private gemCell(gk: string, n: number, d: PcInvData): HTMLDivElement {
+    const g = parseGem(gk)!;
+    const c = div("pcinv-cell pcinv-jw");
+    c.innerHTML = gemHtml(gk);
+    this.gemTip(c, gk, n);
+    c.append(div("pcinv-glv", String(g.lv)));
+    const k = document.createElement("span");
+    k.className = "pcinv-cnt";
+    k.textContent = `×${n}`;
+    c.append(k);
+    c.onclick = () => {
+      const ring = this.card?.kind === "ring" ? this.jewelsOf(d).rings.find((r) => r.id === (this.card as { id: string }).id) : undefined;
+      const free = ring ? ring.gems.indexOf(null) : -1;
+      const acts: [string, () => void, boolean?][] = [];
+      if (ring && free >= 0) acts.push([`Вставить в ${ringName(ring).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: ring.id, idx: free, fuel: gk })]);
+      if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
+      if (g.lv > 1) acts.push([`Разделить → ${RING.combine} × ур. ${g.lv - 1}`, () => this.hooks.act({ act: "gemSplit", id: gk, idx: 0 })]);
+      acts.push(["🎁 Подарить…", () => this.askGift(gemName(gk), `g:${gk}`, n)]);
+      this.menu(c, `${gemName(gk)} ×${n}`, acts);
+    };
+    return c;
+  }
+
+  /** Слот на схеме: ячейка и подпись внутри рамки снизу. */
+  private slot(cell: HTMLElement, label: string): HTMLDivElement {
+    const box = div("pcinv-slot");
+    box.append(cell, div("pcinv-slab", label));
+    return box;
+  }
+
+  /** Что держит рука: лук/копьё/молот/посох держат обе — показываем в правом слоте, левый — «занята». */
+  private handHeld(side: Side): { held: HeldInfo | null; both: HeldInfo | null } {
+    const h = this.hooks.hands();
+    const both = bothHandsCls(h.left?.cls) ? h.left : bothHandsCls(h.right?.cls) ? h.right : null;
+    if (both) return { held: side === "right" ? both : null, both };
+    return { held: h[side], both: null };
+  }
+
+  /** Рука, которая на самом деле держит то, что показано в слоте (двуручное лежит в одной из рук, а показано справа). */
+  private realSide(side: Side): Side {
+    const h = this.hooks.hands();
+    if (bothHandsCls(h.right?.cls)) return "right";
+    if (bothHandsCls(h.left?.cls)) return "left";
+    return side;
+  }
+
+  /** Экземпляр со склада в руке (обычное со стойки не на складе — null). */
+  private handWeapon(side: Side, d: PcInvData): PcInvWeapon | null {
+    const { both } = this.handHeld(side);
+    if (both) return this.weaponById(d.equipped.right ?? d.equipped.left);
+    return this.weaponById(d.equipped[side]);
   }
 
   private handSlot(side: Side, d: PcInvData): HTMLDivElement {
-    const box = div("pcinv-handbox");
-    const both = this.hooks.hands();
-    // Лук/копьё/молот держат обе руки — показываем в левом слоте, правый — пометкой.
-    const twoH = bothHandsCls(both.left?.cls) ? both.left : bothHandsCls(both.right?.cls) ? both.right : null;
-    const bowBoth = !!twoH;
-    const held = bowBoth ? (side === "left" ? twoH : null) : both[side];
-    if (twoH && side === "right") {
+    const { held, both } = this.handHeld(side);
+    // Телефон в игре: слоты маленькие — подписи короче.
+    const short = !!this.hooks.touch && !this.hooks.page;
+    const label = side === "left" ? (short ? "Левая" : "Левая рука") : short ? "Правая" : "Правая рука";
+    // Двуручное (лук, посох, копьё, молот) — в правом слоте; левый — тусклой копией с пометкой.
+    if (both && side === "left") {
       const c = div("pcinv-cell big locked");
-      setIcon(c, twoH.cls, undefined, twoH.tier);
-      c.title = bothHandsNote(twoH.cls);
+      setIcon(c, both.cls, undefined, both.tier);
+      c.title = bothHandsNote(both.cls);
       // И сюда можно бросить оружие из сумки — наденется по своим правилам.
       c.addEventListener("dragover", (e) => {
         if (this.drag?.kind === "bag") e.preventDefault();
@@ -991,44 +1162,36 @@ export class PcInventory {
         const src = this.drag;
         this.endDrag();
         const bw = src?.kind === "bag" ? this.weaponById(src.id) : null;
-        if (bw) this.hooks.equip(bw, "right");
+        if (bw) this.hooks.equip(bw, "left");
       });
-      box.append(c, div("pcinv-small", "Правая рука · занята"));
-      return box;
+      return this.slot(c, short ? "Занята" : "Левая · занята");
     }
-    const w = this.weaponById(d.equipped[side]) ?? (bowBoth ? this.weaponById(d.equipped.left ?? d.equipped.right) : null);
+    const w = this.handWeapon(side, d);
     const cell = div("pcinv-cell big");
     if (held && held.cls) {
       const tier = (w?.tier ?? held.tier) as WeaponTier;
       cell.classList.add(`t-${tier}`);
+      if (this.card?.kind === "hand" && this.card.side === side) cell.classList.add("sel");
       setIcon(cell, held.cls, w?.name, tier);
-      if (w?.affixes.length) {
-        cell.style.position = "relative";
-        cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
-      }
-      if (w && attackPoints(w) > 0) {
-        cell.style.position = "relative";
-        cell.append(div("pcinv-sb", `+${attackPoints(w)}`));
-      }
-      if (w?.fav) {
-        cell.style.position = "relative";
-        cell.append(div("pcinv-fav on", glyph("ui.fav")));
-      }
+      if (w?.affixes.length) cell.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
+      if (w && attackPoints(w) > 0) cell.append(div("pcinv-sb", `+${attackPoints(w)}`));
+      if (w?.fav) cell.append(div("pcinv-fav on", glyph("ui.fav")));
       cell.draggable = true;
       cell.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "hand", side }));
       this.touchSrc.set(cell, { kind: "hand", side });
-      if (this.hooks.page && !this.hooks.touch) {
-        cell.style.cursor = "pointer";
-        cell.addEventListener("click", () => this.openActions(cell, { kind: "hand", side }));
-      }
+      if (!this.hooks.touch) cell.addEventListener("click", () => this.openCard({ kind: "hand", side }));
       cell.addEventListener("dragend", () => this.endDrag());
       cell.addEventListener("mouseenter", () => this.showTip(cell, w, held));
       cell.addEventListener("mouseleave", () => this.hideTip());
       cell.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         this.hideTip();
-        this.hooks.toBag(side);
+        this.hooks.toBag(this.realSide(side));
       });
+    } else {
+      cell.classList.add("empty");
+      cell.addEventListener("mouseenter", () => this.textTip(cell, label, "Пусто — перетащи оружие из сумки или нажми на него и «Надеть»"));
+      cell.addEventListener("mouseleave", () => this.hideTip());
     }
     // Из сумки на руку — надеть.
     cell.addEventListener("dragover", (e) => {
@@ -1046,8 +1209,46 @@ export class PcInventory {
       const bw = src?.kind === "bag" ? this.weaponById(src.id) : null;
       if (bw) this.hooks.equip(bw, side);
     });
-    box.append(cell, div("pcinv-small", side === "left" ? "Левая рука" : "Правая рука"));
-    return box;
+    return this.slot(cell, label);
+  }
+
+  /** Слот кольца: надетое кольцо (клик — карточка с гнёздами) или пусто; сюда же бросают кольцо из сумки. */
+  private ringSlot(slot: 0 | 1, d: PcInvData): HTMLDivElement {
+    const j = this.jewelsOf(d);
+    const id = j.ringOn[slot];
+    const r = id ? j.rings.find((x) => x.id === id) ?? null : null;
+    const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : " empty"}${r && this.card?.kind === "ring" && this.card.id === r.id ? " sel" : ""}`);
+    c.innerHTML = r ? ringHtml(r.tier, r.gems) : RING_SLOT_SVG;
+    if (r) {
+      this.ringTip(c, r);
+      if (r.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
+      this.touchSrc.set(c, { kind: "ring", id: r.id });
+      if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "ring", id: r.id }));
+      // ПКМ по надетому кольцу — снять.
+      c.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        this.hideTip();
+        this.hooks.act({ act: "ringOff", id: "-", idx: slot });
+      });
+    } else {
+      c.addEventListener("click", () => this.textTipAt(c, `Слот кольца ${slot + 1}`, "Пусто — надень кольцо из сумки (перетащи сюда или нажми на кольцо)."));
+    }
+    // Кольцо из сумки — надеть в этот слот.
+    c.addEventListener("dragover", (e) => {
+      if (this.dragRing()) {
+        e.preventDefault();
+        c.classList.add("hot");
+      }
+    });
+    c.addEventListener("dragleave", () => c.classList.remove("hot"));
+    c.addEventListener("drop", (e) => {
+      e.preventDefault();
+      c.classList.remove("hot");
+      const rr = this.dragRing();
+      this.endDrag();
+      if (rr && !j.ringOn.includes(rr.id)) this.hooks.act({ act: "ringOn", id: rr.id, idx: slot });
+    });
+    return this.slot(c, "Кольцо");
   }
 
   /** Звёздочка «избранное» в углу ячейки: ★ — в избранном; пустая ☆ — при наведении (ПК), клик — переключить. */
@@ -1085,21 +1286,16 @@ export class PcInventory {
     this.hooks.act({ act: "ringFav", id, idx: 0 });
   }
 
-  /** Пункт меню «В избранное» / «Убрать из избранного» у кольца. */
-  private favItem(r: { id: string; fav?: boolean }): readonly [string, () => void] {
-    return [r.fav ? `${glyph("ui.favOff")} Убрать из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleRingFav(r.id)];
-  }
-
   private itemCell(w: PcInvWeapon): HTMLDivElement {
-    const c = div(`pcinv-cell t-${w.tier}`);
+    const c = div(`pcinv-cell t-${w.tier}${this.card?.kind === "bag" && this.card.id === w.id ? " sel" : ""}`);
     setIcon(c, w.cls, w.name, w.tier);
     c.style.position = "relative";
     if (w.affixes.length) c.append(div("pcinv-q", qualityStarsShort(w.quality, w.affixes.length)));
     if (attackPoints(w) > 0) c.append(div("pcinv-sb", `+${attackPoints(w)}`));
     // Телефон: невидимая пустая звёздочка ловила бы случайные тапы — там только ★ у избранного, переключение — в меню.
     if (!this.hooks.touch || w.fav) c.append(this.favStar(!!w.fav, () => this.toggleFav(w)));
-    // ПК (страница и игра): клик — меню действий, как тап на телефоне; правый клик в игре — надеть.
-    if (!this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "bag", id: w.id }));
+    // ПК (страница и игра): клик — карточка, как тап на телефоне; правый клик — надеть.
+    if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "bag", id: w.id }));
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "bag", id: w.id }));
     this.touchSrc.set(c, { kind: "bag", id: w.id });
@@ -1114,147 +1310,246 @@ export class PcInventory {
     return c;
   }
 
-  private renderEnchant(d: PcInvData): void {
-    const wrap = div("pcinv-ench");
-    const inHand = new Set([d.equipped.left, d.equipped.right].filter(Boolean) as string[]);
-    // Выбранная броня (id части) — её заточка; иначе оружие, как раньше.
-    const arm = this.enchId ? (d.armor ?? []).find((x) => x.id === this.enchId) : undefined;
-    const w = arm
-      ? null
-      : (this.weaponById(this.enchId) ??
-        this.weaponById(d.equipped.right) ??
-        this.weaponById(d.equipped.left) ??
-        d.weapons[0] ??
-        null);
-    if (w) this.enchId = w.id;
-    const left = div("pcinv-ench-left");
-    const slotEl = div(`pcinv-cell huge${w ? ` t-${w.tier}` : arm ? " t-base" : ""}`);
-    if (w) setIcon(slotEl, w.cls, w.name, w.tier);
-    else if (arm) setIconEl(slotEl, armorIconKey(arm.part));
-    if (w && attackPoints(w) > 0) slotEl.append(div("pcinv-sb big", `+${attackPoints(w)}`));
-    slotEl.addEventListener("dragover", (e) => {
-      if (this.dragWeapon()) e.preventDefault();
-    });
-    slotEl.addEventListener("drop", (e) => {
-      e.preventDefault();
-      const dw = this.dragWeapon();
-      this.endDrag();
-      if (dw) {
-        this.enchId = dw.id;
-        this.lastResult = null;
-        this.render();
-      }
-    });
-    left.append(slotEl);
-    left.append(div("pcinv-small", w ? w.name : arm ? arm.label : "Перетащи предмет сюда"));
-    left.append(div("pcinv-have", `Лом: ${d.scrap}`));
-    const anvil = div(`pcinv-hammer${this.forging ? " forging" : ""}`, glyph("ui.forge"));
-    left.append(anvil);
+  /** Карточка предмета: голова (значок, имя, тир, атака), заточка роллов и точки атаки, действия. */
+  private renderCard(d: PcInvData): HTMLDivElement | null {
+    const src = this.card;
+    if (!src) return null;
+    const el = panel(`pcinv-card${this.cardFloats() ? " float" : ""}`);
+    const head = div("pcinv-card-head");
+    const body = div("pcinv-card-body");
+    body.dataset.keep = "card";
+    const acts = div("pcinv-card-acts");
+    const ok =
+      src.kind === "ring"
+        ? this.ringCard(d, src.id, head, body, acts)
+        : src.kind === "armor"
+          ? this.armorCard(d, src.id, head, body, acts)
+          : this.weaponCard(d, src, head, body, acts);
+    if (!ok) return null;
+    const x = button("✕", () => this.closeCard());
+    x.className = "pcinv-card-x";
+    x.title = "Закрыть (Esc)";
+    el.append(div("pcinv-grab"), x, head, body, acts);
+    return el;
+  }
 
-    const right = div("pcinv-ench-right");
-    const rows = arm ? arm.ench : (w?.ench ?? []);
-    const id = arm?.id ?? w?.id ?? "";
-    if (!w && !arm) {
-      right.append(div("pcinv-empty", "На складе нет оружия с роллами."));
-    } else if (!rows.length) {
-      right.append(div("pcinv-empty", "У этого предмета нет роллов — точить нечего."));
-    } else {
-      if (w) {
-        const hn = div(`pcinv-name t-${w.tier}`, `${w.name} · ${TIER_LOOK[w.tier].name}`);
-        if (inHand.has(w.id)) hn.append(div("pcinv-inhand-tag", "в руке"));
-        right.append(hn);
-        const sc = div("pcinv-score");
-        sc.innerHTML = `<small>оценка </small>${qualityStarsShort(w.quality, w.affixes.length)}`;
-        right.append(sc);
-        const atk = attackLabel(w.cls, w.tier, sharpPctOf(w));
-        if (atk) right.append(div("pcinv-tipatk", atk));
-      } else if (arm) {
-        const hn = div("pcinv-name t-base", arm.label);
-        if (d.armorWorn?.[arm.part] === arm.id) hn.append(div("pcinv-inhand-tag", "надета"));
-        right.append(hn);
+  /** Голова карточки: значок в рамке тира, имя, подпись (HTML из чисел и констант), метка и строки ниже. */
+  private cardHead(head: HTMLElement, ico: HTMLElement, name: string, nameCls: string, subHtml: string, tag: string, extra: HTMLElement[] = []): void {
+    const info = div("pcinv-card-info");
+    const sub = div("pcinv-card-sub");
+    sub.innerHTML = subHtml;
+    if (tag) sub.append(div("pcinv-tag", tag));
+    info.append(div(`pcinv-card-name ${nameCls}`, name), sub, ...extra);
+    // Молот — три удара, пока ждём итог заточки.
+    if (this.forging) ico.append(div("pcinv-hammer forging", glyph("ui.forge")));
+    head.append(ico, info);
+  }
+
+  /** Строки заточки: ролл, очки из максимума, полоса и кнопка «лом · шанс» (или MAX). */
+  private enchRows(body: HTMLElement, id: string, rows: readonly PcEnchRow[], texts: readonly string[], scrap: number): void {
+    rows.forEach((a, i) => {
+      const row = div("pcinv-erow");
+      const lab = div("pcinv-elabel");
+      lab.append(span(texts[i] ?? a.label), span(`${a.points} / ${a.of}`));
+      const bar = div("pcinv-ebar");
+      const fill = div("pcinv-efill");
+      fill.style.width = `${Math.round((a.points / a.of) * 100)}%`;
+      bar.append(fill);
+      const b = document.createElement("button");
+      b.className = "pcinv-btn sm pcinv-forge";
+      if (a.max) {
+        b.textContent = "MAX";
+        b.disabled = true;
+        b.classList.add("max");
+      } else {
+        const ch = Math.round(a.chance * 100);
+        b.innerHTML = `${iconHtml("i.scrap")}<span>${a.cost} · ${ch}%</span>`;
+        b.title = `Заточить: ${a.cost} лома, шанс ${ch}%. При неудаче лом сгорает`;
+        b.disabled = scrap < a.cost || this.forging;
+        b.onclick = () => this.forge(id, i);
       }
-      rows.forEach((a, i) => {
-        const row = div("pcinv-erow");
-        const lab = div("pcinv-elabel");
-        lab.append(span(a.label), span(`${a.points}/${a.of}`));
-        const bar = div("pcinv-ebar");
-        const fill = div("pcinv-efill");
-        fill.style.width = `${Math.round((a.points / a.of) * 100)}%`;
-        bar.append(fill);
-        const b = document.createElement("button");
-        b.className = "pcinv-ebtn";
-        if (a.max) {
-          b.textContent = "MAX";
-          b.disabled = true;
-        } else {
-          b.innerHTML = `⚒ ${a.cost} лома<br><small>шанс ${Math.round(a.chance * 100)}%</small>`;
-          b.disabled = d.scrap < a.cost || this.forging;
-          b.onclick = () => this.forge(id, i);
-        }
-        row.append(lab, bar, b);
-        right.append(row);
-      });
-      if (this.lastResult) {
-        right.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-      }
-      if (w && attackPointEligible(w)) right.append(this.sharpBlock(w, d));
-      right.append(
+      row.append(lab, b, bar);
+      body.append(row);
+    });
+  }
+
+  /** Итог последнего действия (заточка, камни…) — строкой в карточке. */
+  private resultLine(body: HTMLElement): void {
+    if (this.lastResult) body.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+  }
+
+  /** Кнопка действия карточки; close — сначала закрыть карточку (предмет уходит из этого места). */
+  private cardBtn(acts: HTMLElement, label: string, fn: () => void, cls = "", close = false): void {
+    const b = button(label, () => {
+      if (close) this.closeCard();
+      fn();
+    });
+    b.className = `pcinv-btn sm${cls ? ` ${cls}` : ""}`;
+    acts.append(b);
+  }
+
+  private weaponCard(d: PcInvData, src: DragSrc, head: HTMLElement, body: HTMLElement, acts: HTMLElement): boolean {
+    const side = src.kind === "hand" ? src.side : null;
+    const held = side ? this.handHeld(side).held : null;
+    const w = src.kind === "bag" ? this.weaponById(src.id) : side ? this.handWeapon(side, d) : null;
+    if (!w && !held?.cls) return false;
+    const cls = (w?.cls ?? held?.cls ?? "sword") as WeaponClass;
+    const tier = (w?.tier ?? held?.tier ?? "base") as WeaponTier;
+    const name = w?.name ?? weaponDef(cls, tier).name;
+    const inHand = !!side || (!!w && (d.equipped.left === w.id || d.equipped.right === w.id));
+    const ico = div(`pcinv-cell huge t-${tier}`);
+    setIcon(ico, cls, name, tier);
+    if (w && attackPoints(w) > 0) ico.append(div("pcinv-sb", `+${attackPoints(w)}`));
+    const q = w?.affixes.length ? qualityStarsShort(w.quality, w.affixes.length) : "";
+    const extra: HTMLElement[] = [];
+    const atk = attackLabel(cls, tier, w ? sharpPctOf(w) : 0);
+    if (atk) extra.push(div("pcinv-tipatk", atk));
+    for (const e of w?.effects ?? []) extra.push(div("pcinv-tipeff", e));
+    this.cardHead(head, ico, name, `t-${tier}`, `${cap(TIER_LOOK[tier].name)}${q ? ` · оценка <b>${q}</b>` : ""}`, inHand ? "в руке" : "", extra);
+
+    if (w?.ench.length) this.enchRows(body, w.id, w.ench, w.affixes, d.scrap);
+    else body.append(div("pcinv-small", w ? "Роллов нет — точить нечего." : "Обычное оружие со стойки — без роллов, точить нечего."));
+    this.resultLine(body);
+    if (w && attackPointEligible(w)) body.append(this.sharpBlock(w, d));
+    if (w?.ench.length) {
+      body.append(
         div(
           "pcinv-hint",
-          w
-            ? "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает." + (w.tier === "ruby" ? " Рубиновое — цена в ломе ×100." : "")
-            : "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте.",
+          "Чем ближе ролл к максимуму и чем лучше предмет — тем дороже и меньше шанс. При неудаче лом сгорает." + (w.tier === "ruby" ? " Рубиновое — цена в ломе ×100." : ""),
         ),
       );
     }
-    // Выбор предмета — мини-сетка всех предметов с роллами.
-    const pick = div("pcinv-epick");
-    for (const x of d.weapons) {
-      if (!x.ench.length) continue;
-      const c = div(`pcinv-cell small t-${x.tier}${x.id === this.enchId ? " sel" : ""}${inHand.has(x.id) ? " inhand" : ""}`);
-      setIcon(c, x.cls, x.name, x.tier);
-      if (attackPoints(x) > 0) c.append(div("pcinv-sb", `+${attackPoints(x)}`));
-      c.onclick = () => {
-        this.enchId = x.id;
-        this.lastResult = null;
-        this.render();
-      };
-      c.addEventListener("mouseenter", () => this.showTip(c, x, null));
-      c.addEventListener("mouseleave", () => this.hideTip());
-      pick.append(c);
+
+    if (src.kind === "bag" && w) {
+      // Меч/кинжал — парное оружие: можно выбрать руку (второй — к такому же в правой).
+      const pair = (w.cls === "sword" || w.cls === "dagger") && this.hooks.hands().right?.cls === w.cls;
+      if (pair) {
+        this.cardBtn(acts, "В правую руку", () => this.hooks.equip(w, "right"), "gold", true);
+        this.cardBtn(acts, "В левую руку", () => this.hooks.equip(w, "left"), "gold", true);
+      } else this.cardBtn(acts, "Надеть", () => this.hooks.equip(w, naturalSide(w.cls)), "gold", true);
     }
-    for (const x of d.armor ?? []) {
-      const c = div(`pcinv-cell small t-base${x.id === this.enchId ? " sel" : ""}${d.armorWorn?.[x.part] === x.id ? " inhand" : ""}`);
-      setIconEl(c, armorIconKey(x.part));
-      c.append(div("pcinv-q", qualityStarsShort(x.pts, 1)));
-      c.onclick = () => {
-        this.enchId = x.id;
-        this.lastResult = null;
-        this.render();
-      };
-      c.addEventListener("mouseenter", () => this.textTip(c, x.label, ARMOR_PART_NAME[x.part]));
-      c.addEventListener("mouseleave", () => this.hideTip());
-      pick.append(c);
+    if (side) this.cardBtn(acts, "Снять", () => this.hooks.toBag(this.realSide(side)), "gold", true);
+    if (w) this.cardBtn(acts, w.fav ? `${glyph("ui.favOff")} Из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleFav(w));
+    if (w && src.kind === "bag") this.cardBtn(acts, "Подарить", () => this.askGift(w.name, `w:${w.id}`, 1));
+    if (w && !w.fav) this.cardBtn(acts, `В лом +${w.scrap}`, () => this.askConfirm(`Разобрать «${w.name}» на ${w.scrap} лома?`, "Разобрать", () => this.hooks.scrap(w)), "danger");
+    if (w && !w.fav) this.cardBtn(acts, "Выбросить", () => this.askConfirm(`Выбросить «${w.name}» на землю?`, "Выбросить", () => this.hooks.drop(w)), "danger");
+    return true;
+  }
+
+  private armorCard(d: PcInvData, id: string, head: HTMLElement, body: HTMLElement, acts: HTMLElement): boolean {
+    const a = (d.armor ?? []).find((x) => x.id === id);
+    if (!a) return false;
+    const worn = d.armorWorn?.[a.part] === a.id;
+    const ico = div("pcinv-cell huge t-base");
+    setIconEl(ico, armorIconKey(a.part));
+    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], "t-base", `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
+    this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
+    this.resultLine(body);
+    body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
+    if (!this.hooks.armorAct) return true;
+    const act = (x: "wear" | "unwear" | "scrap" | "drop" | "fav"): void => this.hooks.armorAct?.(a.id, x);
+    if (worn) {
+      this.cardBtn(acts, "Снять", () => act("unwear"), "gold", true);
+      this.cardBtn(acts, a.fav ? `${glyph("ui.favOff")} Из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleArmorFav(a.id));
+    } else {
+      this.cardBtn(acts, "Надеть", () => act("wear"), "gold", true);
+      this.cardBtn(acts, a.fav ? `${glyph("ui.favOff")} Из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleArmorFav(a.id));
+      this.cardBtn(acts, "Подарить", () => this.askGift(a.label, `a:${a.id}`, 1));
+      if (!a.fav) this.cardBtn(acts, `В лом +${a.scrap}`, () => this.askConfirm(`Разобрать «${a.label}» на ${a.scrap} лома?`, "Разобрать", () => act("scrap")), "danger");
+      if (!a.fav) this.cardBtn(acts, "Выбросить", () => this.askConfirm(`Выбросить «${a.label}» на землю?`, "Выбросить", () => act("drop")), "danger");
     }
-    wrap.append(left, right);
-    this.body.append(wrap, div("pcinv-sub", "Все предметы с роллами"), pick);
+    return true;
+  }
+
+  /** Кольцо: что даёт, гнёзда (вынуть камень за лом, вставить — нажатием на камень), надеть/снять. */
+  private ringCard(d: PcInvData, id: string, head: HTMLElement, body: HTMLElement, acts: HTMLElement): boolean {
+    const j = this.jewelsOf(d);
+    const r = j.rings.find((x) => x.id === id);
+    if (!r) return false;
+    const slot = j.ringOn.indexOf(r.id);
+    const ico = div(`pcinv-cell huge pcinv-jw t-${r.tier}`);
+    ico.innerHTML = ringHtml(r.tier, r.gems);
+    const bonus = [...ringBonusText({ id: "", tier: r.tier, gems: r.gems })].map((t) => div("pcinv-tipaff", t));
+    this.cardHead(head, ico, ringName(r), `t-${r.tier}`, r.gems.length ? `Кольцо · гнёзд ${r.gems.length}` : "Кольцо без гнёзд", slot >= 0 ? `надето · слот ${slot + 1}` : "", bonus);
+
+    if (r.gems.length) {
+      body.append(div("pcinv-hh", `Гнёзда · ${r.gems.filter(Boolean).length} / ${r.gems.length}`));
+      r.gems.forEach((gk, i) => {
+        const row = div("pcinv-sock");
+        const gi = div(`pcinv-cell pcinv-jw${gk ? "" : " empty"}`);
+        if (gk) {
+          gi.innerHTML = gemHtml(gk);
+          this.gemTip(gi, gk);
+        }
+        row.append(gi);
+        if (gk) {
+          const g = parseGem(gk)!;
+          const cost = RING.unsocketPerLv * g.lv;
+          row.append(div("pcinv-sock-t", `${gemName(gk)} · +${g.lv} ${ATTR_INFO[g.attr].short}`));
+          const bt = button(`Вынуть −${cost}`, () => this.hooks.act({ act: "gemOut", id: r.id, idx: i }));
+          bt.className = "pcinv-btn sm";
+          bt.title = `Вынуть камень в сумку: ${cost} лома`;
+          bt.disabled = d.scrap < cost;
+          row.append(bt);
+        } else row.append(div("pcinv-sock-t dim", `Гнездо ${i + 1} пусто`));
+        body.append(row);
+      });
+      const free = r.gems.indexOf(null);
+      if (free >= 0 && j.gems.length) {
+        body.append(div("pcinv-small", "Вставить камень — нажми на него:"));
+        const pick = div("pcinv-gempick");
+        for (const [gk, n] of j.gems) {
+          const c = div("pcinv-cell pcinv-jw click");
+          c.innerHTML = gemHtml(gk);
+          c.append(div("pcinv-glv", String(parseGem(gk)?.lv ?? "")));
+          const k = document.createElement("span");
+          k.className = "pcinv-cnt";
+          k.textContent = `×${n}`;
+          c.append(k);
+          this.gemTip(c, gk, n);
+          c.onclick = () => this.hooks.act({ act: "gemIn", id: r.id, idx: free, fuel: gk });
+          pick.append(c);
+        }
+        body.append(pick);
+      } else if (free >= 0) body.append(div("pcinv-small", "Камней нет — падают с мобов (1 уровня)."));
+    } else body.append(div("pcinv-small", "Без гнёзд — камни в него не вставляются."));
+    this.resultLine(body);
+
+    if (slot >= 0) this.cardBtn(acts, "Снять", () => this.hooks.act({ act: "ringOff", id: "-", idx: slot }), "gold", true);
+    else {
+      const freeSlot = j.ringOn.findIndex((x) => !x);
+      if (freeSlot >= 0) this.cardBtn(acts, "Надеть", () => this.hooks.act({ act: "ringOn", id: r.id, idx: freeSlot }), "gold", true);
+      else {
+        this.cardBtn(acts, "Вместо кольца 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 }), "gold", true);
+        this.cardBtn(acts, "Вместо кольца 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 }), "gold", true);
+      }
+    }
+    this.cardBtn(acts, r.fav ? `${glyph("ui.favOff")} Из избранного` : `${glyph("ui.fav")} В избранное`, () => this.toggleRingFav(r.id));
+    if (slot < 0) {
+      this.cardBtn(acts, "Подарить", () => this.askGift(ringLabelOf(r), `r:${r.id}`, 1));
+      if (!r.fav) this.cardBtn(acts, `В лом +${r.scrap}`, () => this.askRingScrap(r), "danger");
+    }
+    return true;
   }
 
   /** Точка атаки за лом (уникальное и рубиновое): сколько уже даёт и что будет дальше. */
   private sharpBlock(w: PcInvWeapon, d: PcInvData): HTMLDivElement {
-    const box = div("pcinv-sharp");
+    const box = div("pcinv-ap");
     const n = attackPoints(w);
     const next = attackPointNext(w);
-    box.append(div("pcinv-name", "Точка атаки"));
-    box.append(div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% к урону · точек ${n}`));
+    const txt = div("pcinv-ap-t");
+    txt.append(div("pcinv-ap-name", `Точка атаки · ${n}`), div("pcinv-small", `+${fmtPct(attackPointBonus(n) * 100)}% урона${next ? ` · след. +${fmtPct(next.gain * 100, 2)}%` : ""}`));
+    box.append(txt);
     if (next) {
-      box.append(div("pcinv-small", `Следующая: +${fmtPct(next.gain * 100, 2)}% · шанс ${fmtPct(next.chance * 100)}% · цена ${next.cost} лома`));
-      const bt = button(`⚒ Точить за ${next.cost} лома`, () => {
+      const bt = document.createElement("button");
+      bt.className = "pcinv-btn sm pcinv-forge";
+      bt.innerHTML = `${iconHtml("i.scrap")}<span>${next.cost} · ${fmtPct(next.chance * 100)}%</span>`;
+      bt.title = `Точить: ${next.cost} лома, шанс ${fmtPct(next.chance * 100)}%`;
+      bt.disabled = d.scrap < next.cost || this.forging;
+      bt.onclick = () => {
         this.hooks.act({ act: "sharpen", id: w.id, idx: 0 });
         window.setTimeout(() => this.refresh(), 300);
-      });
-      bt.className = "pcinv-ebtn";
-      bt.disabled = d.scrap < next.cost;
+      };
       box.append(bt);
     }
     return box;
@@ -1294,175 +1589,59 @@ export class PcInventory {
     const wrap = div("pcinv-attrs");
     const cls = (d.skills?.cls ?? "") as ClassId | "";
     if (!cls) {
-      wrap.append(div("pcinv-name", "Возьми оружие — умения зависят от класса"));
-      this.body.append(wrap);
+      wrap.append(div("pcinv-tabtop", "Возьми оружие — умения зависят от класса"));
+      this.body.append(tabPanel("Умения", wrap));
       return;
     }
     const def = CLASSES2[cls];
-    wrap.append(
-      div("pcinv-name", `${def.icon} ${def.name} — ${def.role}`),
+    const head = div("pcinv-tabtop");
+    head.append(
+      div("pcinv-pts on", `${def.icon} ${def.name} — ${def.role}`),
       div("pcinv-small", `Оружие: ${def.weapons}. Выбери любые два умения — клавиши 2 и 3 (телефон — кнопки ✦, VR — стики).`),
     );
-    if (d.strike !== undefined) wrap.append(div("pcinv-small", `Сила удара: ${d.strike} — от оружия в руке, статов и роллов урона`));
+    if (d.strike !== undefined) head.append(div("pcinv-small", `Сила удара: ${d.strike} — от оружия в руке, статов и роллов урона`));
+    wrap.append(head);
     const chosen = new Set(d.skills?.chosen ?? []);
     // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
     const live = { ...d.attrs, gb: d.gb };
     for (const id of def.skills) {
       const sk = SKILLS2[id];
-      const row = div(`pcinv-arow pcinv-skill${chosen.has(id) ? " on" : ""}`);
+      const on = chosen.has(id);
+      const row = div(`pcinv-arow pcinv-skill${on ? " on" : ""}`);
+      const ic = div("pcinv-aic");
+      ic.innerHTML = iconHtml(skillIcon(id));
       const txt = div("pcinv-atxt");
+      const nm = div("pcinv-aname", skillName(id, cls));
+      nm.append(div("pcinv-chip", `откат ${skillCooldownFor(id, cls, live)} с`));
+      if (on) nm.append(div("pcinv-chip ok", "✓ выбрано"));
       txt.append(
-        div("pcinv-aname", `${sk.icon} ${skillName(id, cls)} · откат ${skillCooldownFor(id, cls, live)} с`),
+        nm,
         div("pcinv-small", skillDesc(id, cls, live)),
-        // Урон умения — множитель от силы удара героя (её показываем над списком); особые формулы — в описании.
-        ...(sk.dmgMult > 0 ? [div("pcinv-small", `Урон ×${sk.dmgMult} от силы удара${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
+        // Урон умения — множитель от силы удара героя; особые формулы — в описании.
+        ...(sk.dmgMult > 0 ? [div("pcinv-small dim", `Урон ×${sk.dmgMult} от силы удара${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";
-      b.textContent = chosen.has(id) ? "✓" : "+";
-      b.title = chosen.has(id) ? "Выбрано" : "Выбрать (заменит более старое)";
+      b.textContent = on ? "✓" : "Выбрать";
+      b.title = on ? "Выбрано" : "Выбрать (заменит более старое)";
+      b.disabled = on;
       b.onclick = () => {
-        if (chosen.has(id)) return;
+        if (on) return;
         // Новое — вместо первого из выбранных (держим ровно два).
         const next = [...(d.skills?.chosen ?? []), id].slice(-2);
         this.hooks.act({ act: "skills", id: next.join(","), idx: 0 });
       };
-      row.append(txt, b);
+      row.append(ic, txt, b);
       wrap.append(row);
     }
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    this.body.append(wrap);
+    this.body.append(tabPanel("Умения", wrap));
   }
 
   // ---------------- кольца и камни (shared/jewels.ts) ----------------
 
-  /** Кольцо, открытое для работы с камнями (гнёзда). */
-  private ringSel: string | null = null;
-  /** Сортировка сумки (оружие и кольца): none — как пришло. */
+  /** Сортировка сумки (оружие, кольца, броня): none — как пришло. */
   private bagSort: BagSort = "none";
-
-  /** Кольца на странице «Снаряжение»: слоты (под руками), гнёзда выбранного кольца и «Мешочек с драгоценностями» (камни). */
-  private jewelParts(d: PcInvData): { rings: HTMLDivElement[]; sum: HTMLDivElement; pouch: HTMLDivElement; sockets: HTMLDivElement | null } {
-    const j = d.jewels ?? { rings: [], ringOn: [null, null], gems: [] };
-    const wrap = div("pcinv-rings pcinv-pouch");
-    wrap.append(div("pcinv-pouch-h", "💰 Мешочек с драгоценностями"));
-    // Общие действия мешочка — только камни (кольца — в сумке, рядом с оружием).
-    const acts = div("pcinv-pouch-acts");
-    if (j.gems.some(([, n]) => n >= RING.combine)) {
-      const all = document.createElement("button");
-      all.className = "pcinv-allbtn pcinv-mergeall";
-      all.textContent = "⬆ Соединить все камни";
-      all.title = `Все камни по ${RING.combine} одинаковых → уровнем выше, пока есть что соединять`;
-      all.onclick = () => this.hooks.act({ act: "gemMergeAll", id: "all", idx: 0 });
-      acts.append(all);
-    }
-    if (acts.childElementCount) wrap.append(acts);
-    const ringOf = (id: string | null) => (id ? j.rings.find((r) => r.id === id) ?? null : null);
-    if (this.ringSel && !ringOf(this.ringSel)) this.ringSel = null;
-
-    // Слоты 1 и 2.
-    // Два гнезда колец — отдельными клетками: renderGear ставит их в схему рядом с перчатками.
-    const rings: HTMLDivElement[] = [];
-    for (const slot of [0, 1]) {
-      const r = ringOf(j.ringOn[slot]);
-      const c = div(`pcinv-cell big pcinv-jw${r ? ` t-${r.tier}` : ""}${r && r.id === this.ringSel ? " sel" : ""}`);
-      c.innerHTML = r ? ringHtml(r.tier, r.gems) : RING_SLOT_SVG;
-      if (r) this.ringTip(c, r);
-      if (r?.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
-      c.append(div("pcinv-rslot-n", `${slot + 1}`));
-      c.onclick = () =>
-        r
-          ? this.menu(c, ringLabelOf(r), [
-              ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
-              this.favItem(r),
-              ["Снять", () => this.hooks.act({ act: "ringOff", id: "-", idx: slot })],
-            ])
-          : this.textTipAt(c, `Слот кольца ${slot + 1}`, "Пусто — надень кольцо из сумки ниже.");
-      // ПКМ по надетому кольцу — снять (как «Снять» в меню).
-      if (r) {
-        c.addEventListener("contextmenu", (e) => {
-          e.preventDefault();
-          this.hideTip();
-          this.hooks.act({ act: "ringOff", id: "-", idx: slot });
-        });
-      }
-      const box = div("pcinv-sg");
-      box.append(c, div("pcinv-small", "Кольцо"));
-      rings.push(box);
-    }
-    const b = pcJewelBonus(j);
-    const sum = div("pcinv-rsum");
-    sum.append(div("pcinv-name", "Кольца"));
-    const parts = [`Маг. защита +${Math.round(ringResist(b.rings) * 100)}%`];
-    for (const k of A2) if (b[k] > 0) parts.push(`+${b[k]} ${ATTR_SHORT[k]}`);
-    sum.append(div("pcinv-small", b.rings ? parts.join(" · ") : `Ничего не надето. Кольцо даёт маг. защиту ${Math.round(RING.mres * 100)}%, камни в нём — атрибуты.`));
-
-    // Выбранное кольцо: гнёзда — отдельным блоком, renderGear ставит его под сумку.
-    const sel = ringOf(this.ringSel);
-    let sockets: HTMLDivElement | null = null;
-    if (sel) {
-      const box = div("pcinv-rsel");
-      const head = div("pcinv-rsel-head");
-      const ico = div(`pcinv-cell big pcinv-jw t-${sel.tier}`);
-      ico.innerHTML = ringHtml(sel.tier, sel.gems);
-      this.ringTip(ico, sel);
-      head.append(ico, div("pcinv-name", ringLabelOf(sel)));
-      box.append(head);
-      sel.gems.forEach((gk, i) => {
-        const row = div("pcinv-sock");
-        const gi = div("pcinv-cell pcinv-jw");
-        if (gk) {
-          gi.innerHTML = gemHtml(gk);
-          this.gemTip(gi, gk);
-        }
-        row.append(gi);
-        if (gk) {
-          const g = parseGem(gk)!;
-          const cost = RING.unsocketPerLv * g.lv;
-          row.append(div("pcinv-sock-t", `${gemName(gk)} · +${g.lv} ${ATTR_SHORT[g.attr]}`));
-          const bt = button(`Вынуть (−${cost} лома)`, () => this.hooks.act({ act: "gemOut", id: sel.id, idx: i }));
-          bt.disabled = d.scrap < cost;
-          row.append(bt);
-        } else {
-          row.append(div("pcinv-sock-t dim", `Гнездо ${i + 1} пусто — выбери камень ниже`));
-        }
-        box.append(row);
-      });
-      box.append(button("Закрыть", () => this.selRing(null)));
-      sockets = box;
-    }
-
-
-    // Камни.
-    wrap.append(div("pcinv-sub", `Камни · соедини ${RING.combine} одинаковых — получишь уровнем выше`));
-    const gg = div("pcinv-grid");
-    if (!j.gems.length) wrap.append(div("pcinv-small", "Камней нет — падают с мобов (1 уровня)."));
-    const free = sel ? sel.gems.indexOf(null) : -1;
-    for (const [gk, n] of j.gems) {
-      const g = parseGem(gk)!;
-      const c = div("pcinv-cell pcinv-jw");
-      c.innerHTML = gemHtml(gk);
-      this.gemTip(c, gk, n);
-      c.append(div("pcinv-glv", String(g.lv)));
-      const cnt = document.createElement("span");
-      cnt.className = "pcinv-cnt";
-      cnt.textContent = `×${n}`;
-      c.append(cnt);
-      const acts: [string, () => void, boolean?][] = [];
-      if (sel && free >= 0) acts.push([`Вставить в ${ringName(sel).toLowerCase()}`, () => this.hooks.act({ act: "gemIn", id: sel.id, idx: free, fuel: gk })]);
-      if (n >= RING.combine) acts.push([`Соединить ${RING.combine} → ${g.lv + 1} ур.`, () => this.hooks.act({ act: "gemMerge", id: gk, idx: 0 })]);
-      if (g.lv > 1) acts.push([`Разделить → ${RING.combine} × ур. ${g.lv - 1}`, () => this.hooks.act({ act: "gemSplit", id: gk, idx: 0 })]);
-      acts.push(["🎁 Подарить…", () => this.askGift(gemName(gk), `g:${gk}`, n)]);
-      c.onclick = () =>
-        acts.length
-          ? this.menu(c, `${gemName(gk)} ×${n}`, acts)
-          : this.textTipAt(c, gemName(gk), `+${g.lv} ${ATTR_SHORT[g.attr]}. Вставить — открой кольцо с гнёздами (кнопка «Камни»). Соединить — нужно ${RING.combine} одинаковых.`);
-      gg.append(c);
-    }
-    wrap.append(gg);
-    if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    return { rings, sum, pouch: wrap, sockets };
-  }
 
   /** Подсказка при наведении на кольцо: тир, гнёзда, что даёт, лом за разбор. */
   private ringTip(c: HTMLElement, r: { tier: RingTier; gems: (string | null)[]; scrap?: number; fav?: boolean }): void {
@@ -1475,9 +1654,9 @@ export class PcInventory {
     c.addEventListener("mouseleave", () => this.hideTip());
   }
 
-  /** Кольцо в сумке или в ряду ★: меню (тап/клик), тащить — в лом или в избранное, звёздочка переключает. */
+  /** Кольцо в сумке или в ряду ★: клик/тап — карточка, тащить — на слот, в лом или в избранное, звёздочка переключает. */
   private bagRingCell(r: PcInvJewels["rings"][number]): HTMLDivElement {
-    const c = div(`pcinv-cell pcinv-jw t-${r.tier}${r.id === this.ringSel ? " sel" : ""}`);
+    const c = div(`pcinv-cell pcinv-jw t-${r.tier}${this.card?.kind === "ring" && this.card.id === r.id ? " sel" : ""}`);
     c.innerHTML = ringHtml(r.tier, r.gems);
     this.ringTip(c, r);
     // Как у оружия: телефон — пустую ☆ не показываем (ловила бы тапы), ★ у избранного видна.
@@ -1486,37 +1665,16 @@ export class PcInventory {
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "ring", id: r.id }));
     c.addEventListener("dragend", () => this.endDrag());
     this.touchSrc.set(c, { kind: "ring", id: r.id });
-    // ПКМ — надеть в первый свободный слот; оба заняты — меню с выбором слота (как клик).
+    // ПКМ — надеть в первый свободный слот; оба заняты — карточка (там выбор, какое заменить).
     c.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       this.hideTip();
       const on: (string | null)[] = this.data ? this.jewelsOf(this.data).ringOn : [null, null];
       const free = on.findIndex((x) => !x);
       if (free >= 0) this.hooks.act({ act: "ringOn", id: r.id, idx: free });
-      else c.click();
+      else this.openCard({ kind: "ring", id: r.id });
     });
-    c.onclick = () =>
-      this.menu(c, ringLabelOf(r), [
-        this.favItem(r),
-        ["Надеть в слот 1", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 0 })],
-        ["Надеть в слот 2", () => this.hooks.act({ act: "ringOn", id: r.id, idx: 1 })],
-        ...(r.gems.length ? [[`Камни (${r.gems.filter(Boolean).length}/${r.gems.length})`, () => this.selRing(r.id)] as const] : []),
-        ["🎁 Подарить…", () => this.askGift(ringLabelOf(r), `r:${r.id}`, 1)],
-        ...(r.fav
-          ? []
-          : [
-              [
-                `В лом (+${r.scrap})`,
-                () =>
-                  this.askConfirm(
-                    `Разобрать «${ringName(r)}» на ${r.scrap} лома?${r.gems.some(Boolean) ? " Камни вернутся в сумку." : ""}`,
-                    "Разобрать",
-                    () => this.hooks.act({ act: "ringScrap", id: r.id, idx: 0 }),
-                  ),
-                true,
-              ] as const,
-            ]),
-      ]);
+    if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "ring", id: r.id }));
     return c;
   }
 
@@ -1529,11 +1687,6 @@ export class PcInventory {
     else lines.push(`Вынуть: −${RING.unsocketPerLv * g.lv} лома`);
     c.addEventListener("mouseenter", () => this.textTip(c, gemName(gk), lines.join(" · ")));
     c.addEventListener("mouseleave", () => this.hideTip());
-  }
-
-  private selRing(id: string | null): void {
-    this.ringSel = id;
-    this.render();
   }
 
   /** Меню действий у ячейки (кольца/камни): заголовок и кнопки; danger — красная. */
@@ -1572,24 +1725,30 @@ export class PcInventory {
     const a = d.attrs;
     const gemB = pcJewelBonus(d.jewels);
     const wrap = div("pcinv-attrs");
-    wrap.append(
-      div("pcinv-name", a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"),
-      div("pcinv-small", costRule()),
-    );
+    const head = div("pcinv-tabtop");
+    head.append(div(`pcinv-pts${a.unspent > 0 ? " on" : ""}`, a.unspent > 0 ? `Свободных очков: ${a.unspent}` : "Свободных очков нет — их дают за уровень"), div("pcinv-small", costRule()));
+    wrap.append(head);
     for (const at of ATTRS) {
       const row = div("pcinv-arow");
-      const txt = div("pcinv-atxt");
       const v = a[at.id] ?? 1;
       const cost = stepCost(v);
       // Сколько стоят следующие 5 подъёмов (цена может вырасти на середине).
       let cost5 = 0;
       for (let i = 0; i < 5; i++) cost5 += stepCost(v + i);
       const gemAdd = gemB[at.id];
-      const nameEl = div("pcinv-aname");
-      nameEl.innerHTML = `${iconHtml(`a.${at.id}` as IconKey)} ${at.name}: ${v}`;
+      const ic = div("pcinv-aic");
+      ic.innerHTML = iconHtml(`a.${at.id}` as IconKey);
+      const txt = div("pcinv-atxt");
+      const nameEl = div("pcinv-aname", at.name);
       nameEl.style.color = ATTR_LOOK[at.id].c; // цвет атрибута — один на всю игру (look.ts)
-      if (gemAdd > 0) nameEl.append(span(` +${gemAdd}`), div("pcinv-gemadd", "от камней"));
       txt.append(nameEl, div("pcinv-small", `${at.hint} · следующий подъём — ${cost} оч.`));
+      const val = div("pcinv-aval");
+      val.append(span(String(v)));
+      if (gemAdd > 0) {
+        const g = div("pcinv-gemadd", `+${gemAdd}`);
+        g.title = "от камней в кольцах";
+        val.append(g);
+      }
       const b1 = document.createElement("button");
       b1.className = "pcinv-abtn";
       b1.textContent = "+1";
@@ -1602,27 +1761,24 @@ export class PcInventory {
       b5.title = `${cost5} оч.`;
       b5.disabled = a.unspent < cost5;
       b5.onclick = () => this.hooks.act({ act: "stat", id: at.id, idx: 5 });
-      row.append(txt, b1, b5);
+      row.append(ic, txt, val, b1, b5);
       wrap.append(row);
     }
     const cost = d.respecCost;
     // cost < 0 — сброс атрибутов выключен на сервере.
-    if (cost < 0) {
-      if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-      this.body.append(wrap);
-      return;
+    if (cost >= 0) {
+      const rb = document.createElement("button");
+      rb.className = "pcinv-respec";
+      rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} ◈ (у тебя ${d.tokens ?? 0})`;
+      rb.disabled = cost > (d.tokens ?? 0);
+      rb.onclick = () =>
+        this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
+          this.hooks.act({ act: "respec", id: "respec", idx: 0 }),
+        );
+      wrap.append(rb);
     }
-    const rb = document.createElement("button");
-    rb.className = "pcinv-respec";
-    rb.textContent = cost === 0 ? "Сбросить атрибуты — бесплатно" : `Сбросить атрибуты — ${cost} ◈ (у тебя ${d.tokens ?? 0})`;
-    rb.disabled = cost > (d.tokens ?? 0);
-    rb.onclick = () =>
-      this.askConfirm("Сбросить все вложенные очки атрибутов? Их можно будет распределить заново.", "Сбросить", () =>
-        this.hooks.act({ act: "respec", id: "respec", idx: 0 }),
-      );
-    wrap.append(rb);
     if (this.lastResult) wrap.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
-    this.body.append(wrap);
+    this.body.append(tabPanel("Атрибуты", wrap));
   }
 
   // ---------------- перетаскивание / подсказки / подтверждение ----------------
@@ -1671,13 +1827,12 @@ export class PcInventory {
 
   /** Броня в сумке: значок части и значение стата. Клик — меню, перетащить — на слот, ПКМ — надеть. */
   private armorCell(a: PcInvArmor): HTMLDivElement {
-    const c = div("pcinv-cell t-base");
+    const c = div(`pcinv-cell t-base${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}`);
     setIconEl(c, armorIconKey(a.part));
-    c.style.position = "relative";
     c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
     // Как у оружия и колец: ★ видна у избранного; на телефоне пустую не показываем.
     if (!this.hooks.touch || a.fav) c.append(this.favStar(!!a.fav, () => this.toggleArmorFav(a.id)));
-    if (!this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "armor", id: a.id }));
+    if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "armor", id: a.id }));
     c.draggable = true;
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "armor", id: a.id }));
     this.touchSrc.set(c, { kind: "armor", id: a.id });
@@ -1697,17 +1852,16 @@ export class PcInventory {
    * Клик/тап — действия, перетащить, ПКМ — надеть или снять. На странице !inv — то же (armorAct подключён в inv/main.ts).
    */
   private armorSlot(part: ArmorPart, d: PcInvData, byId: Map<string, PcInvArmor>): HTMLDivElement {
-    const box = div("pcinv-sg");
     const interactive = !!this.hooks.armorAct;
     const id = d.armorWorn?.[part];
     const a = id ? byId.get(id) : undefined;
-    const c = div(a ? "pcinv-cell big t-base" : "pcinv-cell big locked");
+    const c = div(a ? `pcinv-cell big t-base${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}` : "pcinv-cell big locked");
     setIconEl(c, armorIconKey(part));
     if (a) {
-      c.style.position = "relative";
       c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
+      if (a.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
       c.addEventListener("mouseenter", () =>
-        this.textTip(c, a.label, interactive ? `Надета: ${ARMOR_PART_NAME[part]}. Клик — снять или выбросить` : `Надета: ${ARMOR_PART_NAME[part]}`),
+        this.textTip(c, a.label, interactive ? `Надета: ${ARMOR_PART_NAME[part]}. Клик — карточка (заточка, снять)` : `Надета: ${ARMOR_PART_NAME[part]}`),
       );
       c.addEventListener("mouseleave", () => this.hideTip());
       if (interactive) {
@@ -1715,7 +1869,7 @@ export class PcInventory {
         c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "armor", id: a.id }));
         this.touchSrc.set(c, { kind: "armor", id: a.id });
         c.addEventListener("dragend", () => this.endDrag());
-        if (!this.hooks.touch) c.addEventListener("click", () => this.openActions(c, { kind: "armor", id: a.id }));
+        if (!this.hooks.touch) c.addEventListener("click", () => this.openCard({ kind: "armor", id: a.id }));
         c.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           this.hideTip();
@@ -1743,16 +1897,7 @@ export class PcInventory {
         if (src?.kind === "armor" && byId.get(src.id)?.part === part) this.hooks.armorAct?.(src.id, "wear");
       });
     }
-    box.append(c, div("pcinv-small", ARMOR_PART_NAME[part]));
-    return box;
-  }
-
-  /** Можно ли бросить перетаскиваемое в ★: оружие или кольцо, которого там ещё нет. */
-  private canFav(): boolean {
-    const w = this.dragWeapon();
-    const r = this.dragRing();
-    const ar = this.dragArmor();
-    return !!((w && !w.fav) || (r && !r.fav) || (ar && !ar.fav && this.data?.armorWorn?.[ar.part] !== ar.id));
+    return this.slot(c, ARMOR_PART_NAME[part]);
   }
 
   /** Перетаскиваемое оружие со склада (обычное с руки на склад не попадает — null). */
@@ -1936,11 +2081,10 @@ function span(text: string): HTMLSpanElement {
   return s;
 }
 
-function countCell(ico: string, n: number, title: string, html = false): HTMLDivElement {
+/** Ячейка расходника: значок (HTML) и сколько. */
+function countCell(icoHtml: string, n: number): HTMLDivElement {
   const c = div("pcinv-cell t-base");
-  if (html) c.innerHTML = ico;
-  else c.textContent = ico;
-  c.title = title;
+  c.innerHTML = icoHtml;
   const k = document.createElement("span");
   k.className = "pcinv-cnt";
   k.textContent = String(n);
@@ -1948,81 +2092,343 @@ function countCell(ico: string, n: number, title: string, html = false): HTMLDiv
   return c;
 }
 
+/** Панель в стиле окна: срезанные углы и филигрань (рамка и заливка — ::before/::after в CSS). */
+function panel(cls: string): HTMLDivElement {
+  const p = div(`pcinv-pnl ${cls}`);
+  for (const k of ["tl", "tr", "bl", "br"]) p.append(div(`pcinv-orn ${k}`));
+  return p;
+}
+
+/** Вкладка (атрибуты, умения, обмен) — в панели окна с заголовком. */
+function tabPanel(title: string, content: HTMLElement): HTMLDivElement {
+  const p = panel("pcinv-tabpnl");
+  p.append(div("pcinv-tabh", title), content);
+  return p;
+}
+
+/** Один и тот же предмет (карточка ↔ ячейка). */
+function sameSrc(a: DragSrc, b: DragSrc): boolean {
+  if (a.kind !== b.kind) return false;
+  return a.kind === "hand" ? a.side === (b as { side: Side }).side : a.id === (b as { id: string }).id;
+}
+
+/** «уникальное» → «Уникальное». */
+function cap(t: string): string {
+  return t ? t[0].toUpperCase() + t.slice(1) : t;
+}
+
+/** Срезанные углы (рамки панелей, ячеек, слотов): k — размер среза. */
+const CUT = (k: string): string =>
+  `polygon(${k} 0,calc(100% - ${k}) 0,100% ${k},100% calc(100% - ${k}),calc(100% - ${k}) 100%,${k} 100%,0 calc(100% - ${k}),0 ${k})`;
+/** Кнопка с острыми боками. */
+const HEX = (k: string): string => `polygon(${k} 0,calc(100% - ${k}) 0,100% 50%,calc(100% - ${k}) 100%,${k} 100%,0 50%)`;
+/** Филигрань угла панели (левый верхний; остальные — отражением). */
+const ORN_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">` +
+  `<path d="M1 17 L17 1" stroke="#9fb1c7" stroke-width="1.3"/>` +
+  `<path d="M5 30 C5 18 11 10 22 7 M9 24 C10 17 15 12 21 11" stroke="#7d90a9" stroke-width="1.1"/>` +
+  `<path d="M30 5 C 24 6 20 9 19 13 C 18.5 15.5 20.5 17 22.5 16 C 24.5 15 24 12.5 22 12.5" stroke="#aebdd0" stroke-width="1.1"/>` +
+  `<path d="M5 30 C 6 24 9 20 13 19 C 15.5 18.5 17 20.5 16 22.5 C 15 24.5 12.5 24 12.5 22" stroke="#aebdd0" stroke-width="1.1"/>` +
+  `<circle cx="17.5" cy="17.5" r="1.6" fill="#c3d0e0"/></svg>`;
+
 let styled = false;
 function injectInvStyle(): void {
   if (styled) return;
   styled = true;
   ensureIconCss();
+  const orn = `url("data:image/svg+xml,${encodeURIComponent(ORN_SVG)}")`;
+  // Рамка тира ячейки: светлая кромка сверху → цвет тира (look.ts), заливка — фон тира к тёмному.
+  const tier = (t: string): string =>
+    `.pcinv-cell.t-${t} { --e:linear-gradient(180deg,color-mix(in srgb,var(--tier-${t}-edge) 55%,#fff),var(--tier-${t}-edge));` +
+    ` --f:radial-gradient(ellipse 80% 75% at 50% 40%,var(--tier-${t}-bg) 0%,color-mix(in srgb,var(--tier-${t}-bg) 35%,#000) 85%); }`;
   const s = document.createElement("style");
   s.textContent = `
-.pcinv-root { position:fixed; inset:0; z-index:40; pointer-events:none; font:500 13px/1.35 system-ui,sans-serif; color:#e6e0d0; }
+.pcinv-root { position:fixed; inset:0; z-index:40; pointer-events:none; font:500 13px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif; color:#e8eef6;
+  --line:#22354f; --muted:#9eabbb; --text2:#b8c3cf; --blue:#3cb2f2; -webkit-font-smoothing:antialiased; }
+.pcinv-root * { box-sizing:border-box; }
 .pcinv-catch { position:absolute; inset:0; display:none; pointer-events:auto; }
-.pcinv-win { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(760px,96vw);
-  max-height:92vh; overflow:auto; pointer-events:auto; background:rgba(16,15,21,.95); border:none;
-  border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,.55); user-select:none; -webkit-user-select:none; }
-.pcinv-head { display:flex; align-items:flex-end; gap:6px; padding:8px 10px 0; cursor:move; border-bottom:1px solid #2c2f38; }
-.pcinv-tabs { display:flex; gap:4px; flex:1; }
-.pcinv-tab { padding:6px 14px; border:1px solid #33363f; border-bottom:none; border-radius:7px 7px 0 0; background:#1b1a21;
-  color:#a9a498; cursor:pointer; }
-.pcinv-tab.on { background:#26252e; color:#f1ead6; border-color:#4a4e5a; }
-.pcinv-tab.glow { color:#9fe39a; }
-.pcinv-x { background:none; border:none; color:#a9a498; font-size:16px; cursor:pointer; padding:4px 6px 8px; }
+
+/* ---------- окно ---------- */
+.pcinv-win { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:min(1064px,98vw); max-height:94vh; overflow:auto;
+  pointer-events:auto; background:linear-gradient(180deg,rgba(6,14,26,.8),rgba(3,8,16,.84)); border:1px solid #33465f;
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 18px 60px rgba(0,0,0,.6); user-select:none; -webkit-user-select:none; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
+.pcinv-head { position:sticky; top:0; z-index:6; display:flex; align-items:stretch; gap:6px; height:46px; padding:0 4px 0 12px; cursor:move;
+  background:linear-gradient(180deg,rgba(14,28,46,.98),rgba(8,18,32,.98)); border-bottom:1px solid var(--line); }
+.pcinv-tabs { display:flex; gap:2px; flex:1; min-width:0; }
+.pcinv-tab { position:relative; display:flex; align-items:center; gap:7px; padding:0 18px; font-size:14.5px; color:#a7b3c3; cursor:pointer; white-space:nowrap; }
+.pcinv-tab:hover { color:#dbe6f2; }
+.pcinv-tab.on { color:#fff; font-weight:600;
+  background:radial-gradient(ellipse 58% 95% at 50% 100%,rgba(28,150,230,.62) 0%,rgba(16,104,180,.32) 38%,rgba(8,60,110,.08) 70%,transparent 82%); }
+.pcinv-tab.on::after { content:""; position:absolute; left:4px; right:4px; bottom:-1px; height:2.5px; border-radius:2px;
+  background:linear-gradient(90deg,rgba(60,170,240,0),#3cb2f2 16%,#bff3ff 44%,#fff 50%,#bff3ff 56%,#3cb2f2 84%,rgba(60,170,240,0));
+  box-shadow:0 0 6px #39b0f5,0 0 14px rgba(57,176,245,.7); }
+.pcinv-tab.on::before { content:""; position:absolute; left:50%; bottom:0; width:12px; height:5px; transform:translateX(-50%);
+  background:radial-gradient(ellipse at 50% 100%,#fff 0%,rgba(255,255,255,.6) 35%,transparent 70%); }
+.pcinv-badge { display:inline-grid; place-items:center; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#2b6b3b; color:#d2f7d6; font:700 11px/1 system-ui; }
+.pcinv-curs { display:flex; align-items:center; gap:16px; padding:0 10px; }
+.pcinv-curnick { display:flex; align-items:center; gap:8px; margin-right:6px; font:700 17px/1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; white-space:nowrap; max-width:240px; }
+.pcinv-curnick > span { overflow:hidden; text-overflow:ellipsis; }
+.pcinv-curnick .gico { width:22px; height:22px; padding:3px; color:#9fc3ea; border:1px solid #3b5272; border-radius:50%; background:#0a1626; box-sizing:border-box; }
+.pcinv-cur { display:flex; align-items:center; gap:6px; font:600 13px/1 system-ui; color:#e8eef6; font-variant-numeric:tabular-nums; cursor:default; }
+.pcinv-cur .gico { width:18px; height:18px; vertical-align:middle; }
+.pcinv-cur .gico-e { width:auto; height:auto; font-size:15px; color:#e8c26a; }
+.pcinv-x { width:44px; flex:none; background:none; border:none; border-left:1px solid var(--line); color:#c9d5e3; font-size:16px; cursor:pointer; }
+.pcinv-x:hover { color:#fff; }
 .pcinv-body { padding:12px; }
-.pcinv-empty { padding:24px; text-align:center; color:#9a9588; }
-.pcinv-gear { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:14px; }
-.pcinv-col { min-width:0; }
-/* Схема слотов без фигуры: 3 колонки, шлем сверху, сапоги снизу, кольца рядом с перчатками. */
-.pcinv-slotgrid { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); justify-items:center; gap:10px 8px; margin:10px 0 8px; }
-.pcinv-slotgrid > .pcinv-sg, .pcinv-slotgrid > .pcinv-handbox { display:flex; flex-direction:column; align-items:center; gap:3px; width:100%; min-width:0; text-align:center; }
-.pcinv-slotgrid .pcinv-small { font-size:10px; text-align:center; }
-.pcinv-xp { position:relative; height:12px; margin-top:8px; background:#1b1a20; border:1px solid #000; border-radius:3px; overflow:hidden; }
-.pcinv-xp-fill { height:100%; width:0; background:#6b6f7a; }
-.pcinv-xp-text { position:absolute; inset:0; text-align:center; font:600 9.5px/12px system-ui; color:#d9dbe0; text-shadow:0 1px 1px #000; }
-.pcinv-handbox { display:flex; flex-direction:column; align-items:center; gap:3px; width:124px; text-align:center; }
-/* Обе руки — одинаковой ширины, ячейка по центру над подписью (подписи разной длины). */
-.pcinv-stats { border-top:1px solid #2c2f38; padding-top:6px; }
-.pcinv-row { display:flex; justify-content:space-between; gap:8px; padding:2px 0; border-bottom:1px solid #22242b; font-size:12.5px; }
-.pcinv-row span:last-child { color:#f1ead6; text-align:right; }
-.pcinv-sub { color:#9a9588; font-size:12px; margin:2px 0 5px; }
-.pcinv-grid { display:grid; grid-template-columns:repeat(8,44px); gap:5px; }
-.pcinv-cell { position:relative; width:44px; height:44px; border-radius:6px; background:#0f0e13; border:1px solid #2f323b;
-  display:flex; align-items:center; justify-content:center; font-size:22px; }
-.pcinv-cell[draggable="true"] { cursor:grab; }
-.pcinv-cell.big { width:58px; height:58px; font-size:30px; }
-.pcinv-cell.huge { width:84px; height:84px; font-size:42px; margin:0 auto; }
-/* Значок надетого оружия/щита — почти во всю рамку ячейки (раньше 1.2em — с пустыми полями). */
-.pcinv-cell.big > .gico, .pcinv-cell.huge > .gico { width:92%; height:92%; }
-.pcinv-cell.small { width:36px; height:36px; font-size:18px; cursor:pointer; }
-.pcinv-cell.sel { outline:2px solid #e6e0d0; }
-.pcinv-cell.locked { opacity:.28; }
-.pcinv-cell.hot { outline:2px dashed #9fe39a; }
-.pcinv-cell.t-base { border-color:var(--tier-base-edge); color:var(--tier-base); }
-.pcinv-cell.t-gold { border-color:var(--tier-gold-edge); box-shadow:inset 0 0 10px var(--tier-gold-glow); color:var(--tier-gold); }
-.pcinv-cell.t-ruby { border-color:var(--tier-ruby-edge); box-shadow:inset 0 0 14px var(--tier-ruby-glow); color:var(--tier-ruby); }
-.pcinv-cell.t-legendary { border-color:var(--tier-legendary-edge); box-shadow:inset 0 0 12px var(--tier-legendary-glow); color:var(--tier-legendary); }
-.pcinv-cnt { position:absolute; right:3px; bottom:1px; font-size:11px; color:#fff; text-shadow:0 1px 2px #000; }
-.pcinv-gifts { background:#1f1a10; border:1px solid #d9a21b; border-radius:8px; padding:8px 10px; margin-bottom:10px; display:flex; flex-direction:column; gap:4px; }
+.pcinv-empty { padding:24px; text-align:center; color:var(--muted); }
+
+/* ---------- панели: срезанные углы и филигрань ---------- */
+.pcinv-pnl { position:relative; isolation:isolate; --c:14px; padding:16px 18px; min-width:0; }
+.pcinv-pnl::before, .pcinv-pnl::after { content:""; position:absolute; z-index:-1; pointer-events:none; clip-path:${CUT("var(--c)")}; }
+.pcinv-pnl::before { inset:0; background:linear-gradient(180deg,#6e8098,#3b4a5e 40%,#2c394a); }
+.pcinv-pnl::after { inset:1.2px; background:linear-gradient(180deg,rgba(7,19,34,.8),rgba(3,11,21,.84)); }
+.pcinv-pnl.hot::before { background:linear-gradient(180deg,#ffe29a,#c99a2e); }
+.pcinv-orn { position:absolute; width:30px; height:30px; pointer-events:none; background:${orn} no-repeat center/contain; z-index:2; }
+.pcinv-orn.tl { left:-1px; top:-1px; } .pcinv-orn.tr { right:-1px; top:-1px; transform:scaleX(-1); }
+.pcinv-orn.bl { left:-1px; bottom:-1px; transform:scaleY(-1); } .pcinv-orn.br { right:-1px; bottom:-1px; transform:scale(-1,-1); }
+
+/* ---------- ячейки: рамка тира со срезанными углами (::before — кромка, ::after — заливка) ---------- */
+.pcinv-cell { position:relative; isolation:isolate; width:var(--cw,50px); height:var(--cw,50px); flex:none; display:flex; align-items:center; justify-content:center;
+  font-size:calc(var(--cw,50px) * .5); --k:6px; --e:linear-gradient(180deg,#56677d,#2f3c4d); --f:radial-gradient(ellipse 80% 75% at 50% 40%,#15233a 0%,#0a1322 75%); }
+.pcinv-cell::before, .pcinv-cell::after { content:""; position:absolute; z-index:-1; pointer-events:none; clip-path:${CUT("var(--k)")}; }
+.pcinv-cell::before { inset:0; background:var(--e); }
+.pcinv-cell::after { inset:var(--bw,1.2px); background:var(--f); }
+.pcinv-cell > .gico { width:84%; height:84%; filter:drop-shadow(0 2px 3px rgba(0,0,0,.7)); }
+.pcinv-cell > img.gico-gear { width:96%; height:96%; }
+.pcinv-cell > .gico-e { width:auto; height:auto; }
+.pcinv-cell[draggable="true"], .pcinv-cell.click, .pcinv-cell.pcinv-jw { cursor:pointer; }
+.pcinv-cell.t-base { --e:linear-gradient(180deg,#7a8ca3,#3e4c60); }
+${["gold", "legendary", "ruby"].map(tier).join("\n")}
+.pcinv-cell.empty { --e:#1c2a3c; --f:linear-gradient(180deg,#08111e,#060d18); color:#2b3e58; }
+.pcinv-cell.locked > * { opacity:.16; filter:grayscale(1) brightness(1.6); }
+.pcinv-cell.sel { --e:linear-gradient(180deg,#e8fbff,#7fd2ff 40%,#2f8fe0); --bw:2px; filter:drop-shadow(0 0 4px rgba(70,180,255,.95)) drop-shadow(0 0 10px rgba(40,140,240,.5)); }
+.pcinv-cell.hot { --e:linear-gradient(180deg,#d9ffd6,#58c46a); --bw:2px; }
+.pcinv-cell.big { --k:8px; }
+.pcinv-cell.huge { width:88px; height:88px; --k:10px; --bw:1.5px; }
+.pcinv-cell.huge > .gico { width:86%; height:86%; }
+.pcinv-jw { padding:5px; }
+.pcinv-jw > svg { width:100%; height:100%; display:block; }
+.pcinv-q { position:absolute; left:7px; top:5px; font:800 10.5px/1 system-ui; color:var(--quality); text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
+.pcinv-sb { position:absolute; right:7px; top:5px; font:800 10.5px/1 system-ui; color:#fff; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
+.pcinv-cnt { position:absolute; right:5px; bottom:3px; font:700 11px/1 system-ui; color:#f3f6fa; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
+.pcinv-glv { position:absolute; left:5px; top:3px; font:800 10.5px/1 system-ui; color:#fff; text-shadow:0 1px 2px #000; z-index:1; }
+.pcinv-fav { position:absolute; right:4px; bottom:2px; font:700 12px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; z-index:1; }
+.pcinv-fav.on { opacity:1; }
+.pcinv-cell:hover .pcinv-fav { opacity:1; }
+.pcinv-cell.big .pcinv-fav { pointer-events:none; }
+.pcinv-cell.tokens .gico-e { font-size:22px; color:#e8c26a; }
+
+/* ---------- «Снаряжение»: раскладка ---------- */
+.pcinv-gear { display:grid; gap:12px; align-items:start; grid-template-columns:auto minmax(0,1fr); grid-template-areas:"hero bag"; }
+.pcinv-heropnl { grid-area:hero; } .pcinv-bagpnl { grid-area:bag; } .pcinv-charpnl { grid-area:char; }
+.pcinv-heropnl { --sw:78px; --sh:88px; --gap:8px; --cwid:330px; display:flex; gap:12px; padding:16px; }
+.pcinv-scol { display:flex; flex-direction:column; gap:var(--gap); flex:none; }
+.pcinv-slot { position:relative; width:var(--sw); height:var(--sh); flex:none; }
+.pcinv-slot.gap { visibility:hidden; }
+.pcinv-slot > .pcinv-cell { width:100%; height:100%; align-items:flex-start; padding-top:5%; font-size:calc(var(--sw) * .5); }
+.pcinv-slot > .pcinv-cell > .gico { width:70%; height:70%; }
+.pcinv-slot > .pcinv-cell > img.gico-gear { width:80%; height:76%; }
+.pcinv-slot > .pcinv-jw { padding:8% 14% 26%; }
+.pcinv-slab { position:absolute; left:1.2px; right:1.2px; bottom:1.2px; height:22px; display:grid; place-items:center; font-size:12px; color:#cfd9e5;
+  background:linear-gradient(180deg,rgba(4,10,19,.55),rgba(4,10,19,.95)); border-top:1px solid rgba(110,135,170,.25); pointer-events:none;
+  clip-path:polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,7px 100%,0 calc(100% - 7px)); white-space:nowrap; overflow:hidden; }
+.pcinv-center { position:relative; width:var(--cwid); flex:none; height:calc(var(--sh) * 5 + var(--gap) * 4); overflow-y:auto; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
+
+/* сведения о герое */
+.pcinv-ci { display:flex; flex-direction:column; gap:6px; padding:2px 4px; }
+.pcinv-ci-nick { font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-ci-title { align-self:flex-start; max-width:100%; }
+.pcinv-ci-lv { margin-top:2px; font-size:14px; color:#e5ecf4; }
+.pcinv-xprow { position:relative; display:flex; align-items:center; height:20px; }
+.pcinv-xp { position:relative; flex:1; height:6px; border-radius:4px; background:#0d1a2b; box-shadow:inset 0 1px 2px rgba(0,0,0,.6); margin-right:-10px; overflow:hidden; }
+.pcinv-xp-fill { position:absolute; left:0; top:0; bottom:0; width:0; border-radius:4px; background:linear-gradient(90deg,#1f7fe0,#47b3ff); box-shadow:0 0 8px rgba(60,160,255,.8); }
+.pcinv-xp-pill { position:relative; z-index:1; height:20px; padding:0 9px; border-radius:10px; background:#08121f; border:1px solid #2a3b52; display:flex; align-items:center;
+  font-size:11.5px; color:#e5ecf4; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pcinv-at6 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; margin-top:4px; }
+.pcinv-atc { position:relative; isolation:isolate; display:flex; align-items:center; gap:5px; height:30px; padding:0 7px; cursor:pointer; }
+.pcinv-atc::before { content:""; position:absolute; inset:0; z-index:-1; background:#0a1626; border:1px solid #233650; clip-path:${CUT("5px")}; }
+.pcinv-atc:hover::before { border-color:#3d7fc0; }
+.pcinv-atc .gico { width:18px; height:18px; flex:none; }
+.pcinv-atc b { font:700 13px/1 system-ui; color:#f1f5fa; }
+.pcinv-atc span { font:600 9.5px/1 system-ui; color:#8796aa; letter-spacing:.05em; }
+.pcinv-ci-up { align-self:stretch; }
+.pcinv-hh { margin-top:6px; font:700 14.5px/1.2 system-ui; color:#eaf0f7; }
+.pcinv-stats { display:flex; flex-direction:column; }
+.pcinv-row { display:flex; align-items:center; gap:8px; min-height:21px; font-size:12.5px; color:var(--text2); }
+.pcinv-row > span:last-child { margin-left:auto; color:#f2f6fa; text-align:right; font-variant-numeric:tabular-nums; }
+.pcinv-row-ic { width:15px; height:15px; flex:none; color:#c7d5e6; display:flex; }
+.pcinv-row-ic .gico { width:15px; height:15px; }
+
+/* избранное */
+
+/* сумка */
+.pcinv-bagpnl { --cw:50px; display:flex; flex-direction:column; align-self:stretch; contain:size; } /* высота — по левой колонке, сетка прокручивается */
+.pcinv-bagh { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+.pcinv-bagt { font:600 20px/1 system-ui; color:#eef3f8; }
+.pcinv-ftabs { display:flex; height:36px; margin:0 0 9px; border-bottom:1px solid #1d2d43; }
+.pcinv-ftab { position:relative; flex:1 1 auto; display:flex; align-items:center; justify-content:center; padding:0 3px; font-size:13px; color:#a7b3c3; cursor:pointer; white-space:nowrap; }
+.pcinv-ftab:hover { color:#dbe6f2; }
+.pcinv-ftab.on { color:#fff; font-weight:600; background:radial-gradient(ellipse 75% 120% at 50% 100%,rgba(28,150,230,.6) 0%,rgba(16,104,180,.3) 42%,transparent 85%); }
+.pcinv-ftab.on::after { content:""; position:absolute; left:10%; right:10%; bottom:-1px; height:2px; border-radius:2px;
+  background:linear-gradient(90deg,rgba(60,170,240,0),#3cb2f2 20%,#fff 50%,#3cb2f2 80%,rgba(60,170,240,0)); box-shadow:0 0 6px #39b0f5; }
+.pcinv-sortrow { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:9px; }
+.pcinv-sortrow > .pcinv-small { margin-right:2px; }
+.pcinv-sortbtn { padding:4px 10px; border:1px solid #26384f; border-radius:3px; color:#b6c2d1; background:rgba(9,20,35,.8); font:600 12px system-ui; cursor:pointer; white-space:nowrap; }
+.pcinv-sortbtn.on { border-color:#3d7fc0; color:#e8f3ff; background:rgba(20,52,90,.7); }
+.pcinv-grid { display:grid; grid-template-columns:repeat(var(--cols,7),var(--cw)); gap:6px; justify-content:space-between; }
+.pcinv-bagrid { position:relative; flex:1 1 0; min-height:0; align-content:start; overflow-y:auto; padding:1px; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
+/* Ячейки растягиваются на ширину колонки — без широких зазоров между значками. */
+.pcinv-bagrid { grid-template-columns:repeat(var(--cols,7),minmax(0,1fr)); justify-content:stretch; }
+.pcinv-bagrid > .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; }
+.pcinv-slot .pcinv-q { left:10px; top:7px; } .pcinv-slot .pcinv-sb { right:10px; top:7px; }
+/* ★ у надетого — справа внизу над подписью слота. */
+.pcinv-slot .pcinv-fav { right:7px; bottom:calc(var(--labh,22px) + 4px); font-size:13px; }
+.pcinv-btn:disabled, .pcinv-ebtn:disabled { opacity:.32; filter:grayscale(1); }
+.pcinv-bagempty { position:absolute; left:0; right:0; top:14px; text-align:center; color:var(--muted); font-size:12.5px; pointer-events:none; z-index:2; }
+.pcinv-bagf { display:flex; gap:10px; margin-top:12px; }
+.pcinv-anvil { flex:0 0 132px; min-height:36px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px dashed #33465f; color:#97a6b9;
+  font-size:12.5px; background:rgba(6,14,26,.5); }
+.pcinv-anvil .gico { width:17px; height:17px; }
+.pcinv-anvil.hot { border-color:#ff7a5a; color:#ffb49a; background:rgba(255,122,90,.08); }
+.pcinv-bagf .pcinv-btn { flex:1; }
+.pcinv-hint { color:#6f7f95; font-size:11.5px; margin-top:9px; line-height:1.4; }
+.pcinv-result { margin-top:9px; padding:7px 10px; font-size:12.5px; border:1px solid; }
+.pcinv-result.up { color:#a9f0b4; background:rgba(40,110,60,.18); border-color:rgba(90,190,120,.3); }
+.pcinv-result.down { color:#ffb0a6; background:rgba(140,40,40,.18); border-color:rgba(220,90,80,.3); }
+
+/* ---------- карточка предмета ---------- */
+.pcinv-card { position:absolute; z-index:5; top:12px; bottom:12px; left:calc(16px + var(--sw) + 6px); right:calc(16px + var(--sw) + 6px);
+  display:grid; grid-template-rows:auto minmax(0,1fr) auto; grid-template-areas:"head" "body" "acts"; padding:16px 16px 14px; pointer-events:auto;
+  filter:drop-shadow(0 10px 24px rgba(0,0,0,.55)); }
+.pcinv-card-x { position:absolute; right:18px; top:12px; width:26px; height:26px; display:grid; place-items:center; color:#9fb0c4; font-size:13px; background:rgba(4,10,19,.7);
+  border:1px solid #2d405a; border-radius:3px; cursor:pointer; z-index:3; }
+.pcinv-card-x:hover { color:#fff; border-color:#4a6a92; }
+.pcinv-grab { display:none; }
+.pcinv-card-head { grid-area:head; display:flex; align-items:center; gap:12px; padding:0 30px 10px 0; border-bottom:1px solid #1a2b42; }
+.pcinv-card-head > .pcinv-cell.huge { width:72px; height:72px; }
+.pcinv-card-info { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; }
+.pcinv-card-name { font:700 20px/1.15 "Iowan Old Style",Georgia,serif; color:#e6edf6; }
+.pcinv-card-name.t-gold { color:var(--tier-gold); } .pcinv-card-name.t-legendary { color:var(--tier-legendary); } .pcinv-card-name.t-ruby { color:var(--tier-ruby); }
+.pcinv-card-sub { font-size:12.5px; color:#9aa8ba; display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; }
+.pcinv-card-sub b { color:var(--quality); }
+.pcinv-tag { display:inline-block; font:700 10.5px/1 system-ui; color:#0e1a10; background:#8fd18f; border-radius:3px; padding:3px 6px; }
+.pcinv-card-body { grid-area:body; overflow-y:auto; padding:2px 2px 4px; scrollbar-width:thin; scrollbar-color:#2c3e57 transparent; }
+.pcinv-card-acts { grid-area:acts; display:grid; grid-template-columns:1fr 1fr; gap:7px 10px; padding-top:10px; }
+.pcinv-card-acts .pcinv-btn { letter-spacing:.03em; white-space:nowrap; padding:5px 10px; }
+.pcinv-tipatk { color:var(--attack); font:700 13px system-ui; }
+.pcinv-tipeff { color:#f0d68a; font-size:12.5px; }
+.pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
+.pcinv-erow { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid #15243a; }
+.pcinv-elabel { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; color:#d6dfea; min-width:0; }
+.pcinv-elabel > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pcinv-elabel > span:last-child { color:#8b9aae; font-size:11.5px; font-variant-numeric:tabular-nums; flex:none; }
+.pcinv-ebar { grid-column:1; height:5px; margin-top:6px; background:#0d1a2b; border-radius:3px; overflow:hidden; }
+.pcinv-efill { height:100%; border-radius:3px; background:linear-gradient(90deg,#7c4ee6,#c79bff); }
+.pcinv-forge { grid-column:2; grid-row:1 / span 2; min-width:92px; }
+.pcinv-forge .gico { width:15px; height:15px; }
+.pcinv-forge.max { color:#7e8da1; letter-spacing:.1em; }
+.pcinv-ap { margin-top:10px; padding:9px 11px; border:1px solid #233650; background:rgba(10,22,38,.7); display:flex; align-items:center; gap:10px; }
+.pcinv-ap-t { flex:1; min-width:0; }
+.pcinv-ap-name { font-size:13px; color:#ffb48f; font-weight:600; }
+.pcinv-sock { display:flex; gap:8px; align-items:center; padding:5px 0; --cw:40px; }
+.pcinv-sock-t { flex:1; font-size:12.5px; } .pcinv-sock-t.dim { color:#7d8b9e; }
+.pcinv-gempick { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; --cw:42px; }
+.pcinv-hammer { position:absolute; right:-8px; bottom:-8px; font-size:26px; transform-origin:80% 80%; z-index:2; }
+.pcinv-hammer.forging { animation:pcinvHammer .36s ease-in-out 3; }
+@keyframes pcinvHammer { 0%{transform:rotate(0)} 45%{transform:rotate(-45deg)} 70%{transform:rotate(12deg)} 100%{transform:rotate(0)} }
+.pcinv-dim { position:fixed; inset:0; z-index:58; background:rgba(1,4,9,.6); pointer-events:auto; }
+.pcinv-card.float { position:fixed; z-index:59; left:50%; top:50%; right:auto; bottom:auto; transform:translate(-50%,-50%); width:min(680px,96vw); max-height:92vh;
+  grid-template-columns:230px minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); grid-template-areas:"head body" "acts body"; column-gap:18px; }
+.pcinv-card.float .pcinv-card-head { flex-direction:column; text-align:center; padding:4px 0 0; border-bottom:none; }
+.pcinv-card.float .pcinv-card-head > .pcinv-cell.huge { width:88px; height:88px; }
+.pcinv-card.float .pcinv-card-info { align-items:center; }
+.pcinv-card.float .pcinv-card-sub { justify-content:center; }
+.pcinv-card.float .pcinv-card-acts { align-content:end; }
+.pcinv-card.float .pcinv-card-x { left:26px; right:auto; }
+
+/* ---------- кнопки ---------- */
+.pcinv-btn, .pcinv-ebtn, .pcinv-abtn, .pcinv-respec { position:relative; isolation:isolate; min-height:34px; padding:6px 14px; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  background:none; border:none; font:600 11.5px/1.15 system-ui; letter-spacing:.05em; text-transform:uppercase; color:#d7e1ee; cursor:pointer; text-align:center; }
+.pcinv-btn::before, .pcinv-btn::after, .pcinv-ebtn::before, .pcinv-ebtn::after, .pcinv-abtn::before, .pcinv-abtn::after, .pcinv-respec::before, .pcinv-respec::after {
+  content:""; position:absolute; z-index:-1; pointer-events:none; clip-path:${HEX("8px")}; }
+.pcinv-btn::before, .pcinv-ebtn::before, .pcinv-abtn::before, .pcinv-respec::before { inset:0; background:linear-gradient(180deg,#5f7189,#33425a); }
+.pcinv-btn::after, .pcinv-ebtn::after, .pcinv-abtn::after, .pcinv-respec::after { inset:1px; background:linear-gradient(180deg,#0f1f35,#091527); clip-path:${HEX("7.5px")}; }
+.pcinv-btn:hover:not(:disabled)::before, .pcinv-ebtn:hover:not(:disabled)::before, .pcinv-abtn:hover:not(:disabled)::before, .pcinv-respec:hover:not(:disabled)::before { background:linear-gradient(180deg,#8fb4dc,#4a6688); }
+.pcinv-btn:disabled, .pcinv-ebtn:disabled, .pcinv-abtn:disabled, .pcinv-respec:disabled { opacity:.42; cursor:default; }
+.pcinv-btn.sm { min-height:30px; padding:5px 12px; font-size:11px; }
+.pcinv-btn.gold { color:#ffe1a0; } .pcinv-btn.gold::before { background:linear-gradient(180deg,#f3cf7c,#a9792a); } .pcinv-btn.gold::after { background:linear-gradient(180deg,#2c220f,#1a1408); }
+.pcinv-btn.green { color:#b9f5c2; } .pcinv-btn.green::before { background:linear-gradient(180deg,#8fe0a0,#2f7a44); } .pcinv-btn.green::after { background:linear-gradient(180deg,#10261a,#0a1a11); }
+.pcinv-btn.danger, .pcinv-ebtn.danger { color:#ffc2b8; } .pcinv-btn.danger::before, .pcinv-ebtn.danger::before { background:linear-gradient(180deg,#e0887c,#8a3328); }
+.pcinv-btn.danger::after, .pcinv-ebtn.danger::after { background:linear-gradient(180deg,#2a1414,#1a0c0c); }
+.pcinv-btn .gico, .pcinv-ebtn .gico { width:15px; height:15px; }
+
+/* ---------- подсказка, меню, подтверждение ---------- */
+.pcinv-tip { position:fixed; display:none; max-width:250px; padding:9px 11px; pointer-events:none; z-index:61; background:rgba(5,12,22,.97); border:1px solid #3b4d66;
+  box-shadow:0 8px 24px rgba(0,0,0,.6); }
+.pcinv-name { font-weight:700; margin-bottom:5px; color:#eaf0f7; }
+.pcinv-name.t-gold { color:var(--tier-gold); } .pcinv-name.t-legendary { color:var(--tier-legendary); } .pcinv-name.t-ruby { color:var(--tier-ruby); } .pcinv-name.t-base { color:#dedede; }
+.pcinv-small { color:#9aa8ba; font-size:11.5px; }
+.pcinv-small.dim { color:#6f7f95; margin-top:4px; }
+.pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:var(--quality); }
+.pcinv-score small { font:600 11px system-ui; color:#9aa8ba; margin-right:4px; }
+.pcinv-sub { color:var(--muted); font-size:12px; margin:2px 0 6px; }
+.pcinv-confirm { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:min(340px,92vw); z-index:62; pointer-events:auto; padding:16px;
+  background:linear-gradient(180deg,rgba(9,21,37,.99),rgba(4,11,21,.99)); border:1px solid #4a5d77; box-shadow:0 0 0 1px #000,0 14px 40px rgba(0,0,0,.65); }
+.pcinv-confirm-text { margin-bottom:12px; font-size:13.5px; color:#e8eef6; }
+.pcinv-confirm-row { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+.pcinv-confirm-row.col { flex-direction:column; align-items:stretch; }
+.pcinv-actions .pcinv-ebtn { min-height:38px; font-size:12px; }
+.pcinv-input, .pcinv-select { width:100%; margin:6px 0; padding:7px 9px; border:1px solid #2d405a; background:#07111e; color:#e8eef6; font:13.5px system-ui; border-radius:2px; }
+.pcinv-select { width:auto; margin:0; padding:4px 8px; color:#e0b866; font-weight:600; font-size:12.5px; }
+.pcinv-ghost { position:fixed; z-index:80; width:52px; height:52px; margin:-26px 0 0 -26px; display:flex; align-items:center; justify-content:center; pointer-events:none;
+  background:rgba(10,22,38,.92); border:1px solid #7fd2ff; }
+.pcinv-ghost > * { width:80%; height:80%; }
+.pcinv-gifts { margin-bottom:12px; padding:10px 12px; display:flex; flex-direction:column; gap:4px; border:1px solid #d9a21b; background:rgba(40,30,10,.85); }
 .pcinv-gifts-h { font-weight:800; color:#ffd166; }
 .pcinv-gifts-row { font-size:13px; }
 .pcinv-gifts .pcinv-ebtn { align-self:flex-start; margin-top:4px; }
-.pcinv-trade { display:flex; flex-direction:column; gap:4px; }
-.pcinv-trow { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #26242c; flex-wrap:wrap; }
+
+/* ---------- «Атрибуты», «Умения», «Обмен»: панель с заголовком ---------- */
+.pcinv-tabpnl { max-width:860px; margin:0 auto; padding:18px 26px 22px; }
+.pcinv-tabh { font:700 24px/1.1 "Iowan Old Style",Georgia,serif; color:#dbe8f6; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #1d2d43; }
+.pcinv-tabtop { display:flex; flex-direction:column; gap:4px; margin-bottom:6px; }
+.pcinv-pts { align-self:flex-start; padding:5px 12px; font:700 14px/1.2 system-ui; color:#c9d5e3; background:rgba(10,22,38,.8); border:1px solid #2d405a; }
+.pcinv-pts.on { color:#b9f5c2; border-color:#3f9a58; background:rgba(16,40,26,.75); box-shadow:0 0 10px rgba(80,200,110,.15); }
+.pcinv-attrs { display:flex; flex-direction:column; gap:8px; }
+.pcinv-arow { position:relative; isolation:isolate; display:flex; align-items:center; gap:12px; padding:10px 14px; }
+.pcinv-arow::before { content:""; position:absolute; inset:0; z-index:-1; background:linear-gradient(180deg,rgba(12,26,44,.85),rgba(7,16,29,.85)); border:1px solid #233650; clip-path:${CUT("8px")}; }
+.pcinv-arow:hover::before { border-color:#35537a; }
+.pcinv-skill.on::before { border-color:#3f9a58; background:linear-gradient(180deg,rgba(18,46,30,.85),rgba(10,28,18,.85)); }
+.pcinv-aic { position:relative; isolation:isolate; width:46px; height:46px; flex:none; display:grid; place-items:center; font-size:26px; }
+.pcinv-aic::before { content:""; position:absolute; inset:0; z-index:-1; background:radial-gradient(ellipse at 50% 40%,#1a2d48,#08111e 80%); border:1px solid #3b4d66; clip-path:${CUT("7px")}; }
+.pcinv-aic .gico { width:30px; height:30px; }
+.pcinv-atxt { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.pcinv-aname { display:flex; align-items:center; flex-wrap:wrap; gap:6px 8px; font:700 15px/1.2 system-ui; color:#eaf0f7; }
+.pcinv-aval { display:flex; align-items:baseline; gap:4px; min-width:58px; justify-content:flex-end; font:800 22px/1 system-ui; color:#f1f5fa; font-variant-numeric:tabular-nums; }
+.pcinv-gemadd { font:700 13px/1 system-ui; color:#9fe39a; }
+.pcinv-abtn { min-width:54px; color:#b9f5c2; font-size:13px; letter-spacing:0; }
+.pcinv-skill .pcinv-abtn { min-width:92px; font-size:11.5px; letter-spacing:.04em; }
+.pcinv-respec { margin-top:8px; color:#ffcfae; }
+
+/* ---------- «Обмен» ---------- */
+.pcinv-trade { display:flex; flex-direction:column; gap:8px; }
+.pcinv-trade > .pcinv-sub { margin:10px 0 0; font:700 15px/1.2 system-ui; color:#eaf0f7; }
+.pcinv-trade > .pcinv-sub:first-child { margin-top:0; }
+.pcinv-trow { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid #15243a; flex-wrap:wrap; }
 .pcinv-tname { flex:1; min-width:0; font-size:13px; }
-.pcinv-tbtns { display:flex; gap:6px; flex-wrap:wrap; }
-.pcinv-tnum { width:64px; padding:3px 5px; border-radius:5px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:13px system-ui; }
-.pcinv-tpick { display:flex; flex-direction:column; max-height:240px; overflow:auto; border:1px solid #2c2f38; border-radius:6px; padding:4px 8px; }
-.pcinv-tsess { border:1px solid #3a3426; border-radius:8px; padding:8px 10px; background:#141319; display:flex; flex-direction:column; gap:6px; }
+.pcinv-tbtns { display:flex; gap:8px; flex-wrap:wrap; }
+.pcinv-tpick { display:flex; flex-direction:column; max-height:240px; overflow:auto; border:1px solid #22354f; padding:4px 8px; background:rgba(5,12,22,.6); }
+.pcinv-tsess { padding:10px 12px; display:flex; flex-direction:column; gap:6px; border:1px solid #2d405a; background:rgba(9,20,35,.8); }
 .pcinv-tcols { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-.pcinv-tcol { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.pcinv-tcol { display:flex; flex-direction:column; gap:3px; min-width:0; }
 .pcinv-tname2.pcinv-thead { font-weight:800; font-size:14px; flex:0 0 auto; white-space:nowrap; }
-.pcinv-root.touch .pcinv-tcols { grid-template-columns:1fr; }
-.pcinv-chip { font:700 11px system-ui; padding:2px 8px; border-radius:999px; border:1px solid #3a3e48; color:#9a9588; white-space:nowrap; }
+.pcinv-chip { font:700 11px system-ui; padding:2px 8px; border-radius:999px; border:1px solid #2d405a; color:var(--muted); white-space:nowrap; }
 .pcinv-chip.ok { color:#7ee081; border-color:#3f7a48; background:rgba(126,224,129,.08); }
-.pcinv-colh { font:800 12px system-ui; color:#c9c3b3; margin-bottom:2px; }
+.pcinv-colh { font:800 12px system-ui; color:#c9d5e3; margin-bottom:2px; }
 .pcinv-tcol.ok .pcinv-colh { color:#7ee081; }
 .pcinv-tcol.ok .pcinv-ttile { border-color:#3f7a48; }
-.pcinv-ttile { display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #2c2f38; border-radius:7px; background:#17161d; min-width:0; }
-.pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; border-radius:6px; background:#0f0e13; border:1px solid #33363f; overflow:hidden; }
+.pcinv-ttile { display:flex; align-items:center; gap:6px; padding:4px 6px; border:1px solid #22354f; background:rgba(7,16,29,.9); min-width:0; }
+.pcinv-tic { width:40px; height:40px; flex:none; display:flex; align-items:center; justify-content:center; background:#08111e; border:1px solid #2d405a; overflow:hidden; }
 .pcinv-tic > * { width:34px !important; height:34px !important; }
 .pcinv-tic img, .pcinv-tic svg { width:34px; height:34px; }
 .pcinv-tic > .gico-e { width:auto !important; height:auto !important; font-size:30px; line-height:1; display:flex; align-items:center; justify-content:center; }
@@ -2030,160 +2436,146 @@ function injectInvStyle(): void {
 .pcinv-tcnt { font:800 12px system-ui; color:#e8c26a; flex:none; min-width:26px; text-align:right; }
 .pcinv-tx { background:none; border:none; color:#c9a0a0; cursor:pointer; font-size:15px; padding:0 4px; line-height:1; }
 .pcinv-tx:hover { color:#ff9a9a; }
-.pcinv-tcb { width:16px; height:16px; flex:none; accent-color:#7ee081; }
-.pcinv-tonline { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; font:14px system-ui; color:#e8e6f0; background:#0f0e13; border:1px solid #3a3e48; border-radius:6px; }
+.pcinv-tcb { width:16px; height:16px; flex:none; accent-color:#3cb2f2; }
+.pcinv-tonline { width:100%; margin:6px 0; padding:7px 9px; font-size:14px; color:#e8eef6; }
 .pcinv-tqty { display:flex; align-items:center; gap:4px; flex:none; }
-.pcinv-qbtn { min-width:34px; height:30px; padding:0 8px; border-radius:7px; border:1px solid #4a4e5a; background:#23222b; color:#f1ead6; font:800 16px system-ui; cursor:pointer; }
-.pcinv-qbtn:hover:not(:disabled) { border-color:#e8c26a; }
+.pcinv-qbtn { min-width:34px; height:30px; padding:0 8px; border:1px solid #2d405a; background:#0b1828; color:#e8eef6; font:800 16px system-ui; cursor:pointer; }
+.pcinv-qbtn:hover:not(:disabled) { border-color:#3d7fc0; }
 .pcinv-qbtn:disabled { opacity:.35; cursor:default; }
 .pcinv-qall { font-size:12px; min-width:0; }
 .pcinv-qv { min-width:34px; text-align:center; font:800 15px system-ui; color:#e8c26a; }
-.pcinv-root.touch .pcinv-qbtn { min-width:44px; height:40px; font-size:20px; }
-.pcinv-root.touch .pcinv-qall { font-size:14px; min-width:0; }
-.pcinv-root.touch .pcinv-qv { min-width:40px; font-size:17px; }
-.pcinv-input { width:100%; box-sizing:border-box; margin:6px 0; padding:7px 9px; border-radius:6px; border:1px solid #3a3e48; background:#0f0e13; color:#e8e6f0; font:14px system-ui; }
-.pcinv-jw { cursor:pointer; padding:3px; box-sizing:border-box; }
-.pcinv-jw svg { width:100%; height:100%; display:block; }
-.pcinv-glv { position:absolute; left:3px; top:1px; font:800 11px system-ui; color:#fff; text-shadow:0 1px 2px #000; }
-.pcinv-pouch { margin-top:10px; background:#141319; border:1px solid #3a3426; border-radius:8px; padding:8px; }
-.pcinv-pouch-h { font-weight:800; color:#e8c26a; margin-bottom:6px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.pcinv-rslot-n { position:absolute; left:4px; top:2px; font:700 10px system-ui; color:#8a8698; }
-.pcinv-rsum { flex:1; min-width:0; }
-.pcinv-rsel { background:#16151c; border:1px solid #2f323b; border-radius:8px; padding:8px; margin-bottom:10px; display:flex; flex-direction:column; gap:6px; }
-.pcinv-rsel-head { display:flex; gap:10px; align-items:center; }
-.pcinv-sock { display:flex; gap:8px; align-items:center; }
-.pcinv-sock-t { flex:1; font-size:13px; }
-.pcinv-sock-t.dim { color:#8a8698; }
-.pcinv-gemadd { display:inline; margin-left:6px; font-size:11px; color:#9fe39a; }
-.pcinv-aname span { color:#9fe39a; }
-.pcinv-cons { display:flex; gap:5px; align-items:stretch; }
-.pcinv-anvil { flex:1; border:1px dashed #5a5e6a; border-radius:6px; display:flex; align-items:center; justify-content:center;
-  color:#c9c3b3; font-size:12px; min-height:44px; }
-.pcinv-anvil.hot { border-color:#ff7a5a; color:#ffb49a; background:rgba(255,122,90,.08); }
-.pcinv-hint { color:#7f7a6e; font-size:11.5px; margin-top:8px; }
-.pcinv-favgrid { padding:4px; margin:-4px; border-radius:8px; background:rgba(255,209,102,.06); outline:1px dashed rgba(255,209,102,.35); }
-.pcinv-favgrid.hot { background:rgba(255,209,102,.16); outline-color:#ffd166; }
-.pcinv-favslot { display:flex; align-items:center; justify-content:center; color:rgba(255,209,102,.28); font:16px system-ui; }
-.pcinv-allbtn { margin-top:10px; width:100%; padding:7px 10px; border-radius:7px; border:1px solid #a8453a; background:#2a1d1b;
-  color:#ffc2b8; cursor:pointer; font:600 12.5px/1.2 system-ui; }
-.pcinv-allbtn:disabled { opacity:.45; cursor:default; }
-.pcinv-bagh { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:2px 0 5px; }
-.pcinv-bagh .pcinv-sub { margin:0; }
-.pcinv-sortbtn { padding:4px 9px; border-radius:6px; border:1px solid #4a4638; background:#1d1b16; color:#d8d0bb; font:700 12px system-ui; cursor:pointer; white-space:nowrap; }
-.pcinv-sortbtn.on { border-color:#e8c26a; color:#e8c26a; background:#2a2415; }
-.pcinv-sortrow { display:flex; gap:4px; flex-wrap:wrap; }
-.pcinv-sharp { margin:8px 0; padding:8px; border:1px solid #3a3426; border-radius:8px; background:#141319; display:flex; flex-direction:column; gap:4px; }
-.pcinv-pouch-acts { display:grid; grid-template-columns:1fr; gap:6px; margin:0 0 8px; }
-.pcinv-pouch-acts .pcinv-allbtn { margin:0; width:100%; padding:7px 8px; }
-.pcinv-pouch-acts .pcinv-mergeall { color:#7ee081; border-color:#3f7a48; background:#16261a; }
-.pcinv-small { color:#a9a498; font-size:11.5px; }
-.pcinv-small.dim { color:#7f7a6e; margin-top:4px; }
-.pcinv-name { font-weight:700; margin-bottom:6px; }
-.t-gold.pcinv-name, .pcinv-name.t-gold { color:var(--tier-gold); }
-.pcinv-name.t-legendary { color:var(--tier-legendary); }
-.pcinv-name.t-ruby { color:var(--tier-ruby); }
-.pcinv-name.t-base { color:#dedede; }
-.pcinv-tip { position:fixed; display:none; max-width:240px; background:#0c0b10; border:none; border-radius:7px;
-  padding:8px 10px; pointer-events:none; z-index:41; }
-.pcinv-tipaff { color:#9fe39a; font-size:12.5px; }
-.pcinv-tipeff { color:#f0d68a; font-size:12.5px; }
-.pcinv-cell.tokens { color:#e8c26a; font-weight:800; }
-/* Страница !inv: окно — обычный блок страницы. */
-.pcinv-root.page { position:relative; inset:auto; pointer-events:auto; }
-.pcinv-root.page .pcinv-win, .pcinv-root.page.touch .pcinv-win { position:relative; left:auto; top:auto; transform:none;
-  margin:0 auto; width:min(680px,100%); max-width:100%; height:auto; max-height:none; overflow:visible; }
-.pcinv-root.page .pcinv-x, .pcinv-root.page .pcinv-hint { display:none; }
-.pcinv-root.page .pcinv-head { cursor:default; }
-/* Сумка на странице — ячейки помельче, чтобы 8 в ряд влезали в колонку (окно 680 px). */
-.pcinv-root.page .pcinv-body .pcinv-grid { grid-template-columns:repeat(8,minmax(0,1fr)); gap:4px; }
-.pcinv-root.page .pcinv-favgrid { margin:0; }
-.pcinv-root.page .pcinv-body .pcinv-grid .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; font-size:26px; cursor:pointer; box-sizing:border-box; }
-.pcinv-root.page .pcinv-body .pcinv-cons { flex-wrap:wrap; }
-/* Страница на телефоне: пустые ячейки и расходники листают страницу пальцем, перетаскиваются только предметы. */
-.pcinv-root.page.touch .pcinv-cell { touch-action:pan-y; }
-.pcinv-root.page.touch .pcinv-grid .pcinv-cell[class*="t-"], .pcinv-root.page.touch .pcinv-handbox .pcinv-cell[class*="t-"] { touch-action:none; }
-.pcinv-root.page .pcinv-gear > .pcinv-col { min-width:0; overflow:hidden; }
-.pcinv-ghost { position:fixed; z-index:80; width:48px; height:48px; margin:-24px 0 0 -24px; display:flex; align-items:center;
-  justify-content:center; font-size:28px; background:rgba(30,28,38,.9); border-radius:8px; pointer-events:none; }
-.pcinv-confirm-row.col { flex-direction:column; align-items:stretch; }
-.pcinv-actions .pcinv-ebtn { padding:10px 14px; font-size:15px; }
-.pcinv-root.touch .pcinv-win { width:86vw; max-width:86vw; height:84vh; max-height:84vh; border-radius:12px; left:50%; top:50%; transform:translate(-50%,-50%); }
+
+/* ---------- телефон в игре: окно на весь экран, сумка рядом со слотами ---------- */
+.pcinv-root.touch:not(.page) .pcinv-win { inset:0; transform:none; width:auto; max-height:none; border:none; box-shadow:none;
+  padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); background:linear-gradient(180deg,rgba(5,12,22,.94),rgba(3,8,16,.96)); }
+.pcinv-root.touch:not(.page) .pcinv-head { cursor:default; }
+/* Телефон в игре: всё помещается без прокрутки — сведения шире, характеристики в два столбца, атрибуты и умения в две колонки. */
+.pcinv-root.touch:not(.page) .pcinv-body { padding:6px 8px; }
+.pcinv-root.touch:not(.page) .pcinv-tabpnl { max-width:none; padding:10px 12px; }
+.pcinv-root.touch:not(.page) .pcinv-tabh { display:none; }
+.pcinv-root.touch:not(.page) .pcinv-attrs { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.pcinv-root.touch:not(.page) .pcinv-attrs > .pcinv-tabtop, .pcinv-root.touch:not(.page) .pcinv-attrs > .pcinv-respec, .pcinv-root.touch:not(.page) .pcinv-attrs > .pcinv-result { grid-column:1 / -1; }
+.pcinv-root.touch:not(.page) .pcinv-tabtop { flex-direction:row; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-bottom:0; }
+.pcinv-root.touch:not(.page) .pcinv-pts { padding:3px 8px; font-size:12px; }
+.pcinv-root.touch:not(.page) .pcinv-arow { padding:6px 8px; gap:6px; }
+.pcinv-root.touch:not(.page) .pcinv-aic { width:32px; height:32px; }
+.pcinv-root.touch:not(.page) .pcinv-aic .gico { width:20px; height:20px; }
+.pcinv-root.touch:not(.page) .pcinv-aname { font-size:12.5px; gap:4px; }
+.pcinv-root.touch:not(.page) .pcinv-arow .pcinv-small { font-size:10px; line-height:1.25; }
+.pcinv-root.touch:not(.page) .pcinv-aval { min-width:30px; font-size:16px; }
+.pcinv-root.touch:not(.page) .pcinv-abtn { min-width:38px; min-height:30px; padding:4px 8px; font-size:12px; }
+.pcinv-root.touch:not(.page) .pcinv-skill .pcinv-abtn { min-width:62px; font-size:10px; }
+.pcinv-root.touch:not(.page) .pcinv-chip { font-size:9.5px; padding:1px 6px; }
+.pcinv-root.touch:not(.page) .pcinv-respec { min-height:30px; margin-top:0; }
+.pcinv-root.touch .pcinv-head { height:38px; padding-left:6px; }
+.pcinv-root.touch .pcinv-tab { padding:0 12px; font-size:13.5px; }
+.pcinv-root.touch .pcinv-curs { gap:12px; padding:0 6px; }
+.pcinv-root.touch .pcinv-cur { font-size:12px; }
+.pcinv-root.touch .pcinv-body { padding:8px; }
 .pcinv-root.touch .pcinv-cell { touch-action:none; }
-.pcinv-root.touch .pcinv-hint { display:none; }
-.pcinv-root.touch .pcinv-win { overflow:auto; }
-.pcinv-root.touch .pcinv-confirm { position:fixed; z-index:81; width:min(320px,90vw); pointer-events:auto; }
-.pcinv-root.touch .pcinv-tip { pointer-events:none; }
-/* Телефон: снаряжение без куклы и без прокрутки — всё мельче и плотнее. */
-.pcinv-root.touch .pcinv-body { padding:6px 8px; }
-.pcinv-root.touch .pcinv-head { padding:4px 8px 0; }
-.pcinv-root.touch .pcinv-tabs { flex-wrap:wrap; gap:3px; }
-.pcinv-root.touch .pcinv-tab { padding:5px 8px; font-size:12px; }
-.pcinv-root.touch .pcinv-gear { grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr); gap:10px; }
-.pcinv-root.touch .pcinv-cell { width:34px; height:34px; font-size:18px; }
-.pcinv-root.touch .pcinv-cell.big { width:46px; height:46px; font-size:24px; }
-.pcinv-root.touch .pcinv-grid { grid-template-columns:repeat(10,34px); gap:3px; }
-.pcinv-root.touch .pcinv-slotgrid { gap:6px 6px; margin:6px 0 4px; }
-.pcinv-root.touch .pcinv-xp { margin-top:0; }
-.pcinv-root.touch .pcinv-stats { display:grid; grid-template-columns:1fr 1fr; column-gap:10px; padding-top:3px; }
-.pcinv-root.touch .pcinv-row { font-size:11px; padding:1px 0; }
-.pcinv-root.touch .pcinv-title { margin:3px 0; }
-.pcinv-root.touch .pcinv-sub { margin:1px 0 3px; }
-.pcinv-root.touch .pcinv-anvil { font-size:11px; }
-@media (max-width: 520px) {
-  .pcinv-root.touch .pcinv-gear, .pcinv-root.touch .pcinv-ench { grid-template-columns:minmax(0,1fr); }
-  .pcinv-root.touch .pcinv-grid { grid-template-columns:repeat(auto-fill,44px); }
+.pcinv-root.touch .pcinv-tabpnl { padding:14px 14px 16px; }
+.pcinv-root.touch .pcinv-tabh { font-size:19px; margin-bottom:8px; padding-bottom:6px; }
+.pcinv-root.touch .pcinv-arow { gap:8px; padding:8px 10px; }
+.pcinv-root.touch .pcinv-aic { width:38px; height:38px; }
+.pcinv-root.touch .pcinv-aic .gico { width:24px; height:24px; }
+.pcinv-root.touch .pcinv-aval { min-width:40px; font-size:18px; }
+.pcinv-root.touch .pcinv-abtn { min-width:44px; }
+.pcinv-root.touch .pcinv-confirm { width:min(340px,92vw); }
+.pcinv-root.touch:not(.page) .pcinv-gear { gap:8px; }
+.pcinv-root.touch:not(.page) .pcinv-atc span { display:none; }
+.pcinv-root.touch:not(.page) .pcinv-atc { justify-content:center; }
+.pcinv-root.touch:not(.page) .pcinv-heropnl { --sw:54px; --sh:54px; --gap:6px; --cwid:196px; gap:8px; padding:10px; }
+.pcinv-root.touch:not(.page) .pcinv-slab { height:13px; font-size:8.5px; }
+.pcinv-root.touch:not(.page) .pcinv-heropnl { --labh:13px; }
+.pcinv-root.touch:not(.page) .pcinv-slot .pcinv-q { left:7px; top:5px; } .pcinv-root.touch:not(.page) .pcinv-slot .pcinv-sb { right:7px; top:5px; }
+.pcinv-root.touch:not(.page) .pcinv-slot > .pcinv-cell { padding-top:2%; }
+.pcinv-root.touch:not(.page) .pcinv-slot > .pcinv-cell > .gico { width:66%; height:66%; }
+.pcinv-root.touch:not(.page) .pcinv-ci-nick { font-size:18px; }
+.pcinv-root.touch:not(.page) .pcinv-row { font-size:11px; min-height:18px; }
+.pcinv-root.touch:not(.page) .pcinv-atc { height:26px; }
+.pcinv-root.touch:not(.page) .pcinv-bagt { font-size:16px; }
+.pcinv-root.touch:not(.page) .pcinv-ftabs { height:30px; margin-bottom:6px; }
+.pcinv-root.touch:not(.page) .pcinv-ftab { font-size:11.5px; padding:0 2px; }
+.pcinv-root.touch:not(.page) .pcinv-bagh { display:none; }
+.pcinv-root.touch:not(.page) .pcinv-sortrow { margin-bottom:6px; gap:3px; flex-wrap:nowrap; }
+.pcinv-root.touch:not(.page) .pcinv-sortrow > .pcinv-small { display:none; }
+.pcinv-root.touch:not(.page) .pcinv-sortbtn { flex:1 1 auto; padding:3px 3px; font-size:10.5px; }
+.pcinv-root.touch:not(.page) .pcinv-anvil { min-height:30px; flex-basis:110px; font-size:11.5px; }
+.pcinv-root.touch:not(.page) .pcinv-bagf .pcinv-btn { min-height:30px; padding:4px 8px; font-size:9.5px; letter-spacing:.02em; white-space:nowrap; }
+.pcinv-root.touch:not(.page) .pcinv-anvil { flex-basis:96px; }
+.pcinv-root.touch:not(.page) .pcinv-bagpnl { --cw:40px; --cols:8; padding:8px 10px; }
+.pcinv-root.touch:not(.page) .pcinv-bagrid { gap:4px; }
+.pcinv-root.touch:not(.page) .pcinv-bagf { margin-top:8px; }
+
+/* ---------- страница !inv: окно — часть страницы, герой на камне ---------- */
+.pcinv-root.page { position:relative; inset:auto; z-index:1; pointer-events:auto; }
+.pcinv-root.page .pcinv-win { position:relative; left:auto; top:auto; transform:none; width:100%; max-width:1280px; margin:0 auto; max-height:none; overflow:visible;
+  background:none; border:none; box-shadow:none; }
+.pcinv-root.page .pcinv-head { position:relative; cursor:default; background:linear-gradient(180deg,rgba(14,28,46,.92),rgba(8,18,32,.92)); border:1px solid var(--line); }
+.pcinv-root.page .pcinv-x { display:none; }
+.pcinv-root.page .pcinv-body { padding:14px 0 0; }
+.pcinv-root.page .pcinv-cell { cursor:pointer; }
+.pcinv-root.page .pcinv-gear { grid-template-columns:300px minmax(0,1fr) 410px; grid-template-areas:"char hero bag"; }
+.pcinv-root.page .pcinv-heropnl { --sw:86px; --sh:104px; --cwid:auto; background:none; }
+.pcinv-root.page .pcinv-heropnl::before, .pcinv-root.page .pcinv-heropnl::after, .pcinv-root.page .pcinv-heropnl > .pcinv-orn { display:none; }
+.pcinv-root.page .pcinv-heropnl { padding:0; justify-content:space-between; }
+.pcinv-root.page .pcinv-center { flex:1; min-width:180px; overflow:visible; }
+.pcinv-root.page .pcinv-card:not(.float) { left:calc(var(--sw) + 12px); right:calc(var(--sw) + 12px); top:0; bottom:0; }
+.pcinv-root.page .pcinv-bagpnl { --cw:56px; --cols:6; }
+.pcinv-root.page .pcinv-ftab { font-size:12.5px; padding:0 2px; }
+/* Страница: сортировка в одну строку. */
+.pcinv-root.page .pcinv-sortrow { flex-wrap:nowrap; gap:4px; }
+.pcinv-root.page .pcinv-sortrow > .pcinv-small { font-size:11px; margin-right:0; white-space:nowrap; }
+.pcinv-root.page .pcinv-sortbtn { padding:3px 6px; font-size:11px; }
+/* Страница: сведения о герое и сумка — до одной нижней линии; низ сумки (наковальня, «разобрать») прижат к низу. */
+.pcinv-root.page .pcinv-gear { align-items:stretch; }
+.pcinv-root.page .pcinv-bagpnl { contain:none; align-self:stretch; }
+.pcinv-root.page .pcinv-bagf { margin-top:auto; padding-top:12px; }
+.pcinv-root.page .pcinv-bagrid { flex:none; max-height:none; overflow:visible; }
+.pcinv-root.page .pcinv-charpnl .pcinv-ci-nick { font-size:30px; }
+.pcinv-root.page .pcinv-charpnl .pcinv-at6 { grid-template-columns:repeat(6,minmax(0,1fr)); }
+.pcinv-root.page .pcinv-charpnl .pcinv-atc { flex-direction:column; justify-content:center; height:52px; gap:2px; padding:0; }
+.pcinv-root.page .pcinv-charpnl .pcinv-atc .gico { width:22px; height:22px; }
+.pcinv-root.page .pcinv-charpnl .pcinv-row { font-size:13.5px; min-height:23px; }
+.pcinv-stage { position:absolute; inset:0; pointer-events:none; }
+.pcinv-heroimg { position:absolute; left:50%; bottom:var(--feet,4%); height:96%; transform:translateX(-50%); filter:drop-shadow(0 8px 14px rgba(0,0,0,.5)); }
+.pcinv-heroshadow { position:absolute; left:50%; bottom:calc(var(--feet,4%) - 10px); width:46%; height:22px; transform:translateX(-50%); border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(0,0,0,.6),rgba(0,0,0,0) 70%); }
+@media (max-width: 1199px) {
+  .pcinv-root.page .pcinv-gear { grid-template-columns:minmax(0,1fr) 410px; grid-template-areas:"hero bag" "char char"; }
+  .pcinv-root.page .pcinv-charpnl .pcinv-stats { display:grid; grid-template-columns:1fr 1fr; column-gap:24px; }
 }
-.pcinv-title { align-items:center; margin:6px 0; }
-.pcinv-select { background:#1b1a21; color:#c79bff; border:1px solid #3a3e48; border-radius:6px; padding:3px 6px; font:600 12.5px system-ui; flex:1; min-width:0; }
-.pcinv-title > span:first-child { flex:none; }
-.pcinv-score { display:inline-block; margin:3px 0 2px; font:800 15px system-ui; color:var(--quality); }
-.pcinv-score small { font:600 11px system-ui; color:#a9a498; margin-right:4px; }
-.pcinv-cell.inhand { position:relative; box-shadow:inset 0 0 0 2px #6fbf6f; }
-.pcinv-cell.inhand::after { content:"в руке"; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
-  font:700 8.5px system-ui; color:#0e1a10; background:#8fd18f; border-radius:3px; padding:0 3px; white-space:nowrap; }
-.pcinv-inhand-tag { display:inline-block; font:700 11px system-ui; color:#0e1a10; background:#8fd18f; border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px; }
-.pcinv-ench { display:grid; grid-template-columns:150px minmax(0,1fr); gap:14px; align-items:start; }
-.pcinv-ench-left { text-align:center; display:flex; flex-direction:column; gap:6px; align-items:center; }
-.pcinv-have { font-size:13px; } .pcinv-have::first-letter { }
-.pcinv-hammer { font-size:34px; margin-top:6px; transform-origin:80% 80%; }
-.pcinv-hammer.forging { animation:pcinvHammer .36s ease-in-out 3; }
-@keyframes pcinvHammer { 0%{transform:rotate(0)} 45%{transform:rotate(-45deg)} 70%{transform:rotate(12deg)} 100%{transform:rotate(0)} }
-.pcinv-erow { display:grid; grid-template-columns:minmax(0,1fr) 110px; gap:4px 10px; align-items:center; padding:6px 0;
-  border-bottom:1px solid #22242b; }
-.pcinv-elabel { display:flex; justify-content:space-between; gap:8px; }
-.pcinv-ebar { grid-column:1; height:7px; background:#1e1d24; border-radius:4px; overflow:hidden; }
-.pcinv-efill { height:100%; background:linear-gradient(90deg,#6a9bff,#9fe39a); }
-.pcinv-ebtn { grid-column:2; grid-row:1 / span 2; padding:5px 6px; border-radius:6px; border:1px solid #4a4e5a; background:#23222b;
-  color:#e6e0d0; cursor:pointer; font:600 12px/1.2 system-ui; }
-.pcinv-ebtn:disabled { opacity:.45; cursor:default; }
-.pcinv-ebtn.danger { border-color:#a8453a; color:#ffc2b8; }
-.pcinv-epick { display:flex; flex-wrap:wrap; gap:12px 6px; padding-bottom:6px; }
-.pcinv-q { position:absolute; left:2px; top:1px; font:800 10px system-ui; color:var(--quality); text-shadow:0 1px 2px #000; pointer-events:none; }
-.pcinv-sb { position:absolute; right:2px; top:1px; font:800 10px system-ui; color:#ffffff; text-shadow:0 1px 2px #000; pointer-events:none; }
-.pcinv-sb.big { font-size:14px; }
-.pcinv-tipatk { color:var(--attack); font:800 13.5px system-ui; margin:2px 0 1px; }
-.pcinv-fav { position:absolute; right:2px; bottom:0; font:700 13px/1 system-ui; color:#ffd166; text-shadow:0 1px 2px #000; cursor:pointer; opacity:0; }
-.pcinv-fav.on { opacity:1; }
-.pcinv-cell:hover .pcinv-fav { opacity:1; }
-.pcinv-cell.big .pcinv-fav { pointer-events:none; }
-.pcinv-result { margin-top:8px; padding:6px 8px; border-radius:6px; }
-.pcinv-result.up { background:rgba(80,200,110,.12); color:#9fe39a; }
-.pcinv-result.down { background:rgba(220,80,70,.12); color:#ff9a8e; }
-.pcinv-attrs { display:flex; flex-direction:column; gap:8px; max-width:520px; }
-.pcinv-skill.on { outline:1px solid #7ee081; }
-.pcinv-arow { display:flex; align-items:center; gap:8px; padding:6px 8px; background:#1b1a21; border-radius:7px; }
-.pcinv-atxt { flex:1; } .pcinv-aname { font-weight:700; }
-.pcinv-abtn { width:42px; padding:6px 0; border-radius:6px; border:1px solid #4a4e5a; background:#23222b; color:#9fe39a;
-  cursor:pointer; font:700 13px system-ui; }
-.pcinv-abtn:disabled { opacity:.35; cursor:default; color:#a9a498; }
-.pcinv-respec { margin-top:6px; padding:9px; border-radius:7px; border:1px solid #6a4a3a; background:#2a1f1c; color:#ffcfae;
-  cursor:pointer; font:600 13px system-ui; }
-.pcinv-respec:disabled { opacity:.45; cursor:default; }
-.pcinv-confirm { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); width:320px; z-index:81; pointer-events:auto; background:#15141b;
-  border:none; border-radius:9px; padding:14px; box-shadow:0 8px 30px rgba(0,0,0,.6); z-index:2; }
-.pcinv-confirm-text { margin-bottom:12px; }
-.pcinv-confirm-row { display:flex; gap:8px; justify-content:flex-end; }
-.pcinv-confirm-row .pcinv-ebtn { grid-row:auto; padding:7px 14px; }
+@media (max-width: 979px) {
+  .pcinv-root.page .pcinv-gear { grid-template-columns:minmax(0,1fr); grid-template-areas:"hero" "bag" "char"; }
+  .pcinv-root.page .pcinv-bagpnl { --cols:6; }
+  .pcinv-root.page .pcinv-bagpnl .pcinv-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
+  .pcinv-root.page .pcinv-bagpnl .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; }
+}
+@media (max-width: 620px) {
+  .pcinv-root.page .pcinv-head { height:42px; padding:0 2px; }
+  .pcinv-root.page .pcinv-tabs { justify-content:space-around; }
+  .pcinv-root.page .pcinv-tab { padding:0 8px; font-size:13.5px; }
+  .pcinv-root.page .pcinv-cur { display:none; }
+  .pcinv-root.page .pcinv-curnick { display:none; }
+  .pcinv-root.page .pcinv-heropnl { --sw:62px; --sh:66px; --gap:7px; }
+  .pcinv-root.page .pcinv-slab { height:15px; font-size:9.5px; }
+  .pcinv-root.page .pcinv-heropnl { --labh:15px; }
+  .pcinv-root.page .pcinv-sortrow > .pcinv-small { display:none; }
+  .pcinv-root.page .pcinv-sortbtn { flex:1 1 auto; padding:3px 4px; }
+  .pcinv-root.page .pcinv-slot > .pcinv-cell > .gico { width:64%; height:64%; }
+  .pcinv-root.page .pcinv-bagpnl, .pcinv-root.page .pcinv-charpnl { padding:14px; }
+  .pcinv-root.page .pcinv-charpnl .pcinv-stats { display:flex; }
+  .pcinv-root.page .pcinv-ci-nick { font-size:22px; }
+  .pcinv-card.float { left:0; right:0; top:auto; bottom:0; transform:none; width:100%; max-height:86vh; padding:22px 18px calc(16px + env(safe-area-inset-bottom));
+    grid-template-columns:1fr; grid-template-rows:auto minmax(0,1fr) auto; grid-template-areas:"head" "body" "acts"; --c:16px; }
+  .pcinv-card.float .pcinv-card-head { flex-direction:row; text-align:left; align-items:center; padding:0 30px 10px 0; border-bottom:1px solid #1a2b42; }
+  .pcinv-card.float .pcinv-card-info { align-items:flex-start; }
+  .pcinv-card.float .pcinv-card-sub { justify-content:flex-start; }
+  .pcinv-card.float .pcinv-cell.huge { width:76px; height:76px; }
+  .pcinv-card.float .pcinv-card-x { left:auto; right:18px; top:14px; }
+  .pcinv-card.float .pcinv-grab { display:block; position:absolute; left:50%; top:7px; width:42px; height:4px; border-radius:2px; background:#3a4d66; transform:translateX(-50%); }
+  .pcinv-card.float .pcinv-orn.bl, .pcinv-card.float .pcinv-orn.br { display:none; }
+}
 `;
   document.head.appendChild(s);
 }

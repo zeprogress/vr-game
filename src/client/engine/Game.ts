@@ -967,6 +967,11 @@ export class Game {
         );
       }
       if (this.pcHud) this.updatePcHud(dt);
+      else if (this.pcInv) {
+        // Телефон: уровень и опыт в сведениях окна снаряжения (на ПК их передаёт updatePcHud).
+        const prog = this.progression;
+        this.pcInv.setXp(prog.level, prog.xp / Math.max(1, prog.xpToNext()), prog.atMaxLevel);
+      }
       if (this.questWin) {
         // Подошёл к доске заданий — подсказка; отошёл — окно закрывается.
         const b = HUB.zones.questBoard;
@@ -2104,6 +2109,11 @@ export class Game {
       }
       case "drop":
       case "scrap": {
+        // ★ избранное не выбрасывается и не разбирается (сервер тоже не даст).
+        if (this.net?.warehouse?.list.find((x) => x.id === a.id)?.fav) {
+          toast(`${glyph("ui.fav")} В избранном — не выбрасывается и не разбирается`);
+          return;
+        }
         // Если этот инстанс сейчас в руке — сначала убираем его из руки.
         const eq = this.net?.warehouse?.equipped;
         if (eq?.left === a.id) this.combat.removeToWarehouse("hand", "left");
@@ -2433,6 +2443,8 @@ export class Game {
     this.wristPanel?.setSkin(self.skin);
     this.localAvatar?.setSkin(self.skin);
     this.mySkin = self.skin;
+    // Окно снаряжения: ник в сведениях о герое (перерисовка — только когда поменялся).
+    this.pcInv?.setHero(this.localNick, self.skin);
     // Крестики — по РОСТУ серверного HP (не клиентского: тот проседает
     // предсказанным уроном раньше патча, и рост назад читался как «лечение»).
     // Повышение уровня тоже подливает HP — там крестики оранжевые.

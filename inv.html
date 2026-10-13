@@ -160,22 +160,41 @@
         color: #7db8ff;
       }
 
-      /* ---- Тема как у ПК-окон игры (тёмное фэнтези: песочный текст, золото, мягкие карточки) ---- */
-      body { background: #100f15; color: #e6e0d0; font-size: 14px; }
-      h1 { color: #f1ead6; }
-      .sub { color: #8f8a7e; opacity: 1; }
-      .card { max-width: 680px; background: rgba(22, 21, 29, 0.96); border-radius: 12px; padding: 16px 18px 20px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55); }
-      .auth { background: #1e2430; border-color: #3f5580; }
-      #toast { background: rgba(16, 15, 21, 0.95); color: #f1ead6; }
+      /* ---- Тема окна снаряжения (референс: тёмно-синие панели со срезанными углами, голубые акценты) ---- */
+      body { background: #03070d; color: #e8eef6; font-size: 14px; padding: 14px 16px 60px; position: relative; overflow-x: hidden; }
+      /* Фон: горы и камень — main.ts ставит камень под ноги героя; ниже картинка уходит в тёмное. */
+      #invBg { position: absolute; left: 0; top: 0; width: 100%; height: 100vh; z-index: 0; pointer-events: none;
+        background: #03070d url("/inv/bg.webp") no-repeat 50% 0 / cover;
+        -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent);
+        mask-image: linear-gradient(180deg, #000 calc(100% - 160px), transparent); }
+      body > *:not(#invBg):not(#toast) { position: relative; z-index: 1; }
+      h1 { color: #eef3f8; font: 700 20px/1.2 "Iowan Old Style", Georgia, serif; letter-spacing: 0.01em; }
+      .sub { color: #8fa0b5; opacity: 1; margin-bottom: 0; }
+      .card { max-width: 1280px; background: linear-gradient(180deg, rgba(9, 20, 35, 0.92), rgba(4, 11, 21, 0.94)); border: 1px solid #33465f;
+        border-radius: 0; padding: 14px 18px 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45); }
+      .auth { background: rgba(14, 30, 52, 0.95); border-color: #3d7fc0; border-radius: 0; }
+      .auth .code { color: #ffe1a0; }
+      #toast { background: rgba(6, 14, 26, 0.97); color: #e8eef6; border: 1px solid #3b4d66; border-radius: 0; }
       /* Шапка/подвал страницы вокруг окна снаряжения. */
-      .card.top { position: relative; margin-bottom: 12px; padding-bottom: 12px; }
-      .card.foot { margin-top: 14px; }
+      .card.top { position: relative; margin: 0 auto; padding: 10px 18px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px;
+        background: linear-gradient(180deg, rgba(14, 28, 46, 0.9), rgba(8, 18, 32, 0.9)); }
+      .card.top #list { flex-basis: 100%; }
+      .card.top #list:empty { display: none; }
+      .card.top[hidden] { display: none; }
+      #invMount { margin-top: 12px; }
+      .card.top[hidden] ~ #invMount { margin-top: 0; }
+      .card.foot { margin-top: 18px; }
       .footbtns { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-      .footbtns button, button#mechBtn { margin-top: 0; width: 100%; padding: 11px; border-radius: 8px; border: 1px solid #3a3e48;
-        background: #23222b; color: #f1ead6; font: 700 14px system-ui; cursor: pointer; }
-      .footbtns button:hover { border-color: #6e7482; }
-      #mech, #upd, #help { background: #1d1c25; color: #e6e0d0; }
+      .footbtns button, button#mechBtn { margin-top: 0; width: 100%; padding: 11px; border-radius: 0; border: 1px solid #2d405a;
+        background: linear-gradient(180deg, #0f1f35, #091527); color: #d7e1ee; font: 600 13px system-ui; letter-spacing: 0.03em; cursor: pointer; }
+      .footbtns button:hover { border-color: #4a6a92; color: #fff; }
+      @media (max-width: 620px) {
+        body { padding: 8px 8px 50px; }
+        .card.top { padding: 8px 12px; }
+        h1 { font-size: 17px; }
+      }
+      #mech, #upd, #help { background: rgba(7, 16, 29, 0.9); color: #e2e9f2; border: 1px solid #22354f; border-radius: 0; }
+      #mech h2 { color: #e8c26a; }
       #upd { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 18px; font-size: 14px; line-height: 1.5; }
       #mech ul { margin: 2px 0 10px; padding-left: 20px; }
       #mech li { margin: 2px 0; }
@@ -186,10 +205,10 @@
       /* Помощь в разработке: вкладки «Ошибки» / «Предложение», поле, таблица записей. */
       #help { display: none; margin-top: 16px; border-radius: 8px; padding: 14px 16px; font-size: 14px; line-height: 1.5; }
       #help .ftabs { display: flex; gap: 8px; margin-bottom: 10px; }
-      #help .ftab { flex: 1; padding: 9px; border-radius: 8px; border: 1px solid #3a3e48; background: #23222b; color: #cfc8b6; font: 700 14px system-ui; cursor: pointer; }
-      #help .ftab.on { border-color: #e8c26a; background: #2c2a24; color: #f1ead6; }
+      #help .ftab { flex: 1; padding: 9px; border-radius: 0; border: 1px solid #2d405a; background: #0b1828; color: #b6c2d1; font: 700 14px system-ui; cursor: pointer; }
+      #help .ftab.on { border-color: #3d7fc0; background: rgba(20, 52, 90, 0.8); color: #fff; }
       #help .fhint { margin: 0 0 8px; color: #8f8a7e; font-size: 13px; }
-      #help textarea { width: 100%; min-height: 84px; resize: vertical; background: #15141b; color: #e6e0d0; border: 1px solid #3a3e48; border-radius: 8px; padding: 10px; font: 14px system-ui; }
+      #help textarea { width: 100%; min-height: 84px; resize: vertical; background: #07111e; color: #e8eef6; border: 1px solid #2d405a; border-radius: 0; padding: 10px; font: 14px system-ui; }
       #help textarea:disabled { opacity: 0.5; }
       #help .frow { display: flex; justify-content: space-between; align-items: center; margin: 6px 0 10px; }
       #help .fcount { color: #8f8a7e; font-size: 12px; }
@@ -223,6 +242,7 @@
     </style>
   </head>
   <body>
+    <div id="invBg"></div>
     <div class="card top">
       <h1 id="title">Инвентарь</h1>
       <div class="sub" id="sub">загрузка…</div>

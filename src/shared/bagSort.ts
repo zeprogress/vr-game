@@ -5,6 +5,7 @@
  *  - «По оценке»: оружие — по оценке (выше сверху); кольца — после оружия, по тиру, внутри по лому.
  *  - «По типу»: по виду оружия (TYPE_ORDER); кольца — в конце. Внутри вида — как «По оценке».
  *  - «По классу»: по классу героя (CLASS_OF_WEAPON); кольца — «без класса», в конце. Внутри класса — по оценке: меч и щит воина идут вперемешку.
+ *  - «★ сначала»: избранное сверху, внутри — как «По оценке».
  *  - Без сортировки: как пришло — сначала оружие, потом кольца.
  */
 import type { WeaponClass, WeaponTier } from "./items";
@@ -12,7 +13,7 @@ import { CLASS_OF_WEAPON, type ClassId } from "./classes2";
 import { RING_TIERS, type RingTier } from "./jewels";
 
 /** Включённая сортировка; none — как пришло. */
-export type BagSort = "none" | "quality" | "type" | "class";
+export type BagSort = "none" | "quality" | "type" | "class" | "fav";
 export type BagSortMode = Exclude<BagSort, "none">;
 
 /** Кнопки сортировки в шапке сумки: подпись и подсказка. */
@@ -24,6 +25,7 @@ export const BAG_SORTS: readonly { mode: BagSortMode; label: string; title: stri
     label: "По классу",
     title: "Класс героя: воин (меч, щит), ассасин, копейщик, боевой маг, лучник, маг поддержки. Кольца — без класса, в конце",
   },
+  { mode: "fav", label: "★ Сначала", title: "Избранное ★ — сверху, дальше как «По оценке»" },
 ];
 
 /** Порядок видов оружия в «По типу». */
@@ -39,19 +41,21 @@ export interface BagSortItem {
   tier: WeaponTier | RingTier;
   quality: number;
   scrap: number;
+  /** ★ Избранное. */
+  fav?: boolean;
 }
 
 /** Предмет сумки или склада: оружие (w), кольцо (r) или броня (a). Поля — те же, что у записей окна инвентаря. */
 export type BagPick =
-  | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number } }
-  | { r: { tier: RingTier; scrap: number } }
-  | { a: { pts: number; scrap: number } };
+  | { w: { cls: WeaponClass; tier: WeaponTier; quality: number; scrap?: number; fav?: boolean } }
+  | { r: { tier: RingTier; scrap: number; fav?: boolean } }
+  | { a: { pts: number; scrap: number; fav?: boolean } };
 
 /** Что сортировке знать о предмете: из полей оружия, кольца или брони. */
 export function bagPickItem(e: BagPick): BagSortItem {
-  if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0 };
-  if ("a" in e) return { armor: true, tier: "base", quality: e.a.pts, scrap: e.a.scrap };
-  return { tier: e.r.tier, quality: 0, scrap: e.r.scrap };
+  if ("w" in e) return { weapon: e.w.cls, tier: e.w.tier, quality: e.w.quality, scrap: e.w.scrap ?? 0, fav: !!e.w.fav };
+  if ("a" in e) return { armor: true, tier: "base", quality: e.a.pts, scrap: e.a.scrap, fav: !!e.a.fav };
+  return { tier: e.r.tier, quality: 0, scrap: e.r.scrap, fav: !!e.r.fav };
 }
 
 /** Группа по виду: кольца и неизвестное — перед бронёй, броня — в самом конце. */
@@ -86,7 +90,7 @@ function byQuality(a: BagSortItem, b: BagSortItem): number {
 export function sortBag<T>(items: readonly T[], mode: BagSort, of: (x: T) => BagSortItem): T[] {
   const out = [...items];
   if (mode === "none") return out;
-  const groups: ((x: BagSortItem) => number)[] = mode === "type" ? [typeGroup] : mode === "class" ? [classGroup] : [];
+  const groups: ((x: BagSortItem) => number)[] = mode === "type" ? [typeGroup] : mode === "class" ? [classGroup] : mode === "fav" ? [(x) => (x.fav ? 0 : 1)] : [];
   return out.sort((a, b) => {
     const A = of(a);
     const B = of(b);

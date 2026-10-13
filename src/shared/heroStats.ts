@@ -161,7 +161,8 @@ const WEAPON_CLASSES: readonly WeaponClass[] = ["sword", "bow", "staff", "dagger
  * в ZoneRoom.ts), поэтому здесь то же самое: берём текст роллов с обоих.
  */
 export function heroStatRows(p: HeroStatInput): HeroStatRow[] {
-  const rows: HeroStatRow[] = [];
+  // Максимум здоровья — от уровня, ТЕЛ и брони (как PlayerState.maxHp на сервере).
+  const rows: HeroStatRow[] = [{ label: "Здоровье", value: String(Math.round(maxHpFor(p.level, p))) }];
   const bm = buffMuls(p);
   const rightIsWeapon = WEAPON_CLASSES.includes(p.rightCls as WeaponClass);
   const leftIsWeapon = WEAPON_CLASSES.includes(p.leftCls as WeaponClass);
