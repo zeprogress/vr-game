@@ -29,6 +29,7 @@ import {
   type WeaponInstance,
   type WeaponTier,
 } from "#shared/items";
+import { MOB } from "#shared/mobs";
 import { AFFIX, BOT, BOW, STAFF_CRIT_MULT, SWORD_CRIT_MULT, WEAPON_DROP_MUL, UNIQUE_DROP_MUL } from "#shared/constants";
 
 /** Дальний/летающий архетип держит дистанцию и «стреляет», не сходясь в упор — как плевуны в основной игре. */
@@ -944,7 +945,8 @@ export class TowerRoom extends Room<TowerState> {
     const block = dodged
       ? { mult: 0 as const, by: 3 as const }
       : resolveBlock(guard, ax, az, projectile, this.heroBlockChance);
-    let real = dmg * block.mult * (1 - armorFrac(this.heroAttrs));
+    // Общий множитель урона мобов (как в мире, MOB.dmgMul).
+    let real = dmg * MOB.dmgMul * block.mult * (1 - armorFrac(this.heroAttrs));
     if (projectile) real *= 1 - magicResistFrac(this.heroAttrs);
     real *= 1 - (projectile ? this.heroMagDef : this.heroPhysDef);
     this.state.heroHp = Math.max(0, this.state.heroHp - real);

@@ -13,6 +13,8 @@ export const FLYER_HIT_BONUS = 0.35;
 export const MOB_SWING = { bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic: 5 } as const;
 
 export const MOB = {
+  /** Общий множитель урона всех мобов и боссов по героям (2026-10-13: +10%). Применяется в ZoneRoom.hurtPlayer и TowerRoom.hurtHero. */
+  dmgMul: 1.1,
   count: 5,
   hp: 4,
   aggroRange: 16, // м, дистанция агра
