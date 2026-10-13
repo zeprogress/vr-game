@@ -415,8 +415,8 @@ export const DUN_SPOTS = {
  */
 export const DUN_MOB_CAMPS: readonly { u: number; v: number; type: keyof typeof ELITE_MOBS; count: number; spread: number }[] = [
   // Зал руин (B): западная и восточная половины, по обе стороны центрального провала.
-  { u: -20, v: -134, type: "skeletonReaver", count: 5, spread: 3 },
-  { u: 22, v: -132, type: "skeletonReaver", count: 5, spread: 3 },
+  { u: -20, v: -134, type: "skeletonReaver", count: 8, spread: 3 },
+  { u: 22, v: -132, type: "skeletonReaver", count: 8, spread: 3 },
 ];
 
 // ---------------------------------------------------------------------------

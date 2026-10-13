@@ -6550,9 +6550,9 @@ export class ZoneRoom extends Room<ZoneState> {
         if (!bot?.dunTravel) return;
         if (bot.dunTravel === "in" && Math.hypot(x - DUN_PORTAL.x, z - DUN_PORTAL.z) <= DUN_PORTAL.r) {
           const e = dunEntry(this.dunEntryN++);
-          this.catWarp(id, e.x, e.z, e.x, e.z + 10);
+          this.catWarp(id, e.x, e.z, e.x, e.z + 10, true);
         } else if (bot.dunTravel === "out" && inDunRegion(x, z) && back.some((b) => Math.hypot(x - b.x, z - b.z) <= DUN_PORTAL.r)) {
-          this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z);
+          this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z, true);
         }
         return;
       }
@@ -6566,7 +6566,7 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
-  private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number): void {
+  private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number, keepFollow = false): void {
     const p = this.state.players.get(id);
     const rt = this.rt.get(id);
     if (!p || !rt) return;
@@ -6586,7 +6586,8 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.dunTravel = null;
       bot.eventing = false;
       bot.raiding = false;
-      bot.followNorm = null;
+      // Переход через портал подземелья не отменяет !follow: бот идёт за героем туда и обратно.
+      if (!keepFollow) bot.followNorm = null;
       bot.fishing = false;
       bot.yaw = yaw;
       p.head.qx = 0;
@@ -7480,8 +7481,9 @@ export class ZoneRoom extends Room<ZoneState> {
       }
       if (followedId) {
         let guardId: string | null = null;
+        const sameArea = (x: number, z: number): boolean => inDunRegion(x, z) === inDunRegion(p.head.x, p.head.z);
         for (const m of this.sim.mobs.values()) {
-          if (m.dead || m.kind === "boss" || !m.aggro) continue;
+          if (m.dead || m.kind === "boss" || !m.aggro || !sameArea(m.x, m.z)) continue;
           if (m.targetId === followedId) {
             guardId = m.id;
             break;
@@ -7497,7 +7499,7 @@ export class ZoneRoom extends Room<ZoneState> {
               : null;
           if (assistId) {
             const am = this.sim.mobs.get(assistId);
-            if (am && !am.dead && am.kind !== "boss") guardId = am.id;
+            if (am && !am.dead && am.kind !== "boss" && sameArea(am.x, am.z)) guardId = am.id;
           }
         }
         if (guardId && guardId !== bot.target) bot.target = guardId;
@@ -7588,7 +7590,10 @@ export class ZoneRoom extends Room<ZoneState> {
           break;
         }
       }
-      if (follow && !inZone(follow.x, follow.z)) follow = undefined;
+      // Герой в подземелье, и бот там же — идём за ним, хоть это и не зона дома (зона — дом бота на поверхности).
+      if (follow && !inZone(follow.x, follow.z) && !(inDunRegion(follow.x, follow.z) && inDunRegion(p.head.x, p.head.z))) {
+        follow = undefined;
+      }
     }
 
     // Каст «Прилива» на арене рейд-босса — бот бежит в разрыв, даже если пришёл не по !raid (за игроком
@@ -8426,18 +8431,36 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.followNav(nav, p, dx, dz, dunClear);
   }
 
-  /** Дом бота и сам бот — по разные стороны портала подземелья: нужен переход. */
+  /** Голова героя, за которым идёт бот (!follow), по нику; null — его нет в мире. */
+  private followedHead(bot: Bot): { x: number; z: number } | null {
+    if (!bot.followNorm) return null;
+    for (const [id, ps] of this.state.players) {
+      if (id === bot.id) continue;
+      if (normNick(ps.nick) === bot.followNorm) return ps.head;
+    }
+    return null;
+  }
+
+  /** Бот должен быть в подземелье: за ним идёт (!follow) герой — там, где герой; иначе — там, где дом. */
+  private botWantsDungeon(bot: Bot): boolean {
+    const f = this.followedHead(bot);
+    if (f) return inDunRegion(f.x, f.z);
+    return inDunRegion(bot.homeX, bot.homeZ);
+  }
+
+  /** Бот и нужная ему область — по разные стороны портала подземелья: нужен переход. */
   private botDunWants(bot: Bot, p: PlayerState): boolean {
-    return inDunRegion(bot.homeX, bot.homeZ) !== inDunRegion(p.head.x, p.head.z);
+    return this.botWantsDungeon(bot) !== inDunRegion(p.head.x, p.head.z);
   }
 
   /** Бот к порталу подземелья или из него: цель перехода (portal в tickDungeonPortals переносит). null — ничего не делать. */
   private botDunGoal(bot: Bot, p: PlayerState): { x: number; z: number } | null {
-    if (!this.botDunWants(bot, p)) {
+    const wantIn = this.botWantsDungeon(bot);
+    if (wantIn === inDunRegion(p.head.x, p.head.z)) {
       bot.dunTravel = null;
       return null;
     }
-    if (inDunRegion(bot.homeX, bot.homeZ)) {
+    if (wantIn) {
       bot.dunTravel = "in";
       return { x: DUN_PORTAL.x, z: DUN_PORTAL.z };
     }

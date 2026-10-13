@@ -646,13 +646,13 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   },
   // ---- 55 ур. (2026-10-13): подземелье «Глубинный храм» (shared/dungeon.ts; расстановка — отдельно) ----
   // Костяной жнец: скелет в броне со щитом и мечом, БЕЗ магии — «стеклянная пушка». Быстрее обычных мобов
-  // (погоня ~5.8 м/с), бьёт часто и больно, с дистанции — прыжок-выпад (LEAP: круг-предупреждение, удар по
+  // (погоня ~6.8 м/с), бьёт часто и больно, с дистанции — прыжок-выпад (LEAP: круг-предупреждение, удар по
   // площади с оглушением). Модель: art/build/Skeleton_rig.blend → public/models/gen/SkeletonShield.glb
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 55, kind: "slime",
     hp: 16000, dmgMul: 26, xp: 8000000, scaleMul: 2.2, tint: null,
-    speedMul: 1.6, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
+    speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
     leaper: true, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
   },
 };
