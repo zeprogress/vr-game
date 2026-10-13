@@ -14,7 +14,7 @@ export const MOB_SWING = { bite: 0, claw: 1, tail: 2, breath: 3, wings: 4, magic
 
 export const MOB = {
   /** Общий множитель урона всех мобов и боссов по героям (2026-10-13: +10%). Применяется в ZoneRoom.hurtPlayer и TowerRoom.hurtHero. */
-  dmgMul: 1.1,
+  dmgMul: 1.32, // 1.1 × 1.2 (2026-10-13: ещё +20%)
   count: 5,
   hp: 4,
   aggroRange: 16, // м, дистанция агра
@@ -658,7 +658,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 53, kind: "slime",
-    hp: 16000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null,
+    hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null, // HP ×2 (2026-10-13): было 16000
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
   },
