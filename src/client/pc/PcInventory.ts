@@ -964,7 +964,32 @@ export class PcInventory {
       this.endDrag();
       if (src?.kind === "hand") this.hooks.toBag(this.realSide(src.side));
     });
-    p.append(grid);
+    // Прокрутка: внизу сетки — затухание и «▼ ещё», пока ниже есть предметы.
+    const wrapG = div("pcinv-bagwrap");
+    const more = div("pcinv-more", "▼ ещё — прокрути");
+    more.onclick = () => grid.scrollBy({ top: grid.clientHeight * 0.8, behavior: "smooth" });
+    // «Ещё» — только если ниже края есть настоящие предметы (пустые ячейки не в счёт).
+    const lastReal = cells.length ? cells[cells.length - 1] : null;
+    const sync = (): void => {
+      const below = !!lastReal && lastReal.getBoundingClientRect().bottom > grid.getBoundingClientRect().bottom + 4;
+      wrapG.classList.toggle("has-more", below);
+    };
+    grid.addEventListener("scroll", sync, { passive: true });
+    requestAnimationFrame(() => {
+      // Пустые ячейки — до низа видимой области (без пробела над кнопками), не больше 12 рядов сверху.
+      for (let k = 0; k < 12 && grid.clientHeight > 0 && grid.scrollHeight <= grid.clientHeight + 2; k++) {
+        for (let i = 0; i < cols; i++) grid.append(div("pcinv-cell empty"));
+      }
+      if (grid.scrollHeight > grid.clientHeight + 2 && grid.lastElementChild && !cells.includes(grid.lastElementChild as HTMLElement)) {
+        // Перебор — последний добавленный ряд пустых убираем, если он целиком ниже края.
+        const gb = grid.getBoundingClientRect().bottom;
+        const row = [...grid.children].slice(-cols);
+        if (row.every((c) => !cells.includes(c as HTMLElement) && c.getBoundingClientRect().top > gb - 2)) row.forEach((c) => c.remove());
+      }
+      sync();
+    });
+    wrapG.append(grid, more);
+    p.append(wrapG);
     if (!this.card && this.lastResult) p.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
 
     // Низ: наковальня (перетащи — в лом) и общие кнопки по фильтру.
@@ -2133,12 +2158,10 @@ const CUT = (k: string): string =>
 const HEX = (k: string): string => `polygon(${k} 0,calc(100% - ${k}) 0,100% 50%,calc(100% - ${k}) 100%,${k} 100%,0 50%)`;
 /** Филигрань угла панели (левый верхний; остальные — отражением). */
 const ORN_SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">` +
-  `<path d="M1 17 L17 1" stroke="#9fb1c7" stroke-width="1.3"/>` +
-  `<path d="M5 30 C5 18 11 10 22 7 M9 24 C10 17 15 12 21 11" stroke="#7d90a9" stroke-width="1.1"/>` +
-  `<path d="M30 5 C 24 6 20 9 19 13 C 18.5 15.5 20.5 17 22.5 16 C 24.5 15 24 12.5 22 12.5" stroke="#aebdd0" stroke-width="1.1"/>` +
-  `<path d="M5 30 C 6 24 9 20 13 19 C 15.5 18.5 17 20.5 16 22.5 C 15 24.5 12.5 24 12.5 22" stroke="#aebdd0" stroke-width="1.1"/>` +
-  `<circle cx="17.5" cy="17.5" r="1.6" fill="#c3d0e0"/></svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26" fill="none" stroke-linecap="round">` +
+  // тонкая вторая линия вдоль среза угла (внутри рамки) и маленький завиток — как в референсе, без навязчивости
+  `<path d="M4.5 18.5 L18.5 4.5" stroke="#c3d0e0" stroke-width=".85" opacity=".55"/>` +
+  `<path d="M9 21 C9.3 17.2 11.6 13.4 16.2 11.6 C18 11 19.3 11.9 18.9 13 C18.6 13.9 17.5 13.9 17.3 13.2" stroke="#a9bbd0" stroke-width=".75" opacity=".5"/></svg>`;
 
 let styled = false;
 function injectInvStyle(): void {
@@ -2192,7 +2215,7 @@ function injectInvStyle(): void {
 .pcinv-pnl::before { inset:0; background:linear-gradient(180deg,#6e8098,#3b4a5e 40%,#2c394a); }
 .pcinv-pnl::after { inset:1.2px; background:linear-gradient(180deg,rgba(7,19,34,.8),rgba(3,11,21,.84)); }
 .pcinv-pnl.hot::before { background:linear-gradient(180deg,#ffe29a,#c99a2e); }
-.pcinv-orn { position:absolute; width:30px; height:30px; pointer-events:none; background:${orn} no-repeat center/contain; z-index:2; }
+.pcinv-orn { position:absolute; width:26px; height:26px; pointer-events:none; background:${orn} no-repeat center/contain; z-index:2; }
 .pcinv-orn.tl { left:-1px; top:-1px; } .pcinv-orn.tr { right:-1px; top:-1px; transform:scaleX(-1); }
 .pcinv-orn.bl { left:-1px; bottom:-1px; transform:scaleY(-1); } .pcinv-orn.br { right:-1px; bottom:-1px; transform:scale(-1,-1); }
 
@@ -2295,6 +2318,13 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 /* ★ у надетого — справа внизу над подписью слота. */
 .pcinv-slot .pcinv-fav { right:7px; bottom:calc(var(--labh,22px) + 4px); font-size:13px; }
 .pcinv-btn:disabled, .pcinv-ebtn:disabled { opacity:.32; filter:grayscale(1); }
+.pcinv-bagwrap { position:relative; flex:1 1 0; min-height:0; display:flex; flex-direction:column; }
+.pcinv-bagwrap > .pcinv-bagrid { flex:1 1 0; min-height:0; max-height:none; }
+.pcinv-bagwrap.has-more > .pcinv-bagrid { -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 46px),rgba(0,0,0,.25)); mask-image:linear-gradient(180deg,#000 calc(100% - 46px),rgba(0,0,0,.25)); }
+.pcinv-more { position:absolute; left:50%; bottom:4px; transform:translateX(-50%); display:none; padding:3px 12px; font:600 11.5px/1.3 system-ui; color:#dff2ff;
+  background:rgba(20,52,90,.92); border:1px solid #3d7fc0; border-radius:10px; cursor:pointer; z-index:3; white-space:nowrap; box-shadow:0 0 10px rgba(40,140,240,.35); }
+.pcinv-bagwrap.has-more > .pcinv-more { display:block; }
+.pcinv-bagrid { scrollbar-color:#4a6a92 transparent; }
 .pcinv-bagempty { position:absolute; left:0; right:0; top:14px; text-align:center; color:var(--muted); font-size:12.5px; pointer-events:none; z-index:2; }
 .pcinv-bagf { display:flex; gap:10px; margin-top:12px; }
 .pcinv-anvil { flex:0 0 132px; min-height:36px; display:flex; align-items:center; justify-content:center; gap:8px; border:1px dashed #33465f; color:#97a6b9;
@@ -2540,10 +2570,10 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-root.page .pcinv-sortbtn { padding:3px 6px; font-size:11px; }
 /* Страница: сведения о герое и сумка — до одной нижней линии; низ сумки (наковальня, «разобрать») прижат к низу. */
 .pcinv-root.page .pcinv-gear { align-items:stretch; }
-.pcinv-root.page .pcinv-bagpnl { contain:none; align-self:stretch; }
-.pcinv-root.page .pcinv-bagf { margin-top:auto; padding-top:12px; }
+/* Широкая страница: сумка по высоте ряда (характеристики/герой), сетка занимает всё место до кнопок и прокручивается. */
+.pcinv-root.page .pcinv-bagpnl { contain:size; align-self:stretch; }
 /* Страница: много вещей — сетка прокручивается внутри сумки (видно 7 рядов). */
-.pcinv-root.page .pcinv-bagrid { flex:none; max-height:calc(var(--cw) * 7 + 42px); overflow-y:auto; padding-right:4px; }
+.pcinv-root.page .pcinv-bagrid { padding-right:4px; }
 .pcinv-root.page .pcinv-charpnl .pcinv-ci-nick { font-size:30px; }
 .pcinv-root.page .pcinv-charpnl .pcinv-at6 { grid-template-columns:repeat(6,minmax(0,1fr)); }
 .pcinv-root.page .pcinv-charpnl .pcinv-atc { flex-direction:column; justify-content:center; height:52px; gap:2px; padding:0; }
@@ -2562,6 +2592,9 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
   .pcinv-root.page .pcinv-bagpnl { --cols:6; }
   .pcinv-root.page .pcinv-bagpnl .pcinv-grid { grid-template-columns:repeat(6,minmax(0,1fr)); }
   .pcinv-root.page .pcinv-bagpnl .pcinv-cell { width:100%; height:auto; aspect-ratio:1 / 1; }
+  .pcinv-root.page .pcinv-bagpnl { contain:none; }
+  .pcinv-root.page .pcinv-bagwrap { flex:none; }
+  .pcinv-root.page .pcinv-bagwrap > .pcinv-bagrid { flex:none; max-height:min(520px,62vh); overflow-y:auto; }
 }
 @media (max-width: 620px) {
   .pcinv-root.page .pcinv-head { height:42px; padding:0 2px; }
