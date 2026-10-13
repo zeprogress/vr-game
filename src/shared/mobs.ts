@@ -290,6 +290,8 @@ export interface EliteMobDef {
   leaper?: boolean;
   /** Перезарядка прыжка, с (по умолчанию LEAP.cooldown): больше — реже метки на героя. */
   leapCooldown?: number;
+  /** Множитель шанса КОЛЕЦ (не камней) с моба сверх элитного множителя RING.eliteMul. */
+  ringMul?: number;
   /** Ходит по земле без пачек скачков (ноги всегда на земле). Прыжок leaper (LEAP) остаётся механикой: ходок прыгает с дистанции, когда прыжок готов. */
   walksOnly?: boolean;
   /** 40 ур. Скалолом: гибель сородича рядом — ярость стаи (см. PACK_FRENZY). */
@@ -661,6 +663,7 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null, // HP ×2 (2026-10-13): было 16000
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
+    ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
   },
 };
 

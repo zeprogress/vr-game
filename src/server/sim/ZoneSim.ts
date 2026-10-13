@@ -519,6 +519,8 @@ export class Mob {
   readonly model: string;
   /** Переопределение имени/уровня в плашке (усиленные мобы). Пусто/0 — по kind. */
   readonly eliteName: string;
+  /** Множитель шанса колец (жнец ×10); см. ELITE_MOBS.ringMul. */
+  readonly ringMul: number;
   readonly eliteLevel: number;
   readonly campType: string;
   readonly champ: boolean;
@@ -700,6 +702,7 @@ export class Mob {
       shot?: MobShot;
       leaper?: boolean;
       leapCooldown?: number;
+      ringMul?: number;
       walksOnly?: boolean;
       packFrenzy?: boolean;
       burrower?: boolean;
@@ -723,6 +726,7 @@ export class Mob {
     this.respawnSec = opts.respawnSec ?? MOB.respawn;
     this.model = opts.model ?? "";
     this.eliteName = opts.name ?? "";
+    this.ringMul = opts.ringMul ?? 1;
     this.eliteLevel = opts.level ?? 0;
     this.flying = opts.flying ?? false;
     this.magicMelee = opts.magicMelee ?? false;
@@ -2296,7 +2300,7 @@ class Bolt {
 /** Опции моба по описанию ELITE_MOBS — ОДНО место для лагерей, событий и катакомб (раньше два списка расходились). */
 export function eliteOpts(d: EliteMobDef): NonNullable<ConstructorParameters<typeof Mob>[3]> {
   return {
-    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp,
+    model: d.model, name: d.name, level: d.level, hp: d.hp, dmgMul: d.dmgMul, scaleMul: d.scaleMul, xp: d.xp, ringMul: d.ringMul,
     flying: d.flying, visLift: d.visLift, magicMelee: d.magicMelee, rangedArmor: d.rangedArmor, physArmor: d.physArmor,
     magicVulnMul: d.magicVulnMul, critVulnMul: d.critVulnMul, spellAoe: d.spellAoe, novaCaster: d.novaCaster, enrageAt: d.enrageAt,
     splitAt: d.splitAt, splitCount: d.splitCount, splitScaleMul: d.splitScaleMul, splitHpFrac: d.splitHpFrac, splitDmgMul: d.splitDmgMul,
@@ -2962,7 +2966,7 @@ export class ZoneSim {
   readonly mobMisses: { mobId: string; attacker: string; x: number; y: number; z: number }[] = [];
   /** Добивания за тик: кто и кого добил (для счётчика kills и кил-фида). */
   /** jm — множитель шанса колец/камней (shared/jewels.ts RING): 0 — не роняет (фантомы, осколки). */
-  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number; quest: string[] }[] = [];
+  readonly mobKills: { owner: string; kind: MobKind; name: string; campType: string; champ: boolean; jm: number; jr: number; quest: string[] }[] = [];
 
   /** Множитель шанса колец/камней с моба: фантомы/осколки — 0, боссы — RING.bossMul, элита — RING.eliteMul. */
   private jewelMul(m: Mob): number {
@@ -3136,7 +3140,7 @@ export class ZoneSim {
     // успевал бы сработать до обработки смерти (см. Mob.checkSplitThreshold).
     if (m.checkSplitThreshold(hpBefore)) {
       // Вожак-голем «побеждён», когда раскололся — задание засчитываем сразу.
-      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), quest: this.questCredit(m, attacker) });
+      if (m.champ && attacker) this.mobKills.push({ owner: attacker, kind: m.kind, name: m.eliteName, campType: m.campType, champ: true, jm: this.jewelMul(m), jr: m.ringMul, quest: this.questCredit(m, attacker) });
       this.splitGolem(m);
       return null;
     }
@@ -3158,7 +3162,7 @@ export class ZoneSim {
       if (attacker) this.catKills.set(attacker, (this.catKills.get(attacker) ?? 0) + 1);
       this.spawnLoot(m, attacker);
       this.splitMobXp(m);
-      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
+      if (attacker) this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, quest });
       return kind;
     }
     if (kind === "shard" || this.eventMobs.has(m.id) || m.cloneOf) {
@@ -3166,7 +3170,7 @@ export class ZoneSim {
       this.mobs.delete(m.id); // осколки и мобы события не возрождаются
       if (kind !== "shard") this.splitMobXp(m);
       if (attacker && kind !== "shard") {
-        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
+        this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, quest });
       }
       return kind;
     } else {
@@ -3184,7 +3188,7 @@ export class ZoneSim {
       this.splitMobXp(m);
     }
     if (attacker) {
-      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), quest });
+      this.mobKills.push({ owner: attacker, kind, name: m.eliteName, campType: m.campType, champ: m.champ, jm: this.jewelMul(m), jr: m.ringMul, quest });
     }
     // Осколок голема сам НЕ возрождается (иначе за игровую сессию все
     // големы лагеря необратимо усыхали бы до вечных мелких копий — баг,

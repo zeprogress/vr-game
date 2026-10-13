@@ -12,6 +12,10 @@ export interface GameUpdate {
 
 export const UPDATES: readonly GameUpdate[] = [
   {
+    at: "2026-10-14 00:18",
+    items: ["Костяной жнец роняет кольца в десять раз чаще"],
+  },
+  {
     at: "2026-10-13 23:09",
     items: [
       "Кольца и камни (бижу) падают в два раза чаще",

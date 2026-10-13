@@ -5086,8 +5086,8 @@ export class ZoneRoom extends Room<ZoneState> {
   }
 
   /** Кольцо/камень с добитого моба — сразу в запись героя (не на землю: боты и игроки одинаково). */
-  private jewelDrop(owner: string, mul: number): void {
-    const d = rollJewelDrop(mul);
+  private jewelDrop(owner: string, mul: number, ringMul = 1): void {
+    const d = rollJewelDrop(mul, ringMul);
     if (!d.gem && !d.ring) return;
     const p = this.state.players.get(owner);
     const rt = this.rt.get(owner);
@@ -10069,7 +10069,7 @@ export class ZoneRoom extends Room<ZoneState> {
     for (const k of this.sim.mobKills) {
       const krt = this.rt.get(k.owner);
       if (krt) krt.kills++;
-      if (k.jm > 0) this.jewelDrop(k.owner, k.jm);
+      if (k.jm > 0) this.jewelDrop(k.owner, k.jm, k.jr);
       this.chatQuestKill(k.owner, k.champ);
       if (k.campType) {
         // Охота и вожаки — всем, кто нанёс мобу урон (как делится опыт), а не только добившему. Боссы — по bossXpShare ниже.

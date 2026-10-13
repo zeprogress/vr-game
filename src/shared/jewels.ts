@@ -359,10 +359,10 @@ export const JEWEL_ACTS = ["ringOn", "ringOff", "ringScrap", "ringFav", "ringScr
 export type JewelAct = (typeof JEWEL_ACTS)[number];
 
 /** Что выпало с моба (или ничего): chanceMul — множитель шансов (элита/босс). */
-export function rollJewelDrop(chanceMul: number, rnd = Math.random): { gem?: GemKey; ring?: RingTier } {
+export function rollJewelDrop(chanceMul: number, ringMul = 1, rnd = Math.random): { gem?: GemKey; ring?: RingTier } {
   const out: { gem?: GemKey; ring?: RingTier } = {};
   if (rnd() < RING.gemChance * chanceMul) out.gem = gemKey(GEM_ATTRS[Math.floor(rnd() * GEM_ATTRS.length)], 1);
-  if (rnd() < RING.ringChance * chanceMul) {
+  if (rnd() < RING.ringChance * chanceMul * ringMul) {
     let x = rnd();
     out.ring = "base";
     for (const t of RING_TIERS) {
