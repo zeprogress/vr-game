@@ -1,4 +1,5 @@
 import { terrainHeight } from "#shared/terrain";
+import { dunRayClear } from "#shared/dungeon";
 import type { Scene } from "@babylonjs/core/scene";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
@@ -116,6 +117,10 @@ export class ThirdPersonCam {
       }
       prevS = s;
     }
+
+    // 1б. Подземелье: стены, свод и пустота — окклюзия выше видит только рельеф, камера пролетала бы насквозь.
+    const roomLen = dunRayClear(this.pivot.x, this.pivot.y, this.pivot.z, -dx, -dy, -dz, dist);
+    if (roomLen < dist) dist = Math.max(0.2, roomLen - 0.15);
 
     this.pos.set(
       this.pivot.x - dx * dist,

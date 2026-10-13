@@ -1,6 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { CAT_CEIL, CAT_HALLS, catCorridor, catLinkIndex, catProject, inCatRegion } from "#shared/catacombs";
-import { inDunRegion } from "#shared/dungeon";
+import { dunRayClear, inDunRegion } from "#shared/dungeon";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -465,6 +465,18 @@ export class SpectatorCamera {
     const minY = ctx.groundY(this._p.x, this._p.z) + 1.2;
     if (this._p.y < minY) this._p.y = minY;
 
+    // Подземелье: камера не проходит сквозь стены и свод — укорачиваем луч от точки взгляда.
+    const vx = this._p.x - this._t.x;
+    const vy = this._p.y - this._t.y;
+    const vz = this._p.z - this._t.z;
+    const vl = Math.hypot(vx, vy, vz);
+    if (vl > 1e-3) {
+      const ok = dunRayClear(this._t.x, this._t.y, this._t.z, vx / vl, vy / vl, vz / vl, vl);
+      if (ok < vl) {
+        const f = Math.max(0, ok - 0.15) / vl;
+        this._p.set(this._t.x + vx * f, this._t.y + vy * f, this._t.z + vz * f);
+      }
+    }
     this.cam.position.copyFrom(this._p);
     this.curTgt.copyFrom(this._t);
     this.cam.setTarget(this._t);

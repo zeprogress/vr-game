@@ -535,23 +535,20 @@ export class Mob {
   }
 
   /**
-   * Дистанция, с которой моб кружит у героя (непрерывный ход): 0.7 удара, но не ближе контакта тел;
+   * Дальность ближнего удара по центру моба. Не короче касания тел: у крупного тела (голем, кактороо)
+   * meleeReach меньше контакта, и кольцо кружения у контакта было бы дальше удара — моб кружил и не бил.
+   */
+  private hitReach(): number {
+    return Math.max(this.meleeReach, this.contactDist() + 0.1);
+  }
+
+  /**
+   * Кольцо кружения дальника у героя (непрерывный ход): 0.7 удара, но не ближе контакта тел;
    * удар (meleeReach) должен достать. Крупное тело (контакт дальше удара) — кольцо у контакта.
    */
   private combatRing(): number {
     const contact = this.contactDist();
     return Math.max(contact + 0.02, Math.min(this.meleeReach * 0.7, this.meleeReach - 0.05));
-  }
-
-  /**
-   * Кольцо для прыжков у героя (len — длина прыжка): чуть дальше контакта, и так, чтобы хорда прыжка
-   * не резала тело героя (столкновение откатывает такой прыжок и моб встаёт). Ближний удар — не дальше meleeReach.
-   */
-  private hopRing(len: number): number {
-    const contact = this.contactDist();
-    const cap = this.kind === "boss" ? Infinity : this.meleeReach - 0.05;
-    const clear = Math.sqrt(contact * contact + (len / 2) * (len / 2)) + 0.05;
-    return Math.max(contact + 0.02, Math.min(Math.max(contact + 0.25, clear), cap));
   }
 
   /**
@@ -563,7 +560,7 @@ export class Mob {
   }
 
   /**
-   * Кружить вокруг цели (непрерывный ход: ходок, пчела): тангенс в сторону retreatSide плюс поправка
+   * Кружить вокруг цели (непрерывный ход дальника): тангенс в сторону retreatSide плюс поправка
    * к дистанции ring (±band). Никогда не ноль — моб в бою не стоит.
    */
   private orbitDir(dx: number, dz: number, dist: number, ring: number, band: number): [number, number] {
@@ -574,25 +571,28 @@ export class Mob {
     return [x / l, z / l];
   }
 
-  /** Непрерывный ход в бою: далеко — прямо к цели, у кольца — кружить. */
+  /** Ход дальника в бою: далеко — прямо к цели, у кольца — кружить. */
   private combatDir(dx: number, dz: number, dist: number, ring: number, band: number): [number, number] {
     if (dist > ring + 2 * band) return [dx, dz];
     return this.orbitDir(dx, dz, dist, ring, band);
   }
 
   /**
-   * Прыжок по кругу: направление, при котором приземление (длина прыжка len) ложится на кольцо ring
-   * вокруг цели. Далеко — прямо к цели (до касания тел). Вплотную к телу хорда не идёт внутрь,
-   * иначе столкновение откатывает прыжок и моб застревает: тогда прыгает вбок-наружу.
+   * Дистанция, с которой ближний моб стоит у героя: внутри дальности удара (hitReach), чтобы бить с места.
+   * Не кольцо кружения: зазор кольца мог выйти за удар, и моб стоял бы и не бил.
    */
-  private hopRingDir(dx: number, dz: number, dist: number, ring: number, len: number, contact: number): [number, number] {
-    if (dist < 1e-3 || len < 1e-3) return [dx, dz];
-    const nx = -dx; // от цели к мобу
-    const nz = -dz;
-    let c = Math.max(-1, Math.min(1, (ring * ring - dist * dist - len * len) / (2 * dist * len)));
-    if (c < 0 && dist < contact + 0.5 && dist * Math.sqrt(1 - c * c) < contact) c = 0;
-    const s = Math.sqrt(1 - c * c) * this.retreatSide;
-    return [c * nx - s * nz, c * nz + s * nx];
+  private standDist(): number {
+    return this.hitReach() - 0.05;
+  }
+
+  /** Ближний моб (не дальник и не босс) у героя на дистанции удара: стоит и бьёт, не кружит. */
+  private standsAtHero(dist: number): boolean {
+    return !this.ranged && this.kind !== "boss" && dist <= this.standDist();
+  }
+
+  /** Ход ближнего к герою: идёт, пока не дойдёт до stop, дальше стоит. */
+  private meleeStep(dx: number, dz: number, dist: number, stop: number): [number, number] {
+    return dist <= stop ? [0, 0] : [dx, dz];
   }
 
   /**
@@ -624,16 +624,19 @@ export class Mob {
   }
 
   /**
-   * Куда идёт ходок без скачков (walksOnly). В погоне — к герою, у кольца кружит и бьёт на ходу.
-   * Прыгун, ждущий готовности LEAP, кружит на дистанции прыжка. Без погони — бродит без пауз.
+   * Куда идёт ходок без скачков (walksOnly). В погоне — к герою и стоит на дистанции удара (бьёт с места).
+   * Прыгун, ждущий готовности LEAP, стоит на дистанции прыжка. Без погони — бродит без пауз.
    */
   private walkDir(chasing: boolean, dist: number, dx: number, dz: number): [number, number] {
     if (chasing) {
-      // Прыгун перед прыжком уходит на его дистанцию (LEAP.minDist..maxDist) и кружит там — не стоит у героя.
+      // Прыгун перед прыжком стоит на его дистанции (LEAP.minDist..maxDist), пока не готов прыжок.
+      // Прыгун перед прыжком стоит на дистанции LEAP (дальше minDist, ближе maxDist), иначе прыжка не будет:
+      // ближе — отходит, дальше — подходит.
       if (this.leaper && this.leapCd < 1.5) {
-        return this.combatDir(dx, dz, dist, LEAP_WAIT_RING, 2.5);
+        if (dist < LEAP.minDist + 1) return [-dx, -dz];
+        return this.meleeStep(dx, dz, dist, LEAP_WAIT_RING + 2.5);
       }
-      return this.combatDir(dx, dz, dist, this.combatRing(), 0.1);
+      return this.meleeStep(dx, dz, dist, this.standDist());
     }
     return this.wanderDir(MOB.wanderRadius);
   }
@@ -1766,7 +1769,7 @@ export class Mob {
       else this.vy -= MOB.gravity * dt;
     } else if (this.walksOnly && this.grounded && this.lungeT <= 0) {
       // Ходок (Скалолом, Владыка Бездны): идёт по земле, ноги всегда на земле — без пачек прыжков
-      // (прыжок leaper — отдельная механика ниже). В погоне — бег, у героя кружит; без погони — неспешный шаг.
+      // (прыжок leaper — отдельная механика ниже). В погоне — бег, у героя стоит и бьёт; без погони — неспешный шаг.
       const [tx, tz] = this.walkDir(chasing, dist, dx, dz);
       const spd = chasing || this.returningHome ? hopSpeed : MOB.idleHopSpeed * 0.5;
       const [sx, sz] = steerAroundTrees(this.x, this.z, tx, tz);
@@ -1783,9 +1786,12 @@ export class Mob {
       let tx = 0;
       let tz = 0;
       if (chasing) {
-        // В погоне не стоит: кружит у своей дистанции удара (у контакта тел — для крупных) и бьёт/стреляет на ходу.
+        // В погоне: ближний подлетает и висит у своей дистанции удара (у контакта тел — для крупных) и бьёт;
+        // дальник кружит, как прежде.
         this.returningHome = false;
-        [tx, tz] = this.combatDir(dx, dz, dist, this.combatRing(), 0.4);
+        [tx, tz] = this.ranged
+          ? this.combatDir(dx, dz, dist, this.combatRing(), 0.4)
+          : this.meleeStep(dx, dz, dist, this.standDist());
       } else {
         // Улетела погоней далеко от дома — сперва летит напрямик домой на
         // боевой скорости, а не лениво дрейфует к случайной точке рядом.
@@ -1825,7 +1831,14 @@ export class Mob {
       this.grounded = true; // клиент: без прыжков/приземлений
       if (!bossFacingMeadow && Math.hypot(this.vx, this.vz) > 0.15) this.yaw = Math.atan2(this.vx, this.vz);
     } else if (this.grounded && this.lungeT <= 0) {
-      if (chasing) {
+      if (chasing && this.standsAtHero(dist)) {
+        // Ближний бой: дошёл до кольца удара — стоит у героя и бьёт, а не прыгает по кругу.
+        this.vx = 0;
+        this.vz = 0;
+        this.vy = 0;
+        this.y = terrainHeight(this.x, this.z) + 0.02;
+        this.grounded = true;
+      } else if (chasing) {
         // Погоня без пауз: следующий прыжок — сразу после приземления. Горизонтальная скорость прыжка
         // подобрана так, чтобы средняя скорость погони не изменилась (см. HOP_GLIDE у констант).
         const hopK = (HOP_FLIGHT_SEC + HOP_GLIDE * hopInterval) / (HOP_FLIGHT_SEC + hopInterval);
@@ -1859,9 +1872,8 @@ export class Mob {
           }
           if (retreating) spd *= SPITTER.retreatSpeed;
         } else {
-          // Ближний бой: прыжок ложится на кольцо у удара — моб кружит у героя и бьёт на ходу.
-          const len = spd * HOP_FLIGHT_SEC;
-          [hx, hz] = this.hopRingDir(dx, dz, dist, this.hopRing(len), len, this.contactDist());
+          // Ближний бой: прыгает прямо к герою; у кольца удара остановится и будет бить (см. standsAtHero).
+          [hx, hz] = [dx, dz];
         }
         [hx, hz] = steerAroundTrees(this.x, this.z, hx, hz);
         this.vx = hx * spd;
@@ -1996,7 +2008,7 @@ export class Mob {
           this.swing();
           spit(this, np);
         }
-      } else if (dist < this.meleeReach && this.attackCd <= 0) {
+      } else if (dist < this.hitReach() && this.attackCd <= 0) {
         this.attackCd = this.atkCooldown;
         this.swing();
         hits.push({

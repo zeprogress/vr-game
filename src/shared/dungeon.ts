@@ -561,6 +561,32 @@ export function dunWorld(u: number, v: number): { x: number; z: number } {
 }
 
 /**
+ * Точка в объёме комнат подземелья: над полом фигуры (не в стене и не в пустоте) и ниже свода зоны.
+ * Вне участка подземелья — всегда да: ограничитель нужен только внутри.
+ */
+export function dunInRooms(x: number, y: number, z: number): boolean {
+  if (!inDunRegion(x, z)) return true;
+  const h = dunFloorLocal(x - DUN_X, z - DUN_Z, 0.2);
+  if (h === null) return false;
+  const floorW = DUN_Y0 + h;
+  return y >= floorW + 0.2 && y <= floorW + dunZoneAt(x, z).ceil - 0.3;
+}
+
+/**
+ * Длина луча от точки (tx,ty,tz) по единичному направлению (dx,dy,dz), пока камера в комнатах: стены,
+ * свод и пустота её не пускают. Не больше len. Вне подземелья — len.
+ */
+export function dunRayClear(tx: number, ty: number, tz: number, dx: number, dy: number, dz: number, len: number): number {
+  if (!inDunRegion(tx, tz)) return len;
+  const STEP = 0.2;
+  for (let s = STEP; s < len + STEP / 2; s += STEP) {
+    const k = Math.min(s, len);
+    if (!dunInRooms(tx + dx * k, ty + dy * k, tz + dz * k)) return Math.max(0, k - STEP);
+  }
+  return len;
+}
+
+/**
  * Ближайшая точка, где можно стоять (мир). Внутри проходимого — та же точка. Снаружи — на ближайшую
  * фигуру на той же высоте, что и fromY (±ступень): нельзя ни «перескочить» щель на верхний уступ, ни
  * спрыгнуть с моста или уступа на нижний ярус — края работают как невидимая ограда.
