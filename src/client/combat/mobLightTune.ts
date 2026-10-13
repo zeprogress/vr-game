@@ -47,6 +47,8 @@ export const MODEL_LIGHT: Record<string, ModelLight> = {
   monMoonAvatar: { emissive: 0.75, diffuse: 1.1, tex: 1.6 },
   monBogBrute: { emissive: 0.3, diffuse: 1.2, tex: 1.8 },
   monDragonBest: { emissive: 0, diffuse: 1, tex: 1.2 },
+  // Костяной жнец: светлая кость — без сильного подъёма текстуры (подогнать в ?moblight=1).
+  monSkeletonReaver: { emissive: 0.15, diffuse: 1.1, tex: 1.3 },
 };
 export const MODEL_LIGHT_DEFAULT: ModelLight = { emissive: 0.3, diffuse: 1, tex: 1 };
 

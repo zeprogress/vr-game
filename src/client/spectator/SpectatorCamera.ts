@@ -1,5 +1,6 @@
 import type { Scene } from "@babylonjs/core/scene";
 import { CAT_CEIL, CAT_HALLS, catCorridor, catLinkIndex, catProject, inCatRegion } from "#shared/catacombs";
+import { inDunRegion } from "#shared/dungeon";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera";
 
@@ -205,6 +206,13 @@ function usesBotFilter(k: string): boolean {
   );
 }
 
+/** Область кадра: катакомбы, подземелье или открытый мир. */
+function regionOf(x: number, z: number): string {
+  if (inCatRegion(x, z)) return "cat";
+  if (inDunRegion(x, z)) return "dun";
+  return "world";
+}
+
 function smoothstep(t: number): number {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);
@@ -252,6 +260,9 @@ export class SpectatorCamera {
   private readonly fromTgt = new Vector3();
   private readonly toPos = new Vector3();
   private readonly toTgt = new Vector3();
+  /** Где была камера на прошлом кадре: мир / катакомбы / подземелье — переход между ними монтируется cut-ом. */
+  private lastRegion = "";
+  private shotJustSwitched = false;
   private readonly curTgt = new Vector3(0, 2, 0);
   private readonly _p = new Vector3();
   private readonly _t = new Vector3();
@@ -435,6 +446,16 @@ export class SpectatorCamera {
     this.trackEye(dt, ctx);
 
     this.evalShot(this.shot, ctx, this.toPos, this.toTgt);
+    // Переезд в катакомбы или подземелье (и обратно) — без плавного blend через всю карту: cut.
+    const region = regionOf(this.toPos.x, this.toPos.z);
+    if (this.shotJustSwitched) {
+      this.shotJustSwitched = false;
+      if (region !== this.lastRegion) {
+        this.fromPos.copyFrom(this.toPos);
+        this.fromTgt.copyFrom(this.toTgt);
+      }
+    }
+    this.lastRegion = region;
 
     const k = smoothstep(this.sinceSwitch / this.curBlend);
     lerpV(this.fromPos, this.toPos, k, this._p);
@@ -475,6 +496,7 @@ export class SpectatorCamera {
     this.shot = shot;
     this.sinceSwitch = 0;
     this.curBlend = SPECTATE.blendTime;
+    this.shotJustSwitched = true;
     // При входе в кадр «из глаз» снимаем задержку — прыгаем сразу к живой позе.
     const live = this.liveEye(shot, ctx);
     if (live) {

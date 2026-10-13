@@ -1,4 +1,5 @@
-import { WORLD } from "./constants";
+import { PLAYER, WORLD } from "./constants";
+import { DUN_X, DUN_Z, dunFloorLocal, dunProject, inDunRegion } from "./dungeon";
 
 /**
  * Рейд-босс «Лунный аватар» (тест, 2026-10-07): на плато горы с водопадом — восточнее
@@ -218,6 +219,8 @@ const HALF = WORLD.playHalf;
 /** Можно ли здесь стоять: квадрат карты, плато рейда или пандус к нему. */
 export function inPlayArea(x: number, z: number): boolean {
   if (Math.abs(x) <= HALF && Math.abs(z) <= HALF) return true;
+  // Подземелье (shared/dungeon) — далеко за западным краем: стоять можно только на его полу.
+  if (inDunRegion(x, z)) return dunFloorLocal(x - DUN_X, z - DUN_Z, 0.3) !== null;
   const P = RAID_PLATEAU;
   if (x >= P.x0 && x <= P.x1 && z >= P.z0 && z <= P.z1) return true;
   const { s, t } = rampLocal(x, z);
@@ -229,7 +232,12 @@ export function inPlayArea(x: number, z: number): boolean {
  * плато или полосы пандуса. Единый ограничитель для клиента (движение, телепорт),
  * сервера (боты, сейв) и навигации ботов.
  */
-export function clampToPlay(p: { x: number; z: number }): void {
+export function clampToPlay(p: { x: number; z: number; y?: number }): void {
+  if (inDunRegion(p.x, p.z)) {
+    // Края мостов и уступов — невидимая ограда; с высоты y (глаза) — только на пол, куда можно шагнуть.
+    [p.x, p.z] = dunProject(p.x, p.z, 0.4, p.y !== undefined ? p.y - PLAYER.eyeHeight : undefined);
+    return;
+  }
   if (inPlayArea(p.x, p.z)) return;
   const cands: [number, number][] = [];
   cands.push([Math.max(-HALF, Math.min(HALF, p.x)), Math.max(-HALF, Math.min(HALF, p.z))]);

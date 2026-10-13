@@ -241,6 +241,20 @@ import type { PlayerRecord } from "../PlayerStore";
 import { eliteOpts, WEAPON_DROP, ZoneSim, type Mob, type PlayerHit, type SimPlayer } from "../sim/ZoneSim";
 import { CatacombDirector, type CatHost } from "./catacombs";
 import { TELEGRAM } from "#shared/changelog";
+import {
+  DUN_MOB_CAMPS,
+  DUN_PORTAL,
+  DUN_PORTAL_EXIT,
+  DUN_SPOTS,
+  DUN_X,
+  DUN_Z,
+  dunEntry,
+  dunFloorLocal,
+  dunPath,
+  dunSegmentClear,
+  dunWorld,
+  inDunRegion,
+} from "#shared/dungeon";
 import { CAT_HALLS, CAT_HAZARD, CAT_SHRINE, CAT_SHRINES, CATACOMBS, type CatAffix, catEntry, catProject, catXpFrac, inCatRegion } from "#shared/catacombs";
 import type { CatacombMsg, CatStatsMsg } from "#shared/net/messages";
 import { TowerRunManager } from "./TowerRunManager";
@@ -374,6 +388,8 @@ interface Bot {
   testUntil?: number;
   /** Маршрут в обход крутых склонов: к какой цели, точки, когда посчитан (this.elapsed). */
   nav?: { tx: number; tz: number; path: [number, number][]; at: number };
+  /** Переход через портал подземелья: "in" — к порталу на поверхности, "out" — к выходу из подземелья; null — не идёт. */
+  dunTravel?: "in" | "out" | null;
   /** Date.now() появления героя — «новый герой» для приоритета камеры спектатора. */
   spawnedAt: number;
   nick: string; // отображаемый
@@ -535,10 +551,29 @@ function bestOwnedTier(owned: readonly string[] | undefined, cls: WeaponClass): 
 }
 
 
+/** Лагеря мира и подземелья (мировые точки) — выбор дома ботов и !camp. */
+const CAMP_SPOTS: { x: number; z: number; type: keyof typeof ELITE_MOBS }[] = [
+  ...MOB_CAMPS,
+  ...DUN_MOB_CAMPS.map((d) => {
+    const w = dunWorld(d.u, d.v);
+    return { x: w.x, z: w.z, type: d.type };
+  }),
+];
+
 /** Лагеря мобов по возрастанию силы (уровня их мобов) — расселение ботов. */
-const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
+const CAMPS_BY_POWER = [...CAMP_SPOTS].sort(
   (a, b) => ELITE_MOBS[a.type].level - ELITE_MOBS[b.type].level,
 );
+
+/** Прямая в подземелье проходима (по его фигурам, а не по рельефу поверхности). */
+function dunClear(x0: number, z0: number, x1: number, z1: number): boolean {
+  return dunSegmentClear(x0 - DUN_X, z0 - DUN_Z, x1 - DUN_X, z1 - DUN_Z);
+}
+
+/** Точка, куда бот встаёт после появления: для дома в подземелье — у его портала на поверхности. */
+function botGate(home: { x: number; z: number }): { x: number; z: number } {
+  return inDunRegion(home.x, home.z) ? { x: DUN_PORTAL.x, z: DUN_PORTAL.z } : home;
+}
 
 /**
  * Куда высадить/возродить бота. Лагерь, выбранный зрителем (!camp), — на любом
@@ -548,7 +583,7 @@ const CAMPS_BY_POWER = [...MOB_CAMPS].sort(
  */
 function botHome(level: number, pref: string | null = null, rand = 0): { x: number; z: number } {
   if (pref) {
-    const pc = MOB_CAMPS.find((c) => c.type === pref);
+    const pc = CAMP_SPOTS.find((c) => c.type === pref);
     if (pc) return { x: pc.x, z: pc.z };
   }
   if (level < 5 || CAMPS_BY_POWER.length === 0) {
@@ -3573,7 +3608,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const bot = heroId.startsWith("bot:") ? this.bots.get(heroId.slice(4)) : undefined;
     if (bot) {
       bot.inTower = false;
-      const back = botSpawnAt({ x: bot.homeX, z: bot.homeZ });
+      const back = botSpawnAt(botGate({ x: bot.homeX, z: bot.homeZ }));
       bot.state.head.x = back.x;
       bot.state.head.z = back.z;
       bot.state.head.y = terrainHeight(back.x, back.z) + PLAYER.eyeHeight;
@@ -3644,7 +3679,7 @@ export class ZoneRoom extends Room<ZoneState> {
       const name = ELITE_MOBS[t].name.toLowerCase();
       return t.toLowerCase() === a || name.includes(a) || name.split(/\s+/).some((w) => w.startsWith(a));
     });
-    if (!type || !MOB_CAMPS.some((c) => c.type === type)) {
+    if (!type || !CAMP_SPOTS.some((c) => c.type === type)) {
       this.reply(`@${nick} не нашёл такой лагерь. Список: !camp`);
       return;
     }
@@ -5855,7 +5890,7 @@ export class ZoneRoom extends Room<ZoneState> {
     const campPref = typeof rec?.campPref === "string" && ELITE_MOBS[rec.campPref] ? rec.campPref : null;
     const campRand = Math.random();
     const home = botHome(p.level, campPref, campRand);
-    const sp = botSpawnAt(home);
+    const sp = botSpawnAt(botGate(home));
     p.head.x = sp.x;
     p.head.z = sp.z;
     p.head.y = terrainHeight(p.head.x, p.head.z) + PLAYER.eyeHeight;
@@ -6493,6 +6528,43 @@ export class ZoneRoom extends Room<ZoneState> {
     return false;
   }
 
+  private dunPortalAt = 0;
+  private dunEntryN = 0;
+  /**
+   * Порталы подземелья (открытая зона, shared/dungeon): вошёл в круг у лагеря — переносит в начало
+   * входного тоннеля; круги в тоннеле и у выхода — обратно к порталу в лагере. Боты пока не ходят
+   * (навигация подземелья — следующий этап).
+   */
+  private tickDungeonPortals(): void {
+    const now = Date.now();
+    if (now < this.dunPortalAt) return;
+    this.dunPortalAt = now + 250;
+    const back = DUN_SPOTS.portals.map((q) => dunWorld(q.u, q.v));
+    this.state.players.forEach((p, id) => {
+      if (p.dead) return;
+      const x = p.head.x;
+      const z = p.head.z;
+      if (id.startsWith("bot:")) {
+        // Бот идёт в подземелье или домой из него (botDunGoal); без флага — мимо портала не телепортируем.
+        const bot = this.bots.get(id.slice(4));
+        if (!bot?.dunTravel) return;
+        if (bot.dunTravel === "in" && Math.hypot(x - DUN_PORTAL.x, z - DUN_PORTAL.z) <= DUN_PORTAL.r) {
+          const e = dunEntry(this.dunEntryN++);
+          this.catWarp(id, e.x, e.z, e.x, e.z + 10);
+        } else if (bot.dunTravel === "out" && inDunRegion(x, z) && back.some((b) => Math.hypot(x - b.x, z - b.z) <= DUN_PORTAL.r)) {
+          this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z);
+        }
+        return;
+      }
+      if (Math.hypot(x - DUN_PORTAL.x, z - DUN_PORTAL.z) <= DUN_PORTAL.r) {
+        const e = dunEntry(this.dunEntryN++);
+        this.catWarp(id, e.x, e.z, e.x, e.z + 10);
+      } else if (inDunRegion(x, z) && back.some((b) => Math.hypot(x - b.x, z - b.z) <= DUN_PORTAL.r)) {
+        this.catWarp(id, DUN_PORTAL_EXIT.x, DUN_PORTAL_EXIT.z, DUN_PORTAL_EXIT.x + 10, DUN_PORTAL_EXIT.z);
+      }
+    });
+  }
+
   /** Перенос героя: бот — сервер сам (и сброс его дел), игрок — сообщение warp клиенту. */
   private catWarp(id: string, x: number, z: number, faceX?: number, faceZ?: number): void {
     const p = this.state.players.get(id);
@@ -6511,6 +6583,7 @@ export class ZoneRoom extends Room<ZoneState> {
       bot.vz = 0;
       bot.target = null;
       bot.nav = undefined;
+      bot.dunTravel = null;
       bot.eventing = false;
       bot.raiding = false;
       bot.followNorm = null;
@@ -7531,6 +7604,10 @@ export class ZoneRoom extends Room<ZoneState> {
     const braveCat = bot.catMode === "brave" && this.cat.inRun(bot.id);
     const escape = braveCat || ((raidBoss || onRaidArena) && this.raid.tideCasting) ? null : this.dangerEscape(p.head.x, p.head.z, escOk);
     if (escape) mob = undefined;
+    // Подземелье: дом бота внутри (или он там, а дом снаружи) — сперва переход через портал.
+    const dunBlocked = !!(escape || catAnchor || bot.eventing || bot.raiding || raidBoss);
+    if (dunBlocked) bot.dunTravel = null;
+    const dunGoal = dunBlocked ? null : this.botDunGoal(bot, p);
 
     let tx: number;
     let tz: number;
@@ -7540,6 +7617,9 @@ export class ZoneRoom extends Room<ZoneState> {
     } else if (raidBoss) {
       tx = raidBoss.x;
       tz = raidBoss.z;
+    } else if (dunGoal) {
+      tx = dunGoal.x;
+      tz = dunGoal.z;
     } else if (loot) {
       tx = loot.x;
       tz = loot.z;
@@ -7561,10 +7641,22 @@ export class ZoneRoom extends Room<ZoneState> {
     } else {
       bot.wanderCd -= dt;
       if (bot.wanderCd <= 0) {
-        const a = Math.random() * Math.PI * 2;
-        const r = Math.random() * BOT.zoneRadius * 0.6;
-        bot.wanderX = cx + Math.cos(a) * r;
-        bot.wanderZ = cz + Math.sin(a) * r;
+        // Точка блуждания — на полу (в подземелье зона 44 м захватывает провалы): иначе бот тянется в пустоту.
+        let wx = cx;
+        let wz = cz;
+        for (let t = 0; t < 8; t++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = Math.random() * BOT.zoneRadius * 0.6;
+          const px = cx + Math.cos(a) * r;
+          const pz = cz + Math.sin(a) * r;
+          if (!inDunRegion(px, pz) || dunFloorLocal(px - DUN_X, pz - DUN_Z, 1) !== null) {
+            wx = px;
+            wz = pz;
+            break;
+          }
+        }
+        bot.wanderX = wx;
+        bot.wanderZ = wz;
         bot.wanderCd = BOT.wanderInterval;
       }
       tx = bot.wanderX;
@@ -8284,6 +8376,7 @@ export class ZoneRoom extends Room<ZoneState> {
    * Маршрут пересчитывается раз в 2 с или когда цель сместилась больше чем на 5 м.
    */
   private botNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
+    if (inDunRegion(p.head.x, p.head.z) || inDunRegion(tx, tz)) return this.botDunNavDir(bot, p, tx, tz, dx, dz, dist);
     // Цель на плато рейд-босса, а бот внизу — сперва к подножию пандуса (shared/raid raidWaypoint).
     const wp = raidWaypoint(p.head.x, p.head.z, tx, tz);
     if (wp) {
@@ -8314,15 +8407,50 @@ export class ZoneRoom extends Room<ZoneState> {
     return this.followNav(nav, p, dx, dz);
   }
 
-  /** Шаг по построенному пути бота: направление на текущую точку. */
-  private followNav(nav: NonNullable<Bot["nav"]>, p: PlayerState, dx: number, dz: number): [number, number] {
+  /** Подземелье: маршрут по графу подземелья (dunPath), прямо — если видно. Пересчёт как у поверхности. */
+  private botDunNavDir(bot: Bot, p: PlayerState, tx: number, tz: number, dx: number, dz: number, dist: number): [number, number] {
+    if (dist < 2) return [dx, dz];
+    let nav = bot.nav;
+    if (!nav || this.elapsed - nav.at > 2 || Math.hypot(nav.tx - tx, nav.tz - tz) > 5) {
+      const path = dunPath(p.head.x, p.head.z, tx, tz).map((q): [number, number] => [q.x, q.z]);
+      nav = { tx, tz, at: this.elapsed, path };
+      bot.nav = nav;
+    }
+    return this.followNav(nav, p, dx, dz, dunClear);
+  }
+
+  /** Бот к порталу подземелья или из него: цель перехода (portal в tickDungeonPortals переносит). null — ничего не делать. */
+  private botDunGoal(bot: Bot, p: PlayerState): { x: number; z: number } | null {
+    const wantIn = inDunRegion(bot.homeX, bot.homeZ);
+    const inside = inDunRegion(p.head.x, p.head.z);
+    if (wantIn === inside) {
+      bot.dunTravel = null;
+      return null;
+    }
+    if (wantIn) {
+      bot.dunTravel = "in";
+      return { x: DUN_PORTAL.x, z: DUN_PORTAL.z };
+    }
+    bot.dunTravel = "out";
+    const back = DUN_SPOTS.portals[0];
+    return dunWorld(back.u, back.v);
+  }
+
+  /** Шаг по построенному пути бота: направление на текущую точку. clear — проходима ли прямая (поверхность или подземелье). */
+  private followNav(
+    nav: NonNullable<Bot["nav"]>,
+    p: PlayerState,
+    dx: number,
+    dz: number,
+    clear: (x0: number, z0: number, x1: number, z1: number) => boolean = straightOk,
+  ): [number, number] {
     // Дошли до точки — следующая. Угол к следующей срезаем, только если к ней можно
     // пройти по прямой: путь проверен между центрами клеток, и у края горы бот,
     // срезав угол, упирался в склон и топтался на месте (лаборатория, опыт nav).
     while (nav.path.length) {
       const d = Math.hypot(nav.path[0][0] - p.head.x, nav.path[0][1] - p.head.z);
       const next = nav.path[1];
-      if (d < 0.6 || (d < 1.8 && next && straightOk(p.head.x, p.head.z, next[0], next[1]))) nav.path.shift();
+      if (d < 0.6 || (d < 1.8 && next && clear(p.head.x, p.head.z, next[0], next[1]))) nav.path.shift();
       else break;
     }
     if (!nav.path.length) return [dx, dz];
@@ -9396,6 +9524,7 @@ export class ZoneRoom extends Room<ZoneState> {
     this.tickChatQuest();
     this.tickRaid();
     this.cat.tick();
+    this.tickDungeonPortals();
     this.raid.tick(dt);
     const perfB0 = serverPerf.now();
     this.tickBots(dt);

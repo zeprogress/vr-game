@@ -11,6 +11,8 @@
  *   npm run asset -- newloc <сцена.blend> [--size 80]       — заготовка локации с коллекциями пайплайна
  *   npm run asset -- scatter <сцена.blend> --kit Rocks [--count 300 …] — расставить детали по земле (см. docs/pipelines/locations.md)
  *   npm run asset -- location <сцена.blend> <папка> [--name hub2] — GLB с инстансами + карта высот + коллайдеры
+ *   npm run asset -- dkit <out.glb> [--preview лист.png] [--only RockWall,Column] — модульный набор подземелья
+ *   npm run asset -- dungeon <kit.glb> <dungeon.json> <папка> [--views B,C,top] — рендер подземелья (JSON: tools/dungeon/export.mts)
  *
  * Blender: переменная BLENDER или /Applications/Blender.app (macOS).
  */
@@ -29,6 +31,8 @@ const SCRIPTS = {
   location: "export_location.py",
   scatter: "scatter.py",
   newloc: "new_location.py",
+  dkit: "gen_dkit.py",
+  dungeon: "preview_dungeon.py",
 };
 const [cmd, ...rest] = process.argv.slice(2);
 if (!SCRIPTS[cmd]) {

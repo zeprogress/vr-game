@@ -644,6 +644,17 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
     hp: 12000, dmgMul: 16, xp: 2900000, scaleMul: 2.2, tint: null, dodge: 0.25, speedMul: 1.4, attackCooldown: 1, // 8400/12 → 12000/16
     meleeReach: 2.6, parry: true, legendaryChance: 0.04,
   },
+  // ---- 55 ур. (2026-10-13): подземелье «Глубинный храм» (shared/dungeon.ts; расстановка — отдельно) ----
+  // Костяной жнец: скелет в броне со щитом и мечом, БЕЗ магии — «стеклянная пушка». Быстрее обычных мобов
+  // (погоня ~5.8 м/с), бьёт часто и больно, с дистанции — прыжок-выпад (LEAP: круг-предупреждение, удар по
+  // площади с оглушением). Модель: art/build/Skeleton_rig.blend → public/models/gen/SkeletonShield.glb
+  // (клипы Idle/Walk/Run/Attack/HitReact/Death).
+  skeletonReaver: {
+    model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 55, kind: "slime",
+    hp: 16000, dmgMul: 26, xp: 8000000, scaleMul: 2.2, tint: null,
+    speedMul: 1.6, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
+    leaper: true, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
+  },
 };
 
 /** Адский демон: огненный таран (см. EliteMobDef.charger). */

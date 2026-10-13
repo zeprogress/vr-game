@@ -92,6 +92,14 @@ const LVL = Number(arg("--lvl") ?? 33);
 const ONLY = new Set((arg("--only") ?? "dps,skills,attrs,affix,tier,group,camp,def,nav").split(","));
 const JSON_OUT = arg("--json");
 /**
+ * --as <вид ELITE_MOBS> — мобы лагеря подменяются этим видом (те же места и логика лагеря у бота):
+ * проверка моба, у которого ещё нет своего лагеря (напр. подземелье). С --camp и --lvl:
+ *   npm run lab:balance -- --only camp --camp shadowNinja --as skeletonReaver --lvl 55
+ */
+const AS = arg("--as");
+if (AS && !ELITE_MOBS[AS]) throw new Error(`--as: нет ELITE_MOBS.${AS}`);
+const { Mob: SimMob, eliteOpts } = await import("../src/server/sim/ZoneSim.ts");
+/**
  * --whatif nohurtcd — «что если»: у моба нет окна 0.2 с после удара, в которое
  * чужие удары/сплэш/умения пропадают (Mob.hurtCd). Код игры не меняется.
  */
@@ -219,6 +227,15 @@ function makeRoom(keep: (m: any) => boolean): { room: Room; step: () => void; me
     if (keep(m)) continue;
     room.sim.mobs.delete(id);
     room.state.mobs.delete(id);
+  }
+  // --as: оставшиеся мобы лагеря — другим видом (id, дом и лагерь прежние).
+  if (AS) {
+    const def = ELITE_MOBS[AS];
+    for (const m of room.sim.mobs.values()) {
+      if (m.scarecrow || m.practice || !m.campType) continue;
+      const fresh = new SimMob(def.kind, m.homeX, m.homeZ, { ...eliteOpts(def), campType: m.campType });
+      Object.assign(m, fresh, { id: m.id });
+    }
   }
   const meter: Meter = {
     dealt: new Map(), hits: new Map(), lost: new Map(), miss: new Map(), maxHit: new Map(), firstHit: new Map(), casts: new Map(), kills: new Map(), rawIn: new Map(), realIn: new Map(),
@@ -628,7 +645,9 @@ if (ONLY.has("group")) {
 
 // 7. Бой в лагере
 if (ONLY.has("camp")) {
-  const camps: { lvl: number; type: string }[] = QUICK
+  const camps: { lvl: number; type: string }[] = arg("--camp")
+    ? [{ lvl: LVL, type: arg("--camp")! }]
+    : QUICK
     ? [{ lvl: 33, type: "boneWraith" }, { lvl: 40, type: "rockBreaker" }]
     : [
         { lvl: 26, type: "golem" },
@@ -641,7 +660,7 @@ if (ONLY.has("camp")) {
       ];
   const rows: CampResult[] = [];
   for (const c of camps) {
-    const def = ELITE_MOBS[c.type];
+    const def = ELITE_MOBS[AS ?? c.type];
     say(`\n── 7. Лагерь «${def.name}» (${def.level} ур.), герой ${c.lvl} ур., ${CAMP_SEC} с без зелий ──`);
     say(pad("набор", 13) + ["HP", "убил", "смертей", "1-я смерть", "срезано", "урон/с по нему", "лечение/с", "его DPS"].map((h) => lp(h, 11)).join("") + "  умения");
     const cr: CampResult[] = [];

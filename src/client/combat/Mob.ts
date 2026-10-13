@@ -62,6 +62,8 @@ const SWING_ANIM: Record<number, { clip: string; sec: number }> = {
 /** EliteMobDef.gait: медленнее — стойка (Idle), быстрее — бег (Run), между — шаг (Walk), м/с. */
 const GAIT_IDLE_SPEED = 0.5;
 const GAIT_RUN_SPEED = 2.2;
+/** Скорость, при которой клип бега идёт с обычным темпом; быстрее/медленнее — темп клипа пропорционально (шаг под ногу). */
+const RUN_CLIP_SPEED = 9;
 
 /** Длительность процедурного замаха моба, с. */
 const ATTACK_DUR = 0.36;
@@ -513,6 +515,8 @@ export class Mob implements Hittable {
   private moveSpd = 0;
   private gaitX = NaN;
   private gaitZ = NaN;
+  /** Сколько прошло с последнего пересчёта скорости (с). */
+  private gaitT = 0;
   /** Узел, который тянем/сжимаем в прыжке: сфера или корень модели. */
   private squash: TransformNode;
   private curAnim: AnimationGroup | null = null;
@@ -1201,18 +1205,28 @@ export class Mob implements Hittable {
       // вечно, даже когда их никто не видит.
       const seen = this.animVisible(pos, playerPos);
       if (this.gaitIdle) {
-        // Скорость по серверным координатам, сглаженная ~0.35 с (они приходят тиками, а не каждый кадр).
-        if (Number.isFinite(this.gaitX) && dt > 0) {
-          const raw = Math.min(12, Math.hypot(s.x - this.gaitX, s.z - this.gaitZ) / dt);
-          this.moveSpd += (raw - this.moveSpd) * (1 - Math.exp(-dt / 0.35));
+        // Скорость — по серверным тикам: позиция приходит не каждый кадр, поэтому делим путь на время
+        // между сменами позиции (а не на кадр — иначе в среднем выходило ~2 м/с и бег не включался).
+        this.gaitT += dt;
+        const moved = Number.isFinite(this.gaitX) ? Math.hypot(s.x - this.gaitX, s.z - this.gaitZ) : 0;
+        if (Number.isFinite(this.gaitX) && (moved > 1e-3 || this.gaitT > 0.3)) {
+          const raw = moved > 1e-3 ? Math.min(12, moved / this.gaitT) : 0;
+          this.moveSpd += (raw - this.moveSpd) * (1 - Math.exp(-this.gaitT / 0.35));
+          this.gaitT = 0;
+          this.gaitX = s.x;
+          this.gaitZ = s.z;
+        } else if (!Number.isFinite(this.gaitX)) {
+          this.gaitX = s.x;
+          this.gaitZ = s.z;
+          this.gaitT = 0;
         }
-        this.gaitX = s.x;
-        this.gaitZ = s.z;
       }
       if (seen && this.atkNow && this.atkClipT > 0) this.playAnim(this.atkNow, false);
       else if (seen && this.gaitIdle) {
         const clip =
           this.moveSpd < GAIT_IDLE_SPEED ? this.gaitIdle : this.moveSpd > GAIT_RUN_SPEED && this.gaitRun ? this.gaitRun : this.moveAnim;
+        // Темп бега — от скорости моба, чтобы ноги не скользили по земле.
+        if (clip === this.gaitRun && clip) clip.speedRatio = Math.min(2, Math.max(0.5, this.moveSpd / RUN_CLIP_SPEED));
         this.playAnim(clip, true);
       } else if (seen && (s.grounded === 0 || flyer)) this.playAnim(this.moveAnim, true);
       else this.stopAnim();

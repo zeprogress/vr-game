@@ -135,6 +135,7 @@ import { VR_SETTINGS, onVrSettingsChanged, setVrSettings } from "../config/vrSet
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_PHASE, CATACOMBS, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, type CatView, catViewOf } from "../world/Catacombs";
+import { DungeonFx } from "../world/DungeonFx";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
 import { RAID, raidCarry } from "#shared/raid";
@@ -398,6 +399,7 @@ export class Game {
     this.ground = zone.ground;
     this.zoneTick = zone.tick;
     this.catFx = zone.catacombs;
+    this.dunFx = zone.dungeon;
     this.raidFx = zone.raidArena;
     this.botLights = zone.botLights;
     this.lightFocus = new LightFocus(this.scene);
@@ -2546,6 +2548,7 @@ export class Game {
     const st = this.net?.room?.state;
     const view: CatView | null = st ? catViewOf(st) : null;
     this.catFx?.update(dt, view, this.player.position);
+    this.dunFx?.update(dt, this.player.position);
     this.player.catBounds = view && view.phase >= CAT_PHASE.run ? view.open : null;
     const rv = st ? raidViewOf(st) : null;
     this.raidFx?.update(dt, rv);
@@ -2555,6 +2558,7 @@ export class Game {
   /** Панель боя с рейд-боссом (фаза, HP, «в разрыве», таймеры). */
   private readonly raidHud = new RaidHud();
   private catFx: CatacombsFx | null = null;
+  private dunFx: DungeonFx | null = null;
   private raidFx: RaidArenaFx | null = null;
   /** Какая музыка сейчас: town / boss / cat / catBoss / raid. */
   private musicKind = "town";

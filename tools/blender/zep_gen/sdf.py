@@ -76,6 +76,16 @@ def sd_box(P, c, h, rnd=0.0, R=None):
     return np.linalg.norm(np.maximum(q, 0), axis=1) + np.minimum(q.max(1), 0) - rnd
 
 
+def sd_hull(P, c, planes, R=None):
+    """Гранёная глыба: пересечение полупространств (n·q <= off) — как сколотый камень.
+    planes — (K, 4): нормаль (в осях формы) и отступ от центра."""
+    q = P - c
+    if R is not None:
+        q = q @ R
+    pl = _v(planes)
+    return (q @ pl[:, :3].T - pl[:, 3]).max(1)
+
+
 def sd_torus(P, c, R0, r, R=None):
     q = P - c
     if R is not None:
@@ -175,10 +185,12 @@ class Surface:
     bone = None
     k = 0.0
 
-    def __init__(self, noise=None, cracks=None):
+    def __init__(self, noise=None, cracks=None, strata=None):
         self.noise = noise  # [амплитуда, частота, seed]
         self.cracks = cracks  # [глубина, частота (плит на метр), ширина шва 0–1, seed]
+        self.strata = strata  # [глубина уступа, шаг пластов по высоте (м), seed] — горизонтальные уступы породы
         self._n = Noise(int(noise[2]) if noise and len(noise) > 2 else 5) if noise else None
+        self._s = Noise(int(strata[2]) if strata and len(strata) > 2 else 9) if strata else None
 
     def disp(self, P):
         d = np.zeros(len(P))
@@ -190,6 +202,11 @@ class Surface:
             e = f2 - f1
             t = np.clip(e / width, 0, 1)
             d += depth * (1 - t * t * (3 - 2 * t))
+        if self.strata:
+            amp, step = self.strata[0], self.strata[1]
+            # «пила» по высоте с волнистыми пластами: у каждого пласта верх выступает, низ уходит внутрь
+            t = (P[:, 2] / step + self._s.fbm(P * 0.25) * 0.8) % 1.0
+            d += amp * (t * t * (3 - 2 * t) - 0.5)
         return d
 
 
@@ -208,6 +225,10 @@ class Shape:
         if self.kind in ("sphere",):
             c, r = _v(p["c"]), p["r"]
             lo, hi = c - r, c + r
+        elif self.kind == "hull":
+            c = _v(p["c"])
+            e = float(np.max(_v(p["planes"])[:, 3])) * 1.8
+            lo, hi = c - e, c + e
         elif self.kind in ("ellipsoid", "box", "torus"):
             c = _v(p["c"])
             if self.kind == "ellipsoid":
@@ -236,6 +257,8 @@ class Shape:
             d = sd_box(P, _v(p["c"]), p["h"], p.get("rnd", 0.0), p.get("R"))
         elif k == "torus":
             d = sd_torus(P, _v(p["c"]), p["R"], p["r"], p.get("R3"))
+        elif k == "hull":
+            d = sd_hull(P, _v(p["c"]), p["planes"], p.get("R"))
         elif k == "cyl":
             d = sd_cylinder(P, _v(p["a"]), _v(p["b"]), p["r"], p.get("rnd", 0.0))
         else:

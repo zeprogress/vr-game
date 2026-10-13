@@ -48,6 +48,7 @@ const SCENES: LabScene[] = [
   { id: "models", title: "👾 Модели и анимации", load: () => import("./sceneModels") },
   { id: "fx", title: "✨ Эффекты умений", load: () => import("./sceneFx") },
   { id: "trees", title: "🌳 Деревья: модель vs снимок", load: () => import("./sceneTrees") },
+  { id: "dungeon", title: "🏛️ Подземелье: набор и расстановка", load: () => import("./sceneDungeon") },
 ];
 
 const params = new URLSearchParams(location.search);

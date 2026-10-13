@@ -3,6 +3,7 @@ import { LAKE, MOUNTAIN, WORLD } from "./constants";
 import sculptData from "./data/terrainSculpt.json";
 import { CAT_FLOOR_Y, CAT_Z0 as CAT_REGION_Z, inCatRegion } from "./catacombs";
 import { PLAY_BOUNDS, rampHeight } from "./raid";
+import { dunHeight, inDunRegion } from "./dungeon";
 
 /**
  * Рельеф озера/горы, слепленный вручную в редакторе (Terrain Sculptor,
@@ -155,6 +156,8 @@ export function troddenAt(x: number, z: number): number {
 export function terrainHeight(x: number, z: number): number {
   // Катакомбы (за краем карты, глубоко под землёй) — ровный каменный пол.
   if (z > CAT_REGION_Z && inCatRegion(x, z)) return CAT_FLOOR_Y;
+  // Подземелье (далеко за западным краем, глубоко внизу) — свой многоуровневый пол.
+  if (x < -WORLD.size / 2 - 30 && inDunRegion(x, z)) return dunHeight(x, z);
   return terrainHeightNatural(x, z);
 }
 

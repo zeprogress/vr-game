@@ -43,6 +43,7 @@ import { Sfx } from "../audio/Sfx";
 import { TOWN_MUSIC, BOSS_MUSIC, CATACOMBS_MUSIC, CATACOMBS_BOSS_MUSIC } from "../audio/playlist";
 import { CAT_HALLS, CAT_PHASE, CAT_STEPS, catOpen, catParseRoute, inCatRegion } from "#shared/catacombs";
 import { type CatacombsFx, catViewOf } from "../world/Catacombs";
+import { DungeonFx } from "../world/DungeonFx";
 import { type RaidArenaFx, raidViewOf } from "../world/RaidArena";
 import { RaidHud } from "../ui/RaidHud";
 import { RAID } from "#shared/raid";
@@ -281,6 +282,7 @@ export class Spectator {
     this.scene.pointerMovePredicate = () => false;
     this.zoneTick = zone.tick;
     this.catFx = zone.catacombs;
+    this.dunFx = zone.dungeon;
     this.raidFx = zone.raidArena;
     // Свечения катакомб — спрайтами (одна отрисовка); у игроков билборды (VR/multiview).
     this.catFx.useSpriteGlows = true;
@@ -1021,6 +1023,7 @@ export class Spectator {
       cst ? catViewOf(cst) : null,
       this.cam.cam.position,
     );
+    this.dunFx?.update(dt, this.cam.cam.position);
     const rv = cst ? raidViewOf(cst) : null;
     this.raidFx?.update(dt, rv);
     this.raidHud.update(rv, null);
@@ -1577,6 +1580,7 @@ export class Spectator {
     return { x: RAID.x, z: RAID.z, edge: st.raid.edge, bossId, heroes };
   }
   private catFx: CatacombsFx | null = null;
+  private dunFx: DungeonFx | null = null;
   private raidFx: RaidArenaFx | null = null;
   /** Панель боя с рейд-боссом в эфире (фаза, HP, таймеры). */
   private readonly raidHud = new RaidHud(true);

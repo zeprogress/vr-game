@@ -4,6 +4,7 @@ import { AFFIX, BOW, COMBAT, DROP_CHANCE, WEAPON_DROP_MUL, UNIQUE_DROP_MUL, gold
 import { BOSS_CFG, SLIME_CFG, SPITTER_CFG } from "#shared/mobs";
 import { RAID } from "#shared/raid";
 import { BOSS, ELITE_MOBS, MAGE_NOVA, SPORE, BLINK, PULL, CHARGE, REFLECT, SPIKES, CHIEF_HEAL, FREEZE, LEAP, BURROW, STORM, CLONES, PARRY, SCARECROW, PACK_FRENZY, SHOTS, type MobShot, type EliteMobDef, BOSS_ADAPT, eliteXpAt, MAGE_SPELL, MOB, FLYER_HIT_BONUS, MOB_CAMPS, SHARD, SHARD_CFG, SPITTER } from "#shared/mobs";
+import { DUN_MOB_CAMPS, dunWorld } from "#shared/dungeon";
 import { climbStep, terrainHeight, enableTerrainHeightCache } from "#shared/terrain";
 import { PLAGUE } from "#shared/classes2";
 import { catProject, inCatRegion } from "#shared/catacombs";
@@ -2398,8 +2399,12 @@ export class ZoneSim {
       const m = new Mob("spitter", x, z);
       this.mobs.set(m.id, m);
     }
-    // Лагеря усиленных мобов по свободным местам карты.
-    for (const camp of MOB_CAMPS) {
+    // Лагеря усиленных мобов по свободным местам карты и в начальных залах подземелья.
+    const dunCamps: (typeof MOB_CAMPS)[number][] = DUN_MOB_CAMPS.map((d) => {
+      const w = dunWorld(d.u, d.v);
+      return { x: w.x, z: w.z, type: d.type, count: d.count, spread: d.spread, noChamp: true };
+    });
+    for (const camp of [...MOB_CAMPS, ...dunCamps]) {
       const def = ELITE_MOBS[camp.type];
       for (let i = 0; i < camp.count; i++) {
         // jitter — кольцо «неровное»: сдвиг по углу (доля шага между соседями)
