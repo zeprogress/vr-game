@@ -2217,6 +2217,8 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-cell.huge > .gico { width:86%; height:86%; }
 .pcinv-jw { padding:5px; }
 .pcinv-jw > svg { width:100%; height:100%; display:block; }
+/* Значок кольца/камня — квадрат по ширине ячейки: у ячеек с aspect-ratio высота 100% не считается, и картинка сплющивалась. */
+.pcinv-jw > span[style*="display:block"] { width:100% !important; height:auto !important; aspect-ratio:1 / 1; }
 .pcinv-q { position:absolute; left:7px; top:5px; font:800 10.5px/1 system-ui; color:var(--quality); text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
 .pcinv-sb { position:absolute; right:7px; top:5px; font:800 10.5px/1 system-ui; color:#fff; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
 .pcinv-cnt { position:absolute; right:5px; bottom:3px; font:700 11px/1 system-ui; color:#f3f6fa; text-shadow:0 1px 2px #000,0 0 3px #000; pointer-events:none; z-index:1; }
