@@ -192,6 +192,7 @@ import {
 } from "#shared/progression";
 import { canHoldTogether, equipHands, handsValid, hasAttackWeapon, unequipHand } from "#shared/hands";
 import { findPath, navCellCenter, straightOk, warmNav } from "../sim/nav";
+import { leashCut } from "../sim/leash";
 import { ATTR2 } from "#shared/attrs2";
 import { ABYSS, LIFE_ARROW, JUMP_BEHIND, ASSASSIN_STEP_STUN, ASSASSIN_WHIRL_DASH, ASSASSIN_WHIRL_SLOW, PLAGUE, SMOKE, SOUL_STEAL, skillAttrMul, autoSpend, ASSASSIN_FAN_HOP, ASSASSIN_LEAP, classOf2, skillCdMul2, hopDistance, hopsBack, SPEAR_HOP_TRAP, SPEAR_FLURRY, SPEAR_PIERCE_DMG, STORM_CRUSH, CLASSES2, CLASS_IDS, DAGGER, DUAL, isDualPair, HAMMER, SEAL, SKILLS2, skillName, staffMagicTier, WHIRL, WARCRY, MARK, CLEAVE, CHAIN, FAN, GUARD_SEAL, HEAL_AURA, WEAPONS2, type ClassId, type SkillId, type Weapon2 } from "#shared/classes2";
 import { ULTS, ULT_COOLDOWN, ULT_HEAL_FRAC, ULT_ARCHER_WAVES, ULT_ASSASSIN_HITS, ULT_ASSASSIN_STEP, ULT_BURN_SEC, ULT_PULL_PULSES, ULT_PULL_POWER } from "#shared/ultimates";
@@ -8106,6 +8107,12 @@ export class ZoneRoom extends Room<ZoneState> {
     const accel = Math.min(1, dt * (escape ? 12 : 6));
     bot.vx += (wvx - bot.vx) * accel;
     bot.vz += (wvz - bot.vz) * accel;
+    // Дальник и копейщик не уходят от кемпа: моб бросает погоню за MOB.leashDistance от своей точки
+    // спавна и встаёт, а бот стрелял бы в пустоту. Режем фактическую скорость (с инерцией), а не
+    // желаемую: касательный ход вдоль края иначе понемногу выносит бота наружу (sim/leash.ts).
+    if (mob && !raidBoss && (ranged || kiter)) {
+      [bot.vx, bot.vz] = leashCut(bot.vx, bot.vz, p.head.x, p.head.z, mob.homeX, mob.homeZ, MOB.leashDistance - BOT.campLeashMargin, strPhase(bot.id) < 0.5 ? -1 : 1);
+    }
     this.botStep(p, bot, dt);
 
     // В тушу босса (и любого моба) бот своим шагом не заходит — см. botStep/botBlockedByMobs;
