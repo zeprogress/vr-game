@@ -7177,8 +7177,8 @@ export class ZoneRoom extends Room<ZoneState> {
       if (this.bots.has(norm)) id = `bot:${norm}`;
     }
     if (!id) return;
-    // Открыть сбор раньше расписания — только админ; остальные лишь записываются в открытый.
-    const r = this.cat.join(id, nick, admin);
+    // Запись — как у всех, и у админа: в очередь по расписанию. Открыть раньше — только явно `!катакомбы open`.
+    const r = this.cat.join(id, nick, false);
     if (r) this.reply(`@${nick} ${r}`);
   }
 

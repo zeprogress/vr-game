@@ -12,6 +12,7 @@ import "@babylonjs/core/Meshes/Builders/planeBuilder";
 import "@babylonjs/core/Meshes/Builders/linesBuilder";
 
 import { AEGIS_NAME, attackPoints, bothHandsCls, bothHandsNote, FAV_MAX, qualityStars, qualityStarsShort, sharpPctOf, weaponDef, type WeaponClass, type WeaponTier } from "#shared/items";
+import { skillDamageText } from "#shared/skillDamage";
 import { armorIconKey, glyph, itemIcon, weaponIcon, type IconKey } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
@@ -385,9 +386,8 @@ export class WristMenu {
     for (const id of def.skills) {
       const sk = SKILLS2[id];
       const name = skillName(id, cls);
-      const dmg = sk.dmgMult > 0 && strike !== undefined
-        ? cls === "battlemage" ? `. Урон ×${sk.dmgMult} от интеллекта (сила удара ${strike})` : `. Урон ×${sk.dmgMult} от силы удара ${strike}`
-        : "";
+      const dmgText = strike !== undefined ? skillDamageText(id, cls, strike, live) : null;
+      const dmg = dmgText ? `. ${dmgText}` : "";
       const desc = `${skillDesc(id, cls, live)}${dmg}`;
       const on = this.skillChosen.includes(id);
       const wd = this.add({

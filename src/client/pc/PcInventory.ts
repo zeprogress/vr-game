@@ -1,4 +1,4 @@
-import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, HAMMER_SKILL, skillCooldownFor, skillDesc, skillName, SKILLS2, stepCost, type ClassId } from "#shared/classes2";
+import { ATTRS as A2, ATTR_INFO, attrEffect, CLASSES2, costRule, skillCooldownFor, skillDesc, skillName, stepCost, type ClassId } from "#shared/classes2";
 import { armorIconKey, glyph, skillIcon, weaponIcon } from "#shared/icons";
 import { ARMOR_PART_NAME, ARMOR_PARTS, type ArmorPart } from "#shared/armor";
 import { ATTR_LOOK, TIER_LOOK } from "#shared/look";
@@ -9,6 +9,7 @@ import { AEGIS_NAME, attackPointBonus, attackPointEligible, attackPointNext, att
 import type { PcEnchRow, PcInvActMsg, PcInvArmor, PcInvData, PcInvResult, PcInvWeapon, TradeItemView } from "#shared/net/messages";
 import { skinPicture } from "#shared/skins";
 import { ATTR_SHORT, gemName, parseGem, pcJewelBonus, RING, ringBonusText, ringLabel, ringName, ringResist, type PcInvJewels, type RingTier } from "#shared/jewels";
+import { skillDamageText } from "#shared/skillDamage";
 import { BAG_SORTS, bagPickItem, nextBagSort, sortBag, type BagSort } from "#shared/bagSort";
 import { gemHtml, RING_SLOT_SVG, ringHtml } from "#shared/jewelIcons";
 
@@ -1678,7 +1679,6 @@ export class PcInventory {
     // Откат и бонусы — как у сервера: атрибуты героя + прибавка от колец и камней.
     const live = { ...d.attrs, gb: d.gb };
     for (const id of def.skills) {
-      const sk = SKILLS2[id];
       const on = chosen.has(id);
       const row = div(`pcinv-arow pcinv-skill${on ? " on" : ""}`);
       const ic = div("pcinv-aic");
@@ -1690,8 +1690,11 @@ export class PcInventory {
       txt.append(
         nm,
         div("pcinv-small", skillDesc(id, cls, live)),
-        // Урон умения — множитель от силы удара героя; особые формулы — в описании.
-        ...(sk.dmgMult > 0 ? [div("pcinv-small dim", `Урон ×${sk.dmgMult} ${cls === "battlemage" ? `от интеллекта (+${Math.round(HAMMER_SKILL.intPer * 1000) / 10}% за очко)` : "от силы удара"}${sk.hits > 1 ? ` за удар · ударов за применение: ${sk.hits}` : ""}`)] : []),
+        // Урон умения — уже посчитанный от силы удара героя (те же формулы, что у сервера).
+        ...(() => {
+          const t = d.strike !== undefined ? skillDamageText(id, cls, d.strike, live) : null;
+          return t ? [div("pcinv-small dim", t)] : [];
+        })(),
       );
       const b = document.createElement("button");
       b.className = "pcinv-abtn";
