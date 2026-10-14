@@ -215,7 +215,7 @@ export function parseTradeList(raw: string): TradeItem[] | null {
 export function itemView(t: Taken): TradeItemView {
   if (t.k === "weapon") return { k: "weapon", name: instanceName(t.w), n: 1, cls: t.w.cls, tier: t.w.tier };
   if (t.k === "ring") return { k: "ring", name: ringName(t.r), n: 1, tier: t.r.tier, gems: [...t.r.gems] };
-  if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part };
+  if (t.k === "armor") return { k: "armor", name: armorLabel(t.a), n: 1, part: t.a.part, tier: t.a.tier };
   if (t.k === "gem") return { k: "gem", name: gemName(t.key), n: t.n, key: t.key };
   return { k: "bag", name: ITEMS[t.item].name, n: t.n, item: t.item };
 }

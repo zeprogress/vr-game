@@ -1570,14 +1570,15 @@ export class WristMenu {
       act: () => this.openArmorPopup(a),
     });
     const st = this.styleFor(wd);
-    ctx.fillStyle = st.fill || TIER_BG.base;
+    // Тир — как у оружия: рамка, фон, значок и подпись части окрашены по тиру (золотая — золотым).
+    ctx.fillStyle = st.fill || TIER_BG[a.tier];
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = st.stroke || TIER_COLOR.base;
+    ctx.strokeStyle = st.stroke || TIER_COLOR[a.tier];
     ctx.lineWidth = st.stroke ? st.lw : 1.5;
     ctx.strokeRect(x, y, w, h);
-    this.drawIconAt(ctx, armorIconKey(a.part), x + 6, y + 22, 52, TIER_COLOR.base);
+    this.drawIconAt(ctx, armorIconKey(a.part, a.tier), x + 6, y + 22, 52, TIER_COLOR[a.tier]);
     ctx.font = "bold 17px system-ui, sans-serif";
-    ctx.fillStyle = TIER_COLOR.base;
+    ctx.fillStyle = TIER_COLOR[a.tier];
     ctx.fillText(this.shortName(ARMOR_PART_NAME[a.part]), x + 62, y + 8);
     // Оценка — в левом верхнем углу, как у оружия (числом).
     ctx.font = "bold 18px system-ui, sans-serif";
@@ -1619,7 +1620,7 @@ export class WristMenu {
       act: () => send("fav"),
     });
     if (!worn) {
-      buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(a.label, TIER_COLOR.base, `a:${a.id}`, `arm:${a.id}`) });
+      buttons.push({ id: "pop:gift", label: "🎁 Подарить…", hint: "герою рядом, предмет уйдёт сразу", color: "#ffd166", act: () => this.openGiftPopup(a.label, TIER_COLOR[a.tier], `a:${a.id}`, `arm:${a.id}`) });
       if (!a.fav) buttons.push({ id: "pop:drop", label: "Скинуть на землю", color: "#ffd166", act: () => send("drop") });
       if (!a.fav) buttons.push({ id: "pop:scrap", label: "Разобрать", hint: `+${a.scrap} лома, предмет исчезнет`, color: "#ff9a9a", act: () => send("scrap") });
     }

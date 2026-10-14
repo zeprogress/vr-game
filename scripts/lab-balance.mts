@@ -1297,6 +1297,7 @@ if (ONLY.has("stuck")) {
   const SEC = Number(arg("--sec") ?? 240);
   say(`\n── Застревания: лагерь «${ELITE_MOBS[campType]?.name ?? campType}», ${LOADOUTS.length} ботов, ${SEC} с ──`);
   const { room, step, meter, t } = makeRoom((m) => m.campType === campType);
+  say(`  мобов в лагере: ${room.sim.mobs.size}, вожаков: ${[...room.sim.mobs.values()].filter((m: any) => m.champ).length}`);
   const lvl = ELITE_MOBS[campType]?.level ?? 33;
   const bots = LOADOUTS.map((load, i) => {
     const x = addBot(room, `st${i}`, { lvl, load }, campType);

@@ -239,7 +239,7 @@ export function drawEnchant(
     return;
   }
   const rows = w ? w.ench : (arm?.ench ?? []);
-  const tierColor = TIER_LOOK[(w?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
+  const tierColor = TIER_LOOK[(w?.tier ?? arm?.tier ?? "base") as WeaponTier]?.color ?? VR_UI.text;
   let x = ui.text(w ? w.name : (arm?.label ?? ""), PAD, 110, 36, tierColor, 800);
   if (inHand) {
     ui.rect(PAD + x + 16, 114, 110, 34, "#8fd18f", 6);

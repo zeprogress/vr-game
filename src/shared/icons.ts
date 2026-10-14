@@ -78,6 +78,12 @@ export const ICONS = {
   "a.gloves": { emoji: "🧤", img: "armor/gloves_base.png" },
   "a.legs": { emoji: "👖", img: "armor/legs_base.png" },
   "a.boots": { emoji: "🥾", img: "armor/boots_base.png" },
+  // Золотой тир: золотой ряд атласа «Атлас фэнтезийных доспехов» (вырезан в public/icons/armor/*_gold.png).
+  "a.helm.gold": { emoji: "⛑️", img: "armor/helm_gold.png" },
+  "a.chest.gold": { emoji: "🦺", img: "armor/chest_gold.png" },
+  "a.gloves.gold": { emoji: "🧤", img: "armor/gloves_gold.png" },
+  "a.legs.gold": { emoji: "👖", img: "armor/legs_gold.png" },
+  "a.boots.gold": { emoji: "🥾", img: "armor/boots_gold.png" },
   /** Лом — кусочки металла (шестерёнка путала). */
   "i.scrap": {
     emoji: "🔩",
@@ -251,8 +257,12 @@ export function weaponIcon(cls: WeaponClass | string | null | undefined, aegis =
   return k in ICONS ? (k as IconKey) : "w.fist";
 }
 
-/** Значок части брони (обычный тир — верхний ряд атласа; ключи a.helm, a.chest, …). */
-export function armorIconKey(part: ArmorPart): IconKey {
+/** Значок части брони по тиру: обычный — a.helm, золотой — a.helm.gold (как у оружия по грейду). */
+export function armorIconKey(part: ArmorPart, tier?: string | null): IconKey {
+  if (tier && tier !== "base") {
+    const g = `a.${part}.${tier}`;
+    if (g in ICONS) return g as IconKey;
+  }
   return `a.${part}` as IconKey;
 }
 

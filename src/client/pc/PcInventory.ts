@@ -566,7 +566,7 @@ export class PcInventory {
     }
     for (const a of d.armor ?? []) {
       if (d.armorWorn?.[a.part] === a.id || a.fav) continue; // надетое и ★ в обмен не идут
-      out.push({ code: `a:${a.id}`, label: a.label, max: 1, stack: false, view: { k: "armor", name: a.label, n: 1, part: a.part } });
+      out.push({ code: `a:${a.id}`, label: a.label, max: 1, stack: false, view: { k: "armor", name: a.label, n: 1, part: a.part, tier: a.tier } });
     }
     const j = d.jewels;
     if (j) {
@@ -594,7 +594,7 @@ export class PcInventory {
     if (it.k === "weapon") setIconEl(box, weaponIcon(it.cls ?? "sword", false, it.tier ?? "base"));
     else if (it.k === "ring") box.innerHTML = ringHtml((it.tier ?? "base") as RingTier, it.gems ?? []);
     else if (it.k === "gem") box.innerHTML = gemHtml(it.key ?? "");
-    else if (it.k === "armor" && it.part) setIconEl(box, armorIconKey(it.part));
+    else if (it.k === "armor" && it.part) setIconEl(box, armorIconKey(it.part, it.tier));
     else box.innerHTML = iconHtml(`i.${it.item ?? "scrap"}` as Parameters<typeof iconHtml>[0]);
     return box;
   }
@@ -1513,9 +1513,9 @@ export class PcInventory {
     const a = (d.armor ?? []).find((x) => x.id === id);
     if (!a) return false;
     const worn = d.armorWorn?.[a.part] === a.id;
-    const ico = div("pcinv-cell huge t-base");
-    setIconEl(ico, armorIconKey(a.part));
-    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], a.tier === "gold" ? "t-gold" : "t-base", `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
+    const ico = div(`pcinv-cell huge t-${a.tier}`);
+    setIconEl(ico, armorIconKey(a.part, a.tier));
+    this.cardHead(head, ico, ARMOR_PART_NAME[a.part], `t-${a.tier}`, `Броня · оценка <b>${qualityStarsShort(a.pts, 1)}</b>`, worn ? "надета" : "", [div("pcinv-tipaff", a.label)]);
     this.enchRows(body, a.id, a.ench, a.ench.map((r) => r.label), d.scrap);
     this.resultLine(body);
     body.append(div("pcinv-hint", "Чем ближе стат к максимуму — тем дороже и меньше шанс. При неудаче лом сгорает. Надетую броню можно точить на месте."));
@@ -1900,8 +1900,8 @@ export class PcInventory {
 
   /** Броня в сумке: значок части и значение стата. Клик — меню, перетащить — на слот, ПКМ — надеть. */
   private armorCell(a: PcInvArmor): HTMLDivElement {
-    const c = div(`pcinv-cell t-base${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}`);
-    setIconEl(c, armorIconKey(a.part));
+    const c = div(`pcinv-cell t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}`);
+    setIconEl(c, armorIconKey(a.part, a.tier));
     c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
     // Как у оружия и колец: ★ видна у избранного; на телефоне пустую не показываем.
     if (!this.hooks.touch || a.fav) c.append(this.favStar(!!a.fav, () => this.toggleArmorFav(a.id)));
@@ -1910,7 +1910,7 @@ export class PcInventory {
     c.addEventListener("dragstart", (e) => this.startDrag(e, { kind: "armor", id: a.id }));
     this.touchSrc.set(c, { kind: "armor", id: a.id });
     c.addEventListener("dragend", () => this.endDrag());
-    c.addEventListener("mouseenter", () => this.textTip(c, a.label, `Надевается в слот: ${ARMOR_PART_NAME[a.part]}`));
+    c.addEventListener("mouseenter", () => this.textTip(c, a.label, `Надевается в слот: ${ARMOR_PART_NAME[a.part]}`, a.tier));
     c.addEventListener("mouseleave", () => this.hideTip());
     c.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -1928,13 +1928,13 @@ export class PcInventory {
     const interactive = !!this.hooks.armorAct;
     const id = d.armorWorn?.[part];
     const a = id ? byId.get(id) : undefined;
-    const c = div(a ? `pcinv-cell big t-base${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}` : "pcinv-cell big locked");
-    setIconEl(c, armorIconKey(part));
+    const c = div(a ? `pcinv-cell big t-${a.tier}${this.card?.kind === "armor" && this.card.id === a.id ? " sel" : ""}` : "pcinv-cell big locked");
+    setIconEl(c, armorIconKey(part, a?.tier));
     if (a) {
       c.append(div("pcinv-q", qualityStarsShort(a.pts, 1)));
       if (a.fav) c.append(div("pcinv-fav on", glyph("ui.fav")));
       c.addEventListener("mouseenter", () =>
-        this.textTip(c, a.label, interactive ? `Надета: ${ARMOR_PART_NAME[part]}. Клик — карточка (заточка, снять)` : `Надета: ${ARMOR_PART_NAME[part]}`),
+        this.textTip(c, a.label, interactive ? `Надета: ${ARMOR_PART_NAME[part]}. Клик — карточка (заточка, снять)` : `Надета: ${ARMOR_PART_NAME[part]}`, a.tier),
       );
       c.addEventListener("mouseleave", () => this.hideTip());
       if (interactive) {
@@ -2025,9 +2025,10 @@ export class PcInventory {
   }
 
   /** Простая подсказка (название + текст) у ячейки — сразу, без задержки браузерного title. */
-  private textTip(anchor: HTMLElement, title: string, body: string): void {
+  /** Подсказка с заголовком; `tier` — цвет заголовка по тиру (как у оружия). */
+  private textTip(anchor: HTMLElement, title: string, body: string, tier?: string): void {
     this.tip.innerHTML = "";
-    this.tip.append(div("pcinv-name", title), div("pcinv-small", body));
+    this.tip.append(div(`pcinv-name${tier ? ` t-${tier}` : ""}`, title), div("pcinv-small", body));
     const r = anchor.getBoundingClientRect();
     this.tip.style.display = "block";
     const tw = this.tip.offsetWidth;
