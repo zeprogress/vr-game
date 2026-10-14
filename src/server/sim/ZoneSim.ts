@@ -850,6 +850,15 @@ export class Mob {
     this.stunnedT = Math.max(this.stunnedT, sec);
   }
 
+  /**
+   * Угроза: сколько урона каждый герой нанёс мобу за последние ~30 с (затухает). Моб переключается на того,
+   * кто бьёт больше всех; агр от умений (taunt) — главнее, его не трогаем.
+   */
+  readonly threat = new Map<string, number>();
+  addThreat(by: string, dmg: number): void {
+    if (this.dead || dmg <= 0) return;
+    this.threat.set(by, (this.threat.get(by) ?? 0) + dmg);
+  }
   /** «Боевой клич»: кого моб обязан атаковать и сколько ещё секунд. */
   private tauntId = "";
   private tauntT = 0;
@@ -1063,6 +1072,15 @@ export class Mob {
     if (this.regen > 0 && !this.dead && this.hp < this.maxHp) {
       this.hp = Math.min(this.maxHp, this.hp + this.maxHp * this.regen * dt);
     }
+    // Угроза затухает (половина за 30 с): старый урон перестаёт определять цель.
+    if (this.threat.size) {
+      const k = Math.pow(0.5, dt / 30);
+      for (const [id, v] of this.threat) {
+        const nv = v * k;
+        if (nv < 1) this.threat.delete(id);
+        else this.threat.set(id, nv);
+      }
+    }
     if (this.dead) {
       this.deadT += dt;
       this.y -= dt * 0.6;
@@ -1084,6 +1102,10 @@ export class Mob {
         : Infinity;
     let np: SimPlayer | null = null;
     let best = Infinity;
+    // Угроза: тот, кто нанёс больше всех (в радиусе поводка). Текущую цель держим, пока её урон не меньше 80% лучшего.
+    let topP: SimPlayer | null = null;
+    let topT = 0;
+    let curP: SimPlayer | null = null;
     for (const p of players) {
       if ((p.x - this.homeX) ** 2 + (p.z - this.homeZ) ** 2 > bossLeash * bossLeash) continue;
       const d = (p.x - this.x) ** 2 + (p.z - this.z) ** 2;
@@ -1091,6 +1113,19 @@ export class Mob {
         best = d;
         np = p;
       }
+      const t = this.threat.get(p.sessionId) ?? 0;
+      if (t > topT) {
+        topT = t;
+        topP = p;
+      }
+      if (p.sessionId === this.targetId) curP = p;
+    }
+    if (topP && (!curP || (this.threat.get(curP.sessionId) ?? 0) < topT * 0.8)) {
+      np = topP;
+      best = (topP.x - this.x) ** 2 + (topP.z - this.z) ** 2;
+    } else if (curP && topP) {
+      np = curP;
+      best = (curP.x - this.x) ** 2 + (curP.z - this.z) ** 2;
     }
     // «Боевой клич»: провокатор рядом — бьём его, кто бы ни был ближе.
     if (this.tauntT > 0 && this.tauntId) {
@@ -2071,6 +2106,7 @@ export class Mob {
   }
 
   private respawn(): void {
+    this.threat.clear(); // после возрождения старая угроза не тянет к прежнему обидчику
     const a = Math.random() * Math.PI * 2;
     const r = 3 + Math.random() * MOB.wanderRadius;
     this.x = this.homeX + Math.cos(a) * r;
@@ -3130,6 +3166,7 @@ export class ZoneSim {
     const hpBefore = m.hp;
     const killed = m.applyHit(dmg, dx, dz, dot);
     const dealt = Math.max(0, hpBefore - m.hp);
+    if (attacker) m.addThreat(attacker, dealt);
     // Пугало: копим сессию урона бойца (новый боец или пауза дольше idleSec — заново).
     // У каждого пугала (главного и напарников) — своё табло DPS.
     if ((m.scarecrow || m.practice) && attacker && dealt > 0) {
