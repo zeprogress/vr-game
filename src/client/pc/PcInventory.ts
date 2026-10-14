@@ -119,6 +119,8 @@ export class PcInventory {
   private pendingResult: PcInvResult | null = null;
   private hammerDone = false;
   private lastResult: { text: string; up: boolean } | null = null;
+  /** Таймер, который убирает всплывашку итога в сумке (сама гаснет через RESULT_TOAST_MS). */
+  private resultTimer: ReturnType<typeof setTimeout> | null = null;
   private xpFill: HTMLDivElement | null = null;
   private xpText: HTMLDivElement | null = null;
   private xpLv: HTMLDivElement | null = null;
@@ -418,12 +420,32 @@ export class PcInventory {
   onResult(r: PcInvResult): void {
     if (!r.text) return; // «Понятно» у подарков — без строки итога
     if (!this.forging) {
-      this.lastResult = { text: r.text, up: r.ok };
+      const res = { text: r.text, up: r.ok };
+      this.lastResult = res;
+      this.armResultTimer(res);
       if (this.isOpen) this.render();
       return;
     }
     this.pendingResult = r;
     if (this.hammerDone) this.reveal();
+  }
+
+  /** Итог в сумке (соединение камней, разбор…) — всплывашка, гаснет сама; в открытой карточке итог остаётся. */
+  private armResultTimer(res: { text: string; up: boolean }): void {
+    if (this.resultTimer) clearTimeout(this.resultTimer);
+    this.resultTimer = setTimeout(() => {
+      this.resultTimer = null;
+      if (this.lastResult !== res || this.card) return;
+      this.lastResult = null;
+      if (this.isOpen) this.render();
+    }, RESULT_TOAST_MS);
+  }
+
+  private dropBagResult(): void {
+    if (this.resultTimer) clearTimeout(this.resultTimer);
+    this.resultTimer = null;
+    this.lastResult = null;
+    if (this.isOpen) this.render();
   }
 
   // ---------------- отрисовка ----------------
@@ -998,7 +1020,16 @@ export class PcInventory {
     });
     wrapG.append(grid, more);
     p.append(wrapG);
-    if (!this.card && this.lastResult) p.append(div(`pcinv-result ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text));
+    // Итог — всплывашкой поверх низа сумки (не раздвигает сетку); нажатие — закрыть, иначе гаснет сама.
+    if (!this.card && this.lastResult) {
+      const t = div(`pcinv-result toast ${this.lastResult.up ? "up" : "down"}`, this.lastResult.text);
+      t.title = this.lastResult.text;
+      t.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        this.dropBagResult();
+      });
+      wrapG.append(t);
+    }
 
     // Низ: наковальня (перетащи — в лом) и общие кнопки по фильтру.
     const foot = div("pcinv-bagf");
@@ -2165,6 +2196,9 @@ const CUT = (k: string): string =>
 /** Кнопка с острыми боками. */
 const HEX = (k: string): string => `polygon(${k} 0,calc(100% - ${k}) 0,100% 50%,calc(100% - ${k}) 100%,${k} 100%,0 50%)`;
 /** Филигрань угла панели (левый верхний; остальные — отражением). */
+/** Сколько висит всплывашка итога в сумке, мс. */
+const RESULT_TOAST_MS = 4000;
+
 const ORN_SVG =
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 26 26" fill="none" stroke-linecap="round">` +
   // тонкая вторая линия вдоль среза угла (внутри рамки) и маленький завиток — как в референсе, без навязчивости
@@ -2344,6 +2378,10 @@ ${["gold", "legendary", "ruby"].map(tier).join("\n")}
 .pcinv-result { margin-top:9px; padding:7px 10px; font-size:12.5px; border:1px solid; }
 .pcinv-result.up { color:#a9f0b4; background:rgba(40,110,60,.18); border-color:rgba(90,190,120,.3); }
 .pcinv-result.down { color:#ffb0a6; background:rgba(140,40,40,.18); border-color:rgba(220,90,80,.3); }
+.pcinv-result.toast { position:absolute; left:8px; right:8px; bottom:8px; margin:0; z-index:6; cursor:pointer; line-height:1.35; max-height:calc(3 * 1.35em + 14px); overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; box-shadow:0 4px 14px rgba(0,0,0,.45); animation:pcinvToast .18s ease-out; }
+.pcinv-result.toast.up { background:rgba(22,46,30,.96); }
+.pcinv-result.toast.down { background:rgba(54,22,22,.96); }
+@keyframes pcinvToast { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
 /* ---------- карточка предмета ---------- */
 .pcinv-card { position:absolute; z-index:5; top:12px; bottom:12px; left:calc(16px + var(--sw) + 6px); right:calc(16px + var(--sw) + 6px);
