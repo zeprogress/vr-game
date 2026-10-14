@@ -427,7 +427,8 @@ export class NetMobs {
       s.mobLevel,
     );
     m.st = s;
-    m.farLodOn = this.lazy; // упрощённая модель вдали — только для игроков, не для спектатора
+    // Упрощённая модель вдали — и у игроков, и в эфире (там дальше: Mob.lodFarMul, см. Spectator).
+    m.farLodOn = true;
     this.mobs.set(id, m);
     this.targets.push(m);
   }

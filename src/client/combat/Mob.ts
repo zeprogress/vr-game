@@ -37,6 +37,7 @@ import { trackMobMaterial } from "./mobLightTune";
 import { daylightAt } from "../world/DayTime";
 import { LOADOUT } from "../config/loadout";
 import { sharedMobMaterial } from "./mobMaterials";
+import { instanceSlime, type SlimeInstances } from "./slimeInstances";
 import type { WeaponKind } from "#shared/combat";
 import type { Hittable, HitReporter } from "./Hittable";
 import type { Sfx } from "../audio/Sfx";
@@ -366,6 +367,11 @@ function lodBuild(scene: Scene, key: string, rigMeshes: AbstractMesh[], root: Tr
     mat.emissiveColor = g.mat.emissiveColor?.clone() ?? new Color3(0.2, 0.2, 0.2);
     mat.specularColor = new Color3(0, 0, 0);
     mat.backFaceCulling = false;
+    // Полупрозрачные слизни и вдали полупрозрачные (одним слоем — изнанку не рисуем).
+    if (g.mat.alpha < 1) {
+      mat.alpha = g.mat.alpha;
+      mat.backFaceCulling = true;
+    }
     mesh.material = mat;
     mesh.isPickable = false;
     mesh.isVisible = false; // инстансы остаются видимыми
@@ -827,8 +833,14 @@ export class Mob implements Hittable {
       recolorMonster(rig.root, def?.tint ? new Color3(...def.tint) : undefined, false, this.modelName as ModelName);
       if (def?.tint) this.lodTint = def.tint;
     } else {
+      // Имена частей (body_primary / body_secondary / eye_color) — до перекраски: по ним общий источник инстансов.
+      const parts = rig.meshes.map((m) => m.material?.name ?? "");
       recolorRig(rig, this.kind, this.tint, this.bodyAlpha);
       this.lodTint = this.tint;
+      // Слизни и плевуны — инстансами (одна отрисовка на часть для всех); Багровый один — своими мешами.
+      if (this.kind === "slime" || this.kind === "spitter") {
+        this.slimeInst = instanceSlime(this.scene, this.kind, rig.meshes, parts, this.tint, this.bodyAlpha);
+      }
     }
 
     // Мобы 40 ур. (свой снаряд, прыжок или сгенерированная модель с клипами): удар — клип модели, а не только «замах» телом.
@@ -877,6 +889,8 @@ export class Mob implements Hittable {
   }
 
   private baseModelScale = 1;
+  /** Слизень/плевун на общих инстансах (см. slimeInstances.ts): прозрачность — через цвет инстанса. */
+  private slimeInst: SlimeInstances | null = null;
   /** На сколько выше корня начинается модель (у летунов), локальные единицы — сюда поднимаем огонь. */
   private burnBaseY = 0;
 
@@ -1295,6 +1309,8 @@ export class Mob implements Hittable {
 
   /** Дальше этого (м) живого моба рисуем сферой вместо модели со скелетом. */
   private static readonly LOD_FAR = 55;
+  /** Множитель дальности упрощённой копии: эфир держит живые модели дальше (Spectator ставит 1.6). */
+  static lodFarMul = 1;
   private static readonly LOD_FAR_FLYER = 24;
   /** Тяжёлые модели (40+ костей и 3–4 тыс. вершин: орк, кактородо, жаба, грибной владыка, шипобрюх) переходят на дальний LOD раньше. */
   private static readonly LOD_FAR_HEAVY = 30;
@@ -1340,9 +1356,10 @@ export class Mob implements Hittable {
       return;
     }
     // Летающие мелкие мобы (пчёлы) вдали неразличимы — переходят на общий LOD-батч гораздо раньше.
-    const far = this.flyer ? Mob.LOD_FAR_FLYER : this.heavy ? Mob.LOD_FAR_HEAVY : Mob.LOD_FAR;
+    const far = (this.flyer ? Mob.LOD_FAR_FLYER : this.heavy ? Mob.LOD_FAR_HEAVY : Mob.LOD_FAR) * Mob.lodFarMul;
     const lim = this.lodFar ? far - 4 : far;
-    const d2 = (pos.x - cam.x) ** 2 + (pos.z - cam.z) ** 2;
+    // С высотой камеры: общий план эфира сверху (~100 м) — все мобы упрощённые.
+    const d2 = (pos.x - cam.x) ** 2 + (pos.y - cam.y) ** 2 + (pos.z - cam.z) ** 2;
     this.setFarLod(d2 > lim * lim);
   }
 
@@ -1358,10 +1375,12 @@ export class Mob implements Hittable {
   /** Моб в кадре и не слишком далеко — тогда анимацию стоит считать. */
   private animVisible(pos: Vector3, cam: Vector3): boolean {
     const dx = pos.x - cam.x;
+    const dy = pos.y - cam.y;
     const dz = pos.z - cam.z;
     const vr = !!(this.scene.activeCamera as { rigCameras?: unknown[] } | null)?.rigCameras?.length;
     const range = vr ? (this.heavy ? Mob.VR_ANIM_RANGE_HEAVY : Mob.VR_ANIM_RANGE) : Mob.ANIM_RANGE;
-    if (dx * dx + dz * dz > range * range) return false;
+    // С высотой камеры (общий план эфира сверху), в VR — по горизонтали, как было.
+    if (dx * dx + (vr ? 0 : dy * dy) + dz * dz > range * range) return false;
     return this.inFrustum(pos, 2 + 2.5 * this.scale);
   }
 
@@ -1433,7 +1452,9 @@ export class Mob implements Hittable {
   }
 
   private setBodyVisibility(v: number): void {
-    if (this.rig) {
+    if (this.slimeInst) {
+      this.slimeInst.setVisibility(v);
+    } else if (this.rig) {
       // Инстансы (неанимированные части модели) visibility игнорируют и ругаются
       // в консоль — трогаем только настоящие меши.
       for (const m of this.rig.meshes) if (!m.isAnInstance) m.visibility = v;

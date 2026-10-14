@@ -170,7 +170,7 @@ function axisNodes(lo: number, hi: number, fineLo: number, fineHi: number, step:
   return [...left.reverse(), ...nodes];
 }
 
-function buildPatch(scene: Scene, name: string, xs: number[], zs: number[]): Mesh {
+function buildPatch(scene: Scene, name: string, xs: number[], zs: number[]): { mesh: Mesh; grid: Grid } {
   const nx = xs.length - 1;
   const nz = zs.length - 1;
   const positions: number[] = [];
@@ -196,14 +196,102 @@ function buildPatch(scene: Scene, name: string, xs: number[], zs: number[]): Mes
 
   const normals: number[] = [];
   VertexData.ComputeNormals(positions, indices, normals);
+  const colors = bakeAo(positions, row);
   const mesh = new Mesh(name, scene);
   const vd = new VertexData();
   vd.positions = positions;
   vd.indices = indices;
   vd.normals = normals;
   vd.uvs = uvs;
-  vd.colors = bakeAo(positions, row);
+  vd.colors = colors;
   vd.applyToMesh(mesh);
+  return { mesh, grid: { row, nx, nz, positions, normals, uvs, colors } };
+}
+
+/** Полная сетка земли (вершины, нормали, AO) — из неё режутся куски для отрисовки. */
+interface Grid {
+  row: number;
+  nx: number;
+  nz: number;
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+  colors: number[];
+}
+
+/**
+ * Земля для отрисовки — кусками CHUNK×CHUNK клеток с тремя уровнями детализации (полный шаг, ×2, ×4 —
+ * по расстоянию до камеры, штатный LOD Babylon) и отсечением кусков вне кадра. Раньше вся земля
+ * (~170 тыс. треугольников) рисовалась одним мешем в каждом кадре — и под ногами, и за спиной, и вдали.
+ * Нормали и AO берутся из полной сетки (на стыках кусков свет одинаковый), щели между кусками разной
+ * детализации закрывает «юбка» — полоса вниз по краю куска.
+ */
+const CHUNK = 32;
+/** Дальше этого (м, до центра куска) — каждая 2-я вершина, дальше LOD2 — каждая 4-я. */
+const LOD1_DIST = 90;
+const LOD2_DIST = 170;
+/** Глубина «юбки» по краю куска, м. */
+const SKIRT = 1.5;
+
+function chunkMesh(scene: Scene, name: string, g: Grid, ix0: number, ix1: number, iz0: number, iz1: number, stride: number): Mesh {
+  const pick = (a: number, b: number): number[] => {
+    const out: number[] = [];
+    for (let i = a; i < b; i += stride) out.push(i);
+    out.push(b);
+    return out;
+  };
+  const ixs = pick(ix0, ix1);
+  const izs = pick(iz0, iz1);
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const add = (src: number, dy = 0): number => {
+    positions.push(g.positions[src * 3], g.positions[src * 3 + 1] + dy, g.positions[src * 3 + 2]);
+    normals.push(g.normals[src * 3], g.normals[src * 3 + 1], g.normals[src * 3 + 2]);
+    uvs.push(g.uvs[src * 2], g.uvs[src * 2 + 1]);
+    colors.push(g.colors[src * 4], g.colors[src * 4 + 1], g.colors[src * 4 + 2], g.colors[src * 4 + 3]);
+    return positions.length / 3 - 1;
+  };
+  const w = ixs.length;
+  for (const iz of izs) for (const ix of ixs) add(iz * g.row + ix);
+  for (let r = 0; r < izs.length - 1; r++) {
+    for (let c = 0; c < w - 1; c++) {
+      const a = r * w + c;
+      indices.push(a, a + 1, a + w, a + 1, a + w + 1, a + w);
+    }
+  }
+  // «Юбка»: край куска, опущенный на SKIRT, в обе стороны (закрывает щель у соседа другой детализации).
+  const edge = (srcs: number[], locals: number[]): void => {
+    const low = srcs.map((s) => add(s, -SKIRT));
+    for (let i = 0; i < locals.length - 1; i++) {
+      const a = locals[i];
+      const b = locals[i + 1];
+      const c = low[i];
+      const d = low[i + 1];
+      indices.push(a, b, c, b, d, c, a, c, b, b, c, d);
+    }
+  };
+  const row0 = ixs.map((ix) => izs[0] * g.row + ix);
+  const rowN = ixs.map((ix) => izs[izs.length - 1] * g.row + ix);
+  const col0 = izs.map((iz) => iz * g.row + ixs[0]);
+  const colN = izs.map((iz) => iz * g.row + ixs[w - 1]);
+  edge(row0, ixs.map((_, c) => c));
+  edge(rowN, ixs.map((_, c) => (izs.length - 1) * w + c));
+  edge(col0, izs.map((_, r) => r * w));
+  edge(colN, izs.map((_, r) => r * w + w - 1));
+  const mesh = new Mesh(name, scene);
+  const vd = new VertexData();
+  vd.positions = positions;
+  vd.indices = indices;
+  vd.normals = normals;
+  vd.uvs = uvs;
+  vd.colors = colors;
+  vd.applyToMesh(mesh);
+  mesh.isPickable = false;
+  mesh.checkCollisions = false;
+  mesh.freezeWorldMatrix();
   return mesh;
 }
 
@@ -239,11 +327,39 @@ export function createTerrain(scene: Scene, _grassDensity = 1): Terrain {
   const fz1 = Math.max(pr, SCULPT_BOUNDS.z1);
   const xs = axisNodes(-far, far, fx0, fx1, step, step * 8, 30);
   const zs = axisNodes(-far, far, fz0, fz1, step, step * 8, 30);
-  const mesh = buildPatch(scene, "terrain", xs, zs);
+  // Полная сетка — невидимая: столкновения, пол VR, высота (сами её не рисуем, см. chunkMesh).
+  const { mesh, grid } = buildPatch(scene, "terrain", xs, zs);
   mesh.checkCollisions = true;
   mesh.isPickable = true;
   mesh.material = mat;
+  mesh.isVisible = false;
   mesh.freezeWorldMatrix();
+  // ?terrainlod=0 — землю одним мешем, как раньше (сравнение на стенде).
+  if (new URLSearchParams(location.search).get("terrainlod") === "0") {
+    mesh.isVisible = true;
+  } else {
+    for (let cz = 0; cz < grid.nz; cz += CHUNK) {
+      for (let cx = 0; cx < grid.nx; cx += CHUNK) {
+        const x1 = Math.min(grid.nx, cx + CHUNK);
+        const z1 = Math.min(grid.nz, cz + CHUNK);
+        const name = `terrain_${cx / CHUNK}_${cz / CHUNK}`;
+        const lod0 = chunkMesh(scene, name, grid, cx, x1, cz, z1, 1);
+        const lod1 = chunkMesh(scene, `${name}_l1`, grid, cx, x1, cz, z1, 2);
+        const lod2 = chunkMesh(scene, `${name}_l2`, grid, cx, x1, cz, z1, 4);
+        for (const m of [lod0, lod1, lod2]) m.material = mat;
+        // Гора, водопад и озеро (слепок SCULPT_BOUNDS) — крутой рельеф и главная декорация: упрощаем вдвое дальше,
+        // иначе склоны издали заметно гранятся.
+        const bx0 = xs[cx];
+        const bx1 = xs[x1];
+        const bz0 = zs[cz];
+        const bz1 = zs[z1];
+        const sculpt = bx1 > SCULPT_BOUNDS.x0 && bx0 < SCULPT_BOUNDS.x1 && bz1 > SCULPT_BOUNDS.z0 && bz0 < SCULPT_BOUNDS.z1;
+        const k = sculpt ? 2 : 1;
+        lod0.addLODLevel(LOD1_DIST * k, lod1);
+        lod0.addLODLevel(LOD2_DIST * k, lod2);
+      }
+    }
+  }
 
   // Заявка: земля — тоже весь экран (см. GrassField) — днём хватает солнца,
   // ночью до трёх живых огней. Меняем только на смене фазы (пересборка шейдера).

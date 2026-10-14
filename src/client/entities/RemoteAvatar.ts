@@ -378,7 +378,12 @@ export class RemoteAvatar implements Hittable {
       this.swingClip = name;
     }
     const g = this.botRig?.anims.get(name);
-    if (g) {
+    if (g && this.animFrozen) {
+      // Анимация бота стоит (вне кадра / далеко): клип не запускаем — запуск группы создаёт аниматоры
+      // на каждую кость (~1 мс на замах; бот в лагере машет без остановки). Окно замаха — как обычно.
+      this.swingRate = meleeAnimRate(this.level);
+      this.swingUntil = this.now + ((g.to - g.from) / 60 / this.swingRate) * 1000;
+    } else if (g) {
       const rate = meleeAnimRate(this.level);
       this.swingRate = rate;
       // Пере-замах, пока предыдущий клип ещё играет: Babylon .start() на уже
@@ -418,6 +423,7 @@ export class RemoteAvatar implements Hittable {
   private playOneShot(clip: string, durationMs: number, speed = 1): number {
     const g = this.botRig?.anims.get(clip);
     if (!g) return 0;
+    if (this.animFrozen) return this.now + durationMs; // анимация стоит — клип не запускаем (см. playSwing)
     g.start(false, speed, g.from, g.to, false);
     g.setWeightForAllAnimatables(1);
     this.animW.set(clip, 1);
@@ -1136,9 +1142,11 @@ export class RemoteAvatar implements Hittable {
       return dx * dx + dz * dz > RemoteAvatar.VR_ANIM_RANGE * RemoteAvatar.VR_ANIM_RANGE;
     }
     if (cp) {
+      // С высотой камеры: сверху (общий план эфира, ~100 м) герои — точки, анимировать их незачем.
       const dx = p.x - cp.x;
+      const dy = p.y - cp.y;
       const dz = p.z - cp.z;
-      if (dx * dx + dz * dz > RemoteAvatar.animRange * RemoteAvatar.animRange) return true;
+      if (dx * dx + dy * dy + dz * dz > RemoteAvatar.animRange * RemoteAvatar.animRange) return true;
     }
     const planes = this.root.getScene().frustumPlanes;
     if (!planes) return false;

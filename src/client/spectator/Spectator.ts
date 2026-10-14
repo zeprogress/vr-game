@@ -31,6 +31,7 @@ import { preloadWeaponModels } from "../items/weaponModels";
 import { RemoteAvatar } from "../entities/RemoteAvatar";
 import { WorldCrossFx, CROSS_GREEN, CROSS_ORANGE, CROSS_RED, HERO_MISS_DY, dmgNumberColor } from "../ui/WorldCrossFx";
 import { TowerArenaFx, type TowerLiveMob } from "./TowerArenaFx";
+import { Mob } from "../combat/Mob";
 import { HealAuraFx } from "../ui/HealAuraFx";
 import { SkillFx } from "../ui/SkillFx";
 import { EventBeacon } from "../world/EventBeacon";
@@ -346,6 +347,9 @@ export class Spectator {
     // Мобы и лут — переиспользуем менеджеры игры. Бой спектатору не нужен:
     // цели пустые, репорт попаданий — заглушка.
     preloadWeaponModels(this.scene);
+    // Упрощённая копия мобов в эфире — дальше, чем у игрока (88 м): в кадрах у земли мобы живые,
+    // на общем плане сверху (~100 м) — без скелетов (там они в несколько пикселей).
+    Mob.lodFarMul = 1.6;
     this.netMobs = new NetMobs(this.scene, this.sfx, [], () => {}, preset.leanMobs);
     // Мобы, снаряды и вспышки дальше SPEC_RANGE от камеры не рисуются.
     this.netMobs.fxRange = SPEC_RANGE;
