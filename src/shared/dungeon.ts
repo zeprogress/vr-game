@@ -603,7 +603,17 @@ export function dunRayClear(tx: number, ty: number, tz: number, dx: number, dy: 
   const STEP = 0.2;
   for (let s = STEP; s < len + STEP / 2; s += STEP) {
     const k = Math.min(s, len);
-    if (!dunInRooms(tx + dx * k, ty + dy * k, tz + dz * k)) return Math.max(0, k - STEP);
+    if (dunInRooms(tx + dx * k, ty + dy * k, tz + dz * k)) continue;
+    // Край — между шагами: уточняем делением пополам. Без этого длина луча прыгала шагами по 0.2 м,
+    // и камера у стены/свода дёргалась при каждом движении цели — казалось, что рывками идут все.
+    let lo = Math.max(0, k - STEP);
+    let hi = k;
+    for (let i = 0; i < 6; i++) {
+      const m = (lo + hi) / 2;
+      if (dunInRooms(tx + dx * m, ty + dy * m, tz + dz * m)) lo = m;
+      else hi = m;
+    }
+    return Math.max(0, lo - 0.1); // тот же средний запас от стены, что был при шаге 0.2
   }
   return len;
 }

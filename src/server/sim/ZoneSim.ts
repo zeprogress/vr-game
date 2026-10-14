@@ -2470,7 +2470,7 @@ export class ZoneSim {
           name: champ ? `Вожак — ${def.name}` : def.name,
           hp: def.hp * (champ?.hpMul ?? 1),
           dmgMul: def.dmgMul * (champ?.dmgMul ?? 1),
-          scaleMul: (def.scaleMul ?? 1) * (champ?.scaleMul ?? 1),
+          scaleMul: (def.scaleMul ?? 1) * (champ ? (def.champScaleMul ?? champ.scaleMul) : 1),
           xp: def.xp * (champ?.xpMul ?? 1),
         });
         this.mobs.set(m.id, m);

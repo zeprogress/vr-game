@@ -186,6 +186,8 @@ export interface EliteMobDef {
   xp: number;
   scaleMul: number;
   tint: readonly [number, number, number] | null;
+  /** Вожак этого вида крупнее общего вожака: множитель размера вместо QUEST.champ.scaleMul. */
+  champScaleMul?: number;
   /** true — моб парит и не прыгает (пчела): плавно рулит на высоте. */
   flying?: boolean;
   /**
@@ -662,8 +664,9 @@ export const ELITE_MOBS: Record<string, EliteMobDef> = {
   // (клипы Idle/Walk/Run/Attack/HitReact/Death).
   skeletonReaver: {
     model: "monSkeletonReaver", name: "Костяной жнец", blurb: "быстрый, сильные удары мечом, прикрывается щитом, прыжок-выпад с оглушением", level: 53, kind: "slime",
-    hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: null, // HP ×2 (2026-10-13): было 16000
+    hp: 32000, dmgMul: 26, xp: 10000000, scaleMul: 2.2, tint: [0.72, 0.86, 1.0], // HP ×2 (2026-10-13): было 16000; тон кости — без красно-жёлтого
     speedMul: 1.9, attackCooldown: 0.7, meleeReach: 2.7, critVulnMul: 1.2,
+    champScaleMul: 1.7, // вожак жнецов заметно крупнее обычного вожака (QUEST.champ — 1.3)
     leaper: true, leapCooldown: 20, walksOnly: true, gait: true, noSquash: true, legendaryChance: 0.05,
     ringMul: 10, // кольца: ×10 сверх элиты (2026-10-14)
   },
