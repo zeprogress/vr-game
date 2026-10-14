@@ -2,23 +2,162 @@ import type { Scene } from "@babylonjs/core/scene";
 import type { Node } from "@babylonjs/core/node";
 import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { DynamicTexture } from "@babylonjs/core/Materials/Textures/dynamicTexture";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Constants } from "@babylonjs/core/Engines/constants";
-import "@babylonjs/core/Meshes/Builders/planeBuilder";
 
-// Разрешение текстуры и кегль подняты в ~1.4 раза относительно физического
-// размера плашки (BASE_W растёт вместе с ними, planeW считается от их
-// отношения) — так плашку можно крупно масштабировать через setScale()
-// и она не мылится. Физический размер при этом прежний.
-const BASE_W = 448;
-const H = 208;
-const NAME_FONT = "bold 56px system-ui, sans-serif";
-const LVL_FONT = "36px system-ui, sans-serif";
+/**
+ * Плашки имён над мобами и героями — ОДНА общая текстура-атлас на много плашек (страница 2048×1024,
+ * 31 ячейка 512×128) и один материал на страницу. Раньше у каждой плашки была своя текстура и свой
+ * материал, а полоски HP/опыта рисовались в ту же текстуру: каждый удар по мобу перерисовывал холст
+ * с текстом и заново грузил текстуру в видеокарту. Теперь полоски — четырёхугольники в геометрии
+ * плашки (цвет — в вершинах, текстура — белая ячейка атласа): удар двигает 4 вершины, текст не трогает.
+ * Текст — с тёмной обводкой и мип-уровнями атласа: вдали не рябит и читается на «Низком» качестве.
+ */
+const SLOT_W = 512;
+const SLOT_H = 128;
+const PAGE_W = 2048;
+const PAGE_H = 1024;
+const COLS = PAGE_W / SLOT_W;
+const ROWS = PAGE_H / SLOT_H;
+/** Метров на пиксель ячейки — тот же физический размер букв, что у прежней плашки (0.9 м на 448 px). */
+const M_PER_PX = 0.9 / 448;
+const NAME_PX = 56;
+const LVL_PX = 36;
+const FONT_FAMILY = "system-ui, sans-serif";
 /** Метка бота зрителя перед ником — единственное отличие от живого игрока со стороны. */
 const BOT_MARK = "🤖 ";
+/** Не чаще этого (мс) грузим изменённую страницу атласа в видеокарту. */
+const FLUSH_MS = 100;
+
+// Геометрия полосок (м, от центра плашки) — те же места и пропорции, что у прежней плашки.
+const BAR_W = 0.595;
+const HP_Y = 0.121;
+const HP_H = 0.045;
+const HP_BG_H = 0.0675;
+const XP_Y = 0.192;
+const XP_H = 0.0207;
+const XP_BG_H = 0.0331;
+const BG_RGBA: [number, number, number, number] = [0.03, 0.03, 0.03, 0.65];
+const XP_RGBA: [number, number, number, number] = [0.62, 0.64, 0.68, 1];
+/** Половина прежней высоты плашки — от неё растёт setScale (нижним краем на месте). */
+const HALF_H = (0.9 * (208 / 448)) / 2;
+
+/** Четырёхугольники меша плашки (по 4 вершины): текст, фон и заливка опыта, фон и заливка HP. */
+const Q_TEXT = 0;
+const Q_XP_BG = 1;
+const Q_XP = 2;
+const Q_HP_BG = 3;
+const Q_HP = 4;
+const QUADS = 5;
+
+interface AtlasPage {
+  tex: DynamicTexture;
+  ctx: CanvasRenderingContext2D;
+  mat: StandardMaterial;
+  /** Тот же атлас поверх всего (setAlwaysOnTop) — отдельный материал, текстура общая. */
+  matTop: StandardMaterial | null;
+  free: number[];
+  dirty: boolean;
+}
+
+class TagAtlas {
+  private readonly pages: AtlasPage[] = [];
+  private lastFlush = 0;
+
+  constructor(private readonly scene: Scene) {
+    scene.onBeforeRenderObservable.add(() => this.flush());
+  }
+
+  alloc(): { page: AtlasPage; slot: number } {
+    let page = this.pages.find((p) => p.free.length > 0);
+    if (!page) page = this.addPage();
+    return { page, slot: page.free.pop()! };
+  }
+
+  release(page: AtlasPage, slot: number): void {
+    page.ctx.clearRect(...slotRect(slot));
+    page.free.push(slot);
+  }
+
+  topMaterial(page: AtlasPage): StandardMaterial {
+    if (!page.matTop) {
+      // Не clone(): он клонирует и DynamicTexture, а меш с клоном динамической текстуры не рисуется.
+      const m = tagMaterial(this.scene, `${page.mat.name}Top`, page.tex);
+      // disableDepthTest — не просто «рисуй после», а не сверяться с глубиной: иначе своё же
+      // тело моба (уже в буфере) закрывало бы плашку у высоких боссов.
+      m.depthFunction = Constants.ALWAYS;
+      m.disableDepthWrite = true;
+      page.matTop = m;
+    }
+    return page.matTop;
+  }
+
+  private addPage(): AtlasPage {
+    const n = this.pages.length;
+    // Мип-уровни + трилинейная выборка: мелкая далёкая плашка сглажена, а не «рябит» пикселями.
+    const tex = new DynamicTexture(`nameTagAtlas${n}`, { width: PAGE_W, height: PAGE_H }, this.scene, true, Texture.TRILINEAR_SAMPLINGMODE);
+    tex.hasAlpha = true;
+    tex.anisotropicFilteringLevel = 4;
+    tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+    tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+    const ctx = tex.getContext() as unknown as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, PAGE_W, PAGE_H);
+    // Белый квадрат в середине ячейки 0: из него берут цвет полоски (цвет — в вершинах). Только середина —
+    // иначе сглаживание подмешивало белое к краю соседней ячейки (тонкая линия у плашки).
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(SLOT_W / 2 - 16, SLOT_H / 2 - 16, 32, 32);
+    const mat = tagMaterial(this.scene, `nameTagMat${n}`, tex);
+    const free: number[] = [];
+    for (let i = COLS * ROWS - 1; i >= 1; i--) free.push(i);
+    const page: AtlasPage = { tex, ctx, mat, matTop: null, free, dirty: true };
+    this.pages.push(page);
+    return page;
+  }
+
+  private flush(): void {
+    const now = performance.now();
+    if (now - this.lastFlush < FLUSH_MS) return;
+    for (const p of this.pages) {
+      if (!p.dirty) continue;
+      p.dirty = false;
+      p.tex.update(true);
+      this.lastFlush = now;
+    }
+  }
+}
+
+/** Материал страницы: цвет = атлас × цвет вершин (текст — белые вершины, полоски — белая ячейка × цвет). */
+function tagMaterial(scene: Scene, name: string, tex: DynamicTexture): StandardMaterial {
+  const mat = new StandardMaterial(name, scene);
+  mat.diffuseTexture = tex;
+  mat.useAlphaFromDiffuseTexture = true;
+  mat.disableLighting = true;
+  // Без освещения diffuse даёт ноль: цвет = emissive (белый) × атлас × цвет вершин.
+  mat.diffuseColor = new Color3(0, 0, 0);
+  mat.emissiveColor = new Color3(1, 1, 1);
+  mat.specularColor = new Color3(0, 0, 0);
+  mat.backFaceCulling = false;
+  return mat;
+}
+
+const atlases = new WeakMap<Scene, TagAtlas>();
+function atlasOf(scene: Scene): TagAtlas {
+  let a = atlases.get(scene);
+  if (!a) {
+    a = new TagAtlas(scene);
+    atlases.set(scene, a);
+  }
+  return a;
+}
+
+function slotRect(slot: number): [number, number, number, number] {
+  return [(slot % COLS) * SLOT_W, Math.floor(slot / COLS) * SLOT_H, SLOT_W, SLOT_H];
+}
 
 /**
  * Плашка с именем и уровнем над мобом. Всегда развёрнута к камере
@@ -26,11 +165,12 @@ const BOT_MARK = "🤖 ";
  */
 export class NameTag {
   private readonly plane: Mesh;
-  private readonly tex: DynamicTexture;
+  private readonly atlas: TagAtlas;
+  private readonly page: AtlasPage;
+  private readonly slot: number;
   private baseY: number;
-  private readonly halfH: number;
+  private readonly halfH = HALF_H;
 
-  private readonly W: number;
   private accent: Color3;
   /** Цвет самого имени (NPC лагеря — фиолетовый). */
   private nameColor = "#f2f4fb";
@@ -41,18 +181,14 @@ export class NameTag {
   /** Платформа игрока: 0 — нет значка, 1 — ПК, 2 — смартфон, 3 — VR. */
   private platform = 0;
 
-  /**
-   * Полоски здоровья и опыта рисуются В ТУ ЖЕ текстуру плашки (раньше это были ещё 4 отдельных меша
-   * со своими материалами — 5 отрисовок на героя вместо одной). Перерисовка — только при изменении значений.
-   */
   private hpOn = false;
   private hpFrac = 1;
   private xpOn = false;
   private xpHidden = false;
   private xpFrac = 0;
   private curScale = 1;
-  /** См. setAlwaysOnTop() — плашка видна сквозь модель, а не только когда та не мешает. */
-  private alwaysOnTop = false;
+  private readonly pos = new Float32Array(QUADS * 4 * 3);
+  private readonly col = new Float32Array(QUADS * 4 * 4);
 
   constructor(
     scene: Scene,
@@ -69,45 +205,63 @@ export class NameTag {
     private readonly isBot: boolean = false,
   ) {
     this.accent = accent;
+    this.atlas = atlasOf(scene);
+    const a = this.atlas.alloc();
+    this.page = a.page;
+    this.slot = a.slot;
 
-    // Ширину закладываем сразу под имя И вторую строку — чтобы смена уровня
-    // не требовала пересоздавать текстуру.
-    const measure = document.createElement("canvas").getContext("2d")!;
-    measure.font = NAME_FONT;
-    let textW = measure.measureText((isBot ? BOT_MARK : "") + name).width;
-    measure.font = LVL_FONT;
-    textW = Math.max(textW, measure.measureText("999 ур.").width);
-    const padX = 30;
-    this.W = Math.max(BASE_W, Math.ceil(textW + padX * 2 + 16 + (isBot ? 0 : 64))); // запас слева под значок платформы
+    // Геометрия: текст на всю ячейку + 4 полоски (пока схлопнуты в ноль — showHp/showXp раскроют).
+    const uv = new Float32Array(QUADS * 4 * 2);
+    const [sx, sy] = slotRect(this.slot);
+    // Края ячейки чуть внутрь (2 px): соседние ячейки не подмешиваются при выборке.
+    const u0 = (sx + 2) / PAGE_W;
+    const u1 = (sx + SLOT_W - 2) / PAGE_W;
+    const vTop = 1 - (sy + 2) / PAGE_H;
+    const vBot = 1 - (sy + SLOT_H - 2) / PAGE_H;
+    const setUv = (q: number, ua: number, ub: number, va: number, vb: number): void => {
+      uv.set([ua, vb, ub, vb, ub, va, ua, va], q * 8);
+    };
+    setUv(Q_TEXT, u0, u1, vTop, vBot);
+    // Белая ячейка 0 — середина, чтобы мип-уровни не подмешивали соседей.
+    const [wx, wy] = slotRect(0);
+    const wu = (wx + SLOT_W / 2) / PAGE_W;
+    const wv = 1 - (wy + SLOT_H / 2) / PAGE_H;
+    for (const q of [Q_XP_BG, Q_XP, Q_HP_BG, Q_HP]) setUv(q, wu, wu, wv, wv);
+    const idx: number[] = [];
+    for (let q = 0; q < QUADS; q++) {
+      const b = q * 4;
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    }
+    const tw = SLOT_W * M_PER_PX;
+    const th = SLOT_H * M_PER_PX;
+    this.setQuad(Q_TEXT, -tw / 2, tw / 2, -th / 2, th / 2, [1, 1, 1, 1]);
+    for (const q of [Q_XP_BG, Q_XP, Q_HP_BG, Q_HP]) this.setQuad(q, 0, 0, 0, 0, [0, 0, 0, 0]);
 
-    this.tex = new DynamicTexture("nameTagTex", { width: this.W, height: H }, scene, false);
-    this.tex.hasAlpha = true;
-    this.paint(name, level);
-
-    const mat = new StandardMaterial("nameTagMat", scene);
-    mat.diffuseTexture = this.tex;
-    mat.emissiveTexture = this.tex;
-    mat.opacityTexture = this.tex;
-    mat.useAlphaFromDiffuseTexture = true;
-    mat.disableLighting = true;
-    mat.specularColor = new Color3(0, 0, 0);
-    mat.backFaceCulling = false;
-
-    // Физическую ширину тянем вслед за текстурой — так буквы в мире остаются
-    // прежнего размера, плашка просто становится длиннее.
-    const planeW = 0.9 * (this.W / BASE_W);
-    const height = planeW * (H / this.W);
-    this.plane = MeshBuilder.CreatePlane("nameTag", { width: planeW, height }, scene);
-    this.plane.material = mat;
+    this.plane = new Mesh("nameTag", scene);
+    const vd = new VertexData();
+    vd.positions = this.pos;
+    vd.indices = idx;
+    vd.uvs = uv;
+    vd.colors = this.col;
+    vd.applyToMesh(this.plane, true);
+    this.plane.hasVertexAlpha = true;
+    this.plane.material = this.page.mat;
     this.plane.parent = parent;
     this.plane.position.copyFrom(offset);
     this.plane.isPickable = false;
+    // Туман плашку не глушит — вдали имя должно читаться.
+    this.plane.applyFog = false;
     // Группа 0 + проверка глубины: плашку загораживают стены, деревья и пол.
     this.plane.renderingGroupId = 0;
     this.plane.billboardMode = Mesh.BILLBOARDMODE_Y;
-
     this.baseY = offset.y;
-    this.halfH = height / 2;
+
+    this.paint(name, level);
+  }
+
+  private setQuad(q: number, x0: number, x1: number, y0: number, y1: number, rgba: readonly number[]): void {
+    this.pos.set([x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y1, 0], q * 12);
+    for (let i = 0; i < 4; i++) this.col.set(rgba, q * 16 + i * 4);
   }
 
   /**
@@ -129,80 +283,83 @@ export class NameTag {
   }
 
   setNameColor(css: string): void {
+    if (css === this.nameColor) return;
     this.nameColor = css;
     this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
+  /** Текст ячейки: ник (значок бота/платформы слева), строка «титул · уровень». С обводкой — читается на любом фоне и вдали. */
   private paint(name: string, level: number | null, hasUnspent = false): void {
     this.curName = name;
     this.curLevel = level;
     this.curUnspent = hasUnspent;
-    const W = this.W;
-    const ctx = this.tex.getContext() as unknown as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, W, H);
-    ctx.textAlign = "center";
+    const ctx = this.page.ctx;
+    const [x0, y0, W, H] = slotRect(this.slot);
+    ctx.save();
+    ctx.clearRect(x0, y0, W, H);
+    ctx.beginPath();
+    ctx.rect(x0, y0, W, H);
+    ctx.clip();
+    ctx.translate(x0, y0);
     ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(6,8,12,0.88)";
+    const outlined = (text: string, x: number, y: number, fill: string, lw: number): void => {
+      ctx.lineWidth = lw;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, x, y);
+    };
 
-    const nameY = level === null ? H / 2 : H / 2 - 20;
-    ctx.fillStyle = this.nameColor;
-    ctx.font = NAME_FONT;
-    // Сам ник — строго по центру плашки. Значок бота цепляем слева от ника,
-    // в центровке он не участвует (иначе надпись уезжала вправо).
+    const nameY = level === null ? H / 2 : 44;
+    // Слева место под значок бота/платформы; длинный ник — ужимаем кегль, чтобы влез в ячейку.
+    const lead = this.isBot || this.platform > 0 ? 52 : 0;
+    let px = NAME_PX;
+    ctx.font = `bold ${px}px ${FONT_FAMILY}`;
+    let nameW = ctx.measureText(name).width;
+    const room = W - 24 - lead * 2;
+    if (nameW > room) {
+      px = Math.max(24, Math.floor((px * room) / nameW));
+      ctx.font = `bold ${px}px ${FONT_FAMILY}`;
+      nameW = ctx.measureText(name).width;
+    }
     ctx.textAlign = "center";
-    ctx.fillText(name, W / 2, nameY);
+    outlined(name, W / 2, nameY, this.nameColor, Math.max(6, px * 0.17));
     if (this.isBot) {
-      const nameW = ctx.measureText(name).width;
       ctx.textAlign = "right";
+      ctx.fillStyle = this.nameColor;
       ctx.fillText(BOT_MARK.trim(), W / 2 - nameW / 2 - 8, nameY);
       ctx.textAlign = "center";
     }
-
-    if (this.platform > 0) {
-      const nameW = ctx.measureText(name).width;
-      drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 40, nameY, 46);
-    }
+    if (this.platform > 0) drawPlatformIcon(ctx, this.platform, W / 2 - nameW / 2 - 40, nameY, 46);
 
     if (level !== null) {
       const a = this.accent;
-      ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
-      ctx.font = LVL_FONT;
-      const lvlY = H / 2 + 42;
+      const acc = `rgb(${Math.round(a.r * 255)},${Math.round(a.g * 255)},${Math.round(a.b * 255)})`;
+      const lvlY = 100;
       const lvlText = `${level} ур.`;
-      let lvlEnd = W / 2 + ctx.measureText(lvlText).width / 2;
-      if (this.title) {
-        // Титул фиолетовым перед уровнем: «Царь башни · 34 ур.»; не влезает — ужимаем шрифт.
-        const head = `${this.title} · `;
-        let px = 36;
-        ctx.font = `600 ${px}px system-ui, sans-serif`;
-        let tw = ctx.measureText(head + lvlText).width;
-        if (tw > W - 24) {
-          px = Math.max(18, Math.floor((px * (W - 24)) / tw));
-          ctx.font = `600 ${px}px system-ui, sans-serif`;
-          tw = ctx.measureText(head + lvlText).width;
-        }
-        const x0 = W / 2 - tw / 2;
-        ctx.textAlign = "left";
-        ctx.fillStyle = "#c79bff";
-        ctx.fillText(head, x0, lvlY);
-        ctx.fillStyle = `rgb(${a.r * 255},${a.g * 255},${a.b * 255})`;
-        ctx.fillText(lvlText, x0 + ctx.measureText(head).width, lvlY);
-        ctx.textAlign = "center";
-        lvlEnd = x0 + tw;
-      } else {
-        ctx.fillText(lvlText, W / 2, lvlY);
+      const head = this.title ? `${this.title} · ` : "";
+      let lp = LVL_PX;
+      ctx.font = `600 ${lp}px ${FONT_FAMILY}`;
+      let tw = ctx.measureText(head + lvlText).width;
+      if (tw > W - 40) {
+        lp = Math.max(18, Math.floor((lp * (W - 40)) / tw));
+        ctx.font = `600 ${lp}px ${FONT_FAMILY}`;
+        tw = ctx.measureText(head + lvlText).width;
       }
+      const lx = W / 2 - tw / 2;
+      ctx.textAlign = "left";
+      // Титул фиолетовым перед уровнем: «Царь башни · 34 ур.».
+      if (head) outlined(head, lx, lvlY, "#c79bff", 6);
+      outlined(lvlText, lx + ctx.measureText(head).width, lvlY, acc, 6);
       if (hasUnspent) {
-        // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал
-        // бы текст уровня туда-сюда каждый раз, когда очки появляются/тратятся).
-        ctx.fillStyle = "#ff3b30";
-        ctx.font = "bold 40px system-ui, sans-serif";
-        ctx.textAlign = "left";
-        ctx.fillText("!", lvlEnd + 10, lvlY + 1);
-        ctx.textAlign = "center";
+        // Красный "!" сразу после уровня — не по центру плашки (иначе сдвигал бы текст уровня).
+        ctx.font = `bold 40px ${FONT_FAMILY}`;
+        outlined("!", lx + tw + 10, lvlY + 1, "#ff3b30", 6);
       }
     }
-    this.paintBars(ctx);
-    this.tex.update(true);
+    ctx.restore();
+    this.page.dirty = true;
   }
 
   /** Титул героя — в строке уровня, перед ним ("" — нет). */
@@ -212,35 +369,35 @@ export class NameTag {
     this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
-  /** Полоски над ником — те же положения и пропорции, что были у отдельных мешей. */
-  private paintBars(ctx: CanvasRenderingContext2D): void {
-    const W = this.W;
-    const barW = W * 0.66;
-    const cx = W / 2;
-    const bar = (yCenter: number, hFill: number, hBg: number, frac: number, fill: string): void => {
-      ctx.fillStyle = "rgba(8,8,8,0.65)";
-      ctx.fillRect(cx - (barW * 1.06) / 2, yCenter - hBg / 2, barW * 1.06, hBg);
-      ctx.fillStyle = fill;
-      ctx.fillRect(cx - barW / 2, yCenter - hFill / 2, barW * Math.max(0.004, frac), hFill);
-    };
+  /** Полоски над ником: геометрия и цвет в вершинах (без перерисовки текста). */
+  private syncBars(): void {
+    const half = BAR_W / 2;
+    const bgHalf = (BAR_W * 1.06) / 2;
+    const zero = [0, 0, 0, 0] as const;
     if (this.xpOn && !this.xpHidden) {
-      // центр на 0.92·halfH над серединой плашки
-      bar(H * (0.5 - 0.46), W * 0.023, W * 0.023 * 1.6, this.xpFrac, "rgb(158,163,173)");
+      this.setQuad(Q_XP_BG, -bgHalf, bgHalf, XP_Y - XP_BG_H / 2, XP_Y + XP_BG_H / 2, BG_RGBA);
+      this.setQuad(Q_XP, -half, -half + BAR_W * Math.max(0.004, this.xpFrac), XP_Y - XP_H / 2, XP_Y + XP_H / 2, XP_RGBA);
+    } else {
+      this.setQuad(Q_XP_BG, 0, 0, 0, 0, zero);
+      this.setQuad(Q_XP, 0, 0, 0, 0, zero);
     }
     if (this.hpOn) {
       const f = this.hpFrac;
-      const r = f > 0.5 ? 64 : 217;
-      const g = f > 0.25 ? 191 : 51;
-      const b = f > 0.5 ? 77 : 38;
-      bar(H * (0.5 - 0.29), W * 0.05, W * 0.05 * 1.5, f, `rgb(${r},${g},${b})`);
+      const rgba = [f > 0.5 ? 0.25 : 0.85, f > 0.25 ? 0.75 : 0.2, f > 0.5 ? 0.3 : 0.15, 1];
+      this.setQuad(Q_HP_BG, -bgHalf, bgHalf, HP_Y - HP_BG_H / 2, HP_Y + HP_BG_H / 2, BG_RGBA);
+      this.setQuad(Q_HP, -half, -half + BAR_W * Math.max(0.004, f), HP_Y - HP_H / 2, HP_Y + HP_H / 2, rgba);
+    } else {
+      this.setQuad(Q_HP_BG, 0, 0, 0, 0, zero);
+      this.setQuad(Q_HP, 0, 0, 0, 0, zero);
     }
+    this.plane.updateVerticesData(VertexBuffer.PositionKind, this.pos);
+    this.plane.updateVerticesData(VertexBuffer.ColorKind, this.col);
   }
 
   setEnabled(v: boolean): void {
-    this.plane.setEnabled(v);
+    if (this.plane.isEnabled(false) !== v) this.plane.setEnabled(v);
   }
 
-  /** Включить полоску здоровья под ником (зелёная, желтеет/краснеет с уроном). */
   /** Сменить цвет строки уровня (ПК: цвет опасности моба относительно героя). */
   setAccent(r: number, g: number, b: number): void {
     const a = this.accent;
@@ -249,17 +406,18 @@ export class NameTag {
     this.paint(this.curName, this.curLevel, this.curUnspent);
   }
 
+  /** Включить полоску здоровья над ником (зелёная, желтеет/краснеет с уроном). */
   showHp(): void {
     if (this.hpOn) return;
     this.hpOn = true;
-    this.paint(this.curName, this.curLevel, this.curUnspent);
+    this.syncBars();
   }
 
-  /** Тонкая полоска опыта над полоской жизни — сколько до следующего уровня (боты; золото/серый). */
+  /** Тонкая полоска опыта над полоской жизни — сколько до следующего уровня (боты). */
   showXp(): void {
     if (this.xpOn) return;
     this.xpOn = true;
-    this.paint(this.curName, this.curLevel, this.curUnspent);
+    this.syncBars();
   }
 
   /** Доля опыта до следующего уровня 0..1. Отрицательное — максимальный уровень (полоска прячется). */
@@ -269,15 +427,15 @@ export class NameTag {
     if (hidden === this.xpHidden && Math.abs(f - this.xpFrac) < 0.005) return;
     this.xpHidden = hidden;
     this.xpFrac = f;
-    if (this.xpOn) this.paint(this.curName, this.curLevel, this.curUnspent);
+    if (this.xpOn) this.syncBars();
   }
 
-  /** Доля здоровья 0..1. Зовётся каждый кадр: текстура перерисовывается, только если значение заметно изменилось. */
+  /** Доля здоровья 0..1. Зовётся каждый кадр: вершины двигаются, только если значение заметно изменилось. */
   setHp(frac: number): void {
     const f = Math.max(0, Math.min(1, frac));
-    if (Math.abs(f - this.hpFrac) < 0.01 && !(f === 0 && this.hpFrac !== 0)) return;
+    if (Math.abs(f - this.hpFrac) < 0.005 && !(f === 0 && this.hpFrac !== 0)) return;
     this.hpFrac = f;
-    if (this.hpOn) this.paint(this.curName, this.curLevel, this.curUnspent);
+    if (this.hpOn) this.syncBars();
   }
 
   /** Поднять плашку — когда высота модели становится известна позже (боты). */
@@ -303,28 +461,15 @@ export class NameTag {
    * Нужно, например, в тесной башне: высокий босс закрывает свою же плашку.
    */
   setAlwaysOnTop(on: boolean): void {
-    this.alwaysOnTop = on;
-    this.applyAlwaysOnTop();
-  }
-
-  private applyAlwaysOnTop(): void {
-    const on = this.alwaysOnTop;
-    for (const m of [this.plane]) {
-      if (!m?.material) continue;
-      // disableDepthTest — не просто "рисуй после", а буквально не сверяться
-      // с буфером глубины: иначе своё же тело моба (уже в буфере) закрывало
-      // бы плашку у высоких боссов независимо от порядка рендер-групп.
-      (m.material as StandardMaterial).depthFunction = on ? Constants.ALWAYS : 0;
-      (m.material as StandardMaterial).disableDepthWrite = on;
-      m.renderingGroupId = on ? 1 : 0;
-    }
+    this.plane.material = on ? this.atlas.topMaterial(this.page) : this.page.mat;
+    this.plane.renderingGroupId = on ? 1 : 0;
   }
 
   dispose(): void {
-    // (false, true) — вместе с материалом (и его текстурой): иначе на каждый
-    // убранный моб/героя в сцене оставался nameTagMat и полоски (утечка).
-    this.plane.dispose(false, true);
-    this.tex.dispose();
+    // Материал и текстура общие — уходит только меш, ячейка атласа освобождается.
+    this.plane.dispose(false, false);
+    this.atlas.release(this.page, this.slot);
+    this.page.dirty = true;
   }
 }
 

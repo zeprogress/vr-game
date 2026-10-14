@@ -374,6 +374,9 @@ export class Game {
       window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
     this.pcThirdPerson = !this.isTouch && new URLSearchParams(location.search).get("fp") !== "1";
     this.quality = playerQuality(this.isTouch);
+    // Игрок (не эфир): далёких ботов не анимируем и их плашки не рисуем — мелкие, а отрисовки и кости стоят.
+    RemoteAvatar.animRange = 60;
+    RemoteAvatar.tagRange = 70;
     const preset = PRESETS[this.quality];
     if (preset.scaling !== 1) this.engine.setHardwareScalingLevel(preset.scaling);
     this.scene.performancePriority = preset.fireflies && preset.fireflies > 0 ? 1 : 2;
@@ -4279,7 +4282,9 @@ export class Game {
       if (this.sharpen) this.dropSharpen();
       return;
     }
-    const wantFxaa = LOADOUT.gfx.smooth !== 0 && !!cam;
+    // Телефон: FXAA — лишний полноэкранный проход каждый кадр; края сглаживает MSAA самого холста
+    // (трава с вырезанными краями на телефоне по умолчанию выключена).
+    const wantFxaa = LOADOUT.gfx.smooth !== 0 && !!cam && !this.isTouch;
     if (wantFxaa && this.fxaaCam !== cam) {
       this.dropSmoothing();
       this.fxaa = new FxaaPostProcess("fxaa", 1, cam!);

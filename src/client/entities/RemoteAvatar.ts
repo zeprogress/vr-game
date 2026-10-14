@@ -817,6 +817,7 @@ export class RemoteAvatar implements Hittable {
     this.stunStars.update(dt);
     this.syncBar();
     this.vrCullDraw();
+    this.cullTag();
     if (this.buf.length === 0) return;
     const target = now - INTERP_DELAY;
 
@@ -866,6 +867,20 @@ export class RemoteAvatar implements Hittable {
     this.shadow.setEnabled(!this.dead);
     if (!this.dead) this.shadow.place(p.x, p.y - PLAYER.eyeHeight, p.z, SHADOW_RADIUS);
     this.applyGear();
+  }
+
+  /** Далёкая плашка — мелкая и нечитаемая, но всё равно отрисовка: прячем дальше tagRange (с гистерезисом). */
+  private cullTag(): void {
+    const R = RemoteAvatar.tagRange;
+    if (!Number.isFinite(R)) return;
+    const cp = (this.root.getScene().activeCamera as { globalPosition?: Vector3 } | null)?.globalPosition;
+    if (!cp) return;
+    const p = this.root.position;
+    const d2 = (p.x - cp.x) ** 2 + (p.z - cp.z) ** 2;
+    const far = this.tagFar ? d2 > (R - 6) * (R - 6) : d2 > R * R;
+    if (far === this.tagFar) return;
+    this.tagFar = far;
+    this.nameTag.setEnabled(!far);
   }
 
   /** VR: далёкого героя не рисуем вовсе (гистерезис 8 м). */
@@ -1089,14 +1104,21 @@ export class RemoteAvatar implements Hittable {
 
   /** Клипы на паузе, потому что бот вне кадра (см. stepBotLocomotion). */
   private animFrozen = false;
-  private static readonly ANIM_RANGE = 100;
+  /**
+   * Дальше этого от камеры (м) клипы бота стоят. Эфир (широкие планы) — 100; игра ставит меньше
+   * (Game): дальше ~60 м модель в несколько пикселей, движение ног там не видно.
+   */
+  static animRange = 100;
+  /** Дальше этого от камеры (м) плашка героя не рисуется (гистерезис 6 м). Эфир — без предела; игра ставит своё. */
+  static tagRange = Infinity;
+  private tagFar = false;
   /** В VR анимируем и рисуем ботов только вблизи: далёкие — шум для draw call'ов. */
   private static readonly VR_ANIM_RANGE = 40;
   private static readonly VR_DRAW_RANGE = 75;
   private vrHidden = false;
 
   /**
-   * Бот вне пирамиды видимости (с запасом) или дальше ANIM_RANGE от камеры.
+   * Бот вне пирамиды видимости (с запасом) или дальше animRange от камеры.
    * План кадра — с прошлого кадра. В VR (стерео-риг) не отсекаем.
    */
   private isAnimOffscreen(): boolean {
@@ -1116,7 +1138,7 @@ export class RemoteAvatar implements Hittable {
     if (cp) {
       const dx = p.x - cp.x;
       const dz = p.z - cp.z;
-      if (dx * dx + dz * dz > RemoteAvatar.ANIM_RANGE * RemoteAvatar.ANIM_RANGE) return true;
+      if (dx * dx + dz * dz > RemoteAvatar.animRange * RemoteAvatar.animRange) return true;
     }
     const planes = this.root.getScene().frustumPlanes;
     if (!planes) return false;
